@@ -22,19 +22,24 @@ pub async fn omp_spawn(
     resume: Option<String>,
     on_event: Channel<Value>,
 ) -> Result<SpawnedSession, String> {
+    eprintln!("[omp_spawn] called cwd={cwd:?} resume={resume:?}");
     let sink: EventSink = Arc::new(move |v| {
         let _ = on_event.send(v);
     });
-    // 未指定工作目录时用进程当前目录（tauri dev 从项目根启动）
-    let cwd_path = match cwd {
+    // 工作目录解析：显式参数 > 环境变量 OMP_DESKTOP_CWD > HOME。
+    // tauri dev 下进程 cwd 是 src-tauri、打包后是 /，都不能当默认工作目录。
+    let cwd_path = match cwd.or_else(|| std::env::var("OMP_DESKTOP_CWD").ok()) {
         Some(c) => PathBuf::from(c),
-        None => std::env::current_dir().map_err(|e| format!("无法确定工作目录: {e}"))?,
+        None => std::env::var("HOME")
+            .map(PathBuf::from)
+            .map_err(|e| format!("无法确定工作目录: {e}"))?,
     };
     let opts = crate::omp::SpawnOptions {
         cwd: cwd_path.clone(),
         resume_session: resume.map(PathBuf::from),
     };
     let handle = state.spawn(opts, sink).await?;
+    eprintln!("[omp_spawn] spawned key={}", handle.key);
     Ok(SpawnedSession {
         key: handle.key.clone(),
         cwd: cwd_path.display().to_string(),

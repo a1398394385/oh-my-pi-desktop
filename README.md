@@ -45,6 +45,8 @@ open prototype/index.html
 ```bash
 cd probe
 PATH="$HOME/.bun/bin:$PATH" bun mode-probe.mjs rpc-ui
+# 默认模型不调工具/太慢时指定模型（2026-09-19 实测 llama/spark-x2.5 两轮 90s 超时，deepseek 正常）：
+PATH="$HOME/.bun/bin:$PATH" bun mode-probe.mjs rpc-ui --model deepseek/deepseek-flash
 ```
 
 会真实调用一次模型（消耗调用方自己的额度），不写入会话记录。
@@ -52,5 +54,29 @@ PATH="$HOME/.bun/bin:$PATH" bun mode-probe.mjs rpc-ui
 ## 当前状态
 
 - 技术栈：Rust + Tauri（已定）
-- 编码：未开始
-- 下一步：Rust 侧 `RpcClient` 骨架——起进程 → 读 `ready` → 发 `prompt` → 渲染 `extension_ui_request`
+- **编码：可用版本已实现**（实现与手册的差异见 [docs/IMPLEMENTATION-NOTES.md](docs/IMPLEMENTATION-NOTES.md)）
+- 下一步：设置中心 / 右侧边栏四类标签 / steer·followUp / 虚拟滚动
+
+## 怎么跑套壳（可用版本）
+
+要求：本机已装 Rust 工具链、Node/npm、`omp`（bun 全局安装即可，应用会自动探测安装路径）。
+
+```bash
+npm install
+npm run tauri dev      # 开发模式启动，窗口起来后自动新建一个会话
+```
+
+- 会话数据：独立 profile `omp-desktop`（`~/.omp/profiles/omp-desktop/`），与用户 CLI 完全隔离；
+  左栏会话列表只读扫描该目录，点击即切换（resume），`⌘N` 新建。
+- 子进程参数固定：`omp --mode rpc-ui --approval-mode always-ask --profile omp-desktop --cwd <dir>`。
+- 输入区：Enter 发送、生成中变红色停止按钮（或按 Esc 中断）；模型 / 思考档位下拉的值全部来自 omp
+  （`get_available_models` / `get_state().model.thinking.efforts`），透传原值。
+- 审批：写操作会弹审批卡，Approve / Deny / 取消（Esc）；取消即 fail closed，绝不默认放行。
+- 退出：关闭窗口即退出，omp 子进程按"关 stdin → 等退出 → 超时 kill"清理，无孤儿进程。
+- 工作目录默认 `HOME`，可用环境变量 `OMP_DESKTOP_CWD` 覆盖。
+
+打包（生成 .app）：
+
+```bash
+npm run tauri build
+```

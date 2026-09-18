@@ -5,9 +5,16 @@
  * - 审批帧是 extension_ui_request + method:"select"，工具名/路径/内容在多行 title 里
  * - 值域（模型/思考档位）一律来自 omp：get_available_models / get_state().model.thinking.efforts
  */
+// 顶层错误可见化（conn 区域），正常路径不受影响
+window.addEventListener("error", (ev) => {
+  const c = document.querySelector("#connState");
+  if (c) { c.textContent = "JS错误: " + (ev.error?.message ?? ev.message ?? "?"); c.dataset.s = "err"; }
+});
+
 const T = window.__TAURI__;
+// Tauri 2 全局 bundle 里 Channel 与 invoke 都挂在 core 命名空间（无独立 ipc 命名空间）
 const invoke = T.core.invoke;
-const Channel = T.ipc.Channel;
+const Channel = T.core.Channel;
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -24,6 +31,7 @@ const S = {
   cur: null, // 当前流式上下文 { turnEl, streamEl, textBuf, thinkBuf, startTs }
   tools: new Map(), // toolCallId -> { el, stEl, ioEl, done }
   busy: false, // spawn/close 进行中
+  loading: false, // onReady+初始 refreshState 未完成，期间禁止切换
 };
 
 /* ── 小工具 ── */
@@ -95,6 +103,7 @@ function currentAgentTurn() {
 
 function closeStream() {
   if (!S.cur) return;
+  if (S.cur.pendingIndicator) { S.cur.pendingIndicator.remove(); S.cur.pendingIndicator = null; }
   S.cur.streamEl = null;
   S.cur.textEl = null;
   S.cur.thinkEl = null;
@@ -334,11 +343,23 @@ function handleFrame(f) {
       // 带 id 的响应已被 invoke 等待；unknown-id 的失败响应提示
       if (f.success === false) toast(`${f.command ?? "?"} 失败: ${f.error ?? ""}`, true);
       return;
-    case "agent_start":
+    case "agent_start": {
       S.running = true;
       updateSendBtn();
       setConn("生成中", "ok");
+      // 思考动画占位：模型出首个 delta 前给可见反馈
+      const c = currentAgentTurn();
+      if (!c.streamEl && !c.pendingIndicator) {
+        const t = el("div", "thinking");
+        t.appendChild(el("span", "d"));
+        t.appendChild(el("span", "d"));
+        t.appendChild(el("span", "d"));
+        c.pendingIndicator = t;
+        c.turnEl.appendChild(t);
+        scrollBottom();
+      }
       return;
+    }
     case "agent_end": {
       const terminal = f.isTerminal !== false;
       if (terminal) {
@@ -364,6 +385,7 @@ function handleFrame(f) {
       const ev = f.assistantMessageEvent;
       if (!ev) return;
       const c = currentAgentTurn();
+      if (c.pendingIndicator) { c.pendingIndicator.remove(); c.pendingIndicator = null; }
       if (ev.type === "text_delta") {
         c.textBuf = (c.textBuf ?? "") + (ev.delta ?? "");
         updateStreamText(c);
@@ -415,7 +437,8 @@ function handleFrame(f) {
       refreshSoon();
       return;
     case "notice":
-      toast(f.message ?? "", false);
+      // 挂载信息等长 notice 不进消息流，降噪为 toast
+      toast(String(f.message ?? "").slice(0, 100), false);
       return;
     default:
       // auto_compaction_* / turn_* / available_commands_update / todo_reminder 等暂不渲染
@@ -520,7 +543,7 @@ async function refreshState() {
       S.state = res.data ?? null;
       if (res.data?.sessionFile) S.sessionFile = res.data.sessionFile;
       if (res.data?.sessionId) S.sessionId = res.data.sessionId;
-      if (res.data?.sessionName) $("#sessionTitle").textContent = res.data.sessionName || "新会话";
+      $("#sessionTitle").textContent = res.data.sessionName || "未命名会话";
       const cu = res.data?.contextUsage;
       if (cu) {
         $("#ctxText").textContent = `${fmtTokens(cu.tokens)} / ${fmtTokens(cu.contextWindow)}`;
@@ -657,8 +680,9 @@ async function startSession(resumePath) {
   S.busy = true;
   try {
     if (S.key) {
-      try { await invoke("omp_close", { key: S.key }); } catch (e) { console.warn("close old", e); }
-      S.key = null;
+      const old = S.key;
+      S.key = null; // 立刻失效旧 channel 的过滤：close 期间的 desktop_exit 不再弹 toast
+      try { await invoke("omp_close", { key: old }); } catch (e) { console.warn("close old", e); }
     }
     S.running = false;
     S.tools.clear();
@@ -674,35 +698,46 @@ async function startSession(resumePath) {
     setConn("连接中…", "");
 
     const ch = new Channel();
-    ch.onmessage = handleFrame;
+    // 旧会话 channel 的迟到事件（desktop_exit 等）不得污染新会话 UI
+    let myKey = null;
+    ch.onmessage = (f) => { if (myKey && S.key === myKey) handleFrame(f); };
     const res = await invoke("omp_spawn", { cwd: null, resume: resumePath ?? null, onEvent: ch });
-    S.key = res.key;
+    myKey = res.key;
+    S.key = myKey;
     S.cwd = res.cwd;
+    S.loading = true;
     $("#cwdLabel").textContent = res.cwd;
     $("#cwdLabel").title = res.cwd;
     $("#whereCwd").textContent = res.cwd.split("/").slice(-1)[0] || res.cwd;
     $("#whereCwd").title = res.cwd;
     updateSendBtn();
+  } catch (e) {
+    setConn("启动失败", "err");
+    toast("启动会话失败: " + e, true);
   } finally {
     S.busy = false;
   }
 }
 
 async function onReady() {
-  setConn("已就绪", "ok");
-  // 值域一律从 omp 读
   try {
+    setConn("已就绪", "ok");
+    // 值域一律从 omp 读
     const r = await invoke("omp_request", { key: S.key, payload: { type: "get_available_models" } });
     if (r.success) S.models = r.data?.models ?? [];
-  } catch (e) { console.warn("models", e); }
-  await refreshState();
-  if (S.sessionFile) await loadHistory();
-  await refreshSessions();
+    await refreshState();
+    if (S.sessionFile) await loadHistory();
+    await refreshSessions();
+  } catch (e) {
+    toast("初始化失败: " + e, true);
+  } finally {
+    S.loading = false;
+  }
 }
 
 async function switchSession(path) {
   if (path === S.sessionFile) return;
-  if (S.running) { toast("生成中，请先停止再切换会话", true); return; }
+  if (S.loading || S.running || S.busy) { toast("会话加载中，请稍候", false); return; }
   await startSession(path);
 }
 
@@ -837,10 +872,11 @@ function wireUI() {
     $("#panelCapsule").hidden = true;
   };
   document.addEventListener("keydown", (ev) => {
-    // fail closed：Esc = 取消当前审批（不放行）
+    // fail closed：Esc = 取消审批（不放行）；生成中 = 停止
     if (ev.key === "Escape") {
       if (!$("#menu").hidden) { closeMenu(); return; }
-      S.approval?.cancel?.();
+      if (S.approval) { S.approval.cancel(); return; }
+      if (S.running) { sendOrStop(); return; }
     }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "n") {
       ev.preventDefault();

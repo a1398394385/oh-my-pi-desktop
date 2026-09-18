@@ -194,6 +194,7 @@ async fn spawn_session(
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("启动 omp 失败: {e}"))?;
+    eprintln!("[spawn_session] child pid={:?} cwd={}", child.id(), opts.cwd.display());
 
     let stdin: ChildStdin = child.stdin.take().expect("stdin 已 piped");
     let stdout = child.stdout.take().expect("stdout 已 piped");
@@ -314,6 +315,7 @@ async fn run_actor(
                         };
                         match frame.get("type").and_then(Value::as_str) {
                             Some("ready") => {
+                                eprintln!("[actor] ready 帧");
                                 decoder.apply_ready(&frame);
                                 if let Err(e) = write_line(&mut stdin, &json!({
                                     "id": "protocol-1",

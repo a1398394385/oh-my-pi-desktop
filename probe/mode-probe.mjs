@@ -1,23 +1,29 @@
 #!/usr/bin/env bun
 /**
  * 探针：对比 `omp --mode rpc` 与 `--mode rpc-ui` 在需要审批时的行为差异。
- * 用法：bun mode-probe.mjs <rpc|rpc-ui>
+ * 用法：bun mode-probe.mjs <rpc|rpc-ui> [--model provider/model]
  *
  * 设计：approvalMode 默认是 yolo（不触发审批），所以显式传 --approval-mode=always-ask。
  * 注意：always-ask 是工具级判断——实测 bash echo 不询问、write 才询问，因此 prompt 用 write 触发审批。
  * 脚本自动应答扩展 UI 帧，观察两种模式的差异。
+ * --model 可选：默认模型太慢/不调工具时用它指定（如 deepseek/deepseek-flash），透传给 omp，不影响协议语义。
  */
 import { spawn } from "node:child_process";
 
-const mode = process.argv[2] ?? "rpc";
+const argv = process.argv.slice(2);
+const mode = argv[0] ?? "rpc";
+const modelIdx = argv.indexOf("--model");
+const model = modelIdx >= 0 ? argv[modelIdx + 1] : undefined;
 const cwd = "/tmp/omp-probe";
 const TIMEOUT_MS = 90_000;
 const PROMPT =
   "必须调用 write 工具在当前目录创建文件 probe.txt（内容为 ok），不要用 bash。完成后只回复 done。";
 
+const ompArgs = ["--mode", mode, "--cwd", cwd, "--no-session", "--approval-mode=always-ask"];
+if (model) ompArgs.push("--model", model);
 const child = spawn(
   "omp",
-  ["--mode", mode, "--cwd", cwd, "--no-session", "--approval-mode=always-ask"],
+  ompArgs,
   { cwd, stdio: ["pipe", "pipe", "pipe"], env: process.env },
 );
 
