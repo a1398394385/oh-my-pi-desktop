@@ -107,6 +107,102 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+}
+
+/* 中部右上角悬浮任务卡 */
+#todo-float {
+  position: absolute;
+  top: 44px;
+  right: 12px;
+  z-index: 50;
+  max-width: 300px;
+}
+#todo-card {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #d9d9de;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  padding: 10px 12px 6px;
+}
+.tf-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.tf-head b {
+  font-size: 13px;
+}
+.tf-frac {
+  color: #86868b;
+  font-size: 12px;
+}
+.tf-sp {
+  flex: 1;
+}
+#todo-collapse {
+  border: none;
+  background: none;
+  color: #86868b;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+#todo-collapse:hover {
+  color: #0071e3;
+}
+#todo-capsule {
+  border: 1px solid #d9d9de;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  color: #424245;
+}
+#todo-capsule:hover {
+  border-color: #0071e3;
+  color: #0071e3;
+}
+.tf-phase {
+  font-size: 11px;
+  color: #a1a1a6;
+  padding: 5px 2px 2px;
+}
+.tf-item {
+  display: flex;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #424245;
+  border-radius: 6px;
+}
+.tf-item .tf-ic {
+  font-style: normal;
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+.tf-item.completed {
+  color: #a1a1a6;
+  text-decoration: line-through;
+  text-decoration-color: #c7c7cc;
+}
+.tf-item.completed .tf-ic {
+  color: #30a14e;
+}
+.tf-item.in_progress .tf-ic {
+  color: #0071e3;
+}
+.tf-item.blocked .tf-ic {
+  color: #c13a33;
+}
+.tf-item.pending .tf-ic {
+  color: #c7c7cc;
 }
 #approval-bar {
   display: flex;
@@ -334,6 +430,26 @@ body {
   flex-direction: column;
   border-left: 1px solid #e5e5e7;
   background: #f7f7f8;
+  transition: width 0.15s ease;
+}
+body.right-wide #right-panel {
+  width: 540px;
+}
+/* diff2html 详情视图适配窄栏 */
+.fd-holder {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e5e7;
+  background: #fff;
+}
+.fd-holder .d2h-wrapper {
+  font-size: 11px;
+}
+.fd-holder .d2h-file-header {
+  display: none; /* 已有我们的标题行，隐藏组件自带的文件头 */
+}
+.fd-holder td {
+  padding: 0 4px !important;
 }
 #right-tabs {
   display: flex;

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>omp desktop</title>
+    <link rel="stylesheet" href="vendor/diff2html.min.css" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -23,6 +24,17 @@
         <button id="thinking-select" class="bar-dd" title="当前会话的思考级别（只列模型支持的档位）"></button>
       </div>
       <div id="messages"></div>
+      <div id="todo-float">
+        <div id="todo-card">
+          <div class="tf-head">
+            <b>任务</b><span class="tf-frac" id="todo-frac"></span>
+            <span class="tf-sp"></span>
+            <button id="todo-collapse" title="收起为胶囊">—</button>
+          </div>
+          <div id="todo-list"></div>
+        </div>
+        <button id="todo-capsule" hidden></button>
+      </div>
       <div id="composer">
         <textarea id="input" rows="2" placeholder="发消息…（Enter 发送）"></textarea>
         <button id="send">发送</button>
@@ -35,6 +47,7 @@
       </div>
       <div id="right-body"></div>
     </aside>
+    <script src="vendor/diff2html.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

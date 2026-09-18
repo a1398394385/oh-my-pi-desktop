@@ -210,6 +210,40 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "get_messages":
             handleGetMessages(ws, msg.sessionId);
             break;
+          case "get_file_diff": {
+            // 单文件详细 diff：tracked 走 git diff HEAD，untracked 用 --no-index 生成纯新增
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const filePath = String(msg.path ?? "");
+            if (!filePath) throw new Error("缺少 path");
+            const abs = path.resolve(cwd, filePath);
+            if (!abs.startsWith(path.resolve(cwd) + path.sep)) throw new Error(`路径越界: ${filePath}`);
+            const tracked = Bun.spawnSync(["git", "-C", cwd, "ls-files", "--error-unmatch", "--", filePath], {
+              stdout: "ignore",
+              stderr: "ignore",
+            });
+            const isTracked = tracked.exitCode === 0;
+            const args = isTracked
+              ? ["diff", "HEAD", "--", filePath]
+              : ["diff", "--no-index", "--", "/dev/null", abs];
+            const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
+            // --no-index 有差异时 exitCode=1 属正常
+            if (p.exitCode > 1) throw new Error(`git diff 失败: ${p.stderr.toString().trim().slice(0, 200)}`);
+            ws.send(
+              JSON.stringify({
+                type: "file_diff",
+                cwd,
+                path: filePath,
+                diff: p.stdout.toString().slice(0, 500_000),
+              }),
+            );
+            break;
+          }
+          case "get_todos": {
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            ws.send(JSON.stringify({ type: "todos", sessionId: msg.sessionId, phases: entry.session.getTodoPhases() }));
+            break;
+          }
           case "get_git_diff": {
             // 当前会话 project 的改动文件清单（树/平铺展示用）
             const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
@@ -296,6 +330,10 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
     if (ui) ws.send(JSON.stringify({ type: "event", sessionId, ...ui }));
+    // todo 工具落盘后推送最新任务清单（TodoTracker 在工具结果后更新）
+    if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
+      ws.send(JSON.stringify({ type: "todos", sessionId, phases: entry.session.getTodoPhases() }));
+    }
   });
   // 审批/对话框：非 yolo 模式下审批 gate 通过 ExtensionUIContext.select 挂起等用户选择
   const uiCtx = {
@@ -435,6 +473,11 @@ async function handleLoadSession(ws: any, sessionPath: string) {
     }),
   );
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
+  // 恢复会话的存量任务清单（TodoTracker 构造时从 transcript 分支同步）
+  const restored = entry.session.getTodoPhases();
+  if (restored.length > 0) {
+    ws.send(JSON.stringify({ type: "todos", sessionId, phases: restored }));
+  }
   process.stderr.write(
     `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,
   );

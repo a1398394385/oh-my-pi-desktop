@@ -11,6 +11,8 @@ const statusEl = $("conn-status");
 const rightBody = $("right-body");
 let rightTab = "subagent"; // subagent | gitdiff
 let gitViewMode = "tree"; // tree | flat
+let selectedFile = null; // gitdiff tab 内选中的文件（详情视图）
+const fileDiffCache = { path: null, diff: "", loading: false };
 const expandedDirs = new Set(); // 展开的目录路径（默认全展开由首拉时填充）
 const gitDiffCache = { cwd: null, files: [], loading: false };
 
@@ -128,10 +130,12 @@ function onMessage(msg) {
         model: msg.model ?? null,
         thinking: msg.thinking ?? "auto",
         isGit: !!msg.isGit,
+        todos: [],
       });
       activePath = msg.path;
       loadingPath = null;
       selectedSubagent = null;
+      selectedFile = null;
       renderAll();
       if (pendingCreate) {
         // 新建的会话已落盘，重拉列表让左侧出现对应条目
@@ -211,6 +215,21 @@ function onMessage(msg) {
       }
       for (const d of dirs) expandedDirs.add(d);
       if (rightTab === "gitdiff") renderRightPanel();
+      break;
+    }
+    case "todos": {
+      const s = findBySessionId(msg.sessionId);
+      if (s) {
+        s.todos = msg.phases ?? [];
+        renderAll();
+      }
+      break;
+    }
+    case "file_diff": {
+      fileDiffCache.path = msg.path;
+      fileDiffCache.diff = msg.diff;
+      fileDiffCache.loading = false;
+      if (rightTab === "gitdiff" && selectedFile === msg.path) renderRightPanel();
       break;
     }
     case "error": {
@@ -358,6 +377,61 @@ document.querySelectorAll('#approval-bar button[data-mode]').forEach((b) => {
   b.onclick = () => send({ type: "set_approval_mode", mode: b.dataset.mode });
 });
 
+// 中部右上角悬浮任务卡（参考 kimi28 session-view 原型）：三态任务行，可收起为胶囊
+let todoCollapsed = false;
+$("todo-collapse").onclick = () => {
+  todoCollapsed = true;
+  renderTodoFloat();
+};
+$("todo-capsule").onclick = () => {
+  todoCollapsed = false;
+  renderTodoFloat();
+};
+
+function renderTodoFloat() {
+  const float = $("todo-float");
+  const card = $("todo-card");
+  const capsule = $("todo-capsule");
+  const s = activeOpen();
+  const phases = s?.todos ?? [];
+  const all = phases.flatMap((p) => p.tasks);
+  if (!s || all.length === 0) {
+    float.style.display = "none";
+    return;
+  }
+  float.style.display = "";
+  const done = all.filter((t) => t.status === "completed").length;
+  const frac = `${done}/${all.length}`;
+  card.hidden = todoCollapsed;
+  capsule.hidden = !todoCollapsed;
+  capsule.textContent = `任务 ${frac}`;
+  $("todo-frac").textContent = frac;
+  const list = $("todo-list");
+  list.innerHTML = "";
+  for (const phase of phases) {
+    if (phase.tasks.length === 0) continue;
+    if (phases.length > 1) {
+      const h = document.createElement("div");
+      h.className = "tf-phase";
+      h.textContent = phase.name;
+      list.appendChild(h);
+    }
+    for (const t of phase.tasks) {
+      const row = document.createElement("div");
+      row.className = "tf-item " + t.status;
+      const icon = document.createElement("i");
+      icon.className = "tf-ic";
+      icon.textContent = t.status === "completed" ? "✓" : t.status === "in_progress" ? "→" : t.status === "blocked" ? "⊘" : "○";
+      const text = document.createElement(t.status === "completed" ? "s" : "span");
+      text.textContent = t.content + (t.status === "blocked" && t.blocker ? `（${t.blocker}）` : "");
+      row.appendChild(icon);
+      row.appendChild(text);
+      if (t.details) row.title = t.details;
+      list.appendChild(row);
+    }
+  }
+}
+
 function renderAll() {
   // 左栏：project 分组
   sessionListEl.innerHTML = "";
@@ -476,6 +550,7 @@ function renderAll() {
   modelSelect.disabled = thinkingSelect.disabled = !cur;
   modelSelect.textContent = cur?.model ? (modelNames.get(cur.model) ?? cur.model) : "模型";
   thinkingSelect.textContent = cur ? (THINKING_LABELS[cur.thinking] ?? cur.thinking ?? "思考") : "思考";
+  renderTodoFloat();
   renderRightPanel();
 }
 
@@ -483,6 +558,9 @@ function renderAll() {
 function renderRightPanel() {
   const cur = activeOpen();
   if (rightTab === "gitdiff" && !cur?.isGit) rightTab = "subagent";
+  if (rightTab !== "gitdiff" || !selectedFile) selectedFile = null;
+  // 文件详情视图临时加宽右栏
+  document.body.classList.toggle("right-wide", rightTab === "gitdiff" && !!selectedFile);
   for (const b of document.querySelectorAll("#right-tabs button")) {
     b.className = b.dataset.tab === rightTab ? "active" : "";
     b.style.display = b.dataset.tab === "gitdiff" && !cur?.isGit ? "none" : "";
@@ -513,6 +591,11 @@ function renderGitDiff() {
     d.className = "placeholder";
     d.textContent = "（该 project 不是 git 仓库）";
     rightBody.appendChild(d);
+    return;
+  }
+  // 文件详情视图：返回 + diff2html 渲染
+  if (selectedFile) {
+    renderFileDetail(s);
     return;
   }
   // 工具行：⟳刷新 + 树/平铺切换（右上角）
@@ -569,6 +652,52 @@ function renderGitDiff() {
   rightBody.appendChild(container);
 }
 
+function requestFileDiff(s, filePath) {
+  selectedFile = filePath;
+  fileDiffCache.loading = true;
+  fileDiffCache.path = filePath;
+  send({ type: "get_file_diff", cwd: s.cwd, path: filePath });
+  renderRightPanel();
+}
+
+function renderFileDetail(s) {
+  const back = document.createElement("button");
+  back.className = "sub-back";
+  back.textContent = "← 返回列表";
+  back.onclick = () => {
+    selectedFile = null;
+    renderRightPanel();
+  };
+  rightBody.appendChild(back);
+  const title = document.createElement("div");
+  title.className = "sub-title";
+  title.textContent = selectedFile;
+  rightBody.appendChild(title);
+  if (fileDiffCache.loading && fileDiffCache.path === selectedFile) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = "加载中…";
+    rightBody.appendChild(d);
+    return;
+  }
+  if (fileDiffCache.path !== selectedFile || !fileDiffCache.diff) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = "（无差异内容）";
+    rightBody.appendChild(d);
+    return;
+  }
+  const holder = document.createElement("div");
+  holder.className = "fd-holder";
+  holder.innerHTML = window.Diff2Html.html(fileDiffCache.diff, {
+    drawFileList: false,
+    outputFormat: "line-by-line",
+    matching: "words",
+    highlight: true,
+  });
+  rightBody.appendChild(holder);
+}
+
 function fileRow(f, displayPath) {
   const row = document.createElement("div");
   row.className = "gd-row file";
@@ -581,6 +710,10 @@ function fileRow(f, displayPath) {
   name.textContent = displayPath.split("/").pop();
   row.appendChild(badge);
   row.appendChild(name);
+  row.onclick = () => {
+    const s = activeOpen();
+    if (s) requestFileDiff(s, f.path);
+  };
   return row;
 }
 
