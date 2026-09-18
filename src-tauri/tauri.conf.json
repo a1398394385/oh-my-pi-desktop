@@ -11,8 +11,12 @@
     "windows": [
       {
         "title": "omp desktop",
-        "width": 980,
-        "height": 680
+        "width": 1280,
+        "height": 820,
+        "x": 300,
+        "y": 130,
+        "minWidth": 700,
+        "minHeight": 480
       }
     ],
     "security": {

@@ -57,3 +57,14 @@
 - 三冒烟分层：`smoke.ts`（建会话→prompt→落盘→load 恢复历史）、`smoke-approval.ts`（always-ask→审批帧→批准→文件落盘硬断言）、`smoke-subagent.ts`（诱导 task 工具→lifecycle/event 帧）；后加 `smoke-model.ts`（切换+钳制回执）。真模型跑 `OMP_DESKTOP_MODEL=deepseek/deepseek-flash`（默认模型本地 spark 慢到拖死验证）。
 - 冒烟脚本结束要清理测试产生的会话文件和测试产物（fail 路径也要）。
 - GUI 验证用"截图实测"而不是心算坐标：坐标点击失败时先裁剪截图测量元素实际像素位置再重试。
+
+## GUI 自动化验证（2026-09-19 UI 原型重写轮）
+
+- **双 tauri dev 并存会互相污染**：压缩前遗留的后台 dev 与用户新开的 dev 共享同一 src-tauri/target，重编译互相踩踏、两个应用实例并存，用户看到的窗口可能是旧前端/新宿主的混合体（表现为"下拉菜单不见了"）。验证前 `ps` 确认只有一个 dev、一个应用、一个宿主，多余实例按 cwd 区分归属后逐个清掉。
+- **用户环境 Stage Manager 会吞窗口**：窗口被收纳后 CGWindowList 里 bounds 变成屏外负坐标迷你值（如 -307,1010,118×119）、`screencapture -l` 报 could not create image、System Events 的 `count of windows` 恒为 0（AX 树不列收纳窗口）、`set_position/set_size` 返回 Ok 但 bounds 不动。三者同时出现基本可断定是 Stage Manager/屏归属问题，不要在窗口坐标上死磕。
+- **osascript 按应用名匹配会撞同名进程**：`tell application "omp-desktop"` 匹配的是 LaunchServices 注册的 bundle（kimi28 打包版同名），dev 裸二进制（target/debug/omp-desktop）不受影响。要精确操作 dev 实例必须 `first process whose unix id is <pid>`。
+- **CGEvent 合成点击对 Stage Manager 缩略图/App Exposé 无效**：鼠标事件能 post 到普通窗口，但唤回收纳窗口这类窗口管理操作不被响应；临时出路是 `defaults write com.apple.WindowManager GloballyEnabled -bool false && killall WindowManager`（可逆，用完问用户是否恢复）。
+- **窗口启动复位写进壳里**（lib.rs setup：unminimize + set_position(300,130) + set_size(1280×820) + show + set_focus；conf 同值 + minWidth/minHeight）：用户有把窗口缩到极小拖到角落的习惯，复位保证每次 dev 重启窗口可见可截。Stage Manager 开启期间这些调用会被压制但退出后位置仍正确。
+- **前端错误上报通道**：WKWebView 无 console，`window.onerror`/`unhandledrejection` 除显示到状态栏 + toast 外，再经 WS 发 `ui_error` 给宿主打到 stderr（dev 日志可见），是从外界断言"前端零 JS 错误"的唯一手段。
+- **冒烟脚本默认模型是本地慢模型**：`bun run scripts/smoke*.ts` 不带环境变量会在 prompt 断言上超时（90s/120s 不够）；带 `OMP_DESKTOP_MODEL=deepseek/deepseek-flash` 跑即全绿。
+- **CDN 上传缓存串图**：连续 Read 多张 /tmp 截图可能返回同一 URL（缓存命中错误），换全新文件名再传。

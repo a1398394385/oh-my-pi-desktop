@@ -1,41 +1,52 @@
-// 极简前端：按 project 分组的会话列表（磁盘）+ 新建会话 + 消息收发。
-// 协议见 host/host.ts：命令 {create_session|load_session|list_sessions|prompt|get_messages}，
-// 事件 {ready|session_list|session_created|event|messages|error}。
+// omp desktop 前端：视觉与交互 1:1 仿照 prototype/session-view.html（kimi28 原型），
+// 数据源换成本仓 WebSocket 宿主协议（host/host.ts）。
+// 协议：命令 {create_session|load_session|list_sessions|prompt|get_messages|
+//   set_approval_mode|approval_response|set_model|set_thinking|get_git_diff|
+//   get_file_diff|get_context_detail}，事件见 onMessage。
 const { invoke } = window.__TAURI__.core;
 
 const $ = (id) => document.getElementById(id);
-const messagesEl = $("messages");
-const sessionListEl = $("session-list");
+const streamEl = $("stream");
+const tasklistEl = $("tasklist");
 const inputEl = $("input");
 const statusEl = $("conn-status");
-const rightBody = $("right-body");
+const rightBodyEl = $("rightBody");
+const composerEl = $("composer");
+const modelBtn = $("modelBtn");
+const thinkBtn = $("thinkBtn");
+const modeBtn = $("modeBtn");
+const ctxBtn = $("ctxBtn");
+
 let rightTab = "subagent"; // subagent | gitdiff
 let gitViewMode = "tree"; // tree | flat
-let selectedFile = null; // gitdiff tab 内选中的文件（详情视图）
+let selectedFile = null; // gitdiff 内选中的文件（详情视图）
 const fileDiffCache = { path: null, diff: "", loading: false };
-const expandedDirs = new Set(); // 展开的目录路径（默认全展开由首拉时填充）
+const expandedDirs = new Set();
 const gitDiffCache = { cwd: null, files: [], loading: false };
+let changesOpen = false; // changebar 展开态
+let todoCollapsed = false; // 进程卡收起为胶囊
+let viewMode = "project"; // 左栏视图：project | recent
 
-// WKWebView 无 console：未捕获错误显示在状态栏，便于定位
+// WKWebView 无 console：未捕获错误显示在状态栏 + toast + 上报宿主日志（dev 终端可见）
 window.onerror = (msg) => {
-  statusEl.textContent = String(msg).slice(0, 120);
+  statusEl.textContent = String(msg).slice(0, 80);
   statusEl.className = "bad";
+  toast(String(msg).slice(0, 120));
+  send({ type: "ui_error", message: String(msg).slice(0, 300) });
 };
 window.addEventListener("unhandledrejection", (e) => {
-  statusEl.textContent = String(e.reason).slice(0, 120);
-  statusEl.className = "bad";
+  send({ type: "ui_error", message: "unhandledrejection: " + String(e.reason).slice(0, 300) });
 });
 
-/** 磁盘会话列表：[{cwd, sessions:[{path,title,firstMessage,modified,messageCount}]}] */
+/** 磁盘会话列表：[{cwd, sessions:[{id,path,title,firstMessage,modified,messageCount}]}] */
 const diskProjects = [];
 const projectLimits = new Map(); // cwd -> 已显示条数（默认 5，步进 5）
 const collapsedProjects = new Set(); // 已折叠的项目 cwd
-/** 已打开（新建或加载）的会话：path -> {sessionId,cwd,items,assistantDraft,streaming,subagents} */
+/** 已打开（新建或加载）的会话：path -> {sessionId,cwd,items,assistantDraft,streaming,subagents,...} */
 const openSessions = new Map();
 let activePath = null;
 let selectedSubagent = null; // 右栏流视图选中的 subagentId（null = 卡片列表）
 let ws = null;
-let loadingPath = null;
 let pendingCreate = false;
 
 function send(obj) {
@@ -56,6 +67,16 @@ function findBySessionId(id) {
   return undefined;
 }
 
+// ---------- toast（原型同款） ----------
+const toastEl = $("toast");
+let toastTimer;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 2200);
+}
+
 async function connect() {
   setConnected(false, "连接中…");
   const url = await invoke("ws_url");
@@ -65,8 +86,8 @@ async function connect() {
     setConnected(true, "已连接");
     send({ type: "list_sessions" });
   };
-  ws.onclose = () => setConnected(false, "连接已断开");
-  ws.onerror = () => setConnected(false, "连接已断开");
+  ws.onclose = () => setConnected(false, "已断开");
+  ws.onerror = () => setConnected(false, "已断开");
 }
 
 function onMessage(msg) {
@@ -98,8 +119,7 @@ function onMessage(msg) {
       break;
     }
     case "approval_resolved":
-      // 本地点击已即时定格；此回执仅表示宿主已 resolve，无需处理
-      break;
+      break; // 本地点击已即时定格
     case "session_list": {
       diskProjects.length = 0;
       diskProjects.push(...msg.projects);
@@ -110,7 +130,7 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (s) {
         s.model = msg.model;
-        if (msg.thinking) s.thinking = msg.thinking; // 模型切换后的钳制生效值
+        if (msg.thinking) s.thinking = msg.thinking; // 切换后钳制生效值
       }
       renderAll();
       break;
@@ -128,21 +148,22 @@ function onMessage(msg) {
         items: [],
         assistantDraft: "",
         streaming: false,
-        subagents: new Map(), // subagentId -> {agent,description,status,text,tools,streaming}
+        turnStartAt: null,
+        subagents: new Map(),
         model: msg.model ?? null,
         thinking: msg.thinking ?? "auto",
         isGit: !!msg.isGit,
         todos: [],
       });
       activePath = msg.path;
-      loadingPath = null;
       selectedSubagent = null;
       selectedFile = null;
+      changesOpen = false;
+      refreshGitDiff(); // changebar 需要 git status 数据
       renderAll();
       if (pendingCreate) {
-        // 新建的会话已落盘，重拉列表让左侧出现对应条目
         pendingCreate = false;
-        send({ type: "list_sessions" });
+        send({ type: "list_sessions" }); // 新会话已落盘，重拉列表
       }
       break;
     }
@@ -152,6 +173,7 @@ function onMessage(msg) {
       if (msg.kind === "turn_start") {
         s.streaming = true;
         s.assistantDraft = "";
+        s.turnStartAt = Date.now();
       } else if (msg.kind === "text_delta") {
         s.assistantDraft += msg.text;
       } else if (msg.kind === "tool") {
@@ -161,7 +183,12 @@ function onMessage(msg) {
         if (s.assistantDraft) s.items.push({ role: "assistant", text: s.assistantDraft });
         s.assistantDraft = "";
         s.streaming = false;
+        if (s.turnStartAt) {
+          s.items.push({ role: "meta", text: `已工作 ${fmtDuration((Date.now() - s.turnStartAt) / 1000)} ›` });
+          s.turnStartAt = null;
+        }
         send({ type: "list_sessions" }); // title/firstMessage 可能已更新
+        if (s.isGit) refreshGitDiff(true); // agent 可能改了文件，强制重拉
       }
       renderAll();
       break;
@@ -192,15 +219,10 @@ function onMessage(msg) {
       if (!s) return;
       const sub = s.subagents.get(msg.subagentId);
       if (!sub) return;
-      if (msg.kind === "turn_start") {
-        sub.streaming = true;
-      } else if (msg.kind === "text_delta") {
-        sub.text += msg.text;
-      } else if (msg.kind === "tool") {
-        sub.tools.push(msg.name);
-      } else if (msg.kind === "turn_end") {
-        sub.streaming = false;
-      }
+      if (msg.kind === "turn_start") sub.streaming = true;
+      else if (msg.kind === "text_delta") sub.text += msg.text;
+      else if (msg.kind === "tool") sub.tools.push(msg.name);
+      else if (msg.kind === "turn_end") sub.streaming = false;
       renderAll();
       break;
     }
@@ -208,7 +230,6 @@ function onMessage(msg) {
       gitDiffCache.cwd = msg.cwd;
       gitDiffCache.files = msg.files;
       gitDiffCache.loading = false;
-      // 默认展开全部目录
       expandedDirs.clear();
       const dirs = new Set();
       for (const f of msg.files) {
@@ -216,7 +237,7 @@ function onMessage(msg) {
         for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
       }
       for (const d of dirs) expandedDirs.add(d);
-      if (rightTab === "gitdiff") renderRightPanel();
+      renderAll();
       break;
     }
     case "todos": {
@@ -231,7 +252,7 @@ function onMessage(msg) {
       fileDiffCache.path = msg.path;
       fileDiffCache.diff = msg.diff;
       fileDiffCache.loading = false;
-      if (rightTab === "gitdiff" && selectedFile === msg.path) renderRightPanel();
+      if (rightTab === "gitdiff" && selectedFile === msg.path) renderRightBody();
       break;
     }
     case "context": {
@@ -242,10 +263,9 @@ function onMessage(msg) {
       }
       break;
     }
-    case "context_detail": {
-      renderContextPop(msg);
+    case "context_detail":
+      fillCtxMenu(msg);
       break;
-    }
     case "error": {
       gitDiffCache.loading = false;
       const s = msg.sessionId && findBySessionId(msg.sessionId);
@@ -253,28 +273,25 @@ function onMessage(msg) {
         s.items.push({ role: "error", text: msg.message });
         renderAll();
       } else {
-        statusEl.textContent = msg.message;
-        statusEl.className = "bad";
-        if (rightTab === "gitdiff") renderRightPanel();
+        toast(msg.message);
+        renderRightBody();
       }
       break;
     }
   }
 }
 
+// ---------- 发送 / 新建 ----------
 function sendPrompt() {
   const text = inputEl.value.trim();
   const s = activeOpen();
   if (!text || !s || ws.readyState !== 1) return;
   s.items.push({ role: "user", text });
   inputEl.value = "";
+  resizeInput();
+  updateSendReady();
   renderAll();
   ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text }));
-}
-
-function newSession() {
-  // 新会话挂在当前 project（活跃会话的 cwd）下；无活跃则由宿主用 HOME
-  createIn(activeOpen()?.cwd);
 }
 
 function createIn(cwd) {
@@ -282,71 +299,53 @@ function createIn(cwd) {
   pendingCreate = true;
 }
 
+// ---------- 输入区 ----------
+function resizeInput() {
+  inputEl.style.height = "auto";
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
+}
+function updateSendReady() {
+  $("sendBtn").classList.toggle("ready", inputEl.value.trim().length > 0);
+}
+inputEl.addEventListener("input", () => {
+  resizeInput();
+  updateSendReady();
+});
+$("sendBtn").addEventListener("click", sendPrompt);
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendPrompt();
+  }
+});
+
+// ---------- 权限模式（omp 三值：always-ask | write | yolo） ----------
+const MODE_META = {
+  "always-ask": { label: "变更前确认", yolo: false },
+  write: { label: "自动编辑", yolo: false },
+  yolo: { label: "完全访问", yolo: true },
+};
+let approvalMode = "always-ask";
 function setApprovalModeUi(mode) {
-  for (const b of document.querySelectorAll("#approval-bar button[data-mode]")) {
-    b.className = b.dataset.mode === mode ? "active" : "";
+  approvalMode = mode ?? "always-ask";
+  const meta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
+  $("modeLabel").textContent = meta.label;
+  modeBtn.classList.toggle("yolo", meta.yolo);
+  for (const mi of $("modeMenu").querySelectorAll(".mi[data-mode]")) {
+    mi.querySelector(".ck").textContent = mi.dataset.mode === approvalMode ? "✓" : "";
   }
 }
+$("modeMenu").addEventListener("click", (e) => {
+  const mi = e.target.closest(".mi[data-mode]");
+  if (!mi) return;
+  send({ type: "set_approval_mode", mode: mi.dataset.mode });
+  closeAllMenus();
+});
 
-const modelSelect = $("model-select");
-const thinkingSelect = $("thinking-select");
-const modelNames = new Map(); // modelId -> 显示名
-const modelEfforts = new Map(); // modelId -> 支持的思考档位数组
-const THINKING_LABELS = { auto: "思考:自动", off: "思考:关", minimal: "思考:极低", low: "思考:低", medium: "思考:中", high: "思考:高", xhigh: "思考:超高", max: "思考:最大" };
-
-// 自绘下拉（WKWebView 原生 select 的弹出菜单不可靠）。
-// 菜单自身带 zoom 跟随界面缩放（看不清才缩放，菜单也要变大）；
-// fixed 元素设 zoom 后其 left/top 坐标会被 zoom 再乘，故先除以 zoomLevel 补偿
-function placeMenu(menu, visualLeft, visualTop) {
-  menu.style.zoom = zoomLevel;
-  menu.style.left = visualLeft / zoomLevel + "px";
-  menu.style.top = visualTop / zoomLevel + "px";
-}
-
-// 浮层统一收口：点任何别处（含其他按钮）都收起已打开的菜单，不允许两个同时展示
-const openMenuClosers = new Set();
-function closeAllMenus() {
-  closeCtxMenu();
-  closeCtxPop();
-  for (const close of [...openMenuClosers]) close();
-}
-window.addEventListener("click", closeAllMenus);
-window.addEventListener("blur", closeAllMenus);
-
-function attachDropdown(btn, getItems, onPick) {
-  let menu = null;
-  const close = () => {
-    menu?.remove();
-    menu = null;
-    openMenuClosers.delete(close);
-  };
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (menu) return close();
-    closeAllMenus();
-    const items = getItems();
-    if (items.length === 0) return;
-    menu = document.createElement("div");
-    menu.className = "dd-menu";
-    const r = btn.getBoundingClientRect();
-    const maxW = Math.max(...items.map((i) => i.label.length)) * 13 + 40;
-    menu.style.width = Math.min(Math.max(maxW, r.width), 280) + "px";
-    placeMenu(menu, r.left, r.bottom + 4);
-    openMenuClosers.add(close);
-    for (const it of items) {
-      const b = document.createElement("button");
-      b.textContent = (it.active ? "✓ " : "") + it.label;
-      if (it.active) b.className = "chosen";
-      b.onclick = (ev) => {
-        ev.stopPropagation();
-        close();
-        onPick(it.value);
-      };
-      menu.appendChild(b);
-    }
-    document.body.appendChild(menu);
-  });
-}
+// ---------- 模型 / 思考级别（值域来自宿主下发） ----------
+const modelNames = new Map(); // "provider/id" -> 显示名
+const modelEfforts = new Map(); // "provider/id" -> 支持的思考档位
+const THINKING_LABELS = { auto: "自动", off: "关", minimal: "极低", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最大" };
 
 function currentThinkingLevels() {
   const cur = activeOpen();
@@ -354,310 +353,468 @@ function currentThinkingLevels() {
   return efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
 }
 
-attachDropdown(
-  modelSelect,
-  () => {
-    const cur = activeOpen();
-    return [...modelNames.entries()].map(([id, name]) => ({ label: name, value: id, active: cur?.model === id }));
-  },
-  (model) => {
-    const s = activeOpen();
-    if (s) send({ type: "set_model", sessionId: s.sessionId, model });
-  },
-);
+function buildModelMenu() {
+  const menu = $("modelMenu");
+  menu.innerHTML = "";
+  // 按 provider 分组（宿主下发 id 形如 "provider/modelId"）
+  const groups = new Map();
+  for (const [id, name] of modelNames) {
+    const prov = id.split("/")[0];
+    if (!groups.has(prov)) groups.set(prov, []);
+    groups.get(prov).push([id, name]);
+  }
+  const cur = activeOpen();
+  for (const [prov, models] of groups) {
+    const head = document.createElement("div");
+    head.className = "prov";
+    head.textContent = prov;
+    menu.appendChild(head);
+    for (const [id, name] of models) {
+      const mi = document.createElement("div");
+      mi.className = "mi";
+      mi.dataset.model = id;
+      const ck = document.createElement("span");
+      ck.className = "ck";
+      ck.textContent = cur?.model === id ? "✓" : "";
+      mi.appendChild(ck);
+      mi.appendChild(document.createTextNode(name));
+      menu.appendChild(mi);
+    }
+  }
+}
 
-attachDropdown(
-  thinkingSelect,
-  () => {
-    const cur = activeOpen();
-    return currentThinkingLevels().map((lv) => ({ label: THINKING_LABELS[lv] ?? lv, value: lv, active: cur?.thinking === lv }));
-  },
-  (level) => {
-    const s = activeOpen();
-    if (s) send({ type: "set_thinking", sessionId: s.sessionId, level });
-  },
-);
+function buildThinkMenu() {
+  const menu = $("thinkMenu");
+  menu.innerHTML = '<div class="mh">推理强度（随当前模型能力变化）</div>';
+  const cur = activeOpen();
+  for (const lv of currentThinkingLevels()) {
+    const mi = document.createElement("div");
+    mi.className = "mi";
+    mi.dataset.level = lv;
+    const ck = document.createElement("span");
+    ck.className = "ck";
+    ck.textContent = cur?.thinking === lv ? "✓" : "";
+    mi.appendChild(ck);
+    mi.appendChild(document.createTextNode(THINKING_LABELS[lv] ?? lv));
+    menu.appendChild(mi);
+  }
+}
 
-modelSelect.onchange = () => {
+$("modelMenu").addEventListener("click", (e) => {
+  const mi = e.target.closest(".mi[data-model]");
+  if (!mi) return;
   const s = activeOpen();
-  if (s) send({ type: "set_model", sessionId: s.sessionId, model: modelSelect.value });
-};
-thinkingSelect.onchange = () => {
+  if (s) send({ type: "set_model", sessionId: s.sessionId, model: mi.dataset.model });
+  closeAllMenus();
+});
+$("thinkMenu").addEventListener("click", (e) => {
+  const mi = e.target.closest(".mi[data-level]");
+  if (!mi) return;
   const s = activeOpen();
-  if (s) send({ type: "set_thinking", sessionId: s.sessionId, level: thinkingSelect.value });
-};
-
-// 审批模式条只圈三个权限按钮（下拉按钮同在 #approval-bar，不能一起绑）
-document.querySelectorAll('#approval-bar button[data-mode]').forEach((b) => {
-  b.onclick = () => send({ type: "set_approval_mode", mode: b.dataset.mode });
+  if (s) send({ type: "set_thinking", sessionId: s.sessionId, level: mi.dataset.level });
+  closeAllMenus();
 });
 
-// 中部右上角悬浮任务卡（参考 kimi28 session-view 原型）：三态任务行，可收起为胶囊
-let todoCollapsed = false;
-$("todo-collapse").onclick = () => {
-  todoCollapsed = true;
-  renderTodoFloat();
-};
-$("todo-capsule").onclick = () => {
-  todoCollapsed = false;
-  renderTodoFloat();
-};
-
-function renderTodoFloat() {
-  const float = $("todo-float");
-  const card = $("todo-card");
-  const capsule = $("todo-capsule");
-  const s = activeOpen();
-  const phases = s?.todos ?? [];
-  const all = phases.flatMap((p) => p.tasks);
-  if (!s || all.length === 0) {
-    float.style.display = "none";
-    return;
-  }
-  float.style.display = "";
-  const done = all.filter((t) => t.status === "completed").length;
-  const frac = `${done}/${all.length}`;
-  card.hidden = todoCollapsed;
-  capsule.hidden = !todoCollapsed;
-  capsule.textContent = `任务 ${frac}`;
-  $("todo-frac").textContent = frac;
-  const list = $("todo-list");
-  list.innerHTML = "";
-  for (const phase of phases) {
-    if (phase.tasks.length === 0) continue;
-    if (phases.length > 1) {
-      const h = document.createElement("div");
-      h.className = "tf-phase";
-      h.textContent = phase.name;
-      list.appendChild(h);
-    }
-    for (const t of phase.tasks) {
-      const row = document.createElement("div");
-      row.className = "tf-item " + t.status;
-      const icon = document.createElement("i");
-      icon.className = "tf-ic";
-      icon.textContent = t.status === "completed" ? "✓" : t.status === "in_progress" ? "→" : t.status === "blocked" ? "⊘" : "○";
-      const text = document.createElement(t.status === "completed" ? "s" : "span");
-      text.textContent = t.content + (t.status === "blocked" && t.blocker ? `（${t.blocker}）` : "");
-      row.appendChild(icon);
-      row.appendChild(text);
-      if (t.details) row.title = t.details;
-      list.appendChild(row);
-    }
-  }
+// ---------- 上下文容量弹层（breakdown + 会话统计） ----------
+function fmtTokens(n) {
+  if (n == null) return "—";
+  if (n >= 10000) return (n / 10000).toFixed(1) + "万";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return String(n);
 }
-
-// ---------- 上下文明细浮层（点 CTX 徽标弹出） ----------
-let ctxPop = null;
-function closeCtxPop() {
-  ctxPop?.remove();
-  ctxPop = null;
+function ctxMenuOpen() {
+  return $("ctxMenu").classList.contains("open");
 }
-
-function renderContextPop(detail) {
-  closeCtxPop();
-  const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
-  const pop = document.createElement("div");
-  pop.className = "ctx-pop";
-  const badge = $("ctx-badge").getBoundingClientRect();
-  placeMenu(pop, Math.min(badge.left, window.innerWidth - 280), badge.bottom + 6);
-
-  const section = (title) => {
-    const h = document.createElement("div");
-    h.className = "cp-sec";
-    h.textContent = title;
-    pop.appendChild(h);
-  };
-  const row = (label, value) => {
-    const r = document.createElement("div");
-    r.className = "cp-row";
-    const l = document.createElement("span");
-    l.textContent = label;
-    const v = document.createElement("b");
-    v.textContent = value;
-    r.appendChild(l);
-    r.appendChild(v);
-    pop.appendChild(r);
-  };
-
-  if (detail.breakdown) {
-    const b = detail.breakdown;
-    section("上下文构成");
-    row("系统提示", fmt(b.systemPromptTokens));
-    row("工具定义", fmt(b.systemToolsTokens));
-    if (b.systemContextTokens) row("上下文注入", fmt(b.systemContextTokens));
-    if (b.skillsTokens) row("技能", fmt(b.skillsTokens));
-    row("对话消息", fmt(b.messagesTokens));
-    row("合计 / 窗口", `${fmt(b.usedTokens)} / ${fmt(b.contextWindow)}`);
+function fillCtxMenu(detail) {
+  const menu = $("ctxMenu");
+  if (!ctxMenuOpen()) return; // 已关闭就不再填充
+  menu.innerHTML = "";
+  const b = detail.breakdown;
+  if (b) {
+    const head = document.createElement("div");
+    head.className = "cx-head";
+    const t = document.createElement("b");
+    t.textContent = "上下文容量";
+    const total = document.createElement("span");
+    total.className = "cx-total";
+    total.textContent = `${fmtTokens(b.usedTokens)}/${fmtTokens(b.contextWindow)}（${((b.usedTokens / b.contextWindow) * 100).toFixed(1)}%）`;
+    head.appendChild(t);
+    head.appendChild(total);
+    menu.appendChild(head);
     const bar = document.createElement("div");
-    bar.className = "cp-bar";
-    const fill = document.createElement("div");
-    fill.style.width = Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1) + "%";
-    bar.appendChild(fill);
-    pop.appendChild(bar);
+    bar.className = "cx-bar";
+    bar.innerHTML = `<i style="width:${Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1)}%"></i>`;
+    menu.appendChild(bar);
+    const pct = (v) => ((v / b.usedTokens) * 100).toFixed(1) + "%";
+    const rows = [
+      ["消息", b.messagesTokens, "#4a9eff"],
+      ["系统工具", b.systemToolsTokens, "#6fa8dc"],
+      ["系统提示词", b.systemPromptTokens, "#557fb8"],
+    ];
+    if (b.systemContextTokens) rows.push(["上下文注入", b.systemContextTokens, "#6296cc"]);
+    if (b.skillsTokens) rows.push(["技能", b.skillsTokens, "#47699e"]);
+    for (const [label, v, color] of rows) {
+      const r = document.createElement("div");
+      r.className = "cx-row";
+      r.innerHTML = `<span class="dot" style="background:${color}"></span>${label}<span class="rv">${fmtTokens(v)} · ${pct(v)}</span>`;
+      menu.appendChild(r);
+    }
   }
   const st = detail.stats;
   if (st) {
-    section("会话统计");
-    row("输入 / 输出", `${fmt(st.tokens.input)} / ${fmt(st.tokens.output)}`);
-    if (st.tokens.reasoning) row("推理", fmt(st.tokens.reasoning));
-    row("缓存读 / 写", `${fmt(st.tokens.cacheRead)} / ${fmt(st.tokens.cacheWrite)}`);
-    row("累计消耗", fmt(st.tokens.total));
-    row("消息（用/助/工具/总）", `${st.userMessages}/${st.assistantMessages}/${st.toolCalls}/${st.totalMessages}`);
-    row("请求数", String(st.premiumRequests));
-    if (st.cost) row("花费", `$${st.cost.toFixed(3)}`);
+    const sec = document.createElement("div");
+    sec.className = "cx-sec";
+    sec.textContent = "会话统计";
+    menu.appendChild(sec);
+    const stRows = [
+      ["输入 / 输出", `${fmtTokens(st.tokens.input)} / ${fmtTokens(st.tokens.output)}`],
+      ["缓存读 / 写", `${fmtTokens(st.tokens.cacheRead)} / ${fmtTokens(st.tokens.cacheWrite)}`],
+      ["累计消耗", fmtTokens(st.tokens.total)],
+      ["消息（用/助/工具）", `${st.userMessages}/${st.assistantMessages}/${st.toolCalls}`],
+      ["花费", st.cost != null ? `$${st.cost.toFixed(3)}` : "—"],
+    ];
+    if (st.tokens.reasoning) stRows.splice(1, 0, ["推理", fmtTokens(st.tokens.reasoning)]);
+    for (const [label, v] of stRows) {
+      const r = document.createElement("div");
+      r.className = "cx-row";
+      r.textContent = label;
+      const rv = document.createElement("span");
+      rv.className = "rv";
+      rv.textContent = v;
+      r.appendChild(rv);
+      menu.appendChild(r);
+    }
   }
-  document.body.appendChild(pop);
-  ctxPop = pop;
 }
 
-$("ctx-badge").addEventListener("click", (e) => {
-  e.stopPropagation();
-  if (ctxPop) return closeCtxPop();
+// ---------- 菜单开合（原型同款：composer 内 absolute + 互斥） ----------
+function closeAllMenus() {
+  closeCtxMenu();
+  closeThemeMenu();
+  for (const m of document.querySelectorAll(".menu.open")) m.classList.remove("open");
+}
+window.addEventListener("click", closeAllMenus);
+window.addEventListener("blur", closeAllMenus);
+
+// 打开 composer 内菜单：left 跟随按钮，右缘不越界
+function openComposerMenu(menu, btn) {
   closeAllMenus();
+  menu.classList.add("open");
+  const maxLeft = composerEl.clientWidth - menu.offsetWidth - 4;
+  menu.style.left = Math.max(0, Math.min(btn.offsetLeft, maxLeft)) + "px";
+}
+
+modeBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = $("modeMenu");
+  if (menu.classList.contains("open")) return closeAllMenus();
+  openComposerMenu(menu, modeBtn);
+});
+modelBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!activeOpen()) return;
+  const menu = $("modelMenu");
+  if (menu.classList.contains("open")) return closeAllMenus();
+  buildModelMenu();
+  openComposerMenu(menu, modelBtn);
+});
+thinkBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!activeOpen()) return;
+  const menu = $("thinkMenu");
+  if (menu.classList.contains("open")) return closeAllMenus();
+  buildThinkMenu();
+  openComposerMenu(menu, thinkBtn);
+});
+ctxBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = $("ctxMenu");
+  if (menu.classList.contains("open")) return closeAllMenus();
   const s = activeOpen();
   if (!s) return;
-  const pop = document.createElement("div");
-  pop.className = "ctx-pop";
-  pop.textContent = "加载中…";
-  const badge = $("ctx-badge").getBoundingClientRect();
-  placeMenu(pop, Math.min(badge.left, window.innerWidth - 280), badge.bottom + 6);
-  document.body.appendChild(pop);
-  ctxPop = pop;
+  closeAllMenus();
+  menu.innerHTML = '<div class="cx-row">加载中…</div>';
+  menu.classList.add("open");
+  const maxLeft = composerEl.clientWidth - menu.offsetWidth - 4;
+  menu.style.left = Math.max(0, Math.min(ctxBtn.offsetLeft, maxLeft)) + "px";
   send({ type: "get_context_detail", sessionId: s.sessionId });
 });
-window.addEventListener("click", closeCtxPop);
+// 弹层内部点击不冒泡关闭（与原型一致）
+$("ctxMenu").addEventListener("click", (e) => e.stopPropagation());
 
-function renderAll() {
-  // 左栏：project 分组
-  sessionListEl.innerHTML = "";
-  for (const p of diskProjects) {
-    const group = document.createElement("div");
-    group.className = "project-group";
-    const collapsed = collapsedProjects.has(p.cwd);
-    const head = document.createElement("div");
-    head.className = "project-head";
-    const caret = document.createElement("span");
-    caret.className = "project-caret";
-    caret.textContent = collapsed ? "▸" : "▾";
-    const name = document.createElement("span");
-    name.className = "project-name";
-    name.textContent = p.cwd.split("/").filter(Boolean).pop() || p.cwd;
-    name.title = p.cwd;
-    const count = document.createElement("span");
-    count.className = "project-count";
-    count.textContent = p.sessions.length;
-    const add = document.createElement("button");
-    add.className = "project-add";
-    add.textContent = "＋";
-    add.title = `在 ${p.cwd} 新建会话`;
-    add.onclick = (e) => {
-      e.stopPropagation();
-      createIn(p.cwd);
-    };
-    // 点击组头折叠/展开该项目全部会话；再展开时分页重置回默认 5 条
-    head.onclick = () => {
-      if (collapsedProjects.has(p.cwd)) {
-        collapsedProjects.delete(p.cwd);
-        projectLimits.delete(p.cwd);
-      } else {
-        collapsedProjects.add(p.cwd);
-      }
-      renderAll();
-    };
-    head.appendChild(caret);
-    head.appendChild(name);
-    head.appendChild(count);
-    head.appendChild(add);
-    group.appendChild(head);
-    if (collapsed) {
-      sessionListEl.appendChild(group);
-      continue;
+// ---------- 左栏：任务列表（项目 / 最近 双视图） ----------
+const svgPin = '<svg class="ti" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7.8 1.2 10.8 4.2 8.5 4.8 6.8 6.5 6.2 8.8 3.2 5.8 1.8 7.2l-.6-.6L6 2l.6-1.2z" transform="rotate(45 6 6)"/></svg>';
+const svgFold = '<svg width="13" height="12" viewBox="0 0 13 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 2.5h3l1 1.5h6v5.5h-10z"/></svg>';
+
+function fmtAgo(iso) {
+  const sec = (Date.now() - Date.parse(iso)) / 1000;
+  if (sec < 60) return "刚刚";
+  if (sec < 3600) return Math.floor(sec / 60) + "分";
+  if (sec < 86400) return Math.floor(sec / 3600) + "小时";
+  return Math.floor(sec / 86400) + "天";
+}
+function fmtDuration(sec) {
+  sec = Math.max(1, Math.round(sec));
+  if (sec < 60) return `${sec} 秒`;
+  const m = Math.floor(sec / 60);
+  return `${m} 分 ${String(sec % 60).padStart(2, "0")} 秒`;
+}
+function sessionLabel(s) {
+  return s.title || s.firstMessage || "（空会话）";
+}
+
+function taskRow(s, { sub, showRepo } = {}) {
+  const b = document.createElement("button");
+  b.className = "task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "");
+  b.dataset.path = s.path;
+  const open = openSessions.get(s.path);
+  if (sub) {
+    if (open?.streaming) {
+      const dot = document.createElement("span");
+      dot.className = "live-dot";
+      dot.title = "运行中";
+      b.appendChild(dot);
     }
-    // 默认 5 条，按需每次多加载 5 条
-    const limit = projectLimits.get(p.cwd) ?? 5;
-    const visible = p.sessions.slice(0, limit);
-    for (const s of visible) {
-      const b = document.createElement("button");
-      b.className = "session-item" + (s.path === activePath ? " active" : "");
-      b.dataset.path = s.path;
-      const label = s.title || s.firstMessage || "（空会话）";
-      b.textContent = (openSessions.get(s.path)?.streaming ? "● " : "") + label;
-      b.onclick = () => {
-        if (openSessions.has(s.path)) {
-          activePath = s.path;
+    const tt = document.createElement("span");
+    tt.className = "tt";
+    tt.textContent = sessionLabel(s);
+    b.appendChild(tt);
+  } else {
+    const tt = document.createElement("span");
+    tt.className = "tt";
+    tt.textContent = sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "");
+    b.appendChild(tt);
+  }
+  const tm = document.createElement("span");
+  tm.className = "tm";
+  tm.textContent = fmtAgo(s.modified);
+  b.appendChild(tm);
+  b.onclick = () => {
+    if (openSessions.has(s.path)) {
+      activePath = s.path;
+      refreshGitDiff();
+    } else {
+      send({ type: "load_session", path: s.path });
+    }
+    selectedSubagent = null;
+    selectedFile = null;
+    changesOpen = false;
+    renderAll();
+  };
+  return b;
+}
+
+function renderList() {
+  tasklistEl.innerHTML = "";
+  if (viewMode === "project") {
+    const label = document.createElement("div");
+    label.className = "sec-label";
+    label.textContent = "项目";
+    tasklistEl.appendChild(label);
+    for (const p of diskProjects) {
+      const proj = document.createElement("div");
+      proj.className = "proj" + (collapsedProjects.has(p.cwd) ? " collapsed" : "");
+      const caret = document.createElement("span");
+      caret.className = "caret";
+      caret.textContent = "▾";
+      const name = document.createElement("span");
+      name.className = "pname";
+      name.textContent = p.cwd.split("/").filter(Boolean).pop() || p.cwd;
+      name.title = p.cwd;
+      const cnt = document.createElement("span");
+      cnt.className = "cnt";
+      cnt.textContent = p.sessions.length;
+      const add = document.createElement("button");
+      add.className = "padd";
+      add.textContent = "＋";
+      add.title = `在 ${p.cwd} 新建会话`;
+      add.onclick = (e) => {
+        e.stopPropagation();
+        createIn(p.cwd);
+      };
+      // 点击组头折叠/展开；再展开时分页重置回默认 5 条
+      proj.onclick = () => {
+        if (collapsedProjects.has(p.cwd)) {
+          collapsedProjects.delete(p.cwd);
+          projectLimits.delete(p.cwd);
         } else {
-          loadingPath = s.path;
-          send({ type: "load_session", path: s.path });
+          collapsedProjects.add(p.cwd);
         }
-        selectedSubagent = null;
-        renderAll();
+        renderList();
       };
-      group.appendChild(b);
+      proj.append(caret);
+      proj.insertAdjacentHTML("beforeend", svgFold);
+      proj.append(name, cnt, add);
+      tasklistEl.appendChild(proj);
+      if (collapsedProjects.has(p.cwd)) continue;
+      // 默认 5 条，按需每次多加载 5 条
+      const limit = projectLimits.get(p.cwd) ?? 5;
+      const visible = p.sessions.slice(0, limit);
+      for (const s of visible) tasklistEl.appendChild(taskRow(s, { sub: true }));
+      if (p.sessions.length > visible.length) {
+        const more = document.createElement("button");
+        more.className = "more-link";
+        more.textContent = `显示更多 ${visible.length}/${p.sessions.length}`;
+        more.onclick = () => {
+          projectLimits.set(p.cwd, visible.length + 5);
+          renderList();
+        };
+        tasklistEl.appendChild(more);
+      }
+      if (p.sessions.length === 0) {
+        const hint = document.createElement("div");
+        hint.className = "empty-hint";
+        hint.textContent = "暂无任务";
+        tasklistEl.appendChild(hint);
+      }
     }
-    if (p.sessions.length > visible.length) {
-      const more = document.createElement("button");
-      more.className = "session-more";
-      more.textContent = `显示更多 ${visible.length}/${p.sessions.length}`;
-      more.onclick = () => {
-        projectLimits.set(p.cwd, visible.length + 5);
-        renderAll();
-      };
-      group.appendChild(more);
+  } else {
+    const label = document.createElement("div");
+    label.className = "sec-label";
+    label.textContent = "最近任务";
+    tasklistEl.appendChild(label);
+    const flat = diskProjects
+      .flatMap((p) => p.sessions.map((s) => ({ ...s, repo: p.cwd.split("/").filter(Boolean).pop() })))
+      .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
+      .slice(0, 50);
+    for (const s of flat) tasklistEl.appendChild(taskRow(s, { showRepo: true }));
+    if (flat.length === 0) {
+      const hint = document.createElement("div");
+      hint.className = "empty-hint";
+      hint.textContent = "暂无任务";
+      tasklistEl.appendChild(hint);
     }
-    sessionListEl.appendChild(group);
+  }
+}
+
+// 左栏 seg 视图切换 + 新建
+$("seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  viewMode = b.dataset.view;
+  for (const x of $("seg").querySelectorAll("button")) x.classList.toggle("on", x === b);
+  renderList();
+});
+$("navNew").addEventListener("click", () => createIn(activeOpen()?.cwd));
+
+// ⌘N 新建任务
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+    e.preventDefault();
+    createIn(activeOpen()?.cwd);
+  }
+});
+
+// ---------- 中栏：标题 + 文件更改条 + 消息流 ----------
+function renderChat() {
+  const s = activeOpen();
+  let chatTitle = "选择左侧会话或新建任务";
+  if (s) {
+    const entry = diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath);
+    chatTitle = entry ? sessionLabel(entry) : s.cwd.split("/").filter(Boolean).pop() || s.cwd;
+  }
+  $("chatTitle").textContent = chatTitle;
+
+  // 文件更改条（git 会话专属；数据来自 gitDiffCache，加载中不显示旧仓库数据）
+  const bar = $("changebar");
+  const files = $("changesFiles");
+  if (s?.isGit && gitDiffCache.cwd === s.cwd && !gitDiffCache.loading) {
+    bar.classList.remove("hidden");
+    files.classList.toggle("open", changesOpen);
+    $("chv").style.transform = changesOpen ? "rotate(180deg)" : "";
+    const fs = gitDiffCache.files;
+    const nA = fs.filter((f) => f.code.includes("A") || f.code === "?").length;
+    const nD = fs.filter((f) => f.code.includes("D")).length;
+    const nM = fs.length - nA - nD;
+    $("cbText").innerHTML =
+      `${fs.length} 个文件已更改` +
+      (nA ? ` <span class="add">+${nA}</span>` : "") +
+      (nD ? ` <span class="del">−${nD}</span>` : "") +
+      (nM ? ` <span class="mod">~${nM}</span>` : "");
+    files.innerHTML = "";
+    if (changesOpen) {
+      for (const f of fs) {
+        const row = document.createElement("div");
+        row.className = "f";
+        const code = document.createElement("b");
+        const cls = f.code.includes("A") || f.code === "?" ? "a" : f.code.includes("D") ? "d" : "m";
+        code.className = cls;
+        code.textContent = f.code.includes("A") || f.code === "?" ? "+" : f.code.includes("D") ? "−" : "~";
+        const path = document.createElement("span");
+        path.textContent = f.path;
+        path.style.overflow = "hidden";
+        path.style.textOverflow = "ellipsis";
+        path.style.whiteSpace = "nowrap";
+        row.append(code, path);
+        row.title = f.path;
+        row.onclick = () => openFileDetail(f.path);
+        files.appendChild(row);
+      }
+      if (fs.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "f";
+        empty.style.cursor = "default";
+        empty.textContent = "工作区干净";
+        files.appendChild(empty);
+      }
+    }
+  } else {
+    bar.classList.add("hidden");
+    files.classList.remove("open");
   }
 
-  // 右侧消息区
-  messagesEl.innerHTML = "";
-  const s = activeOpen();
+  // 消息流
+  streamEl.innerHTML = "";
   if (!s) {
-    messagesEl.innerHTML = '<div class="placeholder">点左侧会话或「新建会话」开始</div>';
+    streamEl.innerHTML = '<div class="placeholder">点左侧任务或「新建任务」开始</div>';
     return;
   }
   for (const item of s.items) {
     const div = document.createElement("div");
     if (item.role === "user") {
-      div.className = "bubble user";
+      div.className = "msg user";
       div.textContent = item.text;
     } else if (item.role === "assistant") {
-      div.className = "bubble assistant";
+      div.className = "assistant-text";
       div.textContent = item.text;
     } else if (item.role === "tool") {
-      div.className = "tool-line";
+      div.className = "act";
       div.textContent = `⚙ ${item.text}`;
+    } else if (item.role === "meta") {
+      div.className = "act";
+      div.textContent = item.text;
     } else if (item.role === "approval") {
       div.className = "approval-card";
-      const title = document.createElement("pre");
-      title.className = "approval-title";
-      title.textContent = item.title;
-      div.appendChild(title);
+      const t = document.createElement("pre");
+      t.className = "approval-title";
+      t.textContent = item.title;
+      div.appendChild(t);
       const btns = document.createElement("div");
       btns.className = "approval-buttons";
-      let inputEl = null;
+      let inp = null;
       if (item.editable) {
-        inputEl = document.createElement("input");
-        inputEl.type = "text";
-        inputEl.className = "approval-input";
-        inputEl.placeholder = "输入后点提交…";
-        inputEl.value = item.prefill || "";
-        if (item.answer !== null) inputEl.disabled = true;
-        inputEl.oninput = () => {
-          item.prefill = inputEl.value; // 全量重绘时保住已输入内容
+        inp = document.createElement("input");
+        inp.type = "text";
+        inp.className = "approval-input";
+        inp.placeholder = "输入后点提交…";
+        inp.value = item.prefill || "";
+        if (item.answer !== null) inp.disabled = true;
+        inp.oninput = () => {
+          item.prefill = inp.value; // 全量重绘时保住已输入内容
         };
-        btns.appendChild(inputEl);
+        btns.appendChild(inp);
       }
       for (const opt of item.options) {
         const b = document.createElement("button");
         b.textContent = item.answer !== null && item.answer === opt ? `✓ ${opt}` : opt;
         if (item.answer !== null) b.disabled = true;
         if (item.answer === opt) b.className = "chosen";
-        else if (item.answer !== null && item.answer !== opt) b.className = "dim";
+        else if (item.answer !== null) b.className = "dim";
         b.onclick = () => {
           if (item.answer !== null) return;
           let answer = opt;
           if (item.editable) {
-            if (opt === "提交") answer = inputEl.value.trim() || null; // 空输入按取消处理
+            if (opt === "提交") answer = inp.value.trim() || null; // 空输入按取消处理
             else answer = undefined;
           }
           item.answer = answer ?? opt;
@@ -668,134 +825,193 @@ function renderAll() {
       }
       div.appendChild(btns);
     } else {
-      div.className = "error-line";
+      div.className = "act err";
       div.textContent = `✗ ${item.text}`;
     }
-    messagesEl.appendChild(div);
+    streamEl.appendChild(div);
   }
   if (s.streaming || s.assistantDraft) {
-    const div = document.createElement("div");
-    div.className = "bubble assistant streaming";
-    div.textContent = s.assistantDraft || "…";
-    messagesEl.appendChild(div);
+    const act = document.createElement("div");
+    act.className = "act t2";
+    const elapsed = s.turnStartAt ? Math.floor((Date.now() - s.turnStartAt) / 1000) : 0;
+    act.innerHTML = `工作中 <span id="workSec">${elapsed}</span> 秒`;
+    streamEl.appendChild(act);
   }
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  // 模型/思考按钮跟随当前会话（无活跃会话禁用）
-  const cur = activeOpen();
-  modelSelect.disabled = thinkingSelect.disabled = !cur;
-  modelSelect.textContent = cur?.model ? (modelNames.get(cur.model) ?? cur.model) : "模型";
-  thinkingSelect.textContent = cur ? (THINKING_LABELS[cur.thinking] ?? cur.thinking ?? "思考") : "思考";
-  // 上下文占用徽标
-  const ctxBadge = $("ctx-badge");
-  if (cur?.ctx) {
-    const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
-    ctxBadge.hidden = false;
-    ctxBadge.textContent = `CTX ${Math.round(cur.ctx.percent)}%`;
-    ctxBadge.title = `上下文 ${fmt(cur.ctx.tokens)} / ${fmt(cur.ctx.window)} tokens`;
-    ctxBadge.className = cur.ctx.percent >= 85 ? "hot" : cur.ctx.percent >= 60 ? "warm" : "";
+  if (s.assistantDraft) {
+    const draft = document.createElement("div");
+    draft.className = "assistant-text";
+    draft.textContent = s.assistantDraft;
+    streamEl.appendChild(draft);
+  }
+  if (s.streaming) {
+    const spin = document.createElement("span");
+    spin.className = "spin on";
+    spin.textContent = "✳";
+    streamEl.appendChild(spin);
+  }
+  streamEl.scrollTop = streamEl.scrollHeight;
+}
+
+// 「工作中 N 秒」每秒跳（重绘后 span 重建，按 id 重新查询）
+setInterval(() => {
+  const s = activeOpen();
+  const el = $("workSec");
+  if (s?.turnStartAt && el) el.textContent = Math.floor((Date.now() - s.turnStartAt) / 1000);
+}, 1000);
+
+// 更改条开合
+$("changebar").addEventListener("click", () => {
+  changesOpen = !changesOpen;
+  renderChat();
+});
+
+// 更改条文件 → 右栏 Git Diff 详情页
+function openFileDetail(filePath) {
+  const s = activeOpen();
+  if (!s) return;
+  rightTab = "gitdiff";
+  expandRightPanel();
+  requestFileDiff(s, filePath);
+  renderRight(); // 刷新 seg 高亮与工具按钮
+}
+
+// ---------- composer 状态条（模式/ctx/模型/思考 按钮文案与禁用态 + 上下文环） ----------
+const RING_C = 40.84; // 2π×6.5（与 CSS dasharray 一致）
+
+function renderComposerBar() {
+  const s = activeOpen();
+  modelBtn.disabled = thinkBtn.disabled = ctxBtn.disabled = !s;
+  $("modelLabel").textContent = s?.model ? (modelNames.get(s.model) ?? s.model.split("/").pop()) : "模型";
+  $("thinkLabel").textContent = s ? (s.thinking ? THINKING_LABELS[s.thinking] ?? s.thinking : "思考") : "思考";
+  if (s?.ctx) {
+    $("ctxLabel").textContent = `${Math.round(s.ctx.percent)}%`;
+    ctxBtn.title = `上下文 ${fmtTokens(s.ctx.tokens)} / ${fmtTokens(s.ctx.window)} tokens`;
   } else {
-    ctxBadge.hidden = true;
+    $("ctxLabel").textContent = "—";
+    ctxBtn.title = "上下文占用";
   }
-  renderTodoFloat();
-  renderRightPanel();
+  // 上下文环：从顶端顺时针填充；无数据空环
+  const ring = $("ctxRing");
+  ring.hidden = !s;
+  if (s) {
+    const p = s.ctx ? Math.min(1, s.ctx.percent / 100) : 0;
+    $("ctxRingFill").style.strokeDashoffset = String(RING_C * (1 - p));
+    ring.className = "ctx-ring" + (s.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
+  }
 }
 
-// 右栏：顶部双 tab（子代理 / Git Diff），点击切换详情页；非 git 会话隐藏并回落子代理 tab
-function renderRightPanel() {
-  const cur = activeOpen();
-  if (rightTab === "gitdiff" && !cur?.isGit) rightTab = "subagent";
-  if (rightTab !== "gitdiff" || !selectedFile) selectedFile = null;
-  // 文件详情视图临时加宽右栏
-  document.body.classList.toggle("right-wide", rightTab === "gitdiff" && !!selectedFile);
-  for (const b of document.querySelectorAll("#right-tabs button")) {
-    b.className = b.dataset.tab === rightTab ? "active" : "";
-    b.style.display = b.dataset.tab === "gitdiff" && !cur?.isGit ? "none" : "";
+// 环 hover 明细卡（fixed + zoom 补偿；pointer-events:none 不挡点击）
+let ringPop = null;
+$("ctxRing").addEventListener("mouseenter", () => {
+  ringPop?.remove();
+  ringPop = document.createElement("div");
+  ringPop.className = "ring-pop";
+  const s = activeOpen();
+  ringPop.innerHTML = s?.ctx
+    ? `上下文 <b>${fmtTokens(s.ctx.tokens)}</b> / ${fmtTokens(s.ctx.window)} tokens（<b>${s.ctx.percent.toFixed(1)}%</b>）`
+    : "上下文用量暂无数据";
+  document.body.appendChild(ringPop);
+  const r = $("ctxRing").getBoundingClientRect();
+  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 240), r.top - 36);
+});
+$("ctxRing").addEventListener("mouseleave", () => {
+  ringPop?.remove();
+  ringPop = null;
+});
+
+// ---------- 右栏 ----------
+function renderRight() {
+  const s = activeOpen();
+  if (rightTab === "gitdiff" && !s?.isGit) rightTab = "subagent"; // 非 git 会话回落，seg 不留 gitdiff 高亮
+  // 工具条 project 名
+  $("wsName").textContent = s ? s.cwd.split("/").filter(Boolean).pop() : "—";
+  // 进程状态卡（TODO）
+  renderStatusCard();
+  // 双 tab seg
+  const seg = $("rightSeg");
+  for (const b of seg.querySelectorAll("button")) {
+    b.classList.toggle("on", b.dataset.tab === rightTab);
+    b.style.display = b.dataset.tab === "gitdiff" && !s?.isGit ? "none" : "";
   }
-  rightBody.innerHTML = "";
-  if (rightTab === "gitdiff") renderGitDiff();
-  else renderSubagentList();
+  const isGitTab = rightTab === "gitdiff";
+  $("gitRefresh").style.display = isGitTab ? "" : "none";
+  $("gitViewToggle").style.display = isGitTab ? "" : "none";
+  $("gitViewToggle").textContent = gitViewMode === "tree" ? "树" : "平铺";
+  renderRightBody();
 }
 
-function refreshGitDiff() {
+function renderStatusCard() {
+  const card = $("statusCard");
+  const capsule = $("capsule");
+  const s = activeOpen();
+  const phases = s?.todos ?? [];
+  const all = phases.flatMap((p) => p.tasks);
+  if (!s || all.length === 0) {
+    card.classList.add("hidden");
+    capsule.classList.add("hidden");
+    return;
+  }
+  card.classList.toggle("hidden", todoCollapsed);
+  capsule.classList.toggle("hidden", !todoCollapsed);
+  const done = all.filter((t) => t.status === "completed").length;
+  const frac = `${done}/${all.length}`;
+  capsule.innerHTML = `进程&nbsp; ${frac}`;
+  if (todoCollapsed) return;
+  $("todoFrac").textContent = frac;
+  const list = $("todoList");
+  list.innerHTML = "";
+  for (const phase of phases) {
+    if (phase.tasks.length === 0) continue;
+    if (phases.length > 1) {
+      const h = document.createElement("div");
+      h.className = "sc-phase";
+      h.textContent = phase.name;
+      list.appendChild(h);
+    }
+    for (const t of phase.tasks) {
+      const row = document.createElement("div");
+      row.className = "todo " + (t.status === "completed" ? "done" : t.status === "in_progress" ? "cur" : t.status === "blocked" ? "blocked" : "");
+      const icon = document.createElement("i");
+      icon.className = t.status === "completed" ? "ck" : t.status === "in_progress" ? "ar" : "ci";
+      icon.textContent = t.status === "completed" ? "✓" : t.status === "in_progress" ? "→" : t.status === "blocked" ? "⊘" : "○";
+      const text = document.createElement(t.status === "completed" ? "s" : "span");
+      text.textContent = t.content + (t.status === "blocked" && t.blocker ? `（${t.blocker}）` : "");
+      row.append(icon, text);
+      if (t.details) row.title = t.details;
+      list.appendChild(row);
+    }
+  }
+  // 智能体行（subagent 计数，点击切到子代理 tab）
+  const agentsRow = $("agentsRow");
+  const subs = [...(s?.subagents.values() ?? [])];
+  agentsRow.style.display = "";
+  const running = subs.filter((x) => x.streaming).length;
+  $("agentsRv").textContent = subs.length === 0 ? "—" : running ? `${subs.length} · ${running} 运行中` : `${subs.length}`;
+}
+
+$("scCollapse").addEventListener("click", () => {
+  todoCollapsed = true;
+  renderStatusCard();
+});
+$("capsule").addEventListener("click", () => {
+  todoCollapsed = false;
+  renderStatusCard();
+});
+$("agentsRow").addEventListener("click", () => {
+  rightTab = "subagent";
+  selectedSubagent = null;
+  expandRightPanel();
+  renderRight();
+});
+
+// ---------- Git Diff（树/平铺 + diff2html 详情） ----------
+function refreshGitDiff(force = false) {
   const s = activeOpen();
   if (!s || !s.isGit) return; // 非 git 仓库不请求，不触发宿主报错
+  if (!force && gitDiffCache.cwd === s.cwd) return; // 已有该仓库数据不重拉
   gitDiffCache.loading = true;
   gitDiffCache.cwd = s.cwd;
   send({ type: "get_git_diff", cwd: s.cwd });
-  renderRightPanel();
-}
-
-function renderGitDiff() {
-  const s = activeOpen();
-  const head = document.createElement("div");
-  head.className = "gd-head";
-  head.textContent = s ? s.cwd : "（无活跃会话）";
-  rightBody.appendChild(head);
-  if (!s) return;
-  if (!s.isGit) {
-    const d = document.createElement("div");
-    d.className = "placeholder";
-    d.textContent = "（该 project 不是 git 仓库）";
-    rightBody.appendChild(d);
-    return;
-  }
-  // 文件详情视图：返回 + diff2html 渲染
-  if (selectedFile) {
-    renderFileDetail(s);
-    return;
-  }
-  // 工具行：⟳刷新 + 树/平铺切换（右上角）
-  const bar = document.createElement("div");
-  bar.className = "gd-toolbar";
-  const refresh = document.createElement("button");
-  refresh.className = "sub-back";
-  refresh.textContent = "⟳";
-  refresh.title = "刷新";
-  refresh.onclick = refreshGitDiff;
-  const modeBtn = document.createElement("button");
-  modeBtn.className = "sub-back";
-  modeBtn.textContent = gitViewMode === "tree" ? "平铺" : "树";
-  modeBtn.title = gitViewMode === "tree" ? "切换为平铺列表" : "切换为目录树";
-  modeBtn.onclick = () => {
-    gitViewMode = gitViewMode === "tree" ? "flat" : "tree";
-    renderRightPanel();
-  };
-  bar.appendChild(refresh);
-  bar.appendChild(modeBtn);
-  rightBody.appendChild(bar);
-  if (gitDiffCache.loading) {
-    const d = document.createElement("div");
-    d.className = "placeholder";
-    d.textContent = "加载中…";
-    rightBody.appendChild(d);
-    return;
-  }
-  if (gitDiffCache.cwd !== s.cwd) {
-    const d = document.createElement("div");
-    d.className = "placeholder";
-    d.textContent = "点 ⟳ 加载该 project 的改动";
-    rightBody.appendChild(d);
-    return;
-  }
-  if (gitDiffCache.files.length === 0) {
-    const d = document.createElement("div");
-    d.className = "placeholder";
-    d.textContent = "（工作区干净）";
-    rightBody.appendChild(d);
-    return;
-  }
-  if (gitViewMode === "flat") {
-    for (const f of gitDiffCache.files) {
-      rightBody.appendChild(fileRow(f, f.path));
-    }
-    return;
-  }
-  // 树视图
-  const tree = buildTree(gitDiffCache.files);
-  const container = document.createElement("div");
-  container.className = "gd-tree";
-  renderTreeLevel(tree, "", 0, container);
-  rightBody.appendChild(container);
 }
 
 function requestFileDiff(s, filePath) {
@@ -803,59 +1019,56 @@ function requestFileDiff(s, filePath) {
   fileDiffCache.loading = true;
   fileDiffCache.path = filePath;
   send({ type: "get_file_diff", cwd: s.cwd, path: filePath });
-  renderRightPanel();
+  renderRightBody();
 }
 
-function renderFileDetail(s) {
-  const back = document.createElement("button");
-  back.className = "sub-back";
-  back.textContent = "← 返回列表";
-  back.onclick = () => {
-    selectedFile = null;
-    renderRightPanel();
-  };
-  rightBody.appendChild(back);
-  const title = document.createElement("div");
-  title.className = "sub-title";
-  title.textContent = selectedFile;
-  rightBody.appendChild(title);
-  if (fileDiffCache.loading && fileDiffCache.path === selectedFile) {
-    const d = document.createElement("div");
-    d.className = "placeholder";
-    d.textContent = "加载中…";
-    rightBody.appendChild(d);
-    return;
-  }
-  if (fileDiffCache.path !== selectedFile || !fileDiffCache.diff) {
-    const d = document.createElement("div");
-    d.className = "placeholder";
-    d.textContent = "（无差异内容）";
-    rightBody.appendChild(d);
-    return;
-  }
-  const holder = document.createElement("div");
-  holder.className = "fd-holder";
-  holder.innerHTML = window.Diff2Html.html(fileDiffCache.diff, {
-    drawFileList: false,
-    outputFormat: "line-by-line",
-    matching: "words",
-    highlight: true,
-  });
-  rightBody.appendChild(holder);
+function renderRightBody() {
+  rightBodyEl.innerHTML = "";
+  if (rightTab === "gitdiff") renderGitDiff();
+  else renderSubagentList();
 }
 
-function fileRow(f, displayPath) {
+function renderGitDiff() {
+  const s = activeOpen();
+  if (!s) {
+    rightBodyEl.innerHTML = '<div class="placeholder">（无活跃会话）</div>';
+    return;
+  }
+  if (!s.isGit) {
+    rightBodyEl.innerHTML = '<div class="placeholder">（该 project 不是 git 仓库）</div>';
+    return;
+  }
+  if (selectedFile) return renderFileDetail(s);
+  if (gitDiffCache.cwd !== s.cwd || gitDiffCache.loading) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = gitDiffCache.loading ? "加载中…" : "点右上角 ⟳ 加载改动";
+    rightBodyEl.appendChild(d);
+    return;
+  }
+  if (gitDiffCache.files.length === 0) {
+    rightBodyEl.innerHTML = '<div class="placeholder">（工作区干净）</div>';
+    return;
+  }
+  if (gitViewMode === "flat") {
+    for (const f of gitDiffCache.files) rightBodyEl.appendChild(gitFileRow(f, f.path, 0));
+    return;
+  }
+  renderTreeLevel(buildTree(gitDiffCache.files), "", 0);
+}
+
+function gitFileRow(f, displayPath, depth) {
   const row = document.createElement("div");
-  row.className = "gd-row file";
+  row.className = "gd-row";
+  row.style.paddingLeft = 4 + depth * 14 + 14 + "px";
   row.title = f.path;
   const badge = document.createElement("span");
   badge.className = "gd-badge " + badgeClass(f.code);
-  badge.textContent = f.code;
+  badge.textContent = f.code.includes("A") || f.code === "?" ? "A" : f.code.includes("D") ? "D" : "M";
   const name = document.createElement("span");
   name.className = "gd-name";
   name.textContent = displayPath.split("/").pop();
-  row.appendChild(badge);
-  row.appendChild(name);
+  row.append(badge, name);
   row.onclick = () => {
     const s = activeOpen();
     if (s) requestFileDiff(s, f.path);
@@ -875,9 +1088,8 @@ function buildTree(files) {
     const parts = f.path.split("/");
     let node = root;
     for (let i = 0; i < parts.length - 1; i++) {
-      const seg = parts[i];
-      if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [] });
-      node = node.dirs.get(seg);
+      if (!node.dirs.has(parts[i])) node.dirs.set(parts[i], { dirs: new Map(), files: [] });
+      node = node.dirs.get(parts[i]);
     }
     node.files.push(f);
   }
@@ -890,13 +1102,13 @@ function countFiles(node) {
   return n;
 }
 
-function renderTreeLevel(node, prefix, depth, container) {
+function renderTreeLevel(node, prefix, depth) {
   for (const [seg, dir] of node.dirs) {
     const dirPath = prefix ? prefix + "/" + seg : seg;
     const expanded = expandedDirs.has(dirPath);
     const row = document.createElement("div");
-    row.className = "gd-row dir";
-    row.style.paddingLeft = 8 + depth * 12 + "px";
+    row.className = "gd-row";
+    row.style.paddingLeft = 4 + depth * 14 + "px";
     const caret = document.createElement("span");
     caret.className = "gd-caret";
     caret.textContent = expanded ? "▾" : "▸";
@@ -906,58 +1118,88 @@ function renderTreeLevel(node, prefix, depth, container) {
     const count = document.createElement("span");
     count.className = "gd-count";
     count.textContent = countFiles(dir);
-    row.appendChild(caret);
-    row.appendChild(name);
-    row.appendChild(count);
+    row.append(caret, name, count);
     row.onclick = () => {
       if (expandedDirs.has(dirPath)) expandedDirs.delete(dirPath);
       else expandedDirs.add(dirPath);
-      renderRightPanel();
+      renderRightBody();
     };
-    container.appendChild(row);
-    if (expanded) renderTreeLevel(dir, dirPath, depth + 1, container);
+    rightBodyEl.appendChild(row);
+    if (expanded) renderTreeLevel(dir, dirPath, depth + 1);
   }
-  for (const f of node.files) {
-    const row = fileRow(f, f.path);
-    row.style.paddingLeft = 8 + depth * 12 + 14 + "px";
-    container.appendChild(row);
-  }
+  for (const f of node.files) rightBodyEl.appendChild(gitFileRow(f, f.path, depth));
 }
 
-// 子代理详情页：卡片列表；点击卡片进入该子代理的实时流视图
+function renderFileDetail(s) {
+  const back = document.createElement("button");
+  back.className = "sub-back";
+  back.textContent = "‹ 返回列表";
+  back.onclick = () => {
+    selectedFile = null;
+    renderRightBody();
+  };
+  rightBodyEl.appendChild(back);
+  const title = document.createElement("div");
+  title.className = "sub-title";
+  title.textContent = selectedFile;
+  rightBodyEl.appendChild(title);
+  if (fileDiffCache.loading && fileDiffCache.path === selectedFile) {
+    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
+    return;
+  }
+  if (fileDiffCache.path !== selectedFile || !fileDiffCache.diff) {
+    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">（无差异内容）</div>');
+    return;
+  }
+  const holder = document.createElement("div");
+  holder.className = "fd-holder" + (document.documentElement.dataset.theme === "dark" ? " d2h-dark-color-scheme" : "");
+  holder.innerHTML = window.Diff2Html.html(fileDiffCache.diff, {
+    drawFileList: false,
+    outputFormat: "line-by-line",
+    matching: "words",
+    highlight: true,
+  });
+  rightBodyEl.appendChild(holder);
+}
+
+// ---------- 子代理（卡片列表 + 点击进流） ----------
 function renderSubagentList() {
   const s = activeOpen();
   if (!s || s.subagents.size === 0) {
-    rightBody.innerHTML = '<div class="placeholder">（暂无子代理）</div>';
+    rightBodyEl.innerHTML = '<div class="placeholder">（暂无子代理）</div>';
     return;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
     const sub = s.subagents.get(selectedSubagent);
     const back = document.createElement("button");
     back.className = "sub-back";
-    back.textContent = "← 返回列表";
+    back.textContent = "‹ 返回列表";
     back.onclick = () => {
       selectedSubagent = null;
-      renderAll();
+      renderRightBody();
     };
-    rightBody.appendChild(back);
+    rightBodyEl.appendChild(back);
     const title = document.createElement("div");
     title.className = "sub-title";
     title.textContent = `${sub.agent} · ${sub.status}`;
-    rightBody.appendChild(title);
+    rightBodyEl.appendChild(title);
     const stream = document.createElement("div");
     stream.className = "sub-stream";
     for (const t of sub.tools) {
       const d = document.createElement("div");
-      d.className = "tool-line";
+      d.className = "act";
+      d.style.margin = "6px 0";
       d.textContent = `⚙ ${t}`;
       stream.appendChild(d);
     }
-    const d = document.createElement("div");
-    d.className = "bubble assistant" + (sub.streaming ? " streaming" : "");
-    d.textContent = sub.text || "…";
-    stream.appendChild(d);
-    rightBody.appendChild(stream);
+    if (sub.text || sub.streaming) {
+      const d = document.createElement("div");
+      d.className = "assistant-text";
+      d.textContent = sub.text || "…";
+      if (sub.streaming) d.classList.add("flash");
+      stream.appendChild(d);
+    }
+    rightBodyEl.appendChild(stream);
     return;
   }
   for (const [id, sub] of s.subagents) {
@@ -969,42 +1211,106 @@ function renderSubagentList() {
     dot.className = "sub-dot";
     dot.textContent = sub.streaming ? "●" : sub.status === "completed" ? "✓" : sub.status === "failed" ? "✗" : "○";
     const name = document.createElement("span");
-    name.className = "sub-name";
     name.textContent = sub.agent;
-    head.appendChild(dot);
-    head.appendChild(name);
+    head.append(dot, name);
     const desc = document.createElement("div");
     desc.className = "sub-desc";
     desc.textContent = sub.description || sub.text.slice(0, 60) || "…";
-    card.appendChild(head);
-    card.appendChild(desc);
+    card.append(head, desc);
     card.onclick = () => {
       selectedSubagent = id;
-      renderAll();
+      renderRightBody();
     };
-    rightBody.appendChild(card);
+    rightBodyEl.appendChild(card);
   }
 }
 
-document.querySelectorAll("#right-tabs button").forEach((b) => {
-  b.onclick = () => {
-    rightTab = b.dataset.tab;
-    if (rightTab === "gitdiff") {
-      const s = activeOpen();
-      if (s && gitDiffCache.cwd !== s.cwd && !gitDiffCache.loading) refreshGitDiff();
-    }
-    renderRightPanel();
-  };
+// 右栏 seg / 刷新 / 树平铺切换
+$("rightSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  rightTab = b.dataset.tab;
+  selectedFile = null;
+  if (rightTab === "gitdiff") refreshGitDiff();
+  renderRight();
+});
+$("gitRefresh").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const s = activeOpen();
+  if (!s || !s.isGit) return;
+  gitDiffCache.cwd = null; // 强制重拉
+  refreshGitDiff();
+  renderRightBody();
+});
+$("gitViewToggle").addEventListener("click", (e) => {
+  e.stopPropagation();
+  gitViewMode = gitViewMode === "tree" ? "flat" : "tree";
+  $("gitViewToggle").textContent = gitViewMode === "tree" ? "树" : "平铺";
+  renderRightBody();
 });
 
-$("new-session").onclick = newSession;
-$("send").onclick = sendPrompt;
-inputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendPrompt();
-  }
+// 右栏开合（原型 panelToggle 动作：隐藏 = grid 第三列收 0）
+$("panelToggle").addEventListener("click", function () {
+  const off = $("right").classList.toggle("collapsed");
+  $("right-resizer").style.display = off ? "none" : "";
+  this.classList.toggle("on", !off);
 });
+function expandRightPanel() {
+  $("right").classList.remove("collapsed");
+  $("right-resizer").style.display = "";
+  $("panelToggle").classList.add("on");
+}
+
+// ---------- 主题（深色 / 浅色 / 跟随系统） ----------
+let themeMode = "dark";
+const themeMq = matchMedia("(prefers-color-scheme: dark)");
+function applyTheme(mode) {
+  themeMode = mode;
+  const dark = mode === "system" ? themeMq.matches : mode === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  try {
+    localStorage.setItem("omp-theme", mode);
+  } catch {}
+  // 已渲染的 diff 详情跟随切换主题
+  for (const h of document.querySelectorAll(".fd-holder")) h.classList.toggle("d2h-dark-color-scheme", dark);
+}
+themeMq.addEventListener("change", () => {
+  if (themeMode === "system") applyTheme("system");
+});
+
+let themeMenu = null;
+function closeThemeMenu() {
+  themeMenu?.remove();
+  themeMenu = null;
+}
+$("themeBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (themeMenu) return closeThemeMenu();
+  closeAllMenus();
+  themeMenu = document.createElement("div");
+  themeMenu.className = "ctx-menu";
+  placeMenu(themeMenu, 0, 0); // 先挂载量尺寸
+  document.body.appendChild(themeMenu);
+  for (const [mode, label] of [
+    ["dark", "🌙 深色"],
+    ["light", "☀️ 浅色"],
+    ["system", "◐ 跟随系统"],
+  ]) {
+    const b = document.createElement("button");
+    b.textContent = (themeMode === mode ? "✓ " : "") + label;
+    b.onclick = () => {
+      applyTheme(mode);
+      closeThemeMenu();
+    };
+    themeMenu.appendChild(b);
+  }
+  const r = $("themeBtn").getBoundingClientRect();
+  placeMenu(themeMenu, Math.min(r.left, window.innerWidth - 180), r.bottom + 6);
+});
+try {
+  const saved = localStorage.getItem("omp-theme");
+  if (saved) applyTheme(saved);
+} catch {}
 
 // ---------- 右键菜单：复制 sessionId / 会话文件路径 ----------
 function copyText(text) {
@@ -1025,8 +1331,8 @@ function closeCtxMenu() {
   ctxMenu = null;
 }
 
-sessionListEl.addEventListener("contextmenu", (e) => {
-  const el = e.target.closest(".session-item");
+tasklistEl.addEventListener("contextmenu", (e) => {
+  const el = e.target.closest(".task[data-path]");
   if (!el) return;
   e.preventDefault();
   closeAllMenus();
@@ -1036,7 +1342,7 @@ sessionListEl.addEventListener("contextmenu", (e) => {
   ctxMenu = document.createElement("div");
   ctxMenu.className = "ctx-menu";
   const x = Math.min(e.clientX, window.innerWidth - 180);
-  const y = Math.min(e.clientY, window.innerHeight - 70);
+  const y = Math.min(e.clientY, window.innerHeight - 80);
   placeMenu(ctxMenu, x, y);
   for (const [label, value] of [
     ["复制 sessionId", entry.id ?? ""],
@@ -1046,6 +1352,7 @@ sessionListEl.addEventListener("contextmenu", (e) => {
     b.textContent = label;
     b.onclick = () => {
       copyText(value);
+      toast(`已复制：${label}`);
       closeCtxMenu();
     };
     ctxMenu.appendChild(b);
@@ -1054,8 +1361,9 @@ sessionListEl.addEventListener("contextmenu", (e) => {
 });
 
 // ---------- 边栏拖动调宽 ----------
-// 宽度走 CSS 变量（--left-w/--right-w），localStorage 记忆；拖动 dx 除以 zoomLevel（布局宽 ≠ 屏幕宽）
-function attachResizer(handleId, panelId, cssVar, min, max, invert) {
+// 宽度走 CSS 变量，localStorage 记忆；拖动 dx 除以 zoomLevel（布局宽 ≠ 屏幕宽）
+function attachResizer(handleId, cssVar, min, max, invert) {
+  const panel = handleId === "left-resizer" ? $("sidebar") : $("right");
   const apply = (w) => document.documentElement.style.setProperty(cssVar, w + "px");
   try {
     const saved = localStorage.getItem("omp-w-" + cssVar);
@@ -1065,7 +1373,7 @@ function attachResizer(handleId, panelId, cssVar, min, max, invert) {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const startW = $(panelId).offsetWidth;
+    const startW = panel.offsetWidth;
     const move = (ev) => {
       const dx = (ev.clientX - startX) / zoomLevel;
       const w = Math.round(Math.min(Math.max(invert ? startW - dx : startW + dx, min), max));
@@ -1084,16 +1392,22 @@ function attachResizer(handleId, panelId, cssVar, min, max, invert) {
     document.addEventListener("mouseup", up);
   });
 }
-attachResizer("left-resizer", "sidebar", "--left-w", 160, 420, false);
-attachResizer("right-resizer", "right-panel", "--right-w", 220, 760, true);
+attachResizer("left-resizer", "--left-w", 200, 420, false);
+attachResizer("right-resizer", "--right-w", 240, 760, true);
 
 // ---------- Cmd +/-/0 缩放 ----------
 // 只缩放三个布局容器：body 整体 zoom 会把 position:fixed 的菜单二次缩放，
-// 导致右键菜单/下拉的渲染偏移与点击命中错位
-const zoomTargets = ["sidebar", "main", "right-panel"].map((id) => $(id));
+// 导致右键菜单/主题菜单的渲染偏移与点击命中错位
+const zoomTargets = ["sidebar", "main", "right"].map((id) => $(id));
 let zoomLevel = 1;
 function applyZoom() {
   for (const el of zoomTargets) el.style.zoom = zoomLevel;
+}
+// fixed 菜单坐标补偿：先设 zoom 再除回
+function placeMenu(menu, visualLeft, visualTop) {
+  menu.style.zoom = zoomLevel;
+  menu.style.left = visualLeft / zoomLevel + "px";
+  menu.style.top = visualTop / zoomLevel + "px";
 }
 document.addEventListener("keydown", (e) => {
   if (!e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1104,6 +1418,14 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
   applyZoom();
 });
+
+// ---------- 总渲染 ----------
+function renderAll() {
+  renderList();
+  renderChat();
+  renderComposerBar();
+  renderRight();
+}
 
 renderAll();
 connect();

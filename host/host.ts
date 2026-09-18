@@ -334,6 +334,11 @@ const server = Bun.serve<{ sessionId: string | null }>({
             );
             break;
           }
+          case "ui_error": {
+            // 前端未捕获错误上报（WKWebView 无 console，dev 终端是唯一出口）
+            process.stderr.write(`[ui] ${msg.message}\n`);
+            break;
+          }
           default:
             ws.send(JSON.stringify({ type: "error", message: `未知命令: ${msg.type}` }));
         }

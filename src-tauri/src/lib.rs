@@ -76,7 +76,20 @@ pub fn run() {
     tauri::Builder::default()
         .manage(cell.clone())
         .manage(child_cell.clone())
-        .setup(move |_| {
+        .setup(move |app| {
+            // 窗口启动复位：macOS 会残留上次的迷你/屏外 frame（多 dev 实例与用户缩窗叠加），
+            // 显式拉回主屏固定位置，保证窗口可见可测
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                if let Err(e) = win.set_position(tauri::LogicalPosition::new(300.0, 130.0)) {
+                    eprintln!("[shell] set_position 失败: {e}");
+                }
+                if let Err(e) = win.set_size(tauri::LogicalSize::new(1280.0, 820.0)) {
+                    eprintln!("[shell] set_size 失败: {e}");
+                }
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
             spawn_host(cell.clone(), child_cell.clone());
             Ok(())
         })
