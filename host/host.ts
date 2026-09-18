@@ -326,6 +326,21 @@ const server = Bun.serve<{ sessionId: string | null }>({
 // 挂起的审批请求：requestId -> resolve（answer 为 undefined 即拒绝语义）
 const pendingApprovals = new Map<string, { resolve: (v: string | undefined) => void }>();
 
+function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
+  const u = entry.session.getContextUsage();
+  if (u) {
+    ws.send(
+      JSON.stringify({
+        type: "context",
+        sessionId,
+        tokens: u.tokens,
+        window: u.contextWindow,
+        percent: u.percent,
+      }),
+    );
+  }
+}
+
 function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any) {
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
@@ -333,6 +348,10 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     // todo 工具落盘后推送最新任务清单（TodoTracker 在工具结果后更新）
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify({ type: "todos", sessionId, phases: entry.session.getTodoPhases() }));
+    }
+    // turn 真正结束后推送上下文占用（此时消息已定稿）
+    if (ev.type === "agent_end" && ev.isTerminal !== false) {
+      pushContext(ws, sessionId, entry);
     }
   });
   // 审批/对话框：非 yolo 模式下审批 gate 通过 ExtensionUIContext.select 挂起等用户选择
@@ -478,6 +497,8 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   if (restored.length > 0) {
     ws.send(JSON.stringify({ type: "todos", sessionId, phases: restored }));
   }
+  // 恢复会话的初始上下文占用（system prompt + 历史）
+  pushContext(ws, sessionId, entry);
   process.stderr.write(
     `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,
   );

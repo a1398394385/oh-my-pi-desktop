@@ -285,6 +285,20 @@ body {
   content: " ▾";
   color: #86868b;
 }
+#ctx-badge {
+  font-size: 11px;
+  color: #86868b;
+  font-family: ui-monospace, Menlo, monospace;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+#ctx-badge.warm {
+  color: #9a6700;
+}
+#ctx-badge.hot {
+  color: #c13a33;
+  font-weight: 600;
+}
 .dd-menu {
   position: fixed;
   z-index: 100;

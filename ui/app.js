@@ -234,6 +234,14 @@ function onMessage(msg) {
       if (rightTab === "gitdiff" && selectedFile === msg.path) renderRightPanel();
       break;
     }
+    case "context": {
+      const s = findBySessionId(msg.sessionId);
+      if (s) {
+        s.ctx = { tokens: msg.tokens, window: msg.window, percent: msg.percent };
+        renderAll();
+      }
+      break;
+    }
     case "error": {
       gitDiffCache.loading = false;
       const s = msg.sessionId && findBySessionId(msg.sessionId);
@@ -591,6 +599,17 @@ function renderAll() {
   modelSelect.disabled = thinkingSelect.disabled = !cur;
   modelSelect.textContent = cur?.model ? (modelNames.get(cur.model) ?? cur.model) : "模型";
   thinkingSelect.textContent = cur ? (THINKING_LABELS[cur.thinking] ?? cur.thinking ?? "思考") : "思考";
+  // 上下文占用徽标
+  const ctxBadge = $("ctx-badge");
+  if (cur?.ctx) {
+    const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
+    ctxBadge.hidden = false;
+    ctxBadge.textContent = `CTX ${Math.round(cur.ctx.percent)}%`;
+    ctxBadge.title = `上下文 ${fmt(cur.ctx.tokens)} / ${fmt(cur.ctx.window)} tokens`;
+    ctxBadge.className = cur.ctx.percent >= 85 ? "hot" : cur.ctx.percent >= 60 ? "warm" : "";
+  } else {
+    ctxBadge.hidden = true;
+  }
   renderTodoFloat();
   renderRightPanel();
 }
