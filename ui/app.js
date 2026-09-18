@@ -54,7 +54,11 @@ function onMessage(msg) {
   switch (msg.type) {
     case "ready":
       setApprovalModeUi(msg.approvalMode);
-      fillModelSelect(msg.models ?? []);
+      for (const m of msg.models ?? []) {
+        modelNames.set(m.id, m.name);
+        modelEfforts.set(m.id, m.efforts ?? []);
+      }
+      renderAll();
       break;
     case "approval_mode":
       setApprovalModeUi(msg.mode);
@@ -220,37 +224,76 @@ function setApprovalModeUi(mode) {
 
 const modelSelect = $("model-select");
 const thinkingSelect = $("thinking-select");
+const modelNames = new Map(); // modelId -> 显示名
 const modelEfforts = new Map(); // modelId -> 支持的思考档位数组
 const THINKING_LABELS = { auto: "思考:自动", off: "思考:关", minimal: "思考:极低", low: "思考:低", medium: "思考:中", high: "思考:高", xhigh: "思考:超高", max: "思考:最大" };
 
-function fillModelSelect(models) {
-  modelSelect.innerHTML = "";
-  for (const m of models) {
-    const opt = document.createElement("option");
-    opt.value = m.id;
-    opt.textContent = m.name;
-    modelSelect.appendChild(opt);
-    modelEfforts.set(m.id, m.efforts ?? []);
-  }
+// 自绘下拉（WKWebView 原生 select 的弹出菜单不可靠）
+function attachDropdown(btn, getItems, onPick) {
+  let menu = null;
+  const close = () => {
+    menu?.remove();
+    menu = null;
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (menu) return close();
+    closeCtxMenu();
+    const items = getItems();
+    if (items.length === 0) return;
+    menu = document.createElement("div");
+    menu.className = "dd-menu";
+    const r = btn.getBoundingClientRect();
+    menu.style.left = r.left + "px";
+    menu.style.top = r.bottom + 4 + "px";
+    const maxW = Math.max(...items.map((i) => i.label.length)) * 13 + 40;
+    menu.style.width = Math.min(Math.max(maxW, r.width), 280) + "px";
+    for (const it of items) {
+      const b = document.createElement("button");
+      b.textContent = (it.active ? "✓ " : "") + it.label;
+      if (it.active) b.className = "chosen";
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        close();
+        onPick(it.value);
+      };
+      menu.appendChild(b);
+    }
+    document.body.appendChild(menu);
+  });
+  window.addEventListener("click", close);
+  return { close };
 }
 
-// 思考档位只列当前模型支持的（auto/off 通用；模型不支持思考时仅 off）。
-// 只在档位集合真正变化时重建 options——WKWebView 下每次 renderAll 重建会让下拉点不开
-function refreshThinkingOptions() {
+function currentThinkingLevels() {
   const cur = activeOpen();
   const efforts = cur ? modelEfforts.get(cur.model) ?? [] : [];
-  const levels = efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
-  const key = levels.join(",");
-  if (thinkingSelect.dataset.levels === key) return;
-  thinkingSelect.dataset.levels = key;
-  thinkingSelect.innerHTML = "";
-  for (const lv of levels) {
-    const opt = document.createElement("option");
-    opt.value = lv;
-    opt.textContent = THINKING_LABELS[lv] ?? lv;
-    thinkingSelect.appendChild(opt);
-  }
+  return efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
 }
+
+attachDropdown(
+  modelSelect,
+  () => {
+    const cur = activeOpen();
+    return [...modelNames.entries()].map(([id, name]) => ({ label: name, value: id, active: cur?.model === id }));
+  },
+  (model) => {
+    const s = activeOpen();
+    if (s) send({ type: "set_model", sessionId: s.sessionId, model });
+  },
+);
+
+attachDropdown(
+  thinkingSelect,
+  () => {
+    const cur = activeOpen();
+    return currentThinkingLevels().map((lv) => ({ label: THINKING_LABELS[lv] ?? lv, value: lv, active: cur?.thinking === lv }));
+  },
+  (level) => {
+    const s = activeOpen();
+    if (s) send({ type: "set_thinking", sessionId: s.sessionId, level });
+  },
+);
 
 modelSelect.onchange = () => {
   const s = activeOpen();
@@ -378,15 +421,11 @@ function renderAll() {
     messagesEl.appendChild(div);
   }
   messagesEl.scrollTop = messagesEl.scrollHeight;
-  // 模型/思考下拉跟随当前会话（无活跃会话禁用）
+  // 模型/思考按钮跟随当前会话（无活跃会话禁用）
   const cur = activeOpen();
   modelSelect.disabled = thinkingSelect.disabled = !cur;
-  if (cur) {
-    if (cur.model && modelSelect.value !== cur.model) modelSelect.value = cur.model;
-    refreshThinkingOptions();
-    if (cur.thinking && thinkingSelect.value !== cur.thinking && [...thinkingSelect.options].some((o) => o.value === cur.thinking))
-      thinkingSelect.value = cur.thinking;
-  }
+  modelSelect.textContent = cur?.model ? (modelNames.get(cur.model) ?? cur.model) : "模型";
+  thinkingSelect.textContent = cur ? (THINKING_LABELS[cur.thinking] ?? cur.thinking ?? "思考") : "思考";
   renderSubagentPanel();
 }
 
