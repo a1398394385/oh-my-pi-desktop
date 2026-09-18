@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "omp desktop 主窗口能力",
+  "description": "主窗口默认能力",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

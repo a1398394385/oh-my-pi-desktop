@@ -1,13 +1,14 @@
 {
   "name": "omp-desktop",
   "private": true,
-  "version": "0.1.0",
   "scripts": {
-    "tauri": "tauri",
-    "dev": "tauri dev",
-    "build": "tauri build"
+    "host": "bun host/host.ts",
+    "smoke": "bun scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@oh-my-pi/pi-coding-agent": "^18.2.5"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2.11.4"
   }
 }
