@@ -10,7 +10,9 @@ const inputEl = $("input");
 const statusEl = $("conn-status");
 const rightBody = $("right-body");
 let rightTab = "subagent"; // subagent | gitdiff
-const gitDiffCache = { cwd: null, status: "", diff: "", truncated: false, loading: false };
+let gitViewMode = "tree"; // tree | flat
+const expandedDirs = new Set(); // 展开的目录路径（默认全展开由首拉时填充）
+const gitDiffCache = { cwd: null, files: [], loading: false };
 
 // WKWebView 无 console：未捕获错误显示在状态栏，便于定位
 window.onerror = (msg) => {
@@ -125,6 +127,7 @@ function onMessage(msg) {
         subagents: new Map(), // subagentId -> {agent,description,status,text,tools,streaming}
         model: msg.model ?? null,
         thinking: msg.thinking ?? "auto",
+        isGit: !!msg.isGit,
       });
       activePath = msg.path;
       loadingPath = null;
@@ -195,12 +198,18 @@ function onMessage(msg) {
       renderAll();
       break;
     }
-    case "git_diff": {
+    case "git_status": {
       gitDiffCache.cwd = msg.cwd;
-      gitDiffCache.status = msg.status;
-      gitDiffCache.diff = msg.diff;
-      gitDiffCache.truncated = msg.truncated;
+      gitDiffCache.files = msg.files;
       gitDiffCache.loading = false;
+      // 默认展开全部目录
+      expandedDirs.clear();
+      const dirs = new Set();
+      for (const f of msg.files) {
+        const parts = f.path.split("/");
+        for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+      }
+      for (const d of dirs) expandedDirs.add(d);
       if (rightTab === "gitdiff") renderRightPanel();
       break;
     }
@@ -470,10 +479,13 @@ function renderAll() {
   renderRightPanel();
 }
 
-// 右栏：顶部双 tab（子代理 / Git Diff），点击切换详情页
+// 右栏：顶部双 tab（子代理 / Git Diff），点击切换详情页；非 git 会话隐藏并回落子代理 tab
 function renderRightPanel() {
+  const cur = activeOpen();
+  if (rightTab === "gitdiff" && !cur?.isGit) rightTab = "subagent";
   for (const b of document.querySelectorAll("#right-tabs button")) {
     b.className = b.dataset.tab === rightTab ? "active" : "";
+    b.style.display = b.dataset.tab === "gitdiff" && !cur?.isGit ? "none" : "";
   }
   rightBody.innerHTML = "";
   if (rightTab === "gitdiff") renderGitDiff();
@@ -482,7 +494,7 @@ function renderRightPanel() {
 
 function refreshGitDiff() {
   const s = activeOpen();
-  if (!s) return;
+  if (!s || !s.isGit) return; // 非 git 仓库不请求，不触发宿主报错
   gitDiffCache.loading = true;
   gitDiffCache.cwd = s.cwd;
   send({ type: "get_git_diff", cwd: s.cwd });
@@ -495,12 +507,33 @@ function renderGitDiff() {
   head.className = "gd-head";
   head.textContent = s ? s.cwd : "（无活跃会话）";
   rightBody.appendChild(head);
+  if (!s) return;
+  if (!s.isGit) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = "（该 project 不是 git 仓库）";
+    rightBody.appendChild(d);
+    return;
+  }
+  // 工具行：⟳刷新 + 树/平铺切换（右上角）
+  const bar = document.createElement("div");
+  bar.className = "gd-toolbar";
   const refresh = document.createElement("button");
   refresh.className = "sub-back";
-  refresh.textContent = "⟳ 刷新";
+  refresh.textContent = "⟳";
+  refresh.title = "刷新";
   refresh.onclick = refreshGitDiff;
-  rightBody.appendChild(refresh);
-  if (!s) return;
+  const modeBtn = document.createElement("button");
+  modeBtn.className = "sub-back";
+  modeBtn.textContent = gitViewMode === "tree" ? "平铺" : "树";
+  modeBtn.title = gitViewMode === "tree" ? "切换为平铺列表" : "切换为目录树";
+  modeBtn.onclick = () => {
+    gitViewMode = gitViewMode === "tree" ? "flat" : "tree";
+    renderRightPanel();
+  };
+  bar.appendChild(refresh);
+  bar.appendChild(modeBtn);
+  rightBody.appendChild(bar);
   if (gitDiffCache.loading) {
     const d = document.createElement("div");
     d.className = "placeholder";
@@ -511,30 +544,104 @@ function renderGitDiff() {
   if (gitDiffCache.cwd !== s.cwd) {
     const d = document.createElement("div");
     d.className = "placeholder";
-    d.textContent = "点⟳刷新加载该 project 的改动";
+    d.textContent = "点 ⟳ 加载该 project 的改动";
     rightBody.appendChild(d);
     return;
   }
-  const pre = document.createElement("pre");
-  pre.className = "gd-status";
-  pre.textContent = gitDiffCache.status || "（工作区干净）";
-  rightBody.appendChild(pre);
-  if (gitDiffCache.diff) {
-    const diff = document.createElement("div");
-    diff.className = "gd-diff";
-    for (const line of gitDiffCache.diff.split("\n")) {
-      const d = document.createElement("div");
-      d.className = line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : line.startsWith("@@") ? "hunk" : "ctx";
-      d.textContent = line || " ";
-      diff.appendChild(d);
-    }
-    rightBody.appendChild(diff);
-  }
-  if (gitDiffCache.truncated) {
+  if (gitDiffCache.files.length === 0) {
     const d = document.createElement("div");
     d.className = "placeholder";
-    d.textContent = "（diff 过大已截断）";
+    d.textContent = "（工作区干净）";
     rightBody.appendChild(d);
+    return;
+  }
+  if (gitViewMode === "flat") {
+    for (const f of gitDiffCache.files) {
+      rightBody.appendChild(fileRow(f, f.path));
+    }
+    return;
+  }
+  // 树视图
+  const tree = buildTree(gitDiffCache.files);
+  const container = document.createElement("div");
+  container.className = "gd-tree";
+  renderTreeLevel(tree, "", 0, container);
+  rightBody.appendChild(container);
+}
+
+function fileRow(f, displayPath) {
+  const row = document.createElement("div");
+  row.className = "gd-row file";
+  row.title = f.path;
+  const badge = document.createElement("span");
+  badge.className = "gd-badge " + badgeClass(f.code);
+  badge.textContent = f.code;
+  const name = document.createElement("span");
+  name.className = "gd-name";
+  name.textContent = displayPath.split("/").pop();
+  row.appendChild(badge);
+  row.appendChild(name);
+  return row;
+}
+
+function badgeClass(code) {
+  if (code.includes("A") || code === "?") return "add";
+  if (code.includes("D")) return "del";
+  return "mod";
+}
+
+function buildTree(files) {
+  const root = { dirs: new Map(), files: [] };
+  for (const f of files) {
+    const parts = f.path.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const seg = parts[i];
+      if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [] });
+      node = node.dirs.get(seg);
+    }
+    node.files.push(f);
+  }
+  return root;
+}
+
+function countFiles(node) {
+  let n = node.files.length;
+  for (const d of node.dirs.values()) n += countFiles(d);
+  return n;
+}
+
+function renderTreeLevel(node, prefix, depth, container) {
+  for (const [seg, dir] of node.dirs) {
+    const dirPath = prefix ? prefix + "/" + seg : seg;
+    const expanded = expandedDirs.has(dirPath);
+    const row = document.createElement("div");
+    row.className = "gd-row dir";
+    row.style.paddingLeft = 8 + depth * 12 + "px";
+    const caret = document.createElement("span");
+    caret.className = "gd-caret";
+    caret.textContent = expanded ? "▾" : "▸";
+    const name = document.createElement("span");
+    name.className = "gd-name";
+    name.textContent = seg;
+    const count = document.createElement("span");
+    count.className = "gd-count";
+    count.textContent = countFiles(dir);
+    row.appendChild(caret);
+    row.appendChild(name);
+    row.appendChild(count);
+    row.onclick = () => {
+      if (expandedDirs.has(dirPath)) expandedDirs.delete(dirPath);
+      else expandedDirs.add(dirPath);
+      renderRightPanel();
+    };
+    container.appendChild(row);
+    if (expanded) renderTreeLevel(dir, dirPath, depth + 1, container);
+  }
+  for (const f of node.files) {
+    const row = fileRow(f, f.path);
+    row.style.paddingLeft = 8 + depth * 12 + 14 + "px";
+    container.appendChild(row);
   }
 }
 

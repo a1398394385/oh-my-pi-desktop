@@ -131,6 +131,11 @@ function translateSubagentEvent(ev: any): UiEvent | null {
   }
 }
 
+function isGitWorktree(cwd: string): boolean {
+  const p = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdout: "pipe", stderr: "ignore" });
+  return p.exitCode === 0 && p.stdout.toString().trim() === "true";
+}
+
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[]) {
   const result = await createAgentSession({
     cwd,
@@ -148,12 +153,13 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
   const sessionId = crypto.randomUUID();
   const entry: PoolEntry = {
     session,
-    sessionResult: result,
+    sessionResult: result, // setToolUIContext 等宿主注入点
     unsubscribe: () => {},
     transcript,
-    assistantDraft: "",
+    assistantDraft: "", // 当前 turn 的流式文本累积，turn_end 时定稿
     path: session.sessionFile,
     cwd,
+    isGit: isGitWorktree(cwd),
   };
   return { sessionId, entry, eventBus: result.eventBus };
 }
@@ -205,24 +211,21 @@ const server = Bun.serve<{ sessionId: string | null }>({
             handleGetMessages(ws, msg.sessionId);
             break;
           case "get_git_diff": {
-            // 当前会话 project 的未提交改动（tracked diff + untracked 概览）
+            // 当前会话 project 的改动文件清单（树/平铺展示用）
             const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
-            const run = (args: string[]) => {
-              const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
-              return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() };
-            };
-            const diff = run(["diff"]);
-            if (diff.code !== 0) throw new Error(`git diff 失败: ${diff.err.trim() || "非 git 仓库"}`);
-            const status = run(["status", "--short"]);
-            ws.send(
-              JSON.stringify({
-                type: "git_diff",
-                cwd,
-                status: status.out,
-                diff: diff.out.slice(0, 200_000),
-                truncated: diff.out.length > 200_000,
-              }),
-            );
+            const p = Bun.spawnSync(["git", "-C", cwd, "status", "--short"], { stdout: "pipe", stderr: "pipe" });
+            if (p.exitCode !== 0) throw new Error(`git status 失败: ${p.stderr.toString().trim().slice(0, 200) || "非 git 仓库"}`);
+            const files = p.stdout
+              .toString()
+              .split("\n")
+              .filter((l) => l.trim())
+              .map((line) => {
+                let path = line.slice(3);
+                const arrow = path.indexOf(" -> "); // rename：R  old -> new
+                if (arrow >= 0) path = path.slice(arrow + 4);
+                return { code: line.slice(0, 2).trim() || "?", path };
+              });
+            ws.send(JSON.stringify({ type: "git_status", cwd, files }));
             break;
           }
           case "set_approval_mode": {
@@ -403,6 +406,7 @@ async function handleCreateSession(ws: any, cwd?: string) {
       cwd: workDir,
       model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
       thinking: entry.session.thinkingLevel ?? "auto",
+      isGit: entry.isGit,
     }),
   );
   process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir}（活跃 ${sessions.size}）\n`);
@@ -426,6 +430,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
       cwd: entry.cwd,
       model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
       thinking: entry.session.thinkingLevel ?? "auto",
+      isGit: entry.isGit,
     }),
   );
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));

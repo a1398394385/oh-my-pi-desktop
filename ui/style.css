@@ -374,38 +374,70 @@ body {
   word-break: break-all;
   margin-top: 4px;
 }
-.gd-status {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 11px;
+.gd-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.gd-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.gd-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  min-width: 0;
+}
+.gd-row.dir {
+  cursor: pointer;
+  color: #424245;
+  font-weight: 500;
+}
+.gd-row.dir:hover {
+  background: #ebebef;
+}
+.gd-caret {
+  font-size: 10px;
   color: #86868b;
-  white-space: pre-wrap;
-  word-break: break-all;
-  margin: 0;
+  width: 10px;
+  flex-shrink: 0;
 }
-.gd-diff {
+.gd-count {
+  font-size: 10px;
+  color: #a1a1a6;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.gd-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gd-badge {
   font-family: ui-monospace, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  border: 1px solid #e5e5e7;
-  border-radius: 7px;
-  background: #fff;
-  overflow-x: auto;
-  padding: 6px 0;
+  font-size: 10px;
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  border-radius: 4px;
+  padding: 1px 0;
 }
-.gd-diff div {
-  white-space: pre;
-  padding: 0 8px;
-}
-.gd-diff .add {
-  background: #e6ffec;
+.gd-badge.add {
   color: #1a7f37;
+  background: #e6ffec;
 }
-.gd-diff .del {
-  background: #ffebe9;
+.gd-badge.del {
   color: #c13a33;
+  background: #ffebe9;
 }
-.gd-diff .hunk {
-  color: #0071e3;
+.gd-badge.mod {
+  color: #9a6700;
+  background: #fff8c5;
 }
 .sub-card {
   text-align: left;
