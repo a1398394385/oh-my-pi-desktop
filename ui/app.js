@@ -242,6 +242,10 @@ function onMessage(msg) {
       }
       break;
     }
+    case "context_detail": {
+      renderContextPop(msg);
+      break;
+    }
     case "error": {
       gitDiffCache.loading = false;
       const s = msg.sessionId && findBySessionId(msg.sessionId);
@@ -303,6 +307,7 @@ function placeMenu(menu, visualLeft, visualTop) {
 const openMenuClosers = new Set();
 function closeAllMenus() {
   closeCtxMenu();
+  closeCtxPop();
   for (const close of [...openMenuClosers]) close();
 }
 window.addEventListener("click", closeAllMenus);
@@ -441,6 +446,87 @@ function renderTodoFloat() {
     }
   }
 }
+
+// ---------- 上下文明细浮层（点 CTX 徽标弹出） ----------
+let ctxPop = null;
+function closeCtxPop() {
+  ctxPop?.remove();
+  ctxPop = null;
+}
+
+function renderContextPop(detail) {
+  closeCtxPop();
+  const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+  const pop = document.createElement("div");
+  pop.className = "ctx-pop";
+  const badge = $("ctx-badge").getBoundingClientRect();
+  placeMenu(pop, Math.min(badge.left, window.innerWidth - 280), badge.bottom + 6);
+
+  const section = (title) => {
+    const h = document.createElement("div");
+    h.className = "cp-sec";
+    h.textContent = title;
+    pop.appendChild(h);
+  };
+  const row = (label, value) => {
+    const r = document.createElement("div");
+    r.className = "cp-row";
+    const l = document.createElement("span");
+    l.textContent = label;
+    const v = document.createElement("b");
+    v.textContent = value;
+    r.appendChild(l);
+    r.appendChild(v);
+    pop.appendChild(r);
+  };
+
+  if (detail.breakdown) {
+    const b = detail.breakdown;
+    section("上下文构成");
+    row("系统提示", fmt(b.systemPromptTokens));
+    row("工具定义", fmt(b.systemToolsTokens));
+    if (b.systemContextTokens) row("上下文注入", fmt(b.systemContextTokens));
+    if (b.skillsTokens) row("技能", fmt(b.skillsTokens));
+    row("对话消息", fmt(b.messagesTokens));
+    row("合计 / 窗口", `${fmt(b.usedTokens)} / ${fmt(b.contextWindow)}`);
+    const bar = document.createElement("div");
+    bar.className = "cp-bar";
+    const fill = document.createElement("div");
+    fill.style.width = Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1) + "%";
+    bar.appendChild(fill);
+    pop.appendChild(bar);
+  }
+  const st = detail.stats;
+  if (st) {
+    section("会话统计");
+    row("输入 / 输出", `${fmt(st.tokens.input)} / ${fmt(st.tokens.output)}`);
+    if (st.tokens.reasoning) row("推理", fmt(st.tokens.reasoning));
+    row("缓存读 / 写", `${fmt(st.tokens.cacheRead)} / ${fmt(st.tokens.cacheWrite)}`);
+    row("累计消耗", fmt(st.tokens.total));
+    row("消息（用/助/工具/总）", `${st.userMessages}/${st.assistantMessages}/${st.toolCalls}/${st.totalMessages}`);
+    row("请求数", String(st.premiumRequests));
+    if (st.cost) row("花费", `$${st.cost.toFixed(3)}`);
+  }
+  document.body.appendChild(pop);
+  ctxPop = pop;
+}
+
+$("ctx-badge").addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (ctxPop) return closeCtxPop();
+  closeAllMenus();
+  const s = activeOpen();
+  if (!s) return;
+  const pop = document.createElement("div");
+  pop.className = "ctx-pop";
+  pop.textContent = "加载中…";
+  const badge = $("ctx-badge").getBoundingClientRect();
+  placeMenu(pop, Math.min(badge.left, window.innerWidth - 280), badge.bottom + 6);
+  document.body.appendChild(pop);
+  ctxPop = pop;
+  send({ type: "get_context_detail", sessionId: s.sessionId });
+});
+window.addEventListener("click", closeCtxPop);
 
 function renderAll() {
   // 左栏：project 分组

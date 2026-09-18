@@ -244,6 +244,29 @@ const server = Bun.serve<{ sessionId: string | null }>({
             ws.send(JSON.stringify({ type: "todos", sessionId: msg.sessionId, phases: entry.session.getTodoPhases() }));
             break;
           }
+          case "get_context_detail": {
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const b = entry.session.getContextBreakdown();
+            const st = entry.session.getSessionStats();
+            ws.send(
+              JSON.stringify({
+                type: "context_detail",
+                sessionId: msg.sessionId,
+                breakdown: b ?? null,
+                stats: {
+                  tokens: st.tokens,
+                  userMessages: st.userMessages,
+                  assistantMessages: st.assistantMessages,
+                  toolCalls: st.toolCalls,
+                  totalMessages: st.totalMessages,
+                  premiumRequests: st.premiumRequests,
+                  cost: st.cost,
+                },
+              }),
+            );
+            break;
+          }
           case "get_git_diff": {
             // 当前会话 project 的改动文件清单（树/平铺展示用）
             const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;

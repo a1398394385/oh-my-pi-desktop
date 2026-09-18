@@ -291,6 +291,48 @@ body {
   font-family: ui-monospace, Menlo, monospace;
   padding: 0 2px;
   white-space: nowrap;
+  cursor: pointer;
+}
+.ctx-pop {
+  position: fixed;
+  z-index: 100;
+  min-width: 230px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #d9d9de;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #424245;
+}
+.cp-sec {
+  font-size: 11px;
+  color: #a1a1a6;
+  margin: 6px 0 4px;
+}
+.cp-sec:first-child {
+  margin-top: 0;
+}
+.cp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0;
+}
+.cp-row b {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 500;
+}
+.cp-bar {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e5e5e7;
+  overflow: hidden;
+}
+.cp-bar div {
+  height: 100%;
+  background: #0071e3;
 }
 #ctx-badge.warm {
   color: #9a6700;
