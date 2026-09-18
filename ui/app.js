@@ -9,6 +9,16 @@ const sessionListEl = $("session-list");
 const inputEl = $("input");
 const statusEl = $("conn-status");
 
+// WKWebView 无 console：未捕获错误显示在状态栏，便于定位
+window.onerror = (msg) => {
+  statusEl.textContent = String(msg).slice(0, 120);
+  statusEl.className = "bad";
+};
+window.addEventListener("unhandledrejection", (e) => {
+  statusEl.textContent = String(e.reason).slice(0, 120);
+  statusEl.className = "bad";
+});
+
 /** 磁盘会话列表：[{cwd, sessions:[{path,title,firstMessage,modified,messageCount}]}] */
 const diskProjects = [];
 /** 已打开（新建或加载）的会话：path -> {sessionId,cwd,items,assistantDraft,streaming,subagents} */
@@ -217,7 +227,7 @@ function createIn(cwd) {
 }
 
 function setApprovalModeUi(mode) {
-  for (const b of document.querySelectorAll("#approval-bar button")) {
+  for (const b of document.querySelectorAll("#approval-bar button[data-mode]")) {
     b.className = b.dataset.mode === mode ? "active" : "";
   }
 }
@@ -304,7 +314,8 @@ thinkingSelect.onchange = () => {
   if (s) send({ type: "set_thinking", sessionId: s.sessionId, level: thinkingSelect.value });
 };
 
-document.querySelectorAll("#approval-bar button").forEach((b) => {
+// 审批模式条只圈三个权限按钮（下拉按钮同在 #approval-bar，不能一起绑）
+document.querySelectorAll('#approval-bar button[data-mode]').forEach((b) => {
   b.onclick = () => send({ type: "set_approval_mode", mode: b.dataset.mode });
 });
 
@@ -553,7 +564,13 @@ window.addEventListener("click", closeCtxMenu);
 window.addEventListener("blur", closeCtxMenu);
 
 // ---------- Cmd +/-/0 缩放 ----------
+// 只缩放三个布局容器：body 整体 zoom 会把 position:fixed 的菜单二次缩放，
+// 导致右键菜单/下拉的渲染偏移与点击命中错位
+const zoomTargets = ["sidebar", "main", "subagent-panel"].map((id) => $(id));
 let zoomLevel = 1;
+function applyZoom() {
+  for (const el of zoomTargets) el.style.zoom = zoomLevel;
+}
 document.addEventListener("keydown", (e) => {
   if (!e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "=" || e.key === "+") zoomLevel = Math.min(2, +(zoomLevel + 0.1).toFixed(2));
@@ -561,7 +578,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "0") zoomLevel = 1;
   else return;
   e.preventDefault();
-  document.body.style.zoom = zoomLevel;
+  applyZoom();
 });
 
 renderAll();

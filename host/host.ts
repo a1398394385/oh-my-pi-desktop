@@ -223,6 +223,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
           }
           case "set_model": {
             const entry = sessions.get(msg.sessionId);
+            process.stderr.write(`[host] set_model: ${msg.model} entry=${!!entry}\n`);
             if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
             const target = scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
             if (!target) throw new Error(`未知模型: ${msg.model}`);
