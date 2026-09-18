@@ -461,10 +461,14 @@ function renderAll() {
       e.stopPropagation();
       createIn(p.cwd);
     };
-    // 点击组头折叠/展开该项目全部会话
+    // 点击组头折叠/展开该项目全部会话；再展开时分页重置回默认 5 条
     head.onclick = () => {
-      if (collapsedProjects.has(p.cwd)) collapsedProjects.delete(p.cwd);
-      else collapsedProjects.add(p.cwd);
+      if (collapsedProjects.has(p.cwd)) {
+        collapsedProjects.delete(p.cwd);
+        projectLimits.delete(p.cwd);
+      } else {
+        collapsedProjects.add(p.cwd);
+      }
       renderAll();
     };
     head.appendChild(caret);
