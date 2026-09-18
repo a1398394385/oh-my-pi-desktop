@@ -54,6 +54,7 @@ function onMessage(msg) {
   switch (msg.type) {
     case "ready":
       setApprovalModeUi(msg.approvalMode);
+      fillModelSelect(msg.models ?? []);
       break;
     case "approval_mode":
       setApprovalModeUi(msg.mode);
@@ -82,6 +83,21 @@ function onMessage(msg) {
       renderAll();
       break;
     }
+    case "session_model": {
+      const s = findBySessionId(msg.sessionId);
+      if (s) {
+        s.model = msg.model;
+        if (msg.thinking) s.thinking = msg.thinking; // 模型切换后的钳制生效值
+      }
+      renderAll();
+      break;
+    }
+    case "session_thinking": {
+      const s = findBySessionId(msg.sessionId);
+      if (s) s.thinking = msg.level;
+      renderAll();
+      break;
+    }
     case "session_created": {
       openSessions.set(msg.path, {
         sessionId: msg.sessionId,
@@ -90,6 +106,8 @@ function onMessage(msg) {
         assistantDraft: "",
         streaming: false,
         subagents: new Map(), // subagentId -> {agent,description,status,text,tools,streaming}
+        model: msg.model ?? null,
+        thinking: msg.thinking ?? "auto",
       });
       activePath = msg.path;
       loadingPath = null;
@@ -199,6 +217,47 @@ function setApprovalModeUi(mode) {
     b.className = b.dataset.mode === mode ? "active" : "";
   }
 }
+
+const modelSelect = $("model-select");
+const thinkingSelect = $("thinking-select");
+const modelEfforts = new Map(); // modelId -> 支持的思考档位数组
+const THINKING_LABELS = { auto: "思考:自动", off: "思考:关", minimal: "思考:极低", low: "思考:低", medium: "思考:中", high: "思考:高", xhigh: "思考:超高", max: "思考:最大" };
+
+function fillModelSelect(models) {
+  modelSelect.innerHTML = "";
+  for (const m of models) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.name;
+    modelSelect.appendChild(opt);
+    modelEfforts.set(m.id, m.efforts ?? []);
+  }
+}
+
+// 思考档位只列当前模型支持的（auto/off 通用；模型不支持思考时仅 off）
+function refreshThinkingOptions() {
+  const cur = activeOpen();
+  const efforts = cur ? modelEfforts.get(cur.model) ?? [] : [];
+  const levels = efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
+  const current = thinkingSelect.value;
+  thinkingSelect.innerHTML = "";
+  for (const lv of levels) {
+    const opt = document.createElement("option");
+    opt.value = lv;
+    opt.textContent = THINKING_LABELS[lv] ?? lv;
+    thinkingSelect.appendChild(opt);
+  }
+  if (levels.includes(current)) thinkingSelect.value = current;
+}
+
+modelSelect.onchange = () => {
+  const s = activeOpen();
+  if (s) send({ type: "set_model", sessionId: s.sessionId, model: modelSelect.value });
+};
+thinkingSelect.onchange = () => {
+  const s = activeOpen();
+  if (s) send({ type: "set_thinking", sessionId: s.sessionId, level: thinkingSelect.value });
+};
 
 document.querySelectorAll("#approval-bar button").forEach((b) => {
   b.onclick = () => send({ type: "set_approval_mode", mode: b.dataset.mode });
@@ -317,6 +376,15 @@ function renderAll() {
     messagesEl.appendChild(div);
   }
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  // 模型/思考下拉跟随当前会话（无活跃会话禁用）
+  const cur = activeOpen();
+  modelSelect.disabled = thinkingSelect.disabled = !cur;
+  if (cur) {
+    if (cur.model && modelSelect.value !== cur.model) modelSelect.value = cur.model;
+    refreshThinkingOptions();
+    if (cur.thinking && thinkingSelect.value !== cur.thinking && [...thinkingSelect.options].some((o) => o.value === cur.thinking))
+      thinkingSelect.value = cur.thinking;
+  }
   renderSubagentPanel();
 }
 

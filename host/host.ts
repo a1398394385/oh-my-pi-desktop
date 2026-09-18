@@ -16,6 +16,7 @@ setProfile("omp-desktop");
 // 初始化——Bun 对命名导入做快照，事后初始化救不了已加载的 ask.ts
 const { ensureThemeSync } = await import("@oh-my-pi/pi-tui/theme");
 ensureThemeSync();
+const { getSupportedEfforts } = await import("@oh-my-pi/pi-catalog/model-thinking");
 const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry } =
   await import("@oh-my-pi/pi-coding-agent");
 import os from "node:os";
@@ -158,7 +159,17 @@ const server = Bun.serve<{ sessionId: string | null }>({
   },
   websocket: {
     open(ws) {
-      ws.send(JSON.stringify({ type: "ready", approvalMode: settings.get("tools.approvalMode") }));
+      ws.send(
+        JSON.stringify({
+          type: "ready",
+          approvalMode: settings.get("tools.approvalMode"),
+          models: availableModels.map((m) => ({
+            id: `${m.provider}/${m.id}`,
+            name: m.name ?? m.id,
+            efforts: getSupportedEfforts(m), // 模型支持的思考档位（reasoning=false 时为空）
+          })),
+        }),
+      );
     },
     async message(ws, raw) {
       let msg: any;
@@ -200,6 +211,34 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!pending) throw new Error(`审批请求不存在或已结束: ${msg.requestId}`);
             pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
             ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
+            break;
+          }
+          case "set_model": {
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const target = availableModels.find((m) => `${m.provider}/${m.id}` === msg.model);
+            if (!target) throw new Error(`未知模型: ${msg.model}`);
+            await entry.session.setModel(target); // persist 默认 false，仅本会话生效
+            const model = `${entry.session.model.provider}/${entry.session.model.id}`;
+            // 模型切换后思考级别可能被能力钳制，一并回传生效值
+            ws.send(
+              JSON.stringify({
+                type: "session_model",
+                sessionId: msg.sessionId,
+                model,
+                thinking: entry.session.thinkingLevel ?? "auto",
+              }),
+            );
+            break;
+          }
+          case "set_thinking": {
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            entry.session.setThinkingLevel(msg.level);
+            // getter 返回按模型能力钳制后的生效值（如 medium→low），如实回传
+            ws.send(
+              JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.thinkingLevel ?? "auto" }),
+            );
             break;
           }
           default:
@@ -323,7 +362,16 @@ async function handleCreateSession(ws: any, cwd?: string) {
   const workDir = typeof cwd === "string" && cwd ? cwd : defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workDir, SessionManager.create(workDir), []);
   attachEntry(ws, sessionId, entry, eventBus);
-  ws.send(JSON.stringify({ type: "session_created", sessionId, path: entry.path, cwd: workDir }));
+  ws.send(
+    JSON.stringify({
+      type: "session_created",
+      sessionId,
+      path: entry.path,
+      cwd: workDir,
+      model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+      thinking: entry.session.thinkingLevel ?? "auto",
+    }),
+  );
   process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir}（活跃 ${sessions.size}）\n`);
 }
 
@@ -337,7 +385,16 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   const workCwd = header?.cwd ?? defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
   attachEntry(ws, sessionId, entry, eventBus);
-  ws.send(JSON.stringify({ type: "session_created", sessionId, path: entry.path, cwd: entry.cwd }));
+  ws.send(
+    JSON.stringify({
+      type: "session_created",
+      sessionId,
+      path: entry.path,
+      cwd: entry.cwd,
+      model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+      thinking: entry.session.thinkingLevel ?? "auto",
+    }),
+  );
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
   process.stderr.write(
     `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,

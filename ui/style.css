@@ -135,6 +135,22 @@ body {
   color: #0071e3;
   background: #eaf3ff;
 }
+#approval-bar .bar-sep {
+  flex: 1;
+}
+#approval-bar select {
+  border: 1px solid #d9d9de;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  padding: 3px 6px;
+  color: #424245;
+  max-width: 220px;
+  outline: none;
+}
+#approval-bar select:disabled {
+  opacity: 0.45;
+}
 
 /* 审批卡片 */
 .approval-card {
