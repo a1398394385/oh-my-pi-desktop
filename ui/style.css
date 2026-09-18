@@ -15,7 +15,7 @@ body {
 
 /* 左栏 */
 #sidebar {
-  width: 200px;
+  width: var(--left-w, 200px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -23,6 +23,7 @@ body {
   background: #f7f7f8;
   padding: 10px;
   gap: 10px;
+  min-width: 0;
 }
 #new-session {
   padding: 8px;
@@ -424,13 +425,36 @@ body {
 
 /* 右栏：子代理 / Git Diff 双 tab 面板 */
 #right-panel {
-  width: 240px;
+  width: var(--right-w, 240px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid #e5e5e7;
   background: #f7f7f8;
   transition: width 0.15s ease;
+}
+body.right-wide #right-panel {
+  min-width: 540px;
+}
+/* 边栏拖动手柄 */
+.resizer {
+  width: 5px;
+  flex: none;
+  cursor: col-resize;
+  background: transparent;
+  margin: 0 -2px;
+  z-index: 60;
+}
+.resizer:hover,
+body.resizing .resizer {
+  background: #0071e3;
+}
+body.resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+body.resizing #right-panel {
+  transition: none; /* 拖动时关掉宽度过渡，跟手 */
 }
 body.right-wide #right-panel {
   width: 540px;

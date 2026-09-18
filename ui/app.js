@@ -907,6 +907,40 @@ sessionListEl.addEventListener("contextmenu", (e) => {
   document.body.appendChild(ctxMenu);
 });
 
+// ---------- 边栏拖动调宽 ----------
+// 宽度走 CSS 变量（--left-w/--right-w），localStorage 记忆；拖动 dx 除以 zoomLevel（布局宽 ≠ 屏幕宽）
+function attachResizer(handleId, panelId, cssVar, min, max, invert) {
+  const apply = (w) => document.documentElement.style.setProperty(cssVar, w + "px");
+  try {
+    const saved = localStorage.getItem("omp-w-" + cssVar);
+    if (saved) apply(+saved);
+  } catch {}
+  $(handleId).addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = $(panelId).offsetWidth;
+    const move = (ev) => {
+      const dx = (ev.clientX - startX) / zoomLevel;
+      const w = Math.round(Math.min(Math.max(invert ? startW - dx : startW + dx, min), max));
+      apply(w);
+      try {
+        localStorage.setItem("omp-w-" + cssVar, w);
+      } catch {}
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("resizing");
+    };
+    document.body.classList.add("resizing");
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+}
+attachResizer("left-resizer", "sidebar", "--left-w", 160, 420, false);
+attachResizer("right-resizer", "right-panel", "--right-w", 220, 760, true);
+
 // ---------- Cmd +/-/0 缩放 ----------
 // 只缩放三个布局容器：body 整体 zoom 会把 position:fixed 的菜单二次缩放，
 // 导致右键菜单/下拉的渲染偏移与点击命中错位
