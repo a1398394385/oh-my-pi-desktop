@@ -204,6 +204,27 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "get_messages":
             handleGetMessages(ws, msg.sessionId);
             break;
+          case "get_git_diff": {
+            // 当前会话 project 的未提交改动（tracked diff + untracked 概览）
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const run = (args: string[]) => {
+              const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
+              return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() };
+            };
+            const diff = run(["diff"]);
+            if (diff.code !== 0) throw new Error(`git diff 失败: ${diff.err.trim() || "非 git 仓库"}`);
+            const status = run(["status", "--short"]);
+            ws.send(
+              JSON.stringify({
+                type: "git_diff",
+                cwd,
+                status: status.out,
+                diff: diff.out.slice(0, 200_000),
+                truncated: diff.out.length > 200_000,
+              }),
+            );
+            break;
+          }
           case "set_approval_mode": {
             const mode = msg.mode;
             if (mode !== "yolo" && mode !== "write" && mode !== "always-ask") {

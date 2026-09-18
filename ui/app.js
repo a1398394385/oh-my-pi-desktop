@@ -8,6 +8,9 @@ const messagesEl = $("messages");
 const sessionListEl = $("session-list");
 const inputEl = $("input");
 const statusEl = $("conn-status");
+const rightBody = $("right-body");
+let rightTab = "subagent"; // subagent | gitdiff
+const gitDiffCache = { cwd: null, status: "", diff: "", truncated: false, loading: false };
 
 // WKWebView 无 console：未捕获错误显示在状态栏，便于定位
 window.onerror = (msg) => {
@@ -192,7 +195,17 @@ function onMessage(msg) {
       renderAll();
       break;
     }
+    case "git_diff": {
+      gitDiffCache.cwd = msg.cwd;
+      gitDiffCache.status = msg.status;
+      gitDiffCache.diff = msg.diff;
+      gitDiffCache.truncated = msg.truncated;
+      gitDiffCache.loading = false;
+      if (rightTab === "gitdiff") renderRightPanel();
+      break;
+    }
     case "error": {
+      gitDiffCache.loading = false;
       const s = msg.sessionId && findBySessionId(msg.sessionId);
       if (s) {
         s.items.push({ role: "error", text: msg.message });
@@ -200,6 +213,7 @@ function onMessage(msg) {
       } else {
         statusEl.textContent = msg.message;
         statusEl.className = "bad";
+        if (rightTab === "gitdiff") renderRightPanel();
       }
       break;
     }
@@ -247,16 +261,26 @@ function placeMenu(menu, visualLeft, visualTop) {
   menu.style.top = visualTop / zoomLevel + "px";
 }
 
+// 浮层统一收口：点任何别处（含其他按钮）都收起已打开的菜单，不允许两个同时展示
+const openMenuClosers = new Set();
+function closeAllMenus() {
+  closeCtxMenu();
+  for (const close of [...openMenuClosers]) close();
+}
+window.addEventListener("click", closeAllMenus);
+window.addEventListener("blur", closeAllMenus);
+
 function attachDropdown(btn, getItems, onPick) {
   let menu = null;
   const close = () => {
     menu?.remove();
     menu = null;
+    openMenuClosers.delete(close);
   };
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (menu) return close();
-    closeCtxMenu();
+    closeAllMenus();
     const items = getItems();
     if (items.length === 0) return;
     menu = document.createElement("div");
@@ -265,6 +289,7 @@ function attachDropdown(btn, getItems, onPick) {
     const maxW = Math.max(...items.map((i) => i.label.length)) * 13 + 40;
     menu.style.width = Math.min(Math.max(maxW, r.width), 280) + "px";
     placeMenu(menu, r.left, r.bottom + 4);
+    openMenuClosers.add(close);
     for (const it of items) {
       const b = document.createElement("button");
       b.textContent = (it.active ? "✓ " : "") + it.label;
@@ -278,8 +303,6 @@ function attachDropdown(btn, getItems, onPick) {
     }
     document.body.appendChild(menu);
   });
-  window.addEventListener("click", close);
-  return { close };
 }
 
 function currentThinkingLevels() {
@@ -444,16 +467,82 @@ function renderAll() {
   modelSelect.disabled = thinkingSelect.disabled = !cur;
   modelSelect.textContent = cur?.model ? (modelNames.get(cur.model) ?? cur.model) : "模型";
   thinkingSelect.textContent = cur ? (THINKING_LABELS[cur.thinking] ?? cur.thinking ?? "思考") : "思考";
-  renderSubagentPanel();
+  renderRightPanel();
 }
 
-// 右栏：当前会话的子代理卡片列表；点击卡片进入该子代理的实时流视图
-function renderSubagentPanel() {
-  const body = $("subagent-body");
-  body.innerHTML = "";
+// 右栏：顶部双 tab（子代理 / Git Diff），点击切换详情页
+function renderRightPanel() {
+  for (const b of document.querySelectorAll("#right-tabs button")) {
+    b.className = b.dataset.tab === rightTab ? "active" : "";
+  }
+  rightBody.innerHTML = "";
+  if (rightTab === "gitdiff") renderGitDiff();
+  else renderSubagentList();
+}
+
+function refreshGitDiff() {
+  const s = activeOpen();
+  if (!s) return;
+  gitDiffCache.loading = true;
+  gitDiffCache.cwd = s.cwd;
+  send({ type: "get_git_diff", cwd: s.cwd });
+  renderRightPanel();
+}
+
+function renderGitDiff() {
+  const s = activeOpen();
+  const head = document.createElement("div");
+  head.className = "gd-head";
+  head.textContent = s ? s.cwd : "（无活跃会话）";
+  rightBody.appendChild(head);
+  const refresh = document.createElement("button");
+  refresh.className = "sub-back";
+  refresh.textContent = "⟳ 刷新";
+  refresh.onclick = refreshGitDiff;
+  rightBody.appendChild(refresh);
+  if (!s) return;
+  if (gitDiffCache.loading) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = "加载中…";
+    rightBody.appendChild(d);
+    return;
+  }
+  if (gitDiffCache.cwd !== s.cwd) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = "点⟳刷新加载该 project 的改动";
+    rightBody.appendChild(d);
+    return;
+  }
+  const pre = document.createElement("pre");
+  pre.className = "gd-status";
+  pre.textContent = gitDiffCache.status || "（工作区干净）";
+  rightBody.appendChild(pre);
+  if (gitDiffCache.diff) {
+    const diff = document.createElement("div");
+    diff.className = "gd-diff";
+    for (const line of gitDiffCache.diff.split("\n")) {
+      const d = document.createElement("div");
+      d.className = line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : line.startsWith("@@") ? "hunk" : "ctx";
+      d.textContent = line || " ";
+      diff.appendChild(d);
+    }
+    rightBody.appendChild(diff);
+  }
+  if (gitDiffCache.truncated) {
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = "（diff 过大已截断）";
+    rightBody.appendChild(d);
+  }
+}
+
+// 子代理详情页：卡片列表；点击卡片进入该子代理的实时流视图
+function renderSubagentList() {
   const s = activeOpen();
   if (!s || s.subagents.size === 0) {
-    body.innerHTML = '<div class="placeholder">（暂无子代理）</div>';
+    rightBody.innerHTML = '<div class="placeholder">（暂无子代理）</div>';
     return;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
@@ -465,11 +554,11 @@ function renderSubagentPanel() {
       selectedSubagent = null;
       renderAll();
     };
-    body.appendChild(back);
+    rightBody.appendChild(back);
     const title = document.createElement("div");
     title.className = "sub-title";
     title.textContent = `${sub.agent} · ${sub.status}`;
-    body.appendChild(title);
+    rightBody.appendChild(title);
     const stream = document.createElement("div");
     stream.className = "sub-stream";
     for (const t of sub.tools) {
@@ -482,7 +571,7 @@ function renderSubagentPanel() {
     d.className = "bubble assistant" + (sub.streaming ? " streaming" : "");
     d.textContent = sub.text || "…";
     stream.appendChild(d);
-    body.appendChild(stream);
+    rightBody.appendChild(stream);
     return;
   }
   for (const [id, sub] of s.subagents) {
@@ -507,9 +596,20 @@ function renderSubagentPanel() {
       selectedSubagent = id;
       renderAll();
     };
-    body.appendChild(card);
+    rightBody.appendChild(card);
   }
 }
+
+document.querySelectorAll("#right-tabs button").forEach((b) => {
+  b.onclick = () => {
+    rightTab = b.dataset.tab;
+    if (rightTab === "gitdiff") {
+      const s = activeOpen();
+      if (s && gitDiffCache.cwd !== s.cwd && !gitDiffCache.loading) refreshGitDiff();
+    }
+    renderRightPanel();
+  };
+});
 
 $("new-session").onclick = newSession;
 $("send").onclick = sendPrompt;
@@ -543,7 +643,7 @@ sessionListEl.addEventListener("contextmenu", (e) => {
   const el = e.target.closest(".session-item");
   if (!el) return;
   e.preventDefault();
-  closeCtxMenu();
+  closeAllMenus();
   const path = el.dataset.path;
   const entry = diskProjects.flatMap((p) => p.sessions).find((s) => s.path === path);
   if (!entry) return;
@@ -566,13 +666,11 @@ sessionListEl.addEventListener("contextmenu", (e) => {
   }
   document.body.appendChild(ctxMenu);
 });
-window.addEventListener("click", closeCtxMenu);
-window.addEventListener("blur", closeCtxMenu);
 
 // ---------- Cmd +/-/0 缩放 ----------
 // 只缩放三个布局容器：body 整体 zoom 会把 position:fixed 的菜单二次缩放，
 // 导致右键菜单/下拉的渲染偏移与点击命中错位
-const zoomTargets = ["sidebar", "main", "subagent-panel"].map((id) => $(id));
+const zoomTargets = ["sidebar", "main", "right-panel"].map((id) => $(id));
 let zoomLevel = 1;
 function applyZoom() {
   for (const el of zoomTargets) el.style.zoom = zoomLevel;
