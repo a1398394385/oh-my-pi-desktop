@@ -28,6 +28,8 @@ window.addEventListener("unhandledrejection", (e) => {
 
 /** 磁盘会话列表：[{cwd, sessions:[{path,title,firstMessage,modified,messageCount}]}] */
 const diskProjects = [];
+const projectLimits = new Map(); // cwd -> 已显示条数（默认 5，步进 5）
+const collapsedProjects = new Set(); // 已折叠的项目 cwd
 /** 已打开（新建或加载）的会话：path -> {sessionId,cwd,items,assistantDraft,streaming,subagents} */
 const openSessions = new Map();
 let activePath = null;
@@ -438,21 +440,46 @@ function renderAll() {
   for (const p of diskProjects) {
     const group = document.createElement("div");
     group.className = "project-group";
+    const collapsed = collapsedProjects.has(p.cwd);
     const head = document.createElement("div");
     head.className = "project-head";
+    const caret = document.createElement("span");
+    caret.className = "project-caret";
+    caret.textContent = collapsed ? "▸" : "▾";
     const name = document.createElement("span");
     name.className = "project-name";
     name.textContent = p.cwd.split("/").filter(Boolean).pop() || p.cwd;
     name.title = p.cwd;
+    const count = document.createElement("span");
+    count.className = "project-count";
+    count.textContent = p.sessions.length;
     const add = document.createElement("button");
     add.className = "project-add";
     add.textContent = "＋";
     add.title = `在 ${p.cwd} 新建会话`;
-    add.onclick = () => createIn(p.cwd);
+    add.onclick = (e) => {
+      e.stopPropagation();
+      createIn(p.cwd);
+    };
+    // 点击组头折叠/展开该项目全部会话
+    head.onclick = () => {
+      if (collapsedProjects.has(p.cwd)) collapsedProjects.delete(p.cwd);
+      else collapsedProjects.add(p.cwd);
+      renderAll();
+    };
+    head.appendChild(caret);
     head.appendChild(name);
+    head.appendChild(count);
     head.appendChild(add);
     group.appendChild(head);
-    for (const s of p.sessions) {
+    if (collapsed) {
+      sessionListEl.appendChild(group);
+      continue;
+    }
+    // 默认 5 条，按需每次多加载 5 条
+    const limit = projectLimits.get(p.cwd) ?? 5;
+    const visible = p.sessions.slice(0, limit);
+    for (const s of visible) {
       const b = document.createElement("button");
       b.className = "session-item" + (s.path === activePath ? " active" : "");
       b.dataset.path = s.path;
@@ -469,6 +496,16 @@ function renderAll() {
         renderAll();
       };
       group.appendChild(b);
+    }
+    if (p.sessions.length > visible.length) {
+      const more = document.createElement("button");
+      more.className = "session-more";
+      more.textContent = `显示更多 ${visible.length}/${p.sessions.length}`;
+      more.onclick = () => {
+        projectLimits.set(p.cwd, visible.length + 5);
+        renderAll();
+      };
+      group.appendChild(more);
     }
     sessionListEl.appendChild(group);
   }
