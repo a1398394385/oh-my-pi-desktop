@@ -417,9 +417,10 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
   const transcript = entriesToTranscript(entries);
-  // 会话原始工作目录存在 header 条目里（open 内部同源读取）
-  const header = entries.find((e: any) => e.type === "session");
-  const workCwd = header?.cwd ?? defaultCwd;
+  // 会话原始 cwd：getEntries() 不含 session header，用 peekSessionInit 读
+  // （open 内部同源；目录不可达时它返回 null，兜底 HOME）
+  const peek = await SessionManager.peekSessionInit(sessionPath);
+  const workCwd = peek?.cwd ?? defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
