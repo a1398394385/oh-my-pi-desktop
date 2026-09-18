@@ -1,0 +1,59 @@
+# 踩坑记录（2026-09-19 重做 session）
+
+本 session 从 RPC 子进程路线重做为库内嵌路线过程中踩过的全部坑，附证据位置。新会话接手先读这份，能省掉重复排查。
+
+## 架构与选型
+
+- **RPC 子进程路线内存不可行**：每会话一个 `omp --mode rpc-ui` 子进程，各吃一份 ≈210MB 底座（9 会话实测 ≈3GB）。库内嵌单宿主：2 会话 385MB。这是整个重做的起点。
+- **omp 硬绑定 Bun**（314/1367 文件、777 处 `Bun.*`），Electron/Node 主进程不能直接 import——壳+宿主双进程是被迫的。
+
+## SDK 装配（host/host.ts）
+
+- **`setProfile` 必须先于 coding-agent 的 import 执行**：其模块在 import 时读取 agentDir（cli.ts:108 注释）。宿主结构：先 `import "@oh-my-pi/pi-utils"` 调 `setProfile("omp-desktop")`，再动态 `import("@oh-my-pi/pi-coding-agent")`。
+- **pi-tui 的 `theme` 是延迟初始化单例**（theme.ts:84 `export var theme` 初始 undefined）：TUI 启动流程才 `ensureThemeSync()`，headless 嵌入没人调 → ask 工具的 `theme.status.success`（ask.ts:121）直接 TypeError 崩。
+- **Bun 对命名导入做快照**：`const { theme } = await import(...)` 后再初始化，已解构的绑定不更新（命名空间对象 `m.theme` 才是 live）。所以 `ensureThemeSync()` 必须在 coding-agent（连带 ask.ts）**加载之前**调用，事后初始化救不了。
+- **多顶层并发会话必传私有 `AgentRegistry`**（默认全局 registry 每 generation 只许一个 Main 身份）。
+- **`SessionManager` 没有公开 cwd getter**：恢复会话的原始 cwd 要从 `getEntries()` 的 `type==="session"` header 条目读（`open()` 内部同源做法）。
+- **会话目录名编码不可逆**（`/`→`-`），别自己扫目录解码——`SessionManager.listAll()` 直接返回所有 project 的 `SessionInfo`（含正常 cwd）。
+- **JSONL 里被 abort 的 turn 不定稿**：工具崩掉/进程被杀的 turn，其 assistant 消息和 toolResult 不落盘——排查"没看到错误"时别只查 jsonl，看宿主 stderr。
+- **模型启用配置是 settings 键 `enabledModels`**（config.yml 顶层），条目可带 `:thinking` 默认级别后缀（如 `kimi-code/k3-256k:max`）；`getAvailable()` 返回全部 93 个，要自己过滤。切模型时按条目应用默认思考级别与 CLI 行为一致。
+- **思考级别 getter 返回钳制后生效值**：`setThinkingLevel("medium")` 后 deepseek-flash 读回 `low`（模型能力钳制）。UI 显示生效值；支持档位来自 `getSupportedEfforts(model)`（`model.reasoning ? model.thinking.efforts ?? [] : []`，pi-catalog/model-thinking）。
+- **`resolveApprovalFromContext` 是 execute-time 解析**（approval.ts:66）：`settings.override("tools.approvalMode", ...)` 运行中生效，下一个工具调用即按新模式。settings 全进程共享 → 切换影响所有会话。settings 缺失时 fail-closed 到 always-ask。**子代理内部强制 yolo**（executor.ts:1008）。
+
+## 审批与 ExtensionUIContext
+
+- **只调 `setToolUIContext(uiCtx, true)` 不够**：审批 gate 的 `runner.hasUI()` 判的是 `#uiContext !== noOpUIContext`（runner.ts:897），而 runner 的 uiContext 由 `extensionRunner.initialize(actions, ctxActions, cmdCtxActions, uiContext, "rpc")` 注入——照抄 ACP（acp-agent.ts:2631-2632）。漏了这步 = 非 yolo 下所有需审批工具报「no interactive UI available」直接失败（write 报错、文件不落盘，turn 却正常结束，极易误判为"没弹审批"）。
+- **`ExtensionUIContext` 至少要实现 `select` + `confirm` + `editor`**：ask.ts:914-920 把 `context.ui` 包成 `{select, editor}` trampoline，缺 `editor` 时 ask 的「Other」自定义输入路径 `undefined is not a function` 崩（表现为"ask 起不来"）。
+- **`tool_execution_start` 在审批之前发出**（gate 在 wrapper.execute 内部）：审批冒烟不能用"批准后收到 tool 事件"做断言（时序随模型行为变），用测试文件是否落盘做硬断言。
+- **审批帧走 `DialogOptions.signal`（AbortSignal）取消**：监听 abort 时 `resolve(undefined)`（拒绝语义），否则 agent 中止后挂起 Promise 泄漏。
+
+## Subagent 事件
+
+- **AgentEvent 联合类型没有 subagent 事件**（pi-agent-core types.ts:1133-1143）：子代理是同进程独立 AgentSession，事件不冒泡到父 `session.subscribe`。
+- **官方通道是根会话的 eventBus**（sdk.ts:1341 创建并传给 executor，整棵 spawn 树共享）：channel `task:subagent:lifecycle`（started/completed/failed/aborted + agent 名 + description + sessionFile）、`task:subagent:event`（payload `{id, event}`，event 是子会话 AgentSessionEvent 原样转发，text_delta 直接可用）。`CreateAgentSessionResult.eventBus` 就是它。
+- 实测 deepseek 子代理可能只调 yield 不输出文本 delta（右栏流视图 text 为空属正常，工具行有值）。
+
+## Tauri / WKWebView
+
+- **`kill_on_drop` 是 tokio 专有**；std Command 没有等价物，且 **tauri dev 杀进程树时 `RunEvent::Exit` 回调可能来不及跑**——宿主被两次实测遗留成孤儿。兜底：宿主轮询 `process.kill(ppid, 0)`，父进程消失自杀（2s 间隔）。
+- **原生 `<select>` 的弹出菜单不可靠**（一个能开一个点不开，无规律）：全部换自绘 button+浮层。
+- **CSS zoom 与 position:fixed 二次缩放**：`body.style.zoom=z` 时 fixed 子菜单的 left/top 被再乘 z（实测偏移 ≈ 二次方），渲染偏移 + 点击命中错位——表现为"选模型没反应"。修法：zoom 只作用于布局容器；菜单设自身 `zoom=z` 且 `left/top = 视觉坐标 / z` 补偿。
+- **事件绑定选择器泛选**：`#approval-bar button` 会把后加的下拉按钮圈进审批绑定（点击发 `set_approval_mode undefined` 刷屏宿主错误日志）。选择器带 `[data-mode]` 收窄。
+- **改 `ui/` 或 `host/` 不触发 dev watcher**（只 watch src-tauri/）：`touch src-tauri/src/lib.rs` 强制重启。
+- **WKWebView 无 console**：`window.onerror` / `unhandledrejection` 写进页面元素才能看到前端错误。
+- `invoke` 在 `window.__TAURI__.core` 下（withGlobalTauri 注入的对象没有 ipc 命名空间）。
+
+## macOS GUI 自动化
+
+- macOS **无 `timeout` 命令**（zsh；用工具超时参数兜底）。
+- 系统 python3 无 Quartz 模块；CGEvent 用 swift：`CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, ...)`（老的 `CGEventCreateMouseEvent` 已被 Swift 废弃）。
+- 点击前必须先激活窗口（`System Events` set frontmost），否则首次点击被当激活吞掉。
+- CGEvent 坐标是屏幕绝对坐标；screencapture 的窗口截图是 2x Retina 且含标题栏——换算：屏幕 y = 窗口 bounds y + 图y/2。
+- zsh 把 `====`、`(+` 这类词当 glob 解析会炸命令——分隔符用 `---`。
+- 杀进程/找窗口都先按 cwd 归属区分（多 workspace 并行同名应用）：`lsof -p PID | awk '/cwd/'`。
+
+## 验证方法论
+
+- 三冒烟分层：`smoke.ts`（建会话→prompt→落盘→load 恢复历史）、`smoke-approval.ts`（always-ask→审批帧→批准→文件落盘硬断言）、`smoke-subagent.ts`（诱导 task 工具→lifecycle/event 帧）；后加 `smoke-model.ts`（切换+钳制回执）。真模型跑 `OMP_DESKTOP_MODEL=deepseek/deepseek-flash`（默认模型本地 spark 慢到拖死验证）。
+- 冒烟脚本结束要清理测试产生的会话文件和测试产物（fail 路径也要）。
+- GUI 验证用"截图实测"而不是心算坐标：坐标点击失败时先裁剪截图测量元素实际像素位置再重试。

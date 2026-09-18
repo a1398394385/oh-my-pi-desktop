@@ -238,7 +238,15 @@ const modelNames = new Map(); // modelId -> 显示名
 const modelEfforts = new Map(); // modelId -> 支持的思考档位数组
 const THINKING_LABELS = { auto: "思考:自动", off: "思考:关", minimal: "思考:极低", low: "思考:低", medium: "思考:中", high: "思考:高", xhigh: "思考:超高", max: "思考:最大" };
 
-// 自绘下拉（WKWebView 原生 select 的弹出菜单不可靠）
+// 自绘下拉（WKWebView 原生 select 的弹出菜单不可靠）。
+// 菜单自身带 zoom 跟随界面缩放（看不清才缩放，菜单也要变大）；
+// fixed 元素设 zoom 后其 left/top 坐标会被 zoom 再乘，故先除以 zoomLevel 补偿
+function placeMenu(menu, visualLeft, visualTop) {
+  menu.style.zoom = zoomLevel;
+  menu.style.left = visualLeft / zoomLevel + "px";
+  menu.style.top = visualTop / zoomLevel + "px";
+}
+
 function attachDropdown(btn, getItems, onPick) {
   let menu = null;
   const close = () => {
@@ -254,10 +262,9 @@ function attachDropdown(btn, getItems, onPick) {
     menu = document.createElement("div");
     menu.className = "dd-menu";
     const r = btn.getBoundingClientRect();
-    menu.style.left = r.left + "px";
-    menu.style.top = r.bottom + 4 + "px";
     const maxW = Math.max(...items.map((i) => i.label.length)) * 13 + 40;
     menu.style.width = Math.min(Math.max(maxW, r.width), 280) + "px";
+    placeMenu(menu, r.left, r.bottom + 4);
     for (const it of items) {
       const b = document.createElement("button");
       b.textContent = (it.active ? "✓ " : "") + it.label;
@@ -544,8 +551,7 @@ sessionListEl.addEventListener("contextmenu", (e) => {
   ctxMenu.className = "ctx-menu";
   const x = Math.min(e.clientX, window.innerWidth - 180);
   const y = Math.min(e.clientY, window.innerHeight - 70);
-  ctxMenu.style.left = x + "px";
-  ctxMenu.style.top = y + "px";
+  placeMenu(ctxMenu, x, y);
   for (const [label, value] of [
     ["复制 sessionId", entry.id ?? ""],
     ["复制会话文件路径", entry.path],
