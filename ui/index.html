@@ -13,12 +13,22 @@
       <div id="conn-status" class="ok">连接中…</div>
     </aside>
     <main id="main">
+      <div id="approval-bar">
+        <span class="approval-label">权限</span>
+        <button data-mode="yolo" title="全部工具直接执行，不弹审批">自动</button>
+        <button data-mode="write" title="读文件、改文件自动执行；bash 等命令执行需确认">命令确认</button>
+        <button data-mode="always-ask" title="只有读取类自动；改文件和命令执行都需确认">全确认</button>
+      </div>
       <div id="messages"></div>
       <div id="composer">
         <textarea id="input" rows="2" placeholder="发消息…（Enter 发送）"></textarea>
         <button id="send">发送</button>
       </div>
     </main>
+    <aside id="subagent-panel">
+      <div id="subagent-head">子代理</div>
+      <div id="subagent-body"></div>
+    </aside>
     <script src="app.js"></script>
   </body>
 </html>
