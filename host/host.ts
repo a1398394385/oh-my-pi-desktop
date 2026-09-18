@@ -33,11 +33,19 @@ const settings = await Settings.init({ cwd: defaultCwd, agentDir });
 
 // 可选模型覆盖：OMP_DESKTOP_MODEL="provider/id"（默认模型是本地慢模型，验证/日常用这个切快模型）
 const availableModels = modelRegistry.getAvailable();
+// 模型范围：用户在设置里启用的模型（enabledModels，条目可带 ":thinking" 默认级别后缀）；未配置 = 全部
+const enabledEntries: string[] = settings.get("enabledModels") ?? [];
+const enabledDefaults = new Map(enabledEntries.map((e) => [e.split(":")[0], e.split(":")[1] ?? null]));
+const scopedModels =
+  enabledDefaults.size > 0 ? availableModels.filter((m) => enabledDefaults.has(`${m.provider}/${m.id}`)) : availableModels;
 const modelOverride = process.env.OMP_DESKTOP_MODEL
   ? availableModels.find((m) => `${m.provider}/${m.id}` === process.env.OMP_DESKTOP_MODEL)
   : undefined;
 if (process.env.OMP_DESKTOP_MODEL && !modelOverride) {
   process.stderr.write(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
+}
+if (scopedModels.length === 0) {
+  throw new Error("enabledModels 配置过滤后没有任何可用模型");
 }
 
 // ---------- 会话池 ----------
@@ -163,7 +171,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
         JSON.stringify({
           type: "ready",
           approvalMode: settings.get("tools.approvalMode"),
-          models: availableModels.map((m) => ({
+          models: scopedModels.map((m) => ({
             id: `${m.provider}/${m.id}`,
             name: m.name ?? m.id,
             efforts: getSupportedEfforts(m), // 模型支持的思考档位（reasoning=false 时为空）
@@ -216,9 +224,12 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "set_model": {
             const entry = sessions.get(msg.sessionId);
             if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
-            const target = availableModels.find((m) => `${m.provider}/${m.id}` === msg.model);
+            const target = scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
             if (!target) throw new Error(`未知模型: ${msg.model}`);
             await entry.session.setModel(target); // persist 默认 false，仅本会话生效
+            // enabledModels 条目带的 ":thinking" 默认级别与 CLI 行为一致地应用
+            const defaultLevel = enabledDefaults.get(msg.model);
+            if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
             const model = `${entry.session.model.provider}/${entry.session.model.id}`;
             // 模型切换后思考级别可能被能力钳制，一并回传生效值
             ws.send(

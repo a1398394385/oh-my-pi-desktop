@@ -234,12 +234,15 @@ function fillModelSelect(models) {
   }
 }
 
-// 思考档位只列当前模型支持的（auto/off 通用；模型不支持思考时仅 off）
+// 思考档位只列当前模型支持的（auto/off 通用；模型不支持思考时仅 off）。
+// 只在档位集合真正变化时重建 options——WKWebView 下每次 renderAll 重建会让下拉点不开
 function refreshThinkingOptions() {
   const cur = activeOpen();
   const efforts = cur ? modelEfforts.get(cur.model) ?? [] : [];
   const levels = efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
-  const current = thinkingSelect.value;
+  const key = levels.join(",");
+  if (thinkingSelect.dataset.levels === key) return;
+  thinkingSelect.dataset.levels = key;
   thinkingSelect.innerHTML = "";
   for (const lv of levels) {
     const opt = document.createElement("option");
@@ -247,7 +250,6 @@ function refreshThinkingOptions() {
     opt.textContent = THINKING_LABELS[lv] ?? lv;
     thinkingSelect.appendChild(opt);
   }
-  if (levels.includes(current)) thinkingSelect.value = current;
 }
 
 modelSelect.onchange = () => {
