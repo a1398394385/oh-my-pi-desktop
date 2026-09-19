@@ -15,7 +15,6 @@ const composerEl = $("composer");
 const modelBtn = $("modelBtn");
 const thinkBtn = $("thinkBtn");
 const modeBtn = $("modeBtn");
-const ctxBtn = $("ctxBtn");
 
 let rightTab = "subagent"; // subagent | gitdiff
 let gitViewMode = "tree"; // tree | flat
@@ -264,7 +263,7 @@ function onMessage(msg) {
       break;
     }
     case "context_detail":
-      fillCtxMenu(msg);
+      fillCtxCard(msg);
       break;
     case "error": {
       gitDiffCache.loading = false;
@@ -415,21 +414,21 @@ $("thinkMenu").addEventListener("click", (e) => {
   closeAllMenus();
 });
 
-// ---------- 上下文容量弹层（breakdown + 会话统计） ----------
+// ---------- 上下文明细卡（hover 上下文环弹出，移开隐藏） ----------
 function fmtTokens(n) {
   if (n == null) return "—";
   if (n >= 10000) return (n / 10000).toFixed(1) + "万";
   if (n >= 1000) return (n / 1000).toFixed(1) + "k";
   return String(n);
 }
-function ctxMenuOpen() {
-  return $("ctxMenu").classList.contains("open");
-}
-function fillCtxMenu(detail) {
-  const menu = $("ctxMenu");
-  if (!ctxMenuOpen()) return; // 已关闭就不再填充
-  menu.innerHTML = "";
-  const b = detail.breakdown;
+
+let ringPop = null;
+let ringHovering = false;
+
+function buildCtxCard(detail) {
+  const pop = document.createElement("div");
+  pop.className = "ring-pop";
+  const b = detail?.breakdown;
   if (b) {
     const head = document.createElement("div");
     head.className = "cx-head";
@@ -438,13 +437,12 @@ function fillCtxMenu(detail) {
     const total = document.createElement("span");
     total.className = "cx-total";
     total.textContent = `${fmtTokens(b.usedTokens)}/${fmtTokens(b.contextWindow)}（${((b.usedTokens / b.contextWindow) * 100).toFixed(1)}%）`;
-    head.appendChild(t);
-    head.appendChild(total);
-    menu.appendChild(head);
+    head.append(t, total);
+    pop.appendChild(head);
     const bar = document.createElement("div");
     bar.className = "cx-bar";
     bar.innerHTML = `<i style="width:${Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1)}%"></i>`;
-    menu.appendChild(bar);
+    pop.appendChild(bar);
     const pct = (v) => ((v / b.usedTokens) * 100).toFixed(1) + "%";
     const rows = [
       ["消息", b.messagesTokens, "#4a9eff"],
@@ -457,15 +455,15 @@ function fillCtxMenu(detail) {
       const r = document.createElement("div");
       r.className = "cx-row";
       r.innerHTML = `<span class="dot" style="background:${color}"></span>${label}<span class="rv">${fmtTokens(v)} · ${pct(v)}</span>`;
-      menu.appendChild(r);
+      pop.appendChild(r);
     }
   }
-  const st = detail.stats;
+  const st = detail?.stats;
   if (st) {
     const sec = document.createElement("div");
     sec.className = "cx-sec";
     sec.textContent = "会话统计";
-    menu.appendChild(sec);
+    pop.appendChild(sec);
     const stRows = [
       ["输入 / 输出", `${fmtTokens(st.tokens.input)} / ${fmtTokens(st.tokens.output)}`],
       ["缓存读 / 写", `${fmtTokens(st.tokens.cacheRead)} / ${fmtTokens(st.tokens.cacheWrite)}`],
@@ -482,10 +480,43 @@ function fillCtxMenu(detail) {
       rv.className = "rv";
       rv.textContent = v;
       r.appendChild(rv);
-      menu.appendChild(r);
+      pop.appendChild(r);
     }
   }
+  if (!pop.childNodes.length) pop.textContent = "上下文用量暂无数据";
+  return pop;
 }
+
+function showRingPop() {
+  ringPop?.remove();
+  ringPop = buildCtxCard(null);
+  ringPop.textContent = "加载中…";
+  document.body.appendChild(ringPop);
+  // 卡片底边对齐环顶：视觉坐标经 placeMenu 除以 zoomLevel 补偿（fixed + zoom 二次缩放坑）
+  const r = $("ctxRing").getBoundingClientRect();
+  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 400), r.top - ringPop.offsetHeight - 8);
+}
+
+// 明细数据到达：鼠标仍悬停在环上才填充（移开即弃）
+function fillCtxCard(detail) {
+  if (!ringHovering || !ringPop) return;
+  const r = $("ctxRing").getBoundingClientRect();
+  ringPop.replaceWith((ringPop = buildCtxCard(detail)));
+  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 400), r.top - ringPop.offsetHeight - 8);
+}
+
+$("ctxRing").addEventListener("mouseenter", () => {
+  const s = activeOpen();
+  if (!s) return;
+  ringHovering = true;
+  showRingPop();
+  send({ type: "get_context_detail", sessionId: s.sessionId });
+});
+$("ctxRing").addEventListener("mouseleave", () => {
+  ringHovering = false;
+  ringPop?.remove();
+  ringPop = null;
+});
 
 // ---------- 菜单开合（原型同款：composer 内 absolute + 互斥） ----------
 function closeAllMenus() {
@@ -526,21 +557,6 @@ thinkBtn.addEventListener("click", (e) => {
   buildThinkMenu();
   openComposerMenu(menu, thinkBtn);
 });
-ctxBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  const menu = $("ctxMenu");
-  if (menu.classList.contains("open")) return closeAllMenus();
-  const s = activeOpen();
-  if (!s) return;
-  closeAllMenus();
-  menu.innerHTML = '<div class="cx-row">加载中…</div>';
-  menu.classList.add("open");
-  const maxLeft = composerEl.clientWidth - menu.offsetWidth - 4;
-  menu.style.left = Math.max(0, Math.min(ctxBtn.offsetLeft, maxLeft)) + "px";
-  send({ type: "get_context_detail", sessionId: s.sessionId });
-});
-// 弹层内部点击不冒泡关闭（与原型一致）
-$("ctxMenu").addEventListener("click", (e) => e.stopPropagation());
 
 // ---------- 左栏：任务列表（项目 / 最近 双视图） ----------
 const svgPin = '<svg class="ti" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7.8 1.2 10.8 4.2 8.5 4.8 6.8 6.5 6.2 8.8 3.2 5.8 1.8 7.2l-.6-.6L6 2l.6-1.2z" transform="rotate(45 6 6)"/></svg>';
@@ -875,21 +891,14 @@ function openFileDetail(filePath) {
   renderRight(); // 刷新 seg 高亮与工具按钮
 }
 
-// ---------- composer 状态条（模式/ctx/模型/思考 按钮文案与禁用态 + 上下文环） ----------
+// ---------- composer 状态条（模式/模型/思考 按钮文案与禁用态 + 上下文环） ----------
 const RING_C = 40.84; // 2π×6.5（与 CSS dasharray 一致）
 
 function renderComposerBar() {
   const s = activeOpen();
-  modelBtn.disabled = thinkBtn.disabled = ctxBtn.disabled = !s;
+  modelBtn.disabled = thinkBtn.disabled = !s;
   $("modelLabel").textContent = s?.model ? (modelNames.get(s.model) ?? s.model.split("/").pop()) : "模型";
   $("thinkLabel").textContent = s ? (s.thinking ? THINKING_LABELS[s.thinking] ?? s.thinking : "思考") : "思考";
-  if (s?.ctx) {
-    $("ctxLabel").textContent = `${Math.round(s.ctx.percent)}%`;
-    ctxBtn.title = `上下文 ${fmtTokens(s.ctx.tokens)} / ${fmtTokens(s.ctx.window)} tokens`;
-  } else {
-    $("ctxLabel").textContent = "—";
-    ctxBtn.title = "上下文占用";
-  }
   // 上下文环：从顶端顺时针填充；无数据空环
   const ring = $("ctxRing");
   ring.hidden = !s;
@@ -899,25 +908,6 @@ function renderComposerBar() {
     ring.className = "ctx-ring" + (s.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
   }
 }
-
-// 环 hover 明细卡（fixed + zoom 补偿；pointer-events:none 不挡点击）
-let ringPop = null;
-$("ctxRing").addEventListener("mouseenter", () => {
-  ringPop?.remove();
-  ringPop = document.createElement("div");
-  ringPop.className = "ring-pop";
-  const s = activeOpen();
-  ringPop.innerHTML = s?.ctx
-    ? `上下文 <b>${fmtTokens(s.ctx.tokens)}</b> / ${fmtTokens(s.ctx.window)} tokens（<b>${s.ctx.percent.toFixed(1)}%</b>）`
-    : "上下文用量暂无数据";
-  document.body.appendChild(ringPop);
-  const r = $("ctxRing").getBoundingClientRect();
-  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 240), r.top - 36);
-});
-$("ctxRing").addEventListener("mouseleave", () => {
-  ringPop?.remove();
-  ringPop = null;
-});
 
 // ---------- 右栏 ----------
 function renderRight() {
