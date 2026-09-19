@@ -5,7 +5,7 @@
 // - 每个会话 = 进程内一个 AgentSession + 私有 AgentRegistry（多顶层并发必传）
 // - 会话落在独立 profile `omp-desktop` 下（~/.omp/profiles/omp-desktop/agent），
 //   与用户 CLI 的 ~/.omp/agent 隔离；profile 沿用旧 RPC 版的认证（agent.db）
-// - UI 壳通过 WebSocket 连入：命令（create/load/prompt/list/get_messages）+ 窄事件流
+// - UI 壳通过 WebSocket 连入：命令（create/load/prompt/list/get_messages/get_limits 等）+ 窄事件流
 // - stdout 首行打印 `READY ws://127.0.0.1:<port>`，由 Tauri 壳读取后转告前端
 import { setProfile, getAgentDir } from "@oh-my-pi/pi-utils";
 
@@ -21,6 +21,7 @@ const { createAgentSession, SessionManager, Settings, discoverAuthStorage, Model
   await import("@oh-my-pi/pi-coding-agent");
 import os from "node:os";
 import path from "node:path";
+import { fetchSessionLimits } from "./limits/index.ts";
 
 const defaultCwd = os.homedir();
 
@@ -263,6 +264,35 @@ const server = Bun.serve<{ sessionId: string | null }>({
                   premiumRequests: st.premiumRequests,
                   cost: st.cost,
                 },
+              }),
+            );
+            break;
+          }
+          case "get_limits": {
+            // 会话当前供应商的套餐限额(token-monitor 移植逻辑,host/limits/)
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const ompProvider = entry.session.model?.provider;
+            if (!ompProvider) throw new Error("会话尚未选择模型");
+            let baseUrl = "";
+            try {
+              baseUrl = modelRegistry.getProviderBaseUrl(ompProvider) ?? "";
+            } catch {
+              baseUrl = "";
+            }
+            const { vendor, label, row } = await fetchSessionLimits(authStorage, ompProvider, baseUrl);
+            ws.send(
+              JSON.stringify({
+                type: "limits_result",
+                sessionId: msg.sessionId,
+                label,
+                unsupported: vendor === null,
+                status: row?.status ?? "unavailable",
+                planLabel: row?.planLabel ?? "",
+                accountLabel: row?.accountLabel ?? "",
+                balance: row?.balance ?? null,
+                windows: row?.windows ?? [],
+                updatedAt: row?.updatedAt ?? null,
               }),
             );
             break;

@@ -6,6 +6,7 @@
       "name": "omp-desktop",
       "dependencies": {
         "@oh-my-pi/pi-coding-agent": "^18.2.5",
+        "tokscale": "^4.17.0",
       },
       "devDependencies": {
         "@tauri-apps/cli": "^2.11.4",
@@ -211,6 +212,26 @@
 
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.11.4", "https://registry.npmmirror.com/@tauri-apps/cli-win32-x64-msvc/-/cli-win32-x64-msvc-2.11.4.tgz", { "os": "win32", "cpu": "x64" }, "sha512-+vDiqBIU5dMISg/wNvX3sF+ZHfgJGJ5T0AcO+EHNXV9GGAG+P5fzodlDXD3QdKCRgZxMoCm5PPvj3BqLNjBthw=="],
 
+    "@tokscale/cli": ["@tokscale/cli@4.17.0", "https://registry.npmmirror.com/@tokscale/cli/-/cli-4.17.0.tgz", { "optionalDependencies": { "@tokscale/cli-android-arm64": "4.17.0", "@tokscale/cli-darwin-arm64": "4.17.0", "@tokscale/cli-darwin-x64": "4.17.0", "@tokscale/cli-linux-arm64-gnu": "4.17.0", "@tokscale/cli-linux-arm64-musl": "4.17.0", "@tokscale/cli-linux-x64-gnu": "4.17.0", "@tokscale/cli-linux-x64-musl": "4.17.0", "@tokscale/cli-win32-arm64-msvc": "4.17.0", "@tokscale/cli-win32-x64-msvc": "4.17.0" }, "bin": { "tokscale": "bin.js" } }, "sha512-B3OFknGuiv4vKnfm7sX8uVrLj7pq6kk61TZ+GEO/5yLtGEzxc37GxsBUaOvA7jhH+VcWF7YY5SasiVxXgmZ9uA=="],
+
+    "@tokscale/cli-android-arm64": ["@tokscale/cli-android-arm64@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-android-arm64/-/cli-android-arm64-4.17.0.tgz", { "os": "android", "cpu": "arm64" }, "sha512-hCwED1VFa57Sa6SOLFi4kdfiunOXJs8oTZagvCBYisPi1DA6J+/Y9RD2Uenw+zLLEmxcAfBwgL8vZ8blJY3pRQ=="],
+
+    "@tokscale/cli-darwin-arm64": ["@tokscale/cli-darwin-arm64@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-darwin-arm64/-/cli-darwin-arm64-4.17.0.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-/Hmgh1VxxLdCo6ou+I7r12E0G4T4c0zzZwZ5iwdynlZKm1IEhoqPB0SagTmVEiLZSMV8zLxptO1GFuOKxMqwiQ=="],
+
+    "@tokscale/cli-darwin-x64": ["@tokscale/cli-darwin-x64@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-darwin-x64/-/cli-darwin-x64-4.17.0.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-AsAlm80CenvCv9pC/ys46Vmq7GJbgkufO2LxMAWRE5cubU4EBe0SqMew6+HpRY/BcAKJ5+4RFPQpEZS3Tx12lw=="],
+
+    "@tokscale/cli-linux-arm64-gnu": ["@tokscale/cli-linux-arm64-gnu@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-linux-arm64-gnu/-/cli-linux-arm64-gnu-4.17.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-wobrV3PJGeapz6ViLe5Ad6TU7+2QHQzZjf3XeVv5w25VOPZ+8XZN/pPpsdmawfguymPA2cAc34rxTj5G5M0wrg=="],
+
+    "@tokscale/cli-linux-arm64-musl": ["@tokscale/cli-linux-arm64-musl@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-linux-arm64-musl/-/cli-linux-arm64-musl-4.17.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-udoB3O3xHsFlQosK5pkmdJMO1Cb9uau7BLkBDFKW1M3uJq+5D2crTRKgv5NsAhjLTlTdr20C61KdGkkRWRhPXg=="],
+
+    "@tokscale/cli-linux-x64-gnu": ["@tokscale/cli-linux-x64-gnu@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-linux-x64-gnu/-/cli-linux-x64-gnu-4.17.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-wJfvqoU0dXOHVmgEdPtappcu05py0vc7jCVeWTWYS4UoJi0LuIGhTxRhLjfSb5oOUV9RE+7X+wZ3Xx7lIZ+6XA=="],
+
+    "@tokscale/cli-linux-x64-musl": ["@tokscale/cli-linux-x64-musl@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-linux-x64-musl/-/cli-linux-x64-musl-4.17.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-ydYrHyGMBhub/t50EknkA5Xr0cp9p4TZxOCbBqPssXxwQRHHOCxpZQNW0s5ZdxOYW4igapmDRb0PiiheLJFLrQ=="],
+
+    "@tokscale/cli-win32-arm64-msvc": ["@tokscale/cli-win32-arm64-msvc@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-win32-arm64-msvc/-/cli-win32-arm64-msvc-4.17.0.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-tovKL5nM84efBhJKqthZbH2HkuG2weKEbex4Pw0i7qOqOv7iCF+IIru39hJXx0FIicl8THhyYxQ9NHK1gGnfYQ=="],
+
+    "@tokscale/cli-win32-x64-msvc": ["@tokscale/cli-win32-x64-msvc@4.17.0", "https://registry.npmmirror.com/@tokscale/cli-win32-x64-msvc/-/cli-win32-x64-msvc-4.17.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-6NDfFj+LuBjnJDYzo5af9neLudojimL1y1SQvCvgNMvNmx94s+9tSyEZVlW9U6gL61MqvRaj2QK2w6iXYqyAfw=="],
+
     "@types/node": ["@types/node@26.6.1", "https://registry.npmmirror.com/@types/node/-/node-26.6.1.tgz", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-VqGJBMCtdhqkBUCcBLvywI0NJ+KLuVzgNnlBUNFOQjqVxzo2lxLUNg1DSey8+u2u6ktswSAxg+s68QLzWHNOuA=="],
 
     "adm-zip": ["adm-zip@0.6.1", "https://registry.npmmirror.com/adm-zip/-/adm-zip-0.6.1.tgz", {}, "sha512-Xwrja8nx9e5o2N1my4DsKCeKpdrnACyr1wtbPxBDgGzKzKyE9kRtBFA8mWldI+RVlD7CBZNWY/wQ2+ydwOR6kQ=="],
@@ -352,6 +373,8 @@
     "tailwindcss": ["tailwindcss@4.3.3", "https://registry.npmmirror.com/tailwindcss/-/tailwindcss-4.3.3.tgz", {}, "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ=="],
 
     "tapable": ["tapable@2.3.3", "https://registry.npmmirror.com/tapable/-/tapable-2.3.3.tgz", {}, "sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A=="],
+
+    "tokscale": ["tokscale@4.17.0", "https://registry.npmmirror.com/tokscale/-/tokscale-4.17.0.tgz", { "dependencies": { "@tokscale/cli": "4.17.0" }, "bin": { "tokscale": "bin.js" } }, "sha512-v3JDNByUgjjT7uf7Wl+HG3jigJkMh3FHohaHzSTwjAxpzWsCXyJi8cwiwaCaddmUF4bdf+cBSJ4GzsRQYiZTOQ=="],
 
     "tslib": ["tslib@2.8.1", "https://registry.npmmirror.com/tslib/-/tslib-2.8.1.tgz", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 

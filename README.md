@@ -15,7 +15,8 @@ omp（oh-my-pi）桌面壳。**库内嵌路线**：单个 Bun 宿主进程内嵌
 ```
 
 - 会话 = 宿主进程内一个 `createAgentSession()` 实例，工具在宿主内直接执行，无 host-tool 桥
-- 协议：命令 `{create_session|prompt|get_messages}` + 窄事件 `{turn_start|text_delta|tool|turn_end}`（按 sessionId 路由）
+- 协议：命令 `{create_session|prompt|get_messages|get_limits|…}` + 窄事件 `{turn_start|text_delta|tool|turn_end}`（按 sessionId 路由）
+- `host/limits/`：供应商套餐限额查询，移植自 token-monitor（`vendor/` 为裁剪后的 CJS 原码），覆盖 kimi/zai(GLM)/openrouter/deepseek/minimax/claude/codex/cursor/antigravity/copilot(grok)/alibaba/commandcode/ollama 共 13 家供应商、22 个 omp provider id；凭证优先经 authStorage 解析（OAuth 自动续期），claude/codex/cursor 等走本机已登录状态发现（cursor 依赖 npm 包 `tokscale` 扫描）；结果缓存 60s，上下文明细卡 hover 时经 `get_limits` 拉取
 - 会话不落盘（`SessionManager.inMemory()`），关进程即丢；持久化/park-revive/审批 UI 均后置
 
 ## 跑

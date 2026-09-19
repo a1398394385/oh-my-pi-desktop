@@ -2,7 +2,7 @@
 // 数据源换成本仓 WebSocket 宿主协议（host/host.ts）。
 // 协议：命令 {create_session|load_session|list_sessions|prompt|get_messages|
 //   set_approval_mode|approval_response|set_model|set_thinking|get_git_diff|
-//   get_file_diff|get_context_detail}，事件见 onMessage。
+//   get_file_diff|get_context_detail|get_limits}，事件见 onMessage。
 const { invoke } = window.__TAURI__.core;
 
 const $ = (id) => document.getElementById(id);
@@ -265,6 +265,9 @@ function onMessage(msg) {
     case "context_detail":
       fillCtxCard(msg);
       break;
+    case "limits_result":
+      fillLimits(msg);
+      break;
     case "error": {
       gitDiffCache.loading = false;
       const s = msg.sessionId && findBySessionId(msg.sessionId);
@@ -424,8 +427,91 @@ function fmtTokens(n) {
 
 let ringPop = null;
 let ringHovering = false;
+let ringDetail = null; // 最近一次 context_detail（重绘限额段时保留）
+let ringLimits = null; // 最近一次 limits_result
 
-function buildCtxCard(detail) {
+// 限额窗口 → 展示项:百分比取整,重置时间 24h 内给时刻、否则给月日
+const LIMIT_LABELS = { "5-hour": "5小时", "5h": "5小时", weekly: "每周", daily: "每日", session: "会话" };
+function fmtLimitWindow(w) {
+  const pct = w.usedPercent != null ? Math.round(w.usedPercent) : w.remainingPercent != null ? 100 - Math.round(w.remainingPercent) : null;
+  let reset = "";
+  if (w.resetsAt) {
+    const t = new Date(w.resetsAt);
+    const withinDay = t.getTime() - Date.now() < 24 * 3600 * 1000;
+    reset = withinDay
+      ? `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`
+      : `${t.getMonth() + 1}月${t.getDate()}日`;
+  }
+  const raw = w.label || w.kind;
+  return { label: LIMIT_LABELS[raw.toLowerCase()] ?? raw, pct, reset, chip: w.kind === "session" && (w.resetsAt || w.windowMinutes) };
+}
+
+function buildLimitsSection(limits) {
+  const sec = document.createElement("div");
+  sec.className = "cx-sec lx-sec";
+  const head = document.createElement("div");
+  head.className = "lx-head";
+  const t = document.createElement("b");
+  t.textContent = "剩余额度";
+  const prov = document.createElement("span");
+  prov.className = "lx-prov";
+  prov.textContent = limits.label ?? "";
+  head.append(t, prov);
+  sec.appendChild(head);
+  const body = document.createElement("div");
+  body.className = "lx-body";
+  if (limits.unsupported) {
+    body.textContent = "该供应商暂不支持限额查询";
+  } else if (limits.status === "notConfigured") {
+    body.textContent = "未配置该供应商凭证";
+  } else if (!limits.windows?.length && !limits.balance) {
+    body.textContent = "限额暂不可用";
+  } else {
+    const grid = document.createElement("div");
+    grid.className = "lx-grid";
+    const colors = ["#4a9eff", "#8b5cf6", "#f97316", "#22c55e"];
+    limits.windows.slice(0, 4).forEach((w, i) => {
+      const item = fmtLimitWindow(w);
+      const col = document.createElement("div");
+      col.className = "lx-col";
+      const top = document.createElement("div");
+      top.className = "lx-top";
+      const lab = document.createElement("span");
+      lab.textContent = item.label;
+      top.appendChild(lab);
+      if (item.chip) {
+        const chip = document.createElement("i");
+        chip.className = "lx-chip";
+        chip.textContent = "重置";
+        top.appendChild(chip);
+      }
+      const mid = document.createElement("div");
+      mid.className = "lx-mid";
+      mid.textContent = item.pct != null ? `${item.pct}%` : "—";
+      if (item.reset) {
+        const rs = document.createElement("span");
+        rs.textContent = ` · ${item.reset}`;
+        mid.appendChild(rs);
+      }
+      const bar = document.createElement("div");
+      bar.className = "lx-bar";
+      bar.innerHTML = `<i style="width:${item.pct != null ? Math.min(100, item.pct) : 0}%;background:${colors[i % colors.length]}"></i>`;
+      col.append(top, mid, bar);
+      grid.appendChild(col);
+    });
+    body.appendChild(grid);
+    if (limits.balance?.amount != null) {
+      const bal = document.createElement("div");
+      bal.className = "lx-bal";
+      bal.textContent = `余额 ${limits.balance.amount} ${limits.balance.currency ?? ""}`.trim();
+      body.appendChild(bal);
+    }
+  }
+  sec.appendChild(body);
+  return sec;
+}
+
+function buildCtxCard(detail, limits) {
   const pop = document.createElement("div");
   pop.className = "ring-pop";
   const b = detail?.breakdown;
@@ -483,34 +569,57 @@ function buildCtxCard(detail) {
       pop.appendChild(r);
     }
   }
+  if (limits) pop.appendChild(buildLimitsSection(limits));
   if (!pop.childNodes.length) pop.textContent = "上下文用量暂无数据";
   return pop;
 }
 
-function showRingPop() {
-  ringPop?.remove();
-  ringPop = buildCtxCard(null);
-  ringPop.textContent = "加载中…";
-  document.body.appendChild(ringPop);
-  // 卡片底边对齐环顶：视觉坐标经 placeMenu 除以 zoomLevel 补偿（fixed + zoom 二次缩放坑）
+// 弹层正中间对齐上下文环中心,左右/上下钳在视口内(8px 边距);
+// 视觉坐标经 placeMenu 除以 zoomLevel 补偿(fixed + zoom 二次缩放坑)
+function placeRingPop() {
+  if (!ringPop) return;
   const r = $("ctxRing").getBoundingClientRect();
-  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 280), r.top - ringPop.offsetHeight - 8);
+  const w = ringPop.offsetWidth;
+  const h = ringPop.offsetHeight;
+  const left = Math.min(Math.max(r.left + r.width / 2 - w / 2, 8), window.innerWidth - w - 8);
+  const top = Math.min(Math.max(r.top + r.height / 2 - h / 2, 8), window.innerHeight - h - 8);
+  placeMenu(ringPop, left, top);
 }
 
-// 明细数据到达：鼠标仍悬停在环上才填充（移开即弃）
-function fillCtxCard(detail) {
+function showRingPop() {
+  ringPop?.remove();
+  ringPop = buildCtxCard(ringDetail, ringLimits);
+  if (!ringPop.childNodes.length) ringPop.textContent = "加载中…";
+  document.body.appendChild(ringPop);
+  placeRingPop();
+}
+
+// 数据到达:鼠标仍悬停在环上才重绘(移开即弃)
+function refreshRingPop() {
   if (!ringHovering || !ringPop) return;
-  const r = $("ctxRing").getBoundingClientRect();
-  ringPop.replaceWith((ringPop = buildCtxCard(detail)));
-  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 280), r.top - ringPop.offsetHeight - 8);
+  ringPop.replaceWith((ringPop = buildCtxCard(ringDetail, ringLimits)));
+  placeRingPop();
+}
+
+function fillCtxCard(detail) {
+  ringDetail = detail;
+  refreshRingPop();
+}
+
+function fillLimits(limits) {
+  ringLimits = limits;
+  refreshRingPop();
 }
 
 $("ctxRing").addEventListener("mouseenter", () => {
   const s = activeOpen();
   if (!s) return;
   ringHovering = true;
+  ringDetail = null;
+  ringLimits = null; // 限额段先显示加载中,结果到达后补
   showRingPop();
   send({ type: "get_context_detail", sessionId: s.sessionId });
+  send({ type: "get_limits", sessionId: s.sessionId });
 });
 $("ctxRing").addEventListener("mouseleave", () => {
   ringHovering = false;
