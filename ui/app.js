@@ -895,43 +895,35 @@ function buildCtxCard(detail, limits) {
     bar.className = "cx-bar";
     bar.innerHTML = `<i style="width:${Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1)}%"></i>`;
     pop.appendChild(bar);
-    const pct = (v) => ((v / b.usedTokens) * 100).toFixed(1) + "%";
+    // 组成行固定 6 项(ZCode 同款分类):右侧数值与百分比等宽右对齐,中间虚线分隔。
+    // MCP 工具 = mcp__ 前缀工具的 schema token(host 单独估算);其他 = 系统上下文注入
+    const mcpTokens = b.mcpToolsTokens ?? 0;
+    const pct = (v) => (b.usedTokens > 0 ? ((v / b.usedTokens) * 100).toFixed(1) : "0.0") + "%";
     const rows = [
-      ["消息", b.messagesTokens, "#4a9eff"],
-      ["系统工具", b.systemToolsTokens, "#6fa8dc"],
+      ["系统工具", Math.max(0, b.systemToolsTokens - mcpTokens), "#6fa8dc"],
+      ["MCP 工具", mcpTokens, "#4a9eff"],
       ["系统提示词", b.systemPromptTokens, "#557fb8"],
+      ["技能", b.skillsTokens, "#47699e"],
+      ["消息", b.messagesTokens, "#3d5a85"],
+      ["其他", b.systemContextTokens, "#6296cc"],
     ];
-    if (b.systemContextTokens) rows.push(["上下文注入", b.systemContextTokens, "#6296cc"]);
-    if (b.skillsTokens) rows.push(["技能", b.skillsTokens, "#47699e"]);
     for (const [label, v, color] of rows) {
       const r = document.createElement("div");
       r.className = "cx-row";
-      r.innerHTML = `<span class="dot" style="background:${color}"></span>${label}<span class="rv">${fmtTokens(v)} · ${pct(v)}</span>`;
-      pop.appendChild(r);
-    }
-  }
-  const st = detail?.stats;
-  if (st) {
-    const sec = document.createElement("div");
-    sec.className = "cx-sec";
-    sec.textContent = "会话统计";
-    pop.appendChild(sec);
-    const stRows = [
-      ["输入 / 输出", `${fmtTokens(st.tokens.input)} / ${fmtTokens(st.tokens.output)}`],
-      ["缓存读 / 写", `${fmtTokens(st.tokens.cacheRead)} / ${fmtTokens(st.tokens.cacheWrite)}`],
-      ["累计消耗", fmtTokens(st.tokens.total)],
-      ["消息（用/助/工具）", `${st.userMessages}/${st.assistantMessages}/${st.toolCalls}`],
-      ["花费", st.cost != null ? `$${st.cost.toFixed(3)}` : "—"],
-    ];
-    if (st.tokens.reasoning) stRows.splice(1, 0, ["推理", fmtTokens(st.tokens.reasoning)]);
-    for (const [label, v] of stRows) {
-      const r = document.createElement("div");
-      r.className = "cx-row";
-      r.textContent = label;
-      const rv = document.createElement("span");
-      rv.className = "rv";
-      rv.textContent = v;
-      r.appendChild(rv);
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = color;
+      const lab = document.createElement("span");
+      lab.textContent = label;
+      const val = document.createElement("span");
+      val.className = "cx-val";
+      val.textContent = fmtTokens(v);
+      const sep = document.createElement("i");
+      sep.className = "cx-sep";
+      const pc = document.createElement("span");
+      pc.className = "cx-pct";
+      pc.textContent = pct(v);
+      r.append(dot, lab, val, sep, pc);
       pop.appendChild(r);
     }
   }
@@ -940,7 +932,7 @@ function buildCtxCard(detail, limits) {
   return pop;
 }
 
-// 弹层正中间对齐上下文环中心,左右/上下钳在视口内(8px 边距);
+// 弹层出现在环 hover 底板正上方:底边距底板顶 2px,水平中心对齐;
 // 视觉坐标经 placeMenu 除以 zoomLevel 补偿(fixed + zoom 二次缩放坑)
 function placeRingPop() {
   if (!ringPop) return;
@@ -948,7 +940,7 @@ function placeRingPop() {
   const w = ringPop.offsetWidth;
   const h = ringPop.offsetHeight;
   const left = Math.min(Math.max(r.left + r.width / 2 - w / 2, 8), window.innerWidth - w - 8);
-  const top = Math.min(Math.max(r.top + r.height / 2 - h / 2, 8), window.innerHeight - h - 8);
+  const top = Math.max(r.top - h - 2, 8);
   placeMenu(ringPop, left, top);
 }
 

@@ -191,25 +191,23 @@
     <!-- ══ 设置中心（全屏 overlay，样式取自 prototype/session-view.html） ══ -->
     <div id="settings" class="hidden">
       <nav id="setNav" data-tauri-drag-region>
-        <button type="button" class="set-back" id="setBack">‹&nbsp; 返回工作区</button>
+        <button type="button" class="set-back" id="setBack"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>返回工作区</button>
         <div class="set-sec">基础设置</div>
-        <button type="button" class="set-item on" data-page="pg-general"><span class="si">⌘</span>常规</button>
-        <button type="button" class="set-item" data-page="pg-appearance"><span class="si">◐</span>外观</button>
-        <button type="button" class="set-item" data-page="pg-model"><span class="si">▦</span>模型设置</button>
-        <button type="button" class="set-item" data-page="pg-browser"><span class="si">◧</span>浏览器控制</button>
-        <button type="button" class="set-item" data-page="pg-computer"><span class="si">🖥</span>电脑控制</button>
+        <button type="button" class="set-item on" data-page="pg-general"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="10" cy="16" r="2.2"/></svg></span>常规</button>
+        <button type="button" class="set-item" data-page="pg-appearance"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9c0-1.1-.9-2-2-2h-2.2a2.3 2.3 0 0 1-2.3-2.3V5.5c0-1.1-.9-2-2-2.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/></svg></span>外观</button>
+        <button type="button" class="set-item" data-page="pg-model"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="M9 1.5v3M15 1.5v3M9 19.5v3M15 19.5v3M1.5 9h3M1.5 15h3M19.5 9h3M19.5 15h3"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg></span>模型设置</button>
+        <button type="button" class="set-item" data-page="pg-browser"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.7-3.8-9s1.3-6.4 3.8-9z"/></svg></span>浏览器控制</button>
+        <button type="button" class="set-item" data-page="pg-computer"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8.5 21h7M12 17v4"/></svg></span>电脑控制</button>
         <div class="set-sec">Agent 能力</div>
-        <button type="button" class="set-item" data-page="pg-memory"><span class="si">✎</span>记忆</button>
-        <button type="button" class="set-item" data-page="pg-agents"><span class="si">⎇</span>子智能体</button>
-        <button type="button" class="set-item" data-page="pg-plugins"><span class="si">⬡</span>插件</button>
-        <button type="button" class="set-item" data-page="pg-mcp"><span class="si">⌁</span>MCP 服务器</button>
-        <button type="button" class="set-item" data-page="pg-skills"><span class="si">⚡</span>技能</button>
-        <button type="button" class="set-item" data-page="pg-commands"><span class="si">›_</span>命令</button>
-        <button type="button" class="set-item" data-page="pg-hooks"><span class="si">⤓</span>钩子</button>
+        <button type="button" class="set-item" data-page="pg-memory"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a7 7 0 0 1 7 7c0 2.4-1.2 3.9-2.3 5.2-.9 1-1.7 2-1.7 3.3v.5H9v-.5c0-1.3-.8-2.3-1.7-3.3C6.2 14.9 5 13.4 5 11a7 7 0 0 1 7-7z"/><path d="M10 22.5h4"/></svg></span>记忆</button>
+        <button type="button" class="set-item" data-page="pg-agents"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="2.2"/><circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="8.5" r="2.2"/><path d="M6 7.7v8.6M6 12.5a6 6 0 0 1 6-6h3.6"/></svg></span>子智能体</button>
+        <button type="button" class="set-item" data-page="pg-plugins"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 21 7.5v9l-9 5-9-5v-9z"/><path d="M12 11.5 21 7.5M12 11.5v10M12 11.5 3 7.5"/></svg></span>插件</button>
+        <button type="button" class="set-item" data-page="pg-mcp"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="13" width="18" height="7" rx="1.8"/><path d="M6.5 7.5h.01M6.5 16.5h.01"/></svg></span>MCP 服务器</button>
+        <button type="button" class="set-item" data-page="pg-skills"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg></span>技能</button>
+        <button type="button" class="set-item" data-page="pg-commands"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 7 4.5 4.5L5 16M12 17h7"/></svg></span>命令</button>
+        <button type="button" class="set-item" data-page="pg-hooks"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5v10.8a4.2 4.2 0 1 1-3.2 4.1M9 3.5c5.5 0 9 3 10.5 7.5"/><path d="m16.5 8.5 3 2.5 2-3.5"/></svg></span>钩子</button>
         <div class="set-sec">数据与统计</div>
-        <button type="button" class="set-item" data-page="pg-index"><span class="si">▤</span>索引库</button>
-        <button type="button" class="set-item" data-page="pg-stats"><span class="si">📊</span>使用统计</button>
-        <button type="button" class="set-item" data-page="pg-guide"><span class="si">🧭</span>引导</button>
+        <button type="button" class="set-item" data-page="pg-stats"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg></span>使用统计</button>
         <div class="set-foot">
           <span class="avatar">🐼</span><span class="uname" id="setFootProfile">omp-desktop</span>
         </div>
@@ -223,7 +221,7 @@
             <div class="srow">
               <div class="srow-tx"><b>当前 Profile</b><span id="profilePathDesc">切换不同的底座 Profile（隔离会话、模型、认证与扩展）。</span></div>
               <div class="srow-ctl" style="gap:8px">
-                <div class="sel" id="profileSel" data-sel="Profile">omp-desktop <i>⌄</i>
+                <div class="sel" id="profileSel" data-sel="Profile">omp-desktop <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   <div class="menu" id="profileMenu">
                     <div class="mi" data-profile="omp-desktop"><span class="ck">✓</span>omp-desktop</div>
                   </div>
@@ -236,7 +234,7 @@
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>界面语言</b><span>选择应用 UI 的显示语言。目前仅提供简体中文。</span></div>
-              <div class="sel" id="langSel" data-sel="界面语言">简体中文 <i>⌄</i>
+              <div class="sel" id="langSel" data-sel="界面语言">简体中文 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 <div class="menu" id="langMenu">
                   <div class="mi" data-lang="zh-CN"><span class="ck">✓</span>简体中文</div>
                   <div class="mi disabled" data-lang="zh-TW">繁體中文<span class="sub">未实现</span></div>
@@ -246,7 +244,7 @@
             </div>
             <div class="srow">
               <div class="srow-tx"><b>主题</b><span>界面设置（深色 / 浅色 / 系统）。</span></div>
-              <div class="sel" id="genThemeSel">深色 <i>⌄</i>
+              <div class="sel" id="genThemeSel">深色 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 <div class="menu" id="genThemeMenu">
                   <div class="mi" data-th="dark">🌙 深色 <span class="ck"></span></div>
                   <div class="mi" data-th="light">☀️ 浅色 <span class="ck"></span></div>
@@ -325,7 +323,7 @@
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>界面主题</b><span>选择浅色、深色或跟随系统主题。</span></div>
-              <div class="sel" id="themeSel">🌙 深色 <i>⌄</i>
+              <div class="sel" id="themeSel">🌙 深色 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 <div class="menu" id="themeMenu">
                   <div class="mi" data-th="dark">🌙 深色 <span class="ck">✓</span></div>
                   <div class="mi" data-th="light">☀️ 浅色 <span class="ck"></span></div>
@@ -335,7 +333,7 @@
             </div>
             <div class="srow">
               <div class="srow-tx"><b>字体样式</b><span>全局字体族（代码块与 Git Diff 内容除外）；指定字体不可用时回退系统默认。</span></div>
-              <div class="sel" id="fontSel">系统默认 <i>⌄</i>
+              <div class="sel" id="fontSel">系统默认 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 <div class="menu" id="fontMenu">
                   <div class="mi" data-font="default"><span class="ck">✓</span>系统默认</div>
                   <div class="mi" data-font="pingfang"><span class="ck"></span>苹方 / PingFang SC</div>
@@ -360,7 +358,7 @@
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>浅色代码主题</b><span>浅色界面下代码内容使用的高亮主题。</span></div>
-              <div class="sel" id="codeLightSel">GitHub Light <i>⌄</i>
+              <div class="sel" id="codeLightSel">GitHub Light <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 <div class="menu">
                   <div class="mi" data-code-light="github"><span class="ck">✓</span>GitHub Light</div>
                 </div>
@@ -368,7 +366,7 @@
             </div>
             <div class="srow">
               <div class="srow-tx"><b>深色代码主题</b><span>深色界面下代码内容使用的高亮主题。</span></div>
-              <div class="sel" id="codeDarkSel">GitHub Dark <i>⌄</i>
+              <div class="sel" id="codeDarkSel">GitHub Dark <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 <div class="menu">
                   <div class="mi" data-code-dark="github"><span class="ck">✓</span>GitHub Dark</div>
                 </div>
@@ -499,11 +497,6 @@
           <div class="set-card" id="hooksList"><div class="srow"><div class="srow-tx"><span>加载中…</span></div></div></div>
         </div>
 
-        <div class="set-page hidden" id="pg-index">
-          <div class="set-tt">索引库</div>
-          <div class="set-note"><b>当前版本无法实现</b><span>ZCode 的索引库产品在 omp 中没有对应物。代码检索走 Agent 的 Grep/Find，不是独立索引服务。</span></div>
-        </div>
-
         <div class="set-page hidden" id="pg-stats">
           <div class="set-tt">使用统计 <span class="stag on">应用用量</span></div>
           <div class="set-group-desc">来自 omp-desktop profile 的会话 JSONL，不是智谱个人套餐账单。</div>
@@ -531,17 +524,6 @@
               <svg id="donut" viewBox="0 0 180 180" width="170" height="170"></svg>
               <div class="donut-legend" id="donutLegend"></div>
             </div>
-          </div>
-        </div>
-
-        <div class="set-page hidden" id="pg-guide">
-          <div class="set-tt">引导</div>
-          <div class="set-group-desc">omp 的 startup.setupWizard 是 TUI 向导。桌面端没有官方新手引导流程，下面是本应用的使用要点。</div>
-          <div class="set-card">
-            <div class="srow"><div class="srow-tx"><b>新建任务</b><span>左侧「新建任务」或 ⌘N，在当前项目目录开一个新会话。</span></div></div>
-            <div class="srow"><div class="srow-tx"><b>权限模式</b><span>输入区左侧：变更前确认 / 自动编辑 / 完全访问，对应 omp tools.approvalMode。</span></div></div>
-            <div class="srow"><div class="srow-tx"><b>模型与思考</b><span>输入区右侧切换当前会话模型与推理强度。可启用的模型在「模型设置」里勾选。</span></div></div>
-            <div class="srow"><div class="srow-tx"><b>打开设置</b><span>左下角齿轮，或 ⌘,</span></div></div>
           </div>
         </div>
 

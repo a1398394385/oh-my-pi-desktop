@@ -46,7 +46,11 @@ ensureThemeSync();
 const { getSupportedEfforts } = await import("@oh-my-pi/pi-catalog/model-thinking");
 const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry } =
   await import("@oh-my-pi/pi-coding-agent");
+const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");
 import { fetchSessionLimits } from "./limits/index.ts";
+
+// MCP 工具 schema token 估算缓存:tools roster 身份不变就不重算
+const mcpTokensCache = new WeakMap<object, number>();
 
 const defaultCwd = os.homedir();
 
@@ -77,6 +81,28 @@ type PoolEntry = {
   isGit: boolean;
 };
 const sessions = new Map<string, PoolEntry>(); // key = 前端持有的 sessionId
+
+// MCP 工具(mcp__ 前缀)schema token 单独估算;breakdown 的 systemToolsTokens 含全部工具,
+// 前端展示时减去即得纯内置系统工具。roster 身份不变就不重算。
+// 注:发布的 pi-coding-agent npm 包不含 modes/utils/context-usage,这里用
+// Tokenizer 直接数 wire schema JSON(approximate 模式),不引 SDK 内部模块。
+function estimateMcpToolsTokens(entry: PoolEntry): number {
+  const tools = entry.session.state?.tools;
+  if (!Array.isArray(tools)) return 0;
+  const cached = mcpTokensCache.get(tools);
+  if (cached !== undefined) return cached;
+  const model = entry.session.model;
+  if (!model) return 0;
+  const fragments: string[] = [];
+  for (const tool of tools) {
+    if (typeof tool?.name !== "string" || !tool.name.startsWith("mcp__")) continue;
+    fragments.push(JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }));
+  }
+  if (fragments.length === 0) return 0;
+  const tokens = new Tokenizer(model).countTokens(fragments);
+  mcpTokensCache.set(tools, tokens);
+  return tokens;
+}
 
 // ---------- 进程级底座（全进程一份，随 activeProfile 动态重载） ----------
 let agentDir = getAgentDir();
@@ -807,7 +833,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
               JSON.stringify({
                 type: "context_detail",
                 sessionId: msg.sessionId,
-                breakdown: b ?? null,
+                breakdown: b ? { ...b, mcpToolsTokens: estimateMcpToolsTokens(entry) } : null,
                 stats: {
                   tokens: st.tokens,
                   userMessages: st.userMessages,
