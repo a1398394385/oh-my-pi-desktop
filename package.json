@@ -6,7 +6,8 @@
     "smoke": "bun scripts/smoke.ts"
   },
   "dependencies": {
-    "@oh-my-pi/pi-coding-agent": "^18.2.5"
+    "@oh-my-pi/pi-coding-agent": "^18.2.5",
+    "tokscale": "^4.17.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
