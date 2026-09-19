@@ -353,8 +353,8 @@ body.resizing { user-select: none; cursor: col-resize; }
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
-  padding: 12px 14px 14px;
-  min-width: 360px;
+  padding: 12px 12px 14px;
+  min-width: 240px;
   font-size: 12.5px; color: var(--dim);
   pointer-events: none; /* 纯 hover 卡：不挡点击，避免环↔卡间的闪烁 */
 }

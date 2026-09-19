@@ -494,7 +494,7 @@ function showRingPop() {
   document.body.appendChild(ringPop);
   // 卡片底边对齐环顶：视觉坐标经 placeMenu 除以 zoomLevel 补偿（fixed + zoom 二次缩放坑）
   const r = $("ctxRing").getBoundingClientRect();
-  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 400), r.top - ringPop.offsetHeight - 8);
+  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 280), r.top - ringPop.offsetHeight - 8);
 }
 
 // 明细数据到达：鼠标仍悬停在环上才填充（移开即弃）
@@ -502,7 +502,7 @@ function fillCtxCard(detail) {
   if (!ringHovering || !ringPop) return;
   const r = $("ctxRing").getBoundingClientRect();
   ringPop.replaceWith((ringPop = buildCtxCard(detail)));
-  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 400), r.top - ringPop.offsetHeight - 8);
+  placeMenu(ringPop, Math.min(r.left, window.innerWidth - 280), r.top - ringPop.offsetHeight - 8);
 }
 
 $("ctxRing").addEventListener("mouseenter", () => {
