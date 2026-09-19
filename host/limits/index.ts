@@ -196,3 +196,17 @@ export async function fetchSessionLimits(
   limitsCache.set(ompProvider, { at: Date.now(), row });
   return { vendor: spec.vendor, label: spec.label, row };
 }
+
+// 启动预载/定时刷新:对给定 omp provider 列表拉取全部配额(写入同一 60s 缓存,
+// hover 的 get_limits 直接命中新鲜数据)。单供应商失败不影响其余。
+export async function refreshAllLimits(
+  authStorage: KeyResolver,
+  providers: Array<{ id: string; baseUrl: string }>
+): Promise<void> {
+  await Promise.allSettled(providers.map((p) => fetchSessionLimits(authStorage, p.id, p.baseUrl)));
+}
+
+// 模型管理页「添加供应商」视图的数据源:全部受支持的 omp provider id 及展示标签
+export function listAllProviders(): Array<{ id: string; label: string }> {
+  return Object.entries(VENDOR_SPECS).map(([id, spec]) => ({ id, label: spec.label }));
+}

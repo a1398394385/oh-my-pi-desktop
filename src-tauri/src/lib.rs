@@ -74,6 +74,7 @@ pub fn run() {
     let cell: WsUrlCell = Arc::new(Mutex::new(None));
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(cell.clone())
         .manage(child_cell.clone())
         .setup(move |app| {

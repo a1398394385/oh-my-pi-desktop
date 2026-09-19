@@ -12,7 +12,7 @@
     <aside id="sidebar" data-tauri-drag-region>
       <div class="nav">
         <div class="nav-item" id="navNew">
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="6.2" cy="6.2" r="4.4"/><path d="M9.6 9.6 13.4 13.4M6.2 4.4v3.6M4.4 6.2h3.6"/></svg>
+          <span data-icon="zoomIn"></span>
           新建任务 <span class="kbd">⌘ N</span>
         </div>
       </div>
@@ -27,13 +27,13 @@
       <div id="tasklist"></div>
 
       <div class="side-foot">
-        <div class="avatar">🐼</div>
+        <div class="avatar"><img src="app-icon.png" alt=""></div>
         <div class="sf-tx">
-          <span class="uname">omp-desktop</span>
+          <span class="uname" id="sideProfileName">omp-desktop</span>
         </div>
         <span class="sp"></span>
         <button class="icon-btn" id="settingsBtn" title="设置">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span data-icon="settings"></span>
         </button>
       </div>
     </aside>
@@ -43,19 +43,19 @@
     <main id="main">
       <div class="chat-head" data-tauri-drag-region>
         <button class="icon-btn" title="收起侧边栏 (⌘B)" id="sidebarToggle">
-          <svg width="14" height="13" viewBox="0 0 14 13" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1.5" width="12" height="10" rx="2"/><path d="M4.5 1.5v10"/></svg>
+          <span data-icon="collapseLeft"></span>
         </button>
-        <svg width="15" height="13" viewBox="0 0 15 13" fill="none" stroke="currentColor" stroke-width="1.3" style="color:var(--faint)"><path d="M1.5 3h3l1 1.5h8v6.5h-12z"/></svg>
+        <span data-icon="folderOld" style="color:var(--faint)"></span>
         <span class="ttl" id="chatTitle">选择左侧会话或新建任务</span>
         <span class="sp"></span>
-        <button class="icon-btn" title="展开侧边面板" id="panelToggle">
-          <svg width="14" height="13" viewBox="0 0 14 13" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1.5" width="12" height="10" rx="2"/><path d="M9.5 1.5v10"/></svg>
+        <button class="icon-btn" title="收起侧边面板" id="panelToggle">
+          <span data-icon="collapseRight"></span>
         </button>
       </div>
 
       <div class="changebar hidden" id="changebar">
         <span class="cb-tt">
-          <svg id="chv" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="transition:transform .15s"><path d="M2.5 3.5 5 6l2.5-2.5"/></svg>
+          <span id="chv" data-icon="chevronSmall" style="transition:transform .15s"></span>
           <span id="cbText"></span>
         </span>
       </div>
@@ -67,7 +67,7 @@
             <b>进程</b><span class="frac" id="todoFrac"></span>
             <span class="sp"></span>
             <button class="icon-btn" id="scCollapse" title="收起为胶囊">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5h3.5V5M11.5 1.5 7.5 5.5M5 11.5H1.5V8M1.5 11.5l4-4"/></svg>
+              <span data-icon="collapseCard"></span>
             </button>
           </div>
           <div id="todoList"></div>
@@ -76,31 +76,51 @@
         <button id="capsule" class="hidden" title="展开待办"></button>
       </div>
 
-      <!-- ══ 新建会话页面（双层重叠卡片：外层 #222222 拓展卡片承载选择器，内层为输入框卡片） ══ -->
+      <!-- ══ 新建会话页面（延展卡片：外层 #222222 卡片承载选择器与输入框，单一边框勾勒整体轮廓） ══ -->
       <div id="welcomeScreen" class="welcome-screen hidden">
         <div class="welcome-card">
           <div class="welcome-title" id="welcomeTitle">下午好呀，接下来交给我吧</div>
 
-          <!-- 双卡片重叠延展容器（延展卡片在上方，输入框组件 composer 在新建任务时挂载于此） -->
+          <!-- 延展卡片容器（外卡为整体唯一轮廓，输入框组件 composer 在新建任务时挂载进外卡内部） -->
           <div class="wb-wrapper" id="wbContainer">
-            <!-- 第二张卡片（背景 #222222，沿输入框卡片左右边向上延展） -->
-            <div class="wb-back-card">
+            <!-- 外层延展卡片（背景 #222222，承载选择器行与输入框，单一边框勾勒整体轮廓） -->
+            <div class="wb-back-card" id="wbBackCard">
               <div class="wb-head">
                 <button class="wb-pill" id="wbProjectBtn" title="选择项目">
-                  <svg width="14" height="13" viewBox="0 0 15 13" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 3h3l1 1.5h8v6.5h-12z"/></svg>
+                  <span class="wb-proj-clear" id="wbProjClear" title="不在项目中工作"><span data-icon="xmark" data-size="11"></span></span>
                   <span id="wbProjectName">项目</span>
-                  <span class="caret">⌄</span>
+                  <span class="caret caret-svg" data-icon="caret"></span>
                 </button>
 
                 <button class="wb-pill hidden" id="wbBranchBtn" title="选择分支">
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="11" cy="6" r="2"/><path d="M5 6v4M5 7a4 4 0 0 1 4 4"/></svg>
+                  <span data-icon="branch"></span>
                   <span id="wbBranchName">main</span>
-                  <span class="caret">⌄</span>
+                  <span class="caret caret-svg" data-icon="caret"></span>
                 </button>
               </div>
 
               <!-- 项目与分支菜单挂载在上层卡片内 -->
-              <div class="menu" id="wbProjectMenu"></div>
+              <div class="menu wb-project-menu" id="wbProjectMenu">
+                <div class="wb-proj-search">
+                  <span class="wb-proj-search-icon"><span data-icon="search" data-size="13"></span></span>
+                  <input type="text" class="wb-proj-search-input" id="wbProjSearchInput" placeholder="搜索工作区" autocomplete="off" />
+                </div>
+                <div class="wb-proj-list" id="wbProjList"></div>
+                <div class="wb-proj-actions">
+                  <div class="wb-proj-action-item" id="wbProjOpenFolder" title="打开文件夹">
+                    <span class="wb-proj-action-ic"><span data-icon="folderPlus" data-size="14"></span></span>
+                    <span class="wb-proj-action-tx">打开文件夹</span>
+                  </div>
+                  <div class="wb-proj-action-item" id="wbProjRemote" title="远程连接">
+                    <span class="wb-proj-action-ic"><span data-icon="cloud" data-size="14"></span></span>
+                    <span class="wb-proj-action-tx">远程连接</span>
+                  </div>
+                  <div class="wb-proj-action-item" id="wbProjNoProject" title="不在项目中工作">
+                    <span class="wb-proj-action-ic"><span data-icon="comment" data-size="14"></span></span>
+                    <span class="wb-proj-action-tx">不在项目中工作</span>
+                  </div>
+                </div>
+              </div>
               <div class="menu" id="wbBranchMenu"></div>
             </div>
           </div>
@@ -109,16 +129,28 @@
 
       <div id="stream"></div>
 
+      <!-- 消息轨道：主对话区左侧竖向刻度条，每条用户消息一道刻度，hover 弹出消息卡片 -->
+      <div id="msgRail" hidden></div>
+
       <div class="dock">
         <div id="composer">
+        <div class="attach-row" id="attachRow" hidden></div>
         <textarea id="input" rows="1" placeholder="发消息…（Enter 发送）"></textarea>
         <div class="cbar">
           <button class="icon-btn plus-btn" id="plusBtn" title="添加上下文">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>
+            <span data-icon="plus"></span>
           </button>
-          <button class="pill-btn" id="modeBtn">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6.5 1.4 11 3.2v3.1c0 3-1.9 4.7-4.5 5.3-2.6-.6-4.5-2.3-4.5-5.3V3.2z"/></svg>
-            <span id="modeLabel">变更前确认</span> <span style="font-size:var(--ui-fs-xs)">⌄</span>
+          <button class="pill-btn" id="modeBtn" title="权限模式">
+            <span id="modeIcon" data-icon="permAsk"></span>
+            <span id="modeLabel">手动批准</span> <span class="caret-svg" data-icon="caret" style="color:var(--faint)"></span>
+          </button>
+          <button class="pill-btn bg-task-btn" id="bgTaskBtn" title="后台命令">
+            <span data-icon="termBox" data-size="18"></span>
+            <span class="bg-task-num" id="bgTaskNum">0</span>
+          </button>
+          <button class="pill-btn bg-task-btn" id="bgSubagentBtn" title="子智能体">
+            <span data-icon="agents" data-size="18"></span>
+            <span class="bg-task-num" id="bgSubagentNum">0</span>
           </button>
           <span class="sp"></span>
           <span class="ctx-ring" id="ctxRing" hidden title="">
@@ -127,35 +159,36 @@
               <circle class="fill" id="ctxRingFill" cx="8" cy="8" r="6.5" transform="rotate(-90 8 8)"/>
             </svg>
           </span>
-          <button class="pill-btn" id="modelBtn"><span id="modelLabel">模型</span> <span style="font-size:var(--ui-fs-xs);color:var(--faint)">⌄</span></button>
-          <button class="pill-btn" id="thinkBtn">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7 1.5a4 4 0 0 0-4 4c0 1.5.6 2.3 1.2 3.1.4.6.8 1.2.8 2.1V12h4v-1.3c0-.9.4-1.5.8-2.1.6-.8 1.2-1.6 1.2-3.1a4 4 0 0 0-4-4Z"/><path d="M5.5 12.8h3"/></svg>
-            <span id="thinkLabel">思考</span> <span style="font-size:var(--ui-fs-xs);color:var(--faint)">⌄</span>
+          <button class="pill-btn" id="modelBtn" title="切换模型"><span id="modelIcon" data-icon="box"></span><span id="modelLabel">模型</span> <span class="caret-svg" data-icon="caret" style="color:var(--faint)"></span></button>
+          <button class="pill-btn" id="thinkBtn" title="思考级别">
+            <span data-icon="bulb"></span>
+            <span id="thinkLabel">思考</span> <span class="caret-svg" data-icon="caret" style="color:var(--faint)"></span>
           </button>
           <button class="send" id="sendBtn" title="发送">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 10.5V2M2.8 6 6.5 2.3 10.2 6"/></svg>
+            <span data-icon="upload"></span>
           </button>
         </div>
         <!-- 权限模式（omp 三值，大行样式） -->
         <div class="menu mode" id="modeMenu">
           <div class="mi big" data-mode="always-ask">
-            <span class="mi-ic">✋</span>
-            <span class="mi-tx"><span class="mi-tt">变更前确认</span><span class="mi-desc">改文件和执行命令前都先问我。</span></span>
+            <span class="mi-ic"><span data-icon="permAsk"></span></span>
+            <span class="mi-tx"><span class="mi-tt">手动批准</span><span class="mi-desc">执行需要授权的操作前先询问</span></span>
             <span class="ck"></span>
           </div>
           <div class="mi big" data-mode="write">
-            <span class="mi-ic">🛡</span>
-            <span class="mi-tx"><span class="mi-tt">自动编辑</span><span class="mi-desc">自动改文件，命令执行需确认。</span></span>
+            <span class="mi-ic"><span data-icon="permDefault"></span></span>
+            <span class="mi-tx"><span class="mi-tt">默认</span><span class="mi-desc">常规操作自动执行，关键决定会询问</span></span>
             <span class="ck"></span>
           </div>
           <div class="mi big" data-mode="yolo">
-            <span class="mi-ic">🛡</span>
-            <span class="mi-tx"><span class="mi-tt">完全访问</span><span class="mi-desc">全部自动执行，减少确认。</span></span>
+            <span class="mi-ic"><span data-icon="shieldWarn"></span></span>
+            <span class="mi-tx"><span class="mi-tt">全自动</span><span class="mi-desc">所有操作无需确认直接执行</span></span>
             <span class="ck"></span>
           </div>
         </div>
         <!-- 模型（宿主 enabledModels 过滤后下发，按 provider 分组） -->
         <div class="menu model" id="modelMenu"></div>
+        <input type="file" id="filePicker" multiple hidden />
         <!-- 思考级别（只列当前模型支持的档位） -->
         <div class="menu" id="thinkMenu">
           <div class="mh">推理强度（随当前模型能力变化）</div>
@@ -169,17 +202,14 @@
     <aside id="right" class="collapsed">
       <div class="rtoolbar" data-tauri-drag-region>
         <button class="icon-btn logo" title="当前 project">
-          <svg width="17" height="17" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-icon="logo"></span>
           <span id="wsName" style="font-size:var(--ui-fs-xs);color:var(--dim)">—</span>
         </button>
       </div>
 
       <div id="sidepanel">
         <div class="sp-head">
-          <div class="seg" id="rightSeg">
-            <button data-tab="subagent">子代理</button>
-            <button data-tab="gitdiff">Git Diff</button>
-          </div>
+          <div class="rtabs" id="rightTabs"></div>
           <span class="sp"></span>
           <button class="icon-btn" id="gitRefresh" title="刷新" style="display:none">⟳</button>
           <button class="icon-btn" id="gitViewToggle" title="切换树/平铺" style="display:none">树</button>
@@ -191,37 +221,38 @@
     <!-- ══ 设置中心（全屏 overlay，样式取自 prototype/session-view.html） ══ -->
     <div id="settings" class="hidden">
       <nav id="setNav" data-tauri-drag-region>
-        <button type="button" class="set-back" id="setBack"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>返回工作区</button>
+        <button type="button" class="set-back" id="setBack"><span data-icon="back"></span>返回工作区</button>
         <div class="set-sec">基础设置</div>
-        <button type="button" class="set-item on" data-page="pg-general"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="10" cy="16" r="2.2"/></svg></span>常规</button>
-        <button type="button" class="set-item" data-page="pg-appearance"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9c0-1.1-.9-2-2-2h-2.2a2.3 2.3 0 0 1-2.3-2.3V5.5c0-1.1-.9-2-2-2.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/></svg></span>外观</button>
-        <button type="button" class="set-item" data-page="pg-model"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="M9 1.5v3M15 1.5v3M9 19.5v3M15 19.5v3M1.5 9h3M1.5 15h3M19.5 9h3M19.5 15h3"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg></span>模型设置</button>
-        <button type="button" class="set-item" data-page="pg-browser"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.7-3.8-9s1.3-6.4 3.8-9z"/></svg></span>浏览器控制</button>
-        <button type="button" class="set-item" data-page="pg-computer"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8.5 21h7M12 17v4"/></svg></span>电脑控制</button>
+        <button type="button" class="set-item on" data-page="pg-general"><span class="si"><span data-icon="sliders"></span></span>常规</button>
+        <button type="button" class="set-item" data-page="pg-appearance"><span class="si"><span data-icon="palette"></span></span>外观</button>
+        <button type="button" class="set-item" data-page="pg-model"><span class="si"><span data-icon="box"></span></span>模型设置</button>
+        <button type="button" class="set-item" data-page="pg-browser"><span class="si"><span data-icon="globe"></span></span>浏览器控制</button>
+        <button type="button" class="set-item" data-page="pg-computer"><span class="si"><span data-icon="monitor"></span></span>电脑控制</button>
+        <button type="button" class="set-item" data-page="pg-keyboard"><span class="si"><span data-icon="keyboard"></span></span>键盘快捷键</button>
         <div class="set-sec">Agent 能力</div>
-        <button type="button" class="set-item" data-page="pg-memory"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a7 7 0 0 1 7 7c0 2.4-1.2 3.9-2.3 5.2-.9 1-1.7 2-1.7 3.3v.5H9v-.5c0-1.3-.8-2.3-1.7-3.3C6.2 14.9 5 13.4 5 11a7 7 0 0 1 7-7z"/><path d="M10 22.5h4"/></svg></span>记忆</button>
-        <button type="button" class="set-item" data-page="pg-agents"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="2.2"/><circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="8.5" r="2.2"/><path d="M6 7.7v8.6M6 12.5a6 6 0 0 1 6-6h3.6"/></svg></span>子智能体</button>
-        <button type="button" class="set-item" data-page="pg-plugins"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 21 7.5v9l-9 5-9-5v-9z"/><path d="M12 11.5 21 7.5M12 11.5v10M12 11.5 3 7.5"/></svg></span>插件</button>
-        <button type="button" class="set-item" data-page="pg-mcp"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="13" width="18" height="7" rx="1.8"/><path d="M6.5 7.5h.01M6.5 16.5h.01"/></svg></span>MCP 服务器</button>
-        <button type="button" class="set-item" data-page="pg-skills"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg></span>技能</button>
-        <button type="button" class="set-item" data-page="pg-commands"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 7 4.5 4.5L5 16M12 17h7"/></svg></span>命令</button>
-        <button type="button" class="set-item" data-page="pg-hooks"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5v10.8a4.2 4.2 0 1 1-3.2 4.1M9 3.5c5.5 0 9 3 10.5 7.5"/><path d="m16.5 8.5 3 2.5 2-3.5"/></svg></span>钩子</button>
+        <button type="button" class="set-item" data-page="pg-memory"><span class="si"><span data-icon="memory"></span></span>记忆</button>
+        <button type="button" class="set-item" data-page="pg-agents"><span class="si"><span data-icon="agents"></span></span>子智能体</button>
+        <button type="button" class="set-item" data-page="pg-plugins"><span class="si"><span data-icon="plugins"></span></span>插件</button>
+        <button type="button" class="set-item" data-page="pg-mcp"><span class="si"><span data-icon="mcp"></span></span>MCP 服务器</button>
+        <button type="button" class="set-item" data-page="pg-skills"><span class="si"><span data-icon="skills"></span></span>技能</button>
+        <button type="button" class="set-item" data-page="pg-commands"><span class="si"><span data-icon="commands"></span></span>命令</button>
+        <button type="button" class="set-item" data-page="pg-hooks"><span class="si"><span data-icon="hook"></span></span>钩子</button>
         <div class="set-sec">数据与统计</div>
-        <button type="button" class="set-item" data-page="pg-stats"><span class="si"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg></span>使用统计</button>
+        <button type="button" class="set-item" data-page="pg-stats"><span class="si"><span data-icon="stats"></span></span>使用统计</button>
         <div class="set-foot">
-          <span class="avatar">🐼</span><span class="uname" id="setFootProfile">omp-desktop</span>
+          <span class="avatar"><img src="app-icon.png" alt=""></span><span class="uname" id="setFootProfile">omp-desktop</span>
         </div>
       </nav>
       <div id="setBody">
 
         <div class="set-page" id="pg-general">
           <div class="set-tt">常规 <span class="stag" id="langTag">简体中文</span></div>
-          <div class="set-group-tt" style="margin-top:20px">Profile 环境</div>
+          <div class="set-group-tt">Profile 环境</div>
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>当前 Profile</b><span id="profilePathDesc">切换不同的底座 Profile（隔离会话、模型、认证与扩展）。</span></div>
               <div class="srow-ctl" style="gap:8px">
-                <div class="sel" id="profileSel" data-sel="Profile">omp-desktop <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                <div class="sel" id="profileSel" data-sel="Profile">omp-desktop <span class="caret-svg" data-icon="caret"></span>
                   <div class="menu" id="profileMenu">
                     <div class="mi" data-profile="omp-desktop"><span class="ck">✓</span>omp-desktop</div>
                   </div>
@@ -234,7 +265,7 @@
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>界面语言</b><span>选择应用 UI 的显示语言。目前仅提供简体中文。</span></div>
-              <div class="sel" id="langSel" data-sel="界面语言">简体中文 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <div class="sel" id="langSel" data-sel="界面语言">简体中文 <span class="caret-svg" data-icon="caret"></span>
                 <div class="menu" id="langMenu">
                   <div class="mi" data-lang="zh-CN"><span class="ck">✓</span>简体中文</div>
                   <div class="mi disabled" data-lang="zh-TW">繁體中文<span class="sub">未实现</span></div>
@@ -244,7 +275,7 @@
             </div>
             <div class="srow">
               <div class="srow-tx"><b>主题</b><span>界面设置（深色 / 浅色 / 系统）。</span></div>
-              <div class="sel" id="genThemeSel">深色 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <div class="sel" id="genThemeSel">深色 <span class="caret-svg" data-icon="caret"></span>
                 <div class="menu" id="genThemeMenu">
                   <div class="mi" data-th="dark">🌙 深色 <span class="ck"></span></div>
                   <div class="mi" data-th="light">☀️ 浅色 <span class="ck"></span></div>
@@ -301,9 +332,9 @@
               <div class="srow-tx"><b>保持电脑运行</b><span>任务执行期间用 caffeinate 阻止系统睡眠（macOS）。</span></div>
               <div class="tg" id="tgSleep"><i></i></div>
             </div>
-            <div class="srow unavailable">
-              <div class="srow-tx"><b>提问自动继续</b><span>omp 只有 ask.timeout，没有 ZCode 式「停下来自动继续」。</span></div>
-              <div class="tg disabled"><i></i></div>
+            <div class="srow">
+              <div class="srow-tx"><b>提问超时时间</b><span>omp ask.timeout：提问无人响应 N 秒后自动选择推荐项；0 = 永不超时（默认）。</span></div>
+              <div class="srow-ctl"><input class="inp" id="askTimeoutInput" type="number" min="0" step="1" placeholder="0"><button class="save-btn" id="askTimeoutSave">保存</button></div>
             </div>
             <div class="srow unavailable">
               <div class="srow-tx"><b>完整保留模型 I/O</b><span>会话已以 JSONL 落盘，没有单独的完整 I/O 审计开关。</span></div>
@@ -318,12 +349,12 @@
 
         <div class="set-page hidden" id="pg-appearance">
           <div class="set-tt">外观</div>
-          <div class="set-group-tt" style="margin-top:20px">界面设置</div>
+          <div class="set-group-tt">界面设置</div>
           <div class="set-group-desc">设置应用主题和界面文字大小。</div>
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>界面主题</b><span>选择浅色、深色或跟随系统主题。</span></div>
-              <div class="sel" id="themeSel">🌙 深色 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <div class="sel" id="themeSel">🌙 深色 <span class="caret-svg" data-icon="caret"></span>
                 <div class="menu" id="themeMenu">
                   <div class="mi" data-th="dark">🌙 深色 <span class="ck">✓</span></div>
                   <div class="mi" data-th="light">☀️ 浅色 <span class="ck"></span></div>
@@ -333,7 +364,7 @@
             </div>
             <div class="srow">
               <div class="srow-tx"><b>字体样式</b><span>全局字体族（代码块与 Git Diff 内容除外）；指定字体不可用时回退系统默认。</span></div>
-              <div class="sel" id="fontSel">系统默认 <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <div class="sel" id="fontSel">系统默认 <span class="caret-svg" data-icon="caret"></span>
                 <div class="menu" id="fontMenu">
                   <div class="mi" data-font="default"><span class="ck">✓</span>系统默认</div>
                   <div class="mi" data-font="pingfang"><span class="ck"></span>苹方 / PingFang SC</div>
@@ -358,7 +389,7 @@
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>浅色代码主题</b><span>浅色界面下代码内容使用的高亮主题。</span></div>
-              <div class="sel" id="codeLightSel">GitHub Light <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <div class="sel" id="codeLightSel">GitHub Light <span class="caret-svg" data-icon="caret"></span>
                 <div class="menu">
                   <div class="mi" data-code-light="github"><span class="ck">✓</span>GitHub Light</div>
                 </div>
@@ -366,7 +397,7 @@
             </div>
             <div class="srow">
               <div class="srow-tx"><b>深色代码主题</b><span>深色界面下代码内容使用的高亮主题。</span></div>
-              <div class="sel" id="codeDarkSel">GitHub Dark <svg class="caret-svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <div class="sel" id="codeDarkSel">GitHub Dark <span class="caret-svg" data-icon="caret"></span>
                 <div class="menu">
                   <div class="mi" data-code-dark="github"><span class="ck">✓</span>GitHub Dark</div>
                 </div>
@@ -415,10 +446,64 @@
           </div>
         </div>
 
+        <div class="set-page hidden" id="pg-keyboard">
+          <div class="set-tt">键盘快捷键</div>
+          <div class="set-group-tt">通用</div>
+          <div class="set-group-desc">全局快捷键，在任何界面都可以使用。</div>
+          <div class="set-card">
+            <div class="srow">
+              <div class="srow-tx"><b>新建任务</b></div>
+              <div class="sc-keys"><span class="sc-key">⌘</span><span class="sc-key">N</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx"><b>切换左侧边栏</b></div>
+              <div class="sc-keys"><span class="sc-key">⌘</span><span class="sc-key">B</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx"><b>打开 / 关闭设置</b></div>
+              <div class="sc-keys"><span class="sc-key">⌘</span><span class="sc-key">,</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx"><b>关闭设置</b></div>
+              <div class="sc-keys"><span class="sc-key">Esc</span></div>
+            </div>
+          </div>
+          <div class="set-group-tt">输入框</div>
+          <div class="set-group-desc">会话输入框内的按键行为。</div>
+          <div class="set-card">
+            <div class="srow">
+              <div class="srow-tx"><b>发送消息</b></div>
+              <div class="sc-keys"><span class="sc-key">↵</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx"><b>换行</b></div>
+              <div class="sc-keys"><span class="sc-key">⇧</span><span class="sc-key">↵</span></div>
+            </div>
+          </div>
+          <div class="set-group-tt">界面缩放</div>
+          <div class="set-group-desc">调整整个界面的显示比例。</div>
+          <div class="set-card">
+            <div class="srow">
+              <div class="srow-tx"><b>放大</b></div>
+              <div class="sc-keys"><span class="sc-key">⌘</span><span class="sc-key">+</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx"><b>缩小</b></div>
+              <div class="sc-keys"><span class="sc-key">⌘</span><span class="sc-key">−</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx"><b>重置缩放</b></div>
+              <div class="sc-keys"><span class="sc-key">⌘</span><span class="sc-key">0</span></div>
+            </div>
+          </div>
+        </div>
+
         <div class="set-page hidden" id="pg-model">
           <div class="set-tt">模型设置</div>
           <div class="set-desc-row">
-            <span class="set-group-desc" style="margin:0">管理本机已认证供应商下的模型。启用后可在聊天时选择。</span>
+            <span class="set-desc">管理自定义模型供应商，配置后可在聊天时选择使用。</span>
+            <span class="sp"></span>
+            <button type="button" class="icon-btn pg-refresh" data-refresh="models" title="刷新"><span data-icon="refresh" data-size="17"></span></button>
             <button class="add-btn" id="addProviderBtn" type="button">＋ 添加供应商</button>
           </div>
           <div class="set-card mp">
@@ -436,7 +521,6 @@
 
         <div class="set-page hidden" id="pg-computer">
           <div class="set-tt">电脑控制</div>
-          <div class="set-group-desc">对应 omp <code>computer.enabled</code>。ZCode 的 CUA helper 独立应用与输入框电脑操作按钮无法提供。</div>
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>启用电脑控制</b><span>允许 Agent 使用截图、输入、辅助功能等电脑控制工具。新会话后生效。</span></div>
@@ -451,7 +535,6 @@
 
         <div class="set-page hidden" id="pg-memory">
           <div class="set-tt">记忆</div>
-          <div class="set-group-desc">工作区记忆后端写入 omp <code>memory.backend</code>。下方列出 profile 目录中的记忆文件。</div>
           <div class="set-card">
             <div class="srow">
               <div class="srow-tx"><b>工作区记忆</b><span>关闭 / 本地总结管线。Hindsight、Mnemopi、Sharpshooter 需额外服务，这里不提供切换。</span></div>
@@ -463,9 +546,29 @@
         </div>
 
         <div class="set-page hidden" id="pg-agents">
-          <div class="set-tt">子智能体</div>
-          <div class="set-note"><b>部分可用</b><span>运行中的子代理已在右栏展示。设置页只能列出磁盘上的 agents 定义，不能新建/删除/改模型——宿主没有对应 RPC，且会话使用私有 AgentRegistry。</span></div>
-          <div class="set-card" id="agentsList"><div class="srow"><div class="srow-tx"><span>加载中…</span></div></div></div>
+          <div class="set-tt">子智能体<button type="button" class="icon-btn pg-refresh" data-refresh="assets" title="刷新"><span data-icon="refresh" data-size="17"></span></button></div>
+          <div class="set-note"><b>编辑磁盘定义</b><span>左上角切换作用域后，点击条目读取并编辑该级 agent 定义（Markdown + YAML frontmatter），保存后新派生的子代理立即生效。三级目录：全局 <code>~/.omp/agent/agents</code>、当前 Profile <code>~/.omp/profiles/&lt;profile&gt;/agent/agents</code>、项目 <code>&lt;项目&gt;/.omp/agents</code>。omp 加载优先级：项目 &gt; Profile &gt; 内置；内置 agent 打包在 omp 内，不在此列。</span></div>
+          <div class="agents-bar">
+            <div class="sel" id="agentScopeSel"><span id="agentScopeLabel">Profile</span> <span class="caret-svg" data-icon="caret"></span>
+              <div class="menu" id="agentScopeMenu"></div>
+            </div>
+            <span class="agents-bar-path" id="agentsScopePath"></span>
+          </div>
+          <div class="agents-wrap">
+            <div class="set-card" id="agentsList"><div class="srow"><div class="srow-tx"><span>加载中…</span></div></div></div>
+            <div class="set-card agent-editor hidden" id="agentEditor">
+              <div class="ae-head">
+                <b id="aeName">—</b>
+                <span id="aePath"></span>
+                <span class="sp"></span>
+                <input class="inp" id="aeNewName" placeholder="新 agent 名称">
+                <button type="button" class="add-btn" id="aeNew">新建</button>
+                <button type="button" class="save-btn" id="aeSave">保存</button>
+              </div>
+              <textarea id="aeText" spellcheck="false"></textarea>
+              <div class="ae-status" id="aeStatus"></div>
+            </div>
+          </div>
         </div>
 
         <div class="set-page hidden" id="pg-plugins">
@@ -474,20 +577,137 @@
         </div>
 
         <div class="set-page hidden" id="pg-mcp">
-          <div class="set-tt">MCP 服务器</div>
-          <div class="set-note"><b>当前版本无法启用</b><span>宿主创建会话时设置了 <code>enableMCP: false</code>。下方若有列表，来自 profile 的 mcp.json，不会连上。</span></div>
-          <div class="set-card" id="mcpList"><div class="srow"><div class="srow-tx"><span>加载中…</span></div></div></div>
+          <div class="mcp-header">
+            <div class="mcp-tt">MCP 服务器</div>
+          </div>
+
+          <div class="mcp-bar-primary">
+            <div class="mcp-scope-wrap">
+              <div class="sel mcp-scope-sel" id="mcpScopeSel">
+                <button type="button" class="mcp-scope-btn" id="mcpScopeBtn">
+                  <span class="mcp-scope-icon" data-icon="folder" data-size="14"></span>
+                  <span id="mcpScopeLabel">全部工作区</span>
+                  <span class="caret-svg" data-icon="caret" data-size="10"></span>
+                </button>
+                <div class="menu" id="mcpScopeMenu"></div>
+              </div>
+              <span class="mcp-divider">|</span>
+              <span class="mcp-count-stat" id="mcpTotalCount">MCP 0</span>
+            </div>
+            <div class="mcp-search-wrap">
+              <span class="mcp-search-icon" data-icon="search" data-size="13"></span>
+              <input type="text" class="mcp-search-input" id="mcpSearchInput" placeholder="搜索 MCP 服务器..." spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+
+          <div class="mcp-bar-secondary">
+            <div class="mcp-installed-stat" id="mcpInstalledLabel">已安装 0</div>
+            <div class="mcp-actions-wrap">
+              <div class="sel" id="mcpMoreSel">
+                <button type="button" class="mcp-btn-icon" id="mcpMoreBtn" title="更多选项">
+                  <span data-icon="dots" data-size="14"></span>
+                </button>
+                <div class="menu" id="mcpMoreMenu">
+                  <div class="mi" id="miOpenCurrentMcpConfig">
+                    <span class="mi-icon" data-icon="file" data-size="13"></span>
+                    <span class="mi-label">打开当前 mcp.json 配置</span>
+                  </div>
+                  <div class="mi" id="miOpenUserMcpConfig">
+                    <span class="mi-icon" data-icon="scopeProfile" data-size="13"></span>
+                    <span class="mi-label">打开用户全局配置 (~/.omp)</span>
+                  </div>
+                  <div class="sep"></div>
+                  <div class="mi" id="miRetestAllMcp">
+                    <span class="mi-icon" data-icon="rotateRight" data-size="13"></span>
+                    <span class="mi-label">重新测试所有服务器连接</span>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="icon-btn pg-refresh" id="mcpRefreshBtn" title="刷新">
+                <span data-icon="refresh" data-size="17"></span>
+              </button>
+              <button type="button" class="mcp-btn-new" id="mcpNewBtn">
+                <span data-icon="plus" data-size="13"></span>
+                <span>新建</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mcp-list-wrap">
+            <div class="mcp-card-list" id="mcpServerList">
+              <div class="mcp-empty-row"><span>加载中…</span></div>
+            </div>
+          </div>
+          <!-- MCP 新建/编辑：点击行或「新建」按钮，在列表行下方向下延展编辑表单（app.js 动态生成） -->
         </div>
 
         <div class="set-page hidden" id="pg-skills">
-          <div class="set-tt">技能</div>
-          <div class="set-group-desc">列出 profile 下 <code>skills/*/SKILL.md</code>。没有启用/删除 RPC，开关不会改磁盘。</div>
-          <div class="set-card" id="skillsList"><div class="srow"><div class="srow-tx"><span>加载中…</span></div></div></div>
+          <div class="skills-header">
+            <div class="skills-tt">技能</div>
+          </div>
+
+          <div class="skills-bar-primary">
+            <div class="skills-scope-wrap">
+              <div class="sel skills-scope-sel" id="skillScopeSel">
+                <button type="button" class="skills-scope-btn" id="skillScopeBtn">
+                  <span class="skills-scope-icon" data-icon="laptop" data-size="14"></span>
+                  <span id="skillScopeLabel">用户</span>
+                  <span class="caret-svg" data-icon="caret" data-size="10"></span>
+                </button>
+                <div class="menu" id="skillScopeMenu"></div>
+              </div>
+              <span class="skills-divider">|</span>
+              <span class="skills-count-stat" id="skillsTotalCount">技能 0</span>
+            </div>
+            <div class="skills-search-wrap">
+              <span class="skills-search-icon" data-icon="search" data-size="13"></span>
+              <input type="text" class="skills-search-input" id="skillsSearchInput" placeholder="搜索技能..." spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+
+          <div class="skills-bar-secondary">
+            <div class="skills-installed-stat" id="skillsInstalledLabel">已安装 0</div>
+            <div class="skills-actions-wrap">
+              <div class="sel" id="skillsMoreSel">
+                <button type="button" class="skills-btn-icon" id="skillsMoreBtn" title="更多选项">
+                  <span data-icon="dots" data-size="14"></span>
+                </button>
+                <div class="menu" id="skillsMoreMenu">
+                  <div class="mi" id="miOpenSkillsDir">
+                    <span class="mi-icon" data-icon="folder" data-size="13"></span>
+                    <span class="mi-label">打开当前技能目录</span>
+                  </div>
+                  <div class="sep"></div>
+                  <div class="mi" id="miEnableAllSkills">
+                    <span class="mi-icon" data-icon="permDefault" data-size="13"></span>
+                    <span class="mi-label">全部启用</span>
+                  </div>
+                  <div class="mi" id="miDisableAllSkills">
+                    <span class="mi-icon" data-icon="shield" data-size="13"></span>
+                    <span class="mi-label">全部禁用</span>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="icon-btn pg-refresh" id="skillsRefreshBtn" title="刷新">
+                <span data-icon="refresh" data-size="17"></span>
+              </button>
+              <button type="button" class="skills-btn-new" id="skillsNewBtn">
+                <span data-icon="plus" data-size="13"></span>
+                <span>新建</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="skills-list-wrap">
+            <div class="skills-card-list" id="skillsList">
+              <div class="skill-empty-row"><span>加载中…</span></div>
+            </div>
+          </div>
+          <!-- 技能编辑：点击行向下延展编辑区（app.js 动态生成） -->
         </div>
 
         <div class="set-page hidden" id="pg-commands">
           <div class="set-tt">命令</div>
-          <div class="set-group-desc">自定义斜杠命令来自 <code>commands/</code>。没有新建/编辑表单。</div>
           <div class="set-card" id="commandsList"><div class="srow"><div class="srow-tx"><span>加载中…</span></div></div></div>
         </div>
 
@@ -499,7 +719,6 @@
 
         <div class="set-page hidden" id="pg-stats">
           <div class="set-tt">使用统计 <span class="stag on">应用用量</span></div>
-          <div class="set-group-desc">来自 omp-desktop profile 的会话 JSONL，不是智谱个人套餐账单。</div>
           <div class="set-card stats" id="statsCards">
             <div class="st"><b id="stTokens">—</b><span>累计 Token 数</span></div>
             <div class="st"><b id="stPeak">—</b><span>峰值 Token 数</span></div>
@@ -532,6 +751,8 @@
 
     <div id="toast" class="hidden"></div>
     <script src="vendor/diff2html.min.js"></script>
+    <script src="fa-icons.js"></script>
+    <script src="icons.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
