@@ -7,10 +7,37 @@
 //   与用户 CLI 的 ~/.omp/agent 隔离；profile 沿用旧 RPC 版的认证（agent.db）
 // - UI 壳通过 WebSocket 连入：命令（create/load/prompt/list/get_messages）+ 窄事件流
 // - stdout 首行打印 `READY ws://127.0.0.1:<port>`，由 Tauri 壳读取后转告前端
-import { setProfile, getAgentDir } from "@oh-my-pi/pi-utils";
+import { setProfile, getAgentDir, normalizeProfileName } from "@oh-my-pi/pi-utils";
+import os from "node:os";
+import path from "node:path";
+import fs from "node:fs";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 
+const desktopProfileConfigFile = path.join(os.homedir(), ".omp", "desktop-profile.json");
+function getSavedProfile(): string {
+  try {
+    const raw = JSON.parse(fs.readFileSync(desktopProfileConfigFile, "utf8"));
+    if (typeof raw.activeProfile === "string" && raw.activeProfile.trim()) {
+      return raw.activeProfile.trim();
+    }
+  } catch {}
+  return "omp-desktop";
+}
+
+function saveProfileToDisk(profile: string) {
+  try {
+    const dir = path.dirname(desktopProfileConfigFile);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(desktopProfileConfigFile, JSON.stringify({ activeProfile: profile }, null, 2), "utf8");
+  } catch (err) {
+    process.stderr.write(`[host] 保存 desktop-profile.json 失败: ${err}\n`);
+  }
+}
+
+let currentProfile = getSavedProfile();
 // setProfile 必须先于 coding-agent 的 import：其模块在 import 时读取 agentDir
-setProfile("omp-desktop");
+setProfile(currentProfile === "default" ? undefined : currentProfile);
+
 // theme 是 pi-tui 的延迟初始化单例（export var theme 初始 undefined），TUI 启动流程才会
 // ensureThemeSync；headless 宿主必须在 coding-agent（含 ask 工具的 theme.status.success）加载前
 // 初始化——Bun 对命名导入做快照，事后初始化救不了已加载的 ask.ts
@@ -19,93 +46,611 @@ ensureThemeSync();
 const { getSupportedEfforts } = await import("@oh-my-pi/pi-catalog/model-thinking");
 const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry } =
   await import("@oh-my-pi/pi-coding-agent");
-import os from "node:os";
-import path from "node:path";
 
 const defaultCwd = os.homedir();
 
-// ---------- 进程级底座（全进程一份，逐 session 共享） ----------
-const agentDir = getAgentDir();
-const authStorage = await discoverAuthStorage(agentDir);
-const modelRegistry = new ModelRegistry(authStorage);
-await modelRegistry.refresh();
-const settings = await Settings.init({ cwd: defaultCwd, agentDir });
-
-// 可选模型覆盖：OMP_DESKTOP_MODEL="provider/id"（默认模型是本地慢模型，验证/日常用这个切快模型）
-const availableModels = modelRegistry.getAvailable();
-// 模型范围：用户在设置里启用的模型（enabledModels，条目可带 ":thinking" 默认级别后缀）；未配置 = 全部
-const enabledEntries: string[] = settings.get("enabledModels") ?? [];
-const enabledDefaults = new Map(enabledEntries.map((e) => [e.split(":")[0], e.split(":")[1] ?? null]));
-const scopedModels =
-  enabledDefaults.size > 0 ? availableModels.filter((m) => enabledDefaults.has(`${m.provider}/${m.id}`)) : availableModels;
-const modelOverride = process.env.OMP_DESKTOP_MODEL
-  ? availableModels.find((m) => `${m.provider}/${m.id}` === process.env.OMP_DESKTOP_MODEL)
-  : undefined;
-if (process.env.OMP_DESKTOP_MODEL && !modelOverride) {
-  process.stderr.write(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
-}
-if (scopedModels.length === 0) {
-  throw new Error("enabledModels 配置过滤后没有任何可用模型");
-}
-
-// ---------- 会话池 ----------
-type TranscriptItem = { role: "user" | "assistant" | "tool"; text: string };
+// ---------- 会话池类型与实例（前置声明，方便 profile 切换时清理） ----------
+type TranscriptItem = {
+  role: "user" | "assistant" | "tool" | "thinking";
+  text: string;
+  name?: string;
+  toolCallId?: string;
+  args?: Record<string, unknown>;
+  files?: string[];
+  added?: number;
+  removed?: number;
+  todo?: { content: string; done: number; total: number };
+  thinking?: string;
+  expandable?: boolean;
+};
 type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // setToolUIContext 等宿主注入点
   unsubscribe: () => void;
   transcript: TranscriptItem[];
   assistantDraft: string; // 当前 turn 的流式文本累积，turn_end 时定稿
+  thinkingDraft: string;
+  thinkingStartedAt: number | null;
   path: string; // 会话文件路径（磁盘标识）
   cwd: string;
+  isGit: boolean;
 };
 const sessions = new Map<string, PoolEntry>(); // key = 前端持有的 sessionId
 
-// omp 事件 → 前端窄事件（前端只认这 4 种，不依赖 omp 事件 shape 细节）
+// ---------- 进程级底座（全进程一份，随 activeProfile 动态重载） ----------
+let agentDir = getAgentDir();
+let authStorage: any;
+let modelRegistry: any;
+let settings: any;
+
+type DesktopEnv = { httpProxy: string; noProxy: string; caCerts: string };
+function defaultDesktopEnv(): DesktopEnv {
+  return { httpProxy: "", noProxy: "", caCerts: "" };
+}
+let desktopEnvPath = path.join(agentDir, "desktop-env.json");
+let desktopEnvFilePresent = false;
+let desktopEnv: DesktopEnv = defaultDesktopEnv();
+
+function readDesktopEnv(): DesktopEnv {
+  try {
+    const raw = JSON.parse(fs.readFileSync(desktopEnvPath, "utf8"));
+    return {
+      httpProxy: typeof raw.httpProxy === "string" ? raw.httpProxy : "",
+      noProxy: typeof raw.noProxy === "string" ? raw.noProxy : "",
+      caCerts: typeof raw.caCerts === "string" ? raw.caCerts : "",
+    };
+  } catch {
+    return defaultDesktopEnv();
+  }
+}
+function applyDesktopEnv(env: DesktopEnv) {
+  if (env.httpProxy) {
+    process.env.HTTP_PROXY = env.httpProxy;
+    process.env.HTTPS_PROXY = env.httpProxy;
+    process.env.http_proxy = env.httpProxy;
+    process.env.https_proxy = env.httpProxy;
+  } else {
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    delete process.env.http_proxy;
+    delete process.env.https_proxy;
+  }
+  if (env.noProxy) {
+    process.env.NO_PROXY = env.noProxy;
+    process.env.no_proxy = env.noProxy;
+  } else {
+    delete process.env.NO_PROXY;
+    delete process.env.no_proxy;
+  }
+  if (env.caCerts) process.env.NODE_EXTRA_CA_CERTS = env.caCerts;
+  else delete process.env.NODE_EXTRA_CA_CERTS;
+}
+
+let sleepProc: ReturnType<typeof Bun.spawn> | null = null;
+function applySleepPrevention(level: string) {
+  try {
+    sleepProc?.kill();
+  } catch {}
+  sleepProc = null;
+  if (process.platform !== "darwin" || level === "off") return;
+  const args = level === "system" ? ["-i", "-s"] : level === "display" ? ["-i", "-d"] : ["-i"];
+  sleepProc = Bun.spawn(["caffeinate", ...args, "-w", String(process.pid)], { stdout: "ignore", stderr: "ignore" });
+}
+
+let availableModels: any[] = [];
+const enabledDefaults = new Map<string, string | null>();
+let scopedModels: any[] = [];
+let modelOverride: any;
+let cachedProfiles: string[] = ["default", "omp-desktop"];
+
+async function refreshAvailableProfiles(): Promise<string[]> {
+  const root = path.join(os.homedir(), ".omp", "profiles");
+  const result: string[] = ["default"];
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith(".") && e.name !== "default") {
+        result.push(e.name);
+      }
+    }
+  } catch {}
+  if (!result.includes(currentProfile)) result.push(currentProfile);
+  if (!result.includes("omp-desktop")) result.push("omp-desktop");
+  cachedProfiles = Array.from(new Set(result)).sort((a, b) => {
+    if (a === "omp-desktop") return -1;
+    if (b === "omp-desktop") return 1;
+    if (a === "default") return -1;
+    if (b === "default") return 1;
+    return a.localeCompare(b);
+  });
+  return cachedProfiles;
+}
+
+function rebuildScopedModels() {
+  const enabledEntries: string[] = settings.get("enabledModels") ?? [];
+  enabledDefaults.clear();
+  for (const e of enabledEntries) enabledDefaults.set(e.split(":")[0], e.split(":")[1] ?? null);
+  scopedModels =
+    enabledDefaults.size > 0 ? availableModels.filter((m) => enabledDefaults.has(`${m.provider}/${m.id}`)) : availableModels;
+}
+
+async function applyProfile(profileName: string) {
+  let target = "default";
+  try {
+    const norm = normalizeProfileName(profileName);
+    target = norm || "default";
+  } catch (e) {
+    throw new Error(`Profile 名称不合法: ${(e as any)?.message || e}`);
+  }
+  currentProfile = target;
+  saveProfileToDisk(target);
+  setProfile(target === "default" ? undefined : target);
+
+  // 清空现有会话池
+  for (const [, entry] of sessions) {
+    try {
+      entry.unsubscribe?.();
+    } catch {}
+  }
+  sessions.clear();
+
+  agentDir = getAgentDir();
+  authStorage = await discoverAuthStorage(agentDir);
+  modelRegistry = new ModelRegistry(authStorage);
+  await modelRegistry.refresh();
+  settings = await Settings.init({ cwd: defaultCwd, agentDir });
+
+  desktopEnvPath = path.join(agentDir, "desktop-env.json");
+  desktopEnvFilePresent = fs.existsSync(desktopEnvPath);
+  desktopEnv = desktopEnvFilePresent ? readDesktopEnv() : defaultDesktopEnv();
+  if (desktopEnvFilePresent) applyDesktopEnv(desktopEnv);
+
+  const sleep = String(settings.get("power.sleepPrevention") ?? "off");
+  if (settings.isConfigured("power.sleepPrevention") && sleep !== "off") applySleepPrevention(sleep);
+  else applySleepPrevention("off");
+
+  availableModels = modelRegistry.getAvailable();
+  rebuildScopedModels();
+  modelOverride = process.env.OMP_DESKTOP_MODEL
+    ? availableModels.find((m) => `${m.provider}/${m.id}` === process.env.OMP_DESKTOP_MODEL)
+    : undefined;
+
+  if (process.env.OMP_DESKTOP_MODEL && !modelOverride) {
+    process.stderr.write(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
+  }
+  if (scopedModels.length === 0) {
+    process.stderr.write("[host] 当前 profile 无可用模型（尚未配置 API Key 或 models.yml）\n");
+  }
+
+  await refreshAvailableProfiles();
+  process.stderr.write(`[host] 已激活 Profile: ${target}, agentDir=${agentDir}, 可用模型数: ${availableModels.length}\n`);
+}
+
+await refreshAvailableProfiles();
+await applyProfile(currentProfile);
+
+function modelsPayload() {
+  return scopedModels.map((m) => ({
+    id: `${m.provider}/${m.id}`,
+    name: m.name ?? m.id,
+    efforts: getSupportedEfforts(m),
+  }));
+}
+
+function settingsSnapshot() {
+  return {
+    hideThinkingBlock: !!(settings as any).get("hideThinkingBlock"),
+    sleepPrevention: settings.isConfigured("power.sleepPrevention") ? (settings.get("power.sleepPrevention") ?? "off") : "off",
+    computerEnabled: !!settings.get("computer.enabled"),
+    memoryBackend: settings.get("memory.backend") ?? "off",
+    approvalMode: settings.get("tools.approvalMode"),
+    desktopEnv,
+    activeProfile: currentProfile,
+    availableProfiles: cachedProfiles,
+    profileAgentDir: agentDir,
+  };
+}
+
+function modelCatalog() {
+  const enabled = new Set(enabledDefaults.keys());
+  const allEnabled = enabled.size === 0;
+  return availableModels.map((m) => {
+    const id = `${m.provider}/${m.id}`;
+    const ctx = (m as any).contextWindow ?? (m as any).contextLength ?? null;
+    const vision = Array.isArray((m as any).input) ? (m as any).input.includes("image") : !!(m as any).vision;
+    return {
+      id,
+      name: m.name ?? m.id,
+      provider: m.provider,
+      enabled: allEnabled || enabled.has(id),
+      context: ctx,
+      vision,
+      efforts: getSupportedEfforts(m),
+    };
+  });
+}
+
+async function firstHeading(file: string): Promise<string> {
+  try {
+    const text = await readFile(file, "utf8");
+    const m = text.match(/^#\s+(.+)$/m);
+    return m ? m[1].trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+async function listNamedDirs(dir: string): Promise<{ name: string; path: string }[]> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => ({ name: e.name, path: path.join(dir, e.name) }));
+  } catch {
+    return [];
+  }
+}
+
+async function listNamedFiles(dir: string, ext: string): Promise<{ name: string; path: string }[]> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && e.name.endsWith(ext) && !e.name.startsWith("."))
+      .map((e) => ({ name: e.name.replace(new RegExp(ext.replace(".", "\\.") + "$"), ""), path: path.join(dir, e.name) }));
+  } catch {
+    return [];
+  }
+}
+
+async function listAgentAssets() {
+  const memoriesDir = path.join(agentDir, "memories");
+  const skills = [];
+  for (const d of await listNamedDirs(path.join(agentDir, "skills"))) {
+    skills.push({ name: d.name, path: d.path, description: await firstHeading(path.join(d.path, "SKILL.md")) });
+  }
+  const commands = await listNamedFiles(path.join(agentDir, "commands"), ".md");
+  const agents = [];
+  for (const d of [...(await listNamedDirs(path.join(agentDir, "agents"))), ...(await listNamedFiles(path.join(agentDir, "agents"), ".md"))]) {
+    const file = d.path.endsWith(".md") ? d.path : path.join(d.path, "AGENT.md");
+    agents.push({ name: d.name, path: d.path, description: await firstHeading(file) });
+  }
+  const hooks: { name: string; path: string; phase: string }[] = [];
+  for (const phase of ["pre", "post"]) {
+    for (const f of await listNamedFiles(path.join(agentDir, "hooks", phase), ".ts")) hooks.push({ ...f, phase });
+    for (const f of await listNamedFiles(path.join(agentDir, "hooks", phase), ".js")) hooks.push({ ...f, phase });
+  }
+  let mcp: { name: string; command: string }[] = [];
+  try {
+    const raw = JSON.parse(await readFile(path.join(agentDir, "mcp.json"), "utf8"));
+    const servers = raw.mcpServers ?? raw.servers ?? {};
+    mcp = Object.entries(servers).map(([name, v]: [string, any]) => ({
+      name,
+      command: [v?.command, ...(v?.args ?? [])].filter(Boolean).join(" ") || v?.url || "",
+    }));
+  } catch {}
+  let memories: { name: string; path: string }[] = [];
+  try {
+    const entries = await readdir(memoriesDir, { withFileTypes: true });
+    memories = entries
+      .filter((e) => !e.name.startsWith("."))
+      .map((e) => ({ name: e.name, path: path.join(memoriesDir, e.name) }));
+  } catch {}
+  return {
+    memories,
+    skills,
+    commands,
+    agents,
+    hooks,
+    mcp,
+    plugins: [] as { name: string }[],
+    flags: { enableMCP: false, disableExtensionDiscovery: true, computerEnabled: !!settings.get("computer.enabled") },
+  };
+}
+
+function streakFromDays(days: string[]): { current: number; longest: number } {
+  const uniq = [...new Set(days)].sort();
+  let longest = 0;
+  let run = 0;
+  let prev: number | null = null;
+  for (const d of uniq) {
+    const t = Date.parse(d + "T00:00:00Z");
+    if (prev != null && t - prev === 86400000) run += 1;
+    else run = 1;
+    if (run > longest) longest = run;
+    prev = t;
+  }
+  const today = new Date();
+  const iso = (dt: Date) => dt.toISOString().slice(0, 10);
+  let current = 0;
+  for (let i = 0; i < 400; i++) {
+    const dt = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
+    if (uniq.includes(iso(dt))) current += 1;
+    else break;
+  }
+  return { current, longest };
+}
+
+async function collectUsageStats() {
+  const all = await SessionManager.listAll();
+  const byDay: Record<string, number> = {};
+  const byModel: Record<string, number> = {};
+  const heat: Record<string, number> = {};
+  let totalTokens = 0;
+  let peakTokens = 0;
+  let longestMs = 0;
+  const daySet: string[] = [];
+  for (const s of all) {
+    const day = s.modified.toISOString().slice(0, 10);
+    daySet.push(day);
+    heat[day] = (heat[day] ?? 0) + 1;
+    try {
+      const text = await readFile(s.path, "utf8");
+      const lines = text.split("\n");
+      let firstTs: number | null = null;
+      let lastTs: number | null = null;
+      let sessionTokens = 0;
+      for (const line of lines) {
+        if (!line.startsWith("{")) continue;
+        let obj: any;
+        try {
+          obj = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const ts = obj.timestamp ? Date.parse(obj.timestamp) : NaN;
+        if (Number.isFinite(ts)) {
+          if (firstTs == null || ts < firstTs) firstTs = ts;
+          if (lastTs == null || ts > lastTs) lastTs = ts;
+        }
+        const usage = obj.message?.usage ?? obj.usage;
+        const tokens = Number(usage?.totalTokens ?? 0) || Number(usage?.input ?? 0) + Number(usage?.output ?? 0);
+        if (tokens > 0) {
+          sessionTokens += tokens;
+          totalTokens += tokens;
+          const model = obj.message?.model ?? obj.model ?? "unknown";
+          byModel[model] = (byModel[model] ?? 0) + tokens;
+          const d = Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : day;
+          byDay[d] = (byDay[d] ?? 0) + tokens;
+        }
+      }
+      if (sessionTokens > peakTokens) peakTokens = sessionTokens;
+      if (firstTs != null && lastTs != null && lastTs - firstTs > longestMs) longestMs = lastTs - firstTs;
+    } catch {}
+  }
+  const streak = streakFromDays(daySet);
+  return {
+    totalTokens,
+    peakTokens,
+    longestMs,
+    sessionCount: all.length,
+    currentStreak: streak.current,
+    longestStreak: streak.longest,
+    byDay,
+    byModel,
+    heat,
+  };
+}
+
+// omp 事件 → 前端窄事件（前端只认这些 kind，不依赖 omp 事件 shape 细节）
 type UiEvent =
   | { kind: "turn_start" }
   | { kind: "text_delta"; text: string }
-  | { kind: "tool"; name: string }
+  | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
+  | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[] }
+  | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"] }
   | { kind: "turn_end" };
+
+function pathOf(args: any): string {
+  if (!args || typeof args !== "object") return "";
+  if (typeof args.path === "string") return args.path;
+  if (typeof args.file_path === "string") return args.file_path;
+  return "";
+}
+
+function collectFiles(name: string, args: any, details?: any): string[] {
+  const out: string[] = [];
+  const push = (p: unknown) => {
+    if (typeof p !== "string" || !p) return;
+    const norm = p.replace(/\\/g, "/");
+    const i = out.findIndex((x) => x === norm || x.endsWith("/" + norm) || norm.endsWith("/" + x));
+    if (i < 0) out.push(norm);
+    else if (norm.length > out[i].length) out[i] = norm; // 相对路径与绝对路径视为同一文件，保留更完整的
+  };
+  if (Array.isArray(args?.edits)) for (const e of args.edits) push(e?.path ?? e?.file_path);
+  if (Array.isArray(args?.paths)) for (const p of args.paths) push(p);
+  push(pathOf(args));
+  if (typeof args?.input === "string" && (name === "apply_patch" || name === "edit")) {
+    const re = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(args.input))) push(m[1].trim());
+  }
+  if (Array.isArray(details?.perFileResults)) for (const f of details.perFileResults) push(f?.path);
+  if (typeof details?.path === "string") push(details.path);
+  if (typeof details?.resolvedPath === "string") push(details.resolvedPath);
+  return out;
+}
+
+function toolArgsForUi(name: string, args: any): Record<string, unknown> {
+  if (!args || typeof args !== "object") return {};
+  if (name === "bash" || name === "shell") return { command: String(args.command ?? "").slice(0, 4000) };
+  if (name === "todo") return { op: args.op, task: args.task, i: args.i };
+  const files = collectFiles(name, args);
+  const path = pathOf(args);
+  const out: Record<string, unknown> = {};
+  if (path) out.path = path;
+  if (files.length) out.files = files;
+  if (typeof args.content === "string") out.content = args.content.slice(0, 8000);
+  return out;
+}
+
+function diffStats(diff: string): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const line of String(diff || "").split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) continue;
+    if (line.startsWith("+")) added++;
+    else if (line.startsWith("-")) removed++;
+  }
+  return { added, removed };
+}
+
+function thinkingLabel(sec: number): string {
+  if (sec < 5) return "持续了几秒";
+  if (sec < 60) return `持续了 ${sec} 秒`;
+  return `持续了 ${Math.floor(sec / 60)} 分 ${String(sec % 60).padStart(2, "0")} 秒`;
+}
+
+function summarizeResult(name: string, args: any, result: any): Partial<TranscriptItem> {
+  const details = result?.details ?? (result && typeof result === "object" && "diff" in result ? result : undefined);
+  const patch: Partial<TranscriptItem> = {};
+  const files = collectFiles(name, args, details);
+  if (files.length) patch.files = files;
+  if (name === "todo") {
+    const tasks = (details?.phases ?? []).flatMap((p: any) => p.tasks ?? []);
+    const done = tasks.filter((t: any) => t.status === "completed").length;
+    const cur = tasks.find((t: any) => t.status === "in_progress") ?? tasks[0];
+    patch.todo = {
+      content: String(args?.task || cur?.content || args?.i || ""),
+      done,
+      total: tasks.length,
+    };
+    return patch;
+  }
+  if (Array.isArray(details?.perFileResults) && details.perFileResults.length > 1) {
+    return patch; // 多文件「更改」不带行数
+  }
+  if (typeof details?.diff === "string") Object.assign(patch, diffStats(details.diff));
+  else if ((name === "write" || name === "edit") && typeof args?.content === "string") {
+    patch.added = Math.max(1, args.content.split("\n").length);
+    patch.removed = 0;
+  }
+  return patch;
+}
+
+function flushAssistantDraft(entry: PoolEntry) {
+  if (!entry.assistantDraft) return;
+  entry.transcript.push({ role: "assistant", text: entry.assistantDraft });
+  entry.assistantDraft = "";
+}
+
+function uiToolPayload(item: TranscriptItem): Extract<UiEvent, { kind: "tool" }> {
+  return { kind: "tool", name: item.name ?? item.text, toolCallId: item.toolCallId, args: item.args, files: item.files };
+}
 
 function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
   switch (ev.type) {
     case "agent_start":
       return { kind: "turn_start" };
-    case "message_update":
-      if (ev.assistantMessageEvent?.type === "text_delta") {
-        entry.assistantDraft += ev.assistantMessageEvent.delta;
-        return { kind: "text_delta", text: ev.assistantMessageEvent.delta };
+    case "message_update": {
+      const ame = ev.assistantMessageEvent;
+      if (ame?.type === "text_delta") {
+        entry.assistantDraft += ame.delta;
+        return { kind: "text_delta", text: ame.delta };
+      }
+      if (ame?.type === "thinking_start") {
+        flushAssistantDraft(entry);
+        entry.thinkingDraft = "";
+        entry.thinkingStartedAt = Date.now();
+        entry.transcript.push({ role: "thinking", text: "思考" });
+        return { kind: "thinking", phase: "start" };
+      }
+      if (ame?.type === "thinking_delta") {
+        entry.thinkingDraft += ame.delta ?? "";
+        return null;
+      }
+      if (ame?.type === "thinking_end") {
+        const last = [...entry.transcript].reverse().find((t) => t.role === "thinking");
+        const thinking = (ame.content || entry.thinkingDraft || "").trim();
+        const sec = entry.thinkingStartedAt ? Math.max(1, Math.round((Date.now() - entry.thinkingStartedAt) / 1000)) : 0;
+        const durationLabel = thinkingLabel(sec);
+        if (last) {
+          last.text = `思考 · ${durationLabel}`;
+          last.thinking = thinking;
+          last.expandable = thinking.length > 0;
+        }
+        entry.thinkingDraft = "";
+        entry.thinkingStartedAt = null;
+        return { kind: "thinking", phase: "end", durationLabel, thinking, expandable: thinking.length > 0 };
       }
       return null;
-    case "tool_execution_start":
-      entry.transcript.push({ role: "tool", text: ev.toolName });
-      return { kind: "tool", name: ev.toolName };
+    }
+    case "tool_execution_start": {
+      flushAssistantDraft(entry);
+      const args = toolArgsForUi(ev.toolName, ev.args);
+      const item: TranscriptItem = {
+        role: "tool",
+        text: ev.toolName,
+        name: ev.toolName,
+        toolCallId: ev.toolCallId,
+        args,
+        files: collectFiles(ev.toolName, ev.args),
+      };
+      entry.transcript.push(item);
+      return uiToolPayload(item);
+    }
+    case "tool_execution_end": {
+      const item =
+        entry.transcript.findLast?.((t) => t.role === "tool" && t.toolCallId === ev.toolCallId) ??
+        [...entry.transcript].reverse().find((t) => t.role === "tool" && t.toolCallId === ev.toolCallId) ??
+        [...entry.transcript].reverse().find((t) => t.role === "tool" && t.name === ev.toolName);
+      if (item) Object.assign(item, summarizeResult(ev.toolName, { ...(item.args || {}), ...(ev.args || {}) }, ev.result));
+      return {
+        kind: "tool_update",
+        name: ev.toolName,
+        toolCallId: ev.toolCallId,
+        files: item?.files,
+        added: item?.added,
+        removed: item?.removed,
+        todo: item?.todo,
+      };
+    }
     case "agent_end":
       // isTerminal === false 表示 maintenance/异步投递还会续跑，不是真正结束
       if (ev.isTerminal === false) return null;
-      entry.transcript.push({ role: "assistant", text: entry.assistantDraft });
-      entry.assistantDraft = "";
+      flushAssistantDraft(entry);
       return { kind: "turn_end" };
     default:
       return null;
   }
 }
 
-// 磁盘历史条目 → 前端 transcript（跳过 thinking/toolResult 块，只保留对话文本与工具名）
+// 磁盘历史条目 → 前端 transcript（思考块可展开；工具带路径/命令/行数）
 function entriesToTranscript(entries: any[]): TranscriptItem[] {
   const out: TranscriptItem[] = [];
+  const byId = new Map<string, TranscriptItem>();
   for (const e of entries) {
     if (e.type !== "message") continue;
-    const { role, content } = e.message ?? {};
+    const msg = e.message ?? {};
+    const { role, content } = msg;
+    if (role === "toolResult") {
+      const item = byId.get(msg.toolCallId);
+      if (item) Object.assign(item, summarizeResult(msg.toolName, item.args, msg));
+      continue;
+    }
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content === "string") {
       out.push({ role, text: content });
       continue;
     }
     for (const block of content ?? []) {
-      if (block.type === "text") out.push({ role, text: block.text });
-      else if (block.type === "toolCall") out.push({ role: "tool", text: block.name });
+      if (block.type === "text") out.push({ role: role === "user" ? "user" : "assistant", text: block.text });
+      else if (block.type === "thinking" && block.thinking) {
+        out.push({
+          role: "thinking",
+          text: "思考 · 持续了几秒",
+          thinking: String(block.thinking),
+          expandable: true,
+        });
+      } else if (block.type === "toolCall") {
+        const item: TranscriptItem = {
+          role: "tool",
+          text: block.name,
+          name: block.name,
+          toolCallId: block.id,
+          args: toolArgsForUi(block.name, block.arguments),
+          files: collectFiles(block.name, block.arguments),
+        };
+        byId.set(block.id, item);
+        out.push(item);
+      }
     }
   }
   return out;
@@ -121,8 +666,17 @@ function translateSubagentEvent(ev: any): UiEvent | null {
         return { kind: "text_delta", text: ev.assistantMessageEvent.delta };
       }
       return null;
-    case "tool_execution_start":
-      return { kind: "tool", name: ev.toolName };
+    case "tool_execution_start": {
+      const args = toolArgsForUi(ev.toolName, ev.args);
+      return { kind: "tool", name: ev.toolName, toolCallId: ev.toolCallId, args, files: collectFiles(ev.toolName, ev.args) };
+    }
+    case "tool_execution_end":
+      return {
+        kind: "tool_update",
+        name: ev.toolName,
+        toolCallId: ev.toolCallId,
+        ...summarizeResult(ev.toolName, ev.args, ev.result),
+      };
     case "agent_end":
       if (ev.isTerminal === false) return null;
       return { kind: "turn_end" };
@@ -136,13 +690,13 @@ function isGitWorktree(cwd: string): boolean {
   return p.exitCode === 0 && p.stdout.toString().trim() === "true";
 }
 
-async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[]) {
+async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const result = await createAgentSession({
     cwd,
     authStorage,
     modelRegistry,
     settings,
-    model: modelOverride,
+    model: initialModel ?? modelOverride,
     agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
     sessionManager,
     disableExtensionDiscovery: true,
@@ -157,6 +711,8 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     unsubscribe: () => {},
     transcript,
     assistantDraft: "", // 当前 turn 的流式文本累积，turn_end 时定稿
+    thinkingDraft: "",
+    thinkingStartedAt: null,
     path: session.sessionFile,
     cwd,
     isGit: isGitWorktree(cwd),
@@ -177,11 +733,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
         JSON.stringify({
           type: "ready",
           approvalMode: settings.get("tools.approvalMode"),
-          models: scopedModels.map((m) => ({
-            id: `${m.provider}/${m.id}`,
-            name: m.name ?? m.id,
-            efforts: getSupportedEfforts(m), // 模型支持的思考档位（reasoning=false 时为空）
-          })),
+          models: modelsPayload(),
+          settings: settingsSnapshot(),
         }),
       );
     },
@@ -196,7 +749,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
       try {
         switch (msg.type) {
           case "create_session":
-            await handleCreateSession(ws, msg.cwd);
+            await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking);
             break;
           case "load_session":
             await handleLoadSession(ws, msg.path);
@@ -285,6 +838,35 @@ const server = Bun.serve<{ sessionId: string | null }>({
             ws.send(JSON.stringify({ type: "git_status", cwd, files }));
             break;
           }
+          case "get_git_branches": {
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const isGit = isGitWorktree(cwd);
+            if (!isGit) {
+              ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: false, current: null, branches: [] }));
+              break;
+            }
+            const currP = Bun.spawnSync(["git", "-C", cwd, "branch", "--show-current"], { stdout: "pipe", stderr: "ignore" });
+            let current = currP.stdout.toString().trim();
+            if (!current) {
+              const headP = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--short", "HEAD"], { stdout: "pipe", stderr: "ignore" });
+              current = headP.stdout.toString().trim() || "HEAD";
+            }
+            const bP = Bun.spawnSync(["git", "-C", cwd, "branch", "--format=%(refname:short)"], { stdout: "pipe", stderr: "ignore" });
+            const branches = bP.stdout.toString().split("\n").map((b) => b.trim()).filter(Boolean);
+            ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: true, current, branches }));
+            break;
+          }
+          case "switch_git_branch": {
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const targetBranch = String(msg.branch ?? "").trim();
+            if (!targetBranch) throw new Error("缺少 branch");
+            const p = Bun.spawnSync(["git", "-C", cwd, "checkout", targetBranch], { stdout: "pipe", stderr: "pipe" });
+            if (p.exitCode !== 0) {
+              throw new Error(`切换分支失败: ${p.stderr.toString().trim().slice(0, 200)}`);
+            }
+            ws.send(JSON.stringify({ type: "git_branch_switched", cwd, branch: targetBranch }));
+            break;
+          }
           case "set_approval_mode": {
             const mode = msg.mode;
             if (mode !== "yolo" && mode !== "write" && mode !== "always-ask") {
@@ -337,6 +919,92 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "ui_error": {
             // 前端未捕获错误上报（WKWebView 无 console，dev 终端是唯一出口）
             process.stderr.write(`[ui] ${msg.message}\n`);
+            break;
+          }
+          case "get_settings":
+            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+            break;
+          case "set_setting": {
+            const key = String(msg.key ?? "");
+            const value = msg.value;
+            if (key === "hideThinkingBlock") {
+              try {
+                (settings as any).set("hideThinkingBlock", !!value);
+              } catch (err) {
+                process.stderr.write(`[host] hideThinkingBlock 未写入 schema: ${err}\n`);
+              }
+            } else if (key === "power.sleepPrevention") {
+              const level = value === "system" || value === "display" || value === "idle" || value === "off" ? value : "off";
+              settings.set("power.sleepPrevention", level);
+              applySleepPrevention(level);
+            } else if (key === "computer.enabled") settings.set("computer.enabled", !!value);
+            else if (key === "memory.backend") {
+              const backend =
+                value === "off" || value === "local" || value === "hindsight" || value === "mnemopi" || value === "sharpshooter"
+                  ? value
+                  : "off";
+              settings.set("memory.backend", backend);
+            } else throw new Error(`不支持的设置项: ${key}`);
+            await settings.flush();
+            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+            break;
+          }
+          case "set_desktop_env": {
+            const next: DesktopEnv = {
+              httpProxy: String(msg.httpProxy ?? "").trim(),
+              noProxy: String(msg.noProxy ?? "").trim(),
+              caCerts: String(msg.caCerts ?? "").trim(),
+            };
+            await writeFile(desktopEnvPath, JSON.stringify(next, null, 2));
+            desktopEnv = next;
+            desktopEnvFilePresent = true;
+            applyDesktopEnv(next);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot(), restartHint: true }));
+            break;
+          }
+          case "get_models_catalog":
+            ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+            break;
+          case "set_enabled_model": {
+            const id = String(msg.id ?? "");
+            const on = !!msg.enabled;
+            if (!availableModels.some((m) => `${m.provider}/${m.id}` === id)) throw new Error(`未知模型: ${id}`);
+            let entries: string[] = (settings.get("enabledModels") ?? []).slice();
+            if (entries.length === 0) {
+              entries = availableModels.map((m) => `${m.provider}/${m.id}`);
+            }
+            const without = entries.filter((e) => e.split(":")[0] !== id);
+            if (on) {
+              const prev = entries.find((e) => e.split(":")[0] === id);
+              without.push(prev ?? id);
+            }
+            if (without.length === 0) throw new Error("至少保留一个启用模型");
+            settings.set("enabledModels", without);
+            await settings.flush();
+            rebuildScopedModels();
+            if (scopedModels.length === 0) throw new Error("启用列表过滤后没有可用模型");
+            ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+            ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+            break;
+          }
+          case "get_usage_stats":
+            ws.send(JSON.stringify({ type: "usage_stats", stats: await collectUsageStats() }));
+            break;
+          case "list_agent_assets":
+            ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+            break;
+          case "switch_profile": {
+            const p = String(msg.profile ?? "").trim();
+            if (!p) throw new Error("Profile 名称不能为空");
+            await applyProfile(p);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+            ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+            ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+            await handleListSessions(ws);
+            try {
+              ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+            } catch {}
+            ws.send(JSON.stringify({ type: "profile_switched", profile: currentProfile }));
             break;
           }
           default:
@@ -479,9 +1147,20 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
   sessions.set(sessionId, entry);
 }
 
-async function handleCreateSession(ws: any, cwd?: string) {
+async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thinkingLevel?: string) {
   const workDir = typeof cwd === "string" && cwd ? cwd : defaultCwd;
-  const { sessionId, entry, eventBus } = await createSessionCore(workDir, SessionManager.create(workDir), []);
+  const targetModel = modelStr ? scopedModels.find((m) => `${m.provider}/${m.id}` === modelStr) : undefined;
+  const { sessionId, entry, eventBus } = await createSessionCore(
+    workDir,
+    SessionManager.create(workDir),
+    [],
+    targetModel,
+  );
+  if (thinkingLevel) {
+    try {
+      entry.session.setThinkingLevel(thinkingLevel);
+    } catch {}
+  }
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
     JSON.stringify({
@@ -494,7 +1173,7 @@ async function handleCreateSession(ws: any, cwd?: string) {
       isGit: entry.isGit,
     }),
   );
-  process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir}（活跃 ${sessions.size}）\n`);
+  process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
 }
 
 async function handleLoadSession(ws: any, sessionPath: string) {
