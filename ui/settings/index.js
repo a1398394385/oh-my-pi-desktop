@@ -7,7 +7,7 @@ import { closeMemoryRow, toggleMemoryRow } from "./memory.js";
 import { fillAssetList, assetTitle, renderAssetPage } from "./agents.js";
 import { renderSkillsPage } from "./skills.js";
 import { renderMcpPage } from "./mcp.js";
-import { renderAddProviderView } from "./providers.js";
+import { renderModelPage } from "./models.js";
 
 const UI_PREF_KEY = "omp-ui-settings";
 export const FONT_LABELS = {
@@ -356,7 +356,10 @@ export function initSettings() {
   });
   $("addProviderBtn")?.addEventListener("click", () => {
     S.mpAddView = true;
-    renderAddProviderView();
+    S.mpRolesView = false;
+    // 进入添加视图时拉最新凭证数,登出后「已配置」回显即时收敛
+    send({ type: "get_all_providers" });
+    renderModelPage();
   });
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === ",") {

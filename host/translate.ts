@@ -9,7 +9,8 @@ export type UiEvent =
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
   | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: any }
-  | { kind: "turn_end"; usage?: TurnUsage | null };
+  | { kind: "turn_end"; usage?: TurnUsage | null }
+  | { kind: "thinking_level"; configured?: string; resolved?: string };
 
 function pathOf(args: any): string {
   if (!args || typeof args !== "object") return "";
@@ -232,6 +233,10 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
   switch (ev.type) {
     case "agent_start":
       return { kind: "turn_start" };
+    case "thinking_level_changed":
+      // auto 判定帧：configured==="auto" 时 resolved 为本轮判定档位（切进 auto 的 provisional 帧无 resolved）；
+      // 人工切档帧无 configured。只透传，前端自行决定显示。
+      return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
     case "message_update": {
       const ame = ev.assistantMessageEvent;
       if (ame?.type === "text_delta") {

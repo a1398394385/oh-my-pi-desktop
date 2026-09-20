@@ -22,10 +22,6 @@ export function renderModelPage() {
   const list = $("mpList");
   const detail = $("mpDetail");
   if (!list || !detail) return;
-  if (S.mpAddView) {
-    renderAddProviderView();
-    return;
-  }
   const groups = new Map();
   for (const m of S.modelCatalog) {
     if (!groups.has(m.provider)) groups.set(m.provider, []);
@@ -64,6 +60,11 @@ export function renderModelPage() {
     empty.className = "pv";
     empty.textContent = "暂无可用模型";
     list.appendChild(empty);
+    // 空目录也允许添加供应商(右侧照常渲染添加视图)
+    if (S.mpAddView) {
+      renderAddProviderView();
+      return;
+    }
     if (S.mpRolesView) {
       renderRolesView();
       return;
@@ -120,6 +121,12 @@ export function renderModelPage() {
     list.appendChild(hr);
   }
   renderGroup("配置文件", configEntries);
+  // 添加供应商视图:左侧供应商列表照常刷新(新凭证即时上列表);
+  // 详情页(mpDetailProv)时右侧不动——保存进行中的置灰/转圈态不能被重绘冲掉
+  if (S.mpAddView) {
+    if (!S.mpDetailProv) renderAddProviderView();
+    return;
+  }
   if (S.mpRolesView) {
     renderRolesView();
     return;

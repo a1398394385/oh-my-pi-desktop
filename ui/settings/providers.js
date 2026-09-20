@@ -121,7 +121,9 @@ export function showLoginPrompt(msg) {
   inp.focus();
 }
 
-// 「添加供应商」视图:右卡三列等宽圆角卡片,列出全部受支持供应商
+// 「添加供应商」视图:右卡两列圆角卡片,列出全部受支持供应商
+// 纯渲染不发请求:凭证数由各视图入口显式 send get_all_providers 拉取,
+// 若此处也发会与 all_providers 响应处理器互调成无限重绘(hover 闪烁/点击失效)
 export function renderAddProviderView() {
   const detail = $("mpDetail");
   if (!detail) return;
@@ -141,25 +143,35 @@ export function renderAddProviderView() {
     loading.className = "set-group-desc";
     loading.textContent = "读取中…";
     detail.appendChild(loading);
-    send({ type: "get_all_providers" });
     return;
   }
-  const configured = new Set(S.modelCatalog.map((m) => m.provider));
   const grid = document.createElement("div");
   grid.className = "ap-grid";
   for (const p of S.allProvidersCache) {
     const card = document.createElement("div");
-    card.className = "ap-card";
+    card.className = "ap-card ap-card2";
+    const l1 = document.createElement("div");
+    l1.className = "ap-l1";
     const ic = document.createElement("span");
     ic.className = "pv-ic";
     ic.textContent = PROV_IC[p.id] || "✦";
     const nm = document.createElement("span");
     nm.className = "ap-name";
     nm.textContent = p.id;
-    const tag = document.createElement("span");
-    tag.className = "tag";
-    tag.textContent = configured.has(p.id) ? "已配置" : p.label;
-    card.append(ic, nm, tag);
+    l1.append(ic, nm);
+    const l2 = document.createElement("div");
+    l2.className = "ap-l2";
+    const vendor = document.createElement("span");
+    vendor.className = "tag ap-vendor";
+    vendor.textContent = p.label;
+    l2.appendChild(vendor);
+    if (p.accounts > 0) {
+      const conf = document.createElement("span");
+      conf.className = "ap-conf";
+      conf.textContent = `已配置 · ${p.accounts}`;
+      l2.appendChild(conf);
+    }
+    card.append(l1, l2);
     // 点击进入详情页:支持登录的供应商让用户二选一(登录 / API key),仅 key 的直达表单
     card.onclick = () => {
       S.mpDetailProv = p;
@@ -169,17 +181,23 @@ export function renderAddProviderView() {
   }
   // 末位固定卡片:手动添加 = 配置层 models.yml
   const manual = document.createElement("div");
-  manual.className = "ap-card ap-manual";
+  manual.className = "ap-card ap-card2";
+  const ml1 = document.createElement("div");
+  ml1.className = "ap-l1";
   const mic = document.createElement("span");
   mic.className = "pv-ic";
   mic.textContent = "✎";
   const mnm = document.createElement("span");
   mnm.className = "ap-name";
   mnm.textContent = "手动添加供应商";
+  ml1.append(mic, mnm);
+  const ml2 = document.createElement("div");
+  ml2.className = "ap-l2";
   const mtag = document.createElement("span");
-  mtag.className = "tag";
+  mtag.className = "tag ap-vendor";
   mtag.textContent = "models.yml";
-  manual.append(mic, mnm, mtag);
+  ml2.appendChild(mtag);
+  manual.append(ml1, ml2);
   manual.onclick = () => {
     send({ type: "open_models_config" });
     toast("已打开 models.yml，保存后回来刷新即可");
@@ -200,6 +218,8 @@ export function renderProviderDetail() {
   back.textContent = "← 返回";
   back.onclick = () => {
     S.mpDetailProv = null;
+    // 返回列表时重拉凭证数:详情页里可能刚发生登录/登出
+    send({ type: "get_all_providers" });
     renderAddProviderView();
   };
   const hb = document.createElement("b");
@@ -256,6 +276,11 @@ export function renderProviderDetail() {
       toast("请输入 API key");
       return;
     }
+    // 保存进行中:输入框置灰、按钮转圈,直到 provider_key_done 回来(成功后整个视图切回列表)
+    keyInp.classList.add("disabled");
+    keySave.disabled = true;
+    keySave.classList.add("busy");
+    keySave.innerHTML = icon("refresh", 13);
     send({ type: "provider_set_key", provider: p.id, key });
   };
   keyRow.append(keyInp, keySave);

@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 2 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 3 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -10,6 +10,7 @@
 |------|------|---------|
 | RULE-001 | 新增/修改工具标签必须同步扩展 host/translate.ts 的参数白名单与结果摘要 | 前端渲染 + 宿主转发 |
 | RULE-002 | 新增内嵌滚动容器必须 `overscroll-behavior: contain`,装饰元素不得放进滚动节点内 | 全部 UI 样式 |
+| RULE-003 | 渲染函数必须纯渲染,RPC 请求只能由视图入口/事件处理器发起 | 全部 UI 渲染 + RPC |
 
 ---
 
@@ -38,3 +39,13 @@
 **How to apply**:写 `overflow-y: auto` 时自问一句「它的祖先里有谁会滚?」——有 → 同行加 `overscroll-behavior: contain`;需要伪元素装饰 → 拆内层滚动节点,装饰留外层。豁免(不加):顶层滚动区(自身即区域唯一滚动层)、fixed 定位浮层菜单(无滚动祖先)、纯横向溢出容器(横向手势不会纵向传递)。review checklist:新增 `overflow(-y)?: auto|scroll` ↔ 相邻可见 `overscroll-behavior: contain` 或明确豁免理由。
 
 **关联**:BUG-002
+
+### RULE-003: 渲染函数必须纯渲染,RPC 请求只能由视图入口/事件处理器发起
+
+**规则**:`render*()` 渲染函数体内禁止 `send(...)` 发 RPC 请求;数据拉取只能放在视图入口(按钮点击、页面激活、相关 done 消息处理器)发起。判据:若某消息 type 的响应处理器会调用渲染函数 R,则 R 体内不得发出触发该消息的请求——否则形成「渲染 → 请求 → 响应 → 再渲染」无限循环。
+
+**Why**:BUG-003 真实事故——为让「已配置」徽标在登出后收敛,把 `send(get_all_providers)` 放进 `renderAddProviderView()`,而 `all_providers` 响应处理器也调用它,形成无限重绘:DOM 不断重建,hover 高亮闪烁、点击被吞。
+
+**How to apply**:给渲染函数加请求前,先在 core.js grep 该消息 type 的响应处理器——若会调回本渲染函数,请求必须上移到入口。症状识别:UI hover 闪烁 + 点击无反应 ≈ 无限重绘。review checklist:渲染函数体内出现 `send(` ↔ 该消息的响应处理器不调回同一渲染函数。
+
+**关联**:BUG-003

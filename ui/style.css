@@ -323,6 +323,8 @@ body:has(#sidebar.collapsed) #left-resizer {
   font-size: var(--ui-fs-base); border-radius: var(--r-md); cursor: default;
   user-select: none;
 }
+/* 拖柄 = 收起态组头；展开组头不可拖（见 sidebar.js pointerdown） */
+.proj.collapsed { cursor: grab; }
 .proj:hover { background: var(--panel-2); color: var(--text); }
 .proj svg { flex: none; opacity: .8; color: #8F9090; }
 .proj .caret {
@@ -331,6 +333,28 @@ body:has(#sidebar.collapsed) #left-resizer {
   transition: transform .3s ease;
 }
 .proj.collapsed .caret { transform: rotate(-90deg); }
+/* 项目拖拽排序（Pointer 自绘）：拖组浮起跟手，其余组 .2s 过渡让位 */
+.proj.drag-float, .proj-kids.drag-float { position: relative; z-index: 2; transition: none; }
+.proj.drag-float {
+  cursor: grabbing;
+  background: var(--panel-2); color: var(--text);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
+}
+.proj.drag-float .pname { color: var(--text); }
+.proj.shift-anim, .proj-kids.shift-anim { transition: transform .2s cubic-bezier(.25, .8, .3, 1); }
+/* 拖动排序期间全列表禁文本选中（JS 给 #tasklist 挂 .proj-dragging）：
+   否则划过展开组的会话行会触发 WebKit 选中高亮，选中驱动滚动容器自动滚动，
+   与按拖动起始布局计算的位移叠加，表现为拖动时列表跳动 */
+#tasklist.proj-dragging, #tasklist.proj-dragging * { user-select: none !important; }
+/* 拖动排序期间关闭行 hover 高亮：指针捕获只重定向事件，:hover 仍跟随物理光标，
+   划过行的底色/文字色突变就是“选中高亮”观感，快速拖动时高频闪烁即“跳动” */
+#tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: #8F9090; }
+#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: #8F9090; }
+#tasklist.proj-dragging .task:not(.on):hover { background: none; color: rgb(212, 212, 212); }
+#tasklist.proj-dragging .task:not(.on):hover .tt { color: rgb(212, 212, 212); }
+[data-theme="light"] #tasklist.proj-dragging .task:not(.on):hover .tt { color: #333; }
+#tasklist.proj-dragging .proj .pmore,
+#tasklist.proj-dragging .proj .padd { display: none !important; }
 /* 项目会话行 / loop 过程组容器：grid 行高 1fr→0fr 过渡做整组收起动画（0.3s，两处同一套） */
 .proj-kids, .lp-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
 .proj-kids.closing, .lp-kids.closing { grid-template-rows: 0fr; }
@@ -1772,7 +1796,7 @@ body:has(#right.collapsed) #right-resizer {
   z-index: 61;
 }
 .menu.flyout .mi .ck { order: 1; margin-left: auto; }
-#thinkMenu { min-width: 140px; }
+#thinkMenu { min-width: 100px; }
 .tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }
 /* 上下文容量弹层（调小至 280px） */
 .menu.ctx { min-width: 280px; padding: 12px 14px; cursor: default; }
@@ -2422,6 +2446,10 @@ html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-
 .save-btn:active { transform: scale(.95); }
 /* 危险变体（登出等）：同 .save-btn 尺寸语言，hover 变红提示破坏性 */
 .save-btn.danger:hover { background: var(--panel-2); color: var(--err); }
+/* 保存进行中:按钮置灰不可点,busy 变体图标转圈(复用 pgspin) */
+.save-btn:disabled { opacity: .6; cursor: default; }
+.save-btn:disabled:hover, .save-btn:disabled:active { background: var(--panel-3); transform: none; }
+.save-btn.busy svg { animation: pgspin .8s linear infinite; }
 /* 开关：弹簧滑动 + 按住压扁拟物 */
 .tg {
   width: 38px; height: 23px; border-radius: 999px; background: var(--panel-3);
@@ -2524,8 +2552,8 @@ html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-
 .pv .pv-src { flex: none; }
 .pv:has(.pv-src) .dot { margin-left: 0; }
 .pv .pv-ic { width: 16px; text-align: center; flex: none; }
-/* 添加供应商:三列等宽圆角卡片 */
-.ap-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+/* 添加供应商:两列等宽圆角卡片,卡内上下两行(上行名称/下行厂商+已配置数) */
+.ap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
 /* 左侧供应商分组标识与分隔线:统一为全局 UI 字号、常规字重(覆盖 .set-sec 的小号字距样式) */
 .mp-grp { padding: 8px 10px 4px; font-size: var(--ui-fs-base); letter-spacing: normal; }
 .mp-l .mp-div { margin: 6px 16px; }
@@ -2533,6 +2561,11 @@ html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-
 .ap-card:hover { background: var(--panel-3); }
 .ap-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-base); color: var(--text); }
 .ap-card .tag { flex: none; }
+/* 两行卡片:上行图标+供应商名,下行左侧已配置徽标、右侧厂商名胶囊 */
+.ap-card2 { flex-direction: column; align-items: stretch; gap: 7px; padding: 15px 16px; }
+.ap-l1, .ap-l2 { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.ap-conf { flex: none; margin-left: auto; font-size: var(--ui-fs-xs); color: var(--green); }
+.ap-vendor { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* OMP 登录粘贴码弹窗 */
 .lp-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .lp-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 380px; max-width: calc(100vw - 48px); }
