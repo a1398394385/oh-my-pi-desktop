@@ -53,14 +53,6 @@
         </button>
       </div>
 
-      <div class="changebar hidden" id="changebar">
-        <span class="cb-tt">
-          <span id="chv" data-icon="chevronSmall" style="transition:transform .15s"></span>
-          <span id="cbText"></span>
-        </span>
-      </div>
-      <div class="changes-files" id="changesFiles"></div>
-
       <div id="statusWrap">
         <div id="statusCard" class="hidden">
           <div class="sc-head">
@@ -133,7 +125,12 @@
       <div id="msgRail" hidden></div>
 
       <div class="dock">
+        <!-- 排队消息卡：与输入区拼成一张重叠卡（仿新建会话页背卡，去掉选择器行），
+             流式中发送的消息在此排队，loop 完自动消费第 1 条 -->
+        <div class="queue-card" id="queueCard" hidden></div>
         <div id="composer">
+        <!-- working 状态行：turn 进行中显示当前动作（intent/思考/默认文案），后续动态状态统一放这里 -->
+        <div class="work-line" id="workLine" hidden></div>
         <div class="attach-row" id="attachRow" hidden></div>
         <textarea id="input" rows="1" placeholder="发消息…（Enter 发送）"></textarea>
         <div class="cbar">
@@ -161,7 +158,7 @@
           </span>
           <button class="pill-btn" id="modelBtn" title="切换模型"><span id="modelIcon" data-icon="box"></span><span id="modelLabel">模型</span> <span class="caret-svg" data-icon="caret" style="color:var(--faint)"></span></button>
           <button class="pill-btn" id="thinkBtn" title="思考级别">
-            <span data-icon="bulb"></span>
+            <span data-icon="think" data-size="16"></span>
             <span id="thinkLabel">思考</span> <span class="caret-svg" data-icon="caret" style="color:var(--faint)"></span>
           </button>
           <button class="send" id="sendBtn" title="发送">
@@ -753,6 +750,6 @@
     <script src="vendor/diff2html.min.js"></script>
     <script src="fa-icons.js"></script>
     <script src="icons.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>

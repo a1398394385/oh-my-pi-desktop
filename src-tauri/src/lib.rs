@@ -75,6 +75,7 @@ pub fn run() {
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(cell.clone())
         .manage(child_cell.clone())
         .setup(move |app| {

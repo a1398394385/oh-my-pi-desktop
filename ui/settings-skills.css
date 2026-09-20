@@ -1,0 +1,286 @@
+/* ════════════════════════════════════════════════════════════
+   技能页面改版（仿全新设计图）
+   ════════════════════════════════════════════════════════════ */
+/* 一级标题与边距同步 .set-tt（1.75 + 下边距 25） */
+.skills-header { margin-bottom: 25px; }
+.skills-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
+
+/* 第一行：作用域胶囊 + 统计 + 搜索框 */
+.skills-bar-primary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.skills-scope-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.skills-scope-sel { position: relative; }
+/* 作用域按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
+.skills-scope-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.skills-scope-icon { display: inline-flex; align-items: center; color: var(--faint); }
+.skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
+.skills-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
+
+.skills-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 240px;
+}
+.skills-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--faint);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+}
+/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
+.skills-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 32px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+.skills-search-input:focus {
+  border-color: rgba(74, 158, 255, .5);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, .13);
+}
+.skills-search-input::placeholder { color: var(--faint); }
+
+/* 第二行：已安装计数 + 操作按钮 */
+.skills-bar-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.skills-installed-stat {
+  font-size: var(--ui-fs-sm);
+  font-weight: 500;
+  color: var(--dim);
+}
+.skills-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 更多(⋯)按钮 = .sel 胶囊内的尺寸载体：底板/hover 由外层 .sel 提供（刷新钮走 .plus-btn） */
+.skills-btn-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+/* 新建按钮 = .add-btn 语言：透明底 + --line 描边 + hover --panel-2，高度与刷新钮一致 */
+.skills-btn-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  height: 31px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  cursor: pointer;
+  transition: background .15s var(--swift);
+}
+.skills-btn-new:hover { background: var(--panel-2); }
+.skills-btn-new:active { transform: scale(.95); }
+
+/* 技能卡片列表 */
+.skills-list-wrap {
+  margin-top: 4px;
+}
+.skills-card-list {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--r-card);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .35);
+  overflow: hidden;
+}
+[data-theme="light"] .skills-card-list {
+  border-color: rgba(0, 0, 0, .08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+}
+.skill-empty-row {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+}
+
+/* 技能卡片单行 */
+.skill-item-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: background .15s;
+}
+/* 行 = 记忆页行语言：整行可点，展开 .on 高亮，尾部 caret 随展开转正 */
+.skill-item-row, .mcp-server-row { cursor: pointer; }
+.skill-item-row.on, .mcp-server-row.on { background: var(--panel-2); }
+.skill-item-row.on .mem-caret svg, .mcp-server-row.on .mem-caret svg { transform: rotate(0deg); }
+.skill-item-row:last-child {
+  border-bottom: none;
+}
+.skill-item-row:hover {
+  background: rgba(255, 255, 255, .025);
+}
+[data-theme="light"] .skill-item-row:hover {
+  background: rgba(0, 0, 0, .02);
+}
+.skill-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  flex-shrink: 0;
+  margin-right: 14px;
+}
+.skill-info {
+  flex: 1;
+  min-width: 0;
+  cursor: inherit;
+  padding-right: 16px;
+}
+.skill-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.skill-name {
+  font-size: var(--ui-fs-base);
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-provider-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ctl-bg);
+  color: var(--faint);
+  border: 1px solid var(--line-soft);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.skill-desc {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.skill-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+/* 开关复用全站 .tg（accent 强调色 + 弹簧滑动），见设置页定义处 */
+/* 删除 Trash 按钮 */
+.skill-trash-btn {
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color .15s, transform .1s;
+  border-radius: 4px;
+}
+.skill-trash-btn:hover {
+  color: var(--err);
+  transform: scale(1.1);
+}
+
+/* 技能/MCP 行内编辑区（向下延展）：容器、头、脚与表单体。
+   弹窗容器类（modal/backdrop/dialog/head 等）已随弹窗改延展一并删除 */
+.mem-exp-head .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sem-body {
+  flex: 1;
+  padding: 14px 18px;
+  min-height: 360px;
+  display: flex;
+}
+/* MCP 表单变体：纵向排布表单组（默认横向只容纳单个编辑器 textarea） */
+.sem-body.form {
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* 延展区内嵌列表卡片：编辑器高度收紧（弹窗时代的 340px 全屏高度不再适用） */
+.mem-expand .sem-body { min-height: 0; }
+.mem-expand #skEditText { min-height: 260px; }
+/* 编辑器 textarea = .inp 语言：--bg 底 + r9 + 蓝色聚焦光晕 */
+#skEditText {
+  width: 100%;
+  flex: 1;
+  min-height: 340px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--code-fs, 12px);
+  line-height: 1.6;
+  padding: 12px 14px;
+  resize: vertical;
+  outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+#skEditText:focus {
+  border-color: rgba(74, 158, 255, .5);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, .13);
+}
+.sem-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--line-soft);
+}
+.sem-status { font-size: var(--ui-fs-sm); color: var(--dim); }
+/* 延展区底部按钮统一走 .confirm-btn / .confirm-btn.danger（全局二次确认弹窗语言） */
+
