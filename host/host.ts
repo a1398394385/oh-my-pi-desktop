@@ -131,6 +131,16 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
+// ---------- 事件流位置标识（借鉴 OBF 会话投影契约的最小落地） ----------
+// hi = host 进程实例 ID：进程重启即更换，UI 据此整体重置视图状态而非错位拼接；
+// seq = 全局单调递增事件序号：同 hi 内位置落后的帧（seq ≤ 已见）直接丢弃，
+// 不做合并；跳号仅告警（观测期，重连补洞未实现）。RPC 请求-响应不盖戳。
+const HOST_INSTANCE_ID = crypto.randomUUID();
+let eventSeq = 0;
+function stampEvent<T extends object>(payload: T): T & { hi: string; seq: number } {
+  return { ...payload, hi: HOST_INSTANCE_ID, seq: ++eventSeq };
+}
+
 // ---------- WebSocket 服务 ----------
 const server = Bun.serve<{ sessionId: string | null }>({
   port: 0, // 动态端口：多 workspace 并行开同名应用时固定端口会撞
@@ -144,6 +154,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
       ws.send(
         JSON.stringify({
           type: "ready",
+          hi: HOST_INSTANCE_ID, // 握手不占事件序号，但携带实例身份供 UI 立即比对
           approvalMode: H.settings.get("tools.approvalMode"),
           models: modelsPayload(),
           settings: settingsSnapshot(),
@@ -1044,13 +1055,15 @@ function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
   const u = entry.session.getContextUsage();
   if (u) {
     ws.send(
-      JSON.stringify({
-        type: "context",
-        sessionId,
-        tokens: u.tokens,
-        window: u.contextWindow,
-        percent: u.percent,
-      }),
+      JSON.stringify(
+        stampEvent({
+          type: "context",
+          sessionId,
+          tokens: u.tokens,
+          window: u.contextWindow,
+          percent: u.percent,
+        }),
+      ),
     );
   }
 }
@@ -1058,10 +1071,10 @@ function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any) {
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
-    if (ui) ws.send(JSON.stringify({ type: "event", sessionId, ...ui }));
+    if (ui) ws.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
     // todo 工具落盘后推送最新任务清单（TodoTracker 在工具结果后更新）
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
-      ws.send(JSON.stringify({ type: "todos", sessionId, phases: entry.session.getTodoPhases() }));
+      ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
     }
     // turn 真正结束后推送上下文占用（此时消息已定稿）；同时校准排队行（steer 已消费）
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
@@ -1081,7 +1094,7 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
         process.stderr.write(`[host] 排队消息被收尾竞态吞掉，重新发送: ${t.slice(0, 60)}\n`);
         entry.consumedTexts.push(t);
         entry.session.prompt(t).catch((err: unknown) => {
-          ws.send(JSON.stringify({ type: "error", sessionId, message: String(err) }));
+          ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
         });
       }
       sendQueued(ws, sessionId, entry);
@@ -1102,13 +1115,15 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
         // agent 中止/工具取消：AbortSignal 到来即按取消（undefined）结束挂起
         dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
         ws.send(
-          JSON.stringify({
-            type: "approval_request",
-            sessionId,
-            requestId,
-            title,
-            options: options.map((o) => (typeof o === "string" ? o : o.label)),
-          }),
+          JSON.stringify(
+            stampEvent({
+              type: "approval_request",
+              sessionId,
+              requestId,
+              title,
+              options: options.map((o) => (typeof o === "string" ? o : o.label)),
+            }),
+          ),
         );
       });
     },
@@ -1121,13 +1136,15 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
         };
         pendingApprovals.set(requestId, { resolve: settle });
         ws.send(
-          JSON.stringify({
-            type: "approval_request",
-            sessionId,
-            requestId,
-            title: `${title}\n${message}`,
-            options: ["OK", "Cancel"],
-          }),
+          JSON.stringify(
+            stampEvent({
+              type: "approval_request",
+              sessionId,
+              requestId,
+              title: `${title}\n${message}`,
+              options: ["OK", "Cancel"],
+            }),
+          ),
         );
       });
     },
@@ -1142,15 +1159,17 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
         pendingApprovals.set(requestId, { resolve: settle });
         dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
         ws.send(
-          JSON.stringify({
-            type: "approval_request",
-            sessionId,
-            requestId,
-            title,
-            options: ["提交", "取消"],
-            editable: true,
-            prefill: prefill ?? "",
-          }),
+          JSON.stringify(
+            stampEvent({
+              type: "approval_request",
+              sessionId,
+              requestId,
+              title,
+              options: ["提交", "取消"],
+              editable: true,
+              prefill: prefill ?? "",
+            }),
+          ),
         );
       });
     },
@@ -1162,19 +1181,21 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
   // 整棵 spawn 树共享根会话的 eventBus（sdk.ts:1341）：子代理 lifecycle/event 帧都在上面
   const unsubLifecycle = eventBus.on("task:subagent:lifecycle", (p: any) => {
     ws.send(
-      JSON.stringify({
-        type: "subagent_lifecycle",
-        sessionId,
-        subagentId: p.id,
-        agent: p.agent,
-        description: p.description,
-        status: p.status,
-      }),
+      JSON.stringify(
+        stampEvent({
+          type: "subagent_lifecycle",
+          sessionId,
+          subagentId: p.id,
+          agent: p.agent,
+          description: p.description,
+          status: p.status,
+        }),
+      ),
     );
   });
   const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
     const ui = translateSubagentEvent(event);
-    if (ui) ws.send(JSON.stringify({ type: "subagent_event", sessionId, subagentId: id, ...ui }));
+    if (ui) ws.send(JSON.stringify(stampEvent({ type: "subagent_event", sessionId, subagentId: id, ...ui })));
   });
   // 消费前通知：即将注入的排队/steer 用户消息推给 UI（气泡转正）；同时记入已消费
   // 清单，供 turn_end 的收尾竞态兜底 diff 排除（hook 触发 ≠ 注入成功，但不重复重发）
@@ -1184,7 +1205,7 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
       .map((m) => toRestoredQueuedMessage(m).text);
     if (texts.length > 0) {
       entry.consumedTexts.push(...texts);
-      ws.send(JSON.stringify({ type: "steer_consumed", sessionId, texts }));
+      ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
   });
   entry.unsubscribe = () => {
@@ -1251,7 +1272,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   // 恢复会话的存量任务清单（TodoTracker 构造时从 transcript 分支同步）
   const restored = entry.session.getTodoPhases();
   if (restored.length > 0) {
-    ws.send(JSON.stringify({ type: "todos", sessionId, phases: restored }));
+    ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: restored })));
   }
   // 恢复会话的初始上下文占用（system prompt + 历史）
   pushContext(ws, sessionId, entry);
@@ -1343,7 +1364,7 @@ async function handlePrompt(
     })
     .then(() => sendQueued(ws, sessionId, entry)) // 入队/开 turn 后校准前端排队行
     .catch((err: unknown) => {
-      ws.send(JSON.stringify({ type: "error", sessionId, message: String(err) }));
+      ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
     });
 }
 
@@ -1366,7 +1387,7 @@ function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entr
   const steering = view(agent.peekSteeringQueue());
   // 竞态兜底的快照：两队列用户消息全量（turn_end 时 diff「上次有/现在无/未通知消费」= 被吞）
   entry.queuedTexts = [...followUp, ...steering].map((m) => m.text);
-  ws.send(JSON.stringify({ type: "queued", sessionId, followUp, steering }));
+  ws.send(JSON.stringify(stampEvent({ type: "queued", sessionId, followUp, steering })));
 }
 
 function handlePeekQueued(ws: { send(data: string): unknown }, sessionId: string) {

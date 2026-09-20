@@ -3,7 +3,11 @@
   "private": true,
   "scripts": {
     "host": "bun host/host.ts",
-    "smoke": "bun scripts/smoke.ts"
+    "smoke": "bun scripts/smoke.ts",
+    "smoke:stamp": "bun scripts/smoke-stamp.ts",
+    "check:capabilities": "node scripts/check-capabilities.mjs",
+    "check:boundaries": "node scripts/check-host-boundaries.mjs",
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs"
   },
   "dependencies": {
     "@oh-my-pi/pi-agent-core": "18.2.6",
