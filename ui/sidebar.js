@@ -4,7 +4,7 @@ import {
   pinnedSessions, expandedProjects, projectLimits, activeOpen, saveUnseen,
 } from "./core.js";
 import { closeAllMenus, placeMenu } from "./shell.js";
-import { showWelcomeScreen, hideWelcomeScreen, getAvailableProjects } from "./welcome.js";
+import { showWelcomeScreen, hideWelcomeScreen, getAvailableProjects, initNewSessionModel } from "./welcome.js";
 import { settingsOpen } from "./settings/index.js";
 import { invoke, renderAll } from "./core.js";
 import { refreshGitDiff } from "./right.js";
@@ -19,23 +19,92 @@ export function closeProjPopups() {
   projAddPop = null;
 }
 
-// —— 项目拖拽排序（HTML5 DnD；依赖 tauri dragDropEnabled=false 让 WKWebView 收到拖放事件） ——
-let dragProjCwd = null;
-function clearProjDropHint() {
-  for (const el of tasklistEl.querySelectorAll(".proj.drop-above, .proj.drop-below")) {
-    el.classList.remove("drop-above", "drop-below");
+// —— 项目拖拽排序（Pointer Events 自绘：拖组跟手浮起，其余组实时滑移让位，松手提交顺序） ——
+let projDrag = null; // 拖动会话态：{ cwd, pointerId, startClientY, groups }（groups 为 null 表示尚未过拖动阈值）
+let suppressProjClick = false; // 拖动结束后抑制一次 click，避免误触发折叠/展开
+
+// 收集顶层项目组（组头 + 可选的展开会话容器），并量出各自布局坐标/高度
+// offsetTop/offsetHeight 是布局坐标，天然免疫 zoom；baseY 取相对首组的偏移，避开置顶区/标题行
+function measureProjGroups() {
+  const groups = [];
+  for (const head of tasklistEl.querySelectorAll(":scope > .proj")) {
+    const kids = head.nextElementSibling?.classList.contains("proj-kids") ? head.nextElementSibling : null;
+    groups.push({ cwd: head.dataset.cwd, head, kids, baseY: 0, h: 0 });
   }
+  const top0 = groups[0]?.head.offsetTop ?? 0;
+  for (const g of groups) {
+    g.baseY = g.head.offsetTop - top0;
+    g.h = g.head.offsetHeight + (g.kids?.offsetHeight ?? 0);
+  }
+  return groups;
 }
-function reorderProjects(dragCwd, targetCwd, before) {
-  // 兜底合并：被拖项/目标不在配置列表时（磁盘兜底项目）先并入顶端，再按落点重排
-  if (!S.allProjects.includes(dragCwd)) S.allProjects.unshift(dragCwd);
-  if (!S.allProjects.includes(targetCwd)) S.allProjects.unshift(targetCwd);
-  const arr = S.allProjects.filter((c) => c !== dragCwd);
-  const ti = arr.indexOf(targetCwd);
-  arr.splice(before ? ti : ti + 1, 0, dragCwd);
+
+function beginProjDrag(e) {
+  const d = projDrag;
+  d.groups = measureProjGroups();
+  // 拖动期间全列表禁文本选中：划过展开组的会话行会触发 WebKit 选中，
+  // 选中又会驱动滚动容器自动滚动，与按起始布局算的位移叠加造成跳动
+  tasklistEl.classList.add("proj-dragging");
+  window.getSelection()?.removeAllRanges();
+  for (const g of d.groups) {
+    for (const el of g.kids ? [g.head, g.kids] : [g.head]) el.classList.add("shift-anim");
+  }
+  const self = d.groups.find((g) => g.cwd === d.cwd);
+  for (const el of self.kids ? [self.head, self.kids] : [self.head]) el.classList.add("drag-float");
+  updateProjDrag(e);
+}
+
+// 拖组中点落到某组前半 → 占位插到该组前；其余组按「拖组占位插入」的目标布局算 translateY
+function updateProjDrag(e) {
+  const d = projDrag;
+  const z = S.zoomLevel || 1; // 指针位移是视觉坐标，换算回布局坐标
+  const dy = (e.clientY - d.startClientY) / z;
+  const self = d.groups.find((g) => g.cwd === d.cwd);
+  const dragMid = self.baseY + dy + self.h / 2;
+  const others = d.groups.filter((g) => g.cwd !== d.cwd);
+  let idx = others.length;
+  for (let i = 0, acc = 0; i < others.length; i++) {
+    if (dragMid < acc + others[i].h / 2) { idx = i; break; }
+    acc += others[i].h;
+  }
+  let y = 0;
+  for (let i = 0; i < others.length; i++) {
+    if (i === idx) y += self.h; // 拖组在此占位
+    const ty = `translateY(${y - others[i].baseY}px)`;
+    others[i].head.style.transform = ty;
+    if (others[i].kids) others[i].kids.style.transform = ty;
+    y += others[i].h;
+  }
+  const ty = `translateY(${dy}px)`;
+  self.head.style.transform = ty;
+  if (self.kids) self.kids.style.transform = ty;
+  d.insertIndex = idx;
+}
+
+function endProjDrag(commit) {
+  const d = projDrag;
+  projDrag = null;
+  if (!d?.groups) return;
+  tasklistEl.classList.remove("proj-dragging");
+  window.getSelection()?.removeAllRanges();
+  for (const g of d.groups) {
+    for (const el of g.kids ? [g.head, g.kids] : [g.head]) {
+      el.classList.remove("shift-anim", "drag-float");
+      el.style.transform = "";
+    }
+  }
+  suppressProjClick = true; // 拖动结束后抑制随后到来的 click（无论是否换位，都避免误触发折叠/展开）
+  setTimeout(() => { suppressProjClick = false; }, 0);
+  if (!commit) return;
+  // 提交：DOM 顺序按拖组占位插入 insertIndex 重排，顺序持久化到 omp-desktop.json allProjects
+  const order = d.groups.filter((g) => g.cwd !== d.cwd).map((g) => g.cwd);
+  order.splice(d.insertIndex, 0, d.cwd);
+  for (const c of order) if (!S.allProjects.includes(c)) S.allProjects.unshift(c); // 磁盘兜底项目先并入
+  const arr = [...order, ...S.allProjects.filter((c) => !order.includes(c))];
+  const unchanged = arr.length === S.allProjects.length && arr.every((c, i) => c === S.allProjects[i]);
   S.allProjects = arr;
-  send({ type: "reorder_projects", order: arr }); // 顺序持久化到 omp-desktop.json allProjects
-  renderList();
+  send({ type: "reorder_projects", order: arr });
+  if (!unchanged) renderList();
 }
 
 // 全局二次确认弹窗：严格遵照 ring-pop 视觉规范与 ringpop 动效
@@ -123,6 +192,45 @@ function openProjAddPop(btn) {
   placeMenu(projAddPop, Math.max(4, Math.min(r.right - w, window.innerWidth - w - 8)), r.bottom + 4);
   document.body.appendChild(projAddPop);
   input.focus();
+}
+
+// 构建项目的会话容器（grid 行高过渡做整组收起动画）；animate 时逐行播放入场动画
+function buildProjKids(p, animate = false) {
+  const kids = document.createElement("div");
+  kids.className = "proj-kids";
+  const kidsIn = document.createElement("div");
+  kidsIn.className = "proj-kids-in";
+  kids.appendChild(kidsIn);
+  // 管理模式下显示全部会话；默认 5 条，按需每次多加载 5 条
+  const limit = S.isProjectManageMode ? Infinity : (projectLimits.get(p.cwd) ?? 5);
+  const visibleSessions = p.sessions.slice(0, limit);
+  for (const [i, s] of visibleSessions.entries()) {
+    const row = taskRow(s, { sub: true });
+    if (animate) {
+      row.classList.add("kids-in");
+      row.style.animationDelay = i * 25 + "ms"; // 逐行错峰展开
+    }
+    kidsIn.appendChild(row);
+  }
+  if (!S.isProjectManageMode && p.sessions.length > visibleSessions.length) {
+    const moreLink = document.createElement("button");
+    moreLink.className = "more-link";
+    moreLink.textContent = "显示更多";
+    moreLink.onclick = () => {
+      projectLimits.set(p.cwd, visibleSessions.length + 5);
+      renderList();
+    };
+    if (animate) moreLink.classList.add("kids-in");
+    kidsIn.appendChild(moreLink);
+  }
+  if (p.sessions.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "empty-hint";
+    hint.textContent = "暂无任务";
+    if (animate) hint.classList.add("kids-in");
+    kidsIn.appendChild(hint);
+  }
+  return kids;
 }
 
 export function fmtAgo(iso) {
@@ -376,108 +484,63 @@ export function renderList() {
         proj.insertAdjacentHTML("beforeend", expandedProjects.has(p.cwd) ? icon("folderOpen") : icon("folder"));
         proj.append(name, add, more);
       }
-      // 拖拽排序：整行组头可拖，落点在目标行上半/下半决定插到其上/下方
-      proj.draggable = true;
-      proj.addEventListener("dragstart", (e) => {
-        dragProjCwd = p.cwd;
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", p.cwd);
-        // rAF 延迟加半透明：让浏览器先拍完拖拽快照，快照本身不透明
-        requestAnimationFrame(() => proj.classList.add("dragging"));
+      // 拖拽排序：仅收起状态的组头是拖柄（展开组整组跟手太笨重，先收起再拖）；移动超阈值进入拖动态，其余组实时滑移让位，松手提交
+      proj.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || e.target.closest("button")) return; // 行内按钮（＋/⋯/移除）不受影响
+        if (expandedProjects.has(p.cwd)) return; // 展开的项目不可拖
+        projDrag = { cwd: p.cwd, pointerId: e.pointerId, startClientY: e.clientY, groups: null, insertIndex: -1 };
+        proj.setPointerCapture(e.pointerId);
       });
-      proj.addEventListener("dragend", () => {
-        dragProjCwd = null;
-        proj.classList.remove("dragging");
-        clearProjDropHint();
+      proj.addEventListener("pointermove", (e) => {
+        const d = projDrag;
+        if (!d || d.pointerId !== e.pointerId || d.cwd !== p.cwd) return;
+        if (!d.groups) {
+          if (Math.abs(e.clientY - d.startClientY) / (S.zoomLevel || 1) < 5) return; // 5px 阈值内算点击
+          beginProjDrag(e);
+          return;
+        }
+        updateProjDrag(e);
       });
-      proj.addEventListener("dragover", (e) => {
-        if (!dragProjCwd || dragProjCwd === p.cwd) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        const before = e.clientY < proj.getBoundingClientRect().top + proj.offsetHeight / 2;
-        clearProjDropHint();
-        proj.classList.add(before ? "drop-above" : "drop-below");
-      });
-      proj.addEventListener("dragleave", (e) => {
-        // 仅真正离开组头时清指示线（进入子元素冒泡出的 leave 忽略）
-        if (!proj.contains(e.relatedTarget)) proj.classList.remove("drop-above", "drop-below");
-      });
-      proj.addEventListener("drop", (e) => {
-        if (!dragProjCwd || dragProjCwd === p.cwd) return;
-        e.preventDefault();
-        const before = e.clientY < proj.getBoundingClientRect().top + proj.offsetHeight / 2;
-        const dragCwd = dragProjCwd;
-        dragProjCwd = null; // 先清：drop 后 renderList 重绘，旧组头脱离文档、dragend 不再来
-        reorderProjects(dragCwd, p.cwd, before);
-      });
-      // 点击组头折叠/展开；展开态写入宿主 omp-desktop.json（收起即从配置移除，未记录的默认收起）；再展开时分页重置回默认 5 条
+      const finishProjDrag = (e, commit) => {
+        const d = projDrag;
+        if (!d || d.pointerId !== e.pointerId || d.cwd !== p.cwd) return;
+        endProjDrag(commit);
+      };
+      proj.addEventListener("pointerup", (e) => finishProjDrag(e, true));
+      proj.addEventListener("pointercancel", (e) => finishProjDrag(e, false));
+      // 点击组头折叠/展开；增量更新只动当前项目的容器，不重绘全列表（避免其他展开组闪烁）；展开态写入宿主 omp-desktop.json（收起即从配置移除，未记录的默认收起）；再展开时分页重置回默认 5 条
       proj.onclick = () => {
+        if (suppressProjClick) return; // 刚结束拖动，忽略本次 click
         const on = !expandedProjects.has(p.cwd);
+        // 组头图标随状态切换（caret 旋转走 .collapsed 类，folder/folderOpen 是行内 svg 需手动换）
+        const folderSvg = proj.querySelector(":scope > svg");
         if (on) {
           expandedProjects.add(p.cwd);
           projectLimits.delete(p.cwd);
-          S.animateProjectKids = true; // 本次 renderList 的子行播放入场动画
           send({ type: "set_project_expanded", cwd: p.cwd, expanded: true });
-          renderList();
-          S.animateProjectKids = false;
+          proj.classList.remove("collapsed");
+          if (folderSvg) folderSvg.outerHTML = icon("folderOpen");
           // 容器高度 0→auto 展开（grid 行高过渡），与逐行 kids-in 错峰叠加
-          const fresh = tasklistEl.querySelector('.proj[data-cwd="' + CSS.escape(p.cwd) + '"]');
-          const kids = fresh?.nextElementSibling;
-          if (kids?.classList.contains("proj-kids")) {
-            kids.style.gridTemplateRows = "0fr";
-            requestAnimationFrame(() => requestAnimationFrame(() => { kids.style.gridTemplateRows = ""; }));
-          }
+          const kids = buildProjKids(p, true);
+          proj.after(kids);
+          kids.style.gridTemplateRows = "0fr";
+          requestAnimationFrame(() => requestAnimationFrame(() => { kids.style.gridTemplateRows = ""; }));
         } else {
           expandedProjects.delete(p.cwd);
           send({ type: "set_project_expanded", cwd: p.cwd, expanded: false });
-          // 收起：容器高度收拢到 0（0.3s），结束后重绘移除
+          proj.classList.add("collapsed");
+          if (folderSvg) folderSvg.outerHTML = icon("folder");
+          // 收起：容器高度收拢到 0（0.3s）后移除，同样不动其他组
           const kids = proj.nextElementSibling;
           if (kids?.classList.contains("proj-kids")) {
             kids.classList.add("closing");
-            setTimeout(() => renderList(), 310);
-          } else {
-            renderList();
+            setTimeout(() => kids.remove(), 310);
           }
         }
       };
       tasklistEl.appendChild(proj);
       if (!expandedProjects.has(p.cwd)) continue;
-      // 会话行包一层容器：grid-template-rows 1fr→0fr 过渡实现整组收起动画
-      const kids = document.createElement("div");
-      kids.className = "proj-kids";
-      const kidsIn = document.createElement("div");
-      kidsIn.className = "proj-kids-in";
-      kids.appendChild(kidsIn);
-      tasklistEl.appendChild(kids);
-      // 管理模式下显示全部会话；默认 5 条，按需每次多加载 5 条
-      const limit = S.isProjectManageMode ? Infinity : (projectLimits.get(p.cwd) ?? 5);
-      const visibleSessions = p.sessions.slice(0, limit);
-      for (const [i, s] of visibleSessions.entries()) {
-        const row = taskRow(s, { sub: true });
-        if (S.animateProjectKids) {
-          row.classList.add("kids-in");
-          row.style.animationDelay = i * 25 + "ms"; // 逐行错峰展开
-        }
-        kidsIn.appendChild(row);
-      }
-      if (!S.isProjectManageMode && p.sessions.length > visibleSessions.length) {
-        const moreLink = document.createElement("button");
-        moreLink.className = "more-link";
-        moreLink.textContent = "显示更多";
-        moreLink.onclick = () => {
-          projectLimits.set(p.cwd, visibleSessions.length + 5);
-          renderList();
-        };
-        if (S.animateProjectKids) moreLink.classList.add("kids-in");
-        kidsIn.appendChild(moreLink);
-      }
-      if (p.sessions.length === 0) {
-        const hint = document.createElement("div");
-        hint.className = "empty-hint";
-        hint.textContent = "暂无任务";
-        if (S.animateProjectKids) hint.classList.add("kids-in");
-        kidsIn.appendChild(hint);
-      }
+      tasklistEl.appendChild(buildProjKids(p));
     }
     if (visible.length === 0) {
       const hint = document.createElement("div");
@@ -513,14 +576,23 @@ export function initSidebar() {
     for (const x of $("seg").querySelectorAll("button")) x.classList.toggle("on", x === b);
     renderList();
   });
-  $("navNew").addEventListener("click", () => showWelcomeScreen(activeOpen()?.cwd));
+  // 点新建（含已在欢迎页时再点）：明确回到配置文件默认——清手选标记 + 强制重校准
+  function newTaskAction() {
+    if (S.isCreatingNew) {
+      S.newSessionDirty = false;
+      initNewSessionModel(true);
+      renderAll();
+    }
+    showWelcomeScreen(activeOpen()?.cwd);
+  }
+  $("navNew").addEventListener("click", newTaskAction);
 
   // ⌘N 新建任务
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
       e.preventDefault();
       if (typeof settingsOpen === "function" && settingsOpen()) return;
-      showWelcomeScreen(activeOpen()?.cwd);
+      newTaskAction();
     }
   });
 }
