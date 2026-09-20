@@ -150,6 +150,7 @@ function pickModel(id) {
     send({ type: "set_model", sessionId: s.sessionId, model: id });
   } else {
     S.newSessionModel = id;
+    S.newSessionDirty = true; // 手选后：后续 models 帧不再用配置默认覆盖
     try { localStorage.setItem("omp-new-model", id); } catch {}
     const validLevels = getSupportedThinkingForModel(id);
     if (!validLevels.includes(S.newSessionThinking)) {
@@ -268,7 +269,7 @@ export function buildModelMenu() {
 
 export function buildThinkMenu() {
   const menu = $("thinkMenu");
-  menu.innerHTML = '<div class="mh">推理强度（随当前模型能力变化）</div>';
+  menu.innerHTML = '<div class="mh">推理强度</div>';
   const curThinking = activeOpen()?.thinking || S.newSessionThinking;
   for (const lv of currentThinkingLevels()) {
     const mi = document.createElement("div");
@@ -384,7 +385,11 @@ export function renderComposerBar() {
   modelBtn.disabled = thinkBtn.disabled = !s;
   $("modelLabel").textContent = s?.model ? (modelNames.get(s.model) ?? s.model.split("/").pop()) : "模型";
   $("modelIcon").textContent = PROV_IC[s?.model?.split("/")[0]] || "✦";
-  $("thinkLabel").textContent = s ? (s.thinking || "思考") : "思考";
+  // auto 会话且有本轮判定结果时显示 "auto·档位"（thinking_level 事件写入 s.autoResolved）；
+  // 无判定（刚切进 auto/新会话未发言）或手动档位维持原样
+  $("thinkLabel").textContent = s
+    ? (s.thinking === "auto" && s.autoResolved ? `auto·${s.autoResolved}` : (s.thinking || "思考"))
+    : "思考";
   // 上下文环：从顶端顺时针填充；无数据空环
   const ring = $("ctxRing");
   ring.hidden = !s;
@@ -502,6 +507,7 @@ export function initComposer() {
       send({ type: "set_thinking", sessionId: s.sessionId, level: lv });
     } else {
       S.newSessionThinking = lv;
+      S.newSessionDirty = true; // 手选后：后续 models 帧不再用配置默认覆盖
       try { localStorage.setItem("omp-new-thinking", lv); } catch {}
       renderComposerBar();
     }

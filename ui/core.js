@@ -7,7 +7,7 @@
 //   initXxx()，由 app.js 入口按依赖序统一调用——ESM 循环 import 下顶层互调会 TDZ 崩溃。
 // - onMessage 是事件分发中枢，函数体内引用各域渲染函数（模块加载期不执行，循环安全）。
 import { setApprovalModeUi, ingestModels, renderComposerBar, renderQueueLine } from "./composer.js";
-import { showWelcomeScreen, hideWelcomeScreen, updateWelcomeGitUI } from "./welcome.js";
+import { showWelcomeScreen, hideWelcomeScreen, updateWelcomeGitUI, initNewSessionModel } from "./welcome.js";
 import { renderList } from "./sidebar.js";
 import { fillCtxCard, fillLimits, buildLimitsSection } from "./ringpop.js";
 import { uniqueFiles } from "./tool-rows.js";
@@ -59,6 +59,9 @@ export const S = {
   newSessionIsGit: false,
   newSessionModel: "",
   newSessionThinking: "auto",
+  defaultModelCfg: null, // 配置文件默认模型（host models/ready 帧下发，default 角色解析结果）
+  defaultThinkingCfg: null, // 配置文件默认思考级别（defaultThinkingLevel 原文："auto" 或具体档位）
+  newSessionDirty: false, // 欢迎页里用户手选过模型/档位：models 帧到达时不再用配置默认覆盖
   pendingNewPrompt: null, // { text, files }，新建会话创建成功后补发
   pendingFiles: [], // { id, name, kind: "image" | "text", mime, data }（image: base64；text: 文件内容）
   fileSeq: 0,
@@ -66,7 +69,6 @@ export const S = {
   isProjectManageMode: false, // 项目清理模式：展开所有项目与会话，展示移除/删除按钮
   allProjects: [], // 所有项目全路径（宿主 profile 配置目录 omp-desktop.json）
   removedProjects: [], // 已移除项目全路径（项目视图隐藏，最近视图仍显示其会话）
-  animateProjectKids: false, // 下一次 renderList 为展开动作的子行播放入场动画（同步渲染后立即复位）
   animateGdKids: false, // 下一次 renderRightBody 为目录展开动作的子行播放入场动画（同步渲染后立即复位）
   animateThinkBody: false, // 下一次 renderChat 为思考展开动作的 think-body 播放入场动画（同步渲染后立即复位）
   todoCollapsed: false, // 进程卡收起为胶囊
@@ -99,6 +101,15 @@ export { fileDiffCache };
 export const briefDiffCache = {}; // 编辑行内联展开用的单文件 diff，path -> diff 文本
 // 记忆页读取状态（core.onMessage 写、settings/memory 读；sideEl/contentEl 为当前延展区元素）
 export const memInbox = { base: null, files: null, rollouts: null, active: null, sideEl: null, contentEl: null };
+
+// 从 models/ready 帧提取新建会话配置默认；返回是否携带了默认字段
+function ingestModelDefaults(msg) {
+  const has = "defaultModel" in msg || "defaultThinking" in msg;
+  if (!has) return false;
+  S.defaultModelCfg = msg.defaultModel ?? null;
+  S.defaultThinkingCfg = msg.defaultThinking ?? null;
+  return true;
+}
 
 // ---------- UI 偏好（settings 域读写，对象内容可变） ----------
 export const uiPrefs = { uiFont: "default", uiFontSize: 13, codeFontSize: 12, lineNumbers: true, codeWrap: false, showThinking: true, lang: "zh-CN" };
@@ -310,19 +321,20 @@ function onMessage(msg) {
     case "ready":
       setApprovalModeUi(msg.approvalMode);
       ingestModels(msg.models);
+      // 启动即进欢迎页时 ready 帧晚于首次 initNewSessionModel：配置默认到位后立即重校准
+      if (ingestModelDefaults(msg) && S.isCreatingNew && !S.newSessionDirty) initNewSessionModel(true);
       if (msg.settings) applyHostReadySettings(msg.settings);
       renderAll();
       break;
     case "models":
       ingestModels(msg.models);
+      // 新建态且用户未手选：用最新下发的配置默认刷新右下角（点新建→reload_settings 异步回来的校准路径）
+      if (ingestModelDefaults(msg) && S.isCreatingNew && !S.newSessionDirty) initNewSessionModel(true);
       renderAll();
       break;
     case "models_catalog":
       S.modelCatalog = msg.models ?? [];
-      if (S.mpAddView) {
-        if (S.mpDetailProv) renderProviderDetail();
-        else renderAddProviderView();
-      } else renderModelPage();
+      renderModelPage();
       break;
     case "model_roles":
       S.modelRoles = msg.roles ?? [];
@@ -537,6 +549,11 @@ function onMessage(msg) {
           unseenFinished.add(p);
           saveUnseen();
         }
+      } else if (msg.kind === "thinking_level") {
+        // auto 档位判定帧：只记判定结果供右下角显示 auto·档位，不改 s.thinking——
+        // 上拉菜单的 ✓ 与用户手选状态仍以 s.thinking 为准。切进 auto 的 provisional 帧无
+        // resolved，会把上一轮判定清掉，回到纯 "auto" 显示；人工切档帧（无 configured）忽略。
+        if (msg.configured === "auto") s.autoResolved = msg.resolved;
       }
       // 流式增量帧（text/thinking delta，长思考可达近千帧）只累积状态，渲染走 100ms
       // 合并节流——每帧同步 renderAll 全量重绘递增文本是 O(n²)，主线程被打爆表现为应用卡死
@@ -706,7 +723,8 @@ function onMessage(msg) {
     }
     case "all_providers":
       S.allProvidersCache = msg.providers ?? [];
-      if (S.mpAddView) renderAddProviderView();
+      // 详情页打开时响应到达不重绘(会冲掉保存进行中的 pending 态),返回列表时自然用新缓存
+      if (S.mpAddView && !S.mpDetailProv) renderAddProviderView();
       break;
     case "login_progress":
       if (msg.reqId !== S.loginReqId) break;
@@ -733,6 +751,10 @@ function onMessage(msg) {
       break;
     case "provider_key_done":
       toast(`${msg.provider} API key 已保存，模型列表已刷新`);
+      // 保存闭环:退出详情页回列表,重拉凭证数让卡片回显「已配置 · N」
+      S.mpDetailProv = null;
+      send({ type: "get_all_providers" });
+      if (S.mpAddView) renderAddProviderView();
       break;
     case "models_config_path":
       toast(`配置文件：${msg.path}`);

@@ -48,7 +48,13 @@ import {
   applySleepPrevention,
   applyDesktopEnv,
 } from "./profile.ts";
-import { rebuildScopedModels, modelsPayload, settingsSnapshot, modelCatalog, modelRolesPayload } from "./models.ts";
+import { rebuildScopedModels, modelsPayload, settingsSnapshot, modelCatalog, modelRolesPayload, modelsDefaults } from "./models.ts";
+
+// models 帧统一组装：目录 + 新建会话配置默认（defaultModel/defaultThinking），
+// 所有发送点共用，避免漏带默认字段
+function modelsFrame() {
+  return { type: "models", models: modelsPayload(), ...modelsDefaults() };
+}
 import {
   listAgentAssets,
   probeMcpServerHealth,
@@ -146,6 +152,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
           type: "ready",
           approvalMode: H.settings.get("tools.approvalMode"),
           models: modelsPayload(),
+          ...modelsDefaults(),
           settings: settingsSnapshot(),
         }),
       );
@@ -545,13 +552,14 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const defaultLevel = enabledDefaults.get(msg.model);
             if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
             const model = `${entry.session.model.provider}/${entry.session.model.id}`;
-            // 模型切换后思考级别可能被能力钳制，一并回传生效值
+            // 模型切换后回传配置选择器（"auto" 或具体档位）：右下角显示用户配置的模式，
+            // 能力钳制后的生效值属于发送参数细节，不进 UI
             ws.send(
               JSON.stringify({
                 type: "session_model",
                 sessionId: msg.sessionId,
                 model,
-                thinking: entry.session.thinkingLevel ?? "auto",
+                thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
               }),
             );
             break;
@@ -560,9 +568,9 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const entry = sessions.get(msg.sessionId);
             if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
             entry.session.setThinkingLevel(msg.level);
-            // getter 返回按模型能力钳制后的生效值（如 medium→low），如实回传
+            // 回传配置选择器（"auto" 或具体档位）；钳制后的生效值不进 UI
             ws.send(
-              JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.thinkingLevel ?? "auto" }),
+              JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.configuredThinkingLevel?.() ?? "auto" }),
             );
             break;
           }
@@ -579,7 +587,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             try {
               await H.settings.reloadFromDisk();
               rebuildScopedModels();
-              ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+              ws.send(JSON.stringify(modelsFrame()));
             } catch (err) {
               process.stderr.write(`[host] reload_settings 失败: ${err}\n`);
             }
@@ -634,11 +642,19 @@ const server = Bun.serve<{ sessionId: string | null }>({
             ws.send(
               JSON.stringify({
                 type: "all_providers",
-                providers: listAllProviders().map((p) => ({
-                  ...p,
-                  // 登录能力:OAuth/login 流存在即可(API key 对所有供应商可用)
-                  login: !!getProviderDefinition(p.id)?.login,
-                })),
+                providers: listAllProviders().map((p) => {
+                  let accounts = 0;
+                  try {
+                    accounts = (H.authStorage.listStoredCredentials?.(p.id) ?? []).length;
+                  } catch {}
+                  return {
+                    ...p,
+                    // 登录能力:OAuth/login 流存在即可(API key 对所有供应商可用)
+                    login: !!getProviderDefinition(p.id)?.login,
+                    // 已配置账号数:authStorage 活跃凭证数(models.yml/env 层配置不计入)
+                    accounts,
+                  };
+                }),
               }),
             );
             break;
@@ -696,7 +712,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
               await H.modelRegistry.refresh();
               H.availableModels = H.modelRegistry.getAvailable();
               rebuildScopedModels();
-              reply({ type: "models", models: modelsPayload() });
+              reply(modelsFrame());
               reply({ type: "models_catalog", models: modelCatalog() });
               reply({ type: "login_done", provider, ok: true, identity: identity ?? null });
             } catch (err) {
@@ -723,13 +739,13 @@ const server = Bun.serve<{ sessionId: string | null }>({
             await H.authStorage.remove(provider);
             H.availableModels = H.availableModels.filter((m) => m.provider !== provider);
             rebuildScopedModels();
-            ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+            ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             try {
               await H.modelRegistry.refresh();
               H.availableModels = H.modelRegistry.getAvailable();
               rebuildScopedModels();
-              ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+              ws.send(JSON.stringify(modelsFrame()));
               ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             } catch (err) {
               process.stderr.write(`[host] 登出后模型目录刷新失败: ${err}\n`);
@@ -752,7 +768,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             await H.modelRegistry.refresh();
             H.availableModels = H.modelRegistry.getAvailable();
             rebuildScopedModels();
-            ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+            ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             ws.send(JSON.stringify({ type: "provider_key_done", provider, ok: true }));
             break;
@@ -803,7 +819,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             await H.settings.flush();
             rebuildScopedModels();
             if (H.scopedModels.length === 0) throw new Error("启用列表过滤后没有可用模型");
-            ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+            ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             break;
           }
@@ -1013,7 +1029,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!p) throw new Error("Profile 名称不能为空");
             await applyProfile(p);
             ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
-            ws.send(JSON.stringify({ type: "models", models: modelsPayload() }));
+            ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             await handleListSessions(ws);
             try {
@@ -1218,7 +1234,7 @@ async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thi
       path: entry.path,
       cwd: workDir,
       model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
-      thinking: entry.session.thinkingLevel ?? "auto",
+      thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
       isGit: entry.isGit,
     }),
   );
@@ -1243,7 +1259,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
       path: entry.path,
       cwd: entry.cwd,
       model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
-      thinking: entry.session.thinkingLevel ?? "auto",
+      thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
       isGit: entry.isGit,
     }),
   );
@@ -1267,6 +1283,26 @@ async function handleListSessions(ws: any) {
     const list = byProject.get(s.cwd) ?? [];
     list.push(s);
     byProject.set(s.cwd, list);
+  }
+  // 内存池兜底：底座懒建会话文件（首条内容才落盘），仅扫磁盘会漏掉刚建、还没写内容的
+  // 会话——UI 的「活跃会话不在列表即弹回欢迎页」校验会误杀新建会话。
+  // 已被用户移除的项目跳过：活跃会话不能把移除的项目顶回列表（否则 remove 永不生效）。
+  const listed = new Set(all.map((s: any) => s.path));
+  for (const [sid, entry] of sessions.entries()) {
+    if (listed.has(entry.path)) continue;
+    if (H.desktopProjects.removedProjects.includes(entry.cwd)) continue;
+    const list = byProject.get(entry.cwd) ?? [];
+    list.push({
+      id: sid,
+      path: entry.path,
+      title: null,
+      firstMessage: "",
+      modified: new Date(),
+      messageCount: 0,
+      cwd: entry.cwd,
+    });
+    byProject.set(entry.cwd, list);
+    listed.add(entry.path);
   }
   // 历史扫描：新出现的 project 并入所有项目列表（启动/UI 重连时都会走到这里）
   if (mergeHistoryProjects([...byProject.keys()])) await saveDesktopProjects();

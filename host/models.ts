@@ -95,6 +95,16 @@ export function modelCatalog() {
   });
 }
 
+// 新建会话的配置文件默认：模型 = default 角色解析结果（与底座建新会话的实际选择一致），
+// 思考级别 = defaultThinkingLevel 原文（"auto" 或具体档位）。目录里没有时为 null。
+export function modelsDefaults() {
+  const { model } = resolveModelRoleValue(formatModelRoleAlias("default"), H.availableModels, { settings: H.settings });
+  return {
+    defaultModel: model ? `${model.provider}/${model.id}` : null,
+    defaultThinking: (H.settings.get("defaultThinkingLevel") as string | undefined) ?? null,
+  };
+}
+
 // 模型角色（@role）快照：内置 9 角色优先 + settings 里出现的自定义角色。
 // value = modelRoles 里的显式配置原文（可能是 "provider/model"、"@smol" 别名或带 ":level" 后缀）；
 // resolved = 以 "@role" 展开解析出的实际生效模型（未显式配置时走内置优先级链/角色回退）。

@@ -63,8 +63,12 @@ export function getSupportedThinkingForModel(modelId) {
   return efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
 }
 
-export function initNewSessionModel() {
-  if (!S.newSessionModel || !modelNames.has(S.newSessionModel)) {
+// force = 点新建/配置下发刷新：模型与档位回到配置文件默认（上次手选不跨"点新建"保留）；
+// 非 force 只做兜底（当前值缺失或不在目录时才补），欢迎页停留期间的手选不被重绘重置
+export function initNewSessionModel(force = false) {
+  if (force && S.defaultModelCfg && modelNames.has(S.defaultModelCfg)) {
+    S.newSessionModel = S.defaultModelCfg;
+  } else if (!S.newSessionModel || !modelNames.has(S.newSessionModel)) {
     const saved = localStorage.getItem("omp-new-model");
     if (saved && modelNames.has(saved)) {
       S.newSessionModel = saved;
@@ -75,7 +79,10 @@ export function initNewSessionModel() {
     }
   }
   const validLevels = getSupportedThinkingForModel(S.newSessionModel);
-  let th = S.newSessionThinking || localStorage.getItem("omp-new-thinking") || "auto";
+  // 档位来源优先级：force 且有配置默认 → 配置原文（"auto"/档位）；否则上次值/本地记忆/auto
+  let th = force && S.defaultThinkingCfg
+    ? S.defaultThinkingCfg
+    : S.newSessionThinking || localStorage.getItem("omp-new-thinking") || "auto";
   if (!validLevels.includes(th)) {
     th = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
   }
@@ -88,7 +95,11 @@ export function showWelcomeScreen(preferredCwd) {
   S.isCreatingNew = true;
   S.activePath = null;
   updateGreeting();
-  if (!alreadyOpen) send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
+  if (!alreadyOpen) {
+    send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
+    S.newSessionDirty = false; // 点新建：手选标记清零，模型/档位回到配置文件默认
+    initNewSessionModel(true);
+  }
 
   $("stream")?.classList.add("hidden");
   $("statusCard")?.classList.add("hidden");

@@ -1,0 +1,19 @@
+#!/bin/sh
+# 仓库级 pre-commit：暂存区含 host/ 改动时跑三个零成本协议冒烟（共约 15s，无模型调用），
+# 任一失败即挡提交。UI 侧无法协议级断言（WKWebView 层），不在钩子范围内。
+# 由全局 ~/.git-hooks/pre-commit 链式调用（gitleaks 之后）；也可直接执行。
+# 跳过（谨慎）：git commit --no-verify
+cd "$(git rev-parse --show-toplevel)"
+
+changed=$(git diff --cached --name-only --diff-filter=ACMR | grep '^host/' || true)
+[ -z "$changed" ] && exit 0
+
+echo "[pre-commit] host/ 改动，跑协议冒烟（newsession / git-files / projects）…"
+for s in smoke-newsession smoke-git-files smoke-projects; do
+  if ! timeout 150 bun "scripts/$s.ts"; then
+    echo ""
+    echo "[pre-commit] ✗ $s 失败，提交被挡。修复后重试；确认无误可 --no-verify 跳过。"
+    exit 1
+  fi
+done
+echo "[pre-commit] 冒烟全绿"
