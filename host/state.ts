@@ -1,0 +1,82 @@
+// 全进程共享可变状态的唯一收口。
+// 跨模块读写的变量一律挂 H 对象（ESM 裸 let 绑定对 import 方只读，对象属性可跨模块赋值）；
+// 引用恒定不变的容器（Map）直接导出。SDK 引用与加载顺序约束见 bootstrap.ts。
+import os from "node:os";
+import type { createAgentSession } from "./bootstrap.ts";
+
+// ---------- 会话池类型（前置声明，方便 profile 切换时清理） ----------
+export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
+export type TranscriptItem = {
+  role: "user" | "assistant" | "tool" | "thinking" | "loop";
+  text: string;
+  name?: string;
+  toolCallId?: string;
+  args?: Record<string, unknown>;
+  files?: string[];
+  added?: number;
+  removed?: number;
+  todo?: { content: string; done: number; total: number };
+  thinking?: string;
+  expandable?: boolean;
+  output?: string; // bash 类工具的输出文本（截断后），供前端展开卡片展示
+  details?: any; // read（文件预览）/hub 等工具的详细运行态元数据
+  collapsed?: boolean; // loop 组默认收起；展开态由前端切换
+  items?: TranscriptItem[]; // role==="loop" 时收纳本轮过程（thinking/tool/中间 assistant）
+  durationSec?: number | null; // 本轮工作时长（秒）
+  usage?: TurnUsage | null; // 本轮 LLM token 总消耗
+};
+export type PoolEntry = {
+  session: Awaited<ReturnType<typeof createAgentSession>>["session"];
+  sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // setToolUIContext 等宿主注入点
+  unsubscribe: () => void;
+  // 会话请求凭证的粘性键（= sessionManager.getSessionId()）：get_limits 用它与会话
+  // 同参解析 getApiKey，多账号时明细卡配额与本会话实际命中的账号一致
+  providerSessionId: string;
+  transcript: TranscriptItem[];
+  assistantDraft: string; // 当前 turn 的流式文本累积，turn_end 时定稿
+  thinkingDraft: string;
+  thinkingStartedAt: number | null;
+  path: string; // 会话文件路径（磁盘标识）
+  cwd: string;
+  isGit: boolean;
+  queuedTexts: string[]; // 最近一次推送的排队消息文本快照（turn_end 竞态兜底用）
+  consumedTexts: string[]; // 已通知 UI 消费（dequeue hook）/已兜底重发的文本
+};
+
+// key = 前端持有的 sessionId
+export const sessions = new Map<string, PoolEntry>();
+
+export const defaultCwd = os.homedir();
+
+// 桌面项目清单（当前 profile 配置目录下 omp-desktop.json，全路径记录）
+export type DesktopProjects = { allProjects: string[]; removedProjects: string[]; expandedProjects: string[]; pinnedSessions: string[] };
+export type DesktopEnv = { httpProxy: string; noProxy: string; caCerts: string };
+
+export const H = {
+  currentProfile: "",
+  // 进程级底座（全进程一份，随 activeProfile 动态重载）
+  agentDir: "",
+  authStorage: undefined as any,
+  modelRegistry: undefined as any,
+  settings: undefined as any,
+  // OMP 登录流程(添加供应商默认入口)进行中标志与提示中转表
+  loginInFlight: false,
+  loginAbort: null as AbortController | null,
+  // 桌面环境代理/证书（agentDir 下 desktop-env.json）
+  desktopEnvPath: "",
+  desktopEnvFilePresent: false,
+  desktopEnv: { httpProxy: "", noProxy: "", caCerts: "" } as DesktopEnv,
+  // 桌面项目清单
+  desktopProjectsPath: "",
+  desktopProjects: { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [] } as DesktopProjects,
+  // 模型目录（随 profile / 登录 / 启停刷新）
+  availableModels: [] as any[],
+  scopedModels: [] as any[],
+  modelOverride: undefined as any,
+  cachedProfiles: ["default", "omp-desktop"] as string[],
+};
+
+// enabledModels 条目 "provider/id:thinking" 的默认思考级别
+export const enabledDefaults = new Map<string, string | null>();
+// 登录流程 onPrompt 中转表：id -> resolve
+export const loginPendingPrompts = new Map<number, (text: string) => void>();

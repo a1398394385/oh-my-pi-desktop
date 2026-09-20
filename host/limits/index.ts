@@ -52,7 +52,10 @@ const { fetchCodexLimits } = require("./vendor/providers/codex/limits.js") as { 
 const { fetchAntigravityLimits } = require("./vendor/providers/antigravity/limits.js") as { fetchAntigravityLimits: VendorFetch };
 const { fetchCursorLimits } = require("./vendor/providers/cursor/limits.js") as { fetchCursorLimits: VendorFetch };
 
-const LIMITS_CACHE_TTL_MS = 60 * 1000;
+// 缓存 TTL = 后台刷新周期(5min,host.ts LIMITS_REFRESH_INTERVAL_MS):后台定时全量重拉写缓存,
+// 前台 hover/切页永远命中缓存,对供应商的实际请求频率严格等于后台节奏。
+// 键统一 provider#凭证id(无凭证/非存储 key 回退 provider 裸键),三条查询路径共用同一份缓存。
+const LIMITS_CACHE_TTL_MS = 5 * 60 * 1000;
 const limitsCache = new Map<string, { at: number; row: LimitProviderRow }>();
 
 // 供应商配置:omp provider id → vendor fetch + 标签。
@@ -162,22 +165,27 @@ function pickRow(result: LimitProviderRow | LimitProviderRow[]): LimitProviderRo
 
 // 查会话当前供应商的限额。凭证经 authStorage.getApiKey 解析
 // (支持 OAuth 自动续期与 env 兜底);native 供应商无凭证也尝试本机发现。
+// keyOverride 显式传入时会话请求已解析好的 key(多账号 sticky 对齐),null 表示已解析但无凭证;
+// cacheTag 是该 key 对应凭证的缓存键后缀(#id,与模型页 accounts/后台预载共用同一缓存行)。
 export async function fetchSessionLimits(
   authStorage: KeyResolver,
   ompProvider: string,
-  baseUrl: string
+  baseUrl: string,
+  keyOverride?: string | null,
+  cacheTag?: string
 ): Promise<{ vendor: string | null; label: string; row: LimitProviderRow | null }> {
   const spec = VENDOR_SPECS[ompProvider];
   if (!spec) return { vendor: null, label: ompProvider, row: null };
 
-  const cached = limitsCache.get(ompProvider);
+  const cacheKey = `${ompProvider}${cacheTag ?? ""}`;
+  const cached = limitsCache.get(cacheKey);
   if (cached && Date.now() - cached.at < LIMITS_CACHE_TTL_MS) {
     return { vendor: spec.vendor, label: spec.label, row: cached.row };
   }
 
   let row: LimitProviderRow;
   try {
-    const key = await authStorage.getApiKey(ompProvider, undefined, { baseUrl });
+    const key = keyOverride !== undefined ? (keyOverride ?? "") : await authStorage.getApiKey(ompProvider, undefined, { baseUrl });
     if (!key && !spec.native) {
       row = { provider: spec.vendor, status: "notConfigured", windows: [], updatedAt: new Date().toISOString() };
     } else {
@@ -193,17 +201,95 @@ export async function fetchSessionLimits(
       updatedAt: new Date().toISOString()
     };
   }
-  limitsCache.set(ompProvider, { at: Date.now(), row });
+  limitsCache.set(cacheKey, { at: Date.now(), row });
   return { vendor: spec.vendor, label: spec.label, row };
 }
 
-// 启动预载/定时刷新:对给定 omp provider 列表拉取全部配额(写入同一 60s 缓存,
-// hover 的 get_limits 直接命中新鲜数据)。单供应商失败不影响其余。
+// 启动预载/定时刷新:对给定 omp provider 列表按账号逐凭证拉取配额,写入与
+// 前台共用的一致键(provider#id;无凭证供应商回退 provider 裸键)。TTL=刷新周期,
+// 后台刷新之间前台查询全部命中缓存。单供应商失败不影响其余。
 export async function refreshAllLimits(
-  authStorage: KeyResolver,
+  authStorage: any,
   providers: Array<{ id: string; baseUrl: string }>
 ): Promise<void> {
-  await Promise.allSettled(providers.map((p) => fetchSessionLimits(authStorage, p.id, p.baseUrl)));
+  await Promise.allSettled(providers.map((p) => fetchProviderAccountsLimits(authStorage, p.id, p.baseUrl)));
+}
+
+// ---------- 多账号配额(一个供应商可登录多个账号,逐凭证拉配额) ----------
+
+export interface AccountLimitRow {
+  /** authStorage 凭证行 id(单凭证回退路径为 0) */
+  id: number;
+  /** 账号身份:email ?? accountId ?? orgName,api_key 凭证无身份为空串 */
+  label: string;
+  row: LimitProviderRow;
+}
+
+// 枚举供应商的全部未禁用凭证,逐个解析为可用 key 后拉配额:
+// - api_key: key 直接可用
+// - oauth: access token 可能过期,走官方 refreshCredentialById 刷新后取最新,失败回退存量 token
+// 无凭证(单凭证 native 供应商本机发现 / listAuthCredentials 不可用)回退单行 fetchSessionLimits。
+export async function fetchProviderAccountsLimits(
+  authStorage: any,
+  ompProvider: string,
+  baseUrl: string
+): Promise<{ vendor: string | null; label: string; accounts: AccountLimitRow[] }> {
+  const spec = VENDOR_SPECS[ompProvider];
+  if (!spec) return { vendor: null, label: ompProvider, accounts: [] };
+
+  let creds: Array<{ id: number; credential: any }> = [];
+  try {
+    // 门面方法 listStoredCredentials 只返回活跃凭证(禁用墓碑留在 store 层)
+    creds = (authStorage.listStoredCredentials(ompProvider) ?? []).map((c: any) => ({
+      id: c.id,
+      credential: c.credential,
+    }));
+  } catch {}
+  if (!creds.length) {
+    const { vendor, label, row } = await fetchSessionLimits(authStorage, ompProvider, baseUrl);
+    return { vendor, label, accounts: row ? [{ id: 0, label: "", row }] : [] };
+  }
+
+  const accounts: AccountLimitRow[] = [];
+  for (const { id, credential } of creds) {
+    const cacheKey = `${ompProvider}#${id}`;
+    const cached = limitsCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < LIMITS_CACHE_TTL_MS) {
+      accounts.push({ id, label: credentialIdentity(credential), row: cached.row });
+      continue;
+    }
+    let key = "";
+    if (credential?.type === "api_key") {
+      key = credential.key ?? "";
+    } else if (credential?.type === "oauth") {
+      try {
+        const snap = await authStorage.refreshCredentialById(id);
+        const c = snap?.credential;
+        key = c?.type === "oauth" ? (c.access ?? "") : (c as any)?.key ?? "";
+      } catch {
+        key = credential.access ?? "";
+      }
+    }
+    let row: LimitProviderRow;
+    try {
+      row = pickRow(await spec.fetch(key ?? "", baseUrl));
+    } catch (error) {
+      const status = error instanceof Error && "status" in error ? String(error.status) : "";
+      row = {
+        provider: spec.vendor,
+        status: status && status !== "timeout" ? status : "unavailable",
+        windows: [],
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    limitsCache.set(cacheKey, { at: Date.now(), row });
+    accounts.push({ id, label: credentialIdentity(credential), row });
+  }
+  return { vendor: spec.vendor, label: spec.label, accounts };
+}
+
+function credentialIdentity(credential: any): string {
+  return credential?.email ?? credential?.accountId ?? credential?.orgName ?? "";
 }
 
 // 模型管理页「添加供应商」视图的数据源:全部受支持的 omp provider id 及展示标签
