@@ -3,7 +3,7 @@
 // getBoundingClientRect 实测布局，交互（mousemove 连续山峰/hover 宽限弹卡/点击滚动）
 // 依赖命令式监听，故整体保留命令式实现，包在 useLayoutEffect 里（paint 前完成，不闪烁）。
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { placeMenu } from "../../../ui/shell.js";
+import { placeMenu } from "../../shell.js";
 
 const RAIL_ROLE_LABEL = { user: "用户", assistant: "助手", thinking: "思考", tool: "工具", meta: "系统", approval: "确认", err: "错误" };
 const RAIL_SNIPPET_LEN = 280;

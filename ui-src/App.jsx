@@ -1,13 +1,16 @@
 // 应用壳：三栏布局（侧栏 / 主区 / 右栏）+ 顶栏 + 欢迎页与会话区分流 + dock 输入区 + toast。
 // DOM 结构与类名对照 ui/index.html 既有静态骨架（React 迁移期视觉零回归）；
 // 折叠/主题等壳交互自 ui/shell.js 对应平移，完整能力（resizer 拖动/缩放）见 IMPLEMENTATION_PLAN。
+import { useEffect } from "react";
 import { S, useStore, notify, activeOpen, diskProjects } from "./store.js";
+import { initShell } from "./shell.js";
 import Icon from "./Icon.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import Welcome from "./components/Welcome.jsx";
 import Chat from "./components/Chat.jsx";
 import Composer from "./components/Composer.jsx";
 import RightPanel from "./components/RightPanel.jsx";
+import Settings from "./components/settings/Settings.jsx";
 
 function Toast() {
   useStore();
@@ -41,6 +44,11 @@ function ChatHead({ onToggleSidebar, onToggleRight }) {
 
 export default function App() {
   useStore();
+  // 壳全局监听只挂一次：主题恢复/系统主题跟随、resizer 拖动、⌘+/-/0 缩放、
+  // --col-max 分段与轨道显隐、window click/blur 菜单协调（ui-src/shell.js）
+  useEffect(() => {
+    initShell();
+  }, []);
   const toggleSidebar = () => {
     S.sidebarCollapsed = !S.sidebarCollapsed;
     localStorage.setItem("omp-sidebar-collapsed", S.sidebarCollapsed ? "1" : "0");
@@ -66,6 +74,7 @@ export default function App() {
       </main>
       <div id="right-resizer" className="resizer" title="拖动调整宽度" hidden={S.rightCollapsed}></div>
       <RightPanel collapsed={S.rightCollapsed} />
+      <Settings />
       <Toast />
     </>
   );

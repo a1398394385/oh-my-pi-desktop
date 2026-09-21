@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   S, useStore, notify, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
-  diskProjects, expandedProjects, pinnedSessions, projectLimits, openSessions, getAvailableProjects,
+  diskProjects, expandedProjects, pinnedSessions, projectLimits, openSessions, getAvailableProjects, openSettings,
 } from "../store.js";
 import Icon from "../Icon.jsx";
 import SessionRow from "./sidebar/SessionRow.jsx";
@@ -49,7 +49,8 @@ export default function Sidebar({ collapsed }) {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        // TODO(settings-wave)：设置页打开时 ⌘N 不抢占（settingsOpen 检查待设置页组件就位）
+        // 设置页打开时 ⌘N 不抢占（旧版 settingsOpen 检查平移）
+        if (S.settingsOpen) return;
         newTaskAction();
       }
     };
@@ -313,8 +314,7 @@ export default function Sidebar({ collapsed }) {
           <span className="uname" id="sideProfileName">omp-desktop</span>
         </div>
         <span className="sp"></span>
-        {/* TODO(settings-wave)：设置按钮 onClick 待设置页组件就位后接 */}
-        <button className="icon-btn" id="settingsBtn" title="设置">
+        <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>
           <Icon name="settings" />
         </button>
       </div>

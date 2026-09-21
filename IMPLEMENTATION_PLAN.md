@@ -30,15 +30,15 @@
 
 成功标准：每 wave `bun run ui:build` 通过 + 冒烟 6 断言不回归；`pnpm tauri dev` 手工冒烟：新建会话→发消息→流式渲染→loop 收起→排队→切换会话→右栏五页。
 
-### ⬜ 阶段 2：设置中心七件套（settings/* 2400 行）
-- [ ] 设置页容器（全屏 overlay + 左导航）+ 打开/关闭链路（settingsBtn/菜单 open-settings/store 补拉）
-- [ ] 常规/外观/模型设置（模型页角色视图 buildRolePicker/供应商卡片/配额明细）+ MCP + skills + memory + agents + stats
-- [ ] store.js 里 TODO(settings-wave) 标记的回包分支接通（models_catalog/provider_limits/asset_file/login 系）
+### ✅ 阶段 2：设置中心七件套（settings/* 2400 行）
+- [x] 设置页容器（全屏 overlay + 左导航）+ 打开/关闭链路（settingsBtn/菜单 open-settings/⌘,/Esc；`ui-src/components/settings/Settings.jsx`）
+- [x] 常规/外观/模型设置（模型页角色视图 buildRolePicker/供应商卡片/配额明细）+ MCP + skills + memory + agents + stats（14 页组件在 `ui-src/components/settings/pages/`，common.jsx 公共件：confirmDialog/登录横幅/emptyRow）
+- [x] store.js 里 TODO(settings-wave) 标记的回包分支接通（models_catalog/provider_limits/asset_file/memory_file/mcp_server_tested/login 系 + ready/settings 帧 uiPrefs 字段级白名单合并 + 连接就绪补拉）
 
-### ⬜ 阶段 3：壳交互与弹卡补全
-- [ ] shell.js 平移：主题切换/缩放（zoomLevel）/左右 resizer 拖动/右键主菜单/closeAllMenus 体系
-- [ ] ringpop.js 平移：上下文明细卡/配额卡（ring-pop 系规范组件化）+ 消息轨道 hover 卡
-- [ ] store.js TODO(ringpop-wave) 分支接通
+### ✅ 阶段 3：壳交互与弹卡补全
+- [x] shell.js 平移：主题切换/缩放（zoomLevel）/左右 resizer 拖动/右键主菜单/closeAllMenus 体系（`ui-src/shell.js` initShell：applyTheme/toggleTheme/menuZoom/placeMenu/attachResizer/closeAllMenus；⌘+/-/0 与原生菜单四 action 接通）
+- [x] ringpop.js 平移：上下文明细卡（`ui-src/components/chat/CtxCard.jsx`，ctxRing hover 150ms 定器 + 朝卡宽限 + 配额段 + 压缩按钮）+ 消息轨道 hover 卡（阶段 1 已随 MsgRail 落地）
+- [x] store.js TODO(ringpop-wave) 分支接通（context_detail→S.ctxDetail / limits_result→S.ctxLimits 瞬态落地）
 
 ### ⬜ 阶段 4：收尾
 - [ ] preview 对照模式去留；旧 ui/*.js 命令式模块删除（icons.js/fa-icons.js/markdown.js 保留共用）

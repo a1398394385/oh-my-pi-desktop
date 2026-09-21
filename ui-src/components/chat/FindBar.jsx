@@ -100,11 +100,11 @@ export default function FindBar({ streamRef }) {
   };
 
   // ⌘F 打开（preventDefault 阻止 WKWebView 默认行为）；Esc 关闭。
-  // TODO(settings-wave)：设置页全屏覆盖层打开时不响应——设置页组件就位后补判定
+  // 设置页全屏覆盖层打开时不响应（旧版 settingsOpen 检查平移）
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
-        if (!activeOpen() || S.isCreatingNew) return;
+        if (!activeOpen() || S.isCreatingNew || S.settingsOpen) return;
         e.preventDefault();
         setOpen(true);
       } else if (e.key === "Escape" && open) {

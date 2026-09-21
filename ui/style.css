@@ -73,6 +73,13 @@ body {
   display: flex;
   -webkit-font-smoothing: antialiased;
 }
+/* React 挂载点：#root 内的三栏（#sidebar/#main/#right）原为 body 直接子元素，
+   由 body 的 flex 横向排布；组件化后须经 #root 承接同一套 flex 布局 */
+#root {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
 ::selection { background: rgba(74, 158, 255, .35); color: var(--text); }
 .hidden { display: none !important; }
 button, input, textarea, select {

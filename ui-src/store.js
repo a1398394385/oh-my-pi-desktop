@@ -76,7 +76,23 @@ export const S = {
   toastMsg: null, // 当前 toast 文本（null = 隐藏）
   composerSetSignal: null, // { text, images, seq } 外部填输入框的信号（分叉回填 / 排队消息编辑）
   sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
-  rightCollapsed: localStorage.getItem("omp-right-collapsed") === "1",
+  // 右栏默认折叠（对齐旧版 index.html <aside id="right" class="collapsed">）；手动展开过后按 localStorage 记忆
+  rightCollapsed: localStorage.getItem("omp-right-collapsed") === null ? true : localStorage.getItem("omp-right-collapsed") === "1",
+  // ---- 设置中心（阶段 2 七件套共享态） ----
+  settingsOpen: false, // 全屏 overlay 开合
+  settingsPage: "pg-general", // 当前设置页 id
+  providerLimits: null, // provider_limits_result 配额帧
+  loginBanner: null, // OMP 登录进度横幅文本
+  loginPromptData: null, // login_prompt 粘贴码弹窗数据
+  assetFile: null, // asset_file 回包 { kind, path, content }（skills/agents 编辑器按 kind 过滤）
+  assetFileSaved: null, // asset_file_saved 回包 { kind, at }（引用变化驱动「已保存」态）
+  assetSaved: null, // 同上，agents 页消费
+  assetErr: null, // error 帧带 kind 时 { kind, message, at }
+  mcpTestResults: {}, // MCP 单服务器测试结果：name -> { status, error?, ts }
+  memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "idle", content: "", error: null }, // memory_file 帧落地
+  // ---- ringpop 弹卡瞬态数据（hover 上下文环明细卡，移开即弃，下次悬停清零重请求） ----
+  ctxDetail: null, // 最近一次 context_detail 回包
+  ctxLimits: null, // 最近一次 limits_result 回包
 };
 
 // ---------- 内容可变容器（引用恒定，直接导出） ----------
@@ -160,6 +176,25 @@ let composerSetSeq = 0;
 export function setComposerValue(text, images = []) {
   S.composerSetSignal = { text, images, seq: ++composerSetSeq };
   notify();
+}
+
+// ---------- 设置中心开合与数据拉取（Settings 容器消费） ----------
+export function openSettings(pageId = "pg-general") {
+  S.settingsOpen = true;
+  S.settingsPage = pageId;
+  notify();
+}
+export function closeSettings() {
+  S.settingsOpen = false;
+  notify();
+}
+// 打开设置中心时的四连数据请求（旧版 refreshSettingsData 平移；send 在未连接时静默丢弃，
+// 连接就绪由 connect 的 onopen 补拉）
+export function refreshSettingsData() {
+  send({ type: "get_settings" });
+  send({ type: "get_models_catalog" });
+  send({ type: "list_agent_assets" });
+  send({ type: "get_usage_stats" });
 }
 
 // WKWebView 无 console：未捕获错误上报宿主日志 + toast
@@ -390,7 +425,8 @@ export async function connect() {
     send({ type: "list_sessions" });
     // 启动时欢迎页先于连接渲染，get_git_branches 曾被 send 丢弃；连接就绪后补拉
     if (S.isCreatingNew && S.newSessionProject) send({ type: "get_git_branches", cwd: S.newSessionProject });
-    // TODO(settings-wave)：设置页若在连接就绪前打开，4 个数据请求被 send 丢弃——设置页组件就位后补拉
+    // 设置页若在连接就绪前打开，4 个数据请求被 send 丢弃；连接就绪后补拉
+    if (S.settingsOpen) refreshSettingsData();
   };
   S.ws.onclose = () => setConnected(false, "已断开");
   S.ws.onerror = () => setConnected(false, "已断开");
@@ -406,7 +442,8 @@ function onMessage(msg) {
       if (ingestModelDefaults(msg) && S.isCreatingNew && !S.newSessionDirty) initNewSessionModel(true);
       if (msg.settings) {
         S.hostSettings = msg.settings;
-        Object.assign(uiPrefs, msg.settings); // TODO(settings-wave)：字段级合并与外观应用归设置页组件
+        // 字段级白名单合并：host 设置帧只有 hideThinkingBlock 影响本地外观偏好
+        if (typeof msg.settings.hideThinkingBlock === "boolean") uiPrefs.showThinking = !msg.settings.hideThinkingBlock;
       }
       notify();
       break;
@@ -425,7 +462,7 @@ function onMessage(msg) {
       break;
     case "settings":
       S.hostSettings = msg.settings;
-      Object.assign(uiPrefs, msg.settings);
+      if (typeof msg.settings?.hideThinkingBlock === "boolean") uiPrefs.showThinking = !msg.settings.hideThinkingBlock;
       if (msg.restartHint) toast("已保存，部分网络设置建议重启应用后完全生效");
       notify();
       break;
@@ -809,8 +846,12 @@ function onMessage(msg) {
       break;
     }
     case "context_detail":
+      S.ctxDetail = msg; // ringpop 弹卡瞬态数据，CtxCard 订阅重绘（卡收起时更新不重建，移开即弃）
+      notify();
+      break;
     case "limits_result":
-      // TODO(ringpop-wave)：上下文明细卡/配额卡组件就位后消费（数据不落地，原为纯 DOM 填充）
+      S.ctxLimits = msg;
+      notify();
       break;
     case "provider_limits_result": {
       // 模型管理页配额：按选中供应商落地，组件按 S.providerLimits 渲染（防旧响应污染由组件判 provider）
@@ -859,14 +900,48 @@ function onMessage(msg) {
       toast(`配置文件：${msg.path}`);
       break;
     case "asset_file":
-    case "memory_file":
-    case "asset_file_saved":
-    case "asset_file_deleted":
-    case "mcp_server_tested":
-      // TODO(settings-wave)：设置页七件套组件就位后消费
-      if (msg.type === "asset_file_saved") send({ type: "list_agent_assets" });
-      if (msg.type === "asset_file_deleted") toast(msg.kind === "skill" ? "技能已删除" : "文件已删除");
+      // skills/agents/mcp 编辑器共用帧，全量落地，页面按 kind 过滤（每次赋新对象触发 effect）
+      S.assetFile = { kind: msg.kind ?? "agent", path: msg.path, content: msg.content };
+      notify();
       break;
+    case "memory_file": {
+      // 首次目录级读取带 files；行展开/rollout 只回 content（旧版 memInbox 语义平移）
+      if (msg.files) {
+        S.memoryDetail.base = msg.path;
+        S.memoryDetail.files = msg.files;
+        S.memoryDetail.rollouts = msg.rollouts ?? [];
+        S.memoryDetail.active = { name: msg.file, rollout: false };
+      }
+      S.memoryDetail.content = msg.content;
+      S.memoryDetail.status = "done";
+      S.memoryDetail.error = null;
+      notify();
+      break;
+    }
+    case "asset_file_saved": {
+      const at = Date.now();
+      S.assetFileSaved = { kind: msg.kind, at };
+      S.assetSaved = { kind: msg.kind, at };
+      send({ type: "list_agent_assets" });
+      notify();
+      break;
+    }
+    case "asset_file_deleted":
+      toast(msg.kind === "skill" ? "技能已删除" : "文件已删除");
+      notify();
+      break;
+    case "mcp_server_tested": {
+      // 旧版 handleMcpServerTested 平移：测试结果落地 + 行状态点同步 + toast
+      S.mcpTestResults[msg.name] = { status: msg.status, error: msg.error, ts: Date.now() };
+      const srv = S.agentAssets?.mcp?.servers?.find((x) => x.name === msg.name);
+      if (srv) {
+        srv.status = msg.status === "ok" ? "connected" : "error";
+        srv.error = msg.error;
+      }
+      toast(msg.status === "ok" ? `MCP [${msg.name}] 连接成功` : `MCP [${msg.name}] 探测失败: ${msg.error || ""}`);
+      notify();
+      break;
+    }
     case "session_renamed":
       if (msg.ok) {
         toast("已重命名");
@@ -939,6 +1014,12 @@ function onMessage(msg) {
     case "error": {
       gitDiffCache.loading = false;
       rightState.sessionTreePending = false; // 分支树请求失败解除挂起，下次渲染重拉
+      // 设置中心资产/记忆读取失败的错误落地（旧版写 aeStatus / 记忆行内态）
+      if (msg.kind) S.assetErr = { kind: msg.kind, message: msg.message, at: Date.now() };
+      if (S.memoryDetail.status === "loading") {
+        S.memoryDetail.status = "error";
+        S.memoryDetail.error = msg.message;
+      }
       const s = msg.sessionId && findBySessionId(msg.sessionId);
       if (s) {
         s.items.push({ role: "error", text: msg.message });

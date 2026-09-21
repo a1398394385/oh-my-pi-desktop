@@ -5,12 +5,14 @@
 // 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { S, useStore, notify, activeOpen, send, toast, modelNames } from "../store.js";
+import { closeAllMenus } from "../shell.js";
 import Icon from "../Icon.jsx";
 import AttachRow from "./composer/AttachRow.jsx";
 import QueueCard from "./composer/QueueCard.jsx";
 import ModeMenu, { MODE_META } from "./composer/ModeMenu.jsx";
 import ModelMenu from "./composer/ModelMenu.jsx";
 import ThinkMenu from "./composer/ThinkMenu.jsx";
+import CtxCard from "./chat/CtxCard.jsx";
 
 // 模块级输入草稿（跨挂载位保留，等价原 inputEl.value）
 const draft = { value: "" };
@@ -82,6 +84,7 @@ export default function Composer({ inWelcome }) {
   useStore();
   const s = activeOpen();
   const rootRef = useRef(null); // #composer
+  const ctxRingRef = useRef(null); // #ctxRing（CtxCard hover 弹卡锚点）
   const taRef = useRef(null); // textarea
   const cbarRef = useRef(null);
   const pickerRef = useRef(null); // filePicker
@@ -207,14 +210,16 @@ export default function Composer({ inWelcome }) {
     if (!stopping) setStopPending(false);
   }, [stopping]);
 
-  // ---- 点外部 / 窗口失焦关菜单（原 window click/blur → closeAllMenus） ----
+  // ---- 点外部 / 窗口失焦 / omp:close-menus 协调关菜单（原 window click/blur → closeAllMenus） ----
   useEffect(() => {
     const close = () => setOpenMenu(null);
     window.addEventListener("click", close);
     window.addEventListener("blur", close);
+    document.addEventListener("omp:close-menus", close);
     return () => {
       window.removeEventListener("click", close);
       window.removeEventListener("blur", close);
+      document.removeEventListener("omp:close-menus", close);
     };
   }, []);
 
@@ -253,6 +258,11 @@ export default function Composer({ inWelcome }) {
     ro.observe(comp);
     return () => ro.disconnect();
   }, []);
+  // 壳缩放后重算底栏收缩（zoom 不触发 ResizeObserver，shell.js 经 omp:zoom 通知）
+  useEffect(() => {
+    window.addEventListener("omp:zoom", fit);
+    return () => window.removeEventListener("omp:zoom", fit);
+  }, []);
 
   // ---- cbar 各按钮态 ----
   const modeMeta = MODE_META[S.approvalMode] ?? MODE_META["always-ask"];
@@ -266,9 +276,11 @@ export default function Composer({ inWelcome }) {
   const bgTasks = bgTaskCount(s);
   const bgSubs = subagentCount(s);
 
-  // 菜单按钮通用开关：再点同钮收起，互斥由单 state 天然保证
+  // 菜单按钮通用开关：再点同钮收起，互斥由单 state 天然保证；
+  // 打开前先协调全局菜单（设置页 Sel 等 DOM class 态菜单经 closeAllMenus 收起）
   const toggleMenu = (name) => (e) => {
     e.stopPropagation(); // 不冒泡给 window 级关闭监听
+    if (openMenu !== name) closeAllMenus();
     setOpenMenu(openMenu === name ? null : name);
   };
 
@@ -342,7 +354,8 @@ export default function Composer({ inWelcome }) {
             <span className="bg-task-num" id="bgSubagentNum">{s ? bgSubs : 0}</span>
           </button>
           <span className="sp"></span>
-          <CtxRing s={s} />
+          <CtxRing s={s} ringRef={ctxRingRef} />
+          <CtxCard anchorRef={ctxRingRef} />
           <button
             className={"pill-btn" + (openMenu === "model" ? " active" : "")}
             id="modelBtn"
@@ -397,13 +410,13 @@ export default function Composer({ inWelcome }) {
 }
 
 // 上下文环（原 renderComposerBar 的 ctxRing 段平移）：从顶端顺时针填充；无数据空环；
-// 新建态也展示空环。hover 弹配额卡归 ringpop-wave。
-function CtxRing({ s }) {
+// 新建态也展示空环。hover 弹上下文明细卡见 chat/CtxCard.jsx（ringRef 仅作锚点，不动内部 svg）
+function CtxRing({ s, ringRef }) {
   if (!s && !S.isCreatingNew) return null;
   const p = s?.ctx ? Math.min(1, s.ctx.percent / 100) : 0;
   const cls = "ctx-ring" + (s?.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
   return (
-    <span className={cls} id="ctxRing" title="">
+    <span className={cls} id="ctxRing" title="" ref={ringRef}>
       <svg viewBox="0 0 16 16" width="14" height="14">
         <circle className="track" cx="8" cy="8" r="6.5" />
         <circle
