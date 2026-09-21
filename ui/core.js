@@ -193,6 +193,10 @@ export async function connect() {
     send({ type: "list_sessions" });
     // 启动时欢迎页先于连接渲染，get_git_branches 曾被 send 丢弃；连接就绪后补拉
     if (S.isCreatingNew && S.newSessionProject) send({ type: "get_git_branches", cwd: S.newSessionProject });
+    // 设置页若在连接就绪前打开，4 个数据请求同样被 send 丢弃（profile 菜单停留预置单项）；动态 import 避免与 settings 模块循环依赖
+    import("./settings/index.js").then(({ settingsOpen, refreshSettingsData }) => {
+      if (settingsOpen()) refreshSettingsData();
+    });
   };
   S.ws.onclose = () => setConnected(false, "已断开");
   S.ws.onerror = () => setConnected(false, "已断开");
@@ -234,6 +238,28 @@ export function renderAll() {
   renderRight();
   renderWorkLine();
   renderQueueLine();
+}
+
+// 发送后钉底：消息体内的图片等资源异步撑高 scrollHeight，单次 scrollTop 赋值只覆盖
+// 渲染当下，随后长出的余量会让「滚动至结尾」按钮闪现且不再跟随。窗口内每 100ms 重钉，
+// 用户滚轮/触摸立即取消（不绑架主动上翻）
+let pinTimer = null;
+export function pinBottom(ms = 1500) {
+  const cancel = () => {
+    clearInterval(pinTimer);
+    pinTimer = null;
+    streamEl.removeEventListener("wheel", cancel);
+    streamEl.removeEventListener("touchstart", cancel);
+  };
+  cancel();
+  streamEl.scrollTop = streamEl.scrollHeight;
+  const until = Date.now() + ms;
+  pinTimer = setInterval(() => {
+    if (Date.now() >= until) return cancel();
+    streamEl.scrollTop = streamEl.scrollHeight;
+  }, 100);
+  streamEl.addEventListener("wheel", cancel, { once: true });
+  streamEl.addEventListener("touchstart", cancel, { once: true });
 }
 
 // 流式增量帧的合并渲染：100ms 窗口内多帧只渲一次，末帧经 setTimeout 兜底必渲
@@ -287,8 +313,7 @@ export function dropQueueMsg(s, item) {
   list.splice(i, 1);
   const j = s.items.lastIndexOf(item);
   if (j >= 0) s.items.splice(j, 1);
-  // steer 气泡在本轮起点标记（turnItemStart）之后被移除时会越界，校准到过程末尾
-  if (s.turnItemStart != null && s.turnItemStart > s.items.length) s.turnItemStart = s.items.length;
+  // turnItemStart 恒指本轮起点（< 气泡下标），移除气泡不影响它，无需校准
   send({ type: "drop_queued", sessionId: s.sessionId, queue: which, index: i });
   renderAll();
 }
@@ -301,19 +326,16 @@ export function editQueueMsg(s, item) {
   dropQueueMsg(s, item);
 }
 
-// 立即发送：排队态转 steer——此前过程就地缩起封存（留在上一条用户消息与本气泡之间），
-// 气泡立即出现在消息流底部（渲染层把 steer 气泡固定排在过程流末尾）；消费时转正
+// 立即发送：排队态转 steer。不截断过程、不预封存——分割只发生在消费时刻
+// （steer_consumed 把气泡上方全部过程封存成 loop 组）；此前流式照常累积，
+// 气泡由渲染层固定在消息流底部（pending steer 收集到末尾渲染）
 export function sendNowQueueMsg(s, item) {
   const i = queueIndexOf(s.queued, item.text);
   if (i < 0) return;
   s.queued.splice(i, 1);
   s.steering = s.steering ?? [];
   s.steering.push({ text: item.text });
-  if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
-  s.assistantDraft = "";
-  sealRunItems(s, null);
   s.items.push({ role: "user", text: item.text, pending: "steer" });
-  s.turnItemStart = s.items.length;
   send({ type: "send_now", sessionId: s.sessionId, index: i });
   renderAll();
 }
@@ -327,8 +349,7 @@ export function requeueSteerMsg(s, item) {
   s.queued.unshift({ text: item.text });
   const j = s.items.lastIndexOf(item);
   if (j >= 0) s.items.splice(j, 1);
-  // 同 dropQueueMsg：气泡移除后校准本轮过程起点
-  if (s.turnItemStart != null && s.turnItemStart > s.items.length) s.turnItemStart = s.items.length;
+  // 同 dropQueueMsg：turnItemStart 在本轮起点，恒在气泡之前，移除气泡无需校准
   send({ type: "requeue", sessionId: s.sessionId, index: i });
   renderAll();
 }
@@ -493,7 +514,7 @@ function onMessage(msg) {
           s.items.push({ role: "user", text });
           renderAll();
           S.ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
-          streamEl.scrollTop = streamEl.scrollHeight;
+          pinBottom(); // 钉底一小段时间，覆盖图片等资源异步撑高
         }
       }
       if (S.pendingCreate) {
@@ -636,12 +657,15 @@ function onMessage(msg) {
     case "subagent_lifecycle": {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
+      // 底座在结束时（completed/failed/aborted）会用同一 subagentId 重发 lifecycle——
+      // 整条覆盖会把运行中累积的 text/tools 清空，完成后详情就没了；只更新状态，保留内容
+      const prev = s.subagents.get(msg.subagentId);
       s.subagents.set(msg.subagentId, {
         agent: msg.agent,
         description: msg.description ?? "",
         status: msg.status,
-        text: "",
-        tools: [],
+        text: prev?.text ?? "",
+        tools: prev?.tools ?? [],
         streaming: msg.status === "started",
       });
       renderAll();
@@ -699,16 +723,16 @@ function onMessage(msg) {
       break;
     }
     case "steer_consumed": {
-      // 队列消息即将注入模型：转 steer 后产生的尾段过程缩起封存（历史过程全部留在
-      // 气泡上方），被消费的气泡挪到消息流底部并转正，新过程从气泡下重开渲染
+      // 队列消息即将注入模型（消费即分割点）：先把被消费的气泡从过程流中摘出
+      // （消费前它插在流式过程中间，由渲染层固定在底部），再把气泡上方自本轮起点
+      // 起的全部过程缩起封存成 loop 组，气泡落底转正，新过程从气泡下重开渲染
       const s = findBySessionId(msg.sessionId);
       if (s) {
-        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
-        s.assistantDraft = "";
-        sealRunItems(s, null);
         const bubbles = [];
         for (const t of msg.texts ?? []) {
           const it = [...s.items].reverse().find((x) => x.role === "user" && x.pending && x.text === t);
+          // 重复消费帧（RPC 重复推送）:该文本已有转正过的气泡则跳过，不重复补画
+          if (!it && [...s.items].reverse().some((x) => x.role === "user" && x.steerDone && x.text === t)) continue;
           bubbles.push(it ?? { role: "user", text: t }); // 兜底：气泡缺失（重连等）时补画
           const q = s.queued ?? [];
           const i = q.findIndex((m) => (m.text || "") === t);
@@ -719,12 +743,14 @@ function onMessage(msg) {
         }
         for (const b of bubbles) {
           const k = s.items.indexOf(b);
-          if (k >= 0) {
-            s.items.splice(k, 1);
-            s.items.push(b);
-          }
+          if (k >= 0) s.items.splice(k, 1);
           b.pending = null;
+          b.steerDone = true;
         }
+        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+        s.assistantDraft = "";
+        sealRunItems(s, null);
+        for (const b of bubbles) s.items.push(b);
         s.turnItemStart = s.items.length;
         s.streaming = true;
         s.workingText = "正在处理…";

@@ -153,15 +153,18 @@ export function syncSettingsControls() {
 export function settingsOpen() {
   return !$("settings").classList.contains("hidden");
 }
+export function refreshSettingsData() {
+  send({ type: "get_settings" });
+  send({ type: "get_models_catalog" });
+  send({ type: "list_agent_assets" });
+  send({ type: "get_usage_stats" });
+}
 export function openSettings(pageId) {
   closeAllMenus();
   inputEl.blur();
   $("settings").classList.remove("hidden");
   switchSetPage(pageId || "pg-general");
-  send({ type: "get_settings" });
-  send({ type: "get_models_catalog" });
-  send({ type: "list_agent_assets" });
-  send({ type: "get_usage_stats" });
+  refreshSettingsData();
 }
 export function closeSettings() {
   closeAllMenus();

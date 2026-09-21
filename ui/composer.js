@@ -7,7 +7,7 @@ import { settingsOpen } from "./settings/index.js";
 import { PROV_IC } from "./settings/index.js";
 import { getSupportedThinkingForModel } from "./welcome.js";
 import { updateBgTaskButton, updateBgSubagentButton } from "./right.js";
-import { renderAll } from "./core.js";
+import { renderAll, pinBottom } from "./core.js";
 
 // ---------- 发送 / 新建 ----------
 // 待发送附件：图片走 ImageContent（base64），文本类文件内联进 prompt
@@ -69,7 +69,7 @@ export function sendPrompt() {
   const s = activeOpen();
   if (!s) return;
   // 流式中发送 = 排队（followUp，当前 loop 完自动消费）：只进队列卡，不出气泡、
-  // 不截断过程——气泡在「立即发送」转 steer 时才出现并成为分界
+  // 不截断过程——「立即发送」转 steer 也只是先出气泡，分割发生在消费时刻（steer_consumed）
   if (s.streaming) {
     s.queued = s.queued ?? [];
     s.queued.push({ text });
@@ -83,7 +83,7 @@ export function sendPrompt() {
   updateSendReady();
   renderAll();
   S.ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
-  streamEl.scrollTop = streamEl.scrollHeight;
+  pinBottom(); // 钉底一小段时间，覆盖图片等资源异步撑高
 }
 
 export function createIn(cwd) {
@@ -96,8 +96,15 @@ export function resizeInput() {
   inputEl.style.height = "auto";
   inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
 }
+// 发送钮 = 发送/停止合并图标：流式中且输入框空 → 停止；其余（含流式中有草稿）→ 发送
 export function updateSendReady() {
-  $("sendBtn").classList.toggle("ready", inputEl.value.trim().length > 0 || S.pendingFiles.length > 0);
+  const btn = $("sendBtn");
+  const hasDraft = inputEl.value.trim().length > 0 || S.pendingFiles.length > 0;
+  btn.classList.toggle("ready", hasDraft);
+  const stopping = !!activeOpen()?.streaming && !hasDraft;
+  btn.classList.toggle("stopping", stopping);
+  btn.innerHTML = icon(stopping ? "stop" : "upload");
+  btn.title = stopping ? "停止生成" : activeOpen()?.streaming ? "发送（排队，当前任务完成后发出）" : "发送";
 }
 
 // 分叉回填：文本进输入框，底座 ImageContent[] 转成本地附件 chip。
@@ -382,18 +389,11 @@ export function renderQueueLine() {
 // ---------- composer 状态条（模式/模型/思考 按钮文案与禁用态 + 上下文环） ----------
 const RING_C = 40.84; // 2π×6.5（与 CSS dasharray 一致）
 
-// 停止生成按钮（initComposer 时动态创建，插在发送钮左侧）：仅流式期间显示。
-// 发送钮在流式中仍是「排队发送」，两者并存互不冲突
-let stopBtn = null;
-
 export function renderComposerBar() {
   const s = activeOpen();
-  // 停止钮随流式状态显隐；turn_end 重绘（streaming=false）时隐藏并复位防连点禁用态
-  if (stopBtn) {
-    const streaming = !!s?.streaming;
-    stopBtn.hidden = !streaming;
-    if (!streaming) stopBtn.disabled = false;
-  }
+  // 流式结束（turn_end 重绘）时复位发送钮防连点禁用态；图标形态随流式状态刷新
+  if (!s?.streaming) $("sendBtn").disabled = false;
+  updateSendReady();
   if (!s && S.isCreatingNew) {
     modelBtn.disabled = thinkBtn.disabled = false;
     const mName = modelNames.get(S.newSessionModel) ?? (S.newSessionModel ? S.newSessionModel.split("/").pop() : "模型");
@@ -462,20 +462,6 @@ export function fitComposerBar() {
 }
 
 export function initComposer() {
-  // 停止生成按钮：cbar 内发送钮左侧（流式时发送钮语义是「排队」，停止钮独立一旁）
-  stopBtn = document.createElement("button");
-  stopBtn.className = "send stop-btn";
-  stopBtn.title = "停止生成";
-  stopBtn.hidden = true;
-  stopBtn.innerHTML = icon("stop");
-  stopBtn.addEventListener("click", () => {
-    const s = activeOpen();
-    if (!s?.streaming || stopBtn.disabled) return;
-    stopBtn.disabled = true; // 防连点：turn_end 重绘时复位（renderComposerBar）
-    send({ type: "abort_session", sessionId: s.sessionId });
-  });
-  $("sendBtn").before(stopBtn);
-
   $("plusBtn").addEventListener("click", () => $("filePicker").click());
   $("filePicker").addEventListener("change", async (e) => {
     const picked = [...e.target.files];
@@ -509,7 +495,17 @@ export function initComposer() {
     resizeInput();
     updateSendReady();
   });
-  $("sendBtn").addEventListener("click", sendPrompt);
+  $("sendBtn").addEventListener("click", () => {
+    // 停止形态（流式中且输入框空）：中止生成；发送形态：照常发送/排队
+    const s = activeOpen();
+    if (s?.streaming && !inputEl.value.trim() && !S.pendingFiles.length) {
+      if ($("sendBtn").disabled) return;
+      $("sendBtn").disabled = true; // 防连点：turn_end 重绘时复位（renderComposerBar）
+      send({ type: "abort_session", sessionId: s.sessionId });
+      return;
+    }
+    sendPrompt();
+  });
   inputEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       if (typeof settingsOpen === "function" && settingsOpen()) return;

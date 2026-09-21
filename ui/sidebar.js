@@ -313,7 +313,7 @@ function taskRow(s, { sub, showRepo, pinnedList } = {}) {
   const pinned = pinnedSessions.has(s.path);
   const pin = document.createElement("button");
   pin.className = "tpin" + (pinned || pinnedList ? " on" : "");
-  pin.innerHTML = icon("pin");
+  pin.innerHTML = icon("pin", 14);
   pin.title = pinned ? "取消置顶" : "置顶会话";
   pin.onclick = (e) => {
     e.stopPropagation();
@@ -506,7 +506,7 @@ export function renderList() {
     secActions.className = "sec-actions";
     const secAdd = document.createElement("button");
     secAdd.className = "sec-add";
-    secAdd.textContent = "＋";
+    secAdd.innerHTML = icon("plus", 14);
     secAdd.title = "添加项目";
     secAdd.onclick = (e) => {
       e.stopPropagation();
@@ -524,7 +524,7 @@ export function renderList() {
     secActions.appendChild(secAdd);
     const secTrash = document.createElement("button");
     secTrash.className = "sec-trash" + (S.isProjectManageMode ? " active" : "");
-    secTrash.innerHTML = icon("trash", 12);
+    secTrash.innerHTML = icon("trash", 14);
     secTrash.title = S.isProjectManageMode ? "退出清理模式" : "清理项目与会话";
     secTrash.onclick = (e) => {
       e.stopPropagation();
@@ -546,9 +546,6 @@ export function renderList() {
       const proj = document.createElement("div");
       proj.className = "proj" + (expandedProjects.has(p.cwd) ? "" : " collapsed");
       proj.dataset.cwd = p.cwd; // 重绘后按此找回组头（展开/收起动画定位容器用）
-      const caret = document.createElement("span");
-      caret.className = "caret";
-      caret.innerHTML = icon("caret");
       const name = document.createElement("span");
       name.className = "pname";
       name.textContent = p.cwd.split("/").filter(Boolean).pop() || p.cwd;
@@ -571,13 +568,12 @@ export function renderList() {
             },
           });
         };
-        proj.append(caret);
-        proj.insertAdjacentHTML("beforeend", expandedProjects.has(p.cwd) ? icon("folderOpen") : icon("folder"));
+        proj.insertAdjacentHTML("beforeend", `<span class="fic">${expandedProjects.has(p.cwd) ? icon("folderOpen") : icon("folder")}</span>`);
         proj.append(name, rm);
       } else {
         const add = document.createElement("button");
         add.className = "padd";
-        add.textContent = "＋";
+        add.innerHTML = icon("plus", 14);
         add.title = `在 ${p.cwd} 新建会话`;
         add.onclick = (e) => {
           e.stopPropagation();
@@ -585,7 +581,7 @@ export function renderList() {
         };
         const more = document.createElement("button");
         more.className = "pmore";
-        more.innerHTML = icon("dots");
+        more.innerHTML = icon("dots", 14);
         more.title = "更多";
         more.onclick = (e) => {
           e.stopPropagation();
@@ -621,8 +617,7 @@ export function renderList() {
           const left = Math.max(8, Math.min(r.right + 4, window.innerWidth - mr.width - 8));
           placeMenu(projMenu, left, top);
         };
-        proj.append(caret);
-        proj.insertAdjacentHTML("beforeend", expandedProjects.has(p.cwd) ? icon("folderOpen") : icon("folder"));
+        proj.insertAdjacentHTML("beforeend", `<span class="fic">${expandedProjects.has(p.cwd) ? icon("folderOpen") : icon("folder")}</span>`);
         proj.append(name, add, more);
       }
       // 拖拽排序：仅收起状态的组头是拖柄（展开组整组跟手太笨重，先收起再拖）；移动超阈值进入拖动态，其余组实时滑移让位，松手提交
@@ -653,8 +648,8 @@ export function renderList() {
       proj.onclick = () => {
         if (suppressProjClick) return; // 刚结束拖动，忽略本次 click
         const on = !expandedProjects.has(p.cwd);
-        // 组头图标随状态切换（caret 旋转走 .collapsed 类，folder/folderOpen 是行内 svg 需手动换）
-        const folderSvg = proj.querySelector(":scope > svg");
+        // 组头图标随状态切换（folder/folderOpen 是行内 svg 需手动换）
+        const folderSvg = proj.querySelector(":scope > .fic > svg");
         if (on) {
           expandedProjects.add(p.cwd);
           projectLimits.delete(p.cwd);

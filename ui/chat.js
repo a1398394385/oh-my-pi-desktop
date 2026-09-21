@@ -269,8 +269,12 @@ export function renderChat() {
   $("chatTitle").textContent = chatTitle;
 
   // 消息流
+  // 切换会话渲染时强制落底：streamEl 被复用，旧会话的 scrollTop 对新会话无意义，
+  // 拿去算 stickBottom 常误判为"不在底部"，导致回到会话时停在顶部、滚动至结尾箭头出现
+  const switched = renderedPath !== S.activePath;
+  renderedPath = S.activePath;
   const prevTop = streamEl.scrollTop;
-  const stickBottom = streamEl.scrollHeight - prevTop - streamEl.clientHeight < 120;
+  const stickBottom = switched || streamEl.scrollHeight - prevTop - streamEl.clientHeight < 120;
   streamEl.innerHTML = "";
   if (!s) {
     streamEl.innerHTML = '<div class="placeholder">点左侧任务或「新建任务」开始</div>';
@@ -309,6 +313,7 @@ let findCountEl = null;
 let findPath = null; // 打开时所在会话（切换会话由 renderChat 收起）
 let findMatches = []; // 命中的消息：{ key, text }，key 与 data-fk 锚点一致
 let findCursor = -1;
+let renderedPath = null; // 上次 renderChat 渲染的会话：切会话检测用（强制落底）
 
 // 建文本索引：key 结构 = 顶层下标，或 "loop下标-子下标[-…]";（与 renderItemList 的 data-fk 同源）
 function buildFindIndex(s) {
@@ -448,12 +453,15 @@ function closeFindBar() {
 }
 
 export function initChat() {
-  // 「工作中 N 秒」每秒跳（重绘后 span 重建，按 id 重新查询）
+  // 「工作中 N 秒」：250ms 轮询按真实时间取值、值变才写。setInterval(1000) 与
+  // turnStartAt 相位不对齐，且主线程被流式重绘阻塞时回调被压缩补跳（卡一下连跳几秒）
   setInterval(() => {
     const s = activeOpen();
     const el = $("workSec");
-    if (s?.turnStartAt && el) el.textContent = Math.floor((Date.now() - s.turnStartAt) / 1000);
-  }, 1000);
+    if (!s?.turnStartAt || !el) return;
+    const sec = String(Math.floor((Date.now() - s.turnStartAt) / 1000));
+    if (el.textContent !== sec) el.textContent = sec;
+  }, 250);
 
   // ⌘F 打开会话内查找（preventDefault 阻止 WKWebView 默认行为）；Esc 关闭。
   // 仅当前激活会话可用；设置页为全屏覆盖层，打开时不响应

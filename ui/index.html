@@ -124,13 +124,13 @@
       <!-- 消息轨道：主对话区左侧竖向刻度条，每条用户消息一道刻度，hover 弹出消息卡片 -->
       <div id="msgRail" hidden></div>
 
+      <!-- working 状态行：turn 进行中显示当前动作（intent/思考/默认文案），独立于输入框卡片上方 -->
+      <div class="work-line" id="workLine" hidden></div>
       <div class="dock">
         <!-- 排队消息卡：与输入区拼成一张重叠卡（仿新建会话页背卡，去掉选择器行），
              流式中发送的消息在此排队，loop 完自动消费第 1 条 -->
         <div class="queue-card" id="queueCard" hidden></div>
         <div id="composer">
-        <!-- working 状态行：turn 进行中显示当前动作（intent/思考/默认文案），后续动态状态统一放这里 -->
-        <div class="work-line" id="workLine" hidden></div>
         <div class="attach-row" id="attachRow" hidden></div>
         <textarea id="input" rows="1" placeholder="发消息…（Enter 发送）"></textarea>
         <div class="cbar">

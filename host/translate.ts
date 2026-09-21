@@ -9,7 +9,7 @@ export type UiEvent =
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
   | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: any }
-  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string }
+  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string };
 
 function pathOf(args: any): string {
@@ -259,8 +259,23 @@ function sumRunUsage(messages: any[]): TurnUsage | null {
 
 export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
   switch (ev.type) {
-    case "agent_start":
+    case "turn_start":
+      // run 内每个模型轮的真实起点（排队消息消费的续轮同样经过这里）：
+      // 轮边界是服务端权威投影（ZCode turnHeader 同款语义），UI 不得靠
+      // agent_start/agent_end 的 run 级近似重猜——那是排队消费续轮对 UI 隐形的根因
       return { kind: "turn_start" };
+    case "turn_end": {
+      // run 内每个模型轮的真实结束：封存本轮过程。usage 只取本轮 assistant 消息；
+      // 整 run 用量、userEntryId 回填、列表刷新由 agent_end 映射的 runEnd 帧负责
+      const u = ev.message?.usage;
+      return {
+        kind: "turn_end",
+        runEnd: false,
+        usage: u
+          ? { input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0, cacheWrite: u.cacheWrite ?? 0 }
+          : null,
+      };
+    }
     case "thinking_level_changed":
       // auto 判定帧：configured==="auto" 时 resolved 为本轮判定档位（切进 auto 的 provisional 帧无 resolved）；
       // 人工切档帧无 configured。只透传，前端自行决定显示。

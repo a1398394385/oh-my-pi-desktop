@@ -183,6 +183,7 @@ export function requestFileDiff(s, filePath) {
 
 export function renderRightBody() {
   rightBodyEl.innerHTML = "";
+  rightBodyEl.classList.remove("detail"); // 详情模式类由各详情分支按需加回
   if (S.rightTab === null) renderStartPage(); // tab 全部关闭：居中起始页
   else if (S.rightTab === "gitdiff") renderGitDiff();
   else if (S.rightTab === "bgcmd") renderBgCmdList();
@@ -470,6 +471,9 @@ function renderTreeLevel(node, prefix, depth) {
 }
 
 function renderGdFileDetail(s) {
+  rightBodyEl.classList.add("detail"); // 骨架（同 ZCode 面板）：返回+路径固定在顶，仅 diff 区滚动
+  const head = document.createElement("div");
+  head.className = "rb-head";
   const back = document.createElement("button");
   back.className = "sub-back";
   back.textContent = "‹ 返回列表";
@@ -477,17 +481,20 @@ function renderGdFileDetail(s) {
     S.selectedFile = null;
     renderRightBody();
   };
-  rightBodyEl.appendChild(back);
   const title = document.createElement("div");
   title.className = "sub-title";
   title.textContent = S.selectedFile;
-  rightBodyEl.appendChild(title);
+  head.append(back, title);
+  rightBodyEl.appendChild(head);
+  const scroll = document.createElement("div");
+  scroll.className = "rb-scroll";
+  rightBodyEl.appendChild(scroll);
   if (fileDiffCache.loading && fileDiffCache.path === S.selectedFile) {
-    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
+    scroll.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
     return;
   }
   if (fileDiffCache.path !== S.selectedFile || !fileDiffCache.diff) {
-    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">（无差异内容）</div>');
+    scroll.insertAdjacentHTML("beforeend", '<div class="placeholder">（无差异内容）</div>');
     return;
   }
   const holder = document.createElement("div");
@@ -498,7 +505,7 @@ function renderGdFileDetail(s) {
     matching: "words",
     highlight: true,
   });
-  rightBodyEl.appendChild(holder);
+  scroll.appendChild(holder);
 }
 
 // ---------- 文件页（读取行点击 / 文件树点击进入） ----------
@@ -540,6 +547,9 @@ function buildFileCrumb(absPath) {
 // 文件详情：先渲染读取到的内容，read_file 回包后切整文件（请求范围行号高亮 + 起始行滚到顶部）
 function renderFvDetail() {
   const fv = S.fileView;
+  rightBodyEl.classList.add("detail"); // 骨架（同 ZCode 面板）：返回+路径固定在顶，仅文件内容滚动
+  const head = document.createElement("div");
+  head.className = "rb-head";
   const back = document.createElement("button");
   back.className = "sub-back";
   back.textContent = "‹ 文件树";
@@ -547,19 +557,23 @@ function renderFvDetail() {
     S.fileView = null;
     renderRightBody();
   };
-  rightBodyEl.appendChild(back);
-  rightBodyEl.appendChild(buildFileCrumb(fv.path));
+  head.appendChild(back);
+  head.appendChild(buildFileCrumb(fv.path));
+  rightBodyEl.appendChild(head);
+  const scroll = document.createElement("div");
+  scroll.className = "rb-scroll";
+  rightBodyEl.appendChild(scroll);
   // 图片预览：read_image 回包（core 存入 rightState.imageContent）到达后渲染，未到显示加载中
-  if (fv.image) return renderFvImage(fv);
+  if (fv.image) return renderFvImage(fv, scroll);
   if (!fv.text && !fv.error) {
-    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
+    scroll.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
     return;
   }
   if (fv.error) {
     const err = document.createElement("div");
     err.className = "fv-more";
     err.textContent = `（${fv.error}）`;
-    rightBodyEl.appendChild(err);
+    scroll.appendChild(err);
     if (!fv.text) return;
   }
   const lines = fv.text.split("\n");
@@ -593,12 +607,12 @@ function renderFvDetail() {
     row.append(no, tx);
     body.appendChild(row);
   }
-  rightBodyEl.appendChild(body);
+  scroll.appendChild(body);
   if (fv.full && lines.length > shown.length) {
     const more = document.createElement("div");
     more.className = "fv-more";
     more.textContent = `文件共 ${lines.length} 行，当前展示第 ${winStartLine}–${winStartLine + shown.length - 1} 行`;
-    rightBodyEl.appendChild(more);
+    scroll.appendChild(more);
   }
   // 全文件就绪后把读取范围起始行滚到可视区顶部
   if (fv.full && reqStart != null) {
@@ -608,24 +622,24 @@ function renderFvDetail() {
 }
 
 // 图片详情：image_content 回包按 path 匹配（超限/失败回 error 时显示错误态文案）
-function renderFvImage(fv) {
+function renderFvImage(fv, scroll) {
   const ic = rightState.imageContent;
   if (!ic || ic.path !== fv.path) {
-    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
+    scroll.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
     return;
   }
   if (ic.error) {
     const err = document.createElement("div");
     err.className = "fv-more";
     err.textContent = `（${ic.error}）`;
-    rightBodyEl.appendChild(err);
+    scroll.appendChild(err);
     return;
   }
   const img = document.createElement("img");
   img.className = "fv-img";
   img.src = `data:${ic.mime};base64,${ic.data}`;
   img.alt = fv.path.split("/").pop();
-  rightBodyEl.appendChild(img);
+  scroll.appendChild(img);
 }
 
 // 空态：当前项目文件树（懒加载单层展开；点击文件进详情）
@@ -795,6 +809,9 @@ function renderSubagentList() {
   }
   if (S.selectedSubagent && s.subagents.has(S.selectedSubagent)) {
     const sub = s.subagents.get(S.selectedSubagent);
+    rightBodyEl.classList.add("detail"); // 骨架（同 ZCode 面板）：返回+名字/状态固定在顶，仅过程流滚动
+    const head = document.createElement("div");
+    head.className = "rb-head";
     const back = document.createElement("button");
     back.className = "sub-back";
     back.textContent = "‹ 返回列表";
@@ -804,13 +821,14 @@ function renderSubagentList() {
       for (const el of [...rightBodyEl.children]) el.classList.add("lift");
       setTimeout(() => renderRightBody(), 310);
     };
-    rightBodyEl.appendChild(back);
+    head.appendChild(back);
     const title = document.createElement("div");
     title.className = "sub-title";
     title.textContent = `${sub.agent} · ${sub.status}`;
-    rightBodyEl.appendChild(title);
+    head.appendChild(title);
+    rightBodyEl.appendChild(head);
     const stream = document.createElement("div");
-    stream.className = "sub-stream";
+    stream.className = "sub-stream rb-scroll";
     for (const t of sub.tools) {
       stream.appendChild(renderToolItem({ role: "tool", text: t.name, ...t }));
     }
