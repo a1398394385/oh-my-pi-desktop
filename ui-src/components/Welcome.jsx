@@ -78,7 +78,7 @@ export default function Welcome() {
           <div
             ref={backCardRef}
             id="wbBackCard"
-            className={"wb-back-card" + (menuOpen ? " menu-open" : "")}
+            className="wb-back-card"
           >
             <div className="wb-head">
               <button
@@ -88,7 +88,7 @@ export default function Welcome() {
                 title={`项目目录: ${S.newSessionProject}`}
                 onClick={toggleProjMenu}
               >
-                {/* 项目清除钮：独立于菜单的提示入口（stopPropagation 防止触发菜单开关） */}
+                {/* 项目清除钮：ZCode 同款 hover 替换图标（常态隐藏，hover 胶囊时 folder 淡出、× 淡入） */}
                 <span
                   className="wb-proj-clear"
                   id="wbProjClear"
@@ -100,6 +100,7 @@ export default function Welcome() {
                 >
                   <Icon name="xmark" size={11} />
                 </span>
+                <span className="wb-ic-folder"><Icon name="folder" size={14} /></span>
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>
@@ -117,10 +118,15 @@ export default function Welcome() {
                 </button>
               )}
             </div>
-            {projMenu && <ProjectMenu pos={projMenu} onClose={() => setProjMenu(null)} />}
-            {branchMenu && <BranchMenu pos={branchMenu} onClose={() => setBranchMenu(null)} />}
           </div>
+          {/* 二级重叠卡（ZCode queue-card ↔ dock 同款几何）：胶囊卡（.wb-back-card）在上，
+              输入框卡（#composer.in-welcome）以负 margin 上拉盖其下缘，项目/分支胶囊
+              露在胶囊卡上半部分；两卡兄弟位、同宽、边缘对齐。
+              两个选择菜单挂 wrapper（与上卡同坐标原点），z-index 高于输入框卡，
+              避免菜单被叠在下卡的输入框卡盖住 */}
           <Composer inWelcome={true} />
+          {projMenu && <ProjectMenu pos={projMenu} onClose={() => setProjMenu(null)} />}
+          {branchMenu && <BranchMenu pos={branchMenu} onClose={() => setBranchMenu(null)} />}
         </div>
       </div>
     </div>

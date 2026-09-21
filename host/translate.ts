@@ -8,7 +8,7 @@ export type UiEvent =
   | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
-  | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: any }
+  | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: unknown; diffContent?: string }
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string };
 
@@ -189,7 +189,12 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
   if (Array.isArray(details?.perFileResults) && details.perFileResults.length > 1) {
     return patch; // 多文件「更改」不带行数
   }
-  if (typeof details?.diff === "string") Object.assign(patch, diffStats(details.diff));
+  if (typeof details?.diff === "string") {
+    Object.assign(patch, diffStats(details.diff));
+    // 把当次工具的真实修改一并带给前端：编辑行内联展开直接渲染它（新文件/无 git 基线时
+    // git diff 只能给全量新增，与 +N-M 摘要对不上）；截断上限与 file_diff 回包一致口径
+    patch.diffContent = details.diff.slice(0, 500_000);
+  }
   else if ((name === "write" || name === "edit") && typeof args?.content === "string") {
     patch.added = Math.max(1, args.content.split("\n").length);
     patch.removed = 0;
@@ -345,6 +350,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         todo: item?.todo,
         output: item?.output,
         details: item?.details,
+        diffContent: item?.diffContent, // 编辑行内联展开优先用当次回包的真实 diff
       };
     }
     case "agent_end":

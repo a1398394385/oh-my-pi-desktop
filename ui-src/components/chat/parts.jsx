@@ -159,8 +159,11 @@ export function Counts({ item }) {
 }
 
 // ---------- 编辑行内联展开的简略 diff 体（原 buildEditBrief） ----------
-export function EditBrief({ path, lift }) {
-  const diff = briefDiffCache[path];
+// diff 来源：item.briefDiff（当次工具回包的真实修改，优先）→ briefDiffCache[path]
+// （git diff，右栏详情/内联展开共用回包）。按调用挂在 item 上而非按 path 缓存——
+// 同一文件多次编辑时各次展开各看各的，不互相覆盖
+export function EditBrief({ item, path, lift }) {
+  const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache[path];
   const cls = "ed-brief" + (lift ? " lift" : " drop");
   if (diff === undefined) return <FadeBox className={cls}><div className="placeholder">加载中…</div></FadeBox>;
   if (!diff) return <FadeBox className={cls}><div className="placeholder">（无差异内容）</div></FadeBox>;

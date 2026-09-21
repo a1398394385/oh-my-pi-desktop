@@ -672,6 +672,7 @@ function onMessage(msg) {
           if (msg.todo) last.todo = msg.todo;
           if (msg.output != null) last.output = msg.output;
           if (msg.details != null) last.details = msg.details;
+          if (msg.diffContent != null) last.diffContent = msg.diffContent; // 当次工具真实 diff，编辑行内联展开优先用它
           last.running = false;
         }
       } else if (msg.kind === "turn_end") {
@@ -755,7 +756,7 @@ function onMessage(msg) {
         const last =
           [...sub.tools].reverse().find((t) => t.toolCallId && t.toolCallId === msg.toolCallId) ||
           [...sub.tools].reverse().find((t) => t.name === msg.name);
-        if (last) Object.assign(last, { files: uniqueFiles(msg.files ?? last.files), added: msg.added, removed: msg.removed, todo: msg.todo, output: msg.output ?? last.output, details: msg.details ?? last.details, running: false });
+        if (last) Object.assign(last, { files: uniqueFiles(msg.files ?? last.files), added: msg.added, removed: msg.removed, todo: msg.todo, output: msg.output ?? last.output, details: msg.details ?? last.details, diffContent: msg.diffContent ?? last.diffContent, running: false });
       }
       else if (msg.kind === "turn_end") sub.streaming = false;
       notify();

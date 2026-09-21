@@ -505,16 +505,13 @@ const server = Bun.serve<{ sessionId: string | null }>({
               if (topLevel && abs.startsWith(topLevel + path.sep)) repoCwd = topLevel;
             }
             const rel = path.relative(path.resolve(repoCwd), abs);
-            const tracked =
-              repoCwd === cwd
-                ? Bun.spawnSync(["git", "-C", cwd, "ls-files", "--error-unmatch", "--", filePath], {
-                    stdout: "ignore",
-                    stderr: "ignore",
-                  })
-                : Bun.spawnSync(["git", "-C", repoCwd, "ls-files", "--error-unmatch", "--", rel], {
-                    stdout: "ignore",
-                    stderr: "ignore",
-                  });
+            // tracked 检查必须用 rel（相对 repoCwd）：工具调用常给绝对路径或仓库根相对路径，
+            // 直接拿原始 filePath 当 pathspec 会让 git 报 outside repository——tracked 误判为
+            // false 后走 --no-index 兜底，整个文件被渲染成纯新增（diff 显示与 +N-M 摘要不符的根因）
+            const tracked = Bun.spawnSync(["git", "-C", repoCwd, "ls-files", "--error-unmatch", "--", rel], {
+              stdout: "ignore",
+              stderr: "ignore",
+            });
             const args = tracked.exitCode === 0
               ? ["diff", "HEAD", "--", rel]
               : ["diff", "--no-index", "--", "/dev/null", abs];
