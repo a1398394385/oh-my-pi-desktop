@@ -18,6 +18,9 @@
 //   onUpdate, ctx) → AgentToolResult { content: TextContent[] }），经
 //   createAgentSession({ customTools }) 注册。
 import { type } from "@oh-my-pi/omptype";
+import type { AcpBlock, AcpSessionState } from "./acp-state.ts";
+import { messageText } from "./acp-state.ts";
+import { expandToTransactionBounds, serializeForArchive } from "./acp-context.ts";
 
 // ---- 描述文本（opencode-acp 原文移植） --------------------------------
 
@@ -240,189 +243,293 @@ const recapParams = type({
 });
 
 
-// ---- 适配层回执 ---------------------------------------------------------
+// ---- 工具执行体（真实现：读写 AcpSessionState，视图变换见 acp-context.ts） ----
 
-const ADAPTER_PREFIX = "[ACP omp-desktop adapter]";
-
-function adapterNotice(action: string, detail: string): string {
-  return `${ADAPTER_PREFIX} ${action} received, but the opencode-acp compression engine is not wired into this host yet — no compression state was mutated.\n\n${detail}\n\nAdapter status: tool surface only (schema + descriptions ported verbatim from opencode-acp). Ref injection (mNNNNN / bN), block state machine, and prune pipeline are not running in omp-desktop; see host/acp-tools.ts for the boundary.`;
+/** 粗估 token（4 chars/token——只用于 status 展示，不参与压缩判定）。 */
+function estTokens(text: string): number {
+	return Math.ceil(text.length / 4);
 }
 
-/** 从 ExtensionContext 汇报真实会话概况（read-only，acp_status 用）。 */
-function sessionOverview(ctx: { sessionManager?: unknown }): string {
-  const sm = ctx?.sessionManager as
-    | { getSessionId?: () => string; getBranch?: () => unknown[] }
-    | undefined;
-  const lines: string[] = ["Session overview (omp-desktop host):"];
-  try {
-    const branch = sm?.getBranch?.() ?? [];
-    lines.push(`- session entries on active branch: ${branch.length}`);
-    const roles = new Map<string, number>();
-    for (const e of branch as Array<{ message?: { role?: string } }>) {
-      const role = e?.message?.role ?? (e as { type?: string })?.type ?? "unknown";
-      roles.set(role, (roles.get(role) ?? 0) + 1);
-    }
-    lines.push(
-      `- roles: ${[...roles.entries()].map(([r, n]) => `${r}=${n}`).join(", ") || "none"}`,
-    );
-  } catch (err) {
-    lines.push(`- branch read failed: ${String(err)}`);
-  }
-  lines.push("- active compression blocks: 0 (compression engine not wired)");
-  return lines.join("\n");
+function textResult(text: string): { content: Array<{ type: "text"; text: string }> } {
+	return { content: [{ type: "text", text }] };
 }
 
-// ---- 工具定义 -----------------------------------------------------------
+export function createAcpCompressTools(state: AcpSessionState) {
+	return [
+		{
+			name: "compress",
+			label: "ACP Compress",
+			description: COMPRESS_DESCRIPTION,
+			parameters: compressParams,
+			loadMode: "essential" as const,
+			approval: "write" as const,
+			execute: async (_id: string, params: Record<string, unknown>) => {
+				const entries = params?.content as Array<Record<string, unknown>> | undefined;
+				if (!Array.isArray(entries) || entries.length === 0) {
+					return textResult("Error: content array is required.");
+				}
+				for (const entry of entries) {
+					if (!entry?.startId || !entry?.endId || !entry?.summary) {
+						return textResult("Error: each content entry requires startId, endId, and summary.");
+					}
+				}
+				const messages = state.lastOriginal;
+				if (messages.length === 0) {
+					return textResult("Error: no conversation view captured yet — send at least one message first.");
+				}
+				// 逐 entry 定位 + 配对闭合 + 重叠校验
+				const ranges: Array<{ first: number; last: number; entry: Record<string, unknown> }> = [];
+				for (const entry of entries) {
+					const range = state.locateRange(String(entry.startId), String(entry.endId));
+					if (!range) {
+						return textResult(
+							`Error: boundary ${entry.startId}..${entry.endId} not found in the current visible context. Use only IDs visible in <dcp-message-id> tags.`,
+						);
+					}
+					const bounds = expandToTransactionBounds(messages, range.first, range.last);
+					ranges.push({ first: bounds.start, last: bounds.end, entry });
+				}
+				ranges.sort((a, b) => a.first - b.first);
+				for (let i = 1; i < ranges.length; i++) {
+					if (ranges[i].first <= ranges[i - 1].last) {
+						return textResult("Error: content ranges overlap — merge them into one entry or fix boundaries.");
+					}
+				}
+				// 与现有活跃块只允许「完全覆盖」（消费），部分重叠拒绝
+				for (const r of ranges) {
+					for (const block of state.activeBlocks()) {
+						const anchors = state.locateBlockAnchors(block);
+						if (!anchors) continue;
+						const overlaps = r.first <= anchors.last && anchors.first <= r.last;
+						const covers = r.first <= anchors.first && anchors.last <= r.last;
+						if (overlaps && !covers) {
+							return textResult(
+								`Error: range partially overlaps active block b${block.blockId} (${anchors.first}..${anchors.last}). Either cover it entirely (its summary will be consumed) or exclude it.`,
+							);
+						}
+					}
+				}
+				// 建块（从后往前消费覆盖的旧块）
+				const created: string[] = [];
+				for (const r of [...ranges].reverse()) {
+					const entry = r.entry;
+					const topic = String(entry.topic ?? params.topic ?? "");
+					const blockId = state.allocBlockId();
+					state.blocks.set(blockId, {
+						blockId,
+						topic,
+						summary: String(entry.summary),
+						originalMessages: messages.slice(r.first, r.last + 1).map((m) => structuredClone(m)),
+						firstIndex: r.first,
+						lastIndex: r.last,
+						active: true,
+						createdAt: Date.now(),
+					});
+					created.unshift(`b${blockId}`);
+				}
+				for (const block of state.activeBlocks()) {
+					const anchors = state.locateBlockAnchors(block);
+					if (!anchors) continue;
+					const consumed = ranges.some((r) => r.first <= anchors.first && anchors.last <= r.last);
+					if (consumed && !created.includes(`b${block.blockId}`)) block.active = false;
+				}
+				const lines = [
+					`📦 [ACP] Compressed ${ranges.length} range(s) → blocks ${created.join(", ")}.`,
+					"",
+					...ranges.map((r) => {
+						const original = messages
+							.slice(r.first, r.last + 1)
+							.map((m) => messageText(m))
+							.join("");
+						const summary = String(r.entry.summary);
+						return `- b? (${r.entry.topic ?? params.topic ?? "untitled"}): ${r.last - r.first + 1} messages, ~${estTokens(original)} tok → ${summary.length} chars summary (~${Math.max(1, Math.round((summary.length / Math.max(1, original.length)) * 100))}%)`;
+					}),
+					"",
+					"The compressed sections will be replaced by summaries in your next context window.",
+				];
+				return textResult(lines.join("\n"));
+			},
+		},
+		{
+			name: "decompress",
+			label: "ACP Decompress",
+			description: DECOMPRESS_DESCRIPTION,
+			parameters: decompressParams,
+			loadMode: "essential" as const,
+			approval: "read" as const,
+			execute: async (_id: string, params: Record<string, unknown>) => {
+				const blockId = params?.blockId as string | undefined;
+				const startId = params?.startId as string | undefined;
+				const endId = params?.endId as string | undefined;
+				const toFile = params?.toFile as string | undefined;
 
-export function createAcpCompressTools() {
-  return [
-    {
-      name: "compress",
-      label: "ACP Compress",
-      description: COMPRESS_DESCRIPTION,
-      parameters: compressParams,
-      loadMode: "essential" as const,
-      approval: "write" as const,
-      execute: async (_id: string, params: Record<string, unknown>) => {
-        const content = params?.content as Array<Record<string, unknown>> | undefined;
-        if (!Array.isArray(content) || content.length === 0) {
-          return { content: [{ type: "text" as const, text: "Error: content array is required." }] };
-        }
-        for (const entry of content) {
-          if (!entry?.startId || !entry?.endId || !entry?.summary) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: "Error: each content entry requires startId, endId, and summary.",
-                },
-              ],
-            };
-          }
-        }
-        const topics = content
-          .map((e) => e.topic ?? params.topic ?? "(untitled)")
-          .join(", ");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: adapterNotice(
-                `compress request (${content.length} range(s): ${topics})`,
-                `Ranges: ${content
-                  .map((e) => `${e.startId}..${e.endId} (${String(e.summary).length} chars summary)`)
-                  .join("; ")}`,
-              ),
-            },
-          ],
-        };
-      },
-    },
-    {
-      name: "decompress",
-      label: "ACP Decompress",
-      description: DECOMPRESS_DESCRIPTION,
-      parameters: decompressParams,
-      loadMode: "essential" as const,
-      approval: "read" as const,
-      execute: async (_id: string, params: Record<string, unknown>) => {
-        if (!params?.blockId && !(params?.startId && params?.endId)) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Error: provide blockId, or startId+endId (mutually exclusive modes).",
-              },
-            ],
-          };
-        }
-        const target = params.blockId ?? `${params.startId}..${params.endId}`;
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: adapterNotice(`decompress request (${target})`, "No blocks exist in this host."),
-            },
-          ],
-        };
-      },
-    },
-    {
-      name: "search_context",
-      label: "ACP Search Context",
-      description: SEARCH_CONTEXT_DESCRIPTION,
-      parameters: searchContextParams,
-      loadMode: "essential" as const,
-      approval: "read" as const,
-      execute: async (_id: string, params: Record<string, unknown>) => {
-        const query = (params?.query as string | undefined)?.trim();
-        if (!query) {
-          return {
-            content: [{ type: "text" as const, text: "Error: query is required." }],
-          };
-        }
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: adapterNotice(
-                `search_context request (query: "${query}")`,
-                "No compressed blocks to search in this host.",
-              ),
-            },
-          ],
-        };
-      },
-    },
-    {
-      name: "acp_status",
-      label: "ACP Status",
-      description: ACP_STATUS_DESCRIPTION,
-      parameters: acpStatusParams,
-      loadMode: "essential" as const,
-      approval: "read" as const,
-      execute: async (
-        _id: string,
-        params: Record<string, unknown>,
-        _signal: unknown,
-        _onUpdate: unknown,
-        ctx: { sessionManager?: unknown },
-      ) => {
-        const scope = params?.scope ? ` (scope: ${params.scope})` : "";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${sessionOverview(ctx)}\n\n${adapterNotice(
-                `acp_status request${scope}`,
-                "Compressed-block views are empty because the compression engine is not wired.",
-              )}`,
-            },
-          ],
-        };
-      },
-    },
-    {
-      name: "acp_context_recap",
-      label: "ACP Context Recap",
-      description: RECAP_DESCRIPTION,
-      parameters: recapParams,
-      loadMode: "essential" as const,
-      approval: "read" as const,
-      execute: async (_id: string, params: Record<string, unknown>) => {
-        const target = params?.blockId !== undefined ? `b${params.blockId}` : "all blocks";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: adapterNotice(
-                `acp_context_recap request (${target})`,
-                "No active compression blocks exist in this host.",
-              ),
-            },
-          ],
-        };
-      },
-    },
-  ];
+				if (toFile) {
+					const os = await import("node:os");
+					const path = await import("node:path");
+					const fs = await import("node:fs/promises");
+					const resolved = path.resolve(toFile.replace(/^~/, os.homedir()));
+					const allowed = ["/tmp", path.join(os.homedir(), ".cache")].some((p) => resolved.startsWith(p));
+					if (!allowed) {
+						return textResult("Error: toFile path must be under /tmp or ~/.cache/.");
+					}
+					const targets = blockId
+						? [state.blocks.get(Number(/^b(\d+)$/.exec(blockId)?.[1] ?? "-1"))].filter(
+								(b): b is NonNullable<typeof b> => !!b,
+							)
+						: state.activeBlocks();
+					if (targets.length === 0) return textResult("Error: no matching block for toFile export.");
+					await fs.writeFile(resolved, serializeForArchive(targets.flatMap((b) => b.originalMessages)), "utf-8");
+					return textResult(
+						`📦 [ACP] Exported ${targets.length} block(s) (${targets.map((b) => `b${b.blockId}`).join(", ")}) to ${resolved}. Blocks stay compressed.`,
+					);
+				}
+
+				let targets: AcpBlock[];
+				if (blockId) {
+					const n = /^b(\d+)$/.exec(blockId)?.[1];
+					const block = n ? state.blocks.get(Number(n)) : undefined;
+					if (!block) return textResult(`Error: block ${blockId} not found.`);
+					targets = [block];
+				} else if (startId && endId) {
+					const range = state.locateRange(startId, endId);
+					if (!range) return textResult(`Error: range ${startId}..${endId} not found in current context.`);
+					targets = state.activeBlocks().filter((b) => {
+						const anchors = state.locateBlockAnchors(b);
+						return anchors && anchors.first <= range.last && range.first <= anchors.last;
+					});
+					if (targets.length === 0) return textResult(`No active blocks overlap ${startId}..${endId}.`);
+				} else {
+					return textResult("Error: provide blockId, or startId+endId (mutually exclusive modes).");
+				}
+
+				for (const block of targets) block.active = false;
+				return textResult(
+					`📦 [ACP] Decompressed ${targets.map((b) => `b${b.blockId}`).join(", ")}. Original content returns in your next context window (it will grow — check usage with acp_status).`,
+				);
+			},
+		},
+		{
+			name: "search_context",
+			label: "ACP Search Context",
+			description: SEARCH_CONTEXT_DESCRIPTION,
+			parameters: searchContextParams,
+			loadMode: "essential" as const,
+			approval: "read" as const,
+			execute: async (_id: string, params: Record<string, unknown>) => {
+				const query = String(params?.query ?? "").toLowerCase().trim();
+				if (!query) return textResult("Error: query is required.");
+				const limit = Number(params?.limit ?? 10);
+				const blocks = state.activeBlocks();
+				if (blocks.length === 0) return textResult("No compressed blocks to search. Nothing has been compressed yet.");
+
+				// TF 打分（权重与 opencode-acp search.ts 一致：topic 0.15/cap 0.45、
+				// summary 0.04/cap 0.20、全词命中 ×1.2、短语 +0.25、存在性奖励 +0.05 补偿 CJK）
+				const terms = query.split(/\s+/).filter(Boolean);
+				const countOccurrences = (text: string, term: string): number => {
+					let count = 0;
+					let idx = 0;
+					while ((idx = text.indexOf(term, idx)) !== -1) {
+						count++;
+						idx += term.length;
+					}
+					return count;
+				};
+				const scored = blocks
+					.map((block) => {
+						const topic = (block.topic || "").toLowerCase();
+						const summary = (block.summary || "").toLowerCase();
+						let relevance = 0;
+						let hitTerms = 0;
+						for (const term of terms) {
+							relevance += Math.min(0.45, countOccurrences(topic, term) * 0.15);
+							relevance += Math.min(0.2, countOccurrences(summary, term) * 0.04);
+							if (summary.includes(` ${term} `) || summary.startsWith(`${term} `) || summary.endsWith(` ${term}`))
+								relevance *= 1.2;
+							if (topic.includes(term) || summary.includes(term)) hitTerms++;
+						}
+						if (summary.includes(query)) relevance += 0.25;
+						// 存在性奖励：任一 term 命中即 +0.05——补偿 CJK（英文全词加成依赖空格
+						// 分词，对无空格中文永不触发，纯 TF 会把已命中块压到阈值下）
+						if (hitTerms > 0) relevance += 0.05;
+						return { block, relevance };
+					})
+					.filter((s) => s.relevance >= 0.1)
+					.sort((a, b) => b.relevance - a.relevance)
+					.slice(0, limit);
+
+				if (scored.length === 0) {
+					return textResult(`No blocks match "${params?.query}" (min relevance 0.1). Try broader terms.`);
+				}
+				return textResult(
+					scored
+						.map((s) => {
+							const preview = s.block.summary.slice(0, 200) + (s.block.summary.length > 200 ? "..." : "");
+							return `b${s.block.blockId} (score ${s.relevance.toFixed(2)}) [→ decompress b${s.block.blockId}]\n  ${s.block.topic}: ${preview}`;
+						})
+						.join("\n\n"),
+				);
+			},
+		},
+		{
+			name: "acp_status",
+			label: "ACP Status",
+			description: ACP_STATUS_DESCRIPTION,
+			parameters: acpStatusParams,
+			loadMode: "essential" as const,
+			approval: "read" as const,
+			execute: async (
+				_id: string,
+				params: Record<string, unknown>,
+				_signal: unknown,
+				_onUpdate: unknown,
+				ctx: { sessionManager?: { getSessionId?: () => string } },
+			) => {
+				const messages = state.lastOriginal;
+				const blocks = state.activeBlocks();
+				const viewTokens = estTokens(messages.map((m) => messageText(m)).join(""));
+				const blockSummaryChars = blocks.reduce((n, b) => n + b.summary.length, 0);
+				const originalChars = blocks.reduce((n, b) => n + b.originalMessages.length, 0);
+				const lines = [
+					`ACP Context Analysis (omp-desktop adapter)`,
+					``,
+					`Session: ${ctx?.sessionManager?.getSessionId?.() ?? "unknown"}`,
+					`Messages in view: ${messages.length} (~${viewTokens} tok estimated)`,
+					`Blocks: ${blocks.length} active (${blockSummaryChars} chars summary covering ${originalChars} messages)`,
+				];
+				if (params?.scope === "compressed") {
+					if (blocks.length === 0) lines.push("  (none)");
+					for (const b of blocks) {
+						lines.push(
+							`  b${b.blockId} "${b.topic || "untitled"}" ${b.summary.length} chars, ${b.originalMessages.length} msgs original, age=${Math.round((Date.now() - b.createdAt) / 60000)}m`,
+						);
+					}
+				} else {
+					lines.push(``, `Compressible: the uncompressed message range in your context (see <dcp-message-id> tags).`);
+					lines.push(`Use scope:"compressed" to list block details.`);
+				}
+				return textResult(lines.join("\n"));
+			},
+		},
+		{
+			name: "acp_context_recap",
+			label: "ACP Context Recap",
+			description: RECAP_DESCRIPTION,
+			parameters: recapParams,
+			loadMode: "essential" as const,
+			approval: "read" as const,
+			execute: async (_id: string, params: Record<string, unknown>) => {
+				const blocks = state.activeBlocks();
+				if (blocks.length === 0) return textResult("No active compression blocks.");
+				if (params?.blockId !== undefined) {
+					const block = blocks.find((b) => b.blockId === Number(params.blockId)) ?? state.blocks.get(Number(params.blockId));
+					if (!block) return textResult(`Block b${params.blockId} not found. Active blocks: ${blocks.map((b) => `b${b.blockId}`).join(", ")}`);
+					if (!block.active) return textResult(`Block b${block.blockId} is inactive (decompressed or consumed by a nested compression).`);
+					return textResult(`b${block.blockId} "${block.topic || "untitled"}":\n\n${block.summary}`);
+				}
+				return textResult(
+					blocks.map((b) => `- b${b.blockId} "${b.topic || "untitled"}" (${b.summary.length} chars)`).join("\n"),
+				);
+			},
+		},
+	];
 }
