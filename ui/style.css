@@ -111,23 +111,10 @@ samp,
 .cmd .c-tx,
 .step-title code,
 .approval-title,
-.pv-code {
-  font-size: var(--code-fs, 12px) !important;
-}
-
+.pv-code,
 .fd-holder,
-.fd-holder .d2h-wrapper,
-.fd-holder .d2h-diff-table,
-.fd-holder .d2h-code-line,
-.fd-holder .d2h-code-side-line,
-.fd-holder .d2h-code-line-ctn,
-.fd-holder .d2h-code-linenumber,
-.fd-holder .d2h-code-side-linenumber,
-.fd-holder .d2h-del,
-.fd-holder .d2h-ins,
-.fd-holder .d2h-info,
-.fd-holder .d2h-code-line-prefix {
-  font-size: var(--code-fs, 11px) !important;
+.fd-holder * {
+  font-size: var(--code-fs, 12px) !important;
 }
 
 /* ── 布局：底座上嵌中栏 / 右栏圆角卡片 ───────────────────────────────── */
@@ -2191,15 +2178,61 @@ body.resizing .resizer {
   background: var(--panel);
 }
 [data-theme="dark"] .fd-holder { color-scheme: dark; }
-.fd-holder.d2h-dark-color-scheme { background: #0d1117; }
-.fd-holder .d2h-wrapper { font-size: var(--code-fs, 11px) !important; }
-html[data-line-numbers="off"] .pv-code .ln,
-html[data-line-numbers="off"] .fd-holder .d2h-code-linenumber { display: none; }
-html[data-code-wrap="on"] .fd-holder .d2h-code-line,
 html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-all; }
-/* 思考标签任何设置下都显示（chat.js/renderThink 注释为准）：hideThinkingBlock 只决定默认展开与否 */
-.fd-holder .d2h-file-header { display: none; } /* 已有标题行，隐藏组件自带文件头 */
-.fd-holder td { padding: 0 4px !important; }
+
+/* ── 轻量 diff（自研，移植 ZCode lightweight-diff-preview）：行背景 color-mix +
+   行首 inset 状态条 + 行号 gutter 着色表达增删，不显示 +/-/空格 marker ── */
+:root {
+  --diff-added: var(--green-soft);  /* 增进行主色：14% 行背景 + 18% gutter 底 + 状态条 */
+  --diff-removed: var(--err);       /* 删行主色，同上加色规则 */
+}
+.ldiff {
+  overflow: auto;
+  background: var(--bg);
+  line-height: 1.5;
+}
+/* 不换行时由内层滚动面统一算 max-content 宽度：每行各自撑宽的话，
+   横滚到右侧时短行背景提前结束，产生底色断层（ZCode 原注释同款） */
+.ldiff-scroll { min-width: 100%; width: max-content; }
+.ldiff-row { display: flex; min-width: 100%; width: 100%; }
+.ldiff-added {
+  background: color-mix(in srgb, var(--diff-added) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--diff-added);
+}
+.ldiff-removed {
+  background: color-mix(in srgb, var(--diff-removed) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--diff-removed);
+}
+/* 行号 gutter：sticky 左钉随横滚固定，右对齐等宽数字；增删行 gutter 底与行
+   一致（18% 混色）+ 同色文字，上下文行回底色弱行号 */
+.ldiff-gutter {
+  position: sticky; left: 0; z-index: 1;
+  width: 48px; flex: none; padding: 0 8px;
+  background: var(--bg); border-right: 1px solid var(--line-soft);
+  color: var(--faint); text-align: right; user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.ldiff-added .ldiff-gutter {
+  background: color-mix(in srgb, var(--diff-added) 18%, var(--bg));
+  box-shadow: inset 3px 0 0 var(--diff-added);
+  color: var(--diff-added);
+}
+.ldiff-removed .ldiff-gutter {
+  background: color-mix(in srgb, var(--diff-removed) 18%, var(--bg));
+  box-shadow: inset 3px 0 0 var(--diff-removed);
+  color: var(--diff-removed);
+}
+.ldiff-code { display: block; flex: 1; min-width: 0; padding: 0 12px; white-space: pre; }
+/* 文件头（diff --git/index/---/+++）与 hunk 头（@@）：分层底色弱化展示，不参与增删着色 */
+.ldiff-meta { background: var(--panel); color: var(--dim); }
+.ldiff-hunk { background: var(--panel-2); color: var(--dim); }
+/* "\ No newline at end of file" 之类的补丁注记 */
+.ldiff-note { color: var(--faint); }
+/* 超出渲染行数上限（host 500k 截断场景）尾部的省略提示 */
+.ldiff-truncated { padding: 4px 12px; color: var(--faint); }
+/* 设置开关：行号总开关沿用 data-line-numbers；代码换行沿用 data-code-wrap */
+html[data-line-numbers="off"] .ldiff-gutter { display: none; }
+html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break-all; }
 
 /* 右键菜单（复制 sessionId；fixed 定位需 zoom 补偿） */
 .ctx-menu {

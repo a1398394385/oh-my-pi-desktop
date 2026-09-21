@@ -1,9 +1,10 @@
 // Git Diff 页：列表上方工具条（提交信息/提交/推送）+ 文件树/平铺 + 行内写操作 +
-// 单文件 diff2html 详情（rb-head 固定 + rb-scroll 滚动骨架）。
-import { useEffect, useReducer, useRef, useState } from "react";
+// 单文件自研轻量 diff 详情（rb-head 固定 + rb-scroll 滚动骨架）。
+import { useReducer, useState } from "react";
 import { S, useStore, notify, send, activeOpen, gitDiffCache, fileDiffCache, rightState, refreshGitDiff } from "../../store.js";
 import Icon from "../../Icon.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
+import LightweightDiff from "../diff/LightweightDiff.jsx";
 
 // ---------- git 写操作 busy 闭环（原 right.js gitBusy 语义） ----------
 // 进行中的写操作标记：{ op, prev }（prev = 发起前的 rightState.gitWrite 引用）。
@@ -125,19 +126,8 @@ export default function GitDiffPage() {
   );
 }
 
-// 文件详情：返回 + 路径固定在顶，diff 区滚动（diff2html 为外部库命令式 API，ref 容器注入）
+// 文件详情：返回 + 路径固定在顶，diff 区滚动（自研 LightweightDiff 组件渲染）
 function GdFileDetail() {
-  const diffRef = useRef(null);
-  useEffect(() => {
-    const el = diffRef.current;
-    if (!el) return;
-    el.innerHTML = window.Diff2Html.html(fileDiffCache.diff, {
-      drawFileList: false,
-      outputFormat: "line-by-line",
-      matching: "words",
-      highlight: true,
-    });
-  });
   return (
     <>
       <div className="rb-head">
@@ -158,10 +148,7 @@ function GdFileDetail() {
         ) : fileDiffCache.path !== S.selectedFile || !fileDiffCache.diff ? (
           <div className="placeholder">（无差异内容）</div>
         ) : (
-          <div
-            ref={diffRef}
-            className={"fd-holder" + (document.documentElement.dataset.theme === "dark" ? " d2h-dark-color-scheme" : "")}
-          />
+          <LightweightDiff diff={fileDiffCache.diff} className="fd-holder" />
         )}
       </div>
     </>
