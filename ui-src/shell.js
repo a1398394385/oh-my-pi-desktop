@@ -38,7 +38,7 @@ export function toggleTheme() {
 // ---------- 边栏拖动调宽 ----------
 // 宽度走 CSS 变量，localStorage 记忆；保证中部卡片支持压缩至最小 30% 视口总宽度。
 // 首次调用即恢复 localStorage 里的记忆宽度（omp-w-*）。
-export function attachResizer(handleId, cssVar, min, invert) {
+export function attachResizer(handleId, cssVar, min, invert, maxPct) {
   const panel = handleId === "left-resizer" ? document.getElementById("sidebar") : document.getElementById("right");
   if (!panel) return;
   const apply = (w) => document.documentElement.style.setProperty(cssVar, w + "px");
@@ -59,7 +59,10 @@ export function attachResizer(handleId, cssVar, min, invert) {
       const otherPanel = invert ? document.getElementById("sidebar") : document.getElementById("right");
       const otherW = (otherPanel && !otherPanel.classList.contains("collapsed")) ? otherPanel.offsetWidth : 0;
       const totalGaps = 32;
-      const maxAllowed = Math.max(min, wWin - minMainW - otherW - totalGaps);
+      const maxAllowed = Math.min(
+        Math.max(min, wWin - minMainW - otherW - totalGaps),
+        maxPct ? Math.floor(wWin * maxPct) : Infinity,
+      );
 
       let targetW = invert ? (startW - dx) : (startW + dx);
       targetW = Math.max(min, Math.min(targetW, maxAllowed));
@@ -151,7 +154,8 @@ export function initShell() {
   } catch {}
 
   attachResizer("left-resizer", "--left-w", 180, false);
-  attachResizer("right-resizer", "--right-w", 200, true);
+  // 右栏拖柄（ZCode Side Pane 尺寸契约）：min 240px、max 65% 视口宽
+  attachResizer("right-resizer", "--right-w", 240, true, 0.65);
 
   updateContentColMax();
   window.addEventListener("resize", () => {

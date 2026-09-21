@@ -1964,21 +1964,41 @@ body.resizing .resizer {
   display: flex; flex-direction: column;
   padding: 0 4px 4px;
 }
-.sp-head { display: flex; gap: 6px; align-items: center; flex: none; }
-/* 右栏 tab 栏：圆角块 tab + hover 关闭钮，浏览器 tab 语义 */
+/* tab 头（ZCode Side Pane 风格）：h-12 一行 + 底部分隔线；
+   左总览钮 / 中等宽 tab / 右新增钮（.sp-head 为 popover 定位上下文） */
+.sp-head {
+  position: relative;
+  display: flex; gap: 4px; align-items: center; flex: none;
+  height: 48px; padding: 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+/* 右栏 tab 栏：等宽排布（flex 1 1 0 + min/max 宽），溢出横向滚动隐滚动条 */
 .rtabs { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .rtabs::-webkit-scrollbar { display: none; }
 .rtab {
-  flex: none; display: inline-flex; align-items: center; gap: 5px;
-  border: 0; background: none; color: var(--faint);
+  position: relative; flex: 1 1 0; min-width: 56px; max-width: 156px; height: 28px;
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-sm);
-  padding: 4px 6px 4px 9px; border-radius: 7px; cursor: pointer;
-  max-width: 132px;
+  padding: 0 6px 0 8px; border-radius: 7px; cursor: pointer;
+  transition: background .12s, color .12s;
 }
-.rtab:hover { background: var(--panel-2); color: var(--dim); }
-.rtab.on { background: var(--panel-2); color: var(--text); }
-.rtab-ic { display: inline-flex; align-items: center; flex: none; }
-.rtab-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rtab:hover { background: var(--panel-2); color: var(--text); }
+/* 激活：文字提亮 + 底部 accent 指示条（压在分隔线上） */
+.rtab.on { background: none; color: var(--text); }
+.rtab.on::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -10px;
+  height: 2px; border-radius: 1px; background: var(--accent);
+}
+.rtab.drag-over { background: var(--panel-2); }
+.rtab-ic { display: inline-flex; align-items: center; flex: none; color: var(--faint); }
+.rtab.on .rtab-ic, .rtab:hover .rtab-ic { color: inherit; }
+/* 标题超长渐隐 mask（右侧 12px 淡出，给关闭钮留位；纯 CSS 无 JS 动画） */
+.rtab-tx {
+  flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 12px), transparent);
+}
 .rtab-x {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 5px;
@@ -1986,6 +2006,32 @@ body.resizing .resizer {
 }
 .rtab:hover .rtab-x { opacity: 1; }
 .rtab-x:hover { background: var(--panel-3); color: var(--text); }
+/* tab 总览 / 新增弹层：复用 .menu 视觉，锚定 sp-head（absolute 随面板 zoom 缩放不错位） */
+.sp-head .menu.sp-pop {
+  top: calc(100% + 4px); bottom: auto; left: 6px; right: auto;
+  width: 248px; min-width: 0; padding: 6px; z-index: 70;
+}
+.sp-pop-search {
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 8px; margin-bottom: 4px;
+  background: var(--inset); border: 1px solid var(--line-soft); border-radius: 7px;
+  color: var(--faint);
+}
+.sp-pop-search input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+  font: inherit; font-size: var(--ui-fs-sm); color: var(--text);
+}
+.sp-pop-scroll { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sp-pop .mi.on { background: var(--panel-3); }
+/* 打开中行的逐项关闭钮：hover 行才出现（对齐 tab 头关闭钮语义） */
+.sp-pop .mi .mi-x {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 5px;
+  color: var(--faint); opacity: 0; transition: opacity .12s;
+}
+.sp-pop .mi:hover .mi-x { opacity: 1; }
+.sp-pop .mi .mi-x:hover { background: var(--panel-2); color: var(--text); }
 #rightBody {
   flex: 1; overflow-y: auto; min-height: 0;
   padding: 8px 4px 4px;
@@ -2034,26 +2080,34 @@ body.resizing .resizer {
 .sub-stream { display: flex; flex-direction: column; gap: 8px; }
 .sub-stream .assistant-text { font-size: var(--ui-fs-base); }
 
-/* ---------- 右栏起始页（tab 全部关闭） ---------- */
+/* ---------- 右栏空态启动器（tab 全部关闭，对齐 ZCode side-pane 空态） ---------- */
+/* 居中列：装饰图标 + 标题/副文两行 + 入口钮列表；容器查询宽容器切两列网格 */
 .rt-start {
   min-height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 16px; text-align: center;
+  padding: 24px 16px; text-align: center;
+  container-type: inline-size;
 }
-.rt-start-tt { font-size: var(--ui-fs-lg); font-weight: 700; color: var(--text); }
-.rt-start-sub { font-size: var(--ui-fs-sm); color: var(--faint); margin: 8px 0 22px; }
-.rt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: min(100%, 300px); }
-.rt-card {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  border: 1px solid var(--line-soft); border-radius: var(--r-md);
-  background: var(--panel); color: var(--dim);
-  font: inherit; font-size: var(--ui-fs-sm);
-  padding: 16px 8px; cursor: pointer;
+.rt-start-ic { display: inline-flex; align-items: center; color: var(--faint); margin-bottom: 12px; }
+.rt-start-tt { font-size: 20px; font-weight: 600; line-height: 28px; color: var(--text); }
+.rt-start-sub { font-size: var(--ui-fs-base); line-height: 20px; color: var(--dim); margin: 4px 0 20px; }
+.rt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; }
+.rt-item {
+  display: flex; align-items: center; gap: 12px;
+  height: 48px; padding: 0 12px;
+  border: 0; border-radius: var(--r-lg);
+  background: var(--panel); color: var(--text);
+  font: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+  cursor: pointer; transition: background .12s;
 }
-.rt-card:hover { border-color: var(--line); background: var(--panel-2); color: var(--text); }
-.rt-card.off { opacity: .4; cursor: default; }
-.rt-card-ic { display: inline-flex; align-items: center; color: var(--faint); }
-.rt-card:hover .rt-card-ic { color: var(--dim); }
+.rt-item:hover { background: var(--panel-2); }
+.rt-item.off { opacity: .4; cursor: default; }
+.rt-item-ic { display: inline-flex; align-items: center; flex: none; color: var(--faint); }
+.rt-item:hover .rt-item-ic { color: var(--dim); }
+.rt-item.off .rt-item-ic, .rt-item.off:hover .rt-item-ic { color: var(--faint); }
+@container (min-width: 480px) {
+  .rt-list { display: grid; grid-template-columns: 1fr 1fr; max-width: 480px; }
+}
 
 /* ---------- 文件页（读取行点击 / 文件树点击进入） ---------- */
 /* 文件树（空态）行 */
