@@ -32,7 +32,7 @@ import {
   USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
-import { AcpSessionState } from "./acp-state.ts";
+import { AcpSessionState, type AcpNudgeConfig } from "./acp-state.ts";
 import { createAcpContextExtension } from "./acp-context.ts";
 import {
   H,
@@ -131,9 +131,37 @@ function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
 }
 
+/** 读 omp-desktop.json 的 acp 段（与项目清单同文件；用户手编辑，host 只读）。
+ *  支持数字（0.55）与百分比字符串（"55%"）；缺省 max 0.55 / min 0.45。 */
+function readAcpNudgeConfig(): AcpNudgeConfig {
+  const fallback: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
+  try {
+    const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as { acp?: Record<string, unknown> };
+    const acp = raw?.acp;
+    if (!acp || typeof acp !== "object") return fallback;
+    const parse = (v: unknown, dflt: number): number => {
+      if (typeof v === "number" && v > 0 && v <= 1) return v;
+      if (typeof v === "string") {
+        const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(v);
+        if (m) return Number(m[1]) / 100;
+      }
+      return dflt;
+    };
+    return {
+      maxContextLimit: parse(acp.maxContextLimit, 0.55),
+      minContextLimit: parse(acp.minContextLimit, 0.45),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
-  // 每会话私有 ACP 状态：ref 映射 + 压缩块。工具与 context 扩展共享同一实例
   const acpState = new AcpSessionState();
+  // 模型上下文窗口（nudge 分母；未知则 nudge 整体禁用）+ omp-desktop.json 的 acp 段
+  const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
+  acpState.modelContextWindow = Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) || 0;
+  acpState.nudge = readAcpNudgeConfig();
   const result = await createAgentSession({
     cwd,
     authStorage: H.authStorage,

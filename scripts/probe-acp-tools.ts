@@ -140,4 +140,76 @@ const foldedText = view.map((m) => JSON.stringify(m)).join("");
 if (!foldedText.includes("m00001") || !foldedText.includes("m00002")) throw new Error("折叠后未重编 ref");
 console.log("PASS 2i: 视图前缀折叠后 ref 全量重编（块原文定位降级不崩溃）");
 
+// ---- 3) P1：ACP 工具调用硬保护 ----
+
+const state3 = new AcpSessionState();
+const withAcp: AgentMessage[] = [
+	{ role: "user", content: "任务甲", timestamp: t(10) },
+	{
+		role: "assistant",
+		content: [
+			{ type: "text", text: "压缩旧范围" },
+			{ type: "toolCall", id: "call-a", tool: "compress" },
+		],
+		api: "anthropic",
+		provider: "x",
+		model: "test",
+		timestamp: t(11),
+	} as unknown as AgentMessage,
+	{ role: "toolResult", toolCallId: "call-a", toolName: "compress", content: [{ type: "text", text: "📦 [ACP] Compressed ..." }], isError: false, timestamp: t(12) } as unknown as AgentMessage,
+	{ role: "user", content: "任务乙", timestamp: t(13) },
+];
+let v3 = transformContext(state3, structuredClone(withAcp));
+const v3flat = v3.map((m) => JSON.stringify(m)).join("");
+if (v3flat.includes("<dcp-message-id>m00003")) throw new Error("compress 工具结果不应带 ref 标签");
+if (!v3flat.includes("<dcp-message-id>m00004")) throw new Error("后续消息 ref 应保持注入");
+console.log("PASS 3a: ACP 工具结果占号但不注入 ref 标签（m00003 隐藏，m00004 可见）");
+
+const compress3 = createAcpCompressTools(state3).find((x) => x.name === "compress")!;
+const r3 = await compress3.execute("p3", {
+	content: [{ topic: "含保护调用", startId: "m00001", endId: "m00004", summary: "整体压缩" }],
+}, undefined, undefined, {} as never);
+const r3text = String((r3.content as Array<{ text?: string }>)[0]?.text ?? "");
+if (!r3text.includes("protected")) throw new Error(`覆盖 ACP 工具调用未被拒绝: ${r3text}`);
+console.log(`PASS 3b: compress 覆盖 ACP 工具调用被硬保护拒绝`);
+
+// ---- 4) P1：块消费占位 ----
+
+const state4 = new AcpSessionState();
+transformContext(state4, structuredClone(base));
+const compress4 = createAcpCompressTools(state4).find((x) => x.name === "compress")!;
+await compress4.execute("p4a", {
+	content: [{ topic: "First block", startId: "m00001", endId: "m00001", summary: "第一段摘要" }],
+}, undefined, undefined, {} as never);
+// 第二块完全覆盖第一块 → b0 被消费，b1 summary 前缀应含消费清单
+await compress4.execute("p4b", {
+	content: [{ topic: "Wider", startId: "m00001", endId: "m00003", summary: "更宽范围的摘要" }],
+}, undefined, undefined, {} as never);
+const b1 = state4.blocks.get(1)!;
+if (!b1.summary.startsWith('[Consumed blocks: b0 "First block"]')) throw new Error(`消费清单缺失: ${b1.summary.slice(0, 80)}`);
+if (!state4.blocks.get(0)!.active) {
+	// b0 被消费应 inactive
+} else {
+	throw new Error("被消费的 b0 仍为 active");
+}
+console.log('PASS 4: 覆盖压缩注入消费清单（[Consumed blocks: b0 "First block"]），旧块转 inactive');
+
+// ---- 5) P2：nudge（仅出境，不进历史） ----
+
+const state5 = new AcpSessionState();
+state5.modelContextWindow = 60; // 极小窗口：base 视图文本必然超 55%
+let v5 = transformContext(state5, structuredClone(base));
+const nudgeMsg = v5[v5.length - 1] as { role?: string; content?: unknown };
+const nudgeText = typeof nudgeMsg?.content === "string" ? nudgeMsg.content : "";
+if (!nudgeText.includes("[ACP context nudge]")) throw new Error("超限时未注入 nudge");
+if (!/~\d+%/.test(nudgeText)) throw new Error(`nudge 应含 5% 档取整用量: ${nudgeText.slice(0, 120)}`);
+if (state5.lastOriginal.some((m) => JSON.stringify(m).includes("[ACP context nudge]"))) throw new Error("nudge 泄漏进了 lastOriginal（应仅出境）");
+console.log("PASS 5a: 用量超 maxContextLimit 注入请求级 nudge，不进原始视图");
+
+state5.modelContextWindow = 1_000_000; // 大窗口：不触发
+v5 = transformContext(state5, structuredClone(base));
+const last5 = v5[v5.length - 1] as { role?: string; content?: unknown };
+if (String((last5 as { content?: unknown }).content ?? "").includes("[ACP context nudge]")) throw new Error("未超限却注入了 nudge");
+console.log("PASS 5b: 用量低于阈值不注入");
+
 console.log("\n=== 探针全部通过 ===");

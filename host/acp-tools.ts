@@ -19,7 +19,7 @@
 //   createAgentSession({ customTools }) 注册。
 import { type } from "@oh-my-pi/omptype";
 import type { AcpBlock, AcpSessionState } from "./acp-state.ts";
-import { messageText } from "./acp-state.ts";
+import { messageText, ACP_TOOL_NAMES } from "./acp-state.ts";
 import { expandToTransactionBounds, serializeForArchive } from "./acp-context.ts";
 
 // ---- 描述文本（opencode-acp 原文移植） --------------------------------
@@ -308,25 +308,55 @@ export function createAcpCompressTools(state: AcpSessionState) {
 							);
 						}
 					}
+			}
+			// 硬保护：ACP 自身工具的调用/结果绝不可压缩（摘要即历史契约——
+			// 压掉块元数据的载体后 decompress 与追溯都会断）
+			for (const r of ranges) {
+				for (let i = r.first; i <= r.last; i++) {
+					const m = messages[i] as { role?: string; toolName?: string; content?: unknown };
+					if (m?.role === "toolResult" && ACP_TOOL_NAMES.has(String(m.toolName ?? ""))) {
+						return textResult(
+							`Error: range includes a protected ${m.toolName} tool result (message ${i + 1}). ACP tool calls carry block metadata and are never compressible — adjust boundaries to exclude it.`,
+						);
+					}
+					if (m?.role === "assistant" && Array.isArray(m.content)) {
+						const acpCall = (m.content as Array<{ type?: string; tool?: string }>).find(
+							(c) => c?.type === "toolCall" && ACP_TOOL_NAMES.has(String(c.tool ?? "")),
+						);
+						if (acpCall) {
+							return textResult(
+								`Error: range includes a protected ${acpCall.tool} tool call (message ${i + 1}). ACP tool calls carry block metadata and are never compressible — adjust boundaries to exclude it.`,
+							);
+						}
+					}
 				}
-				// 建块（从后往前消费覆盖的旧块）
-				const created: string[] = [];
-				for (const r of [...ranges].reverse()) {
-					const entry = r.entry;
-					const topic = String(entry.topic ?? params.topic ?? "");
-					const blockId = state.allocBlockId();
-					state.blocks.set(blockId, {
-						blockId,
-						topic,
-						summary: String(entry.summary),
-						originalMessages: messages.slice(r.first, r.last + 1).map((m) => structuredClone(m)),
-						firstIndex: r.first,
-						lastIndex: r.last,
-						active: true,
-						createdAt: Date.now(),
-					});
-					created.unshift(`b${blockId}`);
-				}
+			}
+			// 建块（从后往前；覆盖的旧块被消费，其引用注入新块 summary 头部）
+			const created: string[] = [];
+			for (const r of [...ranges].reverse()) {
+				const entry = r.entry;
+				const topic = String(entry.topic ?? params.topic ?? "");
+				const blockId = state.allocBlockId();
+				const consumedNow = state
+					.activeBlocks()
+					.filter((b) => {
+						const anchors = state.locateBlockAnchors(b);
+						return anchors && r.first <= anchors.first && anchors.last <= r.last;
+					})
+					.map((b) => `b${b.blockId} "${b.topic || "untitled"}"`);
+				const summaryPrefix = consumedNow.length > 0 ? `[Consumed blocks: ${consumedNow.join("; ")}]\n` : "";
+				state.blocks.set(blockId, {
+					blockId,
+					topic,
+					summary: summaryPrefix + String(entry.summary),
+					originalMessages: messages.slice(r.first, r.last + 1).map((m) => structuredClone(m)),
+					firstIndex: r.first,
+					lastIndex: r.last,
+					active: true,
+					createdAt: Date.now(),
+				});
+				created.unshift(`b${blockId}`);
+			}
 				for (const block of state.activeBlocks()) {
 					const anchors = state.locateBlockAnchors(block);
 					if (!anchors) continue;

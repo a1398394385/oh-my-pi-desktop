@@ -11,6 +11,7 @@
 // 根本姿势：映射只在单次请求视图内自洽，永不跨坐标系。
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { AcpSessionState } from "./acp-state.ts";
+import { ACP_TOOL_NAMES } from "./acp-state.ts";
 import { messageText } from "./acp-state.ts";
 
 export const REF_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
@@ -149,6 +150,7 @@ export function transformContext(state: AcpSessionState, messages: AgentMessage[
 		if (anchors) located.push({ ...anchors, blockId: block.blockId, topic: block.topic, summary: block.summary });
 	}
 
+	// 从后往前替换，避免索引移位；srcIdx 同步跟踪每条输出消息的原始索引
 	// （摘要消息为 -1），ref 注入按原始索引取号，压缩区间之后的消息 ref 不漂移。
 	const out = [...messages];
 	const srcIdx = messages.map((_, i) => i);
@@ -159,7 +161,8 @@ export function transformContext(state: AcpSessionState, messages: AgentMessage[
 		}
 	}
 
-	// ref 注入：摘要块消息不占 ref 序号（不可再压缩），其余按原始索引取号
+	// 占号但不注入标签——模型看不到它们的 ref，从源头减少误压缩入口
+	// （区间级硬保护在 compress 里再做一层）
 	const refs = state.refByIndex;
 	const result: AgentMessage[] = [];
 	for (let i = 0; i < out.length; i++) {
@@ -168,8 +171,46 @@ export function transformContext(state: AcpSessionState, messages: AgentMessage[
 			result.push(m);
 			continue;
 		}
+		const role = (m as { role?: string }).role;
+		if (role === "toolResult" && ACP_TOOL_NAMES.has(String((m as { toolName?: string }).toolName ?? ""))) {
+			result.push(m);
+			continue;
+		}
 		const ref = refs[srcIdx[i]];
 		result.push(ref ? injectRefTag(m, ref) : m);
+	}
+
+	// ---- nudge（仅本次请求，不进历史） ----
+	// emitContext 的输出直通 convertToLlmFinal 请求链、不写回 journal，
+	// 因此这里追加的提醒下一轮自然消失——与 opencode-acp 的 anchor 注入
+	// 同语义。窗口未知（0）时整体禁用。百分比按 5% 档取整保持文本稳定
+	// （前缀缓存友好）。
+	const window_ = state.modelContextWindow;
+	if (window_ > 0) {
+		const estTokens = Math.ceil(
+			result.map((m) => messageText(m)).join("").length / 4,
+		);
+		const usage = estTokens / window_;
+		const { maxContextLimit, minContextLimit } = state.nudge;
+		if (usage >= maxContextLimit) {
+			const pctFloor = Math.min(100, Math.floor((usage * 100) / 5) * 5);
+			const targetPct = Math.round(minContextLimit * 100);
+			// 建议区间：最早的三条带 ref 的可压缩消息
+			const suggest = refs.filter(Boolean).slice(0, 3);
+			const first = suggest[0];
+			const last = suggest[suggest.length - 1];
+			result.push({
+				role: "user",
+				content: [
+					`[ACP context nudge] Context usage is at ~${pctFloor}% (~${estTokens} / ${window_} tokens estimated).`,
+					`Compress consumed conversation ranges NOW with the compress tool to get below ~${targetPct}%.`,
+					`Suggested first target: ${first && last ? `the earliest tagged range (${first}..${last} area — check the actual boundaries in the conversation)` : "the oldest tagged messages"}.`,
+					`Keep the recent working set (last few messages and any active task state) uncompressed. Use acp_status to review candidates.`,
+				].join(" "),
+				synthetic: true,
+				timestamp: Date.now(),
+			} as AgentMessage);
+		}
 	}
 	return result;
 }

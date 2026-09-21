@@ -87,9 +87,22 @@ export interface AcpBlock {
 	/** 被后续块消费时保留原文（深层 decompress 用）。 */
 	createdAt: number;
 }
+/** ACP 自身的五个工具名——其调用/结果受硬保护，绝不可被压缩。 */
+export const ACP_TOOL_NAMES = new Set(["compress", "decompress", "search_context", "acp_status", "acp_context_recap"]);
 
-/** 单会话 ACP 状态。 */
+/** nudge 配置（omp-desktop.json 的 acp 段；窗口未知时 nudge 整体禁用）。 */
+export interface AcpNudgeConfig {
+	/** 触发强提醒的用量上限（0-1，默认 0.55）。 */
+	maxContextLimit: number;
+	/** 压缩目标线（0-1，默认 0.45）——写进提醒文案，指导压到多少以下。 */
+	minContextLimit: number;
+}
+
 export class AcpSessionState {
+	/** 模型上下文窗口（token）；0 = 未知，nudge 禁用。host 建会话时填入。 */
+	modelContextWindow = 0;
+	/** nudge 阈值；host 从 omp-desktop.json 的 acp 段读入。 */
+	nudge: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
 	blocks = new Map<number, AcpBlock>();
 	private nextBlockId = 0;
 	/** 每个视图位置对应的 ref（m00001 起，5 位补零，与 opencode-acp 一致）。视图变换读取。 */
