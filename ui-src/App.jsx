@@ -9,6 +9,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import Welcome from "./components/Welcome.jsx";
 import Chat from "./components/Chat.jsx";
 import Composer from "./components/Composer.jsx";
+import QueueCard from "./components/composer/QueueCard.jsx";
 import RightPanel from "./components/RightPanel.jsx";
 import Settings from "./components/settings/Settings.jsx";
 
@@ -67,9 +68,14 @@ export default function App() {
         <ChatHead onToggleSidebar={toggleSidebar} onToggleRight={toggleRight} />
         {S.isCreatingNew ? <Welcome /> : <Chat />}
         {!S.isCreatingNew && (
-          <div className="dock">
-            <Composer inWelcome={false} />
-          </div>
+          <>
+            {/* 排队卡与输入 dock 是相邻兄弟（ZCode bottom dock 顺序 queue → composer）：
+                卡自身 -mb-28px 上拉，dock 以 z-20 压住其下缘，露出上半张二级重叠卡 */}
+            <QueueCard />
+            <div className="dock">
+              <Composer inWelcome={false} />
+            </div>
+          </>
         )}
       </main>
       <div id="right-resizer" className="resizer" title="拖动调整宽度" hidden={S.rightCollapsed}></div>

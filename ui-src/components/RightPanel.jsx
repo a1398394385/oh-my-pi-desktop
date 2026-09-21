@@ -1,25 +1,185 @@
-// 右栏：logo 工具条 + tab 栏（子代理/Git Diff/文件/后台命令/分支）+ 面板体。
-// 迁移自 ui/right.js。tab 开关列表为模块级 rightTabs（有序），激活项 S.rightTab；
+// 右栏：logo 工具条 + tab 头（ZCode Side Pane 风格：左总览 popover / 中等宽可拖拽 tab / 右新增）
+// + 面板体。迁移自 ui/right.js。tab 开关列表为模块级 rightTabs（有序），激活项 S.rightTab；
 // tab 管理在 ./right/tabs.js（各页面共用），此处 re-export 保持既有导出面。
 // 契约：数据读 S/rightState/gitDiffCache/fileDiffCache/openSessions，动作后 notify()；
 // 三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：#rightBody 加 detail 类，
 // rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
+import { useEffect, useRef, useState } from "react";
 import { S, useStore, notify, activeOpen, gitDiffCache, refreshGitDiff } from "../store.js";
 import Icon from "../Icon.jsx";
-import { TAB_META, rightTabs, closeRightTab } from "./right/tabs.js";
+import {
+  TAB_META, rightTabs, rightRecentClosed,
+  openRightTab, closeRightTab, reopenRightTab, moveRightTab,
+} from "./right/tabs.js";
 import StartPage from "./right/StartPage.jsx";
 import SubagentPage from "./right/SubagentPage.jsx";
 import GitDiffPage from "./right/GitDiffPage.jsx";
 import FilePage from "./right/FilePage.jsx";
 import BgCmdPage from "./right/BgCmdPage.jsx";
 import BranchTreePage from "./right/BranchTreePage.jsx";
+import TerminalPage from "./right/TerminalPage.jsx";
+import BrowserPage from "./right/BrowserPage.jsx";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
 export { TAB_META, rightTabs, openRightTab, closeRightTab } from "./right/tabs.js";
 
+// 「最近关闭」相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
+function closedAgo(at) {
+  const m = Math.floor((Date.now() - at) / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  return `${Math.floor(h / 24)} 天前`;
+}
+
+// tab 总览 popover：搜索框 + 打开中（点击切换 / 逐项关闭）+ 最近关闭（点击重开）。
+// 复用 .menu 弹层视觉；坐标走 sp-head 相对定位（absolute 随面板 zoom 缩放不错位）。
+function TabOverview({ onClose }) {
+  const [q, setQ] = useState("");
+  const inputRef = useRef(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    const esc = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
+  const kw = q.trim().toLowerCase();
+  const match = (name) => !kw || TAB_META[name].label.toLowerCase().includes(kw);
+  const opens = rightTabs.filter(match);
+  const recents = rightRecentClosed.filter((x) => match(x.name));
+  return (
+    <div className="menu open sp-pop" onClick={(e) => e.stopPropagation()}>
+      <div className="sp-pop-search">
+        <Icon name="search" size={13} />
+        <input
+          ref={inputRef}
+          placeholder="搜索标签页"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+      <div className="sp-pop-scroll">
+        <div className="mh">打开中</div>
+        {opens.length === 0 && <div className="mi empty">无匹配的标签页</div>}
+        {opens.map((name) => (
+          <div
+            key={name}
+            className={"mi" + (S.rightTab === name ? " on" : "")}
+            onClick={() => { S.rightTab = name; notify(); onClose(); }}
+          >
+            <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
+            {TAB_META[name].label}
+            <span
+              className="mi-x"
+              title="关闭"
+              onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!rightTabs.length) onClose(); }}
+            >
+              <Icon name="xmark" size={11} />
+            </span>
+          </div>
+        ))}
+        {recents.length > 0 && <div className="mh">最近关闭</div>}
+        {recents.map((x) => (
+          <div key={x.name} className="mi" onClick={() => { reopenRightTab(x.name); onClose(); }}>
+            <span className="mi-ic"><Icon name={TAB_META[x.name].icon} size={14} /></span>
+            {TAB_META[x.name].label}
+            <span className="sub">{closedAgo(x.at)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 「新增」菜单：列出全部可开 tab（已开的打勾，git 限定项非 git 仓库置灰）
+function AddTabMenu({ isGit, onClose }) {
+  return (
+    <div className="menu open sp-pop sp-add" onClick={(e) => e.stopPropagation()}>
+      <div className="sp-pop-scroll">
+        {Object.keys(TAB_META).map((name) => {
+          const off = name === "gitdiff" && !isGit;
+          const on = rightTabs.includes(name);
+          return (
+            <div
+              key={name}
+              className={"mi" + (off ? " empty" : "")}
+              title={off ? "当前项目不是 git 仓库" : undefined}
+              onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
+            >
+              <span className="ck">{on ? "✓" : ""}</span>
+              <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
+              {TAB_META[name].label}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 单个 tab：等宽 flex、原生 drag 重排、hover 才出现的关闭钮、中键关闭
+function TabButton({ name, on }) {
+  const [over, setOver] = useState(false);
+  return (
+    <button
+      className={"rtab" + (on ? " on" : "") + (over ? " drag-over" : "")}
+      draggable
+      onClick={() => { S.rightTab = name; notify(); }}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", name);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (![...e.dataTransfer.types].includes("text/plain")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const src = e.dataTransfer.getData("text/plain");
+        if (src && src !== name) moveRightTab(src, name);
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          closeRightTab(name);
+        }
+      }}
+    >
+      <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={13} /></span>
+      <span className="rtab-tx">{TAB_META[name].label}</span>
+      <span
+        className="rtab-x"
+        title="关闭"
+        onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
+      >
+        <Icon name="xmark" size={10} />
+      </span>
+    </button>
+  );
+}
+
 export default function RightPanel({ collapsed }) {
   useStore();
   const s = activeOpen();
+  const [ovOpen, setOvOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  // 弹层关闭统一走 omp:close-menus（window click/blur → closeAllMenus 平移），
+  // 触发钮自身 stopPropagation 故不受全局关闭影响
+  useEffect(() => {
+    const close = () => { setOvOpen(false); setAddOpen(false); };
+    document.addEventListener("omp:close-menus", close);
+    const esc = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("omp:close-menus", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, []);
   // 非 git 会话不保留 Git Diff tab（打开的列表与激活项都回落）
   if (!s?.isGit && rightTabs.includes("gitdiff")) {
     const i = rightTabs.indexOf("gitdiff");
@@ -39,6 +199,8 @@ export default function RightPanel({ collapsed }) {
   else if (S.rightTab === "bgcmd") body = <BgCmdPage />;
   else if (S.rightTab === "file") body = <FilePage />;
   else if (S.rightTab === "tree") body = <BranchTreePage />;
+  else if (S.rightTab === "terminal") body = <TerminalPage />;
+  else if (S.rightTab === "browser") body = <BrowserPage />;
   else body = <SubagentPage />;
   return (
     <aside id="right" className={collapsed ? "collapsed" : ""}>
@@ -52,18 +214,33 @@ export default function RightPanel({ collapsed }) {
       </div>
       <div id="sidepanel">
         <div className="sp-head">
+          <button
+            className="icon-btn"
+            title="标签页总览"
+            onClick={(e) => {
+              e.stopPropagation();
+              setAddOpen(false);
+              setOvOpen(!ovOpen);
+            }}
+          >
+            <Icon name="dots" size={15} />
+          </button>
           <div className="rtabs" id="rightTabs">
             {rightTabs.map((name) => (
-              <button key={name} className={"rtab" + (S.rightTab === name ? " on" : "")} onClick={() => { S.rightTab = name; notify(); }}>
-                <span className="rtab-ic"><Icon name={TAB_META[name].icon} /></span>
-                <span className="rtab-tx">{TAB_META[name].label}</span>
-                <span className="rtab-x" onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}>
-                  <Icon name="xmark" size={10} />
-                </span>
-              </button>
+              <TabButton key={name} name={name} on={S.rightTab === name} />
             ))}
           </div>
-          <span className="sp"></span>
+          <button
+            className="icon-btn"
+            title="打开标签页"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOvOpen(false);
+              setAddOpen(!addOpen);
+            }}
+          >
+            <Icon name="plus" size={14} />
+          </button>
           {isGitTab && (
             <button
               className="icon-btn"
@@ -95,6 +272,8 @@ export default function RightPanel({ collapsed }) {
               {S.gitViewMode === "tree" ? "树" : "平铺"}
             </button>
           )}
+          {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}
+          {addOpen && <AddTabMenu isGit={!!s?.isGit} onClose={() => setAddOpen(false)} />}
         </div>
         <div id="rightBody" className={detail ? "detail" : ""}>
           {body}

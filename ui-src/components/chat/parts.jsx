@@ -3,9 +3,10 @@
 // 翻译为组件）；纯函数（splitPath/uniqueFiles）直接 import 旧模块复用不重写。
 import { useEffect, useRef, useState } from "react";
 import { S, send, notify, activeOpen, invoke, toast, briefDiffCache, fileDiffCache } from "../../store.js";
-import { uniqueFiles, splitPath } from "../../../ui/tool-rows.js";
+import { uniqueFiles, splitPath } from "./util.js";
 import Icon from "../../Icon.jsx";
 import { openRightTab } from "../RightPanel.jsx";
+import LightweightDiff from "../diff/LightweightDiff.jsx";
 
 export { uniqueFiles, splitPath };
 
@@ -160,21 +161,14 @@ export function Counts({ item }) {
 // ---------- 编辑行内联展开的简略 diff 体（原 buildEditBrief） ----------
 export function EditBrief({ path, lift }) {
   const diff = briefDiffCache[path];
-  const cls =
-    "ed-brief" +
-    (lift ? " lift" : " drop") +
-    (document.documentElement.dataset.theme === "dark" ? " d2h-dark-color-scheme" : "");
-  let html;
-  if (diff === undefined) html = '<div class="placeholder">加载中…</div>';
-  else if (!diff) html = '<div class="placeholder">（无差异内容）</div>';
-  else
-    html = window.Diff2Html.html(diff, {
-      drawFileList: false,
-      outputFormat: "line-by-line",
-      matching: "words",
-      highlight: true,
-    });
-  return <FadeBox className={cls} html={html} />;
+  const cls = "ed-brief" + (lift ? " lift" : " drop");
+  if (diff === undefined) return <FadeBox className={cls}><div className="placeholder">加载中…</div></FadeBox>;
+  if (!diff) return <FadeBox className={cls}><div className="placeholder">（无差异内容）</div></FadeBox>;
+  return (
+    <FadeBox className={cls}>
+      <LightweightDiff diff={diff} />
+    </FadeBox>
+  );
 }
 
 // ---------- 右栏联动（原 tool-rows.js openFileDiffInSidebar / tool-labels.js openReadFileInSidebar） ----------

@@ -31,6 +31,7 @@ import {
   toRestoredQueuedMessage,
   USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
+import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";
 import {
   H,
   sessions,
@@ -1354,6 +1355,41 @@ const server = Bun.serve<{ sessionId: string | null }>({
             ws.send(JSON.stringify({ type: "profile_switched", profile: H.currentProfile }));
             break;
           }
+          case "terminal_create": {
+            // 右栏终端：起真 PTY（pty.ts 的 pty-bridge 子进程），数据帧回推。
+            // id 由前端生成（tab 级 persistentKey），create 前就可能收到 onData，故不能等返回值
+            const id = String(msg.id ?? crypto.randomUUID());
+            const cwd = String(msg.cwd ?? process.cwd()).trim() || process.cwd();
+            const cols = Math.max(2, Math.min(500, Number(msg.cols) || 80));
+            const rows = Math.max(2, Math.min(200, Number(msg.rows) || 24));
+            const session = await createTerminal(
+              ws,
+              { id, cwd, cols, rows, shell: msg.shell ? String(msg.shell) : undefined },
+              (data) => {
+                try { ws.send(JSON.stringify({ type: "terminal_data", id, data })); } catch {}
+              },
+              (code) => {
+                try { ws.send(JSON.stringify({ type: "terminal_exit", id, code })); } catch {}
+              },
+            );
+            ws.send(JSON.stringify({ type: "terminal_created", id: session.id, shell: session.shell }));
+            break;
+          }
+          case "terminal_write": {
+            const t = terminalFor(ws, msg.id);
+            if (t) t.send(String(msg.data ?? ""));
+            break;
+          }
+          case "terminal_resize": {
+            const t = terminalFor(ws, msg.id);
+            if (t) t.resize(Math.max(2, Number(msg.cols) || 80), Math.max(2, Number(msg.rows) || 24));
+            break;
+          }
+          case "terminal_dispose": {
+            const t = terminalFor(ws, msg.id);
+            if (t) t.dispose();
+            break;
+          }
           default:
             ws.send(JSON.stringify({ type: "error", message: `未知命令: ${msg.type}` }));
         }
@@ -1362,6 +1398,10 @@ const server = Bun.serve<{ sessionId: string | null }>({
         ws.send(JSON.stringify({ type: "error", sessionId: msg.sessionId ?? null, kind: msg.kind ?? null, message: String(err) }));
         process.stderr.write(`[host] 命令 ${msg.type} 失败: ${err}\n`);
       }
+    },
+    close(ws) {
+      // 前端断开：清理其名下终端 PTY，防孤儿 shell 进程
+      disposeTerminalsOf(ws);
     },
   },
 });
