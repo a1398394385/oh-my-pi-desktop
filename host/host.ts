@@ -31,6 +31,7 @@ import {
   toRestoredQueuedMessage,
   USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
+import { createAcpCompressTools } from "./acp-tools.ts";
 import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";
 import {
   H,
@@ -138,6 +139,7 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     model: initialModel ?? H.modelOverride,
     agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
     sessionManager,
+    customTools: createAcpCompressTools(), // ACP 压缩工具面（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts
     disableExtensionDiscovery: true,
     enableMCP: false,
     hasUI: true, // 审批 gate 的 fail-cold 判定走 runner.hasUI()：不开则非 yolo 模式下所有需审批工具直接报错
