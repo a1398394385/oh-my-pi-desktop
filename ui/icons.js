@@ -6,9 +6,13 @@
 //           （app.js 启动时 hydrateIcons() 会把占位 span 替换为 svg，
 //             并复制占位元素上的 class / id / style）
 // 动态图形（如 ctxRing 进度环）不属于图标，仍在 index.html 内联。
+// 图层（后者同名覆盖前者）：自定义 → Font Awesome 实心 → Lucide 线条风
 // ════════════════════════════════════════════════════════════
 // 自定义图标（FA 没有的，如应用 Logo）：直接写在这里
+// Lucide 线条风层（最顶层）：同名覆盖 FA 实心图标，达到 ZCode 同款观感；
+// 未覆盖到的名（logo/termBox 等）仍由自定义层 / FA 层兜底
 import { FA_ICONS } from "./fa-icons.js";
+import { LUCIDE_ICONS } from "./lucide-icons.js";
 
 const ICONS = {
   logo: '<svg width="16" height="16" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -37,6 +41,9 @@ const ICONS = {
 
 // Font Awesome 层：同名覆盖自定义默认（fa-icons.js 由 .local/build-fa-icons.py 生成）
 Object.assign(ICONS, FA_ICONS);
+
+// Lucide 线条风层：同名覆盖 FA 层（lucide-icons.js 由脚本生成，见文件头注释）
+Object.assign(ICONS, LUCIDE_ICONS);
 
 // 取图标：size 省略时用注册表默认尺寸；传入时覆盖 width/height（保持 viewBox 不变）
 function icon(name, size) {

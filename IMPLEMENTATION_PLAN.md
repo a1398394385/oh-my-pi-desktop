@@ -1,52 +1,55 @@
-# React 迁移实施计划（react-migration 分支）
+# ZCode 设计移植实施计划
 
-> 目标：ui/ 原生 ESM 前端 → React 19 + esbuild 组件化。CSS（style.css 及 token 体系）全量保留、类名不变，视觉零回归。
-> 主分支（原生版）持续可用；本 worktree 全量重写，完成前不合并不删旧。
+来源仓库：~/Github/ZCode（React+Tailwind）；目标：本仓库 ui-src（React 19 + 手写 CSS）。
+侦察报告：agent://ZIcons / agent://ZComposer / agent://ZSidePane / agent://ZBrowserTerminal / agent://ZDiff
 
-## 架构定稿
+## 成功标准（每阶段）
 
-- 构建：`bun run ui:build` / `ui:watch`（esbuild --bundle --format=iife --jsx=automatic → ui/assets/app.js）
-- 挂载：ui/index.html 精简为 root + vendor(diff2html) + style.css + assets/app.js
-- 数据层：`ui-src/store.js` —— S mutable 单例 + 容器（自 core.js 平移）+ onMessage 全量平移（渲染调用 → notify()）；组件经 `useStore()`（useSyncExternalStore 版本号订阅）重渲染
-- 图标：`ui-src/Icon.jsx` 包装 ui/icons.js 的 icon()（icons.js/fa-icons.js 已补 ESM 导出）
-- 非受控输入：Composer textarea + 模块级 draft（等价原 inputEl.value，欢迎页↔dock 换位不丢值）
-- 外部库命令式豁免：diff2html 允许 effect+ref 注入
+- `bun run ui:build` 通过；`bun run smoke:react` 全绿；改动提交。
 
-## 阶段
+## 阶段 1：全局图标（lucide 线条风替换 FA 实心层）
 
-### ✅ 阶段 0：地基（已完成）
-- [x] react/react-dom/esbuild/happy-dom 依赖，ui:build/ui:watch/smoke:react scripts
-- [x] store.js（数据层 + onMessage 平移 + notify 桥）
-- [x] App.jsx 三栏壳 + ChatHead + Toast；五个屏的占位组件
-- [x] index.html 挂载点化；icons.js/fa-icons.js ESM 化
-- [x] 冒烟 `scripts/smoke-react-shell.ts` 6 断言全绿（happy-dom + preview 模式）
+- 目标：图标注册表新增 lucide 风格线条 SVG（strokeWidth 1.5），替换 FA_ICONS 层中被引用图标的默认观感。
+- 做法：写 `.local/build-lucide-icons.py`（或一次性脚本）从本机 lucide 包（~/Github/ZCode/node_modules/lucide-react 或 lucide 源码）提取我们实际在用的 ~40 个图标名（grep `icon("` / `data-icon` 全量收集）的 path 数据，生成 `ui/lucide-icons.js`（同 fa-icons.js 模式：name → svg 字符串，width/height 16 viewBox 24）；icons.js 末尾 `Object.assign(ICONS, LUCIDE_ICONS)` 置于 FA 层之上实现同名覆盖。
+- 状态：✅ 已完成（2026-09-21）。新增 `ui/lucide-icons.js`（60 个用名，来源 lucide-static@1.17.0，经一次性脚本从 unpkg 拉取后改写 width/height=16、stroke-width=1.5）；`bun run ui:build`、`bun run smoke:react` 全绿。
+- lucide 无对应图形、保留 FA/自定义层兜底的用名：`logo`、`termBox`（自定义终端外壳）；`refresh`/`stage`/`unstage`/`discard`/`stop`/`chevronUp`/`chevronDown`/`fork` 已是 feather 线条风，维持原样。
+- 语义映射说明：`think`/`memory` → brain，`agents` → bot，`hook` → webhook，`skills` → sparkles，`plugins` → puzzle，`stats` → chart-column，`todo` → list-checks，`mcp` → plug，`commands`/`term` → terminal，`permAsk` → hand，`permDefault` → square-check，`scopeProfile` → circle-user，`read` → search（FA 原为放大镜），`shieldWarn` → shield-alert，`folderPlus` → folder-plus，`ftHtml`/`ftCss` → file-code、`ftJs` → file-json、`ftImg` → file-image。
 
-### ✅ 阶段 1：五屏并行迁移（已完成，da12402）
-- [x] chat-wave：Chat.jsx 完整版（chat.js/tool-rows.js/tool-labels.js/markdown 渲染管线；loop 组/思考行/工具行/审批卡/分叉/编辑重发/msgRail/work-line/statusCard）
-- [x] composer-wave：Composer.jsx 完整版（附件行/发送链路/模型·思考·权限菜单/排队卡/ctxRing）
-- [x] sidebar-wave：Sidebar.jsx 完整版（项目分组/最近视图/置顶/归档/拖拽排序/右键菜单/确认弹窗/清理模式）
-- [x] welcome-wave：Welcome.jsx 完整版（项目选择菜单/分支菜单）
-- [x] right-wave：RightPanel.jsx 完整版（五页面；详情页保持 rb-head 固定 + rb-scroll 滚动骨架）
+## 阶段 2：输入区二级重叠卡片 + 加载转圈
 
-成功标准：每 wave `bun run ui:build` 通过 + 冒烟 6 断言不回归；`pnpm tauri dev` 手工冒烟：新建会话→发消息→流式渲染→loop 收起→排队→切换会话→右栏五页。
+- 目标 1（主页输入框）：欢迎页/新建会话输入框改成 ZCode 的「外层 contextHeader 卡 + 内层输入卡」叠卡视觉（rounded-2xl、shadow、负 margin 堆叠）。
+- 目标 2（队列卡）：QueueCard 改成负 margin 堆叠（`z-0 -mb-N pb-N rounded-t-2xl` 被 composer `z-20` 压住），行内队列条目视觉对齐 ZCode ConversationQueuePanel。
+- 目标 3（加载转圈）：流式中输入框上方显示 ChatLoading（lucide LoaderIcon + spin 动画），挂时间线最后一轮底部。
+- 参考：packages/ui/src/v4/ConversationQueuePanel.tsx、ConversationComposer.tsx、components/ai-elements/chat-loading.tsx
+- 状态：待实施
 
-### ✅ 阶段 2：设置中心七件套（settings/* 2400 行）
-- [x] 设置页容器（全屏 overlay + 左导航）+ 打开/关闭链路（settingsBtn/菜单 open-settings/⌘,/Esc；`ui-src/components/settings/Settings.jsx`）
-- [x] 常规/外观/模型设置（模型页角色视图 buildRolePicker/供应商卡片/配额明细）+ MCP + skills + memory + agents + stats（14 页组件在 `ui-src/components/settings/pages/`，common.jsx 公共件：confirmDialog/登录横幅/emptyRow）
-- [x] store.js 里 TODO(settings-wave) 标记的回包分支接通（models_catalog/provider_limits/asset_file/memory_file/mcp_server_tested/login 系 + ready/settings 帧 uiPrefs 字段级白名单合并 + 连接就绪补拉）
+## 阶段 3：右栏复刻
 
-### ✅ 阶段 3：壳交互与弹卡补全
-- [x] shell.js 平移：主题切换/缩放（zoomLevel）/左右 resizer 拖动/右键主菜单/closeAllMenus 体系（`ui-src/shell.js` initShell：applyTheme/toggleTheme/menuZoom/placeMenu/attachResizer/closeAllMenus；⌘+/-/0 与原生菜单四 action 接通）
-- [x] ringpop.js 平移：上下文明细卡（`ui-src/components/chat/CtxCard.jsx`，ctxRing hover 150ms 定器 + 朝卡宽限 + 配额段 + 压缩按钮）+ 消息轨道 hover 卡（阶段 1 已随 MsgRail 落地）
-- [x] store.js TODO(ringpop-wave) 分支接通（context_detail→S.ctxDetail / limits_result→S.ctxLimits 瞬态落地）
+- 目标：右栏改为 ZCode Side Pane 设计——h-12 tab 头（tab 总览 popover + 等宽 tab + 关闭）、可拖拽排序、可 resize（拖柄）、空态启动器卡片、pane 内容区统一容器。
+- 范围：ui-src/components/RightPanel.jsx、right/tabs.js、right/StartPage.jsx、style.css 右栏段。
+- 注意：现有 tab 类型（subagent/gitdiff/bgcmd/file/tree）保留，新增 browser/terminal tab 入口由阶段 5 填充；本阶段先把 tab 框架与已有页面对齐新设计。
+- 状态：待实施
 
-### ⬜ 阶段 4：收尾
-- [ ] preview 对照模式去留；旧 ui/*.js 命令式模块删除（icons.js/fa-icons.js/markdown.js 保留共用）
-- [ ] pre-commit 挂 smoke:react；tauri.conf.json 确认 frontendDist 不变（仍是 ../ui）
-- [ ] 全量手工回归（对照 AGENTS.md 设置页一致性规范抽查）+ 合并 main
+## 阶段 4：diff 渲染替换 diff2html
 
-## 约定（所有 wave 遵守）
-- 禁改 store.js / App.jsx / ui 原模块 / host / src-tauri；新文件放 ui-src/components/<域>/
-- 类名与 DOM 结构 1:1 对照旧版（git show HEAD:ui/… 查旧结构）；CSS 只在必要时新增且用 token
-- 交互/动效类名（kids-in/lift/flash/on 等）沿用，动画 CSS 已存在
-- 每完成一步：bun run ui:build && bun scripts/smoke-react-shell.ts 全绿
+- 目标：用 ZCode 自研轻量 diff（packages/ui/src/components/ui/lightweight-diff-preview.tsx，纯 CSS 行解析：行背景 color-mix + inset 状态条 + 行号 gutter，无第三方依赖）替换 ui/vendor/diff2html 与 GitDiffPage 内的 Diff2Html 调用；编辑行内联 diff（chat/parts.jsx）同步替换。
+- 依赖：语法高亮沿用 ui/markdown.js 现有高亮，不引入 shiki（超范围）。
+- 验收后：删除 ui/vendor/diff2html.* 与 index.html 引用。
+- 状态：待实施
+
+## 阶段 5：浏览器 + 终端 pane
+
+- 终端：xterm.js（vendor 或 npm 依赖）+ host 侧 PTY。host 是 Bun——node-pty 兼容性需先验证（Context7/实测）；不可行则 Bun.spawn `script -q` 类 pty 包装。新右栏 tab「终端」。
+- 浏览器：ZCode 用 Electron webview，Tauri 无等价。方案（实施时代理先用 Context7 验证 Tauri v2 inline webview 能力，macOS WKWebView 限制）：优先 Tauri 子 webview；不可行则 iframe + 「外部浏览器打开」兜底，UI 完整复刻 ZCode（工具栏/地址栏/空态/错误态，抄 EmbeddedBrowserPaneParts.tsx 设计）。
+- 新右栏 tab「浏览器」。
+- 状态：待实施
+
+## 明确不做
+
+- 辅助对话（selection side-chat 等）、模型轨迹、whiteboard 等其余 19 种 tab。
+- @pierre/diffs 富 diff（它本身是第三方 Shadow DOM 库，与「替换第三方」目标相悖）。
+- shiki worker 池高亮。
+
+## 执行方式
+
+单 writer 串行 subagent（同一 cwd），每阶段一个任务，完成后主会话验证 build+smoke 再进入下一阶段。
