@@ -351,7 +351,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // isTerminal === false 表示 maintenance/异步投递还会续跑，不是真正结束
       if (ev.isTerminal === false) return null;
       flushAssistantDraft(entry);
-      return { kind: "turn_end", usage: sumRunUsage(ev.messages), userEntryId: backfillUserEntryIds(entry) };
+      return { kind: "turn_end", runEnd: true, usage: sumRunUsage(ev.messages), userEntryId: backfillUserEntryIds(entry) };
     default:
       return null;
   }
