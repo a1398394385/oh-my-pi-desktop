@@ -66,12 +66,14 @@ export async function saveDesktopProjects() {
   await writeFile(H.desktopProjectsPath, JSON.stringify(H.desktopProjects, null, 2));
 }
 
-// 历史扫描出的新 project 并入所有项目列表（加到最顶端）；返回是否有新增
+// 历史扫描出的新 project 并入所有项目列表（尾部追加）；返回是否有新增。
+// 不 unshift 置顶：add_project 等用户显式动作的置顶语义优先于磁盘自动发现，
+// 否则扫描发现的新项目会把用户刚手动添加/排序的结果挤下去（两处 unshift 打架）。
 export function mergeHistoryProjects(cwds: string[]): boolean {
   let added = false;
   for (const cwd of cwds) {
     if (!H.desktopProjects.allProjects.includes(cwd)) {
-      H.desktopProjects.allProjects.unshift(cwd);
+      H.desktopProjects.allProjects.push(cwd);
       added = true;
     }
   }

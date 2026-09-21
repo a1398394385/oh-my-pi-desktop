@@ -364,6 +364,106 @@ const server = Bun.serve<{ sessionId: string | null }>({
             }
             break;
           }
+          case "branch_session": {
+            // 会话分叉：底座 branch(entryId) 以 user 消息条目为界生成新会话文件
+            // （header.parentSession 指回源文件），同一 AgentSession 实例切换过去——
+            // sessionId 与文件路径都变了。host 侧迁移池键（旧键删、新键建，事件订阅
+            // 重建使转发帧带上新键），排队快照同步清空（底座 branch 已清 pending，
+            // host 旧快照会让 turn_end 竞态兜底误判「被吞」而重发），transcript 从
+            // 新文件 entries 重建，照 compact 模式推 messages 帧让前端立即换分叉后视图。
+            // selectedText/selectedImages 是被分叉那条 user 消息的原文，供 UI 回填输入框。
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const entryId = String(msg.entryId ?? "");
+            if (!entryId) throw new Error("缺少 entryId");
+            try {
+              const { selectedText, selectedImages, cancelled } = await entry.session.branch(entryId);
+              if (cancelled) {
+                ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: "分叉被会话扩展取消" }));
+                break;
+              }
+              const newSessionId = crypto.randomUUID();
+              const newPath = entry.session.sessionFile ?? "";
+              entry.unsubscribe();
+              sessions.delete(msg.sessionId);
+              entry.path = newPath;
+              entry.providerSessionId = entry.manager.getSessionId?.() ?? newSessionId; // 请求凭证粘性键随新会话
+              entry.queuedTexts = [];
+              entry.consumedTexts = [];
+              entry.parkedFollowUp = [];
+              entry.transcript = entriesToTranscript(entry.manager.getEntries());
+              attachEntry(ws, newSessionId, entry, entry.sessionResult.eventBus);
+              ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: entry.transcript }));
+              ws.send(
+                JSON.stringify({
+                  type: "session_branched",
+                  sessionId: msg.sessionId,
+                  ok: true,
+                  newSessionId,
+                  newPath,
+                  selectedText,
+                  selectedImages,
+                }),
+              );
+              await handleListSessions(ws); // 列表刷新信号：session_list 帧（delete_session 同款机制）
+            } catch (err) {
+              ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: String(err) }));
+            }
+            break;
+          }
+          case "get_session_tree": {
+            // 跨文件分支家族：listAll 扫盘，按 header.parentSession（父文件路径）连图。
+            // 从当前会话文件出发向上追根，再自根向下收集全部子孙；title 走 listAll 的
+            // 底座解析（与 list_sessions 同源）。找不到会话（未落盘且不在池）回 error 字段。
+            const entry = sessions.get(msg.sessionId);
+            const curPath = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
+            const all = await SessionManager.listAll();
+            const byPath = new Map<string, any>(all.map((s: any) => [s.path, s]));
+            const cur = byPath.get(curPath);
+            if (!cur) {
+              ws.send(JSON.stringify({ type: "session_tree", sessionId: msg.sessionId, ok: false, error: `会话文件不在磁盘上: ${curPath}` }));
+              break;
+            }
+            // 向上追根（seenUp 防脏数据成环）
+            let root = cur;
+            const seenUp = new Set<string>([curPath]);
+            while (root.parentSessionPath && byPath.has(root.parentSessionPath) && !seenUp.has(root.parentSessionPath)) {
+              root = byPath.get(root.parentSessionPath);
+              seenUp.add(root.path);
+            }
+            // 自根 BFS 收集家族（同层按修改时间升序，根在前）
+            const family: any[] = [];
+            const visited = new Set<string>([root.path]);
+            const queue = [root];
+            while (queue.length > 0) {
+              const node = queue.shift()!;
+              family.push(node);
+              const children = all
+                .filter((s: any) => s.parentSessionPath === node.path && !visited.has(s.path))
+                .sort((a, b) => a.modified.getTime() - b.modified.getTime());
+              for (const c of children) {
+                visited.add(c.path);
+                queue.push(c);
+              }
+            }
+            ws.send(
+              JSON.stringify({
+                type: "session_tree",
+                sessionId: msg.sessionId,
+                ok: true,
+                branches: family.map((s) => ({
+                  sessionId: s.id,
+                  path: s.path,
+                  title: s.title ?? null,
+                  modified: s.modified.toISOString(),
+                  parentSession: s.parentSessionPath ?? null,
+                  isCurrent: s.path === curPath,
+                  messageCount: s.messageCount,
+                })),
+              }),
+            );
+            break;
+          }
           case "prompt":
             await handlePrompt(ws, msg.sessionId, String(msg.text ?? ""), msg.files);
             break;

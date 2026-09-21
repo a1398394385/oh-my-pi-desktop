@@ -100,6 +100,26 @@ export function updateSendReady() {
   $("sendBtn").classList.toggle("ready", inputEl.value.trim().length > 0 || S.pendingFiles.length > 0);
 }
 
+// 分叉回填：文本进输入框，底座 ImageContent[] 转成本地附件 chip。
+// ImageContent 字段形态（pi-ai types）：{ type:"image", data, mimeType }，兼容嵌套 source 形态
+export function setComposerValue(text, images = []) {
+  inputEl.value = text ?? "";
+  for (const img of images ?? []) {
+    const src = img?.source?.type === "base64" ? img.source : img;
+    if (!src?.data) continue;
+    S.pendingFiles.push({
+      id: ++S.fileSeq,
+      name: img.name || `图片${S.pendingFiles.length + 1}`,
+      kind: "image",
+      mime: src.mimeType || src.mediaType || "image/png",
+      data: src.data,
+    });
+  }
+  renderAttachRow();
+  resizeInput();
+  updateSendReady();
+}
+
 // ---------- 权限模式（omp 三值：always-ask | write | yolo） ----------
 const MODE_META = {
   "always-ask": { label: "手动批准", icon: "permAsk", yolo: false },

@@ -5,7 +5,8 @@
     "host": "bun host/host.ts",
     "smoke": "bun scripts/smoke.ts",
     "smoke:queue": "bun scripts/queue-smoke.ts",
-    "smoke:features": "bun scripts/smoke-features.ts"
+    "smoke:features": "bun scripts/smoke-features.ts",
+    "smoke:branch": "bun scripts/smoke-branch.ts"
   },
   "dependencies": {
     "@oh-my-pi/pi-agent-core": "18.2.6",

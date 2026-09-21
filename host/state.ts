@@ -24,6 +24,7 @@ export type TranscriptItem = {
   items?: TranscriptItem[]; // role==="loop" 时收纳本轮过程（thinking/tool/中间 assistant）
   durationSec?: number | null; // 本轮工作时长（秒）
   usage?: TurnUsage | null; // 本轮 LLM token 总消耗
+  entryId?: string; // 落盘条目 id（user 消息才有：branch_session 按它定位分叉点）
 };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];

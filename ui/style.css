@@ -3416,3 +3416,32 @@ html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-
   border-color: transparent;
   color: #ffffff;
 }
+
+/* --- C2 消息分叉按钮 + 分支树 tab --- */
+/* 带 entryId 的历史用户消息：分叉按钮复用 .qk-acts 浮层语言（气泡左侧 hover 浮现） */
+.user-bubble.branchable { position: relative; }
+.msg.user:has(> .user-bubble.branchable):hover .qk-acts { display: flex; }
+/* 分叉进行中（防连点）：置灰且不可点，hover 不再给反馈 */
+.qk-acts .q-btn:disabled { opacity: .45; cursor: default; }
+.qk-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
+/* 分支树列表：整行可点（切换会话）才挂 hover 高亮；当前支行不可点、仅 accent 边框标示 */
+.bt-list { padding: 6px 8px; }
+.bt-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: 1px solid transparent; border-radius: var(--r-md);
+  background: none; padding: 7px 10px; font: inherit;
+  color: var(--dim); cursor: pointer;
+  transition: background .12s var(--swift), color .12s var(--swift);
+}
+.bt-row:hover { background: var(--panel-2); color: var(--text); }
+.bt-row.cur { border-color: var(--accent); color: var(--text); cursor: default; }
+.bt-row.cur:hover { background: none; }
+.bt-name {
+  flex: 1; min-width: 0; font-size: var(--ui-fs-base);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-meta { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
+/* 子分支缩进 + 竖线引导线（每深一级嵌套一层容器，深度不限样式统一） */
+.bt-kids { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
+/* 空态提示 */
+.bt-empty { padding: 18px 14px; color: var(--faint); font-size: var(--ui-fs-base); line-height: 1.6; }

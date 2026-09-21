@@ -1,11 +1,13 @@
 // 右栏：可关闭 tab 框架（子代理/Git Diff/文件/后台命令）、TODO 进程卡、
 // Git Diff 树/平铺 + diff2html 详情、文件视图（整文件/文件树）、子代理卡片与流、后台命令列表。
-import { $, S, send, toast, rightBodyEl, activeOpen, gitDiffCache, fileDiffCache } from "./core.js";
+import { $, S, send, toast, rightBodyEl, activeOpen, gitDiffCache, fileDiffCache, diskProjects, openSessions, unseenFinished, saveUnseen } from "./core.js";
 import { renderToolItem } from "./tool-labels.js";
 import { renderStepTitle, attachFadeMask, liftEl } from "./tool-rows.js";
 import { escapeHtml } from "./markdown.js";
 import { isRightCollapsed, setRightCollapsed, expandRightPanel } from "./shell.js";
 import { confirmDialog } from "./settings/providers.js";
+import { fmtAgo } from "./sidebar.js";
+import { hideWelcomeScreen } from "./welcome.js";
 export { isRightCollapsed, setRightCollapsed, expandRightPanel };
 
 // 右栏 tab 栏：打开的 tab 有序列表 + 当前激活项；全部关闭后激活项为 null（起始页）
@@ -14,6 +16,7 @@ export const TAB_META = {
   gitdiff: { label: "Git Diff", icon: "branch" },
   bgcmd: { label: "后台命令", icon: "term" },
   file: { label: "文件", icon: "folderOpen" },
+  tree: { label: "分支", icon: "fork" },
 };
 export const rightTabs = ["subagent"]; // 已打开 tab（有序）
 export const rightState = {
@@ -22,6 +25,9 @@ export const rightState = {
   fileTreePending: new Set(), // 已发出 list_dir 待回包的目录路径
   expandedDirs: new Set(), // gitdiff 树展开中的目录路径
   commitMsg: "", // Git Diff 页提交信息输入框（跨重绘保持，提交成功清空）
+  sessionTree: null, // 分支树数据：{ sessionId, branches }（session_tree 回包写入，切会话后视为过期）
+  sessionTreePending: false, // get_session_tree 已发出待回包（error 帧解除挂起）
+  treeFor: null, // 发起 get_session_tree 时的会话 id（回包未带 sessionId 时归属用）
 };
 export function openRightTab(name) {
   if (!rightTabs.includes(name)) rightTabs.push(name);
@@ -181,6 +187,7 @@ export function renderRightBody() {
   else if (S.rightTab === "gitdiff") renderGitDiff();
   else if (S.rightTab === "bgcmd") renderBgCmdList();
   else if (S.rightTab === "file") renderFileView();
+  else if (S.rightTab === "tree") renderBranchTree();
   else renderSubagentList();
 }
 
@@ -197,7 +204,7 @@ function renderStartPage() {
   sub.textContent = "选择要在侧边面板中打开的标签。";
   const grid = document.createElement("div");
   grid.className = "rt-grid";
-  for (const name of ["subagent", "gitdiff", "file", "bgcmd"]) {
+  for (const name of ["subagent", "gitdiff", "file", "bgcmd", "tree"]) {
     const meta = TAB_META[name];
     const card = document.createElement("button");
     card.className = "rt-card";
@@ -685,6 +692,98 @@ function renderFileTreeLevel(dirPath, depth) {
       rightBodyEl.appendChild(row);
     }
   }
+}
+
+// ---------- 分支树（当前会话家族：get_session_tree 懒加载 + 树形渲染 + 点击切换） ----------
+// 分支行标题：title → 磁盘列表首消息截断 → 「未命名分支」（分支刚建未入 list_sessions 时无首消息）
+function branchLabel(b) {
+  if (b.title && b.title.trim()) return b.title;
+  const fm = diskProjects.flatMap((p) => p.sessions).find((x) => x.path === b.path)?.firstMessage;
+  if (fm && fm.trim()) return fm.length > 40 ? fm.slice(0, 40) + "…" : fm;
+  return "未命名分支";
+}
+
+// 点击分支行切换会话：与侧栏列表点击同一套动作（已打开直接激活，否则走宿主 load_session）
+function loadBranchSession(path) {
+  S.isCreatingNew = false;
+  hideWelcomeScreen();
+  unseenFinished.delete(path);
+  saveUnseen();
+  if (openSessions.has(path)) {
+    S.activePath = path;
+    refreshGitDiff();
+  } else {
+    send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
+    send({ type: "load_session", path });
+  }
+  S.selectedSubagent = null;
+  S.selectedFile = null;
+  renderAll();
+}
+
+function renderBranchTree() {
+  const s = activeOpen();
+  if (!s) {
+    rightBodyEl.innerHTML = '<div class="placeholder">（无活跃会话）</div>';
+    return;
+  }
+  const tree = rightState.sessionTree;
+  const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
+  if (stale && !rightState.sessionTreePending) {
+    rightState.sessionTreePending = true;
+    rightState.treeFor = s.sessionId;
+    send({ type: "get_session_tree", sessionId: s.sessionId });
+  }
+  if (stale) {
+    rightBodyEl.innerHTML = '<div class="placeholder">加载中…</div>';
+    return;
+  }
+  const branches = tree.branches ?? [];
+  if (branches.length <= 1) {
+    const d = document.createElement("div");
+    d.className = "bt-empty";
+    d.textContent = "暂无其他分支。把鼠标移到历史消息上，点分叉按钮可从该消息处创建新分支。";
+    rightBodyEl.appendChild(d);
+    return;
+  }
+  // 按 parentSession 组树：根支（无父或父不在家族列表）在顶层，子支随父缩进（深度不限，样式统一）
+  const byId = new Map(branches.map((b) => [b.sessionId, b]));
+  const kidsOf = new Map();
+  const roots = [];
+  for (const b of branches) {
+    if (b.parentSession && byId.has(b.parentSession)) {
+      if (!kidsOf.has(b.parentSession)) kidsOf.set(b.parentSession, []);
+      kidsOf.get(b.parentSession).push(b);
+    } else roots.push(b);
+  }
+  const byTime = (x, y) => Date.parse(y.modified || 0) - Date.parse(x.modified || 0); // 同级新的在前
+  roots.sort(byTime);
+  for (const l of kidsOf.values()) l.sort(byTime);
+  const list = document.createElement("div");
+  list.className = "bt-list";
+  const renderLevel = (items, depth) => {
+    const box = document.createElement("div");
+    if (depth > 0) box.className = "bt-kids"; // 嵌套容器自带竖线引导线，逐级缩进
+    for (const b of items) {
+      const row = document.createElement("button");
+      row.className = "bt-row" + (b.isCurrent ? " cur" : "");
+      row.title = b.path;
+      const name = document.createElement("span");
+      name.className = "bt-name";
+      name.textContent = branchLabel(b);
+      const meta = document.createElement("span");
+      meta.className = "bt-meta";
+      meta.textContent = [b.messageCount != null ? `${b.messageCount} 条` : null, b.modified ? fmtAgo(b.modified) : null].filter(Boolean).join(" · ");
+      row.append(name, meta);
+      if (!b.isCurrent) row.onclick = () => loadBranchSession(b.path);
+      box.appendChild(row);
+      const kids = kidsOf.get(b.sessionId);
+      if (kids?.length) box.appendChild(renderLevel(kids, depth + 1));
+    }
+    return box;
+  };
+  list.appendChild(renderLevel(roots, 0));
+  rightBodyEl.appendChild(list);
 }
 
 // ---------- 子代理（卡片列表 + 点击进流） ----------

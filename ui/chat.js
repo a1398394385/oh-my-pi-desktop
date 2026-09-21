@@ -69,6 +69,28 @@ function buildPendingActions(item) {
   return wrap;
 }
 
+// 带 entryId 的历史用户消息 hover 出现的分叉按钮：从此条消息之前分叉出新会话。
+// 分叉是文件级操作（几百 ms），点击后置 item.branching 防连点，session_branched 回包清除
+function buildBranchBtn(item) {
+  const s = activeOpen();
+  const wrap = document.createElement("div");
+  wrap.className = "qk-acts";
+  const b = document.createElement("button");
+  b.className = "q-btn";
+  b.title = "从此处分叉新分支";
+  b.innerHTML = icon("fork", 13);
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (item.branching || !s) return;
+    item.branching = true; // 全量重绘后仍保持禁用（标记随 item 数据存活）
+    b.disabled = true;
+    send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
+  });
+  if (item.branching) b.disabled = true;
+  wrap.appendChild(b);
+  return wrap;
+}
+
 export function appendChatItem(item, railEntries, parent = streamEl, fk = "") {
   if (item.role === "user") {
     const div = document.createElement("div");
@@ -81,6 +103,10 @@ export function appendChatItem(item, railEntries, parent = streamEl, fk = "") {
     if (item.pending) {
       bubble.classList.add("pending");
       bubble.appendChild(buildPendingActions(item));
+    } else if (item.entryId) {
+      // 带 entryId 的历史消息：hover 出分叉按钮（host 未合并前 entryId 缺失，按钮不显示）
+      bubble.classList.add("branchable");
+      bubble.appendChild(buildBranchBtn(item));
     }
     div.appendChild(bubble);
     parent.appendChild(div);

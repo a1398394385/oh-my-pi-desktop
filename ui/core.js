@@ -6,7 +6,7 @@
 // - 各域模块顶层只做定义；原先散落顶层的立即执行代码（事件绑定/observer）收进各域
 //   initXxx()，由 app.js 入口按依赖序统一调用——ESM 循环 import 下顶层互调会 TDZ 崩溃。
 // - onMessage 是事件分发中枢，函数体内引用各域渲染函数（模块加载期不执行，循环安全）。
-import { setApprovalModeUi, ingestModels, renderComposerBar, renderQueueLine } from "./composer.js";
+import { setApprovalModeUi, ingestModels, renderComposerBar, renderQueueLine, setComposerValue } from "./composer.js";
 import { showWelcomeScreen, hideWelcomeScreen, updateWelcomeGitUI, initNewSessionModel } from "./welcome.js";
 import { renderList } from "./sidebar.js";
 import { fillCtxCard, fillLimits, buildLimitsSection } from "./ringpop.js";
@@ -586,6 +586,12 @@ function onMessage(msg) {
         s.assistantDraft = "";
         s.streaming = false;
         s.workingText = null;
+        // 宿主在落盘完成后回贴本轮 user 消息的 entryId（消息行分叉按钮的寻址键）；
+        // 贴给本轮最后一条无 entryId 的 user 消息（乐观插入的那条）
+        if (msg.userEntryId) {
+          const u = [...s.items].reverse().find((it) => it.role === "user" && !it.entryId);
+          if (u) u.entryId = msg.userEntryId;
+        }
         // 一轮结束：过程（thinking/工具/中间响应）收进 loop 组自动收起，只留最后一条 assistant 对外展示
         sealRunItems(s, msg.usage);
         s.turnItemStart = null; // 本轮彻底结束，不再继续累积
@@ -880,6 +886,35 @@ function onMessage(msg) {
       // 压缩成功后宿主主动推 messages 帧重建 transcript（既有 case 处理），这里只提示
       toast(msg.ok ? "上下文已压缩" : (msg.error ?? "压缩失败"));
       break;
+    case "session_branched": {
+      // 分叉回执：清除防连点标记（成功切走/失败可重试都要清）；transcript 由 load_session
+      // 推的 messages 帧重建（宿主在回包前主动推的那帧新会话尚未注册，会被 findBySessionId
+      // 丢弃，无害）。新会话对象 streaming:false、队列为空，无需复位
+      const clearBranching = (items) => {
+        for (const it of items) {
+          if (it.branching) it.branching = false;
+          if (it.items) clearBranching(it.items);
+        }
+      };
+      const cur = activeOpen();
+      if (cur) clearBranching(cur.items);
+      if (!msg.ok) {
+        toast(msg.error ?? "分叉失败");
+        renderAll();
+        break;
+      }
+      toast("已分叉到新分支");
+      setComposerValue(msg.selectedText ?? "", msg.selectedImages);
+      send({ type: "load_session", path: msg.newPath }); // 复用磁盘会话加载链路：新分支入池并激活（session_created + messages 既有 case）
+      send({ type: "list_sessions" }); // 新分支文件入侧栏列表
+      break;
+    }
+    case "session_tree":
+      // 分支树回包：sessionId 优先取回包字段，未带时用发起时记录的会话（防切换会话后旧数据污染）
+      rightState.sessionTree = { sessionId: msg.sessionId ?? rightState.treeFor, branches: msg.branches ?? [] };
+      rightState.sessionTreePending = false;
+      renderRight();
+      break;
     case "image_content":
       rightState.imageContent = msg; // right.js 文件页图片渲染读取
       renderRight();
@@ -914,6 +949,7 @@ function onMessage(msg) {
       break;
     case "error": {
       gitDiffCache.loading = false;
+      rightState.sessionTreePending = false; // 分支树请求失败解除挂起，下次渲染重拉
       if (msg.kind && assetSelPath[msg.kind] && !$(ASSET_PAGES[msg.kind].editor).classList.contains("hidden")) assetStatus(msg.kind, msg.message);
       if (memInbox.contentEl && memInbox.contentEl.textContent === "读取中…") memInbox.contentEl.textContent = `读取失败：${msg.message}`;
       const s = msg.sessionId && findBySessionId(msg.sessionId);

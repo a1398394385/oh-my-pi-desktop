@@ -9,7 +9,7 @@ export type UiEvent =
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
   | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: any }
-  | { kind: "turn_end"; usage?: TurnUsage | null }
+  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string }
   | { kind: "thinking_level"; configured?: string; resolved?: string };
 
 function pathOf(args: any): string {
@@ -203,6 +203,34 @@ function isJunkPlaceholderText(text?: string | null): boolean {
   return t === "." || t === "。" || t === "·" || t === "•";
 }
 
+// user message content（string 或 blocks）→ 纯文本，与底座 branch() 的提取口径一致
+function userEntryText(content: any): string {
+  if (typeof content === "string") return content;
+  return (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
+}
+
+// agent_end 时本轮用户消息必然已落盘：把 transcript 中缺 entryId 的 user 条目与磁盘
+// entries 里的 user message 按文本对齐回填（底座事件流不携带 entry id，只能事后对齐；
+// 隐藏伴随/系统注入消息文本不同，按相等匹配天然跳过；from 指针保序，重复文本也对得上）。
+// 返回本轮补上的最后一个 entryId（供 turn_end 事件增量下发），无可补则 undefined。
+export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
+  const pending = entry.transcript.filter((t) => t.role === "user" && !t.entryId);
+  if (pending.length === 0) return undefined;
+  const users = (entry.manager?.getEntries() ?? [])
+    .filter((e: any) => e?.type === "message" && e.message?.role === "user")
+    .map((e: any) => ({ id: e.id as string, text: userEntryText(e.message.content) }));
+  let last: string | undefined;
+  let from = 0;
+  for (const item of pending) {
+    const hit = users.findIndex((u, i) => i >= from && u.text === item.text);
+    if (hit < 0) continue; // 尚未落盘（排队中）等下轮 turn_end 再补
+    item.entryId = users[hit].id;
+    from = hit + 1;
+    last = item.entryId;
+  }
+  return last;
+}
+
 function flushAssistantDraft(entry: PoolEntry) {
   if (!entry.assistantDraft) return;
   if (!isJunkPlaceholderText(entry.assistantDraft)) {
@@ -308,7 +336,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // isTerminal === false 表示 maintenance/异步投递还会续跑，不是真正结束
       if (ev.isTerminal === false) return null;
       flushAssistantDraft(entry);
-      return { kind: "turn_end", usage: sumRunUsage(ev.messages) };
+      return { kind: "turn_end", usage: sumRunUsage(ev.messages), userEntryId: backfillUserEntryIds(entry) };
     default:
       return null;
   }
@@ -363,7 +391,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       const text = typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
       if (!isJunkPlaceholderText(text)) {
         finalizeRun(); // 有效用户输入开启新一轮
-        out.push({ role: "user", text });
+        out.push({ role: "user", text, entryId: e.id });
         run = { items: [], usage: null, startMs: ts, endMs: ts };
       }
       continue;
