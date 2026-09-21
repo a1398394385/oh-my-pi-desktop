@@ -3,7 +3,7 @@
 // 翻译为组件）；纯函数（splitPath/uniqueFiles）直接 import 旧模块复用不重写。
 import { useEffect, useRef, useState } from "react";
 import { S, send, notify, activeOpen, invoke, toast, briefDiffCache, fileDiffCache } from "../../store.js";
-import { uniqueFiles, splitPath } from "../../../ui/tool-rows.js";
+import { uniqueFiles, splitPath } from "./util.js";
 import Icon from "../../Icon.jsx";
 import { openRightTab } from "../RightPanel.jsx";
 

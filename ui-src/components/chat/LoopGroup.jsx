@@ -3,7 +3,7 @@
 // lp-kids 容器 grid 行高 0fr→1fr 过渡；收起时容器收拢（closing），310ms 后落盘卸载。
 import { useEffect, useRef } from "react";
 import { notify, fmtTokens } from "../../store.js";
-import { fmtDuration } from "../../../ui/sidebar.js";
+import { fmtDuration } from "./util.js";
 import Icon from "../../Icon.jsx";
 import { useLift } from "./parts.jsx";
 import { renderItems } from "./items.jsx";

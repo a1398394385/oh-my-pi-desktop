@@ -3,7 +3,7 @@
 // 迁移自 ui/chat.js renderItemList/appendChatItem；railEntries 随遍历收集（消息轨道数据：
 // 每条消息一道刻度——key 与 data-fk 锚点同源，MsgRail 按 key 查 DOM 定位）。
 import { isJunkPlaceholder } from "../../store.js";
-import { isEditEvent } from "../../../ui/tool-rows.js";
+import { isEditEvent } from "./util.js";
 import { railToolText } from "../../shell.js";
 import UserMsg from "./UserMsg.jsx";
 import AssistantMsg from "./AssistantMsg.jsx";

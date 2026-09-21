@@ -669,31 +669,38 @@ function onMessage(msg) {
         s.assistantDraft = "";
         s.streaming = false;
         s.workingText = null;
-        // 宿主在落盘完成后回贴本轮 user 消息的 entryId（消息行分叉按钮的寻址键）
-        if (msg.userEntryId) {
-          const u = [...s.items].reverse().find((it) => it.role === "user" && !it.entryId);
-          if (u) u.entryId = msg.userEntryId;
-        }
-        // 一轮结束：过程（thinking/工具/中间响应）收进 loop 组自动收起，只留最后一条 assistant 对外展示
+        // 每个模型轮结束（含排队消费/工具触发的 run 内续轮）：过程收进 loop 组自动收起，
+        // 只留最后一条 assistant 对外展示。run 收尾帧（runEnd，宿主 agent_end 映射）额外做
+        // entryId 回填/列表刷新/系统通知——这些只该发生一次，轮内续轮帧不做
         sealRunItems(s, msg.usage);
-        s.turnItemStart = null;
-        s.turnStartAt = null;
-        send({ type: "list_sessions" }); // title/firstMessage 可能已更新
-        if (s.isGit) refreshGitDiff(true); // agent 可能改了文件，强制重拉
-        // 会话已结束：非当前正在查看的会话标记「未查看」，列表显示灰白圆点
-        const p = [...openSessions.entries()].find(([, v]) => v === s)?.[0];
-        if (p && p !== S.activePath) {
-          unseenFinished.add(p);
-          saveUnseen();
+        if (msg.runEnd) {
+          // 宿主在落盘完成后回贴本轮 user 消息的 entryId（消息行分叉按钮的寻址键）；
+          // 贴给本轮最后一条无 entryId 的 user 消息（乐观插入的那条）
+          if (msg.userEntryId) {
+            const u = [...s.items].reverse().find((it) => it.role === "user" && !it.entryId);
+            if (u) u.entryId = msg.userEntryId;
+          }
+          s.turnItemStart = null; // 本轮彻底结束，不再继续累积
+          s.turnStartAt = null;
+          send({ type: "list_sessions" }); // title/firstMessage 可能已更新
+          if (s.isGit) refreshGitDiff(true); // agent 可能改了文件，强制重拉
+          // 会话已结束：非当前正在查看的会话标记「未查看」，列表显示灰白圆点
+          const p = [...openSessions.entries()].find(([, v]) => v === s)?.[0];
+          if (p && p !== S.activePath) {
+            unseenFinished.add(p);
+            saveUnseen();
+          }
+          // 后台会话完成 → 系统通知：title 取磁盘列表里的会话标题（未收录时「后台会话」），
+          // body 取最后一条 assistant 文本截断 80 字作摘要，无则「已完成」
+          const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
+          const summary = (lastA?.text || "").trim();
+          notifyDesktop(
+            "turn_end",
+            s,
+            diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || "后台会话",
+            summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : "已完成",
+          );
         }
-        const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
-        const summary = (lastA?.text || "").trim();
-        notifyDesktop(
-          "turn_end",
-          s,
-          diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || "后台会话",
-          summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : "已完成",
-        );
       } else if (msg.kind === "thinking_level") {
         // auto 档位判定帧：只记判定结果供右下角显示 auto·档位，不改 s.thinking
         if (msg.configured === "auto") s.autoResolved = msg.resolved;
@@ -781,11 +788,25 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (s) {
         const bubbles = [];
+        // 气泡查找要穿透 loop 组：turn_end 可能先于此帧到达并把气泡封进了组里
+        const findBubble = (t) => {
+          for (let i = s.items.length - 1; i >= 0; i--) {
+            const x = s.items[i];
+            if (x.role === "loop") {
+              const hit = [...x.items].reverse().find((k) => k.role === "user" && k.pending && k.text === t);
+              if (hit) return { bubble: hit, loop: x };
+            } else if (x.role === "user" && x.pending && x.text === t) {
+              return { bubble: x, loop: null };
+            }
+          }
+          return null;
+        };
         for (const t of msg.texts ?? []) {
-          const it = [...s.items].reverse().find((x) => x.role === "user" && x.pending && x.text === t);
-          // 重复消费帧（RPC 重复推送）：该文本已有转正过的气泡则跳过，不重复补画
+          const found = findBubble(t);
+          const it = found?.bubble;
+          // 重复消费帧（RPC 重复推送）:该文本已有转正过的气泡则跳过，不重复补画
           if (!it && [...s.items].reverse().some((x) => x.role === "user" && x.steerDone && x.text === t)) continue;
-          bubbles.push(it ?? { role: "user", text: t }); // 兜底：气泡缺失（重连等）时补画
+          bubbles.push({ ...found, fallback: it ?? { role: "user", text: t } });
           const q = s.queued ?? [];
           const i = q.findIndex((m) => (m.text || "") === t);
           if (i >= 0) q.splice(i, 1);
@@ -793,16 +814,27 @@ function onMessage(msg) {
           const j = st.findIndex((m) => (m.text || "") === t);
           if (j >= 0) st.splice(j, 1);
         }
+        const done = [];
         for (const b of bubbles) {
-          const k = s.items.indexOf(b);
+          const bubble = b.fallback;
+          const k = s.items.indexOf(bubble);
           if (k >= 0) s.items.splice(k, 1);
-          b.pending = null;
-          b.steerDone = true;
+          else if (b.loop) {
+            const ki = b.loop.items.indexOf(bubble);
+            if (ki >= 0) b.loop.items.splice(ki, 1);
+            if (b.loop.items.length === 0) {
+              const li = s.items.indexOf(b.loop);
+              if (li >= 0) s.items.splice(li, 1);
+            }
+          }
+          bubble.pending = null;
+          bubble.steerDone = true;
+          done.push(bubble);
         }
         if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
         s.assistantDraft = "";
         sealRunItems(s, null);
-        for (const b of bubbles) s.items.push(b);
+        for (const b of done) s.items.push(b);
         s.turnItemStart = s.items.length;
         s.streaming = true;
         s.workingText = "正在处理…";
