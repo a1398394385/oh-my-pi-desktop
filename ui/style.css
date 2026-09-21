@@ -9,6 +9,9 @@
   --panel:     var(--inset);
   --panel-2:   #353738;
   --panel-3:   var(--select);
+  /* 二级重叠卡的上层卡面（ZCode bg-surface 同款语义：低透明度罩色，
+     压在页面底上形成比输入卡更「浮」的层级，勿换实色） */
+  --surface:   rgba(255,255,255,.05);
   --line:      #3A3C3D;
   --line-soft: rgba(255,255,255,.06);
   --text:      #ededef;
@@ -53,6 +56,7 @@
   --panel:     var(--inset);
   --panel-2:   #e8e8ec;
   --panel-3:   var(--select);
+  --surface:   rgba(0,0,0,.04);
   --line:      #d0d0d6;
   --line-soft: rgba(0,0,0,.06);
   --text:      #1d1d21;
@@ -512,13 +516,14 @@ body:has(#sidebar.collapsed) .chat-head {
   min-width: 0;
 }
 .dock,
+.queue-card,
 #stream > *:not(.scroll-bottom) {
   width: 100%;
   /* 四段式收缩（边距 = 内容列与主卡片边缘的距离，--col-max/--col-max-35 由 JS
      按屏幕宽度写入 50%/35%）：
      1. 内容钉在 50% 屏幕宽，边距持续缩小 → 2. 边距钉在 75px/边，内容缩到 35% 屏幕宽
      → 3. 内容钉在 35% 屏幕宽，边距缩到 20px/边 → 4. 边距钉在 20px/边，内容继续缩。
-     对话消息与底部输入框同宽对齐 */
+     对话消息与底部输入框同宽对齐（排队卡与 dock 同宽，叠卡不错位） */
   max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   margin-left: auto;
   margin-right: auto;
@@ -1018,6 +1023,8 @@ body:has(#right.collapsed) #right-resizer {
   background: var(--inset);
   border-radius: 16px;
   position: relative;
+  /* 二级重叠卡的下卡层级：盖住上方 .queue-card 下缘 28px（对应 ZCode composer z-20） */
+  z-index: 20;
   box-sizing: border-box;
 }
 #composer {
@@ -1086,30 +1093,38 @@ body:has(#right.collapsed) #right-resizer {
   animation: taskrot .8s linear infinite;
 }
 .work-line .wl-tx { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 排队消息卡：与 .dock 拼成一张重叠卡（仿新建会话页背卡几何——上卡下角 16 与 dock 顶角
-   同心相切成腰线，1px 负边距盖接缝，dock 露出 border-top 作分界线） */
+/* 流式加载转圈（复刻 ZCode ChatLoading / TurnChatLoadingSlot）：消息流最末位、紧贴输入框上方，
+   min-height 20px 保底有无都不跳高；lucide loader 图标 + 1s linear 旋转，前景色 --dim
+   （对应 ZCode text-foreground-subtle）。显隐由 Chat.jsx 按 s.streaming 渲染与否决定 */
+.chat-loading {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 0;
+}
+.chat-loading-icon {
+  display: inline-flex;
+  color: var(--dim);
+  animation: chat-load-spin 1s linear infinite;
+}
+.chat-loading-icon svg { display: block; }
+@keyframes chat-load-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-loading-icon { animation: none; }
+}
+/* 排队消息卡：ZCode 二级重叠卡配方（ConversationQueuePanel）——relative z-0 +
+   负 margin-bottom 上拉 28px + padding-bottom 28px 保底内容不被遮 + 只圆上角。
+   下方 .dock（z-20）压住其下缘，露出上半张卡；空队列时组件返回 null，卡整体不出现 */
 .queue-card {
-  background: #222222;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: none;
-  border-radius: 18px 18px 16px 16px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
-  margin: -1px -1px 0;
-  padding: 0;
   position: relative;
-  z-index: 1;
-}
-[data-theme="light"] .queue-card {
-  background: #e4e4e7;
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-}
-.queue-card[hidden] { display: none; } /* display:block 盖掉 UA 的 [hidden]，需显式声明 */
-.dock:has(.queue-card:not([hidden])) {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-[data-theme="light"] .dock:has(.queue-card:not([hidden])) {
-  border-top-color: rgba(0, 0, 0, 0.08);
+  z-index: 0;
+  margin: 8px auto -28px;
+  padding: 3px 3px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
 }
 .qc-row {
   display: flex; align-items: center; gap: 7px;
@@ -1389,16 +1404,18 @@ body:has(#right.collapsed) #right-resizer {
   flex-direction: column;
 }
 
-/* 外层延展卡片：整体唯一轮廓（单一边框+投影），承载顶部选择器。
+/* 外层延展卡片：整体唯一轮廓（单一边框+投影），承载顶部选择器（ZCode contextHeader 行）。
+   卡面用 --surface 低透明度罩色（对应 ZCode bg-surface），投影走大半径低透明度
+   （shadow-xl/5 同款：大模糊、弱不透明度，叠卡层次全靠它，勿加重）。
    内层 composer 不再自带左右下边框，避免两张独立边框卡片在分数缩放下
    （WebKit 按元素独立对齐 1px 边框）出现双边框重影/接缝错位 */
 .wb-back-card {
   width: 100%;
   box-sizing: border-box;
-  background: #222222;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
   border-radius: 18px 18px 16px 16px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
   /* 胶囊与边界的间距全部由 .wb-head 的 padding(5px 6px) 提供 */
   padding: 0;
   position: relative;
@@ -1412,9 +1429,7 @@ body:has(#right.collapsed) #right-resizer {
   z-index: 10;
 }
 [data-theme="light"] .wb-back-card {
-  background: #e4e4e7;
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
 }
 .wb-head {
   display: flex;

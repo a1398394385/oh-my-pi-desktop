@@ -11,6 +11,7 @@ import { S, useStore, activeOpen, isJunkPlaceholder } from "../store.js";
 import Icon from "../Icon.jsx";
 import TodoCard from "./chat/TodoCard.jsx";
 import WorkLine, { WorkSec } from "./chat/WorkLine.jsx";
+import ChatLoading from "./chat/ChatLoading.jsx";
 import MsgRail from "./chat/MsgRail.jsx";
 import FindBar from "./chat/FindBar.jsx";
 import AssistantMsg from "./chat/AssistantMsg.jsx";
@@ -92,6 +93,8 @@ export default function Chat() {
         {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
           <AssistantMsg text={s.assistantDraft} streaming />
         )}
+        {/* 流式转圈：消息流末位（对应 ZCode TurnChatLoadingSlot），紧贴输入框上方，轮结束消失 */}
+        {s.streaming && <ChatLoading />}
         {scrollBottomBtn}
       </div>
       <MsgRail entries={railEntries} sessionId={s.sessionId} streamRef={streamRef} />

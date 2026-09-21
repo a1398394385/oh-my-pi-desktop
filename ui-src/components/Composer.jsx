@@ -1,14 +1,14 @@
 // 输入区：附件行 + textarea + cbar（添加/权限模式/后台任务/子智能体/上下文环/模型/思考/
-// 发送）+ 三个弹出菜单 + 排队卡。迁移自 ui/composer.js（578 行）。
+// 发送）+ 三个弹出菜单。迁移自 ui/composer.js（578 行）。
 // 契约：输入草稿用非受控 textarea + 模块级 draft 变量（等价原 inputEl.value，
 // 欢迎页 ↔ dock 两个挂载位切换不丢值）；S.composerSetSignal（seq 信号）effect 回填（含图片）；
 // 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts。
+// 排队卡不在此处：由 App 在 .dock 前作相邻兄弟渲染（ZCode 负 margin 二级重叠卡，见 ui/style.css）。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { S, useStore, notify, activeOpen, send, toast, modelNames } from "../store.js";
 import { closeAllMenus } from "../shell.js";
 import Icon from "../Icon.jsx";
 import AttachRow from "./composer/AttachRow.jsx";
-import QueueCard from "./composer/QueueCard.jsx";
 import ModeMenu, { MODE_META } from "./composer/ModeMenu.jsx";
 import ModelMenu from "./composer/ModelMenu.jsx";
 import ThinkMenu from "./composer/ThinkMenu.jsx";
@@ -300,8 +300,6 @@ export default function Composer({ inWelcome }) {
 
   return (
     <>
-      {/* 排队卡与输入区拼成一张重叠卡（仿新建会话页背卡），仅 dock 挂载位渲染 */}
-      {!inWelcome && <QueueCard />}
       <div id="composer" className={inWelcome ? "in-welcome" : ""} ref={rootRef}>
         <AttachRow />
         <textarea
