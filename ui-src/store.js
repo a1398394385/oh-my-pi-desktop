@@ -122,6 +122,16 @@ export const rightState = {
   gitWrite: null,
 };
 
+// ---------- 终端数据帧总线（PTY 输出/退出不经全局 notify，直推订阅者，避免整树重渲染） ----------
+const terminalListeners = new Set();
+export function onTerminalFrame(fn) {
+  terminalListeners.add(fn);
+  return () => terminalListeners.delete(fn);
+}
+function emitTerminalFrame(frame) {
+  for (const fn of terminalListeners) fn(frame);
+}
+
 // ---------- UI 偏好（localStorage 合并；外观应用由 App 层 effect 负责） ----------
 export const uiPrefs = { uiFont: "default", uiFontSize: 13, codeFontSize: 12, lineNumbers: true, codeWrap: false, showThinking: true, lang: "zh-CN" };
 try {
@@ -1042,6 +1052,12 @@ function onMessage(msg) {
       } else {
         toast(msg.ok ? "已推送" : (msg.error ?? "推送失败"));
       }
+      break;
+    case "terminal_created":
+    case "terminal_data":
+    case "terminal_exit":
+      // PTY 输出/退出帧：直推终端页订阅者（帧高频，不走 notify 全量重渲染）
+      emitTerminalFrame(msg);
       break;
     case "error": {
       gitDiffCache.loading = false;

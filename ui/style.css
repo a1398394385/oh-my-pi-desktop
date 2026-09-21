@@ -3564,3 +3564,269 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .bt-kids { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
 /* 空态提示 */
 .bt-empty { padding: 18px 14px; color: var(--faint); font-size: var(--ui-fs-base); line-height: 1.6; }
+
+/* ── 阶段5：右栏终端 + 浏览器 pane ───────────────────────────────────── */
+
+/* xterm.js 结构样式：内联自 @xterm/xterm css（MIT，随 node_modules 版本升级时同步核对）。
+   DOM 分层（viewport/screen canvas/helper textarea）由库版本决定，勿手改结构；
+   仅 viewport 背景按本项目改为透明（隐藏滚动条、底色走 xterm theme.background）。 */
+.xterm {
+    position: relative;
+    user-select: none;
+    -ms-user-select: none;
+    -webkit-user-select: none;
+}
+
+.xterm.focus,
+.xterm:focus {
+    outline: none;
+}
+
+.xterm .xterm-helpers {
+    position: absolute;
+    top: 0;
+    z-index: 5;
+}
+
+.xterm .xterm-helper-textarea {
+    padding: 0;
+    border: 0;
+    margin: 0;
+    position: absolute;
+    opacity: 0;
+    left: -9999em;
+    top: 0;
+    width: 0;
+    height: 0;
+    z-index: -5;
+    white-space: nowrap;
+    overflow: hidden;
+    resize: none;
+}
+
+.xterm .composition-view {
+    background: #000;
+    color: #FFF;
+    display: none;
+    position: absolute;
+    white-space: nowrap;
+    z-index: 1;
+}
+
+.xterm .composition-view.active {
+    display: block;
+}
+
+.xterm .xterm-viewport {
+    /* 原库此处为 #000（mac 滚动条不透明背景），本项目隐藏滚动条且主题底色走
+       xterm theme.background，改透明让卡片底透出 */
+    background-color: transparent;
+    overflow-y: scroll;
+    cursor: default;
+    position: absolute;
+    right: 0;
+    left: 0;
+    top: 0;
+    bottom: 0;
+}
+
+.xterm .xterm-screen {
+    position: relative;
+}
+
+.xterm .xterm-screen canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.xterm-char-measure-element {
+    display: inline-block;
+    visibility: hidden;
+    position: absolute;
+    top: 0;
+    left: -9999em;
+    line-height: normal;
+}
+
+.xterm.enable-mouse-events {
+    cursor: default;
+}
+
+.xterm.xterm-cursor-pointer,
+.xterm .xterm-cursor-pointer {
+    cursor: pointer;
+}
+
+.xterm.column-select.focus {
+    cursor: crosshair;
+}
+
+.xterm .xterm-accessibility:not(.debug),
+.xterm .xterm-message {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 10;
+    color: transparent;
+    pointer-events: none;
+}
+
+.xterm .xterm-accessibility-tree:not(.debug) *::selection {
+  color: transparent;
+}
+
+.xterm .xterm-accessibility-tree {
+  font-family: monospace;
+  user-select: text;
+  white-space: pre;
+}
+
+.xterm .xterm-accessibility-tree > div {
+  transform-origin: left;
+  width: fit-content;
+}
+
+.xterm .live-region {
+    position: absolute;
+    left: -99999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.xterm-dim {
+    opacity: 1 !important;
+}
+
+.xterm-underline-1 { text-decoration: underline; }
+.xterm-underline-2 { text-decoration: double underline; }
+.xterm-underline-3 { text-decoration: wavy underline; }
+.xterm-underline-4 { text-decoration: dotted underline; }
+.xterm-underline-5 { text-decoration: dashed underline; }
+
+.xterm-overline {
+    text-decoration: overline;
+}
+
+.xterm-overline.xterm-underline-1 { text-decoration: overline underline; }
+.xterm-overline.xterm-underline-2 { text-decoration: overline double underline; }
+.xterm-overline.xterm-underline-3 { text-decoration: overline wavy underline; }
+.xterm-overline.xterm-underline-4 { text-decoration: overline dotted underline; }
+.xterm-overline.xterm-underline-5 { text-decoration: overline dashed underline; }
+
+.xterm-strikethrough {
+    text-decoration: line-through;
+}
+
+.xterm-screen .xterm-decoration-container .xterm-decoration {
+	z-index: 6;
+	position: absolute;
+}
+
+.xterm-screen .xterm-decoration-container .xterm-decoration.xterm-decoration-top-layer {
+	z-index: 7;
+}
+
+.xterm-decoration-overview-ruler {
+    z-index: 8;
+    position: absolute;
+    top: 0;
+    right: 0;
+    pointer-events: none;
+}
+
+.xterm-decoration-top {
+    z-index: 2;
+    position: relative;
+}
+
+/* ── 终端 pane（右栏）：卡片底 + 内边距，隐藏 xterm 原生滚动条（ZCode 同款） ── */
+.tpane {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  background: var(--card);
+}
+.tpane-host-wrap {
+  flex: 1; min-height: 0; overflow: hidden;
+  padding: 8px 4px 8px 10px;
+}
+.tpane-host { height: 100%; min-height: 0; width: 100%; overflow: hidden; }
+.tpane-host .xterm-viewport { scrollbar-width: none; }
+.tpane-host .xterm-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* ── 浏览器 pane（右栏，复刻 ZCode EmbeddedBrowserPaneParts 布局） ── */
+.bpane {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  background: var(--card);
+}
+/* 工具栏：44px 高，icon 钮 + 地址栏 + 更多 */
+.bpane-bar {
+  flex: none;
+  display: flex; align-items: center; gap: 4px;
+  height: 44px; padding: 0 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.bpane-bar .icon-btn:disabled { opacity: .4; cursor: default; }
+.bpane-bar .icon-btn:disabled:hover { background: none; color: inherit; }
+/* 地址栏：内嵌卡面，加载态左侧转圈 */
+.bpane-addr {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px;
+  border-radius: var(--r-md);
+  background: var(--inset);
+  border: 1px solid transparent;
+  transition: border-color .12s var(--swift);
+}
+.bpane-addr:focus-within { border-color: var(--accent); }
+.bpane-spin {
+  flex: none; width: 12px; height: 12px;
+  border: 1.5px solid var(--faint); border-top-color: transparent;
+  border-radius: 50%;
+  animation: bpane-rot .8s linear infinite;
+}
+@keyframes bpane-rot { to { transform: rotate(360deg); } }
+.bpane-input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+  font: inherit; font-size: var(--ui-fs-sm); color: var(--text);
+}
+.bpane-input::placeholder { color: var(--faint); }
+/* 更多菜单锚点 */
+.bpane-more-wrap { position: relative; }
+.bpane-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; z-index: 30; }
+/* 视口：iframe 铺满，空态/错误态叠加层 */
+.bpane-view { flex: 1; min-height: 0; position: relative; background: #fff; }
+.bpane-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+/* 空态：居中图标 + 标题/副文 */
+.bpane-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 24px; text-align: center;
+  background: var(--card);
+}
+.bpane-empty-ic { color: var(--faint); margin-bottom: 8px; }
+.bpane-empty-tt { font-size: var(--ui-fs-md); font-weight: 600; color: var(--text); }
+.bpane-empty-sub { font-size: var(--ui-fs-sm); color: var(--dim); max-width: 320px; line-height: 1.6; }
+/* 加载错误态：错误图标 + 文案 + 重试/外部打开 */
+.bpane-err {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 24px; text-align: center;
+  background: var(--card);
+}
+.bpane-err-ic { color: var(--err); margin-bottom: 8px; }
+.bpane-err-tt { font-size: var(--ui-fs-md); font-weight: 600; color: var(--text); }
+.bpane-err-sub { font-size: var(--ui-fs-sm); color: var(--dim); max-width: 320px; line-height: 1.6; }
+.bpane-err-acts { display: flex; gap: 8px; margin-top: 14px; }
+.bpane-err-acts .btn {
+  padding: 6px 14px; border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text);
+  font: inherit; font-size: var(--ui-fs-sm); cursor: pointer;
+  transition: background .12s var(--swift);
+}
+.bpane-err-acts .btn:hover { background: var(--panel-3); }

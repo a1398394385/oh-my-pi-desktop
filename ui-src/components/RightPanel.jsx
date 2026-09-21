@@ -17,6 +17,8 @@ import GitDiffPage from "./right/GitDiffPage.jsx";
 import FilePage from "./right/FilePage.jsx";
 import BgCmdPage from "./right/BgCmdPage.jsx";
 import BranchTreePage from "./right/BranchTreePage.jsx";
+import TerminalPage from "./right/TerminalPage.jsx";
+import BrowserPage from "./right/BrowserPage.jsx";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
 export { TAB_META, rightTabs, openRightTab, closeRightTab } from "./right/tabs.js";
@@ -197,6 +199,8 @@ export default function RightPanel({ collapsed }) {
   else if (S.rightTab === "bgcmd") body = <BgCmdPage />;
   else if (S.rightTab === "file") body = <FilePage />;
   else if (S.rightTab === "tree") body = <BranchTreePage />;
+  else if (S.rightTab === "terminal") body = <TerminalPage />;
+  else if (S.rightTab === "browser") body = <BrowserPage />;
   else body = <SubagentPage />;
   return (
     <aside id="right" className={collapsed ? "collapsed" : ""}>

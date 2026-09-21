@@ -15,7 +15,7 @@ export default function StartPage() {
       <div className="rt-start-tt">打开标签页</div>
       <div className="rt-start-sub">选择要在侧边面板中打开的标签。</div>
       <div className="rt-list">
-        {["subagent", "gitdiff", "file", "bgcmd", "tree"].map((name) => {
+        {["subagent", "gitdiff", "file", "bgcmd", "tree", "terminal", "browser"].map((name) => {
           const meta = TAB_META[name];
           const off = name === "gitdiff" && !s?.isGit;
           return (
