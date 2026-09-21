@@ -45,6 +45,11 @@ export type PoolEntry = {
   // 多条排队会被同一轮 run 拼车发出。host 只在底座队列保留 1 条（下一条待消费），其余暂存于此，
   // 每轮 agent_end 放回 1 条并触发消费——排队消息逐轮 FIFO、每轮一条独立 turn
   parkedFollowUp: any[];
+  // 会话的 SessionManager 实例：rename（setSessionName）与 compact 后重建 transcript 用
+  manager: any;
+  // 用户重命名的标题（懒建未落盘的会话 listAll 扫不到，list_sessions 兜底条目经此呈现；
+  // 已落盘的以底座 title slot 为准，此字段仅内存兜底）
+  title: string | null;
 };
 
 // key = 前端持有的 sessionId
@@ -53,7 +58,7 @@ export const sessions = new Map<string, PoolEntry>();
 export const defaultCwd = os.homedir();
 
 // 桌面项目清单（当前 profile 配置目录下 omp-desktop.json，全路径记录）
-export type DesktopProjects = { allProjects: string[]; removedProjects: string[]; expandedProjects: string[]; pinnedSessions: string[] };
+export type DesktopProjects = { allProjects: string[]; removedProjects: string[]; expandedProjects: string[]; pinnedSessions: string[]; archivedSessions: string[] };
 export type DesktopEnv = { httpProxy: string; noProxy: string; caCerts: string };
 
 export const H = {
@@ -72,7 +77,7 @@ export const H = {
   desktopEnv: { httpProxy: "", noProxy: "", caCerts: "" } as DesktopEnv,
   // 桌面项目清单
   desktopProjectsPath: "",
-  desktopProjects: { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [] } as DesktopProjects,
+  desktopProjects: { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [] } as DesktopProjects,
   // 模型目录（随 profile / 登录 / 启停刷新）
   availableModels: [] as any[],
   scopedModels: [] as any[],

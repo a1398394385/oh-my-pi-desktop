@@ -3243,4 +3243,176 @@ html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-
   font-weight: 500;
 }
 
+/* --- B3 Git Diff 写操作 + 文件页图片预览（right.js） --- */
+/* 工具条：提交信息输入（.inp 语言，小号 + flex 撑满）+ 提交/推送（.save-btn 小号） */
+.gd-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 2px 8px;
+}
+.gd-commit-inp {
+  flex: 1; min-width: 0; width: auto;
+  padding: 4px 9px; font-size: var(--ui-fs-xs);
+}
+/* 行内操作组：默认隐身，行 hover 才出现（右侧对齐，不挤文件名） */
+.gd-acts {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; gap: 2px;
+  opacity: 0; transition: opacity .12s var(--swift);
+}
+.gd-row:hover .gd-acts,
+.gd-acts:focus-within { opacity: 1; }
+/* 行内小图标按钮：透明底 + hover --panel-3；danger 变体 hover 变红提示破坏性 */
+.gd-act {
+  border: 0; background: none; color: var(--faint);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 5px;
+  cursor: pointer; padding: 0;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+.gd-act:hover { background: var(--panel-3); color: var(--text); }
+.gd-act:disabled { opacity: .5; cursor: default; }
+.gd-act:disabled:hover { background: none; color: var(--faint); }
+.gd-act.danger:hover { background: var(--panel-3); color: var(--err); }
+/* 文件页图片预览：max-width 自适应、--panel-2 底（透明 png 深浅主题均协调）、token 边框圆角 */
+.fv-img {
+  display: block;
+  max-width: 100%; height: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 6px;
+  box-sizing: border-box;
+}
 
+
+/* --- B2 停止生成按钮（composer cbar，流式期间显示于发送钮左侧） --- */
+/* .send 的 display:inline-flex 会盖掉 UA 的 [hidden]，需显式声明（work-line 同款处理） */
+.stop-btn[hidden] { display: none; }
+.stop-btn:hover:not(:disabled) {
+  background: rgba(208, 92, 82, 0.12);
+  color: var(--err);
+}
+[data-theme="light"] .stop-btn:hover:not(:disabled) {
+  background: rgba(208, 92, 82, 0.15);
+}
+
+/* --- B2 会话内查找条（⌘F，消息流顶部浮层，仅当前激活会话） --- */
+.find-bar {
+  position: absolute; z-index: 60;
+  /* 水平居中用 margin auto（left/right 归零）而非 translateX：
+     ringpop 入场动画要占用 transform，translateX 会被覆盖导致动画结束跳位 */
+  left: 0; right: 0; margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
+  display: flex; align-items: center; gap: 6px;
+  background: var(--ctl-bg); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+  padding: 5px 6px 5px 5px;
+  animation: ringpop .18s ease-out; /* 与 ring-pop 系同款入场（淡入 + 上滑） */
+}
+[data-theme="light"] .find-bar { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+/* 输入框 = .inp 语言：--bg 底 + --line-soft 边 + r8 + 蓝色聚焦光晕 */
+.find-inp {
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
+  width: 200px; outline: none; min-width: 0;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+.find-inp:focus { border-color: rgba(74, 158, 255, .5); box-shadow: 0 0 0 3px rgba(74, 158, 255, .13); }
+.find-count {
+  flex: none; min-width: 36px; text-align: center;
+  font-size: var(--ui-fs-xs); color: var(--dim);
+}
+.find-count.none { color: var(--faint); }
+/* 导航/关闭小按钮 = .q-btn 同语言（20px 底板 + hover --panel-2） */
+.find-nav {
+  flex: none; width: 22px; height: 22px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--dim); cursor: pointer; border: 0; background: none; padding: 0;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+.find-nav:hover { background: var(--panel-2); color: var(--text); }
+/* 命中消息闪烁强调：背景高亮渐隐（accent 派生，与 .inp 聚焦光晕同源） */
+@keyframes findflash {
+  0% { background: rgba(74, 158, 255, 0.22); box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.10); }
+  100% { background: transparent; box-shadow: none; }
+}
+.find-flash { animation: findflash 1.6s ease-out; border-radius: 8px; }
+
+/* --- B2 上下文明细卡压缩入口（ring-pop 底部全宽小按钮） --- */
+.cx-act { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+/* .confirm-btn 小号变体：同边框/底色/圆角语言，尺寸随卡片内缩 */
+.cx-compact-btn {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--panel-3); color: var(--text);
+  font-family: inherit; font-size: var(--ui-fs-sm);
+  padding: 5px 10px; cursor: pointer;
+  transition: background .12s var(--swift), opacity .12s var(--swift);
+}
+.cx-compact-btn:hover:not(:disabled) { background: var(--panel-2); }
+.cx-compact-btn:disabled { opacity: .45; cursor: default; }
+.cx-compact-btn.busy { opacity: .7; cursor: default; }
+
+/* --- B1 会话重命名（行内编辑行，复用 .task 布局；编辑行无点击行为，显式关 hover） --- */
+.task.renaming { cursor: default; }
+.task.renaming:hover { background: none; color: inherit; }
+[data-theme="light"] .task.renaming:hover { background: none; color: inherit; }
+.task .rename-inp {
+  flex: 1; min-width: 0; width: auto;
+  padding: 3px 8px; font-size: var(--ui-fs-sm);
+}
+
+/* --- B1 归档区（列表底部折叠分组：组头整行可点，条目行纯展示、hover 只亮按钮） --- */
+.arch-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; margin-top: 2px;
+  color: var(--faint); font-size: var(--ui-fs-base);
+  border-radius: var(--r-md); cursor: pointer; user-select: none;
+}
+.arch-head:hover { background: var(--panel-2); color: var(--text); }
+.arch-head .caret {
+  flex: none; font-size: var(--ui-fs-xs); color: var(--faint); width: 10px;
+  display: inline-flex; align-items: center;
+  transition: transform .3s ease;
+}
+.arch-head.collapsed .caret { transform: rotate(-90deg); }
+.arch-head .aname {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arch-head .acount { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); }
+/* 条目容器：grid 行高 0fr↔1fr 过渡，与 .proj-kids 项目分组同一套动画 */
+.arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
+.arch-kids.closing { grid-template-rows: 0fr; }
+.arch-kids > .arch-kids-in { overflow: hidden; min-height: 0; }
+/* 归档条目行：纯展示承载行（点击不打开会话），显式禁 hover 高亮 */
+.arch-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px 5px 28px; margin-top: 2px;
+  font-size: var(--ui-fs-base); line-height: 1.35;
+}
+.arch-row .tt {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--dim);
+}
+/* 恢复/删除小按钮：默认隐藏、行 hover 浮现（对齐 .padd/.pmore 模式） */
+.arch-act {
+  flex: none; border: 1px solid var(--line); background: none; color: var(--dim);
+  font-size: var(--ui-fs-xs); line-height: 1; cursor: pointer;
+  padding: 3px 8px; border-radius: 5px; font-family: inherit;
+  display: none;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.arch-row:hover .arch-act { display: inline-flex; align-items: center; }
+.arch-act:hover { color: var(--text); background: var(--panel-3); }
+/* 删除 = 彻底删除会话：危险态视觉与 .task-del-btn 一致（含 hover 反色白字，tokens 无反色 token） */
+.arch-act.arch-del {
+  border-color: rgba(208, 92, 82, 0.35);
+  background: rgba(208, 92, 82, 0.12);
+  color: var(--err);
+}
+.arch-act.arch-del:hover {
+  background: var(--err);
+  border-color: transparent;
+  color: #ffffff;
+}

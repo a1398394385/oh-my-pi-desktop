@@ -362,8 +362,18 @@ export function renderQueueLine() {
 // ---------- composer 状态条（模式/模型/思考 按钮文案与禁用态 + 上下文环） ----------
 const RING_C = 40.84; // 2π×6.5（与 CSS dasharray 一致）
 
+// 停止生成按钮（initComposer 时动态创建，插在发送钮左侧）：仅流式期间显示。
+// 发送钮在流式中仍是「排队发送」，两者并存互不冲突
+let stopBtn = null;
+
 export function renderComposerBar() {
   const s = activeOpen();
+  // 停止钮随流式状态显隐；turn_end 重绘（streaming=false）时隐藏并复位防连点禁用态
+  if (stopBtn) {
+    const streaming = !!s?.streaming;
+    stopBtn.hidden = !streaming;
+    if (!streaming) stopBtn.disabled = false;
+  }
   if (!s && S.isCreatingNew) {
     modelBtn.disabled = thinkBtn.disabled = false;
     const mName = modelNames.get(S.newSessionModel) ?? (S.newSessionModel ? S.newSessionModel.split("/").pop() : "模型");
@@ -432,6 +442,20 @@ export function fitComposerBar() {
 }
 
 export function initComposer() {
+  // 停止生成按钮：cbar 内发送钮左侧（流式时发送钮语义是「排队」，停止钮独立一旁）
+  stopBtn = document.createElement("button");
+  stopBtn.className = "send stop-btn";
+  stopBtn.title = "停止生成";
+  stopBtn.hidden = true;
+  stopBtn.innerHTML = icon("stop");
+  stopBtn.addEventListener("click", () => {
+    const s = activeOpen();
+    if (!s?.streaming || stopBtn.disabled) return;
+    stopBtn.disabled = true; // 防连点：turn_end 重绘时复位（renderComposerBar）
+    send({ type: "abort_session", sessionId: s.sessionId });
+  });
+  $("sendBtn").before(stopBtn);
+
   $("plusBtn").addEventListener("click", () => $("filePicker").click());
   $("filePicker").addEventListener("change", async (e) => {
     const picked = [...e.target.files];

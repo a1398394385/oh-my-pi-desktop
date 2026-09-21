@@ -12,11 +12,66 @@ import { refreshGitDiff } from "./right.js";
 // 置顶图钉（极简线条，悬停会话行时浮现于左侧）
 let projMenu = null; // 项目行「⋯」弹出菜单（fixed 定位，zoom 补偿走 placeMenu）
 let projAddPop = null; // 「项目」标题栏 ＋ 手动添加弹层
+let sessCtxMenu = null; // 会话行右键菜单（重命名/归档；shell.closeAllMenus 经 closeProjPopups 统一协调关闭）
 export function closeProjPopups() {
   projMenu?.remove();
   projMenu = null;
   projAddPop?.remove();
   projAddPop = null;
+  closeSessCtxMenu();
+}
+function closeSessCtxMenu() {
+  sessCtxMenu?.remove();
+  sessCtxMenu = null;
+}
+
+// 复制到剪贴板（shell.js 的 copyText 未导出且禁改，此处同款复刻，含 WKWebView 非安全上下文兜底）
+function copyText(text) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+  return Promise.resolve();
+}
+
+// —— 会话重命名：行内编辑（全站规范：行内展开，禁 modal） ——
+// 把会话行原位替换为输入行（button 内嵌 input 的焦点与点击会和行 onclick 冲突）；
+// Enter 保存（空标题/未改名不保存）、Esc 取消、失焦按取消处理（防误触）。
+// 保存只发 rename_session，标题以宿主重拉列表为准，本地不改 diskProjects。
+function startRename(row, entry) {
+  const editor = document.createElement("div");
+  editor.className = "task" + (row.classList.contains("sub") ? " sub" : "") + " renaming";
+  const input = document.createElement("input");
+  input.className = "inp rename-inp";
+  input.value = entry.title || "";
+  input.placeholder = "会话标题";
+  editor.appendChild(input);
+  row.replaceWith(editor);
+  input.focus();
+  if (entry.title) input.select();
+  let done = false; // Enter 保存后随后的 blur 不再重复处理
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const title = input.value.trim();
+    if (save && title && title !== (entry.title || "")) {
+      send({ type: "rename_session", sessionId: entry.id, title });
+    }
+    renderList(); // 恢复原行：取消/未改名直接回显；保存路径由宿主重拉列表更新标题
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => finish(false));
 }
 
 // —— 项目拖拽排序（Pointer Events 自绘：拖组跟手浮起，其余组实时滑移让位，松手提交顺序） ——
@@ -322,6 +377,8 @@ function taskRow(s, { sub, showRepo, pinnedList } = {}) {
     tm.textContent = fmtAgo(s.modified);
     b.appendChild(tm);
   }
+  // 双击标题原地进入重命名（单击/双击前的 click 仍正常打开会话，幂等无冲突）
+  b.querySelector(".tt").addEventListener("dblclick", () => startRename(b, s));
   b.onclick = () => {
     S.isCreatingNew = false;
     hideWelcomeScreen();
@@ -339,6 +396,90 @@ function taskRow(s, { sub, showRepo, pinnedList } = {}) {
     renderAll();
   };
   return b;
+}
+
+// —— 归档区：列表底部折叠分组（默认收起），条目可恢复/彻底删除，点击不打开会话 ——
+let archivedExpanded = false; // 展开状态（第一版不持久化）
+function buildArchKids(list, animate = false) {
+  const kids = document.createElement("div");
+  kids.className = "arch-kids";
+  const kidsIn = document.createElement("div");
+  kidsIn.className = "arch-kids-in";
+  kids.appendChild(kidsIn);
+  for (const [i, s] of list.entries()) {
+    const row = archivedRow(s);
+    if (animate) {
+      row.classList.add("kids-in");
+      row.style.animationDelay = i * 25 + "ms"; // 逐行错峰展开，对齐项目分组
+    }
+    kidsIn.appendChild(row);
+  }
+  return kids;
+}
+function archivedRow(s) {
+  const row = document.createElement("div");
+  row.className = "arch-row"; // 纯展示承载行（点击不打开），hover 高亮只挂行内按钮
+  const tt = document.createElement("span");
+  tt.className = "tt";
+  tt.textContent = sessionLabel(s);
+  tt.title = s.cwd || s.path;
+  const restore = document.createElement("button");
+  restore.className = "arch-act";
+  restore.textContent = "恢复";
+  restore.title = "取消归档，恢复到项目列表";
+  restore.onclick = () => send({ type: "archive_session", sessionId: s.id, archived: false });
+  const del = document.createElement("button");
+  del.className = "arch-act arch-del";
+  del.textContent = "删除";
+  del.title = "彻底删除会话";
+  del.onclick = () => {
+    const sTitle = s.title || s.firstMessage || s.id || "未命名会话";
+    showConfirmDialog({
+      title: "删除会话",
+      message: `确定要永久删除此会话吗？此操作无法撤销。\n\n会话：${sTitle}`,
+      confirmText: "删除",
+      danger: true,
+      onConfirm: () => send({ type: "delete_session", path: s.path }),
+    });
+  };
+  row.append(tt, restore, del);
+  return row;
+}
+function renderArchived() {
+  const list = S.archivedSessions ?? [];
+  if (list.length === 0) return; // 无归档条目整区隐藏
+  const head = document.createElement("div");
+  head.className = "arch-head" + (archivedExpanded ? "" : " collapsed");
+  head.title = archivedExpanded ? "收起归档区" : "展开归档区";
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  caret.innerHTML = icon("caret");
+  const name = document.createElement("span");
+  name.className = "aname";
+  name.textContent = "已归档";
+  const count = document.createElement("span");
+  count.className = "acount";
+  count.textContent = `(${list.length})`;
+  head.append(caret, name, count);
+  // 整头可点（折叠/展开），hover 高亮合法挂头行；展开/收起动画对齐项目分组 0fr↔1fr
+  head.onclick = () => {
+    archivedExpanded = !archivedExpanded;
+    head.classList.toggle("collapsed", !archivedExpanded);
+    if (archivedExpanded) {
+      const kids = buildArchKids(list, true);
+      head.after(kids);
+      kids.style.gridTemplateRows = "0fr";
+      requestAnimationFrame(() => requestAnimationFrame(() => { kids.style.gridTemplateRows = ""; }));
+    } else {
+      const kids = head.nextElementSibling;
+      if (kids?.classList.contains("arch-kids")) {
+        kids.classList.add("closing");
+        setTimeout(() => kids.remove(), 310);
+      }
+    }
+  };
+  tasklistEl.appendChild(head);
+  if (archivedExpanded) tasklistEl.appendChild(buildArchKids(list));
 }
 
 export function renderList() {
@@ -565,9 +706,75 @@ export function renderList() {
       tasklistEl.appendChild(hint);
     }
   }
+  renderArchived(); // 归档区固定在列表底部（两种视图共用）
 }
 
 export function initSidebar() {
+  // 会话行右键菜单（复制 sessionId/路径 + 重命名 + 归档）。既有会话右键菜单在
+  // shell.js（禁改），此处捕获阶段接管同一目标并 stopPropagation 阻止其重复弹出，
+  // 前两项复刻原复制功能；shell 的「撤销本次右键新产生的选词」逻辑同样被拦，一并复刻。
+  let sessSelBeforeCtx = null;
+  const sessRow = (e) => e.target.closest(".task[data-path]");
+  tasklistEl.addEventListener(
+    "mousedown",
+    (e) => {
+      if (e.button !== 2 || !sessRow(e)) return;
+      const s = window.getSelection();
+      sessSelBeforeCtx = s ? s.toString() : null;
+    },
+    true,
+  );
+  tasklistEl.addEventListener(
+    "contextmenu",
+    (e) => {
+      const el = sessRow(e);
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeAllMenus();
+      const entry = diskProjects.flatMap((p) => p.sessions).find((s) => s.path === el.dataset.path);
+      if (!entry) return;
+      requestAnimationFrame(() => {
+        const s = window.getSelection();
+        if (s && !s.isCollapsed && s.toString() !== sessSelBeforeCtx) s.removeAllRanges();
+      });
+      sessCtxMenu = document.createElement("div");
+      sessCtxMenu.className = "ctx-menu";
+      sessCtxMenu.addEventListener("click", (ev) => ev.stopPropagation());
+      const addItem = (label, fn) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.onclick = () => {
+          closeSessCtxMenu();
+          fn();
+        };
+        sessCtxMenu.appendChild(b);
+      };
+      addItem("复制 sessionId", () => {
+        copyText(entry.id ?? "");
+        toast("已复制：复制 sessionId");
+      });
+      addItem("复制会话文件路径", () => {
+        copyText(entry.path);
+        toast("已复制：复制会话文件路径");
+      });
+      addItem("重命名", () => {
+        const row = tasklistEl.querySelector(`.task[data-path="${CSS.escape(entry.path)}"]`);
+        if (row) startRename(row, entry);
+      });
+      addItem("归档会话", () => send({ type: "archive_session", sessionId: entry.id, archived: true }));
+      document.body.appendChild(sessCtxMenu);
+      sessCtxMenu.style.zoom = S.zoomLevel;
+      const mr = sessCtxMenu.getBoundingClientRect();
+      placeMenu(
+        sessCtxMenu,
+        Math.max(8, Math.min(e.clientX, window.innerWidth - mr.width - 8)),
+        Math.max(8, Math.min(e.clientY, window.innerHeight - mr.height - 8)),
+      );
+    },
+    true,
+  );
+
   // 左栏 seg 视图切换 + 新建
   $("seg").addEventListener("click", (e) => {
     const b = e.target.closest("button");

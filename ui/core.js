@@ -69,6 +69,7 @@ export const S = {
   isProjectManageMode: false, // 项目清理模式：展开所有项目与会话，展示移除/删除按钮
   allProjects: [], // 所有项目全路径（宿主 profile 配置目录 omp-desktop.json）
   removedProjects: [], // 已移除项目全路径（项目视图隐藏，最近视图仍显示其会话）
+  archivedSessions: [], // 已归档会话条目（含 cwd），session_list 拆分落此，归档区渲染用
   animateGdKids: false, // 下一次 renderRightBody 为目录展开动作的子行播放入场动画（同步渲染后立即复位）
   animateThinkBody: false, // 下一次 renderChat 为思考展开动作的 think-body 播放入场动画（同步渲染后立即复位）
   todoCollapsed: false, // 进程卡收起为胶囊
@@ -332,6 +333,25 @@ export function requeueSteerMsg(s, item) {
   renderAll();
 }
 
+// ---------- 系统通知（Tauri 壳 send_desktop_notification，事件 dispatch 的副作用，不进渲染路径） ----------
+// 防打扰：非激活会话 → 发（用户在看别的会话）；激活会话但窗口整体失焦 → 也发；
+// 激活会话且窗口有焦点（用户正盯着）→ 绝不发。
+// 去重节流：RPC 事件可能重复推送两遍（协议已知怪癖）、审批请求可能重复出现，
+// 同 sessionId+类型 10 秒内只发一次。
+const notifyLastAt = new Map(); // `${sessionId}:${kind}` -> 上次发送时间戳
+function notifyDesktop(kind, s, title, body) {
+  const now = Date.now();
+  const key = `${s.sessionId}:${kind}`;
+  if (now - (notifyLastAt.get(key) ?? 0) < 10_000) return;
+  notifyLastAt.set(key, now);
+  if (!invoke) return; // 非 Tauri 环境（浏览器直连调试）：功能不存在，静默跳过
+  const path = [...openSessions.entries()].find(([, v]) => v === s)?.[0];
+  if (path === S.activePath && document.hasFocus()) return;
+  invoke("send_desktop_notification", { title, body, sessionId: s.sessionId }).catch((err) =>
+    console.warn("send_desktop_notification:", err),
+  ); // macOS 未授权时 invoke 会 reject：记录即可，不打断事件主流程
+}
+
 function onMessage(msg) {
   switch (msg.type) {
     case "ready":
@@ -392,13 +412,26 @@ function onMessage(msg) {
         answer: null,
       });
       renderAll();
+      // 后台会话等待审批 → 系统通知（msg.title 为宿主下发的审批标题，含工具名摘要）
+      notifyDesktop("approval", s, "等待审批", msg.title);
       break;
     }
     case "approval_resolved":
       break; // 本地点击已即时定格
     case "session_list": {
+      // 归档条目从正常列表数据拆出：不进 diskProjects（正常分组/最近/置顶消费方全部自动排除），
+      // 单独存 S.archivedSessions（含 cwd 的完整条目，按修改时间倒序），侧栏归档区渲染用
       diskProjects.length = 0;
-      diskProjects.push(...msg.projects);
+      S.archivedSessions = [];
+      for (const p of msg.projects) {
+        const sessions = [];
+        for (const s of p.sessions) {
+          if (s.archived) S.archivedSessions.push({ ...s, cwd: p.cwd });
+          else sessions.push(s);
+        }
+        diskProjects.push({ ...p, sessions });
+      }
+      S.archivedSessions.sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
       S.allProjects = msg.allProjects ?? [];
       S.removedProjects = msg.removedProjects ?? [];
       expandedProjects.clear();
@@ -565,6 +598,16 @@ function onMessage(msg) {
           unseenFinished.add(p);
           saveUnseen();
         }
+        // 后台会话完成 → 系统通知：title 取磁盘列表里的会话标题（未收录时「后台会话」），
+        // body 取最后一条 assistant 文本截断 80 字作摘要，无则「已完成」
+        const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
+        const summary = (lastA?.text || "").trim();
+        notifyDesktop(
+          "turn_end",
+          s,
+          diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || "后台会话",
+          summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : "已完成",
+        );
       } else if (msg.kind === "thinking_level") {
         // auto 档位判定帧：只记判定结果供右下角显示 auto·档位，不改 s.thinking——
         // 上拉菜单的 ✓ 与用户手选状态仍以 s.thinking 为准。切进 auto 的 provisional 帧无
@@ -815,6 +858,59 @@ function onMessage(msg) {
       break;
     case "mcp_server_tested":
       handleMcpServerTested(msg);
+      break;
+    // ===== 新增功能回包（数据落地集中在此，各域模块只做发起与渲染）=====
+    case "session_renamed":
+      if (msg.ok) {
+        toast("已重命名");
+        send({ type: "list_sessions" }); // 列表数据以宿主为唯一真源，重拉最稳
+      } else toast(msg.error ?? "重命名失败");
+      break;
+    case "session_archived":
+      if (msg.ok) {
+        toast(msg.archived ? "已归档" : "已取消归档");
+        send({ type: "list_sessions" });
+      } else toast(msg.error ?? "归档操作失败");
+      break;
+    case "session_aborted":
+      // 停止回执：过程流由既有 agent_end/turn_end 事件归位，这里只做轻提示
+      toast("已停止生成");
+      break;
+    case "session_compacted":
+      // 压缩成功后宿主主动推 messages 帧重建 transcript（既有 case 处理），这里只提示
+      toast(msg.ok ? "上下文已压缩" : (msg.error ?? "压缩失败"));
+      break;
+    case "image_content":
+      rightState.imageContent = msg; // right.js 文件页图片渲染读取
+      renderRight();
+      break;
+    case "git_staged":
+    case "git_unstaged":
+      rightState.gitWrite = msg;
+      renderRight(); // 回包直接驱动按钮 busy 态收口（right.js 另有轮询兜底，两者兼容）
+      if (msg.ok) refreshGitDiff();
+      else toast(msg.error ?? "git 操作失败");
+      break;
+    case "git_discarded":
+      rightState.gitWrite = msg;
+      renderRight();
+      if (msg.ok) {
+        toast("已丢弃更改");
+        refreshGitDiff();
+      } else toast(msg.error ?? "丢弃失败");
+      break;
+    case "git_committed":
+      rightState.gitWrite = msg;
+      renderRight();
+      if (msg.ok) {
+        toast(`已提交 ${(msg.commit ?? "").slice(0, 7)}`);
+        refreshGitDiff();
+      } else toast(msg.error ?? "提交失败");
+      break;
+    case "git_pushed":
+      rightState.gitWrite = msg;
+      renderRight();
+      toast(msg.ok ? "已推送" : (msg.error ?? "推送失败"));
       break;
     case "error": {
       gitDiffCache.loading = false;

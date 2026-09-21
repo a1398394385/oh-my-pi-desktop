@@ -162,6 +162,28 @@ function buildCtxCard(detail, limits) {
     if (!b) sec.classList.add("no-div");
     pop.appendChild(sec);
   }
+  // 压缩上下文入口:会话非空且占用 > 0 才显示;流式中禁用(与运行中 turn 竞态)。
+  // 压缩非破坏性(历史被摘要重写,误点代价 = 一次 LLM 调用),直接执行不弹确认;
+  // 点击后置 pending,回包 toast / messages 帧由 core 既有逻辑收尾(卡片本身无回包
+  // 钩子,pending 文案保持到卡片关闭,重开即重建)
+  const cur = activeOpen();
+  if (cur && cur.items.length && b && b.usedTokens > 0) {
+    const act = document.createElement("div");
+    act.className = "cx-act";
+    const btn = document.createElement("button");
+    btn.className = "cx-compact-btn";
+    btn.textContent = "压缩上下文";
+    if (cur.streaming) btn.disabled = true;
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.classList.add("busy");
+      btn.textContent = "压缩中…";
+      send({ type: "compact_session", sessionId: cur.sessionId });
+    });
+    act.appendChild(btn);
+    pop.appendChild(act);
+  }
   if (!pop.childNodes.length) pop.textContent = "上下文用量暂无数据";
   return pop;
 }

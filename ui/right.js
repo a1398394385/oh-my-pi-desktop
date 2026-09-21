@@ -5,6 +5,7 @@ import { renderToolItem } from "./tool-labels.js";
 import { renderStepTitle, attachFadeMask, liftEl } from "./tool-rows.js";
 import { escapeHtml } from "./markdown.js";
 import { isRightCollapsed, setRightCollapsed, expandRightPanel } from "./shell.js";
+import { confirmDialog } from "./settings/providers.js";
 export { isRightCollapsed, setRightCollapsed, expandRightPanel };
 
 // 右栏 tab 栏：打开的 tab 有序列表 + 当前激活项；全部关闭后激活项为 null（起始页）
@@ -20,6 +21,7 @@ export const rightState = {
   fileTreeExpanded: new Set(), // 文件树展开中的目录路径
   fileTreePending: new Set(), // 已发出 list_dir 待回包的目录路径
   expandedDirs: new Set(), // gitdiff 树展开中的目录路径
+  commitMsg: "", // Git Diff 页提交信息输入框（跨重绘保持，提交成功清空）
 };
 export function openRightTab(name) {
   if (!rightTabs.includes(name)) rightTabs.push(name);
@@ -212,6 +214,77 @@ function renderStartPage() {
   rightBodyEl.appendChild(wrap);
 }
 
+// ---------- Git Diff 写操作（暂存/取消暂存/丢弃/提交/推送） ----------
+// 进行中的写操作标记：{ op, prev }（prev = 发起前的 rightState.gitWrite 引用）。
+// core 对 git 写回包不保证触发重绘（成功路径的 refreshGitDiff 在 cwd 未变时不发请求），
+// 这里以 120ms 轮询比对 gitWrite 引用变化闭环——本地 git 操作毫秒级、push 秒级，轮询生命周期极短
+let gitBusy = null;
+let gitBusyTimer = null;
+const GIT_WRITE_REPLY = { stage: "git_staged", unstage: "git_unstaged", discard: "git_discarded", commit: "git_committed", push: "git_pushed" };
+function startGitBusy(op) {
+  gitBusy = { op, prev: rightState.gitWrite };
+  renderRightBody();
+  clearInterval(gitBusyTimer);
+  gitBusyTimer = setInterval(() => {
+    const w = rightState.gitWrite;
+    if (!gitBusy || !w || w === gitBusy.prev || w.type !== GIT_WRITE_REPLY[gitBusy.op]) return;
+    if (w.ok && gitBusy.op === "commit") rightState.commitMsg = ""; // 提交成功清空输入框
+    gitBusy = null;
+    clearInterval(gitBusyTimer);
+    refreshGitDiff(true); // 强制重拉（core 的非 force 刷新在 cwd 未变时不发请求）
+    renderRightBody();
+  }, 120);
+}
+
+// 工具条：提交信息输入（值存 rightState.commitMsg 跨重绘保持）+ 提交（全部已暂存）+ 推送
+function renderGdToolbar() {
+  const s = activeOpen();
+  if (!s) return;
+  const bar = document.createElement("div");
+  bar.className = "gd-bar";
+  const busy = !!gitBusy;
+  const hasStaged = gitDiffCache.files.some((f) => f.staged);
+  const inp = document.createElement("input");
+  inp.className = "inp gd-commit-inp";
+  inp.type = "text";
+  inp.placeholder = "提交信息";
+  inp.value = rightState.commitMsg;
+  const commitBtn = document.createElement("button");
+  inp.addEventListener("input", () => {
+    rightState.commitMsg = inp.value;
+    commitBtn.disabled = !inp.value.trim() || !hasStaged || busy;
+  });
+  commitBtn.className = "save-btn";
+  commitBtn.textContent = "提交";
+  commitBtn.title = "提交全部已暂存的改动";
+  commitBtn.disabled = !rightState.commitMsg.trim() || !hasStaged || busy;
+  if (busy && gitBusy.op === "commit") {
+    commitBtn.classList.add("busy");
+    commitBtn.innerHTML = icon("refresh", 13);
+  }
+  commitBtn.onclick = () => {
+    const message = rightState.commitMsg.trim();
+    if (!message) return;
+    send({ type: "git_commit", cwd: s.cwd, message }); // 不带 paths = 提交全部已暂存
+    startGitBusy("commit");
+  };
+  const pushBtn = document.createElement("button");
+  pushBtn.className = "save-btn";
+  pushBtn.textContent = "推送";
+  pushBtn.title = "推送当前分支";
+  pushBtn.disabled = busy;
+  if (busy && gitBusy.op === "push") {
+    pushBtn.classList.add("busy");
+    pushBtn.innerHTML = icon("refresh", 13);
+  }
+  pushBtn.onclick = () => {
+    send({ type: "git_push", cwd: s.cwd });
+    startGitBusy("push");
+  };
+  bar.append(inp, commitBtn, pushBtn);
+  rightBodyEl.appendChild(bar);
+}
+
 function renderGitDiff() {
   const s = activeOpen();
   if (!s) {
@@ -223,6 +296,7 @@ function renderGitDiff() {
     return;
   }
   if (S.selectedFile) return renderGdFileDetail(s);
+  renderGdToolbar(); // 列表上方工具条（提交/推送），加载中与干净态也显示
   if (gitDiffCache.cwd !== s.cwd || gitDiffCache.loading) {
     const d = document.createElement("div");
     d.className = "placeholder";
@@ -241,6 +315,20 @@ function renderGitDiff() {
   renderTreeLevel(buildTree(gitDiffCache.files), "", 0);
 }
 
+// 行内写操作小按钮：图标 + 悬停提示；discard 为破坏性操作走 danger 变体
+function gitActBtn(iconName, label, disabled, onConfirm) {
+  const b = document.createElement("button");
+  b.className = "gd-act" + (iconName === "discard" ? " danger" : "");
+  b.title = label;
+  b.innerHTML = icon(iconName);
+  b.disabled = disabled;
+  b.onclick = (e) => {
+    e.stopPropagation(); // 不触发行点击的进详情
+    onConfirm();
+  };
+  return b;
+}
+
 function gitFileRow(f, displayPath, depth) {
   const row = document.createElement("div");
   row.className = "gd-row";
@@ -253,6 +341,50 @@ function gitFileRow(f, displayPath, depth) {
   name.className = "gd-name";
   name.textContent = displayPath.split("/").pop();
   row.append(badge, name);
+  // 行内操作（hover 显示，树/平铺两视图共用本行渲染）：暂存/取消暂存按 XY 拆分字段判定，丢弃需二次确认
+  const busy = !!gitBusy;
+  const acts = document.createElement("span");
+  acts.className = "gd-acts";
+  const gitCwd = () => {
+    const s = activeOpen();
+    return s ? s.cwd : null; // cwd 取法对齐 refreshGitDiff（activeOpen().cwd）
+  };
+  if (f.unstaged) {
+    acts.appendChild(
+      gitActBtn("stage", "暂存", busy, () => {
+        const cwd = gitCwd();
+        if (!cwd) return;
+        send({ type: "git_stage", cwd, paths: [f.path] });
+        startGitBusy("stage");
+      }),
+    );
+  }
+  if (f.staged) {
+    acts.appendChild(
+      gitActBtn("unstage", "取消暂存", busy, () => {
+        const cwd = gitCwd();
+        if (!cwd) return;
+        send({ type: "git_unstage", cwd, paths: [f.path] });
+        startGitBusy("unstage");
+      }),
+    );
+  }
+  acts.appendChild(
+    gitActBtn("discard", "丢弃（不可恢复）", busy, async () => {
+      const cwd = gitCwd();
+      if (!cwd) return;
+      const yes = await confirmDialog({
+        title: "丢弃更改",
+        message: `将丢弃 ${f.path} 的未提交更改，此操作不可恢复。`,
+        confirmText: "丢弃",
+        danger: true,
+      });
+      if (!yes) return;
+      send({ type: "git_discard", cwd, paths: [f.path] });
+      startGitBusy("discard");
+    }),
+  );
+  row.appendChild(acts);
   row.onclick = () => {
     const s = activeOpen();
     if (s) requestFileDiff(s, f.path);
@@ -364,6 +496,7 @@ function renderGdFileDetail(s) {
 
 // ---------- 文件页（读取行点击 / 文件树点击进入） ----------
 const FILE_VIEW_MAX_LINES = 800; // 全文件超长时的展示窗口：有读取范围则以范围起始行开头，否则从头
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]); // 与宿主 read_image 白名单一致
 function renderFileView() {
   if (S.fileView) renderFvDetail();
   else renderFileTree(); // 空态：当前项目文件树
@@ -409,6 +542,8 @@ function renderFvDetail() {
   };
   rightBodyEl.appendChild(back);
   rightBodyEl.appendChild(buildFileCrumb(fv.path));
+  // 图片预览：read_image 回包（core 存入 rightState.imageContent）到达后渲染，未到显示加载中
+  if (fv.image) return renderFvImage(fv);
   if (!fv.text && !fv.error) {
     rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
     return;
@@ -465,6 +600,27 @@ function renderFvDetail() {
   }
 }
 
+// 图片详情：image_content 回包按 path 匹配（超限/失败回 error 时显示错误态文案）
+function renderFvImage(fv) {
+  const ic = rightState.imageContent;
+  if (!ic || ic.path !== fv.path) {
+    rightBodyEl.insertAdjacentHTML("beforeend", '<div class="placeholder">加载中…</div>');
+    return;
+  }
+  if (ic.error) {
+    const err = document.createElement("div");
+    err.className = "fv-more";
+    err.textContent = `（${ic.error}）`;
+    rightBodyEl.appendChild(err);
+    return;
+  }
+  const img = document.createElement("img");
+  img.className = "fv-img";
+  img.src = `data:${ic.mime};base64,${ic.data}`;
+  img.alt = fv.path.split("/").pop();
+  rightBodyEl.appendChild(img);
+}
+
 // 空态：当前项目文件树（懒加载单层展开；点击文件进详情）
 function renderFileTree() {
   const s = activeOpen();
@@ -514,9 +670,16 @@ function renderFileTreeLevel(dirPath, depth) {
       row.innerHTML = `<span class="ft-caret ft-file-ic">${icon("ftFile")}</span><span class="ft-name">${e.name.replace(/</g, "&lt;")}</span>`;
       row.title = full;
       row.onclick = () => {
-        S.fileView = { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null };
-        S.fileViewPending = full;
-        send({ type: "read_file", path: full });
+        // 图片文件分叉：发 read_image 走图片预览（宿主 8MB 上限 + 后缀白名单），其余照旧 read_file
+        if (IMAGE_EXTS.has(full.split(".").pop().toLowerCase())) {
+          S.fileView = { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null, image: true };
+          S.fileViewPending = full;
+          send({ type: "read_image", path: full });
+        } else {
+          S.fileView = { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null };
+          S.fileViewPending = full;
+          send({ type: "read_file", path: full });
+        }
         renderRightBody();
       };
       rightBodyEl.appendChild(row);

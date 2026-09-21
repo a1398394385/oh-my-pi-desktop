@@ -92,6 +92,12 @@ export function applyTheme(mode) {
   }
 }
 
+// 原生菜单「切换深浅色主题」：深浅互换（system 态按当前生效色归位后再切）
+export function toggleTheme() {
+  const dark = themeMode === "system" ? themeMq.matches : themeMode === "dark";
+  applyTheme(dark ? "light" : "dark");
+}
+
 let themeMenu = null;
 function closeThemeMenu() {
   themeMenu?.remove();
@@ -171,6 +177,13 @@ function applyZoom() {
   // zoom 会改变布局宽度但不触发 ResizeObserver（Chrome/WebKit 行为），手动重算底栏收缩
   fitComposerBar();
   updateRailVisibility();
+}
+// 缩放动作：⌘+/-/0 快捷键与原生菜单 menu-action 共用同一应用路径
+export function menuZoom(dir) {
+  if (dir === "in") S.zoomLevel = Math.min(2, +(S.zoomLevel + 0.1).toFixed(2));
+  else if (dir === "out") S.zoomLevel = Math.max(0.6, +(S.zoomLevel - 0.1).toFixed(2));
+  else S.zoomLevel = 1;
+  applyZoom();
 }
 // 对话区内容列宽度分段上限（占屏幕宽度的比例，而非 app 窗口）：
 // 50% 为默认上限，35% 为第二段收缩目标。窗口从宽往窄收时边距先持续缩小，
@@ -276,12 +289,11 @@ export function initShell() {
   new ResizeObserver(updateRailVisibility).observe($("main"));
   document.addEventListener("keydown", (e) => {
     if (!e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === "=" || e.key === "+") S.zoomLevel = Math.min(2, +(S.zoomLevel + 0.1).toFixed(2));
-    else if (e.key === "-") S.zoomLevel = Math.max(0.6, +(S.zoomLevel - 0.1).toFixed(2));
-    else if (e.key === "0") S.zoomLevel = 1;
+    if (e.key === "=" || e.key === "+") menuZoom("in");
+    else if (e.key === "-") menuZoom("out");
+    else if (e.key === "0") menuZoom("reset");
     else return;
     e.preventDefault();
-    applyZoom();
   });
 
   // 菜单开合的全局协调

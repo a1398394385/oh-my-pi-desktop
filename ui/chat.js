@@ -11,12 +11,14 @@ import { showWelcomeScreen, hideWelcomeScreen } from "./welcome.js";
 
 // 渲染条目列表：连续编辑事件（edit/write/apply_patch）合并为一个「更改」组，其余逐条渲染。
 // parent：挂载容器（默认 #stream；loop 组子项挂进 .lp-kids 容器做整组展开/收起动画）
-function renderItemList(items, railEntries, parent = streamEl) {
+// pfx：会话内查找的 DOM 锚前缀（顶层为 ""，loop 子项为 父key+"-"），最终 key 写入 data-fk
+function renderItemList(items, railEntries, parent = streamEl, pfx = "") {
   const pendingSteers = []; // steer 待消费气泡收集到末尾统一渲染：消费前位置一直低于处理进程区
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
+    const key = pfx + i;
     if (item.role === "user" && item.pending === "steer") {
-      pendingSteers.push(item);
+      pendingSteers.push({ item, key });
       continue;
     }
     if (isEditEvent(item)) {
@@ -31,9 +33,9 @@ function renderItemList(items, railEntries, parent = streamEl) {
         continue;
       }
     }
-    appendChatItem(item, railEntries, parent);
+    appendChatItem(item, railEntries, parent, key);
   }
-  for (const it of pendingSteers) appendChatItem(it, railEntries, parent);
+  for (const st of pendingSteers) appendChatItem(st.item, railEntries, parent, st.key);
 }
 
 // 待消费气泡的左侧操作组：排队态（立即发送/编辑/删除）｜steer 态（编辑/放回队列顶端）
@@ -67,10 +69,11 @@ function buildPendingActions(item) {
   return wrap;
 }
 
-export function appendChatItem(item, railEntries, parent = streamEl) {
+export function appendChatItem(item, railEntries, parent = streamEl, fk = "") {
   if (item.role === "user") {
     const div = document.createElement("div");
     div.className = "msg user";
+    if (fk) div.dataset.fk = fk; // 会话内查找的消息级锚点（user/assistant/thinking 三类）
     const bubble = document.createElement("div");
     bubble.className = "user-bubble";
     bubble.textContent = item.text;
@@ -85,11 +88,13 @@ export function appendChatItem(item, railEntries, parent = streamEl) {
   } else if (item.role === "assistant") {
     if (isJunkPlaceholder(item.text)) return;
     const div = renderAssistantMessage(item.text);
+    if (fk) div.dataset.fk = fk;
     parent.appendChild(div);
     railEntries.push({ el: div, role: "assistant", text: item.text });
   } else if (item.role === "thinking") {
     const frag = renderThink(item); // 任何设置下思考标签都显示，hideThinkingBlock 只决定默认展开与否
     const anchor = frag.firstChild; // 标题行为刻度定位锚（fragment append 后引用仍有效）
+    if (fk) anchor.dataset.fk = fk;
     parent.appendChild(frag);
     railEntries.push({ el: anchor, role: "thinking", text: item.thinking || item.text });
   } else if (item.role === "tool") {
@@ -223,6 +228,8 @@ function buildLoopSummary(item) {
 
 export function renderChat() {
   const s = activeOpen();
+  // 会话内查找只作用于打开时的会话：切换会话即收起（同会话的流式重绘不收）
+  if (findBar && findPath !== S.activePath) closeFindBar();
   if (!s || S.isCreatingNew) {
     showWelcomeScreen(activeOpen()?.cwd);
     $("msgRail").hidden = true;
@@ -265,6 +272,155 @@ export function renderChat() {
   updateScrollBottomVis(); // scrollTop 恢复后刷新按钮显隐（scroll 事件异步，这里同步定准）
 }
 
+// ---------- 会话内查找（⌘F） ----------
+// 第一版取舍：消息级定位——跳到命中消息并闪烁强调，不做文本内关键字高亮
+// （markdown 渲染后的内联 mark 成本高收益低，后续可升级）。索引范围为当前会话
+// items 中 user/assistant/thinking 的纯文本（含 loop 组子项，递归），工具行/审批卡跳过；
+// 流式中的 assistantDraft 未定格成条目，不参与索引。
+let findBar = null;
+let findInp = null;
+let findCountEl = null;
+let findPath = null; // 打开时所在会话（切换会话由 renderChat 收起）
+let findMatches = []; // 命中的消息：{ key, text }，key 与 data-fk 锚点一致
+let findCursor = -1;
+
+// 建文本索引：key 结构 = 顶层下标，或 "loop下标-子下标[-…]";（与 renderItemList 的 data-fk 同源）
+function buildFindIndex(s) {
+  const out = [];
+  const walk = (items, pfx) => {
+    items.forEach((it, i) => {
+      const key = pfx + i;
+      if (it.role === "user" || it.role === "assistant") {
+        if (it.role === "assistant" && isJunkPlaceholder(it.text)) return;
+        if (it.text) out.push({ key, text: it.text });
+      } else if (it.role === "thinking") {
+        if (it.thinking) out.push({ key, text: it.thinking });
+      }
+      if (it.role === "loop") walk(it.items || [], key + "-");
+    });
+  };
+  walk(s.items, "");
+  return out;
+}
+
+function updateFindCount() {
+  if (!findCountEl) return;
+  const q = findInp.value.trim();
+  if (!q) {
+    findCountEl.textContent = "";
+    return;
+  }
+  if (!findMatches.length) {
+    findCountEl.textContent = "无结果";
+    findCountEl.classList.add("none");
+    return;
+  }
+  findCountEl.classList.remove("none");
+  findCountEl.textContent = `${findCursor + 1}/${findMatches.length}`;
+}
+
+// 命中元素短暂闪烁强调（背景高亮渐隐）；重触发需先移除类再强制 reflow
+function flashFindTarget(el) {
+  el.classList.remove("find-flash");
+  void el.offsetWidth;
+  el.classList.add("find-flash");
+}
+
+// 跳转：dir 1=下一个 -1=上一个，循环导航。命中的 loop 子项在组收起时先展开再定位
+function gotoFindMatch(dir) {
+  if (!findMatches.length) return;
+  findCursor = (findCursor + dir + findMatches.length) % findMatches.length;
+  updateFindCount();
+  const m = findMatches[findCursor];
+  const s = activeOpen();
+  if (!s) return;
+  const seg = m.key.split("-").map(Number);
+  if (seg.length > 1) {
+    // key 前缀段全是 loop 容器：逐层下钻，任一层收起都展开（外层收起时内层未渲染），
+    // 有展开动作才重绘，之后按 data-fk 重新定位
+    let expanded = false;
+    let box = { items: s.items };
+    for (let k = 0; k < seg.length - 1; k++) {
+      box = box.items?.[seg[k]];
+      if (!box) break;
+      if (box.collapsed) {
+        box.collapsed = false;
+        expanded = true;
+      }
+    }
+    if (expanded) renderChat();
+  }
+  const el = streamEl.querySelector(`[data-fk="${m.key}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  flashFindTarget(el);
+}
+
+function runFind() {
+  const s = activeOpen();
+  if (!s) return;
+  const q = findInp.value.trim().toLowerCase();
+  findMatches = q ? buildFindIndex(s).filter((m) => m.text.toLowerCase().includes(q)) : [];
+  findCursor = -1;
+  if (findMatches.length) gotoFindMatch(1);
+  else updateFindCount();
+}
+
+function openFindBar() {
+  const s = activeOpen();
+  if (!s) return;
+  if (!findBar) {
+    findBar = document.createElement("div");
+    findBar.className = "find-bar";
+    findInp = document.createElement("input");
+    findInp.className = "find-inp";
+    findInp.placeholder = "在会话中查找…";
+    findInp.type = "text";
+    findInp.autocomplete = "off";
+    findInp.spellcheck = false;
+    findInp.addEventListener("input", runFind);
+    findInp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        gotoFindMatch(e.shiftKey ? -1 : 1);
+      }
+    });
+    findCountEl = document.createElement("span");
+    findCountEl.className = "find-count";
+    const mkNav = (title, ic, dir) => {
+      const b = document.createElement("button");
+      b.className = "find-nav";
+      b.title = title;
+      b.innerHTML = icon(ic);
+      b.addEventListener("click", () => gotoFindMatch(dir));
+      return b;
+    };
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "find-nav find-close";
+    closeBtn.title = "关闭 (Esc)";
+    closeBtn.innerHTML = icon("xmark", 12);
+    closeBtn.addEventListener("click", closeFindBar);
+    findBar.append(findInp, findCountEl, mkNav("上一个 (⇧↵)", "chevronUp", -1), mkNav("下一个 (↵)", "chevronDown", 1), closeBtn);
+    $("main").appendChild(findBar);
+  }
+  // 浮层贴消息流顶部（absolute 相对 #main）；水平居中交 CSS
+  findBar.style.top = streamEl.offsetTop + 6 + "px";
+  findPath = S.activePath;
+  findInp.focus();
+  findInp.select(); // 已有词时全选，直接输入即覆盖
+  if (findInp.value.trim()) runFind();
+}
+
+function closeFindBar() {
+  findBar?.remove();
+  findBar = null;
+  findInp = null;
+  findCountEl = null;
+  findPath = null;
+  findMatches = [];
+  findCursor = -1;
+}
+
 export function initChat() {
   // 「工作中 N 秒」每秒跳（重绘后 span 重建，按 id 重新查询）
   setInterval(() => {
@@ -272,4 +428,16 @@ export function initChat() {
     const el = $("workSec");
     if (s?.turnStartAt && el) el.textContent = Math.floor((Date.now() - s.turnStartAt) / 1000);
   }, 1000);
+
+  // ⌘F 打开会话内查找（preventDefault 阻止 WKWebView 默认行为）；Esc 关闭。
+  // 仅当前激活会话可用；设置页为全屏覆盖层，打开时不响应
+  window.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
+      if (!activeOpen() || S.isCreatingNew || !$("settings").classList.contains("hidden")) return;
+      e.preventDefault();
+      openFindBar();
+    } else if (e.key === "Escape" && findBar) {
+      closeFindBar();
+    }
+  });
 }

@@ -56,9 +56,9 @@ export function readDesktopProjects(): DesktopProjects {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
     const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-    return { allProjects: strs(raw.allProjects), removedProjects: strs(raw.removedProjects), expandedProjects: strs(raw.expandedProjects), pinnedSessions: strs(raw.pinnedSessions) };
+    return { allProjects: strs(raw.allProjects), removedProjects: strs(raw.removedProjects), expandedProjects: strs(raw.expandedProjects), pinnedSessions: strs(raw.pinnedSessions), archivedSessions: strs(raw.archivedSessions) };
   } catch {
-    return { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [] };
+    return { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [] };
   }
 }
 

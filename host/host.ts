@@ -29,6 +29,7 @@ import {
   isUserQueuedMessage,
   isHiddenUserCompanion,
   toRestoredQueuedMessage,
+  USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
 import {
   H,
@@ -104,6 +105,29 @@ function isGitWorktree(cwd: string): boolean {
   return p.exitCode === 0 && p.stdout.toString().trim() === "true";
 }
 
+// 池外会话的磁盘解析：扫全部会话文件（与 list_sessions 同源），按底座会话 id 匹配
+// 出文件路径。用于对未打开的历史会话做 rename/archive 等操作。
+async function sessionPathFromDisk(sessionId: string): Promise<string> {
+  const hit = (await SessionManager.listAll()).find((s: any) => s.id === sessionId);
+  if (!hit) throw new Error(`会话不存在: ${sessionId}`);
+  return hit.path;
+}
+
+// git 写操作共用：参数数组直传子进程（无 shell 拼接，天然防注入），失败时把 stderr
+// 汇总成 error 字段交调用方回包（不抛异常炸连接），成功返回 stdout/stderr
+function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string; stderr: string } | { ok: false; error: string } {
+  const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
+  if (p.exitCode !== 0) {
+    return { ok: false, error: p.stderr.toString().trim().slice(0, 500) || `git ${args[0]} 失败（exit ${p.exitCode}）` };
+  }
+  return { ok: true, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
+}
+
+// git 写操作 RPC 的 paths 参数：字符串数组、去空
+function stringPaths(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
+}
+
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const result = await createAgentSession({
     cwd,
@@ -134,6 +158,8 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     queuedTexts: [], // 排队消息文本快照（turn_end 竞态兜底）
     consumedTexts: [],
     parkedFollowUp: [], // followUp 暂存区（见 state.ts 类型注释）
+    manager: sessionManager, // rename/compact 等需要直接操作 SessionManager 的 RPC 用
+    title: null,
   };
   return { sessionId, entry, eventBus: result.eventBus };
 }
@@ -201,6 +227,12 @@ const server = Bun.serve<{ sessionId: string | null }>({
               H.desktopProjects.pinnedSessions.splice(pi, 1);
               await saveDesktopProjects();
             }
+            // 归档记录随会话一并清理
+            const ai = H.desktopProjects.archivedSessions.indexOf(p);
+            if (ai >= 0) {
+              H.desktopProjects.archivedSessions.splice(ai, 1);
+              await saveDesktopProjects();
+            }
             try {
               await fs.promises.unlink(p);
             } catch (err: any) {
@@ -239,6 +271,24 @@ const server = Bun.serve<{ sessionId: string | null }>({
             await saveDesktopProjects();
             break;
           }
+          case "archive_session": {
+            // 归档持久化：按会话文件路径记入 omp-desktop.json archivedSessions（与
+            // pinnedSessions 同键，delete_session 同步清理）；归档同时取消置顶。
+            // 未打开的历史会话（不在内存池）扫磁盘按底座会话 id 解析路径，同样可归档。
+            const on = !!msg.archived;
+            const entry = sessions.get(msg.sessionId);
+            const p = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
+            const ai = H.desktopProjects.archivedSessions.indexOf(p);
+            if (on && ai < 0) H.desktopProjects.archivedSessions.push(p);
+            if (!on && ai >= 0) H.desktopProjects.archivedSessions.splice(ai, 1);
+            if (on) {
+              const pi = H.desktopProjects.pinnedSessions.indexOf(p);
+              if (pi >= 0) H.desktopProjects.pinnedSessions.splice(pi, 1);
+            }
+            await saveDesktopProjects();
+            ws.send(JSON.stringify({ type: "session_archived", sessionId: msg.sessionId, ok: true, archived: on }));
+            break;
+          }
           case "add_project": {
             // 手动添加：命中已移除列表则移回所有项目列表，否则作为新项目并入（置顶，立即可见）
             const cwd = String(msg.cwd ?? "").trim();
@@ -258,6 +308,60 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const rest = H.desktopProjects.allProjects.filter((c) => !set.has(c));
             H.desktopProjects.allProjects = [...order, ...rest];
             await saveDesktopProjects();
+            break;
+          }
+          case "abort_session": {
+            // 流式中断当前生成：reason 用 USER_INTERRUPT_LABEL，transcript 能把该轮
+            // assistant 消息标记为用户主动中断；空闲会话 abort 同样安全（底座 waitForIdle 立即返回）。
+            // 中断后底座自然走到 agent_end/turn 事件，无需额外收尾。
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
+            ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
+            break;
+          }
+          case "rename_session": {
+            // 会话重命名：走底座 SessionManager.setSessionName(source:"user") 落盘
+            // （title slot + history.db 标题索引），CLI 等其他入口读到同一标题。
+            // 打开中的会话用池内 manager；未打开的历史会话 open 磁盘文件后同样
+            // 落盘（title slot 插入/原位更新均由底座处理）。
+            // 懒建未落盘的会话仅内存生效，list_sessions 兜底条目经 entry.title 呈现。
+            const title = String(msg.title ?? "").trim();
+            if (!title) throw new Error("缺少 title");
+            const entry = sessions.get(msg.sessionId);
+            if (entry) {
+              if (!(await entry.manager.setSessionName(title, "user"))) {
+                throw new Error("标题无效（清洗后为空或会话已释放）");
+              }
+              entry.title = title;
+            } else {
+              const manager = await SessionManager.open(await sessionPathFromDisk(msg.sessionId));
+              if (!(await manager.setSessionName(title, "user"))) {
+                throw new Error("标题无效（清洗后为空或会话已释放）");
+              }
+            }
+            ws.send(JSON.stringify({ type: "session_renamed", sessionId: msg.sessionId, ok: true, title }));
+            break;
+          }
+          case "compact_session": {
+            // 手动压缩：底座 compact 重写会话历史（LLM 摘要）。空会话前置快速失败
+            // （没有可压缩的历史，避免无谓的模型调用）；不可压缩/压缩失败时底座抛错，
+            // 以 error 字段回包提示前端；成功则从磁盘 entries 重建 transcript 并推送，
+            // 前端立即换压缩后视图。
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            if (entry.transcript.length === 0) {
+              ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, error: "会话为空，没有可压缩的历史" }));
+              break;
+            }
+            try {
+              await entry.session.compact();
+              entry.transcript = entriesToTranscript(entry.manager.getEntries());
+              ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+              ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, ok: true }));
+            } catch (err) {
+              ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, error: String(err) }));
+            }
             break;
           }
           case "prompt":
@@ -343,6 +447,38 @@ const server = Bun.serve<{ sessionId: string | null }>({
               break;
             }
             ws.send(JSON.stringify({ type: "file_content", path: p, text: buf.toString("utf8") }));
+            break;
+          }
+          case "read_image": {
+            // 图片二进制读取（对话附件预览等）：后缀白名单 + 8MB 上限，base64 回传；
+            // 路径校验对齐 read_file 的宽松度（仅要求非空且是文件）
+            const p = String(msg.path ?? "");
+            if (!p) throw new Error("缺少 path");
+            const MIME: Record<string, string> = {
+              png: "image/png",
+              jpg: "image/jpeg",
+              jpeg: "image/jpeg",
+              gif: "image/gif",
+              webp: "image/webp",
+              bmp: "image/bmp",
+              svg: "image/svg+xml",
+            };
+            const ext = path.extname(p).slice(1).toLowerCase();
+            if (!(ext in MIME)) {
+              ws.send(JSON.stringify({ type: "image_content", path: p, error: `不支持的图片格式: ${ext || "无后缀"}（仅 png/jpg/jpeg/gif/webp/bmp/svg）` }));
+              break;
+            }
+            const stat = fs.statSync(p, { throwIfNoEntry: false });
+            if (!stat?.isFile()) {
+              ws.send(JSON.stringify({ type: "image_content", path: p, error: `不是文件: ${p}` }));
+              break;
+            }
+            if (stat.size > 8_000_000) {
+              ws.send(JSON.stringify({ type: "image_content", path: p, error: `图片过大（${(stat.size / 1e6).toFixed(1)} MB），仅支持 8MB 内` }));
+              break;
+            }
+            const buf = await fs.promises.readFile(p);
+            ws.send(JSON.stringify({ type: "image_content", path: p, mime: MIME[ext], data: buf.toString("base64") }));
             break;
           }
           case "list_dir": {
@@ -478,6 +614,77 @@ const server = Bun.serve<{ sessionId: string | null }>({
             );
             break;
           }
+          case "git_stage": {
+            // 暂存：git add -- <paths>（数组参数直传，-- 防路径注入）
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const paths = stringPaths(msg.paths);
+            if (paths.length === 0) throw new Error("缺少 paths");
+            const r = runGitChecked(cwd, ["add", "--", ...paths]);
+            if (!r.ok) ws.send(JSON.stringify({ type: "git_staged", cwd, error: r.error }));
+            else ws.send(JSON.stringify({ type: "git_staged", cwd, ok: true }));
+            break;
+          }
+          case "git_unstage": {
+            // 取消暂存：git reset HEAD -- <paths>
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const paths = stringPaths(msg.paths);
+            if (paths.length === 0) throw new Error("缺少 paths");
+            const r = runGitChecked(cwd, ["reset", "HEAD", "--", ...paths]);
+            if (!r.ok) ws.send(JSON.stringify({ type: "git_unstaged", cwd, error: r.error }));
+            else ws.send(JSON.stringify({ type: "git_unstaged", cwd, ok: true }));
+            break;
+          }
+          case "git_discard": {
+            // 丢弃工作区改动（破坏性，UI 侧已二次确认，host 直接执行）：
+            // tracked 走 checkout -- 恢复，untracked 走 clean -f -- 精确路径删除；逐路径处理，任一失败即回错
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const paths = stringPaths(msg.paths);
+            if (paths.length === 0) throw new Error("缺少 paths");
+            let err = "";
+            for (const p of paths) {
+              const tracked = runGitChecked(cwd, ["ls-files", "--error-unmatch", "--", p]);
+              const r = tracked.ok ? runGitChecked(cwd, ["checkout", "--", p]) : runGitChecked(cwd, ["clean", "-f", "--", p]);
+              if (!r.ok) {
+                err = r.error;
+                break;
+              }
+            }
+            if (err) ws.send(JSON.stringify({ type: "git_discarded", cwd, error: err }));
+            else ws.send(JSON.stringify({ type: "git_discarded", cwd, ok: true }));
+            break;
+          }
+          case "git_commit": {
+            // 提交：message 经数组参数传（无 shell 拼接，防注入）；paths 省略 = 提交全部已暂存，
+            // 给定 = pathspec 提交（git 自动暂存这些路径的改动并只提交它们）。回包带新提交 sha。
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const message = String(msg.message ?? "");
+            if (!message.trim()) throw new Error("缺少 message");
+            const paths = stringPaths(msg.paths);
+            const args = ["commit", "-m", message, ...(paths.length > 0 ? ["--", ...paths] : [])];
+            const r = runGitChecked(cwd, args);
+            if (!r.ok) {
+              ws.send(JSON.stringify({ type: "git_committed", cwd, error: r.error }));
+              break;
+            }
+            const sha = runGitChecked(cwd, ["rev-parse", "HEAD"]);
+            if (!sha.ok) {
+              ws.send(JSON.stringify({ type: "git_committed", cwd, error: sha.error }));
+              break;
+            }
+            ws.send(JSON.stringify({ type: "git_committed", cwd, ok: true, commit: sha.stdout.trim() }));
+            break;
+          }
+          case "git_push": {
+            // 推送当前分支（不自动 -u）：无 upstream 时 git 报错，stderr 透传为 error
+            const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+            const r = runGitChecked(cwd, ["push"]);
+            if (!r.ok) ws.send(JSON.stringify({ type: "git_pushed", cwd, error: r.error }));
+            else {
+              // push 的进度/结果输出（分支更新行）在 stderr，成功时取作 result
+              ws.send(JSON.stringify({ type: "git_pushed", cwd, ok: true, result: r.stderr.trim() || r.stdout.trim() }));
+            }
+            break;
+          }
           case "get_git_diff": {
             // 当前会话 project 的改动文件清单（树/平铺展示用）
             const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
@@ -491,7 +698,15 @@ const server = Bun.serve<{ sessionId: string | null }>({
                 let path = line.slice(3);
                 const arrow = path.indexOf(" -> "); // rename：R  old -> new
                 if (arrow >= 0) path = path.slice(arrow + 4);
-                return { code: line.slice(0, 2).trim() || "?", path };
+                // XY 两列拆开（X=暂存区/index 状态，Y=工作区状态），供 UI 行级暂存/取消暂存按钮判定；
+                // untracked（??）本质是未暂存的新文件，归 unstaged、不给 staged
+                const xy = line.slice(0, 2);
+                return {
+                  code: line.slice(0, 2).trim() || "?",
+                  path,
+                  staged: xy[0] === " " || xy[0] === "?" ? "" : xy[0],
+                  unstaged: xy[1] === " " ? "" : xy[1],
+                };
               });
             ws.send(JSON.stringify({ type: "git_status", cwd, files }));
             break;
@@ -1310,7 +1525,7 @@ async function handleListSessions(ws: any) {
     list.push({
       id: sid,
       path: entry.path,
-      title: null,
+      title: entry.title, // 懒建未落盘的会话走内存兜底（含 rename 后的标题）
       firstMessage: "",
       modified: new Date(),
       messageCount: 0,
@@ -1333,6 +1548,7 @@ async function handleListSessions(ws: any) {
           firstMessage: s.firstMessage.slice(0, 80),
           modified: s.modified.toISOString(),
           messageCount: s.messageCount,
+          archived: H.desktopProjects.archivedSessions.includes(s.path),
         })),
     }))
     .sort((a, b) => Date.parse(b.sessions[0].modified) - Date.parse(a.sessions[0].modified));

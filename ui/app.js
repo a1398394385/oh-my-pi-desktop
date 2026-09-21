@@ -12,8 +12,8 @@
 //   welcome.js 新建会话页 | composer.js 输入区/菜单/状态条 | markdown.js md 渲染引擎
 //   ringpop.js 明细卡+消息轨道 | tool-labels.js 工具标签注册表(映射+行渲染) | tool-rows.js 动作行共享渲染工具 | chat.js 中栏消息流 | right.js 右栏全家
 //   settings/* 设置中心七件套。加载顺序：vendor → fa-icons.js → icons.js（全局）→ 本入口(type=module)。
-import { connect, renderAll, S, openSessions, setConnected } from "./core.js";
-import { initShell } from "./shell.js";
+import { connect, renderAll, S, openSessions, setConnected, activeOpen } from "./core.js";
+import { initShell, menuZoom, toggleTheme, setSidebarCollapsed, isSidebarCollapsed } from "./shell.js";
 import { initSidebar } from "./sidebar.js";
 import { initMarkdown } from "./markdown.js";
 import { initRingpop } from "./ringpop.js";
@@ -21,8 +21,46 @@ import { initWelcome } from "./welcome.js";
 import { initComposer } from "./composer.js";
 import { initChat } from "./chat.js";
 import { initRight } from "./right.js";
-import { initSettings, applyAppearance, syncSettingsControls } from "./settings/index.js";
+import { initSettings, applyAppearance, syncSettingsControls, openSettings, closeSettings, settingsOpen } from "./settings/index.js";
 import { initAgents } from "./settings/agents.js";
+import { showWelcomeScreen, initNewSessionModel } from "./welcome.js";
+
+// 原生菜单 action → 既有能力分发（src-tauri 菜单项 id，经 "menu-action" 事件转发）。
+// default 兜底 console.warn：未知 action 不静默假装成功。
+function dispatchMenuAction(action) {
+  switch (action) {
+    case "new-session":
+      // 与 sidebar.js newTaskAction（⌘N 同款）保持同步；设置页打开时不新建
+      if (settingsOpen()) return;
+      if (S.isCreatingNew) {
+        S.newSessionDirty = false;
+        initNewSessionModel(true);
+        renderAll();
+      }
+      showWelcomeScreen(activeOpen()?.cwd);
+      break;
+    case "open-settings":
+      settingsOpen() ? closeSettings() : openSettings();
+      break;
+    case "zoom-in":
+      menuZoom("in");
+      break;
+    case "zoom-out":
+      menuZoom("out");
+      break;
+    case "zoom-reset":
+      menuZoom("reset");
+      break;
+    case "toggle-theme":
+      toggleTheme();
+      break;
+    case "toggle-sidebar":
+      setSidebarCollapsed(!isSidebarCollapsed());
+      break;
+    default:
+      console.warn("未处理的菜单 action:", action);
+  }
+}
 
 // 各域 init：原散落顶层的立即执行代码（事件绑定/observer）按依赖序统一挂接
 initShell();
@@ -39,6 +77,9 @@ initAgents();
 hydrateIcons(); // 把 index.html 里的 [data-icon] 占位元素替换为 icons.js 注册表中的 svg
 applyAppearance();
 syncSettingsControls();
+
+// 原生菜单事件（Tauri 环境）；浏览器直连调试时无 __TAURI__，跳过
+window.__TAURI__?.event?.listen("menu-action", (e) => dispatchMenuAction(e.payload?.action));
 
 renderAll();
 if (new URLSearchParams(location.search).has("preview")) {
