@@ -15,6 +15,7 @@ export type TranscriptItem = {
   files?: string[];
   added?: number;
   removed?: number;
+  diffContent?: string; // edit/write 当次调用的真实 unified diff（工具回包 details.diff 截断副本）
   todo?: { content: string; done: number; total: number };
   thinking?: string;
   expandable?: boolean;

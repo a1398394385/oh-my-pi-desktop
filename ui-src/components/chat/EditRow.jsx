@@ -14,8 +14,12 @@ function filesOf(item) {
 // 展开（收起动画由调用方的 useLift 处理）：置数 + 首次展开按需拉取该文件 diff
 function expandDiff(item, path) {
   item.diffExpanded = true;
+  // 优先用当次工具回包的真实修改（diffContent）：新文件/无 git 基线时 git diff 只剩
+  // 全量新增，与行上 +N-M 摘要对不上。挂在 item 上（非 path 缓存）——同一文件多次
+  // 编辑各次展开各看各的；diffContent 缺失（老会话/多文件 patch）回落 git diff
+  if (item.diffContent != null && item.briefDiff === undefined) item.briefDiff = item.diffContent;
   const s = activeOpen();
-  if (path && s?.isGit && briefDiffCache[path] === undefined && S.briefDiffPending !== path) {
+  if (path && item.briefDiff === undefined && s?.isGit && briefDiffCache[path] === undefined && S.briefDiffPending !== path) {
     S.briefDiffPending = path;
     send({ type: "get_file_diff", cwd: s.cwd, path });
   }
@@ -46,7 +50,7 @@ export default function EditRow({ item }) {
           <Icon name="chevronRight" />
         </span>
       </div>
-      {item.diffExpanded && path && <EditBrief path={path} lift={closing} />}
+      {item.diffExpanded && path && <EditBrief item={item} path={path} lift={closing} />}
     </>
   );
 }
@@ -88,7 +92,7 @@ function ChangeEntry({ sub }) {
   return (
     <>
       <ChangeRowUI sub={sub} open={open} onToggle={toggle} />
-      {sub.diffExpanded && path && <EditBrief path={path} lift={closing} />}
+      {sub.diffExpanded && path && <EditBrief item={sub} path={path} lift={closing} />}
     </>
   );
 }

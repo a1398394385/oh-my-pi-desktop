@@ -1,5 +1,5 @@
-// 右栏：logo 工具条 + tab 头（ZCode Side Pane 风格：左总览 popover / 中等宽可拖拽 tab / 右新增）
-// + 面板体。迁移自 ui/right.js。tab 开关列表为模块级 rightTabs（有序），激活项 S.rightTab；
+// 右栏：tab 头在最顶端（ZCode Side Pane 风格：左总览 popover / 中等宽可拖拽 tab / 右新增）
+// + 面板体。迁移自 ui/right.js（原顶部 logo 工具条已删，tab 栏置顶）。tab 开关列表为模块级 rightTabs（有序），激活项 S.rightTab；
 // tab 管理在 ./right/tabs.js（各页面共用），此处 re-export 保持既有导出面。
 // 契约：数据读 S/rightState/gitDiffCache/fileDiffCache/openSessions，动作后 notify()；
 // 三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：#rightBody 加 detail 类，
@@ -204,14 +204,6 @@ export default function RightPanel({ collapsed }) {
   else body = <SubagentPage />;
   return (
     <aside id="right" className={collapsed ? "collapsed" : ""}>
-      <div className="rtoolbar" data-tauri-drag-region="">
-        <button className="icon-btn logo" title="当前 project">
-          <Icon name="logo" />
-          <span id="wsName" style={{ fontSize: "var(--ui-fs-xs)", color: "var(--dim)" }}>
-            {s ? s.cwd.split("/").filter(Boolean).pop() : "—"}
-          </span>
-        </button>
-      </div>
       <div id="sidepanel">
         <div className="sp-head">
           <button

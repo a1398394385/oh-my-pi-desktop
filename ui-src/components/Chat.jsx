@@ -1,5 +1,5 @@
 // 会话区：TODO 进程卡（statusWrap）+ 消息流（stream）+ 消息轨道（msgRail）+
-// working 状态行（work-line）+ 会话内查找（⌘F）。
+// 「工作中 N 秒」行（WorkSec）+ 会话内查找（⌘F）。流式状态行（转圈+动态文字）在 ChatLoading。
 // 迁移自 ui/chat.js renderChat + markdown.js 的滚动收尾：
 // - 滚动跟随（stickBottom 语义）：切会话强制落底；贴底时任何重渲染（流式追加/展开体）
 //   保持钉底。贴底判定必须在 DOM 更新前——用 scroll 监听持续记录的渲染前状态，
@@ -10,7 +10,7 @@ import { useLayoutEffect, useRef } from "react";
 import { S, useStore, activeOpen, isJunkPlaceholder } from "../store.js";
 import Icon from "../Icon.jsx";
 import TodoCard from "./chat/TodoCard.jsx";
-import WorkLine, { WorkSec } from "./chat/WorkLine.jsx";
+import { WorkSec } from "./chat/WorkLine.jsx";
 import ChatLoading from "./chat/ChatLoading.jsx";
 import MsgRail from "./chat/MsgRail.jsx";
 import FindBar from "./chat/FindBar.jsx";
@@ -98,7 +98,6 @@ export default function Chat() {
         {scrollBottomBtn}
       </div>
       <MsgRail entries={railEntries} sessionId={s.sessionId} streamRef={streamRef} />
-      <WorkLine />
       <FindBar streamRef={streamRef} />
     </>
   );
