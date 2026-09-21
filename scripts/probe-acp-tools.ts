@@ -213,3 +213,15 @@ if (String((last5 as { content?: unknown }).content ?? "").includes("[ACP contex
 console.log("PASS 5b: 用量低于阈值不注入");
 
 console.log("\n=== 探针全部通过 ===");
+
+// ---- 6) contextWindow 固定值配置解析 ----
+import { parseAcpContextWindow } from "../host/acp-state.ts";
+const cwCases: Array<[unknown, number]> = [
+	[2000000, 2000000], ["200K", 200000], ["1M", 1000000], ["2m", 2000000], [" 1.5M ", 1500000],
+	["55%", 0], [-5, 0], ["abc", 0], [undefined, 0],
+];
+for (const [cwInput, cwWant] of cwCases) {
+	const cwGot = parseAcpContextWindow(cwInput);
+	if (cwGot !== cwWant) throw new Error(`parseAcpContextWindow(${JSON.stringify(cwInput)}) = ${cwGot}, want ${cwWant}`);
+}
+console.log("PASS 6: contextWindow 解析 9 组用例全过（数字/K/M/大小写/非法值）");

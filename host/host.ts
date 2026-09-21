@@ -32,7 +32,7 @@ import {
   USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
-import { AcpSessionState, type AcpNudgeConfig } from "./acp-state.ts";
+import { AcpSessionState, parseAcpContextWindow, type AcpNudgeConfig } from "./acp-state.ts";
 import { createAcpContextExtension } from "./acp-context.ts";
 import {
   H,
@@ -131,36 +131,43 @@ function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
 }
 
-/** 读 omp-desktop.json 的 acp 段（与项目清单同文件；用户手编辑，host 只读）。
- *  支持数字（0.55）与百分比字符串（"55%"）；缺省 max 0.55 / min 0.45。 */
-function readAcpNudgeConfig(): AcpNudgeConfig {
-  const fallback: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
+/** 读 omp-desktop.json 原始对象（读失败返回空对象）。 */
+function readAcpRaw(): Record<string, unknown> {
   try {
-    const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as { acp?: Record<string, unknown> };
-    const acp = raw?.acp;
-    if (!acp || typeof acp !== "object") return fallback;
-    const parse = (v: unknown, dflt: number): number => {
-      if (typeof v === "number" && v > 0 && v <= 1) return v;
-      if (typeof v === "string") {
-        const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(v);
-        if (m) return Number(m[1]) / 100;
-      }
-      return dflt;
-    };
-    return {
-      maxContextLimit: parse(acp.maxContextLimit, 0.55),
-      minContextLimit: parse(acp.minContextLimit, 0.45),
-    };
+    return JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
   } catch {
-    return fallback;
+    return {};
   }
 }
 
+function readAcpNudgeConfig(): AcpNudgeConfig {
+  const fallback: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
+  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
+  if (!acp || typeof acp !== "object") return fallback;
+  const parse = (v: unknown, dflt: number): number => {
+    if (typeof v === "number" && v > 0 && v <= 1) return v;
+    if (typeof v === "string") {
+      const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(v);
+      if (m) return Number(m[1]) / 100;
+    }
+    return dflt;
+  };
+  return {
+    maxContextLimit: parse(acp.maxContextLimit, 0.55),
+    minContextLimit: parse(acp.minContextLimit, 0.45),
+  };
+}
+
+
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const acpState = new AcpSessionState();
-  // 模型上下文窗口（nudge 分母；未知则 nudge 整体禁用）+ omp-desktop.json 的 acp 段
+  // nudge 分母：omp-desktop.json 的 acp.contextWindow（固定值，如 2000000 / "1M"）
+  // 优先于模型注册表窗口；两者皆未知则 nudge 整体禁用
   const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
-  acpState.modelContextWindow = Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) || 0;
+  acpState.modelContextWindow =
+    parseAcpContextWindow((readAcpRaw()?.acp as Record<string, unknown> | undefined)?.contextWindow) ||
+    Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) ||
+    0;
   acpState.nudge = readAcpNudgeConfig();
   const result = await createAgentSession({
     cwd,

@@ -227,3 +227,18 @@ export class AcpStateRegistry {
 		return s;
 	}
 }
+
+/** 解析 acp.contextWindow：数字（2000000）或带后缀字符串（"200K"/"1M"/"2m"）。
+ *  返回 0 表示未配置。 */
+export function parseAcpContextWindow(v: unknown): number {
+	if (typeof v === "number" && v > 0) return Math.floor(v);
+	if (typeof v === "string") {
+		const m = /^\s*(\d+(?:\.\d+)?)\s*([kKmM])?\s*$/.exec(v);
+		if (m) {
+			const n = Number(m[1]);
+			const mult = m[2] ? (m[2].toLowerCase() === "k" ? 1_000 : 1_000_000) : 1;
+			return Math.floor(n * mult);
+		}
+	}
+	return 0;
+}
