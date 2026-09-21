@@ -1,0 +1,102 @@
+// 会话区：TODO 进程卡（statusWrap）+ 消息流（stream）+ 消息轨道（msgRail）+
+// working 状态行（work-line）+ 会话内查找（⌘F）。
+// 迁移自 ui/chat.js renderChat + markdown.js 的滚动收尾：
+// - 滚动跟随（stickBottom 语义）：切会话强制落底；贴底时任何重渲染（流式追加/展开体）
+//   保持钉底。贴底判定必须在 DOM 更新前——用 scroll 监听持续记录的渲染前状态，
+//   渲染后 scrollHeight 已变不可回推（120px 容差同原版）。
+// - 「滚动至结尾」按钮：常驻 stream 末尾（原 ensureScrollBottom），显隐由 scroll 事件
+//   命令式切换（4px 容差防亚像素抖动，高频滚动不进 React 状态）。
+import { useLayoutEffect, useRef } from "react";
+import { S, useStore, activeOpen, isJunkPlaceholder } from "../store.js";
+import Icon from "../Icon.jsx";
+import TodoCard from "./chat/TodoCard.jsx";
+import WorkLine, { WorkSec } from "./chat/WorkLine.jsx";
+import MsgRail from "./chat/MsgRail.jsx";
+import FindBar from "./chat/FindBar.jsx";
+import AssistantMsg from "./chat/AssistantMsg.jsx";
+import { renderItems } from "./chat/items.jsx";
+
+// 按钮显隐：仅当消息流还有向下滚动余量时显示（4px 容差防亚像素抖动）
+function updateScrollBottomVis(el, btn) {
+  if (!el || !btn) return;
+  btn.classList.toggle("hidden", !(el.scrollHeight - el.scrollTop - el.clientHeight > 4));
+}
+
+export default function Chat() {
+  useStore();
+  const s = activeOpen();
+  const streamRef = useRef(null);
+  const btnRef = useRef(null);
+  const prevPath = useRef(null);
+  const atBottom = useRef(true); // 渲染前的贴底状态（scroll 监听持续记录）
+
+  const onScroll = () => {
+    const el = streamRef.current;
+    if (!el) return;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    updateScrollBottomVis(el, btnRef.current);
+  };
+
+  // 切会话强制落底 + 流式期间贴近底部则跟随（useLayoutEffect 在 paint 前完成，不闪旧位置）
+  useLayoutEffect(() => {
+    const el = streamRef.current;
+    if (!el || !s) return;
+    const switched = prevPath.current !== S.activePath;
+    prevPath.current = S.activePath;
+    // 切换会话时 stream 节点被复用，旧会话的 scrollTop 对新会话无意义（拿去算贴底常误判）
+    if (switched || atBottom.current) {
+      el.scrollTop = el.scrollHeight;
+      atBottom.current = true; // scroll 事件异步 fire，先同步落定防同帧二次渲染回弹
+    }
+    updateScrollBottomVis(el, btnRef.current);
+  });
+
+  // 滚动至结尾按钮（常驻末位，显隐走 scroll 监听）
+  const scrollBottomBtn = (
+    <button
+      id="scrollBottom"
+      className="scroll-bottom hidden"
+      type="button"
+      title="滚动到底部"
+      ref={btnRef}
+      onClick={() => {
+        const el = streamRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      }}
+    >
+      <Icon name="down" />
+    </button>
+  );
+
+  if (!s) {
+    return (
+      <>
+        <div id="statusWrap" />
+        <div id="stream" ref={streamRef} onScroll={onScroll}>
+          <div className="placeholder">点左侧任务或「新建任务」开始</div>
+          {scrollBottomBtn}
+        </div>
+      </>
+    );
+  }
+
+  // 消息轨道数据：渲染期随 items 遍历收集（key 与 data-fk 锚点同源）
+  const railEntries = [];
+  const nodes = renderItems(s.items, "", railEntries);
+  return (
+    <>
+      <TodoCard />
+      <div id="stream" ref={streamRef} onScroll={onScroll}>
+        {nodes}
+        {(s.streaming || s.assistantDraft) && <WorkSec />}
+        {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
+          <AssistantMsg text={s.assistantDraft} streaming />
+        )}
+        {scrollBottomBtn}
+      </div>
+      <MsgRail entries={railEntries} sessionId={s.sessionId} streamRef={streamRef} />
+      <WorkLine />
+      <FindBar streamRef={streamRef} />
+    </>
+  );
+}

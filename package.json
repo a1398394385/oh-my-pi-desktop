@@ -6,14 +6,21 @@
     "smoke": "bun scripts/smoke.ts",
     "smoke:queue": "bun scripts/queue-smoke.ts",
     "smoke:features": "bun scripts/smoke-features.ts",
-    "smoke:branch": "bun scripts/smoke-branch.ts"
+    "smoke:branch": "bun scripts/smoke-branch.ts",
+    "ui:build": "esbuild ui-src/main.jsx --bundle --format=iife --outfile=ui/assets/app.js --jsx=automatic",
+    "ui:watch": "esbuild ui-src/main.jsx --bundle --format=iife --outfile=ui/assets/app.js --jsx=automatic --watch",
+    "smoke:react": "bun scripts/smoke-react-shell.ts"
   },
   "dependencies": {
     "@oh-my-pi/pi-agent-core": "18.2.6",
     "@oh-my-pi/pi-coding-agent": "^18.2.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "tokscale": "^4.17.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4"
+    "@tauri-apps/cli": "^2.11.4",
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.14.5"
   }
 }

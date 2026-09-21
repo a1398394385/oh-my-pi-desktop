@@ -8,6 +8,8 @@
 // 动态图形（如 ctxRing 进度环）不属于图标，仍在 index.html 内联。
 // ════════════════════════════════════════════════════════════
 // 自定义图标（FA 没有的，如应用 Logo）：直接写在这里
+import { FA_ICONS } from "./fa-icons.js";
+
 const ICONS = {
   logo: '<svg width="16" height="16" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   // 盾牌 + 感叹号：FA Free 无 shield-exclamation（Pro 专属），用 shield 路径 + evenodd 镂空合成
@@ -61,3 +63,6 @@ function hydrateIcons(root) {
     el.replaceWith(svg);
   });
 }
+
+// ESM 导出（React 迁移）：esbuild 打包时与 FA 层同名覆盖后的最终注册表一并导出
+export { icon, hydrateIcons, ICONS };

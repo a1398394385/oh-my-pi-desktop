@@ -1,6 +1,15 @@
 // Markdown 渲染引擎与代码复制：主对话区 assistant 消息的 md → HTML 渲染。
 // 注意：设置页记忆详情另有一套简化实现（settings/memory.js 的 renderMarkdown），两套保持独立。
-import { $, streamEl, isJunkPlaceholder } from "./core.js";
+// React 迁移断链：旧 core.js 的三个符号本地化——import 链会把命令式 UI 全树（旧 S/各域渲染模块）
+// 拖进 React bundle。$/isJunkPlaceholder 与旧 core 等价；streamEl 惰性求值（React 版 #stream
+// 由组件渲染，模块加载期不存在；下方三个滚动函数仅旧版调用，React 版 Chat 自带滚动语义）。
+const $ = (id) => document.getElementById(id);
+const getStream = () => document.getElementById("stream");
+function isJunkPlaceholder(text) {
+  if (!text) return true;
+  const t = text.trim();
+  return t === "." || t === "。" || t === "·" || t === "•";
+}
 
 export function escapeHtml(str) {
   return String(str ?? "")
@@ -247,7 +256,8 @@ export function renderAssistantMessage(text) {
 export function updateScrollBottomVis() {
   const btn = $("scrollBottom");
   if (!btn) return;
-  const canScrollDown = streamEl.scrollHeight - streamEl.scrollTop - streamEl.clientHeight > 4;
+  const el = getStream();
+  const canScrollDown = el.scrollHeight - el.scrollTop - el.clientHeight > 4;
   btn.classList.toggle("hidden", !canScrollDown);
 }
 
@@ -261,17 +271,20 @@ export function ensureScrollBottom() {
     btn.title = "滚动到底部";
     btn.innerHTML = icon("down");
     btn.addEventListener("click", () => {
-      streamEl.scrollTop = streamEl.scrollHeight;
+      const el = getStream();
+      el.scrollTop = el.scrollHeight;
     });
   }
-  if (btn !== streamEl.lastElementChild) streamEl.appendChild(btn);
+  const el = getStream();
+  if (btn !== el.lastElementChild) el.appendChild(btn);
 }
 
 export function initMarkdown() {
-  streamEl.addEventListener("scroll", updateScrollBottomVis); // 滚动位置变化实时显隐
+  const el = getStream();
+  el.addEventListener("scroll", updateScrollBottomVis); // 滚动位置变化实时显隐
   new MutationObserver(() => {
     const btn = $("scrollBottom");
-    if (btn && streamEl.contains(btn) && btn !== streamEl.lastElementChild) streamEl.appendChild(btn);
+    if (btn && el.contains(btn) && btn !== el.lastElementChild) el.appendChild(btn);
     updateScrollBottomVis(); // 子节点增删会改变 scrollHeight，顺带刷新显隐
-  }).observe(streamEl, { childList: true });
+  }).observe(el, { childList: true });
 }
