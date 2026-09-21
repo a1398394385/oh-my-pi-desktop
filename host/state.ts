@@ -41,6 +41,10 @@ export type PoolEntry = {
   isGit: boolean;
   queuedTexts: string[]; // 最近一次推送的排队消息文本快照（turn_end 竞态兜底用）
   consumedTexts: string[]; // 已通知 UI 消费（dequeue hook）/已兜底重发的文本
+  // followUp 暂存区（含隐藏伴随，原队列元素）：底座注入边界会把 followUp 队列 drain 到排空，
+  // 多条排队会被同一轮 run 拼车发出。host 只在底座队列保留 1 条（下一条待消费），其余暂存于此，
+  // 每轮 agent_end 放回 1 条并触发消费——排队消息逐轮 FIFO、每轮一条独立 turn
+  parkedFollowUp: any[];
 };
 
 // key = 前端持有的 sessionId

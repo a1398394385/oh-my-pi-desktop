@@ -1,7 +1,7 @@
 // 输入区（composer）：附件、发送、权限模式（omp 三值）、模型/思考级别菜单、
 // 底栏状态条与分级收缩（fitComposerBar）。值域来自宿主下发。
 import { $, S, send, toast, inputEl, streamEl, composerEl, modelBtn, thinkBtn, modeBtn, activeOpen } from "./core.js";
-import { isJunkPlaceholder, sealRunItems, sendNowQueueMsg, editQueueMsg, dropQueueMsg } from "./core.js";
+import { sendNowQueueMsg, editQueueMsg, dropQueueMsg } from "./core.js";
 import { closeAllMenus } from "./shell.js";
 import { settingsOpen } from "./settings/index.js";
 import { PROV_IC } from "./settings/index.js";
@@ -68,15 +68,11 @@ export function sendPrompt() {
 
   const s = activeOpen();
   if (!s) return;
-  // 流式中发送 = 排队（followUp，当前 loop 完自动消费）：气泡立即出现并成为
-  // 分界——先封存此前的处理过程（留在上一条用户消息与本次消息之间），新过程
-  // 从气泡后继续渲染；消费时（steer_consumed）气泡转正去掉待定态
+  // 流式中发送 = 排队（followUp，当前 loop 完自动消费）：只进队列卡，不出气泡、
+  // 不截断过程——气泡在「立即发送」转 steer 时才出现并成为分界
   if (s.streaming) {
-    if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
-    s.assistantDraft = "";
-    sealRunItems(s, null);
-    s.items.push({ role: "user", text, pending: "queued" });
-    s.turnItemStart = s.items.length;
+    s.queued = s.queued ?? [];
+    s.queued.push({ text });
   } else {
     s.items.push({ role: "user", text });
   }

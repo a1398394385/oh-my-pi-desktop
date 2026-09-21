@@ -286,6 +286,8 @@ export function dropQueueMsg(s, item) {
   list.splice(i, 1);
   const j = s.items.lastIndexOf(item);
   if (j >= 0) s.items.splice(j, 1);
+  // steer 气泡在本轮起点标记（turnItemStart）之后被移除时会越界，校准到过程末尾
+  if (s.turnItemStart != null && s.turnItemStart > s.items.length) s.turnItemStart = s.items.length;
   send({ type: "drop_queued", sessionId: s.sessionId, queue: which, index: i });
   renderAll();
 }
@@ -298,20 +300,34 @@ export function editQueueMsg(s, item) {
   dropQueueMsg(s, item);
 }
 
-// 立即发送：排队态转 steer（当前工具批次后注入）
+// 立即发送：排队态转 steer——此前过程就地缩起封存（留在上一条用户消息与本气泡之间），
+// 气泡立即出现在消息流底部（渲染层把 steer 气泡固定排在过程流末尾）；消费时转正
 export function sendNowQueueMsg(s, item) {
   const i = queueIndexOf(s.queued, item.text);
   if (i < 0) return;
-  item.pending = "steer";
+  s.queued.splice(i, 1);
+  s.steering = s.steering ?? [];
+  s.steering.push({ text: item.text });
+  if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+  s.assistantDraft = "";
+  sealRunItems(s, null);
+  s.items.push({ role: "user", text: item.text, pending: "steer" });
+  s.turnItemStart = s.items.length;
   send({ type: "send_now", sessionId: s.sessionId, index: i });
   renderAll();
 }
 
-// 放回队列：steer 态转回 followUp 顶端
+// 放回队列：steer 态转回排队顶端，气泡同步移除（消息只保留在队列卡中）
 export function requeueSteerMsg(s, item) {
   const i = queueIndexOf(s.steering, item.text);
   if (i < 0) return;
-  item.pending = "queued";
+  s.steering.splice(i, 1);
+  s.queued = s.queued ?? [];
+  s.queued.unshift({ text: item.text });
+  const j = s.items.lastIndexOf(item);
+  if (j >= 0) s.items.splice(j, 1);
+  // 同 dropQueueMsg：气泡移除后校准本轮过程起点
+  if (s.turnItemStart != null && s.turnItemStart > s.items.length) s.turnItemStart = s.items.length;
   send({ type: "requeue", sessionId: s.sessionId, index: i });
   renderAll();
 }
@@ -634,23 +650,31 @@ function onMessage(msg) {
       break;
     }
     case "steer_consumed": {
-      // 队列消息即将注入模型：封存此前的过程段（留在上一条用户消息与本次消息之间），
-      // pending 气泡转正，从消息处重开一轮继续渲染
+      // 队列消息即将注入模型：转 steer 后产生的尾段过程缩起封存（历史过程全部留在
+      // 气泡上方），被消费的气泡挪到消息流底部并转正，新过程从气泡下重开渲染
       const s = findBySessionId(msg.sessionId);
       if (s) {
         if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
         s.assistantDraft = "";
         sealRunItems(s, null);
+        const bubbles = [];
         for (const t of msg.texts ?? []) {
           const it = [...s.items].reverse().find((x) => x.role === "user" && x.pending && x.text === t);
-          if (it) it.pending = null;
-          else s.items.push({ role: "user", text: t }); // 兜底：气泡缺失（重连等）时补画
+          bubbles.push(it ?? { role: "user", text: t }); // 兜底：气泡缺失（重连等）时补画
           const q = s.queued ?? [];
           const i = q.findIndex((m) => (m.text || "") === t);
           if (i >= 0) q.splice(i, 1);
           const st = s.steering ?? [];
           const j = st.findIndex((m) => (m.text || "") === t);
           if (j >= 0) st.splice(j, 1);
+        }
+        for (const b of bubbles) {
+          const k = s.items.indexOf(b);
+          if (k >= 0) {
+            s.items.splice(k, 1);
+            s.items.push(b);
+          }
+          b.pending = null;
         }
         s.turnItemStart = s.items.length;
         s.streaming = true;

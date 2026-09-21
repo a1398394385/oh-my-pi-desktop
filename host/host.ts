@@ -133,6 +133,7 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     isGit: isGitWorktree(cwd),
     queuedTexts: [], // 排队消息文本快照（turn_end 竞态兜底）
     consumedTexts: [],
+    parkedFollowUp: [], // followUp 暂存区（见 state.ts 类型注释）
   };
   return { sessionId, entry, eventBus: result.eventBus };
 }
@@ -1085,8 +1086,9 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
       // 收尾竞态兜底：底座在 run 收尾 abort 时，正在 claim 的队列消息会被丢弃且不回队
       // （agent.ts #prepareQueuedMessageBatch 的 dequeue-先移出 + abort-不 restore），表现为
       // 「上次快照里有、现在队列没有、dequeue hook 从未通知消费」。host 重新发送该消息。
+      // parked 暂存的消息同样计入现存集合——它们不在底座队列是设计使然，不是被吞。
       const a = entry.session.agent as any;
-      const cur = [...a.peekFollowUpQueue(), ...a.peekSteeringQueue()]
+      const cur = [...a.peekFollowUpQueue(), ...entry.parkedFollowUp, ...a.peekSteeringQueue()]
         .filter((m: any) => isUserQueuedMessage(m))
         .map((m: any) => toRestoredQueuedMessage(m).text);
       const curSet = new Set(cur);
@@ -1098,6 +1100,19 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
         entry.consumedTexts.push(t);
         entry.session.prompt(t).catch((err: unknown) => {
           ws.send(JSON.stringify({ type: "error", sessionId, message: String(err) }));
+        });
+      }
+      // 逐轮放回：parked 有剩余时放回 1 条并触发消费（每条独立 turn）。
+      // 兜底重发刚起了新 run 的场合（lost 非空）本轮不放，等那个 run 的 agent_end 接续。
+      if (lost.length === 0 && entry.parkedFollowUp.length > 0) {
+        for (const m of releaseOneParked(entry)) a.followUp(m);
+        // agent_end 事件先于 isStreaming 复位的窗口里 continue 会 busy：等 idle 后补一次
+        a.continue().catch(() => {
+          a.waitForIdle?.()
+            .then(() => a.continue())
+            .catch((err: unknown) => {
+              process.stderr.write(`[host] 排队消息续轮触发失败: ${String(err)}\n`);
+            });
         });
       }
       sendQueued(ws, sessionId, entry);
@@ -1377,7 +1392,12 @@ async function handlePrompt(
       ...(images.length > 0 ? { images } : {}),
       streamingBehavior: "followUp",
     })
-    .then(() => sendQueued(ws, sessionId, entry)) // 入队/开 turn 后校准前端排队行
+    .then(() => {
+      // 流式排队后立即修剪：底座队列只留最早 1 条，其余进 parked（本轮 run 的注入边界
+      // 只能带走这 1 条，避免多条拼车；后续逐轮 agent_end 放回消费）
+      parkFollowUpTail(entry);
+      sendQueued(ws, sessionId, entry);
+    }) // 入队/开 turn 后校准前端排队行
     .catch((err: unknown) => {
       ws.send(JSON.stringify({ type: "error", sessionId, message: String(err) }));
     });
@@ -1392,17 +1412,73 @@ function handleGetMessages(ws: any, sessionId: string) {
 // ---------- 排队消息 RPC ----------
 // 队列语义（仿 ZCode）：流式中发送的消息默认排队（followUp，当前 loop 完全处理完
 // 后自动消费第 1 条触发新 prompt）；「立即发送」把某条转为 steer（当前工具批次后注入）。
-// 索引一律指「用户消息」在对应队列过滤序列中的下标（跳过系统 notice，与 queued 帧一致）。
+// 索引一律指「用户消息」在对应队列过滤序列中的下标（跳过系统 notice，与 queued 帧一致）；
+// followUp 的索引基于完整视图 = 底座 followUp 队列 + parked 暂存区（顺序拼接）。
+//
+// 底座注入边界（工具批次后 / yield 边界）会把 followUp 队列 drain 到排空，多条排队会被
+// 同一轮 run 拼车发出（实测一次模型回复同时答复多条）。因此 host 维持不变式：底座
+// followUp 队列最多留 1 条用户消息（下一个待消费的），其余暂存 parkedFollowUp；每轮
+// agent_end 放回 1 条并触发消费——排队消息逐轮 FIFO，每轮一条独立 turn。
 
 function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const agent = entry.session.agent;
   const view = (list: readonly any[]) =>
     list.filter((m) => isUserQueuedMessage(m)).map((m) => toRestoredQueuedMessage(m));
-  const followUp = view(agent.peekFollowUpQueue());
+  const followUp = [...view(agent.peekFollowUpQueue()), ...view(entry.parkedFollowUp)];
   const steering = view(agent.peekSteeringQueue());
-  // 竞态兜底的快照：两队列用户消息全量（turn_end 时 diff「上次有/现在无/未通知消费」= 被吞）
+  // 竞态兜底的快照：完整视图 + steering 用户消息全量（turn_end 时 diff「上次有/现在无/未通知消费」= 被吞）
   entry.queuedTexts = [...followUp, ...steering].map((m) => m.text);
   ws.send(JSON.stringify({ type: "queued", sessionId, followUp, steering }));
+}
+
+// 把底座 followUp 队列修剪为最多 1 条用户消息：第 2 条起（含各自前导隐藏伴随）移入
+// parked 暂存，防止当前 run 的注入边界把整队消息一次性带走
+function parkFollowUpTail(entry: PoolEntry) {
+  const agent = entry.session.agent;
+  const queue = agent.peekFollowUpQueue();
+  let n = 0;
+  let cut = -1;
+  for (let i = 0; i < queue.length; i++) {
+    if (!isUserQueuedMessage(queue[i])) continue;
+    if (++n === 2) {
+      cut = i;
+      break;
+    }
+  }
+  if (cut < 0) return;
+  let start = cut;
+  while (start > 0 && isHiddenUserCompanion(queue[start - 1])) start--;
+  entry.parkedFollowUp.push(...queue.filter((_, i) => i >= start));
+  agent.replaceQueues(agent.peekSteeringQueue(), queue.filter((_, i) => i < start));
+}
+
+// 从 parked 暂存摘出第 pi 条用户消息（含前导隐藏伴随），返回摘出的元素数组
+function extractParkedAt(entry: PoolEntry, pi: number): any[] {
+  const parked = entry.parkedFollowUp;
+  let n = -1;
+  let target = -1;
+  for (let i = 0; i < parked.length; i++) {
+    if (!isUserQueuedMessage(parked[i])) continue;
+    if (++n === pi) {
+      target = i;
+      break;
+    }
+  }
+  if (target < 0) throw new Error(`暂存排队消息不存在: ${pi}`);
+  let start = target;
+  while (start > 0 && isHiddenUserCompanion(parked[start - 1])) start--;
+  const extracted = parked.slice(start, target + 1);
+  entry.parkedFollowUp = parked.filter((_, i) => i < start || i > target);
+  return extracted;
+}
+
+// 放回 parked 首条（含前导伴随）到 agent 队列。队列元素是入队时的原结构，直接回队即保留图片等
+function releaseOneParked(entry: PoolEntry): any[] {
+  const u = entry.parkedFollowUp.findIndex((m) => isUserQueuedMessage(m));
+  if (u < 0) return [];
+  const released = entry.parkedFollowUp.slice(0, u + 1);
+  entry.parkedFollowUp = entry.parkedFollowUp.slice(u + 1);
+  return released;
 }
 
 function handlePeekQueued(ws: { send(data: string): unknown }, sessionId: string) {
@@ -1442,6 +1518,11 @@ function handleDropQueued(
   if (index === undefined) {
     // 全清：只清用户消息及其隐藏伴随，保留系统 notice（goal/plan/budget 等）
     next = queue.filter((m) => !isUserQueuedMessage(m) && !isHiddenUserCompanion(m));
+    if (which === "followUp") entry.parkedFollowUp = [];
+  } else if (which === "followUp" && index >= queue.filter((m) => isUserQueuedMessage(m)).length) {
+    // 完整视图后半段：目标在 parked 暂存
+    extractParkedAt(entry, index - queue.filter((m) => isUserQueuedMessage(m)).length);
+    next = queue;
   } else {
     next = removeUserMessage(queue, index);
   }
@@ -1452,25 +1533,35 @@ function handleDropQueued(
   sendQueued(ws, sessionId, entry);
 }
 
-// 立即发送：把 followUp 队列第 index 条转为 steer（经 session.steer 重新入队，保留图片）
+// 立即发送：把 followUp 第 index 条（完整视图，含 parked 暂存）转为 steer 注入；
+// 剩余排队消息全部 park，本轮 run 只注入被点的这一条
 async function handleSendNow(ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(`会话不存在: ${sessionId}`);
   const agent = entry.session.agent;
   const queue = agent.peekFollowUpQueue();
-  let n = -1;
-  let target = -1;
-  for (let i = 0; i < queue.length; i++) {
-    if (!isUserQueuedMessage(queue[i])) continue;
-    if (++n === index) {
-      target = i;
-      break;
+  const queueUserCount = queue.filter((m) => isUserQueuedMessage(m)).length;
+  let restored;
+  if (index < queueUserCount) {
+    let n = -1;
+    let target = -1;
+    for (let i = 0; i < queue.length; i++) {
+      if (!isUserQueuedMessage(queue[i])) continue;
+      if (++n === index) {
+        target = i;
+        break;
+      }
     }
+    if (target < 0) throw new Error(`排队消息不存在: ${index}`);
+    restored = toRestoredQueuedMessage(queue[target]);
+    agent.replaceQueues(agent.peekSteeringQueue(), removeUserMessage(queue, index));
+  } else {
+    // 目标在 parked 暂存：摘出后经 steer 重新入队（图片经 SDK 重建描述，罕见路径）
+    const [msg] = extractParkedAt(entry, index - queueUserCount).filter((m) => isUserQueuedMessage(m));
+    restored = toRestoredQueuedMessage(msg);
   }
-  if (target < 0) throw new Error(`排队消息不存在: ${index}`);
-  const restored = toRestoredQueuedMessage(queue[target]);
-  agent.replaceQueues(agent.peekSteeringQueue(), removeUserMessage(queue, index));
   await entry.session.steer(restored.text, restored.images);
+  parkFollowUpTail(entry);
   sendQueued(ws, sessionId, entry);
 }
 
@@ -1493,6 +1584,8 @@ function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, i
   const moved: any = { ...queue[target] };
   delete moved.steering;
   agent.replaceQueues(removeUserMessage(queue, index), [moved, ...agent.peekFollowUpQueue()]);
+  // moved 成为底座队列唯一第 1 条，原队列首条退入 parked 头部（保持 FIFO 顺序）
+  parkFollowUpTail(entry);
   sendQueued(ws, sessionId, entry);
 }
 

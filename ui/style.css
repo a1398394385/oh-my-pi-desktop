@@ -1130,7 +1130,7 @@ body:has(#right.collapsed) #right-resizer {
   transition: background .15s var(--swift), color .15s var(--swift);
 }
 .q-btn:hover { background: var(--panel-2); color: var(--text); }
-/* 待消费气泡左侧的操作组：hover 气泡时浮现（绝对定位不推移布局） */
+/* 待消费气泡左侧的操作组：hover 整行时浮现（按钮在气泡外左侧，行 hover 保证移过去不消失） */
 .user-bubble.pending { position: relative; }
 .qk-acts {
   position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
@@ -1138,7 +1138,10 @@ body:has(#right.collapsed) #right-resizer {
   background: var(--ctl-bg); border: 1px solid var(--line); border-radius: 8px;
   padding: 2px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
-.user-bubble.pending:hover .qk-acts { display: flex; }
+.msg.user:has(> .user-bubble.pending):hover .qk-acts { display: flex; }
+/* 气泡内按钮图标与文字等高（气泡字号 var(--ui-fs-md)） */
+.user-bubble .qk-acts .q-btn { width: 1.05em; height: 1.05em; }
+.user-bubble .qk-acts .q-btn svg { width: 100%; height: 100%; display: block; }
 .atchip {
   position: relative;
   display: inline-flex; align-items: center; gap: 5px;

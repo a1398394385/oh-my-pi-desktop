@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "host": "bun host/host.ts",
-    "smoke": "bun scripts/smoke.ts"
+    "smoke": "bun scripts/smoke.ts",
+    "smoke:queue": "bun scripts/queue-smoke.ts"
   },
   "dependencies": {
     "@oh-my-pi/pi-agent-core": "18.2.6",

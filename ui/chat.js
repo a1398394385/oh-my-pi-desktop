@@ -12,8 +12,13 @@ import { showWelcomeScreen, hideWelcomeScreen } from "./welcome.js";
 // 渲染条目列表：连续编辑事件（edit/write/apply_patch）合并为一个「更改」组，其余逐条渲染。
 // parent：挂载容器（默认 #stream；loop 组子项挂进 .lp-kids 容器做整组展开/收起动画）
 function renderItemList(items, railEntries, parent = streamEl) {
+  const pendingSteers = []; // steer 待消费气泡收集到末尾统一渲染：消费前位置一直低于处理进程区
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
+    if (item.role === "user" && item.pending === "steer") {
+      pendingSteers.push(item);
+      continue;
+    }
     if (isEditEvent(item)) {
       const subs = [item];
       while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
@@ -28,6 +33,7 @@ function renderItemList(items, railEntries, parent = streamEl) {
     }
     appendChatItem(item, railEntries, parent);
   }
+  for (const it of pendingSteers) appendChatItem(it, railEntries, parent);
 }
 
 // 待消费气泡的左侧操作组：排队态（立即发送/编辑/删除）｜steer 态（编辑/放回队列顶端）
