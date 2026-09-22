@@ -529,6 +529,15 @@ body:has(#sidebar.collapsed) .chat-head {
   box-sizing: border-box;
   min-width: 0;
 }
+/* 消息流：屏幕外的消息跳过布局与绘制（长会话渲染开销闸门，等价于零成本虚拟化）。
+   contain-intrinsic-size 的 auto 让浏览器记住元素实测尺寸，回滚时不留白、不跳位；
+   不改 DOM 结构，FindBar 的 scrollIntoView 会强制渲染目标、MsgRail 的锚点查询照常
+   （轨道刻度用等间距排布，仅「从未渲染过」的消息其点击跳转按估算高度定位）。
+   注意：不能并进上面那条共用规则——.dock / .queue-card 不适用。 */
+#stream > *:not(.scroll-bottom) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
 body:has(#right.collapsed) #right-resizer {
   width: 0;
   opacity: 0;
@@ -3628,6 +3637,51 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .bt-kids { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
 /* 空态提示 */
 .bt-empty { padding: 18px 14px; color: var(--faint); font-size: var(--ui-fs-base); line-height: 1.6; }
+
+/* 会话树页（/tree 右栏版）：条目行为主体，树形引导线走等宽前缀列 */
+.st-page { display: flex; flex-direction: column; height: 100%; }
+.st-bar { padding: 6px 8px 0; }
+.st-list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
+/* 整行可点（跳转）才挂 hover 高亮；导航进行中整行禁用 */
+.st-row {
+  display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left;
+  border: none; border-radius: var(--r-md); background: none; padding: 4px 6px; font: inherit;
+  color: var(--dim); cursor: pointer;
+  transition: background .12s var(--swift), color .12s var(--swift);
+}
+.st-row:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+.st-row:disabled { opacity: .55; cursor: default; }
+/* 树形前缀列：等宽才能保证导轨对齐（CJK 不进这一列） */
+.st-prefix {
+  flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--ui-fs-xs); color: var(--faint); white-space: pre;
+}
+.st-rail { display: inline-block; width: 3ch; }
+.st-conn { color: var(--faint); }
+/* 行文本：截断单行；角色着色（token 语义对齐 chat 区 user/assistant/tool 层次） */
+.st-text {
+  flex: 1; min-width: 0; font-size: var(--ui-fs-base);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.st-user { color: var(--accent); }
+.st-asst { color: var(--green); }
+.st-tool { color: var(--faint); }
+.st-sys { color: var(--faint); font-size: var(--ui-fs-xs); }
+/* 活跃路径（根→当前叶）标记：accent 圆点 + 文本提亮 */
+.st-dot { color: var(--accent); margin-right: 4px; }
+.st-row.on-path .st-text { color: var(--text); }
+.st-row.on-path .st-user { color: var(--accent); }
+.st-row.on-path .st-asst { color: var(--green); }
+.st-label { color: var(--yellow); }
+/* 当前叶徽标 + 时间：右列固定，不随文本截断 */
+.st-leaf {
+  flex: none; font-size: var(--ui-fs-xs); color: var(--accent);
+  border: 1px solid var(--accent); border-radius: var(--r-sm); padding: 0 5px; line-height: 16px;
+}
+.st-ts { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
+.st-confirm-text {
+  max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* ── 阶段5：右栏终端 + 浏览器 pane ───────────────────────────────────── */
 

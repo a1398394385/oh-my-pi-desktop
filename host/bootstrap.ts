@@ -40,7 +40,9 @@ const { ensureThemeSync } = await import("@oh-my-pi/pi-tui/theme");
 ensureThemeSync();
 
 export const { getSupportedEfforts } = await import("@oh-my-pi/pi-catalog/model-thinking");
-export const { getProviderDefinition } = await import("@oh-my-pi/pi-ai");
+export const { getOAuthProviders } = await import("@oh-my-pi/pi-ai");
+// 供应商授权策略（KDL 编译数据）：判定登录流类型（oauth-code/device-code/custom/api-key）
+export const { authPolicyFor } = await import("@oh-my-pi/pi-catalog/compat/auth");
 export const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry, USER_INTERRUPT_LABEL } =
   await import("@oh-my-pi/pi-coding-agent");
 export const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");

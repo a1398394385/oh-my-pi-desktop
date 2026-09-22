@@ -124,11 +124,42 @@ function getHighlighter() {
   return highlighterPromise;
 }
 
-// 结果缓存：键 = 主题 + 语言 + 内容首尾各 100 字符 + 长度（ZCode 同款键，
-// 避免整段 code 做键的内存翻倍）。无淘汰——条目小、上限由调用方字符封顶。
+// 结果缓存：键 = 主题 + 语言 + 完整内容的 64 位哈希。
+// 早期沿用 ZCode 的「长度 + 首尾各 100 字符」做键，中段不同的代码块会撞键——调用方
+// （CodeTokens）直接渲染 token.content，撞键即显示成另一个代码块的原文（不只是配色错）。
+// 整段内容直接做键会让 Map 再留一份字符串副本，故走哈希。
 const tokensCache = new Map();
+// 缓存内容总字符上限（超出按最久未用淘汰）：tokens 的内存开销是原文的数倍，
+// 长会话里读过的每个文件/diff 都留一份会持续增长。
+const TOKENS_CACHE_MAX_CHARS = 2_000_000;
+let tokensCacheChars = 0;
 // 同键并发请求合并：首个请求完成后回调全部订阅者（组件 effect 注册）
 const pending = new Map();
+
+// 双种子 FNV-1a 拼 64 位：单 32 位在数万个代码块下碰撞概率已到千分之几，双种子可忽略。
+// 逐码元遍历，120k 字符上限下耗时 <1ms，相对随后的 tokenize 可忽略。
+function hashCode(str) {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b);
+  }
+  return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
+
+// 写入并按总字符数淘汰最久未用（Map 保持插入序，队首即最旧）
+function cacheTokens(key, tokenized, chars) {
+  tokensCache.set(key, { tokenized, chars });
+  tokensCacheChars += chars;
+  while (tokensCacheChars > TOKENS_CACHE_MAX_CHARS && tokensCache.size > 1) {
+    const oldest = tokensCache.keys().next().value;
+    if (oldest === key) break; // 单条即超上限：留着它，避免清空后立刻又算一遍
+    tokensCacheChars -= tokensCache.get(oldest).chars;
+    tokensCache.delete(oldest);
+  }
+}
 
 // 同步返回缓存的 token；未命中则启动异步 tokenize 并通过 callback 送回
 // （React 组件在 effect 里调用，callback 里 setState；缓存命中也走 microtask，
@@ -136,13 +167,14 @@ const pending = new Map();
 // 返回结构：{ tokens: [[{content,color}...]...] }（按行）
 export function highlightCode(code, lang, theme, callback) {
   if (!lang || !code || code.length > HIGHLIGHT_MAX_CHARS) return null;
-  const start = code.slice(0, 100);
-  const end = code.length > 100 ? code.slice(-100) : "";
-  const key = `${theme}:${lang}:${code.length}:${start}:${end}`;
+  const key = `${theme}:${lang}:${hashCode(code)}`;
   const cached = tokensCache.get(key);
   if (cached) {
-    if (callback) queueMicrotask(() => callback(cached));
-    return cached;
+    // LRU touch：命中即移到队尾（Map 插入序），否则热点块会被新块挤出
+    tokensCache.delete(key);
+    tokensCache.set(key, cached);
+    if (callback) queueMicrotask(() => callback(cached.tokenized));
+    return cached.tokenized;
   }
   if (callback) {
     if (!pending.has(key)) pending.set(key, new Set());
@@ -163,7 +195,7 @@ export function highlightCode(code, lang, theme, callback) {
         line.map((t) => ({ content: t.content, color: t.color || "" })),
       );
       const tokenized = { tokens };
-      tokensCache.set(key, tokenized);
+      cacheTokens(key, tokenized, code.length);
       const subs = pending.get(key);
       if (subs) {
         for (const cb of subs) cb(tokenized);

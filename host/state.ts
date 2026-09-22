@@ -31,6 +31,9 @@ export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // setToolUIContext 等宿主注入点
   unsubscribe: () => void;
+  // 当前挂载的 ws：handleLoadSession 命中池内条目时用它判断是否需要重挂订阅
+  // （前端 reload 后是新连接，旧订阅发往已关闭的 ws，事件会丢）。只做引用比较，故为 unknown
+  attachedWs: unknown;
   // 会话请求凭证的粘性键（= sessionManager.getSessionId()）：get_limits 用它与会话
   // 同参解析 getApiKey，多账号时明细卡配额与本会话实际命中的账号一致
   providerSessionId: string;

@@ -43,6 +43,7 @@
 - **改 `ui/` 或 `host/` 不触发 dev watcher**（只 watch src-tauri/）：`touch src-tauri/src/lib.rs` 强制重启。
 - **WKWebView 无 console**：`window.onerror` / `unhandledrejection` 写进页面元素才能看到前端错误。
 - `invoke` 在 `window.__TAURI__.core` 下（withGlobalTauri 注入的对象没有 ipc 命名空间）。
+- **`tauri build` 不监听 `ui/`：改前端后必须 `touch src-tauri/build.rs` 才会重新嵌入资源**。`tauri-build` 只 emit `cargo:rerun-if-changed` 给 `tauri.conf.json` 与 `capabilities`（见 `target/release/build/omp-desktop-*/output`），**不含 `frontendDist` 目录**。后果：只改 `ui/` 后跑 `tauri build` 会报「编译成功 / Finished bundle」，但嵌入的仍是上一次的资源，产出的 app 跑的是旧 UI。更坑的是**二进制字节数可能完全相同**（Mach-O 段对齐吸收了压缩资源的尺寸差），`ls -la` 完全看不出差异——判据必须用 `md5`，或看 `target/release/build/omp-desktop-*/out/tauri-codegen-assets/` 下是否出现了新哈希名的文件。强制重嵌：`touch src-tauri/build.rs && bunx tauri build --bundles app`。只出 .app 不要 dmg：`--bundles app`（`tauri.conf.json` 的 `bundle.targets` 是 `"all"`）。
 
 ## macOS GUI 自动化
 

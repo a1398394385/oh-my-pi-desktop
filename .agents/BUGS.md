@@ -18,6 +18,8 @@
 | BUG-008 | Profile 菜单缺 default 选项——宿主冷启动 >15s,UI 连接失败后永不重试 | 2026-09-22 |
 | BUG-010 | 「立即发送」点击瞬间即分割处理过程 + 放回队列后新过程裸奔不可收缩 | 2026-09-20 |
 | BUG-011 | 前端一断开连接宿主进程即崩——ACP 提交误删 pty import 整行 | 2026-09-22 |
+| BUG-012 | 代码块染色显示成另一个代码块的原文——染色缓存键只取首尾 100 字符 | 2026-09-22 |
+| BUG-013 | 同一会话文件被两个 AgentSession 同时持有——load_session 不查会话池 | 2026-09-22 |
 
 ---
 
@@ -155,3 +157,23 @@
 **教训**:①编辑 import 区块时禁止整行替换相邻既有 import——新增一律插入；②删除/替换任何 import 名后必须 grep 该符号在本文件的使用点；③本仓无 lint 链，「启动即 READY」覆盖不到 close 路径，host 改动后必须单独跑一次「连接 → 断开」存活检查。已立 RULE-004。
 
 **同源误删（已一并修复）**:同一提交还把 `createAgentSession({...})` 的 `sessionManager,` 传参吞掉（main 上有）。取证（隔离配置根，单元级对比）：**传参**时 `session.sessionFile === manager.getSessionFile()`（同源）；**不传**时 host 的 manager 指向 `…11b4-7284….jsonl`、SDK 实际写入 `…11b7-7462….jsonl`——两个不同文件，`entry.manager` 沦为孤儿。用户可见后果［推理，需真实对话历史才能端到端复现，隔离环境无凭证］：`rename_session` 写到孤儿文件；`compact_session`/`branch_session` 用 `entry.manager.getEntries()` 重建 transcript，孤儿 manager 读空 → 消息清空。已恢复该行，`scripts/smoke-features.ts` 全绿（含 rename 标题落盘生效、池外 rename、compact 结构合法）。
+
+### BUG-012: 代码块染色显示成另一个代码块的原文——染色缓存键只取首尾 100 字符
+
+**现象**:`ui-src/lib/highlighter.js` 的染色结果缓存以「主题 + 语言 + 长度 + 首尾各 100 字符」为键。中段不同、长度与首尾相同的两个代码块命中同一条目，而 `CodeTokens` 直接渲染 `token.content`——撞键位置显示的是**另一个代码块的原文**，不只是配色错。
+
+**根因**:键刻意不含中段（沿用 ZCode 写法，注释称「避免整段 code 做键的内存翻倍」），两个前提都不成立：① 长度 + 首尾不足以标识内容；② 该写法没省下内存——缓存值本身存着全量 tokens（含逐 token 的 `content`），原文在内存里本就有一份完整副本。同一缓存还**无淘汰**，长会话里读过的每个文件/diff 永久留一份。
+
+**修复**:键改为完整内容的双种子 FNV-1a 64 位哈希（单 32 位在数万个块下碰撞概率已到千分之几）；缓存改为按总字符数封顶（2M）的 LRU（Map 插入序，命中即 touch）。验证：构造长度/首尾相同、中段不同的两块，断言各自得到自己的内容（PASS）；塞入超上限内容后断言队首被淘汰、队尾仍在（PASS）。
+
+**教训**:为省内存而弱化缓存键，必须先确认「缓存值是否已持有原文」——持有的话，弱化键只买到碰撞，没买到内存。
+
+### BUG-013: 同一会话文件被两个 AgentSession 同时持有——load_session 不查会话池
+
+**现象**:`handleLoadSession` 无条件 `SessionManager.open` + `createSessionCore`，不检查该 path 是否已在 `sessions` 池中。
+
+**根因**:前端正常路径用 `openSessions.has(path)` 短路（已打开就直接激活、不发 `load_session`），掩盖了宿主侧缺失的幂等。前端一旦对**池内已有**的会话发 `load_session`（页面 reload 后点击、或前端会话 LRU 驱逐后切回），宿主即为同一文件新建第二个条目：旧条目连同它的 ws 订阅一起泄漏在池里，且两个 AgentSession 各自落盘同一文件（互相覆盖）。
+
+**修复**:`handleLoadSession` 先扫池内同 path 条目，命中则复用——仅在 ws 变化时（前端 reload）`unsubscribe()` + `attachEntry` 重挂订阅（旧订阅发往已关闭的连接，事件会丢），随后重推 `session_created` / `messages` / context 快照。为此 `PoolEntry` 增 `attachedWs` 字段。验证：连发两次同一 path 的 `load_session`，断言 sessionId 不变、宿主日志出现「复用池内会话」且只新建一次、两次历史条数一致（均 PASS）。
+
+**教训**:宿主会话池的键是 path，前端的「已打开」判断**不是**宿主的幂等保证——凡前端可触发的加载入口，宿主都要自己查重。

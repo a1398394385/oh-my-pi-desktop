@@ -20,7 +20,7 @@ import {
   createAgentSession,
   AgentRegistry,
   Tokenizer,
-  getProviderDefinition,
+  authPolicyFor,
   initialProfile,
   setMcpServerEnabled,
   addMCPServer,
@@ -72,7 +72,7 @@ import {
   type AssetKind,
 } from "./assets.ts";
 import { collectUsageStats } from "./stats.ts";
-import { translateEvent, translateSubagentEvent, entriesToTranscript } from "./translate.ts";
+import { translateEvent, translateSubagentEvent, entriesToTranscript, treeToDisplay } from "./translate.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits, refreshAllLimits, listAllProviders } from "./limits/index.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
@@ -213,6 +213,7 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     session,
     sessionResult: result, // setToolUIContext 等宿主注入点
     unsubscribe: () => {},
+    attachedWs: null,
     providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // 请求侧 getApiKey 的粘性键
     transcript,
     assistantDraft: "", // 当前 turn 的流式文本累积，turn_end 时定稿
@@ -528,6 +529,63 @@ const server = Bun.serve<{ sessionId: string | null }>({
                 })),
               }),
             );
+            break;
+          }
+          case "get_entry_tree": {
+            // 会话内条目树（TUI /tree 同款数据源）：manager.getTree() 返回当前文件内
+            // 的条目森林（rewind/fork 留下的兄弟分支同文件共存），getLeafId() 标当前叶。
+            // 与 get_session_tree（跨文件家族）是两棵树，别混。
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const leafId = entry.manager.getLeafId();
+            ws.send(
+              JSON.stringify({
+                type: "entry_tree",
+                sessionId: msg.sessionId,
+                ok: true,
+                leafId,
+                roots: treeToDisplay(entry.manager.getTree(), leafId),
+              }),
+            );
+            break;
+          }
+          case "navigate_tree": {
+            // 树内导航（/tree 选中节点）：底座 navigateTree 留在同一文件内把 leaf 移到
+            // 目标条目，被放弃路径保留为兄弟分支——与 branch_session（新建文件）不同，
+            // 池键/sessionId 不变。成功后照 compact 模式重建 transcript 推 messages 帧；
+            // editorText/editorImages 是目标 user 消息的原文，供前端回填输入框（重问）。
+            // 简化：不带 allowAskReopen（ask 重答流程是 TUI 交互专属），ask toolResult
+            // 目标走底座默认的 plain leaf move。
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const entryId = String(msg.entryId ?? "");
+            if (!entryId) throw new Error("缺少 entryId");
+            try {
+              const result = await entry.session.navigateTree(entryId, { summarize: !!msg.summarize });
+              if (result.cancelled) {
+                ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: "导航被取消" }));
+                break;
+              }
+              if (result.aborted) {
+                ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: "分支摘要已中止" }));
+                break;
+              }
+              // getEntries() 是文件内全部条目（被放弃的分支仍在文件里），
+              // 活跃 transcript 只要根→叶路径——与底座 renderInitialMessages 的口径一致
+              entry.transcript = entriesToTranscript(entry.manager.getBranch());
+              ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+              ws.send(
+                JSON.stringify({
+                  type: "session_navigated",
+                  sessionId: msg.sessionId,
+                  ok: true,
+                  editorText: result.editorText ?? null,
+                  editorImages: result.editorImages ?? null,
+                }),
+              );
+            } catch (err) {
+              ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: String(err) }));
+            }
             break;
           }
           case "prompt":
@@ -1043,10 +1101,12 @@ const server = Bun.serve<{ sessionId: string | null }>({
                   try {
                     accounts = (H.authStorage.listStoredCredentials?.(p.id) ?? []).length;
                   } catch {}
+                  const loginKind = authPolicyFor(p.id)?.login?.kind;
                   return {
                     ...p,
-                    // 登录能力:OAuth/login 流存在即可(API key 对所有供应商可用)
-                    login: !!getProviderDefinition(p.id)?.login,
+                    // 登录能力:仅 oauth-code/device-code/custom 有真实授权流(浏览器/设备码/供应商自定义);
+                    // api-key 型在底座只是「粘贴 key 并校验」,详情页已有 API Key 输入框,不再重复给入口
+                    login: loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom",
                     // 已配置账号数:authStorage 活跃凭证数(models.yml/env 层配置不计入)
                     accounts,
                   };
@@ -1737,6 +1797,7 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     unsubEvents();
     detachDequeueHook();
   };
+  entry.attachedWs = ws;
   sessions.set(sessionId, entry);
 }
 
@@ -1771,6 +1832,32 @@ async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thi
 
 async function handleLoadSession(ws: any, sessionPath: string) {
   if (!sessionPath) throw new Error("缺少 path");
+  // 池内已有同 path 条目：复用，不重建。重建会让同一会话文件被两个 AgentSession 同时
+  // 持有（各自落盘互相覆盖），旧条目连同它的订阅一并泄漏在池里。
+  // 命中路径：前端会话 LRU 驱逐后切回（同一 ws，只重推快照）；前端 reload 后点击
+  // （新 ws，重挂订阅——旧订阅发往已关闭的连接，事件会丢）。
+  for (const [sessionId, entry] of sessions.entries()) {
+    if (entry.path !== sessionPath) continue;
+    if (entry.attachedWs !== ws) {
+      entry.unsubscribe(); // 先解旧订阅，否则同一事件会发两份
+      attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
+    }
+    ws.send(
+      JSON.stringify({
+        type: "session_created",
+        sessionId,
+        path: entry.path,
+        cwd: entry.cwd,
+        model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+        thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
+        isGit: entry.isGit,
+      }),
+    );
+    ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
+    pushContext(ws, sessionId, entry);
+    process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
+    return;
+  }
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
   const transcript = entriesToTranscript(entries);

@@ -14,6 +14,7 @@ import {
   refreshGitDiff,
   hideWelcomeScreen,
   rightState,
+  activateSession,
 } from "../../store.js";
 import { fmtAgo } from "./helpers.js";
 
@@ -32,7 +33,7 @@ function loadBranchSession(path) {
   unseenFinished.delete(path);
   saveUnseen();
   if (openSessions.has(path)) {
-    S.activePath = path;
+    activateSession(path);
     refreshGitDiff();
   } else {
     send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置

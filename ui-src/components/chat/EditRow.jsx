@@ -20,7 +20,7 @@ function expandDiff(item, path) {
   // 编辑各次展开各看各的；diffContent 缺失（老会话/多文件 patch）回落 git diff
   if (item.diffContent != null && item.briefDiff === undefined) item.briefDiff = item.diffContent;
   const s = activeOpen();
-  if (path && item.briefDiff === undefined && s?.isGit && briefDiffCache[path] === undefined && S.briefDiffPending !== path) {
+  if (path && item.briefDiff === undefined && s?.isGit && briefDiffCache.get(path) === undefined && S.briefDiffPending !== path) {
     S.briefDiffPending = path;
     send({ type: "get_file_diff", cwd: s.cwd, path });
   }

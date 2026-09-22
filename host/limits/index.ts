@@ -3,6 +3,7 @@
 // 凭证与 baseUrl 合成;结果按 omp provider 缓存 60s,避免 hover 反复打供应商。
 
 import { createRequire } from "node:module";
+import { getOAuthProviders } from "../bootstrap.ts";
 
 const require = createRequire(import.meta.url);
 type VendorFetch = (options: Record<string, unknown>, deps: Record<string, unknown>) => Promise<LimitProviderRow | LimitProviderRow[]>;
@@ -292,7 +293,14 @@ function credentialIdentity(credential: any): string {
   return credential?.email ?? credential?.accountId ?? credential?.orgName ?? "";
 }
 
-// 模型管理页「添加供应商」视图的数据源:全部受支持的 omp provider id 及展示标签
+// 模型管理页「添加供应商」视图的数据源:与底座 TUI `/login` 同一份列表(getOAuthProviders),
+// 外加底座无登录流但仍可配 API key 的供应商(VENDOR_SPECS 独有项,如 minimax)。
+// 配额查询能力另由 VENDOR_SPECS 提供,未收录者配额段显示「暂不支持」。
 export function listAllProviders(): Array<{ id: string; label: string }> {
-  return Object.entries(VENDOR_SPECS).map(([id, spec]) => ({ id, label: spec.label }));
+  const rows = getOAuthProviders().map((p) => ({ id: p.id, label: p.name }));
+  const seen = new Set(rows.map((r) => r.id));
+  for (const [id, spec] of Object.entries(VENDOR_SPECS)) {
+    if (!seen.has(id)) rows.push({ id, label: spec.label });
+  }
+  return rows;
 }

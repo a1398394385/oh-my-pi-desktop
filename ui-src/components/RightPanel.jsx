@@ -17,6 +17,7 @@ import GitDiffPage from "./right/GitDiffPage.jsx";
 import FilePage from "./right/FilePage.jsx";
 import BgCmdPage from "./right/BgCmdPage.jsx";
 import BranchTreePage from "./right/BranchTreePage.jsx";
+import SessionTreePage from "./right/SessionTreePage.jsx";
 import TerminalPage from "./right/TerminalPage.jsx";
 import BrowserPage from "./right/BrowserPage.jsx";
 
@@ -199,6 +200,7 @@ export default function RightPanel({ collapsed }) {
   else if (S.rightTab === "bgcmd") body = <BgCmdPage />;
   else if (S.rightTab === "file") body = <FilePage />;
   else if (S.rightTab === "tree") body = <BranchTreePage />;
+  else if (S.rightTab === "sessiontree") body = <SessionTreePage />;
   else if (S.rightTab === "terminal") body = <TerminalPage />;
   else if (S.rightTab === "browser") body = <BrowserPage />;
   else body = <SubagentPage />;

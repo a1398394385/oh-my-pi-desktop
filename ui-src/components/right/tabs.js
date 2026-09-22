@@ -8,6 +8,7 @@ export const TAB_META = {
   bgcmd: { label: "后台命令", icon: "term" },
   file: { label: "文件", icon: "folderOpen" },
   tree: { label: "分支", icon: "fork" },
+  sessiontree: { label: "会话树", icon: "tree" },
   terminal: { label: "终端", icon: "termBox" },
   browser: { label: "浏览器", icon: "globe" },
 };

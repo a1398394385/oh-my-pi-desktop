@@ -1,5 +1,6 @@
 // omp 事件 → 前端窄事件翻译层：前端只认 UiEvent 这些 kind，不依赖 omp 事件 shape 细节。
 // 实时流（translateEvent）与磁盘历史（entriesToTranscript）共用同一套工具条目摘要逻辑。
+import os from "node:os";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 
 export type UiEvent =
@@ -476,6 +477,218 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   }
   finalizeRun();
   return out;
+}
+
+// ---------- 会话内条目树（TUI /tree 数据源） ----------
+// SessionTreeNode 森林（manager.getTree()）→ 前端显示节点。行文本口径对齐底座
+// tree-selector 的 #getEntryDisplayText：按条目类型给单行摘要，bookkeeping 类
+// 条目只留类型标签；默认视图隐藏的两类（设置类条目 / 无文本的非叶 assistant）
+// 用 isSettings / emptyAssistant 标记，过滤在前端做（与底座 filter 语义一致）。
+// 安装版底座该函数位于 pi-tui/chat/transcript-entry（新版才挪到 session-context，跟随安装版）
+import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
+import type { SessionEntry, SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
+
+const TREE_SETTINGS_KINDS: Record<string, true> = {
+  label: true,
+  custom: true,
+  model_change: true,
+  model_usage: true,
+  thinking_level_change: true,
+  service_tier_change: true,
+  title_change: true,
+  credential_pin: true,
+  session_init: true,
+  ttsr_injection: true,
+  mode_change: true,
+  reset_boundary: true,
+};
+
+// AgentMessage 是 Message 联合 + 自定义消息联合，成员字段不一；统一按可选字段读
+function msgField(msg: unknown, key: string): unknown {
+  return typeof msg === "object" && msg !== null && key in msg
+    ? (msg as Record<string, unknown>)[key]
+    : undefined;
+}
+
+// 单行化：折行/制表归空格、剥 ANSI 与控制字符、限长（右栏行宽有限）
+function treeNorm(s: unknown, max = 160): string {
+  const t = String(s ?? "")
+    .replace(/\x1b\[[0-9;:]*m/g, "")
+    .replace(/[\n\t]/g, " ")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+    .trim();
+  return t.length > max ? t.slice(0, max) + "…" : t;
+}
+
+function treeContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b) => (msgField(b, "type") === "text" ? String(msgField(b, "text") ?? "") : ""))
+    .filter(Boolean)
+    .join(" ");
+}
+
+// 工具调用行摘要（对齐底座 tree-selector #formatToolCall）：toolResult 行显示
+// 它对应的调用（命令/路径/模式），超长截断 + 省略号，右栏一眼能看出干了什么
+function treeShortenPath(p: string): string {
+  const home = os.homedir();
+  return p.startsWith(home) ? "~" + p.slice(home.length) : p;
+}
+
+function treeFormatToolCall(name: string, args: Record<string, unknown>): string {
+  const str = (v: unknown) => String(v ?? "");
+  const pathOf = () => treeShortenPath(str(args.path || args.file_path));
+  switch (name) {
+    case "read": {
+      const offset = typeof args.offset === "number" ? args.offset : undefined;
+      const limit = typeof args.limit === "number" ? args.limit : undefined;
+      let display = pathOf();
+      if (offset !== undefined || limit !== undefined) {
+        const start = offset ?? 1;
+        display += `:${start}${limit !== undefined ? `-${start + limit - 1}` : ""}`;
+      }
+      return `[read: ${display}]`;
+    }
+    case "write":
+      return `[write: ${pathOf()}]`;
+    case "edit":
+      return `[edit: ${pathOf()}]`;
+    case "bash":
+      return `[bash: ${treeNorm(args.command, 50)}]`;
+    case "grep": {
+      const pattern = str(args.pattern);
+      const scope = typeof args.path === "string" ? treeShortenPath(args.path) : ".";
+      return `[grep: /${pattern}/ in ${scope}]`;
+    }
+    case "glob": {
+      const scope = typeof args.path === "string" ? treeShortenPath(args.path) : ".";
+      return `[glob: ${scope}]`;
+    }
+    case "ls":
+      return `[ls: ${pathOf() || "."}]`;
+    default: {
+      const raw = JSON.stringify(args);
+      return `[${name}: ${raw.slice(0, 40)}${raw.length > 40 ? "…" : ""}]`;
+    }
+  }
+}
+
+// 全树收集 assistant 消息 content 里的 toolCall 块：toolResult 条目只有 toolCallId，
+// 行摘要要靠它找回调用的 name/arguments（与底座 #flattenTree 建 toolCallMap 同思路）
+function collectToolCalls(roots: SessionTreeNode[]): Map<string, { name: string; args: Record<string, unknown> }> {
+  const map = new Map<string, { name: string; args: Record<string, unknown> }>();
+  const walk = (node: SessionTreeNode): void => {
+    const entry = node.entry;
+    if (entry.type === "message") {
+      const content = msgField(entry.message, "content");
+      if (Array.isArray(content)) {
+        for (const b of content) {
+          if (msgField(b, "type") !== "toolCall") continue;
+          const id = msgField(b, "id");
+          const name = msgField(b, "name");
+          const args = msgField(b, "arguments");
+          if (typeof id === "string" && typeof name === "string") {
+            map.set(id, { name, args: typeof args === "object" && args !== null ? (args as Record<string, unknown>) : {} });
+          }
+        }
+      }
+    }
+    node.children.forEach(walk);
+  };
+  roots.forEach(walk);
+  return map;
+}
+
+// 条目 → 行显示文本（对齐底座 tree-selector 摘要口径的精简版）
+function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: string; args: Record<string, unknown> }>): string {
+  switch (entry.type) {
+    case "message": {
+      const msg = entry.message;
+      const role = msgField(msg, "role");
+      const content = treeContentText(msgField(msg, "content"));
+      if (role === "toolResult") {
+        const callId = msgField(msg, "toolCallId");
+        const call = typeof callId === "string" ? toolCalls.get(callId) : undefined;
+        if (call) return treeFormatToolCall(call.name, call.args);
+        return `[${String(msgField(msg, "toolName") ?? "tool")}]`;
+      }
+      if (role === "bashExecution") return `[bash]: ${treeNorm(msgField(msg, "command"), 80)}`;
+      if (role === "assistant") {
+        if (content) return treeNorm(content);
+        const err = msgField(msg, "errorMessage");
+        if (typeof err === "string" && err) return treeNorm(err, 80);
+        if (msgField(msg, "stopReason") === "aborted") return "(已中止)";
+        return "";
+      }
+      return treeNorm(content); // user / developer / 其他角色
+    }
+    case "custom_message":
+      return treeNorm(treeContentText(entry.content));
+    case "compaction":
+      return `[compaction: ${Math.round((entry.tokensBefore ?? 0) / 1000)}k tokens]`;
+    case "branch_summary":
+      return treeNorm(entry.summary);
+    case "model_change":
+      return `[model: ${entry.model}]`;
+    case "model_usage":
+      return `[model usage: ${entry.purpose ?? ""} ${entry.provider ?? ""}/${entry.model ?? ""}]`;
+    case "thinking_level_change":
+      return `[thinking: ${entry.thinkingLevel ?? "off"}]`;
+    case "label":
+      return `[label: ${entry.label ?? "(已清除)"}]`;
+    case "service_tier_change":
+      return "[service tier]";
+    case "title_change":
+      return `[title: ${treeNorm(entry.title, 60)}]`;
+    case "mode_change":
+      return `[mode: ${entry.mode}]`;
+    case "credential_pin":
+      return `[credential pin: ${entry.provider}]`;
+    default:
+      return `[${entry.type.replaceAll("_", " ")}]`;
+  }
+}
+
+export type EntryTreeNode = {
+  id: string;
+  kind: string; // entry.type
+  role?: string; // message 角色（message 条目才有）
+  text: string; // 行显示文本
+  label?: string; // 用户标注（底座 getTree 已解析）
+  ts?: string; // entry.timestamp
+  userReq?: boolean; // isUserRequestEntry：「仅用户」过滤用
+  emptyAssistant?: boolean; // 无文本的非叶 assistant：默认过滤隐藏
+  isSettings?: boolean; // bookkeeping 条目：仅「全部」模式显示
+  children: EntryTreeNode[];
+};
+
+export function treeToDisplay(roots: SessionTreeNode[], leafId: string | null): EntryTreeNode[] {
+  const toolCalls = collectToolCalls(roots);
+  const walk = (node: SessionTreeNode): EntryTreeNode => {
+    const entry = node.entry;
+    const role = entry.type === "message" ? msgField(entry.message, "role") : undefined;
+    const text = treeEntryText(entry, toolCalls);
+    const isLeaf = entry.id === leafId;
+    const out: EntryTreeNode = {
+      id: entry.id,
+      kind: entry.type,
+      text,
+      ts: entry.timestamp,
+      children: node.children.map(walk),
+    };
+    if (typeof role === "string") out.role = role;
+    if (node.label) out.label = node.label;
+    if (isUserRequestEntry(entry)) out.userReq = true;
+    if (TREE_SETTINGS_KINDS[entry.type]) out.isSettings = true;
+    // 与底座默认过滤一致：无文本且非错误/中止的 assistant（纯工具调用容器）默认隐藏，叶除外
+    if (role === "assistant" && !isLeaf && !text) {
+      const sr = msgField(entry.message, "stopReason");
+      if (sr === undefined || sr === "stop" || sr === "toolUse") out.emptyAssistant = true;
+    }
+    return out;
+  };
+  return roots.map(walk);
 }
 
 // 子代理事件 → 前端窄事件（纯转发，不落父会话 transcript；文本由前端按 subagentId 累积）

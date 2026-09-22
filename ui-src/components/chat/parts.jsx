@@ -2,7 +2,7 @@
 // 内联 diff 展开体 / 右栏联动动作。迁移自 ui/tool-rows.js 的共享工具（命令式 DOM 构造
 // 翻译为组件）；纯函数（splitPath/uniqueFiles）直接 import 旧模块复用不重写。
 import { useEffect, useRef, useState } from "react";
-import { S, send, notify, activeOpen, invoke, toast, briefDiffCache, fileDiffCache } from "../../store.js";
+import { S, send, notify, activeOpen, invoke, toast, briefDiffCache, fileDiffCache, setBriefDiff } from "../../store.js";
 import { uniqueFiles, splitPath } from "./util.js";
 import Icon from "../../Icon.jsx";
 import { fileTypeIcon } from "../../../ui/icons.js";
@@ -157,7 +157,7 @@ export function Counts({ item }) {
 // （git diff，右栏详情/内联展开共用回包）。按调用挂在 item 上而非按 path 缓存——
 // 同一文件多次编辑时各次展开各看各的，不互相覆盖
 export function EditBrief({ item, path, lift }) {
-  const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache[path];
+  const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache.get(path);
   const cls = "ed-brief" + (lift ? " lift" : " drop");
   if (diff === undefined) return <FadeBox className={cls}><div className="placeholder">加载中…</div></FadeBox>;
   if (!diff) return <FadeBox className={cls}><div className="placeholder">（无差异内容）</div></FadeBox>;
@@ -255,7 +255,7 @@ export function openFileDiffInSidebar(path) {
   S.selectedFile = path;
   fileDiffCache.loading = true;
   fileDiffCache.path = path;
-  briefDiffCache[path] = undefined; // 详情与内联展开共用一次回包
+  setBriefDiff(path, undefined); // 详情与内联展开共用一次回包
   S.briefDiffPending = path;
   send({ type: "get_file_diff", cwd: s.cwd, path });
   S.rightCollapsed = false; // 原版 expandRightPanel：展开右栏时进程卡让位收起

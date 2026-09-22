@@ -106,9 +106,64 @@ export const openSessions = new Map();
 export const unseenFinished = new Set(JSON.parse(localStorage.getItem("omp-unseen-finished") || "[]"));
 export const gitDiffCache = { cwd: null, files: [], loading: false };
 export const fileDiffCache = { path: null, diff: "", loading: false };
-export const briefDiffCache = {}; // 编辑行内联展开用的单文件 diff，path -> diff 文本
+export const briefDiffCache = new Map(); // 编辑行内联展开用的单文件 diff，path -> diff 文本（LRU，见 setBriefDiff）
 export const modelNames = new Map(); // "provider/id" -> 显示名（原 composer.js 平移）
 export const modelEfforts = new Map(); // "provider/id" -> 思考档位列表
+
+// ---------- 渲染内存闸门：两个无上限容器的淘汰策略 ----------
+// 都是长会话下的持续增长源：会话条目持有该会话全部消息数组，diff 缓存持有整份 diff 文本。
+// 统一用 Map 的插入序做 LRU（命中/写入即移到队尾，队首即最久未用）。
+
+/** 已打开会话的常驻上限。被驱逐的会话在用户切回时由 load_session 链路重新加载
+    （SessionRow / BranchTreePage 均已实现「未打开走宿主加载」分支），宿主会话池不受影响。 */
+const OPEN_SESSIONS_MAX = 8;
+
+/** 激活会话：置为当前会话并标记最近使用，随后按上限驱逐 */
+export function activateSession(path) {
+  const s = openSessions.get(path);
+  if (s) {
+    openSessions.delete(path);
+    openSessions.set(path, s);
+  }
+  S.activePath = path;
+  scheduleEvict();
+}
+
+// 延迟驱逐（合并多次触发）。必须延迟而不是同步：宿主在 runEnd 后可能**立刻续轮**
+// （parked followUp 放回 + a.continue()，见 host.ts 的 attachEntry），同步驱逐会抢在
+// 续轮的 turn_start 帧之前把会话踢出 openSessions，后续帧 findBySessionId 找不到即丢弃，
+// 表现为会话在 UI 上卡死。等一小段让续轮帧先到（到了会把 streaming 设回 true，自然受保护）。
+let evictTimer = null;
+function scheduleEvict() {
+  clearTimeout(evictTimer);
+  evictTimer = setTimeout(() => {
+    evictTimer = null;
+    evictOpenSessions();
+  }, 3000);
+}
+
+/** 超限驱逐：从最久未激活的一端开始，跳过当前会话与流式中的会话
+    （流式会话被驱逐会丢掉后续 event 帧——findBySessionId 找不到即丢弃）。 */
+export function evictOpenSessions() {
+  if (openSessions.size <= OPEN_SESSIONS_MAX) return;
+  for (const [p, s] of openSessions) {
+    if (openSessions.size <= OPEN_SESSIONS_MAX) break;
+    if (p === S.activePath || s.streaming) continue;
+    openSessions.delete(p);
+  }
+}
+
+/** 编辑行 diff 缓存上限（按文件数）。整份 diff 可达数百 KB，无上限会随编辑过的文件数线性增长。 */
+const BRIEF_DIFF_MAX = 30;
+
+/** 写入编辑行 diff 缓存并淘汰最久未用的文件（值可为 undefined：占位表示「已请求、待回包」） */
+export function setBriefDiff(path, diff) {
+  briefDiffCache.delete(path); // LRU touch
+  briefDiffCache.set(path, diff);
+  while (briefDiffCache.size > BRIEF_DIFF_MAX) {
+    briefDiffCache.delete(briefDiffCache.keys().next().value);
+  }
+}
 /** 右栏运行态（原 right.js rightState 平移；onMessage 写、RightPanel 组件读） */
 export const rightState = {
   fileTreeDirs: new Map(),
@@ -119,6 +174,10 @@ export const rightState = {
   sessionTree: null,
   sessionTreePending: false,
   treeFor: null,
+  entryTree: null, // 会话内条目树（/tree）：{ sessionId, leafId, roots }
+  entryTreePending: false,
+  entryTreeFor: null,
+  entryTreeNav: false, // navigate_tree 进行中（防连点）
   imageContent: null,
   gitWrite: null,
 };
@@ -591,7 +650,7 @@ function onMessage(msg) {
         isGit: !!msg.isGit,
         todos: [],
       });
-      S.activePath = msg.path;
+      activateSession(msg.path);
       S.selectedSubagent = null;
       S.selectedFile = null;
       S.isCreatingNew = false;
@@ -720,6 +779,8 @@ function onMessage(msg) {
           }
           s.turnItemStart = null; // 本轮彻底结束，不再继续累积
           s.turnStartAt = null;
+          // 新轮次已落盘（导航后续聊同样走这里）：条目树失效，会话树页下次渲染重拉
+          if (rightState.entryTree?.sessionId === msg.sessionId) rightState.entryTree = null;
           send({ type: "list_sessions" }); // title/firstMessage 可能已更新
           if (s.isGit) refreshGitDiff(true); // agent 可能改了文件，强制重拉
           // 会话已结束：非当前正在查看的会话标记「未查看」，列表显示灰白圆点
@@ -738,6 +799,12 @@ function onMessage(msg) {
             diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || "后台会话",
             summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : "已完成",
           );
+          // 本会话退出流式态后补一次驱逐：全部会话都在跑时打开新会话，驱逐循环会因「流式
+          // 会话受保护」而一个都删不掉；若只在激活时机触发，这些会话跑完后会一直占着内存，
+          // 直到用户下次切会话。放在 runEnd 块末尾——上面的未读标记与系统通知都依赖 s 还在
+          // openSessions 里（unseenFinished 是按 Map 反查 path 的）。走延迟版：宿主可能
+          // 立刻续轮，同步驱逐会抢在续轮帧之前把会话踢掉。
+          scheduleEvict();
         }
       } else if (msg.kind === "thinking_level") {
         // auto 档位判定帧：只记判定结果供右下角显示 auto·档位，不改 s.thinking
@@ -751,6 +818,8 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
       s.items = msg.messages.map((m) => ({ ...m }));
+      // transcript 被整体替换（compact/branch/navigate 后）：条目树必然变化，置废下次渲染重拉
+      if (rightState.entryTree?.sessionId === msg.sessionId) rightState.entryTree = null;
       notify();
       break;
     }
@@ -922,7 +991,7 @@ function onMessage(msg) {
       fileDiffCache.path = msg.path;
       fileDiffCache.diff = msg.diff;
       fileDiffCache.loading = false;
-      briefDiffCache[msg.path] = msg.diff; // 同一份回包同时喂给编辑行内联展开
+      setBriefDiff(msg.path, msg.diff); // 同一份回包同时喂给编辑行内联展开
       if (S.briefDiffPending === msg.path) S.briefDiffPending = null;
       notify();
       break;
@@ -1093,6 +1162,26 @@ function onMessage(msg) {
       rightState.sessionTreePending = false;
       notify();
       break;
+    case "entry_tree":
+      rightState.entryTree = { sessionId: msg.sessionId ?? rightState.entryTreeFor, leafId: msg.leafId ?? null, roots: msg.roots ?? [] };
+      rightState.entryTreePending = false;
+      notify();
+      break;
+    case "session_navigated": {
+      // 树内导航回执：transcript 由 messages 帧重建；成功后条目树作废重拉
+      //（被放弃路径已成为兄弟分支，旧树结构失效），user 消息原文回填输入框（重问）
+      rightState.entryTreeNav = false;
+      if (!msg.ok) {
+        toast(msg.error ?? "跳转失败");
+        notify();
+        break;
+      }
+      toast("已跳转到所选节点");
+      rightState.entryTree = null;
+      if (msg.editorText) setComposerValue(msg.editorText, msg.editorImages);
+      notify();
+      break;
+    }
     case "image_content":
       rightState.imageContent = msg;
       notify();

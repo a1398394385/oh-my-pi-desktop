@@ -2,7 +2,7 @@
 // 相对时间（清理模式下换删除钮）。单击打开会话（loadBranchSession 同款链路），
 // 双击标题原地进入行内重命名。
 import { useEffect, useRef } from "react";
-import { S, send, notify, openSessions, unseenFinished, pinnedSessions, saveUnseen, hideWelcomeScreen, refreshGitDiff } from "../../store.js";
+import { S, send, notify, openSessions, unseenFinished, pinnedSessions, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store.js";
 import Icon from "../../Icon.jsx";
 import { fmtAgo, sessionLabel } from "./util.js";
 
@@ -57,7 +57,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     unseenFinished.delete(s.path);
     saveUnseen();
     if (openSessions.has(s.path)) {
-      S.activePath = s.path;
+      activateSession(s.path);
       refreshGitDiff();
     } else {
       send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
