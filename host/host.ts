@@ -72,7 +72,7 @@ import {
   type AssetKind,
 } from "./assets.ts";
 import { collectUsageStats } from "./stats.ts";
-import { translateEvent, translateSubagentEvent, entriesToTranscript } from "./translate.ts";
+import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits, refreshAllLimits, listAllProviders } from "./limits/index.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
@@ -218,6 +218,8 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     assistantDraft: "", // 当前 turn 的流式文本累积，turn_end 时定稿
     thinkingDraft: "",
     thinkingStartedAt: null,
+    activeMs: 0,
+    activeStartedAt: null,
     path: session.sessionFile,
     cwd,
     isGit: isGitWorktree(cwd),
@@ -1506,6 +1508,30 @@ function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
   }
 }
 
+// 会话累计统计（TUI status-line 的 token/cache/cost/time 段汇总）：输入框下方状态行常驻显示。
+// 与上下文明细卡（get_context_detail 的 breakdown/stats）不同，这里是「整会话」口径：
+// tokens 含历史累加，时长含进行中窗口
+function buildSessionStats(entry: PoolEntry) {
+  const st = entry.session.getSessionStats();
+  // 缓存利用率（TUI cache_hit 段同款公式）：cacheRead/(cacheRead+cacheWrite+input)。
+  // 分母含未命中 input，Anthropic/OpenRouter（miss 记 input）与 DeepSeek（miss 记 input、
+  // cacheWrite 为 0）都还原成 hit/(hit+miss)
+  const promptTokens = st.tokens.input + st.tokens.cacheRead + st.tokens.cacheWrite;
+  return {
+    tokens: st.tokens,
+    cost: st.cost,
+    cacheHitRate: promptTokens > 0 ? st.tokens.cacheRead / promptTokens : 0,
+    // TUI cost 段同款：会话总成本 = 主会话成本 + advisor 成本（未启用 advisor 时为 0）
+    advisorCost: entry.session.getAdvisorCost(),
+    // 活跃时长含进行中窗口（与 TUI getActiveMs 一致：空闲墙钟不计）
+    activeMs: entry.activeMs + (entry.activeStartedAt === null ? 0 : Date.now() - entry.activeStartedAt),
+  };
+}
+
+function pushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
+  ws.send(JSON.stringify({ type: "session_stats", sessionId, ...buildSessionStats(entry) }));
+}
+
 function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any) {
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
@@ -1514,9 +1540,18 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify({ type: "todos", sessionId, phases: entry.session.getTodoPhases() }));
     }
+    // 会话活跃时长计时（TUI status-line time_spent 同款）：agent_start 开窗（幂等，重入不双计），
+    // 真正收尾的 agent_end 折窗；isTerminal === false 的中间 agent_end 之后还会续跑，不折
+    if (ev.type === "agent_start") {
+      if (entry.activeStartedAt === null) entry.activeStartedAt = Date.now();
+    } else if (ev.type === "agent_end" && ev.isTerminal !== false && entry.activeStartedAt !== null) {
+      entry.activeMs += Math.max(0, Date.now() - entry.activeStartedAt);
+      entry.activeStartedAt = null;
+    }
     // turn 真正结束后推送上下文占用（此时消息已定稿）；同时校准排队行（steer 已消费）
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
       pushContext(ws, sessionId, entry);
+      pushSessionStats(ws, sessionId, entry);
       // 收尾竞态兜底：底座在 run 收尾 abort 时，正在 claim 的队列消息会被丢弃且不回队
       // （agent.ts #prepareQueuedMessageBatch 的 dequeue-先移出 + abort-不 restore），表现为
       // 「上次快照里有、现在队列没有、dequeue hook 从未通知消费」。host 重新发送该消息。
@@ -1779,6 +1814,8 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const workCwd = peek?.cwd ?? defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
+  // 历史会话的活跃时长初值：内存计时器只覆盖本次打开后的时间，从磁盘条目按轮次累加补上存量
+  entry.activeMs = sumRunDurationMs(entries);
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
     JSON.stringify({
@@ -1799,6 +1836,8 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   }
   // 恢复会话的初始上下文占用（system prompt + 历史）
   pushContext(ws, sessionId, entry);
+  // 恢复会话的整会话统计（tokens/cost 从磁盘 assistant 消息的 usage 累加；时长为内存态，重载后从 0 起算）
+  pushSessionStats(ws, sessionId, entry);
   process.stderr.write(
     `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,
   );

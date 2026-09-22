@@ -1044,13 +1044,17 @@ body:has(#right.collapsed) #right-resizer {
 .approval-buttons button.dim { opacity: .4; }
 
 /* /* 输入区：中栏底部内嵌圆角卡片，严格居中并与会话区域同宽对齐 */
-.dock {
+/* 输入区与下方统计行共用同一列宽（同款四段式收缩、居中）；统计行在 dock 之外，不属输入卡片 */
+.dock,
+.stats-bar {
   flex: none;
   width: 100%;
   /* 与对话消息同一套四段式收缩逻辑（见上方共享规则注释）；
      收缩到底（260px，与 #composer 的 min-width 一致）后不再变窄 */
   max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   min-width: 260px;
+}
+.dock {
   margin: 8px auto 12px;
   background: var(--inset);
   border-radius: 16px;
@@ -1059,6 +1063,21 @@ body:has(#right.collapsed) #right-resizer {
   z-index: 20;
   box-sizing: border-box;
 }
+/* 会话统计行：输入框 dock 下方常驻一行（整会话缓存利用率/token/成本/活跃时长）；
+   纯展示无点击行为，不做 hover 高亮 */
+.stats-bar {
+  margin: 0 auto 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px 14px;
+  padding: 0 6px;
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.sb-item { display: inline-flex; align-items: baseline; gap: 5px; }
+.sb-v { color: var(--dim); }
 #composer {
   flex: none;
   margin: 0;

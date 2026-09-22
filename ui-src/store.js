@@ -154,6 +154,16 @@ export function fmtTokens(n) {
   if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
   return String(n);
 }
+// 时长格式化（毫秒）：秒 / 分秒 / 小时分钟（原 settings/StatsPage 的 fmtDurationMs 平移，跨页共用）
+export function fmtDurationMs(ms) {
+  if (!ms) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "秒";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "分" + (s % 60) + "秒";
+  const h = Math.floor(m / 60);
+  return h + "小时" + (m % 60) + "分钟";
+}
 export function send(obj) {
   if (S.ws && S.ws.readyState === 1) S.ws.send(JSON.stringify(obj));
 }
@@ -948,6 +958,21 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (s) {
         s.ctx = { tokens: msg.tokens, window: msg.window, percent: msg.percent };
+        notify();
+      }
+      break;
+    }
+    case "session_stats": {
+      const s = findBySessionId(msg.sessionId);
+      if (s) {
+        // 整会话统计（host 在 turn 收尾与加载会话时推送）：输入框下方状态行常驻显示
+        s.stats = {
+          tokens: msg.tokens,
+          cost: msg.cost,
+          cacheHitRate: msg.cacheHitRate,
+          advisorCost: msg.advisorCost,
+          activeMs: msg.activeMs,
+        };
         notify();
       }
       break;

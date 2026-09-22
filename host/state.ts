@@ -38,6 +38,11 @@ export type PoolEntry = {
   assistantDraft: string; // 当前 turn 的流式文本累积，turn_end 时定稿
   thinkingDraft: string;
   thinkingStartedAt: number | null;
+  // 会话活跃时长（TUI status-line time_spent 同款语义）：已完成的 agent_start→agent_end
+  // 窗口累计 + 进行中窗口（activeStartedAt 起算），空闲墙钟不计。随会话内存态存续，
+  // 加载历史会话从 0 起算（与 TUI 的 meter 一致，不回溯磁盘）
+  activeMs: number;
+  activeStartedAt: number | null;
   path: string; // 会话文件路径（磁盘标识）
   cwd: string;
   isGit: boolean;
