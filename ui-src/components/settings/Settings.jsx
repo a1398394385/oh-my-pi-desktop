@@ -10,6 +10,7 @@ import { LoginBanner, LoginPrompt } from "./common.jsx";
 import GeneralPage from "./pages/GeneralPage.jsx";
 import AppearancePage from "./pages/AppearancePage.jsx";
 import KeyboardPage from "./pages/KeyboardPage.jsx";
+import ExperimentalPage from "./pages/ExperimentalPage.jsx";
 import BrowserPage from "./pages/BrowserPage.jsx";
 import ComputerPage from "./pages/ComputerPage.jsx";
 import PluginsPage from "./pages/PluginsPage.jsx";
@@ -90,6 +91,7 @@ const NAV_SECTIONS = [
       { id: "pg-browser", icon: "globe", label: "浏览器控制" },
       { id: "pg-computer", icon: "monitor", label: "电脑控制" },
       { id: "pg-keyboard", icon: "keyboard", label: "键盘快捷键" },
+      { id: "pg-experimental", icon: "flask", label: "实验性功能" },
     ],
   },
   {
@@ -129,6 +131,7 @@ const PAGES = {
   "pg-general": GeneralPage,
   "pg-appearance": AppearancePage,
   "pg-keyboard": KeyboardPage,
+  "pg-experimental": ExperimentalPage,
   "pg-browser": BrowserPage,
   "pg-computer": ComputerPage,
   "pg-plugins": PluginsPage,

@@ -160,9 +160,31 @@ function readAcpNudgeConfig(): AcpNudgeConfig {
   };
 }
 
+/** ACP 总开关（omp-desktop.json 的 acp.enabled）。缺省/非法值按开启处理，
+ *  保持引入开关之前的行为——只有显式写 false 才关闭。 */
+function readAcpEnabled(): boolean {
+  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
+  if (!acp || typeof acp !== "object") return true;
+  return acp.enabled !== false;
+}
+
+/** 写回 acp.enabled：先读盘再覆盖，保留 omp-desktop.json 的其他键与 acp 段内其他字段。 */
+async function writeAcpEnabled(enabled: boolean): Promise<void> {
+  const raw = readAcpRaw();
+  const acp = raw.acp && typeof raw.acp === "object" ? (raw.acp as Record<string, unknown>) : {};
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, enabled } }, null, 2));
+}
+
+/** 设置帧 = 底座设置快照 + host 侧 ACP 开关（不下沉 models.ts，避免模块环）。 */
+function settingsWithAcp() {
+  return { ...settingsSnapshot(), acpEnabled: readAcpEnabled() };
+}
 
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const acpState = new AcpSessionState();
+  // 实验性功能页的总开关（omp-desktop.json 的 acp.enabled，默认开启）：只决定本会话
+  // 是否注入 ACP 工具面与 context 视图改写；会话创建后无法热切换，故开关变更对新会话生效
+  const acpEnabled = readAcpEnabled();
   // nudge 分母：omp-desktop.json 的 acp.contextWindow（固定值，如 2000000 / "1M"）
   // 优先于模型注册表窗口；两者皆未知则 nudge 整体禁用
   const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
@@ -178,8 +200,9 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     settings: H.settings,
     model: initialModel ?? H.modelOverride,
     agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
-    customTools: createAcpCompressTools(acpState) as never, // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
-    extensions: [createAcpContextExtension(acpState)], // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
+    sessionManager, // host 侧 manager 必须注入 SDK：否则 rename/compact/branch 走 entry.manager（孤儿实例）操作到另一个会话文件
+    customTools: acpEnabled ? (createAcpCompressTools(acpState) as never) : [], // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
+    extensions: acpEnabled ? [createAcpContextExtension(acpState)] : [], // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
     disableExtensionDiscovery: true,
     enableMCP: false,
     hasUI: true, // 审批 gate 的 fail-cold 判定走 runner.hasUI()：不开则非 yolo 模式下所有需审批工具直接报错
@@ -223,7 +246,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
           approvalMode: H.settings.get("tools.approvalMode"),
           models: modelsPayload(),
           ...modelsDefaults(),
-          settings: settingsSnapshot(),
+          settings: settingsWithAcp(),
         }),
       );
     },
@@ -936,7 +959,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             break;
           }
           case "get_settings":
-            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
             break;
           case "get_settings_schema":
             ws.send(JSON.stringify({ type: "settings_schema", schema: SETTINGS_SCHEMA }));
@@ -985,7 +1008,14 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (isModelKey) rebuildScopedModels();
             await H.settings.flush();
             if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
-            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
+            break;
+          }
+          case "set_acp_enabled": {
+            // 实验性功能页开关：写入 omp-desktop.json 的 acp.enabled（只影响此后创建的会话——
+            // 工具面与 context 扩展在 createSessionCore 里注入，无法热插拔到已打开的会话）
+            await writeAcpEnabled(!!msg.enabled);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
             break;
           }
           case "set_desktop_env": {
@@ -998,7 +1028,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             H.desktopEnv = next;
             H.desktopEnvFilePresent = true;
             applyDesktopEnv(next);
-            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot(), restartHint: true }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp(), restartHint: true }));
             break;
           }
           case "get_models_catalog":
@@ -1394,7 +1424,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const p = String(msg.profile ?? "").trim();
             if (!p) throw new Error("Profile 名称不能为空");
             await applyProfile(p);
-            ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
             ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             await handleListSessions(ws);

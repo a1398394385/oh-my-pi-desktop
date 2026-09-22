@@ -16,6 +16,8 @@
 | BUG-006 | 点一条排队消息「立即发送」把整队消息都发了——底座注入边界 drain 整队 followUp | 2026-09-20 |
 | BUG-007 | 长流式会话把应用卡死——esbuild 未设 NODE_ENV,React 开发版打进生产包 | 2026-09-22 |
 | BUG-008 | Profile 菜单缺 default 选项——宿主冷启动 >15s,UI 连接失败后永不重试 | 2026-09-22 |
+| BUG-010 | 「立即发送」点击瞬间即分割处理过程 + 放回队列后新过程裸奔不可收缩 | 2026-09-20 |
+| BUG-011 | 前端一断开连接宿主进程即崩——ACP 提交误删 pty import 整行 | 2026-09-22 |
 
 ---
 
@@ -95,7 +97,7 @@
 
 **教训**:底座队列语义是"流水线"(run 内 drain 到排空),桌面 UI 的队列语义是"逐条可控"——host 层夹在中间必须显式翻译,不能假设「入队后什么时候被消费」与 UI 呈现一致。凡"点一条/删一条"的索引型 RPC,索引必须基于 UI 看到的完整视图,而不是底座物理队列。回归冒烟:`scripts/smoke-sendnow.ts` 三断言(点的那条独立成轮 / 逐帧单条注入 / 其余各占独立 turn)。
 
-### BUG-007: 「立即发送」点击瞬间即分割处理过程 + 放回队列后新过程裸奔不可收缩（UI 层三缺陷，底座一层遗留）
+### BUG-010: 「立即发送」点击瞬间即分割处理过程 + 放回队列后新过程裸奔不可收缩（UI 层三缺陷，底座一层遗留）
 
 **现象**:①点排队消息的「立即发送」，历史过程立刻被缩起分割，但当时 steer 消息尚未被消费；②随即点「放回队列」，消费后处理过程变两段：分割点前的历史正常缩起，之后新流入的过程原样展开且不进 loop 组（无收缩）；③被放回的消息偶尔从消息流消失。
 
@@ -142,3 +144,14 @@
 **教训**:协议语义从「run 级近似」改成「逐帧权威」时,所有依赖旧粒度的消费端(封存/计时/usage 口径)必须逐个对齐新粒度——半改(只加 runEnd 标记不挪封存点)等于没改。另:主页侧栏左下角 profile 名硬编码 omp-desktop 一并修复(绑定 `S.hostSettings.activeProfile`,与设置页同源)。
 
 **BUG-007 补充(第三轮)**:prod React + icon 缓存后仍卡(时间变长=曲线被压低但斜率仍在)。sample 同签名(React 递归 + RegExpTestString 风暴),排除 LightweightDiff(有 useMemo,收起态不解析)与 thinking(纯文本)后锁定:**流式尾巴对不断增长的 draft 全文每 100ms 重跑 markdown 管线——每行 ~6 个 test + renderInline 的 exec,O(n²) 累积,回复越长每帧越贵**。修复:流式态改纯文本渲染(`.stream-plain`,pre-wrap),turn_end 定稿 push 为历史条目后才由 AssistantMsg 做一次 markdown 解析(memo 下仅此一次)。教训:**任何"对增长中的全文做全量变换"的流式渲染都是 O(n²)**——流式期间只许增量/纯文本,富文本变换留给定稿时刻;这是流式 UI 的硬性设计约束,违者必卡。
+### BUG-011: 前端一断开连接宿主进程即崩——ACP 提交误删 pty import 整行
+
+**现象**:WebSocket 客户端断开后，宿主进程抛 `Uncaught Exception: ReferenceError: disposeTerminalsOf is not defined`（`host/host.ts` 的 `close` 处理器）并直接退出（exit=1）。用户侧表现为：刷新前端 / 关窗 / 网络抖动后整个会话池消失，重连拿到空池。启动与 `READY` 一切正常——只有断开路径触发，故常规冒烟看不见。
+
+**根因**:`6fd7c72`（feat: ACP 压缩执行引擎）插入 `acp-state.ts` / `acp-context.ts` 两条 import 时，把相邻的 `import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";` **整行替换**掉了（该行由 `35e3f00` 引入，main 上健在）。三个符号在 host.ts 内仍被引用（终端 RPC 三处 + close 一处），而本仓无 tsc/eslint 门禁，编译期无人代查 → 只在运行期暴露：终端 RPC 报错、`close` 处理器直接把进程带崩。
+
+**修复**:恢复该 import 行（`host/host.ts` 导入区，紧随 acp 三条之后）。验证：隔离配置根启动宿主 → WS 连接 → `get_settings` → 主动断开 → 进程存活（exit=0）；修复前同流程稳定复现 exit=1。
+
+**教训**:①编辑 import 区块时禁止整行替换相邻既有 import——新增一律插入；②删除/替换任何 import 名后必须 grep 该符号在本文件的使用点；③本仓无 lint 链，「启动即 READY」覆盖不到 close 路径，host 改动后必须单独跑一次「连接 → 断开」存活检查。已立 RULE-004。
+
+**同源误删（已一并修复）**:同一提交还把 `createAgentSession({...})` 的 `sessionManager,` 传参吞掉（main 上有）。取证（隔离配置根，单元级对比）：**传参**时 `session.sessionFile === manager.getSessionFile()`（同源）；**不传**时 host 的 manager 指向 `…11b4-7284….jsonl`、SDK 实际写入 `…11b7-7462….jsonl`——两个不同文件，`entry.manager` 沦为孤儿。用户可见后果［推理，需真实对话历史才能端到端复现，隔离环境无凭证］：`rename_session` 写到孤儿文件；`compact_session`/`branch_session` 用 `entry.manager.getEntries()` 重建 transcript，孤儿 manager 读空 → 消息清空。已恢复该行，`scripts/smoke-features.ts` 全绿（含 rename 标题落盘生效、池外 rename、compact 结构合法）。

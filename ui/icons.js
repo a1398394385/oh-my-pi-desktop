@@ -42,6 +42,8 @@ const ICONS = {
   // 线条风消息分叉（feather git-branch：竖线 + 分叉圆点）：消息行分叉按钮与右栏分支 tab 用。
   // 命名避开 branch——该名已被 FA 层实心 code-branch 占用（Git Diff tab 在用），自定义层同名会被覆盖
   fork: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+  // 实验性功能分类图标：线条风锥形烧瓶（lucide 层参数同款 stroke-width=1.5 / viewBox 24）
+  flask: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3v6.4L4.9 18.4a2 2 0 0 0 1.8 3.1h10.6a2 2 0 0 0 1.8-3.1L14.5 9.4V3"/><path d="M8.2 3h7.6"/><path d="M6.9 14.5h10.2"/></svg>',
 };
 
 // Font Awesome 层：同名覆盖自定义默认（fa-icons.js 由 .local/build-fa-icons.py 生成）
