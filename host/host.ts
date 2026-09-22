@@ -2262,6 +2262,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
         isGit: entry.isGit,
       }),
     );
+    pushPlanMode(ws, sessionId, entry); // 复用快照同推计划状态（前端 reload 后靠它显示「计划」按钮）
     ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
     pushContext(ws, sessionId, entry);
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);

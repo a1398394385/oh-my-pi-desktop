@@ -24,25 +24,26 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-if (!wsUrl) {
+function launchHost(): Promise<string> {
   child = spawn("bun", ["host/host.ts"], {
     cwd: new URL("..", import.meta.url).pathname,
     env: { ...process.env },
     stdio: ["ignore", "pipe", "inherit"],
   });
-  wsUrl = await new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("宿主 30s 未就绪")), 30_000);
-    child!.stdout!.setEncoding("utf8");
-    child!.stdout!.on("data", function onLine(chunk: string) {
-      const m = chunk.match(/READY (ws:\/\/\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        child!.stdout!.off("data", onLine);
-        resolve(m[1]);
-      }
-    });
-  }).catch((e) => fail(String(e)));
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+  const timer = setTimeout(() => reject(new Error("宿主 30s 未就绪")), 30_000);
+  child!.stdout!.setEncoding("utf8");
+  child!.stdout!.on("data", function onLine(chunk: string) {
+    const m = chunk.match(/READY (ws:\/\/\S+)/);
+    if (m) {
+      clearTimeout(timer);
+      child!.stdout!.off("data", onLine);
+      resolve(m[1]);
+    }
+  });
+  return promise.catch((e) => fail(String(e)));
 }
+if (!wsUrl) wsUrl = await launchHost();
 
 interface WireFrame {
   type: string;
@@ -71,14 +72,18 @@ function waitFor(pred: (f: WireFrame) => boolean, label: string, ms = 20_000): P
   return promise;
 }
 
-const ws = new WebSocket(wsUrl);
-ws.onmessage = (ev) => {
-  const f = JSON.parse(String(ev.data)) as WireFrame;
-  seen.push(f);
-  for (let i = waiters.length - 1; i >= 0; i--) {
-    if (waiters[i].pred(f)) waiters.splice(i, 1)[0].resolve(f);
-  }
-};
+let ws: WebSocket;
+function attachWs(url: string) {
+  ws = new WebSocket(url);
+  ws.onmessage = (ev) => {
+    const f = JSON.parse(String(ev.data)) as WireFrame;
+    seen.push(f);
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      if (waiters[i].pred(f)) waiters.splice(i, 1)[0].resolve(f);
+    }
+  };
+}
+attachWs(wsUrl);
 const send = (msg: unknown) => ws.send(JSON.stringify(msg));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -124,26 +129,38 @@ const afterExit = modeChanges(sessionPath);
 if (afterExit.at(-1)?.mode !== "none") fail(`退出未落 mode_change=none：${JSON.stringify(afterExit.at(-1))}`);
 console.log("✓ 退出计划模式：帧 enabled=false + mode_change(none)");
 
-// 5) 再次开启后重开会话 → 从落盘 mode_change 恢复
+// 5) 重启宿主清池后重开会话 → 从落盘 mode_change 恢复（池内命中走复用快照，测不到 reconcile）
 send({ type: "set_plan_mode", sessionId, enabled: true });
 await waitFor((f) => f.type === "plan_mode" && f.enabled === true, "二次进入帧");
 await sleep(300);
-send({ type: "load_session", path: sessionPath });
-const reloaded = await waitFor(
-  (f) => f.type === "session_created" && f.path === sessionPath && f.sessionId !== sessionId,
-  "重开会话",
-);
-const restored = await waitFor(
-  (f) => f.type === "plan_mode" && f.sessionId === reloaded.sessionId && f.enabled === true,
-  "重开会话的 plan_mode=true 恢复帧",
-);
-if (restored.planFilePath !== "local://PLAN.md") fail(`恢复的计划文件路径不符：${restored.planFilePath}`);
-console.log(`✓ 重开会话恢复计划模式（sessionId=${reloaded.sessionId!.slice(0, 8)}）`);
+if (!child?.pid) {
+  console.log("⊘ 外部宿主无法重启清池，跳过重开恢复断言（步骤 5/6）");
+} else {
+  child.kill("SIGTERM");
+  const { promise: exited, resolve: markExited } = Promise.withResolvers<void>();
+  child.once("exit", markExited);
+  await exited;
+  wsUrl = await launchHost();
+  seen.length = 0; // 旧连接的帧作废，防 ready 误命中
+  attachWs(wsUrl);
+  await waitFor((f) => f.type === "ready", "重启后 ready");
+  send({ type: "load_session", path: sessionPath });
+  const reloaded = await waitFor(
+    (f) => f.type === "session_created" && f.path === sessionPath && f.sessionId !== sessionId,
+    "重开会话",
+  );
+  const restored = await waitFor(
+    (f) => f.type === "plan_mode" && f.sessionId === reloaded.sessionId && f.enabled === true,
+    "重开会话的 plan_mode=true 恢复帧",
+  );
+  if (restored.planFilePath !== "local://PLAN.md") fail(`恢复的计划文件路径不符：${restored.planFilePath}`);
+  console.log(`✓ 重开会话恢复计划模式（sessionId=${reloaded.sessionId!.slice(0, 8)}）`);
 
-// 6) 恢复不重复记账
-const planEntries = modeChanges(sessionPath).filter((e) => e.mode === "plan");
-if (planEntries.length !== 2) fail(`恢复不应追加 mode_change：plan 条目数=${planEntries.length}`);
-console.log("✓ 恢复不重复记账（mode_change 仍为 2 条 plan）");
+  // 6) 恢复不重复记账
+  const planEntries = modeChanges(sessionPath).filter((e) => e.mode === "plan");
+  if (planEntries.length !== 2) fail(`恢复不应追加 mode_change：plan 条目数=${planEntries.length}`);
+  console.log("✓ 恢复不重复记账（mode_change 仍为 2 条 plan）");
+}
 
 console.log("\n全部断言通过");
 if (child?.pid) child.kill("SIGTERM");
