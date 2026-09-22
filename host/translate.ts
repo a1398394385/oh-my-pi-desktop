@@ -11,7 +11,8 @@ export type UiEvent =
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
   | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: unknown; diffContent?: string }
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; runEnd?: boolean }
-  | { kind: "thinking_level"; configured?: string; resolved?: string };
+  | { kind: "thinking_level"; configured?: string; resolved?: string }
+  | { kind: "mention"; files: string[] }; // @ 提及回读（attachEntry 的 agent_end 扫描直发，不经 translateEvent）
 
 // 工具设备路径（xd://tui、xd://mcp__xxx 等）：读/写它是调用设备，不是文件读写
 function isDevicePath(p: unknown): boolean {
@@ -420,6 +421,25 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       if (run && ts) run.endMs = ts;
       const item = byId.get(msg.toolCallId);
       if (item) Object.assign(item, summarizeResult(msg.toolName, item.args, msg));
+      continue;
+    }
+    if (role === "bashExecution") {
+      // ! 本地命令结果：平铺成 bash 行，不开启新轮次、不进 loop 组
+      out.push({
+        role: "bash",
+        text: msg.command,
+        output: msg.output ?? "",
+        exitCode: msg.exitCode ?? null,
+        cancelled: !!msg.cancelled,
+        truncated: !!msg.truncated,
+        excludeFromContext: !!msg.excludeFromContext,
+        running: false,
+      });
+      continue;
+    }
+    if (role === "fileMention") {
+      // @ 提及已读取：平铺成 mention 行
+      out.push({ role: "mention", text: "", files: (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")) });
       continue;
     }
     if (role !== "user" && role !== "assistant") continue;

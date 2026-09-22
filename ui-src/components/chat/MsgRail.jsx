@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { placeMenu } from "../../shell.js";
 
-const RAIL_ROLE_LABEL = { user: "用户", assistant: "助手", thinking: "思考", tool: "工具", meta: "系统", approval: "确认", err: "错误" };
+const RAIL_ROLE_LABEL = { user: "用户", assistant: "助手", thinking: "思考", tool: "工具", meta: "系统", approval: "确认", err: "错误", bash: "命令", mention: "读取" };
 const RAIL_SNIPPET_LEN = 280;
 const RAIL_W_BASE = 37.5; // 刻度默认长 37.5 个屏幕物理像素（水平长度）
 const RAIL_W_PEAK = 2.5; // 山峰峰顶倍率（最接近鼠标的线）

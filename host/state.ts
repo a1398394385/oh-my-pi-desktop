@@ -7,7 +7,7 @@ import type { createAgentSession } from "./bootstrap.ts";
 // ---------- 会话池类型（前置声明，方便 profile 切换时清理） ----------
 export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -26,6 +26,15 @@ export type TranscriptItem = {
   durationSec?: number | null; // 本轮工作时长（秒）
   usage?: TurnUsage | null; // 本轮 LLM token 总消耗
   entryId?: string; // 落盘条目 id（user 消息才有：branch_session 按它定位分叉点）
+  // ---- bash 行（role==="bash"，本地 ! 命令执行）----
+  running?: boolean; // 执行中（bash_start → bash_done 之间）
+  exitCode?: number | null; // 进程退出码；null = 未知/未完成
+  cancelled?: boolean; // 被用户中止
+  timedOut?: boolean; // 超时杀
+  truncated?: boolean; // 输出被截断（底座有上限）
+  excludeFromContext?: boolean; // !! 前缀：结果不进模型上下文
+  error?: string; // 执行失败错误信息
+  // ---- 文件提及行（role==="mention"，@path 已读取）----
 };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
@@ -55,6 +64,9 @@ export type PoolEntry = {
   // 用户重命名的标题（懒建未落盘的会话 listAll 扫不到，list_sessions 兜底条目经此呈现；
   // 已落盘的以底座 title slot 为准，此字段仅内存兜底）
   title: string | null;
+  // fileMention 回读游标：agent_end 时重读 manager.getEntries()，把自该下标起
+  // 新增的 fileMention 条目转成 mention 帧下发（底座 prompt() 内部落盘、无对应事件）
+  mentionScanIndex: number;
 };
 
 // key = 前端持有的 sessionId

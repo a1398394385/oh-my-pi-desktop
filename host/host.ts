@@ -14,7 +14,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { mkdir, readdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, rm, stat } from "node:fs/promises";
 import {
   SessionManager,
   createAgentSession,
@@ -30,7 +30,19 @@ import {
   isHiddenUserCompanion,
   toRestoredQueuedMessage,
   USER_INTERRUPT_LABEL,
+  executeAcpBuiltinSlashCommand,
+  buildAvailableSlashCommands,
+  parseSlashCommand,
+  parseSkillInvocation,
+  buildSkillPromptMessage,
+  SKILL_PROMPT_MESSAGE_TYPE,
+  fuzzyFind,
+  resolveApprovedPlan,
+  autosaveApprovedPlan,
+  resolveLocalUrlToPath,
+  normalizeLocalScheme,
 } from "./bootstrap.ts";
+import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
 import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
 import { AcpSessionState, parseAcpContextWindow, type AcpNudgeConfig } from "./acp-state.ts";
@@ -180,6 +192,224 @@ function settingsWithAcp() {
   return { ...settingsSnapshot(), acpEnabled: readAcpEnabled() };
 }
 
+// ---------- 输入框 sigil：命令清单与 @ 文件候选 ----------
+
+// 桌面端不通过 sigil 提供的斜杠命令：模型/思考级别/会话开关这几类，能力分别由输入框胶囊
+// （模型/思考/ModeMenu）与设置页承担，清单过滤与执行拦截共用本表（值为命中提示）。
+// key 含别名（/models 是 /model 的别名；/force:xxx 经 parseSlashCommand 归到 force）。
+const REMOVED_SLASH_COMMANDS: Record<string, string> = {
+  model: "模型切换请用输入框的模型胶囊",
+  models: "模型切换请用输入框的模型胶囊",
+  switch: "模型切换请用输入框的模型胶囊",
+  prewalk: "模型交接已移除",
+  fast: "服务档（fast）切换已移除",
+  skillful: "技能清单开关请到设置页操作",
+  "extended-context": "扩展上下文开关请到设置页操作",
+  computer: "电脑控制开关请到设置页操作",
+  force: "强制工具选择已移除",
+};
+
+/** 已移除命令的提示文案；非已移除命令返回 null */
+function removedSlashHint(text: string): string | null {
+  const parsed = parseSlashCommand(text.trim());
+  if (!parsed) return null;
+  const hint = REMOVED_SLASH_COMMANDS[parsed.name];
+  return hint ? `/${parsed.name} 已移除：${hint}` : null;
+}
+
+// 命令清单帧：内置 + skill + 扩展 + 自定义 + 文件命令，可无 TUI 执行的那批
+// （executeAcpBuiltinSlashCommand 的姊妹面）。映射成前端 PaletteMenu 直接消费的形状。
+async function pushCommands(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  const list = (await buildAvailableSlashCommands(entry.session)).filter((c) => !REMOVED_SLASH_COMMANDS[c.name]);
+  ws.send(
+    JSON.stringify({
+      type: "commands",
+      sessionId,
+      commands: list.map((c) => ({
+        name: c.name,
+        aliases: c.aliases ?? [],
+        description: c.description ?? "",
+        hint: c.input?.hint ?? null,
+        source: c.source,
+        subcommands: (c.subcommands ?? []).map((s) => ({ name: s.name, description: s.description ?? "" })),
+      })),
+    }),
+  );
+}
+
+// @ 候选：绝对路径/家目录前缀走 readdir 前缀列举（对齐 TUI autocomplete 的目录补全），
+// 其余走 fuzzyFind 全仓模糊搜索；任何错误静默返回空（弹层显示无匹配）
+async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean }>> {
+  if (query.startsWith("/") || query.startsWith("~")) {
+    try {
+      const expanded = query.startsWith("~") ? os.homedir() + query.slice(1) : query;
+      const searchDir = query.endsWith("/") ? expanded : path.dirname(expanded);
+      const base = query.endsWith("/") ? "" : path.basename(expanded);
+      const dirents = await readdir(searchDir, { withFileTypes: true });
+      const prefix = base.toLowerCase();
+      const dirPart = query.endsWith("/") ? query : query.slice(0, query.length - path.basename(query).length);
+      return dirents
+        .filter((d) => d.name !== ".git" && d.name.toLowerCase().startsWith(prefix))
+        .map((d) => ({ path: dirPart + d.name, dir: d.isDirectory() }))
+        .sort((a, b) => Number(b.dir) - Number(a.dir) || a.path.localeCompare(b.path))
+        .slice(0, 100);
+    } catch {
+      return [];
+    }
+  }
+  try {
+    const r = await fuzzyFind({ query, path: root, maxResults: 100, hidden: true, gitignore: true, cache: true });
+    return r.matches.map((m) => ({ path: m.path, dir: m.isDirectory }));
+  } catch {
+    return [];
+  }
+}
+
+// ---------- 计划模式（plan）----------
+// 会话语义全在底座：模式状态 + 每轮自动注入的计划上下文 + plan-mode-guard 写保护。
+// 宿主只做三件事：切状态、落 mode_change 持久化、把 agent 的 xd://propose 提案接到审批卡。
+// 参考实现：modes/acp/acp-agent.ts 的 #applyModeChange / #handleAcpPlanProposal（无 TUI 版）。
+
+const PLAN_MODE_NAME = "plan";
+const PLAN_FILE_URL = "local://PLAN.md"; // 与 ACP 默认计划文件同址
+const PLAN_APPROVE = "批准并执行";
+const PLAN_REFINE = "继续修改";
+
+/** 计划模式状态帧：UI 据此显示/隐藏权限胶囊右侧的「计划」退出按钮。 */
+function pushPlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  const state = entry.session.getPlanModeState();
+  ws.send(
+    JSON.stringify({
+      type: "plan_mode",
+      sessionId,
+      enabled: state?.enabled === true,
+      planFilePath: state?.planFilePath ?? null,
+    }),
+  );
+}
+
+/** local:// 计划文件的磁盘路径（对齐 ACP 的 #resolveAcpPlanFilePath） */
+function planFilePathOnDisk(entry: PoolEntry, url: string): string {
+  const normalized = url.startsWith("local:") ? normalizeLocalScheme(url) : url;
+  return resolveLocalUrlToPath(normalized, {
+    getArtifactsDir: () => entry.session.sessionManager.getArtifactsDir(),
+    getSessionId: () => entry.session.sessionManager.getSessionId(),
+  });
+}
+
+/** 读计划文件内容；不存在返回 null（resolveApprovedPlan 据此走兜底） */
+async function readPlanContent(entry: PoolEntry, url: string): Promise<string | null> {
+  try {
+    return await Bun.file(planFilePathOnDisk(entry, url)).text();
+  } catch {
+    return null;
+  }
+}
+
+/** 会话本地根下的计划文件（最新优先）：agent 丢了 extra.title 时 resolveApprovedPlan 的兜底 */
+async function listPlanFilesOf(entry: PoolEntry): Promise<string[]> {
+  try {
+    const dir = planFilePathOnDisk(entry, "local://");
+    const files = (await readdir(dir, { withFileTypes: true })).filter((d) => d.isFile() && /plan\.md$/i.test(d.name));
+    const stamped = await Promise.all(
+      files.map(async (d) => ({ name: d.name, mtime: (await stat(path.join(dir, d.name))).mtimeMs })),
+    );
+    return stamped.sort((a, b) => b.mtime - a.mtime).map((f) => `local://${f.name}`);
+  } catch {
+    return [];
+  }
+}
+
+// 提案处理器：agent 写 xd://propose 后由底座调用（返回的 tool result 回到模型侧）。
+// 批准 → 记计划引用 + 自动保存计划 + 退出计划模式；驳回 → 保持计划模式继续打磨。
+async function handlePlanProposal(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  entry: PoolEntry,
+  title: string,
+) {
+  const state = entry.session.getPlanModeState();
+  if (!state?.enabled) throw new Error("计划模式未激活");
+  const { planFilePath, title: resolvedTitle } = await resolveApprovedPlan({
+    suppliedTitle: title,
+    statePlanFilePath: state.planFilePath,
+    readPlan: (url: string) => readPlanContent(entry, url),
+    listPlanFiles: () => listPlanFilesOf(entry),
+  });
+  const details = { planFilePath, title: resolvedTitle, planExists: true };
+  const answer = await requestApproval(ws, sessionId, `计划待审批：${resolvedTitle}\n${planFilePath}`, [
+    PLAN_APPROVE,
+    PLAN_REFINE,
+  ]);
+  if (answer !== PLAN_APPROVE) {
+    // 驳回：把刚评审的路径提为状态路径，下一轮提案针对这份计划继续改
+    if (state.planFilePath !== planFilePath) entry.session.setPlanModeState({ ...state, planFilePath });
+    return {
+      content: [{ type: "text" as const, text: `计划需要修改：更新 ${planFilePath} 后再次写入 xd://propose。` }],
+      details,
+    };
+  }
+  entry.session.setPlanReferencePath(planFilePath); // 下一轮把计划正文作为上下文注入
+  const planContent = (await readPlanContent(entry, planFilePath)) ?? "";
+  try {
+    await autosaveApprovedPlan({
+      settings: entry.session.settings,
+      cwd: entry.session.sessionManager.getCwd(),
+      title: resolvedTitle,
+      planContent,
+    });
+  } catch (err) {
+    process.stderr.write(`[host] 计划自动保存失败: ${String(err)}\n`);
+  }
+  setPlanMode(ws, sessionId, entry, false);
+  return {
+    content: [{ type: "text" as const, text: `计划已批准（${planFilePath}）。计划模式已退出，按计划开始实施。` }],
+    details,
+  };
+}
+
+/**
+ * 进出计划模式。persist=false 用于从落盘 mode_change 恢复（不重复记账）。
+ * 进模式后提案处理器负责 xd://propose 的审批闭环——不装它，agent 的提案无人接收。
+ */
+function setPlanMode(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  entry: PoolEntry,
+  enabled: boolean,
+  options?: { planFilePath?: string; persist?: boolean },
+) {
+  const persist = options?.persist !== false;
+  if (enabled) {
+    const previous = entry.session.getPlanModeState();
+    const planFilePath = options?.planFilePath ?? previous?.planFilePath ?? PLAN_FILE_URL;
+    entry.session.setPlanModeState({
+      enabled: true,
+      planFilePath,
+      workflow: previous?.workflow ?? "parallel",
+      reentry: previous !== undefined,
+    });
+    entry.session.setPlanProposalHandler?.((title: string) => handlePlanProposal(ws, sessionId, entry, title));
+    if (persist) entry.manager.appendModeChange?.(PLAN_MODE_NAME, { planFilePath });
+  } else {
+    entry.session.setPlanProposalHandler?.(null);
+    entry.session.setPlanModeState(undefined);
+    if (persist) entry.manager.appendModeChange?.("none");
+  }
+  pushPlanMode(ws, sessionId, entry);
+}
+
+/** 会话重开时按最后一条 mode_change 恢复计划模式（TUI #reconcileModeFromSession 的桌面版） */
+function reconcilePlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry, entries: any[]) {
+  const last = [...entries].reverse().find((e) => e?.type === "mode_change");
+  if (last?.mode !== PLAN_MODE_NAME) {
+    pushPlanMode(ws, sessionId, entry); // 非计划模式也要推帧：UI 需要明确置 false
+    return;
+  }
+  const planFilePath = typeof last.data?.planFilePath === "string" ? last.data.planFilePath : PLAN_FILE_URL;
+  setPlanMode(ws, sessionId, entry, true, { planFilePath, persist: false });
+}
+
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const acpState = new AcpSessionState();
   // 实验性功能页的总开关（omp-desktop.json 的 acp.enabled，默认开启）：只决定本会话
@@ -227,6 +457,7 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     parkedFollowUp: [], // followUp 暂存区（见 state.ts 类型注释）
     manager: sessionManager, // rename/compact 等需要直接操作 SessionManager 的 RPC 用
     title: null,
+    mentionScanIndex: 0,
   };
   return { sessionId, entry, eventBus: result.eventBus };
 }
@@ -424,6 +655,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
             try {
               await entry.session.compact();
               entry.transcript = entriesToTranscript(entry.manager.getEntries());
+              // 重建后的历史已含 mention 行：游标对齐，避免后续回读重发
+              entry.mentionScanIndex = entry.manager.getEntries().length;
               ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
               ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, ok: true }));
             } catch (err) {
@@ -459,6 +692,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
               entry.consumedTexts = [];
               entry.parkedFollowUp = [];
               entry.transcript = entriesToTranscript(entry.manager.getEntries());
+              entry.mentionScanIndex = entry.manager.getEntries().length; // 回读游标对齐，避免重发历史 mention
               attachEntry(ws, newSessionId, entry, entry.sessionResult.eventBus);
               ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: entry.transcript }));
               ws.send(
@@ -717,6 +951,98 @@ const server = Bun.serve<{ sessionId: string | null }>({
             ws.send(JSON.stringify({ type: "dir_list", path: dir, entries }));
             break;
           }
+          case "list_commands": {
+            // 斜杠命令清单（输入框 / 补全用）：按需拉取，不做会话生命周期推送
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            await pushCommands(ws, msg.sessionId, entry);
+            break;
+          }
+          case "list_files": {
+            // @ 文件候选：reqId 原样回传，前端据此丢弃过期响应
+            const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
+            const root = entry ? entry.session.sessionManager.getCwd() : String(msg.cwd ?? "");
+            if (!root) throw new Error("缺少 cwd");
+            const query = String(msg.query ?? "");
+            ws.send(
+              JSON.stringify({
+                type: "file_matches",
+                reqId: msg.reqId,
+                matches: await listFileMatches(root, query),
+              }),
+            );
+            break;
+          }
+          case "bash_exec": {
+            // ! 本地命令：结果走 bashExecution 落盘（底座 executeBash 内部完成），
+            // 实时流由专用帧驱动（bash_start/chunk/done），不进模型事件流
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            const command = String(msg.command ?? "").trim();
+            if (!command) break;
+            const excludeFromContext = msg.excludeFromContext === true;
+            if (entry.session.isBashRunning) {
+              ws.send(
+                JSON.stringify({
+                  type: "error",
+                  sessionId: msg.sessionId,
+                  message: "已有 bash 命令在执行，先按停止或等它结束",
+                }),
+              );
+              break;
+            }
+            const item: TranscriptItem = { role: "bash", text: command, output: "", running: true, excludeFromContext };
+            entry.transcript.push(item);
+            ws.send(JSON.stringify({ type: "bash_start", sessionId: msg.sessionId, command, excludeFromContext }));
+            entry.session
+              .executeBash(
+                command,
+                (chunk) => ws.send(JSON.stringify({ type: "bash_chunk", sessionId: msg.sessionId, chunk })),
+                { excludeFromContext, useUserShell: true },
+              )
+              .then((r) => {
+                item.output = r.output;
+                item.running = false;
+                item.exitCode = r.exitCode ?? null;
+                item.cancelled = r.cancelled;
+                item.timedOut = r.timedOut === true;
+                item.truncated = r.truncated;
+                // 底座 lazy 门：纯 ! 会话（无 assistant 消息）不落盘，重开会话会丢 bash 行。
+                // 用户既然执行了命令，这里显式跨门让整份内存 entries（含本条）写盘。
+                entry.manager.ensureOnDisk?.().catch((err: unknown) => {
+                  process.stderr.write(`[host] ensureOnDisk 失败: ${String(err)}\n`);
+                });
+                ws.send(
+                  JSON.stringify({
+                    type: "bash_done",
+                    sessionId: msg.sessionId,
+                    exitCode: r.exitCode ?? null,
+                    cancelled: r.cancelled,
+                    timedOut: r.timedOut === true,
+                    truncated: r.truncated,
+                    output: r.output,
+                  }),
+                );
+              })
+              .catch((err: unknown) => {
+                item.running = false;
+                ws.send(
+                  JSON.stringify({
+                    type: "bash_done",
+                    sessionId: msg.sessionId,
+                    error: err instanceof Error ? err.message : String(err),
+                  }),
+                );
+              });
+            break;
+          }
+          case "bash_abort": {
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            entry.session.abortBash(); // 同步触发；executeBash 的 promise 会自行 resolve 并再发一帧 bash_done
+            ws.send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
+            break;
+          }
           case "get_todos": {
             const entry = sessions.get(msg.sessionId);
             if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
@@ -969,6 +1295,13 @@ const server = Bun.serve<{ sessionId: string | null }>({
             // execute-time 解析：无需重建会话，下一个工具调用即生效（对全部会话生效——settings 全进程共享）
             H.settings.override("tools.approvalMode", mode);
             ws.send(JSON.stringify({ type: "approval_mode", mode }));
+            break;
+          }
+          case "set_plan_mode": {
+            // 计划模式开关：UI 从权限模式菜单进入、从权限胶囊右侧的「计划」按钮退出
+            const entry = sessions.get(msg.sessionId);
+            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+            setPlanMode(ws, msg.sessionId, entry, msg.enabled === true);
             break;
           }
           case "approval_response": {
@@ -1551,6 +1884,27 @@ const server = Bun.serve<{ sessionId: string | null }>({
 // 挂起的审批请求：requestId -> resolve（answer 为 undefined 即拒绝语义）
 const pendingApprovals = new Map<string, { resolve: (v: string | undefined) => void }>();
 
+/** 审批卡往返：推 approval_request，等 approval_response 解析选项文本（undefined = 取消/中止）。 */
+function requestApproval(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  title: string,
+  options: string[],
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  const requestId = crypto.randomUUID();
+  const { promise, resolve } = Promise.withResolvers<string | undefined>();
+  const settle = (v: string | undefined) => {
+    pendingApprovals.delete(requestId);
+    resolve(v);
+  };
+  pendingApprovals.set(requestId, { resolve: settle });
+  // agent 中止/工具取消：AbortSignal 到来即按取消（undefined）结束挂起
+  signal?.addEventListener("abort", () => settle(undefined), { once: true });
+  ws.send(JSON.stringify({ type: "approval_request", sessionId, requestId, title, options }));
+  return promise;
+}
+
 function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
   const u = entry.session.getContextUsage();
   if (u) {
@@ -1576,6 +1930,18 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     }
     // turn 真正结束后推送上下文占用（此时消息已定稿）；同时校准排队行（steer 已消费）
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
+      // fileMention 回读：底座在 prompt() 内部追加 fileMention 消息（请求数组 + 落盘），
+      // 没有对应事件；这里扫自 mentionScanIndex 起的新条目转成 mention 帧下发
+      const entries = entry.manager.getEntries();
+      for (let i = entry.mentionScanIndex; i < entries.length; i++) {
+        const e = entries[i];
+        if (e?.type === "message" && e.message?.role === "fileMention") {
+          const files = (e.message.files ?? []).map((f: { path?: unknown }) => String(f.path ?? ""));
+          entry.transcript.push({ role: "mention", text: "", files });
+          ws.send(JSON.stringify({ type: "event", sessionId, kind: "mention", files }));
+        }
+      }
+      entry.mentionScanIndex = entries.length;
       pushContext(ws, sessionId, entry);
       // 收尾竞态兜底：底座在 run 收尾 abort 时，正在 claim 的队列消息会被丢弃且不回队
       // （agent.ts #prepareQueuedMessageBatch 的 dequeue-先移出 + abort-不 restore），表现为
@@ -1617,25 +1983,13 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     // ask 等工具的 UI 超时从对话框呈现起算，而不是工具发起时
     timeoutStartsOnPresentation: true,
     select(title: string, options: any[], dialogOptions?: any): Promise<string | undefined> {
-      return new Promise((resolve) => {
-        const requestId = crypto.randomUUID();
-        const settle = (v: string | undefined) => {
-          pendingApprovals.delete(requestId);
-          resolve(v);
-        };
-        pendingApprovals.set(requestId, { resolve: settle });
-        // agent 中止/工具取消：AbortSignal 到来即按取消（undefined）结束挂起
-        dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
-        ws.send(
-          JSON.stringify({
-            type: "approval_request",
-            sessionId,
-            requestId,
-            title,
-            options: options.map((o) => (typeof o === "string" ? o : o.label)),
-          }),
-        );
-      });
+      return requestApproval(
+        ws,
+        sessionId,
+        title,
+        options.map((o) => (typeof o === "string" ? o : o.label)),
+        dialogOptions?.signal,
+      );
     },
     confirm(title: string, message: string): Promise<boolean> {
       return new Promise((resolve) => {
@@ -1827,6 +2181,7 @@ async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thi
       isGit: entry.isGit,
     }),
   );
+  pushPlanMode(ws, sessionId, entry);
   process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
 }
 
@@ -1866,6 +2221,8 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const workCwd = peek?.cwd ?? defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
+  // 历史 mention 已在 transcript 里：fileMention 回读游标对齐到全量条目尾，避免首轮回读重发
+  entry.mentionScanIndex = entries.length;
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
     JSON.stringify({
@@ -1878,6 +2235,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
       isGit: entry.isGit,
     }),
   );
+  reconcilePlanMode(ws, sessionId, entry, entries); // 落盘 mode_change 恢复计划模式（必须在 session_created 之后推帧）
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
   // 恢复会话的存量任务清单（TodoTracker 构造时从 transcript 分支同步）
   const restored = entry.session.getTodoPhases();
@@ -1958,6 +2316,116 @@ interface PromptAttachment {
   text?: string; // text：文件内容
 }
 
+// ---------- 斜杠命令本地分发 ----------
+// 顺序对齐 ACP #runPromptOrCommand：/skill: → builtin（executeAcpBuiltinSlashCommand）→ 原样走 prompt。
+// 返回 null = 本地消费（不调 prompt、不推 user transcript）；返回 string = 转成该文本继续走 prompt。
+// prompt() 自身还会展开文件命令 / 自定义 TS 命令 / 扩展命令（agentInvoked=false 信号在 then 里处理）。
+async function dispatchSlashInput(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  entry: PoolEntry,
+  text: string,
+): Promise<string | null> {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) return text;
+
+  // 1) /skill:<name>：底座 prompt() 不处理，必须宿主分发（对齐 ACP #tryRunSkillCommand）
+  const parsed = parseSkillInvocation(trimmed);
+  const skill = parsed && entry.session.skillsSettings?.enableSkillCommands
+    ? entry.session.skills.find((c) => c.name === parsed.name)
+    : undefined;
+  if (parsed && skill) {
+    const built = await buildSkillPromptMessage(skill, parsed, "user");
+    await entry.session.promptCustomMessage(
+      {
+        customType: SKILL_PROMPT_MESSAGE_TYPE,
+        content: built.message,
+        display: true,
+        details: built.details,
+        attribution: "user",
+      },
+      { streamingBehavior: "steer" },
+    );
+    return null;
+  }
+
+  // 2) 已移除命令：既不执行也不落成 prompt（清单已在 pushCommands 过滤，这里挡手输）
+  const removedHint = removedSlashHint(trimmed);
+  if (removedHint) {
+    ws.send(JSON.stringify({ type: "command_output", sessionId, text: removedHint }));
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+
+  // 3) builtin：41 条无 TUI 执行的命令。桌面 prompt RPC 立即返回、turn 产物全走
+  // 常驻事件订阅（与 RPC 模式同构），不需要 keepTurnOpenUntilIdle；但 /compact、/handoff、
+  // /rename（无参自动生成标题）等 provider-backed 命令需要 runCommandInBackground——否则
+  // 底座内联 await，压缩几十秒期间 UI 无任何反馈且 abort 被卡住（对齐 RPC 模式做法）。
+  // 后台命令完成后会话条目会被改写：按指纹检测变化，重建 transcript 推 messages 全量帧
+  // 刷新视图；执行期间底座 output 的完成文案先缓存，待视图重建后补发（否则会被冲掉）。
+  const entriesSig = (list: any[]) => list.length + ":" + (list[list.length - 1]?.id ?? "");
+  const baseline = entriesSig(entry.manager.getEntries());
+  let bgOutputs: string[] | null = null; // 非 null = 后台命令执行中，output 暂存
+  const runtime: SlashCommandRuntime = {
+    session: entry.session,
+    sessionManager: entry.session.sessionManager,
+    settings: entry.session.settings,
+    cwd: entry.session.sessionManager.getCwd(),
+    output: (t) => {
+      if (bgOutputs) {
+        bgOutputs.push(t);
+        return;
+      }
+      ws.send(JSON.stringify({ type: "command_output", sessionId, text: t }));
+    },
+    refreshCommands: () => pushCommands(ws, sessionId, entry),
+    reloadPlugins: () => pushCommands(ws, sessionId, entry),
+    runCommandInBackground: (task) => {
+      if (bgOutputs === null) {
+        bgOutputs = [];
+        // 耗时命令的起始反馈：否则气泡撤回后界面毫无动静（压缩/交接在后台跑）
+        ws.send(JSON.stringify({ type: "command_output", sessionId, text: `正在执行 ${trimmed.split(/\s+/)[0]}…` }));
+      }
+      void task()
+        .then(async () => {
+          const entries = entry.manager.getEntries();
+          if (entriesSig(entries) !== baseline) {
+            entry.transcript = entriesToTranscript(entries);
+            entry.mentionScanIndex = entries.length; // 回读游标对齐，避免重发历史 mention
+            ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
+            pushContext(ws, sessionId, entry);
+          }
+          await handleListSessions(ws); // 标题/列表可能变（rename/handoff 改标题）
+          const outs = bgOutputs ?? [];
+          bgOutputs = null;
+          for (const t of outs) ws.send(JSON.stringify({ type: "command_output", sessionId, text: t }));
+        })
+        .catch((err: unknown) => {
+          bgOutputs = null;
+          ws.send(JSON.stringify({ type: "command_output", sessionId, text: `命令执行失败: ${err instanceof Error ? err.message : String(err)}` }));
+        });
+    },
+    notifyTitleChanged: () => {
+      void handleListSessions(ws);
+    },
+    notifyConfigChanged: () => {
+      ws.send(
+        JSON.stringify({
+          type: "session_model",
+          sessionId,
+          model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+          thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
+        }),
+      );
+    },
+  };
+  const r = await executeAcpBuiltinSlashCommand(trimmed, runtime);
+  if (r === false) return text; // 不是 builtin → 原样走 prompt（文件/自定义/扩展命令由底座展开）
+  if ("prompt" in r) return r.prompt; // /force <tool> <prompt> 之类：剩余文本当 prompt
+  ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+  return null;
+}
+
 async function handlePrompt(
   ws: { send(data: string): unknown },
   sessionId: string,
@@ -1985,6 +2453,10 @@ async function handlePrompt(
   }
   if (!finalText && images.length === 0) throw new Error("消息为空");
   if (!finalText) finalText = "请查看附件图片。";
+  // 斜杠命令本地分发：消费则直接返回（不推 transcript、不调 prompt）；改写则继续
+  const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
+  if (dispatched === null) return;
+  finalText = dispatched;
   entry.transcript.push({ role: "user", text: finalText });
   // 命令立即返回；turn 产物全部走事件流。流式中经 streamingBehavior 排队为 followUp
   // （当前 loop 完全自动消费触发新 turn，不打断进行中的处理；idle 时该参数被底座忽略照常开 turn）
@@ -1993,7 +2465,14 @@ async function handlePrompt(
       ...(images.length > 0 ? { images } : {}),
       streamingBehavior: "followUp",
     })
-    .then(() => {
+    .then((agentInvoked: boolean) => {
+      if (agentInvoked === false) {
+        // 扩展/自定义/文件命令被底座本地消费：撤回乐观气泡与 transcript 条目
+        // （该 user 消息必是尾部最后一条同文本且尚无 entryId 的）
+        const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === finalText && !t.entryId);
+        if (i >= 0) entry.transcript.splice(i, 1);
+        ws.send(JSON.stringify({ type: "command_result", sessionId, text: finalText, consumed: true }));
+      }
       // 流式排队后立即修剪：底座队列只留最早 1 条，其余进 parked（本轮 run 的注入边界
       // 只能带走这 1 条，避免多条拼车；后续逐轮 agent_end 放回消费）
       parkFollowUpTail(entry);
