@@ -50,7 +50,8 @@ export default function LoopGroup({ item, fk, railEntries }) {
 
   return (
     <>
-      <div className="act loop" style={{ cursor: "pointer" }} onClick={toggle}>
+      {/* sealed=收起态：汇总行与下方 output 之间画细分隔线（见 style.css .act.loop.sealed） */}
+      <div className={"act loop" + (item.collapsed && !closing ? " sealed" : "")} style={{ cursor: "pointer" }} onClick={toggle}>
         <span className="lp-tx">{loopSummaryText(item)}</span>
         <span className={"lp-arrow" + (!item.collapsed && !closing ? " open" : "")}>
           <Icon name="chevronRight" />

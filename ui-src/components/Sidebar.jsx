@@ -204,15 +204,31 @@ export default function Sidebar({ collapsed }) {
       setProjAdd({ rect });
     }
   };
-  // 垃圾桶：进出清理模式；进入时全部项目展开且不限制条数
+  // 垃圾桶：进出清理模式；进入时全部项目展开且不限制条数。
+  // 退出时恢复进入前的展开/条数状态(之前收起的收回、展开的保持)——快照只记进入时刻
+  // 的存量项目,清理模式中新展开的不回滚
+  const manageSnap = useRef(null);
   const onSecTrash = (e) => {
     e.stopPropagation();
     S.isProjectManageMode = !S.isProjectManageMode;
     if (S.isProjectManageMode) {
+      manageSnap.current = visible.map((pr) => ({
+        cwd: pr.cwd,
+        wasExpanded: expandedProjects.has(pr.cwd),
+        limit: projectLimits.has(pr.cwd) ? projectLimits.get(pr.cwd) : null,
+      }));
       for (const pr of visible) {
         expandedProjects.add(pr.cwd);
         projectLimits.set(pr.cwd, Infinity);
       }
+    } else {
+      for (const s of manageSnap.current ?? []) {
+        if (s.wasExpanded) expandedProjects.add(s.cwd);
+        else expandedProjects.delete(s.cwd);
+        if (s.limit != null) projectLimits.set(s.cwd, s.limit);
+        else projectLimits.delete(s.cwd);
+      }
+      manageSnap.current = null;
     }
     notify();
   };
@@ -221,7 +237,7 @@ export default function Sidebar({ collapsed }) {
     <aside id="sidebar" data-tauri-drag-region="">
       <div className="nav">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
-          <Icon name="zoomIn" />
+          <Icon name="zoomIn" size={14} />
           新建任务 <span className="kbd">⌘ N</span>
         </div>
       </div>
@@ -311,11 +327,11 @@ export default function Sidebar({ collapsed }) {
       <div className="side-foot">
         <div className="avatar"><img src="app-icon.png" alt="" /></div>
         <div className="sf-tx">
-          <span className="uname" id="sideProfileName">omp-desktop</span>
+          <span className="uname" id="sideProfileName">{S.hostSettings?.activeProfile || "omp-desktop"}</span>
         </div>
         <span className="sp"></span>
         <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>
-          <Icon name="settings" />
+          <Icon name="settings" size={14} />
         </button>
       </div>
 

@@ -216,7 +216,7 @@ function MemoryExpand({ onClose }) {
           {d.rollouts && d.rollouts.length > 0 && (
             <div className={"md-grp" + (rolloutOpen ? "" : " closed")} onClick={toggleRollout}>
               <span className="caret">
-                <Icon name="caret" />
+                <Icon name="caret" size={14} />
               </span>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>rollout_summaries</span>
               <span className="cnt">{String(d.rollouts.length)}</span>
@@ -308,7 +308,7 @@ export default function MemoryPage() {
                   {m.path && <span>{m.path}</span>}
                 </div>
                 <span className="mem-caret">
-                  <Icon name="caretSlim" />
+                  <Icon name="caretSlim" size={14} />
                 </span>
               </div>
               {openPath === m.path && <MemoryExpand onClose={closeRow} />}

@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { S, send, notify, activeOpen, invoke, toast, briefDiffCache, fileDiffCache } from "../../store.js";
 import { uniqueFiles, splitPath } from "./util.js";
 import Icon from "../../Icon.jsx";
+import { fileTypeIcon } from "../../../ui/icons.js";
+import { langOfPath } from "../../lib/highlighter.js";
+import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens.jsx";
 import { openRightTab } from "../RightPanel.jsx";
 import LightweightDiff from "../diff/LightweightDiff.jsx";
 
@@ -39,16 +42,7 @@ export function Ellip({ className = "", title, children }) {
 }
 
 // ---------- 文件标签（f-ic：文件类型图标 + 文件名；onNameClick 时文件名可点） ----------
-function fileTypeIcon(name) {
-  const base = String(name || "").split("/").pop() || "";
-  const i = base.lastIndexOf(".");
-  const ext = i >= 0 ? base.slice(i + 1).toLowerCase() : "";
-  if (ext === "html" || ext === "htm") return "ftHtml";
-  if (ext === "css") return "ftCss";
-  if (ext === "js" || ext === "mjs" || ext === "cjs" || ext === "ts" || ext === "tsx") return "ftJs";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext)) return "ftImg";
-  return "ftFile";
-}
+// fileTypeIcon（按扩展名/文件名取 vscode-icons 彩色图标）见 ui/icons.js
 export function FileChip({ path, nameClass, onNameClick }) {
   const { name } = splitPath(path);
   return (
@@ -169,7 +163,85 @@ export function EditBrief({ item, path, lift }) {
   if (!diff) return <FadeBox className={cls}><div className="placeholder">（无差异内容）</div></FadeBox>;
   return (
     <FadeBox className={cls}>
-      <LightweightDiff diff={diff} />
+      <LightweightDiff diff={diff} lang={langOfPath(path)} />
+    </FadeBox>
+  );
+}
+
+// ---------- 可展开读取行（单条 read / 查阅组内条目共用，交互与编辑行一致） ----------
+// 点击整行展开/收起；展开体显示本次读取到的原文（details.displayContent.text，
+// 无行号前缀），行号来自 startLine/lineNumbers，缺省按序号推。无内容不可展开。
+export function ReadRow({ item, inGroup }) {
+  const path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
+  const { dir } = splitPath(path);
+  const [closing, close] = useLift();
+  const open = item.readExpanded && !closing;
+  const hasContent = !!item.details?.displayContent?.text;
+  const toggle = () => {
+    if (item.readExpanded) close(() => { item.readExpanded = false; notify(); });
+    else {
+      item.readExpanded = true;
+      notify();
+    }
+  };
+  const dc = item.details?.displayContent;
+  return (
+    <>
+      {/* 组内紧凑态复用 chg-item（与更改组内编辑行同款间距）；独立行保持 act.read */}
+      {/* 目录读取：folder 图标 + 「目录」标签（不进查阅组、不可展开） */}
+      {item.details?.isDirectory ? (
+        <div className={inGroup ? "chg-item" : "act read"}>
+          <Icon name="folder" size={13} />
+          <span className="lbl">目录</span>
+          {path ? <Ellip className="path" title={path}>{path}</Ellip> : item.text || "read"}
+        </div>
+      ) : (
+      <div
+        className={inGroup ? "chg-item" : "act read"}
+        style={hasContent ? { cursor: "pointer" } : undefined}
+        onClick={hasContent ? toggle : undefined}
+      >
+        <Icon name="file" size={13} />
+        <span className="lbl">读取</span>
+        {path ? (
+          <>
+            <FileChip path={path} nameClass={hasContent ? "ed-name" : ""} onNameClick={hasContent ? () => openReadFileInSidebar(item, path) : undefined} />
+            {" "}
+            {dir && <Ellip className="path" title={path}>{dir}</Ellip>}
+          </>
+        ) : (
+          item.text || "read"
+        )}
+        {hasContent && (
+          <span className={"ed-arrow" + (open ? " open" : "")}>
+            <Icon name="chevronRight" />
+          </span>
+        )}
+      </div>
+      )}
+      {open && (
+        <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(path)} lift={closing} />
+      )}
+    </>
+  );
+}
+
+// 读取展开体：行号 gutter + 原文（ldiff 行结构复用，无增删着色）；lang 命中走语法染色
+function ReadBrief({ text, startLine, lineNumbers, lang, lift }) {
+  const lines = String(text).split("\n");
+  const tokens = useCodeTokens(lines.join("\n"), lang);
+  return (
+    <FadeBox className={"ed-brief" + (lift ? " lift" : " drop")}>
+      <div className="ldiff">
+        <div className="ldiff-scroll">
+          {lines.map((ln, i) => (
+            <div key={i} className="ldiff-row">
+              <span className="ldiff-gutter" aria-hidden="true">{lineNumbers?.[i] ?? (startLine ?? 1) + i}</span>
+              <code className="ldiff-code">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : ln || " "}</code>
+            </div>
+          ))}
+        </div>
+      </div>
     </FadeBox>
   );
 }

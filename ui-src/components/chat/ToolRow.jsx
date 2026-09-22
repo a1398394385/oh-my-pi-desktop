@@ -2,8 +2,9 @@
 // （renderToolItem/toolKind + 各 render 函数）。加减工具标签只改本文件。
 import { notify } from "../../store.js";
 import Icon from "../../Icon.jsx";
-import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath } from "./parts.jsx";
-import EditRow, { renderChange } from "./EditRow.jsx";
+import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow } from "./parts.jsx";
+import EditRow, { renderChange, renderReadGroup } from "./EditRow.jsx";
+import { isDeviceEvent, deviceNameOf } from "./util.js";
 import ThinkingRow from "./ThinkingRow.jsx";
 
 // ---------- 终端行（bash/shell/eval）与后台工具行（hub）：上命令、下输出的展开卡 ----------
@@ -17,7 +18,7 @@ function CmdCard({ command, item, lift }) {
     </div>
   );
 }
-function CmdRow({ item, command, iconSize, iconLabel }) {
+function CmdRow({ item, command, iconLabel }) {
   const [closing, close] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => { item.cmdExpanded = false; notify(); });
@@ -29,7 +30,7 @@ function CmdRow({ item, command, iconSize, iconLabel }) {
   return (
     <>
       <div className="cmd" style={{ cursor: "pointer" }} onClick={toggle}>
-        <span className="c-ic"><Icon name="termBox" size={iconSize} />{iconLabel}</span>
+        <span className="c-ic"><Icon name="termBox" size={13} />{iconLabel}</span>
         <Ellip className="c-tx" title={command}>{command || ""}</Ellip>
         {item.running && <span className="cmd-spin" />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
@@ -45,10 +46,82 @@ function renderCmd(item) {
     <CmdRow
       item={item}
       command={item.args?.command || item.text || ""}
-      iconSize={14}
       iconLabel={item.name === "eval" ? "求值" : "终端"}
     />
   );
+}
+
+// ---------- 终端组（连续 bash/shell/eval 合并，结构一比一抄更改/查阅组） ----------
+// 展开状态：独立 WeakMap（以组内首个 item 为键，引用稳定跨重绘保留）
+export const cmdExpand = new WeakMap();
+
+// 组内行 UI：完整终端标签（标签文字 + 命令 + 展开箭头），仅去掉行首图标——与 ChangeRowUI 同款
+function CmdRowUI({ sub, open, onToggle }) {
+  const command = sub.args?.command || sub.text || "";
+  return (
+    <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
+      <span className="lbl">{sub.name === "eval" ? "求值" : "终端"}</span>
+      <Ellip className="c-tx" title={command}>{command}</Ellip>
+      {sub.running && <span className="cmd-spin" />}
+      <span className={"ed-arrow" + (open ? " open" : "")}>
+        <Icon name="chevronRight" />
+      </span>
+    </div>
+  );
+}
+
+// 组内一条终端事件 = 行 + 其输出卡展开体（展开态记在 sub.cmdExpanded 上），与 ChangeEntry 同款
+function CmdEntry({ sub }) {
+  const command = sub.args?.command || sub.text || "";
+  const [closing, close] = useLift();
+  const open = sub.cmdExpanded && !closing;
+  const toggle = () => {
+    if (sub.cmdExpanded) close(() => { sub.cmdExpanded = false; notify(); });
+    else {
+      sub.cmdExpanded = true;
+      notify();
+    }
+  };
+  return (
+    <>
+      <CmdRowUI sub={sub} open={open} onToggle={toggle} />
+      {sub.cmdExpanded && <CmdCard command={command} item={sub} lift={closing} />}
+    </>
+  );
+}
+
+// 「终端 · N 条命令」标题行：连续终端事件合并组，点击向下展开各条命令
+//（结构对照 ReadGroup：act.read 单行 + 图标 13 + lbl + chevron）
+function CmdGroup({ subs }) {
+  const [closing, close] = useLift();
+  const open = cmdExpand.has(subs[0]) && !closing;
+  const toggle = () => {
+    if (cmdExpand.has(subs[0])) close(() => { cmdExpand.delete(subs[0]); notify(); });
+    else {
+      cmdExpand.set(subs[0], true);
+      notify();
+    }
+  };
+  return (
+    <>
+      <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
+        <Icon name="termBox" size={13} />
+        <span className="lbl">{`终端 · ${subs.length} 条命令`}</span>
+        <span className={"ed-arrow" + (open ? " open" : "")}>
+          <Icon name="chevronRight" />
+        </span>
+      </div>
+      {cmdExpand.has(subs[0]) && (
+        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+          {subs.map((sub, i) => <CmdEntry sub={sub} key={i} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function renderCmdGroup(item) {
+  return <CmdGroup subs={item.group} />;
 }
 // hub 摘要：op + 目标 + 参数/命令/文本（与终端行同一交互，标签为「后台」、图标 13）
 function hubSummary(args) {
@@ -61,7 +134,7 @@ function hubSummary(args) {
   return summary;
 }
 function renderHubTool(item) {
-  return <CmdRow item={item} command={hubSummary(item.args || {})} iconSize={13} iconLabel="后台" />;
+  return <CmdRow item={item} command={hubSummary(item.args || {})} iconLabel="后台" />;
 }
 
 // ---------- 待办行 ----------
@@ -70,46 +143,21 @@ function renderTodo(item) {
   const content = td?.content || item.args?.task || item.args?.i || item.text || "";
   return (
     <div className="act todo">
-      <Icon name="todo" />
+      <Icon name="todo" size={13} />
       <span className="lbl">待办</span>
       <Ellip className="td-tx" title={content}>{content}</Ellip>
       {td && td.total > 0 && <span className="td-n">{`${td.done}/${td.total}`}</span>}
     </div>
   );
 }
-
-// ---------- 读取行：文件名可点击（读到过文本内容时右栏文件视图按行号范围展示） ----------
-function renderRead(item) {
-  const path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
-  const { dir, name } = splitPath(path);
-  return (
-    <div className="act read">
-      <Icon name="read" />
-      <span className="lbl">读取</span>
-      {path ? (
-        <>
-          <FileChip
-            path={path}
-            nameClass={item.details?.displayContent?.text ? "ed-name" : ""}
-            onNameClick={item.details?.displayContent?.text ? () => openReadFileInSidebar(item, path) : undefined}
-          />
-          {" "}
-          {dir && <Ellip className="path" title={path}>{dir}</Ellip>}
-        </>
-      ) : (
-        item.text || "read"
-      )}
-    </div>
-  );
-}
-
+// ---------- 读取行已迁移 parts.jsx ReadRow（单条/查阅组内共用，支持点击展开内容） ----------
 // ---------- grep / glob 行：模式串 + 目录（截断省略） ----------
 function renderGrep(item) {
   const pat = item.args?.pattern || item.text || "";
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
   return (
     <div className="act read">
-      <Icon name="read" />
+      <Icon name="read" size={13} />
       <span className="lbl">搜索</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
@@ -121,7 +169,7 @@ function renderGlob(item) {
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
   return (
     <div className="act read">
-      <Icon name="ftFile" />
+      <Icon name="ftFile" size={13} />
       <span className="lbl">查找</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
@@ -134,7 +182,7 @@ function renderMcp(item) {
   const tool = String(item.name || "").split("__").slice(2).join("__");
   return (
     <div className="act mcp">
-      <Icon name="plug" />
+      <Icon name="plug" size={13} />
       <span className="lbl">MCP</span>
       {tool && <Ellip className="path" title={item.name}>{` ${tool}`}</Ellip>}
     </div>
@@ -202,7 +250,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }) {
   return (
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name={iconName} />
+        <Icon name={iconName} size={13} />
         <span className="lbl">{label}</span>
         <Ellip className="path" title={summaryTitle || summary}>{summary}</Ellip>
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
@@ -284,13 +332,116 @@ function renderMemory(item) {
   );
 }
 
+// ---------- 工具设备行（write 到 xd://tui 等设备路由） ----------
+// 设备调用没有文件 diff，展开显示调用参数与设备回包（复用通用内容卡）
+// 设备指令里的 op/name（content 是设备调用的 JSON 参数）
+function deviceCmd(item) {
+  const content = item.args?.content;
+  if (typeof content !== "string" || !content.trimStart().startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(content);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null; // 畸形 JSON：不补摘要，展开卡里仍有原始参数可看
+  }
+}
+// 组内行摘要：设备指令的 op + name（如 text verifystatus）
+function deviceOpText(item) {
+  const cmd = deviceCmd(item);
+  return [cmd?.op, cmd?.name].filter((v) => typeof v === "string" && v).join(" ");
+}
+function deviceSummary(item) {
+  return [deviceNameOf(item.args?.path), deviceOpText(item)].filter(Boolean).join(" · ");
+}
+function renderDevice(item) {
+  return <ExpandableRow item={item} iconName="plugins" label="设备" summary={deviceSummary(item) || item.text || ""} />;
+}
+
+// ---------- 设备组（连续同设备调用合并，结构一比一抄终端组） ----------
+// 展开状态：独立 WeakMap（以组内首个 item 为键，引用稳定跨重绘保留）
+export const devExpand = new WeakMap();
+
+// 组内行 UI：op 摘要 + 展开箭头（图标在组标题上，与终端组内行同款）
+function DeviceRowUI({ sub, open, onToggle }) {
+  const detail = deviceOpText(sub) || sub.args?.path || sub.text || "";
+  return (
+    <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
+      <span className="lbl">设备</span>
+      <Ellip className="c-tx" title={detail}>{detail}</Ellip>
+      {sub.running && <span className="cmd-spin" />}
+      <span className={"ed-arrow" + (open ? " open" : "")}>
+        <Icon name="chevronRight" />
+      </span>
+    </div>
+  );
+}
+
+// 组内一次设备调用 = 行 + 其内容卡展开体（展开态记在 sub.cmdExpanded 上），与终端组同款
+function DeviceEntry({ sub }) {
+  const [closing, close] = useLift();
+  const open = sub.cmdExpanded && !closing;
+  const toggle = () => {
+    if (sub.cmdExpanded) close(() => { sub.cmdExpanded = false; notify(); });
+    else {
+      sub.cmdExpanded = true;
+      notify();
+    }
+  };
+  return (
+    <>
+      <DeviceRowUI sub={sub} open={open} onToggle={toggle} />
+      {sub.cmdExpanded && <ContentCard item={sub} lift={closing} />}
+    </>
+  );
+}
+
+// 「设备 · tui · N 次调用」标题行：连续同设备调用合并组，点击向下展开各次调用
+function DeviceGroup({ subs }) {
+  const [closing, close] = useLift();
+  const open = devExpand.has(subs[0]) && !closing;
+  const toggle = () => {
+    if (devExpand.has(subs[0])) close(() => { devExpand.delete(subs[0]); notify(); });
+    else {
+      devExpand.set(subs[0], true);
+      notify();
+    }
+  };
+  const dev = deviceNameOf(subs[0].args?.path);
+  return (
+    <>
+      <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
+        <Icon name="plugins" size={13} />
+        <span className="lbl">{`设备 · ${dev} · ${subs.length} 次调用`}</span>
+        <span className={"ed-arrow" + (open ? " open" : "")}>
+          <Icon name="chevronRight" />
+        </span>
+      </div>
+      {devExpand.has(subs[0]) && (
+        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+          {subs.map((sub, i) => <DeviceEntry sub={sub} key={i} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function renderDeviceGroup(item) {
+  return <DeviceGroup subs={item.group} />;
+}
+
 function renderGenericTool(item) {
   return <div className="act">{item.name || item.text || ""}</div>;
 }
 
 // 工具名 → 标签种类映射（edit/change 的行渲染在 EditRow.jsx，本文件只做分发）
 function toolKind(item) {
-  if (item.group) return "change"; // 连续编辑事件合并组
+  if (item.group) {
+    // 连续编辑/读取/终端事件合并组（name 在 items.jsx 分组时标好）
+    if (item.name === "read") return "readgroup";
+    if (item.name === "cmd") return "cmdgroup";
+    if (item.name === "device") return "devicegroup";
+    return "change";
+  }
   const name = item.name || item.text || "";
   if (item.role === "thinking" || name === "thinking") return "think";
   if (name === "bash" || name === "shell" || name === "eval") return "cmd";
@@ -306,6 +457,7 @@ function toolKind(item) {
   if (name === "github") return "github";
   if (name === "lsp") return "lsp";
   if (name === "memory_edit" || name === "retain" || name === "recall" || name === "reflect" || name === "learn") return "memory";
+  if (isDeviceEvent(item)) return "device";
   if (name === "edit" || name === "write" || name === "apply_patch") {
     const n = uniqueFiles(item.files || item.args?.files || (item.args?.path ? [item.args.path] : [])).length;
     return n > 1 ? "change" : "edit";
@@ -330,8 +482,12 @@ export default function ToolRow({ item }) {
       return renderMcp(item);
     case "todo":
       return renderTodo(item);
+    case "readgroup":
+      return renderReadGroup(item);
+    case "cmdgroup":
+      return renderCmdGroup(item);
     case "read":
-      return renderRead(item);
+      return <ReadRow item={item} />;
     case "websearch":
       return renderWebSearch(item);
     case "ask":
@@ -344,6 +500,10 @@ export default function ToolRow({ item }) {
       return renderLsp(item);
     case "memory":
       return renderMemory(item);
+    case "device":
+      return renderDevice(item);
+    case "devicegroup":
+      return renderDeviceGroup(item);
     case "change":
       return renderChange(item);
     case "edit":
@@ -352,3 +512,4 @@ export default function ToolRow({ item }) {
       return renderGenericTool(item);
   }
 }
+

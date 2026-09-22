@@ -90,8 +90,11 @@ export default function Chat() {
       <div id="stream" ref={streamRef} onScroll={onScroll}>
         {nodes}
         {(s.streaming || s.assistantDraft) && <WorkSec />}
+        {/* 流式尾巴只渲染纯文本（BUG-007 三连雷）：对增长的全文每帧重跑 markdown 管线
+            是 O(n²) 累积,JSC 下长回复必然烧穿主线程——定稿(turn_end push 为历史条目)
+            才交给 AssistantMsg 做 markdown 解析(历史条目有 memo,只解析一次) */}
         {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
-          <AssistantMsg text={s.assistantDraft} streaming />
+          <div className="msg assistant md-body streaming-draft stream-plain">{s.assistantDraft}</div>
         )}
         {/* 流式转圈：消息流末位（对应 ZCode TurnChatLoadingSlot），紧贴输入框上方，轮结束消失 */}
         {s.streaming && <ChatLoading />}

@@ -64,13 +64,13 @@ fn spawn_host(cell: WsUrlCell, child_cell: ChildCell) {
 /// 前端启动时调用，等宿主就绪并返回 WS 地址。
 #[tauri::command]
 fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
-    for _ in 0..150 {
+    for _ in 0..600 {
         if let Some(u) = cell.lock().unwrap().clone() {
             return Ok(u);
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    Err("宿主进程 15s 内未就绪，查看终端日志定位".into())
+    Err("宿主进程 60s 内未就绪，查看终端日志定位".into())
 }
 
 /// 前端调用：发送系统通知。

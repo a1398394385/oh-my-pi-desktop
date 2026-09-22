@@ -13,6 +13,12 @@ import { S, notify, connect, showWelcomeScreen, initNewSessionModel, openSession
   }
 }
 
+// 启动即恢复本地「减弱动态效果」偏好（外观页设置；system 时移除属性，回落系统 prefers-reduced-motion）
+{
+  const savedMotion = localStorage.getItem("omp-motion");
+  if (savedMotion === "on" || savedMotion === "off") document.documentElement.dataset.motion = savedMotion;
+}
+
 // ⌘, 打开/关闭设置中心（旧版 core.js 全局 keydown 平移；Esc 由 Settings 容器处理）
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === ",") {
@@ -67,24 +73,53 @@ root.render(<App />);
 window.__TAURI__?.event?.listen("menu-action", (e) => dispatchMenuAction(e.payload?.action));
 
 if (new URLSearchParams(location.search).has("preview")) {
-  // 浏览器对照：?preview=1 注入动作样本，不连宿主
+  // 浏览器对照：?preview=1 注入动作样本（编辑行/更改组/查阅组/读取行/思考/终端卡），不连宿主
   S.isCreatingNew = false;
   S.activePath = "/preview";
+  const diffSample = ["@@ -1,4 +1,5 @@", " body {", "-  color: red;", "+  color: blue;", "+  margin: 0;", " }"].join("\n");
+  const readItem = (p) => ({
+    role: "tool", name: "read", args: { path: p }, files: [p],
+    details: { resolvedPath: p, displayContent: { text: "body {\n  color: red;\n}", startLine: 1 } },
+  });
   openSessions.set(S.activePath, {
     sessionId: "preview",
     cwd: "/preview",
     items: [
-      { role: "user", text: "预览一条用户消息" },
-      { role: "assistant", text: "React 版壳已挂载。消息流渲染在 chat-wave 落地。" },
+      { role: "user", text: "把主题色改成蓝色" },
+      { role: "assistant", text: "先读一下样式文件。" },
+      readItem("src/style.css"),
+      { role: "thinking", text: "思考 · 3 秒", expandable: true, expanded: true,
+        thinking: "1. 定位颜色定义\n2. 替换为 blue\n" + "逐行核对相邻规则的级联影响\n".repeat(12) },
+      { role: "tool", name: "edit", args: { path: "src/style.css" }, files: ["src/style.css"],
+        added: 2, removed: 1, diffExpanded: true, briefDiff: diffSample },
+      { role: "assistant", text: "样式改完了，顺手补两个文件。" },
+      { role: "tool", name: "write", args: { path: "src/a.ts" }, files: ["src/a.ts"], added: 10, removed: 0 },
+      { role: "tool", name: "edit", args: { path: "src/b.ts" }, files: ["src/b.ts"], added: 2, removed: 5 },
+      { role: "tool", name: "bash", args: { command: "bun run build" }, text: "bun run build",
+        cmdExpanded: true, output: "$ bun run build\n\n  dist/app.js  2.1mb\n\nDone in 44ms" },
+      { role: "tool", name: "bash", args: { command: "git status --short" }, text: "git status --short",
+        output: " M ui/style.css\n?? ui/file-icons.js" },
+      { role: "assistant", text: "改好了。" },
+      { role: "user", text: "构建一下" },
+      { role: "loop", collapsed: true, durationSec: 83,
+        usage: { input: 12040, output: 320, cacheRead: 90000, cacheWrite: 0 }, items: [] },
+      { role: "assistant", text: "构建成功，无报错。" },
+      { role: "tool", name: "read", group: [readItem("src/a.ts"), readItem("src/b.ts")] },
     ],
     assistantDraft: "",
     streaming: false,
-    subagents: new Map(),
+    subagents: new Map([["sa1", { name: "scout", text: "", description: "侦察代码结构", status: "completed", streaming: false, tools: [] }]]),
     model: null,
     thinking: "auto",
     isGit: false,
-    todos: [],
+    todos: [{ title: "阶段一", tasks: [
+      { content: "读取样式文件", status: "completed" },
+      { content: "修改主题色", status: "in_progress" },
+      { content: "验证构建", status: "pending" },
+    ] }],
   });
+  // 浏览器对照调试钩子：驱动 S/notify 模拟宿主回包（仅 preview 模式）
+  window.__dbg = { S, notify, openSessions };
   setConnected(true, "预览");
   notify();
 } else {

@@ -92,7 +92,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }) 
         onClick={onToggle}
       >
         <div className="mcp-icon-box">
-          <Icon name="mcp" size={18} />
+          <Icon name="mcp" size={14} />
           <span className={`mcp-status-dot ${dot.cls}`} title={dot.title} />
         </div>
         <div className="mcp-server-info" title="点击查看或编辑配置">
@@ -116,7 +116,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }) 
         <div className="mcp-server-ctrl">
           <Toggle server={server} />
         </div>
-        <span className="mem-caret"><Icon name="caretSlim" /></span>
+        <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
       </div>
       {open ? <McpEditor server={server} defaultScope={defaultScope} onClose={onClose} /> : null}
     </>
@@ -487,7 +487,7 @@ export default function McpPage() {
     scopeMenuItems.push(
       <div className="mi" data-scope={s.id} key={s.id}>
         <span className="ck" style={{ visibility: s.id === activeScope ? "visible" : "hidden" }}>✓</span>
-        <Icon name={s.id === "profile" ? "scopeProfile" : "folder"} size={13} />
+        <Icon name={s.id === "profile" ? "scopeProfile" : "folder"} size={14} />
         <span className="mi-label" title={s.name}>{s.name}</span>
       </div>
     );
@@ -511,7 +511,7 @@ export default function McpPage() {
                   <Icon name={activeScope === "profile" ? "scopeProfile" : "folder"} size={14} />
                 </span>
                 <span>{curScope.name}</span>
-                <span className="caret-svg"><Icon name="caret" size={10} /></span>
+                <span className="caret-svg"><Icon name="caret" size={14} /></span>
               </>
             }
             onPick={(mi) => setMcpScope(mi.dataset.scope)}
@@ -522,7 +522,7 @@ export default function McpPage() {
           <span className="mcp-count-stat">MCP {totalCount}</span>
         </div>
         <div className="mcp-search-wrap">
-          <span className="mcp-search-icon"><Icon name="search" size={13} /></span>
+          <span className="mcp-search-icon"><Icon name="search" size={14} /></span>
           <input
             type="text"
             className="mcp-search-input"
@@ -546,16 +546,16 @@ export default function McpPage() {
             onPick={onMorePick}
           >
             <div className="mi" id="miOpenCurrentMcpConfig">
-              <span className="mi-icon"><Icon name="file" size={13} /></span>
+              <span className="mi-icon"><Icon name="file" size={14} /></span>
               <span className="mi-label">打开当前 mcp.json 配置</span>
             </div>
             <div className="mi" id="miOpenUserMcpConfig">
-              <span className="mi-icon"><Icon name="scopeProfile" size={13} /></span>
+              <span className="mi-icon"><Icon name="scopeProfile" size={14} /></span>
               <span className="mi-label">打开用户全局配置 (~/.omp)</span>
             </div>
             <div className="sep" />
             <div className="mi" id="miRetestAllMcp">
-              <span className="mi-icon"><Icon name="rotateRight" size={13} /></span>
+              <span className="mi-icon"><Icon name="rotateRight" size={14} /></span>
               <span className="mi-label">重新测试所有服务器连接</span>
             </div>
           </Sel>
@@ -568,7 +568,7 @@ export default function McpPage() {
             <Icon name="refresh" size={17} />
           </button>
           <button type="button" className="mcp-btn-new" onClick={() => toggleEditor(NEW_KEY)}>
-            <Icon name="plus" size={13} />
+            <Icon name="plus" size={14} />
             <span>新建</span>
           </button>
         </div>
@@ -583,12 +583,12 @@ export default function McpPage() {
                 data-temp="1"
                 onClick={() => toggleEditor(NEW_KEY)}
               >
-                <div className="mcp-icon-box"><Icon name="mcp" size={18} /></div>
+                <div className="mcp-icon-box"><Icon name="mcp" size={14} /></div>
                 <div className="mcp-server-info">
                   <div className="mcp-server-head"><span className="mcp-server-name">新服务器</span></div>
                   <div className="mcp-server-cmd">填写配置后保存</div>
                 </div>
-                <span className="mem-caret"><Icon name="caretSlim" /></span>
+                <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
               </div>
               <McpEditor server={null} defaultScope={activeScope} onClose={() => toggleEditor(NEW_KEY)} />
             </>

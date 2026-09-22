@@ -392,7 +392,7 @@ export default function Composer({ inWelcome }) {
               sendPrompt();
             }}
           >
-            <Icon name={stopping ? "stop" : "upload"} />
+            <Icon name={stopping ? "stop" : "uploadSolid"} />
           </button>
         </div>
         {/* 权限模式（omp 三值，大行样式） */}

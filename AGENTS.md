@@ -18,6 +18,18 @@
    - `ui/index.html`、`ui/style.css`、`ui/app.js`、`ui/icons.js`（图标注册表）、`ui/fa-icons.js`（FA 图标生成物）。
    - 纯原生现代 Web 技术栈，不依赖繁重前端打包框架。
 
+## 整体 UI 风格对齐 VSCode（全站基准）
+
+视觉决策以 VSCode 源码（`/Volumes/MacApps/Github/vscode`）为准：深色对齐其 **Dark+**、浅色对齐其 **Light+**。做新 UI / 改颜色 / 定义 token 时，先查 VSCode 对应部件怎么做，抄它的配色与层次，不另造风格：
+
+1. **颜色**：语义对照 VSCode 色板（编辑器面/侧栏面对应 `--card`/`--panel-*`，前景 `--text`/`--dim`/`--faint`，强调 `--accent`，行高亮/diff 底色参照 Dark+/Light+ 的 token 色）；禁止凭感觉配新色。
+2. **代码染色**：shiki 主题固定 `dark-plus`/`light-plus`（VSCode 默认主题同款），随 `data-theme` 切换；实现见 `ui-src/lib/highlighter.js`。
+3. **右栏三区结构**（`#right` 内部从上到下，每块通栏、左右零边距，整块边栏是一个整体）：
+   - 第一区 **tab 栏**（`.sp-head`）；
+   - 第二区 **tab 专属操作栏**（`.rb-head`：返回钮/全路径等，可无）；
+   - 第三区 **详情区**（`.rb-scroll` 滚动承载）。
+   内容缩进走各块内部 padding（统一 8px），不在容器上加左右 margin。
+
 ## 开发与行为规范
 
 1. **中文规范**：所有思考、分析、解释和代码注释均使用中文。

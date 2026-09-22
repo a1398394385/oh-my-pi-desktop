@@ -91,7 +91,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         <Icon name="pin" size={14} />
       </button>
       {open?.streaming ? (
-        <span className="mini-spin" title="运行中"></span>
+        <span className="mini-spin" title="运行中"><Icon name="loader" size={14} /></span>
       ) : unseenFinished.has(s.path) ? (
         <span className="seen-dot" title="有新结果"></span>
       ) : null}

@@ -3,7 +3,7 @@
 // 迁移自 ui/chat.js renderItemList/appendChatItem；railEntries 随遍历收集（消息轨道数据：
 // 每条消息一道刻度——key 与 data-fk 锚点同源，MsgRail 按 key 查 DOM 定位）。
 import { isJunkPlaceholder } from "../../store.js";
-import { isEditEvent } from "./util.js";
+import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf } from "./util.js";
 import { railToolText } from "../../shell.js";
 import UserMsg from "./UserMsg.jsx";
 import AssistantMsg from "./AssistantMsg.jsx";
@@ -63,6 +63,40 @@ export function renderItems(items, pfx, railEntries) {
       while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem = { role: "tool", text: "更改", group: subs };
+        railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+        out.push(<ToolRow item={groupItem} key={key} />);
+        continue;
+      }
+    }
+    if (isReadEvent(item)) {
+      // 连续读取合并「查阅」组（与更改组同款折叠机制，name 标 read 供 toolKind 分发）
+      const subs = [item];
+      while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
+      if (subs.length > 1) {
+        const groupItem = { role: "tool", name: "read", text: "查阅", group: subs };
+        railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+        out.push(<ToolRow item={groupItem} key={key} />);
+        continue;
+      }
+    }
+    if (isDeviceEvent(item)) {
+      // 连续同一设备的调用合并「设备」组（不同设备不混进同一组，机制同终端组）
+      const dev = deviceNameOf(item.args?.path);
+      const subs = [item];
+      while (i + 1 < items.length && isDeviceEvent(items[i + 1]) && deviceNameOf(items[i + 1].args?.path) === dev) subs.push(items[++i]);
+      if (subs.length > 1) {
+        const groupItem = { role: "tool", name: "device", text: "设备", group: subs };
+        railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+        out.push(<ToolRow item={groupItem} key={key} />);
+        continue;
+      }
+    }
+    if (isCmdEvent(item)) {
+      // 连续终端命令合并「终端」组（机制同上，name 标 cmd 供 toolKind 分发）
+      const subs = [item];
+      while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
+      if (subs.length > 1) {
+        const groupItem = { role: "tool", name: "cmd", text: "终端", group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
         out.push(<ToolRow item={groupItem} key={key} />);
         continue;

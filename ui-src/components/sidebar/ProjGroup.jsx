@@ -109,7 +109,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onDragStartHead
         onDragEnd={onDragEndHead}
         onClick={toggle}
       >
-        <span className="fic"><Icon name={expanded ? "folderOpen" : "folder"} /></span>
+        <span className="fic"><Icon name={expanded ? "folderOpen" : "folder"} size={14} /></span>
         <span className="pname" title={p.cwd}>{name}</span>
         {S.isProjectManageMode ? (
           <button

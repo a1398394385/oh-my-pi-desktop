@@ -22,9 +22,35 @@ export function splitPath(p) {
   return { dir: norm.slice(0, i + 1), name: norm.slice(i + 1) };
 }
 
-// 编辑类工具事件（编辑行 / 更改组按此归类）
+// 工具设备路径（xd://tui 等）：读/写它是调用设备，不是文件读写
+const DEVICE_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+export function isDevicePath(p) {
+  return typeof p === "string" && DEVICE_SCHEME.test(p);
+}
+
+// 设备名（xd://tui → tui）：摘要与同设备分组共用同一口径
+export function deviceNameOf(p) {
+  return typeof p === "string" ? p.replace(DEVICE_SCHEME, "") : "";
+}
+
+// 写入工具设备（write/edit 到 xd://…）：不是文件编辑，没有 diff 可看，按设备行渲染
+export function isDeviceEvent(item) {
+  return item.role === "tool" && ["edit", "write", "apply_patch"].includes(item.name || "") && isDevicePath(item.args?.path);
+}
+
+// 编辑类工具事件（编辑行 / 更改组按此归类）；设备写入不在此列
 export function isEditEvent(item) {
-  return item.role === "tool" && ["edit", "write", "apply_patch"].includes(item.name || "");
+  return item.role === "tool" && ["edit", "write", "apply_patch"].includes(item.name || "") && !isDevicePath(item.args?.path);
+}
+
+// 读取类工具事件（查阅组按此归类，与更改组同款折叠逻辑）；目录读取不进组（details.isDirectory）
+export function isReadEvent(item) {
+  return item.role === "tool" && (item.name || "") === "read" && item.details?.isDirectory !== true;
+}
+
+// 终端类工具事件（终端组按此归类，与更改/查阅组同款折叠逻辑）
+export function isCmdEvent(item) {
+  return item.role === "tool" && ["bash", "shell", "eval"].includes(item.name || "");
 }
 
 // 时长格式化：秒 / 分 秒

@@ -200,7 +200,7 @@ function RolePicker({ role, allModels }) {
       }}
     >
       <span>{roleSelLabel(role)}</span>
-      <span className="caret-svg"><Icon name="caret" size={12} /></span>
+      <span className="caret-svg"><Icon name="caret" size={14} /></span>
       {open && (
         <div className="menu model mp-role-menu open" ref={menuRef}>
           {[...byProv].map(([prov, models]) => (
@@ -224,7 +224,7 @@ function RolePicker({ role, allModels }) {
               }}
             >
               {prov}
-              <span className="sub"><Icon name="chevronRight" size={10} /></span>
+              <span className="sub"><Icon name="chevronRight" size={14} /></span>
             </div>
           ))}
         </div>
@@ -441,7 +441,7 @@ function ProviderDetailView() {
               send({ type: "provider_set_key", provider: p.id, key: k });
             }}
           >
-            {saving ? <Icon name="refresh" size={13} /> : "保存"}
+            {saving ? <Icon name="refresh" size={14} /> : "保存"}
           </button>
         </div>
       </div>

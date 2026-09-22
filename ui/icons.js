@@ -6,15 +6,18 @@
 //           （app.js 启动时 hydrateIcons() 会把占位 span 替换为 svg，
 //             并复制占位元素上的 class / id / style）
 // 动态图形（如 ctxRing 进度环）不属于图标，仍在 index.html 内联。
-// 图层（后者同名覆盖前者）：自定义 → Font Awesome 实心 → Lucide 线条风
+// 图层（后者同名覆盖前者）：自定义 → Font Awesome 实心 → Lucide 线条风 → vscode-icons 文件类型彩色
 // ════════════════════════════════════════════════════════════
 // 自定义图标（FA 没有的，如应用 Logo）：直接写在这里
 // Lucide 线条风层（最顶层）：同名覆盖 FA 实心图标，达到 ZCode 同款观感；
 // 未覆盖到的名（logo/termBox 等）仍由自定义层 / FA 层兜底
 import { FA_ICONS } from "./fa-icons.js";
 import { LUCIDE_ICONS } from "./lucide-icons.js";
+import { FILE_TYPE_ICONS } from "./file-icons.js";
 
 const ICONS = {
+  // 旧版发送钮实心 upload：lucide 层把 upload 覆盖成线条风，发送钮按需求保留 FA 实心原样
+  uploadSolid: '<svg width="16" height="16" viewBox="0 0 384 512"><path fill="currentColor" d="M214.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 109.3 160 480c0 17.7 14.3 32 32 32s32-14.3 32-32l0-370.7 105.4 105.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"/></svg>',
   logo: '<svg width="16" height="16" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   // 盾牌 + 感叹号：FA Free 无 shield-exclamation（Pro 专属），用 shield 路径 + evenodd 镂空合成
   shieldWarn: '<svg width="16" height="16" viewBox="0 0 512 512"><path fill="currentColor" fill-rule="evenodd" d="M256 0c4.6 0 9.2 1 13.4 2.9L457.8 82.8c22 9.3 38.4 31 38.3 57.2-.5 99.2-41.3 280.7-213.6 363.2-16.7 8-36.1 8-52.8 0-172.4-82.5-213.1-264-213.6-363.2-.1-26.2 16.3-47.9 38.3-57.2L242.7 2.9C246.9 1 251.4 0 256 0zM234 152h44a24 24 0 0 1 24 24v96a24 24 0 0 1-24 24h-44a24 24 0 0 1-24-24v-96a24 24 0 0 1 24-24zM256 336a26 26 0 1 1 0 52 26 26 0 1 1 0-52z"/></svg>',
@@ -45,12 +48,58 @@ Object.assign(ICONS, FA_ICONS);
 // Lucide 线条风层：同名覆盖 FA 层（lucide-icons.js 由脚本生成，见文件头注释）
 Object.assign(ICONS, LUCIDE_ICONS);
 
-// 取图标：size 省略时用注册表默认尺寸；传入时覆盖 width/height（保持 viewBox 不变）
+// vscode-icons 文件类型彩色层（最顶层）：同名覆盖 lucide 线条层的 ft* 文件图标
+//（file-icons.js 由 .local/build-file-icons.py 生成，尺寸 16 与被覆盖层一致）
+Object.assign(ICONS, FILE_TYPE_ICONS);
+
+// 取图标：size 省略时用注册表默认尺寸；传入时覆盖 width/height（保持 viewBox 不变）。
+// 变体缓存（BUG-007）：渲染热路径每个 Icon 每帧都会调用，replace 正则乘以组件数量
+// 在长会话下是主线程热点——同名+同尺寸只算一次，之后查表。
+const iconVariantCache = {};
 function icon(name, size) {
   const d = ICONS[name];
   if (!d) return "";
   if (!size) return d;
-  return d.replace(/width="\d+" height="\d+"/, `width="${size}" height="${size}"`);
+  const key = name + "@" + size;
+  return (iconVariantCache[key] ??= d.replace(/width="\d+" height="\d+"/, `width="${size}" height="${size}"`));
+}
+
+// ---------- 按文件名取文件类型图标（vscode-icons 彩色层） ----------
+// 扩展名（小写）→ 注册表键；特殊文件名优先于扩展名（dockerfile 无扩展名语义）
+const FILE_NAME_ICONS = {
+  dockerfile: "ftDocker",
+  "docker-compose.yml": "ftDocker",
+  "docker-compose.yaml": "ftDocker",
+};
+const FILE_EXT_ICONS = {
+  html: "ftHtml", htm: "ftHtml",
+  css: "ftCss", scss: "ftScss", sass: "ftScss",
+  js: "ftJs", mjs: "ftJs", cjs: "ftJs", jsx: "ftJsx",
+  ts: "ftTs", mts: "ftTs", cts: "ftTs", tsx: "ftTsx",
+  json: "ftJson", jsonc: "ftJson", json5: "ftJson",
+  md: "ftMd", mdx: "ftMd", markdown: "ftMd",
+  py: "ftPy", pyi: "ftPy", pyw: "ftPy",
+  rs: "ftRs", go: "ftGo", java: "ftJava",
+  kt: "ftKt", kts: "ftKt", swift: "ftSwift",
+  c: "ftC", cpp: "ftCpp", cc: "ftCpp", cxx: "ftCpp", hpp: "ftCpp", hh: "ftCpp", h: "ftH",
+  vue: "ftVue",
+  sh: "ftSh", bash: "ftSh", zsh: "ftSh", fish: "ftSh",
+  yml: "ftYaml", yaml: "ftYaml", toml: "ftToml", sql: "ftSql",
+  svg: "ftSvg",
+  png: "ftImg", jpg: "ftImg", jpeg: "ftImg", gif: "ftImg", webp: "ftImg", bmp: "ftImg", ico: "ftImg", tiff: "ftImg",
+  txt: "ftText", log: "ftText", pdf: "ftPdf",
+  zip: "ftZip", gz: "ftZip", tgz: "ftZip", tar: "ftZip", rar: "ftZip", "7z": "ftZip",
+  mp4: "ftVideo", mov: "ftVideo", mkv: "ftVideo", webm: "ftVideo", avi: "ftVideo",
+  mp3: "ftAudio", wav: "ftAudio", flac: "ftAudio", aac: "ftAudio", m4a: "ftAudio",
+  gitignore: "ftGit", gitattributes: "ftGit", gitmodules: "ftGit", editorconfig: "ftGit",
+};
+function fileTypeIcon(name) {
+  const base = String(name || "").split("/").pop() || "";
+  const lower = base.toLowerCase();
+  if (FILE_NAME_ICONS[lower]) return FILE_NAME_ICONS[lower];
+  const i = lower.lastIndexOf(".");
+  const ext = i >= 0 ? lower.slice(i + 1) : "";
+  return FILE_EXT_ICONS[ext] || "ftFile";
 }
 
 // 把 HTML 里的占位元素 <span class/id/style data-icon="name" data-size="N"></span>
@@ -71,5 +120,5 @@ function hydrateIcons(root) {
   });
 }
 
-// ESM 导出（React 迁移）：esbuild 打包时与 FA 层同名覆盖后的最终注册表一并导出
-export { icon, hydrateIcons, ICONS };
+// ESM 导出（React 迁移）：esbuild 打包时与各覆盖层合并后的最终注册表一并导出
+export { icon, hydrateIcons, ICONS, fileTypeIcon };

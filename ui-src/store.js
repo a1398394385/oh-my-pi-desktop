@@ -427,7 +427,15 @@ export async function connect() {
     return;
   }
   setConnected(false, "连接中…");
-  const url = await invoke("ws_url");
+  // 宿主冷启动可能 >15s(模型目录走代理刷新阻塞 READY):ws_url 失败不放弃,
+  // 周期重试直到拿到端口(BUG-008:曾表现为 profile 菜单 fallback 单项)
+  let url;
+  try {
+    url = await invoke("ws_url");
+  } catch {
+    setTimeout(connect, 3000);
+    return;
+  }
   S.ws = new WebSocket(url);
   S.ws.onmessage = (ev) => onMessage(JSON.parse(ev.data));
   S.ws.onopen = () => {
@@ -438,7 +446,11 @@ export async function connect() {
     // 设置页若在连接就绪前打开，4 个数据请求被 send 丢弃；连接就绪后补拉
     if (S.settingsOpen) refreshSettingsData();
   };
-  S.ws.onclose = () => setConnected(false, "已断开");
+  // 断线后自动重连(3s),宿主重启期间 UI 不至于永久停留在旧状态
+  S.ws.onclose = () => {
+    setConnected(false, "已断开");
+    setTimeout(connect, 3000);
+  };
   S.ws.onerror = () => setConnected(false, "已断开");
 }
 
@@ -620,8 +632,12 @@ function onMessage(msg) {
         s.streaming = true;
         s.assistantDraft = "";
         s.workingText = "正在处理…";
-        s.turnStartAt = Date.now();
-        s.turnItemStart = s.items.length; // 本轮过程起点：turn_end 时从这里打包收起
+        // run 首轮才初始化过程起点与计时：轮内续轮(工具循环)不重置,
+        // 否则每个模型轮各自成组、时长/usage 全是单轮口径(实时/重载呈现分裂)
+        if (s.turnItemStart == null) {
+          s.turnStartAt = Date.now();
+          s.turnItemStart = s.items.length;
+        }
       } else if (msg.kind === "text_delta") {
         s.assistantDraft += msg.text;
       } else if (msg.kind === "thinking") {
@@ -678,11 +694,16 @@ function onMessage(msg) {
       } else if (msg.kind === "turn_end") {
         if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
         s.assistantDraft = "";
+        // 轮内帧（runEnd:false，工具循环的每个模型轮）：只收尾草稿，不封存不停表——
+        // 整 run 的过程归属一个 loop 组，中间 assistant 留在组内（与重载视图一致）
+        if (!msg.runEnd) {
+          notify();
+          break;
+        }
         s.streaming = false;
         s.workingText = null;
-        // 每个模型轮结束（含排队消费/工具触发的 run 内续轮）：过程收进 loop 组自动收起，
-        // 只留最后一条 assistant 对外展示。run 收尾帧（runEnd，宿主 agent_end 映射）额外做
-        // entryId 回填/列表刷新/系统通知——这些只该发生一次，轮内续轮帧不做
+        // run 收尾帧（宿主 agent_end 映射，usage 已是整 run 累计、时长取 turnStartAt 起）：
+        // 封存一次 + entryId 回填/列表刷新/系统通知
         sealRunItems(s, msg.usage);
         if (msg.runEnd) {
           // 宿主在落盘完成后回贴本轮 user 消息的 entryId（消息行分叉按钮的寻址键）；
@@ -737,10 +758,45 @@ function onMessage(msg) {
         agent: msg.agent,
         description: msg.description ?? "",
         status: msg.status,
+        // host 补齐的派生字段：显示名 / 父 agent / 注册时刻
+        name: msg.name ?? prev?.name,
+        parent: msg.parent ?? prev?.parent,
+        registeredAt: msg.registeredAt ?? prev?.registeredAt,
         text: prev?.text ?? "",
         tools: prev?.tools ?? [],
         streaming: msg.status === "started",
+        // progress 帧累积的用量字段（lifecycle 重发时保留）
+        usage: prev?.usage,
       });
+      notify();
+      break;
+    }
+    case "subagent_progress": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      // 聚合用量帧（host 已 500ms 节流）：成本/时长/请求/工具数/token/上下文/当前步骤
+      const prev = s.subagents.get(msg.subagentId);
+      if (!prev) return;
+      prev.usage = {
+        cost: msg.cost,
+        durationMs: msg.durationMs,
+        requests: msg.requests,
+        toolCount: msg.toolCount,
+        tokens: msg.tokens,
+        contextTokens: msg.contextTokens,
+        contextWindow: msg.contextWindow,
+        currentTool: msg.currentTool,
+        currentToolArgs: msg.currentToolArgs,
+        currentToolStartMs: msg.currentToolStartMs,
+        lastIntent: msg.lastIntent,
+        resolvedModel: msg.resolvedModel,
+        resolvedThinkingLevel: msg.resolvedThinkingLevel,
+        recentTools: msg.recentTools,
+      };
+      if (msg.status) prev.status = msg.status;
+      if (msg.name && !prev.name) prev.name = msg.name;
+      if (msg.parent && !prev.parent) prev.parent = msg.parent;
+      if (msg.registeredAt && !prev.registeredAt) prev.registeredAt = msg.registeredAt;
       notify();
       break;
     }
@@ -759,7 +815,9 @@ function onMessage(msg) {
         if (last) Object.assign(last, { files: uniqueFiles(msg.files ?? last.files), added: msg.added, removed: msg.removed, todo: msg.todo, output: msg.output ?? last.output, details: msg.details ?? last.details, diffContent: msg.diffContent ?? last.diffContent, running: false });
       }
       else if (msg.kind === "turn_end") sub.streaming = false;
-      notify();
+      // 子代理文本 delta 与主对话同款 100ms 合并渲染（防高频 notify 打爆主线程）
+      if (msg.kind === "text_delta") scheduleDeltaRender();
+      else notify();
       break;
     }
     case "git_status": {

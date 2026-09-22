@@ -14,6 +14,8 @@
 | BUG-004 | 保存 API key「没有反应」——core.js 调用未 import 的函数抛 ReferenceError | 2026-09-20 |
 | BUG-005 | 新建会话发首条消息后闪回欢迎页——底座会话文件懒建与 UI"已落盘"假设竞态 | 2026-09-20 |
 | BUG-006 | 点一条排队消息「立即发送」把整队消息都发了——底座注入边界 drain 整队 followUp | 2026-09-20 |
+| BUG-007 | 长流式会话把应用卡死——esbuild 未设 NODE_ENV,React 开发版打进生产包 | 2026-09-22 |
+| BUG-008 | Profile 菜单缺 default 选项——宿主冷启动 >15s,UI 连接失败后永不重试 | 2026-09-22 |
 
 ---
 
@@ -106,3 +108,37 @@
 **最终修复**(对齐 ZCode 协议设计——turn 边界是服务端权威投影，turnHeader 行显式下发，「不得由 UI 重猜」):①translate.ts 转发真实 `turn_start`/`turn_end`(每模型轮各一帧，turn_end 带本轮 usage)，`agent_end` 映射的收尾帧标 `runEnd:true`(整 run 用量+entryId 回填载体)，移除 agent_start 的 turn_start 映射；②UI turn_end 处理按 runEnd 分级——轮内帧只封存过程，runEnd 帧才做 entryId 回填/列表刷新/系统通知；③`steer_consumed` 气泡查找穿透 loop 组(turn_end 可能先到、把气泡封进组里)，组内摘除后空组一并移除。回归:状态机三场景 9 断言全绿 + freeze 复现端到端 9s 完成(此前 200s 超时)+ queue-smoke/smoke-sendnow 通过(smoke-sendnow 按 runEnd 过滤收尾帧、注入轮以首次 steer_consumed 定位——send_now 会 abort 原轮，其空尾轮也完成于点击之后)。
 
 **教训**:①「分割」这类时序语义只能有一个权威时机(消费时刻)，预览态(点击)做持久化结构变更必然在取消路径(requeue/drop)上漏；②事件语义以实测帧为准，不能按直觉推(steer_consumed 先于 turn_end、单 run 多轮是常态)；③协议层的「近似映射」(agent_start≈turn 开始)在复合场景(单 run 多轮)下必然失真——轮边界必须逐帧权威下发，这是 ZCode turnHeader 设计的由来。
+
+### BUG-007: 长流式会话把应用卡死——esbuild 未设 NODE_ENV,React 开发版打进生产包
+
+**现象**:会话跑一段时间后应用假死:点击无响应,仅会话列表 spinner 与滚动条仍可动(合成线程动画)。宿主进程与 WS 连接均正常(直连探测 RPC 秒回)。
+
+**诊断**:`sample` 抓 WebContent 进程:JS 主线程 100% 卡在微任务内连环正则。Chromium 复现页注入 RegExp 计数心跳(经独立 WebSocket 上报,冻结后读最后一份):每 300ms `^(aria)-…`/`^on.` 正则执行 5.5 万次——是 react-dom 开发版的属性名校验(possibleStandardNames)。`ui:build`(esbuild)未 `--define:process.env.NODE_ENV=production`,bundle 2.1MB 含 `scheduler.development.js`;流式 delta 每 100ms 全树重渲染 × dev 版每属性设置都跑校验正则 → 主线程烧穿。
+
+**修复**:①`package.json` ui:build 加 `--define:process.env.NODE_ENV='\"production\"'` + `--minify`(bundle 2.1MB→870KB,零 development);②顺带 `AssistantMsg` 加 `React.memo` + `useMemo([text])`(历史消息跳过 markdown 重解析,流式渲染的正确防御,单靠它挡不住 dev build);③子代理 text_delta 并入 100ms 合并渲染。
+
+**教训**:React 应用进打包链,构建脚本必须显式钉死 NODE_ENV=production——esbuild 不像 CRA/Vite 自带。诊断手法:CSS 动画仍在转 ≠ JS 活着(合成线程);「注入计数器 + 旁路上报,冻结后读末份」可在不可调试环境里定位热点。**注意**:headless 浏览器复现环境的「标签页挂起」会假死(tab worker 被回收,渲染进程 CPU≈0%),勿当真——只信 `sample`/CPU 实证。
+
+### BUG-008: Profile 菜单缺 default 选项——宿主冷启动 >15s,UI 连接失败后永不重试
+
+**现象**:打包应用设置页 Profile 下拉只有当前一项(如 omp-desktop),看不到 default;重启应用时好时坏。宿主侧数据始终正常(直连 ready 帧 availableProfiles 三项齐全)。
+
+**根因**:两级叠加。①宿主冷启动慢:applyProfile 里 `modelRegistry.refresh()` 走代理网络,READY 可晚于 15s;②`lib.rs ws_url` 只轮询 15s,超时即 Err;③前端 `connect()` 对 ws_url 失败/WS 断线**一次性放弃,永不重试** → `S.hostSettings` 为 null → GeneralPage 走 fallback `[activeProfile]` 渲染单选项。网络快时 15s 内就绪故「时好时坏」。
+
+**修复**:①`lib.rs` ws_url 轮询 15s→60s;②store.js `connect()` ws_url 失败 3s 重试、onclose 3s 自动重连。
+
+**教训**:**残缺的 fallback 是静默撒谎**——`profiles: [activeProfile]` 把「没数据」伪装成「只有这一个选项」,用户看到的是假清单。可选列表数据缺失时应显式禁用/提示,而不是拿当前值充数;任何「启动竞态窗口」类 bug 必须配重试闭环,一次性失败 = 把瞬态固化成永久错误。以后:凡 UI 有「等待宿主」依赖,connect 必须幂等可重入——此项为验收红线。
+
+**BUG-007 补充(第二轮,同日晚)**:装 NODE_ENV 修复后用户复测仍卡死,且 spinner 也停转(WebContent 进程级饥饿)。再采样:递归 JIT 帧(React fiber 递归 render)+ 正则风暴 + GC allocateSlowCase。Chromium 从未真复现(V8 有回溯限制;headless 标签挂起是假冻结,渲染进程 CPU≈0 即可识别)——**该 bug 是 WKWebView/JSC 特有放大**。最终热点:`ui/icons.js icon()` 每次调用跑 `width="\d+" height="\d+"` 替换正则,每个 Icon 组件每帧都调——全树重渲染 × 数千组件 × 正则 + fiber 分配 GC 风暴。补修:icon 同名+同尺寸变体缓存(查表零正则);曾试给 ToolRow/ThinkingRow/UserMsg/ApprovalCard 加 React.memo,因组件内 13 处就地改 `item.expanded/cmdExpanded` 等交互态会吞掉展开交互,已回退——依赖「生产 React + icon 缓存 + AssistantMsg memo」三层。验收红线:UI 打包产物 grep 不得含 `development`(React 生产链);图标变体必须缓存。
+
+### BUG-009: 工具循环被拆成每轮一行「已工作 x 秒」——封存时机绑在轮帧而非 run 帧
+
+**现象**:多轮工具循环的回复实时展开成 N 行独立的 loop 组摘要(N=模型轮数),时长/usage 都是单轮口径;重开会话又合并回 1 行——同份数据两种呈现。
+
+**根因**:BUG-007 修复(commit 464131d)让 host 逐帧转发真实 `turn_start`/`turn_end`(每个模型轮一对,排队消费可见性依赖它),但 UI 的 `sealRunItems()` 仍无条件挂在每个 `turn_end` 上——每轮各封一组;`turn_start` 每轮重置 `turnStartAt`/`turnItemStart`,时长从不是累计。重载路径 `entriesToTranscript` 一直按整 run 分组,故重开即"回弹"。
+
+**修复**(ui-src/store.js):①`turn_start` 仅在 `turnItemStart == null`(run 首轮)初始化计时与起点;②轮内 `turn_end`(runEnd:false)只收尾草稿提前返回,不封存不停表;③封存移入 `runEnd` 帧分支,usage 用其整 run 累计、时长取 run 起始。steer 消费预封存路径不变(消费时刻仍即时封存)。验证:3 次工具调用的 run,实时 1 组(5s/22.8K),重载 `entriesToTranscript` 输出同构 1 组。
+
+**教训**:协议语义从「run 级近似」改成「逐帧权威」时,所有依赖旧粒度的消费端(封存/计时/usage 口径)必须逐个对齐新粒度——半改(只加 runEnd 标记不挪封存点)等于没改。另:主页侧栏左下角 profile 名硬编码 omp-desktop 一并修复(绑定 `S.hostSettings.activeProfile`,与设置页同源)。
+
+**BUG-007 补充(第三轮)**:prod React + icon 缓存后仍卡(时间变长=曲线被压低但斜率仍在)。sample 同签名(React 递归 + RegExpTestString 风暴),排除 LightweightDiff(有 useMemo,收起态不解析)与 thinking(纯文本)后锁定:**流式尾巴对不断增长的 draft 全文每 100ms 重跑 markdown 管线——每行 ~6 个 test + renderInline 的 exec,O(n²) 累积,回复越长每帧越贵**。修复:流式态改纯文本渲染(`.stream-plain`,pre-wrap),turn_end 定稿 push 为历史条目后才由 AssistantMsg 做一次 markdown 解析(memo 下仅此一次)。教训:**任何"对增长中的全文做全量变换"的流式渲染都是 O(n²)**——流式期间只许增量/纯文本,富文本变换留给定稿时刻;这是流式 UI 的硬性设计约束,违者必卡。

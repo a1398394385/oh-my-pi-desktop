@@ -40,7 +40,7 @@ export default function ThinkingRow({ item, fk }) {
         style={expandable ? { cursor: "pointer" } : undefined}
         onClick={expandable ? toggle : undefined}
       >
-        <span className="th-ic"><Icon name="think" /></span>
+        <span className="th-ic"><Icon name="think" size={13} /></span>
         <span className="lbl">{item.text || "思考 · 持续了几秒"}</span>
         {expandable && (
           <span className={"th-more" + (open ? " open" : "")}>
@@ -56,3 +56,4 @@ export default function ThinkingRow({ item, fk }) {
     </>
   );
 }
+

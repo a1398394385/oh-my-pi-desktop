@@ -150,7 +150,7 @@ export default function SkillsPage() {
               onClick={(e) => { e.stopPropagation(); const was = scopeOpen; setMoreOpen(false); setScopeOpen(!was); }}>
               <span className="skills-scope-icon"><Icon name={curSec.iconName || "laptop"} size={14} /></span>
               <span id="skillScopeLabel">{curSec.label}</span>
-              <span className="caret-svg"><Icon name="caret" size={10} /></span>
+              <span className="caret-svg"><Icon name="caret" size={14} /></span>
             </button>
             <div className={"menu" + (scopeOpen ? " open" : "")} id="skillScopeMenu">
               {sections.map((s, i) => (
@@ -159,7 +159,7 @@ export default function SkillsPage() {
                   <div className="mi" data-scope={s.scope}
                     onClick={(e) => { e.stopPropagation(); setScope(s.scope); setScopeOpen(false); setOpenPath(null); }}>
                     <span className="ck" style={{ visibility: s.scope === curSec.scope ? "visible" : "hidden" }}>✓</span>
-                    <Icon name={s.iconName || "folder"} size={13} />
+                    <Icon name={s.iconName || "folder"} size={14} />
                     <span className="mi-label" title={s.label}>{s.label}</span>
                   </div>
                 </Fragment>
@@ -170,7 +170,7 @@ export default function SkillsPage() {
           <span className="skills-count-stat" id="skillsTotalCount">技能 {totalCount}</span>
         </div>
         <div className="skills-search-wrap">
-          <span className="skills-search-icon"><Icon name="search" size={13} /></span>
+          <span className="skills-search-icon"><Icon name="search" size={14} /></span>
           <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder="搜索技能..." spellCheck={false} autoComplete="off"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
@@ -187,16 +187,16 @@ export default function SkillsPage() {
             </button>
             <div className={"menu" + (moreOpen ? " open" : "")} id="skillsMoreMenu">
               <div className="mi" id="miOpenSkillsDir" onClick={(e) => { e.stopPropagation(); onMorePick("dir"); }}>
-                <span className="mi-icon"><Icon name="folder" size={13} /></span>
+                <span className="mi-icon"><Icon name="folder" size={14} /></span>
                 <span className="mi-label">打开当前技能目录</span>
               </div>
               <div className="sep" />
               <div className="mi" id="miEnableAllSkills" onClick={(e) => { e.stopPropagation(); onMorePick("enableAll"); }}>
-                <span className="mi-icon"><Icon name="permDefault" size={13} /></span>
+                <span className="mi-icon"><Icon name="permDefault" size={14} /></span>
                 <span className="mi-label">全部启用</span>
               </div>
               <div className="mi" id="miDisableAllSkills" onClick={(e) => { e.stopPropagation(); onMorePick("disableAll"); }}>
-                <span className="mi-icon"><Icon name="shield" size={13} /></span>
+                <span className="mi-icon"><Icon name="shield" size={14} /></span>
                 <span className="mi-label">全部禁用</span>
               </div>
             </div>
@@ -205,7 +205,7 @@ export default function SkillsPage() {
             <Icon name="refresh" size={17} />
           </button>
           <button type="button" className="skills-btn-new" id="skillsNewBtn" onClick={onNew}>
-            <Icon name="plus" size={13} />
+            <Icon name="plus" size={14} />
             <span>新建</span>
           </button>
         </div>
@@ -221,7 +221,7 @@ export default function SkillsPage() {
                 <Fragment key={s.path}>
                   <div className={"skill-item-row" + (openPath === s.path ? " on" : "")} data-path={s.path} data-name={s.name}
                     onClick={() => toggleEditor(s)}>
-                    <div className="skill-badge"><Icon name="skills" size={16} /></div>
+                    <div className="skill-badge"><Icon name="skills" size={14} /></div>
                     <div className="skill-info">
                       <div className="skill-title-row">
                         <span className="skill-name">{s.name}</span>
@@ -239,7 +239,7 @@ export default function SkillsPage() {
                         <Icon name="trash" size={14} />
                       </button>
                     </div>
-                    <span className="mem-caret"><Icon name="caretSlim" /></span>
+                    <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
                   </div>
                   {openPath === s.path && (
                     <div className="mem-expand">

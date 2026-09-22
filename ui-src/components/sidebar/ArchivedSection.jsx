@@ -75,7 +75,7 @@ export default function ArchivedSection({ onDelete }) {
         title={open ? "收起归档区" : "展开归档区"}
         onClick={toggle}
       >
-        <span className="caret"><Icon name="caret" /></span>
+        <span className="caret"><Icon name="caret" size={14} /></span>
         <span className="aname">已归档</span>
         <span className="acount">{`(${list.length})`}</span>
       </div>

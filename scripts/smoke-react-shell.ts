@@ -45,7 +45,7 @@ const ok = (name, cond) => asserts.push([cond ? "✓" : "✗", name]);
 
 ok("三栏壳挂载（#sidebar/#main/#right）", !!$("#sidebar") && !!$("#main") && !!$("#right"));
 ok("preview 模式进会话区（#stream 存在且非欢迎页）", !!$("#stream") && !$("#welcomeScreen"));
-ok("消息流渲染（assistant 文本可见）", ($("#stream")?.textContent || "").includes("React 版壳已挂载"));
+ok("消息流渲染（assistant 文本可见）", ($("#stream")?.textContent || "").includes("先读一下样式文件"));
 ok("composer 挂载（textarea + 发送钮）", !!($("#composer textarea#input")) && !!$("#sendBtn"));
 ok("右栏 tab 渲染（子代理 tab 激活）", ($("#rightTabs")?.textContent || "").includes("子代理"));
 ok("无未捕获错误标记", !document.body.getAttribute("data-error"));

@@ -131,7 +131,11 @@ export function placeMenu(menu, visualLeft, visualTop) {
 // ---------- 消息轨道工具摘要（ui/ringpop.js railToolText 平移） ----------
 // 工具消息摘要：工具名 + 命令/文件，逗号连接
 export function railToolText(item) {
-  if (item.group) return ["更改", ...item.group.flatMap((g) => g.files || [])].filter(Boolean).join(" · ");
+  if (item.group) {
+    // 组标题与 rail 摘要同源：查阅 / 终端 / 设备 / 更改
+    const label = { read: "查阅", cmd: "终端", device: "设备" }[item.name] || "更改";
+    return [label, ...item.group.flatMap((g) => g.files || [])].filter(Boolean).join(" · ");
+  }
   const parts = [item.text];
   if (item.args?.command) parts.push(String(item.args.command));
   if (item.name === "hub") {

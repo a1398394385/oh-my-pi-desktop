@@ -4,7 +4,8 @@
 // 回包经 file_diff 写入 briefDiffCache 后重渲染。
 import { notify, S, send, activeOpen, briefDiffCache } from "../../store.js";
 import Icon from "../../Icon.jsx";
-import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles } from "./parts.jsx";
+import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow } from "./parts.jsx";
+import { splitPath } from "./util.js";
 
 // 事件涉及的文件清单：优先 tool_update 回填的 files，否则从 args 兜底
 function filesOf(item) {
@@ -38,7 +39,7 @@ export default function EditRow({ item }) {
   return (
     <>
       <div className="act edit" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="pencil" />
+        <Icon name="pencil" size={13} />
         <span className="lbl">{item.removed > 0 ? "编辑" : "写入"}</span>
         {path ? (
           <FileChip path={path} nameClass="ed-name" onNameClick={() => openFileDiffInSidebar(path)} />
@@ -114,7 +115,7 @@ function ChangeGroup({ subs }) {
   return (
     <>
       <div className="act change" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="pencil" />
+        <Icon name="pencil" size={13} />
         <span className="lbl">{`更改 · ${uniqueFiles(subs.flatMap((g) => filesOf(g))).length || "多"} 个文件`}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
@@ -134,7 +135,7 @@ function ChangeSingle({ item }) {
   const files = filesOf(item);
   return (
     <div className="act change">
-      <Icon name="pencil" />
+      <Icon name="pencil" size={13} />
       <span className="lbl">{`更改 · ${files.length || "多"} 个文件`}</span>
       {files.length > 0 && (
         <>
@@ -151,4 +152,46 @@ function ChangeSingle({ item }) {
 export function renderChange(item) {
   if (item.group) return <ChangeGroup subs={item.group} />;
   return <ChangeSingle item={item} />;
+}
+
+// ---------- 查阅组（连续 read 合并，机制与更改组一致） ----------
+// 展开状态：独立 WeakMap（以组内首个 item 为键，引用稳定跨重绘保留）
+export const rdExpand = new WeakMap();
+
+// 组内单条读取行：共享 parts.jsx 的 ReadRow（点击展开显示读取内容）
+function ReadEntry({ sub }) {
+  return <ReadRow item={sub} inGroup />;
+}
+
+// 「查阅 · N 个文件」标题行：点击向下展开各条读取
+function ReadGroup({ subs }) {
+  const [closing, close] = useLift();
+  const open = rdExpand.has(subs[0]) && !closing;
+  const toggle = () => {
+    if (rdExpand.has(subs[0])) close(() => { rdExpand.delete(subs[0]); notify(); });
+    else {
+      rdExpand.set(subs[0], true);
+      notify();
+    }
+  };
+  return (
+    <>
+      <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
+        <Icon name="file" size={13} />
+        <span className="lbl">{`查阅 · ${uniqueFiles(subs.flatMap((s) => filesOf(s))).length || "多"} 个文件`}</span>
+        <span className={"ed-arrow" + (open ? " open" : "")}>
+          <Icon name="chevronRight" />
+        </span>
+      </div>
+      {rdExpand.has(subs[0]) && (
+        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+          {subs.map((sub, i) => <ReadEntry sub={sub} key={i} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function renderReadGroup(item) {
+  return <ReadGroup subs={item.group} />;
 }

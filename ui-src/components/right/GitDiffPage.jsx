@@ -5,6 +5,7 @@ import { S, useStore, notify, send, activeOpen, gitDiffCache, fileDiffCache, rig
 import Icon from "../../Icon.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import LightweightDiff from "../diff/LightweightDiff.jsx";
+import { langOfPath } from "../../lib/highlighter.js";
 
 // ---------- git 写操作 busy 闭环（原 right.js gitBusy 语义） ----------
 // 进行中的写操作标记：{ op, prev }（prev = 发起前的 rightState.gitWrite 引用）。
@@ -148,7 +149,7 @@ function GdFileDetail() {
         ) : fileDiffCache.path !== S.selectedFile || !fileDiffCache.diff ? (
           <div className="placeholder">（无差异内容）</div>
         ) : (
-          <LightweightDiff diff={fileDiffCache.diff} className="fd-holder" />
+          <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(S.selectedFile)} className="fd-holder" />
         )}
       </div>
     </>

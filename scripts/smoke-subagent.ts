@@ -1,5 +1,7 @@
 // 子代理透传冒烟：诱导主会话调 task 工具，断言收到 subagent_lifecycle + subagent_event 帧。
 // 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-subagent.ts
+// 帧语义（BUG-007 修复后）：turn_end 每模型轮各一帧，lifecycle 帧可能晚于首个轮帧到达——
+// 断言按 runEnd=true 的收尾帧过滤（与 smoke-sendnow 同款），轮内帧只等不判。
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -61,7 +63,7 @@ ws.onmessage = (ev) => {
       if (msg.kind === "text_delta") state.text += msg.text;
       break;
     case "event":
-      if (msg.kind === "turn_end") {
+      if (msg.kind === "turn_end" && msg.runEnd) {
         console.log(`主会话完成：subagent lifecycle×${state.lifecycle} event×${state.events}`);
         if (state.lifecycle > 0) {
           if (state.events > 0 && state.text.trim()) console.log(`子代理流文本: ${state.text.trim().slice(0, 60)}`);

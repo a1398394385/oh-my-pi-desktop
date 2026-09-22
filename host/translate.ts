@@ -12,6 +12,11 @@ export type UiEvent =
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string };
 
+// 工具设备路径（xd://tui、xd://mcp__xxx 等）：读/写它是调用设备，不是文件读写
+function isDevicePath(p: unknown): boolean {
+  return typeof p === "string" && /^[a-z][a-z0-9+.-]*:\/\//i.test(p);
+}
+
 function pathOf(args: any): string {
   if (!args || typeof args !== "object") return "";
   if (typeof args.path === "string") return args.path;
@@ -146,13 +151,15 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
         if (lineNumbers) lineNumbers = lineNumbers.slice(0, n);
       }
       patch.details = {
+        isDirectory: details.isDirectory === true,
         displayContent: { text, startLine: dc.startLine, lineNumbers },
         totalLines: details.totalLines,
         resolvedPath: details.resolvedPath ?? (details.meta?.source?.type === "path" ? details.meta.source.value : undefined),
         shownRange: details.meta?.truncation?.shownRange,
       };
     }
-    return patch;
+    // 目录读取兜底：无 displayContent 时也要带 isDirectory（前端据此过滤出查阅组）
+    else if (details?.isDirectory) patch.details = { isDirectory: true };
   }
   if (name === "bash" || name === "shell" || name === "eval") {
     // 终端/求值工具：把输出文本带给前端展开卡片（截断，详细走 artifact）
@@ -196,8 +203,15 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     patch.diffContent = details.diff.slice(0, 500_000);
   }
   else if ((name === "write" || name === "edit") && typeof args?.content === "string") {
-    patch.added = Math.max(1, args.content.split("\n").length);
-    patch.removed = 0;
+    // 写入工具设备（xd://tui 等）不是文件编辑：既没有文件 diff 可看，按 content 行数算的
+    // 增删也是假的——改为下发设备回包文本，供设备行展开查看
+    if (isDevicePath(args?.path)) {
+      const text = resultText(result);
+      if (text) patch.output = text;
+    } else {
+      patch.added = Math.max(1, args.content.split("\n").length);
+      patch.removed = 0;
+    }
   }
   return patch;
 }

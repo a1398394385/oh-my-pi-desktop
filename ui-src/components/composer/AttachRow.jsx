@@ -2,6 +2,7 @@
 // 每条可移除；数据 S.pendingFiles，空时不渲染（等价原 hidden）。
 import { S, useStore, notify } from "../../store.js";
 import Icon from "../../Icon.jsx";
+import { fileTypeIcon } from "../../../ui/icons.js";
 
 export default function AttachRow() {
   useStore();
@@ -10,7 +11,7 @@ export default function AttachRow() {
     <div className="attach-row" id="attachRow">
       {S.pendingFiles.map((f) => (
         <span className="atchip" key={f.id}>
-          <span className="at-ic"><Icon name={f.kind === "image" ? "image" : "file"} /></span>
+          <span className="at-ic"><Icon name={f.kind === "image" ? "image" : fileTypeIcon(f.name)} /></span>
           <span className="at-name" title={f.name}>{f.name}</span>
           <button
             className="atchip-x"

@@ -63,7 +63,7 @@ function Sel({ label, options, onPick }) {
         setOpen(!open);
       }}
     >
-      {label} <Icon name="caret" className="caret-svg" />
+      {label} <Icon name="caret" size={14} className="caret-svg" />
       <div className={"menu" + (open ? " open" : "")}>
         {options.map((o) => (
           <div

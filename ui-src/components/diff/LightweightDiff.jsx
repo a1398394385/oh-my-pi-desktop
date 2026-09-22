@@ -1,9 +1,12 @@
 // 自研轻量 diff 渲染：移植 ZCode packages/ui/src/components/ui/lightweight-diff-preview.tsx
 // （纯 CSS 行解析，无第三方依赖）。只用行背景 color-mix + 行首 inset 状态条 + 行号 gutter
-// 着色表达增删，不显示 unified diff 的 +/-/空格 marker。语法高亮不做（markdown.js 同为纯文本）。
+// 着色表达增删，不显示 unified diff 的 +/-/空格 marker。
+// 语法染色移植 ZCode highlighted-lightweight-diff-preview：整段内容一次 tokenize
+// （ZCode 同款，跨行语法状态一致），按行回贴 token span；行底色仍归本组件 CSS。
 // 行过滤同 ZCode collectPlainTextPreviewLines：文件头（diff --git/index/---/+++ 等）与
 // hunk 头（@@）一律不渲染，只画 hunk 正文——预览不暴露协议头。
 import { useMemo } from "react";
+import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens.jsx";
 
 // 渲染行数上限：host 对 file_diff 回包按 500k 字符截断，超长 diff 只画前 MAX 行，
 // 尾部补一行省略提示，避免单文件超大 diff 卡渲染
@@ -80,8 +83,11 @@ function parseDiff(diff) {
   return parseLnDiff(diff);
 }
 
-export default function LightweightDiff({ diff, className = "" }) {
+export default function LightweightDiff({ diff, lang, className = "" }) {
   const { rows, omitted } = useMemo(() => parseDiff(diff), [diff]);
+  // 整段内容（行文本按序 join）一次 tokenize，按行下标回贴；lang 为空/超长按纯文本渲染
+  const code = useMemo(() => rows.map((r) => r.text).join("\n"), [rows]);
+  const tokens = useCodeTokens(code, lang);
   return (
     <div className={"ldiff" + (className ? " " + className : "")}>
       <div className="ldiff-scroll">
@@ -92,7 +98,9 @@ export default function LightweightDiff({ diff, className = "" }) {
             ) : (
               <span className="ldiff-gutter" aria-hidden="true" />
             )}
-            <code className="ldiff-code">{row.text || " "}</code>
+            <code className="ldiff-code">
+              {tokens?.[i] ? <CodeTokens line={tokens[i]} /> : row.text || " "}
+            </code>
           </div>
         ))}
         {omitted > 0 && <div className="ldiff-truncated">… 内容过长，已省略剩余 {omitted} 行</div>}

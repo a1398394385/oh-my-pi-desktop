@@ -1542,8 +1542,39 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
   // 关键一步（ACP 同款，acp-agent.ts:2631）：runner.hasUI() 判的是 initialize 注入的 uiContext，
   // 只调 setToolUIContext 不够——审批 gate 会 fail-closed「no interactive UI」
   entry.session.extensionRunner?.initialize({}, {}, {}, uiCtx, "rpc");
-  // 整棵 spawn 树共享根会话的 eventBus（sdk.ts:1341）：子代理 lifecycle/event 帧都在上面
+
+  // 整棵 spawn 树共享根会话的 eventBus（sdk.ts:1341）：子代理 lifecycle/event/progress 帧都在上面。
+  // host 侧补齐的派生数据（AgentProgress 本身没有的）：
+  //   registeredAt —— lifecycle started 帧到达时刻（详情卡 Registered 时间戳）
+  //   name / parent —— task 工具调用的 args 里带子代理名，toolCallId 记归属方
+  //                   （根会话=Main，子代理流里=该子代理），parentToolCallId 反查「Spawned by X」
+  const subRegistered = new Map<string, number>(); // subagentId -> started 时刻
+  const subSpawnCall = new Map<string, string>(); // subagentId -> 父 task toolCallId
+  const callOwner = new Map<string, { owner: string; names: string[] }>(); // task toolCallId -> 归属 + spawn 的子代理名
+  const spawnTools: Record<string, true> = { task: true, agent: true };
+  const spawnNames = (args: Record<string, unknown>): string[] => {
+    const items = Array.isArray(args.tasks) ? args.tasks : [args];
+    return items.map((t) => (t && typeof t === "object" && "name" in t && typeof t.name === "string" ? t.name : undefined)).filter((n): n is string => !!n);
+  };
+  const subName = (id: string, agent: string): string => {
+    const call = callOwner.get(subSpawnCall.get(id) ?? "");
+    return call?.names[0] ?? agent;
+  };
+  const subParent = (id: string): string => {
+    const spawnCall = subSpawnCall.get(id);
+    if (!spawnCall) return "Main";
+    const owner = callOwner.get(spawnCall);
+    return owner?.owner ?? "Main";
+  };
+  // 根会话里的 task 调用：归属 Main
+  const unsubSpawnRoot = entry.session.subscribe((ev: any) => {
+    if (ev.type === "tool_execution_start" && spawnTools[ev.toolName]) {
+      callOwner.set(ev.toolCallId, { owner: "Main", names: spawnNames(ev.args) });
+    }
+  });
   const unsubLifecycle = eventBus.on("task:subagent:lifecycle", (p: any) => {
+    if (p.parentToolCallId) subSpawnCall.set(p.id, p.parentToolCallId);
+    if (p.status === "started") subRegistered.set(p.id, Date.now());
     ws.send(
       JSON.stringify({
         type: "subagent_lifecycle",
@@ -1552,10 +1583,56 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
         agent: p.agent,
         description: p.description,
         status: p.status,
+        name: subName(p.id, p.agent),
+        parent: subParent(p.id),
+        registeredAt: subRegistered.get(p.id),
+        detached: p.detached ?? false,
       }),
     );
+    // 终态帧后补发最后一帧 progress（节流可能压掉），保证结束时成本/token 落到最终值
+    if (p.status !== "started") {
+      const last = subLastProgress.get(p.id);
+      if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last }));
+    }
+  });
+  // 聚合进度帧：成本/时长/请求/工具/token/上下文（高频且累积，500ms 节流；状态变化立即发）
+  const subLastProgress = new Map<string, Record<string, unknown>>();
+  const subSentAt = new Map<string, number>();
+  const subSentStatus = new Map<string, string>();
+  const unsubProgress = eventBus.on("task:subagent:progress", (p: any) => {
+    const pr = p.progress ?? {};
+    const payload = {
+      agent: p.agent,
+      status: pr.status,
+      task: pr.task,
+      cost: pr.cost,
+      durationMs: pr.durationMs,
+      requests: pr.requests,
+      toolCount: pr.toolCount,
+      tokens: pr.tokens,
+      contextTokens: pr.contextTokens,
+      contextWindow: pr.contextWindow,
+      currentTool: pr.currentTool,
+      currentToolArgs: pr.currentToolArgs,
+      currentToolStartMs: pr.currentToolStartMs,
+      lastIntent: pr.lastIntent,
+      resolvedModel: pr.resolvedModel,
+      resolvedThinkingLevel: pr.resolvedThinkingLevel,
+      recentTools: pr.recentTools,
+    };
+    subLastProgress.set(p.id, payload);
+    const now = Date.now();
+    const statusChanged = subSentStatus.get(p.id) !== pr.status;
+    if (!statusChanged && now - (subSentAt.get(p.id) ?? 0) < 500) return;
+    subSentAt.set(p.id, now);
+    subSentStatus.set(p.id, pr.status);
+    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, name: subName(p.id, p.agent), parent: subParent(p.id), registeredAt: subRegistered.get(p.id), ...payload }));
   });
   const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
+    // 子代理流里的 task 调用：归属该子代理（嵌套 spawn）
+    if (event.type === "tool_execution_start" && spawnTools[event.toolName]) {
+      callOwner.set(event.toolCallId, { owner: subName(id, id), names: spawnNames(event.args) });
+    }
     const ui = translateSubagentEvent(event);
     if (ui) ws.send(JSON.stringify({ type: "subagent_event", sessionId, subagentId: id, ...ui }));
   });
@@ -1572,7 +1649,9 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
   });
   entry.unsubscribe = () => {
     unsubSession();
+    unsubSpawnRoot();
     unsubLifecycle();
+    unsubProgress();
     unsubEvents();
     detachDequeueHook();
   };

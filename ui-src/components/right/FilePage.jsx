@@ -2,7 +2,10 @@
 //（read_file 整文件 / read_image 图片预览；rb-head 面包屑固定 + rb-scroll 滚动骨架）。
 import { Fragment, useEffect, useRef } from "react";
 import { S, useStore, notify, send, activeOpen, rightState } from "../../store.js";
+import { fileTypeIcon } from "../../../ui/icons.js";
 import Icon from "../../Icon.jsx";
+import { langOfPath } from "../../lib/highlighter.js";
+import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens.jsx";
 
 const FILE_VIEW_MAX_LINES = 800; // 全文件超长时的展示窗口：有读取范围则以范围起始行开头，否则从头
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]); // 与宿主 read_image 白名单一致
@@ -77,7 +80,7 @@ function FileTreeLevel({ dirPath, depth }) {
             onClick={() => openFileView(full)}
           >
             <span className="ft-caret ft-file-ic">
-              <Icon name="ftFile" />
+              <Icon name={fileTypeIcon(e.name)} />
             </span>
             <span className="ft-name">{e.name}</span>
           </div>
@@ -169,7 +172,8 @@ function FvDetail() {
   );
 }
 
-// 文本内容：行号 + 文本；全文件超长时截 800 行窗口（起点对齐请求范围的起始行）
+// 文本内容：行号 + 文本；全文件超长时截 800 行窗口（起点对齐请求范围的起始行）。
+// 语法染色：可视窗口整段一次 tokenize（上限见 highlighter.js），按行回贴 span
 function FvBody({ fv, bodyRef }) {
   const lines = fv.text.split("\n");
   if (lines[lines.length - 1] === "") lines.pop(); // 末尾换行不算一行
@@ -182,6 +186,7 @@ function FvBody({ fv, bodyRef }) {
     winStartLine = winStart + 1;
   }
   const lineNoOf = (i) => (fv.lineNumbers ? fv.lineNumbers[i] : winStartLine + i);
+  const tokens = useCodeTokens(shown.join("\n"), langOfPath(fv.path));
   return (
     <>
       <div className="fv-body" ref={bodyRef}>
@@ -192,7 +197,7 @@ function FvBody({ fv, bodyRef }) {
           return (
             <div key={i} className="fv-line">
               <span className={"fv-ln" + (hl ? " hl" : "")}>{n == null ? "…" : String(n)}</span>
-              <span className="fv-tx">{tx === "" ? " " : tx}</span>
+              <span className="fv-tx">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : tx === "" ? " " : tx}</span>
             </div>
           );
         })}

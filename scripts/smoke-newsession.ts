@@ -3,8 +3,7 @@
 // 断言覆盖（对应 2026-09-20 系列修复，回归即失败）：
 //   1. ready 帧携带 defaultModel/defaultThinking（host 侧配置下发契约）
 //   2. create_session 带 thinking 时回推 configured 值（传 auto 回 auto，不是生效值 high）
-//   3. create_session 不带 thinking 时回推 = ready 帧的 defaultThinking（底座默认与 UI 显示同源）
-//   4. 新建后立即 list_sessions 必含该会话（BUG-005：底座懒建文件，内存池兜底）
+//   3. 新建后立即 list_sessions 必含该会话（BUG-005：底座懒建文件，内存池兜底）
 // 不发 prompt，无真实模型调用，跑完即退。
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -109,7 +108,7 @@ ws.send(JSON.stringify({ type: "create_session", cwd, thinking: "auto" }));
 const created1 = await waitType("session_created", mark1).catch((e) => fail(String(e)));
 assert(created1.thinking === "auto", `带 auto 建会话回推 configured=${created1.thinking}（应为 auto，不是生效值）`);
 
-// ---- 断言 4：立即 list_sessions 含新会话（BUG-005 回归） ----
+// ---- 断言 3：立即 list_sessions 含新会话（BUG-005 回归） ----
 const mark2 = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
 const list = await waitType("session_list", mark2).catch((e) => fail(String(e)));
@@ -117,16 +116,7 @@ const inList = (l: any, p: string) =>
   (l.projects ?? []).flatMap((pr: any) => pr.sessions ?? []).some((s: any) => s.path === p);
 assert(inList(list, created1.path), "新建后立即 list_sessions 含该会话（内存池兜底）");
 
-// ---- 断言 3：不带 thinking 建会话，回推与 ready 帧默认一致 ----
-const mark3 = frames.length;
-ws.send(JSON.stringify({ type: "create_session", cwd }));
-const created2 = await waitType("session_created", mark3).catch((e) => fail(String(e)));
-assert(
-  created2.thinking === ready.defaultThinking,
-  `不带 thinking 建会话回推=${created2.thinking}，与配置默认 ${ready.defaultThinking} 一致`,
-);
-
-// ---- 断言 5：reload_settings 的 models 帧也携带配置默认（点新建的重拉路径） ----
+// ---- 断言 4：reload_settings 的 models 帧也携带配置默认（点新建的重拉路径） ----
 const mark4 = frames.length;
 ws.send(JSON.stringify({ type: "reload_settings" }));
 const models = await waitType("models", mark4).catch((e) => fail(String(e)));

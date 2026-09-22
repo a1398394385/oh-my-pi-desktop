@@ -15,6 +15,17 @@ function applyTheme(mode) {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   try { localStorage.setItem("omp-theme", mode); } catch {}
 }
+
+// ---------- 减弱动态效果（omp-motion：system 跟随系统 / on 强制减弱 / off 强制动画） ----------
+function currentMotionMode() {
+  try { return localStorage.getItem("omp-motion") || "system"; } catch { return "system"; }
+}
+function applyMotion(mode) {
+  // system 时移除属性回落 media query；on/off 由 html[data-motion] 强制规则接管
+  if (mode === "system") delete document.documentElement.dataset.motion;
+  else document.documentElement.dataset.motion = mode;
+  try { localStorage.setItem("omp-motion", mode); } catch {}
+}
 function themeLabel(mode) {
   return mode === "system" ? "◐ 跟随系统" : mode === "light" ? "☀️ 浅色" : "🌙 深色";
 }
@@ -59,7 +70,7 @@ function Sel({ label, options, onPick }) {
         setOpen(!open);
       }}
     >
-      {label} <Icon name="caret" className="caret-svg" />
+      {label} <Icon name="caret" size={14} className="caret-svg" />
       <div className={"menu" + (open ? " open" : "")}>
         {options.map((o) => (
           <div
@@ -123,8 +134,11 @@ export default function AppearancePage() {
     saveUiPrefs();
     applyAppearance();
   };
-  const stepUiFs = (d) => { stepFont("uiFontSize", d, 11, 18); setUiFs(uiPrefs.uiFontSize); };
-  const stepCodeFs = (d) => { stepFont("codeFontSize", d, 10, 18); setCodeFs(uiPrefs.codeFontSize); };
+  const [motion, setMotion] = useState(currentMotionMode());
+  const pickMotion = (mode) => {
+    setMotion(mode);
+    applyMotion(mode);
+  };
   const toggleLineNo = () => {
     const on = !lineNo;
     setLineNo(on);
@@ -172,6 +186,21 @@ export default function AppearancePage() {
             <button type="button" className="num-btn" id="uiFsMinus" onClick={() => stepUiFs(-1)}>−</button>
             <div className="num" id="uiFsVal">{uiFs} <i>px</i></div>
             <button type="button" className="num-btn" id="uiFsPlus" onClick={() => stepUiFs(1)}>+</button>
+          </div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx"><b>减弱动态效果</b><span>跟随系统的减弱动态设置，或强制开启 / 关闭应用内动画减弱（当前影响加载转圈）。</span></div>
+          <div className="mcp-type-pills">
+            {[["system", "跟随系统"], ["on", "开启"], ["off", "关闭"]].map(([v, label]) => (
+              <button
+                type="button"
+                key={v}
+                className={"mcp-type-pill" + (motion === v ? " on" : "")}
+                onClick={() => pickMotion(v)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>

@@ -126,7 +126,7 @@ export default function AgentsPage() {
             setMenuOpen((v) => !v);
           }}
         >
-          <span id="agentScopeLabel">{cur?.label ?? "Profile"}</span> <Icon name="caret" className="caret-svg" />
+          <span id="agentScopeLabel">{cur?.label ?? "Profile"}</span> <Icon name="caret" size={14} className="caret-svg" />
           {menuOpen && cur && sections && (
             <div className="menu open" id="agentScopeMenu" onClick={(e) => e.stopPropagation()}>
               {sections.map((s, i) => (
@@ -134,7 +134,7 @@ export default function AgentsPage() {
                   {i > 0 && <div className="sep" />}
                   <div className="mi" data-scope={s.scope} onClick={() => pickScope(s)}>
                     <span className="ck" style={{ visibility: s.scope === scope ? "visible" : "hidden" }}>✓</span>
-                    <Icon name={s.scope === "global" ? "scopeGlobal" : s.scope === "profile" ? "scopeProfile" : "folder"} />
+                    <Icon name={s.scope === "global" ? "scopeGlobal" : s.scope === "profile" ? "scopeProfile" : "folder"} size={14} />
                     <span className="mi-label" title={s.label}>{s.label}</span>
                   </div>
                 </span>

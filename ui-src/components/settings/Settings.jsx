@@ -161,7 +161,7 @@ export default function Settings() {
       <LoginPrompt />
       <nav id="setNav" data-tauri-drag-region>
         <button type="button" className="set-back" id="setBack" onClick={closeSettings}>
-          <Icon name="back" />
+          <Icon name="back" size={14} />
           返回工作区
         </button>
         {NAV_SECTIONS.map((sec) => (
@@ -176,7 +176,7 @@ export default function Settings() {
                 onClick={() => openSettings(it.id)}
               >
                 <span className="si">
-                  <Icon name={it.icon} />
+                  <Icon name={it.icon} size={14} />
                 </span>
                 {it.label}
               </button>
