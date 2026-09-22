@@ -31,7 +31,9 @@ import {
   toRestoredQueuedMessage,
   USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
-import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";
+import { createAcpCompressTools } from "./acp-tools.ts";
+import { AcpSessionState, parseAcpContextWindow, type AcpNudgeConfig } from "./acp-state.ts";
+import { createAcpContextExtension } from "./acp-context.ts";
 import {
   H,
   sessions,
@@ -129,7 +131,44 @@ function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
 }
 
+/** 读 omp-desktop.json 原始对象（读失败返回空对象）。 */
+function readAcpRaw(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function readAcpNudgeConfig(): AcpNudgeConfig {
+  const fallback: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
+  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
+  if (!acp || typeof acp !== "object") return fallback;
+  const parse = (v: unknown, dflt: number): number => {
+    if (typeof v === "number" && v > 0 && v <= 1) return v;
+    if (typeof v === "string") {
+      const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(v);
+      if (m) return Number(m[1]) / 100;
+    }
+    return dflt;
+  };
+  return {
+    maxContextLimit: parse(acp.maxContextLimit, 0.55),
+    minContextLimit: parse(acp.minContextLimit, 0.45),
+  };
+}
+
+
 async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
+  const acpState = new AcpSessionState();
+  // nudge 分母：omp-desktop.json 的 acp.contextWindow（固定值，如 2000000 / "1M"）
+  // 优先于模型注册表窗口；两者皆未知则 nudge 整体禁用
+  const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
+  acpState.modelContextWindow =
+    parseAcpContextWindow((readAcpRaw()?.acp as Record<string, unknown> | undefined)?.contextWindow) ||
+    Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) ||
+    0;
+  acpState.nudge = readAcpNudgeConfig();
   const result = await createAgentSession({
     cwd,
     authStorage: H.authStorage,
@@ -137,7 +176,8 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     settings: H.settings,
     model: initialModel ?? H.modelOverride,
     agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
-    sessionManager,
+    customTools: createAcpCompressTools(acpState) as never, // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
+    extensions: [createAcpContextExtension(acpState)], // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
     disableExtensionDiscovery: true,
     enableMCP: false,
     hasUI: true, // 审批 gate 的 fail-cold 判定走 runner.hasUI()：不开则非 yolo 模式下所有需审批工具直接报错

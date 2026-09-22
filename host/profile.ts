@@ -63,7 +63,12 @@ export function readDesktopProjects(): DesktopProjects {
 }
 
 export async function saveDesktopProjects() {
-  await writeFile(H.desktopProjectsPath, JSON.stringify(H.desktopProjects, null, 2));
+  // 先读磁盘原对象再覆盖托管键：用户手写的非托管段（如 acp 配置）必须原样保留
+  let base: Record<string, unknown> = {};
+  try {
+    base = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
+  } catch {}
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...base, ...H.desktopProjects }, null, 2));
 }
 
 // 历史扫描出的新 project 并入所有项目列表（尾部追加）；返回是否有新增。
