@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 3 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 4 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -11,6 +11,7 @@
 | RULE-001 | 新增/修改工具标签必须同步扩展 host/translate.ts 的参数白名单与结果摘要 | 前端渲染 + 宿主转发 |
 | RULE-002 | 新增内嵌滚动容器必须 `overscroll-behavior: contain`,装饰元素不得放进滚动节点内 | 全部 UI 样式 |
 | RULE-003 | 渲染函数必须纯渲染,RPC 请求只能由视图入口/事件处理器发起 | 全部 UI 渲染 + RPC |
+| RULE-004 | 改动 import 区块禁止整行替换相邻 import;删改符号后必须核对本文件使用点 | host/ 与全部 TS 模块 |
 
 ---
 
@@ -49,3 +50,13 @@
 **How to apply**:给渲染函数加请求前,先在 core.js grep 该消息 type 的响应处理器——若会调回本渲染函数,请求必须上移到入口。症状识别:UI hover 闪烁 + 点击无反应 ≈ 无限重绘。review checklist:渲染函数体内出现 `send(` ↔ 该消息的响应处理器不调回同一渲染函数。
 
 **关联**:BUG-003
+
+### RULE-004: 改动 import 区块禁止整行替换相邻 import;删改符号后必须核对本文件使用点
+
+**规则**:在 `host/*.ts` 或任何 TS 模块的 import 区块插入新 import 时,只能**插入**——不得用「选中相邻既有 import 行 + 替换」的写法。任何被删除/被替换掉的 import 名(以及被替换的函数调用参数块中的每一行),必须立刻 grep 该符号在本文件的使用点,确认无残留引用。
+
+**Why**:BUG-004(调用未 import 的函数 → ReferenceError 中断消息处理)与 BUG-008(ACP 提交插入 import 时整行吞掉 pty import → 前端断开即崩宿主进程)是同一根因的两次事故。本仓无 tsc/eslint 门禁,import 缺失只在运行期暴露,且暴露点常常是低频路径(WS close),启动冒烟看不见。
+
+**How to apply**:改完 import 区块后跑 `grep -n "<被删符号>" host/host.ts`,逐个确认要么仍被 import、要么已无引用;host 改动后额外跑一次「连接 → 断开」存活冒烟(连一次 WS、收到 ready 后 close,断言进程仍在),覆盖 `close` 处理器路径。review checklist:diff 里出现 `-import ... from` ↔ 该行符号在本文件已无使用,或已被同文件其他 import 覆盖。
+
+**关联**:BUG-004 / BUG-008
