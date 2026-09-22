@@ -60,3 +60,5 @@ if (fail > 0) {
   process.exit(1);
 }
 console.log("全部断言通过（React 壳 preview 冒烟）");
+// happy-dom Window 与 React scheduler 的定时器占着事件循环，不显式退出会挂到超时
+process.exit(0);
