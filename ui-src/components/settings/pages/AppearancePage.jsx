@@ -155,6 +155,15 @@ export default function AppearancePage() {
     saveUiPrefs();
     applyAppearance();
   };
+  // 字号步进（范围沿用旧版 settings/index.js 的 clamp：界面 11-18、代码 10-18）
+  const stepUiFs = (d) => {
+    stepFont("uiFontSize", d, 11, 18);
+    setUiFs(uiPrefs.uiFontSize);
+  };
+  const stepCodeFs = (d) => {
+    stepFont("codeFontSize", d, 10, 18);
+    setCodeFs(uiPrefs.codeFontSize);
+  };
 
   return (
     <div className="set-page" id="pg-appearance">
