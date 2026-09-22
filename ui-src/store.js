@@ -71,6 +71,8 @@ export const S = {
   zoomLevel: 1,
   approvalMode: "always-ask",
   loginReqId: 0,
+  evtHost: null, // host 进程实例 ID（ready.hi / 盖戳事件.hi）；变化 = host 已重启
+  evtSeq: 0, // 该实例下已应用的最高事件序号（位置落后的事件直接丢弃）
   // ---- React 版新增 UI 态（原版散在 DOM class / 局部变量上） ----
   connected: false,
   connText: "连接中…",
@@ -520,10 +522,46 @@ export async function connect() {
   S.ws.onerror = () => setConnected(false, "已断开");
 }
 
+// ---------- 事件流位置守卫（host 盖戳 hi/seq 的消费端） ----------
+// hi 变化 = host 进程已重启：清掉所有会话的死流式状态（假 spinner / 半截 draft），
+// 避免旧实例残留把视图永久挂死；同 hi 内 seq 落后的帧丢弃（位置落后丢弃不合并），
+// 跳号只告警不丢帧（重连补洞未实现，先观测）。
+function hostInstanceReset(hi, seq) {
+  if (S.evtHost !== null && S.evtHost !== hi) {
+    // 与 turn_end 的收尾动作对齐（host 死了 = 所有 turn 永远等不到 turn_end）
+    for (const s of openSessions.values()) {
+      s.assistantDraft = "";
+      s.streaming = false;
+      s.workingText = null;
+      s.turnItemStart = null;
+      s.turnStartAt = null;
+      for (const sub of s.subagents.values()) sub.streaming = false;
+    }
+    notify();
+  }
+  S.evtHost = hi;
+  S.evtSeq = seq;
+}
+
+function admitStampedEvent(msg) {
+  if (S.evtHost !== msg.hi) {
+    hostInstanceReset(msg.hi, msg.seq);
+    return true;
+  }
+  if (msg.seq <= S.evtSeq) return false; // 位置落后：丢弃
+  if (msg.seq > S.evtSeq + 1) console.warn(`[evt] 跳号 ${S.evtSeq} → ${msg.seq}（按序放行，仅观测）`);
+  S.evtSeq = msg.seq;
+  return true;
+}
+
 // ---------- 事件路由 ----------
 function onMessage(msg) {
+  // 带位置戳的主动推送先过守卫（RPC 响应无 hi 不受影响）
+  if (msg.hi !== undefined && !admitStampedEvent(msg)) return;
   switch (msg.type) {
     case "ready":
+      // 握手帧不占 seq：仅在实例变化时重置；重连（同 hi）保留已见位置避免假跳号
+      if (msg.hi && S.evtHost !== msg.hi) hostInstanceReset(msg.hi, 0);
       S.approvalMode = msg.approvalMode ?? S.approvalMode;
       ingestModels(msg.models);
       // 启动即进欢迎页时 ready 帧晚于首次 initNewSessionModel：配置默认到位后立即重校准
