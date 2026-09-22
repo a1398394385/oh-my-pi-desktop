@@ -9,6 +9,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import Welcome from "./components/Welcome.jsx";
 import Chat from "./components/Chat.jsx";
 import Composer from "./components/Composer.jsx";
+import SessionStatsBar from "./components/SessionStatsBar.jsx";
 import QueueCard from "./components/composer/QueueCard.jsx";
 import RightPanel from "./components/RightPanel.jsx";
 import Settings from "./components/settings/Settings.jsx";
@@ -75,6 +76,8 @@ export default function App() {
             <div className="dock">
               <Composer inWelcome={false} />
             </div>
+            {/* 会话统计行：dock 之外、输入卡片下方另起一行（不是输入框内部） */}
+            <SessionStatsBar />
           </>
         )}
       </main>

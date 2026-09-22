@@ -711,6 +711,50 @@ export function treeToDisplay(roots: SessionTreeNode[], leafId: string | null): 
   return roots.map(walk);
 }
 
+// 整会话活跃时长（毫秒）：按 entriesToTranscript 同款轮次分段，累加每轮「有效用户输入 → 轮末」
+// 的墙钟跨度（每轮至少 1 秒，与 loop 组 durationSec 同口径）。
+// 用于加载历史会话时给 host 的内存计时器一个初值——不能靠累加 transcript 里的 loop 组：
+// 纯对话轮（无工具调用）不生成 loop 组，那样会漏轮（实测 2 轮只出 1 个 loop）。
+export function sumRunDurationMs(entries: any[]): number {
+  let total = 0;
+  let startMs = 0;
+  let endMs = 0;
+  let open = false;
+  const flush = () => {
+    if (!open) return;
+    total += Math.max(1000, endMs - startMs);
+    open = false;
+  };
+  for (const e of entries) {
+    if (e.type !== "message") continue;
+    const msg = e.message ?? {};
+    const { role, content } = msg;
+    const ts = Date.parse(e.timestamp ?? "") || 0;
+    if (role === "toolResult") {
+      if (open && ts) endMs = ts;
+      continue;
+    }
+    if (role === "user") {
+      const text =
+        typeof content === "string"
+          ? content
+          : (content ?? [])
+              .filter((b: any) => b?.type === "text")
+              .map((b: any) => b.text)
+              .join("\n");
+      if (isJunkPlaceholderText(text)) continue; // 隐藏伴随/占位消息不开轮
+      flush();
+      startMs = ts;
+      endMs = ts;
+      open = true;
+      continue;
+    }
+    if (role === "assistant" && open) endMs = ts || endMs;
+  }
+  flush();
+  return total;
+}
+
 // 子代理事件 → 前端窄事件（纯转发，不落父会话 transcript；文本由前端按 subagentId 累积）
 export function translateSubagentEvent(ev: any): UiEvent | null {
   switch (ev.type) {

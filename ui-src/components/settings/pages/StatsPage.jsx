@@ -1,7 +1,7 @@
 // 设置·使用统计页：token 总量/峰值/时长/连续天数热力图 + 14 天趋势曲线 + 模型分布环图。
 // 逻辑 1:1 平移自旧版 ui/settings/stats.js，图形由 React 声明式生成（与旧版命令式 SVG 视觉一致）。
 import { useEffect, useMemo } from "react";
-import { S, useStore, send } from "../../../store.js";
+import { S, useStore, send, fmtDurationMs } from "../../../store.js";
 
 // 与旧版一致的统计配色（图形专用色板，沿袭原设计）
 const STAT_COLORS = ["#4a9eff", "#34c759", "#a86fe0", "#e05c5c", "#e5a14e", "#4ec9b0"];
@@ -13,17 +13,6 @@ function fmtCompactTokens(n) {
   if (n >= 1e4) return (n / 1e4).toFixed(1) + " 万";
   if (n >= 1024) return (n / 1024).toFixed(1) + "k";
   return String(n);
-}
-
-// 时长格式化（旧版 fmtDurationMs 平移）
-function fmtDurationMs(ms) {
-  if (!ms) return "—";
-  const s = Math.round(ms / 1000);
-  if (s < 60) return s + "秒";
-  const m = Math.floor(s / 60);
-  if (m < 60) return m + "分" + (s % 60) + "秒";
-  const h = Math.floor(m / 60);
-  return h + "小时" + (m % 60) + "分钟";
 }
 
 // 主题相关文字色（沿袭旧版按 data-theme 取色）

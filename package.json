@@ -9,7 +9,7 @@
     "smoke:branch": "bun scripts/smoke-branch.ts",
     "ui:build": "esbuild ui-src/main.jsx --bundle --format=iife --outfile=ui/assets/app.js --jsx=automatic --minify --define:process.env.NODE_ENV='\"production\"'",
     "ui:watch": "esbuild ui-src/main.jsx --bundle --format=iife --outfile=ui/assets/app.js --jsx=automatic --watch",
-    "smoke:react": "bun scripts/smoke-react-shell.ts"
+    "smoke:react": "bun scripts/smoke-react-shell.ts",
     "smoke:stamp": "bun scripts/smoke-stamp.ts",
     "check:capabilities": "node scripts/check-capabilities.mjs",
     "check:boundaries": "node scripts/check-host-boundaries.mjs",
