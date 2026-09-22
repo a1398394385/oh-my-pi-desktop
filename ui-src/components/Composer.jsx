@@ -12,10 +12,31 @@ import AttachRow from "./composer/AttachRow.jsx";
 import ModeMenu, { MODE_META } from "./composer/ModeMenu.jsx";
 import ModelMenu from "./composer/ModelMenu.jsx";
 import ThinkMenu from "./composer/ThinkMenu.jsx";
+import PaletteMenu from "./composer/PaletteMenu.jsx";
+import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger.js";
 import CtxCard from "./chat/CtxCard.jsx";
 
 // 模块级输入草稿（跨挂载位保留，等价原 inputEl.value）
 const draft = { value: "" };
+
+// 斜杠命令候选过滤：空 query 全量按 source 分组排序（builtin→skill→extension→custom→其他）；
+// 非空先 name/aliases 前缀命中、次之 includes、再按 source 序兜底；上限 50
+const SRC_RANK = { builtin: 0, skill: 1, extension: 2, custom: 3, file: 4 };
+function filterCommands(list, query) {
+  if (!Array.isArray(list) || !list.length) return [];
+  const rank = (c) => SRC_RANK[c.source] ?? 9;
+  const q = (query || "").toLowerCase();
+  if (!q) return [...list].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 50);
+  const pre = [];
+  const incl = [];
+  for (const c of list) {
+    const names = [c.name, ...(c.aliases || [])].map((n) => n.toLowerCase());
+    if (names.some((n) => n.startsWith(q))) pre.push(c);
+    else if (names.some((n) => n.includes(q))) incl.push(c);
+  }
+  const byRank = (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name);
+  return [...pre.sort(byRank), ...incl.sort(byRank)].slice(0, 50);
+}
 
 // 待发送附件上限：图片走 ImageContent（base64），文本类文件内联进 prompt
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024;
@@ -92,12 +113,16 @@ export default function Composer({ inWelcome }) {
   const modelBtnRef = useRef(null);
   const thinkBtnRef = useRef(null);
   const [openMenu, setOpenMenu] = useState(null); // "mode" | "model" | "think" | null（互斥）
+  const [palette, setPalette] = useState(null); // sigil 补全弹层 {kind,start,end,query,quoted?,index,items,loading,reqId?}
+  const mentionTimer = useRef(null); // @ 候选 150ms 防抖
   const [stopPending, setStopPending] = useState(false); // 停止钮防连点（turn_end 复位）
   const barStageRef = useRef(0); // 上次收缩级数（变化时收起打开中的菜单）
 
   const text = draft.value;
   const hasDraft = text.trim().length > 0 || S.pendingFiles.length > 0;
-  const stopping = !!s?.streaming && !hasDraft;
+  // 运行中的本地 bash 行（! 前缀命令）：停止形态同样覆盖——点停止发 bash_abort 而非 abort_session
+  const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
+  const stopping = (!!s?.streaming || bashRunning) && !hasDraft;
 
   // ---- 外部回填信号（分叉 selectedText / 排队消息编辑），对齐原 setComposerValue（含图片） ----
   useEffect(() => {
@@ -144,6 +169,22 @@ export default function Composer({ inWelcome }) {
     const files = buildAttachPayload();
     if ((!t && files.length === 0) || !S.ws || S.ws.readyState !== 1) return;
 
+    // bash 模式（! 前缀，!! = 结果不进模型上下文）：本地执行，不出 user 气泡，
+    // 行由 bash_start 帧建立（对齐 TUI input-controller 的发送路由）
+    if (isBashMode(t)) {
+      const raw = t.trim();
+      const excludeFromContext = raw.startsWith("!!");
+      const command = excludeFromContext ? raw.slice(2).trim() : raw.slice(1).trim();
+      if (!command) return; // `!` / `!!` 空命令：无动作（TUI 同款）
+      if (!s) {
+        toast("先新建或打开一个会话");
+        return;
+      }
+      clearDraft();
+      send({ type: "bash_exec", sessionId: s.sessionId, command, excludeFromContext });
+      return;
+    }
+
     // 新建态：草稿存 pendingNewPrompt，session_created 回执后由 store 代发
     if (S.isCreatingNew || !s) {
       S.pendingNewPrompt = { text: t, files };
@@ -174,8 +215,72 @@ export default function Composer({ inWelcome }) {
   const onInput = (e) => {
     draft.value = e.target.value;
     resizeInput(e.target);
+    updatePalette(e.target);
     notify(); // 刷新发送钮 ready 态
   };
+
+  // ---- sigil 触发检测：@ 文件补全 / 行首 / 命令补全（trigger.js 纯函数） ----
+  const updatePalette = (ta) => {
+    const t = detectTrigger(ta.value, ta.selectionStart ?? ta.value.length);
+    if (!t) {
+      setPalette((p) => (p ? null : p)); // 无触发：关弹层（已在关则不动，避免多余重渲）
+      return;
+    }
+    if (t.kind === "command") {
+      if (!s) {
+        setPalette(null); // 无会话：命令不可用
+        return;
+      }
+      if (S.commandsSessionId !== s.sessionId) {
+        S.commands = null; // 清单过期：拉取期间弹层显示加载中
+        send({ type: "list_commands", sessionId: s.sessionId });
+      }
+      setPalette({ ...t, index: 0, items: filterCommands(S.commands, t.query), loading: S.commands === null });
+    } else {
+      // @ 文件候选：150ms 防抖后发 list_files（宿主 fuzzyFind 是磁盘扫描）；
+      // reqId 自增使过期响应被 store 丢弃
+      const reqId = ++S.mentionReqSeq;
+      const cwd = s ? undefined : S.newSessionProject || undefined;
+      clearTimeout(mentionTimer.current);
+      mentionTimer.current = setTimeout(() => {
+        send({ type: "list_files", sessionId: s?.sessionId, cwd, query: t.query, reqId });
+      }, 150);
+      setPalette({ ...t, index: 0, items: [], loading: true, reqId });
+    }
+  };
+
+  // ---- 接受补全：按 kind 插入文本，目录候选触发链式展开（重算该目录内容） ----
+  const accept = (i) => {
+    const ta = taRef.current;
+    if (!palette || !ta) return;
+    const it = (palItems ?? palette.items)?.[i];
+    if (!it) return;
+    const next = palette.kind === "file" ? insertFile(it.path, it.dir, palette.quoted) : insertCommand(it.name);
+    const value = ta.value.slice(0, palette.start) + next + ta.value.slice(palette.end);
+    ta.value = value;
+    draft.value = value;
+    const caret = palette.start + next.length;
+    ta.setSelectionRange(caret, caret);
+    resizeInput(ta);
+    const chainDir = palette.kind === "file" && it.dir;
+    setPalette(null);
+    // 目录无尾随空格、光标仍在 token 尾：手动派发 input 事件重算触发（赋值不冒泡）
+    if (chainDir) ta.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  // @ 候选响应：渲染期消费 S.mentionResult（useStore 已在帧处理时触发重渲），
+  // reqId 匹配才合并，避免竞态；reqId 不匹配保持加载态等下一帧
+  const palItems =
+    palette && palette.kind === "file" && S.mentionResult && S.mentionResult.reqId === palette.reqId
+      ? S.mentionResult.matches
+      : palette?.items;
+  const palLoading = palette
+    ? palette.kind === "file"
+      ? S.mentionResult?.reqId === palette.reqId
+        ? false
+        : palette.loading
+      : palette.loading
+    : false;
 
   // ---- 附件选择（原 filePicker change 平移） ----
   const onPick = async (e) => {
@@ -212,7 +317,10 @@ export default function Composer({ inWelcome }) {
 
   // ---- 点外部 / 窗口失焦 / omp:close-menus 协调关菜单（原 window click/blur → closeAllMenus） ----
   useEffect(() => {
-    const close = () => setOpenMenu(null);
+    const close = () => {
+      setOpenMenu(null);
+      setPalette(null);
+    };
     window.addEventListener("click", close);
     window.addEventListener("blur", close);
     document.addEventListener("omp:close-menus", close);
@@ -222,6 +330,9 @@ export default function Composer({ inWelcome }) {
       document.removeEventListener("omp:close-menus", close);
     };
   }, []);
+
+  // ---- 卸载清理 @ 候选防抖定时器 ----
+  useEffect(() => () => clearTimeout(mentionTimer.current), []);
 
   // ---- 底栏分级收缩（原 fitComposerBar 平移；bar-N 类为命令式追加，className prop 恒定 React 不会覆盖） ----
   const fit = () => {
@@ -246,7 +357,10 @@ export default function Composer({ inWelcome }) {
     if (stage !== barStageRef.current) {
       barStageRef.current = stage;
       // 阶段变化会移动按钮，打开中的菜单锚点随之失效，直接收起
-      if (comp.querySelector(".menu.open")) setOpenMenu(null);
+      if (comp.querySelector(".menu.open")) {
+        setOpenMenu(null);
+        setPalette(null);
+      }
     }
   };
   useLayoutEffect(fit);
@@ -300,7 +414,7 @@ export default function Composer({ inWelcome }) {
 
   return (
     <>
-      <div id="composer" className={inWelcome ? "in-welcome" : ""} ref={rootRef}>
+      <div id="composer" className={(inWelcome ? "in-welcome " : "") + (isBashMode(draft.value) ? "bash-mode" : "")} ref={rootRef}>
         <AttachRow />
         <textarea
           id="input"
@@ -310,6 +424,33 @@ export default function Composer({ inWelcome }) {
           placeholder={inWelcome ? "使用 @ 添加上下文，使用 / 选择命令或能力" : "发消息…（Enter 发送）"}
           onInput={onInput}
           onKeyDown={(e) => {
+            // sigil 补全弹层打开时优先拦截导航/接受键
+            if (palette) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const n = (palItems ?? []).length;
+                if (!n) return;
+                const d = e.key === "ArrowDown" ? 1 : -1;
+                setPalette((p) => (p ? { ...p, index: (p.index + d + n) % n } : p));
+                return;
+              }
+              if (e.key === "Tab") {
+                e.preventDefault();
+                accept(palette.index);
+                return;
+              }
+              if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+                // 补全态回车 = 接受当前项，不发送（isComposing：中文输入法选字中不触发）
+                e.preventDefault();
+                accept(palette.index);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setPalette(null);
+                return;
+              }
+            }
             // isComposing：中文输入法选字中的回车不发送
             if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
               e.preventDefault();
@@ -331,6 +472,24 @@ export default function Composer({ inWelcome }) {
             <Icon name={modeMeta.icon} id="modeIcon" />
             <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
           </button>
+          {/* 计划模式（仅会话内可开）：胶囊右侧以 | 分隔的小按钮，hover 时图标变 X 表示点击退出 */}
+          {s?.planMode && (
+            <>
+              <span className="cbar-sep" id="planSep">|</span>
+              <button
+                className="pill-btn plan-btn"
+                id="planBtn"
+                title="计划模式已开启，点击退出"
+                onClick={() => send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: false })}
+              >
+                <span className="plan-ic">
+                  <Icon name="plan" size={16} />
+                  <Icon name="xmark" size={14} />
+                </span>
+                <span id="planLabel">计划</span>
+              </button>
+            </>
+          )}
           <button
             className={"pill-btn bg-task-btn" + (bgTasks > 0 ? " has-running" : "") + (!S.rightCollapsed && S.rightTab === "bgcmd" ? " on" : "")}
             id="bgTaskBtn"
@@ -380,13 +539,13 @@ export default function Composer({ inWelcome }) {
             className={"send" + (hasDraft ? " ready" : "") + (stopping ? " stopping" : "")}
             id="sendBtn"
             disabled={stopping && stopPending}
-            title={stopping ? "停止生成" : s?.streaming ? "发送（排队，当前任务完成后发出）" : "发送"}
+            title={stopping ? (bashRunning && !s?.streaming ? "停止命令" : "停止生成") : s?.streaming ? "发送（排队，当前任务完成后发出）" : "发送"}
             onClick={() => {
-              // 停止形态（流式中且输入框空）：中止生成；发送形态：照常发送/排队
+              // 停止形态：纯 bash 执行中 → 中止命令；流式中 → 中止生成；发送形态：照常发送/排队
               if (stopping) {
                 if (stopPending) return;
-                setStopPending(true); // 防连点：turn_end 后复位
-                send({ type: "abort_session", sessionId: s.sessionId });
+                setStopPending(true); // 防连点：turn_end / bash_done 后复位
+                send({ type: bashRunning && !s?.streaming ? "bash_abort" : "abort_session", sessionId: s.sessionId });
                 return;
               }
               sendPrompt();
@@ -402,6 +561,18 @@ export default function Composer({ inWelcome }) {
         <input type="file" id="filePicker" multiple hidden ref={pickerRef} onChange={onPick} />
         {/* 思考级别（只列当前模型支持的档位） */}
         {openMenu === "think" && <ThinkMenu btnRef={thinkBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
+        {/* sigil 补全弹层（@ 文件候选 / 行首 / 命令候选），锚定 textarea */}
+        {palette && (
+          <PaletteMenu
+            mode={palette.kind}
+            items={palItems ?? []}
+            index={palette.index}
+            loading={palLoading}
+            composerRef={rootRef}
+            onPick={(i) => accept(i)}
+            onHover={(i) => setPalette((p) => (p ? { ...p, index: i } : p))}
+          />
+        )}
       </div>
     </>
   );

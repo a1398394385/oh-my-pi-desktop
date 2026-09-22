@@ -21,13 +21,14 @@ const ROWS = [
 
 export default function ModeMenu({ btnRef, composerRef, onClose }) {
   const menuRef = useRef(null);
+  const s = activeOpen();
+  const planOn = !!s?.planMode;
   // 挂载即定位（原 openComposerMenu：打开时定位一次）
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
 
   const pickMode = (mode) => {
-    const s = activeOpen();
     if (s) send({ type: "set_approval_mode", sessionId: s.sessionId, mode });
     else send({ type: "set_approval_mode", mode });
     S.approvalMode = mode;
@@ -35,8 +36,24 @@ export default function ModeMenu({ btnRef, composerRef, onClose }) {
     onClose();
   };
 
+  // 计划模式：仅在有会话时可切（模式状态挂在会话上）；置位由宿主 plan_mode 帧确认
+  const togglePlan = () => {
+    if (!s) return;
+    send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !planOn });
+    onClose();
+  };
+
   return (
     <div className="menu mode open" id="modeMenu" ref={menuRef}>
+      <div className={"mi big" + (s ? "" : " off")} id="planModeRow" onClick={togglePlan} title={s ? "先只读规划，批准计划后再执行" : "需要先新建或打开一个会话"}>
+        <span className="mi-ic"><Icon name="plan" /></span>
+        <span className="mi-tx">
+          <span className="mi-tt">计划模式</span>
+          <span className="mi-desc">先只读调研并产出计划，批准后才动手改代码</span>
+        </span>
+        <span className="ck">{planOn ? "✓" : ""}</span>
+      </div>
+      <div className="mode-sep"></div>
       {ROWS.map(({ mode, desc }) => {
         const meta = MODE_META[mode];
         return (

@@ -9,6 +9,8 @@ import UserMsg from "./UserMsg.jsx";
 import AssistantMsg from "./AssistantMsg.jsx";
 import ThinkingRow from "./ThinkingRow.jsx";
 import ToolRow from "./ToolRow.jsx";
+import BashRow from "./BashRow.jsx";
+import MentionRow from "./MentionRow.jsx";
 import LoopGroup, { loopSummaryText } from "./LoopGroup.jsx";
 import ApprovalCard from "./ApprovalCard.jsx";
 
@@ -35,6 +37,15 @@ function appendItem(item, key, railEntries) {
   if (item.role === "loop") {
     railEntries.push({ key, role: "meta", text: loopSummaryText(item) });
     return <LoopGroup item={item} fk={key} railEntries={railEntries} key={key} />;
+  }
+  // 本地 bash 执行行（! 前缀）与 @ 提及回读行：不进合并组，逐条渲染
+  if (item.role === "bash") {
+    railEntries.push({ key, role: "bash", text: item.text });
+    return <BashRow item={item} fk={key} key={key} />;
+  }
+  if (item.role === "mention") {
+    railEntries.push({ key, role: "mention", text: (item.files || []).join("、") });
+    return <MentionRow item={item} fk={key} key={key} />;
   }
   if (item.role === "meta") {
     railEntries.push({ key, role: "meta", text: item.text });

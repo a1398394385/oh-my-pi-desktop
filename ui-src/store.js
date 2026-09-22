@@ -76,6 +76,11 @@ export const S = {
   connText: "连接中…",
   toastMsg: null, // 当前 toast 文本（null = 隐藏）
   composerSetSignal: null, // { text, images, seq } 外部填输入框的信号（分叉回填 / 排队消息编辑）
+  // ---- 输入框 sigil 补全态 ----
+  commands: null, // 当前会话斜杠命令清单（数组；null = 未拉取，弹层显示加载中）
+  commandsSessionId: null, // 清单归属会话 id，切会话即失效
+  mentionReqSeq: 0, // list_files 请求序号（reqId 生成器，前端自增）
+  mentionResult: null, // 最新 @ 候选响应 { reqId, matches }；reqId 与当前请求不匹配即过期
   sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
   // 右栏默认折叠（对齐旧版 index.html <aside id="right" class="collapsed">）；手动展开过后按 localStorage 记忆
   rightCollapsed: localStorage.getItem("omp-right-collapsed") === null ? true : localStorage.getItem("omp-right-collapsed") === "1",
@@ -514,6 +519,13 @@ function onMessage(msg) {
       S.approvalMode = msg.mode;
       notify();
       break;
+    case "plan_mode": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      s.planMode = !!msg.enabled;
+      notify();
+      break;
+    }
     case "approval_request": {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
@@ -577,6 +589,19 @@ function onMessage(msg) {
       notify();
       break;
     }
+    // ---- 输入框 sigil：斜杠命令清单（宿主 list_commands 回包；list_files 的 @ 候选回包） ----
+    case "commands": {
+      S.commands = Array.isArray(msg.commands) ? msg.commands : [];
+      S.commandsSessionId = msg.sessionId;
+      notify();
+      break;
+    }
+    case "file_matches": {
+      if (msg.reqId !== S.mentionReqSeq) break; // 过期响应：用户已继续输入，丢弃
+      S.mentionResult = { reqId: msg.reqId, matches: Array.isArray(msg.matches) ? msg.matches : [] };
+      notify();
+      break;
+    }
     case "session_created": {
       openSessions.set(msg.path, {
         sessionId: msg.sessionId,
@@ -590,6 +615,7 @@ function onMessage(msg) {
         thinking: msg.thinking ?? "auto",
         isGit: !!msg.isGit,
         todos: [],
+        planMode: false, // 计划模式（宿主 plan_mode 帧置位）
       });
       S.activePath = msg.path;
       S.selectedSubagent = null;
@@ -742,6 +768,9 @@ function onMessage(msg) {
       } else if (msg.kind === "thinking_level") {
         // auto 档位判定帧：只记判定结果供右下角显示 auto·档位，不改 s.thinking
         if (msg.configured === "auto") s.autoResolved = msg.resolved;
+      } else if (msg.kind === "mention") {
+        // @ 提及落盘回读：fileMention 消息无对应流式事件，宿主在 agent_end 重读会话文件补发
+        s.items.push({ role: "mention", text: "", files: msg.files || [] });
       }
       if (msg.kind === "text_delta" || msg.kind === "thinking_delta") scheduleDeltaRender();
       else notify();
@@ -751,6 +780,68 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
       s.items = msg.messages.map((m) => ({ ...m }));
+      notify();
+      break;
+    }
+    // ---- 输入框 sigil：本地 bash 执行帧（! 前缀，宿主 bash_exec 驱动） ----
+    case "bash_start": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      s.items.push({ role: "bash", text: msg.command, output: "", running: true, excludeFromContext: !!msg.excludeFromContext });
+      notify();
+      break;
+    }
+    case "bash_chunk": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      const it = [...s.items].reverse().find((x) => x.role === "bash" && x.running);
+      if (it) {
+        it.output = (it.output || "") + msg.chunk;
+        scheduleDeltaRender(); // 流式输出合并渲染（与 text_delta 同款 100ms 节流）
+      }
+      break;
+    }
+    case "bash_done": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      const it = [...s.items].reverse().find((x) => x.role === "bash" && x.running);
+      // bash_abort 会先收到一帧 cancelled:true 的 done，可能与正式 done 重复——
+      // 以最后一次为准，第二次找不到 running 项时静默忽略
+      if (!it) break;
+      it.running = false;
+      if (msg.error != null) {
+        it.error = String(msg.error);
+      } else {
+        it.output = msg.output ?? it.output;
+        it.exitCode = msg.exitCode ?? null;
+        it.cancelled = !!msg.cancelled;
+        it.timedOut = !!msg.timedOut;
+        it.truncated = !!msg.truncated;
+      }
+      notify();
+      break;
+    }
+    // 斜杠命令的文本输出（如 /model 的 Current model 回显）：落一条 meta 行
+    case "command_output": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      s.items.push({ role: "meta", text: String(msg.text ?? "") });
+      notify();
+      break;
+    }
+    // 斜杠命令被宿主本地消费：撤回乐观插入的 user 气泡（无 entryId 的最后一条同文本）
+    case "command_result": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      if (msg.consumed) {
+        for (let i = s.items.length - 1; i >= 0; i--) {
+          const it = s.items[i];
+          if (it.role === "user" && it.text === msg.text && !it.entryId) {
+            s.items.splice(i, 1);
+            break;
+          }
+        }
+      }
       notify();
       break;
     }

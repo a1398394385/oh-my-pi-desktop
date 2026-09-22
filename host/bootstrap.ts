@@ -66,3 +66,23 @@ export const { resolveModelRoleValue } = await import("@oh-my-pi/pi-coding-agent
 
 // 启动时读到的持久化 profile（host.ts 启动序言写入 state.H 并执行首次 applyProfile）
 export const initialProfile = savedProfile;
+
+// 输入框 sigil：斜杠命令分发/清单、skill 分发、@ 文件候选（宿主与前端均经本模块取）。
+// 无法用静态 import：setProfile 必须先于 coding-agent 加载（见文件头），SDK 引用一律走本模块的 await import
+export const { executeAcpBuiltinSlashCommand } = await import(
+  "@oh-my-pi/pi-coding-agent/slash-commands/acp-builtins"
+);
+export const { buildAvailableSlashCommands } = await import(
+  "@oh-my-pi/pi-coding-agent/slash-commands/available-commands"
+);
+export const { parseSlashCommand } = await import("@oh-my-pi/pi-coding-agent/slash-commands/helpers/parse");
+// 计划模式（plan）：提案解析 + 批准后自动保存 + local:// 计划文件落盘路径换算
+export const { resolveApprovedPlan } = await import("@oh-my-pi/pi-coding-agent/plan-mode/approved-plan");
+export const { autosaveApprovedPlan } = await import("@oh-my-pi/pi-coding-agent/plan-mode/plan-autosave");
+export const { resolveLocalUrlToPath } = await import("@oh-my-pi/pi-coding-agent/internal-urls");
+export const { normalizeLocalScheme } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
+export const { parseSkillInvocation, buildSkillPromptMessage } = await import(
+  "@oh-my-pi/pi-coding-agent/extensibility/skills"
+);
+export const { SKILL_PROMPT_MESSAGE_TYPE } = await import("@oh-my-pi/pi-coding-agent/session/messages");
+export const { fuzzyFind } = await import("@oh-my-pi/pi-natives");

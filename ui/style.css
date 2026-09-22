@@ -26,6 +26,9 @@
   --blue:      #6fb3d8;
   --purple:    #a86fe0;
   --accent:    #4a9eff;   /* 全站唯一强调色（开关/聚焦环/选中图标） */
+  /* bash 模式（输入框 ! 前缀）配色别名：对齐 TUI bashMode 主题色 dark=cyan / light=green；
+     桌面无 cyan token，暗色就近映射青蓝 --blue，浅色映射 --green（沿用 :root 定义） */
+  --bash:      var(--blue);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --ui-font: var(--sans);
@@ -62,6 +65,7 @@
   --text:      #1d1d21;
   --dim:       #5d5d65;
   --faint:     #808088;
+  --bash:      var(--green); /* bash 模式：浅色 = green（--green 沿 :root 暗色定义继承） */
   --ctl-bg:    var(--inset);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -844,14 +848,14 @@ body:has(#right.collapsed) #right-resizer {
   to { clip-path: inset(0 0 0 0); opacity: 1; }
 }
 /* 主对话区展开体：独立 0.2s（比其他界面 0.3s 更快，对话流操作频率高） */
-.ed-brief.drop, .cmd-card.drop { animation: ed-drop .2s ease-out; }
+.ed-brief.drop, .cmd-card.drop, .bash-out.drop { animation: ed-drop .2s ease-out; }
 /* 收起：ed-drop 的反向（底部向上收拢 + 淡出），动画结束后由 JS 移除节点。
    easing 与展开一致用 ease-out：动作前置，避免前段停滞造成的拖沓感 */
 @keyframes ed-lift {
   from { clip-path: inset(0 0 0 0); opacity: 1; }
   to { clip-path: inset(0 0 100% 0); opacity: .25; }
 }
-.ed-brief.lift, .cmd-card.lift, .chg-body.lift, .think-body.lift { animation: ed-lift .2s ease-out forwards; }
+.ed-brief.lift, .cmd-card.lift, .bash-out.lift, .chg-body.lift, .think-body.lift { animation: ed-lift .2s ease-out forwards; }
 /* 编辑行点击后向下展开的内联 diff（ZCode EditInlineDiffContent 同款容器语言：
    rounded-xl + 边框 + 卡片底，无内层 padding——diff 行自带 px，限高 240px 内部滚动） */
 .ed-brief {
@@ -962,6 +966,25 @@ body:has(#right.collapsed) #right-resizer {
   -webkit-mask-image: none;
   mask-image: none;
 }
+/* 本地 bash 执行行（! 前缀，BashRow）：复用 .cmd 行样式，状态区右对齐。
+   exit 0 用 --dim、非 0/错误用 --err；「不进上下文」为小号 faint 标签 */
+.bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+.bash-row .bash-status .bad { color: var(--err); }
+.bash-row .bash-tag { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.bash-row .cmd-spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--faint); border-top-color: transparent; animation: cmd-spin-rot .8s linear infinite; }
+/* bash 行展开体：等宽输出块（对比 .cmd-card，配色只用既有 token） */
+.bash-out {
+  margin: -6px 0 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px);
+  line-height: 1.5; color: var(--dim);
+  max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  overscroll-behavior: contain;
+}
+/* @ 提及回读行（MentionRow）：单行 dim，路径等宽截断 */
+.act.mention { flex-wrap: nowrap; overflow: hidden; }
+.act.mention .m-paths { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--code-fs, 12px); }
 /* 工具展开卡里的外链：与 md-link 同色，hover 出下划线；⌘+点击走系统浏览器（见 tool-labels.js） */
 .cmd-card-out a.ext-link { color: var(--blue); text-decoration: none; cursor: pointer; }
 .cmd-card-out a.ext-link:hover { text-decoration: underline; }
@@ -1271,6 +1294,20 @@ svg { vertical-align: middle; }
   color: var(--text);
   font-weight: 600;
 }
+/* 计划模式按钮：权限胶囊右侧以 | 分隔的小按钮；hover 时计划图标换成 X（提示点击即退出） */
+.cbar-sep { color: var(--line); font-size: var(--ui-fs-base); line-height: 1; user-select: none; }
+.plan-btn {
+  gap: 5px; padding: 5px 8px; border-radius: 999px; max-width: none;
+  color: var(--accent);
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+.plan-btn .plan-ic { display: inline-flex; align-items: center; flex: none; }
+.plan-btn .plan-ic svg { display: block; }
+.plan-btn .plan-ic > span { display: inline-flex; align-items: center; }
+.plan-btn .plan-ic > span:nth-child(2) { display: none; } /* X 默认隐藏，hover 时替换计划图标 */
+.plan-btn:hover .plan-ic > span:nth-child(1) { display: none; }
+.plan-btn:hover .plan-ic > span:nth-child(2) { display: inline-flex; }
+.plan-btn:hover { background: var(--panel-2); color: var(--text); }
 /* 上下文占用环：从顶端顺时针增长，分温色；hover 出明细卡 */
 .ctx-ring {
   width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center;
@@ -1593,6 +1630,10 @@ svg { vertical-align: middle; }
 #composer.in-welcome textarea {
   min-height: 48px;
 }
+/* bash 模式（输入框 ! 前缀）：边框与占位文案着 --bash 色。
+   边框只存在于 in-welcome 卡（dock 模式 #composer/.dock 无边框可覆盖），占位文案两态都生效 */
+#composer.bash-mode { border-color: var(--bash); }
+#composer.bash-mode #input::placeholder { color: var(--bash); }
 .plus-btn {
   width: 24px;
   height: 24px;
@@ -1804,6 +1845,26 @@ svg { vertical-align: middle; }
 .menu .mi .ck { width: 14px; color: var(--green); flex: none; }
 /* 菜单项内图标（分支选项等）：固定 18px 栏宽居中，风格随 FA 图标体系 */
 .menu .mi .mi-ic { width: 18px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+
+/* sigil 补全卡（@ 文件候选 / 行首 / 命令候选）：与输入框卡一模一样的圆角卡片（内容换成候选
+   列表），两张卡上下排列——同宽、间距 2px、最大高度 = 输入框卡 2.6 倍（定位/限高由 place.js
+   placePaletteCard 计算）。配色与阴影逐项对齐 #composer.in-welcome 卡。 */
+.menu.palette {
+  min-width: 0;
+  max-width: none;
+  padding: 8px;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+[data-theme="light"] .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07); }
+/* dock 态输入框卡本身无边框：补全卡同步去边框，两张卡外观才一致 */
+#composer:not(.in-welcome) .menu.palette { border-color: transparent; }
+.menu.palette .mi { border-radius: 8px; } /* 卡内行圆角比卡小一档（16px 卡 → 8px 行） */
+.menu.palette .mi.on { background: var(--panel-3); } /* 键盘高亮（基类只有 :hover，无 .on） */
+.menu.palette .mi .mi-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 模型/思考菜单：勾推到行右端；模型/思考/权限三处勾统一灰色 */
 #modelMenu .mi .ck,
 #thinkMenu .mi .ck { order: 1; margin-left: auto; }
@@ -1820,6 +1881,11 @@ svg { vertical-align: middle; }
 .menu.mode .mi-tt { font-size: var(--ui-fs-base); font-weight: 500; color: var(--text); }
 .menu.mode .mi-desc { font-size: var(--ui-fs-xs); color: var(--faint); line-height: 1.35; }
 .menu.mode .mi.big .ck { margin-top: 2px; }
+/* 计划模式行：与下面三个权限模式行以通栏横线分隔（-6px 抵消 .menu.mode 的 6px 内边距） */
+.menu.mode .mode-sep { height: 1px; background: var(--line); margin: 5px -6px; }
+/* 无会话时不可点：降透明度，且不给 hover 高亮（hover 高亮只挂在可点元素上） */
+.menu.mode .mi.off { opacity: .45; cursor: default; }
+.menu.mode .mi.off:hover { background: none; }
 
 /* 模型菜单（二级级联：一级供应商行，二级模型浮层）。
    容器对齐 ZCode dropdown-menu：rounded-lg(8px) + p-1(4px)；选项间距按需求 5px */
