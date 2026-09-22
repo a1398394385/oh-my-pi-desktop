@@ -31,6 +31,7 @@ import {
   toRestoredQueuedMessage,
   USER_INTERRUPT_LABEL,
 } from "./bootstrap.ts";
+import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
 import { AcpSessionState, parseAcpContextWindow, type AcpNudgeConfig } from "./acp-state.ts";
 import { createAcpContextExtension } from "./acp-context.ts";
