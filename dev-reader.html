@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>omp desktop dev</title>
+  <link rel="stylesheet" href="ui/style.css" />
+  <script>
+    // 浏览器直连真宿主的 shim：只提供 ws_url，其余 invoke 走浏览器降级
+    window.__TAURI__ = {
+      core: {
+        invoke: (cmd, args) => {
+          if (cmd === "ws_url") return Promise.resolve("ws://127.0.0.1:" + (new URLSearchParams(location.search).get("ws") || "50293"));
+          return Promise.reject(new Error("dev shim 未实现: " + cmd));
+        },
+      },
+      event: { listen: () => Promise.resolve(() => {}) },
+    };
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="ui/assets/app.js"></script>
+</body>
+</html>
