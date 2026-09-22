@@ -4,6 +4,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { S, useStore, send, notify } from "../../../store.js";
 import Icon from "../../../Icon.jsx";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 // ---------- 记忆页专用 markdown 渲染（先整体转义再排版，输出安全 HTML） ----------
 function mdEscape(s) {
@@ -238,12 +240,6 @@ export default function MemoryPage() {
   const memories = S.agentAssets?.memories ?? null;
   const [openPath, setOpenPath] = useState(null); // 当前向下延展的记忆行（条目 path）
 
-  // 总开关：由宿主 settings 回包驱动（对齐旧版 syncSettingsControls）
-  const memOn = !!(S.hostSettings?.memoryBackend && S.hostSettings.memoryBackend !== "off");
-  const toggleBackend = () => {
-    send({ type: "set_setting", key: "memory.backend", value: memOn ? "off" : "local" });
-  };
-
   // 点击项目行：该行向下延展出详情区；再次点击收起，点其他行则切换
   const openRow = (m) => {
     if (openPath === m.path) {
@@ -274,17 +270,7 @@ export default function MemoryPage() {
   return (
     <div className="set-page" id="pg-memory">
       <div className="set-tt">记忆</div>
-      <div className="set-card">
-        <div className="srow">
-          <div className="srow-tx">
-            <b>工作区记忆</b>
-            <span>关闭 / 本地总结管线。Hindsight、Mnemopi、Sharpshooter 需额外服务，这里不提供切换。</span>
-          </div>
-          <div className={"tg" + (memOn ? " on" : "")} id="tgMemory" onClick={toggleBackend}>
-            <i></i>
-          </div>
-        </div>
-      </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(0, 1)} />
       <div className="set-group-tt">记忆文件</div>
       <div className="set-card" id="memoryList">
         {!memories ? (
@@ -316,6 +302,7 @@ export default function MemoryPage() {
           ))
         )}
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(1)} />
     </div>
   );
 }

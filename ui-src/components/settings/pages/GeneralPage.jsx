@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from "react";
 import { S, useStore, send, toast, uiPrefs } from "../../../store.js";
 import Icon from "../../../Icon.jsx";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 // ---------- 主题（旧版 shell.js applyTheme 的等价物；General 与 Appearance 各持一份） ----------
 const themeMq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -99,7 +101,7 @@ export default function GeneralPage() {
   const [proxy, setProxy] = useState(env.httpProxy || "");
   const [noProxy, setNoProxy] = useState(env.noProxy || "");
   const [ca, setCa] = useState(env.caCerts || "");
-  const [askTimeout, setAskTimeout] = useState(hs?.askTimeout ? String(hs.askTimeout) : "");
+  const [askTimeout, setAskTimeout] = useState(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
   // host 设置回包后回填（输入框聚焦时不打扰，对应旧版 applyHostSettings 的 fill 守卫）
   useEffect(() => {
     const e2 = S.hostSettings?.desktopEnv || {};
@@ -107,15 +109,11 @@ export default function GeneralPage() {
     if (document.activeElement !== noProxyRef.current) setNoProxy(e2.noProxy || "");
     if (document.activeElement !== caRef.current) setCa(e2.caCerts || "");
     if (document.activeElement !== askRef.current) {
-      setAskTimeout(S.hostSettings?.askTimeout ? String(S.hostSettings.askTimeout) : "");
+      setAskTimeout(S.hostSettings?.values?.["ask.timeout"] ? String(S.hostSettings.values["ask.timeout"]) : "");
     }
   }, [hs]);
   const [theme, setTheme] = useState(currentThemeMode());
   const [showThinking, setShowThinking] = useState(!!uiPrefs.showThinking);
-  const [sleepOn, setSleepOn] = useState(!!(hs?.sleepPrevention && hs.sleepPrevention !== "off"));
-  useEffect(() => {
-    setSleepOn(!!(S.hostSettings?.sleepPrevention && S.hostSettings.sleepPrevention !== "off"));
-  }, [hs]);
 
   // ---------- 交互 ----------
   const switchProfile = (name) => {
@@ -148,11 +146,6 @@ export default function GeneralPage() {
     saveUiPrefs();
     applyAppearance();
     send({ type: "set_setting", key: "hideThinkingBlock", value: !on });
-  };
-  const toggleSleep = () => {
-    const on = !sleepOn;
-    setSleepOn(on);
-    send({ type: "set_setting", key: "power.sleepPrevention", value: on ? "system" : "off" });
   };
   // 网络三件套：整包发送 desktopEnv（旧版 saveDesktopField 语义）
   const saveEnv = (field, val) => {
@@ -280,10 +273,6 @@ export default function GeneralPage() {
           <div className="tg disabled"><i></i></div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>保持电脑运行</b><span>任务执行期间用 caffeinate 阻止系统睡眠（macOS）。</span></div>
-          <div className={"tg" + (sleepOn ? " on" : "")} id="tgSleep" onClick={toggleSleep}><i></i></div>
-        </div>
-        <div className="srow">
           <div className="srow-tx"><b>提问超时时间</b><span>omp ask.timeout：提问无人响应 N 秒后自动选择推荐项；0 = 永不超时（默认）。</span></div>
           <div className="srow-ctl">
             <input className="inp" id="askTimeoutInput" type="number" min="0" step="1" placeholder="0" value={askTimeout} ref={askRef}
@@ -300,6 +289,7 @@ export default function GeneralPage() {
           <div className={"tg" + (showThinking ? " on" : "")} id="tgThinking" onClick={toggleThinking}><i></i></div>
         </div>
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-general"]} />
     </div>
   );
 }

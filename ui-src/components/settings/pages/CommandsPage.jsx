@@ -2,6 +2,8 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-commands">，
 // 列表渲染参照 ui/settings/index.js renderAssetPages 的 fillAssetList("commandsList", ...)。
 import { S, useStore } from "../../../store.js";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 // 空态行（旧版 emptyRow 的 JSX 等价物）
 function emptyRow(text) {
@@ -34,6 +36,7 @@ export default function CommandsPage() {
                 </div>
               ))}
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-commands"]} />
     </div>
   );
 }

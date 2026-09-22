@@ -21,6 +21,15 @@ import SkillsPage from "./pages/SkillsPage.jsx";
 import MemoryPage from "./pages/MemoryPage.jsx";
 import AgentsPage from "./pages/AgentsPage.jsx";
 import StatsPage from "./pages/StatsPage.jsx";
+import ModelBehaviorPage from "./pages/ModelBehaviorPage.jsx";
+import ProvidersPage from "./pages/ProvidersPage.jsx";
+import InteractionPage from "./pages/InteractionPage.jsx";
+import ContextPage from "./pages/ContextPage.jsx";
+import FilesPage from "./pages/FilesPage.jsx";
+import ShellPage from "./pages/ShellPage.jsx";
+import ToolsPage from "./pages/ToolsPage.jsx";
+import TasksPage from "./pages/TasksPage.jsx";
+import AdvancedPage from "./pages/AdvancedPage.jsx";
 
 const UI_PREF_KEY = "omp-ui-settings";
 
@@ -84,6 +93,20 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    title: "行为与规则",
+    items: [
+      { id: "pg-model-behavior", icon: "think", label: "模型行为" },
+      { id: "pg-providers", icon: "cloud", label: "服务商" },
+      { id: "pg-interaction", icon: "comment", label: "交互" },
+      { id: "pg-context", icon: "folderOpen", label: "上下文" },
+      { id: "pg-files", icon: "file", label: "文件" },
+      { id: "pg-shell", icon: "termBox", label: "Shell" },
+      { id: "pg-tools", icon: "plug", label: "工具" },
+      { id: "pg-tasks", icon: "todo", label: "任务·子代理" },
+      { id: "pg-advanced", icon: "settings", label: "高级" },
+    ],
+  },
+  {
     title: "Agent 能力",
     items: [
       { id: "pg-memory", icon: "memory", label: "记忆" },
@@ -117,6 +140,15 @@ const PAGES = {
   "pg-memory": MemoryPage,
   "pg-agents": AgentsPage,
   "pg-stats": StatsPage,
+  "pg-model-behavior": ModelBehaviorPage,
+  "pg-providers": ProvidersPage,
+  "pg-interaction": InteractionPage,
+  "pg-context": ContextPage,
+  "pg-files": FilesPage,
+  "pg-shell": ShellPage,
+  "pg-tools": ToolsPage,
+  "pg-tasks": TasksPage,
+  "pg-advanced": AdvancedPage,
 };
 
 export default function Settings() {

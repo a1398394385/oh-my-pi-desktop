@@ -5,6 +5,8 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { S, useStore, send, toast, notify } from "../../../store.js";
 import Icon from "../../../Icon.jsx";
 import { confirmDialog, emptyRow } from "../common.jsx";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 export default function SkillsPage() {
   useStore(); // 订阅全局版本号：S.agentAssets / S.assetFile 回包落地后由 React 重渲染
@@ -268,6 +270,7 @@ export default function SkillsPage() {
         </div>
       </div>
       {/* 技能编辑：点击行向下延展编辑区（见上方 mem-expand） */}
+      <SchemaRows sections={PAGE_PLACEMENT["pg-skills"]} />
     </div>
   );
 }

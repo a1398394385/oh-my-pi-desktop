@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { H, enabledDefaults } from "./state.ts";
 import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, resolveModelRoleValue } from "./bootstrap.ts";
+import { SETTINGS_SCHEMA, getDefault } from "@oh-my-pi/pi-coding-agent/config/settings";
 
 export function rebuildScopedModels() {
   const enabledEntries: string[] = H.settings.get("enabledModels") ?? [];
@@ -21,18 +22,74 @@ export function modelsPayload() {
   }));
 }
 
+// 桌面端无 TUI 图像协议：terminal.showImages 条件恒 false（将来支持图像协议时只改此常量）
+const HAS_IMAGE_PROTOCOL = false;
+
+// 逐键取当前生效值，未配置时回落 schema 默认值（503 次纯内存读，无 I/O）
+function computeValues(): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const k of Object.keys(SETTINGS_SCHEMA)) {
+    let v: unknown;
+    try {
+      v = H.settings.get(k);
+    } catch {
+      v = undefined;
+    }
+    if (v === undefined) {
+      try {
+        v = getDefault(k);
+      } catch {
+        v = undefined;
+      }
+    }
+    values[k] = v;
+  }
+  return values;
+}
+
+// 12 个条件函数，按底座 settings-defs.ts CONDITIONS 语义实现；每条整体 try/catch 返回 false
+function computeConditions(): Record<string, boolean> {
+  const g = (k: string): unknown => {
+    try {
+      return H.settings.get(k);
+    } catch {
+      return undefined;
+    }
+  };
+  const c: Record<string, boolean> = {};
+  const safe = (name: string, fn: () => unknown): void => {
+    try {
+      c[name] = !!fn();
+    } catch {
+      c[name] = false;
+    }
+  };
+  safe("macOS", () => process.platform === "darwin");
+  safe("hasImageProtocol", () => HAS_IMAGE_PROTOCOL);
+  safe("advisorEnabled", () => g("advisor.enabled") === true);
+  safe("vimModeEnabled", () => g("tui.vimMode") === true);
+  safe("hindsightActive", () => g("memory.backend") === "hindsight");
+  safe("mnemopiActive", () => g("memory.backend") === "mnemopi");
+  safe("autolearnActive", () => g("autolearn.enabled") === true);
+  safe("autoThinkingActive", () => g("defaultThinkingLevel") === "auto");
+  safe("usageAwareFallbackEnabled", () => g("retry.usageAwareFallback") === true);
+  safe("planModeEnabled", () => g("plan.enabled"));
+  safe("planAutosaveEnabled", () => g("plan.enabled") && g("plan.autosave"));
+  safe("unexpectedStopSmart", () => g("features.unexpectedStopDetection") === "smart");
+  return c;
+}
+
 export function settingsSnapshot() {
   return {
-    hideThinkingBlock: !!(H.settings as any).get("hideThinkingBlock"),
-    sleepPrevention: H.settings.isConfigured("power.sleepPrevention") ? (H.settings.get("power.sleepPrevention") ?? "off") : "off",
+    hideThinkingBlock: !!H.settings.get("hideThinkingBlock"),
     computerEnabled: !!H.settings.get("computer.enabled"),
-    memoryBackend: H.settings.get("memory.backend") ?? "off",
     approvalMode: H.settings.get("tools.approvalMode"),
-    askTimeout: typeof H.settings.get("ask.timeout") === "number" ? H.settings.get("ask.timeout") : 0,
     desktopEnv: H.desktopEnv,
     activeProfile: H.currentProfile,
     availableProfiles: H.cachedProfiles,
     profileAgentDir: H.agentDir,
+    values: computeValues(),
+    conditions: computeConditions(),
   };
 }
 

@@ -19,6 +19,8 @@ const ICONS = {
   // 旧版发送钮实心 upload：lucide 层把 upload 覆盖成线条风，发送钮按需求保留 FA 实心原样
   uploadSolid: '<svg width="16" height="16" viewBox="0 0 384 512"><path fill="currentColor" d="M214.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 109.3 160 480c0 17.7 14.3 32 32 32s32-14.3 32-32l0-370.7 105.4 105.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"/></svg>',
   logo: '<svg width="16" height="16" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // 线条风信息圆圈（lucide info）：组标题旁 hover 提示图标。FA circle-info 是实心块，手写线条版对齐 lucide 观感（同 refresh 先例）
+  info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
   // 盾牌 + 感叹号：FA Free 无 shield-exclamation（Pro 专属），用 shield 路径 + evenodd 镂空合成
   shieldWarn: '<svg width="16" height="16" viewBox="0 0 512 512"><path fill="currentColor" fill-rule="evenodd" d="M256 0c4.6 0 9.2 1 13.4 2.9L457.8 82.8c22 9.3 38.4 31 38.3 57.2-.5 99.2-41.3 280.7-213.6 363.2-16.7 8-36.1 8-52.8 0-172.4-82.5-213.1-264-213.6-363.2-.1-26.2 16.3-47.9 38.3-57.2L242.7 2.9C246.9 1 251.4 0 256 0zM234 152h44a24 24 0 0 1 24 24v96a24 24 0 0 1-24 24h-44a24 24 0 0 1-24-24v-96a24 24 0 0 1 24-24zM256 336a26 26 0 1 1 0 52 26 26 0 1 1 0-52z"/></svg>',
   // 带长方形完整外壳的终端图标（区别于主对话区的纯 >_）

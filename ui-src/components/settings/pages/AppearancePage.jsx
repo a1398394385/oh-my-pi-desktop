@@ -4,6 +4,8 @@
 import { useEffect, useState } from "react";
 import { S, useStore, send, toast, uiPrefs } from "../../../store.js";
 import Icon from "../../../Icon.jsx";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 // ---------- 主题（旧版 shell.js applyTheme 的等价物；General 与 Appearance 各持一份） ----------
 const themeMq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -264,6 +266,7 @@ export default function AppearancePage() {
           </div>
         </div>
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-appearance"]} />
     </div>
   );
 }

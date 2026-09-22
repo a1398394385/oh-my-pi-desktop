@@ -3,6 +3,8 @@
 // 绑定参照 ui/settings/index.js initSettings 的 wireToggle("tgComputer")。
 import { useEffect, useState } from "react";
 import { S, useStore, send, toast } from "../../../store.js";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 export default function ComputerPage() {
   useStore();
@@ -31,6 +33,7 @@ export default function ComputerPage() {
           <div className="tg disabled"><i></i></div>
         </div>
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-computer"]} />
     </div>
   );
 }

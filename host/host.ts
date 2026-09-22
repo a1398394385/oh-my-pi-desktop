@@ -53,6 +53,7 @@ import {
   applyDesktopEnv,
 } from "./profile.ts";
 import { rebuildScopedModels, modelsPayload, settingsSnapshot, modelCatalog, modelRolesPayload, modelsDefaults } from "./models.ts";
+import { SETTINGS_SCHEMA } from "@oh-my-pi/pi-coding-agent/config/settings";
 
 // models 帧统一组装：目录 + 新建会话配置默认（defaultModel/defaultThinking），
 // 所有发送点共用，避免漏带默认字段
@@ -936,12 +937,16 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "get_settings":
             ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
             break;
+          case "get_settings_schema":
+            ws.send(JSON.stringify({ type: "settings_schema", schema: SETTINGS_SCHEMA }));
+            break;
           case "reload_settings": {
             // 本地 config 文件可能被手工修改：从磁盘重载（仅模型设置），并推送新模型列表
             try {
               await H.settings.reloadFromDisk();
               rebuildScopedModels();
               ws.send(JSON.stringify(modelsFrame()));
+              ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
             } catch (err) {
               process.stderr.write(`[host] reload_settings 失败: ${err}\n`);
             }
@@ -950,29 +955,35 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "set_setting": {
             const key = String(msg.key ?? "");
             const value = msg.value;
-            if (key === "hideThinkingBlock") {
-              try {
-                (H.settings as any).set("hideThinkingBlock", !!value);
-              } catch (err) {
-                process.stderr.write(`[host] hideThinkingBlock 未写入 schema: ${err}\n`);
-              }
-            } else if (key === "power.sleepPrevention") {
-              const level = value === "system" || value === "display" || value === "idle" || value === "off" ? value : "off";
-              H.settings.set("power.sleepPrevention", level);
-              applySleepPrevention(level);
-            } else if (key === "computer.enabled") H.settings.set("computer.enabled", !!value);
-            else if (key === "ask.timeout") {
-              const secs = Number(value);
-              if (!Number.isFinite(secs) || secs < 0) throw new Error("ask.timeout 必须是非负秒数");
-              H.settings.set("ask.timeout", secs);
-            } else if (key === "memory.backend") {
-              const backend =
-                value === "off" || value === "local" || value === "hindsight" || value === "mnemopi" || value === "sharpshooter"
-                  ? value
-                  : "off";
-              H.settings.set("memory.backend", backend);
-            } else throw new Error(`不支持的设置项: ${key}`);
+            const def = SETTINGS_SCHEMA[key];
+            if (!def) throw new Error(`未知设置项: ${key}`);
+            const t = def.type;
+            if (t === "boolean") {
+              if (typeof value !== "boolean") throw new Error(`${key} 必须是布尔值`);
+            } else if (t === "number") {
+              if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} 必须是有限数字`);
+            } else if (t === "string") {
+              if (typeof value !== "string") throw new Error(`${key} 必须是字符串`);
+            } else if (t === "enum") {
+              if (!def.values.includes(value)) throw new Error(`${key} 必须是 ${def.values.join("/")} 之一`);
+            } else if (t === "array") {
+              if (!Array.isArray(value)) throw new Error(`${key} 必须是数组`);
+              const d = def.default;
+              if (Array.isArray(d) && d.every((x) => typeof x === "string") && d.length > 0 && !value.every((x) => typeof x === "string"))
+                throw new Error(`${key} 元素必须是字符串`);
+            } else if (t === "record") {
+              if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${key} 必须是对象`);
+            }
+            // 逐键附加校验：ask.timeout 必须非负
+            if (key === "ask.timeout" && (typeof value !== "number" || value < 0)) throw new Error("ask.timeout 必须是非负秒数");
+            H.settings.set(key, value);
+            // 写后副作用：睡眠防止需立即应用到进程
+            if (key === "power.sleepPrevention") applySleepPrevention(value);
+            // 模型相关键：重建 scoped 目录并推送 models 帧
+            const isModelKey = ["enabledModels", "enabledProviders", "disabledProviders", "modelRoleStorage", "modelTags", "modelProviderOrder", "cycleOrder"].includes(key);
+            if (isModelKey) rebuildScopedModels();
             await H.settings.flush();
+            if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
             break;
           }

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { S, useStore, send, toast, notify } from "../../../store.js";
 import Icon from "../../../Icon.jsx";
 import { confirmDialog, emptyRow } from "../common.jsx";
+import SchemaRows from "../SchemaRows.jsx";
+import { PAGE_PLACEMENT } from "../placement.js";
 
 const NEW_KEY = "__new__";
 
@@ -616,6 +618,7 @@ export default function McpPage() {
           )}
         </div>
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-mcp"]} />
     </div>
   );
 }

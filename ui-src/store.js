@@ -30,6 +30,7 @@ export const S = {
   ws: null,
   pendingCreate: false,
   hostSettings: null,
+  settingsSchema: null,
   modelCatalog: [],
   selectedProvider: null,
   mpAddView: false,
@@ -201,6 +202,7 @@ export function closeSettings() {
 // 打开设置中心时的四连数据请求（旧版 refreshSettingsData 平移；send 在未连接时静默丢弃，
 // 连接就绪由 connect 的 onopen 补拉）
 export function refreshSettingsData() {
+  if (!S.settingsSchema) send({ type: "get_settings_schema" });
   send({ type: "get_settings" });
   send({ type: "get_models_catalog" });
   send({ type: "list_agent_assets" });
@@ -486,6 +488,10 @@ function onMessage(msg) {
       S.hostSettings = msg.settings;
       if (typeof msg.settings?.hideThinkingBlock === "boolean") uiPrefs.showThinking = !msg.settings.hideThinkingBlock;
       if (msg.restartHint) toast("已保存，部分网络设置建议重启应用后完全生效");
+      notify();
+      break;
+    case "settings_schema":
+      S.settingsSchema = msg.schema;
       notify();
       break;
     case "profile_switched":
