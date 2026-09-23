@@ -50,6 +50,35 @@ ok("composer 挂载（textarea + 发送钮）", !!($("#composer textarea#input")
 ok("右栏 tab 渲染（子代理 tab 激活）", ($("#rightTabs")?.textContent || "").includes("子代理"));
 ok("无未捕获错误标记", !document.body.getAttribute("data-error"));
 
+// 斜杠命令补全回归：清单回包后弹层必须立即出候选（旧版 palette 存 items/loading 快照，
+// 回包只 notify 不刷新快照 → 候选永不出现，要再敲一键才重算）
+const sleep = (ms: number) => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+};
+const slashTa = $("#composer textarea#input") as HTMLTextAreaElement | null;
+if (!slashTa) throw new Error("composer textarea 未挂载");
+slashTa.value = "/";
+slashTa.dispatchEvent(new window.Event("input", { bubbles: true }));
+await sleep(80);
+ok("斜杠弹层打开（清单未拉取时加载中）", ($(".menu.palette")?.textContent || "").includes("加载中"));
+// __dbg 是 main.jsx preview 模式注入的调试钩子（S/notify），happy-dom Window 类型无声明
+const dbg = (window as unknown as { __dbg?: { S: { commands: unknown[]; commandsSessionId: string }; notify(): void } })
+  .__dbg;
+if (!dbg) throw new Error("__dbg 调试钩子未注入");
+dbg.S.commands = [{ name: "compact", aliases: [], description: "压缩上下文", source: "builtin", subcommands: [] }];
+dbg.S.commandsSessionId = "preview";
+dbg.notify();
+await sleep(80);
+ok("commands 回包后候选立即出现（无需再次击键）", ($(".menu.palette")?.textContent || "").includes("compact"));
+
+// builtin 命令描述中文化回归：弹层显示 commands-zh.js 译文而非英文原描述
+dbg.S.commands = [...dbg.S.commands, { name: "usage", aliases: [], description: "Show token usage", source: "builtin", subcommands: [] }];
+dbg.notify();
+await sleep(80);
+ok("builtin 描述显示中文（commands-zh.js）", ($(".menu.palette")?.textContent || "").includes("查看 token 用量"));
+
 let fail = 0;
 for (const [mark, name] of asserts) {
   if (mark === "✗") fail++;

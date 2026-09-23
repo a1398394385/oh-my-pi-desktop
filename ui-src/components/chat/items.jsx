@@ -7,6 +7,7 @@ import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf } fro
 import { railToolText } from "../../shell.js";
 import UserMsg from "./UserMsg.jsx";
 import AssistantMsg from "./AssistantMsg.jsx";
+import TurnActs from "./TurnActs.jsx";
 import ThinkingRow from "./ThinkingRow.jsx";
 import ToolRow from "./ToolRow.jsx";
 import BashRow from "./BashRow.jsx";
@@ -57,6 +58,16 @@ function appendItem(item, key, railEntries) {
   }
   railEntries.push({ key, role: "err", text: item.text });
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;
+}
+
+// 本轮 output 的末尾 assistant：其后到下一条 user 之间没有别的有效 assistant。
+// loop 组内的中间输出不在顶层、不参与判断；junk 占位符不算输出（既不挡判断也不挂操作组）
+function isTurnTailAssistant(items, i) {
+  for (let j = i + 1; j < items.length; j++) {
+    if (items[j].role === "user") return true;
+    if (items[j].role === "assistant" && !isJunkPlaceholder(items[j].text)) return false;
+  }
+  return true;
 }
 
 export function renderItems(items, pfx, railEntries) {
@@ -115,6 +126,10 @@ export function renderItems(items, pfx, railEntries) {
     }
     const node = appendItem(item, key, railEntries);
     if (node) out.push(node);
+    // 一轮 output 结尾左下角挂操作组（复制/分叉）；junk assistant 的 node 为 null，不挂
+    if (node && item.role === "assistant" && isTurnTailAssistant(items, i)) {
+      out.push(<TurnActs item={item} key={key + "-acts"} />);
+    }
   }
   for (const st of pendingSteers) out.push(appendItem(st.item, st.key, railEntries));
   return out;

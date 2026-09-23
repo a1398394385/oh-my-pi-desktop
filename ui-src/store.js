@@ -61,7 +61,8 @@ export const S = {
   archivedSessions: [],
   animateGdKids: false,
   animateThinkBody: false,
-  todoCollapsed: false,
+  // 右栏记忆为展开时进程卡初值收起（让位规则同 toggleRight/parts.jsx）
+  todoCollapsed: localStorage.getItem("omp-right-collapsed") === "0",
   gitViewMode: "tree",
   selectedFile: null,
   fileView: null,
@@ -184,6 +185,7 @@ export const rightState = {
   entryTree: null, // 会话内条目树（/tree）：{ sessionId, leafId, roots }
   entryTreePending: false,
   entryTreeFor: null,
+  navFrom: null, // navigate_tree 来源："fork"（output 尾部分叉）或 null（树页跳转），决定回执文案
   entryTreeNav: false, // navigate_tree 进行中（防连点）
   imageContent: null,
   gitWrite: null,
@@ -240,6 +242,14 @@ export function setConnected(ok, text) {
 }
 export function activeOpen() {
   return S.activePath ? openSessions.get(S.activePath) : undefined;
+}
+
+// 清除分叉/导航的防连点标记（item.branching 随 item 数据存活），递归进 loop 组
+function clearBranchingMarks(items) {
+  for (const it of items) {
+    if (it.branching) it.branching = false;
+    if (it.items) clearBranchingMarks(it.items);
+  }
 }
 export function findBySessionId(id) {
   for (const s of openSessions.values()) if (s.sessionId === id) return s;
@@ -851,6 +861,16 @@ function onMessage(msg) {
             const u = [...s.items].reverse().find((it) => it.role === "user" && !it.entryId);
             if (u) u.entryId = msg.userEntryId;
           }
+          // 本轮 output 末尾 assistant 的 entryId（.turn-acts 分叉按钮的寻址键）：
+          // seal 后中间 assistant 已收进 loop 组，顶层只剩这条轮末输出
+          if (msg.assistantEntryId) {
+            const a = [...s.items].reverse().find((it) => it.role === "assistant" && !it.entryId);
+            if (a) a.entryId = msg.assistantEntryId;
+          }
+          // 本轮结束时刻（output 尾部展示）：实时路径取 runEnd 到达时刻，
+          // 重载路径由 host 从磁盘条目 timestamp 回填，两者口径一致
+          const tailA = [...s.items].reverse().find((it) => it.role === "assistant");
+          if (tailA && tailA.endMs == null) tailA.endMs = Date.now();
           s.turnItemStart = null; // 本轮彻底结束，不再继续累积
           s.turnStartAt = null;
           // 新轮次已落盘（导航后续聊同样走这里）：条目树失效，会话树页下次渲染重拉
@@ -1292,14 +1312,7 @@ function onMessage(msg) {
       break;
     case "session_branched": {
       // 分叉回执：清除防连点标记；transcript 由 load_session 推的 messages 帧重建
-      const clearBranching = (items) => {
-        for (const it of items) {
-          if (it.branching) it.branching = false;
-          if (it.items) clearBranching(it.items);
-        }
-      };
-      const cur = activeOpen();
-      if (cur) clearBranching(cur.items);
+      clearBranchingMarks(activeOpen()?.items ?? []);
       if (!msg.ok) {
         toast(msg.error ?? "分叉失败");
         notify();
@@ -1325,12 +1338,16 @@ function onMessage(msg) {
       // 树内导航回执：transcript 由 messages 帧重建；成功后条目树作废重拉
       //（被放弃路径已成为兄弟分支，旧树结构失效），user 消息原文回填输入框（重问）
       rightState.entryTreeNav = false;
+      // output 尾部分叉按钮的防连点标记：失败时 items 没被 messages 帧重建，不显式清就永久禁用
+      clearBranchingMarks(activeOpen()?.items ?? []);
+      const fromFork = rightState.navFrom === "fork"; // 分叉与树页跳转共用 navigate_tree，按来源给文案
+      rightState.navFrom = null;
       if (!msg.ok) {
-        toast(msg.error ?? "跳转失败");
+        toast(msg.error ?? (fromFork ? "分叉失败" : "跳转失败"));
         notify();
         break;
       }
-      toast("已跳转到所选节点");
+      toast(fromFork ? "已从该处分叉" : "已跳转到所选节点");
       rightState.entryTree = null;
       if (msg.editorText) setComposerValue(msg.editorText, msg.editorImages);
       notify();

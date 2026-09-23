@@ -235,7 +235,9 @@ export default function Composer({ inWelcome }) {
         S.commands = null; // 清单过期：拉取期间弹层显示加载中
         send({ type: "list_commands", sessionId: s.sessionId });
       }
-      setPalette({ ...t, index: 0, items: filterCommands(S.commands, t.query), loading: S.commands === null });
+      // 候选与加载态渲染期从 S.commands 现算（见下方 palItems/palLoading），
+      // 不存快照——回包只 notify()，快照会让候选永不出现、要再敲一键才重算
+      setPalette({ ...t, index: 0 });
     } else {
       // @ 文件候选：150ms 防抖后发 list_files（宿主 fuzzyFind 是磁盘扫描）；
       // reqId 自增使过期响应被 store 丢弃
@@ -268,18 +270,21 @@ export default function Composer({ inWelcome }) {
     if (chainDir) ta.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
-  // @ 候选响应：渲染期消费 S.mentionResult（useStore 已在帧处理时触发重渲），
-  // reqId 匹配才合并，避免竞态；reqId 不匹配保持加载态等下一帧
+  // 候选渲染期消费 store 帧（useStore 已在帧处理时触发重渲）：
+  // @ 文件合并 S.mentionResult（reqId 匹配才合并，避免竞态；不匹配保持加载态等下一帧）；
+  // 斜杠命令现算 filterCommands(S.commands)——回包帧到达即出候选，无需再次击键
   const palItems =
     palette && palette.kind === "file" && S.mentionResult && S.mentionResult.reqId === palette.reqId
       ? S.mentionResult.matches
-      : palette?.items;
+      : palette?.kind === "command"
+        ? filterCommands(S.commands, palette.query)
+        : palette?.items;
   const palLoading = palette
     ? palette.kind === "file"
       ? S.mentionResult?.reqId === palette.reqId
         ? false
         : palette.loading
-      : palette.loading
+      : S.commands === null
     : false;
 
   // ---- 附件选择（原 filePicker change 平移） ----
@@ -408,6 +413,7 @@ export default function Composer({ inWelcome }) {
       S.selectedFile = null;
       S.selectedSubagent = null;
       S.rightCollapsed = false;
+      S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
     }
     notify();
   };

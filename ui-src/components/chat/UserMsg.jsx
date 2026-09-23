@@ -1,6 +1,6 @@
-// 用户消息气泡：正文 + 排队/steer 待消费消息的左侧操作组 + 历史消息的分叉按钮。
-// 迁移自 ui/chat.js 的 user 分支与 buildPendingActions/buildBranchBtn。
-import { send, notify, activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg } from "../../store.js";
+// 用户消息气泡：正文 + 排队/steer 待消费消息的左侧操作组。
+// 迁移自 ui/chat.js 的 user 分支与 buildPendingActions（分叉按钮已移到一轮 output 结尾，见 TurnActs.jsx）。
+import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg } from "../../store.js";
 import Icon from "../../Icon.jsx";
 
 // 待消费气泡的左侧操作组：排队态（立即发送/编辑/删除）｜steer 态（编辑/放回队列顶端）
@@ -36,38 +36,16 @@ function PendingActs({ item }) {
   );
 }
 
-// 带 entryId 的历史用户消息 hover 出现的分叉按钮：从此条消息之前分叉出新会话。
-// 分叉是文件级操作（几百 ms），点击后置 item.branching 防连点，session_branched 回包清除
-function BranchBtn({ item }) {
-  const s = activeOpen();
-  return (
-    <div className="qk-acts">
-      <button
-        className="q-btn"
-        title="从此处分叉新分支"
-        disabled={item.branching}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (item.branching || !s) return;
-          item.branching = true; // 全量重绘后仍保持禁用（标记随 item 数据存活）
-          send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
-          notify();
-        }}
-      >
-        <Icon name="fork" size={13} />
-      </button>
-    </div>
-  );
-}
-
+// 带 entryId 的历史用户消息 hover 出现的分叉按钮已移除：分叉改挂在一轮 output 结尾
+//（见 TurnActs.jsx），气泡旁只保留排队/steer 操作组。
 export default function UserMsg({ item, fk }) {
-  // 排队/steer 待消费消息：hover 气泡左侧出操作按钮组（消费后 pending 清除即普通历史消息）
-  const cls = item.pending ? "user-bubble pending" : item.entryId ? "user-bubble branchable" : "user-bubble";
+  // 排队/steer 待消费消息：hover 气泡左侧出操作组（消费后 pending 清除即普通历史消息）
+  const cls = item.pending ? "user-bubble pending" : "user-bubble";
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
         {item.text}
-        {item.pending ? <PendingActs item={item} /> : item.entryId ? <BranchBtn item={item} /> : null}
+        {item.pending ? <PendingActs item={item} /> : null}
       </div>
     </div>
   );

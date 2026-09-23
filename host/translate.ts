@@ -10,7 +10,7 @@ export type UiEvent =
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
   | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: unknown; diffContent?: string }
-  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; runEnd?: boolean }
+  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string }
   | { kind: "mention"; files: string[] }; // @ 提及回读（attachEntry 的 agent_end 扫描直发，不经 translateEvent）
 
@@ -252,6 +252,40 @@ export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
   return last;
 }
 
+// agent_end 时本轮 assistant 也已落盘：把 transcript 中本轮缺 entryId 的 assistant 与磁盘
+// assistant 条目按序对齐回填（事件流不携带 entry id，同 backfillUserEntryIds 的口径）。
+// 有本轮 user 锚点时 pending 与候选都从它之后取——历史同文本不会错配；锚点未落盘则本轮不补，
+// 等下轮 turn_end。无锚点（孤儿 assistant）时 pending 必是最新一批，与候选尾部对齐。
+// 返回本轮最后一条补上的 entryId（轮末 output 分叉按钮的寻址键），无可补则 undefined。
+export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string): string | undefined {
+  const all = entry.transcript;
+  const raw: SessionEntry[] = entry.manager?.getEntries() ?? [];
+  let tFrom = 0;
+  let dFrom = 0;
+  if (afterUserId) {
+    const ui = all.findIndex((t) => t.role === "user" && t.entryId === afterUserId);
+    const di = raw.findIndex((e) => e.id === afterUserId);
+    if (ui < 0 || di < 0) return undefined;
+    tFrom = ui + 1;
+    dFrom = di + 1;
+  }
+  const pending = all.slice(tFrom).filter((t) => t.role === "assistant" && !t.entryId);
+  if (pending.length === 0) return undefined;
+  const cands = raw
+    .slice(dFrom)
+    .filter((e) => e.type === "message" && e.message.role === "assistant")
+    .map((e) => e.id);
+  const offset = afterUserId ? 0 : Math.max(0, cands.length - pending.length);
+  let last: string | undefined;
+  for (let i = 0; i < pending.length; i++) {
+    const id = cands[offset + i];
+    if (!id) break; // 尚未落盘（排队中）等下轮 turn_end 再补
+    pending[i].entryId = id;
+    last = id;
+  }
+  return last;
+}
+
 function flushAssistantDraft(entry: PoolEntry) {
   if (!entry.assistantDraft) return;
   if (!isJunkPlaceholderText(entry.assistantDraft)) {
@@ -373,7 +407,14 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // isTerminal === false 表示 maintenance/异步投递还会续跑，不是真正结束
       if (ev.isTerminal === false) return null;
       flushAssistantDraft(entry);
-      return { kind: "turn_end", runEnd: true, usage: sumRunUsage(ev.messages), userEntryId: backfillUserEntryIds(entry) };
+      const userEntryId = backfillUserEntryIds(entry);
+      return {
+        kind: "turn_end",
+        runEnd: true,
+        usage: sumRunUsage(ev.messages),
+        userEntryId,
+        assistantEntryId: backfillAssistantEntryIds(entry, userEntryId),
+      };
     default:
       return null;
   }
@@ -465,14 +506,14 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     const sink = run ? run.items : out; // run 外的孤儿 assistant（无轮首用户消息）直接平铺，保持旧行为
     if (typeof content === "string") {
       if (!isJunkPlaceholderText(content)) {
-        sink.push({ role, text: content });
+        sink.push({ role, text: content, entryId: e.id, endMs: ts });
       }
       continue;
     }
     for (const block of content ?? []) {
       if (block.type === "text") {
         if (!isJunkPlaceholderText(block.text)) {
-          sink.push({ role: "assistant", text: block.text });
+          sink.push({ role: "assistant", text: block.text, entryId: e.id, endMs: ts });
         }
       } else if (block.type === "thinking" && block.thinking) {
         sink.push({

@@ -3,6 +3,7 @@
 // 复用既有 .menu/.mi/.sub 基类与 popIn 动画，只改卡片外观与定位。
 import { useLayoutEffect, useRef } from "react";
 import { placePaletteCard } from "./place.js";
+import { BUILTIN_DESC_ZH } from "./commands-zh.js";
 
 /**
  * mode: "file" | "command"；items: file 为 {path,dir}、command 为 {name,aliases,description,hint}；
@@ -36,7 +37,8 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
             desc = it.path;
           } else {
             label = "/" + it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");
-            desc = it.description || "";
+            // builtin 描述走中文映射（未收录/非 builtin 回退原文）
+            desc = (it.source === "builtin" ? BUILTIN_DESC_ZH[it.name] : null) || it.description || "";
             hint = it.hint || null;
           }
           return (

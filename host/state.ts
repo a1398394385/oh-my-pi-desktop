@@ -25,7 +25,8 @@ export type TranscriptItem = {
   items?: TranscriptItem[]; // role==="loop" 时收纳本轮过程（thinking/tool/中间 assistant）
   durationSec?: number | null; // 本轮工作时长（秒）
   usage?: TurnUsage | null; // 本轮 LLM token 总消耗
-  entryId?: string; // 落盘条目 id（user 消息才有：branch_session 按它定位分叉点）
+  entryId?: string; // 落盘条目 id（user 消息用于 branch_session 定位分叉点；assistant 用于 output 尾部分叉锚点）
+  endMs?: number; // 该轮结束时刻（轮末 assistant 上：磁盘取条目 timestamp，实时取 runEnd 到达时刻）
   // ---- bash 行（role==="bash"，本地 ! 命令执行）----
   running?: boolean; // 执行中（bash_start → bash_done 之间）
   exitCode?: number | null; // 进程退出码；null = 未知/未完成

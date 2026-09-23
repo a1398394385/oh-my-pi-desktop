@@ -62,7 +62,7 @@ export default function BranchTreePage() {
   }
   const branches = tree.branches ?? [];
   if (branches.length <= 1) {
-    return <div className="bt-empty">暂无其他分支。把鼠标移到历史消息上，点分叉按钮可从该消息处创建新分支。</div>;
+    return <div className="bt-empty">暂无其他分支。把鼠标移到某轮回复的末尾，点分叉按钮可从该处创建新分支。</div>;
   }
   // 按 parentSession 组树：根支（无父或父不在家族列表）在顶层，子支随父缩进（深度不限，样式统一）
   const byId = new Map(branches.map((b) => [b.sessionId, b]));

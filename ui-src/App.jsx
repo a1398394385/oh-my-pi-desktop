@@ -58,6 +58,7 @@ export default function App() {
   };
   const toggleRight = () => {
     S.rightCollapsed = !S.rightCollapsed;
+    if (!S.rightCollapsed) S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
     localStorage.setItem("omp-right-collapsed", S.rightCollapsed ? "1" : "0");
     notify();
   };

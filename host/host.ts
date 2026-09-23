@@ -275,6 +275,15 @@ const PLAN_FILE_URL = "local://PLAN.md"; // 与 ACP 默认计划文件同址
 const PLAN_APPROVE = "批准并执行";
 const PLAN_REFINE = "继续修改";
 
+/** 待办清单帧：冷加载/池内复用均推（TodoTracker 构造时已从 transcript 分支同步）。
+    前端 session_created 重建对象后靠它回填历史存量；空清单不推（无卡）。 */
+function pushTodos(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  const phases = entry.session.getTodoPhases();
+  if (phases.length > 0) {
+    ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases })));
+  }
+}
+
 /** 计划模式状态帧：UI 据此显示/隐藏权限胶囊右侧的「计划」退出按钮。 */
 function pushPlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const state = entry.session.getPlanModeState();
@@ -807,6 +816,12 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
             const entryId = String(msg.entryId ?? "");
             if (!entryId) throw new Error("缺少 entryId");
+            // 目标即当前 leaf：底座 navigateTree 直接返回 cancelled:false（既不报错也不移动），
+            // 静默"成功"会让 output 尾部的分叉按钮看起来生效实则无变化——这里显式回绝。
+            if (entry.manager?.getLeafId() === entryId) {
+              ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: "已在当前位置" }));
+              break;
+            }
             try {
               const result = await entry.session.navigateTree(entryId, { summarize: !!msg.summarize });
               if (result.cancelled) {
@@ -2264,6 +2279,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
     );
     pushPlanMode(ws, sessionId, entry); // 复用快照同推计划状态（前端 reload 后靠它显示「计划」按钮）
     ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
+    pushTodos(ws, sessionId, entry); // 复用快照同推待办存量（否则前端重建对象后历史 TODO 不展示）
     pushContext(ws, sessionId, entry);
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
@@ -2295,10 +2311,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
   reconcilePlanMode(ws, sessionId, entry, entries); // 落盘 mode_change 恢复计划模式（必须在 session_created 之后推帧）
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
   // 恢复会话的存量任务清单（TodoTracker 构造时从 transcript 分支同步）
-  const restored = entry.session.getTodoPhases();
-  if (restored.length > 0) {
-    ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: restored })));
-  }
+  pushTodos(ws, sessionId, entry);
   // 恢复会话的初始上下文占用（system prompt + 历史）
   pushContext(ws, sessionId, entry);
   // 恢复会话的整会话统计（tokens/cost 从磁盘 assistant 消息的 usage 累加；时长为内存态，重载后从 0 起算）

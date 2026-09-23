@@ -474,17 +474,12 @@ body:has(#sidebar.collapsed) #left-resizer {
   background: var(--card);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0;
-  transition: margin 0.25s cubic-bezier(0.2, 0, 0, 1), padding-right 0.25s cubic-bezier(0.2, 0, 0, 1);
+  transition: margin 0.25s cubic-bezier(0.2, 0, 0, 1);
 }
 body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
 body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
-/* TODO 进程卡展开时：主卡片右内边距让出卡片占位（卡片 right:14 + 宽 280），
-   内容列（消息流/改动条/输入区，均为 margin auto 居中）随之在
-   「主卡片左缘 ~ TODO 卡片左缘」区间内居中；收起（.hidden）时回到全宽居中。
-   卡片 absolute 相对 #main 补盒定位，不受 padding 影响 */
-#main:has(#statusCard:not(.hidden)) { padding-right: 294px; }
-/* 头部不随右内边距收缩，避免右侧「收起边面板」按钮跳动（卡片 top:56 与头部不重叠） */
-#main:has(#statusCard:not(.hidden)) .chat-head { margin-right: -294px; }
+/* TODO 进程卡（#statusWrap：absolute + z-20 + 阴影）展开时浮在消息区上方覆盖，
+   不挤压消息/输入内容列宽度；卡片在滚动容器外，不参与滚动 */
 .chat-head {
   height: 48px; flex: none;
   display: flex; align-items: center; gap: 8px;
@@ -566,7 +561,8 @@ body:has(#right.collapsed) #right-resizer {
 .msg.user {
   display: flex;
   justify-content: flex-end;
-  margin: 14px 0 22px; /* 与下方 Agent 回复间距 22px（14+8） */
+  /* 上边距 = 与上一轮 Agent 回答的间距：与 .msg 的 14px 塌陷取 max，故须自身给到 90px */
+  margin: 90px 0 22px; /* 与下方 Agent 回复间距 22px（14+8） */
 }
 .msg.user .user-bubble {
   /* 上限 = 对话内容列最大宽（50vw）的一半；82% 是列收窄到极窄时的相对兜底 */
@@ -1146,7 +1142,7 @@ body:has(#right.collapsed) #right-resizer {
 #statusCard .sc-head { pointer-events: none; }
 #statusCard .sc-head .icon-btn { pointer-events: auto; }
 #input {
-  width: 100%; min-height: 44px; max-height: 120px;
+  width: 100%; min-height: 54px; max-height: 120px;
   background: transparent; border: 0; outline: none; resize: none;
   box-shadow: none;
   color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-md); line-height: 1.5;
@@ -1222,6 +1218,21 @@ html[data-motion="off"] .task .mini-spin { animation: taskrot 1s linear infinite
   transition: background .15s var(--swift), color .15s var(--swift);
 }
 .q-btn:hover { background: var(--panel-2); color: var(--text); }
+/* 一轮 output 结尾左下角的操作组（复制/fork）：作为 #stream 直接子元素吃内容列宽度与居中，
+   图标贴内容列左边缘（= output 文本左边缘）；负上边距与 output 的 14px 下边距塌陷成 8px，贴紧输出 */
+.turn-acts {
+  display: flex; align-items: center; gap: 2px;
+  margin-top: -6px;
+}
+.turn-acts .q-btn:disabled { opacity: .45; cursor: default; }
+.turn-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
+/* 本轮结束时刻：跟随分叉按钮右侧，等宽数字避免逐轮宽度跳动 */
+.turn-acts-time {
+  margin-left: 4px;
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
 /* 待消费气泡左侧的操作组：hover 整行时浮现（按钮在气泡外左侧，行 hover 保证移过去不消失） */
 .user-bubble.pending { position: relative; }
 .qk-acts {
@@ -1656,7 +1667,7 @@ svg { vertical-align: middle; }
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
 }
 #composer.in-welcome textarea {
-  min-height: 48px;
+  min-height: 58px;
 }
 /* bash 模式（输入框 ! 前缀）：边框与占位文案着 --bash 色。
    边框只存在于 in-welcome 卡（dock 模式 #composer/.dock 无边框可覆盖），占位文案两态都生效 */
@@ -3695,12 +3706,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 /* --- C2 消息分叉按钮 + 分支树 tab --- */
-/* 带 entryId 的历史用户消息：分叉按钮复用 .qk-acts 浮层语言（气泡左侧 hover 浮现） */
-.user-bubble.branchable { position: relative; }
-.msg.user:has(> .user-bubble.branchable):hover .qk-acts { display: flex; }
-/* 分叉进行中（防连点）：置灰且不可点，hover 不再给反馈 */
-.qk-acts .q-btn:disabled { opacity: .45; cursor: default; }
-.qk-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
+/* 分叉按钮已移到一轮 output 结尾（.turn-acts），气泡旁只留排队操作组 */
 /* 分支树列表：整行可点（切换会话）才挂 hover 高亮；当前支行不可点、仅 accent 边框标示 */
 .bt-list { padding: 6px 8px; }
 .bt-row {
