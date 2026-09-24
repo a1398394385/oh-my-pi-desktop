@@ -1,6 +1,8 @@
 // React 壳冒烟：happy-dom 模拟浏览器环境加载 bundle，断言三栏壳/欢迎页/composer 挂载。
-// 跑法：bun scripts/smoke-react-shell.ts（先 bun run ui:build）
+// 跑法：bun run smoke:react（先 bun run ui:build，产物在 ui/dist）
 import { Window } from "happy-dom";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const window = new Window({ url: "http://localhost/index.html?preview=1" });
 const { document } = window;
@@ -34,7 +36,20 @@ globalThis.getComputedStyle = window.getComputedStyle.bind(window); // composer 
 // 注入静态 DOM（index.html 的 body 结构）
 document.body.innerHTML = '<div id="root"></div>';
 
-await import("../ui/assets/app.js");
+// happy-dom 不加载 <link rel="stylesheet">：读 ui/dist/index.html 解析 CSS href，
+// 读产物文件内联为 <style>，让预览样本的样式断言拿到真实 CSS
+const distDir = join(import.meta.dir, "../ui/dist");
+const distHtml = readFileSync(join(distDir, "index.html"), "utf8");
+const cssTag = distHtml.match(/<link\b[^>]*rel="stylesheet"[^>]*>/)?.[0];
+const cssHref = cssTag?.match(/href="([^"]+)"/)?.[1];
+if (!cssHref) throw new Error("ui/dist/index.html 未找到 stylesheet link");
+const styleEl = document.createElement("style");
+styleEl.textContent = readFileSync(join(distDir, cssHref), "utf8");
+document.head.appendChild(styleEl);
+
+// 动态导入属有意为之：app.js 顶层会构造 ResizeObserver/matchMedia 等全局依赖，
+// 必须先装好 happy-dom 全局再求值，静态 import 会在全局就绪前执行模块
+await import("../ui/dist/assets/app.js");
 
 // React 渲染是异步的（scheduler），等一拍再断言
 await new Promise((r) => setTimeout(r, 300));
