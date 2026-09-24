@@ -3,11 +3,12 @@
 // 引用恒定不变的容器（Map）直接导出。SDK 引用与加载顺序约束见 bootstrap.ts。
 import os from "node:os";
 import type { createAgentSession } from "./bootstrap.ts";
+import type { GoalController } from "./goal.ts";
 
 // ---------- 会话池类型（前置声明，方便 profile 切换时清理） ----------
 export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -36,6 +37,9 @@ export type TranscriptItem = {
   excludeFromContext?: boolean; // !! 前缀：结果不进模型上下文
   error?: string; // 执行失败错误信息
   // ---- 文件提及行（role==="mention"，@path 已读取）----
+  // ---- 阶段分隔行（role==="phase"，执行记录：压缩/交接/重命名）----
+  phase?: "start" | "done"; // 落盘转出皆为 done；start 仅来自瞬时帧（执行中）
+  command?: string; // compact/handoff/rename：start 行与落盘 done 行按此对照吸收
 };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
@@ -73,6 +77,12 @@ export type PoolEntry = {
   // fileMention 回读游标：agent_end 时重读 manager.getEntries()，把自该下标起
   // 新增的 fileMention 条目转成 mention 帧下发（底座 prompt() 内部落盘、无对应事件）
   mentionScanIndex: number;
+  // /goal 命令控制器：命令分发 + 目标续跑调度（见 host/goal.ts）
+  goal: GoalController;
+  // 外部写入检测：已确认解析过的文件字节数（0 = 未首扫，首扫从头全量比对）
+  pollKnownSize: number;
+  // 已检出外部进程（如 CLI）写入本会话：置位后提示条持续到重新加载（条目重建即清除）
+  externalWrite: boolean;
 };
 
 // key = 前端持有的 sessionId

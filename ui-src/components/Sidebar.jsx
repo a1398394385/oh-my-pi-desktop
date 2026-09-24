@@ -9,7 +9,7 @@ import {
 } from "../store.js";
 import Icon from "../Icon.jsx";
 import SessionRow from "./sidebar/SessionRow.jsx";
-import ProjGroup from "./sidebar/ProjGroup.jsx";
+import ProjGroup, { projectIconName } from "./sidebar/ProjGroup.jsx";
 import ArchivedSection from "./sidebar/ArchivedSection.jsx";
 import ConfirmDialog from "./sidebar/ConfirmDialog.jsx";
 import Menu from "./sidebar/Menu.jsx";
@@ -34,9 +34,12 @@ export default function Sidebar({ collapsed }) {
   const [projMenu, setProjMenu] = useState(null); // { cwd, rect } 项目行「⋯」菜单
   const [projAdd, setProjAdd] = useState(null); // { rect } 手动添加项目弹层锚点
   const [renaming, setRenaming] = useState(null); // { key, path }：行内重命名态（key 区分置顶/最近/项目组中的同一会话副本）
-  const [drag, setDrag] = useState(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx }
+  const [drag, setDrag] = useState(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx, x, y, left, w, grabY }
+  const dragRef = useRef(null); // 指针事件期间的最新拖动状态，避免高频 pointermove 读到旧闭包
+  const suppressProjClickRef = useRef(false); // 拖动结束后吞掉同一次 pointerup 产生的 click
   const listRef = useRef(null);
   const selBeforeCtxRef = useRef(null); // 右键前选区（WebKit 右键选词撤销用）
+  const manageSnap = useRef(null); // 清理模式进入前的展开/条数快照（hooks 必须在折叠早退之前）
 
   const closeProjPopups = () => {
     setProjMenu(null);
@@ -103,40 +106,99 @@ export default function Sidebar({ collapsed }) {
     });
   };
 
-  // —— 项目拖拽排序（HTML5 DnD，对照原 beginProjDrag/updateProjDrag/endProjDrag 语义） ——
-  // 仅收起组头是拖柄；dragstart 冻结一次基线布局（对照 measureProjGroups，让位平移不影响判定）
-  const onDragStartHead = (e, cwd) => {
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", cwd); // WebKit 需有数据才启动拖拽
-    const base = [...listRef.current.querySelectorAll(":scope > .proj")].map((el) => {
-      const r = el.getBoundingClientRect();
-      return { cwd: el.dataset.cwd, top: r.top, h: r.height };
-    });
-    const k0 = base.findIndex((g) => g.cwd === cwd);
-    setDrag({ cwd, selfH: base[k0].h, k0, base, idx: k0 });
+  // —— 项目拖拽排序（Pointer Events 自绘，对照 ZCode 的拖动浮层与让位动画） ——
+  // 按下先记录候选，超过 5px 才进入拖动态；这样普通点击仍然只负责展开/收起。
+  const onPointerDownHead = (e, cwd) => {
+    dragRef.current = {
+      cwd,
+      pointerId: e.pointerId,
+      startClientY: e.clientY,
+      groups: null,
+    };
+    suppressProjClickRef.current = false;
   };
-  // 指针落在某组前半 → 拖组占位插到该组前（原版拖组中点判定的指针等价物，基线固定防抖动）
-  const onDragOverList = (e) => {
-    if (!drag) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const others = drag.base.filter((g) => g.cwd !== drag.cwd);
+
+  const beginProjDrag = (e, pending) => {
+    const heads = [...listRef.current.querySelectorAll(":scope > .proj")];
+    const base = heads.map((head) => {
+      const rect = head.getBoundingClientRect();
+      const kids = head.nextElementSibling?.classList.contains("proj-kids") ? head.nextElementSibling : null;
+      return {
+        cwd: head.dataset.cwd,
+        top: rect.top,
+        h: rect.height + (kids?.getBoundingClientRect().height ?? 0),
+      };
+    });
+    const k0 = base.findIndex((g) => g.cwd === pending.cwd);
+    const head = heads[k0];
+    const rect = head?.getBoundingClientRect();
+    if (!head || k0 < 0 || !rect) return;
+    const project = visible.find((p) => p.cwd === pending.cwd) || { cwd: pending.cwd };
+    const drag = {
+      ...pending,
+      selfH: base[k0].h,
+      k0,
+      base,
+      groups: base,
+      idx: k0,
+      x: e.clientX,
+      y: e.clientY,
+      left: rect.left,
+      w: rect.width,
+      grabY: e.clientY - rect.top,
+      label: head.querySelector(".pname")?.textContent || pending.cwd.split("/").filter(Boolean).pop() || pending.cwd,
+      iconName: projectIconName(project, expandedProjects.has(pending.cwd)),
+    };
+    dragRef.current = drag;
+    // React 状态更新要等本轮事件结束；先同步锁住选择，避免 WebKit 在首个移动事件中选中文本。
+    listRef.current?.classList.add("proj-dragging");
+    window.getSelection()?.removeAllRanges();
+    setDrag(drag);
+    return drag;
+  };
+
+  const updateProjDrag = (e, d) => {
+    const z = S.zoomLevel || 1;
+    const dy = (e.clientY - d.startClientY) / z;
+    const self = d.base[d.k0];
+    const dragMid = self.top + dy + self.h / 2;
+    const others = d.base.filter((g) => g.cwd !== d.cwd);
     let idx = others.length;
     for (let i = 0; i < others.length; i++) {
-      if (e.clientY < others[i].top + others[i].h / 2) {
+      if (dragMid < others[i].top + others[i].h / 2) {
         idx = i;
         break;
       }
     }
-    if (idx !== drag.idx) setDrag({ ...drag, idx });
+    const next = { ...d, idx, x: e.clientX, y: e.clientY };
+    dragRef.current = next;
+    setDrag(next);
   };
-  // 提交顺序（原 endProjDrag commit）：其余组按插入位重排，磁盘兜底项目先并入，
-  // 顺序持久化到 omp-desktop.json allProjects
-  const onDropList = (e) => {
-    if (!drag) return;
+
+  const onPointerMoveHead = (e, cwd) => {
+    const pending = dragRef.current;
+    if (!pending || pending.cwd !== cwd || pending.pointerId !== e.pointerId) return;
+    if (!pending.groups) {
+      if (Math.abs(e.clientY - pending.startClientY) / (S.zoomLevel || 1) < 5) return;
+      const started = beginProjDrag(e, pending);
+      if (!started) return;
+    }
     e.preventDefault();
-    const d = drag;
+    // 指针捕获期间 WebKit 仍可能保留旧的 Range；每次位移都清掉，防止拖过项目时出现蓝色选区。
+    window.getSelection()?.removeAllRanges();
+    updateProjDrag(e, dragRef.current);
+  };
+
+  const endProjDrag = (commit) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d?.groups) return false;
+    listRef.current?.classList.remove("proj-dragging");
+    window.getSelection()?.removeAllRanges();
     setDrag(null);
+    suppressProjClickRef.current = true;
+    setTimeout(() => { suppressProjClickRef.current = false; }, 0);
+    if (!commit) return true;
     const others = d.base.filter((g) => g.cwd !== d.cwd).map((g) => g.cwd);
     const order = [...others];
     order.splice(d.idx, 0, d.cwd);
@@ -146,8 +208,26 @@ export default function Sidebar({ collapsed }) {
     S.allProjects = arr;
     send({ type: "reorder_projects", order: arr });
     if (!unchanged) notify();
+    return true;
   };
-  const onDragEndHead = () => setDrag(null); // 拖到窗外/Esc 取消也收尾
+
+  const onPointerUpHead = (e, cwd) => {
+    const d = dragRef.current;
+    if (!d || d.cwd !== cwd || d.pointerId !== e.pointerId) return;
+    endProjDrag(true);
+  };
+
+  const onPointerCancelHead = (e, cwd) => {
+    const d = dragRef.current;
+    if (!d || d.cwd !== cwd || d.pointerId !== e.pointerId) return;
+    endProjDrag(false);
+  };
+
+  const shouldSuppressProjectClick = () => {
+    if (!suppressProjClickRef.current) return false;
+    suppressProjClickRef.current = false;
+    return true;
+  };
 
   if (collapsed) return <aside id="sidebar" className="collapsed" data-tauri-drag-region=""></aside>;
 
@@ -207,7 +287,6 @@ export default function Sidebar({ collapsed }) {
   // 垃圾桶：进出清理模式；进入时全部项目展开且不限制条数。
   // 退出时恢复进入前的展开/条数状态(之前收起的收回、展开的保持)——快照只记进入时刻
   // 的存量项目,清理模式中新展开的不回滚
-  const manageSnap = useRef(null);
   const onSecTrash = (e) => {
     e.stopPropagation();
     S.isProjectManageMode = !S.isProjectManageMode;
@@ -237,7 +316,7 @@ export default function Sidebar({ collapsed }) {
     <aside id="sidebar" data-tauri-drag-region="">
       <div className="nav">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
-          <Icon name="zoomIn" size={14} />
+          <Icon name="messagePlus" size={16} />
           新建任务 <span className="kbd">⌘ N</span>
         </div>
       </div>
@@ -251,8 +330,9 @@ export default function Sidebar({ collapsed }) {
         id="tasklist"
         ref={listRef}
         className={drag ? "proj-dragging" : ""}
-        onDragOver={onDragOverList}
-        onDrop={onDropList}
+        onSelectStart={(e) => {
+          if (dragRef.current?.groups) e.preventDefault();
+        }}
         onMouseDown={(e) => {
           if (e.button !== 2) return;
           const sel = window.getSelection(); // 记录右键前选区，供选词撤销对比
@@ -298,8 +378,11 @@ export default function Sidebar({ collapsed }) {
                     ty={ty}
                     isDragSelf={!!isSelf}
                     dragging={!!drag}
-                    onDragStartHead={onDragStartHead}
-                    onDragEndHead={onDragEndHead}
+                    onPointerDownHead={onPointerDownHead}
+                    onPointerMoveHead={onPointerMoveHead}
+                    onPointerUpHead={onPointerUpHead}
+                    onPointerCancelHead={onPointerCancelHead}
+                    shouldSuppressProjectClick={shouldSuppressProjectClick}
                     onOpenProjMenu={(e, cwd) => {
                       e.stopPropagation();
                       closeProjPopups();
@@ -363,6 +446,15 @@ export default function Sidebar({ collapsed }) {
         </Menu>
       )}
       {projAdd && <ProjAddPop anchorRect={projAdd.rect} onClose={() => setProjAdd(null)} />}
+      {drag && (
+        <div
+          className="proj-drag-overlay"
+          style={{ left: drag.left, top: drag.y - drag.grabY, width: drag.w || undefined }}
+        >
+          <span className="fic"><Icon name={drag.iconName} size={16} /></span>
+          <span className="pname">{drag.label}</span>
+        </div>
+      )}
     </aside>
   );
 }

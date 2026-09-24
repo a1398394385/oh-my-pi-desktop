@@ -38,7 +38,7 @@ export default function ProjAddPop({ anchorRect, onClose }) {
   return createPortal(
     <div className="proj-add-pop" ref={ref}>
       <input
-        className="approval-input"
+        className="inp"
         ref={inpRef}
         placeholder="项目全路径，如 /Users/x/code"
         onKeyDown={(e) => {

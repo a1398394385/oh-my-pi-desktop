@@ -3,7 +3,7 @@
 // 浮层渲染为 #composer 直接子节点（fragment 兄弟位，原版挂 composerEl 规避 .menu.model
 // 的 overflow-y:auto 裁切）；有会话走宿主 set_model，新建态落 localStorage。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { S, useStore, send, notify, activeOpen, modelNames, getSupportedThinkingForModel } from "../../store.js";
+import { S, useStore, send, notify, activeOpen, modelNames, pickModelId } from "../../store.js";
 import Icon from "../../Icon.jsx";
 import { placeComposerMenu } from "./place.js";
 
@@ -42,19 +42,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }) {
 
   // 模型选中：有会话走宿主下发，新建态落 localStorage（手选后不再被配置默认覆盖）
   const pickModel = (id) => {
-    if (s) {
-      send({ type: "set_model", sessionId: s.sessionId, model: id });
-    } else {
-      S.newSessionModel = id;
-      S.newSessionDirty = true;
-      try { localStorage.setItem("omp-new-model", id); } catch {}
-      const validLevels = getSupportedThinkingForModel(id);
-      if (!validLevels.includes(S.newSessionThinking)) {
-        S.newSessionThinking = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
-        try { localStorage.setItem("omp-new-thinking", S.newSessionThinking); } catch {}
-      }
-      notify();
-    }
+    pickModelId(id);
     onClose();
   };
 

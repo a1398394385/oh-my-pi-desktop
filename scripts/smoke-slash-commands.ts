@@ -3,7 +3,8 @@
 // 不传地址时本脚本自行拉起宿主子进程，退出时删除测试产生的会话文件。零模型调用。
 // 断言覆盖：
 //   1. list_commands 清单不含 model/models/switch/prewalk/fast/skillful/extended-context/computer/force
-//   2. 清单仍含 compact/todo/context/usage/handoff（过滤没有误伤）
+//   2. 清单仍含 compact/todo/context/usage/handoff/plan（过滤没有误伤；plan 是桌面注入的
+//      TUI-only 条目，底座清单不含它）
 //   3. 手输已移除命令（含别名 /models、冒号形式 /force:bash）→ command_output 提示 + command_result(consumed)
 //   4. 已移除命令不产生任何事件帧（既不执行也不落成 prompt）
 //   5. 未移除命令照常执行（/context 走 builtin 分发）
@@ -56,7 +57,7 @@ interface WireFrame {
 }
 
 const REMOVED = ["model", "switch", "prewalk", "fast", "skillful", "extended-context", "computer", "force"];
-const KEPT = ["compact", "todo", "context", "usage", "handoff"];
+const KEPT = ["compact", "todo", "context", "usage", "handoff", "plan"];
 
 const seen: WireFrame[] = [];
 const waiters: Array<{ pred: (f: WireFrame) => boolean; resolve: (f: WireFrame) => void; timer: NodeJS.Timeout }> = [];

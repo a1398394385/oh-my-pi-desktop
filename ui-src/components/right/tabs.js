@@ -31,6 +31,20 @@ export function openRightTab(name) {
   notify();
 }
 
+/** 底栏按钮与快捷键（Alt+A）共用的 tab 开关：已开且当前 → 收起右栏；否则切到该 tab 并展开 */
+export function toggleRightTab(name) {
+  if (!S.rightCollapsed && S.rightTab === name) {
+    S.rightCollapsed = true;
+  } else {
+    openRightTab(name); // 未开则加入 tab 列表并激活
+    S.selectedFile = null;
+    S.selectedSubagent = null;
+    S.rightCollapsed = false;
+    S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
+  }
+  notify();
+}
+
 export function closeRightTab(name) {
   const i = rightTabs.indexOf(name);
   if (i < 0) return;

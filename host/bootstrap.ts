@@ -45,6 +45,10 @@ export const { getOAuthProviders } = await import("@oh-my-pi/pi-ai");
 export const { authPolicyFor } = await import("@oh-my-pi/pi-catalog/compat/auth");
 export const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry, USER_INTERRUPT_LABEL } =
   await import("@oh-my-pi/pi-coding-agent");
+// 历史会话检索（read_session_context 工具）：列举并解析当前 profile 已落盘的 Pi 会话
+export const { listAllSessions, FileSessionStorage, loadEntriesFromFile } = await import(
+  "@oh-my-pi/pi-coding-agent"
+);
 export const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");
 // steer 队列操作（未消费转向消息的识别/取回），供 host 的 peek/edit/drop_queued RPC 用
 export const { isUserQueuedMessage, isHiddenUserCompanion, toRestoredQueuedMessage } = await import(

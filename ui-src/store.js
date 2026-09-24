@@ -79,6 +79,10 @@ export const S = {
   connText: "连接中…",
   toastMsg: null, // 当前 toast 文本（null = 隐藏）
   composerSetSignal: null, // { text, images, seq } 外部填输入框的信号（分叉回填 / 排队消息编辑）
+  findOpen: false, // 会话内查找栏开合（FindBar 同步；Esc 中断生成前的守卫）
+  menuSignal: null, // { name, seq } 外部打开 composer 菜单的信号（快捷键 Alt+M）
+  draftHasContent: false, // 输入框是否有草稿（文字或附件；Composer 每次渲染同步，Esc 二次确认用）
+  escArmedUntil: 0, // Esc 二次确认窗口的截止时刻（> 现在 = 发送钮显示取消图标）
   // ---- 输入框 sigil 补全态 ----
   commands: null, // 当前会话斜杠命令清单（数组；null = 未拉取，弹层显示加载中）
   commandsSessionId: null, // 清单归属会话 id，切会话即失效
@@ -202,7 +206,7 @@ function emitTerminalFrame(frame) {
 }
 
 // ---------- UI 偏好（localStorage 合并；外观应用由 App 层 effect 负责） ----------
-export const uiPrefs = { uiFont: "default", uiFontSize: 13, codeFontSize: 12, lineNumbers: true, codeWrap: false, showThinking: true, lang: "zh-CN" };
+export const uiPrefs = { uiFont: "default", uiFontSize: 13, codeFontSize: 12, lineNumbers: true, codeWrap: false, showThinking: true, expandToolOutput: true, lang: "zh-CN" };
 try {
   Object.assign(uiPrefs, JSON.parse(localStorage.getItem("omp-ui-settings") || "{}"));
 } catch {}
@@ -326,6 +330,45 @@ export function getAvailableProjects() {
 export function getSupportedThinkingForModel(modelId) {
   const efforts = modelEfforts.get(modelId) ?? [];
   return efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
+}
+
+/** 模型选中（模型菜单与 Ctrl+P 循环共用）：有会话走宿主下发；新建态落盘，档位不合法时回落 */
+export function pickModelId(id) {
+  const s = activeOpen();
+  if (s) {
+    send({ type: "set_model", sessionId: s.sessionId, model: id });
+    return;
+  }
+  S.newSessionModel = id;
+  S.newSessionDirty = true; // 手选后：后续 models 帧不再用配置默认覆盖
+  try { localStorage.setItem("omp-new-model", id); } catch {}
+  const validLevels = getSupportedThinkingForModel(id);
+  if (!validLevels.includes(S.newSessionThinking)) {
+    S.newSessionThinking = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
+    try { localStorage.setItem("omp-new-thinking", S.newSessionThinking); } catch {}
+  }
+  notify();
+}
+
+/** 工具行的展开态字段（渲染层按种类各取其一：终端/后台/设备行 cmdExpanded、编辑行 diffExpanded、
+    读取行 readExpanded，见 chat/ToolRow.jsx 与 chat/EditRow.jsx）——「运行中默认展开」按此落字段 */
+export function toolExpandKey(name) {
+  if (name === "read" || name === "grep" || name === "glob" || name === "ls") return "readExpanded";
+  if (name === "edit" || name === "write" || name === "apply_patch") return "diffExpanded";
+  return "cmdExpanded";
+}
+
+/** 思考档位选中（思考菜单与 Shift+Tab 循环共用）：有会话走宿主下发，新建态落盘 */
+export function pickThinkingLevel(lv) {
+  const s = activeOpen();
+  if (s) {
+    send({ type: "set_thinking", sessionId: s.sessionId, level: lv });
+    return;
+  }
+  S.newSessionThinking = lv;
+  S.newSessionDirty = true;
+  try { localStorage.setItem("omp-new-thinking", lv); } catch {}
+  notify();
 }
 
 // force = 点新建/配置下发刷新：模型与档位回到配置文件默认；非 force 只做缺失兜底
@@ -555,12 +598,29 @@ function hostInstanceReset(hi, seq) {
       s.workingText = null;
       s.turnItemStart = null;
       s.turnStartAt = null;
-      for (const sub of s.subagents.values()) sub.streaming = false;
+      s.pendingApprovals = [];
+      clearRunningTools(s);
+      for (const sub of s.subagents.values()) {
+        sub.streaming = false;
+        for (const t of sub.tools) t.running = false;
+      }
     }
     notify();
   }
   S.evtHost = hi;
   S.evtSeq = seq;
+}
+
+// 轮收尾 / 宿主重启：把仍标着运行中的工具项复位。中断、异常路径可能收不到 tool_update，
+// 不复位就在行上留下永久转圈（与 hostInstanceReset 清「假 spinner」同一目的）
+function clearRunningTools(s) {
+  const walk = (list) => {
+    for (const it of list || []) {
+      if (it.role === "loop") walk(it.items);
+      else if (it.role === "tool" && it.running) it.running = false;
+    }
+  };
+  walk(s.items);
 }
 
 function admitStampedEvent(msg) {
@@ -646,8 +706,8 @@ function onMessage(msg) {
     case "approval_request": {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
-      s.items.push({
-        role: "approval",
+      s.pendingApprovals ??= [];
+      s.pendingApprovals.push({
         requestId: msg.requestId,
         title: msg.title,
         options: msg.options,
@@ -659,8 +719,15 @@ function onMessage(msg) {
       notifyDesktop("approval", s, "等待审批", msg.title);
       break;
     }
-    case "approval_resolved":
-      break; // 本地点击已即时定格
+    case "approval_resolved": {
+      for (const s of openSessions.values()) {
+        if (s.pendingApprovals) {
+          s.pendingApprovals = s.pendingApprovals.filter((request) => request.requestId !== msg.requestId);
+        }
+      }
+      notify();
+      break;
+    }
     case "session_list": {
       // 归档条目拆出：不进 diskProjects，单独存 S.archivedSessions 供侧栏归档区渲染
       diskProjects.length = 0;
@@ -709,7 +776,7 @@ function onMessage(msg) {
     // ---- 输入框 sigil：斜杠命令清单（宿主 list_commands 回包；list_files 的 @ 候选回包） ----
     case "commands": {
       S.commands = Array.isArray(msg.commands) ? msg.commands : [];
-      S.commandsSessionId = msg.sessionId;
+      S.commandsSessionId = msg.sessionId ?? "new"; // 无会话回包 = 新建页清单
       notify();
       break;
     }
@@ -724,6 +791,7 @@ function onMessage(msg) {
         sessionId: msg.sessionId,
         cwd: msg.cwd,
         items: [],
+        pendingApprovals: [],
         assistantDraft: "",
         streaming: false,
         turnStartAt: null,
@@ -732,6 +800,7 @@ function onMessage(msg) {
         thinking: msg.thinking ?? "auto",
         isGit: !!msg.isGit,
         todos: [],
+        goal: null, // goal 状态（宿主 goal 帧置位；会话状态卡目标区展示）
         planMode: false, // 计划模式（宿主 plan_mode 帧置位）
       });
       activateSession(msg.path);
@@ -755,6 +824,15 @@ function onMessage(msg) {
         S.pendingCreate = false;
         send({ type: "list_sessions" }); // 新会话已落盘，重拉列表
       }
+      break;
+    }
+    // 宿主检出外部进程写入本会话（CLI 对话/改名）：置位提示条，直到重新加载。
+    // 会话被前端 LRU 驱逐时帧丢弃，切回走池复用分支时宿主按 entry.externalWrite 补发
+    case "session_external_write": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      s.externalWrite = true;
+      notify();
       break;
     }
     case "git_branches": {
@@ -816,15 +894,20 @@ function onMessage(msg) {
           s.items.push({ role: "assistant", text: s.assistantDraft });
         }
         s.assistantDraft = "";
-        s.items.push({
+        const toolItem = {
           role: "tool",
           text: msg.name,
           name: msg.name,
           toolCallId: msg.toolCallId,
           args: msg.args,
           files: msg.files,
-          running: msg.name === "bash" || msg.name === "shell" || msg.name === "eval",
-        });
+          // tool 帧 = 工具开始执行（args 已到、结果未到），tool_update 帧才置回 false。
+          // 所有工具一律置位：结果位在 running 期间渲染 Spin 占位，非 running 才判「无输出」
+          running: true,
+        };
+        // 「工具运行中默认展开」（Ctrl+O）：运行期间展开输出卡，结束时由 tool_update 收起
+        if (uiPrefs.expandToolOutput) toolItem[toolExpandKey(msg.name)] = true;
+        s.items.push(toolItem);
         if (msg.intent) s.workingText = msg.intent;
       } else if (msg.kind === "tool_update") {
         const last =
@@ -839,6 +922,8 @@ function onMessage(msg) {
           if (msg.details != null) last.details = msg.details;
           if (msg.diffContent != null) last.diffContent = msg.diffContent; // 当次工具真实 diff，编辑行内联展开优先用它
           last.running = false;
+          // 「工具运行中默认展开」：结束时收起（运行期自动展开的那张卡）
+          if (uiPrefs.expandToolOutput) last[toolExpandKey(last.name)] = false;
         }
       } else if (msg.kind === "turn_end") {
         if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
@@ -849,10 +934,14 @@ function onMessage(msg) {
           notify();
           break;
         }
+        // AbortSignal 结束等待时宿主不单独发 approval_resolved，轮结束时清理剩余请求。
+        s.pendingApprovals = [];
         s.streaming = false;
         s.workingText = null;
         // run 收尾帧（宿主 agent_end 映射，usage 已是整 run 累计、时长取 turnStartAt 起）：
-        // 封存一次 + entryId 回填/列表刷新/系统通知
+        // 封存一次 + entryId 回填/列表刷新/系统通知。封存前先复位运行中工具——中断/异常
+        // 路径可能收不到 tool_update，不复位会在行上留下永久转圈
+        clearRunningTools(s);
         sealRunItems(s, msg.usage);
         if (msg.runEnd) {
           // 宿主在落盘完成后回贴本轮 user 消息的 entryId（消息行分叉按钮的寻址键）；
@@ -914,7 +1003,14 @@ function onMessage(msg) {
     case "messages": {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
-      s.items = msg.messages.map((m) => ({ ...m }));
+      // 执行中分隔行不属于 transcript,重建时保留在尾;同 command 的落盘完成行已到则被吸收
+      const pendingPhases = s.items.filter(
+        (it) =>
+          it.role === "phase" &&
+          it.phase === "start" &&
+          !msg.messages.some((m) => m.role === "phase" && m.phase === "done" && m.command === it.command),
+      );
+      s.items = msg.messages.map((m) => ({ ...m })).concat(pendingPhases);
       // transcript 被整体替换（compact/branch/navigate 后）：条目树必然变化，置废下次渲染重拉
       if (rightState.entryTree?.sessionId === msg.sessionId) rightState.entryTree = null;
       notify();
@@ -963,6 +1059,22 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (!s) return;
       s.items.push({ role: "meta", text: String(msg.text ?? "") });
+      notify();
+      break;
+    }
+    // 后台命令阶段行:start 插入执行中行;fail 撤该命令的执行中行。
+    // 完成态不走瞬时帧:由落盘痕转出的 phase 行随 messages 重建到达(单一事实来源)
+    case "command_phase": {
+      const s = findBySessionId(msg.sessionId);
+      if (!s) return;
+      if (msg.phase === "start") {
+        s.items.push({ role: "phase", phase: "start", command: msg.command, text: String(msg.text ?? "") });
+      } else {
+        const pending = s.items.findIndex(
+          (it) => it.role === "phase" && it.phase === "start" && it.command === msg.command,
+        );
+        if (pending >= 0) s.items.splice(pending, 1);
+      }
       notify();
       break;
     }
@@ -1041,7 +1153,7 @@ function onMessage(msg) {
       if (!sub) return;
       if (msg.kind === "turn_start") sub.streaming = true;
       else if (msg.kind === "text_delta") sub.text += msg.text;
-      else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, files: msg.files, toolCallId: msg.toolCallId, running: msg.name === "bash" || msg.name === "shell" || msg.name === "eval" });
+      else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, files: msg.files, toolCallId: msg.toolCallId, running: true });
       else if (msg.kind === "tool_update") {
         const last =
           [...sub.tools].reverse().find((t) => t.toolCallId && t.toolCallId === msg.toolCallId) ||
@@ -1073,6 +1185,14 @@ function onMessage(msg) {
       const s = findBySessionId(msg.sessionId);
       if (s) {
         s.todos = msg.phases ?? [];
+        notify();
+      }
+      break;
+    }
+    case "goal": {
+      const s = findBySessionId(msg.sessionId);
+      if (s) {
+        s.goal = msg.goal ?? null;
         notify();
       }
       break;

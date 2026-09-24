@@ -51,6 +51,11 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
+  // 与 ZCode TaskListItem 一样只保留一个前置 16px 槽，优先级固定为：错误 > 未读 > 运行中。
+  // 错误状态来自当前会话最后一条 error 行；未打开会话没有运行时状态，只显示持久化的未读点。
+  const lastItem = open?.items?.[open.items.length - 1];
+  const hasError = !open?.streaming && (lastItem?.role === "error" || lastItem?.error);
+  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : open?.streaming ? "loading" : "none";
   // 打开会话：已打开直接激活（刷新右栏 git diff）；未打开走宿主加载链路
   const openSession = () => {
     hideWelcomeScreen();
@@ -75,26 +80,28 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       onClick={openSession}
       onContextMenu={(e) => onContext(e, s, rowKey)}
     >
-      {/* 置顶图钉：悬停浮现（置顶列表中常显），点击切换置顶，持久化到 omp-desktop.json */}
-      <button
-        className={"tpin" + (pinned || pinnedList ? " on" : "")}
-        title={pinned ? "取消置顶" : "置顶会话"}
-        onClick={(e) => {
-          e.stopPropagation();
-          const on = !pinnedSessions.has(s.path);
-          if (on) pinnedSessions.add(s.path);
-          else pinnedSessions.delete(s.path);
-          send({ type: "set_session_pinned", path: s.path, pinned: on });
-          notify();
-        }}
-      >
-        <Icon name="pin" size={14} />
-      </button>
-      {open?.streaming ? (
-        <span className="mini-spin" title="运行中"><Icon name="loader" size={14} /></span>
-      ) : unseenFinished.has(s.path) ? (
-        <span className="seen-dot" title="有新结果"></span>
-      ) : null}
+      <span className="task-leading">
+        <span className={"task-indicator " + leading} title={leading === "loading" ? "运行中" : leading === "unread" ? "有新结果" : leading === "error" ? "最近一次运行失败" : undefined}>
+          {leading === "error" ? <span className="task-error-dot" /> : null}
+          {leading === "unread" ? <span className="seen-dot" /> : null}
+          {leading === "loading" ? <Icon name="loader" size={16} /> : null}
+        </span>
+        {/* 与 ZCode 相同：悬停时 Pin 接管同一个前置槽；置顶列表/已置顶且无状态时常显。 */}
+        <button
+          className={"tpin" + ((pinned || pinnedList) && leading === "none" ? " on" : "")}
+          title={pinned ? "取消置顶" : "置顶会话"}
+          onClick={(e) => {
+            e.stopPropagation();
+            const on = !pinnedSessions.has(s.path);
+            if (on) pinnedSessions.add(s.path);
+            else pinnedSessions.delete(s.path);
+            send({ type: "set_session_pinned", path: s.path, pinned: on });
+            notify();
+          }}
+        >
+          <Icon name="pin" size={16} />
+        </button>
+      </span>
       {/* 双击标题原地进入重命名（双击前的 click 仍正常打开会话，幂等无冲突） */}
       <span className="tt" onDoubleClick={() => onRenameStart(rowKey, s.path)}>
         {sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "")}

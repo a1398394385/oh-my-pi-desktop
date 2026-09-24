@@ -3,14 +3,16 @@
 // 折叠/主题等壳交互自 ui/shell.js 对应平移，完整能力（resizer 拖动/缩放）见 IMPLEMENTATION_PLAN。
 import { useEffect } from "react";
 import { S, useStore, notify, activeOpen, diskProjects } from "./store.js";
-import { initShell } from "./shell.js";
+import { initShell, toggleSidebar, toggleRightPanel } from "./shell.js";
 import Icon from "./Icon.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import Welcome from "./components/Welcome.jsx";
 import Chat from "./components/Chat.jsx";
 import Composer from "./components/Composer.jsx";
+import ApprovalCard from "./components/chat/ApprovalCard.jsx";
 import SessionStatsBar from "./components/SessionStatsBar.jsx";
 import QueueCard from "./components/composer/QueueCard.jsx";
+import GoalCard from "./components/composer/GoalCard.jsx";
 import RightPanel from "./components/RightPanel.jsx";
 import Settings from "./components/settings/Settings.jsx";
 
@@ -51,31 +53,23 @@ export default function App() {
   useEffect(() => {
     initShell();
   }, []);
-  const toggleSidebar = () => {
-    S.sidebarCollapsed = !S.sidebarCollapsed;
-    localStorage.setItem("omp-sidebar-collapsed", S.sidebarCollapsed ? "1" : "0");
-    notify();
-  };
-  const toggleRight = () => {
-    S.rightCollapsed = !S.rightCollapsed;
-    if (!S.rightCollapsed) S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
-    localStorage.setItem("omp-right-collapsed", S.rightCollapsed ? "1" : "0");
-    notify();
-  };
+  const pendingApproval = activeOpen()?.pendingApprovals?.[0] ?? null;
   return (
     <>
       <Sidebar collapsed={S.sidebarCollapsed} />
       <div id="left-resizer" className="resizer" title="拖动调整宽度" hidden={S.sidebarCollapsed}></div>
       <main id="main">
-        <ChatHead onToggleSidebar={toggleSidebar} onToggleRight={toggleRight} />
+        <ChatHead onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
         {S.isCreatingNew ? <Welcome /> : <Chat />}
         {!S.isCreatingNew && (
           <>
-            {/* 排队卡与输入 dock 是相邻兄弟（ZCode bottom dock 顺序 queue → composer）：
-                卡自身 -mb-28px 上拉，dock 以 z-20 压住其下缘，露出上半张二级重叠卡 */}
+            {/* goal 目标栏 → 排队卡 → 输入 dock：三级重叠卡自上而下（goal 栏随队列增高上移）。
+                卡各自 -mb-28px 上拉，下一张卡以 z 压住其下缘，露出上半张二级重叠卡 */}
+            <GoalCard />
             <QueueCard />
-            <div className="dock">
-              <Composer inWelcome={false} />
+            <div className={pendingApproval ? "dock approval-active" : "dock"}>
+              {pendingApproval ? <ApprovalCard key={pendingApproval.requestId} item={pendingApproval} /> : null}
+              <Composer inWelcome={false} blocking={Boolean(pendingApproval)} />
             </div>
             {/* 会话统计行：dock 之外、输入卡片下方另起一行（不是输入框内部） */}
             <SessionStatsBar />

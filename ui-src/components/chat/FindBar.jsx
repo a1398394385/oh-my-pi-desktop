@@ -25,7 +25,12 @@ function buildFindIndex(s) {
 }
 
 export default function FindBar({ streamRef }) {
-  const [open, setOpen] = useState(false);
+  const [open, _setOpen] = useState(false);
+  // 开合同步到 store：全局快捷键需要知道查找栏开着（Esc 先关查找、不中断生成）
+  const setOpen = (v) => {
+    _setOpen(v);
+    S.findOpen = v;
+  };
   const [count, setCount] = useState(""); // "1/3" | "无结果" | ""
   const barRef = useRef(null);
   const inpRef = useRef(null);

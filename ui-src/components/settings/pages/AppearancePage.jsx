@@ -35,13 +35,14 @@ function themeLabel(mode) {
 // 本地偏好落盘（旧版 saveUiPrefs）+ 外观应用（旧版 applyAppearance）
 const FONT_STACKS = {
   default: "var(--sans)",
+  zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   pingfang: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
   songti: '"Songti SC", "STSong", "SimSun", serif',
   kaiti: '"Kaiti SC", "STKaiti", "KaiTi", serif',
   heiti: '"Heiti SC", "SimHei", "STHeiti", sans-serif',
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
-const FONT_LABELS = { default: "系统默认", pingfang: "苹方 / PingFang SC", songti: "宋体 / Songti SC", kaiti: "楷体 / KaiTi SC", heiti: "黑体 / Heiti SC", mono: "等宽" };
+const FONT_LABELS = { default: "系统默认", zcode: "ZCode 默认", pingfang: "苹方 / PingFang SC", songti: "宋体 / Songti SC", kaiti: "楷体 / KaiTi SC", heiti: "黑体 / Heiti SC", mono: "等宽" };
 function saveUiPrefs() {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefs)); } catch {}
 }

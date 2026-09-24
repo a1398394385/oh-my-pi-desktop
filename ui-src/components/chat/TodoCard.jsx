@@ -3,7 +3,6 @@
 import { Fragment } from "react";
 import { S, useStore, notify, activeOpen } from "../../store.js";
 import Icon from "../../Icon.jsx";
-import { openRightTab } from "../RightPanel.jsx";
 
 // 待办行的状态图标与文本（completed → <s> 删除线；blocked 附阻塞原因）
 function TodoRow({ t }) {
@@ -36,24 +35,20 @@ export default function TodoCard() {
   const capIcon = current
     ? current.status === "in_progress" ? "→" : current.status === "blocked" ? "⊘" : "○"
     : "✓";
-  // 智能体行（subagent 计数，点击切到子代理 tab 并展开面板）
-  const subs = [...s.subagents.values()];
-  const running = subs.filter((x) => x.streaming).length;
 
   return (
     <div id="statusWrap">
       {!S.todoCollapsed && (
         <div
           id="statusCard"
-          onClick={(e) => {
-            // 卡片空白处点击收起为胶囊（agentsRow 除外，它有自己的点击行为）
-            if (e.target.closest("#agentsRow")) return;
+          onClick={() => {
+            // 卡片空白处点击收起为胶囊
             S.todoCollapsed = true;
             notify();
           }}
         >
           <div className="sc-head">
-            <b>进程</b>
+            <b>会话状态</b>
             <span className="frac" id="todoFrac">{frac}</span>
             <span className="sp"></span>
             <button className="icon-btn" id="scCollapse" title="收起为胶囊">
@@ -69,23 +64,6 @@ export default function TodoCard() {
                 </Fragment>
               ),
             )}
-          </div>
-          <div
-            className="sc-row rvonly"
-            id="agentsRow"
-            title="点击查看子代理"
-            onClick={() => {
-              openRightTab("subagent");
-              S.selectedSubagent = null;
-              S.rightCollapsed = false;
-              S.todoCollapsed = true;
-              notify();
-            }}
-          >
-            智能体
-            <span className="rv" id="agentsRv">
-              {subs.length === 0 ? "—" : running ? `${subs.length} · ${running} 运行中` : `${subs.length}`}
-            </span>
           </div>
         </div>
       )}

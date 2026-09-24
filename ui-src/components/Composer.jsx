@@ -5,7 +5,7 @@
 // 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts。
 // 排队卡不在此处：由 App 在 .dock 前作相邻兄弟渲染（ZCode 负 margin 二级重叠卡，见 ui/style.css）。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { S, useStore, notify, activeOpen, send, toast, modelNames } from "../store.js";
+import { S, useStore, notify, activeOpen, send, toast, modelNames, editQueueMsg } from "../store.js";
 import { closeAllMenus } from "../shell.js";
 import Icon from "../Icon.jsx";
 import AttachRow from "./composer/AttachRow.jsx";
@@ -79,14 +79,14 @@ function bgTaskCount(s) {
       const args = it.args || {};
       const op = args.op || "cmd";
       const proc = args.name || args.application || "";
+      // 只按 start/stop/cancel 配对计后台进程。不能回落到 it.running：那是「hub 工具
+      // 执行中」（tool 帧到 tool_update 之间），list/status 之类同样命中，不是进程存活态
       if (op === "start") {
         n++;
         if (proc) live.add(proc);
       } else if ((op === "stop" || op === "cancel") && proc && live.has(proc)) {
         n--;
         live.delete(proc);
-      } else if (it.running) {
-        n++;
       }
     } else if (it.running && (name === "bash" || name === "shell" || name === "eval")) {
       n++;
@@ -101,7 +101,7 @@ function subagentCount(s) {
   return [...s.subagents.values()].filter((x) => x.streaming || x.status === "started").length;
 }
 
-export default function Composer({ inWelcome }) {
+export default function Composer({ inWelcome, blocking = false }) {
   useStore();
   const s = activeOpen();
   const rootRef = useRef(null); // #composer
@@ -123,6 +123,9 @@ export default function Composer({ inWelcome }) {
   // 运行中的本地 bash 行（! 前缀命令）：停止形态同样覆盖——点停止发 bash_abort 而非 abort_session
   const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
   const stopping = (!!s?.streaming || bashRunning) && !hasDraft;
+  // Esc 二次确认窗口内：有草稿时发送钮短暂显示取消图标（再按一次 Esc 即中断生成）
+  const escArmed = Date.now() < (S.escArmedUntil ?? 0);
+  const canAbort = stopping || escArmed;
 
   // ---- 外部回填信号（分叉 selectedText / 排队消息编辑），对齐原 setComposerValue（含图片） ----
   useEffect(() => {
@@ -154,6 +157,11 @@ export default function Composer({ inWelcome }) {
     if (inWelcome) taRef.current?.focus();
   }, [inWelcome]);
 
+  // ---- 草稿有无同步到 store（全局 Esc 的二次确认要知道输入框里有没有内容） ----
+  useEffect(() => {
+    S.draftHasContent = hasDraft;
+  });
+
   // ---- 发送链路（原 sendPrompt 平移） ----
   const clearDraft = () => {
     draft.value = "";
@@ -164,7 +172,7 @@ export default function Composer({ inWelcome }) {
     S.pendingFiles = [];
     notify();
   };
-  const sendPrompt = () => {
+  const sendPrompt = (steer = false) => {
     const t = draft.value.trim();
     const files = buildAttachPayload();
     if ((!t && files.length === 0) || !S.ws || S.ws.readyState !== 1) return;
@@ -198,16 +206,22 @@ export default function Composer({ inWelcome }) {
       S.pendingCreate = true;
       return;
     }
-    // 流式中发送 = 排队（followUp，当前 loop 完自动消费）：只进队列卡，不出气泡、
-    // 不截断过程——「立即发送」转 steer 也只是先出气泡，分割发生在消费时刻（steer_consumed）
+    // 流式中发送 = 进待发送队列（followUp，当前 loop 完自动消费）；Ctrl+↵ 则是 steer——
+    // 立即注入（当前工具批次后），气泡固定在消息流底部，分割发生在消费时刻（steer_consumed）
     if (s.streaming) {
-      s.queued = s.queued ?? [];
-      s.queued.push({ text: t });
+      if (steer) {
+        s.steering = s.steering ?? [];
+        s.steering.push({ text: t });
+        s.items.push({ role: "user", text: t, pending: "steer" });
+      } else {
+        s.queued = s.queued ?? [];
+        s.queued.push({ text: t });
+      }
     } else {
       s.items.push({ role: "user", text: t });
     }
     clearDraft();
-    S.ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files }));
+    S.ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
     // 钉底跟随由 Chat 组件的滚动 effect 处理
   };
 
@@ -227,13 +241,15 @@ export default function Composer({ inWelcome }) {
       return;
     }
     if (t.kind === "command") {
-      if (!s) {
-        setPalette(null); // 无会话：命令不可用
+      if (!s && !S.isCreatingNew) {
+        setPalette(null); // 无会话且非新建页：命令不可用
         return;
       }
-      if (S.commandsSessionId !== s.sessionId) {
+      // 清单归属：会话 id 或新建页哨兵（新建页走无会话清单，隐藏会话级命令）
+      const cmdKey = s ? s.sessionId : "new";
+      if (S.commandsSessionId !== cmdKey) {
         S.commands = null; // 清单过期：拉取期间弹层显示加载中
-        send({ type: "list_commands", sessionId: s.sessionId });
+        send({ type: "list_commands", sessionId: s?.sessionId, cwd: s ? undefined : S.newSessionProject || undefined });
       }
       // 候选与加载态渲染期从 S.commands 现算（见下方 palItems/palLoading），
       // 不存快照——回包只 notify()，快照会让候选永不出现、要再敲一键才重算
@@ -317,8 +333,8 @@ export default function Composer({ inWelcome }) {
 
   // ---- 停止钮防连点复位（原 turn_end 重绘时复位 disabled） ----
   useEffect(() => {
-    if (!stopping) setStopPending(false);
-  }, [stopping]);
+    if (!canAbort) setStopPending(false);
+  }, [canAbort]);
 
   // ---- 点外部 / 窗口失焦 / omp:close-menus 协调关菜单（原 window click/blur → closeAllMenus） ----
   useEffect(() => {
@@ -386,6 +402,15 @@ export default function Composer({ inWelcome }) {
   // ---- cbar 各按钮态 ----
   const modeMeta = MODE_META[S.approvalMode] ?? MODE_META["always-ask"];
   const menuDisabled = !(s || S.isCreatingNew); // 无会话且非新建态：模型/思考不可用
+
+  // ---- 外部打开菜单信号（快捷键 Alt+M）：与 S.composerSetSignal 同款的一次性信号 ----
+  useEffect(() => {
+    const sig = S.menuSignal;
+    if (!sig) return;
+    S.menuSignal = null;
+    if (!menuDisabled) setOpenMenu(sig.name);
+  });
+
   const modelName = S.isCreatingNew || !s
     ? (S.newSessionModel ? (modelShort(S.newSessionModel) || "模型") : "模型")
     : modelShort(s.model) || "模型";
@@ -420,7 +445,13 @@ export default function Composer({ inWelcome }) {
 
   return (
     <>
-      <div id="composer" className={(inWelcome ? "in-welcome " : "") + (isBashMode(draft.value) ? "bash-mode" : "")} ref={rootRef}>
+      <div
+        id="composer"
+        className={(inWelcome ? "in-welcome " : "") + (isBashMode(draft.value) ? "bash-mode" : "")}
+        ref={rootRef}
+        aria-hidden={blocking ? true : undefined}
+        style={blocking ? { display: "none" } : undefined}
+      >
         <AttachRow />
         <textarea
           id="input"
@@ -430,10 +461,12 @@ export default function Composer({ inWelcome }) {
           placeholder={inWelcome ? "使用 @ 添加上下文，使用 / 选择命令或能力" : "发消息…（Enter 发送）"}
           onInput={onInput}
           onKeyDown={(e) => {
-            // sigil 补全弹层打开时优先拦截导航/接受键
+            // sigil 补全弹层打开时优先拦截导航/接受键（stopPropagation：同一按键不再走全局
+            // 快捷键，如补全态的 ⇧Tab 是「接受候选」而非「循环思考级别」）
             if (palette) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
+                e.stopPropagation();
                 const n = (palItems ?? []).length;
                 if (!n) return;
                 const d = e.key === "ArrowDown" ? 1 : -1;
@@ -442,20 +475,41 @@ export default function Composer({ inWelcome }) {
               }
               if (e.key === "Tab") {
                 e.preventDefault();
+                e.stopPropagation();
                 accept(palette.index);
                 return;
               }
               if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
                 // 补全态回车 = 接受当前项，不发送（isComposing：中文输入法选字中不触发）
                 e.preventDefault();
+                e.stopPropagation();
                 accept(palette.index);
                 return;
               }
               if (e.key === "Escape") {
                 e.preventDefault();
+                e.stopPropagation(); // 不触发全局 Esc 的「中断生成」
                 setPalette(null);
                 return;
               }
+            }
+            // Ctrl+↵：steer——生成中立即注入，空闲时与 ↵ 同义；Ctrl+Q：进待发送队列（= 生成中 ↵ 的行为）
+            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing && (e.key === "Enter" || e.key === "q" || e.key === "Q")) {
+              e.preventDefault();
+              sendPrompt(e.key === "Enter");
+              return;
+            }
+            // Alt+↑：拉回排队消息（后发先回）——先 steer 队列，空则待发送队列；对齐 omp 的 app.message.dequeue
+            //（不绑 CLI 的备选键 ⇧↑：GUI 里那是文本选择，抢占会破坏编辑器惯用法）
+            if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === "ArrowUp") {
+              const steers = (s?.items ?? []).filter((it) => it.role === "user" && it.pending === "steer");
+              const target = steers[steers.length - 1];
+              const q = target ? null : s?.queued?.[(s.queued?.length ?? 0) - 1];
+              if (!target && !q) return;
+              e.preventDefault();
+              if (target) editQueueMsg(s, target);
+              else editQueueMsg(s, { role: "user", text: q.text || "", pending: "queued" });
+              return;
             }
             // isComposing：中文输入法选字中的回车不发送
             if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
@@ -542,13 +596,23 @@ export default function Composer({ inWelcome }) {
             <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
           </button>
           <button
-            className={"send" + (hasDraft ? " ready" : "") + (stopping ? " stopping" : "")}
+            className={"send" + (hasDraft ? " ready" : "") + (canAbort ? " stopping" : "")}
             id="sendBtn"
             disabled={stopping && stopPending}
-            title={stopping ? (bashRunning && !s?.streaming ? "停止命令" : "停止生成") : s?.streaming ? "发送（排队，当前任务完成后发出）" : "发送"}
+            title={
+              escArmed
+                ? "再按一次 Esc 中断生成"
+                : stopping
+                  ? bashRunning && !s?.streaming
+                    ? "停止命令"
+                    : "停止生成"
+                  : s?.streaming
+                    ? "发送（排队，当前任务完成后发出）"
+                    : "发送"
+            }
             onClick={() => {
-              // 停止形态：纯 bash 执行中 → 中止命令；流式中 → 中止生成；发送形态：照常发送/排队
-              if (stopping) {
+              // 取消形态（停止生成 / Esc 示警窗口）：中止生成；发送形态：照常发送/排队
+              if (canAbort) {
                 if (stopPending) return;
                 setStopPending(true); // 防连点：turn_end / bash_done 后复位
                 send({ type: bashRunning && !s?.streaming ? "bash_abort" : "abort_session", sessionId: s.sessionId });
@@ -557,7 +621,7 @@ export default function Composer({ inWelcome }) {
               sendPrompt();
             }}
           >
-            <Icon name={stopping ? "stop" : "uploadSolid"} />
+            <Icon name={canAbort ? "stopSolid" : "arrowUp"} size={16} />
           </button>
         </div>
         {/* 权限模式（omp 三值，大行样式） */}

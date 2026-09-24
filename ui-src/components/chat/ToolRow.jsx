@@ -2,7 +2,7 @@
 // （renderToolItem/toolKind + 各 render 函数）。加减工具标签只改本文件。
 import { notify } from "../../store.js";
 import Icon from "../../Icon.jsx";
-import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow } from "./parts.jsx";
+import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow, Spin } from "./parts.jsx";
 import EditRow, { renderChange, renderReadGroup } from "./EditRow.jsx";
 import { isDeviceEvent, deviceNameOf } from "./util.js";
 import ThinkingRow from "./ThinkingRow.jsx";
@@ -13,7 +13,7 @@ function CmdCard({ command, item, lift }) {
     <div className={"cmd-card" + (lift ? " lift" : " drop")}>
       <FadeBox className="cmd-card-cmd">{command || "（无命令）"}</FadeBox>
       <FadeBox className="cmd-card-out" as="pre">
-        {item.output || (item.running ? "运行中…" : "（无输出）")}
+        {item.output || (item.running ? <Spin /> : "（无输出）")}
       </FadeBox>
     </div>
   );
@@ -32,7 +32,7 @@ function CmdRow({ item, command, iconLabel }) {
       <div className="cmd" style={{ cursor: "pointer" }} onClick={toggle}>
         <span className="c-ic"><Icon name="termBox" size={13} />{iconLabel}</span>
         <Ellip className="c-tx" title={command}>{command || ""}</Ellip>
-        {item.running && <span className="cmd-spin" />}
+        {item.running && <Spin />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>
@@ -62,7 +62,7 @@ function CmdRowUI({ sub, open, onToggle }) {
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
       <span className="lbl">{sub.name === "eval" ? "求值" : "终端"}</span>
       <Ellip className="c-tx" title={command}>{command}</Ellip>
-      {sub.running && <span className="cmd-spin" />}
+      {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
         <Icon name="chevronRight" />
       </span>
@@ -147,6 +147,7 @@ function renderTodo(item) {
       <span className="lbl">待办</span>
       <Ellip className="td-tx" title={content}>{content}</Ellip>
       {td && td.total > 0 && <span className="td-n">{`${td.done}/${td.total}`}</span>}
+      {item.running && <Spin />}
     </div>
   );
 }
@@ -161,6 +162,7 @@ function renderGrep(item) {
       <span className="lbl">搜索</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
+      {item.running && <Spin />}
     </div>
   );
 }
@@ -173,6 +175,7 @@ function renderGlob(item) {
       <span className="lbl">查找</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
+      {item.running && <Spin />}
     </div>
   );
 }
@@ -185,6 +188,7 @@ function renderMcp(item) {
       <Icon name="plug" size={13} />
       <span className="lbl">MCP</span>
       {tool && <Ellip className="path" title={item.name}>{` ${tool}`}</Ellip>}
+      {item.running && <Spin />}
     </div>
   );
 }
@@ -218,11 +222,12 @@ function AskArgs({ questions }) {
 }
 function ContentCard({ item, lift }) {
   const detailText = item.details?.displayContent?.text;
+  // 结果文本：回包 output / 读取原文 / details JSON 兜底；三者皆无时按 running 分流——
+  // 结果还没到走 Spin 占位，本来就没有才是「（无输出）」
   const outText =
     item.output ||
     detailText ||
-    (item.details ? truncateText(JSON.stringify(item.details, null, 2)) : "") ||
-    (item.running ? "运行中…" : "（无输出）");
+    (item.details ? truncateText(JSON.stringify(item.details, null, 2)) : "");
   return (
     <div className={"cmd-card" + (lift ? " lift" : " drop")}>
       {item.name === "ask" && Array.isArray(item.args?.questions) ? (
@@ -233,7 +238,7 @@ function ContentCard({ item, lift }) {
         </FadeBox>
       )}
       <FadeBox className="cmd-card-out" as="pre">
-        <LinkedText text={outText} />
+        {outText ? <LinkedText text={outText} /> : item.running ? <Spin /> : "（无输出）"}
       </FadeBox>
     </div>
   );
@@ -368,7 +373,7 @@ function DeviceRowUI({ sub, open, onToggle }) {
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
       <span className="lbl">设备</span>
       <Ellip className="c-tx" title={detail}>{detail}</Ellip>
-      {sub.running && <span className="cmd-spin" />}
+      {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
         <Icon name="chevronRight" />
       </span>

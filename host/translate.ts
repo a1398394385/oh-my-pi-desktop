@@ -420,6 +420,14 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
   }
 }
 
+// 后台耗时命令的阶段分隔行文案：[执行中, 完成]。执行中由 host 瞬时帧下发，
+// 完成由落盘痕（compaction / title_change 条目）转出——两端共用此表
+export const PHASE_TEXT: Record<string, [string, string]> = {
+  compact: ["正在压缩上下文", "上下文已压缩"],
+  handoff: ["正在生成交接文档", "交接文档已生成"],
+  rename: ["正在重命名会话", "会话已重命名"],
+};
+
 // 磁盘历史条目 → 前端 transcript（思考块可展开；工具带路径/命令/行数）
 // 轮次分组：一条用户消息开启一轮，轮内 thinking/tool/中间 assistant 收进 loop 组（收起显示），
 // 只把最后一条 assistant 文本留在组外作为该轮的对外结果——与实时 turn_end 的收起行为一致。
@@ -454,6 +462,22 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   };
 
   for (const e of entries) {
+    // 执行痕条目 → 阶段分隔行：任一端执行（CLI/桌面），另一端加载会话即显示执行记录。
+    // compaction.method 区分交接与压缩（旧会话无 method，按压缩显示）；
+    // title_change 只认用户改名（source "auto" 是新会话自动起标题，不算执行记录）
+    if (e.type === "compaction") {
+      finalizeRun();
+      const cmd = e.method === "handoff" ? "handoff" : "compact";
+      out.push({ role: "phase", phase: "done", command: cmd, text: PHASE_TEXT[cmd][1] });
+      continue;
+    }
+    if (e.type === "title_change") {
+      if (e.source === "user") {
+        finalizeRun();
+        out.push({ role: "phase", phase: "done", command: "rename", text: PHASE_TEXT.rename[1] });
+      }
+      continue;
+    }
     if (e.type !== "message") continue;
     const msg = e.message ?? {};
     const { role, content } = msg;

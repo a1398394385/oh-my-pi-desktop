@@ -4,6 +4,7 @@
 import { Fragment, useState } from "react";
 import { S, useStore, activeOpen } from "../../store.js";
 import Icon from "../../Icon.jsx";
+import { Spin } from "../chat/parts.jsx";
 
 // 聚合会话内的后台任务：hub 工具调用（start/stop/cancel 按进程名配对）+ 运行中的终端命令
 function getBgTasksForSession(s) {
@@ -49,6 +50,8 @@ function getBgTasksForSession(s) {
         rawItem: it,
       };
 
+      // 任务存活态只看 start/stop/cancel 配对。不能回落到 it.running：那是「hub 工具
+      // 执行中」（tool 帧到 tool_update 之间），list/status 之类同样命中，不是进程存活态
       if (op === "start") {
         taskItem.running = true;
         taskItem.statusText = "运行中";
@@ -62,9 +65,6 @@ function getBgTasksForSession(s) {
           started.statusText = "已停止";
           liveProcesses.delete(procName);
         }
-      } else if (it.running) {
-        taskItem.running = true;
-        taskItem.statusText = "运行中";
       }
 
       tasks.push(taskItem);
@@ -186,7 +186,7 @@ function BgCmdExpand({ task, onClose }) {
       <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
         <b>输出 / 响应:</b>
       </div>
-      <pre className="bgcmd-out">{task.output || (task.running ? "任务运行中…" : "（无输出）")}</pre>
+      <pre className="bgcmd-out">{task.output || (task.running ? <Spin /> : "（无输出）")}</pre>
     </div>
   );
 }

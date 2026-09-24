@@ -31,6 +31,7 @@ function saveUiPrefs() {
 // 外观应用（旧版 applyAppearance：字号/字体/行号/换行/思考块 data 属性）
 const FONT_STACKS = {
   default: "var(--sans)",
+  zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   pingfang: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
   songti: '"Songti SC", "STSong", "SimSun", serif',
   kaiti: '"Kaiti SC", "STKaiti", "KaiTi", serif',

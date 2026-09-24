@@ -4,6 +4,7 @@
 import { useRef } from "react";
 import { S, useStore, notify, activeOpen } from "../../store.js";
 import { inlineCodeHtml } from "./helpers.js";
+import { Spin } from "../chat/parts.jsx";
 
 export default function SubagentPage() {
   useStore();
@@ -100,7 +101,7 @@ function ToolLine({ t }) {
           {sum}
         </span>
       ) : null}
-      {t.running ? <span className="path">运行中…</span> : null}
+      {t.running ? <Spin /> : null}
     </div>
   );
 }

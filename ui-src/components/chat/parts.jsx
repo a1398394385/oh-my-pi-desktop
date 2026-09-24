@@ -13,6 +13,19 @@ import LightweightDiff from "../diff/LightweightDiff.jsx";
 
 export { uniqueFiles, splitPath };
 
+// ---------- 工具结果未到的统一占位（转圈 + 省略号） ----------
+// 判据固定取 item.running（tool 帧已到、tool_update 未到）：所有工具的 output 位在结果
+// 到达前一律渲染它。各行不得再用「内容缺省」反推运行态——内容缺失既可能是「还没到」
+// 也可能是「本来就没有」（目录读取、空结果），只有 running 分得清（BUG-016 的同源教训）
+export function Spin() {
+  return (
+    <span className="pend" role="status">
+      <Icon name="loader" size={13} className="pend-ico" />
+      …
+    </span>
+  );
+}
+
 // ---------- 省略号截断（e-wrap：文本段 e-tx + 省略号段 e-dot） ----------
 // 「…」与前文字 3px 间距：原生 text-overflow:ellipsis 做不到。文本段被裁切时省略号段
 // 才显示；共享 ResizeObserver 跟随容器宽窄/界面缩放重算（原 ellipsizable 的组件化）
@@ -159,7 +172,15 @@ export function Counts({ item }) {
 export function EditBrief({ item, path, lift }) {
   const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache.get(path);
   const cls = "ed-brief" + (lift ? " lift" : " drop");
-  if (diff === undefined) return <FadeBox className={cls}><div className="placeholder">加载中…</div></FadeBox>;
+  if (diff === undefined) {
+    // 两种「还没到」：工具本身还在跑（当次回包未到 → Spin），或回包已到但 git diff
+    // 请求在途（工具已结束 → 保留原文案）。判据同一口径：item.running
+    return (
+      <FadeBox className={cls}>
+        <div className="placeholder">{item.running ? <Spin /> : "加载中…"}</div>
+      </FadeBox>
+    );
+  }
   if (!diff) return <FadeBox className={cls}><div className="placeholder">（无差异内容）</div></FadeBox>;
   return (
     <FadeBox className={cls}>
@@ -175,8 +196,15 @@ export function ReadRow({ item, inGroup }) {
   const path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
   const { dir } = splitPath(path);
   const [closing, close] = useLift();
-  const open = item.readExpanded && !closing;
-  const hasContent = !!item.details?.displayContent?.text;
+  // 展开体渲染读 details.displayContent。内容缺失分两种：结果还没到（item.running，
+  // 如「运行中默认展开」在 details 到达前就置了 readExpanded）与本来就没有（目录读取、
+  // 空结果）。前者展开显示 Spin 占位，后者一律不可展开；dc 缺省时绝不对 dc.text 取属性，
+  // 否则运行期任意一次插入渲染直接炸掉整棵组件树（BUG-016：/goal 流式中黑屏根因）
+  const dc = item.details?.displayContent;
+  const running = !!item.running;
+  const canOpen = !item.details?.isDirectory && (!!dc || running);
+  const open = item.readExpanded && !closing && canOpen;
+  const hasContent = !!dc?.text;
   const toggle = () => {
     if (item.readExpanded) close(() => { item.readExpanded = false; notify(); });
     else {
@@ -184,7 +212,6 @@ export function ReadRow({ item, inGroup }) {
       notify();
     }
   };
-  const dc = item.details?.displayContent;
   return (
     <>
       {/* 组内紧凑态复用 chg-item（与更改组内编辑行同款间距）；独立行保持 act.read */}
@@ -198,8 +225,8 @@ export function ReadRow({ item, inGroup }) {
       ) : (
       <div
         className={inGroup ? "chg-item" : "act read"}
-        style={hasContent ? { cursor: "pointer" } : undefined}
-        onClick={hasContent ? toggle : undefined}
+        style={canOpen ? { cursor: "pointer" } : undefined}
+        onClick={canOpen ? toggle : undefined}
       >
         <Icon name="file" size={13} />
         <span className="lbl">读取</span>
@@ -212,16 +239,21 @@ export function ReadRow({ item, inGroup }) {
         ) : (
           item.text || "read"
         )}
-        {hasContent && (
+        {running && <Spin />}
+        {canOpen && (
           <span className={"ed-arrow" + (open ? " open" : "")}>
             <Icon name="chevronRight" />
           </span>
         )}
       </div>
       )}
-      {open && (
+      {open && (dc ? (
         <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(path)} lift={closing} />
-      )}
+      ) : (
+        <FadeBox className={"ed-brief" + (closing ? " lift" : " drop")}>
+          <div className="placeholder"><Spin /></div>
+        </FadeBox>
+      ))}
     </>
   );
 }

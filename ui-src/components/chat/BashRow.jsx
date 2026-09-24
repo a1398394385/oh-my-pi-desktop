@@ -3,7 +3,7 @@
 // 已取消 / 不进上下文标签 / 错误文本。默认收起，点击头部展开。
 import { notify } from "../../store.js";
 import Icon from "../../Icon.jsx";
-import { Ellip, useLift } from "./parts.jsx";
+import { Ellip, useLift, Spin } from "./parts.jsx";
 
 export default function BashRow({ item }) {
   const [closing, close] = useLift();
@@ -17,7 +17,7 @@ export default function BashRow({ item }) {
   };
   // 状态区：running 转圈优先；error 红字；cancelled 灰标；其余按 exitCode 着色
   let status;
-  if (item.running) status = <span className="cmd-spin" />;
+  if (item.running) status = <Spin />;
   else if (item.error != null) status = <span className="bad">{item.error}</span>;
   else if (item.cancelled) status = <span>已取消</span>;
   else if (item.exitCode != null && item.exitCode !== 0) status = <span className="bad">{`exit ${item.exitCode}`}</span>;
@@ -34,7 +34,7 @@ export default function BashRow({ item }) {
       </div>
       {open && (
         <pre className={"bash-out" + (closing ? " lift" : " drop")}>
-          {item.output || "（无输出）"}
+          {item.output || (item.running ? <Spin /> : "（无输出）")}
           {item.truncated ? "\n…（输出已截断）" : ""}
         </pre>
       )}

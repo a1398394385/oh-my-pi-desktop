@@ -10,11 +10,12 @@
 //
 // 模块分工：bootstrap.ts（SDK 加载顺序闸门）/ state.ts（共享可变状态 H）/ profile.ts（profile·env·项目清单）/
 // models.ts（模型目录与设置快照）/ assets.ts（skills·mcp·agents 磁盘资产）/ stats.ts（使用统计）/
-// translate.ts（omp 事件 → 前端窄事件）。本文件只保留 WebSocket 服务与会话生命周期。
+// translate.ts（omp 事件 → 前端窄事件）/ acp-*.ts（ACP 压缩工具面与视图改写）/
+// session-context.ts（read_session_context 历史会话检索工具）。本文件只保留 WebSocket 服务与会话生命周期。
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { mkdir, readdir, readFile, writeFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, rm, stat, open } from "node:fs/promises";
 import {
   SessionManager,
   createAgentSession,
@@ -43,8 +44,14 @@ import {
   normalizeLocalScheme,
 } from "./bootstrap.ts";
 import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
+import type {
+  AvailableCommandsSession,
+  InternalAvailableSlashCommand,
+} from "@oh-my-pi/pi-coding-agent/slash-commands/available-commands";
 import { createTerminal, disposeTerminalsOf, terminalFor } from "./pty.ts";
+import { GoalController, type GoalSession } from "./goal.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
+import { createSessionContextTools } from "./session-context.ts";
 import { AcpSessionState, parseAcpContextWindow, type AcpNudgeConfig } from "./acp-state.ts";
 import { createAcpContextExtension } from "./acp-context.ts";
 import {
@@ -84,7 +91,7 @@ import {
   type AssetKind,
 } from "./assets.ts";
 import { collectUsageStats } from "./stats.ts";
-import { translateEvent, translateSubagentEvent, entriesToTranscript, treeToDisplay, sumRunDurationMs } from "./translate.ts";
+import { translateEvent, translateSubagentEvent, entriesToTranscript, treeToDisplay, sumRunDurationMs, PHASE_TEXT } from "./translate.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits, refreshAllLimits, listAllProviders } from "./limits/index.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
@@ -187,9 +194,25 @@ async function writeAcpEnabled(enabled: boolean): Promise<void> {
   await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, enabled } }, null, 2));
 }
 
-/** 设置帧 = 底座设置快照 + host 侧 ACP 开关（不下沉 models.ts，避免模块环）。 */
-function settingsWithAcp() {
-  return { ...settingsSnapshot(), acpEnabled: readAcpEnabled() };
+/** 历史会话检索（read_session_context）总开关（omp-desktop.json 的 sessionContext.enabled）。
+ *  与 readAcpEnabled 同语义：缺省/非法值按开启处理，只有显式写 false 才关闭。 */
+function readSessionContextEnabled(): boolean {
+  const section = readAcpRaw().sessionContext as Record<string, unknown> | undefined;
+  if (!section || typeof section !== "object") return true;
+  return section.enabled !== false;
+}
+
+/** 写回 sessionContext.enabled：先读盘再覆盖，保留 omp-desktop.json 的其他键与段内其他字段。 */
+async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
+  const raw = readAcpRaw();
+  const section =
+    raw.sessionContext && typeof raw.sessionContext === "object" ? (raw.sessionContext as Record<string, unknown>) : {};
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, sessionContext: { ...section, enabled } }, null, 2));
+}
+
+/** 设置帧 = 底座设置快照 + host 侧实验开关（不下沉 models.ts，避免模块环）。 */
+function settingsFrame() {
+  return { ...settingsSnapshot(), acpEnabled: readAcpEnabled(), sessionContextEnabled: readSessionContextEnabled() };
 }
 
 // ---------- 输入框 sigil：命令清单与 @ 文件候选 ----------
@@ -217,15 +240,73 @@ function removedSlashHint(text: string): string | null {
   return hint ? `/${parsed.name} 已移除：${hint}` : null;
 }
 
+// 新建会话页隐藏的会话级命令：操作/统计「已存在的会话」，首条消息发出前无意义
+// （压缩/交接/重试/会话管理/导出/统计等）。goal、memory、工具与插件管理、skill:* 等保留。
+const NEW_SESSION_HIDDEN_SLASH_COMMANDS: Record<string, true> = {
+  compact: true,
+  handoff: true,
+  shake: true,
+  retry: true,
+  fresh: true,
+  rename: true,
+  move: true,
+  wt: true,
+  "add-dir": true,
+  "remove-dir": true,
+  dirs: true,
+  session: true,
+  pin: true,
+  jobs: true,
+  usage: true,
+  stats: true,
+  context: true,
+  trace: true,
+  dump: true,
+  share: true,
+  export: true,
+  todo: true,
+};
+
+// /goal：底座条目是 TUI-only（无 handle 不进清单），注入桌面实现的同名条目（执行走 dispatchSlashInput）
+const GOAL_SLASH_COMMAND = {
+  name: "goal",
+  description: "Toggle goal mode (persistent autonomous objective for this session)",
+  input: { hint: "[objective]" },
+  source: "builtin" as const,
+  subcommands: [
+    { name: "set", description: "Set or replace the goal" },
+    { name: "pause", description: "Pause the current goal" },
+    { name: "resume", description: "Resume a paused goal" },
+    { name: "drop", description: "Drop the current goal" },
+    { name: "budget", description: "Adjust the token budget" },
+  ],
+};
+
+// /plan：底座同样只有 handleTui（buildAvailableSlashCommands 的 `if (!command.handle) continue`
+// 把它挡在清单外，手输还会被当普通 prompt 发给模型），注入桌面实现的同名条目。
+const PLAN_SLASH_COMMAND = {
+  name: "plan",
+  description: "Toggle plan mode (agent plans before executing)",
+  input: { hint: "[prompt]" },
+  source: "builtin" as const,
+};
+
 // 命令清单帧：内置 + skill + 扩展 + 自定义 + 文件命令，可无 TUI 执行的那批
 // （executeAcpBuiltinSlashCommand 的姊妹面）。映射成前端 PaletteMenu 直接消费的形状。
-async function pushCommands(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
-  const list = (await buildAvailableSlashCommands(entry.session)).filter((c) => !REMOVED_SLASH_COMMANDS[c.name]);
+function sendCommandsFrame(
+  ws: { send(data: string): unknown },
+  sessionId: string | null,
+  list: InternalAvailableSlashCommand[],
+  hideSessionCommands: boolean,
+) {
+  const commands = list
+    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]))
+    .concat(GOAL_SLASH_COMMAND, PLAN_SLASH_COMMAND);
   ws.send(
     JSON.stringify({
       type: "commands",
       sessionId,
-      commands: list.map((c) => ({
+      commands: commands.map((c) => ({
         name: c.name,
         aliases: c.aliases ?? [],
         description: c.description ?? "",
@@ -235,6 +316,24 @@ async function pushCommands(ws: { send(data: string): unknown }, sessionId: stri
       })),
     }),
   );
+}
+
+async function pushCommands(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  sendCommandsFrame(ws, sessionId, await buildAvailableSlashCommands(entry.session), false);
+}
+
+// 新建会话页的命令清单（无会话条目）：skills/自定义命令借用池内任一会话（同一套配置加载，
+// 各会话一致）；文件命令按新建项目 cwd 扫描；隐藏会话级命令。池内无会话时 skills 回退空。
+async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: string) {
+  const any = sessions.values().next().value as PoolEntry | undefined;
+  const stub = {
+    customCommands: any?.session.customCommands ?? [],
+    skills: any?.session.skills ?? [],
+    skillsSettings: any?.session.skillsSettings ?? { enableSkillCommands: true },
+    setSlashCommands: () => {},
+    sessionManager: { getCwd: () => cwd },
+  } as unknown as AvailableCommandsSession;
+  sendCommandsFrame(ws, null, await buildAvailableSlashCommands(stub), true);
 }
 
 // @ 候选：绝对路径/家目录前缀走 readdir 前缀列举（对齐 TUI autocomplete 的目录补全），
@@ -274,6 +373,37 @@ const PLAN_MODE_NAME = "plan";
 const PLAN_FILE_URL = "local://PLAN.md"; // 与 ACP 默认计划文件同址
 const PLAN_APPROVE = "批准并执行";
 const PLAN_REFINE = "继续修改";
+
+/** command_output 帧：按 sessionId 找当前挂载连接推送（goal 控制器等跨连接输出用）。 */
+function pushCommandOutput(sessionId: string, text: string) {
+  const w = sessions.get(sessionId)?.attachedWs as { send(data: string): unknown } | null;
+  if (w) w.send(JSON.stringify({ type: "command_output", sessionId, text }));
+}
+
+/** goal 状态帧：会话状态卡顶部目标区展示（无 goal 推 null，前端连分隔线一起隐藏）。 */
+function pushGoal(sessionId: string) {
+  const entry = sessions.get(sessionId);
+  const w = entry?.attachedWs as { send(data: string): unknown } | null;
+  if (!entry || !w) return;
+  const state = entry.session.getGoalModeState();
+  w.send(
+    JSON.stringify({
+      type: "goal",
+      sessionId,
+      goal: state?.goal
+        ? {
+            objective: state.goal.objective,
+            status: state.goal.status,
+            enabled: state.enabled === true,
+            tokenBudget: state.goal.tokenBudget ?? null,
+            tokensUsed: state.goal.tokensUsed,
+            timeUsedSeconds: state.goal.timeUsedSeconds,
+            costUsed: entry.goal.costUsed,
+          }
+        : null,
+    }),
+  );
+}
 
 /** 待办清单帧：冷加载/池内复用均推（TodoTracker 构造时已从 transcript 分支同步）。
     前端 session_created 重建对象后靠它回填历史存量；空清单不推（无卡）。 */
@@ -408,6 +538,40 @@ function setPlanMode(
   pushPlanMode(ws, sessionId, entry);
 }
 
+/**
+ * /plan 的 args 分发（底座 TUI handlePlanModeCommand 的裁剪版：桌面无 paused 中间态，
+ * 退出即清状态）。无参 = 反转当前状态；带 prompt = 开启后把 prompt 当首个计划轮次。
+ * 返回 prompt（调用方转正常 prompt 链路）或 null（已消费）。
+ */
+function handlePlanCommand(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  entry: PoolEntry,
+  args: string,
+): string | null {
+  if (entry.session.getGoalModeState()) {
+    pushCommandOutput(sessionId, "目标模式下无法使用计划模式，先 /goal drop 退出目标模式。");
+    return null;
+  }
+  if (!entry.session.settings.get("plan.enabled")) {
+    pushCommandOutput(sessionId, "计划模式未启用：在设置中打开 plan.enabled 后再试。");
+    return null;
+  }
+  if (entry.session.getPlanModeState()?.enabled) {
+    setPlanMode(ws, sessionId, entry, false);
+    pushCommandOutput(sessionId, "计划模式已退出。");
+    return null;
+  }
+  setPlanMode(ws, sessionId, entry, true);
+  const prompt = args.trim();
+  if (prompt) return prompt;
+  pushCommandOutput(
+    sessionId,
+    `计划模式已开启：只读探索后把计划写入 ${PLAN_FILE_URL} 并提案审批。退出：/plan（或权限胶囊右侧「计划」按钮）。`,
+  );
+  return null;
+}
+
 /** 会话重开时按最后一条 mode_change 恢复计划模式（TUI #reconcileModeFromSession 的桌面版） */
 function reconcilePlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry, entries: any[]) {
   const last = [...entries].reverse().find((e) => e?.type === "mode_change");
@@ -424,6 +588,8 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
   // 实验性功能页的总开关（omp-desktop.json 的 acp.enabled，默认开启）：只决定本会话
   // 是否注入 ACP 工具面与 context 视图改写；会话创建后无法热切换，故开关变更对新会话生效
   const acpEnabled = readAcpEnabled();
+  // 历史会话检索开关（omp-desktop.json 的 sessionContext.enabled，实验性功能页可关）
+  const sessionContextEnabled = readSessionContextEnabled();
   // nudge 分母：omp-desktop.json 的 acp.contextWindow（固定值，如 2000000 / "1M"）
   // 优先于模型注册表窗口；两者皆未知则 nudge 整体禁用
   const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
@@ -440,7 +606,11 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     model: initialModel ?? H.modelOverride,
     agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
     sessionManager, // host 侧 manager 必须注入 SDK：否则 rename/compact/branch 走 entry.manager（孤儿实例）操作到另一个会话文件
-    customTools: acpEnabled ? (createAcpCompressTools(acpState) as never) : [], // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
+    // read_session_context（历史会话检索）：只读自身 profile 的会话，见 host/session-context.ts
+    customTools: [
+      ...(acpEnabled ? createAcpCompressTools(acpState) : []),
+      ...(sessionContextEnabled ? createSessionContextTools() : []),
+    ] as never, // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
     extensions: acpEnabled ? [createAcpContextExtension(acpState)] : [], // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
     disableExtensionDiscovery: true,
     enableMCP: false,
@@ -461,6 +631,8 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     activeMs: 0,
     activeStartedAt: null,
     path: session.sessionFile,
+    pollKnownSize: 0, // 外部写入检测：0 = 未首扫
+    externalWrite: false,
     cwd,
     isGit: isGitWorktree(cwd),
     queuedTexts: [], // 排队消息文本快照（turn_end 竞态兜底）
@@ -469,6 +641,12 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     manager: sessionManager, // rename/compact 等需要直接操作 SessionManager 的 RPC 用
     title: null,
     mentionScanIndex: 0,
+    goal: new GoalController({
+      // SDK 具体会话类型与窄接口的泛型签名不完全结构兼容，边界处收敛为具名窄接口
+      session: session as unknown as GoalSession,
+      output: (text) => pushCommandOutput(sessionId, text),
+      onChange: () => pushGoal(sessionId),
+    }),
   };
   return { sessionId, entry, eventBus: result.eventBus };
 }
@@ -500,7 +678,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
           approvalMode: H.settings.get("tools.approvalMode"),
           models: modelsPayload(),
           ...modelsDefaults(),
-          settings: settingsWithAcp(),
+          settings: settingsFrame(),
         }),
       );
     },
@@ -520,6 +698,19 @@ const server = Bun.serve<{ sessionId: string | null }>({
           case "load_session":
             await handleLoadSession(ws, msg.path);
             break;
+          case "reload_session": {
+            // 强制从磁盘重建（外部写入提示条的「重新加载」）：池复用分支只推内存快照，
+            // 拿不到外部进程写入的内容；释放模式对齐 delete_session（unsubscribe + 出池）
+            const p = String(msg.path ?? "").trim();
+            if (!p) throw new Error("缺少 path");
+            for (const [key, e] of sessions.entries()) {
+              if (e.path !== p) continue;
+              e.unsubscribe();
+              sessions.delete(key);
+            }
+            await handleLoadSession(ws, p);
+            break;
+          }
           case "list_sessions":
             await handleListSessions(ws);
             break;
@@ -709,6 +900,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
               entry.unsubscribe();
               sessions.delete(msg.sessionId);
               entry.path = newPath;
+              entry.pollKnownSize = 0; // 换了文件：外部写入检测游标与标志重置
+              entry.externalWrite = false;
               entry.providerSessionId = entry.manager.getSessionId?.() ?? newSessionId; // 请求凭证粘性键随新会话
               entry.queuedTexts = [];
               entry.consumedTexts = [];
@@ -851,7 +1044,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
             break;
           }
           case "prompt":
-            await handlePrompt(ws, msg.sessionId, String(msg.text ?? ""), msg.files);
+            // steer=true：流式中不排队而是立即注入（当前工具批次后），idle 时底座忽略该参数照常开 turn
+            await handlePrompt(ws, msg.sessionId, String(msg.text ?? ""), msg.files, msg.steer === true);
             break;
           case "peek_queued":
             handlePeekQueued(ws, msg.sessionId);
@@ -980,10 +1174,14 @@ const server = Bun.serve<{ sessionId: string | null }>({
             break;
           }
           case "list_commands": {
-            // 斜杠命令清单（输入框 / 补全用）：按需拉取，不做会话生命周期推送
-            const entry = sessions.get(msg.sessionId);
-            if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
-            await pushCommands(ws, msg.sessionId, entry);
+            // 斜杠命令清单（输入框 / 补全用）：按需拉取，不做会话生命周期推送。
+            // 无 sessionId = 新建会话页请求（隐藏会话级命令，见 pushNewSessionCommands）
+            const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
+            if (entry) {
+              await pushCommands(ws, msg.sessionId, entry);
+            } else {
+              await pushNewSessionCommands(ws, msg.cwd ? String(msg.cwd) : defaultCwd);
+            }
             break;
           }
           case "list_files": {
@@ -1378,7 +1576,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             break;
           }
           case "get_settings":
-            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
             break;
           case "get_settings_schema":
             ws.send(JSON.stringify({ type: "settings_schema", schema: SETTINGS_SCHEMA }));
@@ -1427,14 +1625,20 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (isModelKey) rebuildScopedModels();
             await H.settings.flush();
             if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
-            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
             break;
           }
           case "set_acp_enabled": {
             // 实验性功能页开关：写入 omp-desktop.json 的 acp.enabled（只影响此后创建的会话——
             // 工具面与 context 扩展在 createSessionCore 里注入，无法热插拔到已打开的会话）
             await writeAcpEnabled(!!msg.enabled);
-            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+            break;
+          }
+          case "set_session_context_enabled": {
+            // 实验性功能页开关：写入 omp-desktop.json 的 sessionContext.enabled（同上，只影响此后创建的会话）
+            await writeSessionContextEnabled(!!msg.enabled);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
             break;
           }
           case "set_desktop_env": {
@@ -1447,7 +1651,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             H.desktopEnv = next;
             H.desktopEnvFilePresent = true;
             applyDesktopEnv(next);
-            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp(), restartHint: true }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame(), restartHint: true }));
             break;
           }
           case "get_models_catalog":
@@ -1845,7 +2049,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const p = String(msg.profile ?? "").trim();
             if (!p) throw new Error("Profile 名称不能为空");
             await applyProfile(p);
-            ws.send(JSON.stringify({ type: "settings", settings: settingsWithAcp() }));
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
             ws.send(JSON.stringify(modelsFrame()));
             ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
             await handleListSessions(ws);
@@ -1982,6 +2186,10 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
     }
+    // goal 模式钩子：续跑调度与工具集收尾（对齐 TUI #handleGoalSessionEvent 的分支）
+    if (ev.type === "agent_start") entry.goal.onAgentStart();
+    if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) entry.goal.onUserMessage();
+    if (ev.type === "goal_updated") entry.goal.onGoalUpdated(ev.state);
     // 会话活跃时长计时（TUI status-line time_spent 同款）：agent_start 开窗（幂等，重入不双计），
     // 真正收尾的 agent_end 折窗；isTerminal === false 的中间 agent_end 之后还会续跑，不折
     if (ev.type === "agent_start") {
@@ -2006,6 +2214,8 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
       entry.mentionScanIndex = entries.length;
       pushContext(ws, sessionId, entry);
       pushSessionStats(ws, sessionId, entry);
+      // goal 终局评估：完成收尾 / 无进展抑制 / 调度续跑（对齐 TUI #handleGoalSessionEvent）
+      void entry.goal.onAgentEnd(ev.messages ?? []);
       // 收尾竞态兜底：底座在 run 收尾 abort 时，正在 claim 的队列消息会被丢弃且不回队
       // （agent.ts #prepareQueuedMessageBatch 的 dequeue-先移出 + abort-不 restore），表现为
       // 「上次快照里有、现在队列没有、dequeue hook 从未通知消费」。host 重新发送该消息。
@@ -2103,8 +2313,69 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
   };
   entry.sessionResult.setToolUIContext(uiCtx, true);
   // 关键一步（ACP 同款，acp-agent.ts:2631）：runner.hasUI() 判的是 initialize 注入的 uiContext，
-  // 只调 setToolUIContext 不够——审批 gate 会 fail-closed「no interactive UI」
-  entry.session.extensionRunner?.initialize({}, {}, {}, uiCtx, "rpc");
+  // 只调 setToolUIContext 不够——审批 gate 会 fail-closed「no interactive UI」。
+  //
+  // actions / contextActions 必须给全：runner.initialize 把 contextActions.getModel 直接赋给内部
+  // #getModel（runner.ts:695，没有 ?? 兜底），传空对象会让它变成 undefined；此后任何经
+  // createCustomToolContext 求值 ctx.model 的 customTool（sdk.ts:987）都抛
+  // 「getModel is not a function」——2026-09-23 实测 read_session_context 因此整工具失败。
+  // 第三参传 undefined 而不是空对象：空对象同样会把 #waitForIdleFn / #newSessionHandler 等赋成
+  // undefined，只有 undefined 才保留 runner 的 no-op 默认（runner.ts:704 `if (commandContextActions)`）。
+  entry.session.extensionRunner?.initialize(
+    {
+      sendMessage: (message, options) => {
+        void entry.session.sendCustomMessage(message, options).catch((err: unknown) => {
+          process.stderr.write(`[host] 扩展 sendMessage 失败: ${String(err)}\n`);
+        });
+      },
+      sendUserMessage: (content, options) => {
+        void entry.session.sendUserMessage(content, options);
+      },
+      appendEntry: (customType, data) => {
+        entry.session.sessionManager.appendCustomEntry(customType, data);
+      },
+      setLabel: (targetId, label) => {
+        entry.session.sessionManager.appendLabelChange(targetId, label);
+      },
+      getActiveTools: () => entry.session.getEnabledToolNames(),
+      getAllTools: () => entry.session.getAllToolInfos(),
+      setActiveTools: async (toolNames) => {
+        await entry.session.setActiveToolsByName(toolNames);
+      },
+      // 桌面无扩展命令面：UI 命令清单走 pushCommands 的 buildAvailableSlashCommands 独立路径
+      getCommands: () => [],
+      setModel: async (model) => {
+        if (!(await entry.session.modelRegistry.getApiKey(model))) return false;
+        await entry.session.setModel(model);
+        return true;
+      },
+      getThinkingLevel: () => entry.session.thinkingLevel,
+      setThinkingLevel: (level) => entry.session.setThinkingLevel(level),
+      getServiceTiers: () => entry.session.serviceTierByFamily,
+      setServiceTier: (family, tier) => entry.session.setServiceTierFamily(family, tier),
+      getSessionName: () => entry.session.sessionManager.getSessionName(),
+      setSessionName: async (name) => {
+        await entry.session.sessionManager.setSessionName(name, "user");
+      },
+    },
+    {
+      getModel: () => entry.session.model,
+      isIdle: () => !entry.session.isStreaming,
+      abort: () => {
+        void entry.session.abort({ reason: USER_INTERRUPT_LABEL });
+      },
+      hasPendingMessages: () => entry.session.queuedMessageCount > 0,
+      shutdown: () => {},
+      getContextUsage: () => entry.session.getContextUsage(),
+      getSystemPrompt: () => entry.session.systemPrompt,
+      compact: async () => {
+        await entry.session.compact();
+      },
+    },
+    undefined, // 命令上下文动作：桌面未接扩展命令面，保留 runner 默认 no-op
+    uiCtx,
+    "rpc",
+  );
 
   // 整棵 spawn 树共享根会话的 eventBus（sdk.ts:1341）：子代理 lifecycle/event/progress 帧都在上面。
   // host 侧补齐的派生数据（AgentProgress 本身没有的）：
@@ -2280,7 +2551,9 @@ async function handleLoadSession(ws: any, sessionPath: string) {
     pushPlanMode(ws, sessionId, entry); // 复用快照同推计划状态（前端 reload 后靠它显示「计划」按钮）
     ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
     pushTodos(ws, sessionId, entry); // 复用快照同推待办存量（否则前端重建对象后历史 TODO 不展示）
+    pushGoal(sessionId); // goal 状态存量（会话状态卡目标区）
     pushContext(ws, sessionId, entry);
+    if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // LRU 驱逐期间检出的，切回时补发
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
   }
@@ -2309,9 +2582,11 @@ async function handleLoadSession(ws: any, sessionPath: string) {
     }),
   );
   reconcilePlanMode(ws, sessionId, entry, entries); // 落盘 mode_change 恢复计划模式（必须在 session_created 之后推帧）
+  await entry.goal.restore(); // 目标模式恢复（落盘 mode_change goal/goal_paused；对齐 TUI 不主动续跑）
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
   // 恢复会话的存量任务清单（TodoTracker 构造时从 transcript 分支同步）
   pushTodos(ws, sessionId, entry);
+  pushGoal(sessionId); // goal 状态存量（restore 之后推送，会话状态卡目标区）
   // 恢复会话的初始上下文占用（system prompt + 历史）
   pushContext(ws, sessionId, entry);
   // 恢复会话的整会话统计（tokens/cost 从磁盘 assistant 消息的 usage 累加；时长为内存态，重载后从 0 起算）
@@ -2429,6 +2704,22 @@ async function dispatchSlashInput(
     return null;
   }
 
+  // 2.5) /goal、/plan：桌面实现（底座两者都只有 handleTui，executeAcpBuiltinSlashCommand 不接手）。
+  // 返回文本转正常 prompt 链路（transcript/排队复用）；null = 已消费
+  const parsedSlash = parseSlashCommand(trimmed);
+  if (parsedSlash?.name === "goal") {
+    const objective = await entry.goal.handleCommand(parsedSlash.args);
+    if (objective !== null) return objective;
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+  if (parsedSlash?.name === "plan") {
+    const prompt = handlePlanCommand(ws, sessionId, entry, parsedSlash.args);
+    if (prompt !== null) return prompt;
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+
   // 3) builtin：41 条无 TUI 执行的命令。桌面 prompt RPC 立即返回、turn 产物全走
   // 常驻事件订阅（与 RPC 模式同构），不需要 keepTurnOpenUntilIdle；但 /compact、/handoff、
   // /rename（无参自动生成标题）等 provider-backed 命令需要 runCommandInBackground——否则
@@ -2438,6 +2729,15 @@ async function dispatchSlashInput(
   const entriesSig = (list: any[]) => list.length + ":" + (list[list.length - 1]?.id ?? "");
   const baseline = entriesSig(entry.manager.getEntries());
   let bgOutputs: string[] | null = null; // 非 null = 后台命令执行中，output 暂存
+  let bgSucceeded = false; // 后台任务跑出底座成功文案（没跑出 = 中止/静默失败）
+  const phaseKey = trimmed.split(/\s+/)[0].replace(/^\//, "");
+  const phaseText = PHASE_TEXT[phaseKey];
+  // 成功判定：底座完成输出的固定前缀（成功必发其一；无输出 = 中止/失败 → 撤执行中行）
+  const phaseSuccess: Record<string, RegExp> = {
+    compact: /^Compaction complete/,
+    handoff: /^Context handed off and compacted in place\./,
+    rename: /^Session renamed to /,
+  };
   const runtime: SlashCommandRuntime = {
     session: entry.session,
     sessionManager: entry.session.sessionManager,
@@ -2445,6 +2745,7 @@ async function dispatchSlashInput(
     cwd: entry.session.sessionManager.getCwd(),
     output: (t) => {
       if (bgOutputs) {
+        if (phaseSuccess[phaseKey].test(t)) bgSucceeded = true;
         bgOutputs.push(t);
         return;
       }
@@ -2455,8 +2756,8 @@ async function dispatchSlashInput(
     runCommandInBackground: (task) => {
       if (bgOutputs === null) {
         bgOutputs = [];
-        // 耗时命令的起始反馈：否则气泡撤回后界面毫无动静（压缩/交接在后台跑）
-        ws.send(JSON.stringify({ type: "command_output", sessionId, text: `正在执行 ${trimmed.split(/\s+/)[0]}…` }));
+        // 耗时命令的起始分隔行：否则气泡撤回后界面毫无动静（压缩/交接在后台跑）
+        ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "start", command: phaseKey, text: phaseText[0] }));
       }
       void task()
         .then(async () => {
@@ -2470,10 +2771,14 @@ async function dispatchSlashInput(
           await handleListSessions(ws); // 标题/列表可能变（rename/handoff 改标题）
           const outs = bgOutputs ?? [];
           bgOutputs = null;
+          // 成功：落盘痕已写入，下方 messages 重建帧自带完成分隔行（UI 按 command 吸收执行中行），
+          // 不再发 done 瞬时帧；失败/中止：无痕可落，发 fail 撤掉执行中行，错误详情在 output 行里
+          if (!bgSucceeded) ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "fail", command: phaseKey }));
           for (const t of outs) ws.send(JSON.stringify({ type: "command_output", sessionId, text: t }));
         })
         .catch((err: unknown) => {
           bgOutputs = null;
+          ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "fail", command: phaseKey }));
           ws.send(JSON.stringify({ type: "command_output", sessionId, text: `命令执行失败: ${err instanceof Error ? err.message : String(err)}` }));
         });
     },
@@ -2503,6 +2808,7 @@ async function handlePrompt(
   sessionId: string,
   text: string,
   files?: PromptAttachment[],
+  steer = false,
 ) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(`会话不存在: ${sessionId}`);
@@ -2530,12 +2836,13 @@ async function handlePrompt(
   if (dispatched === null) return;
   finalText = dispatched;
   entry.transcript.push({ role: "user", text: finalText });
-  // 命令立即返回；turn 产物全部走事件流。流式中经 streamingBehavior 排队为 followUp
-  // （当前 loop 完全自动消费触发新 turn，不打断进行中的处理；idle 时该参数被底座忽略照常开 turn）
+  // 命令立即返回；turn 产物全部走事件流。流式中的注入行为由 streamingBehavior 决定：
+  // followUp = 排队（当前 loop 完全处理完后自动消费触发新 turn，不打断进行中的处理）；
+  // steer = 立即注入（当前工具批次后插入，气泡转正并分割过程）。idle 时两者都被底座忽略照常开 turn。
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
-      streamingBehavior: "followUp",
+      streamingBehavior: steer ? "steer" : "followUp",
     })
     .then((agentInvoked: boolean) => {
       if (agentInvoked === false) {
@@ -2784,3 +3091,61 @@ const runLimitsRefresh = () => {
 };
 runLimitsRefresh();
 setInterval(runLimitsRefresh, LIMITS_REFRESH_INTERVAL_MS);
+
+// ---------- 宿主池外部写入检测 ----------
+// 池内会话 = desktop 正持有内存态的全集（宿主池无上限，前端 OPEN_SESSIONS_MAX 只管 UI LRU）。
+// 锁文件无信号（.lock.os 是 advisory 残留、publish 持有窗口 <500ms），唯一可靠信号 =
+// 文件被本进程之外的进程追加：从 pollKnownSize 起读新增完整行，行内 id 不在 manager
+// 内存索引里 = 外部写入（CLI 对话/改名/压缩都会落新条目）。自己写入的 id 必先进过内存，零误报。
+const POLL_EXTERNAL_WRITES_MS = 2000;
+async function pollExternalWrites() {
+  for (const [sessionId, entry] of sessions.entries()) {
+    try {
+      const st = await stat(entry.path);
+      if (st.size === entry.pollKnownSize) continue;
+      if (st.size < entry.pollKnownSize) entry.pollKnownSize = 0; // 全量重写：从头再扫
+      const fh = await open(entry.path, "r");
+      let data: Buffer;
+      try {
+        data = Buffer.alloc(st.size - entry.pollKnownSize);
+        const { bytesRead } = await fh.read(data, 0, data.length, entry.pollKnownSize);
+        data = data.subarray(0, bytesRead);
+      } finally {
+        await fh.close();
+      }
+      // 只消费到最后一个完整行（半行留待下次，避免读到写一半的 JSON）
+      let lineEnd = -1;
+      for (let i = 0; i < data.length; i++) if (data[i] === 10) lineEnd = i;
+      if (lineEnd < 0) continue;
+      const newIds: string[] = [];
+      let lineStart = 0;
+      while (lineStart <= lineEnd) {
+        const nl = data.indexOf(10, lineStart);
+        const line = data.subarray(lineStart, nl).toString("utf8");
+        lineStart = nl + 1;
+        if (line.trim()) {
+          try {
+            const o = JSON.parse(line) as { id?: unknown; type?: unknown };
+            // 文件书架行不参与判定：header（type "session"，带 sessionId 形状的 id 但
+            // getEntries 明确不含 header）与 title slot 行；只有真条目比对内存索引
+            if (typeof o.id === "string" && o.type !== "session") newIds.push(o.id);
+          } catch {
+            // 完整但损坏的行：跳过
+          }
+        }
+      }
+      entry.pollKnownSize += lineStart;
+      if (entry.externalWrite || newIds.length === 0) continue;
+      const known = new Set<string>(entry.manager.getEntries().map((e: { id?: string }) => e?.id));
+      if (!newIds.some((id) => !known.has(id))) continue;
+      entry.externalWrite = true;
+      const ws = entry.attachedWs as { send(data: string): unknown } | null;
+      ws?.send(JSON.stringify({ type: "session_external_write", sessionId }));
+    } catch (err) {
+      // 新会话文件是懒落盘（首条条目才创建）：ENOENT = 尚无可监测对象，静默跳过
+      if ((err as { code?: string }).code === "ENOENT") continue;
+      process.stderr.write(`[host] 外部写入轮询失败 ${entry.path}: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+  }
+}
+setInterval(() => { void pollExternalWrites(); }, POLL_EXTERNAL_WRITES_MS);

@@ -1,8 +1,10 @@
 // React 版前端入口：挂载 App + 原生菜单 action 分发 + WS 连接（或浏览器 preview 模式）。
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
-import { menuZoom, toggleTheme } from "./shell.js";
-import { S, notify, connect, showWelcomeScreen, initNewSessionModel, openSessions, setConnected, openSettings, closeSettings } from "./store.js";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { menuZoom, toggleTheme, toggleSidebar } from "./shell.js";
+import { S, notify, connect, showWelcomeScreen, initNewSessionModel, openSessions, setConnected, openSettings, closeSettings, modelNames, modelEfforts } from "./store.js";
+import { initKeys } from "./keys.js";
 
 // 启动即恢复本地主题（旧版 shell.js initShell 语义；system 值由 prefers-color-scheme 决定）
 {
@@ -28,6 +30,9 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// 全局快捷键（注册表见 ui-src/keys.js；组件内绑定的键不在此重复挂）
+initKeys();
+
 // 原生菜单 action → 既有能力分发（src-tauri 菜单项 id，经 "menu-action" 事件转发）。
 function dispatchMenuAction(action) {
   switch (action) {
@@ -52,8 +57,7 @@ function dispatchMenuAction(action) {
       toggleTheme();
       break;
     case "toggle-sidebar":
-      S.sidebarCollapsed = !S.sidebarCollapsed;
-      notify();
+      toggleSidebar();
       break;
     case "open-settings":
       openSettings();
@@ -67,7 +71,7 @@ function dispatchMenuAction(action) {
 showWelcomeScreen(null);
 
 const root = createRoot(document.getElementById("root"));
-root.render(<App />);
+root.render(<ErrorBoundary><App /></ErrorBoundary>);
 
 // 原生菜单事件（Tauri 环境）；浏览器直连调试时无 __TAURI__，跳过
 window.__TAURI__?.event?.listen("menu-action", (e) => dispatchMenuAction(e.payload?.action));
@@ -118,8 +122,9 @@ if (new URLSearchParams(location.search).has("preview")) {
       { content: "验证构建", status: "pending" },
     ] }],
   });
-  // 浏览器对照调试钩子：驱动 S/notify 模拟宿主回包（仅 preview 模式）
-  window.__dbg = { S, notify, openSessions };
+  // 浏览器对照调试钩子：驱动 S/notify 模拟宿主回包（仅 preview 模式）；modelNames/modelEfforts
+  // 是宿主 models 帧的落地容器，注入后可验证模型/思考档位相关交互（Ctrl+P、Shift+Tab、菜单）
+  window.__dbg = { S, notify, openSessions, modelNames, modelEfforts };
   setConnected(true, "预览");
   notify();
 } else {

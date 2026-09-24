@@ -7,7 +7,7 @@
 // - 「滚动至结尾」按钮：常驻 stream 末尾（原 ensureScrollBottom），显隐由 scroll 事件
 //   命令式切换（4px 容差防亚像素抖动，高频滚动不进 React 状态）。
 import { useLayoutEffect, useRef } from "react";
-import { S, useStore, activeOpen, isJunkPlaceholder } from "../store.js";
+import { S, useStore, activeOpen, isJunkPlaceholder, send } from "../store.js";
 import Icon from "../Icon.jsx";
 import TodoCard from "./chat/TodoCard.jsx";
 import { WorkSec } from "./chat/WorkLine.jsx";
@@ -87,6 +87,16 @@ export default function Chat() {
   return (
     <>
       <TodoCard />
+      {/* 外部进程写入提示条：宿主 session_external_write 帧置位，重新加载从磁盘重建清除 */}
+      {s.externalWrite && (
+        <div className="extw-bar">
+          <Icon name="info" />
+          <span className="extw-tx">此会话正在被其他进程写入（如 CLI），视图可能不同步</span>
+          <button type="button" className="save-btn" onClick={() => send({ type: "reload_session", path: S.activePath })}>
+            重新加载
+          </button>
+        </div>
+      )}
       <div id="stream" ref={streamRef} onScroll={onScroll}>
         {nodes}
         {(s.streaming || s.assistantDraft) && <WorkSec />}

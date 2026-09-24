@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 4 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 6 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -12,6 +12,8 @@
 | RULE-002 | 新增内嵌滚动容器必须 `overscroll-behavior: contain`,装饰元素不得放进滚动节点内 | 全部 UI 样式 |
 | RULE-003 | 渲染函数必须纯渲染,RPC 请求只能由视图入口/事件处理器发起 | 全部 UI 渲染 + RPC |
 | RULE-004 | 改动 import 区块禁止整行替换相邻 import;删改符号后必须核对本文件使用点 | host/ 与全部 TS 模块 |
+| RULE-005 | 组件内的条件早退必须位于全部 hooks 之后 | 全部 UI 组件 |
+| RULE-006 | 展开/详情渲染体不得无条件解引用异步到达的内容；整树必须包在 ErrorBoundary 内 | 全部 UI 渲染 |
 
 ---
 
@@ -60,3 +62,23 @@
 **How to apply**:改完 import 区块后跑 `grep -n "<被删符号>" host/host.ts`,逐个确认要么仍被 import、要么已无引用;host 改动后额外跑一次「连接 → 断开」存活冒烟(连一次 WS、收到 ready 后 close,断言进程仍在),覆盖 `close` 处理器路径。review checklist:diff 里出现 `-import ... from` ↔ 该行符号在本文件已无使用,或已被同文件其他 import 覆盖。
 
 **关联**:BUG-004 / BUG-011
+
+### RULE-005: 组件内的条件早退必须位于全部 hooks 之后
+
+**规则**:函数组件里任何 `if (cond) return ...`（折叠态、空态、未就绪态）必须写在所有 `useState/useRef/useEffect/useLayoutEffect/useMemo/useCallback/useStore` 调用之后。组件已有早退分支时,新增 hook 只能插在早退**之前**。
+
+**Why**:BUG-014 真实事故——`Sidebar` 的 `manageSnap` ref 落在 `if (collapsed) return` 之后,展开→折叠时 hooks 从 9 个变 8 个,React 抛 #300 并卸载整棵组件树(整界面白屏)。该早退分支长期无入口(⌘B 只在设置页登记未绑定),所以一直静默存在,直到快捷键把它接上才引爆。
+
+**How to apply**:改组件前先扫 `return` 早退的位置,把 hooks 收拢到它上方;折叠/空态早退尤其要查(只在状态切换那一刻炸)。review checklist:diff 里新增 `use*(` 行 ↔ 该行位于其上方最近的 `if (...) return` 之前。
+
+**关联**:BUG-014
+
+### RULE-006: 展开/详情渲染体不得无条件解引用异步到达的内容
+
+**规则**:凡「展开态由某个 `item.*Expanded` 标志驱动、展开体读取工具回包内容」的组件，`open` 判定必须同时校验内容对象存在（`open = item.xxxExpanded && !closing && !!内容`），展开体内不得对可能为 undefined 的嵌套对象直接取属性（`a.b.c`）。同时，React 根渲染必须始终包在 ErrorBoundary 内，禁止无边界裸 `root.render(<App/>)`。
+
+**Why**:BUG-016——`ReadRow` 的 `open = item.readExpanded && !closing` 不看 `details.displayContent`，而「工具运行中默认展开」在 `tool` 帧就置位、内容要等 `tool_update`；目录读取则永远没有 `displayContent`。渲染异常无边界 → 整窗口黑屏。BUG-014 是同症状的第二次（hooks 顺序），两次都因缺边界而丢现场。
+
+**How to apply**:写/改 `*Row.jsx`、`ExpandableRow`、`ReadRow` 这类展开组件时，检查展开体里每一处属性链——内容来自 `tool`/`tool_update`/RPC 异步帧的一律加 `?.` 或把存在性并入 `open`。review checklist:diff 里出现 `Expanded && <` ↔ 同行或上方有内容存在性判定。全站同类点已审计（BashRow/CmdCard/ContentCard/EditBrief 均有 `||` 兜底，仅 ReadRow 曾漏）。
+
+**关联**:BUG-016 / BUG-014

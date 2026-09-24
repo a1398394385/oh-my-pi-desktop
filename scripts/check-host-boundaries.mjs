@@ -19,6 +19,9 @@ const ALLOWED_EDGES = new Set([
   // ACP 集成：入口 host.ts 挂载 acp 面板，acp-tools/context 依赖共享 acp-state（单向向下）
   "host.ts→acp-state.ts", "host.ts→acp-context.ts", "host.ts→acp-tools.ts",
   "acp-context.ts→acp-state.ts", "acp-tools.ts→acp-state.ts", "acp-tools.ts→acp-context.ts",
+  // 历史会话检索工具（read_session_context）：只读当前 profile 的已落盘会话，
+  // 依赖 bootstrap 的 SDK 句柄（listAllSessions / loadEntriesFromFile）
+  "host.ts→session-context.ts", "session-context.ts→bootstrap.ts",
   // 右栏终端：host.ts 起 pty-bridge 子进程封装
   "host.ts→pty.ts",
   "host.ts→bootstrap.ts", "host.ts→state.ts", "host.ts→profile.ts", "host.ts→models.ts",
@@ -29,6 +32,9 @@ const ALLOWED_EDGES = new Set([
   "stats.ts→bootstrap.ts",
   "translate.ts→state.ts",
   "state.ts→bootstrap.ts",
+  // /goal 命令桌面实现 + 目标续跑调度：host.ts 挂命令分发与事件钩子，
+  // state.ts 的 PoolEntry 持有控制器实例（goal.ts 只依赖自身窄接口，单向向下）
+  "host.ts→goal.ts", "state.ts→goal.ts",
 ]);
 
 const files = readdirSync(hostDir).filter((f) => f.endsWith(".ts"));

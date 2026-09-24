@@ -24,6 +24,7 @@
 ## 审批与 ExtensionUIContext
 
 - **只调 `setToolUIContext(uiCtx, true)` 不够**：审批 gate 的 `runner.hasUI()` 判的是 `#uiContext !== noOpUIContext`（runner.ts:897），而 runner 的 uiContext 由 `extensionRunner.initialize(actions, ctxActions, cmdCtxActions, uiContext, "rpc")` 注入——照抄 ACP（acp-agent.ts:2631-2632）。漏了这步 = 非 yolo 下所有需审批工具报「no interactive UI available」直接失败（write 报错、文件不落盘，turn 却正常结束，极易误判为"没弹审批"）。
+- **`initialize` 的 actions / contextActions 不能用空对象占位**：runner.ts:695 `this.#getModel = contextActions.getModel` 是直接赋值（无 `??` 兜底），空对象 → `#getModel` undefined；而每次 customTool 执行都先经 `createCustomToolContext`（sdk.ts:987）求值 `ctx.model` → `getModel is not a function`，**整个 customTools 面不可用**（单元直调 `execute()` 看不出来）。第 3 参 `commandContextActions` 同理：传 `{}` 会让 `#waitForIdleFn` / `#newSessionHandler` 变 undefined（runner.ts:704 有 `if` 守卫，传 undefined 才保留 no-op 默认）。见 BUG-015。
 - **`ExtensionUIContext` 至少要实现 `select` + `confirm` + `editor`**：ask.ts:914-920 把 `context.ui` 包成 `{select, editor}` trampoline，缺 `editor` 时 ask 的「Other」自定义输入路径 `undefined is not a function` 崩（表现为"ask 起不来"）。
 - **`tool_execution_start` 在审批之前发出**（gate 在 wrapper.execute 内部）：审批冒烟不能用"批准后收到 tool 事件"做断言（时序随模型行为变），用测试文件是否落盘做硬断言。
 - **审批帧走 `DialogOptions.signal`（AbortSignal）取消**：监听 abort 时 `resolve(undefined)`（拒绝语义），否则 agent 中止后挂起 Promise 泄漏。

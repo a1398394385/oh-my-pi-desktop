@@ -52,6 +52,7 @@ interface WireFrame {
   enabled?: boolean;
   planFilePath?: string | null;
   text?: string;
+  consumed?: boolean;
 }
 
 const seen: WireFrame[] = [];
@@ -130,6 +131,7 @@ if (afterExit.at(-1)?.mode !== "none") fail(`退出未落 mode_change=none：${J
 console.log("✓ 退出计划模式：帧 enabled=false + mode_change(none)");
 
 // 5) 重启宿主清池后重开会话 → 从落盘 mode_change 恢复（池内命中走复用快照，测不到 reconcile）
+let activeSessionId = sessionId; // 步骤 5 重启宿主后会话 id 会变，步骤 7 的 /plan 要用当前 id
 send({ type: "set_plan_mode", sessionId, enabled: true });
 await waitFor((f) => f.type === "plan_mode" && f.enabled === true, "二次进入帧");
 await sleep(300);
@@ -149,6 +151,7 @@ if (!child?.pid) {
     (f) => f.type === "session_created" && f.path === sessionPath && f.sessionId !== sessionId,
     "重开会话",
   );
+  activeSessionId = reloaded.sessionId!;
   const restored = await waitFor(
     (f) => f.type === "plan_mode" && f.sessionId === reloaded.sessionId && f.enabled === true,
     "重开会话的 plan_mode=true 恢复帧",
@@ -161,6 +164,27 @@ if (!child?.pid) {
   if (planEntries.length !== 2) fail(`恢复不应追加 mode_change：plan 条目数=${planEntries.length}`);
   console.log("✓ 恢复不重复记账（mode_change 仍为 2 条 plan）");
 }
+
+// 7) /plan 斜杠命令：与权限胶囊右侧「计划」按钮同一路由（无参 = 反转当前状态）。
+// 走到这里状态恒为 enabled=true（步骤 3 进入 / 步骤 5 恢复），故先退出、再进入。零模型调用。
+seen.length = 0; // 以下断言只认本条路径新产的帧
+send({ type: "prompt", sessionId: activeSessionId, text: "/plan", images: [] });
+await waitFor(
+  (f) => f.type === "plan_mode" && f.sessionId === activeSessionId && f.enabled === false,
+  "/plan 退出计划模式的帧",
+);
+await waitFor((f) => f.type === "command_output" && String(f.text).includes("计划模式已退出"), "/plan 退出提示");
+await waitFor(
+  (f) => f.type === "command_result" && f.text === "/plan" && f.consumed === true,
+  "/plan 的 command_result(consumed)",
+);
+send({ type: "prompt", sessionId: activeSessionId, text: "/plan", images: [] });
+await waitFor(
+  (f) => f.type === "plan_mode" && f.sessionId === activeSessionId && f.enabled === true,
+  "/plan 再进计划模式的帧",
+);
+await waitFor((f) => f.type === "command_output" && String(f.text).includes("计划模式已开启"), "/plan 进入提示");
+console.log("✓ /plan 命令 toggle：退出 → 进入，均以 command_result 消费（不落 prompt）");
 
 console.log("\n全部断言通过");
 if (child?.pid) child.kill("SIGTERM");

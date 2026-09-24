@@ -2,7 +2,7 @@
 // 只列当前模型支持的档位（英文原版 low/medium/…，auto/off 由 store 补齐）。
 // 有会话走宿主下发；新建态落 S.newSessionThinking + localStorage。
 import { useLayoutEffect, useRef } from "react";
-import { S, useStore, send, notify, activeOpen, getSupportedThinkingForModel } from "../../store.js";
+import { S, useStore, activeOpen, getSupportedThinkingForModel, pickThinkingLevel } from "../../store.js";
 import { placeComposerMenu } from "./place.js";
 
 export default function ThinkMenu({ btnRef, composerRef, onClose }) {
@@ -17,14 +17,7 @@ export default function ThinkMenu({ btnRef, composerRef, onClose }) {
   const curThinking = s?.thinking || S.newSessionThinking;
 
   const pickLevel = (lv) => {
-    if (s) {
-      send({ type: "set_thinking", sessionId: s.sessionId, level: lv });
-    } else {
-      S.newSessionThinking = lv;
-      S.newSessionDirty = true; // 手选后：后续 models 帧不再用配置默认覆盖
-      try { localStorage.setItem("omp-new-thinking", lv); } catch {}
-      notify();
-    }
+    pickThinkingLevel(lv);
     onClose();
   };
 

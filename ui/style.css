@@ -104,7 +104,6 @@ samp,
 .cmd,
 .cmd .c-tx,
 .step-title code,
-.approval-title,
 .pv-code,
 .fd-holder,
 .fd-holder * {
@@ -118,7 +117,6 @@ samp,
 .cmd,
 .cmd .c-tx,
 .step-title code,
-.approval-title,
 .pv-code,
 .fd-holder,
 .fd-holder * {
@@ -286,32 +284,46 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: #ffffff;
 }
 .task {
-  display: flex; align-items: center; gap: 4px;
-  padding: 7px 10px; border-radius: var(--r-md);
-  cursor: pointer; color: rgb(212, 212, 212);
-  font-size: var(--ui-fs-base); line-height: 1.35;
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; min-height: 32px; padding: 4px 4px 4px 10px; border-radius: 8px;
+  cursor: pointer; color: var(--dim);
+  font-size: calc(var(--ui-fs) + 1px); line-height: 24px;
   border: 0; background: none; width: 100%; text-align: left;
 }
-.task:hover { background: rgba(63,65,65,.42); color: var(--text); }
+.task:hover { background: var(--panel-2); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
-[data-theme="light"] .task:hover { background: rgba(0,0,0,.06); }
-.task .tt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgb(212, 212, 212); font-weight: 600; }
-.task:hover .tt, .task.on .tt { color: #ffffff; }
-[data-theme="light"] .task .tt { color: #333333; }
-.task .tm { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); }
+.task .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-weight: 400; }
+.task:hover .tt, .task.on .tt { color: var(--text); }
+.task .tm { flex: none; font-size: 12px; color: var(--faint); }
 .task.on .tm { color: var(--dim); }
-.task .seen-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #a8adb3; }
-/* 置顶图钉:平时隐藏,悬停会话行浮现;置顶列表内(.on)常显并高亮 */
+.task-leading {
+  position: relative; flex: none; width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.task-indicator,
 .tpin {
-  flex: none; display: inline-flex; align-items: center; justify-content: flex-start;
-  width: 21px; height: 25px; padding: 0;
-  border: 0; background: none; color: var(--faint);
-  cursor: pointer; border-radius: 4px; opacity: 0; transition: opacity .12s;
+  position: absolute; inset: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.task-indicator { color: var(--dim); opacity: 1; transition: opacity .12s var(--swift); }
+.task-indicator.error,
+.task-indicator.unread { opacity: 1; }
+.task-indicator.loading svg { animation: taskrot 1s linear infinite; }
+.task-error-dot,
+.task .seen-dot { width: 6px; height: 6px; border-radius: 50%; }
+.task-error-dot { background: var(--err); }
+.task .seen-dot { background: var(--blue); }
+/* ZCode 的 hover 行为：Pin 接管同一个前置槽，状态点/转圈不额外挤压标题。 */
+.task:hover .task-indicator { opacity: 0; }
+/* 置顶图钉：悬停浮现；已置顶且没有状态指示器时常显。 */
+.tpin {
+  width: 16px; height: 16px; padding: 0;
+  border: 0; background: transparent; color: var(--faint);
+  cursor: pointer; border-radius: 4px; opacity: 0; transition: opacity .12s var(--swift), color .12s var(--swift), background .12s var(--swift);
 }
 .task:hover .tpin { opacity: 1; }
 .tpin.on { opacity: 1; color: var(--accent, #4a9eff); }
 .tpin:hover { color: var(--text); background: var(--panel-3); }
-[data-theme="light"] .tpin { color: #999999; }
 .task .mini-spin {
   /* 运行中 spinner：lucide loader 图标旋转（ZCode TaskListItem 同款，替代原绿圈 border 圈） */
   flex: none; display: inline-flex; color: var(--dim);
@@ -319,41 +331,49 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 @keyframes taskrot { to { transform: rotate(360deg); } }
 .proj {
-  display: flex; align-items: center; gap: 4px;
-  padding: 7px 10px; color: #8F9090;
-  min-height: 39px; /* border-box 含 padding：25px 按钮 + 14px padding，hover 浮现 .padd/.pmore 不撑高行 */
-  font-size: var(--ui-fs-base); border-radius: var(--r-md); cursor: default;
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; min-height: 32px; padding: 4px 4px 4px 10px; color: var(--dim);
+  font-size: calc(var(--ui-fs) + 1px); border-radius: 8px; cursor: default;
   user-select: none;
 }
-/* 拖柄 = 收起态组头；展开组头不可拖（见 sidebar.js pointerdown） */
-.proj.collapsed { cursor: grab; }
+/* 项目组头是拖柄；点击仍负责展开/收起，超过拖动阈值后进入排序。 */
+.proj { cursor: grab; touch-action: none; }
+.proj:active { cursor: grabbing; }
 .proj:hover { background: var(--panel-2); color: var(--text); }
-.proj svg { flex: none; opacity: .8; color: #8F9090; }
-/* folder 图标槽:21px(图标14+内留7),与 .tpin 同骨架;图标左对齐,与 sec-label 文字同左缘 */
+.proj svg { flex: none; opacity: .9; color: var(--dim); }
+/* 项目图标槽与 ZCode 的 size-4 槽一致。 */
 .proj .fic {
-  flex: none; width: 21px; display: inline-flex;
-  align-items: center; justify-content: flex-start;
+  flex: none; width: 16px; height: 16px; display: inline-flex;
+  align-items: center; justify-content: center;
 }
-/* 项目拖拽排序（Pointer 自绘）：拖组浮起跟手，其余组 .2s 过渡让位 */
+/* 项目拖拽排序：真实行让位，浮层接管被拖项目；其余行只做垂直位移。 */
 .proj.drag-float, .proj-kids.drag-float { position: relative; z-index: 2; transition: none; }
 .proj.drag-float {
-  cursor: grabbing;
-  background: var(--panel-2); color: var(--text);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
+  opacity: 0;
+  pointer-events: none;
+}
+.proj-kids.drag-float {
+  opacity: 0;
+  pointer-events: none;
 }
 .proj.drag-float .pname { color: var(--text); }
 .proj.shift-anim, .proj-kids.shift-anim { transition: transform .2s cubic-bezier(.25, .8, .3, 1); }
 /* 拖动排序期间全列表禁文本选中（JS 给 #tasklist 挂 .proj-dragging）：
    否则划过展开组的会话行会触发 WebKit 选中高亮，选中驱动滚动容器自动滚动，
    与按拖动起始布局计算的位移叠加，表现为拖动时列表跳动 */
-#tasklist.proj-dragging, #tasklist.proj-dragging * { user-select: none !important; }
+#tasklist.proj-dragging, #tasklist.proj-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
+}
 /* 拖动排序期间关闭行 hover 高亮：指针捕获只重定向事件，:hover 仍跟随物理光标，
    划过行的底色/文字色突变就是“选中高亮”观感，快速拖动时高频闪烁即“跳动” */
-#tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: #8F9090; }
-#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: #8F9090; }
-#tasklist.proj-dragging .task:not(.on):hover { background: none; color: rgb(212, 212, 212); }
-#tasklist.proj-dragging .task:not(.on):hover .tt { color: rgb(212, 212, 212); }
-[data-theme="light"] #tasklist.proj-dragging .task:not(.on):hover .tt { color: #333; }
+#tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: var(--dim); }
+#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: var(--dim); }
+#tasklist.proj-dragging .task:not(.on):hover { background: none; color: var(--dim); }
+#tasklist.proj-dragging .task:not(.on):hover .tt { color: var(--dim); }
+#tasklist.proj-dragging .task .task-indicator { opacity: 1; }
+#tasklist.proj-dragging .task .tpin { opacity: 0 !important; }
 #tasklist.proj-dragging .proj .pmore,
 #tasklist.proj-dragging .proj .padd { display: none !important; }
 /* 项目会话行 / loop 过程组容器：grid 行高 1fr→0fr 过渡做整组收起动画（0.3s，两处同一套） */
@@ -363,13 +383,13 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj .pname {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: #8F9090;
+  color: var(--dim);
 }
 .proj:hover .pname { color: var(--text); }
 .proj .pmore {
   flex: none; border: 0; background: none; color: var(--faint);
   line-height: 1; cursor: pointer;
-  width: 30px; height: 25px; padding: 0; border-radius: 5px;
+  width: 24px; height: 24px; padding: 0; border-radius: 6px;
   display: none; align-items: center; justify-content: center;
 }
 .proj:hover .pmore { display: inline-flex; }
@@ -384,7 +404,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   animation: popIn .18s ease-out; --pop-from: -6px; /* 下弹：自上方滑入 */
 }
 [data-theme="light"] .proj-add-pop { box-shadow: 0 12px 32px rgba(0,0,0,.18); }
-.proj-add-pop .approval-input { width: 250px; }
+.proj-add-pop .inp { width: 250px; min-width: 0; }
 .proj-add-pop .pa-btn {
   flex: none; border: 0; background: var(--panel-3); color: var(--dim);
   border-radius: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
@@ -393,7 +413,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj .padd {
   flex: none; border: 0; background: none; color: var(--faint);
   line-height: 1; cursor: pointer;
-  width: 30px; height: 25px; padding: 0; border-radius: 5px;
+  width: 24px; height: 24px; padding: 0; border-radius: 6px;
   display: none; align-items: center; justify-content: center;
 }
 .proj:hover .padd { display: inline-flex; }
@@ -515,6 +535,7 @@ body:has(#sidebar.collapsed) .chat-head {
 }
 .dock,
 .queue-card,
+.goal-card,
 #stream > *:not(.scroll-bottom) {
   width: 100%;
   /* 四段式收缩（边距 = 内容列与主卡片边缘的距离，--col-max/--col-max-35 由 JS
@@ -528,15 +549,9 @@ body:has(#sidebar.collapsed) .chat-head {
   box-sizing: border-box;
   min-width: 0;
 }
-/* 消息流：屏幕外的消息跳过布局与绘制（长会话渲染开销闸门，等价于零成本虚拟化）。
-   contain-intrinsic-size 的 auto 让浏览器记住元素实测尺寸，回滚时不留白、不跳位；
-   不改 DOM 结构，FindBar 的 scrollIntoView 会强制渲染目标、MsgRail 的锚点查询照常
-   （轨道刻度用等间距排布，仅「从未渲染过」的消息其点击跳转按估算高度定位）。
-   注意：不能并进上面那条共用规则——.dock / .queue-card 不适用。 */
-#stream > *:not(.scroll-bottom) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 120px;
-}
+/* 消息流不加 content-visibility（BUG-017）：首轮 120px 估算与真实高度（38~5000px）
+   的纠偏落在视口附近即产生无输入跳帧/闪烁，快滚必现、渲染过一次才消失；
+   实测该规则无布局收益（见 BUG-017 的 A/B）。长列表性能走虚拟化路线（U4.3）。 */
 body:has(#right.collapsed) #right-resizer {
   width: 0;
   opacity: 0;
@@ -778,6 +793,27 @@ body:has(#right.collapsed) #right-resizer {
 .act .caret { color: var(--faint); }
 .act.t2 { margin-top: 28px; }
 .act.err { color: var(--err); }
+/* 阶段分隔行（后台压缩/交接/重命名）：居中横线夹字；与上一条结果拉开 30px
+   （相邻下边距 14/20px 均小于 30，合并取大后实际间距即 30px） */
+.act.phase {
+  margin: 30px 0 12px;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+  padding-right: 0; /* 取消事件行的内容盒右缩，按正文列真居中 */
+}
+.act.phase .ph-line { flex: 1; height: 1px; background: var(--line); }
+.act.phase span { flex: none; }
+/* 外部进程写入提示条：聊天区顶部通栏（TodoCard 与消息流之间），重新加载从磁盘重建 */
+.extw-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 8px 0; padding: 6px 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--dim); font-size: var(--ui-fs-base);
+}
+.extw-bar .extw-tx { flex: 0 1 auto; min-width: 0; } /* 按钮紧跟文案:右上角会话状态卡浮层会盖住行尾 */
+.extw-bar svg { flex: none; color: var(--blue); }
 /* loop 收起汇总行：一轮结束自动收起过程，行尾箭头点击展开/收起 */
 .act.loop { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--faint); }
 /* 用户消息气泡 → 下方 agent 过程折叠块：2 倍常规行距（20→40 塌陷基数，用户定调 70） */
@@ -937,13 +973,6 @@ body:has(#right.collapsed) #right-resizer {
   /* 与 .act 事件行同理：内容盒右缩 15px，与正文区分；展开的 .cmd-card 不受此限 */
   padding-right: 15px;
 }
-/* 终端运行中的转圈指示 */
-.cmd .cmd-spin {
-  flex: none; width: 12px; height: 12px; border-radius: 50%;
-  border: 2px solid var(--faint); border-top-color: transparent;
-  animation: cmd-spin-rot .8s linear infinite;
-}
-@keyframes cmd-spin-rot { to { transform: rotate(360deg); } }
 /* 终端行点击后向下展开的圆角卡片：上命令、下输出，底色 #323232。
    mt -6：与 .cmd 行 mb 20 塌陷成 14px——与编辑行 ed-brief 弹框到标签的间距基准一致 */
 .cmd-card {
@@ -976,7 +1005,6 @@ body:has(#right.collapsed) #right-resizer {
 .bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
 .bash-row .bash-status .bad { color: var(--err); }
 .bash-row .bash-tag { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-.bash-row .cmd-spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--faint); border-top-color: transparent; animation: cmd-spin-rot .8s linear infinite; }
 /* bash 行展开体：等宽输出块（对比 .cmd-card，配色只用既有 token） */
 .bash-out {
   margin: -6px 0 12px;
@@ -1033,43 +1061,76 @@ body:has(#right.collapsed) #right-resizer {
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 @keyframes flashBg { 0% { background: rgba(52,199,89,.14); } 100% { background: transparent; } }
 
-/* 审批卡片（ask/confirm/editor 对话框） */
+/* 审批卡片（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——圆角边框卡 +
+   「等待确认」标题 + 问题正文 + 编号选项行（hover 高亮 / 选中底板，数字与回车快捷应答）
+   + 底部键盘提示行与确认钮；editable 时「提交」行内嵌输入（ZCodium 反馈行样式） */
 .approval-card {
-  max-width: 88%;
-  margin: 12px 0;
+  margin: 0;
   background: var(--inset);
-  border-left: 3px solid var(--orange);
-  border-radius: var(--r-md);
-  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.approval-head {
+  font-size: var(--ui-fs-base); font-weight: 500; color: var(--dim); line-height: 1.3;
 }
 .approval-title {
-  font-family: var(--mono) !important;
-  font-size: var(--code-fs, 12px) !important;
-  white-space: pre-wrap; word-break: break-all;
+  color: var(--text); font-family: var(--ui-font, var(--sans));
+  font-size: var(--ui-fs-base); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
   max-height: 160px; overflow-y: auto;
   overscroll-behavior: contain; /* 内嵌在会话区滚动流内，阻断滚动链 */
-  color: var(--dim);
-  margin: 0 0 10px;
+  margin: 0;
 }
-.approval-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
-.approval-input {
-  flex: 1; min-width: 160px;
-  background: var(--bg); border: 1px solid var(--line);
-  border-radius: 7px;
-  color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-base);
-  padding: 6px 10px; outline: none;
+.approval-list { display: flex; flex-direction: column; gap: 4px; }
+.approval-opt {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 8px 12px; border: 0; background: transparent;
+  border-radius: var(--r-lg);
+  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+  text-align: left; cursor: pointer;
+  transition: background .15s var(--swift);
 }
-.approval-input:focus { border-color: var(--dim); }
-.approval-buttons button {
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel-2);
-  color: var(--text); font-size: var(--ui-fs-base);
-  padding: 6px 16px; cursor: pointer;
+.approval-opt:hover { background: var(--panel-2); }
+.approval-opt.sel { background: var(--select); }
+/* 应答定格后行禁用：不给 hover 高亮（hover 只挂在可点元素上），chosen 行保持选中底板 */
+.approval-opt:disabled { cursor: default; }
+.approval-opt:disabled:hover { background: none; }
+.approval-opt.chosen, .approval-opt.chosen:hover { background: var(--select); }
+.approval-num { flex: none; width: 20px; color: var(--faint); font-weight: 500; }
+.approval-opt.sel .approval-num { color: var(--text); }
+.approval-opt.chosen .approval-num { color: var(--green); }
+.approval-opt.dim { opacity: .4; }
+.approval-label { min-width: 0; overflow-wrap: anywhere; }
+.approval-opt.has-input { cursor: text; }
+.approval-opt:focus-visible,
+.approval-confirm:focus-visible { outline: none; }
+/* editable「提交」行内嵌输入：ZCodium 反馈行同款透明无边框输入 */
+.approval-inp {
+  flex: 1; min-width: 0;
+  background: transparent; border: 0; outline: none; padding: 0;
+  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
 }
-.approval-buttons button:hover { background: var(--panel-3); }
-.approval-buttons button.chosen { border-color: var(--green); color: var(--green); }
-.approval-buttons button.dim { opacity: .4; }
+.approval-inp::placeholder { color: var(--faint); font-weight: 400; }
+.approval-inp:disabled { opacity: 1; -webkit-text-fill-color: var(--text); } /* 定格后仍可读已提交内容 */
+.approval-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px;
+}
+.approval-hint {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+  color: var(--dim); font-size: var(--ui-fs-base);
+}
+.approval-hint svg { flex: none; color: var(--text); }
+/* 确认钮 = ZCodium bg-brand 按钮同款（h-8 rounded-lg） */
+.approval-confirm {
+  flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500; cursor: pointer;
+  transition: opacity .15s var(--swift);
+}
+.approval-confirm:hover { opacity: .8; }
+.approval-confirm:disabled { opacity: .45; cursor: default; }
 
 /* /* 输入区：中栏底部内嵌圆角卡片，严格居中并与会话区域同宽对齐 */
 /* 输入区与下方统计行共用同一列宽（同款四段式收缩、居中）；统计行在 dock 之外，不属输入卡片 */
@@ -1085,12 +1146,21 @@ body:has(#right.collapsed) #right-resizer {
 .dock {
   margin: 8px auto 12px;
   background: var(--inset);
+  border: 1px solid var(--line-soft);
   border-radius: 16px;
   position: relative;
   /* 二级重叠卡的下卡层级：盖住上方 .queue-card 下缘 28px（对应 ZCode composer z-20） */
   z-index: 20;
   box-sizing: border-box;
 }
+/* 输入卡边框：常态沿用 line-soft，鼠标悬停时轻微提亮；键盘焦点不改边框 */
+.dock,
+#composer.in-welcome { transition: border-color .15s var(--swift); }
+.dock:hover,
+#composer.in-welcome:hover { border-color: var(--line); }
+.dock.approval-active { background: transparent; border-color: transparent; }
+.dock.approval-active:hover,
+.dock.approval-active:focus-within { border-color: transparent; }
 /* 会话统计行：输入框 dock 下方常驻一行（整会话缓存利用率/token/成本/活跃时长）；
    纯展示无点击行为，不做 hover 高亮 */
 .stats-bar {
@@ -1183,18 +1253,58 @@ body:has(#right.collapsed) #right-resizer {
    外观页可强制（html[data-motion]）：on=无条件减弱 / off=无条件动画。
    特异性 html[data-motion] 前缀压过 media 内规则，system/缺省回落系统行为 */
 @media (prefers-reduced-motion: reduce) {
-  .chat-loading-icon, .task .mini-spin { animation: none; }
+  .chat-loading-icon, .task .mini-spin, .task-indicator.loading svg { animation: none; }
 }
 html[data-motion="on"] .chat-loading-icon,
-html[data-motion="on"] .task .mini-spin { animation: none; }
+html[data-motion="on"] .task .mini-spin,
+html[data-motion="on"] .task-indicator.loading svg { animation: none; }
 html[data-motion="off"] .chat-loading-icon { animation: chat-load-spin 1s linear infinite; }
-html[data-motion="off"] .task .mini-spin { animation: taskrot 1s linear infinite; }
+html[data-motion="off"] .task .mini-spin,
+html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
 /* 排队消息卡：ZCode 二级重叠卡配方（ConversationQueuePanel）——relative z-0 +
    负 margin-bottom 上拉 28px + padding-bottom 28px 保底内容不被遮 + 只圆上角。
    下方 .dock（z-20）压住其下缘，露出上半张卡；空队列时组件返回 null，卡整体不出现 */
-.queue-card {
+/* goal 目标栏：输入框上方的最上层重叠栏（App 渲染顺序 goal → queue → dock，随队列增高上移）。
+   叠加几何同 queue-card 配方（margin -28px 上拉 + padding-bottom 28px 保底 + 只圆上角，
+   被下一张卡压住下缘）；宽度比输入框左右各窄 10px（共 20px），无对下方卡片的圆角补充块。
+   点击栏向上展开完整目标（.open）；无 goal 时组件返回 null */
+/* 宽度声明单独挂 #main 前缀：上方共用列宽规则含 #stream>*（特异性 1,0,1），
+   纯类选择器压不过，不加前缀时「比输入框窄」实际不生效。
+   width 与 max-width 都要减 20px：窄屏由 width 兜底、宽屏由 max-width（列宽收缩）
+   约束，两者缺一都会在对应区间回到与输入框同宽 */
+#main .goal-card {
+  width: calc(100% - 20px);
+  max-width: calc(min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))) - 20px);
+}
+.goal-card {
   position: relative;
   z-index: 0;
+  margin: 8px auto -28px;
+  padding: 3px 3px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+}
+.gc-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 6px 6px 11px;
+  font-size: var(--ui-fs-sm); color: var(--dim);
+  min-width: 0;
+  cursor: pointer;
+}
+.gc-obj {
+  flex: 1; min-width: 0; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.goal-card.open .gc-obj { white-space: pre-wrap; word-break: break-word; overflow: visible; }
+.gc-meta {
+  flex: none; display: inline-flex; align-items: center; gap: 9px;
+  color: var(--faint); font-size: var(--ui-fs-xs); font-variant-numeric: tabular-nums;
+}
+.queue-card {
+  position: relative;
+  z-index: 1; /* 高于 .goal-card（z-0）：goal 栏下缘被排队卡压住，不再反向遮挡排队内容 */
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
   background: var(--surface);
@@ -1469,15 +1579,21 @@ svg { vertical-align: middle; }
 .rail-pop .rp-role { color: var(--text); font-weight: 500; font-size: var(--ui-fs-md); }
 .rail-pop .rp-idx { color: var(--faint); font-size: 11.5px; flex: none; }
 .rail-pop .rp-body { color: var(--dim); font-size: var(--ui-fs-base); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-/* ZCode bg-brand 同款：发送钮常显浅实底（暗主题 var(--text) 亮灰）+ 深色箭头，
-   hover 退一档透明度（bg-brand/80）；「有没有草稿」不改变底色，只由 disabled 态标示 */
+/* 发送钮中性实底 + 背景色箭头；hover 只通过透明度反馈，「有没有草稿」不改变底色 */
 .send {
   width: 30px; height: 30px; border-radius: 8px;
   border: 0; background: var(--text); color: var(--bg);
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 0;
   flex: none;
   transition: opacity .15s var(--swift);
 }
+.send > span {
+  width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 0;
+}
+.send > span > svg { display: block; }
 .send:hover:not(:disabled):not(.stopping) { opacity: .8; }
 .send.ready { background: var(--text); color: var(--bg); } /* 兼容旧类：语义并入基态 */
 .pill-btn:disabled, .send:disabled { opacity: .45; cursor: default; }
@@ -1670,8 +1786,13 @@ svg { vertical-align: middle; }
   min-height: 58px;
 }
 /* bash 模式（输入框 ! 前缀）：边框与占位文案着 --bash 色。
-   边框只存在于 in-welcome 卡（dock 模式 #composer/.dock 无边框可覆盖），占位文案两态都生效 */
-#composer.bash-mode { border-color: var(--bash); }
+   边框规则压过三态边框（hover line / 聚焦 accent）：dock 与 in-welcome 两态都生效 */
+#composer.bash-mode,
+#composer.bash-mode:hover,
+#composer.bash-mode:focus-within,
+.dock:has(#composer.bash-mode),
+.dock:has(#composer.bash-mode):hover,
+.dock:has(#composer.bash-mode):focus-within { border-color: var(--bash); }
 #composer.bash-mode #input::placeholder { color: var(--bash); }
 .plus-btn {
   width: 24px;
@@ -1682,6 +1803,11 @@ svg { vertical-align: middle; }
   align-items: center;
   justify-content: center;
   flex: none;
+  /* UA 样式表给 button 默认灰底，须显式清掉，否则未 hover 也像高亮（queue 卡 .q-btn 同款配方） */
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 .plus-btn:hover {
   background: var(--panel-2);
@@ -1898,8 +2024,6 @@ svg { vertical-align: middle; }
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
 }
 [data-theme="light"] .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07); }
-/* dock 态输入框卡本身无边框：补全卡同步去边框，两张卡外观才一致 */
-#composer:not(.in-welcome) .menu.palette { border-color: transparent; }
 .menu.palette .mi { border-radius: 8px; } /* 卡内行圆角比卡小一档（16px 卡 → 8px 行） */
 .menu.palette .mi.on { background: var(--panel-3); } /* 键盘高亮（基类只有 :hover，无 .on） */
 .menu.palette .mi .mi-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2081,15 +2205,6 @@ body.resizing .resizer {
   font-size: var(--ui-fs-sm); color: var(--faint);
   padding: 8px 2px 2px;
 }
-.sc-row {
-  border-top: 1px solid var(--line-soft);
-  margin-top: 6px; padding: 9px 2px 7px;
-  color: var(--dim); font-size: var(--ui-fs-base);
-  display: flex; align-items: center; gap: 8px;
-}
-.sc-row.rvonly { cursor: pointer; border-radius: 7px; }
-.sc-row.rvonly:hover { color: var(--text); }
-.sc-row .rv { margin-left: 14px; color: var(--faint); font-size: var(--ui-fs-sm); }
 #capsule {
   display: flex; align-items: center; gap: 8px;
   width: 280px; max-width: 100%;
@@ -2203,6 +2318,15 @@ body.resizing .resizer {
   scrollbar-color: var(--panel-3) transparent;
 }
 .placeholder { color: var(--faint); font-size: var(--ui-fs-base); padding: 12px 10px; }
+/* 工具结果未到时的统一占位（components/chat/parts.jsx 的 Spin）：loader 图标旋转 + 省略号。
+   同时服务两类位置——无 output 位的工具行行内（grep/glob/MCP/待办/终端组内行），
+   与展开体的虚线占位处（.cmd-card-out / .ed-brief 里的 .placeholder） */
+.pend {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  color: var(--dim); font-size: var(--ui-fs-base);
+}
+.pend-ico { display: inline-flex; animation: chat-load-spin 1s linear infinite; }
+.pend-ico svg { display: block; }
 
 /* 子代理卡片与流 */
 .sub-card {
@@ -2714,6 +2838,11 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
 /* schema warning 行（.srow-tx span 特异性更高，需 .srow-tx .srow-wn 覆盖颜色/字号） */
 .srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
+/* 开关标题右侧的红色警示（实验性功能页）：b 内并排「标题 + 警示」。
+   字号取 sm（比标题小一号）才能与标题同行不折行；颜色/字号要压过 .srow-tx span，
+   故用 .srow-tx b.srow-hd 前缀。窄窗口下允许整体折行。 */
+.srow-tx b.srow-hd { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.srow-tx b.srow-hd .srow-wn-inline { color: var(--err); font-size: var(--ui-fs-sm); }
 /* 高级页无 UI 键名：等宽展示 */
 .adv-key { font-family: var(--mono); }
 .srow.unavailable { opacity: .55; }
@@ -3576,13 +3705,13 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 
-/* --- B2 发送钮停止形态（流式中且输入框空）：hover 变红提示中止 ---
-   发送钮基态已改常显浅底（ZCode bg-brand），停止态 hover 改红实底白图标 */
-.send.stopping:hover:not(:disabled) {
-  background: var(--err);
-  color: #ffffff;
-  opacity: 1;
+/* --- 发送钮停止形态（流式中且输入框空 / Esc 示警窗口）：ZCodium secondary 按钮同款
+   中性底 + 实心方块，hover 加深一档 --- */
+.send.stopping {
+  background: var(--panel-2);
+  color: var(--text);
 }
+.send.stopping:hover:not(:disabled) { background: var(--panel-3); opacity: 1; }
 
 /* --- B2 会话内查找条（⌘F，消息流顶部浮层，仅当前激活会话） --- */
 .find-bar {
@@ -3652,7 +3781,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* --- B1 归档区（列表底部折叠分组：组头整行可点，条目行纯展示、hover 只亮按钮） --- */
 .arch-head {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 10px; margin-top: 2px;
+  height: 32px; min-height: 32px; padding: 4px 10px; margin-top: 2px;
   color: var(--faint); font-size: var(--ui-fs-base);
   border-radius: var(--r-md); cursor: pointer; user-select: none;
 }
@@ -3675,8 +3804,31 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* 归档条目行：纯展示承载行（点击不打开会话），显式禁 hover 高亮 */
 .arch-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px 5px 28px; margin-top: 2px;
+  height: 32px; min-height: 32px; padding: 4px 10px 4px 28px; margin-top: 2px;
   font-size: var(--ui-fs-base); line-height: 1.35;
+}
+/* 拖动排序浮层：拖组临时渲染卡样式；与 ZCode 一样，仅显示文本与图标，无背景。 */
+.proj-drag-overlay {
+  position: fixed; z-index: 200; pointer-events: none; cursor: grabbing;
+  width: var(--left-w, 240px);
+  height: 32px; min-height: 32px; padding: 4px 4px 4px 10px;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.45);
+  font-size: calc(var(--ui-fs) + 1px);
+  transition: none;
+}
+[data-theme="light"] .proj-drag-overlay { box-shadow: 0 10px 26px rgba(0,0,0,.18); }
+.proj-drag-overlay .fic {
+  flex: none; width: 16px; height: 16px; display: inline-flex;
+  align-items: center; justify-content: center;
+}
+.proj-drag-overlay .pname {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
 }
 .arch-row .tt {
   flex: 1; min-width: 0;

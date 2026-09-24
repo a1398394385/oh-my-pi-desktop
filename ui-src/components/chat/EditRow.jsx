@@ -4,7 +4,7 @@
 // 回包经 file_diff 写入 briefDiffCache 后重渲染。
 import { notify, S, send, activeOpen, briefDiffCache } from "../../store.js";
 import Icon from "../../Icon.jsx";
-import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow } from "./parts.jsx";
+import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin } from "./parts.jsx";
 import { splitPath } from "./util.js";
 
 // 事件涉及的文件清单：优先 tool_update 回填的 files，否则从 args 兜底
@@ -47,6 +47,7 @@ export default function EditRow({ item }) {
           item.name || item.text || ""
         )}
         <Counts item={item} />
+        {item.running && <Spin />}
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>
@@ -74,6 +75,7 @@ function ChangeRowUI({ sub, open, onToggle }) {
         sub.name || sub.text || ""
       )}
       <Counts item={sub} />
+      {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
         <Icon name="chevronRight" />
       </span>

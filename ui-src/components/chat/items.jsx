@@ -13,7 +13,6 @@ import ToolRow from "./ToolRow.jsx";
 import BashRow from "./BashRow.jsx";
 import MentionRow from "./MentionRow.jsx";
 import LoopGroup, { loopSummaryText } from "./LoopGroup.jsx";
-import ApprovalCard from "./ApprovalCard.jsx";
 
 // 单条消息 → JSX（railEntries 副作用随渲染路径收集，与原 appendChatItem 的 push 同序）
 function appendItem(item, key, railEntries) {
@@ -52,9 +51,16 @@ function appendItem(item, key, railEntries) {
     railEntries.push({ key, role: "meta", text: item.text });
     return <div className="act" key={key}>{item.text}</div>;
   }
-  if (item.role === "approval") {
-    railEntries.push({ key, role: "approval", text: item.title });
-    return <ApprovalCard item={item} key={key} />;
+  // 阶段分隔行（后台压缩/交接/重命名）：居中横线夹字，不进左对齐动作行
+  if (item.role === "phase") {
+    railEntries.push({ key, role: "meta", text: item.text });
+    return (
+      <div className="act phase" key={key}>
+        <i className="ph-line" />
+        <span>{item.text}</span>
+        <i className="ph-line" />
+      </div>
+    );
   }
   railEntries.push({ key, role: "err", text: item.text });
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;

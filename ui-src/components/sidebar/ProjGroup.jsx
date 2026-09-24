@@ -1,14 +1,26 @@
 // 项目组（ui/sidebar.js renderList 项目分支平移）：组头（folder 图标/名称/＋/⋯ 或清理模式的
 // 「移除」钮）+ 展开会话容器。点击组头折叠/展开（grid 0fr↔1fr 过渡 + 逐行 kids-in 错峰入场），
-// 展开态写入宿主 omp-desktop.json；收起状态组头是拖拽排序拖柄（HTML5 DnD，位移由 Sidebar 统一算）。
+// 展开态写入宿主 omp-desktop.json；组头通过 Pointer Events 参与拖拽排序，位移由 Sidebar 统一算。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { S, send, notify, showWelcomeScreen, expandedProjects, projectLimits } from "../../store.js";
 import Icon from "../../Icon.jsx";
 import SessionRow from "./SessionRow.jsx";
 
+// 项目图标与 ZCode WorkspaceSidebarItem 保持同一套状态语义：远端用云、本地首页用房屋，
+// 普通项目按展开态切换文件夹。当前宿主的项目数据没有单独的 remote/home 字段，兼容未来字段
+// 的同时保留 ssh/http 路径与 ~ 目录的判定。
+export function projectIconName(p, expanded) {
+  const cwd = p.cwd || "";
+  const remote = Boolean(p.remote || p.remoteWorkspace || p.workspaceIdentity) || /^(ssh|https?):\/\//i.test(cwd);
+  const home = Boolean(p.isHome || p.home) || cwd === "~";
+  if (remote) return "cloud";
+  if (home) return "house";
+  return expanded ? "folderOpen" : "folder";
+}
+
 // 展开会话容器（原 buildProjKids）：mount 时 0fr→1fr 播展开动画；animate 时逐行 kids-in 错峰。
 // 管理模式显示全部会话；默认 5 条，「显示更多」按需每次多加载 5 条。
-function ProjKids({ p, animate, closing, ty, dragging, rowProps, renaming }) {
+function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -21,7 +33,7 @@ function ProjKids({ p, animate, closing, ty, dragging, rowProps, renaming }) {
   const shift = { transform: ty ? `translateY(${ty}px)` : undefined };
   return (
     <div
-      className={"proj-kids" + (closing ? " closing" : "") + (dragging ? " shift-anim" : "")}
+      className={"proj-kids" + (closing ? " closing" : "") + (dragging && !isDragSelf ? " shift-anim" : "") + (isDragSelf ? " drag-float" : "")}
       ref={ref}
       style={shift}
     >
@@ -58,11 +70,10 @@ function ProjKids({ p, animate, closing, ty, dragging, rowProps, renaming }) {
   );
 }
 
-export default function ProjGroup({ p, ty, isDragSelf, dragging, onDragStartHead, onDragEndHead, onOpenProjMenu, onRemoveProject, rowProps, renaming }) {
+export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHead, onPointerMoveHead, onPointerUpHead, onPointerCancelHead, shouldSuppressProjectClick, onOpenProjMenu, onRemoveProject, rowProps, renaming }) {
   const expanded = expandedProjects.has(p.cwd);
   const [showKids, setShowKids] = useState(expanded); // 初挂载直接渲染不播动画（对照原版 renderList 重建）
   const [closing, setClosing] = useState(false);
-  const [armed, setArmed] = useState(false); // mousedown 判定后才进入可拖态（行内按钮不起拖）
 
   // 展开挂载 kids / 收起延迟卸载（0.3s 收拢动画播完再移除）
   useEffect(() => {
@@ -91,25 +102,33 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onDragStartHead
     notify();
   };
 
-  const name = p.cwd.split("/").filter(Boolean).pop() || p.cwd;
+  const name = p.name || p.cwd.split("/").filter(Boolean).pop() || p.cwd;
   return (
     <>
       <div
-        className={"proj" + (expanded ? "" : " collapsed") + (dragging ? " shift-anim" : "") + (isDragSelf ? " drag-float" : "")}
+        className={"proj" + (expanded ? "" : " collapsed") + (dragging && !isDragSelf ? " shift-anim" : "") + (isDragSelf ? " drag-float" : "")}
         data-cwd={p.cwd}
         style={{ transform: ty ? `translateY(${ty}px)` : undefined }}
-        draggable={armed}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (e.button !== 0 || e.target.closest("button")) return; // 行内按钮（＋/⋯/移除）不受影响
-          if (expandedProjects.has(p.cwd)) return; // 展开的项目不可拖：先收起再拖
-          setArmed(true);
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          onPointerDownHead(e, p.cwd);
         }}
-        onMouseUp={() => setArmed(false)}
-        onDragStart={(e) => onDragStartHead(e, p.cwd)}
-        onDragEnd={onDragEndHead}
-        onClick={toggle}
+        onPointerMove={(e) => onPointerMoveHead(e, p.cwd)}
+        onPointerUp={(e) => {
+          onPointerUpHead(e, p.cwd);
+          e.currentTarget.releasePointerCapture?.(e.pointerId);
+        }}
+        onPointerCancel={(e) => {
+          onPointerCancelHead(e, p.cwd);
+          e.currentTarget.releasePointerCapture?.(e.pointerId);
+        }}
+        onClick={() => {
+          if (shouldSuppressProjectClick()) return;
+          toggle();
+        }}
       >
-        <span className="fic"><Icon name={expanded ? "folderOpen" : "folder"} size={14} /></span>
+        <span className="fic"><Icon name={projectIconName(p, expanded)} size={16} /></span>
         <span className="pname" title={p.cwd}>{name}</span>
         {S.isProjectManageMode ? (
           <button
@@ -147,7 +166,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onDragStartHead
           </>
         )}
       </div>
-      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={isDragSelf ? 0 : ty} dragging={dragging && !isDragSelf} rowProps={rowProps} renaming={renaming} />}
+      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={isDragSelf ? 0 : ty} dragging={dragging} isDragSelf={isDragSelf} rowProps={rowProps} renaming={renaming} />}
     </>
   );
 }

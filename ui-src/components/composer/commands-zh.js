@@ -10,6 +10,8 @@ export const BUILTIN_DESC_ZH = {
   dump: "返回完整转录纯文本，并给出 LLM 请求 JSON 路径",
   share: "通过加密链接分享会话（分享服务器或 secret gist）",
   browser: "切换 browser 工具的无头/有界面模式",
+  goal: "开关目标模式（本会话持久自主目标）",
+  plan: "开关计划模式（先只读规划，批准后再执行）",
   todo: "管理待办清单",
   session: "查看或配置当前会话",
   jobs: "查看后台任务",

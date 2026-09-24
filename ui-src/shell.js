@@ -2,7 +2,7 @@
 // 内容列宽度分段、消息轨道显隐、fixed 菜单坐标补偿、railToolText。
 // 1:1 平移自 ui/shell.js + ui/ringpop.js 的 railToolText 段，不依赖 ui/ 旧模块。
 // DOM 副作用保持命令式；React 组件经 omp:close-menus / omp:zoom 自定义事件协作。
-import { S } from "./store.js";
+import { S, notify } from "./store.js";
 
 // ---------- 菜单协调 ----------
 // React 侧消费者（Composer 菜单等 state 态）监听 omp:close-menus 关闭自身；
@@ -33,6 +33,20 @@ export function applyTheme(mode) {
 export function toggleTheme() {
   const dark = themeMode === "system" ? themeMq.matches : themeMode === "dark";
   applyTheme(dark ? "light" : "dark");
+}
+
+// ---------- 边栏折叠开关（顶栏按钮 / 原生菜单 / ⌘B 三处共用） ----------
+export function toggleSidebar() {
+  S.sidebarCollapsed = !S.sidebarCollapsed;
+  localStorage.setItem("omp-sidebar-collapsed", S.sidebarCollapsed ? "1" : "0");
+  notify();
+}
+
+export function toggleRightPanel() {
+  S.rightCollapsed = !S.rightCollapsed;
+  if (!S.rightCollapsed) S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
+  localStorage.setItem("omp-right-collapsed", S.rightCollapsed ? "1" : "0");
+  notify();
 }
 
 // ---------- 边栏拖动调宽 ----------

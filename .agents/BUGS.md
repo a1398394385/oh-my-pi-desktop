@@ -20,6 +20,10 @@
 | BUG-011 | 前端一断开连接宿主进程即崩——ACP 提交误删 pty import 整行 | 2026-09-22 |
 | BUG-012 | 代码块染色显示成另一个代码块的原文——染色缓存键只取首尾 100 字符 | 2026-09-22 |
 | BUG-013 | 同一会话文件被两个 AgentSession 同时持有——load_session 不查会话池 | 2026-09-22 |
+| BUG-014 | 折叠左侧边栏整界面白屏——Sidebar 的 useRef 落在折叠早退之后 | 2026-09-23 |
+| BUG-015 | customTools 全部不可用——runner.initialize 传空 actions 让 ctx.model 抛 TypeError | 2026-09-23 |
+| BUG-016 | /goal 模式运行中整窗口黑屏——读取行展开态早于内容到达，dc.text 炸渲染 | 2026-09-23 |
+| BUG-017 | 快速上滚消息流跳动/闪烁——content-visibility 首轮 120px 估算纠偏落在视口 | 2026-09-23 |
 
 ---
 
@@ -177,3 +181,60 @@
 **修复**:`handleLoadSession` 先扫池内同 path 条目，命中则复用——仅在 ws 变化时（前端 reload）`unsubscribe()` + `attachEntry` 重挂订阅（旧订阅发往已关闭的连接，事件会丢），随后重推 `session_created` / `messages` / context 快照。为此 `PoolEntry` 增 `attachedWs` 字段。验证：连发两次同一 path 的 `load_session`，断言 sessionId 不变、宿主日志出现「复用池内会话」且只新建一次、两次历史条数一致（均 PASS）。
 
 **教训**:宿主会话池的键是 path，前端的「已打开」判断**不是**宿主的幂等保证——凡前端可触发的加载入口，宿主都要自己查重。
+
+### BUG-014: 折叠左侧边栏整界面白屏——Sidebar 的 useRef 落在折叠早退之后
+
+**现象**:折叠左侧边栏（顶栏按钮 / 原生菜单 toggle-sidebar / 新增的 ⌘B），整个界面白屏：React 抛 `#300 Rendered fewer hooks than expected`，根容器被卸载，`#root` 清空。
+
+**根因**:`ui-src/components/Sidebar.jsx` 的 `const manageSnap = useRef(null)`（清理模式进入前的展开/条数快照）声明在 `if (collapsed) return <aside id="sidebar" className="collapsed">` **之后**——展开态渲染 9 个 hooks、折叠态 8 个，React 判定 hook 顺序被破坏并卸载整树。该早退分支此前没有任何入口（⌘B 只在设置页「键盘快捷键」登记过、从未绑定，原生菜单项也没人点过），所以问题一直静默存在。
+
+**修复**:把 `manageSnap` 提到早退之前，与其他 ref 同处声明。验证：preview 页面（`?preview=1`）派发 `meta+b`，`#sidebar` 在 `collapsed` 与空 class 之间往返，`tab.errors()` 为空。
+
+**教训**:组件里任何 `if (cond) return` 早退都必须位于**全部 hooks 之后**；折叠/空态早退是最容易埋 hook 顺序坑的位置，且只在状态第一次切换那一刻才炸。长期无入口的早退分支等于埋雷——新增快捷键/菜单项把它接上时才会引爆。已立 RULE-005。
+
+### BUG-015: customTools 全部不可用——runner.initialize 传空 actions 让 ctx.model 抛 TypeError
+
+**现象**:新增的内置工具 `read_session_context`（历史会话检索）在真实会话里调用必失败，模型转述工具错误 `getModel is not a function`（重试同样报错）；而直接调 `execute()` 的单元探针完全正常。历史日志里同一错误早已出现——`~/.omp/logs/omp.2026-09-20.95327.log` / `omp.2026-09-22.62934.log` 有 `Custom tool onSession error`（`tool: "tui"`）同样文本，当时未追。
+
+**根因**:`host/host.ts` 的 `entry.session.extensionRunner?.initialize({}, {}, {}, uiCtx, "rpc")` 把第 1、2 参传成空对象。`ExtensionRunner.initialize` 对 contextActions 是**直接赋值**（runner.ts:695 `this.#getModel = contextActions.getModel`，没有 `??` 兜底），空对象 → `#getModel === undefined`；而 SDK 每次执行 customTool 都先经 `createCustomToolContext(ctx)`（sdk.ts:987）求值 `ctx.model` → `getModel()` → TypeError。后果：**整个 customTools 面在真实会话里不可用**（ACP 五件套同此，只是 `acp.enabled` 为 false 时未暴露），只有绕开 SDK 包装层直连 `execute()` 的探针看不出来。
+
+**修复**:`initialize` 按官方契约补全 actions / contextActions（照 `modes/acp/acp-agent.ts:2563-2645` 映射到 `entry.session` 的既有 API：sendCustomMessage / appendCustomEntry / getEnabledToolNames / model / abort / getContextUsage …）；第 3 参从 `{}` 改为 `undefined`——空对象同样会把 `#waitForIdleFn` / `#newSessionHandler` 等赋成 undefined（runner.ts:704 是 `if (commandContextActions)` 守卫），只有 undefined 才保留 runner 的 no-op 默认。验证：真实宿主 + 真实模型（`scripts/probe-tool-ab.ts`）调用 `read_session_context` 返回 `# Session context matches`（修复前同一路径报 `getModel is not a function`）；`smoke-approval` / `smoke-features` / `smoke-newsession` 全绿（审批 gate 仍走 initialize 注入的 uiContext）。
+
+**教训**:调用 SDK 这类「多参装配」入口（`initialize(actions, contextActions, commandContextActions, uiContext, mode)`）时禁止用空对象占位——SDK 内部多为直接赋值而非 `??` 兜底，空对象会把 handler 变成 undefined，把错误推迟到低频路径（工具调用 / 命令 / 生命周期事件）才炸。新增 customTool 必须走一次「真实模型调用」的端到端验证：`execute()` 单元探针覆盖不到 SDK 的包装层。
+
+### BUG-016: /goal 模式运行中整窗口黑屏——读取行展开态早于内容到达，dc.text 炸渲染
+
+**现象**:开启 /goal 模式跑一会（约在 goal 栏第一次刷新前后），整个应用窗口变黑，无报错、不可恢复，只能重启。
+
+**根因**:`ui-src/components/chat/parts.jsx` 的 `ReadRow` 展开体无条件读内容：
+
+```jsx
+const open = item.readExpanded && !closing;          // 不看内容是否已到
+const dc = item.details?.displayContent;             // 可能是 undefined
+{open && <ReadBrief text={dc.text} … />}             // ← undefined is not an object (evaluating 'l.text')
+```
+
+`readExpanded` 有两条置位路径都先于内容：
+1. 「工具运行中默认展开」(expandToolOutput) 在 `tool` 事件起始就置 true，而 `details` 要等 `tool_update` 帧才到——两帧之间只要发生一次渲染就炸；
+2. 目录读取（`details.isDirectory`）永远没有 `displayContent`，展开态必炸。
+
+React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「黑屏」（与 BUG-014 同症状类别）。与 goal 栏更新只是时间巧合（都在 turn 活动期）；是否命中取决于两帧之间有没有插入渲染，故 WKWebView 高负载流式下必现、Chromium 无头回放 300s 从未命中。
+
+**修复**:
+1. `parts.jsx ReadRow`——`open` 加 `&& !!dc` 守卫，`hasContent` 复用同一 `dc`。回归验证注入三种形状（目录+自动展开 / 文件+details 未达 / 正常可展开）：无错误页、目录行正常、正常展开不受影响。
+   - 后续（2026-09-24）把「内容缺失」的两种语义显式化：`running`（tool 帧到 tool_update 之间）扩为**所有工具**置位，判定改为 `canOpen = !isDirectory && (!!dc || running)`，结果未到时展开体渲染转圈占位（`parts.jsx` 的 `Spin`），非 running 才回落「（无输出）」。工具行/编辑行/读取行/终端卡/内容卡/后台命令页/子代理工具行统一用该占位；轮收尾与宿主重启时由 `clearRunningTools` 复位 `running`，避免中断路径留下永久转圈。
+2. 新增 `ui-src/components/ErrorBoundary.jsx`，`main.jsx` 以边界包裹 `<App/>`：渲染异常落地为可见错误页（错误信息 + 组件栈 + 「重新加载」），不再丢现场。本次根因正是靠错误页吐出的组件栈（`Ig`→`ReadRow`）在压缩产物里一步定位的。
+
+**教训**:①「展开状态」与「展开体所需内容」是两件事，置位 expanded 的路径若早于内容到达，渲染判定必须把内容存在性一并纳入，否则是渲染时序炸弹；②「整窗口黑/白屏」在本栈 = React 根被卸载的确定性症状（BUG-014、BUG-016 两次），第一道防线永远是 ErrorBoundary——没有它，每次渲染崩溃都是一次不可诊断的现场丢失；③应用二进制嵌入 UI 资源（`frontendDist: ../ui`），前端改动必须重新 `tauri build` 才进得了已装应用，只 `bun run ui:build` 用户看不到。
+
+### BUG-017: 快速上滚消息流跳动/闪烁——content-visibility 首轮 120px 估算纠偏落在视口
+
+**现象**：长会话往上滚快了，消息流出现跳动和闪烁（无滚动输入的瞬间内容位移）；同一会话全部消息渲染过一次后再滚就正常。
+
+**根因**：`ui/style.css` 曾给 `#stream > *` 加 `content-visibility: auto; contain-intrinsic-size: auto 120px`（5a1d447「渲染内存闸门」）。从未渲染的消息按 120px 估算占位，真实高度 38~5000px；快滚时一批刚进视口/邻近元素从估算态切到实测态，尺寸突变把视口内容整体推移——回路实测**无滚动输入帧锚点位移 81px**、scrollHeight 单帧纠偏 3.2 万 px。`auto` 只在渲染过一次后记住实测尺寸，故「全部加载完一次再滚就好了」；闪烁是同根的绘制侧表现（先空白后绘制）。
+
+**回路**：`?preview=1` 注入 160 条高度差异消息 → 落底 → 5×(-1400px) wheel 风暴并发逐帧采样，判据「|ΔscrollTop|<0.5 且 |Δ锚点.top|>4px」。修复前稳定红（81px），修复后绿。
+
+**修复**：删除该规则（原地留防回归注释）。A/B 实测规则无收益：cv=on 累计布局 26.7ms vs cv=off 10.3ms（反复 skipped↔relevant 切换反而多付布局账），DOM 节点数与 JS 堆无差（4865/4867、均 12.8MB）；656MB 闸门的实际功臣是同 commit 的染色缓存封顶与三处 LRU，均保留。更重的 shiki 会话未单独测［推理］。
+
+**教训**：①不布局就不知道高度——「首轮跳过布局」与「滚动几何稳定」不可兼得，估算器只能减小误差不能消除，行高 38~5000px 列表的正解是虚拟化（docs/openbitfun-borrow-ui.md U4.3）；②性能闸门类改动必须带 A/B 基准入账，否则事后分不清哪颗药丸真正有效；③「无输入帧的锚点位移」是快滚跳帧的可靠判据，比肉眼录屏可断言。

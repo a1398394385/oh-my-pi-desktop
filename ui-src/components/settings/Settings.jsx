@@ -1,10 +1,13 @@
 // 设置中心容器：全屏 overlay（左侧 setNav 导航 + 右侧 setBody 页面路由）。
 // 开合/切页状态全部来自 store（S.settingsOpen / S.settingsPage + openSettings/closeSettings），
 // 容器自身无本地开合状态。
-// 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）平移自旧版
-// ui/settings/index.js，导出供外观页等设置页组件复用。
+// 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）与字体表住在
+// ui-src/appearance.js（设置页与全局快捷键共用），此处 re-export 保持既有导出面。
 import { useEffect, useRef } from "react";
-import { S, useStore, uiPrefs, openSettings, closeSettings, refreshSettingsData } from "../../store.js";
+import { S, useStore, openSettings, closeSettings, refreshSettingsData } from "../../store.js";
+import { applyAppearance } from "../../appearance.js";
+
+export { FONT_LABELS, FONT_STACKS, saveUiPrefs, applyAppearance, applyHostAppearance } from "../../appearance.js";
 import Icon from "../../Icon.jsx";
 import { LoginBanner, LoginPrompt } from "./common.jsx";
 import GeneralPage from "./pages/GeneralPage.jsx";
@@ -31,54 +34,6 @@ import ShellPage from "./pages/ShellPage.jsx";
 import ToolsPage from "./pages/ToolsPage.jsx";
 import TasksPage from "./pages/TasksPage.jsx";
 import AdvancedPage from "./pages/AdvancedPage.jsx";
-
-const UI_PREF_KEY = "omp-ui-settings";
-
-// 字体选项：外观页字体下拉与 applyAppearance 共用
-export const FONT_LABELS = {
-  default: "系统默认",
-  pingfang: "苹方 / PingFang SC",
-  songti: "宋体 / Songti SC",
-  kaiti: "楷体 / KaiTi SC",
-  heiti: "黑体 / Heiti SC",
-  mono: "等宽",
-};
-export const FONT_STACKS = {
-  default: "var(--sans)",
-  pingfang: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-  songti: '"Songti SC", "STSong", "SimSun", serif',
-  kaiti: '"Kaiti SC", "STKaiti", "KaiTi", serif',
-  heiti: '"Heiti SC", "SimHei", "STHeiti", sans-serif',
-  mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-};
-
-// 外观偏好落盘（localStorage）
-export function saveUiPrefs() {
-  try {
-    localStorage.setItem(UI_PREF_KEY, JSON.stringify(uiPrefs));
-  } catch {}
-}
-
-// 外观偏好 → documentElement CSS 变量与 dataset 开关（旧版 applyAppearance 平移）
-export function applyAppearance() {
-  const root = document.documentElement;
-  root.style.setProperty("--ui-fs", uiPrefs.uiFontSize + "px");
-  root.style.setProperty("--code-fs", uiPrefs.codeFontSize + "px");
-  root.style.setProperty("--ui-font", FONT_STACKS[uiPrefs.uiFont] || "var(--sans)");
-  root.dataset.lineNumbers = uiPrefs.lineNumbers ? "on" : "off";
-  root.dataset.codeWrap = uiPrefs.codeWrap ? "on" : "off";
-  root.dataset.showThinking = uiPrefs.showThinking ? "on" : "off";
-}
-
-// 宿主设置中纯外观副作用部分（旧版 applyHostSettings/applyHostReadySettings 平移）：
-// 仅 hideThinkingBlock 影响外观——同步进 uiPrefs.showThinking 并落盘、应用。
-// 其余宿主字段（代理/超时/开关）由页面组件直接以 S.hostSettings 为数据源受控渲染。
-export function applyHostAppearance(hostSettings) {
-  if (!hostSettings || typeof hostSettings.hideThinkingBlock !== "boolean") return;
-  uiPrefs.showThinking = !hostSettings.hideThinkingBlock;
-  saveUiPrefs();
-  applyAppearance();
-}
 
 // 侧边导航项：page id → 图标 / 文案（与旧版 DOM data-page 一一对应）
 const NAV_SECTIONS = [
