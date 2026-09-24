@@ -1,6 +1,9 @@
 # UI 技术栈破坏式迁移:对齐 ZCodium(TS + Vite + Tailwind + shadcn + zustand + streamdown + Lexical)
 
 > **生命周期**:本文件是 UI 栈迁移的**实施合同**,冻结于 2026-09-24。决策 Why 归 `.agents/notes/00NN-*` ADR,字段/契约变化以此为锚;迁移期间(`P1`–`P7` 任一未验收)不得删除,完成后按 `docs/documentation.md` §3 收敛到对应 ADR 后退役。
+>
+> **实施进度**(2026-09-24):P0 ✅(基线 4cddfbc、工作区干净)→ P1 ✅(Vite 8.3 + TS strict 基座;ui:build/ui:typecheck/smoke:react 绿)→ P2 ✅(97 文件全量 TSX 化;`types/frames.ts` 75 帧判别联合 + `types/session.ts` ChatItem 十成员联合接入 store switch;typecheck/build/check 86 RPC·29 边界/smoke 全绿)。P3–P7 未实施。
+> P2 偏差记录:① typecheck 基线 158 错由收口修至 0(跨批次类型对齐:SessionInfo.title/ModelRole.tag 允许 null、TimerHandle 统一、settingsSchema 定 SchemaDef、AppState.mpDetailProv 定 AllProviderEntry、frames.mcp 补 McpAssetsPayload);② 两批次把类型守卫写成运行时 `instanceof HTMLElement`(Composer cbar 宽度计算、parts ResizeObserver),happy-dom 无此全局致 smoke 崩——已回退为 `as` 收窄,**教训:类型收窄只用 as,不得新增运行时 instanceof 守卫**;③ P1 偏差:vite.config.ts 暂以 CJS 加载(package.json 无 type:module,加则影响全仓 .js 语义,未动)、smoke CSS 解析改正则为属性顺序无关。
 
 ## Context
 
@@ -22,8 +25,8 @@ omp-desktop 前端(`ui-src/`,97 个 `.jsx`/`.js` 共 14301 行 + `ui/style.css` 
 2. 新建 `vite.config.ts`(仓库根):`root: "ui"`、`base: "./"`、plugins `[react(), tailwindcss()]`；输出目录设为相对 root 的 `dist`(即 `ui/dist`)，`emptyOutDir: true`、`assetsInlineLimit: 0`，通过 `build.rolldownOptions` 固定入口为 `assets/app.js`、分块名为 `assets/chunk-[hash].js`。不额外开放 `server.fs`。
 3. 新建 `tsconfig.json`:`strict: true`、`target ES2022`、`module ESNext`、`moduleResolution bundler`、`jsx react-jsx`、`noEmit: true`、`allowJs: true`、`checkJs: false`、`include: ["ui-src", "vite.config.ts"]`、`types: ["vite/client"]`，让现存 JS/JSX 与迁移后的 TS/TSX 共存，并检查 Vite 配置。
 4. 新建 `ui-src/env.d.ts`:`/// <reference types="vite/client" />` + `export {};` + `declare global { interface Window { __dbg?: Record<string, unknown> } }`(preview 调试用)；它是类型输入之一，不是唯一输入。
-5. `package.json` scripts:`ui:build` → `vite build`;`ui:watch` → `vite build --watch`;新增 `ui:dev`: `vite`、`ui:typecheck`: `tsc --noEmit`;`check` 追加 `&& bun run ui:typecheck`。
-6. `src-tauri/tauri.conf.json`:`frontendDist` 改为 `"../ui/dist"`；Tauri 的 dev/build 验收都要先生成并实际加载这份前端产物。
+5. `package.json` scripts:`ui:build` → `vite build`;`ui:watch` → `vite build --watch`;新增 `ui:dev`: `vite`、`ui:typecheck`: `tsc --noEmit`;`check` 追加 `&& bun run ui:typecheck`。同时 `bun remove esbuild`(ui:build/ui:watch 换 Vite 后无消费者,不留死依赖)。
+6. `src-tauri/tauri.conf.json`:`frontendDist` 改为 `"../ui/dist"`；Tauri 的 dev/build 验收都要先生成并实际加载这份前端产物。显式约定:桌面端开发**无 HMR**(不配 `devUrl`),`bunx tauri dev` 始终加载预构建产物；浏览器 preview 走 `bun run ui:dev`。
 7. `.gitignore` 增加 `ui/dist/`(保留已有 `ui/assets/` 行不动)。
 8. 图标注册表留在 `ui/`:`.local` 生成脚本把输出路径固定写在那里；保留 `ui/icons.js`、`ui/fa-icons.js`、`ui/lucide-icons.js`、`ui/file-icons.js` 与现有导入路径，不手改生成文件。
 9. `ui/index.html` 的入口先指向 `<script type="module" src="../ui-src/main.jsx">`，等 P2 将入口改名后再同步为 `main.tsx`；`<link rel="stylesheet" href="style.css">` 保留，由 Vite 处理本地样式引用。
@@ -43,7 +46,7 @@ omp-desktop 前端(`ui-src/`,97 个 `.jsx`/`.js` 共 14301 行 + `ui/style.css` 
 
 **目标**:把巨型 `store.js` 切到 slice,清理所有直接状态写入,组件订阅走 selector;`notify()` 机制退出。
 
-1. 按 `store.ts` 现有分节注释切 slice,字段名零改动:`store/ui.ts`(theme/zoom/侧右折叠/isCreatingNew/settings 页/sigil)、`store/session.ts`(openSessions 容器 + 当前会话字段)、`store/projects.ts`(diskProjects/pinned/limits/unseenFinished)、`store/right.ts`(rightState/gitDiffCache/briefDiffCache);`store/index.ts` 桶导出。
+1. 按 `store.ts` 现有分节注释切 slice,字段名零改动:`store/ui.ts`(theme/zoom/侧右折叠/isCreatingNew/settings 页/sigil/uiPrefs)、`store/session.ts`(openSessions 容器 + 当前会话字段 + modelNames/modelEfforts 宿主 models 帧容器)、`store/projects.ts`(diskProjects/pinned/projectLimits/expandedProjects/unseenFinished)、`store/right.ts`(rightState/gitDiffCache/fileDiffCache/briefDiffCache);`store/index.ts` 桶导出。`onTerminalFrame` 终端帧总线不经 zustand,原样保留为独立模块(直推订阅者、不触发整树订阅)。
 2. 所有状态写入都迁到 slice actions：包括 WS switch、组件交互、`shell.js`/`keys.js` 和所有 `notify()` 调用点；逐项搜索并清理对 `S`、`openSessions` 及其他可变容器的直接写入。仅迁移 WS 分发不算完成。删除 `notify()`/版本号机制，组件订阅改用 selector。
 3. `window.__dbg` 暴露等价 store 句柄(preview 与 smoke 依赖)。
 4. LRU/内存闸门(openSessions 上限 8、briefDiffCache 上限 30)语义原样迁移。
@@ -88,12 +91,12 @@ omp-desktop 前端(`ui-src/`,97 个 `.jsx`/`.js` 共 14301 行 + `ui/style.css` 
 - `src-tauri/tauri.conf.json:7` — `frontendDist`,P1 唯一 Rust 侧改动。
 - `ui/index.html` — 入口接线(script/link),P1 第 9 步先接 `main.jsx`，P2 改名后更新为 `main.tsx`；全文重读。
 - `ui-src/main.tsx`(原 main.jsx:79-129)— preview 注入与 `window.__dbg`,P2 原样保留的锚点。
-- `scripts/smoke-react-shell.ts:33` — `await import("../ui/assets/app.js")` 改 `../ui/dist/assets/app.js`,并改为读 `ui/dist/index.html` 解析 CSS href、读文件注入 `<style>`(happy-dom 不吃 link)。
+- `scripts/smoke-react-shell.ts:37` — `await import("../ui/assets/app.js")` 改 `../ui/dist/assets/app.js`,并改为读 `ui/dist/index.html` 解析 CSS href、读文件注入 `<style>`(happy-dom 不吃 link)。
 - `ui/style.css:1-78` — token 块(P4 @theme 映射源,变量值不动)。
 
 ## 验证矩阵
 
-1. 每阶段(P1–P7)收尾依次执行:`bun run ui:typecheck`、`bun run ui:build`，确认产物在 `ui/dist`；不并行启动多个构建。
+1. P1 收尾追加 `bun run smoke:react`(smoke 引用的 bundle 路径本阶段即从 `ui/assets/app.js` 切到 `ui/dist/assets/app.js`,必须当场验证,不留到 P7);此后每阶段(P2–P7)收尾依次执行:`bun run ui:typecheck`、`bun run ui:build`，确认产物在 `ui/dist`；不并行启动多个构建。
 2. P2 后:`bun run check` 通过；当前基线输出为 86 RPC/29 边界，迁移不应改变 host 检查结果。
 3. P7 后:`bun run smoke:react`(happy-dom)全断言绿,含新增:preview 下 composer 挂载、发送按钮存在。
 4. 人工(vite dev,`bun run ui:dev` → `http://localhost:5173/?preview=1`):三栏壳渲染、样本消息(编辑组/查阅组/读取行/思考/终端卡)齐全、设置中心 24 页可逐页点开、明暗主题切换 token 生效、streamdown 代码块明暗高亮跟随;控制台零 error。
