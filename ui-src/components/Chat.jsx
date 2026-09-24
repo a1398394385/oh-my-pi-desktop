@@ -7,7 +7,7 @@
 // - 「滚动至结尾」按钮：常驻 stream 末尾（原 ensureScrollBottom），显隐由 scroll 事件
 //   命令式切换（4px 容差防亚像素抖动，高频滚动不进 React 状态）。
 import { useLayoutEffect, useRef } from "react";
-import { S, useStore, activeOpen, isJunkPlaceholder, send } from "../store.js";
+import { useAppStore, isJunkPlaceholder, send } from "../store";
 import Icon from "../Icon.jsx";
 import TodoCard from "./chat/TodoCard.jsx";
 import { WorkSec } from "./chat/WorkLine.jsx";
@@ -24,8 +24,9 @@ function updateScrollBottomVis(el, btn) {
 }
 
 export default function Chat() {
-  useStore();
-  const s = activeOpen();
+  // 当前会话订阅：所有 session 写入走 updateSession 换引用（items/draft/streaming 变化即重渲染）
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const activePath = useAppStore((st) => st.activePath);
   const streamRef = useRef(null);
   const btnRef = useRef(null);
   const prevPath = useRef(null);
@@ -42,8 +43,8 @@ export default function Chat() {
   useLayoutEffect(() => {
     const el = streamRef.current;
     if (!el || !s) return;
-    const switched = prevPath.current !== S.activePath;
-    prevPath.current = S.activePath;
+    const switched = prevPath.current !== activePath;
+    prevPath.current = activePath;
     // 切换会话时 stream 节点被复用，旧会话的 scrollTop 对新会话无意义（拿去算贴底常误判）
     if (switched || atBottom.current) {
       el.scrollTop = el.scrollHeight;
@@ -92,7 +93,7 @@ export default function Chat() {
         <div className="extw-bar">
           <Icon name="info" />
           <span className="extw-tx">此会话正在被其他进程写入（如 CLI），视图可能不同步</span>
-          <button type="button" className="save-btn" onClick={() => send({ type: "reload_session", path: S.activePath })}>
+          <button type="button" className="save-btn" onClick={() => send({ type: "reload_session", path: activePath })}>
             重新加载
           </button>
         </div>

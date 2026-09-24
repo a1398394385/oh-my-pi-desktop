@@ -2,7 +2,7 @@
 // 详情骨架（今日定稿，必须保留）：#rightBody 加 detail 类，rb-head 固定（返回 + 名字/状态），
 // sub-stream rb-scroll 滚动承载过程流。
 import { useRef } from "react";
-import { S, useStore, notify, activeOpen } from "../../store";
+import { useAppStore, setBump } from "../../store";
 import { inlineCodeHtml } from "./helpers";
 import { Spin } from "../chat/parts";
 import type { SubagentState, SubagentToolCall } from "../../types/session";
@@ -10,13 +10,13 @@ import type { SubagentState, SubagentToolCall } from "../../types/session";
 // 子代理条目与工具行统一用 store 共享类型(types/session.ts),字段以本页读取为准
 
 export default function SubagentPage() {
-  useStore();
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const selectedSubagent = useAppStore((st) => st.selectedSubagent);
   if (!s || s.subagents.size === 0) {
     return <div className="placeholder">（暂无子代理）</div>;
   }
-  if (S.selectedSubagent && s.subagents.has(S.selectedSubagent)) {
-    return <SubagentDetail sub={s.subagents.get(S.selectedSubagent)!} />; // 上一行 has() 已守卫必存在
+  if (selectedSubagent && s.subagents.has(selectedSubagent)) {
+    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} />; // 上一行 has() 已守卫必存在
   }
   return (
     <>
@@ -25,13 +25,11 @@ export default function SubagentPage() {
           key={id}
           className={"sub-card " + (sub.streaming ? "running" : sub.status)}
           onClick={() => {
-            S.selectedSubagent = id;
-            // 入场动画标记：notify 触发的重渲染读 true 加 kids-in，宏任务里复位
-            // （S 未预声明该字段——store 禁改，运行时挂上，语义同原 core.js）
-            S.animateSubKids = true;
-            notify();
+            // 入场动画标记：与 selectedSubagent 同次 setState（订阅者渲染时读到），
+            // 宏任务静默复位——复位无订阅者不触发渲染，kids-in 类保留，动画不被截断（原 notify 语义）
+            useAppStore.setState((st) => ({ selectedSubagent: id, animateSubKids: true }));
             setTimeout(() => {
-              S.animateSubKids = false;
+              useAppStore.setState({ animateSubKids: false });
             }, 0);
           }}
         >
@@ -52,13 +50,14 @@ export default function SubagentPage() {
 function SubagentDetail({ sub }: { sub: SubagentState }) {
   const headRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const kids = !!S.animateSubKids; // 渲染时读取（notify 后首帧为 true，setTimeout 复位）
+  // 脉冲标记渲染时读 getState（不订阅）：置位随 selectedSubagent 写入驱动本组件渲染，
+  // 宏任务静默复位不触发订阅——kids-in 类保留至下次渲染，入场动画不被截断（原 notify 后首帧为 true）
+  const kids = !!useAppStore.getState().animateSubKids;
   const back = () => {
     // 收起：详情内容上收（0.3s）后切回列表
     for (const el of [headRef.current, scrollRef.current]) el?.classList.add("lift");
     setTimeout(() => {
-      S.selectedSubagent = null;
-      notify();
+      setBump({ selectedSubagent: null });
     }, 310);
   };
   return (

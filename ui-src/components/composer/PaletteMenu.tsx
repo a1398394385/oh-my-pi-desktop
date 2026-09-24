@@ -6,9 +6,9 @@ import type { RefObject } from "react";
 import { placePaletteCard } from "./place";
 import { BUILTIN_DESC_ZH } from "./commands-zh";
 
-/** @ 文件候选（S.mentionResult.matches 元素） */
+/** @ 文件候选（mentionResult.matches 元素） */
 export type FileItem = { path: string; dir: boolean };
-/** 斜杠命令候选（S.commands 元素的结构子集） */
+/** 斜杠命令候选（commands 清单元素的结构子集） */
 export type CommandItem = { name: string; aliases?: string[]; description?: string; hint?: string | null; source?: string };
 export type PaletteItem = FileItem | CommandItem;
 

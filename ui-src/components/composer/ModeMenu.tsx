@@ -1,9 +1,9 @@
 // 权限模式菜单（原 index.html #modeMenu 静态三行 + composer.js 点击绑定平移）：
 // omp 三值 always-ask | write | yolo。选中走宿主下发（有会话带 sessionId），
-// 本地乐观更新 S.approvalMode（原 setApprovalModeUi），宿主 approval_mode 帧再确认。
+// 本地乐观更新 approvalMode（原 setApprovalModeUi），宿主 approval_mode 帧再确认。
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { S, send, notify, activeOpen } from "../../store";
+import { useAppStore, setBump, send } from "../../store";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
 
@@ -33,7 +33,8 @@ type ModeMenuProps = {
 
 export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const approvalMode = useAppStore((st) => st.approvalMode);
   const planOn = !!s?.planMode;
   // 挂载即定位（原 openComposerMenu：打开时定位一次）
   useLayoutEffect(() => {
@@ -43,8 +44,7 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
   const pickMode = (mode: ApprovalMode) => {
     if (s) send({ type: "set_approval_mode", sessionId: s.sessionId, mode });
     else send({ type: "set_approval_mode", mode });
-    S.approvalMode = mode;
-    notify();
+    setBump({ approvalMode: mode });
     onClose();
   };
 
@@ -72,7 +72,7 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
           <div className="mi big" data-mode={mode} key={mode} onClick={() => pickMode(mode)}>
             <span className="mi-ic"><Icon name={meta.icon} /></span>
             <span className="mi-tx"><span className="mi-tt">{meta.label}</span><span className="mi-desc">{desc}</span></span>
-            <span className="ck">{S.approvalMode === mode ? "✓" : ""}</span>
+            <span className="ck">{approvalMode === mode ? "✓" : ""}</span>
           </div>
         );
       })}

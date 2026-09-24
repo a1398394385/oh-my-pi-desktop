@@ -2,7 +2,7 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-general">，
 // 绑定参照 ui/settings/index.js 的 initSettings / applyHostSettings / saveDesktopField。
 import { useEffect, useRef, useState } from "react";
-import { S, useStore, send, toast, uiPrefs } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -41,9 +41,9 @@ function genThemeLabel(mode: string): string {
   return mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色";
 }
 
-// 本地偏好落盘（旧版 saveUiPrefs）
+// 本地偏好落盘（旧版 saveUiPrefs；读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
 function saveUiPrefs() {
-  try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefs)); } catch {}
+  try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
 }
 // 外观应用（旧版 applyAppearance：字号/字体/行号/换行/思考块 data 属性）
 const FONT_STACKS: Record<string, string> = {
@@ -56,13 +56,14 @@ const FONT_STACKS: Record<string, string> = {
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
 function applyAppearance() {
+  const p = useAppStore.getState().uiPrefs;
   const root = document.documentElement;
-  root.style.setProperty("--ui-fs", uiPrefs.uiFontSize + "px");
-  root.style.setProperty("--code-fs", uiPrefs.codeFontSize + "px");
-  root.style.setProperty("--ui-font", FONT_STACKS[uiPrefs.uiFont] || "var(--sans)");
-  root.dataset.lineNumbers = uiPrefs.lineNumbers ? "on" : "off";
-  root.dataset.codeWrap = uiPrefs.codeWrap ? "on" : "off";
-  root.dataset.showThinking = uiPrefs.showThinking ? "on" : "off";
+  root.style.setProperty("--ui-fs", p.uiFontSize + "px");
+  root.style.setProperty("--code-fs", p.codeFontSize + "px");
+  root.style.setProperty("--ui-font", FONT_STACKS[p.uiFont] || "var(--sans)");
+  root.dataset.lineNumbers = p.lineNumbers ? "on" : "off";
+  root.dataset.codeWrap = p.codeWrap ? "on" : "off";
+  root.dataset.showThinking = p.showThinking ? "on" : "off";
 }
 
 // ---------- 下拉选择器：旧版 wireSel 的受控等价物（.sel/.menu/.mi 结构 1:1） ----------
@@ -107,8 +108,7 @@ function Sel({ label, options, onPick }: SelProps) {
 }
 
 export default function GeneralPage() {
-  useStore(); // 订阅 S.hostSettings / uiPrefs 相关回包
-  const hs = S.hostSettings;
+  const hs = useAppStore((s) => s.hostSettings); // selector 订阅回包刷新
   const env: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" }; // 首帧前兜底,同原版 {} 语义
 
   // ---------- 本地表单态 ----------
@@ -122,16 +122,16 @@ export default function GeneralPage() {
   const [askTimeout, setAskTimeout] = useState(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
   // host 设置回包后回填（输入框聚焦时不打扰，对应旧版 applyHostSettings 的 fill 守卫）
   useEffect(() => {
-    const e2: DesktopEnv = S.hostSettings?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" };
+    const e2: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" };
     if (document.activeElement !== proxyRef.current) setProxy(e2.httpProxy || "");
     if (document.activeElement !== noProxyRef.current) setNoProxy(e2.noProxy || "");
     if (document.activeElement !== caRef.current) setCa(e2.caCerts || "");
     if (document.activeElement !== askRef.current) {
-      setAskTimeout(S.hostSettings?.values?.["ask.timeout"] ? String(S.hostSettings.values["ask.timeout"]) : "");
+      setAskTimeout(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
     }
   }, [hs]);
   const [theme, setTheme] = useState(currentThemeMode());
-  const [showThinking, setShowThinking] = useState(!!uiPrefs.showThinking);
+  const [showThinking, setShowThinking] = useState(!!useAppStore.getState().uiPrefs.showThinking);
 
   // ---------- 交互 ----------
   const switchProfile = (name: string) => {
@@ -160,7 +160,8 @@ export default function GeneralPage() {
   const toggleThinking = () => {
     const on = !showThinking;
     setShowThinking(on);
-    uiPrefs.showThinking = on;
+    // uiPrefs 换新对象写入 + bump（等价旧 mutate + 本地 setState 驱动的可见性）
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, showThinking: on } }));
     saveUiPrefs();
     applyAppearance();
     send({ type: "set_setting", key: "hideThinkingBlock", value: !on });
@@ -177,7 +178,7 @@ export default function GeneralPage() {
     toast(`提问超时时间已保存：${secs} 秒${secs === 0 ? "（永不超时）" : ""}`);
   };
 
-  // ---------- Profile 下拉数据（数据契约：S.hostSettings.availableProfiles: string[]） ----------
+  // ---------- Profile 下拉数据（数据契约：hostSettings.availableProfiles: string[]） ----------
   const activeProfile = hs?.activeProfile || "omp-desktop";
   const profiles = Array.isArray(hs?.availableProfiles) && hs.availableProfiles.length
     ? hs.availableProfiles

@@ -2,11 +2,16 @@
 // 迁移自 ui/welcome.js renderWbProjectList 与 initWelcome 项目菜单事件；条件渲染挂载即打开，
 // 搜索态随挂载重置为空（对应原版打开时 searchInput.value=""），40ms 后聚焦搜索框。
 import { useEffect, useRef, useState } from "react";
-import { S, useStore, notify, send, toast, invoke, getAvailableProjects, setWelcomeProject } from "../../store.js";
+import { useAppStore, send, toast, invoke, getAvailableProjects, setWelcomeProject } from "../../store";
 import Icon from "../../Icon.jsx";
 
 export default function ProjectMenu({ pos, onClose }) {
-  useStore();
+  const newSessionProject = useAppStore((s) => s.newSessionProject);
+  // getAvailableProjects() 渲染期读 store 实时值：订阅其数据源字段（session_list 帧落地换引用），
+  // 项目列表变化时本菜单重渲染（替代旧 useStore 全局订阅）
+  useAppStore((s) => s.diskProjects);
+  useAppStore((s) => s.allProjects);
+  useAppStore((s) => s.removedProjects);
   const [filter, setFilter] = useState("");
   const searchRef = useRef(null);
 
@@ -25,10 +30,9 @@ export default function ProjectMenu({ pos, onClose }) {
       })
     : available;
 
-  // 选中项目：切数据（store 落地）+ 手动 notify + 关菜单（原版 item.onclick）
+  // 选中项目：切数据（setWelcomeProject 落地，内含 _v bump）+ 关菜单（原版 item.onclick）
   const choose = (cwd) => {
     setWelcomeProject(cwd);
-    notify();
     onClose();
   };
 
@@ -43,7 +47,6 @@ export default function ProjectMenu({ pos, onClose }) {
           if (p) {
             send({ type: "add_project", cwd: p });
             setWelcomeProject(p);
-            notify();
           }
         })
         .catch((err) => {
@@ -55,7 +58,6 @@ export default function ProjectMenu({ pos, onClose }) {
         const p = manual.trim();
         send({ type: "add_project", cwd: p });
         setWelcomeProject(p);
-        notify();
       }
     }
   };
@@ -95,7 +97,7 @@ export default function ProjectMenu({ pos, onClose }) {
           matched.map((p) => (
             <div
               key={p.cwd}
-              className={"wb-proj-item" + (p.cwd === S.newSessionProject ? " selected" : "")}
+              className={"wb-proj-item" + (p.cwd === newSessionProject ? " selected" : "")}
               title={p.cwd}
               onClick={(e) => {
                 e.stopPropagation();

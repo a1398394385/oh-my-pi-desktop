@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { menuZoom, toggleTheme, toggleSidebar } from "./shell";
-import { S, notify, connect, showWelcomeScreen, initNewSessionModel, openSessions, setConnected, openSettings, closeSettings, modelNames, modelEfforts } from "./store";
+import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnected, openSettings, closeSettings, setBump } from "./store";
 import { initKeys } from "./keys";
 import type { ToolItem } from "./types/session";
 
@@ -26,8 +26,8 @@ import type { ToolItem } from "./types/session";
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === ",") {
     e.preventDefault();
-    if (S.settingsOpen) closeSettings();
-    else openSettings();
+    if (useAppStore.getState().settingsOpen) closeSettings();
+      else openSettings();
   }
 });
 
@@ -38,10 +38,9 @@ initKeys();
 function dispatchMenuAction(action: unknown): void {
   switch (action) {
     case "new-session":
-      if (S.isCreatingNew) {
-        S.newSessionDirty = false;
+      if (useAppStore.getState().isCreatingNew) {
+        setBump({ newSessionDirty: false }); // 原「写+notify」合并
         initNewSessionModel(true);
-        notify();
       }
       showWelcomeScreen(null);
       break;
@@ -80,55 +79,56 @@ window.__TAURI__?.event?.listen("menu-action", (e) => dispatchMenuAction(e.paylo
 
 if (new URLSearchParams(location.search).has("preview")) {
   // 浏览器对照：?preview=1 注入动作样本（编辑行/更改组/查阅组/读取行/思考/终端卡），不连宿主
-  S.isCreatingNew = false;
-  S.activePath = "/preview";
   const diffSample = ["@@ -1,4 +1,5 @@", " body {", "-  color: red;", "+  color: blue;", "+  margin: 0;", " }"].join("\n");
   const readItem = (p: string): ToolItem => ({
     role: "tool", name: "read", text: "", args: { path: p }, files: [p],
     details: { resolvedPath: p, displayContent: { text: "body {\n  color: red;\n}", startLine: 1 } },
   });
-  openSessions.set(S.activePath, {
-    sessionId: "preview",
-    cwd: "/preview",
-    items: [
-      { role: "user", text: "把主题色改成蓝色" },
-      { role: "assistant", text: "先读一下样式文件。" },
-      readItem("src/style.css"),
-      { role: "thinking", text: "思考 · 3 秒", expandable: true, expanded: true,
-        thinking: "1. 定位颜色定义\n2. 替换为 blue\n" + "逐行核对相邻规则的级联影响\n".repeat(12) },
-      { role: "tool", name: "edit", text: "", args: { path: "src/style.css" }, files: ["src/style.css"],
-        added: 2, removed: 1, diffExpanded: true, briefDiff: diffSample },
-      { role: "assistant", text: "样式改完了，顺手补两个文件。" },
-      { role: "tool", name: "write", text: "", args: { path: "src/a.ts" }, files: ["src/a.ts"], added: 10, removed: 0 },
-      { role: "tool", name: "edit", text: "", args: { path: "src/b.ts" }, files: ["src/b.ts"], added: 2, removed: 5 },
-      { role: "tool", name: "bash", args: { command: "bun run build" }, text: "bun run build",
-        cmdExpanded: true, output: "$ bun run build\n\n  dist/app.js  2.1mb\n\nDone in 44ms" },
-      { role: "tool", name: "bash", args: { command: "git status --short" }, text: "git status --short",
-        output: " M ui/style.css\n?? ui/file-icons.js" },
-      { role: "assistant", text: "改好了。" },
-      { role: "user", text: "构建一下" },
-      { role: "loop", text: "", collapsed: true, durationSec: 83,
-        usage: { input: 12040, output: 320, cacheRead: 90000, cacheWrite: 0 }, items: [] },
-      { role: "assistant", text: "构建成功，无报错。" },
-      { role: "tool", name: "read", text: "", group: [readItem("src/a.ts"), readItem("src/b.ts")] },
-    ],
-    assistantDraft: "",
-    streaming: false,
-    subagents: new Map([["sa1", { agent: "scout", name: "scout", text: "", description: "侦察代码结构", status: "completed", streaming: false, tools: [] }]]),
-    model: null,
-    thinking: "auto",
-    isGit: false,
-    todos: [{ name: "阶段一", tasks: [
-      { content: "读取样式文件", status: "completed" },
-      { content: "修改主题色", status: "in_progress" },
-      { content: "验证构建", status: "pending" },
-    ] }],
-  });
-  // 浏览器对照调试钩子：驱动 S/notify 模拟宿主回包（仅 preview 模式）；modelNames/modelEfforts
-  // 是宿主 models 帧的落地容器，注入后可验证模型/思考档位相关交互（Ctrl+P、Shift+Tab、菜单）
-  window.__dbg = { S, notify, openSessions, modelNames, modelEfforts };
+  // 一次性换 openSessions Map 引用注入样本（等价旧「S 静默写 + openSessions.set」，_v bump 合并原尾部 notify）
+  useAppStore.setState(st => ({
+    openSessions: new Map(st.openSessions).set("/preview", {
+      sessionId: "preview",
+      cwd: "/preview",
+      items: [
+        { role: "user", text: "把主题色改成蓝色" },
+        { role: "assistant", text: "先读一下样式文件。" },
+        readItem("src/style.css"),
+        { role: "thinking", text: "思考 · 3 秒", expandable: true, expanded: true,
+          thinking: "1. 定位颜色定义\n2. 替换为 blue\n" + "逐行核对相邻规则的级联影响\n".repeat(12) },
+        { role: "tool", name: "edit", text: "", args: { path: "src/style.css" }, files: ["src/style.css"],
+          added: 2, removed: 1, diffExpanded: true, briefDiff: diffSample },
+        { role: "assistant", text: "样式改完了，顺手补两个文件。" },
+        { role: "tool", name: "write", text: "", args: { path: "src/a.ts" }, files: ["src/a.ts"], added: 10, removed: 0 },
+        { role: "tool", name: "edit", text: "", args: { path: "src/b.ts" }, files: ["src/b.ts"], added: 2, removed: 5 },
+        { role: "tool", name: "bash", args: { command: "bun run build" }, text: "bun run build",
+          cmdExpanded: true, output: "$ bun run build\n\n  dist/app.js  2.1mb\n\nDone in 44ms" },
+        { role: "tool", name: "bash", args: { command: "git status --short" }, text: "git status --short",
+          output: " M ui/style.css\n?? ui/file-icons.js" },
+        { role: "assistant", text: "改好了。" },
+        { role: "user", text: "构建一下" },
+        { role: "loop", text: "", collapsed: true, durationSec: 83,
+          usage: { input: 12040, output: 320, cacheRead: 90000, cacheWrite: 0 }, items: [] },
+        { role: "assistant", text: "构建成功，无报错。" },
+        { role: "tool", name: "read", text: "", group: [readItem("src/a.ts"), readItem("src/b.ts")] },
+      ],
+      assistantDraft: "",
+      streaming: false,
+      subagents: new Map([["sa1", { agent: "scout", name: "scout", text: "", description: "侦察代码结构", status: "completed", streaming: false, tools: [] }]]),
+      model: null,
+      thinking: "auto",
+      isGit: false,
+      todos: [{ name: "阶段一", tasks: [
+        { content: "读取样式文件", status: "completed" },
+        { content: "修改主题色", status: "in_progress" },
+        { content: "验证构建", status: "pending" },
+      ] }],
+    }),
+    activePath: "/preview",
+    isCreatingNew: false,
+  }));
+  // 浏览器对照调试钩子（仅 preview 模式）：暴露 store 供冒烟读取 getState（P3 终态,旧 S/notify 退役）
+  window.__dbg = { useAppStore };
   setConnected(true, "预览");
-  notify();
 } else {
   connect();
 }

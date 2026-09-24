@@ -2,11 +2,12 @@
 // 缓存利用率 / 输入 / 输出 / 缓存读 / 缓存写 / 成本 / 活跃时长。
 // 数据由 host 在 turn 收尾（agent_end）与加载会话时经 session_stats 帧推送，
 // 落在会话对象的 stats 字段（见 store.js），不做 hover 按需请求。
-import { useStore, activeOpen, fmtTokens, fmtDurationMs } from "../store.js";
+import { useAppStore, fmtTokens, fmtDurationMs } from "../store";
 
 export default function SessionStatsBar() {
-  useStore();
-  const st = activeOpen()?.stats;
+  // 当前会话订阅：session_stats 帧走 updateSession 换 session 引用，selector 即可感知
+  const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
+  const st = session?.stats;
   if (!st) return null; // 首轮结束前（或会话未加载完）没有统计，不占位
 
   const cost = (st.cost ?? 0) + (st.advisorCost ?? 0);

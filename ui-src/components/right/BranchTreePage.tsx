@@ -1,29 +1,15 @@
 // 分支树页：当前会话家族（get_session_tree 懒加载，切会话后旧数据视为过期）
 // + 按 parentSession 组树渲染 + 点击分支行切换会话。
-import { Fragment } from "react";
-import {
-  S,
-  useStore,
-  notify,
-  send,
-  activeOpen,
-  diskProjects,
-  openSessions,
-  unseenFinished,
-  saveUnseen,
-  refreshGitDiff,
-  hideWelcomeScreen,
-  rightState,
-  activateSession,
-} from "../../store";
-import type { SessionBranch } from "../../types/frames";
+import { Fragment, useEffect } from "react";
+import { useAppStore, setBump, send, activateSession, refreshGitDiff, hideWelcomeScreen, saveUnseen } from "../../store";
+import type { DiskProject, SessionBranch } from "../../types/frames";
 import { fmtAgo } from "./helpers";
 
 // 家族分支条目:唯一来源 types/frames 的 SessionBranch(host get_session_tree 回包)
 type BranchEntry = SessionBranch;
 
 // 分支行标题：title → 磁盘列表首消息截断 → 「未命名分支」（分支刚建未入 list_sessions 时无首消息）
-function branchLabel(b: BranchEntry): string {
+function branchLabel(b: BranchEntry, diskProjects: DiskProject[]): string {
   if (b.title && b.title.trim()) return b.title;
   const fm = diskProjects.flatMap((p) => p.sessions).find((x) => x.path === b.path)?.firstMessage;
   if (fm && fm.trim()) return fm.length > 40 ? fm.slice(0, 40) + "…" : fm;
@@ -32,35 +18,43 @@ function branchLabel(b: BranchEntry): string {
 
 // 点击分支行切换会话：与侧栏列表点击同一套动作（已打开直接激活，否则走宿主 load_session）
 function loadBranchSession(path: string) {
-  S.isCreatingNew = false;
+  useAppStore.setState({ isCreatingNew: false });
   hideWelcomeScreen();
-  unseenFinished.delete(path);
+  // 未读标记摘除换新 Set（原 mutate + 末尾 notify；订阅 unseenFinished 的侧栏按引用感知）
+  useAppStore.setState((st) => ({ unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== path)) }));
   saveUnseen();
-  if (openSessions.has(path)) {
+  if (useAppStore.getState().openSessions.has(path)) {
     activateSession(path);
     refreshGitDiff();
   } else {
     send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
     send({ type: "load_session", path });
   }
-  S.selectedSubagent = null;
-  S.selectedFile = null;
-  notify();
+  setBump({ selectedSubagent: null, selectedFile: null });
 }
 
 export default function BranchTreePage() {
-  useStore();
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const rightState = useAppStore((st) => st.rightState);
+  // 过期数据重拉（原渲染体内联请求移此；pending 防重读 getState，回包由 store 落缓存）。
+  // 无依赖数组 = 每次渲染后检查，对齐原「渲染体每次重绘检查」语义（请求失败解除 pending 后下次渲染重拉）
+  useEffect(() => {
+    const st = useAppStore.getState();
+    const session = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    if (!session) return;
+    const tree = st.rightState.sessionTree;
+    if (tree && tree.sessionId === session.sessionId) return; // 未过期
+    if (st.rightState.sessionTreePending) return; // 防重
+    useAppStore.setState((st2) => ({
+      rightState: { ...st2.rightState, sessionTreePending: true, treeFor: session.sessionId }, // 回包未带 sessionId 时归属用
+    }));
+    send({ type: "get_session_tree", sessionId: session.sessionId });
+  });
   if (!s) {
     return <div className="placeholder">（无活跃会话）</div>;
   }
   const tree = rightState.sessionTree;
   const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
-  if (stale && !rightState.sessionTreePending) {
-    rightState.sessionTreePending = true;
-    rightState.treeFor = s.sessionId; // 回包未带 sessionId 时归属用
-    send({ type: "get_session_tree", sessionId: s.sessionId });
-  }
   if (stale) {
     return <div className="placeholder">加载中…</div>;
   }
@@ -93,6 +87,7 @@ export default function BranchTreePage() {
 
 // 单层分支行（当前分支 cur 高亮不可点）+ 嵌套子支容器（自带竖线引导线，逐级缩进）
 function BranchLevel({ items, kidsOf, depth }: { items: BranchEntry[]; kidsOf: Map<string, BranchEntry[]>; depth: number }) {
+  const diskProjects = useAppStore((st) => st.diskProjects); // 标题首消息兜底数据（磁盘会话列表）变化时重渲染
   return (
     <div className={depth > 0 ? "bt-kids" : undefined}>
       {items.map((b) => {
@@ -100,7 +95,7 @@ function BranchLevel({ items, kidsOf, depth }: { items: BranchEntry[]; kidsOf: M
         return (
           <Fragment key={b.sessionId}>
             <button className={"bt-row" + (b.isCurrent ? " cur" : "")} title={b.path} onClick={b.isCurrent ? undefined : () => loadBranchSession(b.path)}>
-              <span className="bt-name">{branchLabel(b)}</span>
+              <span className="bt-name">{branchLabel(b, diskProjects)}</span>
               <span className="bt-meta">
                 {[b.messageCount != null ? `${b.messageCount} 条` : null, b.modified ? fmtAgo(b.modified) : null]
                   .filter(Boolean)

@@ -1,9 +1,9 @@
 // 设置·使用统计页：token 总量/峰值/时长/连续天数热力图 + 14 天趋势曲线 + 模型分布环图。
 // 逻辑 1:1 平移自旧版 ui/settings/stats.js，图形由 React 声明式生成（与旧版命令式 SVG 视觉一致）。
 import { useEffect, useMemo } from "react";
-import { S, useStore, send, fmtDurationMs } from "../../../store";
+import { useAppStore, send, fmtDurationMs } from "../../../store";
 
-// 使用统计负载（宿主 get_usage_stats 回包；S.usageStats 现为 untyped store 字段，字段边界以宿主回包为准）
+// 使用统计负载（宿主 get_usage_stats 回包；usageStats 落 store，字段边界以宿主回包为准）
 interface UsageStats {
   totalTokens?: number;
   peakTokens?: number;
@@ -115,8 +115,7 @@ function buildDonut(st: UsageStats): {
 }
 
 export default function StatsPage() {
-  useStore(); // S.usageStats 更新时重渲染
-  const st = S.usageStats;
+  const st = useAppStore((s) => s.usageStats); // selector 订阅回包刷新
 
   // 进入页面即刷新统计（对应旧版 openSettings 里的 get_usage_stats）
   useEffect(() => {

@@ -1,12 +1,10 @@
 // 设置页：插件（pg-plugins）。纯静态占位页（set-note 照搬旧版 DOM）。
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-plugins">。
 // 注：旧版该页无列表容器；宿主 disableExtensionDiscovery: true，插件不加载。
-import { useStore } from "../../../store";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 
 export default function PluginsPage() {
-  useStore();
   return (
     <div className="set-page" id="pg-plugins">
       <div className="set-tt">插件</div>

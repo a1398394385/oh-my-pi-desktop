@@ -2,8 +2,8 @@
 // 活跃路径（根→当前叶）高亮，点击节点跳转到该点（可带分支摘要）；被放弃路径保留为兄弟分支。
 // 数据：get_entry_tree 懒加载（切会话后旧数据视为过期，对齐 BranchTreePage 模式）；
 // 过滤语义对齐底座 tree-selector：默认 / 无工具 / 仅用户 / 全部。
-import { useState } from "react";
-import { S, useStore, notify, send, activeOpen, rightState, toast } from "../../store";
+import { useEffect, useState } from "react";
+import { useAppStore, send, toast } from "../../store";
 import { fmtAgo } from "./helpers";
 
 // 会话条目树节点（get_entry_tree 回包；字段以本页实际读取为准）
@@ -124,20 +124,29 @@ function badgeTargetId(roots: EntryNode[], leafId: string | null, filter: string
 }
 
 export default function SessionTreePage() {
-  useStore();
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const rightState = useAppStore((st) => st.rightState);
   const [filter, setFilter] = useState<string>("default");
   const [confirmNode, setConfirmNode] = useState<EntryNode | null>(null); // 待跳转节点
+  // 过期数据重拉（原渲染体内联请求移此；pending 防重读 getState，回包由 store 落缓存）。
+  // 无依赖数组 = 每次渲染后检查，对齐原「渲染体每次重绘检查」语义（请求失败解除 pending 后下次渲染重拉）
+  useEffect(() => {
+    const st = useAppStore.getState();
+    const session = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    if (!session) return;
+    const tree = st.rightState.entryTree;
+    if (tree && tree.sessionId === session.sessionId) return; // 未过期
+    if (st.rightState.entryTreePending) return; // 防重
+    useAppStore.setState((st2) => ({
+      rightState: { ...st2.rightState, entryTreePending: true, entryTreeFor: session.sessionId }, // 回包未带 sessionId 时归属用
+    }));
+    send({ type: "get_entry_tree", sessionId: session.sessionId });
+  });
   if (!s) {
     return <div className="placeholder">（无活跃会话）</div>;
   }
   const tree = rightState.entryTree;
   const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
-  if (stale && !rightState.entryTreePending) {
-    rightState.entryTreePending = true;
-    rightState.entryTreeFor = s.sessionId; // 回包未带 sessionId 时归属用
-    send({ type: "get_entry_tree", sessionId: s.sessionId });
-  }
   if (stale) {
     return <div className="placeholder">加载中…</div>;
   }
@@ -151,9 +160,9 @@ export default function SessionTreePage() {
   const navigate = (summarize: boolean) => {
     const node = confirmNode!; // 断言：仅确认弹窗打开时可点（confirmNode 非空）
     setConfirmNode(null);
-    rightState.entryTreeNav = true;
+    // 置位随 setState 渲染立即禁用行点击（原 notify 语义），回包由 session_navigated 复位
+    useAppStore.setState((st) => ({ rightState: { ...st.rightState, entryTreeNav: true } }));
     send({ type: "navigate_tree", sessionId: s.sessionId, entryId: node.id, summarize });
-    notify(); // 立即禁用行点击（回包前）
   };
   return (
     <div className="st-page">
@@ -187,7 +196,7 @@ export default function SessionTreePage() {
               <span className="st-prefix" aria-hidden>
                 {gutters.map((g, i) => (
                   <span key={i} className="st-rail">
-                    {g ? "│" : " "}
+                    {g ? "│" : " "}
                   </span>
                 ))}
                 {connector ? <span className="st-conn">{connector}</span> : null}

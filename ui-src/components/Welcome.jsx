@@ -1,11 +1,11 @@
 // 欢迎页（新建任务）：延展卡片 + 项目/分支选择器 + 输入框（Composer 挂进外卡）。
-// 迁移自 ui/welcome.js（324 行）。显隐由 App 按 S.isCreatingNew 分流（替代原版物理搬移 composer）。
-// 契约：项目数据 getAvailableProjects()，分支数据 S.newSessionBranches，问候语按时段。
+// 迁移自 ui/welcome.js（324 行）。显隐由 App 按 isCreatingNew 分流（替代原版物理搬移 composer）。
+// 契约：项目数据 getAvailableProjects()，分支数据 newSessionBranches，问候语按时段。
 // 菜单显隐为局部 state：projMenu/branchMenu 存弹出坐标（向上弹出，底边贴胶囊顶边上方 4px，
 // 对照原版 offsetLeft / clientHeight-offsetTop 定位写法）；两菜单互斥，
 // window click / blur 关闭（对照 shell.js closeAllMenus 的全局关闭语义）。
 import { useEffect, useRef, useState } from "react";
-import { S, useStore, toast } from "../store.js";
+import { useAppStore, toast } from "../store";
 import Icon from "../Icon.jsx";
 import Composer from "./Composer.jsx";
 import ProjectMenu from "./welcome/ProjectMenu.jsx";
@@ -20,7 +20,10 @@ function greeting() {
 }
 
 export default function Welcome() {
-  useStore();
+  // 新建会话三字段（git_branches 帧落地换引用，字段订阅感知）
+  const newSessionProject = useAppStore((s) => s.newSessionProject);
+  const newSessionIsGit = useAppStore((s) => s.newSessionIsGit);
+  const newSessionBranch = useAppStore((s) => s.newSessionBranch);
   // null = 关闭；{left, bottom} = 打开坐标（px，相对 .wb-back-card）
   const [projMenu, setProjMenu] = useState(null);
   const [branchMenu, setBranchMenu] = useState(null);
@@ -66,8 +69,8 @@ export default function Welcome() {
     setBranchMenu(popPos(branchBtnRef.current));
   };
 
-  const projName = S.newSessionProject
-    ? S.newSessionProject.split("/").filter(Boolean).pop() || S.newSessionProject
+  const projName = newSessionProject
+    ? newSessionProject.split("/").filter(Boolean).pop() || newSessionProject
     : "项目";
 
   return (
@@ -85,7 +88,7 @@ export default function Welcome() {
                 ref={projBtnRef}
                 id="wbProjectBtn"
                 className={"wb-pill" + (projMenu ? " active" : "")}
-                title={`项目目录: ${S.newSessionProject}`}
+                title={`项目目录: ${newSessionProject}`}
                 onClick={toggleProjMenu}
               >
                 {/* 项目清除钮：ZCode 同款 hover 替换图标（常态隐藏，hover 胶囊时 folder 淡出、× 淡入） */}
@@ -104,16 +107,16 @@ export default function Welcome() {
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>
-              {S.newSessionIsGit && (
+              {newSessionIsGit && (
                 <button
                   ref={branchBtnRef}
                   id="wbBranchBtn"
                   className={"wb-pill" + (branchMenu ? " active" : "")}
-                  title={`Git 分支: ${S.newSessionBranch || "main"}`}
+                  title={`Git 分支: ${newSessionBranch || "main"}`}
                   onClick={toggleBranchMenu}
                 >
                   <Icon name="branch" />
-                  <span id="wbBranchName">{S.newSessionBranch || "main"}</span>
+                  <span id="wbBranchName">{newSessionBranch || "main"}</span>
                   <span className="caret caret-svg"><Icon name="caret" /></span>
                 </button>
               )}

@@ -1,7 +1,7 @@
 // 归档区（ui/sidebar.js renderArchived/archivedRow 平移）：列表底部折叠分组（默认收起，
 // 不持久化），条目可恢复/彻底删除；纯展示承载行（点击不打开会话），hover 高亮只挂行内按钮。
 import { useLayoutEffect, useRef, useState } from "react";
-import { S, send } from "../../store";
+import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
 import { sessionLabel } from "./util";
 import type { SessionInfo } from "./SessionRow";
@@ -61,7 +61,7 @@ function ArchKids({ list, animate, closing, onDelete }: {
 }
 
 export default function ArchivedSection({ onDelete }: { onDelete: (s: SessionInfo) => void }) {
-  const list = S.archivedSessions ?? [];
+  const list = useAppStore((s) => s.archivedSessions) ?? [];
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
   if (list.length === 0) return null; // 无归档条目整区隐藏

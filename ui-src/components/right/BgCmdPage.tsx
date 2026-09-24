@@ -2,7 +2,7 @@
 // 原版任何全局重绘都会收起展开行（DOM 重建）；React 版展开态由组件 state 持有，
 // 流式数据更新时保留展开并展示最新输出（liftEl 收起动画随条件渲染省略）。
 import { Fragment, useState } from "react";
-import { S, useStore, activeOpen } from "../../store";
+import { useAppStore } from "../../store";
 import Icon from "../../Icon";
 import { Spin } from "../chat/parts";
 
@@ -127,9 +127,8 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
 }
 
 export default function BgCmdPage() {
-  useStore();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const [openId, setOpenId] = useState<string | null>(null);
-  const s = activeOpen();
   if (!s) {
     return <div className="placeholder">（无活跃会话）</div>;
   }

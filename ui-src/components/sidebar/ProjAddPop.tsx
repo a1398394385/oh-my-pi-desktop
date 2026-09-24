@@ -2,7 +2,7 @@
 // 宿主负责把命中已移除列表的项移回所有项目列表。定位于触发按钮下方（宽 330）。
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { S, send } from "../../store";
+import { useAppStore, send } from "../../store";
 
 export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -11,7 +11,7 @@ export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRec
     const el = ref.current!; // portal mount 后即存在（原 JS 直接解引用，保持同一假设）
     const w = 330;
     const left = Math.max(4, Math.min(anchorRect.right - w, window.innerWidth - w - 8));
-    const z = S.zoomLevel || 1; // placeMenu 同款：先设 zoom 再除回
+    const z = useAppStore.getState().zoomLevel || 1; // placeMenu 同款：先设 zoom 再除回
     el.style.zoom = String(z);
     el.style.left = left / z + "px";
     el.style.top = (anchorRect.bottom + 4) / z + "px";

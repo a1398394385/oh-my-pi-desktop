@@ -1,8 +1,8 @@
 // Git Diff 页：列表上方工具条（提交信息/提交/推送）+ 文件树/平铺 + 行内写操作 +
 // 单文件自研轻量 diff 详情（rb-head 固定 + rb-scroll 滚动骨架）。
-import { useReducer, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { S, useStore, notify, send, activeOpen, gitDiffCache, fileDiffCache, rightState, refreshGitDiff } from "../../store";
+import { useAppStore, setBump, send, activeOpen, refreshGitDiff } from "../../store";
 import type { TimerHandle } from "../../store";
 import Icon from "../../Icon";
 import ConfirmDialog from "./ConfirmDialog";
@@ -33,47 +33,63 @@ type GitWriteOp = "stage" | "unstage" | "discard" | "commit" | "push";
 // ---------- git 写操作 busy 闭环（原 right.js gitBusy 语义） ----------
 // 进行中的写操作标记：{ op, prev }（prev = 发起前的 rightState.gitWrite 引用）。
 // store 对 git 写回包不保证触发需要的行为（成功路径的 refreshGitDiff 在 cwd 未变时不发请求），
-// 以 120ms 轮询比对 gitWrite 引用变化闭环——本地 git 操作毫秒级、push 秒级，轮询生命周期极短
+// 以 120ms 轮询比对 gitWrite 引用变化闭环——本地 git 操作毫秒级、push 秒级，轮询生命周期极短。
+// busy 是模块级单例而非 store 字段：置位/清空换引用并通知轻量订阅（useGitBusy）——
+// 订 store selector 的组件不感知模块变量，原全局重渲染驱动（旧 notify bump）由此替代
 let gitBusy: { op: GitWriteOp; prev: unknown } | null = null;
+const gitBusySubs = new Set<() => void>();
+/** 读 gitBusy 并订阅其变化（置位/清空换引用即重渲染；getSnapshot 返回模块变量，引用稳定） */
+function useGitBusy() {
+  return useSyncExternalStore(
+    (fn) => {
+      gitBusySubs.add(fn);
+      return () => gitBusySubs.delete(fn);
+    },
+    () => gitBusy,
+  );
+}
 let gitBusyTimer: TimerHandle | undefined; // setInterval 句柄(复用 store TimerHandle;undefined 语义同原版 null)
 const GIT_WRITE_REPLY: Record<GitWriteOp, string> = { stage: "git_staged", unstage: "git_unstaged", discard: "git_discarded", commit: "git_committed", push: "git_pushed" };
 function startGitBusy(op: GitWriteOp) {
-  gitBusy = { op, prev: rightState.gitWrite };
-  notify();
+  gitBusy = { op, prev: useAppStore.getState().rightState.gitWrite };
+  for (const fn of gitBusySubs) fn();
   clearInterval(gitBusyTimer);
   gitBusyTimer = setInterval(() => {
-    const w = rightState.gitWrite;
+    const w = useAppStore.getState().rightState.gitWrite;
     if (!gitBusy || !w || w === gitBusy.prev || w.type !== GIT_WRITE_REPLY[gitBusy.op]) return;
-    if (w.ok && gitBusy.op === "commit") rightState.commitMsg = ""; // 提交成功清空输入框
+    if (w.ok && gitBusy.op === "commit") {
+      // 提交成功清空输入框（换新 rightState 引用，原 mutate + 末尾 notify）
+      useAppStore.setState((st) => ({ rightState: { ...st.rightState, commitMsg: "" } }));
+    }
     gitBusy = null;
     clearInterval(gitBusyTimer);
     refreshGitDiff(true); // 强制重拉（非 force 刷新在 cwd 未变时不发请求）
-    notify();
+    for (const fn of gitBusySubs) fn();
   }, 120);
 }
 
 // 点击文件行进详情：请求单文件 diff
 function requestFileDiff(s: { cwd: string }, filePath: string) {
-  S.selectedFile = filePath;
-  fileDiffCache.loading = true;
-  fileDiffCache.path = filePath;
+  setBump({ selectedFile: filePath });
+  useAppStore.setState((st) => ({ fileDiffCache: { ...st.fileDiffCache, loading: true, path: filePath } }));
   send({ type: "get_file_diff", cwd: s.cwd, path: filePath });
-  notify();
 }
 
 export default function GitDiffPage() {
-  useStore();
-  // 提交输入框局部重渲染（键入不打全局 notify，避免流式场景全 app 重渲）
-  const [, force] = useReducer((x: number) => x + 1, 0);
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const rightState = useAppStore((st) => st.rightState);
+  const gitDiffCache = useAppStore((st) => st.gitDiffCache);
+  const gitViewMode = useAppStore((st) => st.gitViewMode);
+  const selectedFile = useAppStore((st) => st.selectedFile);
+  const gitBusy = useGitBusy();
   const [confirm, setConfirm] = useState<DiscardConfirm | null>(null);
-  const s = activeOpen();
   if (!s) {
     return <div className="placeholder">（无活跃会话）</div>;
   }
   if (!s.isGit) {
     return <div className="placeholder">（该 project 不是 git 仓库）</div>;
   }
-  if (S.selectedFile) {
+  if (selectedFile) {
     return <GdFileDetail />;
   }
 
@@ -107,8 +123,8 @@ export default function GitDiffPage() {
           placeholder="提交信息"
           value={rightState.commitMsg}
           onChange={(e) => {
-            rightState.commitMsg = e.target.value;
-            force(); // 局部重渲染刷新提交钮 disabled
+            // 键入为静默写：换引用不 bump，不打扰旧 useStore 全局订阅（原局部 force 重渲染由此订阅替代）
+            useAppStore.setState((st) => ({ rightState: { ...st.rightState, commitMsg: e.target.value } }));
           }}
         />
         <button
@@ -140,7 +156,7 @@ export default function GitDiffPage() {
         <div className="placeholder">{gitDiffCache.loading ? "加载中…" : "点右上角 ⟳ 加载改动"}</div>
       ) : gitDiffCache.files.length === 0 ? (
         <div className="placeholder">（工作区干净）</div>
-      ) : S.gitViewMode === "flat" ? (
+      ) : gitViewMode === "flat" ? (
         gitDiffCache.files.map((f) => <GitFileRow key={f.path} f={f} displayPath={f.path} depth={0} onDiscard={onDiscard} />)
       ) : (
         <TreeLevel node={buildTree(gitDiffCache.files)} prefix="" depth={0} onDiscard={onDiscard} />
@@ -152,27 +168,28 @@ export default function GitDiffPage() {
 
 // 文件详情：返回 + 路径固定在顶，diff 区滚动（自研 LightweightDiff 组件渲染）
 function GdFileDetail() {
+  const selectedFile = useAppStore((st) => st.selectedFile); // 入口 if (selectedFile) 已守卫非空,与原版一致
+  const fileDiffCache = useAppStore((st) => st.fileDiffCache);
   return (
     <>
       <div className="rb-head">
         <button
           className="sub-back"
           onClick={() => {
-            S.selectedFile = null;
-            notify();
+            setBump({ selectedFile: null });
           }}
         >
           ‹ 返回列表
         </button>
-        <div className="sub-title">{S.selectedFile}</div>
+        <div className="sub-title">{selectedFile}</div>
       </div>
       <div className="rb-scroll">
-        {fileDiffCache.loading && fileDiffCache.path === S.selectedFile ? (
+        {fileDiffCache.loading && fileDiffCache.path === selectedFile ? (
           <div className="placeholder">加载中…</div>
-        ) : fileDiffCache.path !== S.selectedFile || !fileDiffCache.diff ? (
+        ) : fileDiffCache.path !== selectedFile || !fileDiffCache.diff ? (
           <div className="placeholder">（无差异内容）</div>
         ) : (
-          <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(S.selectedFile)} className="fd-holder" />
+          <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(selectedFile)} className="fd-holder" />
         )}
       </div>
     </>
@@ -181,11 +198,15 @@ function GdFileDetail() {
 
 // 文件行：状态徽标 + 文件名 + 行内写操作（hover 显示，树/平铺两视图共用）
 function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; displayPath: string; depth: number; onDiscard: (f: GitFileEntry) => void }) {
+  const gitBusy = useGitBusy();
   const busy = !!gitBusy;
   const cwd = () => activeOpen()?.cwd; // cwd 取法对齐 refreshGitDiff（activeOpen().cwd）
+  // 脉冲标记渲染时读 getState（不订阅）：置位随 expandedDirs 写入驱动本次渲染，
+  // 宏任务静默复位不触发订阅——kids-in 类保留至下次渲染，入场动画不被截断（原 notify 语义）
+  const animateGdKids = useAppStore.getState().animateGdKids;
   return (
     <div
-      className={"gd-row" + (S.animateGdKids ? " kids-in" : "")}
+      className={"gd-row" + (animateGdKids ? " kids-in" : "")}
       style={{ paddingLeft: 4 + depth * 14 + 14 + "px", animationDelay: depth * 15 + "ms" }}
       title={f.path}
       onClick={() => {
@@ -248,6 +269,9 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
 
 // 树视图：目录行（caret + 名 + 计数）+ 文件行，按目录深度缩进；展开时子行播入场动画
 function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; prefix: string; depth: number; onDiscard: (f: GitFileEntry) => void }) {
+  const rightState = useAppStore((st) => st.rightState);
+  // 脉冲标记渲染时读 getState（不订阅）：同 GitFileRow，复位静默不截断 kids-in 动画
+  const animateGdKids = useAppStore.getState().animateGdKids;
   const rows: ReactNode[] = [];
   for (const [seg, dir] of node.dirs) {
     const dirPath = prefix ? prefix + "/" + seg : seg;
@@ -255,18 +279,23 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
     rows.push(
       <div
         key={"d:" + dirPath}
-        className={"gd-row" + (S.animateGdKids ? " kids-in" : "")}
+        className={"gd-row" + (animateGdKids ? " kids-in" : "")}
         style={{ paddingLeft: 4 + depth * 14 + "px", animationDelay: depth * 15 + "ms" }}
         onClick={() => {
-          if (rightState.expandedDirs.has(dirPath)) {
-            rightState.expandedDirs.delete(dirPath);
-          } else {
-            rightState.expandedDirs.add(dirPath);
-            S.animateGdKids = true; // 本次重渲染的子行播入场动画
-          }
-          notify();
+          // 展开/收起换新 Set + 新 rightState 引用（订阅者按引用感知）；展开时置脉冲动画标记
+          useAppStore.setState((st) => {
+            const expandedDirs = new Set(st.rightState.expandedDirs);
+            let animateGdKids = st.animateGdKids;
+            if (expandedDirs.has(dirPath)) {
+              expandedDirs.delete(dirPath);
+            } else {
+              expandedDirs.add(dirPath);
+              animateGdKids = true; // 本次重渲染的子行播入场动画
+            }
+            return { rightState: { ...st.rightState, expandedDirs }, animateGdKids };
+          });
           setTimeout(() => {
-            S.animateGdKids = false;
+            useAppStore.setState({ animateGdKids: false }); // 静默复位：无订阅者不触发渲染，kids-in 类保留（动画播完），语义同原版
           }, 0);
         }}
       >

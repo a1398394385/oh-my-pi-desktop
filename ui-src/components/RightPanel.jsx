@@ -1,14 +1,15 @@
 // 右栏：tab 头在最顶端（ZCode Side Pane 风格：左总览 popover / 中等宽可拖拽 tab / 右新增）
-// + 面板体。迁移自 ui/right.js（原顶部 logo 工具条已删，tab 栏置顶）。tab 开关列表为模块级 rightTabs（有序），激活项 S.rightTab；
-// tab 管理在 ./right/tabs.js（各页面共用），此处 re-export 保持既有导出面。
-// 契约：数据读 S/rightState/gitDiffCache/fileDiffCache/openSessions，动作后 notify()；
-// 三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：#rightBody 加 detail 类，
-// rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
+// + 面板体。迁移自 ui/right.js（原顶部 logo 工具条已删，tab 栏置顶）。tab 开关列表与激活项在
+// store（rightTabs 有序 / rightTab），本组件经 selector 订阅；tab 管理在 ./right/tabs.js
+// （各页面共用），此处 re-export 保持既有导出面。
+// 契约：数据经 useAppStore selector 订阅（当前会话 / rightTab / selectedFile 等），
+// 写走 setBump 与既有函数；三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：
+// #rightBody 加 detail 类，rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
 import { useEffect, useRef, useState } from "react";
-import { S, useStore, notify, activeOpen, gitDiffCache, refreshGitDiff } from "../store.js";
+import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../store";
 import Icon from "../Icon.jsx";
 import {
-  TAB_META, rightTabs, rightRecentClosed,
+  TAB_META,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
 } from "./right/tabs.js";
 import StartPage from "./right/StartPage.jsx";
@@ -22,7 +23,7 @@ import TerminalPage from "./right/TerminalPage.jsx";
 import BrowserPage from "./right/BrowserPage.jsx";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
-export { TAB_META, rightTabs, openRightTab, closeRightTab } from "./right/tabs.js";
+export { TAB_META, openRightTab, closeRightTab } from "./right/tabs.js";
 
 // 「最近关闭」相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
 function closedAgo(at) {
@@ -37,6 +38,9 @@ function closedAgo(at) {
 // tab 总览 popover：搜索框 + 打开中（点击切换 / 逐项关闭）+ 最近关闭（点击重开）。
 // 复用 .menu 弹层视觉；坐标走 sp-head 相对定位（absolute 随面板 zoom 缩放不错位）。
 function TabOverview({ onClose }) {
+  const rightTabs = useAppStore((st) => st.rightTabs);
+  const rightRecentClosed = useAppStore((st) => st.rightRecentClosed);
+  const rightTab = useAppStore((st) => st.rightTab);
   const [q, setQ] = useState("");
   const inputRef = useRef(null);
   useEffect(() => {
@@ -66,15 +70,15 @@ function TabOverview({ onClose }) {
         {opens.map((name) => (
           <div
             key={name}
-            className={"mi" + (S.rightTab === name ? " on" : "")}
-            onClick={() => { S.rightTab = name; notify(); onClose(); }}
+            className={"mi" + (rightTab === name ? " on" : "")}
+            onClick={() => { setBump({ rightTab: name }); onClose(); }}
           >
             <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
             {TAB_META[name].label}
             <span
               className="mi-x"
               title="关闭"
-              onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!rightTabs.length) onClose(); }}
+              onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
             >
               <Icon name="xmark" size={11} />
             </span>
@@ -95,6 +99,7 @@ function TabOverview({ onClose }) {
 
 // 「新增」菜单：列出全部可开 tab（已开的打勾，git 限定项非 git 仓库置灰）
 function AddTabMenu({ isGit, onClose }) {
+  const rightTabs = useAppStore((st) => st.rightTabs);
   return (
     <div className="menu open sp-pop sp-add" onClick={(e) => e.stopPropagation()}>
       <div className="sp-pop-scroll">
@@ -126,7 +131,7 @@ function TabButton({ name, on }) {
     <button
       className={"rtab" + (on ? " on" : "") + (over ? " drag-over" : "")}
       draggable
-      onClick={() => { S.rightTab = name; notify(); }}
+      onClick={() => { setBump({ rightTab: name }); }}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", name);
         e.dataTransfer.effectAllowed = "move";
@@ -165,8 +170,14 @@ function TabButton({ name, on }) {
 }
 
 export default function RightPanel({ collapsed }) {
-  useStore();
-  const s = activeOpen();
+  // 当前会话 + 右栏散字段全部字段订阅（openRightTab 等不 bump _v，靠字段订阅驱动重渲染）
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const rightTabs = useAppStore((st) => st.rightTabs); // tab 列表入 store：字段订阅驱动重渲染
+  const rightTab = useAppStore((st) => st.rightTab);
+  const selectedFile = useAppStore((st) => st.selectedFile);
+  const fileView = useAppStore((st) => st.fileView);
+  const selectedSubagent = useAppStore((st) => st.selectedSubagent);
+  const gitViewMode = useAppStore((st) => st.gitViewMode);
   const [ovOpen, setOvOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   // 弹层关闭统一走 omp:close-menus（window click/blur → closeAllMenus 平移），
@@ -182,27 +193,32 @@ export default function RightPanel({ collapsed }) {
     };
   }, []);
   // 非 git 会话不保留 Git Diff tab（打开的列表与激活项都回落）
-  if (!s?.isGit && rightTabs.includes("gitdiff")) {
-    const i = rightTabs.indexOf("gitdiff");
-    rightTabs.splice(i, 1);
-    if (S.rightTab === "gitdiff") S.rightTab = rightTabs[Math.min(i, rightTabs.length - 1)] ?? null;
+  let tabs = rightTabs;
+  if (!s?.isGit && tabs.includes("gitdiff")) {
+    const i = tabs.indexOf("gitdiff");
+    tabs = tabs.filter((n) => n !== "gitdiff");
+    const st = useAppStore.getState();
+    useAppStore.setState({
+      rightTabs: tabs,
+      rightTab: st.rightTab === "gitdiff" ? tabs[Math.min(i, tabs.length - 1)] ?? null : st.rightTab,
+    });
   }
-  const isGitTab = S.rightTab === "gitdiff";
+  const isGitTab = rightTab === "gitdiff";
   // 详情模式（原 renderRightBody 各详情分支对 #rightBody 加 .detail；判定顺序对齐原版：
   // gitdiff 先过 !s/!isGit 兜底，故非 git 时 selectedFile 不进详情）
   const detail =
-    (S.rightTab === "gitdiff" && !!s?.isGit && !!S.selectedFile) ||
-    (S.rightTab === "file" && !!S.fileView) ||
-    (S.rightTab === "subagent" && !!S.selectedSubagent && !!s?.subagents?.has(S.selectedSubagent));
+    (rightTab === "gitdiff" && !!s?.isGit && !!selectedFile) ||
+    (rightTab === "file" && !!fileView) ||
+    (rightTab === "subagent" && !!selectedSubagent && !!s?.subagents?.has(selectedSubagent));
   let body;
-  if (S.rightTab === null) body = <StartPage />; // tab 全部关闭：居中起始页
-  else if (S.rightTab === "gitdiff") body = <GitDiffPage />;
-  else if (S.rightTab === "bgcmd") body = <BgCmdPage />;
-  else if (S.rightTab === "file") body = <FilePage />;
-  else if (S.rightTab === "tree") body = <BranchTreePage />;
-  else if (S.rightTab === "sessiontree") body = <SessionTreePage />;
-  else if (S.rightTab === "terminal") body = <TerminalPage />;
-  else if (S.rightTab === "browser") body = <BrowserPage />;
+  if (rightTab === null) body = <StartPage />; // tab 全部关闭：居中起始页
+  else if (rightTab === "gitdiff") body = <GitDiffPage />;
+  else if (rightTab === "bgcmd") body = <BgCmdPage />;
+  else if (rightTab === "file") body = <FilePage />;
+  else if (rightTab === "tree") body = <BranchTreePage />;
+  else if (rightTab === "sessiontree") body = <SessionTreePage />;
+  else if (rightTab === "terminal") body = <TerminalPage />;
+  else if (rightTab === "browser") body = <BrowserPage />;
   else body = <SubagentPage />;
   return (
     <aside id="right" className={collapsed ? "collapsed" : ""}>
@@ -220,8 +236,8 @@ export default function RightPanel({ collapsed }) {
             <Icon name="dots" size={15} />
           </button>
           <div className="rtabs" id="rightTabs">
-            {rightTabs.map((name) => (
-              <TabButton key={name} name={name} on={S.rightTab === name} />
+            {tabs.map((name) => (
+              <TabButton key={name} name={name} on={rightTab === name} />
             ))}
           </div>
           <button
@@ -244,9 +260,9 @@ export default function RightPanel({ collapsed }) {
                 e.stopPropagation();
                 const cur = activeOpen();
                 if (!cur || !cur.isGit) return;
-                gitDiffCache.cwd = null; // 强制重拉
+                // 清 cwd 强制重拉（原 liveRef 静默写 + notify 合并为一次换引用写入，过渡期带 _v）
+                useAppStore.setState((st) => ({ gitDiffCache: { ...st.gitDiffCache, cwd: null }, _v: st._v + 1 }));
                 refreshGitDiff();
-                notify();
               }}
             >
               <Icon name="refresh" />
@@ -259,11 +275,10 @@ export default function RightPanel({ collapsed }) {
               title="切换树/平铺"
               onClick={(e) => {
                 e.stopPropagation();
-                S.gitViewMode = S.gitViewMode === "tree" ? "flat" : "tree";
-                notify();
+                setBump({ gitViewMode: gitViewMode === "tree" ? "flat" : "tree" });
               }}
             >
-              {S.gitViewMode === "tree" ? "树" : "平铺"}
+              {gitViewMode === "tree" ? "树" : "平铺"}
             </button>
           )}
           {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}

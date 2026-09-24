@@ -2,7 +2,7 @@
 // 逻辑 1:1 平移 ui/settings/skills.js；DOM 对照 git 464131d ui/index.html #pg-skills。
 // 编辑器走 .mem-expand 向下延展模式（行 .on 高亮 + caret 旋转 + popIn）。
 import { Fragment, useEffect, useRef, useState } from "react";
-import { S, useStore, send, toast, notify } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
@@ -18,7 +18,7 @@ interface SkillItem {
   provider?: string; // 来源插件名；native 不显示
 }
 
-// 项目级技能分组（S.agentAssets.skills.projects 元素）
+// 项目级技能分组（agentAssets.skills.projects 元素）
 interface SkillProject {
   cwd: string;
   name: string;
@@ -26,7 +26,7 @@ interface SkillProject {
   skills: SkillItem[];
 }
 
-// S.agentAssets.skills 下发结构（字段为 host 下发，缺省可空）
+// agentAssets.skills 下发结构（字段为 host 下发，缺省可空）
 interface SkillsData {
   globalDir?: string;
   global?: SkillItem[];
@@ -46,7 +46,9 @@ interface SkillSection {
 }
 
 export default function SkillsPage() {
-  useStore(); // 订阅全局版本号：S.agentAssets / S.assetFile 回包落地后由 React 重渲染
+  // 渲染数据走字段 selector：agentAssets / assetFile / assetFileSaved 落地帧均换新引用；
+  // onToggle 乐观写也走 setState 换引用链（见 onToggle），字段订阅即可感知
+  const agentAssets = useAppStore((s) => s.agentAssets);
   const [scope, setScope] = useState("global"); // "global"(用户) / "profile" / "project:<cwd>"
   const [query, setQuery] = useState("");
   const [scopeOpen, setScopeOpen] = useState(false); // 作用域下拉
@@ -60,7 +62,7 @@ export default function SkillsPage() {
   const statusTimer = useRef<TimerHandle | undefined>(undefined);
 
   // ---------- 数据派生（同旧版 currentSkillSections/getActiveSkillSection） ----------
-  const data: SkillsData | undefined = S.agentAssets?.skills as SkillsData | undefined; // frames 侧 skills 暂 unknown(host/assets.ts 内部扫描决定),本页按实际读取收窄
+  const data: SkillsData | undefined = agentAssets?.skills as SkillsData | undefined; // frames 侧 skills 暂 unknown(host/assets.ts 内部扫描决定),本页按实际读取收窄
   const sections: SkillSection[] = [];
   if (data) {
     sections.push({ scope: "global", label: "用户", iconName: "laptop", dir: data.globalDir, items: data.global || [] });
@@ -90,25 +92,26 @@ export default function SkillsPage() {
     return () => document.removeEventListener("click", close);
   }, [scopeOpen, moreOpen]);
 
-  // asset_file 回包（S.assetFile，store.js 待接）：匹配当前延展区则填入编辑器
+  // asset_file 回包：匹配当前延展区则填入编辑器
+  const assetFile = useAppStore((s) => s.assetFile);
   useEffect(() => {
-    const af = S.assetFile;
-    if (openPath && editLoading && af && af.kind === "skill" && af.path === openPath) {
-      setEditText(af.content ?? "");
+    if (openPath && editLoading && assetFile && assetFile.kind === "skill" && assetFile.path === openPath) {
+      setEditText(assetFile.content ?? "");
       setEditLoading(false);
     }
   });
 
-  // asset_file_saved 回包（S.assetFileSaved，store.js 待接）：延展区状态行「已保存」，2s 后清除
+  // asset_file_saved 回包：延展区状态行「已保存」，2s 后清除
+  const assetFileSaved = useAppStore((s) => s.assetFileSaved);
   useEffect(() => {
-    const st = S.assetFileSaved;
+    const st = assetFileSaved;
     if (!st || st.kind !== "skill" || seenStamp.current === st) return;
     seenStamp.current = st; // 无论延展区是否还开着都记为已消费，防重放
     if (!openPath) return;
     setEditStatus("已保存");
     clearTimeout(statusTimer.current);
     statusTimer.current = setTimeout(() => setEditStatus(""), 2000);
-  }, [S.assetFileSaved, openPath]);
+  }, [assetFileSaved, openPath]);
   useEffect(() => () => clearTimeout(statusTimer.current), []);
 
   // ---------- 交互（1:1 平移旧版事件绑定） ----------
@@ -123,8 +126,18 @@ export default function SkillsPage() {
 
   function onToggle(item: SkillItem) {
     const next = !item.enabled;
-    item.enabled = next; // 乐观改 S 内对象并通知重渲染（同旧版直接改 s.enabled 后刷统计）
-    notify();
+    // 乐观换引用：拷贝 agentAssets → skills → item 所在段数组并替换该 item（字段写入即通知，统计/开关随重渲染刷新）
+    const st = useAppStore.getState();
+    const skills = st.agentAssets?.skills as SkillsData | undefined;
+    const replace = (arr: SkillItem[]) => arr.map((x) => (x === item ? { ...item, enabled: next } : x));
+    let nextSkills: SkillsData | undefined;
+    if (skills?.global?.includes(item)) nextSkills = { ...skills, global: replace(skills.global) };
+    else if (skills?.profile?.includes(item)) nextSkills = { ...skills, profile: replace(skills.profile) };
+    else if (skills?.projects) {
+      const proj = skills.projects.find((p) => p.skills.includes(item));
+      if (proj) nextSkills = { ...skills, projects: skills.projects.map((p) => (p === proj ? { ...p, skills: replace(p.skills) } : p)) };
+    }
+    if (st.agentAssets && nextSkills) useAppStore.setState({ agentAssets: { ...st.agentAssets, skills: nextSkills } });
     send({ type: "asset_skill_toggle", name: item.name, enabled: next });
   }
 
@@ -255,7 +268,7 @@ export default function SkillsPage() {
 
       <div className="skills-list-wrap">
         <div className="skills-card-list" id="skillsList">
-          {!S.agentAssets
+          {!agentAssets
             ? emptyRow("加载中…", "skill-empty-row")
             : filtered.length === 0
               ? emptyRow(q ? "未找到匹配技能" : "当前作用域下暂无技能", "skill-empty-row")

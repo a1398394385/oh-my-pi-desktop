@@ -3,16 +3,16 @@
 // - acp.enabled            → acp-state.ts 状态 + acp-tools.ts 工具面 + acp-context.ts 视图改写
 // - sessionContext.enabled → session-context.ts 的 read_session_context（历史会话检索）
 // 样式语言与外观页一致：set-page / set-tt / set-group-tt / set-group-desc / set-card / .srow / .tg。
-import { S, useStore, send } from "../../../store";
+import { useAppStore, send } from "../../../store";
 
 export default function ExperimentalPage() {
-  useStore(); // 订阅 S：开关回包的 settings 帧更新 hostSettings → 开关重绘
+  const hostSettings = useAppStore((s) => s.hostSettings); // selector 订阅：开关回包的 settings 帧更新 → 开关重绘
 
   // hostSettings 未落地（设置页刚打开、帧在途）时不猜状态：灰态呈现，不可点
-  const known = typeof S.hostSettings?.acpEnabled === "boolean";
-  const enabled = known && !!S.hostSettings?.acpEnabled; // 与 known ? !!... : false 等价(known 为真时 hostSettings 必非空)
-  const ctxKnown = typeof S.hostSettings?.sessionContextEnabled === "boolean";
-  const ctxEnabled = ctxKnown && !!S.hostSettings?.sessionContextEnabled;
+  const known = typeof hostSettings?.acpEnabled === "boolean";
+  const enabled = known && !!hostSettings?.acpEnabled; // 与 known ? !!... : false 等价(known 为真时 hostSettings 必非空)
+  const ctxKnown = typeof hostSettings?.sessionContextEnabled === "boolean";
+  const ctxEnabled = ctxKnown && !!hostSettings?.sessionContextEnabled;
 
   return (
     <div className="set-page" id="pg-experimental">

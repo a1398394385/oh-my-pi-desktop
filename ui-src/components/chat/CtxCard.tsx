@@ -6,8 +6,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
-import { S, useStore, activeOpen, send, fmtTokens, type TimerHandle } from "../../store";
+import { useAppStore } from "../../store/index";
+import { fmtTokens } from "../../store/utils";
 import { placeMenu } from "../../shell";
+
+/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
+type TimerHandle = ReturnType<typeof setTimeout>;
 
 // 限额窗口（host limits 帧透传）：只约束本组件读取的字段
 interface LimitWindow {
@@ -121,7 +125,9 @@ interface CtxBreakdown {
 }
 
 export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElement | null> }) {
-  useStore(); // 订阅 S.ctxDetail/S.ctxLimits：回包到达即重绘（卡开着时）
+  const ctxDetail = useAppStore((s) => s.ctxDetail); // 回包到达即重绘（卡开着时）
+  const ctxLimits = useAppStore((s) => s.ctxLimits);
+  const cur = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const [open, setOpen] = useState(false);
   const [noModel, setNoModel] = useState(false); // 无会话且输入框未选模型：卡片显示「暂无可用模型」
   const [compactBusy, setCompactBusy] = useState(false); // 压缩按钮 pending（回包由 core 既有逻辑收尾）
@@ -140,25 +146,25 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
     const el = anchorRef.current;
     if (!el) return;
     const onEnter = () => {
-      const s = activeOpen();
+      const st = useAppStore.getState();
+      const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
       clearTimeout(enterTimer.current);
       clearTimeout(leaveTimer.current);
       setNoModel(false);
       setCompactBusy(false);
       // 150ms 悬停定器：划过不打扰，提前离开取消
       enterTimer.current = setTimeout(() => {
-        // 弹卡瞬态数据清零（移开即弃）：上次残留不展示，结果到达后经 store 补绘
-        S.ctxDetail = null;
-        S.ctxLimits = null;
+        // 弹卡瞬态数据清零（移开即弃）：上次残留不展示，结果到达后经 store 补绘（静默写，不 bump）
+        useAppStore.setState({ ctxDetail: null, ctxLimits: null });
         setOpen(true);
         if (s) {
-          send({ type: "get_context_detail", sessionId: s.sessionId });
-          send({ type: "get_limits", sessionId: s.sessionId });
+          st.send({ type: "get_context_detail", sessionId: s.sessionId });
+          st.send({ type: "get_limits", sessionId: s.sessionId });
         } else {
           // 不在会话中也允许弹出:不显示上下文明细,仅按当前输入框所选模型的供应商显示配额
           // 模型 id 为 "provider/model" 格式(host modelsPayload),直接取首段
-          const prov = S.newSessionModel ? S.newSessionModel.split("/")[0] : "";
-          if (prov) send({ type: "get_limits", provider: prov });
+          const prov = st.newSessionModel ? st.newSessionModel.split("/")[0] : "";
+          if (prov) st.send({ type: "get_limits", provider: prov });
           else setNoModel(true);
         }
       }, 150);
@@ -211,9 +217,8 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
 
   // breakdown 为底座 getContextBreakdown 展开(frames.ts 标注形状随 SDK):按本组件读取字段收窄,
   // 键缺失运行期为 undefined,组件展示层原有兜底语义不变
-  const b = (S.ctxDetail?.breakdown ?? null) as CtxBreakdown | null;
-  const limits: CtxLimits | null = S.ctxLimits ?? null;
-  const cur = activeOpen();
+  const b = (ctxDetail?.breakdown ?? null) as CtxBreakdown | null;
+  const limits: CtxLimits | null = (ctxLimits ?? null) as CtxLimits | null;
   // 压缩上下文入口:会话非空且占用 > 0 才显示;流式中禁用(与运行中 turn 竞态)。
   // 压缩非破坏性,直接执行不弹确认;点击后置 pending,回包 toast / messages 帧由 store 既有逻辑收尾
   const canCompact = !!cur && cur.items.length > 0 && !!b && b.usedTokens > 0;
@@ -273,7 +278,7 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
             onClick={() => {
               if (compactBusy) return;
               setCompactBusy(true);
-              send({ type: "compact_session", sessionId: cur.sessionId });
+              useAppStore.getState().send({ type: "compact_session", sessionId: cur.sessionId });
             }}
           >
             {compactBusy ? "压缩中…" : "压缩上下文"}
@@ -281,7 +286,7 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
         </div>
       )}
       {/* 空态:无模型供应商给「暂无可用模型」;明细回包到了但没组成/限额给「暂无数据」;否则等回包 */}
-      {!b && !limits ? (noModel ? "暂无可用模型" : S.ctxDetail ? "上下文用量暂无数据" : "加载中…") : null}
+      {!b && !limits ? (noModel ? "暂无可用模型" : ctxDetail ? "上下文用量暂无数据" : "加载中…") : null}
     </div>,
     document.body,
   );

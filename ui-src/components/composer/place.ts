@@ -3,13 +3,13 @@
 // 垂直方向按按钮实时 offsetTop 计算而非固定 bottom:44px——后者只在单行布局侥幸成立，
 // 换行/分级收缩导致按钮位移后弹窗会脱离按钮（新建会话窄窗口错位 bug 的根因）。
 // 上方视口空间不足时改限高 + 内部滚动，菜单顶最多到视口上沿 4px，底缘仍贴按钮上方。
-import { S } from "../../store";
+import { useAppStore } from "../../store";
 
 export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | null, btn: HTMLElement | null): void {
   if (!comp || !menu || !btn) return;
   menu.style.maxHeight = "";
   menu.style.overflowY = "";
-  const z = S.zoomLevel || 1;
+  const z = useAppStore.getState().zoomLevel || 1;
   const maxLeft = comp.clientWidth - menu.offsetWidth - 4;
   menu.style.left = Math.max(0, Math.min(btn.offsetLeft, maxLeft)) + "px";
   const btnAbsTop = btn.getBoundingClientRect().top;
@@ -31,7 +31,7 @@ export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | 
 // 高度的一次性测量，候选到达/字体加载引起高度变化时不会留出过期的空隙。
 export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | null, ratio = 2.6): void {
   if (!comp || !menu) return;
-  const z = S.zoomLevel || 1;
+  const z = useAppStore.getState().zoomLevel || 1;
   const cs = getComputedStyle(comp);
   const borderLeft = Number.parseFloat(cs.borderLeftWidth) || 0;
   const borderTop = Number.parseFloat(cs.borderTopWidth) || 0;

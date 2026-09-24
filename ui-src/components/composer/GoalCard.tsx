@@ -6,13 +6,12 @@
 // 本地消费，乐观气泡由 command_result 撤回）。
 import { useState } from "react";
 import type { MouseEvent } from "react";
-import { useStore, activeOpen, send } from "../../store";
+import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
 
 export default function GoalCard() {
-  useStore();
   const [expanded, setExpanded] = useState(false);
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const g = s?.goal;
   if (!s || !g) return null;
   const run = Math.round(g.timeUsedSeconds ?? 0);

@@ -2,7 +2,7 @@
 // 作用域胶囊（全局 / Profile / 项目三级）+ 左侧资产列表 + 右侧行内编辑器。
 // 点击列表行读取该级 agent 定义（Markdown + YAML frontmatter）进编辑器，保存后新派生的子代理立即生效。
 import { useEffect, useState } from "react";
-import { S, useStore, send } from "../../../store";
+import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import type { AgentAssetsPayload } from "../../../types/frames";
@@ -35,7 +35,8 @@ function assetSections(data: AgentAssetsPayload["agents"] | null | undefined): A
 }
 
 export default function AgentsPage() {
-  useStore(); // 订阅 S：agentAssets / assetFile / assetSaved 回包落地后重渲染
+  // 渲染数据走字段 selector：ws 侧落地帧全量换新引用（含 assetErr），字段订阅即可感知
+  const agentAssets = useAppStore((s) => s.agentAssets);
   const [scope, setScope] = useState("profile"); // 当前作用域键（原 assetScope.agent）
   const [menuOpen, setMenuOpen] = useState(false); // 作用域胶囊菜单（原 wireSel 的 .menu.open）
   const [spin, setSpin] = useState(false); // 刷新钮旋转
@@ -45,14 +46,14 @@ export default function AgentsPage() {
   const [status, setStatus] = useState(""); // aeStatus 行
   const [newName, setNewName] = useState(""); // 新建名称输入
 
-  const data = S.agentAssets?.agents;
+  const data = agentAssets?.agents;
   const sections = assetSections(data);
   // 当前作用域失效（如 Profile 被移除）时回落 profile（原 renderAssetPage 同款守卫）
   if (sections && !sections.some((s) => s.scope === scope)) setScope("profile");
   const cur = sections?.find((s) => s.scope === scope) ?? sections?.find((s) => s.scope === "profile");
 
   // asset_file 回包（读取/新建成功）：载入编辑器（原 openAssetEditor）
-  const file = S.assetFile;
+  const file = useAppStore((s) => s.assetFile);
   useEffect(() => {
     if (!file || file.kind !== "agent" || !file.path) return;
     setSelPath(file.path);
@@ -62,14 +63,14 @@ export default function AgentsPage() {
   }, [file]);
 
   // asset_file_saved 回包：状态行显示「已保存」（原 core.js assetStatus(kind, "已保存")）
-  const saved = S.assetSaved;
+  const saved = useAppStore((s) => s.assetSaved);
   useEffect(() => {
     if (!saved || saved.kind !== "agent") return;
     setStatus("已保存");
   }, [saved]);
 
-  // 资产操作失败（读取/保存/新建抛错）：宿主回 error 帧，store 落 S.assetErr 时清掉进行中状态
-  const err = S.assetErr;
+  // 资产操作失败（读取/保存/新建抛错）：宿主回 error 帧，store 落 assetErr 时清掉进行中状态
+  const err = useAppStore((s) => s.assetErr);
   useEffect(() => {
     if (!err || err.kind !== "agent") return;
     setStatus(err.message);

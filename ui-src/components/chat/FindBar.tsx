@@ -4,7 +4,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ChatItem, LoopItem } from "./chat-types";
-import { S, activeOpen, notify, isJunkPlaceholder } from "../../store";
+import { useAppStore } from "../../store/index";
+import { isJunkPlaceholder } from "../../store/session";
+import { patchActiveItem } from "./parts";
 import Icon from "../../Icon";
 
 // 查找索引项：key 与 items.tsx 的 data-fk 锚点同源
@@ -33,11 +35,12 @@ function buildFindIndex(s: { items: ChatItem[] }): FindMatch[] {
 }
 
 export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivElement | null> }) {
+  const activePath = useAppStore((s) => s.activePath); // 切会话收起判定依赖（订阅变化触发重渲染）
   const [open, _setOpen] = useState(false);
-  // 开合同步到 store：全局快捷键需要知道查找栏开着（Esc 先关查找、不中断生成）
+  // 开合同步到 store：全局快捷键需要知道查找栏开着（Esc 先关查找、不中断生成）；静默写（原无 notify）
   const setOpen = (v: boolean) => {
     _setOpen(v);
-    S.findOpen = v;
+    useAppStore.setState({ findOpen: v });
   };
   const [count, setCount] = useState(""); // "1/3" | "无结果" | ""
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -75,12 +78,14 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     cursorRef.current = (cursorRef.current + dir + matches.length) % matches.length;
     updateCount();
     const m = matches[cursorRef.current];
-    const s = activeOpen();
+    const st = useAppStore.getState();
+    const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
     if (!s) return;
     const seg = m.key.split("-").map(Number);
     let expanded = false;
     if (seg.length > 1) {
-      // key 前缀段全是 loop 容器：逐层下钻，任一层收起都展开（外层收起时内层未渲染）
+      // key 前缀段全是 loop 容器：逐层下钻，任一层收起都展开（外层收起时内层未渲染）；
+      // 展开走拷贝替换（含 _v bump），DOM 就位后再定位（延迟一拍）
       let box: { items?: ChatItem[] } & Partial<Pick<LoopItem, "collapsed">> = { items: s.items };
       for (let k = 0; k < seg.length - 1; k++) {
         const next = box.items?.[seg[k]];
@@ -88,11 +93,10 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
         if (next.role !== "loop") break; // 前缀段按构造必为 loop 容器;非 loop 即索引损坏,终止下钻
         box = next;
         if (box.collapsed) {
-          box.collapsed = false;
+          patchActiveItem(next, (it) => { it.collapsed = false; });
           expanded = true;
         }
       }
-      if (expanded) notify(); // 展开后重渲染，DOM 就位再定位（延迟一拍）
     }
     const locate = () => {
       // data-fk 锚点即消息容器 div，收窄为 HTMLElement（classList/offsetWidth 需要）
@@ -106,7 +110,8 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
   };
 
   const runFind = () => {
-    const s = activeOpen();
+    const st = useAppStore.getState();
+    const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
     if (!s) return;
     const inp = inpRef.current;
     if (!inp) return;
@@ -122,7 +127,8 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
-        if (!activeOpen() || S.isCreatingNew || S.settingsOpen) return;
+        const st = useAppStore.getState();
+        if (!st.activePath || !st.openSessions.get(st.activePath) || st.isCreatingNew || st.settingsOpen) return;
         e.preventDefault();
         setOpen(true);
       } else if (e.key === "Escape" && open) {
@@ -136,7 +142,7 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
   // 打开后：浮层贴消息流顶部（absolute 相对 #main，水平居中交 CSS）+ 聚焦全选
   useEffect(() => {
     if (!open) return;
-    pathRef.current = S.activePath;
+    pathRef.current = activePath;
     const bar = barRef.current;
     if (bar) bar.style.top = (streamRef.current?.offsetTop ?? 0) + 6 + "px";
     const inp = inpRef.current;
@@ -146,9 +152,9 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     if (inp.value.trim()) runFind();
   }, [open]);
 
-  // 切会话即收起（同会话的流式重绘不收）
+  // 切会话即收起（同会话的流式重绘不收；activePath 订阅驱动重渲染）
   useEffect(() => {
-    if (open && pathRef.current !== S.activePath) close();
+    if (open && pathRef.current !== activePath) close();
   });
 
   if (!open) return null;

@@ -3,7 +3,7 @@
 // 展开态写入宿主 omp-desktop.json；组头通过 Pointer Events 参与拖拽排序，位移由 Sidebar 统一算。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { S, send, notify, showWelcomeScreen, expandedProjects, projectLimits } from "../../store";
+import { useAppStore, send, showWelcomeScreen } from "../../store";
 import Icon from "../../Icon";
 import SessionRow from "./SessionRow";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./SessionRow";
@@ -51,13 +51,15 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
   renaming: RenamingState | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
+  const projectLimits = useAppStore((s) => s.projectLimits);
   useLayoutEffect(() => {
     const el = ref.current!; // mount 后即存在（原 JS 直接解引用，保持同一假设）
     el.style.gridTemplateRows = "0fr";
     // 双 rAF：确保 0fr 先落布局，再过渡回 1fr（CSS 过渡）
     requestAnimationFrame(() => requestAnimationFrame(() => { el.style.gridTemplateRows = ""; }));
   }, []);
-  const limit = S.isProjectManageMode ? Infinity : (projectLimits.get(p.cwd) ?? 5);
+  const limit = isProjectManageMode ? Infinity : (projectLimits.get(p.cwd) ?? 5);
   const visibleSessions = p.sessions.slice(0, limit);
   const shift = { transform: ty ? `translateY(${ty}px)` : undefined };
   return (
@@ -82,12 +84,14 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
             />
           );
         })}
-        {!S.isProjectManageMode && p.sessions.length > visibleSessions.length && (
+        {!isProjectManageMode && p.sessions.length > visibleSessions.length && (
           <button
             className={"more-link" + (animate ? " kids-in" : "")}
             onClick={() => {
-              projectLimits.set(p.cwd, visibleSessions.length + 5);
-              notify();
+              // 条数放宽：容器换新引用 + _v bump（等价旧 mutate+notify）
+              useAppStore.setState((st) => ({
+                projectLimits: new Map(st.projectLimits).set(p.cwd, visibleSessions.length + 5),
+              }));
             }}
           >
             显示更多
@@ -114,6 +118,8 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
 }) {
+  const expandedProjects = useAppStore((s) => s.expandedProjects);
+  const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const expanded = expandedProjects.has(p.cwd);
   const [showKids, setShowKids] = useState(expanded); // 初挂载直接渲染不播动画（对照原版 renderList 重建）
   const [closing, setClosing] = useState(false);
@@ -134,15 +140,17 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   }, [expanded, showKids, closing]);
 
   const toggle = () => {
-    if (expandedProjects.has(p.cwd)) {
-      expandedProjects.delete(p.cwd);
-      send({ type: "set_project_expanded", cwd: p.cwd, expanded: false });
-    } else {
-      expandedProjects.add(p.cwd);
-      projectLimits.delete(p.cwd); // 再展开时分页重置回默认 5 条
-      send({ type: "set_project_expanded", cwd: p.cwd, expanded: true });
+    const st = useAppStore.getState();
+    const wasExpanded = st.expandedProjects.has(p.cwd);
+    const nextExpanded = new Set(st.expandedProjects); // 容器换新引用 + _v bump（等价旧 mutate+notify）
+    const nextLimits = wasExpanded ? st.projectLimits : new Map(st.projectLimits);
+    if (wasExpanded) nextExpanded.delete(p.cwd);
+    else {
+      nextExpanded.add(p.cwd);
+      nextLimits.delete(p.cwd); // 再展开时分页重置回默认 5 条
     }
-    notify();
+    send({ type: "set_project_expanded", cwd: p.cwd, expanded: !wasExpanded });
+    useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
   const name = p.name || p.cwd.split("/").filter(Boolean).pop() || p.cwd;
@@ -173,7 +181,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
       >
         <span className="fic"><Icon name={projectIconName(p, expanded)} size={16} /></span>
         <span className="pname" title={p.cwd}>{name}</span>
-        {S.isProjectManageMode ? (
+        {isProjectManageMode ? (
           <button
             className="proj-rm-btn"
             title={`移除项目 ${p.cwd}`}

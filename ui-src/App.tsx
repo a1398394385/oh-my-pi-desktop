@@ -2,7 +2,7 @@
 // DOM 结构与类名对照 ui/index.html 既有静态骨架（React 迁移期视觉零回归）；
 // 折叠/主题等壳交互自 ui-src/shell.js 对应平移，完整能力（resizer 拖动/缩放）见 IMPLEMENTATION_PLAN。
 import { useEffect } from "react";
-import { S, useStore, notify, activeOpen, diskProjects } from "./store";
+import { useAppStore } from "./store";
 import { initShell, toggleSidebar, toggleRightPanel } from "./shell";
 import Icon from "./Icon";
 import Sidebar from "./components/Sidebar";
@@ -17,51 +17,58 @@ import RightPanel from "./components/RightPanel";
 import Settings from "./components/settings/Settings";
 
 function Toast() {
-  useStore();
-  if (!S.toastMsg) return null;
-  return <div id="toast">{S.toastMsg}</div>;
+  const toastMsg = useAppStore((s) => s.toastMsg);
+  if (!toastMsg) return null;
+  return <div id="toast">{toastMsg}</div>;
 }
 
 // 中栏顶栏：侧栏开关 + 会话标题 + 右栏开关（原 index.html chat-head 结构）
 function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => void; onToggleRight: () => void }) {
-  useStore();
-  const s = activeOpen();
-  const title = S.isCreatingNew
+  const isCreatingNew = useAppStore((s) => s.isCreatingNew);
+  const activePath = useAppStore((s) => s.activePath);
+  const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
+  const diskProjects = useAppStore((s) => s.diskProjects);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const rightCollapsed = useAppStore((s) => s.rightCollapsed);
+  const title = isCreatingNew
     ? "新建任务"
-    : s
-      ? (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === S.activePath)?.title) || s.cwd.split("/").pop()
+    : session
+      ? (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || session.cwd.split("/").pop()
       : "选择左侧会话或新建任务";
   return (
     <div className="chat-head" data-tauri-drag-region="">
       <button className="icon-btn" title="收起侧边栏 (⌘B)" id="sidebarToggle" onClick={onToggleSidebar}>
-        <Icon name={S.sidebarCollapsed ? "collapseRight" : "collapseLeft"} />
+        <Icon name={sidebarCollapsed ? "collapseRight" : "collapseLeft"} />
       </button>
       <Icon name="folderOld" style={{ color: "var(--faint)" }} />
       <span className="ttl" id="chatTitle">{title}</span>
       <span className="sp"></span>
       <button className="icon-btn" title="收起右侧面板" id="panelToggle" onClick={onToggleRight}>
-        <Icon name={S.rightCollapsed ? "collapseLeft" : "collapseRight"} />
+        <Icon name={rightCollapsed ? "collapseLeft" : "collapseRight"} />
       </button>
     </div>
   );
 }
 
 export default function App() {
-  useStore();
   // 壳全局监听只挂一次：主题恢复/系统主题跟随、resizer 拖动、⌘+/-/0 缩放、
   // --col-max 分段与轨道显隐、window click/blur 菜单协调（ui-src/shell.js）
   useEffect(() => {
     initShell();
   }, []);
-  const pendingApproval = activeOpen()?.pendingApprovals?.[0] ?? null;
+  const isCreatingNew = useAppStore((s) => s.isCreatingNew);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const rightCollapsed = useAppStore((s) => s.rightCollapsed);
+  const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
+  const pendingApproval = session?.pendingApprovals?.[0] ?? null;
   return (
     <>
-      <Sidebar collapsed={S.sidebarCollapsed} />
-      <div id="left-resizer" className="resizer" title="拖动调整宽度" hidden={S.sidebarCollapsed}></div>
+      <Sidebar collapsed={sidebarCollapsed} />
+      <div id="left-resizer" className="resizer" title="拖动调整宽度" hidden={sidebarCollapsed}></div>
       <main id="main">
         <ChatHead onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
-        {S.isCreatingNew ? <Welcome /> : <Chat />}
-        {!S.isCreatingNew && (
+        {isCreatingNew ? <Welcome /> : <Chat />}
+        {!isCreatingNew && (
           <>
             {/* goal 目标栏 → 排队卡 → 输入 dock：三级重叠卡自上而下（goal 栏随队列增高上移）。
                 卡各自 -mb-28px 上拉，下一张卡以 z 压住其下缘，露出上半张二级重叠卡 */}
@@ -76,8 +83,8 @@ export default function App() {
           </>
         )}
       </main>
-      <div id="right-resizer" className="resizer" title="拖动调整宽度" hidden={S.rightCollapsed}></div>
-      <RightPanel collapsed={S.rightCollapsed} />
+      <div id="right-resizer" className="resizer" title="拖动调整宽度" hidden={rightCollapsed}></div>
+      <RightPanel collapsed={rightCollapsed} />
       <Settings />
       <Toast />
     </>

@@ -12,8 +12,8 @@
 // 绑定在组件内的键（⌘N 新建 / ⌘, 设置 / ⌘F 查找 / 缩放 / 输入框内各键）只在此登记展示，
 // 不在此重复绑定——重复绑定即双触发。
 import {
-  S, uiPrefs, send, notify, toast, activeOpen,
-  modelNames, getSupportedThinkingForModel, pickModelId, pickThinkingLevel, toolExpandKey,
+  useAppStore, setBump, send, toast, activeOpen,
+  getSupportedThinkingForModel, pickModelId, pickThinkingLevel, toolExpandKey,
   type TimerHandle,
 } from "./store";
 import { saveUiPrefs, applyAppearance } from "./appearance";
@@ -28,7 +28,8 @@ let escArmTimer: TimerHandle | undefined;
 /** app.interrupt：中断当前生成（或运行中的本地命令，与停止钮同路由）。
     输入框有草稿时需连按两下：第一下只把发送钮短暂切到取消图标示警，0.5s 内第二下才真正中断。 */
 function interrupt(): boolean | undefined {
-  if (S.settingsOpen || S.findOpen) return false; // 设置 / 查找栏先吃 Esc（各自容器处理）
+  const st = useAppStore.getState();
+  if (st.settingsOpen || st.findOpen) return false; // 设置 / 查找栏先吃 Esc（各自容器处理）
   if (document.querySelector(".menu.open")) {
     closeAllMenus(); // 打开中的弹层先关（输入区菜单 / 设置页下拉）
     return false;
@@ -36,50 +37,49 @@ function interrupt(): boolean | undefined {
   const s = activeOpen();
   const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
   if (!s || (!s.streaming && !bashRunning)) return false;
-  if (S.draftHasContent && Date.now() > S.escArmedUntil) {
-    S.escArmedUntil = Date.now() + ESC_ARM_MS;
+  if (st.draftHasContent && Date.now() > st.escArmedUntil) {
+    setBump({ escArmedUntil: Date.now() + ESC_ARM_MS }); // 写+bump：发送钮切到取消图标
     clearTimeout(escArmTimer);
     escArmTimer = setTimeout(() => {
-      S.escArmedUntil = 0;
-      notify();
+      setBump({ escArmedUntil: 0 });
     }, ESC_ARM_MS + 20);
-    notify(); // 发送钮切到取消图标
     return false;
   }
-  S.escArmedUntil = 0;
+  setBump({ escArmedUntil: 0 });
   send({ type: bashRunning && !s.streaming ? "bash_abort" : "abort_session", sessionId: s.sessionId });
-  notify();
 }
 
 /** app.model.cycleForward / cycleBackward：按宿主下发顺序（与模型菜单同序）前后移动 */
 function cycleModel(delta: number): void {
+  const st = useAppStore.getState();
   const s = activeOpen();
-  if (!s && !S.isCreatingNew) return;
-  const ids = [...modelNames.keys()];
+  if (!s && !st.isCreatingNew) return;
+  const ids = [...st.modelNames.keys()];
   if (ids.length === 0) {
     toast("未配置可用模型");
     return;
   }
-  const cur = s?.model || S.newSessionModel;
+  const cur = s?.model || st.newSessionModel;
   const i = ids.indexOf(cur);
   pickModelId(i < 0 ? ids[delta > 0 ? 0 : ids.length - 1] : ids[(i + delta + ids.length) % ids.length]);
 }
 
 /** app.thinking.cycle：在当前模型支持的档位里循环（auto → off → 各档 → auto） */
 function cycleThinking(): void {
+  const st = useAppStore.getState();
   const s = activeOpen();
-  if (!s && !S.isCreatingNew) return;
-  const levels = getSupportedThinkingForModel(s?.model || S.newSessionModel);
+  if (!s && !st.isCreatingNew) return;
+  const levels = getSupportedThinkingForModel(s?.model || st.newSessionModel);
   if (levels.length === 0) return;
-  pickThinkingLevel(levels[(levels.indexOf(s?.thinking || S.newSessionThinking) + 1) % levels.length]);
+  pickThinkingLevel(levels[(levels.indexOf(s?.thinking || st.newSessionThinking) + 1) % levels.length]);
 }
 
-/** app.model.select：打开模型选择菜单（Composer 消费 S.menuSignal） */
+/** app.model.select：打开模型选择菜单（Composer 消费 menuSignal） */
 function openModelMenu(): void {
-  if (S.settingsOpen) return; // 设置覆盖层下的菜单不可见，不开
-  if (!activeOpen() && !S.isCreatingNew) return;
-  S.menuSignal = { name: "model", seq: (S.menuSignal?.seq ?? 0) + 1 };
-  notify();
+  const st = useAppStore.getState();
+  if (st.settingsOpen) return; // 设置覆盖层下的菜单不可见，不开
+  if (!activeOpen() && !st.isCreatingNew) return;
+  setBump({ menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
 }
 
 /** app.plan.toggle：计划模式开合（仅会话内，与权限模式菜单同路由） */
@@ -96,35 +96,36 @@ function toggleSubagents(): void {
 
 /** app.thinking.toggle：思考标签「运行中默认展开、结束收起」开关（= 外观页「显示思考过程」） */
 function toggleThinking(): void {
-  uiPrefs.showThinking = !uiPrefs.showThinking;
+  const showThinking = !useAppStore.getState().uiPrefs.showThinking;
+  // 写换新对象（selector 组件按引用感知）+ _v bump（原「写+notify」）；末尾 toast 自带一次 bump
+  useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking } }));
   saveUiPrefs();
   applyAppearance();
   // 同步宿主设置：不回写会被下一次 settings/ready 帧的 hideThinkingBlock 覆盖回弹
-  send({ type: "set_setting", key: "hideThinkingBlock", value: !uiPrefs.showThinking });
+  send({ type: "set_setting", key: "hideThinkingBlock", value: !showThinking });
   // 即时反馈：只跟正在流式的思考行（已结束的收起态、用户手动展开的行都不动）
   const s = activeOpen();
   if (s) {
     for (const it of s.items) {
-      if (it.role === "thinking" && it.streaming) it.expanded = uiPrefs.showThinking;
+      if (it.role === "thinking" && it.streaming) it.expanded = showThinking;
     }
   }
-  toast(uiPrefs.showThinking ? "思考过程：运行时展开" : "思考过程：运行时保持收起");
-  notify();
+  toast(showThinking ? "思考过程：运行时展开" : "思考过程：运行时保持收起");
 }
 
 /** app.tools.expand：工具输出「运行中默认展开、结束收起」开关 */
 function toggleToolOutput(): void {
-  uiPrefs.expandToolOutput = !uiPrefs.expandToolOutput;
+  const expandToolOutput = !useAppStore.getState().uiPrefs.expandToolOutput;
+  useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput } }));
   saveUiPrefs();
   // 即时反馈：只跟正在运行的工具行（已结束的行保持用户当前的收展态）
   const s = activeOpen();
   if (s) {
     for (const it of s.items) {
-      if (it.role === "tool" && it.running) it[toolExpandKey(it.name)] = uiPrefs.expandToolOutput;
+      if (it.role === "tool" && it.running) it[toolExpandKey(it.name)] = expandToolOutput;
     }
   }
-  toast(uiPrefs.expandToolOutput ? "工具输出：运行时展开" : "工具输出：运行时保持收起");
-  notify();
+  toast(expandToolOutput ? "工具输出：运行时展开" : "工具输出：运行时保持收起");
 }
 
 // ---------- 注册表 ----------

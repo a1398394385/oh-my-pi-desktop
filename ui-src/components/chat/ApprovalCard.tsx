@@ -5,7 +5,7 @@
 // 应答后 answer 定格（chosen/dim/disabled），本地点击即时生效。
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { send, notify } from "../../store";
+import { useAppStore } from "../../store/index";
 import Icon from "../../Icon";
 
 // 审批请求条目（store 从 host approval 帧构造）：answer/prefill 由本卡就地写回
@@ -42,9 +42,19 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       else answer = undefined;
     }
     setChosen(i);
-    item.answer = answer ?? opt;
-    send({ type: "approval_response", requestId: item.requestId, answer });
-    notify();
+    // 答案写回挂起审批条目：按 requestId 定位，拷贝数组与元素替换（selector 与 _v 订阅方都能感知）
+    useAppStore.setState((st) => {
+      for (const [p, sess] of st.openSessions) {
+        const list = sess.pendingApprovals;
+        const j = list?.findIndex((r) => r.requestId === item.requestId) ?? -1;
+        if (!list || j < 0) continue;
+        const pendingApprovals = list.slice();
+        pendingApprovals[j] = { ...list[j], answer: answer ?? opt };
+        return { openSessions: new Map(st.openSessions).set(p, { ...sess, pendingApprovals }) };
+      }
+      return {};
+    });
+    useAppStore.getState().send({ type: "approval_response", requestId: item.requestId, answer });
   };
 
   // 选中并聚焦第 i 行（editable 行聚焦内嵌输入）

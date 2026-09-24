@@ -1,5 +1,5 @@
 // 高级页：无 ui 元数据的键（底座不进面板的内部设置）按首段点号前缀动态分组照 schema 原样渲染。
-import { S, useStore } from "../../../store";
+import { useAppStore } from "../../../store";
 import SchemaRows from "../SchemaRows";
 import { ADV_PREFIX_ZH } from "../settings-zh";
 import { PAGE_PLACEMENT } from "../placement";
@@ -40,8 +40,8 @@ function buildSections(schema: SchemaMap | null | undefined): AdvSection[] {
 }
 
 export default function AdvancedPage() {
-  useStore();
-  const sections = buildSections(S.settingsSchema);
+  const schema = useAppStore((s) => s.settingsSchema);
+  const sections = buildSections(schema);
   return (
     <div className="set-page" id="pg-advanced">
       <div className="set-tt">高级</div>

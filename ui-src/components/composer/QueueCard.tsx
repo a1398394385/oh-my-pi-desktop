@@ -5,13 +5,12 @@
 // 流式中发送的消息在此排队，当前 loop 完全处理后自动消费第 1 条；
 // 每条可立即发送（转 steer）/编辑（回输入框）/删除。steer 态气泡动作组（requeueSteerMsg）
 // 在气泡侧，归 chat-wave，此处只渲染 followUp 队列。
-import { useStore, activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg } from "../../store";
+import { useAppStore, sendNowQueueMsg, editQueueMsg, dropQueueMsg } from "../../store";
 import type { UserItem } from "../../types/session";
 import Icon from "../../Icon";
 
 export default function QueueCard() {
-  useStore();
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const items = s?.queued ?? [];
   if (!s || items.length === 0) return null; // 无会话时 items 必为空,合并早退等价原逻辑
   return (

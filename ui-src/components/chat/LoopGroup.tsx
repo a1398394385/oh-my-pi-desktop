@@ -4,10 +4,10 @@
 import { useEffect, useRef } from "react";
 import type { LoopItem } from "../../types/session";
 import type { RailEntry } from "./chat-types";
-import { notify, fmtTokens } from "../../store";
+import { fmtTokens } from "../../store/utils";
 import { fmtDuration } from "./util";
 import Icon from "../../Icon";
-import { useLift } from "./parts";
+import { useLift, patchActiveItem } from "./parts";
 import { renderItems } from "./items";
 
 // loop 组收起时的汇总文本：「已工作 xx 分 xx 秒, 总消耗 input xx, output xx, cache read xx[, cache write xx]」
@@ -39,14 +39,10 @@ export default function LoopGroup({ item, fk, railEntries }: { item: LoopItem; f
 
   const toggle = () => {
     if (item.collapsed) {
-      item.collapsed = false;
-      notify();
+      patchActiveItem(item, (it) => { it.collapsed = false; });
     } else {
       // 收起：容器高度收拢到 0（0.3s，与项目列表同一套），结束后落盘重渲染
-      close(() => {
-        item.collapsed = true;
-        notify();
-      }, 310);
+      close(() => patchActiveItem(item, (it) => { it.collapsed = true; }), 310);
     }
   };
 

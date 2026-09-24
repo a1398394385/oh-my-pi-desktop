@@ -4,7 +4,7 @@
 // 的 overflow-y:auto 裁切）；有会话走宿主 set_model，新建态落 localStorage。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { S, useStore, send, notify, activeOpen, modelNames, pickModelId } from "../../store";
+import { useAppStore, pickModelId } from "../../store";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
 
@@ -15,9 +15,10 @@ type ModelMenuProps = {
 };
 
 export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuProps) {
-  useStore();
-  const s = activeOpen();
-  const curModel = s?.model || S.newSessionModel;
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const newSessionModel = useAppStore((st) => st.newSessionModel);
+  const modelNames = useAppStore((st) => st.modelNames);
+  const curModel = s?.model || newSessionModel;
   const menuRef = useRef<HTMLDivElement>(null);
   const flyRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> 供应商行元素（flyout 顶部对齐用）

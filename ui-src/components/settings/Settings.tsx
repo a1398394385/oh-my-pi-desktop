@@ -1,10 +1,10 @@
 // 设置中心容器：全屏 overlay（左侧 setNav 导航 + 右侧 setBody 页面路由）。
-// 开合/切页状态全部来自 store（S.settingsOpen / S.settingsPage + openSettings/closeSettings），
+// 开合/切页状态全部来自 store（settingsOpen / settingsPage selector + openSettings/closeSettings），
 // 容器自身无本地开合状态。
 // 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）与字体表住在
 // ui-src/appearance.js（设置页与全局快捷键共用），此处 re-export 保持既有导出面。
 import { useEffect, useRef, type ComponentType } from "react";
-import { S, useStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
+import { useAppStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
 import { applyAppearance } from "../../appearance";
 
 export { FONT_LABELS, FONT_STACKS, saveUiPrefs, applyAppearance, applyHostAppearance } from "../../appearance";
@@ -111,7 +111,10 @@ const PAGES: Record<string, ComponentType> = {
 };
 
 export default function Settings() {
-  useStore(); // 订阅 S：settingsOpen / settingsPage / hostSettings 变化触发重渲染
+  // selector 订阅：settingsOpen / settingsPage / hostSettings 变化触发重渲染
+  const settingsOpen = useAppStore((s) => s.settingsOpen);
+  const settingsPage = useAppStore((s) => s.settingsPage);
+  const hostSettings = useAppStore((s) => s.hostSettings);
   const setBodyRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
 
@@ -122,31 +125,31 @@ export default function Settings() {
 
   // 从关闭到打开的首个 effect 里拉取设置数据（等价旧版 openSettings → refreshSettingsData）
   useEffect(() => {
-    const open = !!S.settingsOpen;
+    const open = !!settingsOpen;
     if (open && !wasOpenRef.current) refreshSettingsData();
     wasOpenRef.current = open;
   });
 
   // 切页时重置右侧滚动位置（等价旧版 switchSetPage 的 setBody.scrollTop = 0）
-  const pageId = S.settingsPage || "pg-general";
+  const pageId = settingsPage || "pg-general";
   useEffect(() => {
     if (setBodyRef.current) setBodyRef.current.scrollTop = 0;
   }, [pageId]);
 
-  // Esc 关闭（仅当设置中心打开时）
+  // Esc 关闭（仅当设置中心打开时；监听只挂一次，开合态经 getState 读最新值）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && S.settingsOpen) closeSettings();
+      if (e.key === "Escape" && useAppStore.getState().settingsOpen) closeSettings();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const Page = PAGES[pageId] || GeneralPage;
-  const profileName = (S.hostSettings && S.hostSettings.activeProfile) || "omp-desktop";
+  const profileName = (hostSettings && hostSettings.activeProfile) || "omp-desktop";
 
   return (
-    <div id="settings" className={S.settingsOpen ? "" : "hidden"}>
+    <div id="settings" className={settingsOpen ? "" : "hidden"}>
       {/* OMP 登录进行中横幅 + 粘贴码弹窗：挂壳根部，切页/在设置内任何页登录都不中断（旧版挂 document.body 全局） */}
       <LoginBanner />
       <LoginPrompt />

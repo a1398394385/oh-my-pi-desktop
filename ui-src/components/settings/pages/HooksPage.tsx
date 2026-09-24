@@ -1,9 +1,9 @@
-// 设置页：钩子（pg-hooks）。set-note 照搬 + hooksList 列表容器（读 S.agentAssets.hooks）。
+// 设置页：钩子（pg-hooks）。set-note 照搬 + hooksList 列表容器（读 agentAssets.hooks）。
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-hooks">，
 // 列表渲染参照 ui/settings/index.js renderAssetPages 的 fillAssetList("hooksList", ...)。
-import { S, useStore } from "../../../store";
+import { useAppStore } from "../../../store";
 
-// 数据契约：S.agentAssets.hooks 元素形状（WS 下发；phase 可能缺失）
+// 数据契约：agentAssets.hooks 元素形状（WS 下发；phase 可能缺失）
 interface HookAsset {
   name: string;
   phase?: string;
@@ -20,9 +20,8 @@ function emptyRow(text: string) {
 }
 
 export default function HooksPage() {
-  useStore();
-  // 数据契约：S.agentAssets.hooks: [{ name: string, phase?: string, path: string }]
-  const assets = S.agentAssets as { hooks?: HookAsset[] } | undefined;
+  // 数据契约：agentAssets.hooks: [{ name: string, phase?: string, path: string }]
+  const assets = useAppStore((s) => s.agentAssets) as { hooks?: HookAsset[] } | undefined;
   const hooks = assets?.hooks;
   return (
     <div className="set-page" id="pg-hooks">

@@ -2,7 +2,10 @@
 
 > **生命周期**:本文件是 UI 栈迁移的**实施合同**,冻结于 2026-09-24。决策 Why 归 `.agents/notes/00NN-*` ADR,字段/契约变化以此为锚;迁移期间(`P1`–`P7` 任一未验收)不得删除,完成后按 `docs/documentation.md` §3 收敛到对应 ADR 后退役。
 >
-> **实施进度**(2026-09-24):P0 ✅(基线 4cddfbc、工作区干净)→ P1 ✅(Vite 8.3 + TS strict 基座;ui:build/ui:typecheck/smoke:react 绿)→ P2 ✅(97 文件全量 TSX 化;`types/frames.ts` 75 帧判别联合 + `types/session.ts` ChatItem 十成员联合接入 store switch;typecheck/build/check 86 RPC·29 边界/smoke 全绿)。P3–P7 未实施。
+> **实施进度**(2026-09-24):P0 ✅ → P1 ✅ → P2 ✅ → **P3 ✅**(zustand 切分完成:store/ 十文件 index 组合六 slice[ui/session/projects/right/settings/ws]+shapes/terminal/utils/groupExpand;全部组件(含 6 个漏网 .jsx)切 useAppStore selector 订阅;容器写入全量换引用(openSessions 走 updateSession 拷贝链);S/useStore/notify/_v 版本桥/liveRef 容器代理全部退役,store.ts 成为纯转发桶文件;delta 流式改 applyDelta(100ms 窗口 mutate+flush 换引用);rightTabs/rightRecentClosed 迁入 RightSlice;查阅组/设备组展开态独立 groupExpand 通道;__dbg 终态={useAppStore},smoke 适配;四绿验收)。P4–P7 未实施。
+> P3 执行波次:波 1 zustand 底座+兼容壳 → 波 2 业务逻辑迁 slice+转发壳 → 波 3-0 live 代理+流式主路径换引用 → 波 3-A~I 组件 9 批并行切 selector(subagent 分工,只跑 typecheck,build/smoke 协调者统一跑)→ 波 4 删 _v/版本桥+delta 节流重构+tabs 入 store。
+> P3 关键教训:① zustand subscribe 回调里 set(同步或微任务延迟)与 React 19 useSyncExternalStore 级联死循环(#185 同步版与异步死循环版均实测)——渲染触发只能靠显式 setState 换值/换引用;② Proxy/兼容层写必须区分静默写与通知写(旧代码存在「写后不 notify」静默写,写即 bump=渲染循环);③ grep 迁移清单必须覆盖 .jsx 后缀(P3 曾漏 6 个 .jsx 文件);④ ESM 循环 import 中模块函数引用 useAppStore 安全(运行时调用),slice 工厂体内不得引用;⑤ selector 禁止构造新对象/数组字面量(无限重渲染)。
+> P3 偏差记录:PLAN 只列 4 个 slice 文件,实际为六 slice(+settings/ws:分节注释独立成节+连接路由域)+辅助模块(shapes/terminal/utils/groupExpand);组件过渡写法 setBump 保留为 setState 直通别名(具名入口,后续阶段自然消亡);查阅组/设备组的模块级 WeakMap 展开态保留原位,渲染走 groupExpand 独立通道(未入 store)。
 > P2 偏差记录:① typecheck 基线 158 错由收口修至 0(跨批次类型对齐:SessionInfo.title/ModelRole.tag 允许 null、TimerHandle 统一、settingsSchema 定 SchemaDef、AppState.mpDetailProv 定 AllProviderEntry、frames.mcp 补 McpAssetsPayload);② 两批次把类型守卫写成运行时 `instanceof HTMLElement`(Composer cbar 宽度计算、parts ResizeObserver),happy-dom 无此全局致 smoke 崩——已回退为 `as` 收窄,**教训:类型收窄只用 as,不得新增运行时 instanceof 守卫**;③ P1 偏差:vite.config.ts 暂以 CJS 加载(package.json 无 type:module,加则影响全仓 .js 语义,未动)、smoke CSS 解析改正则为属性顺序无关。
 
 ## Context

@@ -2,7 +2,7 @@
 // 中文文案查 SETTINGS_ZH；缺省回落 schema 的 ui.label/description（底座加键不致空白）；
 // 无 ui 的键（高级页）回落为「键名 + 类型/默认」。控件按 def.type 分派，改后经 set_setting 回写。
 import { useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
-import { S, useStore, send, toast } from "../../store";
+import { useAppStore, send, toast } from "../../store";
 import Icon from "../../Icon";
 import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH } from "./settings-zh";
 import { expandSection, type Section, type SchemaDef } from "./placement";
@@ -177,10 +177,10 @@ interface SchemaRowsProps {
 }
 
 export default function SchemaRows({ sections }: SchemaRowsProps) {
-  useStore();
-  const schema = S.settingsSchema; // store.js 尚未补类型：S 字段按 any 处理
-  const conditions = S.hostSettings?.conditions || {};
-  const values = S.hostSettings?.values || {};
+  const schema = useAppStore((s) => s.settingsSchema);
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  const conditions = hostSettings?.conditions || {};
+  const values = hostSettings?.values || {};
   if (!schema || !sections) return null;
 
   const out: ReactElement[] = [];

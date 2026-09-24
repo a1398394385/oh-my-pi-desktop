@@ -2,17 +2,16 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-computer">，
 // 绑定参照 ui/settings/index.js initSettings 的 wireToggle("tgComputer")。
 import { useEffect, useState } from "react";
-import { S, useStore, send, toast } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 
 export default function ComputerPage() {
-  useStore();
-  const hs = S.hostSettings;
+  const hs = useAppStore((s) => s.hostSettings);
   const [on, setOn] = useState(!!hs?.computerEnabled); // 初值布尔，类型可推断
   // settings 回包后同步开关态
   useEffect(() => {
-    setOn(!!S.hostSettings?.computerEnabled);
+    setOn(!!useAppStore.getState().hostSettings?.computerEnabled);
   }, [hs]);
   const toggle = (): void => {
     const next = !on;

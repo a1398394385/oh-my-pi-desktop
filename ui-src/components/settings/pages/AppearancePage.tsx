@@ -2,7 +2,7 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-appearance">，
 // 绑定参照 ui/settings/index.js 的 initSettings（themeSel/fontSel/num-ctl/tgLineNo/tgWrap）。
 import { useEffect, useState } from "react";
-import { S, useStore, send, toast, uiPrefs } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -59,17 +59,19 @@ const FONT_STACKS: Record<string, string> = {
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
 const FONT_LABELS: Record<string, string> = { default: "系统默认", zcode: "ZCode 默认", pingfang: "苹方 / PingFang SC", songti: "宋体 / Songti SC", kaiti: "楷体 / KaiTi SC", heiti: "黑体 / Heiti SC", mono: "等宽" };
+// 本地偏好落盘（读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
 function saveUiPrefs() {
-  try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefs)); } catch {}
+  try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
 }
 function applyAppearance() {
+  const p = useAppStore.getState().uiPrefs;
   const root = document.documentElement;
-  root.style.setProperty("--ui-fs", uiPrefs.uiFontSize + "px");
-  root.style.setProperty("--code-fs", uiPrefs.codeFontSize + "px");
-  root.style.setProperty("--ui-font", FONT_STACKS[uiPrefs.uiFont] || "var(--sans)");
-  root.dataset.lineNumbers = uiPrefs.lineNumbers ? "on" : "off";
-  root.dataset.codeWrap = uiPrefs.codeWrap ? "on" : "off";
-  root.dataset.showThinking = uiPrefs.showThinking ? "on" : "off";
+  root.style.setProperty("--ui-fs", p.uiFontSize + "px");
+  root.style.setProperty("--code-fs", p.codeFontSize + "px");
+  root.style.setProperty("--ui-font", FONT_STACKS[p.uiFont] || "var(--sans)");
+  root.dataset.lineNumbers = p.lineNumbers ? "on" : "off";
+  root.dataset.codeWrap = p.codeWrap ? "on" : "off";
+  root.dataset.showThinking = p.showThinking ? "on" : "off";
 }
 
 // ---------- 下拉选择器：旧版 wireSel 的受控等价物 ----------
@@ -112,23 +114,22 @@ function Sel({ label, options, onPick }: SelProps) {
   );
 }
 
-// 字号步进（旧版 stepFont： clamp -> save -> apply）
+// 字号步进（旧版 stepFont： clamp -> save -> apply；uiPrefs 换新对象写入 + bump）
 function stepFont(key: "uiFontSize" | "codeFontSize", delta: number, min: number, max: number): void {
-  uiPrefs[key] = Math.min(max, Math.max(min, uiPrefs[key] + delta));
+  useAppStore.setState((st) => ({
+    uiPrefs: { ...st.uiPrefs, [key]: Math.min(max, Math.max(min, st.uiPrefs[key] + delta)) },
+  }));
   saveUiPrefs();
   applyAppearance();
 }
 
 export default function AppearancePage() {
-  useStore();
-  void S; // 主题回包等全局帧统一经 useStore 触发重渲染
-
   const [theme, setTheme] = useState(currentThemeMode());
-  const [font, setFont] = useState(uiPrefs.uiFont || "default");
-  const [uiFs, setUiFs] = useState(uiPrefs.uiFontSize);
-  const [codeFs, setCodeFs] = useState(uiPrefs.codeFontSize);
-  const [lineNo, setLineNo] = useState(!!uiPrefs.lineNumbers);
-  const [wrap, setWrap] = useState(!!uiPrefs.codeWrap);
+  const [font, setFont] = useState(useAppStore.getState().uiPrefs.uiFont || "default");
+  const [uiFs, setUiFs] = useState(useAppStore.getState().uiPrefs.uiFontSize);
+  const [codeFs, setCodeFs] = useState(useAppStore.getState().uiPrefs.codeFontSize);
+  const [lineNo, setLineNo] = useState(!!useAppStore.getState().uiPrefs.lineNumbers);
+  const [wrap, setWrap] = useState(!!useAppStore.getState().uiPrefs.codeWrap);
   // 预览卡「当前生效」标签跟随实际明暗（dataset.theme 是全局唯一事实来源）
   const [dark, setDark] = useState(document.documentElement.dataset.theme !== "light");
   useEffect(() => {
@@ -149,7 +150,7 @@ export default function AppearancePage() {
   };
   const pickFont = (f: string) => {
     setFont(f);
-    uiPrefs.uiFont = f;
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, uiFont: f } }));
     saveUiPrefs();
     applyAppearance();
   };
@@ -161,25 +162,25 @@ export default function AppearancePage() {
   const toggleLineNo = () => {
     const on = !lineNo;
     setLineNo(on);
-    uiPrefs.lineNumbers = on;
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, lineNumbers: on } }));
     saveUiPrefs();
     applyAppearance();
   };
   const toggleWrap = () => {
     const on = !wrap;
     setWrap(on);
-    uiPrefs.codeWrap = on;
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, codeWrap: on } }));
     saveUiPrefs();
     applyAppearance();
   };
   // 字号步进（范围沿用旧版 settings/index.js 的 clamp：界面 11-18、代码 10-18）
   const stepUiFs = (d: number) => {
     stepFont("uiFontSize", d, 11, 18);
-    setUiFs(uiPrefs.uiFontSize);
+    setUiFs(useAppStore.getState().uiPrefs.uiFontSize);
   };
   const stepCodeFs = (d: number) => {
     stepFont("codeFontSize", d, 10, 18);
-    setCodeFs(uiPrefs.codeFontSize);
+    setCodeFs(useAppStore.getState().uiPrefs.codeFontSize);
   };
 
   return (

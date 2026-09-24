@@ -3,9 +3,8 @@
 // 迁移自 ui/tool-labels.js renderThink；原版展开时的视口锚定在 React 下天然成立——
 // DOM 节点复用、scrollTop 不动即「点击行不动」，贴底时由 Chat 的滚动 effect 钉底。
 import { useEffect, useRef } from "react";
-import { notify } from "../../store";
 import Icon from "../../Icon";
-import { useLift } from "./parts";
+import { useLift, patchActiveItem } from "./parts";
 
 // 思考行可渲染的最小形状:thinking 条目本身;tool 条目(name==="thinking")经 ToolRow 兜底
 // 分流进来时这些可选字段运行期为 undefined(结构性兼容,无需断言)
@@ -35,11 +34,8 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
   }, [open]);
 
   const toggle = () => {
-    if (item.expanded) close(() => { item.expanded = false; notify(); });
-    else {
-      item.expanded = true;
-      notify();
-    }
+    if (item.expanded) close(() => patchActiveItem(item, (it) => { it.expanded = false; }));
+    else patchActiveItem(item, (it) => { it.expanded = true; });
   };
 
   return (

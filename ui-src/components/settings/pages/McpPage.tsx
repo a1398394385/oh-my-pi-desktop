@@ -2,7 +2,7 @@
 // 旧版 ui/settings/mcp.js 的 1:1 React 平移；DOM 类名与 git 464131d 的 pg-mcp 骨架对齐。
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { S, useStore, send, toast, notify } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
@@ -24,7 +24,7 @@ interface McpSource {
   providerName?: string;
 }
 
-// MCP 服务器条目（S.agentAssets.mcp.servers；字段为 host 下发，缺省可空）
+// MCP 服务器条目（agentAssets.mcp.servers；字段为 host 下发，缺省可空）
 interface McpServer {
   name: string;
   enabled: boolean;
@@ -42,7 +42,7 @@ interface McpServer {
   source?: McpSource;
 }
 
-// 测试结果条目（S.mcpTestResults[name]，mcp_server_tested 回包落地）
+// 测试结果条目（mcpTestResults[name]，mcp_server_tested 回包落地）
 interface McpTestResult {
   ts: number;
   status: string; // "ok" 或其他失败态
@@ -62,7 +62,7 @@ interface McpPayload {
 
 // 作用域列表（缺数据时给单兜底项）
 function currentMcpScopes(): McpScope[] {
-  const mcp = S.agentAssets?.mcp;
+  const mcp = useAppStore.getState().agentAssets?.mcp;
   if (!mcp || !Array.isArray(mcp.scopes)) {
     return [{ id: "all", name: "全部工作区", count: 0 }];
   }
@@ -70,7 +70,7 @@ function currentMcpScopes(): McpScope[] {
 }
 
 function getScopedMcpServers(scope: string): McpServer[] {
-  const allServers = S.agentAssets?.mcp?.servers || [];
+  const allServers = useAppStore.getState().agentAssets?.mcp?.servers || [];
   if (scope === "all") return allServers;
   if (scope === "profile") return allServers.filter((s) => s.scope === "profile");
   return allServers.filter((s) => s.scope === scope);
@@ -202,8 +202,14 @@ function Toggle({ server }: { server: McpServer }) {
       onClick={(e) => {
         e.stopPropagation();
         const nextEnabled = !server.enabled;
-        server.enabled = nextEnabled; // 乐观更新共享数据（状态点/统计随 notify 重渲染）
-        notify();
+        // 乐观换引用：拷贝 agentAssets → mcp → servers 数组并替换该 server（字段写入即通知，状态点/统计随重渲染刷新）
+        const st = useAppStore.getState();
+        const assets = st.agentAssets;
+        const mcp = assets?.mcp;
+        if (assets && mcp) {
+          const servers = mcp.servers.map((x) => (x === server ? { ...x, enabled: nextEnabled } : x));
+          useAppStore.setState({ agentAssets: { ...assets, mcp: { ...mcp, servers } } });
+        }
         send({
           type: "set_mcp_server_enabled",
           name: server.name,
@@ -241,8 +247,8 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
   );
   const [testing, setTesting] = useState(false);
 
-  // 测试结果（来自 S.mcpTestResults，集成方在 mcp_server_tested 回包里落地）
-  const result: McpTestResult | undefined = !server ? undefined : S.mcpTestResults?.[server.name];
+  // 测试结果（来自 mcpTestResults，集成方在 mcp_server_tested 回包里落地）
+  const result: McpTestResult | undefined = !server ? undefined : useAppStore.getState().mcpTestResults?.[server.name];
   const lastTs = useRef<number>(result?.ts || 0);
   useEffect(() => {
     if (result && result.ts !== lastTs.current) {
@@ -493,7 +499,9 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
 }
 
 export default function McpPage() {
-  useStore(); // 订阅共享数据变化（S.agentAssets / S.mcpTestResults）
+  // 渲染数据走字段 selector：agent_assets / mcp_server_tested 落地帧均全量换新引用
+  //（含 mcp 段 servers 数组），字段订阅即可感知
+  const agentAssets = useAppStore((s) => s.agentAssets);
   const [mcpScope, setMcpScope] = useState("all");
   const [mcpSearchQuery, setMcpSearchQuery] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null); // 服务器 name 或 NEW_KEY；null = 收起
@@ -504,7 +512,7 @@ export default function McpPage() {
     allScopes.find((s) => s.id === mcpScope) || allScopes[0] || { id: "all", name: "全部工作区" };
   const activeScope = curScope.id;
 
-  // 每次渲染直接读 S（useStore 已保证回包时重渲染）；不用 useMemo 缓存可变单例
+  // 每次渲染直接读 store（agentAssets 订阅已保证回包时重渲染）；不用 useMemo 缓存可变单例
   const scopedNow = getScopedMcpServers(activeScope);
 
   const q = mcpSearchQuery.trim().toLowerCase();
@@ -534,12 +542,12 @@ export default function McpPage() {
     if (mi.id === "miOpenCurrentMcpConfig") {
       if (curScope?.dir) {
         send({ type: "open_folder", path: curScope.dir });
-      } else if (S.agentAssets?.mcp?.userMcpPath) {
-        send({ type: "open_folder", path: S.agentAssets.mcp.userMcpPath });
+      } else if (useAppStore.getState().agentAssets?.mcp?.userMcpPath) {
+        send({ type: "open_folder", path: useAppStore.getState().agentAssets!.mcp!.userMcpPath });
       }
     } else if (mi.id === "miOpenUserMcpConfig") {
-      if (S.agentAssets?.mcp?.userMcpPath) {
-        send({ type: "open_folder", path: S.agentAssets.mcp.userMcpPath });
+      if (useAppStore.getState().agentAssets?.mcp?.userMcpPath) {
+        send({ type: "open_folder", path: useAppStore.getState().agentAssets!.mcp!.userMcpPath });
       }
     } else if (mi.id === "miRetestAllMcp") {
       const curServers = getScopedMcpServers(activeScope).filter((s) => s.enabled);
@@ -670,7 +678,7 @@ export default function McpPage() {
             </>
           ) : null}
 
-          {!S.agentAssets?.mcp ? (
+          {!agentAssets?.mcp ? (
             emptyRow("加载中…", "mcp-empty-row")
           ) : !filtered.length ? (
             emptyRow(q ? "未找到匹配的 MCP 服务器" : "当前工作区下暂无 MCP 服务器", "mcp-empty-row")

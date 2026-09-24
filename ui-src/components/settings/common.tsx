@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { S, useStore, send, notify } from "../../store";
+import { useAppStore, setBump, send } from "../../store";
 
 // 供应商图标映射（原 ui/settings/index.js 顶部 PROV_IC 原样平移）
 export const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "minimax-code-cn": "◆", "opencode-zen": "✦", llama: "●", "local-proxy": "▣" };
@@ -54,13 +54,13 @@ export function confirmDialog({ title, message = "", confirmText = "确定", dan
 }
 
 // 登录进行中底部进度条：显示状态 + 取消按钮（关浏览器授权页后可手动中断）。
-// 数据源 S.loginBanner（store.js 的 login_progress / login_done 回包落地；null = 隐藏）。
+// 数据源 loginBanner selector（store 的 login_progress / login_done 回包落地；null = 隐藏）。
 export function LoginBanner() {
-  useStore();
-  if (S.loginBanner == null) return null;
+  const loginBanner = useAppStore((s) => s.loginBanner);
+  if (loginBanner == null) return null;
   return (
     <div className="login-banner" id="loginBanner">
-      <span>{S.loginBanner}</span>
+      <span>{loginBanner}</span>
       <button type="button" className="save-btn" onClick={() => send({ type: "provider_login_cancel" })}>
         取消登录
       </button>
@@ -68,17 +68,16 @@ export function LoginBanner() {
   );
 }
 
-// 登录流程的粘贴码弹窗（host 经 login_prompt 中转）。数据源 S.loginPromptData
+// 登录流程的粘贴码弹窗（host 经 login_prompt 中转）。数据源 loginPromptData selector
 // （{ id, message, secret, reqId }）；确定/取消均回 login_prompt_reply（空串 = 取消），
 // 遮罩点击仅关闭弹窗——host 侧流程仍等输入（旧版语义保留）。
 export function LoginPrompt() {
-  useStore();
-  const msg = S.loginPromptData; // store.js 尚未补类型：外部消息负载，按 any 处理
+  const msg = useAppStore((s) => s.loginPromptData); // 回包负载，形状见 LoginPromptFrame
   const [text, setText] = useState("");
   // 每次新弹窗（id 变化）清空输入框
   useEffect(() => { setText(""); }, [msg?.id]);
   if (!msg) return null;
-  const close = () => { S.loginPromptData = null; notify(); };
+  const close = () => { setBump({ loginPromptData: null }); };
   const reply = (t: string) => {
     send({ type: "login_prompt_reply", id: msg.id, text: t });
     close();

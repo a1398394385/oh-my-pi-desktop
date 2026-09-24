@@ -3,7 +3,7 @@
 // 双击标题原地进入行内重命名。
 import { useEffect, useRef } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
-import { S, send, notify, openSessions, unseenFinished, pinnedSessions, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
+import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
 import Icon from "../../Icon";
 import { fmtAgo, sessionLabel } from "./util";
 
@@ -87,6 +87,12 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
 }
 
 export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
+  // 状态经 selector 订阅（须在 renaming 早退之前：hooks 不可条件调用）
+  const openSessions = useAppStore((s) => s.openSessions);
+  const pinnedSessions = useAppStore((s) => s.pinnedSessions);
+  const unseenFinished = useAppStore((s) => s.unseenFinished);
+  const activePath = useAppStore((s) => s.activePath);
+  const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
@@ -98,22 +104,23 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // 打开会话：已打开直接激活（刷新右栏 git diff）；未打开走宿主加载链路
   const openSession = () => {
     hideWelcomeScreen();
-    unseenFinished.delete(s.path);
+    // 未读标记清除：容器换新引用（静默写，重渲染由末尾 setBump 的 _v bump 统一负责）
+    useAppStore.setState((st) => ({
+      unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== s.path)),
+    }));
     saveUnseen();
-    if (openSessions.has(s.path)) {
+    if (useAppStore.getState().openSessions.has(s.path)) {
       activateSession(s.path);
       refreshGitDiff();
     } else {
       send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
       send({ type: "load_session", path: s.path });
     }
-    S.selectedSubagent = null;
-    S.selectedFile = null;
-    notify();
+    setBump({ selectedSubagent: null, selectedFile: null });
   };
   return (
     <button
-      className={"task" + (sub ? " sub" : "") + (s.path === S.activePath ? " on" : "") + (className ? " " + className : "")}
+      className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (className ? " " + className : "")}
       data-path={s.path}
       style={style}
       onClick={openSession}
@@ -131,11 +138,13 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           title={pinned ? "取消置顶" : "置顶会话"}
           onClick={(e) => {
             e.stopPropagation();
-            const on = !pinnedSessions.has(s.path);
-            if (on) pinnedSessions.add(s.path);
-            else pinnedSessions.delete(s.path);
+            const st = useAppStore.getState();
+            const on = !st.pinnedSessions.has(s.path);
+            const nextPinned = new Set(st.pinnedSessions); // 容器换新引用 + _v bump（等价旧 mutate+notify）
+            if (on) nextPinned.add(s.path);
+            else nextPinned.delete(s.path);
             send({ type: "set_session_pinned", path: s.path, pinned: on });
-            notify();
+            useAppStore.setState({ pinnedSessions: nextPinned });
           }}
         >
           <Icon name="pin" size={16} />
@@ -145,7 +154,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       <span className="tt" onDoubleClick={() => onRenameStart(rowKey, s.path)}>
         {sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "")}
       </span>
-      {S.isProjectManageMode ? (
+      {isProjectManageMode ? (
         <button
           className="task-del-btn"
           title="删除会话"

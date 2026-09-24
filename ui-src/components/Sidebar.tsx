@@ -1,12 +1,13 @@
 // 左栏：新建任务入口 + 视图切换（最近/项目）+ 会话列表（tasklist）+ 底部账号/设置。
 // 迁移自 ui/sidebar.js（800 行）：renderList/taskRow/归档区/项目拖拽排序/右键菜单/
-// 确认弹窗/添加项目弹层/⌘N。契约：数据读 S/diskProjects/expandedProjects/pinnedSessions/
-// unseenFinished/projectLimits，动作后 notify()；DOM 结构与类名对照 ui/index.html + sidebar.js。
+// 确认弹窗/添加项目弹层/⌘N。契约：渲染数据经 useAppStore selector 订阅（diskProjects/
+// pinnedSessions/viewMode/管理态等），事件内写状态换新引用并带 _v bump；
+// DOM 结构与类名对照 ui/index.html + sidebar.js。
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
-  S, useStore, notify, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
-  diskProjects, expandedProjects, pinnedSessions, projectLimits, openSessions, getAvailableProjects, openSettings,
+  useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
+  getAvailableProjects, openSettings,
 } from "../store";
 import Icon from "../Icon";
 import SessionRow from "./sidebar/SessionRow";
@@ -77,16 +78,25 @@ interface ManageSnap {
 
 // 点新建（含已在欢迎页时再点）：明确回到配置文件默认——清手选标记 + 强制重校准
 function newTaskAction() {
-  if (S.isCreatingNew) {
-    S.newSessionDirty = false;
-    initNewSessionModel(true);
-    notify();
+  if (useAppStore.getState().isCreatingNew) {
+    useAppStore.setState({ newSessionDirty: false }); // 静默写（同原 S 赋值不 bump）
+    initNewSessionModel(true); // 写 newSessionModel/newSessionThinking 标量，消费者已全部 selector 订阅，字段写入即通知
   }
   showWelcomeScreen(activeOpen()?.cwd);
 }
 
 export default function Sidebar({ collapsed }: { collapsed: boolean }) {
-  useStore();
+  // 渲染数据经 selector 订阅（须在 collapsed 早退之前：hooks 不可条件调用）
+  const diskProjects = useAppStore((s) => s.diskProjects);
+  const pinnedSessions = useAppStore((s) => s.pinnedSessions);
+  const viewMode = useAppStore((s) => s.viewMode);
+  const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  // getAvailableProjects() 渲染期直调（内部读最新态），其底层字段须各自订阅，变化才触发重渲染
+  const allProjects = useAppStore((s) => s.allProjects);
+  const removedProjects = useAppStore((s) => s.removedProjects);
+  void allProjects;
+  void removedProjects;
   // 弹层/局部交互态（原版散在 body append 的临时 DOM 与模块变量上）
   const [confirmDlg, setConfirmDlg] = useState<ConfirmSpec | null>(null); // { title, message, confirmText, danger, onConfirm }
   const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } 会话行右键菜单
@@ -111,8 +121,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        // 设置页打开时 ⌘N 不抢占（旧版 settingsOpen 检查平移）
-        if (S.settingsOpen) return;
+        // 设置页打开时 ⌘N 不抢占（旧版 settingsOpen 检查平移；事件期读最新态）
+        if (useAppStore.getState().settingsOpen) return;
         newTaskAction();
       }
     };
@@ -130,10 +140,16 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       danger: true,
       onConfirm: () => {
         send({ type: "delete_session", path: s.path });
-        if (S.activePath === s.path) {
-          openSessions.delete(s.path);
-          S.activePath = null;
-          showWelcomeScreen(s.cwd || S.newSessionProject);
+        const st = useAppStore.getState();
+        if (st.activePath === s.path) {
+          // openSessions 容器换新引用（静默写，重渲染由 showWelcomeScreen 的 _v bump 负责）
+          useAppStore.setState((cur) => {
+            const openSessions = new Map(cur.openSessions);
+            openSessions.delete(s.path);
+            return { openSessions };
+          });
+          useAppStore.setState({ activePath: null }); // 静默写（同原 S 赋值不 bump）
+          showWelcomeScreen(s.cwd || st.newSessionProject);
         }
       },
     });
@@ -206,7 +222,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       w: rect.width,
       grabY: e.clientY - rect.top,
       label: head.querySelector(".pname")?.textContent || pending.cwd.split("/").filter(Boolean).pop() || pending.cwd,
-      iconName: projectIconName(project, expandedProjects.has(pending.cwd)),
+      iconName: projectIconName(project, useAppStore.getState().expandedProjects.has(pending.cwd)),
     };
     dragRef.current = drag;
     // React 状态更新要等本轮事件结束；先同步锁住选择，避免 WebKit 在首个移动事件中选中文本。
@@ -217,7 +233,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   const updateProjDrag = (e: ReactPointerEvent, d: ProjDragActive) => {
-    const z = S.zoomLevel || 1;
+    const z = useAppStore.getState().zoomLevel || 1;
     const dy = (e.clientY - d.startClientY) / z;
     const self = d.base[d.k0];
     const dragMid = self.top + dy + self.h / 2;
@@ -238,7 +254,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const pending = dragRef.current;
     if (!pending || pending.cwd !== cwd || pending.pointerId !== e.pointerId) return;
     if (!pending.groups) {
-      if (Math.abs(e.clientY - pending.startClientY) / (S.zoomLevel || 1) < 5) return;
+      if (Math.abs(e.clientY - pending.startClientY) / (useAppStore.getState().zoomLevel || 1) < 5) return;
       const started = beginProjDrag(e, pending);
       if (!started) return;
     }
@@ -261,12 +277,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const others = d.base.filter((g) => g.cwd !== d.cwd).map((g) => g.cwd);
     const order = [...others];
     order.splice(d.idx, 0, d.cwd);
-    for (const c of order) if (!S.allProjects.includes(c)) S.allProjects.unshift(c);
-    const arr = [...order, ...S.allProjects.filter((c) => !order.includes(c))];
-    const unchanged = arr.length === S.allProjects.length && arr.every((c, i) => c === S.allProjects[i]);
-    S.allProjects = arr;
+    const st = useAppStore.getState();
+    const merged = [...st.allProjects];
+    for (const c of order) if (!merged.includes(c)) merged.unshift(c);
+    const arr = [...order, ...merged.filter((c) => !order.includes(c))];
+    useAppStore.setState({ allProjects: arr }); // 字段写入即通知（allProjects 引用变化驱动侧栏重渲染）
     send({ type: "reorder_projects", order: arr });
-    if (!unchanged) notify();
     return true;
   };
 
@@ -291,7 +307,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   if (collapsed) return <aside id="sidebar" className="collapsed" data-tauri-drag-region=""></aside>;
 
   // —— 列表数据 ——
-  const manage = S.isProjectManageMode;
+  const manage = isProjectManageMode;
   // 置顶列表：跨项目聚合，位于项目列表上方；磁盘上已不存在的置顶自动忽略
   const pinnedRows = diskProjects
     .flatMap((p) => p.sessions)
@@ -348,27 +364,31 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // 的存量项目,清理模式中新展开的不回滚
   const onSecTrash = (e: ReactMouseEvent) => {
     e.stopPropagation();
-    S.isProjectManageMode = !S.isProjectManageMode;
-    if (S.isProjectManageMode) {
+    const st = useAppStore.getState();
+    const nextManage = !st.isProjectManageMode;
+    // 展开态/条数上限容器换新引用,随管理态一并 setBump(等价旧 mutate+末尾 notify)
+    const nextExpanded = new Set(st.expandedProjects);
+    const nextLimits = new Map(st.projectLimits);
+    if (nextManage) {
       manageSnap.current = visible.map((pr) => ({
         cwd: pr.cwd,
-        wasExpanded: expandedProjects.has(pr.cwd),
-        limit: projectLimits.get(pr.cwd) ?? null, // 无条目时 get 为 undefined,归一为 null(同原版 has()?get():null)
+        wasExpanded: st.expandedProjects.has(pr.cwd),
+        limit: st.projectLimits.get(pr.cwd) ?? null, // 无条目时 get 为 undefined,归一为 null(同原版 has()?get():null)
       }));
       for (const pr of visible) {
-        expandedProjects.add(pr.cwd);
-        projectLimits.set(pr.cwd, Infinity);
+        nextExpanded.add(pr.cwd);
+        nextLimits.set(pr.cwd, Infinity);
       }
     } else {
       for (const s of manageSnap.current ?? []) {
-        if (s.wasExpanded) expandedProjects.add(s.cwd);
-        else expandedProjects.delete(s.cwd);
-        if (s.limit != null) projectLimits.set(s.cwd, s.limit);
-        else projectLimits.delete(s.cwd);
+        if (s.wasExpanded) nextExpanded.add(s.cwd);
+        else nextExpanded.delete(s.cwd);
+        if (s.limit != null) nextLimits.set(s.cwd, s.limit);
+        else nextLimits.delete(s.cwd);
       }
       manageSnap.current = null;
     }
-    notify();
+    setBump({ isProjectManageMode: nextManage, expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
   return (
@@ -381,8 +401,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
       <div className="viewtabs">
         <div className="seg" id="seg">
-          <button data-view="recent" className={S.viewMode === "recent" ? "on" : ""} onClick={() => { S.viewMode = "recent"; notify(); }}>最近</button>
-          <button data-view="project" className={S.viewMode === "project" ? "on" : ""} onClick={() => { S.viewMode = "project"; notify(); }}>项目</button>
+          <button data-view="recent" className={viewMode === "recent" ? "on" : ""} onClick={() => setBump({ viewMode: "recent" })}>最近</button>
+          <button data-view="project" className={viewMode === "project" ? "on" : ""} onClick={() => setBump({ viewMode: "project" })}>项目</button>
         </div>
       </div>
       <div
@@ -398,7 +418,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           selBeforeCtxRef.current = sel ? sel.toString() : null;
         }}
       >
-        {S.viewMode === "project" ? (
+        {viewMode === "project" ? (
           <>
             {pinnedRows.length > 0 && (
               <>
@@ -469,7 +489,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <div className="side-foot">
         <div className="avatar"><img src="app-icon.png" alt="" /></div>
         <div className="sf-tx">
-          <span className="uname" id="sideProfileName">{S.hostSettings?.activeProfile || "omp-desktop"}</span>
+          <span className="uname" id="sideProfileName">{hostSettings?.activeProfile || "omp-desktop"}</span>
         </div>
         <span className="sp"></span>
         <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>

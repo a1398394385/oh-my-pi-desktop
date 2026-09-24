@@ -1,12 +1,11 @@
 // 空态启动器（右栏 tab 全部关闭，对齐 ZCode side-pane 空态）：
 // 居中图标 + 标题/副文两行 + 入口钮列表（h-12 横条，宽容器经容器查询切成两列网格）。
-import { S, useStore, activeOpen } from "../../store";
+import { useAppStore } from "../../store";
 import Icon from "../../Icon";
 import { TAB_META, openRightTab } from "./tabs";
 
 export default function StartPage() {
-  useStore();
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   return (
     <div className="rt-start">
       <span className="rt-start-ic">

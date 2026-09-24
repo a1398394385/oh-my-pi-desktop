@@ -3,8 +3,10 @@
 // 翻译为组件）；纯函数（splitPath/uniqueFiles）直接 import 旧模块复用不重写。
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import type { ToolItem } from "../../types/session";
-import { S, send, notify, activeOpen, invoke, toast, briefDiffCache, fileDiffCache, setBriefDiff, type TimerHandle } from "../../store";
+import type { ChatItem, ToolItem } from "../../types/session";
+import { useAppStore, setBump } from "../../store/index";
+import { patchSessionItem } from "../../store/session";
+import { invoke } from "../../store/ws";
 import { uniqueFiles, splitPath } from "./util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -14,6 +16,57 @@ import { openRightTab } from "../RightPanel";
 import LightweightDiff from "../diff/LightweightDiff";
 
 export { uniqueFiles, splitPath };
+
+/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
+type TimerHandle = ReturnType<typeof setTimeout>;
+
+// ---------- item 级写入通道（zustand 迁移：拷贝替换 + _v bump，替代旧「mutate + notify」） ----------
+
+/** 当前会话内按引用定位 item（穿透 loop 组）并拷贝替换：展开/折叠态等 item 级切换用。
+ *  patch 回调的 it 是拷贝出的同型条目，读当前值取反即可。 */
+export function patchActiveItem<T extends object>(item: T, patch: (it: T) => void): void {
+  const st = useAppStore.getState();
+  const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+  if (!s) return;
+  // props item 即 store 当前条目引用（引用匹配天然唯一）；经 unknown 中转把拷贝交回同型回调
+  patchSessionItem(s.sessionId, (it) => it === item, (it) => patch(it as unknown as T));
+}
+
+/** tool 合并组（item.group）内子项的拷贝替换：patchSessionItem 不穿透 group，自行走拷贝链
+ *  （定位 session → item → group 数组拷贝 → 替换子项，沿途 loop 组一并拷贝）。 */
+export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): void {
+  useAppStore.setState((st) => {
+    const path = st.activePath;
+    const s = path ? st.openSessions.get(path) : undefined;
+    if (!path || !s) return {};
+    const walk = (list: ChatItem[]): ChatItem[] | null => {
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        if (it.role === "tool" && Array.isArray(it.group) && it.group.includes(sub)) {
+          const next = list.slice();
+          const group = it.group.slice();
+          const copy = { ...sub };
+          patch(copy);
+          group[group.indexOf(sub)] = copy;
+          next[i] = { ...it, group };
+          return next;
+        }
+        if (it.role === "loop" && it.items) {
+          const inner = walk(it.items);
+          if (inner) {
+            const next = list.slice();
+            next[i] = { ...it, items: inner };
+            return next;
+          }
+        }
+      }
+      return null;
+    };
+    const items = walk(s.items);
+    if (!items) return {};
+    return { openSessions: new Map(st.openSessions).set(path, { ...s, items }) };
+  });
+}
 
 // ---------- 工具结果未到的统一占位（转圈 + 省略号） ----------
 // 判据固定取 item.running（tool 帧已到、tool_update 未到）：所有工具的 output 位在结果
@@ -90,7 +143,7 @@ async function openExternal(url: string) {
     if (invoke) await invoke("plugin:opener|open_url", { url });
     else window.open(url, "_blank", "noopener");
   } catch (err) {
-    toast(`打开链接失败：${err}`);
+    useAppStore.getState().toast(`打开链接失败：${err}`);
   }
 }
 export function LinkedText({ text }: { text?: string }) {
@@ -180,6 +233,7 @@ export function Counts({ item }: { item: ToolItem }) {
 // （git diff，右栏详情/内联展开共用回包）。按调用挂在 item 上而非按 path 缓存——
 // 同一文件多次编辑时各次展开各看各的，不互相覆盖
 export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; lift?: boolean }) {
+  const briefDiffCache = useAppStore((s) => s.briefDiffCache); // Map 引用订阅：回包/占位写入即重绘
   const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache.get(path);
   const cls = "ed-brief" + (lift ? " lift" : " drop");
   if (diff === undefined) {
@@ -215,12 +269,11 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   const canOpen = !item.details?.isDirectory && (!!dc || running);
   const open = item.readExpanded && !closing && canOpen;
   const hasContent = !!dc?.text;
+  // 展开态写入通道：独立行在 session.items 里（含 loop 组内），查阅组内子项在 item.group 里
+  const writeExpand = (fn: (it: ToolItem) => void) => (inGroup ? patchGroupSub(item, fn) : patchActiveItem(item, fn));
   const toggle = () => {
-    if (item.readExpanded) close(() => { item.readExpanded = false; notify(); });
-    else {
-      item.readExpanded = true;
-      notify();
-    }
+    if (item.readExpanded) close(() => writeExpand((it) => { it.readExpanded = false; }));
+    else writeExpand((it) => { it.readExpanded = true; });
   };
   return (
     <>
@@ -291,40 +344,44 @@ function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string
 // ---------- 右栏联动（原 tool-rows.js openFileDiffInSidebar / tool-labels.js openReadFileInSidebar） ----------
 // 点击编辑行文件名：右侧边栏切到 gitdiff 详情并展开面板
 export function openFileDiffInSidebar(path: string) {
-  const s = activeOpen();
+  const st = useAppStore.getState();
+  const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   if (!s || !s.isGit) return;
   openRightTab("gitdiff");
-  S.selectedFile = path;
-  fileDiffCache.loading = true;
-  fileDiffCache.path = path;
-  setBriefDiff(path, undefined); // 详情与内联展开共用一次回包
-  S.briefDiffPending = path;
-  send({ type: "get_file_diff", cwd: s.cwd, path });
-  S.rightCollapsed = false; // 原版 expandRightPanel：展开右栏时进程卡让位收起
-  S.todoCollapsed = true;
-  notify();
+  st.setBriefDiff(path, undefined); // 详情与内联展开共用一次回包
+  setBump({
+    selectedFile: path,
+    fileDiffCache: { ...st.fileDiffCache, loading: true, path },
+    briefDiffPending: path,
+    rightCollapsed: false, // 原版 expandRightPanel：展开右栏时进程卡让位收起
+    todoCollapsed: true,
+  });
+  st.send({ type: "get_file_diff", cwd: s.cwd, path });
 }
 
 // 点击读取行文件名：文件页先用读取到的内容即时渲染，同时请求全文件——回包后整文件展示
 export function openReadFileInSidebar(item: ToolItem, path: string) {
   const d = item.details;
   if (!d?.displayContent?.text) return;
+  const st = useAppStore.getState();
+  const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   // 原始路径可能带行号选择器（path:59-123）：解析出请求范围用于行号高亮，并剥掉后缀得到干净路径
   const raw = String(d.resolvedPath || path);
   const m = raw.match(/:(\d+)(?:-(\d+))?$/);
   let clean = m ? raw.slice(0, m.index ?? 0) : raw; // index 恒存在(match 非全局)
-  if (!clean.startsWith("/")) clean = (activeOpen()?.cwd || "") + "/" + clean;
-  S.fileView = {
-    path: clean,
-    text: d.displayContent.text,
-    startLine: d.displayContent.startLine || 1,
-    lineNumbers: Array.isArray(d.displayContent.lineNumbers) ? d.displayContent.lineNumbers : null,
-    reqRange: m ? [Number(m[1]), Number(m[2] || m[1])] : null,
-  };
-  S.fileViewPending = clean;
-  send({ type: "read_file", path: clean });
+  if (!clean.startsWith("/")) clean = (s?.cwd || "") + "/" + clean;
+  setBump({
+    fileView: {
+      path: clean,
+      text: d.displayContent.text,
+      startLine: d.displayContent.startLine || 1,
+      lineNumbers: Array.isArray(d.displayContent.lineNumbers) ? d.displayContent.lineNumbers : null,
+      reqRange: m ? [Number(m[1]), Number(m[2] || m[1])] : null,
+    },
+    fileViewPending: clean,
+    rightCollapsed: false,
+    todoCollapsed: true,
+  });
+  st.send({ type: "read_file", path: clean });
   openRightTab("file");
-  S.rightCollapsed = false;
-  S.todoCollapsed = true;
-  notify();
 }

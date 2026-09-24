@@ -1,12 +1,13 @@
 // 输入区：附件行 + textarea + cbar（添加/权限模式/后台任务/子智能体/上下文环/模型/思考/
 // 发送）+ 三个弹出菜单。迁移自 ui/composer.js（578 行）。
 // 契约：输入草稿用非受控 textarea + 模块级 draft 变量（等价原 inputEl.value，
-// 欢迎页 ↔ dock 两个挂载位切换不丢值）；S.composerSetSignal（seq 信号）effect 回填（含图片）；
+// 欢迎页 ↔ dock 两个挂载位切换不丢值）；composerSetSignal（seq 信号）effect 回填（含图片）；
 // 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts。
 // 排队卡不在此处：由 App 在 .dock 前作相邻兄弟渲染（ZCode 负 margin 二级重叠卡，见 ui/style.css）。
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { FormEvent, ChangeEvent, MouseEvent, Ref } from "react";
-import { S, useStore, notify, activeOpen, send, toast, modelNames, editQueueMsg, type SessionItem } from "../store";
+import { useAppStore, setBump, send, toast, editQueueMsg, type SessionItem } from "../store";
+import { updateSession } from "../store/session";
 import type { PromptAttachment } from "../types/frames";
 import { closeAllMenus } from "../shell";
 import Icon from "../Icon";
@@ -62,11 +63,13 @@ function resizeInput(ta: HTMLTextAreaElement | null) {
 
 // 组装随 prompt 下发的附件载荷（发送后由调用方清空 pendingFiles）
 function buildAttachPayload(): PromptAttachment[] {
-  return S.pendingFiles.map((f) =>
-    f.kind === "image"
-      ? { kind: "image", mime: f.mime, data: f.data }
-      : { kind: "text", name: f.name, text: f.data }
-  );
+  return useAppStore
+    .getState()
+    .pendingFiles.map((f) =>
+      f.kind === "image"
+        ? { kind: "image", mime: f.mime, data: f.data }
+        : { kind: "text", name: f.name, text: f.data },
+    );
 }
 
 // 会话工具行的结构子集（bgTaskCount 只读这些字段；全量形态见 store）
@@ -134,8 +137,26 @@ type ComposerProps = {
 };
 
 export default function Composer({ inWelcome, blocking = false }: ComposerProps) {
-  useStore();
-  const s = activeOpen();
+  // ---- store 订阅（selector 逐字段，禁止 selector 内构造新对象/数组） ----
+  // 当前会话（updateSession 帧处理换 session/Map 引用，selector 按引用感知）
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const pendingFiles = useAppStore((st) => st.pendingFiles);
+  const escArmedUntil = useAppStore((st) => st.escArmedUntil);
+  const composerSetSignal = useAppStore((st) => st.composerSetSignal);
+  const menuSignal = useAppStore((st) => st.menuSignal);
+  const isCreatingNew = useAppStore((st) => st.isCreatingNew);
+  const newSessionModel = useAppStore((st) => st.newSessionModel);
+  const newSessionThinking = useAppStore((st) => st.newSessionThinking);
+  const commands = useAppStore((st) => st.commands);
+  const commandsSessionId = useAppStore((st) => st.commandsSessionId);
+  const mentionResult = useAppStore((st) => st.mentionResult);
+  const approvalMode = useAppStore((st) => st.approvalMode);
+  const rightCollapsed = useAppStore((st) => st.rightCollapsed);
+  const rightTab = useAppStore((st) => st.rightTab);
+  // 无赋值订阅：模型目录在 models/ready 帧到达时换 Map 引用，订阅引用才能在目录
+  // 刷新后重渲染（下方 modelShort 内部 getState 读最新表）
+  useAppStore((st) => st.modelNames);
+
   const rootRef = useRef<HTMLDivElement>(null); // #composer
   const ctxRingRef = useRef<HTMLSpanElement>(null); // #ctxRing（CtxCard hover 弹卡锚点）
   const taRef = useRef<HTMLTextAreaElement>(null); // textarea
@@ -149,19 +170,22 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ 候选 150ms 防抖
   const [stopPending, setStopPending] = useState(false); // 停止钮防连点（turn_end 复位）
   const barStageRef = useRef(0); // 上次收缩级数（变化时收起打开中的菜单）
+  // 草稿存模块级变量（跨挂载位保留），selector 感知不到其变化：输入后本地触发重渲染
+  // （刷新发送钮 ready 态与 bash-mode 类，等价原 onInput 里的 notify）
+  const [, forceRender] = useReducer((x: number) => x + 1, 0);
 
   const text = draft.value;
-  const hasDraft = text.trim().length > 0 || S.pendingFiles.length > 0;
+  const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
   // 运行中的本地 bash 行（! 前缀命令）：停止形态同样覆盖——点停止发 bash_abort 而非 abort_session
   const bashRunning = !!s?.items?.some((x: { role?: string; running?: boolean }) => x.role === "bash" && x.running);
   const stopping = (!!s?.streaming || bashRunning) && !hasDraft;
   // Esc 二次确认窗口内：有草稿时发送钮短暂显示取消图标（再按一次 Esc 即中断生成）
-  const escArmed = Date.now() < (S.escArmedUntil ?? 0);
+  const escArmed = Date.now() < (escArmedUntil ?? 0);
   const canAbort = stopping || escArmed;
 
   // ---- 外部回填信号（分叉 selectedText / 排队消息编辑），对齐原 setComposerValue（含图片） ----
   useEffect(() => {
-    const sig = S.composerSetSignal;
+    const sig = composerSetSignal;
     if (!sig || !taRef.current) return;
     taRef.current.value = sig.text;
     draft.value = sig.text;
@@ -175,20 +199,25 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
     // 形状随底座 SDK(frames.ts selectedImages/editorImages TODO),只约束本 effect 读取的字段
     const backfillImages = (sig.images ?? []) as BackfillImage[];
-    for (const img of backfillImages) {
-      const src = img.source?.type === "base64" ? img.source : img;
-      if (!src?.data) continue;
-      S.pendingFiles.push({
-        id: ++S.fileSeq,
-        name: img.name || `图片${S.pendingFiles.length + 1}`,
-        kind: "image",
-        mime: src.mimeType || src.mediaType || "image/png",
-        data: src.data,
-      });
-    }
-    S.composerSetSignal = null;
+    // 附件追加 + 信号清零 + 渲染触发合并为一次 setState（pendingFiles 容器换新引用,
+    // id 编号取 store 当前 fileSeq 递增,等价原逐个 ++fileSeq）
+    useAppStore.setState((st) => {
+      const files = [...st.pendingFiles];
+      let seq = st.fileSeq;
+      for (const img of backfillImages) {
+        const src = img.source?.type === "base64" ? img.source : img;
+        if (!src?.data) continue;
+        files.push({
+          id: ++seq,
+          name: img.name || `图片${files.length + 1}`,
+          kind: "image",
+          mime: src.mimeType || src.mediaType || "image/png",
+          data: src.data,
+        });
+      }
+      return { pendingFiles: files, fileSeq: seq, composerSetSignal: null };
+    });
     resizeInput(taRef.current);
-    notify(); // 附件 push 后重渲附件行
     taRef.current.focus();
   });
 
@@ -200,7 +229,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
   // ---- 草稿有无同步到 store（全局 Esc 的二次确认要知道输入框里有没有内容） ----
   useEffect(() => {
-    S.draftHasContent = hasDraft;
+    // 静默写（不 bump：原代码写后无 notify，带 bump 会渲染循环）
+    useAppStore.setState({ draftHasContent: hasDraft });
   });
 
   // ---- 发送链路（原 sendPrompt 平移） ----
@@ -210,13 +240,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       taRef.current.value = "";
       resizeInput(taRef.current);
     }
-    S.pendingFiles = [];
-    notify();
+    setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
     const t = draft.value.trim();
     const files = buildAttachPayload();
-    if ((!t && files.length === 0) || !S.ws || S.ws.readyState !== 1) return;
+    const ws = useAppStore.getState().ws;
+    if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;
 
     // bash 模式（! 前缀，!! = 结果不进模型上下文）：本地执行，不出 user 气泡，
     // 行由 bash_start 帧建立（对齐 TUI input-controller 的发送路由）
@@ -235,34 +265,39 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
 
     // 新建态：草稿存 pendingNewPrompt，session_created 回执后由 store 代发
-    if (S.isCreatingNew || !s) {
-      S.pendingNewPrompt = { text: t, files };
+    if (isCreatingNew || !s) {
+      useAppStore.setState({ pendingNewPrompt: { text: t, files } });
       clearDraft();
       send({
         type: "create_session",
-        cwd: S.newSessionProject || undefined,
-        model: S.newSessionModel || undefined,
-        thinking: S.newSessionThinking || undefined,
+        cwd: useAppStore.getState().newSessionProject || undefined,
+        model: newSessionModel || undefined,
+        thinking: newSessionThinking || undefined,
       });
-      S.pendingCreate = true;
+      useAppStore.setState({ pendingCreate: true });
       return;
     }
     // 流式中发送 = 进待发送队列（followUp，当前 loop 完自动消费）；Ctrl+↵ 则是 steer——
     // 立即注入（当前工具批次后），气泡固定在消息流底部，分割发生在消费时刻（steer_consumed）
+    // updateSession 换 session/Map 引用：selector 订阅组件（本组件/QueueCard）与旧 useStore 组件均感知
     if (s.streaming) {
-      if (steer) {
-        s.steering = s.steering ?? [];
-        s.steering.push({ text: t });
-        s.items.push({ role: "user", text: t, pending: "steer" });
-      } else {
-        s.queued = s.queued ?? [];
-        s.queued.push({ text: t });
-      }
+      updateSession(s.sessionId, (next) => {
+        if (steer) {
+          next.steering = next.steering ?? [];
+          next.steering.push({ text: t });
+          next.items.push({ role: "user", text: t, pending: "steer" });
+        } else {
+          next.queued = next.queued ?? [];
+          next.queued.push({ text: t });
+        }
+      });
     } else {
-      s.items.push({ role: "user", text: t });
+      updateSession(s.sessionId, (next) => {
+        next.items.push({ role: "user", text: t });
+      });
     }
     clearDraft();
-    S.ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
+    ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
     // 钉底跟随由 Chat 组件的滚动 effect 处理
   };
 
@@ -272,7 +307,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     draft.value = ta.value;
     resizeInput(ta);
     updatePalette(ta);
-    notify(); // 刷新发送钮 ready 态
+    forceRender(); // 刷新发送钮 ready 态
   };
 
   // ---- sigil 触发检测：@ 文件补全 / 行首 / 命令补全（trigger.js 纯函数） ----
@@ -283,24 +318,25 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       return;
     }
     if (t.kind === "command") {
-      if (!s && !S.isCreatingNew) {
+      if (!s && !isCreatingNew) {
         setPalette(null); // 无会话且非新建页：命令不可用
         return;
       }
       // 清单归属：会话 id 或新建页哨兵（新建页走无会话清单，隐藏会话级命令）
       const cmdKey = s ? s.sessionId : "new";
-      if (S.commandsSessionId !== cmdKey) {
-        S.commands = null; // 清单过期：拉取期间弹层显示加载中
-        send({ type: "list_commands", sessionId: s?.sessionId, cwd: s ? undefined : S.newSessionProject || undefined });
+      if (commandsSessionId !== cmdKey) {
+        useAppStore.setState({ commands: null }); // 清单过期：拉取期间弹层显示加载中（静默写，重渲染由下方 setPalette 驱动）
+        send({ type: "list_commands", sessionId: s?.sessionId, cwd: s ? undefined : useAppStore.getState().newSessionProject || undefined });
       }
-      // 候选与加载态渲染期从 S.commands 现算（见下方 palItems/palLoading），
-      // 不存快照——回包只 notify()，快照会让候选永不出现、要再敲一键才重算
+      // 候选与加载态渲染期从 commands 现算（见下方 palItems/palLoading），
+      // 不存快照——回包只写 store，快照会让候选永不出现、要再敲一键才重算
       setPalette({ ...t, index: 0 });
     } else {
       // @ 文件候选：150ms 防抖后发 list_files（宿主 fuzzyFind 是磁盘扫描）；
       // reqId 自增使过期响应被 store 丢弃
-      const reqId = ++S.mentionReqSeq;
-      const cwd = s ? undefined : S.newSessionProject || undefined;
+      const reqId = useAppStore.getState().mentionReqSeq + 1;
+      useAppStore.setState({ mentionReqSeq: reqId }); // 静默自增（原 ++ 后无 notify）
+      const cwd = s ? undefined : useAppStore.getState().newSessionProject || undefined;
       clearTimeout(mentionTimer.current ?? undefined);
       mentionTimer.current = setTimeout(() => {
         send({ type: "list_files", sessionId: s?.sessionId, cwd, query: t.query, reqId });
@@ -336,27 +372,29 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     if (chainDir) ta.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
-  // 候选渲染期消费 store 帧（useStore 已在帧处理时触发重渲）：
-  // @ 文件合并 S.mentionResult（reqId 匹配才合并，避免竞态；不匹配保持加载态等下一帧）；
-  // 斜杠命令现算 filterCommands(S.commands)——回包帧到达即出候选，无需再次击键
+  // 候选渲染期消费 store 帧（file_matches/commands 回包 setState 触发重渲染）：
+  // @ 文件合并 mentionResult（reqId 匹配才合并，避免竞态；不匹配保持加载态等下一帧）；
+  // 斜杠命令现算 filterCommands(commands)——回包帧到达即出候选，无需再次击键
   const palItems: PaletteItem[] | undefined =
-    palette && palette.kind === "file" && S.mentionResult && S.mentionResult.reqId === palette.reqId
-      ? S.mentionResult.matches
+    palette && palette.kind === "file" && mentionResult && mentionResult.reqId === palette.reqId
+      ? mentionResult.matches
       : palette?.kind === "command"
-        ? filterCommands(S.commands, palette.query)
+        ? filterCommands(commands, palette.query)
         : palette?.items;
   const palLoading = palette
     ? palette.kind === "file"
-      ? S.mentionResult?.reqId === palette.reqId
+      ? mentionResult?.reqId === palette.reqId
         ? false
         : palette.loading ?? false
-      : S.commands === null
+      : commands === null
     : false;
 
   // ---- 附件选择（原 filePicker change 平移） ----
   const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
     const picked = [...(e.target.files ?? [])];
     e.target.value = ""; // 允许重复选同一文件
+    // 先构造附件对象（id 占位），统一在 setState 里按 store 当前 fileSeq 重编（等价原逐个 ++fileSeq）
+    const added: (PromptAttachment & { id: number })[] = [];
     for (const file of picked) {
       if (file.size > MAX_ATTACH_BYTES) {
         toast(`「${file.name}」超过 10MB，未添加`);
@@ -370,15 +408,21 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             r.onerror = () => no(r.error);
             r.readAsDataURL(file);
           });
-          S.pendingFiles.push({ id: ++S.fileSeq, name: file.name, kind: "image", mime: file.type, data: dataUrl.split(",")[1] });
+          added.push({ id: 0, name: file.name, kind: "image", mime: file.type, data: dataUrl.split(",")[1] });
         } else {
-          S.pendingFiles.push({ id: ++S.fileSeq, name: file.name, kind: "text", mime: file.type || "text/plain", data: await file.text() });
+          added.push({ id: 0, name: file.name, kind: "text", mime: file.type || "text/plain", data: await file.text() });
         }
       } catch {
         toast(`读取「${file.name}」失败`);
       }
     }
-    notify();
+    // 附件入列 + 渲染触发合并为一次 setState（pendingFiles 容器换新引用）
+    useAppStore.setState((st) => {
+      let seq = st.fileSeq;
+      const files = [...st.pendingFiles];
+      for (const a of added) files.push({ ...a, id: ++seq });
+      return { pendingFiles: files, fileSeq: seq };
+    });
   };
 
   // ---- 停止钮防连点复位（原 turn_end 重绘时复位 disabled） ----
@@ -452,25 +496,25 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   }, []);
 
   // ---- cbar 各按钮态 ----
-  const modeMeta = MODE_META[S.approvalMode] ?? MODE_META["always-ask"];
-  const menuDisabled = !(s || S.isCreatingNew); // 无会话且非新建态：模型/思考不可用
+  const modeMeta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
+  const menuDisabled = !(s || isCreatingNew); // 无会话且非新建态：模型/思考不可用
 
-  // ---- 外部打开菜单信号（快捷键 Alt+M）：与 S.composerSetSignal 同款的一次性信号 ----
+  // ---- 外部打开菜单信号（快捷键 Alt+M）：与 composerSetSignal 同款的一次性信号 ----
   useEffect(() => {
-    const sig = S.menuSignal;
+    const sig = menuSignal;
     if (!sig) return;
-    S.menuSignal = null;
+    useAppStore.setState({ menuSignal: null }); // 静默写（原同：清零本身不触发重渲染）
     // 信号由 keys.ts 按固定菜单名写入("model"/"think"/"mode"),断言收窄为本组件的菜单名联合
     const menuName = sig.name as MenuName;
     if (!menuDisabled) setOpenMenu(menuName);
   });
 
-  const modelName = S.isCreatingNew || !s
-    ? (S.newSessionModel ? (modelShort(S.newSessionModel) || "模型") : "模型")
+  const modelName = isCreatingNew || !s
+    ? (newSessionModel ? (modelShort(newSessionModel) || "模型") : "模型")
     : modelShort(s.model) || "模型";
   const thinkLabel = s
     ? (s.thinking === "auto" && s.autoResolved ? `auto·${s.autoResolved}` : s.thinking || "思考")
-    : S.newSessionThinking || "思考";
+    : newSessionThinking || "思考";
   const bgTasks = bgTaskCount(s);
   const bgSubs = subagentCount(s);
 
@@ -485,16 +529,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // 后台任务/子智能体按钮：展开并切换右栏对应 tab，再点收起右栏（原 right.js 绑定平移）
   const toggleBgTab = (tab: string) => () => {
     if (!s) return;
-    if (!S.rightCollapsed && S.rightTab === tab) {
-      S.rightCollapsed = true;
+    const st = useAppStore.getState();
+    if (!st.rightCollapsed && st.rightTab === tab) {
+      setBump({ rightCollapsed: true });
     } else {
-      S.rightTab = tab;
-      S.selectedFile = null;
-      S.selectedSubagent = null;
-      S.rightCollapsed = false;
-      S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
+      setBump({ rightTab: tab, selectedFile: null, selectedSubagent: null, rightCollapsed: false, todoCollapsed: true }); // 展开右栏时进程卡让位收起（parts.jsx 同款）
     }
-    notify();
   };
 
   return (
@@ -606,7 +646,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             </>
           )}
           <button
-            className={"pill-btn bg-task-btn" + (bgTasks > 0 ? " has-running" : "") + (!S.rightCollapsed && S.rightTab === "bgcmd" ? " on" : "")}
+            className={"pill-btn bg-task-btn" + (bgTasks > 0 ? " has-running" : "") + (!rightCollapsed && rightTab === "bgcmd" ? " on" : "")}
             id="bgTaskBtn"
             title="后台命令"
             disabled={!s}
@@ -616,7 +656,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <span className="bg-task-num" id="bgTaskNum">{s ? bgTasks : 0}</span>
           </button>
           <button
-            className={"pill-btn bg-task-btn" + (bgSubs > 0 ? " has-running" : "") + (!S.rightCollapsed && S.rightTab === "subagent" ? " on" : "")}
+            className={"pill-btn bg-task-btn" + (bgSubs > 0 ? " has-running" : "") + (!rightCollapsed && rightTab === "subagent" ? " on" : "")}
             id="bgSubagentBtn"
             title="子智能体"
             disabled={!s}
@@ -707,7 +747,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 // 上下文环（原 renderComposerBar 的 ctxRing 段平移）：从顶端顺时针填充；无数据空环；
 // 新建态也展示空环。hover 弹上下文明细卡见 chat/CtxCard.jsx（ringRef 仅作锚点，不动内部 svg）
 function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } | null } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
-  if (!s && !S.isCreatingNew) return null;
+  const isCreatingNew = useAppStore((st) => st.isCreatingNew);
+  if (!s && !isCreatingNew) return null;
   const p = s?.ctx ? Math.min(1, s.ctx.percent / 100) : 0;
   const cls = "ctx-ring" + (s?.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
   return (
@@ -731,5 +772,5 @@ function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } | null } | nul
 // 模型显示名：modelNames 查表，无表项时取 id 尾段（原 renderComposerBar 同款）
 function modelShort(id: string | null | undefined) {
   if (!id) return "";
-  return modelNames.get(id) ?? id.split("/").pop();
+  return useAppStore.getState().modelNames.get(id) ?? id.split("/").pop();
 }

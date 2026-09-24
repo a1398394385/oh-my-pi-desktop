@@ -1,11 +1,11 @@
-// 设置页：命令（pg-commands）。commandsList 列表容器（读 S.agentAssets.commands）。
+// 设置页：命令（pg-commands）。commandsList 列表容器（读 agentAssets.commands）。
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-commands">，
 // 列表渲染参照 ui/settings/index.js renderAssetPages 的 fillAssetList("commandsList", ...)。
-import { S, useStore } from "../../../store";
+import { useAppStore } from "../../../store";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 
-// 数据契约：S.agentAssets.commands 元素形状（WS 下发，name/path 必有）
+// 数据契约：agentAssets.commands 元素形状（WS 下发，name/path 必有）
 interface CommandAsset {
   name: string;
   path: string;
@@ -21,9 +21,8 @@ function emptyRow(text: string) {
 }
 
 export default function CommandsPage() {
-  useStore();
-  // 数据契约：S.agentAssets.commands: [{ name: string, path: string }]
-  const assets = S.agentAssets as { commands?: CommandAsset[] } | undefined;
+  // 数据契约：agentAssets.commands: [{ name: string, path: string }]
+  const assets = useAppStore((s) => s.agentAssets) as { commands?: CommandAsset[] } | undefined;
   const commands = assets?.commands;
   return (
     <div className="set-page" id="pg-commands">

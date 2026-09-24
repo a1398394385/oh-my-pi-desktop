@@ -2,16 +2,16 @@
 // 左列 = 模型角色入口 + 已认证供应商分组列表（凭证在上 / models.yml 配置在下）；
 // 右卡四视图 = 供应商详情（模型启停 + 配额 + 登出）/ 模型角色（@role 二级级联分配）/
 //              添加供应商（卡片网格）/ 供应商详情页（登录 / API key 二选一）。
-// 视图开关与选中项沿用 S（mpAddView / mpRolesView / mpDetailProv / selectedProvider），
+// 视图开关与选中项沿用 store 字段（mpAddView / mpRolesView / mpDetailProv / selectedProvider），
 // 登录横幅与粘贴码弹窗来自 ../common.jsx。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { S, useStore, send, toast, notify } from "../../../store";
+import { useAppStore, setBump, send, toast } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
 import { PROV_IC, confirmDialog } from "../common";
 
-// 目录模型条目（S.modelCatalog，models_catalog 回包落地；字段为 host 下发）
+// 目录模型条目（modelCatalog 字段，models_catalog 回包落地；字段为 host 下发）
 interface CatalogModel {
   id: string;
   name: string;
@@ -22,7 +22,7 @@ interface CatalogModel {
   authSource?: string; // "cred" 存储凭证 / "config" models.yml 手写
 }
 
-// 模型角色条目（S.modelRoles）
+// 模型角色条目（modelRoles 字段）
 interface ModelRole {
   id: string;
   name: string;
@@ -40,7 +40,7 @@ interface LimitWindow {
   resetsAt?: string | number | null;
 }
 
-// 供应商配额结果（S.providerLimits 落地结构；accounts 为多账号扩展，字段形状同顶层）
+// 供应商配额结果（providerLimits 落地结构；accounts 为多账号扩展，字段形状同顶层）
 interface ProviderLimits {
   provider: string;
   label?: string;
@@ -141,11 +141,10 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
   );
 }
 
-// 供应商配额段：consume S.providerLimits（store.js 的 provider_limits_result 落地）。
+// 供应商配额段：consume providerLimits（store.js 的 provider_limits_result 落地）。
 // 旧响应污染判定平移：provider 未变才渲染数据，否则回退「配额读取中…」占位。
 function QuotaSection({ provider }: { provider: string }) {
-  useStore();
-  const lim = S.providerLimits;
+  const lim = useAppStore((s) => s.providerLimits);
   if (!lim || lim.provider !== provider) {
     return <div className="mp-lim">配额读取中…</div>;
   }
@@ -169,7 +168,7 @@ function QuotaSection({ provider }: { provider: string }) {
 // 角色选择器当前值显示：未配置 →「默认」；精确匹配目录模型 → 模型名；其余（别名/带级别后缀）→ 原文
 function roleSelLabel(role: ModelRole): string {
   if (!role.value) return role.id === "default" ? "未设置" : "默认";
-  const hit = S.modelCatalog.find((m) => m.id === role.value);
+  const hit = useAppStore.getState().modelCatalog.find((m) => m.id === role.value);
   if (hit) return hit.name;
   return role.value;
 }
@@ -298,16 +297,17 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
 // 右卡：模型角色视图（srow 行 + 二级级联模型选择器 + 自定义角色删除按钮）
 function RolesView() {
   // 目录全量（含未启用模型）：角色值可指向任意目录模型，host 校验与底座解析均走 availableModels 全量
-  const allModels = S.modelCatalog;
+  const allModels = useAppStore((s) => s.modelCatalog);
+  const modelRoles = useAppStore((s) => s.modelRoles);
   return (
     <>
       <div className="mp-head">
         <b>模型角色</b>
         <span className="sp" />
-        <span className="tag">{(S.modelRoles?.length ?? 0)} 个角色</span>
+        <span className="tag">{(modelRoles?.length ?? 0)} 个角色</span>
       </div>
       <div className="set-group-desc mp-role-desc">为不同用途的任务分配模型；未设置时按内置优先级解析。对新会话生效。</div>
-      {(S.modelRoles ?? []).map((role) => (
+      {(modelRoles ?? []).map((role) => (
         <div className="srow mp-role-row" key={role.id}>
           <div className="srow-tx">
             <b>
@@ -364,16 +364,14 @@ function RolesView() {
 
 // OMP 登录流程启动（原 ui/settings/providers.js startProviderLogin 平移）
 function startProviderLogin(id: string) {
-  if (S.loginBusy) {
+  if (useAppStore.getState().loginBusy) {
     toast("已有登录流程进行中，可点击底部进度条取消");
     return;
   }
-  S.loginBusy = true;
-  S.loginReqId++;
-  send({ type: "provider_login", provider: id, reqId: S.loginReqId });
-  // 旧版 showLoginBanner("…正在启动登录…")；React 版横幅数据在 S.loginBanner，由组件渲染
-  S.loginBanner = `${id}：正在启动登录…`;
-  notify();
+  const reqId = useAppStore.getState().loginReqId + 1;
+  // 旧版 showLoginBanner("…正在启动登录…")；React 版横幅数据在 store.loginBanner，由组件渲染
+  setBump({ loginBusy: true, loginReqId: reqId, loginBanner: `${id}：正在启动登录…` });
+  send({ type: "provider_login", provider: id, reqId });
 }
 
 // 「添加供应商」视图：右卡两列圆角卡片，列出全部受支持供应商（原 renderAddProviderView 平移）。
@@ -382,16 +380,17 @@ function startProviderLogin(id: string) {
 // PROV_IC 本地放宽为 Record：页面用任意供应商 id 索引（common.tsx 侧保持原导出不动）
 const provIc: Record<string, string> = PROV_IC;
 function AddProviderView() {
+  const allProvidersCache = useAppStore((s) => s.allProvidersCache);
   return (
     <>
       <div className="mp-head"><b>＋ 添加供应商</b></div>
       <div className="set-group-desc">点击供应商卡片进入详情页，可选登录或配置 API key；最后一个「手动添加供应商」走配置层 models.yml。</div>
-      {S.allProvidersCache == null ? (
+      {allProvidersCache == null ? (
         <div className="set-group-desc">读取中…</div>
       ) : (
         <div className="ap-grid">
-          {S.allProvidersCache.map((p) => (
-            <div className="ap-card ap-card2" key={p.id} onClick={() => { S.mpDetailProv = p; notify(); }}>
+          {allProvidersCache.map((p) => (
+            <div className="ap-card ap-card2" key={p.id} onClick={() => { setBump({ mpDetailProv: p }); }}>
               <div className="ap-l1">
                 <span className="pv-ic">{provIc[p.id] || "✦"}</span>
                 <span className="ap-name">{p.id}</span>
@@ -426,7 +425,7 @@ function AddProviderView() {
 
 // 供应商详情页：登录 与 配置 API key 二选一（原 renderProviderDetail 平移，表单受控）
 function ProviderDetailView() {
-  const p = S.mpDetailProv;
+  const p = useAppStore((s) => s.mpDetailProv);
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false); // 保存进行中：输入框置灰、按钮转圈，直到 provider_key_done 回包把本视图切回列表
   if (!p) return null;
@@ -437,10 +436,9 @@ function ProviderDetailView() {
           type="button"
           className="save-btn"
           onClick={() => {
-            S.mpDetailProv = null;
+            setBump({ mpDetailProv: null });
             // 返回列表时重拉凭证数：详情页里可能刚发生登录/登出
             send({ type: "get_all_providers" });
-            notify();
           }}
         >
           ← 返回
@@ -539,7 +537,7 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
           <div
             className={"tg" + (m.enabled ? " on" : "")}
             onClick={() => {
-              if (m.enabled && S.modelCatalog.filter((x) => x.enabled).length <= 1) {
+              if (m.enabled && useAppStore.getState().modelCatalog.filter((x) => x.enabled).length <= 1) {
                 toast("至少保留一个启用模型");
                 return;
               }
@@ -558,16 +556,22 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
 }
 
 export default function ModelPage() {
-  useStore();
-  // 左列分组：provider -> models（S.modelCatalog，models_catalog 回包落地）
+  const modelCatalog = useAppStore((s) => s.modelCatalog);
+  const mpAddView = useAppStore((s) => s.mpAddView);
+  const mpRolesView = useAppStore((s) => s.mpRolesView);
+  const mpDetailProv = useAppStore((s) => s.mpDetailProv);
+  let selectedProvider = useAppStore((s) => s.selectedProvider);
+  // 左列分组：provider -> models（modelCatalog，models_catalog 回包落地）
   const groups = new Map<string, CatalogModel[]>();
-  for (const m of S.modelCatalog) {
+  for (const m of modelCatalog) {
     if (!groups.has(m.provider)) groups.set(m.provider, []);
     groups.get(m.provider)!.push(m);
   }
   // 选中项兜底：非角色视图且未选中 / 选中的供应商已不在目录时，取第一个分组
-  if (!S.mpRolesView && (!S.selectedProvider || !groups.has(S.selectedProvider))) {
-    S.selectedProvider = groups.keys().next().value ?? null;
+  //（渲染期静默写 store，同旧 S 写语义不 bump；条件收敛，不会反复触发）
+  if (!mpRolesView && (!selectedProvider || !groups.has(selectedProvider))) {
+    selectedProvider = groups.keys().next().value ?? null;
+    useAppStore.setState({ selectedProvider });
   }
   // 分组：登录/API key 凭证在上，models.yml 配置在下，中间横线 + 组标识
   const credEntries: Array<[string, CatalogModel[]]> = [];
@@ -575,9 +579,9 @@ export default function ModelPage() {
   for (const entry of groups) {
     (entry[1][0]?.authSource === "config" ? configEntries : credEntries).push(entry);
   }
-  const sel = S.selectedProvider;
+  const sel = selectedProvider;
   const models = (sel ? groups.get(sel) : undefined) || []; // sel 为 null 时原样得 undefined → [],等价
-  const showProvDetail = !S.mpAddView && !S.mpRolesView && groups.size > 0;
+  const showProvDetail = !mpAddView && !mpRolesView && groups.size > 0;
   // 供应商配额：命中 host 侧 60s 缓存，进入详情 / 切换供应商即重查
   useEffect(() => {
     if (showProvDetail && sel) send({ type: "get_provider_limits", provider: sel });
@@ -604,11 +608,9 @@ export default function ModelPage() {
           className="add-btn"
           type="button"
           onClick={() => {
-            S.mpAddView = true;
-            S.mpRolesView = false;
+            setBump({ mpAddView: true, mpRolesView: false });
             // 进入添加视图时拉最新凭证数，登出后「已配置」回显即时收敛
             send({ type: "get_all_providers" });
-            notify();
           }}
         >
           ＋ 添加供应商
@@ -618,12 +620,10 @@ export default function ModelPage() {
         <div className="mp-l">
           {/* 模型角色入口：全局 @role → 模型分配，置于供应商列表之上 */}
           <div
-            className={"pv" + (S.mpRolesView ? " on" : "")}
+            className={"pv" + (mpRolesView ? " on" : "")}
             onClick={() => {
-              S.mpAddView = false;
-              S.mpRolesView = true;
+              setBump({ mpAddView: false, mpRolesView: true });
               send({ type: "get_model_roles" });
-              notify();
             }}
           >
             <span className="pv-ic"><Icon name="sliders" size={14} /></span>
@@ -633,13 +633,10 @@ export default function ModelPage() {
           <div className="set-sec mp-grp">已认证供应商</div>
           {credEntries.map(([prov, ms]) => (
             <div
-              className={"pv" + (!S.mpRolesView && prov === sel ? " on" : "")}
+              className={"pv" + (!mpRolesView && prov === sel ? " on" : "")}
               key={prov}
               onClick={() => {
-                S.mpAddView = false;
-                S.mpRolesView = false;
-                S.selectedProvider = prov;
-                notify();
+                setBump({ mpAddView: false, mpRolesView: false, selectedProvider: prov });
               }}
             >
               <span className="pv-ic">{provIc[prov] || "✦"}</span>
@@ -651,13 +648,10 @@ export default function ModelPage() {
           {configEntries.length > 0 ? <div className="set-sec mp-grp">配置文件</div> : null}
           {configEntries.map(([prov, ms]) => (
             <div
-              className={"pv" + (!S.mpRolesView && prov === sel ? " on" : "")}
+              className={"pv" + (!mpRolesView && prov === sel ? " on" : "")}
               key={prov}
               onClick={() => {
-                S.mpAddView = false;
-                S.mpRolesView = false;
-                S.selectedProvider = prov;
-                notify();
+                setBump({ mpAddView: false, mpRolesView: false, selectedProvider: prov });
               }}
             >
               <span className="pv-ic">{provIc[prov] || "✦"}</span>
@@ -670,9 +664,9 @@ export default function ModelPage() {
           ) : null}
         </div>
         <div className="mp-r">
-          {S.mpAddView ? (
-            S.mpDetailProv ? <ProviderDetailView /> : <AddProviderView />
-          ) : S.mpRolesView ? (
+          {mpAddView ? (
+            mpDetailProv ? <ProviderDetailView /> : <AddProviderView />
+          ) : mpRolesView ? (
             <RolesView />
           ) : showProvDetail ? (
             // sel 在协议数据下必已选(groups 非空才有此分支),! 断言同原版直传

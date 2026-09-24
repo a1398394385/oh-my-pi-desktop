@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { S } from "../../store";
+import { useAppStore } from "../../store";
 
 export default function Menu({ place, onClose, children }: {
   place: (mr: DOMRect) => [number, number];
@@ -15,7 +15,7 @@ export default function Menu({ place, onClose, children }: {
   useLayoutEffect(() => {
     const el = ref.current!; // portal mount 后即存在（原 JS 直接解引用，保持同一假设）
     const [left, top] = place(el.getBoundingClientRect());
-    const z = S.zoomLevel || 1; // fixed 菜单坐标补偿：先设 zoom 再除回
+    const z = useAppStore.getState().zoomLevel || 1; // fixed 菜单坐标补偿：先设 zoom 再除回
     el.style.zoom = String(z);
     el.style.left = left / z + "px";
     el.style.top = top / z + "px";

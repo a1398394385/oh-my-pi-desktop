@@ -1,9 +1,9 @@
 // 工具行：工具名 → 标签种类映射与各标签行渲染。迁移自 ui/tool-labels.js
 // （renderToolItem/toolKind + 各 render 函数）。加减工具标签只改本文件。
 import type { ToolItem } from "../../types/session";
-import { notify } from "../../store";
+import { bumpGroupExpand, useGroupExpandVersion } from "../../store/groupExpand";
 import Icon from "../../Icon";
-import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow, Spin } from "./parts";
+import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
 import { isDevicePath, deviceNameOf } from "./util";
 import ThinkingRow from "./ThinkingRow";
@@ -22,11 +22,8 @@ function CmdCard({ command, item, lift }: { command?: string; item: ToolItem; li
 function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string; iconLabel?: string }) {
   const [closing, close] = useLift();
   const toggle = () => {
-    if (item.cmdExpanded) close(() => { item.cmdExpanded = false; notify(); });
-    else {
-      item.cmdExpanded = true;
-      notify();
-    }
+    if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
+    else patchActiveItem(item, (it) => { it.cmdExpanded = true; });
   };
   return (
     <>
@@ -77,11 +74,8 @@ function CmdEntry({ sub }: { sub: ToolItem }) {
   const [closing, close] = useLift();
   const open = !!sub.cmdExpanded && !closing;
   const toggle = () => {
-    if (sub.cmdExpanded) close(() => { sub.cmdExpanded = false; notify(); });
-    else {
-      sub.cmdExpanded = true;
-      notify();
-    }
+    if (sub.cmdExpanded) close(() => patchGroupSub(sub, (it) => { it.cmdExpanded = false; }));
+    else patchGroupSub(sub, (it) => { it.cmdExpanded = true; });
   };
   return (
     <>
@@ -94,13 +88,14 @@ function CmdEntry({ sub }: { sub: ToolItem }) {
 // 「终端 · N 条命令」标题行：连续终端事件合并组，点击向下展开各条命令
 //（结构对照 ReadGroup：act.read 单行 + 图标 13 + lbl + chevron）
 function CmdGroup({ subs }: { subs: ToolItem[] }) {
+  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
   const [closing, close] = useLift();
   const open = cmdExpand.has(subs[0]) && !closing;
   const toggle = () => {
-    if (cmdExpand.has(subs[0])) close(() => { cmdExpand.delete(subs[0]); notify(); });
+    if (cmdExpand.has(subs[0])) close(() => { cmdExpand.delete(subs[0]); bumpGroupExpand(); });
     else {
       cmdExpand.set(subs[0], true);
-      notify();
+      bumpGroupExpand();
     }
   };
   return (
@@ -249,11 +244,8 @@ function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
 function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string }) {
   const [closing, close] = useLift();
   const toggle = () => {
-    if (item.cmdExpanded) close(() => { item.cmdExpanded = false; notify(); });
-    else {
-      item.cmdExpanded = true;
-      notify();
-    }
+    if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
+    else patchActiveItem(item, (it) => { it.cmdExpanded = true; });
   };
   return (
     <>
@@ -389,11 +381,8 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
   const [closing, close] = useLift();
   const open = !!sub.cmdExpanded && !closing;
   const toggle = () => {
-    if (sub.cmdExpanded) close(() => { sub.cmdExpanded = false; notify(); });
-    else {
-      sub.cmdExpanded = true;
-      notify();
-    }
+    if (sub.cmdExpanded) close(() => patchGroupSub(sub, (it) => { it.cmdExpanded = false; }));
+    else patchGroupSub(sub, (it) => { it.cmdExpanded = true; });
   };
   return (
     <>
@@ -405,13 +394,14 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
 
 // 「设备 · tui · N 次调用」标题行：连续同设备调用合并组，点击向下展开各次调用
 function DeviceGroup({ subs }: { subs: ToolItem[] }) {
+  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
   const [closing, close] = useLift();
   const open = devExpand.has(subs[0]) && !closing;
   const toggle = () => {
-    if (devExpand.has(subs[0])) close(() => { devExpand.delete(subs[0]); notify(); });
+    if (devExpand.has(subs[0])) close(() => { devExpand.delete(subs[0]); bumpGroupExpand(); });
     else {
       devExpand.set(subs[0], true);
-      notify();
+      bumpGroupExpand();
     }
   };
   const dev = deviceNameOf(subs[0].args?.path);

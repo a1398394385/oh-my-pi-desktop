@@ -2,7 +2,7 @@
 // 内容列宽度分段、消息轨道显隐、fixed 菜单坐标补偿、railToolText。
 // 1:1 平移自 ui/shell.js + ui/ringpop.js 的 railToolText 段，不依赖 ui/ 旧模块。
 // DOM 副作用保持命令式；React 组件经 omp:close-menus / omp:zoom 自定义事件协作。
-import { S, notify, type TimerHandle } from "./store";
+import { useAppStore, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 
 // 主题模式：localStorage omp-theme 的合法值（读回值在 initShell 做收窄断言）
@@ -41,16 +41,16 @@ export function toggleTheme(): void {
 
 // ---------- 边栏折叠开关（顶栏按钮 / 原生菜单 / ⌘B 三处共用） ----------
 export function toggleSidebar(): void {
-  S.sidebarCollapsed = !S.sidebarCollapsed;
-  localStorage.setItem("omp-sidebar-collapsed", S.sidebarCollapsed ? "1" : "0");
-  notify();
+  const sidebarCollapsed = !useAppStore.getState().sidebarCollapsed;
+  setBump({ sidebarCollapsed });
+  localStorage.setItem("omp-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
 }
 
 export function toggleRightPanel(): void {
-  S.rightCollapsed = !S.rightCollapsed;
-  if (!S.rightCollapsed) S.todoCollapsed = true; // 展开右栏时进程卡让位收起（parts.jsx 同款）
-  localStorage.setItem("omp-right-collapsed", S.rightCollapsed ? "1" : "0");
-  notify();
+  const rightCollapsed = !useAppStore.getState().rightCollapsed;
+  // 展开右栏时进程卡让位收起（parts.jsx 同款）
+  setBump(rightCollapsed ? { rightCollapsed } : { rightCollapsed, todoCollapsed: true });
+  localStorage.setItem("omp-right-collapsed", rightCollapsed ? "1" : "0");
 }
 
 // ---------- 边栏拖动调宽 ----------
@@ -70,7 +70,7 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
     const startX = e.clientX;
     const startW = panel.offsetWidth;
     const move = (ev: MouseEvent) => {
-      const dx = (ev.clientX - startX) / S.zoomLevel;
+      const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
       const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
       // 中部卡片最小宽度保证为应用总宽度的 30%（支持继续压缩至 30%）
       const minMainW = Math.max(240, Math.floor(wWin * 0.30));
@@ -109,7 +109,7 @@ let zoomTargets: (HTMLElement | null)[] | null = null;
 function applyZoom(): void {
   if (!zoomTargets) zoomTargets = ["sidebar", "main", "right"].map((id) => document.getElementById(id));
   // style.zoom 是非标准属性（TS lib.dom 未收录）：断言写入，语义与原名一致
-  for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(S.zoomLevel);
+  for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
   // zoom 会改变布局宽度但不触发 ResizeObserver（Chrome/WebKit 行为），通知 composer 重算底栏收缩
   window.dispatchEvent(new CustomEvent("omp:zoom"));
   updateRailVisibility();
@@ -117,9 +117,11 @@ function applyZoom(): void {
 // 缩放动作：⌘+/-/0 快捷键与原生菜单 zoom-in/out/reset 共用同一应用路径。
 // dir：1 放大 / -1 缩小 / 0 复位（兼容旧版 "in"/"out"/"reset" 字符串）
 export function menuZoom(dir: 1 | -1 | 0 | "in" | "out" | "reset"): void {
-  if (dir === 1 || dir === "in") S.zoomLevel = Math.min(2, +(S.zoomLevel + 0.1).toFixed(2));
-  else if (dir === -1 || dir === "out") S.zoomLevel = Math.max(0.6, +(S.zoomLevel - 0.1).toFixed(2));
-  else S.zoomLevel = 1;
+  // 静默写（旧版 menuZoom 不 notify，渲染由 applyZoom 的 DOM 副作用直接生效）
+  const cur = useAppStore.getState().zoomLevel;
+  if (dir === 1 || dir === "in") useAppStore.setState({ zoomLevel: Math.min(2, +(cur + 0.1).toFixed(2)) });
+  else if (dir === -1 || dir === "out") useAppStore.setState({ zoomLevel: Math.max(0.6, +(cur - 0.1).toFixed(2)) });
+  else useAppStore.setState({ zoomLevel: 1 });
   applyZoom();
 }
 
@@ -142,9 +144,10 @@ export function updateRailVisibility(): void {
 }
 // fixed 菜单坐标补偿：先设 zoom 再除回
 export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: number): void {
-  (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(S.zoomLevel);
-  menu.style.left = visualLeft / S.zoomLevel + "px";
-  menu.style.top = visualTop / S.zoomLevel + "px";
+  const zoom = useAppStore.getState().zoomLevel;
+  (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(zoom);
+  menu.style.left = visualLeft / zoom + "px";
+  menu.style.top = visualTop / zoom + "px";
 }
 
 // ---------- 消息轨道工具摘要（ui/ringpop.js railToolText 平移） ----------

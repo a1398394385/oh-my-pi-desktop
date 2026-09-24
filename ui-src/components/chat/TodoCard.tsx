@@ -1,7 +1,7 @@
 // TODO 进程卡 + 胶囊：流式任务的阶段/待办清单（statusCard）与收起态（capsule）。
 // 迁移自 ui/right.js renderStatusCard + initRight 的卡片交互（DOM 位置在 #statusWrap）。
 import { Fragment } from "react";
-import { S, useStore, notify, activeOpen } from "../../store";
+import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
 
 // 待办行的任务/阶段形状（store todos 帧透传，只约束本组件读取的字段）
@@ -34,8 +34,8 @@ function TodoRow({ t }: { t: TodoTask }) {
 }
 
 export default function TodoCard() {
-  useStore();
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const todoCollapsed = useAppStore((st) => st.todoCollapsed);
   const phases: TodoPhase[] = s?.todos ?? [];
   const all = phases.flatMap((p) => p.tasks);
   if (!s || all.length === 0) return <div id="statusWrap" />;
@@ -50,13 +50,12 @@ export default function TodoCard() {
 
   return (
     <div id="statusWrap">
-      {!S.todoCollapsed && (
+      {!todoCollapsed && (
         <div
           id="statusCard"
           onClick={() => {
             // 卡片空白处点击收起为胶囊
-            S.todoCollapsed = true;
-            notify();
+            setBump({ todoCollapsed: true });
           }}
         >
           <div className="sc-head">
@@ -79,8 +78,8 @@ export default function TodoCard() {
           </div>
         </div>
       )}
-      {S.todoCollapsed && (
-        <button id="capsule" title={capLabel + "  " + frac} onClick={() => { S.todoCollapsed = false; notify(); }}>
+      {todoCollapsed && (
+        <button id="capsule" title={capLabel + "  " + frac} onClick={() => setBump({ todoCollapsed: false })}>
           <i className="cap-ic">{capIcon}</i>
           <span className="cap-tx">{capLabel}</span>
           <span className="cap-n">{frac}</span>

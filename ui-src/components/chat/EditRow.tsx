@@ -3,9 +3,10 @@
 // 行点击展开/收起内联 diff（ed-brief）；首次展开按需向宿主拉取该文件 diff，
 // 回包经 file_diff 写入 briefDiffCache 后重渲染。
 import type { ToolItem } from "../../types/session";
-import { notify, S, send, activeOpen, briefDiffCache } from "../../store";
+import { useAppStore } from "../../store/index";
+import { bumpGroupExpand, useGroupExpandVersion } from "../../store/groupExpand";
 import Icon from "../../Icon";
-import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin } from "./parts";
+import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import { splitPath } from "./util";
 
 // 事件涉及的文件清单：优先 tool_update 回填的 files，否则从 args 兜底
@@ -13,19 +14,24 @@ function filesOf(item: ToolItem): string[] {
   return uniqueFiles(item.files?.length ? item.files : item.args?.files || (item.args?.path ? [item.args.path] : []));
 }
 
-// 展开（收起动画由调用方的 useLift 处理）：置数 + 首次展开按需拉取该文件 diff
-function expandDiff(item: ToolItem, path: string) {
-  item.diffExpanded = true;
+// 展开（收起动画由调用方的 useLift 处理）：置数 + 首次展开按需拉取该文件 diff。
+// apply 是落 item 字段的写入通道：顶层行与组内子行各自走对应的拷贝链
+function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => void) => void) {
+  const st = useAppStore.getState();
+  const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   // 优先用当次工具回包的真实修改（diffContent）：新文件/无 git 基线时 git diff 只剩
   // 全量新增，与行上 +N-M 摘要对不上。挂在 item 上（非 path 缓存）——同一文件多次
   // 编辑各次展开各看各的；diffContent 缺失（老会话/多文件 patch）回落 git diff
-  if (item.diffContent != null && item.briefDiff === undefined) item.briefDiff = item.diffContent;
-  const s = activeOpen();
-  if (path && item.briefDiff === undefined && s?.isGit && briefDiffCache.get(path) === undefined && S.briefDiffPending !== path) {
-    S.briefDiffPending = path;
-    send({ type: "get_file_diff", cwd: s.cwd, path });
+  const willSetBrief = item.diffContent != null && item.briefDiff === undefined;
+  apply((it) => {
+    it.diffExpanded = true;
+    if (willSetBrief) it.briefDiff = item.diffContent;
+  });
+  // 请求条件在原版里读的是置数后的 item.briefDiff（willSetBrief 置了数即不再请求）
+  if (path && !willSetBrief && item.briefDiff === undefined && s?.isGit && st.briefDiffCache.get(path) === undefined && st.briefDiffPending !== path) {
+    useAppStore.setState({ briefDiffPending: path }); // 静默写（原 S.xxx 直写不 notify）
+    st.send({ type: "get_file_diff", cwd: s.cwd, path });
   }
-  notify();
 }
 
 // 编辑行：铅笔 + 「编辑/写入」+ 文件标签（可点开右栏 diff）+ 行数变化 + 展开箭头
@@ -34,8 +40,8 @@ export default function EditRow({ item }: { item: ToolItem }) {
   const [closing, close] = useLift();
   const open = item.diffExpanded && !closing;
   const toggle = () => {
-    if (item.diffExpanded) close(() => { item.diffExpanded = false; notify(); });
-    else expandDiff(item, path);
+    if (item.diffExpanded) close(() => patchActiveItem(item, (it) => { it.diffExpanded = false; }));
+    else expandDiff(item, path, (fn) => patchActiveItem(item, fn));
   };
   return (
     <>
@@ -90,8 +96,8 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
   const [closing, close] = useLift();
   const open = !!sub.diffExpanded && !closing;
   const toggle = () => {
-    if (sub.diffExpanded) close(() => { sub.diffExpanded = false; notify(); });
-    else expandDiff(sub, path);
+    if (sub.diffExpanded) close(() => patchGroupSub(sub, (it) => { it.diffExpanded = false; }));
+    else expandDiff(sub, path, (fn) => patchGroupSub(sub, fn));
   };
   return (
     <>
@@ -106,13 +112,14 @@ export const chgExpand = new WeakMap<ToolItem, boolean>();
 
 // 「更改 · N 个文件」标题行：连续编辑事件合并组，点击向下展开各条编辑
 function ChangeGroup({ subs }: { subs: ToolItem[] }) {
+  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
   const [closing, close] = useLift();
   const open = chgExpand.has(subs[0]) && !closing;
   const toggle = () => {
-    if (chgExpand.has(subs[0])) close(() => { chgExpand.delete(subs[0]); notify(); });
+    if (chgExpand.has(subs[0])) close(() => { chgExpand.delete(subs[0]); bumpGroupExpand(); });
     else {
       chgExpand.set(subs[0], true);
-      notify();
+      bumpGroupExpand();
     }
   };
   return (
@@ -169,13 +176,14 @@ function ReadEntry({ sub }: { sub: ToolItem }) {
 
 // 「查阅 · N 个文件」标题行：点击向下展开各条读取
 function ReadGroup({ subs }: { subs: ToolItem[] }) {
+  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
   const [closing, close] = useLift();
   const open = rdExpand.has(subs[0]) && !closing;
   const toggle = () => {
-    if (rdExpand.has(subs[0])) close(() => { rdExpand.delete(subs[0]); notify(); });
+    if (rdExpand.has(subs[0])) close(() => { rdExpand.delete(subs[0]); bumpGroupExpand(); });
     else {
       rdExpand.set(subs[0], true);
-      notify();
+      bumpGroupExpand();
     }
   };
   return (

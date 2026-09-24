@@ -78,19 +78,22 @@ slashTa.value = "/";
 slashTa.dispatchEvent(new window.Event("input", { bubbles: true }));
 await sleep(80);
 ok("斜杠弹层打开（清单未拉取时加载中）", ($(".menu.palette")?.textContent || "").includes("加载中"));
-// __dbg 是 main.jsx preview 模式注入的调试钩子（S/notify），happy-dom Window 类型无声明
-const dbg = (window as unknown as { __dbg?: { S: { commands: unknown[]; commandsSessionId: string }; notify(): void } })
+// __dbg 是 main.tsx preview 模式注入的调试钩子（zustand store），happy-dom Window 类型无声明。
+// 写入走 setState 换值（订阅 commands 的 selector 自动感知,无需手动触发）
+const dbg = (window as unknown as { __dbg?: { useAppStore: { getState(): { commands: unknown[]; commandsSessionId: string }; setState(p: Record<string, unknown>): void } } })
   .__dbg;
 if (!dbg) throw new Error("__dbg 调试钩子未注入");
-dbg.S.commands = [{ name: "compact", aliases: [], description: "压缩上下文", source: "builtin", subcommands: [] }];
-dbg.S.commandsSessionId = "preview";
-dbg.notify();
+dbg.useAppStore.setState({
+  commands: [{ name: "compact", aliases: [], description: "压缩上下文", source: "builtin", subcommands: [] }],
+  commandsSessionId: "preview",
+});
 await sleep(80);
 ok("commands 回包后候选立即出现（无需再次击键）", ($(".menu.palette")?.textContent || "").includes("compact"));
 
 // builtin 命令描述中文化回归：弹层显示 commands-zh.js 译文而非英文原描述
-dbg.S.commands = [...dbg.S.commands, { name: "usage", aliases: [], description: "Show token usage", source: "builtin", subcommands: [] }];
-dbg.notify();
+dbg.useAppStore.setState({
+  commands: [...dbg.useAppStore.getState().commands, { name: "usage", aliases: [], description: "Show token usage", source: "builtin", subcommands: [] }],
+});
 await sleep(80);
 ok("builtin 描述显示中文（commands-zh.js）", ($(".menu.palette")?.textContent || "").includes("查看 token 用量"));
 

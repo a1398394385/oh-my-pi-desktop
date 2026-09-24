@@ -3,7 +3,7 @@
 // Markdown 渲染是记忆页专用的简化实现（整体先转义再排版，防注入），与主对话区 markdown 引擎相互独立。
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { S, useStore, send, notify } from "../../../store";
+import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -159,7 +159,7 @@ function rolloutLabel(n: string): string {
 
 // ---------- 延展区：头部 + 左栏文件树 + 右侧内容 ----------
 function MemoryExpand({ onClose }: { onClose: () => void }) {
-  const d = S.memoryDetail;
+  const d = useAppStore((s) => s.memoryDetail);
   const [rolloutOpen, setRolloutOpen] = useState(true); // rollout 组展开态（组件随切行重挂载，天然复位为展开）
   // 子项入场动画标记用后即焚（对齐旧版 animateMdKids：本次渲染带 kids-in，随后复位）
   const [kidsIn, setKidsIn] = useState(false);
@@ -174,13 +174,12 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [d.active?.name, d.active?.rollout, d.status]);
 
-  // 点击左栏文件：切选中并读取（active 由 memory_file 回包落 S，点击即发出请求）
+  // 点击左栏文件：切选中并读取（active 由 memory_file 回包落 store，点击即发出请求）
   const pickFile = (name: string, rollout: boolean) => {
     if (d.active && d.active.name === name && d.active.rollout === rollout) return;
-    d.active = { name, rollout };
-    d.status = "loading";
-    d.error = null;
-    notify();
+    useAppStore.setState((st) => ({
+      memoryDetail: { ...st.memoryDetail, active: { name, rollout }, status: "loading", error: null },
+    }));
     send({ type: "memory_file_read", path: `${d.base}/${rollout ? "rollout_summaries/" : ""}${name}` });
   };
   const toggleRollout = () => {
@@ -245,8 +244,7 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
 
 // ---------- 页面 ----------
 export default function MemoryPage() {
-  useStore();
-  const memories: MemoryItem[] | null = S.agentAssets?.memories ?? null;
+  const memories = useAppStore((s) => s.agentAssets?.memories ?? null);
   const [openPath, setOpenPath] = useState<string | null>(null); // 当前向下延展的记忆行（条目 path）
 
   // 点击项目行：该行向下延展出详情区；再次点击收起，点其他行则切换
@@ -257,16 +255,9 @@ export default function MemoryPage() {
     }
     setOpenPath(m.path);
     // 重置详情态：清空清单，进入读取中（rollout 组展开态在 MemoryExpand 本地，随重挂载复位）
-    Object.assign(S.memoryDetail, {
-      base: null,
-      files: null,
-      rollouts: [],
-      active: null,
-      status: "loading",
-      content: "",
-      error: null,
-    });
-    notify();
+    useAppStore.setState((st) => ({
+      memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "loading", content: "", error: null },
+    }));
     send({ type: "memory_file_read", path: m.path });
   };
   const closeRow = () => setOpenPath(null);

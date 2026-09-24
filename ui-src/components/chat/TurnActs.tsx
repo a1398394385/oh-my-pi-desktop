@@ -3,7 +3,8 @@
 // 底座 AgentSession.branch() 只接受 user 条目（agent-session.ts:9864 校验 role），
 // assistant 锚点只能走 navigateTree；锚点 entryId 由 host 落盘后回填（translate.ts）。
 import type { AssistantItem } from "../../types/session";
-import { send, notify, activeOpen, toast, rightState } from "../../store";
+import { useAppStore } from "../../store/index";
+import { patchActiveItem } from "./parts";
 import { copyText } from "../sidebar/util";
 import Icon from "../../Icon";
 
@@ -18,7 +19,7 @@ function fmtClock(ms: number) {
 }
 
 export default function TurnActs({ item }: { item: AssistantItem }) {
-  const s = activeOpen();
+  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   // entryId 未回填（实时流式中尚未落盘）时分叉不可用：置灰而非隐藏，避免布局跳动
   const canFork = !!item.entryId && !item.branching;
   return (
@@ -29,8 +30,8 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
         onClick={(e) => {
           e.stopPropagation();
           copyText(item.text || "").then(
-            () => toast("已复制回复"),
-            () => toast("复制失败"),
+            () => useAppStore.getState().toast("已复制回复"),
+            () => useAppStore.getState().toast("复制失败"),
           );
         }}
       >
@@ -43,10 +44,9 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
         onClick={(e) => {
           e.stopPropagation();
           if (!canFork || !s) return;
-          item.branching = true; // 全量重绘后仍保持禁用（标记随 item 数据存活）
-          rightState.navFrom = "fork"; // 回执按来源选文案（与树页跳转共用 navigate_tree）
-          send({ type: "navigate_tree", sessionId: s.sessionId, entryId: item.entryId, summarize: false });
-          notify();
+          patchActiveItem(item, (it) => { it.branching = true; }); // 全量重绘后仍保持禁用（标记随 item 数据存活）
+          useAppStore.setState((st) => ({ rightState: { ...st.rightState, navFrom: "fork" } })); // 回执按来源选文案（与树页跳转共用 navigate_tree）
+          useAppStore.getState().send({ type: "navigate_tree", sessionId: s.sessionId, entryId: item.entryId, summarize: false });
         }}
       >
         <Icon name="fork" size={13} />
