@@ -130,11 +130,11 @@ export default function BgCmdPage() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const [openId, setOpenId] = useState<string | null>(null);
   if (!s) {
-    return <div className="placeholder">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
   }
   const { tasks } = getBgTasksForSession(s);
   if (tasks.length === 0) {
-    return <div className="placeholder">当前会话暂无后台命令</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">当前会话暂无后台命令</div>;
   }
   return (
     <div className="slist" style={{ padding: "4px 0" }}>
@@ -179,7 +179,7 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
             <b>名称:</b> {task.procName}
           </span>
         )}
-        <span className="sp"></span>
+        <span className="flex-1"></span>
         <span className={"bgcmd-meta-tag" + (task.running ? " running" : "")}>{task.statusText}</span>
         <button
           type="button"
@@ -205,21 +205,21 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
             <b>命令 / 输入:</b>
           </div>
-          <div className="bgcmd-code">{task.command}</div>
+          <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain">{task.command}</div>
         </>
       ) : task.args && Object.keys(task.args).length > 0 ? (
         <>
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
             <b>参数:</b>
           </div>
-          <div className="bgcmd-code">{JSON.stringify(task.args, null, 2)}</div>
+          <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain">{JSON.stringify(task.args, null, 2)}</div>
         </>
       ) : null}
       {/* 3. 输出与执行结果 */}
       <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
         <b>输出 / 响应:</b>
       </div>
-      <pre className="bgcmd-out">{task.output || (task.running ? <Spin /> : "（无输出）")}</pre>
+      <pre className="max-h-[180px] overflow-y-auto overscroll-contain bg-card border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all">{task.output || (task.running ? <Spin /> : "（无输出）")}</pre>
     </div>
   );
 }

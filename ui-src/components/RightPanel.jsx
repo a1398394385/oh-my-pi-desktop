@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../store";
 import Icon from "../Icon.jsx";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
   TAB_META,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
@@ -24,6 +25,19 @@ import BrowserPage from "./right/BrowserPage.jsx";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
 export { TAB_META, openRightTab, closeRightTab } from "./right/tabs.js";
+
+// tab 头 hover 提示：原生 title 换 Radix Tooltip（浮层卡视觉走 ui/tooltip 基件）。
+// children 必须是可挂 ref 的 DOM 元素（Radix Trigger 经 asChild 注入 ref 定位锚点）；
+// 组件文件是 .jsx（不在 tailwind @source 扫描内），此处只传 props 不写 utility 类。
+function Tip({ label, children }) {
+  if (!label) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={6}>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 // 「最近关闭」相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
 function closedAgo(at) {
@@ -75,13 +89,14 @@ function TabOverview({ onClose }) {
           >
             <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
             {TAB_META[name].label}
-            <span
-              className="mi-x"
-              title="关闭"
-              onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
-            >
-              <Icon name="xmark" size={11} />
-            </span>
+            <Tip label="关闭">
+              <span
+                className="mi-x"
+                onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
+              >
+                <Icon name="xmark" size={11} />
+              </span>
+            </Tip>
           </div>
         ))}
         {recents.length > 0 && <div className="mh">最近关闭</div>}
@@ -107,16 +122,16 @@ function AddTabMenu({ isGit, onClose }) {
           const off = name === "gitdiff" && !isGit;
           const on = rightTabs.includes(name);
           return (
-            <div
-              key={name}
-              className={"mi" + (off ? " empty" : "")}
-              title={off ? "当前项目不是 git 仓库" : undefined}
-              onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
-            >
-              <span className="ck">{on ? "✓" : ""}</span>
-              <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
-              {TAB_META[name].label}
-            </div>
+            <Tip key={name} label={off ? "当前项目不是 git 仓库" : undefined}>
+              <div
+                className={"mi" + (off ? " empty" : "")}
+                onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
+              >
+                <span className="ck">{on ? "✓" : ""}</span>
+                <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
+                {TAB_META[name].label}
+              </div>
+            </Tip>
           );
         })}
       </div>
@@ -158,13 +173,14 @@ function TabButton({ name, on }) {
     >
       <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={13} /></span>
       <span className="rtab-tx">{TAB_META[name].label}</span>
-      <span
-        className="rtab-x"
-        title="关闭"
-        onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
-      >
-        <Icon name="xmark" size={10} />
-      </span>
+      <Tip label="关闭">
+        <span
+          className="rtab-x"
+          onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
+        >
+          <Icon name="xmark" size={10} />
+        </span>
+      </Tip>
     </button>
   );
 }
@@ -221,65 +237,71 @@ export default function RightPanel({ collapsed }) {
   else if (rightTab === "browser") body = <BrowserPage />;
   else body = <SubagentPage />;
   return (
+    // Provider 局部包在右栏（不动 App.tsx，由协调者统一处理全局层）；400ms 延迟贴近原生 title 观感
+    <TooltipProvider delayDuration={400}>
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
         <div className="sp-head">
-          <button
-            className="icon-btn"
-            title="标签页总览"
-            onClick={(e) => {
-              e.stopPropagation();
-              setAddOpen(false);
-              setOvOpen(!ovOpen);
-            }}
-          >
-            <Icon name="dots" size={15} />
-          </button>
+          <Tip label="标签页总览">
+            <button
+              className="icon-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAddOpen(false);
+                setOvOpen(!ovOpen);
+              }}
+            >
+              <Icon name="dots" size={15} />
+            </button>
+          </Tip>
           <div className="rtabs" id="rightTabs">
             {tabs.map((name) => (
               <TabButton key={name} name={name} on={rightTab === name} />
             ))}
           </div>
-          <button
-            className="icon-btn"
-            title="打开标签页"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOvOpen(false);
-              setAddOpen(!addOpen);
-            }}
-          >
-            <Icon name="plus" size={14} />
-          </button>
-          {isGitTab && (
+          <Tip label="打开标签页">
             <button
               className="icon-btn"
-              id="gitRefresh"
-              title="刷新"
               onClick={(e) => {
                 e.stopPropagation();
-                const cur = activeOpen();
-                if (!cur || !cur.isGit) return;
-                // 清 cwd 强制重拉（原 liveRef 静默写 + notify 合并为一次换引用写入，过渡期带 _v）
-                useAppStore.setState((st) => ({ gitDiffCache: { ...st.gitDiffCache, cwd: null }, _v: st._v + 1 }));
-                refreshGitDiff();
+                setOvOpen(false);
+                setAddOpen(!addOpen);
               }}
             >
-              <Icon name="refresh" />
+              <Icon name="plus" size={14} />
             </button>
+          </Tip>
+          {isGitTab && (
+            <Tip label="刷新">
+              <button
+                className="icon-btn"
+                id="gitRefresh"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const cur = activeOpen();
+                  if (!cur || !cur.isGit) return;
+                  // 清 cwd 强制重拉（原 liveRef 静默写 + notify 合并为一次换引用写入，过渡期带 _v）
+                  useAppStore.setState((st) => ({ gitDiffCache: { ...st.gitDiffCache, cwd: null }, _v: st._v + 1 }));
+                  refreshGitDiff();
+                }}
+              >
+                <Icon name="refresh" />
+              </button>
+            </Tip>
           )}
           {isGitTab && (
-            <button
-              className="icon-btn"
-              id="gitViewToggle"
-              title="切换树/平铺"
-              onClick={(e) => {
-                e.stopPropagation();
-                setBump({ gitViewMode: gitViewMode === "tree" ? "flat" : "tree" });
-              }}
-            >
-              {gitViewMode === "tree" ? "树" : "平铺"}
-            </button>
+            <Tip label="切换树/平铺">
+              <button
+                className="icon-btn"
+                id="gitViewToggle"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBump({ gitViewMode: gitViewMode === "tree" ? "flat" : "tree" });
+                }}
+              >
+                {gitViewMode === "tree" ? "树" : "平铺"}
+              </button>
+            </Tip>
           )}
           {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}
           {addOpen && <AddTabMenu isGit={!!s?.isGit} onClose={() => setAddOpen(false)} />}
@@ -289,5 +311,6 @@ export default function RightPanel({ collapsed }) {
         </div>
       </div>
     </aside>
+    </TooltipProvider>
   );
 }

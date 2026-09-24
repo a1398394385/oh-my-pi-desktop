@@ -70,11 +70,11 @@ export default function ProjectMenu({ pos, onClose }) {
       onClick={(e) => e.stopPropagation()}
     >
       <div className="wb-proj-search">
-        <span className="wb-proj-search-icon"><Icon name="search" size={13} /></span>
+        <span className="flex items-center justify-center text-faint flex-none"><Icon name="search" size={13} /></span>
         <input
           ref={searchRef}
           type="text"
-          className="wb-proj-search-input"
+          className="flex-1 border-none bg-transparent outline-none font-sans text-ui-base text-text p-0 min-w-0 placeholder:text-faint"
           id="wbProjSearchInput"
           placeholder="搜索工作区"
           autoComplete="off"
@@ -90,9 +90,9 @@ export default function ProjectMenu({ pos, onClose }) {
           }}
         />
       </div>
-      <div className="wb-proj-list" id="wbProjList">
+      <div className="flex-1 max-h-[200px] overflow-y-auto pt-[9px] px-[6px] pb-[5px]" id="wbProjList">
         {matched.length === 0 ? (
-          <div className="wb-proj-empty">无匹配工作区</div>
+          <div className="py-[20px] px-[12px] text-center text-faint text-ui-sm">无匹配工作区</div>
         ) : (
           matched.map((p) => (
             <div
@@ -104,16 +104,16 @@ export default function ProjectMenu({ pos, onClose }) {
                 choose(p.cwd);
               }}
             >
-              <Icon name="folderLine" size={14} className="wb-proj-item-icon" />
-              <span className="wb-proj-item-name">{p.cwd.split("/").filter(Boolean).pop() || p.cwd}</span>
+              <Icon name="folderLine" size={14} className="flex items-center justify-center text-dim flex-none" />
+              <span className="flex-1 truncate">{p.cwd.split("/").filter(Boolean).pop() || p.cwd}</span>
             </div>
           ))
         )}
       </div>
       <div className="wb-proj-actions">
         <div className="wb-proj-action-item" id="wbProjOpenFolder" title="打开文件夹" onClick={openFolder}>
-          <span className="wb-proj-action-ic"><Icon name="folderPlus" size={14} /></span>
-          <span className="wb-proj-action-tx">打开文件夹</span>
+          <span className="flex items-center justify-center text-dim flex-none"><Icon name="folderPlus" size={14} /></span>
+          <span className="flex-1 truncate">打开文件夹</span>
         </div>
         <div
           className="wb-proj-action-item"
@@ -125,8 +125,8 @@ export default function ProjectMenu({ pos, onClose }) {
             onClose();
           }}
         >
-          <span className="wb-proj-action-ic"><Icon name="cloud" size={14} /></span>
-          <span className="wb-proj-action-tx">远程连接</span>
+          <span className="flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={14} /></span>
+          <span className="flex-1 truncate">远程连接</span>
         </div>
         <div
           className="wb-proj-action-item"
@@ -138,8 +138,8 @@ export default function ProjectMenu({ pos, onClose }) {
             onClose();
           }}
         >
-          <span className="wb-proj-action-ic"><Icon name="comment" size={14} /></span>
-          <span className="wb-proj-action-tx">不在项目中工作</span>
+          <span className="flex items-center justify-center text-dim flex-none"><Icon name="comment" size={14} /></span>
+          <span className="flex-1 truncate">不在项目中工作</span>
         </div>
       </div>
     </div>

@@ -1,7 +1,16 @@
-// 全局二次确认弹窗（ui/sidebar.js showConfirmDialog 平移）：复用 lp-mask/lp-box 同款
-// confirm-mask/confirm-box 结构；Esc 关闭、Enter 确认、点遮罩关闭、确定钮自动聚焦。
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+// 全局二次确认弹窗（ui/sidebar.js showConfirmDialog 平移）：Radix Dialog 行为层
+// （Esc / 点遮罩关闭 / focus trap / Enter 激活聚焦钮）+ .confirm-box 同款视觉（基件
+// DialogContent 的浮层卡语言）；confirm-title/desc/actions 与 confirm-btn 按钮类、
+// .danger 变体原样保留。按钮关闭统一走 DialogClose → onOpenChange(false) → onClose，
+// 确定钮只挂业务 onConfirm；autoFocus 使打开即聚焦，Enter 即确认。
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../ui/dialog";
 
 export default function ConfirmDialog({ title, message, confirmText = "确定", cancelText = "取消", danger = false, onConfirm, onClose }: {
   title?: string;
@@ -12,32 +21,30 @@ export default function ConfirmDialog({ title, message, confirmText = "确定", 
   onConfirm?: () => void;
   onClose: () => void;
 }) {
-  const okRef = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => okRef.current?.focus(), []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "Enter") {
-        onClose();
-        onConfirm?.();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onConfirm, onClose]);
-  return createPortal(
-    <div className="confirm-mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="confirm-box">
-        {title && <div className="confirm-title">{title}</div>}
-        {message && <div className="confirm-desc">{message}</div>}
-        <div className="confirm-actions">
-          <button className="confirm-btn" onClick={onClose}>{cancelText}</button>
-          <button className={"confirm-btn" + (danger ? " danger" : "")} ref={okRef} onClick={() => { onClose(); onConfirm?.(); }}>
-            {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className="w-[320px] max-w-[calc(100vw-48px)] p-[16px_18px_14px]"
+        aria-describedby={undefined}
+      >
+        {title && <DialogTitle className="confirm-title">{title}</DialogTitle>}
+        {message && <DialogDescription className="confirm-desc">{message}</DialogDescription>}
+        <DialogFooter className="confirm-actions">
+          <DialogClose asChild>
+            <button type="button" className="confirm-btn">{cancelText}</button>
+          </DialogClose>
+          <DialogClose asChild>
+            <button
+              type="button"
+              className={"confirm-btn" + (danger ? " danger" : "")}
+              autoFocus
+              onClick={() => { onConfirm?.(); }}
+            >
+              {confirmText}
+            </button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

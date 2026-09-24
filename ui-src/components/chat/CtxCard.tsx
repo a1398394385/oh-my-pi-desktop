@@ -67,22 +67,22 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
     const pctWindows = windows.filter((w) => w.metric !== "credits");
     if (!pctWindows.length && balance?.amount != null) {
       body = (
-        <div className="lx-bal">余额 {balance.amount} {balance.currency ?? ""}</div>
+        <div className="pt-[8px] text-dim text-[12px]">余额 {balance.amount} {balance.currency ?? ""}</div>
       );
     } else if (!pctWindows.length) {
       body = "限额暂不可用";
     } else {
       body = (
         <>
-          <div className="lx-grid">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-[10px]">
             {pctWindows.slice(0, 4).map((w, i) => {
               const item = fmtLimitWindow(w);
               return (
-                <div className="lx-col" key={i}>
-                  <div className="lx-top"><span>{item.label}</span></div>
-                  <div className="lx-mid">
+                <div className="flex flex-col gap-[5px] min-w-0" key={i}>
+                  <div className="flex items-center gap-[6px] text-dim text-[11.5px] whitespace-nowrap overflow-hidden"><span className="truncate">{item.label}</span></div>
+                  <div className="text-text text-[15px] font-semibold whitespace-nowrap">
                     {item.pct != null ? `${item.pct}%` : "—"}
-                    {item.reset ? <span> · {item.reset}</span> : null}
+                    {item.reset ? <span className="text-faint text-[12px] font-normal"> · {item.reset}</span> : null}
                   </div>
                   <div className="lx-bar">
                     <i style={{ width: `${item.pct != null ? Math.min(100, item.pct) : 0}%`, background: LIMIT_BAR_COLORS[i % 4] }} />
@@ -92,19 +92,19 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
             })}
           </div>
           {balance?.amount != null && (
-            <div className="lx-bal">余额 {balance.amount} {balance.currency ?? ""}</div>
+            <div className="pt-[8px] text-dim text-[12px]">余额 {balance.amount} {balance.currency ?? ""}</div>
           )}
         </>
       );
     }
   }
   return (
-    <div className={"cx-sec lx-sec" + (noDiv ? " no-div" : "")}>
-      <div className="lx-head">
+    <div className={"cx-sec pb-[2px]" + (noDiv ? " no-div" : "")}>
+      <div className="flex justify-between items-baseline text-[13.5px] pt-[2px] pb-[10px]">
         <b>剩余额度</b>
-        <span className="lx-prov">{limits.label ?? ""}</span>
+        <span className="text-faint text-[11.5px]">{limits.label ?? ""}</span>
       </div>
-      <div className="lx-body">{body}</div>
+      <div className="min-w-[268px]">{body}</div>
     </div>
   );
 }
@@ -232,7 +232,7 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
     >
       {b ? (
         <>
-          <div className="cx-head">
+          <div className="flex justify-between items-center text-ui-md mb-[10px]">
             <b>上下文</b>
             {/* 右侧数字与下方分类行同款:数值 | 百分比,竖线分隔、右对齐 */}
             <span className="cx-total">
@@ -271,7 +271,7 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
       ) : null}
       {limits ? <LimitsSection limits={limits} noDiv={!b} /> : null}
       {canCompact && (
-        <div className="cx-act">
+        <div className="mt-[10px] pt-[10px] border-t border-line-soft">
           <button
             className={"cx-compact-btn" + (compactBusy ? " busy" : "")}
             disabled={!!cur.streaming || compactBusy}

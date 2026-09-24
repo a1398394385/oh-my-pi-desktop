@@ -84,10 +84,10 @@ export default function GitDiffPage() {
   const gitBusy = useGitBusy();
   const [confirm, setConfirm] = useState<DiscardConfirm | null>(null);
   if (!s) {
-    return <div className="placeholder">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
   }
   if (!s.isGit) {
-    return <div className="placeholder">（该 project 不是 git 仓库）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（该 project 不是 git 仓库）</div>;
   }
   if (selectedFile) {
     return <GdFileDetail />;
@@ -116,7 +116,7 @@ export default function GitDiffPage() {
   return (
     <>
       {/* 工具条：提交信息输入（值存 rightState.commitMsg 跨重绘保持）+ 提交（全部已暂存）+ 推送 */}
-      <div className="gd-bar">
+      <div className="flex items-center gap-1.5 pt-0.5 px-2 pb-2">
         <input
           className="inp gd-commit-inp"
           type="text"
@@ -153,9 +153,9 @@ export default function GitDiffPage() {
         </button>
       </div>
       {gitDiffCache.cwd !== s.cwd || gitDiffCache.loading ? (
-        <div className="placeholder">{gitDiffCache.loading ? "加载中…" : "点右上角 ⟳ 加载改动"}</div>
+        <div className="py-3 px-2.5 text-faint text-ui-base">{gitDiffCache.loading ? "加载中…" : "点右上角 ⟳ 加载改动"}</div>
       ) : gitDiffCache.files.length === 0 ? (
-        <div className="placeholder">（工作区干净）</div>
+        <div className="py-3 px-2.5 text-faint text-ui-base">（工作区干净）</div>
       ) : gitViewMode === "flat" ? (
         gitDiffCache.files.map((f) => <GitFileRow key={f.path} f={f} displayPath={f.path} depth={0} onDiscard={onDiscard} />)
       ) : (
@@ -174,20 +174,20 @@ function GdFileDetail() {
     <>
       <div className="rb-head">
         <button
-          className="sub-back"
+          className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text"
           onClick={() => {
             setBump({ selectedFile: null });
           }}
         >
           ‹ 返回列表
         </button>
-        <div className="sub-title">{selectedFile}</div>
+        <div className="text-ui-sm text-faint mb-1.5 break-all">{selectedFile}</div>
       </div>
       <div className="rb-scroll">
         {fileDiffCache.loading && fileDiffCache.path === selectedFile ? (
-          <div className="placeholder">加载中…</div>
+          <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>
         ) : fileDiffCache.path !== selectedFile || !fileDiffCache.diff ? (
-          <div className="placeholder">（无差异内容）</div>
+          <div className="py-3 px-2.5 text-faint text-ui-base">（无差异内容）</div>
         ) : (
           <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(selectedFile)} className="fd-holder" />
         )}
@@ -206,7 +206,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
   const animateGdKids = useAppStore.getState().animateGdKids;
   return (
     <div
-      className={"gd-row" + (animateGdKids ? " kids-in" : "")}
+      className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")}
       style={{ paddingLeft: 4 + depth * 14 + 14 + "px", animationDelay: depth * 15 + "ms" }}
       title={f.path}
       onClick={() => {
@@ -217,8 +217,8 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
       <span className={"gd-badge " + badgeClass(f.code)}>
         {f.code.includes("A") || f.code === "?" ? "A" : f.code.includes("D") ? "D" : "M"}
       </span>
-      <span className="gd-name">{displayPath.split("/").pop()}</span>
-      <span className="gd-acts">
+      <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{displayPath.split("/").pop()}</span>
+      <span className="ml-auto flex-none inline-flex items-center gap-0.5 opacity-0 transition-opacity duration-[120ms] ease-[var(--swift)] group-hover:opacity-100 focus-within:opacity-100">
         {f.unstaged && (
           <button
             className="gd-act"
@@ -279,7 +279,7 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
     rows.push(
       <div
         key={"d:" + dirPath}
-        className={"gd-row" + (animateGdKids ? " kids-in" : "")}
+        className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")}
         style={{ paddingLeft: 4 + depth * 14 + "px", animationDelay: depth * 15 + "ms" }}
         onClick={() => {
           // 展开/收起换新 Set + 新 rightState 引用（订阅者按引用感知）；展开时置脉冲动画标记
@@ -302,8 +302,8 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
         <span className={"gd-caret" + (expanded ? " open" : "")}>
           <Icon name="chevronRight" size={10} />
         </span>
-        <span className="gd-name">{seg}</span>
-        <span className="gd-count">{countFiles(dir)}</span>
+        <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{seg}</span>
+        <span className="text-ui-xs text-faint ml-auto shrink-0">{countFiles(dir)}</span>
       </div>,
     );
     if (expanded) rows.push(<TreeLevel key={"l:" + dirPath} node={dir} prefix={dirPath} depth={depth + 1} onDiscard={onDiscard} />);

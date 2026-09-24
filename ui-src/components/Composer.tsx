@@ -1,12 +1,15 @@
-// 输入区：附件行 + textarea + cbar（添加/权限模式/后台任务/子智能体/上下文环/模型/思考/
-// 发送）+ 三个弹出菜单。迁移自 ui/composer.js（578 行）。
-// 契约：输入草稿用非受控 textarea + 模块级 draft 变量（等价原 inputEl.value，
+// 输入区：附件行 + Lexical 编辑器 + cbar（添加/权限模式/后台任务/子智能体/上下文环/模型/
+// 思考/发送）+ 三个弹出菜单 + sigil 补全面板。迁移自 ui/composer.js（578 行），P7 起基于
+// Lexical（RichText + History + TypeaheadMenuPlugin）。
+// 契约：草稿为模块级单例（EditorState 快照 + 压平纯文本，见 composer/lexical/draft.ts，
 // 欢迎页 ↔ dock 两个挂载位切换不丢值）；composerSetSignal（seq 信号）effect 回填（含图片）；
-// 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts。
+// 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts；
+// 补全选中插 ChipNode（decorator 原子节点），序列化文本与旧 textarea 的插入文本逐字节一致，
+// 编辑器压平视图（composer/lexical/flat.ts）保证 WS 发送的 prompt 内容格式不变。
 // 排队卡不在此处：由 App 在 .dock 前作相邻兄弟渲染（ZCode 负 margin 二级重叠卡，见 ui/style.css）。
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import type { FormEvent, ChangeEvent, MouseEvent, Ref } from "react";
-import { useAppStore, setBump, send, toast, editQueueMsg, type SessionItem } from "../store";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useCallback } from "react";
+import type { ChangeEvent, MouseEvent, Ref } from "react";
+import { useAppStore, setBump, send, toast } from "../store";
 import { updateSession } from "../store/session";
 import type { PromptAttachment } from "../types/frames";
 import { closeAllMenus } from "../shell";
@@ -19,9 +22,20 @@ import PaletteMenu from "./composer/PaletteMenu";
 import type { PaletteItem, CommandItem } from "./composer/PaletteMenu";
 import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger";
 import CtxCard from "./chat/CtxCard";
-
-// 模块级输入草稿（跨挂载位保留，等价原 inputEl.value）
-const draft = { value: "" };
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
+import { ContentEditable } from "@lexical/react/LexicalContentEditable";
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
+import { LexicalTypeaheadMenuPlugin, MenuOption } from "@lexical/react/LexicalTypeaheadMenuPlugin";
+import type { TriggerFn, MenuRenderFn } from "@lexical/react/LexicalTypeaheadMenuPlugin";
+import { $getSelection, $isRangeSelection, $isTextNode } from "lexical";
+import type { TextNode } from "lexical";
+import { $createChipNode, ChipNode } from "./composer/lexical/ChipNode";
+import { $flattenWithCaret, $leafStart, $selectAfter } from "./composer/lexical/flat";
+import { getDraftState, getDraftText, CONTENT_EDITABLE_OK } from "./composer/lexical/draft";
+import ComposerPlugin from "./composer/lexical/ComposerPlugin";
+import type { ComposerHandle } from "./composer/lexical/ComposerPlugin";
 
 // 斜杠命令候选过滤：空 query 全量按 source 分组排序（builtin→skill→extension→custom→其他）；
 // 非空先 name/aliases 前缀命中、次之 includes、再按 source 序兜底；上限 50
@@ -53,13 +67,6 @@ const RING_C = 40.84;
 
 // 底栏分级收缩的最大级数（权限模式/思考/模型→纯图标、隐藏子智能体、隐藏后台任务）
 const BAR_STAGES = 5;
-
-// textarea 自适应高度（原 resizeInput 平移）：上限 120px
-function resizeInput(ta: HTMLTextAreaElement | null) {
-  if (!ta) return;
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
-}
 
 // 组装随 prompt 下发的附件载荷（发送后由调用方清空 pendingFiles）
 function buildAttachPayload(): PromptAttachment[] {
@@ -116,20 +123,16 @@ function subagentCount(s: { subagents?: Map<string, { streaming?: boolean; statu
   return [...s.subagents.values()].filter((x) => x.streaming || x.status === "started").length;
 }
 
-// sigil 补全弹层状态（detectTrigger 返回值 + 候选/加载态；file 与 command 两态共用）
-type PaletteState = {
-  kind: "file" | "command";
-  start: number;
-  end: number;
-  query: string;
-  quoted?: boolean;
-  index: number;
-  items?: PaletteItem[];
-  loading?: boolean;
-  reqId?: number;
-};
-
 type MenuName = "mode" | "model" | "think";
+
+// Typeahead 候选项包装：data 带原始候选（FileItem / CommandItem），key 取 path / name
+class PalOption extends MenuOption {
+  data: PaletteItem;
+  constructor(data: PaletteItem) {
+    super("path" in data ? data.path : data.name);
+    this.data = data;
+  }
+}
 
 type ComposerProps = {
   inWelcome: boolean;
@@ -148,33 +151,57 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const newSessionModel = useAppStore((st) => st.newSessionModel);
   const newSessionThinking = useAppStore((st) => st.newSessionThinking);
   const commands = useAppStore((st) => st.commands);
-  const commandsSessionId = useAppStore((st) => st.commandsSessionId);
   const mentionResult = useAppStore((st) => st.mentionResult);
   const approvalMode = useAppStore((st) => st.approvalMode);
   const rightCollapsed = useAppStore((st) => st.rightCollapsed);
   const rightTab = useAppStore((st) => st.rightTab);
   // 无赋值订阅：模型目录在 models/ready 帧到达时换 Map 引用，订阅引用才能在目录
-  // 刷新后重渲染（下方 modelShort 内部 getState 读最新表）
+  // 刷新后重渲染（下方 modelShort 内部 getState 读最新表）。commandsSessionId 与 commands
+  // 同帧写入（ws.ts list_commands 回包），归属判定在 onQueryChange 内 getState 现取
   useAppStore((st) => st.modelNames);
 
   const rootRef = useRef<HTMLDivElement>(null); // #composer
   const ctxRingRef = useRef<HTMLSpanElement>(null); // #ctxRing（CtxCard hover 弹卡锚点）
-  const taRef = useRef<HTMLTextAreaElement>(null); // textarea
+  const lexRef = useRef<ComposerHandle | null>(null); // 编辑器句柄（focus/setText/clear）
   const cbarRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null); // filePicker
   const modeBtnRef = useRef<HTMLButtonElement>(null);
   const modelBtnRef = useRef<HTMLButtonElement>(null);
   const thinkBtnRef = useRef<HTMLButtonElement>(null);
   const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | "think" | null（互斥）
-  const [palette, setPalette] = useState<PaletteState | null>(null); // sigil 补全弹层 {kind,start,end,query,quoted?,index,items,loading,reqId?}
-  const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ 候选 150ms 防抖
   const [stopPending, setStopPending] = useState(false); // 停止钮防连点（turn_end 复位）
   const barStageRef = useRef(0); // 上次收缩级数（变化时收起打开中的菜单）
-  // 草稿存模块级变量（跨挂载位保留），selector 感知不到其变化：输入后本地触发重渲染
-  // （刷新发送钮 ready 态与 bash-mode 类，等价原 onInput 里的 notify）
-  const [, forceRender] = useReducer((x: number) => x + 1, 0);
+  // 编辑器文本镜像（模块级 draftText 的渲染态）：输入后刷新发送钮 ready 态与 bash-mode 类，
+  // 等价原 onInput 里的 notify/forceRender
+  const [text, setText] = useState(() => getDraftText());
+  const onTextChange = useCallback((t: string) => setText(t), []);
 
-  const text = draft.value;
+  // ---- sigil 补全面板（TypeaheadMenuPlugin 受控态） ----
+  const [taKind, setTaKind] = useState<"file" | "command" | null>(null); // 触发种类（打开中）
+  const [taQuery, setTaQuery] = useState("");
+  const [taReqId, setTaReqId] = useState(0); // @ 候选请求序号（与 mentionResult.reqId 配对）
+  const [taOpen, setTaOpen] = useState(false); // 面板开合（键盘命令让路判定）
+  const taOpenRef = useRef(false);
+  useEffect(() => {
+    taOpenRef.current = taOpen;
+  }, [taOpen]);
+  // 关闭通道：TypeaheadMenuPlugin 无受控 close，用 key 重挂清 resolution；同时复位开合标记
+  // 与去重键（重开 = 重新触发 = 重新请求，对齐旧版 setPalette(null) 语义）
+  const [closeTick, bumpClose] = useReducer((x: number) => x + 1, 0);
+  const closeTypeahead = useCallback(() => {
+    if (!taOpenRef.current) return;
+    taOpenRef.current = false;
+    setTaOpen(false);
+    lastKeyRef.current = null;
+    bumpClose();
+  }, []);
+  const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ 候选 150ms 防抖
+  // 最近一次触发的 kind/quoted（triggerFn 写，onQueryChange/onSelectOption 读）
+  const lastTriggerRef = useRef<{ kind: "file" | "command"; quoted: boolean } | null>(null);
+  // 触发态去重键：Lexical 的 updateListener 连 selection-only 更新也会回调 onQueryChange，
+  // 同一触发态只执行一次请求副作用（对齐旧版只在文本 input 时跑 updatePalette）
+  const lastKeyRef = useRef<string | null>(null);
+
   const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
   // 运行中的本地 bash 行（! 前缀命令）：停止形态同样覆盖——点停止发 bash_abort 而非 abort_session
   const bashRunning = !!s?.items?.some((x: { role?: string; running?: boolean }) => x.role === "bash" && x.running);
@@ -186,9 +213,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // ---- 外部回填信号（分叉 selectedText / 排队消息编辑），对齐原 setComposerValue（含图片） ----
   useEffect(() => {
     const sig = composerSetSignal;
-    if (!sig || !taRef.current) return;
-    taRef.current.value = sig.text;
-    draft.value = sig.text;
+    if (!sig || !lexRef.current) return;
+    lexRef.current.setText(sig.text);
     // 底座 ImageContent[] 转本地附件 chip：字段形态 { type:"image", data, mimeType }，兼容嵌套 source 形态
     interface BackfillImage {
       name?: string;
@@ -217,14 +243,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       }
       return { pendingFiles: files, fileSeq: seq, composerSetSignal: null };
     });
-    resizeInput(taRef.current);
-    taRef.current.focus();
+    lexRef.current.focus();
   });
 
-  // ---- 挂载位切换（欢迎页 ↔ dock 实例重建）：恢复草稿高度；欢迎页聚焦（原 50ms focus） ----
+  // ---- 挂载位切换（欢迎页 ↔ dock 实例重建）：欢迎页聚焦 ----
   useLayoutEffect(() => {
-    resizeInput(taRef.current);
-    if (inWelcome) taRef.current?.focus();
+    if (inWelcome) lexRef.current?.focus();
   }, [inWelcome]);
 
   // ---- 草稿有无同步到 store（全局 Esc 的二次确认要知道输入框里有没有内容） ----
@@ -235,15 +259,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
   // ---- 发送链路（原 sendPrompt 平移） ----
   const clearDraft = () => {
-    draft.value = "";
-    if (taRef.current) {
-      taRef.current.value = "";
-      resizeInput(taRef.current);
-    }
+    lexRef.current?.clear();
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
-    const t = draft.value.trim();
+    const t = getDraftText().trim();
     const files = buildAttachPayload();
     const ws = useAppStore.getState().ws;
     if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;
@@ -301,93 +321,139 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     // 钉底跟随由 Chat 组件的滚动 effect 处理
   };
 
-  // ---- 输入 ----
-  const onInput = (e: FormEvent<HTMLTextAreaElement>) => {
-    const ta = e.currentTarget; // textarea 的 target/currentTarget 同一节点
-    draft.value = ta.value;
-    resizeInput(ta);
-    updatePalette(ta);
-    forceRender(); // 刷新发送钮 ready 态
-  };
+  // ---- sigil 触发检测（triggerFn）：全局压平视图 + detectTrigger，语义与旧 updatePalette
+  // 的检测段一致（无会话且非新建页时命令不触发）；触发区间须完整落在 anchor 文本节点内
+  // （Typeahead 的替换区间按节点内偏移定位） ----
+  const triggerFn = useCallback<TriggerFn>(
+    (_text, editor) =>
+      editor.read(() => {
+        const fail = () => {
+          lastTriggerRef.current = null;
+          return null;
+        };
+        const sel = $getSelection();
+        if (!$isRangeSelection(sel) || !sel.isCollapsed()) return fail();
+        const anchor = sel.anchor;
+        if (anchor.type !== "text") return fail();
+        const node = anchor.getNode();
+        if (!$isTextNode(node) || !node.isSimpleText()) return fail();
+        const { text: full, caret } = $flattenWithCaret();
+        if (caret == null) return fail();
+        const t = detectTrigger(full, caret);
+        if (!t) return fail();
+        if (t.kind === "command") {
+          const st = useAppStore.getState();
+          const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+          if (!sess && !st.isCreatingNew) return fail(); // 无会话且非新建页：命令不可用
+        }
+        const nodeStart = $leafStart(node);
+        if (nodeStart == null || t.start < nodeStart) return fail();
+        lastTriggerRef.current = { kind: t.kind, quoted: t.kind === "file" ? !!t.quoted : false };
+        return { leadOffset: t.start - nodeStart, matchingString: t.query, replaceableString: full.slice(t.start, t.end) };
+      }),
+    [],
+  );
 
-  // ---- sigil 触发检测：@ 文件补全 / 行首 / 命令补全（trigger.js 纯函数） ----
-  const updatePalette = (ta: HTMLTextAreaElement) => {
-    const t = detectTrigger(ta.value, ta.selectionStart ?? ta.value.length);
-    if (!t) {
-      setPalette((p) => (p ? null : p)); // 无触发：关弹层（已在关则不动，避免多余重渲）
-      return;
-    }
-    if (t.kind === "command") {
-      if (!s && !isCreatingNew) {
-        setPalette(null); // 无会话且非新建页：命令不可用
-        return;
-      }
+  // ---- 触发后的请求副作用（onQueryChange）：斜杠命令清单拉取 / @ 文件候选 150ms 防抖，
+  // 平移旧 updatePalette 的请求段（含 commands:null 静默写、reqId 自增丢弃过期响应） ----
+  const onQueryChange = useCallback((q: string | null) => {
+    const trig = lastTriggerRef.current;
+    const key = q == null || !trig ? null : `${trig.kind}|${trig.quoted ? 1 : 0}|${q}`;
+    if (key === lastKeyRef.current) return; // 同一触发态的重复 update：副作用幂等跳过
+    lastKeyRef.current = key;
+    if (!trig || q == null) return;
+    setTaKind(trig.kind);
+    setTaQuery(q);
+    const st = useAppStore.getState();
+    const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    if (trig.kind === "command") {
       // 清单归属：会话 id 或新建页哨兵（新建页走无会话清单，隐藏会话级命令）
-      const cmdKey = s ? s.sessionId : "new";
-      if (commandsSessionId !== cmdKey) {
-        useAppStore.setState({ commands: null }); // 清单过期：拉取期间弹层显示加载中（静默写，重渲染由下方 setPalette 驱动）
-        send({ type: "list_commands", sessionId: s?.sessionId, cwd: s ? undefined : useAppStore.getState().newSessionProject || undefined });
+      const cmdKey = sess ? sess.sessionId : "new";
+      if (st.commandsSessionId !== cmdKey) {
+        useAppStore.setState({ commands: null }); // 清单过期：拉取期间弹层显示加载中
+        send({ type: "list_commands", sessionId: sess?.sessionId, cwd: sess ? undefined : st.newSessionProject || undefined });
       }
-      // 候选与加载态渲染期从 commands 现算（见下方 palItems/palLoading），
-      // 不存快照——回包只写 store，快照会让候选永不出现、要再敲一键才重算
-      setPalette({ ...t, index: 0 });
     } else {
-      // @ 文件候选：150ms 防抖后发 list_files（宿主 fuzzyFind 是磁盘扫描）；
-      // reqId 自增使过期响应被 store 丢弃
-      const reqId = useAppStore.getState().mentionReqSeq + 1;
+      // @ 文件候选：150ms 防抖后发 list_files（宿主 fuzzyFind 是磁盘扫描）
+      const reqId = st.mentionReqSeq + 1;
       useAppStore.setState({ mentionReqSeq: reqId }); // 静默自增（原 ++ 后无 notify）
-      const cwd = s ? undefined : useAppStore.getState().newSessionProject || undefined;
+      const cwd = sess ? undefined : st.newSessionProject || undefined;
       clearTimeout(mentionTimer.current ?? undefined);
       mentionTimer.current = setTimeout(() => {
-        send({ type: "list_files", sessionId: s?.sessionId, cwd, query: t.query, reqId });
+        send({ type: "list_files", sessionId: sess?.sessionId, cwd, query: q, reqId });
       }, 150);
-      setPalette({ ...t, index: 0, items: [], loading: true, reqId });
+      setTaReqId(reqId);
     }
-  };
+  }, []);
 
-  // ---- 接受补全：按 kind 插入文本，目录候选触发链式展开（重算该目录内容） ----
-  const accept = (i: number) => {
-    const ta = taRef.current;
-    if (!palette || !ta) return;
-    const it = (palItems ?? palette.items)?.[i];
-    if (!it) return;
-    let next: string;
-    let chainDir = false;
-    if (palette.kind === "file") {
-      if (!("path" in it)) return; // 类型守卫：kind=file 时候选必为 FileItem
-      next = insertFile(it.path, it.dir, !!palette.quoted);
-      chainDir = it.dir;
+  // 候选与加载态渲染期从 store 现算（file_matches/commands 回包 setState 触发重渲染），
+  // 不存快照——回包帧到达即出候选，无需再次击键
+  const taItems: PaletteItem[] =
+    taKind === "file"
+      ? mentionResult && mentionResult.reqId === taReqId
+        ? mentionResult.matches
+        : []
+      : taKind === "command"
+        ? filterCommands(commands, taQuery)
+        : [];
+  const taLoading = taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" ? commands === null : false;
+  const taOptions = taItems.map((it) => new PalOption(it));
+
+  // ---- 接受补全：文件/命令 → ChipNode（序列化 = insertFile/insertCommand 原文）；目录 →
+  // 纯文本替换且光标停在 token 尾（无尾随空格），update 后 triggerFn 重算触发、链式展开
+  // 该目录内容（对齐旧版 dispatchEvent(input) 重算触发；chip 后为 element anchor，无法
+  // 再触发文本级 typeahead，故目录链式必须走纯文本） ----
+  const onSelectOption = useCallback((option: PalOption, node: TextNode | null, closeMenu: () => void) => {
+    const trig = lastTriggerRef.current;
+    if (!trig || !node) {
+      closeMenu();
+      return;
+    }
+    const it = option.data;
+    if (trig.kind === "file") {
+      if (!("path" in it)) {
+        closeMenu(); // 类型守卫：kind=file 时候选必为 FileItem
+        return;
+      }
+      const next = insertFile(it.path, it.dir, trig.quoted);
+      if (it.dir) {
+        node.setTextContent(next);
+        node.select(next.length, next.length);
+      } else {
+        const chip = $createChipNode(next);
+        node.replace(chip);
+        $selectAfter(chip);
+      }
     } else {
-      if (!("name" in it)) return; // 类型守卫：kind=command 时候选必为 CommandItem
-      next = insertCommand(it.name);
+      if (!("name" in it)) {
+        closeMenu(); // 类型守卫：kind=command 时候选必为 CommandItem
+        return;
+      }
+      const chip = $createChipNode(insertCommand(it.name));
+      node.replace(chip);
+      $selectAfter(chip);
     }
-    const value = ta.value.slice(0, palette.start) + next + ta.value.slice(palette.end);
-    ta.value = value;
-    draft.value = value;
-    const caret = palette.start + next.length;
-    ta.setSelectionRange(caret, caret);
-    resizeInput(ta);
-    setPalette(null);
-    // 目录无尾随空格、光标仍在 token 尾：手动派发 input 事件重算触发（赋值不冒泡）
-    if (chainDir) ta.dispatchEvent(new Event("input", { bubbles: true }));
-  };
+    closeMenu();
+  }, []);
 
-  // 候选渲染期消费 store 帧（file_matches/commands 回包 setState 触发重渲染）：
-  // @ 文件合并 mentionResult（reqId 匹配才合并，避免竞态；不匹配保持加载态等下一帧）；
-  // 斜杠命令现算 filterCommands(commands)——回包帧到达即出候选，无需再次击键
-  const palItems: PaletteItem[] | undefined =
-    palette && palette.kind === "file" && mentionResult && mentionResult.reqId === palette.reqId
-      ? mentionResult.matches
-      : palette?.kind === "command"
-        ? filterCommands(commands, palette.query)
-        : palette?.items;
-  const palLoading = palette
-    ? palette.kind === "file"
-      ? mentionResult?.reqId === palette.reqId
-        ? false
-        : palette.loading ?? false
-      : commands === null
-    : false;
+  // 面板渲染：沿用 PaletteMenu（.menu/.mi 视觉 + placePaletteCard 锚定 #composer 卡片上方，
+  // 与旧版逐像素一致）；导航/高亮/接受走插件给的 itemProps
+  const menuRenderFn: MenuRenderFn<PalOption> = (_anchorRef, itemProps) => (
+    <PaletteMenu
+      mode={taKind === "command" ? "command" : "file"}
+      items={taItems}
+      index={itemProps.selectedIndex ?? 0}
+      loading={taLoading}
+      composerRef={rootRef}
+      onPick={(i) => {
+        const opt = itemProps.options[i];
+        if (opt) itemProps.selectOptionAndCleanUp(opt);
+      }}
+      onHover={(i) => itemProps.setHighlightedIndex(i)}
+    />
+  );
+  const onTaOpen = useCallback(() => setTaOpen(true), []);
+  const onTaClose = useCallback(() => setTaOpen(false), []);
 
   // ---- 附件选择（原 filePicker change 平移） ----
   const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -434,7 +500,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   useEffect(() => {
     const close = () => {
       setOpenMenu(null);
-      setPalette(null);
+      closeTypeahead();
     };
     window.addEventListener("click", close);
     window.addEventListener("blur", close);
@@ -444,7 +510,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       window.removeEventListener("blur", close);
       document.removeEventListener("omp:close-menus", close);
     };
-  }, []);
+  }, [closeTypeahead]);
 
   // ---- 卸载清理 @ 候选防抖定时器 ----
   useEffect(() => () => clearTimeout(mentionTimer.current ?? undefined), []);
@@ -476,7 +542,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       // 阶段变化会移动按钮，打开中的菜单锚点随之失效，直接收起
       if (comp.querySelector(".menu.open")) {
         setOpenMenu(null);
-        setPalette(null);
+        closeTypeahead();
       }
     }
   };
@@ -537,82 +603,66 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
   };
 
+  // Lexical 初始化配置：nodes 注册 ChipNode；editorState 取模块级草稿快照（挂载位切换恢复）
+  const initialConfig = useMemo(
+    () => ({
+      namespace: "omp-composer",
+      onError(error: Error) {
+        throw error; // 快速失败：编辑器内部异常不静默吞
+      },
+      nodes: [ChipNode],
+      editorState: getDraftState() ?? undefined,
+    }),
+    [],
+  );
+
+  const phText = inWelcome ? "使用 @ 添加上下文，使用 / 选择命令或能力" : "发消息…（Enter 发送）";
+
   return (
     <>
       <div
         id="composer"
-        className={(inWelcome ? "in-welcome " : "") + (isBashMode(draft.value) ? "bash-mode" : "")}
+        className={(inWelcome ? "in-welcome " : "") + (isBashMode(text) ? "bash-mode" : "")}
         ref={rootRef}
         aria-hidden={blocking ? true : undefined}
         style={blocking ? { display: "none" } : undefined}
       >
         <AttachRow />
-        <textarea
-          id="input"
-          rows={1}
-          ref={taRef}
-          defaultValue={draft.value}
-          placeholder={inWelcome ? "使用 @ 添加上下文，使用 / 选择命令或能力" : "发消息…（Enter 发送）"}
-          onInput={onInput}
-          onKeyDown={(e) => {
-            // sigil 补全弹层打开时优先拦截导航/接受键（stopPropagation：同一按键不再走全局
-            // 快捷键，如补全态的 ⇧Tab 是「接受候选」而非「循环思考级别」）
-            if (palette) {
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                e.stopPropagation();
-                const n = (palItems ?? []).length;
-                if (!n) return;
-                const d = e.key === "ArrowDown" ? 1 : -1;
-                setPalette((p) => (p ? { ...p, index: (p.index + d + n) % n } : p));
-                return;
-              }
-              if (e.key === "Tab") {
-                e.preventDefault();
-                e.stopPropagation();
-                accept(palette.index);
-                return;
-              }
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                // 补全态回车 = 接受当前项，不发送（isComposing：中文输入法选字中不触发）
-                e.preventDefault();
-                e.stopPropagation();
-                accept(palette.index);
-                return;
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation(); // 不触发全局 Esc 的「中断生成」
-                setPalette(null);
-                return;
-              }
-            }
-            // Ctrl+↵：steer——生成中立即注入，空闲时与 ↵ 同义；Ctrl+Q：进待发送队列（= 生成中 ↵ 的行为）
-            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.nativeEvent.isComposing && (e.key === "Enter" || e.key === "q" || e.key === "Q")) {
-              e.preventDefault();
-              sendPrompt(e.key === "Enter");
-              return;
-            }
-            // Alt+↑：拉回排队消息（后发先回）——先 steer 队列，空则待发送队列；对齐 omp 的 app.message.dequeue
-            //（不绑 CLI 的备选键 ⇧↑：GUI 里那是文本选择，抢占会破坏编辑器惯用法）
-            if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === "ArrowUp") {
-              if (!s) return; // 无会话时两个队列都为空,原逻辑走到 !target && !q 同样早退
-              const steers = s.items.filter((it) => it.role === "user" && it.pending === "steer");
-              const target = steers[steers.length - 1];
-              const q = target ? undefined : s.queued?.[(s.queued?.length ?? 0) - 1];
-              if (!target && !q) return;
-              e.preventDefault();
-              if (target) editQueueMsg(s, target);
-              else editQueueMsg(s, { role: "user", text: q?.text || "", pending: "queued" });
-              return;
-            }
-            // isComposing：中文输入法选字中的回车不发送
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              sendPrompt();
-            }
-          }}
-        ></textarea>
+        {CONTENT_EDITABLE_OK ? (
+          <LexicalComposer initialConfig={initialConfig}>
+            <div className="lex-wrap">
+              <RichTextPlugin
+                contentEditable={
+                  <ContentEditable
+                    id="input"
+                    className="inp-ce"
+                    aria-placeholder={phText}
+                    placeholder={<span className="lex-ph">{phText}</span>}
+                    aria-multiline={true}
+                  />
+                }
+                placeholder={null}
+                ErrorBoundary={LexicalErrorBoundary}
+              />
+            </div>
+            <HistoryPlugin />
+            <ComposerPlugin handleRef={lexRef} onTextChange={onTextChange} sendPrompt={sendPrompt} typeaheadOpenRef={taOpenRef} />
+            {/* key 重挂 = 关闭面板通道（closeTypeahead）；triggerFn/onQueryChange 零依赖稳定，避免监听反复重注册 */}
+            <LexicalTypeaheadMenuPlugin
+              key={closeTick}
+              triggerFn={triggerFn}
+              onQueryChange={onQueryChange}
+              options={taOptions}
+              onSelectOption={onSelectOption}
+              menuRenderFn={menuRenderFn}
+              onOpen={onTaOpen}
+              onClose={onTaClose}
+            />
+          </LexicalComposer>
+        ) : (
+          /* 无 contentEditable 语义环境（happy-dom 冒烟）的降级占位：不初始化 Lexical，编辑操作全部空转 */
+          <div id="input" className="inp-ce" />
+        )}
         <div className="cbar" ref={cbarRef}>
           <button className="icon-btn plus-btn" id="plusBtn" title="添加上下文" onClick={() => pickerRef.current?.click()}>
             <Icon name="plus" />
@@ -727,18 +777,6 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         <input type="file" id="filePicker" multiple hidden ref={pickerRef} onChange={onPick} />
         {/* 思考级别（只列当前模型支持的档位） */}
         {openMenu === "think" && <ThinkMenu btnRef={thinkBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
-        {/* sigil 补全弹层（@ 文件候选 / 行首 / 命令候选），锚定 textarea */}
-        {palette && (
-          <PaletteMenu
-            mode={palette.kind}
-            items={palItems ?? []}
-            index={palette.index}
-            loading={palLoading}
-            composerRef={rootRef}
-            onPick={(i) => accept(i)}
-            onHover={(i) => setPalette((p) => (p ? { ...p, index: i } : p))}
-          />
-        )}
       </div>
     </>
   );
@@ -746,7 +784,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
 // 上下文环（原 renderComposerBar 的 ctxRing 段平移）：从顶端顺时针填充；无数据空环；
 // 新建态也展示空环。hover 弹上下文明细卡见 chat/CtxCard.jsx（ringRef 仅作锚点，不动内部 svg）
-function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } | null } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
+function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
   if (!s && !isCreatingNew) return null;
   const p = s?.ctx ? Math.min(1, s.ctx.percent / 100) : 0;

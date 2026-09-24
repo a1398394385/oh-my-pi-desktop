@@ -167,7 +167,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: 
         </div>
         <div className="mcp-server-info" title="点击查看或编辑配置">
           <div className="mcp-server-head">
-            <span className="mcp-server-name">{server.name}</span>
+            <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
             {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
             {scopeAll
               ? (server.projectName || server.source?.providerName
@@ -478,7 +478,7 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
         )}
       </div>
       <div className="sem-foot">
-        <span className="sem-status" style={statusColor ? { color: statusColor } : undefined}>
+        <span className="text-ui-sm text-dim" style={statusColor ? { color: statusColor } : undefined}>
           {statusText}
         </span>
         <button type="button" className="confirm-btn" disabled={testing} onClick={onTest}>
@@ -591,7 +591,7 @@ export default function McpPage() {
             btnClassName="mcp-scope-btn"
             btnChildren={
               <>
-                <span className="mcp-scope-icon">
+                <span className="inline-flex items-center text-faint">
                   <Icon name={activeScope === "profile" ? "scopeProfile" : "folder"} size={14} />
                 </span>
                 <span>{curScope.name}</span>
@@ -603,7 +603,7 @@ export default function McpPage() {
             {scopeMenuItems}
           </Sel>
           <span className="mcp-divider">|</span>
-          <span className="mcp-count-stat">MCP {totalCount}</span>
+          <span className="text-ui-base text-dim">MCP {totalCount}</span>
         </div>
         <div className="mcp-search-wrap">
           <span className="mcp-search-icon"><Icon name="search" size={14} /></span>
@@ -620,7 +620,7 @@ export default function McpPage() {
       </div>
 
       <div className="mcp-bar-secondary">
-        <div className="mcp-installed-stat">已安装 {installedCount}</div>
+        <div className="text-ui-sm font-medium text-dim">已安装 {installedCount}</div>
         <div className="mcp-actions-wrap">
           <Sel
             id="mcpMoreSel"
@@ -669,7 +669,7 @@ export default function McpPage() {
               >
                 <div className="mcp-icon-box"><Icon name="mcp" size={14} /></div>
                 <div className="mcp-server-info">
-                  <div className="mcp-server-head"><span className="mcp-server-name">新服务器</span></div>
+                  <div className="mcp-server-head"><span className="text-ui-base font-semibold truncate text-text">新服务器</span></div>
                   <div className="mcp-server-cmd">填写配置后保存</div>
                 </div>
                 <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>

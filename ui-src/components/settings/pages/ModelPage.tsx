@@ -393,11 +393,11 @@ function AddProviderView() {
             <div className="ap-card ap-card2" key={p.id} onClick={() => { setBump({ mpDetailProv: p }); }}>
               <div className="ap-l1">
                 <span className="pv-ic">{provIc[p.id] || "✦"}</span>
-                <span className="ap-name">{p.id}</span>
+                <span className="flex-1 min-w-0 truncate text-ui-base text-text">{p.id}</span>
               </div>
               <div className="ap-l2">
                 <span className="tag ap-vendor">{p.label}</span>
-                {p.accounts > 0 ? <span className="ap-conf">已配置 · {p.accounts}</span> : null}
+                {p.accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">已配置 · {p.accounts}</span> : null}
               </div>
             </div>
           ))}
@@ -411,7 +411,7 @@ function AddProviderView() {
           >
             <div className="ap-l1">
               <span className="pv-ic">✎</span>
-              <span className="ap-name">手动添加供应商</span>
+              <span className="flex-1 min-w-0 truncate text-ui-base text-text">手动添加供应商</span>
             </div>
             <div className="ap-l2">
               <span className="tag ap-vendor">models.yml</span>
@@ -451,7 +451,7 @@ function ProviderDetailView() {
         <>
           <div className="ap-card pd-login" onClick={() => startProviderLogin(p.id)}>
             <span className="pv-ic">🌐</span>
-            <span className="ap-name">登录</span>
+            <span className="flex-1 min-w-0 truncate text-ui-base text-text">登录</span>
             <span className="tag">浏览器授权</span>
           </div>
           {/* 分隔线：短于卡片宽度，左右不触边；不支持登录的供应商不渲染 */}
@@ -591,7 +591,7 @@ export default function ModelPage() {
     <div className="set-page" id="pg-model">
       <div className="set-tt">模型设置</div>
       <div className="set-desc-row">
-        <span className="set-desc">管理自定义模型供应商，配置后可在聊天时选择使用。</span>
+        <span className="text-ui-sm text-faint">管理自定义模型供应商，配置后可在聊天时选择使用。</span>
         <span className="sp" />
         <button
           type="button"
@@ -627,7 +627,7 @@ export default function ModelPage() {
             }}
           >
             <span className="pv-ic"><Icon name="sliders" size={14} /></span>
-            <span className="pv-name">模型角色</span>
+            <span className="flex-1 min-w-0 truncate font-semibold">模型角色</span>
           </div>
           <div className="pd-div mp-div" />
           <div className="set-sec mp-grp">已认证供应商</div>
@@ -640,7 +640,7 @@ export default function ModelPage() {
               }}
             >
               <span className="pv-ic">{provIc[prov] || "✦"}</span>
-              <span className="pv-name">{prov}</span>
+              <span className="flex-1 min-w-0 truncate font-semibold">{prov}</span>
               {ms.some((m) => m.enabled) ? <span className="dot" /> : null}
             </div>
           ))}
@@ -655,7 +655,7 @@ export default function ModelPage() {
               }}
             >
               <span className="pv-ic">{provIc[prov] || "✦"}</span>
-              <span className="pv-name">{prov}</span>
+              <span className="flex-1 min-w-0 truncate font-semibold">{prov}</span>
               {ms.some((m) => m.enabled) ? <span className="dot" /> : null}
             </div>
           ))}

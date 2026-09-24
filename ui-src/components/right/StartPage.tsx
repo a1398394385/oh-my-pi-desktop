@@ -8,11 +8,11 @@ export default function StartPage() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   return (
     <div className="rt-start">
-      <span className="rt-start-ic">
+      <span className="inline-flex items-center text-faint mb-3">
         <Icon name="panelRight" size={30} />
       </span>
-      <div className="rt-start-tt">打开标签页</div>
-      <div className="rt-start-sub">选择要在侧边面板中打开的标签。</div>
+      <div className="text-[length:20px] font-semibold leading-[28px] text-text">打开标签页</div>
+      <div className="text-ui-base leading-5 text-dim mt-1 mb-5">选择要在侧边面板中打开的标签。</div>
       <div className="rt-list">
         {["subagent", "gitdiff", "file", "bgcmd", "tree", "terminal", "browser"].map((name) => {
           const meta = TAB_META[name];

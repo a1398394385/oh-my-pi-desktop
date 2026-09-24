@@ -9,9 +9,9 @@ export default function ChatLoading() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const text = s?.streaming ? s.workingText || "正在处理…" : "";
   return (
-    <div className="chat-loading" role="status" aria-label={text || "加载中"}>
+    <div className="flex items-center min-h-[20px] py-[2px]" role="status" aria-label={text || "加载中"}>
       <Icon name="loader" size={16} className="chat-loading-icon" />
-      {text && <span className="chat-loading-tx" title={text}>{text}</span>}
+      {text && <span className="ml-[7px] text-ui-sm text-dim truncate" title={text}>{text}</span>}
     </div>
   );
 }

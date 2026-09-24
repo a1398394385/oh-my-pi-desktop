@@ -1,3 +1,48 @@
+/* ── Tailwind v4 基座(P4):仅 theme + utilities,不导入 Preflight/reset(保住既有控件与壳层样式);
+   token 经 @theme inline 间接引用下方 :root 变量(浅色覆盖自动生效),utility 侧使用 bg-card/text-dim/border-line 等。
+   复合类全站语言(.srow/.pill-btn/.tg/.sel/.inp/.add-btn/.confirm-btn/.mem-expand 与布局骨架)保留在 CSS,不用 utility 重写。── */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "../ui-src/**/*.{ts,tsx}";
+@theme inline {
+  --color-base: var(--base);
+  --color-card: var(--card);
+  --color-inset: var(--inset);
+  --color-select: var(--select);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-text: var(--text);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-green: var(--green);
+  --color-orange: var(--orange);
+  --color-red: var(--red);
+  --color-err: var(--err);
+  --color-yellow: var(--yellow);
+  --color-blue: var(--blue);
+  --color-purple: var(--purple);
+  --color-bash: var(--bash);
+  --color-diff-added: var(--green);
+  --color-diff-removed: var(--err);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-card: var(--r-card);
+  --font-size-ui-xs: var(--ui-fs-xs);
+  --font-size-ui-sm: var(--ui-fs-sm);
+  --font-size-ui-base: var(--ui-fs-base);
+  --font-size-ui-md: var(--ui-fs-md);
+  --font-size-ui-lg: var(--ui-fs-lg);
+  --font-size-ui-xl: var(--ui-fs-xl);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+}
+
 /* ── tokens：底座 + 嵌套卡片 ─────────────────────────────────────────── */
 :root {
   --base:      #292B2C;   /* 窗口底座 */
@@ -202,11 +247,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .nav-item svg { color: var(--dim); flex: none; }
 
-.viewtabs {
-  display: flex; align-items: center;
-  padding: 10px 14px 8px;
-  gap: 8px; flex: none;
-}
 .seg {
   display: flex; background: rgba(0,0,0,.22);
   border-radius: 999px; padding: 2px;
@@ -296,10 +336,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task:hover .tt, .task.on .tt { color: var(--text); }
 .task .tm { flex: none; font-size: 12px; color: var(--faint); }
 .task.on .tm { color: var(--dim); }
-.task-leading {
-  position: relative; flex: none; width: 16px; height: 16px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
 .task-indicator,
 .tpin {
   position: absolute; inset: 0;
@@ -1064,25 +1100,6 @@ body:has(#right.collapsed) #right-resizer {
 /* 审批卡片（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——圆角边框卡 +
    「等待确认」标题 + 问题正文 + 编号选项行（hover 高亮 / 选中底板，数字与回车快捷应答）
    + 底部键盘提示行与确认钮；editable 时「提交」行内嵌输入（ZCodium 反馈行样式） */
-.approval-card {
-  margin: 0;
-  background: var(--inset);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-card);
-  padding: 12px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.approval-head {
-  font-size: var(--ui-fs-base); font-weight: 500; color: var(--dim); line-height: 1.3;
-}
-.approval-title {
-  color: var(--text); font-family: var(--ui-font, var(--sans));
-  font-size: var(--ui-fs-base); line-height: 1.5;
-  white-space: pre-wrap; word-break: break-word;
-  max-height: 160px; overflow-y: auto;
-  overscroll-behavior: contain; /* 内嵌在会话区滚动流内，阻断滚动链 */
-  margin: 0;
-}
 .approval-list { display: flex; flex-direction: column; gap: 4px; }
 .approval-opt {
   display: flex; align-items: center; gap: 12px;
@@ -1114,21 +1131,8 @@ body:has(#right.collapsed) #right-resizer {
 }
 .approval-inp::placeholder { color: var(--faint); font-weight: 400; }
 .approval-inp:disabled { opacity: 1; -webkit-text-fill-color: var(--text); } /* 定格后仍可读已提交内容 */
-.approval-foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px;
-}
-.approval-hint {
-  display: inline-flex; align-items: center; gap: 8px; min-width: 0;
-  color: var(--dim); font-size: var(--ui-fs-base);
-}
 .approval-hint svg { flex: none; color: var(--text); }
 /* 确认钮 = ZCodium bg-brand 按钮同款（h-8 rounded-lg） */
-.approval-confirm {
-  flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
-  background: var(--accent); color: #fff;
-  font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500; cursor: pointer;
-  transition: opacity .15s var(--swift);
-}
 .approval-confirm:hover { opacity: .8; }
 .approval-confirm:disabled { opacity: .45; cursor: default; }
 
@@ -1227,21 +1231,9 @@ body:has(#right.collapsed) #right-resizer {
 /* working 状态行已并入 .chat-loading（见 ChatLoading.jsx），原 .work-line 样式随之移除 */
 .chat-loading[hidden] { display: none; } /* display:flex 会盖掉 UA 的 [hidden]，需显式声明 */
 /* 流式状态文字（intent/思考）：跟在转圈后，小号 dim，单行截断不折行推高流 */
-.chat-loading-tx {
-  margin-left: 7px;
-  font-size: var(--ui-fs-sm);
-  color: var(--dim);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 /* 流式加载转圈（复刻 ZCode ChatLoading / TurnChatLoadingSlot）：消息流最末位、紧贴输入框上方，
    min-height 20px 保底有无都不跳高；lucide loader 图标 + 1s linear 旋转，前景色 --dim
    （对应 ZCode text-foreground-subtle）。显隐由 Chat.jsx 按 s.streaming 渲染与否决定 */
-.chat-loading {
-  display: flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 2px 0;
-}
 .chat-loading-icon {
   display: inline-flex;
   color: var(--dim);
@@ -1337,12 +1329,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .turn-acts .q-btn:disabled { opacity: .45; cursor: default; }
 .turn-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
 /* 本轮结束时刻：跟随分叉按钮右侧，等宽数字避免逐轮宽度跳动 */
-.turn-acts-time {
-  margin-left: 4px;
-  font-size: var(--ui-fs-xs);
-  color: var(--faint);
-  font-variant-numeric: tabular-nums;
-}
 /* 待消费气泡左侧的操作组：hover 整行时浮现（按钮在气泡外左侧，行 hover 保证移过去不消失） */
 .user-bubble.pending { position: relative; }
 .qk-acts {
@@ -1599,42 +1585,7 @@ svg { vertical-align: middle; }
 .pill-btn:disabled, .send:disabled { opacity: .45; cursor: default; }
 
 /* ── 居中新建会话页面 ──────────────────────────────────────────────── */
-.welcome-screen {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* 水平边距即卡片与中栏的最小间距：先收到 20px/边，此后卡片宽度才开始收缩 */
-  padding: 30px 20px 80px;
-  overflow-y: auto;
-}
-.welcome-card {
-  width: 100%;
-  /* 宽度收缩顺序：居中态两侧边距随窗口收窄持续缩小，触到 20px/边（padding）后
-     才压缩卡片宽度；不再额外预留 100px，避免窄窗口下边距虚占可用宽度 */
-  max-width: min(720px, 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.welcome-title {
-  font-size: 26px;
-  font-weight: 500;
-  color: var(--text);
-  margin-bottom: 28px;
-  letter-spacing: 0.5px;
-  text-align: center;
-  user-select: none;
-}
 /* ── 新建会话延展卡片 ── */
-.wb-wrapper {
-  width: 100%;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
 
 /* 上卡（胶囊卡）：承载项目/分支选择器，下缘被输入框卡盖住 20px，胶囊露在上半部分。
    卡面用 --surface 低透明度罩色（对应 ZCode bg-surface），投影走大半径低透明度
@@ -1656,14 +1607,6 @@ svg { vertical-align: middle; }
 }
 [data-theme="light"] .wb-back-card {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
-}
-.wb-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  /* 底部 padding(20px) 是重叠预算：输入框卡负 margin 上拉盖住的正是这段，
-     胶囊完整露在卡片上半部分（5px 顶距 + 30px 胶囊 = 35px 可见带） */
-  padding: 5px 6px 20px;
 }
 .wb-pill {
   display: inline-flex;
@@ -1850,33 +1793,8 @@ svg { vertical-align: middle; }
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   box-sizing: border-box;
 }
-.wb-proj-search-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--faint);
-  flex: none;
-}
-.wb-proj-search-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  outline: none;
-  font-family: var(--ui-font, var(--sans));
-  font-size: var(--ui-fs-base);
-  color: var(--text);
-  padding: 0;
-  min-width: 0;
-}
 .wb-proj-search-input::placeholder {
   color: var(--faint);
-}
-.wb-proj-list {
-  flex: 1;
-  max-height: 200px;
-  overflow-y: auto;
-  padding: 9px 6px 5px;
-  box-sizing: border-box;
 }
 .wb-proj-item {
   display: flex;
@@ -1897,25 +1815,6 @@ svg { vertical-align: middle; }
 [data-theme="light"] .wb-proj-item:hover,
 [data-theme="light"] .wb-proj-item.selected {
   background: rgba(0, 0, 0, 0.06);
-}
-.wb-proj-item-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--dim);
-  flex: none;
-}
-.wb-proj-item-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wb-proj-empty {
-  padding: 20px 12px;
-  text-align: center;
-  color: var(--faint);
-  font-size: var(--ui-fs-sm);
 }
 .wb-proj-actions {
   border-top: 1px solid rgba(255, 255, 255, 0.18);
@@ -1946,19 +1845,6 @@ svg { vertical-align: middle; }
 }
 [data-theme="light"] .wb-proj-action-item:hover {
   background: rgba(0, 0, 0, 0.06);
-}
-.wb-proj-action-ic {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--dim);
-  flex: none;
-}
-.wb-proj-action-tx {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 #wbBranchMenu {
   left: 180px;
@@ -2201,10 +2087,6 @@ body.resizing .resizer {
 .todo.done .ck { color: var(--green-soft); }
 .todo.cur { color: var(--text); }
 .todo.blocked .ci { color: var(--err); }
-.sc-phase {
-  font-size: var(--ui-fs-sm); color: var(--faint);
-  padding: 8px 2px 2px;
-}
 #capsule {
   display: flex; align-items: center; gap: 8px;
   width: 280px; max-width: 100%;
@@ -2321,10 +2203,6 @@ body.resizing .resizer {
 /* 工具结果未到时的统一占位（components/chat/parts.jsx 的 Spin）：loader 图标旋转 + 省略号。
    同时服务两类位置——无 output 位的工具行行内（grep/glob/MCP/待办/终端组内行），
    与展开体的虚线占位处（.cmd-card-out / .ed-brief 里的 .placeholder） */
-.pend {
-  flex: none; display: inline-flex; align-items: center; gap: 6px;
-  color: var(--dim); font-size: var(--ui-fs-base);
-}
 .pend-ico { display: inline-flex; animation: chat-load-spin 1s linear infinite; }
 .pend-ico svg { display: block; }
 
@@ -2342,15 +2220,6 @@ body.resizing .resizer {
 .sub-card.running .sub-dot { color: var(--green); }
 .sub-card.completed .sub-dot { color: var(--green-soft); }
 .sub-card.failed .sub-dot { color: var(--err); }
-.sub-desc {
-  font-size: var(--ui-fs-sm); color: var(--faint); margin-top: 4px;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.sub-back {
-  border: 0; background: none; color: var(--dim);
-  font-size: var(--ui-fs-sm); cursor: pointer; padding: 2px 6px; border-radius: 6px;
-  align-self: flex-start; margin-bottom: 6px;
-}
 .sub-back:hover { background: var(--panel-2); color: var(--text); }
 .sub-title { font-size: var(--ui-fs-sm); color: var(--faint); margin-bottom: 6px; word-break: break-all; }
 .sub-stream { display: flex; flex-direction: column; gap: 8px; }
@@ -2387,12 +2256,6 @@ body.resizing .resizer {
 
 /* ---------- 文件页（读取行点击 / 文件树点击进入） ---------- */
 /* 文件树（空态）行 */
-.ft-row {
-  display: flex; align-items: center; gap: 6px;
-  font-size: var(--ui-fs-base); color: var(--dim);
-  padding: 3px 8px; border-radius: 6px; cursor: pointer;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
 .ft-row:hover { background: var(--panel-2); }
 .ft-root { color: var(--text); font-weight: 500; cursor: default; }
 .ft-root:hover { background: none; }
@@ -2403,20 +2266,11 @@ body.resizing .resizer {
 .ft-file-ic { width: auto; }
 .ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 路径面包屑：项目内「项目名 > 相对段」/ 项目外全路径，段间 caret 图标，单行截断 */
-.fv-crumb {
-  display: flex; align-items: center; gap: 2px;
-  font-size: var(--ui-fs-xs); color: var(--faint);
-  margin-bottom: 8px; padding: 0 8px; overflow: hidden; white-space: nowrap;
-}
 .fv-seg { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fv-crumb .fv-seg:last-child { color: var(--dim); font-weight: 500; }
 .fv-sep { flex: none; display: inline-flex; align-items: center; }
 /* 文件正文：无卡片底/边框（VSCode 编辑器区即面板本身，不再有内嵌盒），
    行号 gutter 自带左留白，右侧留 8px 呼吸位 */
-.fv-body {
-  padding: 4px 8px 4px 0; font-family: var(--mono); font-size: var(--code-fs, 12px);
-  line-height: 1.55; overflow-x: auto;
-}
 .fv-line { display: flex; align-items: baseline; }
 .fv-ln {
   flex: none; min-width: 3.5em; padding: 0 10px 0 8px; text-align: right;
@@ -2464,36 +2318,6 @@ body.resizing .resizer {
   color: var(--green);
   border-color: rgba(74, 222, 128, 0.35);
   background: rgba(74, 222, 128, 0.08);
-}
-.bgcmd-code {
-  font-family: var(--mono);
-  font-size: var(--code-fs, 12px);
-  background: var(--panel-2);
-  border: 1px solid var(--line-soft);
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin: 6px 0;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: var(--text);
-  line-height: 1.5;
-  overscroll-behavior: contain; /* 内嵌在右栏滚动流内，阻断滚动链 */
-}
-.bgcmd-out {
-  max-height: 180px;
-  overflow-y: auto;
-  overscroll-behavior: contain; /* 内嵌在右栏滚动流内，阻断滚动链 */
-  background: var(--bg);
-  border: 1px solid var(--line-soft);
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin-top: 6px;
-  font-family: var(--mono);
-  font-size: var(--code-fs, 12px);
-  color: var(--dim);
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 
 /* Git Diff 树 / 平铺 / 文件详情 */
@@ -3125,11 +2949,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   justify-content: space-between;
   margin-bottom: 12px;
 }
-.skills-installed-stat {
-  font-size: var(--ui-fs-sm);
-  font-weight: 500;
-  color: var(--dim);
-}
 .skills-actions-wrap {
   display: inline-flex;
   align-items: center;
@@ -3232,14 +3051,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.skill-name {
-  font-size: var(--ui-fs-base);
-  font-weight: 500;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .skill-provider-tag {
   font-size: 10px;
@@ -3412,11 +3223,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   justify-content: space-between;
   margin-bottom: 12px;
 }
-.mcp-installed-stat {
-  font-size: var(--ui-fs-sm);
-  font-weight: 500;
-  color: var(--dim);
-}
 .mcp-actions-wrap {
   display: inline-flex;
   align-items: center;
@@ -3544,14 +3350,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   align-items: center;
   gap: 8px;
 }
-.mcp-server-name {
-  font-size: var(--ui-fs-base);
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .mcp-server-badge {
   font-size: 10px;
   padding: 1px 6px;
@@ -3665,20 +3463,11 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 /* --- B3 Git Diff 写操作 + 文件页图片预览（right.js） --- */
 /* 工具条：提交信息输入（.inp 语言，小号 + flex 撑满）+ 提交/推送（.save-btn 小号） */
-.gd-bar {
-  display: flex; align-items: center; gap: 6px;
-  padding: 2px 8px 8px;
-}
 .gd-commit-inp {
   flex: 1; min-width: 0; width: auto;
   padding: 4px 9px; font-size: var(--ui-fs-xs);
 }
 /* 行内操作组：默认隐身，行 hover 才出现（右侧对齐，不挤文件名） */
-.gd-acts {
-  margin-left: auto; flex: none;
-  display: inline-flex; align-items: center; gap: 2px;
-  opacity: 0; transition: opacity .12s var(--swift);
-}
 .gd-row:hover .gd-acts,
 .gd-acts:focus-within { opacity: 1; }
 /* 行内小图标按钮：透明底 + hover --panel-3；danger 变体 hover 变红提示破坏性 */
@@ -3694,15 +3483,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .gd-act:disabled:hover { background: none; color: var(--faint); }
 .gd-act.danger:hover { background: var(--panel-3); color: var(--err); }
 /* 文件页图片预览：max-width 自适应、--panel-2 底（透明 png 深浅主题均协调）、token 边框圆角 */
-.fv-img {
-  display: block;
-  max-width: 100%; height: auto;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 6px;
-  box-sizing: border-box;
-}
 
 
 /* --- 发送钮停止形态（流式中且输入框空 / Esc 示警窗口）：ZCodium secondary 按钮同款
@@ -3740,12 +3520,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .find-count.none { color: var(--faint); }
 /* 导航/关闭小按钮 = .q-btn 同语言（20px 底板 + hover --panel-2） */
-.find-nav {
-  flex: none; width: 22px; height: 22px; border-radius: 6px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--dim); cursor: pointer; border: 0; background: none; padding: 0;
-  transition: background .15s var(--swift), color .15s var(--swift);
-}
 .find-nav:hover { background: var(--panel-2); color: var(--text); }
 /* 命中消息闪烁强调：背景高亮渐隐（accent 派生，与 .inp 聚焦光晕同源） */
 @keyframes findflash {
@@ -3871,10 +3645,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .bt-row:hover { background: var(--panel-2); color: var(--text); }
 .bt-row.cur { border-color: var(--accent); color: var(--text); cursor: default; }
 .bt-row.cur:hover { background: none; }
-.bt-name {
-  flex: 1; min-width: 0; font-size: var(--ui-fs-base);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 .bt-meta { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
 /* 子分支缩进 + 竖线引导线（每深一级嵌套一层容器，深度不限样式统一） */
 .bt-kids { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
@@ -3917,10 +3687,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .st-row.on-path .st-asst { color: var(--green); }
 .st-label { color: var(--yellow); }
 /* 当前叶徽标 + 时间：右列固定，不随文本截断 */
-.st-leaf {
-  flex: none; font-size: var(--ui-fs-xs); color: var(--accent);
-  border: 1px solid var(--accent); border-radius: var(--r-sm); padding: 0 5px; line-height: 16px;
-}
 .st-ts { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
 .st-confirm-text {
   max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -4191,3 +3957,148 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   transition: background .12s var(--swift);
 }
 .bpane-err-acts .btn:hover { background: var(--panel-3); }
+
+/* ── P6: streamdown ──
+   assistant markdown 渲染引擎换 streamdown（ui-src/components/chat/AssistantMsg.tsx）。
+   streamdown 自带的 Tailwind utility 不在本仓 @source 扫描范围（等于自带样式全关），
+   其深度定制结构按 data-streamdown 属性标记对齐既有 .md-code-block / .md-table-wrap 视觉；
+   代码 token 颜色来自 Shiki 双主题的行内 CSS 变量：浅色读 --sdm-c、深色读 --shiki-dark，
+   跟随 html[data-theme] 即时切换（文件页染色仍走 ui-src/lib/highlighter.ts，互不影响）。 */
+.md-body [data-streamdown="code-block"] {
+  margin: 14px 0;
+  background: #19191d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  overflow: hidden;
+}
+[data-theme="light"] .md-body [data-streamdown="code-block"] {
+  background: #f6f8fa;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.md-body [data-streamdown="code-block-header"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  user-select: none;
+}
+[data-theme="light"] .md-body [data-streamdown="code-block-header"] {
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+.md-body [data-streamdown="code-block-header"] > span:first-child {
+  font-family: var(--mono) !important;
+  text-transform: lowercase;
+}
+.md-body [data-streamdown="code-block-copy-button"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--ui-fs-xs);
+  cursor: pointer;
+}
+.md-body [data-streamdown="code-block-copy-button"]:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+.md-body [data-streamdown="code-block-copy-button"] svg {
+  width: 12px;
+  height: 12px;
+}
+.md-body [data-streamdown="code-block-body"] {
+  overflow-x: auto;
+}
+.md-body [data-streamdown="code-block-body"] pre {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  line-height: 1.6;
+}
+.md-body [data-streamdown="code-block-body"] pre code {
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  color: #d1d5db; /* 无 token 时的正文兜底色（对齐 .md-code-block code） */
+}
+[data-theme="light"] .md-body [data-streamdown="code-block-body"] pre code {
+  color: #24292f;
+}
+/* Shiki 双主题 token：变量写在 token span 的行内 style 上；有底色的 token（diff 类）
+   才带 --sdm-tbg，用属性子串选择器命中，避免给普通 token 加背景 */
+.md-body [data-streamdown="code-block-body"] pre span[style] {
+  color: var(--sdm-c, inherit);
+}
+[data-theme="dark"] .md-body [data-streamdown="code-block-body"] pre span[style] {
+  color: var(--shiki-dark, var(--sdm-c, inherit));
+}
+.md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+  background-color: var(--sdm-tbg);
+}
+[data-theme="dark"] .md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+  background-color: var(--shiki-dark-bg, var(--sdm-tbg));
+}
+/* 表格外壳：对齐 .md-table-wrap（table 本体经 components 挂 .md-table 类，走既有规则） */
+.md-body [data-streamdown="table-wrapper"] {
+  width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+/* 图片：旧管线不渲染图片，这里只做不破版的基础收敛 */
+.md-body [data-streamdown="image-wrapper"] {
+  margin: 14px 0;
+}
+.md-body [data-streamdown="image-wrapper"] img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+/* ============================== P7（Composer → Lexical） ============================== */
+/* contentEditable 承接旧 textarea 的 #input 样式：高度随内容自适应（≤120px 由 #input 的
+   max-height 钳制，超出内部滚动——textarea 时代的 resizeInput JS 不再需要），折行语义对齐
+   textarea 的 pre-wrap + break-word；overflow-y 补上（div 无 UA 默认滚动） */
+#input.inp-ce {
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  cursor: text;
+}
+/* placeholder 覆盖层：ContentEditable 的占位容器无定位，挂在 .lex-wrap（relative）上对齐
+   #input 文本起点（#input 无 padding，padding 在 #composer），仅空内容时渲染 */
+.lex-wrap { position: relative; }
+.lex-ph {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--faint);
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* bash 模式（! 前缀）placeholder 变色：对齐旧 #composer.bash-mode #input::placeholder */
+#composer.bash-mode .lex-ph { color: var(--bash); }
+/* 补全 chip（@文件 / 斜杠命令原子节点）：小胶囊，色板取 token，深浅主题各表 */
+.chip {
+  display: inline-block;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 5px;
+  margin: 0 1px;
+  color: var(--text);
+  line-height: 1.45;
+  white-space: pre;
+  vertical-align: baseline;
+}

@@ -87,8 +87,8 @@ export default function ArchivedSection({ onDelete }: { onDelete: (s: SessionInf
         onClick={toggle}
       >
         <span className="caret"><Icon name="caret" size={14} /></span>
-        <span className="aname">已归档</span>
-        <span className="acount">{`(${list.length})`}</span>
+        <span className="flex-1 min-w-0 truncate">已归档</span>
+        <span className="flex-none text-ui-sm text-faint">{`(${list.length})`}</span>
       </div>
       {(expanded || closing) && <ArchKids list={list} animate={open} closing={closing} onDelete={onDelete} />}
     </>

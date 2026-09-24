@@ -1,4 +1,5 @@
-// 设置行唯一渲染器：把 placement 段展开为设置行，复用既有 .srow/.tg/.sel/.inp 控件语言。
+// 设置行唯一渲染器：把 placement 段展开为设置行；行结构复用 .srow，控件层走 Radix 基件
+// （Switch/Select/Input/Textarea，ui/components/ui/，视觉对齐原 .tg/.sel/.inp）。
 // 中文文案查 SETTINGS_ZH；缺省回落 schema 的 ui.label/description（底座加键不致空白）；
 // 无 ui 的键（高级页）回落为「键名 + 类型/默认」。控件按 def.type 分派，改后经 set_setting 回写。
 import { useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
@@ -6,6 +7,10 @@ import { useAppStore, send, toast } from "../../store";
 import Icon from "../../Icon";
 import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH } from "./settings-zh";
 import { expandSection, type Section, type SchemaDef } from "./placement";
+import { Switch } from "../ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 // def.type → 中文类型名（缺省回落原始 type 字符串）
 const ZH_TYPE: Record<string, string> = { boolean: "布尔", number: "数字", string: "字符串", enum: "枚举", array: "数组", record: "对象" };
@@ -22,46 +27,22 @@ interface SchemaSelProps {
   onPick: (v: string) => void;
 }
 
-// 下拉：复用 GeneralPage Sel 的 .sel/.menu/.mi 结构；选中即发（enum 专用）
+// 下拉：Radix Select（trigger 胶囊 / 弹层 .menu 视觉由基件承担）；选中即发（enum 专用）
 function SchemaSel({ current, options, onPick }: SchemaSelProps) {
-  const [open, setOpen] = useState(false);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [open]);
   const sel = options.find((o) => o.v === current);
   return (
-    <div
-      className="sel"
-      ref={boxRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        setOpen(!open);
-      }}
-    >
-      {sel ? sel.label : String(current ?? "")} <Icon name="caret" size={14} className="caret-svg" />
-      <div className={"menu" + (open ? " open" : "")}>
+    <Select value={sel ? sel.v : ""} onValueChange={onPick}>
+      <SelectTrigger>
+        <SelectValue placeholder={String(current ?? "")} />
+      </SelectTrigger>
+      <SelectContent>
         {options.map((o) => (
-          <div
-            key={String(o.v)}
-            className="mi"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onPick(o.v);
-            }}
-          >
-            <span className="ck">{o.v === current ? "✓" : ""}</span>
+          <SelectItem key={o.v} value={o.v}>
             {o.label}
-          </div>
+          </SelectItem>
         ))}
-      </div>
-    </div>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -133,9 +114,7 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
   let ctl: ReactElement;
   if (type === "boolean") {
     ctl = (
-      <div className={"tg" + (value ? " on" : "")} onClick={() => send({ type: "set_setting", key: k, value: !value })}>
-        <i></i>
-      </div>
+      <Switch checked={!!value} onCheckedChange={(v) => send({ type: "set_setting", key: k, value: v })} />
     );
   } else if (type === "enum") {
     const opts = Array.isArray(def.ui?.options)
@@ -143,14 +122,13 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
       : (def.values ?? []).map((v) => ({ v, label: OPTS_ZH[k]?.[v] ?? v }));
     ctl = <SchemaSel current={value} options={opts} onPick={(v) => send({ type: "set_setting", key: k, value: v })} />;
   } else if (type === "record") {
-    ctl = <textarea className="inp" rows={3} ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // 同一 ref 复用于 input/textarea,仅在 activeElement 比较处读取,收窄安全
+    ctl = <Textarea rows={3} ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // 同一 ref 复用于 input/textarea,仅在 activeElement 比较处读取,收窄安全
   } else if (type === "number") {
-    ctl = <input className="inp" type="number" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+    ctl = <Input type="number" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
   } else {
     // string / string+credential(password) / array(逗号)
     ctl = (
-      <input
-        className="inp"
+      <Input
         type={cred ? "password" : "text"}
         ref={inputRef as RefObject<HTMLInputElement | null>}
         value={text}

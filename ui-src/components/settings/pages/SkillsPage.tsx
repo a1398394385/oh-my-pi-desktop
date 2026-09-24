@@ -203,7 +203,7 @@ export default function SkillsPage() {
           <div className="sel skills-scope-sel" id="skillScopeSel">
             <button type="button" className="skills-scope-btn" id="skillScopeBtn"
               onClick={(e) => { e.stopPropagation(); const was = scopeOpen; setMoreOpen(false); setScopeOpen(!was); }}>
-              <span className="skills-scope-icon"><Icon name={curSec.iconName || "laptop"} size={14} /></span>
+              <span className="inline-flex items-center text-faint"><Icon name={curSec.iconName || "laptop"} size={14} /></span>
               <span id="skillScopeLabel">{curSec.label}</span>
               <span className="caret-svg"><Icon name="caret" size={14} /></span>
             </button>
@@ -222,7 +222,7 @@ export default function SkillsPage() {
             </div>
           </div>
           <span className="skills-divider">|</span>
-          <span className="skills-count-stat" id="skillsTotalCount">技能 {totalCount}</span>
+          <span className="text-ui-base text-dim" id="skillsTotalCount">技能 {totalCount}</span>
         </div>
         <div className="skills-search-wrap">
           <span className="skills-search-icon"><Icon name="search" size={14} /></span>
@@ -233,7 +233,7 @@ export default function SkillsPage() {
       </div>
 
       <div className="skills-bar-secondary">
-        <div className="skills-installed-stat" id="skillsInstalledLabel">已安装 {installedCount}</div>
+        <div className="text-ui-sm font-medium text-dim" id="skillsInstalledLabel">已安装 {installedCount}</div>
         <div className="skills-actions-wrap">
           <div className="sel" id="skillsMoreSel">
             <button type="button" className="skills-btn-icon" id="skillsMoreBtn" title="更多选项"
@@ -279,7 +279,7 @@ export default function SkillsPage() {
                     <div className="skill-badge"><Icon name="skills" size={14} /></div>
                     <div className="skill-info">
                       <div className="skill-title-row">
-                        <span className="skill-name">{s.name}</span>
+                        <span className="text-ui-base font-medium truncate text-text">{s.name}</span>
                         {s.provider && s.provider !== "native" && <span className="skill-provider-tag">{s.provider}</span>}
                       </div>
                       <div className="skill-desc" title={s.description || s.name}>{s.description || "暂无描述"}</div>
@@ -311,7 +311,7 @@ export default function SkillsPage() {
                           onClick={(e) => e.stopPropagation()} />
                       </div>
                       <div className="sem-foot">
-                        <span className="sem-status">{editStatus}</span>
+                        <span className="text-ui-sm text-dim">{editStatus}</span>
                         <span className="sp" />
                         <button type="button" className="confirm-btn danger" onClick={() => onEditorDelete(s)}>删除</button>
                         <button type="button" className="confirm-btn" onClick={onSave}>保存</button>

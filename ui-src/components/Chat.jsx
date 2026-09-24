@@ -75,7 +75,7 @@ export default function Chat() {
       <>
         <div id="statusWrap" />
         <div id="stream" ref={streamRef} onScroll={onScroll}>
-          <div className="placeholder">点左侧任务或「新建任务」开始</div>
+          <div className="text-faint text-ui-base py-[12px] px-[10px]">点左侧任务或「新建任务」开始</div>
           {scrollBottomBtn}
         </div>
       </>

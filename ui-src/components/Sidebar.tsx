@@ -393,13 +393,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   return (
     <aside id="sidebar" data-tauri-drag-region="">
-      <div className="nav">
+      <div className="pt-[10px] px-[10px] flex-none">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
           <Icon name="messagePlus" size={16} />
-          新建任务 <span className="kbd">⌘ N</span>
+          新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]">⌘ N</span>
         </div>
       </div>
-      <div className="viewtabs">
+      <div className="flex items-center pt-[10px] px-[14px] pb-[8px] gap-[8px] flex-none">
         <div className="seg" id="seg">
           <button data-view="recent" className={viewMode === "recent" ? "on" : ""} onClick={() => setBump({ viewMode: "recent" })}>最近</button>
           <button data-view="project" className={viewMode === "project" ? "on" : ""} onClick={() => setBump({ viewMode: "project" })}>项目</button>
@@ -428,7 +428,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
             )}
             <div className="sec-label">
               <span>项目</span>
-              <div className="sec-actions">
+              <div className="flex items-center gap-[4px]">
                 <button className="sec-add" title="添加项目" onClick={onSecAdd}>
                   <Icon name="plus" size={14} />
                 </button>
@@ -474,13 +474,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
                 );
               });
             })()}
-            {visible.length === 0 && <div className="empty-hint">暂无项目，点击「项目」右侧 ＋ 添加</div>}
+            {visible.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无项目，点击「项目」右侧 ＋ 添加</div>}
           </>
         ) : (
           <>
             <div className="sec-label">最近任务</div>
             {flat.map((s) => rowOf(s, { showRepo: true }, `recent:${s.path}`))}
-            {flat.length === 0 && <div className="empty-hint">暂无任务</div>}
+            {flat.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无任务</div>}
           </>
         )}
         {/* 归档区固定在列表底部（两种视图共用） */}
@@ -488,10 +488,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
       <div className="side-foot">
         <div className="avatar"><img src="app-icon.png" alt="" /></div>
-        <div className="sf-tx">
-          <span className="uname" id="sideProfileName">{hostSettings?.activeProfile || "omp-desktop"}</span>
+        <div className="flex items-center gap-[6px] min-w-0">
+          <span className="text-[15px] font-semibold text-text truncate leading-none" id="sideProfileName">{hostSettings?.activeProfile || "omp-desktop"}</span>
         </div>
-        <span className="sp"></span>
+        <span className="flex-1"></span>
         <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>
           <Icon name="settings" size={14} />
         </button>

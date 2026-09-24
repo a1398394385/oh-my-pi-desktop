@@ -61,7 +61,7 @@ export default function TodoCard() {
           <div className="sc-head">
             <b>会话状态</b>
             <span className="frac" id="todoFrac">{frac}</span>
-            <span className="sp"></span>
+            <span className="flex-1"></span>
             <button className="icon-btn" id="scCollapse" title="收起为胶囊">
               <Icon name="collapseCard" />
             </button>
@@ -70,7 +70,7 @@ export default function TodoCard() {
             {phases.map((phase, pi) =>
               phase.tasks.length === 0 ? null : (
                 <Fragment key={pi}>
-                  {phases.length > 1 && <div className="sc-phase">{phase.name}</div>}
+                  {phases.length > 1 && <div className="text-ui-sm text-faint pt-[8px] px-[2px] pb-[2px]">{phase.name}</div>}
                   {phase.tasks.map((t, ti) => <TodoRow t={t} key={ti} />)}
                 </Fragment>
               ),

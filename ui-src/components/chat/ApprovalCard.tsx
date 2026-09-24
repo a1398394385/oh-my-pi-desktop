@@ -119,10 +119,10 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     : -1;
 
   return (
-    <div className="approval-card">
-      <div className="approval-head">等待确认</div>
-      <div className="approval-title">{item.title}</div>
-      <div className="approval-list" role="listbox" aria-label="确认选项" ref={listRef}>
+    <div className="bg-inset border border-line-soft rounded-card p-[12px] flex flex-col gap-[12px]">
+      <div className="text-ui-base font-medium text-dim leading-[1.3]">等待确认</div>
+      <div className="text-text font-sans text-ui-base leading-[1.5] whitespace-pre-wrap break-words max-h-[160px] overflow-y-auto overscroll-contain">{item.title}</div>
+      <div className="flex flex-col gap-[4px]" role="listbox" aria-label="确认选项" ref={listRef}>
         {item.options.map((opt, i) => {
           const num = answered && i === frozenChosen ? "✓" : `${i + 1}.`;
           const cls =
@@ -174,18 +174,18 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
               onClick={() => (sel ? choose(i) : focusRow(i))}
             >
               <span className="approval-num">{num}</span>
-              <span className="approval-label">{opt}</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">{opt}</span>
             </button>
           );
         })}
       </div>
       {!answered && (
-        <div className="approval-foot">
-          <span className="approval-hint">
-            <Icon name="info" size={14} />
+        <div className="flex items-center justify-between gap-[8px] px-[4px]">
+          <span className="inline-flex items-center gap-[8px] min-w-0 text-dim text-ui-base">
+            <Icon name="info" size={14} className="text-text" />
             使用 Tab / 上下键选择，回车确认
           </span>
-          <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>
+          <button type="button" className="flex-none h-[32px] px-[12px] border-0 rounded-[8px] bg-accent text-white text-ui-base font-medium cursor-pointer hover:opacity-80 disabled:opacity-45 disabled:cursor-default transition-opacity duration-150 ease-[var(--swift)]" onClick={() => choose(selectedRef.current)}>
             确认
           </button>
         </div>

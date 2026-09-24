@@ -143,16 +143,16 @@ export default function SessionTreePage() {
     send({ type: "get_entry_tree", sessionId: session.sessionId });
   });
   if (!s) {
-    return <div className="placeholder">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
   }
   const tree = rightState.entryTree;
   const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
   if (stale) {
-    return <div className="placeholder">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
   }
   const roots = tree.roots ?? [];
   if (roots.length === 0) {
-    return <div className="bt-empty">会话还没有任何条目。</div>;
+    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]">会话还没有任何条目。</div>;
   }
   const activeIds = activePathIds(roots, tree.leafId);
   const rows = flattenRows(roots, activeIds).filter((r) => passesFilter(r.node, filter));
@@ -165,8 +165,8 @@ export default function SessionTreePage() {
     send({ type: "navigate_tree", sessionId: s.sessionId, entryId: node.id, summarize });
   };
   return (
-    <div className="st-page">
-      <div className="st-bar">
+    <div className="flex flex-col h-full">
+      <div className="pt-1.5 px-2">
         <div className="mcp-type-pills">
           {FILTERS.map(([v, label]) => (
             <button key={v} type="button" className={"mcp-type-pill" + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
@@ -175,7 +175,7 @@ export default function SessionTreePage() {
           ))}
         </div>
       </div>
-      <div className="st-list">
+      <div className="flex-1 overflow-y-auto pt-1 px-2 pb-2">
         {rows.map(({ node, gutters, connector }) => {
           const isLeaf = node.id === tree.leafId;
           const onPath = activeIds.has(node.id);
@@ -195,23 +195,23 @@ export default function SessionTreePage() {
             >
               <span className="st-prefix" aria-hidden>
                 {gutters.map((g, i) => (
-                  <span key={i} className="st-rail">
+                  <span key={i} className="inline-block w-[3ch]">
                     {g ? "│" : " "}
                   </span>
                 ))}
-                {connector ? <span className="st-conn">{connector}</span> : null}
+                {connector ? <span className="text-faint">{connector}</span> : null}
               </span>
               <span className={"st-text " + roleClass(node)}>
-                {onPath ? <span className="st-dot">•</span> : null}
-                {node.label ? <span className="st-label">[{node.label}] </span> : null}
+                {onPath ? <span className="text-accent mr-1">•</span> : null}
+                {node.label ? <span className="text-yellow">[{node.label}] </span> : null}
                 {node.text || "（空）"}
               </span>
-              {node.id === badgeId ? <span className="st-leaf">当前</span> : null}
-              {node.ts ? <span className="st-ts">{fmtAgo(node.ts)}</span> : null}
+              {node.id === badgeId ? <span className="flex-none text-ui-xs text-accent border border-accent rounded-sm px-[5px] leading-4">当前</span> : null}
+              {node.ts ? <span className="flex-none text-ui-xs text-faint">{fmtAgo(node.ts)}</span> : null}
             </button>
           );
         })}
-        {rows.length === 0 ? <div className="bt-empty">当前过滤条件下没有条目。</div> : null}
+        {rows.length === 0 ? <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]">当前过滤条件下没有条目。</div> : null}
       </div>
       {confirmNode ? (
         <div

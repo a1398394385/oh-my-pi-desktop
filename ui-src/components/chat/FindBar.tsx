@@ -176,13 +176,13 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
         }}
       />
       <span className={"find-count" + (count === "无结果" ? " none" : "")}>{count}</span>
-      <button className="find-nav" title="上一个 (⇧↵)" onClick={() => gotoMatch(-1)}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title="上一个 (⇧↵)" onClick={() => gotoMatch(-1)}>
         <Icon name="chevronUp" />
       </button>
-      <button className="find-nav" title="下一个 (↵)" onClick={() => gotoMatch(1)}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title="下一个 (↵)" onClick={() => gotoMatch(1)}>
         <Icon name="chevronDown" />
       </button>
-      <button className="find-nav find-close" title="关闭 (Esc)" onClick={close}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)] find-close" title="关闭 (Esc)" onClick={close}>
         <Icon name="xmark" size={12} />
       </button>
     </div>

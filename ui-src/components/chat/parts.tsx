@@ -74,7 +74,7 @@ export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): voi
 // 也可能是「本来就没有」（目录读取、空结果），只有 running 分得清（BUG-016 的同源教训）
 export function Spin() {
   return (
-    <span className="pend" role="status">
+    <span className="flex-none inline-flex items-center gap-[6px] text-dim text-ui-base" role="status">
       <Icon name="loader" size={13} className="pend-ico" />
       …
     </span>
@@ -158,7 +158,7 @@ export function LinkedText({ text }: { text?: string }) {
     out.push(
       <a
         key={k++}
-        className="ext-link"
+        className="cursor-pointer text-blue no-underline hover:underline"
         title="⌘+点击在默认浏览器打开"
         onClick={(e) => {
           e.preventDefault();
@@ -241,11 +241,11 @@ export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; 
     // 请求在途（工具已结束 → 保留原文案）。判据同一口径：item.running
     return (
       <FadeBox className={cls}>
-        <div className="placeholder">{item.running ? <Spin /> : "加载中…"}</div>
+        <div className="text-faint text-ui-base py-[12px] px-[10px]">{item.running ? <Spin /> : "加载中…"}</div>
       </FadeBox>
     );
   }
-  if (!diff) return <FadeBox className={cls}><div className="placeholder">（无差异内容）</div></FadeBox>;
+  if (!diff) return <FadeBox className={cls}><div className="text-faint text-ui-base py-[12px] px-[10px]">（无差异内容）</div></FadeBox>;
   return (
     <FadeBox className={cls}>
       <LightweightDiff diff={diff} lang={langOfPath(path)} />
@@ -314,7 +314,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(path)} lift={closing} />
       ) : (
         <FadeBox className={"ed-brief" + (closing ? " lift" : " drop")}>
-          <div className="placeholder"><Spin /></div>
+          <div className="text-faint text-ui-base py-[12px] px-[10px]"><Spin /></div>
         </FadeBox>
       ))}
     </>

@@ -14,16 +14,18 @@
    - 共享底座（authStorage / modelRegistry / settings）。
    - 管理会话池 `Map<sessionId, PoolEntry>`，对接 `@oh-my-pi/pi-coding-agent` SDK。
    - 通过 WebSocket 向 UI 提供双向 RPC 协议（会话创建/加载、模型切换、分支查询与切换、权限模式、Git diff 等）。
-3. **Web 前端 (`ui/`)**：
-   - `ui/index.html`、`ui/style.css`、`ui/app.js`、`ui/icons.js`（图标注册表）、`ui/fa-icons.js`（FA 图标生成物）。
-   - 纯原生现代 Web 技术栈，不依赖繁重前端打包框架。
+3. **Web 前端 (`ui-src/`,构建产物 `ui/dist/`)**：
+   - 技术栈：**React 19 + TypeScript + Vite 8 + Tailwind v4 + zustand**（P1–P4 已迁移完成）；markdown 渲染 **streamdown**（+cjk/code 插件,`chat/AssistantMsg.tsx`）；输入框 **Lexical**（`Composer.tsx` + `composer/lexical/`）；shadcn/Radix 基件在 `components/ui/`（button/dialog/select/switch/tooltip 等,类合成 cn=clsx+tailwind-merge）。
+   - 状态：单一 zustand store `ui-src/store/`（index 组合六 slice:ui/session/projects/right/settings/ws；终端帧总线 terminal、组展开通道 groupExpand 不经 zustand）；组件一律 `useAppStore(selector)` 订阅,写入 `setBump({...})`（setState 别名）或 slice action；**容器(Map/Set/数组)变更必须换新引用**；selector 禁止返回新构造对象（用 useShallow）；禁 zustand subscribe 里 set（React 19 死循环）。
+   - `ui/style.css`：token 变量(:root)+ `@theme inline` 映射为 Tailwind utility（bg-card/text-dim/border-line/text-ui-sm/rounded-md/font-mono 等）；**未导入 Preflight**（border utility 需显式 border-style 语义注意）；复合类全站语言保留 CSS 定义（见下）。构建：`bun run ui:build`（产物 ui/dist）、`ui:typecheck`、`ui:dev`（浏览器 preview `?preview=1`）。
+   - `ui/index.html`、`ui/icons.js`（图标注册表）、`ui/fa-icons.js`（FA 生成物）、`ui/lucide-icons.js`、`ui/file-icons.js` 图标体系不变。
 
 ## 整体 UI 风格对齐 VSCode（全站基准）
 
 视觉决策以 VSCode 源码（`/Volumes/MacApps/Github/vscode`）为准：深色对齐其 **Dark+**、浅色对齐其 **Light+**。做新 UI / 改颜色 / 定义 token 时，先查 VSCode 对应部件怎么做，抄它的配色与层次，不另造风格：
 
 1. **颜色**：语义对照 VSCode 色板（编辑器面/侧栏面对应 `--card`/`--panel-*`，前景 `--text`/`--dim`/`--faint`，强调 `--accent`，行高亮/diff 底色参照 Dark+/Light+ 的 token 色）；禁止凭感觉配新色。
-2. **代码染色**：shiki 主题固定 `dark-plus`/`light-plus`（VSCode 默认主题同款），随 `data-theme` 切换；实现见 `ui-src/lib/highlighter.js`。
+2. **代码染色**：shiki 主题固定 `dark-plus`/`light-plus`（VSCode 默认主题同款），随 `data-theme` 切换；消息体走 streamdown code 插件双主题、文件/diff 视图走 `ui-src/lib/highlighter.ts`。
 3. **右栏三区结构**（`#right` 内部从上到下，每块通栏、左右零边距，整块边栏是一个整体）：
    - 第一区 **tab 栏**（`.sp-head`）；
    - 第二区 **tab 专属操作栏**（`.rb-head`：返回钮/全路径等，可无）；

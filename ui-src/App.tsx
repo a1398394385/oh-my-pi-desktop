@@ -41,7 +41,7 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
         <Icon name={sidebarCollapsed ? "collapseRight" : "collapseLeft"} />
       </button>
       <Icon name="folderOld" style={{ color: "var(--faint)" }} />
-      <span className="ttl" id="chatTitle">{title}</span>
+      <span className="text-ui-md font-semibold truncate min-w-0 flex-1" id="chatTitle">{title}</span>
       <span className="sp"></span>
       <button className="icon-btn" title="收起右侧面板" id="panelToggle" onClick={onToggleRight}>
         <Icon name={rightCollapsed ? "collapseLeft" : "collapseRight"} />

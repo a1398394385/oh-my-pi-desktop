@@ -97,7 +97,7 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
             显示更多
           </button>
         )}
-        {p.sessions.length === 0 && <div className={"empty-hint" + (animate ? " kids-in" : "")}>暂无任务</div>}
+        {p.sessions.length === 0 && <div className={"text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]" + (animate ? " kids-in" : "")}>暂无任务</div>}
       </div>
     </div>
   );

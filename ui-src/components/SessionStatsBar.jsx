@@ -24,9 +24,9 @@ export default function SessionStatsBar() {
   return (
     <div className="stats-bar" id="statsBar">
       {items.map(([k, v]) => (
-        <span className="sb-item" key={k}>
+        <span className="inline-flex items-baseline gap-[5px]" key={k}>
           <span className="sb-k">{k}</span>
-          <span className="sb-v">{v}</span>
+          <span className="text-dim">{v}</span>
         </span>
       ))}
     </div>

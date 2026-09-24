@@ -160,7 +160,7 @@ export default function AgentsPage() {
             </div>
           )}
         </div>
-        <span className="agents-bar-path" id="agentsScopePath">{cur?.dir ?? ""}</span>
+        <span className="truncate text-ui-sm text-faint" id="agentsScopePath">{cur?.dir ?? ""}</span>
       </div>
       <div className="agents-wrap">
         <div className="set-card" id="agentsList">

@@ -51,7 +51,7 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
       >
         <Icon name="fork" size={13} />
       </button>
-      {item.endMs ? <span className="turn-acts-time">{fmtClock(item.endMs)}</span> : null}
+      {item.endMs ? <span className="ml-[4px] text-ui-xs text-faint tabular-nums">{fmtClock(item.endMs)}</span> : null}
     </div>
   );
 }

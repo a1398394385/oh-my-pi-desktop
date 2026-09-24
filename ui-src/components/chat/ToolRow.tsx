@@ -203,9 +203,9 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
       {questions.map((q, i) =>
         !q || typeof q !== "object" ? null : (
           <div className="ask-q" key={i}>
-            <div className="ask-q-t">
+            <div className="text-text">
               {`${i + 1}. ${q.question || ""}${q.multi ? "（多选）" : ""}`}
-              {q.header && <span className="ask-q-h">{q.header}</span>}
+              {q.header && <span className="text-dim ml-[6px] text-[0.92em]">{q.header}</span>}
             </div>
             {(Array.isArray(q.options) ? q.options : []).map((opt, j) => (
               <div className={"ask-opt" + (q.recommended === j ? " rec" : "")} key={j}>

@@ -51,16 +51,16 @@ export default function BranchTreePage() {
     send({ type: "get_session_tree", sessionId: session.sessionId });
   });
   if (!s) {
-    return <div className="placeholder">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
   }
   const tree = rightState.sessionTree;
   const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
   if (stale) {
-    return <div className="placeholder">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
   }
   const branches = tree.branches ?? [];
   if (branches.length <= 1) {
-    return <div className="bt-empty">暂无其他分支。把鼠标移到某轮回复的末尾，点分叉按钮可从该处创建新分支。</div>;
+    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]">暂无其他分支。把鼠标移到某轮回复的末尾，点分叉按钮可从该处创建新分支。</div>;
   }
   // 按 parentSession 组树：根支（无父或父不在家族列表）在顶层，子支随父缩进（深度不限，样式统一）
   const byId = new Map(branches.map((b: BranchEntry) => [b.sessionId, b] as const));
@@ -79,7 +79,7 @@ export default function BranchTreePage() {
   roots.sort(byTime);
   for (const l of kidsOf.values()) l.sort(byTime);
   return (
-    <div className="bt-list">
+    <div className="py-1.5 px-2">
       <BranchLevel items={roots} kidsOf={kidsOf} depth={0} />
     </div>
   );
@@ -89,14 +89,14 @@ export default function BranchTreePage() {
 function BranchLevel({ items, kidsOf, depth }: { items: BranchEntry[]; kidsOf: Map<string, BranchEntry[]>; depth: number }) {
   const diskProjects = useAppStore((st) => st.diskProjects); // 标题首消息兜底数据（磁盘会话列表）变化时重渲染
   return (
-    <div className={depth > 0 ? "bt-kids" : undefined}>
+    <div className={depth > 0 ? "ml-2.5 pl-2.5 border-l border-line-soft" : undefined}>
       {items.map((b) => {
         const kids = kidsOf.get(b.sessionId);
         return (
           <Fragment key={b.sessionId}>
             <button className={"bt-row" + (b.isCurrent ? " cur" : "")} title={b.path} onClick={b.isCurrent ? undefined : () => loadBranchSession(b.path)}>
-              <span className="bt-name">{branchLabel(b, diskProjects)}</span>
-              <span className="bt-meta">
+              <span className="flex-1 min-w-0 text-ui-base overflow-hidden text-ellipsis whitespace-nowrap">{branchLabel(b, diskProjects)}</span>
+              <span className="flex-none text-ui-xs text-faint">
                 {[b.messageCount != null ? `${b.messageCount} 条` : null, b.modified ? fmtAgo(b.modified) : null]
                   .filter(Boolean)
                   .join(" · ")}

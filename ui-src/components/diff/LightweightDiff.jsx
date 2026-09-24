@@ -103,7 +103,7 @@ export default function LightweightDiff({ diff, lang, className = "" }) {
             </code>
           </div>
         ))}
-        {omitted > 0 && <div className="ldiff-truncated">… 内容过长，已省略剩余 {omitted} 行</div>}
+        {omitted > 0 && <div className="py-[4px] px-[12px] text-faint">… 内容过长，已省略剩余 {omitted} 行</div>}
       </div>
     </div>
   );

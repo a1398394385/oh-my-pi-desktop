@@ -126,10 +126,10 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       onClick={openSession}
       onContextMenu={(e) => onContext(e, s, rowKey)}
     >
-      <span className="task-leading">
+      <span className="relative flex-none w-[16px] h-[16px] inline-flex items-center justify-center">
         <span className={"task-indicator " + leading} title={leading === "loading" ? "运行中" : leading === "unread" ? "有新结果" : leading === "error" ? "最近一次运行失败" : undefined}>
-          {leading === "error" ? <span className="task-error-dot" /> : null}
-          {leading === "unread" ? <span className="seen-dot" /> : null}
+          {leading === "error" ? <span className="w-[6px] h-[6px] rounded-full bg-err" /> : null}
+          {leading === "unread" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
         {/* 与 ZCode 相同：悬停时 Pin 接管同一个前置槽；置顶列表/已置顶且无状态时常显。 */}

@@ -22,15 +22,18 @@ export default function FilePage() {
 function FileTree() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   if (!s) {
-    return <div className="placeholder">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
   }
   return (
     <>
-      <div className="ft-row ft-root" title={s.cwd}>
-        <span className="ft-ic">
+      <div
+        className="flex items-center gap-1.5 text-ui-base text-text font-medium cursor-default py-[3px] px-2 rounded-sm whitespace-nowrap overflow-hidden text-ellipsis"
+        title={s.cwd}
+      >
+        <span className="inline-flex items-center text-faint">
           <Icon name="folder" size={14} />
         </span>
-        <span className="ft-name">{s.cwd.split("/").filter(Boolean).pop() || s.cwd}</span>
+        <span className="min-w-0 overflow-hidden text-ellipsis">{s.cwd.split("/").filter(Boolean).pop() || s.cwd}</span>
       </div>
       <FileTreeLevel dirPath={s.cwd} depth={1} />
     </>
@@ -52,7 +55,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
   }, [dirPath]);
   const entries = rightState.fileTreeDirs.get(dirPath);
   if (entries === undefined) {
-    return <div className="placeholder">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
   }
   return (
     <>
@@ -63,7 +66,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
           return (
             <Fragment key={full}>
               <div
-                className="ft-row"
+                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
                 style={{ paddingLeft: 6 + depth * 14 + "px" }}
                 onClick={() => {
                   // 展开/收起：换新 Set + 新 rightState 引用（订阅者按引用感知）
@@ -78,7 +81,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
                 <span className={"ft-caret" + (expanded ? " open" : "")}>
                   <Icon name="chevronRight" size={10} />
                 </span>
-                <span className="ft-name">{e.name}</span>
+                <span className="min-w-0 overflow-hidden text-ellipsis">{e.name}</span>
               </div>
               {expanded && <FileTreeLevel dirPath={full} depth={depth + 1} />}
             </Fragment>
@@ -87,7 +90,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
         return (
           <div
             key={full}
-            className="ft-row"
+            className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
             style={{ paddingLeft: 6 + depth * 14 + "px" }}
             title={full}
             onClick={() => openFileView(full)}
@@ -95,7 +98,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
             <span className="ft-caret ft-file-ic">
               <Icon name={fileTypeIcon(e.name)} />
             </span>
-            <span className="ft-name">{e.name}</span>
+            <span className="min-w-0 overflow-hidden text-ellipsis">{e.name}</span>
           </div>
         );
       })}
@@ -126,15 +129,15 @@ function FileCrumb({ absPath }: { absPath: string }) {
     segs = abs.split("/").filter(Boolean);
   }
   return (
-    <div className="fv-crumb" title={absPath}>
+    <div className="flex items-center gap-0.5 text-ui-xs text-faint mb-2 px-2 overflow-hidden whitespace-nowrap" title={absPath}>
       {segs.map((seg, i) => (
         <Fragment key={i}>
           {i > 0 && (
-            <span className="fv-sep">
+            <span className="flex-none inline-flex items-center">
               <Icon name="chevronRight" size={10} />
             </span>
           )}
-          <span className="fv-seg">{seg}</span>
+          <span className="min-w-0 overflow-hidden text-ellipsis last:text-dim last:font-medium">{seg}</span>
         </Fragment>
       ))}
     </div>
@@ -154,7 +157,7 @@ function FvDetail() {
     <>
       <div className="rb-head">
         <button
-          className="sub-back"
+          className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text"
           onClick={() => {
             setBump({ fileView: null });
           }}
@@ -168,11 +171,11 @@ function FvDetail() {
         {fv.image ? (
           <FvImage fv={fv} />
         ) : !fv.text && !fv.error ? (
-          <div className="placeholder">加载中…</div>
+          <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>
         ) : (
           <>
             {fv.error && (
-              <div className="fv-more">（{fv.error}）</div>
+              <div className="text-ui-xs text-faint mt-2 px-2">（{fv.error}）</div>
             )}
             <FvBody fv={fv} bodyRef={bodyRef} />
           </>
@@ -199,21 +202,21 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
   const tokens = useCodeTokens(shown.join("\n"), langOfPath(fv.path));
   return (
     <>
-      <div className="fv-body" ref={bodyRef}>
+      <div className="pt-1 pr-2 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" ref={bodyRef}>
         {shown.map((tx, i) => {
           const n = lineNoOf(i);
           // 请求的行号范围内只高亮行号列，不动内容；null = 工具省略的空洞行
           const hl = n != null && reqStart != null && reqEnd != null && n >= reqStart && n <= reqEnd;
           return (
-            <div key={i} className="fv-line">
+            <div key={i} className="flex items-baseline">
               <span className={"fv-ln" + (hl ? " hl" : "")}>{n == null ? "…" : String(n)}</span>
-              <span className="fv-tx">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : tx === "" ? " " : tx}</span>
+              <span className="whitespace-pre text-dim [tab-size:4]">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : tx === "" ? " " : tx}</span>
             </div>
           );
         })}
       </div>
       {fv.full && lines.length > shown.length && (
-        <div className="fv-more">
+        <div className="text-ui-xs text-faint mt-2 px-2">
           文件共 {lines.length} 行，当前展示第 {winStartLine}–{winStartLine + shown.length - 1} 行
         </div>
       )}
@@ -225,10 +228,10 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
 function FvImage({ fv }: { fv: FileViewState }) {
   const ic = useAppStore((s) => s.rightState.imageContent);
   if (!ic || ic.path !== fv.path) {
-    return <div className="placeholder">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
   }
   if (ic.error) {
-    return <div className="fv-more">（{ic.error}）</div>;
+    return <div className="text-ui-xs text-faint mt-2 px-2">（{ic.error}）</div>;
   }
-  return <img className="fv-img" src={`data:${ic.mime};base64,${ic.data}`} alt={fv.path.split("/").pop()} />;
+  return <img className="block max-w-full h-auto bg-panel-2 border border-line rounded-md p-1.5 box-border" src={`data:${ic.mime};base64,${ic.data}`} alt={fv.path.split("/").pop()} />;
 }

@@ -74,16 +74,17 @@ export default function Welcome() {
     : "项目";
 
   return (
-    <div id="welcomeScreen" className="welcome-screen">
-      <div className="welcome-card">
-        <div className="welcome-title" id="welcomeTitle">{greeting()}</div>
-        <div className="wb-wrapper" id="wbContainer">
+    <div id="welcomeScreen" className="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto pt-[30px] px-[20px] pb-[80px]">
+      <div className="w-full max-w-[min(720px,100%)] flex flex-col items-center">
+        <div className="text-[26px] font-medium text-text mb-[28px] tracking-[0.5px] text-center select-none" id="welcomeTitle">{greeting()}</div>
+        <div className="w-full relative flex flex-col" id="wbContainer">
           <div
             ref={backCardRef}
             id="wbBackCard"
             className="wb-back-card"
           >
-            <div className="wb-head">
+            {/* 底部 20px padding 是重叠预算：输入框卡负 margin(-20px)上拉盖住的正是这段（对照 CSS 注释） */}
+            <div className="flex items-center gap-[8px] pt-[5px] px-[6px] pb-[20px]">
               <button
                 ref={projBtnRef}
                 id="wbProjectBtn"

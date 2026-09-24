@@ -1,6 +1,6 @@
 // 子代理页：卡片列表 + 点击进详情。
 // 详情骨架（今日定稿，必须保留）：#rightBody 加 detail 类，rb-head 固定（返回 + 名字/状态），
-// sub-stream rb-scroll 滚动承载过程流。
+// rb-scroll 滚动承载过程流。
 import { useRef } from "react";
 import { useAppStore, setBump } from "../../store";
 import { inlineCodeHtml } from "./helpers";
@@ -13,7 +13,7 @@ export default function SubagentPage() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
   if (!s || s.subagents.size === 0) {
-    return <div className="placeholder">（暂无子代理）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">（暂无子代理）</div>;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
     return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} />; // 上一行 has() 已守卫必存在
@@ -33,13 +33,13 @@ export default function SubagentPage() {
             }, 0);
           }}
         >
-          <div className="sub-card-head">
+          <div className="flex items-center gap-1.5 text-ui-base text-text">
             <span className="sub-dot">
               {sub.streaming ? "●" : sub.status === "completed" ? "✓" : sub.status === "failed" ? "✗" : "○"}
             </span>
             <span>{sub.agent}</span>
           </div>
-          <div className="sub-desc">{sub.description || sub.text.slice(0, 60) || "…"}</div>
+          <div className="text-ui-sm text-faint mt-1 line-clamp-2">{sub.description || sub.text.slice(0, 60) || "…"}</div>
         </button>
       ))}
     </>
@@ -63,14 +63,14 @@ function SubagentDetail({ sub }: { sub: SubagentState }) {
   return (
     <>
       <div ref={headRef} className={"rb-head" + (kids ? " kids-in" : "")}>
-        <button className="sub-back" onClick={back}>
+        <button className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text" onClick={back}>
           ‹ 返回列表
         </button>
-        <div className="sub-title">
+        <div className="text-ui-sm text-faint mb-1.5 break-all">
           {sub.agent} · {sub.status}
         </div>
       </div>
-      <div ref={scrollRef} className={"sub-stream rb-scroll" + (kids ? " kids-in" : "")}>
+      <div ref={scrollRef} className={"rb-scroll flex flex-col gap-2" + (kids ? " kids-in" : "")}>
         {sub.tools.map((t, i) => (
           <ToolLine key={i} t={t} />
         ))}
