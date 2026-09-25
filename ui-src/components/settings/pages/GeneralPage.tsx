@@ -24,30 +24,6 @@ interface SelProps {
   onPick: (v: string) => void;
 }
 
-// ---------- 主题（旧版 shell.js applyTheme 的等价物；General 与 Appearance 各持一份） ----------
-const themeMq = window.matchMedia("(prefers-color-scheme: dark)");
-function currentThemeMode(): string {
-  try { return localStorage.getItem("omp-theme") || "dark"; } catch { return "dark"; }
-}
-function applyTheme(mode: string): void {
-  const dark = mode === "system" ? themeMq.matches : mode === "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  try { localStorage.setItem("omp-theme", mode); } catch {}
-}
-// 主题图标对齐 ZCodium THEME_MODES（lucide 线条层：monitor/sun/moon）
-function themeIcon(mode: string): string {
-  return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
-}
-function themeLabel(mode: string): ReactNode {
-  const text = mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色";
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Icon name={themeIcon(mode)} size={14} />
-      {text}
-    </span>
-  );
-}
-
 // 本地偏好落盘（旧版 saveUiPrefs；读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
 function saveUiPrefs() {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
@@ -137,7 +113,6 @@ export default function GeneralPage() {
       setAskTimeout(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
     }
   }, [hs]);
-  const [theme, setTheme] = useState(currentThemeMode());
   const [showThinking, setShowThinking] = useState(!!useAppStore.getState().uiPrefs.showThinking);
 
   // ---------- 交互 ----------
@@ -157,12 +132,6 @@ export default function GeneralPage() {
       return;
     }
     switchProfile(name);
-  };
-  const pickTheme = (mode: string) => {
-    setTheme(mode);
-    applyTheme(mode);
-    // 旧版只写本地；此处同步通知宿主持久化
-    send({ type: "set_setting", key: "appearance.theme", value: mode });
   };
   const toggleThinking = () => {
     const on = !showThinking;
@@ -227,18 +196,6 @@ export default function GeneralPage() {
               { v: "en", label: "English", disabled: true, sub: "未实现" },
             ]}
             onPick={() => {}}
-          />
-        </div>
-        <div className="srow">
-          <div className="srow-tx"><b>主题</b><span>界面设置（深色 / 浅色 / 系统）。</span></div>
-          <Sel
-            label={themeLabel(theme)}
-            options={[
-              { v: "dark", label: themeLabel("dark"), ck: theme === "dark" ? "✓" : "" },
-              { v: "light", label: themeLabel("light"), ck: theme === "light" ? "✓" : "" },
-              { v: "system", label: themeLabel("system"), ck: theme === "system" ? "✓" : "" },
-            ]}
-            onPick={pickTheme}
           />
         </div>
       </div>
