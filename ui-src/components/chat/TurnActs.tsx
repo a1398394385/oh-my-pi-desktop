@@ -1,7 +1,6 @@
 // 一轮 output 结尾左下角的操作组：复制该条回复 + 从此处分叉 + 本轮结束时刻。
-// 分叉走 navigate_tree（同文件内把 leaf 移到该 assistant，被放弃路径留成兄弟分支）——
-// 底座 AgentSession.branch() 只接受 user 条目（agent-session.ts:9864 校验 role），
-// assistant 锚点只能走 navigateTree；锚点 entryId 由 host 落盘后回填（translate.ts）。
+// 分叉走 branch_session（截取从根到该 assistant 节点的历史条目，复制为全新会话文件）。
+// 锚点 entryId 由 host 落盘后回填（translate.ts）。
 import type { AssistantItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
@@ -35,23 +34,22 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
           );
         }}
       >
-        <Icon name="copy" size={13} />
+        <Icon name="copy" />
       </button>
       <button
         className="q-btn"
-        title={item.entryId ? "从此处分叉新分支" : "回复落盘后可分叉"}
+        title={item.entryId ? "从此处分叉出新会话" : "回复落盘后可分叉"}
         disabled={!canFork}
         onClick={(e) => {
           e.stopPropagation();
           if (!canFork || !s) return;
           patchActiveItem(item, (it) => { it.branching = true; }); // 全量重绘后仍保持禁用（标记随 item 数据存活）
-          useAppStore.setState((st) => ({ rightState: { ...st.rightState, navFrom: "fork" } })); // 回执按来源选文案（与树页跳转共用 navigate_tree）
-          useAppStore.getState().send({ type: "navigate_tree", sessionId: s.sessionId, entryId: item.entryId, summarize: false });
+          useAppStore.getState().send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
         }}
       >
-        <Icon name="fork" size={13} />
+        <Icon name="fork" />
       </button>
-      {item.endMs ? <span className="ml-[4px] text-ui-xs text-faint tabular-nums">{fmtClock(item.endMs)}</span> : null}
+      {item.endMs ? <span className="turn-acts-time">{fmtClock(item.endMs)}</span> : null}
     </div>
   );
 }

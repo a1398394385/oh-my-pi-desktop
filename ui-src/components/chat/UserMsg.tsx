@@ -17,7 +17,7 @@ function PendingActs({ item }: { item: UserItem }) {
         if (s) fn(s, item);
       }}
     >
-      <Icon name={ic} size={13} />
+      <Icon name={ic} size={15} />
     </button>
   );
   return (

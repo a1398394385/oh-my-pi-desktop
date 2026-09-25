@@ -87,7 +87,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
       onClick={(e) => e.stopPropagation()}
     >
       <div className="wb-proj-search">
-        <span className="wb-proj-search-icon flex items-center justify-center text-faint flex-none"><Icon name="search" size={13} /></span>
+        <span className="wb-proj-search-icon flex items-center justify-center text-faint flex-none"><Icon name="search" size={15} /></span>
         <input
           ref={searchRef}
           type="text"
@@ -121,7 +121,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
                 choose(p.cwd);
               }}
             >
-              <Icon name="folderLine" size={14} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
+              <Icon name="folderLine" size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
               <span className="wb-proj-item-name flex-1 truncate">{p.cwd.split("/").filter(Boolean).pop() || p.cwd}</span>
             </div>
           ))
@@ -129,7 +129,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
       </div>
       <div className="wb-proj-actions">
         <div className="wb-proj-action-item" id="wbProjOpenFolder" title="打开文件夹" onClick={openFolder}>
-          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="folderPlus" size={14} /></span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="folderPlus" size={15} /></span>
           <span className="wb-proj-action-tx flex-1 truncate">打开文件夹</span>
         </div>
         <div
@@ -142,7 +142,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
             onClose();
           }}
         >
-          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={14} /></span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={15} /></span>
           <span className="wb-proj-action-tx flex-1 truncate">远程连接</span>
         </div>
         <div
@@ -155,7 +155,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
             onClose();
           }}
         >
-          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="comment" size={14} /></span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="comment" size={15} /></span>
           <span className="wb-proj-action-tx flex-1 truncate">不在项目中工作</span>
         </div>
       </div>

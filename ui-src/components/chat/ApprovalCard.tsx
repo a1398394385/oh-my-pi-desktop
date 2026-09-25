@@ -182,7 +182,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       {!answered && (
         <div className="approval-foot">
           <span className="approval-hint">
-            <Icon name="info" size={14} />
+            <Icon name="info" size={15} />
             使用 Tab / 上下键选择，回车确认
           </span>
           <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>

@@ -150,6 +150,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       newSessionBranches: [],
     }));
     get().send({ type: "get_git_branches", cwd });
+    if (cwd) get().expandProject(cwd);
   },
 
   // force = 点新建/配置下发刷新：模型与档位回到配置文件默认；非 force 只做缺失兜底

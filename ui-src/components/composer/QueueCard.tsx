@@ -19,23 +19,23 @@ export default function QueueCard() {
         const item: UserItem = { role: "user", text: m.text || "", pending: "queued" }; // 与气泡动作共用的伪 item
         return (
           <div className="qc-row" key={i} title="排队中：当前任务完成后自动发送">
-            <span className="qc-dots"><Icon name="dots" size={13} /></span>
+            <span className="qc-dots"><Icon name="dots" size={15} /></span>
             <span className="qc-tx">{m.text || "（无文本）"}</span>
             <button
               className="q-btn"
               title="立即发送（当前步骤后注入）"
               onClick={(e) => { e.stopPropagation(); sendNowQueueMsg(s, item); }}
-            ><Icon name="upload" size={13} /></button>
+            ><Icon name="upload" size={15} /></button>
             <button
               className="q-btn"
               title="编辑（放回输入框）"
               onClick={(e) => { e.stopPropagation(); editQueueMsg(s, item); }}
-            ><Icon name="pencil" size={13} /></button>
+            ><Icon name="pencil" size={15} /></button>
             <button
               className="q-btn"
               title="删除"
               onClick={(e) => { e.stopPropagation(); dropQueueMsg(s, item); }}
-            ><Icon name="trash" size={13} /></button>
+            ><Icon name="trash" size={15} /></button>
           </div>
         );
       })}

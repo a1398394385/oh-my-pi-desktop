@@ -404,7 +404,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     <aside id="sidebar" data-tauri-drag-region="">
       <div className="pt-[10px] px-[10px] flex-none">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
-          <Icon name="messagePlus" size={16} />
+          <Icon name="messagePlus" size={19} />
           新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]">⌘ N</span>
         </div>
       </div>
@@ -441,14 +441,14 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
               <span>项目</span>
               <div className="flex items-center gap-[4px]">
                 <button className="sec-add" title="添加项目" onClick={onSecAdd}>
-                  <Icon name="plus" size={14} />
+                  <Icon name="plus" size={15} />
                 </button>
                 <button
                   className={"sec-trash" + (manage ? " active" : "")}
                   title={manage ? "退出清理模式" : "清理项目与会话"}
                   onClick={onSecTrash}
                 >
-                  <Icon name="trash" size={14} />
+                  <Icon name="trash" size={15} />
                 </button>
               </div>
             </div>
@@ -506,7 +506,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         </div>
         <span className="flex-1"></span>
         <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>
-          <Icon name="settings" size={14} />
+          <Icon name="settings" size={16} />
         </button>
       </div>
 

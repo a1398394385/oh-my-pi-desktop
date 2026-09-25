@@ -44,7 +44,7 @@ export default function BranchMenu({ anchorRect, onClose }: BranchMenuProps) {
         >
           <span className="ck">{b === curBranch ? "✓" : ""}</span>
           {/* 分支图标与分支选择胶囊同款（branch），保持全局图标风格一致 */}
-          <Icon name="branch" size={14} className="mi-ic" style={{ color: "var(--dim)" }} />
+          <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
           {b}
         </div>
       ))}

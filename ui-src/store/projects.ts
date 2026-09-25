@@ -17,6 +17,7 @@ export interface ProjectsSlice {
   unseenFinished: Set<string>;
   getAvailableProjects(): { cwd: string; sessions: DiskSessionRow[] }[];
   saveUnseen(): void;
+  expandProject(cwd: string): void;
 }
 
 export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> = (set, get) => ({
@@ -44,5 +45,17 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
 
   saveUnseen() {
     localStorage.setItem("omp-unseen-finished", JSON.stringify([...get().unseenFinished].slice(-200)));
+  },
+
+  expandProject(cwd: string) {
+    if (!cwd) return;
+    const st = get();
+    if (st.expandedProjects.has(cwd)) return; // 已处于展开态，不用动
+    const nextExpanded = new Set(st.expandedProjects);
+    nextExpanded.add(cwd);
+    const nextLimits = new Map(st.projectLimits);
+    nextLimits.delete(cwd);
+    get().send({ type: "set_project_expanded", cwd, expanded: true });
+    set({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   },
 });

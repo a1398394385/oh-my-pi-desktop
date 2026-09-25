@@ -759,8 +759,8 @@ function onMessage(msg: HostFrame): void {
         useAppStore.getState().toast(msg.error ?? "分叉失败");
         break;
       }
-      useAppStore.getState().toast("已分叉到新分支");
-      useAppStore.getState().setComposerValue(msg.selectedText ?? "", msg.selectedImages);
+      useAppStore.getState().toast("已分叉出新会话");
+      if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, msg.selectedImages);
       useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // 复用磁盘会话加载链路
       useAppStore.getState().send({ type: "list_sessions" });
       break;
@@ -788,7 +788,6 @@ function onMessage(msg: HostFrame): void {
     case "session_navigated": {
       // 树内导航回执：transcript 由 messages 帧重建；成功后条目树作废重拉
       //（被放弃路径已成为兄弟分支，旧树结构失效），user 消息原文回填输入框（重问）
-      const st2 = useAppStore.getState();
       {
         const cur = activeOpen();
         if (cur) {
@@ -796,15 +795,14 @@ function onMessage(msg: HostFrame): void {
           updateSession(cur.sessionId, () => {});
         }
       }
-      const fromFork = st2.rightState.navFrom === "fork"; // 分叉与树页跳转共用 navigate_tree，按来源给文案
       useAppStore.setState((s) => ({
         rightState: { ...s.rightState, entryTreeNav: false, navFrom: null, entryTree: msg.ok ? null : s.rightState.entryTree },
       }));
       if (!msg.ok) {
-        useAppStore.getState().toast(msg.error ?? (fromFork ? "分叉失败" : "跳转失败"));
+        useAppStore.getState().toast(msg.error ?? "跳转失败");
         break;
       }
-      useAppStore.getState().toast(fromFork ? "已从该处分叉" : "已跳转到所选节点");
+      useAppStore.getState().toast("已跳转到所选节点");
       if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages);
       break;
     }

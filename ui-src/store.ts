@@ -57,6 +57,7 @@ export const pickThinkingLevel = (lv: string): void => useAppStore.getState().pi
 export const getAvailableProjects = (): { cwd: string; sessions: DiskSessionRow[] }[] =>
   useAppStore.getState().getAvailableProjects();
 export const saveUnseen = (): void => useAppStore.getState().saveUnseen();
+export const expandProject = (cwd: string): void => useAppStore.getState().expandProject(cwd);
 export const setBriefDiff = (path: string, diff: string | undefined): void =>
   useAppStore.getState().setBriefDiff(path, diff);
 export const refreshGitDiff = (force = false): void => useAppStore.getState().refreshGitDiff(force);

@@ -147,7 +147,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
             useAppStore.setState({ pinnedSessions: nextPinned });
           }}
         >
-          <Icon name="pin" size={16} />
+          <Icon name="pin" size={18} />
         </button>
       </span>
       {/* 双击标题原地进入重命名（双击前的 click 仍正常打开会话，幂等无冲突） */}

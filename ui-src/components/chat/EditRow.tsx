@@ -46,7 +46,7 @@ export default function EditRow({ item }: { item: ToolItem }) {
   return (
     <>
       <div className="act edit" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="pencil" size={13} />
+        <Icon name="pencil" size={15} />
         <span className="lbl">{(item.removed ?? 0) > 0 ? "编辑" : "写入"}</span>
         {path ? (
           <FileChip path={path} nameClass="ed-name" onNameClick={() => openFileDiffInSidebar(path)} />
@@ -125,7 +125,7 @@ function ChangeGroup({ subs }: { subs: ToolItem[] }) {
   return (
     <>
       <div className="act change" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="pencil" size={13} />
+        <Icon name="pencil" size={15} />
         <span className="lbl">{`更改 · ${uniqueFiles(subs.flatMap((g) => filesOf(g))).length || "多"} 个文件`}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
@@ -145,7 +145,7 @@ function ChangeSingle({ item }: { item: ToolItem }) {
   const files = filesOf(item);
   return (
     <div className="act change">
-      <Icon name="pencil" size={13} />
+      <Icon name="pencil" size={15} />
       <span className="lbl">{`更改 · ${files.length || "多"} 个文件`}</span>
       {files.length > 0 && (
         <>
@@ -189,7 +189,7 @@ function ReadGroup({ subs }: { subs: ToolItem[] }) {
   return (
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="file" size={13} />
+        <Icon name="file" size={15} />
         <span className="lbl">{`查阅 · ${uniqueFiles(subs.flatMap((s) => filesOf(s))).length || "多"} 个文件`}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />

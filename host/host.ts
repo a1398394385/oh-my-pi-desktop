@@ -137,6 +137,20 @@ async function sessionPathFromDisk(sessionId: string): Promise<string> {
   return hit.path;
 }
 
+// 复制会话工件目录（如生成的代码片段、图表等）：会话文件同名的无后缀目录
+async function copySessionArtifactsIfAny(sourceSessionFile: string, destinationSessionFile: string): Promise<void> {
+  if (!sourceSessionFile.endsWith(".jsonl") || !destinationSessionFile.endsWith(".jsonl")) return;
+  const srcDir = sourceSessionFile.slice(0, -6);
+  const dstDir = destinationSessionFile.slice(0, -6);
+  if (path.resolve(srcDir) === path.resolve(dstDir)) return;
+  try {
+    const st = await fs.promises.stat(srcDir);
+    if (st.isDirectory()) {
+      await fs.promises.cp(srcDir, dstDir, { recursive: true });
+    }
+  } catch {}
+}
+
 // git 写操作共用：参数数组直传子进程（无 shell 拼接，天然防注入），失败时把 stderr
 // 汇总成 error 字段交调用方回包（不抛异常炸连接），成功返回 stdout/stderr
 function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string; stderr: string } | { ok: false; error: string } {
@@ -230,6 +244,7 @@ const REMOVED_SLASH_COMMANDS: Record<string, string> = {
   "extended-context": "扩展上下文开关请到设置页操作",
   computer: "电脑控制开关请到设置页操作",
   force: "强制工具选择已移除",
+  fork: "会话分叉请点击回复下方的分叉按钮",
 };
 
 /** 已移除命令的提示文案；非已移除命令返回 null */
@@ -878,50 +893,72 @@ const server = Bun.serve<{ sessionId: string | null }>({
             break;
           }
           case "branch_session": {
-            // 会话分叉：底座 branch(entryId) 以 user 消息条目为界生成新会话文件
-            // （header.parentSession 指回源文件），同一 AgentSession 实例切换过去——
-            // sessionId 与文件路径都变了。host 侧迁移池键（旧键删、新键建，事件订阅
-            // 重建使转发帧带上新键），排队快照同步清空（底座 branch 已清 pending，
-            // host 旧快照会让 turn_end 竞态兜底误判「被吞」而重发），transcript 从
-            // 新文件 entries 重建，照 compact 模式推 messages 帧让前端立即换分叉后视图。
-            // selectedText/selectedImages 是被分叉那条 user 消息的原文，供 UI 回填输入框。
+            // 复制式会话分叉：以指定条目为锚点截取历史链路，生成独立新会话文件
+            // （header.parentSession 指回源文件）。源会话在宿主池中保持不变，新会话加入池并通知前端切换。
             const entry = sessions.get(msg.sessionId);
             if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
             const entryId = String(msg.entryId ?? "");
             if (!entryId) throw new Error("缺少 entryId");
             try {
-              const { selectedText, selectedImages, cancelled } = await entry.session.branch(entryId);
-              if (cancelled) {
-                ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: "分叉被会话扩展取消" }));
-                break;
-              }
-              const newSessionId = crypto.randomUUID();
-              const newPath = entry.session.sessionFile ?? "";
-              entry.unsubscribe();
-              sessions.delete(msg.sessionId);
-              entry.path = newPath;
-              entry.pollKnownSize = 0; // 换了文件：外部写入检测游标与标志重置
-              entry.externalWrite = false;
-              entry.providerSessionId = entry.manager.getSessionId?.() ?? newSessionId; // 请求凭证粘性键随新会话
-              entry.queuedTexts = [];
-              entry.consumedTexts = [];
-              entry.parkedFollowUp = [];
-              entry.transcript = entriesToTranscript(entry.manager.getEntries());
-              entry.mentionScanIndex = entry.manager.getEntries().length; // 回读游标对齐，避免重发历史 mention
-              attachEntry(ws, newSessionId, entry, entry.sessionResult.eventBus);
-              ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: entry.transcript }));
+              // 确保当前会话的最新数据已落盘
+              await entry.manager.flush();
+              const parentPath = entry.path ?? (await sessionPathFromDisk(msg.sessionId));
+              if (!parentPath) throw new Error("无法定位源会话文件");
+
+              // 用独立的 SessionManager 打开父会话文件进行分支切片，避免污染当前活跃的 entry.manager / entry.session
+              const tempManager = await SessionManager.open(parentPath);
+              const targetEntry = tempManager.getEntry(entryId);
+              if (!targetEntry) throw new Error(`未找到条目: ${entryId}`);
+
+              const isUser = targetEntry.type === "message" && targetEntry.message.role === "user";
+              // 若是 user 消息分叉（兼容），分支点取其父节点并将该文本回填；若是 assistant 消息分叉，完整保留该轮回复
+              const branchLeafId = isUser && targetEntry.parentId ? targetEntry.parentId : entryId;
+              const newSessionFile = tempManager.createBranchedSession(branchLeafId);
+              if (!newSessionFile) throw new Error("分叉创建新会话文件失败");
+
+              // 复制工件目录（如存在）
+              await copySessionArtifactsIfAny(parentPath, newSessionFile);
+
+              // 为新会话建立独立的 AgentSession 实例并加入 sessions 池
+              const newManager = await SessionManager.open(newSessionFile);
+              const newEntries = newManager.getEntries();
+              const newTranscript = entriesToTranscript(newEntries);
+              const peek = await SessionManager.peekSessionInit(newSessionFile);
+              const workCwd = peek?.cwd ?? entry.cwd;
+              const { sessionId: newSessionId, entry: newEntry, eventBus: newBus } = await createSessionCore(
+                workCwd,
+                newManager,
+                newTranscript,
+                entry.session.model,
+              );
+              newEntry.mentionScanIndex = newEntries.length;
+              newEntry.activeMs = sumRunDurationMs(newEntries);
+              attachEntry(ws, newSessionId, newEntry, newBus);
+              sessions.set(newSessionId, newEntry);
+
+              // 提取选中文本（仅 user 消息需要回填输入框，assistant 回复分叉后输入框保持空白待提问）
+              const selectedText = isUser
+                ? (typeof targetEntry.message.content === "string"
+                    ? targetEntry.message.content
+                    : (targetEntry.message.content ?? [])
+                        .filter((b: any) => b?.type === "text")
+                        .map((b: any) => b.text)
+                        .join("\n"))
+                : null;
+
+              // 推送新会话的 messages 快照和 session_branched 回执
+              ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: newTranscript }));
               ws.send(
                 JSON.stringify({
                   type: "session_branched",
                   sessionId: msg.sessionId,
                   ok: true,
                   newSessionId,
-                  newPath,
+                  newPath: newSessionFile,
                   selectedText,
-                  selectedImages,
                 }),
               );
-              await handleListSessions(ws); // 列表刷新信号：session_list 帧（delete_session 同款机制）
+              await handleListSessions(ws); // 列表刷新信号：session_list 帧通知左栏项目树更新
             } catch (err) {
               ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: String(err) }));
             }

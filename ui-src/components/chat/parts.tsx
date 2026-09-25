@@ -75,7 +75,7 @@ export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): voi
 export function Spin() {
   return (
     <span className="flex-none inline-flex items-center gap-[6px] text-dim text-ui-base" role="status">
-      <Icon name="loader" size={13} className="pend-ico" />
+      <Icon name="loader" size={15} className="pend-ico" />
       …
     </span>
   );
@@ -281,7 +281,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       {/* 目录读取：folder 图标 + 「目录」标签（不进查阅组、不可展开） */}
       {item.details?.isDirectory ? (
         <div className={inGroup ? "chg-item" : "act read"}>
-          <Icon name="folder" size={13} />
+          <Icon name="folder" size={15} />
           <span className="lbl">目录</span>
           {path ? <Ellip className="path" title={path}>{path}</Ellip> : item.text || "read"}
         </div>
@@ -291,7 +291,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         style={canOpen ? { cursor: "pointer" } : undefined}
         onClick={canOpen ? toggle : undefined}
       >
-        <Icon name="file" size={13} />
+        <Icon name="file" size={15} />
         <span className="lbl">读取</span>
         {path ? (
           <>

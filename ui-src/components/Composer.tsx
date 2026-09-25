@@ -703,7 +703,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             disabled={!s}
             onClick={toggleBgTab("bgcmd")}
           >
-            <Icon name="termBox" size={18} />
+            <Icon name="termBox" size={15} />
             <span className="bg-task-num" id="bgTaskNum">{s ? bgTasks : 0}</span>
           </button>
           <button
@@ -713,7 +713,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             disabled={!s}
             onClick={toggleBgTab("subagent")}
           >
-            <Icon name="agents" size={18} />
+            <Icon name="agents" size={15} />
             <span className="bg-task-num" id="bgSubagentNum">{s ? bgSubs : 0}</span>
           </button>
           <span className="sp"></span>

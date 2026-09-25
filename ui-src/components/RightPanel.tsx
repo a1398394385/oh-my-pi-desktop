@@ -69,7 +69,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
   return (
     <div className="menu open sp-pop" onClick={(e) => e.stopPropagation()}>
       <div className="sp-pop-search">
-        <Icon name="search" size={13} />
+        <Icon name="search" size={15} />
         <input
           ref={inputRef}
           placeholder="搜索标签页"
@@ -86,14 +86,14 @@ function TabOverview({ onClose }: { onClose: () => void }) {
             className={"mi" + (rightTab === name ? " on" : "")}
             onClick={() => { setBump({ rightTab: name }); onClose(); }}
           >
-            <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
+            <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
             {TAB_META[name].label}
             <Tip label="关闭">
               <span
                 className="mi-x"
                 onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
               >
-                <Icon name="xmark" size={11} />
+                <Icon name="xmark" size={12} />
               </span>
             </Tip>
           </div>
@@ -101,7 +101,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
         {recents.length > 0 && <div className="mh">最近关闭</div>}
         {recents.map((x) => (
           <div key={x.name} className="mi" onClick={() => { reopenRightTab(x.name); onClose(); }}>
-            <span className="mi-ic"><Icon name={TAB_META[x.name].icon} size={14} /></span>
+            <span className="mi-ic"><Icon name={TAB_META[x.name].icon} size={15} /></span>
             {TAB_META[x.name].label}
             <span className="sub">{closedAgo(x.at)}</span>
           </div>
@@ -127,7 +127,7 @@ function AddTabMenu({ isGit, onClose }: { isGit: boolean; onClose: () => void })
                 onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
               >
                 <span className="ck">{on ? "✓" : ""}</span>
-                <span className="mi-ic"><Icon name={TAB_META[name].icon} size={14} /></span>
+                <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
                 {TAB_META[name].label}
               </div>
             </Tip>
@@ -170,14 +170,14 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
         }
       }}
     >
-      <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={13} /></span>
+      <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
       <span className="rtab-tx">{TAB_META[name].label}</span>
       <Tip label="关闭">
         <span
           className="rtab-x"
           onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
         >
-          <Icon name="xmark" size={10} />
+          <Icon name="xmark" size={12} />
         </span>
       </Tip>
     </button>
@@ -267,7 +267,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
                 setAddOpen(!addOpen);
               }}
             >
-              <Icon name="plus" size={14} />
+              <Icon name="plus" size={15} />
             </button>
           </Tip>
           {isGitTab && (

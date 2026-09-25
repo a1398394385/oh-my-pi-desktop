@@ -28,7 +28,7 @@ function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string
   return (
     <>
       <div className="cmd" style={{ cursor: "pointer" }} onClick={toggle}>
-        <span className="c-ic"><Icon name="termBox" size={13} />{iconLabel}</span>
+        <span className="c-ic"><Icon name="termBox" size={15} />{iconLabel}</span>
         <Ellip className="c-tx" title={command}>{command || ""}</Ellip>
         {item.running && <Spin />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
@@ -101,7 +101,7 @@ function CmdGroup({ subs }: { subs: ToolItem[] }) {
   return (
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="termBox" size={13} />
+        <Icon name="termBox" size={15} />
         <span className="lbl">{`终端 · ${subs.length} 条命令`}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
@@ -141,7 +141,7 @@ function renderTodo(item: ToolItem) {
   const content = td?.content || item.args?.task || item.args?.i || item.text || "";
   return (
     <div className="act todo">
-      <Icon name="todo" size={13} />
+      <Icon name="todo" size={15} />
       <span className="lbl">待办</span>
       <Ellip className="td-tx" title={content}>{content}</Ellip>
       {td && (td.total ?? 0) > 0 && <span className="td-n">{`${td.done}/${td.total}`}</span>}
@@ -156,7 +156,7 @@ function renderGrep(item: ToolItem) {
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
   return (
     <div className="act read">
-      <Icon name="read" size={13} />
+      <Icon name="read" size={15} />
       <span className="lbl">搜索</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
@@ -169,7 +169,7 @@ function renderGlob(item: ToolItem) {
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
   return (
     <div className="act read">
-      <Icon name="ftFile" size={13} />
+      <Icon name="ftFile" size={15} />
       <span className="lbl">查找</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
@@ -183,7 +183,7 @@ function renderMcp(item: ToolItem) {
   const tool = String(item.name || "").split("__").slice(2).join("__");
   return (
     <div className="act mcp">
-      <Icon name="plug" size={13} />
+      <Icon name="plug" size={15} />
       <span className="lbl">MCP</span>
       {tool && <Ellip className="path" title={item.name}>{` ${tool}`}</Ellip>}
       {item.running && <Spin />}
@@ -250,7 +250,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
   return (
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name={iconName} size={13} />
+        <Icon name={iconName} size={15} />
         <span className="lbl">{label}</span>
         <Ellip className="path" title={summaryTitle || summary}>{summary}</Ellip>
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
@@ -408,7 +408,7 @@ function DeviceGroup({ subs }: { subs: ToolItem[] }) {
   return (
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Icon name="plugins" size={13} />
+        <Icon name="plugins" size={15} />
         <span className="lbl">{`设备 · ${dev} · ${subs.length} 次调用`}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />

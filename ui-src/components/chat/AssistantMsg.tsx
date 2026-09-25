@@ -8,11 +8,13 @@
 // delta 帧触发的全树重渲染会让每条历史消息重跑 markdown 解析管线，
 // 长会话下主线程被 10 次/秒的全量重解析占满，应用假死（合成线程动画照转）。
 // memo 后历史消息 props 不变直接跳过，只有流式中的那条重解析。
-import { createElement, memo } from "react";
+import { createElement, isValidElement, memo, useState } from "react";
 import type { JSX } from "react";
-import { Streamdown, type Components } from "streamdown";
+import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
 import { createCodePlugin } from "@streamdown/code";
+import Icon from "../../Icon";
+import { fileTypeIcon } from "../../../ui/icons";
 
 // 代码高亮插件单例（内部缓存 Shiki highlighter，JS 正则引擎免 wasm）：
 // themes = [light, dark]，取 VSCode 同款 light-plus / dark-plus（与文件页
@@ -21,6 +23,19 @@ import { createCodePlugin } from "@streamdown/code";
 // html[data-theme] 换读变量，运行时即时生效、无需重新渲染。
 const codePlugin = createCodePlugin({ themes: ["light-plus", "dark-plus"] });
 
+const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
+  javascript: "js",
+  typescript: "ts",
+  python: "py",
+  rust: "rs",
+  shell: "sh",
+  bash: "sh",
+  yaml: "yml",
+  markdown: "md",
+  plaintext: "txt",
+  text: "txt",
+};
+
 // 元素映射的 props 形状：hast node 是 react-markdown 附加的非 DOM 属性，解构剥掉再透传
 type ElProps<K extends keyof JSX.IntrinsicElements> = JSX.IntrinsicElements[K] & { node?: unknown };
 
@@ -28,6 +43,45 @@ type ElProps<K extends keyof JSX.IntrinsicElements> = JSX.IntrinsicElements[K] &
 // streamdown 内部按 block memo 并比较 components 引用，内联字面量会击穿缓存。
 function mdTag<K extends keyof JSX.IntrinsicElements>(tag: K, className: string) {
   return ({ node, ...rest }: ElProps<K>) => createElement(tag, { ...rest, className });
+}
+
+function mdCodeBlock({ className, children }: ElProps<"code">) {
+  const [wrapLongLines, setWrapLongLines] = useState(false);
+  const isIncomplete = useIsCodeFenceIncomplete();
+  const language = className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]?.toLowerCase() || "text";
+  const nestedCode = isValidElement<{ children?: unknown }>(children) && typeof children.props.children === "string"
+    ? children.props.children
+    : null;
+  const source = (typeof children === "string" ? children : nestedCode || "").replace(/\n+$/, "");
+  const extension = CODE_LANGUAGE_EXTENSIONS[language] || language;
+
+  return (
+    <div className="md-code-block-frame">
+      <span className="md-code-language-icon" aria-hidden="true">
+        <Icon name={fileTypeIcon(`snippet.${extension}`)} size={14} />
+      </span>
+      <CodeBlock
+        className="md-streamdown-code"
+        code={source}
+        data-wrap={wrapLongLines ? "on" : "off"}
+        isIncomplete={isIncomplete}
+        language={language}
+        lineNumbers={false}
+      >
+        <button
+          type="button"
+          data-streamdown="code-block-wrap-button"
+          aria-label={wrapLongLines ? "关闭自动换行" : "开启自动换行"}
+          aria-pressed={wrapLongLines}
+          title={wrapLongLines ? "关闭自动换行" : "开启自动换行"}
+          onClick={() => setWrapLongLines((wrapped) => !wrapped)}
+        >
+          <Icon name="wrapText" size={14} />
+        </button>
+        <CodeBlockCopyButton />
+      </CodeBlock>
+    </div>
+  );
 }
 
 const mdComponents: Components = {
@@ -49,6 +103,7 @@ const mdComponents: Components = {
   // 任务列表勾选框：type/disabled 显式写死（不依赖上游属性透传），类命中 .md-task-cb
   input: ({ node, ...rest }: ElProps<"input">) =>
     createElement("input", { ...rest, type: "checkbox", disabled: true, className: "md-task-cb" }),
+  code: mdCodeBlock,
   inlineCode: mdTag("code", "md-inline-code"),
 };
 
@@ -68,7 +123,7 @@ function AssistantMsgImpl({ text, fk, streaming }: { text?: string; fk?: string;
         plugins={{ code: codePlugin, cjk }}
         components={mdComponents}
         lineNumbers={false}
-        codeBlockMaxHeight={0}
+        codeBlockMaxHeight={400}
         tableMaxHeight={0}
         controls={mdControls}
         linkSafety={MD_LINK_SAFETY_OFF}

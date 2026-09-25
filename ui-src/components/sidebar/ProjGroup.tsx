@@ -179,7 +179,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
           toggle();
         }}
       >
-        <span className="fic"><Icon name={projectIconName(p, expanded)} size={16} /></span>
+        <span className={"fic" + (/[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
         <span className="pname" title={p.cwd}>{name}</span>
         {isProjectManageMode ? (
           <button

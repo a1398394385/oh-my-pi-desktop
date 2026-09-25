@@ -73,8 +73,8 @@ export default function Welcome() {
             id="wbBackCard"
             className="wb-back-card"
           >
-            {/* 底部 20px padding 是重叠预算：输入框卡负 margin(-20px)上拉盖住的正是这段（对照 CSS 注释） */}
-            <div className="wb-head flex items-center gap-[8px] pt-[5px] px-[6px] pb-[20px]">
+            {/* 底部 31px padding 是重叠预算+下顶对称：输入框卡负 margin(-25px)上拉盖住，胶囊到底卡上顶与输入框卡上顶各 7px */}
+            <div className="wb-head flex items-center gap-[8px] pt-[6px] px-[6px] pb-[31px]">
               <button
                 id="wbProjectBtn"
                 className={"wb-pill" + (projMenu ? " active" : "")}
@@ -91,9 +91,9 @@ export default function Welcome() {
                     toast("不在项目中工作功能即将推出");
                   }}
                 >
-                  <Icon name="xmark" size={11} />
+                  <Icon name="xmark" size={12} />
                 </span>
-                <span className="wb-ic-folder"><Icon name="folder" size={14} /></span>
+                <span className={"wb-ic-folder" + (/[\u4e00-\u9fa5]/.test(projName) ? " is-cjk" : "")}><Icon name="folder" size={15} /></span>
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>
