@@ -5,6 +5,7 @@
 import type { ReactElement } from "react";
 import type { ChatItem, RailEntry } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
+import { useAppStore } from "../../store/index";
 import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf } from "./util";
 import { railToolText } from "../../shell";
 import UserMsg from "./UserMsg";
@@ -68,12 +69,38 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;
 }
 
-// 本轮 output 的末尾 assistant：其后到下一条 user 之间没有别的有效 assistant。
-// loop 组内的中间输出不在顶层、不参与判断；junk 占位符不算输出（既不挡判断也不挂操作组）
-function isTurnTailAssistant(items: ChatItem[], i: number): boolean {
+// 本轮 output 的末尾 assistant：
+// 1. 仅顶层（pfx === ""）且非 junk 消息有效；loop 组内子项不显示。
+// 2. 其后到下一条 user 之间若还有 tool、loop 组、bash、或后续有效 assistant，不显示。
+// 3. 若到列表末尾仍未遇到 user（当前处于最新一轮），流程必须已结束（非 streaming、非 draft、无 running 工具）。
+function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean {
+  if (pfx !== "") return false;
+  let hasLaterUser = false;
   for (let j = i + 1; j < items.length; j++) {
-    if (items[j].role === "user") return true;
-    if (items[j].role === "assistant" && !isJunkPlaceholder(items[j].text)) return false;
+    const next = items[j];
+    if (next.role === "user") {
+      hasLaterUser = true;
+      break;
+    }
+    // 若后续还有 tool、loop 组或 bash，说明该 output 之后流程还在继续，不显示
+    if (next.role === "tool" || next.role === "loop" || next.role === "bash") {
+      return false;
+    }
+    // 若后续还有有效 assistant，说明当前不是最后一段 output，不显示
+    if (next.role === "assistant" && !isJunkPlaceholder(next.text)) {
+      return false;
+    }
+  }
+  // 若其后没有下一条 user，说明属于当前最新一轮：若流程未结束（streaming/draft/running 项），不显示
+  if (!hasLaterUser) {
+    const st = useAppStore.getState();
+    const active = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    if (active?.streaming || active?.assistantDraft) {
+      return false;
+    }
+    if (items.some((it) => (it as { running?: boolean }).running)) {
+      return false;
+    }
   }
   return true;
 }
@@ -140,7 +167,7 @@ export function renderItems(items: ChatItem[], pfx: string, railEntries: RailEnt
     const node = appendItem(item, key, railEntries);
     if (node) out.push(node);
     // 一轮 output 结尾左下角挂操作组（复制/分叉）；junk assistant 的 node 为 null，不挂
-    if (node && item.role === "assistant" && isTurnTailAssistant(items, i)) {
+    if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
       out.push(<TurnActs item={item} key={key + "-acts"} />);
     }
   }

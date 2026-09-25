@@ -608,6 +608,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 #main {
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0; flex: 1; position: relative;
+  overflow: hidden;
   background: var(--card);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0;
@@ -621,6 +622,7 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
   height: 48px; flex: none;
   display: flex; align-items: center; gap: 8px;
   padding: 0 16px;
+  border-bottom: 1px solid var(--line-soft);
   transition: padding-left 0.25s cubic-bezier(0.2, 0, 0, 1);
   min-width: 0;
 }
@@ -644,6 +646,7 @@ body:has(#sidebar.collapsed) .chat-head {
 
 #stream {
   flex: 1; min-height: 0; overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 18px 0 14px;
   scrollbar-width: thin;
   scrollbar-color: var(--panel-3) transparent;

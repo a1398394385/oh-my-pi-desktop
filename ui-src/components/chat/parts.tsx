@@ -112,15 +112,16 @@ export function Ellip({ className = "", title, children }: { className?: string;
 // ---------- 文件标签（f-ic：文件类型图标 + 文件名；onNameClick 时文件名可点） ----------
 // fileTypeIcon（按扩展名/文件名取 vscode-icons 彩色图标）见 ui/icons.js
 export function FileChip({ path, nameClass, onNameClick }: { path: string; nameClass?: string; onNameClick?: (e: ReactMouseEvent) => void }) {
-  const { name } = splitPath(path);
+  const cleanPath = String(path || "").replace(/:\d+(?:-\d+)?$/, "");
+  const { name } = splitPath(cleanPath);
   return (
-    <span className="f-ic" title={path}>
-      <Icon name={fileTypeIcon(name || path)} />
+    <span className="f-ic" title={cleanPath}>
+      <Icon name={fileTypeIcon(name || cleanPath)} />
       <span
         className={(nameClass || "") + (onNameClick ? " lnk" : "")}
         onClick={onNameClick ? (e) => { e.stopPropagation(); onNameClick(e); } : undefined}
       >
-        {name || path}
+        {name || cleanPath}
       </span>
     </span>
   );
@@ -257,8 +258,13 @@ export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; 
 // 点击整行展开/收起；展开体显示本次读取到的原文（details.displayContent.text，
 // 无行号前缀），行号来自 startLine/lineNumbers，缺省按序号推。无内容不可展开。
 export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }) {
-  const path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
-  const { dir } = splitPath(path);
+  let path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
+  if (!path && item.text) {
+    const m = item.text.match(/^\[read:\s*(.+?)\]$/);
+    if (m) path = m[1].trim();
+  }
+  const cleanPath = path.replace(/:\d+(?:-\d+)?$/, "");
+  const { dir } = splitPath(cleanPath);
   const [closing, close] = useLift();
   // 展开体渲染读 details.displayContent。内容缺失分两种：结果还没到（item.running，
   // 如「运行中默认展开」在 details 到达前就置了 readExpanded）与本来就没有（目录读取、
@@ -283,7 +289,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         <div className={inGroup ? "chg-item" : "act read"}>
           <Icon name="folder" size={15} />
           <span className="lbl">目录</span>
-          {path ? <Ellip className="path" title={path}>{path}</Ellip> : item.text || "read"}
+          {cleanPath ? <Ellip className="path" title={cleanPath}>{cleanPath}</Ellip> : item.text || "read"}
         </div>
       ) : (
       <div
@@ -293,11 +299,11 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       >
         <Icon name="file" size={15} />
         <span className="lbl">读取</span>
-        {path ? (
+        {cleanPath ? (
           <>
-            <FileChip path={path} nameClass={hasContent ? "ed-name" : ""} onNameClick={hasContent ? () => openReadFileInSidebar(item, path) : undefined} />
+            <FileChip path={cleanPath} nameClass={hasContent ? "ed-name" : ""} onNameClick={hasContent ? () => openReadFileInSidebar(item, path || cleanPath) : undefined} />
             {" "}
-            {dir && <Ellip className="path" title={path}>{dir}</Ellip>}
+            {dir && <Ellip className="path" title={cleanPath}>{dir}</Ellip>}
           </>
         ) : (
           item.text || "read"
@@ -311,7 +317,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       </div>
       )}
       {open && (dc ? (
-        <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(path)} lift={closing} />
+        <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(cleanPath || path)} lift={closing} />
       ) : (
         <FadeBox className={"ed-brief" + (closing ? " lift" : " drop")}>
           <div className="text-faint text-ui-base py-[12px] px-[10px]"><Spin /></div>
@@ -366,17 +372,25 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   // 原始路径可能带行号选择器（path:59-123）：解析出请求范围用于行号高亮，并剥掉后缀得到干净路径
-  const raw = String(d.resolvedPath || path);
+  const raw = String(d.resolvedPath || item.args?.path || path);
   const m = raw.match(/:(\d+)(?:-(\d+))?$/);
   let clean = m ? raw.slice(0, m.index ?? 0) : raw; // index 恒存在(match 非全局)
+  clean = clean.replace(/:\d+(?:-\d+)?$/, "");
   if (!clean.startsWith("/")) clean = (s?.cwd || "") + "/" + clean;
+  const offset = typeof item.args?.offset === "number" ? item.args.offset : undefined;
+  const limit = typeof item.args?.limit === "number" ? item.args.limit : undefined;
+  let reqRange: [number, number] | null = m ? [Number(m[1]), Number(m[2] || m[1])] : null;
+  if (!reqRange && (offset !== undefined || limit !== undefined)) {
+    const start = offset ?? 1;
+    reqRange = [start, limit !== undefined ? start + limit - 1 : start];
+  }
   setBump({
     fileView: {
       path: clean,
       text: d.displayContent.text,
       startLine: d.displayContent.startLine || 1,
       lineNumbers: Array.isArray(d.displayContent.lineNumbers) ? d.displayContent.lineNumbers : null,
-      reqRange: m ? [Number(m[1]), Number(m[2] || m[1])] : null,
+      reqRange,
     },
     fileViewPending: clean,
     rightCollapsed: false,

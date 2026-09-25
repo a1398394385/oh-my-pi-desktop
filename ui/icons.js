@@ -113,7 +113,8 @@ const FILE_EXT_ICONS = {
 };
 function fileTypeIcon(name) {
   const base = String(name || "").split("/").pop() || "";
-  const lower = base.toLowerCase();
+  const clean = base.replace(/:\d+(?:-\d+)?$/, "");
+  const lower = clean.toLowerCase();
   if (FILE_NAME_ICONS[lower]) return FILE_NAME_ICONS[lower];
   const i = lower.lastIndexOf(".");
   const ext = i >= 0 ? lower.slice(i + 1) : "";

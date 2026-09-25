@@ -15,9 +15,10 @@ export function uniqueFiles(files: Iterable<unknown> | null | undefined): string
   return out;
 }
 
-// 路径拆分为目录与文件名（含尾部分隔符）
+// 路径拆分为目录与文件名（含尾部分隔符，剥离行号选择器等后缀以保持路径清洁）
 export function splitPath(p: unknown): { dir: string; name: string } {
-  const norm = String(p || "").replace(/\\/g, "/");
+  let norm = String(p || "").replace(/\\/g, "/");
+  norm = norm.replace(/:\d+(?:-\d+)?$/, "");
   const i = norm.lastIndexOf("/");
   if (i < 0) return { dir: "", name: norm };
   return { dir: norm.slice(0, i + 1), name: norm.slice(i + 1) };
