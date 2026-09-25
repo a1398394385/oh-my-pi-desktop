@@ -456,14 +456,15 @@ export default function ExtensionsPage() {
                             <b>{ext.displayName}</b>
                             <span>{ext.description ?? ext.trigger ?? ext.path}</span>
                           </div>
-                          <div className="ext-badges">
-                            <span className="tag">{LEVEL_LABEL[ext.source.level] ?? ext.source.level}</span>
-                            {ext.state === "shadowed" ? <span className="tag ext-tag-warn">遮蔽</span> : null}
-                          </div>
+                          {ext.state === "shadowed" ? (
+                            <div className="ext-badges">
+                              <span className="tag ext-tag-warn">遮蔽</span>
+                            </div>
+                          ) : null}
+                          <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
                           <div className="srow-ctl">
                             <ItemToggle ext={ext} scope={scope} />
                           </div>
-                          <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
                         </div>
                         {open ? <ExtDetail ext={ext} onClose={() => setOpenId(null)} /> : null}
                       </div>

@@ -2790,6 +2790,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .ext-kind-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: var(--faint); }
 .ext-badges { display: flex; align-items: center; gap: 6px; flex: none; }
 .ext-tag-warn { color: var(--yellow); border-color: var(--yellow); }
+.ext-row .srow-tx { flex: 1; }
 .ext-row .srow-ctl { margin-left: 10px; }
 /* 详情区（mem-expand 承载）：键值行 + 正文块 */
 .ext-detail { padding: 10px 16px 14px 38px; display: flex; flex-direction: column; gap: 7px; }
