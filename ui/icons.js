@@ -45,6 +45,8 @@ const ICONS = {
   // 线条风上下尖角（feather chevron）：会话内查找条的上一个/下一个
   chevronUp: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
   chevronDown: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  // 线条风向下双箭头（lucide chevrons-down）：右边栏标签页总览图标，对齐 ZCodium ChevronsDownIcon
+  chevronsDown: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>',
   // 线条风消息分叉（feather git-branch：竖线 + 分叉圆点）：消息行分叉按钮与右栏分支 tab 用。
   // 命名避开 branch——该名已被 FA 层实心 code-branch 占用（Git Diff tab 在用），自定义层同名会被覆盖
   fork: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',

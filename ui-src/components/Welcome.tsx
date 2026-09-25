@@ -10,6 +10,7 @@ import Icon from "../Icon";
 import Composer from "./Composer";
 import ProjectMenu from "./welcome/ProjectMenu";
 import BranchMenu from "./welcome/BranchMenu";
+import TaskSearchCard from "./welcome/TaskSearchCard";
 
 function greeting() {
   const h = new Date().getHours();
@@ -118,6 +119,7 @@ export default function Welcome() {
           {projMenu && <ProjectMenu anchorRect={projMenu} onClose={() => setProjMenu(null)} />}
           {branchMenu && <BranchMenu anchorRect={branchMenu} onClose={() => setBranchMenu(null)} />}
         </div>
+        <TaskSearchCard />
       </div>
     </div>
   );
