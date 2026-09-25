@@ -2750,6 +2750,63 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
 .srow.mem-row.on .mem-caret svg { transform: rotate(0deg); }
 .mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* 向下延展开入场 */ }
+
+/* ─── 扩展中心（pg-extensions） ─── */
+.ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ext-scope-sel { position: relative; }
+/* 作用域/来源按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
+.ext-scope-btn, .ext-prov-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer;
+}
+.ext-prov-sel { position: relative; }
+.ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
+/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
+.ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; }
+.ext-search-icon { position: absolute; left: 10px; color: var(--faint); pointer-events: none; display: inline-flex; align-items: center; }
+.ext-search-input {
+  width: 100%; height: 30px; padding: 0 10px 0 32px;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 9px;
+  color: var(--text); font-size: var(--ui-fs-sm); outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+.ext-search-input:focus { border-color: rgba(74, 158, 255, .5); box-shadow: 0 0 0 3px rgba(74, 158, 255, .13); }
+.ext-search-input::placeholder { color: var(--faint); }
+.ext-bar-secondary { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ext-actions-wrap { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.ext-list-wrap { margin-top: 4px; }
+/* 分组（按能力类型）：组标题复用 .set-group-tt，首组收紧与工具行的间距 */
+.ext-group:first-child .set-group-tt { margin-top: 6px; }
+.ext-group .set-group-tt { display: flex; align-items: baseline; gap: 6px; }
+.ext-cnt { color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
+/* 行：整行可点（.srow 同款 hover），非激活条目名淡化。
+   行外包 .ext-row-wrap，.srow+.srow 邻接选择器不生效，分隔线改挂行自身 */
+.ext-row { cursor: pointer; user-select: none; border-top: 1px solid var(--line-soft); }
+.ext-row-wrap:first-child .ext-row { border-top: 0; }
+.ext-row.off .srow-tx b { color: var(--dim); }
+/* 描述单行截断（参考分组卡片行式：名称 + 一行摘要） */
+.ext-row .srow-tx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.ext-kind-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: var(--faint); }
+.ext-badges { display: flex; align-items: center; gap: 6px; flex: none; }
+.ext-tag-warn { color: var(--yellow); border-color: var(--yellow); }
+.ext-row .srow-ctl { margin-left: 10px; }
+/* 详情区（mem-expand 承载）：键值行 + 正文块 */
+.ext-detail { padding: 10px 16px 14px 38px; display: flex; flex-direction: column; gap: 7px; }
+.ext-kv { display: flex; gap: 10px; font-size: var(--ui-fs-sm); align-items: baseline; min-width: 0; }
+.ext-k { flex: none; width: 64px; color: var(--faint); }
+.ext-v { color: var(--dim); word-break: break-all; min-width: 0; white-space: pre-wrap; }
+.ext-state { font-size: var(--ui-fs-sm); color: var(--faint); }
+.ext-pre {
+  margin: 2px 0 0; padding: 10px 12px; max-height: 260px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 9px;
+  font: var(--code-fs, 11.5px)/1.6 var(--mono); color: var(--dim); white-space: pre-wrap; word-break: break-word;
+}
+.ext-params { display: flex; flex-direction: column; gap: 3px; }
+.ext-param { display: flex; gap: 8px; align-items: baseline; }
+.ext-param b { font-weight: 500; color: var(--text); font-family: var(--mono); font-size: var(--ui-fs-sm); }
+.ext-param i { font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); }
 .mem-exp-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); color: var(--faint); border-bottom: 1px solid var(--line-soft); }
 .mem-body { display: flex; flex: 1; min-height: 220px; max-height: calc(var(--ui-fs-base) * 1.7 * 20); border-top: 1px solid var(--line-soft); }
 .mem-expand .mem-body { border-top: 0; }

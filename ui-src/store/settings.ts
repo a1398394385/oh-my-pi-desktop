@@ -12,6 +12,7 @@ import type {
   AllProviderEntry,
   UsageStats,
   AgentAssetsPayload,
+  ExtensionsFrame,
 } from "../types/frames";
 import type { MemoryDetailState } from "../types/session";
 import type { SchemaDef } from "../components/settings/placement";
@@ -33,6 +34,7 @@ export interface SettingsSlice {
   loginBanner: string | null; // OMP 登录进度横幅文本
   loginPromptData: LoginPromptFrame | null; // login_prompt 粘贴码弹窗数据
   agentAssets: AgentAssetsPayload | null;
+  extensions: ExtensionsFrame | null; // 扩展中心数据帧（list_extensions / toggle_* 回包）
   usageStats: UsageStats | null;
   providerLimits: ProviderLimitsResultFrame | null; // provider_limits_result 配额帧
   assetFile: AssetFileFrame | null; // asset_file 回包(skills/agents 编辑器按 kind 过滤)
@@ -63,6 +65,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   loginBanner: null,
   loginPromptData: null,
   agentAssets: null,
+  extensions: null,
   usageStats: null,
   providerLimits: null,
   assetFile: null,

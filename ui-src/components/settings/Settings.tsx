@@ -18,6 +18,7 @@ import ExperimentalPage from "./pages/ExperimentalPage";
 import BrowserPage from "./pages/BrowserPage";
 import ComputerPage from "./pages/ComputerPage";
 import PluginsPage from "./pages/PluginsPage";
+import ExtensionsPage from "./pages/ExtensionsPage";
 import HooksPage from "./pages/HooksPage";
 import CommandsPage from "./pages/CommandsPage";
 import ModelPage from "./pages/ModelPage";
@@ -67,6 +68,7 @@ const NAV_SECTIONS = [
   {
     title: "Agent 能力",
     items: [
+      { id: "pg-extensions", icon: "extensions", label: "扩展" },
       { id: "pg-memory", icon: "memory", label: "记忆" },
       { id: "pg-agents", icon: "agents", label: "子智能体" },
       { id: "pg-plugins", icon: "plugins", label: "插件" },
@@ -92,6 +94,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-browser": BrowserPage,
   "pg-computer": ComputerPage,
   "pg-plugins": PluginsPage,
+  "pg-extensions": ExtensionsPage,
   "pg-hooks": HooksPage,
   "pg-commands": CommandsPage,
   "pg-model": ModelPage,

@@ -165,6 +165,9 @@ function onMessage(msg: HostFrame): void {
     case "agent_assets":
       useAppStore.setState((s) => ({ agentAssets: msg.assets }));
       break;
+    case "extensions":
+      useAppStore.setState((s) => ({ extensions: msg }));
+      break;
     case "approval_mode":
       useAppStore.setState((s) => ({ approvalMode: msg.mode }));
       break;

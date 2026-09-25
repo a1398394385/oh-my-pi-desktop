@@ -7,7 +7,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts";
-import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk } from "./bootstrap.ts";
+import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings } from "./bootstrap.ts";
 import { rebuildScopedModels } from "./models.ts";
 
 // ---------- 桌面环境（agentDir 下 desktop-env.json：代理/CA 证书） ----------
@@ -151,6 +151,9 @@ export async function applyProfile(profileName: string) {
   H.modelRegistry = new ModelRegistry(H.authStorage);
   await H.modelRegistry.refresh();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
+  // 同步能力发现注册表：disabledProviders/enabledProviders → 内存 registry（CLI 入口同款调用，
+  // 缺了这步用户禁用的第三方来源在发现层仍显示/按启用处理）
+  initializeWithSettings(H.settings);
 
   H.desktopEnvPath = path.join(H.agentDir, "desktop-env.json");
   H.desktopEnvFilePresent = fs.existsSync(H.desktopEnvPath);

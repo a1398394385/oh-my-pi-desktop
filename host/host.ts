@@ -90,6 +90,12 @@ import {
   resolveAssetFile,
   type AssetKind,
 } from "./assets.ts";
+import {
+  buildExtensionsPayload,
+  toggleExtensionItem,
+  toggleExtensionProvider,
+  toggleExtensionUserSource,
+} from "./extensions.ts";
 import { collectUsageStats } from "./stats.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, treeToDisplay, sumRunDurationMs, PHASE_TEXT } from "./translate.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits, refreshAllLimits, listAllProviders } from "./limits/index.ts";
@@ -1977,6 +1983,29 @@ const server = Bun.serve<{ sessionId: string | null }>({
             }
             ws.send(JSON.stringify({ type: "asset_file_deleted", kind: "skill", path: file }));
             ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+            break;
+          }
+          case "list_extensions": {
+            // 扩展中心数据帧：scope=profile（用户级+原生）或 project:<cwd>（项目级）
+            ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
+            break;
+          }
+          case "toggle_extension_item": {
+            await toggleExtensionItem(msg.id, msg.enabled, msg.sourcePath);
+            ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
+            break;
+          }
+          case "toggle_extension_provider": {
+            const enabled = await toggleExtensionProvider(msg.providerId);
+            // 与 set_setting 的 model 键副作用对齐：重建 scoped 目录并推送 models 帧
+            rebuildScopedModels();
+            ws.send(JSON.stringify(modelsFrame()));
+            ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
+            break;
+          }
+          case "toggle_extension_user_source": {
+            await toggleExtensionUserSource(msg.providerId);
+            ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
             break;
           }
           case "set_mcp_server_enabled": {

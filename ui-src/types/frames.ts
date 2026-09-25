@@ -879,6 +879,58 @@ export interface AgentAssetsFrame {
   assets: AgentAssetsPayload;
 }
 
+/** 扩展中心条目来源元数据(host/extensions.ts ExtSource，同底座 SourceMeta 子集) */
+export interface ExtSource {
+  provider: string;
+  providerName: string;
+  level: "user" | "project" | "native";
+}
+
+/** 扩展中心条目详情预计算（规则解析/工具文件头/命令预览，host 下发直接渲染） */
+export interface ExtensionDetail {
+  condition?: string[];
+  astCondition?: string[];
+  scope?: string[];
+  agents?: string[];
+  toolHeader?: string;
+  body?: string;
+  argumentHint?: string;
+  usesArguments?: boolean;
+}
+
+/** 扩展中心统一条目（host/extensions.ts ExtensionItem；id 即底座 disabledExtensions 的 id 方案 kind:name） */
+export interface ExtensionItem {
+  id: string;
+  kind: string;
+  name: string;
+  displayName: string;
+  description?: string;
+  trigger?: string;
+  path: string;
+  source: ExtSource;
+  state: "active" | "disabled" | "shadowed";
+  disabledReason?: string;
+  shadowedBy?: string;
+  raw?: Record<string, unknown>;
+  detail?: ExtensionDetail;
+}
+
+/** 扩展中心数据帧(host/host.ts list_extensions 等四个 RPC 回包) */
+export interface ExtensionsFrame {
+  type: "extensions";
+  scope: string; // profile | project:<cwd>
+  scopes: { id: string; label: string }[];
+  providers: {
+    id: string;
+    displayName: string;
+    description: string;
+    enabled: boolean;
+    userSourceEnabled: boolean;
+    foreignUserSource: boolean;
+  }[];
+  extensions: ExtensionItem[];
+}
+
 /** 资产文件内容回包(host/host.ts:1875 / 1928 / 1943 asset_file_read / asset_file_create) */
 export interface AssetFileFrame {
   type: "asset_file";
@@ -1105,6 +1157,7 @@ export type HostFrame =
   | ModelRolesFrame
   | UsageStatsFrame
   | AgentAssetsFrame
+  | ExtensionsFrame
   | AssetFileFrame
   | AssetFileSavedFrame
   | AssetFileDeletedFrame
