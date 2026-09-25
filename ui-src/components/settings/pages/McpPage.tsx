@@ -8,6 +8,7 @@ import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
+import ScopeSel from "../ScopeSel";
 
 const NEW_KEY = "__new__";
 
@@ -590,45 +591,12 @@ export default function McpPage() {
 
       <div className="mcp-bar-primary">
         <div className="mcp-scope-wrap">
-          <Sel
-            id="mcpScopeSel"
-            className="mcp-scope-sel"
-            btnClassName="mcp-scope-btn"
-            menuId="mcpScopeMenu"
-            menuClassName="scope-menu"
-            btnChildren={
-              <>
-                <span className="inline-flex items-center text-faint">
-                  <Icon name={activeScope === "profile" ? "scopeProfile" : "folder"} size={14} />
-                </span>
-                <span>{curScope.name}</span>
-                <span className="caret-svg"><Icon name="caret" size={14} /></span>
-              </>
-            }
-            onPick={(mi) => setMcpScope(mi.dataset.scope ?? "profile")}
-          >
-            <div className="scope-menu-top">
-              <div className="mi" data-scope={profileScope.id} key={profileScope.id}>
-                <span className="ck" style={{ visibility: profileScope.id === activeScope ? "visible" : "hidden" }}>✓</span>
-                <Icon name="scopeProfile" size={14} />
-                <span className="mi-label" title={profileScope.name}>{profileScope.name}</span>
-              </div>
-            </div>
-            <div className="sep" />
-            <div className="scope-menu-header">工作区</div>
-            <div className="scope-menu-projects">
-              {projectScopes.map((s) => (
-                <div className="mi" data-scope={s.id} key={s.id}>
-                  <span className="ck" style={{ visibility: s.id === activeScope ? "visible" : "hidden" }}>✓</span>
-                  <Icon name="folder" size={14} />
-                  <span className="mi-label" title={s.name}>{s.name}</span>
-                </div>
-              ))}
-              {projectScopes.length === 0 && (
-                <div className="mi empty disabled">暂无工作区</div>
-              )}
-            </div>
-          </Sel>
+          <ScopeSel
+            value={activeScope}
+            onChange={(id) => setMcpScope(id)}
+            profile={{ id: profileScope.id, label: profileScope.name }}
+            projects={projectScopes.map((s) => ({ id: s.id, label: s.name }))}
+          />
           <span className="mcp-divider">|</span>
           <span className="text-ui-base text-dim">MCP {totalCount}</span>
         </div>

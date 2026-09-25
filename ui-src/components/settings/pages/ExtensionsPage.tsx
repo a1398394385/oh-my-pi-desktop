@@ -7,6 +7,7 @@ import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import { emptyRow } from "../common";
 import type { ExtensionItem } from "../../../types/frames";
+import ScopeSel from "../ScopeSel";
 
 // kind → 图标 / 中文标签（图标取全站既有注册名）
 const KIND_ICON: Record<string, string> = {
@@ -307,7 +308,6 @@ export default function ExtensionsPage() {
     });
   const countOf = (pid: string) => (pid === "all" ? items.length : items.filter((x) => x.source.provider === pid).length);
   const selProv = prov === "all" ? null : (payload?.providers.find((p) => p.id === prov) ?? null);
-  const curScopeLabel = payload?.scopes.find((s) => s.id === scope)?.label ?? "Profile";
 
   return (
     <div className="set-page" id="pg-extensions">
@@ -315,33 +315,16 @@ export default function ExtensionsPage() {
 
       <div className="ext-bar-primary">
         <div className="ext-scope-wrap">
-          <Sel
-            className="ext-scope-sel"
-            btnClassName="ext-scope-btn"
-            btnChildren={
-              <>
-                <span className="inline-flex items-center text-faint">
-                  <Icon name={scope === "profile" ? "scopeProfile" : "folder"} size={14} />
-                </span>
-                <span>{curScopeLabel}</span>
-                <span className="caret-svg"><Icon name="caret" size={14} /></span>
-              </>
-            }
-            onPick={(mi) => {
-              const next = mi.dataset.scope ?? "profile";
-              setScope(next);
+          <ScopeSel
+            value={scope}
+            onChange={(id) => {
+              setScope(id);
               setOpenId(null);
-              send({ type: "list_extensions", scope: next });
+              send({ type: "list_extensions", scope: id });
             }}
-          >
-            {(payload?.scopes ?? [{ id: "profile", label: "Profile" }]).map((s) => (
-              <div className="mi" data-scope={s.id} key={s.id}>
-                <span className="ck" style={{ visibility: s.id === scope ? "visible" : "hidden" }}>✓</span>
-                <Icon name={s.id === "profile" ? "scopeProfile" : "folder"} size={14} />
-                <span className="mi-label" title={s.label}>{s.label}</span>
-              </div>
-            ))}
-          </Sel>
+            profile={payload?.scopes[0] ?? { id: "profile", label: "Profile" }}
+            projects={(payload?.scopes ?? []).slice(1)}
+          />
           <span className="ext-divider">|</span>
           <span className="text-ui-base text-dim">{filtered.length} 项</span>
         </div>

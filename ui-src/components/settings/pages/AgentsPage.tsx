@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
+import ScopeSel from "../ScopeSel";
 import type { AgentAssetsPayload } from "../../../types/frames";
 
 // 资产条目：宿主 list_agent_assets 回包的 agent 负载字段（边界以宿主回包为准）
@@ -48,7 +49,6 @@ export default function AgentsPage() {
   );
 
   const [scope, setScope] = useState("profile"); // 当前作用域键（原 assetScope.agent）
-  const [menuOpen, setMenuOpen] = useState(false); // 作用域胶囊菜单（原 wireSel 的 .menu.open）
   const [spin, setSpin] = useState(false); // 刷新钮旋转
   const [selPath, setSelPath] = useState<string | null>(null); // 编辑器当前文件路径（原 assetSelPath.agent）
   const [text, setText] = useState(""); // 编辑器内容（受控 textarea）
@@ -86,25 +86,16 @@ export default function AgentsPage() {
     setStatus(err.message);
   }, [err]);
 
-  // 点击菜单外关闭（原 closeAllMenus 的文档级监听）
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [menuOpen]);
-
   // 当前作用域解析成 {scope, cwd?}（原 assetScopeParts）
   const scopeParts = (): { scope: string; cwd?: string } => {
     const ci = scope.indexOf(":");
     return ci < 0 ? { scope } : { scope: scope.slice(0, ci), cwd: scope.slice(ci + 1) };
   };
 
-  const pickScope = (s: AssetSection) => {
-    setScope(s.scope);
+  const pickScope = (id: string) => {
+    setScope(id);
     setSelPath(null);
     setEditorOpen(false);
-    setMenuOpen(false);
   };
 
   const refresh = () => {
@@ -146,41 +137,12 @@ export default function AgentsPage() {
         </span>
       </div>
       <div className="agents-bar">
-        <div
-          className="sel"
-          id="agentScopeSel"
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen((v) => !v);
-          }}
-        >
-          <span id="agentScopeLabel">{cur?.label ?? "Profile"}</span> <Icon name="caret" size={14} className="caret-svg" />
-          {menuOpen && cur && sections && (
-            <div className="menu open scope-menu" id="agentScopeMenu" onClick={(e) => e.stopPropagation()}>
-              <div className="scope-menu-top">
-                <div className="mi" data-scope={sections.profileSec.scope} onClick={() => pickScope(sections.profileSec)}>
-                  <span className="ck" style={{ visibility: sections.profileSec.scope === scope ? "visible" : "hidden" }}>✓</span>
-                  <Icon name="scopeProfile" size={14} />
-                  <span className="mi-label" title={sections.profileSec.label}>{sections.profileSec.label}</span>
-                </div>
-              </div>
-              <div className="sep" />
-              <div className="scope-menu-header">工作区</div>
-              <div className="scope-menu-projects">
-                {sections.projectSecs.map((s) => (
-                  <div key={s.scope} className="mi" data-scope={s.scope} onClick={() => pickScope(s)}>
-                    <span className="ck" style={{ visibility: s.scope === scope ? "visible" : "hidden" }}>✓</span>
-                    <Icon name="folder" size={14} />
-                    <span className="mi-label" title={s.label}>{s.label}</span>
-                  </div>
-                ))}
-                {sections.projectSecs.length === 0 && (
-                  <div className="mi empty disabled">暂无工作区</div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <ScopeSel
+          value={scope}
+          onChange={pickScope}
+          profile={{ id: "profile", label: sections?.profileSec.label ?? `Profile · ${data?.profileName ?? "default"}` }}
+          projects={(sections?.projectSecs ?? []).map((s) => ({ id: s.scope, label: s.label }))}
+        />
         <span className="truncate text-ui-sm text-faint" id="agentsScopePath">{cur?.dir ?? ""}</span>
       </div>
       <div className="agents-wrap">

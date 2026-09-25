@@ -9,6 +9,7 @@ import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
+import ScopeSel from "../ScopeSel";
 
 // 技能条目（agent_assets 回包 skills 各目录列表项；host 下发）
 interface SkillItem {
@@ -39,9 +40,8 @@ interface SkillsData {
 
 // 页面内派生的作用域分段
 interface SkillSection {
-  scope: string; // "global" / "profile" / "project:<cwd>"
+  scope: string; // "profile" / "project:<cwd>"
   label: string;
-  iconName: string;
   dir?: string;
   items: SkillItem[];
 }
@@ -52,7 +52,6 @@ export default function SkillsPage() {
   const agentAssets = useAppStore((s) => s.agentAssets);
   const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [query, setQuery] = useState("");
-  const [scopeOpen, setScopeOpen] = useState(false); // 作用域下拉
   const [moreOpen, setMoreOpen] = useState(false); // more 菜单
   const [spin, setSpin] = useState(false); // 刷新按钮旋转
   const [openPath, setOpenPath] = useState<string | null>(null); // 向下延展编辑的技能 path（null = 收起）
@@ -74,7 +73,6 @@ export default function SkillsPage() {
   const profileSec: SkillSection = {
     scope: "profile",
     label: `Profile · ${data?.profileName ?? "default"}`,
-    iconName: "scopeProfile",
     dir: data?.profileDir,
     items: data?.profile || [],
   };
@@ -83,7 +81,6 @@ export default function SkillsPage() {
     .map((p) => ({
       scope: `project:${p.cwd}`,
       label: p.name,
-      iconName: "folder",
       dir: p.dir,
       items: p.skills || [],
     }));
@@ -98,13 +95,13 @@ export default function SkillsPage() {
   const q = query.trim().toLowerCase();
   const filtered = curSec.items.filter((item) => !q || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q)));
 
-  // ---------- 全局点击关闭下拉（对应旧版 closeAllMenus） ----------
+  // ---------- 全局点击关闭 more 菜单（作用域下拉由 ScopeSel 自管理；对应旧版 closeAllMenus） ----------
   useEffect(() => {
-    if (!scopeOpen && !moreOpen) return;
-    const close = () => { setScopeOpen(false); setMoreOpen(false); };
+    if (!moreOpen) return;
+    const close = () => setMoreOpen(false);
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
-  }, [scopeOpen, moreOpen]);
+  }, [moreOpen]);
 
   // asset_file 回包：匹配当前延展区则填入编辑器
   const assetFile = useAppStore((s) => s.assetFile);
@@ -214,56 +211,12 @@ export default function SkillsPage() {
 
       <div className="skills-bar-primary">
         <div className="skills-scope-wrap">
-          <div className="sel skills-scope-sel" id="skillScopeSel">
-            <button type="button" className="skills-scope-btn" id="skillScopeBtn"
-              onClick={(e) => { e.stopPropagation(); const was = scopeOpen; setMoreOpen(false); setScopeOpen(!was); }}>
-              <span className="inline-flex items-center text-faint"><Icon name={curSec.iconName || "laptop"} size={14} /></span>
-              <span id="skillScopeLabel">{curSec.label}</span>
-              <span className="caret-svg"><Icon name="caret" size={14} /></span>
-            </button>
-            <div className={"menu scope-menu" + (scopeOpen ? " open" : "")} id="skillScopeMenu">
-              <div className="scope-menu-top">
-                <div
-                  className="mi"
-                  data-scope={profileSec.scope}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setScope(profileSec.scope);
-                    setScopeOpen(false);
-                    setOpenPath(null);
-                  }}
-                >
-                  <span className="ck" style={{ visibility: profileSec.scope === curSec.scope ? "visible" : "hidden" }}>✓</span>
-                  <Icon name={profileSec.iconName} size={14} />
-                  <span className="mi-label" title={profileSec.label}>{profileSec.label}</span>
-                </div>
-              </div>
-              <div className="sep" />
-              <div className="scope-menu-header">工作区</div>
-              <div className="scope-menu-projects">
-                {projectSecs.map((s) => (
-                  <div
-                    key={s.scope}
-                    className="mi"
-                    data-scope={s.scope}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setScope(s.scope);
-                      setScopeOpen(false);
-                      setOpenPath(null);
-                    }}
-                  >
-                    <span className="ck" style={{ visibility: s.scope === curSec.scope ? "visible" : "hidden" }}>✓</span>
-                    <Icon name={s.iconName} size={14} />
-                    <span className="mi-label" title={s.label}>{s.label}</span>
-                  </div>
-                ))}
-                {projectSecs.length === 0 && (
-                  <div className="mi empty disabled">暂无工作区</div>
-                )}
-              </div>
-            </div>
-          </div>
+          <ScopeSel
+            value={scope}
+            onChange={(id) => { setScope(id); setOpenPath(null); }}
+            profile={{ id: profileSec.scope, label: profileSec.label }}
+            projects={projectSecs.map((s) => ({ id: s.scope, label: s.label }))}
+          />
           <span className="skills-divider">|</span>
           <span className="text-ui-base text-dim" id="skillsTotalCount">技能 {totalCount}</span>
         </div>
@@ -280,7 +233,7 @@ export default function SkillsPage() {
         <div className="skills-actions-wrap">
           <div className="sel" id="skillsMoreSel">
             <button type="button" className="skills-btn-icon" id="skillsMoreBtn" title="更多选项"
-              onClick={(e) => { e.stopPropagation(); const was = moreOpen; setScopeOpen(false); setMoreOpen(!was); }}>
+              onClick={(e) => { e.stopPropagation(); const was = moreOpen; setMoreOpen(!was); }}>
               <Icon name="dots" size={14} />
             </button>
             <div className={"menu" + (moreOpen ? " open" : "")} id="skillsMoreMenu">

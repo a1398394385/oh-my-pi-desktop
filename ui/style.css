@@ -2754,9 +2754,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* ─── 扩展中心（pg-extensions） ─── */
 .ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.ext-scope-sel { position: relative; }
 /* 作用域/来源按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
-.ext-scope-btn, .ext-prov-btn {
+.ext-prov-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer;
 }
@@ -2922,6 +2921,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   transition: background .15s var(--swift), color .15s var(--swift);
 }
 .sel:hover, .sel:has(.menu.open) { background: var(--panel-2); color: var(--text); }
+/* 作用域下拉按钮（ScopeSel 全站唯一实现）：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
+.scope-sel-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
 .sel i { color: var(--faint); font-style: normal; font-size: var(--ui-fs-sm); }
 .sel .caret-svg { color: var(--faint); transition: transform .22s var(--spring); }
 .sel:has(.menu.open) .caret-svg { transform: rotate(180deg); }
@@ -3089,20 +3090,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   align-items: center;
   gap: 12px;
 }
-.skills-scope-sel { position: relative; }
-/* 作用域按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
-.skills-scope-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.skills-scope-icon { display: inline-flex; align-items: center; color: var(--faint); }
 .skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 .skills-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
 
@@ -3363,20 +3350,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   align-items: center;
   gap: 12px;
 }
-.mcp-scope-sel { position: relative; }
-/* 作用域按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
-.mcp-scope-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.mcp-scope-icon { display: inline-flex; align-items: center; color: var(--faint); }
 .mcp-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 .mcp-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
 
