@@ -33,7 +33,7 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
   const title = isCreatingNew
     ? "新建任务"
     : session
-      ? (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || session.cwd.split("/").pop()
+      ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || session.cwd.split("/").pop()
       : "选择左侧会话或新建任务";
   return (
     <div className="chat-head" data-tauri-drag-region="">
