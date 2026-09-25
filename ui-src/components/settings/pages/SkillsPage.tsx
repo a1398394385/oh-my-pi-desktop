@@ -49,7 +49,7 @@ export default function SkillsPage() {
   // 渲染数据走字段 selector：agentAssets / assetFile / assetFileSaved 落地帧均换新引用；
   // onToggle 乐观写也走 setState 换引用链（见 onToggle），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
-  const [scope, setScope] = useState("global"); // "global"(用户) / "profile" / "project:<cwd>"
+  const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [query, setQuery] = useState("");
   const [scopeOpen, setScopeOpen] = useState(false); // 作用域下拉
   const [moreOpen, setMoreOpen] = useState(false); // more 菜单
@@ -61,23 +61,35 @@ export default function SkillsPage() {
   const seenStamp = useRef<unknown>(null); // 已消费的 asset_file_saved 回包（按引用判重）
   const statusTimer = useRef<TimerHandle | undefined>(undefined);
 
+  const allProjects = useAppStore((s) => s.allProjects);
+  const removedProjects = useAppStore((s) => s.removedProjects);
+  const validProjectCwds = new Set(
+    allProjects.filter((c) => !removedProjects.includes(c))
+  );
+
   // ---------- 数据派生（同旧版 currentSkillSections/getActiveSkillSection） ----------
   const data: SkillsData | undefined = agentAssets?.skills as SkillsData | undefined; // frames 侧 skills 暂 unknown(host/assets.ts 内部扫描决定),本页按实际读取收窄
-  const sections: SkillSection[] = [];
-  if (data) {
-    sections.push({ scope: "global", label: "用户", iconName: "laptop", dir: data.globalDir, items: data.global || [] });
-    if (data.profile && data.profile.length > 0) {
-      sections.push({ scope: "profile", label: `Profile · ${data.profileName ?? "default"}`, iconName: "scopeProfile", dir: data.profileDir, items: data.profile });
-    }
-    for (const p of data.projects || []) {
-      sections.push({ scope: `project:${p.cwd}`, label: p.name, iconName: "folder", dir: p.dir, items: p.skills });
-    }
-  }
-  // 当前作用域失效（如 profile 段消失）时回落到第一段，同旧版
+  const profileSec: SkillSection = {
+    scope: "profile",
+    label: `Profile · ${data?.profileName ?? "default"}`,
+    iconName: "scopeProfile",
+    dir: data?.profileDir,
+    items: data?.profile || [],
+  };
+  const projectSecs: SkillSection[] = (data?.projects || [])
+    .filter((p) => validProjectCwds.has(p.cwd))
+    .map((p) => ({
+      scope: `project:${p.cwd}`,
+      label: p.name,
+      iconName: "folder",
+      dir: p.dir,
+      items: p.skills || [],
+    }));
+  const sections: SkillSection[] = [profileSec, ...projectSecs];
+
+  // 当前作用域失效时回落到 profile 级
   const curSec: SkillSection =
-    sections.find((s) => s.scope === scope) ||
-    sections[0] ||
-    { scope: "global", label: "用户", iconName: "laptop", dir: "", items: [] };
+    sections.find((s) => s.scope === scope) || profileSec;
 
   const totalCount = curSec.items.length;
   const installedCount = curSec.items.filter((item) => item.enabled).length;
@@ -207,18 +219,47 @@ export default function SkillsPage() {
               <span id="skillScopeLabel">{curSec.label}</span>
               <span className="caret-svg"><Icon name="caret" size={14} /></span>
             </button>
-            <div className={"menu" + (scopeOpen ? " open" : "")} id="skillScopeMenu">
-              {sections.map((s, i) => (
-                <Fragment key={s.scope}>
-                  {i > 0 && <div className="sep" />}
-                  <div className="mi" data-scope={s.scope}
-                    onClick={(e) => { e.stopPropagation(); setScope(s.scope); setScopeOpen(false); setOpenPath(null); }}>
+            <div className={"menu scope-menu" + (scopeOpen ? " open" : "")} id="skillScopeMenu">
+              <div className="scope-menu-top">
+                <div
+                  className="mi"
+                  data-scope={profileSec.scope}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setScope(profileSec.scope);
+                    setScopeOpen(false);
+                    setOpenPath(null);
+                  }}
+                >
+                  <span className="ck" style={{ visibility: profileSec.scope === curSec.scope ? "visible" : "hidden" }}>✓</span>
+                  <Icon name={profileSec.iconName} size={14} />
+                  <span className="mi-label" title={profileSec.label}>{profileSec.label}</span>
+                </div>
+              </div>
+              <div className="sep" />
+              <div className="scope-menu-header">工作区</div>
+              <div className="scope-menu-projects">
+                {projectSecs.map((s) => (
+                  <div
+                    key={s.scope}
+                    className="mi"
+                    data-scope={s.scope}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setScope(s.scope);
+                      setScopeOpen(false);
+                      setOpenPath(null);
+                    }}
+                  >
                     <span className="ck" style={{ visibility: s.scope === curSec.scope ? "visible" : "hidden" }}>✓</span>
-                    <Icon name={s.iconName || "folder"} size={14} />
+                    <Icon name={s.iconName} size={14} />
                     <span className="mi-label" title={s.label}>{s.label}</span>
                   </div>
-                </Fragment>
-              ))}
+                ))}
+                {projectSecs.length === 0 && (
+                  <div className="mi empty disabled">暂无工作区</div>
+                )}
+              </div>
             </div>
           </div>
           <span className="skills-divider">|</span>

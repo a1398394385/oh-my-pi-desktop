@@ -2011,9 +2011,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!name) throw new Error("缺少 MCP 服务器名称");
             const cfg = msg.config || {};
             const scope = String(msg.scope ?? "profile");
-            const targetDir = scope === "global"
-              ? path.join(os.homedir(), ".omp", "agent")
-              : scope === "profile"
+            const targetDir = (scope === "profile" || scope === "global")
               ? H.agentDir
               : scope.startsWith("project:")
               ? (nearestProjectOmpDir(scope.slice(8)) ?? path.join(path.resolve(scope.slice(8)), ".omp"))

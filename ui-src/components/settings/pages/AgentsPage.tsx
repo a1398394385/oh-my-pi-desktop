@@ -23,20 +23,30 @@ interface AssetSection {
   items: AssetItem[];
 }
 
-// 宿主三级负载归一化成 [{scope, label, dir, items}]（原 assetSections 平移）
-function assetSections(data: AgentAssetsPayload["agents"] | null | undefined): AssetSection[] | null {
+// 宿主两级负载归一化成 {profileSec, projectSecs}
+function assetSections(data: AgentAssetsPayload["agents"] | null | undefined, validProjectCwds?: Set<string>): { profileSec: AssetSection; projectSecs: AssetSection[]; all: AssetSection[] } | null {
   if (!data) return null;
   const sec = (scope: string, items: AssetItem[], dir: string, label: string): AssetSection => ({ scope, label, dir, items });
-  return [
-    sec("global", data.global, data.globalDir, "全局"),
-    sec("profile", data.profile, data.profileDir, `Profile · ${data.profileName ?? "default"}`),
-    ...data.projects.map((p) => sec(`project:${p.cwd}`, p.agents ?? [], p.dir, p.name)),
-  ];
+  const profileSec = sec("profile", data.profile ?? [], data.profileDir, `Profile · ${data.profileName ?? "default"}`);
+  const projectSecs = (data.projects ?? [])
+    .filter((p) => Boolean(validProjectCwds && validProjectCwds.has(p.cwd)))
+    .map((p) => sec(`project:${p.cwd}`, p.agents ?? [], p.dir, p.name));
+  return {
+    profileSec,
+    projectSecs,
+    all: [profileSec, ...projectSecs],
+  };
 }
 
 export default function AgentsPage() {
   // 渲染数据走字段 selector：ws 侧落地帧全量换新引用（含 assetErr），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
+  const allProjects = useAppStore((s) => s.allProjects);
+  const removedProjects = useAppStore((s) => s.removedProjects);
+  const validProjectCwds = new Set(
+    allProjects.filter((c) => !removedProjects.includes(c))
+  );
+
   const [scope, setScope] = useState("profile"); // 当前作用域键（原 assetScope.agent）
   const [menuOpen, setMenuOpen] = useState(false); // 作用域胶囊菜单（原 wireSel 的 .menu.open）
   const [spin, setSpin] = useState(false); // 刷新钮旋转
@@ -47,10 +57,10 @@ export default function AgentsPage() {
   const [newName, setNewName] = useState(""); // 新建名称输入
 
   const data = agentAssets?.agents;
-  const sections = assetSections(data);
-  // 当前作用域失效（如 Profile 被移除）时回落 profile（原 renderAssetPage 同款守卫）
-  if (sections && !sections.some((s) => s.scope === scope)) setScope("profile");
-  const cur = sections?.find((s) => s.scope === scope) ?? sections?.find((s) => s.scope === "profile");
+  const sections = assetSections(data, validProjectCwds);
+  // 当前作用域失效（如 Profile 被移除）时回落 profile
+  if (sections && !sections.all.some((s) => s.scope === scope)) setScope("profile");
+  const cur = sections?.all.find((s) => s.scope === scope) ?? sections?.profileSec;
 
   // asset_file 回包（读取/新建成功）：载入编辑器（原 openAssetEditor）
   const file = useAppStore((s) => s.assetFile);
@@ -132,7 +142,7 @@ export default function AgentsPage() {
       <div className="set-note">
         <b>编辑磁盘定义</b>
         <span>
-          左上角切换作用域后，点击条目读取并编辑该级 agent 定义（Markdown + YAML frontmatter），保存后新派生的子代理立即生效。三级目录：全局 <code>~/.omp/agent/agents</code>、当前 Profile <code>~/.omp/profiles/&lt;profile&gt;/agent/agents</code>、项目 <code>&lt;项目&gt;/.omp/agents</code>。omp 加载优先级：项目 &gt; Profile &gt; 内置；内置 agent 打包在 omp 内，不在此列。
+          左上角切换作用域后，点击条目读取并编辑该级 agent 定义（Markdown + YAML frontmatter），保存后新派生的子代理立即生效。两级目录：当前 Profile <code>~/.omp/profiles/&lt;profile&gt;/agent/agents</code>、项目 <code>&lt;项目&gt;/.omp/agents</code>。omp 加载优先级：项目 &gt; Profile &gt; 内置；内置 agent 打包在 omp 内，不在此列。
         </span>
       </div>
       <div className="agents-bar">
@@ -146,17 +156,28 @@ export default function AgentsPage() {
         >
           <span id="agentScopeLabel">{cur?.label ?? "Profile"}</span> <Icon name="caret" size={14} className="caret-svg" />
           {menuOpen && cur && sections && (
-            <div className="menu open" id="agentScopeMenu" onClick={(e) => e.stopPropagation()}>
-              {sections.map((s, i) => (
-                <span key={s.scope} style={{ display: "contents" }}>
-                  {i > 0 && <div className="sep" />}
-                  <div className="mi" data-scope={s.scope} onClick={() => pickScope(s)}>
+            <div className="menu open scope-menu" id="agentScopeMenu" onClick={(e) => e.stopPropagation()}>
+              <div className="scope-menu-top">
+                <div className="mi" data-scope={sections.profileSec.scope} onClick={() => pickScope(sections.profileSec)}>
+                  <span className="ck" style={{ visibility: sections.profileSec.scope === scope ? "visible" : "hidden" }}>✓</span>
+                  <Icon name="scopeProfile" size={14} />
+                  <span className="mi-label" title={sections.profileSec.label}>{sections.profileSec.label}</span>
+                </div>
+              </div>
+              <div className="sep" />
+              <div className="scope-menu-header">工作区</div>
+              <div className="scope-menu-projects">
+                {sections.projectSecs.map((s) => (
+                  <div key={s.scope} className="mi" data-scope={s.scope} onClick={() => pickScope(s)}>
                     <span className="ck" style={{ visibility: s.scope === scope ? "visible" : "hidden" }}>✓</span>
-                    <Icon name={s.scope === "global" ? "scopeGlobal" : s.scope === "profile" ? "scopeProfile" : "folder"} size={14} />
+                    <Icon name="folder" size={14} />
                     <span className="mi-label" title={s.label}>{s.label}</span>
                   </div>
-                </span>
-              ))}
+                ))}
+                {sections.projectSecs.length === 0 && (
+                  <div className="mi empty disabled">暂无工作区</div>
+                )}
+              </div>
             </div>
           )}
         </div>

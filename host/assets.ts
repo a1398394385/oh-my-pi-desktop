@@ -50,20 +50,24 @@ export function nearestProjectOmpDir(cwd: string): string | null {
   }
 }
 
-// 磁盘资产（agent 定义 / skill / mcp 配置）的三级可读写根：
-// 全局 ~/.omp/agent/<sub>、当前 profile 的 agentDir/<sub>、
-// 每个桌面项目向上最近的 .omp/<sub>（不存在则以 <项目>/.omp/<sub> 计，供新建落位）
+// 磁盘资产（agent 定义 / skill / mcp 配置）的可读写根：
+// 当前 profile 的 agentDir/<sub>、每个有效桌面项目向上最近的 .omp/<sub>
 export type AssetKind = "agent" | "skill" | "mcp";
 
 export interface AssetRoot { dir: string; scope: string; cwd?: string }
 
+// 仅使用 omp-desktop.json 登记且未被移除的有效桌面项目
+export function validDesktopProjects(): string[] {
+  const removed = new Set(H.desktopProjects.removedProjects);
+  return H.desktopProjects.allProjects.filter((c) => !removed.has(c));
+}
+
 export function assetRoots(kind: AssetKind): AssetRoot[] {
   const sub = kind === "agent" ? "agents" : "skills";
   const roots: AssetRoot[] = [
-    { dir: path.join(os.homedir(), ".omp", "agent", sub), scope: "global" },
     { dir: path.join(H.agentDir, sub), scope: "profile" },
   ];
-  for (const cwd of H.desktopProjects.allProjects) {
+  for (const cwd of validDesktopProjects()) {
     const ompDir = nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp");
     roots.push({ dir: path.join(ompDir, sub), scope: "project", cwd });
   }
@@ -73,11 +77,10 @@ export function assetRoots(kind: AssetKind): AssetRoot[] {
 // 某级作用域下的 omp 配置目录（mcp.json 所在目录）
 export function assetOmpDir(kind: AssetKind, scope: unknown, cwd?: unknown): string {
   const s = String(scope ?? "profile");
-  if (s === "global") return path.join(os.homedir(), ".omp", "agent");
-  if (s === "profile") return H.agentDir;
+  if (s === "profile" || s === "global") return H.agentDir;
   if (s === "project") {
     const c = String(cwd ?? "");
-    if (!H.desktopProjects.allProjects.includes(c)) throw new Error(`未知的项目: ${c}`);
+    if (!validDesktopProjects().includes(c)) throw new Error(`未知的项目: ${c}`);
     return nearestProjectOmpDir(c) ?? path.join(path.resolve(c), ".omp");
   }
   throw new Error(`未知的作用域: ${s}`);
@@ -110,7 +113,7 @@ function allSkillRoots(): string[] {
       roots.push(exp);
     }
   } catch {}
-  for (const cwd of H.desktopProjects.allProjects) {
+  for (const cwd of validDesktopProjects()) {
     let cur = path.resolve(cwd);
     const root = path.parse(cur).root;
     while (cur && cur !== os.homedir() && cur !== root) {
@@ -247,10 +250,10 @@ export async function loadAllSkillsScoped() {
   const ignored = new Set<string>(((H.settings.get("skills.ignoredSkills") ?? []) as string[]));
   const isSkillDisabled = (name: string) => disabled.has(`skill:${name}`) || ignored.has(name);
 
-  // 全局目录源（兼容 omp、agents、claude、codex、opencode、自定义目录）
-  const globalSources = [
-    { dir: path.join(os.homedir(), ".omp", "agent", "skills"), provider: "native" },
-    { dir: path.join(os.homedir(), ".omp", "agent", "managed-skills"), provider: "managed-skills" },
+  // Profile 级目录源（含当前 Profile 的 skills、managed-skills 以及兼容外部用户级目录）
+  const profileSources = [
+    { dir: path.join(H.agentDir, "skills"), provider: "native" },
+    { dir: path.join(H.agentDir, "managed-skills"), provider: "managed-skills" },
     { dir: path.join(os.homedir(), ".agents", "skills"), provider: "agents" },
     { dir: path.join(os.homedir(), ".agent", "skills"), provider: "agents" },
     { dir: path.join(os.homedir(), ".claude", "skills"), provider: "claude" },
@@ -262,7 +265,7 @@ export async function loadAllSkillsScoped() {
     const customDirs = (H.settings.get("skills.customDirectories") ?? []) as string[];
     for (const cd of customDirs) {
       const exp = cd.startsWith("~/") ? path.join(os.homedir(), cd.slice(2)) : path.resolve(cd);
-      globalSources.push({ dir: exp, provider: "custom" });
+      profileSources.push({ dir: exp, provider: "custom" });
     }
   } catch {}
 
@@ -280,39 +283,33 @@ export async function loadAllSkillsScoped() {
     return Array.from(skillMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   };
 
-  const scannedGlobal = await scanSources(globalSources, "global");
-  const globalItemsMap = new Map<string, any>();
-  for (const it of scannedGlobal) globalItemsMap.set(it.name, it);
+  const scannedProfile = await scanSources(profileSources, "profile");
+  const profileItemsMap = new Map<string, any>();
+  for (const it of scannedProfile) profileItemsMap.set(it.name, it);
 
   try {
     const capRes = await loadCapability<any>("skills", { cwd: H.agentDir, includeDisabled: true });
     for (const s of capRes.all ?? []) {
-      if ((s.level === "user" || s._source?.level === "user") && !globalItemsMap.has(s.name)) {
+      if ((s.level === "user" || s._source?.level === "user") && !profileItemsMap.has(s.name)) {
         const p = s.path || s._source?.path;
         if (p) {
-          globalItemsMap.set(s.name, {
+          profileItemsMap.set(s.name, {
             name: s.name,
             description: s.frontmatter?.description || "",
             path: p,
             dir: path.dirname(p),
             provider: s._source?.provider || "native",
-            scope: "global",
+            scope: "profile",
             enabled: !isSkillDisabled(s.name),
           });
         }
       }
     }
   } catch {}
-  const globalItems = Array.from(globalItemsMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-
-  const profileSources = [
-    { dir: path.join(H.agentDir, "skills"), provider: "native" },
-    { dir: path.join(H.agentDir, "managed-skills"), provider: "managed-skills" },
-  ];
-  const profileItems = await scanSources(profileSources, "profile");
+  const profileItems = Array.from(profileItemsMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   const projects: { cwd: string; name: string; dir: string; skills: any[] }[] = [];
-  for (const cwd of H.desktopProjects.allProjects) {
+  for (const cwd of validDesktopProjects()) {
     const pSources: { dir: string; provider: string }[] = [];
     let cur = path.resolve(cwd);
     const root = path.parse(cur).root;
@@ -360,10 +357,10 @@ export async function loadAllSkillsScoped() {
   }
 
   return {
-    global: globalItems,
+    global: profileItems, // 向后兼容
     profile: profileItems,
     projects,
-    globalDir: path.join(os.homedir(), ".omp", "agent", "skills"),
+    globalDir: path.join(H.agentDir, "skills"), // 向后兼容
     profileDir: path.join(H.agentDir, "skills"),
     profileName: H.currentProfile,
   };
@@ -499,7 +496,7 @@ export async function loadAllMcpScoped() {
 
   // 2. 项目工作区级发现（各个桌面打开的项目）
   const projectScopeList: { cwd: string; name: string; dir: string; count: number }[] = [];
-  for (const cwd of H.desktopProjects.allProjects) {
+  for (const cwd of validDesktopProjects()) {
     let count = 0;
     try {
       const projRes = await loadCapability<any>("mcps", { cwd, includeDisabled: true });
@@ -601,7 +598,6 @@ export async function loadAllMcpScoped() {
   }
 
   // 兼容原有资产字段
-  const mcpGlobal = { path: path.join(os.homedir(), ".omp", "agent", "mcp.json"), servers: serverList.map((s) => ({ name: s.name, command: [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") || s.url || "" })) };
   const mcpProfile = { path: userMcpPath, servers: serverList.map((s) => ({ name: s.name, command: [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") || s.url || "" })) };
   const mcpProjects = projectScopeList.map((p) => ({
     cwd: p.cwd,
@@ -611,7 +607,6 @@ export async function loadAllMcpScoped() {
   }));
 
   const scopes = [
-    { id: "all", name: "全部工作区", count: serverList.length },
     { id: "profile", name: `Profile · ${H.currentProfile}`, count: serverList.filter((s) => s.scope === "profile").length, dir: userMcpPath },
     ...projectScopeList.map((p) => ({
       id: `project:${p.cwd}`,
@@ -626,7 +621,7 @@ export async function loadAllMcpScoped() {
     servers: serverList,
     scopes,
     userMcpPath,
-    global: mcpGlobal,
+    global: mcpProfile, // 向后兼容
     profile: mcpProfile,
     projects: mcpProjects,
     profileName: H.currentProfile,
@@ -636,31 +631,30 @@ export async function loadAllMcpScoped() {
 export async function listAgentAssets() {
   const memoriesDir = path.join(H.agentDir, "memories");
   const commands = await listNamedFiles(path.join(H.agentDir, "commands"), ".md");
-  // agent 定义按三级返回：全局 / 当前 profile / 各桌面项目
+  // agent 定义按两级返回：当前 profile / 各桌面项目
   interface AssetListPayload {
-    global: any[];
+    global?: any[];
     profile: any[];
     projects: { cwd: string; name: string; dir: string; agents?: any[] }[];
-    globalDir: string;
+    globalDir?: string;
     profileDir: string;
     profileName?: string;
   }
   const loadScopedAgents = async (): Promise<AssetListPayload> => {
     const payload: AssetListPayload = {
-      global: [],
       profile: [],
       projects: [],
-      globalDir: path.join(os.homedir(), ".omp", "agent", "agents"),
       profileDir: path.join(H.agentDir, "agents"),
     };
     for (const r of assetRoots("agent")) {
       const items = [];
       for (const d of await listNamedDirs(r.dir)) items.push({ name: d.name, path: d.path, description: await agentFileDescription(path.join(d.path, "AGENT.md")) });
       for (const f of await listNamedFiles(r.dir, ".md")) items.push({ name: f.name, path: f.path, description: await agentFileDescription(f.path) });
-      if (r.scope === "global") payload.global = items;
-      else if (r.scope === "profile") payload.profile = items;
+      if (r.scope === "profile") payload.profile = items;
       else payload.projects.push({ cwd: r.cwd!, name: path.basename(r.cwd!), dir: r.dir, agents: items });
     }
+    payload.global = payload.profile;
+    payload.globalDir = payload.profileDir;
     payload.profileName = H.currentProfile;
     return payload;
   };
@@ -673,7 +667,7 @@ export async function listAgentAssets() {
     for (const f of await listNamedFiles(path.join(H.agentDir, "hooks", phase), ".js")) hooks.push({ ...f, phase });
   }
   // 记忆文件名是 omp 的 encodeProjectPath（cwd 去掉前导斜杠后把 / \ : 换成 -，首尾加 --），
-  // 目录名本身含 - 无法前端反解，这里用项目 cwd 逐个匹配，给出末级目录名供展示
+  const validProjects = validDesktopProjects();
   const encodeProjectPath = (cwd: string) => `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
   let memories: { name: string; path: string; project?: string }[] = [];
   try {
@@ -681,9 +675,10 @@ export async function listAgentAssets() {
     memories = entries
       .filter((e) => !e.name.startsWith("."))
       .map((e) => {
-        const cwd = H.desktopProjects.allProjects.find((c) => encodeProjectPath(c) === e.name);
+        const cwd = validProjects.find((c) => encodeProjectPath(c) === e.name);
         return { name: e.name, path: path.join(memoriesDir, e.name), project: cwd ? path.basename(cwd) : undefined };
-      });
+      })
+      .filter((m) => m.project !== undefined);
   } catch {}
   return {
     memories,

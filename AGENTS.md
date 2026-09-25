@@ -36,12 +36,13 @@
 
 1. **中文规范**：所有思考、分析、解释和代码注释均使用中文。
 2. **机器资源安全红线**：禁止裸跑 vitest / 多包并发测试；所有测试必须带单 worker 池参数。
-3. **输出风格 (ADHD Mode)**：
+3. **测试 Profile 隔离红线（最高优先级测试约束）**：所有测试、冒烟（smoke）及自动化脚本，默认且强制使用 `omp-desktop-test` profile（通过环境变量 `OMP_PROFILE=omp-desktop-test` 指定），严禁污染用户的默认 profile（`default` / `~/.omp/agent`）。若 `omp-desktop-test` profile 目录不存在，启动时必须自动检测并新建。测试产生的会话、项目列表及临时配置必须严格限制在测试 profile 内。
+4. **输出风格 (ADHD Mode)**：
    - 第一行必须是可直接执行的命令、路径或代码片段。
    - 多步任务清晰编号，结尾给出 2 分钟内可完成的单一具体操作。
    - 严禁空话、客套话与无意义的铺垫。
-4. **外科手术式修改**：只做解决当前问题所必需的修改，不做过度推测性设计，保持既有代码风格。
-5. **文档体系**：写/改任何 .md 文档前先读 `docs/documentation.md`（文档类型登记表 / 决策树 / 长度预算 / SSOT 原则）。`.agents/` 是 agent 工作文档区（防回归 RULE / BUGS 事故账本 / ADR notes / 工作流约定），入口见 `.agents/README.md`；外部依赖坑记 `docs/PITFALLS.md`，本仓库 bug 记 `.agents/BUGS.md`。
+5. **外科手术式修改**：只做解决当前问题所必需的修改，不做过度推测性设计，保持既有代码风格。
+6. **文档体系**：写/改任何 .md 文档前先读 `docs/documentation.md`（文档类型登记表 / 决策树 / 长度预算 / SSOT 原则）。`.agents/` 是 agent 工作文档区（防回归 RULE / BUGS 事故账本 / ADR notes / 工作流约定），入口见 `.agents/README.md`；外部依赖坑记 `docs/PITFALLS.md`，本仓库 bug 记 `.agents/BUGS.md`。
 
 ## 设置页一致性规范（最高优先级 UI 约束）
 

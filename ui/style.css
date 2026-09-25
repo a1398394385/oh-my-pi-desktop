@@ -2681,10 +2681,62 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* 子智能体页：列表 + 编辑器双栏 */
 .agents-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .agents-bar-path { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 作用域菜单：宽度为常规菜单两倍，文字与边界留内边距，超长项目名省略 */
-#agentScopeMenu, #skillScopeMenu, #mcpScopeMenu { width: 340px; padding: 6px; left: 0; right: auto; }
-#agentScopeMenu .mi, #skillScopeMenu .mi, #mcpScopeMenu .mi { padding: 6px 12px; }
-#agentScopeMenu .mi .mi-label, #skillScopeMenu .mi .mi-label, #mcpScopeMenu .mi .mi-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 作用域菜单：宽度 340px，最大高度不超过屏幕高度 2/3，顶部 Profile 固定、工作区表头固定、项目列表滚动 */
+#agentScopeMenu, #skillScopeMenu, #mcpScopeMenu, .scope-menu {
+  width: 340px;
+  padding: 6px;
+  left: 0;
+  right: auto;
+  max-height: calc(100vh * 2 / 3);
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-base);
+}
+#agentScopeMenu.open, #skillScopeMenu.open, #mcpScopeMenu.open, .scope-menu.open {
+  display: flex !important;
+  flex-direction: column;
+}
+#agentScopeMenu .mi, #skillScopeMenu .mi, #mcpScopeMenu .mi, .scope-menu .mi {
+  padding: 9px 12px;
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-base);
+}
+#agentScopeMenu .mi .mi-label, #skillScopeMenu .mi .mi-label, #mcpScopeMenu .mi .mi-label, .scope-menu .mi .mi-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-menu-top {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scope-menu .sep, #agentScopeMenu .sep, #skillScopeMenu .sep, #mcpScopeMenu .sep {
+  flex: none;
+  margin: 6px 4px;
+}
+.scope-menu-header {
+  flex: none;
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  padding: 6px 12px 4px;
+  user-select: none;
+  font-weight: 500;
+}
+.scope-menu-projects {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .agents-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.4fr; gap: 12px; align-items: start; margin-top: 12px; }
 .agent-editor { display: flex; flex-direction: column; min-height: 420px; }
 .ae-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }

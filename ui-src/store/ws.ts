@@ -240,7 +240,7 @@ function onMessage(msg: HostFrame): void {
           openSessions.delete(s.activePath);
           return { openSessions, activePath: null };
         });
-        useAppStore.getState().showWelcomeScreen(useAppStore.getState().newSessionProject || diskProjects[0]?.cwd);
+        useAppStore.getState().showWelcomeScreen(useAppStore.getState().newSessionProject || useAppStore.getState().getAvailableProjects()[0]?.cwd);
       }
       break;
     }

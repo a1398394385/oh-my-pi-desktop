@@ -13,6 +13,14 @@ import fs from "node:fs";
 
 const desktopProfileConfigFile = path.join(os.homedir(), ".omp", "desktop-profile.json");
 export function getSavedProfile(): string {
+  if (process.env.OMP_PROFILE && process.env.OMP_PROFILE.trim()) {
+    const profile = process.env.OMP_PROFILE.trim();
+    if (profile !== "default") {
+      const profileDir = path.join(os.homedir(), ".omp", "profiles", profile, "agent");
+      if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+    }
+    return profile;
+  }
   try {
     const raw = JSON.parse(fs.readFileSync(desktopProfileConfigFile, "utf8"));
     if (typeof raw.activeProfile === "string" && raw.activeProfile.trim()) {
@@ -23,6 +31,7 @@ export function getSavedProfile(): string {
 }
 
 export function saveProfileToDisk(profile: string) {
+  if (process.env.OMP_PROFILE) return; // 环境变量指定 Profile（如测试模式）时不覆写用户的 desktop-profile.json
   try {
     const dir = path.dirname(desktopProfileConfigFile);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
