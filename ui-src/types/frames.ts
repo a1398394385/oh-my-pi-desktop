@@ -361,7 +361,6 @@ export interface McpAssetsPayload {
 export interface AgentAssetsPayload {
   memories: { name: string; path: string; project?: string }[];
   skills: unknown;
-  commands: { name: string; path: string }[];
   agents: {
     global: { name: string; path: string; description: string }[];
     profile: { name: string; path: string; description: string }[];

@@ -20,7 +20,6 @@ import ComputerPage from "./pages/ComputerPage";
 import PluginsPage from "./pages/PluginsPage";
 import ExtensionsPage from "./pages/ExtensionsPage";
 import HooksPage from "./pages/HooksPage";
-import CommandsPage from "./pages/CommandsPage";
 import ModelPage from "./pages/ModelPage";
 import McpPage from "./pages/McpPage";
 import SkillsPage from "./pages/SkillsPage";
@@ -74,7 +73,6 @@ const NAV_SECTIONS = [
       { id: "pg-plugins", icon: "plugins", label: "插件" },
       { id: "pg-mcp", icon: "mcp", label: "MCP 服务器" },
       { id: "pg-skills", icon: "skills", label: "技能" },
-      { id: "pg-commands", icon: "commands", label: "命令" },
       { id: "pg-hooks", icon: "hook", label: "钩子" },
     ],
   },
@@ -96,7 +94,6 @@ const PAGES: Record<string, ComponentType> = {
   "pg-plugins": PluginsPage,
   "pg-extensions": ExtensionsPage,
   "pg-hooks": HooksPage,
-  "pg-commands": CommandsPage,
   "pg-model": ModelPage,
   "pg-mcp": McpPage,
   "pg-skills": SkillsPage,

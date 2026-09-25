@@ -62,7 +62,6 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   "pg-computer": [{ from: "tools/Computer", titleZh: "电脑控制" }],
   "pg-mcp": [{ from: "tools/Discovery & MCP" }],
   "pg-plugins": [{ from: "tools/Extensions" }],
-  "pg-commands": [{ from: "tasks/Commands & Skills", includePrefix: ["commands."], titleZh: "命令" }],
   "pg-skills": [{ from: "tasks/Commands & Skills", includePrefix: ["skills."], titleZh: "技能命令" }],
 
   // ── 新主题页（pg-* 组件 + SchemaRows） ──

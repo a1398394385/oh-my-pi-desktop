@@ -630,7 +630,6 @@ export async function loadAllMcpScoped() {
 
 export async function listAgentAssets() {
   const memoriesDir = path.join(H.agentDir, "memories");
-  const commands = await listNamedFiles(path.join(H.agentDir, "commands"), ".md");
   // agent 定义按两级返回：当前 profile / 各桌面项目
   interface AssetListPayload {
     global?: any[];
@@ -683,7 +682,6 @@ export async function listAgentAssets() {
   return {
     memories,
     skills,
-    commands,
     agents,
     hooks,
     mcp,
