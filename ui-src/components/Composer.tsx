@@ -650,6 +650,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             {/* key 重挂 = 关闭面板通道（closeTypeahead）；triggerFn/onQueryChange 零依赖稳定，避免监听反复重注册 */}
             <LexicalTypeaheadMenuPlugin
               key={closeTick}
+              parent={rootRef.current ?? undefined}
               triggerFn={triggerFn}
               onQueryChange={onQueryChange}
               options={taOptions}

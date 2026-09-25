@@ -24,7 +24,7 @@ export default function ConfirmDialog({ title, message, confirmText = "确定", 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
-        className="w-[320px] max-w-[calc(100vw-48px)] p-[16px_18px_14px]"
+        className="w-[480px] max-w-[calc(100vw-48px)] p-[16px_18px_14px]"
         aria-describedby={undefined}
       >
         {title && <DialogTitle className="confirm-title">{title}</DialogTitle>}

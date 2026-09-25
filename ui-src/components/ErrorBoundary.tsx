@@ -1,19 +1,28 @@
 // 全局错误边界：任何渲染期异常兜底为可见错误页，而不是整窗口黑屏（BUG-014 同款根因：
 // 无边界时 React 根容器被卸载，深色主题下就是「应用黑掉」，现场与报错一起丢失）。
 // 边界页展示错误信息 + 一键重载；错误同时打上控制台标记便于 DevTools 翻查。
-import { Component } from "react";
+import { Component, type ReactNode, type ErrorInfo } from "react";
 
-export default class ErrorBoundary extends Component {
-  constructor(props) {
+interface Props {
+  children?: ReactNode;
+}
+
+interface State {
+  error: Error | null;
+  stack: string;
+}
+
+export default class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
     super(props);
     this.state = { error: null, stack: "" };
   }
 
-  static getDerivedStateFromError(error) {
-    return { error };
+  static getDerivedStateFromError(error: Error): State {
+    return { error, stack: "" };
   }
 
-  componentDidCatch(error, info) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
     this.setState({ stack: info?.componentStack || "" });
     console.error("[ui] 渲染崩溃（已被边界捕获）:", error, info?.componentStack);
   }

@@ -4,12 +4,12 @@
 // 菜单显隐为局部 state：projMenu/branchMenu 存弹出坐标（向上弹出，底边贴胶囊顶边上方 4px，
 // 对照原版 offsetLeft / clientHeight-offsetTop 定位写法）；两菜单互斥，
 // window click / blur 关闭（对照 shell.js closeAllMenus 的全局关闭语义）。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useAppStore, toast } from "../store";
-import Icon from "../Icon.jsx";
-import Composer from "./Composer.jsx";
-import ProjectMenu from "./welcome/ProjectMenu.jsx";
-import BranchMenu from "./welcome/BranchMenu.jsx";
+import Icon from "../Icon";
+import Composer from "./Composer";
+import ProjectMenu from "./welcome/ProjectMenu";
+import BranchMenu from "./welcome/BranchMenu";
 
 function greeting() {
   const h = new Date().getHours();
@@ -24,12 +24,9 @@ export default function Welcome() {
   const newSessionProject = useAppStore((s) => s.newSessionProject);
   const newSessionIsGit = useAppStore((s) => s.newSessionIsGit);
   const newSessionBranch = useAppStore((s) => s.newSessionBranch);
-  // null = 关闭；{left, bottom} = 打开坐标（px，相对 .wb-back-card）
-  const [projMenu, setProjMenu] = useState(null);
-  const [branchMenu, setBranchMenu] = useState(null);
-  const backCardRef = useRef(null);
-  const projBtnRef = useRef(null);
-  const branchBtnRef = useRef(null);
+  // null = 关闭；打开时保存触发按钮的视口坐标，菜单 portal 到 body 后再定位
+  const [projMenu, setProjMenu] = useState<DOMRect | null>(null);
+  const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
 
   const menuOpen = !!projMenu || !!branchMenu;
 
@@ -48,25 +45,19 @@ export default function Welcome() {
     };
   }, [menuOpen]);
 
-  // 向上弹出坐标：菜单左缘对齐胶囊，底边贴胶囊顶边上方 4px（对照原版 welcome.js 定位写法）
-  const popPos = (btn) => {
-    const card = backCardRef.current;
-    return { left: btn.offsetLeft, bottom: card.clientHeight - btn.offsetTop + 4 };
-  };
-
   // 已开再点 = 关；互斥开另一菜单前先关当前所有（对照原版 closeAllMenus 前置）
-  const toggleProjMenu = (e) => {
+  const toggleProjMenu = (e: MouseEvent) => {
     e.stopPropagation();
     if (projMenu) return setProjMenu(null);
     setBranchMenu(null);
-    setProjMenu(popPos(projBtnRef.current));
+    setProjMenu(e.currentTarget.getBoundingClientRect());
   };
 
-  const toggleBranchMenu = (e) => {
+  const toggleBranchMenu = (e: MouseEvent) => {
     e.stopPropagation();
     if (branchMenu) return setBranchMenu(null);
     setProjMenu(null);
-    setBranchMenu(popPos(branchBtnRef.current));
+    setBranchMenu(e.currentTarget.getBoundingClientRect());
   };
 
   const projName = newSessionProject
@@ -77,16 +68,14 @@ export default function Welcome() {
     <div id="welcomeScreen" className="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto pt-[30px] px-[20px] pb-[80px]">
       <div className="w-full max-w-[min(720px,100%)] flex flex-col items-center">
         <div className="text-[26px] font-medium text-text mb-[28px] tracking-[0.5px] text-center select-none" id="welcomeTitle">{greeting()}</div>
-        <div className="w-full relative flex flex-col" id="wbContainer">
+        <div className="wb-wrapper w-full relative flex flex-col" id="wbContainer">
           <div
-            ref={backCardRef}
             id="wbBackCard"
             className="wb-back-card"
           >
             {/* 底部 20px padding 是重叠预算：输入框卡负 margin(-20px)上拉盖住的正是这段（对照 CSS 注释） */}
-            <div className="flex items-center gap-[8px] pt-[5px] px-[6px] pb-[20px]">
+            <div className="wb-head flex items-center gap-[8px] pt-[5px] px-[6px] pb-[20px]">
               <button
-                ref={projBtnRef}
                 id="wbProjectBtn"
                 className={"wb-pill" + (projMenu ? " active" : "")}
                 title={`项目目录: ${newSessionProject}`}
@@ -110,7 +99,6 @@ export default function Welcome() {
               </button>
               {newSessionIsGit && (
                 <button
-                  ref={branchBtnRef}
                   id="wbBranchBtn"
                   className={"wb-pill" + (branchMenu ? " active" : "")}
                   title={`Git 分支: ${newSessionBranch || "main"}`}
@@ -125,12 +113,10 @@ export default function Welcome() {
           </div>
           {/* 二级重叠卡（ZCode queue-card ↔ dock 同款几何）：胶囊卡（.wb-back-card）在上，
               输入框卡（#composer.in-welcome）以负 margin 上拉盖其下缘，项目/分支胶囊
-              露在胶囊卡上半部分；两卡兄弟位、同宽、边缘对齐。
-              两个选择菜单挂 wrapper（与上卡同坐标原点），z-index 高于输入框卡，
-              避免菜单被叠在下卡的输入框卡盖住 */}
+              露在胶囊卡上半部分；两卡兄弟位、同宽、边缘对齐。*/}
           <Composer inWelcome={true} />
-          {projMenu && <ProjectMenu pos={projMenu} onClose={() => setProjMenu(null)} />}
-          {branchMenu && <BranchMenu pos={branchMenu} onClose={() => setBranchMenu(null)} />}
+          {projMenu && <ProjectMenu anchorRect={projMenu} onClose={() => setProjMenu(null)} />}
+          {branchMenu && <BranchMenu anchorRect={branchMenu} onClose={() => setBranchMenu(null)} />}
         </div>
       </div>
     </div>

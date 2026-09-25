@@ -4,6 +4,7 @@
 // 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）与字体表住在
 // ui-src/appearance.js（设置页与全局快捷键共用），此处 re-export 保持既有导出面。
 import { useEffect, useRef, type ComponentType } from "react";
+import appIcon from "../../../ui/app-icon.png";
 import { useAppStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
 import { applyAppearance } from "../../appearance";
 
@@ -179,7 +180,7 @@ export default function Settings() {
         ))}
         <div className="set-foot">
           <span className="avatar">
-            <img src="app-icon.png" alt="" />
+            <img src={appIcon} alt="" />
           </span>
           <span className="uname" id="setFootProfile">
             {profileName}

@@ -19,11 +19,23 @@ const NOTE_RE = /^\\ /;
 // 符号 ∈ 空格(上下文) / -(旧) / +(新)；分隔符也可能是全角 │。非 unified diff，无 hunk 头
 const LN_RE = /^([-+\s])\s*(\d+)[|│](.*)$/;
 
+export interface DiffRow {
+  kind: "note" | "added" | "removed" | "context";
+  text: string;
+  no?: number;
+  oldNo?: number;
+}
+
+interface ParsedDiff {
+  rows: DiffRow[];
+  omitted: number;
+}
+
 // 解析 unified diff 文本为行结构：按 +/-/空格 前缀分类正文行并跟踪 hunk 头里的
 // 新旧行号；文件头与 hunk 头跳过不渲染（行号仍在 hunk 头处对齐，残缺 hunk 宽容记账）。
-function parseUnifiedDiff(diff) {
+function parseUnifiedDiff(diff: string | null | undefined): ParsedDiff {
   const lines = String(diff ?? "").split("\n");
-  const rows = [];
+  const rows: DiffRow[] = [];
   let oldLine = 0;
   let newLine = 0;
   let omitted = 0;
@@ -57,9 +69,9 @@ function parseUnifiedDiff(diff) {
 }
 
 // 解析底座行号 diff（edit 工具 details.diff）：每行自带新旧行号，无需 hunk 头对齐
-function parseLnDiff(diff) {
+function parseLnDiff(diff: string | null | undefined): ParsedDiff {
   const lines = String(diff ?? "").split("\n");
-  const rows = [];
+  const rows: DiffRow[] = [];
   let omitted = 0;
   for (let i = 0; i < lines.length; i++) {
     if (rows.length >= MAX_RENDER_LINES) {
@@ -77,13 +89,19 @@ function parseLnDiff(diff) {
 }
 
 // 统一入口：unified diff 优先；无 hunk 正文（底座行号格式）时回落行号解析
-function parseDiff(diff) {
+function parseDiff(diff: string | null | undefined): ParsedDiff {
   const unified = parseUnifiedDiff(diff);
   if (unified.rows.length > 0) return unified;
   return parseLnDiff(diff);
 }
 
-export default function LightweightDiff({ diff, lang, className = "" }) {
+interface LightweightDiffProps {
+  diff?: string | null;
+  lang?: string | null;
+  className?: string;
+}
+
+export default function LightweightDiff({ diff, lang = null, className = "" }: LightweightDiffProps) {
   const { rows, omitted } = useMemo(() => parseDiff(diff), [diff]);
   // 整段内容（行文本按序 join）一次 tokenize，按行下标回贴；lang 为空/超长按纯文本渲染
   const code = useMemo(() => rows.map((r) => r.text).join("\n"), [rows]);

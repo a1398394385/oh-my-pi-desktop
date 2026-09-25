@@ -5,31 +5,30 @@
 // 契约：数据经 useAppStore selector 订阅（当前会话 / rightTab / selectedFile 等），
 // 写走 setBump 与既有函数；三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：
 // #rightBody 加 detail 类，rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../store";
-import Icon from "../Icon.jsx";
+import Icon from "../Icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
   TAB_META,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
-} from "./right/tabs.js";
-import StartPage from "./right/StartPage.jsx";
-import SubagentPage from "./right/SubagentPage.jsx";
-import GitDiffPage from "./right/GitDiffPage.jsx";
-import FilePage from "./right/FilePage.jsx";
-import BgCmdPage from "./right/BgCmdPage.jsx";
-import BranchTreePage from "./right/BranchTreePage.jsx";
-import SessionTreePage from "./right/SessionTreePage.jsx";
-import TerminalPage from "./right/TerminalPage.jsx";
-import BrowserPage from "./right/BrowserPage.jsx";
+} from "./right/tabs";
+import StartPage from "./right/StartPage";
+import SubagentPage from "./right/SubagentPage";
+import GitDiffPage from "./right/GitDiffPage";
+import FilePage from "./right/FilePage";
+import BgCmdPage from "./right/BgCmdPage";
+import BranchTreePage from "./right/BranchTreePage";
+import SessionTreePage from "./right/SessionTreePage";
+import TerminalPage from "./right/TerminalPage";
+import BrowserPage from "./right/BrowserPage";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
-export { TAB_META, openRightTab, closeRightTab } from "./right/tabs.js";
+export { TAB_META, openRightTab, closeRightTab } from "./right/tabs";
 
 // tab 头 hover 提示：原生 title 换 Radix Tooltip（浮层卡视觉走 ui/tooltip 基件）。
-// children 必须是可挂 ref 的 DOM 元素（Radix Trigger 经 asChild 注入 ref 定位锚点）；
-// 组件文件是 .jsx（不在 tailwind @source 扫描内），此处只传 props 不写 utility 类。
-function Tip({ label, children }) {
+// children 必须是可挂 ref 的 DOM 元素（Radix Trigger 经 asChild 注入 ref 定位锚点）
+function Tip({ label, children }: { label?: string; children: ReactElement }) {
   if (!label) return children;
   return (
     <Tooltip>
@@ -40,7 +39,7 @@ function Tip({ label, children }) {
 }
 
 // 「最近关闭」相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
-function closedAgo(at) {
+function closedAgo(at: number): string {
   const m = Math.floor((Date.now() - at) / 60000);
   if (m < 1) return "刚刚";
   if (m < 60) return `${m} 分钟前`;
@@ -51,20 +50,20 @@ function closedAgo(at) {
 
 // tab 总览 popover：搜索框 + 打开中（点击切换 / 逐项关闭）+ 最近关闭（点击重开）。
 // 复用 .menu 弹层视觉；坐标走 sp-head 相对定位（absolute 随面板 zoom 缩放不错位）。
-function TabOverview({ onClose }) {
+function TabOverview({ onClose }: { onClose: () => void }) {
   const rightTabs = useAppStore((st) => st.rightTabs);
   const rightRecentClosed = useAppStore((st) => st.rightRecentClosed);
   const rightTab = useAppStore((st) => st.rightTab);
   const [q, setQ] = useState("");
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.focus();
-    const esc = (e) => { if (e.key === "Escape") onClose(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
   }, [onClose]);
   const kw = q.trim().toLowerCase();
-  const match = (name) => !kw || TAB_META[name].label.toLowerCase().includes(kw);
+  const match = (name: string) => !kw || TAB_META[name].label.toLowerCase().includes(kw);
   const opens = rightTabs.filter(match);
   const recents = rightRecentClosed.filter((x) => match(x.name));
   return (
@@ -113,7 +112,7 @@ function TabOverview({ onClose }) {
 }
 
 // 「新增」菜单：列出全部可开 tab（已开的打勾，git 限定项非 git 仓库置灰）
-function AddTabMenu({ isGit, onClose }) {
+function AddTabMenu({ isGit, onClose }: { isGit: boolean; onClose: () => void }) {
   const rightTabs = useAppStore((st) => st.rightTabs);
   return (
     <div className="menu open sp-pop sp-add" onClick={(e) => e.stopPropagation()}>
@@ -140,7 +139,7 @@ function AddTabMenu({ isGit, onClose }) {
 }
 
 // 单个 tab：等宽 flex、原生 drag 重排、hover 才出现的关闭钮、中键关闭
-function TabButton({ name, on }) {
+function TabButton({ name, on }: { name: string; on: boolean }) {
   const [over, setOver] = useState(false);
   return (
     <button
@@ -185,7 +184,7 @@ function TabButton({ name, on }) {
   );
 }
 
-export default function RightPanel({ collapsed }) {
+export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   // 当前会话 + 右栏散字段全部字段订阅（openRightTab 等不 bump _v，靠字段订阅驱动重渲染）
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const rightTabs = useAppStore((st) => st.rightTabs); // tab 列表入 store：字段订阅驱动重渲染
@@ -201,7 +200,7 @@ export default function RightPanel({ collapsed }) {
   useEffect(() => {
     const close = () => { setOvOpen(false); setAddOpen(false); };
     document.addEventListener("omp:close-menus", close);
-    const esc = (e) => { if (e.key === "Escape") close(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", esc);
     return () => {
       document.removeEventListener("omp:close-menus", close);
@@ -280,8 +279,8 @@ export default function RightPanel({ collapsed }) {
                   e.stopPropagation();
                   const cur = activeOpen();
                   if (!cur || !cur.isGit) return;
-                  // 清 cwd 强制重拉（原 liveRef 静默写 + notify 合并为一次换引用写入，过渡期带 _v）
-                  useAppStore.setState((st) => ({ gitDiffCache: { ...st.gitDiffCache, cwd: null }, _v: st._v + 1 }));
+                  // 清 cwd 强制重拉（换引用写入）
+                  setBump({ gitDiffCache: { ...useAppStore.getState().gitDiffCache, cwd: null } });
                   refreshGitDiff();
                 }}
               >

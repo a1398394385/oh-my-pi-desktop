@@ -8,17 +8,17 @@
 //   命令式切换（4px 容差防亚像素抖动，高频滚动不进 React 状态）。
 import { useLayoutEffect, useRef } from "react";
 import { useAppStore, isJunkPlaceholder, send } from "../store";
-import Icon from "../Icon.jsx";
-import TodoCard from "./chat/TodoCard.jsx";
-import { WorkSec } from "./chat/WorkLine.jsx";
-import ChatLoading from "./chat/ChatLoading.jsx";
-import MsgRail from "./chat/MsgRail.jsx";
-import FindBar from "./chat/FindBar.jsx";
-import AssistantMsg from "./chat/AssistantMsg.jsx";
-import { renderItems } from "./chat/items.jsx";
+import Icon from "../Icon";
+import TodoCard from "./chat/TodoCard";
+import { WorkSec } from "./chat/WorkLine";
+import ChatLoading from "./chat/ChatLoading";
+import MsgRail from "./chat/MsgRail";
+import FindBar from "./chat/FindBar";
+import { renderItems } from "./chat/items";
+import type { RailEntry } from "./chat/chat-types";
 
 // 按钮显隐：仅当消息流还有向下滚动余量时显示（4px 容差防亚像素抖动）
-function updateScrollBottomVis(el, btn) {
+function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) {
   if (!el || !btn) return;
   btn.classList.toggle("hidden", !(el.scrollHeight - el.scrollTop - el.clientHeight > 4));
 }
@@ -27,9 +27,9 @@ export default function Chat() {
   // 当前会话订阅：所有 session 写入走 updateSession 换引用（items/draft/streaming 变化即重渲染）
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const activePath = useAppStore((st) => st.activePath);
-  const streamRef = useRef(null);
-  const btnRef = useRef(null);
-  const prevPath = useRef(null);
+  const streamRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const prevPath = useRef<string | null>(null);
   const atBottom = useRef(true); // 渲染前的贴底状态（scroll 监听持续记录）
 
   const onScroll = () => {
@@ -83,7 +83,7 @@ export default function Chat() {
   }
 
   // 消息轨道数据：渲染期随 items 遍历收集（key 与 data-fk 锚点同源）
-  const railEntries = [];
+  const railEntries: RailEntry[] = [];
   const nodes = renderItems(s.items, "", railEntries);
   return (
     <>

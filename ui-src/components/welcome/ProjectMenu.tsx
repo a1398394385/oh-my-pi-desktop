@@ -1,11 +1,18 @@
 // 项目选择菜单（向上弹出）：搜索过滤 + 项目列表 + 打开文件夹/远程连接/不在项目中工作。
 // 迁移自 ui/welcome.js renderWbProjectList 与 initWelcome 项目菜单事件；条件渲染挂载即打开，
 // 搜索态随挂载重置为空（对应原版打开时 searchInput.value=""），40ms 后聚焦搜索框。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { useAppStore, send, toast, invoke, getAvailableProjects, setWelcomeProject } from "../../store";
-import Icon from "../../Icon.jsx";
+import { placeMenu } from "../../shell";
+import Icon from "../../Icon";
 
-export default function ProjectMenu({ pos, onClose }) {
+interface ProjectMenuProps {
+  anchorRect: DOMRect;
+  onClose: () => void;
+}
+
+export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
   const newSessionProject = useAppStore((s) => s.newSessionProject);
   // getAvailableProjects() 渲染期读 store 实时值：订阅其数据源字段（session_list 帧落地换引用），
   // 项目列表变化时本菜单重渲染（替代旧 useStore 全局订阅）
@@ -13,7 +20,17 @@ export default function ProjectMenu({ pos, onClose }) {
   useAppStore((s) => s.allProjects);
   useAppStore((s) => s.removedProjects);
   const [filter, setFilter] = useState("");
-  const searchRef = useRef(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current!;
+    placeMenu(menu, 0, 0);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - rect.width - 8));
+    const top = Math.max(8, Math.min(anchorRect.top - rect.height - 4, window.innerHeight - rect.height - 8));
+    placeMenu(menu, left, top);
+  });
 
   useEffect(() => {
     const t = setTimeout(() => searchRef.current?.focus(), 40);
@@ -31,14 +48,14 @@ export default function ProjectMenu({ pos, onClose }) {
     : available;
 
   // 选中项目：切数据（setWelcomeProject 落地，内含 _v bump）+ 关菜单（原版 item.onclick）
-  const choose = (cwd) => {
+  const choose = (cwd: string) => {
     setWelcomeProject(cwd);
     onClose();
   };
 
   // 打开文件夹（原版 wbProjOpenFolder）：Tauri 目录对话框 → 通知宿主登记项目 → 选为新项目；
   // 非 Tauri 环境（浏览器直连调试）退化为手输绝对路径
-  const openFolder = (e) => {
+  const openFolder = (e: MouseEvent) => {
     e.stopPropagation();
     onClose();
     if (invoke) {
@@ -62,19 +79,19 @@ export default function ProjectMenu({ pos, onClose }) {
     }
   };
 
-  return (
+  return createPortal((
     <div
       id="wbProjectMenu"
       className="menu wb-project-menu open"
-      style={{ left: pos.left + "px", bottom: pos.bottom + "px", top: "auto" }}
+      ref={menuRef}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="wb-proj-search">
-        <span className="flex items-center justify-center text-faint flex-none"><Icon name="search" size={13} /></span>
+        <span className="wb-proj-search-icon flex items-center justify-center text-faint flex-none"><Icon name="search" size={13} /></span>
         <input
           ref={searchRef}
           type="text"
-          className="flex-1 border-none bg-transparent outline-none font-sans text-ui-base text-text p-0 min-w-0 placeholder:text-faint"
+          className="wb-proj-search-input flex-1 border-none bg-transparent outline-none font-sans text-ui-base text-text p-0 min-w-0 placeholder:text-faint"
           id="wbProjSearchInput"
           placeholder="搜索工作区"
           autoComplete="off"
@@ -90,9 +107,9 @@ export default function ProjectMenu({ pos, onClose }) {
           }}
         />
       </div>
-      <div className="flex-1 max-h-[200px] overflow-y-auto pt-[9px] px-[6px] pb-[5px]" id="wbProjList">
+      <div className="wb-proj-list flex-1 max-h-[200px] overflow-y-auto pt-[9px] px-[6px] pb-[5px]" id="wbProjList">
         {matched.length === 0 ? (
-          <div className="py-[20px] px-[12px] text-center text-faint text-ui-sm">无匹配工作区</div>
+          <div className="wb-proj-empty py-[20px] px-[12px] text-center text-faint text-ui-sm">无匹配工作区</div>
         ) : (
           matched.map((p) => (
             <div
@@ -104,16 +121,16 @@ export default function ProjectMenu({ pos, onClose }) {
                 choose(p.cwd);
               }}
             >
-              <Icon name="folderLine" size={14} className="flex items-center justify-center text-dim flex-none" />
-              <span className="flex-1 truncate">{p.cwd.split("/").filter(Boolean).pop() || p.cwd}</span>
+              <Icon name="folderLine" size={14} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
+              <span className="wb-proj-item-name flex-1 truncate">{p.cwd.split("/").filter(Boolean).pop() || p.cwd}</span>
             </div>
           ))
         )}
       </div>
       <div className="wb-proj-actions">
         <div className="wb-proj-action-item" id="wbProjOpenFolder" title="打开文件夹" onClick={openFolder}>
-          <span className="flex items-center justify-center text-dim flex-none"><Icon name="folderPlus" size={14} /></span>
-          <span className="flex-1 truncate">打开文件夹</span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="folderPlus" size={14} /></span>
+          <span className="wb-proj-action-tx flex-1 truncate">打开文件夹</span>
         </div>
         <div
           className="wb-proj-action-item"
@@ -125,8 +142,8 @@ export default function ProjectMenu({ pos, onClose }) {
             onClose();
           }}
         >
-          <span className="flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={14} /></span>
-          <span className="flex-1 truncate">远程连接</span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={14} /></span>
+          <span className="wb-proj-action-tx flex-1 truncate">远程连接</span>
         </div>
         <div
           className="wb-proj-action-item"
@@ -138,10 +155,10 @@ export default function ProjectMenu({ pos, onClose }) {
             onClose();
           }}
         >
-          <span className="flex items-center justify-center text-dim flex-none"><Icon name="comment" size={14} /></span>
-          <span className="flex-1 truncate">不在项目中工作</span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="comment" size={14} /></span>
+          <span className="wb-proj-action-tx flex-1 truncate">不在项目中工作</span>
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }

@@ -5,6 +5,7 @@
 // DOM 结构与类名对照 ui/index.html + sidebar.js。
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import appIcon from "../../ui/app-icon.png";
 import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
   getAvailableProjects, openSettings,
@@ -194,14 +195,16 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   const beginProjDrag = (e: ReactPointerEvent, pending: ProjDragPending): ProjDragActive | undefined => {
-    const heads = [...listRef.current!.querySelectorAll<HTMLElement>(":scope > .proj")]; // 事件期列表必已挂载
+    const z = useAppStore.getState().zoomLevel || 1;
+    const heads = [...listRef.current!.querySelectorAll<HTMLElement>(".project-scroll > .proj")]; // 事件期列表必已挂载
     const base: ProjDragGroup[] = heads.map((head) => {
       const rect = head.getBoundingClientRect();
       const kids = head.nextElementSibling?.classList.contains("proj-kids") ? head.nextElementSibling : null;
       return {
         cwd: head.dataset.cwd!, // .proj 组头必带 data-cwd（ProjGroup 渲染保证）
-        top: rect.top,
-        h: rect.height + (kids?.getBoundingClientRect().height ?? 0),
+        // getBoundingClientRect 返回屏幕像素；让位 transform 与拖拽位移都在 zoom 后的 CSS 坐标中计算。
+        top: rect.top / z,
+        h: (rect.height + (kids?.getBoundingClientRect().height ?? 0)) / z,
       };
     });
     const k0 = base.findIndex((g) => g.cwd === pending.cwd);
@@ -216,11 +219,11 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       base,
       groups: base,
       idx: k0,
-      x: e.clientX,
-      y: e.clientY,
-      left: rect.left,
-      w: rect.width,
-      grabY: e.clientY - rect.top,
+      x: e.clientX / z,
+      y: e.clientY / z,
+      left: rect.left / z,
+      w: rect.width / z,
+      grabY: (e.clientY - rect.top) / z,
       label: head.querySelector(".pname")?.textContent || pending.cwd.split("/").filter(Boolean).pop() || pending.cwd,
       iconName: projectIconName(project, useAppStore.getState().expandedProjects.has(pending.cwd)),
     };
@@ -245,7 +248,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         break;
       }
     }
-    const next: ProjDragActive = { ...d, idx, x: e.clientX, y: e.clientY };
+    const next: ProjDragActive = {
+      ...d,
+      idx,
+      x: e.clientX / z,
+      y: e.clientY / z,
+      left: d.left,
+    };
     dragRef.current = next;
     setDrag(next);
   };
@@ -408,7 +417,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <div
         id="tasklist"
         ref={listRef}
-        className={drag ? "proj-dragging" : ""}
+        className={`${viewMode === "project" ? "project-view" : ""}${drag ? " proj-dragging" : ""}`}
         onSelectStart={(e) => {
           if (dragRef.current?.groups) e.preventDefault();
         }}
@@ -420,13 +429,15 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       >
         {viewMode === "project" ? (
           <>
-            {pinnedRows.length > 0 && (
-              <>
-                <div className="sec-label">置顶</div>
-                {pinnedRows.map((s) => rowOf(s, { pinnedList: true }, `pinned:${s.path}`))}
-              </>
-            )}
-            <div className="sec-label">
+            <div className="project-pinned">
+              <div className="sec-label">置顶</div>
+              {pinnedRows.length > 0 ? (
+                pinnedRows.map((s) => rowOf(s, { pinnedList: true }, `pinned:${s.path}`))
+              ) : (
+                <div className="pinned-empty text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无置顶会话</div>
+              )}
+            </div>
+            <div className="sec-label project-heading">
               <span>项目</span>
               <div className="flex items-center gap-[4px]">
                 <button className="sec-add" title="添加项目" onClick={onSecAdd}>
@@ -441,53 +452,55 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
                 </button>
               </div>
             </div>
-            {(() => {
-              let oi = 0; // 其余组（不含拖组）的序位，用于让位位移计算
-              return visible.map((p) => {
-                const isSelf = drag && p.cwd === drag.cwd;
-                const i = isSelf ? -1 : oi++;
-                // 拖组占位插入 drag.idx：其后各组下移 selfH；拖组原位置之后的组先上移回填
-                const ty = drag && !isSelf
-                  ? (drag.idx <= i ? drag.selfH : 0) - (drag.k0 <= i ? drag.selfH : 0)
-                  : 0;
-                return (
-                  <ProjGroup
-                    key={p.cwd}
-                    p={p}
-                    ty={ty}
-                    isDragSelf={!!isSelf}
-                    dragging={!!drag}
-                    onPointerDownHead={onPointerDownHead}
-                    onPointerMoveHead={onPointerMoveHead}
-                    onPointerUpHead={onPointerUpHead}
-                    onPointerCancelHead={onPointerCancelHead}
-                    shouldSuppressProjectClick={shouldSuppressProjectClick}
-                    onOpenProjMenu={(e, cwd) => {
-                      e.stopPropagation();
-                      closeProjPopups();
-                      setProjMenu({ cwd, rect: e.currentTarget.getBoundingClientRect() });
-                    }}
-                    onRemoveProject={askRemoveProject}
-                    rowProps={rowProps}
-                    renaming={renaming}
-                  />
-                );
-              });
-            })()}
-            {visible.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无项目，点击「项目」右侧 ＋ 添加</div>}
+            <div className="project-scroll">
+              {(() => {
+                let oi = 0; // 其余组（不含拖组）的序位，用于让位位移计算
+                return visible.map((p) => {
+                  const isSelf = drag && p.cwd === drag.cwd;
+                  const i = isSelf ? -1 : oi++;
+                  // 拖组占位插入 drag.idx：其后各组下移 selfH；拖组原位置之后的组先上移回填
+                  const ty = drag && !isSelf
+                    ? (drag.idx <= i ? drag.selfH : 0) - (drag.k0 <= i ? drag.selfH : 0)
+                    : 0;
+                  return (
+                    <ProjGroup
+                      key={p.cwd}
+                      p={p}
+                      ty={ty}
+                      isDragSelf={!!isSelf}
+                      dragging={!!drag}
+                      onPointerDownHead={onPointerDownHead}
+                      onPointerMoveHead={onPointerMoveHead}
+                      onPointerUpHead={onPointerUpHead}
+                      onPointerCancelHead={onPointerCancelHead}
+                      shouldSuppressProjectClick={shouldSuppressProjectClick}
+                      onOpenProjMenu={(e, cwd) => {
+                        e.stopPropagation();
+                        closeProjPopups();
+                        setProjMenu({ cwd, rect: e.currentTarget.getBoundingClientRect() });
+                      }}
+                      onRemoveProject={askRemoveProject}
+                      rowProps={rowProps}
+                      renaming={renaming}
+                    />
+                  );
+                });
+              })()}
+              {visible.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无项目，点击「项目」右侧 ＋ 添加</div>}
+              <ArchivedSection onDelete={askDeleteSession} />
+            </div>
           </>
         ) : (
           <>
             <div className="sec-label">最近任务</div>
             {flat.map((s) => rowOf(s, { showRepo: true }, `recent:${s.path}`))}
             {flat.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无任务</div>}
+            <ArchivedSection onDelete={askDeleteSession} />
           </>
         )}
-        {/* 归档区固定在列表底部（两种视图共用） */}
-        <ArchivedSection onDelete={askDeleteSession} />
       </div>
       <div className="side-foot">
-        <div className="avatar"><img src="app-icon.png" alt="" /></div>
+        <div className="avatar"><img src={appIcon} alt="" /></div>
         <div className="flex items-center gap-[6px] min-w-0">
           <span className="text-[15px] font-semibold text-text truncate leading-none" id="sideProfileName">{hostSettings?.activeProfile || "omp-desktop"}</span>
         </div>
