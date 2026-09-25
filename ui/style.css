@@ -1953,6 +1953,129 @@ svg { vertical-align: middle; }
   border-color: var(--line-soft);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
 }
+/* 欢迎页搜索卡片：与新建任务卡片（#composer.in-welcome）同一套圆角卡片几何与主题色 */
+.wb-search-card {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  margin-top: 14px;
+  padding: 10px 14px;
+  position: relative;
+  transition: border-color .15s var(--swift);
+}
+.wb-search-card:hover,
+.wb-search-card:focus-within {
+  border-color: var(--line);
+}
+[data-theme="light"] .wb-search-card {
+  background: var(--inset);
+  border-color: var(--line-soft);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
+}
+[data-theme="light"] .wb-search-card:hover,
+[data-theme="light"] .wb-search-card:focus-within {
+  border-color: var(--line);
+}
+.wb-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.wb-search-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--faint);
+}
+.wb-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--ui-fs-base);
+  padding: 2px 0;
+}
+.wb-search-input::placeholder {
+  color: var(--faint);
+}
+.wb-search-clear {
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  transition: color .12s, background .12s;
+  padding: 0;
+}
+.wb-search-clear:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.wb-search-results {
+  margin-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.wb-search-empty {
+  padding: 8px 12px;
+  text-align: center;
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+}
+.wb-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--dim);
+  transition: background .12s, color .12s;
+}
+.wb-search-item:hover,
+.wb-search-item.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.wb-search-item-tt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ui-fs-base);
+}
+.wb-search-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+}
+.wb-search-item-repo {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #composer.in-welcome textarea,
 #composer.in-welcome #input.inp-ce {
   min-height: 58px;
@@ -2422,6 +2545,9 @@ body.resizing .resizer {
 .sp-head .menu.sp-pop {
   top: calc(100% + 4px); bottom: auto; left: 6px; right: auto;
   width: 248px; min-width: 0; padding: 6px; z-index: 70;
+}
+.sp-head .menu.sp-pop.sp-add {
+  left: auto;
 }
 .sp-pop-search {
   display: flex; align-items: center; gap: 6px;

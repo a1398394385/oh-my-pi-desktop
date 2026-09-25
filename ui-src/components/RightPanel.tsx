@@ -5,7 +5,7 @@
 // 契约：数据经 useAppStore selector 订阅（当前会话 / rightTab / selectedFile 等），
 // 写走 setBump 与既有函数；三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：
 // #rightBody 加 detail 类，rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../store";
 import Icon from "../Icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -112,10 +112,26 @@ function TabOverview({ onClose }: { onClose: () => void }) {
 }
 
 // 「新增」菜单：列出全部可开 tab（已开的打勾，git 限定项非 git 仓库置灰）
-function AddTabMenu({ isGit, onClose }: { isGit: boolean; onClose: () => void }) {
+function AddTabMenu({
+  isGit,
+  rightOffset,
+  onClose,
+}: {
+  isGit: boolean;
+  rightOffset?: number;
+  onClose: () => void;
+}) {
   const rightTabs = useAppStore((st) => st.rightTabs);
   return (
-    <div className="menu open sp-pop sp-add" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="menu open sp-pop sp-add"
+      style={{
+        right: rightOffset !== undefined ? `${Math.round(rightOffset)}px` : undefined,
+        left: "auto",
+        visibility: rightOffset !== undefined ? "visible" : "hidden",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="sp-pop-scroll">
         {Object.keys(TAB_META).map((name) => {
           const off = name === "gitdiff" && !isGit;
@@ -195,6 +211,38 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const gitViewMode = useAppStore((st) => st.gitViewMode);
   const [ovOpen, setOvOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+
+  const headRef = useRef<HTMLDivElement>(null);
+  const addBtnRef = useRef<HTMLButtonElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [rightOffset, setRightOffset] = useState<number | undefined>(undefined);
+
+  const updateAddMenuPos = () => {
+    if (addBtnRef.current && headRef.current) {
+      const headRect = headRef.current.getBoundingClientRect();
+      const btnRect = addBtnRef.current.getBoundingClientRect();
+      const z = useAppStore.getState().zoomLevel || 1;
+      setRightOffset((headRect.right - btnRect.right) / z);
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (!addOpen) {
+      setRightOffset(undefined);
+      return;
+    }
+    updateAddMenuPos();
+    const tabsEl = tabsRef.current;
+    window.addEventListener("resize", updateAddMenuPos);
+    window.addEventListener("omp:zoom", updateAddMenuPos);
+    tabsEl?.addEventListener("scroll", updateAddMenuPos);
+    return () => {
+      window.removeEventListener("resize", updateAddMenuPos);
+      window.removeEventListener("omp:zoom", updateAddMenuPos);
+      tabsEl?.removeEventListener("scroll", updateAddMenuPos);
+    };
+  }, [addOpen, rightTabs]);
+
   // 弹层关闭统一走 omp:close-menus（window click/blur → closeAllMenus 平移），
   // 触发钮自身 stopPropagation 故不受全局关闭影响
   useEffect(() => {
@@ -240,7 +288,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     <TooltipProvider delayDuration={400}>
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
-        <div className="sp-head">
+        <div className="sp-head" ref={headRef}>
           <Tip label="标签页总览">
             <button
               className="icon-btn"
@@ -250,26 +298,32 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
                 setOvOpen(!ovOpen);
               }}
             >
-              <Icon name="dots" size={15} />
+              <Icon name="chevronsDown" size={15} />
             </button>
           </Tip>
-          <div className="rtabs" id="rightTabs">
+          <div className="rtabs" id="rightTabs" ref={tabsRef}>
             {tabs.map((name) => (
               <TabButton key={name} name={name} on={rightTab === name} />
             ))}
+            <Tip label="打开标签页">
+              <button
+                ref={addBtnRef}
+                className={"icon-btn shrink-0" + (addOpen ? " on" : "")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOvOpen(false);
+                  if (!addOpen) {
+                    updateAddMenuPos();
+                    setAddOpen(true);
+                  } else {
+                    setAddOpen(false);
+                  }
+                }}
+              >
+                <Icon name="plus" size={15} />
+              </button>
+            </Tip>
           </div>
-          <Tip label="打开标签页">
-            <button
-              className="icon-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOvOpen(false);
-                setAddOpen(!addOpen);
-              }}
-            >
-              <Icon name="plus" size={15} />
-            </button>
-          </Tip>
           {isGitTab && (
             <Tip label="刷新">
               <button
@@ -303,7 +357,13 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
             </Tip>
           )}
           {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}
-          {addOpen && <AddTabMenu isGit={!!s?.isGit} onClose={() => setAddOpen(false)} />}
+          {addOpen && (
+            <AddTabMenu
+              isGit={!!s?.isGit}
+              rightOffset={rightOffset}
+              onClose={() => setAddOpen(false)}
+            />
+          )}
         </div>
         <div id="rightBody" className={detail ? "detail" : ""}>
           {body}
