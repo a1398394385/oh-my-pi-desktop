@@ -8,6 +8,7 @@ import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
 
 // 技能条目（agent_assets 回包 skills 各目录列表项；host 下发）
 interface SkillItem {
@@ -60,6 +61,7 @@ export default function SkillsPage() {
   const [editStatus, setEditStatus] = useState(""); // 保存中… / 已保存
   const seenStamp = useRef<unknown>(null); // 已消费的 asset_file_saved 回包（按引用判重）
   const statusTimer = useRef<TimerHandle | undefined>(undefined);
+  useExtSources(); // 扩展中心全 scope 数据（行内来源徽标匹配用）
 
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
@@ -321,7 +323,12 @@ export default function SkillsPage() {
                     <div className="skill-info">
                       <div className="skill-title-row">
                         <span className="text-ui-base font-medium truncate text-text">{s.name}</span>
-                        {s.provider && s.provider !== "native" && <span className="skill-provider-tag">{s.provider}</span>}
+                        <ExtSourceTag
+                          kind="skill"
+                          name={s.name}
+                          path={s.path}
+                          fallback={s.provider && s.provider !== "native" ? <span className="skill-provider-tag">{s.provider}</span> : undefined}
+                        />
                       </div>
                       <div className="skill-desc" title={s.description || s.name}>{s.description || "暂无描述"}</div>
                     </div>

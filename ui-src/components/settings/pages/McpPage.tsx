@@ -7,6 +7,7 @@ import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
 
 const NEW_KEY = "__new__";
 
@@ -178,6 +179,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: 
           <div className="mcp-server-head">
             <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
             {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
+            <ExtSourceTag kind="mcp" name={server.name} path={server.source?.path} />
             {scopeAll
               ? (server.projectName || server.source?.providerName
                   ? <span className="mcp-server-badge">{server.projectName || server.source?.providerName}</span>
@@ -521,6 +523,7 @@ export default function McpPage() {
   const [mcpSearchQuery, setMcpSearchQuery] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null); // 服务器 name 或 NEW_KEY；null = 收起
   const [spinning, setSpinning] = useState(false);
+  useExtSources(); // 扩展中心全 scope 数据（行内来源徽标匹配用）
 
   const allScopes = currentMcpScopes(validProjectCwds);
   const profileScope = allScopes.find((s) => s.id === "profile") || { id: "profile", name: "Profile" };

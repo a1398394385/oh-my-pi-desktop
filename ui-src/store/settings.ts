@@ -35,6 +35,7 @@ export interface SettingsSlice {
   loginPromptData: LoginPromptFrame | null; // login_prompt 粘贴码弹窗数据
   agentAssets: AgentAssetsPayload | null;
   extensions: ExtensionsFrame | null; // 扩展中心数据帧（list_extensions / toggle_* 回包）
+  extensionsByScope: Record<string, ExtensionsFrame>; // 同上但按 scope 累积（资产页来源徽标跨 scope 匹配用）
   usageStats: UsageStats | null;
   providerLimits: ProviderLimitsResultFrame | null; // provider_limits_result 配额帧
   assetFile: AssetFileFrame | null; // asset_file 回包(skills/agents 编辑器按 kind 过滤)
@@ -66,6 +67,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   loginPromptData: null,
   agentAssets: null,
   extensions: null,
+  extensionsByScope: {},
   usageStats: null,
   providerLimits: null,
   assetFile: null,

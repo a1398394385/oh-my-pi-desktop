@@ -196,6 +196,9 @@ export default function AgentsPage() {
                   <b>{m.name}</b>
                   {(m.description || m.command || m.path) && <span>{m.description || m.command || m.path}</span>}
                 </div>
+                <span className="ext-badges">
+                  <span className="tag">{cur.scope.startsWith("project:") ? "项目级" : "用户级"}</span>
+                </span>
               </div>
             ))
           )}
