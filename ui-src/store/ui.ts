@@ -126,7 +126,14 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       get().initNewSessionModel(true);
     }
     const st = get();
-    const targetProject = preferredCwd || st.newSessionProject || localStorage.getItem("omp-new-project") || st.diskProjects[0]?.cwd;
+    const avail = st.getAvailableProjects();
+    const stored = localStorage.getItem("omp-new-project");
+    const targetProject =
+      (preferredCwd && avail.some((p) => p.cwd === preferredCwd) ? preferredCwd : null) ||
+      (st.newSessionProject && avail.some((p) => p.cwd === st.newSessionProject) ? st.newSessionProject : null) ||
+      (stored && avail.some((p) => p.cwd === stored) ? stored : null) ||
+      avail[0]?.cwd ||
+      "/";
     if (!alreadyOpen || targetProject !== st.newSessionProject) get().setWelcomeProject(targetProject);
     get().initNewSessionModel();
   },
@@ -138,7 +145,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   setWelcomeProject(cwd) {
     if (!cwd) {
       const avail = get().getAvailableProjects();
-      cwd = avail[0]?.cwd || get().diskProjects[0]?.cwd || "/";
+      cwd = avail[0]?.cwd || "/";
     }
     try {
       localStorage.setItem("omp-new-project", cwd);

@@ -7,6 +7,8 @@ import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
+import ScopeSel from "../ScopeSel";
 
 const NEW_KEY = "__new__";
 
@@ -60,18 +62,24 @@ interface McpPayload {
   headers?: Record<string, string>;
 }
 
-// 作用域列表（缺数据时给单兜底项）
-function currentMcpScopes(): McpScope[] {
-  const mcp = useAppStore.getState().agentAssets?.mcp;
+// 作用域列表（收敛为 Profile 与 Project，缺数据时给 Profile 兜底项，且 Project 严格限定在有效工作区内）
+function currentMcpScopes(validProjectCwds?: Set<string>): McpScope[] {
+  const st = useAppStore.getState();
+  const mcp = st.agentAssets?.mcp;
   if (!mcp || !Array.isArray(mcp.scopes)) {
-    return [{ id: "all", name: "全部工作区", count: 0 }];
+    return [{ id: "profile", name: "Profile", count: 0 }];
   }
-  return mcp.scopes;
+  const validSet = validProjectCwds ?? new Set(st.allProjects.filter((c) => !st.removedProjects.includes(c)));
+  return mcp.scopes.filter((sc) => {
+    if (sc.id === "all") return false;
+    if (sc.id === "profile") return true;
+    const cwd = (sc as any).cwd ?? (sc.id.startsWith("project:") ? sc.id.slice("project:".length) : null);
+    return Boolean(cwd && validSet.has(cwd));
+  });
 }
 
 function getScopedMcpServers(scope: string): McpServer[] {
   const allServers = useAppStore.getState().agentAssets?.mcp?.servers || [];
-  if (scope === "all") return allServers;
   if (scope === "profile") return allServers.filter((s) => s.scope === "profile");
   return allServers.filter((s) => s.scope === scope);
 }
@@ -91,10 +99,12 @@ interface SelProps {
   btnClassName?: string;
   btnTitle?: string;
   btnChildren?: ReactNode;
+  menuId?: string;
+  menuClassName?: string;
   children?: ReactNode;
   onPick: (mi: HTMLElement) => void; // 被选中的 .mi 元素
 }
-function Sel({ id, className, btnClassName, btnTitle, btnChildren, children, onPick }: SelProps) {
+function Sel({ id, className, btnClassName, btnTitle, btnChildren, menuId, menuClassName, children, onPick }: SelProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -119,7 +129,8 @@ function Sel({ id, className, btnClassName, btnTitle, btnChildren, children, onP
         {btnChildren}
       </button>
       <div
-        className={`menu${open ? " open" : ""}`}
+        id={menuId}
+        className={`menu${menuClassName ? ` ${menuClassName}` : ""}${open ? " open" : ""}`}
         onClick={(e) => {
           e.stopPropagation();
           const mi = (e.target as HTMLElement).closest(".mi") as HTMLElement | null;
@@ -169,6 +180,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: 
           <div className="mcp-server-head">
             <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
             {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
+            <ExtSourceTag kind="mcp" name={server.name} path={server.source?.path} />
             {scopeAll
               ? (server.projectName || server.source?.providerName
                   ? <span className="mcp-server-badge">{server.projectName || server.source?.providerName}</span>
@@ -502,14 +514,23 @@ export default function McpPage() {
   // 渲染数据走字段 selector：agent_assets / mcp_server_tested 落地帧均全量换新引用
   //（含 mcp 段 servers 数组），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
-  const [mcpScope, setMcpScope] = useState("all");
+  const allProjects = useAppStore((s) => s.allProjects);
+  const removedProjects = useAppStore((s) => s.removedProjects);
+  const validProjectCwds = new Set(
+    allProjects.filter((c) => !removedProjects.includes(c))
+  );
+
+  const [mcpScope, setMcpScope] = useState("profile");
   const [mcpSearchQuery, setMcpSearchQuery] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null); // 服务器 name 或 NEW_KEY；null = 收起
   const [spinning, setSpinning] = useState(false);
+  useExtSources(); // 扩展中心全 scope 数据（行内来源徽标匹配用）
 
-  const allScopes = currentMcpScopes();
+  const allScopes = currentMcpScopes(validProjectCwds);
+  const profileScope = allScopes.find((s) => s.id === "profile") || { id: "profile", name: "Profile" };
+  const projectScopes = allScopes.filter((s) => s.id !== "profile");
   const curScope: McpScope =
-    allScopes.find((s) => s.id === mcpScope) || allScopes[0] || { id: "all", name: "全部工作区" };
+    allScopes.find((s) => s.id === mcpScope) || profileScope;
   const activeScope = curScope.id;
 
   // 每次渲染直接读 store（agentAssets 订阅已保证回包时重渲染）；不用 useMemo 缓存可变单例
@@ -562,21 +583,6 @@ export default function McpPage() {
     }
   };
 
-  // 作用域菜单分隔线规则：profile 前、profile 后首个 project 前插 .sep
-  const scopeMenuItems: ReactNode[] = [];
-  allScopes.forEach((s, i) => {
-    if (i > 0 && (s.id === "profile" || (allScopes[i - 1].id === "profile" && s.id.startsWith("project:")))) {
-      scopeMenuItems.push(<div className="sep" key={`sep-${s.id}`} />);
-    }
-    scopeMenuItems.push(
-      <div className="mi" data-scope={s.id} key={s.id}>
-        <span className="ck" style={{ visibility: s.id === activeScope ? "visible" : "hidden" }}>✓</span>
-        <Icon name={s.id === "profile" ? "scopeProfile" : "folder"} size={14} />
-        <span className="mi-label" title={s.name}>{s.name}</span>
-      </div>
-    );
-  });
-
   return (
     <div className="set-page" id="pg-mcp">
       <div className="mcp-header">
@@ -585,23 +591,12 @@ export default function McpPage() {
 
       <div className="mcp-bar-primary">
         <div className="mcp-scope-wrap">
-          <Sel
-            id="mcpScopeSel"
-            className="mcp-scope-sel"
-            btnClassName="mcp-scope-btn"
-            btnChildren={
-              <>
-                <span className="inline-flex items-center text-faint">
-                  <Icon name={activeScope === "profile" ? "scopeProfile" : "folder"} size={14} />
-                </span>
-                <span>{curScope.name}</span>
-                <span className="caret-svg"><Icon name="caret" size={14} /></span>
-              </>
-            }
-            onPick={(mi) => setMcpScope(mi.dataset.scope ?? "all")} // dataset 索引签名为 string|undefined，菜单项必带 data-scope，?? 仅类型兜底
-          >
-            {scopeMenuItems}
-          </Sel>
+          <ScopeSel
+            value={activeScope}
+            onChange={(id) => setMcpScope(id)}
+            profile={{ id: profileScope.id, label: profileScope.name }}
+            projects={projectScopes.map((s) => ({ id: s.id, label: s.name }))}
+          />
           <span className="mcp-divider">|</span>
           <span className="text-ui-base text-dim">MCP {totalCount}</span>
         </div>

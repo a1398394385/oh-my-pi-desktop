@@ -30,6 +30,9 @@ const ALLOWED_EDGES = new Set([
   "models.ts→state.ts", "models.ts→bootstrap.ts",
   "assets.ts→state.ts", "assets.ts→bootstrap.ts",
   "stats.ts→bootstrap.ts",
+  // 扩展中心（/extensions 搬移植）：extensions.ts 经 bootstrap 拿 SDK 句柄、读 H 状态，
+  // host.ts 挂四个 RPC 分发（同 assets.ts 的接入形状）
+  "host.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
   "translate.ts→state.ts",
   "state.ts→bootstrap.ts",
   // /goal 命令桌面实现 + 目标续跑调度：host.ts 挂命令分发与事件钩子，

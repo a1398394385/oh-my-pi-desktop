@@ -7,7 +7,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts";
-import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk } from "./bootstrap.ts";
+import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings } from "./bootstrap.ts";
 import { rebuildScopedModels } from "./models.ts";
 
 // ---------- 桌面环境（agentDir 下 desktop-env.json：代理/CA 证书） ----------
@@ -72,11 +72,16 @@ export async function saveDesktopProjects() {
 }
 
 // 历史扫描出的新 project 并入所有项目列表（尾部追加）；返回是否有新增。
-// 不 unshift 置顶：add_project 等用户显式动作的置顶语义优先于磁盘自动发现，
-// 否则扫描发现的新项目会把用户刚手动添加/排序的结果挤下去（两处 unshift 打架）。
+// 严格过滤：系统临时目录、根目录/家目录、不存在路径及已被移除的项目不并入。
 export function mergeHistoryProjects(cwds: string[]): boolean {
   let added = false;
+  const home = os.homedir();
   for (const cwd of cwds) {
+    if (!cwd || typeof cwd !== "string") continue;
+    if (cwd === "/" || cwd === home) continue;
+    if (cwd.startsWith("/tmp") || cwd.startsWith("/private/tmp") || cwd.startsWith("/var/folders")) continue;
+    if (H.desktopProjects.removedProjects.includes(cwd)) continue;
+    if (!fs.existsSync(cwd)) continue;
     if (!H.desktopProjects.allProjects.includes(cwd)) {
       H.desktopProjects.allProjects.push(cwd);
       added = true;
@@ -146,6 +151,9 @@ export async function applyProfile(profileName: string) {
   H.modelRegistry = new ModelRegistry(H.authStorage);
   await H.modelRegistry.refresh();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
+  // 同步能力发现注册表：disabledProviders/enabledProviders → 内存 registry（CLI 入口同款调用，
+  // 缺了这步用户禁用的第三方来源在发现层仍显示/按启用处理）
+  initializeWithSettings(H.settings);
 
   H.desktopEnvPath = path.join(H.agentDir, "desktop-env.json");
   H.desktopEnvFilePresent = fs.existsSync(H.desktopEnvPath);

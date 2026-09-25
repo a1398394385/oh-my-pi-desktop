@@ -165,6 +165,12 @@ function onMessage(msg: HostFrame): void {
     case "agent_assets":
       useAppStore.setState((s) => ({ agentAssets: msg.assets }));
       break;
+    case "extensions":
+      useAppStore.setState((s) => ({
+        extensions: msg,
+        extensionsByScope: { ...s.extensionsByScope, [msg.scope]: msg },
+      }));
+      break;
     case "approval_mode":
       useAppStore.setState((s) => ({ approvalMode: msg.mode }));
       break;
@@ -240,7 +246,7 @@ function onMessage(msg: HostFrame): void {
           openSessions.delete(s.activePath);
           return { openSessions, activePath: null };
         });
-        useAppStore.getState().showWelcomeScreen(useAppStore.getState().newSessionProject || diskProjects[0]?.cwd);
+        useAppStore.getState().showWelcomeScreen(useAppStore.getState().newSessionProject || useAppStore.getState().getAvailableProjects()[0]?.cwd);
       }
       break;
     }

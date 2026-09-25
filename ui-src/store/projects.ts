@@ -32,13 +32,12 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   pinnedSessions: new Set(),
   unseenFinished: new Set<string>(JSON.parse(localStorage.getItem("omp-unseen-finished") || "[]")),
 
-  // 顺序 = omp-desktop.json allProjects 的手工/自动发现顺序；磁盘上兜底并入的新项目按磁盘序缀尾
+  // 严格以 omp-desktop.json allProjects 为准，排除已移除项目；不并入未在清单内的 diskProjects
   getAvailableProjects() {
     const st = get();
     const removedSet = new Set(st.removedProjects);
     const sessionsOf = new Map(st.diskProjects.map((p) => [p.cwd, p.sessions]));
-    const known = [...new Set([...st.allProjects, ...st.diskProjects.map((p) => p.cwd)])];
-    return known
+    return st.allProjects
       .filter((cwd) => !removedSet.has(cwd))
       .map((cwd) => ({ cwd, sessions: sessionsOf.get(cwd) ?? [] }));
   },

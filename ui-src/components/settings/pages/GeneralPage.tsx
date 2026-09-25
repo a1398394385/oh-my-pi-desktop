@@ -1,7 +1,7 @@
 // 设置页：常规（pg-general）。Profile 切换 / 界面语言 / 主题 / 网络环境变量 / 更新与行为。
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-general">，
 // 绑定参照 ui/settings/index.js 的 initSettings / applyHostSettings / saveDesktopField。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
@@ -11,7 +11,7 @@ import type { DesktopEnv } from "../../../types/frames";
 // 下拉选项（旧版 .mi 一一对应；ck/sub/disabled 均可选）
 interface SelOption {
   v: string;
-  label: string;
+  label: ReactNode;
   ck?: string;
   sub?: string;
   disabled?: boolean;
@@ -19,26 +19,9 @@ interface SelOption {
 
 // Sel 下拉选择器 props
 interface SelProps {
-  label: string;
+  label: ReactNode;
   options: SelOption[];
   onPick: (v: string) => void;
-}
-
-// ---------- 主题（旧版 shell.js applyTheme 的等价物；General 与 Appearance 各持一份） ----------
-const themeMq = window.matchMedia("(prefers-color-scheme: dark)");
-function currentThemeMode(): string {
-  try { return localStorage.getItem("omp-theme") || "dark"; } catch { return "dark"; }
-}
-function applyTheme(mode: string): void {
-  const dark = mode === "system" ? themeMq.matches : mode === "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  try { localStorage.setItem("omp-theme", mode); } catch {}
-}
-function themeLabel(mode: string): string {
-  return mode === "system" ? "◐ 跟随系统" : mode === "light" ? "☀️ 浅色" : "🌙 深色";
-}
-function genThemeLabel(mode: string): string {
-  return mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色";
 }
 
 // 本地偏好落盘（旧版 saveUiPrefs；读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
@@ -130,7 +113,6 @@ export default function GeneralPage() {
       setAskTimeout(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
     }
   }, [hs]);
-  const [theme, setTheme] = useState(currentThemeMode());
   const [showThinking, setShowThinking] = useState(!!useAppStore.getState().uiPrefs.showThinking);
 
   // ---------- 交互 ----------
@@ -150,12 +132,6 @@ export default function GeneralPage() {
       return;
     }
     switchProfile(name);
-  };
-  const pickTheme = (mode: string) => {
-    setTheme(mode);
-    applyTheme(mode);
-    // 旧版只写本地；此处同步通知宿主持久化
-    send({ type: "set_setting", key: "appearance.theme", value: mode });
   };
   const toggleThinking = () => {
     const on = !showThinking;
@@ -220,18 +196,6 @@ export default function GeneralPage() {
               { v: "en", label: "English", disabled: true, sub: "未实现" },
             ]}
             onPick={() => {}}
-          />
-        </div>
-        <div className="srow">
-          <div className="srow-tx"><b>主题</b><span>界面设置（深色 / 浅色 / 系统）。</span></div>
-          <Sel
-            label={genThemeLabel(theme)}
-            options={[
-              { v: "dark", label: "🌙 深色", ck: theme === "dark" ? "✓" : "" },
-              { v: "light", label: "☀️ 浅色", ck: theme === "light" ? "✓" : "" },
-              { v: "system", label: "◐ 跟随系统", ck: theme === "system" ? "✓" : "" },
-            ]}
-            onPick={pickTheme}
           />
         </div>
       </div>
