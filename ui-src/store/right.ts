@@ -9,7 +9,7 @@ import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
 
 export interface RightSlice {
-  rightTab: string;
+  rightTab: string | null;
   rightTabs: string[]; // 已打开 tab（有序）
   rightRecentClosed: { name: string; at: number }[]; // 最近关闭（新→旧，最多 5 条）：总览 popover「最近关闭」组数据源
   gitViewMode: string; // "tree" | …（右栏 Git Diff 视图）
@@ -48,8 +48,8 @@ const rightStateInit: RightState = {
 };
 
 export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set, get) => ({
-  rightTab: "subagent",
-  rightTabs: ["subagent"],
+  rightTab: null,
+  rightTabs: [],
   rightRecentClosed: [],
   gitViewMode: "tree",
   selectedFile: null,

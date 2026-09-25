@@ -1233,16 +1233,16 @@ body:has(#right.collapsed) #right-resizer {
   transition: background .15s var(--swift);
 }
 .approval-opt:hover { background: var(--panel-2); }
-.approval-opt.sel { background: var(--select); }
+.approval-opt.selected { background: var(--select); }
 /* 应答定格后行禁用：不给 hover 高亮（hover 只挂在可点元素上），chosen 行保持选中底板 */
 .approval-opt:disabled { cursor: default; }
 .approval-opt:disabled:hover { background: none; }
 .approval-opt.chosen, .approval-opt.chosen:hover { background: var(--select); }
 .approval-num { flex: none; width: 20px; color: var(--faint); font-weight: 500; }
-.approval-opt.sel .approval-num { color: var(--text); }
+.approval-opt.selected .approval-num { color: var(--text); }
 .approval-opt.chosen .approval-num { color: var(--green); }
 .approval-opt.dim { opacity: .4; }
-.approval-label { min-width: 0; overflow-wrap: anywhere; }
+.approval-label { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
 .approval-opt.has-input { cursor: text; }
 .approval-opt:focus-visible,
 .approval-confirm:focus-visible { outline: none; }
