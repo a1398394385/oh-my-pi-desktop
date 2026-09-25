@@ -4,24 +4,16 @@
 // 朝卡离开 250ms 宽限、卡上 hover 不关闭、数据到达「移开即弃」（卡收起时 store
 // 更新不触发重建，下次悬停重新请求）。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useAppStore } from "../../store/index";
 import { fmtTokens } from "../../store/utils";
 import { placeMenu } from "../../shell";
+import { fmtLimitWindow, limitTone } from "../../lib/limits";
+import type { LimitWindow } from "../../lib/limits";
 
 /** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
 type TimerHandle = ReturnType<typeof setTimeout>;
 
-// 限额窗口（host limits 帧透传）：只约束本组件读取的字段
-interface LimitWindow {
-  label?: string;
-  kind?: string;
-  usedPercent?: number | null; // 宿主可能下发 null(未限额窗口)
-  remainingPercent?: number | null;
-  resetsAt?: string | number | null;
-  metric?: string;
-}
 // 供应商限额回包形状（S.ctxLimits）
 interface CtxLimits {
   label?: string;
@@ -30,25 +22,6 @@ interface CtxLimits {
   windows?: LimitWindow[];
   balance?: { amount?: number | null; currency?: string } | null; // 宿主恒下发字段,null = 无余额段
 }
-
-// 限额窗口 → 展示项:百分比取整,重置时间 24h 内给时刻、否则给月日（原 fmtLimitWindow）
-const LIMIT_LABELS: Record<string, string> = { "5-hour": "5小时", "5h": "5小时", weekly: "每周", daily: "每日", session: "会话" };
-function fmtLimitWindow(w: LimitWindow): { label: string; pct: number | null; reset: string } {
-  const pct = w.usedPercent != null ? Math.round(w.usedPercent) : w.remainingPercent != null ? 100 - Math.round(w.remainingPercent) : null;
-  let reset = "";
-  if (w.resetsAt) {
-    const t = new Date(w.resetsAt);
-    const withinDay = t.getTime() - Date.now() < 24 * 3600 * 1000;
-    reset = withinDay
-      ? `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`
-      : `${t.getMonth() + 1}月${t.getDate()}日`;
-  }
-  const raw = w.label || w.kind || "";
-  return { label: LIMIT_LABELS[raw.toLowerCase()] ?? raw, pct, reset };
-}
-
-// 条形色带按索引取 token 色环（旧版 4 色硬编码 palette 的 token 等价：accent/purple/orange/green）
-const LIMIT_BAR_COLORS = ["var(--accent)", "var(--purple)", "var(--orange)", "var(--green)"];
 
 // 配额段（原 buildLimitsSection 平移）：弹卡版照旧版 ring-pop 的 cx-sec/lx-* 结构
 function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }) {
@@ -80,12 +53,12 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
               return (
                 <div className="flex flex-col gap-[5px] min-w-0" key={i}>
                   <div className="flex items-center gap-[6px] text-dim text-[11.5px] whitespace-nowrap overflow-hidden"><span className="truncate">{item.label}</span></div>
-                  <div className="text-text text-[15px] font-semibold whitespace-nowrap">
-                    {item.pct != null ? `${item.pct}%` : "—"}
-                    {item.reset ? <span className="text-faint text-[12px] font-normal"> · {item.reset}</span> : null}
+                  <div className="text-[15px] font-semibold whitespace-nowrap" style={{ color: limitTone(item.remaining) }}>
+                    {item.remaining != null ? `${item.remaining}%` : "—"}
+                    {item.resetIn ? <span className="text-faint text-[12px] font-normal"> · {item.resetIn}</span> : null}
                   </div>
                   <div className="lx-bar">
-                    <i style={{ width: `${item.pct != null ? Math.min(100, item.pct) : 0}%`, background: LIMIT_BAR_COLORS[i % 4] }} />
+                    <i style={{ width: `${item.remaining != null ? Math.min(100, item.remaining) : 0}%`, background: limitTone(item.remaining) }} />
                   </div>
                 </div>
               );
@@ -124,7 +97,7 @@ interface CtxBreakdown {
   systemContextTokens: number;
 }
 
-export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElement | null> }) {
+export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
   const ctxDetail = useAppStore((s) => s.ctxDetail); // 回包到达即重绘（卡开着时）
   const ctxLimits = useAppStore((s) => s.ctxLimits);
   const cur = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
@@ -141,9 +114,11 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
     setOpen(false);
   };
 
-  // 锚点（ctxRing）hover 接线：受控渲染，事件挂到 span 上，不动 ctxRing 内部 svg 结构
+  // 锚点（ctxRing）hover 接线：受控渲染，事件挂到 span 上，不动 ctxRing 内部 svg 结构。
+  // 依赖 anchor 元素本身（而非 ref 对象）：环在会话数据就绪后才渲染，元素到手才绑定，
+  // 否则挂载时读一次 current=null 就永远没监听（hover 弹卡失效）
   useEffect(() => {
-    const el = anchorRef.current;
+    const el = anchor;
     if (!el) return;
     const onEnter = () => {
       const st = useAppStore.getState();
@@ -195,7 +170,7 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
       el.removeEventListener("mouseenter", onEnter);
       el.removeEventListener("mouseleave", onLeave);
     };
-  }, [anchorRef]);
+  }, [anchor]);
 
   // 定位：弹层出现在环正上方,底边距环顶 7px,水平中心对齐,视口内收 8px;
   // 视觉坐标经 placeMenu 除以 zoomLevel 补偿(fixed + zoom 二次缩放坑)。
@@ -203,7 +178,7 @@ export default function CtxCard({ anchorRef }: { anchorRef: RefObject<HTMLElemen
   useLayoutEffect(() => {
     if (!open) return;
     const pop = popRef.current;
-    const el = anchorRef.current;
+    const el = anchor;
     if (!pop || !el) return;
     const r = el.getBoundingClientRect();
     const w = pop.offsetWidth;

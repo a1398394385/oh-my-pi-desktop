@@ -10,6 +10,8 @@ import { useAppStore, setBump, send, toast } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
 import { PROV_IC, confirmDialog } from "../common";
+import { fmtLimitWindow, limitTone } from "../../../lib/limits";
+import type { LimitWindow } from "../../../lib/limits";
 
 // 目录模型条目（modelCatalog 字段，models_catalog 回包落地；字段为 host 下发）
 interface CatalogModel {
@@ -28,16 +30,6 @@ interface ModelRole {
   name: string;
   tag?: string | null; // 宿主 ModelRoleEntry 为 string | null
   value?: string | null; // 未配置为 null/缺省
-}
-
-// 配额单窗口（provider_limits_result 内 windows 元素；字段均可能缺省）
-interface LimitWindow {
-  label?: string;
-  kind?: string;
-  metric?: string; // "credits" 余额类窗口不渲染进度条
-  usedPercent?: number | null;
-  remainingPercent?: number | null;
-  resetsAt?: string | number | null;
 }
 
 // 供应商配额结果（providerLimits 落地结构；accounts 为多账号扩展，字段形状同顶层）
@@ -65,26 +57,7 @@ const ROLE_DESC: Record<string, string> = {
   advisor: "子智能体的第二意见评审模型",
 };
 
-// 配额窗口标签 + 百分比/重置时间格式化（原 ui/ringpop.js fmtLimitWindow 平移）
-// Record 而非字面量联合：raw 为任意 host 下发的窗口名
-const LIMIT_LABELS: Record<string, string> = { "5-hour": "5小时", "5h": "5小时", weekly: "每周", daily: "每日", session: "会话" };
-function fmtLimitWindow(w: LimitWindow): { label: string; pct: number | null; reset: string } {
-  const pct = w.usedPercent != null ? Math.round(w.usedPercent) : w.remainingPercent != null ? 100 - Math.round(w.remainingPercent) : null;
-  let reset = "";
-  if (w.resetsAt) {
-    const t = new Date(w.resetsAt);
-    const withinDay = t.getTime() - Date.now() < 24 * 3600 * 1000;
-    reset = withinDay
-      ? `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`
-      : `${t.getMonth() + 1}月${t.getDate()}日`;
-  }
-  const raw = w.label || w.kind || "";
-  return { label: LIMIT_LABELS[raw.toLowerCase()] ?? raw, pct, reset };
-}
-
-// 配额明细单段（原 ui/ringpop.js buildLimitsSection 平移为组件）。
-// 条形色带按索引取 token 色环（旧版 4 色硬编码 palette 的 token 等价：accent/purple/orange/green）
-const LIMIT_BAR_COLORS = ["var(--accent)", "var(--purple)", "var(--orange)", "var(--green)"];
+// 配额明细单段（原 ui/ringpop.js buildLimitsSection 平移为组件）：语义/配色走 lib/limits 共享定义
 function LimitsSection({ limits }: { limits: ProviderLimits }) {
   let body: ReactNode;
   if (limits.unsupported) {
@@ -112,12 +85,12 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
               return (
                 <div className="lx-col" key={i}>
                   <div className="lx-top"><span>{item.label}</span></div>
-                  <div className="lx-mid">
-                    {item.pct != null ? `${item.pct}%` : "—"}
-                    {item.reset ? <span> · {item.reset}</span> : null}
+                  <div className="lx-mid" style={{ color: limitTone(item.remaining) }}>
+                    {item.remaining != null ? `${item.remaining}%` : "—"}
+                    {item.resetIn ? <span> · {item.resetIn}</span> : null}
                   </div>
                   <div className="lx-bar">
-                    <i style={{ width: `${item.pct != null ? Math.min(100, item.pct) : 0}%`, background: LIMIT_BAR_COLORS[i % 4] }} />
+                    <i style={{ width: `${item.remaining != null ? Math.min(100, item.remaining) : 0}%`, background: limitTone(item.remaining) }} />
                   </div>
                 </div>
               );

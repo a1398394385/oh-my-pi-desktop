@@ -161,7 +161,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   useAppStore((st) => st.modelNames);
 
   const rootRef = useRef<HTMLDivElement>(null); // #composer
-  const ctxRingRef = useRef<HTMLSpanElement>(null); // #ctxRing（CtxCard hover 弹卡锚点）
+  const [ctxRingEl, setCtxRingEl] = useState<HTMLSpanElement | null>(null); // #ctxRing 元素（callback ref,环后渲染也挂得上 hover）
   const lexRef = useRef<ComposerHandle | null>(null); // 编辑器句柄（focus/setText/clear）
   const cbarRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null); // filePicker
@@ -717,8 +717,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <span className="bg-task-num" id="bgSubagentNum">{s ? bgSubs : 0}</span>
           </button>
           <span className="sp"></span>
-          <CtxRing s={s} ringRef={ctxRingRef} />
-          <CtxCard anchorRef={ctxRingRef} />
+          <CtxRing s={s} ringRef={setCtxRingEl} />
+          <CtxCard anchor={ctxRingEl} />
           <button
             className={"pill-btn" + (openMenu === "model" ? " active" : "")}
             id="modelBtn"
