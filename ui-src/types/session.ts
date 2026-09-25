@@ -380,7 +380,7 @@ export interface AppState {
   fileView: FileViewState | null;
   fileViewPending: string | null; // 请求中的文件路径
   briefDiffPending: string | null; // 请求中的行内 diff 路径
-  rightTab: string;
+  rightTab: string | null;
   zoomLevel: number;
   approvalMode: ApprovalMode;
   loginReqId: number;

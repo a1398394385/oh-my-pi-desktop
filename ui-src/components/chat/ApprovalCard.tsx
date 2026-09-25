@@ -128,8 +128,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           const cls =
             "approval-opt" +
             (i === inpIdx ? " has-input" : "") +
-            (!answered && i === selected ? " sel" : "") +
-            (answered ? (i === frozenChosen ? " chosen sel" : " dim") : "");
+            (!answered && i === selected ? " selected" : "") +
+            (answered ? (i === frozenChosen ? " chosen selected" : " dim") : "");
           const sel = !answered && i === selected;
           if (i === inpIdx) {
             // 非受控输入：输入只写回 item.prefill（全量重绘时保住已输入内容），不触发重渲染

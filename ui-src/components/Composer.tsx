@@ -696,26 +696,30 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               </button>
             </>
           )}
-          <button
-            className={"pill-btn bg-task-btn" + (bgTasks > 0 ? " has-running" : "") + (!rightCollapsed && rightTab === "bgcmd" ? " on" : "")}
-            id="bgTaskBtn"
-            title="后台命令"
-            disabled={!s}
-            onClick={toggleBgTab("bgcmd")}
-          >
-            <Icon name="termBox" size={15} />
-            <span className="bg-task-num" id="bgTaskNum">{s ? bgTasks : 0}</span>
-          </button>
-          <button
-            className={"pill-btn bg-task-btn" + (bgSubs > 0 ? " has-running" : "") + (!rightCollapsed && rightTab === "subagent" ? " on" : "")}
-            id="bgSubagentBtn"
-            title="子智能体"
-            disabled={!s}
-            onClick={toggleBgTab("subagent")}
-          >
-            <Icon name="agents" size={15} />
-            <span className="bg-task-num" id="bgSubagentNum">{s ? bgSubs : 0}</span>
-          </button>
+          {bgTasks > 0 && (
+            <button
+              className={"pill-btn bg-task-btn has-running" + (!rightCollapsed && rightTab === "bgcmd" ? " on" : "")}
+              id="bgTaskBtn"
+              title="后台命令"
+              disabled={!s}
+              onClick={toggleBgTab("bgcmd")}
+            >
+              <Icon name="termBox" size={15} />
+              <span className="bg-task-num" id="bgTaskNum">{s ? bgTasks : 0}</span>
+            </button>
+          )}
+          {bgSubs > 0 && (
+            <button
+              className={"pill-btn bg-task-btn has-running" + (!rightCollapsed && rightTab === "subagent" ? " on" : "")}
+              id="bgSubagentBtn"
+              title="子智能体"
+              disabled={!s}
+              onClick={toggleBgTab("subagent")}
+            >
+              <Icon name="agents" size={15} />
+              <span className="bg-task-num" id="bgSubagentNum">{s ? bgSubs : 0}</span>
+            </button>
+          )}
           <span className="sp"></span>
           <CtxRing s={s} ringRef={setCtxRingEl} />
           <CtxCard anchor={ctxRingEl} />
