@@ -1,7 +1,7 @@
 // 设置页：外观（pg-appearance）。界面主题/字体/字号、代码主题/行号/换行/字号、双主题代码预览。
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-appearance">，
 // 绑定参照 ui/settings/index.js 的 initSettings（themeSel/fontSel/num-ctl/tgLineNo/tgWrap）。
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
@@ -10,7 +10,7 @@ import { PAGE_PLACEMENT } from "../placement";
 // 下拉选项（旧版 .mi 一一对应；ck/sub/disabled 均可选）
 interface SelOption {
   v: string;
-  label: string;
+  label: ReactNode;
   ck?: string;
   sub?: string;
   disabled?: boolean;
@@ -18,7 +18,7 @@ interface SelOption {
 
 // Sel 下拉选择器 props
 interface SelProps {
-  label: string;
+  label: ReactNode;
   options: SelOption[];
   onPick: (v: string) => void;
 }
@@ -44,8 +44,18 @@ function applyMotion(mode: string): void {
   else document.documentElement.dataset.motion = mode;
   try { localStorage.setItem("omp-motion", mode); } catch {}
 }
-function themeLabel(mode: string): string {
-  return mode === "system" ? "◐ 跟随系统" : mode === "light" ? "☀️ 浅色" : "🌙 深色";
+// 主题图标对齐 ZCodium THEME_MODES（lucide 线条层：monitor/sun/moon）
+function themeIcon(mode: string): string {
+  return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
+}
+function themeLabel(mode: string): ReactNode {
+  const text = mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色";
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon name={themeIcon(mode)} size={14} />
+      {text}
+    </span>
+  );
 }
 
 // 本地偏好落盘（旧版 saveUiPrefs）+ 外观应用（旧版 applyAppearance）
@@ -194,9 +204,9 @@ export default function AppearancePage() {
           <Sel
             label={themeLabel(theme)}
             options={[
-              { v: "dark", label: "🌙 深色", ck: theme === "dark" ? "✓" : "" },
-              { v: "light", label: "☀️ 浅色", ck: theme === "light" ? "✓" : "" },
-              { v: "system", label: "◐ 跟随系统", ck: theme === "system" ? "✓" : "" },
+              { v: "dark", label: themeLabel("dark"), ck: theme === "dark" ? "✓" : "" },
+              { v: "light", label: themeLabel("light"), ck: theme === "light" ? "✓" : "" },
+              { v: "system", label: themeLabel("system"), ck: theme === "system" ? "✓" : "" },
             ]}
             onPick={pickTheme}
           />
