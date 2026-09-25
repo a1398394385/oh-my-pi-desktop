@@ -3,13 +3,15 @@
 // 容器自身无本地开合状态。
 // 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）与字体表住在
 // ui-src/appearance.js（设置页与全局快捷键共用），此处 re-export 保持既有导出面。
-import { useEffect, useRef, type ComponentType } from "react";
+import { useEffect, useRef, useState, useMemo, type ComponentType } from "react";
 import appIcon from "../../../ui/app-icon.png";
 import { useAppStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
 import { applyAppearance } from "../../appearance";
 
 export { FONT_LABELS, FONT_STACKS, saveUiPrefs, applyAppearance, applyHostAppearance } from "../../appearance";
 import Icon from "../../Icon";
+import { SETTINGS_ZH } from "./settings-zh";
+import { buildKeyToPageMap } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
 import GeneralPage from "./pages/GeneralPage";
 import AppearancePage from "./pages/AppearancePage";
@@ -111,23 +113,75 @@ const PAGES: Record<string, ComponentType> = {
   "pg-advanced": AdvancedPage,
 };
 
+// 页面 ID 到页面中文标题的映射（从 NAV_SECTIONS 提取）
+const PAGE_LABELS: Record<string, string> = {};
+for (const sec of NAV_SECTIONS) {
+  for (const it of sec.items) {
+    PAGE_LABELS[it.id] = it.label;
+  }
+}
+
 export default function Settings() {
   // selector 订阅：settingsOpen / settingsPage / hostSettings 变化触发重渲染
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const settingsPage = useAppStore((s) => s.settingsPage);
   const hostSettings = useAppStore((s) => s.hostSettings);
+  const schema = useAppStore((s) => s.settingsSchema);
+  const [searchQuery, setSearchQuery] = useState("");
   const setBodyRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
+
+  // 映射字典：根据 placement.ts 定位 key 所属的 pageId
+  const keyToPageMap = useMemo(() => buildKeyToPageMap(schema), [schema]);
+
+  // 所有设置项集合（供搜索用）
+  const allSettingsItems = useMemo(() => {
+    const keys = schema ? Array.from(new Set([...Object.keys(SETTINGS_ZH), ...Object.keys(schema)])) : Object.keys(SETTINGS_ZH);
+    const items: Array<{ key: string; label: string; description: string; pageId: string; pageTitle: string }> = [];
+    for (const k of keys) {
+      const zh = SETTINGS_ZH[k];
+      const ui = schema?.[k]?.ui;
+      const label = zh?.label ?? ui?.label ?? "";
+      const description = zh?.description ?? ui?.description ?? "";
+      if (!label && !description) continue;
+      const pid = keyToPageMap[k] ?? "pg-advanced";
+      const pageTitle = PAGE_LABELS[pid] ?? "高级";
+      items.push({ key: k, label, description, pageId: pid, pageTitle });
+    }
+    return items;
+  }, [schema, keyToPageMap]);
+
+  // 搜索结果：仅在所有设置项的“标题（label）”和“描述（description）”中搜索，其他内容不参与搜索
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const results: Array<{ key: string; label: string; description: string; pageId: string; pageTitle: string; score: number }> = [];
+    for (const item of allSettingsItems) {
+      const matchLabel = item.label.toLowerCase().includes(q);
+      const matchDesc = item.description.toLowerCase().includes(q);
+      if (matchLabel || matchDesc) {
+        results.push({
+          ...item,
+          score: (matchLabel ? 2 : 0) + (matchDesc ? 1 : 0),
+        });
+      }
+    }
+    results.sort((a, b) => b.score - a.score);
+    return results;
+  }, [searchQuery, allSettingsItems]);
 
   // 挂载即应用一次本地外观偏好（store 模块级已从 localStorage 合并 uiPrefs）
   useEffect(() => {
     applyAppearance();
   }, []);
 
-  // 从关闭到打开的首个 effect 里拉取设置数据（等价旧版 openSettings → refreshSettingsData）
+  // 从关闭到打开的首个 effect 里拉取设置数据并重置搜索框（等价旧版 openSettings → refreshSettingsData）
   useEffect(() => {
     const open = !!settingsOpen;
-    if (open && !wasOpenRef.current) refreshSettingsData();
+    if (open && !wasOpenRef.current) {
+      refreshSettingsData();
+      setSearchQuery("");
+    }
     wasOpenRef.current = open;
   });
 
@@ -159,26 +213,85 @@ export default function Settings() {
           <Icon name="back" size={14} />
           返回工作区
         </button>
+        <div className="set-search-wrap">
+          <span className="set-search-icon">
+            <Icon name="search" size={13} />
+          </span>
+          <input
+            type="text"
+            className="set-search-input"
+            id="setSearchInput"
+            placeholder="搜索设置项..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && searchQuery) {
+                e.stopPropagation();
+                setSearchQuery("");
+              }
+            }}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="set-search-clear"
+              id="setSearchClear"
+              onClick={() => setSearchQuery("")}
+              title="清空搜索"
+            >
+              <Icon name="xmark" size={11} />
+            </button>
+          )}
+        </div>
         <div className="set-nav-scroll">
-          {NAV_SECTIONS.map((sec) => (
-            <div key={sec.title}>
-              <div className="set-sec">{sec.title}</div>
-              {sec.items.map((it) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  className={"set-item" + (pageId === it.id ? " on" : "")}
-                  data-page={it.id}
-                  onClick={() => openSettings(it.id)}
-                >
-                  <span className="si">
-                    <Icon name={it.icon} size={14} />
-                  </span>
-                  {it.label}
-                </button>
-              ))}
+          {searchResults ? (
+            <div className="set-search-results">
+              <div className="set-search-count">找到 {searchResults.length} 个设置项</div>
+              {searchResults.length === 0 ? (
+                <div className="set-search-empty">未找到匹配设置项</div>
+              ) : (
+                searchResults.map((it) => (
+                  <button
+                    key={it.key}
+                    type="button"
+                    className={"set-search-item" + (pageId === it.pageId ? " on" : "")}
+                    onClick={() => openSettings(it.pageId)}
+                    title={`${it.label} (${it.pageTitle})`}
+                  >
+                    <div className="set-search-item-main">
+                      <span className="set-search-item-label">{it.label}</span>
+                      <span className="set-search-item-page">{it.pageTitle}</span>
+                    </div>
+                    {it.description && (
+                      <div className="set-search-item-desc">{it.description}</div>
+                    )}
+                  </button>
+                ))
+              )}
             </div>
-          ))}
+          ) : (
+            NAV_SECTIONS.map((sec) => (
+              <div key={sec.title}>
+                <div className="set-sec">{sec.title}</div>
+                {sec.items.map((it) => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    className={"set-item" + (pageId === it.id ? " on" : "")}
+                    data-page={it.id}
+                    onClick={() => openSettings(it.id)}
+                  >
+                    <span className="si">
+                      <Icon name={it.icon} size={14} />
+                    </span>
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
           <div className="set-foot">
             <span className="avatar">
               <img src={appIcon} alt="" />
