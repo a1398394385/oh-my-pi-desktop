@@ -475,6 +475,7 @@ export interface SessionCreatedFrame {
   model: string | null;
   thinking: string;
   isGit: boolean;
+  title?: string | null;
 }
 
 /** 会话列表帧(host/host.ts:2645-2656 handleListSessions) */
@@ -514,6 +515,13 @@ export interface SessionRenamedFrame {
   type: "session_renamed";
   sessionId: string;
   ok: boolean; // 恒 true
+  title: string;
+}
+
+/** 会话标题变更推送(host/host.ts 监听 onSessionNameChanged) */
+export interface SessionTitleChangedFrame {
+  type: "session_title_changed";
+  sessionId: string;
   title: string;
 }
 
@@ -1113,6 +1121,7 @@ export type HostFrame =
   | SessionArchivedFrame
   | SessionAbortedFrame
   | SessionRenamedFrame
+  | SessionTitleChangedFrame
   | SessionCompactedFrame
   | SessionBranchedFrame
   | SessionTreeFrame

@@ -304,6 +304,7 @@ export interface OpenSession {
   autoResolved?: string; // thinking_level 帧 configured==="auto" 时的 resolved 生效值
   ctx?: { tokens: number; window: number; percent: number }; // context 帧落地
   stats?: SessionStatsPayload; // session_stats 帧落地
+  title?: string | null; // 会话标题（session_title_changed 或创建时带入）
 }
 
 /** openSessions 容器:key = 会话文件路径(store.ts openSessions;LRU 上限 8) */

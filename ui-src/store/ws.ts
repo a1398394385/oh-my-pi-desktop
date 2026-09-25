@@ -294,6 +294,7 @@ function onMessage(msg: HostFrame): void {
           todos: [],
           goal: null, // goal 状态（宿主 goal 帧置位；会话状态卡目标区展示）
           planMode: false, // 计划模式（宿主 plan_mode 帧置位）
+          title: msg.title ?? null,
         } as OpenSession),
         selectedSubagent: null,
         selectedFile: null,
@@ -318,6 +319,47 @@ function onMessage(msg: HostFrame): void {
         useAppStore.setState({ pendingCreate: false });
         st3.send({ type: "list_sessions" }); // 新会话已落盘，重拉列表
       }
+      break;
+    }
+    case "session_title_changed": {
+      // 1. 更新对应已打开会话的 title（当前激活会话若为此会话也会因此更新）
+      updateSession(
+        msg.sessionId,
+        (s) => {
+          s.title = msg.title;
+        },
+        false,
+      );
+      // 2. 更新磁盘项目列表中对应会话的 title（保证侧栏等引用的标题同步更新）
+      useAppStore.setState((st) => {
+        let projectsChanged = false;
+        const diskProjects = st.diskProjects.map((p) => {
+          let sChanged = false;
+          const sessions = p.sessions.map((r) => {
+            if (r.id === msg.sessionId) {
+              sChanged = true;
+              projectsChanged = true;
+              return { ...r, title: msg.title };
+            }
+            return r;
+          });
+          return sChanged ? { ...p, sessions } : p;
+        });
+
+        let archivedChanged = false;
+        const archivedSessions = st.archivedSessions.map((r) => {
+          if (r.id === msg.sessionId) {
+            archivedChanged = true;
+            return { ...r, title: msg.title };
+          }
+          return r;
+        });
+
+        const patch: Partial<typeof st> = {};
+        if (projectsChanged) patch.diskProjects = diskProjects;
+        if (archivedChanged) patch.archivedSessions = archivedSessions;
+        return patch;
+      });
       break;
     }
     // 宿主检出外部进程写入本会话（CLI 对话/改名）：置位提示条，直到重新加载。

@@ -660,7 +660,7 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     consumedTexts: [],
     parkedFollowUp: [], // followUp 暂存区（见 state.ts 类型注释）
     manager: sessionManager, // rename/compact 等需要直接操作 SessionManager 的 RPC 用
-    title: null,
+    title: sessionManager.getSessionName() ?? null,
     mentionScanIndex: 0,
     goal: new GoalController({
       // SDK 具体会话类型与窄接口的泛型签名不完全结构兼容，边界处收敛为具名窄接口
@@ -2250,6 +2250,10 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
     }
+    // 关键执行事件实时推送上下文占用，更新前端上下文大小圆环
+    if (ev.type === "message_end" || ev.type === "tool_execution_end") {
+      pushContext(ws, sessionId, entry);
+    }
     // goal 模式钩子：续跑调度与工具集收尾（对齐 TUI #handleGoalSessionEvent 的分支）
     if (ev.type === "agent_start") entry.goal.onAgentStart();
     if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) entry.goal.onUserMessage();
@@ -2547,8 +2551,15 @@ function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any
       ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
   });
+  // 监听底座会话标题变更（模型自动生成标题或 /rename 等）
+  const unsubTitle = entry.session.sessionManager.onSessionNameChanged?.(() => {
+    const title = entry.session.sessionManager.getSessionName() ?? "";
+    entry.title = title || null;
+    ws.send(JSON.stringify({ type: "session_title_changed", sessionId, title }));
+  });
   entry.unsubscribe = () => {
     unsubSession();
+    unsubTitle?.();
     unsubSpawnRoot();
     unsubLifecycle();
     unsubProgress();
@@ -2583,6 +2594,7 @@ async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thi
       model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
       thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
       isGit: entry.isGit,
+      title: entry.title ?? null,
     }),
   );
   pushPlanMode(ws, sessionId, entry);
@@ -2610,6 +2622,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
         model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
         thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
         isGit: entry.isGit,
+        title: entry.title ?? null,
       }),
     );
     pushPlanMode(ws, sessionId, entry); // 复用快照同推计划状态（前端 reload 后靠它显示「计划」按钮）
@@ -2643,6 +2656,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
       model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
       thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
       isGit: entry.isGit,
+      title: entry.title ?? null,
     }),
   );
   reconcilePlanMode(ws, sessionId, entry, entries); // 落盘 mode_change 恢复计划模式（必须在 session_created 之后推帧）
