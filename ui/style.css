@@ -2530,14 +2530,22 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 #settings.hidden { display: none; }
 #setNav {
   background: transparent; padding: 40px 10px 0;
-  overflow-y: auto; display: flex; flex-direction: column;
+  display: flex; flex-direction: column;
+  /* 同 #sidebar:导航文字禁选中,点按蓝底是干扰 */
+  user-select: none;
+  -webkit-user-select: none;
+  /* 网格项 min-height:auto 会按内容撑开溢出(settings 560 高时行高被顶到 1192),
+     滚动下沉到 .set-nav-scroll 后此处必须归零让行拉伸生效 */
+  min-height: 0;
 }
+/* 导航滚动区:返回钮固定顶端,仅此处滚动;底部头像 sticky 底钉不变 */
+.set-nav-scroll { flex: 1; min-height: 0; margin-top: 6px; overflow-y: auto; display: flex; flex-direction: column; }
 #setNav button { -webkit-app-region: no-drag; }
 .set-back {
   display: flex; align-items: center; gap: 7px;
   padding: 7px 10px; color: var(--dim); cursor: pointer;
-  border-radius: 10px; font-size: var(--ui-fs-base); margin-bottom: 6px;
-  border: 0; background: transparent; width: 100%; text-align: left; font: inherit;
+  border-radius: 10px; font-size: var(--ui-fs-base);
+  border: 0; background: var(--base); width: 100%; text-align: left; font: inherit;
   transition: background .18s var(--swift), color .18s var(--swift);
 }
 .set-back:hover { background: rgba(63,65,65,.42); color: var(--text); }

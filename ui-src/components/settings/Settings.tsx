@@ -159,32 +159,34 @@ export default function Settings() {
           <Icon name="back" size={14} />
           返回工作区
         </button>
-        {NAV_SECTIONS.map((sec) => (
-          <div key={sec.title}>
-            <div className="set-sec">{sec.title}</div>
-            {sec.items.map((it) => (
-              <button
-                key={it.id}
-                type="button"
-                className={"set-item" + (pageId === it.id ? " on" : "")}
-                data-page={it.id}
-                onClick={() => openSettings(it.id)}
-              >
-                <span className="si">
-                  <Icon name={it.icon} size={14} />
-                </span>
-                {it.label}
-              </button>
-            ))}
+        <div className="set-nav-scroll">
+          {NAV_SECTIONS.map((sec) => (
+            <div key={sec.title}>
+              <div className="set-sec">{sec.title}</div>
+              {sec.items.map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  className={"set-item" + (pageId === it.id ? " on" : "")}
+                  data-page={it.id}
+                  onClick={() => openSettings(it.id)}
+                >
+                  <span className="si">
+                    <Icon name={it.icon} size={14} />
+                  </span>
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          <div className="set-foot">
+            <span className="avatar">
+              <img src={appIcon} alt="" />
+            </span>
+            <span className="uname" id="setFootProfile">
+              {profileName}
+            </span>
           </div>
-        ))}
-        <div className="set-foot">
-          <span className="avatar">
-            <img src={appIcon} alt="" />
-          </span>
-          <span className="uname" id="setFootProfile">
-            {profileName}
-          </span>
         </div>
       </nav>
       <div id="setBody" ref={setBodyRef}>
