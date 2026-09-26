@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import appIcon from "../../ui/app-icon.png";
+import { MOD } from "../platform";
 import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
   getAvailableProjects, openSettings,
@@ -406,7 +407,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <div className="pt-[10px] px-[10px] flex flex-col gap-[6px] flex-none">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
           <Icon name="messagePlus" size={19} />
-          新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]">⌘ N</span>
+          新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]">{MOD} N</span>
         </div>
         <SidebarSearch />
       </div>

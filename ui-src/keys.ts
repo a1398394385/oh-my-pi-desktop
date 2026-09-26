@@ -18,6 +18,7 @@ import {
 } from "./store";
 import { saveUiPrefs, applyAppearance } from "./appearance";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
+import { IS_WINDOWS, MOD } from "./platform";
 
 // ---------- 动作 ----------
 
@@ -147,11 +148,11 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     desc: "全局快捷键，在任何界面都可以使用。",
     items: [
       { keys: ["Esc"], chords: ["escape"], label: "中断生成（有草稿时连按两下）", run: interrupt },
-      { keys: ["⌘", "N"], label: "新建任务" },
-      { keys: ["⌘", "B"], chords: ["meta+b"], label: "切换左侧边栏", run: toggleSidebar },
-      { keys: ["⌘", ","], label: "打开 / 关闭设置" },
+      { keys: [MOD, "N"], label: "新建任务" },
+      { keys: [MOD, "B"], chords: ["meta+b"], label: "切换左侧边栏", run: toggleSidebar },
+      { keys: [MOD, ","], label: "打开 / 关闭设置" },
       { keys: ["Esc"], label: "关闭设置 / 查找栏 / 弹层" },
-      { keys: ["⌘", "F"], label: "会话内查找" },
+      { keys: [MOD, "F"], label: "会话内查找" },
       { keys: ["Alt", "A"], chords: ["alt+a"], label: "切换右侧边栏", run: toggleSubagents },
     ],
   },
@@ -189,9 +190,9 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "界面缩放",
     desc: "调整整个界面的显示比例。",
     items: [
-      { keys: ["⌘", "+"], label: "放大" },
-      { keys: ["⌘", "−"], label: "缩小" },
-      { keys: ["⌘", "0"], label: "重置缩放" },
+      { keys: [MOD, "+"], label: "放大" },
+      { keys: [MOD, "−"], label: "缩小" },
+      { keys: [MOD, "0"], label: "重置缩放" },
     ],
   },
 ];
@@ -218,7 +219,12 @@ function chordOf(e: KeyboardEvent): string {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
-  const item = BINDINGS.get(chordOf(e));
+  let item = BINDINGS.get(chordOf(e));
+  // ⌘ 键位在 Windows 落到 Ctrl：原 chord 未命中时把 ctrl 换成 meta 再查一次
+  // （ctrl+X 的既有绑定在前一步已优先命中，不受影响）
+  if (!item && IS_WINDOWS && e.ctrlKey && !e.metaKey) {
+    item = BINDINGS.get(chordOf(e).replace("ctrl", "meta"));
+  }
   if (!item?.run) return;
   if (item.run(e) === false) return; // 动作自判上下文：未处理则不拦截默认行为
   e.preventDefault();

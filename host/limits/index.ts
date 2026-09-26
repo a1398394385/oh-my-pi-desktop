@@ -2,10 +2,24 @@
 // authStorage。omp provider id → vendor fetchXxxLimits 的 options 由本层按
 // 凭证与 baseUrl 合成;结果按 omp provider 缓存 60s,避免 hover 反复打供应商。
 
-import { createRequire } from "node:module";
 import { getOAuthProviders } from "../bootstrap.ts";
+// vendor 为 CJS，静态 import 由 bundler 打包（bun build --compile 不追踪 createRequire
+// 的动态 require，会漏打导致打包形态运行时 Cannot find module）
+import { fetchKimiLimits as _fetchKimiLimits } from "./vendor/providers/kimi/limits.js";
+import { fetchZaiLimits as _fetchZaiLimits } from "./vendor/providers/zai/limits.js";
+import { fetchOpenRouterLimits as _fetchOpenRouterLimits } from "./vendor/providers/openrouter/limits.js";
+import { fetchDeepSeekLimits as _fetchDeepSeekLimits } from "./vendor/providers/deepseek/limits.js";
+import { fetchMinimaxLimits as _fetchMinimaxLimits } from "./vendor/providers/minimax/limits.js";
+import { fetchClaudeLimits as _fetchClaudeLimits } from "./vendor/providers/claude/limits.js";
+import { fetchAlibabaLimits as _fetchAlibabaLimits } from "./vendor/providers/alibaba/limits.js";
+import { fetchCommandcodeLimits as _fetchCommandcodeLimits } from "./vendor/providers/commandcode/limits.js";
+import { fetchOllamaLimits as _fetchOllamaLimits } from "./vendor/providers/ollama/limits.js";
+import { fetchCopilotLimits as _fetchCopilotLimits } from "./vendor/providers/copilot/limits.js";
+import { fetchGrokLimits as _fetchGrokLimits } from "./vendor/providers/grok/limits.js";
+import { fetchCodexLimits as _fetchCodexLimits } from "./vendor/providers/codex/limits.js";
+import { fetchAntigravityLimits as _fetchAntigravityLimits } from "./vendor/providers/antigravity/limits.js";
+import { fetchCursorLimits as _fetchCursorLimits } from "./vendor/providers/cursor/limits.js";
 
-const require = createRequire(import.meta.url);
 type VendorFetch = (options: Record<string, unknown>, deps: Record<string, unknown>) => Promise<LimitProviderRow | LimitProviderRow[]>;
 
 // vendor 为 CJS、无类型声明,这里按统一 schema 声明其返回结构
@@ -38,20 +52,20 @@ interface KeyResolver {
   getApiKey(provider: string, sessionId?: string, options?: { baseUrl?: string }): Promise<string | undefined>;
 }
 
-const { fetchKimiLimits } = require("./vendor/providers/kimi/limits.js") as { fetchKimiLimits: VendorFetch };
-const { fetchZaiLimits } = require("./vendor/providers/zai/limits.js") as { fetchZaiLimits: VendorFetch };
-const { fetchOpenRouterLimits } = require("./vendor/providers/openrouter/limits.js") as { fetchOpenRouterLimits: VendorFetch };
-const { fetchDeepSeekLimits } = require("./vendor/providers/deepseek/limits.js") as { fetchDeepSeekLimits: VendorFetch };
-const { fetchMinimaxLimits } = require("./vendor/providers/minimax/limits.js") as { fetchMinimaxLimits: VendorFetch };
-const { fetchClaudeLimits } = require("./vendor/providers/claude/limits.js") as { fetchClaudeLimits: VendorFetch };
-const { fetchAlibabaLimits } = require("./vendor/providers/alibaba/limits.js") as { fetchAlibabaLimits: VendorFetch };
-const { fetchCommandcodeLimits } = require("./vendor/providers/commandcode/limits.js") as { fetchCommandcodeLimits: VendorFetch };
-const { fetchOllamaLimits } = require("./vendor/providers/ollama/limits.js") as { fetchOllamaLimits: VendorFetch };
-const { fetchCopilotLimits } = require("./vendor/providers/copilot/limits.js") as { fetchCopilotLimits: VendorFetch };
-const { fetchGrokLimits } = require("./vendor/providers/grok/limits.js") as { fetchGrokLimits: VendorFetch };
-const { fetchCodexLimits } = require("./vendor/providers/codex/limits.js") as { fetchCodexLimits: VendorFetch };
-const { fetchAntigravityLimits } = require("./vendor/providers/antigravity/limits.js") as { fetchAntigravityLimits: VendorFetch };
-const { fetchCursorLimits } = require("./vendor/providers/cursor/limits.js") as { fetchCursorLimits: VendorFetch };
+const fetchKimiLimits = _fetchKimiLimits as unknown as VendorFetch;
+const fetchZaiLimits = _fetchZaiLimits as unknown as VendorFetch;
+const fetchOpenRouterLimits = _fetchOpenRouterLimits as unknown as VendorFetch;
+const fetchDeepSeekLimits = _fetchDeepSeekLimits as unknown as VendorFetch;
+const fetchMinimaxLimits = _fetchMinimaxLimits as unknown as VendorFetch;
+const fetchClaudeLimits = _fetchClaudeLimits as unknown as VendorFetch;
+const fetchAlibabaLimits = _fetchAlibabaLimits as unknown as VendorFetch;
+const fetchCommandcodeLimits = _fetchCommandcodeLimits as unknown as VendorFetch;
+const fetchOllamaLimits = _fetchOllamaLimits as unknown as VendorFetch;
+const fetchCopilotLimits = _fetchCopilotLimits as unknown as VendorFetch;
+const fetchGrokLimits = _fetchGrokLimits as unknown as VendorFetch;
+const fetchCodexLimits = _fetchCodexLimits as unknown as VendorFetch;
+const fetchAntigravityLimits = _fetchAntigravityLimits as unknown as VendorFetch;
+const fetchCursorLimits = _fetchCursorLimits as unknown as VendorFetch;
 
 // 缓存 TTL = 后台刷新周期(5min,host.ts LIMITS_REFRESH_INTERVAL_MS):后台定时全量重拉写缓存,
 // 前台 hover/切页永远命中缓存,对供应商的实际请求频率严格等于后台节奏。

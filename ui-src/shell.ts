@@ -4,6 +4,7 @@
 // DOM 副作用保持命令式；React 组件经 omp:close-menus / omp:zoom 自定义事件协作。
 import { useAppStore, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
+import { IS_WINDOWS } from "./platform";
 
 // 主题模式：localStorage omp-theme 的合法值（读回值在 initShell 做收窄断言）
 type ThemeMode = "dark" | "light" | "system";
@@ -198,7 +199,9 @@ export function initShell(): void {
   const mainEl = document.getElementById("main");
   if (mainEl && typeof ResizeObserver !== "undefined") new ResizeObserver(updateRailVisibility).observe(mainEl);
   document.addEventListener("keydown", (e) => {
-    if (!e.metaKey || e.ctrlKey || e.altKey) return;
+    // 缩放修饰键独占：Windows 用 Ctrl（Win 键被系统占用过多），macOS 用 ⌘
+    const modOnly = IS_WINDOWS ? e.ctrlKey && !e.metaKey : e.metaKey && !e.ctrlKey;
+    if (!modOnly || e.altKey) return;
     if (e.key === "=" || e.key === "+") menuZoom(1);
     else if (e.key === "-") menuZoom(-1);
     else if (e.key === "0") menuZoom(0);

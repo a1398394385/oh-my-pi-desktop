@@ -7,6 +7,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+// 原生菜单栏仅 macOS 构建：Windows 上会渲染成窗口内白色菜单条，
+// 与自绘标题栏（ui-src/components/TitleBar.tsx）重复
+#[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -33,19 +36,48 @@ fn resolve_bun() -> PathBuf {
     PathBuf::from("bun")
 }
 
+/// 宿主启动命令：打包形态优先资源目录里的自包含 omp-host（bun build --compile
+/// 产物，不依赖源码树与 PATH 里的 bun）；dev 形态回落 bun 直跑仓库源码。
+fn host_command(app: &tauri::AppHandle) -> Command {
+    if let Ok(rd) = app.path().resource_dir() {
+        let host = rd.join(if cfg!(windows) { "omp-host.exe" } else { "omp-host" });
+        if host.is_file() {
+            return Command::new(host);
+        }
+    }
+    let mut cmd = Command::new(resolve_bun());
+    cmd.arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../host/host.ts"));
+    cmd
+}
+
 /// 拉起 Bun 宿主并监听其 stdout 首行 `READY ws://...`。
 /// 首行之后继续读完 stdout（防管道写满）；子进程句柄存 ChildCell，
 /// 壳退出（RunEvent::Exit）时显式 kill，避免宿主变孤儿进程。
-fn spawn_host(cell: WsUrlCell, child_cell: ChildCell) {
-    // 编译期锚定仓库内的宿主脚本；MVP 只支持 dev 形态（打包需 sidecar，后置）
-    let host_ts = concat!(env!("CARGO_MANIFEST_DIR"), "/../host/host.ts");
-    let mut child: Child = Command::new(resolve_bun())
-        .arg(host_ts)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .expect("启动 bun 宿主失败（bun 是否安装？）");
+fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
+    let mut cmd = host_command(app);
+    cmd.stdout(Stdio::piped());
+    // Windows 上壳是 GUI 子系统（无控制台），stderr inherit 会给 bun 新开
+    // 一个控制台黑窗；改为管道 + CREATE_NO_WINDOW，由线程排空透传日志
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.stderr(Stdio::piped()).creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        cmd.stderr(Stdio::inherit());
+    }
+    let mut child: Child = cmd.spawn().expect("启动 bun 宿主失败（bun 是否安装？）");
     let stdout = child.stdout.take().expect("stdout 已 piped");
+    #[cfg(target_os = "windows")]
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                eprintln!("[host] {line}");
+            }
+        });
+    }
     *child_cell.lock().unwrap() = Some(child);
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
@@ -102,6 +134,7 @@ fn send_desktop_notification(
 /// PredefinedMenuItem（复制/粘贴等）走系统响应链，自带系统快捷键，不受影响；
 /// 且编辑菜单必须存在——macOS WKWebView 无菜单栏时 ⌘C/⌘V/⌘Z 等文本编辑
 /// 快捷键行为不完整，这是顺带修复的真 bug。
+#[cfg(target_os = "macos")]
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 应用菜单（macOS 第一栏）：关于 / 服务 / 隐藏 / 退出
     let app_menu = Submenu::with_items(
@@ -224,15 +257,20 @@ pub fn run() {
                 let _ = win.set_focus();
             }
             // 原生菜单栏：编辑菜单的预定义项是 WKWebView 文本编辑快捷键生效的前提
+            #[cfg(target_os = "macos")]
             if let Err(e) = build_menu(app) {
                 eprintln!("[shell] 构建菜单栏失败: {e}");
             }
-            // 全局唤起快捷键 ⌘⇧M：被其他应用占用时不 panic，记日志跳过
+            // 全局唤起快捷键：Windows 用 Ctrl+Shift+M（Win 键被系统占用过多），
+            // macOS 用 ⌘⇧M；被其他应用占用时不 panic，记日志跳过
+            #[cfg(target_os = "windows")]
+            let summon = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyM);
+            #[cfg(not(target_os = "windows"))]
             let summon = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyM);
             if let Err(e) = app.handle().global_shortcut().register(summon) {
-                eprintln!("[shell] 注册全局唤起快捷键 ⌘⇧M 失败（可能被其他应用占用）: {e}");
+                eprintln!("[shell] 注册全局唤起快捷键失败（可能被其他应用占用）: {e}");
             }
-            spawn_host(cell.clone(), child_cell.clone());
+            spawn_host(app.handle(), cell.clone(), child_cell.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![ws_url, send_desktop_notification])

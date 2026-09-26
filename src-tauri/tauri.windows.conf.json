@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "../host-dist/omp-host.exe": "omp-host.exe"
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "omp desktop",
+        "width": 1280,
+        "height": 820,
+        "x": 300,
+        "y": 130,
+        "minWidth": 700,
+        "minHeight": 480,
+        "backgroundColor": "#292B2C",
+        "decorations": false,
+        "shadow": true,
+        "dragDropEnabled": false
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import { patchSessionItem } from "../../store/session";
 import { invoke } from "../../store/ws";
 import { migrateGroupExpand } from "../../store/groupExpand";
 import { uniqueFiles, splitPath } from "./util";
+import { MOD, modDown } from "../../platform";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { langOfPath } from "../../lib/highlighter";
@@ -175,11 +176,11 @@ export function LinkedText({ text }: { text?: string }) {
       <a
         key={k++}
         className="cursor-pointer text-blue no-underline hover:underline"
-        title="⌘+点击在默认浏览器打开"
+        title={`${MOD}+点击在默认浏览器打开`}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation(); // 不冒泡到整行的展开/收起点击
-          if (e.metaKey) openExternal(url);
+          if (modDown(e)) openExternal(url);
         }}
       >
         {url}

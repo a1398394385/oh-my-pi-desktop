@@ -15,6 +15,8 @@ import QueueCard from "./components/composer/QueueCard";
 import GoalCard from "./components/composer/GoalCard";
 import RightPanel from "./components/RightPanel";
 import Settings from "./components/settings/Settings";
+import TitleBar from "./components/TitleBar";
+import { IS_WINDOWS, MOD } from "./platform";
 
 function Toast() {
   const toastMsg = useAppStore((s) => s.toastMsg);
@@ -37,7 +39,7 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
       : "选择左侧会话或新建任务";
   return (
     <div className="chat-head" data-tauri-drag-region="">
-      <button className="icon-btn" title="收起侧边栏 (⌘B)" id="sidebarToggle" onClick={onToggleSidebar}>
+      <button className="icon-btn" title={`收起侧边栏 (${MOD}B)`} id="sidebarToggle" onClick={onToggleSidebar}>
         <Icon name={sidebarCollapsed ? "collapseRight" : "collapseLeft"} />
       </button>
       <Icon name="folderOld" style={{ color: "var(--faint)" }} />
@@ -63,6 +65,7 @@ export default function App() {
   const pendingApproval = session?.pendingApprovals?.[0] ?? null;
   return (
     <>
+      {IS_WINDOWS && <TitleBar />}
       <Sidebar collapsed={sidebarCollapsed} />
       <div id="left-resizer" className="resizer" title="拖动调整宽度" hidden={sidebarCollapsed}></div>
       <main id="main">

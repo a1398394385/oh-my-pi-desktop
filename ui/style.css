@@ -4902,3 +4902,38 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   white-space: pre;
   vertical-align: baseline;
 }
+
+/* ── Windows 自绘标题栏（decorations:false；TitleBar.tsx 仅 Windows 渲染）── */
+.app-titlebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  background: var(--panel-2);
+  z-index: 1200;
+  user-select: none;
+}
+.titlebar-title {
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.titlebar-btns { margin-left: auto; display: flex; align-self: stretch; }
+.titlebar-btn {
+  width: 46px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  cursor: default;
+}
+.titlebar-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); }
+.titlebar-btn.titlebar-close:hover { background: #e81123; color: #fff; }
+
+/* 无边框后内容整体让出标题栏高度；全屏设置弹层同步下移 */
+body.has-titlebar { padding-top: 36px; }
+body.has-titlebar #settings { top: 36px; }

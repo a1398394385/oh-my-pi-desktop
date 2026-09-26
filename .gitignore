@@ -3,3 +3,4 @@ src-tauri/target/
 .local/
 ui/assets/
 ui/dist/
+host-dist/
