@@ -1,6 +1,6 @@
 // 排队消息卡（原 composer.js renderQueueLine 平移）：输入框上方的二级重叠卡。
 // 布局复刻 ZCode ConversationQueuePanel：relative z-0 + 负 margin-bottom 上拉 + padding-bottom
-// 保底内容可见 + 只圆上角；下方 .dock 以 z-20 压住其下缘 28px（见 ui/style.css .queue-card）。
+// 保底内容可见 + 只圆上角；下方 .dock 以 z-100 压住其下缘 28px（见 ui/style.css 文件头「全站层级刻度」）。
 // 由 App 在 .dock 前作相邻兄弟渲染（ZCode bottom dock 顺序 queue → composer）。
 // 流式中发送的消息在此排队，当前 loop 完全处理后自动消费第 1 条；
 // 每条可立即发送（转 steer）/编辑（回输入框）/删除。steer 态气泡动作组（requeueSteerMsg）

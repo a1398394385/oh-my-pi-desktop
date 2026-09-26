@@ -33,15 +33,28 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   // 卸载清计时器
   useEffect(() => () => { clearTimeout(hideT.current ?? undefined); clearTimeout(switchT.current ?? undefined); }, []);
 
-  // 浮层坐标：#composer 相对（offsetParent），顶部对齐供应商行（两菜单 padding 均 5px，
-  // -5 让首行与行高对齐），菜单滚动时扣除 scrollTop。注意不得钳位到 0：菜单一 carousel 般
-  // 向上超出 composer 时 offsetTop 为负，浮层必须跟着行走到 composer 上方，钳位会让浮层整体下滑错位
+  // 浮层坐标：#composer 相对（offsetParent）。二级列表向上展开——底缘对齐供应商行底缘
+  // （两菜单 padding 均 5px，+5 让末行与行高对齐），不再向下撑出窗口下缘；上方空间不足则
+  // 限高 + 内部滚动，顶缘最多到视口上沿 4px。菜单滚动时扣除 scrollTop。注意不得钳位到 0：
+  // 菜单一 carousel 般向上超出 composer 时 offsetTop 为负，浮层必须跟着行走到 composer 上方，
+  // 钳位会让浮层整体下滑错位。
   useLayoutEffect(() => {
     const menu = menuRef.current;
+    const comp = composerRef.current;
     const row = rowRefs.current.get(flyProv ?? "");
     const fly = flyRef.current;
-    if (!menu || !row || !fly || !flyProv) return;
-    fly.style.top = menu.offsetTop + row.offsetTop - menu.scrollTop - 5 + "px";
+    if (!menu || !comp || !row || !fly || !flyProv) return;
+    const z = useAppStore.getState().zoomLevel || 1;
+    fly.style.maxHeight = "";
+    fly.style.overflowY = "";
+    const rowBottom = menu.offsetTop + row.offsetTop - menu.scrollTop + row.offsetHeight;
+    fly.style.top = "auto";
+    fly.style.bottom = comp.clientHeight - rowBottom - 5 + "px";
+    const availAbove = Math.round((comp.getBoundingClientRect().top - 4) / z) + rowBottom + 5;
+    if (fly.offsetHeight > availAbove) {
+      fly.style.maxHeight = Math.max(80, availAbove) + "px";
+      fly.style.overflowY = "auto";
+    }
     fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px"; // 与一级菜单边框交叠 4px，视觉无缝
     if (fly.getBoundingClientRect().right > window.innerWidth - 8) {
       fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px"; // 右缘越界翻左

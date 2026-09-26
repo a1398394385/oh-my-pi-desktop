@@ -8,7 +8,7 @@ import { useAppStore, setBump } from "../../store/index";
 import { patchSessionItem } from "../../store/session";
 import { invoke } from "../../store/ws";
 import { migrateGroupExpand } from "../../store/groupExpand";
-import { uniqueFiles, splitPath } from "./util";
+import { uniqueFiles, splitPath, stripReadSelector, readSelectorRange } from "./util";
 import { MOD, modDown } from "../../platform";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -128,7 +128,7 @@ export function Ellip({ className = "", title, children }: { className?: string;
 // ---------- 文件标签（f-ic：文件类型图标 + 文件名；onNameClick 时文件名可点） ----------
 // fileTypeIcon（按扩展名/文件名取 vscode-icons 彩色图标）见 ui/icons.js
 export function FileChip({ path, nameClass, onNameClick }: { path: string; nameClass?: string; onNameClick?: (e: ReactMouseEvent) => void }) {
-  const cleanPath = String(path || "").replace(/:\d+(?:-\d+)?$/, "");
+  const cleanPath = stripReadSelector(path);
   const { name } = splitPath(cleanPath);
   return (
     <span className="f-ic" title={cleanPath}>
@@ -279,7 +279,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
     const m = item.text.match(/^\[read:\s*(.+?)\]$/);
     if (m) path = m[1].trim();
   }
-  const cleanPath = path.replace(/:\d+(?:-\d+)?$/, "");
+  const cleanPath = stripReadSelector(path);
   const { dir } = splitPath(cleanPath);
   const [closing, close] = useLift();
   // 展开体渲染读 details.displayContent。内容缺失分两种：结果还没到（item.running，
@@ -399,15 +399,14 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
   if (!d?.displayContent?.text) return;
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-  // 原始路径可能带行号选择器（path:59-123）：解析出请求范围用于行号高亮，并剥掉后缀得到干净路径
+  // 原始路径可能带选择器（path:59-123 / path:683:raw）：剥离全部选择器段得到干净路径，
+  // 并取选择器里的首个行范围用于右栏行号高亮
   const raw = String(d.resolvedPath || item.args?.path || path);
-  const m = raw.match(/:(\d+)(?:-(\d+))?$/);
-  let clean = m ? raw.slice(0, m.index ?? 0) : raw; // index 恒存在(match 非全局)
-  clean = clean.replace(/:\d+(?:-\d+)?$/, "");
+  let clean = stripReadSelector(raw);
   if (!clean.startsWith("/")) clean = (s?.cwd || "") + "/" + clean;
   const offset = typeof item.args?.offset === "number" ? item.args.offset : undefined;
   const limit = typeof item.args?.limit === "number" ? item.args.limit : undefined;
-  let reqRange: [number, number] | null = m ? [Number(m[1]), Number(m[2] || m[1])] : null;
+  let reqRange: [number, number] | null = readSelectorRange(raw);
   if (!reqRange && (offset !== undefined || limit !== undefined)) {
     const start = offset ?? 1;
     reqRange = [start, limit !== undefined ? start + limit - 1 : start];

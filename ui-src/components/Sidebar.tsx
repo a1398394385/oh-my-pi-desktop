@@ -9,7 +9,7 @@ import appIcon from "../../ui/app-icon.png";
 import { MOD } from "../platform";
 import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
-  getAvailableProjects, openSettings,
+  getAvailableProjects, openSettings, pathBase,
 } from "../store";
 import Icon from "../Icon";
 import SessionRow from "./sidebar/SessionRow";
@@ -160,7 +160,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   // —— 移除项目确认（组头「移除」钮与「⋯」菜单共用） ——
   const askRemoveProject = (cwd: string) => {
-    const projName = cwd.split("/").filter(Boolean).pop() || cwd;
+    const projName = pathBase(cwd) || cwd;
     setConfirmDlg({
       title: "移除项目",
       message: `确定要将项目「${projName}」从项目列表中移除吗？\n\n项目目录：${cwd}\n（会话仍保留在历史中，可在最近视图中查看）`,
@@ -226,7 +226,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       left: rect.left / z,
       w: rect.width / z,
       grabY: (e.clientY - rect.top) / z,
-      label: head.querySelector(".pname")?.textContent || pending.cwd.split("/").filter(Boolean).pop() || pending.cwd,
+      label: head.querySelector(".pname")?.textContent || pathBase(pending.cwd) || pending.cwd,
       iconName: projectIconName(project, useAppStore.getState().expandedProjects.has(pending.cwd)),
     };
     dragRef.current = drag;
@@ -328,7 +328,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const visible = getAvailableProjects();
   // 最近视图：全部会话按修改时间倒序，最多 50 条
   const flat = diskProjects
-    .flatMap((p) => p.sessions.map((s) => ({ ...s, repo: p.cwd.split("/").filter(Boolean).pop() })))
+    .flatMap((p) => p.sessions.map((s) => ({ ...s, repo: pathBase(p.cwd) })))
     .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
     .slice(0, 50);
 

@@ -1,6 +1,6 @@
-/* 鈹€鈹€ Tailwind v4 鍩哄骇(P4):浠?theme + utilities,涓嶅鍏?Preflight/reset(淇濅綇鏃㈡湁鎺т欢涓庡３灞傛牱寮?;
-   token 缁?@theme inline 闂存帴寮曠敤涓嬫柟 :root 鍙橀噺(娴呰壊瑕嗙洊鑷姩鐢熸晥),utility 渚т娇鐢?bg-card/text-dim/border-line 绛夈€?
-   澶嶅悎绫诲叏绔欒瑷€(.srow/.pill-btn/.tg/.sel/.inp/.add-btn/.confirm-btn/.mem-expand 涓庡竷灞€楠ㄦ灦)淇濈暀鍦?CSS,涓嶇敤 utility 閲嶅啓銆傗攢鈹€ */
+/* ── Tailwind v4 基座(P4):仅 theme + utilities,不导入 Preflight/reset(保住既有控件与壳层样式);
+   token 经 @theme inline 间接引用下方 :root 变量(浅色覆盖自动生效),utility 侧使用 bg-card/text-dim/border-line 等。
+   复合类全站语言(.srow/.pill-btn/.tg/.sel/.inp/.add-btn/.confirm-btn/.mem-expand 与布局骨架)保留在 CSS,不用 utility 重写。── */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -43,19 +43,19 @@
   --font-mono: var(--mono);
 }
 
-/* 鈹€鈹€ tokens锛氬簳搴?+ 宓屽鍗＄墖 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── tokens：底座 + 嵌套卡片 ─────────────────────────────────────────── */
 :root {
-  --base:      #292B2C;   /* 绐楀彛搴曞骇 */
-  --card:      #161616;   /* 涓爮 / 鍙虫爮鍗＄墖 */
-  --inset:     #2B2B2B;   /* 杈撳叆妗?/ TODO 鍐呭祵鍗＄墖 */
-  --select:    #3F4141;   /* 褰撳墠浼氳瘽楂樹寒 */
+  --base:      #292B2C;   /* 窗口底座 */
+  --card:      #161616;   /* 中栏 / 右栏卡片 */
+  --inset:     #2B2B2B;   /* 输入框 / TODO 内嵌卡片 */
+  --select:    #3F4141;   /* 当前会话高亮 */
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
   --panel-2:   #353738;
   --panel-3:   var(--select);
-  /* 浜岀骇閲嶅彔鍗＄殑涓婂眰鍗￠潰锛圸Code bg-surface 鍚屾璇箟锛氫綆閫忔槑搴︾僵鑹诧紝
-     鍘嬪湪椤甸潰搴曚笂褰㈡垚姣旇緭鍏ュ崱鏇淬€屾诞銆嶇殑灞傜骇锛屽嬁鎹㈠疄鑹诧級 */
+  /* 二级重叠卡的上层卡面（ZCode bg-surface 同款语义：低透明度罩色，
+     压在页面底上形成比输入卡更「浮」的层级，勿换实色） */
   --surface:   rgba(255,255,255,.05);
   --line:      #3A3C3D;
   --line-soft: rgba(255,255,255,.06);
@@ -70,9 +70,9 @@
   --yellow:    #febc2e;
   --blue:      #6fb3d8;
   --purple:    #a86fe0;
-  --accent:    #4a9eff;   /* 鍏ㄧ珯鍞竴寮鸿皟鑹诧紙寮€鍏?鑱氱劍鐜?閫変腑鍥炬爣锛?*/
-  /* bash 妯″紡锛堣緭鍏ユ ! 鍓嶇紑锛夐厤鑹插埆鍚嶏細瀵归綈 TUI bashMode 涓婚鑹?dark=cyan / light=green锛?
-     妗岄潰鏃?cyan token锛屾殫鑹插氨杩戞槧灏勯潚钃?--blue锛屾祬鑹叉槧灏?--green锛堟部鐢?:root 瀹氫箟锛?*/
+  --accent:    #4a9eff;   /* 全站唯一强调色（开关/聚焦环/选中图标） */
+  /* bash 模式（输入框 ! 前缀）配色别名：对齐 TUI bashMode 主题色 dark=cyan / light=green；
+     桌面无 cyan token，暗色就近映射青蓝 --blue，浅色映射 --green（沿用 :root 定义） */
   --bash:      var(--blue);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -90,7 +90,7 @@
   --todo-w: 280px;
   --chat-gutter: 48px;
   --ctl-bg: var(--panel-2);
-  /* 鍔ㄦ晥绾緥锛氬脊绨?杩呮嵎涓ゆ潯鏇茬嚎锛屽叏绔欏鐢?*/
+  /* 动效纪律：弹簧/迅捷两条曲线，全站复用 */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --swift:  cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -110,7 +110,7 @@
   --text:      #1d1d21;
   --dim:       #5d5d65;
   --faint:     #808088;
-  --bash:      var(--green); /* bash 妯″紡锛氭祬鑹?= green锛?-green 娌?:root 鏆楄壊瀹氫箟缁ф壙锛?*/
+  --bash:      var(--green); /* bash 模式：浅色 = green（--green 沿 :root 暗色定义继承） */
   --ctl-bg:    var(--inset);
 }
 @layer base {
@@ -128,8 +128,8 @@ body {
   display: flex;
   -webkit-font-smoothing: antialiased;
 }
-/* React 鎸傝浇鐐癸細#root 鍐呯殑涓夋爮锛?sidebar/#main/#right锛夊師涓?body 鐩存帴瀛愬厓绱狅紝
-   鐢?body 鐨?flex 妯悜鎺掑竷锛涚粍浠跺寲鍚庨』缁?#root 鎵挎帴鍚屼竴濂?flex 甯冨眬 */
+/* React 挂载点：#root 内的三栏（#sidebar/#main/#right）原为 body 直接子元素，
+   由 body 的 flex 横向排布；组件化后须经 #root 承接同一套 flex 布局 */
 #root {
   flex: 1;
   display: flex;
@@ -143,7 +143,7 @@ button, input, textarea, select {
 }
 button { font: inherit; }
 
-/* 鈹€鈹€ 浠ｇ爜鍧椾笌 Git Diff 闅旂锛氫笉鍙楀叏灞€鐣岄潰瀛椾綋/瀛楀彿褰卞搷锛岄攣瀹氱瓑瀹戒笌浠ｇ爜瀛楀彿 鈹€鈹€ */
+/* ── 代码块与 Git Diff 隔离：不受全局界面字体/字号影响，锁定等宽与代码字号 ── */
 code,
 pre,
 kbd,
@@ -170,7 +170,40 @@ samp,
   font-size: var(--code-fs, 12px) !important;
 }
 
-/* 鈹€鈹€ 甯冨眬锛氬簳搴т笂宓屼腑鏍?/ 鍙虫爮鍦嗚鍗＄墖 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── 布局：底座上嵌中栏 / 右栏圆角卡片 ───────────────────────────────── */
+/* ── 全站层级刻度（唯一口径；新增浮层先在这里选档，别再各写各的） ────────────
+   20   #statusWrap（#main 内嵌状态卡）
+   60   .find-bar / #msgRail / .resizer（面板内固定浮层）
+   100  .dock（composer 容器：内部下拉菜单封顶于此，恒在悬停卡/设置中心/通知之下）
+   200  .ring-pop（悬停详情卡）
+   300  #settings（全屏设置中心）
+   400  #toast（通知：须压在设置中心与 composer 之上）
+   500  下拉菜单/浮层：.menu 家族（含 .menu.flyout 501）、.sel > .menu、.sp-pop(510)、
+        .bpane-menu、.side-search-pop、.ctx-menu、.proj-add-pop、#wbProjectMenu/#wbBranchMenu，
+        以及 Radix Select / DropdownMenu / Popover 的 Portal 弹层
+   600  悬停提示：Radix Tooltip / .gtt-hint
+   900  .proj-drag-overlay（拖拽浮层）
+   999  .login-banner
+   1000 模态遮罩与对话框：.confirm-mask / .lp-mask / Radix Dialog / 图片灯箱
+   1200 .app-titlebar（标题栏）
+   列容器 #sidebar / #right 用 isolation:isolate 自成层：列内弹层不越出列层。 */
+
+/* ── 全局滚动条统一 ─────────────────────────────────────────────────────────
+   WebView2/Chromium 默认是常驻经典滚动条（深色下白底轨道很扎眼）。全站一律走这一套：
+   细轨 + 透明轨道 + 滑轨仅悬停容器时显形，视觉统一且不常驻。需要彻底隐藏滚动条的元素
+   （#tasklist / .rtabs / xterm viewport）各自 display:none / width:0，不受影响。 */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*:hover::-webkit-scrollbar-thumb { background-color: var(--panel-3); }
+*::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--panel-3) 45%, var(--dim)); }
+
 .resizer {
   width: var(--shell-gap);
   flex: none;
@@ -194,8 +227,10 @@ samp,
 .resizer:hover::after, body.resizing .resizer::after { background: var(--blue); }
 body.resizing { user-select: none; cursor: col-resize; }
 
-/* 鈹€鈹€ 宸︽爮锛氭姌鍙犱笌杩囨浮鍔ㄧ敾 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── 左栏：折叠与过渡动画 ──────────────────────────────────────────── */
 #sidebar {
+  /* 列容器自成 stacking context：列内弹层封顶于此，设置中心/通知才能整屏盖住它们 */
+  isolation: isolate;
   width: var(--left-w, 240px);
   min-width: 0;
   max-width: var(--left-w, 240px);
@@ -207,7 +242,7 @@ body.resizing { user-select: none; cursor: col-resize; }
   overflow: hidden;
   opacity: 1;
   visibility: visible;
-  /* 渚ф爮鏁翠綋绂佹枃瀛楅€変腑:鐐规寜/鎷栧姩棰戠箒,閫変腑钃濆簳鏄共鎵?杈撳叆妗嗚涓嬫潯鍥炲惎) */
+  /* 侧栏整体禁文字选中:点按/拖动频繁,选中蓝底是干扰(输入框见下条回启) */
   user-select: none;
   -webkit-user-select: none;
   transition: width 0.25s cubic-bezier(0.2, 0, 0, 1),
@@ -215,7 +250,7 @@ body.resizing { user-select: none; cursor: col-resize; }
               opacity 0.2s ease,
               visibility 0.25s;
 }
-/* 渚ф爮鍐呰緭鍏ユ(閲嶅懡鍚?鏂板缓椤圭洰)鎭㈠鍙€夊彲缂栬緫 */
+/* 侧栏内输入框(重命名/新建项目)恢复可选可编辑 */
 #sidebar input, #sidebar textarea { user-select: text; -webkit-user-select: text; }
 #sidebar > * {
   width: var(--left-w, 240px);
@@ -385,9 +420,9 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task .seen-dot { width: 6px; height: 6px; border-radius: 50%; }
 .task-error-dot { background: var(--err); }
 .task .seen-dot { background: var(--blue); }
-/* ZCode 鐨?hover 琛屼负锛歅in 鎺ョ鍚屼竴涓墠缃Ы锛岀姸鎬佺偣/杞湀涓嶉澶栨尋鍘嬫爣棰樸€?*/
+/* ZCode 的 hover 行为：Pin 接管同一个前置槽，状态点/转圈不额外挤压标题。 */
 .task:hover .task-indicator { opacity: 0; }
-/* 缃《鍥鹃拤锛氭偓鍋滄诞鐜帮紱宸茬疆椤朵笖娌℃湁鐘舵€佹寚绀哄櫒鏃跺父鏄俱€?*/
+/* 置顶图钉：悬停浮现；已置顶且没有状态指示器时常显。 */
 .tpin {
   width: 16px; height: 16px; padding: 0;
   border: 0; background: transparent; color: var(--faint);
@@ -405,13 +440,13 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: block;
   width: 18px !important;
   height: 18px !important;
-  margin-top: -2px; /* 娑堥櫎閽堝皷鎷変綆閲嶅績鐨勮瑙変笅娌?*/
+  margin-top: -2px; /* 消除针尖拉低重心的视觉下沉 */
 }
 .task:hover .tpin { opacity: 1; }
 .tpin.on { opacity: 1; color: var(--accent, #4a9eff); }
 .tpin:hover { color: var(--text); background: var(--panel-3); }
 .task .mini-spin {
-  /* 杩愯涓?spinner锛歭ucide loader 鍥炬爣鏃嬭浆锛圸Code TaskListItem 鍚屾锛屾浛浠ｅ師缁垮湀 border 鍦堬級 */
+  /* 运行中 spinner：lucide loader 图标旋转（ZCode TaskListItem 同款，替代原绿圈 border 圈） */
   flex: none; display: inline-flex; color: var(--dim);
   animation: taskrot 1s linear infinite;
 }
@@ -423,17 +458,17 @@ body:has(#sidebar.collapsed) #left-resizer {
   border-radius: 8px; cursor: default;
   user-select: none;
 }
-/* 椤圭洰缁勫ご鏄嫋鏌勶紱鐐瑰嚮浠嶈礋璐ｅ睍寮€/鏀惰捣锛岃秴杩囨嫋鍔ㄩ槇鍊煎悗杩涘叆鎺掑簭銆?*/
+/* 项目组头是拖柄；点击仍负责展开/收起，超过拖动阈值后进入排序。 */
 .proj { cursor: grab; touch-action: none; }
 .proj:active { cursor: grabbing; }
 .proj:hover { background: var(--panel-2); color: var(--text); }
 .proj svg { flex: none; opacity: .9; color: var(--dim); }
-/* 椤圭洰鍥炬爣妲戒笌 ZCode 鐨?size-4 妲戒竴鑷淬€?*/
+/* 项目图标槽与 ZCode 的 size-4 槽一致。 */
 .proj .fic {
   flex: none; width: 16px; height: 16px; display: inline-flex;
   align-items: center; justify-content: center;
 }
-/* 椤圭洰鎷栨嫿鎺掑簭锛氱湡瀹炶璁╀綅锛屾诞灞傛帴绠¤鎷栭」鐩紱鍏朵綑琛屽彧鍋氬瀭鐩翠綅绉汇€?*/
+/* 项目拖拽排序：真实行让位，浮层接管被拖项目；其余行只做垂直位移。 */
 .proj.drag-float, .proj-kids.drag-float { position: relative; z-index: 2; transition: none; }
 .proj.drag-float {
   opacity: 0;
@@ -445,16 +480,16 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .proj.drag-float .pname { color: var(--text); }
 .proj.shift-anim, .proj-kids.shift-anim { transition: transform .2s cubic-bezier(.25, .8, .3, 1); }
-/* 鎷栧姩鎺掑簭鏈熼棿鍏ㄥ垪琛ㄧ鏂囨湰閫変腑锛圝S 缁?#tasklist 鎸?.proj-dragging锛夛細
-   鍚﹀垯鍒掕繃灞曞紑缁勭殑浼氳瘽琛屼細瑙﹀彂 WebKit 閫変腑楂樹寒锛岄€変腑椹卞姩婊氬姩瀹瑰櫒鑷姩婊氬姩锛?
-   涓庢寜鎷栧姩璧峰甯冨眬璁＄畻鐨勪綅绉诲彔鍔狅紝琛ㄧ幇涓烘嫋鍔ㄦ椂鍒楄〃璺冲姩 */
+/* 拖动排序期间全列表禁文本选中（JS 给 #tasklist 挂 .proj-dragging）：
+   否则划过展开组的会话行会触发 WebKit 选中高亮，选中驱动滚动容器自动滚动，
+   与按拖动起始布局计算的位移叠加，表现为拖动时列表跳动 */
 #tasklist.proj-dragging, #tasklist.proj-dragging * {
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-user-drag: none !important;
 }
-/* 鎷栧姩鎺掑簭鏈熼棿鍏抽棴琛?hover 楂樹寒锛氭寚閽堟崟鑾峰彧閲嶅畾鍚戜簨浠讹紝:hover 浠嶈窡闅忕墿鐞嗗厜鏍囷紝
-   鍒掕繃琛岀殑搴曡壊/鏂囧瓧鑹茬獊鍙樺氨鏄€滈€変腑楂樹寒鈥濊鎰燂紝蹇€熸嫋鍔ㄦ椂楂橀闂儊鍗斥€滆烦鍔ㄢ€?*/
+/* 拖动排序期间关闭行 hover 高亮：指针捕获只重定向事件，:hover 仍跟随物理光标，
+   划过行的底色/文字色突变就是“选中高亮”观感，快速拖动时高频闪烁即“跳动” */
 #tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: var(--dim); }
 #tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: var(--dim); }
 #tasklist.proj-dragging .task:not(.on):hover { background: none; color: var(--dim); }
@@ -463,7 +498,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 #tasklist.proj-dragging .task .tpin { opacity: 0 !important; }
 #tasklist.proj-dragging .proj .pmore,
 #tasklist.proj-dragging .proj .padd { display: none !important; }
-/* 椤圭洰浼氳瘽琛?/ loop 杩囩▼缁勫鍣細grid 琛岄珮 1fr鈫?fr 杩囨浮鍋氭暣缁勬敹璧峰姩鐢伙紙0.3s锛屼袱澶勫悓涓€濂楋級 */
+/* 项目会话行 / loop 过程组容器：grid 行高 1fr→0fr 过渡做整组收起动画（0.3s，两处同一套） */
 .proj-kids, .lp-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
 .proj-kids.closing, .lp-kids.closing { grid-template-rows: 0fr; }
 .proj-kids > .proj-kids-in, .lp-kids > .lp-kids-in { overflow: hidden; min-height: 0; }
@@ -478,7 +513,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .proj .fic.is-cjk svg {
   transform-origin: top center;
-  transform: scaleY(1.2); /* 涓枃鏂瑰潡瀛楅珮澶э紝涓嬪簳寤朵几涓庢眽瀛楀瓧搴曞钩榻?*/
+  transform: scaleY(1.2); /* 中文方块字高大，下底延伸与汉字字底平齐 */
 }
 .proj:hover .pname { color: var(--text); }
 .proj .pmore {
@@ -498,14 +533,14 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: block;
 }
 .proj .pmore:hover { color: var(--text); background: var(--panel-3); }
-/* 鎵嬪姩娣诲姞椤圭洰寮瑰眰锛坒ixed 瀹氫綅闇€ zoom 琛ュ伩锛?*/
+/* 手动添加项目弹层（fixed 定位需 zoom 补偿） */
 .proj-add-pop {
-  position: fixed; z-index: 100;
+  position: fixed; z-index: 500;
   display: flex; align-items: center; gap: 6px;
   background: var(--ctl-bg); border: 1px solid var(--line-soft);
   border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.5);
   padding: 8px;
-  animation: popIn .18s ease-out; --pop-from: -6px; /* 涓嬪脊锛氳嚜涓婃柟婊戝叆 */
+  animation: popIn .18s ease-out; --pop-from: -6px; /* 下弹：自上方滑入 */
 }
 [data-theme="light"] .proj-add-pop { box-shadow: 0 12px 32px rgba(0,0,0,.18); }
 .proj-add-pop .inp { width: 250px; min-width: 0; }
@@ -532,10 +567,10 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .proj .padd:hover { color: var(--text); background: var(--panel-3); }
 .empty-hint { color: var(--faint); font-size: var(--ui-fs-sm); padding: 2px 10px 4px 14px; }
-/* 椤圭洰涓嬩細璇濊涓庨」鐩粍澶村悓楠ㄦ灦(padding 10 + 30px 鍥炬爣妲?+ 4px + 鏂囧瓧)锛屼笉鍐嶉澶栫缉杩?*/
+/* 项目下会话行与项目组头同骨架(padding 10 + 30px 图标槽 + 4px + 文字)，不再额外缩进 */
 .task.sub { padding-left: 10px; }
-/* 椤圭洰鍒楄〃鑺傚瀵归綈 ZCodium锛氶」鐩粍涔嬮棿鎸夊師 space-y-2锛?px锛夋斁澶?1/3 涓?10.67px锛?
-   缁勫唴浼氳瘽琛屼箣闂存槸 TaskList 鐨?space-y-0.5锛?px锛夛紱棣栬涓嶉澶栧埗閫犻《閮ㄧ┖闅欍€?*/
+/* 项目列表节奏对齐 ZCodium：项目组之间按原 space-y-2（8px）放大 1/3 为 10.67px，
+   组内会话行之间是 TaskList 的 space-y-0.5（2px）；首行不额外制造顶部空隙。 */
 #tasklist .project-scroll > .proj { margin-top: 0; }
 #tasklist .project-scroll > .proj + .proj,
 #tasklist .project-scroll > .proj-kids + .proj { margin-top: 10.67px; }
@@ -600,11 +635,11 @@ body:has(#sidebar.collapsed) #left-resizer {
   border-radius: 4px; padding: 1px 4px; flex: none;
 }
 #conn-status { font-size: var(--ui-fs-sm); color: var(--faint); white-space: nowrap; }
-#conn-status.ok::before { content: "鈼?"; color: var(--green); }
+#conn-status.ok::before { content: "● "; color: var(--green); }
 #conn-status.bad { color: var(--err); }
-#conn-status.bad::before { content: "鈼?"; }
+#conn-status.bad::before { content: "● "; }
 
-/* 鈹€鈹€ 涓爮鍗＄墖 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── 中栏卡片 ──────────────────────────────────────────────────────── */
 #main {
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0; flex: 1; position: relative;
@@ -616,8 +651,8 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
 body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
-/* TODO 杩涚▼鍗★紙#statusWrap锛歛bsolute + z-20 + 闃村奖锛夊睍寮€鏃舵诞鍦ㄦ秷鎭尯涓婃柟瑕嗙洊锛?
-   涓嶆尋鍘嬫秷鎭?杈撳叆鍐呭鍒楀搴︼紱鍗＄墖鍦ㄦ粴鍔ㄥ鍣ㄥ锛屼笉鍙備笌婊氬姩 */
+/* TODO 进程卡（#statusWrap：absolute + z-20 + 阴影）展开时浮在消息区上方覆盖，
+   不挤压消息/输入内容列宽度；卡片在滚动容器外，不参与滚动 */
 .chat-head {
   height: 48px; flex: none;
   display: flex; align-items: center; gap: 8px;
@@ -648,8 +683,6 @@ body:has(#sidebar.collapsed) .chat-head {
   flex: 1; min-height: 0; overflow-y: auto;
   overscroll-behavior: contain;
   padding: 18px 0 14px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--panel-3) transparent;
   box-sizing: border-box;
   min-width: 0;
 }
@@ -658,34 +691,32 @@ body:has(#sidebar.collapsed) .chat-head {
 .goal-card,
 #stream > *:not(.scroll-bottom) {
   width: 100%;
-  /* 鍥涙寮忔敹缂╋紙杈硅窛 = 鍐呭鍒椾笌涓诲崱鐗囪竟缂樼殑璺濈锛?-col-max/--col-max-35 鐢?JS
-     鎸夊睆骞曞搴﹀啓鍏?50%/35%锛夛細
-     1. 鍐呭閽夊湪 50% 灞忓箷瀹斤紝杈硅窛鎸佺画缂╁皬 鈫?2. 杈硅窛閽夊湪 75px/杈癸紝鍐呭缂╁埌 35% 灞忓箷瀹?
-     鈫?3. 鍐呭閽夊湪 35% 灞忓箷瀹斤紝杈硅窛缂╁埌 20px/杈?鈫?4. 杈硅窛閽夊湪 20px/杈癸紝鍐呭缁х画缂┿€?
-     瀵硅瘽娑堟伅涓庡簳閮ㄨ緭鍏ユ鍚屽瀵归綈锛堟帓闃熷崱涓?dock 鍚屽锛屽彔鍗′笉閿欎綅锛?*/
+  /* 四段式收缩（边距 = 内容列与主卡片边缘的距离，--col-max/--col-max-35 由 JS
+     按屏幕宽度写入 50%/35%）：
+     1. 内容钉在 50% 屏幕宽，边距持续缩小 → 2. 边距钉在 75px/边，内容缩到 35% 屏幕宽
+     → 3. 内容钉在 35% 屏幕宽，边距缩到 20px/边 → 4. 边距钉在 20px/边，内容继续缩。
+     对话消息与底部输入框同宽对齐（排队卡与 dock 同宽，叠卡不错位） */
   max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
   min-width: 0;
 }
-/* 娑堟伅娴佷笉鍔?content-visibility锛圔UG-017锛夛細棣栬疆 120px 浼扮畻涓庣湡瀹為珮搴︼紙38~5000px锛?
-   鐨勭籂鍋忚惤鍦ㄨ鍙ｉ檮杩戝嵆浜х敓鏃犺緭鍏ヨ烦甯?闂儊锛屽揩婊氬繀鐜般€佹覆鏌撹繃涓€娆℃墠娑堝け锛?
-   瀹炴祴璇ヨ鍒欐棤甯冨眬鏀剁泭锛堣 BUG-017 鐨?A/B锛夈€傞暱鍒楄〃鎬ц兘璧拌櫄鎷熷寲璺嚎锛圲4.3锛夈€?*/
+/* 消息流不加 content-visibility（BUG-017）：首轮 120px 估算与真实高度（38~5000px）
+   的纠偏落在视口附近即产生无输入跳帧/闪烁，快滚必现、渲染过一次才消失；
+   实测该规则无布局收益（见 BUG-017 的 A/B）。长列表性能走虚拟化路线（U4.3）。 */
 body:has(#right.collapsed) #right-resizer {
   width: 0;
   opacity: 0;
   pointer-events: none;
 }
-#stream::-webkit-scrollbar { width: 5px; }
-#stream::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 3px; }
 
-/* 鈹€鈹€ 涓诲璇濆尯鍩熸秷鎭竷灞€涓庢皵娉?鈹€鈹€ */
+/* ── 主对话区域消息布局与气泡 ── */
 .msg {
   width: 100%;
   margin: 14px 0;
 }
-/* 娴佸紡灏惧反绾枃鏈覆鏌?BUG-007):涓嶅仛 markdown 瑙ｆ瀽,瀹氱鍚庣敱 md-body 鎺ョ瀵屾枃鏈?*/
+/* 流式尾巴纯文本渲染(BUG-007):不做 markdown 解析,定稿后由 md-body 接管富文本 */
 .msg.assistant.stream-plain {
   white-space: pre-wrap;
   word-break: break-word;
@@ -696,11 +727,11 @@ body:has(#right.collapsed) #right-resizer {
 .msg.user {
   display: flex;
   justify-content: flex-end;
-  /* 涓婅竟璺?= 涓庝笂涓€杞?Agent 鍥炵瓟鐨勯棿璺濓細涓?.msg 鐨?14px 濉岄櫡鍙?max锛屾晠椤昏嚜韬粰鍒?90px */
-  margin: 90px 0 22px; /* 涓庝笅鏂?Agent 鍥炲闂磋窛 22px锛?4+8锛?*/
+  /* 上边距 = 与上一轮 Agent 回答的间距：与 .msg 的 14px 塌陷取 max，故须自身给到 90px */
+  margin: 90px 0 22px; /* 与下方 Agent 回复间距 22px（14+8） */
 }
 .msg.user .user-bubble {
-  /* 涓婇檺 = 瀵硅瘽鍐呭鍒楁渶澶у锛?0vw锛夌殑涓€鍗婏紱82% 鏄垪鏀剁獎鍒版瀬绐勬椂鐨勭浉瀵瑰厹搴?*/
+  /* 上限 = 对话内容列最大宽（50vw）的一半；82% 是列收窄到极窄时的相对兜底 */
   max-width: min(25vw, 82%);
   background: var(--inset);
   border-radius: var(--r-lg);
@@ -716,7 +747,7 @@ body:has(#right.collapsed) #right-resizer {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* 鈹€鈹€ Markdown 鏍煎紡娓叉煋鏀寔 鈹€鈹€ */
+/* ── Markdown 格式渲染支持 ── */
 .md-body {
   width: 100%;
   font-size: var(--ui-fs-md);
@@ -745,7 +776,7 @@ body:has(#right.collapsed) #right-resizer {
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   padding: 1px 6px;
-  color: inherit; /* 涓庢梺杈规甯歌緭鍑烘枃瀛楀悓鑹?*/
+  color: inherit; /* 与旁边正常输出文字同色 */
 }
 [data-theme="light"] .md-body .md-inline-code {
   color: #cf222e;
@@ -762,8 +793,8 @@ body:has(#right.collapsed) #right-resizer {
   text-decoration: line-through;
   opacity: 0.75;
 }
-/* 鍒楄〃缂╄繘鐢?padding 鑰岄潪 margin锛歮arker 娓叉煋鍦?padding 鍖哄唴锛堝彸缂樿创鍐呭锛夛紝
-   宸︾紭钀藉湪娈佃惤宸﹁竟鐣屽彸渚э紱margin 鍐欐硶浼氳 marker 鎮埌鍐呭鐩掑锛屽簭鍙峰亸鍑烘钀藉乏杈?*/
+/* 列表缩进用 padding 而非 margin：marker 渲染在 padding 区内（右缘贴内容），
+   左缘落在段落左边界右侧；margin 写法会让 marker 悬到内容盒外，序号偏出段落左边 */
 .md-body .md-ul, .md-body .md-ol {
   margin: 8px 0;
   padding-left: 2em;
@@ -798,7 +829,7 @@ body:has(#right.collapsed) #right-resizer {
   text-decoration: underline;
 }
 
-/* 琛ㄦ牸娓叉煋 */
+/* 表格渲染 */
 .md-table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -826,14 +857,14 @@ body:has(#right.collapsed) #right-resizer {
   background: rgba(0, 0, 0, 0.02);
 }
 
-/* 澶氳浠ｇ爜鍗＄墖锛堥伒瀹堜唬鐮佸潡瀛椾綋闅旂瀹夊叏绾㈢嚎锛?*/
+/* 多行代码卡片（遵守代码块字体隔离安全红线） */
 .md-code-block {
   margin: 14px 0;
   background: #19191d;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 9px;
   overflow: hidden;
-  position: relative; /* actions 缁濆瀹氫綅閿氱偣 */
+  position: relative; /* actions 绝对定位锚点 */
 }
 [data-theme="light"] .md-code-block {
   background: #f6f8fa;
@@ -904,13 +935,13 @@ body:has(#right.collapsed) #right-resizer {
 .act {
   color: var(--dim); font-size: var(--ui-fs-base); margin: 20px 0;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  /* 浜嬩欢琛屽唴瀹规瘮姝ｆ枃绐?15px锛?stream>* 鐨勫唴瀹瑰垪 max-width 鏄?ID 閫夋嫨鍣紝鏀逛笉鍔紝
-     鐢?padding 鍘嬪唴瀹圭洅瀹炵幇锛涚偣鍑诲睍寮€鐨勫崱鐗囦綋鏄厔寮熷厓绱狅紝涓嶅彈姝ら檺 */
+  /* 事件行内容比正文窄 15px：#stream>* 的内容列 max-width 是 ID 选择器，改不动，
+     用 padding 压内容盒实现；点击展开的卡片体是兄弟元素，不受此限 */
   padding-right: 15px;
 }
-/* 琛岄鏍囩锛堢紪杈?鏇存敼/寰呭姙/璇诲彇/鎼滅储/鏌ユ壘/MCP/鎬濊€冣€︼級锛氱粺涓€浠ｇ爜瀛楀彿銆佹瘮姝ｆ枃娣★紱
-   flex:none + nowrap 闃查暱鍙傛暟鎸ゅ帇鏃跺尶鍚嶆枃鏈」閫愬瓧鎹㈣鍙樼珫鎺掞紱
-   line-height: 1 娑堥櫎 half-leading锛屼笌琛岄浼撮殢鏂囧瓧鐨勫浘鏍囦笂涓嬮《搴曚弗鏍煎钩榻?*/
+/* 行首标签（编辑/更改/待办/读取/搜索/查找/MCP/思考…）：统一代码字号、比正文淡；
+   flex:none + nowrap 防长参数挤压时匿名文本项逐字换行变竖排；
+   line-height: 1 消除 half-leading，与行首伴随文字的图标上下顶底严格平齐 */
 .act .lbl, .chg-item .lbl {
   flex: none; white-space: nowrap; font-size: var(--code-fs, 12px); color: var(--faint);
   line-height: 1;
@@ -928,18 +959,18 @@ body:has(#right.collapsed) #right-resizer {
 .act .caret { color: var(--faint); }
 .act.t2 { margin-top: 28px; }
 .act.err { color: var(--err); }
-/* 闃舵鍒嗛殧琛岋紙鍚庡彴鍘嬬缉/浜ゆ帴/閲嶅懡鍚嶏級锛氬眳涓í绾垮す瀛楋紱涓庝笂涓€鏉＄粨鏋滄媺寮€ 30px
-   锛堢浉閭讳笅杈硅窛 14/20px 鍧囧皬浜?30锛屽悎骞跺彇澶у悗瀹為檯闂磋窛鍗?30px锛?*/
+/* 阶段分隔行（后台压缩/交接/重命名）：居中横线夹字；与上一条结果拉开 30px
+   （相邻下边距 14/20px 均小于 30，合并取大后实际间距即 30px） */
 .act.phase {
   margin: 30px 0 12px;
   justify-content: center;
   gap: 14px;
   flex-wrap: nowrap;
-  padding-right: 0; /* 鍙栨秷浜嬩欢琛岀殑鍐呭鐩掑彸缂╋紝鎸夋鏂囧垪鐪熷眳涓?*/
+  padding-right: 0; /* 取消事件行的内容盒右缩，按正文列真居中 */
 }
 .act.phase .ph-line { flex: 1; height: 1px; background: var(--line); }
 .act.phase span { flex: none; }
-/* 澶栭儴杩涚▼鍐欏叆鎻愮ず鏉★細鑱婂ぉ鍖洪《閮ㄩ€氭爮锛圱odoCard 涓庢秷鎭祦涔嬮棿锛夛紝閲嶆柊鍔犺浇浠庣鐩橀噸寤?*/
+/* 外部进程写入提示条：聊天区顶部通栏（TodoCard 与消息流之间），重新加载从磁盘重建 */
 .extw-bar {
   display: flex; align-items: center; gap: 8px;
   margin: 8px 8px 0; padding: 6px 10px;
@@ -947,51 +978,48 @@ body:has(#right.collapsed) #right-resizer {
   border-radius: var(--r-md);
   color: var(--dim); font-size: var(--ui-fs-base);
 }
-.extw-bar .extw-tx { flex: 0 1 auto; min-width: 0; } /* 鎸夐挳绱ц窡鏂囨:鍙充笂瑙掍細璇濈姸鎬佸崱娴眰浼氱洊浣忚灏?*/
+.extw-bar .extw-tx { flex: 0 1 auto; min-width: 0; } /* 按钮紧跟文案:右上角会话状态卡浮层会盖住行尾 */
 .extw-bar svg { flex: none; color: var(--blue); }
-/* loop 鏀惰捣姹囨€昏锛氫竴杞粨鏉熻嚜鍔ㄦ敹璧疯繃绋嬶紝琛屽熬绠ご鐐瑰嚮灞曞紑/鏀惰捣 */
+/* loop 收起汇总行：一轮结束自动收起过程，行尾箭头点击展开/收起 */
 .act.loop { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--faint); }
-/* 鐢ㄦ埛娑堟伅姘旀场 鈫?涓嬫柟 agent 杩囩▼鎶樺彔鍧楋細2 鍊嶅父瑙勮璺濓紙20鈫?0 濉岄櫡鍩烘暟锛岀敤鎴峰畾璋?70锛?*/
+/* 用户消息气泡 → 下方 agent 过程折叠块：2 倍常规行距（20→40 塌陷基数，用户定调 70） */
 .msg.user + .act.loop { margin-top: 70px; }
 .act.loop .lp-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .act.loop .lp-arrow { flex: none; color: var(--faint); display: inline-flex; align-items: center; }
 .act.loop .lp-arrow svg { transition: transform .2s ease; }
 .act.loop .lp-arrow.open svg { transform: rotate(90deg); }
 .act.loop:hover { color: var(--dim); }
-/* 鏀惰捣鎬侊紙sealed锛夛細姹囨€昏涓庝笅鏂?output 涔嬮棿缁嗘í绾垮尯鍒?*/
+/* 收起态（sealed）：汇总行与下方 output 之间细横线区分 */
 .act.loop.sealed { padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
 .act svg { flex: none; }
-/* 鎬濊€冭 */
+/* 思考行 */
 .act.think .th-ic { color: var(--faint); display: inline-flex; }
 .act.think .th-more { color: var(--faint); cursor: pointer; }
-/* 鎬濊€冨唴瀹瑰睍寮€鍖猴細鏃犲崱鐗囧簳銆佷笌鑳屾櫙铻嶄负涓€浣擄紝鍙€熷乏渚х珫绾匡紙涓庢洿鏀圭粍鍚屼竴濂楋紝瀵归綈琛岄
-   鎬濊€冨浘鏍囨涓績锛夊垝鍒嗗尯鍩燂紱瀛椾綋涓庡姩浣滆鏍囩涓€鑷粹€斺€斾唬鐮佸瓧鍙凤紙璁剧疆閲屽彲璋冿級+ 鏍囩鑹层€?
-   鏈€楂?9 琛屽崐锛岃秴鍑哄唴缃粴鍔紱搴曢儴鍗婅铏氬寲锛屾粴鍒板簳鑷姩瑙ｉ櫎 */
+/* 思考内容展开区：无卡片底、与背景融为一体，只借左侧竖线（与更改组同一套，对齐行首
+   思考图标正中心）划分区域；字体与动作行标签一致——代码字号（设置里可调）+ 标签色。
+   最高 9 行半，超出内置滚动；底部半行虚化，滚到底自动解除 */
 .think-body {
   margin: -6px 0 12px;
-  padding: 1px 12px 6px 19px; /* 宸﹀唴杈硅窛 = 鍥炬爣 13 + 闂磋窛 6锛氭鏂囦笌銆屾€濊€冦€嶆爣绛炬枃瀛楀榻愩€?
-    涓婂唴杈硅窛 1px锛氱珫绾垮唴姝ｆ枃姣旂珫绾块《鐐逛綆 1px锛堜笌鏇存敼缁勯琛屽悓瑙勫垯锛?*/
+  padding: 1px 12px 6px 19px; /* 左内边距 = 图标 13 + 间距 6：正文与「思考」标签文字对齐。
+    上内边距 1px：竖线内正文比竖线顶点低 1px（与更改组首行同规则） */
   position: relative;
   font-size: var(--code-fs, 12px); line-height: 1.55; color: var(--faint);
-  /* loose 鏀惧鏍囩偣绂佸垯锛氾級銆侊紝 鍙嚭鐜板湪琛岄锛岄伩鍏嶇矘杩炲潡鏁翠綋涓嬬Щ鎾戝嚭琛屽熬澶х┖闅欙紱
-     鍗曡瘝/璺緞淇濇寔瀹屾暣锛堣矾寰勪粎鍏佽鍦?/ 鍚庢柇琛岋級锛屼唬鐮佸潡涓嶅彈 break-all 褰卞搷 */
+  /* loose 放宽标点禁则：）、， 可出现在行首，避免粘连块整体下移撑出行尾大空隙；
+     单词/路径保持完整（路径仅允许在 / 后断行），代码块不受 break-all 影响 */
   white-space: pre-wrap; word-break: normal; line-break: loose;
   overscroll-behavior: contain;
 }
-/* 婊氬姩鍙彂鐢熷湪鍐呭眰锛氱珫绾?::before)鐣欏湪 .think-body 涓婏紝涓嶉殢鍐呭婊氬姩鑰岀Щ鍑鸿鍙ｃ€?
-   max-height 鍑忓幓澶栧眰涓婁笅鍐呰竟璺?1+6=7px)锛屽彲瑙嗚鏁颁笌鍘熷疄鐜颁竴鑷达紱搴曢儴鍗婅铏氬寲锛?
-   婊氬埌搴曠敱 JS 鍔?.no-fade 瑙ｉ櫎 */
+/* 滚动只发生在内层：竖线(::before)留在 .think-body 上，不随内容滚动而移出视口。
+   max-height 减去外层上下内边距(1+6=7px)，可视行数与原实现一致；底部半行虚化，
+   滚到底由 JS 加 .no-fade 解除 */
 .think-body .think-scroll {
   max-height: calc(1.55em * 9.5 + 5px);
   overflow-y: auto;
-  scrollbar-width: thin;
-  /* 婊氬埌椤?搴曞悗闃绘柇婊氬姩閾撅細缁х画婊氳疆/瑙︽帶鏉挎墜鍔夸笉鍐嶅甫鍔ㄥ灞備細璇濆尯 */
+  /* 滚到顶/底后阻断滚动链：继续滚轮/触控板手势不再带动图层话题区 */
   overscroll-behavior: contain;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
 }
-.think-body .think-scroll::-webkit-scrollbar { width: 5px; }
-.think-body .think-scroll::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 3px; }
 .think-body::before {
   content: "";
   position: absolute;
@@ -1003,45 +1031,45 @@ body:has(#right.collapsed) #right-resizer {
   -webkit-mask-image: none;
   mask-image: none;
 }
-/* 缂栬緫琛岋細鏂囦欢鍥炬爣 + 鏂囦欢鍚?+ 琛屾暟鍙樺寲锛堜笉鏄剧ず璺緞锛?*/
+/* 编辑行：文件图标 + 文件名 + 行数变化（不显示路径） */
 .act.edit .add, .chg-item .add { color: var(--green-soft); font-weight: 500; }
 .act.edit .del, .chg-item .del { color: var(--red); opacity: .9; font-weight: 500; }
-/* 鎮仠鏁磋鏃惰灏惧唴瀹瑰悗鍑虹幇鐨勬瀬绠€绠ご锛堢紪杈戣 / 缁堢琛屽叡鐢級锛屼笌鏍囩鍐呭闂撮殧 6px锛堝榻愭€濊€冭锛?*/
+/* 悬停整行时行尾内容后出现的极简箭头（编辑行 / 终端行共用），与标签内容间隔 6px（对齐思考行） */
 .act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow {
   color: var(--faint); opacity: 0; transition: opacity .12s; flex: none;
   display: inline-flex; align-items: center;
 }
-.cmd .ed-arrow { margin-left: -2px; } /* 瀹瑰櫒 gap 8px锛屽噣璺?6px */
+.cmd .ed-arrow { margin-left: -2px; } /* 容器 gap 8px，净距 6px */
 .act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow { opacity: 1; }
-/* 灞曞紑鏃跺悓涓€涓?chevron 鍘熷湴鏃嬭浆 90掳 鏈濅笅锛屼笉鎹㈠浘鏍囥€佷笉鏀瑰昂瀵革紝閬垮厤璺冲姩 */
+/* 展开时同一个 chevron 原地旋转 90° 朝下，不换图标、不改尺寸，避免跳动 */
 .ed-arrow svg { transition: transform .2s ease; }
 .ed-arrow.open svg { transform: rotate(90deg); }
-/* 鏂囦欢鍚嶏細鎮仠涓嬪垝绾匡紝鐐瑰嚮鍦ㄥ彸渚ц竟鏍忔墦寮€锛堢紪杈戣 鈫?git diff锛涜鍙栬 鈫?鏂囦欢鍐呭锛?*/
+/* 文件名：悬停下划线，点击在右侧边栏打开（编辑行 → git diff；读取行 → 文件内容） */
 .act .ed-name { cursor: pointer; }
 .act .ed-name:hover { text-decoration: underline; }
-/* 灞曞紑浣撴彃鍏ユ椂浠庝笂寰€涓嬮€愭鎻ず锛堜粎鐐瑰嚮灞曞紑閭ｄ竴娆★紝甯?.drop 绫绘墠瑙﹀彂锛?*/
+/* 展开体插入时从上往下逐步揭示（仅点击展开那一次，带 .drop 类才触发） */
 @keyframes ed-drop {
   from { clip-path: inset(0 0 100% 0); opacity: .25; }
   to { clip-path: inset(0 0 0 0); opacity: 1; }
 }
-/* 涓诲璇濆尯灞曞紑浣擄細鐙珛 0.2s锛堟瘮鍏朵粬鐣岄潰 0.3s 鏇村揩锛屽璇濇祦鎿嶄綔棰戠巼楂橈級 */
+/* 主对话区展开体：独立 0.2s（比其他界面 0.3s 更快，对话流操作频率高） */
 .ed-brief.drop, .cmd-card.drop, .bash-out.drop { animation: ed-drop .2s ease-out; }
-/* 鏀惰捣锛歟d-drop 鐨勫弽鍚戯紙搴曢儴鍚戜笂鏀舵嫝 + 娣″嚭锛夛紝鍔ㄧ敾缁撴潫鍚庣敱 JS 绉婚櫎鑺傜偣銆?
-   easing 涓庡睍寮€涓€鑷寸敤 ease-out锛氬姩浣滃墠缃紝閬垮厤鍓嶆鍋滄粸閫犳垚鐨勬嫋娌撴劅 */
+/* 收起：ed-drop 的反向（底部向上收拢 + 淡出），动画结束后由 JS 移除节点。
+   easing 与展开一致用 ease-out：动作前置，避免前段停滞造成的拖沓感 */
 @keyframes ed-lift {
   from { clip-path: inset(0 0 0 0); opacity: 1; }
   to { clip-path: inset(0 0 100% 0); opacity: .25; }
 }
 .ed-brief.lift, .cmd-card.lift, .bash-out.lift, .chg-body.lift, .think-body.lift { animation: ed-lift .2s ease-out forwards; }
-/* 缂栬緫琛岀偣鍑诲悗鍚戜笅灞曞紑鐨勫唴鑱?diff锛圸Code EditInlineDiffContent 鍚屾瀹瑰櫒璇█锛?
-   rounded-xl + 杈规 + 鍗＄墖搴曪紝鏃犲唴灞?padding鈥斺€攄iff 琛岃嚜甯?px锛岄檺楂?240px 鍐呴儴婊氬姩锛?*/
+/* 编辑行点击后向下展开的内联 diff（ZCode EditInlineDiffContent 同款容器语言：
+   rounded-xl + 边框 + 卡片底，无内层 padding——diff 行自带 px，限高 240px 内部滚动） */
 .ed-brief {
-  margin: -6px 0 12px; /* 宸︾紭涓庢爣绛捐鍥炬爣瀵归綈锛堢粍鍐呴潬 .chg-body 鐨?padding 瀹氫綅锛屼笉鍙﹀姞缂╄繘锛?*/
+  margin: -6px 0 12px; /* 左缘与标签行图标对齐（组内靠 .chg-body 的 padding 定位，不另加缩进） */
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 0;
   font-family: var(--mono); font-size: var(--code-fs, 12px);
   line-height: 1.5; max-height: 240px; overflow: hidden;
-  /* 鍐呭祵鍦ㄤ細璇濆尯婊氬姩娴佸唴锛氭粴鍒拌竟鐣屽悗闃绘柇婊氬姩閾撅紝涓嶅啀甯﹀姩澶栧眰 */
+  /* 内嵌在会话区滚动流内：滚到边界后阻断滚动链，不再带动外层 */
   overscroll-behavior: contain;
 }
 .ed-brief > .ldiff {
@@ -1050,22 +1078,22 @@ body:has(#right.collapsed) #right-resizer {
   background: transparent;
   overscroll-behavior: contain;
 }
-/* 鏇存敼琛岋細澶氭枃浠跺垪琛紝鏃犺鏁帮紱鏂囦欢鍒楄〃鍗曡鎺掑竷锛岃秴闀胯灏惧嚭鐪佺暐鍙?*/
+/* 更改行：多文件列表，无行数；文件列表单行排布，超长行尾出省略号 */
 .act.change { flex-wrap: nowrap; overflow: hidden; }
 .act.change .sep { color: var(--faint); flex: none; }
 .act.change .chips-lane {
   flex: 1; min-width: 0; display: block;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* 鏇存敼缁勶紙杩炵画缂栬緫浜嬩欢鍚堝苟锛夛細灞曞紑浣撳唴琛屼笌銆屾洿鏀广€嶆爣绛炬枃瀛楀乏瀵归綈锛堢缉杩?= 閾呯瑪鍥炬爣 13 + 闂磋窛 6锛?
-   涓庣紪杈?鍐欏叆鏍囩鏂囧瓧鍚屽垪锛夈€傜缉杩涜蛋 padding锛?stream>* 鐨?margin-left:auto锛圛D 閫夋嫨鍣級浼氬帇鎺?margin-left銆?
-   缁勫ご涓嬭竟璺?20px 涓?body -6px 濉岄櫡鎴?14px鈥斺€斾笌鍗＄墖寮规鍒版爣绛剧殑闂磋窛锛堢紪杈戣 ed-brief 鍩哄噯锛変竴鑷达紱
-   padding-top 1px锛氱珫绾垮唴绗竴涓爣绛炬瘮绔栫嚎椤剁偣浣?1px銆?
-   鍐呰 padding 5px 鐩搁偦 10px鈥斺€旇涓庤涓や袱闂磋窛绛夊锛堝惈灞曞紑 brief 鐨勮锛岃 .chg-body .ed-brief锛?*/
+/* 更改组（连续编辑事件合并）：展开体内行与「更改」标签文字左对齐（缩进 = 铅笔图标 13 + 间距 6，
+   与编辑/写入标签文字同列）。缩进走 padding：#stream>* 的 margin-left:auto（ID 选择器）会压掉 margin-left。
+   组头下边距 20px 与 body -6px 塌陷成 14px——与卡片弹框到标签的间距（编辑行 ed-brief 基准）一致；
+   padding-top 1px：竖线内第一个标签比竖线顶点低 1px。
+   内行 padding 5px 相邻 10px——行与行两两间距等宽（含展开 brief 的行，见 .chg-body .ed-brief） */
 .chg-body { margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box; }
-/* 宸︿晶鏁存潯绔栫嚎锛氬榻愮粍澶撮搮绗斿浘鏍囷紙13px 瀹斤級姝ｄ腑蹇冿紙6.5 - 绾垮 2/2 = 5.5锛夈€?
-   椤剁偣涓庡睍寮€浣撻《杈归綈骞筹紙top:0锛夛細涓嶅啀鍚戜笂鎺㈠叆缁勫ご琛岃鐩栧浘鏍囷紱涓庣粍澶存枃瀛楃殑杈硅窛 = 缁勫ご mb 20 涓?
-   body mt -6 鐨勫闄峰€?14px锛屼笌鍗＄墖寮规杈硅窛涓€鑷淬€傚唴琛屽睍寮€ diff 鏃?body 澧為珮锛岀珫绾块殢涔嬪欢灞?*/
+/* 左侧整条竖线：对齐组头铅笔图标（13px 宽）正中心（6.5 - 线宽 2/2 = 5.5）。
+   顶点与展开体顶边齐平（top:0）：不再向上探入组头行覆盖图标；与组头文字的边距 = 组头 mb 20 与
+   body mt -6 的塌陷值 14px，与卡片弹框边距一致。内行展开 diff 时 body 增高，竖线随之延展 */
 .chg-body::before {
   content: "";
   position: absolute;
@@ -1074,10 +1102,10 @@ body:has(#right.collapsed) #right-resizer {
   background: var(--line);
 }
 .chg-body.drop { animation: ed-drop .2s ease-out; }
-/* 缁勫唴灞曞紑浣擄細宸﹀榻愮粍鍐呰鍥炬爣锛堜笉鍚?.ed-brief 鐨勫乏缂╄繘锛夛紱琛?pb 5 + mt 9 = 14px 闂磋窛锛堜笌椤跺眰
-   缂栬緫琛?brief 鍩哄噯涓€鑷达紝涓嶅啀璐翠笂/閲嶅彔锛夛紱mb 5 + 涓嬩竴琛?pt 5 = 10px锛屼笌鐩搁偦琛岄棿璺濅繚鎸佷竴鑷?*/
-.chg-body .ed-brief { width: auto; align-self: stretch; margin: 9px 0 5px; } /* 宓屽灞曞紑浣撻摵婊＄粍鍐呭鍒楋紝涓嶅啀鍚?#stream>* 鐨?100% 瀹?*/
-/* 缁勫唴缁堢杈撳嚭鍗★細涓庣粍鍐?ed-brief 鍚岄棿璺濅綋绯伙紙椤跺眰 .cmd-card 鐨?-6/12 鏄寜 .cmd 琛?mb 20 濉岄櫡璁捐鐨勶級 */
+/* 组内展开体：左对齐组内行图标（不吃 .ed-brief 的左缩进）；行 pb 5 + mt 9 = 14px 间距（与顶层
+   编辑行 brief 基准一致，不再贴上/重叠）；mb 5 + 下一行 pt 5 = 10px，与相邻行间距保持一致 */
+.chg-body .ed-brief { width: auto; align-self: stretch; margin: 9px 0 5px; } /* 嵌套展开体铺满组内容列，不再吃 #stream>* 的 100% 宽 */
+/* 组内终端输出卡：与组内 ed-brief 同间距体系（顶层 .cmd-card 的 -6/12 是按 .cmd 行 mb 20 塌陷设计的） */
 .chg-body .cmd-card { margin: 9px 0 5px; }
 .chg-item {
   display: flex; align-items: center; gap: 6px;
@@ -1087,20 +1115,20 @@ body:has(#right.collapsed) #right-resizer {
 .chg-item .lbl, .chg-item .ed-arrow, .chg-item .f-ic, .chg-item > svg:first-child { flex: none; }
 .chg-item .ed-name { cursor: pointer; }
 .chg-item .ed-name:hover { text-decoration: underline; }
-/* 寰呭姙琛?*/
+/* 待办行 */
 .act.todo { flex-wrap: nowrap; width: 100%; }
 .act.todo .td-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act.todo .td-n { color: var(--faint); margin-left: auto; flex: none; }
-/* 璇诲彇/grep/glob/MCP 琛岋細鍗曡鎴柇锛屽弬鏁?鐩綍灏鹃儴鍑虹渷鐣ュ彿锛屾枃浠跺悕鍥炬爣涓嶆敹缂?*/
+/* 读取/grep/glob/MCP 行：单行截断，参数/目录尾部出省略号，文件名图标不收缩 */
 .act.read, .act.mcp { flex-wrap: nowrap; overflow: hidden; }
 .act.read .path, .act.mcp .path {
   color: var(--faint);
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .act.read .f-ic { flex: none; }
-/* 鏂囦欢绫诲瀷灏忓浘鏍?*/
+/* 文件类型小图标 */
 .f-ic { display: inline-flex; align-items: center; gap: 4px; }
-/* 姝ｆ枃娈佃惤锛堝崐绮?+ inline code锛?*/
+/* 正文段落（半粗 + inline code） */
 .step-title {
   font-size: var(--ui-fs-md); font-weight: 600; line-height: 1.65;
   margin: 20px 0 6px; color: var(--text);
@@ -1112,16 +1140,16 @@ body:has(#right.collapsed) #right-resizer {
   padding: 1px 5px; color: var(--dim); font-weight: 400;
 }
 .cmd {
-  /* 涓?.act 琛岃窛涓€鑷达細杩炵画缁堢琛?12px 杈硅窛濉岄櫡浼氭樉寰楁瘮鍒瀵嗛泦 */
+  /* 与 .act 行距一致：连续终端行 12px 边距塌陷会显得比别处密集 */
   margin: 20px 0; font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
   color: var(--dim);
   display: flex; gap: 8px; align-items: center;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  /* 涓?.act 浜嬩欢琛屽悓鐞嗭細鍐呭鐩掑彸缂?15px锛屼笌姝ｆ枃鍖哄垎锛涘睍寮€鐨?.cmd-card 涓嶅彈姝ら檺 */
+  /* 与 .act 事件行同理：内容盒右缩 15px，与正文区分；展开的 .cmd-card 不受此限 */
   padding-right: 15px;
 }
-/* 缁堢琛岀偣鍑诲悗鍚戜笅灞曞紑鐨勫渾瑙掑崱鐗囷細涓婂懡浠ゃ€佷笅杈撳嚭锛屽簳鑹?#323232銆?
-   mt -6锛氫笌 .cmd 琛?mb 20 濉岄櫡鎴?14px鈥斺€斾笌缂栬緫琛?ed-brief 寮规鍒版爣绛剧殑闂磋窛鍩哄噯涓€鑷?*/
+/* 终端行点击后向下展开的圆角卡片：上命令、下输出，底色 #323232。
+   mt -6：与 .cmd 行 mb 20 塌陷成 14px——与编辑行 ed-brief 弹框到标签的间距基准一致 */
 .cmd-card {
   margin: -6px 0 12px; background: #323232; border-radius: 10px;
   padding: 10px 12px; font-family: var(--mono); font-size: var(--code-fs, 12px);
@@ -1136,24 +1164,24 @@ body:has(#right.collapsed) #right-resizer {
   margin: 8px 0 0; color: #a8b0ba; white-space: pre-wrap; word-break: break-word;
   max-height: calc(1.5em * 4.5); overflow-y: auto; font: inherit; line-height: 1.5;
 }
-/* 搴曢儴鍗婅娓愬彉閬帺锛堜笌 think-body 鍚屾墜娉曪紝婊氬埌搴曠敱 JS 鍔?.no-fade 瑙ｉ櫎锛夈€?
-   ed-brief锛堝唴鑱?diff锛夊凡瀵归綈 ZCode 鏃犻伄鎺╋紝涓嶅弬涓庢湰缁?*/
+/* 底部半行渐变遮掩（与 think-body 同手法，滚到底由 JS 加 .no-fade 解除）。
+   ed-brief（内联 diff）已对齐 ZCode 无遮掩，不参与本组 */
 .cmd-card-cmd, .cmd-card-out {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.75em), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 0.75em), transparent);
-  /* 涓夎€呴兘鍐呭祵鍦ㄤ細璇濆尯婊氬姩娴佸唴锛氭粴鍒拌竟鐣屽悗闃绘柇婊氬姩閾撅紝涓嶅啀甯﹀姩澶栧眰 */
+  /* 三者都内嵌在会话区滚动流内：滚到边界后阻断滚动链，不再带动外层 */
   overscroll-behavior: contain;
 }
 .cmd-card-cmd.no-fade, .cmd-card-out.no-fade {
   -webkit-mask-image: none;
   mask-image: none;
 }
-/* 鏈湴 bash 鎵ц琛岋紙! 鍓嶇紑锛孊ashRow锛夛細澶嶇敤 .cmd 琛屾牱寮忥紝鐘舵€佸尯鍙冲榻愩€?
-   exit 0 鐢?--dim銆侀潪 0/閿欒鐢?--err锛涖€屼笉杩涗笂涓嬫枃銆嶄负灏忓彿 faint 鏍囩 */
+/* 本地 bash 执行行（! 前缀，BashRow）：复用 .cmd 行样式，状态区右对齐。
+   exit 0 用 --dim、非 0/错误用 --err；「不进上下文」为小号 faint 标签 */
 .bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
 .bash-row .bash-status .bad { color: var(--err); }
 .bash-row .bash-tag { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-/* bash 琛屽睍寮€浣擄細绛夊杈撳嚭鍧楋紙瀵规瘮 .cmd-card锛岄厤鑹插彧鐢ㄦ棦鏈?token锛?*/
+/* bash 行展开体：等宽输出块（对比 .cmd-card，配色只用既有 token） */
 .bash-out {
   margin: -6px 0 12px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
@@ -1163,13 +1191,13 @@ body:has(#right.collapsed) #right-resizer {
   max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
   overscroll-behavior: contain;
 }
-/* @ 鎻愬強鍥炶琛岋紙MentionRow锛夛細鍗曡 dim锛岃矾寰勭瓑瀹芥埅鏂?*/
+/* @ 提及回读行（MentionRow）：单行 dim，路径等宽截断 */
 .act.mention { flex-wrap: nowrap; overflow: hidden; }
 .act.mention .m-paths { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--code-fs, 12px); }
-/* 宸ュ叿灞曞紑鍗￠噷鐨勫閾撅細涓?md-link 鍚岃壊锛宧over 鍑轰笅鍒掔嚎锛涒寴+鐐瑰嚮璧扮郴缁熸祻瑙堝櫒锛堣 tool-labels.js锛?*/
+/* 工具展开卡里的外链：与 md-link 同色，hover 出下划线；⌘+点击走系统浏览器（见 tool-labels.js） */
 .cmd-card-out a.ext-link { color: var(--blue); text-decoration: none; cursor: pointer; }
 .cmd-card-out a.ext-link:hover { text-decoration: underline; }
-/* ask 灞曞紑鍙傛暟锛氶棶棰?+ 閫夐」鍒楄〃锛堚槄 鎺ㄨ崘椤癸級锛屾浛浠ｅ師濮?JSON */
+/* ask 展开参数：问题 + 选项列表（★ 推荐项），替代原始 JSON */
 .ask-q + .ask-q { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: 8px; }
 .ask-q-t { color: var(--text); }
 .ask-q-h { color: var(--dim); margin-left: 6px; font-size: .92em; }
@@ -1178,25 +1206,25 @@ body:has(#right.collapsed) #right-resizer {
 .ask-opt.rec { color: var(--text); }
 .cmd .c-ic {
   color: var(--faint); flex: none; font-family: var(--ui-font, var(--sans)); font-size: var(--code-fs, 12px);
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; /* gap 涓?.act 鏍囩闂磋窛绛夊 */
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; /* gap 与 .act 标签间距等宽 */
 }
 .cmd .c-tx {
   font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
-  flex: 0 1 auto; min-width: 0; /* 涓嶆媺浼革細鐭懡浠ゆ椂绠ご绱ц窡鏍囩缁撳熬锛岄暱鍛戒护鏀剁缉鍑虹渷鐣ュ彿 */
+  flex: 0 1 auto; min-width: 0; /* 不拉伸：短命令时箭头紧跟标签结尾，长命令收缩出省略号 */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* 缁堢缁勫唴琛岋紙.chg-item锛夐噷鐨勫懡浠ゆ枃鏈細涓?.cmd .c-tx 鍚屾鎴柇锛?scope 鏃?.cmd 鍖呰９锛屾牱寮忎笉浼氳嚜鍔ㄥ懡涓級 */
+/* 终端组内行（.chg-item）里的命令文本：与 .cmd .c-tx 同款截断（:scope 无 .cmd 包裹，样式不会自动命中） */
 .chg-item .c-tx {
   font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
   flex: 0 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* JS 鎴柇銆屸€︺€嶅弻娈电粨鏋勶細鍘熺敓 text-overflow:ellipsis 鐨勭渷鐣ュ彿绱ц创鍓嶆枃瀛楋紝杩欓噷琛?3px 闂磋窛
-   锛坋-tx 琚鍒囨椂 e-dot 鎵嶆樉绀猴紝瑙?tool-rows.js ellipsizable锛?*/
+/* JS 截断「…」双段结构：原生 text-overflow:ellipsis 的省略号紧贴前文字，这里补 3px 间距
+   （e-tx 被裁切时 e-dot 才显示，见 tool-rows.js ellipsizable） */
 .e-wrap { display: inline-flex; min-width: 0; overflow: hidden; }
 .e-wrap .e-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
 .e-wrap .e-dot { flex: none; margin-left: 3px; }
-/* 婊氬姩鍒板簳閮ㄦ偓娴寜閽紙娴佸尯鍩熷簳閮ㄤ腑澶級 */
+/* 滚动到底部悬浮按钮（流区域底部中央） */
 .scroll-bottom {
   position: sticky; bottom: 10px;
   margin: 16px auto 2px; width: 26px; height: 26px; border-radius: 50%;
@@ -1209,9 +1237,9 @@ body:has(#right.collapsed) #right-resizer {
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 @keyframes flashBg { 0% { background: rgba(52,199,89,.14); } 100% { background: transparent; } }
 
-/* 瀹℃壒鍗＄墖锛坅sk/confirm/editor 瀵硅瘽妗嗭級锛歓Codium PermissionDialog 鍚屾鈥斺€斿渾瑙掕竟妗嗗崱 +
-   銆岀瓑寰呯‘璁ゃ€嶆爣棰?+ 闂姝ｆ枃 + 缂栧彿閫夐」琛岋紙hover 楂樹寒 / 閫変腑搴曟澘锛屾暟瀛椾笌鍥炶溅蹇嵎搴旂瓟锛?
-   + 搴曢儴閿洏鎻愮ず琛屼笌纭閽紱editable 鏃躲€屾彁浜ゃ€嶈鍐呭祵杈撳叆锛圸Codium 鍙嶉琛屾牱寮忥級 */
+/* 审批卡片（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——圆角边框卡 +
+   「等待确认」标题 + 问题正文 + 编号选项行（hover 高亮 / 选中底板，数字与回车快捷应答）
+   + 底部键盘提示行与确认钮；editable 时「提交」行内嵌输入（ZCodium 反馈行样式） */
 .approval-card {
   margin: 0;
   background: var(--inset);
@@ -1228,7 +1256,7 @@ body:has(#right.collapsed) #right-resizer {
   font-size: var(--ui-fs-base); line-height: 1.5;
   white-space: pre-wrap; word-break: break-word;
   max-height: 160px; overflow-y: auto;
-  overscroll-behavior: contain; /* 鍐呭祵鍦ㄤ細璇濆尯婊氬姩娴佸唴锛岄樆鏂粴鍔ㄩ摼 */
+  overscroll-behavior: contain; /* 内嵌在会话区滚动流内，阻断滚动链 */
   margin: 0;
 }
 .approval-list { display: flex; flex-direction: column; gap: 4px; }
@@ -1242,7 +1270,7 @@ body:has(#right.collapsed) #right-resizer {
 }
 .approval-opt:hover { background: var(--panel-2); }
 .approval-opt.selected { background: var(--select); }
-/* 搴旂瓟瀹氭牸鍚庤绂佺敤锛氫笉缁?hover 楂樹寒锛坔over 鍙寕鍦ㄥ彲鐐瑰厓绱犱笂锛夛紝chosen 琛屼繚鎸侀€変腑搴曟澘 */
+/* 应答定格后行禁用：不给 hover 高亮（hover 只挂在可点元素上），chosen 行保持选中底板 */
 .approval-opt:disabled { cursor: default; }
 .approval-opt:disabled:hover { background: none; }
 .approval-opt.chosen, .approval-opt.chosen:hover { background: var(--select); }
@@ -1254,14 +1282,14 @@ body:has(#right.collapsed) #right-resizer {
 .approval-opt.has-input { cursor: text; }
 .approval-opt:focus-visible,
 .approval-confirm:focus-visible { outline: none; }
-/* editable銆屾彁浜ゃ€嶈鍐呭祵杈撳叆锛歓Codium 鍙嶉琛屽悓娆鹃€忔槑鏃犺竟妗嗚緭鍏?*/
+/* editable「提交」行内嵌输入：ZCodium 反馈行同款透明无边框输入 */
 .approval-inp {
   flex: 1; min-width: 0;
   background: transparent; border: 0; outline: none; padding: 0;
   color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
 }
 .approval-inp::placeholder { color: var(--faint); font-weight: 400; }
-.approval-inp:disabled { opacity: 1; -webkit-text-fill-color: var(--text); } /* 瀹氭牸鍚庝粛鍙宸叉彁浜ゅ唴瀹?*/
+.approval-inp:disabled { opacity: 1; -webkit-text-fill-color: var(--text); } /* 定格后仍可读已提交内容 */
 .approval-foot {
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px; padding: 0 4px;
@@ -1271,7 +1299,7 @@ body:has(#right.collapsed) #right-resizer {
   color: var(--dim); font-size: var(--ui-fs-base);
 }
 .approval-hint svg { flex: none; color: var(--text); }
-/* 纭閽?= ZCodium bg-brand 鎸夐挳鍚屾锛坔-8 rounded-lg锛?*/
+/* 确认钮 = ZCodium bg-brand 按钮同款（h-8 rounded-lg） */
 .approval-confirm {
   flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
   background: var(--accent); color: #fff;
@@ -1281,14 +1309,14 @@ body:has(#right.collapsed) #right-resizer {
 .approval-confirm:hover { opacity: .8; }
 .approval-confirm:disabled { opacity: .45; cursor: default; }
 
-/* /* 杈撳叆鍖猴細涓爮搴曢儴鍐呭祵鍦嗚鍗＄墖锛屼弗鏍煎眳涓苟涓庝細璇濆尯鍩熷悓瀹藉榻?*/
-/* 杈撳叆鍖轰笌涓嬫柟缁熻琛屽叡鐢ㄥ悓涓€鍒楀锛堝悓娆惧洓娈靛紡鏀剁缉銆佸眳涓級锛涚粺璁¤鍦?dock 涔嬪锛屼笉灞炶緭鍏ュ崱鐗?*/
+/* /* 输入区：中栏底部内嵌圆角卡片，严格居中并与会话区域同宽对齐 */
+/* 输入区与下方统计行共用同一列宽（同款四段式收缩、居中）；统计行在 dock 之外，不属输入卡片 */
 .dock,
 .stats-bar {
   flex: none;
   width: 100%;
-  /* 涓庡璇濇秷鎭悓涓€濂楀洓娈靛紡鏀剁缉閫昏緫锛堣涓婃柟鍏变韩瑙勫垯娉ㄩ噴锛夛紱
-     鏀剁缉鍒板簳锛?60px锛屼笌 #composer 鐨?min-width 涓€鑷达級鍚庝笉鍐嶅彉绐?*/
+  /* 与对话消息同一套四段式收缩逻辑（见上方共享规则注释）；
+     收缩到底（260px，与 #composer 的 min-width 一致）后不再变窄 */
   max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   min-width: 260px;
 }
@@ -1298,11 +1326,11 @@ body:has(#right.collapsed) #right-resizer {
   border: 1px solid var(--line-soft);
   border-radius: 16px;
   position: relative;
-  /* 浜岀骇閲嶅彔鍗＄殑涓嬪崱灞傜骇锛氱洊浣忎笂鏂?.queue-card 涓嬬紭 28px锛堝搴?ZCode composer z-20锛?*/
-  z-index: 20;
+  /* 容器层：压住上方 .queue-card 下缘 28px；其内部下拉菜单封顶在这一层（见文件头「全站层级刻度」） */
+  z-index: 100;
   box-sizing: border-box;
 }
-/* 杈撳叆鍗¤竟妗嗭細甯告€佹部鐢?line-soft锛岄紶鏍囨偓鍋滄椂杞诲井鎻愪寒锛涢敭鐩樼劍鐐逛笉鏀硅竟妗?*/
+/* 输入卡边框：常态沿用 line-soft，鼠标悬停时轻微提亮；键盘焦点不改边框 */
 .dock,
 #composer.in-welcome { transition: border-color .15s var(--swift); }
 .dock:hover,
@@ -1310,8 +1338,8 @@ body:has(#right.collapsed) #right-resizer {
 .dock.approval-active { background: transparent; border-color: transparent; }
 .dock.approval-active:hover,
 .dock.approval-active:focus-within { border-color: transparent; }
-/* 浼氳瘽缁熻琛岋細杈撳叆妗?dock 涓嬫柟甯搁┗涓€琛岋紙鏁翠細璇濈紦瀛樺埄鐢ㄧ巼/token/鎴愭湰/娲昏穬鏃堕暱锛夛紱
-   绾睍绀烘棤鐐瑰嚮琛屼负锛屼笉鍋?hover 楂樹寒 */
+/* 会话统计行：输入框 dock 下方常驻一行（整会话缓存利用率/token/成本/活跃时长）；
+   纯展示无点击行为，不做 hover 高亮 */
 .stats-bar {
   margin: 0 auto 10px;
   display: flex;
@@ -1333,11 +1361,11 @@ body:has(#right.collapsed) #right-resizer {
   padding: 12px 14px 10px;
   position: relative;
   min-width: 0;
-  /* 鏀剁缉鍒板簳鍚庣殑鎵樺簳瀹藉害锛屼笉鍐嶉殢绐楀彛鍙樼獎 */
+  /* 收缩到底后的托底宽度，不再随窗口变窄 */
   min-width: 260px;
 }
 
-/* TODO锛氫腑鏍忓彸涓婅鐙珛鍗＄墖锛屽彲鏀舵垚鑳跺泭 */
+/* TODO：中栏右上角独立卡片，可收成胶囊 */
 #statusWrap {
   position: absolute;
   top: 56px;
@@ -1371,14 +1399,14 @@ body:has(#right.collapsed) #right-resizer {
   box-shadow: none !important;
 }
 #input::placeholder { color: var(--faint); }
-/* 宸查€夐檮浠惰锛氭枃浠朵粠宸﹀埌鍙虫帓鍒楋紝鏂囧瓧杈撳叆鍙﹁捣涓€琛?*/
+/* 已选附件行：文件从左到右排列，文字输入另起一行 */
 .attach-row { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; }
-/* working 鐘舵€佽宸插苟鍏?.chat-loading锛堣 ChatLoading.jsx锛夛紝鍘?.work-line 鏍峰紡闅忎箣绉婚櫎 */
-.chat-loading[hidden] { display: none; } /* display:flex 浼氱洊鎺?UA 鐨?[hidden]锛岄渶鏄惧紡澹版槑 */
-/* 娴佸紡鐘舵€佹枃瀛楋紙intent/鎬濊€冿級锛氳窡鍦ㄨ浆鍦堝悗锛屽皬鍙?dim锛屽崟琛屾埅鏂笉鎶樿鎺ㄩ珮娴?*/
-/* 娴佸紡鍔犺浇杞湀锛堝鍒?ZCode ChatLoading / TurnChatLoadingSlot锛夛細娑堟伅娴佹渶鏈綅銆佺揣璐磋緭鍏ユ涓婃柟锛?
-   min-height 20px 淇濆簳鏈夋棤閮戒笉璺抽珮锛沴ucide loader 鍥炬爣 + 1s linear 鏃嬭浆锛屽墠鏅壊 --dim
-   锛堝搴?ZCode text-foreground-subtle锛夈€傛樉闅愮敱 Chat.jsx 鎸?s.streaming 娓叉煋涓庡惁鍐冲畾 */
+/* working 状态行已并入 .chat-loading（见 ChatLoading.jsx），原 .work-line 样式随之移除 */
+.chat-loading[hidden] { display: none; } /* display:flex 会盖掉 UA 的 [hidden]，需显式声明 */
+/* 流式状态文字（intent/思考）：跟在转圈后，小号 dim，单行截断不折行推高流 */
+/* 流式加载转圈（复刻 ZCode ChatLoading / TurnChatLoadingSlot）：消息流最末位、紧贴输入框上方，
+   min-height 20px 保底有无都不跳高；lucide loader 图标 + 1s linear 旋转，前景色 --dim
+   （对应 ZCode text-foreground-subtle）。显隐由 Chat.jsx 按 s.streaming 渲染与否决定 */
 .chat-loading-icon {
   display: inline-flex;
   color: var(--dim);
@@ -1386,9 +1414,9 @@ body:has(#right.collapsed) #right-resizer {
 }
 .chat-loading-icon svg { display: block; }
 @keyframes chat-load-spin { to { transform: rotate(360deg); } }
-/* 鍑忓急鍔ㄦ€佹晥鏋滐細榛樿璺熼殢绯荤粺锛坢edia query 鍋滆浆涓や釜 spinner锛夛紱
-   澶栬椤靛彲寮哄埗锛坔tml[data-motion]锛夛細on=鏃犳潯浠跺噺寮?/ off=鏃犳潯浠跺姩鐢汇€?
-   鐗瑰紓鎬?html[data-motion] 鍓嶇紑鍘嬭繃 media 鍐呰鍒欙紝system/缂虹渷鍥炶惤绯荤粺琛屼负 */
+/* 减弱动态效果：默认跟随系统（media query 停转两个 spinner）；
+   外观页可强制（html[data-motion]）：on=无条件减弱 / off=无条件动画。
+   特异性 html[data-motion] 前缀压过 media 内规则，system/缺省回落系统行为 */
 @media (prefers-reduced-motion: reduce) {
   .chat-loading-icon, .task .mini-spin, .task-indicator.loading svg { animation: none; }
 }
@@ -1398,17 +1426,17 @@ html[data-motion="on"] .task-indicator.loading svg { animation: none; }
 html[data-motion="off"] .chat-loading-icon { animation: chat-load-spin 1s linear infinite; }
 html[data-motion="off"] .task .mini-spin,
 html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
-/* 鎺掗槦娑堟伅鍗★細ZCode 浜岀骇閲嶅彔鍗￠厤鏂癸紙ConversationQueuePanel锛夆€斺€攔elative z-0 +
-   璐?margin-bottom 涓婃媺 28px + padding-bottom 28px 淇濆簳鍐呭涓嶈閬?+ 鍙渾涓婅銆?
-   涓嬫柟 .dock锛坺-20锛夊帇浣忓叾涓嬬紭锛岄湶鍑轰笂鍗婂紶鍗★紱绌洪槦鍒楁椂缁勪欢杩斿洖 null锛屽崱鏁翠綋涓嶅嚭鐜?*/
-/* goal 鐩爣鏍忥細杈撳叆妗嗕笂鏂圭殑鏈€涓婂眰閲嶅彔鏍忥紙App 娓叉煋椤哄簭 goal 鈫?queue 鈫?dock锛岄殢闃熷垪澧為珮涓婄Щ锛夈€?
-   鍙犲姞鍑犱綍鍚?queue-card 閰嶆柟锛坢argin -28px 涓婃媺 + padding-bottom 28px 淇濆簳 + 鍙渾涓婅锛?
-   琚笅涓€寮犲崱鍘嬩綇涓嬬紭锛夛紱瀹藉害姣旇緭鍏ユ宸﹀彸鍚勭獎 10px锛堝叡 20px锛夛紝鏃犲涓嬫柟鍗＄墖鐨勫渾瑙掕ˉ鍏呭潡銆?
-   鐐瑰嚮鏍忓悜涓婂睍寮€瀹屾暣鐩爣锛?open锛夛紱鏃?goal 鏃剁粍浠惰繑鍥?null */
-/* 瀹藉害澹版槑鍗曠嫭鎸?#main 鍓嶇紑锛氫笂鏂瑰叡鐢ㄥ垪瀹借鍒欏惈 #stream>*锛堢壒寮傛€?1,0,1锛夛紝
-   绾被閫夋嫨鍣ㄥ帇涓嶈繃锛屼笉鍔犲墠缂€鏃躲€屾瘮杈撳叆妗嗙獎銆嶅疄闄呬笉鐢熸晥銆?
-   width 涓?max-width 閮借鍑?20px锛氱獎灞忕敱 width 鍏滃簳銆佸灞忕敱 max-width锛堝垪瀹芥敹缂╋級
-   绾︽潫锛屼袱鑰呯己涓€閮戒細鍦ㄥ搴斿尯闂村洖鍒颁笌杈撳叆妗嗗悓瀹?*/
+/* 排队消息卡：ZCode 二级重叠卡配方（ConversationQueuePanel）——relative z-0 +
+   负 margin-bottom 上拉 28px + padding-bottom 28px 保底内容不被遮 + 只圆上角。
+   下方 .dock（z-20）压住其下缘，露出上半张卡；空队列时组件返回 null，卡整体不出现 */
+/* goal 目标栏：输入框上方的最上层重叠栏（App 渲染顺序 goal → queue → dock，随队列增高上移）。
+   叠加几何同 queue-card 配方（margin -28px 上拉 + padding-bottom 28px 保底 + 只圆上角，
+   被下一张卡压住下缘）；宽度比输入框左右各窄 10px（共 20px），无对下方卡片的圆角补充块。
+   点击栏向上展开完整目标（.open）；无 goal 时组件返回 null */
+/* 宽度声明单独挂 #main 前缀：上方共用列宽规则含 #stream>*（特异性 1,0,1），
+   纯类选择器压不过，不加前缀时「比输入框窄」实际不生效。
+   width 与 max-width 都要减 20px：窄屏由 width 兜底、宽屏由 max-width（列宽收缩）
+   约束，两者缺一都会在对应区间回到与输入框同宽 */
 #main .goal-card {
   width: calc(100% - 20px);
   max-width: calc(min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))) - 20px);
@@ -1441,7 +1469,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 }
 .queue-card {
   position: relative;
-  z-index: 1; /* 楂樹簬 .goal-card锛坺-0锛夛細goal 鏍忎笅缂樿鎺掗槦鍗″帇浣忥紝涓嶅啀鍙嶅悜閬尅鎺掗槦鍐呭 */
+  z-index: 1; /* 高于 .goal-card（z-0）：goal 栏下缘被排队卡压住，不再反向遮挡排队内容 */
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
   background: var(--surface);
@@ -1456,7 +1484,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   font-size: var(--ui-fs-sm); color: var(--dim);
   min-width: 0;
 }
-.qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; } /* 涓夌偣=鎺掗槦寰呭彂閫?*/
+.qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; } /* 三点=排队待发送 */
 .qc-dots svg { display: block; margin-top: -0.5px; }
 .qc-tx {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1481,8 +1509,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   display: block;
 }
 .q-btn:hover { background: var(--panel-2); color: var(--text); }
-/* 涓€杞?output 缁撳熬宸︿笅瑙掔殑鎿嶄綔缁勶紙澶嶅埗/fork锛夛細浣滀负 #stream 鐩存帴瀛愬厓绱犲悆鍐呭鍒楀搴︿笌灞呬腑锛?
-   鍥炬爣璐村唴瀹瑰垪宸﹁竟缂橈紙= output 鏂囨湰宸﹁竟缂橈級锛涙湁鏁堥棿闅斾笌涓婃柟 output 鐨?14px 涓嬭竟璺濆悎骞朵负 16px */
+/* 一轮 output 结尾左下角的操作组（复制/fork）：作为 #stream 直接子元素吃内容列宽度与居中，
+   图标贴内容列左边缘（= output 文本左边缘）；有效间隔与上方 output 的 14px 下边距合并为 16px */
 .turn-acts {
   display: flex; align-items: center; gap: 2px;
   margin-top: 16px;
@@ -1499,7 +1527,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 }
 .turn-acts .q-btn:disabled { opacity: .45; cursor: default; }
 .turn-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
-/* 鏈疆缁撴潫鏃跺埢锛氶珮搴︿笌涓績绾块攣瀹?1.4em锛屾枃瀛?line-height: 1 鍨傜洿灞呬腑锛屼笌宸︿晶澶嶅埗/fork 鎸夐挳鍥惧舰绛夐珮椤跺簳缁濆骞抽綈 */
+/* 本轮结束时刻：高度与中心线锁定 1.4em，文字 line-height: 1 垂直居中，与左侧复制/fork 按钮图形等高顶底绝对平齐 */
 .turn-acts-time {
   margin-left: 6px;
   height: 1.4em;
@@ -1512,8 +1540,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
-/* 鏈疆缁撴潫鏃跺埢锛氳窡闅忓垎鍙夋寜閽彸渚э紝绛夊鏁板瓧閬垮厤閫愯疆瀹藉害璺冲姩 */
-/* 寰呮秷璐规皵娉″乏渚х殑鎿嶄綔缁勶細hover 鏁磋鏃舵诞鐜帮紙鎸夐挳鍦ㄦ皵娉″宸︿晶锛岃 hover 淇濊瘉绉昏繃鍘讳笉娑堝け锛?*/
+/* 本轮结束时刻：跟随分叉按钮右侧，等宽数字避免逐轮宽度跳动 */
+/* 待消费气泡左侧的操作组：hover 整行时浮现（按钮在气泡外左侧，行 hover 保证移过去不消失） */
 .user-bubble.pending { position: relative; }
 .qk-acts {
   position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
@@ -1522,7 +1550,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   padding: 2px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 .msg.user:has(> .user-bubble.pending):hover .qk-acts { display: flex; }
-/* 姘旀场鍐呮寜閽浘鏍囦笌鏂囧瓧绛夐珮锛堟皵娉″瓧鍙?var(--ui-fs-md)锛?*/
+/* 气泡内按钮图标与文字等高（气泡字号 var(--ui-fs-md)） */
 .user-bubble .qk-acts .q-btn { width: 1.05em; height: 1.05em; }
 .user-bubble .qk-acts .q-btn svg { width: 100%; height: 100%; display: block; }
 .atchip {
@@ -1552,21 +1580,21 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   align-items: center;
   gap: 6px;
   margin-top: 4px;
-  /* 绂佹鎹㈣锛氭崲琛屼細璁╂寜閽劚绂诲脊绐楅敋鐐癸紙寮圭獥鎸夋寜閽綅缃敋瀹氾級銆?
-     瀹藉害涓嶈冻鏃剁敱 fitComposerBar() 閫愮骇鏀剁缉锛?bar-N锛夛紝鏀剁缉鍒板簳鐢?#composer min-width 鎵樺簳 */
+  /* 禁止换行：换行会让按钮脱离弹窗锚点（弹窗按按钮位置锚定）。
+     宽度不足时由 fitComposerBar() 逐级收缩（.bar-N），收缩到底由 #composer min-width 托底 */
   flex-wrap: nowrap;
   overflow: hidden;
   min-width: 0;
 }
-/* 搴曟爮瀛愰」涓嶅帇缂╋細淇濇寔鑷劧瀹藉害锛屾孩鍑轰氦缁?fitComposerBar() 妫€娴嬪苟閫愮骇鏀剁缉锛?
-   寮规€ч棿闅?.sp(flex:1) 鐙崰鍓╀綑绌洪棿骞堕鍏堟敹缂?*/
+/* 底栏子项不压缩：保持自然宽度，溢出交给 fitComposerBar() 检测并逐级收缩；
+   弹性间隔 .sp(flex:1) 独占剩余空间并首先收缩 */
 .cbar > *:not(.sp) { flex: none; }
 .cbar > .sp { min-width: 0; }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: transparent; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-base);
-  padding: 5px 9px; border-radius: 8px; cursor: pointer; /* ZCode ghost 鎸夐挳 rounded-lg */
+  padding: 5px 9px; border-radius: 8px; cursor: pointer; /* ZCode ghost 按钮 rounded-lg */
   max-width: 180px; white-space: nowrap; overflow: hidden;
   line-height: 1;
 }
@@ -1580,19 +1608,19 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   flex: none;
   margin-top: -0.5px;
 }
-/* 鏉冮檺/妯″瀷/鎬濊€冧笁涓€夋嫨鍣ㄥ瓧閲嶅榻?ZCode锛堝惈鑳跺泭鏂囧瓧鏈韩锛夛紱
-   浠呰繖涓変釜锛屽悗鍙颁换鍔?瀛愭櫤鑳戒綋璁℃暟閽笉璺熺潃鍔犵矖 */
-/* 鍏ㄧ珯鍥炬爣鍨傜洿瀵归綈锛歩nline svg 榛樿鎸夊熀绾垮榻愶紙鍩虹嚎=鐩掑瓙搴曢儴锛夛紝瑙嗚鍋忛珮 1-2px锛?
-   middle 璁╁浘鏍囦笌鏂囨湰 x-height 涓嚎瀵归綈锛圛con 缁勪欢涓?hydrateIcons 娉ㄥ叆鐨?svg 涓€骞剁敓鏁堬級 */
+/* 权限/模型/思考三个选择器字重对齐 ZCode（含胶囊文字本身）；
+   仅这三个，后台任务/子智能体计数钮不跟着加粗 */
+/* 全站图标垂直对齐：inline svg 默认按基线对齐（基线=盒子底部），视觉偏高 1-2px；
+   middle 让图标与文本 x-height 中线对齐（Icon 组件与 hydrateIcons 注入的 svg 一并生效） */
 svg { vertical-align: middle; }
 #modeBtn, #modelBtn, #thinkBtn { font-weight: 500; }
 .pill-btn:hover { background: var(--panel-2); color: var(--text); }
-/* 妯″瀷鍚嶉暱搴︿笉涓€,妯″瀷鎸夐挳瀹藉害闅忓唴瀹逛几缂?涓嶅彈鍏辩敤 180px 涓婇檺瑁佸壀 */
+/* 模型名长度不一,模型按钮宽度随内容伸缩,不受共用 180px 上限裁剪 */
 #modelBtn { max-width: none; }
-/* 妯″瀷渚涘簲鍟嗗浘鏍囷紙璁剧疆椤靛悓娆惧瓧褰級锛氫粎妯″瀷鎸夐挳鏀剁缉涓哄浘鏍囨€佹椂鏄剧ず */
+/* 模型供应商图标（设置页同款字形）：仅模型按钮收缩为图标态时显示 */
 #modelIcon { display: none; }
-/* 搴曟爮鍒嗙骇鏀剁缉锛氬搴︿笉瓒虫椂鐢?JS锛坒itComposerBar锛夋寜婧㈠嚭绋嬪害閫愮骇鍔?.bar-N銆?
-   椤哄簭锛氭潈闄愭ā寮忊啋绾浘鏍?鈫?鎬濊€冪骇鍒啋绾浘鏍?鈫?妯″瀷鈫掔函鍥炬爣 鈫?闅愯棌瀛愭櫤鑳戒綋 鈫?闅愯棌鍚庡彴浠诲姟 */
+/* 底栏分级收缩：宽度不足时由 JS（fitComposerBar）按溢出程度逐级加 .bar-N。
+   顺序：权限模式→纯图标 → 思考级别→纯图标 → 模型→纯图标 → 隐藏子智能体 → 隐藏后台任务 */
 #composer.bar-1 #modeLabel, #composer.bar-1 #modeBtn .caret-svg { display: none; }
 #composer.bar-2 #thinkLabel, #composer.bar-2 #thinkBtn .caret-svg { display: none; }
 #composer.bar-3 #modelLabel, #composer.bar-3 #modelBtn .caret-svg { display: none; }
@@ -1600,7 +1628,7 @@ svg { vertical-align: middle; }
 #composer.bar-4 #bgSubagentBtn { display: none; }
 #composer.bar-5 #bgTaskBtn { display: none; }
 .pill-btn.yolo { color: var(--orange); }
-/* 鍚庡彴浠诲姟缁堢鎸夐挳 */
+/* 后台任务终端按钮 */
 .bg-task-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 8px; border-radius: 999px;
@@ -1625,7 +1653,7 @@ svg { vertical-align: middle; }
   color: var(--text);
   font-weight: 600;
 }
-/* 璁″垝妯″紡鎸夐挳锛氭潈闄愯兌鍥婂彸渚т互 | 鍒嗛殧鐨勫皬鎸夐挳锛沨over 鏃惰鍒掑浘鏍囨崲鎴?X锛堟彁绀虹偣鍑诲嵆閫€鍑猴級 */
+/* 计划模式按钮：权限胶囊右侧以 | 分隔的小按钮；hover 时计划图标换成 X（提示点击即退出） */
 .cbar-sep { color: var(--line); font-size: var(--ui-fs-base); line-height: 1; user-select: none; }
 .plan-btn {
   gap: 5px; padding: 5px 8px; border-radius: 999px; max-width: none;
@@ -1635,35 +1663,35 @@ svg { vertical-align: middle; }
 .plan-btn .plan-ic { display: inline-flex; align-items: center; flex: none; }
 .plan-btn .plan-ic svg { display: block; }
 .plan-btn .plan-ic > span { display: inline-flex; align-items: center; }
-.plan-btn .plan-ic > span:nth-child(2) { display: none; } /* X 榛樿闅愯棌锛宧over 鏃舵浛鎹㈣鍒掑浘鏍?*/
+.plan-btn .plan-ic > span:nth-child(2) { display: none; } /* X 默认隐藏，hover 时替换计划图标 */
 .plan-btn:hover .plan-ic > span:nth-child(1) { display: none; }
 .plan-btn:hover .plan-ic > span:nth-child(2) { display: inline-flex; }
 .plan-btn:hover { background: var(--panel-2); color: var(--text); }
-/* 涓婁笅鏂囧崰鐢ㄧ幆锛氫粠椤剁椤烘椂閽堝闀匡紝鍒嗘俯鑹诧紱hover 鍑烘槑缁嗗崱 */
+/* 上下文占用环：从顶端顺时针增长，分温色；hover 出明细卡 */
 .ctx-ring {
   width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center;
-  padding: 4px; border-radius: 7px; /* 甯告€佸崰浣?hover 鏃跺簳鏉垮嚭鐜颁笉鎺ㄥ竷灞€(border-box:22=14鐜?4脳2鍐呰竟璺? */
+  padding: 4px; border-radius: 7px; /* 常态占位,hover 时底板出现不推布局(border-box:22=14环+4×2内边距) */
 }
-.ctx-ring:hover { background: #363636; } /* hover 楂樹寒鍦嗚姝ｆ柟褰㈠簳鏉?*/
+.ctx-ring:hover { background: #363636; } /* hover 高亮圆角正方形底板 */
 .ctx-ring svg { display: block; }
 .ctx-ring .track { fill: none; stroke: var(--panel-3); stroke-width: 2.5; }
 .ctx-ring .fill {
   fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round;
-  stroke-dasharray: 40.84; stroke-dashoffset: 40.84; /* 鍛ㄩ暱 2蟺脳6.5 */
+  stroke-dasharray: 40.84; stroke-dashoffset: 40.84; /* 周长 2π×6.5 */
   transition: stroke-dashoffset .3s;
 }
 .ctx-ring.warm .fill { stroke: var(--orange); }
 .ctx-ring.hot .fill { stroke: var(--err); }
 .ring-pop {
-  position: fixed; z-index: 110;
+  position: fixed; z-index: 200;
   background: var(--ctl-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
   padding: 12px 12px 14px;
-  min-width: 192px; /* 240px 脳 0.8 */
+  min-width: 192px; /* 240px × 0.8 */
   font-size: var(--ui-fs-base); color: var(--dim);
-  animation: ringpop .18s ease-out; /* 閫愭娓叉煋:娣″叆 + 涓婃粦,闈炵灛闂存樉绀?*/
+  animation: ringpop .18s ease-out; /* 逐步渲染:淡入 + 上滑,非瞬间显示 */
 }
 @keyframes ringpop {
   from { opacity: 0; transform: translateY(6px); }
@@ -1672,7 +1700,7 @@ svg { vertical-align: middle; }
 [data-theme="light"] .ring-pop { box-shadow: 0 12px 32px rgba(0,0,0,.18); }
 .ring-pop b { color: var(--text); font-weight: 500; }
 
-/* 鈹€鈹€ 鍏ㄥ眬浜屾纭寮圭獥锛堜弗鏍奸伒鐓?ring-pop 绯昏瑙変笌 ringpop 鍏ュ満鍔ㄧ敾瑙勮寖锛?鈹€鈹€ */
+/* ── 全局二次确认弹窗（严格遵照 ring-pop 系视觉与 ringpop 入场动画规范） ── */
 .confirm-mask {
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(0, 0, 0, .45);
@@ -1734,34 +1762,34 @@ svg { vertical-align: middle; }
   filter: brightness(1.1);
 }
 
-/* 鈹€鈹€ 娑堟伅杞ㄩ亾锛?msgRail锛夛細涓诲璇濆尯宸︿晶绔栨潯锛屾瘡鏉＄敤鎴锋秷鎭竴閬撴í鍒诲害 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-   鑷建閬撲腑绾垮悜涓よ竟绛夎窛鎵╁紶锛堥棿闅?30 涓睆骞曠墿鐞嗗儚绱狅紝鏁伴噺杩囧鏃?JS 绛夋瘮鍘嬬缉锛夛紱
-   鍒诲害榛樿闀?37.5 涓睆骞曠墿鐞嗗儚绱狅紙姘村钩锛夈€佺矖 3.9 涓睆骞曠墿鐞嗗儚绱狅紙鍨傜洿锛岃兌鍥婂渾瑙掔锛夛紱hover 鍛堣繛缁北宄帮細
-   鍏ㄥ眬 mousemove 鎸夋寚閽?Y 涓庡埢搴︿腑蹇冪殑璺濈楂樻柉鍒嗛厤闀垮害锛堟渶杩戠嚎 脳2.5 鍔犱寒锛岀紳闅欎腑鍔ㄧ敾杩炵画锛夛紝
-   骞跺湪鍋滃 150ms 鐨勫嘲椤跺埢搴﹀彸渚у脊鍑?ring-pop 娑堟伅鍗?*/
+/* ── 消息轨道（#msgRail）：主对话区左侧竖条，每条用户消息一道横刻度 ────────
+   自轨道中线向两边等距扩张（间隔 30 个屏幕物理像素，数量过多时 JS 等比压缩）；
+   刻度默认长 37.5 个屏幕物理像素（水平）、粗 3.9 个屏幕物理像素（垂直，胶囊圆角端）；hover 呈连续山峰：
+   全局 mousemove 按指针 Y 与刻度中心的距离高斯分配长度（最近线 ×2.5 加亮，缝隙中动画连续），
+   并在停够 150ms 的峰顶刻度右侧弹出 ring-pop 消息卡 */
 #msgRail {
   position: absolute; left: 8px; width: 22px; z-index: 60;
-  pointer-events: none; /* 瀹瑰櫒鏈韩涓嶆尅娑堟伅锛屽埢搴﹀崟鐙彲鎮仠 */
+  pointer-events: none; /* 容器本身不挡消息，刻度单独可悬停 */
 }
-/* 鍐呭鍒楄竟璺?< 65px 鏃堕殣钘忓乏渚ф秷鎭建閬擄紙JS 鎸夊疄娴嬭竟璺濈粰 #main 鎸?.rail-off锛夛紝
-   閬垮厤鍒诲害涓庡唴瀹瑰垪鎸ゅ湪涓€璧?*/
+/* 内容列边距 < 65px 时隐藏左侧消息轨道（JS 按实测边距给 #main 挂 .rail-off），
+   避免刻度与内容列挤在一起 */
 #main.rail-off #msgRail { display: none; }
 .rail-tick {
-  position: absolute; left: 0; height: 4px; border-radius: 4px; /* 鍗犱綅锛屽疄闄呯矖缁?鑳跺泭鍦嗚鐢?JS 鎸?devicePixelRatio 鍐欏叆 */
+  position: absolute; left: 0; height: 4px; border-radius: 4px; /* 占位，实际粗细/胶囊圆角由 JS 按 devicePixelRatio 写入 */
   background: var(--panel-3); cursor: pointer; pointer-events: auto;
-  width: 3px; /* 鍗犱綅锛屽疄闄呴暱鐢?JS 鎸?devicePixelRatio 鍐欏叆 */
-  transition: background .05s ease-out; /* 瀹藉害闆惰繃娓★細榧犳爣浜嬩欢鍗冲钩婊戞簮锛岃拷姹傚疄鏃惰窡鎵嬶紱150ms 寤舵椂鍙害鏉熷脊鍗?*/
-  will-change: width; /* 楂橀鏀瑰啓瀹藉害锛屾彁绀哄悎鎴愬眰浼樺寲 */
+  width: 3px; /* 占位，实际长由 JS 按 devicePixelRatio 写入 */
+  transition: background .05s ease-out; /* 宽度零过渡：鼠标事件即平滑源，追求实时跟手；150ms 延时只约束弹卡 */
+  will-change: width; /* 高频改写宽度，提示合成层优化 */
 }
-.rail-tick.on { background: var(--text); } /* 灞卞嘲宄伴《鍔犱寒 */
+.rail-tick.on { background: var(--text); } /* 山峰峰顶加亮 */
 
-/* 娑堟伅鍒诲害寮瑰嚭鍗★細澶嶇敤 .ring-pop 搴曡壊/鍦嗚/闃村奖/ringpop 鍔ㄧ敾锛屼笌涓婁笅鏂囨槑缁嗗崱鍚屾 */
+/* 消息刻度弹出卡：复用 .ring-pop 底色/圆角/阴影/ringpop 动画，与上下文明细卡同款 */
 .rail-pop { max-width: 320px; max-height: 240px; overflow-y: auto; cursor: default; }
 .rail-pop .rp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
 .rail-pop .rp-role { color: var(--text); font-weight: 500; font-size: var(--ui-fs-md); }
 .rail-pop .rp-idx { color: var(--faint); font-size: 11.5px; flex: none; }
 .rail-pop .rp-body { color: var(--dim); font-size: var(--ui-fs-base); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-/* 鍙戦€侀挳涓€у疄搴?+ 鑳屾櫙鑹茬澶达紱hover 鍙€氳繃閫忔槑搴﹀弽棣堬紝銆屾湁娌℃湁鑽夌銆嶄笉鏀瑰彉搴曡壊 */
+/* 发送钮中性实底 + 背景色箭头；hover 只通过透明度反馈，「有没有草稿」不改变底色 */
 .send {
   width: 30px; height: 30px; border-radius: 8px;
   border: 0; background: var(--text); color: var(--bg);
@@ -1777,10 +1805,10 @@ svg { vertical-align: middle; }
 }
 .send > span > svg { display: block; }
 .send:hover:not(:disabled):not(.stopping) { opacity: .8; }
-.send.ready { background: var(--text); color: var(--bg); } /* 鍏煎鏃х被锛氳涔夊苟鍏ュ熀鎬?*/
+.send.ready { background: var(--text); color: var(--bg); } /* 兼容旧类：语义并入基态 */
 .pill-btn:disabled, .send:disabled { opacity: .45; cursor: default; }
 
-/* 鈹€鈹€ 灞呬腑鏂板缓浼氳瘽椤甸潰 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── 居中新建会话页面 ──────────────────────────────────────────────── */
 .welcome-screen {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1801,11 +1829,11 @@ svg { vertical-align: middle; }
   display: flex; align-items: center; gap: 8px;
   padding: 6px 6px 31px;
 }
-/* 鈹€鈹€ 鏂板缓浼氳瘽寤跺睍鍗＄墖 鈹€鈹€ */
+/* ── 新建会话延展卡片 ── */
 
-/* 涓婂崱锛堣兌鍥婂崱锛夛細鎵胯浇椤圭洰/鍒嗘敮閫夋嫨鍣紝涓嬬紭琚緭鍏ユ鍗＄洊浣?25px锛岃兌鍥婇湶鍦ㄤ笂鍗婇儴鍒嗐€?
-   鍗￠潰鐢?--surface 浣庨€忔槑搴︾僵鑹诧紙瀵瑰簲 ZCode bg-surface锛夛紝鎶曞奖璧板ぇ鍗婂緞浣庨€忔槑搴?
-   锛坰hadow-xl/5 鍚屾锛氬ぇ妯＄硦銆佸急涓嶉€忔槑搴︼紝鍙犲崱灞傛鍏ㄩ潬瀹冿紝鍕垮姞閲嶏級 */
+/* 上卡（胶囊卡）：承载项目/分支选择器，下缘被输入框卡盖住 25px，胶囊露在上半部分。
+   卡面用 --surface 低透明度罩色（对应 ZCode bg-surface），投影走大半径低透明度
+   （shadow-xl/5 同款：大模糊、弱不透明度，叠卡层次全靠它，勿加重） */
 .wb-back-card {
   width: 100%;
   box-sizing: border-box;
@@ -1813,11 +1841,11 @@ svg { vertical-align: middle; }
   border: 1px solid var(--line-soft);
   border-radius: 16px; /* ZCode rounded-2xl */
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
-  /* 鑳跺泭涓庤竟鐣岀殑闂磋窛鍏ㄩ儴鐢?.wb-head 鐨?padding 鎻愪緵锛堝簳閮?25px 涓洪噸鍙犻绠楋級 */
+  /* 胶囊与边界的间距全部由 .wb-head 的 padding 提供（底部 25px 为重叠预算） */
   padding: 0;
   position: relative;
   z-index: 1;
-  /* 涓?#composer min-width 鍚屾鎵樺簳锛氱獎绐楀彛涓嬫暣寮犲崱鐗囦笉鍐嶉殢绐楀彛鍙樼獎 */
+  /* 与 #composer min-width 同步托底：窄窗口下整张卡片不再随窗口变窄 */
   min-width: 260px;
   box-sizing: border-box;
 }
@@ -1831,8 +1859,8 @@ svg { vertical-align: middle; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  /* 甯告€佸畬鍏ㄩ€忔槑锛沨over 楂樹寒锛圸Code group/workspace-chip hover:bg-surface-hover锛夛紝
-     涓婃媺妗嗗脊鍑烘€侊紙.active锛夊悓娆惧簳鏉?*/
+  /* 常态完全透明；hover 高亮（ZCode group/workspace-chip hover:bg-surface-hover），
+     上拉框弹出态（.active）同款底板 */
   border: 1px solid transparent;
   background: transparent;
   color: #ffffff;
@@ -1843,10 +1871,10 @@ svg { vertical-align: middle; }
   border-radius: 999px;
   cursor: pointer;
   max-width: 260px;
-  width: auto; /* 鏄惧紡褰掍綅锛氶伩鍏?#wbBackCard flex 瀛愰」琚媺浼?*/
+  width: auto; /* 显式归位：避免 #wbBackCard flex 子项被拉伸 */
   min-width: 0;
   flex: 0 1 auto;
-  position: relative; /* wb-proj-clear 缁濆瀹氫綅閿氱偣锛圸Code left-1.5 鍙犲姞鍦?folder 鍥炬爣浣嶏級 */
+  position: relative; /* wb-proj-clear 绝对定位锚点（ZCode left-1.5 叠加在 folder 图标位） */
   box-sizing: border-box;
   transition: background .15s, border-color .15s, box-shadow .15s, color .15s;
 }
@@ -1858,7 +1886,7 @@ svg { vertical-align: middle; }
   background: var(--panel-2);
   color: var(--text);
 }
-/* 楂樹寒鍙暀缁欏睍寮€鎬侊紙.active锛夛紝hover 涓嶉珮浜?*/
+/* 高亮只留给展开态（.active），hover 不高亮 */
 .wb-pill.active {
   background: #444444;
   border-color: rgba(255, 255, 255, 0.12);
@@ -1878,7 +1906,7 @@ svg { vertical-align: middle; }
 }
 .wb-proj-clear {
   position: absolute;
-  left: 8px; /* ZCode left-1.5锛氬彔鍦?folder 鍥炬爣浣?*/
+  left: 8px; /* ZCode left-1.5：叠在 folder 图标位 */
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
@@ -1903,7 +1931,7 @@ svg { vertical-align: middle; }
 .wb-proj-clear svg {
   display: block;
 }
-/* ZCode 鍚屾锛歨over 鑳跺泭鏃?folder 鍥炬爣娣″嚭銆伱?娣″叆鏇挎崲 */
+/* ZCode 同款：hover 胶囊时 folder 图标淡出、× 淡入替换 */
 .wb-pill:hover .wb-proj-clear,
 .wb-pill.active .wb-proj-clear { opacity: 1; }
 .wb-proj-clear:hover { color: #ffffff; }
@@ -1914,7 +1942,7 @@ svg { vertical-align: middle; }
 }
 .wb-ic-folder.is-cjk svg {
   transform-origin: top center;
-  transform: scaleY(1.2); /* 涓枃鏂瑰潡瀛楅珮澶э紝涓嬪簳寤朵几涓庢眽瀛楀瓧搴曞钩榻?*/
+  transform: scaleY(1.2); /* 中文方块字高大，下底延伸与汉字字底平齐 */
 }
 .wb-pill:hover .wb-ic-folder,
 .wb-pill.active .wb-ic-folder { opacity: 0; }
@@ -1926,13 +1954,13 @@ svg { vertical-align: middle; }
   font-size: var(--ui-fs-sm);
   color: var(--faint);
   margin-left: 2px;
-  /* ZCode 鍚屾锛氳彍鍗曞悜涓婂脊鍑轰絾灏栬淇濇寔鏈濅笅锛圕hevronDownIcon锛夛紝涓嶅仛灞曞紑鏃嬭浆 */
+  /* ZCode 同款：菜单向上弹出但尖角保持朝下（ChevronDownIcon），不做展开旋转 */
 }
-/* composer 鍐呰兌鍥婏紙妯″瀷/鎬濊€?鏉冮檺锛夛細灏栬鍚?wb 瑙勫垯锛屾湞涓?*/
+/* composer 内胶囊（模型/思考/权限）：尖角同 wb 规则，朝下 */
 .pill-btn .caret-svg {
   transition: transform .18s var(--swift);
 }
-/* 鎬濊€冭灞曞紑锛氬彸鎸?chevron 鍘熷湴鏃嬭浆 90掳 鏈濅笅 */
+/* 思考行展开：右指 chevron 原地旋转 90° 朝下 */
 .th-more svg { transition: transform .2s ease; }
 .th-more.open svg { transform: rotate(90deg); }
 .wb-pill.active .caret {
@@ -1944,9 +1972,9 @@ svg { vertical-align: middle; }
   white-space: nowrap;
 }
 
-/* 娆㈣繋椤佃緭鍏ユ鍗★細鐙珛鍦嗚鍗＄墖锛圸Code ChatPromptEditor rounded-2xl border bg-input 鍚屾锛夛紝
-   浠ヨ礋 margin 涓婃媺 25px 鐩栦綇鑳跺泭鍗★紙.wb-back-card锛変笅缂橈紝鑷韩 z-index 鍦ㄤ笂锛?
-   椤圭洰/鍒嗘敮鑳跺泭闇插湪鑳跺泭鍗′笂鍗婇儴鍒嗏€斺€斾笌 dock 鈫?鎺掗槦鍗″悓涓€濂椾簩绾ч噸鍙犲崱鍑犱綍 */
+/* 欢迎页输入框卡：独立圆角卡片（ZCode ChatPromptEditor rounded-2xl border bg-input 同款），
+   以负 margin 上拉 25px 盖住胶囊卡（.wb-back-card）下缘，自身 z-index 在上；
+   项目/分支胶囊露在胶囊卡上半部分——与 dock ↔ 排队卡同一套二级重叠卡几何 */
 #composer.in-welcome {
   width: 100%;
   box-sizing: border-box;
@@ -1956,7 +1984,7 @@ svg { vertical-align: middle; }
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
   position: relative;
   z-index: 2;
-  margin-top: -25px; /* 閲嶅彔棰勭畻锛氬悆鎺?.wb-head 搴曢儴 25px padding */
+  margin-top: -25px; /* 重叠预算：吃掉 .wb-head 底部 25px padding */
   padding: 12px 14px 10px;
 }
 [data-theme="light"] #composer.in-welcome {
@@ -1964,7 +1992,7 @@ svg { vertical-align: middle; }
   border-color: var(--line-soft);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
 }
-/* 鈹€鈹€ 渚ц竟鏍忔悳绱㈠崱鐗囷細浣嶄簬鏂板缓浠诲姟涓嬫柟锛屾牱寮忎笌鏂板缓浠诲姟锛?nav-item锛夊畬鍏ㄥ榻?鈹€鈹€ */
+/* ── 侧边栏搜索卡片：位于新建任务下方，样式与新建任务（.nav-item）完全对齐 ── */
 .nav-item.nav-search {
   cursor: text;
   position: relative;
@@ -2024,7 +2052,7 @@ svg { vertical-align: middle; }
   top: calc(100% + 5px);
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 500;
   background: var(--ctl-bg, var(--card));
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -2032,7 +2060,6 @@ svg { vertical-align: middle; }
   padding: 4px;
   max-height: 260px;
   overflow-y: auto;
-  scrollbar-width: thin;
 }
 [data-theme="light"] .side-search-pop {
   box-shadow: 0 12px 28px rgba(0, 0, 0, .12);
@@ -2097,8 +2124,8 @@ svg { vertical-align: middle; }
 #composer.in-welcome #input.inp-ce {
   min-height: 58px;
 }
-/* bash 妯″紡锛堣緭鍏ユ ! 鍓嶇紑锛夛細杈规涓庡崰浣嶆枃妗堢潃 --bash 鑹层€?
-   杈规瑙勫垯鍘嬭繃涓夋€佽竟妗嗭紙hover line / 鑱氱劍 accent锛夛細dock 涓?in-welcome 涓ゆ€侀兘鐢熸晥 */
+/* bash 模式（输入框 ! 前缀）：边框与占位文案着 --bash 色。
+   边框规则压过三态边框（hover line / 聚焦 accent）：dock 与 in-welcome 两态都生效 */
 #composer.bash-mode,
 #composer.bash-mode:hover,
 #composer.bash-mode:focus-within,
@@ -2115,7 +2142,7 @@ svg { vertical-align: middle; }
   align-items: center;
   justify-content: center;
   flex: none;
-  /* UA 鏍峰紡琛ㄧ粰 button 榛樿鐏板簳锛岄』鏄惧紡娓呮帀锛屽惁鍒欐湭 hover 涔熷儚楂樹寒锛坬ueue 鍗?.q-btn 鍚屾閰嶆柟锛?*/
+  /* UA 样式表给 button 默认灰底，须显式清掉，否则未 hover 也像高亮（queue 卡 .q-btn 同款配方） */
   background: none;
   border: 0;
   padding: 0;
@@ -2155,7 +2182,7 @@ svg { vertical-align: middle; }
   display: none;
   flex-direction: column;
   overflow: hidden;
-  z-index: 100;
+  z-index: 500;
 }
 #wbProjectMenu.wb-project-menu.open {
   display: flex;
@@ -2242,23 +2269,23 @@ svg { vertical-align: middle; }
   min-width: 140px;
   max-height: 280px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 500;
 }
 
-/* 鈹€鈹€ 缁熶竴寮瑰嚭/灞曞紑鍏ュ満鍔ㄧ敾锛氭贰鍏?+ 鎸夊脊鍑烘柟鍚戞粦鍏?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-   鎵€鏈夎彍鍗曞脊灞備笌灞曞紑浣撳叡鐢ㄣ€?-pop-from 鎺у埗璧峰浣嶇Щ锛?
-   鍚戜笅寮瑰嚭 -6px锛堜笅鎷?鍙抽敭鑿滃崟锛夛綔鍚戜笂寮瑰嚭 6px锛坈omposer 鑳跺泭锛夛綔鍒楄〃灞曞紑 -4px */
+/* ── 统一弹出/展开入场动画：淡入 + 按弹出方向滑入 ──────────────────
+   所有菜单弹层与展开体共用。--pop-from 控制起始位移：
+   向下弹出 -6px（下拉/右键菜单）｜向上弹出 6px（composer 胶囊）｜列表展开 -4px */
 @keyframes popIn {
   from { opacity: 0; transform: translateY(var(--pop-from, -6px)); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .kids-in { --pop-from: -4px; animation: popIn .3s ease-out both; }
-/* 涓诲璇濆尯鎬濊€冧綋鍏ュ満鐙珛 0.2s锛堜笌瀵硅瘽鍖哄睍寮€/鏀惰捣涓€濂楋級 */
+/* 主对话区思考体入场独立 0.2s（与对话区展开/收起一套） */
 .think-body.kids-in { animation-duration: .2s; }
-/* 鍙虫爮鍚庡彴鍛戒护琛屾敹璧凤細0.3s锛堜笌鍙虫爮鍏朵粬灞曞紑/鏀惰捣涓€鑷达級 */
+/* 右栏后台命令行收起：0.3s（与右栏其他展开/收起一致） */
 .bgcmd-expand.lift { animation: ed-lift .3s ease-out forwards; }
 
-/* 鈹€鈹€ 涓嬫媺鑿滃崟锛坈omposer 鍐?absolute锛宐ottom 瀹氫綅锛涢殢瀹瑰櫒 zoom 缂╂斁涓嶉敊浣嶏紱瀹藉害璋冨皬鏇寸揣鍑戯級 鈹€鈹€ */
+/* ── 下拉菜单（composer 内 absolute，bottom 定位；随容器 zoom 缩放不错位；宽度调小更紧凑） ── */
 .menu {
   position: absolute; bottom: 44px;
   background: var(--ctl-bg);
@@ -2267,10 +2294,10 @@ svg { vertical-align: middle; }
   padding: 5px;
   min-width: 150px;
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
-  display: none; z-index: 60;
+  display: none; z-index: 500;
 }
 [data-theme="light"] .menu { background: var(--panel); box-shadow: 0 12px 32px rgba(0,0,0,.18); }
-.menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; } /* 涓婂脊锛氳嚜涓嬫柟婊戝叆 */
+.menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; } /* 上弹：自下方滑入 */
 .menu .mi {
   display: flex; align-items: center; gap: 7px;
   padding: 6px 9px; border-radius: 6px;
@@ -2283,12 +2310,12 @@ svg { vertical-align: middle; }
 .menu .sep { height: 1px; background: var(--line); margin: 5px 4px; }
 .menu .mh { font-size: var(--ui-fs-sm); color: var(--faint); padding: 5px 8px 2px; }
 .menu .mi .ck { width: 14px; color: var(--green); flex: none; }
-/* 鑿滃崟椤瑰唴鍥炬爣锛堝垎鏀€夐」绛夛級锛氬浐瀹?18px 鏍忓灞呬腑锛岄鏍奸殢 FA 鍥炬爣浣撶郴 */
+/* 菜单项内图标（分支选项等）：固定 18px 栏宽居中，风格随 FA 图标体系 */
 .menu .mi .mi-ic { width: 18px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
 
-/* sigil 琛ュ叏鍗★紙@ 鏂囦欢鍊欓€?/ 琛岄 / 鍛戒护鍊欓€夛級锛氫笌杈撳叆妗嗗崱涓€妯′竴鏍风殑鍦嗚鍗＄墖锛堝唴瀹规崲鎴愬€欓€?
-   鍒楄〃锛夛紝涓ゅ紶鍗′笂涓嬫帓鍒椻€斺€斿悓瀹姐€侀棿璺?2px銆佹渶澶ч珮搴?= 杈撳叆妗嗗崱 2.6 鍊嶏紙瀹氫綅/闄愰珮鐢?place.js
-   placePaletteCard 璁＄畻锛夈€傞厤鑹蹭笌闃村奖閫愰」瀵归綈 #composer.in-welcome 鍗°€?*/
+/* sigil 补全卡（@ 文件候选 / 行首 / 命令候选）：与输入框卡一模一样的圆角卡片（内容换成候选
+   列表），两张卡上下排列——同宽、间距 2px、最大高度 = 输入框卡 2.6 倍（定位/限高由 place.js
+   placePaletteCard 计算）。配色与阴影逐项对齐 #composer.in-welcome 卡。 */
 .menu.palette {
   min-width: 0;
   max-width: none;
@@ -2299,18 +2326,18 @@ svg { vertical-align: middle; }
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
 }
 [data-theme="light"] .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07); }
-.menu.palette .mi { border-radius: 8px; } /* 鍗″唴琛屽渾瑙掓瘮鍗″皬涓€妗ｏ紙16px 鍗?鈫?8px 琛岋級 */
-.menu.palette .mi.on { background: var(--panel-3); } /* 閿洏楂樹寒锛堝熀绫诲彧鏈?:hover锛屾棤 .on锛?*/
+.menu.palette .mi { border-radius: 8px; } /* 卡内行圆角比卡小一档（16px 卡 → 8px 行） */
+.menu.palette .mi.on { background: var(--panel-3); } /* 键盘高亮（基类只有 :hover，无 .on） */
 .menu.palette .mi .mi-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 妯″瀷/鎬濊€冭彍鍗曪細鍕炬帹鍒拌鍙崇锛涙ā鍨?鎬濊€?鏉冮檺涓夊鍕剧粺涓€鐏拌壊 */
+/* 模型/思考菜单：勾推到行右端；模型/思考/权限三处勾统一灰色 */
 #modelMenu .mi .ck,
 #thinkMenu .mi .ck { order: 1; margin-left: auto; }
 #modeMenu .mi .ck,
 #modelMenu .mi .ck,
 #thinkMenu .mi .ck { color: hsl(0, 0%, 58%); }
 
-/* 鏉冮檺妯″紡鑿滃崟锛堝ぇ琛岋細鍥炬爣+鏍囬+鎻忚堪锛岃皟灏忚嚦 280px锛?*/
+/* 权限模式菜单（大行：图标+标题+描述，调小至 280px） */
 .menu.mode { min-width: min(280px, 100%); padding: 6px; }
 .menu.mode .mi.big { display: flex; gap: 8px; align-items: flex-start; padding: 7px 9px; }
 .menu.mode .mi-ic { font-size: var(--ui-fs-base); width: 18px; text-align: center; flex: none; margin-top: 1px; }
@@ -2319,66 +2346,66 @@ svg { vertical-align: middle; }
 .menu.mode .mi-tt { font-size: var(--ui-fs-base); font-weight: 500; color: var(--text); }
 .menu.mode .mi-desc { font-size: var(--ui-fs-xs); color: var(--faint); line-height: 1.35; }
 .menu.mode .mi.big .ck { margin-top: 2px; }
-/* 璁″垝妯″紡琛岋細涓庝笅闈笁涓潈闄愭ā寮忚浠ラ€氭爮妯嚎鍒嗛殧锛?6px 鎶垫秷 .menu.mode 鐨?6px 鍐呰竟璺濓級 */
+/* 计划模式行：与下面三个权限模式行以通栏横线分隔（-6px 抵消 .menu.mode 的 6px 内边距） */
 .menu.mode .mode-sep { height: 1px; background: var(--line); margin: 5px -6px; }
-/* 鏃犱細璇濇椂涓嶅彲鐐癸細闄嶉€忔槑搴︼紝涓斾笉缁?hover 楂樹寒锛坔over 楂樹寒鍙寕鍦ㄥ彲鐐瑰厓绱犱笂锛?*/
+/* 无会话时不可点：降透明度，且不给 hover 高亮（hover 高亮只挂在可点元素上） */
 .menu.mode .mi.off { opacity: .45; cursor: default; }
 .menu.mode .mi.off:hover { background: none; }
 
-/* 妯″瀷鑿滃崟锛堜簩绾х骇鑱旓細涓€绾т緵搴斿晢琛岋紝浜岀骇妯″瀷娴眰锛夈€?
-   瀹瑰櫒瀵归綈 ZCode dropdown-menu锛歳ounded-lg(8px) + p-1(4px)锛涢€夐」闂磋窛鎸夐渶姹?5px */
+/* 模型菜单（二级级联：一级供应商行，二级模型浮层）。
+   容器对齐 ZCode dropdown-menu：rounded-lg(8px) + p-1(4px)；选项间距按需求 5px */
 .menu.model {
   min-width: 200px; max-height: 320px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 5px;
   border-radius: 8px; padding: 4px;
 }
-.menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; } /* 浜岀骇妯″瀷鍒楄〃鍚屾 */
-/* ZCode 瑙傛劅锛氭ā鍨嬭彍鍗曢€夐」瀛楅噸 500锛堟埅鍥剧‘璁ゅ叾鑿滃崟瀛楁瘮姝ｆ枃绮楋級 */
+.menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; } /* 二级模型列表同款 */
+/* ZCode 观感：模型菜单选项字重 500（截图确认其菜单字比正文粗） */
 .menu.model .mi, .menu.flyout .mi { font-weight: 500; }
 #modelMenu .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 #modelMenu .mi.prov.on { background: var(--panel-3); }
-/* 妯″瀷閰嶇疆椤佃鑹茶閫夋嫨鍣細澶嶇敤杈撳叆妗嗕簩绾х骇鑱旓紙涓€绾т緵搴斿晢琛?+ hover 鍙冲脊娴眰锛夈€?
-   鑳跺泭鎸夊唴瀹硅嚜閫傚簲涓嶉攣瀹斤紱涓€绾у脊鍑鸿彍鍗曞叏椤电瓑瀹?250锛?mp-role-menu 鍙寕涓€绾э級锛?
-   浜岀骇娴眰鎸夋渶闀挎ā鍨嬪悕鍔ㄦ€佹墿寮?*/
-.mp-role-sel { padding: 7px 10px; } /* 楂樺害姣斿父瑙?.sel 鍔?4px */
+/* 模型配置页角色行选择器：复用输入框二级级联（一级供应商行 + hover 右弹浮层）。
+   胶囊按内容自适应不锁宽；一级弹出菜单全页等宽 250（.mp-role-menu 只挂一级），
+   二级浮层按最长模型名动态扩张 */
+.mp-role-sel { padding: 7px 10px; } /* 高度比常规 .sel 加 4px */
 .mp-role-menu { width: 250px; }
 .mp-role-sel .menu.flyout .mi { white-space: nowrap; }
 .mp-role-sel .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 .mp-role-sel .mi.prov.on, .mp-role-sel .mi.on { background: var(--panel-3); }
-/* 娴眰鎸傜獎鑳跺泭涓嬶紝absolute 鏀剁缉閫傞厤浼氳鍖呭惈鍧楀彲鐢ㄥ鍘嬬獎 鈫?width:max-content 鑴辩璇ラ檺鍒?*/
-.mp-role-sel .menu.flyout { z-index: 91; width: max-content; min-width: 250px; }
-/* 閫夋嫨鍣ㄥ彸渚у閮ㄧ殑 X 娓呴櫎鎸夐挳锛堢户鎵块粯璁わ級锛氫笌 .skill-trash-btn 鍚屽嚑浣曪紙padding 4 + 鍥炬爣 14 = 22px锛夛紝
-   淇濊瘉涓庤嚜瀹氫箟琛屽垹闄ゆ寜閽悓鍒楀榻愶紱涓€ф竻闄よ涔夛紝闈炲嵄闄╂搷浣?*/
+/* 浮层挂窄胶囊下，absolute 收缩适配会被包含块可用宽压窄 → width:max-content 脱离该限制 */
+.mp-role-sel .menu.flyout { width: max-content; min-width: 250px; }
+/* 选择器右侧外部的 X 清除按钮（继承默认）：与 .skill-trash-btn 同几何（padding 4 + 图标 14 = 22px），
+   保证与自定义行删除按钮同列对齐；中性清除语义，非危险操作 */
 .mp-role-clear {
   border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 4px; transition: color .15s, transform .1s;
 }
 .mp-role-clear:hover { color: var(--text); transform: scale(1.1); }
-/* 瑙掕壊琛屾暣琛屼笉鍙偣锛堝彲鐐圭殑鍙湁鑳跺泭/X/trash锛夆啋 鍏抽棴 .srow 榛樿 hover 楂樹寒锛?
-   hover 楂樹寒鏄€屽彲鐐广€嶇殑 affordance锛屽彧鍏佽鎸傚湪鏈夌偣鍑昏涓虹殑鍏冪礌涓?*/
+/* 角色行整行不可点（可点的只有胶囊/X/trash）→ 关闭 .srow 默认 hover 高亮：
+   hover 高亮是「可点」的 affordance，只允许挂在有点击行为的元素上 */
 .mp-role-row:hover, .srow.mp-role-row:hover { background: none; }
 [data-theme="light"] .srow.mp-role-row:hover { background: none; }
 .mp-role-row .srow-ctl { justify-content: flex-end; }
 .mp-role-row:not(:has(.skill-trash-btn)):not(:has(.mp-role-clear)) .srow-ctl { padding-right: 28px; }
-/* 浜岀骇娴眰锛氬鐢?.menu 鍩虹被锛堝簳鑹?杈规/鍦嗚/闃村奖/popIn锛夛紝left/top 鐢?JS 鎸?
-   #composer 鍧愭爣绯诲啓鍏ワ紙鎸傚湪 #composer 涓嬶紝瑙勯伩 .menu.model overflow-y 瑁佸垏锛夈€?
-   瀹藉害闅忓綋鍓嶅睍寮€鎻愪緵鍟嗙殑妯″瀷鍒楄〃鑷€傚簲锛坵idth:max-content锛屽榻?ZCode
-   DropdownMenuSubContent w-max锛夛紝涓嶅啀鍚?220px 鍥哄畾涓嬮檺瀵艰嚧瀹戒簬鍐呭 */
+/* 二级浮层：复用 .menu 基类（底色/边框/圆角/阴影/popIn），left/top 由 JS 按
+   #composer 坐标系写入（挂在 #composer 下，规避 .menu.model overflow-y 裁切）。
+   宽度随当前展开提供商的模型列表自适应（width:max-content，对齐 ZCode
+   DropdownMenuSubContent w-max），不再吃 220px 固定下限导致宽于内容 */
 .menu.flyout {
   bottom: auto;
   width: max-content;
   min-width: 128px; max-height: 320px; overflow-y: auto;
-  z-index: 61;
+  z-index: 501;
 }
 .menu.flyout .mi .ck { order: 1; margin-left: auto; }
 #thinkMenu { min-width: 100px; }
 .tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }
-/* 涓婁笅鏂囧閲忓脊灞傦紙璋冨皬鑷?280px锛?*/
+/* 上下文容量弹层（调小至 280px） */
 .menu.ctx { min-width: 280px; padding: 12px 14px; cursor: default; }
 .cx-head { display: flex; justify-content: space-between; align-items: center; font-size: var(--ui-fs-md); margin-bottom: 10px; }
 .cx-total { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); }
-/* 澶撮儴銆屼笂涓嬫枃銆嶅彸渚ф暟鍊煎垪涓?.cx-row 鍚岃鏍?绛夊鍒楀彸瀵归綈 + 绛夊鏁板瓧,绔栫嚎鎵嶈兘涓庝笅鏂硅榻?*/
+/* 头部「上下文」右侧数值列与 .cx-row 同规格:等宽列右对齐 + 等宽数字,竖线才能与下方行齐 */
 .cx-total .cx-val { min-width: 5.5ch; color: var(--text); font-size: var(--ui-fs-base); text-align: right; font-variant-numeric: tabular-nums; }
 .cx-total .cx-pct { min-width: 6ch; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--ui-fs-base); }
 .cx-bar { height: 12px; border-radius: 6px; background: var(--panel-3); margin-bottom: 12px; overflow: hidden; }
@@ -2386,7 +2413,7 @@ svg { vertical-align: middle; }
 .cx-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--dim); font-size: var(--ui-fs-base); }
 .cx-row .rv { margin-left: auto; color: var(--dim); }
 .cx-row .cx-val { margin-left: auto; text-align: right; min-width: 5.5ch; font-variant-numeric: tabular-nums; color: var(--text); }
-.cx-sep { flex: none; width: 0; height: 10px; margin: 1px -1px 0; border-left: 1px dashed var(--faint); } /* 澶撮儴 .cx-total 涓庤 .cx-row 鍏辩敤 */
+.cx-sep { flex: none; width: 0; height: 10px; margin: 1px -1px 0; border-left: 1px dashed var(--faint); } /* 头部 .cx-total 与行 .cx-row 共用 */
 .cx-row .cx-pct { flex: none; min-width: 6ch; text-align: right; font-variant-numeric: tabular-nums; }
 .cx-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .cx-row b { color: var(--text); }
@@ -2394,13 +2421,13 @@ svg { vertical-align: middle; }
   font-size: var(--ui-fs-sm); color: var(--faint); padding: 10px 0 4px;
   border-top: 1px solid var(--line); margin-top: 8px;
 }
-/* 鍗＄墖鍐呮棤涓婃枃娈垫椂(濡傛柊寤轰細璇濋〉浠呴厤棰?:闄愰娈垫槸鍞竴鍐呭,鍘绘帀鎮┖妯嚎 */
+/* 卡片内无上文段时(如新建会话页仅配额):限额段是唯一内容,去掉悬空横线 */
 .ring-pop .cx-sec.no-div { border-top: 0; margin-top: 0; padding-top: 0; }
-/* 闄愰娈碉紙浠?ZCode 鍓╀綑棰濆害鍗＄墖锛?*/
+/* 限额段（仿 ZCode 剩余额度卡片） */
 .lx-sec { padding-bottom: 2px; }
 .lx-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; padding: 2px 0 10px; }
 .lx-prov { color: var(--faint); font-size: 11.5px; }
-.lx-body { min-width: 268px; } /* 336px 脳 0.8 */
+.lx-body { min-width: 268px; } /* 336px × 0.8 */
 .lx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; }
 .lx-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .lx-top { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 11.5px; white-space: nowrap; overflow: hidden; }
@@ -2411,8 +2438,10 @@ svg { vertical-align: middle; }
 .lx-bar i { display: block; height: 100%; border-radius: 3px; }
 .lx-bal { padding-top: 8px; color: var(--dim); font-size: 12px; }
 
-/* 鈹€鈹€ 鍙虫爮鍗＄墖锛氭姌鍙犱笌杩囨浮鍔ㄧ敾 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── 右栏卡片：折叠与过渡动画 ──────────────────────────────────────── */
 #right {
+  /* 列容器自成 stacking context：列内弹层封顶于此，设置中心/通知才能整屏盖住它们 */
+  isolation: isolate;
   width: var(--right-w, 320px);
   min-width: 0;
   max-width: var(--right-w, 320px);
@@ -2462,7 +2491,7 @@ body.resizing .resizer {
 #todoList {
   max-height: 168px;
   overflow-y: auto;
-  overscroll-behavior: contain; /* 鍐呭祵鍦ㄤ細璇濆尯婊氬姩娴佸唴锛岄樆鏂粴鍔ㄩ摼 */
+  overscroll-behavior: contain; /* 内嵌在会话区滚动流内，阻断滚动链 */
 }
 .todo {
   display: flex; gap: 9px; padding: 6px 2px;
@@ -2497,24 +2526,24 @@ body.resizing .resizer {
 }
 #capsule .cap-n { flex: none; color: var(--faint); font-size: var(--ui-fs-sm); }
 
-/* 渚ц竟闈㈡澘锛堝瓙浠ｇ悊 / Git Diff 鍙?tab锛?*/
+/* 侧边面板（子代理 / Git Diff 双 tab） */
 #sidepanel {
   flex: 1; margin: 0 0 8px; min-height: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
   display: flex; flex-direction: column;
-  padding: 0 0 4px; /* 閫氭爮锛歵ab 鏍?鎿嶄綔鏍?璇︽儏涓夊潡涓庤竟鏍忓悓瀹斤紝鏁村潡杈规爮鏄竴涓暣浣?*/
+  padding: 0 0 4px; /* 通栏：tab 栏/操作栏/详情三块与边栏同宽，整块边栏是一个整体 */
 }
-/* tab 澶达紙ZCode Side Pane 椋庢牸锛夛細h-12 涓€琛?+ 搴曢儴鍒嗛殧绾匡紱
-   宸︽€昏閽?/ 涓瓑瀹?tab / 鍙虫柊澧為挳锛?sp-head 涓?popover 瀹氫綅涓婁笅鏂囷級 */
+/* tab 头（ZCode Side Pane 风格）：h-12 一行 + 底部分隔线；
+   左总览钮 / 中等宽 tab / 右新增钮（.sp-head 为 popover 定位上下文） */
 .sp-head {
   position: relative;
   display: flex; gap: 4px; align-items: center; flex: none;
   height: 48px; padding: 0 6px;
   border-bottom: 1px solid var(--line-soft);
 }
-/* 鍙虫爮 tab 鏍忥細绛夊鎺掑竷锛坒lex 1 1 0 + min/max 瀹斤級锛屾孩鍑烘í鍚戞粴鍔ㄩ殣婊氬姩鏉?*/
+/* 右栏 tab 栏：等宽排布（flex 1 1 0 + min/max 宽），溢出横向滚动隐滚动条 */
 .rtabs { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .rtabs::-webkit-scrollbar { display: none; }
 .rtab {
@@ -2526,13 +2555,13 @@ body.resizing .resizer {
   transition: background .12s, color .12s;
 }
 .rtab:hover { background: var(--panel-2); color: var(--text); }
-/* 婵€娲伙細搴曟澘楂樹寒 + 鏂囧瓧鎻愪寒锛坔over 鍚屾 panel-2 搴曟澘锛屾縺娲绘€侀潬鏂囧瓧鑹插尯鍒嗭級 */
+/* 激活：底板高亮 + 文字提亮（hover 同款 panel-2 底板，激活态靠文字色区分） */
 .rtab.on { background: var(--panel-2); color: var(--text); }
 .rtab.drag-over { background: var(--panel-2); }
 .rtab-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--faint); line-height: 1; }
 .rtab-ic svg { display: block; margin-top: -0.5px; }
 .rtab.on .rtab-ic, .rtab:hover .rtab-ic { color: inherit; }
-/* 鏍囬瓒呴暱娓愰殣 mask锛堝彸渚?12px 娣″嚭锛岀粰鍏抽棴閽暀浣嶏紱绾?CSS 鏃?JS 鍔ㄧ敾锛?*/
+/* 标题超长渐隐 mask（右侧 12px 淡出，给关闭钮留位；纯 CSS 无 JS 动画） */
 .rtab-tx {
   flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left;
   line-height: 1;
@@ -2558,10 +2587,10 @@ body.resizing .resizer {
 }
 .rtab:hover .rtab-x { opacity: 1; }
 .rtab-x:hover { background: var(--panel-3); color: var(--text); }
-/* tab 鎬昏 / 鏂板寮瑰眰锛氬鐢?.menu 瑙嗚锛岄敋瀹?sp-head锛坅bsolute 闅忛潰鏉?zoom 缂╂斁涓嶉敊浣嶏級 */
+/* tab 总览 / 新增弹层：复用 .menu 视觉，锚定 sp-head（absolute 随面板 zoom 缩放不错位） */
 .sp-head .menu.sp-pop {
   top: calc(100% + 4px); bottom: auto; left: 6px; right: auto;
-  width: 248px; min-width: 0; padding: 6px; z-index: 70;
+  width: 248px; min-width: 0; padding: 6px; z-index: 510;
 }
 .sp-pop-search {
   display: flex; align-items: center; gap: 6px;
@@ -2573,9 +2602,9 @@ body.resizing .resizer {
   flex: 1; min-width: 0; border: 0; outline: 0; background: none;
   font: inherit; font-size: var(--ui-fs-sm); color: var(--text);
 }
-.sp-pop-scroll { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sp-pop-scroll { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
 .sp-pop .mi.on { background: var(--panel-3); }
-/* 鎵撳紑涓鐨勯€愰」鍏抽棴閽細hover 琛屾墠鍑虹幇锛堝榻?tab 澶村叧闂挳璇箟锛?*/
+/* 打开中行的逐项关闭钮：hover 行才出现（对齐 tab 头关闭钮语义） */
 .sp-pop .mi .mi-x {
   margin-left: auto; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
@@ -2596,31 +2625,23 @@ body.resizing .resizer {
 .sp-pop .mi .mi-x:hover { background: var(--panel-2); color: var(--text); }
 #rightBody {
   flex: 1; overflow-y: auto; min-height: 0;
-  padding: 8px 0 4px; /* 宸﹀彸 0锛歵ab 鏍?鎿嶄綔鏍?璇︽儏涓夊潡閮介€氭爮锛岃竟鏍忔槸涓€涓暣浣?*/
-  scrollbar-width: thin;
-  scrollbar-color: var(--panel-3) transparent;
+  padding: 8px 0 4px; /* 左右 0：tab 栏/操作栏/详情三块都通栏，边栏是一个整体 */
 }
-#rightBody::-webkit-scrollbar, .rb-scroll::-webkit-scrollbar { width: 5px; }
-#rightBody::-webkit-scrollbar-thumb, .rb-scroll::-webkit-scrollbar-thumb {
-  background: var(--panel-3); border-radius: 3px;
-}
-/* 璇︽儏椤甸鏋讹紙鍚?ZCode 闈㈡澘缁撴瀯锛夛細杩斿洖+鏍囬鍥哄畾鍦ㄩ《锛屼粎鍐呭鍖烘粴鍔ㄣ€?
-   鍧楁湰韬€氭爮锛堝彸鏍忎笁鍒嗗尯涔嬩竴锛夛紝鍐呴儴鍐呭缁熶竴 8px 渚ц窛 */
+/* 详情页头部（仿 ZCode 面板结构）：返回+标题固定在顶，仅内容区滚动。
+   块本身通栏（右栏三分区之一），内部内容统一 8px 侧距 */
 #rightBody.detail { overflow: hidden; display: flex; flex-direction: column; }
 .rb-head { flex: none; padding: 0 8px; }
 .rb-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--panel-3) transparent;
 }
 .placeholder { color: var(--faint); font-size: var(--ui-fs-base); padding: 12px 10px; }
-/* 宸ュ叿缁撴灉鏈埌鏃剁殑缁熶竴鍗犱綅锛坈omponents/chat/parts.jsx 鐨?Spin锛夛細loader 鍥炬爣鏃嬭浆 + 鐪佺暐鍙枫€?
-   鍚屾椂鏈嶅姟涓ょ被浣嶇疆鈥斺€旀棤 output 浣嶇殑宸ュ叿琛岃鍐咃紙grep/glob/MCP/寰呭姙/缁堢缁勫唴琛岋級锛?
-   涓庡睍寮€浣撶殑铏氱嚎鍗犱綅澶勶紙.cmd-card-out / .ed-brief 閲岀殑 .placeholder锛?*/
+/* 工具结果未到时的统一占位（components/chat/parts.jsx 的 Spin）：loader 图标旋转 + 省略号。
+   同时服务两类位置——无 output 位的工具行行内（grep/glob/MCP/待办/终端组内行），
+   与展开体的虚线占位处（.cmd-card-out / .ed-brief 里的 .placeholder） */
 .pend-ico { display: inline-flex; animation: chat-load-spin 1s linear infinite; }
 .pend-ico svg { display: block; }
 
-/* 瀛愪唬鐞嗗崱鐗囦笌娴?*/
+/* 子代理卡片与流 */
 .sub-card {
   display: block; text-align: left;
   border: 1px solid var(--line-soft);
@@ -2639,8 +2660,8 @@ body.resizing .resizer {
 .sub-stream { display: flex; flex-direction: column; gap: 8px; }
 .sub-stream .assistant-text { font-size: var(--ui-fs-base); }
 
-/* ---------- 鍙虫爮绌烘€佸惎鍔ㄥ櫒锛坱ab 鍏ㄩ儴鍏抽棴锛屽榻?ZCode side-pane 绌烘€侊級 ---------- */
-/* 灞呬腑鍒楋細瑁呴グ鍥炬爣 + 鏍囬/鍓枃涓よ + 鍏ュ彛閽垪琛紱瀹瑰櫒鏌ヨ瀹藉鍣ㄥ垏涓ゅ垪缃戞牸 */
+/* ---------- 右栏空态启动器（tab 全部关闭，对齐 ZCode side-pane 空态） ---------- */
+/* 居中列：装饰图标 + 标题/副文两行 + 入口钮列表；容器查询宽容器切两列网格 */
 .rt-start {
   min-height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2668,8 +2689,8 @@ body.resizing .resizer {
   .rt-list { display: grid; grid-template-columns: 1fr 1fr; max-width: 480px; }
 }
 
-/* ---------- 鏂囦欢椤碉紙璇诲彇琛岀偣鍑?/ 鏂囦欢鏍戠偣鍑昏繘鍏ワ級 ---------- */
-/* 鏂囦欢鏍戯紙绌烘€侊級琛?*/
+/* ---------- 文件页（读取行点击 / 文件树点击进入） ---------- */
+/* 文件树（空态）行 */
 .ft-row:hover { background: var(--panel-2); }
 .ft-root { color: var(--text); font-weight: 500; cursor: default; }
 .ft-root:hover { background: none; }
@@ -2679,23 +2700,23 @@ body.resizing .resizer {
 .ft-caret.open svg { transform: rotate(90deg); }
 .ft-file-ic { width: auto; }
 .ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* 璺緞闈㈠寘灞戯細椤圭洰鍐呫€岄」鐩悕 > 鐩稿娈点€? 椤圭洰澶栧叏璺緞锛屾闂?caret 鍥炬爣锛屽崟琛屾埅鏂?*/
+/* 路径面包屑：项目内「项目名 > 相对段」/ 项目外全路径，段间 caret 图标，单行截断 */
 .fv-seg { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fv-crumb .fv-seg:last-child { color: var(--dim); font-weight: 500; }
 .fv-sep { flex: none; display: inline-flex; align-items: center; }
-/* 鏂囦欢姝ｆ枃锛氭棤鍗＄墖搴?杈规锛圴SCode 缂栬緫鍣ㄥ尯鍗抽潰鏉挎湰韬紝涓嶅啀鏈夊唴宓岀洅锛夛紝
-   琛屽彿 gutter 鑷甫宸︾暀鐧斤紝鍙充晶鐣?8px 鍛煎惛浣?*/
+/* 文件正文：无卡片底/边框（VSCode 编辑器区即面板本身，不再有内嵌盒），
+   行号 gutter 自带左留白，右侧留 8px 呼吸位 */
 .fv-line { display: flex; align-items: baseline; }
 .fv-ln {
   flex: none; min-width: 3.5em; padding: 0 10px 0 8px; text-align: right;
   color: var(--faint); user-select: none;
 }
-/* 璇锋眰璇诲彇鐨勮鍙疯寖鍥村唴鐨勮鍙烽珮浜紙鍙珮浜鍙凤紝涓嶅姩鍐呭锛?*/
+/* 请求读取的行号范围内的行号高亮（只高亮行号，不动内容） */
 .fv-ln.hl { color: var(--accent); font-weight: 600; }
 .fv-tx { white-space: pre; tab-size: 4; color: var(--dim); }
 .fv-more { font-size: var(--ui-fs-xs); color: var(--faint); margin-top: 8px; padding: 0 8px; }
 
-/* 鍚庡彴鍛戒护琛岋紙鍙充晶鏍忥級 */
+/* 后台命令行（右侧栏） */
 .srow.bgcmd-row { cursor: pointer; user-select: none; }
 .srow.bgcmd-row.on { background: var(--panel-2); }
 .bgcmd-dot {
@@ -2734,7 +2755,7 @@ body.resizing .resizer {
   background: rgba(74, 222, 128, 0.08);
 }
 
-/* Git Diff 鏍?/ 骞抽摵 / 鏂囦欢璇︽儏 */
+/* Git Diff 树 / 平铺 / 文件详情 */
 .gd-row {
   display: flex; align-items: center; gap: 5px;
   font-size: var(--ui-fs-sm); padding: 3px 8px;
@@ -2755,7 +2776,7 @@ body.resizing .resizer {
 .gd-badge.add { color: var(--green-soft); background: rgba(60,181,79,.14); }
 .gd-badge.del { color: var(--err); background: rgba(208,92,82,.14); }
 .gd-badge.mod { color: var(--orange); background: rgba(229,161,78,.14); }
-/* 鍙虫爮 git diff 瀹瑰櫒锛氭棤鍗＄墖搴?杈规锛屼笌杈规爮铻嶄负涓€浣擄紙VSCode 婧愭帶鍒?diff 鐩磋创缂栬緫鍣ㄩ潰锛?*/
+/* 右栏 git diff 容器：无卡片底/边框，与边栏融为一体（VSCode 源控制 diff 直贴编辑器面） */
 .fd-holder {
   border-radius: var(--r-md);
   overflow: hidden;
@@ -2764,11 +2785,11 @@ body.resizing .resizer {
 html[data-code-wrap="on"] .cmd .c-tx,
 html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: break-all; }
 
-/* 鈹€鈹€ 杞婚噺 diff锛堣嚜鐮旓紝绉绘 ZCode lightweight-diff-preview锛夛細琛岃儗鏅?color-mix +
-   琛岄 inset 鐘舵€佹潯 + 琛屽彿 gutter 鐫€鑹茶〃杈惧鍒狅紝涓嶆樉绀?+/-/绌烘牸 marker 鈹€鈹€ */
+/* ── 轻量 diff（自研，移植 ZCode lightweight-diff-preview）：行背景 color-mix +
+   行首 inset 状态条 + 行号 gutter 着色表达增删，不显示 +/-/空格 marker ── */
 :root {
-  --diff-added: var(--green-soft);  /* 澧炶繘琛屼富鑹诧細14% 琛岃儗鏅?+ 18% gutter 搴?+ 鐘舵€佹潯 */
-  --diff-removed: var(--err);       /* 鍒犺涓昏壊锛屽悓涓婂姞鑹茶鍒?*/
+  --diff-added: var(--green-soft);  /* 增进行主色：14% 行背景 + 18% gutter 底 + 状态条 */
+  --diff-removed: var(--err);       /* 删行主色，同上加色规则 */
 }
 .ldiff {
   overflow: auto;
@@ -2776,8 +2797,8 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   line-height: 1.6; /* ZCode leading-relaxed */
   overscroll-behavior: contain;
 }
-/* 涓嶆崲琛屾椂鐢卞唴灞傛粴鍔ㄩ潰缁熶竴绠?max-content 瀹藉害锛氭瘡琛屽悇鑷拺瀹界殑璇濓紝
-   妯粴鍒板彸渚ф椂鐭鑳屾櫙鎻愬墠缁撴潫锛屼骇鐢熷簳鑹叉柇灞傦紙ZCode 鍘熸敞閲婂悓娆撅級 */
+/* 不换行时由内层滚动面统一算 max-content 宽度：每行各自撑宽的话，
+   横滚到右侧时短行背景提前结束，产生底色断层（ZCode 原注释同款） */
 .ldiff-scroll { min-width: 100%; width: max-content; }
 .ldiff-row { display: flex; min-width: 100%; width: 100%; }
 .ldiff-added {
@@ -2788,8 +2809,8 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   background: color-mix(in srgb, var(--diff-removed) 14%, transparent);
   box-shadow: inset 3px 0 0 var(--diff-removed);
 }
-/* 琛屽彿 gutter锛歴ticky 宸﹂拤闅忔í婊氬浐瀹氾紝鍙冲榻愮瓑瀹芥暟瀛楋紱澧炲垹琛?gutter 搴曚笌琛?
-   涓€鑷达紙18% 娣疯壊锛? 鍚岃壊鏂囧瓧锛屼笂涓嬫枃琛屽洖搴曡壊寮辫鍙?*/
+/* 行号 gutter：sticky 左钉随横滚固定，右对齐等宽数字；增删行 gutter 底与行
+   一致（18% 混色）+ 同色文字，上下文行回底色弱行号 */
 .ldiff-gutter {
   position: sticky; left: 0; z-index: 1;
   width: 48px; flex: none; padding: 0 8px;
@@ -2808,24 +2829,24 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   color: var(--diff-removed);
 }
 .ldiff-code { display: block; flex: 1; min-width: 0; padding: 0 12px; white-space: pre; }
-/* "\ No newline at end of file" 涔嬬被鐨勮ˉ涓佹敞璁?*/
+/* "\ No newline at end of file" 之类的补丁注记 */
 .ldiff-note { color: var(--faint); }
-/* 瓒呭嚭娓叉煋琛屾暟涓婇檺锛坔ost 500k 鎴柇鍦烘櫙锛夊熬閮ㄧ殑鐪佺暐鎻愮ず */
+/* 超出渲染行数上限（host 500k 截断场景）尾部的省略提示 */
 .ldiff-truncated { padding: 4px 12px; color: var(--faint); }
-/* 璁剧疆寮€鍏筹細琛屽彿鎬诲紑鍏虫部鐢?data-line-numbers锛涗唬鐮佹崲琛屾部鐢?data-code-wrap */
+/* 设置开关：行号总开关沿用 data-line-numbers；代码换行沿用 data-code-wrap */
 html[data-line-numbers="off"] .ldiff-gutter { display: none; }
 html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break-all; }
 
-/* 鍙抽敭鑿滃崟锛堝鍒?sessionId锛沠ixed 瀹氫綅闇€ zoom 琛ュ伩锛?*/
+/* 右键菜单（复制 sessionId；fixed 定位需 zoom 补偿） */
 .ctx-menu {
-  position: fixed; z-index: 100;
+  position: fixed; z-index: 500;
   display: flex; flex-direction: column;
   background: var(--ctl-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
   padding: 5px; min-width: 170px;
-  animation: popIn .18s ease-out; --pop-from: -6px; /* 涓嬪脊锛氳嚜涓婃柟婊戝叆 */
+  animation: popIn .18s ease-out; --pop-from: -6px; /* 下弹：自上方滑入 */
 }
 [data-theme="light"] .ctx-menu { box-shadow: 0 12px 32px rgba(0,0,0,.18); }
 .ctx-menu button {
@@ -2836,7 +2857,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .ctx-menu button:hover { background: var(--panel-3); }
 
-/* 鈹€鈹€ toast 鈹€鈹€ */
+/* ── toast ── */
 #toast {
   position: fixed; bottom: 24px; left: 50%;
   transform: translateX(-50%);
@@ -2844,13 +2865,13 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   color: var(--text); font-size: var(--ui-fs-base);
   padding: 8px 16px; border-radius: 999px;
   box-shadow: 0 8px 24px rgba(0,0,0,.5);
-  z-index: 120; white-space: nowrap;
+  z-index: 400; white-space: nowrap;
 }
 [data-theme="light"] #toast { box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 
-/* 鈹€鈹€ 璁剧疆涓績 鈹€鈹€ */
+/* ── 设置中心 ── */
 #settings {
-  position: fixed; inset: 0; z-index: 115;
+  position: fixed; inset: 0; z-index: 300;
   display: grid; grid-template-columns: var(--setnav-w, 180px) 1fr;
   background: var(--base);
   padding: 0 var(--shell-gap) var(--shell-gap) 0;
@@ -2859,14 +2880,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 #setNav {
   background: transparent; padding: 40px 10px 0;
   display: flex; flex-direction: column;
-  /* 鍚?#sidebar:瀵艰埅鏂囧瓧绂侀€変腑,鐐规寜钃濆簳鏄共鎵?*/
+  /* 同 #sidebar:导航文字禁选中,点按蓝底是干扰 */
   user-select: none;
   -webkit-user-select: none;
-  /* 缃戞牸椤?min-height:auto 浼氭寜鍐呭鎾戝紑婧㈠嚭(settings 560 楂樻椂琛岄珮琚《鍒?1192),
-     婊氬姩涓嬫矇鍒?.set-nav-scroll 鍚庢澶勫繀椤诲綊闆惰琛屾媺浼哥敓鏁?*/
+  /* 网格项 min-height:auto 会按内容撑开溢出(settings 560 高时行高被顶到 1192),
+     滚动下沉到 .set-nav-scroll 后此处必须归零让行拉伸生效 */
   min-height: 0;
 }
-/* 瀵艰埅婊氬姩鍖?杩斿洖閽浐瀹氶《绔?浠呮澶勬粴鍔?搴曢儴澶村儚 sticky 搴曢拤涓嶅彉 */
+/* 导航滚动区:返回钮固定顶端,仅此处滚动;底部头像 sticky 底钉不变 */
 .set-nav-scroll { flex: 1; min-height: 0; margin-top: 6px; overflow-y: auto; display: flex; flex-direction: column; }
 #setNav button { -webkit-app-region: no-drag; }
 .set-back {
@@ -2881,7 +2902,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .set-back svg { transition: transform .22s var(--spring); }
 .set-back:hover svg { transform: translateX(-2px); }
 .set-back .kbd { margin-left: auto; }
-/* 璁剧疆宸﹁竟鏍忔悳绱㈡涓庢悳绱㈢粨鏋?*/
+/* 设置左边栏搜索框与搜索结果 */
 .set-search-wrap {
   position: relative;
   display: flex;
@@ -3037,7 +3058,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .set-item:hover .si { color: var(--dim); }
 .set-item.on .si { color: var(--accent, var(--blue)); }
-/* 閿洏蹇嵎閿〉鐨勯敭甯?*/
+/* 键盘快捷键页的键帽 */
 .sc-keys { display: flex; gap: 5px; flex: none; align-items: center; }
 .sc-key {
   display: inline-flex; align-items: center; justify-content: center;
@@ -3054,22 +3075,19 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .set-foot {
   margin-top: auto; display: flex; align-items: center; gap: 10px;
   padding: 12px 10px 9px 4px;
-  /* 涓庝富渚ф爮 .side-foot 閫愬儚绱犲榻愶紙澶村儚宸︾紭 14px銆佺旱鍚戜腑蹇?34px銆侀棿璺?10px锛夛紝
-     杩涘嚭璁剧疆椤垫椂宸︿笅瑙掑ご鍍?title 浣嶇疆绾逛笣涓嶅姩 */
+  /* 与主侧栏 .side-foot 逐像素对齐（头像左缘 14px、纵向中心 34px、间距 10px），
+     进出设置页时左下角头像/title 位置纹丝不动 */
   position: sticky; bottom: 0;
   background: var(--base);
 }
 #setBody {
   overflow-y: auto; padding: 32px 40px 60px;
-  scrollbar-width: thin; scrollbar-color: var(--panel-3) transparent;
   background: var(--card);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0 0;
   min-width: 0;
 }
-#setBody::-webkit-scrollbar { width: 5px; }
-#setBody::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 3px; }
-/* 涓庝腑鏍忓崱鐗囧悓涓€濂楀姩鎬佸搴﹂€昏緫锛歮in(50vw, 100% 鈭?clamp gutter) */
+/* 与中栏卡片同一套动态宽度逻辑：min(50vw, 100% − clamp gutter) */
 .set-page {
   width: 100%;
   max-width: min(50vw, calc(100% - clamp(24px, 6vw, 100px)));
@@ -3077,7 +3095,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   margin-right: auto;
   min-width: 0;
 }
-/* 椤甸潰鍒囨崲鍏ュ満锛氫氦閿欎笂娴?+ 鍘绘ā绯婏紱hidden 鍒囨崲 display 鏃惰嚜鍔ㄩ噸鏀?*/
+/* 页面切换入场：交错上浮 + 去模糊；hidden 切换 display 时自动重放 */
 @keyframes setRise {
   from { opacity: 0; transform: translateY(10px); filter: blur(3px); }
   to   { opacity: 1; transform: none; filter: none; }
@@ -3093,18 +3111,18 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   .set-page > * { animation: none; }
   .set-back svg, .sel .caret-svg, .tg i { transition: none; }
 }
-/* 涓€绾уぇ鏍囬锛氬姞澶т竴鍙凤紙1.6 鈫?1.75锛夛紝涓嬭竟璺?+5px 鐢辨爣棰樺悗棣栧厓绱犻棿璺濇壙鎺?*/
+/* 一级大标题：加大一号（1.6 → 1.75），下边距 +5px 由标题后首元素间距承接 */
 .set-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
-/* 鍚勯厤缃〉锛氭爣棰樹笌棣栦釜鍐呭鍏冪礌闂磋窛缁熶竴鏀惧ぇ锛堟浛浠ｉ〉鍐呮墜鍐?margin-top锛?*/
+/* 各配置页：标题与首个内容元素间距统一放大（替代页内手写 margin-top） */
 .set-page > .set-tt + * { margin-top: 29px; }
-/* 妯″瀷椤垫爣棰樹笅鐨勮鏄庢枃瀛?*/
+/* 模型页标题下的说明文字 */
 .set-desc { font-size: var(--ui-fs-sm); color: var(--faint); }
-/* 璁剧疆椤靛埛鏂伴挳锛氫互妯″瀷椤靛熀鍑?脳1.2锛堝浘鏍?14鈫?7銆佸簳鏉?26鈫?1锛夛紝鎵€鏈夐〉闈㈢粺涓€鍙栫敤 */
+/* 设置页刷新钮：以模型页基准 ×1.2（图标 14→17、底板 26→31），所有页面统一取用 */
 .pg-refresh { margin-left: auto; width: 31px; height: 31px; }
 .pg-refresh svg { display: block; }
-/* 妯″瀷椤?鍒锋柊鎸夐挳绉诲埌銆岋紜 娣诲姞渚涘簲鍟嗐€嶅乏渚?涓嶅啀闈犲彸 */
+/* 模型页:刷新按钮移到「＋ 添加供应商」左侧,不再靠右 */
 .set-desc-row .pg-refresh { margin-left: 0; }
-/* 鎿嶄綔琛屽唴鍒锋柊閽笌鏇村/鏂板缓鎴愮粍,涓嶅悆闈犲彸澶栬竟璺?*/
+/* 操作行内刷新钮与更多/新建成组,不吃靠右外边距 */
 .mcp-actions-wrap .pg-refresh, .skills-actions-wrap .pg-refresh { margin-left: 0; }
 .pg-refresh.spin svg { animation: pgspin .5s linear; }
 @keyframes pgspin { to { transform: rotate(360deg); } }
@@ -3114,7 +3132,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .stag.on { color: var(--text); border-color: var(--dim); }
 .set-group-tt { font-size: var(--ui-fs-base); font-weight: 600; margin: 28px 2px 10px; }
-/* 缁勬爣棰樻梺 hover 鎻愮ず鍥炬爣锛堣交閲?CSS tooltip锛宼oken 涓婅壊锛涢潪 ring-pop 鍗＄墖锛屾晠涓嶈蛋 JS 瀹氫綅锛?*/
+/* 组标题旁 hover 提示图标（轻量 CSS tooltip，token 上色；非 ring-pop 卡片，故不走 JS 定位） */
 .gtt-hint { position: relative; display: inline-flex; align-items: center; margin-left: 6px; color: var(--faint); cursor: help; vertical-align: -2px; }
 .gtt-hint::after {
   content: attr(data-hint);
@@ -3122,7 +3140,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   background: var(--ctl-bg); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: 0 12px 32px rgba(0,0,0,.5);
   color: var(--dim); font-size: var(--ui-fs-base); font-weight: 400;
-  padding: 6px 10px; white-space: nowrap; z-index: 110;
+  padding: 6px 10px; white-space: nowrap; z-index: 600;
   opacity: 0; visibility: hidden; transform: translateY(-4px);
   transition: opacity .15s ease, transform .15s ease;
   pointer-events: none;
@@ -3134,7 +3152,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
   background: var(--panel-2); border-radius: 4px; padding: 1px 5px;
 }
-/* 璁剧疆鍗★細鐙珛鍗＄墖璇█锛?-panel 搴?+ 8% 鐧借竟 + r-card + 娣辨姇褰憋級 */
+/* 设置卡：独立卡片语言（--panel 底 + 8% 白边 + r-card + 深投影） */
 .set-card {
   background: var(--panel);
   border: 1px solid rgba(255,255,255,.08);
@@ -3147,10 +3165,10 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .set-card > .srow:first-child { border-top-left-radius: var(--r-card); border-top-right-radius: var(--r-card); }
 .set-card > .srow:last-child { border-bottom-left-radius: var(--r-card); border-bottom-right-radius: var(--r-card); }
-/* 瀛愭櫤鑳戒綋椤碉細鍒楄〃 + 缂栬緫鍣ㄥ弻鏍?*/
+/* 子智能体页：列表 + 编辑器双栏 */
 .agents-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .agents-bar-path { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 浣滅敤鍩熻彍鍗曪細瀹藉害 340px锛屾渶澶ч珮搴︿笉瓒呰繃灞忓箷楂樺害 2/3锛岄《閮?Profile 鍥哄畾銆佸伐浣滃尯琛ㄥご鍥哄畾銆侀」鐩垪琛ㄦ粴鍔?*/
+/* 作用域菜单：宽度 340px，最大高度不超过屏幕高度 2/3，顶部 Profile 固定、工作区表头固定、项目列表滚动 */
 #agentScopeMenu, #skillScopeMenu, #mcpScopeMenu, .scope-menu {
   width: 340px;
   padding: 6px;
@@ -3218,19 +3236,19 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .mem-caret { flex: none; display: flex; align-items: center; color: var(--faint); }
 .mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
 .srow.mem-row.on .mem-caret svg { transform: rotate(0deg); }
-.mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* 鍚戜笅寤跺睍寮€鍏ュ満 */ }
+.mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* 向下延展开入场 */ }
 
-/* 鈹€鈹€鈹€ 鎵╁睍涓績锛坧g-extensions锛?鈹€鈹€鈹€ */
+/* ─── 扩展中心（pg-extensions） ─── */
 .ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
-/* 浣滅敤鍩?鏉ユ簮鎸夐挳 = .sel 鑳跺泭璇█锛氭寜閽粎浣滃昂瀵歌浇浣擄紝搴曟澘/瀛楄壊/hover 鐢卞灞?.sel 鎻愪緵 */
+/* 作用域/来源按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
 .ext-prov-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer;
 }
 .ext-prov-sel { position: relative; }
 .ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
-/* 鎼滅储妗?= .inp 璇█锛?-bg 搴?+ --line-soft 杈?+ r9 + 钃濊壊鑱氱劍鍏夋檿 */
+/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
 .ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; }
 .ext-search-icon { position: absolute; left: 10px; color: var(--faint); pointer-events: none; display: inline-flex; align-items: center; }
 .ext-search-input {
@@ -3245,23 +3263,23 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ext-actions-wrap { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
 .ext-list-wrap { margin-top: 4px; }
-/* 鍒嗙粍锛堟寜鑳藉姏绫诲瀷锛夛細缁勬爣棰樺鐢?.set-group-tt锛岄缁勬敹绱т笌宸ュ叿琛岀殑闂磋窛 */
+/* 分组（按能力类型）：组标题复用 .set-group-tt，首组收紧与工具行的间距 */
 .ext-group:first-child .set-group-tt { margin-top: 6px; }
 .ext-group .set-group-tt { display: flex; align-items: baseline; gap: 6px; }
 .ext-cnt { color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
-/* 琛岋細鏁磋鍙偣锛?srow 鍚屾 hover锛夛紝闈炴縺娲绘潯鐩悕娣″寲銆?
-   琛屽鍖?.ext-row-wrap锛?srow+.srow 閭绘帴閫夋嫨鍣ㄤ笉鐢熸晥锛屽垎闅旂嚎鏀规寕琛岃嚜韬?*/
+/* 行：整行可点（.srow 同款 hover），非激活条目名淡化。
+   行外包 .ext-row-wrap，.srow+.srow 邻接选择器不生效，分隔线改挂行自身 */
 .ext-row { cursor: pointer; user-select: none; border-top: 1px solid var(--line-soft); }
 .ext-row-wrap:first-child .ext-row { border-top: 0; }
 .ext-row.off .srow-tx b { color: var(--dim); }
-/* 鎻忚堪鍗曡鎴柇锛堝弬鑰冨垎缁勫崱鐗囪寮忥細鍚嶇О + 涓€琛屾憳瑕侊級 */
+/* 描述单行截断（参考分组卡片行式：名称 + 一行摘要） */
 .ext-row .srow-tx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .ext-kind-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: var(--faint); }
 .ext-badges { display: flex; align-items: center; gap: 6px; flex: none; }
 .ext-tag-warn { color: var(--yellow); border-color: var(--yellow); }
 .ext-row .srow-tx { flex: 1; }
 .ext-row .srow-ctl { margin-left: 10px; }
-/* 璇︽儏鍖猴紙mem-expand 鎵胯浇锛夛細閿€艰 + 姝ｆ枃鍧?*/
+/* 详情区（mem-expand 承载）：键值行 + 正文块 */
 .ext-detail { padding: 10px 16px 14px 38px; display: flex; flex-direction: column; gap: 7px; }
 .ext-kv { display: flex; gap: 10px; font-size: var(--ui-fs-sm); align-items: baseline; min-width: 0; }
 .ext-k { flex: none; width: 64px; color: var(--faint); }
@@ -3279,7 +3297,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .mem-exp-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); color: var(--faint); border-bottom: 1px solid var(--line-soft); }
 .mem-body { display: flex; flex: 1; min-height: 220px; max-height: calc(var(--ui-fs-base) * 1.7 * 20); border-top: 1px solid var(--line-soft); }
 .mem-expand .mem-body { border-top: 0; }
-.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* 鍐呭祵鍦ㄨ缃〉婊氬姩娴佸唴锛岄樆鏂粴鍔ㄩ摼 */ }
+.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* 内嵌在设置页滚动流内，阻断滚动链 */ }
 .md-it, .md-grp { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: var(--ui-fs-sm); color: var(--dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
 .md-it.top { font-weight: 600; }
 .md-it:hover, .md-grp:hover { background: var(--panel-2); color: var(--text); }
@@ -3289,7 +3307,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .md-grp .caret { flex: none; transition: transform .12s; }
 .md-grp.closed .caret { transform: rotate(-90deg); }
 .md-grp .cnt { margin-left: auto; font-size: var(--ui-fs-xs); color: var(--faint); flex: none; }
-.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* 鍐呭祵鍦ㄨ缃〉婊氬姩娴佸唴锛岄樆鏂粴鍔ㄩ摼 */ }
+.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* 内嵌在设置页滚动流内，阻断滚动链 */ }
 .md-main h1, .md-main h2, .md-main h3, .md-main h4 { margin: 14px 0 6px; font-weight: 600; line-height: 1.4; }
 .md-main h1 { font-size: 17px; } .md-main h2 { font-size: 15px; } .md-main h3 { font-size: 13.5px; } .md-main h4 { font-size: var(--ui-fs-base); }
 .md-main h1:first-child, .md-main h2:first-child, .md-main h3:first-child { margin-top: 0; }
@@ -3297,7 +3315,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .md-main ul, .md-main ol { margin: 6px 0; padding-left: 22px; }
 .md-main li { margin: 2px 0; }
 .md-main code { font-family: var(--mono); font-size: var(--code-fs, 12px); background: var(--panel-2); border-radius: 4px; padding: 1px 4px; }
-.md-main pre { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; overflow: auto; margin: 8px 0; overscroll-behavior: contain; /* 鍐呭祵鍦?.md-main 婊氬姩娴佸唴锛岄樆鏂粴鍔ㄩ摼 */ }
+.md-main pre { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; overflow: auto; margin: 8px 0; overscroll-behavior: contain; /* 内嵌在 .md-main 滚动流内，阻断滚动链 */ }
 .md-main pre code { background: none; padding: 0; }
 .md-main blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--line); color: var(--dim); }
 .md-main a { color: var(--accent); }
@@ -3326,14 +3344,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .srow-tx b { font-size: var(--ui-fs-base); font-weight: 500; }
 .srow-tx span { font-size: var(--ui-fs-sm); color: var(--faint); line-height: 1.55; }
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
-/* schema warning 琛岋紙.srow-tx span 鐗瑰紓鎬ф洿楂橈紝闇€ .srow-tx .srow-wn 瑕嗙洊棰滆壊/瀛楀彿锛?*/
+/* schema warning 行（.srow-tx span 特异性更高，需 .srow-tx .srow-wn 覆盖颜色/字号） */
 .srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
-/* 寮€鍏虫爣棰樺彸渚х殑绾㈣壊璀︾ず锛堝疄楠屾€у姛鑳介〉锛夛細b 鍐呭苟鎺掋€屾爣棰?+ 璀︾ず銆嶃€?
-   瀛楀彿鍙?sm锛堟瘮鏍囬灏忎竴鍙凤級鎵嶈兘涓庢爣棰樺悓琛屼笉鎶樿锛涢鑹?瀛楀彿瑕佸帇杩?.srow-tx span锛?
-   鏁呯敤 .srow-tx b.srow-hd 鍓嶇紑銆傜獎绐楀彛涓嬪厑璁告暣浣撴姌琛屻€?*/
+/* 开关标题右侧的红色警示（实验性功能页）：b 内并排「标题 + 警示」。
+   字号取 sm（比标题小一号）才能与标题同行不折行；颜色/字号要压过 .srow-tx span，
+   故用 .srow-tx b.srow-hd 前缀。窄窗口下允许整体折行。 */
 .srow-tx b.srow-hd { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .srow-tx b.srow-hd .srow-wn-inline { color: var(--err); font-size: var(--ui-fs-sm); }
-/* 楂樼骇椤垫棤 UI 閿悕锛氱瓑瀹藉睍绀?*/
+/* 高级页无 UI 键名：等宽展示 */
 .adv-key { font-family: var(--mono); }
 .srow.unavailable { opacity: .55; }
 .srow.unavailable:hover { background: none; }
@@ -3346,7 +3364,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .inp::placeholder { color: var(--faint); }
 .inp:focus { border-color: rgba(74,158,255,.5); box-shadow: 0 0 0 3px rgba(74,158,255,.13); }
 .inp.disabled { color: var(--faint); pointer-events: none; box-shadow: none; }
-/* 淇濆瓨鎸夐挳 = .send 璇█锛?-panel-3 搴?r9 鏂瑰潡 */
+/* 保存按钮 = .send 语言：--panel-3 底 r9 方块 */
 .save-btn {
   flex: none; border: 0; background: var(--panel-3); color: var(--dim);
   border-radius: 9px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
@@ -3355,13 +3373,13 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .save-btn:hover { background: #4a4c4d; color: var(--text); }
 [data-theme="light"] .save-btn:hover { background: #bdbfc4; }
 .save-btn:active { transform: scale(.95); }
-/* 鍗遍櫓鍙樹綋锛堢櫥鍑虹瓑锛夛細鍚?.save-btn 灏哄璇█锛宧over 鍙樼孩鎻愮ず鐮村潖鎬?*/
+/* 危险变体（登出等）：同 .save-btn 尺寸语言，hover 变红提示破坏性 */
 .save-btn.danger:hover { background: var(--panel-2); color: var(--err); }
-/* 淇濆瓨杩涜涓?鎸夐挳缃伆涓嶅彲鐐?busy 鍙樹綋鍥炬爣杞湀(澶嶇敤 pgspin) */
+/* 保存进行中:按钮置灰不可点,busy 变体图标转圈(复用 pgspin) */
 .save-btn:disabled { opacity: .6; cursor: default; }
 .save-btn:disabled:hover, .save-btn:disabled:active { background: var(--panel-3); transform: none; }
 .save-btn.busy svg { animation: pgspin .8s linear infinite; }
-/* 寮€鍏筹細寮圭哀婊戝姩 + 鎸変綇鍘嬫墎鎷熺墿 */
+/* 开关：弹簧滑动 + 按住压扁拟物 */
 .tg {
   width: 38px; height: 23px; border-radius: 999px; background: var(--panel-3);
   position: relative; cursor: pointer; flex: none;
@@ -3379,9 +3397,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .tg.on i { left: 18px; }
 .tg.on:active i { left: 15px; }
 .tg.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
-/* 璁剧疆椤?srow 鍐呯殑鍒嗘鑳跺泭锛氬瓧鍙峰榻?.sel锛岄珮搴﹀榻愯缃〉鎸夐挳浣撶郴锛?1px锛宎dd-btn/鍒锋柊閽悓楂橈級 */
+/* 设置页 srow 内的分段胶囊：字号对齐 .sel，高度对齐设置页按钮体系（31px，add-btn/刷新钮同高） */
 .srow .mcp-type-pill { font-size: var(--ui-fs-base); min-height: 31px; }
-/* 涓嬫媺 = .pill-btn 璇█锛氶€忔槑鑳跺泭锛宧over --panel-2 */
+/* 下拉 = .pill-btn 语言：透明胶囊，hover --panel-2 */
 .sel {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; border-radius: 999px; padding: 5px 10px;
@@ -3391,17 +3409,17 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   transition: background .15s var(--swift), color .15s var(--swift);
 }
 .sel:hover, .sel:has(.menu.open) { background: var(--panel-2); color: var(--text); }
-/* 浣滅敤鍩熶笅鎷夋寜閽紙ScopeSel 鍏ㄧ珯鍞竴瀹炵幇锛夛細鎸夐挳浠呬綔灏哄杞戒綋锛屽簳鏉?瀛楄壊/hover 鐢卞灞?.sel 鎻愪緵 */
+/* 作用域下拉按钮（ScopeSel 全站唯一实现）：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
 .scope-sel-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
 .sel i { color: var(--faint); font-style: normal; font-size: var(--ui-fs-sm); }
 .sel .caret-svg { color: var(--faint); transition: transform .22s var(--spring); }
 .sel:has(.menu.open) .caret-svg { transform: rotate(180deg); }
 .sel > .menu {
   position: absolute; top: calc(100% + 6px); right: 0; left: auto; bottom: auto;
-  min-width: 170px; z-index: 90;
-  --pop-from: -6px; /* 涓嬪脊锛氳嚜涓婃柟婊戝叆 */
+  min-width: 170px;
+  --pop-from: -6px; /* 下弹：自上方滑入 */
 }
-/* 鏁板瓧姝ヨ繘鍣?= .plus-btn 璇█锛涙暟瀛楄〃鏍煎寲涓嶈烦鍔?*/
+/* 数字步进器 = .plus-btn 语言；数字表格化不跳动 */
 .num-ctl {
   display: inline-flex; align-items: center; gap: 2px; flex: none;
   background: var(--bg); border: 1px solid var(--line-soft);
@@ -3425,7 +3443,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .add-btn {
   margin-left: auto; border: 1px solid var(--line); background: transparent;
   color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
-  height: 31px; /* 涓庡埛鏂伴挳(.pg-refresh 31脳31)鍚岄珮锛屽悇椤垫柊寤?娣诲姞鎸夐挳缁熶竴楂樺害 */
+  height: 31px; /* 与刷新钮(.pg-refresh 31×31)同高，各页新建/添加按钮统一高度 */
 }
 .add-btn:hover { background: var(--panel-2); }
 .menu .mi.disabled { color: var(--faint); cursor: default; }
@@ -3467,35 +3485,35 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .pv .pv-src { flex: none; }
 .pv:has(.pv-src) .dot { margin-left: 0; }
 .pv .pv-ic { width: 16px; text-align: center; flex: none; }
-/* 娣诲姞渚涘簲鍟?涓ゅ垪绛夊鍦嗚鍗＄墖,鍗″唴涓婁笅涓よ(涓婅鍚嶇О/涓嬭鍘傚晢+宸查厤缃暟) */
+/* 添加供应商:两列等宽圆角卡片,卡内上下两行(上行名称/下行厂商+已配置数) */
 .ap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
-/* 宸︿晶渚涘簲鍟嗗垎缁勬爣璇嗕笌鍒嗛殧绾?缁熶竴涓哄叏灞€ UI 瀛楀彿銆佸父瑙勫瓧閲?瑕嗙洊 .set-sec 鐨勫皬鍙峰瓧璺濇牱寮? */
+/* 左侧供应商分组标识与分隔线:统一为全局 UI 字号、常规字重(覆盖 .set-sec 的小号字距样式) */
 .mp-grp { padding: 8px 10px 4px; font-size: var(--ui-fs-base); letter-spacing: normal; }
 .mp-l .mp-div { margin: 6px 16px; }
 .ap-card { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line-soft); cursor: pointer; min-width: 0; }
 .ap-card:hover { background: var(--panel-3); }
 .ap-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-base); color: var(--text); }
 .ap-card .tag { flex: none; }
-/* 涓よ鍗＄墖:涓婅鍥炬爣+渚涘簲鍟嗗悕,涓嬭宸︿晶宸查厤缃窘鏍囥€佸彸渚у巶鍟嗗悕鑳跺泭 */
+/* 两行卡片:上行图标+供应商名,下行左侧已配置徽标、右侧厂商名胶囊 */
 .ap-card2 { flex-direction: column; align-items: stretch; gap: 7px; padding: 15px 16px; }
 .ap-l1, .ap-l2 { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .ap-conf { flex: none; margin-left: auto; font-size: var(--ui-fs-xs); color: var(--green); }
 .ap-vendor { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* OMP 鐧诲綍绮樿创鐮佸脊绐?*/
+/* OMP 登录粘贴码弹窗 */
 .lp-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .lp-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 380px; max-width: calc(100vw - 48px); }
 .lp-msg { font-size: var(--ui-fs-base); color: var(--text); margin-bottom: 10px; word-break: break-all; }
 .cf-msg { font-size: var(--ui-fs-sm); color: var(--dim); line-height: 1.6; margin: -4px 0 10px; white-space: pre-wrap; }
 .lp-box .inp { width: 100%; box-sizing: border-box; margin-bottom: 12px; }
 .lp-row { display: flex; justify-content: flex-end; gap: 8px; }
-/* 鐧诲綍杩涜涓簳閮ㄨ繘搴︽潯(鍚彇娑? */
+/* 登录进行中底部进度条(含取消) */
 .login-banner { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 8px 8px 8px 16px; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,.35); max-width: calc(100vw - 48px); }
 .login-banner span { font-size: var(--ui-fs-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
-/* 渚涘簲鍟嗚鎯呴〉:鐧诲綍鍏ュ彛鍗＄墖 */
+/* 供应商详情页:登录入口卡片 */
 .pd-login { margin-top: 12px; }
-/* 鍒嗛殧绾?宸﹀彸鐣欑櫧,鐭簬鍗＄墖瀹藉害 */
+/* 分隔线:左右留白,短于卡片宽度 */
 .pd-div { height: 1px; background: var(--line-soft); margin: 14px 28px; }
-/* API key 鍖?绾靛悜鎺掑竷,鍦嗚杈撳叆妗嗗崰婊¤瀹?*/
+/* API key 区:纵向排布,圆角输入框占满行宽 */
 .pd-key { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .pd-key-row { display: flex; align-items: center; gap: 8px; }
 .pd-key-row .inp { flex: 1; min-width: 0; width: auto; border-radius: 9px; }
@@ -3503,14 +3521,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .pd-member-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; font-size: var(--ui-fs-sm); }
 .mp-r { padding: 14px 16px 16px; min-width: 0; }
 .mp-lim { margin: -4px 0 12px; font-size: var(--ui-fs-sm); color: var(--dim); }
-.mp-lim .lx-sec + .lx-sec { margin-top: 8px; } /* 澶氳处鍙烽厤棰濋€愭娓叉煋鐨勬闂磋窛 */
+.mp-lim .lx-sec + .lx-sec { margin-top: 8px; } /* 多账号配额逐段渲染的段间距 */
 .mp-lim .lx-body { min-width: 0; }
 .mp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .mp-head .sp, .mp-ml .sp { flex: 1; }
 .mp-ml { display: flex; align-items: center; margin: 8px 0 6px; font-size: var(--ui-fs-sm); color: var(--dim); }
 .mp-row { display: flex; align-items: center; gap: 8px; padding: 12px 7px; font-size: var(--ui-fs-base); border-top: 1px solid var(--line-soft); }
 .mp-row .sp { flex: 1; }
-/* 妯″瀷瑙掕壊琛岋細mp-r 鍐呭祵鐨?srow 鏀剁獎鍙岃竟璺濓紝鍚嶇О琛屽唴 tag 寰芥爣 */
+/* 模型角色行：mp-r 内嵌的 srow 收窄双边距，名称行内 tag 徽标 */
 .mp-role-row { padding: 12px 2px; }
 .mp-role-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
 .mp-role-desc { margin: -4px 0 4px; }
@@ -3542,16 +3560,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 :root { --hm0: #33333d; --hm1: #2f4a6b; --hm2: #3d6ea8; --hm3: #4a9eff; --hm4: #79b8ff; }
 :root[data-theme="light"] { --hm0: #e4e4e9; --hm1: #bcd6f3; --hm2: #84b8ee; --hm3: #4a9eff; --hm4: #1f7ae0; }
 
-/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
-   鎶€鑳介〉闈㈡敼鐗堬紙浠垮叏鏂拌璁″浘锛?
-   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
-/* 涓€绾ф爣棰樹笌杈硅窛鍚屾 .set-tt锛?.75 + 涓嬭竟璺?25锛?*/
+/* ════════════════════════════════════════════════════════════
+   技能页面改版（仿全新设计图）
+   ════════════════════════════════════════════════════════════ */
+/* 一级标题与边距同步 .set-tt（1.75 + 下边距 25） */
 .skills-header { margin-bottom: 25px; }
 .skills-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
-/* 鎶€鑳芥€诲紑鍏冲叧闂細椤甸潰鍏朵綑鎺т欢鐏版樉骞剁姝氦浜掞紙鍚岄挬瀛愰〉銆岃鍏堝紑鍚€诲紑鍏炽€嶈涔夛紝鎬诲紑鍏冲崱鐗囧湪瀹瑰櫒澶栦笉鍙楀奖鍝嶏級 */
+/* 技能总开关关闭：页面其余控件灰显并禁止交互（同钩子页「请先开启总开关」语义，总开关卡片在容器外不受影响） */
 .skills-off-dim { opacity: .45; pointer-events: none; }
 
-/* 鍗曡宸ュ叿鏉★細浣滅敤鍩熻兌鍥?+ 缁熻 + 鏇村/鍒锋柊/鏂板缓 + 鎼滅储妗嗭紙鎼滅储妗嗛潬鍙筹紝绐勫搴︿紭鍏堝帇缂╂悳绱㈡/鑳跺泭锛?*/
+/* 单行工具条：作用域胶囊 + 统计 + 更多/刷新/新建 + 搜索框（搜索框靠右，窄宽度优先压缩搜索框/胶囊） */
 .skills-bar {
   display: flex;
   align-items: center;
@@ -3567,7 +3585,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 .skills-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
-/* 缁熻鏂囨涓庝綔鐢ㄥ煙鏍囩涓嶆崲琛岋細瀹藉害涓嶈冻鏃惰兌鍥婃爣绛剧渷鐣ュ彿鎴柇 */
+/* 统计文案与作用域标签不换行：宽度不足时胶囊标签省略号截断 */
 .skills-bar #skillsTotalCount { white-space: nowrap; }
 .skills-bar .scope-sel-btn { min-width: 0; }
 .skills-bar .scope-sel-btn > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3589,7 +3607,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: inline-flex;
   align-items: center;
 }
-/* 鎼滅储妗?= .inp 璇█锛?-bg 搴?+ --line-soft 杈?+ r9 + 钃濊壊鑱氱劍鍏夋檿 */
+/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
 .skills-search-input {
   width: 100%;
   height: 30px;
@@ -3608,14 +3626,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .skills-search-input::placeholder { color: var(--faint); }
 
-/* 鎿嶄綔鎸夐挳缁勶細鏇村 + 鍒锋柊 + 鏂板缓锛堜笉鍙備笌鍘嬬缉锛屽搴︿笉瓒虫椂鍘嬬缉鎼滅储妗?浣滅敤鍩熻兌鍥婏級 */
+/* 操作按钮组：更多 + 刷新 + 新建（不参与压缩，宽度不足时压缩搜索框/作用域胶囊） */
 .skills-actions-wrap {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex: none;
 }
-/* 鏇村(鈰?鎸夐挳 = .sel 鑳跺泭鍐呯殑灏哄杞戒綋锛氬簳鏉?hover 鐢卞灞?.sel 鎻愪緵锛堝埛鏂伴挳璧?.plus-btn锛?*/
+/* 更多(⋯)按钮 = .sel 胶囊内的尺寸载体：底板/hover 由外层 .sel 提供（刷新钮走 .plus-btn） */
 .skills-btn-icon {
   width: 26px;
   height: 26px;
@@ -3628,7 +3646,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   color: inherit;
   cursor: pointer;
 }
-/* 鏂板缓鎸夐挳 = .add-btn 璇█锛氶€忔槑搴?+ --line 鎻忚竟 + hover --panel-2锛岄珮搴︿笌鍒锋柊閽竴鑷?*/
+/* 新建按钮 = .add-btn 语言：透明底 + --line 描边 + hover --panel-2，高度与刷新钮一致 */
 .skills-btn-new {
   display: inline-flex;
   align-items: center;
@@ -3647,7 +3665,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .skills-btn-new:hover { background: var(--panel-2); }
 .skills-btn-new:active { transform: scale(.95); }
 
-/* 鎶€鑳藉崱鐗囧垪琛?*/
+/* 技能卡片列表 */
 .skills-list-wrap {
   margin-top: 4px;
 }
@@ -3669,7 +3687,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font-size: var(--ui-fs-sm);
 }
 
-/* 鎶€鑳藉崱鐗囧崟琛?*/
+/* 技能卡片单行 */
 .skill-item-row {
   display: flex;
   align-items: center;
@@ -3677,7 +3695,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-bottom: 1px solid var(--line-soft);
   transition: background .15s;
 }
-/* 琛?= 璁板繂椤佃璇█锛氭暣琛屽彲鐐癸紝灞曞紑 .on 楂樹寒锛屽熬閮?caret 闅忓睍寮€杞 */
+/* 行 = 记忆页行语言：整行可点，展开 .on 高亮，尾部 caret 随展开转正 */
 .skill-item-row, .mcp-server-row { cursor: pointer; }
 .skill-item-row.on, .mcp-server-row.on { background: var(--panel-2); }
 .skill-item-row.on .mem-caret svg, .mcp-server-row.on .mem-caret svg { transform: rotate(0deg); }
@@ -3739,8 +3757,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   gap: 16px;
   flex-shrink: 0;
 }
-/* 寮€鍏冲鐢ㄥ叏绔?.tg锛坅ccent 寮鸿皟鑹?+ 寮圭哀婊戝姩锛夛紝瑙佽缃〉瀹氫箟澶?*/
-/* 鍒犻櫎 Trash 鎸夐挳 */
+/* 开关复用全站 .tg（accent 强调色 + 弹簧滑动），见设置页定义处 */
+/* 删除 Trash 按钮 */
 .skill-trash-btn {
   background: none;
   border: none;
@@ -3758,8 +3776,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   transform: scale(1.1);
 }
 
-/* 鎶€鑳?MCP 琛屽唴缂栬緫鍖猴紙鍚戜笅寤跺睍锛夛細瀹瑰櫒銆佸ご銆佽剼涓庤〃鍗曚綋銆?
-   寮圭獥瀹瑰櫒绫伙紙modal/backdrop/dialog/head 绛夛級宸查殢寮圭獥鏀瑰欢灞曚竴骞跺垹闄?*/
+/* 技能/MCP 行内编辑区（向下延展）：容器、头、脚与表单体。
+   弹窗容器类（modal/backdrop/dialog/head 等）已随弹窗改延展一并删除 */
 .mem-exp-head .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sem-body {
   flex: 1;
@@ -3767,17 +3785,17 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   min-height: 360px;
   display: flex;
 }
-/* MCP 琛ㄥ崟鍙樹綋锛氱旱鍚戞帓甯冭〃鍗曠粍锛堥粯璁ゆí鍚戝彧瀹圭撼鍗曚釜缂栬緫鍣?textarea锛?*/
+/* MCP 表单变体：纵向排布表单组（默认横向只容纳单个编辑器 textarea） */
 .sem-body.form {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain; /* 鍐呭祵鍦ㄨ缃〉婊氬姩娴佸唴锛岄樆鏂粴鍔ㄩ摼 */
+  overscroll-behavior: contain; /* 内嵌在设置页滚动流内，阻断滚动链 */
 }
-/* 寤跺睍鍖哄唴宓屽垪琛ㄥ崱鐗囷細缂栬緫鍣ㄩ珮搴︽敹绱э紙寮圭獥鏃朵唬鐨?340px 鍏ㄥ睆楂樺害涓嶅啀閫傜敤锛?*/
+/* 延展区内嵌列表卡片：编辑器高度收紧（弹窗时代的 340px 全屏高度不再适用） */
 .mem-expand .sem-body { min-height: 0; }
 .mem-expand #skEditText { min-height: 260px; }
-/* 缂栬緫鍣?textarea = .inp 璇█锛?-bg 搴?+ r9 + 钃濊壊鑱氱劍鍏夋檿 */
+/* 编辑器 textarea = .inp 语言：--bg 底 + r9 + 蓝色聚焦光晕 */
 #skEditText {
   width: 100%;
   flex: 1;
@@ -3806,16 +3824,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-top: 1px solid var(--line-soft);
 }
 .sem-status { font-size: var(--ui-fs-sm); color: var(--dim); }
-/* 寤跺睍鍖哄簳閮ㄦ寜閽粺涓€璧?.confirm-btn / .confirm-btn.danger锛堝叏灞€浜屾纭寮圭獥璇█锛?*/
+/* 延展区底部按钮统一走 .confirm-btn / .confirm-btn.danger（全局二次确认弹窗语言） */
 
-/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
-   MCP 鏈嶅姟鍣ㄩ〉闈㈡敼鐗堬紙鍍忕礌绾ц繕鍘熷弬鑰冨浘锛?
-   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
-/* 涓€绾ф爣棰樹笌杈硅窛鍚屾 .set-tt锛?.75 + 涓嬭竟璺?25锛?*/
+/* ════════════════════════════════════════════════════════════
+   MCP 服务器页面改版（像素级还原参考图）
+   ════════════════════════════════════════════════════════════ */
+/* 一级标题与边距同步 .set-tt（1.75 + 下边距 25） */
 .mcp-header { margin-bottom: 25px; }
 .mcp-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
 
-/* 绗竴琛岋細浣滅敤鍩熻兌鍥?+ 缁熻 + 鎼滅储妗?*/
+/* 第一行：作用域胶囊 + 统计 + 搜索框 */
 .mcp-bar-primary {
   display: flex;
   align-items: center;
@@ -3845,7 +3863,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: inline-flex;
   align-items: center;
 }
-/* 鎼滅储妗?= .inp 璇█锛?-bg 搴?+ --line-soft 杈?+ r9 + 钃濊壊鑱氱劍鍏夋檿 */
+/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
 .mcp-search-input {
   width: 100%;
   height: 30px;
@@ -3864,7 +3882,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .mcp-search-input::placeholder { color: var(--faint); }
 
-/* 绗簩琛岋細宸插畨瑁呰鏁?+ 鎿嶄綔鎸夐挳 */
+/* 第二行：已安装计数 + 操作按钮 */
 .mcp-bar-secondary {
   display: flex;
   align-items: center;
@@ -3876,7 +3894,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   align-items: center;
   gap: 8px;
 }
-/* 鏇村(鈰?鎸夐挳 = .sel 鑳跺泭鍐呯殑灏哄杞戒綋锛氬簳鏉?hover 鐢卞灞?.sel 鎻愪緵锛堝埛鏂伴挳璧?.plus-btn锛?*/
+/* 更多(⋯)按钮 = .sel 胶囊内的尺寸载体：底板/hover 由外层 .sel 提供（刷新钮走 .plus-btn） */
 .mcp-btn-icon {
   width: 26px;
   height: 26px;
@@ -3889,7 +3907,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   color: inherit;
   cursor: pointer;
 }
-/* 鏂板缓鎸夐挳 = .add-btn 璇█锛氶€忔槑搴?+ --line 鎻忚竟 + hover --panel-2锛岄珮搴︿笌鍒锋柊閽竴鑷?*/
+/* 新建按钮 = .add-btn 语言：透明底 + --line 描边 + hover --panel-2，高度与刷新钮一致 */
 .mcp-btn-new {
   display: inline-flex;
   align-items: center;
@@ -3907,7 +3925,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .mcp-btn-new:hover { background: var(--panel-2); }
 .mcp-btn-new:active { transform: scale(.95); }
 
-/* MCP 鍒楄〃瀹瑰櫒 */
+/* MCP 列表容器 */
 .mcp-list-wrap {
   margin-top: 4px;
 }
@@ -3929,7 +3947,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font-size: var(--ui-fs-sm);
 }
 
-/* MCP 鏈嶅姟鍣ㄦ潯鐩 */
+/* MCP 服务器条目行 */
 .mcp-server-row {
   display: flex;
   align-items: center;
@@ -3950,7 +3968,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   opacity: .6;
 }
 
-/* 宸︿晶鍦嗚鏂瑰潡鍥炬爣涓庣姸鎬佺偣锛堣壊鍊艰蛋 token锛屾祬鑹蹭富棰樿嚜鍔ㄩ€傞厤锛?*/
+/* 左侧圆角方块图标与状态点（色值走 token，浅色主题自动适配） */
 .mcp-icon-box {
   width: 40px;
   height: 40px;
@@ -3986,7 +4004,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: none;
 }
 
-/* 涓棿鏈嶅姟淇℃伅 */
+/* 中间服务信息 */
 .mcp-server-info {
   flex: 1;
   min-width: 0;
@@ -4037,16 +4055,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   user-select: none;
 }
 
-/* 鍙充晶寮€鍏虫帶鍒?*/
+/* 右侧开关控制 */
 .mcp-server-ctrl {
   display: inline-flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
 }
-/* 寮€鍏冲鐢ㄥ叏绔?.tg锛坅ccent 寮鸿皟鑹?+ 寮圭哀婊戝姩锛夛紝瑙佽缃〉瀹氫箟澶?*/
+/* 开关复用全站 .tg（accent 强调色 + 弹簧滑动），见设置页定义处 */
 
-/* MCP 寮圭獥鐩稿叧琛ㄥ崟鍏冪礌 */
+/* MCP 弹窗相关表单元素 */
 .mcp-form-group {
   margin-bottom: 14px;
 }
@@ -4059,7 +4077,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .mcp-form-label .req {
   color: var(--err);
 }
-/* 琛ㄥ崟杈撳叆 = .inp 璇█锛?-bg 搴?+ --line-soft 杈?+ r9 + 钃濊壊鑱氱劍鍏夋檿 */
+/* 表单输入 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
 .mcp-form-input,
 .mcp-form-textarea,
 .mcp-form-select {
@@ -4088,7 +4106,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: flex;
   gap: 4px;
 }
-/* 浼犺緭鍗忚鍒嗘 = .sel 鑳跺泭璇█锛氶€忔槑鑳跺泭锛宧over --panel-2锛岄€変腑 --panel-3 */
+/* 传输协议分段 = .sel 胶囊语言：透明胶囊，hover --panel-2，选中 --panel-3 */
 .mcp-type-pill {
   padding: 5px 12px;
   border-radius: 999px;
@@ -4109,16 +4127,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font-weight: 500;
 }
 
-/* --- B3 Git Diff 鍐欐搷浣?+ 鏂囦欢椤靛浘鐗囬瑙堬紙right.js锛?--- */
-/* 宸ュ叿鏉★細鎻愪氦淇℃伅杈撳叆锛?inp 璇█锛屽皬鍙?+ flex 鎾戞弧锛? 鎻愪氦/鎺ㄩ€侊紙.save-btn 灏忓彿锛?*/
+/* --- B3 Git Diff 写操作 + 文件页图片预览（right.js） --- */
+/* 工具条：提交信息输入（.inp 语言，小号 + flex 撑满）+ 提交/推送（.save-btn 小号） */
 .gd-commit-inp {
   flex: 1; min-width: 0; width: auto;
   padding: 4px 9px; font-size: var(--ui-fs-xs);
 }
-/* 琛屽唴鎿嶄綔缁勶細榛樿闅愯韩锛岃 hover 鎵嶅嚭鐜帮紙鍙充晶瀵归綈锛屼笉鎸ゆ枃浠跺悕锛?*/
+/* 行内操作组：默认隐身，行 hover 才出现（右侧对齐，不挤文件名） */
 .gd-row:hover .gd-acts,
 .gd-acts:focus-within { opacity: 1; }
-/* 琛屽唴灏忓浘鏍囨寜閽細閫忔槑搴?+ hover --panel-3锛沝anger 鍙樹綋 hover 鍙樼孩鎻愮ず鐮村潖鎬?*/
+/* 行内小图标按钮：透明底 + hover --panel-3；danger 变体 hover 变红提示破坏性 */
 .gd-act {
   border: 0; background: none; color: var(--faint);
   display: inline-flex; align-items: center; justify-content: center;
@@ -4140,31 +4158,31 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .gd-act:disabled { opacity: .5; cursor: default; }
 .gd-act:disabled:hover { background: none; color: var(--faint); }
 .gd-act.danger:hover { background: var(--panel-3); color: var(--err); }
-/* 鏂囦欢椤靛浘鐗囬瑙堬細max-width 鑷€傚簲銆?-panel-2 搴曪紙閫忔槑 png 娣辨祬涓婚鍧囧崗璋冿級銆乼oken 杈规鍦嗚 */
+/* 文件页图片预览：max-width 自适应、--panel-2 底（透明 png 深浅主题均协调）、token 边框圆角 */
 
 
-/* --- 鍙戦€侀挳鍋滄褰㈡€侊紙娴佸紡涓笖杈撳叆妗嗙┖ / Esc 绀鸿绐楀彛锛夛細ZCodium secondary 鎸夐挳鍚屾
-   涓€у簳 + 瀹炲績鏂瑰潡锛宧over 鍔犳繁涓€妗?--- */
+/* --- 发送钮停止形态（流式中且输入框空 / Esc 示警窗口）：ZCodium secondary 按钮同款
+   中性底 + 实心方块，hover 加深一档 --- */
 .send.stopping {
   background: var(--panel-2);
   color: var(--text);
 }
 .send.stopping:hover:not(:disabled) { background: var(--panel-3); opacity: 1; }
 
-/* --- B2 浼氳瘽鍐呮煡鎵炬潯锛堚寴F锛屾秷鎭祦椤堕儴娴眰锛屼粎褰撳墠婵€娲讳細璇濓級 --- */
+/* --- B2 会话内查找条（⌘F，消息流顶部浮层，仅当前激活会话） --- */
 .find-bar {
   position: absolute; z-index: 60;
-  /* 姘村钩灞呬腑鐢?margin auto锛坙eft/right 褰掗浂锛夎€岄潪 translateX锛?
-     ringpop 鍏ュ満鍔ㄧ敾瑕佸崰鐢?transform锛宼ranslateX 浼氳瑕嗙洊瀵艰嚧鍔ㄧ敾缁撴潫璺充綅 */
+  /* 水平居中用 margin auto（left/right 归零）而非 translateX：
+     ringpop 入场动画要占用 transform，translateX 会被覆盖导致动画结束跳位 */
   left: 0; right: 0; margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
   display: flex; align-items: center; gap: 6px;
   background: var(--ctl-bg); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
   padding: 5px 6px 5px 5px;
-  animation: ringpop .18s ease-out; /* 涓?ring-pop 绯诲悓娆惧叆鍦猴紙娣″叆 + 涓婃粦锛?*/
+  animation: ringpop .18s ease-out; /* 与 ring-pop 系同款入场（淡入 + 上滑） */
 }
 [data-theme="light"] .find-bar { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
-/* 杈撳叆妗?= .inp 璇█锛?-bg 搴?+ --line-soft 杈?+ r8 + 钃濊壊鑱氱劍鍏夋檿 */
+/* 输入框 = .inp 语言：--bg 底 + --line-soft 边 + r8 + 蓝色聚焦光晕 */
 .find-inp {
   background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
   padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
@@ -4177,7 +4195,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font-size: var(--ui-fs-xs); color: var(--dim);
 }
 .find-count.none { color: var(--faint); }
-/* 瀵艰埅/鍏抽棴灏忔寜閽?= .q-btn 鍚岃瑷€锛?0px 搴曟澘 + hover --panel-2锛?*/
+/* 导航/关闭小按钮 = .q-btn 同语言（20px 底板 + hover --panel-2） */
 .find-bar button {
   line-height: 0;
 }
@@ -4191,16 +4209,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: block;
 }
 .find-nav:hover { background: var(--panel-2); color: var(--text); }
-/* 鍛戒腑娑堟伅闂儊寮鸿皟锛氳儗鏅珮浜笎闅愶紙accent 娲剧敓锛屼笌 .inp 鑱氱劍鍏夋檿鍚屾簮锛?*/
+/* 命中消息闪烁强调：背景高亮渐隐（accent 派生，与 .inp 聚焦光晕同源） */
 @keyframes findflash {
   0% { background: rgba(74, 158, 255, 0.22); box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.10); }
   100% { background: transparent; box-shadow: none; }
 }
 .find-flash { animation: findflash 1.6s ease-out; border-radius: 8px; }
 
-/* --- B2 涓婁笅鏂囨槑缁嗗崱鍘嬬缉鍏ュ彛锛坮ing-pop 搴曢儴鍏ㄥ灏忔寜閽級 --- */
+/* --- B2 上下文明细卡压缩入口（ring-pop 底部全宽小按钮） --- */
 .cx-act { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
-/* .confirm-btn 灏忓彿鍙樹綋锛氬悓杈规/搴曡壊/鍦嗚璇█锛屽昂瀵搁殢鍗＄墖鍐呯缉 */
+/* .confirm-btn 小号变体：同边框/底色/圆角语言，尺寸随卡片内缩 */
 .cx-compact-btn {
   width: 100%; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: 7px;
@@ -4213,7 +4231,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .cx-compact-btn:disabled { opacity: .45; cursor: default; }
 .cx-compact-btn.busy { opacity: .7; cursor: default; }
 
-/* --- B1 浼氳瘽閲嶅懡鍚嶏紙琛屽唴缂栬緫琛岋紝澶嶇敤 .task 甯冨眬锛涚紪杈戣鏃犵偣鍑昏涓猴紝鏄惧紡鍏?hover锛?--- */
+/* --- B1 会话重命名（行内编辑行，复用 .task 布局；编辑行无点击行为，显式关 hover） --- */
 .task.renaming { cursor: default; }
 .task.renaming:hover { background: none; color: inherit; }
 [data-theme="light"] .task.renaming:hover { background: none; color: inherit; }
@@ -4222,7 +4240,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   padding: 3px 8px; font-size: var(--ui-fs-sm);
 }
 
-/* --- B1 褰掓。鍖猴紙鍒楄〃搴曢儴鎶樺彔鍒嗙粍锛氱粍澶存暣琛屽彲鐐癸紝鏉＄洰琛岀函灞曠ず銆乭over 鍙寒鎸夐挳锛?--- */
+/* --- B1 归档区（列表底部折叠分组：组头整行可点，条目行纯展示、hover 只亮按钮） --- */
 .arch-head {
   display: flex; align-items: center; gap: 8px;
   height: 34px; min-height: 34px; padding: 4px 10px; margin-top: 2px;
@@ -4241,19 +4259,19 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .arch-head .acount { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); }
-/* 鏉＄洰瀹瑰櫒锛歡rid 琛岄珮 0fr鈫?fr 杩囨浮锛屼笌 .proj-kids 椤圭洰鍒嗙粍鍚屼竴濂楀姩鐢?*/
+/* 条目容器：grid 行高 0fr↔1fr 过渡，与 .proj-kids 项目分组同一套动画 */
 .arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
 .arch-kids.closing { grid-template-rows: 0fr; }
 .arch-kids > .arch-kids-in { overflow: hidden; min-height: 0; }
-/* 褰掓。鏉＄洰琛岋細绾睍绀烘壙杞借锛堢偣鍑讳笉鎵撳紑浼氳瘽锛夛紝鏄惧紡绂?hover 楂樹寒 */
+/* 归档条目行：纯展示承载行（点击不打开会话），显式禁 hover 高亮 */
 .arch-row {
   display: flex; align-items: center; gap: 8px;
   height: 34px; min-height: 34px; padding: 4px 10px 4px 28px; margin-top: 2px;
   font-size: var(--ui-fs-base); line-height: 1.35;
 }
-/* 鎷栧姩鎺掑簭娴眰锛氭嫋缁勪复鏃舵覆鏌撳崱鏍峰紡锛涗笌 ZCode 涓€鏍凤紝浠呮樉绀烘枃鏈笌鍥炬爣锛屾棤鑳屾櫙銆?*/
+/* 拖动排序浮层：拖组临时渲染卡样式；与 ZCode 一样，仅显示文本与图标，无背景。 */
 .proj-drag-overlay {
-  position: fixed; z-index: 200; pointer-events: none; cursor: grabbing;
+  position: fixed; z-index: 900; pointer-events: none; cursor: grabbing;
   width: var(--left-w, 240px);
   height: 34px; min-height: 34px; padding: 4px 4px 4px 10px;
   display: flex; align-items: center; gap: 8px;
@@ -4279,7 +4297,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--dim);
 }
-/* 鎭㈠/鍒犻櫎灏忔寜閽細榛樿闅愯棌銆佽 hover 娴幇锛堝榻?.padd/.pmore 妯″紡锛?*/
+/* 恢复/删除小按钮：默认隐藏、行 hover 浮现（对齐 .padd/.pmore 模式） */
 .arch-act {
   flex: none; border: 1px solid var(--line); background: none; color: var(--dim);
   font-size: var(--ui-fs-xs); line-height: 1; cursor: pointer;
@@ -4289,7 +4307,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .arch-row:hover .arch-act { display: inline-flex; align-items: center; }
 .arch-act:hover { color: var(--text); background: var(--panel-3); }
-/* 鍒犻櫎 = 褰诲簳鍒犻櫎浼氳瘽锛氬嵄闄╂€佽瑙変笌 .task-del-btn 涓€鑷达紙鍚?hover 鍙嶈壊鐧藉瓧锛宼okens 鏃犲弽鑹?token锛?*/
+/* 删除 = 彻底删除会话：危险态视觉与 .task-del-btn 一致（含 hover 反色白字，tokens 无反色 token） */
 .arch-act.arch-del {
   border-color: rgba(208, 92, 82, 0.35);
   background: rgba(208, 92, 82, 0.12);
@@ -4301,9 +4319,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   color: #ffffff;
 }
 
-/* --- C2 娑堟伅鍒嗗弶鎸夐挳 + 鍒嗘敮鏍?tab --- */
-/* 鍒嗗弶鎸夐挳宸茬Щ鍒颁竴杞?output 缁撳熬锛?turn-acts锛夛紝姘旀场鏃佸彧鐣欐帓闃熸搷浣滅粍 */
-/* 鍒嗘敮鏍戝垪琛細鏁磋鍙偣锛堝垏鎹細璇濓級鎵嶆寕 hover 楂樹寒锛涘綋鍓嶆敮琛屼笉鍙偣銆佷粎 accent 杈规鏍囩ず */
+/* --- C2 消息分叉按钮 + 分支树 tab --- */
+/* 分叉按钮已移到一轮 output 结尾（.turn-acts），气泡旁只留排队操作组 */
+/* 分支树列表：整行可点（切换会话）才挂 hover 高亮；当前支行不可点、仅 accent 边框标示 */
 .bt-list { padding: 6px 8px; }
 .bt-row {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
@@ -4316,16 +4334,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .bt-row.cur { border-color: var(--accent); color: var(--text); cursor: default; }
 .bt-row.cur:hover { background: none; }
 .bt-meta { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
-/* 瀛愬垎鏀缉杩?+ 绔栫嚎寮曞绾匡紙姣忔繁涓€绾у祵濂椾竴灞傚鍣紝娣卞害涓嶉檺鏍峰紡缁熶竴锛?*/
+/* 子分支缩进 + 竖线引导线（每深一级嵌套一层容器，深度不限样式统一） */
 .bt-kids { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
-/* 绌烘€佹彁绀?*/
+/* 空态提示 */
 .bt-empty { padding: 18px 14px; color: var(--faint); font-size: var(--ui-fs-base); line-height: 1.6; }
 
-/* 浼氳瘽鏍戦〉锛?tree 鍙虫爮鐗堬級锛氭潯鐩涓轰富浣擄紝鏍戝舰寮曞绾胯蛋绛夊鍓嶇紑鍒?*/
+/* 会话树页（/tree 右栏版）：条目行为主体，树形引导线走等宽前缀列 */
 .st-page { display: flex; flex-direction: column; height: 100%; }
 .st-bar { padding: 6px 8px 0; }
 .st-list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
-/* 鏁磋鍙偣锛堣烦杞級鎵嶆寕 hover 楂樹寒锛涘鑸繘琛屼腑鏁磋绂佺敤 */
+/* 整行可点（跳转）才挂 hover 高亮；导航进行中整行禁用 */
 .st-row {
   display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left;
   border: none; border-radius: var(--r-md); background: none; padding: 4px 6px; font: inherit;
@@ -4334,14 +4352,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .st-row:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
 .st-row:disabled { opacity: .55; cursor: default; }
-/* 鏍戝舰鍓嶇紑鍒楋細绛夊鎵嶈兘淇濊瘉瀵艰建瀵归綈锛圕JK 涓嶈繘杩欎竴鍒楋級 */
+/* 树形前缀列：等宽才能保证导轨对齐（CJK 不进这一列） */
 .st-prefix {
   flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--ui-fs-xs); color: var(--faint); white-space: pre;
 }
 .st-rail { display: inline-block; width: 3ch; }
 .st-conn { color: var(--faint); }
-/* 琛屾枃鏈細鎴柇鍗曡锛涜鑹茬潃鑹诧紙token 璇箟瀵归綈 chat 鍖?user/assistant/tool 灞傛锛?*/
+/* 行文本：截断单行；角色着色（token 语义对齐 chat 区 user/assistant/tool 层次） */
 .st-text {
   flex: 1; min-width: 0; font-size: var(--ui-fs-base);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -4350,23 +4368,23 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .st-asst { color: var(--green); }
 .st-tool { color: var(--faint); }
 .st-sys { color: var(--faint); font-size: var(--ui-fs-xs); }
-/* 娲昏穬璺緞锛堟牴鈫掑綋鍓嶅彾锛夋爣璁帮細accent 鍦嗙偣 + 鏂囨湰鎻愪寒 */
+/* 活跃路径（根→当前叶）标记：accent 圆点 + 文本提亮 */
 .st-dot { color: var(--accent); margin-right: 4px; }
 .st-row.on-path .st-text { color: var(--text); }
 .st-row.on-path .st-user { color: var(--accent); }
 .st-row.on-path .st-asst { color: var(--green); }
 .st-label { color: var(--yellow); }
-/* 褰撳墠鍙跺窘鏍?+ 鏃堕棿锛氬彸鍒楀浐瀹氾紝涓嶉殢鏂囨湰鎴柇 */
+/* 当前叶徽标 + 时间：右列固定，不随文本截断 */
 .st-ts { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
 .st-confirm-text {
   max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* 鈹€鈹€ 闃舵5锛氬彸鏍忕粓绔?+ 娴忚鍣?pane 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ── 阶段5：右栏终端 + 浏览器 pane ───────────────────────────────────── */
 
-/* xterm.js 缁撴瀯鏍峰紡锛氬唴鑱旇嚜 @xterm/xterm css锛圡IT锛岄殢 node_modules 鐗堟湰鍗囩骇鏃跺悓姝ユ牳瀵癸級銆?
-   DOM 鍒嗗眰锛坴iewport/screen canvas/helper textarea锛夌敱搴撶増鏈喅瀹氾紝鍕挎墜鏀圭粨鏋勶紱
-   浠?viewport 鑳屾櫙鎸夋湰椤圭洰鏀逛负閫忔槑锛堥殣钘忔粴鍔ㄦ潯銆佸簳鑹茶蛋 xterm theme.background锛夈€?*/
+/* xterm.js 结构样式：内联自 @xterm/xterm css（MIT，随 node_modules 版本升级时同步核对）。
+   DOM 分层（viewport/screen canvas/helper textarea）由库版本决定，勿手改结构；
+   仅 viewport 背景按本项目改为透明（隐藏滚动条、底色走 xterm theme.background）。 */
 .xterm {
     position: relative;
     user-select: none;
@@ -4415,8 +4433,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 .xterm .xterm-viewport {
-    /* 鍘熷簱姝ゅ涓?#000锛坢ac 婊氬姩鏉′笉閫忔槑鑳屾櫙锛夛紝鏈」鐩殣钘忔粴鍔ㄦ潯涓斾富棰樺簳鑹茶蛋
-       xterm theme.background锛屾敼閫忔槑璁╁崱鐗囧簳閫忓嚭 */
+    /* 原库此处为 #000（mac 滚动条不透明背景），本项目隐藏滚动条且主题底色走
+       xterm theme.background，改透明让卡片底透出 */
     background-color: transparent;
     overflow-y: scroll;
     cursor: default;
@@ -4540,7 +4558,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     position: relative;
 }
 
-/* 鈹€鈹€ 缁堢 pane锛堝彸鏍忥級锛氬崱鐗囧簳 + 鍐呰竟璺濓紝闅愯棌 xterm 鍘熺敓婊氬姩鏉★紙ZCode 鍚屾锛?鈹€鈹€ */
+/* ── 终端 pane（右栏）：卡片底 + 内边距，隐藏 xterm 原生滚动条（ZCode 同款） ── */
 .tpane {
   display: flex; flex-direction: column;
   height: 100%; min-height: 0;
@@ -4554,13 +4572,13 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .tpane-host .xterm-viewport { scrollbar-width: none; }
 .tpane-host .xterm-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
-/* 鈹€鈹€ 娴忚鍣?pane锛堝彸鏍忥紝澶嶅埢 ZCode EmbeddedBrowserPaneParts 甯冨眬锛?鈹€鈹€ */
+/* ── 浏览器 pane（右栏，复刻 ZCode EmbeddedBrowserPaneParts 布局） ── */
 .bpane {
   display: flex; flex-direction: column;
   height: 100%; min-height: 0;
   background: var(--card);
 }
-/* 宸ュ叿鏍忥細44px 楂橈紝icon 閽?+ 鍦板潃鏍?+ 鏇村 */
+/* 工具栏：44px 高，icon 钮 + 地址栏 + 更多 */
 .bpane-bar {
   flex: none;
   display: flex; align-items: center; gap: 4px;
@@ -4569,7 +4587,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .bpane-bar .icon-btn:disabled { opacity: .4; cursor: default; }
 .bpane-bar .icon-btn:disabled:hover { background: none; color: inherit; }
-/* 鍦板潃鏍忥細鍐呭祵鍗￠潰锛屽姞杞芥€佸乏渚ц浆鍦?*/
+/* 地址栏：内嵌卡面，加载态左侧转圈 */
 .bpane-addr {
   flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 6px;
@@ -4592,13 +4610,13 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font: inherit; font-size: var(--ui-fs-sm); color: var(--text);
 }
 .bpane-input::placeholder { color: var(--faint); }
-/* 鏇村鑿滃崟閿氱偣 */
+/* 更多菜单锚点 */
 .bpane-more-wrap { position: relative; }
-.bpane-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; z-index: 30; }
-/* 瑙嗗彛锛歩frame 閾烘弧锛岀┖鎬?閿欒鎬佸彔鍔犲眰 */
+.bpane-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; z-index: 500; }
+/* 视口：iframe 铺满，空态/错误态叠加层 */
 .bpane-view { flex: 1; min-height: 0; position: relative; background: #fff; }
 .bpane-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
-/* 绌烘€侊細灞呬腑鍥炬爣 + 鏍囬/鍓枃 */
+/* 空态：居中图标 + 标题/副文 */
 .bpane-empty {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -4608,7 +4626,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .bpane-empty-ic { color: var(--faint); margin-bottom: 8px; }
 .bpane-empty-tt { font-size: var(--ui-fs-md); font-weight: 600; color: var(--text); }
 .bpane-empty-sub { font-size: var(--ui-fs-sm); color: var(--dim); max-width: 320px; line-height: 1.6; }
-/* 鍔犺浇閿欒鎬侊細閿欒鍥炬爣 + 鏂囨 + 閲嶈瘯/澶栭儴鎵撳紑 */
+/* 加载错误态：错误图标 + 文案 + 重试/外部打开 */
 .bpane-err {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -4628,12 +4646,12 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .bpane-err-acts .btn:hover { background: var(--panel-3); }
 
-/* 鈹€鈹€ P6: streamdown 鈹€鈹€
-   assistant markdown 娓叉煋寮曟搸鎹?streamdown锛坲i-src/components/chat/AssistantMsg.tsx锛夈€?
-   streamdown 鑷甫鐨?Tailwind utility 涓嶅湪鏈粨 @source 鎵弿鑼冨洿锛堢瓑浜庤嚜甯︽牱寮忓叏鍏筹級锛?
-   浠ｇ爜鍧楁寜鏁翠綋鍗＄墖鍛堢幇锛氱嫭绔嬭瑷€鏍忋€佸崱鐗囧紡浠ｇ爜鍖恒€佹爣棰樻爮鍐呭鍒舵寜閽€?
-   浠ｇ爜 token 棰滆壊鏉ヨ嚜 Shiki 鍙屼富棰樼殑琛屽唴 CSS 鍙橀噺锛氭祬鑹茶 --sdm-c銆佹繁鑹茶 --shiki-dark锛?
-   璺熼殢 html[data-theme] 鍗虫椂鍒囨崲锛堟枃浠堕〉鏌撹壊浠嶈蛋 ui-src/lib/highlighter.ts锛屼簰涓嶅奖鍝嶏級銆?*/
+/* ── P6: streamdown ──
+   assistant markdown 渲染引擎换 streamdown（ui-src/components/chat/AssistantMsg.tsx）。
+   streamdown 自带的 Tailwind utility 不在本仓 @source 扫描范围（等于自带样式全关），
+   代码块按整体卡片呈现：独立语言栏、卡片式代码区、标题栏内复制按钮。
+   代码 token 颜色来自 Shiki 双主题的行内 CSS 变量：浅色读 --sdm-c、深色读 --shiki-dark，
+   跟随 html[data-theme] 即时切换（文件页染色仍走 ui-src/lib/highlighter.ts，互不影响）。 */
 .md-body [data-streamdown="code-block"] {
   display: block !important;
   flex: none !important;
@@ -4685,7 +4703,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: block;
   width: 13px !important;
   height: 13px !important;
-  transform: translateY(-2px); /* 瀵归綈鑻辨枃 Baseline锛堝垏骞?abcd 搴曡竟锛屼笉闅?gy 闄嶇瑪涓嬪欢锛?*/
+  transform: translateY(-2px); /* 对齐英文 Baseline（切平 abcd 底边，不随 gy 降笔下延） */
 }
 .md-body [data-streamdown="code-block-header"] {
   display: flex;
@@ -4705,7 +4723,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   font-size: var(--ui-fs-sm);
   text-transform: lowercase;
 }
-/* Streamdown 鐨勬寜閽寘瑁呭櫒鑷甫璐?margin锛涙诞鍒版爣棰樻爮鍙充晶锛屼笉鍗犱唬鐮佸尯楂樺害銆?*/
+/* Streamdown 的按钮包装器自带负 margin；浮到标题栏右侧，不占代码区高度。 */
 .md-body [data-streamdown="code-block"] > :not([data-streamdown]) {
   position: absolute !important;
   top: 0 !important;
@@ -4834,8 +4852,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   white-space: pre-wrap !important;
   overflow-wrap: anywhere;
 }
-/* Shiki 鍙屼富棰?token锛氬彉閲忓啓鍦?token span 鐨勮鍐?style 涓婏紱浠呭甫搴曡壊鐨?token锛坉iff 绫伙級
-   鎵嶅簲鐢ㄨ儗鏅彉閲忥紝鏅€?token 娌跨敤褰撳墠涓婚鐨勬枃瀛楄壊銆?*/
+/* Shiki 双主题 token：变量写在 token span 的行内 style 上；仅带底色的 token（diff 类）
+   才应用背景变量，普通 token 沿用当前主题的文字色。 */
 .md-body [data-streamdown="code-block-body"] pre span[style] {
   color: var(--sdm-c, inherit);
 }
@@ -4848,13 +4866,13 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 [data-theme="dark"] .md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
   background-color: var(--shiki-dark-bg, var(--sdm-tbg));
 }
-/* 琛ㄦ牸澶栧３锛氬榻?.md-table-wrap锛坱able 鏈綋缁?components 鎸?.md-table 绫伙紝璧版棦鏈夎鍒欙級 */
+/* 表格外壳：对齐 .md-table-wrap（table 本体经 components 挂 .md-table 类，走既有规则） */
 .md-body [data-streamdown="table-wrapper"] {
   width: 100%;
   overflow-x: auto;
   margin: 14px 0;
 }
-/* 鍥剧墖锛氭棫绠＄嚎涓嶆覆鏌撳浘鐗囷紝杩欓噷鍙仛涓嶇牬鐗堢殑鍩虹鏀舵暃 */
+/* 图片：旧管线不渲染图片，这里只做不破版的基础收敛 */
 .md-body [data-streamdown="image-wrapper"] {
   margin: 14px 0;
 }
@@ -4863,18 +4881,18 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-radius: 8px;
 }
 
-/* ============================== P7锛圕omposer 鈫?Lexical锛?============================== */
-/* contentEditable 鎵挎帴鏃?textarea 鐨?#input 鏍峰紡锛氶珮搴﹂殢鍐呭鑷€傚簲锛堚墹120px 鐢?#input 鐨?
-   max-height 閽冲埗锛岃秴鍑哄唴閮ㄦ粴鍔ㄢ€斺€攖extarea 鏃朵唬鐨?resizeInput JS 涓嶅啀闇€瑕侊級锛屾姌琛岃涔夊榻?
-   textarea 鐨?pre-wrap + break-word锛沷verflow-y 琛ヤ笂锛坉iv 鏃?UA 榛樿婊氬姩锛?*/
+/* ============================== P7（Composer → Lexical） ============================== */
+/* contentEditable 承接旧 textarea 的 #input 样式：高度随内容自适应（≤120px 由 #input 的
+   max-height 钳制，超出内部滚动——textarea 时代的 resizeInput JS 不再需要），折行语义对齐
+   textarea 的 pre-wrap + break-word；overflow-y 补上（div 无 UA 默认滚动） */
 #input.inp-ce {
   overflow-y: auto;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   cursor: text;
 }
-/* placeholder 瑕嗙洊灞傦細ContentEditable 鐨勫崰浣嶅鍣ㄦ棤瀹氫綅锛屾寕鍦?.lex-wrap锛坮elative锛変笂瀵归綈
-   #input 鏂囨湰璧风偣锛?input 鏃?padding锛宲adding 鍦?#composer锛夛紝浠呯┖鍐呭鏃舵覆鏌?*/
+/* placeholder 覆盖层：ContentEditable 的占位容器无定位，挂在 .lex-wrap（relative）上对齐
+   #input 文本起点（#input 无 padding，padding 在 #composer），仅空内容时渲染 */
 .lex-wrap { position: relative; }
 .lex-ph {
   position: absolute;
@@ -4886,9 +4904,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
-/* bash 妯″紡锛? 鍓嶇紑锛塸laceholder 鍙樿壊锛氬榻愭棫 #composer.bash-mode #input::placeholder */
+/* bash 模式（! 前缀）placeholder 变色：对齐旧 #composer.bash-mode #input::placeholder */
 #composer.bash-mode .lex-ph { color: var(--bash); }
-/* 琛ュ叏 chip锛園鏂囦欢 / 鏂滄潬鍛戒护鍘熷瓙鑺傜偣锛夛細灏忚兌鍥婏紝鑹叉澘鍙?token锛屾繁娴呬富棰樺悇琛?*/
+/* 补全 chip（@文件 / 斜杠命令原子节点）：小胶囊，色板取 token，深浅主题各表 */
 .chip {
   display: inline-block;
   background: var(--panel-2);
@@ -4902,7 +4920,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   vertical-align: baseline;
 }
 
-/* 鈹€鈹€ Windows 鑷粯鏍囬鏍忥紙decorations:false锛汿itleBar.tsx 浠?Windows 娓叉煋锛夆攢鈹€ */
+/* ── Windows 自绘标题栏（decorations:false；TitleBar.tsx 仅 Windows 渲染）── */
 .app-titlebar {
   position: fixed;
   inset: 0 0 auto 0;
@@ -4933,7 +4951,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .titlebar-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); }
 .titlebar-btn.titlebar-close:hover { background: #e81123; color: #fff; }
 
-/* 鏃犺竟妗嗗悗鍐呭鏁翠綋璁╁嚭鏍囬鏍忛珮搴︼紱鍏ㄥ睆璁剧疆寮瑰眰鍚屾涓嬬Щ */
+/* 无边框后内容整体让出标题栏高度；全屏设置弹层同步下移 */
 body.has-titlebar { padding-top: 36px; }
 body.has-titlebar #settings { top: 36px; }
 
@@ -4951,7 +4969,4 @@ body.has-titlebar #settings { top: 36px; }
   border-radius: 1px; background: transparent;
 }
 #setNavResizer:hover::after, body.resizing #setNavResizer::after { background: var(--blue); }
-/* 滚动条默认透明，hover 才现（WebView2 默认是常驻经典滚动条） */
-.set-nav-scroll::-webkit-scrollbar { width: 5px; }
-.set-nav-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
-.set-nav-scroll:hover::-webkit-scrollbar-thumb { background: var(--panel-3); }
+/* 滚动条规则见文件开头「全局滚动条统一」段（同一套 hover 才现语义） */

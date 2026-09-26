@@ -17,7 +17,8 @@
     "smoke:plugins": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-plugins.ts",
     "check:capabilities": "node scripts/check-capabilities.mjs",
     "check:boundaries": "node scripts/check-host-boundaries.mjs",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && bun run ui:typecheck"
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-encoding.mjs && bun run ui:typecheck"
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",

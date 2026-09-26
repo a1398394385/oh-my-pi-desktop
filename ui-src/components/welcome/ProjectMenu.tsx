@@ -3,7 +3,7 @@
 // 搜索态随挂载重置为空（对应原版打开时 searchInput.value=""），40ms 后聚焦搜索框。
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { useAppStore, send, toast, invoke, getAvailableProjects, setWelcomeProject } from "../../store";
+import { useAppStore, send, toast, invoke, getAvailableProjects, setWelcomeProject, pathBase } from "../../store";
 import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
 
@@ -42,7 +42,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
   // 过滤：项目名或完整路径包含关键字（对照原版 renderWbProjectList）
   const matched = kw
     ? available.filter((p) => {
-        const name = p.cwd.split("/").filter(Boolean).pop() || p.cwd;
+        const name = pathBase(p.cwd) || p.cwd;
         return name.toLowerCase().includes(kw) || p.cwd.toLowerCase().includes(kw);
       })
     : available;
@@ -122,7 +122,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
               }}
             >
               <Icon name="folderLine" size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
-              <span className="wb-proj-item-name flex-1 truncate">{p.cwd.split("/").filter(Boolean).pop() || p.cwd}</span>
+              <span className="wb-proj-item-name flex-1 truncate">{pathBase(p.cwd) || p.cwd}</span>
             </div>
           ))
         )}

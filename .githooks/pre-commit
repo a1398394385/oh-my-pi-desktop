@@ -1,0 +1,11 @@
+#!/bin/sh
+# 提交前编码门禁（RULE-009 的可执行部分；背景见 .agents/BUGS.md BUG-026）。
+# 只扫暂存区，拦住「整文件被非 UTF-8 通道回写」这类改动——乱码混在正常 diff 里最难肉眼发现。
+# 启用：git config core.hooksPath .githooks
+# 绕过（需在 commit 描述里写明理由）：git commit --no-verify
+command -v node >/dev/null 2>&1 || { echo "[pre-commit] 未找到 node，跳过编码门禁"; exit 0; }
+if ! node scripts/check-encoding.mjs --staged; then
+  echo "[pre-commit] 拦截：暂存内容含乱码或非法 UTF-8，先修好再提交。"
+  echo "             乱码文件恢复方法（按引入提交的 diff 行对回填）见 .agents/BUGS.md BUG-026。"
+  exit 1
+fi

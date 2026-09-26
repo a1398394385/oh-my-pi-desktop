@@ -43,6 +43,7 @@
    - 严禁空话、客套话与无意义的铺垫。
 5. **外科手术式修改**：只做解决当前问题所必需的修改，不做过度推测性设计，保持既有代码风格。
 6. **文档体系**：写/改任何 .md 文档前先读 `docs/documentation.md`（文档类型登记表 / 决策树 / 长度预算 / SSOT 原则）。`.agents/` 是 agent 工作文档区（防回归 RULE / BUGS 事故账本 / ADR notes / 工作流约定），入口见 `.agents/README.md`；外部依赖坑记 `docs/PITFALLS.md`，本仓库 bug 记 `.agents/BUGS.md`。
+7. **编码强制红线**：全部文本文件一律 UTF-8（编辑器约束见 `.editorconfig`），禁止按系统 ANSI/GBK 猜测编码读写。`bun run check` 内含编码门禁（`scripts/check-encoding.mjs`：非法 UTF-8 / 乱码特征字符 / 双重编码指纹），`.githooks/pre-commit` 拦截暂存区乱码（`git config core.hooksPath .githooks` 已设，绕过需在 commit 描述写明理由）；整文件回写源码的读写两侧必须显式 UTF-8。规则 SSOT 见 `.agents/rules.md` RULE-009，乱码恢复方法见 BUG-026。
 
 ## 设置页一致性规范（最高优先级 UI 约束）
 

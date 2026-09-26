@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 8 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 9 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -16,6 +16,7 @@
 | RULE-006 | 展开/详情渲染体不得无条件解引用异步到达的内容；整树必须包在 ErrorBoundary 内 | 全部 UI 渲染 |
 | RULE-007 | 键盘上下导航切换选择的滚动列表必须绑定激活项 scrollIntoView 视口跟随 | 全部交互式列表与下拉浮层 |
 | RULE-008 | 列出外部来源资产的宿主扫描必须复用底座来源判定,禁止自建目录枚举绕过来源开关 | host/ 资产发现层 |
+| RULE-009 | 整文件回写源码必须显式 UTF-8,回写后必须核对非 ASCII 内容未变 | 全部脚本/生成器/批量改写 |
 
 ---
 
@@ -104,3 +105,13 @@
 **How to apply**:新增/修改 `host/assets.ts` 内任何 `{ dir, provider }` 源列表时,列表循环里必须有 `isAssetSourceOn(provider, level)`(或等效的来源判定)在扫描前 continue;给 `loadCapability` 传参时不要带 `includeDisabled`,除非该调用专门为扩展中心这类「管理面板」服务。review checklist:diff 里出现新的 `path.join(os.homedir(), ".xxx"...)` 外部目录 ↔ 同一路径集合上有来源判定;出现 `includeDisabled: true` ↔ 该函数不是管理面板。回归验证:`bun scripts/probe-asset-sources.ts`(四组来源开关断言,改前红)。
 
 **关联**:BUG-025
+
+### RULE-009: 整文件回写源码必须显式 UTF-8,回写后必须核对非 ASCII 内容未变
+
+**规则**:任何「读出全文 → 改写 → 写回」的操作(脚本批量替换、格式化、生成器、编辑器之外的文本通道)必须两个方向都显式 UTF-8:Node `fs.readFile(f, "utf8")` / `Buffer` + `TextDecoder`(默认 UTF-8);Python `open(f, encoding="utf-8", newline="")`;PowerShell 必须 `-Encoding utf8`,禁止依赖 `Get-Content`/`Set-Content`/`Out-File` 的 ANSI 默认值。回写后**必须**核对:diff 只命中预期行,且非 ASCII 文本零变化(乱码标记字符 `鈹 锛 銆 鈥` 与 U+20AC 计数为 0、抽查一段中文、`--numstat` 行数合理)。
+
+**Why**:BUG-026——`9b077bd` 一次整文件回写把 `ui/style.css` 504 行中文注释变成 `鈹€鈹€ 涓诲璇濆尯鍩熸秷鎭竷灞€...` 这类双重编码乱码:UTF-8 字节被按中文 ANSI(CP936) 解码后重新以 UTF-8 写出,非法字节对按 `?` 兜底还吃掉了 ASCII 字节。文件仍是合法 UTF-8(grep/`file`/agent 读到的都是乱码但没有任何报错),坏点混在正常 diff 里直接提交,恢复不可逆(`?` 处字节已丢)。同批回写还夹带了真实代码改动,使「整份取父版本」的粗暴恢复方式失效。
+
+**How to apply**:写批量改写脚本前先确认读/写两侧都显式 UTF-8;写回后立刻跑门禁 `bun run check:encoding`(或 `node scripts/check-encoding.mjs`;给未跟踪文件用 `node scripts/check-encoding.mjs <file>`)。门禁三项:非法 UTF-8 字节、乱码特征字符(GBK 误读 UTF-8 的标点/外来字母/PUA 残片)、双重编码指纹(阈值经 67455 行干净语料校准:0 误报、对坏版本召回 493/507 行)。提交侧由 `.githooks/pre-commit` 拦暂存区(`git config core.hooksPath .githooks`;`--no-verify` 绕过需在 commit 描述写明理由)。确需在文档里引用乱码做证据,把该文件加进 `scripts/check-encoding.mjs` 的 `EVIDENCE_DOCS`(仅豁免乱码指纹,编码合法性仍查)。给 agent 的整文件改写任务(含 `scripts/`、`host/` 里的生成器)同样适用。review checklist:diff 里出现大段非 ASCII 中文改动 ↔ 是否预期;出现无 `encoding=` 的 `open(`、无 `-Encoding utf8` 的 `Set-Content`、`toString("latin1"/"binary")` ↔ 该处是否真的在处理非 UTF-8 数据源。真出事时的恢复顺序:先用「引入该次改动的提交 diff 的 `-`/`+` 行对」逐 hunk 精确回填,不要反解乱码(本例反推会漏 2/3 的行)。
+
+**关联**:BUG-026

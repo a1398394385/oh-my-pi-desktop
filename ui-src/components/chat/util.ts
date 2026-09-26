@@ -15,10 +15,41 @@ export function uniqueFiles(files: Iterable<unknown> | null | undefined): string
   return out;
 }
 
+// ---------- read 工具路径的 `:选择器` 后缀（语法对齐底座 pi-coding-agent 的 read 工具） ----------
+// 行号段：L5 / 5 / 5-16 / 5..16 / 5-、5+（开区间，尾数字可省）/ 5+150（自此 150 行）；
+// 可逗号串联 5-16,960-973（第三组可选，对齐底座 PMt 正则）
+const SEL_NUM = String.raw`L?\d+(?:(?:\.\.|[-+])L?\d*)?`;
+// 选择器段：raw / conflicts / img / 行号段 / -N（末尾 N 行）；段间用冒号串联（如 a.rs:2-4:raw）
+const SEL_SEG = new RegExp(`^(?:raw|conflicts|img|${SEL_NUM}(?:,${SEL_NUM})*|-\\d+(?:[-+]\\d+)?)$`, "i");
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+// 剥离 read 路径尾部的全部 `:选择器` 段，返回纯文件路径（无选择器时原样返回）。
+// 图标/文件名/右栏请求都按干净路径走，否则 `style.css:683:raw` 取不到 .css 类型图标。
+export function stripReadSelector(p: unknown): string {
+  let path = String(p || "");
+  const schemeLen = (path.match(URL_SCHEME)?.[0] || "").length; // 跳过 scheme，避免把 http: 当选择器起点
+  for (;;) {
+    const i = path.lastIndexOf(":");
+    if (i <= schemeLen || !SEL_SEG.test(path.slice(i + 1))) return path;
+    path = path.slice(0, i);
+  }
+}
+
+// 选择器里的首个行范围（右栏文件视图高亮用）：`a.css:683:raw` → [683,683]、`a.rs:50+150` → [50,199]；
+// 无数字段（raw/conflicts/img/-N）返回 null
+export function readSelectorRange(p: unknown): [number, number] | null {
+  const s = String(p || "");
+  const m = s.slice(stripReadSelector(s).length).replace(/^:/, "").match(/^L?(\d+)(?:(\.\.|[-+])(\d+)?)?/i);
+  if (!m) return null;
+  const start = Number(m[1]);
+  if (!m[2]) return [start, start];
+  if (m[2] === "+") return [start, m[3] ? start + Number(m[3]) - 1 : start];
+  return [start, m[3] ? Number(m[3]) : start];
+}
+
 // 路径拆分为目录与文件名（含尾部分隔符，剥离行号选择器等后缀以保持路径清洁）
 export function splitPath(p: unknown): { dir: string; name: string } {
-  let norm = String(p || "").replace(/\\/g, "/");
-  norm = norm.replace(/:\d+(?:-\d+)?$/, "");
+  const norm = stripReadSelector(String(p || "").replace(/\\/g, "/"));
   const i = norm.lastIndexOf("/");
   if (i < 0) return { dir: "", name: norm };
   return { dir: norm.slice(0, i + 1), name: norm.slice(i + 1) };

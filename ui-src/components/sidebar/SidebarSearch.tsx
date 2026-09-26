@@ -1,7 +1,7 @@
 // 侧边栏会话搜索卡片：位于新建任务下方，卡片样式对齐新建任务，支持按会话标题搜索，点击或回车切换到对应会话详情页。
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
+import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, pathBase } from "../../store";
 import type { DiskSessionRow } from "../../types/frames";
 import Icon from "../../Icon";
 import { fmtAgo, sessionLabel } from "./util";
@@ -37,7 +37,7 @@ export default function SidebarSearch() {
       const displayTitle = sessionLabel(s);
       if (!displayTitle || displayTitle === "（空会话）") return;
       seenPaths.add(s.path);
-      const repo = cwd.split("/").filter(Boolean).pop() || "";
+      const repo = pathBase(cwd);
       list.push({
         path: s.path,
         title: displayTitle,

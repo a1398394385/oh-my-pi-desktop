@@ -39,7 +39,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-[110] inline-flex w-fit max-w-xs items-center gap-1.5 rounded-md border border-line bg-[var(--ctl-bg)] px-2 py-1 text-ui-sm text-text shadow-[0_8px_24px_rgba(0,0,0,.35)] outline-none",
+          "z-[600] inline-flex w-fit max-w-xs items-center gap-1.5 rounded-md border border-line bg-[var(--ctl-bg)] px-2 py-1 text-ui-sm text-text shadow-[0_8px_24px_rgba(0,0,0,.35)] outline-none",
           "[--pop-from:0px] data-[state=delayed-open]:[animation:popIn_.12s_ease-out] data-[state=instant-open]:[animation:popIn_.12s_ease-out] data-[state=closed]:[animation:none]",
           className,
         )}

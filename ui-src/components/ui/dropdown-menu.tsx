@@ -36,7 +36,7 @@ function DropdownMenuContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-[60] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[0_12px_32px_rgba(0,0,0,.5)] outline-none",
+          "z-[500] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[0_12px_32px_rgba(0,0,0,.5)] outline-none",
           "max-h-(--radix-dropdown-menu-content-available-height) max-w-(--radix-dropdown-menu-content-available-width) min-w-[150px] origin-(--radix-dropdown-menu-content-transform-origin)",
           "[--pop-from:6px] data-[state=open]:[animation:popIn_.18s_ease-out] data-[state=closed]:[animation:none]",
           className,
@@ -213,7 +213,7 @@ function DropdownMenuSubContent({
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
       className={cn(
-        "z-[60] flex flex-col overflow-hidden rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[0_12px_32px_rgba(0,0,0,.5)] outline-none",
+        "z-[500] flex flex-col overflow-hidden rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[0_12px_32px_rgba(0,0,0,.5)] outline-none",
         "min-w-[150px] origin-(--radix-dropdown-menu-content-transform-origin)",
         "[--pop-from:6px] data-[state=open]:[animation:popIn_.18s_ease-out] data-[state=closed]:[animation:none]",
         className,

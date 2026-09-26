@@ -5,7 +5,7 @@
 // 对照原版 offsetLeft / clientHeight-offsetTop 定位写法）；两菜单互斥，
 // window click / blur 关闭（对照 shell.js closeAllMenus 的全局关闭语义）。
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { useAppStore, toast } from "../store";
+import { useAppStore, toast, pathBase } from "../store";
 import Icon from "../Icon";
 import Composer from "./Composer";
 import ProjectMenu from "./welcome/ProjectMenu";
@@ -60,9 +60,7 @@ export default function Welcome() {
     setBranchMenu(e.currentTarget.getBoundingClientRect());
   };
 
-  const projName = newSessionProject
-    ? newSessionProject.split("/").filter(Boolean).pop() || newSessionProject
-    : "项目";
+  const projName = newSessionProject ? pathBase(newSessionProject) || newSessionProject : "项目";
 
   return (
     <div id="welcomeScreen" className="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto pt-[30px] px-[20px] pb-[80px]">

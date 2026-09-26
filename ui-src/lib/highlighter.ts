@@ -6,6 +6,7 @@
 // 跟随 app 的 html[data-theme]，切换主题时按新主题重新 tokenize（缓存键含主题）。
 import { createHighlighterCore, type HighlighterCore, type LanguageRegistration } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+import { pathBase } from "../store/utils";
 import darkPlus from "shiki/themes/dark-plus.mjs";
 import lightPlus from "shiki/themes/light-plus.mjs";
 import langJs from "shiki/langs/javascript.mjs";
@@ -92,7 +93,7 @@ const EXT_TO_LANG: Record<string, string> = {
 
 // 按文件名/扩展名取语言 id；Dockerfile/Makefile 这类无扩展名按文件名匹配
 export function langOfPath(path: string | null | undefined): string | null {
-  const base = String(path || "").split("/").pop() || "";
+  const base = pathBase(path);
   const lower = base.toLowerCase();
   if (lower === "dockerfile" || lower.endsWith(".dockerfile")) return "docker";
   if (lower === "makefile" || lower === "gnumakefile") return "make";

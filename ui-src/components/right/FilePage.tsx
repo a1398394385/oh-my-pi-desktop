@@ -2,7 +2,7 @@
 //（read_file 整文件 / read_image 图片预览；rb-head 面包屑固定 + rb-scroll 滚动骨架）。
 import { Fragment, useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { useAppStore, setBump, send } from "../../store";
+import { useAppStore, setBump, send, pathBase } from "../../store";
 import { fileTypeIcon } from "../../../ui/icons";
 import Icon from "../../Icon";
 import { langOfPath } from "../../lib/highlighter";
@@ -33,7 +33,7 @@ function FileTree() {
         <span className="inline-flex items-center text-faint">
           <Icon name="folder" size={14} />
         </span>
-        <span className="min-w-0 overflow-hidden text-ellipsis">{s.cwd.split("/").filter(Boolean).pop() || s.cwd}</span>
+        <span className="min-w-0 overflow-hidden text-ellipsis">{pathBase(s.cwd) || s.cwd}</span>
       </div>
       <FileTreeLevel dirPath={s.cwd} depth={1} />
     </>
@@ -120,8 +120,9 @@ function openFileView(full: string) {
 // 文件路径面包屑：项目内「项目名 › 相对段」，项目外全路径；分隔符用向右箭头图标
 function FileCrumb({ absPath }: { absPath: string }) {
   const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
-  const root = (cwd || "").replace(/\/+$/, "");
-  const abs = absPath.replace(/\/+$/, "");
+  // Windows 反斜杠路径先归一为 "/"，否则前缀匹配失败会把整条路径渲染成一个段
+  const root = (cwd || "").replace(/\\/g, "/").replace(/\/+$/, "");
+  const abs = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
   let segs: (string | undefined)[];
   if (root && abs.startsWith(root + "/")) {
     segs = [root.split("/").filter(Boolean).pop(), ...abs.slice(root.length + 1).split("/")];
@@ -233,5 +234,5 @@ function FvImage({ fv }: { fv: FileViewState }) {
   if (ic.error) {
     return <div className="text-ui-xs text-faint mt-2 px-2">（{ic.error}）</div>;
   }
-  return <img className="block max-w-full h-auto bg-panel-2 border border-line rounded-md p-1.5 box-border" src={`data:${ic.mime};base64,${ic.data}`} alt={fv.path.split("/").pop()} />;
+  return <img className="block max-w-full h-auto bg-panel-2 border border-line rounded-md p-1.5 box-border" src={`data:${ic.mime};base64,${ic.data}`} alt={pathBase(fv.path)} />;
 }

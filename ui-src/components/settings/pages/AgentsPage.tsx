@@ -2,7 +2,7 @@
 // 作用域胶囊（全局 / Profile / 项目三级）+ 左侧资产列表 + 右侧行内编辑器。
 // 点击列表行读取该级 agent 定义（Markdown + YAML frontmatter）进编辑器，保存后新派生的子代理立即生效。
 import { useEffect, useState } from "react";
-import { useAppStore, send } from "../../../store";
+import { useAppStore, send, pathBase } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import ScopeSel from "../ScopeSel";
@@ -167,7 +167,7 @@ export default function AgentsPage() {
         </div>
         <div className={"set-card agent-editor" + (editorOpen ? "" : " hidden")} id="agentEditor">
           <div className="ae-head">
-            <b id="aeName">{selPath ? selPath.split("/").pop() : "—"}</b>
+            <b id="aeName">{selPath ? pathBase(selPath) : "—"}</b>
             <span id="aePath">{selPath ?? ""}</span>
             <span className="sp" />
             <input

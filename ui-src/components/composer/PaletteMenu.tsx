@@ -4,6 +4,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { placePaletteCard } from "./place";
+import { pathBase } from "../../store";
 import { BUILTIN_DESC_ZH } from "./commands-zh";
 
 /** @ 文件候选（mentionResult.matches 元素） */
@@ -51,7 +52,7 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
           let hint: string | null = null;
           if (mode === "file") {
             if (!("path" in it)) return null; // 类型守卫：mode 与 items 同源，file 候选必含 path
-            const tail = it.path.split("/").pop() || it.path;
+            const tail = pathBase(it.path) || it.path;
             label = it.dir ? tail + "/" : tail;
             key = it.path;
             desc = it.path;

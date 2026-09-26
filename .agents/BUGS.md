@@ -32,6 +32,8 @@
 | BUG-023 | 设置页面大量移植配置项下拉框点击无反应——层级遮挡、数字类型拦截与缺失枚举 | 2026-09-26 |
 | BUG-024 | 会话永不自动起标题——SDK 宿主未调用底座标题生成入口 | 2026-09-26 |
 | BUG-025 | 扩展页关掉来源后技能/MCP 页仍列出该来源资产——宿主自建目录扫描不查来源开关 | 2026-09-26 |
+| BUG-026 | 整份 ui/style.css 中文注释双重编码乱码——UTF-8 字节被按中文 ANSI/CP936 解码后回写 | 2026-09-27 |
+| BUG-027 | 读取「部分内容」时文件图标退化为通用图标——选择器后缀只剥了 `:N` 一种形态 | 2026-09-27 |
 
 ---
 
@@ -358,3 +360,23 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **修复**：`host/assets.ts` 新增来源判定 `isAssetSourceOn(provider, level)`，对齐底座 discovery 的加载条件（来源主开关 `isProviderEnabled` + 用户级 opt-in `isUserSourceEnabled` + claude/codex 技能级兼容开关 `skills.enableClaudeUser` / `enableCodexUser`；项目级只受主开关约束），技能 profile/project 两级目录扫描逐源过滤；技能与 MCP 的底座补充调用去掉 `includeDisabled: true`，与运行时加载行为一致。`host/bootstrap.ts` 补导出 `isProviderEnabled`。子智能体/钩子/记忆页只扫 omp 自有目录（`assetRoots`），本就没有外部来源，无需改动；扩展页仍由底座 `getAllProvidersInfo()` 驱动，关掉的来源行仍在（`enabled=false`），可随时点回。
 
 **教训**：宿主一旦自建「枚举外部工具目录」的发现逻辑，就等于把底座 discovery 的来源/opt-in 判定复制了一份并悄悄丢掉；凡列出外部来源资产的页面，都应复用底座的来源判定（或直接吃 `loadCapability`），并且不要用 `includeDisabled` 让页面比运行时看到更多。回归防线：`scripts/probe-asset-sources.ts`（关来源/开来源/opt-in/单来源粒度四组断言，改前红、改后绿）。
+
+### BUG-026: 整份 ui/style.css 中文注释双重编码乱码——UTF-8 字节被按中文 ANSI/CP936 解码后回写
+
+**现象**：agent / 编辑器 / grep 读 `ui/style.css` 时中文全部是乱码，如 `/* 鈹€鈹€ 涓诲璇濆尯鍩熸秷鎭竷灞€涓庢皵娉?鈹€鈹€ */`（真值 `/* ── 主对话区域消息布局与气泡 ── */`——反推容易看成「氛围」，说明启发式反解不可信）。文件本身是合法 UTF-8（`file` 报 UTF-8），所以「换编码打开」修不好；受影响行 504 行，横跨全文件。
+
+**根因**：`9b077bd` 提交把整份文件（524 增 / 505 删）经过了一条**按 Windows 中文 ANSI（CP936）解释字节的文本通道**：UTF-8 字节被当作 GBK 解码后再以 UTF-8 写回（`─` E2 94 80 → `鈹` + `€`(U+20AC←单字节 0x80)；`：` EF BC 9A → `锛`…）。偏离位由 .NET/PowerShell 类通道的 `?` 兜底产生，且**消费 2 字节**，连 ASCII 一起吃掉（`由 JS` → `鐢?JS`、`寮);` → `寮?;`），个别槽位映射到 PUA（U+E1F1）与西里尔/全角（`т`、`３`）。同一次提交还夹带了真实代码改动（`grid-template-columns: var(--setnav-w, 180px)`），所以父提交不能整文件取用。
+
+**修复**：以「引入该次改动的提交 diff」为真值：`git show -U0 9b077bd -- ui/style.css` 逐 hunk 把 `-`/`+` 行按序配对，得到 494 组「干净↔乱码」精确映射（行数不等的 hunk 仅 1 个，是纯新增的干净行）；对当前文件逐行替换命中项（501 行），提交映射未覆盖的 3 行（其后被再次编辑过）按反解 + 上下文单独修复。校验：乱码标记行归零；`/* */` 全量剔除后与修复前仅剩 3 行差异（2 处 `content: "鈼?"` → `● ` 的字面量还原，1 处被映射误还原的代码行改回 `--setnav-w`）；`bun run ui:typecheck` + `bun run ui:build` 通过，`?preview=1` 实机渲染正常。
+
+**教训**：非 UTF-8 通道回写源码，坏的不只注释（字符串字面量、乃至被连带替换的代码行都会变），且**不可逆**（`?` 处的字节已丢失）。可靠抓手是那次改动的 diff 行对，不是启发式反解——`emu(父版本行) == 当前行` 这种反推在本例中会漏 2/3 的行（PUA/西里尔/全角槽位与原工具映射不完全一致）。预防与门禁见 RULE-009。回归防线：`scripts/check-encoding.mjs`（非法 UTF-8 + 乱码特征字符 + 双重编码指纹；阈值经 67455 行干净语料校准，0 误报、对本例坏版本召回 493/507 行），已接入 `bun run check` 与 `.githooks/pre-commit`（`core.hooksPath=.githooks`，故意回放坏文件时 `git commit` 被拦截、HEAD 不变）。
+
+### BUG-027: 读取「部分内容」时文件图标退化为通用图标——选择器后缀只剥了 `:N` 一种形态
+
+**现象**：读取行显示 `读取 style.css:683:raw ui/`，左侧是通用文件图标（`ftFile`）而非 CSS 图标；点击该文件名请求右栏整文件时，`read_file` 带着 `:683:raw` 后缀（宿主必然 ENOENT）。
+
+**根因**：`FileChip` / `splitPath` / `openReadFileInSidebar` 只剥离 `:\d+(?:-\d+)?$` 一种后缀（10163b3 的部分读取图标补丁），而底座 read 的选择器是**冒号分段、可多段串联**，每段为 `raw | conflicts | img | 行号段（可逗号多段）| -N`（底座 `Yni`/`Vni`/`p2t`）。`style.css:683:raw` 尾部是 `:raw`，正则不匹配 → 整段选择器留在路径里 → 扩展名被算成 `css:683:raw` → 落回 `ftFile`；右栏请求同样带着选择器。
+
+**修复**：`ui-src/components/chat/util.ts` 新增 `stripReadSelector`（镜像底座语法 + URL scheme 保护，跳过 `https://` 的冒号）与 `readSelectorRange`（取选择器首个行范围供右栏行号高亮），`splitPath` 改走它；`FileChip`、`ReadRow`、`openReadFileInSidebar` 全部改用（后者顺带修好 `:N-K` 高亮与请求路径）。验证：一次性脚本断言 28 组选择器形态（`:683:raw`/`:2-4:raw`/`:5-16,960-973`/`:-60`/`:50+150`/`:50-`/`conflicts`/`:img`/URL/盘符路径）与 `style.css:683:raw → ftCss` 图标链路；`?preview=1` 注入四种选择器读取行，实机截图确认图标、文件名、目录三者均正确。
+
+**教训**：前端展示层复刻底座路径语法时必须照抄底座正则——「只处理最常见的 `:N`」在 `:raw`/`:conflicts`/多段场景下静默退化为通用图标，不报错、不进组、只是图标错。本仓暂无 ui-src 单测基建，回归防线为一次性冒烟（无长期守卫）。

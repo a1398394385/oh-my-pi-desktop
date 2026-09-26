@@ -1,0 +1,4 @@
+# git 只管行尾、不管编码（强制编码交给 .githooks/pre-commit + scripts/check-encoding.mjs）。
+# 这里只钉死一处必须 LF 的例外：钩子脚本的 shebang 若被 core.autocrlf=true 转成 CRLF，
+# sh 会报 "bad interpreter" 导致钩子静默/报错失效。
+.githooks/* text eol=lf

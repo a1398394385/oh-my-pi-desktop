@@ -2,7 +2,7 @@
 // DOM 结构与类名对照 ui/index.html 既有静态骨架（React 迁移期视觉零回归）；
 // 折叠/主题等壳交互自 ui-src/shell.js 对应平移，完整能力（resizer 拖动/缩放）见 IMPLEMENTATION_PLAN。
 import { useEffect } from "react";
-import { useAppStore } from "./store";
+import { useAppStore, pathBase } from "./store";
 import { initShell, toggleSidebar, toggleRightPanel } from "./shell";
 import Icon from "./Icon";
 import Sidebar from "./components/Sidebar";
@@ -35,7 +35,7 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
   const title = isCreatingNew
     ? "新建任务"
     : session
-      ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || session.cwd.split("/").pop()
+      ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
       : "选择左侧会话或新建任务";
   return (
     <div className="chat-head" data-tauri-drag-region="">

@@ -3,7 +3,7 @@
 // 展开态写入宿主 omp-desktop.json；组头通过 Pointer Events 参与拖拽排序，位移由 Sidebar 统一算。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { useAppStore, send, showWelcomeScreen } from "../../store";
+import { useAppStore, send, showWelcomeScreen, pathBase } from "../../store";
 import Icon from "../../Icon";
 import SessionRow from "./SessionRow";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./SessionRow";
@@ -153,7 +153,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
     useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
-  const name = p.name || p.cwd.split("/").filter(Boolean).pop() || p.cwd;
+  const name = p.name || pathBase(p.cwd) || p.cwd;
   return (
     <>
       <div

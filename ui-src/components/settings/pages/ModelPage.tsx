@@ -178,18 +178,31 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  // 浮层坐标：.sel 相对（offsetParent），一级菜单下弹对齐行位（两菜单 padding 均 5px，-5 对齐首行），
-  // 浮层与一级菜单边框交叠 4px；右缘越界翻到左侧弹出。越界判定用设置滚动容器（#setBody）可视右缘
+  // 浮层坐标：.sel 相对（offsetParent）。二级列表向上展开——底缘对齐供应商行底缘
+  // （两菜单 padding 均 5px，+5 让末行与行高对齐），向上不会撑出设置滚动区下缘；上方空间不足
+  // 则限高 + 内部滚动，顶缘最多到设置滚动区上沿 4px；浮层与一级菜单边框交叠 4px，右缘越界翻左。
   useLayoutEffect(() => {
     const menu = menuRef.current;
+    const sel = selRef.current;
     const fly = flyRef.current;
-    if (!menu || !fly || !flyProv) return;
+    if (!menu || !sel || !fly || !flyProv) return;
     const row = rowRefs.current.get(flyProv);
     if (!row) return;
-    fly.style.top = menu.offsetTop + row.offsetTop - menu.scrollTop - 5 + "px";
+    const z = useAppStore.getState().zoomLevel || 1;
+    fly.style.maxHeight = "";
+    fly.style.overflowY = "";
+    const rowBottom = menu.offsetTop + row.offsetTop - menu.scrollTop + row.offsetHeight;
+    fly.style.top = "auto";
+    fly.style.bottom = sel.clientHeight - rowBottom - 5 + "px";
+    const bound = sel.closest("#setBody") ?? document.body;
+    const boundRect = bound.getBoundingClientRect();
+    const availAbove = Math.round((boundRect.top - 4) / z) + rowBottom + 5;
+    if (fly.offsetHeight > availAbove) {
+      fly.style.maxHeight = Math.max(80, availAbove) + "px";
+      fly.style.overflowY = "auto";
+    }
     fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px";
-    const bound = selRef.current?.closest("#setBody") ?? document.body;
-    if (fly.getBoundingClientRect().right > bound.getBoundingClientRect().right - 8) {
+    if (fly.getBoundingClientRect().right > boundRect.right - 8) {
       fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px";
     }
   }, [flyProv, open]);

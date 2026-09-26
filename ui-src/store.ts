@@ -5,7 +5,7 @@ import { useAppStore } from "./store/index";
 export { useAppStore, setBump } from "./store/index";
 export { invoke } from "./store/ws";
 export { onTerminalFrame } from "./store/terminal";
-export { fmtTokens, fmtDurationMs } from "./store/utils";
+export { fmtTokens, fmtDurationMs, pathBase } from "./store/utils";
 export {
   activeOpen,
   findBySessionId,

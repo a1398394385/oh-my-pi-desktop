@@ -2,7 +2,7 @@
 // 单文件自研轻量 diff 详情（rb-head 固定 + rb-scroll 滚动骨架）。
 import { useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { useAppStore, setBump, send, activeOpen, refreshGitDiff } from "../../store";
+import { useAppStore, setBump, send, activeOpen, refreshGitDiff, pathBase } from "../../store";
 import type { TimerHandle } from "../../store";
 import Icon from "../../Icon";
 import ConfirmDialog from "./ConfirmDialog";
@@ -217,7 +217,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
       <span className={"gd-badge " + badgeClass(f.code)}>
         {f.code.includes("A") || f.code === "?" ? "A" : f.code.includes("D") ? "D" : "M"}
       </span>
-      <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{displayPath.split("/").pop()}</span>
+      <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{pathBase(displayPath)}</span>
       <span className="ml-auto flex-none inline-flex items-center gap-0.5 opacity-0 transition-opacity duration-[120ms] ease-[var(--swift)] group-hover:opacity-100 focus-within:opacity-100">
         {f.unstaged && (
           <button
