@@ -105,7 +105,7 @@ export const { fuzzyFind } = await import("@oh-my-pi/pi-natives");
 export const { loadAllExtensions, toggleProvider, toggleUserSource } = await import(
   "@oh-my-pi/pi-coding-agent/modes/components/extensions/state-manager"
 );
-export const { getAllProvidersInfo, isUserSourceEnabled, isForeignUserProvider } = await import(
+export const { getAllProvidersInfo, isUserSourceEnabled, isProviderEnabled, isForeignUserProvider } = await import(
   "@oh-my-pi/pi-coding-agent/discovery"
 );
 // 能力发现注册表的 settings 注入：CLI 入口（main.ts/ttsr-cli/read-cli）在 Settings.init 后都调用
@@ -121,3 +121,6 @@ export const { toolFileHeaderDescription } = await import(
   "@oh-my-pi/pi-coding-agent/modes/components/extensions/inspector-runtime"
 );
 export const { commandPreview } = await import("@oh-my-pi/pi-tui/overlays/extensions/inspector-model");
+export const { getEnabledPlugins } = await import(
+  "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
+);

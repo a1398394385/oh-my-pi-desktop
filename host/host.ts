@@ -89,6 +89,10 @@ import {
   mcpCandidates,
   resolveAssetFile,
   type AssetKind,
+  readHooksEnabled,
+  writeHooksEnabled,
+  readPluginsEnabled,
+  writePluginsEnabled,
 } from "./assets.ts";
 import {
   buildExtensionsPayload,
@@ -232,7 +236,14 @@ async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
 
 /** 设置帧 = 底座设置快照 + host 侧实验开关（不下沉 models.ts，避免模块环）。 */
 function settingsFrame() {
-  return { ...settingsSnapshot(), acpEnabled: readAcpEnabled(), sessionContextEnabled: readSessionContextEnabled() };
+  return {
+    ...settingsSnapshot(),
+    acpEnabled: readAcpEnabled(),
+    sessionContextEnabled: readSessionContextEnabled(),
+    hooksEnabled: readHooksEnabled(),
+    pluginsEnabled: readPluginsEnabled(),
+    skillsEnabled: !!H.settings.get("skills.enabled"),
+  };
 }
 
 // ---------- 输入框 sigil：命令清单与 @ 文件候选 ----------
@@ -633,7 +644,7 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
       ...(sessionContextEnabled ? createSessionContextTools() : []),
     ] as never, // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
     extensions: acpEnabled ? [createAcpContextExtension(acpState)] : [], // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
-    disableExtensionDiscovery: true,
+    disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()),
     enableMCP: false,
     hasUI: true, // 审批 gate 的 fail-cold 判定走 runner.hasUI()：不开则非 yolo 模式下所有需审批工具直接报错
   });
@@ -1638,10 +1649,18 @@ const server = Bun.serve<{ sessionId: string | null }>({
           }
           case "set_setting": {
             const key = String(msg.key ?? "");
-            const value = msg.value;
+            let value = msg.value;
             const def = SETTINGS_SCHEMA[key];
             if (!def) throw new Error(`未知设置项: ${key}`);
             const t = def.type;
+            if (t === "number") {
+              if ((key === "compaction.thresholdPercent" || key === "compaction.thresholdTokens") && value === "default") {
+                value = -1;
+              } else if (typeof value === "string") {
+                const n = Number(value);
+                if (Number.isFinite(n)) value = n;
+              }
+            }
             if (t === "boolean") {
               if (typeof value !== "boolean") throw new Error(`${key} 必须是布尔值`);
             } else if (t === "number") {
@@ -1682,6 +1701,28 @@ const server = Bun.serve<{ sessionId: string | null }>({
             // 实验性功能页开关：写入 omp-desktop.json 的 sessionContext.enabled（同上，只影响此后创建的会话）
             await writeSessionContextEnabled(!!msg.enabled);
             ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+            break;
+          }
+          case "set_hooks_enabled": {
+            // 钩子总开关：写入 omp-desktop.json 的 hooks.enabled（只影响此后创建的会话）
+            await writeHooksEnabled(!!msg.enabled);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+            ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+            break;
+          }
+          case "set_plugins_enabled": {
+            // 插件总开关：写入 omp-desktop.json 的 plugins.enabled（只影响此后创建的会话）
+            await writePluginsEnabled(!!msg.enabled);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+            ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+            break;
+          }
+          case "set_skills_enabled": {
+            // 技能总开关：写入底座 settings.json 的 skills.enabled（getGroup("skills") 各加载点消费）
+            H.settings.set("skills.enabled", !!msg.enabled);
+            await H.settings.flush();
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+            ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
             break;
           }
           case "set_desktop_env": {
@@ -2130,9 +2171,10 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const cwd = String(msg.cwd ?? process.cwd()).trim() || process.cwd();
             const cols = Math.max(2, Math.min(500, Number(msg.cols) || 80));
             const rows = Math.max(2, Math.min(200, Number(msg.rows) || 24));
+            const inheritProfile = msg.inheritProfile !== false;
             const session = await createTerminal(
               ws,
-              { id, cwd, cols, rows, shell: msg.shell ? String(msg.shell) : undefined },
+              { id, cwd, cols, rows, shell: msg.shell ? String(msg.shell) : undefined, inheritProfile },
               (data) => {
                 try { ws.send(JSON.stringify({ type: "terminal_data", id, data })); } catch {}
               },
@@ -2914,6 +2956,11 @@ async function handlePrompt(
   if (dispatched === null) return;
   finalText = dispatched;
   entry.transcript.push({ role: "user", text: finalText });
+  // 自动会话标题：CLI 由 input-controller / main.ts 调用底座同一入口；SDK 宿主没有这层，
+  // 必须自己触发。底座内部 gate 负责「已有标题 / 已在生成 / 低信号输入 / PI_NO_TITLE」跳过，
+  // 生成的标题经 SessionManager.onSessionNameChanged → session_title_changed 帧下发。
+  // 流式注入（steer / 排队 followUp）不触发，与 CLI 只在 idle 提交时起标题一致。
+  if (!steer) entry.session.maybeStartTitleGeneration(finalText);
   // 命令立即返回；turn 产物全部走事件流。流式中的注入行为由 streamingBehavior 决定：
   // followUp = 排队（当前 loop 完全处理完后自动消费触发新 turn，不打断进行中的处理）；
   // steer = 立即注入（当前工具批次后插入，气泡转正并分割过程）。idle 时两者都被底座忽略照常开 turn。

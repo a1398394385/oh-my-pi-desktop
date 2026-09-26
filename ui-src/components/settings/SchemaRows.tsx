@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
 import { useAppStore, send, toast } from "../../store";
 import Icon from "../../Icon";
-import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH } from "./settings-zh";
+import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH, DARK_THEMES, LIGHT_THEMES } from "./settings-zh";
 import { expandSection, type Section, type SchemaDef } from "./placement";
 import { Switch } from "../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -21,26 +21,103 @@ interface SelOption {
   label: string;
 }
 
-interface SchemaSelProps {
-  current: unknown; // 当前值来自 WS 回包 values，形状不明，按 unknown 处理
-  options: SelOption[];
-  onPick: (v: string) => void;
+// 合成器形态选项（对齐 omp 源码 getComposerShapeOptions）
+const COMPOSER_SHAPES: SelOption[] = [
+  { v: "band", label: OPTS_ZH["composer.shape"]?.["band"] ?? "状态条（默认）" },
+  { v: "box", label: OPTS_ZH["composer.shape"]?.["box"] ?? "圆角框" },
+  { v: "claude", label: OPTS_ZH["composer.shape"]?.["claude"] ?? "Claude Code 风格" },
+  { v: "pi", label: OPTS_ZH["composer.shape"]?.["pi"] ?? "Pi 风格" },
+  { v: "borderless", label: OPTS_ZH["composer.shape"]?.["borderless"] ?? "无边框" },
+  { v: "rule", label: OPTS_ZH["composer.shape"]?.["rule"] ?? "顶部分隔栏" },
+  { v: "field", label: OPTS_ZH["composer.shape"]?.["field"] ?? "紧凑字段" },
+  { v: "rail", label: OPTS_ZH["composer.shape"]?.["rail"] ?? "强调导轨" },
+];
+
+/** 从 schema 与 omp 源码中解析某设置项的可用选项列表 */
+function resolveSettingOptions(k: string, def: SchemaDef): SelOption[] {
+  if (k === "composer.shape") return COMPOSER_SHAPES;
+  if (k === "theme.dark") return DARK_THEMES.map((t) => ({ v: t, label: OPTS_ZH["theme.dark"]?.[t] ?? t }));
+  if (k === "theme.light") return LIGHT_THEMES.map((t) => ({ v: t, label: OPTS_ZH["theme.light"]?.[t] ?? t }));
+
+  if (Array.isArray(def.ui?.options) && def.ui.options.length > 0) {
+    return def.ui.options.map((o) => {
+      const vStr = String(o.value ?? "");
+      return {
+        v: vStr,
+        label: OPTS_ZH[k]?.[vStr] ?? o.label ?? vStr,
+      };
+    });
+  }
+  if (Array.isArray(def.values) && def.values.length > 0) {
+    return def.values.map((v) => {
+      const vStr = String(v ?? "");
+      return {
+        v: vStr,
+        label: OPTS_ZH[k]?.[vStr] ?? vStr,
+      };
+    });
+  }
+  if (OPTS_ZH[k] && Object.keys(OPTS_ZH[k]).length > 0) {
+    return Object.entries(OPTS_ZH[k]).map(([v, label]) => ({
+      v,
+      label,
+    }));
+  }
+  return [];
 }
 
-// 下拉：Radix Select（trigger 胶囊 / 弹层 .menu 视觉由基件承担）；选中即发（enum 专用）
-function SchemaSel({ current, options, onPick }: SchemaSelProps) {
-  const sel = options.find((o) => o.v === current);
+interface SchemaSelProps {
+  settingKey: string;
+  settingType: string;
+  current: unknown;
+  options: SelOption[];
+  onPick: (v: unknown) => void;
+}
+
+// 下拉：Radix Select（trigger 胶囊 / 弹层 .menu 视觉由基件承担）；选中即发
+function SchemaSel({ settingKey, settingType, current, options, onPick }: SchemaSelProps) {
+  // 特殊兼容 compaction.thresholdPercent 和 compaction.thresholdTokens：值为 -1 或 "" 时映射为 "default"
+  const isDefaultThreshold =
+    (settingKey === "compaction.thresholdPercent" || settingKey === "compaction.thresholdTokens") &&
+    (current === -1 || current === "-1" || current === "" || current === undefined || current === null);
+
+  const curStr = isDefaultThreshold ? "default" : String(current ?? "");
+  const sel = options.find((o) => String(o.v) === curStr);
+
+  const handlePick = (pickedValue: string) => {
+    const rawVal = pickedValue === "__empty__" ? "" : pickedValue;
+    if (settingKey === "compaction.thresholdPercent" || settingKey === "compaction.thresholdTokens") {
+      if (rawVal === "default") {
+        onPick(-1);
+        return;
+      }
+    }
+    if (settingType === "number") {
+      const n = Number(rawVal);
+      onPick(Number.isFinite(n) ? n : rawVal);
+    } else if (settingType === "boolean") {
+      onPick(rawVal === "true");
+    } else {
+      onPick(rawVal);
+    }
+  };
+
+  const selectedValue = sel ? (sel.v || "__empty__") : "";
+
   return (
-    <Select value={sel ? sel.v : ""} onValueChange={onPick}>
+    <Select value={selectedValue} onValueChange={handlePick}>
       <SelectTrigger>
-        <SelectValue placeholder={String(current ?? "")} />
+        <SelectValue placeholder={sel ? sel.label : curStr || "请选择"} />
       </SelectTrigger>
       <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o.v} value={o.v}>
-            {o.label}
-          </SelectItem>
-        ))}
+        {options.map((o) => {
+          const itemVal = o.v || "__empty__";
+          return (
+            <SelectItem key={itemVal} value={itemVal}>
+              {o.label}
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </Select>
   );
@@ -111,16 +188,27 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
     }
   };
 
+  const opts = resolveSettingOptions(k, def);
+  const isChoiceSetting =
+    type === "enum" ||
+    (opts.length > 0 && (type === "number" || type === "string")) ||
+    def.ui?.options === "runtime";
+
   let ctl: ReactElement;
-  if (type === "boolean") {
+  if (type === "boolean" && opts.length === 0) {
     ctl = (
       <Switch checked={!!value} onCheckedChange={(v) => send({ type: "set_setting", key: k, value: v })} />
     );
-  } else if (type === "enum") {
-    const opts = Array.isArray(def.ui?.options)
-      ? def.ui.options.map((o) => ({ v: o.value, label: OPTS_ZH[k]?.[o.value] ?? o.label ?? o.value }))
-      : (def.values ?? []).map((v) => ({ v, label: OPTS_ZH[k]?.[v] ?? v }));
-    ctl = <SchemaSel current={value} options={opts} onPick={(v) => send({ type: "set_setting", key: k, value: v })} />;
+  } else if (isChoiceSetting && opts.length > 0) {
+    ctl = (
+      <SchemaSel
+        settingKey={k}
+        settingType={type}
+        current={value}
+        options={opts}
+        onPick={(v) => send({ type: "set_setting", key: k, value: v })}
+      />
+    );
   } else if (type === "record") {
     ctl = <Textarea rows={3} ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // 同一 ref 复用于 input/textarea,仅在 activeElement 比较处读取,收窄安全
   } else if (type === "number") {

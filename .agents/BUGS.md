@@ -24,6 +24,14 @@
 | BUG-015 | customTools 全部不可用——runner.initialize 传空 actions 让 ctx.model 抛 TypeError | 2026-09-23 |
 | BUG-016 | /goal 模式运行中整窗口黑屏——读取行展开态早于内容到达，dc.text 炸渲染 | 2026-09-23 |
 | BUG-017 | 快速上滚消息流跳动/闪烁——content-visibility 首轮 120px 估算纠偏落在视口 | 2026-09-23 |
+| BUG-018 | 下拉列表键盘上下箭头切换选择时不自动滚动——仅改 index 未联动 scrollIntoView | 2026-09-26 |
+| BUG-019 | 主对话区收纳父标签展开后子标签点击弹窗失效——patchGroupSub 找错对象且展开 WeakMap 引用丢失 | 2026-09-26 |
+| BUG-020 | 点击几百行读取记录展开延迟 1-2S 无反馈——微任务执行高亮 tokenize 阻塞首帧绘制 | 2026-09-26 |
+| BUG-021 | 终端复合标签内子命令未做超长截断——chg-body 未 stretch 且 chg-item flex-wrap 导致溢出 | 2026-09-26 |
+| BUG-022 | 标签弹窗卡片滚到底带动外层消息流滚动——ldiff 漏 contain 且 WKWebView 边界 wheel 渗透 | 2026-09-26 |
+| BUG-023 | 设置页面大量移植配置项下拉框点击无反应——层级遮挡、数字类型拦截与缺失枚举 | 2026-09-26 |
+| BUG-024 | 会话永不自动起标题——SDK 宿主未调用底座标题生成入口 | 2026-09-26 |
+| BUG-025 | 扩展页关掉来源后技能/MCP 页仍列出该来源资产——宿主自建目录扫描不查来源开关 | 2026-09-26 |
 
 ---
 
@@ -238,3 +246,115 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **修复**：删除该规则（原地留防回归注释）。A/B 实测规则无收益：cv=on 累计布局 26.7ms vs cv=off 10.3ms（反复 skipped↔relevant 切换反而多付布局账），DOM 节点数与 JS 堆无差（4865/4867、均 12.8MB）；656MB 闸门的实际功臣是同 commit 的染色缓存封顶与三处 LRU，均保留。更重的 shiki 会话未单独测［推理］。
 
 **教训**：①不布局就不知道高度——「首轮跳过布局」与「滚动几何稳定」不可兼得，估算器只能减小误差不能消除，行高 38~5000px 列表的正解是虚拟化（docs/openbitfun-borrow-ui.md U4.3）；②性能闸门类改动必须带 A/B 基准入账，否则事后分不清哪颗药丸真正有效；③「无输入帧的锚点位移」是快滚跳帧的可靠判据，比肉眼录屏可断言。
+
+### BUG-018: 下拉列表键盘上下箭头切换选择时不自动滚动——仅改 index 未联动 scrollIntoView
+
+**现象**:侧栏会话搜索卡片（`SidebarSearch`）及各类带结果下拉列表，当条目数较多触发浮层纵向滚动（`max-height: 260px; overflow-y: auto;`）时，按键盘 `ArrowDown`/`ArrowUp` 键切换高亮项，光标高亮超出可视区域后浮层不跟随滚动，选中的项目被遮挡在可视区之外。
+
+**根因**:组件在键盘事件响应中仅通过 `setSelectedIndex` 更新 React 内部选中索引（继而给 DOM 节点切换 `.on` 类名），没有联动容器滚动。浏览器原生的键盘焦点默认落在输入框（`<input>`）上，非聚焦的列表节点类名改变不会自动触发原生滚动视口调整。
+
+**修复**:
+1. 浮层滚动容器挂载 `listRef`；
+2. 引入 `isKeyboardNavRef` 区分键盘切换与鼠标 hover；
+3. `useEffect` 监听 `selectedIndex`，在键盘导航时获取激活项调用 `activeEl.scrollIntoView({ block: "nearest" })`；
+4. 筛选列表重算时调用 `listRef.current?.scrollTo({ top: 0 })` 复位回顶端。
+
+**教训**:凡支持键盘上下键切换高亮项的滚动交互容器，「修改选中索引」必须与「DOM 节点 `scrollIntoView({ block: "nearest" })`」成对实现，禁止只改索引丢掉视口对齐。已立 RULE-007。
+
+### BUG-019: 主对话区收纳父标签展开后子标签点击弹窗失效——patchGroupSub 找错对象且展开 WeakMap 引用丢失
+
+**现象**：主对话区域中由多个工具折叠合并的收纳父标签（如多文件查阅、多文件更改、多个终端命令等）展开后，内部各个子标签（如具体的单文件“查阅”行）点击展开/弹窗无响应。
+
+**根因**：
+1. `parts.tsx` 中的 `patchGroupSub` 原本假设底座 store 的 items 数组中存在带 `group` 字段的复合条目，通过 `it.role === "tool" && it.group.includes(sub)` 进行查找。但实际上查阅/更改/终端组仅是 `items.tsx` 在 `renderItems` 时动态组合的视图结构，底座 store 中的 `ChatItem` 都是平铺存储的，`it.group` 永远不存在，导致 `patchGroupSub` 找不到条目直接返回空对象，状态从未更新；
+2. 组首条目不可变更新后引用变化导致 WeakMap 失效：子项展开状态存储在 WeakMap（`rdExpand` / `chgExpand` 等）中，当不可变更新产生新对象时，WeakMap 仍挂在旧对象上，导致后续重绘时展开状态丢失。
+
+**修复**：
+1. `groupExpand.ts`：将分散在 `EditRow.tsx`、`ToolRow.tsx` 等处的 `rdExpand`、`chgExpand`、`cmdExpand`、`devExpand` 统一收纳，并新增 `migrateGroupExpand(from, to)` 函数；
+2. `parts.tsx`：重构 `patchGroupSub`，遍历 items 及 loop items 时直接比对 `it === sub`，在不可变拷贝替换条目时调用 `migrateGroupExpand(sub, next)` 同步迁移 WeakMap 状态；在 `patchActiveItem` 中同步挂接状态迁移。
+
+**教训**：
+1. UI 渲染期动态构造的虚拟组结构（Virtual/Derived Group）不能直接等同于 Store 持久化层的数据结构。在向下派发针对子项的更新器（Updater）时，必须明确更新的目标是在 Store 真实存在的条目引用还是 Derived 视图对象；
+2. 基于 WeakMap 绑定对象引用记录组件展开状态时，任何不可变拷贝（`{ ...item }`）都会切断键值关联，必须配合引用迁移机制（Migration）或改用稳定的唯一 ID。
+
+### BUG-020: 点击几百行读取记录展开延迟 1-2S 无反馈——微任务执行高亮 tokenize 阻塞首帧绘制
+
+**现象**：点击包含数百行文本的阅读记录展开卡片时，界面卡顿 1-2 秒且没有任何视觉反馈（小箭头不转、弹窗不展开），随后突然弹出。
+
+**根因**：
+1. `highlighter.ts` 在 `getHighlighter().then(...)` 的 Promise 微任务（Microtask）中直接同步执行了 `h.codeToTokens(code)`。基于纯 JS 正则引擎处理 500+ 行代码耗时超过 1000ms；
+2. 微任务队列在清空前，浏览器渲染管道无法执行 Layout 与 Paint。导致 React 虽然已提交首帧 DOM，但浏览器无法绘制展开入场动画和纯文本，界面被同步卡死 1-2 秒；
+3. `ReadBrief` 之前缺乏行数上限截断保护，如果底座读取上千行文本，会无节制全部挂载 DOM 并送入高亮引擎。
+
+**修复**：
+1. `highlighter.ts`：将未命中缓存的 `codeToTokens` 调度至宏任务（`requestAnimationFrame` + `setTimeout`），确保首帧纯文本与展开动画优先渲染完成（0ms 响应），随后在后台异步计算语法上色；
+2. `parts.tsx`：为 `ReadBrief` 添加 `MAX_READ_BRIEF_LINES = 500` 渲染保护，超出部分截断并提示点击文件名在右侧边栏查看完整文件。
+
+**教训**：纯 CPU 密集计算（如分词/语法着色/正则引擎）绝不能在 Promise 微任务队列中同步运行，必须移至宏任务让出浏览器首帧渲染周期。
+
+### BUG-021: 终端复合标签内子命令未做超长截断——chg-body 未 stretch 且 chg-item flex-wrap 导致溢出
+
+**现象**：独立终端标签中的超长命令会在单行内截断并展示省略号，但在终端复合标签（连续终端命令合并组）内部，子命令超长时直接溢出撑爆容器，没有进行文本截断。
+
+**根因**：
+1. 父级 `.chg-body` 被设为 `align-items: flex-start`，子行宽度随内容伸缩（fit-content）；
+2. 组内行 `.chg-item` 带有 `flex-wrap: wrap` 且缺少 `max-width: 100%` / `box-sizing: border-box`，导致其内部包含的长命令文本将行容器无限向右撑开，破坏了 flex item 的收缩与省略号截断机制。
+
+**修复**：
+1. `style.css`：将 `.chg-body` 修改为 `align-items: stretch; max-width: 100%; box-sizing: border-box;`；
+2. `style.css`：将 `.chg-item` 修改为 `flex-wrap: nowrap; max-width: 100%; box-sizing: border-box; overflow: hidden; padding: 5px 15px 5px 0;`，并给内部图标与箭头置 `flex: none`；
+3. `html[data-code-wrap="on"]` 补充支持 `.chg-item .c-tx` 换行。
+
+**教训**：嵌套组内行的容器宽度必须受上层边界约束（`stretch` + `max-width: 100%`），文本超长截断必须依赖 `flex-wrap: nowrap` 与 `min-width: 0`。
+
+### BUG-022: 标签弹窗卡片滚到底带动外层消息流滚动——ldiff 漏 contain 且 WKWebView 边界 wheel 渗透
+
+**现象**：在主对话区各个标签弹窗（读取卡片、diff 卡片、终端卡片、思考卡片等）内部滚动时，当内容滚到最底端或最顶端后继续滚动，外层的会话消息页面（#stream）会被连带滚动。
+
+**根因**：
+1. `.ed-brief` 虽然声明了 `overscroll-behavior: contain`，但自身为 `overflow: hidden`，实际产生滚动的子容器 `.ldiff` / `.ed-brief > .ldiff` 未声明 `overscroll-behavior: contain`，导致滚动链向上传递；
+2. macOS WebKit（Tauri WKWebView）内核对触控板动量惯性滚动与边界滚动存在特性：即使设置了 CSS contain，在元素已到顶/底或指针落在不可滚动间隙时，依然可能将 wheel 事件链式分发给祖先滚动容器。
+
+**修复**：
+1. `style.css`：在所有内嵌卡片及其实际滚动容器（`.ldiff`、`.ed-brief > .ldiff`、`.cmd-card`、`.think-body` 等）上全量补齐 `overscroll-behavior: contain;`；
+2. `Chat.tsx`：在 `#stream` 消息流上挂载非 passive `wheel` 监听器，针对命中的标签弹窗（`.ed-brief`、`.cmd-card`、`.bash-out`、`.think-body`、`.chg-body`、`.approval-card`、`#todoList`）判定滚动边界：当内部不可滚、已到顶继续上滚或已到底继续下滚时，调用 `e.preventDefault()` 彻底截断向外层消息流的物理渗透。
+
+**教训**：内嵌可滚动卡片不仅要在实际滚动子节点上设 `overscroll-behavior: contain`，还必须在祖先容器上配合 `wheel` 边界判定主动拦截，杜绝 WKWebView 触控板手势溢出。
+
+### BUG-023: 设置页面大量移植配置项下拉框点击无反应——层级遮挡、数字类型拦截与缺失枚举
+
+**现象**：设置中心中大量从 omp (oh-my-pi) 移植的设置项（如温度设置、压缩阈值、各类模式枚举等）下拉框点击没有任何反应，或者选择后无法生效。
+
+**根因**：
+1. **Portal 层级遮挡（无反应主因）**：Radix UI `SelectContent` 挂载在 `body` 根节点上，默认类名为 `z-[90]`，而 `#settings` 设置中心浮层为 `z-index: 115`，导致下拉弹框实际在设置窗口背后渲染，被完全遮挡；
+2. **数字类型回写拦截**：`temperature`、`topP`、`tools.maxTimeout`、`compaction.thresholdPercent` 等在 omp 中为带预设选项的 number，前端 Select 选中的值默认为字符串，发送到 host 后被 `typeof value !== "number"` 拦截并报错；
+3. **选项缺失与分派缺失**：原 `SchemaRows` 仅对 `type === "enum"` 派发下拉框，43 个带预选值的 number 设置项以及 `composer.shape` / `theme.dark` / `theme.light` 未走下拉选择，且 19 个枚举项在 `OPTS_ZH` 中完全缺失。
+
+**修复**：
+1. `ui-src/components/ui/select.tsx`：`SelectContent` 提升为 `z-[125]`（高于 `#settings` 的 115 与 `#toast` 的 120）；
+2. `ui-src/components/settings/settings-zh.ts`：从 omp 底座提取并补齐 19 个枚举字典、8 个 composer 形态及 101 个主题列表；
+3. `ui-src/components/settings/SchemaRows.tsx`：重构 `resolveSettingOptions` 与 `SchemaSel`，支持 number 及 runtime 选项下拉，回传自动转回 number，支持 `__empty__` 与 default 阈值映射；
+4. `host/host.ts`：`set_setting` 针对 number 类型兼容数字字符串与 `"default"` 转换。
+
+**教训**：全局 Portal 弹层的 z-index 必须与应用全局层叠上下文严格对齐；带选项的配置项需兼顾 UI 字符串交互与后端强类型契约。
+
+### BUG-024: 会话永不自动起标题——SDK 宿主未调用底座标题生成入口
+
+**现象**：desktop 里新建会话发完首条消息，标题始终是空的（侧栏/搜索兜底显示首条消息截断文本，重命名输入框为空）；CLI `omp` 同样操作会自动得到一个概括性标题。
+
+**根因**：自动标题在底座里**不是自动行为**，而是由宿主显式调用 `AgentSession.maybeStartTitleGeneration(firstMessage)` 触发（CLI 侧调用点是 `modes/controllers/input-controller.ts` 与 `main.ts` 的 initial message 路径，均属宿主职责）。desktop 的 `host/host.ts` 走 SDK 宿主路径，全仓无一处调用该方法，底座内部的 gate 因此永不进入。链路其余环节本就齐备：`host.ts` 已订阅 `sessionManager.onSessionNameChanged` 并下发 `session_title_changed` 帧，前端 `store/ws.ts` 也已处理该帧——缺的只有唯一触发点。
+
+**修复**：`host/host.ts` `handlePrompt()` 在 `session.prompt()` 之前补 `if (!steer) entry.session.maybeStartTitleGeneration(finalText);`。底座 gate 自身负责「已有标题 / 该会话已在生成中 / 本地扩展命令 / 低信号输入 / `PI_NO_TITLE`」跳过，标题落盘走 `setSessionName(title, "auto")`（用户已手动命名时自动标题被底座忽略）。流式注入（steer / 排队 followUp）不触发，与 CLI 只在 idle 提交时起标题一致。
+
+**教训**：底座提供能力 ≠ 自动生效。以 SDK 内嵌方式复用 CLI 产品时，凡「CLI 宿主侧调用、底座只暴露入口」的职责（标题生成、进度提示、队列语义、UI 上下文注入）都要逐条对照 CLI 源码自查，否则表现为静默功能缺失——不报错、不崩溃，只是从来不发生。
+
+
+### BUG-025: 扩展页关掉来源后技能/MCP 页仍列出该来源资产——宿主自建目录扫描不查来源开关
+
+**现象**：在扩展中心把 Claude Code 来源关掉后，设置·技能页仍列出 `~/.claude/skills` 下的技能（`provider=claude`，界面显示 Claude 来源标签），MCP 页同样列出了已关来源的服务器；而 CLI/会话侧这些来源确实已不加载，页面与现实不一致。
+
+**根因**：扩展页的「来源」开关写底座的 `disabledProviders`（`host/extensions.ts` `toggleExtensionProvider` → 底座 `capability/index.ts` `disableProvider`），底座 `filterProviders` 据此过滤 —— 这条链路对 `loadCapability` 是生效的。问题出在宿主自建扫描：`host/assets.ts` 的 `loadAllSkillsScoped()` 硬编码枚举外部目录（`~/.claude/skills`、`~/.codex/skills`、`~/.config/opencode/skills`、`~/.opencode/skills` 及项目级 `.claude/.codex/.opencode/.github/skills`），过滤条件只看项级的 `disabledExtensions` / `skills.ignoredSkills`，从不查来源状态；底座 `loadCapability` 在该函数里只作补充（`if (!profileItemsMap.has(name))`），命中的条目永远由硬编码扫描产出。此外这些补充调用传了 `includeDisabled: true`，等于 `ctx.includeOptOutUserSources`，把「外部工具 ~/ 配置」opt-in 一并绕过（实测关掉 claude 后仍能列出 `~/.claude/plugins` 的 20 条技能与 hindsight MCP）。
+
+**修复**：`host/assets.ts` 新增来源判定 `isAssetSourceOn(provider, level)`，对齐底座 discovery 的加载条件（来源主开关 `isProviderEnabled` + 用户级 opt-in `isUserSourceEnabled` + claude/codex 技能级兼容开关 `skills.enableClaudeUser` / `enableCodexUser`；项目级只受主开关约束），技能 profile/project 两级目录扫描逐源过滤；技能与 MCP 的底座补充调用去掉 `includeDisabled: true`，与运行时加载行为一致。`host/bootstrap.ts` 补导出 `isProviderEnabled`。子智能体/钩子/记忆页只扫 omp 自有目录（`assetRoots`），本就没有外部来源，无需改动；扩展页仍由底座 `getAllProvidersInfo()` 驱动，关掉的来源行仍在（`enabled=false`），可随时点回。
+
+**教训**：宿主一旦自建「枚举外部工具目录」的发现逻辑，就等于把底座 discovery 的来源/opt-in 判定复制了一份并悄悄丢掉；凡列出外部来源资产的页面，都应复用底座的来源判定（或直接吃 `loadCapability`），并且不要用 `includeDisabled` 让页面比运行时看到更多。回归防线：`scripts/probe-asset-sources.ts`（关来源/开来源/opt-in/单来源粒度四组断言，改前红、改后绿）。

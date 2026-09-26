@@ -47,8 +47,14 @@ int main(int argc, char **argv) {
     dup2(slave, 0); dup2(slave, 1); dup2(slave, 2);
     if (slave > 2) close(slave);
     if (chdir(cwd) < 0) { /* 目录失效不致命，留在原地 */ }
-    char *args[] = { (char *)shell, "-i", NULL };
-    execvp(shell, args);
+    const char *login = getenv("OMP_LOGIN_SHELL");
+    if (login && strcmp(login, "0") != 0) {
+      char *args[] = { (char *)shell, "-l", "-i", NULL };
+      execvp(shell, args);
+    } else {
+      char *args[] = { (char *)shell, "-i", NULL };
+      execvp(shell, args);
+    }
     _exit(127);
   }
   close(slave);

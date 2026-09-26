@@ -310,6 +310,9 @@ function onMessage(msg: HostFrame): void {
         if (s) {
           updateSession(s.sessionId, (next) => {
             next.items.push({ role: "user", text });
+            // 同 sendPrompt：发送即置运行态（计时/停止钮不等到宿主 turn_start）
+            next.streaming = true;
+            next.turnStartAt = Date.now();
           });
           st3.ws!.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
           // 钉底跟随由 Chat 组件的滚动 effect 处理

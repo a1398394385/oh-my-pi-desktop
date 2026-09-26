@@ -8,7 +8,7 @@ const UI_PREF_KEY = "omp-ui-settings";
 // 字体选项：外观页字体下拉与 applyAppearance 共用
 export const FONT_LABELS: Record<string, string> = {
   default: "系统默认",
-  zcode: "ZCode 默认",
+  zcode: "标准系统无衬线",
   pingfang: "苹方 / PingFang SC",
   songti: "宋体 / Songti SC",
   kaiti: "楷体 / KaiTi SC",

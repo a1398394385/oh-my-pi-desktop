@@ -2,57 +2,84 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
+import type { DiskSessionRow } from "../../types/frames";
 import Icon from "../../Icon";
-import { fmtAgo } from "./util";
+import { fmtAgo, sessionLabel } from "./util";
 
 interface SessionMatch {
   path: string;
   title: string;
   repo: string;
+  cwd: string;
   modified: string;
+  searchText: string;
+  archived?: boolean;
 }
 
 export default function SidebarSearch() {
   const diskProjects = useAppStore((s) => s.diskProjects);
+  const archivedSessions = useAppStore((s) => s.archivedSessions);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const isKeyboardNavRef = useRef(false);
 
-  // 汇总所有磁盘会话（仅支持搜索有会话标题的内容）
+  // 汇总所有磁盘会话（未重命名/未打标会话以 firstMessage 兜底标签呈现，对齐侧栏 SessionRow）
   const allSessions = useMemo(() => {
     const list: SessionMatch[] = [];
     const seenPaths = new Set<string>();
+
+    const pushSession = (s: DiskSessionRow, cwd: string, archived = false) => {
+      if (seenPaths.has(s.path)) return;
+      const displayTitle = sessionLabel(s);
+      if (!displayTitle || displayTitle === "（空会话）") return;
+      seenPaths.add(s.path);
+      const repo = cwd.split("/").filter(Boolean).pop() || "";
+      list.push({
+        path: s.path,
+        title: displayTitle,
+        searchText: `${s.title || ""} ${s.firstMessage || ""} ${repo}`.toLowerCase(),
+        repo,
+        cwd,
+        modified: s.modified,
+        archived,
+      });
+    };
+
     for (const p of diskProjects) {
-      const repo = p.cwd.split("/").filter(Boolean).pop() || "";
       for (const s of p.sessions) {
-        if (s.title && !seenPaths.has(s.path)) {
-          seenPaths.add(s.path);
-          list.push({
-            path: s.path,
-            title: s.title,
-            repo,
-            modified: s.modified,
-          });
-        }
+        pushSession(s, p.cwd, false);
       }
     }
+    for (const s of archivedSessions) {
+      pushSession(s, s.cwd, true);
+    }
     return list;
-  }, [diskProjects]);
+  }, [diskProjects, archivedSessions]);
 
   const kw = query.trim().toLowerCase();
   const matches = useMemo(() => {
     if (!kw) return [];
     return allSessions
-      .filter((s) => s.title.toLowerCase().includes(kw))
+      .filter((s) => s.searchText.includes(kw) || s.title.toLowerCase().includes(kw))
       .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
       .slice(0, 20);
   }, [allSessions, kw]);
 
   useEffect(() => {
     setSelectedIndex(0);
+    listRef.current?.scrollTo({ top: 0 });
   }, [matches]);
+
+  // 键盘上下导航时自动将高亮项滚动至可视区域
+  useEffect(() => {
+    if (!open || !isKeyboardNavRef.current) return;
+    const activeEl = listRef.current?.querySelector<HTMLElement>(".side-search-item.on");
+    activeEl?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, open]);
 
   // 点击外部收起搜索结果浮层
   useEffect(() => {
@@ -66,14 +93,15 @@ export default function SidebarSearch() {
     return () => window.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
-  // 打开会话详情页：切换到该会话并关闭欢迎屏
-  const handleOpenSession = (path: string) => {
+  // 打开会话详情页：切换到该会话、展开对应项目并关闭欢迎屏
+  const handleOpenSession = (path: string, cwd?: string) => {
     useAppStore.setState({ isCreatingNew: false });
     hideWelcomeScreen();
     useAppStore.setState((st) => ({
       unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== path)),
     }));
     saveUnseen();
+    if (cwd) useAppStore.getState().expandProject(cwd);
     if (useAppStore.getState().openSessions.has(path)) {
       activateSession(path);
       refreshGitDiff();
@@ -89,23 +117,26 @@ export default function SidebarSearch() {
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       setOpen(true);
+      isKeyboardNavRef.current = true;
       return;
     }
     if (e.key === "ArrowDown") {
       if (matches.length > 0) {
         e.preventDefault();
+        isKeyboardNavRef.current = true;
         setSelectedIndex((prev) => (prev + 1) % matches.length);
       }
     } else if (e.key === "ArrowUp") {
       if (matches.length > 0) {
         e.preventDefault();
+        isKeyboardNavRef.current = true;
         setSelectedIndex((prev) => (prev - 1 + matches.length) % matches.length);
       }
     } else if (e.key === "Enter") {
       if (matches.length > 0) {
         e.preventDefault();
         const target = matches[selectedIndex >= 0 && selectedIndex < matches.length ? selectedIndex : 0];
-        if (target) handleOpenSession(target.path);
+        if (target) handleOpenSession(target.path, target.cwd);
       }
     } else if (e.key === "Escape") {
       setQuery("");
@@ -154,7 +185,7 @@ export default function SidebarSearch() {
 
       {/* 搜索结果浮层 */}
       {open && kw && (
-        <div className="side-search-pop" onClick={(e) => e.stopPropagation()}>
+        <div ref={listRef} className="side-search-pop" onClick={(e) => e.stopPropagation()}>
           {matches.length === 0 ? (
             <div className="side-search-empty">无匹配会话</div>
           ) : (
@@ -162,13 +193,17 @@ export default function SidebarSearch() {
               <div
                 key={item.path}
                 className={"side-search-item" + (idx === selectedIndex ? " on" : "")}
-                onClick={() => handleOpenSession(item.path)}
-                onMouseEnter={() => setSelectedIndex(idx)}
+                onClick={() => handleOpenSession(item.path, item.cwd)}
+                onMouseEnter={() => {
+                  isKeyboardNavRef.current = false;
+                  setSelectedIndex(idx);
+                }}
               >
                 <div className="side-search-item-tt" title={item.title}>
                   {item.title}
                 </div>
                 <div className="side-search-item-meta">
+                  {item.archived && <span className="side-search-item-repo text-faint">已归档</span>}
                   {item.repo && (
                     <span className="side-search-item-repo" title={item.repo}>
                       {item.repo}

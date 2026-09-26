@@ -1,7 +1,8 @@
 // 工具行：工具名 → 标签种类映射与各标签行渲染。迁移自 ui/tool-labels.js
 // （renderToolItem/toolKind + 各 render 函数）。加减工具标签只改本文件。
 import type { ToolItem } from "../../types/session";
-import { bumpGroupExpand, useGroupExpandVersion } from "../../store/groupExpand";
+import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
+export { cmdExpand, devExpand };
 import Icon from "../../Icon";
 import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
@@ -50,8 +51,7 @@ function renderCmd(item: ToolItem) {
 }
 
 // ---------- 终端组（连续 bash/shell/eval 合并，结构一比一抄更改/查阅组） ----------
-// 展开状态：独立 WeakMap（以组内首个 item 为键，引用稳定跨重绘保留）
-export const cmdExpand = new WeakMap<ToolItem, boolean>();
+// 展开状态：独立 WeakMap（定义于 groupExpand.ts）
 
 // 组内行 UI：完整终端标签（标签文字 + 命令 + 展开箭头），仅去掉行首图标——与 ChangeRowUI 同款
 function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {
@@ -358,8 +358,7 @@ function renderDevice(item: ToolItem) {
 }
 
 // ---------- 设备组（连续同设备调用合并，结构一比一抄终端组） ----------
-// 展开状态：独立 WeakMap（以组内首个 item 为键，引用稳定跨重绘保留）
-export const devExpand = new WeakMap<ToolItem, boolean>();
+// 展开状态：独立 WeakMap（定义于 groupExpand.ts）
 
 // 组内行 UI：op 摘要 + 展开箭头（图标在组标题上，与终端组内行同款）
 function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {

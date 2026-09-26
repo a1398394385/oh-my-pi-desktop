@@ -141,6 +141,8 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "mcp.notificationDebounceMs": { "label": "MCP 通知防抖", "description": "MCP 资源更新注入对话前的防抖窗口（毫秒）" },
   "tasks.todoClearDelay": { "label": "待办自动清除延迟", "description": "已完成或已放弃的待办从待办组件中移除前的延迟" },
   "extensionHandlers.toolCallTimeoutMs": { "label": "工具调用处理器超时 (ms)", "description": "扩展 tool_call 处理器的正有限主动工作超时；无效值使用 30000ms，等待 OMP 持有对话框的时间不计入" },
+  "extensions": { "label": "外部扩展路径", "description": "手动注册的外部扩展包或文件目录路径列表（多个路径以逗号分隔）" },
+  "disabledExtensions": { "label": "已禁用扩展列表", "description": "指定不加载的扩展或插件模块名称/ID 列表（多个项以逗号分隔）" },
   "dev.autoqa": { "label": "自动 QA", "description": "自动化工具问题上报（xd://report_issue）。默认开启；首次上报会请求同意，拒绝后将关闭上报，直至显式重新启用" },
   "dev.autoqaPush.endpoint": { "label": "自动 QA 推送端点", "description": "接收 Auto QA JSON 报告的完整 URL（默认 https://qa.omp.sh/v1/grievances）" },
   "theme.dark": { "label": "深色主题", "description": "终端使用深色背景时所用的主题" },
@@ -511,7 +513,27 @@ export const OPTS_ZH: Record<string, Record<string, string>> = {
   "providers.openrouterVariant": { "default": "默认", "nitro": ":nitro", "floor": ":floor", "online": ":online", "exacto": ":exacto" },
   "provider.appendOnlyContext": { "auto": "自动", "on": "开启", "off": "关闭" },
   "providers.streamFirstEventTimeoutSeconds": { "0": "关闭", "300": "5 分钟", "600": "10 分钟", "1800": "30 分钟", "-1": "自动" },
-  "providers.streamIdleTimeoutSeconds": { "0": "关闭", "300": "5 分钟", "600": "10 分钟", "1800": "30 分钟", "-1": "自动" }
+  "providers.streamIdleTimeoutSeconds": { "0": "关闭", "300": "5 分钟", "600": "10 分钟", "1800": "30 分钟", "-1": "自动" },
+  "advisor.syncBacklog": { "off": "关闭", "1": "1 轮", "3": "3 轮", "5": "5 轮" },
+  "providers.openai-codex.codeMode": { "off": "关闭", "on": "开启", "auto": "自动" },
+  "tui.hyperlinks": { "off": "关闭", "auto": "自动检测", "always": "始终启用" },
+  "steeringMode": { "all": "全部处理", "one-at-a-time": "逐条处理" },
+  "followUpMode": { "all": "全部消化", "one-at-a-time": "逐条消化" },
+  "interruptMode": { "immediate": "立即中断", "wait": "等待工具完成" },
+  "doubleEscapeAction": { "rewind": "打开回退选择器", "tree": "打开会话树", "none": "无动作" },
+  "treeFilterMode": { "default": "默认", "no-tools": "隐藏工具", "user-only": "仅用户消息", "labeled-only": "仅带标签", "all": "全部" },
+  "completion.notify": { "on": "开启", "off": "关闭" },
+  "error.notify": { "on": "开启", "off": "关闭" },
+  "ask.notify": { "on": "开启", "off": "关闭" },
+  "hindsight.recallBudget": { "low": "低", "mid": "中", "high": "高" },
+  "ttsr.contextMode": { "discard": "丢弃部分输出", "keep": "保留部分输出" },
+  "ttsr.repeatMode": { "once": "仅一次", "after-gap": "消息间隔后重复" },
+  "edit.mode": { "apply_patch": "apply_patch", "hashline": "hashline", "patch": "patch", "replace": "replace", "sloppy": "sloppy" },
+  "bash.direnv": { "auto": "自动加载", "off": "关闭" },
+  "shellMinimizer.sourceOutlineLevel": { "default": "默认", "aggressive": "激进" },
+  "python.kernelMode": { "session": "会话级保持", "per-call": "单次调用独立" },
+  "dev.autoqaConsent": { "unset": "未设置", "granted": "已授权", "denied": "已拒绝" },
+  "composer.shape": { "band": "状态条（默认）", "box": "圆角框", "claude": "Claude Code 风格", "pi": "Pi 风格", "borderless": "无边框", "rule": "顶部分隔栏", "field": "紧凑字段", "rail": "强调导轨" }
 };
 
 export const GROUPS_ZH: Record<string, string> = {
@@ -603,3 +625,27 @@ export const ADV_PREFIX_ZH: Record<string, string> = {
   "gc": "数据清理",
   "thinkingBudgets": "思考预算"
 };
+
+export const DARK_THEMES: string[] = [
+  "titanium", "dark", "dark-github", "dark-monokai", "dark-dracula", "dark-tokyo-night",
+  "dark-nord", "dark-catppuccin", "dark-one", "dark-solarized", "dark-gruvbox", "dark-cyberpunk",
+  "dark-synthwave", "dark-rose-pine", "dark-poimandres", "dark-midnight", "dark-slate", "dark-ocean",
+  "dark-forest", "dark-sunset", "dark-taiga", "dark-aurora", "dark-nebula", "dark-cosmos",
+  "dark-eclipse", "dark-ember", "dark-equinox", "dark-lunar", "dark-monochrome", "dark-rainforest",
+  "dark-reef", "dark-retro", "dark-sakura", "dark-solstice", "dark-starfall", "dark-swamp",
+  "dark-terminal", "dark-tundra", "dark-twilight", "dark-volcanic", "dark-abyss", "dark-arctic",
+  "dark-cavern", "dark-celestial", "dark-copper", "dark-lavender", "graphite", "obsidian",
+  "onyx", "basalt", "anthracite", "amethyst", "mahogany"
+];
+
+export const LIGHT_THEMES: string[] = [
+  "light", "light-github", "light-paper", "light-nord", "light-catppuccin", "light-one",
+  "light-solarized", "light-gruvbox", "light-cyberpunk", "light-synthwave", "light-poimandres",
+  "light-tokyo-night", "light-ocean", "light-forest", "light-sunset", "light-dawn", "light-frost",
+  "light-haze", "light-glacier", "light-meadow", "light-mint", "light-monochrome", "light-lagoon",
+  "light-lavender", "light-honeycomb", "light-eucalyptus", "light-dunes", "light-coral", "light-cirrus",
+  "light-canyon", "light-aurora-day", "light-arctic", "light-opal", "light-orchard", "light-prism",
+  "light-retro", "light-sand", "light-savanna", "light-soleil", "light-wetland", "light-zenith",
+  "alabaster", "birch", "limestone", "marble", "pearl", "porcelain", "quartz", "sandstone"
+];
+

@@ -68,7 +68,7 @@ const FONT_STACKS: Record<string, string> = {
   heiti: '"Heiti SC", "SimHei", "STHeiti", sans-serif',
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
-const FONT_LABELS: Record<string, string> = { default: "系统默认", zcode: "ZCode 默认", pingfang: "苹方 / PingFang SC", songti: "宋体 / Songti SC", kaiti: "楷体 / KaiTi SC", heiti: "黑体 / Heiti SC", mono: "等宽" };
+const FONT_LABELS: Record<string, string> = { default: "系统默认", zcode: "标准系统无衬线", pingfang: "苹方 / PingFang SC", songti: "宋体 / Songti SC", kaiti: "楷体 / KaiTi SC", heiti: "黑体 / Heiti SC", mono: "等宽" };
 // 本地偏好落盘（读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
 function saveUiPrefs() {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}

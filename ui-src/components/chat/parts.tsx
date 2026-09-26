@@ -1,12 +1,13 @@
 // 消息流共享渲染件：省略号截断 / 文件标签 / 内联代码 / 外链文本 / 渐变遮掩 / 展开体时序 /
 // 内联 diff 展开体 / 右栏联动动作。迁移自 ui/tool-rows.js 的共享工具（命令式 DOM 构造
 // 翻译为组件）；纯函数（splitPath/uniqueFiles）直接 import 旧模块复用不重写。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { ChatItem, ToolItem } from "../../types/session";
 import { useAppStore, setBump } from "../../store/index";
 import { patchSessionItem } from "../../store/session";
 import { invoke } from "../../store/ws";
+import { migrateGroupExpand } from "../../store/groupExpand";
 import { uniqueFiles, splitPath } from "./util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -29,11 +30,16 @@ export function patchActiveItem<T extends object>(item: T, patch: (it: T) => voi
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   if (!s) return;
   // props item 即 store 当前条目引用（引用匹配天然唯一）；经 unknown 中转把拷贝交回同型回调
-  patchSessionItem(s.sessionId, (it) => it === item, (it) => patch(it as unknown as T));
+  patchSessionItem(s.sessionId, (it) => it === item, (it) => {
+    patch(it as unknown as T);
+    migrateGroupExpand(item as unknown as ToolItem, it as unknown as ToolItem);
+  });
 }
 
-/** tool 合并组（item.group）内子项的拷贝替换：patchSessionItem 不穿透 group，自行走拷贝链
- *  （定位 session → item → group 数组拷贝 → 替换子项，沿途 loop 组一并拷贝）。 */
+/** tool 合并组（item.group）内子项的拷贝替换：
+ *  合并组是由 renderItems 动态构建的视图分组，底层真实条目在 s.items 或 loop.items 中作为独立元素平铺存储。
+ *  定位时优先匹配平铺的 it === sub，同时也兼顾直接挂在 it.group 下的情况。
+ *  若更新的子项是组首，同步迁移其在 groupExpand WeakMap 中的组展开态。 */
 export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): void {
   useAppStore.setState((st) => {
     const path = st.activePath;
@@ -42,11 +48,20 @@ export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): voi
     const walk = (list: ChatItem[]): ChatItem[] | null => {
       for (let i = 0; i < list.length; i++) {
         const it = list[i];
-        if (it.role === "tool" && Array.isArray(it.group) && it.group.includes(sub)) {
+        if (it === sub) {
           const next = list.slice();
-          const group = it.group.slice();
           const copy = { ...sub };
           patch(copy);
+          migrateGroupExpand(sub, copy);
+          next[i] = copy;
+          return next;
+        }
+        if (it.role === "tool" && Array.isArray(it.group) && it.group.includes(sub)) {
+          const next = list.slice();
+          const group = (it.group as ToolItem[]).slice();
+          const copy = { ...sub };
+          patch(copy);
+          migrateGroupExpand(sub, copy);
           group[group.indexOf(sub)] = copy;
           next[i] = { ...it, group };
           return next;
@@ -327,10 +342,17 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   );
 }
 
+// 读取简略展开体行数上限：超长读取只在内联渲染前 MAX 行，避免几千行 DOM 与染色卡死
+// （提示用户点击文件名可在右栏查看完整文件）
+const MAX_READ_BRIEF_LINES = 500;
+
 // 读取展开体：行号 gutter + 原文（ldiff 行结构复用，无增删着色）；lang 命中走语法染色
 function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string; startLine?: number; lineNumbers?: number[] | null; lang: string | null; lift?: boolean }) {
-  const lines = String(text).split("\n");
-  const tokens = useCodeTokens(lines.join("\n"), lang);
+  const allLines = useMemo(() => String(text || "").split("\n"), [text]);
+  const omitted = Math.max(0, allLines.length - MAX_READ_BRIEF_LINES);
+  const lines = useMemo(() => (omitted > 0 ? allLines.slice(0, MAX_READ_BRIEF_LINES) : allLines), [allLines, omitted]);
+  const code = useMemo(() => lines.join("\n"), [lines]);
+  const tokens = useCodeTokens(code, lang);
   return (
     <FadeBox className={"ed-brief" + (lift ? " lift" : " drop")}>
       <div className="ldiff">
@@ -341,6 +363,11 @@ function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string
               <code className="ldiff-code">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : ln || " "}</code>
             </div>
           ))}
+          {omitted > 0 && (
+            <div className="py-[6px] px-[12px] text-faint text-ui-xs">
+              … 内容过长，已省略剩余 {omitted} 行（点击文件名可在右侧查看完整文件）
+            </div>
+          )}
         </div>
       </div>
     </FadeBox>

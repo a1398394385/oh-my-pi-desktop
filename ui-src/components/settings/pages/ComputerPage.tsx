@@ -27,10 +27,6 @@ export default function ComputerPage() {
           <div className="srow-tx"><b>启用电脑控制</b><span>允许 Agent 使用截图、输入、辅助功能等电脑控制工具。新会话后生效。</span></div>
           <div className={"tg" + (on ? " on" : "")} id="tgComputer" onClick={toggle}><i></i></div>
         </div>
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>在输入框显示电脑操作按钮</b><span>没有 CUA helper，输入区不会出现电脑操作入口。</span></div>
-          <div className="tg disabled"><i></i></div>
-        </div>
       </div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-computer"]} />
     </div>

@@ -23,7 +23,7 @@ export interface SchemaUi {
   label?: string;
   description?: string;
   warning?: string;
-  options?: Array<{ value: string; label?: string }>;
+  options?: Array<{ value: string | number; label?: string }> | "runtime";
   condition?: string;
   [key: string]: unknown;
 }
@@ -61,8 +61,18 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   "pg-browser": [{ from: "tools/Grep & Browser", includePrefix: ["browser."], titleZh: "浏览器环境" }],
   "pg-computer": [{ from: "tools/Computer", titleZh: "电脑控制" }],
   "pg-mcp": [{ from: "tools/Discovery & MCP" }],
-  "pg-plugins": [{ from: "tools/Extensions" }],
+  "pg-plugins": [
+    { from: "tools/Extensions", titleZh: "扩展运行" },
+    { titleZh: "市场与更新", keys: ["marketplace.autoUpdate"] },
+    { titleZh: "外部扩展与禁用名单", keys: ["extensions", "disabledExtensions"], hint: "手动指定额外加载的扩展路径，或指定禁用的插件/扩展模块 ID（逗号分隔）" },
+  ],
   "pg-skills": [{ from: "tasks/Commands & Skills", includePrefix: ["skills."], titleZh: "技能命令" }],
+  "pg-hooks": [
+    {
+      titleZh: "钩子运行配置",
+      keys: ["statusLine.showHookStatus", "extensionHandlers.toolCallTimeoutMs"],
+    },
+  ],
 
   // ── 新主题页（pg-* 组件 + SchemaRows） ──
   "pg-model-behavior": [
@@ -159,6 +169,8 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "commands.enableClaudeProject": "pg-skills",
   "commands.enableOpencodeUser": "pg-skills",
   "commands.enableOpencodeProject": "pg-skills",
+  "statusLine.showHookStatus": "pg-hooks",
+  "extensionHandlers.toolCallTimeoutMs": "pg-hooks",
 };
 
 // 预置默认静态映射（覆盖 SETTINGS_ZH 的所有设置项），在 schema 尚未加载或离线测试时充当后备
@@ -215,7 +227,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "mcp.renderMarkdownResults", "mcp.notifications", "mcp.notificationDebounceMs",
   ],
   "pg-plugins": [
-    "extensionHandlers.toolCallTimeoutMs",
+    "extensionHandlers.toolCallTimeoutMs", "marketplace.autoUpdate", "extensions", "disabledExtensions",
   ],
   "pg-appearance": [
     "theme.dark", "theme.light", "symbolPreset", "colorBlindMode",
@@ -283,6 +295,9 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-skills": [
     "skills.enableSkillCommands", "commands.enableClaudeUser", "commands.enableClaudeProject", "commands.enableOpencodeUser",
     "commands.enableOpencodeProject",
+  ],
+  "pg-hooks": [
+    "statusLine.showHookStatus", "extensionHandlers.toolCallTimeoutMs",
   ],
   "pg-providers": [
     "providers.maxInFlightRequests", "providers.openai-codex.codeMode", "providers.openai-codex.codeModeDirectTools", "providers.ollama-cloud.maxConcurrency",

@@ -200,29 +200,45 @@ export function highlightCode(
   }
   if ((pending.get(key)?.size ?? 0) > 1) return null; // 已有同键请求在飞，等它的回调
 
-  getHighlighter()
-    .then(async (h) => {
-      if (!h.getLoadedLanguages().includes(lang)) {
-        const mod = LANG_MODULES[lang];
-        if (!mod) return; // 未注册的语言不染色（调用方回退纯文本）
-        await h.loadLanguage(mod);
-      }
-      // 两个主题已在 createHighlighterCore 注册，按名字取色即可（tokens 的 color 直接可用）
-      const result = h.codeToTokens(code, { lang, theme });
-      const tokens = result.tokens.map((line) =>
-        line.map((t) => ({ content: t.content, color: t.color || "" })),
-      );
-      const tokenized = { tokens };
-      cacheTokens(key, tokenized, code.length);
-      const subs = pending.get(key);
-      if (subs) {
-        for (const cb of subs) cb(tokenized);
-        pending.delete(key);
-      }
-    })
-    .catch(() => {
-      pending.delete(key); // tokenize 失败：组件停留在纯文本态
-    });
+  const scheduleTokenize = () => {
+    getHighlighter()
+      .then(async (h) => {
+        if (!h.getLoadedLanguages().includes(lang)) {
+          const mod = LANG_MODULES[lang];
+          if (!mod) return; // 未注册的语言不染色（调用方回退纯文本）
+          await h.loadLanguage(mod);
+        }
+        // 切到宏任务执行耗时 tokenize，给 UI 交互和滚动留出渲染间隙
+        setTimeout(() => {
+          try {
+            // 两个主题已在 createHighlighterCore 注册，按名字取色即可（tokens 的 color 直接可用）
+            const result = h.codeToTokens(code, { lang, theme });
+            const tokens = result.tokens.map((line) =>
+              line.map((t) => ({ content: t.content, color: t.color || "" })),
+            );
+            const tokenized = { tokens };
+            cacheTokens(key, tokenized, code.length);
+            const subs = pending.get(key);
+            if (subs) {
+              for (const cb of subs) cb(tokenized);
+              pending.delete(key);
+            }
+          } catch {
+            pending.delete(key);
+          }
+        }, 0);
+      })
+      .catch(() => {
+        pending.delete(key); // tokenize 失败：组件停留在纯文本态
+      });
+  };
+
+  // 优先通过 rAF 延迟到首帧 DOM Paint 之后，保证点击展开入场动画（0ms 感官）不被长文本 tokenize 阻塞
+  if (typeof requestAnimationFrame !== "undefined") {
+    requestAnimationFrame(() => setTimeout(scheduleTokenize, 0));
+  } else {
+    setTimeout(scheduleTokenize, 0);
+  }
   return null;
 }
 

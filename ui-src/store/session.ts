@@ -370,9 +370,10 @@ export function applyEvent(msg: EventFrame): void {
         s.assistantDraft = "";
         s.workingText = "正在处理…";
         // run 首轮才初始化过程起点与计时：轮内续轮(工具循环)不重置,
-        // 否则每个模型轮各自成组、时长/usage 全是单轮口径(实时/重载呈现分裂)
+        // 否则每个模型轮各自成组、时长/usage 全是单轮口径(实时/重载呈现分裂)；
+        // 起点可能已由本地发送预置（发送即计时），此处不覆盖
         if (s.turnItemStart == null) {
-          s.turnStartAt = Date.now();
+          s.turnStartAt = s.turnStartAt ?? Date.now();
           s.turnItemStart = s.items.length;
         }
       },

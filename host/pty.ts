@@ -53,7 +53,7 @@ const byOwner = new WeakMap<object, Set<string>>();
 // onData 收到 pty 原始输出（UTF-8 字符串）；onExit 在子进程退出后调用一次。
 export async function createTerminal(
   owner: object,
-  opts: { id: string; cwd: string; cols: number; rows: number; shell?: string },
+  opts: { id: string; cwd: string; cols: number; rows: number; shell?: string; inheritProfile?: boolean },
   onData: (data: string) => void,
   onExit: (code: number) => void,
 ): Promise<PtySession> {
@@ -78,7 +78,11 @@ export async function createTerminal(
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe", // 桥的诊断输出不进数据帧，避免污染终端画面
-    env: { ...process.env, TERM: "xterm-256color" },
+    env: {
+      ...process.env,
+      TERM: "xterm-256color",
+      OMP_LOGIN_SHELL: opts.inheritProfile === false ? "0" : "1",
+    },
   });
   const dec = new TextDecoder();
   (async () => {

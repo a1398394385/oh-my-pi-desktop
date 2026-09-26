@@ -4,7 +4,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { send, activeOpen, onTerminalFrame } from "../../store";
+import { send, activeOpen, onTerminalFrame, useAppStore } from "../../store";
 import type { TerminalFrame } from "../../store";
 import { registerTabCloseHook } from "./tabs";
 
@@ -108,9 +108,10 @@ function ensureSession(container: HTMLElement) {
     scheduleFit();
     return;
   }
+  const customFont = useAppStore.getState().uiPrefs.terminalFont?.trim();
   const term = new Terminal({
     fontSize: 13,
-    fontFamily: TERM_FONT,
+    fontFamily: customFont || TERM_FONT,
     theme: buildTheme(),
     cursorBlink: true,
     scrollback: 5000,
@@ -169,12 +170,14 @@ function ensureSession(container: HTMLElement) {
 
   // 起 PTY：cwd 取当前激活会话的项目目录
   const s = activeOpen();
+  const inherit = useAppStore.getState().uiPrefs.terminalInheritProfile !== false;
   send({
     type: "terminal_create",
     id: PERSIST_KEY,
     cwd: s?.cwd ?? "",
     cols: term.cols,
     rows: term.rows,
+    inheritProfile: inherit,
   });
 }
 

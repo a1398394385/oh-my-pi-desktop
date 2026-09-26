@@ -314,6 +314,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     } else {
       updateSession(s.sessionId, (next) => {
         next.items.push({ role: "user", text: t });
+        // 本地即刻置运行态：计时从发送起算、发送钮转停止（宿主 turn_start 到达后保留起点不重置）
+        next.streaming = true;
+        next.turnStartAt = Date.now();
       });
     }
     clearDraft();

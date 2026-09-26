@@ -31,6 +31,7 @@ OMP_DESKTOP_MODEL=deepseek/deepseek-flash bunx tauri dev   # 默认模型是本�
 ```bash
 OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke.ts   # 真模型全链路冒烟
 bun scripts/probe-sdk.ts                                          # 仅装配探针
+bun scripts/probe-asset-sources.ts                                # 来源开关（扩展页「来源」/「外部工具 ~/ 配置」）对资产列表的约束
 ```
 
 ## 验证记录（2026-09-19）

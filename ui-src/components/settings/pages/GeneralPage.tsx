@@ -114,6 +114,13 @@ export default function GeneralPage() {
     }
   }, [hs]);
   const [showThinking, setShowThinking] = useState(!!useAppStore.getState().uiPrefs.showThinking);
+  const [terminalInherit, setTerminalInherit] = useState(
+    useAppStore.getState().uiPrefs.terminalInheritProfile !== false
+  );
+  const [terminalFont, setTerminalFont] = useState(
+    useAppStore.getState().uiPrefs.terminalFont || ""
+  );
+  const termFontRef = useRef<HTMLInputElement>(null);
 
   // ---------- 交互 ----------
   const switchProfile = (name: string) => {
@@ -141,6 +148,23 @@ export default function GeneralPage() {
     saveUiPrefs();
     applyAppearance();
     send({ type: "set_setting", key: "hideThinkingBlock", value: !on });
+  };
+  const toggleTerminalInherit = () => {
+    const next = !terminalInherit;
+    setTerminalInherit(next);
+    useAppStore.setState((st) => ({
+      uiPrefs: { ...st.uiPrefs, terminalInheritProfile: next },
+    }));
+    saveUiPrefs();
+    toast(next ? "已开启终端环境继承（下次新建终端生效）" : "已关闭终端环境继承（下次新建终端生效）");
+  };
+  const saveTerminalFont = () => {
+    const f = terminalFont.trim();
+    useAppStore.setState((st) => ({
+      uiPrefs: { ...st.uiPrefs, terminalFont: f },
+    }));
+    saveUiPrefs();
+    toast(f ? `终端字体已保存：${f}` : "已恢复默认终端字体栈");
   };
   // 网络三件套：整包发送 desktopEnv（旧版 saveDesktopField 语义）
   const saveEnv = (field: string, val: string) => {
@@ -201,17 +225,31 @@ export default function GeneralPage() {
       </div>
       <div className="set-group-tt">终端</div>
       <div className="set-card">
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>继承系统终端 Profile</b><span>当前应用没有内置终端面板，无法继承登录 shell 环境。</span></div>
-          <div className="tg disabled"><i></i></div>
+        <div className="srow">
+          <div className="srow-tx">
+            <b>继承系统终端 Profile</b>
+            <span>启动内置终端时作为登录 Shell 运行，自动加载 ~/.zprofile、PATH 等系统与用户登录环境。</span>
+          </div>
+          <div className={"tg" + (terminalInherit ? " on" : "")} id="tgTerminalInherit" onClick={toggleTerminalInherit}>
+            <i></i>
+          </div>
         </div>
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>终端字体</b><span>无内置终端，字体覆盖无对象。</span></div>
-          <div className="srow-ctl"><span className="inp disabled">不可用</span></div>
-        </div>
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>增强 Find 和 Grep</b><span>ZCode 自带 bfs/ugrep 增强；omp 没有对等产品开关。</span></div>
-          <div className="tg disabled"><i></i></div>
+        <div className="srow">
+          <div className="srow-tx">
+            <b>终端字体</b>
+            <span>右栏内置终端的等宽字体家族。留空则使用默认等宽字体栈。</span>
+          </div>
+          <div className="srow-ctl">
+            <input
+              className="inp"
+              id="termFontInput"
+              placeholder='ui-monospace, "SF Mono", Menlo, monospace'
+              value={terminalFont}
+              ref={termFontRef}
+              onChange={(e) => setTerminalFont(e.target.value)}
+            />
+            <button className="save-btn" id="termFontSave" onClick={saveTerminalFont}>保存</button>
+          </div>
         </div>
       </div>
       <div className="set-group-tt">网络</div>
@@ -241,20 +279,8 @@ export default function GeneralPage() {
           </div>
         </div>
       </div>
-      <div className="set-group-tt">更新与行为</div>
+      <div className="set-group-tt">行为与交互</div>
       <div className="set-card">
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>Chrome 硬件加速</b><span>Tauri WKWebView 没有对等开关。</span></div>
-          <div className="tg disabled"><i></i></div>
-        </div>
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>接受提前收到预览版更新</b><span>本应用未接入自动更新通道。</span></div>
-          <div className="tg disabled"><i></i></div>
-        </div>
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>自动下载并安装更新</b><span>本应用未接入自动更新通道。</span></div>
-          <div className="tg disabled"><i></i></div>
-        </div>
         <div className="srow">
           <div className="srow-tx"><b>提问超时时间</b><span>omp ask.timeout：提问无人响应 N 秒后自动选择推荐项；0 = 永不超时（默认）。</span></div>
           <div className="srow-ctl">
@@ -262,10 +288,6 @@ export default function GeneralPage() {
               onChange={(e) => setAskTimeout(e.target.value)} />
             <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>保存</button>
           </div>
-        </div>
-        <div className="srow unavailable">
-          <div className="srow-tx"><b>完整保留模型 I/O</b><span>会话已以 JSONL 落盘，没有单独的完整 I/O 审计开关。</span></div>
-          <div className="tg disabled"><i></i></div>
         </div>
         <div className="srow">
           <div className="srow-tx"><b>显示思考过程</b><span>在消息流中展示模型的思考内容。对应 omp hideThinkingBlock。</span></div>

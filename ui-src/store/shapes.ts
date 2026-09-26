@@ -36,6 +36,8 @@ export interface UiPrefs {
   showThinking: boolean;
   expandToolOutput: boolean;
   lang: string;
+  terminalInheritProfile?: boolean;
+  terminalFont?: string;
 }
 
 /** 右栏运行态（RightState 容器形状；分支树/条目树节点类型取自 types/frames） */

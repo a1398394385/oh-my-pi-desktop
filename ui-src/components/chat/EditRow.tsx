@@ -4,7 +4,8 @@
 // 回包经 file_diff 写入 briefDiffCache 后重渲染。
 import type { ToolItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
-import { bumpGroupExpand, useGroupExpandVersion } from "../../store/groupExpand";
+import { bumpGroupExpand, useGroupExpandVersion, rdExpand, chgExpand } from "../../store/groupExpand";
+export { rdExpand, chgExpand };
 import Icon from "../../Icon";
 import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import { splitPath } from "./util";
@@ -107,8 +108,7 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
   );
 }
 
-// 更改组展开状态：以组内首个 item 对象为键（items 对象引用稳定，跨全量重绘保留）
-export const chgExpand = new WeakMap<ToolItem, boolean>();
+// 更改组展开状态：以组内首个 item 对象为键（定义于 groupExpand.ts）
 
 // 「更改 · N 个文件」标题行：连续编辑事件合并组，点击向下展开各条编辑
 function ChangeGroup({ subs }: { subs: ToolItem[] }) {
@@ -166,8 +166,7 @@ export function renderChange(item: ToolItem) {
 }
 
 // ---------- 查阅组（连续 read 合并，机制与更改组一致） ----------
-// 展开状态：独立 WeakMap（以组内首个 item 为键，引用稳定跨重绘保留）
-export const rdExpand = new WeakMap<ToolItem, boolean>();
+// 展开状态：独立 WeakMap（定义于 groupExpand.ts）
 
 // 组内单条读取行：共享 parts.tsx 的 ReadRow（点击展开显示读取内容）
 function ReadEntry({ sub }: { sub: ToolItem }) {

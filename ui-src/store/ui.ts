@@ -62,6 +62,8 @@ const uiPrefsInit: UiPrefs = {
   showThinking: true,
   expandToolOutput: true,
   lang: "zh-CN",
+  terminalInheritProfile: true,
+  terminalFont: "",
 };
 try {
   Object.assign(uiPrefsInit, JSON.parse(localStorage.getItem("omp-ui-settings") || "{}"));

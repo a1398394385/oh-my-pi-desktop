@@ -3,7 +3,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { H } from "./state.ts";
 import {
   loadCapability,
@@ -11,6 +11,8 @@ import {
   disconnectServer,
   readDisabledServers,
   readEnabledServers,
+  isProviderEnabled,
+  isUserSourceEnabled,
 } from "./bootstrap.ts";
 
 async function firstHeading(file: string): Promise<string> {
@@ -89,6 +91,20 @@ export function assetOmpDir(kind: AssetKind, scope: unknown, cwd?: unknown): str
 // mcp.json 候选文件（带点的在前优先读，无前缀为主写入目标）
 export function mcpCandidates(dir: string): string[] {
   return [path.join(dir, "mcp.json"), path.join(dir, ".mcp.json")];
+}
+
+// 外部来源开关判定（对齐底座 discovery 的加载条件，「来源」关掉后列表不再显示该来源资产）：
+// - 来源主开关：扩展页「来源」→ 底座 disabledProviders
+// - 用户级外部工具目录 opt-in：扩展页「外部工具 ~/ 配置」→ 底座 enabledProviders
+// - claude / codex 用户级目录另有技能级兼容开关（底座 skills.enableClaudeUser / enableCodexUser）
+// 项目级目录不受 opt-in 限制，只受来源主开关约束（同底座 isUserSourceEnabled 注释）。
+function isAssetSourceOn(provider: string, level: "user" | "project"): boolean {
+  if (!isProviderEnabled(provider)) return false;
+  if (level === "project") return true;
+  if (isUserSourceEnabled(provider)) return true;
+  if (provider === "claude") return H.settings.get("skills.enableClaudeUser") === true;
+  if (provider === "codex") return H.settings.get("skills.enableCodexUser") === true;
+  return false;
 }
 
 // 所有合法的技能根目录（含全局 OMP/Agents/Claude/Codex/OpenCode、Profile、项目各级）
@@ -269,9 +285,10 @@ export async function loadAllSkillsScoped() {
     }
   } catch {}
 
-  const scanSources = async (sources: { dir: string; provider: string }[], scope: string) => {
+  const scanSources = async (sources: { dir: string; provider: string }[], scope: string, level: "user" | "project") => {
     const skillMap = new Map<string, any>();
     for (const src of sources) {
+      if (!isAssetSourceOn(src.provider, level)) continue; // 来源已关闭 → 不列表
       const files = await findSkillFiles(src.dir);
       for (const f of files) {
         const item = await parseSkillFile(f, src.provider, scope, isSkillDisabled);
@@ -283,12 +300,14 @@ export async function loadAllSkillsScoped() {
     return Array.from(skillMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   };
 
-  const scannedProfile = await scanSources(profileSources, "profile");
+  const scannedProfile = await scanSources(profileSources, "profile", "user");
   const profileItemsMap = new Map<string, any>();
   for (const it of scannedProfile) profileItemsMap.set(it.name, it);
 
+  // 底座补充（不在硬编码目录内的来源，如 ~/.claude/plugins）：不传 includeDisabled，
+  // 使外部用户级目录同样受「外部工具 ~/ 配置」opt-in 约束，与运行时加载行为一致
   try {
-    const capRes = await loadCapability<any>("skills", { cwd: H.agentDir, includeDisabled: true });
+    const capRes = await loadCapability<any>("skills", { cwd: H.agentDir });
     for (const s of capRes.all ?? []) {
       if ((s.level === "user" || s._source?.level === "user") && !profileItemsMap.has(s.name)) {
         const p = s.path || s._source?.path;
@@ -327,12 +346,12 @@ export async function loadAllSkillsScoped() {
       if (parent === cur) break;
       cur = parent;
     }
-    const scannedProj = await scanSources(pSources, `project:${cwd}`);
+    const scannedProj = await scanSources(pSources, `project:${cwd}`, "project");
     const projItemsMap = new Map<string, any>();
     for (const it of scannedProj) projItemsMap.set(it.name, it);
 
     try {
-      const pCapRes = await loadCapability<any>("skills", { cwd, includeDisabled: true });
+      const pCapRes = await loadCapability<any>("skills", { cwd });
       for (const s of pCapRes.all ?? []) {
         if ((s.level === "project" || s._source?.level === "project") && !projItemsMap.has(s.name)) {
           const p = s.path || s._source?.path;
@@ -465,8 +484,9 @@ export async function loadAllMcpScoped() {
   const allServersMap = new Map<string, McpServerItem>();
 
   // 1. 用户级发现（当前 Profile 及全局外部源，如 ~/.claude.json、~/.cursor/mcp.json、~/.codex/config.toml 等）
+  //    不传 includeDisabled：外部用户级来源受「来源」与「外部工具 ~/ 配置」开关约束（同底座运行时加载）
   try {
-    const userRes = await loadCapability<any>("mcps", { cwd: H.agentDir, includeDisabled: true });
+    const userRes = await loadCapability<any>("mcps", { cwd: H.agentDir });
     for (const s of userRes.items) {
       const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
       const enabled = isServerEnabled(s.name, s.enabled);
@@ -499,7 +519,7 @@ export async function loadAllMcpScoped() {
   for (const cwd of validDesktopProjects()) {
     let count = 0;
     try {
-      const projRes = await loadCapability<any>("mcps", { cwd, includeDisabled: true });
+      const projRes = await loadCapability<any>("mcps", { cwd });
       for (const s of projRes.items) {
         const isProject = s._source?.level === "project";
         const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
@@ -628,6 +648,65 @@ export async function loadAllMcpScoped() {
   };
 }
 
+export interface HookAssetItem {
+  name: string;
+  path: string;
+  phase: "pre" | "post";
+  tool: string;
+  scope: "profile" | "project";
+  cwd?: string;
+  projectName?: string;
+  enabled: boolean;
+}
+
+/** 读 omp-desktop.json 的 hooks.enabled（缺省关闭） */
+export function readHooksEnabled(): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+    const hooks = raw?.hooks as Record<string, unknown> | undefined;
+    if (!hooks || typeof hooks !== "object") return false;
+    return hooks.enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 写回 hooks.enabled */
+export async function writeHooksEnabled(enabled: boolean): Promise<void> {
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = JSON.parse(await readFile(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+  } catch {}
+  const hooks = raw.hooks && typeof raw.hooks === "object" ? (raw.hooks as Record<string, unknown>) : {};
+  const dir = path.dirname(H.desktopProjectsPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, hooks: { ...hooks, enabled } }, null, 2));
+}
+
+/** 读 omp-desktop.json 的 plugins.enabled（缺省关闭） */
+export function readPluginsEnabled(): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+    const plugins = raw?.plugins as Record<string, unknown> | undefined;
+    if (!plugins || typeof plugins !== "object") return false;
+    return plugins.enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 写回 plugins.enabled */
+export async function writePluginsEnabled(enabled: boolean): Promise<void> {
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = JSON.parse(await readFile(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+  } catch {}
+  const plugins = raw.plugins && typeof raw.plugins === "object" ? (raw.plugins as Record<string, unknown>) : {};
+  const dir = path.dirname(H.desktopProjectsPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, plugins: { ...plugins, enabled } }, null, 2));
+}
+
 export async function listAgentAssets() {
   const memoriesDir = path.join(H.agentDir, "memories");
   // agent 定义按两级返回：当前 profile / 各桌面项目
@@ -660,10 +739,44 @@ export async function listAgentAssets() {
   const agents = await loadScopedAgents();
   const skills = await loadAllSkillsScoped();
   const mcp = await loadAllMcpScoped();
-  const hooks: { name: string; path: string; phase: string }[] = [];
-  for (const phase of ["pre", "post"]) {
-    for (const f of await listNamedFiles(path.join(H.agentDir, "hooks", phase), ".ts")) hooks.push({ ...f, phase });
-    for (const f of await listNamedFiles(path.join(H.agentDir, "hooks", phase), ".js")) hooks.push({ ...f, phase });
+
+  const hooks: HookAssetItem[] = [];
+  const disabled = new Set<string>((H.settings.get("disabledExtensions") ?? []) as string[]);
+  const hookExts = [".ts", ".js", ".mjs", ".cjs", ".sh", ".bash", ".py"];
+
+  const scanHookDir = async (dir: string, phase: "pre" | "post", scope: "profile" | "project", cwd?: string, projectName?: string) => {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.name.startsWith(".")) continue;
+        if (!e.isFile() && !e.isSymbolicLink()) continue;
+        const ext = path.extname(e.name);
+        if (!hookExts.includes(ext) && ext !== "") continue;
+        const fullPath = path.join(dir, e.name);
+        const baseName = e.name.includes(".") ? e.name.slice(0, e.name.lastIndexOf(".")) : e.name;
+        const tool = baseName === "*" ? "*" : baseName;
+        const extId = `hook:${phase}:${tool}:${e.name}`;
+        const isOptOut = disabled.has(extId) || disabled.has(`hook:${phase}:${tool}:${baseName}`);
+        hooks.push({
+          name: e.name,
+          path: fullPath,
+          phase,
+          tool,
+          scope,
+          cwd,
+          projectName,
+          enabled: !isOptOut,
+        });
+      }
+    } catch {}
+  };
+
+  for (const phase of ["pre", "post"] as const) {
+    await scanHookDir(path.join(H.agentDir, "hooks", phase), phase, "profile");
+    for (const cwd of validDesktopProjects()) {
+      const ompDir = nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp");
+      await scanHookDir(path.join(ompDir, "hooks", phase), phase, "project", cwd, path.basename(cwd));
+    }
   }
   // 记忆文件名是 omp 的 encodeProjectPath（cwd 去掉前导斜杠后把 / \ : 换成 -，首尾加 --），
   const validProjects = validDesktopProjects();
@@ -686,6 +799,6 @@ export async function listAgentAssets() {
     hooks,
     mcp,
     plugins: [] as { name: string }[],
-    flags: { enableMCP: false, disableExtensionDiscovery: true, computerEnabled: !!H.settings.get("computer.enabled") },
+    flags: { enableMCP: false, disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()), computerEnabled: !!H.settings.get("computer.enabled") },
   };
 }

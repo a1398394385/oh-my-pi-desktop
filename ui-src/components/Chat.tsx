@@ -6,7 +6,7 @@
 //   渲染后 scrollHeight 已变不可回推（120px 容差同原版）。
 // - 「滚动至结尾」按钮：常驻 stream 末尾（原 ensureScrollBottom），显隐由 scroll 事件
 //   命令式切换（4px 容差防亚像素抖动，高频滚动不进 React 状态）。
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useAppStore, isJunkPlaceholder, send } from "../store";
 import Icon from "../Icon";
 import TodoCard from "./chat/TodoCard";
@@ -16,6 +16,7 @@ import MsgRail from "./chat/MsgRail";
 import FindBar from "./chat/FindBar";
 import { renderItems } from "./chat/items";
 import type { RailEntry } from "./chat/chat-types";
+import { updateRailVisibility } from "../shell";
 
 // 按钮显隐：仅当消息流还有向下滚动余量时显示（4px 容差防亚像素抖动）
 function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) {
@@ -40,6 +41,7 @@ export default function Chat() {
   };
 
   // 切会话强制落底 + 流式期间贴近底部则跟随（useLayoutEffect 在 paint 前完成，不闪旧位置）
+  // items 换引用（含用户发送新消息的气泡追加）即跟随落底
   useLayoutEffect(() => {
     const el = streamRef.current;
     if (!el || !s) return;
@@ -51,7 +53,67 @@ export default function Chat() {
       atBottom.current = true; // scroll 事件异步 fire，先同步落定防同帧二次渲染回弹
     }
     updateScrollBottomVis(el, btnRef.current);
-  });
+  }, [s?.items]);
+
+  // 轨道显隐初始化：.dock 与会话区同帧挂载，#main 尺寸不因内部挂载改变，
+  // ResizeObserver 不触发；initShell 观察发起时 dock 可能尚未存在（会话异步恢复），
+  // 故此处挂载即主动算一次（启动恢复 / 新建会话切回都经此 remount）
+  useLayoutEffect(() => {
+    updateRailVisibility();
+  }, []);
+
+  // 阻断标签弹窗/内嵌展开卡向外层消息流的滚动渗透（到达边界时不向外层链式传播）
+  useEffect(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const card = target.closest<HTMLElement>(
+        ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList",
+      );
+      if (!card) return;
+
+      // 寻找当前触发点所在的最内层可纵向滚动的容器
+      let scroller: HTMLElement | null = target;
+      while (scroller && scroller !== card) {
+        const style = window.getComputedStyle(scroller);
+        const oy = style.overflowY;
+        if ((oy === "auto" || oy === "scroll") && scroller.scrollHeight > scroller.clientHeight) {
+          break;
+        }
+        scroller = scroller.parentElement;
+      }
+      if (!scroller || scroller === card) {
+        const style = window.getComputedStyle(card);
+        const oy = style.overflowY;
+        if ((oy === "auto" || oy === "scroll") && card.scrollHeight > card.clientHeight) {
+          scroller = card;
+        } else {
+          scroller = null;
+        }
+      }
+
+      // 卡片当前区域不可纵向滚动：完全阻止滚轮事件渗透带动外层消息流
+      if (!scroller) {
+        e.preventDefault();
+        return;
+      }
+
+      // 检查滚动边界：到顶继续向上滚，或到底继续向下滚时，阻止默认行为（禁止向上渗透）
+      const { scrollTop, scrollHeight, clientHeight } = scroller;
+      const delta = e.deltaY;
+      if (delta > 0 && scrollTop + clientHeight >= scrollHeight - 1) {
+        e.preventDefault();
+      } else if (delta < 0 && scrollTop <= 0) {
+        e.preventDefault();
+      }
+    };
+
+    stream.addEventListener("wheel", onWheel, { passive: false });
+    return () => stream.removeEventListener("wheel", onWheel);
+  }, []);
 
   // 滚动至结尾按钮（常驻末位，显隐走 scroll 监听）
   const scrollBottomBtn = (

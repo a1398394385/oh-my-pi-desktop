@@ -40,6 +40,9 @@ export interface SettingsSnapshot {
 export type SettingsPayload = SettingsSnapshot & {
   acpEnabled: boolean;
   sessionContextEnabled: boolean;
+  hooksEnabled: boolean;
+  pluginsEnabled?: boolean;
+  skillsEnabled?: boolean;
 };
 
 /** 模型目录条目(host/models.ts:17-23 modelsPayload) */
@@ -358,6 +361,26 @@ export interface McpAssetsPayload {
   projects: { cwd: string; name: string; path: string; servers: { name: string; command: string }[] }[];
 }
 
+export interface HookAssetItem {
+  name: string;
+  path: string;
+  phase: "pre" | "post" | string;
+  tool?: string;
+  scope?: "profile" | "project" | string;
+  cwd?: string;
+  projectName?: string;
+  enabled?: boolean;
+}
+
+export interface PluginAssetItem {
+  name: string;
+  version?: string;
+  path?: string;
+  scope?: string;
+  enabled?: boolean;
+  description?: string;
+}
+
 export interface AgentAssetsPayload {
   memories: { name: string; path: string; project?: string }[];
   skills: unknown;
@@ -369,9 +392,9 @@ export interface AgentAssetsPayload {
     profileDir: string;
     profileName?: string;
   };
-  hooks: { name: string; path: string; phase: string }[];
+  hooks: HookAssetItem[];
   mcp: McpAssetsPayload;
-  plugins: { name: string }[];
+  plugins: PluginAssetItem[];
   flags: { enableMCP: boolean; disableExtensionDiscovery: boolean; computerEnabled: boolean };
 }
 

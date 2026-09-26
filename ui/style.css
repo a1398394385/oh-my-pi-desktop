@@ -976,6 +976,7 @@ body:has(#right.collapsed) #right-resizer {
   /* loose 放宽标点禁则：）、， 可出现在行首，避免粘连块整体下移撑出行尾大空隙；
      单词/路径保持完整（路径仅允许在 / 后断行），代码块不受 break-all 影响 */
   white-space: pre-wrap; word-break: normal; line-break: loose;
+  overscroll-behavior: contain;
 }
 /* 滚动只发生在内层：竖线(::before)留在 .think-body 上，不随内容滚动而移出视口。
    max-height 减去外层上下内边距(1+6=7px)，可视行数与原实现一致；底部半行虚化，
@@ -1047,6 +1048,7 @@ body:has(#right.collapsed) #right-resizer {
   max-height: 240px;
   overflow-y: auto;
   background: transparent;
+  overscroll-behavior: contain;
 }
 /* 更改行：多文件列表，无行数；文件列表单行排布，超长行尾出省略号 */
 .act.change { flex-wrap: nowrap; overflow: hidden; }
@@ -1060,7 +1062,7 @@ body:has(#right.collapsed) #right-resizer {
    组头下边距 20px 与 body -6px 塌陷成 14px——与卡片弹框到标签的间距（编辑行 ed-brief 基准）一致；
    padding-top 1px：竖线内第一个标签比竖线顶点低 1px。
    内行 padding 5px 相邻 10px——行与行两两间距等宽（含展开 brief 的行，见 .chg-body .ed-brief） */
-.chg-body { margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: flex-start; position: relative; }
+.chg-body { margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box; }
 /* 左侧整条竖线：对齐组头铅笔图标（13px 宽）正中心（6.5 - 线宽 2/2 = 5.5）。
    顶点与展开体顶边齐平（top:0）：不再向上探入组头行覆盖图标；与组头文字的边距 = 组头 mb 20 与
    body mt -6 的塌陷值 14px，与卡片弹框边距一致。内行展开 diff 时 body 增高，竖线随之延展 */
@@ -1077,7 +1079,12 @@ body:has(#right.collapsed) #right-resizer {
 .chg-body .ed-brief { width: auto; align-self: stretch; margin: 9px 0 5px; } /* 嵌套展开体铺满组内容列，不再吃 #stream>* 的 100% 宽 */
 /* 组内终端输出卡：与组内 ed-brief 同间距体系（顶层 .cmd-card 的 -6/12 是按 .cmd 行 mb 20 塌陷设计的） */
 .chg-body .cmd-card { margin: 9px 0 5px; }
-.chg-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 5px 0; color: var(--dim); font-size: var(--ui-fs-base); }
+.chg-item {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: nowrap; max-width: 100%; box-sizing: border-box; overflow: hidden;
+  padding: 5px 15px 5px 0; color: var(--dim); font-size: var(--ui-fs-base);
+}
+.chg-item .lbl, .chg-item .ed-arrow, .chg-item .f-ic, .chg-item > svg:first-child { flex: none; }
 .chg-item .ed-name { cursor: pointer; }
 .chg-item .ed-name:hover { text-decoration: underline; }
 /* 待办行 */
@@ -1118,6 +1125,7 @@ body:has(#right.collapsed) #right-resizer {
 .cmd-card {
   margin: -6px 0 12px; background: #323232; border-radius: 10px;
   padding: 10px 12px; font-family: var(--mono); font-size: var(--code-fs, 12px);
+  overscroll-behavior: contain;
 }
 .cmd-card-cmd {
   color: #e5e7eb; white-space: pre-wrap; word-break: break-all;
@@ -2756,7 +2764,8 @@ body.resizing .resizer {
   overflow: hidden;
 }
 [data-theme="dark"] .fd-holder { color-scheme: dark; }
-html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-all; }
+html[data-code-wrap="on"] .cmd .c-tx,
+html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: break-all; }
 
 /* ── 轻量 diff（自研，移植 ZCode lightweight-diff-preview）：行背景 color-mix +
    行首 inset 状态条 + 行号 gutter 着色表达增删，不显示 +/-/空格 marker ── */
@@ -2768,6 +2777,7 @@ html[data-code-wrap="on"] .cmd .c-tx { white-space: pre-wrap; word-break: break-
   overflow: auto;
   background: var(--bg);
   line-height: 1.6; /* ZCode leading-relaxed */
+  overscroll-behavior: contain;
 }
 /* 不换行时由内层滚动面统一算 max-content 宽度：每行各自撑宽的话，
    横滚到右侧时短行背景提前结束，产生底色断层（ZCode 原注释同款） */
@@ -3539,28 +3549,38 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* 一级标题与边距同步 .set-tt（1.75 + 下边距 25） */
 .skills-header { margin-bottom: 25px; }
 .skills-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
+/* 技能总开关关闭：页面其余控件灰显并禁止交互（同钩子页「请先开启总开关」语义，总开关卡片在容器外不受影响） */
+.skills-off-dim { opacity: .45; pointer-events: none; }
 
-/* 第一行：作用域胶囊 + 统计 + 搜索框 */
-.skills-bar-primary {
+/* 单行工具条：作用域胶囊 + 统计 + 更多/刷新/新建 + 搜索框（搜索框靠右，窄宽度优先压缩搜索框/胶囊） */
+.skills-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 .skills-scope-wrap {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 .skills-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
+/* 统计文案与作用域标签不换行：宽度不足时胶囊标签省略号截断 */
+.skills-bar #skillsTotalCount { white-space: nowrap; }
+.skills-bar .scope-sel-btn { min-width: 0; }
+.skills-bar .scope-sel-btn > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .skills-search-wrap {
   position: relative;
   display: flex;
   align-items: center;
-  width: 240px;
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 240px;
+  margin-left: auto;
 }
 .skills-search-icon {
   position: absolute;
@@ -3589,17 +3609,12 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .skills-search-input::placeholder { color: var(--faint); }
 
-/* 第二行：已安装计数 + 操作按钮 */
-.skills-bar-secondary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
+/* 操作按钮组：更多 + 刷新 + 新建（不参与压缩，宽度不足时压缩搜索框/作用域胶囊） */
 .skills-actions-wrap {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: none;
 }
 /* 更多(⋯)按钮 = .sel 胶囊内的尺寸载体：底板/hover 由外层 .sel 提供（刷新钮走 .plus-btn） */
 .skills-btn-icon {
@@ -3629,6 +3644,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   cursor: pointer;
   transition: background .15s var(--swift);
 }
+.skills-btn-new span { white-space: nowrap; }
 .skills-btn-new:hover { background: var(--panel-2); }
 .skills-btn-new:active { transform: scale(.95); }
 

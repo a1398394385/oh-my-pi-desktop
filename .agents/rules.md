@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 6 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 8 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -14,6 +14,8 @@
 | RULE-004 | 改动 import 区块禁止整行替换相邻 import;删改符号后必须核对本文件使用点 | host/ 与全部 TS 模块 |
 | RULE-005 | 组件内的条件早退必须位于全部 hooks 之后 | 全部 UI 组件 |
 | RULE-006 | 展开/详情渲染体不得无条件解引用异步到达的内容；整树必须包在 ErrorBoundary 内 | 全部 UI 渲染 |
+| RULE-007 | 键盘上下导航切换选择的滚动列表必须绑定激活项 scrollIntoView 视口跟随 | 全部交互式列表与下拉浮层 |
+| RULE-008 | 列出外部来源资产的宿主扫描必须复用底座来源判定,禁止自建目录枚举绕过来源开关 | host/ 资产发现层 |
 
 ---
 
@@ -82,3 +84,23 @@
 **How to apply**:写/改 `*Row.jsx`、`ExpandableRow`、`ReadRow` 这类展开组件时，检查展开体里每一处属性链——内容来自 `tool`/`tool_update`/RPC 异步帧的一律加 `?.` 或把存在性并入 `open`。review checklist:diff 里出现 `Expanded && <` ↔ 同行或上方有内容存在性判定。全站同类点已审计（BashRow/CmdCard/ContentCard/EditBrief 均有 `||` 兜底，仅 ReadRow 曾漏）。
 
 **关联**:BUG-016 / BUG-014
+
+### RULE-007: 键盘上下导航切换选择的滚动列表必须绑定激活项 scrollIntoView 视口跟随
+
+**规则**:凡支持通过键盘上下箭头（ArrowUp / ArrowDown）在子项间切换选中态的滚动列表或下拉浮层（搜索框下拉、命令面板、自动补全、下拉菜单等），必须实现选中项自动滚动进可视区域（`scrollIntoView({ block: "nearest" })`），且筛选关键词变更重置选中项时必须复位滚动容器至顶部（`scrollTo({ top: 0 })`）。
+
+**Why**:BUG-018 多次踩坑。内嵌滚动容器（`overflow-y: auto`）不会自动随 state 里的 `selectedIndex` 或 class 变化而滚动，仅更新索引导致可视区外的选中项对用户不可见，体验严重降级。
+
+**How to apply**:给滚动容器绑定 `listRef`，以 `useEffect` 监听 `selectedIndex`（或通过键盘导航标记区分鼠标 hover 与按键），对激活元素执行 `el.scrollIntoView({ block: "nearest" })`；搜索词改变重设为 0 时调用 `listRef.current?.scrollTo({ top: 0 })`。review checklist:出现 `ArrowDown`/`ArrowUp` 修改选中 index ↔ 必有 `listRef` / `scrollIntoView` 联动。
+
+**关联**:BUG-018
+
+### RULE-008: 列出外部来源资产的宿主扫描必须复用底座来源判定,禁止自建目录枚举绕过来源开关
+
+**规则**:宿主侧任何「枚举外部工具目录/配置并列表展示」的资产发现(技能、MCP 等)必须复用底座的来源判定:项级 `disabledExtensions` 之外,还要过来源主开关(底座 `isProviderEnabled`,设置键 `disabledProviders`)与用户级 opt-in(底座 `isUserSourceEnabled`,设置键 `enabledProviders`);用户级 claude/codex 目录另有技能级兼容开关 `skills.enableClaudeUser` / `enableCodexUser`。项目级目录只受主开关约束。禁止用 `loadCapability(..., { includeDisabled: true })` 让页面看到比运行时更多的外部来源(该选项等于 `includeOptOutUserSources`,会绕过 opt-in)。
+
+**Why**:BUG-025——`host/assets.ts` 自建目录扫描硬编码 `~/.claude/skills` 等外部目录,只查项级开关不查来源开关,于是扩展页关掉来源后技能/MCP 页仍列出该来源资产(会话侧实际不加载),页面与现实不一致;底座 `filterProviders` 本来已按 `disabledProviders` 过滤,自建扫描等于把判定复制了一份并丢掉。
+
+**How to apply**:新增/修改 `host/assets.ts` 内任何 `{ dir, provider }` 源列表时,列表循环里必须有 `isAssetSourceOn(provider, level)`(或等效的来源判定)在扫描前 continue;给 `loadCapability` 传参时不要带 `includeDisabled`,除非该调用专门为扩展中心这类「管理面板」服务。review checklist:diff 里出现新的 `path.join(os.homedir(), ".xxx"...)` 外部目录 ↔ 同一路径集合上有来源判定;出现 `includeDisabled: true` ↔ 该函数不是管理面板。回归验证:`bun scripts/probe-asset-sources.ts`(四组来源开关断言,改前红)。
+
+**关联**:BUG-025

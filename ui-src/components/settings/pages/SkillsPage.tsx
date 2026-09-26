@@ -50,6 +50,9 @@ export default function SkillsPage() {
   // 渲染数据走字段 selector：agentAssets / assetFile / assetFileSaved 落地帧均换新引用；
   // onToggle 乐观写也走 setState 换引用链（见 onToggle），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  // 技能总开关（底座 skills.enabled，缺省视为开启）；关闭时页面其余控件灰显禁用
+  const skillsEnabled = hostSettings?.skillsEnabled !== false;
   const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [query, setQuery] = useState("");
   const [moreOpen, setMoreOpen] = useState(false); // more 菜单
@@ -91,7 +94,6 @@ export default function SkillsPage() {
     sections.find((s) => s.scope === scope) || profileSec;
 
   const totalCount = curSec.items.length;
-  const installedCount = curSec.items.filter((item) => item.enabled).length;
   const q = query.trim().toLowerCase();
   const filtered = curSec.items.filter((item) => !q || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q)));
 
@@ -126,6 +128,12 @@ export default function SkillsPage() {
   useEffect(() => () => clearTimeout(statusTimer.current), []);
 
   // ---------- 交互（1:1 平移旧版事件绑定） ----------
+  function toggleSkills() {
+    const next = !skillsEnabled;
+    send({ type: "set_skills_enabled", enabled: next });
+    toast(next ? "已开启技能总开关，对新建会话生效。" : "已关闭技能总开关，对新建会话生效。");
+  }
+
   function toggleEditor(s: SkillItem) {
     if (openPath === s.path) { setOpenPath(null); return; } // 再点收起
     setOpenPath(s.path);
@@ -209,7 +217,27 @@ export default function SkillsPage() {
         <div className="skills-tt">技能</div>
       </div>
 
-      <div className="skills-bar-primary">
+      <div className="set-card" id="skillsMasterCard">
+        <div className="srow">
+          <div className="srow-tx">
+            <b>启用技能 (Skills)</b>
+            <span>允许 Agent 发现与加载各 Profile、项目目录下的技能。关闭后本页其余选项不可用。对新建会话生效。</span>
+          </div>
+          <div
+            className={"tg" + (skillsEnabled ? " on" : "")}
+            id="tgSkills"
+            title={skillsEnabled ? "点击停用技能" : "点击启用技能"}
+            onClick={toggleSkills}
+          >
+            <i></i>
+          </div>
+        </div>
+      </div>
+
+      <div className={skillsEnabled ? "" : "skills-off-dim"}>
+      <div className="set-group-tt" id="skillsInstalledLabel">已安装技能</div>
+
+      <div className="skills-bar">
         <div className="skills-scope-wrap">
           <ScopeSel
             value={scope}
@@ -220,16 +248,6 @@ export default function SkillsPage() {
           <span className="skills-divider">|</span>
           <span className="text-ui-base text-dim" id="skillsTotalCount">技能 {totalCount}</span>
         </div>
-        <div className="skills-search-wrap">
-          <span className="skills-search-icon"><Icon name="search" size={14} /></span>
-          <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder="搜索技能..." spellCheck={false} autoComplete="off"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
-        </div>
-      </div>
-
-      <div className="skills-bar-secondary">
-        <div className="text-ui-sm font-medium text-dim" id="skillsInstalledLabel">已安装 {installedCount}</div>
         <div className="skills-actions-wrap">
           <div className="sel" id="skillsMoreSel">
             <button type="button" className="skills-btn-icon" id="skillsMoreBtn" title="更多选项"
@@ -259,6 +277,12 @@ export default function SkillsPage() {
             <Icon name="plus" size={14} />
             <span>新建</span>
           </button>
+        </div>
+        <div className="skills-search-wrap">
+          <span className="skills-search-icon"><Icon name="search" size={14} /></span>
+          <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder="搜索技能..." spellCheck={false} autoComplete="off"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
         </div>
       </div>
 
@@ -325,6 +349,7 @@ export default function SkillsPage() {
       </div>
       {/* 技能编辑：点击行向下延展编辑区（见上方 mem-expand） */}
       <SchemaRows sections={PAGE_PLACEMENT["pg-skills"]} />
+      </div>
     </div>
   );
 }

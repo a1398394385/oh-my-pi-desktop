@@ -7,10 +7,6 @@ export default function BrowserPage() {
   return (
     <div className="set-page" id="pg-browser">
       <div className="set-tt">浏览器控制</div>
-      <div className="set-note">
-        <b>当前版本无法实现</b>
-        <span>ZCode 的内置浏览器壳（导入数据、清缓存、忽略证书）需要嵌入式浏览器面板。本应用没有该面板；omp 的 browser.* 只给 Agent 工具用 Puppeteer/CDP，不能对应这页产品功能。</span>
-      </div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-browser"]} />
     </div>
   );

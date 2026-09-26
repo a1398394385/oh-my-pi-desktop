@@ -2,6 +2,7 @@
 // 转圈 + 动态文字现在挂在消息流末位、输入框正上方靠左，不再独立成行）。
 import { useEffect, useState } from "react";
 import { activeOpen } from "../../store";
+import { fmtDuration } from "./util";
 
 // 「工作中 N 秒」：250ms 轮询按真实时间取值（setInterval(1000) 与 turnStartAt 相位不对齐，
 // 且主线程被流式重绘阻塞时回调被压缩补跳）
@@ -19,7 +20,7 @@ export function WorkSec() {
   }, []);
   return (
     <div className="act t2">
-      工作中 <span id="workSec">{sec}</span> 秒
+      工作中 <span id="workSec">{fmtDuration(sec)}</span>
     </div>
   );
 }
