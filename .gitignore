@@ -4,3 +4,4 @@ src-tauri/target/
 ui/assets/
 ui/dist/
 host-dist/
+.playwright-mcp/

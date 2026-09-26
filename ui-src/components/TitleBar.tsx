@@ -11,7 +11,14 @@ export { IS_WINDOWS };
 import type { TauriWindow } from "../store/titlebar-window";
 
 function win(): TauriWindow {
-  return window.__TAURI__!.window!.getCurrentWindow();
+  // 浏览器直连调试（?preview=1，无 Tauri 注入）时窗口控制无意义，no-op 保持可渲染
+  return window.__TAURI__?.window?.getCurrentWindow() ?? {
+    minimize: async () => {},
+    toggleMaximize: async () => {},
+    close: async () => {},
+    isMaximized: async () => false,
+    onResized: async () => () => {},
+  };
 }
 
 function MinIcon() {

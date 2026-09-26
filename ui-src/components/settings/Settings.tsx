@@ -200,6 +200,44 @@ export default function Settings() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // 设置侧栏拖宽：右缘拖柄调 --setnav-w（#settings grid 第一列），
+  // 持久化键约定同 shell.ts attachResizer；主壳联动约束（中栏保宽等）不适用于 overlay，只限 150px~40vw
+  useEffect(() => {
+    const CSS_VAR = "--setnav-w";
+    const STORE_KEY = "omp-w-" + CSS_VAR;
+    const root = document.documentElement;
+    const saved = localStorage.getItem(STORE_KEY);
+    if (saved) root.style.setProperty(CSS_VAR, saved + "px");
+    const onDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation(); // #setNav 是窗口拖动区（data-tauri-drag-region），别触发窗口移动
+      const nav = document.getElementById("setNav");
+      if (!nav) return;
+      const startX = e.clientX;
+      const startW = nav.offsetWidth;
+      const move = (ev: MouseEvent) => {
+        const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
+        const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
+        const w = Math.round(Math.max(150, Math.min(startW + dx, wWin * 0.4)));
+        root.style.setProperty(CSS_VAR, w + "px");
+        try {
+          localStorage.setItem(STORE_KEY, String(w));
+        } catch {}
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.classList.remove("resizing");
+      };
+      document.body.classList.add("resizing");
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    };
+    const handle = document.getElementById("setNavResizer");
+    handle?.addEventListener("mousedown", onDown);
+    return () => handle?.removeEventListener("mousedown", onDown);
+  }, []);
+
   const Page = PAGES[pageId] || GeneralPage;
   const profileName = (hostSettings && hostSettings.activeProfile) || "omp-desktop";
 
@@ -209,6 +247,7 @@ export default function Settings() {
       <LoginBanner />
       <LoginPrompt />
       <nav id="setNav" data-tauri-drag-region>
+        <div id="setNavResizer" title="拖动调整宽度"></div>
         <button type="button" className="set-back" id="setBack" onClick={closeSettings}>
           <Icon name="back" size={14} />
           返回工作区
