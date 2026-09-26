@@ -105,8 +105,13 @@ import { translateEvent, translateSubagentEvent, entriesToTranscript, treeToDisp
 import { fetchSessionLimits, fetchProviderAccountsLimits, refreshAllLimits, listAllProviders } from "./limits/index.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
-// profile 初始化包含模型目录刷新，可能耗时数秒。不要用顶层 await 阻塞 WebSocket
-// 服务和 READY 输出；连接建立后再由 open/message 等待这份 Promise。
+// profile 初始化不等在线模型目录发现（applyProfile 内 refreshInBackground），
+// ready 帧携带磁盘缓存目录立即可用；目录后台补全后经 onModelsRefreshed 补推 models 帧。
+const activeWs: { value: unknown } = { value: null };
+H.onModelsRefreshed = () => {
+  const ws = activeWs.value as { send(data: string): unknown } | null;
+  if (ws) ws.send(JSON.stringify(modelsFrame()));
+};
 const profileReady = (async () => {
   H.currentProfile = initialProfile;
   await refreshAvailableProfiles();
@@ -710,7 +715,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
   },
   websocket: {
     open(ws) {
-      process.stderr.write(`[host] WS 客户端接入（前端加载与连接全链路 OK）\n`);
+      activeWs.value = ws;
+      process.stderr.write(`[host] WS 客户端接入（前端加载与连接全链路 OK） [t=${performance.now().toFixed(0)}ms]\n`);
       void profileReady.then(
         () => {
           ws.send(
@@ -2238,6 +2244,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
     },
     close(ws) {
       // 前端断开：清理其名下终端 PTY，防孤儿 shell 进程
+      if (activeWs.value === ws) activeWs.value = null;
       disposeTerminalsOf(ws);
     },
   },
@@ -3223,6 +3230,7 @@ setInterval(() => {
 }, 2000);
 
 console.log(`READY ws://127.0.0.1:${server.port}`);
+process.stderr.write(`[host][启动计时] WS 服务就绪 [t=${performance.now().toFixed(0)}ms]\n`);
 
 // 配额后台刷新:启动时预载所有已配置供应商(模型目录里出现过的 provider),
 // 此后每 5 分钟按账号全量重拉;缓存 TTL 同为 5min,前台 hover/切页永远命中缓存,

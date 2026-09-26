@@ -118,6 +118,9 @@ export const H = {
   scopedModels: [] as any[],
   modelOverride: undefined as any,
   cachedProfiles: ["default", "omp-desktop"] as string[],
+  // 模型目录在线刷新完成回调（host.ts 启动时赋值：向当前 WS 连接补推 models 帧；
+  // profile.ts 的 applyProfile 后台刷新完成后触发）
+  onModelsRefreshed: undefined as (() => void) | undefined,
 };
 
 // enabledModels 条目 "provider/id:thinking" 的默认思考级别

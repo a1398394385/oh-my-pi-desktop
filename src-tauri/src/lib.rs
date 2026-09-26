@@ -42,26 +42,27 @@ fn resolve_bun() -> PathBuf {
 }
 
 /// 宿主启动命令：打包形态优先资源目录里的自包含 omp-host（bun build --compile
-/// 产物，不依赖源码树与 PATH 里的 bun）；dev 形态回落 bun 直跑仓库源码。
+/// 产物，不依赖源码树与 PATH 里的 bun）；dev 形态一律 bun 直跑仓库源码——
+/// dev 下 resource_dir 解析到 target/debug，其中残留的打包产物 omp-host.exe
+/// 会让 sidecar 分支抢先命中，dev 永远跑固化旧代码，故 sidecar 仅 release 解析。
 fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("读取应用资源目录失败: {e}"))?;
-    let names: &[&str] = if cfg!(windows) {
-        &["omp-host.exe", "omp-host"]
-    } else {
-        // 当前 host:build 统一输出 omp-host.exe；macOS 也可直接执行该 Mach-O 文件。
-        &["omp-host", "omp-host.exe"]
-    };
-    for name in names {
-        let host = resource_dir.join(name);
-        if host.is_file() {
-            return Ok(Command::new(host));
-        }
-    }
-
     if !cfg!(debug_assertions) {
+        let resource_dir = app
+            .path()
+            .resource_dir()
+            .map_err(|e| format!("读取应用资源目录失败: {e}"))?;
+        let names: &[&str] = if cfg!(windows) {
+            &["omp-host.exe", "omp-host"]
+        } else {
+            // 当前 host:build 统一输出 omp-host.exe；macOS 也可直接执行该 Mach-O 文件。
+            &["omp-host", "omp-host.exe"]
+        };
+        for name in names {
+            let host = resource_dir.join(name);
+            if host.is_file() {
+                return Ok(Command::new(host));
+            }
+        }
         return Err(format!(
             "未找到宿主 sidecar（资源目录: {}）",
             resource_dir.display()

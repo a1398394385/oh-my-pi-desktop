@@ -127,6 +127,7 @@ export async function refreshAvailableProfiles(): Promise<string[]> {
 }
 
 export async function applyProfile(profileName: string) {
+  const t0 = performance.now();
   let target = "default";
   try {
     const norm = normalizeProfileName(profileName);
@@ -147,10 +148,29 @@ export async function applyProfile(profileName: string) {
   sessions.clear();
 
   H.agentDir = getAgentDir();
+  // 启动分段计时（performance.now() 以进程启动为 0 点）：定位 ready 帧前的耗时大头
+  let t = performance.now();
   H.authStorage = await discoverAuthStorage(H.agentDir);
+  process.stderr.write(`[host][启动计时] discoverAuthStorage: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  t = performance.now();
   H.modelRegistry = new ModelRegistry(H.authStorage);
-  await H.modelRegistry.refresh();
+  // 对齐 CLI 启动语义（main.ts 的 refreshInBackground）：构造函数已同步装载磁盘缓存
+  // 目录（models.yml + SQLite 快照），在线发现放后台、不阻塞 ready 帧（实测全量
+  // await refresh 要 4s，其中在线目录发现是大头）。刷新完成后重取目录并触发
+  // onModelsRefreshed，由 host 侧补推 models 帧。
+  const reg = H.modelRegistry;
+  reg.refreshInBackground();
+  void reg.awaitBackgroundRefresh().then(() => {
+    if (H.modelRegistry !== reg) return; // 刷新期间又切了 profile：旧 registry 回调直接弃
+    H.availableModels = reg.getAvailable();
+    rebuildScopedModels();
+    process.stderr.write(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
+    H.onModelsRefreshed?.();
+  });
+  process.stderr.write(`[host][启动计时] modelRegistry 构造(缓存目录)+后台刷新启动: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  t = performance.now();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
+  process.stderr.write(`[host][启动计时] Settings.init: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
   // 同步能力发现注册表：disabledProviders/enabledProviders → 内存 registry（CLI 入口同款调用，
   // 缺了这步用户禁用的第三方来源在发现层仍显示/按启用处理）
   initializeWithSettings(H.settings);
@@ -181,5 +201,7 @@ export async function applyProfile(profileName: string) {
   }
 
   await refreshAvailableProfiles();
-  process.stderr.write(`[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length}\n`);
+  process.stderr.write(
+    `[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length} [t=${t0.toFixed(0)}ms→${performance.now().toFixed(0)}ms, 总耗时 ${(performance.now() - t0).toFixed(0)}ms]\n`,
+  );
 }
