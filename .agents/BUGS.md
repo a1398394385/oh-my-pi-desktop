@@ -32,6 +32,7 @@
 | BUG-023 | 设置页面大量移植配置项下拉框点击无反应——层级遮挡、数字类型拦截与缺失枚举 | 2026-09-26 |
 | BUG-024 | 会话永不自动起标题——SDK 宿主未调用底座标题生成入口 | 2026-09-26 |
 | BUG-025 | 扩展页关掉来源后技能/MCP 页仍列出该来源资产——宿主自建目录扫描不查来源开关 | 2026-09-26 |
+| BUG-026 | Windows 安装版每 10s 泄漏一个 ~250MB 宿主进程——编译产物不分发 SDK 的 `__omp_worker_*` 协议 | 2026-09-27 |
 
 ---
 
@@ -358,3 +359,13 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **修复**：`host/assets.ts` 新增来源判定 `isAssetSourceOn(provider, level)`，对齐底座 discovery 的加载条件（来源主开关 `isProviderEnabled` + 用户级 opt-in `isUserSourceEnabled` + claude/codex 技能级兼容开关 `skills.enableClaudeUser` / `enableCodexUser`；项目级只受主开关约束），技能 profile/project 两级目录扫描逐源过滤；技能与 MCP 的底座补充调用去掉 `includeDisabled: true`，与运行时加载行为一致。`host/bootstrap.ts` 补导出 `isProviderEnabled`。子智能体/钩子/记忆页只扫 omp 自有目录（`assetRoots`），本就没有外部来源，无需改动；扩展页仍由底座 `getAllProvidersInfo()` 驱动，关掉的来源行仍在（`enabled=false`），可随时点回。
 
 **教训**：宿主一旦自建「枚举外部工具目录」的发现逻辑，就等于把底座 discovery 的来源/opt-in 判定复制了一份并悄悄丢掉；凡列出外部来源资产的页面，都应复用底座的来源判定（或直接吃 `loadCapability`），并且不要用 `includeDisabled` 让页面比运行时看到更多。回归防线：`scripts/probe-asset-sources.ts`（关来源/开来源/opt-in/单来源粒度四组断言，改前红、改后绿）。
+
+### BUG-026: Windows 安装版每 10s 泄漏一个 ~250MB 宿主进程——编译产物不分发 SDK 的 `__omp_worker_*` 协议
+
+**现象**：Windows 安装版后台持续增长名为「Bun」的进程（任务管理器读的是 Bun 的版本资源，实为 omp-host.exe 副本）：主宿主每 10.0s 起一个 `omp-host.exe __omp_worker_daemon_broker`，每个 ~230-260MB、约 1.5s CPU 后永久闲置、从不退出，内存无限增长（实测 4 分钟 +20 个）；`__omp_worker_js_eval_process` 亦漏 2 个。dev 形态无此问题。
+
+**根因**：SDK 在编译形态下把 worker 子进程 re-entry 到「当前可执行文件」——`subprocess/worker-client.ts` `resolveWorkerSpawnCmd()`：`if (isCompiledBinary()) return { cmd: [process.execPath, workerArg] }`。它假设该二进制像 omp CLI 一样在入口分发 `__omp_worker_*` 选择器（`cli.ts` `runWorkerEntrypoint()`），但桌面产物入口 `host/host.ts` 是完整桌面宿主：argv 被无视 → 每个 worker 被启动成一整个宿主（打印 READY、起 WS 服务、永不退出）→ daemon broker 命名管道永远不出现 → 客户端 `CONNECT_TIMEOUT_MS = 10s` 超时重试 → 每次重试再漏一个。dev 形态 `isCompiledBinary()` 为假，spawn 的是真 `cli.ts`，故无此问题。
+
+**修复**：`host/host.ts` 改为薄入口（宿主主体原样移至 `host/main.ts`，git mv 保留历史）：argv 空 = 宿主（Tauri 壳 spawn 从不带参数），动态装载 `main.ts`；argv 非空 = 以 CLI 身份运行——`declareWorkerHostEntry()`（对齐 cli.ts 的 isProcessEntry 分支，使 worker 子进程可再 spawn worker 线程）后交 SDK `runCli(argv)` 分发（worker 选择器、`--smoke-test`、`--version` 等全部可用），`runCli` 返回即 `process.exit(0)`。分流必须在宿主静态图求值之前（ESM 静态 import 先于顶层代码），所以宿主主体动态装载、worker 路径只拉 CLI 轻入口（静态图不含 TUI 与 native addon）。`check-capabilities.mjs`/`check-host-boundaries.mjs` 扫描目标跟随改为 main.ts。验证：`scripts/smoke-worker-dispatch.ts`（编译产物三 broker：daemon 分发为真 broker + scope.json + 3s 空闲自退；blob/lsp socket 出现；均无宿主 READY 行）+ 编译产物 `--smoke-test` 的 sync/stats_activity worker 通过。
+
+**教训**：以 `bun build --compile` 内嵌 SDK 的宿主二进制，就是 SDK 眼里的「CLI 编译产物」——SDK 的隐式协议（worker re-entry 到 `process.execPath`）必须由入口实现，否则每个子进程形态 worker（daemon/blob/lsp/js_eval/stats…）都漏成完整宿主。新增任何「宿主被 spawn 的形态」时，先对照 CLI 入口（cli.ts isProcessEntry 分支）核对协议责任。`--smoke-test` 与 `scripts/smoke-worker-dispatch.ts` 是此类回归的防线。

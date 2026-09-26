@@ -15,29 +15,31 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const hostDir = join(root, "host");
 
 // 允许的依赖边（A → B = A import B）。改动模块结构时同步此表并给出理由。
+// host.ts 是薄入口（argv 分流）：宿主主体 main.ts 由其动态 import 装载，
+// 动态 import 不在本表检查范围；下列 host 主体边均为 main.ts 的静态依赖。
 const ALLOWED_EDGES = new Set([
-  // ACP 集成：入口 host.ts 挂载 acp 面板，acp-tools/context 依赖共享 acp-state（单向向下）
-  "host.ts→acp-state.ts", "host.ts→acp-context.ts", "host.ts→acp-tools.ts",
+  // ACP 集成：宿主主体 main.ts 挂载 acp 面板，acp-tools/context 依赖共享 acp-state（单向向下）
+  "main.ts→acp-state.ts", "main.ts→acp-context.ts", "main.ts→acp-tools.ts",
   "acp-context.ts→acp-state.ts", "acp-tools.ts→acp-state.ts", "acp-tools.ts→acp-context.ts",
   // 历史会话检索工具（read_session_context）：只读当前 profile 的已落盘会话，
   // 依赖 bootstrap 的 SDK 句柄（listAllSessions / loadEntriesFromFile）
-  "host.ts→session-context.ts", "session-context.ts→bootstrap.ts",
-  // 右栏终端：host.ts 起 pty-bridge 子进程封装
-  "host.ts→pty.ts",
-  "host.ts→bootstrap.ts", "host.ts→state.ts", "host.ts→profile.ts", "host.ts→models.ts",
-  "host.ts→assets.ts", "host.ts→stats.ts", "host.ts→translate.ts", "host.ts→limits",
+  "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
+  // 右栏终端：main.ts 起 pty-bridge 子进程封装
+  "main.ts→pty.ts",
+  "main.ts→bootstrap.ts", "main.ts→state.ts", "main.ts→profile.ts", "main.ts→models.ts",
+  "main.ts→assets.ts", "main.ts→stats.ts", "main.ts→translate.ts", "main.ts→limits",
   "profile.ts→state.ts", "profile.ts→bootstrap.ts", "profile.ts→models.ts",
   "models.ts→state.ts", "models.ts→bootstrap.ts",
   "assets.ts→state.ts", "assets.ts→bootstrap.ts",
   "stats.ts→bootstrap.ts",
   // 扩展中心（/extensions 搬移植）：extensions.ts 经 bootstrap 拿 SDK 句柄、读 H 状态，
-  // host.ts 挂四个 RPC 分发（同 assets.ts 的接入形状）
-  "host.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
+  // main.ts 挂四个 RPC 分发（同 assets.ts 的接入形状）
+  "main.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
   "translate.ts→state.ts",
   "state.ts→bootstrap.ts",
-  // /goal 命令桌面实现 + 目标续跑调度：host.ts 挂命令分发与事件钩子，
+  // /goal 命令桌面实现 + 目标续跑调度：main.ts 挂命令分发与事件钩子，
   // state.ts 的 PoolEntry 持有控制器实例（goal.ts 只依赖自身窄接口，单向向下）
-  "host.ts→goal.ts", "state.ts→goal.ts",
+  "main.ts→goal.ts", "state.ts→goal.ts",
 ]);
 
 const files = readdirSync(hostDir).filter((f) => f.endsWith(".ts"));
