@@ -505,7 +505,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <div className="side-foot">
         <div className="avatar"><img src={appIcon} alt="" /></div>
         <div className="flex items-center gap-[6px] min-w-0">
-          <span className="text-[15px] font-semibold text-text truncate leading-none" id="sideProfileName">{hostSettings?.activeProfile || "omp-desktop"}</span>
+          <span className="text-[15px] font-semibold text-text truncate leading-none" id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
         </div>
         <span className="flex-1"></span>
         <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>

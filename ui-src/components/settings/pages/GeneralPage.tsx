@@ -179,7 +179,7 @@ export default function GeneralPage() {
   };
 
   // ---------- Profile 下拉数据（数据契约：hostSettings.availableProfiles: string[]） ----------
-  const activeProfile = hs?.activeProfile || "omp-desktop";
+  const activeProfile = hs?.activeProfile || "default";
   const profiles = Array.isArray(hs?.availableProfiles) && hs.availableProfiles.length
     ? hs.availableProfiles
     : [activeProfile];

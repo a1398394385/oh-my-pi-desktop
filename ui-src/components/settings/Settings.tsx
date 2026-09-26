@@ -239,7 +239,7 @@ export default function Settings() {
   }, []);
 
   const Page = PAGES[pageId] || GeneralPage;
-  const profileName = (hostSettings && hostSettings.activeProfile) || "omp-desktop";
+  const profileName = (hostSettings && hostSettings.activeProfile) || "default";
 
   return (
     <div id="settings" className={settingsOpen ? "" : "hidden"}>

@@ -27,7 +27,7 @@ export function getSavedProfile(): string {
       return raw.activeProfile.trim();
     }
   } catch {}
-  return "omp-desktop";
+  return "default";
 }
 
 export function saveProfileToDisk(profile: string) {
