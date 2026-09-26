@@ -42,9 +42,11 @@ export interface UiSlice {
   mentionResult: { reqId: number; matches: FileMatch[] } | null; // 最新 @ 候选响应；reqId 与当前请求不匹配即过期
   ctxDetail: ContextDetailFrame | null; // 最近一次 context_detail 回包（ringpop 弹卡瞬态,移开即弃）
   ctxLimits: LimitsResultFrame | null; // 最近一次 limits_result 回包
+  mainViewMode: "chat" | "tree"; // 主区域视图模式（消息流 vs 会话条目树）
   uiPrefs: UiPrefs;
   toast(msg: unknown): void;
   setComposerValue(text: string, images?: unknown[] | null): void;
+  setMainViewMode(mode: "chat" | "tree"): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
   setWelcomeProject(cwd?: string): void;
@@ -105,6 +107,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   mentionResult: null,
   ctxDetail: null,
   ctxLimits: null,
+  mainViewMode: "chat",
   uiPrefs: uiPrefsInit,
 
   toast(msg) {
@@ -119,9 +122,13 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set((s) => ({ composerSetSignal: { text, images, seq: ++composerSetSeq } }));
   },
 
+  setMainViewMode(mode) {
+    set({ mainViewMode: mode });
+  },
+
   showWelcomeScreen(preferredCwd) {
     const alreadyOpen = get().isCreatingNew;
-    set((s) => ({ isCreatingNew: true, activePath: null }));
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat" }));
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
       set({ newSessionDirty: false });
@@ -141,7 +148,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   },
 
   hideWelcomeScreen() {
-    set((s) => ({ isCreatingNew: false }));
+    set((s) => ({ isCreatingNew: false, mainViewMode: "chat" }));
   },
 
   setWelcomeProject(cwd) {

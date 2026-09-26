@@ -47,6 +47,8 @@ export const connect = (): Promise<void> => useAppStore.getState().connect();
 export const toast = (msg: unknown): void => useAppStore.getState().toast(msg);
 export const setComposerValue = (text: string, images: unknown[] | null = []): void =>
   useAppStore.getState().setComposerValue(text, images);
+export const setMainViewMode = (mode: "chat" | "tree"): void =>
+  useAppStore.getState().setMainViewMode(mode);
 export const showWelcomeScreen = (preferredCwd?: string | null): void =>
   useAppStore.getState().showWelcomeScreen(preferredCwd);
 export const hideWelcomeScreen = (): void => useAppStore.getState().hideWelcomeScreen();

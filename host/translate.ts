@@ -510,9 +510,26 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     if (role !== "user" && role !== "assistant") continue;
     if (role === "user") {
       const text = typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
-      if (!isJunkPlaceholderText(text)) {
+      const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
+      if (Array.isArray(content)) {
+        for (const b of content) {
+          if (b?.type === "image") {
+            const data = b.data || b.source?.data;
+            const mimeType = b.mimeType || b.source?.media_type || b.source?.mimeType || "image/png";
+            if (typeof data === "string") {
+              images.push({ type: "image", data, mimeType });
+            }
+          }
+        }
+      }
+      if (!isJunkPlaceholderText(text) || images.length > 0) {
         finalizeRun(); // 有效用户输入开启新一轮
-        out.push({ role: "user", text, entryId: e.id });
+        out.push({
+          role: "user",
+          text,
+          entryId: e.id,
+          ...(images.length > 0 ? { images } : {}),
+        });
         run = { items: [], usage: null, startMs: ts, endMs: ts };
       }
       continue;

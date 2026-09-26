@@ -17,6 +17,7 @@ import FindBar from "./chat/FindBar";
 import { renderItems } from "./chat/items";
 import type { RailEntry } from "./chat/chat-types";
 import { updateRailVisibility } from "../shell";
+import MainSessionTree from "./chat/MainSessionTree";
 
 // 按钮显隐：仅当消息流还有向下滚动余量时显示（4px 容差防亚像素抖动）
 function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) {
@@ -28,6 +29,7 @@ export default function Chat() {
   // 当前会话订阅：所有 session 写入走 updateSession 换引用（items/draft/streaming 变化即重渲染）
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const activePath = useAppStore((st) => st.activePath);
+  const mainViewMode = useAppStore((st) => st.mainViewMode);
   const streamRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
@@ -142,6 +144,10 @@ export default function Chat() {
         </div>
       </>
     );
+  }
+
+  if (mainViewMode === "tree") {
+    return <MainSessionTree />;
   }
 
   // 消息轨道数据：渲染期随 items 遍历收集（key 与 data-fk 锚点同源）

@@ -276,6 +276,8 @@ export type TranscriptItem = {
   // ---- phase 行 ----
   phase?: "start" | "done";
   command?: string;
+  // ---- user 图片附件 ----
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
 };
 
 /** 排队消息视图元素(host/host.ts:2888-2890 sendQueued,经底座 toRestoredQueuedMessage) */

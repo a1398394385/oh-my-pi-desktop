@@ -108,7 +108,7 @@ export function activateSession(path: string): void {
       openSessions.delete(path);
       openSessions.set(path, cur);
     }
-    return { openSessions, activePath: path };
+    return { openSessions, activePath: path, mainViewMode: "chat" };
   });
   scheduleEvict();
 }

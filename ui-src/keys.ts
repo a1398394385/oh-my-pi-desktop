@@ -8,7 +8,7 @@
 //   · app.history.search / app.retry / app.tools.toggleVisibility / app.session.*
 //     桌面端无对应动作，不迁移。
 // 与 CLI 的差异：CLI 里 Esc 独占中断语义，GUI 里 Esc 已被设置页/查找栏/打开中的弹层消费，
-// 故中断只在没有其它 Esc 消费者时触发（见 interrupt 的守卫）。
+// 故 Esc 路由只在没有其它 Esc 消费者时触发（见 handleEsc 的守卫）。
 // 绑定在组件内的键（⌘N 新建 / ⌘, 设置 / ⌘F 查找 / 缩放 / 输入框内各键）只在此登记展示，
 // 不在此重复绑定——重复绑定即双触发。
 import {
@@ -22,32 +22,87 @@ import { IS_WINDOWS, MOD } from "./platform";
 
 // ---------- 动作 ----------
 
-// 有草稿时 Esc 的二次确认窗口（第一下示警 → 窗口内第二下才中断）
-const ESC_ARM_MS = 500;
-let escArmTimer: TimerHandle | undefined;
+// 连按 Esc 动作窗口（500ms）
+const DOUBLE_ESC_MS = 500;
+let doubleEscTimer: TimerHandle | undefined;
+let escArmedAction: "clear" | "tree" | null = null;
 
-/** app.interrupt：中断当前生成（或运行中的本地命令，与停止钮同路由）。
-    输入框有草稿时需连按两下：第一下只把发送钮短暂切到取消图标示警，0.5s 内第二下才真正中断。 */
-function interrupt(): boolean | undefined {
+/** 全局 Esc 路由：
+ *  1. tree 页面：按一下 esc 切回消息；
+ *  2. 输入框有文字时：按两下 esc 清空输入框；
+ *  3. 输入框无文字时：按两下 esc 唤起 tree（生成中第一下先中止生成）。
+ */
+function handleEsc(): boolean | undefined {
   const st = useAppStore.getState();
-  if (st.settingsOpen || st.findOpen) return false; // 设置 / 查找栏先吃 Esc（各自容器处理）
+  if (st.settingsOpen || st.findOpen) return false; // 设置 / 查找栏先吃 Esc
   if (document.querySelector(".menu.open")) {
     closeAllMenus(); // 打开中的弹层先关（输入区菜单 / 设置页下拉）
     return false;
   }
+  if (document.querySelector(".lp-mask")) {
+    return false; // 树跳转确认等模态弹窗先关
+  }
+
+  // 1. tree 页面：按一下 esc 切回消息
+  if (st.mainViewMode === "tree") {
+    st.setMainViewMode("chat");
+    setTimeout(() => {
+      const inp = document.querySelector("#composer #input") as HTMLElement | null;
+      inp?.focus();
+    }, 0);
+    return true;
+  }
+
+  // 处于 clear 确认阶段的第二下 Esc：执行清空
+  if (escArmedAction === "clear") {
+    clearTimeout(doubleEscTimer);
+    escArmedAction = null;
+    setBump({ escArmedUntil: 0 });
+    st.setComposerValue("", []);
+    toast("已清空输入框");
+    return true;
+  }
+
+  // 处于 tree 确认阶段的第二下 Esc：唤起 tree
+  if (escArmedAction === "tree") {
+    clearTimeout(doubleEscTimer);
+    escArmedAction = null;
+    st.setMainViewMode("tree");
+    return true;
+  }
+
   const s = activeOpen();
   const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
-  if (!s || (!s.streaming && !bashRunning)) return false;
-  if (st.draftHasContent && Date.now() > st.escArmedUntil) {
-    setBump({ escArmedUntil: Date.now() + ESC_ARM_MS }); // 写+bump：发送钮切到取消图标
-    clearTimeout(escArmTimer);
-    escArmTimer = setTimeout(() => {
+  const hasText = !!(st.draftHasContent || (st.pendingFiles && st.pendingFiles.length > 0));
+
+  // 2. 输入框有文字时：按第一下 Esc 提示清空
+  if (hasText) {
+    escArmedAction = "clear";
+    setBump({ escArmedUntil: Date.now() + DOUBLE_ESC_MS });
+    toast("再按一次 Esc 清空输入框");
+    clearTimeout(doubleEscTimer);
+    doubleEscTimer = setTimeout(() => {
+      escArmedAction = null;
       setBump({ escArmedUntil: 0 });
-    }, ESC_ARM_MS + 20);
+    }, DOUBLE_ESC_MS + 20);
     return false;
   }
-  setBump({ escArmedUntil: 0 });
-  send({ type: bashRunning && !s.streaming ? "bash_abort" : "abort_session", sessionId: s.sessionId });
+
+  // 3. 输入框无文字时：生成中第一下先中止生成
+  if (s && (s.streaming || bashRunning)) {
+    send({ type: bashRunning && !s.streaming ? "bash_abort" : "abort_session", sessionId: s.sessionId });
+    return true;
+  }
+
+  // 4. 输入框无文字时：按第一下 Esc 提示唤起 tree
+  if (!s && !st.isCreatingNew) return false;
+  escArmedAction = "tree";
+  toast("再按一次 Esc 查看会话树");
+  clearTimeout(doubleEscTimer);
+  doubleEscTimer = setTimeout(() => {
+    escArmedAction = null;
+  }, DOUBLE_ESC_MS + 20);
+  return false;
 }
 
 /** app.model.cycleForward / cycleBackward：按宿主下发顺序（与模型菜单同序）前后移动 */
@@ -147,7 +202,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "通用",
     desc: "全局快捷键，在任何界面都可以使用。",
     items: [
-      { keys: ["Esc"], chords: ["escape"], label: "中断生成（有草稿时连按两下）", run: interrupt },
+      { keys: ["Esc"], chords: ["escape"], label: "Esc 路由：无字双击开树 / 树页单击回对话 / 有字双击清空", run: handleEsc },
       { keys: [MOD, "N"], label: "新建任务" },
       { keys: [MOD, "B"], chords: ["meta+b"], label: "切换左侧边栏", run: toggleSidebar },
       { keys: [MOD, ","], label: "打开 / 关闭设置" },
