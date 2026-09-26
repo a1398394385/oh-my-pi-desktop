@@ -102,6 +102,55 @@ dbg.useAppStore.setState({
 await sleep(80);
 ok("builtin 描述显示中文（commands-zh.js）", !slashTa || (($(".menu.palette")?.textContent || "").includes("查看 token 用量")));
 
+// 无 tab 场景回归：点击加号下拉框不得越过右栏左边界被中栏卡片遮盖
+dbg.useAppStore.setState({ rightTabs: [], rightTab: null });
+await sleep(80);
+const addBtn = $("#rightTabs button.icon-btn");
+if (addBtn) {
+  addBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(80);
+  const addMenu = $(".sp-pop.sp-add") as HTMLElement | null;
+  ok("无 tab 时点击加号弹出新增标签菜单", !!addMenu);
+  const leftPx = addMenu?.style.left ? parseFloat(addMenu.style.left) : -1;
+  ok("无 tab 时新增标签菜单 left 不小于 6px（不越界至左侧）", leftPx >= 6);
+  // 测试完毕关掉菜单，避免影响后续全局 Esc 快捷键路由断言
+  window.dispatchEvent(new window.Event("blur"));
+  await sleep(50);
+}
+
+// Esc 路由回归：无文字双击开树、树页单击回对话、有文字双击清空
+document.querySelectorAll(".menu.open").forEach(el => el.classList.remove("open"));
+const pressEsc = () => {
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+};
+
+// 1. 无文字时连按两次 Esc -> mainViewMode 切换为 tree
+dbg.useAppStore.setState({ draftHasContent: false, pendingFiles: [], mainViewMode: "chat" });
+pressEsc();
+await sleep(50);
+pressEsc();
+await sleep(100);
+ok("无文字连按两次 Esc 唤起会话树", dbg.useAppStore.getState().mainViewMode === "tree");
+
+// 2. tree 页面按一次 Esc -> mainViewMode 切换回 chat
+pressEsc();
+await sleep(100);
+ok("tree 页面按一次 Esc 切回对话", dbg.useAppStore.getState().mainViewMode === "chat");
+
+// 3. 有文字时连按两次 Esc -> 清空输入框
+dbg.useAppStore.setState({ draftHasContent: true, pendingFiles: [], mainViewMode: "chat" });
+pressEsc();
+await sleep(50);
+pressEsc();
+await sleep(100);
+ok("有文字连按两次 Esc 触发清空输入框", dbg.useAppStore.getState().composerSetSignal?.text === "");
+
+// 4. 处于 tree 模式时，切换会话（hideWelcomeScreen / activateSession）重置为 chat 模式
+dbg.useAppStore.setState({ mainViewMode: "tree" });
+dbg.useAppStore.getState().hideWelcomeScreen();
+ok("切换会话时默认切回消息模式（mainViewMode: chat）", dbg.useAppStore.getState().mainViewMode === "chat");
+
+
 let fail = 0;
 for (const [mark, name] of asserts) {
   if (mark === "✗") fail++;

@@ -2955,7 +2955,11 @@ async function handlePrompt(
   const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
   if (dispatched === null) return;
   finalText = dispatched;
-  entry.transcript.push({ role: "user", text: finalText });
+  entry.transcript.push({
+    role: "user",
+    text: finalText,
+    ...(images.length > 0 ? { images } : {}),
+  });
   // 自动会话标题：CLI 由 input-controller / main.ts 调用底座同一入口；SDK 宿主没有这层，
   // 必须自己触发。底座内部 gate 负责「已有标题 / 已在生成 / 低信号输入 / PI_NO_TITLE」跳过，
   // 生成的标题经 SessionManager.onSessionNameChanged → session_title_changed 帧下发。

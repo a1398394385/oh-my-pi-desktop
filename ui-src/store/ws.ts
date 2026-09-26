@@ -308,8 +308,15 @@ function onMessage(msg: HostFrame): void {
         useAppStore.setState({ pendingNewPrompt: null });
         const s = st3.openSessions.get(st3.activePath ?? "");
         if (s) {
+          const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = (files ?? [])
+            .filter((f) => f.kind === "image" && typeof f.data === "string")
+            .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
           updateSession(s.sessionId, (next) => {
-            next.items.push({ role: "user", text });
+            next.items.push({
+              role: "user",
+              text,
+              ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
+            });
             // 同 sendPrompt：发送即置运行态（计时/停止钮不等到宿主 turn_start）
             next.streaming = true;
             next.turnStartAt = Date.now();
@@ -854,6 +861,7 @@ function onMessage(msg: HostFrame): void {
         break;
       }
       useAppStore.getState().toast("已跳转到所选节点");
+      useAppStore.setState({ mainViewMode: "chat" });
       if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages);
       break;
     }

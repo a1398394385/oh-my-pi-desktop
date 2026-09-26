@@ -125,6 +125,8 @@ if (new URLSearchParams(location.search).has("preview")) {
     }),
     activePath: "/preview",
     isCreatingNew: false,
+    rightTab: "subagent",
+    rightTabs: ["subagent"],
   }));
   // 浏览器对照调试钩子（仅 preview 模式）：暴露 store 供冒烟读取 getState（P3 终态,旧 S/notify 退役）
   window.__dbg = { useAppStore };

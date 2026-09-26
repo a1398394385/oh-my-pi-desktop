@@ -99,6 +99,7 @@ export interface UserItem {
   pending?: string | null; // "steer" = 流式中发送、待消费(store.ts 落地)
   steerDone?: boolean; // 消费完成标记(store.ts 写入)
   entryId?: string; // 落盘条目 id(branch_session 分叉定位;host TranscriptItem.entryId)
+  images?: Array<{ type: "image"; data: string; mimeType: string }>; // 图片附件
 }
 
 /** assistant 消息(items.tsx:25-28 读 text;junk 占位符不渲染) */
@@ -403,6 +404,7 @@ export interface AppState {
   mentionResult: { reqId: number; matches: FileMatch[] } | null; // 最新 @ 候选响应;reqId 不匹配即过期
   sidebarCollapsed: boolean;
   rightCollapsed: boolean;
+  mainViewMode: "chat" | "tree"; // 主区域视图模式（消息流 vs 会话条目树）
   // ---- 设置中心 ----
   settingsOpen: boolean; // 全屏 overlay 开合
   settingsPage: string; // 当前设置页 id

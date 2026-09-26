@@ -40,6 +40,8 @@ export type TranscriptItem = {
   // ---- 阶段分隔行（role==="phase"，执行记录：压缩/交接/重命名）----
   phase?: "start" | "done"; // 落盘转出皆为 done；start 仅来自瞬时帧（执行中）
   command?: string; // compact/handoff/rename：start 行与落盘 done 行按此对照吸收
+  // ---- 用户消息多模态图片（role==="user"）----
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
 };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];

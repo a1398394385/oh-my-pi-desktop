@@ -114,11 +114,11 @@ function TabOverview({ onClose }: { onClose: () => void }) {
 // 「新增」菜单：列出全部可开 tab（已开的打勾，git 限定项非 git 仓库置灰）
 function AddTabMenu({
   isGit,
-  rightOffset,
+  menuLeft,
   onClose,
 }: {
   isGit: boolean;
-  rightOffset?: number;
+  menuLeft?: number;
   onClose: () => void;
 }) {
   const rightTabs = useAppStore((st) => st.rightTabs);
@@ -126,9 +126,9 @@ function AddTabMenu({
     <div
       className="menu open sp-pop sp-add"
       style={{
-        right: rightOffset !== undefined ? `${Math.round(rightOffset)}px` : undefined,
-        left: "auto",
-        visibility: rightOffset !== undefined ? "visible" : "hidden",
+        left: menuLeft !== undefined ? `${Math.round(menuLeft)}px` : undefined,
+        right: "auto",
+        visibility: menuLeft !== undefined ? "visible" : "hidden",
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -215,20 +215,31 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const headRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
-  const [rightOffset, setRightOffset] = useState<number | undefined>(undefined);
+  const [menuLeft, setMenuLeft] = useState<number | undefined>(undefined);
 
   const updateAddMenuPos = () => {
     if (addBtnRef.current && headRef.current) {
       const headRect = headRef.current.getBoundingClientRect();
       const btnRect = addBtnRef.current.getBoundingClientRect();
       const z = useAppStore.getState().zoomLevel || 1;
-      setRightOffset((headRect.right - btnRect.right) / z);
+      const headWidth = headRect.width / z;
+      const btnLeft = (btnRect.left - headRect.left) / z;
+      const btnRight = (headRect.right - btnRect.right) / z;
+      const btnWidth = btnRect.width / z;
+      const menuWidth = 248; // .sp-head .menu.sp-pop 定宽 248px
+      const pad = 6;
+      const minLeft = pad;
+      const maxLeft = Math.max(pad, headWidth - menuWidth - pad);
+      const btnCenter = btnLeft + btnWidth / 2;
+      const headCenter = headWidth / 2;
+      const targetLeft = btnCenter < headCenter ? btnLeft : headWidth - btnRight - menuWidth;
+      setMenuLeft(Math.max(minLeft, Math.min(targetLeft, maxLeft)));
     }
   };
 
   useLayoutEffect(() => {
     if (!addOpen) {
-      setRightOffset(undefined);
+      setMenuLeft(undefined);
       return;
     }
     updateAddMenuPos();
@@ -360,7 +371,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
           {addOpen && (
             <AddTabMenu
               isGit={!!s?.isGit}
-              rightOffset={rightOffset}
+              menuLeft={menuLeft}
               onClose={() => setAddOpen(false)}
             />
           )}

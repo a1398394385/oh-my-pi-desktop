@@ -214,6 +214,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   useEffect(() => {
     const sig = composerSetSignal;
     if (!sig || !lexRef.current) return;
+    if (!sig.text && (!sig.images || sig.images.length === 0)) {
+      lexRef.current.clear();
+      useAppStore.setState({ pendingFiles: [], composerSetSignal: null });
+      lexRef.current.focus();
+      return;
+    }
     lexRef.current.setText(sig.text);
     // 底座 ImageContent[] 转本地附件 chip：字段形态 { type:"image", data, mimeType }，兼容嵌套 source 形态
     interface BackfillImage {
@@ -297,6 +303,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       useAppStore.setState({ pendingCreate: true });
       return;
     }
+    // 提取图片载荷供前端气泡即时渲染
+    const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = files
+      .filter((f) => f.kind === "image" && typeof f.data === "string")
+      .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
+
     // 流式中发送 = 进待发送队列（followUp，当前 loop 完自动消费）；Ctrl+↵ 则是 steer——
     // 立即注入（当前工具批次后），气泡固定在消息流底部，分割发生在消费时刻（steer_consumed）
     // updateSession 换 session/Map 引用：selector 订阅组件（本组件/QueueCard）与旧 useStore 组件均感知
@@ -305,7 +316,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (steer) {
           next.steering = next.steering ?? [];
           next.steering.push({ text: t });
-          next.items.push({ role: "user", text: t, pending: "steer" });
+          next.items.push({
+            role: "user",
+            text: t,
+            pending: "steer",
+            ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
+          });
         } else {
           next.queued = next.queued ?? [];
           next.queued.push({ text: t });
@@ -313,7 +329,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       });
     } else {
       updateSession(s.sessionId, (next) => {
-        next.items.push({ role: "user", text: t });
+        next.items.push({
+          role: "user",
+          text: t,
+          ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
+        });
         // 本地即刻置运行态：计时从发送起算、发送钮转停止（宿主 turn_start 到达后保留起点不重置）
         next.streaming = true;
         next.turnStartAt = Date.now();
@@ -458,11 +478,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const onTaOpen = useCallback(() => setTaOpen(true), []);
   const onTaClose = useCallback(() => setTaOpen(false), []);
 
-  // ---- 附件选择（原 filePicker change 平移） ----
-  const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
-    const picked = [...(e.target.files ?? [])];
-    e.target.value = ""; // 允许重复选同一文件
-    // 先构造附件对象（id 占位），统一在 setState 里按 store 当前 fileSeq 重编（等价原逐个 ++fileSeq）
+  // ---- 附件处理：支持选文件/粘贴截图/拖拽文件入列 ----
+  const addIncomingFiles = useCallback(async (picked: File[]) => {
     const added: (PromptAttachment & { id: number })[] = [];
     for (const file of picked) {
       if (file.size > MAX_ATTACH_BYTES) {
@@ -477,7 +494,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             r.onerror = () => no(r.error);
             r.readAsDataURL(file);
           });
-          added.push({ id: 0, name: file.name, kind: "image", mime: file.type, data: dataUrl.split(",")[1] });
+          const b64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+          added.push({ id: 0, name: file.name, kind: "image", mime: file.type, data: b64 });
         } else {
           added.push({ id: 0, name: file.name, kind: "text", mime: file.type || "text/plain", data: await file.text() });
         }
@@ -485,6 +503,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         toast(`读取「${file.name}」失败`);
       }
     }
+    if (added.length === 0) return;
     // 附件入列 + 渲染触发合并为一次 setState（pendingFiles 容器换新引用）
     useAppStore.setState((st) => {
       let seq = st.fileSeq;
@@ -492,6 +511,65 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       for (const a of added) files.push({ ...a, id: ++seq });
       return { pendingFiles: files, fileSeq: seq };
     });
+  }, []);
+
+  // 附件选择（原 filePicker change 平移）
+  const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = [...(e.target.files ?? [])];
+    e.target.value = ""; // 允许重复选同一文件
+    await addIncomingFiles(picked);
+  };
+
+  // ---- 剪贴板图片粘贴（Cmd+V 截屏识别） ----
+  useEffect(() => {
+    const comp = rootRef.current;
+    if (!comp) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imgFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type.startsWith("image/")) {
+          const file = it.getAsFile();
+          if (file) {
+            const ext = file.type.split("/")[1] || "png";
+            const namedFile = new File([file], `screenshot-${Date.now()}.${ext}`, { type: file.type });
+            imgFiles.push(namedFile);
+          }
+        }
+      }
+      if (imgFiles.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        void addIncomingFiles(imgFiles);
+      }
+    };
+    comp.addEventListener("paste", onPaste, true);
+    return () => comp.removeEventListener("paste", onPaste, true);
+  }, [addIncomingFiles]);
+
+  const [dragOver, setDragOver] = useState(false);
+  const onDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(true);
+    }
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const files = [...(e.dataTransfer.files ?? [])];
+    if (files.length > 0) {
+      void addIncomingFiles(files);
+    }
   };
 
   // ---- 停止钮防连点复位（原 turn_end 重绘时复位 disabled） ----
@@ -625,8 +703,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     <>
       <div
         id="composer"
-        className={(inWelcome ? "in-welcome " : "") + (isBashMode(text) ? "bash-mode" : "")}
+        className={(inWelcome ? "in-welcome " : "") + (isBashMode(text) ? "bash-mode " : "") + (dragOver ? "ring-1 ring-accent " : "")}
         ref={rootRef}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
         aria-hidden={blocking ? true : undefined}
         style={blocking ? { display: "none" } : undefined}
       >
