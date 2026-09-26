@@ -27,7 +27,7 @@
     "@oh-my-pi/pi-catalog": "^18.2.6",
     "@oh-my-pi/pi-coding-agent": "^18.2.5",
     "@oh-my-pi/pi-natives": "18.2.6",
-    "@oh-my-pi/pi-tui": "^18.2.7",
+    "@oh-my-pi/pi-tui": "18.2.6",
     "@oh-my-pi/pi-utils": "^18.2.6",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",

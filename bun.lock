@@ -12,7 +12,7 @@
         "@oh-my-pi/pi-catalog": "^18.2.6",
         "@oh-my-pi/pi-coding-agent": "^18.2.5",
         "@oh-my-pi/pi-natives": "18.2.6",
-        "@oh-my-pi/pi-tui": "^18.2.7",
+        "@oh-my-pi/pi-tui": "18.2.6",
         "@oh-my-pi/pi-utils": "^18.2.6",
         "@streamdown/cjk": "^1.0.3",
         "@streamdown/code": "^1.1.1",
@@ -210,7 +210,7 @@
 
     "@oh-my-pi/pi-natives-win32-x64": ["@oh-my-pi/pi-natives-win32-x64@18.2.6", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-win32-x64/-/pi-natives-win32-x64-18.2.6.tgz", { "os": "win32", "cpu": "x64" }, "sha512-syDZJnTiTxFIkTteT4U5edq/hdPrPjOYmyG8Kq4a/LwHoD59eDpkE3+kqVy33GRfOwzJb0b6d6Hxrp8we75b9g=="],
 
-    "@oh-my-pi/pi-tui": ["@oh-my-pi/pi-tui@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-tui/-/pi-tui-18.3.0.tgz", { "dependencies": { "@oh-my-pi/omptype": "18.3.0", "@oh-my-pi/pi-agent-core": "18.3.0", "@oh-my-pi/pi-ai": "18.3.0", "@oh-my-pi/pi-catalog": "18.3.0", "@oh-my-pi/pi-natives": "18.3.0", "@oh-my-pi/pi-utils": "18.3.0", "@oh-my-pi/pi-wire": "18.3.0", "@oh-my-pi/snapcompact": "18.3.0" } }, "sha512-GRdbnE64XO+k2rNCpfLVhEVHdkzvAM4RbkPa4y/AoWMeYzhQZsXnSEyN4p8iGfCw7QrcFHNhzn0ftr8vXkU4wA=="],
+    "@oh-my-pi/pi-tui": ["@oh-my-pi/pi-tui@18.2.6", "https://registry.npmmirror.com/@oh-my-pi/pi-tui/-/pi-tui-18.2.6.tgz", { "dependencies": { "@oh-my-pi/omptype": "18.2.6", "@oh-my-pi/pi-agent-core": "18.2.6", "@oh-my-pi/pi-ai": "18.2.6", "@oh-my-pi/pi-catalog": "18.2.6", "@oh-my-pi/pi-natives": "18.2.6", "@oh-my-pi/pi-utils": "18.2.6", "@oh-my-pi/pi-wire": "18.2.6", "@oh-my-pi/snapcompact": "18.2.6" } }, "sha512-CsmP4SM1Qt19s2aIJ0gBTnSFLm2nXNHkaLFqL5m+3+bTcF3++G+CAEImotsjSnmajeH/Q2pq2w+FlNUD2ZjByA=="],
 
     "@oh-my-pi/pi-utils": ["@oh-my-pi/pi-utils@18.2.6", "https://registry.npmmirror.com/@oh-my-pi/pi-utils/-/pi-utils-18.2.6.tgz", { "dependencies": { "@oh-my-pi/pi-natives": "18.2.6" } }, "sha512-jvj8w/Q9aECXpHVjUc4rWaQlFPV+uWCgII6QZjDfroo5xvt0d8ks64cH8gINmMwRieCLz7KU6JKGReuFT54aTw=="],
 
@@ -1068,24 +1068,6 @@
 
     "@oh-my-pi/omp-stats/react-dom": ["react-dom@19.2.7", "https://registry.npmmirror.com/react-dom/-/react-dom-19.2.7.tgz", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.7" } }, "sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ=="],
 
-    "@oh-my-pi/pi-coding-agent/@oh-my-pi/pi-tui": ["@oh-my-pi/pi-tui@18.2.6", "https://registry.npmmirror.com/@oh-my-pi/pi-tui/-/pi-tui-18.2.6.tgz", { "dependencies": { "@oh-my-pi/omptype": "18.2.6", "@oh-my-pi/pi-agent-core": "18.2.6", "@oh-my-pi/pi-ai": "18.2.6", "@oh-my-pi/pi-catalog": "18.2.6", "@oh-my-pi/pi-natives": "18.2.6", "@oh-my-pi/pi-utils": "18.2.6", "@oh-my-pi/pi-wire": "18.2.6", "@oh-my-pi/snapcompact": "18.2.6" } }, "sha512-CsmP4SM1Qt19s2aIJ0gBTnSFLm2nXNHkaLFqL5m+3+bTcF3++G+CAEImotsjSnmajeH/Q2pq2w+FlNUD2ZjByA=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/omptype": ["@oh-my-pi/omptype@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/omptype/-/omptype-18.3.0.tgz", {}, "sha512-vIWeFEqvS8bdeSiwAMUAaWh9OpUmQ70S8i+JjndGfAZK9md724+c9ro7HTQgJUqT44S39lsvxsY24F4TZ7NcRQ=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-agent-core": ["@oh-my-pi/pi-agent-core@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-agent-core/-/pi-agent-core-18.3.0.tgz", { "dependencies": { "@oh-my-pi/pi-ai": "18.3.0", "@oh-my-pi/pi-catalog": "18.3.0", "@oh-my-pi/pi-natives": "18.3.0", "@oh-my-pi/pi-utils": "18.3.0", "@oh-my-pi/pi-wire": "18.3.0", "@oh-my-pi/snapcompact": "18.3.0", "@opentelemetry/api": "^1.9.1" } }, "sha512-lNiCOi3USw9Ihzuqg84CBa+9LFXqRtCKTwfyWT+HN3fGUad7B3L7VFZZQ07f+0oTxPcFFXdbJlCkR/f1Sikv6w=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-ai": ["@oh-my-pi/pi-ai@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-ai/-/pi-ai-18.3.0.tgz", { "dependencies": { "@oh-my-pi/omptype": "18.3.0", "@oh-my-pi/pi-catalog": "18.3.0", "@oh-my-pi/pi-natives": "18.3.0", "@oh-my-pi/pi-utils": "18.3.0", "@oh-my-pi/pi-wire": "18.3.0" } }, "sha512-oBSOD7cKN0ZnoyIxZ2+ACM0pU2pLdxvK0OiIdBmIBNMtgS6rHDs28iFC/xMBb9OS+oI0QfOKiOaYKDbuCgP7bg=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-catalog": ["@oh-my-pi/pi-catalog@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-catalog/-/pi-catalog-18.3.0.tgz", { "dependencies": { "@oh-my-pi/omptype": "18.3.0", "@oh-my-pi/pi-utils": "18.3.0" } }, "sha512-z1OZS38B06iIfj1EzS2GNU8GYHIsIz1SGcpDDroDmm2P8Yiz4GNj5qHn3ryU90wpVKbJfrgOIJ/Ke0mO0ibxIw=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives": ["@oh-my-pi/pi-natives@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives/-/pi-natives-18.3.0.tgz", { "optionalDependencies": { "@oh-my-pi/pi-natives-darwin-arm64": "18.3.0", "@oh-my-pi/pi-natives-darwin-x64": "18.3.0", "@oh-my-pi/pi-natives-linux-arm64": "18.3.0", "@oh-my-pi/pi-natives-linux-x64": "18.3.0", "@oh-my-pi/pi-natives-win32-arm64": "18.3.0", "@oh-my-pi/pi-natives-win32-x64": "18.3.0" } }, "sha512-mh85IwFkA8It74uvPup4l0kOK+KUa3cWmiH8iKAOow4erzjI97VpsuOD3qhKQ6+7dtQ+hwerMMm2pBhuSIN8Fw=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-utils": ["@oh-my-pi/pi-utils@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-utils/-/pi-utils-18.3.0.tgz", { "dependencies": { "@oh-my-pi/pi-natives": "18.3.0" } }, "sha512-avT90P2ghXjAiX5j9OSrz9MQvEX+eaLRxTlLPBGDieYu+P5TfLXkLEkRG94aZ/udEm4G0RyQRDCXOUn0VhaNcA=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-wire": ["@oh-my-pi/pi-wire@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-wire/-/pi-wire-18.3.0.tgz", {}, "sha512-Raj3PoKCddKcznQ/n/EfYDxUPF+4SAXex6W1btzIIHiGlb3MM9pKNG6GUnypYARhWzEQV+YOH2fykDkvKFvqZQ=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/snapcompact": ["@oh-my-pi/snapcompact@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/snapcompact/-/snapcompact-18.3.0.tgz", { "dependencies": { "@oh-my-pi/pi-ai": "18.3.0", "@oh-my-pi/pi-catalog": "18.3.0", "@oh-my-pi/pi-natives": "18.3.0", "@oh-my-pi/pi-utils": "18.3.0", "@oh-my-pi/pi-wire": "18.3.0" } }, "sha512-vOxygPYcJoVh5jemiaIvBKMBIPcoYyUotemP+yX6TEw7Lc0qmY6AuEAmKd8d5uX0X0ON4SMcysFGNXY3snZfig=="],
-
     "@opentelemetry/exporter-metrics-otlp-http/@opentelemetry/resources": ["@opentelemetry/resources@2.9.0", "https://registry.npmmirror.com/@opentelemetry/resources/-/resources-2.9.0.tgz", { "dependencies": { "@opentelemetry/core": "2.9.0", "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.3.0 <1.10.0" } }, "sha512-jyA5MBLQ+Dkl3+JsZkUoUvL7yHvU64kLsvpXKarWm6347Sl1t1bXFTFykUePNpT5WH5pm9a2Qtt03iIYQhZ1Fg=="],
 
     "@opentelemetry/exporter-metrics-otlp-http/@opentelemetry/sdk-metrics": ["@opentelemetry/sdk-metrics@2.9.0", "https://registry.npmmirror.com/@opentelemetry/sdk-metrics/-/sdk-metrics-2.9.0.tgz", { "dependencies": { "@opentelemetry/core": "2.9.0", "@opentelemetry/resources": "2.9.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.9.0 <1.10.0" } }, "sha512-Xx8RGS4H5XEBl01WuCreMIpiah9cCXMbSkeuIePPdD2cUpq/vUzYmj8E/MK1OsbOc93FuAD4jfn2WOacKwLn7Q=="],
@@ -1143,18 +1125,6 @@
     "wrap-ansi/string-width": ["string-width@7.2.0", "https://registry.npmmirror.com/string-width/-/string-width-7.2.0.tgz", { "dependencies": { "emoji-regex": "^10.3.0", "get-east-asian-width": "^1.0.0", "strip-ansi": "^7.1.0" } }, "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ=="],
 
     "@oh-my-pi/omp-stats/react-dom/scheduler": ["scheduler@0.27.0", "https://registry.npmmirror.com/scheduler/-/scheduler-0.27.0.tgz", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives/@oh-my-pi/pi-natives-darwin-arm64": ["@oh-my-pi/pi-natives-darwin-arm64@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-darwin-arm64/-/pi-natives-darwin-arm64-18.3.0.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-8Flp4f7We20TsGLND9LvzIMTuJmBC5OVeQNL3h1utqD9NUlrRqB/psjqFbKyyiltqEcDVWYluTDKZZ4FslUbGw=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives/@oh-my-pi/pi-natives-darwin-x64": ["@oh-my-pi/pi-natives-darwin-x64@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-darwin-x64/-/pi-natives-darwin-x64-18.3.0.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-aTjVqPKN4XAIuWMbm4EYRoCHWojyMKf7sG/bTlyFooP5dZnGphkwiHwgsmAFggdc3LtTJEY6H3bdiv7v7C9Jvg=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives/@oh-my-pi/pi-natives-linux-arm64": ["@oh-my-pi/pi-natives-linux-arm64@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-linux-arm64/-/pi-natives-linux-arm64-18.3.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-G2h9MQkd7ukcwR9zJKj1B4mXLnaWx0n75ykWvvSUu6yM3ai/2L9ihbdqlZoRON7NSrNRPb8+TOAD9P9ZTFsG7Q=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives/@oh-my-pi/pi-natives-linux-x64": ["@oh-my-pi/pi-natives-linux-x64@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-linux-x64/-/pi-natives-linux-x64-18.3.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-ZSsqlgKMGhv8wAUrN8uzzjbCBeHvbtLElyVlt0HKAK6gWkfpPA0dzBAp3g2OOalWIAfGYrydr9yhSYSQ+2OiqQ=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives/@oh-my-pi/pi-natives-win32-arm64": ["@oh-my-pi/pi-natives-win32-arm64@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-win32-arm64/-/pi-natives-win32-arm64-18.3.0.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-64+454I2EVt4TC4MYnXHVgcJ4pYn02z1TZoOURjhkTegxAoeZJTGu0OKVTjoW36EIY9bSxB5ilUEsNYdjI3IJw=="],
-
-    "@oh-my-pi/pi-tui/@oh-my-pi/pi-natives/@oh-my-pi/pi-natives-win32-x64": ["@oh-my-pi/pi-natives-win32-x64@18.3.0", "https://registry.npmmirror.com/@oh-my-pi/pi-natives-win32-x64/-/pi-natives-win32-x64-18.3.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-MVhVg5J3RRRC98fZPdDzMoFNNL98VRUSD7tSjphG2VOOm2BPdZ6OfGQmh7qzhbreJ5HrWlsRRmmNUdu9bYuEig=="],
 
     "@streamdown/code/shiki/@shikijs/core": ["@shikijs/core@3.23.0", "https://registry.npmmirror.com/@shikijs/core/-/core-3.23.0.tgz", { "dependencies": { "@shikijs/types": "3.23.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4", "hast-util-to-html": "^9.0.5" } }, "sha512-NSWQz0riNb67xthdm5br6lAkvpDJRTgB36fxlo37ZzM2yq0PQFFzbd8psqC2XMPgCzo1fW6cVi18+ArJ44wqgA=="],
 
