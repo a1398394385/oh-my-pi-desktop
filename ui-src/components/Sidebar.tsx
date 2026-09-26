@@ -20,6 +20,7 @@ import ConfirmDialog from "./sidebar/ConfirmDialog";
 import Menu from "./sidebar/Menu";
 import SessCtxMenu from "./sidebar/SessCtxMenu";
 import ProjAddPop from "./sidebar/ProjAddPop";
+import SidebarSearch from "./sidebar/SidebarSearch";
 
 // 删除/移除二次确认弹窗内容
 interface ConfirmSpec {
@@ -402,11 +403,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   return (
     <aside id="sidebar" data-tauri-drag-region="">
-      <div className="pt-[10px] px-[10px] flex-none">
+      <div className="pt-[10px] px-[10px] flex flex-col gap-[6px] flex-none">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
           <Icon name="messagePlus" size={19} />
           新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]">⌘ N</span>
         </div>
+        <SidebarSearch />
       </div>
       <div className="flex items-center pt-[10px] px-[14px] pb-[8px] gap-[8px] flex-none">
         <div className="seg" id="seg">

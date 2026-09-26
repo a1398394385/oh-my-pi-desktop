@@ -1956,46 +1956,27 @@ svg { vertical-align: middle; }
   border-color: var(--line-soft);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
 }
-/* 欢迎页搜索卡片：与新建任务卡片（#composer.in-welcome）同一套圆角卡片几何与主题色 */
-.wb-search-card {
-  width: 100%;
-  box-sizing: border-box;
-  background: var(--inset);
-  border: 1px solid var(--line-soft);
-  border-radius: 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
-  margin-top: 14px;
-  padding: 10px 14px;
+/* ── 侧边栏搜索卡片：位于新建任务下方，样式与新建任务（.nav-item）完全对齐 ── */
+.nav-item.nav-search {
+  cursor: text;
   position: relative;
-  transition: border-color .15s var(--swift);
 }
-.wb-search-card:hover,
-.wb-search-card:focus-within {
-  border-color: var(--line);
+.nav-item.nav-search:focus-within,
+.nav-item.nav-search.search-active {
+  background: rgba(63, 65, 65, .42);
 }
-[data-theme="light"] .wb-search-card {
-  background: var(--inset);
-  border-color: var(--line-soft);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
+[data-theme="light"] .nav-item.nav-search:focus-within,
+[data-theme="light"] .nav-item.nav-search.search-active {
+  background: rgba(0, 0, 0, .06);
 }
-[data-theme="light"] .wb-search-card:hover,
-[data-theme="light"] .wb-search-card:focus-within {
-  border-color: var(--line);
-}
-.wb-search-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-.wb-search-icon {
+.nav-search-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  color: var(--faint);
+  color: var(--dim);
 }
-.wb-search-input {
+.nav-search-input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -2004,12 +1985,13 @@ svg { vertical-align: middle; }
   color: var(--text);
   font: inherit;
   font-size: var(--ui-fs-base);
-  padding: 2px 0;
+  padding: 0;
+  line-height: 1;
 }
-.wb-search-input::placeholder {
+.nav-search-input::placeholder {
   color: var(--faint);
 }
-.wb-search-clear {
+.nav-search-clear {
   border: 0;
   background: transparent;
   color: var(--faint);
@@ -2017,64 +1999,76 @@ svg { vertical-align: middle; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   transition: color .12s, background .12s;
   padding: 0;
+  margin-left: auto;
+  flex: none;
 }
-.wb-search-clear:hover {
+.nav-search-clear:hover {
   color: var(--text);
   background: var(--panel-2);
 }
-.wb-search-results {
-  margin-top: 8px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 6px;
-  max-height: 240px;
+.side-search-pop {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--ctl-bg, var(--card));
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  padding: 4px;
+  max-height: 260px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
-.wb-search-empty {
-  padding: 8px 12px;
+[data-theme="light"] .side-search-pop {
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .12);
+}
+.side-search-empty {
+  padding: 8px 10px;
   text-align: center;
   color: var(--faint);
   font-size: var(--ui-fs-sm);
 }
-.wb-search-item {
+.side-search-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 7px 10px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   color: var(--dim);
   transition: background .12s, color .12s;
 }
-.wb-search-item:hover,
-.wb-search-item.on {
+.side-search-item:hover,
+.side-search-item.on {
   background: var(--panel-2);
   color: var(--text);
 }
-.wb-search-item-tt {
+.side-search-item-tt {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--ui-fs-base);
+  font-size: var(--ui-fs-sm);
 }
-.wb-search-item-meta {
+.side-search-item-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: none;
-  font-size: var(--ui-fs-sm);
+  font-size: var(--ui-fs-xs);
   color: var(--faint);
 }
-.wb-search-item-repo {
-  max-width: 140px;
+.side-search-item-repo {
+  max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
