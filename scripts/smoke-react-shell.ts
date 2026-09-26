@@ -102,6 +102,19 @@ dbg.useAppStore.setState({
 await sleep(80);
 ok("builtin 描述显示中文（commands-zh.js）", !slashTa || (($(".menu.palette")?.textContent || "").includes("查看 token 用量")));
 
+// 无 tab 场景回归：点击加号下拉框不得越过右栏左边界被中栏卡片遮盖
+dbg.useAppStore.setState({ rightTabs: [], rightTab: null });
+await sleep(80);
+const addBtn = $("#rightTabs button.icon-btn");
+if (addBtn) {
+  addBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(80);
+  const addMenu = $(".sp-pop.sp-add") as HTMLElement | null;
+  ok("无 tab 时点击加号弹出新增标签菜单", !!addMenu);
+  const leftPx = addMenu?.style.left ? parseFloat(addMenu.style.left) : -1;
+  ok("无 tab 时新增标签菜单 left 不小于 6px（不越界至左侧）", leftPx >= 6);
+}
+
 let fail = 0;
 for (const [mark, name] of asserts) {
   if (mark === "✗") fail++;

@@ -2563,9 +2563,6 @@ body.resizing .resizer {
   top: calc(100% + 4px); bottom: auto; left: 6px; right: auto;
   width: 248px; min-width: 0; padding: 6px; z-index: 70;
 }
-.sp-head .menu.sp-pop.sp-add {
-  left: auto;
-}
 .sp-pop-search {
   display: flex; align-items: center; gap: 6px;
   height: 28px; padding: 0 8px; margin-bottom: 4px;
