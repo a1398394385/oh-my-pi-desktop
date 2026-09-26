@@ -1869,6 +1869,12 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const key = String(msg.key ?? "").trim();
             if (!provider) throw new Error("缺少 provider");
             if (!key) throw new Error("API key 不能为空");
+            // 登录型供应商(oauth/device/custom)凭证经浏览器授权归属到目录供应商(store-as),
+            // 目录里没有同名 provider,存 API key 只会产生「已配置」却永不可用的孤立凭证
+            const loginKind = authPolicyFor(provider)?.login?.kind;
+            if (loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom") {
+              throw new Error(`${provider} 仅支持浏览器登录授权，不支持 API key`);
+            }
             H.authStorage.upsertCredential(provider, { type: "api_key", key });
             await H.modelRegistry.refresh();
             H.availableModels = H.modelRegistry.getAvailable();

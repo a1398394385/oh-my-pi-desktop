@@ -162,11 +162,13 @@ function clearRunningTools(s: OpenSession): void {
 }
 
 // ---------- 模型目录（原 composer.js ingestModels 平移；变更换 Map 引用） ----------
+// models 帧是 scopedModels 全量快照（ready / models / 启停推送一致），按帧重建而非合并：
+// 合并会让已关闭的模型残留在输入框菜单里
 export function ingestModels(models?: { id: string; name?: string | null; efforts?: string[] | null }[]): void {
-  useAppStore.setState((st) => {
+  useAppStore.setState(() => {
     if (!models?.length) return {};
-    const modelNames = new Map(st.modelNames);
-    const modelEfforts = new Map(st.modelEfforts);
+    const modelNames = new Map<string, string>();
+    const modelEfforts = new Map<string, string[]>();
     for (const m of models) {
       modelNames.set(m.id, m.name || m.id);
       if (Array.isArray(m.efforts)) modelEfforts.set(m.id, m.efforts);

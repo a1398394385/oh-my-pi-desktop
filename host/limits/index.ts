@@ -132,6 +132,7 @@ const VENDOR_SPECS: Record<string, VendorSpec> = {
     fetch: (key) => fetchDeepSeekLimits({ deepseekApiKey: key }, {})
   },
   minimax: { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
+  "minimax-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
   "minimax-code": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
   "minimax-code-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
   // claude:authStorage 的 anthropic OAuth token 经 CLAUDE_CODE_OAUTH_TOKEN 注入;

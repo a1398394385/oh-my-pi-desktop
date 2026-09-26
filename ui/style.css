@@ -3502,6 +3502,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .pd-key { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .pd-key-row { display: flex; align-items: center; gap: 8px; }
 .pd-key-row .inp { flex: 1; min-width: 0; width: auto; border-radius: 9px; }
+/* 系列供应商详情·成员块头：id + 区域/方式标签横排 */
+.pd-member-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; font-size: var(--ui-fs-sm); }
 .mp-r { padding: 14px 16px 16px; min-width: 0; }
 .mp-lim { margin: -4px 0 12px; font-size: var(--ui-fs-sm); color: var(--dim); }
 .mp-lim .lx-sec + .lx-sec { margin-top: 8px; } /* 澶氳处鍙烽厤棰濋€愭娓叉煋鐨勬闂磋窛 */

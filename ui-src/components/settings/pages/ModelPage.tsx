@@ -4,7 +4,7 @@
 //              添加供应商（卡片网格）/ 供应商详情页（登录 / API key 二选一）。
 // 视图开关与选中项沿用 store 字段（mpAddView / mpRolesView / mpDetailProv / selectedProvider），
 // 登录横幅与粘贴码弹窗来自 ../common.jsx。
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAppStore, setBump, send, toast } from "../../../store";
 import type { TimerHandle } from "../../../store";
@@ -12,6 +12,7 @@ import Icon from "../../../Icon";
 import { PROV_IC, confirmDialog } from "../common";
 import { fmtLimitWindow, limitTone } from "../../../lib/limits";
 import type { LimitWindow } from "../../../lib/limits";
+import type { AllProviderEntry } from "../../../types/frames";
 
 // 目录模型条目（modelCatalog 字段，models_catalog 回包落地；字段为 host 下发）
 interface CatalogModel {
@@ -352,28 +353,136 @@ function startProviderLogin(id: string) {
 // all_providers 响应处理器互调成无限重绘）。
 // PROV_IC 本地放宽为 Record：页面用任意供应商 id 索引（common.tsx 侧保持原导出不动）
 const provIc: Record<string, string> = PROV_IC;
+
+// 同系列供应商合并：添加列表折叠为一张系列卡（title/note），详情页按成员分块
+//（块头 id + region 标签 + 方式标签，方式由成员 login 推导）。members 的键序即块顺序；
+// 不在 allProvidersCache 里的成员 id 静默跳过（UI 列表来源随底座增减）。
+const PROVIDER_FAMILIES: Record<string, { title: string; note: string; members: Record<string, string> }> = {
+  zai: {
+    title: "Z.AI",
+    note: "Zhipu (智谱)",
+    members: { zai: "Global", "zai-coding-plan": "Global", "zhipu-coding-plan": "China" },
+  },
+  minimax: {
+    title: "MiniMax",
+    note: "MiniMax M 系列",
+    members: {
+      "minimax-code": "International",
+      "minimax-code-cn": "China",
+      minimax: "International",
+      "minimax-cn": "China",
+    },
+  },
+  xiaomi: {
+    title: "Xiaomi",
+    note: "MiMo",
+    members: {
+      xiaomi: "Global",
+      "xiaomi-token-plan-cn": "China",
+      "xiaomi-token-plan-sgp": "Singapore",
+      "xiaomi-token-plan-ams": "Europe",
+    },
+  },
+  xai: {
+    title: "xAI",
+    note: "Grok",
+    members: { "xai-oauth": "Subscription", xai: "Pay-as-you-go" },
+  },
+  moonshot: {
+    title: "Moonshot",
+    note: "Kimi",
+    members: { "kimi-code": "Subscription", moonshot: "Pay-as-you-go" },
+  },
+  alibaba: {
+    title: "Alibaba",
+    note: "Qwen",
+    members: { "alibaba-coding-plan": "Coding Plan", "alibaba-token-plan": "Token Plan" },
+  },
+};
+
+// 反查：provider id -> 系列 id（不在任何系列里的供应商平铺展示）
+const FAMILY_OF: Record<string, string> = {};
+for (const [fid, fam] of Object.entries(PROVIDER_FAMILIES)) {
+  for (const id of Object.keys(fam.members)) FAMILY_OF[id] = fid;
+}
 function AddProviderView() {
   const allProvidersCache = useAppStore((s) => s.allProvidersCache);
+  // 平铺序列 + 系列折叠：命中系列的成员收进系列卡（位置=首成员原位，成员序=FAMILIES 定义序）
+  type Row =
+    | { kind: "plain"; p: AllProviderEntry }
+    | { kind: "family"; fid: string; members: AllProviderEntry[] };
+  const rows: Row[] = [];
+  const famIndex = new Map<string, number>();
+  if (allProvidersCache) {
+    for (const p of allProvidersCache) {
+      const fid = FAMILY_OF[p.id];
+      if (!fid) {
+        rows.push({ kind: "plain", p });
+        continue;
+      }
+      const at = famIndex.get(fid);
+      if (at === undefined) {
+        famIndex.set(fid, rows.length);
+        rows.push({ kind: "family", fid, members: [p] });
+      } else if (rows[at].kind === "family") {
+        rows[at].members.push(p);
+      }
+    }
+    for (const row of rows) {
+      if (row.kind !== "family") continue;
+      row.members.sort(
+        (a, b) =>
+          Object.keys(PROVIDER_FAMILIES[row.fid].members).indexOf(a.id) -
+          Object.keys(PROVIDER_FAMILIES[row.fid].members).indexOf(b.id),
+      );
+    }
+  }
   return (
     <>
       <div className="mp-head"><b>＋ 添加供应商</b></div>
-      <div className="set-group-desc">点击供应商卡片进入详情页，可选登录或配置 API key；最后一个「手动添加供应商」走配置层 models.yml。</div>
+      <div className="set-group-desc">点击供应商卡片进入详情页，可选登录或配置 API key（同系列供应商已合并为一张卡片）；最后一个「手动添加供应商」走配置层 models.yml。</div>
       {allProvidersCache == null ? (
         <div className="set-group-desc">读取中…</div>
       ) : (
         <div className="ap-grid">
-          {allProvidersCache.map((p) => (
-            <div className="ap-card ap-card2" key={p.id} onClick={() => { setBump({ mpDetailProv: p }); }}>
-              <div className="ap-l1">
-                <span className="pv-ic">{provIc[p.id] || "✦"}</span>
-                <span className="flex-1 min-w-0 truncate text-ui-base text-text">{p.id}</span>
+          {rows.map((row) =>
+            row.kind === "plain" ? (
+              <div className="ap-card ap-card2" key={row.p.id} onClick={() => { setBump({ mpDetailProv: row.p }); }}>
+                <div className="ap-l1">
+                  <span className="pv-ic">{provIc[row.p.id] || "✦"}</span>
+                  <span className="flex-1 min-w-0 truncate text-ui-base text-text">{row.p.id}</span>
+                </div>
+                <div className="ap-l2">
+                  <span className="tag ap-vendor">{row.p.label}</span>
+                  {row.p.accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">已配置 · {row.p.accounts}</span> : null}
+                </div>
               </div>
-              <div className="ap-l2">
-                <span className="tag ap-vendor">{p.label}</span>
-                {p.accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">已配置 · {p.accounts}</span> : null}
-              </div>
-            </div>
-          ))}
+            ) : (
+              (() => {
+                const fam = PROVIDER_FAMILIES[row.fid];
+                const accounts = row.members.reduce((n, m) => n + (m.accounts || 0), 0);
+                return (
+                  <div
+                    className="ap-card ap-card2"
+                    key={row.fid}
+                    onClick={() => {
+                      // 系列卡合成 entry：id 用系列 id（详情页据此进系列模式）
+                      setBump({ mpDetailProv: { ...row.members[0], id: row.fid, label: fam.note } });
+                    }}
+                  >
+                    <div className="ap-l1">
+                      <span className="pv-ic">{provIc[row.fid] || provIc[row.members[0].id] || "✦"}</span>
+                      <span className="flex-1 min-w-0 truncate text-ui-base text-text">{fam.title}</span>
+                    </div>
+                    <div className="ap-l2">
+                      <span className="tag ap-vendor">{fam.note}</span>
+                      {accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">已配置 · {accounts}</span> : null}
+                    </div>
+                  </div>
+                );
+              })()
+            ),
+          )}
           {/* 末位固定卡片：手动添加 = 配置层 models.yml */}
           <div
             className="ap-card ap-card2"
@@ -396,12 +505,86 @@ function AddProviderView() {
   );
 }
 
-// 供应商详情页：登录 与 配置 API key 二选一（原 renderProviderDetail 平移，表单受控）
-function ProviderDetailView() {
-  const p = useAppStore((s) => s.mpDetailProv);
+// 成员块：登录卡或 API key 输入框二选一（方式由 prov.login 推导）。
+// grouped = 系列模式：渲染块头（id + 区域 + 方式标签）；单供应商模式沿用整页布局。
+// API key 方式仅非登录型供应商：登录型（oauth/device/custom）凭证经浏览器授权归属到目录供应商
+// （store-as），目录里没有同名 provider，粘 key 只会产生永不可用的孤立凭证
+function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region?: string; grouped?: boolean }) {
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false); // 保存进行中：输入框置灰、按钮转圈，直到 provider_key_done 回包把本视图切回列表
+  return (
+    <div className="pd-member">
+      {grouped ? (
+        <div className="pd-member-head">
+          <b>{prov.id}</b>
+          {region ? <span className="tag">{region}</span> : null}
+          <span className="tag">{prov.login ? "Sign in" : "API Key"}</span>
+        </div>
+      ) : null}
+      {prov.login ? (
+        <>
+          <div className="ap-card pd-login" onClick={() => startProviderLogin(prov.id)}>
+            <span className="pv-ic">🌐</span>
+            <span className="flex-1 min-w-0 truncate text-ui-base text-text">登录</span>
+            <span className="tag">浏览器授权</span>
+          </div>
+          {!grouped ? (
+            <div className="set-group-desc">
+              该供应商仅支持浏览器登录授权，登录后模型会归入对应的目录供应商；如需 API key 直连，请添加对应的 API 型供应商（如 Z.AI 用 zai）。
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="pd-key">
+          <div className="srow-tx">
+            <b>API Key</b>
+            <span>粘贴供应商的 API key，保存后立即生效。</span>
+          </div>
+          <div className="pd-key-row">
+            <input
+              className={"inp" + (saving ? " disabled" : "")}
+              type="password"
+              placeholder="sk-…"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+            />
+            <button
+              type="button"
+              className={"save-btn" + (saving ? " busy" : "")}
+              disabled={saving}
+              onClick={() => {
+                const k = key.trim();
+                if (!k) {
+                  toast("请输入 API key");
+                  return;
+                }
+                setSaving(true);
+                send({ type: "provider_set_key", provider: prov.id, key: k });
+              }}
+            >
+              {saving ? <Icon name="refresh" size={14} /> : "保存"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 供应商详情页：单供应商一块；系列卡进入时按 FAMILIES 成员序分块（仅渲染列表里实际存在的成员）
+function ProviderDetailView() {
+  const p = useAppStore((s) => s.mpDetailProv);
+  const allProvidersCache = useAppStore((s) => s.allProvidersCache);
   if (!p) return null;
+  const fam = PROVIDER_FAMILIES[p.id];
+  const members = fam
+    ? Object.entries(fam.members).map(([id, region]) => ({
+        // 成员不在 allProvidersCache（如 minimax-cn 无 OAuth/VENDOR 条目）时合成兜底：
+        // 底座 bundled 目录仍支持该 provider，粘 key 即可用（无登录流、无凭证）
+        prov: allProvidersCache?.find((x) => x.id === id) ?? { id, label: "", login: false, accounts: 0 },
+        region,
+      }))
+    : [{ prov: p, region: undefined }];
   return (
     <>
       <div className="mp-head">
@@ -416,53 +599,15 @@ function ProviderDetailView() {
         >
           ← 返回
         </button>
-        <b>{provIc[p.id] || "✦"} {p.id}</b>
-        <span className="tag">{p.label}</span>
+        <b>{(provIc[members[0].prov.id] || "✦") + " " + (fam ? fam.title : p.id)}</b>
+        <span className="tag">{fam ? fam.note : p.label}</span>
       </div>
-      {/* 登录方式（供应商有 OMP 登录流时提供） */}
-      {p.login ? (
-        <>
-          <div className="ap-card pd-login" onClick={() => startProviderLogin(p.id)}>
-            <span className="pv-ic">🌐</span>
-            <span className="flex-1 min-w-0 truncate text-ui-base text-text">登录</span>
-            <span className="tag">浏览器授权</span>
-          </div>
-          {/* 分隔线：短于卡片宽度，左右不触边；不支持登录的供应商不渲染 */}
-          <div className="pd-div" />
-        </>
-      ) : null}
-      {/* API key 方式（所有供应商可用）：标签在上，圆角输入框在下 */}
-      <div className="pd-key">
-        <div className="srow-tx">
-          <b>API Key</b>
-          <span>粘贴供应商的 API key，保存后立即生效。</span>
-        </div>
-        <div className="pd-key-row">
-          <input
-            className={"inp" + (saving ? " disabled" : "")}
-            type="password"
-            placeholder="sk-…"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-          />
-          <button
-            type="button"
-            className={"save-btn" + (saving ? " busy" : "")}
-            disabled={saving}
-            onClick={() => {
-              const k = key.trim();
-              if (!k) {
-                toast("请输入 API key");
-                return;
-              }
-              setSaving(true);
-              send({ type: "provider_set_key", provider: p.id, key: k });
-            }}
-          >
-            {saving ? <Icon name="refresh" size={14} /> : "保存"}
-          </button>
-        </div>
-      </div>
+      {members.map((m, i) => (
+        <Fragment key={m.prov.id}>
+          {fam && i > 0 ? <div className="pd-div" /> : null}
+          <MemberBlock prov={m.prov} region={m.region} grouped={!!fam} />
+        </Fragment>
+      ))}
     </>
   );
 }
@@ -499,10 +644,15 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
       {models.map((m) => (
         <div className="mp-row" key={m.id}>
           <span>{m.name}</span>
-          {/* 上下文按二进制单位：204800 → 200k、1048576 → 1M */}
+          {/* 上下文按十进制厂商标称：1000000 → 1M、1310720 → 1.3M、200000 → 200k。
+              不用 1024 进制换算——catalog 值是十进制标称，1000000 会被算成 977k */}
           {m.context ? (
             <span className="tag">
-              {m.context >= 1048576 ? Math.round(m.context / 1048576) + "M" : m.context >= 1024 ? Math.round(m.context / 1024) + "k" : String(m.context)}
+              {m.context >= 1000000
+                ? (Math.round(m.context / 100000) / 10).toString().replace(/\.0$/, "") + "M"
+                : m.context >= 1000
+                  ? Math.round(m.context / 1000) + "k"
+                  : String(m.context)}
             </span>
           ) : null}
           {m.vision ? <span className="tag">视觉</span> : null}
