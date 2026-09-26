@@ -71,3 +71,13 @@
 - **前端错误上报通道**：WKWebView 无 console，`window.onerror`/`unhandledrejection` 除显示到状态栏 + toast 外，再经 WS 发 `ui_error` 给宿主打到 stderr（dev 日志可见），是从外界断言"前端零 JS 错误"的唯一手段。
 - **冒烟脚本默认模型是本地慢模型**：`bun run scripts/smoke*.ts` 不带环境变量会在 prompt 断言上超时（90s/120s 不够）；带 `OMP_DESKTOP_MODEL=deepseek/deepseek-flash` 跑即全绿。
 - **CDN 上传缓存串图**：连续 Read 多张 /tmp 截图可能返回同一 URL（缓存命中错误），换全新文件名再传。
+
+## Windows MSI 打包 / native addon（2026-09-26 测试机启动崩溃）
+
+- **`bun build --compile` 出来的 omp-host.exe 不含 pi_natives，npm 装的依赖里没有提取来源**：官方编译流程要先跑 `gen:native`（`packages/natives/scripts/embed-native.ts` 把 `.node` 打成 `embedded-addons.<platform>.tar.gz`，生成带 `import ... with { type: "file" }` 的 `embedded-addon.js`，bun 编译时嵌成 asset），但该脚本**只存在于上游源码仓**——npm 包 `files` 字段不含 `scripts/`，发布时 `embedded-addon.js` 已被 reset 成 `embeddedAddon = null` 的 stub。直接编译出的 exe 在干净机器上启动即崩 `Failed to load pi_natives native addon`（loader-state.js `maybeExtractEmbeddedAddon` 对 null 直接跳过，候选路径全空）。**假象**：目标机上 `~/.omp/natives/18.2.6/` 若有历史残留 `.node` 就能正常跑（测试机 21:47 成功 22:13 崩溃即残留被清掉），开发机上永远复现不了。
+- **修复**：`scripts/build-host.ts` 编排 embed → compile → reset（照搬上游 `ci-release-build-binaries.ts`）。**reset 必须放 finally**：非 stub 的 `embedded-addon.js` 会让 dev 模式误判成 compiled——`detectCompiledBinary` 第一条就是 `if (embeddedAddon) return true`（loader-state.js），误判后 leaf 包目录不进候选、dev 直接崩。
+- **哨兵校验必须用 Node Buffer**：`containsVersionSentinel`（version-sentinel.js）依赖 `Buffer.indexOf(字符串)` 的子串搜索；传 `Uint8Array` 时其 `indexOf` 只查单字节恒返回 -1，哨兵明明在文件里也报"版本不一致"。
+- **npm 的 win32-x64 leaf 包只有 baseline 变体**（无 `-modern`）：AVX2 机器 `selectCpuVariant` 选 modern 后 loader 自动回落 baseline（候选序列 modern→baseline→default），功能等价性能略降，不是 bug。
+- **报错信息里的 GitHub latest 下载链接对旧版本是坑**：`buildHelpMessage` 生成的是 `releases/latest/download/...`，latest 已是 18.3.x，哨兵 `__piNativesV18_3_2` ≠ 18.2.6，`validateLoadedBindings` 会拒之门外（报 "reinstall to re-sync"）。救急要拷本机 `node_modules/@oh-my-pi/pi-natives-win32-x64/` 里同版本 `.node` 到目标机 `~/.omp/natives/18.2.6/`。
+- **验证法**：把本机 `~/.omp/natives/18.2.6` 改名模拟干净机器 + exe 拷独立目录跑，`PI_DEBUG_STARTUP=1` 看 stderr 依次出现 `[startup] native:extractEmbeddedAddon:start` → `native:loadNative:done`，且 `18.2.6/` 被自动重建。产物判据：exe 从 ~112MB 涨到 ~151MB（内嵌 tar.gz ≈37.6MB）。
+- **git-bash 里没有 `bunx`**：用 `bun x tauri build --bundles msi --config src-tauri/tauri.windows.conf.json`。

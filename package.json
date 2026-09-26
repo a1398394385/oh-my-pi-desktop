@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "host": "bun host/host.ts",
-    "host:build": "bun build --compile --minify --external omp-legacy-pi-modules host/host.ts --outfile host-dist/omp-host.exe",
+    "host:build": "bun scripts/build-host.ts",
     "smoke": "OMP_PROFILE=omp-desktop-test bun scripts/smoke.ts",
     "smoke:queue": "OMP_PROFILE=omp-desktop-test bun scripts/queue-smoke.ts",
     "smoke:features": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-features.ts",
