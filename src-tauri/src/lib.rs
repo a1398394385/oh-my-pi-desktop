@@ -11,11 +11,16 @@ use std::time::Duration;
 // 与自绘标题栏（ui-src/components/TitleBar.tsx）重复
 #[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
-type WsUrlCell = Arc<Mutex<Option<String>>>;
+struct HostState {
+    url: Option<String>,
+    error: Option<String>,
+}
+
+type WsUrlCell = Arc<Mutex<HostState>>;
 type ChildCell = Arc<Mutex<Option<Child>>>;
 
 /// GUI 启动时 PATH 通常不含 ~/.bun，按常见安装位置探测，找不到再交给 PATH。
@@ -38,23 +43,48 @@ fn resolve_bun() -> PathBuf {
 
 /// 宿主启动命令：打包形态优先资源目录里的自包含 omp-host（bun build --compile
 /// 产物，不依赖源码树与 PATH 里的 bun）；dev 形态回落 bun 直跑仓库源码。
-fn host_command(app: &tauri::AppHandle) -> Command {
-    if let Ok(rd) = app.path().resource_dir() {
-        let host = rd.join(if cfg!(windows) { "omp-host.exe" } else { "omp-host" });
+fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("读取应用资源目录失败: {e}"))?;
+    let names: &[&str] = if cfg!(windows) {
+        &["omp-host.exe", "omp-host"]
+    } else {
+        // 当前 host:build 统一输出 omp-host.exe；macOS 也可直接执行该 Mach-O 文件。
+        &["omp-host", "omp-host.exe"]
+    };
+    for name in names {
+        let host = resource_dir.join(name);
         if host.is_file() {
-            return Command::new(host);
+            return Ok(Command::new(host));
         }
     }
+
+    if !cfg!(debug_assertions) {
+        return Err(format!(
+            "未找到宿主 sidecar（资源目录: {}）",
+            resource_dir.display()
+        ));
+    }
+
     let mut cmd = Command::new(resolve_bun());
     cmd.arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../host/host.ts"));
-    cmd
+    Ok(cmd)
 }
 
 /// 拉起 Bun 宿主并监听其 stdout 首行 `READY ws://...`。
 /// 首行之后继续读完 stdout（防管道写满）；子进程句柄存 ChildCell，
 /// 壳退出（RunEvent::Exit）时显式 kill，避免宿主变孤儿进程。
 fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
-    let mut cmd = host_command(app);
+    let mut cmd = match host_command(app) {
+        Ok(cmd) => cmd,
+        Err(message) => {
+            eprintln!("[shell] {message}");
+            cell.lock().unwrap().error = Some(message);
+            return;
+        }
+    };
     cmd.stdout(Stdio::piped());
     // Windows 上壳是 GUI 子系统（无控制台），stderr inherit 会给 bun 新开
     // 一个控制台黑窗；改为管道 + CREATE_NO_WINDOW，由线程排空透传日志
@@ -68,7 +98,15 @@ fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
     {
         cmd.stderr(Stdio::inherit());
     }
-    let mut child: Child = cmd.spawn().expect("启动 bun 宿主失败（bun 是否安装？）");
+    let mut child: Child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            let message = format!("启动宿主失败: {e}");
+            eprintln!("[shell] {message}");
+            cell.lock().unwrap().error = Some(message);
+            return;
+        }
+    };
     let stdout = child.stdout.take().expect("stdout 已 piped");
     #[cfg(target_os = "windows")]
     if let Some(stderr) = child.stderr.take() {
@@ -79,15 +117,24 @@ fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
         });
     }
     *child_cell.lock().unwrap() = Some(child);
+    let reader_cell = cell.clone();
     std::thread::spawn(move || {
+        let mut ready = false;
         for line in BufReader::new(stdout).lines() {
             match line {
                 Ok(l) => {
                     if let Some(url) = l.strip_prefix("READY ") {
-                        *cell.lock().unwrap() = Some(url.trim().to_string());
+                        reader_cell.lock().unwrap().url = Some(url.trim().to_string());
+                        ready = true;
                     }
                 }
                 Err(_) => break,
+            }
+        }
+        if !ready {
+            let mut state = reader_cell.lock().unwrap();
+            if state.error.is_none() {
+                state.error = Some("宿主进程提前退出，未收到 READY 信号".into());
             }
         }
     });
@@ -97,9 +144,14 @@ fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
 #[tauri::command]
 fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
     for _ in 0..600 {
-        if let Some(u) = cell.lock().unwrap().clone() {
+        let state = cell.lock().unwrap();
+        if let Some(error) = state.error.clone() {
+            return Err(error);
+        }
+        if let Some(u) = state.url.clone() {
             return Ok(u);
         }
+        drop(state);
         std::thread::sleep(Duration::from_millis(100));
     }
     Err("宿主进程 60s 内未就绪，查看终端日志定位".into())
@@ -207,7 +259,10 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         ],
     )?;
 
-    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])?;
+    let menu = Menu::with_items(
+        app,
+        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+    )?;
     app.set_menu(menu)?;
 
     // 菜单点击转发前端：payload 为 { action: <菜单项 id> }；PredefinedMenuItem
@@ -219,7 +274,10 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
 }
 
 pub fn run() {
-    let cell: WsUrlCell = Arc::new(Mutex::new(None));
+    let cell: WsUrlCell = Arc::new(Mutex::new(HostState {
+        url: None,
+        error: None,
+    }));
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

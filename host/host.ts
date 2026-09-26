@@ -105,9 +105,17 @@ import { translateEvent, translateSubagentEvent, entriesToTranscript, treeToDisp
 import { fetchSessionLimits, fetchProviderAccountsLimits, refreshAllLimits, listAllProviders } from "./limits/index.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
-H.currentProfile = initialProfile;
-await refreshAvailableProfiles();
-await applyProfile(H.currentProfile);
+// profile 初始化包含模型目录刷新，可能耗时数秒。不要用顶层 await 阻塞 WebSocket
+// 服务和 READY 输出；连接建立后再由 open/message 等待这份 Promise。
+const profileReady = (async () => {
+  H.currentProfile = initialProfile;
+  await refreshAvailableProfiles();
+  await applyProfile(H.currentProfile);
+})();
+profileReady.catch((err) => {
+  process.stderr.write(`[host] Profile 初始化失败: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+  process.exitCode = 1;
+});
 
 // MCP 工具 schema token 估算缓存:tools roster 身份不变就不重算
 const mcpTokensCache = new WeakMap<object, number>();
@@ -703,19 +711,32 @@ const server = Bun.serve<{ sessionId: string | null }>({
   websocket: {
     open(ws) {
       process.stderr.write(`[host] WS 客户端接入（前端加载与连接全链路 OK）\n`);
-      ws.send(
-        JSON.stringify({
-          type: "ready",
-          hi: HOST_INSTANCE_ID, // 握手不占事件序号，但携带实例身份供 UI 立即比对
-          approvalMode: H.settings.get("tools.approvalMode"),
-          models: modelsPayload(),
-          ...modelsDefaults(),
-          settings: settingsFrame(),
-        }),
+      void profileReady.then(
+        () => {
+          ws.send(
+            JSON.stringify({
+              type: "ready",
+              hi: HOST_INSTANCE_ID, // 握手不占事件序号，但携带实例身份供 UI 立即比对
+              approvalMode: H.settings.get("tools.approvalMode"),
+              models: modelsPayload(),
+              ...modelsDefaults(),
+              settings: settingsFrame(),
+            }),
+          );
+        },
+        (err) => {
+          ws.send(JSON.stringify({ type: "error", message: `宿主初始化失败: ${err instanceof Error ? err.message : String(err)}` }));
+        },
       );
     },
     async message(ws, raw) {
       let msg: any;
+      try {
+        await profileReady;
+      } catch (err) {
+        ws.send(JSON.stringify({ type: "error", message: `宿主初始化失败: ${err instanceof Error ? err.message : String(err)}` }));
+        return;
+      }
       try {
         msg = JSON.parse(String(raw));
       } catch {
@@ -2678,6 +2699,7 @@ async function handleLoadSession(ws: any, sessionPath: string) {
     pushTodos(ws, sessionId, entry); // 复用快照同推待办存量（否则前端重建对象后历史 TODO 不展示）
     pushGoal(sessionId); // goal 状态存量（会话状态卡目标区）
     pushContext(ws, sessionId, entry);
+    pushSessionStats(ws, sessionId, entry); // 复用快照同推整会话统计（否则前端重建对象后 stats 为空）
     if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // LRU 驱逐期间检出的，切回时补发
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
@@ -3220,8 +3242,10 @@ const runLimitsRefresh = () => {
     process.stderr.write(`[host] 配额预载/刷新完成: ${providers.length} 个供应商\n`);
   });
 };
-runLimitsRefresh();
-setInterval(runLimitsRefresh, LIMITS_REFRESH_INTERVAL_MS);
+void profileReady.then(runLimitsRefresh);
+setInterval(() => {
+  void profileReady.then(runLimitsRefresh);
+}, LIMITS_REFRESH_INTERVAL_MS);
 
 // ---------- 宿主池外部写入检测 ----------
 // 池内会话 = desktop 正持有内存态的全集（宿主池无上限，前端 OPEN_SESSIONS_MAX 只管 UI LRU）。

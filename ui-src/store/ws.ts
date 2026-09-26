@@ -57,14 +57,16 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     let url: string;
     try {
       url = await invoke("ws_url");
-    } catch {
-      setTimeout(() => void get().connect(), 3000);
+    } catch (error) {
+      get().setConnected(false, `宿主启动失败：${String(error)}`);
+      scheduleReconnect(get().connect);
       return;
     }
     const ws = new WebSocket(url);
     set({ ws });
     ws.onmessage = (ev) => onMessage(JSON.parse(ev.data));
     ws.onopen = () => {
+      reconnectAttempt = 0;
       get().setConnected(true, "已连接");
       get().send({ type: "list_sessions" });
       // 启动时欢迎页先于连接渲染，get_git_branches 曾被 send 丢弃；连接就绪后补拉
@@ -75,11 +77,20 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     // 断线后自动重连(3s),宿主重启期间 UI 不至于永久停留在旧状态
     ws.onclose = () => {
       get().setConnected(false, "已断开");
-      setTimeout(() => void get().connect(), 3000);
+      scheduleReconnect(get().connect);
     };
     ws.onerror = () => get().setConnected(false, "已断开");
   },
 });
+
+const reconnectDelays = [100, 250, 500, 1000, 2000, 3000];
+let reconnectAttempt = 0;
+
+function scheduleReconnect(connect: () => Promise<void>): void {
+  const delay = reconnectDelays[Math.min(reconnectAttempt, reconnectDelays.length - 1)];
+  reconnectAttempt += 1;
+  setTimeout(() => void connect(), delay);
+}
 
 // Tauri 壳注入的全局对象（浏览器直连调试时不存在）。invoke 返回形状随命令而异、
 // event 载荷为宿主/壳消息，均为真实外部边界：默认 any，调用点按需收窄。

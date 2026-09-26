@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.xys.omp-desktop",
   "build": {
-    "frontendDist": "../ui/dist"
+    "frontendDist": "../ui/dist",
+    "beforeBuildCommand": "bun run ui:build && bun run host:build"
   },
   "app": {
     "withGlobalTauri": true,
