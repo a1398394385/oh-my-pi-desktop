@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 能力清单一致性门禁（借鉴 OBF 产品控制平面的最小版）：
-// host/capabilities.json 是 RPC 能力的单一事实源，本脚本把它与 host.ts
-// switch 实际分发的 method 做双向 diff——任何一侧漂移都 exit 1。
+// host/capabilities.json 是 RPC 能力的单一事实源，本脚本把它与宿主主体
+// host/main.ts（薄入口 host.ts 零参时装载）switch 实际分发的 method 做双向
+// diff——任何一侧漂移都 exit 1。
 // 用法：node scripts/check-capabilities.mjs
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -9,10 +10,10 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalog = JSON.parse(readFileSync(join(root, "host/capabilities.json"), "utf8"));
-const hostSrc = readFileSync(join(root, "host/host.ts"), "utf8");
+const hostSrc = readFileSync(join(root, "host/main.ts"), "utf8");
 
-// host.ts message 回调里的 case 字符串即实际分发的 method 全集。
-// host.ts 内不允许出现第二个字符串 case switch；若未来出现，把非 RPC 的
+// main.ts message 回调里的 case 字符串即实际分发的 method 全集。
+// main.ts 内不允许出现第二个字符串 case switch；若未来出现，把非 RPC 的
 // case 名加进下面 ignore 集（须附理由）。
 const ignoreCases = new Set([]);
 const dispatchCases = new Set(
