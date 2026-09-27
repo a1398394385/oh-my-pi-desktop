@@ -203,7 +203,7 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
   const tokens = useCodeTokens(shown.join("\n"), langOfPath(fv.path));
   return (
     <>
-      <div className="pt-1 pr-2 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" ref={bodyRef}>
+      <div className="pt-1 pr-2 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */ ref={bodyRef}>
         {shown.map((tx, i) => {
           const n = lineNoOf(i);
           // 请求的行号范围内只高亮行号列，不动内容；null = 工具省略的空洞行

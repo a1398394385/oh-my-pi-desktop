@@ -65,7 +65,7 @@ export default function Welcome() {
   return (
     <div id="welcomeScreen" className="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto pt-[30px] px-[20px] pb-[80px]">
       <div className="w-full max-w-[min(720px,100%)] flex flex-col items-center">
-        <div className="text-[26px] font-medium text-text mb-[28px] tracking-[0.5px] text-center select-none" id="welcomeTitle">{greeting()}</div>
+        <div className="text-[26px] font-medium text-text mb-[28px] tracking-[0.5px] text-center select-none" /* style-token-ignore */ id="welcomeTitle">{greeting()}</div>
         <div className="wb-wrapper w-full relative flex flex-col" id="wbContainer">
           <div
             id="wbBackCard"

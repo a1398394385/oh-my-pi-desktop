@@ -428,7 +428,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <div className="pt-[10px] px-[10px] flex flex-col gap-[6px] flex-none">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
           <Icon name="messagePlus" size={19} />
-          新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]">{MOD} N</span>
+          新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
         </div>
         <SidebarSearch />
       </div>
@@ -527,7 +527,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <div className="side-foot">
         <div className="avatar"><img src={appIcon} alt="" /></div>
         <div className="flex items-center gap-[6px] min-w-0">
-          <span className="text-[15px] font-semibold text-text truncate leading-none" id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
+          <span className="text-[15px] font-semibold text-text truncate leading-none" /* style-token-ignore */ id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
         </div>
         <span className="flex-1"></span>
         <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>

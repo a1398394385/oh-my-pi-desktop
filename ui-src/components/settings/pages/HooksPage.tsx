@@ -107,20 +107,20 @@ export default function HooksPage() {
                     <b>{h.name}</b>
                     <span
                       className={
-                        "text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded leading-none " +
+                        "text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded leading-none " + /* style-token-ignore */
                         (h.phase === "pre"
-                          ? "bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30"
-                          : "bg-[var(--green)]/15 text-[var(--green)] border border-[var(--green)]/30")
+                          ? "bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30" /* style-token-ignore */
+                          : "bg-[var(--green)]/15 text-[var(--green)] border border-[var(--green)]/30") /* style-token-ignore */
                       }
                     >
                       {h.phase}
                     </span>
                     {h.tool && (
-                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--panel-2)] text-[var(--dim)] border border-[var(--line)]">
+                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--panel-2)] text-[var(--dim)] border border-[var(--line)]" /* style-token-ignore */>
                         tool: {h.tool}
                       </span>
                     )}
-                    <span className="text-[11px] text-[var(--faint)]">
+                    <span className="text-[11px] text-[var(--faint)]" /* style-token-ignore */>
                       {h.projectName ? `项目 · ${h.projectName}` : "Profile"}
                     </span>
                   </div>

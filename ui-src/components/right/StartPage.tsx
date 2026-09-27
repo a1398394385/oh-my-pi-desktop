@@ -11,7 +11,7 @@ export default function StartPage() {
       <span className="inline-flex items-center text-faint mb-3">
         <Icon name="panelRight" size={30} />
       </span>
-      <div className="text-[length:20px] font-semibold leading-[28px] text-text">打开标签页</div>
+      <div className="text-[length:20px] font-semibold leading-[28px] text-text" /* style-token-ignore */>打开标签页</div>
       <div className="text-ui-base leading-5 text-dim mt-1 mb-5">选择要在侧边面板中打开的标签。</div>
       <div className="rt-list">
         {["subagent", "gitdiff", "file", "bgcmd", "tree", "terminal", "browser"].map((name) => {

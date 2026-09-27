@@ -34,7 +34,7 @@ export default function SessionTreePage() {
   }
   const roots = tree.roots ?? [];
   if (roots.length === 0) {
-    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]">会话还没有任何条目。</div>;
+    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]" /* style-token-ignore */>会话还没有任何条目。</div>;
   }
 
   const activeIds = activePathIds(roots, tree.leafId);

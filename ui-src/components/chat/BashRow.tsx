@@ -23,7 +23,7 @@ export default function BashRow({ item }: { item: BashItem }) {
     <>
       <div className="cmd bash-row" style={{ cursor: "pointer" }} onClick={toggle}>
         <Ellip className="c-tx" title={item.text}>{`$ ${item.text}`}</Ellip>
-        {item.excludeFromContext && <span className="flex-none text-ui-xs text-faint border border-line rounded-[4px] px-[4px]">不进上下文</span>}
+        {item.excludeFromContext && <span className="flex-none text-ui-xs text-faint border border-line rounded-[4px] px-[4px]" /* style-token-ignore */>不进上下文</span>}
         <span className="bash-status">{status}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />

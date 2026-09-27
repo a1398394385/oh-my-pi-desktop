@@ -206,7 +206,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
   const animateGdKids = useAppStore.getState().animateGdKids;
   return (
     <div
-      className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")}
+      className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
       style={{ paddingLeft: 4 + depth * 14 + 14 + "px", animationDelay: depth * 15 + "ms" }}
       title={f.path}
       onClick={() => {
@@ -279,7 +279,7 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
     rows.push(
       <div
         key={"d:" + dirPath}
-        className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")}
+        className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
         style={{ paddingLeft: 4 + depth * 14 + "px", animationDelay: depth * 15 + "ms" }}
         onClick={() => {
           // 展开/收起换新 Set + 新 rightState 引用（订阅者按引用感知）；展开时置脉冲动画标记

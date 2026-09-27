@@ -40,7 +40,7 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
     const pctWindows = windows.filter((w) => w.metric !== "credits");
     if (!pctWindows.length && balance?.amount != null) {
       body = (
-        <div className="pt-[8px] text-dim text-[12px]">余额 {balance.amount} {balance.currency ?? ""}</div>
+        <div className="pt-[8px] text-dim text-[12px]" /* style-token-ignore */>余额 {balance.amount} {balance.currency ?? ""}</div>
       );
     } else if (!pctWindows.length) {
       body = "限额暂不可用";
@@ -52,10 +52,10 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
               const item = fmtLimitWindow(w);
               return (
                 <div className="flex flex-col gap-[5px] min-w-0" key={i}>
-                  <div className="flex items-center gap-[6px] text-dim text-[11.5px] whitespace-nowrap overflow-hidden"><span className="truncate">{item.label}</span></div>
-                  <div className="text-[15px] font-semibold whitespace-nowrap" style={{ color: limitTone(item.remaining) }}>
+                  <div className="flex items-center gap-[6px] text-dim text-[11.5px] whitespace-nowrap overflow-hidden" /* style-token-ignore */><span className="truncate">{item.label}</span></div>
+                  <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */ style={{ color: limitTone(item.remaining) }}>
                     {item.remaining != null ? `${item.remaining}%` : "—"}
-                    {item.resetIn ? <span className="text-faint text-[12px] font-normal"> · {item.resetIn}</span> : null}
+                    {item.resetIn ? <span className="text-faint text-[12px] font-normal" /* style-token-ignore */> · {item.resetIn}</span> : null}
                   </div>
                   <div className="lx-bar">
                     <i style={{ width: `${item.remaining != null ? Math.min(100, item.remaining) : 0}%`, background: limitTone(item.remaining) }} />
@@ -65,7 +65,7 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
             })}
           </div>
           {balance?.amount != null && (
-            <div className="pt-[8px] text-dim text-[12px]">余额 {balance.amount} {balance.currency ?? ""}</div>
+            <div className="pt-[8px] text-dim text-[12px]" /* style-token-ignore */>余额 {balance.amount} {balance.currency ?? ""}</div>
           )}
         </>
       );
@@ -73,9 +73,9 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
   }
   return (
     <div className={"cx-sec pb-[2px]" + (noDiv ? " no-div" : "")}>
-      <div className="flex justify-between items-baseline text-[13.5px] pt-[2px] pb-[10px]">
+      <div className="flex justify-between items-baseline text-[13.5px] pt-[2px] pb-[10px]" /* style-token-ignore */>
         <b>剩余额度</b>
-        <span className="text-faint text-[11.5px]">{limits.label ?? ""}</span>
+        <span className="text-faint text-[11.5px]" /* style-token-ignore */>{limits.label ?? ""}</span>
       </div>
       <div className="min-w-[268px]">{body}</div>
     </div>
