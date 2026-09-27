@@ -719,7 +719,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     [draftKey],
   );
 
-  const phText = inWelcome ? "使用 @ 添加上下文，使用 / 选择命令或能力" : "发消息…（Enter 发送）";
+  const phText = "随时提问，@ 提及，/ 选择操作";
 
   return (
     <>
