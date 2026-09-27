@@ -4,8 +4,7 @@
 //              添加供应商（卡片网格）/ 供应商详情页（登录 / API key 二选一）。
 // 视图开关与选中项沿用 store 字段（mpAddView / mpRolesView / mpDetailProv / selectedProvider），
 // 登录横幅与粘贴码弹窗来自 ../common.jsx。
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAppStore, setBump, send, toast } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";

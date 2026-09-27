@@ -830,7 +830,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
           </button>
           <button
-            className={"send" + (hasDraft ? " ready" : "") + (canAbort ? " stopping" : "")}
+            className={"send" + (canAbort ? " stop" : hasDraft ? " ready" : "") + (canAbort ? " stopping" : "")}
             id="sendBtn"
             disabled={stopping && stopPending}
             title={
@@ -856,7 +856,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               sendPrompt();
             }}
           >
-            <Icon name={canAbort ? "stopSolid" : "arrowUp"} size={16} />
+            <Icon name={canAbort ? "stopSolid" : "arrowRight"} size={16} />
           </button>
         </div>
         {/* 权限模式（omp 三值，大行样式） */}

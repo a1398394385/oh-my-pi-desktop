@@ -49,7 +49,18 @@ const NAV_SECTIONS = [
       { id: "pg-browser", icon: "globe", label: "浏览器控制" },
       { id: "pg-computer", icon: "monitor", label: "电脑控制" },
       { id: "pg-keyboard", icon: "keyboard", label: "键盘快捷键" },
-      { id: "pg-experimental", icon: "flask", label: "实验性功能" },
+    ],
+  },
+  {
+    title: "Agent 能力",
+    items: [
+      { id: "pg-extensions", icon: "extensions", label: "扩展" },
+      { id: "pg-memory", icon: "memory", label: "记忆" },
+      { id: "pg-agents", icon: "agents", label: "子智能体" },
+      { id: "pg-plugins", icon: "plugins", label: "插件" },
+      { id: "pg-mcp", icon: "mcp", label: "MCP 服务器" },
+      { id: "pg-skills", icon: "skills", label: "技能" },
+      { id: "pg-hooks", icon: "hook", label: "钩子" },
     ],
   },
   {
@@ -64,18 +75,7 @@ const NAV_SECTIONS = [
       { id: "pg-tools", icon: "plug", label: "工具" },
       { id: "pg-tasks", icon: "todo", label: "任务·子代理" },
       { id: "pg-advanced", icon: "settings", label: "高级" },
-    ],
-  },
-  {
-    title: "Agent 能力",
-    items: [
-      { id: "pg-extensions", icon: "extensions", label: "扩展" },
-      { id: "pg-memory", icon: "memory", label: "记忆" },
-      { id: "pg-agents", icon: "agents", label: "子智能体" },
-      { id: "pg-plugins", icon: "plugins", label: "插件" },
-      { id: "pg-mcp", icon: "mcp", label: "MCP 服务器" },
-      { id: "pg-skills", icon: "skills", label: "技能" },
-      { id: "pg-hooks", icon: "hook", label: "钩子" },
+      { id: "pg-experimental", icon: "flask", label: "实验性功能" },
     ],
   },
   {

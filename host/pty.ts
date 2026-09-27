@@ -1,46 +1,50 @@
-// 终端 PTY 服务：Bun 宿主内嵌真 pty，对前端暴露 create/write/resize/dispose 四元组
-// + 数据帧/退出帧回推（host.ts 的 WS 分发里接线）。
-//
-// 为什么不直接用 node-pty：它是 NAPI 原生模块，实测 Bun 1.4.2 下 import 成功、
-// 但 fork 子进程时 posix_spawnp failed（spawn-helper 起不来）；macOS 自带 script(1)
-// 又要求 stdin 必须是 tty。最终方案：host/pty-bridge.c（openpty + fork + exec 的
-// ~100 行桥进程，stdio 即 pty 数据管道），宿主首次用时用 cc 编译缓存到
-// ~/.omp/profiles/omp-desktop/bin/（Tauri 开发机必有 CLT，按源码 hash 失效重编）。
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
-import { createHash } from "node:crypto";
-import os from "node:os";
-import path from "node:path";
+// 终端 PTY 服务：基于 @oh-my-pi/pi-natives 原生 PtySession（跨平台 ConPTY / POSIX PTY），
+// 对前端暴露 create/write/resize/dispose 四元组 + 数据帧/退出帧回推。
+import { PtySession as NativePty } from "@oh-my-pi/pi-natives";
 
-const SRC = path.join(import.meta.dir, "pty-bridge.c");
+const isWindows = process.platform === "win32";
 
-// 编译产物缓存：源码 hash 进文件名，改源码自动重编
-function bridgeBin(): string {
-  const hash = createHash("sha1").update(readFileSync(SRC)).digest("hex").slice(0, 10);
-  const dir = path.join(os.homedir(), ".omp", "profiles", "omp-desktop", "bin");
-  mkdirSync(dir, { recursive: true });
-  return path.join(dir, `pty-bridge-${hash}`);
-}
-
-// 确保桥二进制可用：缺失则 cc 编译；cc 不存在时抛错（错误经 WS error 帧回前端）
-export async function ensureBridge(): Promise<string> {
-  const bin = bridgeBin();
-  if (existsSync(bin)) return bin;
-  const cc = Bun.spawnSync(["cc", "-O2", "-o", bin, SRC]);
-  if (cc.exitCode !== 0) {
-    throw new Error(`编译 pty-bridge 失败（需要 Xcode CLT 的 cc）：${cc.stderr.toString().slice(0, 200)}`);
+function resolveDefaultShell(): string {
+  if (isWindows) {
+    if (process.env.SHELL) return process.env.SHELL;
+    return "powershell.exe";
   }
-  return bin;
+  return process.env.SHELL || "/bin/zsh";
 }
 
-// 控制 socket 连接（桥连入后才有 resize 通道；只写不读）
-interface CtlSocket { write(data: string): unknown }
+function buildShellArgs(shell: string, inheritProfile?: boolean): string[] {
+  const lower = shell.toLowerCase();
+  if (isWindows) {
+    if (lower.endsWith("powershell.exe") || lower.endsWith("pwsh.exe") || lower === "powershell" || lower === "pwsh") {
+      return ["-NoLogo"];
+    }
+    if (lower.endsWith("cmd.exe") || lower === "cmd") {
+      return [];
+    }
+    if (lower.includes("bash") || lower.includes("zsh")) {
+      return inheritProfile === false ? ["-i"] : ["-l", "-i"];
+    }
+    return [];
+  }
+  if (inheritProfile === false) {
+    return ["-i"];
+  }
+  return ["-l", "-i"];
+}
+
+function cleanEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string") env[k] = v;
+  }
+  return env;
+}
 
 export interface PtySession {
   id: string;
   shell: string;
   cwd: string;
-  proc: Bun.Subprocess;
-  ctl: CtlSocket | null;
+  native: NativePty;
   send: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   dispose: () => void;
@@ -49,7 +53,7 @@ export interface PtySession {
 const sessions = new Map<string, PtySession>();
 const byOwner = new WeakMap<object, Set<string>>();
 
-// 建会话：起桥进程 + 监听控制 socket（桥连入后才有 resize 通道）。
+// 建会话：基于 pi-natives 启动原生 PTY。
 // onData 收到 pty 原始输出（UTF-8 字符串）；onExit 在子进程退出后调用一次。
 export async function createTerminal(
   owner: object,
@@ -57,74 +61,99 @@ export async function createTerminal(
   onData: (data: string) => void,
   onExit: (code: number) => void,
 ): Promise<PtySession> {
-  const bin = await ensureBridge();
   const id = opts.id;
-  const shell = opts.shell ?? process.env.SHELL ?? "/bin/zsh";
-  const sockPath = path.join(os.tmpdir(), `omp-pty-${id}.sock`);
-  try { unlinkSync(sockPath); } catch {}
+  const shell = opts.shell ?? resolveDefaultShell();
+  const args = buildShellArgs(shell, opts.inheritProfile);
 
-  let ctlResolve: (s: CtlSocket) => void;
-  const ctlReady = new Promise<CtlSocket>((r) => (ctlResolve = r));
-  const listener = Bun.listen({
-    unix: sockPath,
-    socket: {
-      open(s) { ctlResolve(s); },
-      data() { /* ctl 只收不发（resize 由宿主单向下发） */ },
-      close() {},
-    },
-  });
+  const native = new NativePty();
 
-  const proc = Bun.spawn([bin, sockPath, shell, opts.cwd, String(opts.cols), String(opts.rows)], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe", // 桥的诊断输出不进数据帧，避免污染终端画面
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-      OMP_LOGIN_SHELL: opts.inheritProfile === false ? "0" : "1",
-    },
-  });
-  const dec = new TextDecoder();
-  (async () => {
-    for await (const chunk of proc.stdout) onData(dec.decode(chunk, { stream: true }));
-  })().catch(() => {});
-  // 桥退出（子进程 exit / 父断开）= 会话结束
-  proc.exited.then((code) => {
+  let exited = false;
+  const handleExit = (code: number) => {
+    if (exited) return;
+    exited = true;
     sessions.delete(id);
-    try { listener.stop(); } catch {}
-    try { unlinkSync(sockPath); } catch {}
+    const ownerSet = byOwner.get(owner);
+    if (ownerSet) {
+      ownerSet.delete(id);
+      if (ownerSet.size === 0) byOwner.delete(owner);
+    }
     onExit(code);
-  });
+  };
 
-  const ctl = await Promise.race([
-    ctlReady,
-    new Promise<null>((r) => setTimeout(() => r(null), 3000)),
+  const { promise: startPromise, resolve: resolveStart, reject: rejectStart } = Promise.withResolvers<void>();
+
+  const runPromise = native.startArgv(
+    {
+      application: shell,
+      args,
+      cwd: opts.cwd,
+      cols: opts.cols,
+      rows: opts.rows,
+      env: {
+        ...cleanEnv(),
+        TERM: "xterm-256color",
+        OMP_LOGIN_SHELL: opts.inheritProfile === false ? "0" : "1",
+      },
+    },
+    (_err, chunk) => {
+      if (chunk) onData(chunk);
+    },
+    (err, _pid) => {
+      if (err) rejectStart(err);
+      else resolveStart();
+    },
+  );
+
+  runPromise
+    .then((result) => {
+      handleExit(result.exitCode ?? (result.cancelled ? 137 : 0));
+    })
+    .catch((err) => {
+      rejectStart(err);
+      handleExit(1);
+    });
+
+  // 等待进程成功拉起（超时 3 秒兜底）
+  await Promise.race([
+    startPromise,
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error("PTY 子进程启动超时")), 3000),
+    ),
   ]);
-  if (!ctl) {
-    // 桥没连上 ctl（编译/运行环境异常）：尽快失败，别留个哑会话
-    proc.kill("SIGKILL");
-    throw new Error("pty-bridge 控制通道建立超时");
-  }
 
   const session: PtySession = {
-    id, shell, cwd: opts.cwd, proc, ctl,
+    id,
+    shell,
+    cwd: opts.cwd,
+    native,
     send(data) {
-      try { proc.stdin.write(data); } catch {}
+      try {
+        native.write(data);
+      } catch {}
     },
     resize(cols, rows) {
-      try { ctl?.write(`r ${cols} ${rows}\n`); } catch {}
+      try {
+        native.resize(cols, rows);
+      } catch {}
     },
     dispose() {
-      try { proc.kill("SIGKILL"); } catch {}
       sessions.delete(id);
-      try { listener.stop(); } catch {}
-      try { unlinkSync(sockPath); } catch {}
+      const ownerSet = byOwner.get(owner);
+      if (ownerSet) {
+        ownerSet.delete(id);
+        if (ownerSet.size === 0) byOwner.delete(owner);
+      }
+      try {
+        native.kill();
+      } catch {}
     },
   };
+
   sessions.set(id, session);
   let set = byOwner.get(owner);
   if (!set) byOwner.set(owner, (set = new Set()));
   set.add(id);
+
   return session;
 }
 

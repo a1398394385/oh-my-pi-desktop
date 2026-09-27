@@ -203,7 +203,6 @@ samp,
 }
 *:hover::-webkit-scrollbar-thumb { background-color: var(--panel-3); }
 *::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--panel-3) 45%, var(--dim)); }
-
 .resizer {
   width: var(--shell-gap);
   flex: none;
@@ -403,10 +402,46 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task:hover { background: var(--panel-2); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
-.task .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 400; }
+.task .tt {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: clip; white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  color: var(--text); font-weight: 400;
+}
 .task:hover .tt, .task.on .tt { color: var(--text); }
 .task .tm { flex: none; font-size: 12px; color: var(--faint); font-weight: 400; }
 .task.on .tm { color: var(--dim); }
+.task .tarchive {
+  flex: none; border: 0; background: none; color: var(--faint);
+  line-height: 0; cursor: pointer;
+  width: 24px; height: 24px; padding: 0; border-radius: 6px;
+  display: none; align-items: center; justify-content: center;
+}
+.task:hover .tarchive { display: inline-flex; }
+.task:hover .tm { display: none; }
+.task .tarchive:hover { color: var(--text); background: var(--panel-3); }
+.task .tarchive-confirm {
+  flex: none;
+  border: 1px solid transparent;
+  background: var(--err, #d05c52);
+  color: #ffffff;
+  font-size: var(--ui-fs-xs);
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  transition: filter .12s;
+}
+.task .tarchive-confirm:hover {
+  filter: brightness(1.12);
+}
 .task-indicator,
 .tpin {
   position: absolute; inset: 0;
@@ -496,6 +531,8 @@ body:has(#sidebar.collapsed) #left-resizer {
 #tasklist.proj-dragging .task:not(.on):hover .tt { color: var(--dim); }
 #tasklist.proj-dragging .task .task-indicator { opacity: 1; }
 #tasklist.proj-dragging .task .tpin { opacity: 0 !important; }
+#tasklist.proj-dragging .task .tarchive { display: none !important; }
+#tasklist.proj-dragging .task:hover .tm { display: inline; }
 #tasklist.proj-dragging .proj .pmore,
 #tasklist.proj-dragging .proj .padd { display: none !important; }
 /* 项目会话行 / loop 过程组容器：grid 行高 1fr→0fr 过渡做整组收起动画（0.3s，两处同一套） */
@@ -504,7 +541,9 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj-kids > .proj-kids-in, .lp-kids > .lp-kids-in { overflow: hidden; min-height: 0; }
 .proj .pname {
   flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; text-overflow: clip; white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
   color: var(--dim); font-weight: 400;
   line-height: 26px;
 }
@@ -1015,7 +1054,7 @@ body:has(#right.collapsed) #right-resizer {
 .think-body .think-scroll {
   max-height: calc(1.55em * 9.5 + 5px);
   overflow-y: auto;
-  /* 滚到顶/底后阻断滚动链：继续滚轮/触控板手势不再带动图层话题区 */
+  /* 滚到顶/底后阻断滚动链：继续滚轮/触控板手势不再带动外层会话区 */
   overscroll-behavior: contain;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
@@ -1791,12 +1830,12 @@ svg { vertical-align: middle; }
 .rail-pop .rp-body { color: var(--dim); font-size: var(--ui-fs-base); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 /* 发送钮中性实底 + 背景色箭头；hover 只通过透明度反馈，「有没有草稿」不改变底色 */
 .send {
-  width: 30px; height: 30px; border-radius: 8px;
-  border: 0; background: var(--text); color: var(--bg);
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 0; background: hsl(0, 0%, 17%); color: #ffffff;
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   padding: 0; line-height: 0;
   flex: none;
-  transition: opacity .15s var(--swift);
+  transition: background .15s var(--swift), color .15s var(--swift), filter .15s var(--swift), opacity .15s var(--swift);
 }
 .send > span {
   width: 16px; height: 16px;
@@ -1804,8 +1843,11 @@ svg { vertical-align: middle; }
   line-height: 0;
 }
 .send > span > svg { display: block; }
-.send:hover:not(:disabled):not(.stopping) { opacity: .8; }
-.send.ready { background: var(--text); color: var(--bg); } /* 兼容旧类：语义并入基态 */
+.send:hover:not(:disabled):not(.stopping) { filter: brightness(1.25); }
+.send.ready { background: hsl(210, 66%, 48%); color: #ffffff; }
+.send.ready:hover:not(:disabled):not(.stopping) { filter: brightness(1.12); }
+.send.stop { background: hsl(0, 0%, 17%); color: var(--err, #d05c52); }
+.send.stop:hover:not(:disabled):not(.stopping) { filter: brightness(1.25); }
 .pill-btn:disabled, .send:disabled { opacity: .45; cursor: default; }
 
 /* ── 居中新建会话页面 ──────────────────────────────────────────────── */
@@ -2134,9 +2176,9 @@ svg { vertical-align: middle; }
 .dock:has(#composer.bash-mode):focus-within { border-color: var(--bash); }
 #composer.bash-mode #input::placeholder { color: var(--bash); }
 .plus-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   color: var(--dim);
   display: inline-flex;
   align-items: center;
@@ -2148,6 +2190,7 @@ svg { vertical-align: middle; }
   padding: 0;
   cursor: pointer;
   line-height: 0;
+  transition: background .12s, color .12s;
 }
 .plus-btn > span {
   display: inline-flex;
@@ -3355,6 +3398,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .adv-key { font-family: var(--mono); }
 .srow.unavailable { opacity: .55; }
 .srow.unavailable:hover { background: none; }
+.srow.disabled { opacity: .45; }
+.srow.disabled:hover { background: none; }
 .inp {
   display: inline-block; background: var(--bg); border: 1px solid var(--line-soft);
   border-radius: 9px; padding: 6px 10px; color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm);
@@ -4164,8 +4209,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* --- 发送钮停止形态（流式中且输入框空 / Esc 示警窗口）：ZCodium secondary 按钮同款
    中性底 + 实心方块，hover 加深一档 --- */
 .send.stopping {
-  background: var(--panel-2);
-  color: var(--text);
+  background: hsl(0, 0%, 17%);
+  color: var(--err, #d05c52);
 }
 .send.stopping:hover:not(:disabled) { background: var(--panel-3); opacity: 1; }
 
@@ -4289,12 +4334,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 .proj-drag-overlay .pname {
   flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; text-overflow: clip; white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
   color: var(--text);
 }
 .arch-row .tt {
   flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; text-overflow: clip; white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
   color: var(--dim);
 }
 /* 恢复/删除小按钮：默认隐藏、行 hover 浮现（对齐 .padd/.pmore 模式） */

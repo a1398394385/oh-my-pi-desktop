@@ -217,6 +217,32 @@ function readAcpNudgeConfig(): AcpNudgeConfig {
   };
 }
 
+/** 读取完整的 ACP 上下文压缩配置对象。 */
+function readAcpConfig(): {
+  enabled: boolean;
+  maxContextLimit: string;
+  minContextLimit: string;
+  contextWindow: string;
+  candidates: boolean;
+  protectUserMessages: boolean;
+} {
+  const raw = readAcpRaw();
+  const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
+  const fmtLimit = (v: unknown, dflt: string): string => {
+    if (typeof v === "number" && v > 0 && v <= 1) return `${Math.round(v * 100)}%`;
+    if (typeof v === "string" && v.trim()) return v.trim();
+    return dflt;
+  };
+  return {
+    enabled: acp.enabled !== false,
+    maxContextLimit: fmtLimit(acp.maxContextLimit, "55%"),
+    minContextLimit: fmtLimit(acp.minContextLimit, "45%"),
+    contextWindow: typeof acp.contextWindow === "string" ? acp.contextWindow : (acp.contextWindow ? String(acp.contextWindow) : ""),
+    candidates: acp.candidates === true,
+    protectUserMessages: acp.protectUserMessages !== false,
+  };
+}
+
 /** ACP 总开关（omp-desktop.json 的 acp.enabled）。缺省/非法值按开启处理，
  *  保持引入开关之前的行为——只有显式写 false 才关闭。 */
 function readAcpEnabled(): boolean {
@@ -252,6 +278,7 @@ async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
 function settingsFrame() {
   return {
     ...settingsSnapshot(),
+    acpConfig: readAcpConfig(),
     acpEnabled: readAcpEnabled(),
     sessionContextEnabled: readSessionContextEnabled(),
     hooksEnabled: readHooksEnabled(),
@@ -1722,6 +1749,15 @@ const server = Bun.serve<{ sessionId: string | null }>({
             // 实验性功能页开关：写入 omp-desktop.json 的 acp.enabled（只影响此后创建的会话——
             // 工具面与 context 扩展在 createSessionCore 里注入，无法热插拔到已打开的会话）
             await writeAcpEnabled(!!msg.enabled);
+            ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+            break;
+          }
+          case "set_acp_config": {
+            // 实验性功能页：更新 omp-desktop.json 的 acp 配置段
+            const raw = readAcpRaw();
+            const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
+            const patch = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
+            await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, ...patch } }, null, 2));
             ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
             break;
           }

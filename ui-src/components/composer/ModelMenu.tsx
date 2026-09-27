@@ -21,7 +21,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const curModel = s?.model || newSessionModel;
   const menuRef = useRef<HTMLDivElement>(null);
   const flyRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> 供应商行元素（flyout 顶部对齐用）
+  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> 供应商行元素（flyout 对齐用）
   const [flyProv, setFlyProv] = useState<string | null>(null); // 当前二级浮层的供应商
   const hideT = useRef<ReturnType<typeof setTimeout> | null>(null); // 浮层关闭宽限
   const switchT = useRef<ReturnType<typeof setTimeout> | null>(null); // 行切换悬停意图延时

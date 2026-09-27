@@ -36,9 +36,20 @@ export interface SettingsSnapshot {
   conditions: Record<string, boolean>;
 }
 
+/** ACP 上下文压缩配置对象 */
+export interface AcpConfig {
+  enabled: boolean;
+  maxContextLimit?: string;
+  minContextLimit?: string;
+  contextWindow?: string;
+  candidates?: boolean;
+  protectUserMessages?: boolean;
+}
+
 /** settings 帧负载 = 底座快照 + host 侧实验开关(host/host.ts:213-216 settingsFrame) */
 export type SettingsPayload = SettingsSnapshot & {
   acpEnabled: boolean;
+  acpConfig?: AcpConfig;
   sessionContextEnabled: boolean;
   hooksEnabled: boolean;
   pluginsEnabled?: boolean;

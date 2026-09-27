@@ -192,19 +192,28 @@ export function transformContext(state: AcpSessionState, messages: AgentMessage[
 		);
 		const usage = estTokens / window_;
 		const { maxContextLimit, minContextLimit } = state.nudge;
-		if (usage >= maxContextLimit) {
+		const minLimit = Math.min(minContextLimit, maxContextLimit);
+		const maxLimit = Math.max(minContextLimit, maxContextLimit);
+
+		if (usage >= minLimit) {
+			const isHardLimit = usage >= maxLimit;
 			const pctFloor = Math.min(100, Math.floor((usage * 100) / 5) * 5);
-			const targetPct = Math.round(minContextLimit * 100);
+			const targetPct = Math.round(minLimit * 100);
 			// 建议区间：最早的三条带 ref 的可压缩消息
 			const suggest = refs.filter(Boolean).slice(0, 3);
 			const first = suggest[0];
 			const last = suggest[suggest.length - 1];
+
+			const alertMsg = isHardLimit
+				? `⚠️ Context limit reached (~${pctFloor}%). Compress consumed conversation ranges NOW with the compress tool.`
+				: `💡 Context usage is at ~${pctFloor}%. This is an efficiency prompt to compress early and keep context lean (target below ~${targetPct}%).`;
+
 			result.push({
 				role: "user",
 				content: [
-					`[ACP context nudge] Context usage is at ~${pctFloor}% (~${estTokens} / ${window_} tokens estimated).`,
-					`Compress consumed conversation ranges NOW with the compress tool to get below ~${targetPct}%.`,
-					`Suggested first target: ${first && last ? `the earliest tagged range (${first}..${last} area — check the actual boundaries in the conversation)` : "the oldest tagged messages"}.`,
+					`[ACP context nudge] Context usage: ~${pctFloor}% (~${estTokens} / ${window_} tokens estimated).`,
+					alertMsg,
+					`Suggested target: ${first && last ? `the earliest tagged range (${first}..${last} area — check the actual boundaries in the conversation)` : "the oldest tagged messages"}.`,
 					`Keep the recent working set (last few messages and any active task state) uncompressed. Use acp_status to review candidates.`,
 				].join(" "),
 				synthetic: true,

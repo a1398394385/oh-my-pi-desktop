@@ -55,3 +55,53 @@ export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | n
     menu.style.overflowY = "auto";
   }
 }
+
+// 模型二级菜单（flyout）定位：
+// 1. 水平：默认向右弹出并与一级菜单边框交叠 4px（视觉无缝连接），右缘越界则翻到左侧。
+// 2. 最大高度限制：确保二级下拉框绝对不超出屏幕，超出部分内部滚动。
+// 3. 垂直定位：中部对齐一级下拉框选中的供应商项（向上下两边展开），并钳位在视口上下安全边界内。
+export function placeFlyoutMenu(
+  fly: HTMLElement | null,
+  menu: HTMLElement | null,
+  row: HTMLElement | null,
+  boundary?: HTMLElement | null
+): void {
+  if (!fly || !menu || !row) return;
+
+  const z = useAppStore.getState().zoomLevel || 1;
+  const margin = 8;
+
+  // 1. 水平定位：与一级菜单边框交叠 4px，右缘越界则翻到左侧
+  fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px";
+  const boundRight = boundary ? boundary.getBoundingClientRect().right : window.innerWidth;
+  if (fly.getBoundingClientRect().right > boundRight - margin) {
+    fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px";
+  }
+
+  // 2. 最大高度限制：确保二级下拉框绝对不超出屏幕
+  const maxScreenH = window.innerHeight - margin * 2;
+  const maxHInContainer = Math.max(80, Math.floor(maxScreenH / z));
+  fly.style.maxHeight = maxHInContainer + "px";
+  fly.style.overflowY = "auto";
+
+  // 3. 垂直定位：中部对齐供应商行
+  const rowRect = row.getBoundingClientRect();
+  const rowCenterY = rowRect.top + rowRect.height / 2;
+  const flyH = fly.offsetHeight;
+  let screenTop = rowCenterY - (flyH * z) / 2;
+
+  // 视口上下边界保护：向上或向下平移，确保整体停留在屏幕内
+  const minScreenY = margin;
+  const maxScreenY = window.innerHeight - margin;
+  if (screenTop + flyH * z > maxScreenY) {
+    screenTop = maxScreenY - flyH * z;
+  }
+  if (screenTop < minScreenY) {
+    screenTop = minScreenY;
+  }
+
+  // 4. 换算回包含块（offsetParent）内的相对坐标
+  const container = (fly.offsetParent as HTMLElement | null) ?? menu.offsetParent ?? document.body;
+  const containerRect = container.getBoundingClientRect();
+  fly.style.top = Math.round((screenTop - containerRect.top) / z) + "px";
+}

@@ -1,7 +1,7 @@
 // 会话行（ui/sidebar.js taskRow 平移）：置顶图钉 / 运行中 spinner / 未读圆点 / 标题 /
 // 相对时间（清理模式下换删除钮）。单击打开会话（loadBranchSession 同款链路），
 // 双击标题原地进入行内重命名。
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
 import Icon from "../../Icon";
@@ -93,6 +93,15 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   const unseenFinished = useAppStore((s) => s.unseenFinished);
   const activePath = useAppStore((s) => s.activePath);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    };
+  }, []);
+
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
@@ -118,6 +127,30 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     }
     setBump({ selectedSubagent: null, selectedFile: null });
   };
+
+  const handleStartConfirmArchive = (e: ReactMouseEvent) => {
+    e.stopPropagation();
+    setConfirmingArchive(true);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => {
+      setConfirmingArchive(false);
+    }, 3500);
+  };
+
+  const handleConfirmArchive = (e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmingArchive(false);
+    send({ type: "archive_session", sessionId: s.id, archived: true });
+  };
+
+  const handleMouseLeave = () => {
+    if (confirmingArchive) {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmingArchive(false);
+    }
+  };
+
   return (
     <button
       className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (className ? " " + className : "")}
@@ -125,6 +158,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       style={style}
       onClick={openSession}
       onContextMenu={(e) => onContext(e, s, rowKey)}
+      onMouseLeave={handleMouseLeave}
     >
       <span className="relative flex-none w-[16px] h-[16px] inline-flex items-center justify-center">
         <span className={"task-indicator " + leading} title={leading === "loading" ? "运行中" : leading === "unread" ? "有新结果" : leading === "error" ? "最近一次运行失败" : undefined}>
@@ -165,8 +199,25 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         >
           删除
         </button>
+      ) : confirmingArchive ? (
+        <button
+          className="tarchive-confirm"
+          title="确认归档此会话"
+          onClick={handleConfirmArchive}
+        >
+          确认
+        </button>
       ) : (
-        <span className="tm">{fmtAgo(s.modified)}</span>
+        <>
+          <button
+            className="tarchive"
+            title="归档会话"
+            onClick={handleStartConfirmArchive}
+          >
+            <Icon name="archive" size={14} />
+          </button>
+          <span className="tm">{fmtAgo(s.modified)}</span>
+        </>
       )}
     </button>
   );
