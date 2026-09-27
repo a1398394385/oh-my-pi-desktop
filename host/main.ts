@@ -54,7 +54,7 @@ import { GoalController, type GoalSession } from "./goal.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
 import { createSessionContextTools } from "./session-context.ts";
 import { AcpSessionState, parseAcpContextWindow, type AcpNudgeConfig } from "./acp-state.ts";
-import { createAcpContextExtension } from "./acp-context.ts";
+import { createAcpContextExtension, ACP_SYSTEM_PROMPT } from "./acp-context.ts";
 import {
   H,
   sessions,
@@ -95,6 +95,7 @@ import {
   readPluginsEnabled,
   writePluginsEnabled,
 } from "./assets.ts";
+import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import {
   buildExtensionsPayload,
   toggleExtensionItem,
@@ -225,6 +226,7 @@ function readAcpConfig(): {
   contextWindow: string;
   candidates: boolean;
   protectUserMessages: boolean;
+  systemPrompt: boolean;
 } {
   const raw = readAcpRaw();
   const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
@@ -240,6 +242,7 @@ function readAcpConfig(): {
     contextWindow: typeof acp.contextWindow === "string" ? acp.contextWindow : (acp.contextWindow ? String(acp.contextWindow) : ""),
     candidates: acp.candidates === true,
     protectUserMessages: acp.protectUserMessages !== false,
+    systemPrompt: acp.systemPrompt === true,
   };
 }
 
@@ -671,12 +674,16 @@ async function createSessionCore(cwd: string, sessionManager: any, transcript: T
     Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) ||
     0;
   acpState.nudge = readAcpNudgeConfig();
+  // system prompt 防复读段（acp.systemPrompt，实验性功能页可开，默认关）：只在
+  // ACP 启用时追加；opencode-acp 原版默认注入，这里做成显式开关留给用户
+  const acpSystemPrompt = acpEnabled && (readAcpRaw().acp as { systemPrompt?: unknown } | undefined)?.systemPrompt === true;
   const result = await createAgentSession({
     cwd,
     authStorage: H.authStorage,
     modelRegistry: H.modelRegistry,
     settings: H.settings,
     model: initialModel ?? H.modelOverride,
+    systemPrompt: acpSystemPrompt ? (defaultPrompt: string[]) => [...defaultPrompt, ACP_SYSTEM_PROMPT] : undefined,
     agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
     sessionManager, // host 侧 manager 必须注入 SDK：否则 rename/compact/branch 走 entry.manager（孤儿实例）操作到另一个会话文件
     // read_session_context（历史会话检索）：只读自身 profile 的会话，见 host/session-context.ts
@@ -2180,7 +2187,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!name) throw new Error("缺少 MCP 服务器名称");
             mcpHealthCache.delete(name);
             const probe = await probeMcpServerHealth(msg.server || { name });
-            ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status, error: probe.error }));
+            ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status, error: probe.error, log: probe.log }));
             break;
           }
           case "save_mcp_server": {
@@ -2188,9 +2195,18 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!name) throw new Error("缺少 MCP 服务器名称");
             const cfg = msg.config || {};
             const scope = String(msg.scope ?? "profile");
+            const isProject = scope.startsWith("project:");
+            // 规则 2：项目作用域禁止配置为 global，强制纠正为 project
+            if (isProject && cfg.sharing === "global") {
+              cfg.sharing = "project";
+            }
+            // 规则 1：缺省严格为 session 会话级
+            if (!cfg.sharing) {
+              cfg.sharing = "session";
+            }
             const targetDir = (scope === "profile" || scope === "global")
               ? H.agentDir
-              : scope.startsWith("project:")
+              : isProject
               ? (nearestProjectOmpDir(scope.slice(8)) ?? path.join(path.resolve(scope.slice(8)), ".omp"))
               : H.agentDir;
             await mkdir(targetDir, { recursive: true });
@@ -3252,6 +3268,7 @@ function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, i
 process.on("SIGTERM", async () => {
   // Tauri 壳退出兜底；dispose 触发落盘收尾
   await Promise.allSettled([...sessions.values()].map((e) => e.session.dispose()));
+  await closeAllSharedMcpConnections();
   process.exit(0);
 });
 
@@ -3265,6 +3282,20 @@ setInterval(() => {
     process.exit(0);
   }
 }, 2000);
+
+// ---------- 宿主内存看门狗 ----------
+// 失控会话/缓存累积可能把宿主 RSS 推到吃光整机内存。Bun/JSC 没有可用的堆上限开关
+// （BUN_JSC_forceRAMSize 实测不生效），改为 RSS 轮询：超限打日志后以退出码 86 退出，
+// Tauri 壳识别 86 限频重启宿主（src-tauri/src/lib.rs），前端重试环自动接入新 WS 端口，
+// 磁盘会话不受影响。正常使用远达不到该阈值，仅作失控兜底。
+const HOST_RSS_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
+setInterval(() => {
+  const rss = process.memoryUsage.rss();
+  if (rss > HOST_RSS_LIMIT_BYTES) {
+    process.stderr.write(`[host] RSS ${(rss / 1048576) | 0}MB 超上限 2048MB，主动退出等待壳重启\n`);
+    process.exit(86);
+  }
+}, 30_000);
 
 console.log(`READY ws://127.0.0.1:${server.port}`);
 process.stderr.write(`[host][启动计时] WS 服务就绪 [t=${performance.now().toFixed(0)}ms]\n`);

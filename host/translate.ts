@@ -2,6 +2,14 @@
 // 实时流（translateEvent）与磁盘历史（entriesToTranscript）共用同一套工具条目摘要逻辑。
 import os from "node:os";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
+import { REF_TAG_RE } from "./acp-context.ts";
+
+// 剥 ACP 注入/复读的 <dcp-message-id> 标签：落盘保留原文（历史事实），推给 UI 前统一清洗。
+// 实时 text_delta 流式期间的短暂闪现由前端渲染层（AssistantMsg）兜底。
+function stripDcpTags(s: string): string {
+	const out = s.replace(REF_TAG_RE, "");
+	return out === s ? s : out.trim();
+}
 
 export type UiEvent =
   | { kind: "turn_start" }
@@ -288,8 +296,9 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
 
 function flushAssistantDraft(entry: PoolEntry) {
   if (!entry.assistantDraft) return;
-  if (!isJunkPlaceholderText(entry.assistantDraft)) {
-    entry.transcript.push({ role: "assistant", text: entry.assistantDraft });
+  const draft = stripDcpTags(entry.assistantDraft);
+  if (!isJunkPlaceholderText(draft)) {
+    entry.transcript.push({ role: "assistant", text: draft });
   }
   entry.assistantDraft = "";
 }
@@ -509,7 +518,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     }
     if (role !== "user" && role !== "assistant") continue;
     if (role === "user") {
-      const text = typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
+      const text = stripDcpTags(typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n"));
       const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
       if (Array.isArray(content)) {
         for (const b of content) {
@@ -546,15 +555,17 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     }
     const sink = run ? run.items : out; // run 外的孤儿 assistant（无轮首用户消息）直接平铺，保持旧行为
     if (typeof content === "string") {
-      if (!isJunkPlaceholderText(content)) {
-        sink.push({ role, text: content, entryId: e.id, endMs: ts });
+      const plain = stripDcpTags(content);
+      if (!isJunkPlaceholderText(plain)) {
+        sink.push({ role, text: plain, entryId: e.id, endMs: ts });
       }
       continue;
     }
     for (const block of content ?? []) {
       if (block.type === "text") {
-        if (!isJunkPlaceholderText(block.text)) {
-          sink.push({ role: "assistant", text: block.text, entryId: e.id, endMs: ts });
+        const plain = stripDcpTags(block.text);
+        if (!isJunkPlaceholderText(plain)) {
+          sink.push({ role: "assistant", text: plain, entryId: e.id, endMs: ts });
         }
       } else if (block.type === "thinking" && block.thinking) {
         sink.push({
@@ -623,12 +634,14 @@ function treeNorm(s: unknown, max = 160): string {
 }
 
 function treeContentText(content: unknown): string {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") return stripDcpTags(content);
   if (!Array.isArray(content)) return "";
-  return content
-    .map((b) => (msgField(b, "type") === "text" ? String(msgField(b, "text") ?? "") : ""))
-    .filter(Boolean)
-    .join(" ");
+  return stripDcpTags(
+    content
+      .map((b) => (msgField(b, "type") === "text" ? String(msgField(b, "text") ?? "") : ""))
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 // 工具调用行摘要（对齐底座 tree-selector #formatToolCall）：toolResult 行显示

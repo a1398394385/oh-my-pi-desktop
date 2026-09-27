@@ -20,8 +20,18 @@ struct HostState {
     error: Option<String>,
 }
 
+/// 宿主重启节奏门：内存看门狗退出码 86 触发的自动重启须限频，
+/// 防「启动即失控」场景变成无限重启循环。
+#[derive(Default)]
+struct RestartGate {
+    last_restart: Option<std::time::Instant>,
+    /// 距上次重启 <10s 的快速重启连击数，>3 次停止自动重启
+    consecutive: u32,
+}
+
 type WsUrlCell = Arc<Mutex<HostState>>;
 type ChildCell = Arc<Mutex<Option<Child>>>;
+type RestartCell = Arc<Mutex<RestartGate>>;
 
 /// GUI 启动时 PATH 通常不含 ~/.bun，按常见安装位置探测，找不到再交给 PATH。
 fn resolve_bun() -> PathBuf {
@@ -77,7 +87,15 @@ fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
 /// 拉起 Bun 宿主并监听其 stdout 首行 `READY ws://...`。
 /// 首行之后继续读完 stdout（防管道写满）；子进程句柄存 ChildCell，
 /// 壳退出（RunEvent::Exit）时显式 kill，避免宿主变孤儿进程。
-fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
+/// stdout EOF（宿主退出）时 wait 回收子进程；若退出码为 86（宿主内存看门狗，
+/// host/main.ts RSS 超限自杀）则经 RestartGate 限频重启宿主——前端重试环会
+/// 自动拿到新 WS 端口恢复连接，磁盘会话不受影响。
+fn spawn_host(
+    app: &tauri::AppHandle,
+    cell: WsUrlCell,
+    child_cell: ChildCell,
+    restart_cell: RestartCell,
+) {
     let mut cmd = match host_command(app) {
         Ok(cmd) => cmd,
         Err(message) => {
@@ -119,6 +137,9 @@ fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
     }
     *child_cell.lock().unwrap() = Some(child);
     let reader_cell = cell.clone();
+    let reader_child_cell = child_cell.clone();
+    let reader_restart_cell = restart_cell.clone();
+    let reader_app = app.clone();
     std::thread::spawn(move || {
         let mut ready = false;
         for line in BufReader::new(stdout).lines() {
@@ -132,11 +153,54 @@ fn spawn_host(app: &tauri::AppHandle, cell: WsUrlCell, child_cell: ChildCell) {
                 Err(_) => break,
             }
         }
+        // stdout EOF = 宿主已退出：wait 回收（原先无人 wait，退出后留僵尸到壳自身退出）
+        let exit_code = reader_child_cell
+            .lock()
+            .unwrap()
+            .take()
+            .and_then(|mut c| c.wait().ok())
+            .and_then(|status| status.code());
         if !ready {
             let mut state = reader_cell.lock().unwrap();
             if state.error.is_none() {
                 state.error = Some("宿主进程提前退出，未收到 READY 信号".into());
             }
+            return;
+        }
+        // 86 = 宿主内存看门狗自杀（host/main.ts RSS 超 2GB）：限频重启，
+        // 前端重试环自动接入新端口，用户磁盘会话不受影响
+        if exit_code == Some(86) {
+            let mut gate = reader_restart_cell.lock().unwrap();
+            let now = std::time::Instant::now();
+            // 曾稳定运行 ≥5min 视为新一轮失控，清零连击计数
+            if gate
+                .last_restart
+                .is_some_and(|t| now.duration_since(t) >= Duration::from_secs(300))
+            {
+                gate.consecutive = 0;
+            }
+            if gate
+                .last_restart
+                .is_some_and(|t| now.duration_since(t) < Duration::from_secs(10))
+            {
+                gate.consecutive += 1;
+            }
+            if gate.consecutive > 3 {
+                drop(gate);
+                let mut state = reader_cell.lock().unwrap();
+                state.url = None;
+                state.error = Some("宿主反复因内存超限退出，已停止自动重启".into());
+                return;
+            }
+            gate.last_restart = Some(now);
+            drop(gate);
+            {
+                // 旧端口已死：清 url，前端 ws_url 轮询等新宿主的 READY
+                let mut state = reader_cell.lock().unwrap();
+                state.url = None;
+            }
+            eprintln!("[shell] 宿主因内存超限退出，自动重启");
+            spawn_host(&reader_app, reader_cell, reader_child_cell, reader_restart_cell);
         }
     });
 }
@@ -280,6 +344,7 @@ pub fn run() {
         error: None,
     }));
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
+    let restart_cell: RestartCell = Arc::new(Mutex::new(RestartGate::default()));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -329,7 +394,7 @@ pub fn run() {
             if let Err(e) = app.handle().global_shortcut().register(summon) {
                 eprintln!("[shell] 注册全局唤起快捷键失败（可能被其他应用占用）: {e}");
             }
-            spawn_host(app.handle(), cell.clone(), child_cell.clone());
+            spawn_host(app.handle(), cell.clone(), child_cell.clone(), restart_cell.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![ws_url, send_desktop_notification])

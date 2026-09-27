@@ -387,7 +387,170 @@ export async function loadAllSkillsScoped() {
 
 // MCP 健康探测缓存（60秒内避免重复建连）。曾嵌在 listAgentAssets 函数体内，导致
 // server 层 set_mcp_server_enabled / test_mcp_server 对它的引用悬空（TS2304）——拆分时提升为模块级。
-export const mcpHealthCache = new Map<string, { status: "connected" | "error"; error?: string; timestamp: number }>();
+export const mcpHealthCache = new Map<
+  string,
+  { status: "connected" | "error"; error?: string; log?: string; timestamp: number }
+>();
+
+async function probeStdioMcp(server: {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+}, timeoutMs = 5000): Promise<{ status: "connected" | "error"; error?: string; log?: string }> {
+  const cmd = server.command?.trim();
+  if (!cmd) {
+    return { status: "error", error: "未配置执行命令", log: "[配置错误]: 未指定 command 启动命令" };
+  }
+  const fullCmd = [cmd, ...(server.args ?? [])];
+  const cwd = server.cwd && fs.existsSync(server.cwd) ? server.cwd : process.cwd();
+  const env = { ...process.env, ...(server.env ?? {}) };
+
+  let proc: any;
+  try {
+    proc = (Bun as any).spawn(fullCmd, {
+      cwd,
+      env,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  } catch (err: any) {
+    const errorMsg = `启动进程失败: ${err?.message || String(err)}`;
+    const log = `[命令] ${fullCmd.join(" ")}\n[工作目录] ${cwd}\n[启动失败异常]\n${err?.stack || err?.message || String(err)}`;
+    return { status: "error", error: errorMsg, log };
+  }
+
+  const stderrChunks: string[] = [];
+  const stdoutChunks: string[] = [];
+
+  const readStderr = async () => {
+    try {
+      const reader = proc.stderr.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        stderrChunks.push(decoder.decode(value, { stream: true }));
+      }
+    } catch {}
+  };
+  const stderrPromise = readStderr();
+
+  const readStdout = async (): Promise<boolean> => {
+    try {
+      const reader = proc.stdout.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          stdoutChunks.push(line);
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed && (parsed.id === 1 || parsed.result)) {
+              return true;
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+    return false;
+  };
+  const stdoutPromise = readStdout();
+
+  try {
+    const initMsg = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "omp-desktop-probe", version: "1.0.0" },
+      },
+    }) + "\n";
+    proc.stdin.write(new TextEncoder().encode(initMsg));
+    await proc.stdin.flush();
+  } catch {}
+
+  let success = false;
+  let timedOut = false;
+  const timeoutPromise = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, timeoutMs);
+  });
+
+  await Promise.race([
+    stdoutPromise.then((ok) => { if (ok) success = true; }),
+    proc.exited.then(() => {}),
+    timeoutPromise,
+  ]);
+
+  try {
+    if (success) {
+      try {
+        const notif = JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n";
+        proc.stdin.write(new TextEncoder().encode(notif));
+        await proc.stdin.flush();
+      } catch {}
+    }
+    proc.kill();
+  } catch {}
+
+  if (!timedOut) {
+    try { await proc.exited; } catch {}
+  }
+
+  await Promise.race([stderrPromise, new Promise((r) => setTimeout(r, 200))]);
+
+  const stderrText = stderrChunks.join("").trim();
+  const stdoutText = stdoutChunks.join("\n").trim();
+  const exitCode = proc.exitCode;
+
+  if (success) {
+    return { status: "connected" };
+  }
+
+  let summary = "";
+  if (timedOut) {
+    summary = `MCP 连接超时：未在 ${timeoutMs / 1000} 秒内完成握手响应。`;
+  } else if (exitCode !== null && exitCode !== undefined && exitCode !== 0) {
+    summary = `MCP 进程异常退出 (退出码 ${exitCode})。`;
+  } else if (stderrText) {
+    summary = stderrText.split("\n")[0].slice(0, 120) || "MCP 进程输出异常";
+  } else {
+    summary = "MCP 进程未返回有效的 JSON-RPC 响应";
+  }
+
+  const logLines = [
+    `[命令] ${fullCmd.join(" ")}`,
+    `[工作目录] ${cwd}`,
+    `[退出码] ${exitCode ?? (timedOut ? "运行中(超时中断)" : "未知")}`,
+  ];
+  if (stderrText) {
+    logLines.push(`\n[标准错误输出 (stderr)]:\n${stderrText}`);
+  }
+  if (stdoutText) {
+    logLines.push(`\n[标准输出 (stdout)]:\n${stdoutText}`);
+  }
+  if (!stderrText && !stdoutText) {
+    logLines.push(`\n[提示] 进程在 ${timeoutMs}ms 内未产生任何标准输出/错误输出，请检查命令是否缺少参数或依赖环境。`);
+  }
+
+  return {
+    status: "error",
+    error: summary,
+    log: logLines.join("\n"),
+  };
+}
 
 export async function probeMcpServerHealth(server: {
   name: string;
@@ -399,13 +562,20 @@ export async function probeMcpServerHealth(server: {
   headers?: Record<string, string>;
   env?: Record<string, string>;
   cwd?: string;
-}): Promise<{ status: "connected" | "error"; error?: string }> {
+}): Promise<{ status: "connected" | "error"; error?: string; log?: string }> {
   const cached = mcpHealthCache.get(server.name);
   if (cached && Date.now() - cached.timestamp < 60_000) {
-    return { status: cached.status, error: cached.error };
+    return { status: cached.status, error: cached.error, log: cached.log };
   }
 
   const transport = server.transport ?? (server.command ? "stdio" : server.url ? "http" : "stdio");
+
+  if (transport === "stdio") {
+    const res = await probeStdioMcp(server);
+    mcpHealthCache.set(server.name, { ...res, timestamp: Date.now() });
+    return res;
+  }
+
   const config: any = {
     type: transport,
     command: server.command,
@@ -419,7 +589,7 @@ export async function probeMcpServerHealth(server: {
     const conn = await Promise.race([
       connectToServer(`probe_${Date.now()}_${server.name}`, config),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("连接超时")), 2000)
+        setTimeout(() => reject(new Error("连接超时")), 5000)
       ),
     ]);
     await disconnectServer(conn);
@@ -428,16 +598,15 @@ export async function probeMcpServerHealth(server: {
     return res;
   } catch (err: any) {
     let msg = err?.message || String(err);
-    if (msg.includes("Executable not found in $PATH") || msg.includes("ENOENT") || msg.includes("spawn")) {
-      msg = "MCP 进程启动失败。";
-    } else if (msg.includes("protocol") || msg.includes("version") || msg.includes("negotiation") || msg.includes("UnsupportedProtocolVersion")) {
-      msg = "MCP 协议协商失败，服务器版本可能不兼容。可尝试编辑该服务器，将协议版本切换为「兼容旧版」。";
+    if (msg.includes("protocol") || msg.includes("version") || msg.includes("negotiation") || msg.includes("UnsupportedProtocolVersion")) {
+      msg = "MCP 协议协商失败，服务器版本可能不兼容。";
     } else if (msg.includes("ECONNREFUSED")) {
       msg = "MCP 连接失败：目标服务未启动或端口不可达。";
     } else if (msg.includes("连接超时")) {
-      msg = "MCP 连接超时：未在 2 秒内响应。";
+      msg = "MCP 连接超时：未在 5 秒内响应。";
     }
-    const res = { status: "error" as const, error: msg };
+    const log = `[目标 URL] ${server.url || "未知"}\n[传输协议] ${transport}\n[错误原因] ${msg}\n[详细异常]\n${err?.stack || err?.message || String(err)}`;
+    const res = { status: "error" as const, error: msg, log };
     mcpHealthCache.set(server.name, { ...res, timestamp: Date.now() });
     return res;
   }
@@ -479,6 +648,8 @@ export async function loadAllMcpScoped() {
     projectName?: string;
     status: "connected" | "error" | "disabled" | "unknown";
     error?: string;
+    log?: string;
+    sharing?: "session" | "project" | "global";
   };
 
   const allServersMap = new Map<string, McpServerItem>();
@@ -490,6 +661,9 @@ export async function loadAllMcpScoped() {
     for (const s of userRes.items) {
       const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
       const enabled = isServerEnabled(s.name, s.enabled);
+      const rawSharing = s.sharing ?? (s as any)._config?.sharing;
+      const sharing: "session" | "project" | "global" =
+        rawSharing === "global" ? "global" : "session";
       allServersMap.set(s.name, {
         name: s.name,
         transport,
@@ -500,6 +674,7 @@ export async function loadAllMcpScoped() {
         env: s.env,
         cwd: s.cwd,
         enabled,
+        sharing,
         source: {
           provider: s._source?.provider ?? "native",
           providerName: s._source?.providerName ?? "OMP",
@@ -523,7 +698,9 @@ export async function loadAllMcpScoped() {
       for (const s of projRes.items) {
         const isProject = s._source?.level === "project";
         const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
-        const enabled = isServerEnabled(s.name, s.enabled);
+        const rawSharing = s.sharing ?? (s as any)._config?.sharing;
+        const sharing: "session" | "project" | "global" =
+          rawSharing === "project" ? "project" : "session"; // 规则2: 项目内禁止 global, 规则1: 缺省 session
         const item: McpServerItem = {
           name: s.name,
           transport,
@@ -534,6 +711,7 @@ export async function loadAllMcpScoped() {
           env: s.env,
           cwd: s.cwd ?? cwd,
           enabled,
+          sharing,
           source: {
             provider: s._source?.provider ?? "native",
             providerName: s._source?.providerName ?? "项目配置",
@@ -560,6 +738,8 @@ export async function loadAllMcpScoped() {
           if (!allServersMap.has(name)) {
             const transport = (cfg.url ? "http" : "stdio") as "stdio" | "http";
             const enabled = isServerEnabled(name, cfg.enabled);
+            const sharing: "session" | "project" | "global" =
+              cfg.sharing === "project" ? "project" : "session";
             allServersMap.set(name, {
               name,
               transport,
@@ -570,6 +750,7 @@ export async function loadAllMcpScoped() {
               env: cfg.env,
               cwd,
               enabled,
+              sharing,
               source: {
                 provider: "etower",
                 providerName: "项目配置",
@@ -608,12 +789,14 @@ export async function loadAllMcpScoped() {
       if (p) {
         s.status = p.status;
         s.error = p.error;
+        s.log = p.log;
       } else {
         s.status = "connected";
       }
     } else {
       s.status = "disabled";
       s.error = undefined;
+      s.log = undefined;
     }
   }
 

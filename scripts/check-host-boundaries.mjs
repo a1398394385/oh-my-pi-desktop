@@ -40,6 +40,10 @@ const ALLOWED_EDGES = new Set([
   // /goal 命令桌面实现 + 目标续跑调度：main.ts 挂命令分发与事件钩子，
   // state.ts 的 PoolEntry 持有控制器实例（goal.ts 只依赖自身窄接口，单向向下）
   "main.ts→goal.ts", "state.ts→goal.ts",
+  // 剥离 ACP 注入标签：translate.ts 消费 acp-context.ts 的 REF_TAG_RE 正则
+  "translate.ts→acp-context.ts",
+  // 共享 MCP 连接池：main.ts 驱动生命周期与 RPC，依赖 bootstrap 的 connectToServer 与 state
+  "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
 ]);
 
 const files = readdirSync(hostDir).filter((f) => f.endsWith(".ts"));
