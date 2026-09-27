@@ -35,6 +35,7 @@ export type ComposerHandle = {
 };
 
 type Props = {
+  draftKey: string;
   handleRef: Ref<ComposerHandle>;
   onTextChange: (text: string) => void;
   sendPrompt: (steer: boolean) => void;
@@ -43,8 +44,10 @@ type Props = {
   typeaheadOpenRef: RefObject<boolean>;
 };
 
-export default function ComposerPlugin({ handleRef, onTextChange, sendPrompt, typeaheadOpenRef }: Props) {
+export default function ComposerPlugin({ draftKey, handleRef, onTextChange, sendPrompt, typeaheadOpenRef }: Props) {
   const [editor] = useLexicalComposerContext();
+  const draftKeyRef = useRef(draftKey);
+  draftKeyRef.current = draftKey;
   // 回调经 ref 取最新闭包（sendPrompt 每渲染重建，监听器只注册一次）
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
@@ -140,8 +143,9 @@ export default function ComposerPlugin({ handleRef, onTextChange, sendPrompt, ty
         // 文本变化才回调外层（发送钮态等），selection-only 更新不触发重渲染
         editor.registerUpdateListener(() => {
           const text = editor.read(() => $flattenText());
-          const changed = text !== getDraftText();
-          saveDraft(editor.getEditorState(), text);
+          const key = draftKeyRef.current;
+          const changed = text !== getDraftText(key);
+          saveDraft(key, editor.getEditorState(), text);
           if (changed) onTextChangeRef.current(text);
         }),
       ),

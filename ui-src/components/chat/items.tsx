@@ -2,7 +2,7 @@
 // steer 待消费气泡收集到末尾统一渲染（消费前位置一直低于处理进程区），其余逐条分发。
 // 迁移自 ui/chat.js renderItemList/appendChatItem；railEntries 随遍历收集（消息轨道数据：
 // 每条消息一道刻度——key 与 data-fk 锚点同源，MsgRail 按 key 查 DOM 定位）。
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { ChatItem, RailEntry } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
 import { useAppStore } from "../../store/index";
@@ -105,9 +105,96 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
   return true;
 }
 
-export function renderItems(items: ChatItem[], pfx: string, railEntries: RailEntry[]): ReactElement[] {
-  const out: ReactElement[] = [];
-  const pendingSteers: { item: ChatItem; key: string }[] = []; // steer 待消费气泡收集到末尾统一渲染（刻度也随之排末尾）
+export function renderItems(
+  items: ChatItem[],
+  pfx: string,
+  railEntries: RailEntry[],
+  streamTail?: ReactNode,
+): ReactElement[] {
+  // 子级容器（如 LoopGroup 内部）：保持原来的平铺渲染机制
+  if (pfx !== "") {
+    const out: ReactElement[] = [];
+    const pendingSteers: { item: ChatItem; key: string }[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const key = pfx + i;
+      if (item.role === "user" && item.pending === "steer") {
+        pendingSteers.push({ item, key });
+        continue;
+      }
+      if (isEditEvent(item)) {
+        const subs: ChatItem[] = [item];
+        while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
+        if (subs.length > 1) {
+          const groupItem: ChatItem = { role: "tool", text: "更改", group: subs };
+          railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+          out.push(<ToolRow item={groupItem} key={key} />);
+          continue;
+        }
+      }
+      if (isReadEvent(item)) {
+        const subs: ChatItem[] = [item];
+        while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
+        if (subs.length > 1) {
+          const groupItem: ChatItem = { role: "tool", name: "read", text: "查阅", group: subs };
+          railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+          out.push(<ToolRow item={groupItem} key={key} />);
+          continue;
+        }
+      }
+      if (isDeviceEvent(item)) {
+        const dev = deviceNameOf(item.args?.path);
+        const subs: ChatItem[] = [item];
+        while (i + 1 < items.length) {
+          const nx = items[i + 1];
+          if (!isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
+          subs.push(nx);
+          i++;
+        }
+        if (subs.length > 1) {
+          const groupItem: ChatItem = { role: "tool", name: "device", text: "设备", group: subs };
+          railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+          out.push(<ToolRow item={groupItem} key={key} />);
+          continue;
+        }
+      }
+      if (isCmdEvent(item)) {
+        const subs: ChatItem[] = [item];
+        while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
+        if (subs.length > 1) {
+          const groupItem: ChatItem = { role: "tool", name: "cmd", text: "终端", group: subs };
+          railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
+          out.push(<ToolRow item={groupItem} key={key} />);
+          continue;
+        }
+      }
+      const node = appendItem(item, key, railEntries);
+      if (node) out.push(node);
+      if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
+        out.push(<TurnActs item={item} key={key + "-acts"} />);
+      }
+    }
+    for (const st of pendingSteers) {
+      const node = appendItem(st.item, st.key, railEntries);
+      if (node) out.push(node);
+    }
+    return out;
+  }
+
+  // 顶层主对话流：按轮次（TurnSection）分组吸顶
+  interface TurnGroup {
+    key: string;
+    userKey: string;
+    userNode: ReactElement;
+    flowNodes: ReactElement[];
+    actsNode: ReactElement | null;
+  }
+
+  const initialNodes: ReactElement[] = [];
+  const turns: TurnGroup[] = [];
+  let currentTurn: TurnGroup | null = null;
+  const pendingSteers: { item: ChatItem; key: string }[] = [];
+
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const key = pfx + i;
@@ -115,29 +202,43 @@ export function renderItems(items: ChatItem[], pfx: string, railEntries: RailEnt
       pendingSteers.push({ item, key });
       continue;
     }
+
+    if (item.role === "user") {
+      const userNode = appendItem(item, key, railEntries);
+      if (currentTurn) {
+        turns.push(currentTurn);
+      }
+      currentTurn = {
+        key: "turn-" + key,
+        userKey: key,
+        userNode: userNode!,
+        flowNodes: [],
+        actsNode: null,
+      };
+      continue;
+    }
+
+    let node: ReactElement | null = null;
+
     if (isEditEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", text: "更改", group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
-        out.push(<ToolRow item={groupItem} key={key} />);
-        continue;
+        node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (isReadEvent(item)) {
-      // 连续读取合并「查阅」组（与更改组同款折叠机制，name 标 read 供 toolKind 分发）
+    if (!node && isReadEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", name: "read", text: "查阅", group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
-        out.push(<ToolRow item={groupItem} key={key} />);
-        continue;
+        node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (isDeviceEvent(item)) {
-      // 连续同一设备的调用合并「设备」组（不同设备不混进同一组，机制同终端组）
+    if (!node && isDeviceEvent(item)) {
       const dev = deviceNameOf(item.args?.path);
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length) {
@@ -149,31 +250,76 @@ export function renderItems(items: ChatItem[], pfx: string, railEntries: RailEnt
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", name: "device", text: "设备", group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
-        out.push(<ToolRow item={groupItem} key={key} />);
-        continue;
+        node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (isCmdEvent(item)) {
-      // 连续终端命令合并「终端」组（机制同上，name 标 cmd 供 toolKind 分发）
+    if (!node && isCmdEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", name: "cmd", text: "终端", group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
-        out.push(<ToolRow item={groupItem} key={key} />);
-        continue;
+        node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    const node = appendItem(item, key, railEntries);
-    if (node) out.push(node);
-    // 一轮 output 结尾左下角挂操作组（复制/分叉）；junk assistant 的 node 为 null，不挂
+
+    if (!node) {
+      node = appendItem(item, key, railEntries);
+    }
+
+    if (node) {
+      if (currentTurn) {
+        currentTurn.flowNodes.push(node);
+      } else {
+        initialNodes.push(node);
+      }
+    }
+
     if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
-      out.push(<TurnActs item={item} key={key + "-acts"} />);
+      const actsNode = <TurnActs item={item} key={key + "-acts"} />;
+      if (currentTurn) {
+        currentTurn.actsNode = actsNode;
+      } else {
+        initialNodes.push(actsNode);
+      }
     }
   }
+
+  if (currentTurn) {
+    turns.push(currentTurn);
+  }
+
+  // 最新一轮若正在流式输出，将流式尾巴追加到最后一轮内容末尾
+  if (streamTail && turns.length > 0) {
+    turns[turns.length - 1].flowNodes.push(
+      <div key="stream-tail-wrap">{streamTail}</div>,
+    );
+  }
+
+  const out: ReactElement[] = [...initialNodes];
+
+  for (const t of turns) {
+    out.push(
+      <div className="turn-section" key={t.key}>
+        <div className="turn-body">
+          <div className="sticky-user-wrap">
+            <div className="sticky-user-inner">
+              {t.userNode}
+            </div>
+          </div>
+          <div className="turn-flow">
+            {t.flowNodes}
+          </div>
+        </div>
+        {t.actsNode}
+      </div>,
+    );
+  }
+
   for (const st of pendingSteers) {
     const node = appendItem(st.item, st.key, railEntries);
     if (node) out.push(node);
   }
+
   return out;
 }

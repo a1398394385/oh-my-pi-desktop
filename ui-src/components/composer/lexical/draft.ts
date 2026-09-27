@@ -1,22 +1,53 @@
-// 模块级输入草稿（跨 Composer 挂载位保留，等价旧 textarea 时代的 draft.value 单例）：
+// 模块级输入草稿（按会话/欢迎页隔离）：
 // EditorState 快照供挂载恢复（initialConfig.editorState），text 为压平后的纯文本
 // （发送 / hasDraft / bash 前缀判定读取）。写入方只有 ComposerPlugin 的 updateListener。
 import type { EditorState } from "lexical";
+import type { PromptAttachment } from "../../../types/frames";
 
-let state: EditorState | null = null;
-let text = "";
+export type PendingFile = PromptAttachment & { id: number };
 
-export function getDraftState(): EditorState | null {
-  return state;
+export interface SessionDraft {
+  state: EditorState | null;
+  text: string;
+  files: PendingFile[];
 }
 
-export function getDraftText(): string {
-  return text;
+const drafts = new Map<string, SessionDraft>();
+
+export function getDraft(key = "welcome"): SessionDraft {
+  let d = drafts.get(key);
+  if (!d) {
+    d = { state: null, text: "", files: [] };
+    drafts.set(key, d);
+  }
+  return d;
 }
 
-export function saveDraft(nextState: EditorState, nextText: string): void {
-  state = nextState;
-  text = nextText;
+export function getDraftState(key = "welcome"): EditorState | null {
+  return drafts.get(key)?.state ?? null;
+}
+
+export function getDraftText(key = "welcome"): string {
+  return drafts.get(key)?.text ?? "";
+}
+
+export function getDraftFiles(key = "welcome"): PendingFile[] {
+  return drafts.get(key)?.files ?? [];
+}
+
+export function saveDraft(key: string, nextState: EditorState, nextText: string): void {
+  const d = getDraft(key || "welcome");
+  d.state = nextState;
+  d.text = nextText;
+}
+
+export function saveDraftFiles(key: string, files: PendingFile[]): void {
+  const d = getDraft(key || "welcome");
+  d.files = files;
+}
+
+export function clearDraftState(key: string): void {
+  drafts.delete(key || "welcome");
 }
 
 // contentEditable 支持探测：happy-dom 等环境 contentEditable 属性可读但缺 Lexical 的

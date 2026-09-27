@@ -111,3 +111,139 @@ export function badgeTargetId(roots: EntryNode[], leafId: string | null, filter:
   }
   return leafId;
 }
+
+// 递归过滤子节点：若子节点本身不满足过滤，则递归提升其满足过滤的后代节点
+export function getFilteredChildren(node: EntryNode, filter: string): EntryNode[] {
+  const result: EntryNode[] = [];
+  const search = (children: EntryNode[]) => {
+    for (const c of children) {
+      if (passesFilter(c, filter)) {
+        result.push(c);
+      } else if (c.children && c.children.length > 0) {
+        search(c.children);
+      }
+    }
+  };
+  if (node.children) search(node.children);
+  return result;
+}
+
+// 瀑布流单项：节点项 或 分叉选择项
+export type StreamItem =
+  | {
+      type: "node";
+      node: EntryNode;
+      isLeaf: boolean;
+      onPath: boolean;
+    }
+  | {
+      type: "fork";
+      parentId: string;
+      options: EntryNode[];
+      selectedId: string;
+    };
+
+// 计算从根节点出发的单线瀑布流序列
+export function buildStreamSequence(
+  roots: EntryNode[],
+  leafId: string | null,
+  activeIds: Set<string>,
+  selectedBranches: Map<string, string>,
+  filter: string
+): StreamItem[] {
+  const sequence: StreamItem[] = [];
+
+  const filteredRoots: EntryNode[] = [];
+  const collectRoots = (nodes: EntryNode[]) => {
+    for (const n of nodes) {
+      if (passesFilter(n, filter)) {
+        filteredRoots.push(n);
+      } else if (n.children && n.children.length > 0) {
+        collectRoots(n.children);
+      }
+    }
+  };
+  collectRoots(roots);
+
+  if (filteredRoots.length === 0) return sequence;
+
+  let curr: EntryNode | undefined;
+  if (filteredRoots.length === 1) {
+    curr = filteredRoots[0];
+  } else {
+    const rootForkId = "__roots__";
+    let selectedId = selectedBranches.get(rootForkId);
+    let chosen = filteredRoots.find((r) => r.id === selectedId);
+    if (!chosen) {
+      chosen = filteredRoots.find((r) => activeIds.has(r.id)) || filteredRoots[0];
+      selectedBranches.set(rootForkId, chosen.id);
+    }
+    sequence.push({
+      type: "fork",
+      parentId: rootForkId,
+      options: filteredRoots,
+      selectedId: chosen.id,
+    });
+    curr = chosen;
+  }
+
+  const visited = new Set<string>();
+  while (curr && !visited.has(curr.id)) {
+    visited.add(curr.id);
+    sequence.push({
+      type: "node",
+      node: curr,
+      isLeaf: curr.id === leafId,
+      onPath: activeIds.has(curr.id),
+    });
+
+    const children = getFilteredChildren(curr, filter);
+    if (children.length === 0) break;
+
+    if (children.length === 1) {
+      curr = children[0];
+    } else {
+      let selectedId = selectedBranches.get(curr.id);
+      let chosen = children.find((c) => c.id === selectedId);
+      if (!chosen) {
+        chosen = children.find((c) => activeIds.has(c.id)) || children[0];
+        selectedBranches.set(curr.id, chosen.id);
+      }
+      sequence.push({
+        type: "fork",
+        parentId: curr.id,
+        options: children,
+        selectedId: chosen.id,
+      });
+      curr = chosen;
+    }
+  }
+
+  return sequence;
+}
+
+// 估算某个分支沿默认/选定路径的步数
+export function countBranchSteps(
+  node: EntryNode,
+  selectedBranches: Map<string, string>,
+  activeIds: Set<string>,
+  filter: string
+): number {
+  let count = 1;
+  let curr = node;
+  const visited = new Set<string>();
+  while (curr && !visited.has(curr.id)) {
+    visited.add(curr.id);
+    const children = getFilteredChildren(curr, filter);
+    if (children.length === 0) break;
+    count += 1;
+    const nextId = selectedBranches.get(curr.id);
+    let nextNode = nextId ? children.find((c) => c.id === nextId) : undefined;
+    if (!nextNode) {
+      nextNode = children.find((c) => activeIds.has(c.id)) || children[0];
+    }
+    curr = nextNode;
+  }
+  return count;
+}
+

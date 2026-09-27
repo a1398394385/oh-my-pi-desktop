@@ -94,10 +94,9 @@ function handleEsc(): boolean | undefined {
     return true;
   }
 
-  // 4. 输入框无文字时：按第一下 Esc 提示唤起 tree
+  // 4. 输入框无文字时：记录 tree 动作窗口，静默等待第二下 Esc 唤起 tree
   if (!s && !st.isCreatingNew) return false;
   escArmedAction = "tree";
-  toast("再按一次 Esc 查看会话树");
   clearTimeout(doubleEscTimer);
   doubleEscTimer = setTimeout(() => {
     escArmedAction = null;

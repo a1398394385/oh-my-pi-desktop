@@ -61,6 +61,7 @@ export default function App() {
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
+  const activePath = useAppStore((s) => s.activePath);
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const pendingApproval = session?.pendingApprovals?.[0] ?? null;
   return (
@@ -79,7 +80,7 @@ export default function App() {
             <QueueCard />
             <div className={pendingApproval ? "dock approval-active" : "dock"}>
               {pendingApproval ? <ApprovalCard key={pendingApproval.requestId} item={pendingApproval} /> : null}
-              <Composer inWelcome={false} blocking={Boolean(pendingApproval)} />
+              <Composer key={activePath || "composer"} inWelcome={false} blocking={Boolean(pendingApproval)} />
             </div>
             {/* 会话统计行：dock 之外、输入卡片下方另起一行（不是输入框内部） */}
             <SessionStatsBar />

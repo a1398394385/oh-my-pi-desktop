@@ -1,17 +1,16 @@
-// 主区域会话条目树视图：在主内容区全宽呈现会话条目历史树，支持分支导航、跳转回退与多档过滤。
+// 主区域会话条目树视图：在主内容区全宽呈现会话条目瀑布流，支持分叉横向切换、抽屉展开与跳转回退。
 import { useEffect, useState } from "react";
-import { useAppStore, send, toast } from "../../store";
+import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
-import { fmtAgo } from "../right/helpers";
 import type { EntryNode } from "./sessionTreeUtil";
-import { FILTERS, activePathIds, flattenRows, passesFilter, roleClass, badgeTargetId } from "./sessionTreeUtil";
+import { FILTERS, activePathIds } from "./sessionTreeUtil";
+import SessionTreeStream from "./SessionTreeStream";
 
 export default function MainSessionTree() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const rightState = useAppStore((st) => st.rightState);
   const setMainViewMode = useAppStore((st) => st.setMainViewMode);
   const [filter, setFilter] = useState<string>("default");
-  const [confirmNode, setConfirmNode] = useState<EntryNode | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // 懒加载条目树数据
@@ -37,20 +36,6 @@ export default function MainSessionTree() {
     send({ type: "get_entry_tree", sessionId: s.sessionId });
     setTimeout(() => setRefreshing(false), 600);
   };
-
-  // 弹窗打开时 Esc 优先关闭弹窗
-  useEffect(() => {
-    if (!confirmNode) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        setConfirmNode(null);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [confirmNode]);
 
   if (!s) {
     return (
@@ -87,12 +72,8 @@ export default function MainSessionTree() {
   }
 
   const activeIds = activePathIds(roots, tree.leafId);
-  const rows = flattenRows(roots, activeIds).filter((r) => passesFilter(r.node, filter));
-  const badgeId = badgeTargetId(roots, tree.leafId, filter);
 
-  const navigate = (summarize: boolean) => {
-    const node = confirmNode!;
-    setConfirmNode(null);
+  const onNavigate = (node: EntryNode, summarize: boolean) => {
     useAppStore.setState((st) => ({ rightState: { ...st.rightState, entryTreeNav: true } }));
     send({ type: "navigate_tree", sessionId: s.sessionId, entryId: node.id, summarize });
   };
@@ -138,116 +119,17 @@ export default function MainSessionTree() {
         </div>
       </div>
 
-      {/* 树节点内容列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 font-mono text-ui-sm">
-        <div className="max-w-4xl mx-auto space-y-0.5">
-          {rows.map(({ node, gutters, connector }) => {
-            const isLeaf = node.id === tree.leafId;
-            const onPath = activeIds.has(node.id);
-            return (
-              <button
-                key={node.id}
-                className={
-                  "st-row flex items-baseline gap-2 w-full text-left py-1.5 px-2 rounded-md transition-colors cursor-pointer " +
-                  (onPath ? " on-path bg-accent/5 " : " hover:bg-panel-2 ") +
-                  (isLeaf ? " leaf font-medium " : "")
-                }
-                title={node.text}
-                disabled={rightState.entryTreeNav}
-                onClick={() => {
-                  if (isLeaf) {
-                    toast("已在当前位置");
-                    return;
-                  }
-                  setConfirmNode(node);
-                }}
-              >
-                {/* 树导轨列 */}
-                <span className="st-prefix flex-none text-faint" aria-hidden>
-                  {gutters.map((g, i) => (
-                    <span key={i} className="inline-block w-[3ch]">
-                      {g ? "│" : " "}
-                    </span>
-                  ))}
-                  {connector ? <span className="text-faint">{connector}</span> : null}
-                </span>
-
-                {/* 节点文本内容 */}
-                <span className={"st-text flex-1 truncate " + roleClass(node)}>
-                  {onPath ? <span className="text-accent mr-1 font-bold">•</span> : null}
-                  {node.label ? <span className="text-yellow mr-1">[{node.label}]</span> : null}
-                  {node.text || "（空条目）"}
-                </span>
-
-                {/* 当前节点徽标 */}
-                {node.id === badgeId ? (
-                  <span className="flex-none text-ui-xs text-accent border border-accent/70 bg-accent/10 rounded px-1.5 py-0.5 leading-none">
-                    当前
-                  </span>
-                ) : null}
-
-                {/* 时间戳 */}
-                {node.ts ? (
-                  <span className="flex-none text-ui-xs text-faint ml-2">
-                    {fmtAgo(node.ts)}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-
-          {rows.length === 0 ? (
-            <div className="py-8 text-center text-faint text-ui-base">
-              当前过滤条件下没有条目。
-            </div>
-          ) : null}
-        </div>
+      {/* 瀑布流容器 */}
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <SessionTreeStream
+          roots={roots}
+          leafId={tree.leafId}
+          activeIds={activeIds}
+          filter={filter}
+          navigating={rightState.entryTreeNav}
+          onNavigate={onNavigate}
+        />
       </div>
-
-      {/* 跳转二次确认弹框 */}
-      {confirmNode ? (
-        <div
-          className="lp-mask fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setConfirmNode(null);
-          }}
-        >
-          <div className="lp-box bg-card border border-line rounded-lg p-5 max-w-md w-full shadow-2xl space-y-4">
-            <div className="lp-msg text-ui-md font-semibold text-text">
-              跳转到所选节点？
-            </div>
-            <div className="cf-msg st-confirm-text text-ui-sm text-dim bg-panel p-2.5 rounded-md border border-line break-words">
-              {confirmNode.label ? `[${confirmNode.label}] ` : ""}
-              {confirmNode.text || "（空条目）"}
-            </div>
-            <div className="lp-row flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2"
-                onClick={() => setConfirmNode(null)}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2"
-                disabled={rightState.entryTreeNav}
-                onClick={() => navigate(false)}
-              >
-                跳转
-              </button>
-              <button
-                type="button"
-                className="confirm-btn px-3 py-1.5 text-ui-sm bg-accent text-white rounded-md hover:opacity-90 font-medium"
-                disabled={rightState.entryTreeNav}
-                onClick={() => navigate(true)}
-              >
-                跳转并摘要
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

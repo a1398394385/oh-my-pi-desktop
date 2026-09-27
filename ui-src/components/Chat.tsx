@@ -33,29 +33,43 @@ export default function Chat() {
   const streamRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
+  const prevItemsLen = useRef(0);
   const atBottom = useRef(true); // 渲染前的贴底状态（scroll 监听持续记录）
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const onScroll = () => {
     const el = streamRef.current;
     if (!el) return;
     atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     updateScrollBottomVis(el, btnRef.current);
+
+    // 滚动期间点亮右侧滚动条，停止后平滑淡出
+    el.classList.add("scrolling");
+    clearTimeout(scrollTimer.current);
+    scrollTimer.current = setTimeout(() => {
+      el.classList.remove("scrolling");
+    }, 800);
   };
 
-  // 切会话强制落底 + 流式期间贴近底部则跟随（useLayoutEffect 在 paint 前完成，不闪旧位置）
-  // items 换引用（含用户发送新消息的气泡追加）即跟随落底
+  // 切会话强制落底 + 发送新消息时置顶 + 流式期间贴近底部则跟随（useLayoutEffect 在 paint 前完成，不闪旧位置）
   useLayoutEffect(() => {
     const el = streamRef.current;
     if (!el || !s) return;
     const switched = prevPath.current !== activePath;
     prevPath.current = activePath;
-    // 切换会话时 stream 节点被复用，旧会话的 scrollTop 对新会话无意义（拿去算贴底常误判）
-    if (switched || atBottom.current) {
+    const currentLen = s.items.length;
+    const isNewUserMsg = currentLen > prevItemsLen.current && s.items[currentLen - 1]?.role === "user";
+    prevItemsLen.current = currentLen;
+
+    // 切换会话时 stream 节点被复用，旧会话的 scrollTop 对新会话无意义；
+    // 发出新消息时强制滚到底部（最后一轮 min-height:100% 使得新消息刚好置顶）；
+    // 流式期间若贴底则持续跟随
+    if (switched || isNewUserMsg || atBottom.current) {
       el.scrollTop = el.scrollHeight;
       atBottom.current = true; // scroll 事件异步 fire，先同步落定防同帧二次渲染回弹
     }
     updateScrollBottomVis(el, btnRef.current);
-  }, [s?.items]);
+  }, [s?.items, s?.assistantDraft]);
 
   // 轨道显隐初始化：.dock 与会话区同帧挂载，#main 尺寸不因内部挂载改变，
   // ResizeObserver 不触发；initShell 观察发起时 dock 可能尚未存在（会话异步恢复），
@@ -64,7 +78,10 @@ export default function Chat() {
     updateRailVisibility();
   }, []);
 
+  const snapLockUntil = useRef(0);
+
   // 阻断标签弹窗/内嵌展开卡向外层消息流的滚动渗透（到达边界时不向外层链式传播）
+  // 并提供轮次吸顶磁吸停靠：消息距离顶部过低时，下一次滚动精准卡在 offsetTop，Agent 流程完整展示
   useEffect(() => {
     const stream = streamRef.current;
     if (!stream) return;
@@ -75,41 +92,65 @@ export default function Chat() {
       const card = target.closest<HTMLElement>(
         ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList",
       );
-      if (!card) return;
-
-      // 寻找当前触发点所在的最内层可纵向滚动的容器
-      let scroller: HTMLElement | null = target;
-      while (scroller && scroller !== card) {
-        const style = window.getComputedStyle(scroller);
-        const oy = style.overflowY;
-        if ((oy === "auto" || oy === "scroll") && scroller.scrollHeight > scroller.clientHeight) {
-          break;
+      if (card) {
+        // 寻找当前触发点所在的最内层可纵向滚动的容器
+        let scroller: HTMLElement | null = target;
+        while (scroller && scroller !== card) {
+          const style = window.getComputedStyle(scroller);
+          const oy = style.overflowY;
+          if ((oy === "auto" || oy === "scroll") && scroller.scrollHeight > scroller.clientHeight) {
+            break;
+          }
+          scroller = scroller.parentElement;
         }
-        scroller = scroller.parentElement;
-      }
-      if (!scroller || scroller === card) {
-        const style = window.getComputedStyle(card);
-        const oy = style.overflowY;
-        if ((oy === "auto" || oy === "scroll") && card.scrollHeight > card.clientHeight) {
-          scroller = card;
-        } else {
-          scroller = null;
+        if (!scroller || scroller === card) {
+          const style = window.getComputedStyle(card);
+          const oy = style.overflowY;
+          if ((oy === "auto" || oy === "scroll") && card.scrollHeight > card.clientHeight) {
+            scroller = card;
+          } else {
+            scroller = null;
+          }
+        }
+
+        // 卡片当前区域不可纵向滚动：完全阻止滚轮事件渗透带动外层消息流
+        if (!scroller) {
+          e.preventDefault();
+          return;
+        }
+
+        // 检查滚动边界：到顶继续向上滚，或到底继续向下滚时，阻止默认行为（禁止向上渗透）
+        const { scrollTop, scrollHeight, clientHeight } = scroller;
+        const delta = e.deltaY;
+        if (delta > 0 && scrollTop + clientHeight >= scrollHeight - 1) {
+          e.preventDefault();
+          return;
+        } else if (delta < 0 && scrollTop <= 0) {
+          e.preventDefault();
+          return;
         }
       }
 
-      // 卡片当前区域不可纵向滚动：完全阻止滚轮事件渗透带动外层消息流
-      if (!scroller) {
-        e.preventDefault();
-        return;
-      }
-
-      // 检查滚动边界：到顶继续向上滚，或到底继续向下滚时，阻止默认行为（禁止向上渗透）
-      const { scrollTop, scrollHeight, clientHeight } = scroller;
-      const delta = e.deltaY;
-      if (delta > 0 && scrollTop + clientHeight >= scrollHeight - 1) {
-        e.preventDefault();
-      } else if (delta < 0 && scrollTop <= 0) {
-        e.preventDefault();
+      // 轮次吸顶磁吸停靠：如果下一条消息与消息区域上边距过低（即将吸顶），
+      // 下一次向下滚动只滚动至刚好让该消息吸附在顶端，保证下方 Agent 处理流程完整展示
+      if (e.deltaY > 0) {
+        const now = Date.now();
+        if (now < snapLockUntil.current) {
+          e.preventDefault();
+          return;
+        }
+        const sections = stream.querySelectorAll<HTMLElement>(".turn-section");
+        const streamTop = stream.getBoundingClientRect().top;
+        for (let i = 0; i < sections.length; i++) {
+          const sec = sections[i];
+          const dist = sec.getBoundingClientRect().top - streamTop;
+          if (dist > 1 && dist <= 140) {
+            e.preventDefault();
+            stream.scrollTop += dist;
+            snapLockUntil.current = now + 200;
+            return;
+          }
+        }
       }
     };
 
@@ -152,7 +193,18 @@ export default function Chat() {
 
   // 消息轨道数据：渲染期随 items 遍历收集（key 与 data-fk 锚点同源）
   const railEntries: RailEntry[] = [];
-  const nodes = renderItems(s.items, "", railEntries);
+  const streamTail =
+    s.streaming || s.assistantDraft ? (
+      <>
+        {(s.streaming || s.assistantDraft) && <WorkSec />}
+        {/* 流式尾巴纯文本渲染（BUG-007 三连雷）：定稿才交给 AssistantMsg */}
+        {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
+          <div className="msg assistant md-body streaming-draft stream-plain">{s.assistantDraft}</div>
+        )}
+        {s.streaming && <ChatLoading />}
+      </>
+    ) : null;
+  const nodes = renderItems(s.items, "", railEntries, streamTail);
   return (
     <>
       <TodoCard />
@@ -168,15 +220,7 @@ export default function Chat() {
       )}
       <div id="stream" ref={streamRef} onScroll={onScroll}>
         {nodes}
-        {(s.streaming || s.assistantDraft) && <WorkSec />}
-        {/* 流式尾巴只渲染纯文本（BUG-007 三连雷）：对增长的全文每帧重跑 markdown 管线
-            是 O(n²) 累积,JSC 下长回复必然烧穿主线程——定稿(turn_end push 为历史条目)
-            才交给 AssistantMsg 做 markdown 解析(历史条目有 memo,只解析一次) */}
-        {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
-          <div className="msg assistant md-body streaming-draft stream-plain">{s.assistantDraft}</div>
-        )}
-        {/* 流式转圈：消息流末位（对应 ZCode TurnChatLoadingSlot），紧贴输入框上方，轮结束消失 */}
-        {s.streaming && <ChatLoading />}
+        {nodes.length === 0 && streamTail}
         {scrollBottomBtn}
       </div>
       <MsgRail entries={railEntries} sessionId={s.sessionId} streamRef={streamRef} />

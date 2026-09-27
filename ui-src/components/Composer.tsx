@@ -33,7 +33,14 @@ import { $getSelection, $isRangeSelection, $isTextNode } from "lexical";
 import type { TextNode } from "lexical";
 import { $createChipNode, ChipNode } from "./composer/lexical/ChipNode";
 import { $flattenWithCaret, $leafStart, $selectAfter } from "./composer/lexical/flat";
-import { getDraftState, getDraftText, CONTENT_EDITABLE_OK } from "./composer/lexical/draft";
+import {
+  getDraftState,
+  getDraftText,
+  getDraftFiles,
+  saveDraftFiles,
+  clearDraftState,
+  CONTENT_EDITABLE_OK,
+} from "./composer/lexical/draft";
 import ComposerPlugin from "./composer/lexical/ComposerPlugin";
 import type { ComposerHandle } from "./composer/lexical/ComposerPlugin";
 
@@ -142,6 +149,8 @@ type ComposerProps = {
 export default function Composer({ inWelcome, blocking = false }: ComposerProps) {
   // ---- store 订阅（selector 逐字段，禁止 selector 内构造新对象/数组） ----
   // 当前会话（updateSession 帧处理换 session/Map 引用，selector 按引用感知）
+  const activePath = useAppStore((st) => st.activePath);
+  const draftKey = inWelcome ? "welcome" : (activePath || "welcome");
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const pendingFiles = useAppStore((st) => st.pendingFiles);
   const escArmedUntil = useAppStore((st) => st.escArmedUntil);
@@ -173,7 +182,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const barStageRef = useRef(0); // 上次收缩级数（变化时收起打开中的菜单）
   // 编辑器文本镜像（模块级 draftText 的渲染态）：输入后刷新发送钮 ready 态与 bash-mode 类，
   // 等价原 onInput 里的 notify/forceRender
-  const [text, setText] = useState(() => getDraftText());
+  const [text, setText] = useState(() => getDraftText(draftKey));
   const onTextChange = useCallback((t: string) => setText(t), []);
 
   // ---- sigil 补全面板（TypeaheadMenuPlugin 受控态） ----
@@ -201,6 +210,18 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // 触发态去重键：Lexical 的 updateListener 连 selection-only 更新也会回调 onQueryChange，
   // 同一触发态只执行一次请求副作用（对齐旧版只在文本 input 时跑 updatePalette）
   const lastKeyRef = useRef<string | null>(null);
+
+  // ---- 附件隔离与恢复（挂载时从草稿恢复，变动时保存至草稿） ----
+  const restoredRef = useRef(false);
+  useLayoutEffect(() => {
+    useAppStore.setState({ pendingFiles: getDraftFiles(draftKey) });
+    restoredRef.current = true;
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    saveDraftFiles(draftKey, pendingFiles);
+  }, [draftKey, pendingFiles]);
 
   const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
   // 运行中的本地 bash 行（! 前缀命令）：停止形态同样覆盖——点停止发 bash_abort 而非 abort_session
@@ -266,6 +287,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // ---- 发送链路（原 sendPrompt 平移） ----
   const clearDraft = () => {
     lexRef.current?.clear();
+    clearDraftState(draftKey);
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
@@ -692,9 +714,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         throw error; // 快速失败：编辑器内部异常不静默吞
       },
       nodes: [ChipNode],
-      editorState: getDraftState() ?? undefined,
+      editorState: getDraftState(draftKey) ?? undefined,
     }),
-    [],
+    [draftKey],
   );
 
   const phText = inWelcome ? "使用 @ 添加上下文，使用 / 选择命令或能力" : "发消息…（Enter 发送）";
@@ -730,7 +752,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               />
             </div>
             <HistoryPlugin />
-            <ComposerPlugin handleRef={lexRef} onTextChange={onTextChange} sendPrompt={sendPrompt} typeaheadOpenRef={taOpenRef} />
+            <ComposerPlugin draftKey={draftKey} handleRef={lexRef} onTextChange={onTextChange} sendPrompt={sendPrompt} typeaheadOpenRef={taOpenRef} />
             {/* key 重挂 = 关闭面板通道（closeTypeahead）；triggerFn/onQueryChange 零依赖稳定，避免监听反复重注册 */}
             <LexicalTypeaheadMenuPlugin
               key={closeTick}

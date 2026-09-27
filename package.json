@@ -7,7 +7,7 @@
     "smoke": "OMP_PROFILE=omp-desktop-test bun scripts/smoke.ts",
     "smoke:queue": "OMP_PROFILE=omp-desktop-test bun scripts/queue-smoke.ts",
     "smoke:features": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-features.ts",
-    "smoke:branch": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-branch.ts",
+    "dev": "bun run ui:build && tauri dev",
     "ui:build": "vite build",
     "ui:watch": "vite build --watch",
     "ui:dev": "vite",
