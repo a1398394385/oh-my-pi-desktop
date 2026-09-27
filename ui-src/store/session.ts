@@ -113,6 +113,25 @@ export function activateSession(path: string): void {
   scheduleEvict();
 }
 
+/** 统一切换/打开会话：清新建态、关闭欢迎页、移除未读、激活会话或拉取加载并刷新 Git Diff */
+export function openSessionByPath(path: string, cwd?: string): void {
+  useAppStore.setState({ isCreatingNew: false });
+  useAppStore.getState().hideWelcomeScreen();
+  useAppStore.setState((st) => ({
+    unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== path)),
+  }));
+  useAppStore.getState().saveUnseen();
+  if (cwd) useAppStore.getState().expandProject(cwd);
+  if (useAppStore.getState().openSessions.has(path)) {
+    activateSession(path);
+    useAppStore.getState().refreshGitDiff();
+  } else {
+    useAppStore.getState().send({ type: "reload_settings" });
+    useAppStore.getState().send({ type: "load_session", path });
+  }
+  useAppStore.setState({ selectedSubagent: null, selectedFile: null });
+}
+
 // 延迟驱逐（合并多次触发）。必须延迟而不是同步：宿主在 runEnd 后可能**立刻续轮**
 // （parked followUp 放回 + a.continue()，见 host.ts 的 attachEntry），同步驱逐会抢在
 // 续轮的 turn_start 帧之前把会话踢出 openSessions，后续帧 findBySessionId 找不到即丢弃，

@@ -247,3 +247,35 @@ export function countBranchSteps(
   return count;
 }
 
+// 瀑布流分段：每个分叉点及其下方所属的子分支节点集合作为一个 section
+export interface StreamSection {
+  fork: Extract<StreamItem, { type: "fork" }> | null;
+  nodes: Extract<StreamItem, { type: "node" }>[];
+}
+
+// 将扁平瀑布流序列按分叉点切分为独立段落，保持上半部分不动、下方区域独立切换
+export function splitSequenceIntoSections(sequence: StreamItem[]): StreamSection[] {
+  const sections: StreamSection[] = [];
+  let currentFork: Extract<StreamItem, { type: "fork" }> | null = null;
+  let currentNodes: Extract<StreamItem, { type: "node" }>[] = [];
+
+  for (const item of sequence) {
+    if (item.type === "fork") {
+      if (currentFork !== null || currentNodes.length > 0) {
+        sections.push({ fork: currentFork, nodes: currentNodes });
+      }
+      currentFork = item;
+      currentNodes = [];
+    } else {
+      currentNodes.push(item);
+    }
+  }
+
+  if (currentFork !== null || currentNodes.length > 0) {
+    sections.push({ fork: currentFork, nodes: currentNodes });
+  }
+
+  return sections;
+}
+
+

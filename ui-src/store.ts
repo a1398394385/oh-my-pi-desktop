@@ -10,6 +10,7 @@ export {
   activeOpen,
   findBySessionId,
   activateSession,
+  openSessionByPath,
   evictOpenSessions,
   isJunkPlaceholder,
   toolExpandKey,

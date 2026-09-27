@@ -44,6 +44,7 @@ export interface AcpConfig {
   contextWindow?: string;
   candidates?: boolean;
   protectUserMessages?: boolean;
+  systemPrompt?: boolean;
 }
 
 /** settings 帧负载 = 底座快照 + host 侧实验开关(host/host.ts:213-216 settingsFrame) */
@@ -1012,6 +1013,7 @@ export interface McpServerTestedFrame {
   name: string;
   status: string;
   error?: string;
+  log?: string;
 }
 
 /** profile 切换完成帧(host/host.ts:2059 switch_profile) */

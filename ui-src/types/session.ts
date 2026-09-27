@@ -415,7 +415,7 @@ export interface AppState {
   assetFileSaved: { kind: string; at: number } | null; // asset_file_saved 落地(引用变化驱动「已保存」态)
   assetSaved: { kind: string; at: number } | null; // 同上,agents 页消费
   assetErr: { kind: string; message: string; at: number } | null; // error 帧带 kind 时落地
-  mcpTestResults: Record<string, { status: string; error?: string; ts: number }>; // MCP 单服务器测试结果:name -> { status, error?, ts }
+  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // MCP 单服务器测试结果:name -> { status, error?, log?, ts }
   memoryDetail: MemoryDetailState; // memory_file 帧落地
   // ---- ringpop 弹卡瞬态数据(hover 上下文环明细卡,移开即弃,下次悬停清零重请求) ----
   ctxDetail: ContextDetailFrame | null;

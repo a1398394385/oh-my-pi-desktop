@@ -12,13 +12,14 @@
 // 绑定在组件内的键（⌘N 新建 / ⌘, 设置 / ⌘F 查找 / 缩放 / 输入框内各键）只在此登记展示，
 // 不在此重复绑定——重复绑定即双触发。
 import {
-  useAppStore, setBump, send, toast, activeOpen,
+  useAppStore, setBump, send, toast, activeOpen, openSessionByPath, getAvailableProjects,
   getSupportedThinkingForModel, pickModelId, pickThinkingLevel, toolExpandKey,
   type TimerHandle,
 } from "./store";
 import { saveUiPrefs, applyAppearance } from "./appearance";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
-import { IS_WINDOWS, MOD } from "./platform";
+import { IS_WINDOWS, MOD, modDown } from "./platform";
+import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/sidebar/util";
 
 // ---------- 动作 ----------
 
@@ -59,7 +60,6 @@ function handleEsc(): boolean | undefined {
     escArmedAction = null;
     setBump({ escArmedUntil: 0 });
     st.setComposerValue("", []);
-    toast("已清空输入框");
     return true;
   }
 
@@ -75,11 +75,10 @@ function handleEsc(): boolean | undefined {
   const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
   const hasText = !!(st.draftHasContent || (st.pendingFiles && st.pendingFiles.length > 0));
 
-  // 2. 输入框有文字时：按第一下 Esc 提示清空
+  // 2. 输入框有文字时：按第一下 Esc 提示清空（无 toast，发送钮短暂转取消图标即提示）
   if (hasText) {
     escArmedAction = "clear";
     setBump({ escArmedUntil: Date.now() + DOUBLE_ESC_MS });
-    toast("再按一次 Esc 清空输入框");
     clearTimeout(doubleEscTimer);
     doubleEscTimer = setTimeout(() => {
       escArmedAction = null;
@@ -183,6 +182,27 @@ function toggleToolOutput(): void {
   toast(expandToolOutput ? "工具输出：运行时展开" : "工具输出：运行时保持收起");
 }
 
+/** Command/Ctrl + 1~9：跳转到左侧会话（优先运行中，不足 9 个用未读补齐） */
+function handleSessionJump(digit: string): boolean {
+  const st = useAppStore.getState();
+  if (st.settingsOpen) return false;
+  if (document.querySelector(".lp-mask")) return false;
+
+  // 与侧栏徽标同源取可见项目（allProjects 顺序 + 历史项目兜底），保证按键跳转与显示一致
+  const shortcuts = computeSidebarSessionShortcuts({ ...st, availableProjects: getAvailableProjects() });
+  for (const [path, d] of shortcuts.entries()) {
+    if (d === digit) {
+      openSessionByPath(path);
+      setTimeout(() => {
+        const inp = document.querySelector("#composer #input") as HTMLElement | null;
+        inp?.focus();
+      }, 0);
+      return true;
+    }
+  }
+  return false;
+}
+
 // ---------- 注册表 ----------
 // keys = 键帽展示；chords = 分派用键位（空 = 绑定在组件内，此处只登记）；run = 动作
 export interface ShortcutItem {
@@ -203,6 +223,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     items: [
       { keys: ["Esc"], chords: ["escape"], label: "Esc 路由：无字双击开树 / 树页单击回对话 / 有字双击清空", run: handleEsc },
       { keys: [MOD, "N"], label: "新建任务" },
+      { keys: [MOD, "1~9"], label: "跳转至对应会话（运行中优先，未读补齐）" },
       { keys: [MOD, "B"], chords: ["meta+b"], label: "切换左侧边栏", run: toggleSidebar },
       { keys: [MOD, ","], label: "打开 / 关闭设置" },
       { keys: ["Esc"], label: "关闭设置 / 查找栏 / 弹层" },
@@ -272,7 +293,60 @@ function chordOf(e: KeyboardEvent): string {
   return parts.join("+");
 }
 
+// ---------- ⌘ 按住态与项目临时展开 ----------
+// 按住 ⌘ 时把含运行中会话的折叠项目临时展开（纯前端视觉态：不发 set_project_expanded、
+// 不落盘），让运行中会话的行与徽标可见；松开时只回收自动展开的那批——按住期间用户的
+// 手动展开/折叠（走 ProjGroup 正常路径、含落盘）不受影响。
+let autoExpandedProjects: Set<string> | null = null;
+
+function setCommandPressed(on: boolean): void {
+  const st = useAppStore.getState();
+  if (st.isCommandPressed === on) return;
+  if (!on) {
+    if (autoExpandedProjects) {
+      const cur = useAppStore.getState();
+      useAppStore.setState({
+        isCommandPressed: false,
+        expandedProjects: new Set([...cur.expandedProjects].filter((c) => !autoExpandedProjects!.has(c))),
+      });
+      autoExpandedProjects = null;
+    } else {
+      useAppStore.setState({ isCommandPressed: false });
+    }
+    return;
+  }
+  // 清理模式本就全展开，无需临时展开
+  const toExpand = new Set<string>();
+  if (!st.isProjectManageMode) {
+    for (const p of getAvailableProjects()) {
+      if (st.expandedProjects.has(p.cwd)) continue;
+      if (p.sessions.some((s) => isSessionRunning(st.openSessions.get(s.path)))) toExpand.add(p.cwd);
+    }
+  }
+  autoExpandedProjects = toExpand.size > 0 ? toExpand : null;
+  useAppStore.setState(
+    toExpand.size > 0
+      ? { isCommandPressed: true, expandedProjects: new Set([...st.expandedProjects, ...toExpand]) }
+      : { isCommandPressed: true },
+  );
+}
+
 function onKeyDown(e: KeyboardEvent): void {
+  // 修饰键按下态：按住 Command（Windows 下 Ctrl）激活侧栏快捷键徽标提示 + 临时展开
+  if (modDown(e)) {
+    setCommandPressed(true);
+  }
+
+  // 快捷键跳转会话：Command/Ctrl + 1~9（⌘0 保留给重置缩放，绑定在 shell.ts 全局监听）
+  if (modDown(e) && !e.altKey && !e.shiftKey) {
+    const codeM = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    const digit = codeM?.[1] ?? (/^[1-9]$/.test(e.key) ? e.key : null);
+    if (digit && handleSessionJump(digit)) {
+      e.preventDefault();
+      return;
+    }
+  }
+
   let item = BINDINGS.get(chordOf(e));
   // ⌘ 键位在 Windows 落到 Ctrl：原 chord 未命中时把 ctrl 换成 meta 再查一次
   // （ctrl+X 的既有绑定在前一步已优先命中，不受影响）
@@ -284,7 +358,23 @@ function onKeyDown(e: KeyboardEvent): void {
   e.preventDefault();
 }
 
+function onKeyUp(e: KeyboardEvent): void {
+  // 当修饰键松开时关闭视觉提示并回收临时展开的项目
+  if (!modDown(e) || (IS_WINDOWS ? e.key === "Control" : e.key === "Meta")) {
+    setCommandPressed(false);
+  }
+}
+
+function onBlur(): void {
+  setCommandPressed(false);
+}
+
 /** 挂载全局快捷键监听（App 启动时调用一次） */
 export function initKeys(): void {
   document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", onBlur);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) onBlur();
+  });
 }

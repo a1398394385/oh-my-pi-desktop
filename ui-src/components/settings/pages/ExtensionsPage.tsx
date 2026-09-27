@@ -50,54 +50,6 @@ function stateLabel(ext: ExtensionItem): string {
   return `已禁用 · ${REASON_LABEL[ext.disabledReason ?? ""] ?? "未知"}`;
 }
 
-// 通用下拉（.sel 胶囊 + .menu；同 McpPage 的 Sel，行为对齐旧版 wireSel）
-interface SelProps {
-  className?: string;
-  btnClassName?: string;
-  btnTitle?: string;
-  btnChildren: ReactNode;
-  onPick: (mi: HTMLElement) => void;
-  children: ReactNode;
-}
-function Sel({ className, btnClassName, btnTitle, btnChildren, onPick, children }: SelProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node | null)) setOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [open]);
-  return (
-    <div className={`sel ${className || ""}`} ref={ref}>
-      <button
-        type="button"
-        className={btnClassName}
-        title={btnTitle}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-      >
-        {btnChildren}
-      </button>
-      <div
-        className={`menu${open ? " open" : ""}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          const mi = (e.target as HTMLElement).closest(".mi") as HTMLElement | null;
-          if (!mi || mi.classList.contains("disabled")) return;
-          setOpen(false);
-          onPick(mi);
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
 
 // 条目开关：shadowed 不可点；provider 级原因不乐观翻转（服务端帧为准），手动禁用即时反馈
 function ItemToggle({ ext, scope }: { ext: ExtensionItem; scope: string }) {
@@ -278,6 +230,67 @@ export default function ExtensionsPage() {
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [spinning, setSpinning] = useState(false);
+  const pillsRef = useRef<HTMLDivElement>(null);
+
+  // 横向滚轮滚动监听：横向与纵向滚轮都转换为 scrollLeft
+  useEffect(() => {
+    const pills = pillsRef.current;
+    if (!pills) return;
+
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+    const onScroll = () => {
+      pills.classList.add("is-scrolling");
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        pills.classList.remove("is-scrolling");
+      }, 300);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (pills.scrollWidth <= pills.clientWidth) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) || Math.abs(e.deltaX) > 0) {
+        e.preventDefault();
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        pills.scrollLeft += delta;
+      }
+    };
+
+    pills.addEventListener("scroll", onScroll, { passive: true });
+    pills.addEventListener("wheel", onWheel, { passive: false });
+
+    return () => {
+      pills.removeEventListener("scroll", onScroll);
+      pills.removeEventListener("wheel", onWheel);
+      if (scrollTimer) clearTimeout(scrollTimer);
+    };
+  }, []);
+
+  // 保证当前选中的分支药丸在可视范围内（仅横向局部滚动，严禁使用 scrollIntoView 避免纵向祖先容器抖动）
+  useEffect(() => {
+    const pills = pillsRef.current;
+    if (!pills) return;
+    const activeEl = pills.querySelector(".fork-pill.active") as HTMLElement | null;
+    if (!activeEl) return;
+
+    const pillsRect = pills.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+    const pillLeft = activeRect.left - pillsRect.left + pills.scrollLeft;
+    const pillRight = pillLeft + activeEl.offsetWidth;
+    const scrollLeft = pills.scrollLeft;
+    const clientWidth = pills.clientWidth;
+
+    if (pillLeft < scrollLeft) {
+      pills.scrollTo({ left: Math.max(0, pillLeft - 12), behavior: "smooth" });
+    } else if (pillRight > scrollLeft + clientWidth) {
+      pills.scrollTo({ left: pillRight - clientWidth + 12, behavior: "smooth" });
+    }
+  }, [prov]);
+
+  useEffect(() => {
+    if (prov !== "all" && payload?.providers && !payload.providers.some((p) => p.id === prov)) {
+      setProv("all");
+    }
+  }, [payload, prov]);
 
   // 进入页面拉一次当前 scope；连接就绪后若仍无数据（打开时机早于 WS 建连）补拉
   const connected = useAppStore((s) => s.connected);
@@ -343,31 +356,31 @@ export default function ExtensionsPage() {
       </div>
 
       <div className="ext-bar-secondary">
-        <Sel
-          className="ext-prov-sel"
-          btnClassName="ext-prov-btn"
-          btnChildren={
-            <>
-              <span>{selProv ? selProv.displayName : "全部来源"}</span>
-              <span className="caret-svg"><Icon name="caret" size={14} /></span>
-            </>
-          }
-          onPick={(mi) => setProv(mi.dataset.prov ?? "all")}
-        >
-          <div className="mi" data-prov="all" key="all">
-            <span className="ck" style={{ visibility: prov === "all" ? "visible" : "hidden" }}>✓</span>
-            <span className="mi-label">全部来源</span>
-            <span className="sub">{countOf("all")}</span>
-          </div>
-          <div className="sep" />
-          {(payload?.providers ?? []).map((p) => (
-            <div className="mi" data-prov={p.id} key={p.id}>
-              <span className="ck" style={{ visibility: prov === p.id ? "visible" : "hidden" }}>✓</span>
-              <span className="mi-label" title={p.description}>{p.displayName}</span>
-              <span className="sub">{countOf(p.id)}</span>
-            </div>
-          ))}
-        </Sel>
+        <div className="fork-pills ext-prov-pills" ref={pillsRef}>
+          <button
+            type="button"
+            className={`fork-pill ${prov === "all" ? "active" : ""}`}
+            onClick={() => setProv("all")}
+          >
+            <span>全部来源</span>
+            <span className="fork-pill-len">{countOf("all")}</span>
+          </button>
+          {(payload?.providers ?? []).map((p) => {
+            const isActive = prov === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`fork-pill ${isActive ? "active" : ""}`}
+                onClick={() => setProv(p.id)}
+                title={p.description || p.displayName}
+              >
+                <span className="truncate max-w-[160px]">{p.displayName}</span>
+                <span className="fork-pill-len">{countOf(p.id)}</span>
+              </button>
+            );
+          })}
+        </div>
         {selProv ? (
           <div className="ext-prov-ctl">
             <span className="text-ui-sm text-dim">启用该来源</span>

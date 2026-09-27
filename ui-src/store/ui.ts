@@ -13,6 +13,7 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface UiSlice {
   zoomLevel: number;
+  isCommandPressed: boolean; // 是否正在按住 Command/Ctrl 键（快捷键提示）
   sidebarCollapsed: boolean;
   rightCollapsed: boolean;
   isCreatingNew: boolean;
@@ -31,7 +32,7 @@ export interface UiSlice {
   animateThinkBody: boolean;
   animateSubKids?: boolean; // 子代理详情入场动画标记(运行时挂上,SubagentPage 专用)
   toastMsg: string | null; // 当前 toast 文本（null = 隐藏）
-  composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // 外部填输入框的信号（分叉回填 / 排队消息编辑）
+  composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // 外部填输入框的信号（分叉回填 / 排队消息编辑）；guard=异步回填，草稿非空时放弃覆盖
   findOpen: boolean; // 会话内查找栏开合（FindBar 同步;Esc 中断生成前的守卫）
   menuSignal: { name: string; seq: number } | null; // 外部打开 composer 菜单的信号（快捷键 Alt+M）
   draftHasContent: boolean; // 输入框是否有草稿（Composer 每次渲染同步,Esc 二次确认用）
@@ -45,7 +46,7 @@ export interface UiSlice {
   mainViewMode: "chat" | "tree"; // 主区域视图模式（消息流 vs 会话条目树）
   uiPrefs: UiPrefs;
   toast(msg: unknown): void;
-  setComposerValue(text: string, images?: unknown[] | null): void;
+  setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
@@ -78,6 +79,7 @@ let composerSetSeq = 0;
 
 export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get) => ({
   zoomLevel: 1,
+  isCommandPressed: false,
   sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
   // 右栏默认折叠（对齐旧版 index.html <aside id="right" class="collapsed">）；手动展开过后按 localStorage 记忆
   rightCollapsed: localStorage.getItem("omp-right-collapsed") === null ? true : localStorage.getItem("omp-right-collapsed") === "1",
@@ -118,8 +120,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     }, 2200);
   },
 
-  setComposerValue(text, images = []) {
-    set((s) => ({ composerSetSignal: { text, images, seq: ++composerSetSeq } }));
+  setComposerValue(text, images = [], opts) {
+    set((s) => ({ composerSetSignal: { text, images, seq: ++composerSetSeq, ...(opts?.guard ? { guard: true } : {}) } }));
   },
 
   setMainViewMode(mode) {

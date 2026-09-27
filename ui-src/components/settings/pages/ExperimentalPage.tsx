@@ -80,6 +80,7 @@ export default function ExperimentalPage() {
   const minLimit = acpConfig?.minContextLimit || "45%";
   const candidates = acpConfig?.candidates ?? false;
   const protectUser = acpConfig?.protectUserMessages ?? true;
+  const sysPrompt = acpConfig?.systemPrompt ?? false;
 
   const [cwInput, setCwInput] = useState(acpConfig?.contextWindow || "");
   useEffect(() => {
@@ -211,6 +212,23 @@ export default function ExperimentalPage() {
             onClick={() => {
               if (!enabled) return;
               updateAcp({ protectUserMessages: !protectUser });
+            }}
+          >
+            <i></i>
+          </div>
+        </div>
+
+        {/* 7. 系统提示词防复读 */}
+        <div className={"srow" + (enabled ? "" : " disabled")}>
+          <div className="srow-tx">
+            <b>系统提示词防复读</b>
+            <span>为新建会话追加 ACP 注记说明段：告知模型 &lt;dcp-message-id&gt; 标签是宿主注入的边界元数据，禁止在自己的回复里复读、模仿这些标签与摘要内容。只影响此后创建的会话。</span>
+          </div>
+          <div
+            className={"tg" + (sysPrompt ? " on" : "") + (enabled ? "" : " disabled")}
+            onClick={() => {
+              if (!enabled) return;
+              updateAcp({ systemPrompt: !sysPrompt });
             }}
           >
             <i></i>

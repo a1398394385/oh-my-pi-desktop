@@ -13,6 +13,7 @@ import ApprovalCard from "./components/chat/ApprovalCard";
 import SessionStatsBar from "./components/SessionStatsBar";
 import QueueCard from "./components/composer/QueueCard";
 import GoalCard from "./components/composer/GoalCard";
+import ConnBanner from "./components/ConnBanner";
 import RightPanel from "./components/RightPanel";
 import Settings from "./components/settings/Settings";
 import TitleBar from "./components/TitleBar";
@@ -71,6 +72,7 @@ export default function App() {
       <div id="left-resizer" className="resizer" title="拖动调整宽度" hidden={sidebarCollapsed}></div>
       <main id="main">
         <ChatHead onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
+        <ConnBanner />
         {isCreatingNew ? <Welcome /> : <Chat />}
         {!isCreatingNew && (
           <>

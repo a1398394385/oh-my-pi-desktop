@@ -9,6 +9,13 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from "../../ui/dialog";
 
 const NEW_KEY = "__new__";
 
@@ -32,11 +39,13 @@ interface McpServer {
   enabled: boolean;
   status?: string; // connected / error / 其他就绪态
   error?: string;
+  log?: string;
   transport?: string; // stdio / http / sse
   command?: string;
   args?: string[];
   url?: string;
   scope?: string;
+  sharing?: "session" | "project" | "global";
   cwd?: string;
   projectName?: string;
   env?: Record<string, string>;
@@ -49,6 +58,87 @@ interface McpTestResult {
   ts: number;
   status: string; // "ok" 或其他失败态
   error?: string;
+  log?: string;
+}
+
+// MCP 报错日志弹窗（对齐全站 Radix Dialog 风格）
+function McpLogDialog({
+  serverName,
+  error,
+  log,
+  onClose,
+}: {
+  serverName: string;
+  error?: string;
+  log?: string;
+  onClose: () => void;
+}) {
+  const content = log || error || "暂无详细日志信息";
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      toast("已复制报错日志到剪贴板");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast("复制失败，请手动选择内容复制");
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className="confirm-box"
+        style={{ width: "680px", maxWidth: "92vw", maxHeight: "82vh", display: "flex", flexDirection: "column" }}
+        onPointerDownOutside={(e) => e.preventDefault()}
+      >
+        <DialogTitle className="confirm-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Icon name="mcp" size={16} />
+          <span>MCP 报错日志 · {serverName}</span>
+        </DialogTitle>
+        <div style={{ flex: 1, minHeight: 0, marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          {error ? (
+            <div style={{ color: "var(--err)", fontSize: "var(--ui-fs-sm)", fontWeight: 500, lineHeight: 1.4 }}>
+              {error}
+            </div>
+          ) : null}
+          <pre
+            style={{
+              flex: 1,
+              background: "var(--panel-2)",
+              border: "1px solid var(--line)",
+              borderRadius: "var(--r-sm)",
+              padding: "10px 12px",
+              fontFamily: "var(--mono)",
+              fontSize: "12px",
+              lineHeight: 1.5,
+              color: "var(--text)",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              overflowY: "auto",
+              userSelect: "text",
+              minHeight: "160px",
+              maxHeight: "420px",
+            }}
+          >
+            {content}
+          </pre>
+        </div>
+        <DialogFooter className="confirm-actions" style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+          <button type="button" className="confirm-btn" onClick={onCopy}>
+            {copied ? "已复制" : "复制日志"}
+          </button>
+          <DialogClose asChild>
+            <button type="button" className="confirm-btn" onClick={onClose}>
+              关闭
+            </button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // 表单组装的 server 对象（stdio / 远程两种形态，字段按 transport 取舍）
@@ -60,6 +150,7 @@ interface McpPayload {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  sharing?: "session" | "project" | "global";
 }
 
 // 作用域列表（收敛为 Profile 与 Project，缺数据时给 Profile 兜底项，且 Project 严格限定在有效工作区内）
@@ -158,8 +249,9 @@ interface ServerRowProps {
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  onViewLog: (info: { name: string; error?: string; log?: string }) => void;
 }
-function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: ServerRowProps) {
+function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, onViewLog }: ServerRowProps) {
   const dot = dotState(server);
   const cmdText = server.command
     ? [server.command, ...(server.args || [])].filter(Boolean).join(" ")
@@ -180,6 +272,11 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: 
           <div className="mcp-server-head">
             <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
             {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
+            {server.sharing === "global" ? (
+              <span className="mcp-server-badge mcp-badge-shared">全局共享</span>
+            ) : server.sharing === "project" ? (
+              <span className="mcp-server-badge mcp-badge-shared">项目共享</span>
+            ) : null}
             <ExtSourceTag kind="mcp" name={server.name} path={server.source?.path} />
             {scopeAll
               ? (server.projectName || server.source?.providerName
@@ -188,10 +285,21 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: 
               : null}
           </div>
           <div className="mcp-server-cmd" title={cmdText}>{cmdText}</div>
-          {server.enabled && server.status === "error" && server.error ? (
+          {server.enabled && server.status === "error" && (server.error || server.log) ? (
             <div className="mcp-server-err">
               <span className="mcp-err-icon" title="错误详情">ⓘ</span>
-              <span>{server.error}</span>
+              <span className="truncate">{server.error || "服务启动失败"}</span>
+              <button
+                type="button"
+                className="mcp-log-btn"
+                title="查看完整报错日志"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewLog({ name: server.name, error: server.error, log: server.log });
+                }}
+              >
+                查看日志
+              </button>
             </div>
           ) : null}
         </div>
@@ -200,7 +308,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose }: 
         </div>
         <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
       </div>
-      {open ? <McpEditor server={server} defaultScope={defaultScope} onClose={onClose} /> : null}
+      {open ? <McpEditor server={server} defaultScope={defaultScope} onClose={onClose} onViewLog={onViewLog} /> : null}
     </>
   );
 }
@@ -241,13 +349,21 @@ interface McpEditorProps {
   server: McpServer | null; // null = 新建
   defaultScope: string;
   onClose: () => void;
+  onViewLog?: (info: { name: string; error?: string; log?: string }) => void;
 }
-function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
+function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps) {
   const isNew = !server;
-  const scopes = currentMcpScopes().filter((sc) => sc.id !== "all");
+  const targetScope = defaultScope === "all" ? "profile" : defaultScope;
+  const isProjectScope = targetScope !== "profile";
   const [name, setName] = useState(server?.name || "");
-  const [scope, setScope] = useState(server?.scope || (defaultScope === "all" ? "profile" : defaultScope));
   const [transport, setTransport] = useState(server?.transport || "stdio");
+  const [sharing, setSharing] = useState<"session" | "project" | "global">(() => {
+    if (server?.sharing) {
+      if (isProjectScope && server.sharing === "global") return "session";
+      return server.sharing;
+    }
+    return "session";
+  });
   const [cmd, setCmd] = useState(server?.command || "");
   const [args, setArgs] = useState((server?.args || []).join("\n"));
   const [env, setEnv] = useState(
@@ -276,6 +392,7 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
 
   // 由表单内容组装 server 对象（测试用）；缺必填项返回 null 并 toast
   const buildPayload = (): McpPayload | null => {
+    const finalSharing = isProjectScope && sharing === "global" ? "session" : sharing;
     if (transport === "stdio") {
       const c = cmd.trim();
       if (!c) {
@@ -298,7 +415,7 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
           }
         }
       }
-      return { name: name.trim(), transport: "stdio", command: c, args: argList, env: envObj };
+      return { name: name.trim(), transport: "stdio", command: c, args: argList, env: envObj, sharing: finalSharing };
     }
     const u = url.trim();
     if (!u) {
@@ -317,7 +434,7 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
         }
       }
     }
-    return { name: name.trim(), transport, url: u, headers: hdrObj };
+    return { name: name.trim(), transport, url: u, headers: hdrObj, sharing: finalSharing };
   };
 
   const onTest = () => {
@@ -338,7 +455,8 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
     }
     const serverObj = buildPayload();
     if (!serverObj) return;
-    const config: Record<string, unknown> = { type: transport };
+    const finalSharing = isProjectScope && sharing === "global" ? "session" : sharing;
+    const config: Record<string, unknown> = { type: transport, sharing: finalSharing };
     if (transport === "stdio") {
       config.command = serverObj.command;
       if (serverObj.args && serverObj.args.length) config.args = serverObj.args;
@@ -347,7 +465,7 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
       config.url = serverObj.url;
       if (serverObj.headers && Object.keys(serverObj.headers).length) config.headers = serverObj.headers;
     }
-    send({ type: "save_mcp_server", name: name.trim(), config, scope });
+    send({ type: "save_mcp_server", name: name.trim(), config, scope: targetScope });
     onClose();
     toast(`已保存 MCP 服务器 "${name.trim()}"`);
   };
@@ -400,14 +518,6 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
           />
         </div>
         <div className="mcp-form-group">
-          <label className="mcp-form-label">保存目标</label>
-          <select className="mcp-form-select" value={scope} onChange={(e) => setScope(e.target.value)}>
-            {scopes.map((sc) => (
-              <option key={sc.id} value={sc.id}>{sc.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="mcp-form-group">
           <label className="mcp-form-label">传输协议</label>
           <div className="mcp-type-pills">
             {[
@@ -424,6 +534,45 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
                 {label}
               </button>
             ))}
+          </div>
+        </div>
+        <div className="mcp-form-group">
+          <label className="mcp-form-label">实例共享模式</label>
+          <div className="mcp-type-pills">
+            {isProjectScope
+              ? [
+                  ["session", "会话私有 (默认)"],
+                  ["project", "项目共享 (本工作区)"],
+                ].map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`mcp-type-pill${sharing === m ? " on" : ""}`}
+                    onClick={() => setSharing(m as "session" | "project")}
+                  >
+                    {label}
+                  </button>
+                ))
+              : [
+                  ["session", "会话私有 (默认)"],
+                  ["global", "全局共享 (跨项目)"],
+                ].map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`mcp-type-pill${sharing === m ? " on" : ""}`}
+                    onClick={() => setSharing(m as "session" | "global")}
+                  >
+                    {label}
+                  </button>
+                ))}
+          </div>
+          <div className="mcp-form-hint">
+            {sharing === "global"
+              ? "跨项目所有会话复用同一单例进程，不暴露工作区目录，适合网络搜索/文档检索类无状态工具。"
+              : sharing === "project"
+              ? "当前项目内的所有会话复用同一单例进程，避免重复开销，适合代码索引等工具。"
+              : "每个会话独占子进程与工作区目录，会话结束时即释放，隔离性最高。"}
           </div>
         </div>
         {transport === "stdio" ? (
@@ -490,9 +639,26 @@ function McpEditor({ server, defaultScope, onClose }: McpEditorProps) {
         )}
       </div>
       <div className="sem-foot">
-        <span className="text-ui-sm text-dim" style={statusColor ? { color: statusColor } : undefined}>
-          {statusText}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
+          <span className="text-ui-sm text-dim truncate" style={statusColor ? { color: statusColor } : undefined}>
+            {statusText}
+          </span>
+          {((result && result.status !== "ok" && (result.log || result.error)) || (!result && server?.status === "error" && (server.log || server.error))) && onViewLog ? (
+            <button
+              type="button"
+              className="mcp-log-btn"
+              onClick={() =>
+                onViewLog({
+                  name: name.trim() || server?.name || "未命名",
+                  error: result?.error || server?.error,
+                  log: result?.log || server?.log,
+                })
+              }
+            >
+              查看日志
+            </button>
+          ) : null}
+        </div>
         <button type="button" className="confirm-btn" disabled={testing} onClick={onTest}>
           {testing ? "测试中…" : "测试连接"}
         </button>
@@ -523,6 +689,7 @@ export default function McpPage() {
   const [mcpScope, setMcpScope] = useState("profile");
   const [mcpSearchQuery, setMcpSearchQuery] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null); // 服务器 name 或 NEW_KEY；null = 收起
+  const [logModal, setLogModal] = useState<{ name: string; error?: string; log?: string } | null>(null);
   const [spinning, setSpinning] = useState(false);
   useExtSources(); // 扩展中心全 scope 数据（行内来源徽标匹配用）
 
@@ -669,7 +836,12 @@ export default function McpPage() {
                 </div>
                 <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
               </div>
-              <McpEditor server={null} defaultScope={activeScope} onClose={() => toggleEditor(NEW_KEY)} />
+              <McpEditor
+                server={null}
+                defaultScope={activeScope}
+                onClose={() => toggleEditor(NEW_KEY)}
+                onViewLog={(info) => setLogModal(info)}
+              />
             </>
           ) : null}
 
@@ -689,6 +861,7 @@ export default function McpPage() {
                   open={openKey === k}
                   onToggle={() => toggleEditor(k)}
                   onClose={() => toggleEditor(k)}
+                  onViewLog={(info) => setLogModal(info)}
                 />
               );
             })
@@ -696,6 +869,14 @@ export default function McpPage() {
         </div>
       </div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-mcp"]} />
+      {logModal ? (
+        <McpLogDialog
+          serverName={logModal.name}
+          error={logModal.error}
+          log={logModal.log}
+          onClose={() => setLogModal(null)}
+        />
+      ) : null}
     </div>
   );
 }

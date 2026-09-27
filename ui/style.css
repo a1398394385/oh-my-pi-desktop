@@ -442,6 +442,56 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task .tarchive-confirm:hover {
   filter: brightness(1.12);
 }
+.task-cmd-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  user-select: none;
+  pointer-events: none;
+  box-sizing: border-box;
+  animation: taskCmdPop .1s ease-out;
+}
+@keyframes taskCmdPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.task-cmd-badge svg {
+  display: block;
+  opacity: 0.85;
+}
+.task-cmd-mod {
+  font-size: 10px;
+  color: var(--dim);
+}
+.task-cmd-digit {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.task:hover .task-cmd-badge {
+  background: var(--panel-3);
+  border-color: var(--line-focus, var(--line));
+}
+.task.on .task-cmd-badge {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+[data-theme="light"] .task.on .task-cmd-badge {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
+}
 .task-indicator,
 .tpin {
   position: absolute; inset: 0;
@@ -716,6 +766,23 @@ body:has(#sidebar.collapsed) .chat-head {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   min-width: 0;
   flex: 1;
+}
+
+/* 连接看门狗横幅（宿主失联超 30s）：主区 chat-head 下通栏，连上即卸载 */
+.conn-banner {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--ui-fs-base);
+  color: var(--text);
+  min-width: 0;
+}
+.conn-banner-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+  color: var(--dim);
 }
 
 #stream {
@@ -3393,12 +3460,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 /* ─── 扩展中心（pg-extensions） ─── */
 .ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
-/* 作用域/来源按钮 = .sel 胶囊语言：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
-.ext-prov-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer;
-}
-.ext-prov-sel { position: relative; }
+.ext-prov-pills { flex: 0 1 auto; min-width: 0; }
 .ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 /* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
 .ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; }
@@ -3412,8 +3474,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .ext-search-input:focus { border-color: rgba(74, 158, 255, .5); box-shadow: 0 0 0 3px rgba(74, 158, 255, .13); }
 .ext-search-input::placeholder { color: var(--faint); }
 .ext-bar-secondary { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-.ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ext-actions-wrap { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0; }
+.ext-actions-wrap { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .ext-list-wrap { margin-top: 4px; }
 /* 分组（按能力类型）：组标题复用 .set-group-tt，首组收紧与工具行的间距 */
 .ext-group:first-child .set-group-tt { margin-top: 6px; }
@@ -4180,6 +4242,18 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   text-transform: uppercase;
   flex-shrink: 0;
 }
+.mcp-server-badge.mcp-badge-shared {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--ctl-bg));
+  text-transform: none;
+}
+.mcp-form-hint {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  margin-top: 6px;
+  line-height: 1.4;
+}
 .mcp-server-cmd {
   font-size: var(--ui-fs-sm);
   color: var(--dim);
@@ -4197,7 +4271,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   line-height: 1.4;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   word-break: break-word;
 }
 .mcp-err-icon {
@@ -4207,6 +4281,23 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: inline-flex;
   align-items: center;
   user-select: none;
+}
+.mcp-log-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--ui-fs-xs);
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  flex-shrink: 0;
+  transition: background .12s, border-color .12s;
+}
+.mcp-log-btn:hover {
+  background: var(--line);
+  border-color: var(--dim);
 }
 
 /* 右侧开关控制 */
@@ -4786,6 +4877,27 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   gap: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--line-soft);
+}
+
+/* 分叉点分段与分支切换区域 */
+.stream-section-block {
+  position: relative;
+  width: 100%;
+}
+.stream-branch-section {
+  position: relative;
+  width: 100%;
+  animation: branch-section-fade-in .18s ease-out;
+}
+@keyframes branch-section-fade-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 分叉点切换器 */

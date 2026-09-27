@@ -215,6 +215,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const restoredRef = useRef(false);
   useLayoutEffect(() => {
     useAppStore.setState({ pendingFiles: getDraftFiles(draftKey) });
+    // 草稿镜像与编辑器内容都随槽切换：useState 初值只在首个 draftKey 求值，而 Lexical
+    // 编辑器实例跨 draftKey 复用（initialConfig.editorState 仅首次生效），不同步会带着
+    // 上个槽的文本残留——并被 updateListener 写进新槽（跨会话草稿泄漏 + ready 态常亮）
+    setText(getDraftText(draftKey));
+    lexRef.current?.setText(getDraftText(draftKey));
     restoredRef.current = true;
   }, [draftKey]);
 
@@ -235,6 +240,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   useEffect(() => {
     const sig = composerSetSignal;
     if (!sig || !lexRef.current) return;
+    // guard=异步回填（分叉/跳转回包）：RPC 往返期间用户已打了新草稿则放弃覆盖，
+    // 用户的新意图优先（对齐 PI-Desktop #934「完成回调只拥有它提交的那份草稿」语义）
+    if (sig.guard && (getDraftText(draftKey).trim() || useAppStore.getState().pendingFiles.length)) {
+      useAppStore.setState({ composerSetSignal: null });
+      return;
+    }
     if (!sig.text && (!sig.images || sig.images.length === 0)) {
       lexRef.current.clear();
       useAppStore.setState({ pendingFiles: [], composerSetSignal: null });
@@ -288,10 +299,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const clearDraft = () => {
     lexRef.current?.clear();
     clearDraftState(draftKey);
+    // 直接同步镜像：Lexical clear() 的 updateListener 异步触发，届时槽已删成空串，
+    // changed 判定（空===空）会跳过 onTextChange，text 将残留已发送的旧文本
+    setText("");
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
-    const t = getDraftText().trim();
+    const t = getDraftText(draftKey).trim();
     const files = buildAttachPayload();
     const ws = useAppStore.getState().ws;
     if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;

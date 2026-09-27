@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
 import Icon from "../../Icon";
+import { IS_WINDOWS, MOD } from "../../platform";
 import { fmtAgo, sessionLabel } from "./util";
 
 // 会话条目（diskProjects[].sessions / archivedSessions 元素的结构子集；
@@ -43,6 +44,7 @@ export interface SessionRowProps extends SessionRowCallbacks {
   renaming?: boolean;
   className?: string;
   style?: CSSProperties;
+  shortcutDigit?: string;
 }
 
 // 行内重命名编辑行（原 startRename）：Enter 保存（空标题/未改名不保存）、Esc/失焦按取消处理。
@@ -86,13 +88,14 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
   );
 }
 
-export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
+export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
   // 状态经 selector 订阅（须在 renaming 早退之前：hooks 不可条件调用）
   const openSessions = useAppStore((s) => s.openSessions);
   const pinnedSessions = useAppStore((s) => s.pinnedSessions);
   const unseenFinished = useAppStore((s) => s.unseenFinished);
   const activePath = useAppStore((s) => s.activePath);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
+  const isCommandPressed = useAppStore((s) => s.isCommandPressed);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -207,6 +210,15 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         >
           确认
         </button>
+      ) : isCommandPressed && shortcutDigit ? (
+        <span className="task-cmd-badge" title={`${MOD} ${shortcutDigit}`}>
+          {IS_WINDOWS ? (
+            <span className="task-cmd-mod">Ctrl</span>
+          ) : (
+            <Icon name="command" size={11} />
+          )}
+          <span className="task-cmd-digit">{shortcutDigit}</span>
+        </span>
       ) : (
         <>
           <button

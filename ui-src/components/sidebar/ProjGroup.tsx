@@ -40,7 +40,7 @@ export function projectIconName(p: ProjectIconSource, expanded: boolean): string
 
 // 展开会话容器（原 buildProjKids）：mount 时 0fr→1fr 播展开动画；animate 时逐行 kids-in 错峰。
 // 管理模式显示全部会话；默认 5 条，「显示更多」按需每次多加载 5 条。
-function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming }: {
+function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming, shortcuts }: {
   p: ProjectInfo;
   animate: boolean;
   closing: boolean;
@@ -49,6 +49,7 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
   isDragSelf: boolean;
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
+  shortcuts?: Map<string, string>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
@@ -79,6 +80,7 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
               {...rowProps}
               rowKey={rowKey}
               renaming={renaming?.path === s.path && renaming?.key === rowKey}
+              shortcutDigit={shortcuts?.get(s.path)}
               className={animate ? "kids-in" : undefined}
               style={animate ? { animationDelay: `${i * 25}ms` } : undefined}
             />
@@ -103,7 +105,7 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
   );
 }
 
-export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHead, onPointerMoveHead, onPointerUpHead, onPointerCancelHead, shouldSuppressProjectClick, onOpenProjMenu, onRemoveProject, rowProps, renaming }: {
+export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHead, onPointerMoveHead, onPointerUpHead, onPointerCancelHead, shouldSuppressProjectClick, onOpenProjMenu, onRemoveProject, rowProps, renaming, shortcuts }: {
   p: ProjectInfo;
   ty: number;
   isDragSelf: boolean;
@@ -117,6 +119,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   onRemoveProject: (cwd: string) => void;
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
+  shortcuts?: Map<string, string>;
 }) {
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
@@ -217,7 +220,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
           </>
         )}
       </div>
-      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={isDragSelf ? 0 : ty} dragging={dragging} isDragSelf={isDragSelf} rowProps={rowProps} renaming={renaming} />}
+      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={isDragSelf ? 0 : ty} dragging={dragging} isDragSelf={isDragSelf} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} />}
     </>
   );
 }

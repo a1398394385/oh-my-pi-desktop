@@ -112,12 +112,22 @@ const mdComponents: Components = {
 const mdControls = { code: { copy: true, download: false }, table: false, image: false };
 const MD_LINK_SAFETY_OFF = { enabled: false };
 
+// 剥 ACP <dcp-message-id> 标签：host 推帧已剥落盘原文，但流式 text_delta 期间的
+// 标签片段会直达渲染（host 无法可靠切割跨 delta 的标签），此处兜底清洗。
+// 与 host/acp-context.ts 的 REF_TAG_RE 同款口径。
+const DCP_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
+function stripDcpTags(s: string): string {
+  const out = s.replace(DCP_TAG_RE, "");
+  return out === s ? s : out.trim();
+}
+
 function AssistantMsgImpl({ text, fk, streaming }: { text?: string; fk?: string; streaming?: boolean }) {
+  const plain = text ? stripDcpTags(text) : text;
   return (
     <div
       className={"msg assistant md-body" + (streaming ? " streaming-draft" : "")}
       data-fk={fk || undefined}
-      style={text ? undefined : { display: "none" }}
+      style={plain ? undefined : { display: "none" }}
     >
       <Streamdown
         plugins={{ code: codePlugin, cjk }}
@@ -128,7 +138,7 @@ function AssistantMsgImpl({ text, fk, streaming }: { text?: string; fk?: string;
         controls={mdControls}
         linkSafety={MD_LINK_SAFETY_OFF}
       >
-        {text || ""}
+        {plain || ""}
       </Streamdown>
     </div>
   );

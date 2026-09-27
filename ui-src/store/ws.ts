@@ -29,6 +29,8 @@ export interface WsSlice {
   ws: WebSocket | null;
   connected: boolean;
   connText: string;
+  /** 首次失去连接（或从未连上）的时刻；恢复连接清 null。ConnBanner 据此判定持续失败时长 */
+  connFailSince: number | null;
   send(obj: unknown): void;
   setConnected(ok: boolean, text: string): void;
   connect(): Promise<void>;
@@ -38,13 +40,20 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   ws: null,
   connected: false,
   connText: "连接中…",
+  connFailSince: null,
 
   send(obj: unknown): void {
     const ws = get().ws;
     if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
   },
   setConnected(ok: boolean, text: string): void {
-    set((s) => ({ connected: ok, connText: text }));
+    set((s) => ({
+      connected: ok,
+      connText: text,
+      // 语义 = 距上次成功连接经过的时间（从未连上则从首次 connect 起算），
+      // 冷启动 >15s 的情况计入是预期行为：30s 仍连不上就该给恢复面
+      connFailSince: ok ? null : (s.connFailSince ?? Date.now()),
+    }));
   },
   async connect(): Promise<void> {
     if (!invoke) {
@@ -774,13 +783,13 @@ function onMessage(msg: HostFrame): void {
       // 旧版 handleMcpServerTested 平移：测试结果落地 + 行状态点同步 + toast（全量换引用）
       useAppStore.setState((st) => {
         // mcp 段逐字段形状随底座扫描函数(frames.ts TODO),此处只取 servers 数组的测试相关字段
-        const mcp = st.agentAssets?.mcp as { servers?: { name: string; status?: string; error?: string }[] } | undefined;
+        const mcp = st.agentAssets?.mcp as { servers?: { name: string; status?: string; error?: string; log?: string }[] } | undefined;
         const servers = mcp?.servers;
         const srv = servers?.find((x) => x.name === msg.name);
-        const mcpTestResults = { ...st.mcpTestResults, [msg.name]: { status: msg.status, error: msg.error, ts: Date.now() } };
+        const mcpTestResults = { ...st.mcpTestResults, [msg.name]: { status: msg.status, error: msg.error, log: msg.log, ts: Date.now() } };
         if (!srv || !servers || !mcp) return { mcpTestResults };
         const nextServers = servers.map((x) =>
-          x === srv ? { ...x, status: msg.status === "ok" ? "connected" : "error", error: msg.error } : x,
+          x === srv ? { ...x, status: msg.status === "ok" ? "connected" : "error", error: msg.error, log: msg.log } : x,
         );
         return {
           mcpTestResults,
@@ -830,7 +839,7 @@ function onMessage(msg: HostFrame): void {
         break;
       }
       useAppStore.getState().toast("已分叉出新会话");
-      if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, msg.selectedImages);
+      if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, msg.selectedImages, { guard: true });
       useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // 复用磁盘会话加载链路
       useAppStore.getState().send({ type: "list_sessions" });
       break;
@@ -874,7 +883,7 @@ function onMessage(msg: HostFrame): void {
       }
       useAppStore.getState().toast("已跳转到所选节点");
       useAppStore.setState({ mainViewMode: "chat" });
-      if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages);
+      if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
       break;
     }
     case "image_content": {

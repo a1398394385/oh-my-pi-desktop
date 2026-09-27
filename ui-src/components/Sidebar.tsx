@@ -3,7 +3,7 @@
 // 确认弹窗/添加项目弹层/⌘N。契约：渲染数据经 useAppStore selector 订阅（diskProjects/
 // pinnedSessions/viewMode/管理态等），事件内写状态换新引用并带 _v bump；
 // DOM 结构与类名对照 ui/index.html + sidebar.js。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import appIcon from "../../ui/app-icon.png";
 import { MOD } from "../platform";
@@ -22,6 +22,7 @@ import Menu from "./sidebar/Menu";
 import SessCtxMenu from "./sidebar/SessCtxMenu";
 import ProjAddPop from "./sidebar/ProjAddPop";
 import SidebarSearch from "./sidebar/SidebarSearch";
+import { computeSidebarSessionShortcuts } from "./sidebar/util";
 
 // 删除/移除二次确认弹窗内容
 interface ConfirmSpec {
@@ -98,6 +99,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // getAvailableProjects() 渲染期直调（内部读最新态），其底层字段须各自订阅，变化才触发重渲染
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
+  const expandedProjects = useAppStore((s) => s.expandedProjects);
+  const projectLimits = useAppStore((s) => s.projectLimits);
+  const openSessions = useAppStore((s) => s.openSessions);
+  const unseenFinished = useAppStore((s) => s.unseenFinished);
   void allProjects;
   void removedProjects;
   // 弹层/局部交互态（原版散在 body append 的临时 DOM 与模块变量上）
@@ -332,13 +337,28 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
     .slice(0, 50);
 
+  // 计算 ⌘1~0 快捷键映射（运行中优先，未读补齐，顺序与列表一致）
+  const shortcuts = useMemo(() => {
+    return computeSidebarSessionShortcuts({
+      viewMode,
+      diskProjects,
+      pinnedSessions,
+      expandedProjects,
+      projectLimits,
+      isProjectManageMode,
+      openSessions,
+      unseenFinished,
+      availableProjects: visible,
+    });
+  }, [viewMode, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible]);
+
   const rowProps: SessionRowCallbacks = {
     onRenameStart: (key, path) => setRenaming({ key, path }),
     onRenameDone: () => setRenaming(null),
     onDelete: askDeleteSession,
     onContext: onSessContext,
   };
-  const rowOf = (s: SessionInfo, opts: { sub?: boolean; showRepo?: boolean; pinnedList?: boolean } = {}, key: string) => (
+  const rowOf = (s: SessionInfo, opts: { sub?: boolean; showRepo?: boolean; pinnedList?: boolean } = {}, key: string, shortcutDigit?: string) => (
     <SessionRow
       key={s.path}
       s={s}
@@ -348,6 +368,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       sub={!!opts.sub}
       showRepo={!!opts.showRepo}
       pinnedList={!!opts.pinnedList}
+      shortcutDigit={shortcutDigit}
     />
   );
 
@@ -435,7 +456,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
             <div className="project-pinned">
               <div className="sec-label">置顶</div>
               {pinnedRows.length > 0 ? (
-                pinnedRows.map((s) => rowOf(s, { pinnedList: true }, `pinned:${s.path}`))
+                pinnedRows.map((s) => rowOf(s, { pinnedList: true }, `pinned:${s.path}`, shortcuts.get(s.path)))
               ) : (
                 <div className="pinned-empty text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无置顶会话</div>
               )}
@@ -485,6 +506,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
                       onRemoveProject={askRemoveProject}
                       rowProps={rowProps}
                       renaming={renaming}
+                      shortcuts={shortcuts}
                     />
                   );
                 });
@@ -496,7 +518,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         ) : (
           <>
             <div className="sec-label">最近任务</div>
-            {flat.map((s) => rowOf(s, { showRepo: true }, `recent:${s.path}`))}
+            {flat.map((s) => rowOf(s, { showRepo: true }, `recent:${s.path}`, shortcuts.get(s.path)))}
             {flat.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无任务</div>}
             <ArchivedSection onDelete={askDeleteSession} />
           </>
