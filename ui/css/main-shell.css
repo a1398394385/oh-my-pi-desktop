@@ -41,8 +41,8 @@ samp,
 
 /* ── 布局：底座上嵌中栏 / 右栏圆角卡片 ───────────────────────────────── */
 /* ── 全站层级刻度（唯一口径；新增浮层先在这里选档，别再各写各的） ────────────
-   20   #statusWrap（#main 内嵌状态卡）
-   60   .find-bar / #msgRail / .resizer（面板内固定浮层）
+   20   .sticky-user-wrap（吸顶用户消息栏）
+   60   #statusWrap（#main 内嵌 TODO 卡）/ .find-bar / #msgRail / .resizer（面板内固定浮层）
    100  .dock（composer 容器：内部下拉菜单封顶于此，恒在悬停卡/设置中心/通知之下）
    200  .ring-pop（悬停详情卡）
    300  #settings（全屏设置中心）

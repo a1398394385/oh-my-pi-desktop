@@ -65,12 +65,14 @@
   min-width: 260px;
 }
 
-/* TODO：中栏右上角独立卡片，可收成胶囊 */
+/* TODO：中栏右上角独立卡片，可收成胶囊。
+   层级取 60（面板内固定浮层档）：吸顶用户消息栏同为固定浮层但只给 20，
+   若同档 20 则 DOM 顺序使吸顶栏压住本卡（TODO 卡须恒可读可点） */
 #statusWrap {
   position: absolute;
   top: 56px;
   right: 14px;
-  z-index: 20;
+  z-index: 60;
   width: 280px;
   max-width: calc(100% - 28px);
   pointer-events: none;

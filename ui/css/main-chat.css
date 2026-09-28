@@ -19,7 +19,7 @@ body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
 
 body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
 
-/* TODO 进程卡（#statusWrap：absolute + z-20 + 阴影）展开时浮在消息区上方覆盖，
+/* TODO 进程卡（#statusWrap：absolute + z-60 + 阴影）展开时浮在消息区上方覆盖，
    不挤压消息/输入内容列宽度；卡片在滚动容器外，不参与滚动 */
 .chat-head {
   height: 48px; flex: none;
