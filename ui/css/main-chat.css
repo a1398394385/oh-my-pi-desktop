@@ -1,0 +1,945 @@
+/* ============================================================
+ * main-chat.css —— 主页面·中栏消息流:骨架/滚动条/轮次吸顶/气泡/markdown/工具行/审批卡/消息轨道(#msgRail)。
+ *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
+ * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
+ * → main-composer → main-streamdown → main-tree → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * ============================================================ */
+/* ── 中栏卡片 ──────────────────────────────────────────────────────── */
+#main {
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; flex: 1; position: relative;
+  overflow: hidden;
+  background: var(--card);
+  border-radius: var(--r-card);
+  margin: var(--shell-gap) 0;
+  transition: margin 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
+
+body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
+
+/* TODO 进程卡（#statusWrap：absolute + z-20 + 阴影）展开时浮在消息区上方覆盖，
+   不挤压消息/输入内容列宽度；卡片在滚动容器外，不参与滚动 */
+.chat-head {
+  height: 48px; flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: padding-left 0.25s cubic-bezier(0.2, 0, 0, 1);
+  min-width: 0;
+}
+
+body:has(#sidebar.collapsed) .chat-head {
+  padding-left: 78px;
+}
+
+.chat-head button,
+#sidebar button,
+#sidebar .nav-item,
+#sidebar .task,
+#sidebar .proj,
+#sidebar .more-link {
+  -webkit-app-region: no-drag;
+}
+
+/* 连接看门狗横幅（宿主失联超 30s）：主区 chat-head 下通栏，连上即卸载 */
+.conn-banner {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--ui-fs-base);
+  color: var(--text);
+  min-width: 0;
+}
+
+.conn-banner-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+  color: var(--dim);
+}
+
+#stream {
+  flex: 1; min-height: 0; overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  box-sizing: border-box;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ── 消息区域专属滚动条：滚动中与悬停时清晰显形，停滚后平滑淡出 ── */
+#stream::-webkit-scrollbar {
+  width: 8px;
+}
+
+#stream::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#stream::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background-color 0.25s ease-out;
+}
+
+#stream:hover::-webkit-scrollbar-thumb,
+#stream.scrolling::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--dim) 50%, transparent);
+}
+
+#stream::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dim);
+}
+
+.dock,
+.queue-card,
+.goal-card,
+.turn-flow,
+.sticky-user-inner,
+.turn-acts,
+#stream > *:not(.scroll-bottom):not(.turn-section) {
+  width: 100%;
+  /* 四段式收缩（边距 = 内容列与主卡片边缘的距离，--col-max/--col-max-35 由 JS
+     按屏幕宽度写入 50%/35%）：
+     1. 内容钉在 50% 屏幕宽，边距持续缩小 → 2. 边距钉在 75px/边，内容缩到 35% 屏幕宽
+     → 3. 内容钉在 35% 屏幕宽，边距缩到 20px/边 → 4. 边距钉在 20px/边，内容继续缩。
+     对话消息与底部输入框同宽对齐（排队卡与 dock 同宽，叠卡不错位） */
+  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* ── 轮次容器与吸顶结构 ── */
+#stream > .turn-section {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* 最后一轮高度不足视口时自动撑满一整屏，保证滚到底部时本轮消息置顶吸附，上一轮完全推移出屏幕 */
+#stream > .turn-section:last-of-type {
+  min-height: 100%;
+}
+
+.turn-body {
+  width: 100%;
+  position: relative;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.turn-flow {
+  padding-top: 15px; /* 与后方 agent 处理流程间距再加大 5px（10px -> 15px） */
+}
+
+.turn-flow > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* 吸顶用户消息栏：无横线分隔，下边缘 36px 柔和渐变淡出蒙版 */
+.sticky-user-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  background: var(--bg);
+  padding: 12px 0 4px;
+  border-bottom: none;
+}
+
+.sticky-user-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 36px;
+  background: linear-gradient(
+    to bottom,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 85%, transparent) 30%,
+    color-mix(in srgb, var(--bg) 40%, transparent) 65%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.sticky-user-inner {
+  width: 100%;
+}
+
+.sticky-user-wrap .msg.user {
+  margin: 0; /* 消除瀑布流硬塞的 90px 间距，与内容列等宽 */
+  width: 100%;
+}
+
+.sticky-user-wrap .msg.user .user-bubble {
+  width: 100%;
+  max-width: 100%; /* 用户消息卡片宽度加大，与消息区域等宽 */
+  box-sizing: border-box;
+}
+
+/* 消息流不加 content-visibility（BUG-017）：首轮 120px 估算与真实高度（38~5000px）
+   的纠偏落在视口附近即产生无输入跳帧/闪烁，快滚必现、渲染过一次才消失；
+   实测该规则无布局收益（见 BUG-017 的 A/B）。长列表性能走虚拟化路线（U4.3）。 */
+body:has(#right.collapsed) #right-resizer {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── 主对话区域消息布局与气泡 ── */
+.msg {
+  width: 100%;
+  margin: 14px 0;
+}
+
+/* 流式尾巴纯文本渲染(BUG-007):不做 markdown 解析,定稿后由 md-body 接管富文本 */
+.msg.assistant.stream-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  color: var(--text);
+  margin: 8px 0;
+}
+
+.msg.user {
+  display: flex;
+  justify-content: flex-end;
+  /* 上边距 = 与上一轮 Agent 回答的间距：与 .msg 的 14px 塌陷取 max，故须自身给到 90px */
+  margin: 90px 0 22px; /* 与下方 Agent 回复间距 22px（14+8） */
+}
+
+.msg.user .user-bubble {
+  /* 上限 = 对话内容列最大宽（50vw）的一半；82% 是列收窄到极窄时的相对兜底 */
+  max-width: min(25vw, 82%);
+  background: var(--inset);
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  font-size: var(--ui-fs-md);
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .msg.user .user-bubble {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* ── Markdown 格式渲染支持 ── */
+.md-body {
+  width: 100%;
+  font-size: var(--ui-fs-md);
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.md-body .md-p {
+  margin: 8px 0;
+  line-height: 1.7;
+}
+
+.md-body .md-h {
+  font-weight: 600;
+  color: var(--text);
+  margin: 20px 0 8px;
+  line-height: 1.35;
+}
+
+.md-body .md-h1 { font-size: calc(var(--ui-fs) * 1.55); border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+
+.md-body .md-h2 { font-size: calc(var(--ui-fs) * 1.35); border-bottom: 1px solid var(--line-soft); padding-bottom: 5px; }
+
+.md-body .md-h3 { font-size: calc(var(--ui-fs) * 1.2); }
+
+.md-body .md-h4 { font-size: calc(var(--ui-fs) * 1.1); }
+
+.md-body .md-inline-code {
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  background: #262626;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: inherit; /* 与旁边正常输出文字同色 */
+}
+
+[data-theme="light"] .md-body .md-inline-code {
+  color: #cf222e;
+  background: var(--panel-2);
+}
+
+.md-body strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.md-body em {
+  font-style: italic;
+}
+
+.md-body del {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+/* 列表缩进用 padding 而非 margin：marker 渲染在 padding 区内（右缘贴内容），
+   左缘落在段落左边界右侧；margin 写法会让 marker 悬到内容盒外，序号偏出段落左边 */
+.md-body .md-ul, .md-body .md-ol {
+  margin: 8px 0;
+  padding-left: 2em;
+}
+
+.md-body li {
+  margin: 4px 0;
+  line-height: 1.65;
+}
+
+.md-body .md-task-cb {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.md-body .md-quote {
+  border-left: 3px solid #4a9eff;
+  background: rgba(74, 158, 255, 0.07);
+  padding: 8px 14px;
+  margin: 12px 0;
+  border-radius: 0 6px 6px 0;
+  color: var(--dim);
+}
+
+.md-body .md-hr {
+  border: 0;
+  height: 1px;
+  background: var(--line-soft);
+  margin: 20px 0;
+}
+
+.md-body .md-link {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.md-body .md-link:hover {
+  text-decoration: underline;
+}
+
+/* 表格渲染 */
+.md-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ui-fs-base);
+  margin: 12px 0;
+}
+
+.md-table th, .md-table td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.md-table th {
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+.md-table tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .md-table tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* 多行代码卡片（遵守代码块字体隔离安全红线） */
+.md-code-block {
+  margin: 14px 0;
+  background: #19191d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative; /* actions 绝对定位锚点 */
+}
+
+[data-theme="light"] .md-code-block {
+  background: #f6f8fa;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  user-select: none;
+}
+
+[data-theme="light"] .md-code-head {
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+.md-code-lang {
+  font-family: var(--mono) !important;
+  text-transform: lowercase;
+}
+
+.md-copy-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--ui-fs-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.md-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.md-copy-btn.copied {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.md-code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  line-height: 1.6;
+}
+
+.md-code-block code {
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  color: #d1d5db;
+}
+
+[data-theme="light"] .md-code-block code {
+  color: #24292f;
+}
+
+.act {
+  color: var(--dim); font-size: var(--ui-fs-base); margin: 20px 0;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  /* 事件行内容比正文窄 15px：#stream>* 的内容列 max-width 是 ID 选择器，改不动，
+     用 padding 压内容盒实现；点击展开的卡片体是兄弟元素，不受此限 */
+  padding-right: 15px;
+}
+
+/* 行首标签（编辑/更改/待办/读取/搜索/查找/MCP/思考…）：统一代码字号、比正文淡；
+   flex:none + nowrap 防长参数挤压时匿名文本项逐字换行变竖排；
+   line-height: 1 消除 half-leading，与行首伴随文字的图标上下顶底严格平齐 */
+.act .lbl, .chg-item .lbl {
+  flex: none; white-space: nowrap; font-size: var(--code-fs, 12px); color: var(--faint);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.act > svg:first-child,
+.act > .c-ic > svg,
+.chg-item > svg:first-child,
+.cmd > .c-ic > svg {
+  display: block;
+  flex: none;
+  margin-top: -0.5px;
+}
+
+.act.t2 { margin-top: 28px; }
+
+.act.err { color: var(--err); }
+
+/* 阶段分隔行（后台压缩/交接/重命名）：居中横线夹字；与上一条结果拉开 30px
+   （相邻下边距 14/20px 均小于 30，合并取大后实际间距即 30px） */
+.act.phase {
+  margin: 30px 0 12px;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+  padding-right: 0; /* 取消事件行的内容盒右缩，按正文列真居中 */
+}
+
+.act.phase .ph-line { flex: 1; height: 1px; background: var(--line); }
+
+.act.phase span { flex: none; }
+
+/* 外部进程写入提示条：聊天区顶部通栏（TodoCard 与消息流之间），重新加载从磁盘重建 */
+.extw-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 8px 0; padding: 6px 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--dim); font-size: var(--ui-fs-base);
+}
+
+.extw-bar .extw-tx { flex: 0 1 auto; min-width: 0; } /* 按钮紧跟文案:右上角会话状态卡浮层会盖住行尾 */
+
+.extw-bar svg { flex: none; color: var(--blue); }
+
+/* loop 收起汇总行：一轮结束自动收起过程，行尾箭头点击展开/收起 */
+.act.loop { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--faint); }
+
+/* 用户消息气泡 → 下方 agent 过程折叠块：2 倍常规行距（20→40 塌陷基数，用户定调 70） */
+.msg.user + .act.loop { margin-top: 70px; }
+
+.act.loop .lp-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.act.loop .lp-arrow { flex: none; color: var(--faint); display: inline-flex; align-items: center; }
+
+.act.loop .lp-arrow svg { transition: transform .2s ease; }
+
+.act.loop .lp-arrow.open svg { transform: rotate(90deg); }
+
+.act.loop:hover { color: var(--dim); }
+
+/* 收起态（sealed）：汇总行与下方 output 之间细横线区分 */
+.act.loop.sealed { padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+
+.act svg { flex: none; }
+
+/* 思考行 */
+.act.think .th-ic { color: var(--faint); display: inline-flex; }
+
+.act.think .th-more { color: var(--faint); cursor: pointer; }
+
+/* 思考内容展开区：无卡片底、与背景融为一体，只借左侧竖线（与更改组同一套，对齐行首
+   思考图标正中心）划分区域；字体与动作行标签一致——代码字号（设置里可调）+ 标签色。
+   最高 9 行半，超出内置滚动；底部半行虚化，滚到底自动解除 */
+.think-body {
+  margin: -6px 0 12px;
+  padding: 1px 12px 6px 19px; /* 左内边距 = 图标 13 + 间距 6：正文与「思考」标签文字对齐。
+    上内边距 1px：竖线内正文比竖线顶点低 1px（与更改组首行同规则） */
+  position: relative;
+  font-size: var(--code-fs, 12px); line-height: 1.55; color: var(--faint);
+  /* loose 放宽标点禁则：）、， 可出现在行首，避免粘连块整体下移撑出行尾大空隙；
+     单词/路径保持完整（路径仅允许在 / 后断行），代码块不受 break-all 影响 */
+  white-space: pre-wrap; word-break: normal; line-break: loose;
+  overscroll-behavior: contain;
+}
+
+/* 滚动只发生在内层：竖线(::before)留在 .think-body 上，不随内容滚动而移出视口。
+   max-height 减去外层上下内边距(1+6=7px)，可视行数与原实现一致；底部半行虚化，
+   滚到底由 JS 加 .no-fade 解除 */
+.think-body .think-scroll {
+  max-height: calc(1.55em * 9.5 + 5px);
+  overflow-y: auto;
+  /* 滚到顶/底后阻断滚动链：继续滚轮/触控板手势不再带动外层会话区 */
+  overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
+}
+
+.think-body::before {
+  content: "";
+  position: absolute;
+  left: 5.5px; top: 0; bottom: 4px;
+  width: 2px; border-radius: 1px;
+  background: var(--line);
+}
+
+.think-body .think-scroll.no-fade {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* 编辑行：文件图标 + 文件名 + 行数变化（不显示路径） */
+.act.edit .add, .chg-item .add { color: var(--green-soft); font-weight: 500; }
+
+.act.edit .del, .chg-item .del { color: var(--red); opacity: .9; font-weight: 500; }
+
+/* 悬停整行时行尾内容后出现的极简箭头（编辑行 / 终端行共用），与标签内容间隔 6px（对齐思考行） */
+.act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow {
+  color: var(--faint); opacity: 0; transition: opacity .12s; flex: none;
+  display: inline-flex; align-items: center;
+}
+
+.cmd .ed-arrow { margin-left: -2px; } /* 容器 gap 8px，净距 6px */
+
+.act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow { opacity: 1; }
+
+/* 展开时同一个 chevron 原地旋转 90° 朝下，不换图标、不改尺寸，避免跳动 */
+.ed-arrow svg { transition: transform .2s ease; }
+
+.ed-arrow.open svg { transform: rotate(90deg); }
+
+/* 文件名：悬停下划线，点击在右侧边栏打开（编辑行 → git diff；读取行 → 文件内容） */
+.act .ed-name { cursor: pointer; }
+
+.act .ed-name:hover { text-decoration: underline; }
+
+/* 主对话区展开体：独立 0.2s（比其他界面 0.3s 更快，对话流操作频率高） */
+.ed-brief.drop, .cmd-card.drop, .bash-out.drop { animation: ed-drop .2s ease-out; }
+
+.ed-brief.lift, .cmd-card.lift, .bash-out.lift, .chg-body.lift, .think-body.lift { animation: ed-lift .2s ease-out forwards; }
+
+/* 编辑行点击后向下展开的内联 diff（ZCode EditInlineDiffContent 同款容器语言：
+   rounded-xl + 边框 + 卡片底，无内层 padding——diff 行自带 px，限高 240px 内部滚动） */
+.ed-brief {
+  margin: -6px 0 12px; /* 左缘与标签行图标对齐（组内靠 .chg-body 的 padding 定位，不另加缩进） */
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 0;
+  font-family: var(--mono); font-size: var(--code-fs, 12px);
+  line-height: 1.5; max-height: 240px; overflow: hidden;
+  /* 内嵌在会话区滚动流内：滚到边界后阻断滚动链，不再带动外层 */
+  overscroll-behavior: contain;
+}
+
+.ed-brief > .ldiff {
+  max-height: 240px;
+  overflow-y: auto;
+  background: transparent;
+  overscroll-behavior: contain;
+}
+
+/* 更改行：多文件列表，无行数；文件列表单行排布，超长行尾出省略号 */
+.act.change { flex-wrap: nowrap; overflow: hidden; }
+
+.act.change .chips-lane {
+  flex: 1; min-width: 0; display: block;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 更改组（连续编辑事件合并）：展开体内行与「更改」标签文字左对齐（缩进 = 铅笔图标 13 + 间距 6，
+   与编辑/写入标签文字同列）。缩进走 padding：#stream>* 的 margin-left:auto（ID 选择器）会压掉 margin-left。
+   组头下边距 20px 与 body -6px 塌陷成 14px——与卡片弹框到标签的间距（编辑行 ed-brief 基准）一致；
+   padding-top 1px：竖线内第一个标签比竖线顶点低 1px。
+   内行 padding 5px 相邻 10px——行与行两两间距等宽（含展开 brief 的行，见 .chg-body .ed-brief） */
+.chg-body { margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box; }
+
+/* 左侧整条竖线：对齐组头铅笔图标（13px 宽）正中心（6.5 - 线宽 2/2 = 5.5）。
+   顶点与展开体顶边齐平（top:0）：不再向上探入组头行覆盖图标；与组头文字的边距 = 组头 mb 20 与
+   body mt -6 的塌陷值 14px，与卡片弹框边距一致。内行展开 diff 时 body 增高，竖线随之延展 */
+.chg-body::before {
+  content: "";
+  position: absolute;
+  left: 5.5px; top: 0; bottom: 4px;
+  width: 2px; border-radius: 1px;
+  background: var(--line);
+}
+
+.chg-body.drop { animation: ed-drop .2s ease-out; }
+
+/* 组内展开体：左对齐组内行图标（不吃 .ed-brief 的左缩进）；行 pb 5 + mt 9 = 14px 间距（与顶层
+   编辑行 brief 基准一致，不再贴上/重叠）；mb 5 + 下一行 pt 5 = 10px，与相邻行间距保持一致 */
+.chg-body .ed-brief { width: auto; align-self: stretch; margin: 9px 0 5px; } /* 嵌套展开体铺满组内容列，不再吃 #stream>* 的 100% 宽 */
+
+/* 组内终端输出卡：与组内 ed-brief 同间距体系（顶层 .cmd-card 的 -6/12 是按 .cmd 行 mb 20 塌陷设计的） */
+.chg-body .cmd-card { margin: 9px 0 5px; }
+
+.chg-item {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: nowrap; max-width: 100%; box-sizing: border-box; overflow: hidden;
+  padding: 5px 15px 5px 0; color: var(--dim); font-size: var(--ui-fs-base);
+}
+
+.chg-item .lbl, .chg-item .ed-arrow, .chg-item .f-ic, .chg-item > svg:first-child { flex: none; }
+
+.chg-item .ed-name { cursor: pointer; }
+
+.chg-item .ed-name:hover { text-decoration: underline; }
+
+/* 待办行 */
+.act.todo { flex-wrap: nowrap; width: 100%; }
+
+.act.todo .td-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.act.todo .td-n { color: var(--faint); margin-left: auto; flex: none; }
+
+/* 读取/grep/glob/MCP 行：单行截断，参数/目录尾部出省略号，文件名图标不收缩 */
+.act.read, .act.mcp { flex-wrap: nowrap; overflow: hidden; }
+
+.act.read .path, .act.mcp .path {
+  color: var(--faint);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.act.read .f-ic { flex: none; }
+
+/* 文件类型小图标 */
+.f-ic { display: inline-flex; align-items: center; gap: 4px; }
+
+/* 正文段落（半粗 + inline code） */
+.step-title {
+  font-size: var(--ui-fs-md); font-weight: 600; line-height: 1.65;
+  margin: 20px 0 6px; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+.step-title code {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  background: var(--panel-2); border-radius: 4px;
+  padding: 1px 5px; color: var(--dim); font-weight: 400;
+}
+
+.cmd {
+  /* 与 .act 行距一致：连续终端行 12px 边距塌陷会显得比别处密集 */
+  margin: 20px 0; font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  color: var(--dim);
+  display: flex; gap: 8px; align-items: center;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  /* 与 .act 事件行同理：内容盒右缩 15px，与正文区分；展开的 .cmd-card 不受此限 */
+  padding-right: 15px;
+}
+
+/* 终端行点击后向下展开的圆角卡片：上命令、下输出，底色 #323232。 /* style-token-ignore */
+   mt -6：与 .cmd 行 mb 20 塌陷成 14px——与编辑行 ed-brief 弹框到标签的间距基准一致 */
+.cmd-card {
+  margin: -6px 0 12px; background: #323232; border-radius: 10px;
+  padding: 10px 12px; font-family: var(--mono); font-size: var(--code-fs, 12px);
+  overscroll-behavior: contain;
+}
+
+.cmd-card-cmd {
+  color: #e5e7eb; white-space: pre-wrap; word-break: break-all;
+  padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, .12);
+  line-height: 1.5; max-height: calc(1.5em * 4.5); overflow-y: auto;
+}
+
+.cmd-card-out {
+  margin: 8px 0 0; color: #a8b0ba; white-space: pre-wrap; word-break: break-word;
+  max-height: calc(1.5em * 4.5); overflow-y: auto; font: inherit; line-height: 1.5;
+}
+
+/* 底部半行渐变遮掩（与 think-body 同手法，滚到底由 JS 加 .no-fade 解除）。
+   ed-brief（内联 diff）已对齐 ZCode 无遮掩，不参与本组 */
+.cmd-card-cmd, .cmd-card-out {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.75em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 0.75em), transparent);
+  /* 三者都内嵌在会话区滚动流内：滚到边界后阻断滚动链，不再带动外层 */
+  overscroll-behavior: contain;
+}
+
+.cmd-card-cmd.no-fade, .cmd-card-out.no-fade {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* 本地 bash 执行行（! 前缀，BashRow）：复用 .cmd 行样式，状态区右对齐。
+   exit 0 用 --dim、非 0/错误用 --err；「不进上下文」为小号 faint 标签 */
+.bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+
+.bash-row .bash-status .bad { color: var(--err); }
+
+/* bash 行展开体：等宽输出块（对比 .cmd-card，配色只用既有 token） */
+.bash-out {
+  margin: -6px 0 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px);
+  line-height: 1.5; color: var(--dim);
+  max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  overscroll-behavior: contain;
+}
+
+/* @ 提及回读行（MentionRow）：单行 dim，路径等宽截断 */
+.act.mention { flex-wrap: nowrap; overflow: hidden; }
+
+.act.mention .m-paths { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--code-fs, 12px); }
+
+/* 工具展开卡里的外链：与 md-link 同色，hover 出下划线；⌘+点击走系统浏览器（见 tool-labels.js） */
+
+/* ask 展开参数：问题 + 选项列表（★ 推荐项），替代原始 JSON */
+.ask-q + .ask-q { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: 8px; } /* style-token-ignore */
+
+.ask-opt { color: var(--dim); padding-left: 14px; }
+
+.ask-opt + .ask-opt { margin-top: 4px; }
+
+.ask-opt.rec { color: var(--text); }
+
+.cmd .c-ic {
+  color: var(--faint); flex: none; font-family: var(--ui-font, var(--sans)); font-size: var(--code-fs, 12px);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; /* gap 与 .act 标签间距等宽 */
+}
+
+.cmd .c-tx {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  flex: 0 1 auto; min-width: 0; /* 不拉伸：短命令时箭头紧跟标签结尾，长命令收缩出省略号 */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 终端组内行（.chg-item）里的命令文本：与 .cmd .c-tx 同款截断（:scope 无 .cmd 包裹，样式不会自动命中） */
+.chg-item .c-tx {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* JS 截断「…」双段结构：原生 text-overflow:ellipsis 的省略号紧贴前文字，这里补 3px 间距
+   （e-tx 被裁切时 e-dot 才显示，见 tool-rows.js ellipsizable） */
+.e-wrap { display: inline-flex; min-width: 0; overflow: hidden; }
+
+.e-wrap .e-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+
+.e-wrap .e-dot { flex: none; margin-left: 3px; }
+
+/* 滚动到底部悬浮按钮（流区域底部中央） */
+.scroll-bottom {
+  position: sticky; bottom: 10px;
+  margin: 16px auto 2px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.35);
+}
+
+.scroll-bottom:hover { color: var(--text); background: var(--panel-2); }
+
+[data-theme="light"] .scroll-bottom { box-shadow: 0 4px 12px rgba(0,0,0,.12); } /* style-token-ignore */
+
+.flash { animation: flashBg 1.2s ease; border-radius: 8px; }
+
+/* 审批卡片（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——圆角边框卡 +
+   「等待确认」标题 + 问题正文 + 编号选项行（hover 高亮 / 选中底板，数字与回车快捷应答）
+   + 底部键盘提示行与确认钮；editable 时「提交」行内嵌输入（ZCodium 反馈行样式） */
+.approval-card {
+  margin: 0;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.approval-head {
+  font-size: var(--ui-fs-base); font-weight: 500; color: var(--dim); line-height: 1.3;
+}
+
+.approval-title {
+  color: var(--text); font-family: var(--ui-font, var(--sans));
+  font-size: var(--ui-fs-base); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 160px; overflow-y: auto;
+  overscroll-behavior: contain; /* 内嵌在会话区滚动流内，阻断滚动链 */
+  margin: 0;
+}
+
+.approval-list { display: flex; flex-direction: column; gap: 4px; }
+
+.approval-opt {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 8px 12px; border: 0; background: transparent;
+  border-radius: var(--r-lg);
+  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+  text-align: left; cursor: pointer;
+  transition: background .15s var(--swift);
+}
+
+.approval-opt:hover { background: var(--panel-2); }
+
+.approval-opt.selected { background: var(--select); }
+
+/* 应答定格后行禁用：不给 hover 高亮（hover 只挂在可点元素上），chosen 行保持选中底板 */
+.approval-opt:disabled { cursor: default; }
+
+.approval-opt:disabled:hover { background: none; }
+
+.approval-opt.chosen, .approval-opt.chosen:hover { background: var(--select); }
+
+.approval-num { flex: none; width: 20px; color: var(--faint); font-weight: 500; }
+
+.approval-opt.selected .approval-num { color: var(--text); }
+
+.approval-opt.chosen .approval-num { color: var(--green); }
+
+.approval-opt.dim { opacity: .4; }
+
+.approval-label { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
+
+.approval-opt.has-input { cursor: text; }
+
+.approval-opt:focus-visible,
+.approval-confirm:focus-visible { outline: none; }
+
+/* editable「提交」行内嵌输入：ZCodium 反馈行同款透明无边框输入 */
+.approval-inp {
+  flex: 1; min-width: 0;
+  background: transparent; border: 0; outline: none; padding: 0;
+  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+}
+
+.approval-inp::placeholder { color: var(--faint); font-weight: 400; }
+
+.approval-inp:disabled { opacity: 1; -webkit-text-fill-color: var(--text); } /* 定格后仍可读已提交内容 */
+
+.approval-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 0 4px;
+}
+
+.approval-hint {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+  color: var(--dim); font-size: var(--ui-fs-base);
+}
+
+.approval-hint svg { flex: none; color: var(--text); }
+
+/* 确认钮 = ZCodium bg-brand 按钮同款（h-8 rounded-lg） */
+.approval-confirm {
+  flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+  cursor: pointer; transition: opacity .15s var(--swift);
+}
+
+.approval-confirm:hover { opacity: .8; }
+
+.approval-confirm:disabled { opacity: .45; cursor: default; }
+
+/* ── 消息轨道（#msgRail）：主对话区左侧竖条，每条用户消息一道横刻度 ────────
+   自轨道中线向两边等距扩张（间隔 30 个屏幕物理像素，数量过多时 JS 等比压缩）；
+   刻度默认长 37.5 个屏幕物理像素（水平）、粗 3.9 个屏幕物理像素（垂直，胶囊圆角端）；hover 呈连续山峰：
+   全局 mousemove 按指针 Y 与刻度中心的距离高斯分配长度（最近线 ×2.5 加亮，缝隙中动画连续），
+   并在停够 150ms 的峰顶刻度右侧弹出 ring-pop 消息卡 */
+#msgRail {
+  position: absolute; left: 8px; width: 22px; z-index: 60;
+  pointer-events: none; /* 容器本身不挡消息，刻度单独可悬停 */
+}
+
+/* 内容列边距 < 65px 时隐藏左侧消息轨道（JS 按实测边距给 #main 挂 .rail-off），
+   避免刻度与内容列挤在一起 */
+#main.rail-off #msgRail { display: none; }
+
+.rail-tick {
+  position: absolute; left: 0; height: 4px; border-radius: 4px; /* 占位，实际粗细/胶囊圆角由 JS 按 devicePixelRatio 写入 */
+  background: var(--panel-3); cursor: pointer; pointer-events: auto;
+  width: 3px; /* 占位，实际长由 JS 按 devicePixelRatio 写入 */
+  transition: background .05s ease-out; /* 宽度零过渡：鼠标事件即平滑源，追求实时跟手；150ms 延时只约束弹卡 */
+  will-change: width; /* 高频改写宽度，提示合成层优化 */
+}
+
+.rail-tick.on { background: var(--text); } /* 山峰峰顶加亮 */
+

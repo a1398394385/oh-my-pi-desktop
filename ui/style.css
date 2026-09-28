@@ -7,12 +7,26 @@
 @source "../ui-src/**/*.{ts,tsx}";
 
 /* ============================================================
- * 三域拆分（见 ui/css/）：@import 顺序 = 级联顺序，禁止重排。
- *   global.css   token/重置/全站控件基类
- *   main.css     主页面（布局/侧栏/消息流/输入区/右栏）
- *   settings.css 设置页（pg-* 各页与导航）
+ * 样式域拆分（见 ui/css/）：@import 顺序 = 级联顺序，禁止重排。
+ *   global.css           token/重置/全站控件基类
+ *   main-shell.css       主页面·全局通用（布局骨架/层级刻度/滚动条/Windows 标题栏/全局弹窗）
+ *   main-sidebar.css     主页面·左边栏（会话/项目组/搜索卡片/重命名/归档）
+ *   main-chat.css        主页面·中栏消息流（气泡/markdown/工具行/审批卡/消息轨道）
+ *   main-composer.css    主页面·中栏输入区（dock/底栏/goal/queue/发送钮/Lexical）
+ *   main-streamdown.css  主页面·streamdown 渲染引擎层
+ *   main-tree.css        主页面·消息区会话树瀑布流
+ *   main-welcome.css     主页面·欢迎页（新建会话居中页与延展卡片）
+ *   main-right.css       主页面·右边栏（tab 栏/文件页/Git Diff/分支树/终端/浏览器）
+ *   settings.css         设置页（pg-* 各页与导航）
  * 域内规则保持切分时的原始相对顺序；新增样式按所属域追加到对应文件末尾。
  * ============================================================ */
 @import "./css/global.css";
-@import "./css/main.css";
+@import "./css/main-shell.css";
+@import "./css/main-sidebar.css";
+@import "./css/main-chat.css";
+@import "./css/main-composer.css";
+@import "./css/main-streamdown.css";
+@import "./css/main-tree.css";
+@import "./css/main-welcome.css";
+@import "./css/main-right.css";
 @import "./css/settings.css";

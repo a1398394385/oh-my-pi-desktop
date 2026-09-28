@@ -1,0 +1,181 @@
+/* ============================================================
+ * main-welcome.css —— 主页面·欢迎页(新建会话):居中页、延展卡片、欢迎态输入卡。
+ *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
+ * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
+ * → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * ============================================================ */
+/* ── 居中新建会话页面 ──────────────────────────────────────────────── */
+
+.wb-wrapper {
+  width: 100%; position: relative; display: flex; flex-direction: column;
+}
+
+.wb-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 6px 31px;
+}
+
+/* ── 新建会话延展卡片 ── */
+
+/* 上卡（胶囊卡）：承载项目/分支选择器，下缘被输入框卡盖住 25px，胶囊露在上半部分。
+   卡面用 --surface 低透明度罩色（对应 ZCode bg-surface），投影走大半径低透明度
+   （shadow-xl/5 同款：大模糊、弱不透明度，叠卡层次全靠它，勿加重） */
+.wb-back-card {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px; /* ZCode rounded-2xl */
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  /* 胶囊与边界的间距全部由 .wb-head 的 padding 提供（底部 25px 为重叠预算） */
+  padding: 0;
+  position: relative;
+  z-index: 1;
+  /* 与 #composer min-width 同步托底：窄窗口下整张卡片不再随窗口变窄 */
+  min-width: 260px;
+  box-sizing: border-box;
+}
+
+[data-theme="light"] .wb-back-card {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
+}
+
+.wb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  /* 常态完全透明；hover 高亮（ZCode group/workspace-chip hover:bg-surface-hover），
+     上拉框弹出态（.active）同款底板 */
+  border: 1px solid transparent;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--ui-font, var(--sans));
+  font-size: var(--ui-fs-base);
+  padding: 5px 12px 5px 10px;
+  min-height: 28px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 260px;
+  width: auto; /* 显式归位：避免 #wbBackCard flex 子项被拉伸 */
+  min-width: 0;
+  flex: 0 1 auto;
+  position: relative; /* wb-proj-clear 绝对定位锚点（ZCode left-1.5 叠加在 folder 图标位） */
+  box-sizing: border-box;
+  transition: background .15s, border-color .15s, box-shadow .15s, color .15s;
+}
+
+.wb-pill:hover {
+  background: var(--panel-2);
+  color: #ffffff;
+}
+
+[data-theme="light"] .wb-pill:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* 高亮只留给展开态（.active），hover 不高亮 */
+.wb-pill.active {
+  background: #444444;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme="light"] .wb-pill {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+}
+
+[data-theme="light"] .wb-pill.active {
+  background: rgba(0, 0, 0, 0.12);
+  border-color: transparent;
+  color: var(--text);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.wb-proj-clear {
+  position: absolute;
+  left: 8px; /* ZCode left-1.5：叠在 folder 图标位 */
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  color: var(--dim);
+  opacity: 0;
+  transition: opacity .15s, color .15s;
+  cursor: pointer;
+  padding: 0;
+  line-height: 0;
+}
+
+.wb-proj-clear > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.wb-proj-clear svg {
+  display: block;
+}
+
+/* ZCode 同款：hover 胶囊时 folder 图标淡出、× 淡入替换 */
+.wb-pill:hover .wb-proj-clear,
+.wb-pill.active .wb-proj-clear { opacity: 1; }
+
+.wb-proj-clear:hover { color: #ffffff; } /* style-token-ignore */
+
+[data-theme="light"] .wb-proj-clear:hover { color: #000000; } /* style-token-ignore */
+
+.wb-ic-folder { display: inline-flex; align-items: center; color: var(--dim); transition: opacity .15s; }
+
+.wb-ic-folder svg {
+  display: block;
+}
+
+.wb-ic-folder.is-cjk svg {
+  transform-origin: top center;
+  transform: scaleY(1.2); /* 中文方块字高大，下底延伸与汉字字底平齐 */
+}
+
+.wb-pill:hover .wb-ic-folder,
+.wb-pill.active .wb-ic-folder { opacity: 0; }
+
+.wb-pill svg {
+  flex: none;
+  color: var(--dim);
+}
+
+/* 思考行展开：右指 chevron 原地旋转 90° 朝下 */
+.th-more svg { transition: transform .2s ease; }
+
+.th-more.open svg { transform: rotate(90deg); }
+
+/* 欢迎页输入框卡：独立圆角卡片（ZCode ChatPromptEditor rounded-2xl border bg-input 同款），
+   以负 margin 上拉 25px 盖住胶囊卡（.wb-back-card）下缘，自身 z-index 在上；
+   项目/分支胶囊露在胶囊卡上半部分——与 dock ↔ 排队卡同一套二级重叠卡几何 */
+#composer.in-welcome {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 2;
+  margin-top: -25px; /* 重叠预算：吃掉 .wb-head 底部 25px padding */
+  padding: 12px 14px 10px;
+}
+
+[data-theme="light"] #composer.in-welcome {
+  background: var(--inset);
+  border-color: var(--line-soft);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
+}
+

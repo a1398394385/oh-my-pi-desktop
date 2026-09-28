@@ -1,0 +1,155 @@
+/* ============================================================
+ * main-shell.css —— 主页面·全局通用:三栏布局骨架、层级刻度、全局滚动条、Windows 自绘标题栏。
+ *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
+ * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
+ * → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * ============================================================ */
+/* React 挂载点：#root 内的三栏（#sidebar/#main/#right）原为 body 直接子元素，
+   由 body 的 flex 横向排布；组件化后须经 #root 承接同一套 flex 布局 */
+#root {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+/* ── 代码块与 Git Diff 隔离：不受全局界面字体/字号影响，锁定等宽与代码字号 ── */
+code,
+pre,
+kbd,
+samp,
+.cmd,
+.cmd .c-tx,
+.step-title code,
+.pv-code,
+.fd-holder,
+.fd-holder * {
+  font-family: var(--mono) !important;
+}
+
+code,
+pre,
+kbd,
+samp,
+.cmd,
+.cmd .c-tx,
+.step-title code,
+.pv-code,
+.fd-holder,
+.fd-holder * {
+  font-size: var(--code-fs, 12px) !important;
+}
+
+/* ── 布局：底座上嵌中栏 / 右栏圆角卡片 ───────────────────────────────── */
+/* ── 全站层级刻度（唯一口径；新增浮层先在这里选档，别再各写各的） ────────────
+   20   #statusWrap（#main 内嵌状态卡）
+   60   .find-bar / #msgRail / .resizer（面板内固定浮层）
+   100  .dock（composer 容器：内部下拉菜单封顶于此，恒在悬停卡/设置中心/通知之下）
+   200  .ring-pop（悬停详情卡）
+   300  #settings（全屏设置中心）
+   400  #toast（通知：须压在设置中心与 composer 之上）
+   500  下拉菜单/浮层：.menu 家族（含 .menu.flyout 501）、.sel > .menu、.sp-pop(510)、
+        .bpane-menu、.side-search-pop、.ctx-menu、.proj-add-pop、#wbProjectMenu/#wbBranchMenu，
+        以及 Radix Select / DropdownMenu / Popover 的 Portal 弹层
+   600  悬停提示：Radix Tooltip / .gtt-hint
+   900  .proj-drag-overlay（拖拽浮层）
+   999  .login-banner
+   1000 模态遮罩与对话框：.confirm-mask / .lp-mask / Radix Dialog / 图片灯箱
+   1200 .app-titlebar（标题栏）
+   列容器 #sidebar / #right 用 isolation:isolate 自成层：列内弹层不越出列层。 */
+
+/* ── 全局滚动条统一 ─────────────────────────────────────────────────────────
+   WebView2/Chromium 默认是常驻经典滚动条（深色下白底轨道很扎眼）。全站一律走这一套：
+   细轨 + 透明轨道 + 滑轨仅悬停容器时显形，视觉统一且不常驻。需要彻底隐藏滚动条的元素
+   （#tasklist / .rtabs / xterm viewport）各自 display:none / width:0，不受影响。 */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*:hover::-webkit-scrollbar-thumb { background-color: var(--panel-3); }
+*::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--panel-3) 45%, var(--dim)); }
+.resizer {
+  width: var(--shell-gap);
+  flex: none;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 60;
+  position: relative;
+  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
+}
+
+.resizer::after {
+  content: "";
+  position: absolute;
+  top: var(--shell-gap);
+  bottom: var(--shell-gap);
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.resizer:hover::after, body.resizing .resizer::after { background: var(--blue); }
+
+body.resizing { user-select: none; cursor: col-resize; }
+
+/* ── Windows 自绘标题栏（decorations:false；TitleBar.tsx 仅 Windows 渲染）── */
+.app-titlebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  background: var(--panel-2);
+  z-index: 1200;
+  user-select: none;
+}
+
+.titlebar-title {
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--faint);
+  pointer-events: none;
+}
+
+.titlebar-btns { margin-left: auto; display: flex; align-self: stretch; }
+
+.titlebar-btn {
+  width: 46px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  cursor: default;
+}
+
+.titlebar-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); } /* style-token-ignore */
+
+.titlebar-btn.titlebar-close:hover { background: #e81123; color: #fff; } /* style-token-ignore */
+
+/* 无边框后内容整体让出标题栏高度；全屏设置弹层同步下移 */
+body.has-titlebar { padding-top: 36px; }
+/* ── 全局二次确认弹窗（ring-pop 系全局浮层；自 main-chat.css 归位于全局通用域）── */
+/* ── 全局二次确认弹窗（严格遵照 ring-pop 系视觉与 ringpop 入场动画规范） ── */
+.confirm-mask {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.confirm-desc {
+  font-size: var(--ui-fs-base);
+  color: var(--dim);
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+

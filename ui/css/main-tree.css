@@ -1,0 +1,440 @@
+/* ============================================================
+ * main-tree.css —— 主页面·消息区会话树瀑布流(MainSessionTree / SessionTreeStream;页面在 Chat.tsx mainViewMode==="tree")。
+ *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
+ * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
+ * → main-composer → main-streamdown → main-tree → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * ============================================================ */
+/* ── 会话树（消息区瀑布流：MainSessionTree / SessionTreeStream）────────────────
+   会话树页面已迁入中栏消息区（Chat.tsx mainViewMode==="tree"），自 main-right.css 归位。 */
+/* 行文本：截断单行；角色着色（token 语义对齐 chat 区 user/assistant/tool 层次） */
+
+.st-user { color: var(--accent); }
+
+.st-asst { color: var(--green); }
+
+.st-tool { color: var(--faint); }
+
+.st-sys { color: var(--faint); font-size: var(--ui-fs-xs); }
+
+/* 活跃路径（根→当前叶）标记：accent 圆点 + 文本提亮 */
+
+/* 当前叶徽标 + 时间：右列固定，不随文本截断 */
+
+.st-confirm-text {
+  max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── 会话树全新瀑布流与分叉切换视图 (Session Tree Stream) ── */
+.stream-container {
+  position: relative;
+  width: 100%;
+}
+
+/* 主视图容器宽度：四段式收缩对齐主对话消息列与输入框 */
+.stream-container:not(.compact) {
+  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+.stream-spine {
+  position: absolute;
+  top: 18px;
+  bottom: 24px;
+  left: 42px;
+  width: 2px;
+  background: var(--line);
+  z-index: 1;
+  border-radius: 1px;
+}
+
+.stream-container.compact .stream-spine {
+  left: 36px;
+}
+
+.stream-node-item {
+  position: relative;
+  margin-bottom: 10px; /* 间距 +2px (8px -> 10px) */
+  padding-left: 64px;
+  z-index: 2;
+}
+
+.stream-container.compact .stream-node-item {
+  padding-left: 54px;
+  margin-bottom: 8px;
+}
+
+.stream-node-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 竖线左侧悬停跳转按钮 */
+.node-jump-btn {
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px);
+  transition: opacity .15s ease, transform .15s ease, background .12s, color .12s, border-color .12s;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.node-jump-btn:hover {
+  background: var(--panel-2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.stream-node-item:hover .node-jump-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.stream-container.compact .node-jump-btn {
+  left: 3px;
+  top: 5px;
+  width: 22px;
+  height: 22px;
+}
+
+.spine-bullet {
+  position: absolute;
+  left: 33px;
+  top: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s ease;
+  z-index: 3;
+}
+
+.stream-container.compact .spine-bullet {
+  left: 27px;
+}
+
+.spine-bullet::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.stream-node-item.is-leaf .spine-bullet {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2);
+}
+
+.stream-node-item.is-leaf .spine-bullet::after {
+  background: var(--accent);
+}
+
+.node-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: background .12s, border-color .12s, box-shadow .12s;
+  overflow: hidden;
+}
+
+.node-card:hover {
+  background: var(--panel-2);
+  border-color: var(--line-soft);
+}
+
+.stream-node-item.is-leaf .node-card {
+  border-color: rgba(74, 158, 255, 0.45);
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+}
+
+.node-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--ui-fs-sm);
+  min-height: 34px;
+}
+
+.node-card-header .role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ui-fs-xs);
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.role-badge.user {
+  background: rgba(111, 179, 216, 0.12);
+  color: var(--blue);
+  border: 1px solid rgba(111, 179, 216, 0.3);
+}
+
+.role-badge.assistant {
+  background: rgba(168, 111, 224, 0.12);
+  color: var(--purple);
+  border: 1px solid rgba(168, 111, 224, 0.3);
+}
+
+.role-badge.tool {
+  background: rgba(52, 199, 89, 0.12);
+  color: var(--green);
+  border: 1px solid rgba(52, 199, 89, 0.3);
+}
+
+.role-badge.system {
+  background: rgba(254, 188, 46, 0.12);
+  color: var(--yellow);
+  border: 1px solid rgba(254, 188, 46, 0.3);
+}
+
+.node-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.node-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.leaf-tag {
+  font-size: var(--ui-fs-xs);
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.12);
+  border: 1px solid rgba(74, 158, 255, 0.4);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 500;
+}
+
+.node-time {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}
+
+.node-card .ed-arrow {
+  color: var(--faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  transition: transform .2s ease, color .15s;
+  flex: none;
+}
+
+.node-card:hover .ed-arrow {
+  color: var(--dim);
+}
+
+.node-card .ed-arrow.open {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.node-detail-panel {
+  padding: 10px 12px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  animation: ed-drop .18s ease-out;
+}
+
+.detail-section-title {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.detail-body {
+  font-size: var(--ui-fs-sm);
+  line-height: 1.6;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* 分叉点分段与分支切换区域 */
+.stream-section-block {
+  position: relative;
+  width: 100%;
+}
+
+.stream-branch-section {
+  position: relative;
+  width: 100%;
+  animation: branch-section-fade-in .18s ease-out;
+}
+
+/* 分叉点切换器 */
+.stream-fork-hub {
+  position: relative;
+  margin: 12px 0 14px 64px;
+  z-index: 2;
+}
+
+.stream-container.compact .stream-fork-hub {
+  margin: 10px 0 12px 54px;
+}
+
+.fork-container {
+  background: var(--card);
+  border: 1px dashed rgba(74, 158, 255, 0.4);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.fork-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.fork-title {
+  font-size: var(--ui-fs-xs);
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.3px;
+}
+
+.fork-hint {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}
+
+.fork-pills {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 6px;
+  padding: 2px 2px 6px 2px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .3s ease;
+}
+
+.fork-pills.is-scrolling {
+  scrollbar-color: var(--line) transparent;
+}
+
+.fork-pills::-webkit-scrollbar {
+  height: 4px;
+}
+
+.fork-pills::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fork-pills::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+  transition: background-color .3s ease;
+}
+
+.fork-pills.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.fork-pills.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+
+.fork-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 9px;
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .15s ease;
+}
+
+.fork-pill:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--line-soft);
+}
+
+.fork-pill.active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.fork-pill-index {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+.fork-pill.active .fork-pill-index {
+  color: var(--accent);
+}
+
+.fork-pill-len {
+  font-size: var(--ui-fs-xs);
+  background: var(--panel-2);
+  color: var(--faint);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+

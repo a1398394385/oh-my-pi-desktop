@@ -22,9 +22,16 @@ const excludedSegments = new Set(["node_modules", "dist", "out", "release", "tar
 const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
-  // CSS 三域（由 ui/style.css 5603 行机械切分而来，域文件顺序 = 入口 @import 级联顺序；死类清理后收紧）
+  // CSS 样式域（main.css 先按页面域切 5 份、main-chat 再按组件域切 4 份；域文件顺序 = 入口 @import 级联顺序；死类清理后收紧）
   { path: "ui/css/global.css", max: 880 },
-  { path: "ui/css/main.css", max: 4420 },
+  { path: "ui/css/main-shell.css", max: 170 },
+  { path: "ui/css/main-sidebar.css", max: 810 },
+  { path: "ui/css/main-chat.css", max: 960 },
+  { path: "ui/css/main-composer.css", max: 670 },
+  { path: "ui/css/main-streamdown.css", max: 280 },
+  { path: "ui/css/main-tree.css", max: 450 },
+  { path: "ui/css/main-welcome.css", max: 190 },
+  { path: "ui/css/main-right.css", max: 1000 },
   { path: "ui/css/settings.css", max: 1420 },
 ];
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };

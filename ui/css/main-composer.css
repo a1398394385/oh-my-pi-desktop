@@ -1,0 +1,661 @@
+/* ============================================================
+ * main-composer.css —— 主页面·中栏输入区:dock 输入卡/底栏(模型/权限/ctx环/发送钮)/goal/queue/统计行/流式尾巴/Lexical。
+ *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
+ * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
+ * → main-composer → main-streamdown → main-tree → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * ============================================================ */
+/* /* 输入区：中栏底部内嵌圆角卡片，严格居中并与会话区域同宽对齐 */
+/* 输入区与下方统计行共用同一列宽（同款四段式收缩、居中）；统计行在 dock 之外，不属输入卡片 */
+.dock,
+.stats-bar {
+  flex: none;
+  width: 100%;
+  /* 与对话消息同一套四段式收缩逻辑（见上方共享规则注释）；
+     收缩到底（260px，与 #composer 的 min-width 一致）后不再变窄 */
+  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  min-width: 260px;
+}
+
+.dock {
+  margin: 8px auto 12px;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  position: relative;
+  /* 容器层：压住上方 .queue-card 下缘 28px；其内部下拉菜单封顶在这一层（见文件头「全站层级刻度」） */
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+/* 输入卡边框：常态沿用 line-soft，鼠标悬停时轻微提亮；键盘焦点不改边框 */
+.dock,
+#composer.in-welcome { transition: border-color .15s var(--swift); }
+
+.dock:hover,
+#composer.in-welcome:hover { border-color: var(--line); }
+
+.dock.approval-active { background: transparent; border-color: transparent; }
+
+.dock.approval-active:hover,
+.dock.approval-active:focus-within { border-color: transparent; }
+
+/* 会话统计行：输入框 dock 下方常驻一行（整会话缓存利用率/token/成本/活跃时长）；
+   纯展示无点击行为，不做 hover 高亮 */
+.stats-bar {
+  margin: 0 auto 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px 14px;
+  padding: 0 6px;
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+#composer {
+  flex: none;
+  margin: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 12px 14px 10px;
+  position: relative;
+  min-width: 0;
+  /* 收缩到底后的托底宽度，不再随窗口变窄 */
+  min-width: 260px;
+}
+
+/* TODO：中栏右上角独立卡片，可收成胶囊 */
+#statusWrap {
+  position: absolute;
+  top: 56px;
+  right: 14px;
+  z-index: 20;
+  width: 280px;
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+}
+
+#statusWrap:not(:has(#statusCard:not(.hidden), #capsule:not(.hidden))) { display: none; }
+
+#statusCard, #capsule { pointer-events: auto; }
+
+#statusCard {
+  background: var(--inset);
+  border: 0;
+  border-radius: var(--r-lg);
+  padding: 10px 12px 6px;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(0,0,0,.38);
+}
+
+[data-theme="light"] #statusCard { box-shadow: 0 10px 28px rgba(0,0,0,.12); } /* style-token-ignore */
+
+#input {
+  width: 100%; min-height: 54px; max-height: 120px;
+  background: transparent; border: 0; outline: none; resize: none;
+  box-shadow: none;
+  color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-md); line-height: 1.5;
+}
+
+#input:focus, #input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+#input::placeholder { color: var(--faint); }
+
+/* 已选附件行：文件从左到右排列，文字输入另起一行 */
+.attach-row { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; }
+
+/* working 状态行已并入 .chat-loading（见 ChatLoading.jsx），原 .work-line 样式随之移除 */
+.chat-loading[hidden] { display: none; } /* display:flex 会盖掉 UA 的 [hidden]，需显式声明 */
+
+/* 流式状态文字（intent/思考）：跟在转圈后，小号 dim，单行截断不折行推高流 */
+/* 流式加载转圈（复刻 ZCode ChatLoading / TurnChatLoadingSlot）：消息流最末位、紧贴输入框上方，
+   min-height 20px 保底有无都不跳高；lucide loader 图标 + 1s linear 旋转，前景色 --dim
+   （对应 ZCode text-foreground-subtle）。显隐由 Chat.jsx 按 s.streaming 渲染与否决定 */
+.chat-loading-icon {
+  display: inline-flex;
+  color: var(--dim);
+  animation: chat-load-spin 1s linear infinite;
+}
+
+.chat-loading-icon svg { display: block; }
+
+/* 减弱动态效果：默认跟随系统（media query 停转两个 spinner）；
+   外观页可强制（html[data-motion]）：on=无条件减弱 / off=无条件动画。
+   特异性 html[data-motion] 前缀压过 media 内规则，system/缺省回落系统行为 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-loading-icon, .task-indicator.loading svg { animation: none; }
+}
+
+html[data-motion="on"] .chat-loading-icon,
+html[data-motion="on"] .task-indicator.loading svg { animation: none; }
+
+html[data-motion="off"] .chat-loading-icon { animation: chat-load-spin 1s linear infinite; }
+
+html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
+
+/* 排队消息卡：ZCode 二级重叠卡配方（ConversationQueuePanel）——relative z-0 +
+   负 margin-bottom 上拉 28px + padding-bottom 28px 保底内容不被遮 + 只圆上角。
+   下方 .dock（z-20）压住其下缘，露出上半张卡；空队列时组件返回 null，卡整体不出现 */
+/* goal 目标栏：输入框上方的最上层重叠栏（App 渲染顺序 goal → queue → dock，随队列增高上移）。
+   叠加几何同 queue-card 配方（margin -28px 上拉 + padding-bottom 28px 保底 + 只圆上角，
+   被下一张卡压住下缘）；宽度比输入框左右各窄 10px（共 20px），无对下方卡片的圆角补充块。
+   点击栏向上展开完整目标（.open）；无 goal 时组件返回 null */
+/* 宽度声明单独挂 #main 前缀：上方共用列宽规则含 #stream>*（特异性 1,0,1），
+   纯类选择器压不过，不加前缀时「比输入框窄」实际不生效。
+   width 与 max-width 都要减 20px：窄屏由 width 兜底、宽屏由 max-width（列宽收缩）
+   约束，两者缺一都会在对应区间回到与输入框同宽 */
+#main .goal-card {
+  width: calc(100% - 20px);
+  max-width: calc(min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))) - 20px);
+}
+
+.goal-card {
+  position: relative;
+  z-index: 0;
+  margin: 8px auto -28px;
+  padding: 3px 3px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+}
+
+.gc-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 6px 6px 11px;
+  font-size: var(--ui-fs-sm); color: var(--dim);
+  min-width: 0;
+  cursor: pointer;
+}
+
+.gc-obj {
+  flex: 1; min-width: 0; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.goal-card.open .gc-obj { white-space: pre-wrap; word-break: break-word; overflow: visible; }
+
+.gc-meta {
+  flex: none; display: inline-flex; align-items: center; gap: 9px;
+  color: var(--faint); font-size: var(--ui-fs-xs); font-variant-numeric: tabular-nums;
+}
+
+.queue-card {
+  position: relative;
+  z-index: 1; /* 高于 .goal-card（z-0）：goal 栏下缘被排队卡压住，不再反向遮挡排队内容 */
+  margin: 8px auto -28px;
+  padding: 3px 3px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+}
+
+.qc-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 6px 6px 11px;
+  font-size: var(--ui-fs-sm); color: var(--dim);
+  min-width: 0;
+}
+
+.qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; } /* 三点=排队待发送 */
+
+.qc-dots svg { display: block; margin-top: -0.5px; }
+
+.qc-tx {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.q-btn {
+  flex: none; width: 20px; height: 20px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--faint); cursor: pointer; border: 0; background: none; padding: 0;
+  line-height: 0;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.q-btn > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.q-btn svg {
+  display: block;
+}
+
+.q-btn:hover { background: var(--panel-2); color: var(--text); }
+
+.turn-acts {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 0; /* 顶部零间距，与 turn-body 底边缘像素级贴合 */
+  margin-bottom: 33px; /* 与前一个 agent 处理流程间距加大 5px（28px -> 33px） */
+  padding-top: 0;
+  height: 1.4em;
+  font-family: var(--ui-font, var(--sans));
+  font-size: var(--ui-fs-base);
+  box-sizing: border-box;
+  opacity: 0; /* 默认不常驻显示，常驻保留占位 */
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+/* 鼠标悬停在 Agent 处理区域或操作栏自身时淡入显示 */
+.turn-section:has(.turn-flow:hover) .turn-acts,
+.turn-acts:hover,
+.turn-acts:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.turn-acts .q-btn {
+  width: 1.4em; height: 1.4em;
+  font-size: inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
+}
+
+.turn-acts .q-btn svg {
+  width: 0.88em; height: 0.88em; display: block;
+}
+
+.turn-acts .q-btn:disabled { opacity: .45; cursor: default; }
+
+.turn-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
+
+/* 本轮结束时刻：高度与中心线锁定 1.4em，文字 line-height: 1 垂直居中，与左侧复制/fork 按钮图形等高顶底绝对平齐 */
+.turn-acts-time {
+  margin-left: 6px;
+  height: 1.4em;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  font-size: inherit;
+  font-family: inherit;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+/* 本轮结束时刻：跟随分叉按钮右侧，等宽数字避免逐轮宽度跳动 */
+/* 待消费气泡左侧的操作组：hover 整行时浮现（按钮在气泡外左侧，行 hover 保证移过去不消失） */
+.user-bubble.pending { position: relative; }
+
+.qk-acts {
+  position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  display: none; gap: 2px; align-items: center;
+  background: var(--ctl-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 2px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.msg.user:has(> .user-bubble.pending):hover .qk-acts { display: flex; }
+
+/* 气泡内按钮图标与文字等高（气泡字号 var(--ui-fs-md)） */
+.user-bubble .qk-acts .q-btn { width: 1.05em; height: 1.05em; }
+
+.user-bubble .qk-acts .q-btn svg { width: 100%; height: 100%; display: block; }
+
+.atchip {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 5px;
+  max-width: 180px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: var(--ui-fs-xs); color: var(--dim);
+}
+
+.atchip .at-ic { flex: none; display: inline-flex; align-items: center; color: var(--faint); line-height: 1; }
+
+.atchip .at-ic svg { display: block; width: 12px !important; height: 12px !important; margin-top: -1.2px; }
+
+.atchip .at-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; display: inline-flex; align-items: center; }
+
+.atchip-x {
+  position: absolute; top: -6px; right: -6px;
+  width: 15px; height: 15px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--line-soft);
+  background: var(--panel); color: var(--dim);
+  cursor: pointer; font-size: 10px; line-height: 1;
+}
+
+.atchip-x:hover { color: var(--text); background: var(--bg); }
+
+.cbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  /* 禁止换行：换行会让按钮脱离弹窗锚点（弹窗按按钮位置锚定）。
+     宽度不足时由 fitComposerBar() 逐级收缩（.bar-N），收缩到底由 #composer min-width 托底 */
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* 底栏子项不压缩：保持自然宽度，溢出交给 fitComposerBar() 检测并逐级收缩；
+   弹性间隔 .sp(flex:1) 独占剩余空间并首先收缩 */
+.cbar > *:not(.sp) { flex: none; }
+
+.cbar > .sp { min-width: 0; }
+
+#modeBtn, #modelBtn, #thinkBtn { font-weight: 500; }
+
+/* 模型名长度不一,模型按钮宽度随内容伸缩,不受共用 180px 上限裁剪 */
+#modelBtn { max-width: none; }
+
+/* 模型供应商图标（设置页同款字形）：仅模型按钮收缩为图标态时显示 */
+#modelIcon { display: none; }
+
+/* 底栏分级收缩：宽度不足时由 JS（fitComposerBar）按溢出程度逐级加 .bar-N。
+   顺序：权限模式→纯图标 → 思考级别→纯图标 → 模型→纯图标 → 隐藏子智能体 → 隐藏后台任务 */
+#composer.bar-1 #modeLabel, #composer.bar-1 #modeBtn .caret-svg { display: none; }
+
+#composer.bar-2 #thinkLabel, #composer.bar-2 #thinkBtn .caret-svg { display: none; }
+
+#composer.bar-3 #modelLabel, #composer.bar-3 #modelBtn .caret-svg { display: none; }
+
+#composer.bar-3 #modelIcon { display: inline; }
+
+#composer.bar-4 #bgSubagentBtn { display: none; }
+
+#composer.bar-5 #bgTaskBtn { display: none; }
+
+/* 后台任务终端按钮 */
+.bg-task-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 8px; border-radius: 999px;
+  color: var(--dim); cursor: pointer;
+  max-width: none;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.bg-task-btn svg { display: block; flex: none; color: inherit; transition: stroke .15s var(--swift), color .15s var(--swift); }
+
+.bg-task-num {
+  font-size: var(--ui-fs-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.bg-task-btn:hover,
+.bg-task-btn.active,
+.bg-task-btn.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.bg-task-btn.has-running .bg-task-num {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 计划模式按钮：权限胶囊右侧以 | 分隔的小按钮；hover 时计划图标换成 X（提示点击即退出） */
+.cbar-sep { color: var(--line); font-size: var(--ui-fs-base); line-height: 1; user-select: none; }
+
+.plan-btn {
+  gap: 5px; padding: 5px 8px; border-radius: 999px; max-width: none;
+  color: var(--accent);
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.plan-btn .plan-ic { display: inline-flex; align-items: center; flex: none; }
+
+.plan-btn .plan-ic svg { display: block; }
+
+.plan-btn .plan-ic > span { display: inline-flex; align-items: center; }
+
+.plan-btn .plan-ic > span:nth-child(2) { display: none; } /* X 默认隐藏，hover 时替换计划图标 */
+
+.plan-btn:hover .plan-ic > span:nth-child(1) { display: none; }
+
+.plan-btn:hover .plan-ic > span:nth-child(2) { display: inline-flex; }
+
+.plan-btn:hover { background: var(--panel-2); color: var(--text); }
+
+/* 上下文占用环：从顶端顺时针增长，分温色；hover 出明细卡 */
+.ctx-ring {
+  width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px; border-radius: 7px; /* 常态占位,hover 时底板出现不推布局(border-box:22=14环+4×2内边距) */
+}
+
+.ctx-ring:hover { background: #363636; } /* hover 高亮圆角正方形底板 */ /* style-token-ignore */
+
+.ctx-ring svg { display: block; }
+
+.ctx-ring .track { fill: none; stroke: var(--panel-3); stroke-width: 2.5; }
+
+.ctx-ring .fill {
+  fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round;
+  stroke-dasharray: 40.84; stroke-dashoffset: 40.84; /* 周长 2π×6.5 */
+  transition: stroke-dashoffset .3s;
+}
+
+.ctx-ring.warm .fill { stroke: var(--orange); }
+
+.ctx-ring.hot .fill { stroke: var(--err); }
+
+/* 发送钮：默认中性底（无内容）；有草稿时 .ready 蓝色高亮；停止形态（.stop / .stopping）红色高亮常驻 */
+.send {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 0; background: hsl(0, 0%, 17%); color: #ffffff;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 0;
+  flex: none;
+  transition: background .15s var(--swift), color .15s var(--swift), filter .15s var(--swift), opacity .15s var(--swift);
+}
+
+.send > span {
+  width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 0;
+}
+
+.send > span > svg { display: block; }
+
+.send:hover:not(:disabled) { filter: brightness(1.25); }
+
+.send.ready { background: hsl(210, 66%, 48%); color: #ffffff; } /* style-token-ignore */
+
+.send.ready:hover:not(:disabled) { filter: brightness(1.12); }
+
+.send.stop, .send.stopping { background: hsl(360, 67%, 60%); color: #ffffff; } /* style-token-ignore */
+
+.send.stop:hover:not(:disabled), .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
+
+/* bash 模式（输入框 ! 前缀）：边框与占位文案着 --bash 色。
+   边框规则压过三态边框（hover line / 聚焦 accent）：dock 与 in-welcome 两态都生效 */
+#composer.bash-mode,
+#composer.bash-mode:hover,
+#composer.bash-mode:focus-within,
+.dock:has(#composer.bash-mode),
+.dock:has(#composer.bash-mode):hover,
+.dock:has(#composer.bash-mode):focus-within { border-color: var(--bash); }
+
+#composer.bash-mode #input::placeholder { color: var(--bash); }
+
+.highlight-mode {
+  color: var(--orange) !important;
+}
+
+#wbProjectMenu.wb-project-menu {
+  position: fixed;
+  left: 12px;
+  bottom: auto;
+  min-width: 240px;
+  width: 250px;
+  max-width: 280px;
+  padding: 0;
+  border-radius: 12px;
+  background: var(--ctl-bg, #222222);
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 500;
+}
+
+#wbProjectMenu.wb-project-menu.open {
+  display: flex;
+  animation: popIn .18s ease-out;
+  --pop-from: 6px;
+}
+
+[data-theme="light"] #wbProjectMenu.wb-project-menu {
+  background: var(--panel, #ffffff);
+  border-color: var(--line);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+.wb-proj-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  box-sizing: border-box;
+}
+
+.wb-proj-search-input::placeholder {
+  color: var(--faint);
+}
+
+.wb-proj-list {
+  flex: 1;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 9px 6px 5px;
+  box-sizing: border-box;
+}
+
+.wb-proj-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: var(--ui-fs-base);
+  transition: background .12s, color .12s;
+  user-select: none;
+}
+
+.wb-proj-item:hover,
+.wb-proj-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .wb-proj-item:hover,
+[data-theme="light"] .wb-proj-item.selected {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.wb-proj-actions {
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 9px 6px 5px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+[data-theme="light"] .wb-proj-search,
+[data-theme="light"] .wb-proj-actions {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.wb-proj-action-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: var(--ui-fs-base);
+  transition: background .12s, color .12s;
+  user-select: none;
+}
+
+.wb-proj-action-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .wb-proj-action-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+#wbBranchMenu {
+  left: 180px;
+  top: 40px;
+  bottom: auto;
+  min-width: 140px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 500;
+}
+
+.kids-in { --pop-from: -4px; animation: popIn .3s ease-out both; }
+
+/* 主对话区思考体入场独立 0.2s（与对话区展开/收起一套） */
+.think-body.kids-in { animation-duration: .2s; }
+
+/* ============================== P7（Composer → Lexical） ============================== */
+/* contentEditable 承接旧 textarea 的 #input 样式：高度随内容自适应（≤120px 由 #input 的
+   max-height 钳制，超出内部滚动——textarea 时代的 resizeInput JS 不再需要），折行语义对齐
+   textarea 的 pre-wrap + break-word；overflow-y 补上（div 无 UA 默认滚动） */
+#input.inp-ce {
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  cursor: text;
+}
+
+/* placeholder 覆盖层：ContentEditable 的占位容器无定位，挂在 .lex-wrap（relative）上对齐
+   #input 文本起点（#input 无 padding，padding 在 #composer），仅空内容时渲染 */
+.lex-wrap { position: relative; }
+
+.lex-ph {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--faint);
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* bash 模式（! 前缀）placeholder 变色：对齐旧 #composer.bash-mode #input::placeholder */
+#composer.bash-mode .lex-ph { color: var(--bash); }
+
+/* 补全 chip（@文件 / 斜杠命令原子节点）：小胶囊，色板取 token，深浅主题各表 */
+.chip {
+  display: inline-block;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 5px;
+  margin: 0 1px;
+  color: var(--text);
+  line-height: 1.45;
+  white-space: pre;
+  vertical-align: baseline;
+}
+
