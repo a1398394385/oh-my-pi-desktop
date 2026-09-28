@@ -2,7 +2,7 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-appearance">，
 // 绑定参照 ui/settings/index.js 的 initSettings（themeSel/fontSel/num-ctl/tgLineNo/tgWrap）。
 import { useEffect, useState, type ReactNode } from "react";
-import { useAppStore, send, toast } from "../../../store";
+import { useAppStore, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -156,7 +156,6 @@ export default function AppearancePage() {
   const pickTheme = (mode: string) => {
     setTheme(mode);
     applyTheme(mode);
-    send({ type: "set_setting", key: "appearance.theme", value: mode });
   };
   const pickFont = (f: string) => {
     setFont(f);
