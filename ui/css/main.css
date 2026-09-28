@@ -12,7 +12,6 @@
   min-width: 0;
 }
 
-
 /* ── 代码块与 Git Diff 隔离：不受全局界面字体/字号影响，锁定等宽与代码字号 ── */
 code,
 pre,
@@ -27,7 +26,6 @@ samp,
   font-family: var(--mono) !important;
 }
 
-
 code,
 pre,
 kbd,
@@ -40,7 +38,6 @@ samp,
 .fd-holder * {
   font-size: var(--code-fs, 12px) !important;
 }
-
 
 /* ── 布局：底座上嵌中栏 / 右栏圆角卡片 ───────────────────────────────── */
 /* ── 全站层级刻度（唯一口径；新增浮层先在这里选档，别再各写各的） ────────────
@@ -100,7 +97,6 @@ samp,
 .resizer:hover::after, body.resizing .resizer::after { background: var(--blue); }
 
 body.resizing { user-select: none; cursor: col-resize; }
-
 
 /* ── 左栏：折叠与过渡动画 ──────────────────────────────────────────── */
 #sidebar {
@@ -169,7 +165,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .nav-item svg { color: var(--dim); flex: none; display: block; margin-top: -0.5px; }
 
-
 .seg {
   display: flex; background: rgba(0,0,0,.22);
   border-radius: 999px; padding: 2px;
@@ -187,7 +182,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 .seg button.on { background: var(--select); color: var(--text); }
 
 .sp { flex: 1; }
-
 
 #tasklist { flex: 1; overflow-y: auto; padding: 2px 10px 10px; min-height: 0; }
 
@@ -209,10 +203,6 @@ body:has(#sidebar.collapsed) #left-resizer {
   padding: 12px 10px 6px;
   letter-spacing: .3px;
   display: flex; align-items: center; justify-content: space-between;
-}
-
-.sec-label .sec-actions {
-  display: flex; align-items: center; gap: 4px;
 }
 
 .sec-label .sec-add,
@@ -389,13 +379,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
 
-.task-error-dot,
-.task .seen-dot { width: 6px; height: 6px; border-radius: 50%; }
-
-.task-error-dot { background: var(--err); }
-
-.task .seen-dot { background: var(--blue); }
-
 /* ZCode 的 hover 行为：Pin 接管同一个前置槽，状态点/转圈不额外挤压标题。 */
 .task:hover .task-indicator { opacity: 0; }
 
@@ -427,12 +410,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 .tpin.on { opacity: 1; color: var(--accent, #4a9eff); } /* style-token-ignore */
 
 .tpin:hover { color: var(--text); background: var(--panel-3); }
-
-.task .mini-spin {
-  /* 运行中 spinner：lucide loader 图标旋转（ZCode TaskListItem 同款，替代原绿圈 border 圈） */
-  flex: none; display: inline-flex; color: var(--dim);
-  animation: taskrot 1s linear infinite;
-}
 
 .proj {
   display: flex; align-items: center; gap: 8px;
@@ -594,8 +571,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .proj .padd:hover { color: var(--text); background: var(--panel-3); }
 
-.empty-hint { color: var(--faint); font-size: var(--ui-fs-sm); padding: 2px 10px 4px 14px; }
-
 /* 项目下会话行与项目组头同骨架(padding 10 + 30px 图标槽 + 4px + 文字)，不再额外缩进 */
 .task.sub { padding-left: 10px; }
 
@@ -618,7 +593,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 
 .more-link:hover { color: var(--text); }
-
 
 .side-foot {
   flex: none;
@@ -646,8 +620,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 
-.sf-tx { display: flex; align-items: center; gap: 6px; min-width: 0; }
-
 .uname {
   font-size: 15px;
   font-weight: 600;
@@ -658,12 +630,6 @@ body:has(#sidebar.collapsed) #left-resizer {
   line-height: 1;
 }
 
-.pro {
-  font-size: var(--ui-fs-xs); color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 4px; padding: 1px 4px; flex: none;
-}
-
 #conn-status { font-size: var(--ui-fs-sm); color: var(--faint); white-space: nowrap; }
 
 #conn-status.ok::before { content: "● "; color: var(--green); }
@@ -671,7 +637,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 #conn-status.bad { color: var(--err); }
 
 #conn-status.bad::before { content: "● "; }
-
 
 /* ── 中栏卡片 ──────────────────────────────────────────────────────── */
 #main {
@@ -712,14 +677,6 @@ body:has(#sidebar.collapsed) .chat-head {
   -webkit-app-region: no-drag;
 }
 
-.chat-head .ttl {
-  font-size: var(--ui-fs-md); font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1;
-}
-
-
 /* 连接看门狗横幅（宿主失联超 30s）：主区 chat-head 下通栏，连上即卸载 */
 .conn-banner {
   flex: none;
@@ -737,7 +694,6 @@ body:has(#sidebar.collapsed) .chat-head {
   min-width: 0;
   color: var(--dim);
 }
-
 
 #stream {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -796,7 +752,6 @@ body:has(#sidebar.collapsed) .chat-head {
   min-width: 0;
 }
 
-
 /* ── 轮次容器与吸顶结构 ── */
 #stream > .turn-section {
   width: 100%;
@@ -811,14 +766,12 @@ body:has(#sidebar.collapsed) .chat-head {
   min-height: 100%;
 }
 
-
 .turn-body {
   width: 100%;
   position: relative;
   padding-bottom: 0;
   margin-bottom: 0;
 }
-
 
 .turn-flow {
   padding-top: 15px; /* 与后方 agent 处理流程间距再加大 5px（10px -> 15px） */
@@ -827,7 +780,6 @@ body:has(#sidebar.collapsed) .chat-head {
 .turn-flow > *:last-child {
   margin-bottom: 0 !important;
 }
-
 
 /* 吸顶用户消息栏：无横线分隔，下边缘 36px 柔和渐变淡出蒙版 */
 .sticky-user-wrap {
@@ -872,7 +824,6 @@ body:has(#sidebar.collapsed) .chat-head {
   box-sizing: border-box;
 }
 
-
 /* 消息流不加 content-visibility（BUG-017）：首轮 120px 估算与真实高度（38~5000px）
    的纠偏落在视口附近即产生无输入跳帧/闪烁，快滚必现、渲染过一次才消失；
    实测该规则无布局收益（见 BUG-017 的 A/B）。长列表性能走虚拟化路线（U4.3）。 */
@@ -881,7 +832,6 @@ body:has(#right.collapsed) #right-resizer {
   opacity: 0;
   pointer-events: none;
 }
-
 
 /* ── 主对话区域消息布局与气泡 ── */
 .msg {
@@ -922,7 +872,6 @@ body:has(#right.collapsed) #right-resizer {
 [data-theme="light"] .msg.user .user-bubble {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
-
 
 /* ── Markdown 格式渲染支持 ── */
 .md-body {
@@ -1024,7 +973,6 @@ body:has(#right.collapsed) #right-resizer {
   text-decoration: underline;
 }
 
-
 /* 表格渲染 */
 .md-table-wrap {
   width: 100%;
@@ -1057,7 +1005,6 @@ body:has(#right.collapsed) #right-resizer {
 [data-theme="light"] .md-table tr:nth-child(even) {
   background: rgba(0, 0, 0, 0.02);
 }
-
 
 /* 多行代码卡片（遵守代码块字体隔离安全红线） */
 .md-code-block {
@@ -1137,13 +1084,6 @@ body:has(#right.collapsed) #right-resizer {
 
 [data-theme="light"] .md-code-block code {
   color: #24292f;
-}
-
-
-.assistant-text {
-  font-size: var(--ui-fs-md); line-height: 1.6; margin: 12px 0;
-  white-space: pre-wrap; word-break: break-word;
-  color: var(--text);
 }
 
 .act {
@@ -1448,8 +1388,6 @@ body:has(#right.collapsed) #right-resizer {
 
 .bash-row .bash-status .bad { color: var(--err); }
 
-.bash-row .bash-tag { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-
 /* bash 行展开体：等宽输出块（对比 .cmd-card，配色只用既有 token） */
 .bash-out {
   margin: -6px 0 12px;
@@ -1467,16 +1405,9 @@ body:has(#right.collapsed) #right-resizer {
 .act.mention .m-paths { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--code-fs, 12px); }
 
 /* 工具展开卡里的外链：与 md-link 同色，hover 出下划线；⌘+点击走系统浏览器（见 tool-labels.js） */
-.cmd-card-out a.ext-link { color: var(--blue); text-decoration: none; cursor: pointer; }
-
-.cmd-card-out a.ext-link:hover { text-decoration: underline; }
 
 /* ask 展开参数：问题 + 选项列表（★ 推荐项），替代原始 JSON */
 .ask-q + .ask-q { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: 8px; } /* style-token-ignore */
-
-.ask-q-t { color: var(--text); }
-
-.ask-q-h { color: var(--dim); margin-left: 6px; font-size: .92em; }
 
 .ask-opt { color: var(--dim); padding-left: 14px; }
 
@@ -1524,7 +1455,6 @@ body:has(#right.collapsed) #right-resizer {
 [data-theme="light"] .scroll-bottom { box-shadow: 0 4px 12px rgba(0,0,0,.12); } /* style-token-ignore */
 
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
-
 
 /* 审批卡片（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——圆角边框卡 +
    「等待确认」标题 + 问题正文 + 编号选项行（hover 高亮 / 选中底板，数字与回车快捷应答）
@@ -1623,7 +1553,6 @@ body:has(#right.collapsed) #right-resizer {
 
 .approval-confirm:disabled { opacity: .45; cursor: default; }
 
-
 /* /* 输入区：中栏底部内嵌圆角卡片，严格居中并与会话区域同宽对齐 */
 /* 输入区与下方统计行共用同一列宽（同款四段式收缩、居中）；统计行在 dock 之外，不属输入卡片 */
 .dock,
@@ -1673,10 +1602,6 @@ body:has(#right.collapsed) #right-resizer {
   font-variant-numeric: tabular-nums;
 }
 
-.sb-item { display: inline-flex; align-items: baseline; gap: 5px; }
-
-.sb-v { color: var(--dim); }
-
 #composer {
   flex: none;
   margin: 0;
@@ -1688,7 +1613,6 @@ body:has(#right.collapsed) #right-resizer {
   /* 收缩到底后的托底宽度，不再随窗口变窄 */
   min-width: 260px;
 }
-
 
 /* TODO：中栏右上角独立卡片，可收成胶囊 */
 #statusWrap {
@@ -1752,16 +1676,14 @@ body:has(#right.collapsed) #right-resizer {
    外观页可强制（html[data-motion]）：on=无条件减弱 / off=无条件动画。
    特异性 html[data-motion] 前缀压过 media 内规则，system/缺省回落系统行为 */
 @media (prefers-reduced-motion: reduce) {
-  .chat-loading-icon, .task .mini-spin, .task-indicator.loading svg { animation: none; }
+  .chat-loading-icon, .task-indicator.loading svg { animation: none; }
 }
 
 html[data-motion="on"] .chat-loading-icon,
-html[data-motion="on"] .task .mini-spin,
 html[data-motion="on"] .task-indicator.loading svg { animation: none; }
 
 html[data-motion="off"] .chat-loading-icon { animation: chat-load-spin 1s linear infinite; }
 
-html[data-motion="off"] .task .mini-spin,
 html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
 
 /* 排队消息卡：ZCode 二级重叠卡配方（ConversationQueuePanel）——relative z-0 +
@@ -2076,7 +1998,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .ctx-ring.hot .fill { stroke: var(--err); }
 
-
 /* ── 全局二次确认弹窗（严格遵照 ring-pop 系视觉与 ringpop 入场动画规范） ── */
 .confirm-mask {
   position: fixed; inset: 0; z-index: 1000;
@@ -2092,7 +2013,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   white-space: pre-wrap;
   word-break: break-word;
 }
-
 
 /* ── 消息轨道（#msgRail）：主对话区左侧竖条，每条用户消息一道横刻度 ────────
    自轨道中线向两边等距扩张（间隔 30 个屏幕物理像素，数量过多时 JS 等比压缩）；
@@ -2146,23 +2066,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .send.stop:hover:not(:disabled), .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
 
-
 /* ── 居中新建会话页面 ──────────────────────────────────────────────── */
-.welcome-screen {
-  flex: 1; min-height: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 30px 20px 80px; overflow-y: auto;
-}
-
-.welcome-card {
-  width: 100%; max-width: min(720px, 100%);
-  display: flex; flex-direction: column; align-items: center;
-}
-
-.welcome-title {
-  font-size: 26px; font-weight: 500; color: var(--text);
-  margin-bottom: 28px; letter-spacing: 0.5px; text-align: center; user-select: none;
-}
 
 .wb-wrapper {
   width: 100%; position: relative; display: flex; flex-direction: column;
@@ -2192,10 +2096,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   /* 与 #composer min-width 同步托底：窄窗口下整张卡片不再随窗口变窄 */
   min-width: 260px;
   box-sizing: border-box;
-}
-
-.wb-back-card.menu-open {
-  z-index: 10;
 }
 
 [data-theme="light"] .wb-back-card {
@@ -2318,7 +2218,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .th-more svg { transition: transform .2s ease; }
 
 .th-more.open svg { transform: rotate(90deg); }
-
 
 /* 欢迎页输入框卡：独立圆角卡片（ZCode ChatPromptEditor rounded-2xl border bg-input 同款），
    以负 margin 上拉 25px 盖住胶囊卡（.wb-back-card）下缘，自身 z-index 在上；
@@ -2639,8 +2538,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }
 
-.cx-head { display: flex; justify-content: space-between; align-items: center; font-size: var(--ui-fs-md); margin-bottom: 10px; }
-
 .cx-total { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); }
 
 /* 头部「上下文」右侧数值列与 .cx-row 同规格:等宽列右对齐 + 等宽数字,竖线才能与下方行齐 */
@@ -2666,7 +2563,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   font-size: var(--ui-fs-sm); color: var(--faint); padding: 10px 0 4px;
   border-top: 1px solid var(--line); margin-top: 8px;
 }
-
 
 /* ── 右栏卡片：折叠与过渡动画 ──────────────────────────────────────── */
 #right {
@@ -2771,7 +2667,6 @@ body.resizing .resizer {
 }
 
 #capsule .cap-n { flex: none; color: var(--faint); font-size: var(--ui-fs-sm); }
-
 
 /* 侧边面板（子代理 / Git Diff 双 tab） */
 #sidepanel {
@@ -2889,7 +2784,6 @@ body.resizing .resizer {
 
 .pend-ico svg { display: block; }
 
-
 /* 子代理卡片与流 */
 .sub-card {
   display: block; text-align: left;
@@ -2902,22 +2796,11 @@ body.resizing .resizer {
 
 .sub-card:hover { border-color: var(--line); }
 
-.sub-card-head { display: flex; align-items: center; gap: 6px; font-size: var(--ui-fs-base); color: var(--text); }
-
 .sub-card.running .sub-dot { color: var(--green); }
 
 .sub-card.completed .sub-dot { color: var(--green-soft); }
 
 .sub-card.failed .sub-dot { color: var(--err); }
-
-.sub-back:hover { background: var(--panel-2); color: var(--text); }
-
-.sub-title { font-size: var(--ui-fs-sm); color: var(--faint); margin-bottom: 6px; word-break: break-all; }
-
-.sub-stream { display: flex; flex-direction: column; gap: 8px; }
-
-.sub-stream .assistant-text { font-size: var(--ui-fs-base); }
-
 
 /* ---------- 右栏空态启动器（tab 全部关闭，对齐 ZCode side-pane 空态） ---------- */
 /* 居中列：装饰图标 + 标题/副文两行 + 入口钮列表；容器查询宽容器切两列网格 */
@@ -2927,12 +2810,6 @@ body.resizing .resizer {
   padding: 24px 16px; text-align: center;
   container-type: inline-size;
 }
-
-.rt-start-ic { display: inline-flex; align-items: center; color: var(--faint); margin-bottom: 12px; }
-
-.rt-start-tt { font-size: 20px; font-weight: 600; line-height: 28px; color: var(--text); }
-
-.rt-start-sub { font-size: var(--ui-fs-base); line-height: 20px; color: var(--dim); margin: 4px 0 20px; }
 
 .rt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; }
 
@@ -2959,16 +2836,8 @@ body.resizing .resizer {
   .rt-list { display: grid; grid-template-columns: 1fr 1fr; max-width: 480px; }
 }
 
-
 /* ---------- 文件页（读取行点击 / 文件树点击进入） ---------- */
 /* 文件树（空态）行 */
-.ft-row:hover { background: var(--panel-2); }
-
-.ft-root { color: var(--text); font-weight: 500; cursor: default; }
-
-.ft-root:hover { background: none; }
-
-.ft-root .ft-ic { display: inline-flex; align-items: center; color: var(--faint); }
 
 .ft-caret { flex: none; display: inline-flex; align-items: center; width: 12px; color: var(--faint); }
 
@@ -2978,18 +2847,10 @@ body.resizing .resizer {
 
 .ft-file-ic { width: auto; }
 
-.ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-
 /* 路径面包屑：项目内「项目名 > 相对段」/ 项目外全路径，段间 caret 图标，单行截断 */
-.fv-seg { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-
-.fv-crumb .fv-seg:last-child { color: var(--dim); font-weight: 500; }
-
-.fv-sep { flex: none; display: inline-flex; align-items: center; }
 
 /* 文件正文：无卡片底/边框（VSCode 编辑器区即面板本身，不再有内嵌盒），
    行号 gutter 自带左留白，右侧留 8px 呼吸位 */
-.fv-line { display: flex; align-items: baseline; }
 
 .fv-ln {
   flex: none; min-width: 3.5em; padding: 0 10px 0 8px; text-align: right;
@@ -2998,10 +2859,6 @@ body.resizing .resizer {
 
 /* 请求读取的行号范围内的行号高亮（只高亮行号，不动内容） */
 .fv-ln.hl { color: var(--accent); font-weight: 600; }
-
-.fv-tx { white-space: pre; tab-size: 4; color: var(--dim); }
-
-.fv-more { font-size: var(--ui-fs-xs); color: var(--faint); margin-top: 8px; padding: 0 8px; }
 
 .bgcmd-dot {
   width: 7px; height: 7px; border-radius: 50%;
@@ -3047,26 +2904,13 @@ body.resizing .resizer {
   background: rgba(74, 222, 128, 0.08);
 }
 
-
 /* Git Diff 树 / 平铺 / 文件详情 */
-.gd-row {
-  display: flex; align-items: center; gap: 5px;
-  font-size: var(--ui-fs-sm); padding: 3px 8px;
-  border-radius: 5px; min-width: 0;
-  cursor: pointer; color: var(--dim);
-}
-
-.gd-row:hover { background: var(--panel-2); color: var(--text); }
 
 .gd-caret { font-size: var(--ui-fs-xs); color: var(--faint); width: 10px; flex-shrink: 0; display: inline-flex; align-items: center; }
 
 .gd-caret svg { transition: transform .3s ease; }
 
 .gd-caret.open svg { transform: rotate(90deg); }
-
-.gd-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-
-.gd-count { font-size: var(--ui-fs-xs); color: var(--faint); margin-left: auto; flex-shrink: 0; }
 
 .gd-badge {
   font-family: var(--mono) !important; font-size: var(--ui-fs-xs);
@@ -3104,16 +2948,6 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
 
 .ldiff-row { display: flex; min-width: 100%; width: 100%; }
 
-.ldiff-added {
-  background: color-mix(in srgb, var(--diff-added) 14%, transparent);
-  box-shadow: inset 3px 0 0 var(--diff-added);
-}
-
-.ldiff-removed {
-  background: color-mix(in srgb, var(--diff-removed) 14%, transparent);
-  box-shadow: inset 3px 0 0 var(--diff-removed);
-}
-
 /* 行号 gutter：sticky 左钉随横滚固定，右对齐等宽数字；增删行 gutter 底与行
    一致（18% 混色）+ 同色文字，上下文行回底色弱行号 */
 .ldiff-gutter {
@@ -3124,31 +2958,16 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   font-variant-numeric: tabular-nums;
 }
 
-.ldiff-added .ldiff-gutter {
-  background: color-mix(in srgb, var(--diff-added) 18%, var(--bg));
-  box-shadow: inset 3px 0 0 var(--diff-added);
-  color: var(--diff-added);
-}
-
-.ldiff-removed .ldiff-gutter {
-  background: color-mix(in srgb, var(--diff-removed) 18%, var(--bg));
-  box-shadow: inset 3px 0 0 var(--diff-removed);
-  color: var(--diff-removed);
-}
-
 .ldiff-code { display: block; flex: 1; min-width: 0; padding: 0 12px; white-space: pre; }
 
 /* "\ No newline at end of file" 之类的补丁注记 */
-.ldiff-note { color: var(--faint); }
 
 /* 超出渲染行数上限（host 500k 截断场景）尾部的省略提示 */
-.ldiff-truncated { padding: 4px 12px; color: var(--faint); }
 
 /* 设置开关：行号总开关沿用 data-line-numbers；代码换行沿用 data-code-wrap */
 html[data-line-numbers="off"] .ldiff-gutter { display: none; }
 
 html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break-all; }
-
 
 /* 右键菜单（复制 sessionId；fixed 定位需 zoom 补偿） */
 .ctx-menu {
@@ -3173,7 +2992,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .ctx-menu button:hover { background: var(--panel-3); }
 
-
 /* ── toast ── */
 #toast {
   position: fixed; bottom: 24px; left: 50%;
@@ -3189,8 +3007,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 /* 子智能体页：列表 + 编辑器双栏 */
 .agents-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-
-.agents-bar-path { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 作用域菜单：宽度 340px，最大高度不超过屏幕高度 2/3，顶部 Profile 固定、工作区表头固定、项目列表滚动 */
 #agentScopeMenu, #skillScopeMenu, #mcpScopeMenu, .scope-menu {
@@ -3277,17 +3093,12 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .st span { font-size: var(--ui-fs-sm); color: var(--faint); }
 
-
 /* --- B3 Git Diff 写操作 + 文件页图片预览（right.js） --- */
 /* 工具条：提交信息输入（.inp 语言，小号 + flex 撑满）+ 提交/推送（.save-btn 小号） */
 .gd-commit-inp {
   flex: 1; min-width: 0; width: auto;
   padding: 4px 9px; font-size: var(--ui-fs-xs);
 }
-
-/* 行内操作组：默认隐身，行 hover 才出现（右侧对齐，不挤文件名） */
-.gd-row:hover .gd-acts,
-.gd-acts:focus-within { opacity: 1; }
 
 /* 行内小图标按钮：透明底 + hover --panel-3；danger 变体 hover 变红提示破坏性 */
 .gd-act {
@@ -3320,7 +3131,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 /* 文件页图片预览：max-width 自适应、--panel-2 底（透明 png 深浅主题均协调）、token 边框圆角 */
 
-
 /* --- 发送钮停止形态（流式中且输入框空 / Esc 示警窗口）：红色高亮常驻 --- */
 .send.stopping {
   background: hsl(360, 67%, 60%);
@@ -3328,7 +3138,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
-
 
 /* --- B2 会话内查找条（⌘F，消息流顶部浮层，仅当前激活会话） --- */
 .find-bar {
@@ -3378,13 +3187,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   display: block;
 }
 
-.find-nav:hover { background: var(--panel-2); color: var(--text); }
-
 .find-flash { animation: findflash 1.6s ease-out; border-radius: 8px; }
 
-
 /* --- B2 上下文明细卡压缩入口（ring-pop 底部全宽小按钮） --- */
-.cx-act { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 
 /* .confirm-btn 小号变体：同边框/底色/圆角语言，尺寸随卡片内缩 */
 .cx-compact-btn {
@@ -3402,7 +3207,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .cx-compact-btn.busy { opacity: .7; cursor: default; }
 
-
 /* --- B1 会话重命名（行内编辑行，复用 .task 布局；编辑行无点击行为，显式关 hover） --- */
 .task.renaming { cursor: default; }
 
@@ -3415,7 +3219,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   padding: 3px 8px; font-size: var(--ui-fs-sm);
 }
 
-
 /* --- B1 归档区（列表底部折叠分组：组头整行可点，条目行纯展示、hover 只亮按钮） --- */
 .arch-head {
   display: flex; align-items: center; gap: 8px;
@@ -3425,13 +3228,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 .arch-head:hover { background: var(--panel-2); color: var(--text); }
-
-.arch-head .aname {
-  flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.arch-head .acount { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); }
 
 /* 条目容器：grid 行高 0fr↔1fr 过渡，与 .proj-kids 项目分组同一套动画 */
 .arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
@@ -3510,11 +3306,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   color: #ffffff;
 }
 
-
 /* --- C2 消息分叉按钮 + 分支树 tab --- */
 /* 分叉按钮已移到一轮 output 结尾（.turn-acts），气泡旁只留排队操作组 */
 /* 分支树列表：整行可点（切换会话）才挂 hover 高亮；当前支行不可点、仅 accent 边框标示 */
-.bt-list { padding: 6px 8px; }
 
 .bt-row {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
@@ -3530,49 +3324,17 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .bt-row.cur:hover { background: none; }
 
-.bt-meta { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
-
 /* 子分支缩进 + 竖线引导线（每深一级嵌套一层容器，深度不限样式统一） */
-.bt-kids { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
 
 /* 空态提示 */
-.bt-empty { padding: 18px 14px; color: var(--faint); font-size: var(--ui-fs-base); line-height: 1.6; }
-
 
 /* 会话树页（/tree 右栏版）：条目行为主体，树形引导线走等宽前缀列 */
-.st-page { display: flex; flex-direction: column; height: 100%; }
-
-.st-bar { padding: 6px 8px 0; }
-
-.st-list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
 
 /* 整行可点（跳转）才挂 hover 高亮；导航进行中整行禁用 */
-.st-row {
-  display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left;
-  border: none; border-radius: var(--r-md); background: none; padding: 4px 6px; font: inherit;
-  color: var(--dim); cursor: pointer;
-  transition: background .12s var(--swift), color .12s var(--swift);
-}
-
-.st-row:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
-
-.st-row:disabled { opacity: .55; cursor: default; }
 
 /* 树形前缀列：等宽才能保证导轨对齐（CJK 不进这一列） */
-.st-prefix {
-  flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--ui-fs-xs); color: var(--faint); white-space: pre;
-}
-
-.st-rail { display: inline-block; width: 3ch; }
-
-.st-conn { color: var(--faint); }
 
 /* 行文本：截断单行；角色着色（token 语义对齐 chat 区 user/assistant/tool 层次） */
-.st-text {
-  flex: 1; min-width: 0; font-size: var(--ui-fs-base);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 
 .st-user { color: var(--accent); }
 
@@ -3583,23 +3345,12 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .st-sys { color: var(--faint); font-size: var(--ui-fs-xs); }
 
 /* 活跃路径（根→当前叶）标记：accent 圆点 + 文本提亮 */
-.st-dot { color: var(--accent); margin-right: 4px; }
-
-.st-row.on-path .st-text { color: var(--text); }
-
-.st-row.on-path .st-user { color: var(--accent); }
-
-.st-row.on-path .st-asst { color: var(--green); }
-
-.st-label { color: var(--yellow); }
 
 /* 当前叶徽标 + 时间：右列固定，不随文本截断 */
-.st-ts { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
 
 .st-confirm-text {
   max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
 
 /* ── 会话树全新瀑布流与分叉切换视图 (Session Tree Stream) ── */
 .stream-container {
@@ -3725,15 +3476,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   background: var(--accent);
 }
 
-.stream-node-item.is-user .spine-bullet { border-color: var(--blue); }
-
-.stream-node-item.is-user .spine-bullet::after { background: var(--blue); }
-
-.stream-node-item.is-tool .spine-bullet { border-color: var(--green); }
-
-.stream-node-item.is-tool .spine-bullet::after { background: var(--green); }
-
-
 .node-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -3797,7 +3539,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border: 1px solid rgba(254, 188, 46, 0.3);
 }
 
-
 .node-summary {
   flex: 1;
   min-width: 0;
@@ -3805,12 +3546,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
-}
-
-.node-summary.code-text {
-  font-family: var(--mono);
-  font-size: var(--code-fs);
-  color: var(--dim);
 }
 
 .node-meta {
@@ -3835,7 +3570,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   color: var(--faint);
 }
 
-
 .node-card .ed-arrow {
   color: var(--faint);
   display: inline-flex;
@@ -3856,7 +3590,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   transform: rotate(90deg);
   color: var(--accent);
 }
-
 
 .node-detail-panel {
   padding: 10px 12px;
@@ -3892,7 +3625,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-top: 1px solid var(--line-soft);
 }
 
-
 /* 分叉点分段与分支切换区域 */
 .stream-section-block {
   position: relative;
@@ -3904,7 +3636,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   width: 100%;
   animation: branch-section-fade-in .18s ease-out;
 }
-
 
 /* 分叉点切换器 */
 .stream-fork-hub {
@@ -4035,7 +3766,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-radius: 4px;
 }
 
-
 /* ── 阶段5：右栏终端 + 浏览器 pane ───────────────────────────────────── */
 
 /* xterm.js 结构样式：内联自 @xterm/xterm css（MIT，随 node_modules 版本升级时同步核对）。
@@ -4048,19 +3778,16 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     -webkit-user-select: none;
 }
 
-
 .xterm.focus,
 .xterm:focus {
     outline: none;
 }
-
 
 .xterm .xterm-helpers {
     position: absolute;
     top: 0;
     z-index: 5;
 }
-
 
 .xterm .xterm-helper-textarea {
     padding: 0;
@@ -4078,22 +3805,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     resize: none;
 }
 
-
-.xterm .composition-view {
-    background: #000;
-    color: #FFF;
-    display: none;
-    position: absolute;
-    white-space: nowrap;
-    z-index: 1;
-}
-
-
-.xterm .composition-view.active {
-    display: block;
-}
-
-
 .xterm .xterm-viewport {
     /* 原库此处为 #000（mac 滚动条不透明背景），本项目隐藏滚动条且主题底色走
        xterm theme.background，改透明让卡片底透出 */
@@ -4107,18 +3818,15 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     bottom: 0;
 }
 
-
 .xterm .xterm-screen {
     position: relative;
 }
-
 
 .xterm .xterm-screen canvas {
     position: absolute;
     left: 0;
     top: 0;
 }
-
 
 .xterm-char-measure-element {
     display: inline-block;
@@ -4129,22 +3837,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     line-height: normal;
 }
 
-
 .xterm.enable-mouse-events {
     cursor: default;
 }
-
 
 .xterm.xterm-cursor-pointer,
 .xterm .xterm-cursor-pointer {
     cursor: pointer;
 }
-
-
-.xterm.column-select.focus {
-    cursor: crosshair;
-}
-
 
 .xterm .xterm-accessibility:not(.debug),
 .xterm .xterm-message {
@@ -4158,11 +3858,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     pointer-events: none;
 }
 
-
 .xterm .xterm-accessibility-tree:not(.debug) *::selection {
   color: transparent;
 }
-
 
 .xterm .xterm-accessibility-tree {
   font-family: monospace;
@@ -4170,12 +3868,10 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   white-space: pre;
 }
 
-
 .xterm .xterm-accessibility-tree > div {
   transform-origin: left;
   width: fit-content;
 }
-
 
 .xterm .live-region {
     position: absolute;
@@ -4185,11 +3881,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     overflow: hidden;
 }
 
-
 .xterm-dim {
     opacity: 1 !important;
 }
-
 
 .xterm-underline-1 { text-decoration: underline; }
 
@@ -4201,11 +3895,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .xterm-underline-5 { text-decoration: dashed underline; }
 
-
 .xterm-overline {
     text-decoration: overline;
 }
-
 
 .xterm-overline.xterm-underline-1 { text-decoration: overline underline; }
 
@@ -4217,22 +3909,18 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .xterm-overline.xterm-underline-5 { text-decoration: overline dashed underline; }
 
-
 .xterm-strikethrough {
     text-decoration: line-through;
 }
-
 
 .xterm-screen .xterm-decoration-container .xterm-decoration {
 	z-index: 6;
 	position: absolute;
 }
 
-
 .xterm-screen .xterm-decoration-container .xterm-decoration.xterm-decoration-top-layer {
 	z-index: 7;
 }
-
 
 .xterm-decoration-overview-ruler {
     z-index: 8;
@@ -4242,12 +3930,10 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     pointer-events: none;
 }
 
-
 .xterm-decoration-top {
     z-index: 2;
     position: relative;
 }
-
 
 /* ── 终端 pane（右栏）：卡片底 + 内边距，隐藏 xterm 原生滚动条（ZCode 同款） ── */
 .tpane {
@@ -4266,7 +3952,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .tpane-host .xterm-viewport { scrollbar-width: none; }
 
 .tpane-host .xterm-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
-
 
 /* ── 浏览器 pane（右栏，复刻 ZCode EmbeddedBrowserPaneParts 布局） ── */
 .bpane {
@@ -4359,7 +4044,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 .bpane-err-acts .btn:hover { background: var(--panel-3); }
-
 
 /* ── P6: streamdown ──
    assistant markdown 渲染引擎换 streamdown（ui-src/components/chat/AssistantMsg.tsx）。
@@ -4626,7 +4310,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-radius: 8px;
 }
 
-
 /* ============================== P7（Composer → Lexical） ============================== */
 /* contentEditable 承接旧 textarea 的 #input 样式：高度随内容自适应（≤120px 由 #input 的
    max-height 钳制，超出内部滚动——textarea 时代的 resizeInput JS 不再需要），折行语义对齐
@@ -4670,7 +4353,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   vertical-align: baseline;
 }
 
-
 /* ── Windows 自绘标题栏（decorations:false；TitleBar.tsx 仅 Windows 渲染）── */
 .app-titlebar {
   position: fixed;
@@ -4706,7 +4388,6 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .titlebar-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); } /* style-token-ignore */
 
 .titlebar-btn.titlebar-close:hover { background: #e81123; color: #fff; } /* style-token-ignore */
-
 
 /* 无边框后内容整体让出标题栏高度；全屏设置弹层同步下移 */
 body.has-titlebar { padding-top: 36px; }

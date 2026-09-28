@@ -42,7 +42,6 @@
   --font-mono: var(--mono);
 }
 
-
 /* ── tokens：底座 + 嵌套卡片 ─────────────────────────────────────────── */
 :root {
   --base:      #292B2C;   /* 窗口底座 */
@@ -145,12 +144,6 @@ button, input, textarea, select {
 }
 
 button { font: inherit; }
-
-.nav-item .kbd {
-  margin-left: auto;
-  color: var(--faint); font-size: var(--ui-fs-sm);
-  letter-spacing: .5px;
-}
 
 .icon-btn {
   border: 0; background: transparent; color: var(--dim);
@@ -346,7 +339,6 @@ svg { vertical-align: middle; }
   filter: brightness(1.1);
 }
 
-
 /* 消息刻度弹出卡：复用 .ring-pop 底色/圆角/阴影/ringpop 动画，与上下文明细卡同款 */
 .rail-pop { max-width: 320px; max-height: 240px; overflow-y: auto; cursor: default; }
 
@@ -418,7 +410,6 @@ svg { vertical-align: middle; }
   color: var(--text);
 }
 
-
 /* ── 统一弹出/展开入场动画：淡入 + 按弹出方向滑入 ──────────────────
    所有菜单弹层与展开体共用。--pop-from 控制起始位移：
    向下弹出 -6px（下拉/右键菜单）｜向上弹出 6px（composer 胶囊）｜列表展开 -4px */
@@ -426,7 +417,6 @@ svg { vertical-align: middle; }
   from { opacity: 0; transform: translateY(var(--pop-from, -6px)); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 
 /* ── 下拉菜单（composer 内 absolute，bottom 定位；随容器 zoom 缩放不错位；宽度调小更紧凑） ── */
 .menu {
@@ -467,7 +457,6 @@ svg { vertical-align: middle; }
 /* 菜单项内图标（分支选项等）：固定 18px 栏宽居中，风格随 FA 图标体系 */
 .menu .mi .mi-ic { width: 18px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
 
-
 /* sigil 补全卡（@ 文件候选 / 行首 / 命令候选）：与输入框卡一模一样的圆角卡片（内容换成候选
    列表），两张卡上下排列——同宽、间距 2px、最大高度 = 输入框卡 2.6 倍（定位/限高由 place.js
    placePaletteCard 计算）。配色与阴影逐项对齐 #composer.in-welcome 卡。 */
@@ -499,7 +488,6 @@ svg { vertical-align: middle; }
 #modelMenu .mi .ck,
 #thinkMenu .mi .ck { color: hsl(0, 0%, 58%); } /* style-token-ignore */
 
-
 /* 权限模式菜单（大行：图标+标题+描述，调小至 280px） */
 .menu.mode { min-width: min(280px, 100%); padding: 6px; }
 
@@ -524,7 +512,6 @@ svg { vertical-align: middle; }
 .menu.mode .mi.off { opacity: .45; cursor: default; }
 
 .menu.mode .mi.off:hover { background: none; }
-
 
 /* 模型菜单（二级级联：一级供应商行，二级模型浮层）。
    容器对齐 ZCode dropdown-menu：rounded-lg(8px) + p-1(4px)；选项间距按需求 5px */
@@ -611,7 +598,6 @@ svg { vertical-align: middle; }
 
 .sp-pop .mi .mi-x:hover { background: var(--panel-2); color: var(--text); }
 
-
 /* 后台命令行（右侧栏） */
 .srow.bgcmd-row { cursor: pointer; user-select: none; }
 
@@ -619,15 +605,12 @@ svg { vertical-align: middle; }
 
 .srow.bgcmd-row.on .bgcmd-caret svg { transform: rotate(0deg); }
 
-
 /* ── 轻量 diff（自研，移植 ZCode lightweight-diff-preview）：行背景 color-mix +
    行首 inset 状态条 + 行号 gutter 着色表达增删，不显示 +/-/空格 marker ── */
 :root {
   --diff-added: var(--green-soft);  /* 增进行主色：14% 行背景 + 18% gutter 底 + 状态条 */
   --diff-removed: var(--err);       /* 删行主色，同上加色规则 */
 }
-
-.set-back .kbd { margin-left: auto; }
 
 /* 页面切换入场：交错上浮 + 去模糊；hidden 切换 display 时自动重放 */
 @keyframes setRise {
@@ -695,10 +678,6 @@ svg { vertical-align: middle; }
 [data-theme="light"] .srow:hover { background: rgba(0,0,0,.02); } /* style-token-ignore */
 
 .srow + .srow { border-top: 1px solid var(--line-soft); }
-
-.srow.unavailable { opacity: .55; }
-
-.srow.unavailable:hover { background: none; }
 
 .srow.disabled { opacity: .45; }
 
@@ -808,8 +787,6 @@ svg { vertical-align: middle; }
 
 .pv .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
 
-.pv:has(.pv-src) .dot { margin-left: 0; }
-
 /* OMP 登录粘贴码弹窗 */
 .lp-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; } /* style-token-ignore */
 
@@ -893,4 +870,3 @@ svg { vertical-align: middle; }
 @keyframes bpane-rot { to { transform: rotate(360deg); } }
 
 /* 滚动条规则见文件开头「全局滚动条统一」段（同一套 hover 才现语义） */
-

@@ -22,10 +22,10 @@ const excludedSegments = new Set(["node_modules", "dist", "out", "release", "tar
 const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
-  // CSS 三域（由 ui/style.css 5603 行机械切分而来，域文件顺序 = 入口 @import 级联顺序）
-  { path: "ui/css/global.css", max: 920 },
-  { path: "ui/css/main.css", max: 4750 },
-  { path: "ui/css/settings.css", max: 1470 },
+  // CSS 三域（由 ui/style.css 5603 行机械切分而来，域文件顺序 = 入口 @import 级联顺序；死类清理后收紧）
+  { path: "ui/css/global.css", max: 880 },
+  { path: "ui/css/main.css", max: 4420 },
+  { path: "ui/css/settings.css", max: 1420 },
 ];
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
 

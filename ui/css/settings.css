@@ -62,7 +62,6 @@
 
 .sc-head .frac { color: var(--dim); font-size: var(--ui-fs-base); }
 
-
 /* ── 设置中心 ── */
 #settings {
   position: fixed; inset: 0; z-index: 300;
@@ -422,7 +421,6 @@
 
 .mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* 向下延展开入场 */ }
 
-
 /* ─── 扩展中心（pg-extensions） ─── */
 .ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 
@@ -659,10 +657,6 @@
 
 [data-theme="light"] .mp-l { background: rgba(0,0,0,.04); } /* style-token-ignore */
 
-.pv-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-
-.pv .pv-src { flex: none; }
-
 .pv .pv-ic { width: 16px; text-align: center; flex: none; }
 
 /* 添加供应商:两列等宽圆角卡片,卡内上下两行(上行名称/下行厂商+已配置数) */
@@ -677,16 +671,12 @@
 
 .ap-card:hover { background: var(--panel-3); }
 
-.ap-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-base); color: var(--text); }
-
 .ap-card .tag { flex: none; }
 
 /* 两行卡片:上行图标+供应商名,下行左侧已配置徽标、右侧厂商名胶囊 */
 .ap-card2 { flex-direction: column; align-items: stretch; gap: 7px; padding: 15px 16px; }
 
 .ap-l1, .ap-l2 { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-
-.ap-conf { flex: none; margin-left: auto; font-size: var(--ui-fs-xs); color: var(--green); }
 
 .ap-vendor { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -765,7 +755,6 @@
 
 .dl .rv i { display: block; font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); margin-top: 2px; }
 
-
 /* ════════════════════════════════════════════════════════════
    技能页面改版（仿全新设计图）
    ════════════════════════════════════════════════════════════ */
@@ -776,7 +765,6 @@
 
 /* 技能总开关关闭：页面其余控件灰显并禁止交互（同钩子页「请先开启总开关」语义，总开关卡片在容器外不受影响） */
 .skills-off-dim { opacity: .45; pointer-events: none; }
-
 
 /* 单行工具条：作用域胶囊 + 统计 + 更多/刷新/新建 + 搜索框（搜索框靠右，窄宽度优先压缩搜索框/胶囊） */
 .skills-bar {
@@ -796,15 +784,12 @@
 
 .skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 
-.skills-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
-
 /* 统计文案与作用域标签不换行：宽度不足时胶囊标签省略号截断 */
 .skills-bar #skillsTotalCount { white-space: nowrap; }
 
 .skills-bar .scope-sel-btn { min-width: 0; }
 
 .skills-bar .scope-sel-btn > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 
 .skills-search-wrap {
   position: relative;
@@ -845,7 +830,6 @@
 }
 
 .skills-search-input::placeholder { color: var(--faint); }
-
 
 /* 操作按钮组：更多 + 刷新 + 新建（不参与压缩，宽度不足时压缩搜索框/作用域胶囊） */
 .skills-actions-wrap {
@@ -891,7 +875,6 @@
 
 .skills-btn-new:active { transform: scale(.95); }
 
-
 /* 技能卡片列表 */
 .skills-list-wrap {
   margin-top: 4px;
@@ -916,7 +899,6 @@
   color: var(--faint);
   font-size: var(--ui-fs-sm);
 }
-
 
 /* 技能卡片单行 */
 .skill-item-row {
@@ -1021,7 +1003,6 @@
   transform: scale(1.1);
 }
 
-
 /* 技能/MCP 行内编辑区（向下延展）：容器、头、脚与表单体。
    弹窗容器类（modal/backdrop/dialog/head 等）已随弹窗改延展一并删除 */
 .mem-exp-head .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1077,8 +1058,6 @@
   border-top: 1px solid var(--line-soft);
 }
 
-.sem-status { font-size: var(--ui-fs-sm); color: var(--dim); }
-
 /* 延展区底部按钮统一走 .confirm-btn / .confirm-btn.danger（全局二次确认弹窗语言） */
 
 /* ════════════════════════════════════════════════════════════
@@ -1088,7 +1067,6 @@
 .mcp-header { margin-bottom: 25px; }
 
 .mcp-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
-
 
 /* 第一行：作用域胶囊 + 统计 + 搜索框 */
 .mcp-bar-primary {
@@ -1106,9 +1084,6 @@
 }
 
 .mcp-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
-
-.mcp-count-stat { font-size: var(--ui-fs-base); color: var(--dim); }
-
 
 .mcp-search-wrap {
   position: relative;
@@ -1146,7 +1121,6 @@
 }
 
 .mcp-search-input::placeholder { color: var(--faint); }
-
 
 /* 第二行：已安装计数 + 操作按钮 */
 .mcp-bar-secondary {
@@ -1196,7 +1170,6 @@
 
 .mcp-btn-new:active { transform: scale(.95); }
 
-
 /* MCP 列表容器 */
 .mcp-list-wrap {
   margin-top: 4px;
@@ -1222,7 +1195,6 @@
   font-size: var(--ui-fs-sm);
 }
 
-
 /* MCP 服务器条目行 */
 .mcp-server-row {
   display: flex;
@@ -1247,7 +1219,6 @@
 .mcp-server-row.disabled {
   opacity: .6;
 }
-
 
 /* 左侧圆角方块图标与状态点（色值走 token，浅色主题自动适配） */
 .mcp-icon-box {
@@ -1288,7 +1259,6 @@
 .mcp-status-dot.off {
   display: none;
 }
-
 
 /* 中间服务信息 */
 .mcp-server-info {
@@ -1379,7 +1349,6 @@
   border-color: var(--dim);
 }
 
-
 /* 右侧开关控制 */
 .mcp-server-ctrl {
   display: inline-flex;
@@ -1409,25 +1378,9 @@
 /* 表单输入 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
 .mcp-form-input,
 .mcp-form-textarea,
-.mcp-form-select {
-  width: 100%;
-  padding: 6px 10px;
-  background: var(--bg);
-  border: 1px solid var(--line-soft);
-  border-radius: 9px;
-  color: var(--text);
-  font-size: var(--ui-fs-sm);
-  font-family: inherit;
-  outline: none;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
-}
 
 .mcp-form-input:focus,
 .mcp-form-textarea:focus,
-.mcp-form-select:focus {
-  border-color: rgba(74, 158, 255, .5);
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, .13);
-}
 
 .mcp-form-textarea {
   font-family: var(--mono);
@@ -1435,7 +1388,6 @@
 }
 
 body.has-titlebar #settings { top: 36px; }
-
 
 /* ── 设置侧栏拖宽（#setNavResizer，逻辑见 Settings.tsx）与滚动条淡入 ── */
 #setNav { position: relative; }
