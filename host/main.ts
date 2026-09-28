@@ -72,6 +72,8 @@ import {
   mergeHistoryProjects,
   applySleepPrevention,
   applyDesktopEnv,
+  setMcpSharingConfig,
+  deleteMcpSharingConfig,
 } from "./profile.ts";
 import { rebuildScopedModels, modelsPayload, settingsSnapshot, modelCatalog, modelRolesPayload, modelsDefaults } from "./models.ts";
 import { SETTINGS_SCHEMA } from "@oh-my-pi/pi-coding-agent/config/settings";
@@ -2196,6 +2198,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             const cfg = msg.config || {};
             const scope = String(msg.scope ?? "profile");
             const isProject = scope.startsWith("project:");
+            const sourcePath = msg.sourcePath ? String(msg.sourcePath) : undefined;
             // 规则 2：项目作用域禁止配置为 global，强制纠正为 project
             if (isProject && cfg.sharing === "global") {
               cfg.sharing = "project";
@@ -2211,7 +2214,20 @@ const server = Bun.serve<{ sessionId: string | null }>({
               : H.agentDir;
             await mkdir(targetDir, { recursive: true });
             const targetPath = path.join(targetDir, "mcp.json");
-            await updateMCPServer(targetPath, name, cfg);
+
+            const isExternalSource = Boolean(sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath));
+            if (isExternalSource && !msg.forceImport) {
+              // 外部来源解耦：共享模式记录至 omp-desktop.json，不创建本地 shadow 覆盖，保持外部工具动态直读
+              await setMcpSharingConfig(sourcePath!, name, cfg.sharing);
+            } else {
+              // 原生 OMP MCP 或显式导入：写入 mcp.json 并同步记录在 omp-desktop.json
+              await updateMCPServer(targetPath, name, cfg);
+              await setMcpSharingConfig(targetPath, name, cfg.sharing);
+              if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
+                await deleteMcpSharingConfig(sourcePath, name);
+              }
+            }
+
             mcpHealthCache.delete(name);
             ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
             break;
@@ -2221,6 +2237,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
             if (!name) throw new Error("缺少 MCP 服务器名称");
             const src = msg.sourcePath ? String(msg.sourcePath) : undefined;
             const userPath = path.join(H.agentDir, "mcp.json");
+            if (src) await deleteMcpSharingConfig(src, name);
+            await deleteMcpSharingConfig(userPath, name);
             if (src && fs.existsSync(src) && (src.endsWith("mcp.json") || src.endsWith(".mcp.json"))) {
               await removeMCPServer(src, name);
             } else {

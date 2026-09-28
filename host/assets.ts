@@ -7,6 +7,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { H } from "./state.ts";
 import {
   loadCapability,
+  clearCapabilityFsCache,
   connectToServer,
   disconnectServer,
   readDisabledServers,
@@ -14,6 +15,7 @@ import {
   isProviderEnabled,
   isUserSourceEnabled,
 } from "./bootstrap.ts";
+import { getMcpSharingConfig } from "./profile.ts";
 
 async function firstHeading(file: string): Promise<string> {
   try {
@@ -614,6 +616,7 @@ export async function probeMcpServerHealth(server: {
 
 // 依据 omp 源码的 mcps capability，发现并整合全局、Profile 及各工作区项目的全部 MCP 服务器
 export async function loadAllMcpScoped() {
+  clearCapabilityFsCache();
   const userMcpPath = path.join(H.agentDir, "mcp.json");
   const [disabledList, forcedList] = await Promise.all([
     readDisabledServers(userMcpPath).catch(() => [] as string[]),
@@ -653,6 +656,26 @@ export async function loadAllMcpScoped() {
   };
 
   const allServersMap = new Map<string, McpServerItem>();
+  const rawFileCache = new Map<string, any>();
+  const readRawSharing = async (filePath?: string, serverName?: string): Promise<"session" | "project" | "global" | undefined> => {
+    if (!filePath || !serverName) return undefined;
+    const desktopSharing = getMcpSharingConfig(filePath, serverName);
+    if (desktopSharing) return desktopSharing;
+    try {
+      let doc = rawFileCache.get(filePath);
+      if (!doc) {
+        if (fs.existsSync(filePath)) {
+          doc = JSON.parse(await readFile(filePath, "utf8"));
+          rawFileCache.set(filePath, doc);
+        }
+      }
+      const raw = doc?.mcpServers?.[serverName]?.sharing;
+      if (raw === "session" || raw === "project" || raw === "global") return raw;
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   // 1. 用户级发现（当前 Profile 及全局外部源，如 ~/.claude.json、~/.cursor/mcp.json、~/.codex/config.toml 等）
   //    不传 includeDisabled：外部用户级来源受「来源」与「外部工具 ~/ 配置」开关约束（同底座运行时加载）
@@ -661,9 +684,11 @@ export async function loadAllMcpScoped() {
     for (const s of userRes.items) {
       const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
       const enabled = isServerEnabled(s.name, s.enabled);
-      const rawSharing = s.sharing ?? (s as any)._config?.sharing;
+      const filePath = s._source?.path ?? userMcpPath;
+      const fileSharing = await readRawSharing(filePath, s.name);
+      const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
       const sharing: "session" | "project" | "global" =
-        rawSharing === "global" ? "global" : "session";
+        (rawSharing === "global" || rawSharing === "project") ? rawSharing : "session";
       allServersMap.set(s.name, {
         name: s.name,
         transport,
@@ -678,7 +703,7 @@ export async function loadAllMcpScoped() {
         source: {
           provider: s._source?.provider ?? "native",
           providerName: s._source?.providerName ?? "OMP",
-          path: s._source?.path ?? userMcpPath,
+          path: filePath,
           level: s._source?.level ?? "user",
         },
         scope: s._source?.level === "project" ? "project" : "profile",
@@ -689,16 +714,68 @@ export async function loadAllMcpScoped() {
     process.stderr.write(`[host] MCP 用户级发现失败: ${err}\n`);
   }
 
+  // 直读当前 Profile 的 mcp.json，确保刚保存的配置与 sharing 字段 100% 准确同步
+  if (fs.existsSync(userMcpPath)) {
+    try {
+      const rawUserDoc = JSON.parse(await readFile(userMcpPath, "utf8"));
+      for (const [name, cfg] of Object.entries<any>(rawUserDoc.mcpServers || {})) {
+        const transport = (cfg.type ?? (cfg.command ? "stdio" : cfg.url ? "http" : "stdio")) as "stdio" | "http" | "sse";
+        const enabled = isServerEnabled(name, cfg.enabled);
+        const rawSharing = getMcpSharingConfig(userMcpPath, name) ?? cfg.sharing;
+        const sharing: "session" | "project" | "global" =
+          (rawSharing === "global" || rawSharing === "project") ? rawSharing : "session";
+        const existing = allServersMap.get(name);
+        if (existing) {
+          existing.command = cfg.command ?? existing.command;
+          existing.args = cfg.args ?? existing.args;
+          existing.url = cfg.url ?? existing.url;
+          existing.headers = cfg.headers ?? existing.headers;
+          existing.env = cfg.env ?? existing.env;
+          existing.cwd = cfg.cwd ?? existing.cwd;
+          existing.sharing = sharing;
+          existing.transport = transport;
+        } else {
+          allServersMap.set(name, {
+            name,
+            transport,
+            command: cfg.command,
+            args: cfg.args,
+            url: cfg.url,
+            headers: cfg.headers,
+            env: cfg.env,
+            cwd: cfg.cwd,
+            enabled,
+            sharing,
+            source: {
+              provider: "native",
+              providerName: "OMP",
+              path: userMcpPath,
+              level: "user",
+            },
+            scope: "profile",
+            status: enabled ? "unknown" : "disabled",
+          });
+        }
+      }
+    } catch {}
+  }
+
   // 2. 项目工作区级发现（各个桌面打开的项目）
   const projectScopeList: { cwd: string; name: string; dir: string; count: number }[] = [];
   for (const cwd of validDesktopProjects()) {
     let count = 0;
+    const primaryOmpDir = nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp");
+    const projMcpFile = path.join(primaryOmpDir, "mcp.json");
+
     try {
       const projRes = await loadCapability<any>("mcps", { cwd });
       for (const s of projRes.items) {
         const isProject = s._source?.level === "project";
         const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
-        const rawSharing = s.sharing ?? (s as any)._config?.sharing;
+        const enabled = isServerEnabled(s.name, s.enabled);
+        const filePath = s._source?.path ?? projMcpFile;
+        const fileSharing = await readRawSharing(filePath, s.name);
+        const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
         const sharing: "session" | "project" | "global" =
           rawSharing === "project" ? "project" : "session"; // 规则2: 项目内禁止 global, 规则1: 缺省 session
         const item: McpServerItem = {
@@ -715,7 +792,7 @@ export async function loadAllMcpScoped() {
           source: {
             provider: s._source?.provider ?? "native",
             providerName: s._source?.providerName ?? "项目配置",
-            path: s._source?.path ?? path.join(cwd, ".omp", "mcp.json"),
+            path: filePath,
             level: s._source?.level ?? "project",
           },
           scope: isProject ? `project:${cwd}` : "profile",
@@ -727,6 +804,54 @@ export async function loadAllMcpScoped() {
       }
     } catch (err) {
       process.stderr.write(`[host] MCP 项目级发现失败 (${cwd}): ${err}\n`);
+    }
+
+    // 直读项目 .omp/mcp.json 确保项目级新增与 sharing 100% 同步
+    if (fs.existsSync(projMcpFile)) {
+      try {
+        const rawProjDoc = JSON.parse(await readFile(projMcpFile, "utf8"));
+        for (const [name, cfg] of Object.entries<any>(rawProjDoc.mcpServers || {})) {
+          const transport = (cfg.type ?? (cfg.command ? "stdio" : cfg.url ? "http" : "stdio")) as "stdio" | "http" | "sse";
+          const enabled = isServerEnabled(name, cfg.enabled);
+          const rawSharing = getMcpSharingConfig(projMcpFile, name) ?? cfg.sharing;
+          const sharing: "session" | "project" | "global" =
+            rawSharing === "project" ? "project" : "session";
+          const existing = allServersMap.get(name);
+          if (existing) {
+            existing.command = cfg.command ?? existing.command;
+            existing.args = cfg.args ?? existing.args;
+            existing.url = cfg.url ?? existing.url;
+            existing.headers = cfg.headers ?? existing.headers;
+            existing.env = cfg.env ?? existing.env;
+            existing.cwd = cfg.cwd ?? existing.cwd ?? cwd;
+            existing.sharing = sharing;
+            existing.transport = transport;
+          } else {
+            allServersMap.set(name, {
+              name,
+              transport,
+              command: cfg.command,
+              args: cfg.args,
+              url: cfg.url,
+              headers: cfg.headers,
+              env: cfg.env,
+              cwd: cfg.cwd ?? cwd,
+              enabled,
+              sharing,
+              source: {
+                provider: "native",
+                providerName: "项目配置",
+                path: projMcpFile,
+                level: "project",
+              },
+              scope: `project:${cwd}`,
+              projectName: path.basename(cwd),
+              status: enabled ? "unknown" : "disabled",
+            });
+            count++;
+          }
+        }
+      } catch {}
     }
 
     // 额外兼容如 etower-agent 的 config/mcp-servers.json
@@ -766,8 +891,6 @@ export async function loadAllMcpScoped() {
         }
       } catch {}
     }
-
-    const primaryOmpDir = nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp");
     projectScopeList.push({ cwd, name: path.basename(cwd), dir: primaryOmpDir, count });
   }
 

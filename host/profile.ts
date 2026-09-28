@@ -56,9 +56,24 @@ export function readDesktopProjects(): DesktopProjects {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
     const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-    return { allProjects: strs(raw.allProjects), removedProjects: strs(raw.removedProjects), expandedProjects: strs(raw.expandedProjects), pinnedSessions: strs(raw.pinnedSessions), archivedSessions: strs(raw.archivedSessions) };
+    const mcpSharing: Record<string, "session" | "project" | "global"> = {};
+    if (raw.mcpSharing && typeof raw.mcpSharing === "object") {
+      for (const [k, v] of Object.entries<any>(raw.mcpSharing)) {
+        if (v === "session" || v === "project" || v === "global") {
+          mcpSharing[k] = v;
+        }
+      }
+    }
+    return {
+      allProjects: strs(raw.allProjects),
+      removedProjects: strs(raw.removedProjects),
+      expandedProjects: strs(raw.expandedProjects),
+      pinnedSessions: strs(raw.pinnedSessions),
+      archivedSessions: strs(raw.archivedSessions),
+      mcpSharing,
+    };
   } catch {
-    return { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [] };
+    return { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [], mcpSharing: {} };
   }
 }
 
@@ -69,6 +84,47 @@ export async function saveDesktopProjects() {
     base = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
   } catch {}
   await writeFile(H.desktopProjectsPath, JSON.stringify({ ...base, ...H.desktopProjects }, null, 2));
+}
+
+export function computeMcpSharingKey(sourcePath: string, name: string): string {
+  return `${path.resolve(sourcePath)}::${name.trim()}`;
+}
+
+export function getMcpSharingConfig(sourcePath?: string, name?: string): "session" | "project" | "global" | undefined {
+  if (!sourcePath || !name) return undefined;
+  const key = computeMcpSharingKey(sourcePath, name);
+  const val = H.desktopProjects?.mcpSharing?.[key];
+  if (val === "session" || val === "project" || val === "global") return val;
+  return undefined;
+}
+
+export async function setMcpSharingConfig(sourcePath: string, name: string, mode: "session" | "project" | "global" | null): Promise<void> {
+  if (!H.desktopProjects.mcpSharing) H.desktopProjects.mcpSharing = {};
+  const key = computeMcpSharingKey(sourcePath, name);
+  if (!mode || mode === "session") {
+    // 缺省/会话级不冗余落盘（未记录者即默认 session，保持配置精炼）
+    delete H.desktopProjects.mcpSharing[key];
+  } else {
+    H.desktopProjects.mcpSharing[key] = mode;
+  }
+  await saveDesktopProjects();
+}
+
+export async function deleteMcpSharingConfig(sourcePath?: string, name?: string): Promise<void> {
+  if (!sourcePath || !name || !H.desktopProjects.mcpSharing) return;
+  const key = computeMcpSharingKey(sourcePath, name);
+  if (key in H.desktopProjects.mcpSharing) {
+    delete H.desktopProjects.mcpSharing[key];
+    await saveDesktopProjects();
+  }
+}
+
+export async function migrateMcpSharingConfig(oldSourcePath: string, oldName: string, newSourcePath: string, newName: string): Promise<void> {
+  const current = getMcpSharingConfig(oldSourcePath, oldName);
+  if (current) {
+    await deleteMcpSharingConfig(oldSourcePath, oldName);
+    await setMcpSharingConfig(newSourcePath, newName, current);
+  }
 }
 
 // 历史扫描出的新 project 并入所有项目列表（尾部追加）；返回是否有新增。

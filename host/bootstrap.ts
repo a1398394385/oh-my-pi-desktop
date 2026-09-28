@@ -64,6 +64,7 @@ export const { isUserQueuedMessage, isHiddenUserCompanion, toRestoredQueuedMessa
   "@oh-my-pi/pi-coding-agent/session/queued-messages"
 );
 export const { loadCapability } = await import("@oh-my-pi/pi-coding-agent/discovery");
+export const { clearCache: clearCapabilityFsCache } = await import("@oh-my-pi/pi-coding-agent/capability/fs");
 export const {
   setMcpServerEnabled,
   addMCPServer,

@@ -93,7 +93,14 @@ export const sessions = new Map<string, PoolEntry>();
 export const defaultCwd = os.homedir();
 
 // 桌面项目清单（当前 profile 配置目录下 omp-desktop.json，全路径记录）
-export type DesktopProjects = { allProjects: string[]; removedProjects: string[]; expandedProjects: string[]; pinnedSessions: string[]; archivedSessions: string[] };
+export type DesktopProjects = {
+  allProjects: string[];
+  removedProjects: string[];
+  expandedProjects: string[];
+  pinnedSessions: string[];
+  archivedSessions: string[];
+  mcpSharing?: Record<string, "session" | "project" | "global">;
+};
 export type DesktopEnv = { httpProxy: string; noProxy: string; caCerts: string };
 
 export const H = {
@@ -112,7 +119,7 @@ export const H = {
   desktopEnv: { httpProxy: "", noProxy: "", caCerts: "" } as DesktopEnv,
   // 桌面项目清单
   desktopProjectsPath: "",
-  desktopProjects: { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [] } as DesktopProjects,
+  desktopProjects: { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [], mcpSharing: {} } as DesktopProjects,
   // 模型目录（随 profile / 登录 / 启停刷新）
   availableModels: [] as any[],
   scopedModels: [] as any[],

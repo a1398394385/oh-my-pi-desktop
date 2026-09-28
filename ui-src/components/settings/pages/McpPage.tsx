@@ -353,7 +353,9 @@ interface McpEditorProps {
 }
 function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps) {
   const isNew = !server;
-  const targetScope = defaultScope === "all" ? "profile" : defaultScope;
+  const targetScope = server?.scope && server.scope !== "project"
+    ? server.scope
+    : (defaultScope === "all" ? "profile" : defaultScope);
   const isProjectScope = targetScope !== "profile";
   const [name, setName] = useState(server?.name || "");
   const [transport, setTransport] = useState(server?.transport || "stdio");
@@ -465,7 +467,13 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
       config.url = serverObj.url;
       if (serverObj.headers && Object.keys(serverObj.headers).length) config.headers = serverObj.headers;
     }
-    send({ type: "save_mcp_server", name: name.trim(), config, scope: targetScope });
+    send({
+      type: "save_mcp_server",
+      name: name.trim(),
+      config,
+      scope: targetScope,
+      sourcePath: server?.source?.path,
+    });
     onClose();
     toast(`已保存 MCP 服务器 "${name.trim()}"`);
   };
@@ -555,13 +563,14 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                 ))
               : [
                   ["session", "会话私有 (默认)"],
-                  ["global", "全局共享 (跨项目)"],
+                  ["project", "项目共享 (按项目隔离)"],
+                  ["global", "全局共享 (跨项目单例)"],
                 ].map(([m, label]) => (
                   <button
                     key={m}
                     type="button"
                     className={`mcp-type-pill${sharing === m ? " on" : ""}`}
-                    onClick={() => setSharing(m as "session" | "global")}
+                    onClick={() => setSharing(m as "session" | "project" | "global")}
                   >
                     {label}
                   </button>
@@ -571,7 +580,9 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
             {sharing === "global"
               ? "跨项目所有会话复用同一单例进程，不暴露工作区目录，适合网络搜索/文档检索类无状态工具。"
               : sharing === "project"
-              ? "当前项目内的所有会话复用同一单例进程，避免重复开销，适合代码索引等工具。"
+              ? isProjectScope
+                ? "当前项目内的所有会话复用同一单例进程，避免重复开销，适合代码索引等工具。"
+                : "全局统一定义，运行时按各项目分别维护单例进程，同一项目内的所有会话共享该项目实例。"
               : "每个会话独占子进程与工作区目录，会话结束时即释放，隔离性最高。"}
           </div>
         </div>

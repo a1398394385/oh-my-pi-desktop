@@ -30,7 +30,7 @@ const ALLOWED_EDGES = new Set([
   "main.ts→assets.ts", "main.ts→stats.ts", "main.ts→translate.ts", "main.ts→limits",
   "profile.ts→state.ts", "profile.ts→bootstrap.ts", "profile.ts→models.ts",
   "models.ts→state.ts", "models.ts→bootstrap.ts",
-  "assets.ts→state.ts", "assets.ts→bootstrap.ts",
+  "assets.ts→state.ts", "assets.ts→bootstrap.ts", "assets.ts→profile.ts",
   "stats.ts→bootstrap.ts",
   // 扩展中心（/extensions 搬移植）：extensions.ts 经 bootstrap 拿 SDK 句柄、读 H 状态，
   // main.ts 挂四个 RPC 分发（同 assets.ts 的接入形状）
