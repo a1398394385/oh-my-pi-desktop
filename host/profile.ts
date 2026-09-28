@@ -9,6 +9,7 @@ import { readdir, writeFile } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings } from "./bootstrap.ts";
 import { rebuildScopedModels } from "./models.ts";
+import type { AcpNudgeConfig } from "./acp-state.ts";
 
 // ---------- 桌面环境（agentDir 下 desktop-env.json：代理/CA 证书） ----------
 export function defaultDesktopEnv(): DesktopEnv {
@@ -260,4 +261,93 @@ export async function applyProfile(profileName: string) {
   process.stderr.write(
     `[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length} [t=${t0.toFixed(0)}ms→${performance.now().toFixed(0)}ms, 总耗时 ${(performance.now() - t0).toFixed(0)}ms]\n`,
   );
+}
+
+// ---------- 实验性功能开关（omp-desktop.json 的 acp / sessionContext 段） ----------
+// 自 main.ts 平移：桌面级配置读写与 profile 同住一个 omp-desktop.json，归本模块。
+
+/** 读 omp-desktop.json 原始对象（读失败返回空对象）。 */
+export function readAcpRaw(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+export function readAcpNudgeConfig(): AcpNudgeConfig {
+  const fallback: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
+  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
+  if (!acp || typeof acp !== "object") return fallback;
+  const parse = (v: unknown, dflt: number): number => {
+    if (typeof v === "number" && v > 0 && v <= 1) return v;
+    if (typeof v === "string") {
+      const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(v);
+      if (m) return Number(m[1]) / 100;
+    }
+    return dflt;
+  };
+  return {
+    maxContextLimit: parse(acp.maxContextLimit, 0.55),
+    minContextLimit: parse(acp.minContextLimit, 0.45),
+  };
+}
+
+/** 读取完整的 ACP 上下文压缩配置对象。 */
+export function readAcpConfig(): {
+  enabled: boolean;
+  maxContextLimit: string;
+  minContextLimit: string;
+  contextWindow: string;
+  candidates: boolean;
+  protectUserMessages: boolean;
+  systemPrompt: boolean;
+} {
+  const raw = readAcpRaw();
+  const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
+  const fmtLimit = (v: unknown, dflt: string): string => {
+    if (typeof v === "number" && v > 0 && v <= 1) return `${Math.round(v * 100)}%`;
+    if (typeof v === "string" && v.trim()) return v.trim();
+    return dflt;
+  };
+  return {
+    enabled: acp.enabled !== false,
+    maxContextLimit: fmtLimit(acp.maxContextLimit, "55%"),
+    minContextLimit: fmtLimit(acp.minContextLimit, "45%"),
+    contextWindow: typeof acp.contextWindow === "string" ? acp.contextWindow : (acp.contextWindow ? String(acp.contextWindow) : ""),
+    candidates: acp.candidates === true,
+    protectUserMessages: acp.protectUserMessages !== false,
+    systemPrompt: acp.systemPrompt === true,
+  };
+}
+
+/** ACP 总开关（omp-desktop.json 的 acp.enabled）。缺省/非法值按开启处理，
+ *  保持引入开关之前的行为——只有显式写 false 才关闭。 */
+export function readAcpEnabled(): boolean {
+  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
+  if (!acp || typeof acp !== "object") return true;
+  return acp.enabled !== false;
+}
+
+/** 写回 acp.enabled：先读盘再覆盖，保留 omp-desktop.json 的其他键与 acp 段内其他字段。 */
+export async function writeAcpEnabled(enabled: boolean): Promise<void> {
+  const raw = readAcpRaw();
+  const acp = raw.acp && typeof raw.acp === "object" ? (raw.acp as Record<string, unknown>) : {};
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, enabled } }, null, 2));
+}
+
+/** 历史会话检索（read_session_context）总开关（omp-desktop.json 的 sessionContext.enabled）。
+ *  与 readAcpEnabled 同语义：缺省/非法值按开启处理，只有显式写 false 才关闭。 */
+export function readSessionContextEnabled(): boolean {
+  const section = readAcpRaw().sessionContext as Record<string, unknown> | undefined;
+  if (!section || typeof section !== "object") return true;
+  return section.enabled !== false;
+}
+
+/** 写回 sessionContext.enabled：先读盘再覆盖，保留 omp-desktop.json 的其他键与段内其他字段。 */
+export async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
+  const raw = readAcpRaw();
+  const section =
+    raw.sessionContext && typeof raw.sessionContext === "object" ? (raw.sessionContext as Record<string, unknown>) : {};
+  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, sessionContext: { ...section, enabled } }, null, 2));
 }

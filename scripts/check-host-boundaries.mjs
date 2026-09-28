@@ -46,6 +46,19 @@ const ALLOWED_EDGES = new Set([
   "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
   // 计划模式域：main.ts 挂 /plan 分发与 plan_mode RPC；审批/输出桥与事件戳在 state
   "main.ts→plan.ts", "plan.ts→bootstrap.ts", "plan.ts→state.ts",
+  // 会话生命周期域：main.ts 挂 create/load 分发；生命周期依赖 plan（恢复计划模式）、
+  // queue（排队竞态兜底）、profile（实验开关）、assets（插件/钩子开关）
+  "main.ts→session-lifecycle.ts",
+  "session-lifecycle.ts→state.ts", "session-lifecycle.ts→bootstrap.ts",
+  "session-lifecycle.ts→goal.ts", "session-lifecycle.ts→acp-state.ts",
+  "session-lifecycle.ts→acp-context.ts", "session-lifecycle.ts→acp-tools.ts",
+  "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
+  "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
+  "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
+  // 排队消息域：followUp/steering 视图、park 暂存与立即发送/放回/删除
+  "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
+  // 实验性功能开关（acp/sessionContext 段）与 profile 同住 omp-desktop.json
+  "profile.ts→acp-state.ts",
 ]);
 
 const files = readdirSync(hostDir).filter((f) => f.endsWith(".ts"));
