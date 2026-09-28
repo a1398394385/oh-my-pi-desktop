@@ -62,6 +62,7 @@
 ## 验证方法论
 
 - 三冒烟分层：`smoke.ts`（建会话→prompt→落盘→load 恢复历史）、`smoke-approval.ts`（always-ask→审批帧→批准→文件落盘硬断言）、`smoke-subagent.ts`（诱导 task 工具→lifecycle/event 帧）；后加 `smoke-model.ts`（切换+钳制回执）。真模型跑 `OMP_DESKTOP_MODEL=deepseek/deepseek-flash`（默认模型本地 spark 慢到拖死验证）。
+- **`host/` 不在 tsconfig 范围（include 只有 ui-src + vite.config），`tsc --noEmit` 绿对 host 是假象**：未 import 的裸标识符（搬函数漏 export/import）编译期零告警，运行时才 ReferenceError（2026-09-28 拆分第二刀 smoke-branch 实测抓出）。host 改动的最低验证 = `bun build host/main.ts --external '*'`（语法/import 解析）+ 真模型冒烟；`check-host-boundaries` 只管声明边，不管调用点完整性。
 - 冒烟脚本结束要清理测试产生的会话文件和测试产物（fail 路径也要）。
 - GUI 验证用"截图实测"而不是心算坐标：坐标点击失败时先裁剪截图测量元素实际像素位置再重试。
 
