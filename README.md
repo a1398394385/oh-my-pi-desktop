@@ -1,45 +1,45 @@
-# omp desktop（最小 MVP）
+# omp desktop
 
 omp（oh-my-pi）桌面壳。**库内嵌路线**：单个 Bun 宿主进程内嵌 `@oh-my-pi/pi-coding-agent` SDK 持有全部会话（仿 etower-agent 的 session 池形式），不是每会话一个 `omp --mode rpc` 子进程——后者每会话吃一份 ~210MB 底座，9 会话 ≈3GB；本路线实测 2 会话共 385MB（单进程）。
 
 ## 架构
 
 ```
-┌─ Tauri 壳（src-tauri）──────────┐        ┌─ Bun 宿主（host/host.ts）─────────┐
-│ 窗口 + WKWebView 加载 ui/ 静态页 │        │ 库内嵌 omp SDK                     │
-│ spawn 宿主、转发 WS 地址          │ ────▶  │ 进程级底座×1（auth/model/settings）│
-│ 退出时 kill 宿主                 │        │ Map<sessionId, AgentSession>       │
-└─────────────────────────────────┘        │ 每会话私有 AgentRegistry + inMemory│
+┌─ Tauri 壳（src-tauri）──────────┐        ┌─ Bun 宿主（host/）────────────────┐
+│ 窗口 + WKWebView 加载 ui/dist   │        │ 库内嵌 omp SDK                     │
+│ spawn 宿主、转发 WS 动态端口     │ ────▶  │ 进程级底座×1（auth/model/settings）│
+│ 退出时 kill 宿主 + 看门狗限频重启 │        │ Map<sessionId, PoolEntry>          │
+└─────────────────────────────────┘        │ 会话落盘 ~/.omp/agent/sessions/    │
         ▲ WebSocket（动态端口）             └───────────────────────────────────┘
-        └────────────── ui/app.js 直连 ────────┘
+        └────── ui/dist 静态产物直连 ────────────┘
 ```
 
-- 会话 = 宿主进程内一个 `createAgentSession()` 实例，工具在宿主内直接执行，无 host-tool 桥
-- 协议：命令 `{create_session|prompt|get_messages|get_limits|…}` + 窄事件 `{turn_start|text_delta|tool|turn_end}`（按 sessionId 路由）
-- `host/limits/`：供应商套餐限额查询，移植自 token-monitor（`vendor/` 为裁剪后的 CJS 原码），覆盖 kimi/zai(GLM)/openrouter/deepseek/minimax/claude/codex/cursor/antigravity/copilot(grok)/alibaba/commandcode/ollama 共 13 家供应商、22 个 omp provider id；凭证优先经 authStorage 解析（OAuth 自动续期），claude/codex/cursor 等走本机已登录状态发现（cursor 依赖 npm 包 `tokscale` 扫描）；结果缓存 60s，上下文明细卡 hover 时经 `get_limits` 拉取
-- 会话不落盘（`SessionManager.inMemory()`），关进程即丢；持久化/park-revive/审批 UI 均后置
+- 会话 = 宿主进程内一个 `createAgentSession()` 实例，工具在宿主内直接执行，无 host-tool 桥；transcript 按 cwd 分桶持久化（JSONL），重启可恢复
+- 前端 `ui-src/`（React 19 + TypeScript + Vite + Tailwind v4 + zustand + streamdown + Lexical），构建产物 `ui/dist/`
+- `host/limits/`：供应商套餐限额查询（13 家供应商、22 个 omp provider id），凭证优先经 authStorage 解析（OAuth 自动续期）
+- 画像（profile）隔离：`OMP_PROFILE` 指定，默认 `default`；测试强制用 `omp-desktop-test`
 
 ## 跑
 
 ```bash
 bun install
+bun run ui:build            # 先出前端产物（桌面端无 HMR，tauri dev 加载预构建产物）
 OMP_DESKTOP_MODEL=deepseek/deepseek-flash bunx tauri dev   # 默认模型是本地慢模型，建议覆盖
 ```
 
 宿主可独立验证（不经 Tauri）：
 
 ```bash
-OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke.ts   # 真模型全链路冒烟
-bun scripts/probe-sdk.ts                                          # 仅装配探针
-bun scripts/probe-asset-sources.ts                                # 来源开关（扩展页「来源」/「外部工具 ~/ 配置」）对资产列表的约束
+bun scripts/smoke.ts               # 真模型全链路冒烟（建会话→prompt→落盘→load 恢复）
+bun scripts/probe-sdk.ts           # 仅装配探针
+bun scripts/probe-asset-sources.ts # 来源开关对资产列表的约束
 ```
 
-## 验证记录（2026-09-19）
+全仓检查：`bun run check`（编码门禁 / host 边界 / 架构棘轮 / 样式 token 门禁 / typecheck）。冒烟脚本清单见 `scripts/`。
 
-- `scripts/smoke.ts`：create_session → prompt → 收到流式 delta → turn_end → transcript 快照，全部断言通过
-- GUI（CGEvent 自动化 + 截图）：新建会话 → 发消息「打个招呼并用 bash 执行 ls /tmp | head -3」→ 工具行「⚙ bash」在宿主内执行 → 流式回复列出文件名；再建会话 2 并发对话、切回会话 1 历史完整
-- 内存：2 会话（含刚完成的双 turn）单宿主进程 385MB；对照 RPC 子进程路线同规模 ≈660MB+
+## 文档
 
-## 后置（见 docs/handoff-2026-09-19.md 五步路线）
-
-会话落盘与恢复、非活跃会话 park/revive LRU、工具审批 UI、模型切换 UI、打包 sidecar。
+- 开发约束与全站规范：[AGENTS.md](AGENTS.md)
+- 文档写作与生命周期：[docs/documentation.md](docs/documentation.md)
+- 外部依赖踩坑（omp SDK / Tauri / macOS）：[docs/PITFALLS.md](docs/PITFALLS.md)
+- 本仓 bug 事故账本 / 防回归规则 / ADR：`.agents/`（入口 [.agents/README.md](.agents/README.md)）

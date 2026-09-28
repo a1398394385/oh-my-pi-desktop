@@ -19,6 +19,10 @@
 - **模型启用配置是 settings 键 `enabledModels`**（config.yml 顶层），条目可带 `:thinking` 默认级别后缀（如 `kimi-code/k3-256k:max`）；`getAvailable()` 返回全部 93 个，要自己过滤。切模型时按条目应用默认思考级别与 CLI 行为一致。
 - **思考级别 getter 返回钳制后生效值**：`setThinkingLevel("medium")` 后 deepseek-flash 读回 `low`（模型能力钳制）。UI 显示生效值；支持档位来自 `getSupportedEfforts(model)`（`model.reasoning ? model.thinking.efforts ?? [] : []`，pi-catalog/model-thinking）。
 - **`resolveApprovalFromContext` 是 execute-time 解析**（approval.ts:66）：`settings.override("tools.approvalMode", ...)` 运行中生效，下一个工具调用即按新模式。settings 全进程共享 → 切换影响所有会话。settings 缺失时 fail-closed 到 always-ask。**子代理内部强制 yolo**（executor.ts:1008）。
+- **别从底座桶文件 `src/index` import 探针类脚本**：它 re-export 了 html 导出，需要先跑 `gen:tool-views` 生成 `tool-views.generated.js`；从具体模块 import（`./src/sdk`、`./src/session/session-manager`）绕开。
+- **包目录名 ≠ npm 名**：源码仓 `packages/coding-agent` = npm `@oh-my-pi/pi-coding-agent`、`packages/agent` = `@oh-my-pi/pi-agent-core`（Agent 类在 `packages/agent/src/agent.ts`）。SDK 官方嵌入文档在底座源码仓 `docs/sdk.md`，协议面见 `docs/rpc.md`。
+- **idle 会话 park/revive 是底座现成机制**（`src/registry/agent-lifecycle.ts`）：park = dispose 活 session 保留 AgentRef+sessionFile，按需 revive——做非活跃会话内存 LRU 直接用它，不要自造。
+- **transcript 恢复内存放大 ≈20x 磁盘体积**（实测 4.6MB jsonl → +90MB RSS；条目碎的会话放大率高，大 blob 工具结果占比高则低）；且 **dispose 后 RSS 短窗口内不回落**——内存优化/看门狗调参前先量这个。
 - **流式中 `prompt()` 不带 `streamingBehavior` 直接抛 `AgentBusyError`**（agent-session.ts prompt 的 isStreaming 分支）：不是排队而是报错。排队转向必须显式传 `streamingBehavior: "steer"`（idle 时该参数被忽略照常开 turn）。未消费 steer 队列操作走 `agent.peekSteeringQueue()` / `replaceQueues()`（连已 claim 进投递准备的都能取消，followUp 必须原样传回否则被清空）；用户消息识别用 `session/queued-messages` 的 `isUserQueuedMessage`（队列里混有图片描述/magic keyword 等隐藏 notice，不能按 index 盲改）。冒烟见 `scripts/steer-smoke.ts`。
 
 ## 审批与 ExtensionUIContext
