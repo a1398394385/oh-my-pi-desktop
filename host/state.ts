@@ -53,6 +53,9 @@ export type PoolEntry = {
   // 会话请求凭证的粘性键（= sessionManager.getSessionId()）：get_limits 用它与会话
   // 同参解析 getApiKey，多账号时明细卡配额与本会话实际命中的账号一致
   providerSessionId: string;
+  // 缓存保活意愿（keepalive 扩展 isWanted 的源）：turn 真正收尾置 true（有未读产出），
+  // 用户创建/加载/发消息/mark_seen 置 false——只探测用户还没看过的会话
+  keepaliveWanted: boolean;
   transcript: TranscriptItem[];
   assistantDraft: string; // 当前 turn 的流式文本累积，turn_end 时定稿
   thinkingDraft: string;

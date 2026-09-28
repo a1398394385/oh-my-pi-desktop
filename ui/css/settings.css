@@ -1406,3 +1406,8 @@ body.has-titlebar #settings { top: 36px; }
 }
 
 #setNavResizer:hover::after, body.resizing #setNavResizer::after { background: var(--blue); }
+
+/* 缓存保活·保活模型胶囊（.stag 视觉 + 可点击移除，有点击故允许 hover 反馈） */
+.ka-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ka-target { font-size: var(--ui-fs-xs); font-weight: 500; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; cursor: pointer; }
+.ka-target:hover { border-color: var(--dim); }

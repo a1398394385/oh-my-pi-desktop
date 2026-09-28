@@ -333,6 +333,8 @@ async function handlePrompt(
 ) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  // 用户在该会话发消息 = 已读交互：清缓存保活未读态（本轮 turn 收尾会重新置位）
+  entry.keepaliveWanted = false;
   // 附件：图片走 SDK ImageContent；文本类文件内容内联进 prompt（与 CLI 粘贴文件一致）
   const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
   for (const f of files ?? []) {

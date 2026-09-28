@@ -17,6 +17,7 @@ import {
   applyDesktopEnv,
 } from "../profile.ts";
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
+import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { setPlanMode } from "../plan.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
@@ -98,6 +99,19 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   async set_session_context_enabled(ws, msg) {
     // 实验性功能页开关：写入 omp-desktop.json 的 sessionContext.enabled（同上，只影响此后创建的会话）
     await writeSessionContextEnabled(!!msg.enabled);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async set_keepalive_enabled(ws, msg) {
+    // 实验性功能页开关：写入 omp-desktop.json 的 keepalive.enabled（只影响此后创建的会话；
+    // 探测参数在 keepalive 段内其余字段，随 profile 独立）
+    writeKeepaliveEnabled(!!msg.enabled);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async set_keepalive_config(ws, msg) {
+    // 实验性功能页参数：读-合并-写 omp-desktop.json 的 keepalive 段（duration/USD 字段
+    // 接受 "8m"/"$1.5" 字符串；非法值忽略该字段。已打开会话的扩展实例不重读磁盘——
+    // 写入只影响此后创建的会话）
+    writeKeepaliveConfig((msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_hooks_enabled(ws, msg) {

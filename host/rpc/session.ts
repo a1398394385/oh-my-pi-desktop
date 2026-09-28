@@ -80,6 +80,15 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async load_session(ws, msg) {
     await handleLoadSession(ws, msg.path);
   },
+  mark_seen(ws, msg) {
+    // 前端切到某会话（activateSession/openSessionByPath）时通知：已读 = 停缓存保活探测。
+    // 已打开会话的前端切换不发 load_session，必须走本 method 才能触达 host
+    const p = String(msg.path ?? "").trim();
+    if (!p) return;
+    for (const entry of sessions.values()) {
+      if (entry.path === p) entry.keepaliveWanted = false;
+    }
+  },
   async reload_session(ws, msg) {
     // 强制从磁盘重建（外部写入提示条的「重新加载」）：池复用分支只推内存快照，
     // 拿不到外部进程写入的内容；释放模式对齐 delete_session（unsubscribe + 出池）
