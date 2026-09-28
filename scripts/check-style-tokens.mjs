@@ -2,7 +2,7 @@
 // 样式 token 门禁（借鉴 pi-desktop check-style-tokens，按本仓库技术栈裁剪）：
 // 1. ui-src/**/*.tsx 禁止 Tailwind 任意值 utility（text-/rounded-/leading-/tracking-/font-[...]），
 //    字号/行高/圆角/字重必须走 @theme 映射出的 token utility（text-ui-sm/rounded-md 等）；
-// 2. ui/style.css 非 token 定义行禁止裸色值（#abc / #aabbcc / rgb( / rgba( / hsl(），
+// 2. ui/style.css 与 ui/css/*.css 非 token 定义行禁止裸色值（#abc / #aabbcc / rgb( / rgba( / hsl(），
 //    颜色必须走 :root 与 [data-theme] 区定义的 --token 变量。
 // 豁免：
 //   - CSS 行以 -- 开头（token 定义行，:root / @theme / 浅色主题覆盖全走这种行）；
@@ -50,21 +50,25 @@ for (const file of walkTsx(uiSrcDir)) {
   });
 }
 
-// ---- 检查 2：style.css 裸色值（@keyframes 块内与 -- 开头 token 定义行豁免）----
+// ---- 检查 2：ui/style.css + ui/css/*.css 裸色值（@keyframes 块内与 -- 开头 token 定义行豁免）----
 {
-  const lines = readFileSync(styleCss, "utf8").split("\n");
-  let kfDepth = 0; // @keyframes 大括号深度，>0 表示处于动画块内
-  lines.forEach((line, i) => {
-    const startsKf = /@keyframes\b/.test(line);
-    const inKf = startsKf || kfDepth > 0; // 判定用更新前的深度（单行完整 keyframes 也算块内）
-    kfDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-    if (inKf) return;
-    if (/^\s*--/.test(line)) return; // token 定义行
-    if (EXEMPT_MARK.test(line)) return; // 显式豁免
-    if (RAW_COLOR.test(line)) {
-      problems.push(`ui/style.css:${i + 1} 裸色值 —— ${line.trim().slice(0, 90)}（颜色须走 --token 变量；动画/存量遗留可加 /* style-token-ignore */ 豁免）`);
-    }
-  });
+  const cssFiles = [styleCss, ...readdirSync(join(root, "ui", "css")).filter((f) => f.endsWith(".css")).map((f) => join(root, "ui", "css", f))];
+  for (const file of cssFiles) {
+    const rel = relative(root, file);
+    const lines = readFileSync(file, "utf8").split("\n");
+    let kfDepth = 0; // @keyframes 大括号深度，>0 表示处于动画块内
+    lines.forEach((line, i) => {
+      const startsKf = /@keyframes\b/.test(line);
+      const inKf = startsKf || kfDepth > 0; // 判定用更新前的深度（单行完整 keyframes 也算块内）
+      kfDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+      if (inKf) return;
+      if (/^\s*--/.test(line)) return; // token 定义行
+      if (EXEMPT_MARK.test(line)) return; // 显式豁免
+      if (RAW_COLOR.test(line)) {
+        problems.push(`${rel}:${i + 1} 裸色值 —— ${line.trim().slice(0, 90)}（颜色须走 --token 变量；动画/存量遗留可加 /* style-token-ignore */ 豁免）`);
+      }
+    });
+  }
 }
 
 if (problems.length > 0) {
@@ -72,4 +76,4 @@ if (problems.length > 0) {
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-console.log("✓ 样式 token 门禁通过：TSX 无任意值 utility，style.css 无未豁免裸色值");
+console.log("✓ 样式 token 门禁通过：TSX 无任意值 utility，style.css/ui/css 无未豁免裸色值");

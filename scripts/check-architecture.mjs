@@ -22,6 +22,10 @@ const excludedSegments = new Set(["node_modules", "dist", "out", "release", "tar
 const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
+  // CSS 三域（由 ui/style.css 5603 行机械切分而来，域文件顺序 = 入口 @import 级联顺序）
+  { path: "ui/css/global.css", max: 920 },
+  { path: "ui/css/main.css", max: 4750 },
+  { path: "ui/css/settings.css", max: 1470 },
 ];
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
 
@@ -93,7 +97,8 @@ if (requestedBase && requestedBase !== base) {
 }
 
 const files = trackedSourceFiles();
-const locByPath = new Map(files.map((p) => [p, locFor(p)]));
+// HOT_LIMITS 中的非源码路径（如 .css）不入 sourceExtensions（避免误入新文件检查），此处并入行数统计
+const locByPath = new Map([...files, ...HOT_LIMITS.map((h) => h.path)].map((p) => [p, locFor(p)]));
 const addedFiles = addedSourceFiles(base);
 const failures = [];
 
