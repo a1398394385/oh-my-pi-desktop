@@ -44,6 +44,8 @@ const ALLOWED_EDGES = new Set([
   "translate.ts→acp-context.ts",
   // 共享 MCP 连接池：main.ts 驱动生命周期与 RPC，依赖 bootstrap 的 connectToServer 与 state
   "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
+  // 计划模式域：main.ts 挂 /plan 分发与 plan_mode RPC；审批/输出桥与事件戳在 state
+  "main.ts→plan.ts", "plan.ts→bootstrap.ts", "plan.ts→state.ts",
 ]);
 
 const files = readdirSync(hostDir).filter((f) => f.endsWith(".ts"));

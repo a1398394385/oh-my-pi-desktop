@@ -134,3 +134,41 @@ export const H = {
 export const enabledDefaults = new Map<string, string | null>();
 // 登录流程 onPrompt 中转表：id -> resolve
 export const loginPendingPrompts = new Map<number, (text: string) => void>();
+
+// ---------- WS 事件戳与审批桥（main.ts 与领域模块共用的推送基础设施） ----------
+// 事件戳：hi=宿主实例身份（UI 据此识别宿主重启丢旧帧）、seq=进程内单调递增事件序号
+export const HOST_INSTANCE_ID = crypto.randomUUID();
+let eventSeq = 0;
+export function stampEvent<T extends object>(payload: T): T & { hi: string; seq: number } {
+  return { ...payload, hi: HOST_INSTANCE_ID, seq: ++eventSeq };
+}
+
+/** command_output 帧：按 sessionId 找当前挂载连接推送（goal 控制器等跨连接输出用）。 */
+export function pushCommandOutput(sessionId: string, text: string) {
+  const w = sessions.get(sessionId)?.attachedWs as { send(data: string): unknown } | null;
+  if (w) w.send(JSON.stringify({ type: "command_output", sessionId, text }));
+}
+
+// 审批请求挂起表：approval_response / abort 清理在 main.ts 分发侧操作
+export const pendingApprovals = new Map<string, { resolve: (v: string | undefined) => void }>();
+
+/** 审批请求帧：发 approval_request 给 UI，等 approval_response 兑现；agent 中止（AbortSignal）按取消结束 */
+export function requestApproval(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  title: string,
+  options: string[],
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  const requestId = crypto.randomUUID();
+  const { promise, resolve } = Promise.withResolvers<string | undefined>();
+  const settle = (v: string | undefined) => {
+    pendingApprovals.delete(requestId);
+    resolve(v);
+  };
+  pendingApprovals.set(requestId, { resolve: settle });
+  // agent 中止/工具取消：AbortSignal 到来即按取消（undefined）结束挂起
+  signal?.addEventListener("abort", () => settle(undefined), { once: true });
+  ws.send(JSON.stringify(stampEvent({ type: "approval_request", sessionId, requestId, title, options })));
+  return promise;
+}
