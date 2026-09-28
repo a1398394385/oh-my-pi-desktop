@@ -47,11 +47,29 @@ export interface AcpConfig {
   systemPrompt?: boolean;
 }
 
-/** settings 帧负载 = 底座快照 + host 侧实验开关(host/host.ts:213-216 settingsFrame) */
+/** 缓存保活探测参数（host/keepalive-config.ts ProbeConfig，omp-desktop.json keepalive 段真源、随 profile 独立） */
+export interface KeepaliveConfig {
+  /** 保活目标模型 catalog id 列表（"provider/model"），空 = 不探测 */
+  targets: string[];
+  intervalMs: number;
+  /** 0 = 永不因空闲停止 */
+  maxIdleMs: number;
+  minPromptTokens: number;
+  maxOutputTokens: number;
+  /** null = 无上限 */
+  spendCapUsd: number | null;
+  maxMissStreak: number;
+  maxErrorStreak: number;
+  mode: "default" | "smart";
+}
+
+/** settings 帧负载 = 底座快照 + host 侧实验开关(host/frames.ts settingsFrame) */
 export type SettingsPayload = SettingsSnapshot & {
   acpEnabled: boolean;
   acpConfig?: AcpConfig;
   sessionContextEnabled: boolean;
+  keepaliveEnabled: boolean;
+  keepaliveConfig?: KeepaliveConfig;
   hooksEnabled: boolean;
   pluginsEnabled?: boolean;
   skillsEnabled?: boolean;

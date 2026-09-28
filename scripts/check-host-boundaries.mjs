@@ -55,6 +55,13 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
+  // 缓存保活（实验开关条件注入的内联扩展域，同 acp-context 先例；
+  // 三文件平铺 keepalive/keepalive-config/keepalive-lib）
+  "session-lifecycle.ts→keepalive.ts",
+  "session-lifecycle.ts→keepalive-config.ts",
+  "keepalive.ts→keepalive-config.ts", "keepalive.ts→keepalive-lib.ts",
+  // 配置真源=omp-desktop.json keepalive 段（随 profile 独立），读写经 state.ts 的 H
+  "keepalive-config.ts→state.ts",
   // 排队消息域：followUp/steering 视图、park 暂存与立即发送/放回/删除
   "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
   // 实验性功能开关（acp/sessionContext 段）与 profile 同住 omp-desktop.json
@@ -63,6 +70,7 @@ const ALLOWED_EDGES = new Set([
   // （独立成层的原因：settingsFrame 组合 models 快照与 profile/assets 开关，下沉任一侧成环）
   "main.ts→frames.ts",
   "frames.ts→state.ts", "frames.ts→models.ts", "frames.ts→profile.ts", "frames.ts→assets.ts",
+  "frames.ts→keepalive-config.ts", // settings 帧携带 state.json 探测参数（实验性功能页配置化）
   // RPC 处理器九域（第三刀：message 巨型 switch 查表化）：main 只留分发壳
   "main.ts→rpc/index.ts",
   "rpc/index.ts→rpc/types.ts",
@@ -82,6 +90,7 @@ const ALLOWED_EDGES = new Set([
   "rpc/settings.ts→rpc/types.ts", "rpc/settings.ts→rpc/session.ts",
   "rpc/settings.ts→state.ts", "rpc/settings.ts→models.ts", "rpc/settings.ts→frames.ts",
   "rpc/settings.ts→profile.ts", "rpc/settings.ts→assets.ts", "rpc/settings.ts→plan.ts",
+  "rpc/settings.ts→keepalive-config.ts", // set_keepalive_config 合并写 state.json
   "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
   "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
   "rpc/assets.ts→rpc/types.ts", "rpc/assets.ts→bootstrap.ts", "rpc/assets.ts→state.ts",

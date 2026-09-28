@@ -351,3 +351,4 @@ export async function writeSessionContextEnabled(enabled: boolean): Promise<void
     raw.sessionContext && typeof raw.sessionContext === "object" ? (raw.sessionContext as Record<string, unknown>) : {};
   await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, sessionContext: { ...section, enabled } }, null, 2));
 }
+

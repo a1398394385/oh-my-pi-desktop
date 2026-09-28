@@ -30,6 +30,8 @@ import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
 import { readAcpRaw, readAcpEnabled, readAcpNudgeConfig, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
+import { createKeepaliveExtension } from "./keepalive.ts";
+import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode } from "./plan.ts";
 
@@ -142,6 +144,10 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   const acpEnabled = readAcpEnabled();
   // 历史会话检索开关（omp-desktop.json 的 sessionContext.enabled，实验性功能页可关）
   const sessionContextEnabled = readSessionContextEnabled();
+  // 缓存保活开关（omp-desktop.json 的 keepalive.enabled，实验性功能页，缺省关）。
+  // 防双载：插件中心/钩子总开关任一开启时 extension discovery 会从 ~/.omp/plugins
+  // 加载上游原版 keepalive，此时跳过内嵌注入，避免同进程双实例双探测
+  const keepaliveOn = readKeepaliveEnabled() && !(readPluginsEnabled() || readHooksEnabled());
   // nudge 分母：omp-desktop.json 的 acp.contextWindow（固定值，如 2000000 / "1M"）
   // 优先于模型注册表窗口；两者皆未知则 nudge 整体禁用
   const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
@@ -153,6 +159,9 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   // system prompt 防复读段（acp.systemPrompt，实验性功能页可开，默认关）：只在
   // ACP 启用时追加；opencode-acp 原版默认注入，这里做成显式开关留给用户
   const acpSystemPrompt = acpEnabled && (readAcpRaw().acp as { systemPrompt?: unknown } | undefined)?.systemPrompt === true;
+  // keepalive 扩展的 isWanted 闭包源：entry 在 createAgentSession 之后才建，经 holder
+  // 延迟引用；load 命中池复用同一 entry，未读态随 entry 存续
+  const kaHolder: { entry?: PoolEntry } = {};
   const result = await createAgentSession({
     cwd,
     authStorage: H.authStorage,
@@ -167,7 +176,10 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
       ...(acpEnabled ? createAcpCompressTools(acpState) : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
     ] as never, // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
-    extensions: acpEnabled ? [createAcpContextExtension(acpState)] : [], // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
+    extensions: [
+      ...(acpEnabled ? [createAcpContextExtension(acpState)] : []), // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
+      ...(keepaliveOn ? [createKeepaliveExtension({ isWanted: () => kaHolder.entry?.keepaliveWanted === true })] : []), // 前缀缓存保活：仅未读会话空闲重放末次请求，见 host/keepalive.ts
+    ] as never, // 内联扩展结构化窄类型与包类型签名品牌不兼容，运行时一致（同 customTools 先例）
     disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()),
     enableMCP: false,
     hasUI: true, // 审批 gate 的 fail-cold 判定走 runner.hasUI()：不开则非 yolo 模式下所有需审批工具直接报错
@@ -180,6 +192,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     unsubscribe: () => {},
     attachedWs: null,
     providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // 请求侧 getApiKey 的粘性键
+    keepaliveWanted: false, // 创建时用户正看着新会话：无未读，不保活；turn 收尾时置 true
     transcript,
     assistantDraft: "", // 当前 turn 的流式文本累积，turn_end 时定稿
     thinkingDraft: "",
@@ -204,6 +217,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
       onChange: () => pushGoal(sessionId),
     }),
   };
+  kaHolder.entry = entry; // keepalive isWanted 闭包生效（见 createSessionCore 头部）
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
@@ -233,6 +247,8 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     }
     // turn 真正结束后推送上下文占用（此时消息已定稿）；同时校准排队行（steer 已消费）
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
+      // 缓存保活：turn 收尾 = 有未读产出，从现在起空闲时值得保活（用户 mark_seen/切走再看会清掉）
+      entry.keepaliveWanted = true;
       // fileMention 回读：底座在 prompt() 内部追加 fileMention 消息（请求数组 + 落盘），
       // 没有对应事件；这里扫自 mentionScanIndex 起的新条目转成 mention 帧下发
       const entries = entry.manager.getEntries();
@@ -574,6 +590,8 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   // （新 ws，重挂订阅——旧订阅发往已关闭的连接，事件会丢）。
   for (const [sessionId, entry] of sessions.entries()) {
     if (entry.path !== sessionPath) continue;
+    // 用户打开/切回该会话 = 已读：停止缓存保活探测（新一轮 turn 收尾会重新置位）
+    entry.keepaliveWanted = false;
     if (entry.attachedWs !== ws) {
       entry.unsubscribe(); // 先解旧订阅，否则同一事件会发两份
       attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);

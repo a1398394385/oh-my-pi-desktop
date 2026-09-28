@@ -4,6 +4,7 @@
 import { H } from "./state.ts";
 import { modelsPayload, modelsDefaults, settingsSnapshot } from "./models.ts";
 import { readAcpConfig, readAcpEnabled, readSessionContextEnabled } from "./profile.ts";
+import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import { readHooksEnabled, readPluginsEnabled } from "./assets.ts";
 
 // models 帧统一组装：目录 + 新建会话配置默认（defaultModel/defaultThinking），
@@ -19,6 +20,8 @@ export function settingsFrame() {
     acpConfig: readAcpConfig(),
     acpEnabled: readAcpEnabled(),
     sessionContextEnabled: readSessionContextEnabled(),
+    keepaliveEnabled: readKeepaliveEnabled(),
+    keepaliveConfig: readKeepaliveProbeConfig(),
     hooksEnabled: readHooksEnabled(),
     pluginsEnabled: readPluginsEnabled(),
     skillsEnabled: !!H.settings.get("skills.enabled"),

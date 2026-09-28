@@ -110,6 +110,8 @@ export function activateSession(path: string): void {
     }
     return { openSessions, activePath: path, mainViewMode: "chat" };
   });
+  // 已读通知：已打开会话的前端切换不发 load_session，缓存保活的未读态靠本消息清除
+  useAppStore.getState().send({ type: "mark_seen", path });
   scheduleEvict();
 }
 
