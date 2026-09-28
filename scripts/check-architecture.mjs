@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 架构棘轮门禁（借鉴 pi-desktop check-architecture，适配本仓库目录）：
 // 1. 热区文件硬上限（SHRINK OR STAY STABLE，只挡增长、不溯既往缩减）：
-//    host/main.ts ≤ 2400（plan/生命周期/排队三域拆出后收紧）、ui-src/store/session.ts ≤ 800，超限即挂；
+//    host/main.ts ≤ 280（RPC 查表化后 main 只剩分发壳与宿主级任务）、ui-src/store/session.ts ≤ 800，超限即挂；
 // 2. 新增文件行数上限：相对基准 commit 新增（git diff --diff-filter=A）的文件
 //    TS/TSX ≤ 800 行、Rust ≤ 1000 行。基准默认 main（--base <rev> 或环境变量
 //    ARCHITECTURE_BASE 可覆盖；基准不存在时回退 HEAD^，均不可用时跳过新增检查）。
@@ -20,7 +20,7 @@ const excludedSegments = new Set(["node_modules", "dist", "out", "release", "tar
 
 // 热区硬上限：缩减后不自动收紧（固定常量棘轮），超限即挂
 const HOT_LIMITS = [
-  { path: "host/main.ts", max: 2400 },
+  { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
 ];
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };

@@ -59,9 +59,44 @@ const ALLOWED_EDGES = new Set([
   "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
   // 实验性功能开关（acp/sessionContext 段）与 profile 同住 omp-desktop.json
   "profile.ts→acp-state.ts",
+  // 帧组装层：models/settings 帧被多个 rpc 域与 main 的 ready 帧共用
+  // （独立成层的原因：settingsFrame 组合 models 快照与 profile/assets 开关，下沉任一侧成环）
+  "main.ts→frames.ts",
+  "frames.ts→state.ts", "frames.ts→models.ts", "frames.ts→profile.ts", "frames.ts→assets.ts",
+  // RPC 处理器九域（第三刀：message 巨型 switch 查表化）：main 只留分发壳
+  "main.ts→rpc/index.ts",
+  "rpc/index.ts→rpc/types.ts",
+  "rpc/index.ts→rpc/session.ts", "rpc/index.ts→rpc/prompt.ts", "rpc/index.ts→rpc/files.ts",
+  "rpc/index.ts→rpc/models.ts", "rpc/index.ts→rpc/settings.ts", "rpc/index.ts→rpc/login.ts",
+  "rpc/index.ts→rpc/assets.ts", "rpc/index.ts→rpc/terminal.ts", "rpc/index.ts→rpc/limits.ts",
+  "rpc/session.ts→rpc/types.ts",
+  "rpc/session.ts→bootstrap.ts", "rpc/session.ts→state.ts", "rpc/session.ts→profile.ts",
+  "rpc/session.ts→translate.ts", "rpc/session.ts→session-lifecycle.ts",
+  "rpc/prompt.ts→rpc/types.ts", "rpc/prompt.ts→rpc/session.ts",
+  "rpc/prompt.ts→bootstrap.ts", "rpc/prompt.ts→state.ts", "rpc/prompt.ts→translate.ts",
+  "rpc/prompt.ts→session-lifecycle.ts", "rpc/prompt.ts→plan.ts", "rpc/prompt.ts→queue.ts",
+  "rpc/files.ts→rpc/types.ts", "rpc/files.ts→state.ts", "rpc/files.ts→session-lifecycle.ts",
+  "rpc/models.ts→rpc/types.ts", "rpc/models.ts→bootstrap.ts", "rpc/models.ts→state.ts",
+  "rpc/models.ts→models.ts", "rpc/models.ts→frames.ts", "rpc/models.ts→limits",
+  "rpc/models.ts→stats.ts",
+  "rpc/settings.ts→rpc/types.ts", "rpc/settings.ts→rpc/session.ts",
+  "rpc/settings.ts→state.ts", "rpc/settings.ts→models.ts", "rpc/settings.ts→frames.ts",
+  "rpc/settings.ts→profile.ts", "rpc/settings.ts→assets.ts", "rpc/settings.ts→plan.ts",
+  "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
+  "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
+  "rpc/assets.ts→rpc/types.ts", "rpc/assets.ts→bootstrap.ts", "rpc/assets.ts→state.ts",
+  "rpc/assets.ts→assets.ts", "rpc/assets.ts→profile.ts", "rpc/assets.ts→extensions.ts",
+  "rpc/assets.ts→models.ts", "rpc/assets.ts→frames.ts",
+  "rpc/terminal.ts→rpc/types.ts", "rpc/terminal.ts→pty.ts",
+  "rpc/limits.ts→rpc/types.ts", "rpc/limits.ts→bootstrap.ts", "rpc/limits.ts→state.ts",
+  "rpc/limits.ts→limits",
 ]);
 
-const files = readdirSync(hostDir).filter((f) => f.endsWith(".ts"));
+// 扫描 host/ 一层 + host/rpc/ 子目录（键带路径前缀，如 rpc/session.ts）
+const files = [
+  ...readdirSync(hostDir).filter((f) => f.endsWith(".ts")),
+  ...readdirSync(join(hostDir, "rpc")).filter((f) => f.endsWith(".ts")).map((f) => `rpc/${f}`),
+];
 const exportsOf = {}; // 文件 -> 具名 export 全集
 const importsOf = {}; // 文件 -> [{ target, symbols, typeOnly }]
 
@@ -87,12 +122,18 @@ for (const f of files) {
   exportsOf[f] = exported;
 
   importsOf[f] = [];
-  for (const m of src.matchAll(/import\s+(type\s+)?\{([^}]+)\}\s*from\s*"\.\/([^"]+)"/g)) {
+  // 只查相对导入（./ ../）；外部包（@oh-my-pi/*、node:*）不进边界表
+  for (const m of src.matchAll(/import\s+(type\s+)?\{([^}]+)\}\s*from\s*"(\.\.?\/)([^"]+)"/g)) {
     const typeOnly = !!m[1];
     const symbols = [...m[2].split(",")].map((s) => s.trim().replace(/^type\s+/, "")).filter(Boolean);
-    const target = m[3].replace(/\.ts$/, "");
+    const prefix = m[3];
+    let target = m[4].replace(/\.ts$/, "");
     if (target.startsWith("limits")) continue; // vendor 移植物
-    importsOf[f].push({ target: target.includes(".") ? target : `${target}.ts`, symbols, typeOnly });
+    // ../x = 回 host 根；./x = 相对当前文件所在目录
+    const base = f.includes("/") ? f.slice(0, f.lastIndexOf("/") + 1) : "";
+    if (prefix === "../") target = `${target}.ts`;
+    else target = `${base}${target}${target.includes(".") ? "" : ".ts"}`;
+    importsOf[f].push({ target, symbols, typeOnly });
   }
 }
 
