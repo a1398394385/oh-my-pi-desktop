@@ -228,6 +228,10 @@
   color: var(--text);
 }
 
+.md-body [data-streamdown="code-block-body"] pre code > span.block {
+  width: fit-content;
+}
+
 .md-body [data-streamdown="code-block"][data-wrap="on"] [data-streamdown="code-block-body"] pre,
 .md-body [data-streamdown="code-block"][data-wrap="on"] [data-streamdown="code-block-body"] pre code {
   white-space: pre-wrap !important;

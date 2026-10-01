@@ -1,6 +1,7 @@
 // 会话运行态域帧：审批卡、事件流重建、本地 bash、斜杠命令输出、子代理流、
 // 待办/goal/排队、上下文用量与统计、错误落地。自 store/ws.ts onMessage 平移。
 import { useAppStore } from "../index";
+import { t } from "../../i18n";
 import {
   applyDelta,
   applyEvent,
@@ -35,12 +36,13 @@ export const streamHandlers = {
         title: msg.title,
         options: msg.options,
         editable: !!msg.editable,
+        editableIndex: msg.editableIndex,
         prefill: msg.prefill ?? "",
         answer: null,
       });
     });
     const s = findBySessionId(msg.sessionId);
-    if (s) notifyDesktop("approval", s, "等待审批", msg.title);
+    if (s) notifyDesktop("approval", s, t("notify.approvalTitle"), msg.title);
   },
   approval_resolved(msg) {
     useAppStore.setState((st2) => {

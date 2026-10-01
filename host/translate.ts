@@ -1,6 +1,7 @@
 // omp 事件 → 前端窄事件翻译层：前端只认 UiEvent 这些 kind，不依赖 omp 事件 shape 细节。
 // 实时流（translateEvent）与磁盘历史（entriesToTranscript）共用同一套工具条目摘要逻辑。
 import os from "node:os";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 import { REF_TAG_RE } from "./acp-context.ts";
 
@@ -124,9 +125,9 @@ function diffStats(diff: string): { added: number; removed: number } {
 }
 
 function thinkingLabel(sec: number): string {
-  if (sec < 5) return "持续了几秒";
-  if (sec < 60) return `持续了 ${sec} 秒`;
-  return `持续了 ${Math.floor(sec / 60)} 分 ${String(sec % 60).padStart(2, "0")} 秒`;
+  if (sec < 5) return hostI18n.t("flows.think.durationFew");
+  if (sec < 60) return hostI18n.t("flows.think.durationSec", { n: sec });
+  return hostI18n.t("flows.think.durationMinSec", { m: Math.floor(sec / 60), s: String(sec % 60).padStart(2, "0") });
 }
 
 // 工具结果文本：拼接 result.content 里的 text 段（截断，详细走 artifact）
@@ -354,7 +355,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         flushAssistantDraft(entry);
         entry.thinkingDraft = "";
         entry.thinkingStartedAt = Date.now();
-        entry.transcript.push({ role: "thinking", text: "思考" });
+        entry.transcript.push({ role: "thinking", text: hostI18n.t("flows.think.label") });
         return { kind: "thinking", phase: "start" };
       }
       if (ame?.type === "thinking_delta") {
@@ -368,7 +369,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         const sec = entry.thinkingStartedAt ? Math.max(1, Math.round((Date.now() - entry.thinkingStartedAt) / 1000)) : 0;
         const durationLabel = thinkingLabel(sec);
         if (last) {
-          last.text = `思考 · ${durationLabel}`;
+          last.text = hostI18n.t("flows.think.with", { duration: durationLabel });
           last.thinking = thinking;
           last.expandable = thinking.length > 0;
         }
@@ -430,11 +431,19 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
 }
 
 // 后台耗时命令的阶段分隔行文案：[执行中, 完成]。执行中由 host 瞬时帧下发，
-// 完成由落盘痕（compaction / title_change 条目）转出——两端共用此表
+// 完成由落盘痕（compaction / title_change 条目）转出——两端共用此表。
+// Getters translate on every read so a language switch is picked up
+// immediately (module-load-time constants would freeze the startup language).
 export const PHASE_TEXT: Record<string, [string, string]> = {
-  compact: ["正在压缩上下文", "上下文已压缩"],
-  handoff: ["正在生成交接文档", "交接文档已生成"],
-  rename: ["正在重命名会话", "会话已重命名"],
+  get compact() {
+    return [hostI18n.t("flows.phase.compactActive"), hostI18n.t("flows.phase.compactDone")];
+  },
+  get handoff() {
+    return [hostI18n.t("flows.phase.handoffActive"), hostI18n.t("flows.phase.handoffDone")];
+  },
+  get rename() {
+    return [hostI18n.t("flows.phase.renameActive"), hostI18n.t("flows.phase.renameDone")];
+  },
 };
 
 // 磁盘历史条目 → 前端 transcript（思考块可展开；工具带路径/命令/行数）
@@ -570,7 +579,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       } else if (block.type === "thinking" && block.thinking) {
         sink.push({
           role: "thinking",
-          text: "思考 · 持续了几秒",
+          text: hostI18n.t("flows.think.with", { duration: hostI18n.t("flows.think.durationFew") }),
           thinking: String(block.thinking),
           expandable: true,
         });
@@ -733,7 +742,7 @@ function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: strin
         if (content) return treeNorm(content);
         const err = msgField(msg, "errorMessage");
         if (typeof err === "string" && err) return treeNorm(err, 80);
-        if (msgField(msg, "stopReason") === "aborted") return "(已中止)";
+        if (msgField(msg, "stopReason") === "aborted") return hostI18n.t("flows.tree.aborted");
         return "";
       }
       return treeNorm(content); // user / developer / 其他角色
@@ -751,7 +760,7 @@ function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: strin
     case "thinking_level_change":
       return `[thinking: ${entry.thinkingLevel ?? "off"}]`;
     case "label":
-      return `[label: ${entry.label ?? "(已清除)"}]`;
+      return `[label: ${entry.label ?? hostI18n.t("flows.tree.cleared")}]`;
     case "service_tier_change":
       return "[service tier]";
     case "title_change":

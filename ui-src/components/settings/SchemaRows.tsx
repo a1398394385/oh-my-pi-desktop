@@ -1,19 +1,32 @@
 // 设置行唯一渲染器：把 placement 段展开为设置行；行结构复用 .srow，控件层走 Radix 基件
 // （Switch/Select/Input/Textarea，ui/components/ui/，视觉对齐原 .tg/.sel/.inp）。
-// 中文文案查 SETTINGS_ZH；缺省回落 schema 的 ui.label/description（底座加键不致空白）；
-// 无 ui 的键（高级页）回落为「键名 + 类型/默认」。控件按 def.type 分派，改后经 set_setting 回写。
+// Labels resolve per language: zh-CN looks up the zh pack, en resolves through
+// the empty en pack and falls back to the schema's own ui.label/description
+// (so new upstream keys never render blank); keys without ui (advanced page)
+// fall back to "key name + type/default". Controls dispatch on def.type,
+// writes go back via set_setting.
 import { useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
 import { useAppStore, send, toast } from "../../store";
+import { t } from "../../i18n";
 import Icon from "../../Icon";
-import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH, DARK_THEMES, LIGHT_THEMES } from "./settings-zh";
+import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH, DARK_THEMES, LIGHT_THEMES } from "../../i18n/locales/settings-zh-CN";
+import { SETTINGS_EN, OPTS_EN, GROUPS_EN } from "../../i18n/locales/settings-en";
 import { expandSection, type Section, type SchemaDef } from "./placement";
 import { Switch } from "../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 
-// def.type → 中文类型名（缺省回落原始 type 字符串）
-const ZH_TYPE: Record<string, string> = { boolean: "布尔", number: "数字", string: "字符串", enum: "枚举", array: "数组", record: "对象" };
+// def.type → i18n key (falls back to the raw type string; zh values match the old
+// ZH_TYPE table verbatim)
+const TYPE_LABEL_KEYS: Record<string, string> = {
+  boolean: "settingsPage.schema.typeBoolean",
+  number: "settingsPage.schema.typeNumber",
+  string: "settingsPage.schema.typeString",
+  enum: "settingsPage.schema.typeEnum",
+  array: "settingsPage.schema.typeArray",
+  record: "settingsPage.schema.typeRecord",
+};
 
 // 下拉选项形状（v 与 SchemaSel 选中值、onPick 回调一致）
 interface SelOption {
@@ -21,30 +34,35 @@ interface SelOption {
   label: string;
 }
 
-// 合成器形态选项（对齐 omp 源码 getComposerShapeOptions）
-const COMPOSER_SHAPES: SelOption[] = [
-  { v: "band", label: OPTS_ZH["composer.shape"]?.["band"] ?? "状态条（默认）" },
-  { v: "box", label: OPTS_ZH["composer.shape"]?.["box"] ?? "圆角框" },
-  { v: "claude", label: OPTS_ZH["composer.shape"]?.["claude"] ?? "Claude Code 风格" },
-  { v: "pi", label: OPTS_ZH["composer.shape"]?.["pi"] ?? "Pi 风格" },
-  { v: "borderless", label: OPTS_ZH["composer.shape"]?.["borderless"] ?? "无边框" },
-  { v: "rule", label: OPTS_ZH["composer.shape"]?.["rule"] ?? "顶部分隔栏" },
-  { v: "field", label: OPTS_ZH["composer.shape"]?.["field"] ?? "紧凑字段" },
-  { v: "rail", label: OPTS_ZH["composer.shape"]?.["rail"] ?? "强调导轨" },
-];
+// Composer shape options (mirrors omp's getComposerShapeOptions; the schema
+// declares ui.options = "runtime", so this hardcoded list is the only source —
+// labels come from the language-specific opts dictionary, falling back to the
+// settingsPage pack when the dictionary has no entry).
+function composerShapeOptions(opts: Record<string, Record<string, string>>): SelOption[] {
+  return [
+    { v: "band", label: opts["composer.shape"]?.["band"] ?? t("settingsPage.schema.shapeBand") },
+    { v: "box", label: opts["composer.shape"]?.["box"] ?? t("settingsPage.schema.shapeBox") },
+    { v: "claude", label: opts["composer.shape"]?.["claude"] ?? t("settingsPage.schema.shapeClaude") },
+    { v: "pi", label: opts["composer.shape"]?.["pi"] ?? t("settingsPage.schema.shapePi") },
+    { v: "borderless", label: opts["composer.shape"]?.["borderless"] ?? t("settingsPage.schema.shapeBorderless") },
+    { v: "rule", label: opts["composer.shape"]?.["rule"] ?? t("settingsPage.schema.shapeRule") },
+    { v: "field", label: opts["composer.shape"]?.["field"] ?? t("settingsPage.schema.shapeField") },
+    { v: "rail", label: opts["composer.shape"]?.["rail"] ?? t("settingsPage.schema.shapeRail") },
+  ];
+}
 
 /** 从 schema 与 omp 源码中解析某设置项的可用选项列表 */
-function resolveSettingOptions(k: string, def: SchemaDef): SelOption[] {
-  if (k === "composer.shape") return COMPOSER_SHAPES;
-  if (k === "theme.dark") return DARK_THEMES.map((t) => ({ v: t, label: OPTS_ZH["theme.dark"]?.[t] ?? t }));
-  if (k === "theme.light") return LIGHT_THEMES.map((t) => ({ v: t, label: OPTS_ZH["theme.light"]?.[t] ?? t }));
+function resolveSettingOptions(k: string, def: SchemaDef, opts: Record<string, Record<string, string>>): SelOption[] {
+  if (k === "composer.shape") return composerShapeOptions(opts);
+  if (k === "theme.dark") return DARK_THEMES.map((t) => ({ v: t, label: opts["theme.dark"]?.[t] ?? t }));
+  if (k === "theme.light") return LIGHT_THEMES.map((t) => ({ v: t, label: opts["theme.light"]?.[t] ?? t }));
 
   if (Array.isArray(def.ui?.options) && def.ui.options.length > 0) {
     return def.ui.options.map((o) => {
       const vStr = String(o.value ?? "");
       return {
         v: vStr,
-        label: OPTS_ZH[k]?.[vStr] ?? o.label ?? vStr,
+        label: opts[k]?.[vStr] ?? o.label ?? vStr,
       };
     });
   }
@@ -53,12 +71,12 @@ function resolveSettingOptions(k: string, def: SchemaDef): SelOption[] {
       const vStr = String(v ?? "");
       return {
         v: vStr,
-        label: OPTS_ZH[k]?.[vStr] ?? vStr,
+        label: opts[k]?.[vStr] ?? vStr,
       };
     });
   }
-  if (OPTS_ZH[k] && Object.keys(OPTS_ZH[k]).length > 0) {
-    return Object.entries(OPTS_ZH[k]).map(([v, label]) => ({
+  if (opts[k] && Object.keys(opts[k]).length > 0) {
+    return Object.entries(opts[k]).map(([v, label]) => ({
       v,
       label,
     }));
@@ -76,6 +94,7 @@ interface SchemaSelProps {
 
 // 下拉：Radix Select（trigger 胶囊 / 弹层 .menu 视觉由基件承担）；选中即发
 function SchemaSel({ settingKey, settingType, current, options, onPick }: SchemaSelProps) {
+  const lang = useAppStore((s) => s.uiPrefs.lang);
   // 特殊兼容 compaction.thresholdPercent 和 compaction.thresholdTokens：值为 -1 或 "" 时映射为 "default"
   const isDefaultThreshold =
     (settingKey === "compaction.thresholdPercent" || settingKey === "compaction.thresholdTokens") &&
@@ -107,7 +126,7 @@ function SchemaSel({ settingKey, settingType, current, options, onPick }: Schema
   return (
     <Select value={selectedValue} onValueChange={handlePick}>
       <SelectTrigger>
-        <SelectValue placeholder={sel ? sel.label : curStr || "请选择"} />
+        <SelectValue placeholder={sel ? sel.label : curStr || t("settingsPage.schema.selectPlaceholder")} />
       </SelectTrigger>
       <SelectContent>
         {options.map((o) => {
@@ -130,7 +149,8 @@ interface SchemaRowProps {
 }
 
 function SchemaRow({ k, def, value }: SchemaRowProps) {
-  const zh = SETTINGS_ZH[k];
+  const lang = useAppStore((s) => s.uiPrefs.lang);
+  const zh = (lang === "zh-CN" ? SETTINGS_ZH : SETTINGS_EN)[k];
   let label: string | undefined, desc: string | undefined, warn: string | undefined;
   let adv = false;
   if (zh) {
@@ -143,7 +163,9 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
     warn = def.ui.warning;
   } else {
     label = k;
-    desc = `类型 ${ZH_TYPE[def.type] ?? def.type}｜默认 ${JSON.stringify(def.default)}`;
+    // Auto-generated fallback: type name + default, both from the language pack
+    // (zh keeps the original formatting verbatim).
+    desc = t("settingsPage.schema.advDesc", { type: TYPE_LABEL_KEYS[def.type] ? t(TYPE_LABEL_KEYS[def.type]) : def.type, def: JSON.stringify(def.default) });
     adv = true;
   }
 
@@ -179,16 +201,16 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
       try {
         const o = JSON.parse(text);
         if (typeof o === "object" && o && !Array.isArray(o)) send({ type: "set_setting", key: k, value: o });
-        else toast("JSON 格式无效");
+        else toast(t("settingsPage.schema.jsonInvalid"));
       } catch {
-        toast("JSON 格式无效");
+        toast(t("settingsPage.schema.jsonInvalid"));
       }
     } else {
       send({ type: "set_setting", key: k, value: text });
     }
   };
 
-  const opts = resolveSettingOptions(k, def);
+  const opts = resolveSettingOptions(k, def, lang === "zh-CN" ? OPTS_ZH : OPTS_EN);
   const isChoiceSetting =
     type === "enum" ||
     (opts.length > 0 && (type === "number" || type === "string")) ||
@@ -245,6 +267,8 @@ interface SchemaRowsProps {
 export default function SchemaRows({ sections }: SchemaRowsProps) {
   const schema = useAppStore((s) => s.settingsSchema);
   const hostSettings = useAppStore((s) => s.hostSettings);
+  const lang = useAppStore((s) => s.uiPrefs.lang);
+  const groups = lang === "zh-CN" ? GROUPS_ZH : GROUPS_EN;
   const conditions = hostSettings?.conditions || {};
   const values = hostSettings?.values || {};
   if (!schema || !sections) return null;
@@ -257,18 +281,20 @@ export default function SchemaRows({ sections }: SchemaRowsProps) {
       return !(cond && conditions[cond] === false);
     });
     if (keys.length === 0) continue;
-    // 组标题：titleZh ?? GROUPS_ZH[组名] ?? 组名
-    let title = section.titleZh;
+    // Group title: per-language section title (titleZh / titleEn) ?? language
+    // group dictionary ?? raw group name; hint likewise falls back zh → en.
+    let title = lang === "zh-CN" ? section.titleZh : (section.titleEn ?? section.titleZh);
     if (!title && section.from) {
       const group = section.from.slice(section.from.indexOf("/") + 1);
-      title = GROUPS_ZH[group] ?? group;
+      title = groups[group] ?? group;
     }
+    const hint = lang === "zh-CN" ? section.hint : (section.hintEn ?? section.hint);
     out.push(
       <div key={section.from ?? title ?? out.length}>
         <div className="set-group-tt">
           {title}
-          {section.hint && (
-            <span className="gtt-hint" data-hint={section.hint}>
+          {hint && (
+            <span className="gtt-hint" data-hint={hint}>
               <Icon name="info" size={14} />
             </span>
           )}

@@ -227,8 +227,9 @@ export interface RailEntry {
 export interface PendingApproval {
   requestId: string;
   title: string;
-  options: string[];
+  options: string[]; // editor/plan 变体为稳定 id(submit/cancel/approve/refine)
   editable: boolean;
+  editableIndex?: number; // 可编辑输入行在 options 中的下标(editor 变体协议字段)
   prefill: string;
   answer: string | null; // 用户已选答案;null = 未决
 }

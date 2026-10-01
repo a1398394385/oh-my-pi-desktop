@@ -3,8 +3,10 @@
 // 数据由 host 在 turn 收尾（agent_end）与加载会话时经 session_stats 帧推送，
 // 落在会话对象的 stats 字段（见 store.js），不做 hover 按需请求。
 import { useAppStore, fmtTokens, fmtDurationMs } from "../store";
+import { useTranslation } from "react-i18next";
 
 export default function SessionStatsBar() {
+  const { t } = useTranslation();
   // 当前会话订阅：session_stats 帧走 updateSession 换 session 引用，selector 即可感知
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const st = session?.stats;
@@ -12,13 +14,13 @@ export default function SessionStatsBar() {
 
   const cost = (st.cost ?? 0) + (st.advisorCost ?? 0);
   const items = [
-    ["缓存利用率", `${(st.cacheHitRate * 100).toFixed(1)}%`],
-    ["输入", fmtTokens(st.tokens.input)],
-    ["输出", fmtTokens(st.tokens.output)],
-    ["缓存读", fmtTokens(st.tokens.cacheRead)],
-    ["缓存写", fmtTokens(st.tokens.cacheWrite)],
-    ...(cost > 0 ? [["成本", `$${cost.toFixed(4)}`]] : []),
-    ["时长", fmtDurationMs(st.activeMs)],
+    [t("chat.statsCacheHit"), `${(st.cacheHitRate * 100).toFixed(1)}%`],
+    [t("chat.statsInput"), fmtTokens(st.tokens.input)],
+    [t("chat.statsOutput"), fmtTokens(st.tokens.output)],
+    [t("chat.statsCacheRead"), fmtTokens(st.tokens.cacheRead)],
+    [t("chat.statsCacheWrite"), fmtTokens(st.tokens.cacheWrite)],
+    ...(cost > 0 ? [[t("chat.statsCost"), `$${cost.toFixed(4)}`]] : []),
+    [t("chat.statsDuration"), fmtDurationMs(st.activeMs)],
   ];
 
   return (

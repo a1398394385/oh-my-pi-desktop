@@ -29,6 +29,7 @@ import {
 } from "../extensions.ts";
 import { rebuildScopedModels } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export const assetsHandlers: Record<string, RpcHandler> = {
@@ -45,7 +46,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     const raw = String(msg.path ?? "");
     const file = path.resolve(raw);
     const rel = path.relative(path.resolve(path.join(H.agentDir, "memories")), file);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`路径不在允许的记忆目录内: ${raw}`);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(hostI18n.t("errors.memory.outsideDir", { path: raw }));
     // 工作区记忆是目录：返回顶层 .md 清单（按修改时间新→旧）并默认读最新的一个
     let target = file;
     let files: string[] | undefined;
@@ -61,7 +62,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
       files = (await readdir(file))
         .filter((n) => n.endsWith(".md") && !n.startsWith("."))
         .sort((a, b) => mtime(file, b) - mtime(file, a));
-      if (!files.length) throw new Error(`记忆目录内没有 .md 文件: ${raw}`);
+      if (!files.length) throw new Error(hostI18n.t("errors.memory.noMdFiles", { path: raw }));
       target = path.join(file, files[0]);
       const rollDir = path.join(file, "rollout_summaries");
       rollouts = (await readdir(rollDir).catch(() => [] as string[]))
@@ -93,11 +94,11 @@ export const assetsHandlers: Record<string, RpcHandler> = {
       return;
     }
     const name = String(msg.name ?? "").trim().toLowerCase();
-    if (!/^[a-z0-9][a-z0-9_-]*$/.test(name)) throw new Error("名称仅允许小写字母、数字、-、_");
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(name)) throw new Error(hostI18n.t("errors.asset.invalidName"));
     const dir = path.join(assetOmpDir(kind, msg.scope, msg.cwd), kind === "agent" ? "agents" : "skills");
     await mkdir(dir, { recursive: true });
     const file = kind === "agent" ? path.join(dir, `${name}.md`) : path.join(dir, name, "SKILL.md");
-    if (fs.existsSync(file)) throw new Error(`${kind} 已存在: ${name}`);
+    if (fs.existsSync(file)) throw new Error(hostI18n.t("errors.asset.alreadyExists", { kind, name }));
     await mkdir(path.dirname(file), { recursive: true });
     const content =
       kind === "agent"
@@ -110,7 +111,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   async asset_skill_toggle(ws, msg) {
     const name = String(msg.name ?? "").trim();
     const enabled = Boolean(msg.enabled);
-    if (!name) throw new Error("缺少技能名称");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingSkillName"));
     const disabled = new Set<string>(((H.settings.get("disabledExtensions") ?? []) as string[]));
     const ignored = new Set<string>(((H.settings.get("skills.ignoredSkills") ?? []) as string[]));
     const skillExtId = `skill:${name}`;
@@ -128,7 +129,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   async asset_skill_delete(ws, msg) {
     const rawPath = String(msg.path ?? "");
     const file = resolveAssetFile("skill", rawPath);
-    if (!fs.existsSync(file)) throw new Error(`技能文件不存在: ${file}`);
+    if (!fs.existsSync(file)) throw new Error(hostI18n.t("errors.asset.skillFileNotFound", { file }));
     const skillDir = path.dirname(file);
     const parentDir = path.dirname(skillDir);
     // 如果是常规的 <skillName>/SKILL.md，安全删除整个技能目录
@@ -161,7 +162,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   },
   async set_mcp_server_enabled(ws, msg) {
     const name = String(msg.name ?? "").trim();
-    if (!name) throw new Error("缺少 MCP 服务器名称");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     const enabled = Boolean(msg.enabled);
     const userPath = path.join(H.agentDir, "mcp.json");
     const projectPath = msg.cwd
@@ -179,14 +180,14 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   },
   async test_mcp_server(ws, msg) {
     const name = String(msg.name ?? "").trim();
-    if (!name) throw new Error("缺少 MCP 服务器名称");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     mcpHealthCache.delete(name);
     const probe = await probeMcpServerHealth(msg.server || { name });
     ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status, error: probe.error, log: probe.log }));
   },
   async save_mcp_server(ws, msg) {
     const name = String(msg.name ?? "").trim();
-    if (!name) throw new Error("缺少 MCP 服务器名称");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     const cfg = msg.config || {};
     const scope = String(msg.scope ?? "profile");
     const isProject = scope.startsWith("project:");
@@ -225,13 +226,14 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   },
   async delete_mcp_server(ws, msg) {
     const name = String(msg.name ?? "").trim();
-    if (!name) throw new Error("缺少 MCP 服务器名称");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     const src = msg.sourcePath ? String(msg.sourcePath) : undefined;
     const userPath = path.join(H.agentDir, "mcp.json");
+    const targetFile = src ?? userPath;
     if (src) await deleteMcpSharingConfig(src, name);
     await deleteMcpSharingConfig(userPath, name);
-    if (src && fs.existsSync(src) && (src.endsWith("mcp.json") || src.endsWith(".mcp.json"))) {
-      await removeMCPServer(src, name);
+    if (fs.existsSync(targetFile) && (targetFile.endsWith("mcp.json") || targetFile.endsWith(".mcp.json"))) {
+      await removeMCPServer(targetFile, name);
     } else {
       await setMcpServerEnabled({
         userPath,

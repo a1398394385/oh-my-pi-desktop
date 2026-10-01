@@ -6,6 +6,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { send, activeOpen, onTerminalFrame, useAppStore } from "../../store";
 import type { TerminalFrame } from "../../store";
+import { t } from "../../i18n";
 import { registerTabCloseHook } from "./tabs";
 
 // 右栏 tab 级 persistentKey：右栏只有一个终端 tab，会话按此键复用
@@ -95,7 +96,7 @@ function bindFrameChannel() {
       session.term.write(frame.data);
     } else if (frame.type === "terminal_exit") {
       session.dead = true;
-      session.term.write(`\r\n\x1b[90m[进程已退出，退出码 ${frame.code}。可关闭后重开终端 tab]\x1b[0m\r\n`);
+      session.term.write(`\r\n\x1b[90m${t("right.procExited", { code: frame.code })}\x1b[0m\r\n`);
     }
   });
 }

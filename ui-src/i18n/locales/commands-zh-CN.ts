@@ -1,7 +1,12 @@
-// 内置斜杠命令描述中文映射（/ 补全弹层展示用）。
-// 覆盖宿主 list_commands 中 source === "builtin" 的全部条目；skill/extension/file 命令保持原文。
-// 译文对应弹层实际显示的英文文本（底座 acpDescription ?? description，2026-09 清单）；
-// 底座命令增改后此处同步补译，未收录的名字回退英文原描述。
+// Chinese descriptions for built-in slash commands (shown in the / command
+// palette). Covers every entry the host's list_commands reports with
+// source === "builtin"; skill / extension / file commands keep their original
+// text. Translations correspond to the English text the palette actually
+// displays (the base's acpDescription ?? description, audited 2026-09);
+// migrated unchanged from components/composer/commands-zh.ts.
+// Maintenance: when the base adds or changes built-in commands, update the
+// translations here; names not present fall back to the English description.
+
 export const BUILTIN_DESC_ZH: Record<string, string> = {
   security: "规划、运行、查看、导入与对比 OMP 原生安全扫描",
   advisor: "开关顾问（第二个模型复审每轮并注入建议）",

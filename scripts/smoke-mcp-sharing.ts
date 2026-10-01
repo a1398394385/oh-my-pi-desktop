@@ -170,6 +170,19 @@ ws.onmessage = (ev) => {
     }
     console.log("✓ 步骤 4 验证通过: Profile 级成功配置并下发 global 模式");
 
+    console.log("步骤 4.5: 再次请求 list_agent_assets 模拟二次刷新，断言 global 模式不被项目扫描覆盖降级...");
+    step = 41;
+    ws.send(JSON.stringify({ type: "list_agent_assets" }));
+  } else if (step === 41 && msg.type === "agent_assets") {
+    const serverInAssets = msg.assets?.mcp?.servers?.find((s: any) => s.name === "profile_global");
+    if (!serverInAssets || serverInAssets.sharing !== "global") {
+      fail(`二次刷新后 profile_global 被错误篡改/降级: ${JSON.stringify(serverInAssets)}`);
+    }
+    if (serverInAssets.scope !== "profile") {
+      fail(`二次刷新后 profile_global scope 被篡改: ${JSON.stringify(serverInAssets)}`);
+    }
+    console.log("✓ 步骤 4.5 验证通过: 二次扫描后依然保持 Profile 级 global 共享");
+
     console.log("步骤 5: 验证 Project 配置允许 project 模式...");
     step = 5;
     ws.send(JSON.stringify({

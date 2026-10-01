@@ -9,6 +9,7 @@ export { rdExpand, chgExpand };
 import Icon from "../../Icon";
 import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import { splitPath } from "./util";
+import { t } from "../../i18n";
 
 // 事件涉及的文件清单：优先 tool_update 回填的 files，否则从 args 兜底
 function filesOf(item: ToolItem): string[] {
@@ -48,7 +49,7 @@ export default function EditRow({ item }: { item: ToolItem }) {
     <>
       <div className="act edit" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="pencil" size={15} />
-        <span className="lbl">{(item.removed ?? 0) > 0 ? "编辑" : "写入"}</span>
+        <span className="lbl">{(item.removed ?? 0) > 0 ? t("chat.editLabel") : t("chat.writeLabel")}</span>
         {path ? (
           <FileChip path={path} nameClass="ed-name" onNameClick={() => openFileDiffInSidebar(path)} />
         ) : (
@@ -71,7 +72,7 @@ function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   const path = files[0] || "";
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
-      <span className="lbl">{(sub.removed ?? 0) > 0 ? "编辑" : "写入"}</span>
+      <span className="lbl">{(sub.removed ?? 0) > 0 ? t("chat.editLabel") : t("chat.writeLabel")}</span>
       {files.length > 1 ? (
         // 单条事件涉及多文件（apply_patch）：文件标签单行排布，超长行尾出省略号
         <span className="chips-lane">
@@ -113,6 +114,7 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
 // 「更改 · N 个文件」标题行：连续编辑事件合并组，点击向下展开各条编辑
 function ChangeGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
+  const fileCount = uniqueFiles(subs.flatMap((g) => filesOf(g))).length; // 0 → "multiple files" fallback
   const [closing, close] = useLift();
   const open = chgExpand.has(subs[0]) && !closing;
   const toggle = () => {
@@ -126,7 +128,7 @@ function ChangeGroup({ subs }: { subs: ToolItem[] }) {
     <>
       <div className="act change" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="pencil" size={15} />
-        <span className="lbl">{`更改 · ${uniqueFiles(subs.flatMap((g) => filesOf(g))).length || "多"} 个文件`}</span>
+        <span className="lbl">{fileCount ? t("chat.changeFiles", { count: fileCount }) : t("chat.changeFilesMultiple")}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>
@@ -146,7 +148,7 @@ function ChangeSingle({ item }: { item: ToolItem }) {
   return (
     <div className="act change">
       <Icon name="pencil" size={15} />
-      <span className="lbl">{`更改 · ${files.length || "多"} 个文件`}</span>
+      <span className="lbl">{files.length ? t("chat.changeFiles", { count: files.length }) : t("chat.changeFilesMultiple")}</span>
       {files.length > 0 && (
         <>
           {" "}<span className="sep">·</span>{" "}
@@ -176,6 +178,7 @@ function ReadEntry({ sub }: { sub: ToolItem }) {
 // 「查阅 · N 个文件」标题行：点击向下展开各条读取
 function ReadGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
+  const fileCount = uniqueFiles(subs.flatMap((s) => filesOf(s))).length; // 0 → "multiple files" fallback
   const [closing, close] = useLift();
   const open = rdExpand.has(subs[0]) && !closing;
   const toggle = () => {
@@ -189,7 +192,7 @@ function ReadGroup({ subs }: { subs: ToolItem[] }) {
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="file" size={15} />
-        <span className="lbl">{`查阅 · ${uniqueFiles(subs.flatMap((s) => filesOf(s))).length || "多"} 个文件`}</span>
+        <span className="lbl">{fileCount ? t("chat.readFiles", { count: fileCount }) : t("chat.readFilesMultiple")}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>

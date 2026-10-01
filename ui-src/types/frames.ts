@@ -822,8 +822,11 @@ export interface ApprovalRequestFrame {
   sessionId: string;
   requestId: string;
   title: string; // confirm 变体为 `${title}\n${message}`
-  options: string[];
+  options: string[]; // editor/plan 变体传稳定 id(submit/cancel/approve/refine),UI 按 id 渲染本地化文案
   editable?: boolean; // 仅 editor 变体恒 true
+  // Index of the inline-input row within options (editor variant). Protocol
+  // field: locating the row by id/index, never by display text.
+  editableIndex?: number;
   prefill?: string; // 仅 editor 变体
   hi?: string; // 盖戳帧
   seq?: number;
@@ -1156,6 +1159,14 @@ export interface QueuedFrame {
   steering: QueuedMessage[];
   hi?: string; // 盖戳帧
   seq?: number;
+}
+
+// ---------- UI → host client frames ----------
+
+/** UI locale switch (UI → host; fire-and-forget, host persists it and applies it to its own surfaces) */
+export interface SetLocaleFrame {
+  type: "set_locale";
+  lang: "zh-CN" | "en";
 }
 
 // ---------- 帧联合 ----------

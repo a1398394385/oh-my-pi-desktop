@@ -5,6 +5,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { menuZoom, toggleTheme, toggleSidebar } from "./shell";
 import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnected, openSettings, closeSettings, setBump } from "./store";
 import { initKeys } from "./keys";
+import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
 
 // 启动即恢复本地主题（旧版 shell.js initShell 语义；system 值由 prefers-color-scheme 决定）
@@ -70,9 +71,26 @@ function dispatchMenuAction(action: unknown): void {
 // 启动即进欢迎页（新建态）；磁盘列表到达前 project 兜底 "/"
 showWelcomeScreen(null);
 
+// Init i18n before the first render; uiPrefs.lang is resolved at store
+// creation (stored preference first, otherwise system detection persisted back).
+initI18n(useAppStore.getState().uiPrefs.lang);
+
+// Align the native menu locale with the persisted UI language (the Rust shell
+// boots with a zh-CN default menu). No-op in browser preview: __TAURI__ absent.
+window.__TAURI__?.core?.invoke?.("set_menu_language", { lang: useAppStore.getState().uiPrefs.lang })
+  ?.catch((err: unknown) => console.warn("set_menu_language:", err));
+
+// Language-driven remount: subscribing to the raw lang primitive keeps the
+// selector legal; switching the language swaps <App key={lang}> so the whole
+// tree re-renders with the new locale (ErrorBoundary stays mounted).
+function Root() {
+  const lang = useAppStore((s) => s.uiPrefs.lang);
+  return <ErrorBoundary><App key={lang} /></ErrorBoundary>;
+}
+
 // index.html 静态骨架带 #root 挂载点；非空断言（缺失即壳骨架破坏，任其自然抛错）
 const root = createRoot(document.getElementById("root")!);
-root.render(<ErrorBoundary><App /></ErrorBoundary>);
+root.render(<Root />);
 
 // 原生菜单事件（Tauri 环境）；浏览器直连调试时无 __TAURI__，跳过
 window.__TAURI__?.event?.listen("menu-action", (e) => dispatchMenuAction(e.payload?.action));

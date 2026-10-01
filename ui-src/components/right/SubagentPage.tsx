@@ -2,6 +2,7 @@
 // 详情骨架（今日定稿，必须保留）：#rightBody 加 detail 类，rb-head 固定（返回 + 名字/状态），
 // rb-scroll 滚动承载过程流。
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
 import { inlineCodeHtml } from "./helpers";
 import { Spin } from "../chat/parts";
@@ -10,10 +11,11 @@ import type { SubagentState, SubagentToolCall } from "../../types/session";
 // 子代理条目与工具行统一用 store 共享类型(types/session.ts),字段以本页读取为准
 
 export default function SubagentPage() {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
   if (!s || s.subagents.size === 0) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">（暂无子代理）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noSubagents")}</div>;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
     return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} />; // 上一行 has() 已守卫必存在
@@ -48,6 +50,7 @@ export default function SubagentPage() {
 
 // 详情：返回 + 名字/状态固定在顶，过程流（工具行 + 当前文本）滚动
 function SubagentDetail({ sub }: { sub: SubagentState }) {
+  const { t } = useTranslation();
   const headRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // 脉冲标记渲染时读 getState（不订阅）：置位随 selectedSubagent 写入驱动本组件渲染，
@@ -64,7 +67,7 @@ function SubagentDetail({ sub }: { sub: SubagentState }) {
     <>
       <div ref={headRef} className={"rb-head" + (kids ? " kids-in" : "")}>
         <button className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text" onClick={back}>
-          ‹ 返回列表
+          {t("right.backToList")}
         </button>
         <div className="text-ui-sm text-faint mb-1.5 break-all">
           {sub.agent} · {sub.status}

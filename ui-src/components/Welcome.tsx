@@ -6,6 +6,7 @@
 // window click / blur 关闭（对照 shell.js closeAllMenus 的全局关闭语义）。
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useAppStore, toast, pathBase } from "../store";
+import { t } from "../i18n";
 import Icon from "../Icon";
 import Composer from "./Composer";
 import ProjectMenu from "./welcome/ProjectMenu";
@@ -13,10 +14,10 @@ import BranchMenu from "./welcome/BranchMenu";
 
 function greeting() {
   const h = new Date().getHours();
-  if (h >= 5 && h < 11) return "早上好呀，接下来交给我吧";
-  if (h >= 11 && h < 14) return "中午好呀，接下来交给我吧";
-  if (h >= 14 && h < 19) return "下午好呀，接下来交给我吧";
-  return "晚上好呀，接下来交给我吧";
+  if (h >= 5 && h < 11) return t("misc.greetMorning");
+  if (h >= 11 && h < 14) return t("misc.greetNoon");
+  if (h >= 14 && h < 19) return t("misc.greetAfternoon");
+  return t("misc.greetEvening");
 }
 
 export default function Welcome() {
@@ -60,7 +61,7 @@ export default function Welcome() {
     setBranchMenu(e.currentTarget.getBoundingClientRect());
   };
 
-  const projName = newSessionProject ? pathBase(newSessionProject) || newSessionProject : "项目";
+  const projName = newSessionProject ? pathBase(newSessionProject) || newSessionProject : t("misc.projectFallback");
 
   return (
     <div id="welcomeScreen" className="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto pt-[30px] px-[20px] pb-[80px]">
@@ -76,17 +77,17 @@ export default function Welcome() {
               <button
                 id="wbProjectBtn"
                 className={"wb-pill" + (projMenu ? " active" : "")}
-                title={`项目目录: ${newSessionProject}`}
+                title={t("misc.projectDirTitle", { path: newSessionProject })}
                 onClick={toggleProjMenu}
               >
                 {/* 项目清除钮：ZCode 同款 hover 替换图标（常态隐藏，hover 胶囊时 folder 淡出、× 淡入） */}
                 <span
                   className="wb-proj-clear"
                   id="wbProjClear"
-                  title="不在项目中工作"
+                  title={t("misc.noProject")}
                   onClick={(e) => {
                     e.stopPropagation();
-                    toast("不在项目中工作功能即将推出");
+                    toast(t("misc.noProjectSoon"));
                   }}
                 >
                   <Icon name="xmark" size={12} />
@@ -99,7 +100,7 @@ export default function Welcome() {
                 <button
                   id="wbBranchBtn"
                   className={"wb-pill" + (branchMenu ? " active" : "")}
-                  title={`Git 分支: ${newSessionBranch || "main"}`}
+                  title={t("misc.gitBranchTitle", { branch: newSessionBranch || "main" })}
                   onClick={toggleBranchMenu}
                 >
                   <Icon name="branch" />

@@ -2,22 +2,23 @@
 // 文件页内容、目录树、图片查看、终端帧直推。自 store/ws.ts onMessage 平移。
 import { useAppStore } from "../index";
 import { emitTerminalFrame } from "../terminal";
+import { t } from "../../i18n";
 import type { HandlerSlice, FrameOf } from "./types";
 
 function onGitWrite(msg: FrameOf<"git_staged" | "git_unstaged" | "git_discarded" | "git_committed" | "git_pushed">) {
   useAppStore.setState((s) => ({ rightState: { ...s.rightState, gitWrite: msg } })); // 回包驱动按钮 busy 态收口
   if (msg.type === "git_staged" || msg.type === "git_unstaged" || msg.type === "git_discarded") {
     if (msg.ok) {
-      if (msg.type === "git_discarded") useAppStore.getState().toast("已丢弃更改");
+      if (msg.type === "git_discarded") useAppStore.getState().toast(t("notify.changesDiscarded"));
       useAppStore.getState().refreshGitDiff();
-    } else useAppStore.getState().toast(msg.error ?? "git 操作失败");
+    } else useAppStore.getState().toast(msg.error ?? t("notify.gitOpFailed"));
   } else if (msg.type === "git_committed") {
     if (msg.ok) {
-      useAppStore.getState().toast(`已提交 ${(msg.commit ?? "").slice(0, 7)}`);
+      useAppStore.getState().toast(t("notify.committed", { sha: (msg.commit ?? "").slice(0, 7) }));
       useAppStore.getState().refreshGitDiff();
-    } else useAppStore.getState().toast(msg.error ?? "提交失败");
+    } else useAppStore.getState().toast(msg.error ?? t("notify.commitFailed"));
   } else {
-    useAppStore.getState().toast(msg.ok ? "已推送" : (msg.error ?? "推送失败"));
+    useAppStore.getState().toast(msg.ok ? t("notify.pushed") : (msg.error ?? t("notify.pushFailed")));
   }
 }
 
@@ -38,7 +39,7 @@ export const filesHandlers = {
   git_branch_switched(msg) {
     if (msg.cwd !== useAppStore.getState().newSessionProject) return;
     useAppStore.setState((s) => ({ newSessionBranch: msg.branch }));
-    useAppStore.getState().toast(`已切换分支到 ${msg.branch}`);
+    useAppStore.getState().toast(t("notify.branchSwitched", { branch: msg.branch }));
   },
   git_status(msg) {
     const dirs = new Set<string>();

@@ -1,5 +1,6 @@
 // 设置页：键盘快捷键（pg-keyboard）。条目来自 ui-src/keys.js 的注册表——展示与绑定同源，
 // 键位对齐 omp 命令行（组件内绑定的键也在注册表登记，本页只读）。
+import { useTranslation } from "react-i18next";
 import { SHORTCUT_GROUPS } from "../../../keys";
 
 // keys.js 注册表条目形状（未补类型，按字面量收窄）
@@ -15,9 +16,10 @@ interface ShortcutGroup {
 const GROUPS = SHORTCUT_GROUPS as ShortcutGroup[];
 
 export default function KeyboardPage() {
+  const { t } = useTranslation();
   return (
     <div className="set-page" id="pg-keyboard">
-      <div className="set-tt">键盘快捷键</div>
+      <div className="set-tt">{t("settingsPage.nav.keyboard")}</div>
       {GROUPS.map((g) => (
         <div key={g.title}>
           <div className="set-group-tt">{g.title}</div>

@@ -1,6 +1,7 @@
 // 归档区（ui/sidebar.js renderArchived/archivedRow 平移）：列表底部折叠分组（默认收起，
 // 不持久化），条目可恢复/彻底删除；纯展示承载行（点击不打开会话），hover 高亮只挂行内按钮。
 import { useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
 import { sessionLabel } from "./util";
@@ -12,6 +13,7 @@ function ArchRow({ s, onDelete, animate, index }: {
   animate: boolean;
   index: number;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={"arch-row" + (animate ? " kids-in" : "")}
@@ -20,12 +22,12 @@ function ArchRow({ s, onDelete, animate, index }: {
       <span className="tt" title={s.cwd || s.path}>{sessionLabel(s)}</span>
       <button
         className="arch-act"
-        title="取消归档，恢复到项目列表"
+        title={t("sidebar.unarchiveRestore")}
         onClick={() => send({ type: "archive_session", sessionId: s.id, archived: false })}
       >
-        恢复
+        {t("sidebar.restore")}
       </button>
-      <button className="arch-act arch-del" title="彻底删除会话" onClick={() => onDelete(s)}>删除</button>
+      <button className="arch-act arch-del" title={t("sidebar.deleteForever")} onClick={() => onDelete(s)}>{t("common.delete")}</button>
     </div>
   );
 }
@@ -61,6 +63,7 @@ function ArchKids({ list, animate, closing, onDelete }: {
 }
 
 export default function ArchivedSection({ onDelete }: { onDelete: (s: SessionInfo) => void }) {
+  const { t } = useTranslation();
   const list = useAppStore((s) => s.archivedSessions) ?? [];
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -83,11 +86,11 @@ export default function ArchivedSection({ onDelete }: { onDelete: (s: SessionInf
       {/* 整头可点（折叠/展开），hover 高亮合法挂头行 */}
       <div
         className={"arch-head" + (open ? "" : " collapsed")}
-        title={open ? "收起归档区" : "展开归档区"}
+        title={open ? t("sidebar.collapseArchive") : t("sidebar.expandArchive")}
         onClick={toggle}
       >
         <span className="caret"><Icon name="caret" size={14} /></span>
-        <span className="flex-1 min-w-0 truncate">已归档</span>
+        <span className="flex-1 min-w-0 truncate">{t("sidebar.archivedLabel")}</span>
         <span className="flex-none text-ui-sm text-faint">{`(${list.length})`}</span>
       </div>
       {(expanded || closing) && <ArchKids list={list} animate={open} closing={closing} onDelete={onDelete} />}

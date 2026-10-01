@@ -1,18 +1,20 @@
 // 侧栏工具（ui/sidebar.js 平移）：相对时间 / 时长格式化 / 会话标签 / 剪贴板复制。
 // fmtDuration 供后续 chat-wave 消费（原版由 chat.js 引入）。
+import { t } from "../../i18n";
+
 export function fmtAgo(iso: string): string {
   const sec = (Date.now() - Date.parse(iso)) / 1000;
-  if (sec < 60) return "刚刚";
-  if (sec < 3600) return Math.floor(sec / 60) + "分";
-  if (sec < 86400) return Math.floor(sec / 3600) + "小时";
-  return Math.floor(sec / 86400) + "天";
+  if (sec < 60) return t("sidebar.agoNow");
+  if (sec < 3600) return t("sidebar.agoMin", { n: Math.floor(sec / 60) });
+  if (sec < 86400) return t("sidebar.agoHour", { n: Math.floor(sec / 3600) });
+  return t("sidebar.agoDay", { n: Math.floor(sec / 86400) });
 }
 
 export function fmtDuration(sec: number): string {
   sec = Math.max(1, Math.round(sec));
-  if (sec < 60) return `${sec} 秒`;
+  if (sec < 60) return t("sidebar.durSec", { n: sec });
   const m = Math.floor(sec / 60);
-  return `${m} 分 ${String(sec % 60).padStart(2, "0")} 秒`;
+  return t("sidebar.durMinSec", { m, s: String(sec % 60).padStart(2, "0") });
 }
 
 // 会话标签所需的最小结构（与 SessionRow.SessionInfo 解耦，避免 util 反向依赖组件）
@@ -22,7 +24,7 @@ interface SessionLabelLike {
 }
 
 export function sessionLabel(s: SessionLabelLike): string {
-  return s.title || s.firstMessage || "（空会话）";
+  return s.title || s.firstMessage || t("sidebar.emptySession");
 }
 
 // 复制到剪贴板（shell.js copyText 同款复刻，含 WKWebView 非安全上下文兜底）
@@ -55,6 +57,7 @@ export interface ShortcutComputationState {
   removedProjects?: string[] | Set<string>;
   availableProjects?: { cwd: string; sessions: ShortcutSessionCandidate[] }[];
   getAvailableProjects?: () => { cwd: string; sessions: ShortcutSessionCandidate[] }[];
+  archivedSessions?: ShortcutSessionCandidate[];
 }
 
 export const SHORTCUT_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
@@ -107,6 +110,10 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
       const visible = p.sessions.slice(0, limit);
       for (const s of visible) append(s);
     }
+  } else if (st.viewMode === "archive") {
+    // 归档视图：按修改时间倒序的归档会话
+    const list = st.archivedSessions ?? [];
+    for (const s of list) append(s);
   } else {
     // 最近视图：前 50 条按 modified 倒序
     const flat = st.diskProjects

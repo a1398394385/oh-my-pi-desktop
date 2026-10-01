@@ -2,9 +2,11 @@
 // 宿主负责把命中已移除列表的项移回所有项目列表。定位于触发按钮下方（宽 330）。
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../store";
 
 export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: () => void }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const inpRef = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
@@ -40,13 +42,13 @@ export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRec
       <input
         className="inp"
         ref={inpRef}
-        placeholder="项目全路径，如 /Users/x/code"
+        placeholder={t("sidebar.projectPathPh")}
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
           else if (e.key === "Escape") onClose();
         }}
       />
-      <button className="pa-btn" onClick={submit}>添加</button>
+      <button className="pa-btn" onClick={submit}>{t("sidebar.add")}</button>
     </div>,
     document.body,
   );

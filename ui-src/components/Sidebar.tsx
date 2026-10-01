@@ -5,6 +5,7 @@
 // DOM 结构与类名对照 ui/index.html + sidebar.js。
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import { useTranslation } from "react-i18next";
 import appIcon from "../../ui/app-icon.png";
 import { MOD } from "../platform";
 import {
@@ -16,7 +17,6 @@ import SessionRow from "./sidebar/SessionRow";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./sidebar/SessionRow";
 import ProjGroup, { projectIconName } from "./sidebar/ProjGroup";
 import type { ProjectIconSource } from "./sidebar/ProjGroup";
-import ArchivedSection from "./sidebar/ArchivedSection";
 import ConfirmDialog from "./sidebar/ConfirmDialog";
 import Menu from "./sidebar/Menu";
 import SessCtxMenu from "./sidebar/SessCtxMenu";
@@ -90,7 +90,8 @@ function newTaskAction() {
 }
 
 export default function Sidebar({ collapsed }: { collapsed: boolean }) {
-  // 渲染数据经 selector 订阅（须在 collapsed 早退之前：hooks 不可条件调用）
+  const { t } = useTranslation();
+  // Render data subscribed via selectors
   const diskProjects = useAppStore((s) => s.diskProjects);
   const pinnedSessions = useAppStore((s) => s.pinnedSessions);
   const viewMode = useAppStore((s) => s.viewMode);
@@ -103,6 +104,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const projectLimits = useAppStore((s) => s.projectLimits);
   const openSessions = useAppStore((s) => s.openSessions);
   const unseenFinished = useAppStore((s) => s.unseenFinished);
+  const archivedSessions = useAppStore((s) => s.archivedSessions);
   void allProjects;
   void removedProjects;
   // 弹层/局部交互态（原版散在 body append 的临时 DOM 与模块变量上）
@@ -116,7 +118,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const suppressProjClickRef = useRef(false); // 拖动结束后吞掉同一次 pointerup 产生的 click
   const listRef = useRef<HTMLDivElement>(null);
   const selBeforeCtxRef = useRef<string | null>(null); // 右键前选区（WebKit 右键选词撤销用）
-  const manageSnap = useRef<ManageSnap[] | null>(null); // 清理模式进入前的展开/条数快照（hooks 必须在折叠早退之前）
+  const manageSnap = useRef<ManageSnap[] | null>(null); // Snapshot of project expansion and limits before entering manage mode
 
   const closeProjPopups = () => {
     setProjMenu(null);
@@ -140,11 +142,11 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   // —— 删除会话确认（管理模式行内按钮 / 归档区彻底删除共用） ——
   const askDeleteSession = (s: SessionInfo) => {
-    const sTitle = s.title || s.firstMessage || s.id || "未命名会话";
+    const sTitle = s.title || s.firstMessage || s.id || t("sidebar.untitledSession");
     setConfirmDlg({
-      title: "删除会话",
-      message: `确定要永久删除此会话吗？此操作无法撤销。\n\n会话：${sTitle}`,
-      confirmText: "删除",
+      title: t("sidebar.deleteSessionTitle"),
+      message: t("sidebar.deleteSessionMsg", { title: sTitle }),
+      confirmText: t("common.delete"),
       danger: true,
       onConfirm: () => {
         send({ type: "delete_session", path: s.path });
@@ -167,9 +169,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const askRemoveProject = (cwd: string) => {
     const projName = pathBase(cwd) || cwd;
     setConfirmDlg({
-      title: "移除项目",
-      message: `确定要将项目「${projName}」从项目列表中移除吗？\n\n项目目录：${cwd}\n（会话仍保留在历史中，可在最近视图中查看）`,
-      confirmText: "移除",
+      title: t("sidebar.removeProjectTitle"),
+      message: t("sidebar.removeProjectMsg", { name: projName, cwd }),
+      confirmText: t("sidebar.removeProjectConfirm"),
       danger: true,
       onConfirm: () => {
         send({ type: "remove_project", cwd });
@@ -320,8 +322,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     return true;
   };
 
-  if (collapsed) return <aside id="sidebar" className="collapsed" data-tauri-drag-region=""></aside>;
-
   // —— 列表数据 ——
   const manage = isProjectManageMode;
   // 置顶列表：跨项目聚合，位于项目列表上方；磁盘上已不存在的置顶自动忽略
@@ -349,8 +349,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       openSessions,
       unseenFinished,
       availableProjects: visible,
+      archivedSessions,
     });
-  }, [viewMode, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible]);
+  }, [viewMode, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible, archivedSessions]);
 
   const rowProps: SessionRowCallbacks = {
     onRenameStart: (key, path) => setRenaming({ key, path }),
@@ -382,7 +383,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const rect = e.currentTarget.getBoundingClientRect();
     closeProjPopups();
     if (invoke) {
-      invoke("plugin:dialog|open", { options: { directory: true, title: "选择项目文件夹" } })
+      invoke("plugin:dialog|open", { options: { directory: true, title: t("sidebar.pickProjectDir") } })
         .then((p) => {
           if (p) send({ type: "add_project", cwd: p });
         })
@@ -424,18 +425,19 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   return (
-    <aside id="sidebar" data-tauri-drag-region="">
+    <aside id="sidebar" className={collapsed ? "collapsed" : ""} data-tauri-drag-region="">
       <div className="pt-[10px] px-[10px] flex flex-col gap-[6px] flex-none">
         <div className="nav-item" id="navNew" onClick={newTaskAction}>
           <Icon name="messagePlus" size={19} />
-          新建任务 <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
+          {t("sidebar.newTask")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
         </div>
         <SidebarSearch />
       </div>
       <div className="flex items-center pt-[10px] px-[14px] pb-[8px] gap-[8px] flex-none">
         <div className="seg" id="seg">
-          <button data-view="recent" className={viewMode === "recent" ? "on" : ""} onClick={() => setBump({ viewMode: "recent" })}>最近</button>
-          <button data-view="project" className={viewMode === "project" ? "on" : ""} onClick={() => setBump({ viewMode: "project" })}>项目</button>
+          <button data-view="recent" className={viewMode === "recent" ? "on" : ""} onClick={() => setBump({ viewMode: "recent" })}>{t("sidebar.viewRecent")}</button>
+          <button data-view="project" className={viewMode === "project" ? "on" : ""} onClick={() => setBump({ viewMode: "project" })}>{t("sidebar.viewProject")}</button>
+          <button data-view="archive" className={viewMode === "archive" ? "on" : ""} onClick={() => setBump({ viewMode: "archive" })}>{t("sidebar.viewArchive")}</button>
         </div>
       </div>
       <div
@@ -454,22 +456,22 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         {viewMode === "project" ? (
           <>
             <div className="project-pinned">
-              <div className="sec-label">置顶</div>
+              <div className="sec-label">{t("sidebar.pinnedLabel")}</div>
               {pinnedRows.length > 0 ? (
                 pinnedRows.map((s) => rowOf(s, { pinnedList: true }, `pinned:${s.path}`, shortcuts.get(s.path)))
               ) : (
-                <div className="pinned-empty text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无置顶会话</div>
+                <div className="pinned-empty text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noPinned")}</div>
               )}
             </div>
             <div className="sec-label project-heading">
-              <span>项目</span>
+              <span>{t("sidebar.projectsLabel")}</span>
               <div className="flex items-center gap-[4px]">
-                <button className="sec-add" title="添加项目" onClick={onSecAdd}>
+                <button className="sec-add" title={t("sidebar.addProject")} onClick={onSecAdd}>
                   <Icon name="plus" size={15} />
                 </button>
                 <button
                   className={"sec-trash" + (manage ? " active" : "")}
-                  title={manage ? "退出清理模式" : "清理项目与会话"}
+                  title={manage ? t("sidebar.exitCleanMode") : t("sidebar.cleanProjects")}
                   onClick={onSecTrash}
                 >
                   <Icon name="trash" size={15} />
@@ -511,16 +513,20 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
                   );
                 });
               })()}
-              {visible.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无项目，点击「项目」右侧 ＋ 添加</div>}
-              <ArchivedSection onDelete={askDeleteSession} />
+              {visible.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noProjectsHint")}</div>}
             </div>
+          </>
+        ) : viewMode === "archive" ? (
+          <>
+            <div className="sec-label">{t("sidebar.archivedLabel")}</div>
+            {archivedSessions.map((s) => rowOf(s, {}, `archive:${s.path}`, shortcuts.get(s.path)))}
+            {archivedSessions.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noArchived")}</div>}
           </>
         ) : (
           <>
-            <div className="sec-label">最近任务</div>
-            {flat.map((s) => rowOf(s, { showRepo: true }, `recent:${s.path}`, shortcuts.get(s.path)))}
-            {flat.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">暂无任务</div>}
-            <ArchivedSection onDelete={askDeleteSession} />
+            <div className="sec-label">{t("sidebar.recentTasks")}</div>
+            {flat.map((s) => rowOf(s, {}, `recent:${s.path}`, shortcuts.get(s.path)))}
+            {flat.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noTasks")}</div>}
           </>
         )}
       </div>
@@ -530,7 +536,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           <span className="text-[15px] font-semibold text-text truncate leading-none" /* style-token-ignore */ id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
         </div>
         <span className="flex-1"></span>
-        <button className="icon-btn" id="settingsBtn" title="设置" onClick={() => openSettings()}>
+        <button className="icon-btn" id="settingsBtn" title={t("sidebar.settings")} onClick={() => openSettings()}>
           <Icon name="settings" size={16} />
         </button>
       </div>
@@ -559,7 +565,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           ]}
           onClose={() => setProjMenu(null)}
         >
-          <button onClick={() => { setProjMenu(null); askRemoveProject(projMenu.cwd); }}>移除</button>
+          <button onClick={() => { setProjMenu(null); askRemoveProject(projMenu.cwd); }}>{t("sidebar.remove")}</button>
         </Menu>
       )}
       {projAdd && <ProjAddPop anchorRect={projAdd.rect} onClose={() => setProjAdd(null)} />}

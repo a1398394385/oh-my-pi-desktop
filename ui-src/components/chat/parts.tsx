@@ -16,6 +16,7 @@ import { langOfPath } from "../../lib/highlighter";
 import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens";
 import { openRightTab } from "../RightPanel";
 import LightweightDiff from "../diff/LightweightDiff";
+import { t } from "../../i18n";
 
 export { uniqueFiles, splitPath };
 
@@ -160,7 +161,7 @@ async function openExternal(url: string) {
     if (invoke) await invoke("plugin:opener|open_url", { url });
     else window.open(url, "_blank", "noopener");
   } catch (err) {
-    useAppStore.getState().toast(`打开链接失败：${err}`);
+    useAppStore.getState().toast(t("chat.openLinkFailed", { error: String(err) }));
   }
 }
 export function LinkedText({ text }: { text?: string }) {
@@ -176,7 +177,7 @@ export function LinkedText({ text }: { text?: string }) {
       <a
         key={k++}
         className="cursor-pointer text-blue no-underline hover:underline"
-        title={`${MOD}+点击在默认浏览器打开`}
+        title={t("chat.openInBrowser", { mod: MOD })}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation(); // 不冒泡到整行的展开/收起点击
@@ -258,11 +259,11 @@ export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; 
     // 请求在途（工具已结束 → 保留原文案）。判据同一口径：item.running
     return (
       <FadeBox className={cls}>
-        <div className="text-faint text-ui-base py-[12px] px-[10px]">{item.running ? <Spin /> : "加载中…"}</div>
+        <div className="text-faint text-ui-base py-[12px] px-[10px]">{item.running ? <Spin /> : t("common.loading")}</div>
       </FadeBox>
     );
   }
-  if (!diff) return <FadeBox className={cls}><div className="text-faint text-ui-base py-[12px] px-[10px]">（无差异内容）</div></FadeBox>;
+  if (!diff) return <FadeBox className={cls}><div className="text-faint text-ui-base py-[12px] px-[10px]">{t("chat.noDiffContent")}</div></FadeBox>;
   return (
     <FadeBox className={cls}>
       <LightweightDiff diff={diff} lang={langOfPath(path)} />
@@ -304,7 +305,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       {item.details?.isDirectory ? (
         <div className={inGroup ? "chg-item" : "act read"}>
           <Icon name="folder" size={15} />
-          <span className="lbl">目录</span>
+          <span className="lbl">{t("chat.labelDirectory")}</span>
           {cleanPath ? <Ellip className="path" title={cleanPath}>{cleanPath}</Ellip> : item.text || "read"}
         </div>
       ) : (
@@ -314,7 +315,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         onClick={canOpen ? toggle : undefined}
       >
         <Icon name="file" size={15} />
-        <span className="lbl">读取</span>
+        <span className="lbl">{t("chat.labelRead")}</span>
         {cleanPath ? (
           <>
             <FileChip path={cleanPath} nameClass={hasContent ? "ed-name" : ""} onNameClick={hasContent ? () => openReadFileInSidebar(item, path || cleanPath) : undefined} />
@@ -366,7 +367,7 @@ function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string
           ))}
           {omitted > 0 && (
             <div className="py-[6px] px-[12px] text-faint text-ui-xs">
-              … 内容过长，已省略剩余 {omitted} 行（点击文件名可在右侧查看完整文件）
+              {t("chat.readOmitted", { count: omitted })}
             </div>
           )}
         </div>

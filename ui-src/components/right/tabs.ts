@@ -4,21 +4,22 @@
 // 字段订阅自动通知（不再依赖 _v bump）。
 import { useAppStore, setBump } from "../../store";
 
-// 右栏 tab 元信息（图标名走 ui/icons 注册表）
+// 右栏 tab 元信息（图标名走 ui/icons 注册表；label 存 i18n key，渲染处经 t() 取词，
+// 模块常量不随语言切换重算，故不能在定义处直接缓存译文）
 interface TabMeta {
   label: string;
   icon: string;
 }
 
 export const TAB_META: Record<string, TabMeta> = {
-  subagent: { label: "子代理", icon: "agents" },
+  subagent: { label: "right.tabSubagent", icon: "agents" },
   gitdiff: { label: "Git Diff", icon: "branch" },
-  bgcmd: { label: "后台命令", icon: "term" },
-  file: { label: "文件", icon: "folderOpen" },
-  tree: { label: "分支", icon: "fork" },
-  sessiontree: { label: "会话树", icon: "tree" },
-  terminal: { label: "终端", icon: "termBox" },
-  browser: { label: "浏览器", icon: "globe" },
+  bgcmd: { label: "right.tabBgcmd", icon: "term" },
+  file: { label: "right.tabFile", icon: "folderOpen" },
+  tree: { label: "right.tabTree", icon: "fork" },
+  sessiontree: { label: "right.tabSessiontree", icon: "tree" },
+  terminal: { label: "right.tabTerminal", icon: "termBox" },
+  browser: { label: "right.tabBrowser", icon: "globe" },
 };
 // tab 关闭钩子：页面有宿主侧资源（如终端 PTY）时注册，关 tab 前回调销毁
 //（TerminalPage 用：关「终端」tab 杀 pty-bridge 子进程）

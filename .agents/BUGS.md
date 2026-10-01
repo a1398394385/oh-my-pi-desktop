@@ -36,6 +36,11 @@
 | BUG-026 | 整份 ui/style.css 中文注释双重编码乱码——UTF-8 字节被按中文 ANSI/CP936 解码后回写 | 2026-09-27 |
 | BUG-027 | 读取「部分内容」时文件图标退化为通用图标——选择器后缀只剥了 `:N` 一种形态 | 2026-09-27 |
 | BUG-028 | Windows 安装版每 10s 泄漏一个 ~250MB 宿主进程——编译产物不分发 SDK 的 `__omp_worker_*` 协议 | 2026-09-27 |
+| BUG-029 | 会话列表把旧会话显示成「刚刚」——`modified` 取文件 mtime，被 `session_exit` 诊断帧刷新 | 2026-10-01 |
+| BUG-030 | 大面积拖选把两侧空档整片填蓝——WebKit 选区填充膨胀只认裁剪边界 | 2026-10-01 |
+| BUG-031 | 输入法选字回车直接发消息——WebKit 上 compositionend 先于 Enter keydown 到达，Lexical 核心 isComposing 守卫失效 | 2026-10-01 |
+| BUG-032 | 输入框按一下 Esc 焦点外流、必须鼠标点回来——RichTextPlugin 在 EDITOR 优先级绑了 editor.blur() | 2026-10-01 |
+| BUG-033 | 会话树页进入停在最顶端、且条目只能鼠标操作——落底判据挂在挂载上 + 无键盘导航 | 2026-10-01 |
 
 ---
 
@@ -392,3 +397,58 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **修复**：`host/host.ts` 改为薄入口（宿主主体原样移至 `host/main.ts`，git mv 保留历史）：argv 空 = 宿主（Tauri 壳 spawn 从不带参数），动态装载 `main.ts`；argv 非空 = 以 CLI 身份运行——`declareWorkerHostEntry()`（对齐 cli.ts 的 isProcessEntry 分支，使 worker 子进程可再 spawn worker 线程）后交 SDK `runCli(argv)` 分发（worker 选择器、`--smoke-test`、`--version` 等全部可用），`runCli` 返回即 `process.exit(0)`。分流必须在宿主静态图求值之前（ESM 静态 import 先于顶层代码），所以宿主主体动态装载、worker 路径只拉 CLI 轻入口（静态图不含 TUI 与 native addon）。`check-capabilities.mjs`/`check-host-boundaries.mjs` 扫描目标跟随改为 main.ts。验证：`scripts/smoke-worker-dispatch.ts`（编译产物三 broker：daemon 分发为真 broker + scope.json + 3s 空闲自退；blob/lsp socket 出现；均无宿主 READY 行）+ 编译产物 `--smoke-test` 的 sync/stats_activity worker 通过。
 
 **教训**：以 `bun build --compile` 内嵌 SDK 的宿主二进制，就是 SDK 眼里的「CLI 编译产物」——SDK 的隐式协议（worker re-entry 到 `process.execPath`）必须由入口实现，否则每个子进程形态 worker（daemon/blob/lsp/js_eval/stats…）都漏成完整宿主。新增任何「宿主被 spawn 的形态」时，先对照 CLI 入口（cli.ts isProcessEntry 分支）核对协议责任。`--smoke-test` 与 `scripts/smoke-worker-dispatch.ts` 是此类回归的防线。
+
+### BUG-029: 会话列表把旧会话显示成「刚刚」——`modified` 取文件 mtime，被 `session_exit` 诊断帧刷新
+
+**现象**：default profile 的 `01a0e6d3…` 会话点进去看着「最后一次回复 9-28 16:04」，左栏列表却显示「1 分」。磁盘上该文件 mtime = 当前时刻，transcript 尾部是三条 `session_exit`（最近一条 10-01 13:15）。
+
+**根因**：列表时间来自底座 `SessionInfo.modified`，`session-listing.ts` 直接取 `stat.mtimeMs`。而底座会话 teardown 会往 transcript 追加一条 `session_exit` 诊断帧（`session/exit-diagnostics.ts`；正常 dispose、SIGINT/SIGHUP 都写），**打开过一次旧会话，mtime 就被刷成打开时刻**；UI 又拿它排序，于是旧会话被顶到列表最前。实测 default profile 276 个会话文件里 235 个 mtime 晚于最后一条 message；另有 41 个无 message 的新会话必须继续用 mtime 兜底。
+
+**修复**：新增 `host/session-activity.ts` —— 读文件尾部窗口（16 KB 起，4 倍扩到 512 KB 上限）从后往前取最后一条 `type === "message"` 帧的 timestamp 作活动时间，无 message／读不到时回退 mtime；按 (size, mtime) 做上限 4096 的缓存，`peekFileTail` 走 `@oh-my-pi/pi-utils`。`host/rpc/session.ts` 的 `handleListSessions` 与 `get_session_tree` 在 `SessionManager.listAll()` 后调用 `applyActivityTimes()` 原地改写 `modified`（排序与显示自动跟随）；`scripts/check-host-boundaries.mjs` 登记 `rpc/session.ts→session-activity.ts`。验证：test profile 复制该会话 → 列表行 `2026-09-28T08:04:18.275Z`（= 本地 16:04:18，与详情一致），`utimes` 刷新 mtime 后重算仍不变（缓存失效路径）；276 个真实会话文件与全量逐行扫描交叉比对 0 mismatch、10 ms；`scripts/smoke.ts` 真宿主跑通 list 链路（后续 prompt 因测试 profile 无模型中止，与本次改动无关）。回归探针：`.local/probe-session-activity.ts`（端到端行时间 + touch 后不变）、`.local/probe-activity-parity.ts`（276 文件与 oracle 全量比对）。
+
+**教训**：文件 mtime 不是活动时间——任何诊断/元数据写入都会污染它（标题原地重写、退出帧同理）。凡列表时间、排序、GC 依赖 mtime，先问「这次写入代表用户活动吗」。残留（未改，语义不同）：`host/stats.ts` 热力图与 `host/session-context.ts` 的 days 过滤仍吃 `modified`。
+
+### BUG-030: 大面积拖选把两侧空档整片填蓝——WebKit 选区填充膨胀只认裁剪边界
+
+**现象**：消息区大面积拖选时，选中高亮不止染文字，而是把整片区域填蓝到满窗口宽——两侧空档、段落间隙全部涂实；只有用户气泡正常（只染文字本身）。拖动调整左右边栏宽度时异常蓝区消失（`body.resizing` 临时禁选），只剩文字上的正常高亮。分诊：②确认存量缺陷（引擎行为，一直如此）。
+
+**根因**：WebKit 的选中高亮是引擎自绘的间隙填充：选区跨越块级边界时，每行填充矩形沿祖先链向上膨胀到更宽的绘制上下文（实测一直膨胀到视口宽），`::selection` 只能改颜色改不了形状。上一轮（2026-09-30）给气泡/折叠条加的 `user-select:none` 只排除了命中与文本入选，**不控制填充几何**——气泡看着正常其实是因为文本在内联 span 里按行盒逐行绘制。变体矩阵实证（Playwright WebKit 2248，与 WKWebView 同 WebCore）：`user-select:none` 隔离、`width:fit-content`、`inline-block`、自绘背景四路全败；只有**裁剪边界**（`overflow:hidden/clip`）与 flex item 自绘能拦住膨胀。Chromium 按 text box 逐行填充无此问题，故 ZCodium/Electron 天然正常。
+
+**修复**：两层裁剪 + 一处全宽化。① `.msg.assistant.md-body` / `.msg.assistant.stream-plain` 加 `overflow: clip`（main-chat.css:225,232）——选区**边缘**的消息盒自绘填充被裁回盒内（短消息贴文字、长消息贴内容列）；② `.turn-flow` 加 `overflow: clip`（main-chat.css:145）——选区**完全覆盖**的块不自绘、由祖先代画（探针实证：跨轮拖选时中间消息的 clip 失效、两侧照蓝），flow 的 clip 把代画条带（折叠行两侧、气泡↔正文细条）裁到列宽；③ `.turn-acts` 退出共享列宽规则、改全宽盒 + `padding-left` 补偿列左缘（main-chat.css:960）——祖先在「被跨越子盒两侧」补画间隙，子盒铺满全宽则间隙归零，分叉/复制条两侧的满宽细条消失。选 `clip` 而非 `hidden`：clip 不建 BFC，`.md-p` 的 8px margin 穿透塌陷不变、布局零影响。失败路线：`user-select:none` 隔离上移（s10/f6 变体）与 acts 挪进 flow（f2 变体，莫名毒化 flow 的 clip）均被像素探针否掉。验证：双轮完整 DOM 复刻页 + 13 点像素探针（`/tmp/wk-seltest/probe.mjs`，f1&g4 变体全绿）；`check-architecture`（960/960）/ `check-encoding` / `check-style-tokens` / `vite build` 全绿；真机视觉确认留用户一次拖选。
+
+**教训**：WebKit 渲染行为只能靠真引擎变体矩阵定案，盒模型直觉推断（none 边界拦截）会错；`overflow: clip` 是「只要裁剪不要 BFC」的标准答案；「选区完全覆盖的块由祖先代画」决定了 clip 必须套在**文本所在的最近列宽容器**上，只套叶子盒不够。残留（有意不修）：长消息内部短行尾仍填到内容列右缘（列内填充），逐行贴字需 md-body 改 flex 列+子项 fit-content（margin 不再塌陷、要审计全部 markdown 子元素宽度）或自绘高亮层（百行 JS 子系统），代价均不成比例。同类待观察点：`.turn-acts` 内展开卡片（终端输出/diff）拖选仍会膨胀到视口宽，有投诉再套同款 `overflow: clip`。
+
+**追加（2026-10-01，loop 汇总行精修）**：跨选 `.act.loop` 时上下 margin 被填成列宽蓝条（与所有块间带同源，但该行被点名要求像气泡只染文字）。补遗机理：父级间隙填充**只跳过子盒（border-box），裸 margin 必填**；遮盖路线全败——`box-shadow`/背景在父级选区相位之前绘制盖不住填充，`position:relative`、flow 去 BFC/去 clip、flex/grid 包裹均被变体实测否掉。唯一可行：**间距内化**——`.act.loop` 改 `margin:0; padding:20px 0`，相邻块相向 margin 归零（`.turn-flow > *:has(+ .act.loop)` / `.act.loop + *`），首子 loop 吸收 flow 的 `padding-top`（35px 保持原气泡→loop 间距）；sealed 细分隔线改背景线（`linear-gradient(var(--line-soft)…) bottom 20px / 100% 1px`，线下 20px 留白留在盒内）。顺手删死代码 `.msg.user + .act.loop { margin-top:70px }`（气泡恒在 sticky wrap 内，永不相邻，且与新 margin:0 冲突）。验证：vite preview + Playwright WebKit 真实拖拽像素扫描——loop 盒内仅文字线染蓝、上下 padding 区全黑，残留仅下一条消息自身 8px 段距带（与消息间填充一致）；门禁 960/960 全绿。
+
+### BUG-031: 输入法选字的回车直接发消息——WebKit 上 compositionend 先于 Enter keydown 到达，Lexical 核心 isComposing 守卫失效
+
+**现象**：中文输入法（拼音/注音）打字，候选窗开着按回车选字，消息被立即发出（`prompt` 帧已发、输入框清空），选字后本要接着输入的半句直接进了对话。分诊：②确认存量缺陷（textarea 时代有 `e.nativeEvent.isComposing` 显式守卫，P7 迁 Lexical 时误以为「核心层已守」而丢）。
+
+**根因**：两处叠加。(1) 平台事件顺序：WebKit（= Tauri macOS 的 WKWebView）确认候选时先派发 `compositionend`、再派发这次 Enter 的 `keydown`（WebKit bug 165004；Stum 2016 记录「Safari 会补发 which=229 的 keydown」同源），到达 keydown 处理器时事件上 `isComposing` 已是 false。(2) Lexical 核心的守卫只覆盖「组合进行中」：`onKeyDown` 里 `if (editor.isComposing()) return`（`LexicalEvents.ts:1611`），而 composition 收尾在 `$handleCompositionEnd` 里就把 `_compositionKey` 置空。插件层 `KEY_ENTER_COMMAND` 处理里只判 `ev === null`（那是组合文本以 `\n` 收尾的派发），对 `isComposing === false` 的确认回车没有任何拦截——于是 `sendPrompt()` 被调用。旧 textarea 实现的 `!e.nativeEvent.isComposing`（commit c970d17^）正是补这个缺口，迁移时按注释「isComposing 守卫在核心层」删掉了。
+
+**修复**：`ui-src/components/composer/lexical/ComposerPlugin.tsx` 记 `imeCommitAtRef`（最近一次 `compositionend` 的 `event.timeStamp`，0 = 无），经 `editor.registerRootListener` 在挂载后的 root 元素挂 `compositionstart`/`compositionend` 原生监听（root 元素由 ContentEditable 回调 `setRootElement` 挂载，晚于插件挂载，故只能走 root listener；不与 Lexical 自己的重入守卫冲突）。`KEY_ENTER_COMMAND` 处理里：回车落在 `IME_COMMIT_ENTER_WINDOW_MS`（100ms）窗口内 = IME 确认选字，吞掉不发送并清零（**只吞一次**，确认后下一次真回车照常发送）；窗口取小值是因为 WebKit 上两个事件几乎同一 tick，同时防「鼠标点候选收尾后紧接着按的真回车」被误吞。非 Apple 平台顺序相反，`imeCommitAt` 恒 0，本分支不生效。窗口判定用 `ev.timeStamp`（同源高精度时钟，不受 IME 长按导致 `Date.now()` 漂移影响）。验证：`vite dev` + `?preview=1` 真实 contentEditable 上按 WebKit 顺序注入事件，五项回归矩阵全绿——纯回车发 `prompt`；`compositionend` 紧跟回车不发送且草稿保留；250ms 后的真回车照常发送；组合进行中回车不发送（core 守卫）；窗口外 Ctrl+↵ steer 照常。CDP 真实按键复核（`page.keyboard` 真键、非合成事件，插桩收 `prompt` 帧 + `window.onerror`）：纯回车发 / IME 确认回车不发且草稿保留 / 400ms 后回车照发 / ⇧↵ 不发且草稿留 / 窗口外 Ctrl+↵ steer 发，全程 0 错误。同一探针在 `git stash` 掉本改动后复现 `prompt:zhong wen` 发出（红→绿）。`bun run check`（含 tsc）、`bun run ui:build`、`bun run smoke:react` 全绿。真机 Tauri 窗口手测留用户确认。
+
+**教训**：「库核心有守卫」不等于「你的场景被守住」——核心守卫的判据（组合进行中）与真实平台事件顺序（先 compositionend 后 keydown）之间的缝，只有实测事件流才暴露。IME 场景的判据必须是「刚才是否发生过 composition 收尾」这类时间关系，不是事件自身的 `isComposing` 快照。ProseMirror 0c54477 是同源对策（记 `compositionEndedAt` + 时间戳窗口），照抄即可，不要自造。残留：WKWebView 上部分第三方输入法（如 Rime/搜狗的部分模式）干脆不派发 composition 事件，那时连 `compositionend` 都没有、时间戳窗口也无从谈起——那属于输入法不送组合事件，无解（VSCode/xterm 同样受影响，xterm 的规避是自定义 key handler 拦 229）。
+
+### BUG-032: 输入框按一下 Esc 焦点外流、必须鼠标点回来——RichTextPlugin 在 EDITOR 优先级绑了 editor.blur()
+
+**现象**：输入框里正打字，按一次 Esc 焦点就没了（`activeElement` 变 body），想接着打字必须用鼠标点回输入框。分诊：②确认存量缺陷（textarea 时代 Esc 只走全局路由、焦点不动，P7 迁 Lexical 时引入）。
+
+**根因**：`@lexical/rich-text` 的 `registerRichText` 在 `KEY_ESCAPE_COMMAND` 上绑了 `editor.blur()`（`src/index.ts:1843-1853`，`COMMAND_PRIORITY_EDITOR` = 0）。Lexical 的命令分派按优先级从高到低跑（`triggerCommandListeners` 的 `for (i = 4; i >= 0; i--)`），插件层此前没有任何 `KEY_ESCAPE_COMMAND` 注册，于是 Esc 一路落到 core 最低优先级 → `editor.blur()` → `rootElement.blur()` + `domSelection.removeAllRanges()`，焦点彻底外流。而本应用的 Esc 语义全在全局路由 `keys.ts` 的 `handleEsc`（双击清空 / 双击唤起树 / 中止生成），它挂在 `document` 上、不依赖输入框焦点，于是「焦点外流」纯属副作用、没有任何功能收益。textarea 时代没有 core 这层默认 blur，所以迁移后行为回退。
+
+**修复**：`ui-src/components/composer/lexical/ComposerPlugin.tsx` 注册 `KEY_ESCAPE_COMMAND` 于 `COMMAND_PRIORITY_NORMAL`（2 > 0，抢在 core 的 blur 之前），处理体 `() => !typeaheadOpenRef.current`——面板（斜杠/@ 补全）开着时返回 false 让路给 `LexicalMenu` 的 Esc 处理器（它在 LOW 优先级关面板），其余时候返回 true 吞掉。**不调 `ev.preventDefault()`**：keydown 继续冒泡到 `document` 的全局路由，Esc 的清空/中止/唤树语义一行不改。验证：`vite dev` + `?preview=1`，CDP 真实按键，`window.onerror` 全程 0 错误——(1) 有草稿按一次 Esc：`activeElement` 仍为 `input`、草稿保留、发送钮转取消态（`escArmedUntil` 置位），紧接着继续打字成功落字；(2) `/help` 弹面板时按 Esc：面板收起、焦点仍在输入框；(3) tree 模式按一次 Esc 仍切回 chat；(4) 空闲时按一次 Esc 只武装 tree 不切模式；(5) 流式态按一次 Esc 仍发 `abort_session` 且焦点不外流。`bun run check`（含 tsc）、`bun run ui:build`、`bun run smoke:react` 全绿。真机手测留用户确认。
+
+**教训**：库在最低优先级挂的命令（`COMMAND_PRIORITY_EDITOR`）不是「保底」而是「兜底行为」——编辑器默认会做些什么（blur / 插换行 / 应用格式），你的应用只要有一个语义与之冲突的全局键，就必须在更高优先级显式接管，否则迁移即回退。接管时优先「不 preventDefault、只让 keydown 继续冒泡」，全局语义一行不动，风险最低。附带发现（**未修，见下**）：本条与 BUG-031 同批排查时发现「有草稿双击 Esc 清空」在 `?preview=1` 下也不生效——`composerSetSignal` 被 Composer effect 消费（`setState({ composerSetSignal: null })`）、`lexRef.current.clear()` 不抛错，但 DOM 文本不变；同一 `clear()` 逻辑经页面内直接调 editor.update 可正常清空，存疑点在该 update 落在哪个 Lexical 实例/队列上，与本条 Esc 焦点无因果关系，且**改动前后同样复现**（`git stash` 对照确认存量）。
+
+### BUG-033: 会话树页进入停在最顶端、且只能鼠标操作条目
+
+**现象**：双击 Esc 进会话树页，滚动条永远在顶部（看到的是最老的条目而非最新历史）；条目没有任何键盘操作，想跳转必须先用鼠标点行左侧那个 hover 才显形的快捷跳转钮。分诊：②确认存量缺陷（树页自迁入中栏起就没有这两项）。本次按需求一并补齐落底 + ↑↓/↵ 键盘操作。
+
+**修复**：三处。(1) `ui-src/components/chat/MainSessionTree.tsx` 加 `scrollRef` + `useLayoutEffect` 落底——判据是「树数据已到位且会话 id 变了」而非单纯的挂载，因为 `stale` 分支先渲染转圈占位、瀑布流要等 `entry_tree` 回包才挂上；用 layout effect 是为了在 paint 前落位，避免先渲染一帧顶部再跳底（与 `Chat.tsx` 消息流贴底同款做法）。(2) `ui-src/components/chat/SessionTreeStream.tsx` 加 `cursorId` 游标：游标只落在 `type: "node"` 项上（分叉药丸行跳过），`↑/↓` 按视觉顺序走一步、**到边界停住不回绕**（回绕会让一次误触直接跳到另一端），首次按键落在末项（与「进树看最新」同向）；游标移动后按需微调 `scrollTop` 把目标行带进视口，只动纵向、不用 `scrollIntoView`（它会连带滚动祖先容器、页面抖）。(3) `↵` = 打开既有跳转二次确认弹窗（`setConfirmNode`，与点行左侧快捷跳转钮同一条路），弹窗三个按钮 Jump / Jump & summarize / Cancel 原样复用。键盘监听挂 `window` 捕获阶段、**在 `confirmNode` 打开时整个 effect 直接不注册**，于是弹窗期间 ↑↓/↵ 全部让路、回车不会穿透二次触发跳转，Esc 仍由弹窗自己的捕获监听关闭。`keys.ts` 注册表补「会话树」组（↑↓ 移动游标 / ↵ 打开跳转确认）供设置页 `pg-keyboard` 展示，中英文案在 `ui-src/i18n/locales/ui/misc.{zh,en}.ts`。游标视觉：`ui/css/main-tree.css` 末尾加 `.is-cursor`（accent 描边 + 左侧 2px 竖条 + 导轨徽标描边），**刻意不给整行加 hover 高亮**——按全站约束，hover 高亮是「可点」的 affordance，键盘游标是定位态、两者语义不同。
+
+**验证**：`vite dev` + `?preview=1`，注入 21~26 节点带分叉的条目树（`?preview=1` 下手动写 `rightState.entryTree`），CDP 真实按键 + 截图，全程 `window.onerror` 0 错误——(1) 双击 Esc 进树：`scrollTop` 落在底部（458 / 1300，`atBottom` 为真），再进一次仍落底；(2) `↑` 起游标落在末项 `fa1`（分叉分支起点），再 `↑` 到 `c24`，`↓` 回 `fa1`；(3) 连按 `↑` 30 次停在首项 `root`（`scrollTop` 自动从 776 收到 5）、再多按 5 次不回绕；(4) `↵` 弹窗内容为「第 1 条消息」、按钮为 Cancel / Jump / Jump & summarize，弹窗开着时 `↑` 与 `↵` 均无效果（游标不动、不叠第二层弹窗），`Esc` 关闭；(5) 点 Jump 发 `navigate_tree{entryId:"c1",summarize:false}`、点 Jump & summarize 发 `summarize:true`；(6) 树页单击 Esc 仍切回 chat、再双击回树仍落底；(7) 游标视觉截图确认 accent 描边行与「Current」叶徽标（蓝）可区分。`bun run check`（含 tsc）、`bun run ui:build`、`bun run smoke:react`、`OMP_PROFILE=omp-desktop-test bun scripts/smoke-i18n.ts` 全绿；设置页 `pg-keyboard` 确认新增「Session tree」组两条目渲染。真机手测留用户确认。
+
+**教训**：滚动落底的判据不能挂在「组件挂载」上——有异步数据 + 中间占位分支时，挂载那一刻内容还不存在，`scrollTop = scrollHeight` 落在 0 上，看起来就是「落底没生效」。判据应是「目标内容已渲染且身份变了」。同理，键盘操作不能只在有焦点的元素上监听：树页没有天然焦点容器，挂 `window` 捕获阶段 + 弹窗期间整体不注册，比逐组件 `onKeyDown` 更短也更不易漏。架构棘轮（`check-architecture`）会拦 `main-tree.css` 超行，逼着新样式跟文件既有的单行压缩风格对齐——这正是该文件「先拆分再增长」的意图，不要靠调大上限绕过。
+
+
+

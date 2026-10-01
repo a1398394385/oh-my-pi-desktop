@@ -1,6 +1,7 @@
 // 终端 PTY 服务：基于 @oh-my-pi/pi-natives 原生 PtySession（跨平台 ConPTY / POSIX PTY），
 // 对前端暴露 create/write/resize/dispose 四元组 + 数据帧/退出帧回推。
 import { PtySession as NativePty } from "@oh-my-pi/pi-natives";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 
 const isWindows = process.platform === "win32";
 
@@ -117,7 +118,7 @@ export async function createTerminal(
   await Promise.race([
     startPromise,
     new Promise<void>((_, reject) =>
-      setTimeout(() => reject(new Error("PTY 子进程启动超时")), 3000),
+      setTimeout(() => reject(new Error(hostI18n.t("errors.pty.startTimeout"))), 3000),
     ),
   ]);
 

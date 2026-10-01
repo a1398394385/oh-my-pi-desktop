@@ -7,8 +7,10 @@ import type { RefObject } from "react";
 import type { RailEntry } from "./chat-types";
 import type { TimerHandle } from "../../store";
 import { placeMenu } from "../../shell";
+import { t } from "../../i18n";
 
-const RAIL_ROLE_LABEL: Record<string, string> = { user: "用户", assistant: "助手", thinking: "思考", tool: "工具", meta: "系统", err: "错误", bash: "命令", mention: "读取" };
+// Maps rail roles to i18n keys; resolved via t() at popup time (language switch remounts the tree).
+const RAIL_ROLE_LABEL: Record<string, string> = { user: "chat.roleUser", assistant: "chat.roleAssistant", thinking: "chat.thinking", tool: "chat.roleTool", meta: "chat.roleSystem", err: "chat.railError", bash: "chat.railCommand", mention: "chat.labelRead" };
 const RAIL_SNIPPET_LEN = 280;
 const RAIL_W_BASE = 37.5; // 刻度默认长 37.5 个屏幕物理像素（水平长度）
 const RAIL_W_PEAK = 2.5; // 山峰峰顶倍率（最接近鼠标的线）
@@ -72,7 +74,7 @@ function showRailPop(entry: RailEntry, idx: number, total: number, tick: HTMLDiv
   head.className = "rp-head";
   const role = document.createElement("b");
   role.className = "rp-role";
-  role.textContent = RAIL_ROLE_LABEL[entry.role] ?? entry.role;
+  role.textContent = t(RAIL_ROLE_LABEL[entry.role] ?? entry.role);
   const idxEl = document.createElement("span");
   idxEl.className = "rp-idx";
   idxEl.textContent = `${idx + 1} / ${total}`;
@@ -81,7 +83,7 @@ function showRailPop(entry: RailEntry, idx: number, total: number, tick: HTMLDiv
   body.className = "rp-body";
   let text = (entry.text || "").trim();
   if (text.length > RAIL_SNIPPET_LEN) text = text.slice(0, RAIL_SNIPPET_LEN) + " …";
-  body.textContent = text || "（无文本内容）";
+  body.textContent = text || t("chat.noTextContent");
   pop.append(head, body);
   pop.addEventListener("mouseenter", () => clearTimeout(railLeaveTimer));
   pop.addEventListener("mouseleave", () => dismissRailPop());

@@ -6,14 +6,15 @@ import { authPolicyFor } from "../bootstrap.ts";
 import { H, loginPendingPrompts } from "../state.ts";
 import { rebuildScopedModels, modelCatalog } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export const loginHandlers: Record<string, RpcHandler> = {
   async provider_login(ws, msg) {
     // OMP 登录流程(AuthStorage.login):浏览器授权 + 需要粘贴码时经 UI 弹窗中转
     const provider = String(msg.provider ?? "");
-    if (!provider) throw new Error("缺少 provider");
-    if (H.loginInFlight) throw new Error("已有登录流程进行中，请完成或稍后再试");
+    if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
+    if (H.loginInFlight) throw new Error(hostI18n.t("errors.login.inFlight"));
     H.loginInFlight = true;
     H.loginAbort = new AbortController();
     const reqId = msg.reqId ?? null;
@@ -23,7 +24,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
         wsRef.send(JSON.stringify({ reqId, ...obj }));
       } catch {}
     };
-    reply({ type: "login_progress", provider, message: "正在启动登录…" });
+    reply({ type: "login_progress", provider, message: hostI18n.t("flows.login.starting") });
     let promptSeq = 0;
     try {
       const identity = await H.authStorage.login(provider, {
@@ -39,7 +40,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
           reply({
             type: "login_progress",
             provider,
-            message: info.instructions || "已在浏览器打开登录页面，请完成授权…",
+            message: info.instructions || hostI18n.t("flows.login.browserOpened"),
             url: url ?? "",
           });
         },
@@ -73,7 +74,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
         provider,
         ok: false,
         cancelled: !!aborted,
-        message: aborted ? "登录已取消" : String((err as any)?.message ?? err),
+        message: aborted ? hostI18n.t("flows.login.cancelled") : String((err as any)?.message ?? err),
       });
     } finally {
       H.loginInFlight = false;
@@ -85,7 +86,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     // 完整的 modelRegistry.refresh()（逐供应商网络发现，秒级）随后收敛再推一版(幂等)。
     // models.yml 手写 apiKey 的优先级高于存储凭证，该类供应商 UI 不提供登出入口
     const provider = String(msg.provider ?? "");
-    if (!provider) throw new Error("缺少 provider");
+    if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     await H.authStorage.remove(provider);
     H.availableModels = H.availableModels.filter((m) => m.provider !== provider);
     rebuildScopedModels();
@@ -104,19 +105,19 @@ export const loginHandlers: Record<string, RpcHandler> = {
   provider_login_cancel(_ws, _msg) {
     // 用户显式取消(如关闭了登录页):中断进行中的登录流程
     if (H.loginInFlight && H.loginAbort) H.loginAbort.abort();
-    else throw new Error("当前没有进行中的登录流程");
+    else throw new Error(hostI18n.t("errors.login.noneInFlight"));
   },
   async provider_set_key(ws, msg) {
     // 配置 API key:写入 authStorage(api_key 凭证),随后刷新模型目录
     const provider = String(msg.provider ?? "");
     const key = String(msg.key ?? "").trim();
-    if (!provider) throw new Error("缺少 provider");
-    if (!key) throw new Error("API key 不能为空");
+    if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
+    if (!key) throw new Error(hostI18n.t("errors.login.keyEmpty"));
     // 登录型供应商(oauth/device/custom)凭证经浏览器授权归属到目录供应商(store-as),
     // 目录里没有同名 provider,存 API key 只会产生「已配置」却永不可用的孤立凭证
     const loginKind = authPolicyFor(provider)?.login?.kind;
     if (loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom") {
-      throw new Error(`${provider} 仅支持浏览器登录授权，不支持 API key`);
+      throw new Error(hostI18n.t("errors.login.browserOnly", { provider }));
     }
     H.authStorage.upsertCredential(provider, { type: "api_key", key });
     await H.modelRegistry.refresh();
@@ -137,7 +138,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     // 「手动添加供应商」:打开配置层 models.yml(不存在则创建空文件)
     const modelsPath = path.join(H.agentDir, "models.yml");
     try {
-      if (!fs.existsSync(modelsPath)) fs.writeFileSync(modelsPath, "# omp 供应商配置,参考文档编辑\n");
+      if (!fs.existsSync(modelsPath)) fs.writeFileSync(modelsPath, "# omp provider config; edit per the docs\n");
       Bun.spawn(["open", modelsPath], { stdout: "ignore", stderr: "ignore" });
     } catch {}
     ws.send(JSON.stringify({ type: "models_config_path", path: modelsPath }));

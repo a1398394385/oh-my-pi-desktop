@@ -1,10 +1,11 @@
 // 主区域会话条目树视图：在主内容区全宽呈现会话条目瀑布流，支持分叉横向切换、抽屉展开与跳转回退。
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
 import type { EntryNode } from "./sessionTreeUtil";
 import { FILTERS, activePathIds } from "./sessionTreeUtil";
 import SessionTreeStream from "./SessionTreeStream";
+import { t } from "../../i18n";
 
 export default function MainSessionTree() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
@@ -12,6 +13,21 @@ export default function MainSessionTree() {
   const setMainViewMode = useAppStore((st) => st.setMainViewMode);
   const [filter, setFilter] = useState<string>("default");
   const [refreshing, setRefreshing] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastSessionRef = useRef<string | null>(null);
+  // Tree data not mounted yet (stale renders a spinner); bottom-scroll must wait for it
+  const treeReady = !!rightState.entryTree && !!s && rightState.entryTree.sessionId === s.sessionId;
+
+  // Land at the very bottom on entering the tree page (= newest history, same
+  // stick-to-bottom semantics as the message stream), done before paint so no
+  // top frame flashes first. Session switch re-lands at the bottom too.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !treeReady) return;
+    if (lastSessionRef.current === s?.sessionId) return;
+    lastSessionRef.current = s?.sessionId ?? null;
+    el.scrollTop = el.scrollHeight;
+  }, [treeReady, s?.sessionId]);
 
   // 懒加载条目树数据
   useEffect(() => {
@@ -40,7 +56,7 @@ export default function MainSessionTree() {
   if (!s) {
     return (
       <div className="flex-1 flex items-center justify-center text-faint text-ui-base">
-        （无活跃会话）
+        {t("chat.noActiveSession")}
       </div>
     );
   }
@@ -51,7 +67,7 @@ export default function MainSessionTree() {
     return (
       <div className="flex-1 flex items-center justify-center text-faint text-ui-base">
         <Icon name="refresh" className="animate-spin mr-2" size={16} />
-        加载会话树中…
+        {t("chat.loadingTree")}
       </div>
     );
   }
@@ -60,12 +76,12 @@ export default function MainSessionTree() {
   if (roots.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-faint text-ui-base gap-2">
-        <span>会话还没有任何条目。</span>
+        <span>{t("chat.noEntriesYet")}</span>
         <button
           className="text-accent hover:underline text-ui-sm cursor-pointer"
           onClick={() => setMainViewMode("chat")}
         >
-          返回对话
+          {t("chat.backToChat")}
         </button>
       </div>
     );
@@ -83,16 +99,16 @@ export default function MainSessionTree() {
       {/* 顶部工具栏：过滤胶囊 + 刷新 + 返回对话 */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-line bg-card/60 backdrop-blur-xs select-none">
         <div className="flex items-center gap-3">
-          <span className="text-ui-xs text-faint font-medium">过滤模式：</span>
+          <span className="text-ui-xs text-faint font-medium">{t("chat.filterMode")}</span>
           <div className="mcp-type-pills">
-            {FILTERS.map(([v, label]) => (
+            {FILTERS.map(([v, labelKey]) => (
               <button
                 key={v}
                 type="button"
                 className={"mcp-type-pill" + (filter === v ? " on" : "")}
                 onClick={() => setFilter(v)}
               >
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -102,7 +118,7 @@ export default function MainSessionTree() {
           <button
             type="button"
             className={"icon-btn pg-refresh " + (refreshing ? "spin" : "")}
-            title="刷新条目树"
+            title={t("chat.refreshTree")}
             onClick={onRefresh}
           >
             <Icon name="refresh" size={15} />
@@ -111,16 +127,16 @@ export default function MainSessionTree() {
             type="button"
             className="flex items-center gap-1 px-2.5 py-1 text-ui-xs rounded-md border border-line bg-panel hover:bg-panel-2 transition-colors text-dim hover:text-text cursor-pointer"
             onClick={() => setMainViewMode("chat")}
-            title="返回对话流"
+            title={t("chat.backToStream")}
           >
             <Icon name="messagePlus" size={12} />
-            <span>返回对话</span>
+            <span>{t("chat.backToChat")}</span>
           </button>
         </div>
       </div>
 
       {/* 瀑布流容器 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         <SessionTreeStream
           roots={roots}
           leafId={tree.leafId}

@@ -5,7 +5,9 @@
 // 视图开关与选中项沿用 store 字段（mpAddView / mpRolesView / mpDetailProv / selectedProvider），
 // 登录横幅与粘贴码弹窗来自 ../common.jsx。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../../../store";
+import { t } from "../../../i18n";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
 import { PROV_IC, confirmDialog } from "../common";
@@ -43,39 +45,41 @@ interface ProviderLimits {
   accounts?: Array<Partial<ProviderLimits> & { label?: string; accountLabel?: string }>;
 }
 
-// 内置角色的用途说明（自定义角色显示通用文案；名称/tag 以 host 传的底座元数据为准）
+// Purpose blurb keys for built-in roles (values are i18n keys; custom roles show a
+// generic blurb; name/tag come from host-provided base metadata)
 // Record 而非字面量联合：RolesView 用任意 role.id 索引
-const ROLE_DESC: Record<string, string> = {
-  default: "新会话与未指定角色任务的默认模型",
-  smol: "快速轻量任务：标题生成、上下文预扫描等",
-  slow: "深度思考（Thinking）链路使用的模型",
-  vision: "图像 / 视觉理解任务",
-  plan: "规划（Architect）模式使用的模型",
-  commit: "生成提交信息的模型",
-  tiny: "在线标题、记忆、分类等微型任务",
-  task: "子智能体（subagent）默认模型",
-  advisor: "子智能体的第二意见评审模型",
+const ROLE_DESC_KEYS: Record<string, string> = {
+  default: "settingsPage.model.roleDesc.default",
+  smol: "settingsPage.model.roleDesc.smol",
+  slow: "settingsPage.model.roleDesc.slow",
+  vision: "settingsPage.model.roleDesc.vision",
+  plan: "settingsPage.model.roleDesc.plan",
+  commit: "settingsPage.model.roleDesc.commit",
+  tiny: "settingsPage.model.roleDesc.tiny",
+  task: "settingsPage.model.roleDesc.task",
+  advisor: "settingsPage.model.roleDesc.advisor",
 };
 
 // 配额明细单段（原 ui/ringpop.js buildLimitsSection 平移为组件）：语义/配色走 lib/limits 共享定义
 function LimitsSection({ limits }: { limits: ProviderLimits }) {
+  const { t } = useTranslation();
   let body: ReactNode;
   if (limits.unsupported) {
-    body = "该供应商暂不支持限额查询";
+    body = t("settingsPage.model.quotaUnsupported");
   } else if (limits.status === "notConfigured") {
-    body = "未配置该供应商凭证";
+    body = t("settingsPage.model.quotaNotConfigured");
   } else if (!limits.windows?.length && !limits.balance) {
-    body = "限额暂不可用";
+    body = t("settingsPage.model.quotaUnavailable");
   } else {
     // 余额类供应商（host 侧 synthesize 的 metric:'credits' 窗口 + balance）只显示余额数字，
     // 不渲染进度条和百分比；有百分比窗口的供应商仍按窗口渲染
     const pctWindows = limits.windows.filter((w) => w.metric !== "credits");
     if (!pctWindows.length && limits.balance?.amount != null) {
       body = (
-        <div className="lx-bal">余额 {limits.balance.amount} {limits.balance.currency ?? ""}</div>
+        <div className="lx-bal">{t("settingsPage.model.quotaBalance", { amount: limits.balance.amount, currency: limits.balance.currency ?? "" })}</div>
       );
     } else if (!pctWindows.length) {
-      body = "限额暂不可用";
+      body = t("settingsPage.model.quotaUnavailable");
     } else {
       body = (
         <>
@@ -97,7 +101,7 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
             })}
           </div>
           {limits.balance?.amount != null && (
-            <div className="lx-bal">余额 {limits.balance.amount} {limits.balance.currency ?? ""}</div>
+            <div className="lx-bal">{t("settingsPage.model.quotaBalance", { amount: limits.balance.amount, currency: limits.balance.currency ?? "" })}</div>
           )}
         </>
       );
@@ -106,7 +110,7 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
   return (
     <div className="cx-sec lx-sec">
       <div className="lx-head">
-        <b>剩余额度</b>
+        <b>{t("settingsPage.model.quotaRemaining")}</b>
         <span className="lx-prov">{limits.label ?? ""}</span>
       </div>
       <div className="lx-body">{body}</div>
@@ -117,16 +121,17 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
 // 供应商配额段：consume providerLimits（store.js 的 provider_limits_result 落地）。
 // 旧响应污染判定平移：provider 未变才渲染数据，否则回退「配额读取中…」占位。
 function QuotaSection({ provider }: { provider: string }) {
+  const { t } = useTranslation();
   const lim = useAppStore((s) => s.providerLimits);
   if (!lim || lim.provider !== provider) {
-    return <div className="mp-lim">配额读取中…</div>;
+    return <div className="mp-lim">{t("settingsPage.model.quotaLoading")}</div>;
   }
   // 多账号：逐账号各渲染一段（头部右侧显示账号身份）；单账号走原有单段路径
   if (Array.isArray(lim.accounts) && lim.accounts.length > 1) {
     return (
       <div className="mp-lim">
         {lim.accounts.map((a, i) => (
-          <LimitsSection key={i} limits={{ ...lim, ...a, label: a.label || a.accountLabel || `账号 ${i + 1}` }} />
+          <LimitsSection key={i} limits={{ ...lim, ...a, label: a.label || a.accountLabel || t("settingsPage.model.accountN", { n: i + 1 }) }} />
         ))}
       </div>
     );
@@ -140,7 +145,7 @@ function QuotaSection({ provider }: { provider: string }) {
 
 // 角色选择器当前值显示：未配置 →「默认」；精确匹配目录模型 → 模型名；其余（别名/带级别后缀）→ 原文
 function roleSelLabel(role: ModelRole): string {
-  if (!role.value) return role.id === "default" ? "未设置" : "默认";
+  if (!role.value) return role.id === "default" ? t("settingsPage.model.roleUnset") : t("settingsPage.model.roleDefault");
   const hit = useAppStore.getState().modelCatalog.find((m) => m.id === role.value);
   if (hit) return hit.name;
   return role.value;
@@ -282,17 +287,18 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
 
 // 右卡：模型角色视图（srow 行 + 二级级联模型选择器 + 自定义角色删除按钮）
 function RolesView() {
+  const { t } = useTranslation();
   // 目录全量（含未启用模型）：角色值可指向任意目录模型，host 校验与底座解析均走 availableModels 全量
   const allModels = useAppStore((s) => s.modelCatalog);
   const modelRoles = useAppStore((s) => s.modelRoles);
   return (
     <>
       <div className="mp-head">
-        <b>模型角色</b>
+        <b>{t("settingsPage.model.roleEntry")}</b>
         <span className="sp" />
-        <span className="tag">{(modelRoles?.length ?? 0)} 个角色</span>
+        <span className="tag">{t("settingsPage.model.rolesCount", { count: modelRoles?.length ?? 0 })}</span>
       </div>
-      <div className="set-group-desc mp-role-desc">为不同用途的任务分配模型；未设置时按内置优先级解析。对新会话生效。</div>
+      <div className="set-group-desc mp-role-desc">{t("settingsPage.model.rolesDesc")}</div>
       {(modelRoles ?? []).map((role) => (
         <div className="srow mp-role-row" key={role.id}>
           <div className="srow-tx">
@@ -302,8 +308,8 @@ function RolesView() {
             </b>
             <span>
               {[
-                ROLE_DESC[role.id] ?? "自定义角色",
-                role.value && !allModels.some((m) => m.id === role.value) ? `配置值: ${role.value}` : null,
+                t(ROLE_DESC_KEYS[role.id] ?? "settingsPage.model.roleCustom"),
+                role.value && !allModels.some((m) => m.id === role.value) ? t("settingsPage.model.roleConfigValue", { value: role.value }) : null,
               ].filter(Boolean).join(" · ")}
             </span>
           </div>
@@ -311,12 +317,12 @@ function RolesView() {
             <RolePicker role={role} allModels={allModels} />
             {/* 按钮列与自定义行的删除按钮同列对齐：内置角色放 X 清除（有值时；= 传 null 回继承默认），
                 自定义角色放 trash 删除（.skill-trash-btn 全站删除语言；传 null = 从 modelRoles 移除） */}
-            {role.id in ROLE_DESC ? (
+            {role.id in ROLE_DESC_KEYS ? (
               role.value ? (
                 <button
                   type="button"
                   className="mp-role-clear"
-                  title="清除选择（继承默认）"
+                  title={t("settingsPage.model.clearRoleTitle")}
                   onClick={(e) => {
                     e.stopPropagation();
                     send({ type: "set_model_role", role: role.id, value: null });
@@ -329,11 +335,11 @@ function RolesView() {
               <button
                 type="button"
                 className="skill-trash-btn"
-                title="删除自定义角色"
+                title={t("settingsPage.model.deleteRoleTitle")}
                 onClick={async (e) => {
                   e.stopPropagation();
                   const ok = await confirmDialog({
-                    title: `确定删除自定义角色 "${role.name}" 吗？`,
+                    title: t("settingsPage.model.deleteRoleConfirm", { name: role.name }),
                   });
                   if (ok) send({ type: "set_model_role", role: role.id, value: null });
                 }}
@@ -351,12 +357,12 @@ function RolesView() {
 // OMP 登录流程启动（原 ui/settings/providers.js startProviderLogin 平移）
 function startProviderLogin(id: string) {
   if (useAppStore.getState().loginBusy) {
-    toast("已有登录流程进行中，可点击底部进度条取消");
+    toast(t("settingsPage.model.loginBusy"));
     return;
   }
   const reqId = useAppStore.getState().loginReqId + 1;
   // 旧版 showLoginBanner("…正在启动登录…")；React 版横幅数据在 store.loginBanner，由组件渲染
-  setBump({ loginBusy: true, loginReqId: reqId, loginBanner: `${id}：正在启动登录…` });
+  setBump({ loginBusy: true, loginReqId: reqId, loginBanner: t("settingsPage.model.loginStarting", { id }) });
   send({ type: "provider_login", provider: id, reqId });
 }
 
@@ -369,15 +375,16 @@ const provIc: Record<string, string> = PROV_IC;
 // 同系列供应商合并：添加列表折叠为一张系列卡（title/note），详情页按成员分块
 //（块头 id + region 标签 + 方式标签，方式由成员 login 推导）。members 的键序即块顺序；
 // 不在 allProvidersCache 里的成员 id 静默跳过（UI 列表来源随底座增减）。
+// note holds an i18n key (brand-family blurb, bilingual); resolved via t() at render.
 const PROVIDER_FAMILIES: Record<string, { title: string; note: string; members: Record<string, string> }> = {
   zai: {
     title: "Z.AI",
-    note: "Zhipu (智谱)",
+    note: "settingsPage.model.familyZhipu",
     members: { zai: "Global", "zai-coding-plan": "Global", "zhipu-coding-plan": "China" },
   },
   minimax: {
     title: "MiniMax",
-    note: "MiniMax M 系列",
+    note: "settingsPage.model.familyMinimax",
     members: {
       "minimax-code": "International",
       "minimax-code-cn": "China",
@@ -387,7 +394,7 @@ const PROVIDER_FAMILIES: Record<string, { title: string; note: string; members: 
   },
   xiaomi: {
     title: "Xiaomi",
-    note: "MiMo",
+    note: "settingsPage.model.familyXiaomi",
     members: {
       xiaomi: "Global",
       "xiaomi-token-plan-cn": "China",
@@ -397,17 +404,17 @@ const PROVIDER_FAMILIES: Record<string, { title: string; note: string; members: 
   },
   xai: {
     title: "xAI",
-    note: "Grok",
+    note: "settingsPage.model.familyXai",
     members: { "xai-oauth": "Subscription", xai: "Pay-as-you-go" },
   },
   moonshot: {
     title: "Moonshot",
-    note: "Kimi",
+    note: "settingsPage.model.familyMoonshot",
     members: { "kimi-code": "Subscription", moonshot: "Pay-as-you-go" },
   },
   alibaba: {
     title: "Alibaba",
-    note: "Qwen",
+    note: "settingsPage.model.familyAlibaba",
     members: { "alibaba-coding-plan": "Coding Plan", "alibaba-token-plan": "Token Plan" },
   },
 };
@@ -418,6 +425,7 @@ for (const [fid, fam] of Object.entries(PROVIDER_FAMILIES)) {
   for (const id of Object.keys(fam.members)) FAMILY_OF[id] = fid;
 }
 function AddProviderView() {
+  const { t } = useTranslation();
   const allProvidersCache = useAppStore((s) => s.allProvidersCache);
   // 平铺序列 + 系列折叠：命中系列的成员收进系列卡（位置=首成员原位，成员序=FAMILIES 定义序）
   type Row =
@@ -451,10 +459,10 @@ function AddProviderView() {
   }
   return (
     <>
-      <div className="mp-head"><b>＋ 添加供应商</b></div>
-      <div className="set-group-desc">点击供应商卡片进入详情页，可选登录或配置 API key（同系列供应商已合并为一张卡片）；最后一个「手动添加供应商」走配置层 models.yml。</div>
+      <div className="mp-head"><b>{t("settingsPage.model.addViewTitle")}</b></div>
+      <div className="set-group-desc">{t("settingsPage.model.addViewDesc")}</div>
       {allProvidersCache == null ? (
-        <div className="set-group-desc">读取中…</div>
+        <div className="set-group-desc">{t("settingsPage.model.loading")}</div>
       ) : (
         <div className="ap-grid">
           {rows.map((row) =>
@@ -466,7 +474,7 @@ function AddProviderView() {
                 </div>
                 <div className="ap-l2">
                   <span className="tag ap-vendor">{row.p.label}</span>
-                  {row.p.accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">已配置 · {row.p.accounts}</span> : null}
+                  {row.p.accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">{t("settingsPage.model.configured", { count: row.p.accounts })}</span> : null}
                 </div>
               </div>
             ) : (
@@ -487,8 +495,8 @@ function AddProviderView() {
                       <span className="flex-1 min-w-0 truncate text-ui-base text-text">{fam.title}</span>
                     </div>
                     <div className="ap-l2">
-                      <span className="tag ap-vendor">{fam.note}</span>
-                      {accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">已配置 · {accounts}</span> : null}
+                      <span className="tag ap-vendor">{t(fam.note)}</span>
+                      {accounts > 0 ? <span className="flex-none ml-auto text-ui-xs text-green">{t("settingsPage.model.configured", { count: accounts })}</span> : null}
                     </div>
                   </div>
                 );
@@ -500,12 +508,12 @@ function AddProviderView() {
             className="ap-card ap-card2"
             onClick={() => {
               send({ type: "open_models_config" });
-              toast("已打开 models.yml，保存后回来刷新即可");
+              toast(t("settingsPage.model.manualAddToast"));
             }}
           >
             <div className="ap-l1">
               <span className="pv-ic">✎</span>
-              <span className="flex-1 min-w-0 truncate text-ui-base text-text">手动添加供应商</span>
+              <span className="flex-1 min-w-0 truncate text-ui-base text-text">{t("settingsPage.model.manualAdd")}</span>
             </div>
             <div className="ap-l2">
               <span className="tag ap-vendor">models.yml</span>
@@ -522,6 +530,7 @@ function AddProviderView() {
 // API key 方式仅非登录型供应商：登录型（oauth/device/custom）凭证经浏览器授权归属到目录供应商
 // （store-as），目录里没有同名 provider，粘 key 只会产生永不可用的孤立凭证
 function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region?: string; grouped?: boolean }) {
+  const { t } = useTranslation();
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false); // 保存进行中：输入框置灰、按钮转圈，直到 provider_key_done 回包把本视图切回列表
   return (
@@ -537,12 +546,12 @@ function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region
         <>
           <div className="ap-card pd-login" onClick={() => startProviderLogin(prov.id)}>
             <span className="pv-ic">🌐</span>
-            <span className="flex-1 min-w-0 truncate text-ui-base text-text">登录</span>
-            <span className="tag">浏览器授权</span>
+            <span className="flex-1 min-w-0 truncate text-ui-base text-text">{t("settingsPage.model.signIn")}</span>
+            <span className="tag">{t("settingsPage.model.browserAuth")}</span>
           </div>
           {!grouped ? (
             <div className="set-group-desc">
-              该供应商仅支持浏览器登录授权，登录后模型会归入对应的目录供应商；如需 API key 直连，请添加对应的 API 型供应商（如 Z.AI 用 zai）。
+              {t("settingsPage.model.loginOnlyDesc")}
             </div>
           ) : null}
         </>
@@ -550,7 +559,7 @@ function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region
         <div className="pd-key">
           <div className="srow-tx">
             <b>API Key</b>
-            <span>粘贴供应商的 API key，保存后立即生效。</span>
+            <span>{t("settingsPage.model.apiKeyDesc")}</span>
           </div>
           <div className="pd-key-row">
             <input
@@ -567,14 +576,14 @@ function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region
               onClick={() => {
                 const k = key.trim();
                 if (!k) {
-                  toast("请输入 API key");
+                  toast(t("settingsPage.model.apiKeyMissing"));
                   return;
                 }
                 setSaving(true);
                 send({ type: "provider_set_key", provider: prov.id, key: k });
               }}
             >
-              {saving ? <Icon name="refresh" size={14} /> : "保存"}
+              {saving ? <Icon name="refresh" size={14} /> : t("common.save")}
             </button>
           </div>
         </div>
@@ -585,6 +594,7 @@ function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region
 
 // 供应商详情页：单供应商一块；系列卡进入时按 FAMILIES 成员序分块（仅渲染列表里实际存在的成员）
 function ProviderDetailView() {
+  const { t } = useTranslation();
   const p = useAppStore((s) => s.mpDetailProv);
   const allProvidersCache = useAppStore((s) => s.allProvidersCache);
   if (!p) return null;
@@ -609,10 +619,10 @@ function ProviderDetailView() {
             send({ type: "get_all_providers" });
           }}
         >
-          ← 返回
+          {t("settingsPage.model.back")}
         </button>
         <b>{(provIc[members[0].prov.id] || "✦") + " " + (fam ? fam.title : p.id)}</b>
-        <span className="tag">{fam ? fam.note : p.label}</span>
+        <span className="tag">{fam ? t(fam.note) : p.label}</span>
       </div>
       {members.map((m, i) => (
         <Fragment key={m.prov.id}>
@@ -626,33 +636,34 @@ function ProviderDetailView() {
 
 // 右卡：选中供应商详情（模型启停 + 配额 + 登出）
 function ProviderModelsView({ prov, models }: { prov: string; models: CatalogModel[] }) {
+  const { t } = useTranslation();
   const anyOn = models.some((m) => m.enabled);
   const logout = async () => {
     const ok = await confirmDialog({
-      title: `登出 ${prov}`,
-      message: "该供应商的全部账号凭证将被移除，模型从可选列表消失；进行中的会话不受影响。",
-      confirmText: "登出",
+      title: t("settingsPage.model.logoutConfirmTitle", { provider: prov }),
+      message: t("settingsPage.model.logoutConfirmMsg"),
+      confirmText: t("settingsPage.model.logout"),
       danger: true,
     });
     if (!ok) return;
     send({ type: "provider_logout", provider: prov });
-    toast("正在登出…");
+    toast(t("settingsPage.model.loggingOut"));
   };
   return (
     <>
       <div className="mp-head">
         <b>{(provIc[prov] || "✦") + " " + prov}</b>
         <span className="sp" />
-        <span className="tag">{models.length} 个模型</span>
+        <span className="tag">{t("settingsPage.model.modelsCount", { count: models.length })}</span>
         {/* 凭证类供应商提供登出（多账号一次登出全部凭证，与 CLI auth-broker logout 一致）；
             config 类（models.yml 手写 apiKey）优先级高于存储凭证，删除凭证无效，不显示按钮 */}
         {models[0]?.authSource === "cred" ? (
-          <button type="button" className="save-btn danger" onClick={logout}>登出</button>
+          <button type="button" className="save-btn danger" onClick={logout}>{t("settingsPage.model.logout")}</button>
         ) : null}
       </div>
       {/* 供应商配额：命中 host 侧 60s 缓存，切换供应商即重查（发送见 ModelPage effect） */}
       <QuotaSection provider={prov} />
-      <div className="mp-ml"><span>模型列表</span></div>
+      <div className="mp-ml"><span>{t("settingsPage.model.modelList")}</span></div>
       {models.map((m) => (
         <div className="mp-row" key={m.id}>
           <span>{m.name}</span>
@@ -667,13 +678,13 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
                   : String(m.context)}
             </span>
           ) : null}
-          {m.vision ? <span className="tag">视觉</span> : null}
+          {m.vision ? <span className="tag">{t("settingsPage.model.visionTag")}</span> : null}
           <span className="sp" />
           <div
             className={"tg" + (m.enabled ? " on" : "")}
             onClick={() => {
               if (m.enabled && useAppStore.getState().modelCatalog.filter((x) => x.enabled).length <= 1) {
-                toast("至少保留一个启用模型");
+                toast(t("settingsPage.model.keepOneModel"));
                 return;
               }
               send({ type: "set_enabled_model", id: m.id, enabled: !m.enabled });
@@ -684,13 +695,14 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
         </div>
       ))}
       {!anyOn ? (
-        <div className="set-group-desc" style={{ marginTop: "8px" }}>该供应商下暂无启用模型。</div>
+        <div className="set-group-desc" style={{ marginTop: "8px" }}>{t("settingsPage.model.noEnabledModels")}</div>
       ) : null}
     </>
   );
 }
 
 export default function ModelPage() {
+  const { t } = useTranslation();
   const modelCatalog = useAppStore((s) => s.modelCatalog);
   const mpAddView = useAppStore((s) => s.mpAddView);
   const mpRolesView = useAppStore((s) => s.mpRolesView);
@@ -724,14 +736,14 @@ export default function ModelPage() {
 
   return (
     <div className="set-page" id="pg-model">
-      <div className="set-tt">模型设置</div>
+      <div className="set-tt">{t("settingsPage.nav.model")}</div>
       <div className="set-desc-row">
-        <span className="text-ui-sm text-faint">管理自定义模型供应商，配置后可在聊天时选择使用。</span>
+        <span className="text-ui-sm text-faint">{t("settingsPage.model.desc")}</span>
         <span className="sp" />
         <button
           type="button"
           className="icon-btn pg-refresh"
-          title="刷新"
+          title={t("settingsPage.model.refresh")}
           onClick={() => {
             send({ type: "reload_settings" });
             send({ type: "get_models_catalog" });
@@ -748,7 +760,7 @@ export default function ModelPage() {
             send({ type: "get_all_providers" });
           }}
         >
-          ＋ 添加供应商
+          {t("settingsPage.model.addProvider")}
         </button>
       </div>
       <div className="set-card mp">
@@ -762,10 +774,10 @@ export default function ModelPage() {
             }}
           >
             <span className="pv-ic"><Icon name="sliders" size={14} /></span>
-            <span className="flex-1 min-w-0 truncate font-semibold">模型角色</span>
+            <span className="flex-1 min-w-0 truncate font-semibold">{t("settingsPage.model.roleEntry")}</span>
           </div>
           <div className="pd-div mp-div" />
-          <div className="set-sec mp-grp">已认证供应商</div>
+          <div className="set-sec mp-grp">{t("settingsPage.model.groupAuthenticated")}</div>
           {credEntries.map(([prov, ms]) => (
             <div
               className={"pv" + (!mpRolesView && prov === sel ? " on" : "")}
@@ -780,7 +792,7 @@ export default function ModelPage() {
             </div>
           ))}
           {credEntries.length > 0 && configEntries.length > 0 ? <div className="pd-div mp-div" /> : null}
-          {configEntries.length > 0 ? <div className="set-sec mp-grp">配置文件</div> : null}
+          {configEntries.length > 0 ? <div className="set-sec mp-grp">{t("settingsPage.model.groupConfigFile")}</div> : null}
           {configEntries.map(([prov, ms]) => (
             <div
               className={"pv" + (!mpRolesView && prov === sel ? " on" : "")}
@@ -795,7 +807,7 @@ export default function ModelPage() {
             </div>
           ))}
           {groups.size === 0 ? (
-            <div className="pv">暂无可用模型</div>
+            <div className="pv">{t("settingsPage.model.noModels")}</div>
           ) : null}
         </div>
         <div className="mp-r">
@@ -808,7 +820,7 @@ export default function ModelPage() {
             <ProviderModelsView prov={sel!} models={models} />
           ) : (
             <div className="set-group-desc">
-              {groups.size === 0 ? "宿主未连接或没有已认证模型。" : "左侧选择供应商。"}
+              {groups.size === 0 ? t("settingsPage.model.noHost") : t("settingsPage.model.pickProvider")}
             </div>
           )}
         </div>

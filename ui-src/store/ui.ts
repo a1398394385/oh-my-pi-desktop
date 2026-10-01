@@ -7,6 +7,7 @@ import type { AppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import { activeOpen, getSupportedThinkingForModel } from "./session";
+import { detectLang } from "../i18n";
 
 /** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名;TS 环境含 Node 类型时返回 Timeout) */
 type TimerHandle = ReturnType<typeof setTimeout>;
@@ -64,13 +65,21 @@ const uiPrefsInit: UiPrefs = {
   codeWrap: false,
   showThinking: true,
   expandToolOutput: true,
-  lang: "zh-CN",
+  lang: "zh-CN", // placeholder; resolved from storage or detection below
   terminalInheritProfile: true,
   terminalFont: "",
 };
+let storedUiPrefs: Partial<UiPrefs> = {};
 try {
-  Object.assign(uiPrefsInit, JSON.parse(localStorage.getItem("omp-ui-settings") || "{}"));
+  storedUiPrefs = JSON.parse(localStorage.getItem("omp-ui-settings") || "{}");
 } catch {}
+Object.assign(uiPrefsInit, storedUiPrefs);
+// Resolve the startup language: stored preference wins; otherwise detect from
+// the system locale and persist the result so it survives restarts.
+if (storedUiPrefs.lang !== "zh-CN" && storedUiPrefs.lang !== "en") {
+  uiPrefsInit.lang = detectLang(undefined);
+  try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefsInit)); } catch {}
+}
 
 // toast：App 层 Toast 组件消费 toastMsg（2.2s 自动隐藏）
 let toastTimer: TimerHandle | undefined;

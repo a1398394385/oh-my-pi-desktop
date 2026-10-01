@@ -24,6 +24,7 @@
 - **idle 会话 park/revive 是底座现成机制**（`src/registry/agent-lifecycle.ts`）：park = dispose 活 session 保留 AgentRef+sessionFile，按需 revive——做非活跃会话内存 LRU 直接用它，不要自造。
 - **transcript 恢复内存放大 ≈20x 磁盘体积**（实测 4.6MB jsonl → +90MB RSS；条目碎的会话放大率高，大 blob 工具结果占比高则低）；且 **dispose 后 RSS 短窗口内不回落**——内存优化/看门狗调参前先量这个。
 - **流式中 `prompt()` 不带 `streamingBehavior` 直接抛 `AgentBusyError`**（agent-session.ts prompt 的 isStreaming 分支）：不是排队而是报错。排队转向必须显式传 `streamingBehavior: "steer"`（idle 时该参数被忽略照常开 turn）。未消费 steer 队列操作走 `agent.peekSteeringQueue()` / `replaceQueues()`（连已 claim 进投递准备的都能取消，followUp 必须原样传回否则被清空）；用户消息识别用 `session/queued-messages` 的 `isUserQueuedMessage`（队列里混有图片描述/magic keyword 等隐藏 notice，不能按 index 盲改）。冒烟见 `scripts/steer-smoke.ts`。
+- **`SessionInfo.modified` 是文件 mtime，不是活动时间**：底座 teardown 往 transcript 追加 `session_exit` 诊断帧（`session/exit-diagnostics.ts`，dispose / SIGINT / SIGHUP 都写），打开一次旧会话就把 mtime 刷成当前时刻，列表会显示「刚刚」；底座 CLI 的会话选择器同源同样受影响。要活动时间就读文件尾部最后一条 `type === "message"` 帧（`host/session-activity.ts`）。见 BUG-029。
 
 ## 审批与 ExtensionUIContext
 
@@ -49,6 +50,8 @@
 - **WKWebView 无 console**：`window.onerror` / `unhandledrejection` 写进页面元素才能看到前端错误。
 - `invoke` 在 `window.__TAURI__.core` 下（withGlobalTauri 注入的对象没有 ipc 命名空间）。
 - **`tauri build` 不监听 `ui/`：改前端后必须 `touch src-tauri/build.rs` 才会重新嵌入资源**。`tauri-build` 只 emit `cargo:rerun-if-changed` 给 `tauri.conf.json` 与 `capabilities`（见 `target/release/build/omp-desktop-*/output`），**不含 `frontendDist` 目录**。后果：只改 `ui/` 后跑 `tauri build` 会报「编译成功 / Finished bundle」，但嵌入的仍是上一次的资源，产出的 app 跑的是旧 UI。更坑的是**二进制字节数可能完全相同**（Mach-O 段对齐吸收了压缩资源的尺寸差），`ls -la` 完全看不出差异——判据必须用 `md5`，或看 `target/release/build/omp-desktop-*/out/tauri-codegen-assets/` 下是否出现了新哈希名的文件。强制重嵌：`touch src-tauri/build.rs && bunx tauri build --bundles app`。只出 .app 不要 dmg：`--bundles app`（`tauri.conf.json` 的 `bundle.targets` 是 `"all"`）。
+- **WKWebView 确认候选的顺序反了**：`compositionend` 先于这次 Enter 的 `keydown` 到达（WebKit bug 165004），此时 `isComposing` 已是 false——任何「读事件 `isComposing`」的守卫都拦不住，库核心的 `if (editor.isComposing()) return`（Lexical `LexicalEvents.ts:1611`）只覆盖组合进行中。判据必须是「刚才是否发生过 composition 收尾」的时间关系：记 `compositionend` 的 `event.timeStamp`，回车落在小窗口内就当确认选字吞掉（ProseMirror 0c54477 同款），并只吞一次。见 BUG-031。附：部分第三方输入法干脆不派发 composition 事件，那时无解（VSCode/xterm 同样受影响）。
+- **拖选高亮的填充几何不靠 CSS 选择器属性控制**：WebKit 选区跨块时，每行填充矩形沿祖先链向上膨胀到更宽的绘制上下文（实测到视口宽），`user-select:none` 边界、`width:fit-content`、`inline-block`、自绘背景**全部拦不住**（变体矩阵实证）；唯一拦截是**裁剪边界**——`overflow: clip`（不建 BFC、margin 塌陷不变、零布局副作用，首选）或 `overflow:hidden`（建 BFC，会改变子级 margin 穿透塌陷）——以及 flex item 自绘。Chromium 按 text box 逐行填充无此问题，所以 Electron 壳天然正常、只有 WKWebView 要处理。验证 WKWebView 特有渲染行为用 Playwright WebKit（版本必须匹配本机缓存：playwright-core 1.63 期望 webkit-2359，本机缓存 2248 ↔ 全局 nvm playwright 匹配，协议漂移表现为 launch 挂起无报错）。见 BUG-030。
 
 ## macOS GUI 自动化
 

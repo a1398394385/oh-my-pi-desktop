@@ -5,6 +5,7 @@
 import { useAppStore, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
+import { t } from "./i18n";
 
 // 主题模式：localStorage omp-theme 的合法值（读回值在 initShell 做收窄断言）
 type ThemeMode = "dark" | "light" | "system";
@@ -156,7 +157,7 @@ export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: numb
 export function railToolText(item: ToolItem): string {
   if (item.group) {
     // 组标题与 rail 摘要同源：查阅 / 终端 / 设备 / 更改
-    const label = ({ read: "查阅", cmd: "终端", device: "设备" } as Record<string, string>)[item.name || ""] || "更改";
+    const label = ({ read: t("chat.labelReadGroup"), cmd: t("chat.labelTerminal"), device: t("chat.labelDevice") } as Record<string, string>)[item.name || ""] || t("chat.labelChange");
     // 组成员运行期必为 tool 条目(items.tsx 分组构造),按 role 判别收窄
     return [label, ...item.group.flatMap((g) => (g.role === "tool" ? g.files || [] : []))].filter(Boolean).join(" · ");
   }
@@ -167,7 +168,7 @@ export function railToolText(item: ToolItem): string {
     const n = item.args?.name || item.args?.application || "";
     if (op || n) parts.push(`${op} ${n}`.trim());
   }
-  if (item.files?.length) parts.push(item.files.join("、"));
+  if (item.files?.length) parts.push(item.files.join(t("chat.fileSep")));
   return parts.filter(Boolean).join(" · ");
 }
 

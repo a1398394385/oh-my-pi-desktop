@@ -7,6 +7,7 @@
 // coding-agent 加载，禁止静态 import 底座）。
 import path from "node:path";
 import { H } from "./state.ts";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 import {
   loadAllExtensions,
   toggleProvider,
@@ -167,7 +168,7 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
     { id: "profile", label: `Profile · ${H.currentProfile || "default"}` },
   ];
   for (const p of H.desktopProjects.allProjects) {
-    scopes.push({ id: `project:${p}`, label: `项目 · ${path.basename(p)}` });
+    scopes.push({ id: `project:${p}`, label: hostI18n.t("flows.extProjectScope", { name: path.basename(p) }) });
   }
   const providers = getAllProvidersInfo().map((p) => ({
     ...p,
@@ -182,12 +183,12 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
 export async function toggleExtensionItem(id: unknown, enabled: unknown, sourcePath?: unknown): Promise<void> {
   const extId = String(id ?? "");
   const colon = extId.indexOf(":");
-  if (colon <= 0) throw new Error(`非法扩展 id: ${extId}`);
+  if (colon <= 0) throw new Error(hostI18n.t("errors.extension.invalidId", { id: extId }));
   const kind = extId.slice(0, colon);
   const on = Boolean(enabled);
   if (kind === "mcp") {
     const name = extId.slice(colon + 1);
-    if (!name) throw new Error("缺少 MCP 服务器名称");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     await setMcpServerEnabled({
       userPath: path.join(H.agentDir, "mcp.json"),
       projectPath: typeof sourcePath === "string" && sourcePath ? sourcePath : path.join(H.agentDir, "mcp.json"),
@@ -213,7 +214,7 @@ export async function toggleExtensionItem(id: unknown, enabled: unknown, sourceP
 // 供应商主开关（底座内部持久化 enabledProviders/disabledProviders）。返回切换后的状态。
 export async function toggleExtensionProvider(providerId: unknown): Promise<boolean> {
   const id = String(providerId ?? "").trim();
-  if (!id) throw new Error("缺少供应商 id");
+  if (!id) throw new Error(hostI18n.t("errors.param.missingProviderId"));
   const enabled = toggleProvider(id);
   await H.settings.flush();
   return enabled;
@@ -222,7 +223,7 @@ export async function toggleExtensionProvider(providerId: unknown): Promise<bool
 // 外部工具 ~/ 配置 opt-in（持久化 enabledProviders 内的 user-source 项）。
 export async function toggleExtensionUserSource(providerId: unknown): Promise<boolean> {
   const id = String(providerId ?? "").trim();
-  if (!id) throw new Error("缺少供应商 id");
+  if (!id) throw new Error(hostI18n.t("errors.param.missingProviderId"));
   const enabled = toggleUserSource(id);
   await H.settings.flush();
   return enabled;

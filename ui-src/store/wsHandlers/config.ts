@@ -2,6 +2,7 @@
 // 审批模式、用量统计、资产清单、扩展清单。自 store/ws.ts onMessage 平移。
 import { useAppStore } from "../index";
 import { hostInstanceReset, ingestModelDefaults, ingestModels } from "../session";
+import { t } from "../../i18n";
 import type { ApprovalMode } from "../../types/frames";
 import type { SchemaDef } from "../../components/settings/placement";
 import type { HandlerSlice } from "./types";
@@ -44,7 +45,7 @@ export const configHandlers = {
       useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
     }
     useAppStore.setState({ hostSettings: msg.settings });
-    if (msg.restartHint) useAppStore.getState().toast("已保存，部分网络设置建议重启应用后完全生效");
+    if (msg.restartHint) useAppStore.getState().toast(t("notify.savedRestartHint"));
   },
   settings_schema(msg) {
     // 宿主 schema 条目即 SETTINGS_SCHEMA 形状(与 SchemaDef 对齐),帧侧暂为粗形,边界处收窄
@@ -57,7 +58,7 @@ export const configHandlers = {
       selectedSubagent: null,
       selectedFile: null,
     }));
-    useAppStore.getState().toast(`已激活 Profile: ${msg.profile}`);
+    useAppStore.getState().toast(t("notify.profileActivated", { profile: msg.profile }));
   },
   usage_stats(msg) {
     useAppStore.setState((s) => ({ usageStats: msg.stats }));

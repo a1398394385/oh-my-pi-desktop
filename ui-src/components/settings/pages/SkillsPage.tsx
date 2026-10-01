@@ -2,6 +2,7 @@
 // 逻辑 1:1 平移 ui/settings/skills.js；DOM 对照 git 464131d ui/index.html #pg-skills。
 // 编辑器走 .mem-expand 向下延展模式（行 .on 高亮 + caret 旋转 + popIn）。
 import { Fragment, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
@@ -47,6 +48,7 @@ interface SkillSection {
 }
 
 export default function SkillsPage() {
+  const { t } = useTranslation();
   // 渲染数据走字段 selector：agentAssets / assetFile / assetFileSaved 落地帧均换新引用；
   // onToggle 乐观写也走 setState 换引用链（见 onToggle），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
@@ -121,7 +123,7 @@ export default function SkillsPage() {
     if (!st || st.kind !== "skill" || seenStamp.current === st) return;
     seenStamp.current = st; // 无论延展区是否还开着都记为已消费，防重放
     if (!openPath) return;
-    setEditStatus("已保存");
+    setEditStatus(t("settingsPage.shared.saved"));
     clearTimeout(statusTimer.current);
     statusTimer.current = setTimeout(() => setEditStatus(""), 2000);
   }, [assetFileSaved, openPath]);
@@ -131,13 +133,13 @@ export default function SkillsPage() {
   function toggleSkills() {
     const next = !skillsEnabled;
     send({ type: "set_skills_enabled", enabled: next });
-    toast(next ? "已开启技能总开关，对新建会话生效。" : "已关闭技能总开关，对新建会话生效。");
+    toast(next ? t("settingsPage.skills.onToast") : t("settingsPage.skills.offToast"));
   }
 
   function toggleEditor(s: SkillItem) {
     if (openPath === s.path) { setOpenPath(null); return; } // 再点收起
     setOpenPath(s.path);
-    setEditText("读取中…");
+    setEditText(t("settingsPage.shared.reading"));
     setEditLoading(true);
     setEditStatus("");
     send({ type: "asset_file_read", kind: "skill", path: s.path });
@@ -161,7 +163,7 @@ export default function SkillsPage() {
   }
 
   async function onRowDelete(s: SkillItem) {
-    if (await confirmDialog({ title: "删除技能", message: `确定彻底删除技能 "${s.name}" 吗？此操作将从磁盘移除该技能文件。`, confirmText: "删除", danger: true })) {
+    if (await confirmDialog({ title: t("settingsPage.skills.deleteTitle"), message: t("settingsPage.skills.deleteMsgThorough", { name: s.name }), confirmText: t("common.delete"), danger: true })) {
       send({ type: "asset_skill_delete", path: s.path });
     }
   }
@@ -184,11 +186,11 @@ export default function SkillsPage() {
   }
 
   function onNew() {
-    const name = window.prompt("请输入新技能名称（英文小写、数字、下划线或连字符）：");
+    const name = window.prompt(t("settingsPage.skills.newPrompt"));
     if (!name || !name.trim()) return;
     const cleanName = name.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(cleanName)) {
-      toast("名称格式无效，仅允许小写字母、数字、-、_");
+      toast(t("settingsPage.skills.nameInvalid"));
       return;
     }
     const parts = curSec.scope.includes(":")
@@ -199,13 +201,13 @@ export default function SkillsPage() {
 
   function onSave() {
     if (!openPath) return;
-    setEditStatus("保存中…");
+    setEditStatus(t("settingsPage.shared.saving"));
     send({ type: "asset_file_write", kind: "skill", path: openPath, content: editText });
   }
 
   async function onEditorDelete(s: SkillItem) {
     if (!openPath) return;
-    if (await confirmDialog({ title: "删除技能", message: `确定删除技能 "${s.name}" 吗？此操作不可撤销。`, confirmText: "删除", danger: true })) {
+    if (await confirmDialog({ title: t("settingsPage.skills.deleteTitle"), message: t("settingsPage.skills.deleteMsgUndo", { name: s.name }), confirmText: t("common.delete"), danger: true })) {
       send({ type: "asset_skill_delete", path: openPath });
       setOpenPath(null); // 同旧版：确认后立即收起延展区
     }
@@ -214,19 +216,19 @@ export default function SkillsPage() {
   return (
     <div className="set-page" id="pg-skills">
       <div className="skills-header">
-        <div className="skills-tt">技能</div>
+        <div className="skills-tt">{t("settingsPage.nav.skills")}</div>
       </div>
 
       <div className="set-card" id="skillsMasterCard">
         <div className="srow">
           <div className="srow-tx">
-            <b>启用技能 (Skills)</b>
-            <span>允许 Agent 发现与加载各 Profile、项目目录下的技能。关闭后本页其余选项不可用。对新建会话生效。</span>
+            <b>{t("settingsPage.skills.masterTitle")}</b>
+            <span>{t("settingsPage.skills.masterDesc")}</span>
           </div>
           <div
             className={"tg" + (skillsEnabled ? " on" : "")}
             id="tgSkills"
-            title={skillsEnabled ? "点击停用技能" : "点击启用技能"}
+            title={skillsEnabled ? t("settingsPage.skills.masterOn") : t("settingsPage.skills.masterOff")}
             onClick={toggleSkills}
           >
             <i></i>
@@ -235,7 +237,7 @@ export default function SkillsPage() {
       </div>
 
       <div className={skillsEnabled ? "" : "skills-off-dim"}>
-      <div className="set-group-tt" id="skillsInstalledLabel">已安装技能</div>
+      <div className="set-group-tt" id="skillsInstalledLabel">{t("settingsPage.skills.installedLabel")}</div>
 
       <div className="skills-bar">
         <div className="skills-scope-wrap">
@@ -246,41 +248,41 @@ export default function SkillsPage() {
             projects={projectSecs.map((s) => ({ id: s.scope, label: s.label }))}
           />
           <span className="skills-divider">|</span>
-          <span className="text-ui-base text-dim" id="skillsTotalCount">技能 {totalCount}</span>
+          <span className="text-ui-base text-dim" id="skillsTotalCount">{t("settingsPage.skills.countLabel", { count: totalCount })}</span>
         </div>
         <div className="skills-actions-wrap">
           <div className="sel" id="skillsMoreSel">
-            <button type="button" className="skills-btn-icon" id="skillsMoreBtn" title="更多选项"
+            <button type="button" className="skills-btn-icon" id="skillsMoreBtn" title={t("settingsPage.shared.moreOptions")}
               onClick={(e) => { e.stopPropagation(); const was = moreOpen; setMoreOpen(!was); }}>
               <Icon name="dots" size={14} />
             </button>
             <div className={"menu" + (moreOpen ? " open" : "")} id="skillsMoreMenu">
               <div className="mi" id="miOpenSkillsDir" onClick={(e) => { e.stopPropagation(); onMorePick("dir"); }}>
                 <span className="mi-icon"><Icon name="folder" size={14} /></span>
-                <span className="mi-label">打开当前技能目录</span>
+                <span className="mi-label">{t("settingsPage.skills.openDir")}</span>
               </div>
               <div className="sep" />
               <div className="mi" id="miEnableAllSkills" onClick={(e) => { e.stopPropagation(); onMorePick("enableAll"); }}>
                 <span className="mi-icon"><Icon name="permDefault" size={14} /></span>
-                <span className="mi-label">全部启用</span>
+                <span className="mi-label">{t("settingsPage.skills.enableAll")}</span>
               </div>
               <div className="mi" id="miDisableAllSkills" onClick={(e) => { e.stopPropagation(); onMorePick("disableAll"); }}>
                 <span className="mi-icon"><Icon name="shield" size={14} /></span>
-                <span className="mi-label">全部禁用</span>
+                <span className="mi-label">{t("settingsPage.skills.disableAll")}</span>
               </div>
             </div>
           </div>
-          <button type="button" className={"icon-btn pg-refresh" + (spin ? " spin" : "")} id="skillsRefreshBtn" title="刷新" onClick={onRefresh}>
+          <button type="button" className={"icon-btn pg-refresh" + (spin ? " spin" : "")} id="skillsRefreshBtn" title={t("settingsPage.model.refresh")} onClick={onRefresh}>
             <Icon name="refresh" size={17} />
           </button>
           <button type="button" className="skills-btn-new" id="skillsNewBtn" onClick={onNew}>
             <Icon name="plus" size={14} />
-            <span>新建</span>
+            <span>{t("settingsPage.shared.newBtn")}</span>
           </button>
         </div>
         <div className="skills-search-wrap">
           <span className="skills-search-icon"><Icon name="search" size={14} /></span>
-          <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder="搜索技能..." spellCheck={false} autoComplete="off"
+          <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder={t("settingsPage.skills.searchPlaceholder")} spellCheck={false} autoComplete="off"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
         </div>
@@ -289,9 +291,9 @@ export default function SkillsPage() {
       <div className="skills-list-wrap">
         <div className="skills-card-list" id="skillsList">
           {!agentAssets
-            ? emptyRow("加载中…", "skill-empty-row")
+            ? emptyRow(t("common.loading"), "skill-empty-row")
             : filtered.length === 0
-              ? emptyRow(q ? "未找到匹配技能" : "当前作用域下暂无技能", "skill-empty-row")
+              ? emptyRow(q ? t("settingsPage.skills.emptySearch") : t("settingsPage.skills.emptyScope"), "skill-empty-row")
               : filtered.map((s) => (
                 <Fragment key={s.path}>
                   <div className={"skill-item-row" + (openPath === s.path ? " on" : "")} data-path={s.path} data-name={s.name}
@@ -307,14 +309,14 @@ export default function SkillsPage() {
                           fallback={s.provider && s.provider !== "native" ? <span className="skill-provider-tag">{s.provider}</span> : undefined}
                         />
                       </div>
-                      <div className="skill-desc" title={s.description || s.name}>{s.description || "暂无描述"}</div>
+                      <div className="skill-desc" title={s.description || s.name}>{s.description || t("settingsPage.skills.noDesc")}</div>
                     </div>
                     <div className="skill-controls">
-                      <div className={"tg" + (s.enabled ? " on" : "")} title={s.enabled ? "已启用，点击禁用" : "已禁用，点击启用"}
+                      <div className={"tg" + (s.enabled ? " on" : "")} title={s.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
                         onClick={(e) => { e.stopPropagation(); onToggle(s); }}>
                         <i />
                       </div>
-                      <button type="button" className="skill-trash-btn" title="删除技能"
+                      <button type="button" className="skill-trash-btn" title={t("settingsPage.skills.deleteBtnTitle")}
                         onClick={(e) => { e.stopPropagation(); onRowDelete(s); }}>
                         <Icon name="trash" size={14} />
                       </button>
@@ -324,22 +326,22 @@ export default function SkillsPage() {
                   {openPath === s.path && (
                     <div className="mem-expand">
                       <div className="mem-exp-head">
-                        <span>编辑技能</span>
+                        <span>{t("settingsPage.skills.editTitle")}</span>
                         <span className="sub">{s.path}</span>
                         <span className="sp" />
                         <button type="button" className="save-btn"
-                          onClick={(e) => { e.stopPropagation(); setOpenPath(null); }}>收起</button>
+                          onClick={(e) => { e.stopPropagation(); setOpenPath(null); }}>{t("settingsPage.shared.collapse")}</button>
                       </div>
                       <div className="sem-body">
-                        <textarea id="skEditText" spellCheck={false} placeholder="在此编辑 SKILL.md 内容..."
+                        <textarea id="skEditText" spellCheck={false} placeholder={t("settingsPage.skills.editPlaceholder")}
                           value={editText} onChange={(e) => setEditText(e.target.value)}
                           onClick={(e) => e.stopPropagation()} />
                       </div>
                       <div className="sem-foot">
                         <span className="text-ui-sm text-dim">{editStatus}</span>
                         <span className="sp" />
-                        <button type="button" className="confirm-btn danger" onClick={() => onEditorDelete(s)}>删除</button>
-                        <button type="button" className="confirm-btn" onClick={onSave}>保存</button>
+                        <button type="button" className="confirm-btn danger" onClick={() => onEditorDelete(s)}>{t("common.delete")}</button>
+                        <button type="button" className="confirm-btn" onClick={onSave}>{t("common.save")}</button>
                       </div>
                     </div>
                   )}

@@ -1,0 +1,167 @@
+// zh copy for the chat domain. Keys are prefixed `chat.` — see ui-src/i18n/README.md.
+// The aggregator nests this object under `chat`, so bare keys here resolve as t("chat.*").
+export const chatZh = {
+  // ---- tool row labels (ToolRow.tsx) ----
+  labelTerminal: "终端",
+  evalLabel: "求值",
+  labelBackground: "后台",
+  labelTodo: "待办",
+  labelSearch: "搜索",
+  labelFind: "查找",
+  labelWebSearch: "联网搜索",
+  labelAsk: "提问",
+  labelDebug: "调试",
+  labelMemory: "记忆",
+  labelDevice: "设备",
+  labelChange: "更改",
+  labelReadGroup: "查阅",
+  labelRead: "读取",
+  labelDirectory: "目录",
+  thinking: "思考",
+  // ---- placeholders / empty states ----
+  noCommand: "（无命令）",
+  noOutput: "（无输出）",
+  noParams: "（无参数）",
+  multiSelect: "（多选）",
+  noDiffContent: "（无差异内容）",
+  noTextContent: "（无文本内容）",
+  // ---- merged-group titles (plurals) ----
+  terminalCommands: "终端 · {{count}} 条命令",
+  deviceCalls: "设备 · {{dev}} · {{count}} 次调用",
+  changeFiles: "更改 · {{count}} 个文件",
+  changeFilesMultiple: "更改 · 多 个文件",
+  readFiles: "查阅 · {{count}} 个文件",
+  readFilesMultiple: "查阅 · 多 个文件",
+  // ---- truncation notices (plurals / interpolation) ----
+  truncated: " …(截断,共{{count}}字)",
+  outputTruncated: "\n…（输出已截断）",
+  readOmitted: "… 内容过长，已省略剩余 {{count}} 行（点击文件名可在右侧查看完整文件）",
+  // ---- edit row (EditRow.tsx) ----
+  editLabel: "编辑",
+  writeLabel: "写入",
+  // ---- local bash row (BashRow.tsx) ----
+  cancelled: "已取消",
+  completed: "已完成",
+  notInContext: "不进上下文",
+  // ---- streaming status (ChatLoading / WorkLine) ----
+  processing: "正在处理…",
+  loadingAria: "加载中",
+  workingFor: "工作中 ",
+  // ---- loop group summary (LoopGroup.tsx) ----
+  workedFor: "已工作 {{duration}}",
+  totalUsage: "总消耗 {{usage}}",
+  // ---- thinking row (ThinkingRow.tsx) ----
+  thinkingFallback: "思考 · 持续了几秒",
+  // ---- context ring card (CtxCard.tsx) ----
+  context: "上下文",
+  ctxSystemTools: "系统工具",
+  ctxMcpTools: "MCP 工具",
+  ctxSystemPrompt: "系统提示词",
+  ctxSkills: "技能",
+  ctxMessages: "消息",
+  ctxOther: "其他",
+  balance: "余额 {{amount}} {{currency}}",
+  remainingQuota: "剩余额度",
+  limitsUnavailable: "限额暂不可用",
+  providerNoLimits: "该供应商暂不支持限额查询",
+  providerNoCredentials: "未配置该供应商凭证",
+  compactContext: "压缩上下文",
+  compacting: "压缩中…",
+  noModelAvailable: "暂无可用模型",
+  ctxNoData: "上下文用量暂无数据",
+  // ---- in-chat find bar (FindBar.tsx) ----
+  findPlaceholder: "在会话中查找…",
+  findNoResult: "无结果",
+  findPrev: "上一个 (⇧↵)",
+  findNext: "下一个 (↵)",
+  closeEsc: "关闭 (Esc)",
+  // ---- image lightbox (ImageLightbox.tsx) ----
+  downloadImage: "下载图片",
+  prevImage: "上一张 (←)",
+  nextImage: "下一张 (→)",
+  previewImage: "预览图",
+  // ---- main session tree (MainSessionTree.tsx) ----
+  noActiveSession: "（无活跃会话）",
+  loadingTree: "加载会话树中…",
+  noEntriesYet: "会话还没有任何条目。",
+  backToChat: "返回对话",
+  filterMode: "过滤模式：",
+  refreshTree: "刷新条目树",
+  backToStream: "返回对话流",
+  // ---- session tree stream (SessionTreeStream.tsx) ----
+  copiedToClipboard: "已复制到剪贴板",
+  copySuccessFallback: "复制成功",
+  noEntriesForFilter: "当前过滤条件下没有条目。",
+  roleSystem: "系统",
+  roleUser: "用户",
+  roleAssistant: "助手",
+  roleTool: "工具",
+  jumpToNode: "跳转至此节点",
+  emptyEntry: "（空条目）",
+  currentTag: "当前",
+  entryFullContent: "条目完整内容",
+  emptyEntryContent: "（空条目内容）",
+  alreadyHere: "已在当前位置",
+  jumpHere: "跳转至此",
+  jumpConfirmTitle: "跳转到所选节点？",
+  jump: "跳转",
+  jumpAndSummarize: "跳转并摘要",
+  forkSwitch: "分叉点切换 ({{count}} 个分支)",
+  forkHint: "滚轮左右滑动 · 点击切换分支",
+  switchedToBranch: "已切换至分支 #{{index}}",
+  branchSteps: "{{count}} 步",
+  // ---- message rail (MsgRail.tsx) ----
+  railError: "错误",
+  railCommand: "命令",
+  // ---- turn actions (TurnActs.tsx) ----
+  copyReply: "复制这条回复",
+  replyCopied: "已复制回复",
+  copyFailed: "复制失败",
+  branchFromHere: "从此处分叉出新会话",
+  branchAfterSaved: "回复落盘后可分叉",
+  // ---- user message (UserMsg.tsx) ----
+  editBackToComposer: "编辑（放回输入框）",
+  requeueTop: "放回队列顶端",
+  sendNow: "立即发送（当前步骤后注入）",
+  imageN: "图片 {{n}}",
+  clickToZoom: "点击查看大图",
+  // ---- todo card (TodoCard.tsx) ----
+  allDone: "全部完成",
+  sessionStatus: "会话状态",
+  collapseToCapsule: "收起为胶囊",
+  // ---- approval card (ApprovalCard.tsx) ----
+  awaitingConfirm: "等待确认",
+  confirmOptions: "确认选项",
+  typeToSubmit: "输入内容后提交…",
+  approvalHint: "使用 Tab / 上下键选择，回车确认",
+  // ---- assistant message code block (AssistantMsg.tsx) ----
+  disableWordWrap: "关闭自动换行",
+  enableWordWrap: "开启自动换行",
+  // ---- shared render parts (parts.tsx) ----
+  openLinkFailed: "打开链接失败：{{error}}",
+  openInBrowser: "{{mod}}+点击在默认浏览器打开",
+  // ---- rail tool summary (shell.ts railToolText) ----
+  fileSep: "、",
+  // ---- session stats bar (SessionStatsBar.tsx) ----
+  statsCacheHit: "缓存利用率",
+  statsInput: "输入",
+  statsOutput: "输出",
+  statsCacheRead: "缓存读",
+  statsCacheWrite: "缓存写",
+  statsCost: "成本",
+  statsDuration: "时长",
+  // ---- session-tree filter pills (sessionTreeUtil FILTERS) ----
+  filterDefault: "默认",
+  filterNoTools: "无工具",
+  filterUserOnly: "仅用户",
+  filterAll: "全部",
+  // ---- cross-day timestamp (TurnActs fmtClock) ----
+  clockDate: "{{m}}月{{d}}日 {{hm}}",
+  // ---- approval card option ids (host-built approval frames; ApprovalCard) ----
+  approvalSubmit: "提交",
+  approvalCancel: "取消",
+  planApprove: "批准并执行",
+  planRefine: "继续修改",
+};
+
+export default chatZh;

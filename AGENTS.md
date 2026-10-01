@@ -34,7 +34,7 @@
 
 ## 开发与行为规范
 
-1. **中文规范**：所有思考、分析、解释和代码注释均使用中文。
+1. **语言规范**：思考、分析与解释使用中文；**代码注释一律使用英文**（开源国际化规范）。存量中文注释按目录分波次译英，`bun run check` 内的注释语言棘轮（`scripts/check-comment-language.mjs`，基线只许降不许升）防止回潮。用户可见文案（UI / 宿主消息）走 `ui-src/i18n/` 语言包，禁止新写硬编码中文文案（规范见 `ui-src/i18n/README.md`）。
 2. **机器资源安全红线**：禁止裸跑 vitest / 多包并发测试；所有测试必须带单 worker 池参数。
 3. **测试 Profile 隔离红线（最高优先级测试约束）**：所有测试、冒烟（smoke）及自动化脚本，默认且强制使用 `omp-desktop-test` profile（通过环境变量 `OMP_PROFILE=omp-desktop-test` 指定），严禁污染用户的默认 profile（`default` / `~/.omp/agent`）。若 `omp-desktop-test` profile 目录不存在，启动时必须自动检测并新建。测试产生的会话、项目列表及临时配置必须严格限制在测试 profile 内。
 4. **输出风格 (ADHD Mode)**：

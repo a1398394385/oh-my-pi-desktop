@@ -5,6 +5,7 @@ import { SessionManager, USER_INTERRUPT_LABEL } from "../bootstrap.ts";
 import { H, sessions } from "../state.ts";
 import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
+import { applyActivityTimes } from "../session-activity.ts";
 import {
   handleCreateSession,
   handleLoadSession,
@@ -13,10 +14,13 @@ import {
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export async function handleListSessions(ws: any) {
   const all = await SessionManager.listAll(); // 全部 project 目录，pinned 优先
+  // mtime tracks non-activity writes (session_exit frames); use the last message time instead
+  await applyActivityTimes(all);
   const byProject = new Map<string, any[]>();
   for (const s of all) {
     const list = byProject.get(s.cwd) ?? [];
@@ -93,7 +97,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 强制从磁盘重建（外部写入提示条的「重新加载」）：池复用分支只推内存快照，
     // 拿不到外部进程写入的内容；释放模式对齐 delete_session（unsubscribe + 出池）
     const p = String(msg.path ?? "").trim();
-    if (!p) throw new Error("缺少 path");
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, e] of sessions.entries()) {
       if (e.path !== p) continue;
       e.unsubscribe();
@@ -107,7 +111,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async remove_project(ws, msg) {
     // 移出项目列表（会话仍保留在历史中，「最近」视图照常见）
     const cwd = String(msg.cwd ?? "").trim();
-    if (!cwd) throw new Error("缺少 cwd");
+    if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     if (!H.desktopProjects.removedProjects.includes(cwd)) H.desktopProjects.removedProjects.push(cwd);
     await saveDesktopProjects();
     await handleListSessions(ws);
@@ -115,7 +119,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async delete_session(ws, msg) {
     // 彻底删除会话（物理文件 + 对应 artifacts 目录 + 内存会话池与置顶记录）
     const p = String(msg.path ?? "").trim();
-    if (!p) throw new Error("缺少 path");
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, entry] of sessions.entries()) {
       if (entry.path === p) {
         try { entry.unsubscribe(); } catch {}
@@ -152,7 +156,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 项目展开态持久化：记录在 omp-desktop.json expandedProjects，未记录的默认收起
     const cwd = String(msg.cwd ?? "").trim();
     const on = !!msg.expanded;
-    if (!cwd) throw new Error("缺少 cwd");
+    if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     const i = H.desktopProjects.expandedProjects.indexOf(cwd);
     if (on && i < 0) H.desktopProjects.expandedProjects.push(cwd);
     if (!on && i >= 0) H.desktopProjects.expandedProjects.splice(i, 1);
@@ -162,7 +166,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 置顶会话持久化：记录在 omp-desktop.json pinnedSessions，重启保持
     const p = String(msg.path ?? "").trim();
     const on = !!msg.pinned;
-    if (!p) throw new Error("缺少 path");
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     const i = H.desktopProjects.pinnedSessions.indexOf(p);
     if (on && i < 0) H.desktopProjects.pinnedSessions.push(p);
     if (!on && i >= 0) H.desktopProjects.pinnedSessions.splice(i, 1);
@@ -188,7 +192,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async add_project(ws, msg) {
     // 手动添加：命中已移除列表则移回所有项目列表，否则作为新项目并入（置顶，立即可见）
     const cwd = String(msg.cwd ?? "").trim();
-    if (!cwd) throw new Error("缺少 cwd");
+    if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     const ri = H.desktopProjects.removedProjects.indexOf(cwd);
     if (ri >= 0) H.desktopProjects.removedProjects.splice(ri, 1);
     if (!H.desktopProjects.allProjects.includes(cwd)) H.desktopProjects.allProjects.unshift(cwd);
@@ -198,7 +202,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async reorder_projects(_ws, msg) {
     // 拖拽排序：以 UI 传来的完整顺序为准；未涵盖的既有项（并发变更兜底）保持原序追加尾部
     const order = Array.isArray(msg.order) ? msg.order.filter((x: unknown) => typeof x === "string") : [];
-    if (order.length === 0) throw new Error("缺少 order");
+    if (order.length === 0) throw new Error(hostI18n.t("errors.param.missingOrder"));
     const set = new Set(order);
     const rest = H.desktopProjects.allProjects.filter((c) => !set.has(c));
     H.desktopProjects.allProjects = [...order, ...rest];
@@ -209,7 +213,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // assistant 消息标记为用户主动中断；空闲会话 abort 同样安全（底座 waitForIdle 立即返回）。
     // 中断后底座自然走到 agent_end/turn 事件，无需额外收尾。
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
     ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
   },
@@ -220,17 +224,17 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 落盘（title slot 插入/原位更新均由底座处理）。
     // 懒建未落盘的会话仅内存生效，list_sessions 兜底条目经 entry.title 呈现。
     const title = String(msg.title ?? "").trim();
-    if (!title) throw new Error("缺少 title");
+    if (!title) throw new Error(hostI18n.t("errors.param.missingTitle"));
     const entry = sessions.get(msg.sessionId);
     if (entry) {
       if (!(await entry.manager.setSessionName(title, "user"))) {
-        throw new Error("标题无效（清洗后为空或会话已释放）");
+        throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
       entry.title = title;
     } else {
       const manager = await SessionManager.open(await sessionPathFromDisk(msg.sessionId));
       if (!(await manager.setSessionName(title, "user"))) {
-        throw new Error("标题无效（清洗后为空或会话已释放）");
+        throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
     }
     ws.send(JSON.stringify({ type: "session_renamed", sessionId: msg.sessionId, ok: true, title }));
@@ -241,9 +245,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 以 error 字段回包提示前端；成功则从磁盘 entries 重建 transcript 并推送，
     // 前端立即换压缩后视图。
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     if (entry.transcript.length === 0) {
-      ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, error: "会话为空，没有可压缩的历史" }));
+      ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, error: hostI18n.t("errors.session.emptyNoCompact") }));
       return;
     }
     try {
@@ -261,25 +265,25 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 复制式会话分叉：以指定条目为锚点截取历史链路，生成独立新会话文件
     // （header.parentSession 指回源文件）。源会话在宿主池中保持不变，新会话加入池并通知前端切换。
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const entryId = String(msg.entryId ?? "");
-    if (!entryId) throw new Error("缺少 entryId");
+    if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
     try {
       // 确保当前会话的最新数据已落盘
       await entry.manager.flush();
       const parentPath = entry.path ?? (await sessionPathFromDisk(msg.sessionId));
-      if (!parentPath) throw new Error("无法定位源会话文件");
+      if (!parentPath) throw new Error(hostI18n.t("errors.session.cannotLocateSource"));
 
       // 用独立的 SessionManager 打开父会话文件进行分支切片，避免污染当前活跃的 entry.manager / entry.session
       const tempManager = await SessionManager.open(parentPath);
       const targetEntry = tempManager.getEntry(entryId);
-      if (!targetEntry) throw new Error(`未找到条目: ${entryId}`);
+      if (!targetEntry) throw new Error(hostI18n.t("errors.session.entryNotFound", { entryId }));
 
       const isUser = targetEntry.type === "message" && targetEntry.message.role === "user";
       // 若是 user 消息分叉（兼容），分支点取其父节点并将该文本回填；若是 assistant 消息分叉，完整保留该轮回复
       const branchLeafId = isUser && targetEntry.parentId ? targetEntry.parentId : entryId;
       const newSessionFile = tempManager.createBranchedSession(branchLeafId);
-      if (!newSessionFile) throw new Error("分叉创建新会话文件失败");
+      if (!newSessionFile) throw new Error(hostI18n.t("errors.session.forkCreateFailed"));
 
       // 复制工件目录（如存在）
       await copySessionArtifactsIfAny(parentPath, newSessionFile);
@@ -335,10 +339,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     const entry = sessions.get(msg.sessionId);
     const curPath = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
     const all = await SessionManager.listAll();
+    await applyActivityTimes(all);
     const byPath = new Map<string, any>(all.map((s: any) => [s.path, s]));
     const cur = byPath.get(curPath);
     if (!cur) {
-      ws.send(JSON.stringify({ type: "session_tree", sessionId: msg.sessionId, ok: false, error: `会话文件不在磁盘上: ${curPath}` }));
+      ws.send(JSON.stringify({ type: "session_tree", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.fileNotOnDisk", { path: curPath }) }));
       return;
     }
     // 向上追根（seenUp 防脏数据成环）
@@ -385,7 +390,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 的条目森林（rewind/fork 留下的兄弟分支同文件共存），getLeafId() 标当前叶。
     // 与 get_session_tree（跨文件家族）是两棵树，别混。
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const leafId = entry.manager.getLeafId();
     ws.send(
       JSON.stringify({
@@ -405,23 +410,23 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 简化：不带 allowAskReopen（ask 重答流程是 TUI 交互专属），ask toolResult
     // 目标走底座默认的 plain leaf move。
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const entryId = String(msg.entryId ?? "");
-    if (!entryId) throw new Error("缺少 entryId");
+    if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
     // 目标即当前 leaf：底座 navigateTree 直接返回 cancelled:false（既不报错也不移动），
     // 静默"成功"会让 output 尾部的分叉按钮看起来生效实则无变化——这里显式回绝。
     if (entry.manager?.getLeafId() === entryId) {
-      ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: "已在当前位置" }));
+      ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.alreadyAtPosition") }));
       return;
     }
     try {
       const result = await entry.session.navigateTree(entryId, { summarize: !!msg.summarize });
       if (result.cancelled) {
-        ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: "导航被取消" }));
+        ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.navigateCancelled") }));
         return;
       }
       if (result.aborted) {
-        ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: "分支摘要已中止" }));
+        ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.summaryAborted") }));
         return;
       }
       // getEntries() 是文件内全部条目（被放弃的分支仍在文件里），

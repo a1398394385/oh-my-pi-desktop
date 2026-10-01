@@ -1,8 +1,10 @@
 // 分支树页：当前会话家族（get_session_tree 懒加载，切会话后旧数据视为过期）
 // + 按 parentSession 组树渲染 + 点击分支行切换会话。
 import { Fragment, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, activateSession, refreshGitDiff, hideWelcomeScreen, saveUnseen } from "../../store";
 import type { DiskProject, SessionBranch } from "../../types/frames";
+import { t } from "../../i18n";
 import { fmtAgo } from "./helpers";
 
 // 家族分支条目:唯一来源 types/frames 的 SessionBranch(host get_session_tree 回包)
@@ -13,7 +15,7 @@ function branchLabel(b: BranchEntry, diskProjects: DiskProject[]): string {
   if (b.title && b.title.trim()) return b.title;
   const fm = diskProjects.flatMap((p) => p.sessions).find((x) => x.path === b.path)?.firstMessage;
   if (fm && fm.trim()) return fm.length > 40 ? fm.slice(0, 40) + "…" : fm;
-  return "未命名分支";
+  return t("right.unnamedBranch");
 }
 
 // 点击分支行切换会话：与侧栏列表点击同一套动作（已打开直接激活，否则走宿主 load_session）
@@ -34,6 +36,7 @@ function loadBranchSession(path: string) {
 }
 
 export default function BranchTreePage() {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const rightState = useAppStore((st) => st.rightState);
   // 过期数据重拉（原渲染体内联请求移此；pending 防重读 getState，回包由 store 落缓存）。
@@ -51,16 +54,16 @@ export default function BranchTreePage() {
     send({ type: "get_session_tree", sessionId: session.sessionId });
   });
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   const tree = rightState.sessionTree;
   const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
   if (stale) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
   }
   const branches = tree.branches ?? [];
   if (branches.length <= 1) {
-    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]" /* style-token-ignore */>暂无其他分支。把鼠标移到某轮回复的末尾，点分叉按钮可从该处创建新分支。</div>;
+    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]" /* style-token-ignore */>{t("right.noOtherBranches")}</div>;
   }
   // 按 parentSession 组树：根支（无父或父不在家族列表）在顶层，子支随父缩进（深度不限，样式统一）
   const byId = new Map(branches.map((b: BranchEntry) => [b.sessionId, b] as const));
@@ -87,6 +90,7 @@ export default function BranchTreePage() {
 
 // 单层分支行（当前分支 cur 高亮不可点）+ 嵌套子支容器（自带竖线引导线，逐级缩进）
 function BranchLevel({ items, kidsOf, depth }: { items: BranchEntry[]; kidsOf: Map<string, BranchEntry[]>; depth: number }) {
+  const { t } = useTranslation();
   const diskProjects = useAppStore((st) => st.diskProjects); // 标题首消息兜底数据（磁盘会话列表）变化时重渲染
   return (
     <div className={depth > 0 ? "ml-2.5 pl-2.5 border-l border-line-soft" : undefined}>
@@ -97,7 +101,7 @@ function BranchLevel({ items, kidsOf, depth }: { items: BranchEntry[]; kidsOf: M
             <button className={"bt-row" + (b.isCurrent ? " cur" : "")} title={b.path} onClick={b.isCurrent ? undefined : () => loadBranchSession(b.path)}>
               <span className="flex-1 min-w-0 text-ui-base overflow-hidden text-ellipsis whitespace-nowrap">{branchLabel(b, diskProjects)}</span>
               <span className="flex-none text-ui-xs text-faint">
-                {[b.messageCount != null ? `${b.messageCount} 条` : null, b.modified ? fmtAgo(b.modified) : null]
+                {[b.messageCount != null ? t("right.messageCount", { count: b.messageCount }) : null, b.modified ? fmtAgo(b.modified) : null]
                   .filter(Boolean)
                   .join(" · ")}
               </span>

@@ -24,10 +24,10 @@ export interface FlatRow {
 
 // 过滤模式（与底座 treeFilterMode 同名的子集，label 为中文）
 export const FILTERS: [string, string][] = [
-  ["default", "默认"],
-  ["no-tools", "无工具"],
-  ["user-only", "仅用户"],
-  ["all", "全部"],
+  ["default", "chat.filterDefault"],
+  ["no-tools", "chat.filterNoTools"],
+  ["user-only", "chat.filterUserOnly"],
+  ["all", "chat.filterAll"],
 ];
 
 // 计算根→叶子的活跃路径 id 集合（叶可能不在树里，此时为空集，树无高亮）

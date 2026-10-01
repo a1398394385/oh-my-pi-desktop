@@ -2,6 +2,7 @@
 //（read_file 整文件 / read_image 图片预览；rb-head 面包屑固定 + rb-scroll 滚动骨架）。
 import { Fragment, useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, pathBase } from "../../store";
 import { fileTypeIcon } from "../../../ui/icons";
 import Icon from "../../Icon";
@@ -20,9 +21,10 @@ export default function FilePage() {
 
 // 空态：当前项目文件树（懒加载单层展开；点击文件进详情）
 function FileTree() {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   return (
     <>
@@ -42,6 +44,7 @@ function FileTree() {
 
 // 单层渲染：缓存未命中时发起 list_dir（pending 集合防重，dir_list 回包由 store 落缓存）
 function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
+  const { t } = useTranslation();
   const rightState = useAppStore((s) => s.rightState);
   // 原渲染体内的 list_dir 请求移入 effect；防重与缓存命中读 getState（渲染与 effect 之间状态可能已推进）
   useEffect(() => {
@@ -55,7 +58,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
   }, [dirPath]);
   const entries = rightState.fileTreeDirs.get(dirPath);
   if (entries === undefined) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
   }
   return (
     <>
@@ -147,6 +150,7 @@ function FileCrumb({ absPath }: { absPath: string }) {
 
 // 文件详情：先渲染读取到的内容，read_file 回包后切整文件（请求范围行号高亮 + 起始行滚到顶部）
 function FvDetail() {
+  const { t } = useTranslation();
   const fv = useAppStore((s) => s.fileView)!; // 断言:FilePage 入口 if (fileView) 已守卫,与原版一致
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // 全文件就绪后把读取范围起始行滚到可视区顶部
@@ -163,7 +167,7 @@ function FvDetail() {
             setBump({ fileView: null });
           }}
         >
-          ‹ 文件树
+          {t("right.backToTree")}
         </button>
         <FileCrumb absPath={fv.path} />
       </div>
@@ -172,11 +176,11 @@ function FvDetail() {
         {fv.image ? (
           <FvImage fv={fv} />
         ) : !fv.text && !fv.error ? (
-          <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>
+          <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>
         ) : (
           <>
             {fv.error && (
-              <div className="text-ui-xs text-faint mt-2 px-2">（{fv.error}）</div>
+              <div className="text-ui-xs text-faint mt-2 px-2">{t("right.errorParen", { error: fv.error })}</div>
             )}
             <FvBody fv={fv} bodyRef={bodyRef} />
           </>
@@ -189,6 +193,7 @@ function FvDetail() {
 // 文本内容：行号 + 文本；全文件超长时截 800 行窗口（起点对齐请求范围的起始行）。
 // 语法染色：可视窗口整段一次 tokenize（上限见 highlighter.js），按行回贴 span
 function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDivElement | null> }) {
+  const { t } = useTranslation();
   const lines = (fv.text ?? "").split("\n"); // text 恒在(协议数据);?? "" 仅为类型兜底,协议下与原版一致
   if (lines[lines.length - 1] === "") lines.pop(); // 末尾换行不算一行
   const [reqStart, reqEnd] = fv.reqRange || [];
@@ -218,7 +223,7 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
       </div>
       {fv.full && lines.length > shown.length && (
         <div className="text-ui-xs text-faint mt-2 px-2">
-          文件共 {lines.length} 行，当前展示第 {winStartLine}–{winStartLine + shown.length - 1} 行
+          {t("right.fileWindow", { total: lines.length, start: winStartLine, end: winStartLine + shown.length - 1 })}
         </div>
       )}
     </>
@@ -227,12 +232,13 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
 
 // 图片详情：image_content 回包按 path 匹配（超限/失败回 error 时显示错误态文案）
 function FvImage({ fv }: { fv: FileViewState }) {
+  const { t } = useTranslation();
   const ic = useAppStore((s) => s.rightState.imageContent);
   if (!ic || ic.path !== fv.path) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
   }
   if (ic.error) {
-    return <div className="text-ui-xs text-faint mt-2 px-2">（{ic.error}）</div>;
+    return <div className="text-ui-xs text-faint mt-2 px-2">{t("right.errorParen", { error: ic.error })}</div>;
   }
   return <img className="block max-w-full h-auto bg-panel-2 border border-line rounded-md p-1.5 box-border" src={`data:${ic.mime};base64,${ic.data}`} alt={pathBase(fv.path)} />;
 }

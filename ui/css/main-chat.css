@@ -103,7 +103,6 @@ body:has(#sidebar.collapsed) .chat-head {
 .goal-card,
 .turn-flow,
 .sticky-user-inner,
-.turn-acts,
 #stream > *:not(.scroll-bottom):not(.turn-section) {
   width: 100%;
   /* 四段式收缩（边距 = 内容列与主卡片边缘的距离，--col-max/--col-max-35 由 JS
@@ -141,6 +140,9 @@ body:has(#sidebar.collapsed) .chat-head {
 
 .turn-flow {
   padding-top: 15px; /* 与后方 agent 处理流程间距再加大 5px（10px -> 15px） */
+  /* BFC: keeps the trailing markdown paragraph's margin-bottom (8px) inside the flow instead of
+     collapsing it into a dead band above .turn-acts, where hover drops on the way to its buttons. */
+  display: flow-root; overflow: clip; /* clip: crossed-selection gap bands confine to the column instead of bleeding full-width (BUG-030) */
 }
 
 .turn-flow > *:last-child {
@@ -156,6 +158,8 @@ body:has(#sidebar.collapsed) .chat-head {
   background: var(--bg);
   padding: 12px 0 4px;
   border-bottom: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sticky-user-wrap::after {
@@ -177,6 +181,11 @@ body:has(#sidebar.collapsed) .chat-head {
 
 .sticky-user-inner {
   width: 100%;
+}
+
+.sticky-user-wrap .user-msg-text {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .sticky-user-wrap .msg.user {
@@ -212,6 +221,14 @@ body:has(#right.collapsed) #right-resizer {
   line-height: 1.7;
   color: var(--text);
   margin: 8px 0;
+  overflow: clip; /* same selection-paint clip as .md-body below */
+}
+
+.msg.assistant.md-body {
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+  overflow: clip; /* clip WebKit's full-width selection gap-fill at the message box so drag-selection never paints the side bands; unlike overflow:hidden this creates no BFC, child margins keep collapsing */
 }
 
 .msg.user {
@@ -219,6 +236,8 @@ body:has(#right.collapsed) #right-resizer {
   justify-content: flex-end;
   /* 上边距 = 与上一轮 Agent 回答的间距：与 .msg 的 14px 塌陷取 max，故须自身给到 90px */
   margin: 90px 0 22px; /* 与下方 Agent 回复间距 22px（14+8） */
+  user-select: none; /* row itself carries no text: keep the whole row out of drag-selection (trailing flex space was painted blue); text re-enabled on .user-msg-text */
+  -webkit-user-select: none;
 }
 
 .msg.user .user-bubble {
@@ -239,19 +258,18 @@ body:has(#right.collapsed) #right-resizer {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* user-select:text counters .msg.user's none: only the text line boxes get the selection color, not the bubble around them */
+.user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
+
 /* ── Markdown 格式渲染支持 ── */
-.md-body {
-  width: 100%;
+.md-body { width: fit-content; max-width: 100%;
   font-size: var(--ui-fs-md);
   line-height: 1.7;
   color: var(--text);
   word-break: break-word;
 }
 
-.md-body .md-p {
-  margin: 8px 0;
-  line-height: 1.7;
-}
+.md-body .md-p { margin: 8px 0; line-height: 1.7; width: fit-content; max-width: 100%; }
 
 .md-body .md-h {
   font-weight: 600;
@@ -304,10 +322,7 @@ body:has(#right.collapsed) #right-resizer {
   padding-left: 2em;
 }
 
-.md-body li {
-  margin: 4px 0;
-  line-height: 1.65;
-}
+.md-body li { margin: 4px 0; line-height: 1.65; width: fit-content; max-width: 100%; }
 
 .md-body .md-task-cb {
   margin-right: 6px;
@@ -510,13 +525,13 @@ body:has(#right.collapsed) #right-resizer {
 
 .extw-bar svg { flex: none; color: var(--blue); }
 
-/* loop 收起汇总行：一轮结束自动收起过程，行尾箭头点击展开/收起 */
-.act.loop { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--faint); }
+/* loop 收起汇总行：一轮结束自动收起过程，行尾箭头点击展开/收起；user-select:none 同理 .msg.user（行内无匿名文本，.lp-tx 放行）。间距内化进 padding：WKWebView 跨选只填子盒外的裸空隙，行盒本身不染（BUG-030） */
+.act.loop { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--faint); user-select: none; -webkit-user-select: none; margin: 0; padding: 20px 0; }
+/* Neighbor margins toward the row zeroed (row padding owns the gap); first-child loop absorbs flow's padding-top, keeping the 35px bubble gap. */
+.turn-flow > *:has(+ .act.loop) { margin-bottom: 0; } .act.loop + * { margin-top: 0; }
+.turn-flow:has(> .act.loop:first-child) { padding-top: 0; } .turn-flow > .act.loop:first-child { padding-top: 35px; }
 
-/* 用户消息气泡 → 下方 agent 过程折叠块：2 倍常规行距（20→40 塌陷基数，用户定调 70） */
-.msg.user + .act.loop { margin-top: 70px; }
-
-.act.loop .lp-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.act.loop .lp-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; user-select: text; -webkit-user-select: text; }
 
 .act.loop .lp-arrow { flex: none; color: var(--faint); display: inline-flex; align-items: center; }
 
@@ -526,8 +541,8 @@ body:has(#right.collapsed) #right-resizer {
 
 .act.loop:hover { color: var(--dim); }
 
-/* 收起态（sealed）：汇总行与下方 output 之间细横线区分 */
-.act.loop.sealed { padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+/* 收起态（sealed）：汇总行与下方 output 之间细横线区分。Line drawn as background 20px above the box edge: the space below it stays inside the row's box, no bare margin band for cross-selection to paint. */
+.act.loop.sealed { padding-bottom: 30px; background: linear-gradient(var(--line-soft), var(--line-soft)) left bottom 20px / 100% 1px no-repeat; }
 
 .act svg { flex: none; }
 
@@ -942,4 +957,4 @@ body:has(#right.collapsed) #right-resizer {
 }
 
 .rail-tick.on { background: var(--text); } /* 山峰峰顶加亮 */
-
+.turn-acts { box-sizing: border-box; padding-left: max(0px, calc((100% - min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))))) / 2)); } /* full-width box leaves no flanking gap for WebKit's crossed-selection fill to paint (BUG-030); left padding mirrors the shared column cap so buttons keep the column's left edge */

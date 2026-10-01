@@ -2,7 +2,9 @@
 // 原版任何全局重绘都会收起展开行（DOM 重建）；React 版展开态由组件 state 持有，
 // 流式数据更新时保留展开并展示最新输出（liftEl 收起动画随条件渲染省略）。
 import { Fragment, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
+import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { Spin } from "../chat/parts";
 
@@ -78,7 +80,7 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
         output: it.output || "",
         details: it.details,
         running: false,
-        statusText: "已完成",
+        statusText: t("right.bgDone"),
         cwd: args.cwd || s.cwd,
         timeIndex: i,
         rawItem: it,
@@ -88,15 +90,15 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
       // 执行中」（tool 帧到 tool_update 之间），list/status 之类同样命中，不是进程存活态
       if (op === "start") {
         taskItem.running = true;
-        taskItem.statusText = "运行中";
+        taskItem.statusText = t("right.bgRunning");
         if (procName) liveProcesses.set(procName, taskItem);
       } else if (op === "stop" || op === "cancel") {
         taskItem.running = false;
-        taskItem.statusText = "已停止";
+        taskItem.statusText = t("right.bgStopped");
         if (procName && liveProcesses.has(procName)) {
           const started = liveProcesses.get(procName)!; // 断言：has 判定后 get 必中
           started.running = false;
-          started.statusText = "已停止";
+          started.statusText = t("right.bgStopped");
           liveProcesses.delete(procName);
         }
       }
@@ -113,7 +115,7 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
         output: it.output || "",
         details: it.details,
         running: true,
-        statusText: "运行中",
+        statusText: t("right.bgRunning"),
         cwd: s.cwd,
         timeIndex: i,
         rawItem: it,
@@ -127,14 +129,15 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
 }
 
 export default function BgCmdPage() {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const [openId, setOpenId] = useState<string | null>(null);
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   const { tasks } = getBgTasksForSession(s);
   if (tasks.length === 0) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">当前会话暂无后台命令</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noBgCommands")}</div>;
   }
   return (
     <div className="slist" style={{ padding: "4px 0" }}>
@@ -149,7 +152,7 @@ export default function BgCmdPage() {
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <b style={{ color: "var(--text)" }}>{task.op.toUpperCase()}</b>
                 <span className="path" title={task.command || task.procName || ""}>
-                  {task.procName || task.command || "后台命令"}
+                  {task.procName || task.command || t("right.bgCommandFallback")}
                 </span>
               </div>
             </div>
@@ -167,16 +170,17 @@ export default function BgCmdPage() {
 
 // 展开卡：元信息栏（操作/名称/状态/收起）+ 工作目录 + 命令或参数 + 输出
 function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="bgcmd-expand">
       {/* 1. 卡片头 / 元信息栏 */}
       <div className="bgcmd-meta-row">
         <span>
-          <b>操作:</b> {task.op}
+          <b>{t("right.opLabel")}</b> {task.op}
         </span>
         {task.procName && (
           <span>
-            <b>名称:</b> {task.procName}
+            <b>{t("right.nameLabel")}</b> {task.procName}
           </span>
         )}
         <span className="flex-1"></span>
@@ -188,14 +192,14 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
             e.stopPropagation();
             onClose();
           }}
-        >
-          收起
+          >
+          {t("right.collapse")}
         </button>
       </div>
       {task.cwd && (
         <div className="bgcmd-meta-row" style={{ fontSize: "var(--ui-fs-xs)" }}>
           <span>
-            <b>工作目录:</b> <span className="path" title={task.cwd}>{task.cwd}</span>
+            <b>{t("right.workDirLabel")}</b> <span className="path" title={task.cwd}>{task.cwd}</span>
           </span>
         </div>
       )}
@@ -203,23 +207,23 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
       {task.command ? (
         <>
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
-            <b>命令 / 输入:</b>
+            <b>{t("right.commandInputLabel")}</b>
           </div>
           <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{task.command}</div>
         </>
       ) : task.args && Object.keys(task.args).length > 0 ? (
         <>
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
-            <b>参数:</b>
+            <b>{t("right.argsLabel")}</b>
           </div>
           <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{JSON.stringify(task.args, null, 2)}</div>
         </>
       ) : null}
       {/* 3. 输出与执行结果 */}
       <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
-        <b>输出 / 响应:</b>
+        <b>{t("right.outputLabel")}</b>
       </div>
-      <pre className="max-h-[180px] overflow-y-auto overscroll-contain bg-card border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all" /* style-token-ignore */>{task.output || (task.running ? <Spin /> : "（无输出）")}</pre>
+      <pre className="max-h-[180px] overflow-y-auto overscroll-contain bg-card border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all" /* style-token-ignore */>{task.output || (task.running ? <Spin /> : t("right.noOutput"))}</pre>
     </div>
   );
 }

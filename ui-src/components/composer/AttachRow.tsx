@@ -1,5 +1,6 @@
 // 附件行（原 composer.js renderAttachRow 平移）：待发送文件 chip（图片/文本），
 // 每条可移除；数据 pendingFiles，空时不渲染（等价原 hidden）。
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -8,6 +9,7 @@ import { fileTypeIcon } from "../../../ui/icons";
 type PendingFile = { id: number; name?: string; kind: string };
 
 export default function AttachRow() {
+  const { t } = useTranslation();
   const pendingFiles = useAppStore((st) => st.pendingFiles);
   if (pendingFiles.length === 0) return null;
   return (
@@ -18,7 +20,7 @@ export default function AttachRow() {
           <span className="at-name" title={f.name}>{f.name}</span>
           <button
             className="atchip-x"
-            title="移除"
+            title={t("composer.remove")}
             onClick={() => {
               setBump({ pendingFiles: pendingFiles.filter((it: PendingFile) => it.id !== f.id) });
             }}

@@ -12,6 +12,7 @@ import { assetsHandlers } from "./assets";
 import { terminalHandlers } from "./terminal";
 import { limitsHandlers } from "./limits";
 import type { RpcHandler } from "./types";
+import hostI18n from "../../ui-src/i18n/host";
 
 export const rpcHandlers: Record<string, RpcHandler> = {
   ...sessionHandlers,
@@ -29,7 +30,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
 export function dispatchRpc(ws: any, msg: any): void | Promise<void> {
   const h = rpcHandlers[msg.type as string];
   if (!h) {
-    ws.send(JSON.stringify({ type: "error", message: `未知命令: ${msg.type}` }));
+    ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.unknownCommand", { type: msg.type }) }));
     return;
   }
   return h(ws, msg);

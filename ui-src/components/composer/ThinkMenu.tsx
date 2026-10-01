@@ -3,6 +3,7 @@
 // 有会话走宿主下发；新建态落 newSessionThinking + localStorage。
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, getSupportedThinkingForModel, pickThinkingLevel } from "../../store";
 import { placeComposerMenu } from "./place";
 
@@ -13,6 +14,7 @@ type ThinkMenuProps = {
 };
 
 export default function ThinkMenu({ btnRef, composerRef, onClose }: ThinkMenuProps) {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const newSessionModel = useAppStore((st) => st.newSessionModel);
   const newSessionThinking = useAppStore((st) => st.newSessionThinking);
@@ -34,7 +36,7 @@ export default function ThinkMenu({ btnRef, composerRef, onClose }: ThinkMenuPro
 
   return (
     <div className="menu open" id="thinkMenu" ref={menuRef}>
-      <div className="mh">推理强度</div>
+      <div className="mh">{t("composer.reasoning")}</div>
       {levels.map((lv) => (
         <div className="mi" data-level={lv} key={lv} onClick={() => pickLevel(lv)}>
           <span className="ck">{curThinking === lv ? "✓" : ""}</span>{lv}

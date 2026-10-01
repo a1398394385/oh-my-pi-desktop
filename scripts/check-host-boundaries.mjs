@@ -62,6 +62,10 @@ const ALLOWED_EDGES = new Set([
   "keepalive.ts→keepalive-config.ts", "keepalive.ts→keepalive-lib.ts",
   // 配置真源=omp-desktop.json keepalive 段（随 profile 独立），读写经 state.ts 的 H
   "keepalive-config.ts→state.ts",
+  // UI locale persistence (omp-desktop.json ui section): applyProfile re-reads
+  // it on every profile apply; the set_locale RPC writes it; read/write goes
+  // through state.ts's H (same as keepalive-config)
+  "profile.ts→ui-locale.ts", "rpc/settings.ts→ui-locale.ts", "ui-locale.ts→state.ts",
   // 排队消息域：followUp/steering 视图、park 暂存与立即发送/放回/删除
   "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
   // 实验性功能开关（acp/sessionContext 段）与 profile 同住 omp-desktop.json
@@ -80,6 +84,10 @@ const ALLOWED_EDGES = new Set([
   "rpc/session.ts→rpc/types.ts",
   "rpc/session.ts→bootstrap.ts", "rpc/session.ts→state.ts", "rpc/session.ts→profile.ts",
   "rpc/session.ts→translate.ts", "rpc/session.ts→session-lifecycle.ts",
+  // Session activity time (list/branch rows): the SDK reports `modified` as the
+  // file mtime, which a `session_exit` diagnostic frame refreshes, so
+  // rpc/session.ts rewrites it to the last `message` frame's timestamp
+  "rpc/session.ts→session-activity.ts",
   "rpc/prompt.ts→rpc/types.ts", "rpc/prompt.ts→rpc/session.ts",
   "rpc/prompt.ts→bootstrap.ts", "rpc/prompt.ts→state.ts", "rpc/prompt.ts→translate.ts",
   "rpc/prompt.ts→session-lifecycle.ts", "rpc/prompt.ts→plan.ts", "rpc/prompt.ts→queue.ts",
@@ -149,6 +157,12 @@ for (const f of files) {
 const problems = [];
 for (const [file, imports] of Object.entries(importsOf)) {
   for (const imp of imports) {
+    // Relative imports resolving outside host/ (e.g. ../ui-src/i18n/host.ts ->
+    // "ui-src/i18n/host.ts") are not governed by this table: it only constrains
+    // edges between host/ modules (top level + rpc/). Skip before the edge check
+    // so out-of-tree imports neither need allow-listing nor trip the
+    // "nonexistent module" probe (only host/ files are scanned for exports).
+    if (imp.target.includes("/") && !imp.target.startsWith("rpc/")) continue;
     const edge = `${file}→${imp.target}`;
     if (!ALLOWED_EDGES.has(edge)) {
       problems.push(`非法依赖边: ${edge}（不在 ALLOWED_EDGES，改结构须同步表并附理由）`);

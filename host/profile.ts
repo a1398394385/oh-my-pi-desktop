@@ -10,6 +10,8 @@ import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings } from "./bootstrap.ts";
 import { rebuildScopedModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
+import { readUiLocale } from "./ui-locale.ts";
+import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 
 // ---------- 桌面环境（agentDir 下 desktop-env.json：代理/CA 证书） ----------
 export function defaultDesktopEnv(): DesktopEnv {
@@ -190,7 +192,7 @@ export async function applyProfile(profileName: string) {
     const norm = normalizeProfileName(profileName);
     target = norm || "default";
   } catch (e) {
-    throw new Error(`Profile 名称不合法: ${(e as any)?.message || e}`);
+    throw new Error(hostI18n.t("errors.invalidProfileName", { detail: String((e as any)?.message || e) }));
   }
   H.currentProfile = target;
   saveProfileToDisk(target);
@@ -239,6 +241,9 @@ export async function applyProfile(profileName: string) {
 
   H.desktopProjectsPath = path.join(H.agentDir, "omp-desktop.json");
   H.desktopProjects = readDesktopProjects();
+  // UI locale lives in the same per-profile omp-desktop.json: re-read on every
+  // apply so the host language follows the active profile's persisted preference
+  initHostI18n(readUiLocale());
 
   const sleep = String(H.settings.get("power.sleepPrevention") ?? "off");
   if (H.settings.isConfigured("power.sleepPrevention") && sleep !== "off") applySleepPrevention(sleep);

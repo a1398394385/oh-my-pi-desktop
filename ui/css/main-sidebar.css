@@ -777,6 +777,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   transition: background .12s, color .12s, border-color .12s;
 }
 
+.task:hover .arch-act,
 .arch-row:hover .arch-act { display: inline-flex; align-items: center; }
 
 .arch-act:hover { color: var(--text); background: var(--panel-3); }

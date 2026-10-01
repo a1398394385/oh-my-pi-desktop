@@ -5,6 +5,7 @@
 import { useEffect, useRef } from "react";
 import Icon from "../../Icon";
 import { useLift, patchActiveItem } from "./parts";
+import { t } from "../../i18n";
 
 // 思考行可渲染的最小形状:thinking 条目本身;tool 条目(name==="thinking")经 ToolRow 兜底
 // 分流进来时这些可选字段运行期为 undefined(结构性兼容,无需断言)
@@ -47,7 +48,7 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
         onClick={expandable ? toggle : undefined}
       >
         <span className="th-ic"><Icon name="think" size={13} /></span>
-        <span className="lbl">{item.text || "思考 · 持续了几秒"}</span>
+        <span className="lbl">{item.text || t("chat.thinkingFallback")}</span>
         {expandable && (
           <span className={"th-more" + (open ? " open" : "")}>
             <Icon name="chevronRight" size={10} />

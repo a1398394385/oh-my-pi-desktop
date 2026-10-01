@@ -19,6 +19,8 @@ import {
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { setPlanMode } from "../plan.ts";
+import { writeUiLocale } from "../ui-locale.ts";
+import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
 
@@ -44,7 +46,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     const key = String(msg.key ?? "");
     let value = msg.value;
     const def = SETTINGS_SCHEMA[key];
-    if (!def) throw new Error(`未知设置项: ${key}`);
+    if (!def) throw new Error(hostI18n.t("errors.unknownSetting", { key }));
     const t = def.type;
     if (t === "number") {
       if ((key === "compaction.thresholdPercent" || key === "compaction.thresholdTokens") && value === "default") {
@@ -55,23 +57,23 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       }
     }
     if (t === "boolean") {
-      if (typeof value !== "boolean") throw new Error(`${key} 必须是布尔值`);
+      if (typeof value !== "boolean") throw new Error(hostI18n.t("errors.setting.mustBeBoolean", { key }));
     } else if (t === "number") {
-      if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} 必须是有限数字`);
+      if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(hostI18n.t("errors.setting.mustBeNumber", { key }));
     } else if (t === "string") {
-      if (typeof value !== "string") throw new Error(`${key} 必须是字符串`);
+      if (typeof value !== "string") throw new Error(hostI18n.t("errors.setting.mustBeString", { key }));
     } else if (t === "enum") {
-      if (!def.values.includes(value)) throw new Error(`${key} 必须是 ${def.values.join("/")} 之一`);
+      if (!def.values.includes(value)) throw new Error(hostI18n.t("errors.setting.mustBeOneOf", { key, values: def.values.join("/") }));
     } else if (t === "array") {
-      if (!Array.isArray(value)) throw new Error(`${key} 必须是数组`);
+      if (!Array.isArray(value)) throw new Error(hostI18n.t("errors.setting.mustBeArray", { key }));
       const d = def.default;
       if (Array.isArray(d) && d.every((x) => typeof x === "string") && d.length > 0 && !value.every((x) => typeof x === "string"))
-        throw new Error(`${key} 元素必须是字符串`);
+        throw new Error(hostI18n.t("errors.setting.arrayItemString", { key }));
     } else if (t === "record") {
-      if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${key} 必须是对象`);
+      if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(hostI18n.t("errors.setting.mustBeObject", { key }));
     }
     // 逐键附加校验：ask.timeout 必须非负
-    if (key === "ask.timeout" && (typeof value !== "number" || value < 0)) throw new Error("ask.timeout 必须是非负秒数");
+    if (key === "ask.timeout" && (typeof value !== "number" || value < 0)) throw new Error(hostI18n.t("errors.setting.askTimeoutNonNegative"));
     H.settings.set(key, value);
     // 写后副作用：睡眠防止需立即应用到进程
     if (key === "power.sleepPrevention") applySleepPrevention(value);
@@ -81,6 +83,15 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     await H.settings.flush();
     if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  set_locale(_ws, msg) {
+    // UI locale switch, fire-and-forget per the frame protocol (the frontend
+    // re-sends its persisted language on every ws open): persist to the ui
+    // section of omp-desktop.json, then apply to the host i18n instance
+    const lang = msg.lang;
+    if (lang !== "zh-CN" && lang !== "en") throw new Error(hostI18n.t("errors.setting.invalidLocale", { lang }));
+    writeUiLocale(lang);
+    initHostI18n(lang);
   },
   async set_acp_enabled(ws, msg) {
     // 实验性功能页开关：写入 omp-desktop.json 的 acp.enabled（只影响此后创建的会话——
@@ -147,7 +158,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   },
   async switch_profile(ws, msg) {
     const p = String(msg.profile ?? "").trim();
-    if (!p) throw new Error("Profile 名称不能为空");
+    if (!p) throw new Error(hostI18n.t("errors.setting.profileEmpty"));
     await applyProfile(p);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     ws.send(JSON.stringify(modelsFrame()));
@@ -160,7 +171,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   set_approval_mode(ws, msg) {
     const mode = msg.mode;
     if (mode !== "yolo" && mode !== "write" && mode !== "always-ask") {
-      throw new Error(`非法审批模式: ${mode}`);
+      throw new Error(hostI18n.t("errors.setting.invalidApprovalMode", { mode }));
     }
     // execute-time 解析：无需重建会话，下一个工具调用即生效（对全部会话生效——settings 全进程共享）
     H.settings.override("tools.approvalMode", mode);
@@ -169,12 +180,12 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   set_plan_mode(ws, msg) {
     // 计划模式开关：UI 从权限模式菜单进入、从权限胶囊右侧的「计划」按钮退出
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     setPlanMode(ws, msg.sessionId, entry, msg.enabled === true);
   },
   approval_response(ws, msg) {
     const pending = pendingApprovals.get(msg.requestId);
-    if (!pending) throw new Error(`审批请求不存在或已结束: ${msg.requestId}`);
+    if (!pending) throw new Error(hostI18n.t("errors.setting.approvalNotFound", { requestId: msg.requestId }));
     pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
     ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
   },

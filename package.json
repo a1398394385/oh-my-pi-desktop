@@ -18,7 +18,7 @@
     "check:capabilities": "node scripts/check-capabilities.mjs",
     "check:boundaries": "node scripts/check-host-boundaries.mjs",
     "check:encoding": "node scripts/check-encoding.mjs",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-encoding.mjs && bun run ui:typecheck"
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && bun run ui:typecheck"
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",
@@ -36,10 +36,12 @@
     "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "i18next": "^26.4.2",
     "lexical": "^0.51.0",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-i18next": "^17.0.15",
     "shiki": "^4",
     "streamdown": "^2.6.0",
     "tailwind-merge": "^3.7.0",

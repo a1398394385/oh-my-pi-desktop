@@ -2,7 +2,9 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-appearance">，
 // 绑定参照 ui/settings/index.js 的 initSettings（themeSel/fontSel/num-ctl/tgLineNo/tgWrap）。
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, toast } from "../../../store";
+import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -49,11 +51,11 @@ function themeIcon(mode: string): string {
   return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
 }
 function themeLabel(mode: string): ReactNode {
-  const text = mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色";
+  const key = mode === "system" ? "themeSystem" : mode === "light" ? "themeLight" : "themeDark";
   return (
     <span className="inline-flex items-center gap-1.5">
       <Icon name={themeIcon(mode)} size={14} />
-      {text}
+      {ti("settingsPage.appearance." + key)}
     </span>
   );
 }
@@ -68,7 +70,16 @@ const FONT_STACKS: Record<string, string> = {
   heiti: '"Heiti SC", "SimHei", "STHeiti", sans-serif',
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
-const FONT_LABELS: Record<string, string> = { default: "系统默认", zcode: "标准系统无衬线", pingfang: "苹方 / PingFang SC", songti: "宋体 / Songti SC", kaiti: "楷体 / KaiTi SC", heiti: "黑体 / Heiti SC", mono: "等宽" };
+// Font display-name key table: values are i18n keys resolved via t() at render time
+const FONT_LABEL_KEYS: Record<string, string> = {
+  default: "settingsPage.appearance.fontDefault",
+  zcode: "settingsPage.appearance.fontZcode",
+  pingfang: "settingsPage.appearance.fontPingfang",
+  songti: "settingsPage.appearance.fontSongti",
+  kaiti: "settingsPage.appearance.fontKaiti",
+  heiti: "settingsPage.appearance.fontHeiti",
+  mono: "settingsPage.appearance.fontMono",
+};
 // 本地偏好落盘（读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
 function saveUiPrefs() {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
@@ -134,6 +145,7 @@ function stepFont(key: "uiFontSize" | "codeFontSize", delta: number, min: number
 }
 
 export default function AppearancePage() {
+  const { t } = useTranslation();
   const [theme, setTheme] = useState(currentThemeMode());
   const [font, setFont] = useState(useAppStore.getState().uiPrefs.uiFont || "default");
   const [uiFs, setUiFs] = useState(useAppStore.getState().uiPrefs.uiFontSize);
@@ -194,12 +206,12 @@ export default function AppearancePage() {
 
   return (
     <div className="set-page" id="pg-appearance">
-      <div className="set-tt">外观</div>
-      <div className="set-group-tt">界面设置</div>
-      <div className="set-group-desc">设置应用主题和界面文字大小。</div>
+      <div className="set-tt">{t("settingsPage.nav.appearance")}</div>
+      <div className="set-group-tt">{t("settingsPage.appearance.groupInterface")}</div>
+      <div className="set-group-desc">{t("settingsPage.appearance.interfaceDesc")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>界面主题</b><span>选择浅色、深色或跟随系统主题。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.themeTitle")}</b><span>{t("settingsPage.appearance.themeDesc")}</span></div>
           <Sel
             label={themeLabel(theme)}
             options={[
@@ -211,15 +223,15 @@ export default function AppearancePage() {
           />
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>字体样式</b><span>全局字体族（代码块与 Git Diff 内容除外）；指定字体不可用时回退系统默认。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.fontTitle")}</b><span>{t("settingsPage.appearance.fontDesc")}</span></div>
           <Sel
-            label={FONT_LABELS[font] || "系统默认"}
-            options={Object.entries(FONT_LABELS).map(([v, label]) => ({ v, label, ck: v === font ? "✓" : "" }))}
+            label={t(FONT_LABEL_KEYS[font] || "settingsPage.appearance.fontDefault")}
+            options={Object.entries(FONT_LABEL_KEYS).map(([v, k]) => ({ v, label: t(k), ck: v === font ? "✓" : "" }))}
             onPick={pickFont}
           />
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>字体大小</b><span>调整全局文字大小（代码块与 Git Diff 内容除外）。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.fontSizeTitle")}</b><span>{t("settingsPage.appearance.fontSizeDesc")}</span></div>
           <div className="num-ctl">
             <button type="button" className="num-btn" id="uiFsMinus" onClick={() => stepUiFs(-1)}>−</button>
             <div className="num" id="uiFsVal">{uiFs} <i>px</i></div>
@@ -227,9 +239,9 @@ export default function AppearancePage() {
           </div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>减弱动态效果</b><span>跟随系统的减弱动态设置，或强制开启 / 关闭应用内动画减弱（当前影响加载转圈）。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.motionTitle")}</b><span>{t("settingsPage.appearance.motionDesc")}</span></div>
           <div className="mcp-type-pills">
-            {[["system", "跟随系统"], ["on", "开启"], ["off", "关闭"]].map(([v, label]) => (
+            {[["system", t("settingsPage.appearance.motionSystem")], ["on", t("settingsPage.appearance.motionOn")], ["off", t("settingsPage.appearance.motionOff")]].map(([v, label]) => (
               <button
                 type="button"
                 key={v}
@@ -242,35 +254,35 @@ export default function AppearancePage() {
           </div>
         </div>
       </div>
-      <div className="set-group-tt">代码设置</div>
-      <div className="set-group-desc">设置代码内容的主题、字号和显示方式，不受界面字号影响。</div>
+      <div className="set-group-tt">{t("settingsPage.appearance.groupCode")}</div>
+      <div className="set-group-desc">{t("settingsPage.appearance.codeDesc")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>浅色代码主题</b><span>浅色界面下代码内容使用的高亮主题。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.lightThemeTitle")}</b><span>{t("settingsPage.appearance.lightThemeDesc")}</span></div>
           <Sel
             label="GitHub Light"
             options={[{ v: "github", label: "GitHub Light", ck: "✓" }]}
-            onPick={() => toast("浅色代码主题目前固定 GitHub Light")}
+            onPick={() => toast(t("settingsPage.appearance.lightThemeToast"))}
           />
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>深色代码主题</b><span>深色界面下代码内容使用的高亮主题。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.darkThemeTitle")}</b><span>{t("settingsPage.appearance.darkThemeDesc")}</span></div>
           <Sel
             label="GitHub Dark"
             options={[{ v: "github", label: "GitHub Dark", ck: "✓" }]}
-            onPick={() => toast("深色代码主题目前固定 GitHub Dark")}
+            onPick={() => toast(t("settingsPage.appearance.darkThemeToast"))}
           />
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>显示行号</b><span>在代码内容和差异视图中显示行号。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.lineNumbersTitle")}</b><span>{t("settingsPage.appearance.lineNumbersDesc")}</span></div>
           <div className={"tg" + (lineNo ? " on" : "")} id="tgLineNo" onClick={toggleLineNo}><i></i></div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>长行自动换行</b><span>代码内容过长时自动换行。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.wrapTitle")}</b><span>{t("settingsPage.appearance.wrapDesc")}</span></div>
           <div className={"tg" + (wrap ? " on" : "")} id="tgWrap" onClick={toggleWrap}><i></i></div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>代码字号</b><span>调整代码块、文件预览和差异视图的默认字号。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.appearance.codeFontSizeTitle")}</b><span>{t("settingsPage.appearance.codeFontSizeDesc")}</span></div>
           <div className="num-ctl">
             <button type="button" className="num-btn" id="codeFsMinus" onClick={() => stepCodeFs(-1)}>−</button>
             <div className="num" id="codeFsVal">{codeFs} <i>px</i></div>
@@ -278,11 +290,11 @@ export default function AppearancePage() {
           </div>
         </div>
       </div>
-      <div className="set-group-tt">代码预览</div>
-      <div className="set-group-desc">同时预览浅色与深色代码主题，当前界面使用的主题会标记为「当前生效」。</div>
+      <div className="set-group-tt">{t("settingsPage.appearance.groupPreview")}</div>
+      <div className="set-group-desc">{t("settingsPage.appearance.previewDesc")}</div>
       <div className="pv-grid">
         <div className="pv-card">
-          <div className="pv-head">浅色预览<span className="pv-sub">GitHub Light</span><span className={"tag" + (dark ? "" : " on")} id="pvTagLight">{dark ? "浅色" : "当前生效"}</span></div>
+          <div className="pv-head">{t("settingsPage.appearance.previewLightTitle")}<span className="pv-sub">GitHub Light</span><span className={"tag" + (dark ? "" : " on")} id="pvTagLight">{dark ? t("settingsPage.appearance.previewLightTag") : t("settingsPage.appearance.previewActive")}</span></div>
           <div className="pv-code light">
             <div><span className="ln">1</span><span className="tk-k">const</span> <span className="tk-v">themePreview</span>: ThemeConfig = {"{"}</div>
             <div><span className="ln">2</span>&nbsp;&nbsp;surface: <span className="tk-s">"sidebar"</span>,</div>
@@ -292,7 +304,7 @@ export default function AppearancePage() {
           </div>
         </div>
         <div className="pv-card">
-          <div className="pv-head">深色预览<span className="pv-sub">GitHub Dark</span><span className={"tag" + (dark ? " on" : "")} id="pvTagDark">{dark ? "当前生效" : "深色"}</span></div>
+          <div className="pv-head">{t("settingsPage.appearance.previewDarkTitle")}<span className="pv-sub">GitHub Dark</span><span className={"tag" + (dark ? " on" : "")} id="pvTagDark">{dark ? t("settingsPage.appearance.previewActive") : t("settingsPage.appearance.previewDarkTag")}</span></div>
           <div className="pv-code dark">
             <div><span className="ln">1</span><span className="tk-k">const</span> <span className="tk-v2">themePreview</span>: <span className="tk-t2">ThemeConfig</span> = {"{"}</div>
             <div><span className="ln">2</span>&nbsp;&nbsp;surface: <span className="tk-s2">"sidebar"</span>,</div>

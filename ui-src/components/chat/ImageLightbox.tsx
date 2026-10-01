@@ -1,6 +1,7 @@
 // 大图灯箱预览组件：支持点击背景/ESC/关闭按钮退出、上一张/下一张切换及下载。
 import { useEffect, useState } from "react";
 import Icon from "../../Icon";
+import { t } from "../../i18n";
 
 export interface LightboxImage {
   src: string;
@@ -55,13 +56,13 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
           href={current.src}
           download={current.name || `image-${index + 1}.png`}
           className="icon-btn bg-black/40 text-white/80 hover:text-white hover:bg-black/60 rounded-md p-1.5 transition-colors"
-          title="下载图片"
+          title={t("chat.downloadImage")}
         >
           <Icon name="download" size={16} />
         </a>
         <button
           className="icon-btn bg-black/40 text-white/80 hover:text-white hover:bg-black/60 rounded-md p-1.5 transition-colors"
-          title="关闭 (Esc)"
+          title={t("chat.closeEsc")}
           onClick={onClose}
         >
           <Icon name="xmark" size={16} />
@@ -72,7 +73,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
       {total > 1 && (
         <button
           className="absolute left-4 top-1/2 -translate-y-1/2 icon-btn bg-black/40 hover:bg-black/70 text-white p-2.5 rounded-full transition-colors z-10"
-          title="上一张 (←)"
+          title={t("chat.prevImage")}
           onClick={(e) => {
             e.stopPropagation();
             setIndex((i) => (i - 1 + total) % total);
@@ -89,7 +90,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
       >
         <img
           src={current.src}
-          alt={current.name || "预览图"}
+          alt={current.name || t("chat.previewImage")}
           className="max-w-full max-h-[90vh] object-contain rounded-md shadow-2xl transition-transform"
         />
       </div>
@@ -98,7 +99,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
       {total > 1 && (
         <button
           className="absolute right-4 top-1/2 -translate-y-1/2 icon-btn bg-black/40 hover:bg-black/70 text-white p-2.5 rounded-full transition-colors z-10"
-          title="下一张 (→)"
+          title={t("chat.nextImage")}
           onClick={(e) => {
             e.stopPropagation();
             setIndex((i) => (i + 1) % total);

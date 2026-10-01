@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../Icon";
 import { fmtAgo } from "../right/helpers";
 import { toast } from "../../store";
+import { t } from "../../i18n";
 import type { EntryNode, StreamItem, StreamSection } from "./sessionTreeUtil";
 import {
   buildStreamSequence,
@@ -37,6 +38,8 @@ export default function SessionTreeStream({
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   // 待跳转确认的节点
   const [confirmNode, setConfirmNode] = useState<EntryNode | null>(null);
+  // Node id the keyboard cursor points at (null = no cursor yet)
+  const [cursorId, setCursorId] = useState<string | null>(null);
 
   // 容器 ref 与切换分支时的视口锚定 ref
   const containerRef = useRef<HTMLDivElement>(null);
@@ -112,6 +115,71 @@ export default function SessionTreeStream({
   const sequence = buildStreamSequence(roots, leafId, activeIds, selectedBranches, filter);
   const badgeId = badgeTargetId(roots, leafId, filter);
 
+  // Cursor only lands on node items; fork pill rows are skipped
+  const cursorNodes = sequence.filter((it): it is Extract<StreamItem, { type: "node" }> => it.type === "node");
+
+  // Move one step in visual order; stops at the edges (no wrap, so a stray key
+  // press can't jump you to the far end). First press lands on the last item,
+  // matching the "tree opens showing newest" direction.
+  const moveCursor = (delta: number) => {
+    if (cursorNodes.length === 0) return;
+    setCursorId((prev) => {
+      const cur = prev ? cursorNodes.findIndex((it) => it.node.id === prev) : -1;
+      const next = cur === -1
+        ? (delta > 0 ? 0 : cursorNodes.length - 1)
+        : Math.min(cursorNodes.length - 1, Math.max(0, cur + delta));
+      return cursorNodes[next].node.id;
+    });
+  };
+
+  // Scroll the cursor row into view (vertical only; scrollIntoView would also
+  // move ancestor scrollers and shake the page)
+  useEffect(() => {
+    if (!cursorId) return;
+    const el = containerRef.current?.querySelector(`[data-node-id="${cursorId}"]`) as HTMLElement | null;
+    const scrollEl = containerRef.current?.closest(".overflow-y-auto") as HTMLElement | null;
+    if (!el || !scrollEl) return;
+    const elRect = el.getBoundingClientRect();
+    const boxRect = scrollEl.getBoundingClientRect();
+    if (elRect.top < boxRect.top + 8) {
+      scrollEl.scrollTop -= boxRect.top + 8 - elRect.top;
+    } else if (elRect.bottom > boxRect.bottom - 8) {
+      scrollEl.scrollTop += elRect.bottom - (boxRect.bottom - 8);
+    }
+  }, [cursorId]);
+
+  // Enter on the cursor opens the jump confirm dialog — same path as clicking
+  // the row's quick-jump button. Current/leaf entries open it too; the dialog
+  // buttons decide what happens.
+  const activateCursor = () => {
+    if (!cursorId) return;
+    const hit = cursorNodes.find((it) => it.node.id === cursorId);
+    if (!hit) return;
+    setConfirmNode(hit.node);
+  };
+
+  // Arrows / Enter on window capture — the same channel the dialog's Esc-close
+  // uses. Everything yields while the dialog is open (it owns its own buttons
+  // and Esc), so Enter can never leak through and trigger a jump.
+  useEffect(() => {
+    if (confirmNode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
+        moveCursor(e.key === "ArrowDown" ? 1 : -1);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        activateCursor();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // sequence is recomputed every render; re-registering on cursorId change
+    // keeps the closure reading the latest cursorNodes
+  }, [confirmNode, cursorId, sequence]);
+
   const toggleExpand = (id: string) => {
     setExpandedNodeIds((prev) => {
       const next = new Set(prev);
@@ -123,16 +191,16 @@ export default function SessionTreeStream({
 
   const onCopyText = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
-      toast("已复制到剪贴板");
+      toast(t("chat.copiedToClipboard"));
     }).catch(() => {
-      toast("复制成功");
+      toast(t("chat.copySuccessFallback"));
     });
   };
 
   if (sequence.length === 0) {
     return (
       <div className="py-12 text-center text-faint text-ui-base">
-        当前过滤条件下没有条目。
+        {t("chat.noEntriesForFilter")}
       </div>
     );
   }
@@ -143,18 +211,19 @@ export default function SessionTreeStream({
     const { node, isLeaf, onPath } = item;
     const isExpanded = expandedNodeIds.has(node.id);
     const isCurrent = node.id === badgeId;
+    const isCursor = cursorId === node.id;
 
-    let roleBadgeText = "系统";
+    let roleBadgeText = t("chat.roleSystem");
     let roleBadgeType = "system";
     if (node.kind === "message") {
       if (node.role === "user") {
-        roleBadgeText = "用户";
+        roleBadgeText = t("chat.roleUser");
         roleBadgeType = "user";
       } else if (node.role === "assistant") {
-        roleBadgeText = "助手";
+        roleBadgeText = t("chat.roleAssistant");
         roleBadgeType = "assistant";
       } else if (node.role === "toolResult" || node.role === "bashExecution") {
-        roleBadgeText = "工具";
+        roleBadgeText = t("chat.roleTool");
         roleBadgeType = "tool";
       }
     }
@@ -162,14 +231,15 @@ export default function SessionTreeStream({
     return (
       <div
         key={node.id}
-        className={`stream-node-item is-${roleBadgeType} ${isCurrent || isLeaf ? "is-leaf" : ""}`}
+        data-node-id={node.id}
+        className={`stream-node-item is-${roleBadgeType} ${isCurrent || isLeaf ? "is-leaf" : ""} ${isCursor ? "is-cursor" : ""}`}
       >
         {/* 竖线左侧的悬停快捷跳转按钮 */}
         {!isCurrent && (
           <button
             type="button"
             className="node-jump-btn"
-            title="跳转至此节点"
+            title={t("chat.jumpToNode")}
             disabled={navigating}
             onClick={(e) => {
               e.stopPropagation();
@@ -188,7 +258,7 @@ export default function SessionTreeStream({
           <div
             className="node-card-header"
             onClick={() => toggleExpand(node.id)}
-            title={node.text || "（空条目）"}
+            title={node.text || t("chat.emptyEntry")}
           >
             <span className={`role-badge ${roleBadgeType}`}>
               {roleBadgeText}
@@ -197,11 +267,11 @@ export default function SessionTreeStream({
             <span className={`node-summary ${roleClass(node)}`}>
               {onPath ? <span className="text-accent mr-1 font-bold">•</span> : null}
               {node.label ? <span className="text-yellow mr-1">[{node.label}]</span> : null}
-              {node.text || "（空条目）"}
+              {node.text || t("chat.emptyEntry")}
             </span>
 
             <div className="node-meta">
-              {isCurrent ? <span className="leaf-tag">当前</span> : null}
+              {isCurrent ? <span className="leaf-tag">{t("chat.currentTag")}</span> : null}
               {node.ts ? <span className="node-time">{fmtAgo(node.ts)}</span> : null}
               <span className={`ed-arrow ${isExpanded ? "open" : ""}`}>
                 <Icon name="chevronRight" size={14} />
@@ -212,10 +282,10 @@ export default function SessionTreeStream({
           {/* 展开内容抽屉面板 */}
           {isExpanded && (
             <div className="node-detail-panel show">
-              <div className="detail-section-title">条目完整内容</div>
+              <div className="detail-section-title">{t("chat.entryFullContent")}</div>
               <div className="detail-body font-mono text-ui-sm">
                 {node.label ? `[${node.label}] ` : ""}
-                {node.text || "（空条目内容）"}
+                {node.text || t("chat.emptyEntryContent")}
               </div>
               <div className="detail-actions">
                 <button
@@ -227,22 +297,22 @@ export default function SessionTreeStream({
                   }}
                 >
                   <Icon name="copy" size={12} />
-                  <span>复制</span>
+                  <span>{t("common.copy")}</span>
                 </button>
                 <button
                   type="button"
-                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded hover:bg-panel-2 cursor-pointer"
+                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded-md hover:bg-panel-2"
                   disabled={navigating}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isCurrent || isLeaf) {
-                      toast("已在当前位置");
+                      toast(t("chat.alreadyHere"));
                       return;
                     }
                     setConfirmNode(node);
                   }}
                 >
-                  跳转至此
+                  {t("chat.jumpHere")}
                 </button>
               </div>
             </div>
@@ -295,11 +365,11 @@ export default function SessionTreeStream({
         >
           <div className="lp-box bg-card border border-line rounded-lg p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="lp-msg text-ui-md font-semibold text-text">
-              跳转到所选节点？
+              {t("chat.jumpConfirmTitle")}
             </div>
             <div className="cf-msg st-confirm-text text-ui-sm text-dim bg-panel p-2.5 rounded-md border border-line break-words max-h-48 overflow-y-auto">
               {confirmNode.label ? `[${confirmNode.label}] ` : ""}
-              {confirmNode.text || "（空条目）"}
+              {confirmNode.text || t("chat.emptyEntry")}
             </div>
             <div className="lp-row flex items-center justify-end gap-2 pt-2">
               <button
@@ -307,7 +377,7 @@ export default function SessionTreeStream({
                 className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2 cursor-pointer"
                 onClick={() => setConfirmNode(null)}
               >
-                取消
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -319,7 +389,7 @@ export default function SessionTreeStream({
                   onNavigate(node, false);
                 }}
               >
-                跳转
+                {t("chat.jump")}
               </button>
               <button
                 type="button"
@@ -331,7 +401,7 @@ export default function SessionTreeStream({
                   onNavigate(node, true);
                 }}
               >
-                跳转并摘要
+                {t("chat.jumpAndSummarize")}
               </button>
             </div>
           </div>
@@ -419,9 +489,9 @@ function ForkSwitcher({
         <div className="fork-header">
           <span className="fork-title">
             <Icon name="fork" size={13} />
-            分叉点切换 ({item.options.length} 个分支)
+            {t("chat.forkSwitch", { count: item.options.length })}
           </span>
-          <span className="fork-hint">滚轮左右滑动 · 点击切换分支</span>
+          <span className="fork-hint">{t("chat.forkHint")}</span>
         </div>
 
         <div ref={pillsRef} className="fork-pills">
@@ -429,7 +499,7 @@ function ForkSwitcher({
             const isActive = opt.id === item.selectedId;
             const steps = countBranchSteps(opt, selectedBranches, activeIds, filter);
             const labelText = opt.label ? `[${opt.label}] ` : "";
-            const summaryText = opt.text || "（空条目）";
+            const summaryText = opt.text || t("chat.emptyEntry");
 
             return (
               <button
@@ -438,13 +508,13 @@ function ForkSwitcher({
                 className={`fork-pill ${isActive ? "active" : ""}`}
                 onClick={() => {
                   onSelectBranch(item.parentId, opt.id);
-                  toast(`已切换至分支 #${i + 1}`);
+                  toast(t("chat.switchedToBranch", { index: i + 1 }));
                 }}
                 title={summaryText}
               >
                 <span className="fork-pill-index">#{i + 1}</span>
                 <span className="truncate max-w-[200px]">{labelText}{summaryText}</span>
-                <span className="fork-pill-len">{steps} 步</span>
+                <span className="fork-pill-len">{t("chat.branchSteps", { count: steps })}</span>
               </button>
             );
           })}

@@ -1,6 +1,7 @@
 // 侧边栏会话搜索卡片：位于新建任务下方，卡片样式对齐新建任务，支持按会话标题搜索，点击或回车切换到对应会话详情页。
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, pathBase } from "../../store";
 import type { DiskSessionRow } from "../../types/frames";
 import Icon from "../../Icon";
@@ -17,6 +18,7 @@ interface SessionMatch {
 }
 
 export default function SidebarSearch() {
+  const { t } = useTranslation();
   const diskProjects = useAppStore((s) => s.diskProjects);
   const archivedSessions = useAppStore((s) => s.archivedSessions);
   const [query, setQuery] = useState("");
@@ -35,7 +37,7 @@ export default function SidebarSearch() {
     const pushSession = (s: DiskSessionRow, cwd: string, archived = false) => {
       if (seenPaths.has(s.path)) return;
       const displayTitle = sessionLabel(s);
-      if (!displayTitle || displayTitle === "（空会话）") return;
+      if (!displayTitle || displayTitle === t("sidebar.emptySession")) return;
       seenPaths.add(s.path);
       const repo = pathBase(cwd);
       list.push({
@@ -158,7 +160,7 @@ export default function SidebarSearch() {
         ref={inputRef}
         type="text"
         className="nav-search-input"
-        placeholder="搜索会话..."
+        placeholder={t("sidebar.searchPlaceholder")}
         value={query}
         onFocus={() => setOpen(true)}
         onChange={(e) => {
@@ -171,7 +173,7 @@ export default function SidebarSearch() {
         <button
           type="button"
           className="nav-search-clear"
-          title="清空"
+          title={t("sidebar.clear")}
           onClick={(e: MouseEvent) => {
             e.stopPropagation();
             setQuery("");
@@ -187,7 +189,7 @@ export default function SidebarSearch() {
       {open && kw && (
         <div ref={listRef} className="side-search-pop" onClick={(e) => e.stopPropagation()}>
           {matches.length === 0 ? (
-            <div className="side-search-empty">无匹配会话</div>
+            <div className="side-search-empty">{t("sidebar.noMatch")}</div>
           ) : (
             matches.map((item, idx) => (
               <div
@@ -203,7 +205,7 @@ export default function SidebarSearch() {
                   {item.title}
                 </div>
                 <div className="side-search-item-meta">
-                  {item.archived && <span className="side-search-item-repo text-faint">已归档</span>}
+                  {item.archived && <span className="side-search-item-repo text-faint">{t("sidebar.archivedLabel")}</span>}
                   {item.repo && (
                     <span className="side-search-item-repo" title={item.repo}>
                       {item.repo}

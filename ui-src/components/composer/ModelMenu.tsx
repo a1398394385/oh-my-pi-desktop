@@ -4,6 +4,7 @@
 // 的 overflow-y:auto 裁切）；有会话走宿主 set_model，新建态落 localStorage。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId } from "../../store";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
@@ -15,6 +16,7 @@ type ModelMenuProps = {
 };
 
 export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuProps) {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const newSessionModel = useAppStore((st) => st.newSessionModel);
   const modelNames = useAppStore((st) => st.modelNames);
@@ -79,7 +81,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     return (
       <div className="menu model open" id="modelMenu" ref={menuRef}>
         <div className="mi empty" style={{ color: "var(--dim)", cursor: "default", justifyContent: "center", padding: "8px 12px" }}>
-          未配置可用模型
+          {t("composer.noModels")}
         </div>
       </div>
     );

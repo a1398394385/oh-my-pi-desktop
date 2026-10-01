@@ -4,6 +4,7 @@
 // command_output 提示；状态机（create/replace/pause/resume/drop/budget）、goal 工具集暴露、
 // goal-continuation 隐藏续跑与「无进展抑制」（连续续跑轮没有新工具活动即停）均对齐
 // interactive-mode 的 handleGoalModeCommand / #scheduleGoalContinuation / #handleGoalSessionEvent。
+import { hostI18n } from "../ui-src/i18n/host.ts";
 
 /** 目标记录（落盘 mode_change 的 modeData.goal 同构；字段校验见 goalFromModeData）。 */
 export interface GoalLike {
@@ -171,11 +172,11 @@ export class GoalController {
   async handleCommand(args: string): Promise<string | null> {
     const s = this.#session;
     if (s.getPlanModeState()?.enabled) {
-      this.#output("计划模式下无法使用目标模式，先退出计划模式。");
+      this.#output(hostI18n.t("flows.goal.planModeBlocked"));
       return null;
     }
     if (!s.settings.get("goal.enabled")) {
-      this.#output("目标模式未启用：在设置中打开 goal.enabled 后再试。");
+      this.#output(hostI18n.t("flows.goal.notEnabled"));
       return null;
     }
     const { sub, rest } = parseGoalSubcommand(args);
@@ -201,22 +202,22 @@ export class GoalController {
     const state = s.getGoalModeState();
     if (state?.enabled && state.goal.status === "active") {
       if (rest) {
-        this.#output("目标模式已激活：用 /goal set <objective> 更新目标，或 /goal drop 重新开始。");
+        this.#output(hostI18n.t("flows.goal.activeUpdateHint"));
         return null;
       }
-      this.#output("目标进行中（目标详情见「会话状态」卡）。管理：/goal set <objective> ｜ pause ｜ resume ｜ drop ｜ budget <N|off>");
+      this.#output(hostI18n.t("flows.goal.running"));
       return null;
     }
     if (this.#pausedState()) {
       if (rest) {
-        this.#output("当前目标已暂停：先 /goal resume 或 /goal drop 再设置新目标。");
+        this.#output(hostI18n.t("flows.goal.pausedNewGoal"));
         return null;
       }
-      this.#output("目标已暂停（目标详情见「会话状态」卡）。管理：/goal resume ｜ drop ｜ budget <N|off>");
+      this.#output(hostI18n.t("flows.goal.paused"));
       return null;
     }
     if (rest) return await this.#dispatch(this.#startFromObjective(rest));
-    this.#output("用法：/goal <objective> 开启目标模式；子命令 set/pause/resume/drop/budget");
+    this.#output(hostI18n.t("flows.goal.usage"));
     return null;
   }
 
@@ -254,7 +255,7 @@ export class GoalController {
       const state = this.#session.getGoalModeState();
       if (state?.mode === "exiting") {
         await this.#exitGoalMode({ reason: "completed" });
-        this.#output("目标已完成。");
+        this.#output(hostI18n.t("flows.goal.completed"));
         return;
       }
       this.schedule();
@@ -307,7 +308,7 @@ export class GoalController {
         tokenBudget: goal.tokenBudget,
         timeUsedSeconds: goal.timeUsedSeconds,
       });
-      this.#output("目标已完成（上次退出时未收到完成确认，已补记）。");
+      this.#output(hostI18n.t("flows.goal.completedBackfilled"));
       this.#notify();
       return;
     }
@@ -336,12 +337,12 @@ export class GoalController {
 
   async #handleSet(rest: string): Promise<string | null> {
     if (this.#pausedState()) {
-      this.#output("当前目标已暂停：先 /goal resume 或 /goal drop 再设置新目标。");
+      this.#output(hostI18n.t("flows.goal.pausedNewGoal"));
       return null;
     }
     const objective = rest.trim();
     if (!objective) {
-      this.#output("用法：/goal set <objective>");
+      this.#output(hostI18n.t("flows.goal.setUsage"));
       return null;
     }
     const state = this.#session.getGoalModeState();
@@ -359,7 +360,7 @@ export class GoalController {
     this.#costUsed = 0;
     this.#costAnchor = s.getSessionStats().cost;
     this.#resetSuppression();
-    this.#output("目标模式已开启。");
+    this.#output(hostI18n.t("flows.goal.modeEnabled"));
     return objective;
   }
 
@@ -371,25 +372,25 @@ export class GoalController {
     this.#costAnchor = s.getSessionStats().cost;
     this.#resetSuppression();
     if (s.isStreaming) await s.sendGoalModeContext({ deliverAs: "steer" });
-    this.#output("目标已更新。");
+    this.#output(hostI18n.t("flows.goal.updated"));
     return objective;
   }
 
   async #pause(): Promise<void> {
     const state = this.#session.getGoalModeState();
     if (!state?.enabled || state.goal.status !== "active") {
-      this.#output("没有进行中的目标可暂停。");
+      this.#output(hostI18n.t("flows.goal.nothingToPause"));
       return;
     }
     await this.#session.goalRuntime.pauseGoal();
     await this.#exitGoalMode({ paused: true });
-    this.#output("目标已暂停。");
+    this.#output(hostI18n.t("flows.goal.pausedDone"));
   }
 
   async #resume(): Promise<void> {
     const s = this.#session;
     if (!this.#pausedState()) {
-      this.#output("没有已暂停的目标。");
+      this.#output(hostI18n.t("flows.goal.nonePaused"));
       return;
     }
     const state = await s.goalRuntime.resumeGoal();
@@ -399,31 +400,31 @@ export class GoalController {
       await s.setActiveToolsByName([...new Set([...prev, "goal"])]);
     }
     this.#resetSuppression();
-    this.#output("目标已恢复。");
+    this.#output(hostI18n.t("flows.goal.resumed"));
     this.schedule();
   }
 
   async #drop(): Promise<void> {
     const s = this.#session;
     if (!s.getGoalModeState()) {
-      this.#output("当前没有目标。");
+      this.#output(hostI18n.t("flows.goal.noGoal"));
       return;
     }
     await s.goalRuntime.dropGoal();
     await this.#exitGoalMode({ reason: "dropped" });
-    this.#output("目标已丢弃（已消耗的用量保留在会话记录中）。");
+    this.#output(hostI18n.t("flows.goal.dropped"));
   }
 
   async #budget(rest: string): Promise<void> {
     const s = this.#session;
     const state = s.getGoalModeState();
     if (!state?.enabled || state.goal.status !== "active") {
-      this.#output(this.#pausedState() ? "目标已暂停：先 /goal resume 再调整预算。" : "当前没有进行中的目标。");
+      this.#output(hostI18n.t(this.#pausedState() ? "flows.goal.budgetPausedHint" : "flows.goal.budgetNoActive"));
       return;
     }
     const t = rest.trim();
     if (!t) {
-      this.#output(`用法：/goal budget <N|off>（当前 ${state.goal.tokenBudget ?? "无预算"}）`);
+      this.#output(hostI18n.t("flows.goal.budgetUsage", { current: state.goal.tokenBudget ?? hostI18n.t("flows.goal.noBudget") }));
       return;
     }
     let next: number | undefined;
@@ -432,7 +433,7 @@ export class GoalController {
     } else {
       const n = Number(t);
       if (!Number.isInteger(n) || n <= 0) {
-        this.#output("预算需为正整数 token 数，或 off 清除预算。");
+        this.#output(hostI18n.t("flows.goal.budgetInvalid"));
         return;
       }
       next = n;
@@ -440,7 +441,7 @@ export class GoalController {
     await s.goalRuntime.onBudgetMutated(next);
     this.#resetSuppression();
     this.schedule();
-    this.#output(next === undefined ? "预算已清除。" : `预算已设为 ${next.toLocaleString()} tokens。`);
+    this.#output(next === undefined ? hostI18n.t("flows.goal.budgetCleared") : hostI18n.t("flows.goal.budgetSet", { n: next.toLocaleString() }));
   }
 
   async #exitGoalMode(options: { paused?: boolean; reason?: "completed" | "dropped"; silent?: boolean }): Promise<void> {

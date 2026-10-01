@@ -9,16 +9,17 @@ import { fmtDuration } from "./util";
 import Icon from "../../Icon";
 import { useLift, patchActiveItem } from "./parts";
 import { renderItems } from "./items";
+import { t } from "../../i18n";
 
 // loop 组收起时的汇总文本：「已工作 xx 分 xx 秒, 总消耗 input xx, output xx, cache read xx[, cache write xx]」
 export function loopSummaryText(item: LoopItem) {
   const parts = [];
-  if (item.durationSec != null) parts.push(`已工作 ${fmtDuration(item.durationSec)}`);
+  if (item.durationSec != null) parts.push(t("chat.workedFor", { duration: fmtDuration(item.durationSec) }));
   const u = item.usage;
   if (u) {
     const seg = [`input ${fmtTokens(u.input)}`, `output ${fmtTokens(u.output)}`, `cache read ${fmtTokens(u.cacheRead)}`];
     if (u.cacheWrite > 0) seg.push(`cache write ${fmtTokens(u.cacheWrite)}`);
-    parts.push(`总消耗 ${seg.join(", ")}`);
+    parts.push(t("chat.totalUsage", { usage: seg.join(", ") }));
   }
   return parts.join(", ");
 }

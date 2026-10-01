@@ -3,6 +3,7 @@
 // 自动重试环（ws.ts scheduleReconnect）持续在跑，横幅不中断不替代它：连上即消失。
 // 退出/关闭走窗口自身控件（交通灯/标题栏），此处不重复提供。
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store";
 
 // 阈值取 30s：覆盖宿主冷启动的最坏路径（模型目录走代理刷新可 >15s），
@@ -10,6 +11,7 @@ import { useAppStore } from "../store";
 const SHOW_AFTER_MS = 30_000;
 
 export default function ConnBanner() {
+  const { t } = useTranslation();
   const connected = useAppStore((s) => s.connected);
   const connText = useAppStore((s) => s.connText);
   const connFailSince = useAppStore((s) => s.connFailSince);
@@ -28,28 +30,28 @@ export default function ConnBanner() {
 
   const copyDiagnostics = () => {
     const report = [
-      "omp-desktop 连接诊断",
-      `等待时长: ${Math.round(waited / 1000)}s`,
-      `状态: ${connText}`,
-      `平台: ${navigator.platform}`,
+      t("misc.connDiagTitle"),
+      t("misc.connDiagWait", { sec: Math.round(waited / 1000) }),
+      t("misc.connDiagStatus", { text: connText }),
+      t("misc.connDiagPlatform", { platform: navigator.platform }),
       `UA: ${navigator.userAgent}`,
-      `时间: ${new Date().toISOString()}`,
+      t("misc.connDiagTime", { time: new Date().toISOString() }),
     ].join("\n");
     void navigator.clipboard.writeText(report);
-    useAppStore.getState().toast("诊断信息已复制");
+    useAppStore.getState().toast(t("misc.diagCopied"));
   };
 
   return (
     <div className="conn-banner" role="alert">
       <span className="conn-banner-text">
-        宿主连接异常：{connText}（已等待 {Math.round(waited / 1000)}s，自动重试中）
+        {t("misc.connBanner", { text: connText, sec: Math.round(waited / 1000) })}
       </span>
       <span className="sp"></span>
       <button className="save-btn" onClick={() => void useAppStore.getState().connect()}>
-        立即重试
+        {t("misc.retryNow")}
       </button>
       <button className="save-btn" onClick={copyDiagnostics}>
-        复制诊断
+        {t("misc.copyDiag")}
       </button>
     </div>
   );

@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { defaultCwd } from "../state.ts";
 import { isGitWorktree } from "../session-lifecycle.ts";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 // git 写操作共用：参数数组直传子进程（无 shell 拼接，天然防注入），失败时把 stderr
@@ -11,7 +12,7 @@ import type { RpcHandler } from "./types";
 function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string; stderr: string } | { ok: false; error: string } {
   const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
   if (p.exitCode !== 0) {
-    return { ok: false, error: p.stderr.toString().trim().slice(0, 500) || `git ${args[0]} 失败（exit ${p.exitCode}）` };
+    return { ok: false, error: p.stderr.toString().trim().slice(0, 500) || hostI18n.t("errors.git.commandFailed", { command: args[0], exitCode: p.exitCode }) };
   }
   return { ok: true, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
 }
@@ -27,7 +28,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // cwd 外的文件（如 ~/.omp 全局配置）不拒绝：找它自己所在的 git 仓库；不在任何仓库就整文件当新增。
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const filePath = String(msg.path ?? "");
-    if (!filePath) throw new Error("缺少 path");
+    if (!filePath) throw new Error(hostI18n.t("errors.param.missingPath"));
     const abs = path.resolve(cwd, filePath);
     let repoCwd = cwd;
     if (!abs.startsWith(path.resolve(cwd) + path.sep)) {
@@ -51,7 +52,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
       : ["diff", "--no-index", "--", "/dev/null", abs];
     const p = Bun.spawnSync(["git", "-C", repoCwd, ...args], { stdout: "pipe", stderr: "pipe" });
     // --no-index 有差异时 exitCode=1 属正常
-    if (p.exitCode > 1) throw new Error(`git diff 失败: ${p.stderr.toString().trim().slice(0, 200)}`);
+    if (p.exitCode > 1) throw new Error(hostI18n.t("errors.git.diffFailed", { detail: p.stderr.toString().trim().slice(0, 200) }));
     ws.send(
       JSON.stringify({
         type: "file_diff",
@@ -64,17 +65,17 @@ export const filesHandlers: Record<string, RpcHandler> = {
   async read_file(ws, msg) {
     // 文件页全文件内容（读取行点击 / 文件树点击详情共用）；限 2MB 文本文件
     const p = String(msg.path ?? "");
-    if (!p) throw new Error("缺少 path");
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     const stat = fs.statSync(p, { throwIfNoEntry: false });
-    if (!stat?.isFile()) throw new Error(`不是文件: ${p}`);
+    if (!stat?.isFile()) throw new Error(hostI18n.t("errors.file.notAFile", { path: p }));
     if (stat.size > 2_000_000) {
-      ws.send(JSON.stringify({ type: "file_content", path: p, error: `文件过大（${(stat.size / 1e6).toFixed(1)} MB），仅支持 2MB 内的文本文件` }));
+      ws.send(JSON.stringify({ type: "file_content", path: p, error: hostI18n.t("errors.file.tooLarge", { size: (stat.size / 1e6).toFixed(1) }) }));
       return;
     }
     const buf = await fs.promises.readFile(p);
     const head = buf.subarray(0, 8000);
     if (head.includes(0)) {
-      ws.send(JSON.stringify({ type: "file_content", path: p, error: "二进制文件，不支持文本预览" }));
+      ws.send(JSON.stringify({ type: "file_content", path: p, error: hostI18n.t("errors.file.binaryNoPreview") }));
       return;
     }
     ws.send(JSON.stringify({ type: "file_content", path: p, text: buf.toString("utf8") }));
@@ -83,7 +84,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // 图片二进制读取（对话附件预览等）：后缀白名单 + 8MB 上限，base64 回传；
     // 路径校验对齐 read_file 的宽松度（仅要求非空且是文件）
     const p = String(msg.path ?? "");
-    if (!p) throw new Error("缺少 path");
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     const MIME: Record<string, string> = {
       png: "image/png",
       jpg: "image/jpeg",
@@ -95,16 +96,16 @@ export const filesHandlers: Record<string, RpcHandler> = {
     };
     const ext = path.extname(p).slice(1).toLowerCase();
     if (!(ext in MIME)) {
-      ws.send(JSON.stringify({ type: "image_content", path: p, error: `不支持的图片格式: ${ext || "无后缀"}（仅 png/jpg/jpeg/gif/webp/bmp/svg）` }));
+      ws.send(JSON.stringify({ type: "image_content", path: p, error: hostI18n.t("errors.image.unsupportedFormat", { ext: ext || hostI18n.t("errors.image.noExtension") }) }));
       return;
     }
     const stat = fs.statSync(p, { throwIfNoEntry: false });
     if (!stat?.isFile()) {
-      ws.send(JSON.stringify({ type: "image_content", path: p, error: `不是文件: ${p}` }));
+      ws.send(JSON.stringify({ type: "image_content", path: p, error: hostI18n.t("errors.file.notAFile", { path: p }) }));
       return;
     }
     if (stat.size > 8_000_000) {
-      ws.send(JSON.stringify({ type: "image_content", path: p, error: `图片过大（${(stat.size / 1e6).toFixed(1)} MB），仅支持 8MB 内` }));
+      ws.send(JSON.stringify({ type: "image_content", path: p, error: hostI18n.t("errors.image.tooLarge", { size: (stat.size / 1e6).toFixed(1) }) }));
       return;
     }
     const buf = await fs.promises.readFile(p);
@@ -113,9 +114,9 @@ export const filesHandlers: Record<string, RpcHandler> = {
   async list_dir(ws, msg) {
     // 文件树单层列表：目录优先、字母序；隐藏 .git/.DS_Store
     const dir = String(msg.path ?? "");
-    if (!dir) throw new Error("缺少 path");
+    if (!dir) throw new Error(hostI18n.t("errors.param.missingPath"));
     const stat = fs.statSync(dir, { throwIfNoEntry: false });
-    if (!stat?.isDirectory()) throw new Error(`不是目录: ${dir}`);
+    if (!stat?.isDirectory()) throw new Error(hostI18n.t("errors.file.notADirectory", { path: dir }));
     const entries: { name: string; dir: boolean }[] = [];
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (e.name === ".git" || e.name === ".DS_Store") continue;
@@ -128,7 +129,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // 暂存：git add -- <paths>（数组参数直传，-- 防路径注入）
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
-    if (paths.length === 0) throw new Error("缺少 paths");
+    if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
     const r = runGitChecked(cwd, ["add", "--", ...paths]);
     if (!r.ok) ws.send(JSON.stringify({ type: "git_staged", cwd, error: r.error }));
     else ws.send(JSON.stringify({ type: "git_staged", cwd, ok: true }));
@@ -137,7 +138,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // 取消暂存：git reset HEAD -- <paths>
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
-    if (paths.length === 0) throw new Error("缺少 paths");
+    if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
     const r = runGitChecked(cwd, ["reset", "HEAD", "--", ...paths]);
     if (!r.ok) ws.send(JSON.stringify({ type: "git_unstaged", cwd, error: r.error }));
     else ws.send(JSON.stringify({ type: "git_unstaged", cwd, ok: true }));
@@ -147,7 +148,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // tracked 走 checkout -- 恢复，untracked 走 clean -f -- 精确路径删除；逐路径处理，任一失败即回错
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
-    if (paths.length === 0) throw new Error("缺少 paths");
+    if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
     let err = "";
     for (const p of paths) {
       const tracked = runGitChecked(cwd, ["ls-files", "--error-unmatch", "--", p]);
@@ -165,7 +166,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // 给定 = pathspec 提交（git 自动暂存这些路径的改动并只提交它们）。回包带新提交 sha。
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const message = String(msg.message ?? "");
-    if (!message.trim()) throw new Error("缺少 message");
+    if (!message.trim()) throw new Error(hostI18n.t("errors.param.missingMessage"));
     const paths = stringPaths(msg.paths);
     const args = ["commit", "-m", message, ...(paths.length > 0 ? ["--", ...paths] : [])];
     const r = runGitChecked(cwd, args);
@@ -194,7 +195,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // 当前会话 project 的改动文件清单（树/平铺展示用）
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const p = Bun.spawnSync(["git", "-C", cwd, "status", "--short"], { stdout: "pipe", stderr: "pipe" });
-    if (p.exitCode !== 0) throw new Error(`git status 失败: ${p.stderr.toString().trim().slice(0, 200) || "非 git 仓库"}`);
+    if (p.exitCode !== 0) throw new Error(hostI18n.t("errors.git.statusFailed", { detail: p.stderr.toString().trim().slice(0, 200) || hostI18n.t("errors.git.notARepo") }));
     const files = p.stdout
       .toString()
       .split("\n")
@@ -235,10 +236,10 @@ export const filesHandlers: Record<string, RpcHandler> = {
   switch_git_branch(ws, msg) {
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const targetBranch = String(msg.branch ?? "").trim();
-    if (!targetBranch) throw new Error("缺少 branch");
+    if (!targetBranch) throw new Error(hostI18n.t("errors.param.missingBranch"));
     const p = Bun.spawnSync(["git", "-C", cwd, "checkout", targetBranch], { stdout: "pipe", stderr: "pipe" });
     if (p.exitCode !== 0) {
-      throw new Error(`切换分支失败: ${p.stderr.toString().trim().slice(0, 200)}`);
+      throw new Error(hostI18n.t("errors.git.checkoutFailed", { detail: p.stderr.toString().trim().slice(0, 200) }));
     }
     ws.send(JSON.stringify({ type: "git_branch_switched", cwd, branch: targetBranch }));
   },

@@ -2,6 +2,7 @@
 // 重命名/归档/停止/压缩回执、分叉与条目树导航。自 store/ws.ts onMessage 平移。
 import { useAppStore } from "../index";
 import { activateSession, clearBranchingMarks, activeOpen, updateSession } from "../session";
+import { t } from "../../i18n";
 import type { OpenSession } from "../../types/session";
 import type { HandlerSlice } from "./types";
 
@@ -160,28 +161,28 @@ export const sessionHandlers = {
   },
   session_renamed(msg) {
     if (msg.ok) {
-      useAppStore.getState().toast("已重命名");
+      useAppStore.getState().toast(t("notify.renamed"));
       useAppStore.getState().send({ type: "list_sessions" }); // 列表数据以宿主为唯一真源，重拉最稳
     } else {
       // 帧形状无 error 字段(ok 恒 true,失败路径仅防御兜底);断言只为补类型,不改运行期读取
       const renamedErr = msg as { error?: string };
-      useAppStore.getState().toast(renamedErr.error ?? "重命名失败");
+      useAppStore.getState().toast(renamedErr.error ?? t("notify.renameFailed"));
     }
   },
   session_archived(msg) {
     if (msg.ok) {
-      useAppStore.getState().toast(msg.archived ? "已归档" : "已取消归档");
+      useAppStore.getState().toast(t(msg.archived ? "notify.archived" : "notify.unarchived"));
       useAppStore.getState().send({ type: "list_sessions" });
     } else {
       const archivedErr = msg as { error?: string }; // 同上:仅防御性兜底
-      useAppStore.getState().toast(archivedErr.error ?? "归档操作失败");
+      useAppStore.getState().toast(archivedErr.error ?? t("notify.archiveFailed"));
     }
   },
   session_aborted() {
-    useAppStore.getState().toast("已停止生成");
+    useAppStore.getState().toast(t("notify.generationStopped"));
   },
   session_compacted(msg) {
-    useAppStore.getState().toast(msg.ok ? "上下文已压缩" : (msg.error ?? "压缩失败"));
+    useAppStore.getState().toast(msg.ok ? t("notify.contextCompacted") : (msg.error ?? t("notify.compactFailed")));
   },
   session_branched(msg) {
     // 分叉回执：清除防连点标记（items mutate,空补丁换引用通知）；transcript 由 load_session 推的 messages 帧重建
@@ -193,10 +194,10 @@ export const sessionHandlers = {
       }
     }
     if (!msg.ok) {
-      useAppStore.getState().toast(msg.error ?? "分叉失败");
+      useAppStore.getState().toast(msg.error ?? t("notify.forkFailed"));
       return;
     }
-    useAppStore.getState().toast("已分叉出新会话");
+    useAppStore.getState().toast(t("notify.forked"));
     if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, msg.selectedImages, { guard: true });
     useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // 复用磁盘会话加载链路
     useAppStore.getState().send({ type: "list_sessions" });
@@ -233,10 +234,10 @@ export const sessionHandlers = {
       rightState: { ...s.rightState, entryTreeNav: false, navFrom: null, entryTree: msg.ok ? null : s.rightState.entryTree },
     }));
     if (!msg.ok) {
-      useAppStore.getState().toast(msg.error ?? "跳转失败");
+      useAppStore.getState().toast(msg.error ?? t("notify.navigateFailed"));
       return;
     }
-    useAppStore.getState().toast("已跳转到所选节点");
+    useAppStore.getState().toast(t("notify.navigated"));
     useAppStore.setState({ mainViewMode: "chat" });
     if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
   },

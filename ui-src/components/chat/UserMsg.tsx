@@ -4,6 +4,7 @@ import type { UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg } from "../../store";
 import Icon from "../../Icon";
 import ImageLightbox from "./ImageLightbox";
+import { t } from "../../i18n";
 
 // 待消费气泡的左侧操作组：排队态（立即发送/编辑/删除）｜steer 态（编辑/放回队列顶端）
 function PendingActs({ item }: { item: UserItem }) {
@@ -24,14 +25,14 @@ function PendingActs({ item }: { item: UserItem }) {
     <div className="qk-acts">
       {item.pending === "steer" ? (
         <>
-          {mk("编辑（放回输入框）", "pencil", editQueueMsg)}
-          {mk("放回队列顶端", "down", requeueSteerMsg)}
+          {mk(t("chat.editBackToComposer"), "pencil", editQueueMsg)}
+          {mk(t("chat.requeueTop"), "down", requeueSteerMsg)}
         </>
       ) : (
         <>
-          {mk("立即发送（当前步骤后注入）", "upload", sendNowQueueMsg)}
-          {mk("编辑（放回输入框）", "pencil", editQueueMsg)}
-          {mk("删除", "trash", dropQueueMsg)}
+          {mk(t("chat.sendNow"), "upload", sendNowQueueMsg)}
+          {mk(t("chat.editBackToComposer"), "pencil", editQueueMsg)}
+          {mk(t("common.delete"), "trash", dropQueueMsg)}
         </>
       )}
     </div>
@@ -45,7 +46,7 @@ export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
   const images = item.images ?? [];
   const lightboxList = images.map((img, i) => ({
     src: img.data.startsWith("data:") ? img.data : `data:${img.mimeType || "image/png"};base64,${img.data}`,
-    name: `图片 ${i + 1}`,
+    name: t("chat.imageN", { n: i + 1 }),
   }));
 
   // 排队/steer 待消费消息：hover 气泡左侧出操作组（消费后 pending 清除即普通历史消息）
@@ -62,7 +63,7 @@ export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
                   key={idx}
                   className="group relative cursor-pointer overflow-hidden rounded-md border border-line bg-card hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxIndex(idx)}
-                  title="点击查看大图"
+                  title={t("chat.clickToZoom")}
                 >
                   <img
                     src={src}

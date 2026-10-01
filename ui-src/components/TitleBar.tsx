@@ -2,6 +2,7 @@
 // 由本组件提供拖动区与最小化/最大化/关闭按钮；macOS 走系统 Overlay + 红绿灯，不渲染。
 // 拖动与双击最大化由 data-tauri-drag-region 交 Tauri 内核处理（权限见 capabilities/default.json）。
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { IS_WINDOWS } from "../platform";
 
 export { IS_WINDOWS };
@@ -55,6 +56,7 @@ function CloseIcon() {
 }
 
 export default function TitleBar() {
+  const { t } = useTranslation();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     document.body.classList.add("has-titlebar");
@@ -73,13 +75,13 @@ export default function TitleBar() {
     <div className="app-titlebar" data-tauri-drag-region="">
       <span className="titlebar-title" data-tauri-drag-region="">omp desktop</span>
       <div className="titlebar-btns">
-        <button type="button" className="titlebar-btn" title="最小化" onClick={() => void win().minimize()}>
+        <button type="button" className="titlebar-btn" title={t("misc.minimize")} onClick={() => void win().minimize()}>
           <MinIcon />
         </button>
-        <button type="button" className="titlebar-btn" title={maximized ? "向下还原" : "最大化"} onClick={() => void win().toggleMaximize()}>
+        <button type="button" className="titlebar-btn" title={maximized ? t("misc.restoreDown") : t("misc.maximize")} onClick={() => void win().toggleMaximize()}>
           {maximized ? <RestoreIcon /> : <MaxIcon />}
         </button>
-        <button type="button" className="titlebar-btn titlebar-close" title="关闭" onClick={() => void win().close()}>
+        <button type="button" className="titlebar-btn titlebar-close" title={t("common.close")} onClick={() => void win().close()}>
           <CloseIcon />
         </button>
       </div>

@@ -8,14 +8,15 @@ import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, u
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
 import { isDevicePath, deviceNameOf } from "./util";
 import ThinkingRow from "./ThinkingRow";
+import { t } from "../../i18n";
 
 // ---------- 终端行（bash/shell/eval）与后台工具行（hub）：上命令、下输出的展开卡 ----------
 function CmdCard({ command, item, lift }: { command?: string; item: ToolItem; lift?: boolean }) {
   return (
     <div className={"cmd-card" + (lift ? " lift" : " drop")}>
-      <FadeBox className="cmd-card-cmd">{command || "（无命令）"}</FadeBox>
+      <FadeBox className="cmd-card-cmd">{command || t("chat.noCommand")}</FadeBox>
       <FadeBox className="cmd-card-out" as="pre">
-        {item.output || (item.running ? <Spin /> : "（无输出）")}
+        {item.output || (item.running ? <Spin /> : t("chat.noOutput"))}
       </FadeBox>
     </div>
   );
@@ -45,7 +46,7 @@ function renderCmd(item: ToolItem) {
     <CmdRow
       item={item}
       command={item.args?.command || item.text || ""}
-      iconLabel={item.name === "eval" ? "求值" : "终端"}
+      iconLabel={item.name === "eval" ? t("chat.evalLabel") : t("chat.labelTerminal")}
     />
   );
 }
@@ -58,7 +59,7 @@ function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onTog
   const command = sub.args?.command || sub.text || "";
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
-      <span className="lbl">{sub.name === "eval" ? "求值" : "终端"}</span>
+      <span className="lbl">{sub.name === "eval" ? t("chat.evalLabel") : t("chat.labelTerminal")}</span>
       <Ellip className="c-tx" title={command}>{command}</Ellip>
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
@@ -102,7 +103,7 @@ function CmdGroup({ subs }: { subs: ToolItem[] }) {
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="termBox" size={15} />
-        <span className="lbl">{`终端 · ${subs.length} 条命令`}</span>
+        <span className="lbl">{t("chat.terminalCommands", { count: subs.length })}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>
@@ -132,7 +133,7 @@ function hubSummary(args: NonNullable<ToolItem["args"]>) {
   return summary;
 }
 function renderHubTool(item: ToolItem) {
-  return <CmdRow item={item} command={hubSummary(item.args || {})} iconLabel="后台" />;
+  return <CmdRow item={item} command={hubSummary(item.args || {})} iconLabel={t("chat.labelBackground")} />;
 }
 
 // ---------- 待办行 ----------
@@ -142,7 +143,7 @@ function renderTodo(item: ToolItem) {
   return (
     <div className="act todo">
       <Icon name="todo" size={15} />
-      <span className="lbl">待办</span>
+      <span className="lbl">{t("chat.labelTodo")}</span>
       <Ellip className="td-tx" title={content}>{content}</Ellip>
       {td && (td.total ?? 0) > 0 && <span className="td-n">{`${td.done}/${td.total}`}</span>}
       {item.running && <Spin />}
@@ -157,7 +158,7 @@ function renderGrep(item: ToolItem) {
   return (
     <div className="act read">
       <Icon name="read" size={15} />
-      <span className="lbl">搜索</span>
+      <span className="lbl">{t("chat.labelSearch")}</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
       {item.running && <Spin />}
@@ -170,7 +171,7 @@ function renderGlob(item: ToolItem) {
   return (
     <div className="act read">
       <Icon name="ftFile" size={15} />
-      <span className="lbl">查找</span>
+      <span className="lbl">{t("chat.labelFind")}</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
       {item.running && <Spin />}
@@ -194,7 +195,7 @@ function renderMcp(item: ToolItem) {
 // ---------- 可展开标签行：图标 + 中文标签 + 摘要，点击向下展开 参数+结果 卡片 ----------
 function truncateText(s: string, max = 4000): string {
   s = String(s);
-  return s.length > max ? s.slice(0, max) + ` …(截断,共${s.length}字)` : s;
+  return s.length > max ? s.slice(0, max) + t("chat.truncated", { count: s.length }) : s;
 }
 // ask 的 questions 结构化展示（问题 + 选项，★ 推荐项），其余工具是 args JSON
 function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["args"]>["questions"]> }) {
@@ -204,7 +205,7 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
         !q || typeof q !== "object" ? null : (
           <div className="ask-q" key={i}>
             <div className="text-text">
-              {`${i + 1}. ${q.question || ""}${q.multi ? "（多选）" : ""}`}
+              {`${i + 1}. ${q.question || ""}${q.multi ? t("chat.multiSelect") : ""}`}
               {q.header && <span className="text-dim ml-[6px] text-[0.92em]" /* style-token-ignore */>{q.header}</span>}
             </div>
             {(Array.isArray(q.options) ? q.options : []).map((opt, j) => (
@@ -232,11 +233,11 @@ function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
         <AskArgs questions={item.args.questions} />
       ) : (
         <FadeBox className="cmd-card-cmd">
-          {truncateText(item.args ? JSON.stringify(item.args, null, 2) : "（无参数）")}
+          {truncateText(item.args ? JSON.stringify(item.args, null, 2) : t("chat.noParams"))}
         </FadeBox>
       )}
       <FadeBox className="cmd-card-out" as="pre">
-        {outText ? <LinkedText text={outText} /> : item.running ? <Spin /> : "（无输出）"}
+        {outText ? <LinkedText text={outText} /> : item.running ? <Spin /> : t("chat.noOutput")}
       </FadeBox>
     </div>
   );
@@ -263,7 +264,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
 }
 // 联网搜索行
 function renderWebSearch(item: ToolItem) {
-  return <ExpandableRow item={item} iconName="globe" label="联网搜索" summary={item.args?.query || item.text || ""} />;
+  return <ExpandableRow item={item} iconName="globe" label={t("chat.labelWebSearch")} summary={item.args?.query || item.text || ""} />;
 }
 // 提问行：首个问题（多个时 +N），title 为完整问题列表
 function renderAsk(item: ToolItem) {
@@ -271,14 +272,14 @@ function renderAsk(item: ToolItem) {
   const first = qs[0]?.question || item.text || "";
   const summary = qs.length > 1 ? `${first} +${qs.length - 1}` : first;
   const title = qs.map((q) => q?.question || "").filter(Boolean).join("\n");
-  return <ExpandableRow item={item} iconName="comment" label="提问" summary={summary} summaryTitle={title || summary} />;
+  return <ExpandableRow item={item} iconName="comment" label={t("chat.labelAsk")} summary={summary} summaryTitle={title || summary} />;
 }
 // 调试行：动作与目标（launch 程序 / file:line）
 function renderDebug(item: ToolItem) {
   const args = item.args || {};
   const action = args.action ? String(args.action).replaceAll("_", " ") : "request";
   const target = args.program || (args.file ? `${args.file}${args.line ? `:${args.line}` : ""}` : "");
-  return <ExpandableRow item={item} iconName="monitor" label="调试" summary={target ? `${action} ${target}` : action} />;
+  return <ExpandableRow item={item} iconName="monitor" label={t("chat.labelDebug")} summary={target ? `${action} ${target}` : action} />;
 }
 // GitHub 行：操作与对象（repo/path/query/title）
 function renderGithub(item: ToolItem) {
@@ -325,7 +326,7 @@ function renderMemory(item: ToolItem) {
     <ExpandableRow
       item={item}
       iconName="memory"
-      label="记忆"
+      label={t("chat.labelMemory")}
       summary={memories.length > 1 ? `${summary} +${memories.length - 1}` : summary}
       summaryTitle={title}
     />
@@ -354,7 +355,7 @@ function deviceSummary(item: ToolItem) {
   return [deviceNameOf(item.args?.path), deviceOpText(item)].filter(Boolean).join(" · ");
 }
 function renderDevice(item: ToolItem) {
-  return <ExpandableRow item={item} iconName="plugins" label="设备" summary={deviceSummary(item) || item.text || ""} />;
+  return <ExpandableRow item={item} iconName="plugins" label={t("chat.labelDevice")} summary={deviceSummary(item) || item.text || ""} />;
 }
 
 // ---------- 设备组（连续同设备调用合并，结构一比一抄终端组） ----------
@@ -365,7 +366,7 @@ function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   const detail = deviceOpText(sub) || sub.args?.path || sub.text || "";
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
-      <span className="lbl">设备</span>
+      <span className="lbl">{t("chat.labelDevice")}</span>
       <Ellip className="c-tx" title={detail}>{detail}</Ellip>
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
@@ -408,7 +409,7 @@ function DeviceGroup({ subs }: { subs: ToolItem[] }) {
     <>
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="plugins" size={15} />
-        <span className="lbl">{`设备 · ${dev} · ${subs.length} 次调用`}</span>
+        <span className="lbl">{t("chat.deviceCalls", { count: subs.length, dev })}</span>
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>

@@ -249,7 +249,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   font-size: var(--ui-fs-base);
   box-sizing: border-box;
   opacity: 0; /* 默认不常驻显示，常驻保留占位 */
-  pointer-events: none;
+  /* Opacity-only hiding (no pointer-events:none): the bar must stay hit-testable while invisible,
+     otherwise a lost hover (arriving from below, or crossing the gap above) can never recover. */
   transition: opacity 0.15s ease-out;
 }
 
@@ -258,7 +259,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .turn-acts:hover,
 .turn-acts:focus-within {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .turn-acts .q-btn {

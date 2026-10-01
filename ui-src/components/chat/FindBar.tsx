@@ -6,6 +6,7 @@ import type { RefObject } from "react";
 import type { ChatItem, LoopItem } from "./chat-types";
 import { useAppStore } from "../../store/index";
 import { isJunkPlaceholder } from "../../store/session";
+import { t } from "../../i18n";
 import { patchActiveItem } from "./parts";
 import Icon from "../../Icon";
 
@@ -58,7 +59,7 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
 
   const updateCount = () => {
     if (!matchesRef.current.length) {
-      setCount("无结果");
+      setCount(t("misc.noResults"));
       return;
     }
     setCount(`${cursorRef.current + 1}/${matchesRef.current.length}`);
@@ -162,7 +163,7 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     <div className="find-bar" ref={barRef}>
       <input
         className="find-inp"
-        placeholder="在会话中查找…"
+        placeholder={t("misc.findPlaceholder")}
         type="text"
         autoComplete="off"
         spellCheck={false}
@@ -175,14 +176,14 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
           }
         }}
       />
-      <span className={"find-count" + (count === "无结果" ? " none" : "")}>{count}</span>
-      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title="上一个 (⇧↵)" onClick={() => gotoMatch(-1)}>
+      <span className={"find-count" + (count === t("misc.noResults") ? " none" : "")}>{count}</span>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title={t("misc.prevMatch")} onClick={() => gotoMatch(-1)}>
         <Icon name="chevronUp" />
       </button>
-      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title="下一个 (↵)" onClick={() => gotoMatch(1)}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title={t("misc.nextMatch")} onClick={() => gotoMatch(1)}>
         <Icon name="chevronDown" />
       </button>
-      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)] find-close" title="关闭 (Esc)" onClick={close}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)] find-close" title={t("misc.closeFind")} onClick={close}>
         <Icon name="xmark" size={12} />
       </button>
     </div>

@@ -3,8 +3,10 @@
 // 故用 iframe 承载页面 + tauri-plugin-opener 兜底「外部浏览器打开」（跨域下无法读
 // 标题/前进后退，导航栈由本组件自维护——ZCode 侦察报告的推荐替代方案）。
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
 import { invoke, toast, type TimerHandle } from "../../store";
+import { t } from "../../i18n";
 
 // ---------- URL 归一化（embeddedBrowserHelpers.normalizeBrowserUrl 简化版） ----------
 // 无 scheme 时：localhost/回环/内网 IP/显式端口 -> http，其余 -> https（对齐现代浏览器地址栏）
@@ -42,12 +44,13 @@ async function openExternal(url: string) {
     if (invoke) await invoke("plugin:opener|open_url", { url });
     else window.open(url, "_blank", "noopener");
   } catch (err) {
-    toast(`打开链接失败：${err}`);
+    toast(t("right.openLinkFailed", { err: String(err) }));
   }
 }
 
 export default function BrowserPage() {
   // 导航栈：跨域 iframe 读不到 history，前进/后退由自建栈驱动
+  const { t } = useTranslation();
   const [stack, setStack] = useState<string[]>([]); // 已加载 URL 序列（含当前）
   const [idx, setIdx] = useState(-1); // 当前在栈中的位置
   const [loading, setLoading] = useState(false);
@@ -64,7 +67,7 @@ export default function BrowserPage() {
   // 导航：压栈截掉前向分支，驱动 iframe 换 src
   const navigate = (href: string | null) => {
     if (!href) {
-      toast("无效的网址");
+      toast(t("right.invalidUrl"));
       return;
     }
     clearTimeout(loadTimer.current);
@@ -131,7 +134,7 @@ export default function BrowserPage() {
   const submitAddr = () => {
     const href = normalizeBrowserUrl(addr);
     if (!href) {
-      toast("无效的网址");
+      toast(t("right.invalidUrl"));
       return;
     }
     if (href === current) reload();
@@ -142,13 +145,13 @@ export default function BrowserPage() {
     <div className="bpane">
       {/* 工具栏：后退 / 前进 / 刷新 / 地址栏 / 外部打开 / 更多 */}
       <div className="bpane-bar">
-        <button className="icon-btn" title="后退" disabled={!canBack} onClick={goBack}>
+        <button className="icon-btn" title={t("right.back")} disabled={!canBack} onClick={goBack}>
           <Icon name="back" size={14} />
         </button>
-        <button className="icon-btn" title="前进" disabled={!canForward} onClick={goForward}>
+        <button className="icon-btn" title={t("right.forward")} disabled={!canForward} onClick={goForward}>
           <Icon name="forward" size={14} />
         </button>
-        <button className="icon-btn" title="刷新" disabled={!current} onClick={reload}>
+        <button className="icon-btn" title={t("right.refresh")} disabled={!current} onClick={reload}>
           <Icon name="rotateRight" size={14} />
         </button>
         <div className={"bpane-addr" + (loading ? " loading" : "")}>
@@ -156,7 +159,7 @@ export default function BrowserPage() {
           <input
             className="bpane-input"
             value={addr}
-            placeholder="输入网址，回车打开"
+            placeholder={t("right.urlPh")}
             spellCheck={false}
             onChange={(e) => setAddr(e.target.value)}
             onKeyDown={(e) => {
@@ -168,7 +171,7 @@ export default function BrowserPage() {
         </div>
         <button
           className="icon-btn"
-          title="在外部浏览器打开"
+          title={t("right.openExternal")}
           disabled={!current}
           onClick={() => current && openExternal(current)}
         >
@@ -177,7 +180,7 @@ export default function BrowserPage() {
         <div className="bpane-more-wrap">
           <button
             className="icon-btn"
-            title="更多"
+            title={t("right.more")}
             onClick={(e) => {
               e.stopPropagation();
               setMenuOpen(!menuOpen);
@@ -192,11 +195,11 @@ export default function BrowserPage() {
                 disabled={!current}
                 onClick={() => {
                   setMenuOpen(false);
-                  if (current) navigator.clipboard.writeText(current).then(() => toast("已复制链接")).catch(() => toast("复制失败"));
+                  if (current) navigator.clipboard.writeText(current).then(() => toast(t("right.linkCopied"))).catch(() => toast(t("right.copyFailed")));
                 }}
               >
                 <span className="mi-ic"><Icon name="globe" size={14} /></span>
-                复制链接
+                {t("right.copyLink")}
               </button>
               <button
                 className="mi"
@@ -207,7 +210,7 @@ export default function BrowserPage() {
                 }}
               >
                 <span className="mi-ic"><Icon name="externalOpen" size={14} /></span>
-                在外部浏览器打开
+                {t("right.openExternal")}
               </button>
             </div>
           )}
@@ -219,9 +222,9 @@ export default function BrowserPage() {
         {!current && (
           <div className="bpane-empty">
             <span className="bpane-empty-ic"><Icon name="globe" size={30} /></span>
-            <div className="bpane-empty-tt">在地址栏输入网址开始浏览</div>
+            <div className="bpane-empty-tt">{t("right.browseEmptyTitle")}</div>
             <div className="bpane-empty-sub">
-              部分网站禁止被嵌入（X-Frame-Options），无法在此显示时可在外部浏览器打开。
+              {t("right.browseEmptySub")}
             </div>
           </div>
         )}
@@ -237,13 +240,13 @@ export default function BrowserPage() {
         {current && failed && (
           <div className="bpane-err">
             <span className="bpane-err-ic"><Icon name="shieldWarn" size={26} /></span>
-            <div className="bpane-err-tt">页面无法加载</div>
+            <div className="bpane-err-tt">{t("right.loadFailedTitle")}</div>
             <div className="bpane-err-sub">
-              网站可能拒绝了嵌入请求，或网络不可用。可重试，或在外部浏览器打开。
+              {t("right.loadFailedSub")}
             </div>
             <div className="bpane-err-acts">
-              <button className="btn" onClick={retry}>重试</button>
-              <button className="btn" onClick={() => openExternal(current)}>外部打开</button>
+              <button className="btn" onClick={retry}>{t("common.retry")}</button>
+              <button className="btn" onClick={() => openExternal(current)}>{t("right.openExternalShort")}</button>
             </div>
           </div>
         )}

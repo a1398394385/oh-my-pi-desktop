@@ -8,6 +8,7 @@
 import path from "node:path";
 import { connectToServer, disconnectServer } from "./bootstrap.ts";
 import { H } from "./state.ts";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 
 export type McpSharingMode = "session" | "project" | "global";
 
@@ -208,7 +209,7 @@ export function releaseSharedMcpConnection(poolKey: string): void {
 /**
  * 软取消指定请求（发送 notifications/cancelled，不强杀进程）
  */
-export function softCancelSharedMcp(poolKey: string, requestId: string | number, reason = "用户中止生成"): void {
+export function softCancelSharedMcp(poolKey: string, requestId: string | number, reason = hostI18n.t("errors.mcp.userCancelled")): void {
   const entry = sharedPool.get(poolKey);
   if (!entry || !entry.connection?.transport) return;
   try {

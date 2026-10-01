@@ -24,6 +24,7 @@ import { dispatchRpc } from "./rpc/index";
 import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { refreshAllLimits } from "./limits/index.ts";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
 // profile 初始化不等在线模型目录发现（applyProfile 内 refreshInBackground），
@@ -68,7 +69,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
           );
         },
         (err) => {
-          ws.send(JSON.stringify({ type: "error", message: `宿主初始化失败: ${err instanceof Error ? err.message : String(err)}` }));
+          ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.host.initFailed", { detail: err instanceof Error ? err.message : String(err) }) }));
         },
       );
     },
@@ -77,13 +78,13 @@ const server = Bun.serve<{ sessionId: string | null }>({
       try {
         await profileReady;
       } catch (err) {
-        ws.send(JSON.stringify({ type: "error", message: `宿主初始化失败: ${err instanceof Error ? err.message : String(err)}` }));
+        ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.host.initFailed", { detail: err instanceof Error ? err.message : String(err) }) }));
         return;
       }
       try {
         msg = JSON.parse(String(raw));
       } catch {
-        ws.send(JSON.stringify({ type: "error", message: "非法 JSON" }));
+        ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.host.invalidJson") }));
         return;
       }
       try {

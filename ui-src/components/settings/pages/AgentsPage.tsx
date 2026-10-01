@@ -2,6 +2,7 @@
 // 作用域胶囊（全局 / Profile / 项目三级）+ 左侧资产列表 + 右侧行内编辑器。
 // 点击列表行读取该级 agent 定义（Markdown + YAML frontmatter）进编辑器，保存后新派生的子代理立即生效。
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, pathBase } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
@@ -40,6 +41,7 @@ function assetSections(data: AgentAssetsPayload["agents"] | null | undefined, va
 }
 
 export default function AgentsPage() {
+  const { t } = useTranslation();
   // 渲染数据走字段 selector：ws 侧落地帧全量换新引用（含 assetErr），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
   const allProjects = useAppStore((s) => s.allProjects);
@@ -76,7 +78,7 @@ export default function AgentsPage() {
   const saved = useAppStore((s) => s.assetSaved);
   useEffect(() => {
     if (!saved || saved.kind !== "agent") return;
-    setStatus("已保存");
+    setStatus(t("settingsPage.shared.saved"));
   }, [saved]);
 
   // 资产操作失败（读取/保存/新建抛错）：宿主回 error 帧，store 落 assetErr 时清掉进行中状态
@@ -106,34 +108,34 @@ export default function AgentsPage() {
 
   const readItem = (m: AssetItem) => {
     setSelPath(m.path);
-    setStatus("读取中…");
+    setStatus(t("settingsPage.shared.reading"));
     send({ type: "asset_file_read", kind: "agent", path: m.path });
   };
 
   const save = () => {
     if (!selPath) return;
-    setStatus("保存中…");
+    setStatus(t("settingsPage.shared.saving"));
     send({ type: "asset_file_write", kind: "agent", path: selPath, content: text });
   };
 
   const create = () => {
     const name = newName.trim();
-    if (!name) return setStatus("先输入名称");
+    if (!name) return setStatus(t("settingsPage.shared.nameFirst"));
     send({ type: "asset_file_create", kind: "agent", name, ...scopeParts() });
   };
 
   return (
     <div className="set-page" id="pg-agents">
       <div className="set-tt">
-        子智能体
-        <button type="button" className={"icon-btn pg-refresh" + (spin ? " spin" : "")} onClick={refresh} title="刷新">
+        {t("settingsPage.nav.subagents")}
+        <button type="button" className={"icon-btn pg-refresh" + (spin ? " spin" : "")} onClick={refresh} title={t("settingsPage.model.refresh")}>
           <Icon name="refresh" size={17} />
         </button>
       </div>
       <div className="set-note">
-        <b>编辑磁盘定义</b>
+        <b>{t("settingsPage.agents.noteTitle")}</b>
         <span>
-          左上角切换作用域后，点击条目读取并编辑该级 agent 定义（Markdown + YAML frontmatter），保存后新派生的子代理立即生效。两级目录：当前 Profile <code>~/.omp/profiles/&lt;profile&gt;/agent/agents</code>、项目 <code>&lt;项目&gt;/.omp/agents</code>。omp 加载优先级：项目 &gt; Profile &gt; 内置；内置 agent 打包在 omp 内，不在此列。
+          {t("settingsPage.agents.noteBodyA")}<code>~/.omp/profiles/&lt;profile&gt;/agent/agents</code>{t("settingsPage.agents.noteBodyB")}<code>&lt;project&gt;/.omp/agents</code>{t("settingsPage.agents.noteBodyC")}
         </span>
       </div>
       <div className="agents-bar">
@@ -148,9 +150,9 @@ export default function AgentsPage() {
       <div className="agents-wrap">
         <div className="set-card" id="agentsList">
           {!cur ? (
-            emptyRow("加载中…")
+            emptyRow(t("common.loading"))
           ) : cur.items.length === 0 ? (
-            emptyRow("暂无")
+            emptyRow(t("settingsPage.shared.emptyNone"))
           ) : (
             cur.items.map((m) => (
               <div className="srow" key={m.path} style={{ cursor: "pointer" }} onClick={() => readItem(m)}>
@@ -159,7 +161,7 @@ export default function AgentsPage() {
                   {(m.description || m.command || m.path) && <span>{m.description || m.command || m.path}</span>}
                 </div>
                 <span className="ext-badges">
-                  <span className="tag">{cur.scope.startsWith("project:") ? "项目级" : "用户级"}</span>
+                  <span className="tag">{cur.scope.startsWith("project:") ? t("settingsPage.agents.projectLevel") : t("settingsPage.agents.userLevel")}</span>
                 </span>
               </div>
             ))
@@ -173,15 +175,15 @@ export default function AgentsPage() {
             <input
               className="inp"
               id="aeNewName"
-              placeholder="新 agent 名称"
+              placeholder={t("settingsPage.agents.newPlaceholder")}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") create();
               }}
             />
-            <button type="button" className="add-btn" id="aeNew" onClick={create}>新建</button>
-            <button type="button" className="save-btn" id="aeSave" onClick={save}>保存</button>
+            <button type="button" className="add-btn" id="aeNew" onClick={create}>{t("settingsPage.shared.newBtn")}</button>
+            <button type="button" className="save-btn" id="aeSave" onClick={save}>{t("common.save")}</button>
           </div>
           <textarea id="aeText" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
           <div className="ae-status" id="aeStatus">{status}</div>

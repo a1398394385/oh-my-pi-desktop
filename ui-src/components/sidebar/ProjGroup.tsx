@@ -3,6 +3,7 @@
 // 展开态写入宿主 omp-desktop.json；组头通过 Pointer Events 参与拖拽排序，位移由 Sidebar 统一算。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, showWelcomeScreen, pathBase } from "../../store";
 import Icon from "../../Icon";
 import SessionRow from "./SessionRow";
@@ -52,6 +53,7 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
   shortcuts?: Map<string, string>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const projectLimits = useAppStore((s) => s.projectLimits);
   useLayoutEffect(() => {
@@ -96,10 +98,10 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
               }));
             }}
           >
-            显示更多
+            {t("sidebar.showMore")}
           </button>
         )}
-        {p.sessions.length === 0 && <div className={"text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]" + (animate ? " kids-in" : "")}>暂无任务</div>}
+        {p.sessions.length === 0 && <div className={"text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]" + (animate ? " kids-in" : "")}>{t("sidebar.noTasks")}</div>}
       </div>
     </div>
   );
@@ -121,6 +123,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   renaming: RenamingState | null;
   shortcuts?: Map<string, string>;
 }) {
+  const { t } = useTranslation();
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const expanded = expandedProjects.has(p.cwd);
@@ -187,19 +190,19 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
         {isProjectManageMode ? (
           <button
             className="proj-rm-btn"
-            title={`移除项目 ${p.cwd}`}
+            title={t("sidebar.removeProjectCwd", { cwd: p.cwd })}
             onClick={(e) => {
               e.stopPropagation();
               onRemoveProject(p.cwd);
             }}
           >
-            移除
+            {t("sidebar.remove")}
           </button>
         ) : (
           <>
             <button
               className="padd"
-              title={`在 ${p.cwd} 新建会话`}
+              title={t("sidebar.newSessionIn", { cwd: p.cwd })}
               onClick={(e) => {
                 e.stopPropagation();
                 showWelcomeScreen(p.cwd);
@@ -209,7 +212,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
             </button>
             <button
               className="pmore"
-              title="更多"
+              title={t("sidebar.more")}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenProjMenu(e, p.cwd);

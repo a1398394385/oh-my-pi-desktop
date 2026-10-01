@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
+import { t } from "../../i18n";
 
 // 待办行的任务/阶段形状（store todos 帧透传，只约束本组件读取的字段）
 interface TodoTask {
@@ -43,7 +44,7 @@ export default function TodoCard() {
   const done = all.filter((t) => t.status === "completed").length;
   const frac = `${done}/${all.length}`;
   const current = all.find((t) => t.status === "in_progress") || all.find((t) => t.status !== "completed");
-  const capLabel = current ? current.content : "全部完成";
+  const capLabel = current ? current.content : t("chat.allDone");
   const capIcon = current
     ? current.status === "in_progress" ? "→" : current.status === "blocked" ? "⊘" : "○"
     : "✓";
@@ -59,10 +60,10 @@ export default function TodoCard() {
           }}
         >
           <div className="sc-head">
-            <b>会话状态</b>
+            <b>{t("chat.sessionStatus")}</b>
             <span className="frac" id="todoFrac">{frac}</span>
             <span className="flex-1"></span>
-            <button className="icon-btn" id="scCollapse" title="收起为胶囊">
+            <button className="icon-btn" id="scCollapse" title={t("chat.collapseToCapsule")}>
               <Icon name="collapseCard" />
             </button>
           </div>

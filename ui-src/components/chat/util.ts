@@ -1,6 +1,7 @@
 // 纯工具函数：原 ui/tool-rows.js 与 ui/sidebar.js 中被 React 组件消费的部分平移
 // （原生前端移除后不再从 ui/ 旧模块导入）
 import type { ChatItem, ToolItem } from "./chat-types";
+import { t } from "../../i18n";
 
 // 文件清单去重并归一：斜杠统一、去掉被长路径覆盖的短路径
 export function uniqueFiles(files: Iterable<unknown> | null | undefined): string[] {
@@ -89,7 +90,7 @@ export function isCmdEvent(item: ChatItem): item is ToolItem {
 // 时长格式化：秒 / 分 秒
 export function fmtDuration(sec: number): string {
   sec = Math.max(1, Math.round(sec));
-  if (sec < 60) return `${sec} 秒`;
+  if (sec < 60) return t("sidebar.durSec", { n: sec });
   const m = Math.floor(sec / 60);
-  return `${m} 分 ${String(sec % 60).padStart(2, "0")} 秒`;
+  return t("sidebar.durMinSec", { m, s: String(sec % 60).padStart(2, "0") });
 }

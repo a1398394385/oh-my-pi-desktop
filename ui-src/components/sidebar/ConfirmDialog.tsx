@@ -3,6 +3,7 @@
 // DialogContent 的浮层卡语言）；confirm-title/desc/actions 与 confirm-btn 按钮类、
 // .danger 变体原样保留。按钮关闭统一走 DialogClose → onOpenChange(false) → onClose，
 // 确定钮只挂业务 onConfirm；autoFocus 使打开即聚焦，Enter 即确认。
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogClose,
@@ -12,7 +13,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
-export default function ConfirmDialog({ title, message, confirmText = "确定", cancelText = "取消", danger = false, onConfirm, onClose }: {
+export default function ConfirmDialog({ title, message, confirmText, cancelText, danger = false, onConfirm, onClose }: {
   title?: string;
   message?: string;
   confirmText?: string;
@@ -21,6 +22,7 @@ export default function ConfirmDialog({ title, message, confirmText = "确定", 
   onConfirm?: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
@@ -31,7 +33,7 @@ export default function ConfirmDialog({ title, message, confirmText = "确定", 
         {message && <DialogDescription className="confirm-desc">{message}</DialogDescription>}
         <DialogFooter className="confirm-actions">
           <DialogClose asChild>
-            <button type="button" className="confirm-btn">{cancelText}</button>
+            <button type="button" className="confirm-btn">{cancelText ?? t("common.cancel")}</button>
           </DialogClose>
           <DialogClose asChild>
             <button
@@ -40,7 +42,7 @@ export default function ConfirmDialog({ title, message, confirmText = "确定", 
               autoFocus
               onClick={() => { onConfirm?.(); }}
             >
-              {confirmText}
+              {confirmText ?? t("common.confirm")}
             </button>
           </DialogClose>
         </DialogFooter>

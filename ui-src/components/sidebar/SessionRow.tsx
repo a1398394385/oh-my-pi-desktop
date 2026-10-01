@@ -3,6 +3,7 @@
 // 双击标题原地进入行内重命名。
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
 import Icon from "../../Icon";
 import { IS_WINDOWS, MOD } from "../../platform";
@@ -18,6 +19,7 @@ export interface SessionInfo {
   modified: string;
   repo?: string;
   cwd?: string;
+  archived?: boolean;
 }
 
 // 行内重命名态（key 区分置顶/最近/项目组中的同一会话副本）
@@ -50,6 +52,7 @@ export interface SessionRowProps extends SessionRowCallbacks {
 // 行内重命名编辑行（原 startRename）：Enter 保存（空标题/未改名不保存）、Esc/失焦按取消处理。
 // 保存只发 rename_session，标题以宿主重拉列表为准，本地不改 diskProjects。
 function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDone: () => void }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const el = ref.current!; // mount 后即存在（原 JS 直接解引用，保持同一假设）
@@ -72,7 +75,7 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
         className="inp rename-inp"
         ref={ref}
         defaultValue={s.title || ""}
-        placeholder="会话标题"
+        placeholder={t("sidebar.sessionTitlePh")}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -89,6 +92,7 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
 }
 
 export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
+  const { t } = useTranslation();
   // 状态经 selector 订阅（须在 renaming 早退之前：hooks 不可条件调用）
   const openSessions = useAppStore((s) => s.openSessions);
   const pinnedSessions = useAppStore((s) => s.pinnedSessions);
@@ -164,28 +168,30 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       onMouseLeave={handleMouseLeave}
     >
       <span className="relative flex-none w-[16px] h-[16px] inline-flex items-center justify-center">
-        <span className={"task-indicator " + leading} title={leading === "loading" ? "运行中" : leading === "unread" ? "有新结果" : leading === "error" ? "最近一次运行失败" : undefined}>
+        <span className={"task-indicator " + leading} title={leading === "loading" ? t("sidebar.running") : leading === "unread" ? t("sidebar.hasNewResults") : leading === "error" ? t("sidebar.lastRunFailed") : undefined}>
           {leading === "error" ? <span className="w-[6px] h-[6px] rounded-full bg-err" /> : null}
           {leading === "unread" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
-        {/* 与 ZCode 相同：悬停时 Pin 接管同一个前置槽；置顶列表/已置顶且无状态时常显。 */}
-        <button
-          className={"tpin" + ((pinned || pinnedList) && leading === "none" ? " on" : "")}
-          title={pinned ? "取消置顶" : "置顶会话"}
-          onClick={(e) => {
-            e.stopPropagation();
-            const st = useAppStore.getState();
-            const on = !st.pinnedSessions.has(s.path);
-            const nextPinned = new Set(st.pinnedSessions); // 容器换新引用 + _v bump（等价旧 mutate+notify）
-            if (on) nextPinned.add(s.path);
-            else nextPinned.delete(s.path);
-            send({ type: "set_session_pinned", path: s.path, pinned: on });
-            useAppStore.setState({ pinnedSessions: nextPinned });
-          }}
-        >
-          <Icon name="pin" size={18} />
-        </button>
+        {/* 与 ZCode 相同：悬停时 Pin 接管同一个前置槽；置顶列表/已置顶且无状态时常显。归档会话不支持置顶。 */}
+        {!s.archived && (
+          <button
+            className={"tpin" + ((pinned || pinnedList) && leading === "none" ? " on" : "")}
+            title={pinned ? t("sidebar.unpin") : t("sidebar.pinSession")}
+            onClick={(e) => {
+              e.stopPropagation();
+              const st = useAppStore.getState();
+              const on = !st.pinnedSessions.has(s.path);
+              const nextPinned = new Set(st.pinnedSessions); // 容器换新引用 + _v bump（等价旧 mutate+notify）
+              if (on) nextPinned.add(s.path);
+              else nextPinned.delete(s.path);
+              send({ type: "set_session_pinned", path: s.path, pinned: on });
+              useAppStore.setState({ pinnedSessions: nextPinned });
+            }}
+          >
+            <Icon name="pin" size={18} />
+          </button>
+        )}
       </span>
       {/* 双击标题原地进入重命名（双击前的 click 仍正常打开会话，幂等无冲突） */}
       <span className="tt" onDoubleClick={() => onRenameStart(rowKey, s.path)}>
@@ -194,21 +200,13 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       {isProjectManageMode ? (
         <button
           className="task-del-btn"
-          title="删除会话"
+          title={t("sidebar.deleteSessionTitle")}
           onClick={(e) => {
             e.stopPropagation();
             onDelete(s);
           }}
         >
-          删除
-        </button>
-      ) : confirmingArchive ? (
-        <button
-          className="tarchive-confirm"
-          title="确认归档此会话"
-          onClick={handleConfirmArchive}
-        >
-          确认
+          {t("common.delete")}
         </button>
       ) : isCommandPressed && shortcutDigit ? (
         <span className="task-cmd-badge" title={`${MOD} ${shortcutDigit}`}>
@@ -219,11 +217,43 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           )}
           <span className="task-cmd-digit">{shortcutDigit}</span>
         </span>
+      ) : s.archived ? (
+        <>
+          <span className="tm">{fmtAgo(s.modified)}</span>
+          <button
+            className="arch-act"
+            title={t("sidebar.unarchiveRestore")}
+            onClick={(e) => {
+              e.stopPropagation();
+              send({ type: "archive_session", sessionId: s.id, archived: false });
+            }}
+          >
+            {t("sidebar.restore")}
+          </button>
+          <button
+            className="arch-act arch-del"
+            title={t("sidebar.deleteForever")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(s);
+            }}
+          >
+            {t("common.delete")}
+          </button>
+        </>
+      ) : confirmingArchive ? (
+        <button
+          className="tarchive-confirm"
+          title={t("sidebar.confirmArchive")}
+          onClick={handleConfirmArchive}
+        >
+          {t("sidebar.confirm")}
+        </button>
       ) : (
         <>
           <button
             className="tarchive"
-            title="归档会话"
+            title={t("sidebar.archiveSession")}
             onClick={handleStartConfirmArchive}
           >
             <Icon name="archive" size={14} />

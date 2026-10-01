@@ -60,7 +60,8 @@ fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
         let resource_dir = app
             .path()
             .resource_dir()
-            .map_err(|e| format!("读取应用资源目录失败: {e}"))?;
+            // Stable error-code prefix; the frontend maps it to a translated message.
+            .map_err(|e| format!("asset-dir-failed: {e}"))?;
         let names: &[&str] = if cfg!(windows) {
             &["omp-host.exe", "omp-host"]
         } else {
@@ -73,10 +74,8 @@ fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
                 return Ok(Command::new(host));
             }
         }
-        return Err(format!(
-            "未找到宿主 sidecar（资源目录: {}）",
-            resource_dir.display()
-        ));
+        // Dynamic detail is the resource dir path itself (code prefix carries the meaning).
+        return Err(format!("host-sidecar-missing: {}", resource_dir.display()));
     }
 
     let mut cmd = Command::new(resolve_bun());
@@ -120,7 +119,7 @@ fn spawn_host(
     let mut child: Child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
-            let message = format!("启动宿主失败: {e}");
+            let message = format!("host-spawn-failed: {e}");
             eprintln!("[shell] {message}");
             cell.lock().unwrap().error = Some(message);
             return;
@@ -163,7 +162,7 @@ fn spawn_host(
         if !ready {
             let mut state = reader_cell.lock().unwrap();
             if state.error.is_none() {
-                state.error = Some("宿主进程提前退出，未收到 READY 信号".into());
+                state.error = Some("host-exit-early".into());
             }
             return;
         }
@@ -189,7 +188,7 @@ fn spawn_host(
                 drop(gate);
                 let mut state = reader_cell.lock().unwrap();
                 state.url = None;
-                state.error = Some("宿主反复因内存超限退出，已停止自动重启".into());
+                state.error = Some("host-restart-stopped".into());
                 return;
             }
             gate.last_restart = Some(now);
@@ -219,7 +218,7 @@ fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
         drop(state);
         std::thread::sleep(Duration::from_millis(100));
     }
-    Err("宿主进程 60s 内未就绪，查看终端日志定位".into())
+    Err("host-not-ready".into())
 }
 
 /// 前端调用：发送系统通知。
@@ -241,7 +240,7 @@ fn send_desktop_notification(
         .title(title)
         .body(body)
         .show()
-        .map_err(|e| format!("发送通知失败: {e}"))
+        .map_err(|e| format!("notify-failed: {e}"))
 }
 
 /// 构建原生应用菜单栏（macOS）。
@@ -251,8 +250,60 @@ fn send_desktop_notification(
 /// PredefinedMenuItem（复制/粘贴等）走系统响应链，自带系统快捷键，不受影响；
 /// 且编辑菜单必须存在——macOS WKWebView 无菜单栏时 ⌘C/⌘V/⌘Z 等文本编辑
 /// 快捷键行为不完整，这是顺带修复的真 bug。
+/// Locale-dependent labels for the native menu bar. Menu item ids stay fixed —
+/// the frontend "menu-action" dispatch depends on them, only labels change.
 #[cfg(target_os = "macos")]
-fn build_menu(app: &tauri::App) -> tauri::Result<()> {
+struct MenuLabels {
+    file: &'static str,
+    new_session: &'static str,
+    open_settings: &'static str,
+    edit: &'static str,
+    view: &'static str,
+    zoom_in: &'static str,
+    zoom_out: &'static str,
+    zoom_reset: &'static str,
+    toggle_theme: &'static str,
+    toggle_sidebar: &'static str,
+    window: &'static str,
+}
+
+/// Static two-language table (no i18n framework for a 2 x 11 set).
+/// zh-CN is the fallback so the pre-invoke startup default stays Chinese.
+#[cfg(target_os = "macos")]
+fn menu_labels(lang: &str) -> MenuLabels {
+    match lang {
+        "en" => MenuLabels {
+            file: "File",
+            new_session: "New Session",
+            open_settings: "Open Settings",
+            edit: "Edit",
+            view: "View",
+            zoom_in: "Zoom In",
+            zoom_out: "Zoom Out",
+            zoom_reset: "Reset Zoom",
+            toggle_theme: "Toggle Light/Dark Theme",
+            toggle_sidebar: "Toggle Sidebar",
+            window: "Window",
+        },
+        _ => MenuLabels {
+            file: "文件",
+            new_session: "新建会话",
+            open_settings: "打开设置",
+            edit: "编辑",
+            view: "视图",
+            zoom_in: "放大",
+            zoom_out: "缩小",
+            zoom_reset: "重置缩放",
+            toggle_theme: "切换深浅色主题",
+            toggle_sidebar: "切换边栏",
+            window: "窗口",
+        },
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
+    let l = menu_labels(lang);
     // 应用菜单（macOS 第一栏）：关于 / 服务 / 隐藏 / 退出
     let app_menu = Submenu::with_items(
         app,
@@ -274,18 +325,18 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 文件菜单：app 动作，无 accelerator
     let file_menu = Submenu::with_items(
         app,
-        "文件",
+        l.file,
         true,
         &[
-            &MenuItem::with_id(app, "new-session", "新建会话", true, None::<&str>)?,
-            &MenuItem::with_id(app, "open-settings", "打开设置", true, None::<&str>)?,
+            &MenuItem::with_id(app, "new-session", l.new_session, true, None::<&str>)?,
+            &MenuItem::with_id(app, "open-settings", l.open_settings, true, None::<&str>)?,
         ],
     )?;
 
     // 编辑菜单：全部预定义项，走系统响应链
     let edit_menu = Submenu::with_items(
         app,
-        "编辑",
+        l.edit,
         true,
         &[
             &PredefinedMenuItem::undo(app, None)?,
@@ -301,22 +352,22 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 视图菜单：全部 app 动作，无 accelerator
     let view_menu = Submenu::with_items(
         app,
-        "视图",
+        l.view,
         true,
         &[
-            &MenuItem::with_id(app, "zoom-in", "放大", true, None::<&str>)?,
-            &MenuItem::with_id(app, "zoom-out", "缩小", true, None::<&str>)?,
-            &MenuItem::with_id(app, "zoom-reset", "重置缩放", true, None::<&str>)?,
+            &MenuItem::with_id(app, "zoom-in", l.zoom_in, true, None::<&str>)?,
+            &MenuItem::with_id(app, "zoom-out", l.zoom_out, true, None::<&str>)?,
+            &MenuItem::with_id(app, "zoom-reset", l.zoom_reset, true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "toggle-theme", "切换深浅色主题", true, None::<&str>)?,
-            &MenuItem::with_id(app, "toggle-sidebar", "切换边栏", true, None::<&str>)?,
+            &MenuItem::with_id(app, "toggle-theme", l.toggle_theme, true, None::<&str>)?,
+            &MenuItem::with_id(app, "toggle-sidebar", l.toggle_sidebar, true, None::<&str>)?,
         ],
     )?;
 
     // 窗口菜单：预定义项
     let window_menu = Submenu::with_items(
         app,
-        "窗口",
+        l.window,
         true,
         &[
             &PredefinedMenuItem::minimize(app, None)?,
@@ -329,13 +380,26 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
     )?;
     app.set_menu(menu)?;
-
-    // 菜单点击转发前端：payload 为 { action: <菜单项 id> }；PredefinedMenuItem
-    // 不经过这里（直接走系统响应链）
-    app.on_menu_event(|app, event| {
-        let _ = app.emit("menu-action", serde_json::json!({ "action": event.id().0 }));
-    });
     Ok(())
+}
+
+/// Frontend call (startup + language switch): rebuild the native menu bar
+/// with the given locale ("zh-CN"/"en"). Registered on every platform, but
+/// only macOS renders a menu bar (see build_menu) — elsewhere it's a no-op.
+#[tauri::command]
+fn set_menu_language(app: tauri::AppHandle, lang: String) -> Result<(), String> {
+    if lang != "zh-CN" && lang != "en" {
+        return Err(format!("set_menu_language: unsupported lang {lang}"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        build_menu(&app, &lang).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (&app, &lang);
+        Ok(())
+    }
 }
 
 pub fn run() {
@@ -380,10 +444,22 @@ pub fn run() {
                 let _ = win.show();
                 let _ = win.set_focus();
             }
-            // 原生菜单栏：编辑菜单的预定义项是 WKWebView 文本编辑快捷键生效的前提
+            // Native menu bar: the edit submenu's predefined items are required
+            // for WKWebView text-edit shortcuts. Default zh-CN here; the frontend
+            // invokes set_menu_language on startup to align with the user's
+            // persisted language.
             #[cfg(target_os = "macos")]
-            if let Err(e) = build_menu(app) {
-                eprintln!("[shell] 构建菜单栏失败: {e}");
+            {
+                if let Err(e) = build_menu(app.handle(), "zh-CN") {
+                    eprintln!("[shell] 构建菜单栏失败: {e}");
+                }
+                // Forward menu clicks to the frontend: payload is
+                // { action: <menu item id> }; PredefinedMenuItem never passes
+                // here (system responder chain). Registered once outside
+                // build_menu so menu rebuilds don't stack duplicate handlers.
+                app.on_menu_event(|app, event| {
+                    let _ = app.emit("menu-action", serde_json::json!({ "action": event.id().0 }));
+                });
             }
             // 全局唤起快捷键：Windows 用 Ctrl+Shift+M（Win 键被系统占用过多），
             // macOS 用 ⌘⇧M；被其他应用占用时不 panic，记日志跳过
@@ -397,7 +473,11 @@ pub fn run() {
             spawn_host(app.handle(), cell.clone(), child_cell.clone(), restart_cell.clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![ws_url, send_desktop_notification])
+        .invoke_handler(tauri::generate_handler![
+            ws_url,
+            send_desktop_notification,
+            set_menu_language
+        ])
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")
         .run(|app, event| {

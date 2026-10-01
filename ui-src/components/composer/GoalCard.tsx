@@ -6,10 +6,12 @@
 // 本地消费，乐观气泡由 command_result 撤回）。
 import { useState } from "react";
 import type { MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
 
 export default function GoalCard() {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const g = s?.goal;
@@ -31,7 +33,7 @@ export default function GoalCard() {
           <span className="gc-cost">${(g.costUsed ?? 0).toFixed(4)}</span>
           <button
             className="plus-btn"
-            title={paused ? "继续目标 (/goal resume)" : "暂停目标 (/goal pause)"}
+            title={paused ? t("composer.resumeGoal") : t("composer.pauseGoal")}
             onClick={(e: MouseEvent) => {
               e.stopPropagation();
               send({ type: "prompt", sessionId: s.sessionId, text: paused ? "/goal resume" : "/goal pause" });
@@ -41,7 +43,7 @@ export default function GoalCard() {
           </button>
           <button
             className="plus-btn"
-            title="删除目标 (/goal drop)"
+            title={t("composer.dropGoal")}
             onClick={(e: MouseEvent) => {
               e.stopPropagation();
               send({ type: "prompt", sessionId: s.sessionId, text: "/goal drop" });

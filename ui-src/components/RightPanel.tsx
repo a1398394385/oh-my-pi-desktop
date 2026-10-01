@@ -6,6 +6,7 @@
 // 写走 setBump 与既有函数；三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：
 // #rightBody 加 detail 类，rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../store";
 import Icon from "../Icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -22,6 +23,7 @@ import BranchTreePage from "./right/BranchTreePage";
 import SessionTreePage from "./right/SessionTreePage";
 import TerminalPage from "./right/TerminalPage";
 import BrowserPage from "./right/BrowserPage";
+import { t } from "../i18n";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
 export { TAB_META, openRightTab, closeRightTab } from "./right/tabs";
@@ -41,16 +43,17 @@ function Tip({ label, children }: { label?: string; children: ReactElement }) {
 // 「最近关闭」相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
 function closedAgo(at: number): string {
   const m = Math.floor((Date.now() - at) / 60000);
-  if (m < 1) return "刚刚";
-  if (m < 60) return `${m} 分钟前`;
+  if (m < 1) return t("right.closedNow");
+  if (m < 60) return t("right.closedMin", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} 小时前`;
-  return `${Math.floor(h / 24)} 天前`;
+  if (h < 24) return t("right.closedHour", { n: h });
+  return t("right.closedDay", { n: Math.floor(h / 24) });
 }
 
 // tab 总览 popover：搜索框 + 打开中（点击切换 / 逐项关闭）+ 最近关闭（点击重开）。
 // 复用 .menu 弹层视觉；坐标走 sp-head 相对定位（absolute 随面板 zoom 缩放不错位）。
 function TabOverview({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const rightTabs = useAppStore((st) => st.rightTabs);
   const rightRecentClosed = useAppStore((st) => st.rightRecentClosed);
   const rightTab = useAppStore((st) => st.rightTab);
@@ -63,7 +66,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", esc);
   }, [onClose]);
   const kw = q.trim().toLowerCase();
-  const match = (name: string) => !kw || TAB_META[name].label.toLowerCase().includes(kw);
+  const match = (name: string) => !kw || t(TAB_META[name].label).toLowerCase().includes(kw);
   const opens = rightTabs.filter(match);
   const recents = rightRecentClosed.filter((x) => match(x.name));
   return (
@@ -72,14 +75,14 @@ function TabOverview({ onClose }: { onClose: () => void }) {
         <Icon name="search" size={15} />
         <input
           ref={inputRef}
-          placeholder="搜索标签页"
+          placeholder={t("right.searchTabs")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
       <div className="sp-pop-scroll">
-        <div className="mh">打开中</div>
-        {opens.length === 0 && <div className="mi empty">无匹配的标签页</div>}
+        <div className="mh">{t("right.openTabs")}</div>
+        {opens.length === 0 && <div className="mi empty">{t("right.noMatchTabs")}</div>}
         {opens.map((name) => (
           <div
             key={name}
@@ -87,8 +90,8 @@ function TabOverview({ onClose }: { onClose: () => void }) {
             onClick={() => { setBump({ rightTab: name }); onClose(); }}
           >
             <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
-            {TAB_META[name].label}
-            <Tip label="关闭">
+            {t(TAB_META[name].label)}
+            <Tip label={t("common.close")}>
               <span
                 className="mi-x"
                 onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
@@ -98,11 +101,11 @@ function TabOverview({ onClose }: { onClose: () => void }) {
             </Tip>
           </div>
         ))}
-        {recents.length > 0 && <div className="mh">最近关闭</div>}
+        {recents.length > 0 && <div className="mh">{t("right.recentlyClosed")}</div>}
         {recents.map((x) => (
           <div key={x.name} className="mi" onClick={() => { reopenRightTab(x.name); onClose(); }}>
             <span className="mi-ic"><Icon name={TAB_META[x.name].icon} size={15} /></span>
-            {TAB_META[x.name].label}
+            {t(TAB_META[x.name].label)}
             <span className="sub">{closedAgo(x.at)}</span>
           </div>
         ))}
@@ -121,6 +124,7 @@ function AddTabMenu({
   menuLeft?: number;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const rightTabs = useAppStore((st) => st.rightTabs);
   return (
     <div
@@ -137,14 +141,14 @@ function AddTabMenu({
           const off = name === "gitdiff" && !isGit;
           const on = rightTabs.includes(name);
           return (
-            <Tip key={name} label={off ? "当前项目不是 git 仓库" : undefined}>
+            <Tip key={name} label={off ? t("right.notGitRepo") : undefined}>
               <div
                 className={"mi" + (off ? " empty" : "")}
                 onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
               >
                 <span className="ck">{on ? "✓" : ""}</span>
                 <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
-                {TAB_META[name].label}
+                {t(TAB_META[name].label)}
               </div>
             </Tip>
           );
@@ -156,6 +160,7 @@ function AddTabMenu({
 
 // 单个 tab：等宽 flex、原生 drag 重排、hover 才出现的关闭钮、中键关闭
 function TabButton({ name, on }: { name: string; on: boolean }) {
+  const { t } = useTranslation();
   const [over, setOver] = useState(false);
   return (
     <button
@@ -187,8 +192,8 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
       }}
     >
       <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
-      <span className="rtab-tx">{TAB_META[name].label}</span>
-      <Tip label="关闭">
+      <span className="rtab-tx">{t(TAB_META[name].label)}</span>
+      <Tip label={t("common.close")}>
         <span
           className="rtab-x"
           onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
@@ -201,6 +206,7 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
 }
 
 export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
+  const { t } = useTranslation();
   // 当前会话 + 右栏散字段全部字段订阅（openRightTab 等不 bump _v，靠字段订阅驱动重渲染）
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const rightTabs = useAppStore((st) => st.rightTabs); // tab 列表入 store：字段订阅驱动重渲染
@@ -300,7 +306,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
         <div className="sp-head" ref={headRef}>
-          <Tip label="标签页总览">
+          <Tip label={t("right.tabOverview")}>
             <button
               className="icon-btn"
               onClick={(e) => {
@@ -316,7 +322,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
             {tabs.map((name) => (
               <TabButton key={name} name={name} on={rightTab === name} />
             ))}
-            <Tip label="打开标签页">
+            <Tip label={t("right.openTab")}>
               <button
                 ref={addBtnRef}
                 className={"icon-btn shrink-0" + (addOpen ? " on" : "")}
@@ -336,7 +342,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
             </Tip>
           </div>
           {isGitTab && (
-            <Tip label="刷新">
+            <Tip label={t("right.refresh")}>
               <button
                 className="icon-btn"
                 id="gitRefresh"
@@ -354,7 +360,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
             </Tip>
           )}
           {isGitTab && (
-            <Tip label="切换树/平铺">
+            <Tip label={t("right.toggleTreeFlat")}>
               <button
                 className="icon-btn"
                 id="gitViewToggle"
@@ -363,7 +369,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
                   setBump({ gitViewMode: gitViewMode === "tree" ? "flat" : "tree" });
                 }}
               >
-                {gitViewMode === "tree" ? "树" : "平铺"}
+                {gitViewMode === "tree" ? t("right.treeView") : t("right.flatView")}
               </button>
             </Tip>
           )}

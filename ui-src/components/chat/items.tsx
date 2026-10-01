@@ -16,6 +16,7 @@ import ToolRow from "./ToolRow";
 import BashRow from "./BashRow";
 import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
+import { t } from "../../i18n";
 
 // 单条消息 → JSX（railEntries 副作用随渲染路径收集，与原 appendChatItem 的 push 同序）
 function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): ReactElement | null {
@@ -126,7 +127,7 @@ export function renderItems(
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
-          const groupItem: ChatItem = { role: "tool", text: "更改", group: subs };
+          const groupItem: ChatItem = { role: "tool", text: t("chat.labelChange"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
           out.push(<ToolRow item={groupItem} key={key} />);
           continue;
@@ -136,7 +137,7 @@ export function renderItems(
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
-          const groupItem: ChatItem = { role: "tool", name: "read", text: "查阅", group: subs };
+          const groupItem: ChatItem = { role: "tool", name: "read", text: t("chat.labelReadGroup"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
           out.push(<ToolRow item={groupItem} key={key} />);
           continue;
@@ -152,7 +153,7 @@ export function renderItems(
           i++;
         }
         if (subs.length > 1) {
-          const groupItem: ChatItem = { role: "tool", name: "device", text: "设备", group: subs };
+          const groupItem: ChatItem = { role: "tool", name: "device", text: t("chat.labelDevice"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
           out.push(<ToolRow item={groupItem} key={key} />);
           continue;
@@ -162,7 +163,7 @@ export function renderItems(
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
-          const groupItem: ChatItem = { role: "tool", name: "cmd", text: "终端", group: subs };
+          const groupItem: ChatItem = { role: "tool", name: "cmd", text: t("chat.labelTerminal"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
           out.push(<ToolRow item={groupItem} key={key} />);
           continue;
@@ -224,7 +225,7 @@ export function renderItems(
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
-        const groupItem: ChatItem = { role: "tool", text: "更改", group: subs };
+        const groupItem: ChatItem = { role: "tool", text: t("chat.labelChange"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
         node = <ToolRow item={groupItem} key={key} />;
       }
@@ -233,7 +234,7 @@ export function renderItems(
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
-        const groupItem: ChatItem = { role: "tool", name: "read", text: "查阅", group: subs };
+        const groupItem: ChatItem = { role: "tool", name: "read", text: t("chat.labelReadGroup"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
         node = <ToolRow item={groupItem} key={key} />;
       }
@@ -248,7 +249,7 @@ export function renderItems(
         i++;
       }
       if (subs.length > 1) {
-        const groupItem: ChatItem = { role: "tool", name: "device", text: "设备", group: subs };
+        const groupItem: ChatItem = { role: "tool", name: "device", text: t("chat.labelDevice"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
         node = <ToolRow item={groupItem} key={key} />;
       }
@@ -257,7 +258,7 @@ export function renderItems(
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
-        const groupItem: ChatItem = { role: "tool", name: "cmd", text: "终端", group: subs };
+        const groupItem: ChatItem = { role: "tool", name: "cmd", text: t("chat.labelTerminal"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
         node = <ToolRow item={groupItem} key={key} />;
       }

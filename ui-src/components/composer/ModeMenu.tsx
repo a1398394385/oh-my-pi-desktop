@@ -4,6 +4,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useAppStore, setBump, send } from "../../store";
+import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
 
@@ -12,17 +13,18 @@ export type ApprovalMode = "always-ask" | "write" | "yolo";
 
 type ModeMeta = { label: string; icon: string; yolo: boolean };
 
-// 模式元信息（原 composer.js MODE_META 平移；按钮态也复用）
+// 模式元信息（原 composer.js MODE_META 平移；按钮态也复用）。label/desc are getters so the
+// module-level constants re-read the active language on every access (tree re-mounts on lang switch).
 export const MODE_META: Record<ApprovalMode, ModeMeta> = {
-  "always-ask": { label: "手动批准", icon: "permAsk", yolo: false },
-  write: { label: "默认", icon: "permDefault", yolo: false },
-  yolo: { label: "全自动", icon: "shieldWarn", yolo: true },
+  "always-ask": { get label() { return t("composer.modeAlwaysAsk"); }, icon: "permAsk", yolo: false },
+  write: { get label() { return t("composer.modeWrite"); }, icon: "permDefault", yolo: false },
+  yolo: { get label() { return t("composer.modeYolo"); }, icon: "shieldWarn", yolo: true },
 };
 
 const ROWS: { mode: ApprovalMode; desc: string }[] = [
-  { mode: "always-ask", desc: "执行需要授权的操作前先询问" },
-  { mode: "write", desc: "常规操作自动执行，关键决定会询问" },
-  { mode: "yolo", desc: "所有操作无需确认直接执行" },
+  { mode: "always-ask", get desc() { return t("composer.modeAlwaysAskDesc"); } },
+  { mode: "write", get desc() { return t("composer.modeWriteDesc"); } },
+  { mode: "yolo", get desc() { return t("composer.modeYoloDesc"); } },
 ];
 
 type ModeMenuProps = {
@@ -57,11 +59,11 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
 
   return (
     <div className="menu mode open" id="modeMenu" ref={menuRef}>
-      <div className={"mi big" + (s ? "" : " off")} id="planModeRow" onClick={togglePlan} title={s ? "先只读规划，批准计划后再执行" : "需要先新建或打开一个会话"}>
+      <div className={"mi big" + (s ? "" : " off")} id="planModeRow" onClick={togglePlan} title={s ? t("composer.planModeHint") : t("composer.planModeNeedSession")}>
         <span className="mi-ic"><Icon name="plan" /></span>
         <span className="mi-tx">
-          <span className="mi-tt">计划模式</span>
-          <span className="mi-desc">先只读调研并产出计划，批准后才动手改代码</span>
+          <span className="mi-tt">{t("composer.planMode")}</span>
+          <span className="mi-desc">{t("composer.planModeDesc")}</span>
         </span>
         <span className="ck">{planOn ? "✓" : ""}</span>
       </div>

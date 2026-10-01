@@ -1,6 +1,7 @@
 // 设置中心数据域帧：登录流程、供应商与配额、资产/记忆/MCP 编辑器回包、
 // 输入框 sigil 候选（斜杠命令清单 / @ 文件匹配）。自 store/ws.ts onMessage 平移。
 import { useAppStore } from "../index";
+import { t } from "../../i18n";
 import type { McpAssetsPayload } from "../../types/frames";
 import type { HandlerSlice } from "./types";
 
@@ -19,7 +20,7 @@ export const settingsHandlers = {
   },
   login_progress(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
-    useAppStore.setState((s) => ({ loginBanner: `${msg.provider}：${msg.message}` }));
+    useAppStore.setState((s) => ({ loginBanner: t("notify.loginProgress", { provider: msg.provider, message: msg.message }) }));
   },
   login_prompt(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
@@ -28,23 +29,23 @@ export const settingsHandlers = {
   login_done(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
     if (msg.ok) {
-      useAppStore.getState().toast(`${msg.provider} 登录成功，模型列表已刷新`);
+      useAppStore.getState().toast(t("notify.loginOk", { provider: msg.provider }));
       useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null, mpAddView: false }));
     } else if (msg.cancelled) {
-      useAppStore.getState().toast("登录已取消");
+      useAppStore.getState().toast(t("notify.loginCancelled"));
       useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null }));
     } else {
-      useAppStore.getState().toast(`${msg.provider} 登录失败：${msg.message}`);
+      useAppStore.getState().toast(t("notify.loginFailed", { provider: msg.provider, message: msg.message }));
       useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null }));
     }
   },
   provider_key_done(msg) {
-    useAppStore.getState().toast(`${msg.provider} API key 已保存，模型列表已刷新`);
+    useAppStore.getState().toast(t("notify.apiKeySaved", { provider: msg.provider }));
     useAppStore.setState((s) => ({ mpDetailProv: null }));
     useAppStore.getState().send({ type: "get_all_providers" });
   },
   models_config_path(msg) {
-    useAppStore.getState().toast(`配置文件：${msg.path}`);
+    useAppStore.getState().toast(t("notify.configPath", { path: msg.path }));
   },
   asset_file(msg) {
     // skills/agents/mcp 编辑器共用帧，全量落地，页面按 kind 过滤（每次赋新对象触发 effect）。
@@ -78,7 +79,7 @@ export const settingsHandlers = {
     useAppStore.getState().send({ type: "list_agent_assets" });
   },
   asset_file_deleted(msg) {
-    useAppStore.getState().toast(msg.kind === "skill" ? "技能已删除" : "文件已删除");
+    useAppStore.getState().toast(t(msg.kind === "skill" ? "notify.skillDeleted" : "notify.fileDeleted"));
   },
   mcp_server_tested(msg) {
     // 旧版 handleMcpServerTested 平移：测试结果落地 + 行状态点同步 + toast（全量换引用）
@@ -98,7 +99,11 @@ export const settingsHandlers = {
         agentAssets: { ...st.agentAssets!, mcp: { ...mcp, servers: nextServers } as McpAssetsPayload },
       };
     });
-    useAppStore.getState().toast(msg.status === "ok" ? `MCP [${msg.name}] 连接成功` : `MCP [${msg.name}] 探测失败: ${msg.error || ""}`);
+    useAppStore.getState().toast(
+      msg.status === "ok"
+        ? t("notify.mcpConnected", { name: msg.name })
+        : t("notify.mcpProbeFailed", { name: msg.name, error: msg.error || "" }),
+    );
   },
   // ---- 输入框 sigil：斜杠命令清单（宿主 list_commands 回包；list_files 的 @ 候选回包） ----
   commands(msg) {

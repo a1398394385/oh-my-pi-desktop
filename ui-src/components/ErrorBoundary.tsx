@@ -2,6 +2,7 @@
 // 无边界时 React 根容器被卸载，深色主题下就是「应用黑掉」，现场与报错一起丢失）。
 // 边界页展示错误信息 + 一键重载；错误同时打上控制台标记便于 DevTools 翻查。
 import { Component, type ReactNode, type ErrorInfo } from "react";
+import { t } from "../i18n";
 
 interface Props {
   children?: ReactNode;
@@ -33,7 +34,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     const msg = String(error?.message ?? error);
     return (
       <div id="errBoundary" style={{ padding: 32, fontFamily: "var(--sans)", color: "var(--text)" }}>
-        <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>界面渲染出错（已拦截黑屏）</h2>
+        <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>{t("misc.renderError")}</h2>
         <pre style={{ whiteSpace: "pre-wrap", color: "var(--err)", fontSize: 13, maxHeight: "30vh", overflow: "auto" }}>{msg}</pre>
         {stack ? (
           <pre style={{ whiteSpace: "pre-wrap", color: "var(--dim)", fontSize: 12, maxHeight: "40vh", overflow: "auto", marginTop: 12 }}>{stack}</pre>
@@ -43,7 +44,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           style={{ marginTop: 16 }}
           onClick={() => location.reload()}
         >
-          重新加载
+          {t("misc.reload")}
         </button>
       </div>
     );

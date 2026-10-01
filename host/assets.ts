@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 import { H } from "./state.ts";
 import {
   loadCapability,
@@ -84,10 +85,10 @@ export function assetOmpDir(kind: AssetKind, scope: unknown, cwd?: unknown): str
   if (s === "profile" || s === "global") return H.agentDir;
   if (s === "project") {
     const c = String(cwd ?? "");
-    if (!validDesktopProjects().includes(c)) throw new Error(`未知的项目: ${c}`);
+    if (!validDesktopProjects().includes(c)) throw new Error(hostI18n.t("errors.asset.unknownProject", { c }));
     return nearestProjectOmpDir(c) ?? path.join(path.resolve(c), ".omp");
   }
-  throw new Error(`未知的作用域: ${s}`);
+  throw new Error(hostI18n.t("errors.asset.unknownScope", { s }));
 }
 
 // mcp.json 候选文件（带点的在前优先读，无前缀为主写入目标）
@@ -161,22 +162,22 @@ export function resolveAssetFile(kind: AssetKind, p: unknown): string {
     if (file.endsWith(".json") || file.endsWith(".toml")) {
       return file;
     }
-    throw new Error(`仅支持 .json 或 .toml 配置文件: ${raw}`);
+    throw new Error(hostI18n.t("errors.asset.jsonTomlOnly", { raw }));
   }
-  if (!file.endsWith(".md")) throw new Error(`仅支持 .md ${kind === "skill" ? "skill" : "agent"} 定义文件`);
+  if (!file.endsWith(".md")) throw new Error(hostI18n.t("errors.asset.mdOnly", { kind: kind === "skill" ? "skill" : "agent" }));
   if (kind === "skill") {
     const ok = allSkillRoots().some((root) => {
       const rel = path.relative(root, file);
       return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
     });
-    if (!ok) throw new Error(`路径不在允许的技能目录内: ${raw}`);
+    if (!ok) throw new Error(hostI18n.t("errors.asset.skillDirForbidden", { raw }));
     return file;
   }
   const ok = assetRoots(kind).some((root) => {
     const rel = path.relative(root.dir, file);
     return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
   });
-  if (!ok) throw new Error(`路径不在允许的 ${kind} 目录内: ${raw}`);
+  if (!ok) throw new Error(hostI18n.t("errors.asset.dirForbidden", { kind, raw }));
   return file;
 }
 
@@ -402,7 +403,11 @@ async function probeStdioMcp(server: {
 }, timeoutMs = 5000): Promise<{ status: "connected" | "error"; error?: string; log?: string }> {
   const cmd = server.command?.trim();
   if (!cmd) {
-    return { status: "error", error: "未配置执行命令", log: "[配置错误]: 未指定 command 启动命令" };
+    return {
+      status: "error",
+      error: hostI18n.t("flows.mcp.noCommand"),
+      log: hostI18n.t("flows.mcp.noCommandLog"),
+    };
   }
   const fullCmd = [cmd, ...(server.args ?? [])];
   const cwd = server.cwd && fs.existsSync(server.cwd) ? server.cwd : process.cwd();
@@ -418,8 +423,14 @@ async function probeStdioMcp(server: {
       stderr: "pipe",
     });
   } catch (err: any) {
-    const errorMsg = `启动进程失败: ${err?.message || String(err)}`;
-    const log = `[命令] ${fullCmd.join(" ")}\n[工作目录] ${cwd}\n[启动失败异常]\n${err?.stack || err?.message || String(err)}`;
+    const detail = err?.stack || err?.message || String(err);
+    const errorMsg = hostI18n.t("flows.mcp.spawnFailed", { message: err?.message || String(err) });
+    const log =
+      hostI18n.t("flows.mcp.logCommand", { command: fullCmd.join(" ") }) +
+      "\n" +
+      hostI18n.t("flows.mcp.logCwd", { cwd }) +
+      "\n" +
+      hostI18n.t("flows.mcp.spawnFailLog", { detail });
     return { status: "error", error: errorMsg, log };
   }
 
@@ -523,28 +534,30 @@ async function probeStdioMcp(server: {
 
   let summary = "";
   if (timedOut) {
-    summary = `MCP 连接超时：未在 ${timeoutMs / 1000} 秒内完成握手响应。`;
+    summary = hostI18n.t("flows.mcp.timedOut", { sec: timeoutMs / 1000 });
   } else if (exitCode !== null && exitCode !== undefined && exitCode !== 0) {
-    summary = `MCP 进程异常退出 (退出码 ${exitCode})。`;
+    summary = hostI18n.t("flows.mcp.abnormalExit", { code: exitCode });
   } else if (stderrText) {
-    summary = stderrText.split("\n")[0].slice(0, 120) || "MCP 进程输出异常";
+    summary = stderrText.split("\n")[0].slice(0, 120) || hostI18n.t("flows.mcp.outputAbnormal");
   } else {
-    summary = "MCP 进程未返回有效的 JSON-RPC 响应";
+    summary = hostI18n.t("flows.mcp.noJsonrpc");
   }
 
   const logLines = [
-    `[命令] ${fullCmd.join(" ")}`,
-    `[工作目录] ${cwd}`,
-    `[退出码] ${exitCode ?? (timedOut ? "运行中(超时中断)" : "未知")}`,
+    hostI18n.t("flows.mcp.logCommand", { command: fullCmd.join(" ") }),
+    hostI18n.t("flows.mcp.logCwd", { cwd }),
+    hostI18n.t("flows.mcp.logExitCode", {
+      code: exitCode ?? (timedOut ? hostI18n.t("flows.mcp.exitRunning") : hostI18n.t("flows.mcp.exitUnknown")),
+    }),
   ];
   if (stderrText) {
-    logLines.push(`\n[标准错误输出 (stderr)]:\n${stderrText}`);
+    logLines.push(hostI18n.t("flows.mcp.logStderr", { text: stderrText }));
   }
   if (stdoutText) {
-    logLines.push(`\n[标准输出 (stdout)]:\n${stdoutText}`);
+    logLines.push(hostI18n.t("flows.mcp.logStdout", { text: stdoutText }));
   }
   if (!stderrText && !stdoutText) {
-    logLines.push(`\n[提示] 进程在 ${timeoutMs}ms 内未产生任何标准输出/错误输出，请检查命令是否缺少参数或依赖环境。`);
+    logLines.push(hostI18n.t("flows.mcp.logNoOutput", { ms: timeoutMs }));
   }
 
   return {
@@ -590,8 +603,10 @@ export async function probeMcpServerHealth(server: {
   try {
     const conn = await Promise.race([
       connectToServer(`probe_${Date.now()}_${server.name}`, config),
+      // Structured timeout marker: matched by MCP_TIMEOUT below, never by
+      // display text — the branch must survive language switches.
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("连接超时")), 5000)
+        setTimeout(() => reject(new Error("MCP_TIMEOUT")), 5000)
       ),
     ]);
     await disconnectServer(conn);
@@ -601,13 +616,21 @@ export async function probeMcpServerHealth(server: {
   } catch (err: any) {
     let msg = err?.message || String(err);
     if (msg.includes("protocol") || msg.includes("version") || msg.includes("negotiation") || msg.includes("UnsupportedProtocolVersion")) {
-      msg = "MCP 协议协商失败，服务器版本可能不兼容。";
+      msg = hostI18n.t("flows.mcp.protocolFail");
     } else if (msg.includes("ECONNREFUSED")) {
-      msg = "MCP 连接失败：目标服务未启动或端口不可达。";
-    } else if (msg.includes("连接超时")) {
-      msg = "MCP 连接超时：未在 5 秒内响应。";
+      msg = hostI18n.t("flows.mcp.connRefused");
+    } else if (msg.includes("MCP_TIMEOUT")) {
+      msg = hostI18n.t("flows.mcp.connTimedOut");
     }
-    const log = `[目标 URL] ${server.url || "未知"}\n[传输协议] ${transport}\n[错误原因] ${msg}\n[详细异常]\n${err?.stack || err?.message || String(err)}`;
+    const detail = err?.stack || err?.message || String(err);
+    const log =
+      hostI18n.t("flows.mcp.logUrl", { url: server.url || hostI18n.t("flows.mcp.urlUnknown") }) +
+      "\n" +
+      hostI18n.t("flows.mcp.logTransport", { transport }) +
+      "\n" +
+      hostI18n.t("flows.mcp.logReason", { reason: msg }) +
+      "\n" +
+      hostI18n.t("flows.mcp.logDetail", { detail });
     const res = { status: "error" as const, error: msg, log };
     mcpHealthCache.set(server.name, { ...res, timestamp: Date.now() });
     return res;
@@ -677,6 +700,8 @@ export async function loadAllMcpScoped() {
     }
   };
 
+  const serverKey = (scope: string, name: string) => `${scope}::${name}`;
+
   // 1. 用户级发现（当前 Profile 及全局外部源，如 ~/.claude.json、~/.cursor/mcp.json、~/.codex/config.toml 等）
   //    不传 includeDisabled：外部用户级来源受「来源」与「外部工具 ~/ 配置」开关约束（同底座运行时加载）
   try {
@@ -689,7 +714,7 @@ export async function loadAllMcpScoped() {
       const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
       const sharing: "session" | "project" | "global" =
         (rawSharing === "global" || rawSharing === "project") ? rawSharing : "session";
-      allServersMap.set(s.name, {
+      allServersMap.set(serverKey("profile", s.name), {
         name: s.name,
         transport,
         command: s.command,
@@ -706,7 +731,7 @@ export async function loadAllMcpScoped() {
           path: filePath,
           level: s._source?.level ?? "user",
         },
-        scope: s._source?.level === "project" ? "project" : "profile",
+        scope: "profile",
         status: enabled ? "unknown" : "disabled",
       });
     }
@@ -724,7 +749,8 @@ export async function loadAllMcpScoped() {
         const rawSharing = getMcpSharingConfig(userMcpPath, name) ?? cfg.sharing;
         const sharing: "session" | "project" | "global" =
           (rawSharing === "global" || rawSharing === "project") ? rawSharing : "session";
-        const existing = allServersMap.get(name);
+        const uKey = serverKey("profile", name);
+        const existing = allServersMap.get(uKey);
         if (existing) {
           existing.command = cfg.command ?? existing.command;
           existing.args = cfg.args ?? existing.args;
@@ -735,7 +761,7 @@ export async function loadAllMcpScoped() {
           existing.sharing = sharing;
           existing.transport = transport;
         } else {
-          allServersMap.set(name, {
+          allServersMap.set(uKey, {
             name,
             transport,
             command: cfg.command,
@@ -766,11 +792,13 @@ export async function loadAllMcpScoped() {
     let count = 0;
     const primaryOmpDir = nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp");
     const projMcpFile = path.join(primaryOmpDir, "mcp.json");
+    const projScope = `project:${cwd}`;
 
     try {
       const projRes = await loadCapability<any>("mcps", { cwd });
       for (const s of projRes.items) {
-        const isProject = s._source?.level === "project";
+        // 底座 loadCapability 会级联返回用户级能力，此处仅处理属于当前项目的 MCP 条目
+        if (s._source?.level !== "project") continue;
         const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
         const enabled = isServerEnabled(s.name, s.enabled);
         const filePath = s._source?.path ?? projMcpFile;
@@ -791,15 +819,15 @@ export async function loadAllMcpScoped() {
           sharing,
           source: {
             provider: s._source?.provider ?? "native",
-            providerName: s._source?.providerName ?? "项目配置",
+            providerName: s._source?.providerName ?? hostI18n.t("flows.mcp.projectConfig"),
             path: filePath,
-            level: s._source?.level ?? "project",
+            level: "project",
           },
-          scope: isProject ? `project:${cwd}` : "profile",
+          scope: projScope,
           projectName: path.basename(cwd),
           status: enabled ? "unknown" : "disabled",
         };
-        allServersMap.set(s.name, item);
+        allServersMap.set(serverKey(projScope, s.name), item);
         count++;
       }
     } catch (err) {
@@ -816,7 +844,8 @@ export async function loadAllMcpScoped() {
           const rawSharing = getMcpSharingConfig(projMcpFile, name) ?? cfg.sharing;
           const sharing: "session" | "project" | "global" =
             rawSharing === "project" ? "project" : "session";
-          const existing = allServersMap.get(name);
+          const pKey = serverKey(projScope, name);
+          const existing = allServersMap.get(pKey);
           if (existing) {
             existing.command = cfg.command ?? existing.command;
             existing.args = cfg.args ?? existing.args;
@@ -827,7 +856,7 @@ export async function loadAllMcpScoped() {
             existing.sharing = sharing;
             existing.transport = transport;
           } else {
-            allServersMap.set(name, {
+            allServersMap.set(pKey, {
               name,
               transport,
               command: cfg.command,
@@ -840,11 +869,11 @@ export async function loadAllMcpScoped() {
               sharing,
               source: {
                 provider: "native",
-                providerName: "项目配置",
+                providerName: hostI18n.t("flows.mcp.projectConfig"),
                 path: projMcpFile,
                 level: "project",
               },
-              scope: `project:${cwd}`,
+              scope: projScope,
               projectName: path.basename(cwd),
               status: enabled ? "unknown" : "disabled",
             });
@@ -859,13 +888,14 @@ export async function loadAllMcpScoped() {
     if (fs.existsSync(etowerFile)) {
       try {
         const raw = JSON.parse(await readFile(etowerFile, "utf8"));
-        for (const [name, cfg] of Object.entries<any>(raw)) {
-          if (!allServersMap.has(name)) {
+        for (const [name, cfg] of Object.entries<any>(raw.mcpServers || raw)) {
+          const eKey = serverKey(projScope, name);
+          if (!allServersMap.has(eKey)) {
             const transport = (cfg.url ? "http" : "stdio") as "stdio" | "http";
             const enabled = isServerEnabled(name, cfg.enabled);
             const sharing: "session" | "project" | "global" =
               cfg.sharing === "project" ? "project" : "session";
-            allServersMap.set(name, {
+            allServersMap.set(eKey, {
               name,
               transport,
               command: cfg.command,
@@ -878,11 +908,11 @@ export async function loadAllMcpScoped() {
               sharing,
               source: {
                 provider: "etower",
-                providerName: "项目配置",
+                providerName: hostI18n.t("flows.mcp.projectConfig"),
                 path: etowerFile,
                 level: "project",
               },
-              scope: `project:${cwd}`,
+              scope: projScope,
               projectName: path.basename(cwd),
               status: enabled ? "unknown" : "disabled",
             });
@@ -898,25 +928,21 @@ export async function loadAllMcpScoped() {
 
   // 3. 并发健康检测（对启用状态的服务器发起快速探测，超时 2s）
   const enabledServers = serverList.filter((s) => s.enabled);
-  const probeResults = await Promise.all(
+  await Promise.all(
     enabledServers.map(async (s) => {
       const probe = await probeMcpServerHealth(s);
-      return { name: s.name, probe };
-    })
-  );
-  const probeMap = new Map(probeResults.map((r) => [r.name, r.probe]));
-
-  for (const s of serverList) {
-    if (s.enabled) {
-      const p = probeMap.get(s.name);
-      if (p) {
-        s.status = p.status;
-        s.error = p.error;
-        s.log = p.log;
+      if (probe) {
+        s.status = probe.status;
+        s.error = probe.error;
+        s.log = probe.log;
       } else {
         s.status = "connected";
       }
-    } else {
+    })
+  );
+
+  for (const s of serverList) {
+    if (!s.enabled) {
       s.status = "disabled";
       s.error = undefined;
       s.log = undefined;
@@ -924,12 +950,21 @@ export async function loadAllMcpScoped() {
   }
 
   // 兼容原有资产字段
-  const mcpProfile = { path: userMcpPath, servers: serverList.map((s) => ({ name: s.name, command: [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") || s.url || "" })) };
+  const mcpProfile = {
+    path: userMcpPath,
+    servers: serverList.filter((s) => s.scope === "profile").map((s) => ({
+      name: s.name,
+      command: [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") || s.url || "",
+    })),
+  };
   const mcpProjects = projectScopeList.map((p) => ({
     cwd: p.cwd,
     name: p.name,
     path: path.join(p.dir, "mcp.json"),
-    servers: serverList.filter((s) => s.scope === `project:${p.cwd}`).map((s) => ({ name: s.name, command: [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") || s.url || "" })),
+    servers: serverList.filter((s) => s.scope === `project:${p.cwd}`).map((s) => ({
+      name: s.name,
+      command: [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") || s.url || "",
+    })),
   }));
 
   const scopes = [

@@ -34,6 +34,7 @@ import { createKeepaliveExtension } from "./keepalive.ts";
 import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode } from "./plan.ts";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 
 export function isGitWorktree(cwd: string): boolean {
   const p = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdout: "pipe", stderr: "ignore" });
@@ -44,7 +45,7 @@ export function isGitWorktree(cwd: string): boolean {
 // 出文件路径。用于对未打开的历史会话做 rename/archive 等操作。
 export async function sessionPathFromDisk(sessionId: string): Promise<string> {
   const hit = (await SessionManager.listAll()).find((s: any) => s.id === sessionId);
-  if (!hit) throw new Error(`会话不存在: ${sessionId}`);
+  if (!hit) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   return hit.path;
 }
 
@@ -344,6 +345,9 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         };
         pendingApprovals.set(requestId, { resolve: settle });
         dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
+        // Stable option ids + editableIndex protocol field: the UI renders
+        // localized labels from the ids and locates the inline input row by
+        // index — the contract never depends on display text.
         ws.send(
           JSON.stringify(
             stampEvent({
@@ -351,8 +355,9 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
               sessionId,
               requestId,
               title,
-              options: ["提交", "取消"],
+              options: ["submit", "cancel"],
               editable: true,
+              editableIndex: 0,
               prefill: prefill ?? "",
             }),
           ),
@@ -583,7 +588,7 @@ export async function handleCreateSession(ws: any, cwd?: string, modelStr?: stri
 }
 
 export async function handleLoadSession(ws: any, sessionPath: string) {
-  if (!sessionPath) throw new Error("缺少 path");
+  if (!sessionPath) throw new Error(hostI18n.t("errors.param.missingPath"));
   // 池内已有同 path 条目：复用，不重建。重建会让同一会话文件被两个 AgentSession 同时
   // 持有（各自落盘互相覆盖），旧条目连同它的订阅一并泄漏在池里。
   // 命中路径：前端会话 LRU 驱逐后切回（同一 ws，只重推快照）；前端 reload 后点击

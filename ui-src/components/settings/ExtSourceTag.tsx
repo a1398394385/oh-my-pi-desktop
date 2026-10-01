@@ -4,9 +4,11 @@
 // 追加黄色警示徽标；未命中渲染 fallback（如技能行自带的 provider 名）。
 import { useEffect, type ReactNode } from "react";
 import { useAppStore, send } from "../../store";
+import { t } from "../../i18n";
 import type { ExtensionItem } from "../../types/frames";
 
-const LEVEL_LABEL: Record<string, string> = { user: "用户", project: "项目", native: "内置" };
+// level → i18n key (unknown levels pass through as-is)
+const LEVEL_LABEL_KEYS: Record<string, string> = { user: "settingsPage.shared.levelUser", project: "settingsPage.shared.levelProject", native: "settingsPage.shared.levelNative" };
 
 // 进入资产页时拉全量 scope 的扩展数据：先 profile（回包带 scopes 清单），再逐项目 scope 补拉
 export function useExtSources(): void {
@@ -36,16 +38,16 @@ export function ExtSourceTag({ kind, name, path, fallback }: { kind: string; nam
   const items = Object.values(byScope).flatMap((f) => f.extensions);
   const ext = matchExt(items, kind, name, path);
   if (!ext) return <>{fallback ?? null}</>;
-  const level = LEVEL_LABEL[ext.source.level] ?? ext.source.level;
+  const level = LEVEL_LABEL_KEYS[ext.source.level] ? t(LEVEL_LABEL_KEYS[ext.source.level]) : ext.source.level;
   const stateText =
-    ext.state === "active" ? "启用" : ext.state === "shadowed" ? `被 ${ext.shadowedBy ?? "同名条目"} 遮蔽` : "扩展中心已禁用";
+    ext.state === "active" ? t("settingsPage.shared.stateActive") : ext.state === "shadowed" ? t("settingsPage.shared.stateShadowedBy", { name: ext.shadowedBy ?? t("settingsPage.shared.sameNameEntry") }) : t("settingsPage.ext.extCenterDisabled");
   return (
     <>
-      <span className="tag" title={`来源：${ext.source.providerName} · ${level} · ${stateText}`}>
+      <span className="tag" title={t("settingsPage.ext.sourceTitle", { provider: ext.source.providerName, level, state: stateText })}>
         {ext.source.providerName}
       </span>
       {ext.state !== "active" ? (
-        <span className="tag ext-tag-warn">{ext.state === "shadowed" ? "遮蔽" : "已禁用"}</span>
+        <span className="tag ext-tag-warn">{ext.state === "shadowed" ? t("settingsPage.shared.shadowedTag") : t("settingsPage.shared.disabledTag")}</span>
       ) : null}
     </>
   );

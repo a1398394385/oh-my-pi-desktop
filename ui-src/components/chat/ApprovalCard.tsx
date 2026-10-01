@@ -1,18 +1,34 @@
 // 审批卡（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——
 // 「等待确认」标题 + 问题正文 + 编号选项行 + 底部键盘提示与确认钮。
 // 交互对齐 ZCodium：单击选中、再单击 / 回车 / 确认钮应答，数字键直接应答，上下 / Tab 移动选中；
-// editable（editor 对话框）时「提交」行内嵌输入（ZCodium 反馈行样式，空输入按取消处理）。
+// editable（editor 对话框）时提交行内嵌输入（ZCodium 反馈行样式，空输入按取消处理）。
 // 应答后 answer 定格（chosen/dim/disabled），本地点击即时生效。
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppStore } from "../../store/index";
 import Icon from "../../Icon";
+import { t } from "../../i18n";
+
+// Stable option ids sent by host-built approval frames (editor/plan variants).
+// Labels come from i18n so the wire stays language-independent; SDK-generated
+// options (select/confirm variants) pass through as plain display text.
+const OPTION_LABEL_KEYS: Record<string, string> = {
+  submit: "chat.approvalSubmit",
+  cancel: "chat.approvalCancel",
+  approve: "chat.planApprove",
+  refine: "chat.planRefine",
+};
+const optionLabel = (opt: string): string => {
+  const key = OPTION_LABEL_KEYS[opt];
+  return key ? t(key) : opt;
+};
 
 // 审批请求条目（store 从 host approval 帧构造）：answer/prefill 由本卡就地写回
 interface ApprovalItem {
   title?: string;
   options: string[];
   editable?: boolean;
+  editableIndex?: number;
   requestId: string;
   answer?: string | null;
   prefill?: string;
@@ -30,15 +46,16 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   const inpRef = useRef<HTMLInputElement | null>(null);
   const answered = item.answer !== null;
   const n = item.options.length;
-  // editable 协议固定 options 含「提交」：该行内嵌输入，其余行是纯选项
-  const inpIdx = item.editable ? item.options.indexOf("提交") : -1;
+  // editable protocol: editableIndex points at the inline-input row (host
+  // always sends it with the frame); located by index, never by display text.
+  const inpIdx = item.editable ? (item.editableIndex ?? -1) : -1;
 
   const choose = (i: number) => {
     if (item.answer !== null) return;
     const opt = item.options[i];
     let answer: string | null | undefined = opt;
     if (item.editable) {
-      if (opt === "提交") answer = inpRef.current!.value.trim() || null; // 空输入按取消处理（editable 行必已挂载）
+      if (i === inpIdx) answer = inpRef.current!.value.trim() || null; // 空输入按取消处理（editable 行必已挂载）
       else answer = undefined;
     }
     setChosen(i);
@@ -120,9 +137,9 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
 
   return (
     <div className="approval-card">
-      <div className="approval-head">等待确认</div>
+      <div className="approval-head">{t("chat.awaitingConfirm")}</div>
       <div className="approval-title">{item.title}</div>
-      <div className="approval-list" role="listbox" aria-label="确认选项" ref={listRef}>
+      <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
         {item.options.map((opt, i) => {
           const num = answered && i === frozenChosen ? "✓" : `${i + 1}.`;
           const cls =
@@ -149,7 +166,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                 <input
                   type="text"
                   className="approval-inp"
-                  placeholder="输入内容后提交…"
+                  placeholder={t("chat.typeToSubmit")}
                   defaultValue={item.prefill || ""}
                   disabled={answered}
                   ref={inpRef}
@@ -174,7 +191,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
               onClick={() => (sel ? choose(i) : focusRow(i))}
             >
               <span className="approval-num">{num}</span>
-              <span className="approval-label">{opt}</span>
+              <span className="approval-label">{optionLabel(opt)}</span>
             </button>
           );
         })}
@@ -183,10 +200,10 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         <div className="approval-foot">
           <span className="approval-hint">
             <Icon name="info" size={15} />
-            使用 Tab / 上下键选择，回车确认
+            {t("chat.approvalHint")}
           </span>
           <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>
-            确认
+            {t("common.confirm")}
           </button>
         </div>
       )}

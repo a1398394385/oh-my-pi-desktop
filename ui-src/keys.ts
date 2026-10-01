@@ -16,6 +16,7 @@ import {
   getSupportedThinkingForModel, pickModelId, pickThinkingLevel, toolExpandKey,
   type TimerHandle,
 } from "./store";
+import { t } from "./i18n";
 import { saveUiPrefs, applyAppearance } from "./appearance";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
@@ -110,7 +111,7 @@ function cycleModel(delta: number): void {
   if (!s && !st.isCreatingNew) return;
   const ids = [...st.modelNames.keys()];
   if (ids.length === 0) {
-    toast("未配置可用模型");
+    toast(t("composer.noModels"));
     return;
   }
   const cur = s?.model || st.newSessionModel;
@@ -164,7 +165,7 @@ function toggleThinking(): void {
       if (it.role === "thinking" && it.streaming) it.expanded = showThinking;
     }
   }
-  toast(showThinking ? "思考过程：运行时展开" : "思考过程：运行时保持收起");
+  toast(t(showThinking ? "misc.thinkingExpandOn" : "misc.thinkingExpandOff"));
 }
 
 /** app.tools.expand：工具输出「运行中默认展开、结束收起」开关 */
@@ -179,7 +180,7 @@ function toggleToolOutput(): void {
       if (it.role === "tool" && it.running) it[toolExpandKey(it.name)] = expandToolOutput;
     }
   }
-  toast(expandToolOutput ? "工具输出：运行时展开" : "工具输出：运行时保持收起");
+  toast(t(expandToolOutput ? "misc.toolExpandOn" : "misc.toolExpandOff"));
 }
 
 /** Command/Ctrl + 1~9：跳转到左侧会话（优先运行中，不足 9 个用未读补齐） */
@@ -216,58 +217,70 @@ export interface ShortcutGroup {
   desc: string;
   items: ShortcutItem[];
 }
+// Registry labels/titles/descs are getters: the module-level array re-reads the
+// active language on every access, so consumers see translated copy after a
+// language switch without rebuilding the registry.
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
-    title: "通用",
-    desc: "全局快捷键，在任何界面都可以使用。",
+    get title() { return t("misc.keysGroupGeneral"); },
+    get desc() { return t("misc.keysGroupGeneralDesc"); },
     items: [
-      { keys: ["Esc"], chords: ["escape"], label: "Esc 路由：无字双击开树 / 树页单击回对话 / 有字双击清空", run: handleEsc },
-      { keys: [MOD, "N"], label: "新建任务" },
-      { keys: [MOD, "1~9"], label: "跳转至对应会话（运行中优先，未读补齐）" },
-      { keys: [MOD, "B"], chords: ["meta+b"], label: "切换左侧边栏", run: toggleSidebar },
-      { keys: [MOD, ","], label: "打开 / 关闭设置" },
-      { keys: ["Esc"], label: "关闭设置 / 查找栏 / 弹层" },
-      { keys: [MOD, "F"], label: "会话内查找" },
-      { keys: ["Alt", "A"], chords: ["alt+a"], label: "切换右侧边栏", run: toggleSubagents },
+      { keys: ["Esc"], chords: ["escape"], get label() { return t("misc.keysEscRoute"); }, run: handleEsc },
+      { keys: [MOD, "N"], get label() { return t("misc.newTask"); } },
+      { keys: [MOD, "1~9"], get label() { return t("misc.keysJumpSession"); } },
+      { keys: [MOD, "B"], chords: ["meta+b"], get label() { return t("misc.keysToggleSidebar"); }, run: toggleSidebar },
+      { keys: [MOD, ","], get label() { return t("misc.keysToggleSettings"); } },
+      { keys: ["Esc"], get label() { return t("misc.keysCloseOverlays"); } },
+      { keys: [MOD, "F"], get label() { return t("misc.keysFindInSession"); } },
+      { keys: ["Alt", "A"], chords: ["alt+a"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
     ],
   },
   {
-    title: "模型与思考",
-    desc: "键位对齐 omp 命令行。",
+    get title() { return t("misc.keysGroupModel"); },
+    get desc() { return t("misc.keysGroupModelDesc"); },
     items: [
-      { keys: ["Ctrl", "P"], chords: ["ctrl+p"], label: "下一个模型", run: () => cycleModel(1) },
-      { keys: ["Ctrl", "⇧", "P"], chords: ["ctrl+shift+p"], label: "上一个模型", run: () => cycleModel(-1) },
-      { keys: ["Alt", "M"], chords: ["alt+m"], label: "打开模型选择", run: openModelMenu },
-      { keys: ["⇧", "Tab"], chords: ["shift+tab"], label: "循环思考级别", run: cycleThinking },
-      { keys: ["Ctrl", "T"], chords: ["ctrl+t"], label: "思考过程：运行时默认展开", run: toggleThinking },
-      { keys: ["Alt", "⇧", "P"], chords: ["alt+shift+p"], label: "计划模式开关", run: togglePlanMode },
+      { keys: ["Ctrl", "P"], chords: ["ctrl+p"], get label() { return t("misc.keysNextModel"); }, run: () => cycleModel(1) },
+      { keys: ["Ctrl", "⇧", "P"], chords: ["ctrl+shift+p"], get label() { return t("misc.keysPrevModel"); }, run: () => cycleModel(-1) },
+      { keys: ["Alt", "M"], chords: ["alt+m"], get label() { return t("misc.keysOpenModelMenu"); }, run: openModelMenu },
+      { keys: ["⇧", "Tab"], chords: ["shift+tab"], get label() { return t("misc.keysCycleThinking"); }, run: cycleThinking },
+      { keys: ["Ctrl", "T"], chords: ["ctrl+t"], get label() { return t("misc.keysThinkingExpand"); }, run: toggleThinking },
+      { keys: ["Alt", "⇧", "P"], chords: ["alt+shift+p"], get label() { return t("misc.keysPlanToggle"); }, run: togglePlanMode },
     ],
   },
   {
-    title: "过程显示",
-    desc: "思考与工具输出在运行期间的默认展开。",
+    get title() { return t("misc.keysGroupDisplay"); },
+    get desc() { return t("misc.keysGroupDisplayDesc"); },
     items: [
-      { keys: ["Ctrl", "O"], chords: ["ctrl+o"], label: "工具输出：运行时默认展开", run: toggleToolOutput },
+      { keys: ["Ctrl", "O"], chords: ["ctrl+o"], get label() { return t("misc.keysToolExpand"); }, run: toggleToolOutput },
     ],
   },
   {
-    title: "输入框",
-    desc: "会话输入框内的按键行为。",
+    get title() { return t("misc.keysGroupComposer"); },
+    get desc() { return t("misc.keysGroupComposerDesc"); },
     items: [
-      { keys: ["↵"], label: "发送消息" },
-      { keys: ["⇧", "↵"], label: "换行" },
-      { keys: ["Ctrl", "↵"], label: "立即注入（生成中 steer）" },
-      { keys: ["Ctrl", "Q"], label: "加入待发送队列" },
-      { keys: ["Alt", "↑"], label: "拉回排队消息（后发先回）" },
+      { keys: ["↵"], get label() { return t("misc.keysSend"); } },
+      { keys: ["⇧", "↵"], get label() { return t("misc.keysNewline"); } },
+      { keys: ["Ctrl", "↵"], get label() { return t("misc.keysSteer"); } },
+      { keys: ["Ctrl", "Q"], get label() { return t("misc.keysQueue"); } },
+      { keys: ["Alt", "↑"], get label() { return t("misc.keysRecall"); } },
     ],
   },
   {
-    title: "界面缩放",
-    desc: "调整整个界面的显示比例。",
+    // 树页内的键绑定在 SessionTreeStream 组件里，此处只登记展示（不重复绑定——重复绑定即双触发）
+    get title() { return t("misc.keysGroupTree"); },
+    get desc() { return t("misc.keysGroupTreeDesc"); },
     items: [
-      { keys: [MOD, "+"], label: "放大" },
-      { keys: [MOD, "−"], label: "缩小" },
-      { keys: [MOD, "0"], label: "重置缩放" },
+      { keys: ["↑", "↓"], get label() { return t("misc.keysTreeMove"); } },
+      { keys: ["↵"], get label() { return t("misc.keysTreeJump"); } },
+    ],
+  },
+  {
+    get title() { return t("misc.keysGroupZoom"); },
+    get desc() { return t("misc.keysGroupZoomDesc"); },
+    items: [
+      { keys: [MOD, "+"], get label() { return t("misc.keysZoomIn"); } },
+      { keys: [MOD, "−"], get label() { return t("misc.keysZoomOut"); } },
+      { keys: [MOD, "0"], get label() { return t("misc.keysZoomReset"); } },
     ],
   },
 ];

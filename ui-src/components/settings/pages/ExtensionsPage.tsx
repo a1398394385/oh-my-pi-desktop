@@ -3,7 +3,9 @@
 // 统一条目列表（kind 图标/来源徽标/状态）+ 行内 .mem-expand 详情（与 TUI inspector 同数据面，
 // 规则解析/工具文件头/命令预览由 host 预计算下发）。
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
+import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import { emptyRow } from "../common";
 import type { ExtensionItem } from "../../../types/frames";
@@ -23,42 +25,47 @@ const KIND_ICON: Record<string, string> = {
   "slash-command": "commands",
 };
 const KIND_LABEL: Record<string, string> = {
-  skill: "技能",
-  rule: "规则",
-  tool: "工具",
-  "extension-module": "扩展模块",
-  mcp: "MCP",
-  prompt: "提示词",
-  instruction: "指令",
-  "context-file": "上下文文件",
-  hook: "钩子",
-  "slash-command": "斜杠命令",
+  skill: "settingsPage.ext.kindSkill",
+  rule: "settingsPage.ext.kindRule",
+  tool: "settingsPage.ext.kindTool",
+  "extension-module": "settingsPage.ext.kindModule",
+  mcp: "settingsPage.ext.kindMcp",
+  prompt: "settingsPage.ext.kindPrompt",
+  instruction: "settingsPage.ext.kindInstruction",
+  "context-file": "settingsPage.ext.kindContextFile",
+  hook: "settingsPage.ext.kindHook",
+  "slash-command": "settingsPage.ext.kindSlash",
 };
 // 列表排序的 kind 先后（同底座 loadAllExtensions 的加载顺序）
 const KIND_ORDER = ["extension-module", "skill", "rule", "tool", "mcp", "prompt", "slash-command", "hook", "instruction", "context-file"];
-const LEVEL_LABEL: Record<string, string> = { user: "用户", project: "项目", native: "内置" };
+// level → i18n key (unknown levels pass through as-is)
+const LEVEL_LABEL_KEYS: Record<string, string> = { user: "settingsPage.shared.levelUser", project: "settingsPage.shared.levelProject", native: "settingsPage.shared.levelNative" };
 const REASON_LABEL: Record<string, string> = {
-  "provider-disabled": "供应商已禁用",
-  "user-opt-in": "未开启 ~/ 配置",
-  "item-disabled": "手动禁用",
-  shadowed: "被遮蔽",
+  "provider-disabled": "settingsPage.ext.reasonProviderDisabled",
+  "user-opt-in": "settingsPage.ext.reasonUserOptIn",
+  "item-disabled": "settingsPage.ext.reasonItemDisabled",
+  shadowed: "settingsPage.ext.reasonShadowed",
 };
 
 function stateLabel(ext: ExtensionItem): string {
-  if (ext.state === "active") return "启用";
-  if (ext.state === "shadowed") return `被 ${ext.shadowedBy ?? "同名条目"} 遮蔽`;
-  return `已禁用 · ${REASON_LABEL[ext.disabledReason ?? ""] ?? "未知"}`;
+  if (ext.state === "active") return ti("settingsPage.shared.stateActive");
+  if (ext.state === "shadowed") return ti("settingsPage.shared.stateShadowedBy", { name: ext.shadowedBy ?? ti("settingsPage.shared.sameNameEntry") });
+  // Unknown reasons (new host-side kinds) pass through as-is; no reason → "unknown"
+  const reasonKey = ext.disabledReason ? REASON_LABEL[ext.disabledReason] : undefined;
+  const reason = reasonKey ? ti(reasonKey) : ext.disabledReason || ti("settingsPage.ext.reasonUnknown");
+  return ti("settingsPage.ext.stateDisabled", { reason });
 }
 
 
 // 条目开关：shadowed 不可点；provider 级原因不乐观翻转（服务端帧为准），手动禁用即时反馈
 function ItemToggle({ ext, scope }: { ext: ExtensionItem; scope: string }) {
+  const { t } = useTranslation();
   const on = ext.state === "active";
   const optimistic = ext.state !== "shadowed" && (!ext.disabledReason || ext.disabledReason === "item-disabled");
   return (
     <div
       className={`tg${on ? " on" : ""}${ext.state === "shadowed" ? " disabled" : ""}`}
-      title={ext.state === "shadowed" ? "同名条目已被更高优先级来源遮蔽" : on ? "已启用，点击禁用" : "已禁用，点击启用"}
+      title={ext.state === "shadowed" ? t("settingsPage.ext.shadowedTip") : on ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
       onClick={(e) => {
         e.stopPropagation();
         if (ext.state === "shadowed") return;
@@ -122,6 +129,7 @@ function strList(v: unknown): string[] | undefined {
 
 // 工具参数表（raw.parameters / raw.inputSchema 的 JSON Schema 子集渲染）
 function ToolParams({ ext }: { ext: ExtensionItem }) {
+  const { t } = useTranslation();
   const raw = ext.raw ?? {};
   const candidate = raw.parameters ?? raw.inputSchema;
   if (!candidate || typeof candidate !== "object") return null;
@@ -130,14 +138,14 @@ function ToolParams({ ext }: { ext: ExtensionItem }) {
   const required = new Set(Array.isArray(schema.required) ? schema.required.filter((x): x is string => typeof x === "string") : []);
   return (
     <div className="ext-kv">
-      <span className="ext-k">参数</span>
+      <span className="ext-k">{t("settingsPage.ext.params")}</span>
       <span className="ext-v ext-params">
         {Object.entries(schema.properties).map(([name, spec]) => {
           const type = spec && typeof spec === "object" ? str((spec as { type?: unknown }).type) : undefined;
           return (
             <span key={name} className="ext-param">
               <b>{name}</b>
-              <i>{type ?? "any"}{required.has(name) ? " · 必填" : ""}</i>
+              <i>{type ?? "any"}{required.has(name) ? ` · ${t("settingsPage.ext.paramRequired")}` : ""}</i>
             </span>
           );
         })}
@@ -148,6 +156,7 @@ function ToolParams({ ext }: { ext: ExtensionItem }) {
 
 // 行内向下延展详情区（.mem-expand，同记忆页模式；数据面同 TUI inspector-model）
 function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }) {
+  const { t } = useTranslation();
   const raw = ext.raw ?? {};
   const fm = (raw.frontmatter ?? {}) as Record<string, unknown>;
   const fmStr = (k: string) => str(fm[k]);
@@ -163,17 +172,17 @@ function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }
         <b>{ext.displayName}</b>
         <span className="ext-state">{stateLabel(ext)}</span>
         <span className="sp" />
-        <button type="button" className="save-btn" onClick={onClose}>收起</button>
+        <button type="button" className="save-btn" onClick={onClose}>{t("settingsPage.shared.collapse")}</button>
       </div>
       <div className="ext-detail">
-        <KV k="来源" v={`${ext.source.providerName} · ${LEVEL_LABEL[ext.source.level] ?? ext.source.level}`} />
-        <KV k="路径" v={ext.path} />
-        {ext.trigger ? <KV k="触发" v={ext.trigger} /> : null}
-        <KV k="描述" v={desc} />
+        <KV k={t("settingsPage.ext.kvSource")} v={`${ext.source.providerName} · ${LEVEL_LABEL_KEYS[ext.source.level] ? t(LEVEL_LABEL_KEYS[ext.source.level]) : ext.source.level}`} />
+        <KV k={t("settingsPage.ext.kvPath")} v={ext.path} />
+        {ext.trigger ? <KV k={t("settingsPage.ext.kvTrigger")} v={ext.trigger} /> : null}
+        <KV k={t("settingsPage.ext.kvDesc")} v={desc} />
         {ext.kind === "skill" ? (
           <>
             <KV
-              k="匹配"
+              k={t("settingsPage.ext.kvMatch")}
               v={
                 list(strList(fm.globs)) ??
                 (fm.alwaysApply === true ? "always" : undefined) ??
@@ -185,19 +194,19 @@ function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }
         ) : null}
         {ext.kind === "rule" ? (
           <>
-            <KV k="匹配" v={list(strList(raw.globs)) ?? (raw.alwaysApply === true ? "always" : undefined)} />
-            <KV k="条件" v={list(ext.detail?.condition)} />
-            <KV k="AST 条件" v={list(ext.detail?.astCondition)} />
-            <KV k="作用域" v={list(ext.detail?.scope)} />
+            <KV k={t("settingsPage.ext.kvMatch")} v={list(strList(raw.globs)) ?? (raw.alwaysApply === true ? "always" : undefined)} />
+            <KV k={t("settingsPage.ext.kvCondition")} v={list(ext.detail?.condition)} />
+            <KV k={t("settingsPage.ext.kvAstCondition")} v={list(ext.detail?.astCondition)} />
+            <KV k={t("settingsPage.ext.kvScope")} v={list(ext.detail?.scope)} />
             <KV k="Agents" v={list(ext.detail?.agents)} />
-            <KV k="打断模式" v={rawStr("interruptMode")} />
+            <KV k={t("settingsPage.ext.kvInterruptMode")} v={rawStr("interruptMode")} />
             <PreBlock text={content} />
           </>
         ) : null}
         {ext.kind === "tool" ? <ToolParams ext={ext} /> : null}
         {ext.kind === "mcp" ? (
           <KV
-            k="配置"
+            k={t("settingsPage.ext.kvConfig")}
             v={
               rawStr("command")
                 ? [rawStr("command"), ...(strList(raw.args) ?? [])].filter((x): x is string => typeof x === "string").join(" ")
@@ -207,23 +216,24 @@ function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }
         ) : null}
         {ext.kind === "slash-command" ? (
           <>
-            <KV k="参数提示" v={ext.detail?.argumentHint} />
-            <KV k="接受参数" v={ext.detail?.usesArguments ? "$ARGUMENTS" : undefined} />
+            <KV k={t("settingsPage.ext.kvArgHint")} v={ext.detail?.argumentHint} />
+            <KV k={t("settingsPage.ext.kvUsesArgs")} v={ext.detail?.usesArguments ? "$ARGUMENTS" : undefined} />
             <PreBlock text={ext.detail?.body} />
           </>
         ) : null}
         {ext.kind === "hook" ? (
-          <KV k="钩子" v={`${rawStr("type") ?? "?"} · ${rawStr("tool") ?? "?"}`} />
+          <KV k={t("settingsPage.ext.kvHook")} v={`${rawStr("type") ?? "?"} · ${rawStr("tool") ?? "?"}`} />
         ) : null}
-        {ext.kind === "instruction" ? <KV k="应用于" v={rawStr("applyTo")} /> : null}
+        {ext.kind === "instruction" ? <KV k={t("settingsPage.ext.kvApplyTo")} v={rawStr("applyTo")} /> : null}
         {ext.kind === "prompt" || ext.kind === "instruction" || ext.kind === "context-file" ? <PreBlock text={content} /> : null}
-        {ext.kind === "extension-module" ? <KV k="模块" v={rawStr("name")} /> : null}
+        {ext.kind === "extension-module" ? <KV k={t("settingsPage.ext.kvModule")} v={rawStr("name")} /> : null}
       </div>
     </div>
   );
 }
 
 export default function ExtensionsPage() {
+  const { t } = useTranslation();
   const payload = useAppStore((s) => s.extensions);
   const [scope, setScope] = useState("profile");
   const [prov, setProv] = useState("all");
@@ -324,7 +334,7 @@ export default function ExtensionsPage() {
 
   return (
     <div className="set-page" id="pg-extensions">
-      <div className="set-tt">扩展</div>
+      <div className="set-tt">{t("settingsPage.nav.extensions")}</div>
 
       <div className="ext-bar-primary">
         <div className="ext-scope-wrap">
@@ -339,14 +349,14 @@ export default function ExtensionsPage() {
             projects={(payload?.scopes ?? []).slice(1)}
           />
           <span className="ext-divider">|</span>
-          <span className="text-ui-base text-dim">{filtered.length} 项</span>
+          <span className="text-ui-base text-dim">{t("settingsPage.ext.countItems", { count: filtered.length })}</span>
         </div>
         <div className="ext-search-wrap">
           <span className="ext-search-icon"><Icon name="search" size={14} /></span>
           <input
             type="text"
             className="ext-search-input"
-            placeholder="搜索扩展…"
+            placeholder={t("settingsPage.ext.searchPlaceholder")}
             spellCheck="false"
             autoComplete="off"
             value={q}
@@ -362,7 +372,7 @@ export default function ExtensionsPage() {
             className={`fork-pill ${prov === "all" ? "active" : ""}`}
             onClick={() => setProv("all")}
           >
-            <span>全部来源</span>
+            <span>{t("settingsPage.ext.allSources")}</span>
             <span className="fork-pill-len">{countOf("all")}</span>
           </button>
           {(payload?.providers ?? []).map((p) => {
@@ -383,10 +393,10 @@ export default function ExtensionsPage() {
         </div>
         {selProv ? (
           <div className="ext-prov-ctl">
-            <span className="text-ui-sm text-dim">启用该来源</span>
+            <span className="text-ui-sm text-dim">{t("settingsPage.ext.enableSource")}</span>
             <div
               className={`tg${selProv.enabled ? " on" : ""}`}
-              title={selProv.enabled ? "已启用，点击禁用整个来源" : "已禁用，点击启用"}
+              title={selProv.enabled ? t("settingsPage.ext.sourceEnabledTip") : t("settingsPage.shared.disabledTip")}
               onClick={() => {
                 const st = useAppStore.getState().extensions;
                 if (st) {
@@ -404,10 +414,10 @@ export default function ExtensionsPage() {
             </div>
             {selProv.foreignUserSource ? (
               <>
-                <span className="text-ui-sm text-dim">~/ 配置</span>
+                <span className="text-ui-sm text-dim">{t("settingsPage.ext.userConfig")}</span>
                 <div
                   className={`tg${selProv.userSourceEnabled ? " on" : ""}`}
-                  title={selProv.userSourceEnabled ? "已 opt-in，点击关闭" : "未启用，点击 opt-in"}
+                  title={selProv.userSourceEnabled ? t("settingsPage.ext.userSourceOn") : t("settingsPage.ext.userSourceOff")}
                   onClick={() => {
                     const st = useAppStore.getState().extensions;
                     if (st) {
@@ -431,7 +441,7 @@ export default function ExtensionsPage() {
           <button
             type="button"
             className={`icon-btn pg-refresh${spinning ? " spin" : ""}`}
-            title="刷新"
+            title={t("settingsPage.model.refresh")}
             onClick={() => refresh()}
           >
             <Icon name="refresh" size={17} />
@@ -441,16 +451,16 @@ export default function ExtensionsPage() {
 
       <div className="ext-list-wrap">
         {!payload ? (
-          <div className="set-card">{emptyRow("加载中…")}</div>
+          <div className="set-card">{emptyRow(t("common.loading"))}</div>
         ) : !filtered.length ? (
-          <div className="set-card">{emptyRow(q ? "未找到匹配的扩展" : "当前范围暂无扩展")}</div>
+          <div className="set-card">{emptyRow(q ? t("settingsPage.ext.emptySearch") : t("settingsPage.ext.emptyScope"))}</div>
         ) : (
           KIND_ORDER.map((kind) => ({ kind, items: filtered.filter((x) => x.kind === kind) }))
             .filter((g) => g.items.length > 0)
             .map((g) => (
               <div className="ext-group" key={g.kind}>
                 <div className="set-group-tt">
-                  {KIND_LABEL[g.kind] ?? g.kind}
+                  {KIND_LABEL[g.kind] ? t(KIND_LABEL[g.kind]) : g.kind}
                   <span className="ext-cnt">{g.items.length}</span>
                 </div>
                 <div className="set-card">
@@ -462,7 +472,7 @@ export default function ExtensionsPage() {
                           className={`srow ext-row${open ? " on" : ""}${ext.state !== "active" ? " off" : ""}`}
                           onClick={() => setOpenId(open ? null : ext.id)}
                         >
-                          <span className="ext-kind-ic" title={KIND_LABEL[ext.kind] ?? ext.kind}>
+                          <span className="ext-kind-ic" title={KIND_LABEL[ext.kind] ? t(KIND_LABEL[ext.kind]) : ext.kind}>
                             <Icon name={KIND_ICON[ext.kind] ?? "box"} size={13} />
                           </span>
                           <div className="srow-tx">
@@ -471,7 +481,7 @@ export default function ExtensionsPage() {
                           </div>
                           {ext.state === "shadowed" ? (
                             <div className="ext-badges">
-                              <span className="tag ext-tag-warn">遮蔽</span>
+                              <span className="tag ext-tag-warn">{t("settingsPage.shared.shadowedTag")}</span>
                             </div>
                           ) : null}
                           <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>

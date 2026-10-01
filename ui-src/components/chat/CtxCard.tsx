@@ -10,6 +10,7 @@ import { fmtTokens } from "../../store/utils";
 import { placeMenu } from "../../shell";
 import { fmtLimitWindow, limitTone } from "../../lib/limits";
 import type { LimitWindow } from "../../lib/limits";
+import { t } from "../../i18n";
 
 /** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
 type TimerHandle = ReturnType<typeof setTimeout>;
@@ -29,21 +30,21 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
   const balance = limits.balance;
   let body;
   if (limits.unsupported) {
-    body = "该供应商暂不支持限额查询";
+    body = t("chat.providerNoLimits");
   } else if (limits.status === "notConfigured") {
-    body = "未配置该供应商凭证";
+    body = t("chat.providerNoCredentials");
   } else if (!windows.length && !balance) {
-    body = "限额暂不可用";
+    body = t("chat.limitsUnavailable");
   } else {
     // 余额类供应商（host 侧 synthesize 的 metric:'credits' 窗口 + balance）只显示余额数字，
     // 不渲染进度条和百分比；有百分比窗口的供应商仍按窗口渲染
     const pctWindows = windows.filter((w) => w.metric !== "credits");
     if (!pctWindows.length && balance?.amount != null) {
       body = (
-        <div className="pt-[8px] text-dim text-[12px]" /* style-token-ignore */>余额 {balance.amount} {balance.currency ?? ""}</div>
+        <div className="pt-[8px] text-dim text-[12px]" /* style-token-ignore */>{t("chat.balance", { amount: balance.amount, currency: balance.currency ?? "" })}</div>
       );
     } else if (!pctWindows.length) {
-      body = "限额暂不可用";
+      body = t("chat.limitsUnavailable");
     } else {
       body = (
         <>
@@ -65,7 +66,7 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
             })}
           </div>
           {balance?.amount != null && (
-            <div className="pt-[8px] text-dim text-[12px]" /* style-token-ignore */>余额 {balance.amount} {balance.currency ?? ""}</div>
+            <div className="pt-[8px] text-dim text-[12px]" /* style-token-ignore */>{t("chat.balance", { amount: balance.amount, currency: balance.currency ?? "" })}</div>
           )}
         </>
       );
@@ -74,7 +75,7 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
   return (
     <div className={"cx-sec pb-[2px]" + (noDiv ? " no-div" : "")}>
       <div className="flex justify-between items-baseline text-[13.5px] pt-[2px] pb-[10px]" /* style-token-ignore */>
-        <b>剩余额度</b>
+        <b>{t("chat.remainingQuota")}</b>
         <span className="text-faint text-[11.5px]" /* style-token-ignore */>{limits.label ?? ""}</span>
       </div>
       <div className="min-w-[268px]">{body}</div>
@@ -208,7 +209,7 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
       {b ? (
         <>
           <div className="flex justify-between items-center text-ui-md mb-[10px]">
-            <b>上下文</b>
+            <b>{t("chat.context")}</b>
             {/* 右侧数字与下方分类行同款:数值 | 百分比,竖线分隔、右对齐 */}
             <span className="cx-total">
               <span className="cx-val">{fmtTokens(b.usedTokens)}</span>
@@ -225,12 +226,12 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
             const mcpTokens = b.mcpToolsTokens ?? 0;
             const pct = (v: number) => (b.usedTokens > 0 ? ((v / b.usedTokens) * 100).toFixed(1) : "0.0") + "%";
             const rows: [string, number][] = [
-              ["系统工具", Math.max(0, b.systemToolsTokens - mcpTokens)],
-              ["MCP 工具", mcpTokens],
-              ["系统提示词", b.systemPromptTokens],
-              ["技能", b.skillsTokens],
-              ["消息", b.messagesTokens],
-              ["其他", b.systemContextTokens],
+              [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTokens)],
+              [t("chat.ctxMcpTools"), mcpTokens],
+              [t("chat.ctxSystemPrompt"), b.systemPromptTokens],
+              [t("chat.ctxSkills"), b.skillsTokens],
+              [t("chat.ctxMessages"), b.messagesTokens],
+              [t("chat.ctxOther"), b.systemContextTokens],
             ];
             return rows.map(([label, v], i) => (
               <div className="cx-row" key={label}>
@@ -256,12 +257,12 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
               useAppStore.getState().send({ type: "compact_session", sessionId: cur.sessionId });
             }}
           >
-            {compactBusy ? "压缩中…" : "压缩上下文"}
+            {compactBusy ? t("chat.compacting") : t("chat.compactContext")}
           </button>
         </div>
       )}
       {/* 空态:无模型供应商给「暂无可用模型」;明细回包到了但没组成/限额给「暂无数据」;否则等回包 */}
-      {!b && !limits ? (noModel ? "暂无可用模型" : ctxDetail ? "上下文用量暂无数据" : "加载中…") : null}
+      {!b && !limits ? (noModel ? t("chat.noModelAvailable") : ctxDetail ? t("chat.ctxNoData") : t("common.loading")) : null}
     </div>,
     document.body,
   );

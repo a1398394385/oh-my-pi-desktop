@@ -1,7 +1,9 @@
 // 高级页：无 ui 元数据的键（底座不进面板的内部设置）按首段点号前缀动态分组照 schema 原样渲染。
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../../store";
 import SchemaRows from "../SchemaRows";
-import { ADV_PREFIX_ZH } from "../settings-zh";
+import { ADV_PREFIX_ZH } from "../../../i18n/locales/settings-zh-CN";
+import { ADV_PREFIX_EN } from "../../../i18n/locales/settings-en";
 import { PAGE_PLACEMENT } from "../placement";
 
 // 高级页产出的段形状：只有显式 keys（无 from 展开），titleZh 已由前缀映射/回退解析
@@ -14,7 +16,10 @@ interface AdvSection {
 // 仅用到每个键的 ui 元数据存在性）
 type SchemaMap = Record<string, { ui?: unknown }>;
 
-function buildSections(schema: SchemaMap | null | undefined): AdvSection[] {
+// advPrefix: language-specific prefix → group title dictionary; the "" prefix
+// (dot-less keys) carries its own entry (zh fallback title / en "Misc"), so
+// the fallback for unknown prefixes is simply the raw prefix string.
+function buildSections(schema: SchemaMap | null | undefined, advPrefix: Record<string, string>): AdvSection[] {
   if (!schema) return [];
   // 已在某页 placement 显式列出的无 ui 键不再进高级页（避免重复渲染）
   const placed = new Set<string>();
@@ -32,19 +37,22 @@ function buildSections(schema: SchemaMap | null | undefined): AdvSection[] {
     }
     groups.get(prefix)!.push(k);
   }
-  // 组序 = 各前缀在 schema 声明序中的首次出现；titleZh 缺译回退前缀原文（无点号回退 杂项）
+  // Group order = first appearance of each prefix in the schema declaration
+  // order; a missing titleZh falls back to the raw prefix
   return order.map((p) => ({
-    titleZh: (ADV_PREFIX_ZH as Record<string, string>)[p] ?? (p === "" ? "杂项" : p), // 前缀表为静态字面量，按字符串索引需收窄
+    titleZh: advPrefix[p] ?? p,
     keys: groups.get(p)!,
   }));
 }
 
 export default function AdvancedPage() {
+  const { t } = useTranslation();
   const schema = useAppStore((s) => s.settingsSchema);
-  const sections = buildSections(schema);
+  const lang = useAppStore((s) => s.uiPrefs.lang);
+  const sections = buildSections(schema, lang === "zh-CN" ? ADV_PREFIX_ZH : ADV_PREFIX_EN);
   return (
     <div className="set-page" id="pg-advanced">
-      <div className="set-tt">高级</div>
+      <div className="set-tt">{t("settingsPage.nav.advanced")}</div>
       <SchemaRows sections={sections} />
     </div>
   );

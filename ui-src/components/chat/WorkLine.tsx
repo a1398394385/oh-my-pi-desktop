@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { activeOpen } from "../../store";
 import { fmtDuration } from "./util";
+import { t } from "../../i18n";
 
 // 「工作中 N 秒」：250ms 轮询按真实时间取值（setInterval(1000) 与 turnStartAt 相位不对齐，
 // 且主线程被流式重绘阻塞时回调被压缩补跳）
@@ -12,15 +13,16 @@ export function WorkSec() {
     return cur?.turnStartAt ? Math.floor((Date.now() - cur.turnStartAt) / 1000) : 0;
   });
   useEffect(() => {
-    const t = setInterval(() => {
+    // renamed from `t` to avoid shadowing the i18n t() import
+    const timer = setInterval(() => {
       const s = activeOpen();
       if (s?.turnStartAt) setSec(Math.floor((Date.now() - s.turnStartAt) / 1000));
     }, 250);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, []);
   return (
     <div className="act t2">
-      工作中 <span id="workSec">{fmtDuration(sec)}</span>
+      {t("chat.workingFor")}<span id="workSec">{fmtDuration(sec)}</span>
     </div>
   );
 }

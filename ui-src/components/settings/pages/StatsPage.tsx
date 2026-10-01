@@ -1,7 +1,9 @@
 // 设置·使用统计页：token 总量/峰值/时长/连续天数热力图 + 14 天趋势曲线 + 模型分布环图。
 // 逻辑 1:1 平移自旧版 ui/settings/stats.js，图形由 React 声明式生成（与旧版命令式 SVG 视觉一致）。
 import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, fmtDurationMs } from "../../../store";
+import i18next, { t } from "../../../i18n";
 
 // 使用统计负载（宿主 get_usage_stats 回包；usageStats 落 store，字段边界以宿主回包为准）
 interface UsageStats {
@@ -18,11 +20,17 @@ interface UsageStats {
 // 与旧版一致的统计配色（图形专用色板，沿袭原设计）
 const STAT_COLORS: string[] = ["#4a9eff", "#34c759", "#a86fe0", "#e05c5c", "#e5a14e", "#4ec9b0"];
 
-// 紧凑 token 数格式化（旧版 fmtCompactTokens 平移）
+// 紧凑 token 数格式化（旧版 fmtCompactTokens 平移）。
+// zh keeps the Chinese large-number units (values from the pack); en uses the B/M/k decimal ladder.
 function fmtCompactTokens(n: number | null | undefined): string {
   if (n == null || n <= 0) return "0";
-  if (n >= 1e8) return (n / 1e8).toFixed(1) + " 亿";
-  if (n >= 1e4) return (n / 1e4).toFixed(1) + " 万";
+  if (i18next.language === "zh-CN") {
+    if (n >= 1e8) return (n / 1e8).toFixed(1) + t("settingsPage.stats.unitYi");
+    if (n >= 1e4) return (n / 1e4).toFixed(1) + t("settingsPage.stats.unitWan");
+  } else {
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  }
   if (n >= 1024) return (n / 1024).toFixed(1) + "k";
   return String(n);
 }
@@ -33,7 +41,9 @@ function themeTextColors(): { main: string; sub: string } {
   return { main: light ? "#1d1d21" : "#ededef", sub: light ? "#909098" : "#7b7b86" };
 }
 
-// Token 活动热力图：53 列 × 7 行，等级 0-4 对应 var(--hm0..--hm4)
+// Token 活动热力图：53 列 × 7 行，等级 0-4 对应 var(--hm0..--hm4)。
+// Month labels via Intl short month (zh renders the same short form as the legacy
+// UI; en gets Sep etc. for free).
 function buildHeatmap(st: UsageStats): { months: string[]; cells: Array<{ key: string; v: number; lv: number }> } {
   const cols = 53;
   const today = new Date();
@@ -42,12 +52,13 @@ function buildHeatmap(st: UsageStats): { months: string[]; cells: Array<{ key: s
   origin.setUTCDate(origin.getUTCDate() - ((origin.getUTCDay() + 6) % 7) - (cols - 1) * 7);
   const months = [];
   const cells = [];
+  const monthFmt = new Intl.DateTimeFormat(i18next.language, { month: "short", timeZone: "UTC" });
   let lastMonth = -1;
   for (let c = 0; c < cols; c++) {
     const d0 = new Date(origin);
     d0.setUTCDate(d0.getUTCDate() + c * 7);
     if (d0.getUTCMonth() !== lastMonth) {
-      months.push((d0.getUTCMonth() + 1) + "月");
+      months.push(monthFmt.format(d0));
       lastMonth = d0.getUTCMonth();
     } else months.push("");
     for (let r = 0; r < 7; r++) {
@@ -115,6 +126,7 @@ function buildDonut(st: UsageStats): {
 }
 
 export default function StatsPage() {
+  const { t } = useTranslation();
   const st = useAppStore((s) => s.usageStats); // selector 订阅回包刷新
 
   // 进入页面即刷新统计（对应旧版 openSettings 里的 get_usage_stats）
@@ -129,34 +141,34 @@ export default function StatsPage() {
 
   return (
     <div className="set-page" id="pg-stats">
-      <div className="set-tt">使用统计 <span className="stag on">应用用量</span></div>
+      <div className="set-tt">{t("settingsPage.nav.stats")} <span className="stag on">{t("settingsPage.stats.appUsage")}</span></div>
       <div className="set-card stats" id="statsCards">
-        <div className="st"><b>{st ? fmtCompactTokens(st.totalTokens) : "—"}</b><span>累计 Token 数</span></div>
-        <div className="st"><b>{st ? fmtCompactTokens(st.peakTokens) : "—"}</b><span>峰值 Token 数</span></div>
-        <div className="st"><b>{st ? fmtDurationMs(st.longestMs) : "—"}</b><span>最长聊天时长</span></div>
-        <div className="st"><b>{st ? (st.currentStreak || 0) + " 天" : "—"}</b><span>当前连续天数</span></div>
-        <div className="st"><b>{st ? (st.longestStreak || 0) + " 天" : "—"}</b><span>最长连续天数</span></div>
+        <div className="st"><b>{st ? fmtCompactTokens(st.totalTokens) : "—"}</b><span>{t("settingsPage.stats.totalTokens")}</span></div>
+        <div className="st"><b>{st ? fmtCompactTokens(st.peakTokens) : "—"}</b><span>{t("settingsPage.stats.peakTokens")}</span></div>
+        <div className="st"><b>{st ? fmtDurationMs(st.longestMs) : "—"}</b><span>{t("settingsPage.stats.longestChat")}</span></div>
+        <div className="st"><b>{st ? t("settingsPage.stats.streakDays", { n: st.currentStreak || 0 }) : "—"}</b><span>{t("settingsPage.stats.currentStreak")}</span></div>
+        <div className="st"><b>{st ? t("settingsPage.stats.streakDays", { n: st.longestStreak || 0 }) : "—"}</b><span>{t("settingsPage.stats.longestStreak")}</span></div>
       </div>
       <div className="set-card" style={{ marginTop: 16 }}>
-        <div className="card-head">Token 活动</div>
+        <div className="card-head">{t("settingsPage.stats.tokenActivity")}</div>
         <div id="heatmap">
           {heat && (
             <>
               <div className="hm-months">{heat.months.map((m, i) => <span key={i}>{m}</span>)}</div>
               <div className="hm-grid">
                 {heat.cells.map((c) => (
-                  <i key={c.key} className="hm-c" style={{ background: `var(--hm${c.lv})` }} title={`${c.key} · ${c.v} 会话`} />
+                  <i key={c.key} className="hm-c" style={{ background: `var(--hm${c.lv})` }} title={t("settingsPage.stats.sessionCount", { date: c.key, count: c.v })} />
                 ))}
               </div>
             </>
           )}
         </div>
       </div>
-      <div className="set-group-tt">近 14 日 Token 趋势</div>
+      <div className="set-group-tt">{t("settingsPage.stats.trendGroup")}</div>
       <div className="set-card">
-        <div className="card-head">每日 Token 趋势图</div>
+        <div className="card-head">{t("settingsPage.stats.trendHead")}</div>
         <div className="legend" id="trendLegend">
-          <span className="lg"><span className="dot" style={{ background: "#4a9eff" }}></span>全部模型</span>
+          <span className="lg"><span className="dot" style={{ background: "#4a9eff" }}></span>{t("settingsPage.stats.allModels")}</span>
         </div>
         <svg id="trend" viewBox="0 0 760 200" preserveAspectRatio="none">
           {trend && (
@@ -164,11 +176,11 @@ export default function StatsPage() {
           )}
         </svg>
         <div className="trend-x" id="trendX">
-          {trend && trend.days.map((d) => <span key={d}>{d.slice(5).replace("-", "月")}日</span>)}
+          {trend && trend.days.map((d) => <span key={d}>{new Intl.DateTimeFormat(i18next.language, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(d + "T00:00:00Z"))}</span>)}
         </div>
       </div>
       <div className="set-card" style={{ marginTop: 16 }}>
-        <div className="card-head">模型用量</div>
+        <div className="card-head">{t("settingsPage.stats.modelUsage")}</div>
         <div className="donut-row">
           <svg id="donut" viewBox="0 0 180 180" width="170" height="170">
             {donut && donut.segs.map((s) => (
@@ -196,7 +208,7 @@ export default function StatsPage() {
           </svg>
           <div className="donut-legend" id="donutLegend">
             {donut && (donut.entries.length === 0 ? (
-              <div className="dl">暂无模型用量</div>
+              <div className="dl">{t("settingsPage.stats.noModelUsage")}</div>
             ) : (
               donut.entries.map(([name, v], i) => (
                 <div className="dl" key={name}>

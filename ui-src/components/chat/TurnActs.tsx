@@ -6,6 +6,8 @@ import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
 import { copyText } from "../sidebar/util";
 import Icon from "../../Icon";
+import { t } from "../../i18n";
+import { t as i18nT } from "../../i18n";
 
 // 结束时刻：当天只给 HH:MM（与 CtxCard/ModelPage 的限额重置时间同款格式），跨天补月日
 function fmtClock(ms: number) {
@@ -14,7 +16,7 @@ function fmtClock(ms: number) {
   const hm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
   const sameDay =
     t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth() && t.getDate() === now.getDate();
-  return sameDay ? hm : `${t.getMonth() + 1}月${t.getDate()}日 ${hm}`;
+  return sameDay ? hm : i18nT("chat.clockDate", { m: t.getMonth() + 1, d: t.getDate(), hm });
 }
 
 export default function TurnActs({ item }: { item: AssistantItem }) {
@@ -25,12 +27,12 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
     <div className="turn-acts">
       <button
         className="q-btn"
-        title="复制这条回复"
+        title={t("chat.copyReply")}
         onClick={(e) => {
           e.stopPropagation();
           copyText(item.text || "").then(
-            () => useAppStore.getState().toast("已复制回复"),
-            () => useAppStore.getState().toast("复制失败"),
+            () => useAppStore.getState().toast(t("chat.replyCopied")),
+            () => useAppStore.getState().toast(t("chat.copyFailed")),
           );
         }}
       >
@@ -38,7 +40,7 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
       </button>
       <button
         className="q-btn"
-        title={item.entryId ? "从此处分叉出新会话" : "回复落盘后可分叉"}
+        title={item.entryId ? t("chat.branchFromHere") : t("chat.branchAfterSaved")}
         disabled={!canFork}
         onClick={(e) => {
           e.stopPropagation();

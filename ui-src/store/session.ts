@@ -5,6 +5,7 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { invoke } from "./ws";
+import { t } from "../i18n";
 import type { ApprovalMode, EventFrame, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
@@ -391,7 +392,7 @@ export function applyEvent(msg: EventFrame): void {
       (s) => {
         s.streaming = true;
         s.assistantDraft = "";
-        s.workingText = "正在处理…";
+        s.workingText = t("notify.working");
         // run 首轮才初始化过程起点与计时：轮内续轮(工具循环)不重置,
         // 否则每个模型轮各自成组、时长/usage 全是单轮口径(实时/重载呈现分裂)；
         // 起点可能已由本地发送预置（发送即计时），此处不覆盖
@@ -413,18 +414,18 @@ export function applyEvent(msg: EventFrame): void {
       }
       s.assistantDraft = "";
       if (msg.phase === "start") {
-        s.workingText = "思考中…";
-        s.items.push({ role: "thinking", text: "思考", thinking: "", streaming: true, expanded: st.uiPrefs.showThinking });
+        s.workingText = t("notify.thinking");
+        s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking });
       } else {
         const last = [...s.items].reverse().find((it): it is ThinkingItem => it.role === "thinking");
         if (last) {
-          last.text = `思考 · ${msg.durationLabel || "持续了几秒"}`;
+          last.text = t("notify.thinkingDone", { label: msg.durationLabel || t("notify.thinkingTookSeconds") });
           last.thinking = msg.thinking || "";
           last.expandable = !!msg.expandable;
           last.streaming = false;
           last.expanded = false; // 思考完成时收起标签
         }
-        s.workingText = "正在处理…";
+        s.workingText = t("notify.working");
       }
     });
   } else if (msg.kind === "thinking_delta") {
@@ -538,8 +539,8 @@ export function applyEvent(msg: EventFrame): void {
     notifyDesktop(
       "turn_end",
       s,
-      st2.diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || "后台会话",
-      summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : "已完成",
+      st2.diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || t("notify.bgSessionTitle"),
+      summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"),
     );
     // 本会话退出流式态后补一次驱逐：全部会话都在跑时打开新会话，驱逐循环会因「流式
     // 会话受保护」而一个都删不掉；若只在激活时机触发，这些会话跑完后会一直占着内存，
@@ -653,7 +654,7 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
     for (const b of done) s.items.push(b);
     s.turnItemStart = s.items.length;
     s.streaming = true;
-    s.workingText = "正在处理…";
+    s.workingText = t("notify.working");
     s.turnStartAt = Date.now();
   });
 }

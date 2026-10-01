@@ -6,15 +6,16 @@ import { modelCatalog, modelRolesPayload, rebuildScopedModels } from "../models.
 import { modelsFrame } from "../frames.ts";
 import { listAllProviders } from "../limits/index.ts";
 import { collectUsageStats } from "../stats.ts";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export const modelsHandlers: Record<string, RpcHandler> = {
   async set_model(ws, msg) {
     const entry = sessions.get(msg.sessionId);
     process.stderr.write(`[host] set_model: ${msg.model} entry=${!!entry}\n`);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const target = H.scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
-    if (!target) throw new Error(`未知模型: ${msg.model}`);
+    if (!target) throw new Error(hostI18n.t("errors.model.unknown", { model: msg.model }));
     await entry.session.setModel(target); // persist 默认 false，仅本会话生效
     // enabledModels 条目带的 ":thinking" 默认级别与 CLI 行为一致地应用
     const defaultLevel = enabledDefaults.get(msg.model);
@@ -33,7 +34,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   },
   set_thinking(ws, msg) {
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     entry.session.setThinkingLevel(msg.level);
     // 回传配置选择器（"auto" 或具体档位）；钳制后的生效值不进 UI
     ws.send(
@@ -46,7 +47,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   async set_enabled_model(ws, msg) {
     const id = String(msg.id ?? "");
     const on = !!msg.enabled;
-    if (!H.availableModels.some((m) => `${m.provider}/${m.id}` === id)) throw new Error(`未知模型: ${id}`);
+    if (!H.availableModels.some((m) => `${m.provider}/${m.id}` === id)) throw new Error(hostI18n.t("errors.model.unknown", { model: id }));
     let entries: string[] = (H.settings.get("enabledModels") ?? []).slice();
     if (entries.length === 0) {
       entries = H.availableModels.map((m) => `${m.provider}/${m.id}`);
@@ -56,11 +57,11 @@ export const modelsHandlers: Record<string, RpcHandler> = {
       const prev = entries.find((e) => e.split(":")[0] === id);
       without.push(prev ?? id);
     }
-    if (without.length === 0) throw new Error("至少保留一个启用模型");
+      if (without.length === 0) throw new Error(hostI18n.t("errors.model.keepAtLeastOne"));
     H.settings.set("enabledModels", without);
     await H.settings.flush();
     rebuildScopedModels();
-    if (H.scopedModels.length === 0) throw new Error("启用列表过滤后没有可用模型");
+    if (H.scopedModels.length === 0) throw new Error(hostI18n.t("errors.model.noneAfterFilter"));
     ws.send(JSON.stringify(modelsFrame()));
     ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
   },
@@ -70,11 +71,11 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   async set_model_role(ws, msg) {
     // 合法名即可写入：既改已知角色，也从输入框菜单创建自定义角色（覆盖同名旧值）
     const role = String(msg.role ?? "");
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(role)) throw new Error(`非法角色名: ${role}`);
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(role)) throw new Error(hostI18n.t("errors.model.invalidRoleName", { role }));
     // UI 只写精确 "provider/model"（或 null 清除回默认链），别名/后缀交给 settings.json 手写
     const value = msg.value == null || msg.value === "" ? undefined : String(msg.value);
     if (value && !H.availableModels.some((m) => `${m.provider}/${m.id}` === value)) {
-      throw new Error(`未知模型: ${value}`);
+      throw new Error(hostI18n.t("errors.model.unknown", { model: value }));
     }
     H.settings.setModelRole(role, value);
     await H.settings.flush();

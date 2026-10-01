@@ -4,13 +4,15 @@
 // 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）与字体表住在
 // ui-src/appearance.js（设置页与全局快捷键共用），此处 re-export 保持既有导出面。
 import { useEffect, useRef, useState, useMemo, type ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import appIcon from "../../../ui/app-icon.png";
 import { useAppStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
 import { applyAppearance } from "../../appearance";
 
 export { FONT_LABELS, FONT_STACKS, saveUiPrefs, applyAppearance, applyHostAppearance } from "../../appearance";
 import Icon from "../../Icon";
-import { SETTINGS_ZH } from "./settings-zh";
+import { SETTINGS_ZH } from "../../i18n/locales/settings-zh-CN";
+import { SETTINGS_EN } from "../../i18n/locales/settings-en";
 import { buildKeyToPageMap } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
 import GeneralPage from "./pages/GeneralPage";
@@ -38,49 +40,50 @@ import ToolsPage from "./pages/ToolsPage";
 import TasksPage from "./pages/TasksPage";
 import AdvancedPage from "./pages/AdvancedPage";
 
-// 侧边导航项：page id → 图标 / 文案（与旧版 DOM data-page 一一对应）
+// 侧边导航项：page id → 图标 / 文案（与旧版 DOM data-page 一一对应）。
+// title/label hold i18n keys; the renderer resolves them via t() per language.
 const NAV_SECTIONS = [
   {
-    title: "基础设置",
+    title: "settingsPage.nav.sectionBasic",
     items: [
-      { id: "pg-general", icon: "sliders", label: "常规" },
-      { id: "pg-appearance", icon: "palette", label: "外观" },
-      { id: "pg-model", icon: "box", label: "模型设置" },
-      { id: "pg-browser", icon: "globe", label: "浏览器控制" },
-      { id: "pg-computer", icon: "monitor", label: "电脑控制" },
-      { id: "pg-keyboard", icon: "keyboard", label: "键盘快捷键" },
+      { id: "pg-general", icon: "sliders", label: "settingsPage.nav.general" },
+      { id: "pg-appearance", icon: "palette", label: "settingsPage.nav.appearance" },
+      { id: "pg-model", icon: "box", label: "settingsPage.nav.model" },
+      { id: "pg-browser", icon: "globe", label: "settingsPage.nav.browser" },
+      { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
+      { id: "pg-keyboard", icon: "keyboard", label: "settingsPage.nav.keyboard" },
     ],
   },
   {
-    title: "Agent 能力",
+    title: "settingsPage.nav.sectionAgent",
     items: [
-      { id: "pg-extensions", icon: "extensions", label: "扩展" },
-      { id: "pg-memory", icon: "memory", label: "记忆" },
-      { id: "pg-agents", icon: "agents", label: "子智能体" },
-      { id: "pg-plugins", icon: "plugins", label: "插件" },
-      { id: "pg-mcp", icon: "mcp", label: "MCP 服务器" },
-      { id: "pg-skills", icon: "skills", label: "技能" },
-      { id: "pg-hooks", icon: "hook", label: "钩子" },
+      { id: "pg-extensions", icon: "extensions", label: "settingsPage.nav.extensions" },
+      { id: "pg-memory", icon: "memory", label: "settingsPage.nav.memory" },
+      { id: "pg-agents", icon: "agents", label: "settingsPage.nav.subagents" },
+      { id: "pg-plugins", icon: "plugins", label: "settingsPage.nav.plugins" },
+      { id: "pg-mcp", icon: "mcp", label: "settingsPage.nav.mcp" },
+      { id: "pg-skills", icon: "skills", label: "settingsPage.nav.skills" },
+      { id: "pg-hooks", icon: "hook", label: "settingsPage.nav.hooks" },
     ],
   },
   {
-    title: "行为与规则",
+    title: "settingsPage.nav.sectionBehavior",
     items: [
-      { id: "pg-model-behavior", icon: "think", label: "模型行为" },
-      { id: "pg-providers", icon: "cloud", label: "服务商" },
-      { id: "pg-interaction", icon: "comment", label: "交互" },
-      { id: "pg-context", icon: "folderOpen", label: "上下文" },
-      { id: "pg-files", icon: "file", label: "文件" },
+      { id: "pg-model-behavior", icon: "think", label: "settingsPage.nav.modelBehavior" },
+      { id: "pg-providers", icon: "cloud", label: "settingsPage.nav.providers" },
+      { id: "pg-interaction", icon: "comment", label: "settingsPage.nav.interaction" },
+      { id: "pg-context", icon: "folderOpen", label: "settingsPage.nav.context" },
+      { id: "pg-files", icon: "file", label: "settingsPage.nav.files" },
       { id: "pg-shell", icon: "termBox", label: "Shell" },
-      { id: "pg-tools", icon: "plug", label: "工具" },
-      { id: "pg-tasks", icon: "todo", label: "任务·子代理" },
-      { id: "pg-advanced", icon: "settings", label: "高级" },
-      { id: "pg-experimental", icon: "flask", label: "实验性功能" },
+      { id: "pg-tools", icon: "plug", label: "settingsPage.nav.tools" },
+      { id: "pg-tasks", icon: "todo", label: "settingsPage.nav.tasks" },
+      { id: "pg-advanced", icon: "settings", label: "settingsPage.nav.advanced" },
+      { id: "pg-experimental", icon: "flask", label: "settingsPage.nav.experimental" },
     ],
   },
   {
-    title: "数据与统计",
-    items: [{ id: "pg-stats", icon: "stats", label: "使用统计" }],
+    title: "settingsPage.nav.sectionData",
+    items: [{ id: "pg-stats", icon: "stats", label: "settingsPage.nav.stats" }],
   },
 ];
 
@@ -113,7 +116,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-advanced": AdvancedPage,
 };
 
-// 页面 ID 到页面中文标题的映射（从 NAV_SECTIONS 提取）
+// page id → page-title i18n key (extracted from NAV_SECTIONS)
 const PAGE_LABELS: Record<string, string> = {};
 for (const sec of NAV_SECTIONS) {
   for (const it of sec.items) {
@@ -122,11 +125,13 @@ for (const sec of NAV_SECTIONS) {
 }
 
 export default function Settings() {
+  const { t } = useTranslation();
   // selector 订阅：settingsOpen / settingsPage / hostSettings 变化触发重渲染
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const settingsPage = useAppStore((s) => s.settingsPage);
   const hostSettings = useAppStore((s) => s.hostSettings);
   const schema = useAppStore((s) => s.settingsSchema);
+  const lang = useAppStore((s) => s.uiPrefs.lang);
   const [searchQuery, setSearchQuery] = useState("");
   const setBodyRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
@@ -134,22 +139,24 @@ export default function Settings() {
   // 映射字典：根据 placement.ts 定位 key 所属的 pageId
   const keyToPageMap = useMemo(() => buildKeyToPageMap(schema), [schema]);
 
-  // 所有设置项集合（供搜索用）
+  // All settings keys (for search; label/description come from the language
+  // dictionary — en's empty dict falls back to the schema's own English text)
   const allSettingsItems = useMemo(() => {
-    const keys = schema ? Array.from(new Set([...Object.keys(SETTINGS_ZH), ...Object.keys(schema)])) : Object.keys(SETTINGS_ZH);
+    const settings = lang === "zh-CN" ? SETTINGS_ZH : SETTINGS_EN;
+    const keys = schema ? Array.from(new Set([...Object.keys(settings), ...Object.keys(schema)])) : Object.keys(settings);
     const items: Array<{ key: string; label: string; description: string; pageId: string; pageTitle: string }> = [];
     for (const k of keys) {
-      const zh = SETTINGS_ZH[k];
+      const entry = settings[k];
       const ui = schema?.[k]?.ui;
-      const label = zh?.label ?? ui?.label ?? "";
-      const description = zh?.description ?? ui?.description ?? "";
+      const label = entry?.label ?? ui?.label ?? "";
+      const description = entry?.description ?? ui?.description ?? "";
       if (!label && !description) continue;
       const pid = keyToPageMap[k] ?? "pg-advanced";
-      const pageTitle = PAGE_LABELS[pid] ?? "高级";
+      const pageTitle = t(PAGE_LABELS[pid] ?? "settingsPage.nav.advanced");
       items.push({ key: k, label, description, pageId: pid, pageTitle });
     }
     return items;
-  }, [schema, keyToPageMap]);
+  }, [schema, keyToPageMap, lang, t]);
 
   // 搜索结果：仅在所有设置项的“标题（label）”和“描述（description）”中搜索，其他内容不参与搜索
   const searchResults = useMemo(() => {
@@ -247,10 +254,10 @@ export default function Settings() {
       <LoginBanner />
       <LoginPrompt />
       <nav id="setNav" data-tauri-drag-region>
-        <div id="setNavResizer" title="拖动调整宽度"></div>
+        <div id="setNavResizer" title={t("settingsPage.shell.dragResize")}></div>
         <button type="button" className="set-back" id="setBack" onClick={closeSettings}>
           <Icon name="back" size={14} />
-          返回工作区
+          {t("settingsPage.shell.backToWorkspace")}
         </button>
         <div className="set-search-wrap">
           <span className="set-search-icon">
@@ -260,7 +267,7 @@ export default function Settings() {
             type="text"
             className="set-search-input"
             id="setSearchInput"
-            placeholder="搜索设置项..."
+            placeholder={t("settingsPage.shell.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -278,7 +285,7 @@ export default function Settings() {
               className="set-search-clear"
               id="setSearchClear"
               onClick={() => setSearchQuery("")}
-              title="清空搜索"
+              title={t("settingsPage.shell.searchClear")}
             >
               <Icon name="xmark" size={11} />
             </button>
@@ -287,9 +294,9 @@ export default function Settings() {
         <div className="set-nav-scroll">
           {searchResults ? (
             <div className="set-search-results">
-              <div className="set-search-count">找到 {searchResults.length} 个设置项</div>
+              <div className="set-search-count">{t("settingsPage.shell.searchCount", { count: searchResults.length })}</div>
               {searchResults.length === 0 ? (
-                <div className="set-search-empty">未找到匹配设置项</div>
+                <div className="set-search-empty">{t("settingsPage.shell.searchEmpty")}</div>
               ) : (
                 searchResults.map((it) => (
                   <button
@@ -313,7 +320,7 @@ export default function Settings() {
           ) : (
             NAV_SECTIONS.map((sec) => (
               <div key={sec.title}>
-                <div className="set-sec">{sec.title}</div>
+                <div className="set-sec">{t(sec.title)}</div>
                 {sec.items.map((it) => (
                   <button
                     key={it.id}
@@ -325,7 +332,7 @@ export default function Settings() {
                     <span className="si">
                       <Icon name={it.icon} size={14} />
                     </span>
-                    {it.label}
+                    {t(it.label)}
                   </button>
                 ))}
               </div>

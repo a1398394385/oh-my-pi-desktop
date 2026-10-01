@@ -35,7 +35,7 @@ export interface UiPrefs {
   codeWrap: boolean;
   showThinking: boolean;
   expandToolOutput: boolean;
-  lang: string;
+  lang: "zh-CN" | "en";
   terminalInheritProfile?: boolean;
   terminalFont?: string;
 }

@@ -6,6 +6,7 @@ import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { admitStampedEvent } from "./session";
 import { dispatchFrame } from "./wsHandlers";
+import { t } from "../i18n";
 import type { HostFrame } from "../types/frames";
 
 export interface WsSlice {
@@ -22,7 +23,10 @@ export interface WsSlice {
 export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get) => ({
   ws: null,
   connected: false,
-  connText: "连接中…",
+  // Evaluated at module load, before initI18n() runs, so t() yields undefined
+  // here — harmless: connect() (called after initI18n) overwrites it before
+  // the first render.
+  connText: t("notify.connecting"),
   connFailSince: null,
 
   send(obj: unknown): void {
@@ -40,17 +44,17 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   },
   async connect(): Promise<void> {
     if (!invoke) {
-      get().setConnected(false, "无宿主");
+      get().setConnected(false, t("notify.noHost"));
       return;
     }
-    get().setConnected(false, "连接中…");
+    get().setConnected(false, t("notify.connecting"));
     // 宿主冷启动可能 >15s(模型目录走代理刷新阻塞 READY):ws_url 失败不放弃,
     // 周期重试直到拿到端口(BUG-008:曾表现为 profile 菜单 fallback 单项)
     let url: string;
     try {
       url = await invoke("ws_url");
     } catch (error) {
-      get().setConnected(false, `宿主启动失败：${String(error)}`);
+      get().setConnected(false, t("notify.hostStartFailed", { error: translateHostError(String(error)) }));
       scheduleReconnect(get().connect);
       return;
     }
@@ -59,24 +63,50 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     ws.onmessage = (ev) => onMessage(JSON.parse(ev.data));
     ws.onopen = () => {
       reconnectAttempt = 0;
-      get().setConnected(true, "已连接");
+      get().setConnected(true, t("notify.connected"));
       get().send({ type: "list_sessions" });
       // 启动时欢迎页先于连接渲染，get_git_branches 曾被 send 丢弃；连接就绪后补拉
       if (get().isCreatingNew && get().newSessionProject) get().send({ type: "get_git_branches", cwd: get().newSessionProject });
       // 设置页若在连接就绪前打开，4 个数据请求被 send 丢弃；连接就绪后补拉
       if (get().settingsOpen) get().refreshSettingsData();
+      // Resend the current UI locale unconditionally so a (re)started host
+      // converges on the frontend's persisted language.
+      get().send({ type: "set_locale", lang: get().uiPrefs.lang });
     };
     // 断线后自动重连(3s),宿主重启期间 UI 不至于永久停留在旧状态
     ws.onclose = () => {
-      get().setConnected(false, "已断开");
+      get().setConnected(false, t("notify.disconnected"));
       scheduleReconnect(get().connect);
     };
-    ws.onerror = () => get().setConnected(false, "已断开");
+    ws.onerror = () => get().setConnected(false, t("notify.disconnected"));
   },
 });
 
 const reconnectDelays = [100, 250, 500, 1000, 2000, 3000];
 let reconnectAttempt = 0;
+
+// ---------- Host boot error code translation ----------
+// The shell (src-tauri/src/lib.rs) reports host boot failures as stable
+// "code" / "code: detail" strings. Map the prefix to a translated message
+// and keep the dynamic detail; anything unrecognized passes through
+// unchanged (older shells still send plain text).
+const HOST_BOOT_ERRORS: Record<string, string> = {
+  "asset-dir-failed": "misc.bootAssetDirFailed",
+  "host-sidecar-missing": "misc.bootHostSidecarMissing",
+  "host-spawn-failed": "misc.bootHostSpawnFailed",
+  "host-exit-early": "misc.bootHostExitEarly",
+  "host-restart-stopped": "misc.bootHostRestartStopped",
+  "host-not-ready": "misc.bootHostNotReady",
+  "notify-failed": "misc.bootNotifyFailed",
+};
+
+export function translateHostError(raw: string): string {
+  for (const [code, key] of Object.entries(HOST_BOOT_ERRORS)) {
+    if (raw === code) return t(key);
+    if (raw.startsWith(code + ": ")) return `${t(key)}: ${raw.slice(code.length + 2)}`;
+  }
+  return raw;
+}
 
 function scheduleReconnect(connect: () => Promise<void>): void {
   const delay = reconnectDelays[Math.min(reconnectAttempt, reconnectDelays.length - 1)];

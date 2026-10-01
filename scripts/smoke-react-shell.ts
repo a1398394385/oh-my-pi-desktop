@@ -11,6 +11,7 @@ const { document } = window;
 globalThis.window = window;
 globalThis.document = document;
 globalThis.localStorage = window.localStorage;
+window.localStorage.setItem("omp-ui-settings", JSON.stringify({ lang: "zh-CN" }));
 globalThis.navigator = window.navigator;
 globalThis.WebSocket = class {}; // preview 模式不连宿主；store 顶层不建 WS（connect 才建）
 globalThis.requestAnimationFrame = (cb) => setTimeout(cb, 0);
@@ -149,6 +150,57 @@ ok("有文字连按两次 Esc 触发清空输入框", dbg.useAppStore.getState()
 dbg.useAppStore.setState({ mainViewMode: "tree" });
 dbg.useAppStore.getState().hideWelcomeScreen();
 ok("切换会话时默认切回消息模式（mainViewMode: chat）", dbg.useAppStore.getState().mainViewMode === "chat");
+
+// 5. 侧栏视图切换器：包含「最近」、「项目」、「归档」三个按钮
+const segBtns = Array.from(document.querySelectorAll("#seg button"));
+ok("侧栏包含最近、项目、归档三个切换按钮", segBtns.length === 3 && segBtns[2]?.textContent === "归档" && segBtns[2]?.getAttribute("data-view") === "archive");
+
+// 6. 归档切换与会话渲染
+const mockArchivedSession = {
+  id: "test-arch-1",
+  path: "/path/to/arch1.json",
+  title: "测试归档会话",
+  modified: new Date().toISOString(),
+  cwd: "/path/to/project",
+  archived: true,
+};
+dbg.useAppStore.setState({
+  archivedSessions: [mockArchivedSession],
+  viewMode: "archive",
+});
+await sleep(100);
+const archTask = document.querySelector('.task[data-path="/path/to/arch1.json"]');
+ok("归档视图渲染归档会话", !!archTask && (archTask.textContent?.includes("测试归档会话") ?? false));
+ok("归档会话行内不显示置顶按钮且包含恢复与删除按钮", !archTask?.querySelector(".tpin") && !!archTask?.querySelector(".arch-act") && !!archTask?.querySelector(".arch-act.arch-del"));
+
+// 7. 最近视图中会话标题不包含项目名
+const mockRecentProject = {
+  cwd: "/path/to/project-foo",
+  sessions: [{
+    id: "test-rec-1",
+    path: "/path/to/rec1.json",
+    title: "最近测试任务",
+    modified: new Date().toISOString(),
+    cwd: "/path/to/project-foo",
+    archived: false,
+  }],
+};
+dbg.useAppStore.setState({
+  diskProjects: [mockRecentProject],
+  viewMode: "recent",
+});
+await sleep(100);
+const recTask = document.querySelector('.task[data-path="/path/to/rec1.json"]');
+const recTitle = recTask?.querySelector(".tt")?.textContent || "";
+ok("最近视图中会话标题不显示项目名后缀", recTitle === "最近测试任务" && !recTitle.includes("project-foo"));
+
+// 8. Sidebar collapse and expand (prevent React Error #310 regression: hooks cannot be skipped conditionally during collapse)
+dbg.useAppStore.setState({ sidebarCollapsed: true });
+await sleep(80);
+ok("侧栏收起时具备 collapsed 类名", $("#sidebar")?.classList.contains("collapsed") ?? false);
+dbg.useAppStore.setState({ sidebarCollapsed: false });
+await sleep(80);
+ok("侧栏展开后无渲染崩溃且未命中 collapsed", !$("#sidebar")?.classList.contains("collapsed") && !document.body.getAttribute("data-error"));
 
 
 let fail = 0;

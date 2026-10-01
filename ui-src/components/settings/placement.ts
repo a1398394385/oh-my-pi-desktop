@@ -4,7 +4,9 @@
 // keys（显式键列表）用于无 UI 的高级页分组（运行时生成）与极少数显式段。
 // 组标题在 SchemaRows 内解析：titleZh ?? GROUPS_ZH[组名] ?? 组名。
 
-// 设置段形状：from/keys 二选一驱动展开，其余均为可选过滤/展示字段
+// 设置段形状：from/keys 二选一驱动展开，其余均为可选过滤/展示字段。
+// titleZh/titleEn and hint/hintEn are paired bilingual fields (en falls back to the zh
+// value when absent); SchemaRows picks one per the active language.
 export interface Section {
   from?: string;
   includePrefix?: string[];
@@ -12,7 +14,9 @@ export interface Section {
   excludeKeys?: string[];
   keys?: string[];
   titleZh?: string;
+  titleEn?: string;
   hint?: string;
+  hintEn?: string;
 }
 
 // schema 单个键的定义形状（与 SETTINGS_SCHEMA 对齐；ui 元数据为可选）。
@@ -40,11 +44,11 @@ export interface SchemaDef {
 export const PAGE_PLACEMENT: Record<string, Section[]> = {
   // ── 现有页吸收（追加于既有内容之后，除注明替换处） ──
   "pg-appearance": [
-    { from: "appearance/Theme", titleZh: "主题名" },
-    { from: "appearance/Composer", titleZh: "合成器" },
-    { from: "appearance/Status Line", titleZh: "状态栏" },
-    { from: "appearance/Display", titleZh: "显示" },
-    { from: "appearance/Images", titleZh: "图像" },
+    { from: "appearance/Theme", titleZh: "主题名", titleEn: "Theme name" },
+    { from: "appearance/Composer", titleZh: "合成器", titleEn: "Composer" },
+    { from: "appearance/Status Line", titleZh: "状态栏", titleEn: "Status line" },
+    { from: "appearance/Display", titleZh: "显示", titleEn: "Display" },
+    { from: "appearance/Images", titleZh: "图像", titleEn: "Images" },
   ],
   "pg-general": [
     { from: "interaction/Startup & Updates" },
@@ -52,24 +56,25 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "interaction/Power" },
   ],
   "pg-memory": [
-    { from: "memory/General", titleZh: "记忆引擎" },
+    { from: "memory/General", titleZh: "记忆引擎", titleEn: "Memory engine" },
     { from: "memory/Auto-Learn" },
     { from: "memory/Mnemopi" },
     { from: "memory/Hindsight" },
     { from: "memory/Sharpshooter" },
   ],
-  "pg-browser": [{ from: "tools/Grep & Browser", includePrefix: ["browser."], titleZh: "浏览器环境" }],
-  "pg-computer": [{ from: "tools/Computer", titleZh: "电脑控制" }],
+  "pg-browser": [{ from: "tools/Grep & Browser", includePrefix: ["browser."], titleZh: "浏览器环境", titleEn: "Browser environment" }],
+  "pg-computer": [{ from: "tools/Computer", titleZh: "电脑控制", titleEn: "Computer control" }],
   "pg-mcp": [{ from: "tools/Discovery & MCP" }],
   "pg-plugins": [
-    { from: "tools/Extensions", titleZh: "扩展运行" },
-    { titleZh: "市场与更新", keys: ["marketplace.autoUpdate"] },
-    { titleZh: "外部扩展与禁用名单", keys: ["extensions", "disabledExtensions"], hint: "手动指定额外加载的扩展路径，或指定禁用的插件/扩展模块 ID（逗号分隔）" },
+    { from: "tools/Extensions", titleZh: "扩展运行", titleEn: "Extension runtime" },
+    { titleZh: "市场与更新", titleEn: "Marketplace & updates", keys: ["marketplace.autoUpdate"] },
+    { titleZh: "外部扩展与禁用名单", titleEn: "External extensions & disabled list", keys: ["extensions", "disabledExtensions"], hint: "手动指定额外加载的扩展路径，或指定禁用的插件/扩展模块 ID（逗号分隔）", hintEn: "Manually specify extra extension paths to load, or extension module IDs to disable (comma-separated)" },
   ],
-  "pg-skills": [{ from: "tasks/Commands & Skills", includePrefix: ["skills."], titleZh: "技能命令" }],
+  "pg-skills": [{ from: "tasks/Commands & Skills", includePrefix: ["skills."], titleZh: "技能命令", titleEn: "Skill commands" }],
   "pg-hooks": [
     {
       titleZh: "钩子运行配置",
+      titleEn: "Hook runtime config",
       keys: ["statusLine.showHookStatus", "extensionHandlers.toolCallTimeoutMs"],
     },
   ],
@@ -77,7 +82,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   // ── 新主题页（pg-* 组件 + SchemaRows） ──
   "pg-model-behavior": [
     { from: "model/Thinking", excludeKeys: ["hideThinkingBlock"] },
-    { titleZh: "思考预算", hint: "不同思考级别下用于推理的 token 预算", keys: ["thinkingBudgets.minimal", "thinkingBudgets.low", "thinkingBudgets.medium", "thinkingBudgets.high", "thinkingBudgets.xhigh", "thinkingBudgets.max"] },
+    { titleZh: "思考预算", titleEn: "Thinking budgets", hint: "不同思考级别下用于推理的 token 预算", hintEn: "Token budget used for reasoning at each thinking level", keys: ["thinkingBudgets.minimal", "thinkingBudgets.low", "thinkingBudgets.medium", "thinkingBudgets.high", "thinkingBudgets.xhigh", "thinkingBudgets.max"] },
     { from: "model/Sampling" },
     { from: "model/Prompt" },
     { from: "model/Retry & Fallback" },
@@ -122,7 +127,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   "pg-tools": [
     { from: "tools/Available Tools", excludeKeys: ["computer.enabled"] },
     { from: "tools/Todos" },
-    { from: "tools/Grep & Browser", excludePrefix: ["browser."], titleZh: "Grep" },
+    { from: "tools/Grep & Browser", excludePrefix: ["browser."], titleZh: "Grep", titleEn: "Grep" },
     { from: "tools/GitHub" },
     { from: "tools/Output Limits" },
     { from: "tools/Execution" },

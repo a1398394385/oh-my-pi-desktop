@@ -438,3 +438,9 @@
   border-radius: 4px;
 }
 
+/* 键盘游标（↑/↓ 移动，回车跳转）：accent 描边 + 左侧竖条；刻意不用整行 hover 高亮
+   —— hover 是「可点」的 affordance，游标是键盘定位态，语义不同 */
+.stream-node-item.is-cursor .node-card { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.stream-node-item.is-cursor .spine-bullet { border-color: var(--accent); }
+.stream-node-item.is-cursor::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--accent); z-index: 4; }
+

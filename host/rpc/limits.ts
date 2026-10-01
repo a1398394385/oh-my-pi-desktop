@@ -3,6 +3,7 @@
 import { Tokenizer } from "../bootstrap.ts";
 import { H, sessions, type PoolEntry } from "../state.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits } from "../limits/index.ts";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 // MCP 工具 schema token 估算缓存:tools roster 身份不变就不重算
@@ -33,7 +34,7 @@ function estimateMcpToolsTokens(entry: PoolEntry): number {
 export const limitsHandlers: Record<string, RpcHandler> = {
   async get_context_detail(ws, msg) {
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const b = entry.session.getContextBreakdown();
     const st = entry.session.getSessionStats();
     ws.send(
@@ -58,7 +59,7 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     // 无会话时(UI 输入框空环 hover)允许按 msg.provider 查询,只显示配额段
     const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
     const ompProvider = entry?.session.model?.provider || String(msg.provider ?? "");
-    if (!ompProvider) throw new Error("会话尚未选择模型");
+    if (!ompProvider) throw new Error(hostI18n.t("errors.limits.noModelSelected"));
     let baseUrl = "";
     try {
       baseUrl = H.modelRegistry.getProviderBaseUrl(ompProvider) ?? "";
@@ -105,7 +106,7 @@ export const limitsHandlers: Record<string, RpcHandler> = {
   async get_provider_limits(ws, msg) {
     // 模型管理页按供应商读配额(多账号逐凭证,命中 limits 60s 缓存)
     const ompProvider = String(msg.provider ?? "");
-    if (!ompProvider) throw new Error("缺少 provider");
+    if (!ompProvider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     let baseUrl = "";
     try {
       baseUrl = H.modelRegistry.getProviderBaseUrl(ompProvider) ?? "";

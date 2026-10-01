@@ -23,6 +23,7 @@ import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue } from "../queue.ts";
 import { handleListSessions } from "./session";
+import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 // 前端随 prompt 下发的附件：图片为 base64，文本类为文件内容
@@ -39,25 +40,26 @@ interface PromptAttachment {
 // 桌面端不通过 sigil 提供的斜杠命令：模型/思考级别/会话开关这几类，能力分别由输入框胶囊
 // （模型/思考/ModeMenu）与设置页承担，清单过滤与执行拦截共用本表（值为命中提示）。
 // key 含别名（/models 是 /model 的别名；/force:xxx 经 parseSlashCommand 归到 force）。
+// Values are i18n keys (truthy membership check doubles as the list filter).
 const REMOVED_SLASH_COMMANDS: Record<string, string> = {
-  model: "模型切换请用输入框的模型胶囊",
-  models: "模型切换请用输入框的模型胶囊",
-  switch: "模型切换请用输入框的模型胶囊",
-  prewalk: "模型交接已移除",
-  fast: "服务档（fast）切换已移除",
-  skillful: "技能清单开关请到设置页操作",
-  "extended-context": "扩展上下文开关请到设置页操作",
-  computer: "电脑控制开关请到设置页操作",
-  force: "强制工具选择已移除",
-  fork: "会话分叉请点击回复下方的分叉按钮",
+  model: "errors.removedCmd.useModelCapsule",
+  models: "errors.removedCmd.useModelCapsule",
+  switch: "errors.removedCmd.useModelCapsule",
+  prewalk: "errors.removedCmd.prewalkRemoved",
+  fast: "errors.removedCmd.fastRemoved",
+  skillful: "errors.removedCmd.skillsSettingPage",
+  "extended-context": "errors.removedCmd.extContextSettingPage",
+  computer: "errors.removedCmd.computerSettingPage",
+  force: "errors.removedCmd.forceRemoved",
+  fork: "errors.removedCmd.useForkButton",
 };
 
 /** 已移除命令的提示文案；非已移除命令返回 null */
 function removedSlashHint(text: string): string | null {
   const parsed = parseSlashCommand(text.trim());
   if (!parsed) return null;
-  const hint = REMOVED_SLASH_COMMANDS[parsed.name];
-  return hint ? `/${parsed.name} 已移除：${hint}` : null;
+  const hintKey = REMOVED_SLASH_COMMANDS[parsed.name];
+  return hintKey ? hostI18n.t("errors.removedCmd.template", { command: parsed.name, hint: hostI18n.t(hintKey) }) : null;
 }
 
 // 新建会话页隐藏的会话级命令：操作/统计「已存在的会话」，首条消息发出前无意义
@@ -300,7 +302,7 @@ async function dispatchSlashInput(
         .catch((err: unknown) => {
           bgOutputs = null;
           ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "fail", command: phaseKey }));
-          ws.send(JSON.stringify({ type: "command_output", sessionId, text: `命令执行失败: ${err instanceof Error ? err.message : String(err)}` }));
+          ws.send(JSON.stringify({ type: "command_output", sessionId, text: hostI18n.t("errors.commandFailed", { detail: err instanceof Error ? err.message : String(err) }) }));
         });
     },
     notifyTitleChanged: () => {
@@ -332,7 +334,7 @@ async function handlePrompt(
   steer = false,
 ) {
   const entry = sessions.get(sessionId);
-  if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   // 用户在该会话发消息 = 已读交互：清缓存保活未读态（本轮 turn 收尾会重新置位）
   entry.keepaliveWanted = false;
   // 附件：图片走 SDK ImageContent；文本类文件内容内联进 prompt（与 CLI 粘贴文件一致）
@@ -352,8 +354,8 @@ async function handlePrompt(
   if (textBlocks.length > 0) {
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
   }
-  if (!finalText && images.length === 0) throw new Error("消息为空");
-  if (!finalText) finalText = "请查看附件图片。";
+  if (!finalText && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
+  if (!finalText) finalText = hostI18n.t("errors.prompt.imageOnlyFallback");
   // 斜杠命令本地分发：消费则直接返回（不推 transcript、不调 prompt）；改写则继续
   const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
   if (dispatched === null) return;
@@ -396,7 +398,7 @@ async function handlePrompt(
 
 function handleGetMessages(ws: any, sessionId: string) {
   const entry = sessions.get(sessionId);
-  if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
 }
 
@@ -427,14 +429,14 @@ export const promptHandlers: Record<string, RpcHandler> = {
   },
   get_todos(ws, msg) {
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     ws.send(JSON.stringify({ type: "todos", sessionId: msg.sessionId, phases: entry.session.getTodoPhases() }));
   },
   async bash_exec(ws, msg) {
     // ! 本地命令：结果走 bashExecution 落盘（底座 executeBash 内部完成），
     // 实时流由专用帧驱动（bash_start/chunk/done），不进模型事件流
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const command = String(msg.command ?? "").trim();
     if (!command) return;
     const excludeFromContext = msg.excludeFromContext === true;
@@ -443,7 +445,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
         JSON.stringify({
           type: "error",
           sessionId: msg.sessionId,
-          message: "已有 bash 命令在执行，先按停止或等它结束",
+          message: hostI18n.t("errors.bash.busy"),
         }),
       );
       return;
@@ -494,7 +496,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
   },
   bash_abort(ws, msg) {
     const entry = sessions.get(msg.sessionId);
-    if (!entry) throw new Error(`会话不存在: ${msg.sessionId}`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     entry.session.abortBash(); // 同步触发；executeBash 的 promise 会自行 resolve 并再发一帧 bash_done
     ws.send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
   },
@@ -512,7 +514,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
     // @ 文件候选：reqId 原样回传，前端据此丢弃过期响应
     const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
     const root = entry ? entry.session.sessionManager.getCwd() : String(msg.cwd ?? "");
-    if (!root) throw new Error("缺少 cwd");
+    if (!root) throw new Error(hostI18n.t("errors.param.missingCwd"));
     const query = String(msg.query ?? "");
     ws.send(
       JSON.stringify({

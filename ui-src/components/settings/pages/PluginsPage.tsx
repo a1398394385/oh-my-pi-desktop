@@ -1,6 +1,7 @@
 // 设置页：插件（pg-plugins）。
 // 提供插件与扩展发现总开关、配置项（SchemaRows）及已安装插件列表展示。
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import { emptyRow } from "../common";
@@ -9,6 +10,7 @@ import { PAGE_PLACEMENT } from "../placement";
 import type { PluginAssetItem } from "../../../types/frames";
 
 export default function PluginsPage() {
+  const { t } = useTranslation();
   const hostSettings = useAppStore((s) => s.hostSettings);
   const agentAssets = useAppStore((s) => s.agentAssets);
   const plugins = agentAssets?.plugins as PluginAssetItem[] | undefined;
@@ -22,7 +24,7 @@ export default function PluginsPage() {
   const togglePlugins = () => {
     const next = !pluginsEnabled;
     send({ type: "set_plugins_enabled", enabled: next });
-    toast(next ? "已开启插件与扩展发现，新建会话生效" : "已关闭插件与扩展发现，新建会话生效");
+    toast(next ? t("settingsPage.plugins.onToast") : t("settingsPage.plugins.offToast"));
   };
 
   const onRefresh = () => {
@@ -34,12 +36,12 @@ export default function PluginsPage() {
   return (
     <div className="set-page" id="pg-plugins">
       <div className="flex items-center justify-between mb-[25px]">
-        <div className="set-tt mb-0">插件</div>
+        <div className="set-tt mb-0">{t("settingsPage.nav.plugins")}</div>
         <button
           type="button"
           className={"icon-btn pg-refresh" + (spin ? " spin" : "")}
           id="pluginsRefreshBtn"
-          title="刷新插件列表"
+          title={t("settingsPage.plugins.refreshList")}
           onClick={onRefresh}
         >
           <Icon name="refresh" size={17} />
@@ -49,13 +51,13 @@ export default function PluginsPage() {
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx">
-            <b>启用插件与扩展发现</b>
-            <span>允许 Agent 自动发现并加载用户及项目中的插件与扩展功能（设置会话 <code>disableExtensionDiscovery: false</code>）。开关对新建会话生效。</span>
+            <b>{t("settingsPage.plugins.masterTitle")}</b>
+            <span>{t("settingsPage.plugins.masterDescA")}<code>disableExtensionDiscovery: false</code>{t("settingsPage.plugins.masterDescB")}</span>
           </div>
           <div
             className={"tg" + (pluginsEnabled ? " on" : "") + (known ? "" : " disabled")}
             id="tgPlugins"
-            title={pluginsEnabled ? "点击停用插件发现" : "点击启用插件发现"}
+            title={pluginsEnabled ? t("settingsPage.plugins.masterOn") : t("settingsPage.plugins.masterOff")}
             onClick={togglePlugins}
           >
             <i></i>
@@ -64,20 +66,20 @@ export default function PluginsPage() {
       </div>
 
 
-      <div className="set-group-tt">配置项</div>
-      <div className="set-group-desc">控制插件与扩展的超时时间、市场自动更新模式及自定义加载路径。</div>
+      <div className="set-group-tt">{t("settingsPage.plugins.configGroup")}</div>
+      <div className="set-group-desc">{t("settingsPage.plugins.configDesc")}</div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-plugins"]} />
 
-      <div className="set-group-tt">已安装插件</div>
-      <div className="set-group-desc">系统检测到的可用插件清单。可通过 <code>omp</code> 命令行管理安装。</div>
+      <div className="set-group-tt">{t("settingsPage.plugins.installedGroup")}</div>
+      <div className="set-group-desc">{t("settingsPage.plugins.installedDescA")}<code>omp</code>{t("settingsPage.plugins.installedDescB")}</div>
       <div className="set-card" id="pluginsList">
         {!agentAssets ? (
-          emptyRow("加载中…")
+          emptyRow(t("common.loading"))
         ) : !plugins || plugins.length === 0 ? (
           <div className="srow">
             <div className="srow-tx">
-              <b>未检测到已安装的插件</b>
-              <span>可通过命令行 <code>omp plugin install &lt;package&gt;</code> 安装插件，或在上方外部扩展路径中配置自定义路径。</span>
+              <b>{t("settingsPage.plugins.noPluginsTitle")}</b>
+              <span>{t("settingsPage.plugins.noPluginsDescA")}<code>omp plugin install &lt;package&gt;</code>{t("settingsPage.plugins.noPluginsDescB")}</span>
             </div>
           </div>
         ) : (
@@ -87,9 +89,9 @@ export default function PluginsPage() {
                 <b>
                   {p.name}
                   {p.version && <span style={{ marginLeft: 8, fontSize: "0.85em", color: "var(--dim)" }}>v{p.version}</span>}
-                  {p.scope && <span style={{ marginLeft: 6, fontSize: "0.8em", color: "var(--dim)" }}>[{p.scope === "user" ? "用户" : "项目"}]</span>}
+                  {p.scope && <span style={{ marginLeft: 6, fontSize: "0.8em", color: "var(--dim)" }}>[{t(p.scope === "user" ? "settingsPage.shared.levelUser" : "settingsPage.shared.levelProject")}]</span>}
                 </b>
-                <span>{p.description || p.path || "已安装插件"}</span>
+                <span>{p.description || p.path || t("settingsPage.plugins.pluginFallback")}</span>
               </div>
             </div>
           ))

@@ -3,9 +3,10 @@
 // 复用既有 .menu/.mi/.sub 基类与 popIn 动画，只改卡片外观与定位。
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { placePaletteCard } from "./place";
-import { pathBase } from "../../store";
-import { BUILTIN_DESC_ZH } from "./commands-zh";
+import { pathBase, useAppStore } from "../../store";
+import { BUILTIN_DESC_ZH } from "../../i18n/locales/commands-zh-CN";
 
 /** @ 文件候选（mentionResult.matches 元素） */
 export type FileItem = { path: string; dir: boolean };
@@ -29,6 +30,8 @@ type PaletteMenuProps = {
  */
 export default function PaletteMenu({ mode, items, index, loading, composerRef, onPick, onHover }: PaletteMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
+  const lang = useAppStore((s) => s.uiPrefs.lang);
   // 挂载即定位；候选/加载态变化引起高度变化后重新定位（底缘始终贴输入框卡上方 2px）
   useLayoutEffect(() => {
     placePaletteCard(composerRef.current, menuRef.current);
@@ -41,9 +44,9 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
   return (
     <div className="menu palette open" ref={menuRef}>
       {loading ? (
-        <div className="mi empty">加载中…</div>
+        <div className="mi empty">{t("common.loading")}</div>
       ) : !items.length ? (
-        <div className="mi empty">无匹配</div>
+        <div className="mi empty">{t("composer.noMatch")}</div>
       ) : (
         items.map((it, i) => {
           let label: string;
@@ -60,8 +63,10 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
             if (!("name" in it)) return null; // 类型守卫：command 候选必含 name
             label = "/" + it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");
             key = it.name;
-            // builtin 描述走中文映射（未收录/非 builtin 回退原文）
-            desc = (it.source === "builtin" ? BUILTIN_DESC_ZH[it.name] : null) || it.description || "";
+            // Built-in command descriptions: zh-CN maps through the dictionary;
+            // en has no dictionary by design, unmapped and non-builtin names
+            // fall back to the command's own English description.
+            desc = (it.source === "builtin" && lang === "zh-CN" ? BUILTIN_DESC_ZH[it.name] : null) || it.description || "";
             hint = it.hint || null;
           }
           return (

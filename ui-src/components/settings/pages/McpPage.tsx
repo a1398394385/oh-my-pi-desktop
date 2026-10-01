@@ -2,7 +2,9 @@
 // 旧版 ui/settings/mcp.js 的 1:1 React 平移；DOM 类名与 git 464131d 的 pg-mcp 骨架对齐。
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
+import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
@@ -73,17 +75,17 @@ function McpLogDialog({
   log?: string;
   onClose: () => void;
 }) {
-  const content = log || error || "暂无详细日志信息";
+  const content = log || error || ti("settingsPage.mcp.logEmpty");
   const [copied, setCopied] = useState(false);
 
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
-      toast("已复制报错日志到剪贴板");
+      toast(ti("settingsPage.mcp.copiedToast"));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast("复制失败，请手动选择内容复制");
+      toast(ti("settingsPage.mcp.copyFailToast"));
     }
   };
 
@@ -96,7 +98,7 @@ function McpLogDialog({
       >
         <DialogTitle className="confirm-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Icon name="mcp" size={16} />
-          <span>MCP 报错日志 · {serverName}</span>
+          <span>{ti("settingsPage.mcp.logTitle", { name: serverName })}</span>
         </DialogTitle>
         <div style={{ flex: 1, minHeight: 0, marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
           {error ? (
@@ -128,11 +130,11 @@ function McpLogDialog({
         </div>
         <DialogFooter className="confirm-actions" style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button type="button" className="confirm-btn" onClick={onCopy}>
-            {copied ? "已复制" : "复制日志"}
+            {copied ? ti("settingsPage.mcp.copied") : ti("settingsPage.mcp.copyLog")}
           </button>
           <DialogClose asChild>
             <button type="button" className="confirm-btn" onClick={onClose}>
-              关闭
+              {ti("common.close")}
             </button>
           </DialogClose>
         </DialogFooter>
@@ -177,10 +179,10 @@ function getScopedMcpServers(scope: string): McpServer[] {
 
 // 状态点样式与标题
 function dotState(s: McpServer): { cls: string; title: string } {
-  if (!s.enabled) return { cls: "off", title: "已禁用" };
-  if (s.status === "connected") return { cls: "ok", title: "运行中 / 已连接" };
-  if (s.status === "error") return { cls: "err", title: "连接异常" };
-  return { cls: "ok", title: "就绪" };
+  if (!s.enabled) return { cls: "off", title: ti("settingsPage.mcp.dotDisabled") };
+  if (s.status === "connected") return { cls: "ok", title: ti("settingsPage.mcp.dotRunning") };
+  if (s.status === "error") return { cls: "err", title: ti("settingsPage.mcp.dotError") };
+  return { cls: "ok", title: ti("settingsPage.mcp.dotReady") };
 }
 
 // 通用下拉（.sel 容器 + .menu，行为对齐旧版 wireSel：点击切换、点项回调、点外部关闭）
@@ -252,6 +254,7 @@ interface ServerRowProps {
   onViewLog: (info: { name: string; error?: string; log?: string }) => void;
 }
 function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, onViewLog }: ServerRowProps) {
+  const { t } = useTranslation();
   const dot = dotState(server);
   const cmdText = server.command
     ? [server.command, ...(server.args || [])].filter(Boolean).join(" ")
@@ -268,14 +271,14 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, on
           <Icon name="mcp" size={14} />
           <span className={`mcp-status-dot ${dot.cls}`} title={dot.title} />
         </div>
-        <div className="mcp-server-info" title="点击查看或编辑配置">
+        <div className="mcp-server-info" title={t("settingsPage.mcp.viewConfig")}>
           <div className="mcp-server-head">
             <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
             {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
             {server.sharing === "global" ? (
-              <span className="mcp-server-badge mcp-badge-shared">全局共享</span>
+              <span className="mcp-server-badge mcp-badge-shared">{t("settingsPage.mcp.badgeGlobal")}</span>
             ) : server.sharing === "project" ? (
-              <span className="mcp-server-badge mcp-badge-shared">项目共享</span>
+              <span className="mcp-server-badge mcp-badge-shared">{t("settingsPage.mcp.badgeProjectShared")}</span>
             ) : null}
             <ExtSourceTag kind="mcp" name={server.name} path={server.source?.path} />
             {scopeAll
@@ -287,18 +290,18 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, on
           <div className="mcp-server-cmd" title={cmdText}>{cmdText}</div>
           {server.enabled && server.status === "error" && (server.error || server.log) ? (
             <div className="mcp-server-err">
-              <span className="mcp-err-icon" title="错误详情">ⓘ</span>
-              <span className="truncate">{server.error || "服务启动失败"}</span>
+              <span className="mcp-err-icon" title={t("settingsPage.mcp.errDetail")}>ⓘ</span>
+              <span className="truncate">{server.error || t("settingsPage.mcp.startFailed")}</span>
               <button
                 type="button"
                 className="mcp-log-btn"
-                title="查看完整报错日志"
+                title={t("settingsPage.mcp.viewFullLog")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onViewLog({ name: server.name, error: server.error, log: server.log });
                 }}
               >
-                查看日志
+                {t("settingsPage.mcp.viewLog")}
               </button>
             </div>
           ) : null}
@@ -315,10 +318,11 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, on
 
 // iOS 开关：本地乐观翻转 + 回写宿主
 function Toggle({ server }: { server: McpServer }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`tg${server.enabled ? " on" : ""}`}
-      title={server.enabled ? "已启用，点击禁用" : "已禁用，点击启用"}
+      title={server.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
       onClick={(e) => {
         e.stopPropagation();
         const nextEnabled = !server.enabled;
@@ -352,6 +356,7 @@ interface McpEditorProps {
   onViewLog?: (info: { name: string; error?: string; log?: string }) => void;
 }
 function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps) {
+  const { t } = useTranslation();
   const isNew = !server;
   const targetScope = server?.scope && server.scope !== "project"
     ? server.scope
@@ -387,10 +392,32 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     }
   }, [result]);
 
-  const title = isNew ? "新建 MCP 服务器" : "编辑 MCP 服务器";
+  // 当外部 server 对象更新（如宿主下发最新 agent_assets）时，同步重置内部表单状态
+  useEffect(() => {
+    if (server) {
+      setName(server.name || "");
+      setTransport(server.transport || "stdio");
+      const target = server.scope && server.scope !== "project"
+        ? server.scope
+        : (defaultScope === "all" ? "profile" : defaultScope);
+      const isProj = target !== "profile";
+      if (server.sharing) {
+        setSharing(isProj && server.sharing === "global" ? "session" : server.sharing);
+      } else {
+        setSharing("session");
+      }
+      setCmd(server.command || "");
+      setArgs((server.args || []).join("\n"));
+      setEnv(server.env ? Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join("\n") : "");
+      setUrl(server.url || "");
+      setHeaders(server.headers ? Object.entries(server.headers).map(([k, v]) => `${k}: ${v}`).join("\n") : "");
+    }
+  }, [server, defaultScope]);
+
+  const title = isNew ? t("settingsPage.mcp.editorNewTitle") : t("settingsPage.mcp.editorEditTitle");
   const sub = !server
-    ? "配置标准 Model Context Protocol 服务"
-    : `${server.name} · ${server.source?.providerName || "配置文件"}`;
+    ? t("settingsPage.mcp.editorNewSub")
+    : t("settingsPage.mcp.editorEditSub", { name: server.name, source: server.source?.providerName || t("settingsPage.mcp.editorConfigFile") });
 
   // 由表单内容组装 server 对象（测试用）；缺必填项返回 null 并 toast
   const buildPayload = (): McpPayload | null => {
@@ -398,7 +425,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     if (transport === "stdio") {
       const c = cmd.trim();
       if (!c) {
-        toast("请输入执行命令");
+        toast(t("settingsPage.mcp.cmdRequired"));
         return null;
       }
       const rawArgs = args.trim();
@@ -421,7 +448,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     }
     const u = url.trim();
     if (!u) {
-      toast("请输入服务 URL");
+      toast(t("settingsPage.mcp.urlRequired"));
       return null;
     }
     const hdrObj: Record<string, string> = {};
@@ -441,7 +468,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
 
   const onTest = () => {
     if (!name.trim()) {
-      toast("请先输入服务名称");
+      toast(t("settingsPage.mcp.nameRequired"));
       return;
     }
     const serverObj = buildPayload();
@@ -452,7 +479,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
 
   const onSave = () => {
     if (!name.trim()) {
-      toast("请先输入服务名称");
+      toast(t("settingsPage.mcp.nameRequired"));
       return;
     }
     const serverObj = buildPayload();
@@ -475,24 +502,24 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
       sourcePath: server?.source?.path,
     });
     onClose();
-    toast(`已保存 MCP 服务器 "${name.trim()}"`);
+    toast(t("settingsPage.mcp.savedToast", { name: name.trim() }));
   };
 
   const onDelete = async () => {
     if (!server) return;
-    if (await confirmDialog({ title: `确定删除 MCP 服务器 "${server.name}" 吗？`, confirmText: "删除", danger: true })) {
+    if (await confirmDialog({ title: t("settingsPage.mcp.deleteConfirm", { name: server.name }), confirmText: t("common.delete"), danger: true })) {
       send({ type: "delete_mcp_server", name: server.name, sourcePath: server.source?.path });
       onClose();
-      toast(`已请求删除 "${server.name}"`);
+      toast(t("settingsPage.mcp.deletedToast", { name: server.name }));
     }
   };
 
   const statusText = testing
-    ? "正在连接测试…"
+    ? t("settingsPage.mcp.testing")
     : result
       ? result.status === "ok"
-        ? "连接成功"
-        : result.error || "连接失败"
+        ? t("settingsPage.mcp.connectOk")
+        : result.error || t("settingsPage.mcp.connectFail")
       : "";
   const statusColor = testing
     ? "var(--dim)"
@@ -509,16 +536,16 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         <span className="sub">{sub}</span>
         <span className="sp" />
         <button type="button" className="save-btn" onClick={(e) => { e.stopPropagation(); onClose(); }}>
-          收起
+          {t("settingsPage.shared.collapse")}
         </button>
       </div>
       <div className="sem-body form">
         <div className="mcp-form-group">
-          <label className="mcp-form-label">服务名称 <span className="req">*</span></label>
+          <label className="mcp-form-label">{t("settingsPage.mcp.nameLabel")} <span className="req">*</span></label>
           <input
             type="text"
             className="mcp-form-input"
-            placeholder="例如: codegraph、atlassian"
+            placeholder={t("settingsPage.mcp.namePlaceholder")}
             spellCheck="false"
             value={name}
             disabled={!isNew}
@@ -526,12 +553,12 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
           />
         </div>
         <div className="mcp-form-group">
-          <label className="mcp-form-label">传输协议</label>
+          <label className="mcp-form-label">{t("settingsPage.mcp.transportLabel")}</label>
           <div className="mcp-type-pills">
             {[
-              ["stdio", "stdio (本地命令)"],
-              ["http", "http (远程服务)"],
-              ["sse", "sse (流式服务)"],
+              ["stdio", t("settingsPage.mcp.transportStdio")],
+              ["http", t("settingsPage.mcp.transportHttp")],
+              ["sse", t("settingsPage.mcp.transportSse")],
             ].map(([t, label]) => (
               <button
                 key={t}
@@ -545,12 +572,12 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
           </div>
         </div>
         <div className="mcp-form-group">
-          <label className="mcp-form-label">实例共享模式</label>
+          <label className="mcp-form-label">{t("settingsPage.mcp.sharingLabel")}</label>
           <div className="mcp-type-pills">
             {isProjectScope
               ? [
-                  ["session", "会话私有 (默认)"],
-                  ["project", "项目共享 (本工作区)"],
+                  ["session", t("settingsPage.mcp.shareSession")],
+                  ["project", t("settingsPage.mcp.shareProjectWorkspace")],
                 ].map(([m, label]) => (
                   <button
                     key={m}
@@ -562,9 +589,9 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                   </button>
                 ))
               : [
-                  ["session", "会话私有 (默认)"],
-                  ["project", "项目共享 (按项目隔离)"],
-                  ["global", "全局共享 (跨项目单例)"],
+                  ["session", t("settingsPage.mcp.shareSession")],
+                  ["project", t("settingsPage.mcp.shareProjectIsolated")],
+                  ["global", t("settingsPage.mcp.shareGlobal")],
                 ].map(([m, label]) => (
                   <button
                     key={m}
@@ -578,29 +605,29 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
           </div>
           <div className="mcp-form-hint">
             {sharing === "global"
-              ? "跨项目所有会话复用同一单例进程，不暴露工作区目录，适合网络搜索/文档检索类无状态工具。"
+              ? t("settingsPage.mcp.shareHintGlobal")
               : sharing === "project"
               ? isProjectScope
-                ? "当前项目内的所有会话复用同一单例进程，避免重复开销，适合代码索引等工具。"
-                : "全局统一定义，运行时按各项目分别维护单例进程，同一项目内的所有会话共享该项目实例。"
-              : "每个会话独占子进程与工作区目录，会话结束时即释放，隔离性最高。"}
+                ? t("settingsPage.mcp.shareHintProjectLocal")
+                : t("settingsPage.mcp.shareHintProjectSplit")
+              : t("settingsPage.mcp.shareHintSession")}
           </div>
         </div>
         {transport === "stdio" ? (
           <div>
             <div className="mcp-form-group">
-              <label className="mcp-form-label">执行命令 <span className="req">*</span></label>
+              <label className="mcp-form-label">{t("settingsPage.mcp.cmdLabel")} <span className="req">*</span></label>
               <input
                 type="text"
                 className="mcp-form-input"
-                placeholder="例如: node、npx、uvx、python3"
+                placeholder={t("settingsPage.mcp.cmdPlaceholder")}
                 spellCheck="false"
                 value={cmd}
                 onChange={(e) => setCmd(e.target.value)}
               />
             </div>
             <div className="mcp-form-group">
-              <label className="mcp-form-label">命令参数 (空格或换行分隔)</label>
+              <label className="mcp-form-label">{t("settingsPage.mcp.argsLabel")}</label>
               <textarea
                 className="mcp-form-textarea"
                 rows={2}
@@ -611,7 +638,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
               />
             </div>
             <div className="mcp-form-group">
-              <label className="mcp-form-label">环境变量 (KEY=VALUE，每行一个)</label>
+              <label className="mcp-form-label">{t("settingsPage.mcp.envLabel")}</label>
               <textarea
                 className="mcp-form-textarea"
                 rows={2}
@@ -625,18 +652,18 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         ) : (
           <div>
             <div className="mcp-form-group">
-              <label className="mcp-form-label">服务 URL <span className="req">*</span></label>
+              <label className="mcp-form-label">{t("settingsPage.mcp.urlLabel")} <span className="req">*</span></label>
               <input
                 type="text"
                 className="mcp-form-input"
-                placeholder="https://... 或 http://localhost:53333/mcp"
+                placeholder={t("settingsPage.mcp.urlPlaceholder")}
                 spellCheck="false"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
             </div>
             <div className="mcp-form-group">
-              <label className="mcp-form-label">请求头 (Header: Value，每行一个)</label>
+              <label className="mcp-form-label">{t("settingsPage.mcp.headersLabel")}</label>
               <textarea
                 className="mcp-form-textarea"
                 rows={2}
@@ -660,27 +687,27 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
               className="mcp-log-btn"
               onClick={() =>
                 onViewLog({
-                  name: name.trim() || server?.name || "未命名",
+                  name: name.trim() || server?.name || t("settingsPage.mcp.unnamed"),
                   error: result?.error || server?.error,
                   log: result?.log || server?.log,
                 })
               }
             >
-              查看日志
+              {t("settingsPage.mcp.viewLog")}
             </button>
           ) : null}
         </div>
         <button type="button" className="confirm-btn" disabled={testing} onClick={onTest}>
-          {testing ? "测试中…" : "测试连接"}
+          {testing ? t("settingsPage.mcp.testingBtn") : t("settingsPage.mcp.testBtn")}
         </button>
         <span className="sp" />
         {!isNew ? (
           <button type="button" className="confirm-btn danger" onClick={onDelete}>
-            删除
+            {t("common.delete")}
           </button>
         ) : null}
         <button type="button" className="confirm-btn" onClick={onSave}>
-          保存
+          {t("common.save")}
         </button>
       </div>
     </div>
@@ -688,6 +715,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
 }
 
 export default function McpPage() {
+  const { t } = useTranslation();
   // 渲染数据走字段 selector：agent_assets / mcp_server_tested 落地帧均全量换新引用
   //（含 mcp 段 servers 数组），字段订阅即可感知
   const agentAssets = useAppStore((s) => s.agentAssets);
@@ -751,10 +779,10 @@ export default function McpPage() {
     } else if (mi.id === "miRetestAllMcp") {
       const curServers = getScopedMcpServers(activeScope).filter((s) => s.enabled);
       if (!curServers.length) {
-        toast("当前作用域无启用的 MCP 服务器");
+        toast(t("settingsPage.mcp.retestNone"));
         return;
       }
-      toast(`开始检测 ${curServers.length} 个 MCP 服务器连接…`);
+      toast(t("settingsPage.mcp.retestStart", { count: curServers.length }));
       for (const s of curServers) {
         send({ type: "test_mcp_server", name: s.name, server: s });
       }
@@ -764,7 +792,7 @@ export default function McpPage() {
   return (
     <div className="set-page" id="pg-mcp">
       <div className="mcp-header">
-        <div className="mcp-tt">MCP 服务器</div>
+        <div className="mcp-tt">{t("settingsPage.nav.mcp")}</div>
       </div>
 
       <div className="mcp-bar-primary">
@@ -783,7 +811,7 @@ export default function McpPage() {
           <input
             type="text"
             className="mcp-search-input"
-            placeholder="搜索 MCP 服务器..."
+            placeholder={t("settingsPage.mcp.searchPlaceholder")}
             spellCheck="false"
             autoComplete="off"
             value={mcpSearchQuery}
@@ -793,40 +821,40 @@ export default function McpPage() {
       </div>
 
       <div className="mcp-bar-secondary">
-        <div className="text-ui-sm font-medium text-dim">已安装 {installedCount}</div>
+        <div className="text-ui-sm font-medium text-dim">{t("settingsPage.mcp.installedCount", { count: installedCount })}</div>
         <div className="mcp-actions-wrap">
           <Sel
             id="mcpMoreSel"
             btnClassName="mcp-btn-icon"
-            btnTitle="更多选项"
+            btnTitle={t("settingsPage.shared.moreOptions")}
             btnChildren={<Icon name="dots" size={14} />}
             onPick={onMorePick}
           >
             <div className="mi" id="miOpenCurrentMcpConfig">
               <span className="mi-icon"><Icon name="file" size={14} /></span>
-              <span className="mi-label">打开当前 mcp.json 配置</span>
+              <span className="mi-label">{t("settingsPage.mcp.openCurrentConfig")}</span>
             </div>
             <div className="mi" id="miOpenUserMcpConfig">
               <span className="mi-icon"><Icon name="scopeProfile" size={14} /></span>
-              <span className="mi-label">打开用户全局配置 (~/.omp)</span>
+              <span className="mi-label">{t("settingsPage.mcp.openUserConfig")}</span>
             </div>
             <div className="sep" />
             <div className="mi" id="miRetestAllMcp">
               <span className="mi-icon"><Icon name="rotateRight" size={14} /></span>
-              <span className="mi-label">重新测试所有服务器连接</span>
+              <span className="mi-label">{t("settingsPage.mcp.retestAll")}</span>
             </div>
           </Sel>
           <button
             type="button"
             className={`icon-btn pg-refresh${spinning ? " spin" : ""}`}
-            title="刷新"
+            title={t("settingsPage.model.refresh")}
             onClick={onRefresh}
           >
             <Icon name="refresh" size={17} />
           </button>
           <button type="button" className="mcp-btn-new" onClick={() => toggleEditor(NEW_KEY)}>
             <Icon name="plus" size={14} />
-            <span>新建</span>
+            <span>{t("settingsPage.shared.newBtn")}</span>
           </button>
         </div>
       </div>
@@ -842,8 +870,8 @@ export default function McpPage() {
               >
                 <div className="mcp-icon-box"><Icon name="mcp" size={14} /></div>
                 <div className="mcp-server-info">
-                  <div className="mcp-server-head"><span className="text-ui-base font-semibold truncate text-text">新服务器</span></div>
-                  <div className="mcp-server-cmd">填写配置后保存</div>
+                  <div className="mcp-server-head"><span className="text-ui-base font-semibold truncate text-text">{t("settingsPage.mcp.newServer")}</span></div>
+                  <div className="mcp-server-cmd">{t("settingsPage.mcp.newServerHint")}</div>
                 </div>
                 <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
               </div>
@@ -857,9 +885,9 @@ export default function McpPage() {
           ) : null}
 
           {!agentAssets?.mcp ? (
-            emptyRow("加载中…", "mcp-empty-row")
+            emptyRow(t("common.loading"), "mcp-empty-row")
           ) : !filtered.length ? (
-            emptyRow(q ? "未找到匹配的 MCP 服务器" : "当前工作区下暂无 MCP 服务器", "mcp-empty-row")
+            emptyRow(q ? t("settingsPage.mcp.emptySearch") : t("settingsPage.mcp.emptyScope"), "mcp-empty-row")
           ) : (
             filtered.map((s) => {
               const k = rowKey(s);

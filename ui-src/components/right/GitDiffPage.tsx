@@ -2,6 +2,7 @@
 // 单文件自研轻量 diff 详情（rb-head 固定 + rb-scroll 滚动骨架）。
 import { useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, activeOpen, refreshGitDiff, pathBase } from "../../store";
 import type { TimerHandle } from "../../store";
 import Icon from "../../Icon";
@@ -76,6 +77,7 @@ function requestFileDiff(s: { cwd: string }, filePath: string) {
 }
 
 export default function GitDiffPage() {
+  const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const rightState = useAppStore((st) => st.rightState);
   const gitDiffCache = useAppStore((st) => st.gitDiffCache);
@@ -84,10 +86,10 @@ export default function GitDiffPage() {
   const gitBusy = useGitBusy();
   const [confirm, setConfirm] = useState<DiscardConfirm | null>(null);
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">（无活跃会话）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   if (!s.isGit) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">（该 project 不是 git 仓库）</div>;
+    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.notGitRepoParen")}</div>;
   }
   if (selectedFile) {
     return <GdFileDetail />;
@@ -98,9 +100,9 @@ export default function GitDiffPage() {
   // 丢弃是破坏性操作，走二次确认（cwd 取发起时刻的 activeOpen，对齐原 gitCwd 语义）
   const onDiscard = (f: GitFileEntry) => {
     setConfirm({
-      title: "丢弃更改",
-      message: `将丢弃 ${f.path} 的未提交更改，此操作不可恢复。`,
-      confirmText: "丢弃",
+      title: t("right.discardTitle"),
+      message: t("right.discardMsg", { path: f.path }),
+      confirmText: t("right.discard"),
       danger: true,
       onDone: (yes) => {
         setConfirm(null);
@@ -120,7 +122,7 @@ export default function GitDiffPage() {
         <input
           className="inp gd-commit-inp"
           type="text"
-          placeholder="提交信息"
+          placeholder={t("right.commitMsgPh")}
           value={rightState.commitMsg}
           onChange={(e) => {
             // 键入为静默写：换引用不 bump，不打扰旧 useStore 全局订阅（原局部 force 重渲染由此订阅替代）
@@ -129,7 +131,7 @@ export default function GitDiffPage() {
         />
         <button
           className={"save-btn" + (gitBusy?.op === "commit" ? " busy" : "")}
-          title="提交全部已暂存的改动"
+          title={t("right.commitStaged")}
           disabled={!rightState.commitMsg.trim() || !hasStaged || busy}
           onClick={() => {
             const message = rightState.commitMsg.trim();
@@ -138,24 +140,24 @@ export default function GitDiffPage() {
             startGitBusy("commit");
           }}
         >
-          {gitBusy?.op === "commit" ? <Icon name="refresh" size={13} /> : "提交"}
+          {gitBusy?.op === "commit" ? <Icon name="refresh" size={13} /> : t("right.commit")}
         </button>
         <button
           className={"save-btn" + (gitBusy?.op === "push" ? " busy" : "")}
-          title="推送当前分支"
+          title={t("right.pushCurrent")}
           disabled={busy}
           onClick={() => {
             send({ type: "git_push", cwd: s.cwd });
             startGitBusy("push");
           }}
         >
-          {gitBusy?.op === "push" ? <Icon name="refresh" size={13} /> : "推送"}
+          {gitBusy?.op === "push" ? <Icon name="refresh" size={13} /> : t("right.push")}
         </button>
       </div>
       {gitDiffCache.cwd !== s.cwd || gitDiffCache.loading ? (
-        <div className="py-3 px-2.5 text-faint text-ui-base">{gitDiffCache.loading ? "加载中…" : "点右上角 ⟳ 加载改动"}</div>
+        <div className="py-3 px-2.5 text-faint text-ui-base">{gitDiffCache.loading ? t("common.loading") : t("right.clickRefresh")}</div>
       ) : gitDiffCache.files.length === 0 ? (
-        <div className="py-3 px-2.5 text-faint text-ui-base">（工作区干净）</div>
+        <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.worktreeClean")}</div>
       ) : gitViewMode === "flat" ? (
         gitDiffCache.files.map((f) => <GitFileRow key={f.path} f={f} displayPath={f.path} depth={0} onDiscard={onDiscard} />)
       ) : (
@@ -168,6 +170,7 @@ export default function GitDiffPage() {
 
 // 文件详情：返回 + 路径固定在顶，diff 区滚动（自研 LightweightDiff 组件渲染）
 function GdFileDetail() {
+  const { t } = useTranslation();
   const selectedFile = useAppStore((st) => st.selectedFile); // 入口 if (selectedFile) 已守卫非空,与原版一致
   const fileDiffCache = useAppStore((st) => st.fileDiffCache);
   return (
@@ -179,15 +182,15 @@ function GdFileDetail() {
             setBump({ selectedFile: null });
           }}
         >
-          ‹ 返回列表
+          {t("right.backToList")}
         </button>
         <div className="text-ui-sm text-faint mb-1.5 break-all">{selectedFile}</div>
       </div>
       <div className="rb-scroll">
         {fileDiffCache.loading && fileDiffCache.path === selectedFile ? (
-          <div className="py-3 px-2.5 text-faint text-ui-base">加载中…</div>
+          <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>
         ) : fileDiffCache.path !== selectedFile || !fileDiffCache.diff ? (
-          <div className="py-3 px-2.5 text-faint text-ui-base">（无差异内容）</div>
+          <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noDiffContent")}</div>
         ) : (
           <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(selectedFile)} className="fd-holder" />
         )}
@@ -198,6 +201,7 @@ function GdFileDetail() {
 
 // 文件行：状态徽标 + 文件名 + 行内写操作（hover 显示，树/平铺两视图共用）
 function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; displayPath: string; depth: number; onDiscard: (f: GitFileEntry) => void }) {
+  const { t } = useTranslation();
   const gitBusy = useGitBusy();
   const busy = !!gitBusy;
   const cwd = () => activeOpen()?.cwd; // cwd 取法对齐 refreshGitDiff（activeOpen().cwd）
@@ -222,7 +226,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
         {f.unstaged && (
           <button
             className="gd-act"
-            title="暂存"
+            title={t("right.stage")}
             disabled={busy}
             onClick={(e) => {
               e.stopPropagation(); // 不触发行点击的进详情
@@ -238,7 +242,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
         {f.staged && (
           <button
             className="gd-act"
-            title="取消暂存"
+            title={t("right.unstage")}
             disabled={busy}
             onClick={(e) => {
               e.stopPropagation();
@@ -253,7 +257,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
         )}
         <button
           className="gd-act danger"
-          title="丢弃（不可恢复）"
+          title={t("right.discardForever")}
           disabled={busy}
           onClick={(e) => {
             e.stopPropagation();

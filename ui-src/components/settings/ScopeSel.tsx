@@ -3,6 +3,7 @@
 // 图标随层级切换 scopeProfile/folder）。用户级 omp 不存在，只有 Profile 与项目两级。
 // 样式基类 .scope-sel-btn 在 style.css 单点定义，各页禁止再写私有按钮类。
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
 
 export interface ScopeSelOption {
@@ -16,6 +17,7 @@ export default function ScopeSel({ value, onChange, profile, projects }: {
   profile: ScopeSelOption;
   projects: ScopeSelOption[];
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   // 点菜单外关闭（同各页原 document 级监听）
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function ScopeSel({ value, onChange, profile, projects }: {
           </div>
         </div>
         <div className="sep" />
-        <div className="scope-menu-header">工作区</div>
+        <div className="scope-menu-header">{t("settingsPage.scopeSel.workspace")}</div>
         <div className="scope-menu-projects">
           {projects.map((s) => (
             <div key={s.id} className="mi" data-scope={s.id} onClick={pick(s.id)}>
@@ -57,7 +59,7 @@ export default function ScopeSel({ value, onChange, profile, projects }: {
               <span className="mi-label" title={s.label}>{s.label}</span>
             </div>
           ))}
-          {projects.length === 0 && <div className="mi empty disabled">暂无工作区</div>}
+          {projects.length === 0 && <div className="mi empty disabled">{t("settingsPage.scopeSel.noProjects")}</div>}
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import {
   toRestoredQueuedMessage,
 } from "./bootstrap.ts";
 import { sessions, stampEvent, type PoolEntry } from "./state.ts";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 
 function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const agent = entry.session.agent;
@@ -52,7 +53,7 @@ function extractParkedAt(entry: PoolEntry, pi: number): any[] {
       break;
     }
   }
-  if (target < 0) throw new Error(`暂存排队消息不存在: ${pi}`);
+  if (target < 0) throw new Error(hostI18n.t("errors.queue.parkedNotFound", { index: pi }));
   let start = target;
   while (start > 0 && isHiddenUserCompanion(parked[start - 1])) start--;
   const extracted = parked.slice(start, target + 1);
@@ -80,7 +81,7 @@ function removeUserMessage(queue: readonly any[], index: number): any[] {
       break;
     }
   }
-  if (target < 0) throw new Error(`排队消息不存在: ${index}`);
+  if (target < 0) throw new Error(hostI18n.t("errors.queue.messageNotFound", { index }));
   let start = target;
   while (start > 0 && isHiddenUserCompanion(queue[start - 1])) start--;
   return queue.filter((_, i) => i < start || i > target);
@@ -88,7 +89,7 @@ function removeUserMessage(queue: readonly any[], index: number): any[] {
 
 function handlePeekQueued(ws: { send(data: string): unknown }, sessionId: string) {
   const entry = sessions.get(sessionId);
-  if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   sendQueued(ws, sessionId, entry);
 }
 
@@ -99,7 +100,7 @@ function handleDropQueued(
   index?: number,
 ) {
   const entry = sessions.get(sessionId);
-  if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   const agent = entry.session.agent;
   const queue = which === "steering" ? agent.peekSteeringQueue() : agent.peekFollowUpQueue();
   let next: any[];
@@ -125,7 +126,7 @@ function handleDropQueued(
 // 剩余排队消息全部 park，本轮 run 只注入被点的这一条
 async function handleSendNow(ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
-  if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   const agent = entry.session.agent;
   const queue = agent.peekFollowUpQueue();
   const queueUserCount = queue.filter((m) => isUserQueuedMessage(m)).length;
@@ -140,7 +141,7 @@ async function handleSendNow(ws: { send(data: string): unknown }, sessionId: str
         break;
       }
     }
-    if (target < 0) throw new Error(`排队消息不存在: ${index}`);
+    if (target < 0) throw new Error(hostI18n.t("errors.queue.messageNotFound", { index }));
     restored = toRestoredQueuedMessage(queue[target]);
     agent.replaceQueues(agent.peekSteeringQueue(), removeUserMessage(queue, index));
   } else {
@@ -156,7 +157,7 @@ async function handleSendNow(ws: { send(data: string): unknown }, sessionId: str
 // 放回队列：把 steer 队列第 index 条挪回 followUp 顶端（去掉 steer 标记）
 function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
-  if (!entry) throw new Error(`会话不存在: ${sessionId}`);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   const agent = entry.session.agent;
   const queue = agent.peekSteeringQueue();
   let n = -1;
@@ -168,7 +169,7 @@ function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, i
       break;
     }
   }
-  if (target < 0) throw new Error(`steer 消息不存在: ${index}`);
+  if (target < 0) throw new Error(hostI18n.t("errors.queue.steerNotFound", { index }));
   const moved: any = { ...queue[target] };
   delete moved.steering;
   agent.replaceQueues(removeUserMessage(queue, index), [moved, ...agent.peekFollowUpQueue()]);

@@ -9,6 +9,7 @@
 // 排队卡不在此处：由 App 在 .dock 前作相邻兄弟渲染（ZCode 负 margin 二级重叠卡，见 ui/style.css）。
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useCallback } from "react";
 import type { ChangeEvent, MouseEvent, Ref } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
 import { updateSession } from "../store/session";
 import type { PromptAttachment } from "../types/frames";
@@ -147,6 +148,7 @@ type ComposerProps = {
 };
 
 export default function Composer({ inWelcome, blocking = false }: ComposerProps) {
+  const { t } = useTranslation();
   // ---- store 订阅（selector 逐字段，禁止 selector 内构造新对象/数组） ----
   // 当前会话（updateSession 帧处理换 session/Map 引用，selector 按引用感知）
   const activePath = useAppStore((st) => st.activePath);
@@ -273,7 +275,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (!src?.data) continue;
         files.push({
           id: ++seq,
-          name: img.name || `图片${files.length + 1}`,
+          name: img.name || t("composer.imageN", { n: files.length + 1 }),
           kind: "image",
           mime: src.mimeType || src.mediaType || "image/png",
           data: src.data,
@@ -296,6 +298,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   });
 
   // ---- 发送链路（原 sendPrompt 平移） ----
+  // Resolved here because sendPrompt's local `t` (draft text) shadows the
+  // translation function inside its scope.
+  const needSessionMsg = t("composer.needSession");
   const clearDraft = () => {
     lexRef.current?.clear();
     clearDraftState(draftKey);
@@ -318,7 +323,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       const command = excludeFromContext ? raw.slice(2).trim() : raw.slice(1).trim();
       if (!command) return; // `!` / `!!` 空命令：无动作（TUI 同款）
       if (!s) {
-        toast("先新建或打开一个会话");
+        toast(needSessionMsg);
         return;
       }
       clearDraft();
@@ -519,7 +524,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const added: (PromptAttachment & { id: number })[] = [];
     for (const file of picked) {
       if (file.size > MAX_ATTACH_BYTES) {
-        toast(`「${file.name}」超过 10MB，未添加`);
+        toast(t("composer.oversizeFile", { name: file.name }));
         continue;
       }
       try {
@@ -536,7 +541,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           added.push({ id: 0, name: file.name, kind: "text", mime: file.type || "text/plain", data: await file.text() });
         }
       } catch {
-        toast(`读取「${file.name}」失败`);
+        toast(t("composer.readFail", { name: file.name }));
       }
     }
     if (added.length === 0) return;
@@ -693,11 +698,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   });
 
   const modelName = isCreatingNew || !s
-    ? (newSessionModel ? (modelShort(newSessionModel) || "模型") : "模型")
-    : modelShort(s.model) || "模型";
+    ? (newSessionModel ? (modelShort(newSessionModel) || t("composer.modelFallback")) : t("composer.modelFallback"))
+    : modelShort(s.model) || t("composer.modelFallback");
   const thinkLabel = s
-    ? (s.thinking === "auto" && s.autoResolved ? `auto·${s.autoResolved}` : s.thinking || "思考")
-    : newSessionThinking || "思考";
+    ? (s.thinking === "auto" && s.autoResolved ? `auto·${s.autoResolved}` : s.thinking || t("composer.thinkFallback"))
+    : newSessionThinking || t("composer.thinkFallback");
   const bgTasks = bgTaskCount(s);
   const bgSubs = subagentCount(s);
 
@@ -733,7 +738,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     [draftKey],
   );
 
-  const phText = "随时提问，@ 提及，/ 选择操作";
+  const phText = t("composer.placeholder");
 
   return (
     <>
@@ -785,13 +790,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <div id="input" className="inp-ce" />
         )}
         <div className="cbar" ref={cbarRef}>
-          <button className="icon-btn plus-btn" id="plusBtn" title="添加上下文" onClick={() => pickerRef.current?.click()}>
+          <button className="icon-btn plus-btn" id="plusBtn" title={t("composer.addContext")} onClick={() => pickerRef.current?.click()}>
             <Icon name="plus" />
           </button>
           <button
             className={"pill-btn" + (openMenu === "mode" ? " active" : "") + (modeMeta.yolo ? " yolo highlight-mode" : "")}
             id="modeBtn"
-            title="权限模式"
+            title={t("composer.permissionMode")}
             ref={modeBtnRef}
             onClick={toggleMenu("mode")}
           >
@@ -805,14 +810,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               <button
                 className="pill-btn plan-btn"
                 id="planBtn"
-                title="计划模式已开启，点击退出"
+                title={t("composer.planOnTitle")}
                 onClick={() => send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: false })}
               >
                 <span className="plan-ic">
                   <Icon name="plan" size={16} />
                   <Icon name="xmark" size={14} />
                 </span>
-                <span id="planLabel">计划</span>
+                <span id="planLabel">{t("composer.planLabel")}</span>
               </button>
             </>
           )}
@@ -820,7 +825,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <button
               className={"pill-btn bg-task-btn has-running" + (!rightCollapsed && rightTab === "bgcmd" ? " on" : "")}
               id="bgTaskBtn"
-              title="后台命令"
+              title={t("composer.bgCommands")}
               disabled={!s}
               onClick={toggleBgTab("bgcmd")}
             >
@@ -832,7 +837,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <button
               className={"pill-btn bg-task-btn has-running" + (!rightCollapsed && rightTab === "subagent" ? " on" : "")}
               id="bgSubagentBtn"
-              title="子智能体"
+              title={t("composer.subagents")}
               disabled={!s}
               onClick={toggleBgTab("subagent")}
             >
@@ -846,7 +851,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <button
             className={"pill-btn" + (openMenu === "model" ? " active" : "")}
             id="modelBtn"
-            title="切换模型"
+            title={t("composer.switchModel")}
             ref={modelBtnRef}
             disabled={menuDisabled}
             onClick={toggleMenu("model")}
@@ -857,7 +862,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <button
             className={"pill-btn" + (openMenu === "think" ? " active" : "")}
             id="thinkBtn"
-            title="思考级别"
+            title={t("composer.thinkLevel")}
             ref={thinkBtnRef}
             disabled={menuDisabled}
             onClick={toggleMenu("think")}
@@ -871,14 +876,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             disabled={stopping && stopPending}
             title={
               escArmed
-                ? "再按一次 Esc 中断生成"
+                ? t("composer.sendEscAgain")
                 : stopping
                   ? bashRunning && !s?.streaming
-                    ? "停止命令"
-                    : "停止生成"
+                    ? t("composer.stopCommand")
+                    : t("composer.stopGeneration")
                   : s?.streaming
-                    ? "发送（排队，当前任务完成后发出）"
-                    : "发送"
+                    ? t("composer.sendQueued")
+                    : t("composer.send")
             }
             onClick={() => {
               // 取消形态（停止生成 / Esc 示警窗口）：中止生成；发送形态：照常发送/排队

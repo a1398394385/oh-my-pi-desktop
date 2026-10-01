@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { useAppStore, setBump, send } from "../../store";
+import { t } from "../../i18n";
 
 // 供应商图标映射（原 ui/settings/index.js 顶部 PROV_IC 原样平移）
 export const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "minimax-code-cn": "◆", "opencode-zen": "✦", llama: "●", "local-proxy": "▣" };
@@ -20,7 +21,7 @@ export interface ConfirmDialogProps {
 // 通用二次确认弹窗：复用登录粘贴码的 lp-mask/lp-box 弹窗语言，danger 时确认钮走红。
 // 返回 Promise<boolean>，点遮罩/取消均视为 false（替代原生 confirm，WKWebView 下观感统一）。
 // 命令式 API：每次调用往 document.body 挂一个独立 React root，关闭即卸载（旧版 DOM 直挂的等价物）。
-export function confirmDialog({ title, message = "", confirmText = "确定", danger = false }: ConfirmDialogProps): Promise<boolean> {
+export function confirmDialog({ title, message = "", confirmText, danger = false }: ConfirmDialogProps): Promise<boolean> {
   return new Promise((resolve) => {
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -39,13 +40,13 @@ export function confirmDialog({ title, message = "", confirmText = "确定", dan
           createElement("div", { className: "lp-msg" }, title),
           message ? createElement("div", { className: "cf-msg" }, message) : null,
           createElement("div", { className: "lp-row" },
-            createElement("button", { type: "button", className: "save-btn", onClick: () => done(false) }, "取消"),
+            createElement("button", { type: "button", className: "save-btn", onClick: () => done(false) }, t("common.cancel")),
             createElement("button", {
               type: "button",
               className: "save-btn" + (danger ? " danger" : ""),
               autoFocus: true,
               onClick: () => done(true),
-            }, confirmText),
+            }, confirmText ?? t("common.confirm")),
           ),
         ),
       ),
@@ -62,7 +63,7 @@ export function LoginBanner() {
     <div className="login-banner" id="loginBanner">
       <span>{loginBanner}</span>
       <button type="button" className="save-btn" onClick={() => send({ type: "provider_login_cancel" })}>
-        取消登录
+        {t("settingsPage.login.cancelLogin")}
       </button>
     </div>
   );
@@ -90,18 +91,18 @@ export function LoginPrompt() {
       onKeyDown={(e) => { if (e.key === "Enter") reply(text); }}
     >
       <div className="lp-box">
-        <div className="lp-msg">{msg.message || "请输入授权码："}</div>
+        <div className="lp-msg">{msg.message || t("settingsPage.login.authPrompt")}</div>
         <input
           className="inp"
           type={msg.secret ? "password" : "text"}
-          placeholder="粘贴授权码或完整回调 URL"
+          placeholder={t("settingsPage.login.authPlaceholder")}
           value={text}
           autoFocus
           onChange={(e) => setText(e.target.value)}
         />
         <div className="lp-row">
-          <button type="button" className="save-btn" onClick={() => reply(text)}>确定</button>
-          <button type="button" className="save-btn" onClick={() => reply("")}>取消</button>
+          <button type="button" className="save-btn" onClick={() => reply(text)}>{t("common.confirm")}</button>
+          <button type="button" className="save-btn" onClick={() => reply("")}>{t("common.cancel")}</button>
         </div>
       </div>
     </div>

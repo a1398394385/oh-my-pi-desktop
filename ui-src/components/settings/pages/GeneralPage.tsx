@@ -2,11 +2,17 @@
 // 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-general">，
 // 绑定参照 ui/settings/index.js 的 initSettings / applyHostSettings / saveDesktopField。
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import i18next, { type AppLang } from "../../../i18n";
+import { invoke } from "../../../store/ws";
 import type { DesktopEnv } from "../../../types/frames";
+
+// Native names for the language badge and picker labels (never translated)
+const LANG_NATIVE: Record<AppLang, string> = { "zh-CN": "简体中文", en: "English" };
 
 // 下拉选项（旧版 .mi 一一对应；ck/sub/disabled 均可选）
 interface SelOption {
@@ -92,6 +98,8 @@ function Sel({ label, options, onPick }: SelProps) {
 
 export default function GeneralPage() {
   const hs = useAppStore((s) => s.hostSettings); // selector 订阅回包刷新
+  const { t } = useTranslation();
+  const lang = useAppStore((s) => s.uiPrefs.lang);
   const env: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" }; // 首帧前兜底,同原版 {} 语义
 
   // ---------- 本地表单态 ----------
@@ -126,16 +134,21 @@ export default function GeneralPage() {
   const switchProfile = (name: string) => {
     const target = String(name || "").trim();
     if (!target) return;
-    toast(`正在切换至 Profile: ${target}…`);
+    toast(t("settingsPage.general.switchingProfile", { name: target }));
     send({ type: "switch_profile", profile: target });
+    // Re-send the locale after a profile switch: the host re-reads the new
+    // profile's config on switch, so push the frontend's language preference
+    // again to keep the host aligned. WS is ordered — set_locale lands after
+    // the switch_profile handling.
+    send({ type: "set_locale", lang: useAppStore.getState().uiPrefs.lang });
   };
   const newProfile = () => {
-    const input = window.prompt("请输入新 Profile 名称（仅支持小写字母、数字、短横线、下划线）：");
+    const input = window.prompt(t("settingsPage.general.newProfilePrompt"));
     if (!input) return;
     const name = input.trim();
     if (!name) return;
     if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(name)) {
-      toast("Profile 名称不合法：仅支持字母、数字、点、短横线、下划线");
+      toast(t("settingsPage.general.profileNameInvalid"));
       return;
     }
     switchProfile(name);
@@ -156,7 +169,7 @@ export default function GeneralPage() {
       uiPrefs: { ...st.uiPrefs, terminalInheritProfile: next },
     }));
     saveUiPrefs();
-    toast(next ? "已开启终端环境继承（下次新建终端生效）" : "已关闭终端环境继承（下次新建终端生效）");
+    toast(next ? t("settingsPage.general.terminalInheritOn") : t("settingsPage.general.terminalInheritOff"));
   };
   const saveTerminalFont = () => {
     const f = terminalFont.trim();
@@ -164,7 +177,22 @@ export default function GeneralPage() {
       uiPrefs: { ...st.uiPrefs, terminalFont: f },
     }));
     saveUiPrefs();
-    toast(f ? `终端字体已保存：${f}` : "已恢复默认终端字体栈");
+    toast(f ? t("settingsPage.general.terminalFontSaved", { font: f }) : t("settingsPage.general.terminalFontReset"));
+  };
+  // Language switch: persist to uiPrefs, switch i18next, notify the host.
+  // <App key={lang}> in main.tsx re-mounts the tree, so the new locale applies
+  // immediately without a restart. zh-TW stays a disabled placeholder.
+  const pickLang = (v: string) => {
+    if (v !== "zh-CN" && v !== "en") return;
+    if (v === useAppStore.getState().uiPrefs.lang) return;
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, lang: v } }));
+    saveUiPrefs();
+    void i18next.changeLanguage(v);
+    send({ type: "set_locale", lang: v });
+    // Rebuild the native menu with the new locale (no-op outside Tauri).
+    invoke?.("set_menu_language", { lang: v })?.catch((err: unknown) =>
+      console.warn("set_menu_language:", err),
+    );
   };
   // 网络三件套：整包发送 desktopEnv（旧版 saveDesktopField 语义）
   const saveEnv = (field: string, val: string) => {
@@ -175,7 +203,7 @@ export default function GeneralPage() {
     const raw = parseFloat(askTimeout);
     const secs = Number.isFinite(raw) && raw >= 0 ? raw : 0;
     send({ type: "set_setting", key: "ask.timeout", value: secs });
-    toast(`提问超时时间已保存：${secs} 秒${secs === 0 ? "（永不超时）" : ""}`);
+    toast(t("settingsPage.general.askTimeoutSaved", { secs, suffix: secs === 0 ? t("settingsPage.general.neverTimeout") : "" }));
   };
 
   // ---------- Profile 下拉数据（数据契约：hostSettings.availableProfiles: string[]） ----------
@@ -184,51 +212,51 @@ export default function GeneralPage() {
     ? hs.availableProfiles
     : [activeProfile];
   const profileDesc = hs?.profileAgentDir
-    ? `当前目录: ${hs.profileAgentDir}`
-    : "切换不同的底座 Profile（隔离会话、模型、认证与扩展）。";
+    ? t("settingsPage.general.profileDescDir", { dir: hs.profileAgentDir })
+    : t("settingsPage.general.profileDescDefault");
 
   return (
     <div className="set-page" id="pg-general">
-      <div className="set-tt">常规 <span className="stag" id="langTag">简体中文</span></div>
-      <div className="set-group-tt">Profile 环境</div>
+      <div className="set-tt">{t("settingsPage.nav.general")} <span className="stag" id="langTag">{LANG_NATIVE[lang]}</span></div>
+      <div className="set-group-tt">{t("settingsPage.general.groupProfile")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>当前 Profile</b><span id="profilePathDesc">{profileDesc}</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.general.currentProfile")}</b><span id="profilePathDesc">{profileDesc}</span></div>
           <div className="srow-ctl" style={{ gap: 8 }}>
             <Sel
               label={activeProfile}
               options={profiles.map((p) => ({
                 v: p,
-                label: p === "default" ? "default (全局默认)" : p,
+                label: p === "default" ? t("settingsPage.general.profileDefaultEntry") : p,
                 ck: p === activeProfile ? "✓" : "",
               }))}
               onPick={(p) => { if (p !== activeProfile) switchProfile(p); }}
             />
-            <button className="save-btn" id="newProfileBtn" title="新建并切换到新 Profile" onClick={newProfile}>+ 新建</button>
+            <button className="save-btn" id="newProfileBtn" title={t("settingsPage.general.newProfileTitle")} onClick={newProfile}>{t("settingsPage.general.newProfileBtn")}</button>
           </div>
         </div>
       </div>
-      <div className="set-group-tt">应用</div>
+      <div className="set-group-tt">{t("settingsPage.general.groupApp")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>界面语言</b><span>选择应用 UI 的显示语言。目前仅提供简体中文。</span></div>
+          <div className="srow-tx"><b>{t("common.languageLabel")}</b><span>{t("settingsPage.general.langDesc")}</span></div>
           <Sel
-            label="简体中文"
+            label={LANG_NATIVE[lang]}
             options={[
-              { v: "zh-CN", label: "简体中文", ck: "✓" },
-              { v: "zh-TW", label: "繁體中文", disabled: true, sub: "未实现" },
-              { v: "en", label: "English", disabled: true, sub: "未实现" },
+              { v: "zh-CN", label: "简体中文", ck: lang === "zh-CN" ? "✓" : "" },
+              { v: "zh-TW", label: "繁體中文", disabled: true, sub: t("settingsPage.general.zhTwPending") },
+              { v: "en", label: "English", ck: lang === "en" ? "✓" : "" },
             ]}
-            onPick={() => {}}
+            onPick={pickLang}
           />
         </div>
       </div>
-      <div className="set-group-tt">终端</div>
+      <div className="set-group-tt">{t("settingsPage.general.groupTerminal")}</div>
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx">
-            <b>继承系统终端 Profile</b>
-            <span>启动内置终端时作为登录 Shell 运行，自动加载 ~/.zprofile、PATH 等系统与用户登录环境。</span>
+            <b>{t("settingsPage.general.terminalInheritTitle")}</b>
+            <span>{t("settingsPage.general.terminalInheritDesc")}</span>
           </div>
           <div className={"tg" + (terminalInherit ? " on" : "")} id="tgTerminalInherit" onClick={toggleTerminalInherit}>
             <i></i>
@@ -236,8 +264,8 @@ export default function GeneralPage() {
         </div>
         <div className="srow">
           <div className="srow-tx">
-            <b>终端字体</b>
-            <span>右栏内置终端的等宽字体家族。留空则使用默认等宽字体栈。</span>
+            <b>{t("settingsPage.general.terminalFontTitle")}</b>
+            <span>{t("settingsPage.general.terminalFontDesc")}</span>
           </div>
           <div className="srow-ctl">
             <input
@@ -248,49 +276,49 @@ export default function GeneralPage() {
               ref={termFontRef}
               onChange={(e) => setTerminalFont(e.target.value)}
             />
-            <button className="save-btn" id="termFontSave" onClick={saveTerminalFont}>保存</button>
+            <button className="save-btn" id="termFontSave" onClick={saveTerminalFont}>{t("common.save")}</button>
           </div>
         </div>
       </div>
-      <div className="set-group-tt">网络</div>
+      <div className="set-group-tt">{t("settingsPage.general.groupNetwork")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>HTTP 代理</b><span>写入宿主环境变量 HTTP(S)_PROXY。留空则直连。修改后建议重启应用。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.general.httpProxyTitle")}</b><span>{t("settingsPage.general.httpProxyDesc")}</span></div>
           <div className="srow-ctl">
-            <input className="inp" id="proxyInput" placeholder="例如 http://127.0.0.1:7890" value={proxy} ref={proxyRef}
+            <input className="inp" id="proxyInput" placeholder={t("settingsPage.general.httpProxyPlaceholder")} value={proxy} ref={proxyRef}
               onChange={(e) => setProxy(e.target.value)} />
-            <button className="save-btn" id="proxySave" onClick={() => saveEnv("httpProxy", proxy.trim())}>保存</button>
+            <button className="save-btn" id="proxySave" onClick={() => saveEnv("httpProxy", proxy.trim())}>{t("common.save")}</button>
           </div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>不使用代理的地址</b><span>NO_PROXY，多个规则用英文逗号分隔。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.general.noProxyTitle")}</b><span>{t("settingsPage.general.noProxyDesc")}</span></div>
           <div className="srow-ctl">
             <input className="inp" id="noProxyInput" placeholder="localhost,127.0.0.1,::1" value={noProxy} ref={noProxyRef}
               onChange={(e) => setNoProxy(e.target.value)} />
-            <button className="save-btn" id="noProxySave" onClick={() => saveEnv("noProxy", noProxy.trim())}>保存</button>
+            <button className="save-btn" id="noProxySave" onClick={() => saveEnv("noProxy", noProxy.trim())}>{t("common.save")}</button>
           </div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>自定义证书</b><span>PEM 根证书路径，注入 NODE_EXTRA_CA_CERTS。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.general.caTitle")}</b><span>{t("settingsPage.general.caDesc")}</span></div>
           <div className="srow-ctl">
-            <input className="inp" id="caInput" placeholder="例如 /Users/name/certs/root-ca.pem" value={ca} ref={caRef}
+            <input className="inp" id="caInput" placeholder={t("settingsPage.general.caPlaceholder")} value={ca} ref={caRef}
               onChange={(e) => setCa(e.target.value)} />
-            <button className="save-btn" id="caSave" onClick={() => saveEnv("caCerts", ca.trim())}>保存</button>
+            <button className="save-btn" id="caSave" onClick={() => saveEnv("caCerts", ca.trim())}>{t("common.save")}</button>
           </div>
         </div>
       </div>
-      <div className="set-group-tt">行为与交互</div>
+      <div className="set-group-tt">{t("settingsPage.general.groupBehavior")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>提问超时时间</b><span>omp ask.timeout：提问无人响应 N 秒后自动选择推荐项；0 = 永不超时（默认）。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.general.askTimeoutTitle")}</b><span>{t("settingsPage.general.askTimeoutDesc")}</span></div>
           <div className="srow-ctl">
             <input className="inp" id="askTimeoutInput" type="number" min="0" step="1" placeholder="0" value={askTimeout} ref={askRef}
               onChange={(e) => setAskTimeout(e.target.value)} />
-            <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>保存</button>
+            <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>{t("common.save")}</button>
           </div>
         </div>
         <div className="srow">
-          <div className="srow-tx"><b>显示思考过程</b><span>在消息流中展示模型的思考内容。对应 omp hideThinkingBlock。</span></div>
+          <div className="srow-tx"><b>{t("settingsPage.general.showThinkingTitle")}</b><span>{t("settingsPage.general.showThinkingDesc")}</span></div>
           <div className={"tg" + (showThinking ? " on" : "")} id="tgThinking" onClick={toggleThinking}><i></i></div>
         </div>
       </div>

@@ -3,7 +3,9 @@
 // Markdown 渲染是记忆页专用的简化实现（整体先转义再排版，防注入），与主对话区 markdown 引擎相互独立。
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
+import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -159,6 +161,7 @@ function rolloutLabel(n: string): string {
 
 // ---------- 延展区：头部 + 左栏文件树 + 右侧内容 ----------
 function MemoryExpand({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const d = useAppStore((s) => s.memoryDetail);
   const [rolloutOpen, setRolloutOpen] = useState(true); // rollout 组展开态（组件随切行重挂载，天然复位为展开）
   // 子项入场动画标记用后即焚（对齐旧版 animateMdKids：本次渲染带 kids-in，随后复位）
@@ -204,20 +207,20 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
 
   // 正文：读取中 / 失败 / markdown 渲染（空文件占位对齐旧版）
   let body: ReactNode;
-  if (d.status === "loading") body = "读取中…";
-  else if (d.status === "error") body = `读取失败：${d.error ?? ""}`;
+  if (d.status === "loading") body = t("settingsPage.shared.reading");
+  else if (d.status === "error") body = t("settingsPage.memory.readFail", { error: d.error ?? "" });
   else
     body = (
-      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(d.content) || '<p style="color:var(--faint)">（空文件）</p>' }} />
+      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(d.content) || `<p style="color:var(--faint)">${ti("settingsPage.memory.emptyFile")}</p>` }} />
     );
 
   return (
     <div className="mem-expand">
       <div className="mem-exp-head">
-        <span>记忆详情</span>
+        <span>{t("settingsPage.memory.detailTitle")}</span>
         <span className="sp"></span>
         <button type="button" className="save-btn" onClick={onClose}>
-          收起
+          {t("settingsPage.shared.collapse")}
         </button>
       </div>
       <div className="mem-body">
@@ -244,6 +247,7 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
 
 // ---------- 页面 ----------
 export default function MemoryPage() {
+  const { t } = useTranslation();
   const memories = useAppStore((s) => s.agentAssets?.memories ?? null);
   const [openPath, setOpenPath] = useState<string | null>(null); // 当前向下延展的记忆行（条目 path）
 
@@ -269,20 +273,20 @@ export default function MemoryPage() {
 
   return (
     <div className="set-page" id="pg-memory">
-      <div className="set-tt">记忆</div>
+      <div className="set-tt">{t("settingsPage.nav.memory")}</div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(0, 1)} />
-      <div className="set-group-tt">记忆文件</div>
+      <div className="set-group-tt">{t("settingsPage.memory.filesGroup")}</div>
       <div className="set-card" id="memoryList">
         {!memories ? (
           <div className="srow">
             <div className="srow-tx">
-              <span>加载中…</span>
+              <span>{t("common.loading")}</span>
             </div>
           </div>
         ) : memories.length === 0 ? (
           <div className="srow">
             <div className="srow-tx">
-              <span>暂无</span>
+              <span>{t("settingsPage.shared.emptyNone")}</span>
             </div>
           </div>
         ) : (

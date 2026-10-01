@@ -1,6 +1,7 @@
 // 设置页：钩子（pg-hooks）。
 // 提供总开关（hooks.enabled 控制 disableExtensionDiscovery）、运行配置项（SchemaRows）与已发现钩子列表。
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import type { HookAssetItem } from "../../../types/frames";
 import SchemaRows from "../SchemaRows";
@@ -9,6 +10,7 @@ import Icon from "../../../Icon";
 import { emptyRow } from "../common";
 
 export default function HooksPage() {
+  const { t } = useTranslation();
   const hostSettings = useAppStore((s) => s.hostSettings);
   const agentAssets = useAppStore((s) => s.agentAssets);
   const hooks = agentAssets?.hooks as HookAssetItem[] | undefined;
@@ -21,7 +23,7 @@ export default function HooksPage() {
   const toggleHooks = () => {
     const next = !hooksEnabled;
     send({ type: "set_hooks_enabled", enabled: next });
-    toast(next ? "已开启钩子总开关，对新建会话生效。" : "已关闭钩子总开关。");
+    toast(next ? t("settingsPage.hooks.onToast") : t("settingsPage.hooks.offToast"));
   };
 
   const onRefresh = () => {
@@ -49,12 +51,12 @@ export default function HooksPage() {
   return (
     <div className="set-page" id="pg-hooks">
       <div className="flex items-center justify-between mb-[25px]">
-        <div className="set-tt mb-0">钩子</div>
+        <div className="set-tt mb-0">{t("settingsPage.nav.hooks")}</div>
         <button
           type="button"
           className={"icon-btn pg-refresh" + (spin ? " spin" : "")}
           id="hooksRefreshBtn"
-          title="刷新钩子列表"
+          title={t("settingsPage.hooks.refreshList")}
           onClick={onRefresh}
         >
           <Icon name="refresh" size={17} />
@@ -64,13 +66,13 @@ export default function HooksPage() {
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx">
-            <b>启用钩子 (Hooks)</b>
-            <span>允许 Agent 执行 pre/post 钩子脚本。支持工具拦截、提示词上下文注入与结果后置审计。对新建会话生效。</span>
+            <b>{t("settingsPage.hooks.masterTitle")}</b>
+            <span>{t("settingsPage.hooks.masterDesc")}</span>
           </div>
           <div
             className={"tg" + (hooksEnabled ? " on" : "") + (known ? "" : " disabled")}
             id="tgHooks"
-            title={hooksEnabled ? "点击停用钩子" : "点击启用钩子"}
+            title={hooksEnabled ? t("settingsPage.hooks.masterOn") : t("settingsPage.hooks.masterOff")}
             onClick={toggleHooks}
           >
             <i></i>
@@ -78,22 +80,22 @@ export default function HooksPage() {
         </div>
       </div>
 
-      <div className="set-group-tt">运行配置</div>
-      <div className="set-group-desc">控制钩子在执行时的状态展示与工具调用超时时间。</div>
+      <div className="set-group-tt">{t("settingsPage.hooks.runConfigGroup")}</div>
+      <div className="set-group-desc">{t("settingsPage.hooks.runConfigDesc")}</div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-hooks"]} />
 
-      <div className="set-group-tt">已发现的钩子</div>
+      <div className="set-group-tt">{t("settingsPage.hooks.discoveredGroup")}</div>
       <div className="set-group-desc">
-        在 Profile 目录或各项目工作区 <code>.omp/hooks/</code> 下检测到的脚本。
+        {t("settingsPage.hooks.discoveredDescA")}<code>.omp/hooks/</code>{t("settingsPage.hooks.discoveredDescB")}
       </div>
       <div className="set-card" id="hooksList">
         {!agentAssets ? (
-          emptyRow("加载中…")
+          emptyRow(t("common.loading"))
         ) : !hooks || hooks.length === 0 ? (
           <div className="srow">
             <div className="srow-tx">
-              <b>未检测到钩子脚本</b>
-              <span>可在 Profile 目录（<code>~/.omp/agent/hooks/pre/</code>、<code>post/</code>）或项目目录（<code>.omp/hooks/pre/</code>、<code>post/</code>）下放入 <code>.ts</code>、<code>.js</code> 或 <code>.sh</code> 脚本。</span>
+              <b>{t("settingsPage.hooks.noHooksTitle")}</b>
+              <span dangerouslySetInnerHTML={{ __html: t("settingsPage.hooks.noHooksDesc") }} />
             </div>
           </div>
         ) : (
@@ -121,7 +123,7 @@ export default function HooksPage() {
                       </span>
                     )}
                     <span className="text-[11px] text-[var(--faint)]" /* style-token-ignore */>
-                      {h.projectName ? `项目 · ${h.projectName}` : "Profile"}
+                      {h.projectName ? t("settingsPage.hooks.hookProject", { name: h.projectName }) : t("settingsPage.hooks.profileLabel")}
                     </span>
                   </div>
                   <span className="truncate max-w-[500px]" title={h.path}>
@@ -130,10 +132,10 @@ export default function HooksPage() {
                 </div>
                 <div
                   className={"tg" + (itemEnabled && hooksEnabled ? " on" : "") + (!hooksEnabled ? " disabled" : "")}
-                  title={!hooksEnabled ? "请先开启总开关" : itemEnabled ? "点击禁用该钩子" : "点击启用该钩子"}
+                  title={!hooksEnabled ? t("settingsPage.hooks.enableFirstTip") : itemEnabled ? t("settingsPage.hooks.disableHookTip") : t("settingsPage.hooks.enableHookTip")}
                   onClick={() => {
                     if (!hooksEnabled) {
-                      toast("请先开启钩子总开关。");
+                      toast(t("settingsPage.hooks.masterFirstToast"));
                       return;
                     }
                     toggleHookItem(hookId, !itemEnabled);

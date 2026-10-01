@@ -15,6 +15,7 @@ import { cjk } from "@streamdown/cjk";
 import { createCodePlugin } from "@streamdown/code";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
+import { t } from "../../i18n";
 
 // 代码高亮插件单例（内部缓存 Shiki highlighter，JS 正则引擎免 wasm）：
 // themes = [light, dark]，取 VSCode 同款 light-plus / dark-plus（与文件页
@@ -71,9 +72,9 @@ function mdCodeBlock({ className, children }: ElProps<"code">) {
         <button
           type="button"
           data-streamdown="code-block-wrap-button"
-          aria-label={wrapLongLines ? "关闭自动换行" : "开启自动换行"}
+          aria-label={wrapLongLines ? t("chat.disableWordWrap") : t("chat.enableWordWrap")}
           aria-pressed={wrapLongLines}
-          title={wrapLongLines ? "关闭自动换行" : "开启自动换行"}
+          title={wrapLongLines ? t("chat.disableWordWrap") : t("chat.enableWordWrap")}
           onClick={() => setWrapLongLines((wrapped) => !wrapped)}
         >
           <Icon name="wrapText" size={14} />
