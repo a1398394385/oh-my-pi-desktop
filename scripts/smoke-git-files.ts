@@ -29,7 +29,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: new URL("..", import.meta.url).pathname,
-    env: { ...process.env },
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }, // fixture 专用宿主:git 调用同样避开全局 hooksPath
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {
@@ -48,7 +48,9 @@ if (!wsUrl) {
 }
 
 // fixture：临时 git 仓库，main 分支一个基线提交
-const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "smoke", GIT_AUTHOR_EMAIL: "smoke@test", GIT_COMMITTER_NAME: "smoke", GIT_COMMITTER_EMAIL: "smoke@test" };
+// Isolate the fixture from the user's global git config: global core.hooksPath (~/.git-hooks) ships a
+// git-lfs post-checkout hook, and git-lfs is not on PATH here — any checkout exits 1 without this.
+const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "smoke", GIT_AUTHOR_EMAIL: "smoke@test", GIT_COMMITTER_NAME: "smoke", GIT_COMMITTER_EMAIL: "smoke@test" };
 repoDir = await mkdtemp(path.join(tmpdir(), "omp-smoke-git-"));
 const g = (cmd: string) => execSync(`git -C ${JSON.stringify(repoDir)} ${cmd}`, { env: gitEnv });
 g("init -b main");
