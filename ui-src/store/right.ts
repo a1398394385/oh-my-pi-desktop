@@ -88,3 +88,67 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
     useAppStore.getState().send({ type: "get_git_diff", cwd: s.cwd });
   },
 });
+
+// ---------- Per-session right panel snapshots: save outgoing / restore incoming on switch ----------
+// Right panel tab layout is remembered per session. Snapshots are in-memory only
+// (app lifetime, not persisted across restarts).
+
+/** Per-session snapshot: tab layout + gitdiff file selection + file page detail state */
+interface RightPanelSnapshot {
+  rightTabs: string[];
+  rightTab: string | null;
+  rightRecentClosed: { name: string; at: number }[];
+  selectedFile: string | null;
+  fileView: FileViewState | null;
+}
+
+/** Snapshot table cap (per session count). openSessions LRU cap is 8; snapshots can
+ *  outlive evicted sessions, so cap the table to prevent unbounded growth. */
+const RIGHT_SNAPSHOT_MAX = 32;
+const rightSnapshots = new Map<string, RightPanelSnapshot>(); // insertion order = LRU order; restore re-inserts to touch
+
+/** Save the right panel snapshot for session `path` (call before activePath switches away; null = no session, skip) */
+export function saveRightSnapshot(path: string | null): void {
+  if (!path) return;
+  const st = useAppStore.getState();
+  rightSnapshots.delete(path);
+  rightSnapshots.set(path, {
+    rightTabs: st.rightTabs.slice(),
+    rightTab: st.rightTab,
+    rightRecentClosed: st.rightRecentClosed.slice(),
+    selectedFile: st.selectedFile,
+    // Skip half-loaded views (empty text would restore stuck in loading) and image views
+    // (they depend on the global imageContent frame) — neither is snapshotted
+    fileView: st.fileViewPending || st.fileView?.image ? null : st.fileView,
+  });
+  while (rightSnapshots.size > RIGHT_SNAPSHOT_MAX) {
+    rightSnapshots.delete(rightSnapshots.keys().next().value as string);
+  }
+}
+
+/** Restore the right panel for session `path` (call after activateSession switches in).
+ *  No snapshot (first open / newly created / first switch back after restart): inherit the
+ *  tab layout (visual continuity) but clear session-scoped detail state — selectedFile/
+ *  fileView data belongs to the previous session. Transients of the previous session
+ *  (pending flags / subagent selection) are always cleared. */
+export function restoreRightPanel(path: string): void {
+  const snap = rightSnapshots.get(path);
+  if (snap) {
+    rightSnapshots.delete(path);
+    rightSnapshots.set(path, snap); // LRU touch
+  }
+  useAppStore.setState(
+    snap ?? {
+      selectedFile: null,
+      fileView: null,
+      selectedSubagent: null,
+      fileViewPending: null,
+      briefDiffPending: null,
+    },
+  );
+}
+
+/** Clear all snapshots (profile switch = different session universe, paths no longer trustworthy) */
+export function clearRightSnapshots(): void {
+  rightSnapshots.clear();
+}

@@ -183,10 +183,11 @@ body:has(#sidebar.collapsed) .chat-head {
   width: 100%;
 }
 
-.sticky-user-wrap .user-msg-text {
-  user-select: text;
-  -webkit-user-select: text;
-}
+/* Pinned user message: text capped at 5.5 lines with inner scroll; the bottom half-line
+   fades out (same treatment as .think-scroll; FadeBox adds .no-fade when at bottom/fit). */
+.sticky-user-wrap .user-msg-text { user-select: text; -webkit-user-select: text; max-height: calc(1.55em * 5.5); overflow-y: auto;
+  overscroll-behavior: contain; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent); }
+.sticky-user-wrap .user-msg-text.no-fade { -webkit-mask-image: none; mask-image: none; }
 
 .sticky-user-wrap .msg.user {
   margin: 0; /* 消除瀑布流硬塞的 90px 间距，与内容列等宽 */
@@ -730,8 +731,7 @@ body:has(#right.collapsed) #right-resizer {
   padding-right: 15px;
 }
 
-/* 终端行点击后向下展开的圆角卡片：上命令、下输出，底色 #323232。 /* style-token-ignore */
-   mt -6：与 .cmd 行 mb 20 塌陷成 14px——与编辑行 ed-brief 弹框到标签的间距基准一致 */
+/* 终端行点击后向下展开的圆角卡片：上命令、下输出，底色 #323232。mt -6：与 .cmd 行 mb 20 塌陷成 14px——与编辑行 ed-brief 弹框到标签的间距基准一致 */ /* style-token-ignore */
 .cmd-card {
   margin: -6px 0 12px; background: #323232; border-radius: 10px;
   padding: 10px 12px; font-family: var(--mono); font-size: var(--code-fs, 12px);

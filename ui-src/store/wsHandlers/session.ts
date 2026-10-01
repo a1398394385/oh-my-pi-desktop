@@ -63,10 +63,11 @@ export const sessionHandlers = {
         planMode: false, // 计划模式（宿主 plan_mode 帧置位）
         title: msg.title ?? null,
       } as OpenSession),
-      selectedSubagent: null,
-      selectedFile: null,
       isCreatingNew: false,
     }));
+    // selectedFile/selectedSubagent are NOT pre-cleared here: activateSession → restoreRightPanel
+    // owns them (fresh session without snapshot = cleared; reloaded session = snapshot restored;
+    // clearing first would wipe the outgoing session's just-saved snapshot)
     activateSession(msg.path);
     useAppStore.getState().refreshGitDiff(); // 右栏 Git Diff 页需要 git status 数据，提前预取
     const st3 = useAppStore.getState();

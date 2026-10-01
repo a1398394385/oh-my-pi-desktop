@@ -14,6 +14,7 @@ use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
 struct HostState {
     url: Option<String>,
@@ -413,6 +414,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        // Window geometry memory: save size/position/maximized on exit and restore on
+        // launch (auto via on_window_ready, before the app setup hook below runs).
+        // Flags deliberately exclude VISIBLE/DECORATIONS/FULLSCREEN: visibility is owned
+        // by the setup hook (config visible:false prevents pre-restore geometry flash),
+        // decorations differ per platform config, fullscreen is not a per-launch state
+        // this app wants to silently re-enter.
+        .plugin(
+            WindowStateBuilder::new()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        )
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -428,19 +440,23 @@ pub fn run() {
                 })
                 .build(),
         )
+        // Close-to-background: red traffic light / ⌘W only hides the window instead of
+        // closing it (closing the last window would terminate the app and the Bun host).
+        // Quit remains available via ⌘Q, the app-menu Quit item, and Dock right-click Quit.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .manage(cell.clone())
         .manage(child_cell.clone())
         .setup(move |app| {
-            // 窗口启动复位：macOS 会残留上次的迷你/屏外 frame（多 dev 实例与用户缩窗叠加），
-            // 显式拉回主屏固定位置，保证窗口可见可测
+            // Window becomes visible here, after the window-state plugin has restored
+            // the saved geometry (config visible:false hides the pre-restore flash of
+            // the default 1280x820 frame). No manual reset anymore — geometry persists.
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.unminimize();
-                if let Err(e) = win.set_position(tauri::LogicalPosition::new(300.0, 130.0)) {
-                    eprintln!("[shell] set_position 失败: {e}");
-                }
-                if let Err(e) = win.set_size(tauri::LogicalSize::new(1280.0, 820.0)) {
-                    eprintln!("[shell] set_size 失败: {e}");
-                }
                 let _ = win.show();
                 let _ = win.set_focus();
             }
@@ -481,10 +497,23 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                if let Some(mut child) = app.state::<ChildCell>().inner().lock().unwrap().take() {
-                    let _ = child.kill();
+            match event {
+                tauri::RunEvent::Exit => {
+                    if let Some(mut child) = app.state::<ChildCell>().inner().lock().unwrap().take() {
+                        let _ = child.kill();
+                    }
                 }
+                // macOS Dock icon click with all windows hidden (close was intercepted
+                // into hide above): bring the main window back to the front.
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { has_visible_windows: false, .. } => {
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.unminimize();
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+                _ => {}
             }
         });
 }

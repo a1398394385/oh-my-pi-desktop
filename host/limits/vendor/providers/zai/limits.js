@@ -434,7 +434,19 @@ async function fetchZaiLimits(options = {}, deps = {}) {
   const [keyResult, planResult] = await Promise.allSettled([keyLane, planLane]);
 
   const lanes = [keyResult, planResult].filter((result) => result.status === 'fulfilled');
-  const windows = lanes.flatMap((result) => result.value.windows);
+  // Both lanes can answer for the same account: the omp-stored credential and
+  // ZCode's mirror key are different token strings (ZCode rotates its mirror
+  // on every login), so the mirrorKey === key skip above rarely fires. One row
+  // renders one window per kind+label — the UI has no account axis — so the
+  // first lane's copy wins (keyLane first: it is the credential configured in
+  // omp) and later duplicates from other lanes are dropped.
+  const windowIdentities = new Set();
+  const windows = lanes.flatMap((result) => result.value.windows).filter((window) => {
+    const identity = `${window?.kind || ''}|${window?.label || ''}`;
+    if (windowIdentities.has(identity)) return false;
+    windowIdentities.add(identity);
+    return true;
+  });
   const accountKey = lanes.map((result) => result.value.accountKey).filter(Boolean)[0] || '';
   const accountLabel = lanes.map((result) => result.value.plan).filter(Boolean)[0] || '';
   // Errors affect status, never the data from a healthy request. The user's

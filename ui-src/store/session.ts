@@ -5,6 +5,10 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { invoke } from "./ws";
+// Per-session right panel snapshots: activateSession is the single funnel for all session
+// activations, so save/restore hooks live here (right.ts also imports activeOpen from this
+// module — both directions are runtime-only calls inside function bodies, no load-time eval)
+import { saveRightSnapshot, restoreRightPanel } from "./right";
 import { t } from "../i18n";
 import type { ApprovalMode, EventFrame, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
@@ -100,8 +104,12 @@ export function findBySessionId(id: string): OpenSession | undefined {
     （SessionRow / BranchTreePage 均已实现「未打开走宿主加载」分支），宿主会话池不受影响。 */
 const OPEN_SESSIONS_MAX = 8;
 
-/** 激活会话：置为当前会话并标记最近使用，随后按上限驱逐 */
+/** Activate a session: make it current, mark most-recently-used, then evict by cap.
+ *  On switch, saves the outgoing session's right panel snapshot first and restores the
+ *  incoming session's right panel after (per-session independence). */
 export function activateSession(path: string): void {
+  const prev = useAppStore.getState().activePath;
+  if (prev !== path) saveRightSnapshot(prev); // same-path re-activation: neither save nor restore
   useAppStore.setState((st) => {
     const cur = st.openSessions.get(path);
     const openSessions = new Map(st.openSessions);
@@ -113,10 +121,14 @@ export function activateSession(path: string): void {
   });
   // 已读通知：已打开会话的前端切换不发 load_session，缓存保活的未读态靠本消息清除
   useAppStore.getState().send({ type: "mark_seen", path });
+  if (prev !== path) restoreRightPanel(path); // no snapshot (first open/newly created) = inherit current panel
   scheduleEvict();
 }
 
-/** 统一切换/打开会话：清新建态、关闭欢迎页、移除未读、激活会话或拉取加载并刷新 Git Diff */
+/** Unified switch/open session: clear new-session state, close welcome, drop unread mark,
+ *  then activate or load via host and refresh Git Diff. selectedFile/selectedSubagent
+ *  cleanup is owned by restoreRightPanel (already-open branch) and the session_created
+ *  frame (host-load branch) — resetting here would clobber the just-restored panel state. */
 export function openSessionByPath(path: string, cwd?: string): void {
   useAppStore.setState({ isCreatingNew: false });
   useAppStore.getState().hideWelcomeScreen();
@@ -132,7 +144,6 @@ export function openSessionByPath(path: string, cwd?: string): void {
     useAppStore.getState().send({ type: "reload_settings" });
     useAppStore.getState().send({ type: "load_session", path });
   }
-  useAppStore.setState({ selectedSubagent: null, selectedFile: null });
 }
 
 // 延迟驱逐（合并多次触发）。必须延迟而不是同步：宿主在 runEnd 后可能**立刻续轮**
@@ -218,6 +229,15 @@ export function ingestModelDefaults(msg: { defaultModel?: string | null; default
 export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
   const startIdx = s.turnItemStart ?? s.items.length;
   const runItems = s.items.splice(startIdx);
+  // Error rows stay outside the loop group: the run's process may collapse, the
+  // reason it stopped must not (same layout as the reload path).
+  const errors: SessionItem[] = [];
+  for (let i = runItems.length - 1; i >= 0; i--) {
+    const it = runItems[i];
+    if (it.role !== "error") break;
+    errors.unshift(it);
+    runItems.splice(i, 1);
+  }
   let lastA = -1;
   for (let i = runItems.length - 1; i >= 0; i--) {
     if (runItems[i].role === "assistant") {
@@ -236,7 +256,7 @@ export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
       usage: usage ?? null,
     });
   }
-  s.items.push(...finalOut);
+  s.items.push(...finalOut, ...errors);
   s.turnItemStart = s.items.length;
 }
 
@@ -563,6 +583,14 @@ export function applyEvent(msg: EventFrame): void {
     // @ 提及落盘回读：fileMention 消息无对应流式事件，宿主在 agent_end 重读会话文件补发
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "mention", text: "", files: msg.files || [] });
+    });
+  } else if (msg.kind === "error") {
+    // Provider/request failure (quota, auth, transport): one row of its own.
+    // Settle the in-flight draft first so text produced before the failure stays above it.
+    updateSession(msg.sessionId, (s) => {
+      if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+      s.assistantDraft = "";
+      s.items.push({ role: "error", text: msg.text });
     });
   }
 }

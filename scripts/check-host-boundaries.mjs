@@ -24,6 +24,10 @@ const ALLOWED_EDGES = new Set([
   // 历史会话检索工具（read_session_context）：只读当前 profile 的已落盘会话，
   // 依赖 bootstrap 的 SDK 句柄（listAllSessions / loadEntriesFromFile）
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
+  // GUI env bootstrap: thin entry host.ts fires the PATH augment early
+  // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
+  // the same idempotent-singleton promise
+  "host.ts→gui-path.ts", "main.ts→gui-path.ts",
   // 右栏终端：main.ts 起 pty-bridge 子进程封装
   "main.ts→pty.ts",
   "main.ts→bootstrap.ts", "main.ts→state.ts", "main.ts→profile.ts", "main.ts→models.ts",

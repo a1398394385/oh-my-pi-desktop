@@ -11,8 +11,14 @@
 // 分流必须在宿主静态图求值之前（ESM 静态 import 先于任何顶层代码执行），所以
 // 宿主主体放 main.ts、worker 路径只动态拉取 CLI 轻入口（其静态图不含 TUI 与
 // native addon 的运行时加载）。
+// The GUI-launched host has a stripped PATH (nvm/Homebrew commands invisible):
+// fire the PATH augment before loading the body (overlapping main.ts's static
+// graph load incl. the SDK); main.ts awaits the same promise.
+import { augmentGuiPath } from "./gui-path.ts";
+
 const argv = process.argv.slice(2);
 if (argv.length === 0) {
+	augmentGuiPath();
 	await import("./main.ts");
 } else {
 	const { declareWorkerHostEntry } = await import("@oh-my-pi/pi-utils/worker-host");

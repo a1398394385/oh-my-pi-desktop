@@ -155,6 +155,32 @@ interface McpPayload {
   sharing?: "session" | "project" | "global";
 }
 
+// Collapsible-section JSON text -> string map. Empty text yields {}; invalid JSON / non-string values toast and return null.
+function parseJsonKv(text: string, invalidMsg: string): Record<string, string> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    toast(invalidMsg);
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    toast(invalidMsg);
+    return null;
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed)) {
+    if (typeof v !== "string") {
+      toast(invalidMsg);
+      return null;
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
 // 作用域列表（收敛为 Profile 与 Project，缺数据时给 Profile 兜底项，且 Project 严格限定在有效工作区内）
 function currentMcpScopes(validProjectCwds?: Set<string>): McpScope[] {
   const st = useAppStore.getState();
@@ -372,13 +398,20 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     return "session";
   });
   const [cmd, setCmd] = useState(server?.command || "");
-  const [args, setArgs] = useState((server?.args || []).join("\n"));
-  const [env, setEnv] = useState(
-    server?.env ? Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join("\n") : ""
-  );
+  // Single-line space-separated args (ZCodium editor parity); whitespace split also tolerates pasted newlines
+  const [args, setArgs] = useState((server?.args || []).join(" "));
+  // Env / headers collapsible section: edited as JSON text (config layer is Record<string, string>)
+  const [env, setEnv] = useState(server?.env ? JSON.stringify(server.env, null, 2) : "");
   const [url, setUrl] = useState(server?.url || "");
   const [headers, setHeaders] = useState(
-    server?.headers ? Object.entries(server.headers).map(([k, v]) => `${k}: ${v}`).join("\n") : ""
+    server?.headers ? JSON.stringify(server.headers, null, 2) : ""
+  );
+  // Collapsed by default; servers with existing values expand for visibility
+  const [showEnv, setShowEnv] = useState(
+    Boolean(
+      (server?.env && Object.keys(server.env).length) ||
+        (server?.headers && Object.keys(server.headers).length)
+    )
   );
   const [testing, setTesting] = useState(false);
 
@@ -407,10 +440,16 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         setSharing("session");
       }
       setCmd(server.command || "");
-      setArgs((server.args || []).join("\n"));
-      setEnv(server.env ? Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join("\n") : "");
+      setArgs((server.args || []).join(" "));
+      setEnv(server.env ? JSON.stringify(server.env, null, 2) : "");
       setUrl(server.url || "");
-      setHeaders(server.headers ? Object.entries(server.headers).map(([k, v]) => `${k}: ${v}`).join("\n") : "");
+      setHeaders(server.headers ? JSON.stringify(server.headers, null, 2) : "");
+      setShowEnv(
+        Boolean(
+          (server.env && Object.keys(server.env).length) ||
+            (server.headers && Object.keys(server.headers).length)
+        )
+      );
     }
   }, [server, defaultScope]);
 
@@ -428,22 +467,9 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         toast(t("settingsPage.mcp.cmdRequired"));
         return null;
       }
-      const rawArgs = args.trim();
-      const argList = rawArgs
-        ? rawArgs.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-        : [];
-      const envObj: Record<string, string> = {};
-      const rawEnv = env.trim();
-      if (rawEnv) {
-        for (const line of rawEnv.split(/\r?\n/)) {
-          const eq = line.indexOf("=");
-          if (eq > 0) {
-            const k = line.slice(0, eq).trim();
-            const v = line.slice(eq + 1).trim();
-            if (k) envObj[k] = v;
-          }
-        }
-      }
+      const argList = args.trim() ? args.trim().split(/\s+/).filter(Boolean) : [];
+      const envObj = parseJsonKv(env, t("settingsPage.mcp.envJsonInvalid"));
+      if (!envObj) return null;
       return { name: name.trim(), transport: "stdio", command: c, args: argList, env: envObj, sharing: finalSharing };
     }
     const u = url.trim();
@@ -451,18 +477,8 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
       toast(t("settingsPage.mcp.urlRequired"));
       return null;
     }
-    const hdrObj: Record<string, string> = {};
-    const rawHdrs = headers.trim();
-    if (rawHdrs) {
-      for (const line of rawHdrs.split(/\r?\n/)) {
-        const col = line.indexOf(":");
-        if (col > 0) {
-          const k = line.slice(0, col).trim();
-          const v = line.slice(col + 1).trim();
-          if (k) hdrObj[k] = v;
-        }
-      }
-    }
+    const hdrObj = parseJsonKv(headers, t("settingsPage.mcp.headersJsonInvalid"));
+    if (!hdrObj) return null;
     return { name: name.trim(), transport, url: u, headers: hdrObj, sharing: finalSharing };
   };
 
@@ -528,6 +544,21 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         ? "var(--green)"
         : "var(--err)"
       : undefined;
+  // Dropdown current-value labels (match the menu item wording)
+  const sharingCurLabel =
+    sharing === "global"
+      ? t("settingsPage.mcp.shareGlobal")
+      : sharing === "project"
+      ? isProjectScope
+        ? t("settingsPage.mcp.shareProjectWorkspace")
+        : t("settingsPage.mcp.shareProjectIsolated")
+      : t("settingsPage.mcp.shareSession");
+  const transportCurLabel =
+    transport === "stdio"
+      ? t("settingsPage.mcp.transportStdio")
+      : transport === "http"
+      ? t("settingsPage.mcp.transportHttp")
+      : t("settingsPage.mcp.transportSse");
 
   return (
     <div className="mem-expand">
@@ -552,74 +583,80 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.mcp.transportLabel")}</label>
-          <div className="mcp-type-pills">
-            {[
-              ["stdio", t("settingsPage.mcp.transportStdio")],
-              ["http", t("settingsPage.mcp.transportHttp")],
-              ["sse", t("settingsPage.mcp.transportSse")],
-            ].map(([t, label]) => (
-              <button
-                key={t}
-                type="button"
-                className={`mcp-type-pill${transport === t ? " on" : ""}`}
-                onClick={() => setTransport(t)}
-              >
-                {label}
-              </button>
-            ))}
+        <div className="mcp-form-row">
+          <div className="mcp-form-group mcp-form-half">
+            <label className="mcp-form-label">{t("settingsPage.mcp.transportLabel")}</label>
+            <Sel
+              className="mcp-form-sel"
+              btnClassName="mcp-form-sel-btn"
+              btnChildren={
+                <>
+                  <span className="mcp-form-sel-cur">{transportCurLabel}</span>
+                  <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                </>
+              }
+              onPick={(mi) => setTransport(mi.dataset.v || "stdio")}
+            >
+              {[
+                ["stdio", t("settingsPage.mcp.transportStdio")],
+                ["http", t("settingsPage.mcp.transportHttp")],
+                ["sse", t("settingsPage.mcp.transportSse")],
+              ].map(([v, label]) => (
+                <div key={v} className="mi" data-v={v}>
+                  <span className="ck" style={{ visibility: transport === v ? "visible" : "hidden" }}>✓</span>
+                  <span className="mi-label">{label}</span>
+                </div>
+              ))}
+            </Sel>
+          </div>
+          <div className="mcp-form-group mcp-form-half">
+            <label className="mcp-form-label">{t("settingsPage.mcp.sharingFieldLabel")}</label>
+            <Sel
+              className="mcp-form-sel"
+              btnClassName="mcp-form-sel-btn"
+              btnChildren={
+                <>
+                  <span className="mcp-form-sel-cur">{sharingCurLabel}</span>
+                  <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                </>
+              }
+              onPick={(mi) => setSharing((mi.dataset.v as "session" | "project" | "global") || "session")}
+            >
+              {(isProjectScope
+                ? [
+                    ["session", t("settingsPage.mcp.shareSession")],
+                    ["project", t("settingsPage.mcp.shareProjectWorkspace")],
+                  ]
+                : [
+                    ["session", t("settingsPage.mcp.shareSession")],
+                    ["project", t("settingsPage.mcp.shareProjectIsolated")],
+                    ["global", t("settingsPage.mcp.shareGlobal")],
+                  ]
+              ).map(([v, label]) => (
+                <div key={v} className="mi" data-v={v}>
+                  <span className="ck" style={{ visibility: sharing === v ? "visible" : "hidden" }}>✓</span>
+                  <span className="mi-label">{label}</span>
+                </div>
+              ))}
+            </Sel>
           </div>
         </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.mcp.sharingLabel")}</label>
-          <div className="mcp-type-pills">
-            {isProjectScope
-              ? [
-                  ["session", t("settingsPage.mcp.shareSession")],
-                  ["project", t("settingsPage.mcp.shareProjectWorkspace")],
-                ].map(([m, label]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    className={`mcp-type-pill${sharing === m ? " on" : ""}`}
-                    onClick={() => setSharing(m as "session" | "project")}
-                  >
-                    {label}
-                  </button>
-                ))
-              : [
-                  ["session", t("settingsPage.mcp.shareSession")],
-                  ["project", t("settingsPage.mcp.shareProjectIsolated")],
-                  ["global", t("settingsPage.mcp.shareGlobal")],
-                ].map(([m, label]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    className={`mcp-type-pill${sharing === m ? " on" : ""}`}
-                    onClick={() => setSharing(m as "session" | "project" | "global")}
-                  >
-                    {label}
-                  </button>
-                ))}
-          </div>
-          <div className="mcp-form-hint">
-            {sharing === "global"
-              ? t("settingsPage.mcp.shareHintGlobal")
-              : sharing === "project"
-              ? isProjectScope
-                ? t("settingsPage.mcp.shareHintProjectLocal")
-                : t("settingsPage.mcp.shareHintProjectSplit")
-              : t("settingsPage.mcp.shareHintSession")}
-          </div>
+        <div className="mcp-form-hint mcp-form-hint-share">
+          {sharing === "global"
+            ? t("settingsPage.mcp.shareHintGlobal")
+            : sharing === "project"
+            ? isProjectScope
+              ? t("settingsPage.mcp.shareHintProjectLocal")
+              : t("settingsPage.mcp.shareHintProjectSplit")
+            : t("settingsPage.mcp.shareHintSession")}
         </div>
         {transport === "stdio" ? (
-          <div>
+          <>
             <div className="mcp-form-group">
               <label className="mcp-form-label">{t("settingsPage.mcp.cmdLabel")} <span className="req">*</span></label>
               <input
                 type="text"
-                className="mcp-form-input"
+                className="mcp-form-input mcp-form-code"
                 placeholder={t("settingsPage.mcp.cmdPlaceholder")}
                 spellCheck="false"
                 value={cmd}
@@ -628,55 +665,53 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
             </div>
             <div className="mcp-form-group">
               <label className="mcp-form-label">{t("settingsPage.mcp.argsLabel")}</label>
-              <textarea
-                className="mcp-form-textarea"
-                rows={2}
-                placeholder={"-y\n@upstash/context7-mcp"}
+              <input
+                type="text"
+                className="mcp-form-input mcp-form-code"
+                placeholder="-y @modelcontextprotocol/server-memory"
                 spellCheck="false"
                 value={args}
                 onChange={(e) => setArgs(e.target.value)}
               />
             </div>
-            <div className="mcp-form-group">
-              <label className="mcp-form-label">{t("settingsPage.mcp.envLabel")}</label>
-              <textarea
-                className="mcp-form-textarea"
-                rows={2}
-                placeholder="API_KEY=xxx"
-                spellCheck="false"
-                value={env}
-                onChange={(e) => setEnv(e.target.value)}
-              />
-            </div>
-          </div>
+          </>
         ) : (
-          <div>
-            <div className="mcp-form-group">
-              <label className="mcp-form-label">{t("settingsPage.mcp.urlLabel")} <span className="req">*</span></label>
-              <input
-                type="text"
-                className="mcp-form-input"
-                placeholder={t("settingsPage.mcp.urlPlaceholder")}
-                spellCheck="false"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-              />
-            </div>
-            <div className="mcp-form-group">
-              <label className="mcp-form-label">{t("settingsPage.mcp.headersLabel")}</label>
-              <textarea
-                className="mcp-form-textarea"
-                rows={2}
-                placeholder="Authorization: Bearer xxx"
-                spellCheck="false"
-                value={headers}
-                onChange={(e) => setHeaders(e.target.value)}
-              />
-            </div>
+          <div className="mcp-form-group">
+            <label className="mcp-form-label">{t("settingsPage.mcp.urlLabel")} <span className="req">*</span></label>
+            <input
+              type="text"
+              className="mcp-form-input mcp-form-code"
+              placeholder={t("settingsPage.mcp.urlPlaceholder")}
+              spellCheck="false"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
           </div>
         )}
+        <div className="mcp-form-group">
+          <button type="button" className="mcp-env-toggle" onClick={() => setShowEnv((v) => !v)}>
+            <span className="caret-svg"><Icon name={showEnv ? "chevronUp" : "chevronDown"} size={12} /></span>
+            {transport === "stdio" ? t("settingsPage.mcp.envOptional") : t("settingsPage.mcp.headersOptional")}
+          </button>
+          {showEnv ? (
+            <textarea
+              className="mcp-form-textarea"
+              rows={4}
+              spellCheck="false"
+              placeholder={transport === "stdio" ? '{\n  "MY_API_KEY": "your-key"\n}' : '{\n  "Authorization": "Bearer your-token"\n}'}
+              value={transport === "stdio" ? env : headers}
+              onChange={(e) => (transport === "stdio" ? setEnv : setHeaders)(e.target.value)}
+            />
+          ) : null}
+        </div>
       </div>
       <div className="sem-foot">
+        {!isNew ? (
+          <button type="button" className="mcp-form-del" onClick={onDelete}>
+            <Icon name="trash" size={13} />
+            {t("common.delete")}
+          </button>
+        ) : null}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
           <span className="text-ui-sm text-dim truncate" style={statusColor ? { color: statusColor } : undefined}>
             {statusText}
@@ -700,14 +735,11 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         <button type="button" className="confirm-btn" disabled={testing} onClick={onTest}>
           {testing ? t("settingsPage.mcp.testingBtn") : t("settingsPage.mcp.testBtn")}
         </button>
-        <span className="sp" />
-        {!isNew ? (
-          <button type="button" className="confirm-btn danger" onClick={onDelete}>
-            {t("common.delete")}
-          </button>
-        ) : null}
         <button type="button" className="confirm-btn" onClick={onSave}>
           {t("common.save")}
+        </button>
+        <button type="button" className="mcp-form-cancel" onClick={onClose}>
+          {t("common.cancel")}
         </button>
       </div>
     </div>

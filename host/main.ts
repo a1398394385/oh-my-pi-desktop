@@ -24,9 +24,14 @@ import { dispatchRpc } from "./rpc/index";
 import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { refreshAllLimits } from "./limits/index.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { augmentGuiPath } from "./gui-path.ts";
 
 // ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
+// PATH augment completion point: the first RPC after UI connects
+// (list_agent_assets → MCP health probes) already spawns subprocesses, so it
+// must complete before that. host.ts fired it early, overlapping the SDK
+// static graph load — usually zero wait here.
+await augmentGuiPath();
 // profile 初始化不等在线模型目录发现（applyProfile 内 refreshInBackground），
 // ready 帧携带磁盘缓存目录立即可用；目录后台补全后经 onModelsRefreshed 补推 models 帧。
 const activeWs: { value: unknown } = { value: null };

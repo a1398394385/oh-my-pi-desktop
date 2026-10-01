@@ -117,16 +117,32 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 // 会话累计统计（TUI status-line 的 token/cache/cost/time 段汇总）：输入框下方状态行常驻显示。
 // 与上下文明细卡（get_context_detail 的 breakdown/stats）不同，这里是「整会话」口径：
 // tokens 含历史累加，时长含进行中窗口
+//
+// Token figures come from sessionManager.getUsageStatistics() (the index-level
+// cumulative counter the TUI status line itself reads in
+// #buildSegmentContext), NOT from session.getSessionStats(): the latter filters
+// model_usage entries down to the *active window* (session-stats.ts
+// activeModelUsageEntries — after a compaction/reset it only counts entries from
+// firstKeptEntryId onward). That windowed view is right for "current context
+// window" but wrong for a whole-session cumulative row: every compaction would
+// chop off the pre-compaction history and the numbers would jump backwards. The
+// index-level #usage accumulates per entry on insert and is never windowed,
+// so it is monotonic.
 function buildSessionStats(entry: PoolEntry) {
-  const st = entry.session.getSessionStats();
+  const usage = entry.manager.getUsageStatistics();
   // 缓存利用率（TUI cache_hit 段同款公式）：cacheRead/(cacheRead+cacheWrite+input)。
   // 分母含未命中 input，Anthropic/OpenRouter（miss 记 input）与 DeepSeek（miss 记 input、
   // cacheWrite 为 0）都还原成 hit/(hit+miss)
-  const promptTokens = st.tokens.input + st.tokens.cacheRead + st.tokens.cacheWrite;
+  const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
   return {
-    tokens: st.tokens,
-    cost: st.cost,
-    cacheHitRate: promptTokens > 0 ? st.tokens.cacheRead / promptTokens : 0,
+    tokens: {
+      input: usage.input,
+      output: usage.output,
+      cacheRead: usage.cacheRead,
+      cacheWrite: usage.cacheWrite,
+    },
+    cost: usage.cost,
+    cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
     // TUI cost 段同款：会话总成本 = 主会话成本 + advisor 成本（未启用 advisor 时为 0）
     advisorCost: entry.session.getAdvisorCost(),
     // 活跃时长含进行中窗口（与 TUI getActiveMs 一致：空闲墙钟不计）
@@ -136,6 +152,20 @@ function buildSessionStats(entry: PoolEntry) {
 
 function pushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
   ws.send(JSON.stringify({ type: "session_stats", sessionId, ...buildSessionStats(entry) }));
+}
+
+// Min interval between live stats pushes: a tool-heavy turn can emit dozens of
+// tool_execution_end events; pushing each one would flood the wire with stats
+// frames (and recompute the usage snapshot every time). The first event of a
+// turn pushes immediately so the numbers start moving right away; later events
+// in the same turn are coalesced by this interval.
+const STATS_PUSH_MIN_INTERVAL_MS = 1500;
+
+function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
+  const now = Date.now();
+  if (entry.statsPushedAt !== null && now - entry.statsPushedAt < STATS_PUSH_MIN_INTERVAL_MS) return;
+  entry.statsPushedAt = now;
+  pushSessionStats(ws, sessionId, entry);
 }
 
 export async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
@@ -200,6 +230,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     thinkingStartedAt: null,
     activeMs: 0,
     activeStartedAt: null,
+    statsPushedAt: null,
     path: session.sessionFile,
     pollKnownSize: 0, // 外部写入检测：0 = 未首扫
     externalWrite: false,
@@ -233,6 +264,15 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // 关键执行事件实时推送上下文占用，更新前端上下文大小圆环
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
       pushContext(ws, sessionId, entry);
+    }
+    // The stats row refreshes live too: it used to be pushed only on agent_end
+    // (turn end), which froze the token / cache-read / duration numbers under
+    // the composer for the whole generation. These two events are the ones that
+    // actually advance the index-level usage counter (each model turn end and
+    // each tool completion), which is enough to keep the row moving with the
+    // session. Throttling: see maybePushSessionStats.
+    if (ev.type === "message_end" || ev.type === "tool_execution_end") {
+      maybePushSessionStats(ws, sessionId, entry);
     }
     // goal 模式钩子：续跑调度与工具集收尾（对齐 TUI #handleGoalSessionEvent 的分支）
     if (ev.type === "agent_start") entry.goal.onAgentStart();

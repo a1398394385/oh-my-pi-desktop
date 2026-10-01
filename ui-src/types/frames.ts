@@ -338,16 +338,22 @@ export type UiEvent =
     }
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string }
-  | { kind: "mention"; files: string[] };
+  | { kind: "mention"; files: string[] }
+  | { kind: "error"; text: string }; // provider/request failure (quota, auth, transport): rendered as a standalone row
 
-/** 整会话统计(session_stats 帧展开字段,host/host.ts:2160-2176 buildSessionStats) */
+/** 整会话统计(session_stats 帧展开字段,host/session-lifecycle.ts buildSessionStats) */
 export interface SessionStatsPayload {
-  // TODO(收口核对): st.tokens 为底座 getSessionStats 的分桶对象(input/output/cacheRead/cacheWrite),随 SDK
+  // TODO(收口核对): tokens 为底座 SessionManager.getUsageStatistics 的累计分桶
+  // (input/output/cacheRead/cacheWrite),随 SDK
   tokens: Record<string, number>;
   cost: number;
   cacheHitRate: number;
   advisorCost: number;
   activeMs: number;
+  // UI-local only: when this frame landed (host does not send it). The active-time
+  // figure is sampled at push time, so the bar extrapolates it locally while the
+  // session is running instead of freezing until the next frame.
+  receivedAt?: number;
 }
 
 /** 上下文明细 breakdown(context_detail 帧,host/host.ts:1283-1301 + estimateMcpToolsTokens) */

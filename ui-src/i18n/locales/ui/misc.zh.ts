@@ -6,7 +6,7 @@ export const miscZh = {
   collapseSidebar: "收起侧边栏 ({{mod}}B)",
   collapseRightPanel: "收起右侧面板",
   dragResize: "拖动调整宽度",
-  // TitleBar.tsx
+  // WindowControls.tsx
   minimize: "最小化",
   restoreDown: "向下还原",
   maximize: "最大化",

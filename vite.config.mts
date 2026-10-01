@@ -20,6 +20,9 @@ export default defineConfig({
     outDir: "dist", // 相对 root → ui/dist
     emptyOutDir: true,
     assetsInlineLimit: 0,
+    // 桌面端资源走本地 asset 协议、不经网络：入口含 shiki/lexical/xterm 等重依赖，产物 ≈5.2MB，
+    // 不做网络分包，关闭 500kB 体积提示（改动入口体积时同步调整此值）
+    chunkSizeWarningLimit: 6000,
     rolldownOptions: {
       output: {
         // 固定入口产物名，保持与旧 esbuild 一致的 assets/app.js（Tauri 与 smoke 都认这个路径）

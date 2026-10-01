@@ -41,6 +41,8 @@
 | BUG-031 | 输入法选字回车直接发消息——WebKit 上 compositionend 先于 Enter keydown 到达，Lexical 核心 isComposing 守卫失效 | 2026-10-01 |
 | BUG-032 | 输入框按一下 Esc 焦点外流、必须鼠标点回来——RichTextPlugin 在 EDITOR 优先级绑了 editor.blur() | 2026-10-01 |
 | BUG-033 | 会话树页进入停在最顶端、且条目只能鼠标操作——落底判据挂在挂载上 + 无键盘导航 | 2026-10-01 |
+| BUG-034 | 供应商报错（配额/鉴权）不进消息区——失败原因只存在于 assistant 的 `errorMessage` 字段，翻译层无此分支 | 2026-10-01 |
+| BUG-035 | 统计行整轮不刷新、压缩后 token 倒退——口径取成「活动窗口筛选」且只在 turn 收尾推送 | 2026-10-01 |
 
 ---
 
@@ -449,6 +451,38 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：`vite dev` + `?preview=1`，注入 21~26 节点带分叉的条目树（`?preview=1` 下手动写 `rightState.entryTree`），CDP 真实按键 + 截图，全程 `window.onerror` 0 错误——(1) 双击 Esc 进树：`scrollTop` 落在底部（458 / 1300，`atBottom` 为真），再进一次仍落底；(2) `↑` 起游标落在末项 `fa1`（分叉分支起点），再 `↑` 到 `c24`，`↓` 回 `fa1`；(3) 连按 `↑` 30 次停在首项 `root`（`scrollTop` 自动从 776 收到 5）、再多按 5 次不回绕；(4) `↵` 弹窗内容为「第 1 条消息」、按钮为 Cancel / Jump / Jump & summarize，弹窗开着时 `↑` 与 `↵` 均无效果（游标不动、不叠第二层弹窗），`Esc` 关闭；(5) 点 Jump 发 `navigate_tree{entryId:"c1",summarize:false}`、点 Jump & summarize 发 `summarize:true`；(6) 树页单击 Esc 仍切回 chat、再双击回树仍落底；(7) 游标视觉截图确认 accent 描边行与「Current」叶徽标（蓝）可区分。`bun run check`（含 tsc）、`bun run ui:build`、`bun run smoke:react`、`OMP_PROFILE=omp-desktop-test bun scripts/smoke-i18n.ts` 全绿；设置页 `pg-keyboard` 确认新增「Session tree」组两条目渲染。真机手测留用户确认。
 
 **教训**：滚动落底的判据不能挂在「组件挂载」上——有异步数据 + 中间占位分支时，挂载那一刻内容还不存在，`scrollTop = scrollHeight` 落在 0 上，看起来就是「落底没生效」。判据应是「目标内容已渲染且身份变了」。同理，键盘操作不能只在有焦点的元素上监听：树页没有天然焦点容器，挂 `window` 捕获阶段 + 弹窗期间整体不注册，比逐组件 `onKeyDown` 更短也更不易漏。架构棘轮（`check-architecture`）会拦 `main-tree.css` 超行，逼着新样式跟文件既有的单行压缩风格对齐——这正是该文件「先拆分再增长」的意图，不要靠调大上限绕过。
+
+### BUG-034: 供应商报错（配额/鉴权）不进消息区——失败原因只存在于 assistant 的 `errorMessage` 字段，翻译层无此分支
+
+**现象**：会话 `01a0f5f5` 里两次「继续」都撞上 minimax-code-cn 的配额上限，消息区**没有任何提示**——没有错误行、没有 toast，看起来就是「发出去了但没反应」。用户是在供应商侧发现限流后回头查的。落盘记录见会话 jsonl 第 1521/1523 行：`stopReason:"error"`、`content:[]`、`errorStatus:402`、`errorMessage:"402 当前已达到 Token Plan 用量上限…(type=insufficient_balance_error)"`（上报口径说 429，实际是 402）。
+
+**分诊**：②确认存量缺陷——自窄事件层建立起就没有错误路径，与本次改动无关。
+
+**根因**：底座的失败语义是「一条 assistant 消息」而不是「一个错误事件」（`packages/agent/src/agent.ts:1758-1858`）：请求失败时合成 `stopReason:"error"` 的 assistant 消息，**失败文本只写在 `errorMessage`/`errorStatus` 字段上，`content` 为空**，然后照常 emit `message_start`/`message_end`/`turn_end`/`agent_end`。而 `host/translate.ts` 的 `translateEvent` 只认 `turn_start`/`turn_end`/`message_update`/`tool_execution_*`/`agent_end` 等，**没有 `message_start`/`message_end` 分支、也从不读 `errorMessage`** → 错误在翻译层静默丢弃。`entriesToTranscript` 同样只遍历 `content` 块，`content: []` 生成零条目 → 刷新/重载会话也看不到。UI 侧 `role:"error"` 的唯一写入点是 `{type:"error"}` 帧（`ui-src/store/wsHandlers/stream.ts:298`），而该帧只在 `prompt()` reject 时发（`host/session-lifecycle.ts:325`、`host/rpc/prompt.ts:395/446`）——底座把错误消化在 agent 内部、run 正常 resolve，这条通道永不触发。
+
+**修复**：四处。(1) `host/translate.ts` 新增 `errorTextOf`（只认 `stopReason==="error"` 的 assistant + 非空 `errorMessage`）与 `message_end` 分支：先 `flushAssistantDraft`（保住失败前已产出的文本），再 push `{role:"error"}` 进 transcript 并下发 `{kind:"error", text}`。(2) `entriesToTranscript` 用同一判据，`finalizeRun()` 后把错误行推到顶层——过程可折叠，失败原因不可折叠。(3) `backfillAssistantEntryIds` 的候选过滤掉纯错误条目：它在磁盘上存在、在 transcript 里没有对应 assistant 行，占回填槽会把上一轮的 assistant 绑到错误条目的 id。(4) 前端 `ui-src/store/session.ts` 的 `applyEvent` 加 `error` 分支；`sealRunItems` 把尾部连续的 error 行摘出组外再拼回（`s.items.push(...finalOut, ...errors)`）。`host/state.ts` 与 `ui-src/types/frames.ts` 的条目/事件联合同步加 `error`。
+
+**验证**：`bun .local/probe/error-row-probe.ts`（一次性探针，真实会话 jsonl 红绿对比）——`entriesToTranscript` 修复前 0 条错误行 / 修复后 2 条，且 0 条落在 loop 组内；`translateEvent` 对失败 `message_end` 修复前 `null`、修复后 `{kind:"error",…}`，普通 `message_end` 仍为 `null`；backfill 错配夹具修复前绑 `e1`（错误条目）→ 修复后绑 `a1`。浏览器端到端（`vite dev` + `?preview=1`，经页面链的 `dispatchFrame` 注入 `turn_start → tool → text_delta → error → turn_end(runEnd)`）：items 为 `[loop(仅含 tool), assistant(partial), error]`，DOM `.act.err` 渲染 `✗ 402 当前已达到 Token Plan 用量上限 (type=insufficient_balance_error)`（`--err` 色），截图确认错误行在折叠组之外、页面上直接可见。`bun run ui:typecheck`、`bun run ui:build` 通过。
+
+**教训**：错误不是「一条消息」，而是消息上的一个字段——任何「只翻译文本增量」的窄事件层都会把它静默吞掉，而且现象是「什么都没发生」，没有任何报错可追。判断链路是否完整的办法不是读代码，而是拿一次**真实失败**的落盘条目喂进翻译层看输出（0 条 → 2 条即红绿判据）。另外错误行必须与过程组平级：把失败原因收进可折叠的 loop 组，等于把「为什么停了」藏起来，与「没显示」等价。
+
+**已知遗留**：子代理流（`translateSubagentEvent`）同样没有 `message_end` 分支，子代理内部的失败仍不会产生错误行（`task:subagent:lifecycle` 只给 failed 状态、不带原因），未在本次处理。
+
+### BUG-035: 统计行整轮不刷新、压缩后 token 倒退——口径取成「活动窗口筛选」且只在 turn 收尾推送
+
+**现象**：输入框下方那行「缓存利用率 / 输入 / 输出 / 缓存读 / 缓存写 / 时长」，会话进行中整行数字不动，只在 turn 收尾跳一次（长回答、无工具调用期间「时长」也静止）；另有一处更隐蔽：发生过上下文压缩的会话，这些数字会**倒退**（缓存读从 57.5M 掉回几 M 量级）。
+
+**分诊**：②确认存量缺陷——`buildSessionStats` 自建立起就是「agent_end 单点推送 + `session.getSessionStats()`」，与本次改动无关。
+
+**根因**：两处独立缺陷。(1) **时机**：`session_stats` 帧只在 terminal `agent_end` 与加载会话时下发，turn 进行中一帧不发；每次模型轮结束（`message_end`）、每次工具结束（`tool_execution_end`）这些真正推进计数器的中间态全部跳过。(2) **口径**：`session.getSessionStats()` 底层的 `activeModelUsageEntries`（`packages/coding-agent/src/session/session-stats.ts`）按**活动窗口**筛选 model_usage 条目——窗口起点取最新 compaction 的 `firstKeptEntryId`，压缩后只统计窗口内的条目，压缩前的累计被整段裁掉 → 数字倒退。该窗口口径是「当前上下文窗口」的正确语义，但状态行要的是**整会话累计**：TUI 状态行自己读的是 index 级累计计数器 `sessionManager.getUsageStatistics()`（`#index.usageSnapshot()`，每条 model_usage 在 `insert` 时累加，从不窗口化）。
+
+**修复**：(1) `host/session-lifecycle.ts` 的 `buildSessionStats` 改读 `entry.manager.getUsageStatistics()`（累计、单调）。(2) 新增 `maybePushSessionStats`，挂在既有的 `message_end` / `tool_execution_end` 分支（与 `pushContext` 同源事件）上推 stats，`STATS_PUSH_MIN_INTERVAL_MS = 1500` 节流——工具密集的 turn 不刷屏，turn 首个事件立即推。(3) `PoolEntry.statsPushedAt` 记录上次推送时刻（`host/state.ts`）。(4) UI 侧补连续量：`SessionStatsBar` 在 `session.streaming` 期间每秒本地外推时长（帧只在模型轮/工具边界到达，纯生成期间没有新帧），基准是帧落地时刻 `receivedAt`（`ui-src/types/frames.ts` 新增可选字段，`ui-src/store/wsHandlers/stream.ts` 落地时打戳）。
+
+**验证**：`scripts/probe-stats-cumulative.ts`（真实 SDK，构造含 compaction 的会话文件）——累计口径 input/output/cacheRead = 1200/2400/60000 全保留，旧窗口口径只剩 200/400/10000（`firstKeptEntryId` 失配时甚至归零，正是「倒退」的极端形态）；`scripts/probe-stats-live-push.ts`（stub 驱动真实 `attachEntry`）——agent_start 后 0 帧、首个 `message_end` 后 1 帧（立刻推）、20 次 `tool_execution_end` 突发仍 1 帧（节流生效）、冷却后 2 帧、terminal `agent_end` 后 3 帧；`scripts/smoke-react-shell.ts` 新增状态行断言（运行中秒数递增 / 收尾冻结在宿主上报值）——把本地 tick 关掉后该断言转红，红绿判据成立。
+
+**教训**：「当前上下文窗口」与「整会话累计」是两个口径，压缩点会把选错的那个暴露出来（数字倒退而非清零）。此外，进行中的连续量（时长）不能指望事件帧覆盖：帧只在离散边界到达，段间插值属于渲染层的职责。定位这类问题最快的路径是拿真实会话文件喂进两边口径直接对比数值，而不是读调用链。
+
+**已知遗留**：真实模型端到端（应用内肉眼确认整行随会话走动）需在有凭据的 profile 验收——测试 profile 无可用模型，自动化跑不了真实 turn（`scripts/smoke-newsession.ts` 在该 profile 下停在 `ready 帧 defaultModel=null`，与本修复无关）。
 
 
 

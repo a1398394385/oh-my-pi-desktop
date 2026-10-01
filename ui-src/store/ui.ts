@@ -7,6 +7,7 @@ import type { AppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import { activeOpen, getSupportedThinkingForModel } from "./session";
+import { saveRightSnapshot } from "./right";
 import { detectLang } from "../i18n";
 
 /** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名;TS 环境含 Node 类型时返回 Timeout) */
@@ -139,6 +140,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
 
   showWelcomeScreen(preferredCwd) {
     const alreadyOpen = get().isCreatingNew;
+    saveRightSnapshot(get().activePath); // entering new-session page = leaving current session: snapshot before activePath is nulled
     set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat" }));
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置

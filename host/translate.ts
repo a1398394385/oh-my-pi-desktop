@@ -21,6 +21,7 @@ export type UiEvent =
   | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: unknown; diffContent?: string }
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string }
+  | { kind: "error"; text: string } // provider/request failure (quota, auth, transport)
   | { kind: "mention"; files: string[] }; // @ 提及回读（attachEntry 的 agent_end 扫描直发，不经 translateEvent）
 
 // 工具设备路径（xd://tui、xd://mcp__xxx 等）：读/写它是调用设备，不是文件读写
@@ -282,7 +283,7 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
   if (pending.length === 0) return undefined;
   const cands = raw
     .slice(dFrom)
-    .filter((e) => e.type === "message" && e.message.role === "assistant")
+    .filter((e) => e.type === "message" && e.message.role === "assistant" && !isErrorOnlyMessage(e.message))
     .map((e) => e.id);
   const offset = afterUserId ? 0 : Math.max(0, cands.length - pending.length);
   let last: string | undefined;
@@ -302,6 +303,33 @@ function flushAssistantDraft(entry: PoolEntry) {
     entry.transcript.push({ role: "assistant", text: draft });
   }
   entry.assistantDraft = "";
+}
+
+// Failure text of an assistant message. A failed model request (quota / auth /
+// transport) is persisted as an assistant message whose payload is only the
+// `errorMessage` field — `content` is empty, so it carries no UI row of its own.
+// That field is the single source for the error row in both live and reload paths.
+function errorTextOf(msg: unknown): string | null {
+  if (typeof msg !== "object" || msg === null) return null;
+  const { role, stopReason, errorMessage } = msg as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
+  if (role !== "assistant" || stopReason !== "error") return null;
+  const text = typeof errorMessage === "string" ? errorMessage.trim() : "";
+  return text.length > 0 ? text : null;
+}
+
+// Whether an assistant entry yields no UI row (pure error message, no text).
+// Used to keep the entryId backfill aligned: such entries exist on disk but not
+// in the transcript, so they must not consume a backfill slot.
+function isErrorOnlyMessage(msg: unknown): boolean {
+  if (typeof msg !== "object" || msg === null) return false;
+  const { stopReason, content } = msg as { stopReason?: unknown; content?: unknown };
+  if (stopReason !== "error") return false;
+  const blocks = Array.isArray(content) ? content : [];
+  return !blocks.some((b) => {
+    if (typeof b !== "object" || b === null) return false;
+    const block = b as { type?: unknown; text?: unknown };
+    return block.type === "text" && typeof block.text === "string" && block.text.trim().length > 0;
+  });
 }
 
 function uiToolPayload(item: TranscriptItem): Extract<UiEvent, { kind: "tool" }> {
@@ -345,6 +373,17 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // auto 判定帧：configured==="auto" 时 resolved 为本轮判定档位（切进 auto 的 provisional 帧无 resolved）；
       // 人工切档帧无 configured。只透传，前端自行决定显示。
       return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
+    case "message_end": {
+      // A failed request emits an error assistant message (stopReason "error",
+      // payload only in `errorMessage`); text streamed before the failure is
+      // settled first so the error row lands after it. Without this branch the
+      // failure never reaches the UI: no text_delta ever carried it.
+      const text = errorTextOf(ev.message);
+      if (!text) return null;
+      flushAssistantDraft(entry);
+      entry.transcript.push({ role: "error", text });
+      return { kind: "error", text };
+    }
     case "message_update": {
       const ame = ev.assistantMessageEvent;
       if (ame?.type === "text_delta") {
@@ -526,6 +565,17 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       continue;
     }
     if (role !== "user" && role !== "assistant") continue;
+    // Provider failure entries carry no content, only `errorMessage`. Surface them as
+    // their own top-level row: a run may be collapsed into a loop group, its failure
+    // must not be — otherwise a reloaded session loses the reason it stopped.
+    if (role === "assistant") {
+      const errText = errorTextOf(msg);
+      if (errText) {
+        finalizeRun();
+        out.push({ role: "error", text: errText });
+        continue;
+      }
+    }
     if (role === "user") {
       const text = stripDcpTags(typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n"));
       const images: Array<{ type: "image"; data: string; mimeType: string }> = [];

@@ -4,6 +4,7 @@ import type { UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg } from "../../store";
 import Icon from "../../Icon";
 import ImageLightbox from "./ImageLightbox";
+import { FadeBox } from "./parts";
 import { t } from "../../i18n";
 
 // 待消费气泡的左侧操作组：排队态（立即发送/编辑/删除）｜steer 态（编辑/放回队列顶端）
@@ -82,7 +83,7 @@ export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
             })}
           </div>
         )}
-        {item.text ? <div className="user-msg-text whitespace-pre-wrap">{item.text}</div> : null}
+        {item.text ? <FadeBox className="user-msg-text whitespace-pre-wrap">{item.text}</FadeBox> : null}
         {item.pending ? <PendingActs item={item} /> : null}
       </div>
       {lightboxIndex !== null && (

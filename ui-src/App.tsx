@@ -17,7 +17,7 @@ import GoalCard from "./components/composer/GoalCard";
 import ConnBanner from "./components/ConnBanner";
 import RightPanel from "./components/RightPanel";
 import Settings from "./components/settings/Settings";
-import TitleBar from "./components/TitleBar";
+import WindowControls from "./components/WindowControls";
 import { IS_WINDOWS, MOD } from "./platform";
 
 function Toast() {
@@ -51,6 +51,8 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
       <button className="icon-btn" title={t("misc.collapseRightPanel")} id="panelToggle" onClick={onToggleRight}>
         <Icon name={rightCollapsed ? "collapseLeft" : "collapseRight"} />
       </button>
+      {/* Windows 无边框窗口控制按钮：右栏收起时融入中栏卡片右上角（仅 Windows 渲染） */}
+      {IS_WINDOWS && rightCollapsed && <WindowControls />}
     </div>
   );
 }
@@ -70,7 +72,6 @@ export default function App() {
   const pendingApproval = session?.pendingApprovals?.[0] ?? null;
   return (
     <>
-      {IS_WINDOWS && <TitleBar />}
       <Sidebar collapsed={sidebarCollapsed} />
       <div id="left-resizer" className="resizer" title={t("misc.dragResize")} hidden={sidebarCollapsed}></div>
       <main id="main">

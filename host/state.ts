@@ -8,7 +8,7 @@ import type { GoalController } from "./goal.ts";
 // ---------- 会话池类型（前置声明，方便 profile 切换时清理） ----------
 export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -65,6 +65,12 @@ export type PoolEntry = {
   // 加载历史会话从 0 起算（与 TUI 的 meter 一致，不回溯磁盘）
   activeMs: number;
   activeStartedAt: number | null;
+  // When the last session_stats frame was pushed (live refresh; see
+  // maybePushSessionStats in session-lifecycle). message_end /
+  // tool_execution_end fire many times per turn, so they are coalesced by a
+  // minimum interval to keep the stats frames off the wire in floods.
+  // null = this session has not pushed a live frame yet
+  statsPushedAt: number | null;
   path: string; // 会话文件路径（磁盘标识）
   cwd: string;
   isGit: boolean;

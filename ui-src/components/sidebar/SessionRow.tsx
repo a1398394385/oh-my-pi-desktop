@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
+import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../store";
 import Icon from "../../Icon";
 import { IS_WINDOWS, MOD } from "../../platform";
 import { fmtAgo, sessionLabel } from "./util";
@@ -132,7 +132,9 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
       send({ type: "load_session", path: s.path });
     }
-    setBump({ selectedSubagent: null, selectedFile: null });
+    // selectedFile/selectedSubagent cleanup is owned by restoreRightPanel (already-open branch)
+    // and the session_created frame (host-load branch) — resetting here would clobber the
+    // just-restored per-session right panel state
   };
 
   const handleStartConfirmArchive = (e: ReactMouseEvent) => {

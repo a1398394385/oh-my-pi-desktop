@@ -29,7 +29,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: new URL("..", import.meta.url).pathname,
-    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }, // fixture 专用宿主:git 调用同样避开全局 hooksPath
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }, // fixture-only host: git calls dodge the global hooksPath too
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

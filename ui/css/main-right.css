@@ -981,3 +981,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .bpane-err-acts .btn:hover { background: var(--panel-3); }
 
+/* Windows 无边框拖动：.sp-head 承载 data-tauri-drag-region，其子级控件与弹层需退出
+   拖动区，否则点击会变成拖窗口（与 .chat-head button 的 no-drag 规则同款，见 main-chat.css） */
+.sp-head button,
+.sp-head input,
+.sp-head .sp-pop { -webkit-app-region: no-drag; }

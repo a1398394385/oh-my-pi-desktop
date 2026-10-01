@@ -2,7 +2,7 @@
 // + 按 parentSession 组树渲染 + 点击分支行切换会话。
 import { Fragment, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, activateSession, refreshGitDiff, hideWelcomeScreen, saveUnseen } from "../../store";
+import { useAppStore, send, activateSession, refreshGitDiff, hideWelcomeScreen, saveUnseen } from "../../store";
 import type { DiskProject, SessionBranch } from "../../types/frames";
 import { t } from "../../i18n";
 import { fmtAgo } from "./helpers";
@@ -32,7 +32,9 @@ function loadBranchSession(path: string) {
     send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
     send({ type: "load_session", path });
   }
-  setBump({ selectedSubagent: null, selectedFile: null });
+  // selectedFile/selectedSubagent cleanup is owned by restoreRightPanel (already-open branch)
+  // and the session_created frame (host-load branch) — resetting here would clobber the
+  // just-restored per-session right panel state
 }
 
 export default function BranchTreePage() {

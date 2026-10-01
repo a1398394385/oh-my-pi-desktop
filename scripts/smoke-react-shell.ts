@@ -202,6 +202,49 @@ dbg.useAppStore.setState({ sidebarCollapsed: false });
 await sleep(80);
 ok("侧栏展开后无渲染崩溃且未命中 collapsed", !$("#sidebar")?.classList.contains("collapsed") && !document.body.getAttribute("data-error"));
 
+// 9. Stats bar (SessionStatsBar): the active-time figure keeps moving while the
+//    session runs. Frames only arrive at model-turn / tool boundaries, so a long
+//    streaming answer would otherwise freeze on the last frame (the reported
+//    "does not update during a session"). Displayed value = sampled activeMs +
+//    elapsed since receivedAt.
+const store = dbg.useAppStore as unknown as {
+  getState(): { openSessions: Map<string, Record<string, unknown>> };
+  setState(p: Record<string, unknown>): void;
+};
+const patchPreviewSession = (patch: Record<string, unknown>) => {
+  const cur = store.getState().openSessions.get("/preview") ?? {};
+  const openSessions = new Map(store.getState().openSessions);
+  openSessions.set("/preview", { ...cur, ...patch });
+  store.setState({ activePath: "/preview", openSessions });
+};
+patchPreviewSession({
+  streaming: true,
+  stats: {
+    tokens: { input: 566_989, output: 474_112, cacheRead: 60_293_120, cacheWrite: 0 },
+    cost: 0,
+    cacheHitRate: 0.99,
+    advisorCost: 0,
+    activeMs: 65_000,
+    receivedAt: Date.now(),
+  },
+});
+await sleep(150);
+const bar0 = $("#statsBar")?.textContent ?? "";
+await sleep(1300);
+const bar1 = $("#statsBar")?.textContent ?? "";
+const d0 = bar0.match(/(\d+)分(\d+)秒/);
+const d1 = bar1.match(/(\d+)分(\d+)秒/);
+ok("统计行渲染整会话口径（缓存利用率 99.0% / 时长 1分5秒）", bar0.includes("99.0%") && bar0.includes("1分5秒"));
+ok(
+  "运行中时长在两条统计帧之间继续走",
+  !!d0 && !!d1 && Number(d1[1]) * 60 + Number(d1[2]) > Number(d0[1]) * 60 + Number(d0[2]),
+);
+patchPreviewSession({ streaming: false });
+await sleep(80);
+const bar2 = $("#statsBar")?.textContent ?? "";
+await sleep(1300);
+ok("收尾后时长冻结在宿主上报值", ($("#statsBar")?.textContent ?? "") === bar2 && bar2.includes("1分5秒"));
+
 
 let fail = 0;
 for (const [mark, name] of asserts) {

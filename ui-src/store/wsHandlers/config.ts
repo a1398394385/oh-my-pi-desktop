@@ -2,6 +2,7 @@
 // 审批模式、用量统计、资产清单、扩展清单。自 store/ws.ts onMessage 平移。
 import { useAppStore } from "../index";
 import { hostInstanceReset, ingestModelDefaults, ingestModels } from "../session";
+import { clearRightSnapshots } from "../right";
 import { t } from "../../i18n";
 import type { ApprovalMode } from "../../types/frames";
 import type { SchemaDef } from "../../components/settings/placement";
@@ -52,6 +53,7 @@ export const configHandlers = {
     useAppStore.setState((s) => ({ settingsSchema: msg.schema as Record<string, SchemaDef> }));
   },
   profile_switched(msg) {
+    clearRightSnapshots(); // profile switch = different session universe, per-session snapshots no longer trustworthy
     useAppStore.setState((s) => ({
       openSessions: new Map(),
       activePath: null,

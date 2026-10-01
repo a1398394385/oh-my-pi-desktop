@@ -97,7 +97,8 @@ export default function SessionTreeStream({
     }
   }, [selectedBranches]);
 
-  // 弹窗打开时 Esc 键优先关闭弹窗
+  // 弹窗打开时 Esc 优先关闭；Enter 触发默认主动作「跳转」（焦点落在弹框按钮上时
+  // 交给原生按钮激活，不抢）
   useEffect(() => {
     if (!confirmNode) return;
     const onKey = (e: KeyboardEvent) => {
@@ -105,6 +106,12 @@ export default function SessionTreeStream({
         e.preventDefault();
         e.stopPropagation();
         setConfirmNode(null);
+      } else if (e.key === "Enter" && !(e.target as HTMLElement).closest?.(".lp-box button")) {
+        e.preventDefault();
+        e.stopPropagation();
+        const node = confirmNode;
+        setConfirmNode(null);
+        onNavigate(node, false);
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -386,10 +393,10 @@ export default function SessionTreeStream({
                 onClick={() => {
                   const node = confirmNode;
                   setConfirmNode(null);
-                  onNavigate(node, false);
+                  onNavigate(node, true);
                 }}
               >
-                {t("chat.jump")}
+                {t("chat.jumpAndSummarize")}
               </button>
               <button
                 type="button"
@@ -398,10 +405,10 @@ export default function SessionTreeStream({
                 onClick={() => {
                   const node = confirmNode;
                   setConfirmNode(null);
-                  onNavigate(node, true);
+                  onNavigate(node, false);
                 }}
               >
-                {t("chat.jumpAndSummarize")}
+                {t("chat.jump")}
               </button>
             </div>
           </div>

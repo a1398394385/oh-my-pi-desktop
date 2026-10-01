@@ -24,6 +24,8 @@ import SessionTreePage from "./right/SessionTreePage";
 import TerminalPage from "./right/TerminalPage";
 import BrowserPage from "./right/BrowserPage";
 import { t } from "../i18n";
+import WindowControls from "./WindowControls";
+import { IS_WINDOWS } from "../platform";
 
 // 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
 export { TAB_META, openRightTab, closeRightTab } from "./right/tabs";
@@ -305,7 +307,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     <TooltipProvider delayDuration={400}>
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
-        <div className="sp-head" ref={headRef}>
+        <div className="sp-head" ref={headRef} data-tauri-drag-region="">
           <Tip label={t("right.tabOverview")}>
             <button
               className="icon-btn"
@@ -373,6 +375,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
               </button>
             </Tip>
           )}
+          {IS_WINDOWS && !collapsed && <WindowControls />}
           {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}
           {addOpen && (
             <AddTabMenu

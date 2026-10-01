@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, pathBase } from "../../store";
+import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, pathBase } from "../../store";
 import type { DiskSessionRow } from "../../types/frames";
 import Icon from "../../Icon";
 import { fmtAgo, sessionLabel } from "./util";
@@ -111,7 +111,9 @@ export default function SidebarSearch() {
       send({ type: "reload_settings" });
       send({ type: "load_session", path });
     }
-    setBump({ selectedSubagent: null, selectedFile: null });
+    // selectedFile/selectedSubagent cleanup is owned by restoreRightPanel (already-open branch)
+    // and the session_created frame (host-load branch) — resetting here would clobber the
+    // just-restored per-session right panel state
     setQuery("");
     setOpen(false);
   };

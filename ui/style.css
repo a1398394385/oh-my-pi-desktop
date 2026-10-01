@@ -18,6 +18,7 @@
  *   main-welcome.css     主页面·欢迎页（新建会话居中页与延展卡片）
  *   main-right.css       主页面·右边栏（tab 栏/文件页/Git Diff/分支树/终端/浏览器）
  *   settings.css         设置页（pg-* 各页与导航）
+ *   settings-mcp.css     设置页·MCP 服务器页（自 settings.css 拆出，级联紧随）
  * 域内规则保持切分时的原始相对顺序；新增样式按所属域追加到对应文件末尾。
  * ============================================================ */
 @import "./css/global.css";
@@ -30,3 +31,4 @@
 @import "./css/main-welcome.css";
 @import "./css/main-right.css";
 @import "./css/settings.css";
+@import "./css/settings-mcp.css";

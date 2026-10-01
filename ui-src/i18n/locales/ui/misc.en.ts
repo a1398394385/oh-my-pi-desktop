@@ -6,7 +6,7 @@ export const miscEn = {
   collapseSidebar: "Toggle sidebar ({{mod}}B)",
   collapseRightPanel: "Toggle right panel",
   dragResize: "Drag to resize",
-  // TitleBar.tsx
+  // WindowControls.tsx
   minimize: "Minimize",
   restoreDown: "Restore down",
   maximize: "Maximize",

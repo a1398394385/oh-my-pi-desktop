@@ -263,13 +263,14 @@ export const streamHandlers = {
     updateSession(
       msg.sessionId,
       (s) => {
-        // 整会话统计（host 在 turn 收尾与加载会话时推送）：输入框下方状态行常驻显示
+        // 整会话统计（host 在 turn 进行中与收尾时推送）：输入框下方状态行常驻显示
         s.stats = {
           tokens: msg.tokens,
           cost: msg.cost,
           cacheHitRate: msg.cacheHitRate,
           advisorCost: msg.advisorCost,
           activeMs: msg.activeMs,
+          receivedAt: Date.now(), // 运行中本地外推时长的基准（见 SessionStatsBar）
         };
       },
       false,

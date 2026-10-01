@@ -661,3 +661,9 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   vertical-align: baseline;
 }
 
+/* Fade along the stream→composer boundary: a sticky ::after pinned to the scrollport's
+   bottom edge dissolves incoming messages into the background (mirror of the top
+   .sticky-user-wrap trailing fade). z-index stays below .scroll-bottom (z-5). */
+#stream::after { content: ""; position: sticky; bottom: 0; display: block; height: 36px; flex: none; pointer-events: none;
+  background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--bg) 40%, transparent) 35%, color-mix(in srgb, var(--bg) 85%, transparent) 70%, var(--bg) 100%); }
+

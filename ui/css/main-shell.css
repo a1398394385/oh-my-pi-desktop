@@ -1,5 +1,5 @@
 /* ============================================================
- * main-shell.css —— 主页面·全局通用:三栏布局骨架、层级刻度、全局滚动条、Windows 自绘标题栏。
+ * main-shell.css —— 主页面·全局通用:三栏布局骨架、层级刻度、全局滚动条、Windows 窗口控制按钮。
  *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
  * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
  * → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
@@ -54,7 +54,6 @@ samp,
    900  .proj-drag-overlay（拖拽浮层）
    999  .login-banner
    1000 模态遮罩与对话框：.confirm-mask / .lp-mask / Radix Dialog / 图片灯箱
-   1200 .app-titlebar（标题栏）
    列容器 #sidebar / #right 用 isolation:isolate 自成层：列内弹层不越出列层。 */
 
 /* ── 全局滚动条统一 ─────────────────────────────────────────────────────────
@@ -98,44 +97,27 @@ samp,
 
 body.resizing { user-select: none; cursor: col-resize; }
 
-/* ── Windows 自绘标题栏（decorations:false；TitleBar.tsx 仅 Windows 渲染）── */
-.app-titlebar {
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  background: var(--panel-2);
-  z-index: 1200;
-  user-select: none;
+/* ── Windows 窗口控制按钮（无边框窗口；WindowControls.tsx 仅 Windows 渲染）──
+   融入既有卡片头部：右栏收起时挂中栏 .chat-head 右上角，展开时挂右栏 .sp-head 右上角。
+   负 margin 抵消头部 padding 贴齐卡片右缘；卡片自身 overflow:hidden + 圆角负责裁剪角。
+   拖动/双击最大化由承载头部的 data-tauri-drag-region 交 Tauri 内核处理。 */
+.win-controls {
+  display: flex; align-items: stretch; align-self: stretch; flex: none;
+  margin-right: -6px; /* .sp-head padding */
 }
 
-.titlebar-title {
-  padding-left: 12px;
-  font-size: 12px;
-  color: var(--faint);
-  pointer-events: none;
+.chat-head > .win-controls { margin-right: -16px; } /* .chat-head padding */
+
+.win-controls .win-btn {
+  width: 40px; border: 0; background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--faint); cursor: default;
 }
 
-.titlebar-btns { margin-left: auto; display: flex; align-self: stretch; }
+.win-controls .win-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); } /* style-token-ignore */
 
-.titlebar-btn {
-  width: 46px;
-  border: none;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--faint);
-  cursor: default;
-}
+.win-controls .win-btn.win-close:hover { background: #e81123; color: #fff; } /* style-token-ignore */
 
-.titlebar-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); } /* style-token-ignore */
-
-.titlebar-btn.titlebar-close:hover { background: #e81123; color: #fff; } /* style-token-ignore */
-
-/* 无边框后内容整体让出标题栏高度；全屏设置弹层同步下移 */
-body.has-titlebar { padding-top: 36px; }
 /* ── 全局二次确认弹窗（ring-pop 系全局浮层；自 main-chat.css 归位于全局通用域）── */
 /* ── 全局二次确认弹窗（严格遵照 ring-pop 系视觉与 ringpop 入场动画规范） ── */
 .confirm-mask {
