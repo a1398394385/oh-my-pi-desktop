@@ -1,6 +1,9 @@
-// 后台命令页：会话 items 聚合（hub 启停配对 + 运行中的 bash/shell/eval）+ 列表 + 行内展开卡。
-// 原版任何全局重绘都会收起展开行（DOM 重建）；React 版展开态由组件 state 持有，
-// 流式数据更新时保留展开并展示最新输出（liftEl 收起动画随条件渲染省略）。
+// Background commands page: aggregates session items (hub start/stop pairing + running
+// bash/shell/eval) + list + inline expand cards.
+// In the old version any global repaint collapsed expanded rows (DOM rebuild); in the React
+// version the expanded state is held by component state, so streaming updates keep rows open
+// and show the latest output (the liftEl collapse animation is skipped along with the
+// conditional rendering).
 import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
@@ -8,12 +11,13 @@ import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { Spin } from "../chat/parts";
 
-// 会话 items 条目（store 会话结构的宽松视图；精确判别联合由 types/session.ts 收口后替换）
+// Session items entry (loose view of the store session structure; to be replaced by the exact
+// discriminated union once types/session.ts converges)
 interface SessionItemLike {
   role?: string;
   name?: string;
   text?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 宿主工具参数为开放字典（键随工具种类而变），真实不明边界
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- host tool args are an open dict (keys vary by tool kind), a genuinely unknown boundary
   args?: Record<string, any>;
   output?: string;
   details?: unknown;
@@ -21,14 +25,14 @@ interface SessionItemLike {
   toolCallId?: string;
 }
 
-// 聚合出的后台任务条目
+// Aggregated background task entry
 interface BgTask {
   id: string;
   toolCallId?: string;
   op: string;
   procName: string;
   command: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 同上：宿主工具参数开放字典
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same as above: host tool args are an open dict
   args: Record<string, any>;
   output: string;
   details?: unknown;
@@ -39,7 +43,8 @@ interface BgTask {
   rawItem: SessionItemLike;
 }
 
-// 聚合会话内的后台任务：hub 工具调用（start/stop/cancel 按进程名配对）+ 运行中的终端命令
+// Aggregate a session's background tasks: hub tool calls (start/stop/cancel paired by process
+// name) + running terminal commands
 function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | null | undefined): {
   tasks: BgTask[];
   runningCount: number;
@@ -86,8 +91,9 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
         rawItem: it,
       };
 
-      // 任务存活态只看 start/stop/cancel 配对。不能回落到 it.running：那是「hub 工具
-      // 执行中」（tool 帧到 tool_update 之间），list/status 之类同样命中，不是进程存活态
+      // Task liveness depends only on start/stop/cancel pairing. Don't fall back to
+      // it.running: that means "the hub tool is executing" (between the tool frame and
+      // tool_update), which list/status also hit — not process liveness
       if (op === "start") {
         taskItem.running = true;
         taskItem.statusText = t("right.bgRunning");
@@ -96,7 +102,7 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
         taskItem.running = false;
         taskItem.statusText = t("right.bgStopped");
         if (procName && liveProcesses.has(procName)) {
-          const started = liveProcesses.get(procName)!; // 断言：has 判定后 get 必中
+          const started = liveProcesses.get(procName)!; // assertion: get always hits after the has check
           started.running = false;
           started.statusText = t("right.bgStopped");
           liveProcesses.delete(procName);
@@ -124,7 +130,7 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
   }
 
   const runningCount = tasks.filter((t) => t.running).length;
-  tasks.reverse(); // 最新的排在上方
+  tasks.reverse(); // newest on top
   return { tasks, runningCount };
 }
 
@@ -168,12 +174,12 @@ export default function BgCmdPage() {
   );
 }
 
-// 展开卡：元信息栏（操作/名称/状态/收起）+ 工作目录 + 命令或参数 + 输出
+// Expand card: meta row (op/name/status/collapse) + working directory + command or args + output
 function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="bgcmd-expand">
-      {/* 1. 卡片头 / 元信息栏 */}
+      {/* 1. Card head / meta row */}
       <div className="bgcmd-meta-row">
         <span>
           <b>{t("right.opLabel")}</b> {task.op}
@@ -203,7 +209,7 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
           </span>
         </div>
       )}
-      {/* 2. 命令行与参数 */}
+      {/* 2. Command line and args */}
       {task.command ? (
         <>
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
@@ -219,7 +225,7 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
           <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{JSON.stringify(task.args, null, 2)}</div>
         </>
       ) : null}
-      {/* 3. 输出与执行结果 */}
+      {/* 3. Output and execution result */}
       <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
         <b>{t("right.outputLabel")}</b>
       </div>

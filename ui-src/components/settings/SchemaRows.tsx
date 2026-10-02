@@ -1,5 +1,6 @@
-// 设置行唯一渲染器：把 placement 段展开为设置行；行结构复用 .srow，控件层走 Radix 基件
-// （Switch/Select/Input/Textarea，ui/components/ui/，视觉对齐原 .tg/.sel/.inp）。
+// Sole renderer of settings rows: expands placement sections into settings rows; row structure
+// reuses .srow, the control layer uses Radix primitives
+// (Switch/Select/Input/Textarea, ui/components/ui/, visually aligned with the old .tg/.sel/.inp).
 // Labels resolve per language: zh-CN looks up the zh pack, en resolves through
 // the empty en pack and falls back to the schema's own ui.label/description
 // (so new upstream keys never render blank); keys without ui (advanced page)
@@ -28,7 +29,7 @@ const TYPE_LABEL_KEYS: Record<string, string> = {
   record: "settingsPage.schema.typeRecord",
 };
 
-// 下拉选项形状（v 与 SchemaSel 选中值、onPick 回调一致）
+// Dropdown option shape (v matches SchemaSel's selected value and onPick callback)
 interface SelOption {
   v: string;
   label: string;
@@ -51,7 +52,7 @@ function composerShapeOptions(opts: Record<string, Record<string, string>>): Sel
   ];
 }
 
-/** 从 schema 与 omp 源码中解析某设置项的可用选项列表 */
+/** Resolve the available option list of a setting from the schema and omp source code */
 function resolveSettingOptions(k: string, def: SchemaDef, opts: Record<string, Record<string, string>>): SelOption[] {
   if (k === "composer.shape") return composerShapeOptions(opts);
   if (k === "theme.dark") return DARK_THEMES.map((t) => ({ v: t, label: opts["theme.dark"]?.[t] ?? t }));
@@ -92,10 +93,10 @@ interface SchemaSelProps {
   onPick: (v: unknown) => void;
 }
 
-// 下拉：Radix Select（trigger 胶囊 / 弹层 .menu 视觉由基件承担）；选中即发
+// Dropdown: Radix Select (trigger capsule / popover .menu visuals carried by the primitives); send on pick
 function SchemaSel({ settingKey, settingType, current, options, onPick }: SchemaSelProps) {
   const lang = useAppStore((s) => s.uiPrefs.lang);
-  // 特殊兼容 compaction.thresholdPercent 和 compaction.thresholdTokens：值为 -1 或 "" 时映射为 "default"
+  // Special compatibility for compaction.thresholdPercent and compaction.thresholdTokens: values of -1 or "" map to "default"
   const isDefaultThreshold =
     (settingKey === "compaction.thresholdPercent" || settingKey === "compaction.thresholdTokens") &&
     (current === -1 || current === "-1" || current === "" || current === undefined || current === null);
@@ -143,9 +144,9 @@ function SchemaSel({ settingKey, settingType, current, options, onPick }: Schema
 }
 
 interface SchemaRowProps {
-  k: string; // 设置键名（SETTINGS_SCHEMA 的键）
+  k: string; // settings key name (a key of SETTINGS_SCHEMA)
   def: SchemaDef;
-  value: unknown; // 当前值来自 WS 回包，形状由 def.type 决定但此处不明，按 unknown 处理
+  value: unknown; // current value from a WS reply; shape depends on def.type but is unknown here, so typed as unknown
 }
 
 function SchemaRow({ k, def, value }: SchemaRowProps) {
@@ -172,7 +173,7 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
   const type = def.type;
   const cred = def.credential === true;
 
-  // 输入类控件的本地编辑态 + 回填守卫（仅回填未聚焦的输入，聚焦中不打扰）
+  // Local edit state for input controls + refill guard (only refill inputs that aren't focused; never disturb while focused)
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const fmt = (v: unknown): string =>
     type === "array"
@@ -232,11 +233,11 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
       />
     );
   } else if (type === "record") {
-    ctl = <Textarea rows={3} ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // 同一 ref 复用于 input/textarea,仅在 activeElement 比较处读取,收窄安全
+    ctl = <Textarea rows={3} ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // same ref reused for input/textarea, only read at the activeElement comparison, narrowing is safe
   } else if (type === "number") {
     ctl = <Input type="number" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
   } else {
-    // string / string+credential(password) / array(逗号)
+    // string / string+credential(password) / array(comma-separated)
     ctl = (
       <Input
         type={cred ? "password" : "text"}
@@ -261,7 +262,7 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
 }
 
 interface SchemaRowsProps {
-  sections?: Section[] | null; // 各页 placement 段；缺省时整体不渲染
+  sections?: Section[] | null; // placement sections for the page; when absent, render nothing
 }
 
 export default function SchemaRows({ sections }: SchemaRowsProps) {
@@ -277,7 +278,7 @@ export default function SchemaRows({ sections }: SchemaRowsProps) {
   for (const section of sections) {
     const keys = expandSection(section, schema).filter((k) => {
       const cond = schema[k].ui?.condition;
-      // 条件隐藏：已知条件且为 false 则不渲染；未知/缺省条件渲染
+      // Conditional hiding: don't render when the condition is known and false; render when unknown/absent
       return !(cond && conditions[cond] === false);
     });
     if (keys.length === 0) continue;

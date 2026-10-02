@@ -16,6 +16,7 @@
         "minWidth": 700,
         "minHeight": 480,
         "backgroundColor": "#292B2C",
+        "decorations": false,
         "visible": false,
         "shadow": true,
         "dragDropEnabled": false

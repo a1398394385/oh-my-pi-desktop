@@ -1,5 +1,5 @@
-// 模型/思考级别切换冒烟：create → set_model(deepseek) → set_thinking(low) → 一轮对话确认可用。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-model.ts
+// Model/thinking-level switch smoke test: create -> set_model(deepseek) -> set_thinking(low) -> one chat round to confirm it works.
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-model.ts
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 

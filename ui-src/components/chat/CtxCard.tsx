@@ -1,8 +1,10 @@
-// 上下文明细卡（原 ui/ringpop.js 的 buildCtxCard/buildLimitsSection/mountRingPop/
-// fillCtxCard/fillLimits/initRingpop 的 ctxRing 段 1:1 平移为 React 组件）。
-// 交互规范见 AGENTS.md「弹出卡片设计规范（ring-pop 系）」：150ms 悬停定器、
-// 朝卡离开 250ms 宽限、卡上 hover 不关闭、数据到达「移开即弃」（卡收起时 store
-// 更新不触发重建，下次悬停重新请求）。
+// Context detail card (a 1:1 port of the ctxRing section from ui/ringpop.js's
+// buildCtxCard/buildLimitsSection/mountRingPop/fillCtxCard/fillLimits/initRingpop
+// into a React component).
+// Interaction rules follow the "ring-pop popcard design spec" in AGENTS.md: a 150ms hover
+// timer, a 250ms grace period when leaving toward the card, hover on the card does not close
+// it, and data arrival uses "discard on move-away" (store updates while the card is closed
+// do not rebuild it; the next hover re-requests).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAppStore } from "../../store/index";
@@ -12,19 +14,20 @@ import { fmtLimitWindow, limitTone } from "../../lib/limits";
 import type { LimitWindow } from "../../lib/limits";
 import { t } from "../../i18n";
 
-/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
+/** setTimeout handle (DOM and Node environments return different types; unified alias) */
 type TimerHandle = ReturnType<typeof setTimeout>;
 
-// 供应商限额回包形状（S.ctxLimits）
+// Provider limits response shape (S.ctxLimits)
 interface CtxLimits {
   label?: string;
   unsupported?: boolean;
   status?: string;
   windows?: LimitWindow[];
-  balance?: { amount?: number | null; currency?: string } | null; // 宿主恒下发字段,null = 无余额段
+  balance?: { amount?: number | null; currency?: string } | null; // host always sends the field; null = no balance section
 }
 
-// 配额段（原 buildLimitsSection 平移）：弹卡版照旧版 ring-pop 的 cx-sec/lx-* 结构
+// Quota section (ported from the former buildLimitsSection): the popcard keeps the
+// cx-sec/lx-* structure of the old ring-pop
 function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }) {
   const windows = limits.windows ?? [];
   const balance = limits.balance;
@@ -36,8 +39,9 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
   } else if (!windows.length && !balance) {
     body = t("chat.limitsUnavailable");
   } else {
-    // 余额类供应商（host 侧 synthesize 的 metric:'credits' 窗口 + balance）只显示余额数字，
-    // 不渲染进度条和百分比；有百分比窗口的供应商仍按窗口渲染
+    // Balance-type providers (a metric:'credits' window + balance synthesized host-side)
+    // show only the balance number, without progress bars or percentages; providers with
+    // percentage windows still render per window
     const pctWindows = windows.filter((w) => w.metric !== "credits");
     if (!pctWindows.length && balance?.amount != null) {
       body = (
@@ -83,10 +87,10 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
   );
 }
 
-// 组成行圆点色：旧版 6 档蓝色硬编码的 token 等价（只用 token，不硬编码十六进制）
+// Composition row dot colors: token equivalent of the old 6-step hardcoded blues (tokens only, no hardcoded hex)
 const ROW_DOT_COLORS = ["var(--blue)", "var(--accent)", "var(--dim)", "var(--faint)", "var(--blue)", "var(--accent)"];
 
-// 上下文明细组成（S.ctxDetail.breakdown）：只约束本组件读取的字段
+// Context detail composition (S.ctxDetail.breakdown): constrains only the fields this component reads
 interface CtxBreakdown {
   usedTokens: number;
   contextWindow: number;
@@ -99,25 +103,28 @@ interface CtxBreakdown {
 }
 
 export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
-  const ctxDetail = useAppStore((s) => s.ctxDetail); // 回包到达即重绘（卡开着时）
+  const ctxDetail = useAppStore((s) => s.ctxDetail); // response arrival triggers redraw (while the card is open)
   const ctxLimits = useAppStore((s) => s.ctxLimits);
   const cur = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const [open, setOpen] = useState(false);
-  const [noModel, setNoModel] = useState(false); // 无会话且输入框未选模型：卡片显示「暂无可用模型」
-  const [compactBusy, setCompactBusy] = useState(false); // 压缩按钮 pending（回包由 core 既有逻辑收尾）
-  const popRef = useRef<HTMLDivElement | null>(null); // 弹卡 DOM（portal 到 body，定位/宽限判定都要用）
-  const enterTimer = useRef<TimerHandle | undefined>(undefined); // 环悬停定器（150ms，停够才弹）
-  const leaveTimer = useRef<TimerHandle | undefined>(undefined); // 环→卡间隙宽限定器（250ms，朝卡离开途中不关闭）
+  const [noModel, setNoModel] = useState(false); // no session and no model picked in the composer: the card shows "no model available"
+  const [compactBusy, setCompactBusy] = useState(false); // compact button pending (the response is finalized by existing core logic)
+  const popRef = useRef<HTMLDivElement | null>(null); // popcard DOM (portaled to body; needed for positioning and grace-period checks)
+  const enterTimer = useRef<TimerHandle | undefined>(undefined); // ring hover timer (150ms; pop only after dwelling long enough)
+  const leaveTimer = useRef<TimerHandle | undefined>(undefined); // ring→card gap grace timer (250ms; no close while moving toward the card)
 
-  // 收卡：移开即弃——DOM 卸载，残留瞬态数据下次悬停时清零重请求
+  // Close the card: discard on move-away — the DOM unmounts, leftover transient data is
+  // cleared and re-requested on the next hover
   const dismiss = () => {
     clearTimeout(leaveTimer.current);
     setOpen(false);
   };
 
-  // 锚点（ctxRing）hover 接线：受控渲染，事件挂到 span 上，不动 ctxRing 内部 svg 结构。
-  // 依赖 anchor 元素本身（而非 ref 对象）：环在会话数据就绪后才渲染，元素到手才绑定，
-  // 否则挂载时读一次 current=null 就永远没监听（hover 弹卡失效）
+  // Anchor (ctxRing) hover wiring: controlled rendering, events attach to the span without
+  // touching ctxRing's internal svg structure.
+  // Depends on the anchor element itself (not the ref object): the ring renders only after
+  // session data is ready, so bind once the element is at hand — otherwise reading
+  // current=null once at mount means no listener ever (hover popcard breaks)
   useEffect(() => {
     const el = anchor;
     if (!el) return;
@@ -128,17 +135,19 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
       clearTimeout(leaveTimer.current);
       setNoModel(false);
       setCompactBusy(false);
-      // 150ms 悬停定器：划过不打扰，提前离开取消
+      // 150ms hover timer: a quick pass-through does not disturb; leaving early cancels
       enterTimer.current = setTimeout(() => {
-        // 弹卡瞬态数据清零（移开即弃）：上次残留不展示，结果到达后经 store 补绘（静默写，不 bump）
+        // Clear the popcard's transient data (discard on move-away): last time's leftovers
+        // are not shown; after results arrive the store fills them in (silent write, no bump)
         useAppStore.setState({ ctxDetail: null, ctxLimits: null });
         setOpen(true);
         if (s) {
           st.send({ type: "get_context_detail", sessionId: s.sessionId });
           st.send({ type: "get_limits", sessionId: s.sessionId });
         } else {
-          // 不在会话中也允许弹出:不显示上下文明细,仅按当前输入框所选模型的供应商显示配额
-          // 模型 id 为 "provider/model" 格式(host modelsPayload),直接取首段
+          // Popping outside a session is allowed: no context detail, only the quota of the
+          // provider of the model currently selected in the composer
+          // The model id is in "provider/model" format (host modelsPayload); take the first segment
           const prov = st.newSessionModel ? st.newSessionModel.split("/")[0] : "";
           if (prov) st.send({ type: "get_limits", provider: prov });
           else setNoModel(true);
@@ -148,10 +157,10 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
     const onLeave = (e: MouseEvent) => {
       clearTimeout(enterTimer.current);
       const pop = popRef.current;
-      if (pop?.contains(e.relatedTarget as Node | null)) return; // 直接移入卡片,由卡片 mouseleave 关闭
+      if (pop?.contains(e.relatedTarget as Node | null)) return; // moved straight into the card; its own mouseleave closes it
       clearTimeout(leaveTimer.current);
-      // 仅当向上朝卡片区域离开时才宽限(环↔卡 7px 间隙,途中 relatedTarget 可能为空);
-      // 往旁边/下方离开立即收回
+      // Grace period only when leaving upward toward the card area (7px ring↔card gap;
+      // relatedTarget may be null mid-way); leaving sideways/downward retracts immediately
       const r = el.getBoundingClientRect();
       const pr = pop?.getBoundingClientRect();
       const towardCard = !!pr && e.clientY <= r.top + 2 && e.clientX >= pr.left - 12 && e.clientX <= pr.right + 12;
@@ -173,9 +182,12 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
     };
   }, [anchor]);
 
-  // 定位：弹层出现在环正上方,底边距环顶 7px,水平中心对齐,视口内收 8px;
-  // 视觉坐标经 placeMenu 除以 zoomLevel 补偿(fixed + zoom 二次缩放坑)。
-  // 无依赖:每次渲染都跑——数据到达重绘后内容高度变化需重新定位（等价旧版 mountRingPop 里的 placeRingPop）
+  // Positioning: the popcard appears right above the ring, bottom edge 7px from the ring
+  // top, horizontally center-aligned, inset 8px inside the viewport;
+  // visual coordinates go through placeMenu which divides by zoomLevel (fixed + zoom
+  // double-scaling pitfall).
+  // No deps: runs on every render — content height changes after data-arrival redraws need
+  // repositioning (equivalent to placeRingPop inside the old mountRingPop)
   useLayoutEffect(() => {
     if (!open) return;
     const pop = popRef.current;
@@ -189,28 +201,31 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
     placeMenu(pop, left, top);
   });
 
-  if (!open) return null; // 移开即弃：卡收起时不渲染，store 到数也不重建
+  if (!open) return null; // discard on move-away: nothing renders while closed; store arrivals do not rebuild it
 
-  // breakdown 为底座 getContextBreakdown 展开(frames.ts 标注形状随 SDK):按本组件读取字段收窄,
-  // 键缺失运行期为 undefined,组件展示层原有兜底语义不变
+  // breakdown is the expansion of the core's getContextBreakdown (frames.ts annotates the
+  // shape per SDK): narrowed to the fields this component reads; missing keys are undefined
+  // at runtime, and the presentation layer's existing fallback semantics stay unchanged
   const b = (ctxDetail?.breakdown ?? null) as CtxBreakdown | null;
   const limits: CtxLimits | null = (ctxLimits ?? null) as CtxLimits | null;
-  // 压缩上下文入口:会话非空且占用 > 0 才显示;流式中禁用(与运行中 turn 竞态)。
-  // 压缩非破坏性,直接执行不弹确认;点击后置 pending,回包 toast / messages 帧由 store 既有逻辑收尾
+  // Compact-context entry: shown only when the session is non-empty and usage > 0; disabled
+  // while streaming (races with the running turn).
+  // Compacting is non-destructive, so it runs directly without a confirm; pending is set on
+  // click, and the response toast / messages frames are finalized by existing store logic
   const canCompact = !!cur && cur.items.length > 0 && !!b && b.usedTokens > 0;
 
   return createPortal(
     <div
       className="ring-pop"
       ref={popRef}
-      onMouseEnter={() => clearTimeout(leaveTimer.current)} // 进入卡片取消宽限关闭
-      onMouseLeave={dismiss} // 离开卡片（区域外不再保持）直接关闭
+      onMouseEnter={() => clearTimeout(leaveTimer.current)} // entering the card cancels the grace-period close
+      onMouseLeave={dismiss} // leaving the card (not hovering its area anymore) closes directly
     >
       {b ? (
         <>
           <div className="flex justify-between items-center text-ui-md mb-[10px]">
             <b>{t("chat.context")}</b>
-            {/* 右侧数字与下方分类行同款:数值 | 百分比,竖线分隔、右对齐 */}
+            {/* Right-side numbers match the category rows below: value | percentage, bar-separated, right-aligned */}
             <span className="cx-total">
               <span className="cx-val">{fmtTokens(b.usedTokens)}</span>
               <i className="cx-sep" />
@@ -220,8 +235,10 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
           <div className="cx-bar">
             <i style={{ width: `${Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1)}%` }} />
           </div>
-          {/* 组成行固定 6 项(ZCode 同款分类):右侧数值与百分比等宽右对齐,中间虚线分隔。
-              MCP 工具 = mcp__ 前缀工具的 schema token(host 单独估算);其他 = 系统上下文注入 */}
+          {/* Composition rows are a fixed set of 6 (same categories as ZCode): value and
+              percentage right-aligned with equal width, dotted separator between.
+              MCP tools = schema tokens of mcp__-prefixed tools (estimated separately by the
+              host); Other = system context injection */}
           {(() => {
             const mcpTokens = b.mcpToolsTokens ?? 0;
             const pct = (v: number) => (b.usedTokens > 0 ? ((v / b.usedTokens) * 100).toFixed(1) : "0.0") + "%";
@@ -261,7 +278,8 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
           </button>
         </div>
       )}
-      {/* 空态:无模型供应商给「暂无可用模型」;明细回包到了但没组成/限额给「暂无数据」;否则等回包 */}
+      {/* Empty states: no model provider shows "no model available"; detail response arrived
+          but has no composition/limits shows "no data"; otherwise wait for the response */}
       {!b && !limits ? (noModel ? t("chat.noModelAvailable") : ctxDetail ? t("chat.ctxNoData") : t("common.loading")) : null}
     </div>,
     document.body,

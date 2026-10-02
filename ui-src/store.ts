@@ -1,6 +1,9 @@
-// P3 终态:数据层在 store/(index 组合六 slice:ui/session/projects/right/settings/ws
-// + shapes/terminal/utils/groupExpand)。本文件是桶转发,保持外部 import 路径 "../store" 不变。
-// 历史:S/useStore/notify 版本桥与容器 liveRef 代理已随组件全量 selector 化退役(2026-09-24)。
+// P3 end state: the data layer lives in store/ (index composes six slices:
+// ui/session/projects/right/settings/ws + shapes/terminal/utils/groupExpand).
+// This file is a barrel re-export keeping the external import path "../store"
+// unchanged. History: the S/useStore/notify version bridges and the container
+// liveRef proxy were retired when components moved fully to selector-based
+// subscriptions (2026-09-24).
 import { useAppStore } from "./store/index";
 export { useAppStore, setBump } from "./store/index";
 export { invoke } from "./store/ws";
@@ -28,20 +31,20 @@ export {
 import type { DiskProject, DiskSessionRow, TodoPhase, QueuedMessage } from "./types/frames";
 import type { ChatItem } from "./types/session";
 
-// 兼容别名:旧本地类型名 → types/ 唯一来源(外部 import 路径零改动)
+// Compatibility aliases: old local type names → the single source in types/ (zero changes to external import paths)
 export type DiskSession = DiskSessionRow;
 export type { DiskProject, TodoPhase } from "./types/frames";
 export type SessionItem = ChatItem;
 export type QueueMsg = QueuedMessage;
 export type { OpenSession, SubagentState, SubagentToolCall, AppState } from "./types/session";
 
-/** git 写操作回包联合 / 终端帧联合 / 形状类型（store/shapes.ts 转发,保持 import 路径） */
+/** Git write-response union / terminal frame union / shape types (forwarded from store/shapes.ts, import path preserved) */
 export type { GitWriteFrame, TerminalFrame, UiPrefs, RightState } from "./store/shapes";
 
-/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名;TS 环境含 Node 类型时返回 Timeout) */
+/** setTimeout handle (DOM and Node environments return different types; unified alias — returns Timeout when the TS environment includes Node types) */
 export type TimerHandle = ReturnType<typeof setTimeout>;
 
-// ---------- 方法型 slice action 的函数式转发（签名与旧模块函数一致） ----------
+// ---------- Functional forwarding of method-style slice actions (signatures match the old module functions) ----------
 export const send = (obj: unknown): void => useAppStore.getState().send(obj);
 export const setConnected = (ok: boolean, text: string): void => useAppStore.getState().setConnected(ok, text);
 export const connect = (): Promise<void> => useAppStore.getState().connect();

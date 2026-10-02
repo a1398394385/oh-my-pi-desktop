@@ -1,12 +1,13 @@
-// 文件与 git 域帧：新建会话的分支信息、git 状态/diff、git 写操作回执、
-// 文件页内容、目录树、图片查看、终端帧直推。自 store/ws.ts onMessage 平移。
+// File and git domain frames: branch info for the new-session page, git status/diff, git write-op
+// receipts, file page content, directory tree, image viewing, terminal frames pushed straight
+// through. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { emitTerminalFrame } from "../terminal";
 import { t } from "../../i18n";
 import type { HandlerSlice, FrameOf } from "./types";
 
 function onGitWrite(msg: FrameOf<"git_staged" | "git_unstaged" | "git_discarded" | "git_committed" | "git_pushed">) {
-  useAppStore.setState((s) => ({ rightState: { ...s.rightState, gitWrite: msg } })); // 回包驱动按钮 busy 态收口
+  useAppStore.setState((s) => ({ rightState: { ...s.rightState, gitWrite: msg } })); // the reply settles the button busy state
   if (msg.type === "git_staged" || msg.type === "git_unstaged" || msg.type === "git_discarded") {
     if (msg.ok) {
       if (msg.type === "git_discarded") useAppStore.getState().toast(t("notify.changesDiscarded"));
@@ -22,7 +23,7 @@ function onGitWrite(msg: FrameOf<"git_staged" | "git_unstaged" | "git_discarded"
   }
 }
 
-// PTY 输出/退出帧：直推终端页订阅者（帧高频，不走 bump 全量重渲染）
+// PTY output/exit frames: pushed straight to terminal-page subscribers (high frame rate, no bump-triggered full re-renders)
 function onTerminalFrame(msg: FrameOf<"terminal_created" | "terminal_data" | "terminal_exit">) {
   emitTerminalFrame(msg);
 }
@@ -65,10 +66,10 @@ export const filesHandlers = {
       fileDiffCache: { path: msg.path, diff: msg.diff, loading: false },
       briefDiffPending: s.briefDiffPending === msg.path ? null : s.briefDiffPending,
     }));
-    useAppStore.getState().setBriefDiff(msg.path, msg.diff); // 同一份回包同时喂给编辑行内联展开
+    useAppStore.getState().setBriefDiff(msg.path, msg.diff); // the same reply also feeds the edit-row inline expansion
   },
   file_content(msg) {
-    // 文件页全文件内容回包：无条件写入（用户可能已切走 tab）
+    // File page full-content reply: write unconditionally (the user may have switched tabs away)
     useAppStore.setState((s) => {
       if (!s.fileView || s.fileView.path !== msg.path) return { fileViewPending: null };
       const fv = { ...s.fileView };
@@ -78,7 +79,7 @@ export const filesHandlers = {
     });
   },
   dir_list(msg) {
-    // 文件树单层回包：填充缓存（嵌套容器换新引用,订 rightState 的 selector 才能感知）
+    // File-tree single-level reply: fill the cache (nested containers get fresh references so selectors subscribed to rightState notice)
     useAppStore.setState((s) => ({
       rightState: {
         ...s.rightState,
@@ -92,5 +93,5 @@ export const filesHandlers = {
   },
 } satisfies HandlerSlice;
 
-// 域键集（供 index 的穷尽断言交叉验证）
+// Domain key set (for the exhaustive-assertion cross-check in index)
 export type FilesFrames = keyof typeof filesHandlers;

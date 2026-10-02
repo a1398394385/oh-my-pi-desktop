@@ -1,5 +1,6 @@
-// ctx-menu 通用容器：portal 到 body（fixed 定位），place 量测定位（zoom 补偿 + 视口 clamp），
-// 点菜单外/窗口失焦关闭。place(menuRect) 返回期望的 [left, top] 视觉坐标。
+// ctx-menu generic container: portaled to body (fixed positioning), place does measured
+// placement (zoom compensation + viewport clamp), closes on click-outside / window blur.
+// place(menuRect) returns the desired [left, top] visual coordinates.
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -11,19 +12,19 @@ export default function Menu({ place, onClose, children }: {
   children?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  // 定位须在量到菜单实际宽高后做（对照原版 append 后 getBoundingClientRect 再 placeMenu）
+  // Placement must happen after measuring the menu's actual size (mirrors the old append → getBoundingClientRect → placeMenu)
   useLayoutEffect(() => {
-    const el = ref.current!; // portal mount 后即存在（原 JS 直接解引用，保持同一假设）
+    const el = ref.current!; // exists right after portal mount (the old JS dereferenced directly; same assumption kept)
     const [left, top] = place(el.getBoundingClientRect());
-    const z = useAppStore.getState().zoomLevel || 1; // fixed 菜单坐标补偿：先设 zoom 再除回
+    const z = useAppStore.getState().zoomLevel || 1; // fixed-menu coordinate compensation: set zoom first, then divide back
     el.style.zoom = String(z);
     el.style.left = left / z + "px";
     el.style.top = top / z + "px";
   });
   useEffect(() => {
-    // 点击菜单外部或窗口失焦时关闭（对照 shell.js window click/blur → closeAllMenus）
+    // Close on click outside the menu or window blur (mirrors shell.js window click/blur → closeAllMenus)
     const onClick = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose(); // window 监听里 e.target 运行时必为 Node
+      if (!ref.current?.contains(e.target as Node)) onClose(); // in a window listener e.target is always a Node at runtime
     };
     window.addEventListener("click", onClick);
     window.addEventListener("blur", onClose);

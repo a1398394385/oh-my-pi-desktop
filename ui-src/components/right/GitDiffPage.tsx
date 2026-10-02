@@ -1,5 +1,6 @@
-// Git Diff 页：列表上方工具条（提交信息/提交/推送）+ 文件树/平铺 + 行内写操作 +
-// 单文件自研轻量 diff 详情（rb-head 固定 + rb-scroll 滚动骨架）。
+// Git Diff page: toolbar above the list (commit message/commit/push) + file tree/flat view +
+// inline write operations + per-file in-house lightweight diff detail (fixed rb-head +
+// scrolling rb-scroll skeleton).
 import { useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,16 +12,16 @@ import LightweightDiff from "../diff/LightweightDiff";
 import { langOfPath } from "../../lib/highlighter";
 import type { GitStatusFile } from "../../types/frames";
 
-// git diff 文件条目用 types/frames 的 GitStatusFile(staged/unstaged 为状态字符,空串 = 无)
+// A git diff file entry uses types/frames' GitStatusFile (staged/unstaged are status chars; empty string = none)
 type GitFileEntry = GitStatusFile;
 
-// 路径树节点（buildTree 产物）
+// Path tree node (product of buildTree)
 interface GitTreeNode {
   dirs: Map<string, GitTreeNode>;
   files: GitFileEntry[];
 }
 
-// 丢弃确认弹窗的 state 形状（与 ConfirmDialog props 一致）
+// State shape of the discard confirm dialog (matches ConfirmDialog props)
 interface DiscardConfirm {
   title: string;
   message: string;
@@ -31,15 +32,20 @@ interface DiscardConfirm {
 
 type GitWriteOp = "stage" | "unstage" | "discard" | "commit" | "push";
 
-// ---------- git 写操作 busy 闭环（原 right.js gitBusy 语义） ----------
-// 进行中的写操作标记：{ op, prev }（prev = 发起前的 rightState.gitWrite 引用）。
-// store 对 git 写回包不保证触发需要的行为（成功路径的 refreshGitDiff 在 cwd 未变时不发请求），
-// 以 120ms 轮询比对 gitWrite 引用变化闭环——本地 git 操作毫秒级、push 秒级，轮询生命周期极短。
-// busy 是模块级单例而非 store 字段：置位/清空换引用并通知轻量订阅（useGitBusy）——
-// 订 store selector 的组件不感知模块变量，原全局重渲染驱动（旧 notify bump）由此替代
+// ---------- git write-operation busy loop (old right.js gitBusy semantics) ----------
+// In-flight write marker: { op, prev } (prev = the rightState.gitWrite reference before the
+// operation started).
+// The store doesn't guarantee the needed behavior on git write replies (the success path's
+// refreshGitDiff sends no request when cwd is unchanged), so close the loop by polling the
+// gitWrite reference every 120ms — local git ops are millisecond-scale, push seconds-scale, so
+// the poll lives very briefly.
+// busy is a module-level singleton, not a store field: set/clear swaps the reference and
+// notifies lightweight subscribers (useGitBusy) —
+// components subscribing to store selectors don't see module vars; the old global re-render
+// (legacy notify bump) is replaced by this
 let gitBusy: { op: GitWriteOp; prev: unknown } | null = null;
 const gitBusySubs = new Set<() => void>();
-/** 读 gitBusy 并订阅其变化（置位/清空换引用即重渲染；getSnapshot 返回模块变量，引用稳定） */
+/** Read gitBusy and subscribe to its changes (set/clear swaps the reference, re-rendering; getSnapshot returns the module var with a stable reference) */
 function useGitBusy() {
   return useSyncExternalStore(
     (fn) => {
@@ -49,7 +55,7 @@ function useGitBusy() {
     () => gitBusy,
   );
 }
-let gitBusyTimer: TimerHandle | undefined; // setInterval 句柄(复用 store TimerHandle;undefined 语义同原版 null)
+let gitBusyTimer: TimerHandle | undefined; // setInterval handle (reuses store's TimerHandle; undefined has the old null semantics)
 const GIT_WRITE_REPLY: Record<GitWriteOp, string> = { stage: "git_staged", unstage: "git_unstaged", discard: "git_discarded", commit: "git_committed", push: "git_pushed" };
 function startGitBusy(op: GitWriteOp) {
   gitBusy = { op, prev: useAppStore.getState().rightState.gitWrite };
@@ -59,17 +65,17 @@ function startGitBusy(op: GitWriteOp) {
     const w = useAppStore.getState().rightState.gitWrite;
     if (!gitBusy || !w || w === gitBusy.prev || w.type !== GIT_WRITE_REPLY[gitBusy.op]) return;
     if (w.ok && gitBusy.op === "commit") {
-      // 提交成功清空输入框（换新 rightState 引用，原 mutate + 末尾 notify）
+      // Commit success clears the input (fresh rightState reference, formerly mutate + notify at the end)
       useAppStore.setState((st) => ({ rightState: { ...st.rightState, commitMsg: "" } }));
     }
     gitBusy = null;
     clearInterval(gitBusyTimer);
-    refreshGitDiff(true); // 强制重拉（非 force 刷新在 cwd 未变时不发请求）
+    refreshGitDiff(true); // force refetch (non-forced refresh sends no request when cwd is unchanged)
     for (const fn of gitBusySubs) fn();
   }, 120);
 }
 
-// 点击文件行进详情：请求单文件 diff
+// Clicking a file row enters the detail: request the per-file diff
 function requestFileDiff(s: { cwd: string }, filePath: string) {
   setBump({ selectedFile: filePath });
   useAppStore.setState((st) => ({ fileDiffCache: { ...st.fileDiffCache, loading: true, path: filePath } }));
@@ -97,7 +103,8 @@ export default function GitDiffPage() {
 
   const busy = !!gitBusy;
   const hasStaged = gitDiffCache.files.some((f) => f.staged);
-  // 丢弃是破坏性操作，走二次确认（cwd 取发起时刻的 activeOpen，对齐原 gitCwd 语义）
+  // Discard is destructive: goes through a confirm (cwd taken from activeOpen at initiation,
+  // aligned with the old gitCwd semantics)
   const onDiscard = (f: GitFileEntry) => {
     setConfirm({
       title: t("right.discardTitle"),
@@ -117,7 +124,7 @@ export default function GitDiffPage() {
 
   return (
     <>
-      {/* 工具条：提交信息输入（值存 rightState.commitMsg 跨重绘保持）+ 提交（全部已暂存）+ 推送 */}
+      {/* Toolbar: commit message input (value kept in rightState.commitMsg across repaints) + commit (all staged) + push */}
       <div className="flex items-center gap-1.5 pt-0.5 px-2 pb-2">
         <input
           className="inp gd-commit-inp"
@@ -125,7 +132,9 @@ export default function GitDiffPage() {
           placeholder={t("right.commitMsgPh")}
           value={rightState.commitMsg}
           onChange={(e) => {
-            // 键入为静默写：换引用不 bump，不打扰旧 useStore 全局订阅（原局部 force 重渲染由此订阅替代）
+            // Typing is a silent write: swap the reference without bump, leaving the old
+            // useStore global subscription undisturbed (formerly a local force re-render, now
+            // replaced by this subscription)
             useAppStore.setState((st) => ({ rightState: { ...st.rightState, commitMsg: e.target.value } }));
           }}
         />
@@ -136,7 +145,7 @@ export default function GitDiffPage() {
           onClick={() => {
             const message = rightState.commitMsg.trim();
             if (!message) return;
-            send({ type: "git_commit", cwd: s.cwd, message }); // 不带 paths = 提交全部已暂存
+            send({ type: "git_commit", cwd: s.cwd, message }); // no paths = commit all staged
             startGitBusy("commit");
           }}
         >
@@ -168,10 +177,10 @@ export default function GitDiffPage() {
   );
 }
 
-// 文件详情：返回 + 路径固定在顶，diff 区滚动（自研 LightweightDiff 组件渲染）
+// File detail: back + path pinned at top, diff area scrolls (rendered by the in-house LightweightDiff component)
 function GdFileDetail() {
   const { t } = useTranslation();
-  const selectedFile = useAppStore((st) => st.selectedFile); // 入口 if (selectedFile) 已守卫非空,与原版一致
+  const selectedFile = useAppStore((st) => st.selectedFile); // the entry if (selectedFile) already guards non-null, same as the original
   const fileDiffCache = useAppStore((st) => st.fileDiffCache);
   return (
     <>
@@ -199,14 +208,16 @@ function GdFileDetail() {
   );
 }
 
-// 文件行：状态徽标 + 文件名 + 行内写操作（hover 显示，树/平铺两视图共用）
+// File row: status badge + file name + inline write ops (hover-revealed; shared by tree/flat views)
 function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; displayPath: string; depth: number; onDiscard: (f: GitFileEntry) => void }) {
   const { t } = useTranslation();
   const gitBusy = useGitBusy();
   const busy = !!gitBusy;
-  const cwd = () => activeOpen()?.cwd; // cwd 取法对齐 refreshGitDiff（activeOpen().cwd）
-  // 脉冲标记渲染时读 getState（不订阅）：置位随 expandedDirs 写入驱动本次渲染，
-  // 宏任务静默复位不触发订阅——kids-in 类保留至下次渲染，入场动画不被截断（原 notify 语义）
+  const cwd = () => activeOpen()?.cwd; // cwd resolution aligned with refreshGitDiff (activeOpen().cwd)
+  // The pulse flag is read via getState at render (not subscribed): setting it rides the
+  // expandedDirs write driving this render; the silent macrotask reset triggers no
+  // subscription — the kids-in class survives until the next render so the entrance animation
+  // isn't cut short (old notify semantics)
   const animateGdKids = useAppStore.getState().animateGdKids;
   return (
     <div
@@ -229,7 +240,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
             title={t("right.stage")}
             disabled={busy}
             onClick={(e) => {
-              e.stopPropagation(); // 不触发行点击的进详情
+              e.stopPropagation(); // don't trigger the row click's enter-detail
               const c = cwd();
               if (!c) return;
               send({ type: "git_stage", cwd: c, paths: [f.path] });
@@ -271,10 +282,12 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
   );
 }
 
-// 树视图：目录行（caret + 名 + 计数）+ 文件行，按目录深度缩进；展开时子行播入场动画
+// Tree view: directory rows (caret + name + count) + file rows, indented by depth; child rows
+// play the entrance animation on expand
 function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; prefix: string; depth: number; onDiscard: (f: GitFileEntry) => void }) {
   const rightState = useAppStore((st) => st.rightState);
-  // 脉冲标记渲染时读 getState（不订阅）：同 GitFileRow，复位静默不截断 kids-in 动画
+  // The pulse flag is read via getState at render (not subscribed): same as GitFileRow; the
+  // silent reset doesn't cut the kids-in animation short
   const animateGdKids = useAppStore.getState().animateGdKids;
   const rows: ReactNode[] = [];
   for (const [seg, dir] of node.dirs) {
@@ -286,7 +299,8 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
         className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
         style={{ paddingLeft: 4 + depth * 14 + "px", animationDelay: depth * 15 + "ms" }}
         onClick={() => {
-          // 展开/收起换新 Set + 新 rightState 引用（订阅者按引用感知）；展开时置脉冲动画标记
+          // Expand/collapse swaps in a new Set + new rightState reference (subscribers notice
+          // by reference); set the pulse animation flag on expand
           useAppStore.setState((st) => {
             const expandedDirs = new Set(st.rightState.expandedDirs);
             let animateGdKids = st.animateGdKids;
@@ -294,12 +308,12 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
               expandedDirs.delete(dirPath);
             } else {
               expandedDirs.add(dirPath);
-              animateGdKids = true; // 本次重渲染的子行播入场动画
+              animateGdKids = true; // child rows of this re-render play the entrance animation
             }
             return { rightState: { ...st.rightState, expandedDirs }, animateGdKids };
           });
           setTimeout(() => {
-            useAppStore.setState({ animateGdKids: false }); // 静默复位：无订阅者不触发渲染，kids-in 类保留（动画播完），语义同原版
+            useAppStore.setState({ animateGdKids: false }); // silent reset: no subscribers → no render; kids-in class stays (animation finishes), same semantics as the original
           }, 0);
         }}
       >
@@ -324,7 +338,7 @@ function badgeClass(code: string): string {
   return "mod";
 }
 
-// 路径 → 目录树（目录有序 Map + 文件数组）
+// Paths → directory tree (ordered dir Map + file arrays)
 function buildTree(files: GitFileEntry[]): GitTreeNode {
   const root: GitTreeNode = { dirs: new Map(), files: [] };
   for (const f of files) {
@@ -332,7 +346,7 @@ function buildTree(files: GitFileEntry[]): GitTreeNode {
     let node = root;
     for (let i = 0; i < parts.length - 1; i++) {
       if (!node.dirs.has(parts[i])) node.dirs.set(parts[i], { dirs: new Map(), files: [] });
-      node = node.dirs.get(parts[i])!; // 断言：上一行已保证存在（has/set 后立即 get）
+      node = node.dirs.get(parts[i])!; // assertion: the previous line guarantees existence (get right after has/set)
     }
     node.files.push(f);
   }

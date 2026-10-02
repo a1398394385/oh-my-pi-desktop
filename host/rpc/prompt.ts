@@ -1,5 +1,7 @@
-// 消息发送域 RPC：prompt（附件组装/slash 分发/排队修剪）、排队队列操作、本地 bash、
-// 输入框 sigil 候选（斜杠命令清单 / @ 文件匹配）。自 main.ts message 分发平移（第三刀）。
+// Message-send domain RPCs: prompt (attachment assembly / slash dispatch /
+// queue trimming), queued-message operations, local bash, and composer sigil
+// candidates (slash command list / @ file matches). Relocated from the
+// message dispatch in main.ts (third cut).
 import os from "node:os";
 import path from "node:path";
 import { readdir } from "node:fs/promises";
@@ -26,20 +28,23 @@ import { handleListSessions } from "./session";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
-// 前端随 prompt 下发的附件：图片为 base64，文本类为文件内容
+// Attachments sent by the frontend along with prompt: images as base64, text-kind as file contents
 interface PromptAttachment {
   kind: "image" | "text";
   mime?: string;
-  data?: string; // image：base64（无 data: 前缀）
-  name?: string; // text：文件名
-  text?: string; // text：文件内容
+  data?: string; // image: base64 (no data: prefix)
+  name?: string; // text: file name
+  text?: string; // text: file contents
 }
 
-// ---------- 输入框 sigil：命令清单与 @ 文件候选 ----------
+// ---------- Composer sigils: command list and @ file candidates ----------
 
-// 桌面端不通过 sigil 提供的斜杠命令：模型/思考级别/会话开关这几类，能力分别由输入框胶囊
-// （模型/思考/ModeMenu）与设置页承担，清单过滤与执行拦截共用本表（值为命中提示）。
-// key 含别名（/models 是 /model 的别名；/force:xxx 经 parseSlashCommand 归到 force）。
+// Slash commands the desktop does not offer via the sigil: model / thinking
+// level / session toggles, whose capabilities are carried by the composer
+// capsules (model/thinking/ModeMenu) and the settings page instead. Both the
+// list filter and the execution intercept share this table (values are the
+// hit hints). Keys include aliases (/models aliases /model; /force:xxx is
+// folded into force by parseSlashCommand).
 // Values are i18n keys (truthy membership check doubles as the list filter).
 const REMOVED_SLASH_COMMANDS: Record<string, string> = {
   model: "errors.removedCmd.useModelCapsule",
@@ -54,7 +59,7 @@ const REMOVED_SLASH_COMMANDS: Record<string, string> = {
   fork: "errors.removedCmd.useForkButton",
 };
 
-/** 已移除命令的提示文案；非已移除命令返回 null */
+/** Hint text for removed commands; returns null for commands that were not removed */
 function removedSlashHint(text: string): string | null {
   const parsed = parseSlashCommand(text.trim());
   if (!parsed) return null;
@@ -62,8 +67,10 @@ function removedSlashHint(text: string): string | null {
   return hintKey ? hostI18n.t("errors.removedCmd.template", { command: parsed.name, hint: hostI18n.t(hintKey) }) : null;
 }
 
-// 新建会话页隐藏的会话级命令：操作/统计「已存在的会话」，首条消息发出前无意义
-// （压缩/交接/重试/会话管理/导出/统计等）。goal、memory、工具与插件管理、skill:* 等保留。
+// Session-level commands hidden on the new-session page: they operate on /
+// report "an already existing session" and are meaningless before the first
+// message is sent (compact/handoff/retry/session management/export/stats
+// etc.). goal, memory, tool & plugin management, skill:* etc. are kept.
 const NEW_SESSION_HIDDEN_SLASH_COMMANDS: Record<string, true> = {
   compact: true,
   handoff: true,
@@ -89,7 +96,7 @@ const NEW_SESSION_HIDDEN_SLASH_COMMANDS: Record<string, true> = {
   todo: true,
 };
 
-// /goal：底座条目是 TUI-only（无 handle 不进清单），注入桌面实现的同名条目（执行走 dispatchSlashInput）
+// /goal: the base's entry is TUI-only (no handle, so it stays out of the list); inject a same-named desktop entry (execution goes through dispatchSlashInput)
 const GOAL_SLASH_COMMAND = {
   name: "goal",
   description: "Toggle goal mode (persistent autonomous objective for this session)",
@@ -104,8 +111,10 @@ const GOAL_SLASH_COMMAND = {
   ],
 };
 
-// /plan：底座同样只有 handleTui（buildAvailableSlashCommands 的 `if (!command.handle) continue`
-// 把它挡在清单外，手输还会被当普通 prompt 发给模型），注入桌面实现的同名条目。
+// /plan: likewise the base only has handleTui (buildAvailableSlashCommands's
+// `if (!command.handle) continue` keeps it out of the list, and typing it by
+// hand would be sent to the model as a plain prompt); inject a same-named
+// desktop entry.
 const PLAN_SLASH_COMMAND = {
   name: "plan",
   description: "Toggle plan mode (agent plans before executing)",
@@ -113,8 +122,10 @@ const PLAN_SLASH_COMMAND = {
   source: "builtin" as const,
 };
 
-// 命令清单帧：内置 + skill + 扩展 + 自定义 + 文件命令，可无 TUI 执行的那批
-// （executeAcpBuiltinSlashCommand 的姊妹面）。映射成前端 PaletteMenu 直接消费的形状。
+// Command list frame: builtin + skill + extension + custom + file commands —
+// the batch that can execute without a TUI (the sister face of
+// executeAcpBuiltinSlashCommand). Mapped into the shape the frontend's
+// PaletteMenu consumes directly.
 function sendCommandsFrame(
   ws: { send(data: string): unknown },
   sessionId: string | null,
@@ -144,8 +155,10 @@ async function pushCommands(ws: { send(data: string): unknown }, sessionId: stri
   sendCommandsFrame(ws, sessionId, await buildAvailableSlashCommands(entry.session), false);
 }
 
-// 新建会话页的命令清单（无会话条目）：skills/自定义命令借用池内任一会话（同一套配置加载，
-// 各会话一致）；文件命令按新建项目 cwd 扫描；隐藏会话级命令。池内无会话时 skills 回退空。
+// Command list for the new-session page (no session entry): skills / custom
+// commands borrow any pooled session (same config loading, identical across
+// sessions); file commands scan the new project's cwd; session-level
+// commands are hidden. With an empty pool, skills fall back to none.
 async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: string) {
   const any = sessions.values().next().value as PoolEntry | undefined;
   const stub = {
@@ -158,8 +171,10 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
   sendCommandsFrame(ws, null, await buildAvailableSlashCommands(stub), true);
 }
 
-// @ 候选：绝对路径/家目录前缀走 readdir 前缀列举（对齐 TUI autocomplete 的目录补全），
-// 其余走 fuzzyFind 全仓模糊搜索；任何错误静默返回空（弹层显示无匹配）
+// @ candidates: absolute-path / home-dir prefixes go through readdir prefix
+// listing (matching the TUI autocomplete's directory completion); everything
+// else goes through fuzzyFind whole-repo fuzzy search; any error silently
+// returns empty (the popup shows no match)
 async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean }>> {
   if (query.startsWith("/") || query.startsWith("~")) {
     try {
@@ -186,10 +201,13 @@ async function listFileMatches(root: string, query: string): Promise<Array<{ pat
   }
 }
 
-// ---------- 斜杠命令本地分发 ----------
-// 顺序对齐 ACP #runPromptOrCommand：/skill: → builtin（executeAcpBuiltinSlashCommand）→ 原样走 prompt。
-// 返回 null = 本地消费（不调 prompt、不推 user transcript）；返回 string = 转成该文本继续走 prompt。
-// prompt() 自身还会展开文件命令 / 自定义 TS 命令 / 扩展命令（agentInvoked=false 信号在 then 里处理）。
+// ---------- Local slash-command dispatch ----------
+// Order matches ACP #runPromptOrCommand: /skill: → builtin
+// (executeAcpBuiltinSlashCommand) → pass through to prompt as-is.
+// Returning null = consumed locally (no prompt call, no user transcript
+// push); returning a string = continue through prompt with that text.
+// prompt() itself also expands file commands / custom TS commands /
+// extension commands (the agentInvoked=false signal is handled in then).
 async function dispatchSlashInput(
   ws: { send(data: string): unknown },
   sessionId: string,
@@ -199,7 +217,7 @@ async function dispatchSlashInput(
   const trimmed = text.trim();
   if (!trimmed.startsWith("/")) return text;
 
-  // 1) /skill:<name>：底座 prompt() 不处理，必须宿主分发（对齐 ACP #tryRunSkillCommand）
+  // 1) /skill:<name>: the base's prompt() does not handle it, the host must dispatch (matching ACP #tryRunSkillCommand)
   const parsed = parseSkillInvocation(trimmed);
   const skill = parsed && entry.session.skillsSettings?.enableSkillCommands
     ? entry.session.skills.find((c) => c.name === parsed.name)
@@ -219,7 +237,7 @@ async function dispatchSlashInput(
     return null;
   }
 
-  // 2) 已移除命令：既不执行也不落成 prompt（清单已在 pushCommands 过滤，这里挡手输）
+  // 2) Removed commands: neither executed nor turned into a prompt (the list is already filtered in pushCommands; this intercepts hand-typed input)
   const removedHint = removedSlashHint(trimmed);
   if (removedHint) {
     ws.send(JSON.stringify({ type: "command_output", sessionId, text: removedHint }));
@@ -227,8 +245,10 @@ async function dispatchSlashInput(
     return null;
   }
 
-  // 2.5) /goal、/plan：桌面实现（底座两者都只有 handleTui，executeAcpBuiltinSlashCommand 不接手）。
-  // 返回文本转正常 prompt 链路（transcript/排队复用）；null = 已消费
+  // 2.5) /goal, /plan: desktop implementations (the base has only handleTui
+  // for both, executeAcpBuiltinSlashCommand will not take them). A returned
+  // text goes through the normal prompt chain (transcript/queueing reused);
+  // null = consumed
   const parsedSlash = parseSlashCommand(trimmed);
   if (parsedSlash?.name === "goal") {
     const objective = await entry.goal.handleCommand(parsedSlash.args);
@@ -243,19 +263,26 @@ async function dispatchSlashInput(
     return null;
   }
 
-  // 3) builtin：41 条无 TUI 执行的命令。桌面 prompt RPC 立即返回、turn 产物全走
-  // 常驻事件订阅（与 RPC 模式同构），不需要 keepTurnOpenUntilIdle；但 /compact、/handoff、
-  // /rename（无参自动生成标题）等 provider-backed 命令需要 runCommandInBackground——否则
-  // 底座内联 await，压缩几十秒期间 UI 无任何反馈且 abort 被卡住（对齐 RPC 模式做法）。
-  // 后台命令完成后会话条目会被改写：按指纹检测变化，重建 transcript 推 messages 全量帧
-  // 刷新视图；执行期间底座 output 的完成文案先缓存，待视图重建后补发（否则会被冲掉）。
+  // 3) builtin: the 41 commands executable without a TUI. The desktop's
+  // prompt RPC returns immediately and all turn output flows through the
+  // resident event subscription (isomorphic to RPC mode), so no
+  // keepTurnOpenUntilIdle; but provider-backed commands like /compact,
+  // /handoff, /rename (title auto-generated when no arg) need
+  // runCommandInBackground — otherwise the base awaits inline, leaving the
+  // UI with zero feedback for the tens of seconds a compaction takes and
+  // abort wedged (matching the RPC-mode approach). After a background
+  // command finishes, session entries have been rewritten: detect the change
+  // by fingerprint, rebuild the transcript, and push a full messages frame
+  // to refresh the view; the base's completion output during execution is
+  // buffered first and re-sent after the view rebuild (otherwise it would
+  // be washed away).
   const entriesSig = (list: any[]) => list.length + ":" + (list[list.length - 1]?.id ?? "");
   const baseline = entriesSig(entry.manager.getEntries());
-  let bgOutputs: string[] | null = null; // 非 null = 后台命令执行中，output 暂存
-  let bgSucceeded = false; // 后台任务跑出底座成功文案（没跑出 = 中止/静默失败）
+  let bgOutputs: string[] | null = null; // Non-null = a background command is running, output buffered
+  let bgSucceeded = false; // The background task produced the base's success line (no line = aborted/silent failure)
   const phaseKey = trimmed.split(/\s+/)[0].replace(/^\//, "");
   const phaseText = PHASE_TEXT[phaseKey];
-  // 成功判定：底座完成输出的固定前缀（成功必发其一；无输出 = 中止/失败 → 撤执行中行）
+  // Success detection: fixed prefixes of the base's completion output (a success always emits one of them; no output = aborted/failed → retract the in-progress row)
   const phaseSuccess: Record<string, RegExp> = {
     compact: /^Compaction complete/,
     handoff: /^Context handed off and compacted in place\./,
@@ -279,7 +306,7 @@ async function dispatchSlashInput(
     runCommandInBackground: (task) => {
       if (bgOutputs === null) {
         bgOutputs = [];
-        // 耗时命令的起始分隔行：否则气泡撤回后界面毫无动静（压缩/交接在后台跑）
+        // Start separator row for long-running commands: without it the UI looks dead after the bubble is retracted (compact/handoff run in the background)
         ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "start", command: phaseKey, text: phaseText[0] }));
       }
       void task()
@@ -287,15 +314,18 @@ async function dispatchSlashInput(
           const entries = entry.manager.getEntries();
           if (entriesSig(entries) !== baseline) {
             entry.transcript = entriesToTranscript(entries);
-            entry.mentionScanIndex = entries.length; // 回读游标对齐，避免重发历史 mention
+            entry.mentionScanIndex = entries.length; // Align the read-back cursor, avoiding re-sending historical mentions
             ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
             pushContext(ws, sessionId, entry);
           }
-          await handleListSessions(ws); // 标题/列表可能变（rename/handoff 改标题）
+          await handleListSessions(ws); // Title/list may have changed (rename/handoff alter titles)
           const outs = bgOutputs ?? [];
           bgOutputs = null;
-          // 成功：落盘痕已写入，下方 messages 重建帧自带完成分隔行（UI 按 command 吸收执行中行），
-          // 不再发 done 瞬时帧；失败/中止：无痕可落，发 fail 撤掉执行中行，错误详情在 output 行里
+          // Success: the disk trace is written and the messages rebuild frame
+          // below carries its own completion separator row (the UI absorbs
+          // the in-progress row by command), so no done transient frame is
+          // sent; failure/abort: no trace to write, send fail to retract the
+          // in-progress row, error details live in the output rows
           if (!bgSucceeded) ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "fail", command: phaseKey }));
           for (const t of outs) ws.send(JSON.stringify({ type: "command_output", sessionId, text: t }));
         })
@@ -320,8 +350,8 @@ async function dispatchSlashInput(
     },
   };
   const r = await executeAcpBuiltinSlashCommand(trimmed, runtime);
-  if (r === false) return text; // 不是 builtin → 原样走 prompt（文件/自定义/扩展命令由底座展开）
-  if ("prompt" in r) return r.prompt; // /force <tool> <prompt> 之类：剩余文本当 prompt
+  if (r === false) return text; // Not a builtin → pass through to prompt as-is (file/custom/extension commands are expanded by the base)
+  if ("prompt" in r) return r.prompt; // E.g. /force <tool> <prompt>: the remaining text becomes the prompt
   ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
   return null;
 }
@@ -335,9 +365,9 @@ async function handlePrompt(
 ) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
-  // 用户在该会话发消息 = 已读交互：清缓存保活未读态（本轮 turn 收尾会重新置位）
+  // The user sending a message in this session = a seen interaction: clear the cache-keepalive unread state (this turn's wrap-up will set it again)
   entry.keepaliveWanted = false;
-  // 附件：图片走 SDK ImageContent；文本类文件内容内联进 prompt（与 CLI 粘贴文件一致）
+  // Attachments: images go through SDK ImageContent; text-kind file contents are inlined into the prompt (same as pasting files in the CLI)
   const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
   for (const f of files ?? []) {
     if (f.kind === "image" && typeof f.data === "string") {
@@ -356,7 +386,7 @@ async function handlePrompt(
   }
   if (!finalText && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
   if (!finalText) finalText = hostI18n.t("errors.prompt.imageOnlyFallback");
-  // 斜杠命令本地分发：消费则直接返回（不推 transcript、不调 prompt）；改写则继续
+  // Local slash-command dispatch: if consumed, return directly (no transcript push, no prompt call); if rewritten, continue
   const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
   if (dispatched === null) return;
   finalText = dispatched;
@@ -365,14 +395,22 @@ async function handlePrompt(
     text: finalText,
     ...(images.length > 0 ? { images } : {}),
   });
-  // 自动会话标题：CLI 由 input-controller / main.ts 调用底座同一入口；SDK 宿主没有这层，
-  // 必须自己触发。底座内部 gate 负责「已有标题 / 已在生成 / 低信号输入 / PI_NO_TITLE」跳过，
-  // 生成的标题经 SessionManager.onSessionNameChanged → session_title_changed 帧下发。
-  // 流式注入（steer / 排队 followUp）不触发，与 CLI 只在 idle 提交时起标题一致。
+  // Auto session title: the CLI calls the base's same entry from
+  // input-controller / main.ts; the SDK host has no such layer and must
+  // trigger it itself. The base's internal gate skips "already titled /
+  // already generating / low-signal input / PI_NO_TITLE"; the generated
+  // title arrives via SessionManager.onSessionNameChanged → the
+  // session_title_changed frame. Streaming injections (steer / queued
+  // followUp) do not trigger it, matching the CLI only titling on idle
+  // commits.
   if (!steer) entry.session.maybeStartTitleGeneration(finalText);
-  // 命令立即返回；turn 产物全部走事件流。流式中的注入行为由 streamingBehavior 决定：
-  // followUp = 排队（当前 loop 完全处理完后自动消费触发新 turn，不打断进行中的处理）；
-  // steer = 立即注入（当前工具批次后插入，气泡转正并分割过程）。idle 时两者都被底座忽略照常开 turn。
+  // The command returns immediately; all turn output flows through the event
+  // stream. Injection behavior mid-stream is decided by streamingBehavior:
+  // followUp = queued (auto-consumed to trigger a new turn after the current
+  // loop fully finishes, without interrupting in-flight work);
+  // steer = injected immediately (inserted after the current tool batch, the
+  // bubble finalized and the process split). When idle, the base ignores
+  // both and opens a turn as usual.
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
@@ -380,17 +418,21 @@ async function handlePrompt(
     })
     .then((agentInvoked: boolean) => {
       if (agentInvoked === false) {
-        // 扩展/自定义/文件命令被底座本地消费：撤回乐观气泡与 transcript 条目
-        // （该 user 消息必是尾部最后一条同文本且尚无 entryId 的）
+        // An extension/custom/file command was consumed locally by the base:
+        // retract the optimistic bubble and the transcript entry (that user
+        // message is necessarily the last tail entry with the same text and
+        // no entryId yet)
         const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === finalText && !t.entryId);
         if (i >= 0) entry.transcript.splice(i, 1);
         ws.send(JSON.stringify({ type: "command_result", sessionId, text: finalText, consumed: true }));
       }
-      // 流式排队后立即修剪：底座队列只留最早 1 条，其余进 parked（本轮 run 的注入边界
-      // 只能带走这 1 条，避免多条拼车；后续逐轮 agent_end 放回消费）
+      // Trim right after queued-mid-stream: keep only the earliest 1 entry
+      // in the base queue, park the rest (this run's injection boundary can
+      // only carry that 1, avoiding several riding together; later agent_end
+      // rounds put them back one by one for consumption)
       parkFollowUpTail(entry);
       sendQueued(ws, sessionId, entry);
-    }) // 入队/开 turn 后校准前端排队行
+    }) // Calibrate the frontend's queued rows after enqueueing/turn start
     .catch((err: unknown) => {
       ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
     });
@@ -404,7 +446,7 @@ function handleGetMessages(ws: any, sessionId: string) {
 
 export const promptHandlers: Record<string, RpcHandler> = {
   async prompt(ws, msg) {
-    // steer=true：流式中不排队而是立即注入（当前工具批次后），idle 时底座忽略该参数照常开 turn
+    // steer=true: mid-stream, inject immediately instead of queueing (after the current tool batch); when idle the base ignores the flag and opens a turn as usual
     await handlePrompt(ws, msg.sessionId, String(msg.text ?? ""), msg.files, msg.steer === true);
   },
   peek_queued(ws, msg) {
@@ -433,8 +475,9 @@ export const promptHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "todos", sessionId: msg.sessionId, phases: entry.session.getTodoPhases() }));
   },
   async bash_exec(ws, msg) {
-    // ! 本地命令：结果走 bashExecution 落盘（底座 executeBash 内部完成），
-    // 实时流由专用帧驱动（bash_start/chunk/done），不进模型事件流
+    // ! local command: the result is persisted as a bashExecution entry (done
+    // inside the base's executeBash); the live stream is driven by dedicated
+    // frames (bash_start/chunk/done), not the model event stream
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const command = String(msg.command ?? "").trim();
@@ -466,8 +509,10 @@ export const promptHandlers: Record<string, RpcHandler> = {
         item.cancelled = r.cancelled;
         item.timedOut = r.timedOut === true;
         item.truncated = r.truncated;
-        // 底座 lazy 门：纯 ! 会话（无 assistant 消息）不落盘，重开会话会丢 bash 行。
-        // 用户既然执行了命令，这里显式跨门让整份内存 entries（含本条）写盘。
+        // The base's lazy gate: a pure-! session (no assistant messages) is
+        // not persisted, so reopening the session would lose the bash rows.
+        // Since the user ran a command, explicitly cross the gate so the full
+        // in-memory entries (including this one) are written to disk.
         entry.manager.ensureOnDisk?.().catch((err: unknown) => {
           process.stderr.write(`[host] ensureOnDisk 失败: ${String(err)}\n`);
         });
@@ -497,12 +542,13 @@ export const promptHandlers: Record<string, RpcHandler> = {
   bash_abort(ws, msg) {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    entry.session.abortBash(); // 同步触发；executeBash 的 promise 会自行 resolve 并再发一帧 bash_done
+    entry.session.abortBash(); // Triggered synchronously; executeBash's promise resolves on its own and sends another bash_done frame
     ws.send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
   },
   async list_commands(ws, msg) {
-    // 斜杠命令清单（输入框 / 补全用）：按需拉取，不做会话生命周期推送。
-    // 无 sessionId = 新建会话页请求（隐藏会话级命令，见 pushNewSessionCommands）
+    // Slash command list (for composer / completion): fetched on demand, no
+    // session-lifecycle push. No sessionId = a new-session page request
+    // (session-level commands hidden; see pushNewSessionCommands)
     const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
     if (entry) {
       await pushCommands(ws, msg.sessionId, entry);
@@ -511,7 +557,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
     }
   },
   async list_files(ws, msg) {
-    // @ 文件候选：reqId 原样回传，前端据此丢弃过期响应
+    // @ file candidates: reqId is echoed back so the frontend can discard stale responses
     const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
     const root = entry ? entry.session.sessionManager.getCwd() : String(msg.cwd ?? "");
     if (!root) throw new Error(hostI18n.t("errors.param.missingCwd"));

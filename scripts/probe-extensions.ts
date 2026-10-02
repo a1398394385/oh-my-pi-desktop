@@ -1,6 +1,6 @@
-// 探针：扩展中心四 RPC 的端到端验证（连真实宿主 WS）。
-// 只读验证 + 成对开关（关→开）保证最终状态与初始一致；任一断言失败即非零退出。
-// 用法：bun scripts/probe-extensions.ts <wsPort>
+// Probe: end-to-end verification of the four extension-center RPCs (against a real host WS).
+// Read-only checks + paired toggles (off -> on) guarantee the final state matches the initial one; any failed assertion exits non-zero.
+// Usage: bun scripts/probe-extensions.ts <wsPort>
 const port = process.argv[2] ?? process.env.HOST_WS_PORT;
 if (!port) throw new Error("缺少 ws 端口参数");
 const ws = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -15,7 +15,7 @@ const strayFrames: Record<string, unknown>[] = [];
 ws.onmessage = (e) => {
   const msg = JSON.parse(String(e.data)) as Record<string, unknown>;
   if (msg.type === "error" && typeof msg.message === "string") {
-    // 宿主命令失败回包：打印并让挂起的 rpc 全部快速失败（首个挂起者吃到该错误）
+    // Host command failure reply: print it and fail all pending rpcs fast (the first waiter takes the error)
     console.error(`宿主 error 帧: ${msg.message}`);
     const first = pending.values().next().value as ((m: Record<string, unknown>) => void) | undefined;
     if (first) first(msg);
@@ -43,7 +43,7 @@ const assert = (cond: unknown, msg: string) => {
   console.log(`  ✓ ${msg}`);
 };
 
-// 1) 初始 disabledExtensions（成对开关后要复原到它）
+// 1) Initial disabledExtensions (the paired toggles must restore it)
 const settings = (await rpc("get_settings", {}, "settings")) as { settings: { values?: Record<string, unknown> } };
 const settingVal = (k: string) => settings.settings.values?.[k];
 const initialDisabled = JSON.stringify(settingVal("disabledExtensions") ?? []);
@@ -59,7 +59,7 @@ const list = (await rpc("list_extensions", { scope: "profile" }, "extensions")) 
 };
 assert(list.type === "extensions", "list_extensions 回包为 extensions 帧");
 assert(Array.isArray(list.providers) && list.providers.length > 0, `供应商清单非空（${list.providers?.length ?? 0} 个）`);
-// 页面上供应商的启用态必须忠实反映 settings.disabledProviders（底座 registry 同步的回归防线）
+// The provider enable states on the page must faithfully mirror settings.disabledProviders (regression defense for base-registry sync)
 const disabledProv = new Set(
   Array.isArray(settingVal("disabledProviders")) ? (settingVal("disabledProviders") as string[]) : [],
 );
@@ -72,7 +72,7 @@ console.log(`  profile 范围条目 ${list.extensions.length} 个:`, Object.from
 assert(list.extensions.every((x) => x.source.level !== "project"), "profile 范围无项目级条目");
 assert(list.extensions.every((x) => x.id.includes(":")), "条目 id 均为 kind:name 形态");
 
-// 3) 项目范围（若有桌面项目）
+// 3) Project scope (if any desktop project exists)
 const projScope = list.scopes.find((s) => s.id.startsWith("project:"));
 if (projScope) {
   const plist = (await rpc("list_extensions", { scope: projScope.id }, "extensions")) as typeof list;
@@ -83,7 +83,7 @@ if (projScope) {
   console.log("  (无桌面项目，跳过项目 scope 验证)");
 }
 
-// 4) 项级开关成对（选一个 active 且非 mcp 的条目）
+// 4) Item-level toggle in pairs (pick an active, non-mcp entry)
 const victim = list.extensions.find((x) => x.state === "active" && x.kind !== "mcp");
 if (victim) {
   const off = (await rpc("toggle_extension_item", { id: victim.id, enabled: false, scope: "profile" }, "extensions")) as typeof list;
@@ -96,7 +96,7 @@ if (victim) {
   console.log("  (无可用 active 条目，跳过项级开关验证)");
 }
 
-// 5) 供应商主开关成对（选第一个启用的供应商）
+// 5) Provider master toggle in pairs (pick the first enabled provider)
 const prov = list.providers.find((p) => p.enabled);
 if (prov) {
   const off = (await rpc("toggle_extension_provider", { providerId: prov.id, scope: "profile" }, "extensions")) as typeof list;
@@ -109,7 +109,7 @@ if (prov) {
   console.log("  (无启用中的供应商，跳过主开关验证)");
 }
 
-// 6) 复原校验
+// 6) Restoration check
 const settings2 = (await rpc("get_settings", {}, "settings")) as { settings: { values?: Record<string, unknown> } };
 const finalDisabled = JSON.stringify(settings2.settings.values?.disabledExtensions ?? []);
 assert(finalDisabled === initialDisabled, "成对开关后 disabledExtensions 与初始一致");

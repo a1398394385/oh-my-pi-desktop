@@ -1,7 +1,9 @@
-// UI slice：壳折叠/缩放、新建会话页（newSession*）、输入框草稿与 sigil 补全态、
-// toast/composer 信号、动画开关、ringpop 瞬态、UI 偏好（localStorage 合并）。
-// 自 store.ts 平移（P3 波 2）；变更一律 setState 换值/换引用（订阅自动感知），
-// 静默写（draftHasContent 等，旧版不 notify）只 set 不 bump。
+// UI slice: shell collapse/zoom, the new-session page (newSession*), composer draft and sigil
+// completion state, toast/composer signals, animation toggles, ringpop transients, UI prefs
+// (merged from localStorage).
+// Moved over from store.ts (P3 wave 2); changes always go through setState swapping values/
+// references (subscribers notice automatically); silent writes (draftHasContent etc., which the
+// old version did not notify) only set, no bump.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import type { UiPrefs } from "./shapes";
@@ -10,42 +12,42 @@ import { activeOpen, getSupportedThinkingForModel } from "./session";
 import { saveRightSnapshot } from "./right";
 import { detectLang } from "../i18n";
 
-/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名;TS 环境含 Node 类型时返回 Timeout) */
+/** setTimeout handle (DOM vs Node return types differ; unified alias; TS environments with Node types return Timeout) */
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface UiSlice {
   zoomLevel: number;
-  isCommandPressed: boolean; // 是否正在按住 Command/Ctrl 键（快捷键提示）
+  isCommandPressed: boolean; // whether Command/Ctrl is currently held (shortcut hints)
   sidebarCollapsed: boolean;
   rightCollapsed: boolean;
   isCreatingNew: boolean;
   newSessionProject: string;
   newSessionBranch: string;
-  newSessionBranches: string[]; // git_branches 帧 branches 落地(新建会话页分支选择;分支名清单)
+  newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
-  defaultModelCfg: string | null; // models 帧 defaultModel 落地
-  defaultThinkingCfg: string | null; // models 帧 defaultThinking 落地
+  defaultModelCfg: string | null; // landed from the models frame's defaultModel
+  defaultThinkingCfg: string | null; // landed from the models frame's defaultThinking
   newSessionDirty: boolean;
-  pendingFiles: (PromptAttachment & { id: number })[]; // 输入框附件 chip(带前端本地 id,发送时剥离)
+  pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   fileSeq: number;
   animateGdKids: boolean;
   animateThinkBody: boolean;
-  animateSubKids?: boolean; // 子代理详情入场动画标记(运行时挂上,SubagentPage 专用)
-  toastMsg: string | null; // 当前 toast 文本（null = 隐藏）
-  composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // 外部填输入框的信号（分叉回填 / 排队消息编辑）；guard=异步回填，草稿非空时放弃覆盖
-  findOpen: boolean; // 会话内查找栏开合（FindBar 同步;Esc 中断生成前的守卫）
-  menuSignal: { name: string; seq: number } | null; // 外部打开 composer 菜单的信号（快捷键 Alt+M）
-  draftHasContent: boolean; // 输入框是否有草稿（Composer 每次渲染同步,Esc 二次确认用）
-  escArmedUntil: number; // Esc 二次确认窗口的截止时刻（> 现在 = 发送钮显示取消图标）
-  commands: SlashCommand[] | null; // 当前会话斜杠命令清单（null = 未拉取，弹层显示加载中）
-  commandsSessionId: string | null; // 清单归属会话 id，切会话即失效
-  mentionReqSeq: number; // list_files 请求序号（reqId 生成器，前端自增）
-  mentionResult: { reqId: number; matches: FileMatch[] } | null; // 最新 @ 候选响应；reqId 与当前请求不匹配即过期
-  ctxDetail: ContextDetailFrame | null; // 最近一次 context_detail 回包（ringpop 弹卡瞬态,移开即弃）
-  ctxLimits: LimitsResultFrame | null; // 最近一次 limits_result 回包
-  mainViewMode: "chat" | "tree"; // 主区域视图模式（消息流 vs 会话条目树）
+  animateSubKids?: boolean; // subagent detail entrance-animation flag (attached at runtime, SubagentPage only)
+  toastMsg: string | null; // current toast text (null = hidden)
+  composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // signal to fill the composer externally (fork backfill / queued-message editing); guard = async backfill, give up overwriting when the draft is non-empty
+  findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
+  menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)
+  draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
+  escArmedUntil: number; // deadline of the Esc double-confirm window (> now = the send button shows a cancel icon)
+  commands: SlashCommand[] | null; // slash command list of the current session (null = not fetched yet, the popover shows loading)
+  commandsSessionId: string | null; // session id the list belongs to; invalidated on session switch
+  mentionReqSeq: number; // list_files request counter (reqId generator, frontend-incremented)
+  mentionResult: { reqId: number; matches: FileMatch[] } | null; // latest @ candidates response; stale as soon as the reqId no longer matches the current request
+  ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
+  ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
+  mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
   uiPrefs: UiPrefs;
   toast(msg: unknown): void;
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
@@ -82,16 +84,16 @@ if (storedUiPrefs.lang !== "zh-CN" && storedUiPrefs.lang !== "en") {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefsInit)); } catch {}
 }
 
-// toast：App 层 Toast 组件消费 toastMsg（2.2s 自动隐藏）
+// toast: the App-level Toast component consumes toastMsg (auto-hides after 2.2s)
 let toastTimer: TimerHandle | undefined;
-// 外部填输入框（分叉回填 / 排队消息编辑）：Composer 组件 effect 监听 seq
+// Fill the composer externally (fork backfill / queued-message editing): a Composer component effect watches seq
 let composerSetSeq = 0;
 
 export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get) => ({
   zoomLevel: 1,
   isCommandPressed: false,
   sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
-  // 右栏默认折叠（对齐旧版 index.html <aside id="right" class="collapsed">）；手动展开过后按 localStorage 记忆
+  // Right panel collapsed by default (matching the old index.html <aside id="right" class="collapsed">); once manually expanded, remembered via localStorage
   rightCollapsed: localStorage.getItem("omp-right-collapsed") === null ? true : localStorage.getItem("omp-right-collapsed") === "1",
   isCreatingNew: false,
   newSessionProject: "",
@@ -143,7 +145,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     saveRightSnapshot(get().activePath); // entering new-session page = leaving current session: snapshot before activePath is nulled
     set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat" }));
     if (!alreadyOpen) {
-      get().send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
+      get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
       set({ newSessionDirty: false });
       get().initNewSessionModel(true);
     }
@@ -182,7 +184,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     if (cwd) get().expandProject(cwd);
   },
 
-  // force = 点新建/配置下发刷新：模型与档位回到配置文件默认；非 force 只做缺失兜底
+  // force = new-session click / config-push refresh: model and level fall back to the config-file defaults; non-force only fills in missing values
   initNewSessionModel(force = false) {
     const st = get();
     const modelNames = st.modelNames;
@@ -210,14 +212,14 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set({ newSessionModel, newSessionThinking: th });
   },
 
-  /** 模型选中（模型菜单与 Ctrl+P 循环共用）：有会话走宿主下发；新建态落盘，档位不合法时回落 */
+  /** Model picked (shared by the model menu and Ctrl+P cycling): with a live session, sent via the host; in new-session state, persisted, with the level falling back when invalid */
   pickModelId(id) {
     const s = activeOpen();
     if (s) {
       get().send({ type: "set_model", sessionId: s.sessionId, model: id });
       return;
     }
-    set((st) => ({ newSessionModel: id, newSessionDirty: true })); // 手选后：后续 models 帧不再用配置默认覆盖
+    set((st) => ({ newSessionModel: id, newSessionDirty: true })); // after a manual pick: later models frames no longer overwrite with the config default
     try {
       localStorage.setItem("omp-new-model", id);
     } catch {}
@@ -232,7 +234,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     }
   },
 
-  /** 思考档位选中（思考菜单与 Shift+Tab 循环共用）：有会话走宿主下发，新建态落盘 */
+  /** Thinking level picked (shared by the thinking menu and Shift+Tab cycling): with a live session, sent via the host; in new-session state, persisted */
   pickThinkingLevel(lv) {
     const s = activeOpen();
     if (s) {

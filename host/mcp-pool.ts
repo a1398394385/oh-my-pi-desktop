@@ -1,9 +1,14 @@
-// 宿主级 MCP 连接池管理：支持全局共享（global）与项目级共享（project）
-// 1. 引用计数机制：有会话挂载时 refCount++，会话 dispose 时 refCount--；
-// 2. 闲置宽限回收（Idle TTL）：refCount 归零后启动 120 秒静止定时器，无新接入才平滑释放；
-// 3. 安全沙箱隔离：全局共享实例在握手时不向服务端暴露工作区 roots 目录（空根）；
-// 4. 环境与凭证哈希：连接池 Key 绑定有效 env 指纹，防止私有 Token 跨会话串用；
-// 5. 软取消（Soft Cancel）：会话中止时发送 notifications/cancelled 协议消息，不暴力 Kill 共享进程。
+// Host-level MCP connection pool management: supports global sharing (global)
+// and project-level sharing (project).
+// 1. Reference counting: refCount++ when a session mounts, refCount-- when it disposes;
+// 2. Idle grace recycling (Idle TTL): once refCount hits zero, a 120-second
+//    quiet timer starts; only release smoothly when nothing new attaches;
+// 3. Sandbox isolation: global shared instances never expose workspace roots
+//    directories to the server during handshake (empty roots);
+// 4. Env and credential hash: pool keys bind the effective env fingerprint,
+//    preventing private tokens from leaking across sessions;
+// 5. Soft cancel: on session abort, send a notifications/cancelled protocol
+//    message instead of brutally killing the shared process.
 
 import path from "node:path";
 import { connectToServer, disconnectServer } from "./bootstrap.ts";
@@ -16,7 +21,7 @@ export interface SharedMcpConnection {
   poolKey: string;
   serverName: string;
   sharing: "project" | "global";
-  scopeKey: string; // "global" 或项目绝对路径 cwd
+  scopeKey: string; // "global" or the project's absolute path cwd
   envHash: string;
   connection: any; // MCPServerConnection
   refCount: number;
@@ -37,16 +42,17 @@ export interface SharedMcpStats {
   uptimeMs: number;
 }
 
-// 闲置宽限时间：120 秒（2 分钟）
+// Idle grace period: 120 seconds (2 minutes)
 const IDLE_TTL_MS = 120_000;
 
-// 全局内存池
+// Global in-memory pool
 const sharedPool = new Map<string, SharedMcpConnection>();
 const connectingPromises = new Map<string, Promise<SharedMcpConnection>>();
 
 /**
- * 计算共享连接池的复合唯一键
- * 结合作用域、服务名称和环境变量哈希，实现同凭证安全复用、不同凭证自动隔离
+ * Compute the composite unique key of a shared connection pool entry.
+ * Combines scope, server name, and env hash so identical credentials are
+ * safely reused while different credentials stay isolated automatically.
  */
 export function computeMcpPoolKey(
   serverName: string,
@@ -64,7 +70,7 @@ export function computeMcpPoolKey(
 }
 
 /**
- * 获取或新建共享 MCP 连接
+ * Acquire (or create) a shared MCP connection.
  */
 export async function acquireSharedMcpConnection(params: {
   serverName: string;
@@ -76,7 +82,7 @@ export async function acquireSharedMcpConnection(params: {
   const { serverName, sharing, scopeKey, config, env = {} } = params;
   const poolKey = computeMcpPoolKey(serverName, sharing, scopeKey, env);
 
-  // 1. 已有就绪连接：直接命中并复用
+  // 1. Existing ready connection: hit and reuse directly
   const existing = sharedPool.get(poolKey);
   if (existing) {
     if (existing.idleTimer) {
@@ -92,7 +98,7 @@ export async function acquireSharedMcpConnection(params: {
     };
   }
 
-  // 2. 正在并发建立中：合并 Promise
+  // 2. Concurrently being established: merge onto the promise
   const pending = connectingPromises.get(poolKey);
   if (pending) {
     const entry = await pending;
@@ -105,15 +111,15 @@ export async function acquireSharedMcpConnection(params: {
     };
   }
 
-  // 3. 全新创建连接
+  // 3. Create a brand-new connection
   const connectPromise = (async (): Promise<SharedMcpConnection> => {
-    // 组装连接配置
+    // Assemble the connection config
     const resolvedConfig: any = {
       ...config,
       env: { ...(config.env || {}), ...env },
     };
 
-    // 全局共享实例安全沙箱：若是 global，工作目录指向公共根，且不声明 roots 能力
+    // Security sandbox for global shared instances: when global, point the working directory at the common root and declare no roots capability
     if (sharing === "global") {
       resolvedConfig.cwd = H.agentDir;
     } else {
@@ -137,13 +143,13 @@ export async function acquireSharedMcpConnection(params: {
       lastActiveAt: Date.now(),
     };
 
-    // 监听连接断开：若当前仍有会话持有，触发透明断线重连
+    // Watch for disconnects: if sessions still hold it, trigger transparent reconnect in place
     if (conn.transport) {
       conn.transport.onClose = () => {
         const live = sharedPool.get(poolKey);
         if (live && live.refCount > 0) {
           process.stderr.write(`[mcp-pool] 共享连接 "${serverName}" 意外断开，正在就地透明重连...\n`);
-          // 重新发起连接并在成功后换掉 connection 句柄
+          // Re-connect and swap the connection handle once it succeeds
           void connectToServer(testName, resolvedConfig)
             .then((newConn) => {
               if (sharedPool.get(poolKey) === live) {
@@ -179,8 +185,9 @@ export async function acquireSharedMcpConnection(params: {
 }
 
 /**
- * 释放对共享 MCP 连接的引用
- * 引用计数减为 0 时进入 120 秒闲置计时，超时才关闭进程
+ * Release a reference to a shared MCP connection.
+ * When the reference count drops to zero, the 120-second idle countdown
+ * starts; only the timeout closes the process.
  */
 export function releaseSharedMcpConnection(poolKey: string): void {
   const entry = sharedPool.get(poolKey);
@@ -191,7 +198,7 @@ export function releaseSharedMcpConnection(poolKey: string): void {
 
   if (entry.refCount === 0 && !entry.idleTimer) {
     entry.idleTimer = setTimeout(async () => {
-      // 确认宽限期结束后仍无新接入
+      // Confirm nothing new attached after the grace period
       const current = sharedPool.get(poolKey);
       if (current && current.refCount === 0) {
         sharedPool.delete(poolKey);
@@ -207,7 +214,7 @@ export function releaseSharedMcpConnection(poolKey: string): void {
 }
 
 /**
- * 软取消指定请求（发送 notifications/cancelled，不强杀进程）
+ * Soft-cancel a request (sends notifications/cancelled, no hard kill).
  */
 export function softCancelSharedMcp(poolKey: string, requestId: string | number, reason = hostI18n.t("errors.mcp.userCancelled")): void {
   const entry = sharedPool.get(poolKey);
@@ -225,7 +232,7 @@ export function softCancelSharedMcp(poolKey: string, requestId: string | number,
 }
 
 /**
- * 获取当前所有共享实例的统计数据
+ * Collect stats of all current shared instances.
  */
 export function getSharedMcpStats(): SharedMcpStats[] {
   const now = Date.now();
@@ -246,7 +253,7 @@ export function getSharedMcpStats(): SharedMcpStats[] {
 }
 
 /**
- * 宿主退出时优雅清理全部共享实例
+ * Gracefully clean up all shared instances on host shutdown.
  */
 export async function closeAllSharedMcpConnections(): Promise<void> {
   const entries = Array.from(sharedPool.values());

@@ -1,5 +1,6 @@
-// 设置页：插件（pg-plugins）。
-// 提供插件与扩展发现总开关、配置项（SchemaRows）及已安装插件列表展示。
+// Settings page: plugins (pg-plugins).
+// Provides the plugin & extension discovery master switch, config rows (SchemaRows), and the
+// installed plugin list.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
@@ -17,7 +18,7 @@ export default function PluginsPage() {
 
   const [spin, setSpin] = useState(false);
 
-  // 状态判定：hostSettings 尚未落地时不盲猜
+  // State detection: no blind guessing before hostSettings lands
   const known = typeof hostSettings?.pluginsEnabled === "boolean";
   const pluginsEnabled = known && !!hostSettings?.pluginsEnabled;
 

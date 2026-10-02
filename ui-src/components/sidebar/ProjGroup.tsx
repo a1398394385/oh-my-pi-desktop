@@ -1,6 +1,8 @@
-// 项目组（ui/sidebar.js renderList 项目分支平移）：组头（folder 图标/名称/＋/⋯ 或清理模式的
-// 「移除」钮）+ 展开会话容器。点击组头折叠/展开（grid 0fr↔1fr 过渡 + 逐行 kids-in 错峰入场），
-// 展开态写入宿主 omp-desktop.json；组头通过 Pointer Events 参与拖拽排序，位移由 Sidebar 统一算。
+// Project group (ported from the project branch of ui/sidebar.js renderList): group head
+// (folder icon/name/＋/⋯ or the manage-mode "remove" button) + expanded session container.
+// Clicking the head toggles collapse/expand (grid 0fr↔1fr transition + staggered kids-in row
+// entrance); the expanded set is written to the host omp-desktop.json; the head participates in
+// drag reorder via Pointer Events, with displacement computed centrally by Sidebar.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +11,7 @@ import Icon from "../../Icon";
 import SessionRow from "./SessionRow";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./SessionRow";
 
-// 项目图标判定的最小输入（remote/home 字段宿主尚未产出，兼容保留为 unknown 布尔源）
+// Minimal input for project icon resolution (remote/home fields not yet produced by the host; kept as unknown boolean sources for compatibility)
 export interface ProjectIconSource {
   cwd?: string;
   remote?: unknown;
@@ -19,17 +21,19 @@ export interface ProjectIconSource {
   home?: unknown;
 }
 
-// 项目条目（getAvailableProjects/diskProjects 元素的结构子集；
-// store 侧完整类型由 P2F 批定义，此处只声明本批消费字段，结构兼容即可）
+// Project entry (structural subset of getAvailableProjects/diskProjects elements;
+// the full store-side type is defined by the P2F batch — this declares only the fields this
+// batch consumes; structural compatibility suffices)
 export interface ProjectInfo extends ProjectIconSource {
   cwd: string;
   name?: string;
   sessions: SessionInfo[];
 }
 
-// 项目图标与 ZCode WorkspaceSidebarItem 保持同一套状态语义：远端用云、本地首页用房屋，
-// 普通项目按展开态切换文件夹。当前宿主的项目数据没有单独的 remote/home 字段，兼容未来字段
-// 的同时保留 ssh/http 路径与 ~ 目录的判定。
+// Project icons keep the same state semantics as ZCode's WorkspaceSidebarItem: cloud for
+// remote, house for the local home, and a folder switching with expanded state for ordinary
+// projects. The host's project data currently has no separate remote/home fields; keep the
+// future-field compatibility while retaining the ssh/http-path and ~-directory detection.
 export function projectIconName(p: ProjectIconSource, expanded: boolean): string {
   const cwd = p.cwd || "";
   const remote = Boolean(p.remote || p.remoteWorkspace || p.workspaceIdentity) || /^(ssh|https?):\/\//i.test(cwd);
@@ -39,8 +43,9 @@ export function projectIconName(p: ProjectIconSource, expanded: boolean): string
   return expanded ? "folderOpen" : "folder";
 }
 
-// 展开会话容器（原 buildProjKids）：mount 时 0fr→1fr 播展开动画；animate 时逐行 kids-in 错峰。
-// 管理模式显示全部会话；默认 5 条，「显示更多」按需每次多加载 5 条。
+// Expanded session container (old buildProjKids): on mount plays the 0fr→1fr expand animation;
+// when animate, rows enter staggered with kids-in.
+// Manage mode shows all sessions; default 5, "show more" loads 5 more per click.
 function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming, shortcuts }: {
   p: ProjectInfo;
   animate: boolean;
@@ -57,9 +62,9 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const projectLimits = useAppStore((s) => s.projectLimits);
   useLayoutEffect(() => {
-    const el = ref.current!; // mount 后即存在（原 JS 直接解引用，保持同一假设）
+    const el = ref.current!; // exists right after mount (the old JS dereferenced directly; same assumption kept)
     el.style.gridTemplateRows = "0fr";
-    // 双 rAF：确保 0fr 先落布局，再过渡回 1fr（CSS 过渡）
+    // Double rAF: ensure 0fr lands in layout first, then transition back to 1fr (CSS transition)
     requestAnimationFrame(() => requestAnimationFrame(() => { el.style.gridTemplateRows = ""; }));
   }, []);
   const limit = isProjectManageMode ? Infinity : (projectLimits.get(p.cwd) ?? 5);
@@ -92,7 +97,7 @@ function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, ren
           <button
             className={"more-link" + (animate ? " kids-in" : "")}
             onClick={() => {
-              // 条数放宽：容器换新引用 + _v bump（等价旧 mutate+notify）
+              // Loosen the row limit: container to fresh reference + _v bump (equivalent of old mutate+notify)
               useAppStore.setState((st) => ({
                 projectLimits: new Map(st.projectLimits).set(p.cwd, visibleSessions.length + 5),
               }));
@@ -127,10 +132,10 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const expanded = expandedProjects.has(p.cwd);
-  const [showKids, setShowKids] = useState(expanded); // 初挂载直接渲染不播动画（对照原版 renderList 重建）
+  const [showKids, setShowKids] = useState(expanded); // render immediately on first mount without animation (mirrors the old renderList rebuild)
   const [closing, setClosing] = useState(false);
 
-  // 展开挂载 kids / 收起延迟卸载（0.3s 收拢动画播完再移除）
+  // Mount kids on expand / delay unmount on collapse (remove only after the 0.3s collapse animation finishes)
   useEffect(() => {
     if (expanded && (!showKids || closing)) {
       setClosing(false);
@@ -148,12 +153,12 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   const toggle = () => {
     const st = useAppStore.getState();
     const wasExpanded = st.expandedProjects.has(p.cwd);
-    const nextExpanded = new Set(st.expandedProjects); // 容器换新引用 + _v bump（等价旧 mutate+notify）
+    const nextExpanded = new Set(st.expandedProjects); // container to fresh reference + _v bump (equivalent of old mutate+notify)
     const nextLimits = wasExpanded ? st.projectLimits : new Map(st.projectLimits);
     if (wasExpanded) nextExpanded.delete(p.cwd);
     else {
       nextExpanded.add(p.cwd);
-      nextLimits.delete(p.cwd); // 再展开时分页重置回默认 5 条
+      nextLimits.delete(p.cwd); // re-expanding resets paging to the default 5 rows
     }
     send({ type: "set_project_expanded", cwd: p.cwd, expanded: !wasExpanded });
     useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
@@ -167,7 +172,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
         data-cwd={p.cwd}
         style={{ transform: ty ? `translateY(${ty}px)` : undefined }}
         onPointerDown={(e) => {
-          if (e.button !== 0 || (e.target as Element).closest("button")) return; // 行内按钮（＋/⋯/移除）不受影响；e.target 运行时必为 Element
+          if (e.button !== 0 || (e.target as Element).closest("button")) return; // inline buttons (＋/⋯/remove) unaffected; e.target is always an Element at runtime
           e.currentTarget.setPointerCapture?.(e.pointerId);
           onPointerDownHead(e, p.cwd);
         }}

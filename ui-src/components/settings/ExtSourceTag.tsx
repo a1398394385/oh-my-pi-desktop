@@ -1,7 +1,9 @@
-// 资产页（技能/MCP）来源徽标：与扩展中心联动的行内标识。
-// 数据面 store.extensionsByScope（list_extensions 各 scope 回包累积）；行条目按 kind + path/name
-// 匹配扩展条目，命中标来源徽标（供应商名 + 级别 title），扩展中心侧非 active（禁用/遮蔽）时
-// 追加黄色警示徽标；未命中渲染 fallback（如技能行自带的 provider 名）。
+// Source badge on asset pages (skills/MCP): inline marker linked with the extension center.
+// Data side: store.extensionsByScope (accumulated list_extensions replies per scope); row
+// entries match extension entries by kind + path/name, and a hit renders the source badge
+// (provider name + level title); when the extension center side is not active (disabled/
+// shadowed), a yellow warning badge is appended; a miss renders the fallback (e.g. the
+// provider name the skill row carries itself).
 import { useEffect, type ReactNode } from "react";
 import { useAppStore, send } from "../../store";
 import { t } from "../../i18n";
@@ -10,7 +12,7 @@ import type { ExtensionItem } from "../../types/frames";
 // level → i18n key (unknown levels pass through as-is)
 const LEVEL_LABEL_KEYS: Record<string, string> = { user: "settingsPage.shared.levelUser", project: "settingsPage.shared.levelProject", native: "settingsPage.shared.levelNative" };
 
-// 进入资产页时拉全量 scope 的扩展数据：先 profile（回包带 scopes 清单），再逐项目 scope 补拉
+// Fetch extension data for all scopes when entering an asset page: profile first (its reply carries the scopes list), then each project scope
 export function useExtSources(): void {
   const scopes = useAppStore((s) => s.extensionsByScope["profile"]?.scopes);
   useEffect(() => {
@@ -25,7 +27,7 @@ export function useExtSources(): void {
   }, [scopes]);
 }
 
-// 跨 scope 匹配扩展条目：path 精确优先，其次 kind+name；多条同名时 active 优先
+// Match an extension entry across scopes: exact path first, then kind+name; when several share a name, active wins
 function matchExt(items: ExtensionItem[], kind: string, name: string, path?: string): ExtensionItem | undefined {
   const candidates = path
     ? items.filter((x) => x.kind === kind && x.path === path)

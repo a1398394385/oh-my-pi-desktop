@@ -1,11 +1,13 @@
-// 附件行（原 composer.js renderAttachRow 平移）：待发送文件 chip（图片/文本），
-// 每条可移除；数据 pendingFiles，空时不渲染（等价原 hidden）。
+// Attachment row (ported from the old composer.js renderAttachRow): chips for
+// files to send (image/text), each removable; data comes from pendingFiles,
+// nothing renders when empty (equivalent to the old hidden).
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 
-// 待发送附件（pendingFiles 元素的结构子集，全量形态见 types/session）
+// A pending attachment (structural subset of a pendingFiles element; see
+// types/session for the full shape)
 type PendingFile = { id: number; name?: string; kind: string };
 
 export default function AttachRow() {

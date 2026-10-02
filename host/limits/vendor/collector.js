@@ -1,8 +1,9 @@
 'use strict';
 
-// 裁剪自 token-monitor src/shared/collector.js:只保留 cursor/auth.js 需要的
-// tokscaleCommand()。二进制优先从 @tokscale/cli-<platform> 包解析
-// (本仓 optionalDependencies),找不到时回退 tokscale npm 包的 JS 入口。
+// Trimmed from token-monitor src/shared/collector.js: keeps only
+// tokscaleCommand(), which cursor/auth.js needs. The binary is resolved first
+// from the @tokscale/cli-<platform> package (an optionalDependency of this
+// repo); when absent, falls back to the JS entry of the tokscale npm package.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -39,14 +40,16 @@ function tokscaleBinJs() {
   }
 }
 
-// 与原版同构:{ bin, prefixArgs, env }。有原生二进制直接跑;否则用
-// 当前 JS 运行时执行 tokscale 的 JS 入口(Bun/Node 均可)。
+// Same shape as the original: { bin, prefixArgs, env }. Runs the native
+// binary directly when available; otherwise executes tokscale's JS entry with
+// the current JS runtime (Bun/Node both work).
 function tokscaleCommand() {
   const bundled = locateBundledBinary();
   if (bundled) return { bin: bundled, prefixArgs: [], env: process.env };
   const binJs = tokscaleBinJs();
   if (binJs) return { bin: process.execPath, prefixArgs: [binJs], env: process.env };
-  // 都没有:给一个必然 spawn 失败的命令,cursor/auth 会按不可用处理
+  // Neither available: return a command that is guaranteed to fail on spawn;
+  // cursor/auth treats it as unavailable
   return { bin: 'tokscale-not-installed', prefixArgs: [], env: process.env };
 }
 

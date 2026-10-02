@@ -1,6 +1,8 @@
-// 消息流共享渲染件：省略号截断 / 文件标签 / 内联代码 / 外链文本 / 渐变遮掩 / 展开体时序 /
-// 内联 diff 展开体 / 右栏联动动作。迁移自 ui/tool-rows.js 的共享工具（命令式 DOM 构造
-// 翻译为组件）；纯函数（splitPath/uniqueFiles）直接 import 旧模块复用不重写。
+// Shared message-stream renderers: ellipsis truncation / file chips / inline code / external
+// link text / fade mask / expand-body timing / inline diff expand body / right-panel actions.
+// Migrated from the shared utilities in ui/tool-rows.js (imperative DOM construction
+// translated to components); pure functions (splitPath/uniqueFiles) are re-imported from the
+// old module instead of being rewritten.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { ChatItem, ToolItem } from "../../types/session";
@@ -20,28 +22,29 @@ import { t } from "../../i18n";
 
 export { uniqueFiles, splitPath };
 
-/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
+/** setTimeout handle (DOM and Node environments return different types; unified alias) */
 type TimerHandle = ReturnType<typeof setTimeout>;
 
-// ---------- item 级写入通道（zustand 迁移：拷贝替换 + _v bump，替代旧「mutate + notify」） ----------
+// ---------- Item-level write channel (zustand migration: copy-replace + _v bump, replacing the old "mutate + notify") ----------
 
-/** 当前会话内按引用定位 item（穿透 loop 组）并拷贝替换：展开/折叠态等 item 级切换用。
- *  patch 回调的 it 是拷贝出的同型条目，读当前值取反即可。 */
+/** Locates an item by reference in the current session (piercing loop groups) and
+ *  copy-replaces it: for item-level toggles such as expand/collapse state. The `it` passed
+ *  to the patch callback is a copied entry of the same shape; read the current value and invert it. */
 export function patchActiveItem<T extends object>(item: T, patch: (it: T) => void): void {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   if (!s) return;
-  // props item 即 store 当前条目引用（引用匹配天然唯一）；经 unknown 中转把拷贝交回同型回调
+  // The props item is the current store entry reference (reference matching is naturally unique); route the copy through unknown to hand it back to the same-shape callback
   patchSessionItem(s.sessionId, (it) => it === item, (it) => {
     patch(it as unknown as T);
     migrateGroupExpand(item as unknown as ToolItem, it as unknown as ToolItem);
   });
 }
 
-/** tool 合并组（item.group）内子项的拷贝替换：
- *  合并组是由 renderItems 动态构建的视图分组，底层真实条目在 s.items 或 loop.items 中作为独立元素平铺存储。
- *  定位时优先匹配平铺的 it === sub，同时也兼顾直接挂在 it.group 下的情况。
- *  若更新的子项是组首，同步迁移其在 groupExpand WeakMap 中的组展开态。 */
+/** Copy-replace for a sub-item inside a tool merged group (item.group):
+ *  A merged group is a view grouping built dynamically by renderItems; the underlying real entries are stored flat as independent elements in s.items or loop.items.
+ *  When locating, match the flat it === sub first, and also cover the case where it hangs directly under it.group.
+ *  If the updated sub-item is the group head, migrate its group expand state in the groupExpand WeakMap accordingly. */
 export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): void {
   useAppStore.setState((st) => {
     const path = st.activePath;
@@ -85,10 +88,11 @@ export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): voi
   });
 }
 
-// ---------- 工具结果未到的统一占位（转圈 + 省略号） ----------
-// 判据固定取 item.running（tool 帧已到、tool_update 未到）：所有工具的 output 位在结果
-// 到达前一律渲染它。各行不得再用「内容缺省」反推运行态——内容缺失既可能是「还没到」
-// 也可能是「本来就没有」（目录读取、空结果），只有 running 分得清（BUG-016 的同源教训）
+// ---------- Unified placeholder while a tool result is pending (spinner + ellipsis) ----------
+// The criterion is fixed to item.running (tool frame arrived, tool_update not yet): every
+// tool's output slot renders this before the result arrives. Rows must not infer running
+// state from missing content — missing content may mean "not yet arrived" or "never present"
+// (directory reads, empty results); only running distinguishes them (same-root lesson as BUG-016)
 export function Spin() {
   return (
     <span className="flex-none inline-flex items-center gap-[6px] text-dim text-ui-base" role="status">
@@ -98,11 +102,12 @@ export function Spin() {
   );
 }
 
-// ---------- 省略号截断（e-wrap：文本段 e-tx + 省略号段 e-dot） ----------
-// 「…」与前文字 3px 间距：原生 text-overflow:ellipsis 做不到。文本段被裁切时省略号段
-// 才显示；共享 ResizeObserver 跟随容器宽窄/界面缩放重算（原 ellipsizable 的组件化）
+// ---------- Ellipsis truncation (e-wrap: text segment e-tx + ellipsis segment e-dot) ----------
+// 3px gap between "..." and the preceding text: native text-overflow:ellipsis cannot do this.
+// The ellipsis segment only shows when the text segment is clipped; a shared ResizeObserver
+// recomputes on container resize / UI zoom (componentized from the former ellipsizable)
 const eObs = new ResizeObserver((list) => {
-  for (const e of list) syncDot(e.target as HTMLElement); // 观察对象均为本组件 span;target 声明为 Element,收窄即可
+  for (const e of list) syncDot(e.target as HTMLElement); // observed targets are all spans of this component; target is declared as Element, just narrow it
 });
 function syncDot(tx: HTMLElement) {
   const dot = tx.nextElementSibling;
@@ -126,8 +131,8 @@ export function Ellip({ className = "", title, children }: { className?: string;
   );
 }
 
-// ---------- 文件标签（f-ic：文件类型图标 + 文件名；onNameClick 时文件名可点） ----------
-// fileTypeIcon（按扩展名/文件名取 vscode-icons 彩色图标）见 ui/icons.js
+// ---------- File chip (f-ic: file type icon + file name; the name is clickable when onNameClick is set) ----------
+// fileTypeIcon (picks a vscode-icons color icon by extension/file name) lives in ui/icons.js
 export function FileChip({ path, nameClass, onNameClick }: { path: string; nameClass?: string; onNameClick?: (e: ReactMouseEvent) => void }) {
   const cleanPath = stripReadSelector(path);
   const { name } = splitPath(cleanPath);
@@ -144,7 +149,7 @@ export function FileChip({ path, nameClass, onNameClick }: { path: string; nameC
   );
 }
 
-// ---------- 内联代码（文本中 `code` 段渲染为 <code>，原 fillInlineCode） ----------
+// ---------- Inline code (renders `code` segments in text as <code>, formerly fillInlineCode) ----------
 export function InlineCode({ text }: { text?: string }) {
   return String(text || "")
     .split(/(`[^`]+`)/)
@@ -153,7 +158,7 @@ export function InlineCode({ text }: { text?: string }) {
     );
 }
 
-// ---------- 外链文本（结果输出里的 URL 段变链接；仅 ⌘+点击在系统浏览器外开） ----------
+// ---------- External link text (URL segments in result output become links; only ⌘+click opens externally in the system browser) ----------
 const LINK_RE = /https?:\/\/[^\s<>"'，、。；：！？]+/u;
 const TRAIL_PUNCT_RE = /[.,;:!?，、。；：！？)\]}〉》」』】'"”’]+$/u;
 async function openExternal(url: string) {
@@ -171,8 +176,8 @@ export function LinkedText({ text }: { text?: string }) {
   for (;;) {
     const m = rest.match(LINK_RE);
     if (!m) break;
-    if (m.index) out.push(rest.slice(0, m.index)); // index 恒存在(match 非全局),0 时无前缀段
-    const url = m[0].replace(TRAIL_PUNCT_RE, ""); // 尾部悬挂标点留在文本里
+    if (m.index) out.push(rest.slice(0, m.index)); // index always exists (match is non-global); no prefix segment when it is 0
+    const url = m[0].replace(TRAIL_PUNCT_RE, ""); // trailing dangling punctuation stays in the text
     out.push(
       <a
         key={k++}
@@ -180,7 +185,7 @@ export function LinkedText({ text }: { text?: string }) {
         title={t("chat.openInBrowser", { mod: MOD })}
         onClick={(e) => {
           e.preventDefault();
-          e.stopPropagation(); // 不冒泡到整行的展开/收起点击
+          e.stopPropagation(); // do not bubble to the row-level expand/collapse click
           if (modDown(e)) openExternal(url);
         }}
       >
@@ -193,7 +198,7 @@ export function LinkedText({ text }: { text?: string }) {
   return out;
 }
 
-// ---------- 渐变遮掩（滚到底/内容不足一屏时加 .no-fade 解除底部虚化，原 attachFadeMask） ----------
+// ---------- Fade mask (adds .no-fade to lift the bottom blur when scrolled to bottom or content is shorter than one screen, formerly attachFadeMask) ----------
 export function FadeBox({ className, as = "div", children, html }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string }) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -204,8 +209,8 @@ export function FadeBox({ className, as = "div", children, html }: { className?:
     requestAnimationFrame(sync);
     return () => el.removeEventListener("scroll", sync);
   });
-  // 动态标签收窄：as 实际仅 "div"（默认）/"pre"（CmdCard 输出体）两种取值，
-  // 分支渲染 + 回调 ref 以保住两种具体标签的 ref 类型（等价原 <Tag ref>）
+  // Dynamic tag narrowing: `as` actually only takes "div" (default) / "pre" (CmdCard output body);
+  // branch rendering + callback ref keeps the ref type of both concrete tags (equivalent to the former <Tag ref>)
   const refCb = (el: HTMLElement | null) => { ref.current = el; };
   if (as === "pre") {
     return html !== undefined
@@ -217,10 +222,12 @@ export function FadeBox({ className, as = "div", children, html }: { className?:
     : <div className={className} ref={refCb}>{children}</div>;
 }
 
-// ---------- 展开体时序（原 liftEl 的组件化等价物） ----------
-// 展开体挂载即带 .drop/.kids-in 播入场动画——React 复用节点，流式重绘不重播（与原版
-// 「仅点击展开那次播」等价；切会话重挂载会重播一次，属可接受差异）；
-// 收起先播 .lift/.closing 收拢动画，210ms（loop 组 310ms）后才落盘数据卸载节点。
+// ---------- Expand-body timing (componentized equivalent of the former liftEl) ----------
+// The expand body plays its .drop/.kids-in entrance animation on mount — React reuses nodes,
+// so streaming redraws do not replay it (equivalent to the former "play only on the click
+// that expands"; switching sessions remounts and replays once, an accepted difference);
+// collapsing first plays the .lift/.closing collapse animation, and the data is committed and
+// the node unmounted only after 210ms (310ms for loop groups).
 export function useLift(): [boolean, (commit: () => void, delay?: number) => void] {
   const [closing, setClosing] = useState(false);
   const timer = useRef<TimerHandle | undefined>(undefined);
@@ -236,7 +243,7 @@ export function useLift(): [boolean, (commit: () => void, delay?: number) => voi
   return [closing, close];
 }
 
-// ---------- 行尾 +n/−n 行数变化（编辑行 / 更改组内行共用，原 appendCounts） ----------
+// ---------- Trailing +n/−n line-count changes (shared by edit rows / rows inside change groups, formerly appendCounts) ----------
 export function Counts({ item }: { item: ToolItem }) {
   return (
     <>
@@ -246,17 +253,19 @@ export function Counts({ item }: { item: ToolItem }) {
   );
 }
 
-// ---------- 编辑行内联展开的简略 diff 体（原 buildEditBrief） ----------
-// diff 来源：item.briefDiff（当次工具回包的真实修改，优先）→ briefDiffCache[path]
-// （git diff，右栏详情/内联展开共用回包）。按调用挂在 item 上而非按 path 缓存——
-// 同一文件多次编辑时各次展开各看各的，不互相覆盖
+// ---------- Brief diff body for the edit row's inline expansion (formerly buildEditBrief) ----------
+// Diff source: item.briefDiff (the real modification from this tool response, takes priority) → briefDiffCache[path]
+// (git diff; the right-panel detail and inline expansion share one response). It is attached
+// to the item per call rather than cached per path — multiple edits to the same file each
+// see their own on expansion, without overwriting each other
 export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; lift?: boolean }) {
-  const briefDiffCache = useAppStore((s) => s.briefDiffCache); // Map 引用订阅：回包/占位写入即重绘
+  const briefDiffCache = useAppStore((s) => s.briefDiffCache); // Map reference subscription: response/placeholder writes trigger redraw
   const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache.get(path);
   const cls = "ed-brief" + (lift ? " lift" : " drop");
   if (diff === undefined) {
-    // 两种「还没到」：工具本身还在跑（当次回包未到 → Spin），或回包已到但 git diff
-    // 请求在途（工具已结束 → 保留原文案）。判据同一口径：item.running
+    // Two kinds of "not yet arrived": the tool itself is still running (this response not
+    // arrived → Spin), or the response arrived but the git diff request is in flight (tool
+    // already finished → keep the original text). Same criterion: item.running
     return (
       <FadeBox className={cls}>
         <div className="text-faint text-ui-base py-[12px] px-[10px]">{item.running ? <Spin /> : t("common.loading")}</div>
@@ -271,9 +280,10 @@ export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; 
   );
 }
 
-// ---------- 可展开读取行（单条 read / 查阅组内条目共用，交互与编辑行一致） ----------
-// 点击整行展开/收起；展开体显示本次读取到的原文（details.displayContent.text，
-// 无行号前缀），行号来自 startLine/lineNumbers，缺省按序号推。无内容不可展开。
+// ---------- Expandable read row (shared by standalone reads / entries inside lookup groups, interaction matches the edit row) ----------
+// Click the whole row to expand/collapse; the expand body shows the raw text read this time
+// (details.displayContent.text, no line-number prefixes), line numbers come from
+// startLine/lineNumbers, falling back to sequential indices. No content means not expandable.
 export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }) {
   let path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
   if (!path && item.text) {
@@ -283,16 +293,18 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   const cleanPath = stripReadSelector(path);
   const { dir } = splitPath(cleanPath);
   const [closing, close] = useLift();
-  // 展开体渲染读 details.displayContent。内容缺失分两种：结果还没到（item.running，
-  // 如「运行中默认展开」在 details 到达前就置了 readExpanded）与本来就没有（目录读取、
-  // 空结果）。前者展开显示 Spin 占位，后者一律不可展开；dc 缺省时绝不对 dc.text 取属性，
-  // 否则运行期任意一次插入渲染直接炸掉整棵组件树（BUG-016：/goal 流式中黑屏根因）
+  // The expand body reads details.displayContent. Missing content has two kinds: result not
+  // yet arrived (item.running, e.g. "expanded by default while running" set readExpanded
+  // before details arrived) and never present (directory reads, empty results). The former
+  // shows a Spin placeholder when expanded, the latter is never expandable; when dc is absent
+  // never take properties off dc.text, otherwise any single render insertion at runtime blows
+  // up the whole component tree (BUG-016: root cause of the black screen while /goal streamed)
   const dc = item.details?.displayContent;
   const running = !!item.running;
   const canOpen = !item.details?.isDirectory && (!!dc || running);
   const open = item.readExpanded && !closing && canOpen;
   const hasContent = !!dc?.text;
-  // 展开态写入通道：独立行在 session.items 里（含 loop 组内），查阅组内子项在 item.group 里
+  // Expand-state write channel: standalone rows live in session.items (including inside loop groups), sub-items of lookup groups live in item.group
   const writeExpand = (fn: (it: ToolItem) => void) => (inGroup ? patchGroupSub(item, fn) : patchActiveItem(item, fn));
   const toggle = () => {
     if (item.readExpanded) close(() => writeExpand((it) => { it.readExpanded = false; }));
@@ -300,8 +312,8 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   };
   return (
     <>
-      {/* 组内紧凑态复用 chg-item（与更改组内编辑行同款间距）；独立行保持 act.read */}
-      {/* 目录读取：folder 图标 + 「目录」标签（不进查阅组、不可展开） */}
+      {/* In-group compact state reuses chg-item (same spacing as edit rows inside change groups); standalone rows keep act.read */}
+      {/* Directory read: folder icon + the directory label (not in lookup groups, not expandable) */}
       {item.details?.isDirectory ? (
         <div className={inGroup ? "chg-item" : "act read"}>
           <Icon name="folder" size={15} />
@@ -344,11 +356,13 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   );
 }
 
-// 读取简略展开体行数上限：超长读取只在内联渲染前 MAX 行，避免几千行 DOM 与染色卡死
-// （提示用户点击文件名可在右栏查看完整文件）
+// Line cap for the read brief expand body: overlong reads render only the first MAX lines
+// inline, avoiding multi-thousand-line DOM and highlight stalls
+// (users are hinted to click the file name to view the full file in the right panel)
 const MAX_READ_BRIEF_LINES = 500;
 
-// 读取展开体：行号 gutter + 原文（ldiff 行结构复用，无增删着色）；lang 命中走语法染色
+// Read expand body: line-number gutter + raw text (reuses the ldiff row structure, no
+// add/remove coloring); syntax highlighting when lang matches
 function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string; startLine?: number; lineNumbers?: number[] | null; lang: string | null; lift?: boolean }) {
   const allLines = useMemo(() => String(text || "").split("\n"), [text]);
   const omitted = Math.max(0, allLines.length - MAX_READ_BRIEF_LINES);
@@ -376,32 +390,34 @@ function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string
   );
 }
 
-// ---------- 右栏联动（原 tool-rows.js openFileDiffInSidebar / tool-labels.js openReadFileInSidebar） ----------
-// 点击编辑行文件名：右侧边栏切到 gitdiff 详情并展开面板
+// ---------- Right-panel linkage (formerly tool-rows.js openFileDiffInSidebar / tool-labels.js openReadFileInSidebar) ----------
+// Clicking an edit row's file name: switch the right panel to the gitdiff detail and expand the panel
 export function openFileDiffInSidebar(path: string) {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   if (!s || !s.isGit) return;
   openRightTab("gitdiff");
-  st.setBriefDiff(path, undefined); // 详情与内联展开共用一次回包
+  st.setBriefDiff(path, undefined); // the detail and inline expansion share one response
   setBump({
     selectedFile: path,
     fileDiffCache: { ...st.fileDiffCache, loading: true, path },
     briefDiffPending: path,
-    rightCollapsed: false, // 原版 expandRightPanel：展开右栏时进程卡让位收起
+    rightCollapsed: false, // former expandRightPanel: expanding the right panel collapses the process card out of the way
     todoCollapsed: true,
   });
   st.send({ type: "get_file_diff", cwd: s.cwd, path });
 }
 
-// 点击读取行文件名：文件页先用读取到的内容即时渲染，同时请求全文件——回包后整文件展示
+// Clicking a read row's file name: the file view first renders immediately with the read
+// content while the full file is requested — the whole file shows once the response arrives
 export function openReadFileInSidebar(item: ToolItem, path: string) {
   const d = item.details;
   if (!d?.displayContent?.text) return;
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-  // 原始路径可能带选择器（path:59-123 / path:683:raw）：剥离全部选择器段得到干净路径，
-  // 并取选择器里的首个行范围用于右栏行号高亮
+  // The raw path may carry selectors (path:59-123 / path:683:raw): strip all selector
+  // segments to get a clean path, and take the first line range in the selector for
+  // right-panel line highlight
   const raw = String(d.resolvedPath || item.args?.path || path);
   let clean = stripReadSelector(raw);
   if (!clean.startsWith("/")) clean = (s?.cwd || "") + "/" + clean;

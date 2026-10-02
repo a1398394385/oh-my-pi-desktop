@@ -1,10 +1,15 @@
-// 扩展中心域：omp CLI /extensions 控制中心的宿主侧实现。按 scope 统一发现能力条目
-// （技能/规则/工具/扩展模块/MCP/提示/斜杠命令/钩子/上下文文件），清洗 raw 后下发 WS。
-// scope 语义：profile = 用户级（当前 Profile，default 即 ~/.omp/agent）+ 原生内置；
-// project:<cwd> = 该项目目录下的项目级条目。写路径与 TUI 对齐：项级开关 →
-// disabledExtensions 设置数组（MCP 经 mcp.json 透写），供应商开关 → enabledProviders/
-// disabledProviders（底座内部持久化）。SDK 引用一律经 bootstrap.ts（setProfile 必须先于
-// coding-agent 加载，禁止静态 import 底座）。
+// Extensions center domain: host-side implementation of the omp CLI
+// /extensions control center. Discovers capability entries (skills/rules/
+// tools/extension modules/MCP/prompts/slash commands/hooks/context files)
+// uniformly by scope, sanitizes raw, and ships them over WS.
+// Scope semantics: profile = user level (current profile; default is
+// ~/.omp/agent) + native built-ins; project:<cwd> = project-level entries
+// under that project directory. Write paths align with the TUI: per-item
+// switches -> the disabledExtensions settings array (MCP goes through
+// mcp.json passthrough), provider switches -> enabledProviders/
+// disabledProviders (persisted inside the base). SDK references always go
+// through bootstrap.ts (setProfile must run before coding-agent loads;
+// static imports of the base are forbidden).
 import path from "node:path";
 import { H } from "./state.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
@@ -22,14 +27,14 @@ import {
   setMcpServerEnabled,
 } from "./bootstrap.ts";
 
-// WS 下发条目的 source 元数据（同底座 SourceMeta 的可序列化子集）
+// Source metadata of WS-shipped entries (a serializable subset of the base SourceMeta)
 export interface ExtSource {
   provider: string;
   providerName: string;
   level: "user" | "project" | "native";
 }
 
-// 单条目详情预计算（规则解析/工具文件头/命令预览），UI 直接渲染不再二次请求
+// Per-entry detail precompute (rule parsing/tool file header/command preview) so the UI renders directly without a second request
 export interface ExtensionDetail {
   condition?: string[];
   astCondition?: string[];
@@ -42,7 +47,7 @@ export interface ExtensionDetail {
 }
 
 export interface ExtensionItem {
-  id: string; // kind:name（底座 disabledExtensions 的同一 id 方案）
+  id: string; // kind:name (same id scheme as the base disabledExtensions)
   kind: string;
   name: string;
   displayName: string;
@@ -58,8 +63,8 @@ export interface ExtensionItem {
 }
 
 export interface ExtensionsPayload {
-  scope: string; // 本次数据的 scope id
-  scopes: { id: string; label: string }[]; // 下拉可选项（profile + 各桌面项目）
+  scope: string; // scope id of this payload
+  scopes: { id: string; label: string }[]; // dropdown options (profile + each desktop project)
   providers: {
     id: string;
     displayName: string;
@@ -71,7 +76,7 @@ export interface ExtensionsPayload {
   extensions: ExtensionItem[];
 }
 
-// 下发字符串字段上限（context-file/prompt 正文可能很大）
+// Cap on shipped string fields (context-file/prompt bodies can be huge)
 const MAX_FIELD = 50_000;
 
 function cap(value: unknown): unknown {
@@ -85,8 +90,9 @@ function cap(value: unknown): unknown {
   return value;
 }
 
-// raw 清洗：JSON 往返丢弃函数（CustomTool factory 等），去掉 _ 前缀内部字段；
-// MCP 条目 env/headers 可能存密钥，一律不下发。
+// raw sanitization: a JSON round-trip drops functions (CustomTool factories
+// etc.) and _-prefixed internal fields are removed;
+// MCP entries' env/headers may hold secrets — never shipped.
 function sanitizeRaw(kind: string, raw: unknown): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   let rec: Record<string, unknown>;
@@ -105,7 +111,7 @@ function sanitizeRaw(kind: string, raw: unknown): Record<string, unknown> | unde
   return cap(rec) as Record<string, unknown>;
 }
 
-// 按 kind 预计算详情区字段（与 TUI inspector-model 同一数据面）
+// Precompute detail fields by kind (same data face as the TUI inspector-model)
 function buildDetail(kind: string, ext: {
   path: string;
   description?: string;
@@ -113,7 +119,7 @@ function buildDetail(kind: string, ext: {
 }): ExtensionDetail | undefined {
   const raw = ext.raw;
   if (kind === "rule" && raw) {
-    // raw 是 host 清洗后的底座 Rule 条目，parser 只读 frontmatter 字段（condition/scope 等）
+    // raw is a host-sanitized base Rule entry; the parser only reads frontmatter fields (condition/scope etc.)
     const frontmatter = raw as unknown as Parameters<typeof parseRuleConditionAndScope>[0];
     const parsed = parseRuleConditionAndScope(frontmatter);
     const agents = parseRuleAgents(raw.agents);
@@ -137,7 +143,7 @@ function buildDetail(kind: string, ext: {
   return undefined;
 }
 
-// 聚合入口：list_extensions RPC 的数据帧。project:<cwd> 只看项目级条目，profile 看其余。
+// Aggregate entry: the data frame of the list_extensions RPC. project:<cwd> sees only project-level entries; profile sees the rest.
 export async function buildExtensionsPayload(scope: unknown): Promise<ExtensionsPayload> {
   const scopeId = typeof scope === "string" && scope.startsWith("project:") ? scope : "profile";
   const cwd = scopeId.startsWith("project:") ? scopeId.slice("project:".length) : undefined;
@@ -178,8 +184,10 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
   return { scope: scopeId, scopes, providers, extensions };
 }
 
-// 项级开关：写 disabledExtensions（skill 同步清 skills.ignoredSkills，与 asset_skill_toggle 一致）；
-// MCP 条目经 mcp.json 透写（/mcp disable 同路径），shadowed 条目拒绝。
+// Per-item switch: writes disabledExtensions (skill also clears
+// skills.ignoredSkills in sync, matching asset_skill_toggle);
+// MCP entries go through mcp.json passthrough (same path as /mcp disable);
+// shadowed entries are rejected.
 export async function toggleExtensionItem(id: unknown, enabled: unknown, sourcePath?: unknown): Promise<void> {
   const extId = String(id ?? "");
   const colon = extId.indexOf(":");
@@ -211,7 +219,7 @@ export async function toggleExtensionItem(id: unknown, enabled: unknown, sourceP
   await H.settings.flush();
 }
 
-// 供应商主开关（底座内部持久化 enabledProviders/disabledProviders）。返回切换后的状态。
+// Provider master switch (persists enabledProviders/disabledProviders inside the base). Returns the post-toggle state.
 export async function toggleExtensionProvider(providerId: unknown): Promise<boolean> {
   const id = String(providerId ?? "").trim();
   if (!id) throw new Error(hostI18n.t("errors.param.missingProviderId"));
@@ -220,7 +228,7 @@ export async function toggleExtensionProvider(providerId: unknown): Promise<bool
   return enabled;
 }
 
-// 外部工具 ~/ 配置 opt-in（持久化 enabledProviders 内的 user-source 项）。
+// External tools ~/ config opt-in (persists the user-source entries inside enabledProviders).
 export async function toggleExtensionUserSource(providerId: unknown): Promise<boolean> {
   const id = String(providerId ?? "").trim();
   if (!id) throw new Error(hostI18n.t("errors.param.missingProviderId"));

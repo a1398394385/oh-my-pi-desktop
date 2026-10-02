@@ -1,7 +1,8 @@
-// 按钮基件（ZCodium button 平移）：cva 变体映射到本仓 token——primary→--accent、
-// secondary/hover→--panel-2/--select、ghost→--dim/--panel-2、destructive→--err；
-// 只过渡颜色（transition-colors），不做 transition-all。尺寸沿用 zai h-5~h-8 系，设置页 31px
-// 体系由使用处 className 覆盖。
+// Button base component (ported from ZCodium button): cva variants mapped to
+// this repo's tokens — primary→--accent, secondary/hover→--panel-2/--select,
+// ghost→--dim/--panel-2, destructive→--err; transitions colors only
+// (transition-colors), never transition-all. Sizes follow the zai h-5~h-8
+// range; the settings pages' 31px system is overridden via usage-site className.
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Slot } from "radix-ui";

@@ -1,6 +1,7 @@
-// Profile / 桌面环境 / 桌面项目清单：随 activeProfile 动态重载的配置域。
-// applyProfile 是重载入口：清空会话池、重建底座（authStorage/modelRegistry/settings）、
-// 重读 env 与项目清单、刷新模型目录。
+// Profile / desktop env / desktop project list: config domains dynamically
+// reloaded with activeProfile. applyProfile is the reload entry: clear the
+// session pool, rebuild the base (authStorage/modelRegistry/settings), re-read
+// env and the project list, refresh the model catalog.
 import { setProfile, getAgentDir, normalizeProfileName } from "@oh-my-pi/pi-utils";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-locale.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 
-// ---------- 桌面环境（agentDir 下 desktop-env.json：代理/CA 证书） ----------
+// ---------- desktop env (desktop-env.json under agentDir: proxy / CA certs) ----------
 export function defaultDesktopEnv(): DesktopEnv {
   return { httpProxy: "", noProxy: "", caCerts: "" };
 }
@@ -54,7 +55,7 @@ export function applyDesktopEnv(env: DesktopEnv) {
   else delete process.env.NODE_EXTRA_CA_CERTS;
 }
 
-// ---------- 桌面项目清单（当前 profile 配置目录下 omp-desktop.json，全路径记录） ----------
+// ---------- desktop project list (omp-desktop.json under the current profile config dir, absolute paths) ----------
 export function readDesktopProjects(): DesktopProjects {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
@@ -81,7 +82,7 @@ export function readDesktopProjects(): DesktopProjects {
 }
 
 export async function saveDesktopProjects() {
-  // 先读磁盘原对象再覆盖托管键：用户手写的非托管段（如 acp 配置）必须原样保留
+  // Read the on-disk object first, then overlay managed keys: user-written unmanaged sections (e.g. acp config) must survive untouched
   let base: Record<string, unknown> = {};
   try {
     base = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
@@ -105,7 +106,7 @@ export async function setMcpSharingConfig(sourcePath: string, name: string, mode
   if (!H.desktopProjects.mcpSharing) H.desktopProjects.mcpSharing = {};
   const key = computeMcpSharingKey(sourcePath, name);
   if (!mode || mode === "session") {
-    // 缺省/会话级不冗余落盘（未记录者即默认 session，保持配置精炼）
+    // Default/session level is not redundantly persisted (unrecorded means the session default, keeping the config lean)
     delete H.desktopProjects.mcpSharing[key];
   } else {
     H.desktopProjects.mcpSharing[key] = mode;
@@ -130,8 +131,8 @@ export async function migrateMcpSharingConfig(oldSourcePath: string, oldName: st
   }
 }
 
-// 历史扫描出的新 project 并入所有项目列表（尾部追加）；返回是否有新增。
-// 严格过滤：系统临时目录、根目录/家目录、不存在路径及已被移除的项目不并入。
+// Merge projects newly seen in history scans into the all-projects list (appended at the tail); returns whether anything was added.
+// Strictly filtered: system temp dirs, root/home dir, nonexistent paths and already-removed projects are not merged.
 export function mergeHistoryProjects(cwds: string[]): boolean {
   let added = false;
   const home = os.homedir();
@@ -149,7 +150,7 @@ export function mergeHistoryProjects(cwds: string[]): boolean {
   return added;
 }
 
-// ---------- 防睡眠（caffeinate，随 power.sleepPrevention 设置启停） ----------
+// ---------- sleep prevention (caffeinate, toggled by the power.sleepPrevention setting) ----------
 let sleepProc: ReturnType<typeof Bun.spawn> | null = null;
 export function applySleepPrevention(level: string) {
   try {
@@ -161,7 +162,7 @@ export function applySleepPrevention(level: string) {
   sleepProc = Bun.spawn(["caffeinate", ...args, "-w", String(process.pid)], { stdout: "ignore", stderr: "ignore" });
 }
 
-// ---------- Profile 列表与切换 ----------
+// ---------- Profile list and switching ----------
 export async function refreshAvailableProfiles(): Promise<string[]> {
   const root = path.join(os.homedir(), ".omp", "profiles");
   const result: string[] = ["default"];
@@ -198,7 +199,7 @@ export async function applyProfile(profileName: string) {
   saveProfileToDisk(target);
   setProfile(target === "default" ? undefined : target);
 
-  // 清空现有会话池
+  // Clear the existing session pool
   for (const [, entry] of sessions) {
     try {
       entry.unsubscribe?.();
@@ -207,20 +208,23 @@ export async function applyProfile(profileName: string) {
   sessions.clear();
 
   H.agentDir = getAgentDir();
-  // 启动分段计时（performance.now() 以进程启动为 0 点）：定位 ready 帧前的耗时大头
+  // Startup segment timing (performance.now() zeroed at process start): locate the big cost centers before the ready frame
   let t = performance.now();
   H.authStorage = await discoverAuthStorage(H.agentDir);
   process.stderr.write(`[host][启动计时] discoverAuthStorage: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
   t = performance.now();
   H.modelRegistry = new ModelRegistry(H.authStorage);
-  // 对齐 CLI 启动语义（main.ts 的 refreshInBackground）：构造函数已同步装载磁盘缓存
-  // 目录（models.yml + SQLite 快照），在线发现放后台、不阻塞 ready 帧（实测全量
-  // await refresh 要 4s，其中在线目录发现是大头）。刷新完成后重取目录并触发
-  // onModelsRefreshed，由 host 侧补推 models 帧。
+  // Aligned with CLI startup semantics (refreshInBackground in main.ts): the
+  // constructor already loads the on-disk cached catalog synchronously
+  // (models.yml + SQLite snapshot); online discovery goes to the background
+  // and does not block the ready frame (measured: a full await refresh takes
+  // 4s, online catalog discovery being the bulk). After the refresh, re-take
+  // the catalog and fire onModelsRefreshed so the host side pushes a models
+  // frame.
   const reg = H.modelRegistry;
   reg.refreshInBackground();
   void reg.awaitBackgroundRefresh().then(() => {
-    if (H.modelRegistry !== reg) return; // 刷新期间又切了 profile：旧 registry 回调直接弃
+    if (H.modelRegistry !== reg) return; // profile switched again during refresh: drop the old registry callback
     H.availableModels = reg.getAvailable();
     rebuildScopedModels();
     process.stderr.write(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
@@ -230,8 +234,8 @@ export async function applyProfile(profileName: string) {
   t = performance.now();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
   process.stderr.write(`[host][启动计时] Settings.init: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
-  // 同步能力发现注册表：disabledProviders/enabledProviders → 内存 registry（CLI 入口同款调用，
-  // 缺了这步用户禁用的第三方来源在发现层仍显示/按启用处理）
+  // Sync the capability discovery registry: disabledProviders/enabledProviders -> in-memory registry (same call as the CLI entry;
+  // without it, third-party sources the user disabled still show up / count as enabled at the discovery layer)
   initializeWithSettings(H.settings);
 
   H.desktopEnvPath = path.join(H.agentDir, "desktop-env.json");
@@ -268,10 +272,10 @@ export async function applyProfile(profileName: string) {
   );
 }
 
-// ---------- 实验性功能开关（omp-desktop.json 的 acp / sessionContext 段） ----------
-// 自 main.ts 平移：桌面级配置读写与 profile 同住一个 omp-desktop.json，归本模块。
+// ---------- experimental feature switches (acp / sessionContext sections of omp-desktop.json) ----------
+// Moved over from main.ts: desktop-level config read/write lives in the same omp-desktop.json as the profile, so it belongs to this module.
 
-/** 读 omp-desktop.json 原始对象（读失败返回空对象）。 */
+/** Read the raw omp-desktop.json object (empty object on read failure). */
 export function readAcpRaw(): Record<string, unknown> {
   try {
     return JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
@@ -298,7 +302,7 @@ export function readAcpNudgeConfig(): AcpNudgeConfig {
   };
 }
 
-/** 读取完整的 ACP 上下文压缩配置对象。 */
+/** Read the full ACP context compression config object. */
 export function readAcpConfig(): {
   enabled: boolean;
   maxContextLimit: string;
@@ -326,30 +330,31 @@ export function readAcpConfig(): {
   };
 }
 
-/** ACP 总开关（omp-desktop.json 的 acp.enabled）。缺省/非法值按开启处理，
- *  保持引入开关之前的行为——只有显式写 false 才关闭。 */
+/** ACP master switch (acp.enabled in omp-desktop.json). Missing/invalid
+ *  values count as on, preserving pre-switch behavior — only an explicit
+ *  false turns it off. */
 export function readAcpEnabled(): boolean {
   const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
   if (!acp || typeof acp !== "object") return true;
   return acp.enabled !== false;
 }
 
-/** 写回 acp.enabled：先读盘再覆盖，保留 omp-desktop.json 的其他键与 acp 段内其他字段。 */
+/** Write acp.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the acp section. */
 export async function writeAcpEnabled(enabled: boolean): Promise<void> {
   const raw = readAcpRaw();
   const acp = raw.acp && typeof raw.acp === "object" ? (raw.acp as Record<string, unknown>) : {};
   await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, enabled } }, null, 2));
 }
 
-/** 历史会话检索（read_session_context）总开关（omp-desktop.json 的 sessionContext.enabled）。
- *  与 readAcpEnabled 同语义：缺省/非法值按开启处理，只有显式写 false 才关闭。 */
+/** History session search (read_session_context) master switch (sessionContext.enabled in omp-desktop.json).
+ *  Same semantics as readAcpEnabled: missing/invalid values count as on; only an explicit false turns it off. */
 export function readSessionContextEnabled(): boolean {
   const section = readAcpRaw().sessionContext as Record<string, unknown> | undefined;
   if (!section || typeof section !== "object") return true;
   return section.enabled !== false;
 }
 
-/** 写回 sessionContext.enabled：先读盘再覆盖，保留 omp-desktop.json 的其他键与段内其他字段。 */
+/** Write sessionContext.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
 export async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
   const raw = readAcpRaw();
   const section =

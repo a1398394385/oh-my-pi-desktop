@@ -1,5 +1,5 @@
-// React 壳冒烟：happy-dom 模拟浏览器环境加载 bundle，断言三栏壳/欢迎页/composer 挂载。
-// 跑法：bun run smoke:react（先 bun run ui:build，产物在 ui/dist）
+// React shell smoke test: load the bundle in a happy-dom-simulated browser environment and assert the three-pane shell/welcome page/composer mount.
+// Run: bun run smoke:react (run bun run ui:build first; artifacts in ui/dist)
 import { Window } from "happy-dom";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,16 +7,16 @@ import { join } from "node:path";
 const window = new Window({ url: "http://localhost/index.html?preview=1" });
 const { document } = window;
 
-// happy-dom 没有 createRoot 需要的完整 DOM API 时逐项补齐（React 19 对容器校验宽松）
+// Fill in whatever DOM APIs createRoot needs that happy-dom lacks (React 19 is lenient about container validation)
 globalThis.window = window;
 globalThis.document = document;
 globalThis.localStorage = window.localStorage;
 window.localStorage.setItem("omp-ui-settings", JSON.stringify({ lang: "zh-CN" }));
 globalThis.navigator = window.navigator;
-globalThis.WebSocket = class {}; // preview 模式不连宿主；store 顶层不建 WS（connect 才建）
+globalThis.WebSocket = class {}; // Preview mode does not connect to the host; the store top level does not create a WS (only connect does)
 globalThis.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-// 旧模块链（markdown.js → core.js → tool-rows/shell 等）顶层构造 ResizeObserver / matchMedia，
-// happy-dom 未提供这两个全局——真实 WKWebView 都有，这里补空实现
+// The old module chain (markdown.js -> core.js -> tool-rows/shell etc.) constructs ResizeObserver / matchMedia at the top level;
+// happy-dom provides neither global -- every real WKWebView has them; install empty implementations here
 globalThis.ResizeObserver = class {
   observe() {}
   unobserve() {}
@@ -32,13 +32,13 @@ globalThis.matchMedia = (q: string) => ({
 });
 globalThis.location = window.location;
 globalThis.URLSearchParams = window.URLSearchParams;
-globalThis.getComputedStyle = window.getComputedStyle.bind(window); // composer 的 cbar 布局 effect 需要
+globalThis.getComputedStyle = window.getComputedStyle.bind(window); // Needed by the composer's cbar layout effect
 
-// 注入静态 DOM（index.html 的 body 结构）
+// Inject the static DOM (the body structure of index.html)
 document.body.innerHTML = '<div id="root"></div>';
 
-// happy-dom 不加载 <link rel="stylesheet">：读 ui/dist/index.html 解析 CSS href，
-// 读产物文件内联为 <style>，让预览样本的样式断言拿到真实 CSS
+// happy-dom does not load <link rel="stylesheet">: read ui/dist/index.html, parse the CSS href,
+// read the artifact files and inline them as <style> so style assertions on the preview sample get real CSS
 const distDir = join(import.meta.dir, "../ui/dist");
 const distHtml = readFileSync(join(distDir, "index.html"), "utf8");
 const cssTag = distHtml.match(/<link\b[^>]*rel="stylesheet"[^>]*>/)?.[0];
@@ -48,11 +48,11 @@ const styleEl = document.createElement("style");
 styleEl.textContent = readFileSync(join(distDir, cssHref), "utf8");
 document.head.appendChild(styleEl);
 
-// 动态导入属有意为之：app.js 顶层会构造 ResizeObserver/matchMedia 等全局依赖，
-// 必须先装好 happy-dom 全局再求值，静态 import 会在全局就绪前执行模块
+// The dynamic import is deliberate: app.js's top level constructs ResizeObserver/matchMedia and other global dependencies,
+// so the happy-dom globals must be installed before evaluation; a static import would run the module before the globals are ready
 await import("../ui/dist/assets/app.js");
 
-// React 渲染是异步的（scheduler），等一拍再断言
+// React rendering is async (scheduler); wait a tick before asserting
 await new Promise((r) => setTimeout(r, 300));
 
 const $ = (sel) => document.querySelector(sel);
@@ -62,13 +62,13 @@ const ok = (name, cond) => asserts.push([cond ? "✓" : "✗", name]);
 ok("三栏壳挂载（#sidebar/#main/#right）", !!$("#sidebar") && !!$("#main") && !!$("#right"));
 ok("preview 模式进会话区（#stream 存在且非欢迎页）", !!$("#stream") && !$("#welcomeScreen"));
 ok("消息流渲染（assistant 文本可见）", ($("#stream")?.textContent || "").includes("先读一下样式文件"));
-// P7 Lexical:happy-dom 无 contentEditable,Composer 走降级占位(div#input 只读,不初始化编辑器)
+// P7 Lexical: happy-dom has no contentEditable, so Composer falls back to the placeholder (div#input read-only, editor not initialized)
 ok("composer 挂载（输入区 + 发送钮）", !!($("#composer #input")) && !!$("#sendBtn"));
 ok("右栏 tab 渲染（子代理 tab 激活）", ($("#rightTabs")?.textContent || "").includes("子代理"));
 ok("无未捕获错误标记", !document.body.getAttribute("data-error"));
 
-// 斜杠命令补全回归：清单回包后弹层必须立即出候选（旧版 palette 存 items/loading 快照，
-// 回包只 notify 不刷新快照 → 候选永不出现，要再敲一键才重算）
+// Slash-command completion regression: once the list reply arrives, the popup must show candidates immediately (the old palette stored items/loading snapshots,
+// and the reply only notified without refreshing the snapshot -> candidates never appeared until another keypress forced a recompute)
 const sleep = (ms: number) => {
   const { promise, resolve } = Promise.withResolvers<void>();
   setTimeout(resolve, ms);
@@ -81,11 +81,11 @@ if (slashTa) {
   await sleep(80);
   ok("斜杠弹层打开（清单未拉取时加载中）", ($(".menu.palette")?.textContent || "").includes("加载中"));
 } else {
-  // happy-dom 无 contentEditable:Lexical 补全链路不初始化(降级占位),按 PLAN 交互项转人工验证
+  // happy-dom has no contentEditable: the Lexical completion chain is not initialized (degraded placeholder); per the PLAN, the interaction item moves to manual verification
   ok("斜杠弹层（happy-dom 无 contentEditable，转人工验证）", true);
 }
-// __dbg 是 main.tsx preview 模式注入的调试钩子（zustand store），happy-dom Window 类型无声明。
-// 写入走 setState 换值（订阅 commands 的 selector 自动感知,无需手动触发）
+// __dbg is the debug hook injected by main.tsx in preview mode (the zustand store); the happy-dom Window type has no declaration for it.
+// Writes go through setState to swap the value (the selector subscribing to commands picks it up automatically; no manual trigger needed)
 const dbg = (window as unknown as { __dbg?: { useAppStore: { getState(): { commands: unknown[]; commandsSessionId: string }; setState(p: Record<string, unknown>): void } } })
   .__dbg;
 if (!dbg) throw new Error("__dbg 调试钩子未注入");
@@ -96,14 +96,14 @@ dbg.useAppStore.setState({
 await sleep(80);
 ok("commands 回包后候选立即出现（无需再次击键）", !slashTa || (($(".menu.palette")?.textContent || "").includes("compact")));
 
-// builtin 命令描述中文化回归：弹层显示 commands-zh.js 译文而非英文原描述
+// Builtin command description localization regression: the popup shows the commands-zh.js translation instead of the English original
 dbg.useAppStore.setState({
   commands: [...dbg.useAppStore.getState().commands, { name: "usage", aliases: [], description: "Show token usage", source: "builtin", subcommands: [] }],
 });
 await sleep(80);
 ok("builtin 描述显示中文（commands-zh.js）", !slashTa || (($(".menu.palette")?.textContent || "").includes("查看 token 用量")));
 
-// 无 tab 场景回归：点击加号下拉框不得越过右栏左边界被中栏卡片遮盖
+// No-tab scenario regression: the plus-button dropdown must not cross the right pane's left edge and get covered by mid-pane cards
 dbg.useAppStore.setState({ rightTabs: [], rightTab: null });
 await sleep(80);
 const addBtn = $("#rightTabs button.icon-btn");
@@ -114,18 +114,18 @@ if (addBtn) {
   ok("无 tab 时点击加号弹出新增标签菜单", !!addMenu);
   const leftPx = addMenu?.style.left ? parseFloat(addMenu.style.left) : -1;
   ok("无 tab 时新增标签菜单 left 不小于 6px（不越界至左侧）", leftPx >= 6);
-  // 测试完毕关掉菜单，避免影响后续全局 Esc 快捷键路由断言
+  // Close the menu after testing so it does not affect the later global Esc shortcut routing assertions
   window.dispatchEvent(new window.Event("blur"));
   await sleep(50);
 }
 
-// Esc 路由回归：无文字双击开树、树页单击回对话、有文字双击清空
+// Esc routing regression: double-press with no text opens the tree, single press on the tree page returns to chat, double-press with text clears the input
 document.querySelectorAll(".menu.open").forEach(el => el.classList.remove("open"));
 const pressEsc = () => {
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
 };
 
-// 1. 无文字时连按两次 Esc -> mainViewMode 切换为 tree
+// 1. With no text, pressing Esc twice -> mainViewMode switches to tree
 dbg.useAppStore.setState({ draftHasContent: false, pendingFiles: [], mainViewMode: "chat" });
 pressEsc();
 await sleep(50);
@@ -133,12 +133,12 @@ pressEsc();
 await sleep(100);
 ok("无文字连按两次 Esc 唤起会话树", dbg.useAppStore.getState().mainViewMode === "tree");
 
-// 2. tree 页面按一次 Esc -> mainViewMode 切换回 chat
+// 2. On the tree page, pressing Esc once -> mainViewMode switches back to chat
 pressEsc();
 await sleep(100);
 ok("tree 页面按一次 Esc 切回对话", dbg.useAppStore.getState().mainViewMode === "chat");
 
-// 3. 有文字时连按两次 Esc -> 清空输入框
+// 3. With text, pressing Esc twice -> clears the input
 dbg.useAppStore.setState({ draftHasContent: true, pendingFiles: [], mainViewMode: "chat" });
 pressEsc();
 await sleep(50);
@@ -146,16 +146,16 @@ pressEsc();
 await sleep(100);
 ok("有文字连按两次 Esc 触发清空输入框", dbg.useAppStore.getState().composerSetSignal?.text === "");
 
-// 4. 处于 tree 模式时，切换会话（hideWelcomeScreen / activateSession）重置为 chat 模式
+// 4. In tree mode, switching sessions (hideWelcomeScreen / activateSession) resets to chat mode
 dbg.useAppStore.setState({ mainViewMode: "tree" });
 dbg.useAppStore.getState().hideWelcomeScreen();
 ok("切换会话时默认切回消息模式（mainViewMode: chat）", dbg.useAppStore.getState().mainViewMode === "chat");
 
-// 5. 侧栏视图切换器：包含「最近」、「项目」、「归档」三个按钮
+// 5. Sidebar view switcher: contains the three buttons "Recent", "Projects", "Archived"
 const segBtns = Array.from(document.querySelectorAll("#seg button"));
 ok("侧栏包含最近、项目、归档三个切换按钮", segBtns.length === 3 && segBtns[2]?.textContent === "归档" && segBtns[2]?.getAttribute("data-view") === "archive");
 
-// 6. 归档切换与会话渲染
+// 6. Archive toggle and session rendering
 const mockArchivedSession = {
   id: "test-arch-1",
   path: "/path/to/arch1.json",
@@ -173,7 +173,7 @@ const archTask = document.querySelector('.task[data-path="/path/to/arch1.json"]'
 ok("归档视图渲染归档会话", !!archTask && (archTask.textContent?.includes("测试归档会话") ?? false));
 ok("归档会话行内不显示置顶按钮且包含恢复与删除按钮", !archTask?.querySelector(".tpin") && !!archTask?.querySelector(".arch-act") && !!archTask?.querySelector(".arch-act.arch-del"));
 
-// 7. 最近视图中会话标题不包含项目名
+// 7. In the Recent view, session titles do not include the project name
 const mockRecentProject = {
   cwd: "/path/to/project-foo",
   sessions: [{
@@ -256,5 +256,5 @@ if (fail > 0) {
   process.exit(1);
 }
 console.log("全部断言通过（React 壳 preview 冒烟）");
-// happy-dom Window 与 React scheduler 的定时器占着事件循环，不显式退出会挂到超时
+// happy-dom Window and React scheduler timers hold the event loop; without an explicit exit it hangs until timeout
 process.exit(0);

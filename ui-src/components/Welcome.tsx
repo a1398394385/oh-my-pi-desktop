@@ -1,9 +1,13 @@
-// 欢迎页（新建任务）：延展卡片 + 项目/分支选择器 + 输入框（Composer 挂进外卡）。
-// 迁移自 ui/welcome.js（324 行）。显隐由 App 按 isCreatingNew 分流（替代原版物理搬移 composer）。
-// 契约：项目数据 getAvailableProjects()，分支数据 newSessionBranches，问候语按时段。
-// 菜单显隐为局部 state：projMenu/branchMenu 存弹出坐标（向上弹出，底边贴胶囊顶边上方 4px，
-// 对照原版 offsetLeft / clientHeight-offsetTop 定位写法）；两菜单互斥，
-// window click / blur 关闭（对照 shell.js closeAllMenus 的全局关闭语义）。
+// Welcome page (new task): expand-out cards + project/branch pickers + input (Composer
+// mounted inside the outer card).
+// Migrated from ui/welcome.js (324 lines). Visibility routed by App per isCreatingNew
+// (replacing the old physical composer relocation).
+// Contract: project data getAvailableProjects(), branch data newSessionBranches, time-of-day
+// greeting.
+// Menu visibility is local state: projMenu/branchMenu hold pop coordinates (pop upward,
+// bottom edge 4px above the capsule's top, mirroring the old offsetLeft /
+// clientHeight-offsetTop positioning); the two menus are mutually exclusive,
+// closed by window click / blur (the global close semantics of the old shell.js closeAllMenus).
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useAppStore, toast, pathBase } from "../store";
 import { t } from "../i18n";
@@ -21,17 +25,19 @@ function greeting() {
 }
 
 export default function Welcome() {
-  // 新建会话三字段（git_branches 帧落地换引用，字段订阅感知）
+  // Three new-session fields (git_branches frames land fresh references; field subscriptions notice)
   const newSessionProject = useAppStore((s) => s.newSessionProject);
   const newSessionIsGit = useAppStore((s) => s.newSessionIsGit);
   const newSessionBranch = useAppStore((s) => s.newSessionBranch);
-  // null = 关闭；打开时保存触发按钮的视口坐标，菜单 portal 到 body 后再定位
+  // null = closed; when open, holds the trigger button's viewport coords; the menu portals to
+  // body then positions itself
   const [projMenu, setProjMenu] = useState<DOMRect | null>(null);
   const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
 
   const menuOpen = !!projMenu || !!branchMenu;
 
-  // 全局关闭：点击菜单外任意处 / 窗口失焦（打开动作与菜单内点击均已 stopPropagation，不会误关）
+  // Global close: click anywhere outside the menu / window blur (the open actions and
+  // in-menu clicks already stopPropagation, so no accidental closes)
   useEffect(() => {
     if (!menuOpen) return;
     const close = () => {
@@ -46,7 +52,8 @@ export default function Welcome() {
     };
   }, [menuOpen]);
 
-  // 已开再点 = 关；互斥开另一菜单前先关当前所有（对照原版 closeAllMenus 前置）
+  // Click while open = close; before exclusively opening the other menu, close all current
+  // ones (mirrors the old closeAllMenus precondition)
   const toggleProjMenu = (e: MouseEvent) => {
     e.stopPropagation();
     if (projMenu) return setProjMenu(null);
@@ -72,7 +79,9 @@ export default function Welcome() {
             id="wbBackCard"
             className="wb-back-card"
           >
-            {/* 底部 31px padding 是重叠预算+下顶对称：输入框卡负 margin(-25px)上拉盖住，胶囊到底卡上顶与输入框卡上顶各 7px */}
+            {/* Bottom 31px padding is the overlap budget + bottom symmetry: the input card is
+                pulled up by negative margin (-25px) to cover it, with 7px each between the
+                capsule and the bottom card's top and the input card's top */}
             <div className="wb-head flex items-center gap-[8px] pt-[6px] px-[6px] pb-[31px]">
               <button
                 id="wbProjectBtn"
@@ -80,7 +89,8 @@ export default function Welcome() {
                 title={t("misc.projectDirTitle", { path: newSessionProject })}
                 onClick={toggleProjMenu}
               >
-                {/* 项目清除钮：ZCode 同款 hover 替换图标（常态隐藏，hover 胶囊时 folder 淡出、× 淡入） */}
+                {/* Project clear button: ZCode-style hover icon swap (hidden by default; on
+                    capsule hover folder fades out, × fades in) */}
                 <span
                   className="wb-proj-clear"
                   id="wbProjClear"
@@ -110,9 +120,11 @@ export default function Welcome() {
               )}
             </div>
           </div>
-          {/* 二级重叠卡（ZCode queue-card ↔ dock 同款几何）：胶囊卡（.wb-back-card）在上，
-              输入框卡（#composer.in-welcome）以负 margin 上拉盖其下缘，项目/分支胶囊
-              露在胶囊卡上半部分；两卡兄弟位、同宽、边缘对齐。*/}
+          {/* Two-level overlapping cards (ZCode queue-card ↔ dock geometry): the capsule card
+              (.wb-back-card) on top, the input card (#composer.in-welcome) pulled up by
+              negative margin to cover its lower edge, the project/branch capsules exposed in
+              the capsule card's upper half; the two cards are siblings, same width,
+              edges aligned.*/}
           <Composer inWelcome={true} />
           {projMenu && <ProjectMenu anchorRect={projMenu} onClose={() => setProjMenu(null)} />}
           {branchMenu && <BranchMenu anchorRect={branchMenu} onClose={() => setBranchMenu(null)} />}

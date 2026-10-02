@@ -1,9 +1,14 @@
-// goal 目标栏：输入框上方的最上层重叠栏（App 在 QueueCard 前渲染，随排队消息增多而上移）。
-// 叠加几何复用 queue-card 配方（margin -28px 上拉 + padding-bottom 28px 保底 + 只圆上角，
-// 被下一张卡压住下缘）；宽度比输入框左右各窄 10px、无圆角补充块。单行：目标截断 + 已运行时间/
-// 已消耗成本/暂停继续/删除；点击栏向上展开完整目标（图标点击不触发展开）。
-// 暂停/继续同位变换（对应 /goal pause、/goal resume），图标动作走 prompt 链路（命令被
-// 本地消费，乐观气泡由 command_result 撤回）。
+// Goal bar: the topmost stacked bar above the composer (rendered by App before
+// QueueCard, shifting up as queued messages grow).
+// The stacking geometry reuses the queue-card recipe (margin -28px pull-up +
+// padding-bottom 28px fallback + top-only rounded corners, bottom edge pressed
+// by the next card); 10px narrower than the composer on each side, no
+// corner-filler block. Single row: truncated objective + elapsed time /
+// consumed cost / pause-resume / delete; clicking the bar expands the full
+// objective upward (icon clicks do not trigger expansion).
+// Pause/resume transform in place (mapping to /goal pause, /goal resume); icon
+// actions go through the prompt path (the command is consumed locally; the
+// optimistic bubble is retracted by command_result).
 import { useState } from "react";
 import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";

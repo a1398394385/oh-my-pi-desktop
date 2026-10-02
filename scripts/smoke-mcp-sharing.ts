@@ -1,5 +1,5 @@
-// MCP 实例共享模式与报错日志冒烟测试：验证 rules、保存校验、测试日志捕获
-// 运行命令：OMP_PROFILE=omp-desktop-test bun scripts/smoke-mcp-sharing.ts
+// MCP instance sharing mode and error-log smoke test: verify rules, save validation, and test-log capture
+// Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-mcp-sharing.ts
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -79,7 +79,7 @@ ws.onmessage = (ev) => {
     ws.send(JSON.stringify({ type: "add_project", cwd: testProjectDir }));
     console.log("步骤 1: 测试失败进程探测日志捕获...");
     step = 1;
-    // 测试一个一定会报错的 stdio 命令
+    // Test a stdio command that is guaranteed to fail
     ws.send(JSON.stringify({
       type: "test_mcp_server",
       name: "faulty_server",
@@ -130,11 +130,11 @@ ws.onmessage = (ev) => {
       config: {
         type: "stdio",
         command: "node",
-        // 未传 sharing
+        // sharing not passed
       },
     }));
   } else if (step === 3 && msg.type === "agent_assets") {
-    // 检查落盘文件中的 sharing 字段
+    // Check the sharing field in the persisted file
     const profileJson = JSON.parse(readFileSync(profileMcpPath, "utf8"));
     const saved = profileJson.mcpServers?.["profile_default"];
     if (!saved || saved.sharing !== "session") {

@@ -1,20 +1,20 @@
 /* ============================================================
- * settings.css —— 设置页：导航/搜索/各 pg-* 页（模型/供应商/MCP/技能/记忆/外观/统计…）
- * 由 ui/style.css 机械切分而来：域内保持原相对顺序，禁止跨文件重排。
- * 级联顺序 = 入口 @import 顺序：global → main → settings。
+ * settings.css — settings pages: navigation/search/the pg-* pages (models/providers/MCP/skills/memory/appearance/stats...)
+ * Mechanically split out of ui/style.css: keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = the entry @import order: global -> main -> settings.
  * ============================================================ */
 
 #statusCard .sc-head { pointer-events: none; }
 
-/* 模型配置页角色行选择器：复用输入框二级级联（一级供应商行 + hover 右弹浮层）。
-   胶囊按内容自适应不锁宽；一级弹出菜单全页等宽 250（.mp-role-menu 只挂一级），
-   二级浮层按最长模型名动态扩张 */
-.mp-role-sel { padding: 7px 10px; } /* 高度比常规 .sel 加 4px */
+/* Model-page role-row picker: reuses the composer's two-level cascade (top-level provider rows + hover right flyout).
+   the pill flexes with content, width unlocked; the top-level popup menu is page-wide 250 (.mp-role-menu attaches to level one only),
+   the second-level flyout expands dynamically to the longest model name */
+.mp-role-sel { padding: 7px 10px; } /* 4px taller than the regular .sel */
 
 .mp-role-menu { width: 250px; }
 
-/* 选择器右侧外部的 X 清除按钮（继承默认）：与 .skill-trash-btn 同几何（padding 4 + 图标 14 = 22px），
-   保证与自定义行删除按钮同列对齐；中性清除语义，非危险操作 */
+/* the X clear button outside the picker's right (inherits defaults): same geometry as .skill-trash-btn (padding 4 + icon 14 = 22px),
+   keeping column alignment with custom-row delete buttons; neutral clear semantics, not destructive */
 .mp-role-clear {
   border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -23,8 +23,8 @@
 
 .mp-role-clear:hover { color: var(--text); transform: scale(1.1); }
 
-/* 角色行整行不可点（可点的只有胶囊/X/trash）→ 关闭 .srow 默认 hover 高亮：
-   hover 高亮是「可点」的 affordance，只允许挂在有点击行为的元素上 */
+/* the role row itself is not clickable (only the pill/X/trash are) -> the default .srow hover highlight is off:
+   hover highlights are a clickability affordance, allowed only on elements with click behavior */
 .mp-role-row:hover, .srow.mp-role-row:hover { background: none; }
 
 .mp-role-row .srow-ctl { justify-content: flex-end; }
@@ -33,7 +33,7 @@
 
 .cx-row .rv { margin-left: auto; color: var(--dim); }
 
-/* 限额段（仿 ZCode 剩余额度卡片） */
+/* quota section (modeled on ZCode's remaining-quota card) */
 .lx-sec { padding-bottom: 2px; }
 
 .lx-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; padding: 2px 0 10px; }
@@ -62,7 +62,7 @@
 
 .sc-head .frac { color: var(--dim); font-size: var(--ui-fs-base); }
 
-/* ── 设置中心 ── */
+/* ── settings center ── */
 #settings {
   position: fixed; inset: 0; z-index: 300;
   display: grid; grid-template-columns: var(--setnav-w, 180px) 1fr;
@@ -75,15 +75,15 @@
 #setNav {
   background: transparent; padding: 40px 10px 0;
   display: flex; flex-direction: column;
-  /* 同 #sidebar:导航文字禁选中,点按蓝底是干扰 */
+  /* same as #sidebar: navigation text not selectable; the tap-selection blue is noise */
   user-select: none;
   -webkit-user-select: none;
-  /* 网格项 min-height:auto 会按内容撑开溢出(settings 560 高时行高被顶到 1192),
-     滚动下沉到 .set-nav-scroll 后此处必须归零让行拉伸生效 */
+  /* a grid item's min-height:auto stretches with content and overflows (at settings height 560 the row height blows up to 1192);
+     with scrolling delegated to .set-nav-scroll, this must be zeroed so row stretching works */
   min-height: 0;
 }
 
-/* 导航滚动区:返回钮固定顶端,仅此处滚动;底部头像 sticky 底钉不变 */
+/* nav scroll area: back button pinned at the top, only this scrolls; the bottom avatar keeps its sticky bottom pin */
 .set-nav-scroll { flex: 1; min-height: 0; margin-top: 6px; overflow-y: auto; display: flex; flex-direction: column; }
 
 #setNav button { -webkit-app-region: no-drag; }
@@ -104,7 +104,7 @@
 
 .set-back:hover svg { transform: translateX(-2px); }
 
-/* 设置左边栏搜索框与搜索结果 */
+/* settings left-sidebar search box and results */
 .set-search-wrap {
   position: relative;
   display: flex;
@@ -288,7 +288,7 @@
 
 .set-item.on .si { color: var(--accent, var(--blue)); }
 
-/* 键盘快捷键页的键帽 */
+/* keycaps on the keyboard shortcuts page */
 .sc-keys { display: flex; gap: 5px; flex: none; align-items: center; }
 
 .sc-key {
@@ -308,8 +308,8 @@
 .set-foot {
   margin-top: auto; display: flex; align-items: center; gap: 10px;
   padding: 12px 10px 9px 4px;
-  /* 与主侧栏 .side-foot 逐像素对齐（头像左缘 14px、纵向中心 34px、间距 10px），
-     进出设置页时左下角头像/title 位置纹丝不动 */
+  /* pixel-aligned with the main sidebar's .side-foot (avatar left edge 14px, vertical center 34px, gap 10px),
+     so the bottom-left avatar/title doesn't move a pixel when entering/leaving settings */
   position: sticky; bottom: 0;
   background: var(--base);
 }
@@ -322,7 +322,7 @@
   min-width: 0;
 }
 
-/* 与中栏卡片同一套动态宽度逻辑：min(50vw, 100% − clamp gutter) */
+/* same dynamic width logic as the middle-column card: min(50vw, 100% - clamp gutter) */
 .set-page {
   width: 100%;
   max-width: min(50vw, calc(100% - clamp(24px, 6vw, 100px)));
@@ -350,13 +350,13 @@
   .set-back svg, .sel .caret-svg, .tg i { transition: none; }
 }
 
-/* 一级大标题：加大一号（1.6 → 1.75），下边距 +5px 由标题后首元素间距承接 */
+/* level-1 titles: one step larger (1.6 -> 1.75); the +5px bottom margin is carried by the first element after the title */
 .set-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
 
-/* 各配置页：标题与首个内容元素间距统一放大（替代页内手写 margin-top） */
+/* per settings page: the title-to-first-element gap is enlarged uniformly (replacing hand-written margin-top in pages) */
 .set-page > .set-tt + * { margin-top: 29px; }
 
-/* 模型页标题下的说明文字 */
+/* explanatory text under the models page title */
 .set-desc { font-size: var(--ui-fs-sm); color: var(--faint); }
 
 .stag {
@@ -368,7 +368,7 @@
 
 .set-group-tt { font-size: var(--ui-fs-base); font-weight: 600; margin: 28px 2px 10px; }
 
-/* 组标题旁 hover 提示图标（轻量 CSS tooltip，token 上色；非 ring-pop 卡片，故不走 JS 定位） */
+/* hover hint icon next to group titles (lightweight CSS tooltip, token-colored; not a ring-pop card, so no JS positioning) */
 .gtt-hint { position: relative; display: inline-flex; align-items: center; margin-left: 6px; color: var(--faint); cursor: help; vertical-align: -2px; }
 
 .gtt-hint::after {
@@ -394,7 +394,7 @@
   background: var(--panel-2); border-radius: 4px; padding: 1px 5px;
 }
 
-/* 设置卡：独立卡片语言（--panel 底 + 8% 白边 + r-card + 深投影） */
+/* settings card: standalone card language (--panel base + 8% white border + r-card + deep shadow) */
 .set-card {
   background: var(--panel);
   border: 1px solid rgba(255,255,255,.08);
@@ -419,9 +419,9 @@
 
 .mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
 
-.mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* 向下延展开入场 */ }
+.mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* expands downward on entrance */ }
 
-/* ─── 扩展中心（pg-extensions） ─── */
+/* ---- extension center (pg-extensions) ---- */
 .ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 
 .ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -430,7 +430,7 @@
 
 .ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 
-/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
+/* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
 .ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; }
 
 .ext-search-icon { position: absolute; left: 10px; color: var(--faint); pointer-events: none; display: inline-flex; align-items: center; }
@@ -454,22 +454,22 @@
 
 .ext-list-wrap { margin-top: 4px; }
 
-/* 分组（按能力类型）：组标题复用 .set-group-tt，首组收紧与工具行的间距 */
+/* groups (by capability type): group titles reuse .set-group-tt, the first group tightens its gap to the toolbar */
 .ext-group:first-child .set-group-tt { margin-top: 6px; }
 
 .ext-group .set-group-tt { display: flex; align-items: baseline; gap: 6px; }
 
 .ext-cnt { color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
 
-/* 行：整行可点（.srow 同款 hover），非激活条目名淡化。
-   行外包 .ext-row-wrap，.srow+.srow 邻接选择器不生效，分隔线改挂行自身 */
+/* rows: fully clickable (.srow-style hover), non-active entry names dimmed.
+   rows are wrapped in .ext-row-wrap so the .srow+.srow adjacent selector never matches; the divider goes on the row itself */
 .ext-row { cursor: pointer; user-select: none; border-top: 1px solid var(--line-soft); }
 
 .ext-row-wrap:first-child .ext-row { border-top: 0; }
 
 .ext-row.off .srow-tx b { color: var(--dim); }
 
-/* 描述单行截断（参考分组卡片行式：名称 + 一行摘要） */
+/* descriptions truncated to one line (following the group card row style: name + one-line summary) */
 .ext-row .srow-tx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 
 .ext-kind-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: var(--faint); }
@@ -482,7 +482,7 @@
 
 .ext-row .srow-ctl { margin-left: 10px; }
 
-/* 详情区（mem-expand 承载）：键值行 + 正文块 */
+/* detail area (carried by mem-expand): key-value rows + body block */
 .ext-detail { padding: 10px 16px 14px 38px; display: flex; flex-direction: column; gap: 7px; }
 
 .ext-kv { display: flex; gap: 10px; font-size: var(--ui-fs-sm); align-items: baseline; min-width: 0; }
@@ -513,7 +513,7 @@
 
 .mem-expand .mem-body { border-top: 0; }
 
-.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* 内嵌在设置页滚动流内，阻断滚动链 */ }
+.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ }
 
 .md-it, .md-grp { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: var(--ui-fs-sm); color: var(--dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
 
@@ -529,7 +529,7 @@
 
 .md-grp .cnt { margin-left: auto; font-size: var(--ui-fs-xs); color: var(--faint); flex: none; }
 
-.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* 内嵌在设置页滚动流内，阻断滚动链 */ }
+.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ }
 
 .md-main h1, .md-main h2, .md-main h3, .md-main h4 { margin: 14px 0 6px; font-weight: 600; line-height: 1.4; }
 
@@ -545,7 +545,7 @@
 
 .md-main code { font-family: var(--mono); font-size: var(--code-fs, 12px); background: var(--panel-2); border-radius: 4px; padding: 1px 4px; }
 
-.md-main pre { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; overflow: auto; margin: 8px 0; overscroll-behavior: contain; /* 内嵌在 .md-main 滚动流内，阻断滚动链 */ }
+.md-main pre { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; overflow: auto; margin: 8px 0; overscroll-behavior: contain; /* embedded in .md-main's scroll flow, stops the scroll chain */ }
 
 .md-main pre code { background: none; padding: 0; }
 
@@ -584,17 +584,17 @@
 
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
 
-/* schema warning 行（.srow-tx span 特异性更高，需 .srow-tx .srow-wn 覆盖颜色/字号） */
+/* schema warning row (.srow-tx span has higher specificity, so .srow-tx .srow-wn overrides color/font-size) */
 .srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
 
-/* 开关标题右侧的红色警示（实验性功能页）：b 内并排「标题 + 警示」。
-   字号取 sm（比标题小一号）才能与标题同行不折行；颜色/字号要压过 .srow-tx span，
-   故用 .srow-tx b.srow-hd 前缀。窄窗口下允许整体折行。 */
+/* red warning right of the toggle title (experimental features page): title + warning side by side inside the b.
+   font size sm (one step below the title) keeps it on the title's line without wrapping; color/font-size must beat .srow-tx span,
+   hence the .srow-tx b.srow-hd prefix. Whole-phrase wrapping is allowed on narrow windows. */
 .srow-tx b.srow-hd { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 
 .srow-tx b.srow-hd .srow-wn-inline { color: var(--err); font-size: var(--ui-fs-sm); }
 
-/* 数字步进器 = .plus-btn 语言；数字表格化不跳动 */
+/* number stepper = the .plus-btn language; tabular numerals don't jitter */
 .num-ctl {
   display: inline-flex; align-items: center; gap: 2px; flex: none;
   background: var(--bg); border: 1px solid var(--line-soft);
@@ -659,10 +659,10 @@
 
 .pv .pv-ic { width: 16px; text-align: center; flex: none; }
 
-/* 添加供应商:两列等宽圆角卡片,卡内上下两行(上行名称/下行厂商+已配置数) */
+/* add provider: two equal-width rounded cards, two rows inside each (name on top / vendor + configured count below) */
 .ap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
 
-/* 左侧供应商分组标识与分隔线:统一为全局 UI 字号、常规字重(覆盖 .set-sec 的小号字距样式) */
+/* left provider group labels and dividers: unified to the global UI font size and regular weight (overriding .set-sec's small-size tracking styles) */
 .mp-grp { padding: 8px 10px 4px; font-size: var(--ui-fs-base); letter-spacing: normal; }
 
 .mp-l .mp-div { margin: 6px 16px; }
@@ -673,37 +673,37 @@
 
 .ap-card .tag { flex: none; }
 
-/* 两行卡片:上行图标+供应商名,下行左侧已配置徽标、右侧厂商名胶囊 */
+/* two-row card: icon + provider name on top; configured badge at bottom left, vendor pill at bottom right */
 .ap-card2 { flex-direction: column; align-items: stretch; gap: 7px; padding: 15px 16px; }
 
 .ap-l1, .ap-l2 { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 
 .ap-vendor { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 登录进行中底部进度条(含取消) */
+/* login-in-progress bottom progress bar (with cancel) */
 .login-banner { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 8px 8px 8px 16px; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,.35); max-width: calc(100vw - 48px); } /* style-token-ignore */
 
 .login-banner span { font-size: var(--ui-fs-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 
-/* 供应商详情页:登录入口卡片 */
+/* provider detail page: login entry card */
 .pd-login { margin-top: 12px; }
 
-/* 分隔线:左右留白,短于卡片宽度 */
+/* divider: side padding, shorter than the card width */
 .pd-div { height: 1px; background: var(--line-soft); margin: 14px 28px; }
 
-/* API key 区:纵向排布,圆角输入框占满行宽 */
+/* API key section: vertical layout, rounded input fills the row width */
 .pd-key { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 
 .pd-key-row { display: flex; align-items: center; gap: 8px; }
 
-/* 系列供应商详情·成员块头：id + 区域/方式标签横排 */
+/* suite provider detail, member block header: id + region/method tags in a row */
 .pd-member-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; font-size: var(--ui-fs-sm); }
 
 .mp-r { padding: 14px 16px 16px; min-width: 0; }
 
 .mp-lim { margin: -4px 0 12px; font-size: var(--ui-fs-sm); color: var(--dim); }
 
-.mp-lim .lx-sec + .lx-sec { margin-top: 8px; } /* 多账号配额逐段渲染的段间距 */
+.mp-lim .lx-sec + .lx-sec { margin-top: 8px; } /* spacing between per-account quota sections */
 
 .mp-lim .lx-body { min-width: 0; }
 
@@ -717,7 +717,7 @@
 
 .mp-row .sp { flex: 1; }
 
-/* 模型角色行：mp-r 内嵌的 srow 收窄双边距，名称行内 tag 徽标 */
+/* model role row: the srow embedded in mp-r narrows both side margins; inline name tags as badges */
 .mp-role-row { padding: 12px 2px; }
 
 .mp-role-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
@@ -756,17 +756,17 @@
 .dl .rv i { display: block; font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); margin-top: 2px; }
 
 /* ════════════════════════════════════════════════════════════
-   技能页面改版（仿全新设计图）
+   skills page redesign (modeled on the new design mock)
    ════════════════════════════════════════════════════════════ */
-/* 一级标题与边距同步 .set-tt（1.75 + 下边距 25） */
+/* level-1 title and margins in sync with .set-tt (1.75 + bottom margin 25) */
 .skills-header { margin-bottom: 25px; }
 
 .skills-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
 
-/* 技能总开关关闭：页面其余控件灰显并禁止交互（同钩子页「请先开启总开关」语义，总开关卡片在容器外不受影响） */
+/* skills master toggle off: the rest of the page grays out and blocks interaction (same "enable the master toggle first" semantics as the hooks page; the master toggle card sits outside the container and is unaffected) */
 .skills-off-dim { opacity: .45; pointer-events: none; }
 
-/* 单行工具条：作用域胶囊 + 统计 + 更多/刷新/新建 + 搜索框（搜索框靠右，窄宽度优先压缩搜索框/胶囊） */
+/* single-line toolbar: scope pill + stats + more/refresh/new + search box (search box flush right; under narrow widths the search box/pill compress first) */
 .skills-bar {
   display: flex;
   align-items: center;
@@ -784,7 +784,7 @@
 
 .skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 
-/* 统计文案与作用域标签不换行：宽度不足时胶囊标签省略号截断 */
+/* stats text and scope labels never wrap: under narrow widths the pill label truncates with an ellipsis */
 .skills-bar #skillsTotalCount { white-space: nowrap; }
 
 .skills-bar .scope-sel-btn { min-width: 0; }
@@ -810,7 +810,7 @@
   align-items: center;
 }
 
-/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
+/* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
 .skills-search-input {
   width: 100%;
   height: 30px;
@@ -831,7 +831,7 @@
 
 .skills-search-input::placeholder { color: var(--faint); }
 
-/* 操作按钮组：更多 + 刷新 + 新建（不参与压缩，宽度不足时压缩搜索框/作用域胶囊） */
+/* action buttons: more + refresh + new (not part of compression; under narrow widths the search box/scope pill compress) */
 .skills-actions-wrap {
   display: inline-flex;
   align-items: center;
@@ -839,7 +839,7 @@
   flex: none;
 }
 
-/* 更多(⋯)按钮 = .sel 胶囊内的尺寸载体：底板/hover 由外层 .sel 提供（刷新钮走 .plus-btn） */
+/* more(...) button = a size carrier inside the .sel pill: plate/hover come from the outer .sel (the refresh button uses .plus-btn) */
 .skills-btn-icon {
   width: 26px;
   height: 26px;
@@ -853,7 +853,7 @@
   cursor: pointer;
 }
 
-/* 新建按钮 = .add-btn 语言：透明底 + --line 描边 + hover --panel-2，高度与刷新钮一致 */
+/* new button = the .add-btn language: transparent base + --line border + hover --panel-2, same height as the refresh button */
 .skills-btn-new {
   display: inline-flex;
   align-items: center;
@@ -875,7 +875,7 @@
 
 .skills-btn-new:active { transform: scale(.95); }
 
-/* 技能卡片列表 */
+/* skill card list */
 .skills-list-wrap {
   margin-top: 4px;
 }
@@ -900,7 +900,7 @@
   font-size: var(--ui-fs-sm);
 }
 
-/* 技能卡片单行 */
+/* skill card single row */
 .skill-item-row {
   display: flex;
   align-items: center;
@@ -909,7 +909,7 @@
   transition: background .15s;
 }
 
-/* 行 = 记忆页行语言：整行可点，展开 .on 高亮，尾部 caret 随展开转正 */
+/* rows = the memory-page row language: fully clickable, .on highlight when expanded, the trailing caret straightens on expand */
 .skill-item-row, .mcp-server-row { cursor: pointer; }
 
 .skill-item-row.on, .mcp-server-row.on { background: var(--panel-2); }
@@ -983,8 +983,8 @@
   flex-shrink: 0;
 }
 
-/* 开关复用全站 .tg（accent 强调色 + 弹簧滑动），见设置页定义处 */
-/* 删除 Trash 按钮 */
+/* the toggle reuses the site-wide .tg (accent color + spring slide), see its definition on the settings page */
+/* delete trash button */
 .skill-trash-btn {
   background: none;
   border: none;
@@ -1003,8 +1003,8 @@
   transform: scale(1.1);
 }
 
-/* 技能/MCP 行内编辑区（向下延展）：容器、头、脚与表单体。
-   弹窗容器类（modal/backdrop/dialog/head 等）已随弹窗改延展一并删除 */
+/* skill/MCP inline edit area (expands downward): container, header, footer and form body.
+   dialog container classes (modal/backdrop/dialog/head etc.) were removed along with the dialog-to-expansion migration */
 .mem-exp-head .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .sem-body {
@@ -1014,20 +1014,20 @@
   display: flex;
 }
 
-/* MCP 表单变体：纵向排布表单组（默认横向只容纳单个编辑器 textarea） */
+/* MCP form variant: form groups stacked vertically (the default horizontal layout only fits a single editor textarea) */
 .sem-body.form {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain; /* 内嵌在设置页滚动流内，阻断滚动链 */
+  overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */
 }
 
-/* 延展区内嵌列表卡片：编辑器高度收紧（弹窗时代的 340px 全屏高度不再适用） */
+/* list card nested in the expansion area: editor height tightened (the dialog-era 340px full-screen height no longer applies) */
 .mem-expand .sem-body { min-height: 0; }
 
 .mem-expand #skEditText { min-height: 260px; }
 
-/* 编辑器 textarea = .inp 语言：--bg 底 + r9 + 蓝色聚焦光晕 */
+/* editor textarea = the .inp language: --bg base + r9 + blue focus glow */
 #skEditText {
   width: 100%;
   flex: 1;
@@ -1058,9 +1058,9 @@
   border-top: 1px solid var(--line-soft);
 }
 
-/* 延展区底部按钮统一走 .confirm-btn / .confirm-btn.danger（全局二次确认弹窗语言） */
+/* expansion-area bottom buttons uniformly use .confirm-btn / .confirm-btn.danger (the global confirmation dialog language) */
 
-/* ── 设置侧栏拖宽（#setNavResizer，逻辑见 Settings.tsx）与滚动条淡入 ── */
+/* ── settings sidebar resize (#setNavResizer, logic in Settings.tsx) and scrollbar fade-in ── */
 #setNav { position: relative; }
 
 #setNavResizer {
@@ -1078,7 +1078,7 @@
 
 #setNavResizer:hover::after, body.resizing #setNavResizer::after { background: var(--blue); }
 
-/* 缓存保活·保活模型胶囊（.stag 视觉 + 可点击移除，有点击故允许 hover 反馈） */
+/* cache keep-alive model pill (.stag visuals + click-to-remove; clickable, so hover feedback is allowed) */
 .ka-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ka-target { font-size: var(--ui-fs-xs); font-weight: 500; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; cursor: pointer; }
 .ka-target:hover { border-color: var(--dim); }

@@ -1,6 +1,9 @@
-// 下拉选择基件（ZCodium select 平移）：trigger 对齐本仓 .sel 胶囊（透明底 / hover --panel-2 /
-// caret 展开旋转 180°），弹层对齐 .menu（--ctl-bg 卡面 + --line 边 + r-md + popIn 入场），
-// 选项行对齐 .mi（r6 + hover --select）+ 左侧 14px 勾位（✓，--green）。键盘导航/焦点管理由 Radix 提供。
+// Select base component (ported from ZCodium select): the trigger aligns with
+// this repo's .sel pill (transparent background / hover --panel-2 / caret
+// rotates 180° when open), the popover aligns with .menu (--ctl-bg surface +
+// --line border + r-md + popIn entrance), and item rows align with .mi (r6 +
+// hover --select) plus a 14px left check slot (✓, --green). Keyboard
+// navigation / focus management provided by Radix.
 import * as React from "react";
 import { Select as SelectPrimitive } from "radix-ui";
 
@@ -34,7 +37,7 @@ function SelectTrigger({
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       className={cn(
-        // 胶囊语言：与 .sel 同款（透明底 + 圆角 999 + hover/open --panel-2 底）
+        // Pill language: same as .sel (transparent background + radius 999 + hover/open --panel-2 background)
         "group/sel inline-flex flex-none shrink-0 cursor-pointer items-center gap-[6px] rounded-full border-0 bg-transparent px-[10px] py-[5px] text-ui-base text-dim outline-none",
         "transition-[background-color,color] duration-[150ms] ease-[var(--swift)]",
         "hover:bg-panel-2 hover:text-text data-[state=open]:bg-panel-2 data-[state=open]:text-text",
@@ -44,7 +47,7 @@ function SelectTrigger({
       {...props}
     >
       {children}
-      {/* caret 旋转挂 Icon 根 span（与 .caret-svg 同位），随 trigger 的 data-state 转向 */}
+      {/* caret rotation sits on the Icon root span (same slot as .caret-svg), turning with the trigger's data-state */}
       <Icon
         name="caret"
         size={14}
@@ -54,8 +57,11 @@ function SelectTrigger({
   );
 }
 
-// 弹层：popper 定位（原 .sel>.menu 为锚下 6px、右对齐、z-90）；入场走全局 popIn（下弹自上方 6px 滑入）。
-// 阴影沿用深色档（浅色降透明度待 style.css 统一，见汇报）。
+// Popover: popper positioning (the original .sel>.menu sat 6px below the
+// anchor, end-aligned, z-90); entrance uses the global popIn (dropping-down
+// variants slide in from 6px above). Shadow keeps the dark-theme value (a
+// lighter light-theme opacity awaits a unified pass in style.css, as noted in
+// the report).
 function SelectContent({
   className,
   children,
@@ -114,7 +120,7 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
         )}
         {...props}
       >
-        {/* 勾位对齐 .ck：固定 14px 栏宽，未选中时也占位保持文字对齐 */}
+        {/* Check slot aligns with .ck: fixed 14px column width, reserved even when unselected to keep text aligned */}
         <span className="flex w-[14px] flex-none justify-center text-green">
           <SelectPrimitive.ItemIndicator>✓</SelectPrimitive.ItemIndicator>
         </span>

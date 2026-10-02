@@ -1,4 +1,5 @@
-// 主区域会话条目树视图：在主内容区全宽呈现会话条目瀑布流，支持分叉横向切换、抽屉展开与跳转回退。
+// Main-area session entry tree view: renders the session entry waterfall full-width in the
+// main content area, with fork switching, drawer expansion, and jump navigation.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAppStore, send } from "../../store";
 import Icon from "../../Icon";
@@ -29,7 +30,7 @@ export default function MainSessionTree() {
     el.scrollTop = el.scrollHeight;
   }, [treeReady, s?.sessionId]);
 
-  // 懒加载条目树数据
+  // Lazily load the entry tree data
   useEffect(() => {
     const st = useAppStore.getState();
     const session = st.activePath ? st.openSessions.get(st.activePath) : undefined;
@@ -96,7 +97,7 @@ export default function MainSessionTree() {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-bg">
-      {/* 顶部工具栏：过滤胶囊 + 刷新 + 返回对话 */}
+      {/* Top toolbar: filter pills + refresh + back to chat */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-line bg-card/60 backdrop-blur-xs select-none">
         <div className="flex items-center gap-3">
           <span className="text-ui-xs text-faint font-medium">{t("chat.filterMode")}</span>
@@ -135,7 +136,7 @@ export default function MainSessionTree() {
         </div>
       </div>
 
-      {/* 瀑布流容器 */}
+      {/* Waterfall container */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         <SessionTreeStream
           roots={roots}

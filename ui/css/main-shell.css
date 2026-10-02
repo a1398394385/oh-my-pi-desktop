@@ -1,18 +1,18 @@
 /* ============================================================
- * main-shell.css —— 主页面·全局通用:三栏布局骨架、层级刻度、全局滚动条、Windows 窗口控制按钮。
- *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
- * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
- * → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * main-shell.css — main page, globally shared: three-column layout skeleton, z-index scale, global scrollbars, Windows window control buttons.
+ *  Split from ui/css/main.css by semantic domain; keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = ui/style.css's @import order: global -> main-shell -> main-sidebar -> main-chat
+ * -> main-welcome -> main-right -> settings; append new styles at the end of the matching domain file.
  * ============================================================ */
-/* React 挂载点：#root 内的三栏（#sidebar/#main/#right）原为 body 直接子元素，
-   由 body 的 flex 横向排布；组件化后须经 #root 承接同一套 flex 布局 */
+/* React mount point: the three columns inside #root (#sidebar/#main/#right) were once direct children of body,
+   laid out horizontally by body's flex; after componentization #root must carry the same flex layout */
 #root {
   flex: 1;
   display: flex;
   min-width: 0;
 }
 
-/* ── 代码块与 Git Diff 隔离：不受全局界面字体/字号影响，锁定等宽与代码字号 ── */
+/* ── Code block and Git Diff isolation: immune to the global UI font/size, locked to monospace and the code font size ── */
 code,
 pre,
 kbd,
@@ -39,27 +39,27 @@ samp,
   font-size: var(--code-fs, 12px) !important;
 }
 
-/* ── 布局：底座上嵌中栏 / 右栏圆角卡片 ───────────────────────────────── */
-/* ── 全站层级刻度（唯一口径；新增浮层先在这里选档，别再各写各的） ────────────
-   20   .sticky-user-wrap（吸顶用户消息栏）
-   60   #statusWrap（#main 内嵌 TODO 卡）/ .find-bar / #msgRail / .resizer（面板内固定浮层）
-   100  .dock（composer 容器：内部下拉菜单封顶于此，恒在悬停卡/设置中心/通知之下）
-   200  .ring-pop（悬停详情卡）
-   300  #settings（全屏设置中心）
-   400  #toast（通知：须压在设置中心与 composer 之上）
-   500  下拉菜单/浮层：.menu 家族（含 .menu.flyout 501）、.sel > .menu、.sp-pop(510)、
-        .bpane-menu、.side-search-pop、.ctx-menu、.proj-add-pop、#wbProjectMenu/#wbBranchMenu，
-        以及 Radix Select / DropdownMenu / Popover 的 Portal 弹层
-   600  悬停提示：Radix Tooltip / .gtt-hint
-   900  .proj-drag-overlay（拖拽浮层）
+/* ── Layout: middle / right rounded cards inset on the base ───────────────────────────────── */
+/* ── site-wide z-index scale (the single source of truth; pick a tier here for new overlays, don't invent your own) ────────────
+   20   .sticky-user-wrap (sticky user message bar)
+   60   #statusWrap (#main inset TODO card) / .find-bar / #msgRail / .resizer (in-panel fixed overlays)
+   100  .dock (composer container: its inner dropdown menus cap here, always below hover cards/settings/toasts)
+   200  .ring-pop (hover detail cards)
+   300  #settings (fullscreen settings center)
+   400  #toast (notifications: must sit above the settings center and composer)
+   500  dropdown menus/flyouts: the .menu family (incl. .menu.flyout 501), .sel > .menu, .sp-pop(510),
+        .bpane-menu, .side-search-pop, .ctx-menu, .proj-add-pop, #wbProjectMenu/#wbBranchMenu,
+        plus Radix Select / DropdownMenu / Popover portal layers
+   600  hover hints: Radix Tooltip / .gtt-hint
+   900  .proj-drag-overlay (drag overlay)
    999  .login-banner
-   1000 模态遮罩与对话框：.confirm-mask / .lp-mask / Radix Dialog / 图片灯箱
-   列容器 #sidebar / #right 用 isolation:isolate 自成层：列内弹层不越出列层。 */
+   1000 modal masks and dialogs: .confirm-mask / .lp-mask / Radix Dialog / image lightbox
+   Column containers #sidebar / #right use isolation:isolate as their own layer: popovers inside never escape the column. */
 
-/* ── 全局滚动条统一 ─────────────────────────────────────────────────────────
-   WebView2/Chromium 默认是常驻经典滚动条（深色下白底轨道很扎眼）。全站一律走这一套：
-   细轨 + 透明轨道 + 滑轨仅悬停容器时显形，视觉统一且不常驻。需要彻底隐藏滚动条的元素
-   （#tasklist / .rtabs / xterm viewport）各自 display:none / width:0，不受影响。 */
+/* ── unified global scrollbars ─────────────────────────────────────────────────────────
+   WebView2/Chromium default to persistent classic scrollbars (the white track is jarring in dark mode). The whole site uses this one set instead:
+   thin thumb + transparent track + thumb appears only while hovering the container — visually uniform, never persistent. Elements needing fully hidden scrollbars
+   (#tasklist / .rtabs / xterm viewport) do their own display:none / width:0 and are unaffected. */
 *::-webkit-scrollbar { width: 9px; height: 9px; }
 *::-webkit-scrollbar-track,
 *::-webkit-scrollbar-corner { background: transparent; }
@@ -97,29 +97,42 @@ samp,
 
 body.resizing { user-select: none; cursor: col-resize; }
 
-/* ── Windows 窗口控制按钮（无边框窗口；WindowControls.tsx 仅 Windows 渲染）──
-   融入既有卡片头部：右栏收起时挂中栏 .chat-head 右上角，展开时挂右栏 .sp-head 右上角。
-   负 margin 抵消头部 padding 贴齐卡片右缘；卡片自身 overflow:hidden + 圆角负责裁剪角。
-   拖动/双击最大化由承载头部的 data-tauri-drag-region 交 Tauri 内核处理。 */
+/* ── Windows window control buttons (frameless window; WindowControls.tsx renders on Windows only)──
+   Blended into existing card headers: on the top right of the middle column's .chat-head when the right sidebar is collapsed, or of the right sidebar's .sp-head when expanded.
+   Highlight uses the site-wide .icon-btn language (26x26, --r-sm, --panel-2); negative margins cancel the header padding to leave a 4px breathing room from the card edge.
+   .win-hot is a transparent fixed overlay over the window's literal top-right corner (the cards are inset by --shell-gap): hovering it highlights the close button via :has, clicking closes — the Windows muscle-memory slam corner.
+   Dragging/double-click maximize is handled by the Tauri core via the header's data-tauri-drag-region. */
 .win-controls {
-  display: flex; align-items: stretch; align-self: stretch; flex: none;
-  margin-right: -6px; /* .sp-head padding */
+  display: flex; align-items: center; gap: 2px; flex: none;
+  margin-right: -2px; /* .sp-head padding (6px) minus the 4px card-edge breathing room */
 }
 
-.chat-head > .win-controls { margin-right: -16px; } /* .chat-head padding */
+.chat-head > .win-controls { margin-right: -12px; } /* .chat-head padding (16px) minus 4px */
 
 .win-controls .win-btn {
-  width: 40px; border: 0; background: transparent;
+  width: 26px; height: 26px; border: 0; border-radius: var(--r-sm);
+  background: transparent;
   display: flex; align-items: center; justify-content: center;
-  color: var(--faint); cursor: default;
+  color: var(--dim); cursor: default;
 }
 
-.win-controls .win-btn:hover { background: rgba(128, 128, 128, .25); color: var(--text); } /* style-token-ignore */
+.win-controls .win-btn:hover { background: var(--panel-2); color: var(--text); }
 
 .win-controls .win-btn.win-close:hover { background: #e81123; color: #fff; } /* style-token-ignore */
 
-/* ── 全局二次确认弹窗（ring-pop 系全局浮层；自 main-chat.css 归位于全局通用域）── */
-/* ── 全局二次确认弹窗（严格遵照 ring-pop 系视觉与 ringpop 入场动画规范） ── */
+/* .win-hot hover lights the close button exactly as hovering the button itself */
+.win-controls:has(.win-hot:hover) .win-btn.win-close { background: #e81123; color: #fff; } /* style-token-ignore */
+
+.win-hot {
+  position: fixed; top: 0; right: 0;
+  width: 40px; height: 40px; /* covers the --shell-gap inset corner plus a forgiving margin into the close button */
+  z-index: 60; /* in-panel fixed-overlay tier (see the z-index scale above) */
+  cursor: default;
+  -webkit-app-region: no-drag; /* fixed descendant of the header drag region: must opt out or clicks would drag */
+}
+
+/* ── global confirmation dialog (ring-pop-family global overlay; relocated to the global-shared domain from main-chat.css)── */
+/* ── global confirmation dialog (strictly follows the ring-pop family visuals and ringpop entrance animation spec) ── */
 .confirm-mask {
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(0, 0, 0, .45);

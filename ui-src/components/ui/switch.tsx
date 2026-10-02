@@ -1,5 +1,7 @@
-// 开关基件（ZCodium switch 平移）：视觉对齐本仓 .tg——38×23 圆胶囊、off=--select / on=--accent、
-// 18px 白色圆 thumb 沿 spring 曲线滑动、按住压扁 21px 拟物。全部走 :root token。
+// Switch base component (ported from ZCodium switch): visually aligned with
+// this repo's .tg — a 38x23 rounded pill, off=--select / on=--accent, an 18px
+// white round thumb sliding along the spring curve, squashing to 21px while
+// pressed for a skeuomorphic feel. All via :root tokens.
 import * as React from "react";
 import { Switch as SwitchPrimitive } from "radix-ui";
 
@@ -13,7 +15,7 @@ function Switch({
     <SwitchPrimitive.Root
       data-slot="switch"
       className={cn(
-        // 动效纪律：底色走 --swift，thumb 滑动/压扁走 --spring（与 .tg 一致）
+        // Motion discipline: background color uses --swift, thumb slide/squash uses --spring (same as .tg)
         "group/tg relative inline-flex h-[23px] w-[38px] flex-none shrink-0 cursor-pointer items-center rounded-full border-0 bg-select outline-none transition-colors duration-[220ms] ease-[var(--swift)] data-[state=checked]:bg-accent data-disabled:cursor-not-allowed data-disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-[1px]",
         className,
       )}

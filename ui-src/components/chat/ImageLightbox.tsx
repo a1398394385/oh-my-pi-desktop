@@ -1,4 +1,5 @@
-// 大图灯箱预览组件：支持点击背景/ESC/关闭按钮退出、上一张/下一张切换及下载。
+// Full-size image lightbox preview: exit via background click / ESC / the close button,
+// previous/next switching, and download.
 import { useEffect, useState } from "react";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
@@ -42,7 +43,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
       onClick={onClose}
       data-tauri-drag-region="false"
     >
-      {/* 顶部操作条 */}
+      {/* Top action bar */}
       <div
         className="absolute top-3 right-4 flex items-center gap-2 z-10"
         onClick={(e) => e.stopPropagation()}
@@ -69,7 +70,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
         </button>
       </div>
 
-      {/* 切换上一张 */}
+      {/* Switch to previous */}
       {total > 1 && (
         <button
           className="absolute left-4 top-1/2 -translate-y-1/2 icon-btn bg-black/40 hover:bg-black/70 text-white p-2.5 rounded-full transition-colors z-10"
@@ -83,7 +84,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
         </button>
       )}
 
-      {/* 大图主体 */}
+      {/* Main image body */}
       <div
         className="max-w-[92vw] max-h-[90vh] flex items-center justify-center overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -95,7 +96,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
         />
       </div>
 
-      {/* 切换下一张 */}
+      {/* Switch to next */}
       {total > 1 && (
         <button
           className="absolute right-4 top-1/2 -translate-y-1/2 icon-btn bg-black/40 hover:bg-black/70 text-white p-2.5 rounded-full transition-colors z-10"

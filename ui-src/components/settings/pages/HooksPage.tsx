@@ -1,5 +1,6 @@
-// 设置页：钩子（pg-hooks）。
-// 提供总开关（hooks.enabled 控制 disableExtensionDiscovery）、运行配置项（SchemaRows）与已发现钩子列表。
+// Settings page: hooks (pg-hooks).
+// Provides the master switch (hooks.enabled controls disableExtensionDiscovery), runtime
+// config rows (SchemaRows), and the list of discovered hooks.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";

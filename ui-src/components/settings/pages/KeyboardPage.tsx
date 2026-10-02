@@ -1,11 +1,12 @@
-// 设置页：键盘快捷键（pg-keyboard）。条目来自 ui-src/keys.js 的注册表——展示与绑定同源，
-// 键位对齐 omp 命令行（组件内绑定的键也在注册表登记，本页只读）。
+// Settings page: keyboard shortcuts (pg-keyboard). Entries come from the ui-src/keys.js
+// registry — display and binding share one source; keys align with the omp CLI (keys bound
+// inside components are also registered there; this page is read-only).
 import { useTranslation } from "react-i18next";
 import { SHORTCUT_GROUPS } from "../../../keys";
 
-// keys.js 注册表条目形状（未补类型，按字面量收窄）
+// Entry shape of the keys.js registry (untyped; narrowed by literal)
 interface ShortcutItem {
-  keys: string[]; // 键帽展示
+  keys: string[]; // keycap display
   label: string;
 }
 interface ShortcutGroup {

@@ -1,7 +1,9 @@
-// RPC 处理器汇总与分发。九域 handler 表合并；未知命令回 error 帧（对齐旧 switch
-// default）。异常由 main.ts 的 message 壳统一捕获回 error 帧。
-// 穷尽性由 scripts/check-capabilities.mjs 的 RPC 清单登记守卫（94 个 method 逐一
-// 可解析），handler 表的键集与清单一致。
+// RPC handler aggregation and dispatch. Merges the nine domain handler tables;
+// unknown commands reply with an error frame (matching the old switch
+// default). Exceptions are caught by the message shell in main.ts and returned
+// as error frames. Exhaustiveness is guarded by the RPC manifest check in
+// scripts/check-capabilities.mjs (all 94 methods resolvable); the handler
+// table's key set matches the manifest.
 import { sessionHandlers } from "./session";
 import { promptHandlers } from "./prompt";
 import { filesHandlers } from "./files";
@@ -26,7 +28,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...limitsHandlers,
 };
 
-/** 单命令分发：查表调用，未知命令回 error（旧 switch default 语义） */
+/** Single-command dispatch: table lookup + invoke; unknown commands reply with error (old switch default semantics) */
 export function dispatchRpc(ws: any, msg: any): void | Promise<void> {
   const h = rpcHandlers[msg.type as string];
   if (!h) {

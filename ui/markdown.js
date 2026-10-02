@@ -1,8 +1,13 @@
-// Markdown 渲染引擎与代码复制：主对话区 assistant 消息的 md → HTML 渲染。
-// 注意：设置页记忆详情另有一套简化实现（settings/memory.js 的 renderMarkdown），两套保持独立。
-// React 迁移断链：旧 core.js 的三个符号本地化——import 链会把命令式 UI 全树（旧 S/各域渲染模块）
-// 拖进 React bundle。$/isJunkPlaceholder 与旧 core 等价；streamEl 惰性求值（React 版 #stream
-// 由组件渲染，模块加载期不存在；下方三个滚动函数仅旧版调用，React 版 Chat 自带滚动语义）。
+// Markdown rendering engine and code copy: md -> HTML rendering for assistant
+// messages in the main chat area.
+// Note: the settings-page memory details use a separate simplified implementation
+// (renderMarkdown in settings/memory.js); the two stay independent.
+// React migration cut: three symbols from the old core.js are localized here — the
+// import chain would drag the whole imperative UI tree (old S and the per-domain render
+// modules) into the React bundle. $/isJunkPlaceholder match the old core; streamEl is
+// lazy (the React #stream is component-rendered and absent at module load; the three
+// scroll functions below are only called by the old version — the React Chat has its
+// own scrolling semantics).
 const $ = (id) => document.getElementById(id);
 const getStream = () => document.getElementById("stream");
 function isJunkPlaceholder(text) {
@@ -47,7 +52,7 @@ export function renderMarkdownToHtml(md) {
   if (!md) return "";
   const codeBlocks = [];
 
-  // 1. 提取并保护所有代码块（含流式未闭合代码块）
+  // 1. Extract and protect all code blocks (including unclosed ones mid-stream)
   let text = String(md).replace(/\r\n/g, "\n");
   text = text.replace(/```([a-zA-Z0-9_+-]*)\n([\s\S]*?)(?:```|$)/g, (_, lang, code) => {
     const idx = codeBlocks.length;
@@ -78,7 +83,7 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 代码块占位符
+    // Code block placeholder
     const cbMatch = trimmed.match(/^\x02MDCODEBLOCK(\d+)\x02$/);
     if (cbMatch) {
       out.push(codeBlocks[Number(cbMatch[1])]);
@@ -86,7 +91,7 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 标题 (# ~ ####)
+    // Headings (# ~ ####)
     const hMatch = line.match(/^(#{1,4})\s+(.+)$/);
     if (hMatch) {
       const level = hMatch[1].length;
@@ -95,14 +100,14 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 水平分割线
+    // Horizontal rule
     if (/^(?:---|\*\*\*|___)\s*$/.test(trimmed)) {
       out.push(`<hr class="md-hr">`);
       i++;
       continue;
     }
 
-    // 引用块 (> ...)
+    // Blockquote (> ...)
     if (trimmed.startsWith(">")) {
       const quoteLines = [];
       while (i < lines.length && lines[i].trim().startsWith(">")) {
@@ -113,7 +118,7 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 表格 (| a | b |)
+    // Table (| a | b |)
     if (trimmed.startsWith("|") && trimmed.endsWith("|") && i + 1 < lines.length && /^\|?\s*:?-+:?\s*\|/.test(lines[i + 1].trim())) {
       const headerRow = trimmed;
       const sepRow = lines[i + 1].trim();
@@ -148,7 +153,7 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 无序列表与任务列表 (- item, * item)
+    // Unordered and task lists (- item, * item)
     if (/^[-*+]\s+/.test(trimmed)) {
       out.push(`<ul class="md-ul">`);
       while (i < lines.length && /^[-*+]\s+/.test(lines[i].trim())) {
@@ -168,7 +173,7 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 有序列表 (1. item)
+    // Ordered list (1. item)
     if (/^\d+\.\s+/.test(trimmed)) {
       out.push(`<ol class="md-ol">`);
       while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
@@ -180,7 +185,7 @@ export function renderMarkdownToHtml(md) {
       continue;
     }
 
-    // 普通段落
+    // Plain paragraph
     const paraLines = [];
     while (
       i < lines.length &&
@@ -252,7 +257,7 @@ export function renderAssistantMessage(text) {
   return div;
 }
 
-// 仅当消息流还有向下滚动余量时显示按钮（4px 容差防亚像素抖动）
+// Show the button only while the message stream still has scroll room left (4px tolerance guards against sub-pixel jitter)
 export function updateScrollBottomVis() {
   const btn = $("scrollBottom");
   if (!btn) return;
@@ -266,7 +271,7 @@ export function ensureScrollBottom() {
   if (!btn) {
     btn = document.createElement("button");
     btn.id = "scrollBottom";
-    btn.className = "scroll-bottom hidden"; // 初始隐藏，由 updateScrollBottomVis 决定显隐
+    btn.className = "scroll-bottom hidden"; // hidden initially; updateScrollBottomVis decides visibility
     btn.type = "button";
     btn.title = "滚动到底部";
     btn.innerHTML = icon("down");
@@ -281,10 +286,10 @@ export function ensureScrollBottom() {
 
 export function initMarkdown() {
   const el = getStream();
-  el.addEventListener("scroll", updateScrollBottomVis); // 滚动位置变化实时显隐
+  el.addEventListener("scroll", updateScrollBottomVis); // live visibility on scroll position change
   new MutationObserver(() => {
     const btn = $("scrollBottom");
     if (btn && el.contains(btn) && btn !== el.lastElementChild) el.appendChild(btn);
-    updateScrollBottomVis(); // 子节点增删会改变 scrollHeight，顺带刷新显隐
+    updateScrollBottomVis(); // child additions/removals change scrollHeight; refresh visibility along the way
   }).observe(el, { childList: true });
 }

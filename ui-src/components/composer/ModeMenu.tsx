@@ -1,6 +1,8 @@
-// 权限模式菜单（原 index.html #modeMenu 静态三行 + composer.js 点击绑定平移）：
-// omp 三值 always-ask | write | yolo。选中走宿主下发（有会话带 sessionId），
-// 本地乐观更新 approvalMode（原 setApprovalModeUi），宿主 approval_mode 帧再确认。
+// Permission mode menu (ported from the old static three rows of index.html
+// #modeMenu + composer.js click bindings): the three omp values
+// always-ask | write | yolo. Selection goes through the host (with sessionId
+// when in a session), with a local optimistic update of approvalMode (the old
+// setApprovalModeUi); the host's approval_mode frame confirms afterwards.
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useAppStore, setBump, send } from "../../store";
@@ -8,12 +10,13 @@ import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
 
-// omp 权限模式三值（宿主 approval_mode 帧同此集合）
+// The three omp permission modes (the host approval_mode frame uses the same set)
 export type ApprovalMode = "always-ask" | "write" | "yolo";
 
 type ModeMeta = { label: string; icon: string; yolo: boolean };
 
-// 模式元信息（原 composer.js MODE_META 平移；按钮态也复用）。label/desc are getters so the
+// Mode metadata (ported from the old composer.js MODE_META; button states reuse
+// it too). label/desc are getters so the
 // module-level constants re-read the active language on every access (tree re-mounts on lang switch).
 export const MODE_META: Record<ApprovalMode, ModeMeta> = {
   "always-ask": { get label() { return t("composer.modeAlwaysAsk"); }, icon: "permAsk", yolo: false },
@@ -38,7 +41,7 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const approvalMode = useAppStore((st) => st.approvalMode);
   const planOn = !!s?.planMode;
-  // 挂载即定位（原 openComposerMenu：打开时定位一次）
+  // Position on mount (the old openComposerMenu: positioned once when opened)
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
@@ -50,7 +53,8 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
     onClose();
   };
 
-  // 计划模式：仅在有会话时可切（模式状态挂在会话上）；置位由宿主 plan_mode 帧确认
+  // Plan mode: switchable only inside a session (the mode state hangs on the
+  // session); setting is confirmed by the host's plan_mode frame
   const togglePlan = () => {
     if (!s) return;
     send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !planOn });

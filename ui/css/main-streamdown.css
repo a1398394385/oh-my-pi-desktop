@@ -1,15 +1,15 @@
 /* ============================================================
- * main-streamdown.css —— 主页面·streamdown 渲染引擎层(assistant markdown;随 @streamdown 版本升级核对)。
- *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
- * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
- * → main-composer → main-streamdown → main-tree → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * main-streamdown.css — main page, streamdown rendering engine layer (assistant markdown; re-verify on @streamdown version bumps).
+ *  Split from ui/css/main.css by semantic domain; keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = ui/style.css's @import order: global -> main-shell -> main-sidebar -> main-chat
+ * -> main-composer -> main-streamdown -> main-tree -> main-welcome -> main-right -> settings; append new styles at the end of the matching domain file.
  * ============================================================ */
 /* ── P6: streamdown ──
-   assistant markdown 渲染引擎换 streamdown（ui-src/components/chat/AssistantMsg.tsx）。
-   streamdown 自带的 Tailwind utility 不在本仓 @source 扫描范围（等于自带样式全关），
-   代码块按整体卡片呈现：独立语言栏、卡片式代码区、标题栏内复制按钮。
-   代码 token 颜色来自 Shiki 双主题的行内 CSS 变量：浅色读 --sdm-c、深色读 --shiki-dark，
-   跟随 html[data-theme] 即时切换（文件页染色仍走 ui-src/lib/highlighter.ts，互不影响）。 */
+   the assistant markdown rendering engine switched to streamdown (ui-src/components/chat/AssistantMsg.tsx).
+   streamdown's bundled Tailwind utilities are outside this repo's @source scan (effectively all bundled styles off),
+   code blocks render as whole cards: standalone language bar, card-style code area, copy button inside the title bar.
+   code token colors come from Shiki dual-theme inline CSS variables: light reads --sdm-c, dark reads --shiki-dark,
+   switching live with html[data-theme] (file-view highlighting still goes through ui-src/lib/highlighter.ts; they don't interfere). */
 .md-body [data-streamdown="code-block"] {
   display: block !important;
   flex: none !important;
@@ -67,7 +67,7 @@
   display: block;
   width: 13px !important;
   height: 13px !important;
-  transform: translateY(-2px); /* 对齐英文 Baseline（切平 abcd 底边，不随 gy 降笔下延） */
+  transform: translateY(-2px); /* aligns with the English baseline (flattens the abcd bottom edge, no dipping with the gy descender) */
 }
 
 .md-body [data-streamdown="code-block-header"] {
@@ -90,7 +90,7 @@
   text-transform: lowercase;
 }
 
-/* Streamdown 的按钮包装器自带负 margin；浮到标题栏右侧，不占代码区高度。 */
+/* Streamdown's button wrapper carries its own negative margin; floats to the title bar's right, taking no code-area height. */
 .md-body [data-streamdown="code-block"] > :not([data-streamdown]) {
   position: absolute !important;
   top: 0 !important;
@@ -238,8 +238,8 @@
   overflow-wrap: anywhere;
 }
 
-/* Shiki 双主题 token：变量写在 token span 的行内 style 上；仅带底色的 token（diff 类）
-   才应用背景变量，普通 token 沿用当前主题的文字色。 */
+/* Shiki dual-theme tokens: variables sit on the token span's inline style; only tokens with a background (diff classes)
+   apply the background variables; plain tokens keep the current theme's text color. */
 .md-body [data-streamdown="code-block-body"] pre span[style] {
   color: var(--sdm-c, inherit);
 }
@@ -256,14 +256,14 @@
   background-color: var(--shiki-dark-bg, var(--sdm-tbg));
 }
 
-/* 表格外壳：对齐 .md-table-wrap（table 本体经 components 挂 .md-table 类，走既有规则） */
+/* table shell: aligned with .md-table-wrap (the table itself gets the .md-table class via components and follows existing rules) */
 .md-body [data-streamdown="table-wrapper"] {
   width: 100%;
   overflow-x: auto;
   margin: 14px 0;
 }
 
-/* 图片：旧管线不渲染图片，这里只做不破版的基础收敛 */
+/* images: the old pipeline didn't render them; this is only basic containment so nothing breaks */
 .md-body [data-streamdown="image-wrapper"] {
   margin: 14px 0;
 }

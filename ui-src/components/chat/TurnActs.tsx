@@ -1,6 +1,8 @@
-// 一轮 output 结尾左下角的操作组：复制该条回复 + 从此处分叉 + 本轮结束时刻。
-// 分叉走 branch_session（截取从根到该 assistant 节点的历史条目，复制为全新会话文件）。
-// 锚点 entryId 由 host 落盘后回填（translate.ts）。
+// Action group at the bottom-left of a turn's output end: copy this reply + fork from
+// here + this turn's end time.
+// Forking goes through branch_session (slices the history entries from the root to this
+// assistant node, copying them into a brand-new session file).
+// The anchor entryId is backfilled by the host after persisting (translate.ts).
 import type { AssistantItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
@@ -9,7 +11,8 @@ import Icon from "../../Icon";
 import { t } from "../../i18n";
 import { t as i18nT } from "../../i18n";
 
-// 结束时刻：当天只给 HH:MM（与 CtxCard/ModelPage 的限额重置时间同款格式），跨天补月日
+// End time: same-day shows only HH:MM (same format as the limits reset time in
+// CtxCard/ModelPage); other days prepend month and day
 function fmtClock(ms: number) {
   const t = new Date(ms);
   const now = new Date();
@@ -21,7 +24,8 @@ function fmtClock(ms: number) {
 
 export default function TurnActs({ item }: { item: AssistantItem }) {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
-  // entryId 未回填（实时流式中尚未落盘）时分叉不可用：置灰而非隐藏，避免布局跳动
+  // Forking is unavailable while entryId is not yet backfilled (not persisted during live
+  // streaming): grayed out rather than hidden, to avoid layout jumps
   const canFork = !!item.entryId && !item.branching;
   return (
     <div className="turn-acts">
@@ -45,7 +49,7 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
         onClick={(e) => {
           e.stopPropagation();
           if (!canFork || !s) return;
-          patchActiveItem(item, (it) => { it.branching = true; }); // 全量重绘后仍保持禁用（标记随 item 数据存活）
+          patchActiveItem(item, (it) => { it.branching = true; }); // stays disabled across full redraws (the flag lives with the item data)
           useAppStore.getState().send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
         }}
       >

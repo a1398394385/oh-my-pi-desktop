@@ -1,11 +1,12 @@
-// 会话条目树工具函数与类型定义，供右栏 SessionTreePage 与主区域 MainSessionTree 共享复用。
+// Session entry tree utility functions and type definitions, shared by the right-panel
+// SessionTreePage and the main-area MainSessionTree.
 
-// 会话条目树节点（get_entry_tree 回包）
+// Session entry tree node (get_entry_tree response)
 export interface EntryNode {
   id: string;
   text?: string;
   label?: string;
-  ts?: string; // ISO 时间（fmtAgo 展示）
+  ts?: string; // ISO time (displayed via fmtAgo)
   kind?: string;
   role?: string;
   userReq?: boolean;
@@ -14,15 +15,15 @@ export interface EntryNode {
   children?: EntryNode[];
 }
 
-// 压平后的渲染行（缩进/连接符/导轨在过滤前算好）
+// Flattened render row (indentation/connectors/rails computed before filtering)
 export interface FlatRow {
   node: EntryNode;
   depth: number;
-  gutters: boolean[]; // 每层是否有竖导轨（true = │）
-  connector: string; // 分支连接符（"├── "/"└── "，线性链为空串）
+  gutters: boolean[]; // whether each level has a vertical rail (true = │)
+  connector: string; // branch connector ("├── " / "└── "; empty string for linear chains)
 }
 
-// 过滤模式（与底座 treeFilterMode 同名的子集，label 为中文）
+// Filter modes (a same-named subset of the core's treeFilterMode; labels resolve via i18n keys)
 export const FILTERS: [string, string][] = [
   ["default", "chat.filterDefault"],
   ["no-tools", "chat.filterNoTools"],
@@ -30,7 +31,8 @@ export const FILTERS: [string, string][] = [
   ["all", "chat.filterAll"],
 ];
 
-// 计算根→叶子的活跃路径 id 集合（叶可能不在树里，此时为空集，树无高亮）
+// Compute the active root→leaf path id set (the leaf may not be in the tree, in which case
+// the set is empty and the tree has no highlight)
 export function activePathIds(roots: EntryNode[], leafId: string | null): Set<string> {
   const ids = new Set<string>();
   if (!leafId) return ids;
@@ -52,8 +54,10 @@ export function activePathIds(roots: EntryNode[], leafId: string | null): Set<st
   return ids;
 }
 
-// 全树压平（过滤前算好缩进/连接符/导轨，隐藏行不影响剩余行的树形——与底座一致）：
-// 只有真分支点（兄弟 >1）才加深度；线性链保持与头部同列。active 分支排的兄弟最前。
+// Flatten the whole tree (indentation/connectors/rails computed before filtering; hidden
+// rows do not affect the tree shape of the remaining rows — same as the core):
+// only true branch points (siblings > 1) add depth; linear chains stay in the same column
+// as their head. Siblings on the active branch are sorted first.
 export function flattenRows(roots: EntryNode[], activeIds: Set<string>): FlatRow[] {
   const rows: FlatRow[] = [];
   const walk = (nodes: EntryNode[], depth: number, gutters: boolean[]): void => {
@@ -69,7 +73,7 @@ export function flattenRows(roots: EntryNode[], activeIds: Set<string>): FlatRow
   return rows;
 }
 
-// 行过滤（语义对齐底座 #applyFilter）。
+// Row filtering (semantics aligned with the core's #applyFilter).
 export function passesFilter(node: EntryNode, mode: string): boolean {
   switch (mode) {
     case "all":
@@ -78,12 +82,12 @@ export function passesFilter(node: EntryNode, mode: string): boolean {
       return !!node.userReq;
     case "no-tools":
       return !node.isSettings && !node.emptyAssistant && !(node.kind === "message" && node.role === "toolResult");
-    default: // default：隐藏 bookkeeping 条目与无文本的非叶 assistant
+    default: // default: hide bookkeeping entries and non-leaf assistants without text
       return !node.isSettings && !node.emptyAssistant;
   }
 }
 
-// 角色 → 行样式类（颜色走 style.css token）
+// Role → row style class (colors go through style.css tokens)
 export function roleClass(node: EntryNode): string {
   if (node.kind !== "message") return "st-sys";
   if (node.role === "user") return "st-user";
@@ -92,7 +96,7 @@ export function roleClass(node: EntryNode): string {
   return "st-sys";
 }
 
-// 「当前」徽标吸附点
+// Snap target of the "current" badge
 export function badgeTargetId(roots: EntryNode[], leafId: string | null, filter: string): string | null {
   if (!leafId) return null;
   const byId = new Map<string, EntryNode>();
@@ -112,7 +116,8 @@ export function badgeTargetId(roots: EntryNode[], leafId: string | null, filter:
   return leafId;
 }
 
-// 递归过滤子节点：若子节点本身不满足过滤，则递归提升其满足过滤的后代节点
+// Recursively filter children: a child that itself fails the filter recursively promotes
+// its descendants that pass
 export function getFilteredChildren(node: EntryNode, filter: string): EntryNode[] {
   const result: EntryNode[] = [];
   const search = (children: EntryNode[]) => {
@@ -128,7 +133,7 @@ export function getFilteredChildren(node: EntryNode, filter: string): EntryNode[
   return result;
 }
 
-// 瀑布流单项：节点项 或 分叉选择项
+// Waterfall item: a node item or a fork-selection item
 export type StreamItem =
   | {
       type: "node";
@@ -143,7 +148,7 @@ export type StreamItem =
       selectedId: string;
     };
 
-// 计算从根节点出发的单线瀑布流序列
+// Compute the single-line waterfall sequence starting from the roots
 export function buildStreamSequence(
   roots: EntryNode[],
   leafId: string | null,
@@ -222,7 +227,7 @@ export function buildStreamSequence(
   return sequence;
 }
 
-// 估算某个分支沿默认/选定路径的步数
+// Estimate the step count of a branch along its default/selected path
 export function countBranchSteps(
   node: EntryNode,
   selectedBranches: Map<string, string>,
@@ -247,13 +252,14 @@ export function countBranchSteps(
   return count;
 }
 
-// 瀑布流分段：每个分叉点及其下方所属的子分支节点集合作为一个 section
+// Waterfall section: each fork point plus the sub-branch node set below it forms one section
 export interface StreamSection {
   fork: Extract<StreamItem, { type: "fork" }> | null;
   nodes: Extract<StreamItem, { type: "node" }>[];
 }
 
-// 将扁平瀑布流序列按分叉点切分为独立段落，保持上半部分不动、下方区域独立切换
+// Split the flat waterfall sequence into independent sections at fork points, keeping the
+// upper half still while the area below switches independently
 export function splitSequenceIntoSections(sequence: StreamItem[]): StreamSection[] {
   const sections: StreamSection[] = [];
   let currentFork: Extract<StreamItem, { type: "fork" }> | null = null;

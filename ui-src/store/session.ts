@@ -1,6 +1,8 @@
-// 会话 slice：openSessions 容器与当前会话指针、模型目录容器、事件流守卫（hi/seq）、
-// event 帧处理、排队/steer 消息、LRU 闸门、系统通知。自 store.ts 平移（P3 波 2）。
-// 过渡期容器引用恒定（mutate + bump 兜底，波 3 组件切 selector 时改换引用）。
+// Session slice: the openSessions container and the current-session pointer, the model catalog
+// container, the event-stream guard (hi/seq), event frame handling, queued/steer messages, the LRU
+// gate, system notifications. Moved over from store.ts (P3 wave 2).
+// Transitional: container references stay constant (mutate + bump fallback; references get swapped
+// in wave 3 when components switch to selectors).
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
@@ -14,25 +16,25 @@ import type { ApprovalMode, EventFrame, MessagesFrame, PromptAttachment, TurnUsa
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
 
-// 经 ws slice 的发送 helper(引用恒定,等价旧顶层 send)
+// Send helper via the ws slice (stable reference, equivalent to the old top-level send)
 const send = (obj: unknown): void => {
   useAppStore.getState().send(obj);
 };
 
-/** setTimeout 句柄(DOM 与 Node 环境返回类型不同,统一别名) */
+/** setTimeout handle (DOM vs Node return types differ; unified alias) */
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface SessionSlice {
   activePath: string | null;
   selectedSubagent: string | null;
   approvalMode: ApprovalMode;
-  evtHost: string | null; // host 进程实例 ID（ready.hi / 盖戳事件.hi）；变化 = host 已重启
-  evtSeq: number; // 该实例下已应用的最高事件序号（位置落后的事件直接丢弃）
+  evtHost: string | null; // host process instance id (ready.hi / stamped event .hi); a change means the host restarted
+  evtSeq: number; // highest applied event sequence number under this instance (events behind the position are dropped outright)
   pendingCreate: boolean;
   pendingNewPrompt: { text: string; files: PromptAttachment[] } | null;
   openSessions: Map<string, OpenSession>; // path -> {sessionId,cwd,items,assistantDraft,streaming,subagents,...}
-  modelNames: Map<string, string>; // "provider/id" -> 显示名（原 composer.js 平移）
-  modelEfforts: Map<string, string[]>; // "provider/id" -> 思考档位列表
+  modelNames: Map<string, string>; // "provider/id" -> display name (moved over from composer.js)
+  modelEfforts: Map<string, string[]>; // "provider/id" -> thinking level list
 }
 
 export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = () => ({
@@ -48,28 +50,30 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
   modelEfforts: new Map(),
 });
 
-// ---------- 公共工具（session 域） ----------
+// ---------- Shared helpers (session domain) ----------
 export function isJunkPlaceholder(text: string | null | undefined): boolean {
   if (!text) return true;
   const t = text.trim();
   return t === "." || t === "。" || t === "·" || t === "•";
 }
 
-/** 工具行的展开态字段（渲染层按种类各取其一：终端/后台/设备行 cmdExpanded、编辑行 diffExpanded、
-    读取行 readExpanded，见 chat/ToolRow.jsx 与 chat/EditRow.jsx）——「运行中默认展开」按此落字段 */
+/** Expansion-state field of a tool row (the render layer picks one per kind: terminal/background/device
+    rows cmdExpanded, edit rows diffExpanded, read rows readExpanded, see chat/ToolRow.jsx and
+    chat/EditRow.jsx) — "expand while running" lands on the field chosen here */
 export function toolExpandKey(name: string | null | undefined): "readExpanded" | "diffExpanded" | "cmdExpanded" {
   if (name === "read" || name === "grep" || name === "glob" || name === "ls") return "readExpanded";
   if (name === "edit" || name === "write" || name === "apply_patch") return "diffExpanded";
   return "cmdExpanded";
 }
 
-// 工具行文件清单去重（原 tool-rows.js uniqueFiles 平移；store 的 tool 处理需要）
+// Deduplicate tool-row file lists (moved over from tool-rows.js uniqueFiles; needed by the store's tool handling)
 function uniqueFiles(files: string[] | null | undefined): string[] {
   return [...new Set(files ?? [])];
 }
 
-/** 会话的不可变更新（P3）：拷贝 session（按需连 items 数组）→ 回调 mutate 拷贝 →
- *  换 openSessions Map 引用（订阅 session/字段的 selector 按引用感知）。 */
+/** Immutable session update (P3): copy the session (items array too when needed) → the callback
+ *  mutates the copy → swap the openSessions Map reference (selectors subscribed to session/fields
+ *  detect by reference). */
 export function updateSession(sessionId: string, fn: (s: OpenSession) => void, withItems = true): void {
   useAppStore.setState((st) => {
     let hit: string | undefined;
@@ -88,7 +92,7 @@ export function updateSession(sessionId: string, fn: (s: OpenSession) => void, w
   });
 }
 
-// ---------- 定位与激活 ----------
+// ---------- Locating and activating ----------
 export function activeOpen(): OpenSession | undefined {
   const st = useAppStore.getState();
   return st.activePath ? st.openSessions.get(st.activePath) : undefined;
@@ -99,9 +103,10 @@ export function findBySessionId(id: string): OpenSession | undefined {
   return undefined;
 }
 
-// ---------- 渲染内存闸门：openSessions 的 LRU 淘汰 ----------
-/** 已打开会话的常驻上限。被驱逐的会话在用户切回时由 load_session 链路重新加载
-    （SessionRow / BranchTreePage 均已实现「未打开走宿主加载」分支），宿主会话池不受影响。 */
+// ---------- Render memory gate: LRU eviction for openSessions ----------
+/** Resident cap for opened sessions. An evicted session is reloaded through the load_session path
+    when the user switches back (SessionRow / BranchTreePage both implement the "not open → load via
+    host" branch); the host session pool is unaffected. */
 const OPEN_SESSIONS_MAX = 8;
 
 /** Activate a session: make it current, mark most-recently-used, then evict by cap.
@@ -119,7 +124,7 @@ export function activateSession(path: string): void {
     }
     return { openSessions, activePath: path, mainViewMode: "chat" };
   });
-  // 已读通知：已打开会话的前端切换不发 load_session，缓存保活的未读态靠本消息清除
+  // Read receipt: frontend switches between already-open sessions send no load_session; the unread state kept alive by cache keepalive is cleared via this message
   useAppStore.getState().send({ type: "mark_seen", path });
   if (prev !== path) restoreRightPanel(path); // no snapshot (first open/newly created) = inherit current panel
   scheduleEvict();
@@ -146,10 +151,12 @@ export function openSessionByPath(path: string, cwd?: string): void {
   }
 }
 
-// 延迟驱逐（合并多次触发）。必须延迟而不是同步：宿主在 runEnd 后可能**立刻续轮**
-// （parked followUp 放回 + a.continue()，见 host.ts 的 attachEntry），同步驱逐会抢在
-// 续轮的 turn_start 帧之前把会话踢出 openSessions，后续帧 findBySessionId 找不到即丢弃，
-// 表现为会话在 UI 上卡死。等一小段让续轮帧先到（到了会把 streaming 设回 true，自然受保护）。
+// Delayed eviction (coalesces multiple triggers). Must be delayed, not synchronous: after runEnd the
+// host may **immediately continue the run** (parked followUp put back + a.continue(), see attachEntry
+// in host.ts); synchronous eviction would kick the session out of openSessions before the resumed
+// run's turn_start frame, later frames would be dropped on findBySessionId misses, and the session
+// would appear frozen in the UI. Wait a moment so resumed-run frames land first (they set streaming
+// back to true, which naturally protects the session).
 let evictTimer: TimerHandle | undefined;
 function scheduleEvict(): void {
   clearTimeout(evictTimer);
@@ -159,8 +166,9 @@ function scheduleEvict(): void {
   }, 3000);
 }
 
-/** 超限驱逐：从最久未激活的一端开始，跳过当前会话与流式中的会话
-    （流式会话被驱逐会丢掉后续 event 帧——findBySessionId 找不到即丢弃）。 */
+/** Over-cap eviction: start from the least-recently-activated end, skipping the current session and
+    streaming sessions (evicting a streaming session would lose its subsequent event frames — dropped
+    on findBySessionId misses). */
 export function evictOpenSessions(): void {
   useAppStore.setState((st) => {
     if (st.openSessions.size <= OPEN_SESSIONS_MAX) return {};
@@ -174,7 +182,7 @@ export function evictOpenSessions(): void {
   });
 }
 
-// 清除分叉/导航的防连点标记（item.branching 随 item 数据存活），递归进 loop 组
+// Clear the fork/navigation double-click guards (item.branching lives with the item data), recursing into loop groups
 export function clearBranchingMarks(items: SessionItem[]): void {
   for (const it of items) {
     if (it.role === "assistant" && it.branching) it.branching = false;
@@ -182,8 +190,9 @@ export function clearBranchingMarks(items: SessionItem[]): void {
   }
 }
 
-// 轮收尾 / 宿主重启：把仍标着运行中的工具项复位。中断、异常路径可能收不到 tool_update，
-// 不复位就在行上留下永久转圈（与 hostInstanceReset 清「假 spinner」同一目的）
+// Turn teardown / host restart: reset tool items still marked running. Interrupted and error paths
+// may never see a tool_update; without the reset the row keeps an eternal spinner (same purpose as
+// hostInstanceReset clearing "ghost spinners")
 function clearRunningTools(s: OpenSession): void {
   const walk = (list: SessionItem[] | undefined): void => {
     for (const it of list || []) {
@@ -194,9 +203,10 @@ function clearRunningTools(s: OpenSession): void {
   walk(s.items);
 }
 
-// ---------- 模型目录（原 composer.js ingestModels 平移；变更换 Map 引用） ----------
-// models 帧是 scopedModels 全量快照（ready / models / 启停推送一致），按帧重建而非合并：
-// 合并会让已关闭的模型残留在输入框菜单里
+// ---------- Model catalog (moved over from composer.js ingestModels; changes swap Map references) ----------
+// The models frame is a full scopedModels snapshot (ready / models / enable-disable pushes agree),
+// rebuilt per frame instead of merged: merging would leave disabled models lingering in the
+// composer menu
 export function ingestModels(models?: { id: string; name?: string | null; efforts?: string[] | null }[]): void {
   useAppStore.setState(() => {
     if (!models?.length) return {};
@@ -215,7 +225,7 @@ export function getSupportedThinkingForModel(modelId: string | null | undefined)
   return efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
 }
 
-// 从 models/ready 帧提取新建会话配置默认
+// Extract new-session config defaults from models/ready frames
 export function ingestModelDefaults(msg: { defaultModel?: string | null; defaultThinking?: string | null }): boolean {
   const has = "defaultModel" in msg || "defaultThinking" in msg;
   if (!has) return false;
@@ -223,9 +233,10 @@ export function ingestModelDefaults(msg: { defaultModel?: string | null; default
   return true;
 }
 
-// ---------- 过程封存 / 排队消息（core.js 平移，渲染调用改 bump） ----------
-// 把本轮自 turnItemStart 起的过程封存为 loop 组（中间 assistant 留组外），并把
-// turnItemStart 重置到组后：用于流式中插入用户消息时的预封存，与 steer 消费续跑
+// ---------- Run sealing / queued messages (moved over from core.js; render calls now bump) ----------
+// Seal the process of the current run from turnItemStart into a loop group (the intermediate
+// assistant stays outside the group) and reset turnItemStart past the group: used both for the
+// pre-seal when a user message is inserted mid-stream and for the resumed run after steer consumption
 export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
   const startIdx = s.turnItemStart ?? s.items.length;
   const runItems = s.items.splice(startIdx);
@@ -264,32 +275,34 @@ function queueIndexOf(list: { text?: string }[] | undefined, text: string | unde
   return (list ?? []).findIndex((m) => (m.text || "") === text);
 }
 
-// 删除：出队 + 移除气泡。队列气泡必为 user 条目(pending 标记只落在 UserItem 上),
-// 非 user 条目直接进入早退(运行期不会发生,仅为判别联合收窄)
+// Delete: dequeue + remove the bubble. Queue bubbles are always user entries (the pending marker
+// only lands on UserItem); non-user entries hit the early return (never happens at runtime, exists
+// only to narrow the discriminated union)
 export function dropQueueMsg(s: OpenSession, item: SessionItem): void {
   if (item.role !== "user") return;
   const which = item.pending === "steer" ? "steering" : "followUp";
   const list = which === "steering" ? s.steering : s.queued;
   const i = queueIndexOf(list, item.text);
-  if (i < 0 || !list) return; // i >= 0 时 list 必存在(queueIndexOf 对 undefined 恒返回 -1)
+  if (i < 0 || !list) return; // when i >= 0 the list must exist (queueIndexOf always returns -1 for undefined)
   send({ type: "drop_queued", sessionId: s.sessionId, queue: which, index: i });
   updateSession(s.sessionId, (next) => {
     const l = which === "steering" ? next.steering : next.queued;
     const ni = queueIndexOf(l, item.text);
-    if (ni >= 0 && l) l.splice(ni, 1); // update 后重查(期间可能有并发帧变更队列)
+    if (ni >= 0 && l) l.splice(ni, 1); // re-look up after the update (concurrent frames may have changed the queue meanwhile)
     const j = next.items.lastIndexOf(item);
     if (j >= 0) next.items.splice(j, 1);
   });
 }
 
-// 编辑：内容回输入框（composerSetSignal 由 Composer effect 消费），再删除
+// Edit: put the content back into the composer (composerSetSignal is consumed by a Composer effect), then delete
 export function editQueueMsg(s: OpenSession, item: SessionItem): void {
   useAppStore.getState().setComposerValue(item.text ?? "");
   dropQueueMsg(s, item);
 }
 
-// 立即发送：排队态转 steer。不截断过程、不预封存——分割只发生在消费时刻
-// （steer_consumed 把气泡上方全部过程封存成 loop 组）；气泡由渲染层固定在消息流底部
+// Send now: switch from queued to steer state. No process truncation, no pre-seal — the split only
+// happens at consumption time (steer_consumed seals the whole process above the bubble into a loop
+// group); the bubble is pinned by the render layer at the bottom of the message stream
 export function sendNowQueueMsg(s: OpenSession, item: SessionItem): void {
   const i = queueIndexOf(s.queued, item.text);
   if (i < 0) return;
@@ -303,7 +316,7 @@ export function sendNowQueueMsg(s: OpenSession, item: SessionItem): void {
   });
 }
 
-// 放回队列：steer 态转回排队顶端，气泡同步移除（消息只保留在队列卡中）
+// Requeue: switch steer state back to the head of the queue, removing the bubble (the message lives only in the queue card)
 export function requeueSteerMsg(s: OpenSession, item: SessionItem): void {
   const i = queueIndexOf(s.steering, item.text);
   if (i < 0) return;
@@ -318,14 +331,14 @@ export function requeueSteerMsg(s: OpenSession, item: SessionItem): void {
   });
 }
 
-// ---------- 系统通知（Tauri 壳 send_desktop_notification；事件重复两遍 → 10s 去重） ----------
+// ---------- System notifications (Tauri shell send_desktop_notification; duplicated events → 10s dedupe) ----------
 const notifyLastAt = new Map<string, number>();
 export function notifyDesktop(kind: string, s: OpenSession, title: string, body: string): void {
   const now = Date.now();
   const key = `${s.sessionId}:${kind}`;
   if (now - (notifyLastAt.get(key) ?? 0) < 10_000) return;
   notifyLastAt.set(key, now);
-  if (!invoke) return; // 非 Tauri 环境（浏览器直连调试）：功能不存在，静默跳过
+  if (!invoke) return; // non-Tauri environment (browser direct-connect debugging): feature absent, skip silently
   const st = useAppStore.getState();
   const path = [...st.openSessions.entries()].find(([, v]) => v === s)?.[0];
   if (path === st.activePath && document.hasFocus()) return;
@@ -334,9 +347,10 @@ export function notifyDesktop(kind: string, s: OpenSession, title: string, body:
   );
 }
 
-// ---------- 流式增量合并渲染：100ms 窗口内多帧只换引用一次（防高频重渲染打爆主线程） ----------
-// delta 帧就地 mutate 当前 session 对象（不经 set，zustand 不感知、零渲染），窗口结束时
-// 对累计的会话各做一次浅拷换引用，订阅者统一重渲染——语义与旧「mutate + 延迟 notify」一致。
+// ---------- Streaming delta coalesced rendering: many frames within a 100ms window swap the reference once (prevents high-frequency re-renders from saturating the main thread) ----------
+// Delta frames mutate the current session object in place (no set, invisible to zustand, zero
+// renders); at window close each accumulated session gets one shallow copy and reference swap, and
+// subscribers re-render together — same semantics as the old "mutate + delayed notify".
 const pendingDelta = new Set<string>();
 let deltaRenderTimer: TimerHandle | undefined;
 export function applyDelta(sessionId: string, fn: (s: OpenSession) => void): void {
@@ -349,23 +363,24 @@ export function applyDelta(sessionId: string, fn: (s: OpenSession) => void): voi
     deltaRenderTimer = undefined;
     const ids = [...pendingDelta];
     pendingDelta.clear();
-    for (const id of ids) updateSession(id, () => {}, false); // 空补丁浅拷换引用即通知
+    for (const id of ids) updateSession(id, () => {}, false); // empty patch: the shallow copy + reference swap is the notification
   }, 100);
 }
 
-// ---------- 事件流位置守卫（host 盖戳 hi/seq 的消费端） ----------
-// hi 变化 = host 进程已重启：清掉所有会话的死流式状态（假 spinner / 半截 draft），
-// 避免旧实例残留把视图永久挂死；同 hi 内 seq 落后的帧丢弃（位置落后丢弃不合并），
-// 跳号只告警不丢帧（重连补洞未实现，先观测）。
+// ---------- Event-stream position guard (consumer side of the host's stamped hi/seq) ----------
+// A hi change = the host process restarted: clear dead streaming state in all sessions (ghost
+// spinners / half-finished drafts) so leftovers from the old instance never wedge the view; within
+// the same hi, frames with a behind-position seq are dropped (drop, not merge, for behind-position
+// frames); gaps only warn without dropping (reconnect hole-filling is unimplemented, observing for now).
 export function hostInstanceReset(hi: string | null, seq: number): void {
   useAppStore.setState((st) => {
     if (st.evtHost === null || st.evtHost === hi) {
       return { evtHost: hi, evtSeq: seq };
     }
-    // 与 turn_end 的收尾动作对齐（host 死了 = 所有 turn 永远等不到 turn_end）
+    // Align with turn_end teardown (a dead host = every turn waits forever for a turn_end that never comes)
     const openSessions = new Map<string, OpenSession>();
     for (const [p, s] of st.openSessions) {
-      const next = { ...s, items: s.items.slice() }; // items 一并拷贝:复位 running 走 item mutate
+      const next = { ...s, items: s.items.slice() }; // copy items too: resetting running mutates items
       next.assistantDraft = "";
       next.streaming = false;
       next.workingText = null;
@@ -383,7 +398,7 @@ export function hostInstanceReset(hi: string | null, seq: number): void {
   });
 }
 
-/** 盖戳帧携带的位置戳子集(仅 stampEvent 帧有 hi/seq) */
+/** Position-stamp subset carried by stamped frames (only stampEvent frames have hi/seq) */
 interface EventStampFields {
   hi?: string;
   seq?: number;
@@ -392,18 +407,19 @@ interface EventStampFields {
 export function admitStampedEvent(msg: EventStampFields): boolean {
   const st = useAppStore.getState();
   if (st.evtHost !== msg.hi) {
-    // hi/seq 成对盖戳(host/host.ts:659-662);缺失时回落 null/0 仅类型兜底,运行期不可达
+    // hi/seq are stamped in pairs (host/host.ts:659-662); falling back to null/0 when missing is a
+    // type-level fallback only, unreachable at runtime
     hostInstanceReset(msg.hi ?? null, msg.seq ?? 0);
     return true;
   }
-  const seq = msg.seq!; // 盖戳帧必有 seq(同上),断言只为收紧类型,运行期语义与原实现一致
-  if (seq <= st.evtSeq) return false; // 位置落后：丢弃
+  const seq = msg.seq!; // stamped frames always have seq (same as above); the assertion only tightens the type, runtime semantics match the original
+  if (seq <= st.evtSeq) return false; // behind position: drop
   if (seq > st.evtSeq + 1) console.warn(`[evt] 跳号 ${st.evtSeq} → ${seq}（按序放行，仅观测）`);
   useAppStore.setState({ evtSeq: seq });
   return true;
 }
 
-// ---------- event 帧处理（原 onMessage case "event" 的全部 kind 分支;updateSession 不可变更新） ----------
+// ---------- event frame handling (all kind branches of the old onMessage case "event"; immutable updates via updateSession) ----------
 export function applyEvent(msg: EventFrame): void {
   const st = useAppStore.getState();
   if (msg.kind === "turn_start") {
@@ -413,9 +429,10 @@ export function applyEvent(msg: EventFrame): void {
         s.streaming = true;
         s.assistantDraft = "";
         s.workingText = t("notify.working");
-        // run 首轮才初始化过程起点与计时：轮内续轮(工具循环)不重置,
-        // 否则每个模型轮各自成组、时长/usage 全是单轮口径(实时/重载呈现分裂)；
-        // 起点可能已由本地发送预置（发送即计时），此处不覆盖
+        // Initialize the process start and clock only on the run's first turn: in-run continuations
+        // (tool loops) don't reset, otherwise every model turn would form its own group and
+        // duration/usage would be per-turn (live vs reloaded views would diverge);
+        // the start may already be preset by local sending (send = start the clock), don't overwrite
         if (s.turnItemStart == null) {
           s.turnStartAt = s.turnStartAt ?? Date.now();
           s.turnItemStart = s.items.length;
@@ -443,13 +460,13 @@ export function applyEvent(msg: EventFrame): void {
           last.thinking = msg.thinking || "";
           last.expandable = !!msg.expandable;
           last.streaming = false;
-          last.expanded = false; // 思考完成时收起标签
+          last.expanded = false; // collapse the label when thinking completes
         }
         s.workingText = t("notify.working");
       }
     });
   } else if (msg.kind === "thinking_delta") {
-    // 只改最后一个思考 item 的字段;就地 mutate,100ms 窗口 flush 时统一换引用
+    // Only touch fields of the last thinking item; mutate in place, references swap together at the 100ms window flush
     applyDelta(msg.sessionId, (s) => {
       const last = [...s.items].reverse().find((it): it is ThinkingItem => it.role === "thinking" && !!it.streaming);
       if (last) last.thinking = (last.thinking || "") + msg.text;
@@ -465,14 +482,15 @@ export function applyEvent(msg: EventFrame): void {
         text: msg.name,
         name: msg.name,
         toolCallId: msg.toolCallId,
-        // wire 形状为 Record<string, unknown>,此处收窄为本仓读取字段的上位类型
+        // wire shape is Record<string, unknown>; narrowed here to the supertype of the fields this repo reads
         args: msg.args as ToolArgs | undefined,
         files: msg.files,
-        // tool 帧 = 工具开始执行（args 已到、结果未到），tool_update 帧才置回 false。
-        // 所有工具一律置位：结果位在 running 期间渲染 Spin 占位，非 running 才判「无输出」
+        // The tool frame = the tool starts executing (args arrived, result not yet); only the
+        // tool_update frame sets it back to false. Set for every tool unconditionally: the result
+        // slot renders a Spin placeholder while running; "no output" is judged only when not running
         running: true,
       };
-      // 「工具运行中默认展开」（Ctrl+O）：运行期间展开输出卡，结束时由 tool_update 收起
+      // "expand while running" (Ctrl+O): the output card stays expanded during the run, tool_update collapses it at the end
       if (st.uiPrefs.expandToolOutput) toolItem[toolExpandKey(msg.name)] = true;
       s.items.push(toolItem);
       if (msg.intent) s.workingText = msg.intent;
@@ -488,16 +506,17 @@ export function applyEvent(msg: EventFrame): void {
         if (msg.removed != null) last.removed = msg.removed;
         if (msg.todo) last.todo = msg.todo;
         if (msg.output != null) last.output = msg.output;
-        if (msg.details != null) last.details = msg.details as ToolDetails; // wire 为 unknown,收窄为本仓读取字段的上位类型
-        if (msg.diffContent != null) last.diffContent = msg.diffContent; // 当次工具真实 diff，编辑行内联展开优先用它
+        if (msg.details != null) last.details = msg.details as ToolDetails; // wire is unknown; narrowed to the supertype of the fields this repo reads
+        if (msg.diffContent != null) last.diffContent = msg.diffContent; // the tool's real diff for this call; edit-row inline expansion prefers it
         last.running = false;
-        // 「工具运行中默认展开」：结束时收起（运行期自动展开的那张卡）
+        // "expand while running": collapse at the end (the card auto-expanded during the run)
         if (st.uiPrefs.expandToolOutput) last[toolExpandKey(last.name)] = false;
       }
     });
   } else if (msg.kind === "turn_end") {
-    // 轮内帧（runEnd:false，工具循环的每个模型轮）：只收尾草稿，不封存不停表——
-    // 整 run 的过程归属一个 loop 组，中间 assistant 留在组内（与重载视图一致）
+    // In-run frames (runEnd:false, each model turn of a tool loop): only settle the draft, no
+    // sealing, no clock stop — the whole run's process belongs to one loop group, intermediate
+    // assistants stay inside the group (matching the reloaded view)
     if (!msg.runEnd) {
       updateSession(msg.sessionId, (s) => {
         if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
@@ -505,55 +524,60 @@ export function applyEvent(msg: EventFrame): void {
       });
       return;
     }
-    // run 收尾帧（宿主 agent_end 映射，usage 已是整 run 累计、时长取 turnStartAt 起）：
-    // 封存一次 + entryId 回填。封存前先复位运行中工具——中断/异常路径可能收不到
-    // tool_update，不复位会在行上留下永久转圈
+    // Run teardown frame (mapped from the host's agent_end; usage is already the whole-run total,
+    // duration counts from turnStartAt): seal once + backfill entryIds. Reset running tools before
+    // sealing — interrupted/error paths may never see a tool_update; without the reset the rows
+    // keep an eternal spinner
     updateSession(msg.sessionId, (s) => {
       if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
       s.assistantDraft = "";
-      // AbortSignal 结束等待时宿主不单独发 approval_resolved，轮结束时清理剩余请求。
+      // When an AbortSignal ends the wait, the host sends no separate approval_resolved; clean up leftover requests at turn end.
       s.pendingApprovals = [];
       s.streaming = false;
       s.workingText = null;
       clearRunningTools(s);
       sealRunItems(s, msg.usage);
-      // 宿主在落盘完成后回贴本轮 user 消息的 entryId（消息行分叉按钮的寻址键）；
-      // 贴给本轮最后一条无 entryId 的 user 消息（乐观插入的那条）
+      // After persisting completes, the host sticks the entryId of this run's user message back on
+      // (addressing key of the message row's fork button); attach it to the last user message of
+      // this run without an entryId (the optimistically inserted one)
       if (msg.userEntryId) {
         const u = [...s.items].reverse().find((it): it is UserItem => it.role === "user" && !it.entryId);
         if (u) u.entryId = msg.userEntryId;
       }
-      // 本轮 output 末尾 assistant 的 entryId（.turn-acts 分叉按钮的寻址键）：
-      // seal 后中间 assistant 已收进 loop 组，顶层只剩这条轮末输出
+      // entryId of the assistant at the end of this run's output (addressing key of the
+      // .turn-acts fork button): after sealing, intermediate assistants are inside the loop group,
+      // only this turn-final output remains at top level
       if (msg.assistantEntryId) {
         const a = [...s.items].reverse().find((it): it is AssistantItem => it.role === "assistant" && !it.entryId);
         if (a) a.entryId = msg.assistantEntryId;
       }
-      // 本轮结束时刻（output 尾部展示）：实时路径取 runEnd 到达时刻，
-      // 重载路径由 host 从磁盘条目 timestamp 回填，两者口径一致
+      // End timestamp of this run (shown at the output tail): the live path takes the runEnd
+      // arrival time, the reload path is backfilled by the host from the on-disk entry timestamp;
+      // both agree
       const tailA = [...s.items].reverse().find((it): it is AssistantItem => it.role === "assistant");
       if (tailA && tailA.endMs == null) tailA.endMs = Date.now();
-      s.turnItemStart = null; // 本轮彻底结束，不再继续累积
+      s.turnItemStart = null; // the run is fully over, stop accumulating
       s.turnStartAt = null;
     });
-    // ---- 副作用（数据更新后;updateSession 已带 _v bump） ----
+    // ---- Side effects (after the data update; updateSession already carries the _v bump) ----
     const st2 = useAppStore.getState();
     const s = findBySessionId(msg.sessionId);
     if (!s) return;
-    // 新轮次已落盘（导航后续聊同样走这里）：条目树失效，会话树页下次渲染重拉
+    // A new turn has been persisted (post-navigation chat lands here too): the entry tree is stale, the session-tree page refetches on next render
     if (st2.rightState.entryTree?.sessionId === msg.sessionId) {
       useAppStore.setState((st3) => ({ rightState: { ...st3.rightState, entryTree: null } }));
     }
-    send({ type: "list_sessions" }); // title/firstMessage 可能已更新
-    if (s.isGit) st2.refreshGitDiff(true); // agent 可能改了文件，强制重拉
-    // 会话已结束：非当前正在查看的会话标记「未查看」，列表显示灰白圆点
+    send({ type: "list_sessions" }); // title/firstMessage may have changed
+    if (s.isGit) st2.refreshGitDiff(true); // the agent may have changed files, force a refetch
+    // Session finished: mark sessions other than the one being viewed as "unseen"; the list shows a dimmed dot
     const p = [...st2.openSessions.entries()].find(([, v]) => v === s)?.[0];
     if (p && p !== st2.activePath) {
       useAppStore.setState((st3) => ({ unseenFinished: new Set(st3.unseenFinished).add(p) }));
       useAppStore.getState().saveUnseen();
     }
-    // 后台会话完成 → 系统通知：title 取磁盘列表里的会话标题（未收录时「后台会话」），
-    // body 取最后一条 assistant 文本截断 80 字作摘要，无则「已完成」
+    // Background session finished → system notification: the title comes from the session title in
+    // the on-disk list (notify.bgSessionTitle when not listed), the body is the last assistant text
+    // truncated to 80 chars as the summary (notify.finished when absent)
     const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
     const summary = (lastA?.text || "").trim();
     notifyDesktop(
@@ -562,14 +586,17 @@ export function applyEvent(msg: EventFrame): void {
       st2.diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || t("notify.bgSessionTitle"),
       summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"),
     );
-    // 本会话退出流式态后补一次驱逐：全部会话都在跑时打开新会话，驱逐循环会因「流式
-    // 会话受保护」而一个都删不掉；若只在激活时机触发，这些会话跑完后会一直占着内存，
-    // 直到用户下次切会话。放在 runEnd 块末尾——上面的未读标记与系统通知都依赖 s 还在
-    // openSessions 里（unseenFinished 是按 Map 反查 path 的）。走延迟版：宿主可能
-    // 立刻续轮，同步驱逐会抢在续轮帧之前把会话踢掉。
+    // One extra eviction pass after this session leaves streaming state: when a new session is
+    // opened while every session is running, the eviction loop deletes nothing because "streaming
+    // sessions are protected"; if eviction only triggered at activation, those sessions would keep
+    // holding memory after finishing until the user's next session switch. Placed at the end of the
+    // runEnd block — the unread marking and system notification above depend on s still being in
+    // openSessions (unseenFinished reverse-looks-up the path from the Map). Use the delayed variant:
+    // the host may immediately continue the run, and synchronous eviction would kick the session out
+    // before the resumed-run frames arrive.
     scheduleEvict();
   } else if (msg.kind === "thinking_level") {
-    // auto 档位判定帧：只记判定结果供右下角显示 auto·档位，不改 s.thinking
+    // Auto-level resolution frame: only records the resolved level for the bottom-right "auto · level" display; does not touch s.thinking
     if (msg.configured === "auto") {
       updateSession(
         msg.sessionId,
@@ -580,7 +607,7 @@ export function applyEvent(msg: EventFrame): void {
       );
     }
   } else if (msg.kind === "mention") {
-    // @ 提及落盘回读：fileMention 消息无对应流式事件，宿主在 agent_end 重读会话文件补发
+    // @ mention persisted read-back: fileMention messages have no streaming-event counterpart; the host re-reads the session file at agent_end and re-sends it
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "mention", text: "", files: msg.files || [] });
     });
@@ -595,8 +622,9 @@ export function applyEvent(msg: EventFrame): void {
   }
 }
 
-/** 会话内条目的字段补丁（C 批组件用：工具行展开态/loop 折叠态等 item 级切换）。
- *  递归穿透 loop 组定位首个匹配 item,沿途拷贝数组并 mutate 拷贝,换 openSessions 引用。 */
+/** Field patch for an entry inside a session (used by batch-C components: item-level toggles like
+ *  tool-row expansion / loop collapse). Recurses through loop groups to locate the first matching
+ *  item, copying arrays along the way and mutating the copy, then swaps the openSessions reference. */
 export function patchSessionItem(sessionId: string, match: (it: SessionItem) => boolean, patch: (it: SessionItem) => void): void {
   const walk = (list: SessionItem[]): SessionItem[] | null => {
     for (let i = 0; i < list.length; i++) {
@@ -625,13 +653,13 @@ export function patchSessionItem(sessionId: string, match: (it: SessionItem) => 
   });
 }
 
-// ---------- steer_consumed 帧处理（队列消费即分割点,原 onMessage case 平移;不可变更新） ----------
+// ---------- steer_consumed frame handling (queue consumption is the split point; moved over from the onMessage case; immutable update) ----------
 export function applySteerConsumed(msg: { sessionId: string; texts?: string[] }): void {
   const prev = findBySessionId(msg.sessionId);
   if (!prev) return;
   updateSession(msg.sessionId, (s) => {
     const bubbles: { bubble: UserItem; loop?: LoopItem }[] = [];
-    // 气泡查找要穿透 loop 组：turn_end 可能先于此帧到达并把气泡封进了组里
+    // Bubble lookup must pierce loop groups: turn_end may arrive before this frame and seal the bubble into a group
     const findBubble = (t: string): { bubble: UserItem; loop?: LoopItem } | null => {
       for (let i = s.items.length - 1; i >= 0; i--) {
         const x = s.items[i];
@@ -648,7 +676,7 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
     };
     for (const t of msg.texts ?? []) {
       const found = findBubble(t);
-      // 重复消费帧（RPC 重复推送）:该文本已有转正过的气泡则跳过，不重复补画
+      // Duplicate consumption frame (RPC double-push): skip if the text already has a promoted bubble; don't repaint it
       if (!found && [...s.items].reverse().some((x) => x.role === "user" && x.steerDone && x.text === t)) continue;
       bubbles.push(found ?? { bubble: { role: "user", text: t } });
       const q = s.queued ?? [];
@@ -664,7 +692,7 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
       const k = s.items.indexOf(bubble);
       if (k >= 0) s.items.splice(k, 1);
       else if (b.loop) {
-        const items = b.loop.items ?? []; // loop 项必有 items 数组（封组装配时建立）
+        const items = b.loop.items ?? []; // a loop item always has its items array (established when the group was assembled)
         const ki = items.indexOf(bubble);
         if (ki >= 0) items.splice(ki, 1);
         if (items.length === 0) {
@@ -687,22 +715,22 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
   });
 }
 
-/** messages 帧重建 transcript（compact/branch/navigate/load 后整体替换,不可变更新） */
+/** Rebuild the transcript from a messages frame (wholesale replacement after compact/branch/navigate/load; immutable update) */
 export function rebuildMessages(msg: MessagesFrame): void {
   const prev = findBySessionId(msg.sessionId);
   if (!prev) return;
   updateSession(msg.sessionId, (s) => {
-    // 执行中分隔行不属于 transcript,重建时保留在尾;同 command 的落盘完成行已到则被吸收
+    // In-flight separator rows are not part of the transcript; keep them at the tail on rebuild; if the persisted done row of the same command already arrived, they're absorbed
     const pendingPhases = s.items.filter(
       (it) =>
         it.role === "phase" &&
         it.phase === "start" &&
         !msg.messages.some((m) => m.role === "phase" && m.phase === "done" && m.command === it.command),
     );
-    // wire 条目(TranscriptItem,role 为字符串联合)逐条断言为本地判别联合:字段名同源(host/state.ts)
+    // Wire entries (TranscriptItem, role is a string union) asserted one by one into the local discriminated union: field names share the same origin (host/state.ts)
     s.items = msg.messages.map((m) => ({ ...m }) as SessionItem).concat(pendingPhases);
   });
-  // transcript 被整体替换（compact/branch/navigate 后）：条目树必然变化，置废下次渲染重拉
+  // The transcript was wholesale-replaced (after compact/branch/navigate): the entry tree necessarily changed, invalidate it so the next render refetches
   const st = useAppStore.getState();
   if (st.rightState.entryTree?.sessionId === msg.sessionId) {
     useAppStore.setState((st2) => ({ rightState: { ...st2.rightState, entryTree: null } }));

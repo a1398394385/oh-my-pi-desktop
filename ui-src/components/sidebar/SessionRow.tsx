@@ -1,6 +1,6 @@
-// 会话行（ui/sidebar.js taskRow 平移）：置顶图钉 / 运行中 spinner / 未读圆点 / 标题 /
-// 相对时间（清理模式下换删除钮）。单击打开会话（loadBranchSession 同款链路），
-// 双击标题原地进入行内重命名。
+// Session row (ported from ui/sidebar.js taskRow): pin / running spinner / unread dot /
+// title / relative time (swapped for a delete button in manage mode). Single click opens the
+// session (same chain as loadBranchSession); double-clicking the title enters inline rename in place.
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,12 +9,13 @@ import Icon from "../../Icon";
 import { IS_WINDOWS, MOD } from "../../platform";
 import { fmtAgo, sessionLabel } from "./util";
 
-// 会话条目（diskProjects[].sessions / archivedSessions 元素的结构子集；
-// store 侧完整类型由 P2F 批定义，此处只声明本批消费字段，结构兼容即可）
+// Session entry (structural subset of diskProjects[].sessions / archivedSessions elements;
+// the full store-side type is defined by the P2F batch — this declares only the fields this
+// batch consumes; structural compatibility suffices)
 export interface SessionInfo {
   path: string;
   id: string;
-  title?: string | null; // 宿主 DiskSessionRow 为 string | null
+  title?: string | null; // host DiskSessionRow is string | null
   firstMessage?: string;
   modified: string;
   repo?: string;
@@ -22,13 +23,13 @@ export interface SessionInfo {
   archived?: boolean;
 }
 
-// 行内重命名态（key 区分置顶/最近/项目组中的同一会话副本）
+// Inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
 export interface RenamingState {
   key: string;
   path: string;
 }
 
-// 行交互回调集（Sidebar 组装后分发给各会话行）
+// Row interaction callback set (assembled by Sidebar and distributed to each session row)
 export interface SessionRowCallbacks {
   onRenameStart: (key: string, path: string) => void;
   onRenameDone: () => void;
@@ -36,7 +37,7 @@ export interface SessionRowCallbacks {
   onContext: (e: ReactMouseEvent, s: SessionInfo, key: string) => void;
 }
 
-// 会话行完整 props（rowKey 必传：区分同一会话在置顶/最近/项目组中的副本）
+// Full session row props (rowKey required: distinguishes copies of the same session across pinned/recent/project groups)
 export interface SessionRowProps extends SessionRowCallbacks {
   s: SessionInfo;
   sub?: boolean;
@@ -49,17 +50,19 @@ export interface SessionRowProps extends SessionRowCallbacks {
   shortcutDigit?: string;
 }
 
-// 行内重命名编辑行（原 startRename）：Enter 保存（空标题/未改名不保存）、Esc/失焦按取消处理。
-// 保存只发 rename_session，标题以宿主重拉列表为准，本地不改 diskProjects。
+// Inline rename editor row (old startRename): Enter saves (empty title/unchanged doesn't),
+// Esc/blur counts as cancel.
+// Saving only sends rename_session; the title follows the host's list refetch — diskProjects
+// is not modified locally.
 function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDone: () => void }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const el = ref.current!; // mount 后即存在（原 JS 直接解引用，保持同一假设）
+    const el = ref.current!; // exists right after mount (the old JS dereferenced directly; same assumption kept)
     el.focus();
     if (s.title) el.select();
   }, []);
-  let done = false; // Enter 保存后随后的 blur 不再重复处理
+  let done = false; // the blur following an Enter save is not processed again
   const finish = (save: boolean) => {
     if (done) return;
     done = true;
@@ -67,7 +70,7 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
     if (save && title && title !== (s.title || "")) {
       send({ type: "rename_session", sessionId: s.id, title });
     }
-    onDone(); // 恢复原行：取消/未改名直接回显；保存路径由宿主重拉列表更新标题
+    onDone(); // restore the original row: cancel/unchanged just re-displays; the save path updates the title via the host's list refetch
   };
   return (
     <div className={"task" + (sub ? " sub" : "") + " renaming"}>
@@ -93,7 +96,7 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
 
 export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
   const { t } = useTranslation();
-  // 状态经 selector 订阅（须在 renaming 早退之前：hooks 不可条件调用）
+  // State subscribed via selectors (must run before the renaming early return: hooks cannot be conditional)
   const openSessions = useAppStore((s) => s.openSessions);
   const pinnedSessions = useAppStore((s) => s.pinnedSessions);
   const unseenFinished = useAppStore((s) => s.unseenFinished);
@@ -112,15 +115,18 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
-  // 与 ZCode TaskListItem 一样只保留一个前置 16px 槽，优先级固定为：错误 > 未读 > 运行中。
-  // 错误状态来自当前会话最后一条 error 行；未打开会话没有运行时状态，只显示持久化的未读点。
+  // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
+  // error > unread > running.
+  // The error state comes from the session's last error row; unopened sessions have no runtime
+  // state and only show the persisted unread dot.
   const lastItem = open?.items?.[open.items.length - 1];
-  const hasError = !open?.streaming && (lastItem?.role === "error" || (lastItem as { error?: string | null } | undefined)?.error); // error 字段仅 BashItem 声明;其余条目读取为 undefined,同原版
+  const hasError = !open?.streaming && (lastItem?.role === "error" || (lastItem as { error?: string | null } | undefined)?.error); // the error field is declared only on BashItem; other items read as undefined, same as the original
   const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : open?.streaming ? "loading" : "none";
-  // 打开会话：已打开直接激活（刷新右栏 git diff）；未打开走宿主加载链路
+  // Open session: already open → activate directly (refreshes the right panel's git diff); not
+  // open → the host loading chain
   const openSession = () => {
     hideWelcomeScreen();
-    // 未读标记清除：容器换新引用（静默写，重渲染由末尾 setBump 的 _v bump 统一负责）
+    // Clear the unread mark: container swapped to a fresh reference (silent write; re-render handled uniformly by the trailing setBump's _v bump)
     useAppStore.setState((st) => ({
       unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== s.path)),
     }));
@@ -129,7 +135,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       activateSession(s.path);
       refreshGitDiff();
     } else {
-      send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
+      send({ type: "reload_settings" }); // local config may have changed; fetch the latest model settings
       send({ type: "load_session", path: s.path });
     }
     // selectedFile/selectedSubagent cleanup is owned by restoreRightPanel (already-open branch)
@@ -175,7 +181,8 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           {leading === "unread" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
-        {/* 与 ZCode 相同：悬停时 Pin 接管同一个前置槽；置顶列表/已置顶且无状态时常显。归档会话不支持置顶。 */}
+        {/* Same as ZCode: on hover Pin takes over the same leading slot; always shown in the
+            pinned list or when pinned with no state. Archived sessions can't be pinned. */}
         {!s.archived && (
           <button
             className={"tpin" + ((pinned || pinnedList) && leading === "none" ? " on" : "")}
@@ -184,7 +191,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
               e.stopPropagation();
               const st = useAppStore.getState();
               const on = !st.pinnedSessions.has(s.path);
-              const nextPinned = new Set(st.pinnedSessions); // 容器换新引用 + _v bump（等价旧 mutate+notify）
+              const nextPinned = new Set(st.pinnedSessions); // container to fresh reference + _v bump (equivalent of old mutate+notify)
               if (on) nextPinned.add(s.path);
               else nextPinned.delete(s.path);
               send({ type: "set_session_pinned", path: s.path, pinned: on });
@@ -195,7 +202,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           </button>
         )}
       </span>
-      {/* 双击标题原地进入重命名（双击前的 click 仍正常打开会话，幂等无冲突） */}
+      {/* Double-click the title to rename in place (the click before the double-click still opens the session; idempotent, no conflict) */}
       <span className="tt" onDoubleClick={() => onRenameStart(rowKey, s.path)}>
         {sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "")}
       </span>

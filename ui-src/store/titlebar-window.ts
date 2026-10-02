@@ -1,5 +1,6 @@
-// withGlobalTauri 注入的窗口 API 形状（前端不装 @tauri-apps/api 包）。
-// 被 store/ws.ts 的 Window.__TAURI__ 声明引用；WindowControls.tsx 消费。
+// Shape of the window API injected by withGlobalTauri (the frontend does not install the
+// @tauri-apps/api package).
+// Referenced by the Window.__TAURI__ declaration in store/ws.ts; consumed by WindowControls.tsx.
 export interface TauriWindow {
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;

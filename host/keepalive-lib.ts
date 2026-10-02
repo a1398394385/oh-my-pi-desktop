@@ -1,8 +1,10 @@
 /**
- * pi-kimi-keepalive 纯函数库（从 https://github.com/realOliverSama/pi-kimi-keepalive
- * a05bafd / v0.3.8 移植，源文件 src/lib.ts）。刻意不含任何 pi 宿主 import，
- * 探测请求构造 / usage 解析 / 成本估算保持纯函数，便于单测。
- * 移植时未改任何逻辑，仅新增本头注释。
+ * pi-kimi-keepalive pure-function library (ported from
+ * https://github.com/realOliverSama/pi-kimi-keepalive a05bafd / v0.3.8,
+ * source file src/lib.ts). Deliberately free of any pi host imports;
+ * probe request construction / usage parsing / cost estimation stay pure
+ * functions for easy unit testing.
+ * No logic was changed during the port; only this header comment was added.
  */
 
 export interface CostPerM {

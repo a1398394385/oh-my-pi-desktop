@@ -1,9 +1,13 @@
-// 代码语法染色：移植 ZCode packages/ui/src/lib/shikiHighlighter.ts 的轻量路径——
-// shiki codeToTokens 出 token（非 HTML），React 按行渲染 <span style=color>。
-// 行底色/gutter 仍由调用方 CSS 负责，本模块只管行内 token 上色。
-// 选型：createHighlighterCore + JS 正则引擎（免 oniguruma wasm，esbuild IIFE 直出）；
-// 语言/主题按需注册，控制 bundle 体积。主题用 VSCode 同款 dark-plus/light-plus，
-// 跟随 app 的 html[data-theme]，切换主题时按新主题重新 tokenize（缓存键含主题）。
+// Code syntax highlighting: ports the lightweight path of ZCode
+// packages/ui/src/lib/shikiHighlighter.ts -- shiki codeToTokens emits tokens
+// (not HTML), React renders lines of <span style=color>.
+// Line backgrounds/gutters remain the caller's CSS job; this module only
+// colors inline tokens.
+// Choices: createHighlighterCore + the JS regex engine (no oniguruma wasm,
+// esbuild IIFE output stays direct); languages/themes registered on demand to
+// keep the bundle small. Themes are VSCode's dark-plus/light-plus, following
+// the app's html[data-theme]; on theme switch, re-tokenize under the new theme
+// (the cache key includes the theme).
 import { createHighlighterCore, type HighlighterCore, type LanguageRegistration } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { pathBase } from "../store/utils";
@@ -46,21 +50,25 @@ import langLess from "shiki/langs/less.mjs";
 import langGraphql from "shiki/langs/graphql.mjs";
 import langTex from "shiki/langs/latex.mjs";
 
-// 行内染色 token：color 缺省（空串/undefined）时调用方走继承色
+// Inline highlighting token: when color is absent (empty string/undefined) the
+// caller falls back to the inherited color
 export interface HighlightToken {
   content: string;
   color?: string;
 }
-// highlightCode 的返回结构：按行的 token 二维数组
+// Return structure of highlightCode: a per-line two-dimensional token array
 export interface HighlightResult {
   tokens: HighlightToken[][];
 }
 
-// 超大内容不染色：tokenize 是纯 CPU 活，ZCode 轻量 diff 上限 120k 字符，沿用
+// Do not highlight oversized content: tokenize is pure CPU work; ZCode's
+// lightweight diff caps at 120k chars, kept as-is
 export const HIGHLIGHT_MAX_CHARS = 120_000;
 
-// 扩展名 → shiki 语言 id（不含点）。无映射/纯文本类返回 null = 不染色（直出原文，
-// 避免 ZCode 踩过的坑：纯文本进 shiki 异步状态机只有开销没有收益）
+// Extension -> shiki language id (no dot). Unmapped/plain-text returns null =
+// no highlighting (render the original text directly; this avoids a pitfall ZCode
+// hit: feeding plain text into shiki's async state machine is pure overhead with
+// no payoff)
 const EXT_TO_LANG: Record<string, string> = {
   js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "jsx",
   ts: "typescript", mts: "typescript", cts: "typescript", tsx: "tsx",
@@ -91,7 +99,8 @@ const EXT_TO_LANG: Record<string, string> = {
   tex: "latex", latex: "latex",
 };
 
-// 按文件名/扩展名取语言 id；Dockerfile/Makefile 这类无扩展名按文件名匹配
+// Take the language id from the file name/extension; extension-less files like
+// Dockerfile/Makefile match by file name
 export function langOfPath(path: string | null | undefined): string | null {
   const base = pathBase(path);
   const lower = base.toLowerCase();
@@ -102,14 +111,17 @@ export function langOfPath(path: string | null | undefined): string | null {
   return EXT_TO_LANG[lower.slice(i + 1)] || null;
 }
 
-// app 明暗主题：shell.js 写 html[data-theme]=dark|light（system 时已解析成具体值）
+// App light/dark theme: shell.js writes html[data-theme]=dark|light (system is
+// already resolved to a concrete value)
 export function currentCodeTheme(): string {
   return document.documentElement.dataset.theme === "light" ? "light-plus" : "dark-plus";
 }
 
-// shiki/langs/*.mjs 的默认导出即 LanguageRegistration 数组(静态 import 已是解包后的数组;
-// 原写法把模块类型标成 { default: [...] } 且运行期取 mod.default = undefined,loadLanguage
-// 收不到语言注册表,懒注册静默失败回退纯文本——此处一并修正为直接传数组)
+// The default export of shiki/langs/*.mjs is already a LanguageRegistration
+// array (static imports are the unwrapped arrays; the previous typing marked
+// the module as { default: [...] } and read mod.default = undefined at runtime,
+// so loadLanguage never received the registration, lazy registration silently
+// failed and fell back to plain text -- fixed here by passing the array directly)
 const LANG_MODULES: Record<string, LanguageRegistration[]> = {
   javascript: langJs, typescript: langTs, jsx: langJsx, tsx: langTsx,
   json: langJson, css: langCss, html: langHtml, xml: langXml,
@@ -122,10 +134,11 @@ const LANG_MODULES: Record<string, LanguageRegistration[]> = {
   graphql: langGraphql, latex: langTex,
 };
 
-// 主题名 → 主题定义（createHighlighterCore 不自带 bundledThemes）
+// Theme name -> theme definition (createHighlighterCore ships no bundledThemes)
 const THEMES = { "dark-plus": darkPlus, "light-plus": lightPlus };
 
-// 单例 highlighter： langs 懒注册（loadLanguage），引擎用 JS 正则（免 wasm 异步加载）
+// Singleton highlighter: langs are lazy-registered (loadLanguage), the engine is
+// JS regex (no wasm async loading)
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
@@ -138,20 +151,26 @@ function getHighlighter(): Promise<HighlighterCore> {
   return highlighterPromise;
 }
 
-// 结果缓存：键 = 主题 + 语言 + 完整内容的 64 位哈希。
-// 早期沿用 ZCode 的「长度 + 首尾各 100 字符」做键，中段不同的代码块会撞键——调用方
-// （CodeTokens）直接渲染 token.content，撞键即显示成另一个代码块的原文（不只是配色错）。
-// 整段内容直接做键会让 Map 再留一份字符串副本，故走哈希。
+// Result cache: key = theme + language + a 64-bit hash of the full content.
+// Early on, ZCode's key of "length + first/last 100 chars" was reused, and code
+// blocks differing in the middle collided on it -- the caller (CodeTokens)
+// renders token.content directly, so a collision displays another block's
+// original text (not just wrong colors). Keying on the whole content would make
+// the Map hold another copy of the string, hence the hash.
 const tokensCache = new Map<string, { tokenized: HighlightResult; chars: number }>();
-// 缓存内容总字符上限（超出按最久未用淘汰）：tokens 的内存开销是原文的数倍，
-// 长会话里读过的每个文件/diff 都留一份会持续增长。
+// Total character cap for cached content (evict least-recently-used beyond it):
+// tokens cost several times the memory of the source text; keeping a copy of
+// every file/diff read in long sessions would grow unbounded.
 const TOKENS_CACHE_MAX_CHARS = 2_000_000;
 let tokensCacheChars = 0;
-// 同键并发请求合并：首个请求完成后回调全部订阅者（组件 effect 注册）
+// Merge concurrent requests for the same key: once the first request completes,
+// all subscribers are called back (registered by component effects)
 const pending = new Map<string, Set<(result: HighlightResult) => void>>();
 
-// 双种子 FNV-1a 拼 64 位：单 32 位在数万个代码块下碰撞概率已到千分之几，双种子可忽略。
-// 逐码元遍历，120k 字符上限下耗时 <1ms，相对随后的 tokenize 可忽略。
+// Dual-seed FNV-1a stitched to 64 bits: with a single 32-bit seed, collision
+// probability reaches tenths of a percent over tens of thousands of code blocks;
+// dual seeds make it negligible. Iterates code points one by one; under the 120k
+// char cap it takes <1ms, negligible compared to the tokenize that follows.
 function hashCode(str: string): string {
   let h1 = 0x811c9dc5;
   let h2 = 0x9e3779b9;
@@ -163,22 +182,24 @@ function hashCode(str: string): string {
   return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
 }
 
-// 写入并按总字符数淘汰最久未用（Map 保持插入序，队首即最旧）
+// Write and evict least-recently-used by total chars (Map keeps insertion
+// order, the head is the oldest)
 function cacheTokens(key: string, tokenized: HighlightResult, chars: number): void {
   tokensCache.set(key, { tokenized, chars });
   tokensCacheChars += chars;
   while (tokensCacheChars > TOKENS_CACHE_MAX_CHARS && tokensCache.size > 1) {
     const oldest = tokensCache.keys().next().value as string;
-    if (oldest === key) break; // 单条即超上限：留着它，避免清空后立刻又算一遍
+    if (oldest === key) break; // a single entry already over the cap: keep it, avoid re-tokenizing right after a wipe
     tokensCacheChars -= tokensCache.get(oldest)!.chars;
     tokensCache.delete(oldest);
   }
 }
 
-// 同步返回缓存的 token；未命中则启动异步 tokenize 并通过 callback 送回
-// （React 组件在 effect 里调用，callback 里 setState；缓存命中也走 microtask，
-// 避免渲染期同步 setState）。返回 null = 调用方先渲染纯文本。
-// 返回结构：{ tokens: [[{content,color}...]...] }（按行）
+// Return cached tokens synchronously; on a miss, kick off async tokenize and
+// deliver via callback (React components call this in an effect and setState in
+// the callback; cache hits also go through a microtask, avoiding synchronous
+// setState during render). Returning null = the caller renders plain text first.
+// Return structure: { tokens: [[{content,color}...]...] } (per line)
 export function highlightCode(
   code: string,
   lang: string | null,
@@ -189,7 +210,8 @@ export function highlightCode(
   const key = `${theme}:${lang}:${hashCode(code)}`;
   const cached = tokensCache.get(key);
   if (cached) {
-    // LRU touch：命中即移到队尾（Map 插入序），否则热点块会被新块挤出
+    // LRU touch: move a hit to the tail (Map insertion order), otherwise hot
+    // blocks get pushed out by new ones
     tokensCache.delete(key);
     tokensCache.set(key, cached);
     if (callback) queueMicrotask(() => callback(cached.tokenized));
@@ -199,20 +221,22 @@ export function highlightCode(
     if (!pending.has(key)) pending.set(key, new Set());
     pending.get(key)!.add(callback);
   }
-  if ((pending.get(key)?.size ?? 0) > 1) return null; // 已有同键请求在飞，等它的回调
+  if ((pending.get(key)?.size ?? 0) > 1) return null; // a request for the same key is already in flight; wait for its callback
 
   const scheduleTokenize = () => {
     getHighlighter()
       .then(async (h) => {
         if (!h.getLoadedLanguages().includes(lang)) {
           const mod = LANG_MODULES[lang];
-          if (!mod) return; // 未注册的语言不染色（调用方回退纯文本）
+          if (!mod) return; // unregistered languages are not highlighted (caller falls back to plain text)
           await h.loadLanguage(mod);
         }
-        // 切到宏任务执行耗时 tokenize，给 UI 交互和滚动留出渲染间隙
+        // Move the costly tokenize onto a macrotask, leaving render gaps for UI
+        // interaction and scrolling
         setTimeout(() => {
           try {
-            // 两个主题已在 createHighlighterCore 注册，按名字取色即可（tokens 的 color 直接可用）
+            // Both themes are registered in createHighlighterCore; take colors
+            // by name (token colors are directly usable)
             const result = h.codeToTokens(code, { lang, theme });
             const tokens = result.tokens.map((line) =>
               line.map((t) => ({ content: t.content, color: t.color || "" })),
@@ -230,11 +254,12 @@ export function highlightCode(
         }, 0);
       })
       .catch(() => {
-        pending.delete(key); // tokenize 失败：组件停留在纯文本态
+        pending.delete(key); // tokenize failed: the component stays in plain-text state
       });
   };
 
-  // 优先通过 rAF 延迟到首帧 DOM Paint 之后，保证点击展开入场动画（0ms 感官）不被长文本 tokenize 阻塞
+  // Prefer deferring via rAF past the first-frame DOM paint, so the click-to-expand
+  // entrance animation (0ms perceived) is not blocked by long-text tokenize
   if (typeof requestAnimationFrame !== "undefined") {
     requestAnimationFrame(() => setTimeout(scheduleTokenize, 0));
   } else {
@@ -243,20 +268,23 @@ export function highlightCode(
   return null;
 }
 
-// 主题跟随：shell.js 改 html[data-theme] 不发事件，这里用 MutationObserver
-// 广播一次，hook 收到后拿新主题重新 tokenize（缓存键含主题，切回不重复算）
+// Theme following: shell.js changes html[data-theme] without emitting an event,
+// so broadcast once via MutationObserver; hooks re-tokenize under the new theme
+// on receipt (the cache key includes the theme, switching back costs no recompute)
 const themeListeners = new Set<(theme: string) => void>();
 let themeObserved: MutationObserver | null = null;
 export function subscribeCodeTheme(listener: (theme: string) => void): () => void {
   themeListeners.add(listener);
-  // happy-dom（smoke 环境）没有 MutationObserver：跳过观察，主题切换不触发重染即可
+  // happy-dom (smoke environment) lacks MutationObserver: skip observing, theme
+  // switches simply do not trigger re-highlighting
   if (!themeObserved && typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
     themeObserved = new MutationObserver(() => {
       for (const l of themeListeners) l(currentCodeTheme());
     });
     themeObserved.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
-  // React effect 清理函数要求 void 返回(Set.delete 返回 boolean,包一层丢弃)
+  // React effect cleanup functions require a void return (Set.delete returns
+  // boolean; wrap and discard it)
   return () => {
     themeListeners.delete(listener);
   };

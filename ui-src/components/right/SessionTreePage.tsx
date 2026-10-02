@@ -1,5 +1,6 @@
-// 会话树页（TUI /tree 的右栏版）：会话内条目瀑布流，支持分叉横向切换与详情展开，
-// 活跃路径（根→当前叶）高亮，点击节点跳转到该点（可带分支摘要）。
+// Session tree page (right-panel version of the TUI /tree): entry waterfall of the session,
+// with branch horizontal switching and detail expansion; the active path (root → current leaf)
+// highlighted; clicking a node jumps to that point (optionally with a branch summary).
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../store";

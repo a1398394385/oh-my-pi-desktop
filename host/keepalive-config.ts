@@ -1,13 +1,19 @@
 /**
- * 缓存保活配置域（pi-kimi-keepalive a05bafd / v0.3.8 移植自有化的桌面适配层）。
+ * Cache keepalive config domain (desktop adaptation layer of the pi-kimi-keepalive
+ * a05bafd / v0.3.8 port, self-owned).
  *
- * 上游把探测参数放 ~/.omp/cache-keepalive/state.json（全局一份、与 CLI 共享）；
- * 桌面移植版按用户要求改为 omp-desktop.json 的 keepalive 段——随 profile 天然
- * 独立（H.desktopProjectsPath 即当前 profile 的 agent 目录）。段内唯一开关：
- *   enabled 本应用是否注入扩展并探测（session-lifecycle 消费，缺省 false；
- *           开=探测开，桌面域不设第二层探测开关——注入即用户显式付费确认，
- *           与上游 config.enabled 两层语义不同）
- * probe-log.jsonl 审计日志仍在 ~/.omp/cache-keepalive/（只追加、无配置语义）。
+ * Upstream keeps probe parameters in ~/.omp/cache-keepalive/state.json (one
+ * global copy, shared with the CLI); the desktop port, per user request, moved
+ * them into the keepalive section of omp-desktop.json — naturally per-profile
+ * (H.desktopProjectsPath is the current profile's agent dir). The single
+ * switch in the section:
+ *   enabled whether this app injects the extension and probes (consumed by
+ *           session-lifecycle, default false; on = probing on — the desktop
+ *           domain has no second-layer probe switch: injection itself is the
+ *           user's explicit paid confirmation, unlike upstream's two-layer
+ *           config.enabled semantics)
+ * The probe-log.jsonl audit log stays in ~/.omp/cache-keepalive/ (append-only,
+ * no config semantics).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -17,17 +23,17 @@ import { H } from "./state.ts";
 export const STATE_DIR = join(homedir(), ".omp", "cache-keepalive");
 export const PROBE_LOG_FILE = join(STATE_DIR, "probe-log.jsonl");
 
-/** 单次探测请求的兜底超时。 */
+/** Fallback timeout for a single probe request. */
 export const PROBE_TIMEOUT_MS = 30_000;
-/** 探测节奏下限（上游 CLI 命令层同款约束：30s）。 */
+/** Lower bound of the probe cadence (same constraint as the upstream CLI command layer: 30s). */
 export const MIN_INTERVAL_MS = 30_000;
 
 export interface ProbeConfig {
-  /** 保活目标模型（catalog id "provider/model"，空 = 不探测任何模型）。
-   *  上游硬编码 kimi-code；桌面版按用户要求泛化为可选模型列表。 */
+  /** Keepalive target models (catalog id "provider/model"; empty = probe no model).
+   *  Upstream hardcodes kimi-code; the desktop version generalizes it into a selectable model list per user request. */
   targets: string[];
   intervalMs: number;
-  /** 0 = 永不因空闲停止。 */
+  /** 0 = never stop due to idleness. */
   maxIdleMs: number;
   /** Minimum full-price prompt size (tokens) before a probe counts as a miss. */
   minPromptTokens: number;
@@ -75,9 +81,9 @@ export const SMART_MAX_CONTEXT_TOKENS = 200_000; // context cap: grow only below
  */
 export const DEFAULT_FALLBACK_MS = 5 * 60_000;
 
-// ---------- omp-desktop.json keepalive 段原子读写 ----------
+// ---------- atomic read/write of the omp-desktop.json keepalive section ----------
 
-/** 读 omp-desktop.json 全量（缺文件/损坏回空对象——与 profile.ts 同容错）。 */
+/** Read the full omp-desktop.json (missing/corrupt file falls back to an empty object — same tolerance as profile.ts). */
 function readDesktopJson(): Record<string, unknown> {
   try {
     return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
@@ -86,34 +92,35 @@ function readDesktopJson(): Record<string, unknown> {
   }
 }
 
-/** 读 keepalive 段（无段/非法回空对象）。 */
+/** Read the keepalive section (missing/invalid falls back to an empty object). */
 function readSection(): Record<string, unknown> {
   const section = readDesktopJson().keepalive;
   return section && typeof section === "object" ? (section as Record<string, unknown>) : {};
 }
 
-/** 合并写 keepalive 段，保留 omp-desktop.json 其他键与段内未提及字段。 */
+/** Merge-write the keepalive section, preserving omp-desktop.json's other keys and unmentioned fields inside the section. */
 function writeSection(section: Record<string, unknown>): void {
   const raw = readDesktopJson();
   writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, keepalive: section }, null, 2));
 }
 
-// ---------- 注入开关（enabled） ----------
+// ---------- injection switch (enabled) ----------
 
-/** 本应用是否注入缓存保活扩展（omp-desktop.json 的 keepalive.enabled，缺省关）。 */
+/** Whether this app injects the cache keepalive extension (keepalive.enabled in omp-desktop.json, off by default). */
 export function readKeepaliveEnabled(): boolean {
   return readSection().enabled === true;
 }
 
-/** 写回 keepalive.enabled。 */
+/** Write keepalive.enabled back. */
 export function writeKeepaliveEnabled(enabled: boolean): void {
   writeSection({ ...readSection(), enabled });
 }
 
-// ---------- 探测参数（数值字段；启停由段内唯一开关 enabled 承担） ----------
+// ---------- probe parameters (numeric fields; start/stop is carried by the section's single switch, enabled) ----------
 
 /**
- * 归一化（钳制逻辑自上游 readConfigFromDisk 保真迁移）：非法/缺失值钳回缺省。
+ * Normalization (clamp logic faithfully migrated from upstream
+ * readConfigFromDisk): invalid/missing values clamp back to defaults.
  */
 function normalizeProbeConfig(raw: Record<string, unknown>): ProbeConfig {
   const int = (value: unknown, fallback: number, min = 1, cap = Number.MAX_SAFE_INTEGER): number =>
@@ -145,21 +152,23 @@ function normalizeProbeConfig(raw: Record<string, unknown>): ProbeConfig {
   };
 }
 
-/** 扩展加载时的当前探测配置（设置帧同源；无段时给缺省值）。 */
+/** Current probe config at extension load (same source as the settings frame; defaults when the section is absent). */
 export function readKeepaliveProbeConfig(): ProbeConfig {
   return normalizeProbeConfig(readSection());
 }
 
 /**
  * Parse "90s" | "4m" | "1h30m" | "2.5m" | bare minutes. Returns ms or null.
- * 上游 lib.ts 原版恢复 + 补齐复合段：上游 HELP 文案承诺 "4m45s" 写法但原正则
- * 只收单段（上游自身不一致），UI fmtDur 也产复合格式，此处一并支持。
+ * Restored from upstream lib.ts + compound segments added: upstream HELP text
+ * promises the "4m45s" form but the original regex only accepted a single
+ * segment (an upstream self-inconsistency); UI fmtDur also emits compound
+ * formats, so support them here too.
  */
 export function parseDurationMs(raw: string): number | null {
   const text = raw.trim().toLowerCase();
   if (text.length === 0) return null;
   if (/^\d+$/.test(text)) {
-    // bare number = minutes（上游语义）
+    // bare number = minutes (upstream semantics)
     const v = Number(text);
     return v > 0 ? Math.round(v * 60_000) : null;
   }
@@ -177,7 +186,7 @@ export function parseDurationMs(raw: string): number | null {
   return Math.round(total);
 }
 
-/** Parse "$1.5" | "1.5" into USD, or null.（上游 lib.ts 原样恢复） */
+/** Parse "$1.5" | "1.5" into USD, or null. (restored verbatim from upstream lib.ts) */
 export function parseUsd(raw: string): number | null {
   const text = raw.trim().replace(/^\$/, "");
   if (!/^\d+(?:\.\d+)?$/.test(text))
@@ -187,17 +196,20 @@ export function parseUsd(raw: string): number | null {
 }
 
 /**
- * 设置页/扩展运行时写回：patch 与 keepalive 段逐字段合并（duration/USD 字段接受
- * "8m"/"$1.5" 字符串或数字），非法值忽略该字段（保持段内原值），归一化后落盘
- * 并返回生效探测配置。段内注入开关 enabled 不在此路径触碰（由
- * writeKeepaliveEnabled 管理）。扩展实例只在会话创建时读盘——写入只影响此后
- * 创建的会话。
+ * Write-back from the settings page / extension runtime: patch merges
+ * field-by-field into the keepalive section (duration/USD fields accept
+ * "8m"/"$1.5" strings or numbers), invalid values skip that field (the
+ * section keeps its current value), then it is normalized, persisted, and the
+ * effective probe config returned. The section's injection switch enabled is
+ * never touched on this path (managed by writeKeepaliveEnabled). Extension
+ * instances only read from disk at session creation — writes only affect
+ * sessions created afterwards.
  */
 export function writeKeepaliveConfig(patch: Record<string, unknown>): ProbeConfig {
   const next: Record<string, unknown> = { ...readSection() };
   if (patch.mode === "smart" || patch.mode === "default") next.mode = patch.mode;
   if (Array.isArray(patch.targets)) {
-    // 逐项过滤为非空字符串再去重（保活模型胶囊添加/删除走同一路径）
+    // Filter items to non-empty strings then dedupe (keepalive model pill add/remove goes through the same path)
     next.targets = [...new Set(patch.targets.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim()))];
   }
   const duration = (v: unknown): number | null =>
@@ -233,9 +245,12 @@ export function writeKeepaliveConfig(patch: Record<string, unknown>): ProbeConfi
         ? parseUsd(patch.spendCapUsd)
         : null;
   if (usd !== null) next.spendCapUsd = usd === 0 ? null : usd;
-  // 全字段归一化落盘（读路径归一化的值固化，段内不再滞留脏值）；
-  // enabled 是注入开关，从 section 原值透传，参数路径不得改动。
-  // probeEnabled 是已移除的探测开关残留键，顺手清出段外
+  // Persist with all fields normalized (read-path normalized values are pinned
+  // so no dirty values linger in the section);
+  // enabled is the injection switch, passed through from the section's current
+  // value; the parameter path must not change it.
+  // probeEnabled is a leftover key of the removed probe switch; sweep it out
+  // of the section while here
   delete next.probeEnabled;
   const config = normalizeProbeConfig(next);
   writeSection({ ...next, ...config });

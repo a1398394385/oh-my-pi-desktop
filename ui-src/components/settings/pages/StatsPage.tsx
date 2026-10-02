@@ -1,11 +1,13 @@
-// 设置·使用统计页：token 总量/峰值/时长/连续天数热力图 + 14 天趋势曲线 + 模型分布环图。
-// 逻辑 1:1 平移自旧版 ui/settings/stats.js，图形由 React 声明式生成（与旧版命令式 SVG 视觉一致）。
+// Settings · usage stats page: token total/peak/duration/streak heatmap + 14-day trend curve +
+// model distribution donut.
+// Logic ported 1:1 from the old ui/settings/stats.js; charts generated declaratively in React
+// (visually identical to the old imperative SVG).
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, fmtDurationMs } from "../../../store";
 import i18next, { t } from "../../../i18n";
 
-// 使用统计负载（宿主 get_usage_stats 回包；usageStats 落 store，字段边界以宿主回包为准）
+// Usage stats payload (host get_usage_stats reply; usageStats lands in the store, field boundary per the host reply)
 interface UsageStats {
   totalTokens?: number;
   peakTokens?: number;
@@ -17,10 +19,10 @@ interface UsageStats {
   byModel?: Record<string, number>;
 }
 
-// 与旧版一致的统计配色（图形专用色板，沿袭原设计）
+// Stats colors matching the old version (chart-only palette, carried over from the original design)
 const STAT_COLORS: string[] = ["#4a9eff", "#34c759", "#a86fe0", "#e05c5c", "#e5a14e", "#4ec9b0"];
 
-// 紧凑 token 数格式化（旧版 fmtCompactTokens 平移）。
+// Compact token count formatting (ported from the old fmtCompactTokens).
 // zh keeps the Chinese large-number units (values from the pack); en uses the B/M/k decimal ladder.
 function fmtCompactTokens(n: number | null | undefined): string {
   if (n == null || n <= 0) return "0";
@@ -35,13 +37,13 @@ function fmtCompactTokens(n: number | null | undefined): string {
   return String(n);
 }
 
-// 主题相关文字色（沿袭旧版按 data-theme 取色）
+// Theme-dependent text colors (carries over the old data-theme-based colors)
 function themeTextColors(): { main: string; sub: string } {
   const light = document.documentElement.dataset.theme === "light";
   return { main: light ? "#1d1d21" : "#ededef", sub: light ? "#909098" : "#7b7b86" };
 }
 
-// Token 活动热力图：53 列 × 7 行，等级 0-4 对应 var(--hm0..--hm4)。
+// Token activity heatmap: 53 columns × 7 rows, levels 0-4 map to var(--hm0..--hm4).
 // Month labels via Intl short month (zh renders the same short form as the legacy
 // UI; en gets Sep etc. for free).
 function buildHeatmap(st: UsageStats): { months: string[]; cells: Array<{ key: string; v: number; lv: number }> } {
@@ -73,7 +75,7 @@ function buildHeatmap(st: UsageStats): { months: string[]; cells: Array<{ key: s
   return { months, cells };
 }
 
-// 近 14 日趋势：Catmull-Rom 平滑曲线路径
+// Last-14-days trend: Catmull-Rom smoothed curve path
 function buildTrend(st: UsageStats): { days: string[]; dpath: string } {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
@@ -97,7 +99,7 @@ function buildTrend(st: UsageStats): { days: string[]; dpath: string } {
   return { days, dpath };
 }
 
-// 模型用量环图：按用量取前 5，环形分段
+// Model usage donut: top 5 by usage, ring segments
 function buildDonut(st: UsageStats): {
   entries: Array<[string, number]>;
   total: number;
@@ -127,9 +129,9 @@ function buildDonut(st: UsageStats): {
 
 export default function StatsPage() {
   const { t } = useTranslation();
-  const st = useAppStore((s) => s.usageStats); // selector 订阅回包刷新
+  const st = useAppStore((s) => s.usageStats); // selector subscription refreshes on replies
 
-  // 进入页面即刷新统计（对应旧版 openSettings 里的 get_usage_stats）
+  // Refresh stats on page entry (the get_usage_stats in the old openSettings)
   useEffect(() => {
     send({ type: "get_usage_stats" });
   }, []);
@@ -200,7 +202,7 @@ export default function StatsPage() {
             {donut && (
               <>
                 <text x="90" y="88" textAnchor="middle" fill={textColors.main} fontSize="18" fontWeight="700">
-                  {fmtCompactTokens(st!.totalTokens)} {/* donut 非空 ⇒ st 非空(见上方 useMemo) */}
+                  {fmtCompactTokens(st!.totalTokens)} {/* donut non-empty ⇒ st non-empty (see the useMemo above) */}
                 </text>
                 <text x="90" y="106" textAnchor="middle" fill={textColors.sub} fontSize="11">tokens</text>
               </>

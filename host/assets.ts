@@ -1,5 +1,7 @@
-// 磁盘资产域：agent 定义 / skill / mcp 配置的三级（全局 ~/.omp、profile agentDir、各桌面项目）
-// 扫描、读取、健康探测与聚合。listAgentAssets 是 list_agent_assets 命令的聚合入口。
+// Disk asset domain: scan, read, health-probe and aggregate agent definitions /
+// skills / MCP configs across three scopes (global ~/.omp, profile agentDir,
+// each desktop project). listAgentAssets is the aggregate entry behind the
+// list_agent_assets command.
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -28,7 +30,7 @@ async function firstHeading(file: string): Promise<string> {
   }
 }
 
-// agent 定义描述：优先 YAML frontmatter 的 description，退回一级标题
+// Agent definition description: prefer the YAML frontmatter description, fall back to the H1 heading
 async function agentFileDescription(file: string): Promise<string> {
   try {
     const text = await readFile(file, "utf8");
@@ -43,7 +45,7 @@ async function agentFileDescription(file: string): Promise<string> {
   return "";
 }
 
-// omp 发现规则：从项目目录向上找最近的 .omp 配置目录
+// omp discovery rule: walk upward from the project directory to find the nearest .omp config directory
 export function nearestProjectOmpDir(cwd: string): string | null {
   let dir = path.resolve(cwd);
   const root = path.parse(dir).root;
@@ -55,13 +57,14 @@ export function nearestProjectOmpDir(cwd: string): string | null {
   }
 }
 
-// 磁盘资产（agent 定义 / skill / mcp 配置）的可读写根：
-// 当前 profile 的 agentDir/<sub>、每个有效桌面项目向上最近的 .omp/<sub>
+// Read-write roots for disk assets (agent definitions / skills / MCP configs):
+// the current profile's agentDir/<sub>, plus the nearest .omp/<sub> above each
+// valid desktop project
 export type AssetKind = "agent" | "skill" | "mcp";
 
 export interface AssetRoot { dir: string; scope: string; cwd?: string }
 
-// 仅使用 omp-desktop.json 登记且未被移除的有效桌面项目
+// Only desktop projects registered in omp-desktop.json and not removed
 export function validDesktopProjects(): string[] {
   const removed = new Set(H.desktopProjects.removedProjects);
   return H.desktopProjects.allProjects.filter((c) => !removed.has(c));
@@ -79,7 +82,7 @@ export function assetRoots(kind: AssetKind): AssetRoot[] {
   return roots;
 }
 
-// 某级作用域下的 omp 配置目录（mcp.json 所在目录）
+// omp config directory for a given scope (the directory holding mcp.json)
 export function assetOmpDir(kind: AssetKind, scope: unknown, cwd?: unknown): string {
   const s = String(scope ?? "profile");
   if (s === "profile" || s === "global") return H.agentDir;
@@ -91,16 +94,19 @@ export function assetOmpDir(kind: AssetKind, scope: unknown, cwd?: unknown): str
   throw new Error(hostI18n.t("errors.asset.unknownScope", { s }));
 }
 
-// mcp.json 候选文件（带点的在前优先读，无前缀为主写入目标）
+// mcp.json candidate files (dotted one read with priority, unprefixed one is the primary write target)
 export function mcpCandidates(dir: string): string[] {
   return [path.join(dir, "mcp.json"), path.join(dir, ".mcp.json")];
 }
 
-// 外部来源开关判定（对齐底座 discovery 的加载条件，「来源」关掉后列表不再显示该来源资产）：
-// - 来源主开关：扩展页「来源」→ 底座 disabledProviders
-// - 用户级外部工具目录 opt-in：扩展页「外部工具 ~/ 配置」→ 底座 enabledProviders
-// - claude / codex 用户级目录另有技能级兼容开关（底座 skills.enableClaudeUser / enableCodexUser）
-// 项目级目录不受 opt-in 限制，只受来源主开关约束（同底座 isUserSourceEnabled 注释）。
+// External source switch resolution (mirrors base discovery load conditions;
+// once a source is switched off its assets no longer appear in the list):
+// - Source master switch: extensions page "Sources" -> base disabledProviders
+// - User-level external tool directory opt-in: extensions page "External tools ~/ config" -> base enabledProviders
+// - claude / codex user-level directories additionally honor skill-level
+//   compatibility switches (base skills.enableClaudeUser / enableCodexUser)
+// Project-level directories are not gated by the opt-in, only by the source
+// master switch (same as the base isUserSourceEnabled comment).
 function isAssetSourceOn(provider: string, level: "user" | "project"): boolean {
   if (!isProviderEnabled(provider)) return false;
   if (level === "project") return true;
@@ -110,7 +116,7 @@ function isAssetSourceOn(provider: string, level: "user" | "project"): boolean {
   return false;
 }
 
-// 所有合法的技能根目录（含全局 OMP/Agents/Claude/Codex/OpenCode、Profile、项目各级）
+// All valid skill roots (global OMP/Agents/Claude/Codex/OpenCode, profile, and project levels)
 function allSkillRoots(): string[] {
   const roots: string[] = [
     path.join(os.homedir(), ".omp", "agent", "skills"),
@@ -153,7 +159,7 @@ function allSkillRoots(): string[] {
   return roots;
 }
 
-// 前端传来的路径必须落在允许的三级根内；目录式定义归一到其入口文件（AGENT.md/SKILL.md）
+// Paths from the frontend must fall inside the allowed roots; directory-style definitions are normalized to their entry file (AGENT.md/SKILL.md)
 export function resolveAssetFile(kind: AssetKind, p: unknown): string {
   const raw = String(p ?? "");
   let file = path.resolve(raw);
@@ -201,7 +207,7 @@ async function listNamedFiles(dir: string, ext: string): Promise<{ name: string;
   }
 }
 
-// 递归发现目录下的所有 SKILL.md 文件（支持嵌套如 research/blocked-page-recovery）
+// Recursively discover all SKILL.md files under a directory (supports nesting like research/blocked-page-recovery)
 async function findSkillFiles(dir: string, maxDepth = 3): Promise<string[]> {
   const result: string[] = [];
   if (!fs.existsSync(dir)) return result;
@@ -227,7 +233,7 @@ async function findSkillFiles(dir: string, maxDepth = 3): Promise<string[]> {
   return Array.from(new Set(result));
 }
 
-// 解析单个 SKILL.md 文件为技能条目
+// Parse a single SKILL.md file into a skill entry
 async function parseSkillFile(filePath: string, provider: string, scope: string, isSkillDisabled: (name: string) => boolean) {
   try {
     const text = await readFile(filePath, "utf8");
@@ -263,13 +269,13 @@ async function parseSkillFile(filePath: string, provider: string, scope: string,
   }
 }
 
-// 依据 omp 源码 discovery 逻辑，扫描全局、Profile 及各项目的多来源技能
+// Scan multi-source skills across global, profile and each project, following the omp source discovery logic
 export async function loadAllSkillsScoped() {
   const disabled = new Set<string>(((H.settings.get("disabledExtensions") ?? []) as string[]));
   const ignored = new Set<string>(((H.settings.get("skills.ignoredSkills") ?? []) as string[]));
   const isSkillDisabled = (name: string) => disabled.has(`skill:${name}`) || ignored.has(name);
 
-  // Profile 级目录源（含当前 Profile 的 skills、managed-skills 以及兼容外部用户级目录）
+  // Profile-level directory sources (current profile skills, managed-skills, plus compatible external user-level directories)
   const profileSources = [
     { dir: path.join(H.agentDir, "skills"), provider: "native" },
     { dir: path.join(H.agentDir, "managed-skills"), provider: "managed-skills" },
@@ -291,7 +297,7 @@ export async function loadAllSkillsScoped() {
   const scanSources = async (sources: { dir: string; provider: string }[], scope: string, level: "user" | "project") => {
     const skillMap = new Map<string, any>();
     for (const src of sources) {
-      if (!isAssetSourceOn(src.provider, level)) continue; // 来源已关闭 → 不列表
+      if (!isAssetSourceOn(src.provider, level)) continue; // source off -> not listed
       const files = await findSkillFiles(src.dir);
       for (const f of files) {
         const item = await parseSkillFile(f, src.provider, scope, isSkillDisabled);
@@ -307,8 +313,10 @@ export async function loadAllSkillsScoped() {
   const profileItemsMap = new Map<string, any>();
   for (const it of scannedProfile) profileItemsMap.set(it.name, it);
 
-  // 底座补充（不在硬编码目录内的来源，如 ~/.claude/plugins）：不传 includeDisabled，
-  // 使外部用户级目录同样受「外部工具 ~/ 配置」opt-in 约束，与运行时加载行为一致
+  // Base supplement (sources outside the hardcoded directories, e.g.
+  // ~/.claude/plugins): includeDisabled is not passed so external user-level
+  // directories stay gated by the "external tools ~/ config" opt-in, matching
+  // runtime load behavior
   try {
     const capRes = await loadCapability<any>("skills", { cwd: H.agentDir });
     for (const s of capRes.all ?? []) {
@@ -379,17 +387,19 @@ export async function loadAllSkillsScoped() {
   }
 
   return {
-    global: profileItems, // 向后兼容
+    global: profileItems, // backward compat
     profile: profileItems,
     projects,
-    globalDir: path.join(H.agentDir, "skills"), // 向后兼容
+    globalDir: path.join(H.agentDir, "skills"), // backward compat
     profileDir: path.join(H.agentDir, "skills"),
     profileName: H.currentProfile,
   };
 }
 
-// MCP 健康探测缓存（60秒内避免重复建连）。曾嵌在 listAgentAssets 函数体内，导致
-// server 层 set_mcp_server_enabled / test_mcp_server 对它的引用悬空（TS2304）——拆分时提升为模块级。
+// MCP health probe cache (avoids re-connecting within 60s). This used to live
+// inside the listAgentAssets function body, which left server-layer
+// set_mcp_server_enabled / test_mcp_server references dangling (TS2304) —
+// hoisted to module level during the split.
 export const mcpHealthCache = new Map<
   string,
   { status: "connected" | "error"; error?: string; log?: string; timestamp: number }
@@ -637,7 +647,7 @@ export async function probeMcpServerHealth(server: {
   }
 }
 
-// 依据 omp 源码的 mcps capability，发现并整合全局、Profile 及各工作区项目的全部 MCP 服务器
+// Discover and merge all MCP servers across global, profile and each workspace project, following the omp source mcps capability
 export async function loadAllMcpScoped() {
   clearCapabilityFsCache();
   const userMcpPath = path.join(H.agentDir, "mcp.json");
@@ -702,8 +712,10 @@ export async function loadAllMcpScoped() {
 
   const serverKey = (scope: string, name: string) => `${scope}::${name}`;
 
-  // 1. 用户级发现（当前 Profile 及全局外部源，如 ~/.claude.json、~/.cursor/mcp.json、~/.codex/config.toml 等）
-  //    不传 includeDisabled：外部用户级来源受「来源」与「外部工具 ~/ 配置」开关约束（同底座运行时加载）
+  // 1. User-level discovery (current profile plus global external sources such
+  //    as ~/.claude.json, ~/.cursor/mcp.json, ~/.codex/config.toml).
+  //    includeDisabled is not passed: external user-level sources stay gated by
+  //    the "sources" and "external tools ~/ config" switches (same as base runtime loading)
   try {
     const userRes = await loadCapability<any>("mcps", { cwd: H.agentDir });
     for (const s of userRes.items) {
@@ -739,7 +751,7 @@ export async function loadAllMcpScoped() {
     process.stderr.write(`[host] MCP 用户级发现失败: ${err}\n`);
   }
 
-  // 直读当前 Profile 的 mcp.json，确保刚保存的配置与 sharing 字段 100% 准确同步
+  // Read the current profile's mcp.json directly so freshly saved config and the sharing field stay 100% in sync
   if (fs.existsSync(userMcpPath)) {
     try {
       const rawUserDoc = JSON.parse(await readFile(userMcpPath, "utf8"));
@@ -786,7 +798,7 @@ export async function loadAllMcpScoped() {
     } catch {}
   }
 
-  // 2. 项目工作区级发现（各个桌面打开的项目）
+  // 2. Project workspace discovery (each project opened in the desktop app)
   const projectScopeList: { cwd: string; name: string; dir: string; count: number }[] = [];
   for (const cwd of validDesktopProjects()) {
     let count = 0;
@@ -797,7 +809,7 @@ export async function loadAllMcpScoped() {
     try {
       const projRes = await loadCapability<any>("mcps", { cwd });
       for (const s of projRes.items) {
-        // 底座 loadCapability 会级联返回用户级能力，此处仅处理属于当前项目的 MCP 条目
+        // base loadCapability cascades user-level capabilities back; only handle MCP entries owned by the current project
         if (s._source?.level !== "project") continue;
         const transport = s.transport ?? (s.command ? "stdio" : s.url ? "http" : "stdio");
         const enabled = isServerEnabled(s.name, s.enabled);
@@ -805,7 +817,7 @@ export async function loadAllMcpScoped() {
         const fileSharing = await readRawSharing(filePath, s.name);
         const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
         const sharing: "session" | "project" | "global" =
-          rawSharing === "project" ? "project" : "session"; // 规则2: 项目内禁止 global, 规则1: 缺省 session
+          rawSharing === "project" ? "project" : "session"; // rule 2: global forbidden inside a project; rule 1: default session
         const item: McpServerItem = {
           name: s.name,
           transport,
@@ -834,7 +846,7 @@ export async function loadAllMcpScoped() {
       process.stderr.write(`[host] MCP 项目级发现失败 (${cwd}): ${err}\n`);
     }
 
-    // 直读项目 .omp/mcp.json 确保项目级新增与 sharing 100% 同步
+    // Read the project .omp/mcp.json directly so project-level additions and sharing sync 100%
     if (fs.existsSync(projMcpFile)) {
       try {
         const rawProjDoc = JSON.parse(await readFile(projMcpFile, "utf8"));
@@ -883,7 +895,7 @@ export async function loadAllMcpScoped() {
       } catch {}
     }
 
-    // 额外兼容如 etower-agent 的 config/mcp-servers.json
+    // Extra compatibility with e.g. etower-agent's config/mcp-servers.json
     const etowerFile = path.join(cwd, "config", "mcp-servers.json");
     if (fs.existsSync(etowerFile)) {
       try {
@@ -926,7 +938,7 @@ export async function loadAllMcpScoped() {
 
   const serverList = Array.from(allServersMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-  // 3. 并发健康检测（对启用状态的服务器发起快速探测，超时 2s）
+  // 3. Concurrent health checks (fast probes against enabled servers, 2s timeout)
   const enabledServers = serverList.filter((s) => s.enabled);
   await Promise.all(
     enabledServers.map(async (s) => {
@@ -949,7 +961,7 @@ export async function loadAllMcpScoped() {
     }
   }
 
-  // 兼容原有资产字段
+  // Legacy asset fields for backward compatibility
   const mcpProfile = {
     path: userMcpPath,
     servers: serverList.filter((s) => s.scope === "profile").map((s) => ({
@@ -982,7 +994,7 @@ export async function loadAllMcpScoped() {
     servers: serverList,
     scopes,
     userMcpPath,
-    global: mcpProfile, // 向后兼容
+    global: mcpProfile, // backward compat
     profile: mcpProfile,
     projects: mcpProjects,
     profileName: H.currentProfile,
@@ -1000,7 +1012,7 @@ export interface HookAssetItem {
   enabled: boolean;
 }
 
-/** 读 omp-desktop.json 的 hooks.enabled（缺省关闭） */
+/** Read hooks.enabled from omp-desktop.json (defaults to off). */
 export function readHooksEnabled(): boolean {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
@@ -1012,7 +1024,7 @@ export function readHooksEnabled(): boolean {
   }
 }
 
-/** 写回 hooks.enabled */
+/** Write hooks.enabled back. */
 export async function writeHooksEnabled(enabled: boolean): Promise<void> {
   let raw: Record<string, unknown> = {};
   try {
@@ -1024,7 +1036,7 @@ export async function writeHooksEnabled(enabled: boolean): Promise<void> {
   await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, hooks: { ...hooks, enabled } }, null, 2));
 }
 
-/** 读 omp-desktop.json 的 plugins.enabled（缺省关闭） */
+/** Read plugins.enabled from omp-desktop.json (defaults to off). */
 export function readPluginsEnabled(): boolean {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
@@ -1036,7 +1048,7 @@ export function readPluginsEnabled(): boolean {
   }
 }
 
-/** 写回 plugins.enabled */
+/** Write plugins.enabled back. */
 export async function writePluginsEnabled(enabled: boolean): Promise<void> {
   let raw: Record<string, unknown> = {};
   try {
@@ -1050,7 +1062,7 @@ export async function writePluginsEnabled(enabled: boolean): Promise<void> {
 
 export async function listAgentAssets() {
   const memoriesDir = path.join(H.agentDir, "memories");
-  // agent 定义按两级返回：当前 profile / 各桌面项目
+  // Agent definitions are returned in two scopes: current profile / each desktop project
   interface AssetListPayload {
     global?: any[];
     profile: any[];
@@ -1119,7 +1131,8 @@ export async function listAgentAssets() {
       await scanHookDir(path.join(ompDir, "hooks", phase), phase, "project", cwd, path.basename(cwd));
     }
   }
-  // 记忆文件名是 omp 的 encodeProjectPath（cwd 去掉前导斜杠后把 / \ : 换成 -，首尾加 --），
+  // Memory file names use omp's encodeProjectPath (strip cwd's leading slash,
+  // replace / \ : with -, wrap both ends in --).
   const validProjects = validDesktopProjects();
   const encodeProjectPath = (cwd: string) => `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
   let memories: { name: string; path: string; project?: string }[] = [];

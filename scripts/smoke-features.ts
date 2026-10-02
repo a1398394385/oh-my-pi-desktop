@@ -1,21 +1,21 @@
-// 新功能链路冒烟：git 写操作组（stage/unstage/discard/commit/push）+ 会话
-// rename/archive + read_image + abort + compact。
-// 用法：bun scripts/smoke-features.ts [宿主ws地址]
-// ⚠ 直接读写 omp-desktop.json，任何退出路径（含断言失败）都会还原原文件；还原前先杀 host，
-//    避免 host 内存态在退出钩子里把测试状态写回。
-// ⚠ git 写操作全部落在临时仓库/临时裸仓库（file:// remote），绝不在真实仓库上测。
-// 断言覆盖：
-//   1. git_stage / git_unstage：暂存区进出（fixture 侧 git diff --cached 验证磁盘真相）
-//   2. git_discard：tracked 恢复内容、untracked 文件消失
-//   3. git_commit：带 paths 提交返回 sha；不带 paths 提交全部已暂存
-//   4. git_push：推到本地裸仓库，远端分支指向新提交；非 git 目录调写操作回 error 字段
-//   5. rename_session：懒建会话重命名，list_sessions 兜底条目标题生效
-//   6. archive_session：archived 标记生效、归档取消置顶、取消归档恢复
-//   6b. 池外（未打开）历史会话：手造磁盘 jsonl 后 rename 落盘 + archive 生效
-//   7. read_image：png 读取 base64；超大/非图片后缀回 error
-//   8. abort_session：空闲会话安全返回 ok
-//   9. compact_session：空会话回 error 字段（不崩连接）
-// 零模型调用，跑完即退。
+// New feature smoke test: the git write group (stage/unstage/discard/commit/push) plus session
+// rename/archive + read_image + abort + compact.
+// Usage: bun scripts/smoke-features.ts [host ws url]
+// WARNING: reads and writes omp-desktop.json directly; every exit path (including assertion failures) restores the original file; the host is killed first,
+//    so its in-memory state cannot write the test state back in an exit hook.
+// WARNING: all git write operations land in a temp repo/temp bare repo (file:// remote); never tested against a real repo.
+// Assertions cover:
+//   1. git_stage / git_unstage: staging in and out (fixture-side git diff --cached verifies the on-disk truth)
+//   2. git_discard: tracked files restored, untracked files gone
+//   3. git_commit: committing with paths returns a sha; without paths commits everything staged
+//   4. git_push: pushes to the local bare repo with the remote branch pointing at the new commit; write ops in a non-git dir return an error field
+//   5. rename_session: renaming a lazily-created session takes effect on the list_sessions fallback entry
+//   6. archive_session: archived flag takes effect, archiving unpins, unarchiving restores
+//   6b. Historical sessions outside the pool (never opened): rename persists and archive works on a hand-made on-disk jsonl
+//   7. read_image: png read as base64; oversized/non-image suffix returns error
+//   8. abort_session: an idle session safely returns ok
+//   9. compact_session: an empty session returns an error field (without killing the connection)
+// Zero model calls; exits when done.
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
@@ -32,14 +32,14 @@ let child: ReturnType<typeof spawn> | null = null;
 let wsUrl = args[0];
 let restored = false;
 
-// 还原必须先于 exit：kill host（SIGTERM 异步）→ 等其退出窗口 → 写回原文
+// Restore must precede exit: kill the host (SIGTERM is async) -> wait out its exit window -> write the original back
 function restoreCfg() {
   if (restored) return;
   restored = true;
   if (child?.pid) {
     child.kill("SIGTERM");
     child = null;
-    try { execSync("sleep 0.8"); } catch {} // 同步等 800ms 让 host 退完再写回（Bun 主线程 Atomics.wait 不可靠）
+    try { execSync("sleep 0.8"); } catch {} // Sleep synchronously 800ms for the host to finish exiting before writing back (Bun main-thread Atomics.wait is unreliable)
   }
   try {
     if (cfgExisted) writeFileSync(cfgPath, cfgBackup);
@@ -110,21 +110,21 @@ await new Promise((resolve, reject) => {
 }).catch((e) => fail(String(e)));
 await waitType("ready");
 
-// ---------- fixture：临时 git 仓库 + 本地裸仓库 remote（写操作全部隔离在此） ----------
+// ---------- fixture: temp git repo + local bare repo remote (all write operations isolated here) ----------
 const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "smoke", GIT_AUTHOR_EMAIL: "smoke@test", GIT_COMMITTER_NAME: "smoke", GIT_COMMITTER_EMAIL: "smoke@test" };
 const repoDir = await mkdtemp(path.join(tmpdir(), "omp-smoke-feat-"));
 const bareDir = await mkdtemp(path.join(tmpdir(), "omp-smoke-feat-remote-"));
 tmpDirs.push(repoDir, bareDir);
 const g = (cmd: string) => execSync(`git -C ${JSON.stringify(repoDir)} ${cmd}`, { env: gitEnv }).toString().trim();
 g("init -b main");
-execSync(`git init --bare -b main ${JSON.stringify(bareDir)}`, { env: gitEnv }); // 本地裸仓库当 remote
+execSync(`git init --bare -b main ${JSON.stringify(bareDir)}`, { env: gitEnv }); // Local bare repo as the remote
 await writeFile(path.join(repoDir, "a.txt"), "line1\nline2\n");
 g("add .");
 g("commit -m base");
 g(`remote add origin file://${bareDir}`);
-g("push -u origin main"); // fixture 预设 upstream，RPC 只做常规 push
+g("push -u origin main"); // The fixture presets upstream; the RPC just does a regular push
 
-// ---- 断言 1：git_stage 暂存（磁盘真相：git diff --cached） ----
+// ---- Assertion 1: git_stage stages (on-disk truth: git diff --cached) ----
 await writeFile(path.join(repoDir, "a.txt"), "line1\nline2-changed\n");
 await writeFile(path.join(repoDir, "b.txt"), "new file\n");
 let mark = frames.length;
@@ -134,7 +134,7 @@ assert(r.ok === true, `git_stage 回 ok（error=${r.error ?? "无"}）`);
 const cached = g("diff --cached --name-only");
 assert(cached.includes("a.txt") && cached.includes("b.txt"), `git_stage 后暂存区含 a.txt/b.txt（${cached.replace(/\n/g, ",")}）`);
 
-// ---- 断言 2：git_unstage 取消暂存 ----
+// ---- Assertion 2: git_unstage unstages ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "git_unstage", cwd: repoDir, paths: ["a.txt", "b.txt"] }));
 r = await waitType("git_unstaged", mark).catch((e) => fail(String(e)));
@@ -142,7 +142,7 @@ assert(r.ok === true, `git_unstage 回 ok（error=${r.error ?? "无"}）`);
 const cached2 = g("diff --cached --name-only");
 assert(!cached2.includes("a.txt") && !cached2.includes("b.txt"), `git_unstage 后暂存区已清空（${cached2 || "空"}）`);
 
-// ---- 断言 3：git_discard tracked 恢复 + untracked 消失 ----
+// ---- Assertion 3: git_discard restores tracked + removes untracked ----
 await writeFile(path.join(repoDir, "c.txt"), "throwaway\n");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "git_discard", cwd: repoDir, paths: ["a.txt", "c.txt"] }));
@@ -152,7 +152,7 @@ assert(readFileSync(path.join(repoDir, "a.txt"), "utf8") === "line1\nline2\n", "
 assert(!existsSync(path.join(repoDir, "c.txt")), "git_discard 后 untracked c.txt 已删除");
 assert(existsSync(path.join(repoDir, "b.txt")), "b.txt 不在 discard 清单，不受影响");
 
-// ---- 断言 4：git_commit 带 paths（返回 sha 与 HEAD 一致） ----
+// ---- Assertion 4: git_commit with paths (returned sha matches HEAD) ----
 await writeFile(path.join(repoDir, "a.txt"), "line1\nline2-committed\n");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "git_commit", cwd: repoDir, message: "feat: 提交 a.txt（冒烟）", paths: ["a.txt"] }));
@@ -160,7 +160,7 @@ r = await waitType("git_committed", mark).catch((e) => fail(String(e)));
 assert(r.ok === true && typeof r.commit === "string" && r.commit.length >= 7, `git_commit 回 ok + sha（commit=${r.commit ?? r.error}）`);
 assert(r.commit === g("rev-parse HEAD"), "git_commit 返回的 sha 与 rev-parse HEAD 一致");
 
-// ---- 断言 5：git_commit 不带 paths（提交全部已暂存） ----
+// ---- Assertion 5: git_commit without paths (commits everything staged) ----
 g("add b.txt");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "git_commit", cwd: repoDir, message: "chore: 提交全部已暂存（冒烟）" }));
@@ -168,7 +168,7 @@ r = await waitType("git_committed", mark).catch((e) => fail(String(e)));
 assert(r.ok === true && r.commit === g("rev-parse HEAD"), `git_commit 无 paths 提交已暂存（commit=${r.commit ?? r.error}）`);
 assert(g("log -1 --pretty=%s").includes("已暂存"), "最新提交为无 paths 提交");
 
-// ---- 断言 6：git_push 推到本地裸仓库，远端指向新提交 ----
+// ---- Assertion 6: git_push pushes to the local bare repo; the remote points at the new commit ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "git_push", cwd: repoDir }));
 r = await waitType("git_pushed", mark).catch((e) => fail(String(e)));
@@ -176,20 +176,20 @@ assert(r.ok === true, `git_push 回 ok（error=${r.error ?? "无"}）`);
 const remoteHead = execSync(`git -C ${JSON.stringify(bareDir)} rev-parse main`).toString().trim();
 assert(remoteHead === g("rev-parse HEAD"), "git_push 后裸仓库 main 指向本地 HEAD");
 
-// ---- 断言 7：非 git 目录调写操作回 error 字段（不崩连接） ----
+// ---- Assertion 7: write ops in a non-git dir return an error field (without killing the connection) ----
 const plainDir = await mkdtemp(path.join(tmpdir(), "omp-smoke-feat-plain-"));
 tmpDirs.push(plainDir);
 mark = frames.length;
 ws.send(JSON.stringify({ type: "git_stage", cwd: plainDir, paths: ["x.txt"] }));
 r = await waitType("git_staged", mark).catch((e) => fail(String(e)));
 assert(!r.ok && typeof r.error === "string" && r.error.length > 0, `非 git 目录 git_stage 回 error 字段（${String(r.error).slice(0, 60)}）`);
-// 连接仍活：紧跟着的查询正常回包
+// The connection is still alive: the immediately following query replies normally
 mark = frames.length;
 ws.send(JSON.stringify({ type: "get_git_branches", cwd: repoDir }));
 await waitType("git_branches", mark).catch((e) => fail(String(e)));
 assert(true, "error 回包后连接仍可用");
 
-// ---- 断言 8：rename_session（懒建会话走内存兜底条目） ----
+// ---- Assertion 8: rename_session (lazy session goes through the in-memory fallback entry) ----
 const sessDir = await mkdtemp(path.join(tmpdir(), "omp-smoke-feat-sess-"));
 tmpDirs.push(sessDir);
 mark = frames.length;
@@ -210,11 +210,11 @@ list = await waitType("session_list", mark).catch((e) => fail(String(e)));
 item = (list.projects ?? []).find((p: any) => p.cwd === sessDir)?.sessions?.find((s: any) => s.path === created.path);
 assert(!item, "delete_session 后条目消失");
 
-// ---- 断言 9：archive_session（归档标记 + 取消置顶 + 取消归档） ----
+// ---- Assertion 9: archive_session (archive flag + unpin + unarchive) ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "create_session", cwd: sessDir }));
 created = await waitType("session_created", mark).catch((e) => fail(String(e)));
-ws.send(JSON.stringify({ type: "set_session_pinned", path: created.path, pinned: true })); // 无回包
+ws.send(JSON.stringify({ type: "set_session_pinned", path: created.path, pinned: true })); // no reply frame
 mark = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));
@@ -243,9 +243,9 @@ ws.send(JSON.stringify({ type: "delete_session", path: created.path }));
 await waitType("session_list", mark).catch((e) => fail(String(e)));
 assert(true, "归档会话删除完成（delete_session 同步清理归档记录）");
 
-// ---- 断言 6b：池外（未打开）历史会话 rename + archive ----
-// fixture：在会话目录手写一个仅含 session header 的 jsonl，listAll 能扫出 id/path，
-// 但它从未 create_session 进内存池——正是右键归档任意列表项的主场景。
+// ---- Assertion 6b: rename + archive on historical sessions outside the pool (never opened) ----
+// fixture: hand-write a jsonl containing only a session header into the session dir; listAll can scan out its id/path,
+// but it has never entered the in-memory pool via create_session -- exactly the main scenario of right-click archiving any list item.
 const fakeId = crypto.randomUUID();
 const fakeSessionFile = path.join(path.dirname(created.path), `20260921T000000.000Z_${fakeId}.jsonl`);
 await mkdir(path.dirname(fakeSessionFile), { recursive: true });
@@ -273,20 +273,20 @@ ws.send(JSON.stringify({ type: "delete_session", path: fakeSessionFile }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));
 fakeItem = (list.projects ?? []).find((p: any) => p.cwd === sessDir)?.sessions?.find((s: any) => s.path === fakeSessionFile);
 assert(!fakeItem, "池外会话删除后条目消失");
-// 池外会话 id 不存在时快速失败（回 error 帧，不炸连接）
+// A pool-external session id that does not exist fails fast (error frame back, connection intact)
 mark = frames.length;
 ws.send(JSON.stringify({ type: "archive_session", sessionId: "no-such-session-id", archived: true }));
 const errFrame = await waitType("error", mark).catch((e) => fail(String(e)));
 assert(String(errFrame.message).includes("会话不存在"), `未知 sessionId 归档回 error（${errFrame.message}）`);
 
-// ---- 断言 10：read_image（png 成功 + 超大/非图片后缀报 error） ----
+// ---- Assertion 10: read_image (png succeeds; oversized/non-image suffix errors) ----
 const iconPath = path.join(new URL("..", import.meta.url).pathname, "ui/app-icon.png");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "read_image", path: iconPath }));
 r = await waitType("image_content", mark).catch((e) => fail(String(e)));
 assert(!r.error && r.mime === "image/png" && typeof r.data === "string" && r.data.length > 1000, `read_image png（mime=${r.mime}, base64 ${r.data?.length ?? 0} 字符）`);
 const fakePng = path.join(sessDir, "oversized.png");
-await writeFile(fakePng, Buffer.alloc(8_000_001, 1)); // 超过 8MB 上限
+await writeFile(fakePng, Buffer.alloc(8_000_001, 1)); // Exceeds the 8MB cap
 mark = frames.length;
 ws.send(JSON.stringify({ type: "read_image", path: fakePng }));
 r = await waitType("image_content", mark).catch((e) => fail(String(e)));
@@ -298,7 +298,7 @@ ws.send(JSON.stringify({ type: "read_image", path: fakeTxt }));
 r = await waitType("image_content", mark).catch((e) => fail(String(e)));
 assert(typeof r.error === "string" && r.error.includes("不支持"), `read_image 非图片后缀回 error（${r.error}）`);
 
-// ---- 断言 11：abort_session 空闲会话安全返回 ok ----
+// ---- Assertion 11: abort_session safely returns ok on an idle session ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "create_session", cwd: sessDir }));
 created = await waitType("session_created", mark).catch((e) => fail(String(e)));
@@ -310,7 +310,7 @@ mark = frames.length;
 ws.send(JSON.stringify({ type: "delete_session", path: created.path }));
 await waitType("session_list", mark).catch((e) => fail(String(e)));
 
-// ---- 断言 12：compact_session 空会话回 error 字段（结构合法，不崩连接） ----
+// ---- Assertion 12: compact_session returns an error field on an empty session (structurally valid, connection intact) ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "create_session", cwd: sessDir }));
 created = await waitType("session_created", mark).catch((e) => fail(String(e)));

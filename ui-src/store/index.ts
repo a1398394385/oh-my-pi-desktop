@@ -1,6 +1,7 @@
-// zustand 单一 store(P3 波 2:slice 组合式)。AppStore = 六个 slice 的交集组合;
-// 字段与初值自 store.ts 平移,字段名零改动。各 slice 文件的模块级函数闭包引用本文件
-// useAppStore(运行时调用,加载期无求值——ESM 循环安全)。
+// Single zustand store (P3 wave 2: slice composition). AppStore = the intersection composition of
+// six slices; fields and initial values moved over from store.ts with zero field renames.
+// Module-level functions in the slice files close over this file's useAppStore (runtime calls,
+// no load-time evaluation — ESM-cycle safe).
 import { create } from "zustand";
 import { createUiSlice, type UiSlice } from "./ui";
 import { createSessionSlice, type SessionSlice } from "./session";
@@ -20,10 +21,12 @@ export const useAppStore = create<AppStore>()((...a) => ({
   ...createWsSlice(...a),
 }));
 
-/** 写入 helper(zustand setState 的直通别名;保留具名入口便于组件书写与后续收口) */
+/** Write helper (a passthrough alias of zustand setState; kept as a named entry for component ergonomics and later convergence) */
 export function setBump(partial: Partial<AppStore>): void {
   useAppStore.setState(partial);
 }
 
-// 注:不挂全局 subscribe 自动兜底——subscribe 回调(即使微任务延迟)里再 set 会与 React 19 的
-// useSyncExternalStore 同步级联成死循环(#185 / 异步死循环,均已实测);渲染触发一律靠显式 setState 换值/换引用。
+// Note: no global subscribe auto-fallback — a set inside a subscribe callback (even microtask-
+// deferred) cascades synchronously with React 19's useSyncExternalStore into an infinite loop
+// (#185 / async variant, both reproduced); render triggering always goes through explicit
+// setState swapping values/references.

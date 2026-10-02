@@ -1,7 +1,8 @@
 'use strict';
 
-// 移植自 token-monitor src/shared/config.js，仅保留限额链路用到的三个函数。
-// 数据目录默认落在 omp-desktop profile 的 agent 目录下，可用环境变量覆盖。
+// Ported from token-monitor src/shared/config.js, keeping only the three
+// functions the limits pipeline uses. The data dir defaults to the agent dir
+// of the omp-desktop profile and can be overridden via environment variables.
 
 const fs = require('node:fs');
 const os = require('node:os');

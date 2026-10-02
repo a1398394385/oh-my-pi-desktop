@@ -1,6 +1,9 @@
-// 分支菜单（向上弹出）：newSessionBranches 列表 + 当前分支 ✓ 勾选 + 点击切换。
-// 迁移自 ui/welcome.js wbBranchBtn 打开逻辑；切换回包 git_branch_switched 由 store 落地 + toast。
-// 对照原版：菜单容器不做 click 阻断，点击任意项（含空白处冒泡到 window）都会关闭。
+// Branch menu (pops upward): newSessionBranches list + ✓ check on the current branch + click
+// to switch.
+// Migrated from the wbBranchBtn open logic in ui/welcome.js; the git_branch_switched reply is
+// landed by the store + toast.
+// Aligned with the original: the menu container doesn't block clicks — clicking any item
+// (including blank space bubbling to window) closes it.
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useAppStore, send } from "../../store";
@@ -43,7 +46,7 @@ export default function BranchMenu({ anchorRect, onClose }: BranchMenuProps) {
           }}
         >
           <span className="ck">{b === curBranch ? "✓" : ""}</span>
-          {/* 分支图标与分支选择胶囊同款（branch），保持全局图标风格一致 */}
+          {/* Branch icon same as the branch-picker capsule (branch), keeping the global icon style consistent */}
           <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
           {b}
         </div>

@@ -1,12 +1,12 @@
 /* ============================================================
- * main-tree.css —— 主页面·消息区会话树瀑布流(MainSessionTree / SessionTreeStream;页面在 Chat.tsx mainViewMode==="tree")。
- *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
- * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
- * → main-composer → main-streamdown → main-tree → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * main-tree.css — main page, session-tree waterfall in the message area (MainSessionTree / SessionTreeStream; the page lives in Chat.tsx mainViewMode==="tree").
+ *  Split from ui/css/main.css by semantic domain; keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = ui/style.css's @import order: global -> main-shell -> main-sidebar -> main-chat
+ * -> main-composer -> main-streamdown -> main-tree -> main-welcome -> main-right -> settings; append new styles at the end of the matching domain file.
  * ============================================================ */
-/* ── 会话树（消息区瀑布流：MainSessionTree / SessionTreeStream）────────────────
-   会话树页面已迁入中栏消息区（Chat.tsx mainViewMode==="tree"），自 main-right.css 归位。 */
-/* 行文本：截断单行；角色着色（token 语义对齐 chat 区 user/assistant/tool 层次） */
+/* ── session tree (message-area waterfall: MainSessionTree / SessionTreeStream)────────────────
+   the session tree page moved into the middle-column message area (Chat.tsx mainViewMode==="tree"), relocated from main-right.css. */
+/* row text: single-line truncation; role coloring (token semantics aligned with the chat area's user/assistant/tool hierarchy) */
 
 .st-user { color: var(--accent); }
 
@@ -16,21 +16,21 @@
 
 .st-sys { color: var(--faint); font-size: var(--ui-fs-xs); }
 
-/* 活跃路径（根→当前叶）标记：accent 圆点 + 文本提亮 */
+/* active path (root -> current leaf) marker: accent dot + brighter text */
 
-/* 当前叶徽标 + 时间：右列固定，不随文本截断 */
+/* current-leaf badge + time: pinned right column, unaffected by text truncation */
 
 .st-confirm-text {
   max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* ── 会话树全新瀑布流与分叉切换视图 (Session Tree Stream) ── */
+/* ── session tree's new waterfall and fork-switching view (Session Tree Stream) ── */
 .stream-container {
   position: relative;
   width: 100%;
 }
 
-/* 主视图容器宽度：四段式收缩对齐主对话消息列与输入框 */
+/* main view container width: four-stage shrink aligned with the main chat message column and composer */
 .stream-container:not(.compact) {
   max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   margin-left: auto;
@@ -55,7 +55,7 @@
 
 .stream-node-item {
   position: relative;
-  margin-bottom: 10px; /* 间距 +2px (8px -> 10px) */
+  margin-bottom: 10px; /* spacing +2px (8px -> 10px) */
   padding-left: 64px;
   z-index: 2;
 }
@@ -69,7 +69,7 @@
   margin-bottom: 0;
 }
 
-/* 竖线左侧悬停跳转按钮 */
+/* hover jump button left of the vertical line */
 .node-jump-btn {
   position: absolute;
   left: 4px;
@@ -297,7 +297,7 @@
   border-top: 1px solid var(--line-soft);
 }
 
-/* 分叉点分段与分支切换区域 */
+/* fork-point segments and branch switching area */
 .stream-section-block {
   position: relative;
   width: 100%;
@@ -309,7 +309,7 @@
   animation: branch-section-fade-in .18s ease-out;
 }
 
-/* 分叉点切换器 */
+/* fork-point switcher */
 .stream-fork-hub {
   position: relative;
   margin: 12px 0 14px 64px;
@@ -438,8 +438,8 @@
   border-radius: 4px;
 }
 
-/* 键盘游标（↑/↓ 移动，回车跳转）：accent 描边 + 左侧竖条；刻意不用整行 hover 高亮
-   —— hover 是「可点」的 affordance，游标是键盘定位态，语义不同 */
+/* keyboard cursor (arrow keys move, enter jumps): accent outline + left bar; deliberately not the whole-row hover highlight
+   — hover is a clickability affordance, the cursor is a keyboard positioning state; different semantics */
 .stream-node-item.is-cursor .node-card { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .stream-node-item.is-cursor .spine-bullet { border-color: var(--accent); }
 .stream-node-item.is-cursor::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--accent); z-index: 4; }

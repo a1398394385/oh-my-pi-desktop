@@ -1,5 +1,6 @@
 // en counterpart of misc.zh.ts — keep keys in sync.
 export const miscEn = {
+  closeSr: "Close",
   // App.tsx
   newTask: "New task",
   pickSession: "Select a session on the left or create a new task",

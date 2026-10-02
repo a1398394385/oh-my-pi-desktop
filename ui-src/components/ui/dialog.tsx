@@ -1,13 +1,17 @@
-// 对话框基件（ZCodium dialog 平移）：遮罩对齐 .confirm-mask（black/45），内容卡对齐
-// .confirm-box 视觉语言（--ctl-bg 卡面 + --line 边 + --r-md + 浮层阴影 + ringpop 入场——
-// 复用全局 keyframes，关闭瞬时无出场动画，与原版一致）。focus trap / Esc / 点遮罩关闭由
-// Radix 提供；关闭钮默认不显示（本仓弹窗走底部按钮行），需要时传 showCloseButton。
+// Dialog base component (ported from ZCodium dialog): the mask aligns with
+// .confirm-mask (black/45) and the content card with the .confirm-box visual
+// language (--ctl-bg surface + --line border + --r-md + floating-layer shadow +
+// ringpop entrance — reusing the global keyframes; closing is instant with no
+// exit animation, same as the original). Focus trap / Esc / click-mask-to-close
+// are provided by Radix; the close button is hidden by default (dialogs in this
+// repo use a bottom button row) — pass showCloseButton when needed.
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { cn } from "./cn.js";
 import { Button } from "./button.js";
 import Icon from "../../Icon";
+import { useTranslation } from "react-i18next";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -46,6 +50,7 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -68,7 +73,7 @@ function DialogContent({
               className="absolute top-3 right-3 z-20"
             >
               <Icon name="xmark" size={12} />
-              <span className="sr-only">关闭</span>
+              <span className="sr-only">{t("misc.closeSr")}</span>
             </Button>
           </DialogPrimitive.Close>
         )}

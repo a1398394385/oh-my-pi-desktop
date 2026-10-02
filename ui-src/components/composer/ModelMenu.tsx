@@ -1,7 +1,10 @@
-// 模型菜单（原 composer.js buildModelMenu + pickModel 平移）：
-// 一级列供应商（› 指示），悬停 180ms 意图延时 / 点击向右弹出该供应商的模型浮层。
-// 浮层渲染为 #composer 直接子节点（fragment 兄弟位，原版挂 composerEl 规避 .menu.model
-// 的 overflow-y:auto 裁切）；有会话走宿主 set_model，新建态落 localStorage。
+// Model menu (ported from the old composer.js buildModelMenu + pickModel):
+// the first level lists providers (› indicator); hover 180ms intent delay /
+// click pops the provider's model flyout to the right.
+// The flyout renders as a direct child of #composer (fragment sibling slot;
+// the old version attached to composerEl to dodge .menu.model's
+// overflow-y:auto clipping); with a session it goes through the host set_model,
+// in creating-new state it lands in localStorage.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,23 +26,27 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const curModel = s?.model || newSessionModel;
   const menuRef = useRef<HTMLDivElement>(null);
   const flyRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> 供应商行元素（flyout 对齐用）
-  const [flyProv, setFlyProv] = useState<string | null>(null); // 当前二级浮层的供应商
-  const hideT = useRef<ReturnType<typeof setTimeout> | null>(null); // 浮层关闭宽限
-  const switchT = useRef<ReturnType<typeof setTimeout> | null>(null); // 行切换悬停意图延时
+  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> provider row element (for flyout alignment)
+  const [flyProv, setFlyProv] = useState<string | null>(null); // provider of the current second-level flyout
+  const hideT = useRef<ReturnType<typeof setTimeout> | null>(null); // flyout close grace period
+  const switchT = useRef<ReturnType<typeof setTimeout> | null>(null); // row-switch hover intent delay
 
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
 
-  // 卸载清计时器
+  // Unmount timer cleanup
   useEffect(() => () => { clearTimeout(hideT.current ?? undefined); clearTimeout(switchT.current ?? undefined); }, []);
 
-  // 浮层坐标：#composer 相对（offsetParent）。二级列表向上展开——底缘对齐供应商行底缘
-  // （两菜单 padding 均 5px，+5 让末行与行高对齐），不再向下撑出窗口下缘；上方空间不足则
-  // 限高 + 内部滚动，顶缘最多到视口上沿 4px。菜单滚动时扣除 scrollTop。注意不得钳位到 0：
-  // 菜单一 carousel 般向上超出 composer 时 offsetTop 为负，浮层必须跟着行走到 composer 上方，
-  // 钳位会让浮层整体下滑错位。
+  // Flyout coordinates: #composer-relative (offsetParent). The second-level
+  // list expands upward -- bottom edge aligned to the provider row's bottom
+  // edge (both menus have 5px padding; +5 keeps the last row aligned with row
+  // height), never stretching past the window's bottom edge; when the space
+  // above is insufficient, cap height + internal scrolling with the top edge at
+  // most 4px below the viewport top. Subtract scrollTop when the menu
+  // scrolls. Do not clamp to 0: when the menu sticks out above the composer
+  // carousel-style, offsetTop is negative and the flyout must follow the row
+  // above the composer; clamping would slide the whole flyout out of place.
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const comp = composerRef.current;
@@ -57,19 +64,21 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
       fly.style.maxHeight = Math.max(80, availAbove) + "px";
       fly.style.overflowY = "auto";
     }
-    fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px"; // 与一级菜单边框交叠 4px，视觉无缝
+    fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px"; // overlap the first-level menu's border by 4px, visually seamless
     if (fly.getBoundingClientRect().right > window.innerWidth - 8) {
-      fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px"; // 右缘越界翻左
+      fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px"; // right edge overflows: flip left
     }
   }, [flyProv]);
 
-  // 模型选中：有会话走宿主下发，新建态落 localStorage（手选后不再被配置默认覆盖）
+  // Model picked: with a session it goes through the host; creating-new state
+  // lands in localStorage (a manual pick is no longer overridden by the config
+  // default)
   const pickModel = (id: string) => {
     pickModelId(id);
     onClose();
   };
 
-  // 按 provider 分组（宿主下发 id 形如 "provider/modelId"）
+  // Group by provider (host-delivered ids look like "provider/modelId")
   const groups = new Map<string, [string, string][]>();
   for (const [id, name] of modelNames) {
     const prov = id.split("/")[0];
@@ -95,8 +104,11 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             className={"mi prov" + (prov === flyProv ? " on" : "")}
             key={prov}
             ref={(el) => { if (el) rowRefs.current.set(prov, el); else rowRefs.current.delete(prov); }}
-            // 行切换加 180ms 悬停意图延时：指针斜向穿过中间行去够浮层时不抢焦
-            // （浮层 mouseenter 会取消待切换），停够才换供应商；点击仍即时展开/收起
+            // Row switch adds a 180ms hover intent delay: the pointer cutting
+            // diagonally through middle rows toward the flyout does not steal
+            // focus (the flyout's mouseenter cancels the pending switch);
+            // dwelling long enough switches the provider; clicking still
+            // expands/collapses immediately
             onMouseEnter={() => {
               clearTimeout(hideT.current ?? undefined);
               if (prov === flyProv) return;
@@ -126,7 +138,8 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             hideT.current = setTimeout(() => setFlyProv(null), 150);
           }}
         >
-          {/* flyProv  truthy 时 groups 必有该键（分组自建）；?? [] 仅为满足严格类型 */}
+          {/* When flyProv is truthy, groups always has that key (the grouping
+              is self-built); the ?? [] only satisfies strict typing */}
           {(groups.get(flyProv) ?? []).map(([id, name]) => (
             <div className="mi" data-model={id} key={id} onClick={() => pickModel(id)}>
               <span className="ck">{curModel === id ? "✓" : ""}</span>{name}

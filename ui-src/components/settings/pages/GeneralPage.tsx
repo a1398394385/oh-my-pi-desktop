@@ -1,6 +1,7 @@
-// 设置页：常规（pg-general）。Profile 切换 / 界面语言 / 主题 / 网络环境变量 / 更新与行为。
-// 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-general">，
-// 绑定参照 ui/settings/index.js 的 initSettings / applyHostSettings / saveDesktopField。
+// Settings page: general (pg-general). Profile switching / UI language / theme / network env
+// vars / updates & behavior.
+// Old reference: <div class="set-page" id="pg-general"> in git show 464131d:ui/index.html,
+// bindings per initSettings / applyHostSettings / saveDesktopField in ui/settings/index.js.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
@@ -14,7 +15,7 @@ import type { DesktopEnv } from "../../../types/frames";
 // Native names for the language badge and picker labels (never translated)
 const LANG_NATIVE: Record<AppLang, string> = { "zh-CN": "简体中文", en: "English" };
 
-// 下拉选项（旧版 .mi 一一对应；ck/sub/disabled 均可选）
+// Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
 interface SelOption {
   v: string;
   label: ReactNode;
@@ -23,18 +24,18 @@ interface SelOption {
   disabled?: boolean;
 }
 
-// Sel 下拉选择器 props
+// Sel dropdown props
 interface SelProps {
   label: ReactNode;
   options: SelOption[];
   onPick: (v: string) => void;
 }
 
-// 本地偏好落盘（旧版 saveUiPrefs；读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
+// Persist local prefs (old saveUiPrefs; serialize the store's real reference; don't use liveRef — its enumeration isn't forwarded)
 function saveUiPrefs() {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
 }
-// 外观应用（旧版 applyAppearance：字号/字体/行号/换行/思考块 data 属性）
+// Apply appearance (old applyAppearance: font size/font/line numbers/wrap/thinking-block data attributes)
 const FONT_STACKS: Record<string, string> = {
   default: "var(--sans)",
   zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -55,7 +56,7 @@ function applyAppearance() {
   root.dataset.showThinking = p.showThinking ? "on" : "off";
 }
 
-// ---------- 下拉选择器：旧版 wireSel 的受控等价物（.sel/.menu/.mi 结构 1:1） ----------
+// ---------- Dropdown selector: controlled equivalent of the old wireSel (.sel/.menu/.mi structure 1:1) ----------
 function Sel({ label, options, onPick }: SelProps) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -97,12 +98,12 @@ function Sel({ label, options, onPick }: SelProps) {
 }
 
 export default function GeneralPage() {
-  const hs = useAppStore((s) => s.hostSettings); // selector 订阅回包刷新
+  const hs = useAppStore((s) => s.hostSettings); // selector subscription refreshes on replies
   const { t } = useTranslation();
   const lang = useAppStore((s) => s.uiPrefs.lang);
-  const env: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" }; // 首帧前兜底,同原版 {} 语义
+  const env: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" }; // fallback before the first frame, same as the old {} semantics
 
-  // ---------- 本地表单态 ----------
+  // ---------- Local form state ----------
   const proxyRef = useRef<HTMLInputElement>(null);
   const noProxyRef = useRef<HTMLInputElement>(null);
   const caRef = useRef<HTMLInputElement>(null);
@@ -111,7 +112,7 @@ export default function GeneralPage() {
   const [noProxy, setNoProxy] = useState(env.noProxy || "");
   const [ca, setCa] = useState(env.caCerts || "");
   const [askTimeout, setAskTimeout] = useState(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
-  // host 设置回包后回填（输入框聚焦时不打扰，对应旧版 applyHostSettings 的 fill 守卫）
+  // Refill after the host settings reply (never disturb focused inputs; the fill guard of the old applyHostSettings)
   useEffect(() => {
     const e2: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" };
     if (document.activeElement !== proxyRef.current) setProxy(e2.httpProxy || "");
@@ -130,7 +131,7 @@ export default function GeneralPage() {
   );
   const termFontRef = useRef<HTMLInputElement>(null);
 
-  // ---------- 交互 ----------
+  // ---------- Interaction ----------
   const switchProfile = (name: string) => {
     const target = String(name || "").trim();
     if (!target) return;
@@ -156,7 +157,7 @@ export default function GeneralPage() {
   const toggleThinking = () => {
     const on = !showThinking;
     setShowThinking(on);
-    // uiPrefs 换新对象写入 + bump（等价旧 mutate + 本地 setState 驱动的可见性）
+    // uiPrefs written as a fresh object + bump (equivalent of the old mutate + local setState-driven visibility)
     useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, showThinking: on } }));
     saveUiPrefs();
     applyAppearance();
@@ -194,7 +195,7 @@ export default function GeneralPage() {
       console.warn("set_menu_language:", err),
     );
   };
-  // 网络三件套：整包发送 desktopEnv（旧版 saveDesktopField 语义）
+  // Network trio: send the whole desktopEnv package (old saveDesktopField semantics)
   const saveEnv = (field: string, val: string) => {
     const merged = { httpProxy: proxy, noProxy: noProxy, caCerts: ca, [field]: val };
     send({ type: "set_desktop_env", ...merged });
@@ -206,7 +207,7 @@ export default function GeneralPage() {
     toast(t("settingsPage.general.askTimeoutSaved", { secs, suffix: secs === 0 ? t("settingsPage.general.neverTimeout") : "" }));
   };
 
-  // ---------- Profile 下拉数据（数据契约：hostSettings.availableProfiles: string[]） ----------
+  // ---------- Profile dropdown data (data contract: hostSettings.availableProfiles: string[]) ----------
   const activeProfile = hs?.activeProfile || "default";
   const profiles = Array.isArray(hs?.availableProfiles) && hs.availableProfiles.length
     ? hs.availableProfiles

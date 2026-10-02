@@ -1,16 +1,24 @@
-// 全局快捷键：注册表（设置页「键盘快捷键」的展示数据源）+ 唯一的 keydown 分派。
-// 键位抄 OMP CLI（oh-my-pi 的 docs/keybindings.md 与 packages/tui/src/app-keybindings.ts 的
-// app.* 动作），只迁移桌面端有对应动作的键：
-//   · TUI 编辑器键（Ctrl+A/E/K/U/W、Ctrl+Y、Alt+B/F、Ctrl+]/Alt+]）不迁移——macOS WebView
-//     已有系统惯例（⌘←/→ 行首尾、⌥←/→ 词移、⌥⌫ 删词、⌘A 全选），覆盖会破坏用户预期；
-//   · 终端专属键（Ctrl+Z suspend、Ctrl+D 退出、Alt+L 重置显示、Ctrl+G 外部编辑器、
-//     Ctrl+L live 语音、空格长按 STT、Ctrl+Shift+V 原始粘贴）无对应能力，不迁移；
-//   · app.history.search / app.retry / app.tools.toggleVisibility / app.session.*
-//     桌面端无对应动作，不迁移。
-// 与 CLI 的差异：CLI 里 Esc 独占中断语义，GUI 里 Esc 已被设置页/查找栏/打开中的弹层消费，
-// 故 Esc 路由只在没有其它 Esc 消费者时触发（见 handleEsc 的守卫）。
-// 绑定在组件内的键（⌘N 新建 / ⌘, 设置 / ⌘F 查找 / 缩放 / 输入框内各键）只在此登记展示，
-// 不在此重复绑定——重复绑定即双触发。
+// Global shortcuts: the registry (display data source for the settings page
+// "Keyboard Shortcuts") + the single keydown dispatch.
+// Key bindings copied from OMP CLI (oh-my-pi docs/keybindings.md and the app.*
+// actions in packages/tui/src/app-keybindings.ts); only keys with matching
+// desktop actions were migrated:
+//   · TUI editor keys (Ctrl+A/E/K/U/W, Ctrl+Y, Alt+B/F, Ctrl+]/Alt+]) not
+//     migrated -- the macOS WebView already has system conventions (⌘←/→ line
+//     start/end, ⌥←/→ word move, ⌥⌫ delete word, ⌘A select all); overriding
+//     them would break user expectations;
+//   · Terminal-specific keys (Ctrl+Z suspend, Ctrl+D exit, Alt+L reset display,
+//     Ctrl+G external editor, Ctrl+L live voice, space long-press STT,
+//     Ctrl+Shift+V raw paste) have no matching capability, not migrated;
+//   · app.history.search / app.retry / app.tools.toggleVisibility /
+//     app.session.* have no desktop action, not migrated.
+// Difference vs the CLI: in the CLI Esc owns the interrupt semantics outright,
+// while in the GUI Esc is already consumed by the settings page/find bar/open
+// popups, so the Esc routing triggers only when no other Esc consumer exists
+// (see the guards in handleEsc).
+// Keys bound inside components (⌘N new / ⌘, settings / ⌘F find / zoom / keys
+// inside the composer) are only registered here for display, never re-bound --
+// re-binding means double triggering.
 import {
   useAppStore, setBump, send, toast, activeOpen, openSessionByPath, getAvailableProjects,
   getSupportedThinkingForModel, pickModelId, pickThinkingLevel, toolExpandKey,
@@ -22,30 +30,31 @@ import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/sidebar/util";
 
-// ---------- 动作 ----------
+// ---------- Actions ----------
 
-// 连按 Esc 动作窗口（500ms）
+// Double-Esc action window (500ms)
 const DOUBLE_ESC_MS = 500;
 let doubleEscTimer: TimerHandle | undefined;
 let escArmedAction: "clear" | "tree" | null = null;
 
-/** 全局 Esc 路由：
- *  1. tree 页面：按一下 esc 切回消息；
- *  2. 输入框有文字时：按两下 esc 清空输入框；
- *  3. 输入框无文字时：按两下 esc 唤起 tree（生成中第一下先中止生成）。
+/** Global Esc routing:
+ *  1. tree page: one esc switches back to messages;
+ *  2. composer has text: two esc presses clear the composer;
+ *  3. composer empty: two esc presses summon the tree (while generating, the
+ *     first press aborts generation).
  */
 function handleEsc(): boolean | undefined {
   const st = useAppStore.getState();
-  if (st.settingsOpen || st.findOpen) return false; // 设置 / 查找栏先吃 Esc
+  if (st.settingsOpen || st.findOpen) return false; // settings / find bar consumes Esc first
   if (document.querySelector(".menu.open")) {
-    closeAllMenus(); // 打开中的弹层先关（输入区菜单 / 设置页下拉）
+    closeAllMenus(); // close open popups first (composer menus / settings dropdowns)
     return false;
   }
   if (document.querySelector(".lp-mask")) {
-    return false; // 树跳转确认等模态弹窗先关
+    return false; // modal dialogs like the tree-jump confirmation close first
   }
 
-  // 1. tree 页面：按一下 esc 切回消息
+  // 1. tree page: one esc switches back to messages
   if (st.mainViewMode === "tree") {
     st.setMainViewMode("chat");
     setTimeout(() => {
@@ -55,7 +64,7 @@ function handleEsc(): boolean | undefined {
     return true;
   }
 
-  // 处于 clear 确认阶段的第二下 Esc：执行清空
+  // Second Esc while in the clear confirmation stage: perform the clear
   if (escArmedAction === "clear") {
     clearTimeout(doubleEscTimer);
     escArmedAction = null;
@@ -64,7 +73,7 @@ function handleEsc(): boolean | undefined {
     return true;
   }
 
-  // 处于 tree 确认阶段的第二下 Esc：唤起 tree
+  // Second Esc while in the tree confirmation stage: summon the tree
   if (escArmedAction === "tree") {
     clearTimeout(doubleEscTimer);
     escArmedAction = null;
@@ -76,7 +85,8 @@ function handleEsc(): boolean | undefined {
   const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
   const hasText = !!(st.draftHasContent || (st.pendingFiles && st.pendingFiles.length > 0));
 
-  // 2. 输入框有文字时：按第一下 Esc 提示清空（无 toast，发送钮短暂转取消图标即提示）
+  // 2. Composer has text: the first Esc hints clearing (no toast; the send
+  // button briefly flipping to the cancel icon is the hint)
   if (hasText) {
     escArmedAction = "clear";
     setBump({ escArmedUntil: Date.now() + DOUBLE_ESC_MS });
@@ -88,13 +98,14 @@ function handleEsc(): boolean | undefined {
     return false;
   }
 
-  // 3. 输入框无文字时：生成中第一下先中止生成
+  // 3. Composer empty: while generating, the first Esc aborts generation
   if (s && (s.streaming || bashRunning)) {
     send({ type: bashRunning && !s.streaming ? "bash_abort" : "abort_session", sessionId: s.sessionId });
     return true;
   }
 
-  // 4. 输入框无文字时：记录 tree 动作窗口，静默等待第二下 Esc 唤起 tree
+  // 4. Composer empty: record the tree action window and silently wait for the
+  // second Esc to summon the tree
   if (!s && !st.isCreatingNew) return false;
   escArmedAction = "tree";
   clearTimeout(doubleEscTimer);
@@ -104,7 +115,8 @@ function handleEsc(): boolean | undefined {
   return false;
 }
 
-/** app.model.cycleForward / cycleBackward：按宿主下发顺序（与模型菜单同序）前后移动 */
+/** app.model.cycleForward / cycleBackward: move through models in host delivery
+ * order (same order as the model menu) */
 function cycleModel(delta: number): void {
   const st = useAppStore.getState();
   const s = activeOpen();
@@ -119,7 +131,7 @@ function cycleModel(delta: number): void {
   pickModelId(i < 0 ? ids[delta > 0 ? 0 : ids.length - 1] : ids[(i + delta + ids.length) % ids.length]);
 }
 
-/** app.thinking.cycle：在当前模型支持的档位里循环（auto → off → 各档 → auto） */
+/** app.thinking.cycle: cycle through tiers supported by the current model (auto -> off -> each tier -> auto) */
 function cycleThinking(): void {
   const st = useAppStore.getState();
   const s = activeOpen();
@@ -129,36 +141,40 @@ function cycleThinking(): void {
   pickThinkingLevel(levels[(levels.indexOf(s?.thinking || st.newSessionThinking) + 1) % levels.length]);
 }
 
-/** app.model.select：打开模型选择菜单（Composer 消费 menuSignal） */
+/** app.model.select: open the model selection menu (Composer consumes menuSignal) */
 function openModelMenu(): void {
   const st = useAppStore.getState();
-  if (st.settingsOpen) return; // 设置覆盖层下的菜单不可见，不开
+  if (st.settingsOpen) return; // menus under the settings overlay are invisible, do not open
   if (!activeOpen() && !st.isCreatingNew) return;
   setBump({ menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
 }
 
-/** app.plan.toggle：计划模式开合（仅会话内，与权限模式菜单同路由） */
+/** app.plan.toggle: plan mode open/close (session only, same routing as the permission mode menu) */
 function togglePlanMode(): void {
   const s = activeOpen();
   if (!s) return;
   send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !s.planMode });
 }
 
-/** app.agents.hub：右侧边栏开合（与顶栏右栏按钮同路由） */
+/** app.agents.hub: right sidebar open/close (same routing as the topbar right-panel button) */
 function toggleSubagents(): void {
   toggleRightPanel();
 }
 
-/** app.thinking.toggle：思考标签「运行中默认展开、结束收起」开关（= 外观页「显示思考过程」） */
+/** app.thinking.toggle: the thinking block "expand while running, collapse when
+ * done" switch (= appearance page "Show thinking process") */
 function toggleThinking(): void {
   const showThinking = !useAppStore.getState().uiPrefs.showThinking;
-  // 写换新对象（selector 组件按引用感知）+ _v bump（原「写+notify」）；末尾 toast 自带一次 bump
+  // Write a new object (selector components sense it by reference) + _v bump (the
+  // old "write + notify"); the trailing toast carries its own bump
   useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking } }));
   saveUiPrefs();
   applyAppearance();
-  // 同步宿主设置：不回写会被下一次 settings/ready 帧的 hideThinkingBlock 覆盖回弹
+  // Sync the host setting: without writing it back, the next settings/ready
+  // frame's hideThinkingBlock would overwrite and revert it
   send({ type: "set_setting", key: "hideThinkingBlock", value: !showThinking });
-  // 即时反馈：只跟正在流式的思考行（已结束的收起态、用户手动展开的行都不动）
+  // Immediate feedback: only follow thinking rows currently streaming (finished
+  // collapsed rows and rows the user manually expanded stay untouched)
   const s = activeOpen();
   if (s) {
     for (const it of s.items) {
@@ -168,12 +184,13 @@ function toggleThinking(): void {
   toast(t(showThinking ? "misc.thinkingExpandOn" : "misc.thinkingExpandOff"));
 }
 
-/** app.tools.expand：工具输出「运行中默认展开、结束收起」开关 */
+/** app.tools.expand: the tool output "expand while running, collapse when done" switch */
 function toggleToolOutput(): void {
   const expandToolOutput = !useAppStore.getState().uiPrefs.expandToolOutput;
   useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput } }));
   saveUiPrefs();
-  // 即时反馈：只跟正在运行的工具行（已结束的行保持用户当前的收展态）
+  // Immediate feedback: only follow tool rows currently running (finished rows
+  // keep the user's current expand/collapse state)
   const s = activeOpen();
   if (s) {
     for (const it of s.items) {
@@ -183,13 +200,15 @@ function toggleToolOutput(): void {
   toast(t(expandToolOutput ? "misc.toolExpandOn" : "misc.toolExpandOff"));
 }
 
-/** Command/Ctrl + 1~9：跳转到左侧会话（优先运行中，不足 9 个用未读补齐） */
+/** Command/Ctrl + 1~9: jump to a left-sidebar session (running ones first, top
+ * up with unread ones when fewer than 9) */
 function handleSessionJump(digit: string): boolean {
   const st = useAppStore.getState();
   if (st.settingsOpen) return false;
   if (document.querySelector(".lp-mask")) return false;
 
-  // 与侧栏徽标同源取可见项目（allProjects 顺序 + 历史项目兜底），保证按键跳转与显示一致
+  // Take visible items from the same source as the sidebar badges (allProjects
+  // order + history-project fallback), keeping key jumps consistent with display
   const shortcuts = computeSidebarSessionShortcuts({ ...st, availableProjects: getAvailableProjects() });
   for (const [path, d] of shortcuts.entries()) {
     if (d === digit) {
@@ -204,13 +223,14 @@ function handleSessionJump(digit: string): boolean {
   return false;
 }
 
-// ---------- 注册表 ----------
-// keys = 键帽展示；chords = 分派用键位（空 = 绑定在组件内，此处只登记）；run = 动作
+// ---------- Registry ----------
+// keys = keycap display; chords = dispatch bindings (empty = bound inside a
+// component, registered here for display only); run = action
 export interface ShortcutItem {
   keys: string[];
   chords?: string[];
   label: string;
-  run?: (e?: KeyboardEvent) => unknown; // 动作自判上下文：返回 false = 未处理（不拦截默认行为）
+  run?: (e?: KeyboardEvent) => unknown; // actions judge context themselves: returning false = unhandled (do not intercept the default behavior)
 }
 export interface ShortcutGroup {
   title: string;
@@ -266,7 +286,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
-    // 树页内的键绑定在 SessionTreeStream 组件里，此处只登记展示（不重复绑定——重复绑定即双触发）
+    // Keys inside the tree page are bound in the SessionTreeStream component;
+    // registered here for display only (no re-binding -- re-binding means double triggering)
     get title() { return t("misc.keysGroupTree"); },
     get desc() { return t("misc.keysGroupTreeDesc"); },
     items: [
@@ -285,13 +306,14 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
 ];
 
-// ---------- 分派 ----------
+// ---------- Dispatch ----------
 const BINDINGS = new Map<string, ShortcutItem>();
 for (const g of SHORTCUT_GROUPS) {
   for (const it of g.items) for (const c of it.chords ?? []) BINDINGS.set(c, it);
 }
 
-/** 归一化按键：字母/数字取 e.code（macOS 的 Option 组合会改写 e.key，如 ⌥P 得到 "π"） */
+/** Normalize the key: letters/digits take e.code (macOS Option combos rewrite
+ * e.key, e.g. ⌥P yields "π") */
 function chordOf(e: KeyboardEvent): string {
   const code = e.code || "";
   const letter = /^Key([A-Z])$/.exec(code);
@@ -306,10 +328,13 @@ function chordOf(e: KeyboardEvent): string {
   return parts.join("+");
 }
 
-// ---------- ⌘ 按住态与项目临时展开 ----------
-// 按住 ⌘ 时把含运行中会话的折叠项目临时展开（纯前端视觉态：不发 set_project_expanded、
-// 不落盘），让运行中会话的行与徽标可见；松开时只回收自动展开的那批——按住期间用户的
-// 手动展开/折叠（走 ProjGroup 正常路径、含落盘）不受影响。
+// ---------- ⌘ held state and transient project expansion ----------
+// While ⌘ is held, collapsed projects containing running sessions expand
+// transiently (pure frontend visual state: no set_project_expanded sent, nothing
+// persisted) so running session rows and badges stay visible; on release only
+// the auto-expanded batch is reverted -- manual expand/collapse done by the user
+// during the hold (via the normal ProjGroup path, persistence included) is
+// unaffected.
 let autoExpandedProjects: Set<string> | null = null;
 
 function setCommandPressed(on: boolean): void {
@@ -328,7 +353,7 @@ function setCommandPressed(on: boolean): void {
     }
     return;
   }
-  // 清理模式本就全展开，无需临时展开
+  // Manage mode is already fully expanded; no transient expansion needed
   const toExpand = new Set<string>();
   if (!st.isProjectManageMode) {
     for (const p of getAvailableProjects()) {
@@ -345,12 +370,14 @@ function setCommandPressed(on: boolean): void {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
-  // 修饰键按下态：按住 Command（Windows 下 Ctrl）激活侧栏快捷键徽标提示 + 临时展开
+  // Modifier held state: holding Command (Ctrl on Windows) activates the
+  // sidebar shortcut badge hints + transient expansion
   if (modDown(e)) {
     setCommandPressed(true);
   }
 
-  // 快捷键跳转会话：Command/Ctrl + 1~9（⌘0 保留给重置缩放，绑定在 shell.ts 全局监听）
+  // Shortcut session jump: Command/Ctrl + 1~9 (⌘0 is reserved for zoom reset,
+  // bound in the shell.ts global listener)
   if (modDown(e) && !e.altKey && !e.shiftKey) {
     const codeM = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
     const digit = codeM?.[1] ?? (/^[1-9]$/.test(e.key) ? e.key : null);
@@ -361,18 +388,19 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 
   let item = BINDINGS.get(chordOf(e));
-  // ⌘ 键位在 Windows 落到 Ctrl：原 chord 未命中时把 ctrl 换成 meta 再查一次
-  // （ctrl+X 的既有绑定在前一步已优先命中，不受影响）
+  // ⌘ bindings fall to Ctrl on Windows: when the original chord misses, retry
+  // with ctrl swapped to meta (existing ctrl+X bindings already matched with
+  // priority in the previous step, unaffected)
   if (!item && IS_WINDOWS && e.ctrlKey && !e.metaKey) {
     item = BINDINGS.get(chordOf(e).replace("ctrl", "meta"));
   }
   if (!item?.run) return;
-  if (item.run(e) === false) return; // 动作自判上下文：未处理则不拦截默认行为
+  if (item.run(e) === false) return; // actions judge context themselves: unhandled means do not intercept the default behavior
   e.preventDefault();
 }
 
 function onKeyUp(e: KeyboardEvent): void {
-  // 当修饰键松开时关闭视觉提示并回收临时展开的项目
+  // Close the visual hints and revert transiently expanded projects when the modifier is released
   if (!modDown(e) || (IS_WINDOWS ? e.key === "Control" : e.key === "Meta")) {
     setCommandPressed(false);
   }
@@ -382,7 +410,7 @@ function onBlur(): void {
   setCommandPressed(false);
 }
 
-/** 挂载全局快捷键监听（App 启动时调用一次） */
+/** Mount the global shortcut listeners (called once at App startup) */
 export function initKeys(): void {
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("keyup", onKeyUp);

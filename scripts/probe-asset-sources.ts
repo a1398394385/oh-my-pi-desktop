@@ -1,9 +1,9 @@
-// 探针：资产列表（技能 / MCP）是否遵循扩展页的来源开关。
-// 回归防线：host/assets.ts 曾自行硬编码枚举 ~/.claude/skills 等外部目录、且不查来源状态，
-// 于是「扩展页关掉某来源后，技能页仍列出该来源的技能」。
-// 用法：bun scripts/probe-asset-sources.ts
-// 强制 omp-desktop-test profile；结束时把改过的 settings 键复原。
-// OMP_PROFILE 必须在 host/bootstrap.ts 求值前写入环境变量，故用动态 import。
+// Probe: whether asset listings (skills / MCP) respect the extension page's source toggles.
+// Regression defense: host/assets.ts once hard-coded enumeration of external dirs like ~/.claude/skills and ignored source state,
+// so turning a source off on the extension page still left that source's skills listed on the skills page.
+// Usage: bun scripts/probe-asset-sources.ts
+// Forces the omp-desktop-test profile; restores the settings keys it changed on exit.
+// OMP_PROFILE must be written to the env before host/bootstrap.ts is evaluated, hence the dynamic import.
 process.env.OMP_PROFILE = "omp-desktop-test";
 
 import fs from "node:fs";
@@ -26,10 +26,10 @@ await refreshAvailableProfiles();
 await applyProfile(PROFILE);
 assert(H.agentDir.includes(PROFILE), `profile 隔离生效（agentDir=${H.agentDir}）`);
 
-// ~/.claude/plugins 是本机外部用户级来源之一（技能 provider=claude-plugins，MCP 同源）
+// ~/.claude/plugins is one of this machine's external user-level sources (skill provider=claude-plugins; MCP same source)
 const hasClaudePlugins = fs.existsSync(path.join(os.homedir(), ".claude", "plugins"));
 
-// ---------- settings 快照（退出前复原） ----------
+// ---------- settings snapshot (restored before exit) ----------
 const KEYS = ["disabledProviders", "enabledProviders", "skills.enableClaudeUser", "skills.enableCodexUser"] as const;
 const snapshot = new Map<string, unknown>(KEYS.map((k) => [k, H.settings.get(k)]));
 async function restore() {
@@ -37,7 +37,7 @@ async function restore() {
   await H.settings.flush();
 }
 
-// 写入来源状态并重新装配底座 registry（disabledProviders 只经 initializeWithSettings 生效）
+// Write the source state and rebuild the base registry (disabledProviders only takes effect via initializeWithSettings)
 async function applySources(disabled: string[], enabled: string[], claudeToggle: boolean) {
   H.settings.set("disabledProviders", disabled);
   H.settings.set("enabledProviders", enabled);
@@ -62,14 +62,14 @@ const mcpProviders = async () => {
 };
 const fmt = (m: Map<string, number>) => [...m].map(([p, n]) => `${p}=${n}`).join(" ") || "(空)";
 
-// 本机没有该来源的任何资产时，只验证「关闭后不出现」，正向断言打印跳过
+// When this machine has no assets from a source, only verify absence after disabling; the positive assertion prints a skip
 function assertAbsent(map: Map<string, number>, provider: string, what: string, off: Set<string>) {
   if (!off.has(provider)) return;
   assert((map.get(provider) ?? 0) === 0, `已关闭来源不出现在${what}列表：${provider}（本机计数 ${map.get(provider) ?? 0}）`);
 }
 
 try {
-  // 用例 1：外部来源全关（技能级兼容开关同时打开）→ 任何已关来源的条目都不得出现
+  // Case 1: all external sources off (skill-level compat switch also on) -> no entry of a disabled source may appear
   const OFF = ["claude", "claude-plugins", "codex", "opencode", "cursor", "gemini"];
   await applySources(OFF, [], true);
   const offSkills = await skillProviders();
@@ -82,12 +82,12 @@ try {
     assertAbsent(offMcp, p, "MCP", off);
   }
   const agentsWithOff = offSkills.get("agents") ?? 0;
-  // 关掉的来源必须仍留在扩展页（行还在、开关可点回）——否则无法重新开启
+  // A disabled source must remain on the extension page (row present, toggle clickable back) -- otherwise it can never be re-enabled
   const extPayload = await buildExtensionsPayload("profile");
   const claudeRow = extPayload.providers.find((p) => p.id === "claude");
   assert(claudeRow !== undefined && claudeRow.enabled === false, "关闭的来源仍出现在扩展页供应商清单（enabled=false，可重新开启）");
 
-  // 用例 2：来源全开但未 opt-in 外部工具 ~/ 配置 → 外部用户级来源仍不出现；非外部来源不受影响
+  // Case 2: all sources on but no opt-in for external tools ~/ config -> external user-level sources still absent; non-external sources unaffected
   await applySources([], [], true);
   const onSkills = await skillProviders();
   const onMcp = await mcpProviders();
@@ -98,7 +98,7 @@ try {
   assert((onSkills.get("claude-plugins") ?? 0) === 0, "未 opt-in 时外部用户级来源 ~/.claude/plugins 不出现（技能）");
   assert((onMcp.get("claude-plugins") ?? 0) === 0, "未 opt-in 时外部用户级来源 ~/.claude/plugins 不出现（MCP）");
 
-  // 用例 3：opt-in 外部工具 ~/ 配置 → 该来源资产回到列表
+  // Case 3: opt in to external tools ~/ config -> that source's assets return to the listing
   await applySources([], ["claude"], true);
   const optedSkills = await skillProviders();
   const optedMcp = await mcpProviders();
@@ -110,7 +110,7 @@ try {
     console.log("  · 跳过 opt-in 正向断言：本机无 ~/.claude/plugins");
   }
 
-  // 用例 4：只关 claude → 开关按来源粒度生效，其余外部来源仍可用
+  // Case 4: disable only claude -> toggles take effect per source; other external sources remain usable
   await applySources(["claude"], [], true);
   const single = await skillProviders();
   assert((single.get("claude") ?? 0) === 0, "只关 claude 时 claude 技能为 0");

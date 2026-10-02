@@ -1,26 +1,31 @@
-// 窗口 shell：主题（深/浅/跟随系统）、⌘ 与菜单缩放、菜单协调、左右边栏拖宽、
-// 内容列宽度分段、消息轨道显隐、fixed 菜单坐标补偿、railToolText。
-// 1:1 平移自 ui/shell.js + ui/ringpop.js 的 railToolText 段，不依赖 ui/ 旧模块。
-// DOM 副作用保持命令式；React 组件经 omp:close-menus / omp:zoom 自定义事件协作。
+// Window shell: theme (dark/light/system), ⌘ and menu zoom, menu coordination,
+// sidebar drag-resize, content column width segments, message rail visibility,
+// fixed menu coordinate compensation, railToolText.
+// Ported 1:1 from ui/shell.js + the railToolText section of ui/ringpop.js; no
+// dependency on old ui/ modules.
+// DOM side effects stay imperative; React components cooperate via the
+// omp:close-menus / omp:zoom custom events.
 import { useAppStore, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
 import { t } from "./i18n";
 
-// 主题模式：localStorage omp-theme 的合法值（读回值在 initShell 做收窄断言）
+// Theme mode: legal values of the localStorage omp-theme key (the read-back
+// value is narrowed by an assertion in initShell)
 type ThemeMode = "dark" | "light" | "system";
 
-// ---------- 菜单协调 ----------
-// React 侧消费者（Composer 菜单等 state 态）监听 omp:close-menus 关闭自身；
-// 设置页 Sel 下拉（ModelPage/McpPage/SkillsPage 等）的 .menu.open 为 DOM class 态，
-// 直接摘 class（旧版 closeAllMenus 同款收尾）。
+// ---------- Menu coordination ----------
+// React-side consumers (Composer menus and other state-driven ones) listen for
+// omp:close-menus to close themselves; the settings page Sel dropdowns
+// (ModelPage/McpPage/SkillsPage etc.) hold .menu.open as DOM class state --
+// just strip the class (same as the old closeAllMenus finale).
 export function closeAllMenus(): void {
   document.dispatchEvent(new CustomEvent("omp:close-menus"));
   for (const m of document.querySelectorAll(".menu.open")) m.classList.remove("open");
   for (const b of document.querySelectorAll(".pill-btn.active")) b.classList.remove("active");
 }
 
-// ---------- 主题（深色 / 浅色 / 跟随系统） ----------
+// ---------- Theme (dark / light / system) ----------
 let themeMode: ThemeMode = "dark";
 const themeMq = matchMedia("(prefers-color-scheme: dark)");
 export function applyTheme(mode: ThemeMode): void {
@@ -31,17 +36,19 @@ export function applyTheme(mode: ThemeMode): void {
     localStorage.setItem("omp-theme", mode);
   } catch {}
   for (const h of document.querySelectorAll(".fd-holder")) h.classList.toggle("d2h-dark-color-scheme", dark);
-  // 设置页主题 Sel 的选中标签是各页面组件内 state（AppearancePage/GeneralPage 自有平移），
-  // 它们以 dataset.theme 为唯一事实来源，此处不碰 DOM 标签。
+  // The settings page theme Sel's selected label is per-page component state
+  // (AppearancePage/GeneralPage have their own ports); they treat dataset.theme
+  // as the single source of truth, so the DOM label is not touched here.
 }
 
-// 原生菜单「切换深浅色主题」：深浅互换（system 态按当前生效色归位后再切）
+// Native menu "toggle dark/light theme": swap dark and light (the system state
+// snaps to the currently effective color first, then switches)
 export function toggleTheme(): void {
   const dark = themeMode === "system" ? themeMq.matches : themeMode === "dark";
   applyTheme(dark ? "light" : "dark");
 }
 
-// ---------- 边栏折叠开关（顶栏按钮 / 原生菜单 / ⌘B 三处共用） ----------
+// ---------- Sidebar collapse toggles (shared by the topbar button / native menu / ⌘B) ----------
 export function toggleSidebar(): void {
   const sidebarCollapsed = !useAppStore.getState().sidebarCollapsed;
   setBump({ sidebarCollapsed });
@@ -50,14 +57,15 @@ export function toggleSidebar(): void {
 
 export function toggleRightPanel(): void {
   const rightCollapsed = !useAppStore.getState().rightCollapsed;
-  // 展开右栏时进程卡让位收起（parts.jsx 同款）
+  // Expanding the right panel yields to collapse the process card (same as parts.jsx)
   setBump(rightCollapsed ? { rightCollapsed } : { rightCollapsed, todoCollapsed: true });
   localStorage.setItem("omp-right-collapsed", rightCollapsed ? "1" : "0");
 }
 
-// ---------- 边栏拖动调宽 ----------
-// 宽度走 CSS 变量，localStorage 记忆；保证中部卡片支持压缩至最小 30% 视口总宽度。
-// 首次调用即恢复 localStorage 里的记忆宽度（omp-w-*）。
+// ---------- Sidebar drag-resize ----------
+// Widths go through CSS variables, remembered in localStorage; the center card
+// is guaranteed to compress down to a minimum of 30% of the viewport total width.
+// The first call restores the remembered width from localStorage (omp-w-*).
 export function attachResizer(handleId: string, cssVar: string, min: number, invert: boolean, maxPct?: number): void {
   const panel = handleId === "left-resizer" ? document.getElementById("sidebar") : document.getElementById("right");
   if (!panel) return;
@@ -74,7 +82,8 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
     const move = (ev: MouseEvent) => {
       const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
       const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
-      // 中部卡片最小宽度保证为应用总宽度的 30%（支持继续压缩至 30%）
+      // The center card keeps a minimum width of 30% of the app total width
+      // (still compressible down to 30%)
       const minMainW = Math.max(240, Math.floor(wWin * 0.30));
       const otherPanel = invert ? document.getElementById("sidebar") : document.getElementById("right");
       const otherW = (otherPanel && !otherPanel.classList.contains("collapsed")) ? otherPanel.offsetWidth : 0;
@@ -103,23 +112,29 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
   });
 }
 
-// ---------- Cmd +/-/0 与原生菜单缩放 ----------
-// 只缩放三个布局容器：body 整体 zoom 会把 position:fixed 的菜单二次缩放，
-// 导致右键菜单/主题菜单的渲染偏移与点击命中错位
-// （zoomTargets 延迟初始化：App 挂载前 #sidebar/#main/#right 尚不存在）
+// ---------- Cmd +/-/0 and native menu zoom ----------
+// Only the three layout containers are zoomed: zooming the whole body would
+// double-scale position:fixed menus, misplacing the rendered context menus /
+// theme menus and their click hit targets.
+// (zoomTargets is lazily initialized: #sidebar/#main/#right do not exist before
+// App mounts)
 let zoomTargets: (HTMLElement | null)[] | null = null;
 function applyZoom(): void {
   if (!zoomTargets) zoomTargets = ["sidebar", "main", "right"].map((id) => document.getElementById(id));
-  // style.zoom 是非标准属性（TS lib.dom 未收录）：断言写入，语义与原名一致
+  // style.zoom is a non-standard property (absent from TS lib.dom): assert the
+  // write, semantics unchanged from the original
   for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
-  // zoom 会改变布局宽度但不触发 ResizeObserver（Chrome/WebKit 行为），通知 composer 重算底栏收缩
+  // zoom changes layout width but does not trigger ResizeObserver (Chrome/WebKit
+  // behavior); notify the composer to recompute the bottom-bar collapse
   window.dispatchEvent(new CustomEvent("omp:zoom"));
   updateRailVisibility();
 }
-// 缩放动作：⌘+/-/0 快捷键与原生菜单 zoom-in/out/reset 共用同一应用路径。
-// dir：1 放大 / -1 缩小 / 0 复位（兼容旧版 "in"/"out"/"reset" 字符串）
+// Zoom actions: the ⌘+/-/0 shortcut and the native menu zoom-in/out/reset share
+// the same application path.
+// dir: 1 zoom in / -1 zoom out / 0 reset (tolerates the old "in"/"out"/"reset" strings)
 export function menuZoom(dir: 1 | -1 | 0 | "in" | "out" | "reset"): void {
-  // 静默写（旧版 menuZoom 不 notify，渲染由 applyZoom 的 DOM 副作用直接生效）
+  // Silent write (the old menuZoom did not notify; rendering takes effect
+  // directly via applyZoom's DOM side effects)
   const cur = useAppStore.getState().zoomLevel;
   if (dir === 1 || dir === "in") useAppStore.setState({ zoomLevel: Math.min(2, +(cur + 0.1).toFixed(2)) });
   else if (dir === -1 || dir === "out") useAppStore.setState({ zoomLevel: Math.max(0.6, +(cur - 0.1).toFixed(2)) });
@@ -127,16 +142,19 @@ export function menuZoom(dir: 1 | -1 | 0 | "in" | "out" | "reset"): void {
   applyZoom();
 }
 
-// 对话区内容列宽度分段上限（占屏幕宽度的比例，而非 app 窗口）：
-// 50% 为默认上限，35% 为第二段收缩目标。窗口从宽往窄收时边距先持续缩小，
-// 钉到 75px/边后内容缩到 35% 屏幕宽，边距再缩到 20px/边，最后内容继续缩。
-// 由 JS 读 screen.width 写入 --col-max / --col-max-35。
+// Content column width segment caps for the chat area (fractions of the screen
+// width, not the app window): 50% is the default cap, 35% the second-stage
+// shrink target. When the window narrows from wide, margins shrink continuously
+// first; once pinned to 75px/side the content shrinks to 35% of screen width,
+// then margins shrink to 20px/side, and finally the content keeps shrinking.
+// JS reads screen.width and writes --col-max / --col-max-35.
 export function updateContentColMax(): void {
   const w = window.screen.width;
   document.documentElement.style.setProperty("--col-max", Math.round(w * 0.5) + "px");
   document.documentElement.style.setProperty("--col-max-35", Math.round(w * 0.35) + "px");
 }
-// 实测内容列边距（dock 左缘 − 主卡片左缘），边距 < 65px 时隐藏左侧消息轨道
+// Measure the content column margin (dock left edge - main card left edge);
+// hide the left message rail when the margin drops below 65px
 export function updateRailVisibility(): void {
   const main = document.getElementById("main");
   const dock = document.querySelector(".dock");
@@ -144,7 +162,7 @@ export function updateRailVisibility(): void {
   const m = dock.getBoundingClientRect().left - main.getBoundingClientRect().left;
   main.classList.toggle("rail-off", m < 65);
 }
-// fixed 菜单坐标补偿：先设 zoom 再除回
+// Fixed menu coordinate compensation: set zoom first, then divide it back out
 export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: number): void {
   const zoom = useAppStore.getState().zoomLevel;
   (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(zoom);
@@ -152,13 +170,14 @@ export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: numb
   menu.style.top = visualTop / zoom + "px";
 }
 
-// ---------- 消息轨道工具摘要（ui/ringpop.js railToolText 平移） ----------
-// 工具消息摘要：工具名 + 命令/文件，逗号连接
+// ---------- Message rail tool summary (ported from ui/ringpop.js railToolText) ----------
+// Tool message summary: tool name + command/file, comma-joined
 export function railToolText(item: ToolItem): string {
   if (item.group) {
-    // 组标题与 rail 摘要同源：查阅 / 终端 / 设备 / 更改
+    // Group titles and rail summaries share one source: read / terminal / device / change
     const label = ({ read: t("chat.labelReadGroup"), cmd: t("chat.labelTerminal"), device: t("chat.labelDevice") } as Record<string, string>)[item.name || ""] || t("chat.labelChange");
-    // 组成员运行期必为 tool 条目(items.tsx 分组构造),按 role 判别收窄
+    // Group members are always tool entries at runtime (grouping is built in
+    // items.tsx); discriminate by role to narrow
     return [label, ...item.group.flatMap((g) => (g.role === "tool" ? g.files || [] : []))].filter(Boolean).join(" · ");
   }
   const parts = [item.text];
@@ -172,35 +191,39 @@ export function railToolText(item: ToolItem): string {
   return parts.filter(Boolean).join(" · ");
 }
 
-// ---------- 全局壳监听（App 挂载后调用一次） ----------
+// ---------- Global shell listeners (called once after App mounts) ----------
 export function initShell(): void {
   themeMq.addEventListener("change", () => {
     if (themeMode === "system") applyTheme("system");
   });
   try {
     const saved = localStorage.getItem("omp-theme");
-    // localStorage 读回值断言为三值之一（写入方只有 applyTheme，运行时合法）
+    // The localStorage read-back is asserted to be one of the three values (the
+    // only writer is applyTheme; legal at runtime)
     if (saved) applyTheme(saved as ThemeMode);
   } catch {}
 
   attachResizer("left-resizer", "--left-w", 180, false);
-  // 右栏拖柄（ZCode Side Pane 尺寸契约）：min 240px、max 65% 视口宽
+  // Right panel drag handle (ZCode Side Pane size contract): min 240px, max 65% viewport width
   attachResizer("right-resizer", "--right-w", 240, true, 0.65);
 
   updateContentColMax();
   window.addEventListener("resize", () => {
     updateContentColMax();
-    // 窗口尺寸变化时，打开中的 composer 菜单锚点随按钮位置改变而失效，直接收起
+    // On window resize, anchors of open composer menus go stale as buttons
+    // move; just close them
     if (document.getElementById("composer")?.querySelector(".menu.open")) closeAllMenus();
   });
-  // 窗口跨屏拖动不一定触发 resize，兜底周期同步
-  // .unref?.()：浏览器返回 number 无副作用；happy-dom 冒烟（Node 事件循环）下不阻止进程退出
+  // Dragging the window across screens does not always fire resize; poll as a fallback
+  // .unref?.(): in the browser it returns a number with no side effect; under
+  // happy-dom smoke (Node event loop) it does not block process exit
   const colMaxTimer = setInterval(updateContentColMax, 2000) as unknown as { unref?: () => void };
   colMaxTimer.unref?.();
   const mainEl = document.getElementById("main");
   if (mainEl && typeof ResizeObserver !== "undefined") new ResizeObserver(updateRailVisibility).observe(mainEl);
   document.addEventListener("keydown", (e) => {
-    // 缩放修饰键独占：Windows 用 Ctrl（Win 键被系统占用过多），macOS 用 ⌘
+    // The zoom modifier is exclusive: Ctrl on Windows (the Win key is too
+    // system-occupied), ⌘ on macOS
     const modOnly = IS_WINDOWS ? e.ctrlKey && !e.metaKey : e.metaKey && !e.ctrlKey;
     if (!modOnly || e.altKey) return;
     if (e.key === "=" || e.key === "+") menuZoom(1);
@@ -210,8 +233,9 @@ export function initShell(): void {
     e.preventDefault();
   });
 
-  // 菜单开合的全局协调（旧版 window click/blur → closeAllMenus 平移；
-  // React state 态菜单经 omp:close-menus 事件关闭，stopPropagation 的开关钮不受影响）
+  // Global coordination of menu open/close (ported from the old window
+  // click/blur -> closeAllMenus; React state-driven menus close via the
+  // omp:close-menus event; toggle buttons that stopPropagation are unaffected)
   window.addEventListener("click", closeAllMenus);
   window.addEventListener("blur", closeAllMenus);
 }

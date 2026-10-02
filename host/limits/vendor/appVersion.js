@@ -1,7 +1,8 @@
 'use strict';
 
-// 移植自 token-monitor src/shared/appVersion.js。原版读 token-monitor 的
-// package.json;这里直接标识为 omp-desktop(版本号对限额链路无意义)。
+// Ported from token-monitor src/shared/appVersion.js. The original reads
+// token-monitor's package.json; this one identifies as omp-desktop directly
+// (the version number is meaningless to the limits pipeline).
 
 function appVersion() {
   return 'omp-desktop';

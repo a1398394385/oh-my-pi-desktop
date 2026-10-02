@@ -1,6 +1,9 @@
-// 应用壳：三栏布局（侧栏 / 主区 / 右栏）+ 顶栏 + 欢迎页与会话区分流 + dock 输入区 + toast。
-// DOM 结构与类名对照 ui/index.html 既有静态骨架（React 迁移期视觉零回归）；
-// 折叠/主题等壳交互自 ui-src/shell.js 对应平移，完整能力（resizer 拖动/缩放）见 IMPLEMENTATION_PLAN。
+// App shell: three-column layout (sidebar / main area / right panel) + topbar +
+// welcome-vs-session branching + the dock composer + toast.
+// The DOM structure and class names mirror the existing static skeleton of
+// ui/index.html (zero visual regression during the React migration);
+// shell interactions such as collapse/theme are ported from their ui-src/shell.js
+// counterparts; full capabilities (resizer drag/zoom) are noted in IMPLEMENTATION_PLAN.
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pathBase } from "./store";
@@ -26,7 +29,8 @@ function Toast() {
   return <div id="toast">{toastMsg}</div>;
 }
 
-// 中栏顶栏：侧栏开关 + 会话标题 + 右栏开关（原 index.html chat-head 结构）
+// Middle-column topbar: sidebar toggle + session title + right panel toggle
+// (the old index.html chat-head structure)
 function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => void; onToggleRight: () => void }) {
   const { t } = useTranslation();
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
@@ -51,7 +55,9 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
       <button className="icon-btn" title={t("misc.collapseRightPanel")} id="panelToggle" onClick={onToggleRight}>
         <Icon name={rightCollapsed ? "collapseLeft" : "collapseRight"} />
       </button>
-      {/* Windows 无边框窗口控制按钮：右栏收起时融入中栏卡片右上角（仅 Windows 渲染） */}
+      {/* Windows frameless window control buttons: when the right panel is
+          collapsed they merge into the main card's top-right corner (rendered
+          on Windows only) */}
       {IS_WINDOWS && rightCollapsed && <WindowControls />}
     </div>
   );
@@ -59,8 +65,9 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
 
 export default function App() {
   const { t } = useTranslation();
-  // 壳全局监听只挂一次：主题恢复/系统主题跟随、resizer 拖动、⌘+/-/0 缩放、
-  // --col-max 分段与轨道显隐、window click/blur 菜单协调（ui-src/shell.js）
+  // Shell global listeners mount only once: theme restore/system theme
+  // following, resizer drag, ⌘+/-/0 zoom, --col-max segments and rail
+  // visibility, window click/blur menu coordination (ui-src/shell.js)
   useEffect(() => {
     initShell();
   }, []);
@@ -80,15 +87,18 @@ export default function App() {
         {isCreatingNew ? <Welcome /> : <Chat />}
         {!isCreatingNew && (
           <>
-            {/* goal 目标栏 → 排队卡 → 输入 dock：三级重叠卡自上而下（goal 栏随队列增高上移）。
-                卡各自 -mb-28px 上拉，下一张卡以 z 压住其下缘，露出上半张二级重叠卡 */}
+            {/* Goal bar -> queue card -> input dock: three stacked cards from
+                top down (the goal bar shifts up as the queue grows). Each card
+                pulls up with -mb-28px and the next card presses on its bottom
+                edge with z, exposing the upper half as a second-level stack */}
             <GoalCard />
             <QueueCard />
             <div className={pendingApproval ? "dock approval-active" : "dock"}>
               {pendingApproval ? <ApprovalCard key={pendingApproval.requestId} item={pendingApproval} /> : null}
               <Composer key={activePath || "composer"} inWelcome={false} blocking={Boolean(pendingApproval)} />
             </div>
-            {/* 会话统计行：dock 之外、输入卡片下方另起一行（不是输入框内部） */}
+            {/* Session stats row: outside the dock, on its own row below the
+                composer card (not inside the composer) */}
             <SessionStatsBar />
           </>
         )}

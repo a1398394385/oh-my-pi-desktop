@@ -1,5 +1,6 @@
-// 会话运行态域帧：审批卡、事件流重建、本地 bash、斜杠命令输出、子代理流、
-// 待办/goal/排队、上下文用量与统计、错误落地。自 store/ws.ts onMessage 平移。
+// Session runtime-domain frames: approval cards, event-stream rebuilding, local bash, slash command
+// output, subagent streams, todos/goal/queued, context usage and stats, error landing. Moved over
+// from store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { t } from "../../i18n";
 import {
@@ -13,7 +14,7 @@ import {
 } from "../session";
 import type { HandlerSlice } from "./types";
 
-// 工具行文件清单去重（subagent_event 的 tool_update 分支用）
+// Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
 function uniqueFiles(files: string[] | null | undefined): string[] {
   return [...new Set(files ?? [])];
 }
@@ -61,7 +62,7 @@ export const streamHandlers = {
   messages(msg) {
     rebuildMessages(msg);
   },
-  // ---- 输入框 sigil：本地 bash 执行帧（! 前缀，宿主 bash_exec 驱动） ----
+  // ---- Composer sigil: local bash execution frames (! prefix, driven by the host's bash_exec) ----
   bash_start(msg) {
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "bash", text: msg.command, output: "", running: true, excludeFromContext: !!msg.excludeFromContext });
@@ -72,7 +73,7 @@ export const streamHandlers = {
     if (!s) return;
     const it = [...s.items].reverse().find((x): x is Extract<(typeof s.items)[number], { role: "bash" }> => x.role === "bash" && !!x.running);
     if (it) {
-      // 流式输出合并渲染（与 text_delta 同款 100ms 节流:就地 mutate,窗口 flush 换引用）
+      // Coalesced streaming output rendering (same 100ms throttle as text_delta: mutate in place, swap the reference at window flush)
       applyDelta(msg.sessionId, (next) => {
         const target = [...next.items].reverse().find((x): x is Extract<(typeof next.items)[number], { role: "bash" }> => x.role === "bash" && !!x.running);
         if (target) target.output = (target.output || "") + msg.chunk;
@@ -82,8 +83,8 @@ export const streamHandlers = {
   bash_done(msg) {
     updateSession(msg.sessionId, (s) => {
       const it = [...s.items].reverse().find((x): x is Extract<(typeof s.items)[number], { role: "bash" }> => x.role === "bash" && !!x.running);
-      // bash_abort 会先收到一帧 cancelled:true 的 done，可能与正式 done 重复——
-      // 以最后一次为准，第二次找不到 running 项时静默忽略
+      // bash_abort first receives a done frame with cancelled:true, possibly duplicated by the
+      // official done — last one wins; when no running item is found the second time, ignore silently
       if (!it) return;
       it.running = false;
       if (msg.error != null) {
@@ -97,14 +98,15 @@ export const streamHandlers = {
       }
     });
   },
-  // 斜杠命令的文本输出（如 /model 的 Current model 回显）：落一条 meta 行
+  // Text output of slash commands (e.g. the /model "Current model" echo): lands as a meta row
   command_output(msg) {
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "meta", text: String(msg.text ?? "") });
     });
   },
-  // 后台命令阶段行:start 插入执行中行;fail 撤该命令的执行中行。
-  // 完成态不走瞬时帧:由落盘痕转出的 phase 行随 messages 重建到达(单一事实来源)
+  // Background command phase rows: start inserts an in-flight row; fail withdraws that command's
+  // in-flight row. The done state does not travel on transient frames: phase rows converted from
+  // on-disk traces arrive with the messages rebuild (single source of truth)
   command_phase(msg) {
     updateSession(msg.sessionId, (s) => {
       if (msg.phase === "start") {
@@ -117,7 +119,7 @@ export const streamHandlers = {
       }
     });
   },
-  // 斜杠命令被宿主本地消费：撤回乐观插入的 user 气泡（无 entryId 的最后一条同文本）
+  // Slash command consumed locally by the host: withdraw the optimistically inserted user bubble (the last same-text one without an entryId)
   command_result(msg) {
     updateSession(msg.sessionId, (s) => {
       if (msg.consumed) {
@@ -133,21 +135,22 @@ export const streamHandlers = {
   },
   subagent_lifecycle(msg) {
     updateSession(msg.sessionId, (s) => {
-      // 底座在结束时（completed/failed/aborted）会用同一 subagentId 重发 lifecycle——
-      // 只更新状态保留累积内容，否则完成后详情被清空
+      // At completion (completed/failed/aborted) the base re-sends lifecycle with the same
+      // subagentId — only update status and keep accumulated content, otherwise the detail view
+      // would be wiped after completion
       const prev = s.subagents.get(msg.subagentId);
       s.subagents.set(msg.subagentId, {
         agent: msg.agent,
         description: msg.description ?? "",
         status: msg.status,
-        // host 补齐的派生字段：显示名 / 父 agent / 注册时刻
+        // host-filled derived fields: display name / parent agent / registration time
         name: msg.name ?? prev?.name,
         parent: msg.parent ?? prev?.parent,
         registeredAt: msg.registeredAt ?? prev?.registeredAt,
         text: prev?.text ?? "",
         tools: prev?.tools ?? [],
         streaming: msg.status === "started",
-        // progress 帧累积的用量字段（lifecycle 重发时保留）
+        // usage fields accumulated from progress frames (kept when lifecycle re-sends)
         usage: prev?.usage,
       });
     });
@@ -156,7 +159,7 @@ export const streamHandlers = {
     updateSession(
       msg.sessionId,
       (s) => {
-        // 聚合用量帧（host 已 500ms 节流）：成本/时长/请求/工具数/token/上下文/当前步骤
+        // Aggregated usage frame (already throttled to 500ms by the host): cost/duration/requests/tool count/tokens/context/current step
         const prev = s.subagents.get(msg.subagentId);
         if (!prev) return;
         prev.usage = {
@@ -184,7 +187,7 @@ export const streamHandlers = {
     );
   },
   subagent_event(msg) {
-    // 文本 delta 高频:就地 mutate + 100ms 窗口 flush(与主对话 text_delta 同款)
+    // Text deltas are high-frequency: mutate in place + 100ms window flush (same as the main-chat text_delta)
     if (msg.kind === "text_delta") {
       applyDelta(msg.sessionId, (s) => {
         const sub = s.subagents.get(msg.subagentId);
@@ -263,29 +266,29 @@ export const streamHandlers = {
     updateSession(
       msg.sessionId,
       (s) => {
-        // 整会话统计（host 在 turn 进行中与收尾时推送）：输入框下方状态行常驻显示
+        // Whole-session stats (pushed by the host mid-turn and at teardown): permanently shown on the status row below the composer
         s.stats = {
           tokens: msg.tokens,
           cost: msg.cost,
           cacheHitRate: msg.cacheHitRate,
           advisorCost: msg.advisorCost,
           activeMs: msg.activeMs,
-          receivedAt: Date.now(), // 运行中本地外推时长的基准（见 SessionStatsBar）
+          receivedAt: Date.now(), // baseline for the local duration extrapolation while running (see SessionStatsBar)
         };
       },
       false,
     );
   },
   context_detail(msg) {
-    // ringpop 弹卡瞬态数据，CtxCard 订阅重绘（卡收起时更新不重建，移开即弃）
+    // ringpop popover transient data; CtxCard subscribes and repaints (updates while collapsed don't rebuild; discard-on-leave)
     useAppStore.setState((s) => ({ ctxDetail: msg }));
   },
   error(msg) {
     useAppStore.setState((s) => ({
       gitDiffCache: { ...s.gitDiffCache, loading: false },
-      rightState: { ...s.rightState, sessionTreePending: false }, // 分支树请求失败解除挂起，下次渲染重拉
+      rightState: { ...s.rightState, sessionTreePending: false }, // branch-tree request failed: clear the pending flag so the next render refetches
     }));
-    // 设置中心资产/记忆读取失败的错误落地（旧版写 aeStatus / 记忆行内态）
+    // Error landing for settings-center asset/memory read failures (the old version wrote aeStatus / memory inline state)
     if (msg.kind) useAppStore.setState((s) => ({ assetErr: { kind: msg.kind!, message: msg.message, at: Date.now() } }));
     const md = useAppStore.getState().memoryDetail;
     if (md.status === "loading") {
@@ -304,5 +307,5 @@ export const streamHandlers = {
   },
 } satisfies HandlerSlice;
 
-// 域键集（供 index 的穷尽断言交叉验证）
+// Domain key set (for the exhaustive-assertion cross-check in index)
 export type StreamFrames = keyof typeof streamHandlers;

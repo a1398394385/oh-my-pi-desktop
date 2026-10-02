@@ -1,17 +1,21 @@
-// ACP 压缩状态：块存储 + 消息引用（ref）映射。
+// ACP compression state: block storage + message reference (ref) mapping.
 //
-// 设计要点（为什么这样映射）：
-// - omp 的 LLM 消息（UserMessage/AssistantMessage/ToolResultMessage）没有稳定 id
-//   字段（只有 timestamp / toolCallId），而 context 事件每次给的是"即将发给模型"
-//   的深拷贝视图。ref（mNNNNN） therefore 绑定到「视图位置 + 内容指纹」：
-//   前缀指纹匹配 → 保留编号（prompt cache 前缀稳定）；追加 → 续号；
-//   前缀不匹配（宿主 compaction 折叠 / 分叉）→ 全量重编号，旧 ref 作废。
-// - 压缩块保存「原文消息的深拷贝」，decompress 即把块标记 inactive——下一轮
-//   context 变换自动还原原文。journal 永不被触碰。
-// - 状态生命周期 = 会话生命周期（omp-desktop 会话本身 inMemory，不落盘）。
+// Design points (why the mapping looks like this):
+// - omp LLM messages (UserMessage/AssistantMessage/ToolResultMessage) carry no
+//   stable id field (only timestamp / toolCallId), and each context event hands
+//   over a deep-copied view of "what is about to be sent to the model". A ref
+//   (mNNNNN) is therefore bound to "view position + content fingerprint":
+//   prefix fingerprint match -> keep numbering (prompt cache prefix stays
+//   stable); append -> continue numbering; prefix mismatch (host compaction
+//   folded / forked) -> full renumbering, old refs invalidated.
+// - A compression block stores a deep copy of the original messages;
+//   decompress simply marks the block inactive — the next context transform
+//   restores the original automatically. The journal is never touched.
+// - State lifetime = session lifetime (omp-desktop sessions are inMemory and
+//   never hit disk).
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 
-/** 视图消息 → 可读文本（指纹与原文序列化共用）。 */
+/** View message -> readable text (shared by fingerprinting and source serialization). */
 export function messageText(m: AgentMessage): string {
 	if (!m || typeof m !== "object") return "";
 	const role = (m as { role?: string }).role ?? "";
@@ -53,7 +57,7 @@ export function messageText(m: AgentMessage): string {
 	return "";
 }
 
-/** 位置指纹：role + 首段文本 + timestamp + 工具调用 id（assistant/result 唯一性强）。 */
+/** Position fingerprint: role + head text + timestamp + tool call ids (strongly unique for assistant/result). */
 export function messageFingerprint(m: AgentMessage): string {
 	const role = (m as { role?: string }).role ?? "?";
 	const ts = (m as { timestamp?: number }).timestamp ?? 0;
@@ -73,43 +77,43 @@ export function messageFingerprint(m: AgentMessage): string {
 }
 
 export interface AcpBlock {
-	/** 块号（b<blockId>）。 */
+	/** Block id (b<blockId>). */
 	blockId: number;
 	topic: string;
 	summary: string;
-	/** 压缩时的原文消息深拷贝（decompress 还原用）。 */
+	/** Deep copy of the original messages at compression time (for decompress restore). */
 	originalMessages: AgentMessage[];
-	/** 压缩时的视图区间 [firstIndex, lastIndex]（闭区间，指纹化前的索引）。 */
+	/** View range [firstIndex, lastIndex] at compression time (inclusive, pre-fingerprinting indices). */
 	firstIndex: number;
 	lastIndex: number;
-	/** false = 已被 decompress 或被嵌套压缩消费，视图不再替换。 */
+	/** false = consumed by decompress or by nested compression; the view no longer replaces it. */
 	active: boolean;
-	/** 被后续块消费时保留原文（深层 decompress 用）。 */
+	/** Original kept when consumed by a later block (for deep decompress). */
 	createdAt: number;
 }
-/** ACP 自身的五个工具名——其调用/结果受硬保护，绝不可被压缩。 */
+/** ACP's own five tool names — their calls/results are hard-protected and must never be compressed. */
 export const ACP_TOOL_NAMES = new Set(["compress", "decompress", "search_context", "acp_status", "acp_context_recap"]);
 
-/** nudge 配置（omp-desktop.json 的 acp 段；窗口未知时 nudge 整体禁用）。 */
+/** nudge config (the acp section of omp-desktop.json; nudge fully disabled when the window is unknown). */
 export interface AcpNudgeConfig {
-	/** 触发强提醒的用量上限（0-1，默认 0.55）。 */
+	/** Usage ceiling that triggers the hard reminder (0-1, default 0.55). */
 	maxContextLimit: number;
-	/** 压缩目标线（0-1，默认 0.45）——写进提醒文案，指导压到多少以下。 */
+	/** Compression target line (0-1, default 0.45) — written into the reminder text as the level to compress below. */
 	minContextLimit: number;
 }
 
 export class AcpSessionState {
-	/** 模型上下文窗口（token）；0 = 未知，nudge 禁用。host 建会话时填入。 */
+	/** Model context window (tokens); 0 = unknown, nudge disabled. Filled in by the host when creating the session. */
 	modelContextWindow = 0;
-	/** nudge 阈值；host 从 omp-desktop.json 的 acp 段读入。 */
+	/** nudge thresholds; the host reads them from the acp section of omp-desktop.json. */
 	nudge: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
 	blocks = new Map<number, AcpBlock>();
 	private nextBlockId = 0;
-	/** 每个视图位置对应的 ref（m00001 起，5 位补零，与 opencode-acp 一致）。视图变换读取。 */
+	/** Ref per view position (m00001 onward, 5-digit zero-padded, matching opencode-acp). Read by the view transform. */
 	refByIndex: string[] = [];
-	/** 最近一次 context 事件的原始视图（compress 定位/取原文的坐标系）。 */
+	/** Original view of the most recent context event (the coordinate system for compress locating / source extraction). */
 	lastOriginal: AgentMessage[] = [];
-	/** 与 refByIndex 对齐的指纹（前缀匹配校验）。 */
+	/** Fingerprints aligned with refByIndex (prefix match verification). */
 	private fpByIndex: string[] = [];
 
 	allocBlockId(): number {
@@ -121,9 +125,10 @@ export class AcpSessionState {
 	}
 
 	/**
-	 * 用当前视图指纹刷新 ref 映射。
-	 * 返回与视图等长的 ref 数组；前缀不匹配时全量重编号（旧 ref 作废——
-	 * 上游宿主 compaction 折叠过历史，模型看到的已是新序列）。
+	 * Refresh the ref mapping with the current view fingerprints.
+	 * Returns a ref array as long as the view; on prefix mismatch everything
+	 * is renumbered (old refs invalidated — upstream host compaction folded
+	 * history, the model already sees a new sequence).
 	 */
 	refreshRefs(messages: AgentMessage[]): string[] {
 		const fps = messages.map(messageFingerprint);
@@ -138,7 +143,7 @@ export class AcpSessionState {
 		return refs;
 	}
 
-	/** ref（m00001 / b2）→ 当前视图区间。块引用解析为块压缩时的区间。 */
+	/** ref (m00001 / b2) -> current view range. A block ref resolves to the block's range at compression time. */
 	resolveRef(ref: string): { firstIndex: number; lastIndex: number } | null {
 		const m = /^m(\d{1,5})$/.exec(ref);
 		if (m) {
@@ -155,7 +160,7 @@ export class AcpSessionState {
 		return null;
 	}
 
-	/** 视图位置 → ref 字符串（注入标签用）。 */
+	/** View position -> ref string (for tag injection). */
 	refAt(index: number): string | undefined {
 		return this.refByIndex[index];
 	}
@@ -164,7 +169,7 @@ export class AcpSessionState {
 		return [...this.blocks.values()].filter((b) => b.active).sort((a, b) => a.blockId - b.blockId);
 	}
 
-	/** 块锚指纹在当前原始视图中的定位（首+尾+长度三重校验）。 */
+	/** Locate a block's anchor fingerprints in the current original view (first + last + length triple check). */
 	locateBlockAnchors(block: AcpBlock): { first: number; last: number } | null {
 		const fps = block.originalMessages.map(messageFingerprint);
 		if (fps.length === 0 || this.lastOriginal.length < fps.length) return null;
@@ -180,8 +185,9 @@ export class AcpSessionState {
 	}
 
 	/**
-	 * 边界 ref（mNNNNN / bN）→ 当前原始视图区间。
-	 * 反向边界自动纠正（对齐 opencode-acp Bug 34 行为）。找不到返回 null。
+	 * Boundary refs (mNNNNN / bN) -> current original-view range.
+	 * Reversed boundaries are auto-corrected (aligned with opencode-acp Bug 34
+	 * behavior). Returns null when not found.
 	 */
 	locateRange(startRef: string, endRef: string): { first: number; last: number } | null {
 		const locate = (ref: string): number | null => {
@@ -198,7 +204,7 @@ export class AcpSessionState {
 			}
 			return null;
 		};
-		// b-ref 作为终点时定位到块尾而非块首
+		// a b-ref as the end boundary locates the block tail, not the block head
 		const locateEnd = (ref: string): number | null => {
 			const b = /^b(\d+)$/.exec(ref);
 			if (b) {
@@ -214,7 +220,7 @@ export class AcpSessionState {
 	}
 }
 
-/** 多会话注册表（omp-desktop 是会话池）。 */
+/** Multi-session registry (omp-desktop is a session pool). */
 export class AcpStateRegistry {
 	private bySession = new Map<string, AcpSessionState>();
 
@@ -228,8 +234,8 @@ export class AcpStateRegistry {
 	}
 }
 
-/** 解析 acp.contextWindow：数字（2000000）或带后缀字符串（"200K"/"1M"/"2m"）。
- *  返回 0 表示未配置。 */
+/** Parse acp.contextWindow: a number (2000000) or a suffixed string ("200K"/"1M"/"2m").
+ *  Returns 0 when unconfigured. */
 export function parseAcpContextWindow(v: unknown): number {
 	if (typeof v === "number" && v > 0) return Math.floor(v);
 	if (typeof v === "string") {

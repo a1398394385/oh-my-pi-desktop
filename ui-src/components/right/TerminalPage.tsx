@@ -1,6 +1,8 @@
-// 右栏终端页：xterm.js + 宿主真 PTY（pty-bridge 子进程，经 WS terminal.* 通道）。
-// 会话生命周期对齐 ZCode sidePaneTerminalSessionRegistry：模块级单例，tab 切换只挪
-// DOM（scrollback 与在跑进程不丢）；关「终端」tab 时经 tabs.js 关闭钩子销毁 PTY。
+// Right panel terminal page: xterm.js + host real PTY (pty-bridge subprocess, over the WS
+// terminal.* channel).
+// Session lifecycle aligned with ZCode's sidePaneTerminalSessionRegistry: module-level
+// singleton, tab switches only move the DOM (scrollback and running processes survive);
+// closing the "Terminal" tab destroys the PTY via the tabs.js close hook.
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -9,13 +11,13 @@ import type { TerminalFrame } from "../../store";
 import { t } from "../../i18n";
 import { registerTabCloseHook } from "./tabs";
 
-// 右栏 tab 级 persistentKey：右栏只有一个终端 tab，会话按此键复用
+// Right-panel tab-level persistentKey: only one terminal tab exists; the session is reused under this key
 const PERSIST_KEY = "right-terminal";
 
-// 终端字体栈（ZCode DEFAULT_TERMINAL_FONT_FAMILY 同款思路：等宽 + Nerd Font 兜底）
+// Terminal font stack (same idea as ZCode's DEFAULT_TERMINAL_FONT_FAMILY: monospace + Nerd Font fallback)
 const TERM_FONT = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "MesloLGS NF", "Hack Nerd Font", monospace';
 
-// ---------- 主题：CSS token -> xterm ITheme（dark/light 两套 ANSI 调色板） ----------
+// ---------- Theme: CSS token -> xterm ITheme (dark/light ANSI palettes) ----------
 const ANSI_DARK = {
   black: "#1c1c1e", red: "#ff6b68", green: "#34c759", yellow: "#febc2e",
   blue: "#6fb3d8", magenta: "#a86fe0", cyan: "#56c2c6", white: "#ededef",
@@ -38,7 +40,7 @@ function isDarkTheme() {
 function buildTheme() {
   const dark = isDarkTheme();
   return {
-    background: cssVar("--card"), // 终端底色 = 右栏卡片底，融进面板
+    background: cssVar("--card"), // terminal background = right panel card base, blends into the panel
     foreground: cssVar("--text"),
     cursor: cssVar("--text"),
     cursorAccent: cssVar("--card"),
@@ -47,10 +49,10 @@ function buildTheme() {
   };
 }
 
-// ---------- 模块级会话单例 ----------
-// 终端帧用 store 的 TerminalFrame 判别联合(terminal_created/data/exit)
+// ---------- Module-level session singleton ----------
+// Terminal frames use the store's TerminalFrame discriminated union (terminal_created/data/exit)
 
-// 会话单例形状（字段语义见上方注释清单）
+// Session singleton shape (field semantics per the comment list above)
 interface TermSession {
   term: Terminal;
   fit: FitAddon;
@@ -75,7 +77,7 @@ function fitAndResize() {
   const dims = term.cols + "x" + term.rows;
   if (dims !== session.lastDims) {
     session.lastDims = dims;
-    // PTY 建好发 resize；没建好时 create 帧会带上首帧尺寸，这里不再补
+    // PTY ready → send resize; when not ready the create frame carries the first-frame size, no top-up needed here
     if (session.id && !session.dead) send({ type: "terminal_resize", id: session.id, cols: term.cols, rows: term.rows });
   }
 }
@@ -83,14 +85,14 @@ function fitAndResize() {
 function scheduleFit() {
   if (!session || session.rafTimer) return;
   session.rafTimer = requestAnimationFrame(() => {
-    session!.rafTimer = null; // 断言：与原版一致——单例已 dispose 时此处原样抛错（实际生命周期内 RAF 先消费）
+    session!.rafTimer = null; // assertion: same as the original — throws as-is if the singleton was disposed (in practice the RAF fires first within the lifetime)
     fitAndResize();
   });
 }
 
-// 订阅 PTY 数据帧（会话创建时挂一次，订阅存活期跟随单例）
+// Subscribe to PTY data frames (mounted once at session creation; the subscription lives with the singleton)
 function bindFrameChannel() {
-  session!.unsubFrame = onTerminalFrame((frame: TerminalFrame) => { // 断言：仅 ensureSession 建单例后调用，非空
+  session!.unsubFrame = onTerminalFrame((frame: TerminalFrame) => { // assertion: only called after ensureSession builds the singleton, non-null
     if (!session || frame.id !== session.id) return;
     if (frame.type === "terminal_data") {
       session.term.write(frame.data);
@@ -103,7 +105,7 @@ function bindFrameChannel() {
 
 function ensureSession(container: HTMLElement) {
   if (session) {
-    // 复用：DOM 挪回新容器（scrollback 与进程不丢）
+    // Reuse: move the DOM back into the new container (scrollback and processes survive)
     container.appendChild(session.hostEl);
     session.detached = false;
     scheduleFit();
@@ -124,7 +126,7 @@ function ensureSession(container: HTMLElement) {
   hostEl.className = "tpane-host";
   container.appendChild(hostEl);
   term.open(hostEl);
-  fit.fit(); // 首帧同步 fit：create 帧直接带正确尺寸，避免启动输出与尺寸校正竞态
+  fit.fit(); // synchronous first fit: the create frame carries the correct size, avoiding a startup-output/resize race
 
   session = {
     term, fit, hostEl,
@@ -135,14 +137,14 @@ function ensureSession(container: HTMLElement) {
   };
   bindFrameChannel();
 
-  // 用户输入 -> PTY（PTY 未建好先缓冲，create 后一次 flush）
+  // User input -> PTY (buffered until the PTY is ready; flushed at once after create)
   term.onData((data) => {
-    // 断言：onData 注册于单例存活期，回调触发时 session 必非空（与原版一致）
+    // assertion: onData is registered while the singleton lives, so session is non-null when the callback fires (same as the original)
     if (session!.id && !session!.dead) send({ type: "terminal_write", id: session!.id, data });
     else session!.pendingWrites.push(data);
   });
 
-  // 剪贴板：⌘/Ctrl+C 有选区时复制；⌘/Ctrl+V 手动粘贴（防双写）
+  // Clipboard: ⌘/Ctrl+C copies when there's a selection; ⌘/Ctrl+V pastes manually (prevents double writes)
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
     const mod = e.metaKey || e.ctrlKey;
@@ -158,18 +160,18 @@ function ensureSession(container: HTMLElement) {
     return true;
   });
 
-  // 容器尺寸变化 -> fit -> resize 帧（RAF 合并，拖动调宽不刷屏）
+  // Container size change -> fit -> resize frame (RAF-coalesced; dragging the width doesn't thrash)
   session.ro = new ResizeObserver(scheduleFit);
   session.ro.observe(container);
 
-  // 主题热更新：跟随 data-theme 切换（ZCode MutationObserver 同款思路）
+  // Theme hot-reload: follows data-theme switches (same idea as ZCode's MutationObserver)
   session.mo = new MutationObserver(() => {
     if (!session) return;
     session.term.options.theme = buildTheme();
   });
   session.mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
-  // 起 PTY：cwd 取当前激活会话的项目目录
+  // Start the PTY: cwd takes the current active session's project directory
   const s = activeOpen();
   const inherit = useAppStore.getState().uiPrefs.terminalInheritProfile !== false;
   send({
@@ -182,14 +184,14 @@ function ensureSession(container: HTMLElement) {
   });
 }
 
-// 组件卸载只挪走 DOM 保活；真正销毁走 tab 关闭钩子
+// Component unmount only moves the DOM away to keep it alive; real destruction goes through the tab close hook
 function detachSession() {
   if (!session || session.detached) return;
   session.detached = true;
   session.hostEl.remove();
 }
 
-// 销毁：关「终端」tab 时由 tabs.js 钩子触发（PTY 进程一并回收）
+// Destroy: triggered by the tabs.js hook when the "Terminal" tab closes (PTY process reclaimed too)
 function disposeSession() {
   if (!session) return;
   const st = session;
@@ -205,8 +207,8 @@ function disposeSession() {
 
 registerTabCloseHook("terminal", disposeSession);
 
-// PTY 建好回包（terminal_created 经终端帧总线旁路路由，见 store.onMessage）：
-// 记下会话 id，flush 建会话期间缓冲的用户输入
+// PTY-ready reply (terminal_created routed via the terminal frame bus bypass, see store.onMessage):
+// record the session id, flush user input buffered during session creation
 onTerminalFrame((frame: TerminalFrame) => {
   if (frame.type === "terminal_created" && session && !session.id) {
     session.id = frame.id;

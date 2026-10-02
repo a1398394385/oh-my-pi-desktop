@@ -1,5 +1,6 @@
-// 右栏 slice：tab/视图模式、文件页、Git diff 三缓存、右栏运行态（文件树/会话树/条目树/git 写回执）。
-// 自 store.ts 平移（P3 波 2）。briefDiffCache 的 LRU 闸门原样保留。
+// Right panel slice: tab/view mode, the file page, the three Git diff caches, right panel runtime
+// state (file tree / session tree / entry tree / git write receipts).
+// Moved over from store.ts (P3 wave 2). The briefDiffCache LRU gate is kept as-is.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
@@ -10,23 +11,23 @@ import type { RightState } from "./shapes";
 
 export interface RightSlice {
   rightTab: string | null;
-  rightTabs: string[]; // 已打开 tab（有序）
-  rightRecentClosed: { name: string; at: number }[]; // 最近关闭（新→旧，最多 5 条）：总览 popover「最近关闭」组数据源
-  gitViewMode: string; // "tree" | …（右栏 Git Diff 视图）
+  rightTabs: string[]; // open tabs (ordered)
+  rightRecentClosed: { name: string; at: number }[]; // recently closed (new→old, max 5): data source of the overview popover's "recently closed" group
+  gitViewMode: string; // "tree" | … (right-panel Git Diff view)
   selectedFile: string | null;
   fileView: FileViewState | null;
-  fileViewPending: string | null; // 请求中的文件路径
-  briefDiffPending: string | null; // 请求中的行内 diff 路径
+  fileViewPending: string | null; // file path with a request in flight
+  briefDiffPending: string | null; // inline-diff path with a request in flight
   todoCollapsed: boolean;
   rightState: RightState;
   gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
-  briefDiffCache: Map<string, string | undefined>; // 编辑行内联 diff,path -> 文本（LRU，见 setBriefDiff）
+  briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
   setBriefDiff(path: string, diff: string | undefined): void;
   refreshGitDiff(force?: boolean): void;
 }
 
-/** 编辑行 diff 缓存上限（按文件数）。整份 diff 可达数百 KB，无上限会随编辑过的文件数线性增长。 */
+/** Cap of the edit-row diff cache (by file count). A full diff can reach hundreds of KB; without a cap it grows linearly with the number of edited files. */
 const BRIEF_DIFF_MAX = 30;
 
 const rightStateInit: RightState = {
@@ -38,11 +39,11 @@ const rightStateInit: RightState = {
   sessionTree: null,
   sessionTreePending: false,
   treeFor: null,
-  entryTree: null, // 会话内条目树（/tree）：{ sessionId, leafId, roots }
+  entryTree: null, // in-session entry tree (/tree): { sessionId, leafId, roots }
   entryTreePending: false,
   entryTreeFor: null,
-  navFrom: null, // navigate_tree 来源："fork"（output 尾部分叉）或 null（树页跳转），决定回执文案
-  entryTreeNav: false, // navigate_tree 进行中（防连点）
+  navFrom: null, // origin of navigate_tree: "fork" (output-tail fork) or null (tree-page jump); decides the receipt message
+  entryTreeNav: false, // navigate_tree in flight (double-click guard)
   imageContent: null,
   gitWrite: null,
 };
@@ -56,17 +57,17 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   fileView: null,
   fileViewPending: null,
   briefDiffPending: null,
-  // 右栏记忆为展开时进程卡初值收起（让位规则同 toggleRight/parts.jsx）
+  // When the right panel is remembered as expanded, the process card starts collapsed (same yield rule as toggleRight/parts.jsx)
   todoCollapsed: localStorage.getItem("omp-right-collapsed") === "0",
   rightState: rightStateInit,
   gitDiffCache: { cwd: null, files: [], loading: false },
   fileDiffCache: { path: null, diff: "", loading: false },
   briefDiffCache: new Map(),
 
-  /** 写入编辑行 diff 缓存并淘汰最久未用的文件（值可为 undefined：占位表示「已请求、待回包」） */
+  /** Write to the edit-row diff cache and evict the least-recently-used file (the value may be undefined: a placeholder meaning "requested, awaiting reply") */
   setBriefDiff(path, diff) {
     useAppStore.setState((st) => {
-      const briefDiffCache = new Map(st.briefDiffCache); // 变更换 Map 引用(LRU touch 语义保留)
+      const briefDiffCache = new Map(st.briefDiffCache); // swap the Map reference on change (LRU touch semantics kept)
       briefDiffCache.delete(path);
       briefDiffCache.set(path, diff);
       while (briefDiffCache.size > BRIEF_DIFF_MAX) {
@@ -76,10 +77,10 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
     });
   },
 
-  // Git diff 预取（原 right.js refreshGitDiff 平移）
+  // Git diff prefetch (moved over from right.js refreshGitDiff)
   refreshGitDiff(force = false) {
     const s = activeOpen();
-    if (!s || !s.isGit) return; // 非 git 仓库不请求，不触发宿主报错
+    if (!s || !s.isGit) return; // not a git repo: skip the request so the host doesn't error
     const gitDiffCache = useAppStore.getState().gitDiffCache;
     if (!force && gitDiffCache.cwd === s.cwd) return;
     useAppStore.setState((st) => ({

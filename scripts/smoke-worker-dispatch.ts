@@ -1,7 +1,7 @@
-// 定向验证：编译产物 omp-host 以 `__omp_worker_*` 选择器运行时必须分发为真 worker，
-// 不再落成完整桌面宿主（BUG-011 回归验证）。覆盖 daemon broker / blob broker / lsp mux
-// 三个子进程形态 broker；js_eval 走同一 resolveWorkerSpawnCmd 路径，分发层等价。
-// 用法：OMP_PROFILE=omp-desktop-test bun scripts/smoke-worker-dispatch.ts [产物路径]
+// Targeted verification: when the compiled artifact omp-host runs with a `__omp_worker_*` selector it must dispatch as a real worker,
+// not fall back into the full desktop host (BUG-011 regression check). Covers the daemon broker / blob broker / lsp mux
+// three child-process broker shapes; js_eval goes through the same resolveWorkerSpawnCmd path, so the dispatch layer is equivalent.
+// Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-worker-dispatch.ts [artifact path]
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -37,7 +37,7 @@ async function waitUntil(deadlineMs: number, probe: () => Promise<boolean>): Pro
 	return false;
 }
 
-// 宿主形态的标志：stdout 首行 READY ws://（修复前 worker 参数被无视，整个桌面宿主启动）
+// Signature of host mode: first stdout line READY ws:// (before the fix the worker arg was ignored and the whole desktop host started)
 async function assertNotHost(stdout: ReadableStream<Uint8Array>, label: string) {
 	const reader = stdout.getReader();
 	const { value } = await reader.read();
@@ -64,7 +64,7 @@ await check("daemon broker：分发为真 broker（scope.json + 无宿主 READY 
 	});
 	await assertNotHost(proc.stdout, "daemon broker");
 	if (!(await exited)) throw new Error("runtime 目录未出现 scope.json（broker 语义未生效）");
-	// 空闲宽限后 broker 必须自退（修复前永不退出）
+	// After the idle grace period the broker must exit on its own (before the fix it never exited)
 	const reaped = await waitUntil(15_000, async () => await proc.exited !== undefined ? true : false);
 	if (!reaped) {
 		proc.kill();

@@ -1,6 +1,9 @@
-// 全局错误边界：任何渲染期异常兜底为可见错误页，而不是整窗口黑屏（BUG-014 同款根因：
-// 无边界时 React 根容器被卸载，深色主题下就是「应用黑掉」，现场与报错一起丢失）。
-// 边界页展示错误信息 + 一键重载；错误同时打上控制台标记便于 DevTools 翻查。
+// Global error boundary: any render-phase exception falls back to a visible error page
+// instead of the whole window going black (same root cause as BUG-014: without a boundary the
+// React root container unmounts — under the dark theme that's "the app went black", losing
+// both the scene and the error).
+// The boundary page shows the error + one-click reload; the error is also logged to the
+// console for DevTools inspection.
 import { Component, type ReactNode, type ErrorInfo } from "react";
 import { t } from "../i18n";
 

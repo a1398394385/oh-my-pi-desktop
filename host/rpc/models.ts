@@ -1,5 +1,7 @@
-// 模型域 RPC：会话级切换（set_model/set_thinking）、启停（set_enabled_model）、
-// 角色读写、目录快照与供应商清单。自 main.ts message 分发平移（第三刀）。
+// Model domain RPC: session-level switching (set_model/set_thinking),
+// enable/disable (set_enabled_model), role read/write, catalog snapshots and
+// the provider list. Moved over from the main.ts message dispatch (third
+// slice).
 import { authPolicyFor } from "../bootstrap.ts";
 import { H, sessions, enabledDefaults } from "../state.ts";
 import { modelCatalog, modelRolesPayload, rebuildScopedModels } from "../models.ts";
@@ -16,13 +18,15 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const target = H.scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
     if (!target) throw new Error(hostI18n.t("errors.model.unknown", { model: msg.model }));
-    await entry.session.setModel(target); // persist 默认 false，仅本会话生效
-    // enabledModels 条目带的 ":thinking" 默认级别与 CLI 行为一致地应用
+    await entry.session.setModel(target); // persist defaults to false; effective only in this session
+    // Apply the ":thinking" default level carried by the enabledModels entry, same as CLI behavior
     const defaultLevel = enabledDefaults.get(msg.model);
     if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
     const model = `${entry.session.model.provider}/${entry.session.model.id}`;
-    // 模型切换后回传配置选择器（"auto" 或具体档位）：右下角显示用户配置的模式，
-    // 能力钳制后的生效值属于发送参数细节，不进 UI
+    // After a model switch, return the configured selector ("auto" or a
+    // concrete level): the bottom-right shows the user-configured mode; the
+    // capability-clamped effective value is send-parameter detail and never
+    // reaches the UI
     ws.send(
       JSON.stringify({
         type: "session_model",
@@ -36,7 +40,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     entry.session.setThinkingLevel(msg.level);
-    // 回传配置选择器（"auto" 或具体档位）；钳制后的生效值不进 UI
+    // Return the configured selector ("auto" or a concrete level); the clamped effective value never reaches the UI
     ws.send(
       JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.configuredThinkingLevel?.() ?? "auto" }),
     );
@@ -69,10 +73,10 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "model_roles", roles: modelRolesPayload() }));
   },
   async set_model_role(ws, msg) {
-    // 合法名即可写入：既改已知角色，也从输入框菜单创建自定义角色（覆盖同名旧值）
+    // Any valid name may be written: edits known roles and also creates custom roles from the input menu (overwriting an old value of the same name)
     const role = String(msg.role ?? "");
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(role)) throw new Error(hostI18n.t("errors.model.invalidRoleName", { role }));
-    // UI 只写精确 "provider/model"（或 null 清除回默认链），别名/后缀交给 settings.json 手写
+    // The UI writes only exact "provider/model" (or null to clear back to the default chain); aliases/suffixes are left for hand-editing settings.json
     const value = msg.value == null || msg.value === "" ? undefined : String(msg.value);
     if (value && !H.availableModels.some((m) => `${m.provider}/${m.id}` === value)) {
       throw new Error(hostI18n.t("errors.model.unknown", { model: value }));
@@ -96,10 +100,13 @@ export const modelsHandlers: Record<string, RpcHandler> = {
           const loginKind = authPolicyFor(p.id)?.login?.kind;
           return {
             ...p,
-            // 登录能力:仅 oauth-code/device-code/custom 有真实授权流(浏览器/设备码/供应商自定义);
-            // api-key 型在底座只是「粘贴 key 并校验」,详情页已有 API Key 输入框,不再重复给入口
+            // Login capability: only oauth-code/device-code/custom have a real
+            // authorization flow (browser/device code/vendor-custom);
+            // api-key providers in the base merely "paste a key and verify";
+            // the detail page already has an API Key input, so no duplicate
+            // entry
             login: loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom",
-            // 已配置账号数:authStorage 活跃凭证数(models.yml/env 层配置不计入)
+            // Configured account count: active authStorage credentials (models.yml/env-layer configs not counted)
             accounts,
           };
         }),

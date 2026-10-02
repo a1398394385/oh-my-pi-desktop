@@ -1,6 +1,8 @@
-// 类型豁免：React 19 的 @types/react 与 react-dom 运行事件注册表均无 onSelectStart
-// （react-dom 客户端仅 priority map 提及 selectstart，从不注册监听，该 prop 运行时被忽略）。
-// 为保持 Sidebar 原有 JSX 逐字不变（逻辑零改动），仅在此为 DOMAttributes 增补该可选属性。
+// Type exemption: neither React 19's @types/react nor react-dom's runtime event registry has
+// onSelectStart (the react-dom client only mentions selectstart in a priority map and never
+// registers a listener; the prop is ignored at runtime).
+// To keep the Sidebar JSX verbatim (zero logic changes), only this optional attribute is added
+// to DOMAttributes here.
 import type { ReactEventHandler } from "react";
 
 declare module "react" {

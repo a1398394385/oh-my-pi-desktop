@@ -1,5 +1,6 @@
-// 设置中心 slice：开合/当前页、宿主设置与 schema、模型目录与角色、供应商管理视图、
-// 登录流程状态、资产编辑器（skills/agents/mcp/memory）回包落地。自 store.ts 平移（P3 波 2）。
+// Settings center slice: open state/current page, host settings and schema, model catalog and roles,
+// provider management views, login flow state, asset editor (skills/agents/mcp/memory) reply
+// landing. Moved over from store.ts (P3 wave 2).
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import type {
@@ -18,32 +19,32 @@ import type { MemoryDetailState } from "../types/session";
 import type { SchemaDef } from "../components/settings/placement";
 
 export interface SettingsSlice {
-  settingsOpen: boolean; // 全屏 overlay 开合
-  settingsPage: string; // 当前设置页 id
+  settingsOpen: boolean; // fullscreen overlay open state
+  settingsPage: string; // current settings page id
   hostSettings: SettingsPayload | null;
-  settingsSchema: Record<string, SchemaDef> | null; // 条目形状同 SETTINGS_SCHEMA
+  settingsSchema: Record<string, SchemaDef> | null; // entry shape matches SETTINGS_SCHEMA
   modelCatalog: ModelCatalogEntry[];
   modelRoles: ModelRoleEntry[] | null;
   selectedProvider: string | null;
   mpAddView: boolean;
   mpRolesView: boolean;
-  mpDetailProv: AllProviderEntry | null; // 供应商详情页当前供应商(卡片点击写入)
+  mpDetailProv: AllProviderEntry | null; // current provider on the provider detail page (written by card clicks)
   allProvidersCache: AllProviderEntry[] | null;
   loginBusy: boolean;
   loginReqId: number;
-  loginBanner: string | null; // OMP 登录进度横幅文本
-  loginPromptData: LoginPromptFrame | null; // login_prompt 粘贴码弹窗数据
+  loginBanner: string | null; // OMP login progress banner text
+  loginPromptData: LoginPromptFrame | null; // login_prompt paste-code dialog data
   agentAssets: AgentAssetsPayload | null;
-  extensions: ExtensionsFrame | null; // 扩展中心数据帧（list_extensions / toggle_* 回包）
-  extensionsByScope: Record<string, ExtensionsFrame>; // 同上但按 scope 累积（资产页来源徽标跨 scope 匹配用）
+  extensions: ExtensionsFrame | null; // extension-hub data frame (list_extensions / toggle_* replies)
+  extensionsByScope: Record<string, ExtensionsFrame>; // same as above but accumulated per scope (for cross-scope matching of source badges on the assets page)
   usageStats: UsageStats | null;
-  providerLimits: ProviderLimitsResultFrame | null; // provider_limits_result 配额帧
-  assetFile: AssetFileFrame | null; // asset_file 回包(skills/agents 编辑器按 kind 过滤)
-  assetFileSaved: { kind: string; at: number } | null; // asset_file_saved 落地(引用变化驱动「已保存」态)
-  assetSaved: { kind: string; at: number } | null; // 同上,agents 页消费
-  assetErr: { kind: string; message: string; at: number } | null; // error 帧带 kind 时落地
-  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // MCP 单服务器测试结果
-  memoryDetail: MemoryDetailState; // memory_file 帧落地
+  providerLimits: ProviderLimitsResultFrame | null; // provider_limits_result quota frame
+  assetFile: AssetFileFrame | null; // asset_file reply (skills/agents editors filter by kind)
+  assetFileSaved: { kind: string; at: number } | null; // landed from asset_file_saved (reference change drives the "saved" indicator)
+  assetSaved: { kind: string; at: number } | null; // same as above, consumed by the agents page
+  assetErr: { kind: string; message: string; at: number } | null; // landed when the error frame carries kind
+  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results
+  memoryDetail: MemoryDetailState; // landed from the memory_file frame
   openSettings(pageId?: string): void;
   closeSettings(): void;
   refreshSettingsData(): void;
@@ -83,8 +84,9 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   closeSettings() {
     set((s) => ({ settingsOpen: false }));
   },
-  // 打开设置中心时的四连数据请求（旧版 refreshSettingsData 平移；send 在未连接时静默丢弃，
-  // 连接就绪由 connect 的 onopen 补拉）
+  // The data-request burst when the settings center opens (moved over from the old
+  // refreshSettingsData; send silently drops while not connected, and the connect onopen
+  // refetches once the connection is ready)
   refreshSettingsData() {
     if (!get().settingsSchema) get().send({ type: "get_settings_schema" });
     get().send({ type: "get_settings" });

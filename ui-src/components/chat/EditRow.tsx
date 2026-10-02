@@ -1,7 +1,9 @@
-// 编辑行（edit/write/apply_patch 单文件）与「更改」组（连续编辑事件合并 / 多文件单事件）。
-// 迁移自 ui/tool-labels.js 的 renderEdit/renderChange/renderChangeGroup/buildChangeBody。
-// 行点击展开/收起内联 diff（ed-brief）；首次展开按需向宿主拉取该文件 diff，
-// 回包经 file_diff 写入 briefDiffCache 后重渲染。
+// Edit row (edit/write/apply_patch single file) and the "Changes" group (consecutive edit
+// events merged / a multi-file single event).
+// Migrated from renderEdit/renderChange/renderChangeGroup/buildChangeBody in
+// ui/tool-labels.js. Clicking a row expands/collapses the inline diff (ed-brief); the first
+// expansion fetches that file's diff from the host on demand, and the response re-renders
+// after file_diff writes it into briefDiffCache.
 import type { ToolItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { bumpGroupExpand, useGroupExpandVersion, rdExpand, chgExpand } from "../../store/groupExpand";
@@ -11,32 +13,37 @@ import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFile
 import { splitPath } from "./util";
 import { t } from "../../i18n";
 
-// 事件涉及的文件清单：优先 tool_update 回填的 files，否则从 args 兜底
+// File list of the event: prefer the files backfilled by tool_update, otherwise fall back to args
 function filesOf(item: ToolItem): string[] {
   return uniqueFiles(item.files?.length ? item.files : item.args?.files || (item.args?.path ? [item.args.path] : []));
 }
 
-// 展开（收起动画由调用方的 useLift 处理）：置数 + 首次展开按需拉取该文件 diff。
-// apply 是落 item 字段的写入通道：顶层行与组内子行各自走对应的拷贝链
+// Expand (the collapse animation is handled by the caller's useLift): set the flag and fetch
+// that file's diff on demand on first expansion.
+// apply is the write channel that lands item fields: top-level rows and in-group sub-rows
+// each go through their own copy chain
 function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => void) => void) {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-  // 优先用当次工具回包的真实修改（diffContent）：新文件/无 git 基线时 git diff 只剩
-  // 全量新增，与行上 +N-M 摘要对不上。挂在 item 上（非 path 缓存）——同一文件多次
-  // 编辑各次展开各看各的；diffContent 缺失（老会话/多文件 patch）回落 git diff
+  // Prefer the real modification from this tool response (diffContent): for new files / no
+  // git baseline, a git diff is reduced to a full-file addition, mismatching the row's
+  // +N-M summary. Attached to the item (not cached per path) — multiple edits of the same
+  // file each see their own on expansion; when diffContent is missing (old sessions /
+  // multi-file patches) fall back to git diff
   const willSetBrief = item.diffContent != null && item.briefDiff === undefined;
   apply((it) => {
     it.diffExpanded = true;
     if (willSetBrief) it.briefDiff = item.diffContent;
   });
-  // 请求条件在原版里读的是置数后的 item.briefDiff（willSetBrief 置了数即不再请求）
+  // The request condition reads item.briefDiff after the set in the original version (once
+  // willSetBrief has set it, no request happens)
   if (path && !willSetBrief && item.briefDiff === undefined && s?.isGit && st.briefDiffCache.get(path) === undefined && st.briefDiffPending !== path) {
-    useAppStore.setState({ briefDiffPending: path }); // 静默写（原 S.xxx 直写不 notify）
+    useAppStore.setState({ briefDiffPending: path }); // silent write (the old code wrote S.xxx directly without notify)
     st.send({ type: "get_file_diff", cwd: s.cwd, path });
   }
 }
 
-// 编辑行：铅笔 + 「编辑/写入」+ 文件标签（可点开右栏 diff）+ 行数变化 + 展开箭头
+// Edit row: pencil + "Edit/Write" label + file chip (clickable to open the right-panel diff) + line-count changes + expand arrow
 export default function EditRow({ item }: { item: ToolItem }) {
   const path = filesOf(item)[0] || "";
   const [closing, close] = useLift();
@@ -66,7 +73,7 @@ export default function EditRow({ item }: { item: ToolItem }) {
   );
 }
 
-// 更改组内行 UI：完整编辑标签（标签文字 + 文件 + 行数 + 展开箭头），仅去掉行首铅笔图标
+// In-group row UI of the change group: the full edit label (label text + file + line counts + expand arrow), minus the leading pencil icon
 function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {
   const files = filesOf(sub);
   const path = files[0] || "";
@@ -74,7 +81,8 @@ function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
       <span className="lbl">{(sub.removed ?? 0) > 0 ? t("chat.editLabel") : t("chat.writeLabel")}</span>
       {files.length > 1 ? (
-        // 单条事件涉及多文件（apply_patch）：文件标签单行排布，超长行尾出省略号
+        // One event touching multiple files (apply_patch): file chips laid out on a single
+        // line, overlong lines end with an ellipsis
         <span className="chips-lane">
           {files.map((f) => <FileChip path={f} key={f} />)}{" "}
         </span>
@@ -92,7 +100,7 @@ function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   );
 }
 
-// 组内一条编辑事件 = 行 + 其内联 diff 展开体（展开态记在 sub.diffExpanded 上）
+// One edit event inside a group = row + its inline diff expand body (expand state recorded on sub.diffExpanded)
 function ChangeEntry({ sub }: { sub: ToolItem }) {
   const path = filesOf(sub)[0] || "";
   const [closing, close] = useLift();
@@ -109,11 +117,11 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
   );
 }
 
-// 更改组展开状态：以组内首个 item 对象为键（定义于 groupExpand.ts）
+// Change group expand state: keyed by the first item object in the group (defined in groupExpand.ts)
 
-// 「更改 · N 个文件」标题行：连续编辑事件合并组，点击向下展开各条编辑
+// "Changes · N files" title row: merged group of consecutive edit events, click to expand each edit downward
 function ChangeGroup({ subs }: { subs: ToolItem[] }) {
-  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
+  useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const fileCount = uniqueFiles(subs.flatMap((g) => filesOf(g))).length; // 0 → "multiple files" fallback
   const [closing, close] = useLift();
   const open = chgExpand.has(subs[0]) && !closing;
@@ -142,7 +150,7 @@ function ChangeGroup({ subs }: { subs: ToolItem[] }) {
   );
 }
 
-// 多文件单条编辑事件（apply_patch 一次改多文件）：标签行 + 文件标签列表，无展开
+// A multi-file single edit event (apply_patch touching several files at once): label row + file chip list, no expansion
 function ChangeSingle({ item }: { item: ToolItem }) {
   const files = filesOf(item);
   return (
@@ -162,22 +170,22 @@ function ChangeSingle({ item }: { item: ToolItem }) {
 }
 
 export function renderChange(item: ToolItem) {
-  // 组成员运行期必为 tool 条目(items.tsx 分组构造),判别联合层面收窄
+  // Group members are guaranteed tool entries at runtime (grouping built in items.tsx); narrowed at the discriminated-union level
   if (item.group) return <ChangeGroup subs={item.group as ToolItem[]} />;
   return <ChangeSingle item={item} />;
 }
 
-// ---------- 查阅组（连续 read 合并，机制与更改组一致） ----------
-// 展开状态：独立 WeakMap（定义于 groupExpand.ts）
+// ---------- Lookup group (consecutive reads merged, same mechanism as the change group) ----------
+// Expand state: a dedicated WeakMap (defined in groupExpand.ts)
 
-// 组内单条读取行：共享 parts.tsx 的 ReadRow（点击展开显示读取内容）
+// A single read row inside a group: shares ReadRow from parts.tsx (click to expand the read content)
 function ReadEntry({ sub }: { sub: ToolItem }) {
   return <ReadRow item={sub} inGroup />;
 }
 
-// 「查阅 · N 个文件」标题行：点击向下展开各条读取
+// "Read · N files" title row: click to expand each read downward
 function ReadGroup({ subs }: { subs: ToolItem[] }) {
-  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
+  useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const fileCount = uniqueFiles(subs.flatMap((s) => filesOf(s))).length; // 0 → "multiple files" fallback
   const [closing, close] = useLift();
   const open = rdExpand.has(subs[0]) && !closing;
@@ -207,6 +215,6 @@ function ReadGroup({ subs }: { subs: ToolItem[] }) {
 }
 
 export function renderReadGroup(item: ToolItem) {
-  const subs = (item.group ?? []) as ToolItem[]; // 同 renderChange:组成员必为 tool 条目
+  const subs = (item.group ?? []) as ToolItem[]; // same as renderChange: group members are guaranteed tool entries
   return <ReadGroup subs={subs} />;
 }

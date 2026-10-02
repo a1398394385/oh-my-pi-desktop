@@ -1,9 +1,9 @@
-// 发送链路三轮冒烟：定位「历史会话/第二轮不能发送」断在哪层。
-// 用法：OMP_PROFILE=omp-desktop-test bun scripts/smoke-prompt-rounds.ts
-// 断言覆盖：
-//   1. 新会话第 1 轮 prompt → turn_end（create 路径）
-//   2. 同会话第 2 轮 prompt → turn_end（sessionId 路径，用户报障点）
-//   3. 杀宿主重启后 load_session 同一会话 → prompt → turn_end（冷加载历史会话路径，用户报障点）
+// Send-path three-round smoke test: pinpoint which layer breaks on "cannot send in a historical session / on the second round".
+// Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-prompt-rounds.ts
+// Assertions cover:
+//   1. Round 1 prompt in a new session -> turn_end (the create path)
+//   2. Round 2 prompt in the same session -> turn_end (the sessionId path, the user-reported symptom)
+//   3. After killing and restarting the host, load_session the same session -> prompt -> turn_end (the cold-load historical session path, also user-reported)
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
@@ -16,9 +16,9 @@ let child: ReturnType<typeof spawn> | null = null;
 const createdFiles: string[] = [];
 let tmpCwd: string | null = null;
 
-// 真实 prompt 冒烟需凭证，走 default profile（既有实践，同 steer-smoke）；
-// list_sessions 的历史扫描会把 tmp cwd 并入 omp-desktop.json 的 allProjects，
-// 退出前（含失败路径）必须还原，防幽灵项目残留
+// Real-prompt smoke tests need credentials and use the default profile (existing practice, same as steer-smoke);
+// list_sessions' history scan merges the tmp cwd into omp-desktop.json's allProjects,
+// which must be restored before exit (including failure paths) to prevent ghost-project leftovers
 const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
@@ -29,7 +29,7 @@ function restoreCfg() {
     child = null;
     try {
       const { execSync } = require("node:child_process");
-      execSync("sleep 0.8"); // 等 host 退完再写回，防退出钩子把测试态写回
+      execSync("sleep 0.8"); // Wait for the host to finish exiting before writing back, so an exit hook cannot write the test state back
     } catch {}
   }
   try {
@@ -85,7 +85,7 @@ function ask(text: string): string {
 
 tmpCwd = await mkdtemp(`${tmpdir()}/omp-prompt-rounds-`);
 
-// ---------- 阶段 A：新会话两轮 ----------
+// ---------- Phase A: two rounds in a new session ----------
 {
   const { child: c, wsUrl } = await startHost();
   child = c;
@@ -93,7 +93,7 @@ tmpCwd = await mkdtemp(`${tmpdir()}/omp-prompt-rounds-`);
   const st = {
     sessionId: "" as string,
     path: "" as string,
-    phase: 0 as 0 | 1 | 2, // 0=第一轮 1=第二轮 2=完成
+    phase: 0 as 0 | 1 | 2, // 0=first round 1=second round 2=done
     gotEnd: false,
   };
   const timer = setTimeout(() => fail("阶段 A 超时（180s 未完成两轮）"), 180_000);
@@ -113,7 +113,7 @@ tmpCwd = await mkdtemp(`${tmpdir()}/omp-prompt-rounds-`);
         break;
       case "event":
         if (msg.kind === "turn_end" && msg.sessionId === st.sessionId) {
-          // wire 层事件可能重复两遍：以首个唤醒等待者为准
+          // Wire-layer events may arrive duplicated: the first waiter to wake wins
           if (st.phase === 0) {
             st.phase = 1;
             console.log("断言1 ✓ 新会话第 1 轮 turn_end 到达");
@@ -145,11 +145,11 @@ tmpCwd = await mkdtemp(`${tmpdir()}/omp-prompt-rounds-`);
   clearTimeout(timer);
   ws.close();
   child.kill("SIGTERM");
-  await new Promise((r) => setTimeout(r, 1000)); // 等宿主退出落盘
+  await new Promise((r) => setTimeout(r, 1000)); // Wait for the host to exit and flush to disk
   child = null;
 }
 
-// ---------- 阶段 B：重启宿主，冷加载历史会话 ----------
+// ---------- Phase B: restart the host, cold-load the historical session ----------
 {
   const { child: c, wsUrl } = await startHost();
   child = c;

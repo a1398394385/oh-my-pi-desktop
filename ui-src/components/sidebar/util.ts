@@ -1,5 +1,6 @@
-// 侧栏工具（ui/sidebar.js 平移）：相对时间 / 时长格式化 / 会话标签 / 剪贴板复制。
-// fmtDuration 供后续 chat-wave 消费（原版由 chat.js 引入）。
+// Sidebar utilities (ported from ui/sidebar.js): relative time / duration formatting /
+// session label / clipboard copy.
+// fmtDuration is consumed later by chat-wave (the old version imported it from chat.js).
 import { t } from "../../i18n";
 
 export function fmtAgo(iso: string): string {
@@ -17,9 +18,9 @@ export function fmtDuration(sec: number): string {
   return t("sidebar.durMinSec", { m, s: String(sec % 60).padStart(2, "0") });
 }
 
-// 会话标签所需的最小结构（与 SessionRow.SessionInfo 解耦，避免 util 反向依赖组件）
+// Minimal structure needed for the session label (decoupled from SessionRow.SessionInfo so util doesn't depend back on components)
 interface SessionLabelLike {
-  title?: string | null; // 宿主 DiskSessionRow 为 string | null
+  title?: string | null; // host DiskSessionRow is string | null
   firstMessage?: string;
 }
 
@@ -27,7 +28,7 @@ export function sessionLabel(s: SessionLabelLike): string {
   return s.title || s.firstMessage || t("sidebar.emptySession");
 }
 
-// 复制到剪贴板（shell.js copyText 同款复刻，含 WKWebView 非安全上下文兜底）
+// Copy to clipboard (replica of shell.js copyText, incl. the WKWebView insecure-context fallback)
 export function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   const ta = document.createElement("textarea");
@@ -62,7 +63,8 @@ export interface ShortcutComputationState {
 
 export const SHORTCUT_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
-/** 会话是否正在运行（流式中或有 bash 工具在跑）：快捷键候选筛选与 ⌘ 按住时临时展开项目共用 */
+/** Whether a session is running (streaming or a bash tool in flight): shared by shortcut
+ * candidate filtering and temporary project expansion while ⌘ is held */
 export function isSessionRunning(
   open: { streaming?: boolean; items?: { role: string; running?: boolean }[] } | undefined,
 ): boolean {
@@ -70,10 +72,11 @@ export function isSessionRunning(
 }
 
 /**
- * 计算侧栏会话 ⌘1~9 快捷键映射：
- * 1. 优先级：优先跳转到正在运行中的会话；若运行中不足 9 个，用存在未读消息的会话补齐。
- * 2. 对应关系：数字 1~9 的顺序与左侧会话列表从上到下的顺序保持一致。
- * 返回 Map<sessionPath, digitString>
+ * Compute the sidebar session ⌘1~9 shortcut mapping:
+ * 1. Priority: prefer jumping to running sessions; if fewer than 9 are running, fill with
+ *    sessions having unread messages.
+ * 2. Mapping: digits 1~9 follow the top-to-bottom order of the left session list.
+ * Returns Map<sessionPath, digitString>
  */
 export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Map<string, string> {
   const orderedSessions: ShortcutSessionCandidate[] = [];
@@ -86,14 +89,14 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
   };
 
   if (st.viewMode === "project") {
-    // 1. 置顶会话
+    // 1. Pinned sessions
     const pinnedRows = st.diskProjects
       .flatMap((p) => p.sessions)
       .filter((s) => st.pinnedSessions.has(s.path))
       .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
     for (const s of pinnedRows) append(s);
 
-    // 2. 项目列表（只遍历展开的项目或清理模式下的可见会话）
+    // 2. Project list (iterate only expanded projects, or visible sessions in manage mode)
     const removedSet = st.removedProjects instanceof Set
       ? st.removedProjects
       : new Set(st.removedProjects ?? []);
@@ -111,11 +114,11 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
       for (const s of visible) append(s);
     }
   } else if (st.viewMode === "archive") {
-    // 归档视图：按修改时间倒序的归档会话
+    // Archive view: archived sessions by modified time descending
     const list = st.archivedSessions ?? [];
     for (const s of list) append(s);
   } else {
-    // 最近视图：前 50 条按 modified 倒序
+    // Recent view: top 50 by modified descending
     const flat = st.diskProjects
       .flatMap((p) => p.sessions)
       .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
@@ -129,7 +132,7 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
     return st.unseenFinished.has(path);
   };
 
-  // 优先级筛选：运行中优先
+  // Priority filter: running first
   const runningSessions = orderedSessions.filter((s) => isRunning(s.path));
   let candidates: ShortcutSessionCandidate[] = [];
 
@@ -143,7 +146,7 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
     candidates.push(...unreadSessions.slice(0, needed));
   }
 
-  // 对应关系：候选条目按左侧列表顺序重排
+  // Mapping: reorder candidates by the left list's order
   const candidateSet = new Set(candidates.map((s) => s.path));
   const finalOrdered = orderedSessions.filter((s) => candidateSet.has(s.path));
 

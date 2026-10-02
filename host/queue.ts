@@ -1,6 +1,8 @@
-// 排队消息域（v14/v15 排队体系）：followUp/steering 两队列的用户消息视图、
-// park 暂存（防注入边界 drain 整队）、逐轮放回、立即发送/放回/删除。
-// 底座队列元素含隐藏伴随（图片描述/magic keyword notice），操作一律成组摘取。
+// Queued message domain (v14/v15 queue system): the user-message view of the
+// followUp/steering queues, parking (protects the whole queue from the
+// injection boundary drain), per-turn release, send-now/release/delete.
+// Base queue entries carry hidden companions (image descriptions / magic
+// keyword notices); operations always extract them as a group.
 import {
   isUserQueuedMessage,
   isHiddenUserCompanion,
@@ -15,13 +17,15 @@ function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entr
     list.filter((m) => isUserQueuedMessage(m)).map((m) => toRestoredQueuedMessage(m));
   const followUp = [...view(agent.peekFollowUpQueue()), ...view(entry.parkedFollowUp)];
   const steering = view(agent.peekSteeringQueue());
-  // 竞态兜底的快照：完整视图 + steering 用户消息全量（turn_end 时 diff「上次有/现在无/未通知消费」= 被吞）
+  // Snapshot for race-condition backstop: full view + all steering user messages (at turn_end, diff "had last time / gone now / consumption not notified" = swallowed)
   entry.queuedTexts = [...followUp, ...steering].map((m) => m.text);
   ws.send(JSON.stringify(stampEvent({ type: "queued", sessionId, followUp, steering })));
 }
 
-// 把底座 followUp 队列修剪为最多 1 条用户消息：第 2 条起（含各自前导隐藏伴随）移入
-// parked 暂存，防止当前 run 的注入边界把整队消息一次性带走
+// Trim the base followUp queue to at most 1 user message: from the 2nd on
+// (with their leading hidden companions) entries move into the parked
+// staging area, preventing the current run's injection boundary from
+// carrying the whole queue away at once
 function parkFollowUpTail(entry: PoolEntry) {
   const agent = entry.session.agent;
   const queue = agent.peekFollowUpQueue();
@@ -41,7 +45,7 @@ function parkFollowUpTail(entry: PoolEntry) {
   agent.replaceQueues(agent.peekSteeringQueue(), queue.filter((_, i) => i < start));
 }
 
-// 从 parked 暂存摘出第 pi 条用户消息（含前导隐藏伴随），返回摘出的元素数组
+// Extract the pi-th user message from the parked staging (with its leading hidden companions); returns the extracted elements
 function extractParkedAt(entry: PoolEntry, pi: number): any[] {
   const parked = entry.parkedFollowUp;
   let n = -1;
@@ -61,7 +65,7 @@ function extractParkedAt(entry: PoolEntry, pi: number): any[] {
   return extracted;
 }
 
-// 放回 parked 首条（含前导伴随）到 agent 队列。队列元素是入队时的原结构，直接回队即保留图片等
+// Release the parked head (with leading companions) back into the agent queue. Queue entries keep their original enqueued structure, so returning them directly preserves images etc.
 function releaseOneParked(entry: PoolEntry): any[] {
   const u = entry.parkedFollowUp.findIndex((m) => isUserQueuedMessage(m));
   if (u < 0) return [];
@@ -70,7 +74,7 @@ function releaseOneParked(entry: PoolEntry): any[] {
   return released;
 }
 
-// 移除第 index 条用户消息及其紧邻在前的隐藏伴随（图片描述等），返回过滤后的新数组
+// Remove the index-th user message and its immediately preceding hidden companions (image descriptions etc.); returns the filtered new array
 function removeUserMessage(queue: readonly any[], index: number): any[] {
   let n = -1;
   let target = -1;
@@ -105,11 +109,11 @@ function handleDropQueued(
   const queue = which === "steering" ? agent.peekSteeringQueue() : agent.peekFollowUpQueue();
   let next: any[];
   if (index === undefined) {
-    // 全清：只清用户消息及其隐藏伴随，保留系统 notice（goal/plan/budget 等）
+    // Clear all: drop only user messages and their hidden companions, keep system notices (goal/plan/budget etc.)
     next = queue.filter((m) => !isUserQueuedMessage(m) && !isHiddenUserCompanion(m));
     if (which === "followUp") entry.parkedFollowUp = [];
   } else if (which === "followUp" && index >= queue.filter((m) => isUserQueuedMessage(m)).length) {
-    // 完整视图后半段：目标在 parked 暂存
+    // Back half of the full view: the target lives in the parked staging
     extractParkedAt(entry, index - queue.filter((m) => isUserQueuedMessage(m)).length);
     next = queue;
   } else {
@@ -122,8 +126,10 @@ function handleDropQueued(
   sendQueued(ws, sessionId, entry);
 }
 
-// 立即发送：把 followUp 第 index 条（完整视图，含 parked 暂存）转为 steer 注入；
-// 剩余排队消息全部 park，本轮 run 只注入被点的这一条
+// Send now: turn the index-th followUp entry (full view, including parked
+// staging) into a steer injection;
+// park all remaining queued messages so this run injects only the clicked
+// one
 async function handleSendNow(ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
@@ -145,7 +151,7 @@ async function handleSendNow(ws: { send(data: string): unknown }, sessionId: str
     restored = toRestoredQueuedMessage(queue[target]);
     agent.replaceQueues(agent.peekSteeringQueue(), removeUserMessage(queue, index));
   } else {
-    // 目标在 parked 暂存：摘出后经 steer 重新入队（图片经 SDK 重建描述，罕见路径）
+    // Target lives in the parked staging: extract it and re-enqueue via steer (images re-described by the SDK; rare path)
     const [msg] = extractParkedAt(entry, index - queueUserCount).filter((m) => isUserQueuedMessage(m));
     restored = toRestoredQueuedMessage(msg);
   }
@@ -154,7 +160,7 @@ async function handleSendNow(ws: { send(data: string): unknown }, sessionId: str
   sendQueued(ws, sessionId, entry);
 }
 
-// 放回队列：把 steer 队列第 index 条挪回 followUp 顶端（去掉 steer 标记）
+// Requeue: move the index-th steer-queue entry back to the top of followUp (dropping the steer marker)
 function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
@@ -173,7 +179,7 @@ function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, i
   const moved: any = { ...queue[target] };
   delete moved.steering;
   agent.replaceQueues(removeUserMessage(queue, index), [moved, ...agent.peekFollowUpQueue()]);
-  // moved 成为底座队列唯一第 1 条，原队列首条退入 parked 头部（保持 FIFO 顺序）
+  // moved becomes the single 1st entry of the base queue; the former queue head retreats to the parked head (keeping FIFO order)
   parkFollowUpTail(entry);
   sendQueued(ws, sessionId, entry);
 }

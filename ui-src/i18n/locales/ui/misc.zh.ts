@@ -1,5 +1,6 @@
 // zh copy for the misc domain. Keys are prefixed `misc.` — see ui-src/i18n/README.md.
 export const miscZh = {
+  closeSr: "关闭",
   // App.tsx
   newTask: "新建任务",
   pickSession: "选择左侧会话或新建任务",

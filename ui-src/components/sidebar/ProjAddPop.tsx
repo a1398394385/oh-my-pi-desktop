@@ -1,5 +1,7 @@
-// 手动添加项目弹层（ui/sidebar.js openProjAddPop 平移）：全路径输入，Enter 提交 / Esc 关闭。
-// 宿主负责把命中已移除列表的项移回所有项目列表。定位于触发按钮下方（宽 330）。
+// Manual add-project popover (ported from ui/sidebar.js openProjAddPop): full-path input,
+// Enter to submit / Esc to close.
+// The host moves entries matching the removed list back into the all-projects list. Positioned
+// below the trigger button (width 330).
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -10,19 +12,19 @@ export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRec
   const ref = useRef<HTMLDivElement>(null);
   const inpRef = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current!; // portal mount 后即存在（原 JS 直接解引用，保持同一假设）
+    const el = ref.current!; // exists right after portal mount (the old JS dereferenced directly; same assumption kept)
     const w = 330;
     const left = Math.max(4, Math.min(anchorRect.right - w, window.innerWidth - w - 8));
-    const z = useAppStore.getState().zoomLevel || 1; // placeMenu 同款：先设 zoom 再除回
+    const z = useAppStore.getState().zoomLevel || 1; // same as placeMenu: set zoom first, then divide back
     el.style.zoom = String(z);
     el.style.left = left / z + "px";
     el.style.top = (anchorRect.bottom + 4) / z + "px";
     inpRef.current?.focus();
   }, []);
   useEffect(() => {
-    // 点弹层外部或窗口失焦时关闭（对照 shell.js closeAllMenus 协调）
+    // Close on click outside the popover or window blur (coordinated with the old shell.js closeAllMenus)
     const onClick = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose(); // window 监听里 e.target 运行时必为 Node
+      if (!ref.current?.contains(e.target as Node)) onClose(); // in a window listener e.target is always a Node at runtime
     };
     window.addEventListener("click", onClick);
     window.addEventListener("blur", onClose);

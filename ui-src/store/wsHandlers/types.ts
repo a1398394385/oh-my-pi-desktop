@@ -1,7 +1,9 @@
-// 帧处理器表类型：键 = HostFrame 全部成员的 type 字面量（漏键在合并表编译期报错，
-// 等价旧 switch 的 default never 穷尽检查）；值 = 收窄到该帧的同步处理器。
-// 处理器不收 set/get——域处理器经 useAppStore 直取（onMessage 同步分发，
-// 帧到达时刻的 getState 与旧 switch 入口快照等价）。
+// Frame-handler table types: keys = the type literals of all HostFrame members (a missing key
+// fails to compile in the merged table, equivalent to the old switch's default-never
+// exhaustiveness check); values = synchronous handlers narrowed to that frame.
+// Handlers don't take set/get — domain handlers fetch directly via useAppStore (onMessage
+// dispatches synchronously, so getState at frame-arrival time is equivalent to the old switch
+// entry snapshot).
 import type { HostFrame } from "../../types/frames";
 
 export type FrameType = HostFrame["type"];

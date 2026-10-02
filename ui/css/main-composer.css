@@ -1,17 +1,16 @@
 /* ============================================================
- * main-composer.css —— 主页面·中栏输入区:dock 输入卡/底栏(模型/权限/ctx环/发送钮)/goal/queue/统计行/流式尾巴/Lexical。
- *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
- * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
- * → main-composer → main-streamdown → main-tree → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * main-composer.css — main page, middle-column input area: dock input card/bottom bar (model/permission/ctx ring/send button)/goal/queue/stats row/streaming tail/Lexical.
+ *  Split from ui/css/main.css by semantic domain; keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = ui/style.css's @import order: global -> main-shell -> main-sidebar -> main-chat
+ * -> main-composer -> main-streamdown -> main-tree -> main-welcome -> main-right -> settings; append new styles at the end of the matching domain file.
  * ============================================================ */
-/* /* 输入区：中栏底部内嵌圆角卡片，严格居中并与会话区域同宽对齐 */
-/* 输入区与下方统计行共用同一列宽（同款四段式收缩、居中）；统计行在 dock 之外，不属输入卡片 */
+/* /* Input area: rounded card inset at the bottom of the middle column, strictly centered and width-aligned with the session area */
+/* The input area and the stats row below share the same column width (same four-stage shrink, centered); the stats row sits outside the dock and is not part of the input card */
 .dock,
 .stats-bar {
   flex: none;
   width: 100%;
-  /* 与对话消息同一套四段式收缩逻辑（见上方共享规则注释）；
-     收缩到底（260px，与 #composer 的 min-width 一致）后不再变窄 */
+  /* Same four-stage shrink logic as chat messages (see the shared rule comment above); stops narrowing at the floor (260px, matching #composer's min-width) */
   max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   min-width: 260px;
 }
@@ -22,12 +21,12 @@
   border: 1px solid var(--line-soft);
   border-radius: 16px;
   position: relative;
-  /* 容器层：压住上方 .queue-card 下缘 28px；其内部下拉菜单封顶在这一层（见文件头「全站层级刻度」） */
+  /* container layer: overlaps the .queue-card bottom edge above by 28px; its inner dropdown menus cap at this layer (see "site-wide z-index scale" in the file header) */
   z-index: 100;
   box-sizing: border-box;
 }
 
-/* 输入卡边框：常态沿用 line-soft，鼠标悬停时轻微提亮；键盘焦点不改边框 */
+/* Input card border: line-soft at rest, slightly brighter on mouse hover; keyboard focus leaves the border unchanged */
 .dock,
 #composer.in-welcome { transition: border-color .15s var(--swift); }
 
@@ -39,8 +38,7 @@
 .dock.approval-active:hover,
 .dock.approval-active:focus-within { border-color: transparent; }
 
-/* 会话统计行：输入框 dock 下方常驻一行（整会话缓存利用率/token/成本/活跃时长）；
-   纯展示无点击行为，不做 hover 高亮 */
+/* Session stats row: a permanent line below the input dock (whole-session cache utilization/tokens/cost/active time); display-only with no click behavior, no hover highlight */
 .stats-bar {
   margin: 0 auto 10px;
   display: flex;
@@ -61,13 +59,13 @@
   padding: 12px 14px 10px;
   position: relative;
   min-width: 0;
-  /* 收缩到底后的托底宽度，不再随窗口变窄 */
+  /* floor width after shrinking to the limit, no longer narrows with the window */
   min-width: 260px;
 }
 
-/* TODO：中栏右上角独立卡片，可收成胶囊。
-   层级取 60（面板内固定浮层档）：吸顶用户消息栏同为固定浮层但只给 20，
-   若同档 20 则 DOM 顺序使吸顶栏压住本卡（TODO 卡须恒可读可点） */
+/* TODO: standalone card at the top right of the middle column, collapsible to a pill.
+   z-index 60 (the in-panel fixed-overlay tier): the sticky user message bar is also a fixed overlay but only gets 20;
+   at the same 20, DOM order would let the sticky bar cover this card (the TODO card must stay readable and clickable at all times) */
 #statusWrap {
   position: absolute;
   top: 56px;
@@ -107,16 +105,16 @@
 
 #input::placeholder { color: var(--faint); }
 
-/* 已选附件行：文件从左到右排列，文字输入另起一行 */
+/* Selected attachments row: files laid out left to right, text input starts a new line */
 .attach-row { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; }
 
-/* working 状态行已并入 .chat-loading（见 ChatLoading.jsx），原 .work-line 样式随之移除 */
-.chat-loading[hidden] { display: none; } /* display:flex 会盖掉 UA 的 [hidden]，需显式声明 */
+/* The working status row has merged into .chat-loading (see ChatLoading.jsx); the old .work-line styles were removed with it */
+.chat-loading[hidden] { display: none; } /* display:flex would override the UA's [hidden]; declare it explicitly */
 
-/* 流式状态文字（intent/思考）：跟在转圈后，小号 dim，单行截断不折行推高流 */
-/* 流式加载转圈（复刻 ZCode ChatLoading / TurnChatLoadingSlot）：消息流最末位、紧贴输入框上方，
-   min-height 20px 保底有无都不跳高；lucide loader 图标 + 1s linear 旋转，前景色 --dim
-   （对应 ZCode text-foreground-subtle）。显隐由 Chat.jsx 按 s.streaming 渲染与否决定 */
+/* Streaming status text (intent/thinking): follows the spinner, small dim, single-line truncation so wrapping never grows the flow */
+/* Streaming loading spinner (replicating ZCode ChatLoading / TurnChatLoadingSlot): last slot in the message flow, right above the input,
+   min-height 20px so its presence or absence never shifts height; lucide loader icon + 1s linear rotation, foreground --dim
+   (ZCode's text-foreground-subtle). Visibility is decided by Chat.jsx rendering per s.streaming */
 .chat-loading-icon {
   display: inline-flex;
   color: var(--dim);
@@ -125,9 +123,9 @@
 
 .chat-loading-icon svg { display: block; }
 
-/* 减弱动态效果：默认跟随系统（media query 停转两个 spinner）；
-   外观页可强制（html[data-motion]）：on=无条件减弱 / off=无条件动画。
-   特异性 html[data-motion] 前缀压过 media 内规则，system/缺省回落系统行为 */
+/* Reduced motion: follows the system by default (the media query stops both spinners);
+   the appearance page can force it (html[data-motion]): on=always reduced / off=always animated.
+   the html[data-motion] prefix's specificity beats the media-query rules; system/absent falls back to system behavior */
 @media (prefers-reduced-motion: reduce) {
   .chat-loading-icon, .task-indicator.loading svg { animation: none; }
 }
@@ -139,17 +137,17 @@ html[data-motion="off"] .chat-loading-icon { animation: chat-load-spin 1s linear
 
 html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
 
-/* 排队消息卡：ZCode 二级重叠卡配方（ConversationQueuePanel）——relative z-0 +
-   负 margin-bottom 上拉 28px + padding-bottom 28px 保底内容不被遮 + 只圆上角。
-   下方 .dock（z-20）压住其下缘，露出上半张卡；空队列时组件返回 null，卡整体不出现 */
-/* goal 目标栏：输入框上方的最上层重叠栏（App 渲染顺序 goal → queue → dock，随队列增高上移）。
-   叠加几何同 queue-card 配方（margin -28px 上拉 + padding-bottom 28px 保底 + 只圆上角，
-   被下一张卡压住下缘）；宽度比输入框左右各窄 10px（共 20px），无对下方卡片的圆角补充块。
-   点击栏向上展开完整目标（.open）；无 goal 时组件返回 null */
-/* 宽度声明单独挂 #main 前缀：上方共用列宽规则含 #stream>*（特异性 1,0,1），
-   纯类选择器压不过，不加前缀时「比输入框窄」实际不生效。
-   width 与 max-width 都要减 20px：窄屏由 width 兜底、宽屏由 max-width（列宽收缩）
-   约束，两者缺一都会在对应区间回到与输入框同宽 */
+/* Queued message card: ZCode's stacked second-level card recipe (ConversationQueuePanel) — relative z-0 +
+   negative margin-bottom pulling up 28px + padding-bottom 28px keeping the content uncovered + top corners rounded only.
+   the .dock below (z-20) covers its bottom edge, baring the upper half of the card; an empty queue makes the component return null so no card appears */
+/* Goal bar: the topmost stacked bar above the input (App render order goal -> queue -> dock, shifting up as the queue grows).
+   Stacking geometry follows the queue-card recipe (margin -28px pull-up + padding-bottom 28px floor + top corners rounded only,
+   bottom edge covered by the next card); 10px narrower than the input on each side (20px total), no corner patch block toward the card below.
+   clicking expands the full goal upward (.open); with no goal the component returns null */
+/* The width declaration carries its own #main prefix: the shared column-width rule above includes #stream>* (specificity 1,0,1),
+   which a plain class selector can't beat — without the prefix "narrower than the input" silently fails.
+   Both width and max-width must subtract 20px: on narrow screens width is the floor, on wide screens max-width (column shrink)
+   constrains; missing either reverts that range to the input card's width */
 #main .goal-card {
   width: calc(100% - 20px);
   max-width: calc(min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))) - 20px);
@@ -188,7 +186,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .queue-card {
   position: relative;
-  z-index: 1; /* 高于 .goal-card（z-0）：goal 栏下缘被排队卡压住，不再反向遮挡排队内容 */
+  z-index: 1; /* above .goal-card (z-0): the goal bar's bottom edge is covered by the queue card, never the other way around */
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
   background: var(--surface);
@@ -205,7 +203,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   min-width: 0;
 }
 
-.qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; } /* 三点=排队待发送 */
+.qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; } /* dots = queued for sending */
 
 .qc-dots svg { display: block; margin-top: -0.5px; }
 
@@ -241,20 +239,19 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   display: flex;
   align-items: flex-start;
   gap: 2px;
-  margin-top: 0; /* 顶部零间距，与 turn-body 底边缘像素级贴合 */
-  margin-bottom: 33px; /* 与前一个 agent 处理流程间距加大 5px（28px -> 33px） */
+  margin-top: 0; /* zero top gap, pixel-tight against the turn-body bottom edge */
+  margin-bottom: 33px; /* 5px more spacing to the agent process flow before it (28px -> 33px) */
   padding-top: 0;
   height: 1.4em;
   font-family: var(--ui-font, var(--sans));
   font-size: var(--ui-fs-base);
   box-sizing: border-box;
-  opacity: 0; /* 默认不常驻显示，常驻保留占位 */
-  /* Opacity-only hiding (no pointer-events:none): the bar must stay hit-testable while invisible,
-     otherwise a lost hover (arriving from below, or crossing the gap above) can never recover. */
+  opacity: 0; /* not shown at rest; the slot stays reserved */
+  /* Opacity-only hiding (no pointer-events:none): the bar must stay hit-testable while invisible, otherwise a lost hover (arriving from below, or crossing the gap above) can never recover. */
   transition: opacity 0.15s ease-out;
 }
 
-/* 鼠标悬停在 Agent 处理区域或操作栏自身时淡入显示 */
+/* fades in when the mouse hovers the Agent processing area or the action bar itself */
 .turn-section:has(.turn-flow:hover) .turn-acts,
 .turn-acts:hover,
 .turn-acts:focus-within {
@@ -276,7 +273,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .turn-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
 
-/* 本轮结束时刻：高度与中心线锁定 1.4em，文字 line-height: 1 垂直居中，与左侧复制/fork 按钮图形等高顶底绝对平齐 */
+/* turn end time: height and centerline locked to 1.4em, text vertically centered via line-height: 1, absolutely flush top/bottom with the copy/fork button glyphs to the left */
 .turn-acts-time {
   margin-left: 6px;
   height: 1.4em;
@@ -290,8 +287,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   user-select: none;
 }
 
-/* 本轮结束时刻：跟随分叉按钮右侧，等宽数字避免逐轮宽度跳动 */
-/* 待消费气泡左侧的操作组：hover 整行时浮现（按钮在气泡外左侧，行 hover 保证移过去不消失） */
+/* turn end time: follows the fork button, tabular numerals avoid per-turn width jitter */
+/* action group left of the pending bubble: appears on whole-row hover (buttons sit outside the bubble to its left; row hover keeps them visible while moving over) */
 .user-bubble.pending { position: relative; }
 
 .qk-acts {
@@ -303,7 +300,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .msg.user:has(> .user-bubble.pending):hover .qk-acts { display: flex; }
 
-/* 气泡内按钮图标与文字等高（气泡字号 var(--ui-fs-md)） */
+/* button icons inside the bubble match the text height (bubble font size var(--ui-fs-md)) */
 .user-bubble .qk-acts .q-btn { width: 1.05em; height: 1.05em; }
 
 .user-bubble .qk-acts .q-btn svg { width: 100%; height: 100%; display: block; }
@@ -341,29 +338,26 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   align-items: center;
   gap: 6px;
   margin-top: 4px;
-  /* 禁止换行：换行会让按钮脱离弹窗锚点（弹窗按按钮位置锚定）。
-     宽度不足时由 fitComposerBar() 逐级收缩（.bar-N），收缩到底由 #composer min-width 托底 */
+  /* no wrapping: a wrapped button escapes the popover anchor (popovers anchor to the button's position). when width runs out, fitComposerBar() shrinks tier by tier (.bar-N); the floor is #composer's min-width */
   flex-wrap: nowrap;
   overflow: hidden;
   min-width: 0;
 }
 
-/* 底栏子项不压缩：保持自然宽度，溢出交给 fitComposerBar() 检测并逐级收缩；
-   弹性间隔 .sp(flex:1) 独占剩余空间并首先收缩 */
+/* bottom-bar items don't compress: keep natural width, overflow is detected and shrunk tier by tier by fitComposerBar(); the flexible spacer .sp(flex:1) takes the remaining space and shrinks first */
 .cbar > *:not(.sp) { flex: none; }
 
 .cbar > .sp { min-width: 0; }
 
 #modeBtn, #modelBtn, #thinkBtn { font-weight: 500; }
 
-/* 模型名长度不一,模型按钮宽度随内容伸缩,不受共用 180px 上限裁剪 */
+/* model names vary in length; the model button flexes with its content, exempt from the shared 180px cap */
 #modelBtn { max-width: none; }
 
-/* 模型供应商图标（设置页同款字形）：仅模型按钮收缩为图标态时显示 */
+/* model provider icon (same glyph as the settings page): shown only when the model button shrinks to icon-only */
 #modelIcon { display: none; }
 
-/* 底栏分级收缩：宽度不足时由 JS（fitComposerBar）按溢出程度逐级加 .bar-N。
-   顺序：权限模式→纯图标 → 思考级别→纯图标 → 模型→纯图标 → 隐藏子智能体 → 隐藏后台任务 */
+/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> icon-only -> thinking level -> icon-only -> model -> icon-only -> hide subagents -> hide background tasks */
 #composer.bar-1 #modeLabel, #composer.bar-1 #modeBtn .caret-svg { display: none; }
 
 #composer.bar-2 #thinkLabel, #composer.bar-2 #thinkBtn .caret-svg { display: none; }
@@ -376,7 +370,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 #composer.bar-5 #bgTaskBtn { display: none; }
 
-/* 后台任务终端按钮 */
+/* background task terminal button */
 .bg-task-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 8px; border-radius: 999px;
@@ -406,7 +400,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   font-weight: 600;
 }
 
-/* 计划模式按钮：权限胶囊右侧以 | 分隔的小按钮；hover 时计划图标换成 X（提示点击即退出） */
+/* plan-mode button: small button right of the permission pill, separated by |; on hover the plan icon swaps to X (hinting click exits) */
 .cbar-sep { color: var(--line); font-size: var(--ui-fs-base); line-height: 1; user-select: none; }
 
 .plan-btn {
@@ -421,7 +415,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .plan-btn .plan-ic > span { display: inline-flex; align-items: center; }
 
-.plan-btn .plan-ic > span:nth-child(2) { display: none; } /* X 默认隐藏，hover 时替换计划图标 */
+.plan-btn .plan-ic > span:nth-child(2) { display: none; } /* X hidden by default, replaces the plan icon on hover */
 
 .plan-btn:hover .plan-ic > span:nth-child(1) { display: none; }
 
@@ -429,13 +423,13 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .plan-btn:hover { background: var(--panel-2); color: var(--text); }
 
-/* 上下文占用环：从顶端顺时针增长，分温色；hover 出明细卡 */
+/* context usage ring: grows clockwise from the top, temperature-colored; hover shows the detail card */
 .ctx-ring {
   width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center;
-  padding: 4px; border-radius: 7px; /* 常态占位,hover 时底板出现不推布局(border-box:22=14环+4×2内边距) */
+  padding: 4px; border-radius: 7px; /* reserve at rest; the hover plate appears without shifting layout (border-box: 22 = 14 ring + 4x2 padding) */
 }
 
-.ctx-ring:hover { background: #363636; } /* hover 高亮圆角正方形底板 */ /* style-token-ignore */
+.ctx-ring:hover { background: #363636; } /* hover-highlight rounded square plate */ /* style-token-ignore */
 
 .ctx-ring svg { display: block; }
 
@@ -443,7 +437,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .ctx-ring .fill {
   fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round;
-  stroke-dasharray: 40.84; stroke-dashoffset: 40.84; /* 周长 2π×6.5 */
+  stroke-dasharray: 40.84; stroke-dashoffset: 40.84; /* circumference 2pi x 6.5 */
   transition: stroke-dashoffset .3s;
 }
 
@@ -451,7 +445,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .ctx-ring.hot .fill { stroke: var(--err); }
 
-/* 发送钮：默认中性底（无内容）；有草稿时 .ready 蓝色高亮；停止形态（.stop / .stopping）红色高亮常驻 */
+/* send button: neutral base by default (no content); .ready blue highlight with a draft; stop states (.stop / .stopping) keep a persistent red highlight */
 .send {
   width: 30px; height: 30px; border-radius: 50%;
   border: 0; background: hsl(0, 0%, 17%); color: #ffffff;
@@ -479,8 +473,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .send.stop:hover:not(:disabled), .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
 
-/* bash 模式（输入框 ! 前缀）：边框与占位文案着 --bash 色。
-   边框规则压过三态边框（hover line / 聚焦 accent）：dock 与 in-welcome 两态都生效 */
+/* bash mode (composer ! prefix): border and placeholder text take the --bash color. the border rule beats the three-state borders (hover line / focus accent): effective in both the dock and in-welcome states */
 #composer.bash-mode,
 #composer.bash-mode:hover,
 #composer.bash-mode:focus-within,
@@ -615,13 +608,13 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .kids-in { --pop-from: -4px; animation: popIn .3s ease-out both; }
 
-/* 主对话区思考体入场独立 0.2s（与对话区展开/收起一套） */
+/* main-chat thinking-body entrance gets its own 0.2s (same set as the chat area's expand/collapse) */
 .think-body.kids-in { animation-duration: .2s; }
 
-/* ============================== P7（Composer → Lexical） ============================== */
-/* contentEditable 承接旧 textarea 的 #input 样式：高度随内容自适应（≤120px 由 #input 的
-   max-height 钳制，超出内部滚动——textarea 时代的 resizeInput JS 不再需要），折行语义对齐
-   textarea 的 pre-wrap + break-word；overflow-y 补上（div 无 UA 默认滚动） */
+/* ============================== P7 (Composer -> Lexical) ============================== */
+/* contentEditable inherits the old textarea's #input styles: height adapts to content (clamped by #input's
+   max-height at <=120px, inner scroll beyond — the textarea-era resizeInput JS is no longer needed), wrapping semantics aligned with
+   the textarea's pre-wrap + break-word; overflow-y added explicitly (divs get no UA default scrolling) */
 #input.inp-ce {
   overflow-y: auto;
   white-space: pre-wrap;
@@ -629,8 +622,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   cursor: text;
 }
 
-/* placeholder 覆盖层：ContentEditable 的占位容器无定位，挂在 .lex-wrap（relative）上对齐
-   #input 文本起点（#input 无 padding，padding 在 #composer），仅空内容时渲染 */
+/* placeholder overlay: ContentEditable's placeholder host has no positioning, so it hangs on .lex-wrap (relative) to align with the #input text origin (#input has no padding; the padding lives on #composer), rendered only when content is empty */
 .lex-wrap { position: relative; }
 
 .lex-ph {
@@ -644,10 +636,10 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   overflow-wrap: break-word;
 }
 
-/* bash 模式（! 前缀）placeholder 变色：对齐旧 #composer.bash-mode #input::placeholder */
+/* bash-mode (! prefix) placeholder recolor: aligned with the old #composer.bash-mode #input::placeholder */
 #composer.bash-mode .lex-ph { color: var(--bash); }
 
-/* 补全 chip（@文件 / 斜杠命令原子节点）：小胶囊，色板取 token，深浅主题各表 */
+/* completion chips (@files / slash-command atomic nodes): small pills, token palette, per-theme rendering */
 .chip {
   display: inline-block;
   background: var(--panel-2);

@@ -1,5 +1,6 @@
-//! Tauri 壳：只负责窗口、Bun 宿主进程的拉起与回收、把宿主 WS 地址转告前端。
-//! 业务全部在 Bun 宿主进程里（host/host.ts，库内嵌 omp SDK）。
+//! Tauri shell: only owns windows, spawning/reaping the Bun host process, and
+//! relaying the host WS address to the frontend.
+//! All business logic lives in the Bun host process (host/host.ts, in-repo omp SDK).
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -7,8 +8,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// 原生菜单栏仅 macOS 构建：Windows 上会渲染成窗口内白色菜单条，
-// 与自绘标题栏（ui-src/components/TitleBar.tsx）重复
+// Native menu bar is macOS-only: on Windows it renders as a white in-window
+// menu strip, duplicating the custom-drawn title bar (ui-src/components/TitleBar.tsx)
 #[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
@@ -21,12 +22,13 @@ struct HostState {
     error: Option<String>,
 }
 
-/// 宿主重启节奏门：内存看门狗退出码 86 触发的自动重启须限频，
-/// 防「启动即失控」场景变成无限重启循环。
+/// Host restart pacing gate: auto-restarts triggered by the memory-watchdog
+/// exit code 86 must be rate-limited, so a "crashes right after launch" episode
+/// cannot turn into an infinite restart loop.
 #[derive(Default)]
 struct RestartGate {
     last_restart: Option<std::time::Instant>,
-    /// 距上次重启 <10s 的快速重启连击数，>3 次停止自动重启
+    /// Count of fast restarts (<10s since the previous one); auto-restart stops after >3
     consecutive: u32,
 }
 
@@ -34,7 +36,8 @@ type WsUrlCell = Arc<Mutex<HostState>>;
 type ChildCell = Arc<Mutex<Option<Child>>>;
 type RestartCell = Arc<Mutex<RestartGate>>;
 
-/// GUI 启动时 PATH 通常不含 ~/.bun，按常见安装位置探测，找不到再交给 PATH。
+/// GUI launches usually lack ~/.bun on PATH; probe common install locations first,
+/// fall back to PATH otherwise.
 fn resolve_bun() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         let candidates = [
@@ -52,10 +55,12 @@ fn resolve_bun() -> PathBuf {
     PathBuf::from("bun")
 }
 
-/// 宿主启动命令：打包形态优先资源目录里的自包含 omp-host（bun build --compile
-/// 产物，不依赖源码树与 PATH 里的 bun）；dev 形态一律 bun 直跑仓库源码——
-/// dev 下 resource_dir 解析到 target/debug，其中残留的打包产物 omp-host.exe
-/// 会让 sidecar 分支抢先命中，dev 永远跑固化旧代码，故 sidecar 仅 release 解析。
+/// Host launch command: packaged builds prefer the self-contained omp-host in the
+/// resource dir (a `bun build --compile` artifact, independent of the source tree
+/// and of bun on PATH); dev always runs the repo sources directly with bun —
+/// in dev, resource_dir resolves to target/debug where a leftover packaged
+/// omp-host.exe would let the sidecar branch match first and pin dev to stale
+/// code, so the sidecar is only resolved in release builds.
 fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
     if !cfg!(debug_assertions) {
         let resource_dir = app
@@ -66,7 +71,7 @@ fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
         let names: &[&str] = if cfg!(windows) {
             &["omp-host.exe", "omp-host"]
         } else {
-            // 当前 host:build 统一输出 omp-host.exe；macOS 也可直接执行该 Mach-O 文件。
+            // host:build currently emits omp-host.exe uniformly; macOS can execute that Mach-O file directly.
             &["omp-host", "omp-host.exe"]
         };
         for name in names {
@@ -84,12 +89,14 @@ fn host_command(app: &tauri::AppHandle) -> Result<Command, String> {
     Ok(cmd)
 }
 
-/// 拉起 Bun 宿主并监听其 stdout 首行 `READY ws://...`。
-/// 首行之后继续读完 stdout（防管道写满）；子进程句柄存 ChildCell，
-/// 壳退出（RunEvent::Exit）时显式 kill，避免宿主变孤儿进程。
-/// stdout EOF（宿主退出）时 wait 回收子进程；若退出码为 86（宿主内存看门狗，
-/// host/main.ts RSS 超限自杀）则经 RestartGate 限频重启宿主——前端重试环会
-/// 自动拿到新 WS 端口恢复连接，磁盘会话不受影响。
+/// Spawns the Bun host and watches its stdout for a first line `READY ws://...`.
+/// Keeps draining stdout after the first line (to avoid a full pipe); the child
+/// handle goes into ChildCell and is explicitly killed on shell exit
+/// (RunEvent::Exit) so the host never becomes an orphan process.
+/// On stdout EOF (host exit) the child is reaped via wait; exit code 86 (host
+/// memory watchdog, host/main.ts kills itself on RSS overrun) restarts the host
+/// through RestartGate with rate limiting — the frontend retry loop picks up the
+/// new WS port and reconnects automatically, disk sessions are unaffected.
 fn spawn_host(
     app: &tauri::AppHandle,
     cell: WsUrlCell,
@@ -105,8 +112,9 @@ fn spawn_host(
         }
     };
     cmd.stdout(Stdio::piped());
-    // Windows 上壳是 GUI 子系统（无控制台），stderr inherit 会给 bun 新开
-    // 一个控制台黑窗；改为管道 + CREATE_NO_WINDOW，由线程排空透传日志
+    // On Windows the shell is a GUI-subsystem app (no console); inheriting stderr
+    // would open a new black console window for bun. Pipe stderr + CREATE_NO_WINDOW
+    // instead, with a thread draining and forwarding the logs
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -153,7 +161,7 @@ fn spawn_host(
                 Err(_) => break,
             }
         }
-        // stdout EOF = 宿主已退出：wait 回收（原先无人 wait，退出后留僵尸到壳自身退出）
+        // stdout EOF = host has exited: reap via wait (nothing waited before, leaving a zombie until the shell itself exited)
         let exit_code = reader_child_cell
             .lock()
             .unwrap()
@@ -167,12 +175,13 @@ fn spawn_host(
             }
             return;
         }
-        // 86 = 宿主内存看门狗自杀（host/main.ts RSS 超 2GB）：限频重启，
-        // 前端重试环自动接入新端口，用户磁盘会话不受影响
+        // 86 = host memory-watchdog self-kill (host/main.ts RSS over 2GB): rate-limited
+        // restart; the frontend retry loop reconnects to the new port automatically,
+        // user disk sessions unaffected
         if exit_code == Some(86) {
             let mut gate = reader_restart_cell.lock().unwrap();
             let now = std::time::Instant::now();
-            // 曾稳定运行 ≥5min 视为新一轮失控，清零连击计数
+            // A stable run of >=5min means a new failure episode: reset the streak counter
             if gate
                 .last_restart
                 .is_some_and(|t| now.duration_since(t) >= Duration::from_secs(300))
@@ -195,7 +204,7 @@ fn spawn_host(
             gate.last_restart = Some(now);
             drop(gate);
             {
-                // 旧端口已死：清 url，前端 ws_url 轮询等新宿主的 READY
+                // Old port is dead: clear url so the frontend ws_url polling waits for the new host's READY
                 let mut state = reader_cell.lock().unwrap();
                 state.url = None;
             }
@@ -205,7 +214,7 @@ fn spawn_host(
     });
 }
 
-/// 前端启动时调用，等宿主就绪并返回 WS 地址。
+/// Called by the frontend at startup: waits for the host to be ready and returns the WS URL.
 #[tauri::command]
 fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
     for _ in 0..600 {
@@ -222,12 +231,14 @@ fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
     Err("host-not-ready".into())
 }
 
-/// 前端调用：发送系统通知。
-/// 参数（前端 camelCase 自动映射）：title / body / sessionId。
-/// 限制：tauri-plugin-notification 的 Rust 侧在 macOS 上拿不到通知点击回调，
-/// 点击通知只触发系统默认行为（聚焦本应用），因此无法在此 emit
-/// "notification-click"；session_id 当前仅占位，若将来需要「点击切会话」，
-/// 应改走插件 JS 侧的 onAction（JS 侧支持，但本项目前端不装 JS 包，故暂缺）。
+/// Frontend call: send a system notification.
+/// Args (frontend camelCase auto-mapped): title / body / sessionId.
+/// Limitation: the Rust side of tauri-plugin-notification cannot get the
+/// notification-click callback on macOS — clicking only triggers the system
+/// default behavior (focusing this app), so "notification-click" cannot be
+/// emitted here; session_id is currently a placeholder. If "click to switch
+/// session" is ever needed, switch to the plugin's JS-side onAction (supported
+/// there, but this project's frontend doesn't bundle the JS package, so it is absent for now).
 #[tauri::command]
 fn send_desktop_notification(
     app: tauri::AppHandle,
@@ -235,7 +246,7 @@ fn send_desktop_notification(
     body: String,
     session_id: String,
 ) -> Result<(), String> {
-    let _ = session_id; // macOS 上无处使用，见函数注释
+    let _ = session_id; // unused on macOS, see the doc comment above
     app.notification()
         .builder()
         .title(title)
@@ -244,13 +255,16 @@ fn send_desktop_notification(
         .map_err(|e| format!("notify-failed: {e}"))
 }
 
-/// 构建原生应用菜单栏（macOS）。
-/// 防双触发约束：所有「app 动作」项（新建会话/设置/缩放/主题/边栏）一律不绑
-/// accelerator——前端 shell.js 已有 JS keydown 处理 ⌘N/⌘,/⌘±⌘0 等，菜单
-/// accelerator 会与之叠加双触发；菜单点击统一 emit "menu-action" 交前端处理。
-/// PredefinedMenuItem（复制/粘贴等）走系统响应链，自带系统快捷键，不受影响；
-/// 且编辑菜单必须存在——macOS WKWebView 无菜单栏时 ⌘C/⌘V/⌘Z 等文本编辑
-/// 快捷键行为不完整，这是顺带修复的真 bug。
+/// Builds the native app menu bar (macOS).
+/// Anti-double-trigger constraint: no "app action" item (new session/settings/
+/// zoom/theme/sidebar) ever binds an accelerator — the frontend shell.js already
+/// handles ⌘N/⌘,/⌘±⌘0 etc. via JS keydown, and a menu accelerator would stack
+/// into a double trigger; menu clicks uniformly emit "menu-action" and are
+/// handled by the frontend.
+/// PredefinedMenuItems (copy/paste etc.) go through the system responder chain
+/// with their own system shortcuts and are unaffected; the edit menu must also
+/// exist — without a menu bar, macOS WKWebView text-edit shortcuts like
+/// ⌘C/⌘V/⌘Z behave incompletely, which this incidentally fixes for real.
 /// Locale-dependent labels for the native menu bar. Menu item ids stay fixed —
 /// the frontend "menu-action" dispatch depends on them, only labels change.
 #[cfg(target_os = "macos")]
@@ -305,7 +319,7 @@ fn menu_labels(lang: &str) -> MenuLabels {
 #[cfg(target_os = "macos")]
 fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
     let l = menu_labels(lang);
-    // 应用菜单（macOS 第一栏）：关于 / 服务 / 隐藏 / 退出
+    // App menu (first macOS menu): About / Services / Hide / Quit
     let app_menu = Submenu::with_items(
         app,
         "omp-desktop",
@@ -323,7 +337,7 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
         ],
     )?;
 
-    // 文件菜单：app 动作，无 accelerator
+    // File menu: app actions, no accelerators
     let file_menu = Submenu::with_items(
         app,
         l.file,
@@ -334,7 +348,7 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
         ],
     )?;
 
-    // 编辑菜单：全部预定义项，走系统响应链
+    // Edit menu: all predefined items, through the system responder chain
     let edit_menu = Submenu::with_items(
         app,
         l.edit,
@@ -350,7 +364,7 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
         ],
     )?;
 
-    // 视图菜单：全部 app 动作，无 accelerator
+    // View menu: all app actions, no accelerators
     let view_menu = Submenu::with_items(
         app,
         l.view,
@@ -365,7 +379,7 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
         ],
     )?;
 
-    // 窗口菜单：预定义项
+    // Window menu: predefined items
     let window_menu = Submenu::with_items(
         app,
         l.window,
@@ -428,9 +442,9 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
-                    // 只响应按下：松开会再触发一次，需过滤
+                    // Respond to press only: release fires again and must be filtered
                     if event.state == ShortcutState::Pressed {
-                        // 全局唤起：还原最小化 → 显示 → 聚焦主窗口
+                        // Global summon: unminimize -> show -> focus the main window
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.unminimize();
                             let _ = win.show();
@@ -477,8 +491,9 @@ pub fn run() {
                     let _ = app.emit("menu-action", serde_json::json!({ "action": event.id().0 }));
                 });
             }
-            // 全局唤起快捷键：Windows 用 Ctrl+Shift+M（Win 键被系统占用过多），
-            // macOS 用 ⌘⇧M；被其他应用占用时不 panic，记日志跳过
+            // Global summon shortcut: Ctrl+Shift+M on Windows (the Win key is
+            // over-occupied by the system), ⌘⇧M on macOS; if another app holds it,
+            // log and skip instead of panicking
             #[cfg(target_os = "windows")]
             let summon = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyM);
             #[cfg(not(target_os = "windows"))]

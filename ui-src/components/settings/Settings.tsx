@@ -1,8 +1,9 @@
-// 设置中心容器：全屏 overlay（左侧 setNav 导航 + 右侧 setBody 页面路由）。
-// 开合/切页状态全部来自 store（settingsOpen / settingsPage selector + openSettings/closeSettings），
-// 容器自身无本地开合状态。
-// 外观副作用三件套（applyAppearance / saveUiPrefs / applyHostAppearance）与字体表住在
-// ui-src/appearance.js（设置页与全局快捷键共用），此处 re-export 保持既有导出面。
+// Settings hub container: fullscreen overlay (left setNav navigation + right setBody page routing).
+// Open/page state all comes from the store (settingsOpen / settingsPage selectors +
+// openSettings/closeSettings); the container keeps no local open state of its own.
+// The appearance side-effect trio (applyAppearance / saveUiPrefs / applyHostAppearance) and
+// the font tables live in ui-src/appearance.js (shared by the settings page and global
+// shortcuts); re-exported here to preserve the existing export surface.
 import { useEffect, useRef, useState, useMemo, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import appIcon from "../../../ui/app-icon.png";
@@ -40,7 +41,7 @@ import ToolsPage from "./pages/ToolsPage";
 import TasksPage from "./pages/TasksPage";
 import AdvancedPage from "./pages/AdvancedPage";
 
-// 侧边导航项：page id → 图标 / 文案（与旧版 DOM data-page 一一对应）。
+// Side navigation items: page id → icon / label (1:1 with the old DOM data-page).
 // title/label hold i18n keys; the renderer resolves them via t() per language.
 const NAV_SECTIONS = [
   {
@@ -87,8 +88,8 @@ const NAV_SECTIONS = [
   },
 ];
 
-// 当前页 → 页面组件（集成契约：pages/ 下 14 个默认导出组件）
-// 以 page id 字符串索引，取值不到时回落 GeneralPage，故用 Record 宽类型。
+// Current page → page component (integration contract: 14 default-export components under pages/)
+// Indexed by page id string with a GeneralPage fallback, hence the wide Record type.
 const PAGES: Record<string, ComponentType> = {
   "pg-general": GeneralPage,
   "pg-appearance": AppearancePage,
@@ -126,7 +127,7 @@ for (const sec of NAV_SECTIONS) {
 
 export default function Settings() {
   const { t } = useTranslation();
-  // selector 订阅：settingsOpen / settingsPage / hostSettings 变化触发重渲染
+  // Selector subscriptions: settingsOpen / settingsPage / hostSettings changes trigger re-render
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const settingsPage = useAppStore((s) => s.settingsPage);
   const hostSettings = useAppStore((s) => s.hostSettings);
@@ -136,7 +137,7 @@ export default function Settings() {
   const setBodyRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
 
-  // 映射字典：根据 placement.ts 定位 key 所属的 pageId
+  // Lookup map: locate the pageId owning a key per placement.ts
   const keyToPageMap = useMemo(() => buildKeyToPageMap(schema), [schema]);
 
   // All settings keys (for search; label/description come from the language
@@ -158,7 +159,7 @@ export default function Settings() {
     return items;
   }, [schema, keyToPageMap, lang, t]);
 
-  // 搜索结果：仅在所有设置项的“标题（label）”和“描述（description）”中搜索，其他内容不参与搜索
+  // Search results: only match against every setting item's "label" and "description"; nothing else participates
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
@@ -177,12 +178,12 @@ export default function Settings() {
     return results;
   }, [searchQuery, allSettingsItems]);
 
-  // 挂载即应用一次本地外观偏好（store 模块级已从 localStorage 合并 uiPrefs）
+  // Apply local appearance prefs once on mount (the store module already merged uiPrefs from localStorage)
   useEffect(() => {
     applyAppearance();
   }, []);
 
-  // 从关闭到打开的首个 effect 里拉取设置数据并重置搜索框（等价旧版 openSettings → refreshSettingsData）
+  // On the first effect after closed→open, fetch settings data and reset the search box (equivalent to old openSettings → refreshSettingsData)
   useEffect(() => {
     const open = !!settingsOpen;
     if (open && !wasOpenRef.current) {
@@ -192,13 +193,13 @@ export default function Settings() {
     wasOpenRef.current = open;
   });
 
-  // 切页时重置右侧滚动位置（等价旧版 switchSetPage 的 setBody.scrollTop = 0）
+  // Reset right-side scroll on page switch (equivalent to old switchSetPage's setBody.scrollTop = 0)
   const pageId = settingsPage || "pg-general";
   useEffect(() => {
     if (setBodyRef.current) setBodyRef.current.scrollTop = 0;
   }, [pageId]);
 
-  // Esc 关闭（仅当设置中心打开时；监听只挂一次，开合态经 getState 读最新值）
+  // Esc to close (only when the settings hub is open; listener mounted once, open state read via getState)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && useAppStore.getState().settingsOpen) closeSettings();
@@ -207,8 +208,9 @@ export default function Settings() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // 设置侧栏拖宽：右缘拖柄调 --setnav-w（#settings grid 第一列），
-  // 持久化键约定同 shell.ts attachResizer；主壳联动约束（中栏保宽等）不适用于 overlay，只限 150px~40vw
+  // Settings sidebar drag-resize: the right-edge handle adjusts --setnav-w (first column of
+  // the #settings grid); persistence key convention matches shell.ts attachResizer. Main-shell
+  // coupling constraints (fixed center width etc.) don't apply to the overlay; clamp 150px~40vw
   useEffect(() => {
     const CSS_VAR = "--setnav-w";
     const STORE_KEY = "omp-w-" + CSS_VAR;
@@ -217,7 +219,7 @@ export default function Settings() {
     if (saved) root.style.setProperty(CSS_VAR, saved + "px");
     const onDown = (e: MouseEvent) => {
       e.preventDefault();
-      e.stopPropagation(); // #setNav 是窗口拖动区（data-tauri-drag-region），别触发窗口移动
+      e.stopPropagation(); // #setNav is a window drag region (data-tauri-drag-region); don't trigger window move
       const nav = document.getElementById("setNav");
       if (!nav) return;
       const startX = e.clientX;
@@ -250,7 +252,7 @@ export default function Settings() {
 
   return (
     <div id="settings" className={settingsOpen ? "" : "hidden"}>
-      {/* OMP 登录进行中横幅 + 粘贴码弹窗：挂壳根部，切页/在设置内任何页登录都不中断（旧版挂 document.body 全局） */}
+      {/* OMP login-in-progress banner + paste-code dialog: mounted at the shell root so page switches or logging in on any settings page don't interrupt it (old version mounted globally on document.body) */}
       <LoginBanner />
       <LoginPrompt />
       <nav id="setNav" data-tauri-drag-region>

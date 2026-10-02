@@ -1,13 +1,13 @@
-// Git 与文件链路冒烟：右栏 Git Diff 页 + 分支选择器 + 文件页（read/list/diff）。
-// 用法：bun scripts/smoke-git-files.ts [宿主ws地址]
-// 断言覆盖：
-//   1. get_git_branches：isGit/current/branches（临时仓库 main）
-//   2. get_git_diff：改动清单含已修改(M)与未跟踪(??)文件
-//   3. read_file：file_content 透传文本内容
-//   4. list_dir：dir_list 目录优先字母序、隐藏 .git
-//   5. get_file_diff：tracked 走 git diff HEAD、untracked 走 --no-index 纯新增
-//   6. switch_git_branch：切换回执 + 再查 current 已变、切回 main
-// 零模型调用，跑完即退。
+// Git and file-path smoke test: right-pane Git Diff page + branch selector + file page (read/list/diff).
+// Usage: bun scripts/smoke-git-files.ts [host ws url]
+// Assertions cover:
+//   1. get_git_branches: isGit/current/branches (temp repo on main)
+//   2. get_git_diff: the change list contains modified (M) and untracked (??) files
+//   3. read_file: file_content passes the text content through
+//   4. list_dir: dir_list is directories-first alphabetical, .git hidden
+//   5. get_file_diff: tracked goes through git diff HEAD; untracked goes through --no-index as pure additions
+//   6. switch_git_branch: switch acknowledgment + re-query shows the changed current; switch back to main
+// Zero model calls; exits when done.
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -47,7 +47,7 @@ if (!wsUrl) {
   console.log("宿主已就绪:", wsUrl);
 }
 
-// fixture：临时 git 仓库，main 分支一个基线提交
+// fixture: a temp git repo with one baseline commit on main
 // Isolate the fixture from the user's global git config: global core.hooksPath (~/.git-hooks) ships a
 // git-lfs post-checkout hook, and git-lfs is not on PATH here — any checkout exits 1 without this.
 const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "smoke", GIT_AUTHOR_EMAIL: "smoke@test", GIT_COMMITTER_NAME: "smoke", GIT_COMMITTER_EMAIL: "smoke@test" };
@@ -89,17 +89,17 @@ await new Promise((resolve, reject) => {
 }).catch((e) => fail(String(e)));
 await waitType("ready");
 
-// ---- 断言 1：分支查询 ----
+// ---- Assertion 1: branch query ----
 let mark = frames.length;
 ws.send(JSON.stringify({ type: "get_git_branches", cwd: repoDir }));
 let br = await waitType("git_branches", mark).catch((e) => fail(String(e)));
 assert(br.isGit === true && br.current === "main" && (br.branches ?? []).includes("main"), `get_git_branches isGit=${br.isGit} current=${br.current}`);
 
-// 造改动：a.txt 修改 + untracked.txt 新增
+// Make changes: modify a.txt + add untracked.txt
 await writeFile(path.join(repoDir, "a.txt"), "line1\nline2-changed\n");
 await writeFile(path.join(repoDir, "untracked.txt"), "new file\n");
 
-// ---- 断言 2：改动清单 ----
+// ---- Assertion 2: change list ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "get_git_diff", cwd: repoDir }));
 const st = await waitType("git_status", mark).catch((e) => fail(String(e)));
@@ -108,13 +108,13 @@ const aCode = (st.files ?? []).find((f: any) => f.path === "a.txt")?.code;
 const uCode = (st.files ?? []).find((f: any) => f.path === "untracked.txt")?.code;
 assert(aCode === "M" && uCode === "??", `get_git_diff a.txt=${aCode} untracked.txt=${uCode}（清单: ${stPaths.join(",")}）`);
 
-// ---- 断言 3：read_file ----
+// ---- Assertion 3: read_file ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "read_file", path: path.join(repoDir, "a.txt") }));
 const fc = await waitType("file_content", mark).catch((e) => fail(String(e)));
 assert(!fc.error && String(fc.text).includes("line2-changed"), `read_file 透传内容（error=${fc.error ?? "无"}）`);
 
-// ---- 断言 4：list_dir ----
+// ---- Assertion 4: list_dir ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "list_dir", path: repoDir }));
 const dl = await waitType("dir_list", mark).catch((e) => fail(String(e)));
@@ -124,7 +124,7 @@ assert(
   `list_dir entries=[${names.join(",")}]（无 .git）`,
 );
 
-// ---- 断言 5：单文件 diff（tracked 与 untracked 两条路径）----
+// ---- Assertion 5: single-file diff (tracked and untracked paths) ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "get_file_diff", cwd: repoDir, path: "a.txt" }));
 const fd = await waitType("file_diff", mark).catch((e) => fail(String(e)));
@@ -135,7 +135,7 @@ ws.send(JSON.stringify({ type: "get_file_diff", cwd: repoDir, path: "untracked.t
 const fd2 = await waitType("file_diff", mark).catch((e) => fail(String(e)));
 assert(String(fd2.diff).includes("+new file"), "get_file_diff untracked 走 --no-index 纯新增");
 
-// ---- 断言 6：分支切换 ----
+// ---- Assertion 6: branch switching ----
 g("checkout -b feature");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "switch_git_branch", cwd: repoDir, branch: "main" }));

@@ -1,7 +1,10 @@
-// 设置页：扩展中心（pg-extensions）。omp CLI /extensions 控制中心的设置页搬移植：
-// scope 下拉（当前 Profile=用户级+原生 / 各项目=项目级）→ 供应商过滤 + 主开关 →
-// 统一条目列表（kind 图标/来源徽标/状态）+ 行内 .mem-expand 详情（与 TUI inspector 同数据面，
-// 规则解析/工具文件头/命令预览由 host 预计算下发）。
+// Settings page: extension center (pg-extensions). Ported from the omp CLI /extensions control
+// center settings page:
+// scope dropdown (current Profile = user level + native / each project = project level) →
+// provider filter + master switch →
+// unified entry list (kind icon / source badge / state) + inline .mem-expand detail (same data
+// side as the TUI inspector; rule parsing / tool file headers / command previews are
+// precomputed and sent by the host).
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
@@ -11,7 +14,7 @@ import { emptyRow } from "../common";
 import type { ExtensionItem } from "../../../types/frames";
 import ScopeSel from "../ScopeSel";
 
-// kind → 图标 / 中文标签（图标取全站既有注册名）
+// kind → icon / label (icons reuse existing app-wide registry names)
 const KIND_ICON: Record<string, string> = {
   skill: "skills",
   rule: "shield",
@@ -36,7 +39,7 @@ const KIND_LABEL: Record<string, string> = {
   hook: "settingsPage.ext.kindHook",
   "slash-command": "settingsPage.ext.kindSlash",
 };
-// 列表排序的 kind 先后（同底座 loadAllExtensions 的加载顺序）
+// kind order for list sorting (same as the base loadAllExtensions loading order)
 const KIND_ORDER = ["extension-module", "skill", "rule", "tool", "mcp", "prompt", "slash-command", "hook", "instruction", "context-file"];
 // level → i18n key (unknown levels pass through as-is)
 const LEVEL_LABEL_KEYS: Record<string, string> = { user: "settingsPage.shared.levelUser", project: "settingsPage.shared.levelProject", native: "settingsPage.shared.levelNative" };
@@ -57,7 +60,8 @@ function stateLabel(ext: ExtensionItem): string {
 }
 
 
-// 条目开关：shadowed 不可点；provider 级原因不乐观翻转（服务端帧为准），手动禁用即时反馈
+// Item toggle: shadowed is unclickable; provider-level reasons don't flip optimistically
+// (server frames are authoritative); manual disable gives instant feedback
 function ItemToggle({ ext, scope }: { ext: ExtensionItem; scope: string }) {
   const { t } = useTranslation();
   const on = ext.state === "active";
@@ -97,7 +101,7 @@ function ItemToggle({ ext, scope }: { ext: ExtensionItem; scope: string }) {
   );
 }
 
-// 详情键值行（空值不渲染）
+// Detail key-value row (empty values not rendered)
 function KV({ k, v }: { k: string; v?: ReactNode }) {
   if (v === undefined || v === null || v === "") return null;
   return (
@@ -108,7 +112,7 @@ function KV({ k, v }: { k: string; v?: ReactNode }) {
   );
 }
 
-// 正文块（规则/提示/指令/上下文/命令体，host 已截断到 5 万字符）
+// Body block (rules/prompts/instructions/context/command bodies; host already truncates to 50k chars)
 function PreBlock({ text }: { text?: string }) {
   if (!text) return null;
   return <pre className="ext-pre">{text}</pre>;
@@ -127,7 +131,7 @@ function strList(v: unknown): string[] | undefined {
   return undefined;
 }
 
-// 工具参数表（raw.parameters / raw.inputSchema 的 JSON Schema 子集渲染）
+// Tool parameter table (JSON Schema subset rendering of raw.parameters / raw.inputSchema)
 function ToolParams({ ext }: { ext: ExtensionItem }) {
   const { t } = useTranslation();
   const raw = ext.raw ?? {};
@@ -154,7 +158,7 @@ function ToolParams({ ext }: { ext: ExtensionItem }) {
   );
 }
 
-// 行内向下延展详情区（.mem-expand，同记忆页模式；数据面同 TUI inspector-model）
+// Inline expand-down detail area (.mem-expand, same pattern as the memory page; data side same as the TUI inspector-model)
 function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }) {
   const { t } = useTranslation();
   const raw = ext.raw ?? {};
@@ -162,7 +166,7 @@ function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }
   const fmStr = (k: string) => str(fm[k]);
   const rawStr = (k: string) => str(raw[k]);
   const list = (v?: string[]) => (v && v.length ? v.join("、") : undefined);
-  // 描述：raw Frontmatter → host 预计算 → 条目级 逐级兜底
+  // Description: raw Frontmatter → host precomputed → entry-level, tiered fallback
   const toolDesc = ext.kind === "tool" ? (ext.detail?.toolHeader ?? rawStr("description") ?? ext.description) : undefined;
   const desc = ext.kind === "skill" ? (fmStr("description") ?? ext.description) : ext.kind === "rule" ? (rawStr("description") ?? ext.description) : toolDesc ?? ext.description;
   const content = rawStr("content");
@@ -242,7 +246,7 @@ export default function ExtensionsPage() {
   const [spinning, setSpinning] = useState(false);
   const pillsRef = useRef<HTMLDivElement>(null);
 
-  // 横向滚轮滚动监听：横向与纵向滚轮都转换为 scrollLeft
+  // Horizontal wheel listener: both vertical and horizontal wheel deltas convert to scrollLeft
   useEffect(() => {
     const pills = pillsRef.current;
     if (!pills) return;
@@ -275,7 +279,7 @@ export default function ExtensionsPage() {
     };
   }, []);
 
-  // 保证当前选中的分支药丸在可视范围内（仅横向局部滚动，严禁使用 scrollIntoView 避免纵向祖先容器抖动）
+  // Keep the selected branch pill in view (horizontal-only local scroll; never scrollIntoView — it would shake vertical ancestor containers)
   useEffect(() => {
     const pills = pillsRef.current;
     if (!pills) return;
@@ -302,11 +306,12 @@ export default function ExtensionsPage() {
     }
   }, [payload, prov]);
 
-  // 进入页面拉一次当前 scope；连接就绪后若仍无数据（打开时机早于 WS 建连）补拉
+  // Fetch the current scope once on page entry; refetch after connection is ready if still no
+  // data (opened before the WS connected)
   const connected = useAppStore((s) => s.connected);
   useEffect(() => {
     send({ type: "list_extensions", scope });
-    // 仅在挂载/连接状态变化时补拉；scope 切换由下拉处理函数自行发送
+    // Refetch only on mount/connection-state change; scope switches send via the dropdown handler itself
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected]);
 

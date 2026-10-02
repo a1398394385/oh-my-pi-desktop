@@ -1,5 +1,5 @@
-// 探针：验证 profile 隔离 + 文件后端 + open 恢复 + getEntries 历史读取的完整组合。
-// 关键点：setProfile 必须先于 coding-agent 的 import（其模块 import 时读取 agentDir）。
+// Probe: verify the full combination of profile isolation + file backend + open restore + getEntries history reading.
+// Key point: setProfile must run before importing coding-agent (that module reads agentDir at import time).
 import { setProfile, getAgentDir } from "@oh-my-pi/pi-utils";
 
 setProfile("omp-desktop");
@@ -13,7 +13,7 @@ const agentDir = getAgentDir();
 console.log("agentDir:", agentDir);
 if (!agentDir.includes("profiles/omp-desktop")) throw new Error("profile 未生效");
 
-// 底座（走 profile 的认证）
+// The base (auth via the profile)
 const authStorage = await discoverAuthStorage(agentDir);
 const modelRegistry = new ModelRegistry(authStorage);
 await modelRegistry.refresh();
@@ -22,7 +22,7 @@ const available = modelRegistry.getAvailable();
 console.log(`可用模型 ${available.length} 个`);
 if (!available.some((m) => m.id === "deepseek-flash")) throw new Error("profile 下没有 deepseek-flash 认证");
 
-// listAll：应列出 profile sessions 目录下所有 project 的会话
+// listAll: should list the sessions of all projects under the profile sessions directory
 const all = await SessionManager.listAll();
 console.log(`listAll: ${all.length} 个会话，project 数 ${new Set(all.map((s) => s.cwd)).size}`);
 if (all.length > 0) {
@@ -31,7 +31,7 @@ if (all.length > 0) {
   if (!sample.path.startsWith(agentDir)) throw new Error("listAll 返回了 profile 之外的路径: " + sample.path);
 }
 
-// 文件后端新建 + open 恢复 + getEntries
+// Create on the file backend + open restore + getEntries
 const manager = SessionManager.create(cwd);
 const { session } = await createAgentSession({
   cwd,
@@ -47,7 +47,7 @@ const file = session.sessionFile;
 console.log("新建落盘:", file);
 if (!file?.startsWith(agentDir)) throw new Error("落盘路径不在 profile 下");
 
-// open 恢复 + 喂给 createAgentSession（本次探针的关键断言）
+// open restore + feed into createAgentSession (this probe's key assertion)
 const reopened = await SessionManager.open(file);
 const { session: session2 } = await createAgentSession({
   authStorage,

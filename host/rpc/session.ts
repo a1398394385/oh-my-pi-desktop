@@ -1,5 +1,6 @@
-// 会话与项目列表域 RPC：创建/加载/删除/归档/重命名/压缩/分叉/树导航，
-// 项目列表增删排序。自 main.ts message 分发平移（第三刀）。
+// Session and project list domain RPCs: create/load/delete/archive/rename/
+// compact/branch/tree navigation, plus project list add/remove/reorder.
+// Relocated from the message dispatch in main.ts (third cut).
 import fs from "node:fs";
 import { SessionManager, USER_INTERRUPT_LABEL } from "../bootstrap.ts";
 import { H, sessions } from "../state.ts";
@@ -18,7 +19,7 @@ import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export async function handleListSessions(ws: any) {
-  const all = await SessionManager.listAll(); // 全部 project 目录，pinned 优先
+  const all = await SessionManager.listAll(); // All project directories, pinned first
   // mtime tracks non-activity writes (session_exit frames); use the last message time instead
   await applyActivityTimes(all);
   const byProject = new Map<string, any[]>();
@@ -27,9 +28,13 @@ export async function handleListSessions(ws: any) {
     list.push(s);
     byProject.set(s.cwd, list);
   }
-  // 内存池兜底：底座懒建会话文件（首条内容才落盘），仅扫磁盘会漏掉刚建、还没写内容的
-  // 会话——UI 的「活跃会话不在列表即弹回欢迎页」校验会误杀新建会话。
-  // 已被用户移除的项目跳过：活跃会话不能把移除的项目顶回列表（否则 remove 永不生效）。
+  // In-memory pool fallback: the base lazily creates session files (persisted
+  // on the first content), so a disk-only scan misses freshly created
+  // sessions with no content yet — the UI's "active session missing from the
+  // list bounces back to the welcome page" check would wrongly kill those new
+  // sessions. Projects the user removed are skipped: an active session must
+  // not push a removed project back into the list (otherwise remove never
+  // takes effect).
   const listed = new Set(all.map((s: any) => s.path));
   for (const [sid, entry] of sessions.entries()) {
     if (listed.has(entry.path)) continue;
@@ -38,7 +43,7 @@ export async function handleListSessions(ws: any) {
     list.push({
       id: sid,
       path: entry.path,
-      title: entry.title, // 懒建未落盘的会话走内存兜底（含 rename 后的标题）
+      title: entry.title, // Lazily created, unpersisted sessions fall back to memory here (including post-rename titles)
       firstMessage: "",
       modified: new Date(),
       messageCount: 0,
@@ -47,7 +52,7 @@ export async function handleListSessions(ws: any) {
     byProject.set(entry.cwd, list);
     listed.add(entry.path);
   }
-  // 历史扫描：新出现的 project 并入所有项目列表（启动/UI 重连时都会走到这里）
+  // History scan: merge newly seen projects into the all-projects list (reached both at startup and on UI reconnect)
   if (mergeHistoryProjects([...byProject.keys()])) await saveDesktopProjects();
   const projects = [...byProject.entries()]
     .map(([cwd, list]) => ({
@@ -85,8 +90,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await handleLoadSession(ws, msg.path);
   },
   mark_seen(ws, msg) {
-    // 前端切到某会话（activateSession/openSessionByPath）时通知：已读 = 停缓存保活探测。
-    // 已打开会话的前端切换不发 load_session，必须走本 method 才能触达 host
+    // Notified when the frontend switches to a session (activateSession/
+    // openSessionByPath): seen = stop cache keepalive probing. Switching
+    // between already-open sessions on the frontend does not send
+    // load_session, so this method is the only way to reach the host
     const p = String(msg.path ?? "").trim();
     if (!p) return;
     for (const entry of sessions.values()) {
@@ -94,8 +101,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     }
   },
   async reload_session(ws, msg) {
-    // 强制从磁盘重建（外部写入提示条的「重新加载」）：池复用分支只推内存快照，
-    // 拿不到外部进程写入的内容；释放模式对齐 delete_session（unsubscribe + 出池）
+    // Force a rebuild from disk (the "reload" action on the external-write
+    // notice bar): the pool-reuse branch only pushes the in-memory snapshot
+    // and cannot see content written by external processes; release mode
+    // matches delete_session (unsubscribe + leave the pool)
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, e] of sessions.entries()) {
@@ -109,7 +118,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await handleListSessions(ws);
   },
   async remove_project(ws, msg) {
-    // 移出项目列表（会话仍保留在历史中，「最近」视图照常见）
+    // Remove from the project list (sessions stay in history; the "recent" view still shows them)
     const cwd = String(msg.cwd ?? "").trim();
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     if (!H.desktopProjects.removedProjects.includes(cwd)) H.desktopProjects.removedProjects.push(cwd);
@@ -117,7 +126,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await handleListSessions(ws);
   },
   async delete_session(ws, msg) {
-    // 彻底删除会话（物理文件 + 对应 artifacts 目录 + 内存会话池与置顶记录）
+    // Permanently delete a session (physical file + its artifacts dir + in-memory pool entry and pin records)
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, entry] of sessions.entries()) {
@@ -131,7 +140,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       H.desktopProjects.pinnedSessions.splice(pi, 1);
       await saveDesktopProjects();
     }
-    // 归档记录随会话一并清理
+    // Archive records are cleaned up along with the session
     const ai = H.desktopProjects.archivedSessions.indexOf(p);
     if (ai >= 0) {
       H.desktopProjects.archivedSessions.splice(ai, 1);
@@ -153,7 +162,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await handleListSessions(ws);
   },
   async set_project_expanded(_ws, msg) {
-    // 项目展开态持久化：记录在 omp-desktop.json expandedProjects，未记录的默认收起
+    // Project expansion persistence: recorded in omp-desktop.json expandedProjects; unrecorded ones default to collapsed
     const cwd = String(msg.cwd ?? "").trim();
     const on = !!msg.expanded;
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
@@ -163,7 +172,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await saveDesktopProjects();
   },
   async set_session_pinned(_ws, msg) {
-    // 置顶会话持久化：记录在 omp-desktop.json pinnedSessions，重启保持
+    // Pinned session persistence: recorded in omp-desktop.json pinnedSessions, survives restarts
     const p = String(msg.path ?? "").trim();
     const on = !!msg.pinned;
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
@@ -173,9 +182,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await saveDesktopProjects();
   },
   async archive_session(ws, msg) {
-    // 归档持久化：按会话文件路径记入 omp-desktop.json archivedSessions（与
-    // pinnedSessions 同键，delete_session 同步清理）；归档同时取消置顶。
-    // 未打开的历史会话（不在内存池）扫磁盘按底座会话 id 解析路径，同样可归档。
+    // Archive persistence: recorded by session file path in omp-desktop.json
+    // archivedSessions (same key shape as pinnedSessions, cleaned up in sync
+    // by delete_session); archiving also unpins. Unopened history sessions
+    // (not in the in-memory pool) resolve their path from disk by the base's
+    // session id and can be archived too.
     const on = !!msg.archived;
     const entry = sessions.get(msg.sessionId);
     const p = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
@@ -190,7 +201,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "session_archived", sessionId: msg.sessionId, ok: true, archived: on }));
   },
   async add_project(ws, msg) {
-    // 手动添加：命中已移除列表则移回所有项目列表，否则作为新项目并入（置顶，立即可见）
+    // Manual add: if it hits the removed list, move it back to all projects; otherwise merge it in as a new project (pinned to the top, immediately visible)
     const cwd = String(msg.cwd ?? "").trim();
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     const ri = H.desktopProjects.removedProjects.indexOf(cwd);
@@ -200,7 +211,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await handleListSessions(ws);
   },
   async reorder_projects(_ws, msg) {
-    // 拖拽排序：以 UI 传来的完整顺序为准；未涵盖的既有项（并发变更兜底）保持原序追加尾部
+    // Drag reorder: the full order sent by the UI wins; existing items it does not cover (concurrent-change fallback) keep their order and append at the tail
     const order = Array.isArray(msg.order) ? msg.order.filter((x: unknown) => typeof x === "string") : [];
     if (order.length === 0) throw new Error(hostI18n.t("errors.param.missingOrder"));
     const set = new Set(order);
@@ -209,20 +220,24 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     await saveDesktopProjects();
   },
   async abort_session(ws, msg) {
-    // 流式中断当前生成：reason 用 USER_INTERRUPT_LABEL，transcript 能把该轮
-    // assistant 消息标记为用户主动中断；空闲会话 abort 同样安全（底座 waitForIdle 立即返回）。
-    // 中断后底座自然走到 agent_end/turn 事件，无需额外收尾。
+    // Interrupt the in-flight generation: reason uses USER_INTERRUPT_LABEL so
+    // the transcript can mark that round's assistant message as user-initiated;
+    // aborting an idle session is equally safe (the base's waitForIdle returns
+    // immediately). After the abort the base naturally reaches its
+    // agent_end/turn events — no extra wind-down needed.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
     ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
   },
   async rename_session(ws, msg) {
-    // 会话重命名：走底座 SessionManager.setSessionName(source:"user") 落盘
-    // （title slot + history.db 标题索引），CLI 等其他入口读到同一标题。
-    // 打开中的会话用池内 manager；未打开的历史会话 open 磁盘文件后同样
-    // 落盘（title slot 插入/原位更新均由底座处理）。
-    // 懒建未落盘的会话仅内存生效，list_sessions 兜底条目经 entry.title 呈现。
+    // Session rename: goes through the base's SessionManager.setSessionName
+    // (source:"user") to persist (title slot + history.db title index), so
+    // other entries like the CLI read the same title. Open sessions use the
+    // pooled manager; unopened history sessions open the disk file and
+    // persist the same way (title slot insertion/in-place update is handled
+    // by the base). Lazily created unpersisted sessions only take effect in
+    // memory, rendered via entry.title in the list_sessions fallback entry.
     const title = String(msg.title ?? "").trim();
     if (!title) throw new Error(hostI18n.t("errors.param.missingTitle"));
     const entry = sessions.get(msg.sessionId);
@@ -240,10 +255,12 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "session_renamed", sessionId: msg.sessionId, ok: true, title }));
   },
   async compact_session(ws, msg) {
-    // 手动压缩：底座 compact 重写会话历史（LLM 摘要）。空会话前置快速失败
-    // （没有可压缩的历史，避免无谓的模型调用）；不可压缩/压缩失败时底座抛错，
-    // 以 error 字段回包提示前端；成功则从磁盘 entries 重建 transcript 并推送，
-    // 前端立即换压缩后视图。
+    // Manual compact: the base's compact rewrites the session history (LLM
+    // summary). Empty sessions fail fast up front (nothing to compact, saving
+    // a pointless model call); when incompressible or compaction fails, the
+    // base throws and the error field tells the frontend; on success the
+    // transcript is rebuilt from disk entries and pushed, so the frontend
+    // immediately swaps to the compacted view.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     if (entry.transcript.length === 0) {
@@ -253,7 +270,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     try {
       await entry.session.compact();
       entry.transcript = entriesToTranscript(entry.manager.getEntries());
-      // 重建后的历史已含 mention 行：游标对齐，避免后续回读重发
+      // The rebuilt history already contains mention rows: align the cursor to avoid re-sending them on later read-backs
       entry.mentionScanIndex = entry.manager.getEntries().length;
       ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
       ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, ok: true }));
@@ -262,33 +279,36 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     }
   },
   async branch_session(ws, msg) {
-    // 复制式会话分叉：以指定条目为锚点截取历史链路，生成独立新会话文件
-    // （header.parentSession 指回源文件）。源会话在宿主池中保持不变，新会话加入池并通知前端切换。
+    // Copy-style session fork: anchor at the specified entry, slice the
+    // history chain, and produce an independent new session file
+    // (header.parentSession points back to the source file). The source
+    // session stays untouched in the host pool; the new session joins the
+    // pool and the frontend is told to switch to it.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const entryId = String(msg.entryId ?? "");
     if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
     try {
-      // 确保当前会话的最新数据已落盘
+      // Ensure the current session's latest data is persisted
       await entry.manager.flush();
       const parentPath = entry.path ?? (await sessionPathFromDisk(msg.sessionId));
       if (!parentPath) throw new Error(hostI18n.t("errors.session.cannotLocateSource"));
 
-      // 用独立的 SessionManager 打开父会话文件进行分支切片，避免污染当前活跃的 entry.manager / entry.session
+      // Open the parent session file with a separate SessionManager for the branch slice, avoiding pollution of the active entry.manager / entry.session
       const tempManager = await SessionManager.open(parentPath);
       const targetEntry = tempManager.getEntry(entryId);
       if (!targetEntry) throw new Error(hostI18n.t("errors.session.entryNotFound", { entryId }));
 
       const isUser = targetEntry.type === "message" && targetEntry.message.role === "user";
-      // 若是 user 消息分叉（兼容），分支点取其父节点并将该文本回填；若是 assistant 消息分叉，完整保留该轮回复
+      // For a user-message fork (compat): the branch point is its parent node and the text is backfilled; for an assistant-message fork, that round's reply is kept in full
       const branchLeafId = isUser && targetEntry.parentId ? targetEntry.parentId : entryId;
       const newSessionFile = tempManager.createBranchedSession(branchLeafId);
       if (!newSessionFile) throw new Error(hostI18n.t("errors.session.forkCreateFailed"));
 
-      // 复制工件目录（如存在）
+      // Copy the artifacts dir (if any)
       await copySessionArtifactsIfAny(parentPath, newSessionFile);
 
-      // 为新会话建立独立的 AgentSession 实例并加入 sessions 池
+      // Create an independent AgentSession instance for the new session and add it to the sessions pool
       const newManager = await SessionManager.open(newSessionFile);
       const newEntries = newManager.getEntries();
       const newTranscript = entriesToTranscript(newEntries);
@@ -305,7 +325,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       attachEntry(ws, newSessionId, newEntry, newBus);
       sessions.set(newSessionId, newEntry);
 
-      // 提取选中文本（仅 user 消息需要回填输入框，assistant 回复分叉后输入框保持空白待提问）
+      // Extract the selected text (only user messages need it to backfill the composer; after forking an assistant reply the composer stays blank awaiting the question)
       const selectedText = isUser
         ? (typeof targetEntry.message.content === "string"
             ? targetEntry.message.content
@@ -315,7 +335,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
                 .join("\n"))
         : null;
 
-      // 推送新会话的 messages 快照和 session_branched 回执
+      // Push the new session's messages snapshot and the session_branched receipt
       ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: newTranscript }));
       ws.send(
         JSON.stringify({
@@ -327,15 +347,18 @@ export const sessionHandlers: Record<string, RpcHandler> = {
           selectedText,
         }),
       );
-      await handleListSessions(ws); // 列表刷新信号：session_list 帧通知左栏项目树更新
+      await handleListSessions(ws); // List refresh signal: the session_list frame tells the sidebar project tree to update
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }
   },
   async get_session_tree(ws, msg) {
-    // 跨文件分支家族：listAll 扫盘，按 header.parentSession（父文件路径）连图。
-    // 从当前会话文件出发向上追根，再自根向下收集全部子孙；title 走 listAll 的
-    // 底座解析（与 list_sessions 同源）。找不到会话（未落盘且不在池）回 error 字段。
+    // Cross-file branch family: listAll scans the disk and links the graph by
+    // header.parentSession (parent file path). Trace upward from the current
+    // session file to the root, then collect all descendants downward from
+    // the root; titles come from listAll's base-side resolution (same source
+    // as list_sessions). Session not found (unpersisted and not pooled)
+    // returns the error field.
     const entry = sessions.get(msg.sessionId);
     const curPath = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
     const all = await SessionManager.listAll();
@@ -346,14 +369,14 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "session_tree", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.fileNotOnDisk", { path: curPath }) }));
       return;
     }
-    // 向上追根（seenUp 防脏数据成环）
+    // Trace upward to the root (seenUp guards against cycles in dirty data)
     let root = cur;
     const seenUp = new Set<string>([curPath]);
     while (root.parentSessionPath && byPath.has(root.parentSessionPath) && !seenUp.has(root.parentSessionPath)) {
       root = byPath.get(root.parentSessionPath);
       seenUp.add(root.path);
     }
-    // 自根 BFS 收集家族（同层按修改时间升序，根在前）
+    // BFS from the root collecting the family (same depth ordered by mtime ascending, root first)
     const family: any[] = [];
     const visited = new Set<string>([root.path]);
     const queue = [root];
@@ -386,9 +409,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     );
   },
   async get_entry_tree(ws, msg) {
-    // 会话内条目树（TUI /tree 同款数据源）：manager.getTree() 返回当前文件内
-    // 的条目森林（rewind/fork 留下的兄弟分支同文件共存），getLeafId() 标当前叶。
-    // 与 get_session_tree（跨文件家族）是两棵树，别混。
+    // In-session entry tree (same data source as the TUI's /tree):
+    // manager.getTree() returns the entry forest inside the current file
+    // (sibling branches left by rewind/fork coexist in one file),
+    // getLeafId() marks the current leaf. This is a different tree from
+    // get_session_tree (the cross-file family) — do not conflate them.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const leafId = entry.manager.getLeafId();
@@ -403,18 +428,24 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     );
   },
   async navigate_tree(ws, msg) {
-    // 树内导航（/tree 选中节点）：底座 navigateTree 留在同一文件内把 leaf 移到
-    // 目标条目，被放弃路径保留为兄弟分支——与 branch_session（新建文件）不同，
-    // 池键/sessionId 不变。成功后照 compact 模式重建 transcript 推 messages 帧；
-    // editorText/editorImages 是目标 user 消息的原文，供前端回填输入框（重问）。
-    // 简化：不带 allowAskReopen（ask 重答流程是 TUI 交互专属），ask toolResult
-    // 目标走底座默认的 plain leaf move。
+    // In-tree navigation (a /tree node selection): the base's navigateTree
+    // stays within the same file, moving the leaf to the target entry while
+    // the abandoned path is kept as a sibling branch — unlike branch_session
+    // (new file), the pool key/sessionId is unchanged. On success the
+    // transcript is rebuilt compact-style and a messages frame is pushed;
+    // editorText/editorImages are the target user message's original text,
+    // for the frontend to backfill the composer (re-ask). Simplification:
+    // allowAskReopen is not passed (the ask re-answer flow is TUI-interactive
+    // only); an ask toolResult target takes the base's default plain leaf
+    // move.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const entryId = String(msg.entryId ?? "");
     if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
-    // 目标即当前 leaf：底座 navigateTree 直接返回 cancelled:false（既不报错也不移动），
-    // 静默"成功"会让 output 尾部的分叉按钮看起来生效实则无变化——这里显式回绝。
+    // Target is already the current leaf: the base's navigateTree returns
+    // cancelled:false outright (neither erroring nor moving); a silent
+    // "success" would make the fork button at the output tail look effective
+    // while nothing changed — refuse explicitly here.
     if (entry.manager?.getLeafId() === entryId) {
       ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.alreadyAtPosition") }));
       return;
@@ -429,8 +460,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.summaryAborted") }));
         return;
       }
-      // getEntries() 是文件内全部条目（被放弃的分支仍在文件里），
-      // 活跃 transcript 只要根→叶路径——与底座 renderInitialMessages 的口径一致
+      // getEntries() returns every entry in the file (abandoned branches are
+      // still in there); the active transcript only wants the root→leaf path
+      // — same scope as the base's renderInitialMessages
       entry.transcript = entriesToTranscript(entry.manager.getBranch());
       ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
       ws.send(

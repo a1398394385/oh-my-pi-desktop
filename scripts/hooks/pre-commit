@@ -1,8 +1,8 @@
 #!/bin/sh
-# 仓库级 pre-commit：暂存区含 host/ 改动时跑三个零成本协议冒烟（共约 15s，无模型调用），
-# 任一失败即挡提交。UI 侧无法协议级断言（WKWebView 层），不在钩子范围内。
-# 由全局 ~/.git-hooks/pre-commit 链式调用（gitleaks 之后）；也可直接执行。
-# 跳过（谨慎）：git commit --no-verify
+# Repo-level pre-commit: when the staging area contains host/ changes, run three zero-cost protocol smoke tests (~15s total, no model calls);
+# any failure blocks the commit. The UI side cannot be asserted at protocol level (WKWebView layer) and is out of scope for the hook.
+# Invoked in a chain by the global ~/.git-hooks/pre-commit (after gitleaks); can also be run directly.
+# Skip (with care): git commit --no-verify
 cd "$(git rev-parse --show-toplevel)"
 
 changed=$(git diff --cached --name-only --diff-filter=ACMR | grep '^host/' || true)

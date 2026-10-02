@@ -1,16 +1,22 @@
-// ReadSessionContext 内置工具：在当前 profile 的 Pi 会话历史里做字面检索与展开。
+// ReadSessionContext built-in tool: literal search and expansion over the
+// current profile's Pi session history.
 //
-// 参考 pi-session-memory（npm:pi-session-memory，MIT）的 recall_memory / fetch_session 语义：
-// 字面（子串）匹配而非语义检索、命中即回传原始对话文本、只读不改状态、命中结果里给出
-// session 标识供第二次调用展开具体 turn。刻意砍掉该包的三件事——跨 harness 索引
-//（Claude Code / Codex JSONL）、SQLite 全量索引与后台同步、session 迁移——本应用只读
-// 自己的 Pi 会话：profile 隔离的 sessions 目录由 SDK 的 listAllSessions / loadEntriesFromFile
-// 直接列举与解析（实测默认 profile 169 会话 / 35979 条目全量读取 0.25s，无需自建索引）。
+// Modeled on pi-session-memory (npm:pi-session-memory, MIT) recall_memory /
+// fetch_session semantics: literal (substring) matching rather than semantic
+// retrieval, hits return the raw conversation text, read-only with no state
+// changes, and hit results carry a session id so a second call can expand
+// specific turns. Three things from that package were deliberately cut —
+// cross-harness indexing (Claude Code / Codex JSONL), full SQLite indexing
+// with background sync, and session migration — this app only reads its own
+// Pi sessions: the profile-isolated sessions directory is listed and parsed
+// directly by the SDK's listAllSessions / loadEntriesFromFile (measured: the
+// default profile's 169 sessions / 35979 entries fully read in 0.25s, no
+// custom index needed).
 import { type } from "@oh-my-pi/omptype";
 import type { FileEntry, SessionInfo } from "@oh-my-pi/pi-coding-agent";
 import { FileSessionStorage, listAllSessions, loadEntriesFromFile } from "./bootstrap.ts";
 
-/** 会话内「用户提问 + 助手回复」配对——检索与展开的最小单位。 */
+/** A "user question + assistant reply" pair inside a session — the minimal unit of search and expansion. */
 interface SessionTurn {
   index: number;
   ts: number;
@@ -27,13 +33,13 @@ interface ScannedSession {
 interface SessionContextHit {
   session: ScannedSession;
   turn: SessionTurn;
-  /** 命中的检索词个数（越多越相关）。 */
+  /** Number of matched query terms (more = more relevant). */
   score: number;
 }
 
-// ---- 解析：session 文件 → turn 列表 ------------------------------------
+// ---- parse: session file -> turn list ----
 
-/** 提取消息里的纯文本块，忽略图片 / 思考 / 工具块。 */
+/** Extract plain-text blocks from a message, ignoring image / thinking / tool blocks. */
 function blockText(content: unknown): string {
   if (typeof content === "string") return content.trim();
   if (!Array.isArray(content)) return "";
@@ -46,7 +52,7 @@ function blockText(content: unknown): string {
   return parts.join("\n");
 }
 
-/** 收集助手消息里发起的工具调用名（去重前）。 */
+/** Collect tool call names initiated by an assistant message (pre-dedup). */
 function blockToolNames(content: unknown): string[] {
   if (!Array.isArray(content)) return [];
   const names: string[] = [];
@@ -58,7 +64,7 @@ function blockToolNames(content: unknown): string[] {
   return names;
 }
 
-/** 按文件顺序把 message 条目折叠成 turn：user 开新 turn，其后到下一个 user 之间的助手文本/工具调用归入该 turn。 */
+/** Fold message entries into turns in file order: a user message opens a new turn; assistant text / tool calls after it belong to that turn until the next user message. */
 function turnsFromEntries(entries: FileEntry[]): SessionTurn[] {
   const turns: SessionTurn[] = [];
   let current: SessionTurn | null = null;
@@ -80,18 +86,18 @@ function turnsFromEntries(entries: FileEntry[]): SessionTurn[] {
   return turns;
 }
 
-// ---- 扫描与检索 --------------------------------------------------------
+// ---- scan and search ----
 
 interface ScanOptions {
-  /** 只保留在该目录启动的会话（精确匹配，与 pi-session-memory 的 cwd 过滤一致）。 */
+  /** Keep only sessions started in this directory (exact match, same cwd filtering as pi-session-memory). */
   cwd?: string;
-  /** 只保留最近 N 天修改过的会话。 */
+  /** Keep only sessions modified within the last N days. */
   days?: number;
-  /** 排除的会话文件（当前会话自己——搜自己通常无价值）。 */
+  /** Session file to exclude (the current session itself — searching itself is usually worthless). */
   excludePath?: string | null;
 }
 
-/** 列举当前 profile 的 Pi 会话并解析出 turn 列表。 */
+/** List the current profile's Pi sessions and parse them into turn lists. */
 async function scanSessions(options: ScanOptions = {}): Promise<ScannedSession[]> {
   const storage = new FileSessionStorage();
   const infos = await listAllSessions(storage);
@@ -106,7 +112,7 @@ async function scanSessions(options: ScanOptions = {}): Promise<ScannedSession[]
   return sessions;
 }
 
-/** 检索词：按空白 / 逗号 / 顿号切分，全部小写（字面包含匹配）。 */
+/** Query terms: split on whitespace / comma / ideographic comma, all lowercased (literal containment matching). */
 function splitQueryTerms(query: string): string[] {
   return query
     .split(/[\s,，、]+/)
@@ -114,7 +120,7 @@ function splitQueryTerms(query: string): string[] {
     .filter(Boolean);
 }
 
-/** 字面检索：返回命中 turn（命中词多者优先，其次按时间倒序）。 */
+/** Literal search: return matching turns (more matched terms first, then newest first). */
 function searchSessionContext(
   sessions: ScannedSession[],
   query: string,
@@ -135,11 +141,11 @@ function searchSessionContext(
   return hits.slice(0, limit);
 }
 
-// ---- 输出格式化 --------------------------------------------------------
+// ---- output formatting ----
 
 const USER_CLIP = 1200;
 const ASSISTANT_CLIP = 1500;
-/** 单次展开的输出上限，超出提示缩小 turn 范围。 */
+/** Output budget for a single expansion; exceeding it prompts narrowing the turn range. */
 const EXPAND_BUDGET = 24_000;
 
 function clip(text: string, max: number): string {
@@ -215,7 +221,7 @@ function formatTurns(session: ScannedSession, fromTurn: number, toTurn: number):
   return lines.join("\n");
 }
 
-// ---- 工具定义 ----------------------------------------------------------
+// ---- tool definition ----
 
 const READ_SESSION_CONTEXT_DESCRIPTION = `Search this machine's stored Pi sessions for prior conversations, and expand one session's turns verbatim.
 
@@ -259,7 +265,7 @@ function textResult(text: string, useless?: boolean) {
   return useless ? { content: [{ type: "text" as const, text }], useless: true } : { content: [{ type: "text" as const, text }] };
 }
 
-/** 构造 ReadSessionContext 工具（无状态，可跨会话共用同一数组）。 */
+/** Build the ReadSessionContext tool (stateless; the same array can be shared across sessions). */
 export function createSessionContextTools() {
   return [
     {
@@ -288,8 +294,9 @@ export function createSessionContextTools() {
         const cwd = typeof params?.cwd === "string" && params.cwd.trim() ? params.cwd.trim() : undefined;
 
         if (sessionId) {
-          // 展开模式只按 id/文件路径定位单个会话：不套 cwd/days 过滤（那是搜索模式的收窄条件），
-          // 也不解析其余会话——展开是 O(1) 而非全量扫描
+          // Expand mode locates a single session by id/file path only: no
+          // cwd/days filters (those narrow search mode) and no other sessions
+          // parsed — expansion is O(1), not a full scan
           const storage = new FileSessionStorage();
           const info = (await listAllSessions(storage)).find(
             (candidate) => candidate.id === sessionId || candidate.path === sessionId,

@@ -1,8 +1,9 @@
 'use strict';
 
-// 移植自 token-monitor src/shared/outboundFetch.js。原版用 undici 的
-// EnvHttpProxyAgent 实现代理;Bun 的 fetch 原生支持 { proxy } 选项,
-// 这里保留「代理 env 优先、小写胜过大写」的解析逻辑,传输层交给全局 fetch。
+// Ported from token-monitor src/shared/outboundFetch.js. The original uses
+// undici's EnvHttpProxyAgent for proxying; Bun's fetch natively supports the
+// { proxy } option, so this port keeps the "proxy env first, lowercase wins
+// over uppercase" resolution logic and delegates transport to the global fetch.
 
 function cleanProxyUrl(value) {
   const trimmed = String(value || '').trim();
@@ -23,7 +24,8 @@ function resolveProxyUrl(env = process.env) {
     || '';
 }
 
-// 返回一个 fetch 实现:配置了标准代理 env 时走 Bun 的 proxy 选项,否则原样转发。
+// Returns a fetch implementation: uses Bun's proxy option when a standard
+// proxy env is configured, otherwise forwards as-is.
 function createOutboundFetch(env = process.env) {
   const proxy = resolveProxyUrl(env);
   return async function outboundFetch(url, init = {}) {

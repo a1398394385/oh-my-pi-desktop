@@ -1,7 +1,9 @@
-// 设置页统一作用域下拉（profile / project 二级，全站唯一实现）：Profile 固定首项 + 工作区项目列表。
-// 视觉与交互以技能页原实现为基准（.sel 胶囊 + .menu.scope-menu，点外部关闭、选中打勾、
-// 图标随层级切换 scopeProfile/folder）。用户级 omp 不存在，只有 Profile 与项目两级。
-// 样式基类 .scope-sel-btn 在 style.css 单点定义，各页禁止再写私有按钮类。
+// Unified settings-page scope dropdown (profile / project two levels, the sole implementation
+// app-wide): Profile pinned as the first item + workspace project list.
+// Visuals and interaction follow the skills page's original implementation (.sel capsule +
+// .menu.scope-menu, click-outside close, checkmark on selection, icon switches per level
+// between scopeProfile/folder). No user-level omp exists — only Profile and project levels.
+// Base class .scope-sel-btn is defined once in style.css; pages must not write private button classes.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
@@ -19,7 +21,7 @@ export default function ScopeSel({ value, onChange, profile, projects }: {
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  // 点菜单外关闭（同各页原 document 级监听）
+  // Close on click outside the menu (same as each page's original document-level listener)
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);

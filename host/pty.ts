@@ -1,5 +1,7 @@
-// 终端 PTY 服务：基于 @oh-my-pi/pi-natives 原生 PtySession（跨平台 ConPTY / POSIX PTY），
-// 对前端暴露 create/write/resize/dispose 四元组 + 数据帧/退出帧回推。
+// Terminal PTY service: built on the native PtySession of
+// @oh-my-pi/pi-natives (cross-platform ConPTY / POSIX PTY), exposing the
+// create/write/resize/dispose quartet to the frontend + data-frame /
+// exit-frame push-back.
 import { PtySession as NativePty } from "@oh-my-pi/pi-natives";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 
@@ -54,8 +56,9 @@ export interface PtySession {
 const sessions = new Map<string, PtySession>();
 const byOwner = new WeakMap<object, Set<string>>();
 
-// 建会话：基于 pi-natives 启动原生 PTY。
-// onData 收到 pty 原始输出（UTF-8 字符串）；onExit 在子进程退出后调用一次。
+// Create a session: start a native PTY via pi-natives.
+// onData receives the raw pty output (UTF-8 string); onExit is called once
+// after the child process exits.
 export async function createTerminal(
   owner: object,
   opts: { id: string; cwd: string; cols: number; rows: number; shell?: string; inheritProfile?: boolean },
@@ -114,7 +117,7 @@ export async function createTerminal(
       handleExit(1);
     });
 
-  // 等待进程成功拉起（超时 3 秒兜底）
+  // Wait for the process to come up (3-second timeout backstop)
   await Promise.race([
     startPromise,
     new Promise<void>((_, reject) =>
@@ -158,14 +161,14 @@ export async function createTerminal(
   return session;
 }
 
-// 取会话并校验归属：只许前端操作自己 WS 名下的 PTY（返回 undefined = 不存在或非本人）
+// Fetch a session and verify ownership: a frontend may only operate PTYs under its own WS (undefined = absent or not owned)
 export function terminalFor(owner: object, id: unknown): PtySession | undefined {
   if (typeof id !== "string") return undefined;
   const t = sessions.get(id);
   return t && byOwner.get(owner)?.has(id) ? t : undefined;
 }
 
-// WS 断开时清掉该前端名下全部会话（前端已不在，PTY 留着就是孤儿进程）
+// On WS disconnect, clear all sessions under that frontend (the frontend is gone; a surviving PTY is an orphan process)
 export function disposeTerminalsOf(owner: object) {
   const set = byOwner.get(owner);
   if (!set) return;

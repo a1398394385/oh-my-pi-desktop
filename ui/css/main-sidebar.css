@@ -1,12 +1,12 @@
 /* ============================================================
- * main-sidebar.css —— 主页面·左边栏:会话/项目组、搜索卡片、会话重命名与归档区。
- *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
- * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
- * → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * main-sidebar.css — main page, left sidebar: sessions/project groups, search card, session rename and archive area.
+ *  Split from ui/css/main.css by semantic domain; keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = ui/style.css's @import order: global -> main-shell -> main-sidebar -> main-chat
+ * -> main-welcome -> main-right -> settings; append new styles at the end of the matching domain file.
  * ============================================================ */
-/* ── 左栏：折叠与过渡动画 ──────────────────────────────────────────── */
+/* ── left column: collapse and transition animations ──────────────────────────────────────────── */
 #sidebar {
-  /* 列容器自成 stacking context：列内弹层封顶于此，设置中心/通知才能整屏盖住它们 */
+  /* the column container forms its own stacking context: popovers inside cap here, so the settings center/notifications can cover them full-screen */
   isolation: isolate;
   width: var(--left-w, 240px);
   min-width: 0;
@@ -19,7 +19,7 @@
   overflow: hidden;
   opacity: 1;
   visibility: visible;
-  /* 侧栏整体禁文字选中:点按/拖动频繁,选中蓝底是干扰(输入框见下条回启) */
+  /* text selection disabled sidebar-wide: taps/drags are frequent and the blue selection is noise (inputs are re-enabled below) */
   user-select: none;
   -webkit-user-select: none;
   transition: width 0.25s cubic-bezier(0.2, 0, 0, 1),
@@ -28,7 +28,7 @@
               visibility 0.25s;
 }
 
-/* 侧栏内输入框(重命名/新建项目)恢复可选可编辑 */
+/* inputs inside the sidebar (rename/new project) regain selection and editing */
 #sidebar input, #sidebar textarea { user-select: text; -webkit-user-select: text; }
 
 #sidebar > * {
@@ -285,10 +285,10 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
 
-/* ZCode 的 hover 行为：Pin 接管同一个前置槽，状态点/转圈不额外挤压标题。 */
+/* ZCode hover behavior: the pin takes over the same leading slot; the status dot/spinner doesn't squeeze the title further. */
 .task:hover .task-indicator { opacity: 0; }
 
-/* 置顶图钉：悬停浮现；已置顶且没有状态指示器时常显。 */
+/* pin glyph: appears on hover; always shown when pinned and no status indicator is present. */
 .tpin {
   width: 16px; height: 16px; padding: 0;
   border: 0; background: transparent; color: var(--faint);
@@ -308,7 +308,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: block;
   width: 18px !important;
   height: 18px !important;
-  margin-top: -2px; /* 消除针尖拉低重心的视觉下沉 */
+  margin-top: -2px; /* cancels the visual sink of the needle tip dragging the center of gravity down */
 }
 
 .task:hover .tpin { opacity: 1; }
@@ -325,7 +325,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   user-select: none;
 }
 
-/* 项目组头是拖柄；点击仍负责展开/收起，超过拖动阈值后进入排序。 */
+/* project group headers are drag handles; clicks still expand/collapse; crossing the drag threshold enters reordering. */
 .proj { cursor: grab; touch-action: none; }
 
 .proj:active { cursor: grabbing; }
@@ -334,13 +334,13 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .proj svg { flex: none; opacity: .9; color: var(--dim); }
 
-/* 项目图标槽与 ZCode 的 size-4 槽一致。 */
+/* the project icon slot matches ZCode's size-4 slot. */
 .proj .fic {
   flex: none; width: 16px; height: 16px; display: inline-flex;
   align-items: center; justify-content: center;
 }
 
-/* 项目拖拽排序：真实行让位，浮层接管被拖项目；其余行只做垂直位移。 */
+/* project drag reorder: the real row steps aside, the overlay takes over the dragged project; other rows only shift vertically. */
 .proj.drag-float, .proj-kids.drag-float { position: relative; z-index: 2; transition: none; }
 
 .proj.drag-float {
@@ -357,17 +357,17 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .proj.shift-anim, .proj-kids.shift-anim { transition: transform .2s cubic-bezier(.25, .8, .3, 1); }
 
-/* 拖动排序期间全列表禁文本选中（JS 给 #tasklist 挂 .proj-dragging）：
-   否则划过展开组的会话行会触发 WebKit 选中高亮，选中驱动滚动容器自动滚动，
-   与按拖动起始布局计算的位移叠加，表现为拖动时列表跳动 */
+/* text selection is disabled list-wide during drag reorder (JS adds .proj-dragging to #tasklist):
+   otherwise sweeping across the expanded group's session rows triggers WebKit selection highlighting; the selection drives scroll-container auto-scrolling,
+   stacking with displacements computed from the drag-start layout, showing up as the list jumping during drags */
 #tasklist.proj-dragging, #tasklist.proj-dragging * {
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-user-drag: none !important;
 }
 
-/* 拖动排序期间关闭行 hover 高亮：指针捕获只重定向事件，:hover 仍跟随物理光标，
-   划过行的底色/文字色突变就是“选中高亮”观感，快速拖动时高频闪烁即“跳动” */
+/* row hover highlights are off during drag reorder: pointer capture only redirects events, :hover still follows the physical cursor;
+   rows flipping base/text color as the cursor sweeps by reads exactly like a selection highlight, and its high-frequency flicker on fast drags is the jumping */
 #tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: var(--dim); }
 
 #tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: var(--dim); }
@@ -387,7 +387,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 #tasklist.proj-dragging .proj .pmore,
 #tasklist.proj-dragging .proj .padd { display: none !important; }
 
-/* 项目会话行 / loop 过程组容器：grid 行高 1fr→0fr 过渡做整组收起动画（0.3s，两处同一套） */
+/* project session rows / loop process group containers: grid row height 1fr->0fr transition animates whole-group collapse (0.3s, same set in both places) */
 .proj-kids, .lp-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
 
 .proj-kids.closing, .lp-kids.closing { grid-template-rows: 0fr; }
@@ -409,7 +409,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .proj .fic.is-cjk svg {
   transform-origin: top center;
-  transform: scaleY(1.2); /* 中文方块字高大，下底延伸与汉字字底平齐 */
+  transform: scaleY(1.2); /* CJK square glyphs are tall; extending the bottom aligns with the Han glyph base */
 }
 
 .proj:hover .pname { color: var(--text); }
@@ -436,14 +436,14 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .proj .pmore:hover { color: var(--text); background: var(--panel-3); }
 
-/* 手动添加项目弹层（fixed 定位需 zoom 补偿） */
+/* manually add-project popover (fixed positioning needs zoom compensation) */
 .proj-add-pop {
   position: fixed; z-index: 500;
   display: flex; align-items: center; gap: 6px;
   background: var(--ctl-bg); border: 1px solid var(--line-soft);
   border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.5);
   padding: 8px;
-  animation: popIn .18s ease-out; --pop-from: -6px; /* 下弹：自上方滑入 */
+  animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
 }
 
 [data-theme="light"] .proj-add-pop { box-shadow: 0 12px 32px rgba(0,0,0,.18); } /* style-token-ignore */
@@ -477,11 +477,11 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .proj .padd:hover { color: var(--text); background: var(--panel-3); }
 
-/* 项目下会话行与项目组头同骨架(padding 10 + 30px 图标槽 + 4px + 文字)，不再额外缩进 */
+/* session rows under a project share the group header's skeleton (padding 10 + 30px icon slot + 4px + text), no extra indent */
 .task.sub { padding-left: 10px; }
 
-/* 项目列表节奏对齐 ZCodium：项目组之间按原 space-y-2（8px）放大 1/3 为 10.67px，
-   组内会话行之间是 TaskList 的 space-y-0.5（2px）；首行不额外制造顶部空隙。 */
+/* project list rhythm aligned with ZCodium: between project groups the original space-y-2 (8px) scaled up by 1/3 to 10.67px,
+   between session rows inside a group it's TaskList's space-y-0.5 (2px); the first row adds no extra top gap. */
 #tasklist .project-scroll > .proj { margin-top: 0; }
 
 #tasklist .project-scroll > .proj + .proj,
@@ -544,7 +544,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 #conn-status.bad::before { content: "● "; }
 
-/* ── 侧边栏搜索卡片：位于新建任务下方，样式与新建任务（.nav-item）完全对齐 ── */
+/* ── sidebar search card: below the new-task item, styled exactly like it (.nav-item) ── */
 .nav-item.nav-search {
   cursor: text;
   position: relative;
@@ -695,7 +695,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   min-height: 58px;
 }
 
-/* --- B1 会话重命名（行内编辑行，复用 .task 布局；编辑行无点击行为，显式关 hover） --- */
+/* --- B1 session rename (inline edit row reusing the .task layout; the edit row has no click behavior, hover explicitly off) --- */
 .task.renaming { cursor: default; }
 
 .task.renaming:hover { background: none; color: inherit; }
@@ -707,7 +707,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   padding: 3px 8px; font-size: var(--ui-fs-sm);
 }
 
-/* --- B1 归档区（列表底部折叠分组：组头整行可点，条目行纯展示、hover 只亮按钮） --- */
+/* --- B1 archive area (collapsed group at the list bottom: group header fully clickable, entry rows display-only with hover lighting only the buttons) --- */
 .arch-head {
   display: flex; align-items: center; gap: 8px;
   height: 34px; min-height: 34px; padding: 4px 10px; margin-top: 2px;
@@ -717,21 +717,21 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .arch-head:hover { background: var(--panel-2); color: var(--text); }
 
-/* 条目容器：grid 行高 0fr↔1fr 过渡，与 .proj-kids 项目分组同一套动画 */
+/* entry container: grid row height 0fr<->1fr transition, same animation set as the .proj-kids project groups */
 .arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
 
 .arch-kids.closing { grid-template-rows: 0fr; }
 
 .arch-kids > .arch-kids-in { overflow: hidden; min-height: 0; }
 
-/* 归档条目行：纯展示承载行（点击不打开会话），显式禁 hover 高亮 */
+/* archive entry rows: display-only carriers (clicking doesn't open a session), hover highlight explicitly disabled */
 .arch-row {
   display: flex; align-items: center; gap: 8px;
   height: 34px; min-height: 34px; padding: 4px 10px 4px 28px; margin-top: 2px;
   font-size: var(--ui-fs-base); line-height: 1.35;
 }
 
-/* 拖动排序浮层：拖组临时渲染卡样式；与 ZCode 一样，仅显示文本与图标，无背景。 */
+/* drag reorder overlay: the dragged group's temporary card style; like ZCode, text and icons only, no background. */
 .proj-drag-overlay {
   position: fixed; z-index: 900; pointer-events: none; cursor: grabbing;
   width: var(--left-w, 240px);
@@ -768,7 +768,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: var(--dim);
 }
 
-/* 恢复/删除小按钮：默认隐藏、行 hover 浮现（对齐 .padd/.pmore 模式） */
+/* restore/delete small buttons: hidden by default, appear on row hover (aligned with the .padd/.pmore pattern) */
 .arch-act {
   flex: none; border: 1px solid var(--line); background: none; color: var(--dim);
   font-size: var(--ui-fs-xs); line-height: 1; cursor: pointer;
@@ -782,7 +782,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 
 .arch-act:hover { color: var(--text); background: var(--panel-3); }
 
-/* 删除 = 彻底删除会话：危险态视觉与 .task-del-btn 一致（含 hover 反色白字，tokens 无反色 token） */
+/* delete = permanently remove the session: danger visuals match .task-del-btn (incl. hover inverted white text; tokens have no inverted token) */
 .arch-act.arch-del {
   border-color: rgba(208, 92, 82, 0.35);
   background: rgba(208, 92, 82, 0.12);

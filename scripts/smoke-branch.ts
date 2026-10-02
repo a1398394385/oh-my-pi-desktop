@@ -1,15 +1,15 @@
-// 会话分叉冒烟：prompt 落盘 entryId 透传 → branch_session 池迁移 → 分支家族树 → 新分支续聊。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-branch.ts [宿主ws地址]
-// 真模型驱动；整轮断言设计为可重试一次（第二轮全新 tmp cwd + 新会话，断言不砍），
-// 两轮都失败才退出非零。
-// ⚠ 直接读写 omp-desktop.json，任何退出路径（含断言失败）都会还原原文件；还原前先杀 host，
-//    避免 host 内存态在退出钩子里把测试状态写回。
-// 断言覆盖：
-//   1. prompt → turn_end 后 get_messages：user 消息带 entryId（agent_end 回填）
-//   2. branch_session：ok、selectedText 非空且等于原 user 文本、newPath 文件存在、
-//      池迁移后事件帧带新 sessionId（attachEntry 重建订阅生效）
-//   3. get_session_tree：branches 数 = 2、isCurrent 命中新分支、parentSession 关系正确
-//   4. 新分支 prompt 续聊：turn_end 正常到达（池迁移后链路完整）
+// Session branching smoke test: prompt's persisted entryId passthrough -> branch_session pool migration -> branch family tree -> continued chat on the new branch.
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-branch.ts [host ws url]
+// Real-model driven; a full assertion round is retryable once (the second round uses a fresh tmp cwd + new session, no assertions trimmed),
+// and only exits non-zero when both rounds fail.
+// WARNING: reads and writes omp-desktop.json directly; every exit path (including assertion failures) restores the original file; the host is killed first,
+//    so its in-memory state cannot write the test state back in an exit hook.
+// Assertions cover:
+//   1. After prompt -> turn_end, get_messages: the user message carries entryId (backfilled at agent_end)
+//   2. branch_session: ok, selectedText non-empty and equal to the original user text, newPath file exists,
+//      and after pool migration event frames carry the new sessionId (attachEntry's rebuilt subscription works)
+//   3. get_session_tree: branches length = 2, isCurrent hits the new branch, parentSession relation correct
+//   4. Continued chat on the new branch: turn_end arrives normally (the chain is intact after pool migration)
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
@@ -21,20 +21,20 @@ const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
 const tmpDirs: string[] = [];
-const sessionFiles: string[] = []; // 测试产生的会话文件（delete_session 顺带清 artifacts）
+const sessionFiles: string[] = []; // Session files created by the test (delete_session also cleans artifacts)
 
 let child: ReturnType<typeof spawn> | null = null;
 let wsUrl = args[0];
 let restored = false;
 
-// 还原必须先于 exit：kill host（SIGTERM 异步）→ 等其退出窗口 → 写回原文
+// Restore must precede exit: kill the host (SIGTERM is async) -> wait out its exit window -> write the original back
 function restoreCfg() {
   if (restored) return;
   restored = true;
   if (child?.pid) {
     child.kill("SIGTERM");
     child = null;
-    try { execSync("sleep 0.8"); } catch {} // 同步等 800ms 让 host 退完再写回（Bun 主线程 Atomics.wait 不可靠）
+    try { execSync("sleep 0.8"); } catch {} // Sleep synchronously 800ms for the host to finish exiting before writing back (Bun main-thread Atomics.wait is unreliable)
   }
   try {
     if (cfgExisted) writeFileSync(cfgPath, cfgBackup);
@@ -97,7 +97,7 @@ const waitType = (t: string, after = 0, ms = 60_000) =>
       }
     }, 20);
   });
-// 等指定会话的 event 帧（turn_end 等）：增量 delta 与终止信号都要按 sessionId 归属
+// Wait for event frames of the given session (turn_end etc.): both incremental deltas and terminal signals are attributed by sessionId
 const waitEvent = (kind: string, sessionId: string, after = 0, ms = 60_000) => {
   const idx = () => frames.findIndex((f, i) => f.type === "event" && f.kind === kind && f.sessionId === sessionId && i >= after);
   if (idx() >= 0) return Promise.resolve(frames[idx()]);
@@ -121,7 +121,7 @@ await new Promise((resolve, reject) => {
 }).catch((e) => fail(String(e)));
 await waitType("ready");
 
-// 发一条 prompt，等该会话 turn_end，返回累积的 assistant 增量文本
+// Send one prompt, wait for that session's turn_end, return the accumulated assistant delta text
 async function askAndAwait(sessionId: string, text: string): Promise<string> {
   const mark = frames.length;
   ws.send(JSON.stringify({ type: "prompt", sessionId, text }));
@@ -132,12 +132,12 @@ async function askAndAwait(sessionId: string, text: string): Promise<string> {
     .join("");
 }
 
-// 一轮完整断言（可整轮重试）：全新 tmp cwd → 建会话 → 聊天 → 分叉 → 家族树 → 续聊
+// One full assertion round (retryable as a whole): fresh tmp cwd -> create session -> chat -> branch -> family tree -> continue chat
 async function attempt(round: number): Promise<void> {
   const cwd = await mkdtemp(path.join(tmpdir(), `omp-smoke-branch-${round}-`));
   tmpDirs.push(cwd);
 
-  // ---- 1. create → prompt → turn_end → get_messages 带 entryId ----
+  // ---- 1. create -> prompt -> turn_end -> get_messages carries entryId ----
   let mark = frames.length;
   ws.send(JSON.stringify({ type: "create_session", cwd }));
   const created = await waitType("session_created", mark).catch((e) => { throw e; });
@@ -163,7 +163,7 @@ async function attempt(round: number): Promise<void> {
   assert(typeof branched.selectedText === "string" && branched.selectedText.trim().length > 0, `selectedText 非空（${String(branched.selectedText).slice(0, 30)}）`);
   assert(branched.selectedText === ask1, "selectedText 等于被分叉的 user 消息原文");
   sessionFiles.push(branched.newPath);
-  // 分叉后 host 推的 messages 帧应带新 sessionId（transcript 已切到分叉后视图）
+  // After branching, the messages frame pushed by the host should carry the new sessionId (the transcript has switched to the post-branch view)
   const rebuilt = frames.find((f, i) => i >= mark && f.type === "messages" && f.sessionId === branched.newSessionId);
   assert(!!rebuilt, "分叉后 messages 帧带新 sessionId");
   assert(
@@ -185,13 +185,13 @@ async function attempt(round: number): Promise<void> {
   assert(oldBranch.parentSession === null, "源会话无 parent（族根）");
   assert(typeof newBranch.title !== "undefined" && typeof newBranch.messageCount === "number", "分支条目带 title/messageCount");
 
-  // ---- 4. 新分支续聊（池迁移后 prompt → 事件带新键 → turn_end） ----
+  // ---- 4. Continued chat on the new branch (after pool migration: prompt -> events carry the new key -> turn_end) ----
   const ask2 = "请只回复四个字母：DONE";
   const reply2 = await askAndAwait(branched.newSessionId, ask2);
   console.log(`新分支回复: ${reply2.trim().slice(0, 60)}`);
   assert(reply2.trim().length > 0, "新分支续聊回复非空");
 
-  // ---- 清理本轮会话文件（delete_session 顺带清 artifacts 目录） ----
+  // ---- Clean up this round's session files (delete_session also cleans the artifacts dir) ----
   for (const p of sessionFiles.splice(0)) {
     mark = frames.length;
     ws.send(JSON.stringify({ type: "delete_session", path: p }));
@@ -199,7 +199,7 @@ async function attempt(round: number): Promise<void> {
   }
 }
 
-// 真模型可能偶发超时/拒答：整轮重试一次（全新 cwd + 新会话，两轮产物统一清理）
+// A real model may occasionally time out or refuse: retry the whole round once (fresh cwd + new session; both rounds' artifacts cleaned up together)
 let lastErr: unknown = null;
 for (let round = 1; round <= 2; round++) {
   try {

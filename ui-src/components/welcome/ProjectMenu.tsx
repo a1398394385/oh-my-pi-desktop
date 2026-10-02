@@ -1,6 +1,8 @@
-// 项目选择菜单（向上弹出）：搜索过滤 + 项目列表 + 打开文件夹/远程连接/不在项目中工作。
-// 迁移自 ui/welcome.js renderWbProjectList 与 initWelcome 项目菜单事件；条件渲染挂载即打开，
-// 搜索态随挂载重置为空（对应原版打开时 searchInput.value=""），40ms 后聚焦搜索框。
+// Project picker menu (pops upward): search filter + project list + open folder / remote
+// connection / work without a project.
+// Migrated from ui/welcome.js renderWbProjectList and the initWelcome project menu events;
+// conditional-render mounting opens it, the search state resets to empty on mount (matching
+// the old searchInput.value="" on open), and the search box focuses after 40ms.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -16,8 +18,9 @@ interface ProjectMenuProps {
 export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
   const { t } = useTranslation();
   const newSessionProject = useAppStore((s) => s.newSessionProject);
-  // getAvailableProjects() 渲染期读 store 实时值：订阅其数据源字段（session_list 帧落地换引用），
-  // 项目列表变化时本菜单重渲染（替代旧 useStore 全局订阅）
+  // getAvailableProjects() reads the store live during render: subscribe to its data-source
+  // fields (session_list frames land fresh references); this menu re-renders when the project
+  // list changes (replacing the old useStore global subscription)
   useAppStore((s) => s.diskProjects);
   useAppStore((s) => s.allProjects);
   useAppStore((s) => s.removedProjects);
@@ -41,7 +44,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
 
   const available = getAvailableProjects();
   const kw = filter.trim().toLowerCase();
-  // 过滤：项目名或完整路径包含关键字（对照原版 renderWbProjectList）
+  // Filter: project name or full path contains the keyword (aligned with the old renderWbProjectList)
   const matched = kw
     ? available.filter((p) => {
         const name = pathBase(p.cwd) || p.cwd;
@@ -49,14 +52,16 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
       })
     : available;
 
-  // 选中项目：切数据（setWelcomeProject 落地，内含 _v bump）+ 关菜单（原版 item.onclick）
+  // Pick a project: switch data (setWelcomeProject lands it, includes a _v bump) + close the
+  // menu (the old item.onclick)
   const choose = (cwd: string) => {
     setWelcomeProject(cwd);
     onClose();
   };
 
-  // 打开文件夹（原版 wbProjOpenFolder）：Tauri 目录对话框 → 通知宿主登记项目 → 选为新项目；
-  // 非 Tauri 环境（浏览器直连调试）退化为手输绝对路径
+  // Open folder (the old wbProjOpenFolder): Tauri directory dialog → tell the host to register
+  // the project → select it as the new project;
+  // non-Tauri environments (direct browser debugging) degrade to manually typing an absolute path
   const openFolder = (e: MouseEvent) => {
     e.stopPropagation();
     onClose();
@@ -102,7 +107,7 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              if (matched[0]) choose(matched[0].cwd); // Enter 选首个匹配（原版点击列表第一项）
+              if (matched[0]) choose(matched[0].cwd); // Enter picks the first match (the old clicking of the list's first item)
             } else if (e.key === "Escape") {
               onClose();
             }

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// 源码编码门禁（BUG-026 的回归防线，RULE-009 的可执行部分）：
-// 1. 非法 UTF-8 字节 —— 已跟踪文本文件必须是合法 UTF-8（`9b077bd` 那类整文件回写最容易破坏这条）；
-// 2. 乱码特征字符 —— GBK/CP936 误解 UTF-8 字节后的产物（标点残片、外来字母、PUA、U+20AC），
-//    这些字符在本仓正常文本中从不出现，命中即报错；
-// 3. 双重编码指纹 —— 把整行按 CP936 解回字节再按 UTF-8 解，失败位极少且结果仍是中文，
-//    说明这行大概率是「UTF-8 文本被当成 GBK 读过一遍」。
-// 阈值来自实测校准：全仓 67455 行干净语料 0 误报，对 HEAD 的坏版本命中 493/507 行。
-// 用法：
-//   node scripts/check-encoding.mjs              # 扫描全部已跟踪文本文件（bun run check 用）
-//   node scripts/check-encoding.mjs --staged      # 只扫暂存区（.githooks/pre-commit 用）
-//   node scripts/check-encoding.mjs <file...>     # 只扫指定文件（临时核对用，可给未跟踪文件）
+// Source encoding gate (regression defense for BUG-026, executable half of RULE-009):
+// 1. Invalid UTF-8 bytes -- tracked text files must be valid UTF-8 (whole-file rewrites like `9b077bd` break this most easily);
+// 2. Mojibake signature chars -- artifacts of GBK/CP936 misreading UTF-8 bytes (punctuation fragments, foreign letters, PUA, U+20AC);
+//    these never occur in normal text in this repo; any hit is an error;
+// 3. Double-encoding fingerprint -- decode the whole line back to bytes via CP936 then as UTF-8; if it fails in very few places and the result is still CJK,
+//    the line is most likely UTF-8 text that was once read as GBK.
+// Thresholds calibrated on real data: 0 false positives across 67455 clean lines repo-wide, 493/507 lines hit on the broken HEAD revision.
+// Usage:
+//   node scripts/check-encoding.mjs              # scan all tracked text files (used by bun run check)
+//   node scripts/check-encoding.mjs --staged     # scan only the staging area (used by .githooks/pre-commit)
+//   node scripts/check-encoding.mjs <file...>     # scan only the given files (ad-hoc checks; untracked files allowed)
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -17,24 +17,24 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TEXT_EXT = /\.(css|ts|tsx|js|jsx|mjs|cjs|json|jsonc|html|svg|md|mdc|yml|yaml|toml|py|sh|txt|rs|go|java|kt|swift|c|cc|cpp|h|hpp)$/i;
-// 无扩展名的文本文件（编辑器/git 配置、钩子）也要纳入扫描
+// Extension-less text files (editor/git configs, hooks) must be scanned too
 const TEXT_NAME = /(^|\/)(\.editorconfig|\.gitattributes|\.gitignore|Dockerfile|Makefile|pre-commit|pre-push|commit-msg)$/i;
-// 允许引用乱码做证据的文档（事故账本 / 规则全集）：只豁免乱码指纹，编码合法性仍查
+// Docs allowed to quote mojibake as evidence (incident ledger / rule book): exempt from mojibake fingerprints only; UTF-8 validity is still checked
 const EVIDENCE_DOCS = new Set([".agents/BUGS.md", ".agents/rules.md"]);
 
-// 乱码特征字符：GBK 误解 UTF-8 的标点残片 + 本仓从不使用的外来字母/符号 + PUA + 欧元符号
-// （写成码点转义：本文件自身必须不含这些字面量，否则扫描自己会误报）
+// Mojibake signature chars: GBK-misread UTF-8 punctuation fragments + foreign letters/symbols never used in this repo + PUA + euro sign
+// (written as codepoint escapes: this file itself must not contain the literals, or scanning itself would false-positive)
 const HINT_CHARS = new Set([
-  "\u9239", "\u951b", "\u9286", "\u9225", "\u951f", // U+9239/951B/9286/9225/951F：U+2500/U+FF1A/U+3002/U+2014/U+FFFD 的残片
-  "\u20ac",                                        // U+20AC：CP936 单字节 0x80 解出的欧元符号
-  ...Array.from({ length: 0x100 }, (_, i) => String.fromCodePoint(0xe000 + i)),      // PUA 起始段
+  "\u9239", "\u951b", "\u9286", "\u9225", "\u951f", // U+9239/951B/9286/9225/951F: fragments of U+2500/U+FF1A/U+3002/U+2014/U+FFFD
+  "\u20ac",                                        // U+20AC: euro sign decoded from CP936 single byte 0x80
+  ...Array.from({ length: 0x100 }, (_, i) => String.fromCodePoint(0xe000 + i)),      // PUA start range
   ...Array.from({ length: 0xf8ff - 0xf800 + 1 }, (_, i) => String.fromCodePoint(0xf800 + i)),
 ]);
 for (const [lo, hi] of [[0x0400, 0x0500], [0x0530, 0x0590], [0x0590, 0x0600]]) {
-  for (let c = lo; c < hi; c++) HINT_CHARS.add(String.fromCodePoint(c)); // 西里尔 / 亚美尼亚 / 希伯来
+  for (let c = lo; c < hi; c++) HINT_CHARS.add(String.fromCodePoint(c)); // Cyrillic / Armenian / Hebrew
 }
 
-// CP936 反查表（字符 → 双字节），用于双重编码指纹；0x80 → U+20AC 与 Windows CP936 对齐
+// CP936 reverse lookup table (char -> two bytes), used for double-encoding fingerprints; 0x80 -> U+20AC aligned with Windows CP936
 const gbkEnc = new Map();
 {
   const dec = new TextDecoder("gbk");
@@ -54,7 +54,7 @@ function toGbkBytes(line) {
     else if (cp === 0x20ac) out.push(0x80);
     else {
       const pair = gbkEnc.get(ch);
-      if (pair === undefined) out.push(0x3f); // 对不上就按 '?' 兜底（与原乱码工具一致）
+      if (pair === undefined) out.push(0x3f); // Fall back to '?' on no match (same as the original mojibake tool)
       else out.push(pair >> 8, pair & 0xff);
     }
   }
@@ -62,7 +62,7 @@ function toGbkBytes(line) {
 }
 const utf8Loose = new TextDecoder("utf-8");
 const cjkCount = (s) => [...s].filter((c) => c >= "\u4e00" && c <= "\u9fff").length;
-// 双重编码指纹：解回来失败位 ≤3、结果含 ≥4 个汉字、失败位密度低（阈值见文件头校准说明）
+// Double-encoding fingerprint: <=3 failed positions when decoding back, result holds >=4 CJK chars, low failure density (thresholds in the header calibration note)
 function doubleEncoded(line) {
   const decoded = utf8Loose.decode(toGbkBytes(line));
   const bad = (decoded.match(/\uFFFD/g) || []).length;
@@ -87,10 +87,10 @@ for (const rel of listFiles(process.argv.slice(2))) {
   try {
     buf = readFileSync(join(root, rel));
   } catch {
-    continue; // 已删除/不可读
+    continue; // Deleted / unreadable
   }
   const evidence = EVIDENCE_DOCS.has(rel.replace(/\\/g, "/"));
-  if (buf.includes(0x00)) { // 文本扩展名但含 NUL：按二进制跳过（图片误命名等）
+  if (buf.includes(0x00)) { // Text extension but contains NUL: skip as binary (mislabeled images etc.)
     if (!evidence) warnings.push(`${rel}: 含 NUL 字节，跳过`);
     continue;
   }

@@ -1,5 +1,7 @@
-// 二次确认弹窗（settings/providers.js confirmDialog 的 React 版）：lp-mask/lp-box 类名照用。
-// onDone(ok) 回调替代原 Promise resolve；点遮罩空白处等同取消。
+// Confirm dialog (React version of settings/providers.js confirmDialog): lp-mask/lp-box class
+// names kept as-is.
+// The onDone(ok) callback replaces the old Promise resolve; clicking the blank mask counts as
+// cancel.
 import { useTranslation } from "react-i18next";
 
 interface ConfirmDialogProps {

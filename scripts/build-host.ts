@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-// omp-host.exe 构建编排：把 @oh-my-pi/pi-natives 的 .node 打成 tar.gz 内嵌进编译产物，
-// 运行时由 loader 解包到 ~/.omp/natives/<版本>/。npm 发布的 pi-natives 里
-// embedded-addon.js 是 null stub（embed 流程只存在于上游源码仓），直接 bun build --compile
-// 得到的 exe 不含 native addon，在干净机器上必然启动失败。
-// 流程照搬上游 ci-release-build-binaries.ts：embed → compile → reset（reset 放 finally，
-// 避免 compile 失败后残留非 stub 的 embedded-addon.js，把 dev 模式误判成 compiled）。
+// Build orchestration for omp-host.exe: pack the .node files of @oh-my-pi/pi-natives into a tar.gz embedded into the compiled artifact,
+// which the loader unpacks to ~/.omp/natives/<version>/ at runtime. In the npm-published pi-natives,
+// embedded-addon.js is a null stub (the embed flow only exists in the upstream source repo), so a plain bun build --compile
+// produces an exe without the native addon, guaranteed to fail on a clean machine.
+// Flow copied from upstream ci-release-build-binaries.ts: embed -> compile -> reset (reset in finally,
+// so a failed compile leaves no non-stub embedded-addon.js behind that would misclassify dev mode as compiled).
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -46,7 +46,7 @@ async function embedNativeAddon(): Promise<void> {
 		const sourcePath = path.join(leafPkgDir, filename);
 		const file = Bun.file(sourcePath);
 		if (!(await file.exists())) continue;
-		// 必须 Node Buffer：Buffer.indexOf 支持子串搜索，Uint8Array.indexOf 只查单字节
+		// Must be a Node Buffer: Buffer.indexOf supports substring search, Uint8Array.indexOf only matches a single byte
 		const bytes = await fs.readFile(sourcePath);
 		if (!containsVersionSentinel(bytes, sentinel)) {
 			throw new Error(

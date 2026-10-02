@@ -1,5 +1,5 @@
-// 插件总开关冒烟测试：验证 set_plugins_enabled RPC、持久化以及 settings/agent_assets 帧广播。
-// 运行命令：OMP_PROFILE=omp-desktop-test bun scripts/smoke-plugins.ts
+// Plugin master-switch smoke test: verify the set_plugins_enabled RPC, persistence, and the settings/agent_assets frame broadcasts.
+// Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-plugins.ts
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";

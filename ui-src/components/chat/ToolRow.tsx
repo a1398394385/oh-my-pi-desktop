@@ -1,5 +1,6 @@
-// 工具行：工具名 → 标签种类映射与各标签行渲染。迁移自 ui/tool-labels.js
-// （renderToolItem/toolKind + 各 render 函数）。加减工具标签只改本文件。
+// Tool rows: tool name → label kind mapping and per-label row rendering. Migrated from
+// ui/tool-labels.js (renderToolItem/toolKind + the render functions). Adding or removing a
+// tool label only touches this file.
 import type { ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
 export { cmdExpand, devExpand };
@@ -10,7 +11,7 @@ import { isDevicePath, deviceNameOf } from "./util";
 import ThinkingRow from "./ThinkingRow";
 import { t } from "../../i18n";
 
-// ---------- 终端行（bash/shell/eval）与后台工具行（hub）：上命令、下输出的展开卡 ----------
+// ---------- Terminal row (bash/shell/eval) and background tool row (hub): expand card with command on top, output below ----------
 function CmdCard({ command, item, lift }: { command?: string; item: ToolItem; lift?: boolean }) {
   return (
     <div className={"cmd-card" + (lift ? " lift" : " drop")}>
@@ -51,10 +52,11 @@ function renderCmd(item: ToolItem) {
   );
 }
 
-// ---------- 终端组（连续 bash/shell/eval 合并，结构一比一抄更改/查阅组） ----------
-// 展开状态：独立 WeakMap（定义于 groupExpand.ts）
+// ---------- Terminal group (consecutive bash/shell/eval merged, structure copied 1:1 from the change/lookup groups) ----------
+// Expand state: a dedicated WeakMap (defined in groupExpand.ts)
 
-// 组内行 UI：完整终端标签（标签文字 + 命令 + 展开箭头），仅去掉行首图标——与 ChangeRowUI 同款
+// In-group row UI: the full terminal label (label text + command + expand arrow), minus the
+// leading icon — same as ChangeRowUI
 function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {
   const command = sub.args?.command || sub.text || "";
   return (
@@ -69,7 +71,7 @@ function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onTog
   );
 }
 
-// 组内一条终端事件 = 行 + 其输出卡展开体（展开态记在 sub.cmdExpanded 上），与 ChangeEntry 同款
+// One terminal event inside a group = row + its output card expand body (expand state recorded on sub.cmdExpanded), same as ChangeEntry
 function CmdEntry({ sub }: { sub: ToolItem }) {
   const command = sub.args?.command || sub.text || "";
   const [closing, close] = useLift();
@@ -86,10 +88,11 @@ function CmdEntry({ sub }: { sub: ToolItem }) {
   );
 }
 
-// 「终端 · N 条命令」标题行：连续终端事件合并组，点击向下展开各条命令
-//（结构对照 ReadGroup：act.read 单行 + 图标 13 + lbl + chevron）
+// "Terminal · N commands" title row: merged group of consecutive terminal events, click to
+// expand each command downward
+// (structure mirrors ReadGroup: act.read single row + icon 13 + lbl + chevron)
 function CmdGroup({ subs }: { subs: ToolItem[] }) {
-  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
+  useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const [closing, close] = useLift();
   const open = cmdExpand.has(subs[0]) && !closing;
   const toggle = () => {
@@ -118,11 +121,12 @@ function CmdGroup({ subs }: { subs: ToolItem[] }) {
 }
 
 export function renderCmdGroup(item: ToolItem) {
-  // 合并组成员运行期必为 tool 条目(items.tsx 分组构造:edit/read/device/cmd 事件),判别联合层面收窄
+  // Merged-group members are guaranteed tool entries at runtime (grouping built in items.tsx:
+  // edit/read/device/cmd events); narrowed at the discriminated-union level
   const subs = (item.group ?? []) as ToolItem[];
   return <CmdGroup subs={subs} />;
 }
-// hub 摘要：op + 目标 + 参数/命令/文本（与终端行同一交互，标签为「后台」、图标 13）
+// hub summary: op + target + params/command/text (same interaction as the terminal row, label "Background", icon 13)
 function hubSummary(args: NonNullable<ToolItem["args"]>) {
   const op = args.op || "hub";
   const target = args.name || args.application || "";
@@ -136,7 +140,7 @@ function renderHubTool(item: ToolItem) {
   return <CmdRow item={item} command={hubSummary(item.args || {})} iconLabel={t("chat.labelBackground")} />;
 }
 
-// ---------- 待办行 ----------
+// ---------- Todo row ----------
 function renderTodo(item: ToolItem) {
   const td = item.todo;
   const content = td?.content || item.args?.task || item.args?.i || item.text || "";
@@ -150,8 +154,8 @@ function renderTodo(item: ToolItem) {
     </div>
   );
 }
-// ---------- 读取行已迁移 parts.tsx ReadRow（单条/查阅组内共用，支持点击展开内容） ----------
-// ---------- grep / glob 行：模式串 + 目录（截断省略） ----------
+// ---------- The read row has migrated to ReadRow in parts.tsx (shared by standalone / in-lookup-group, supports click-to-expand content) ----------
+// ---------- grep / glob row: pattern + directory (truncated with ellipsis) ----------
 function renderGrep(item: ToolItem) {
   const pat = item.args?.pattern || item.text || "";
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
@@ -179,7 +183,7 @@ function renderGlob(item: ToolItem) {
   );
 }
 
-// ---------- MCP 行 ----------
+// ---------- MCP row ----------
 function renderMcp(item: ToolItem) {
   const tool = String(item.name || "").split("__").slice(2).join("__");
   return (
@@ -192,12 +196,12 @@ function renderMcp(item: ToolItem) {
   );
 }
 
-// ---------- 可展开标签行：图标 + 中文标签 + 摘要，点击向下展开 参数+结果 卡片 ----------
+// ---------- Expandable label row: icon + label + summary, click to expand the args+result card downward ----------
 function truncateText(s: string, max = 4000): string {
   s = String(s);
   return s.length > max ? s.slice(0, max) + t("chat.truncated", { count: s.length }) : s;
 }
-// ask 的 questions 结构化展示（问题 + 选项，★ 推荐项），其余工具是 args JSON
+// Structured view of ask questions (question + options, ★ marks the recommended one); other tools show args JSON
 function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["args"]>["questions"]> }) {
   return (
     <div className="cmd-card-cmd ask-args">
@@ -221,8 +225,9 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
 }
 function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
   const detailText = item.details?.displayContent?.text;
-  // 结果文本：回包 output / 读取原文 / details JSON 兜底；三者皆无时按 running 分流——
-  // 结果还没到走 Spin 占位，本来就没有才是「（无输出）」
+  // Result text: response output / read raw text / details JSON as fallback; when none of the
+  // three exist, branch on running — result not yet arrived shows the Spin placeholder, and
+  // only "never present" yields "(no output)"
   const outText =
     item.output ||
     detailText ||
@@ -262,11 +267,11 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
     </>
   );
 }
-// 联网搜索行
+// Web search row
 function renderWebSearch(item: ToolItem) {
   return <ExpandableRow item={item} iconName="globe" label={t("chat.labelWebSearch")} summary={item.args?.query || item.text || ""} />;
 }
-// 提问行：首个问题（多个时 +N），title 为完整问题列表
+// Ask row: the first question (+N when more), title is the full question list
 function renderAsk(item: ToolItem) {
   const qs = Array.isArray(item.args?.questions) ? item.args.questions : [];
   const first = qs[0]?.question || item.text || "";
@@ -274,14 +279,22 @@ function renderAsk(item: ToolItem) {
   const title = qs.map((q) => q?.question || "").filter(Boolean).join("\n");
   return <ExpandableRow item={item} iconName="comment" label={t("chat.labelAsk")} summary={summary} summaryTitle={title || summary} />;
 }
-// 调试行：动作与目标（launch 程序 / file:line）
+// Session-history row (read_session_context): search mode shows the query, expand mode the session id + turn range
+function renderSessionContext(item: ToolItem) {
+  const args = item.args || {};
+  const summary = args.query
+    ? String(args.query)
+    : `${String(args.sessionId || "")}${args.fromTurn !== undefined || args.toTurn !== undefined ? ` · ${args.fromTurn ?? 0}–${args.toTurn ?? "end"}` : ""}`;
+  return <ExpandableRow item={item} iconName="search" label={t("chat.labelSessionContext")} summary={summary || item.text || ""} />;
+}
+// Debug row: action and target (launch program / file:line)
 function renderDebug(item: ToolItem) {
   const args = item.args || {};
   const action = args.action ? String(args.action).replaceAll("_", " ") : "request";
   const target = args.program || (args.file ? `${args.file}${args.line ? `:${args.line}` : ""}` : "");
   return <ExpandableRow item={item} iconName="monitor" label={t("chat.labelDebug")} summary={target ? `${action} ${target}` : action} />;
 }
-// GitHub 行：操作与对象（repo/path/query/title）
+// GitHub row: operation and object (repo/path/query/title)
 function renderGithub(item: ToolItem) {
   const args = item.args || {};
   const op = args.op || "";
@@ -295,7 +308,7 @@ function renderGithub(item: ToolItem) {
     />
   );
 }
-// LSP 行：动作与符号/文件
+// LSP row: action and symbol/file
 function renderLsp(item: ToolItem) {
   const args = item.args || {};
   const action = args.action || "";
@@ -309,16 +322,16 @@ function renderLsp(item: ToolItem) {
     />
   );
 }
-// 记忆五件套（retain/recall/reflect/learn/memory_edit）共用一行
+// The memory quintet (retain/recall/reflect/learn/memory_edit) shares one row
 function renderMemory(item: ToolItem) {
   const args = item.args || {};
   const memories = Array.isArray(args.memories) ? args.memories : [];
   const first = memories[0]?.content || "";
   const summary =
-    args.query || // recall/reflect：检索问题
-    args.memory || // learn：经验教训
-    first || // retain：首条记忆
-    (args.id ? `${args.op || "update"} ${args.id}` : "") || // memory_edit：操作 + 记忆 id
+    args.query || // recall/reflect: retrieval question
+    args.memory || // learn: lesson learned
+    first || // retain: first memory entry
+    (args.id ? `${args.op || "update"} ${args.id}` : "") || // memory_edit: operation + memory id
     item.text ||
     "memory";
   const title = memories.length > 1 ? memories.map((m) => m?.content || "").filter(Boolean).join("\n") : "";
@@ -333,9 +346,10 @@ function renderMemory(item: ToolItem) {
   );
 }
 
-// ---------- 工具设备行（write 到 xd://tui 等设备路由） ----------
-// 设备调用没有文件 diff，展开显示调用参数与设备回包（复用通用内容卡）
-// 设备指令里的 op/name（content 是设备调用的 JSON 参数）
+// ---------- Tool device row (write routed to devices like xd://tui) ----------
+// Device calls have no file diff; expansion shows call params and the device response
+// (reuses the generic content card)
+// op/name inside a device command (content is the device call's JSON params)
 function deviceCmd(item: ToolItem): Record<string, unknown> | null {
   const content = item.args?.content;
   if (typeof content !== "string" || !content.trimStart().startsWith("{")) return null;
@@ -343,10 +357,10 @@ function deviceCmd(item: ToolItem): Record<string, unknown> | null {
     const parsed = JSON.parse(content) as Record<string, unknown> | null;
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
-    return null; // 畸形 JSON：不补摘要，展开卡里仍有原始参数可看
+    return null; // malformed JSON: no summary patched; the raw params are still visible in the expand card
   }
 }
-// 组内行摘要：设备指令的 op + name（如 text verifystatus）
+// In-group row summary: op + name of the device command (e.g. text verifystatus)
 function deviceOpText(item: ToolItem) {
   const cmd = deviceCmd(item);
   return [cmd?.op, cmd?.name].filter((v) => typeof v === "string" && v).join(" ");
@@ -358,10 +372,10 @@ function renderDevice(item: ToolItem) {
   return <ExpandableRow item={item} iconName="plugins" label={t("chat.labelDevice")} summary={deviceSummary(item) || item.text || ""} />;
 }
 
-// ---------- 设备组（连续同设备调用合并，结构一比一抄终端组） ----------
-// 展开状态：独立 WeakMap（定义于 groupExpand.ts）
+// ---------- Device group (consecutive same-device calls merged, structure copied 1:1 from the terminal group) ----------
+// Expand state: a dedicated WeakMap (defined in groupExpand.ts)
 
-// 组内行 UI：op 摘要 + 展开箭头（图标在组标题上，与终端组内行同款）
+// In-group row UI: op summary + expand arrow (the icon sits on the group title, same as in-group terminal rows)
 function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {
   const detail = deviceOpText(sub) || sub.args?.path || sub.text || "";
   return (
@@ -376,7 +390,7 @@ function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   );
 }
 
-// 组内一次设备调用 = 行 + 其内容卡展开体（展开态记在 sub.cmdExpanded 上），与终端组同款
+// One device call inside a group = row + its content card expand body (expand state recorded on sub.cmdExpanded), same as the terminal group
 function DeviceEntry({ sub }: { sub: ToolItem }) {
   const [closing, close] = useLift();
   const open = !!sub.cmdExpanded && !closing;
@@ -392,9 +406,9 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
   );
 }
 
-// 「设备 · tui · N 次调用」标题行：连续同设备调用合并组，点击向下展开各次调用
+// "Device · tui · N calls" title row: merged group of consecutive same-device calls, click to expand each call downward
 function DeviceGroup({ subs }: { subs: ToolItem[] }) {
-  useGroupExpandVersion(); // 组展开态在模块级 WeakMap 上,靠 groupExpand 通道 bump 触发重渲染
+  useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const [closing, close] = useLift();
   const open = devExpand.has(subs[0]) && !closing;
   const toggle = () => {
@@ -424,7 +438,7 @@ function DeviceGroup({ subs }: { subs: ToolItem[] }) {
 }
 
 export function renderDeviceGroup(item: ToolItem) {
-  const subs = (item.group ?? []) as ToolItem[]; // 同 renderCmdGroup:组成员必为 tool 条目
+  const subs = (item.group ?? []) as ToolItem[]; // same as renderCmdGroup: group members are guaranteed tool entries
   return <DeviceGroup subs={subs} />;
 }
 
@@ -432,17 +446,18 @@ function renderGenericTool(item: ToolItem) {
   return <div className="act">{item.name || item.text || ""}</div>;
 }
 
-// 工具名 → 标签种类映射（edit/change 的行渲染在 EditRow.tsx，本文件只做分发）
+// Tool name → label kind mapping (edit/change row rendering lives in EditRow.tsx; this file only dispatches)
 function toolKind(item: ToolItem) {
   if (item.group) {
-    // 连续编辑/读取/终端事件合并组（name 在 items.tsx 分组时标好）
+    // Merged group of consecutive edit/read/terminal events (name assigned during grouping in items.tsx)
     if (item.name === "read") return "readgroup";
     if (item.name === "cmd") return "cmdgroup";
     if (item.name === "device") return "devicegroup";
     return "change";
   }
   const name = item.name || item.text || "";
-  // ToolRow 只收 tool 条目(thinking role 在 items.tsx 已分流给 ThinkingRow),role 检查恒 false,略去
+  // ToolRow only receives tool entries (the thinking role is already routed to ThinkingRow in
+  // items.tsx), so the role check is constantly false and is omitted
   if (name === "thinking") return "think";
   if (name === "bash" || name === "shell" || name === "eval") return "cmd";
   if (name === "hub") return "hub";
@@ -453,11 +468,13 @@ function toolKind(item: ToolItem) {
   if (name === "read") return "read";
   if (name === "web_search") return "websearch";
   if (name === "ask") return "ask";
+  if (name === "read_session_context") return "sessionctx";
   if (name === "debug") return "debug";
   if (name === "github") return "github";
   if (name === "lsp") return "lsp";
   if (name === "memory_edit" || name === "retain" || name === "recall" || name === "reflect" || name === "learn") return "memory";
-  // 同 isDeviceEvent 语义(此处入参已是 ToolItem,类型守卫会把 else 支收窄成 never,故内联判定)
+  // Same semantics as isDeviceEvent (the input here is already a ToolItem; a type guard
+  // would narrow the else branch to never, so the check is inlined)
   if (["edit", "write", "apply_patch"].includes(name) && isDevicePath(item.args?.path)) return "device";
   if (name === "edit" || name === "write" || name === "apply_patch") {
     const n = uniqueFiles(item.files || item.args?.files || (item.args?.path ? [item.args.path] : [])).length;
@@ -469,7 +486,8 @@ function toolKind(item: ToolItem) {
 export default function ToolRow({ item }: { item: ToolItem }) {
   switch (toolKind(item)) {
     case "think":
-      // thinking role 在 items.tsx 已分流到 ThinkingRow；这里兜底 tool role 但 name 为 thinking 的条目
+      // The thinking role is already routed to ThinkingRow in items.tsx; this is the fallback
+      // for tool-role entries whose name is "thinking"
       return <ThinkingRow item={item} />;
     case "cmd":
       return renderCmd(item);
@@ -493,6 +511,8 @@ export default function ToolRow({ item }: { item: ToolItem }) {
       return renderWebSearch(item);
     case "ask":
       return renderAsk(item);
+    case "sessionctx":
+      return renderSessionContext(item);
     case "debug":
       return renderDebug(item);
     case "github":

@@ -1,17 +1,17 @@
-// P0 验证探针：真实模型请求路径上，内联 extensions 的 context handler 是否触发。
+// P0 verification probe: on a real model request path, check whether the inline extension's context handler fires.
 //
-// 断言分层：
-//   硬断言（与模型行为无关）：
-//     H1  context handler 被调用（capturedView 非空）
-//     H2  发给模型的视图含 <dcp-message-id> 标签（ref 注入真实生效）
-//   软断言（模型配合度）：
-//     S1  模型回复中能报出 m00001（模型确实看到了标签）
+// Assertion layers:
+//   Hard assertions (independent of model behavior):
+//     H1  the context handler is invoked (capturedView non-empty)
+//     H2  the view sent to the model contains the <dcp-message-id> tag (ref injection actually works)
+//   Soft assertions (model cooperation):
+//     S1  the model reply reports m00001 (the model really saw the tag)
 //
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/probe-acp-live.ts
-// （认证走 omp-desktop profile，与 probe-sdk.ts 同路径）
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/probe-acp-live.ts
+// (auth via the omp-desktop profile, same route as probe-sdk.ts)
 import { setProfile } from "@oh-my-pi/pi-utils";
 
-// （动态 import 是必须的：coding-agent 模块在 import 时读取 agentDir，setProfile 必须先行）
+// (dynamic import is required: the coding-agent module reads agentDir at import time, so setProfile must run first)
 setProfile("omp-desktop");
 const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry } =
 	await import("@oh-my-pi/pi-coding-agent");
@@ -67,17 +67,17 @@ await session.prompt(
 	"Do not call any tools. Look at the conversation messages themselves: list every <dcp-message-id> tag value you can see (just the m-numbers, one per line).",
 );
 
-// H1: handler 被调用过
+// H1: the handler was invoked
 if (!capturedView) throw new Error("H1 失败: context handler 从未被调用——内联 extensions 不在该请求路径上触发");
 console.log(`PASS H1: context handler 触发（捕获视图 ${capturedView.length} 条消息）`);
 
-// H2: 出境视图含 ref 标签
+// H2: the outbound view contains the ref tag
 const flat = capturedView.map((m) => JSON.stringify(m)).join("");
 if (!flat.includes("<dcp-message-id>")) throw new Error("H2 失败: 出境视图没有 ref 标签");
 const tags = flat.match(/m\d{5}/g) ?? [];
 console.log(`PASS H2: 出境视图含 ref 标签: ${[...new Set(tags)].join(", ")}`);
 
-// S1: 模型看见了
+// S1: the model saw it
 const msgs = (session as unknown as { agent?: { state?: { messages?: AgentMessage[] } } }).agent?.state?.messages ?? [];
 const lastAssistant = [...msgs].reverse().find((m) => (m as { role?: string }).role === "assistant");
 const reply = lastAssistant ? JSON.stringify(lastAssistant) : "";

@@ -1,10 +1,13 @@
-// 右栏：tab 头在最顶端（ZCode Side Pane 风格：左总览 popover / 中等宽可拖拽 tab / 右新增）
-// + 面板体。迁移自 ui/right.js（原顶部 logo 工具条已删，tab 栏置顶）。tab 开关列表与激活项在
-// store（rightTabs 有序 / rightTab），本组件经 selector 订阅；tab 管理在 ./right/tabs.js
-// （各页面共用），此处 re-export 保持既有导出面。
-// 契约：数据经 useAppStore selector 订阅（当前会话 / rightTab / selectedFile 等），
-// 写走 setBump 与既有函数；三个详情页（gitdiff 文件/文件视图/子代理）沿用定稿骨架：
-// #rightBody 加 detail 类，rb-head 固定 + rb-scroll 滚动（style.css #rightBody.detail 规则）。
+// Right panel: tab head at the very top (ZCode Side Pane style: left overview popover / middle
+// equal-width draggable tabs / right add button) + panel body. Migrated from ui/right.js (the
+// old top logo toolbar removed, tab bar pinned to top). The open-tab list and active tab live
+// in the store (ordered rightTabs / rightTab), subscribed via selectors here; tab management is
+// in ./right/tabs.js (shared by all pages), re-exported here to preserve the existing export surface.
+// Contract: data subscribed via useAppStore selectors (current session / rightTab /
+// selectedFile etc.), writes go through setBump and existing functions; the three detail pages
+// (gitdiff file / file view / subagent) keep the finalized skeleton:
+// #rightBody gets the detail class, fixed rb-head + scrolling rb-scroll (style.css
+// #rightBody.detail rules).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../store";
@@ -27,11 +30,13 @@ import { t } from "../i18n";
 import WindowControls from "./WindowControls";
 import { IS_WINDOWS } from "../platform";
 
-// 兼容既有导出面（tab 管理实现已拆至 right/tabs.js）
+// Preserve the existing export surface (tab management implementation split into right/tabs.js)
 export { TAB_META, openRightTab, closeRightTab } from "./right/tabs";
 
-// tab 头 hover 提示：原生 title 换 Radix Tooltip（浮层卡视觉走 ui/tooltip 基件）。
-// children 必须是可挂 ref 的 DOM 元素（Radix Trigger 经 asChild 注入 ref 定位锚点）
+// Tab head hover tips: native title swapped for Radix Tooltip (popover card visuals via the
+// ui/tooltip primitive).
+// children must be a DOM element that accepts a ref (Radix Trigger injects the ref via asChild
+// as the positioning anchor)
 function Tip({ label, children }: { label?: string; children: ReactElement }) {
   if (!label) return children;
   return (
@@ -42,7 +47,7 @@ function Tip({ label, children }: { label?: string; children: ReactElement }) {
   );
 }
 
-// 「最近关闭」相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
+// "Recently closed" relative time: just now / N min ago / N h ago / N days ago
 function closedAgo(at: number): string {
   const m = Math.floor((Date.now() - at) / 60000);
   if (m < 1) return t("right.closedNow");
@@ -52,8 +57,10 @@ function closedAgo(at: number): string {
   return t("right.closedDay", { n: Math.floor(h / 24) });
 }
 
-// tab 总览 popover：搜索框 + 打开中（点击切换 / 逐项关闭）+ 最近关闭（点击重开）。
-// 复用 .menu 弹层视觉；坐标走 sp-head 相对定位（absolute 随面板 zoom 缩放不错位）。
+// Tab overview popover: search box + open tabs (click to switch / close per item) + recently
+// closed (click to reopen).
+// Reuses the .menu popover visuals; coordinates use sp-head-relative positioning (absolute
+// scales with the panel zoom without misplacement).
 function TabOverview({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const rightTabs = useAppStore((st) => st.rightTabs);
@@ -116,7 +123,8 @@ function TabOverview({ onClose }: { onClose: () => void }) {
   );
 }
 
-// 「新增」菜单：列出全部可开 tab（已开的打勾，git 限定项非 git 仓库置灰）
+// "Add" menu: lists every openable tab (opened ones checkmarked, git-only entries grayed when
+// not a git repo)
 function AddTabMenu({
   isGit,
   menuLeft,
@@ -160,7 +168,7 @@ function AddTabMenu({
   );
 }
 
-// 单个 tab：等宽 flex、原生 drag 重排、hover 才出现的关闭钮、中键关闭
+// Single tab: equal-width flex, native drag reorder, hover-only close button, middle-click close
 function TabButton({ name, on }: { name: string; on: boolean }) {
   const { t } = useTranslation();
   const [over, setOver] = useState(false);
@@ -209,9 +217,10 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
 
 export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const { t } = useTranslation();
-  // 当前会话 + 右栏散字段全部字段订阅（openRightTab 等不 bump _v，靠字段订阅驱动重渲染）
+  // Current session + all scattered right-panel fields subscribed per field (openRightTab etc.
+  // don't bump _v; field subscriptions drive re-render)
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
-  const rightTabs = useAppStore((st) => st.rightTabs); // tab 列表入 store：字段订阅驱动重渲染
+  const rightTabs = useAppStore((st) => st.rightTabs); // tab list lives in the store: field subscription drives re-render
   const rightTab = useAppStore((st) => st.rightTab);
   const selectedFile = useAppStore((st) => st.selectedFile);
   const fileView = useAppStore((st) => st.fileView);
@@ -234,7 +243,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
       const btnLeft = (btnRect.left - headRect.left) / z;
       const btnRight = (headRect.right - btnRect.right) / z;
       const btnWidth = btnRect.width / z;
-      const menuWidth = 248; // .sp-head .menu.sp-pop 定宽 248px
+      const menuWidth = 248; // .sp-head .menu.sp-pop is fixed-width 248px
       const pad = 6;
       const minLeft = pad;
       const maxLeft = Math.max(pad, headWidth - menuWidth - pad);
@@ -262,8 +271,8 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     };
   }, [addOpen, rightTabs]);
 
-  // 弹层关闭统一走 omp:close-menus（window click/blur → closeAllMenus 平移），
-  // 触发钮自身 stopPropagation 故不受全局关闭影响
+  // Popover closes uniformly go through omp:close-menus (port of window click/blur →
+  // closeAllMenus); trigger buttons themselves stopPropagation so the global close doesn't hit them
   useEffect(() => {
     const close = () => { setOvOpen(false); setAddOpen(false); };
     document.addEventListener("omp:close-menus", close);
@@ -274,7 +283,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
       document.removeEventListener("keydown", esc);
     };
   }, []);
-  // 非 git 会话不保留 Git Diff tab（打开的列表与激活项都回落）
+  // Non-git sessions keep no Git Diff tab (both the open list and the active tab fall back)
   let tabs = rightTabs;
   if (!s?.isGit && tabs.includes("gitdiff")) {
     const i = tabs.indexOf("gitdiff");
@@ -286,14 +295,15 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     });
   }
   const isGitTab = rightTab === "gitdiff";
-  // 详情模式（原 renderRightBody 各详情分支对 #rightBody 加 .detail；判定顺序对齐原版：
-  // gitdiff 先过 !s/!isGit 兜底，故非 git 时 selectedFile 不进详情）
+  // Detail mode (the old renderRightBody detail branches added .detail to #rightBody; check
+  // order aligned with the original: gitdiff passes the !s/!isGit fallbacks first, so
+  // selectedFile doesn't enter detail on non-git)
   const detail =
     (rightTab === "gitdiff" && !!s?.isGit && !!selectedFile) ||
     (rightTab === "file" && !!fileView) ||
     (rightTab === "subagent" && !!selectedSubagent && !!s?.subagents?.has(selectedSubagent));
   let body;
-  if (rightTab === null) body = <StartPage />; // tab 全部关闭：居中起始页
+  if (rightTab === null) body = <StartPage />; // all tabs closed: centered start page
   else if (rightTab === "gitdiff") body = <GitDiffPage />;
   else if (rightTab === "bgcmd") body = <BgCmdPage />;
   else if (rightTab === "file") body = <FilePage />;
@@ -303,7 +313,8 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "browser") body = <BrowserPage />;
   else body = <SubagentPage />;
   return (
-    // Provider 局部包在右栏（不动 App.tsx，由协调者统一处理全局层）；400ms 延迟贴近原生 title 观感
+    // Provider scoped locally to the right panel (App.tsx untouched; the coordinator handles
+    // the global layer); 400ms delay approximates the native title feel
     <TooltipProvider delayDuration={400}>
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
@@ -352,7 +363,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
                   e.stopPropagation();
                   const cur = activeOpen();
                   if (!cur || !cur.isGit) return;
-                  // 清 cwd 强制重拉（换引用写入）
+                  // Clear cwd to force a refetch (fresh-reference write)
                   setBump({ gitDiffCache: { ...useAppStore.getState().gitDiffCache, cwd: null } });
                   refreshGitDiff();
                 }}

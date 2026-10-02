@@ -1,6 +1,6 @@
-// 审批流冒烟：切 always-ask → 诱导 write 工具 → 断言 approval_request 到达 →
-// 回 Approve → 断言工具执行 + turn_end。测完清理产物。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-approval.ts
+// Approval flow smoke test: switch to always-ask -> induce a write tool -> assert approval_request arrives ->
+// reply Approve -> assert tool execution + turn_end. Cleans up artifacts afterwards.
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-approval.ts
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import os from "node:os";
@@ -74,7 +74,7 @@ ws.onmessage = (ev) => {
       state.approvalSeen = true;
       state.approvalTitle = msg.title;
       console.log(`审批请求: ${msg.title.split("\n")[0]} options=${JSON.stringify(msg.options)}`);
-      // 拒绝一次（选非首个选项/undefined）再等第二次？不——直接批准，走通正向链路
+      // Deny once (pick a non-first option/undefined) then wait for a second round? No -- approve directly and exercise the happy path
       ws.send(JSON.stringify({ type: "approval_response", requestId: msg.requestId, answer: msg.options[0] }));
       state.answered = true;
       break;
@@ -103,8 +103,8 @@ ws.onclose = async () => {
   assert(state.approvalSeen, "未收到 approval_request（审批 gate 可能没走 ExtensionUIContext.select）");
   assert(state.answered && state.resolvedAck, "审批应答/回执链路未闭合");
   assert(state.turnEnded, "未完成 turn_end");
-  // tool_execution_start 在审批之前发出（gate 在 execute 内部），事件顺序不可作断言；
-  // 用测试文件是否落盘作为「批准后 write 真执行」的硬证据
+  // tool_execution_start is emitted before approval (the gate sits inside execute), so event order cannot be asserted;
+  // use the test file landing on disk as hard evidence that write really executed after approval
   const testFile = os.homedir() + "/omp-approval-test.txt";
   const exists = await Bun.file(testFile).exists();
   assert(exists, "批准后 write 未落盘（批准未生效）");

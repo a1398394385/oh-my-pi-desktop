@@ -1,4 +1,4 @@
-// 使用统计：扫描全部会话文件聚合 token/时长/模型分布与连续活跃天数。
+// Usage stats: scan all session files to aggregate tokens/duration/model distribution and consecutive active days.
 import { readFile } from "node:fs/promises";
 import { SessionManager } from "./bootstrap.ts";
 

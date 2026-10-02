@@ -1,6 +1,8 @@
-// 悬停提示基件（ZCodium tooltip 平移）：浮层卡视觉（--ctl-bg 卡面 + --line 边 + r-md），
-// 入场走全局 popIn 纯淡入（--pop-from:0px）；Provider 默认无延迟，右栏 tab 头等贴近原生
-// title 观感的场景在使用处传 delayDuration。
+// Tooltip base component (ported from ZCodium tooltip): floating-card visuals
+// (--ctl-bg surface + --line border + r-md), entering via the global popIn pure
+// fade (--pop-from:0px); the Provider defaults to no delay — usage sites that
+// want a near-native title feel (e.g. right-panel tab headers) pass
+// delayDuration.
 import * as React from "react";
 import { Tooltip as TooltipPrimitive } from "radix-ui";
 

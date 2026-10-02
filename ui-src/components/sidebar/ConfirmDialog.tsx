@@ -1,8 +1,9 @@
-// 全局二次确认弹窗（ui/sidebar.js showConfirmDialog 平移）：Radix Dialog 行为层
-// （Esc / 点遮罩关闭 / focus trap / Enter 激活聚焦钮）+ .confirm-box 同款视觉（基件
-// DialogContent 的浮层卡语言）；confirm-title/desc/actions 与 confirm-btn 按钮类、
-// .danger 变体原样保留。按钮关闭统一走 DialogClose → onOpenChange(false) → onClose，
-// 确定钮只挂业务 onConfirm；autoFocus 使打开即聚焦，Enter 即确认。
+// Global confirm dialog (ported from ui/sidebar.js showConfirmDialog): Radix Dialog behavior
+// layer (Esc / mask-click close / focus trap / Enter activates the focused button) + the same
+// .confirm-box visuals (the popover card language of the base DialogContent); confirm-title/
+// desc/actions with the confirm-btn button class and the .danger variant kept verbatim. Button
+// closes uniformly go DialogClose → onOpenChange(false) → onClose; the confirm button carries
+// only the business onConfirm; autoFocus focuses on open so Enter confirms.
 import { useTranslation } from "react-i18next";
 import {
   Dialog,

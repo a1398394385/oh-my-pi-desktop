@@ -1,5 +1,7 @@
-// 登录与凭证域 RPC：浏览器授权登录（onPrompt 经 UI 弹窗中转）、登出、API key 写入、
-// 登录取消与 prompt 应答、打开 models.yml。自 main.ts message 分发平移（第三刀）。
+// Login and credential domain RPC: browser-authorized login (onPrompt
+// relayed through a UI dialog), logout, API key writing, login cancel and
+// prompt replies, opening models.yml. Moved over from the main.ts message
+// dispatch (third slice).
 import path from "node:path";
 import fs from "node:fs";
 import { authPolicyFor } from "../bootstrap.ts";
@@ -11,7 +13,7 @@ import type { RpcHandler } from "./types";
 
 export const loginHandlers: Record<string, RpcHandler> = {
   async provider_login(ws, msg) {
-    // OMP 登录流程(AuthStorage.login):浏览器授权 + 需要粘贴码时经 UI 弹窗中转
+    // OMP login flow (AuthStorage.login): browser authorization + paste-code prompts relayed through a UI dialog
     const provider = String(msg.provider ?? "");
     if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     if (H.loginInFlight) throw new Error(hostI18n.t("errors.login.inFlight"));
@@ -60,7 +62,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
             reply({ type: "login_prompt", provider, id, message: String(prompt.message ?? ""), secret: !!prompt.secret });
           }),
       });
-      // 登录成功:重新拉取模型目录(新凭证使供应商可用),并推送最新列表
+      // Login succeeded: re-pull the model catalog (new credentials unlock providers) and push the latest list
       await H.modelRegistry.refresh();
       H.availableModels = H.modelRegistry.getAvailable();
       rebuildScopedModels();
@@ -82,9 +84,13 @@ export const loginHandlers: Record<string, RpcHandler> = {
     }
   },
   async provider_logout(ws, msg) {
-    // 登出供应商：删除存储凭证（本地毫秒级）后立即本地过滤推送目录，UI 瞬时移除；
-    // 完整的 modelRegistry.refresh()（逐供应商网络发现，秒级）随后收敛再推一版(幂等)。
-    // models.yml 手写 apiKey 的优先级高于存储凭证，该类供应商 UI 不提供登出入口
+    // Provider logout: after deleting the stored credential (local,
+    // milliseconds) immediately filter and push the catalog locally so the
+    // UI removes it instantly; the full modelRegistry.refresh() (per-provider
+    // network discovery, seconds) converges afterwards and pushes again
+    // (idempotent).
+    // Hand-written apiKeys in models.yml outrank stored credentials, so the
+    // UI offers no logout entry for those providers
     const provider = String(msg.provider ?? "");
     if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     await H.authStorage.remove(provider);
@@ -103,18 +109,20 @@ export const loginHandlers: Record<string, RpcHandler> = {
     }
   },
   provider_login_cancel(_ws, _msg) {
-    // 用户显式取消(如关闭了登录页):中断进行中的登录流程
+    // Explicit user cancel (e.g. closed the login page): abort the in-flight login flow
     if (H.loginInFlight && H.loginAbort) H.loginAbort.abort();
     else throw new Error(hostI18n.t("errors.login.noneInFlight"));
   },
   async provider_set_key(ws, msg) {
-    // 配置 API key:写入 authStorage(api_key 凭证),随后刷新模型目录
+    // Configure an API key: write to authStorage (api_key credential), then refresh the model catalog
     const provider = String(msg.provider ?? "");
     const key = String(msg.key ?? "").trim();
     if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     if (!key) throw new Error(hostI18n.t("errors.login.keyEmpty"));
-    // 登录型供应商(oauth/device/custom)凭证经浏览器授权归属到目录供应商(store-as),
-    // 目录里没有同名 provider,存 API key 只会产生「已配置」却永不可用的孤立凭证
+    // Login-type providers (oauth/device/custom) have their credentials
+    // attached to catalog providers via browser authorization (store-as);
+    // there is no same-named provider in the catalog, so storing an API key
+    // would only create an orphaned "configured but never usable" credential
     const loginKind = authPolicyFor(provider)?.login?.kind;
     if (loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom") {
       throw new Error(hostI18n.t("errors.login.browserOnly", { provider }));
@@ -135,7 +143,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     }
   },
   open_models_config(ws, msg) {
-    // 「手动添加供应商」:打开配置层 models.yml(不存在则创建空文件)
+    // "Manually add provider": open the config-layer models.yml (create an empty file if absent)
     const modelsPath = path.join(H.agentDir, "models.yml");
     try {
       if (!fs.existsSync(modelsPath)) fs.writeFileSync(modelsPath, "# omp provider config; edit per the docs\n");

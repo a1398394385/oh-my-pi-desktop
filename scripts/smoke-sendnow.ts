@@ -1,10 +1,10 @@
-// 复现：点击一条排队消息的「立即发送」后，剩余排队消息是否被全部自动发出。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-sendnow.ts [宿主ws地址]
-// 观察点：
-//   1. 流式中连排 3 条 followUp（MSG-A/B/C），send_now 只点第 0 条（MSG-A）
-//   2. 记录每次 steer_consumed 的 texts 与 turn_end 次数，看 MSG-B/MSG-C 是否也被消费
-// 帧语义（BUG-007 修复后）：turn_start/turn_end 每模型轮各一帧（含排队消费的续轮），
-// run 彻底结束另有 runEnd=true 的收尾帧（宿主 agent_end 映射，不成轮，断言按 runEnd 过滤）
+// Reproduce: after clicking "Send now" on one queued message, do the remaining queued messages all get sent automatically?
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-sendnow.ts [host ws url]
+// Observation points:
+//   1. Enqueue 3 followUps while streaming (MSG-A/B/C); send_now clicks only item 0 (MSG-A)
+//   2. Record each steer_consumed's texts and the turn_end count; check whether MSG-B/MSG-C also get consumed
+// Frame semantics (after the BUG-007 fix): one turn_start/turn_end per model round (including continuation rounds from queued consumption),
+// plus a final runEnd=true frame when the run is fully over (host mapping of agent_end; not a round; assertions filter by runEnd)
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 
@@ -51,13 +51,13 @@ const assert = (cond: boolean, msg: string) => {
 const state = {
   sessionId: null as string | null,
   streamingSeen: false,
-  queuedSeen: false, // 3 条都已入队
-  nowSent: false, // send_now 已发
-  deltasAtFirstConsume: null as number | null, // 首次 steer_consumed 时已完成的轮数（注入轮起点下标）
-  sentTexts: [] as string[], // steer_consumed 收到的全部注入文本（按顺序）
-  consumedFrames: [] as number[], // 每次 steer_consumed 帧的注入条数（逐帧单条断言用）
+  queuedSeen: false, // All 3 enqueued
+  nowSent: false, // send_now sent
+  deltasAtFirstConsume: null as number | null, // Number of completed rounds at the first steer_consumed (start index of injected rounds)
+  sentTexts: [] as string[], // All injected texts received via steer_consumed (in order)
+  consumedFrames: [] as number[], // Injection count per steer_consumed frame (for the one-per-frame assertion)
   turnEnds: 0,
-  deltas: [] as string[], // 每个 turn 的 delta 文本
+  deltas: [] as string[], // Delta text per turn
   curDelta: "",
   done: false,
 };
@@ -104,16 +104,16 @@ ws.onmessage = async (ev) => {
       } else if (msg.kind === "turn_end") {
         state.turnEnds++;
         if (msg.runEnd) {
-          // run 收尾帧（agent_end 映射）：整 run 用量/entryId 回填的载体，过程为空，不成轮
+          // Run-final frame (agent_end mapping): carries the whole run's usage/entryId backfill; no deltas; not a round
           console.log(`[turn_end #${state.turnEnds}] runEnd 收尾帧`);
         } else {
           state.deltas.push(state.curDelta);
           console.log(`[turn_end #${state.turnEnds}] 回复片段: ${state.curDelta.trim().slice(0, 80)}`);
         }
         state.curDelta = "";
-        // A 的注入（send_now）之后的 turn 全部到齐，或观察窗口结束
+        // All turns after A's injection (send_now) have arrived, or the observation window ends
         if (state.turnEnds >= 2) {
-          // 首个 turn 是原任务；其后每个注入消息各一个 turn。等 3s 静默再收尾
+          // The first turn is the original task; each injected message gets one turn afterwards. Wait 3s of silence before wrapping up
           if (!state.done) {
             state.done = true;
             setTimeout(finish, 4000);
@@ -153,15 +153,15 @@ ws.onmessage = async (ev) => {
 function finish() {
   console.log("\n===== 观察结果 =====");
   state.deltas.forEach((d, i) => console.log(`  turn #${i + 1} 回复: ${d.trim().slice(0, 40)}`));
-  // 断言 1：send_now 点的是 MSG-A，首次消费后完成的第一个 turn 只含 AAA，不得拼进 B/C
-  //（send_now 会 abort 原轮：其空尾轮也完成于点击之后，故不能取 deltas[0]）
+  // Assertion 1: send_now clicked MSG-A; the first turn completed after the first consumption contains only AAA and must not splice in B/C
+  // (send_now aborts the original round: its empty trailing round also completes after the click, so deltas[0] cannot be used)
   const aTurn = state.deltas[state.deltasAtFirstConsume ?? 0] ?? "";
   assert(aTurn.includes("AAA-DONE") && !aTurn.includes("BBB-DONE") && !aTurn.includes("CCC-DONE"),
     `立即发送的那条独立成轮（首个 turn 回复=${aTurn.trim().slice(0, 60)}），不得把其余排队消息拼进同一轮`);
-  // 断言 2：每次注入恰好 1 条（steer_consumed 逐帧单条）
+  // Assertion 2: each injection is exactly 1 message (steer_consumed one per frame)
   const multi = state.consumedFrames.filter((n) => n > 1).length;
   assert(multi === 0, `存在一次注入多条的帧（拼车），共 ${multi} 帧`);
-  // 断言 3：B、C 逐轮独立消费，各占一个 turn
+  // Assertion 3: B and C are consumed independently round by round, each taking one turn
   assert(state.deltas.some((d) => d.includes("BBB-DONE") && !d.includes("CCC-DONE")), "MSG-B 独立一轮");
   assert(state.deltas.some((d) => d.includes("CCC-DONE") && !d.includes("BBB-DONE")), "MSG-C 独立一轮");
   console.log("send_now 冒烟通过 ✓（点一条只发一条，其余逐轮 FIFO）");

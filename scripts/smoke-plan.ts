@@ -1,13 +1,13 @@
-// 计划模式（plan）冒烟：进出模式帧、mode_change 落盘、重开会话恢复、恢复不重复记账。
-// 用法：bun scripts/smoke-plan.ts [宿主ws地址]
-// 不传地址时本脚本自行拉起宿主子进程，退出时删除测试产生的会话文件。零模型调用。
-// 断言覆盖：
-//   1. 新建会话即推 plan_mode=false 帧（UI 初始态）
-//   2. set_plan_mode true → 帧 enabled=true + planFilePath=local://PLAN.md
-//   3. 会话落盘后含 mode_change(plan, {planFilePath})
-//   4. set_plan_mode false → 帧 enabled=false + mode_change(none)
-//   5. 再次开启后 load_session → 从落盘 mode_change 恢复 enabled=true（reconcile）
-//   6. 恢复不追加 mode_change（persist=false，条数不变）
+// Plan mode smoke test: enter/exit frames, mode_change persisted, restored on session reopen, and no double-entry on restore.
+// Usage: bun scripts/smoke-plan.ts [host ws url]
+// Without an address the script spawns the host child process itself and deletes the session files it created on exit. Zero model calls.
+// Assertions cover:
+//   1. Creating a session immediately pushes a plan_mode=false frame (the UI's initial state)
+//   2. set_plan_mode true -> frame enabled=true + planFilePath=local://PLAN.md
+//   3. The persisted session contains mode_change(plan, {planFilePath})
+//   4. set_plan_mode false -> frame enabled=false + mode_change(none)
+//   5. After enabling again, load_session restores enabled=true from the persisted mode_change (reconcile)
+//   6. Restoring does not append mode_change (persist=false; the count is unchanged)
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -103,16 +103,16 @@ const sessionId = created.sessionId!;
 const sessionPath = created.path!;
 createdFiles.push(sessionPath);
 
-// 1) 新建会话即推 plan_mode=false
+// 1) Creating a session immediately pushes plan_mode=false
 const initial = await waitFor((f) => f.type === "plan_mode" && f.sessionId === sessionId, "新建会话的 plan_mode 帧");
 if (initial.enabled !== false) fail("新建会话的 plan_mode 帧应为 enabled=false");
 console.log("✓ 新建会话推送 plan_mode=false");
 
-// 2) 先让懒建会话落盘（bash_exec 内部 ensureOnDisk）：否则 mode_change 只在内存缓冲
+// 2) Force the lazily-created session to disk first (ensureOnDisk inside bash_exec); otherwise mode_change only lives in the in-memory buffer
 send({ type: "bash_exec", sessionId, command: "true", excludeFromContext: true });
 await waitFor((f) => f.type === "bash_done" && f.sessionId === sessionId, "bash_done");
 
-// 3) 进计划模式
+// 3) Enter plan mode
 send({ type: "set_plan_mode", sessionId, enabled: true });
 const on = await waitFor((f) => f.type === "plan_mode" && f.enabled === true, "plan_mode=true 帧");
 if (on.planFilePath !== "local://PLAN.md") fail(`默认计划文件应为 local://PLAN.md，实际 ${on.planFilePath}`);
@@ -122,7 +122,7 @@ if (afterEnter.length !== 1 || afterEnter[0].mode !== "plan") fail(`mode_change 
 if (afterEnter[0].data?.planFilePath !== "local://PLAN.md") fail("mode_change 未带 planFilePath");
 console.log("✓ 进入计划模式：帧 enabled=true + mode_change(plan) 落盘");
 
-// 4) 退出计划模式
+// 4) Exit plan mode
 send({ type: "set_plan_mode", sessionId, enabled: false });
 await waitFor((f) => f.type === "plan_mode" && f.enabled === false, "plan_mode=false 帧");
 await sleep(300);
@@ -130,8 +130,8 @@ const afterExit = modeChanges(sessionPath);
 if (afterExit.at(-1)?.mode !== "none") fail(`退出未落 mode_change=none：${JSON.stringify(afterExit.at(-1))}`);
 console.log("✓ 退出计划模式：帧 enabled=false + mode_change(none)");
 
-// 5) 重启宿主清池后重开会话 → 从落盘 mode_change 恢复（池内命中走复用快照，测不到 reconcile）
-let activeSessionId = sessionId; // 步骤 5 重启宿主后会话 id 会变，步骤 7 的 /plan 要用当前 id
+// 5) Restart the host to clear the pool, then reopen the session -> restore from the persisted mode_change (an in-pool hit would reuse the snapshot and never exercise reconcile)
+let activeSessionId = sessionId; // After the host restart in step 5 the session id changes; step 7's /plan must use the current id
 send({ type: "set_plan_mode", sessionId, enabled: true });
 await waitFor((f) => f.type === "plan_mode" && f.enabled === true, "二次进入帧");
 await sleep(300);
@@ -143,7 +143,7 @@ if (!child?.pid) {
   child.once("exit", markExited);
   await exited;
   wsUrl = await launchHost();
-  seen.length = 0; // 旧连接的帧作废，防 ready 误命中
+  seen.length = 0; // Frames on the old connection are void; prevents a spurious ready hit
   attachWs(wsUrl);
   await waitFor((f) => f.type === "ready", "重启后 ready");
   send({ type: "load_session", path: sessionPath });
@@ -159,15 +159,15 @@ if (!child?.pid) {
   if (restored.planFilePath !== "local://PLAN.md") fail(`恢复的计划文件路径不符：${restored.planFilePath}`);
   console.log(`✓ 重开会话恢复计划模式（sessionId=${reloaded.sessionId!.slice(0, 8)}）`);
 
-  // 6) 恢复不重复记账
+  // 6) Restoring does not double-entry
   const planEntries = modeChanges(sessionPath).filter((e) => e.mode === "plan");
   if (planEntries.length !== 2) fail(`恢复不应追加 mode_change：plan 条目数=${planEntries.length}`);
   console.log("✓ 恢复不重复记账（mode_change 仍为 2 条 plan）");
 }
 
-// 7) /plan 斜杠命令：与权限胶囊右侧「计划」按钮同一路由（无参 = 反转当前状态）。
-// 走到这里状态恒为 enabled=true（步骤 3 进入 / 步骤 5 恢复），故先退出、再进入。零模型调用。
-seen.length = 0; // 以下断言只认本条路径新产的帧
+// 7) The /plan slash command: same route as the "Plan" button right of the permission capsule (no args = invert the current state).
+// At this point the state is always enabled=true (entered in step 3 / restored in step 5), so exit first, then enter. Zero model calls.
+seen.length = 0; // The assertions below only count frames newly produced on this path
 send({ type: "prompt", sessionId: activeSessionId, text: "/plan", images: [] });
 await waitFor(
   (f) => f.type === "plan_mode" && f.sessionId === activeSessionId && f.enabled === false,

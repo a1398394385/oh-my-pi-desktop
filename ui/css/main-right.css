@@ -1,10 +1,10 @@
 /* ============================================================
- * main-right.css —— 主页面·右边栏:tab 栏、文件页、Git Diff、分支树、终端/浏览器 pane、toast、子代理页。
- *  由 ui/css/main.css 按语义域切分;域内保持原相对顺序,禁止跨文件重排。
- * 级联顺序 = ui/style.css 的 @import 顺序:global → main-shell → main-sidebar → main-chat
- * → main-welcome → main-right → settings;新增样式按所属域追加到对应文件末尾。
+ * main-right.css — main page, right sidebar: tab bar, file view, Git Diff, branch tree, terminal/browser pane, toast, subagents page.
+ *  Split from ui/css/main.css by semantic domain; keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = ui/style.css's @import order: global -> main-shell -> main-sidebar -> main-chat
+ * -> main-welcome -> main-right -> settings; append new styles at the end of the matching domain file.
  * ============================================================ */
-/* 右栏后台命令行收起：0.3s（与右栏其他展开/收起一致） */
+/* right-sidebar background command line collapse: 0.3s (same as the sidebar's other expand/collapse) */
 .bgcmd-expand.lift { animation: ed-lift .3s ease-out forwards; }
 
 #thinkMenu { min-width: 100px; }
@@ -13,7 +13,7 @@
 
 .cx-total { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); }
 
-/* 头部「上下文」右侧数值列与 .cx-row 同规格:等宽列右对齐 + 等宽数字,竖线才能与下方行齐 */
+/* the header's "context" value column matches .cx-row's spec: equal-width column right-aligned + tabular numerals, so the separators line up with the rows below */
 .cx-total .cx-val { min-width: 5.5ch; color: var(--text); font-size: var(--ui-fs-base); text-align: right; font-variant-numeric: tabular-nums; }
 
 .cx-total .cx-pct { min-width: 6ch; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--ui-fs-base); }
@@ -26,7 +26,7 @@
 
 .cx-row .cx-val { margin-left: auto; text-align: right; min-width: 5.5ch; font-variant-numeric: tabular-nums; color: var(--text); }
 
-.cx-sep { flex: none; width: 0; height: 10px; margin: 1px -1px 0; border-left: 1px dashed var(--faint); } /* 头部 .cx-total 与行 .cx-row 共用 */
+.cx-sep { flex: none; width: 0; height: 10px; margin: 1px -1px 0; border-left: 1px dashed var(--faint); } /* shared by the header .cx-total and row .cx-row */
 
 .cx-row .cx-pct { flex: none; min-width: 6ch; text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -37,9 +37,9 @@
   border-top: 1px solid var(--line); margin-top: 8px;
 }
 
-/* ── 右栏卡片：折叠与过渡动画 ──────────────────────────────────────── */
+/* ── right-sidebar cards: collapse and transition animations ──────────────────────────────────────── */
 #right {
-  /* 列容器自成 stacking context：列内弹层封顶于此，设置中心/通知才能整屏盖住它们 */
+  /* the column container forms its own stacking context: popovers inside cap here, so the settings center/notifications can cover them full-screen */
   isolation: isolate;
   width: var(--right-w, 320px);
   min-width: 0;
@@ -91,7 +91,7 @@ body.resizing .resizer {
 #todoList {
   max-height: 168px;
   overflow-y: auto;
-  overscroll-behavior: contain; /* 内嵌在会话区滚动流内，阻断滚动链 */
+  overscroll-behavior: contain; /* embedded in the session scroll flow, stops the scroll chain */
 }
 
 .todo {
@@ -141,18 +141,18 @@ body.resizing .resizer {
 
 #capsule .cap-n { flex: none; color: var(--faint); font-size: var(--ui-fs-sm); }
 
-/* 侧边面板（子代理 / Git Diff 双 tab） */
+/* side panel (subagents / Git Diff dual tabs) */
 #sidepanel {
   flex: 1; margin: 0 0 8px; min-height: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
   display: flex; flex-direction: column;
-  padding: 0 0 4px; /* 通栏：tab 栏/操作栏/详情三块与边栏同宽，整块边栏是一个整体 */
+  padding: 0 0 4px; /* full-bleed: the tab bar/action bar/detail blocks span the sidebar width; the sidebar is one whole */
 }
 
-/* tab 头（ZCode Side Pane 风格）：h-12 一行 + 底部分隔线；
-   左总览钮 / 中等宽 tab / 右新增钮（.sp-head 为 popover 定位上下文） */
+/* tab header (ZCode Side Pane style): one h-12 row + bottom divider;
+   overview button on the left / equal-width tabs in the middle / new-tab button on the right (.sp-head is the popover positioning context) */
 .sp-head {
   position: relative;
   display: flex; gap: 4px; align-items: center; flex: none;
@@ -160,7 +160,7 @@ body.resizing .resizer {
   border-bottom: 1px solid var(--line-soft);
 }
 
-/* 右栏 tab 栏：等宽排布（flex 1 1 0 + min/max 宽），溢出横向滚动隐滚动条 */
+/* right-sidebar tab bar: equal-width layout (flex 1 1 0 + min/max widths), horizontal scroll on overflow with the scrollbar hidden */
 .rtabs { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 
 .rtabs::-webkit-scrollbar { display: none; }
@@ -176,7 +176,7 @@ body.resizing .resizer {
 
 .rtab:hover { background: var(--panel-2); color: var(--text); }
 
-/* 激活：底板高亮 + 文字提亮（hover 同款 panel-2 底板，激活态靠文字色区分） */
+/* active: plate highlight + brighter text (hover uses the same panel-2 plate; the active state differs by text color) */
 .rtab.on { background: var(--panel-2); color: var(--text); }
 
 .rtab.drag-over { background: var(--panel-2); }
@@ -187,7 +187,7 @@ body.resizing .resizer {
 
 .rtab.on .rtab-ic, .rtab:hover .rtab-ic { color: inherit; }
 
-/* 标题超长渐隐 mask（右侧 12px 淡出，给关闭钮留位；纯 CSS 无 JS 动画） */
+/* fade-out mask for overlong titles (12px fade on the right, leaving room for the close button; pure CSS, no JS animation) */
 .rtab-tx {
   flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left;
   line-height: 1;
@@ -235,11 +235,11 @@ body.resizing .resizer {
 
 #rightBody {
   flex: 1; overflow-y: auto; min-height: 0;
-  padding: 8px 0 4px; /* 左右 0：tab 栏/操作栏/详情三块都通栏，边栏是一个整体 */
+  padding: 8px 0 4px; /* zero left/right: the tab bar/action bar/detail blocks all span full width; the sidebar is one whole */
 }
 
-/* 详情页头部（仿 ZCode 面板结构）：返回+标题固定在顶，仅内容区滚动。
-   块本身通栏（右栏三分区之一），内部内容统一 8px 侧距 */
+/* Detail page header (modeled on the ZCode panel structure): back + title pinned at the top, only the content area scrolls.
+   the block itself spans full width (one of the right sidebar's three zones); inner content uses a uniform 8px side inset */
 #rightBody.detail { overflow: hidden; display: flex; flex-direction: column; }
 
 .rb-head { flex: none; padding: 0 8px; }
@@ -250,14 +250,14 @@ body.resizing .resizer {
 
 .placeholder { color: var(--faint); font-size: var(--ui-fs-base); padding: 12px 10px; }
 
-/* 工具结果未到时的统一占位（components/chat/parts.jsx 的 Spin）：loader 图标旋转 + 省略号。
-   同时服务两类位置——无 output 位的工具行行内（grep/glob/MCP/待办/终端组内行），
-   与展开体的虚线占位处（.cmd-card-out / .ed-brief 里的 .placeholder） */
+/* Unified placeholder while a tool result is pending (Spin in components/chat/parts.jsx): loader icon spinning + ellipsis.
+   Serves two kinds of spots — inline in tool rows with no output slot (grep/glob/MCP/todo/terminal group rows),
+   and the dashed placeholder inside expansion bodies (.placeholder in .cmd-card-out / .ed-brief) */
 .pend-ico { display: inline-flex; animation: chat-load-spin 1s linear infinite; }
 
 .pend-ico svg { display: block; }
 
-/* 子代理卡片与流 */
+/* subagent cards and flow */
 .sub-card {
   display: block; text-align: left;
   border: 1px solid var(--line-soft);
@@ -275,8 +275,8 @@ body.resizing .resizer {
 
 .sub-card.failed .sub-dot { color: var(--err); }
 
-/* ---------- 右栏空态启动器（tab 全部关闭，对齐 ZCode side-pane 空态） ---------- */
-/* 居中列：装饰图标 + 标题/副文两行 + 入口钮列表；容器查询宽容器切两列网格 */
+/* ---------- right-sidebar empty-state launcher (all tabs closed, aligned with the ZCode side-pane empty state) ---------- */
+/* centered column: decorative icon + title/subtitle lines + entry button list; container queries switch wide containers to a two-column grid */
 .rt-start {
   min-height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -309,8 +309,8 @@ body.resizing .resizer {
   .rt-list { display: grid; grid-template-columns: 1fr 1fr; max-width: 480px; }
 }
 
-/* ---------- 文件页（读取行点击 / 文件树点击进入） ---------- */
-/* 文件树（空态）行 */
+/* ---------- File view (entered via read-row / file-tree click) ---------- */
+/* file tree (empty state) row */
 
 .ft-caret { flex: none; display: inline-flex; align-items: center; width: 12px; color: var(--faint); }
 
@@ -320,17 +320,17 @@ body.resizing .resizer {
 
 .ft-file-ic { width: auto; }
 
-/* 路径面包屑：项目内「项目名 > 相对段」/ 项目外全路径，段间 caret 图标，单行截断 */
+/* path breadcrumb: in-project "project name > relative segments" / full path outside projects, caret icons between segments, single-line truncation */
 
-/* 文件正文：无卡片底/边框（VSCode 编辑器区即面板本身，不再有内嵌盒），
-   行号 gutter 自带左留白，右侧留 8px 呼吸位 */
+/* file body: no card base/border (the VSCode editor area is the panel itself, no nested box),
+   the line-number gutter carries its own left padding, 8px of breathing room on the right */
 
 .fv-ln {
   flex: none; min-width: 3.5em; padding: 0 10px 0 8px; text-align: right;
   color: var(--faint); user-select: none;
 }
 
-/* 请求读取的行号范围内的行号高亮（只高亮行号，不动内容） */
+/* highlight line numbers within the requested read range (numbers only, content untouched) */
 .fv-ln.hl { color: var(--accent); font-weight: 600; }
 
 .bgcmd-dot {
@@ -377,7 +377,7 @@ body.resizing .resizer {
   background: rgba(74, 222, 128, 0.08);
 }
 
-/* Git Diff 树 / 平铺 / 文件详情 */
+/* Git Diff tree / flat list / file detail */
 
 .gd-caret { font-size: var(--ui-fs-xs); color: var(--faint); width: 10px; flex-shrink: 0; display: inline-flex; align-items: center; }
 
@@ -397,7 +397,7 @@ body.resizing .resizer {
 
 .gd-badge.mod { color: var(--orange); background: rgba(229,161,78,.14); } /* style-token-ignore */
 
-/* 右栏 git diff 容器：无卡片底/边框，与边栏融为一体（VSCode 源控制 diff 直贴编辑器面） */
+/* right-sidebar git diff container: no card base/border, blends into the sidebar (VSCode's SCM diff sits directly on the editor face) */
 .fd-holder {
   border-radius: var(--r-md);
   overflow: hidden;
@@ -415,14 +415,14 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   overscroll-behavior: contain;
 }
 
-/* 不换行时由内层滚动面统一算 max-content 宽度：每行各自撑宽的话，
-   横滚到右侧时短行背景提前结束，产生底色断层（ZCode 原注释同款） */
+/* without wrapping, the inner scroll surface computes one uniform max-content width: if each row stretched itself,
+   scrolling right would end short rows' backgrounds early, leaving gaps in the base color (same note as ZCode) */
 .ldiff-scroll { min-width: 100%; width: max-content; }
 
 .ldiff-row { display: flex; min-width: 100%; width: 100%; }
 
-/* 行号 gutter：sticky 左钉随横滚固定，右对齐等宽数字；增删行 gutter 底与行
-   一致（18% 混色）+ 同色文字，上下文行回底色弱行号 */
+/* line-number gutter: sticky-pinned left and fixed during horizontal scroll, right-aligned tabular numerals; added/removed rows match the row
+   with their gutter base (18% tint) + same-color text; context rows fall back to the base color with dimmed numbers */
 .ldiff-gutter {
   position: sticky; left: 0; z-index: 1;
   width: 48px; flex: none; padding: 0 8px;
@@ -433,16 +433,16 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
 
 .ldiff-code { display: block; flex: 1; min-width: 0; padding: 0 12px; white-space: pre; }
 
-/* "\ No newline at end of file" 之类的补丁注记 */
+/* patch annotations like "\\ No newline at end of file" */
 
-/* 超出渲染行数上限（host 500k 截断场景）尾部的省略提示 */
+/* ellipsis hint at the tail when the render line cap is exceeded (host's 500k truncation scenario) */
 
-/* 设置开关：行号总开关沿用 data-line-numbers；代码换行沿用 data-code-wrap */
+/* settings toggles: the line-number master toggle reuses data-line-numbers; code wrap reuses data-code-wrap */
 html[data-line-numbers="off"] .ldiff-gutter { display: none; }
 
 html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break-all; }
 
-/* 右键菜单（复制 sessionId；fixed 定位需 zoom 补偿） */
+/* context menu (copy sessionId; fixed positioning needs zoom compensation) */
 .ctx-menu {
   position: fixed; z-index: 500;
   display: flex; flex-direction: column;
@@ -451,7 +451,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-radius: var(--r-md);
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
   padding: 5px; min-width: 170px;
-  animation: popIn .18s ease-out; --pop-from: -6px; /* 下弹：自上方滑入 */
+  animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
 }
 
 [data-theme="light"] .ctx-menu { box-shadow: 0 12px 32px rgba(0,0,0,.18); } /* style-token-ignore */
@@ -478,10 +478,10 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 [data-theme="light"] #toast { box-shadow: 0 8px 24px rgba(0,0,0,.18); } /* style-token-ignore */
 
-/* 子智能体页：列表 + 编辑器双栏 */
+/* subagents page: list + editor two-column layout */
 .agents-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 
-/* 作用域菜单：宽度 340px，最大高度不超过屏幕高度 2/3，顶部 Profile 固定、工作区表头固定、项目列表滚动 */
+/* scope menu: 340px wide, max height 2/3 of the screen; the Profile header and workspace column headers stay pinned while the project list scrolls */
 #agentScopeMenu, #skillScopeMenu, #mcpScopeMenu, .scope-menu {
   width: 340px;
   padding: 6px;
@@ -530,10 +530,10 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .agent-editor { display: flex; flex-direction: column; min-height: 420px; }
 
-/* 高级页无 UI 键名：等宽展示 */
+/* advanced page has no UI key names: shown in monospace */
 .adv-key { font-family: var(--mono); }
 
-/* 作用域下拉按钮（ScopeSel 全站唯一实现）：按钮仅作尺寸载体，底板/字色/hover 由外层 .sel 提供 */
+/* scope dropdown button (ScopeSel, the only implementation site-wide): the button is just a size carrier; plate/text color/hover come from the outer .sel */
 .scope-sel-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
 
 .num {
@@ -566,14 +566,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .st span { font-size: var(--ui-fs-sm); color: var(--faint); }
 
-/* --- B3 Git Diff 写操作 + 文件页图片预览（right.js） --- */
-/* 工具条：提交信息输入（.inp 语言，小号 + flex 撑满）+ 提交/推送（.save-btn 小号） */
+/* --- B3 Git Diff write actions + file-view image preview (right.js) --- */
+/* toolbar: commit message input (.inp language, small + flex fill) + commit/push (.save-btn small) */
 .gd-commit-inp {
   flex: 1; min-width: 0; width: auto;
   padding: 4px 9px; font-size: var(--ui-fs-xs);
 }
 
-/* 行内小图标按钮：透明底 + hover --panel-3；danger 变体 hover 变红提示破坏性 */
+/* inline small icon buttons: transparent base + hover --panel-3; the danger variant turns red on hover to signal destructiveness */
 .gd-act {
   border: 0; background: none; color: var(--faint);
   display: inline-flex; align-items: center; justify-content: center;
@@ -602,9 +602,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .gd-act.danger:hover { background: var(--panel-3); color: var(--err); }
 
-/* 文件页图片预览：max-width 自适应、--panel-2 底（透明 png 深浅主题均协调）、token 边框圆角 */
+/* file-view image preview: max-width adaptive, --panel-2 base (transparent pngs look right in both themes), token border radius */
 
-/* --- 发送钮停止形态（流式中且输入框空 / Esc 示警窗口）：红色高亮常驻 --- */
+/* --- send button stop state (streaming with empty input / Esc alert window): persistent red highlight --- */
 .send.stopping {
   background: hsl(360, 67%, 60%);
   color: #ffffff;
@@ -612,22 +612,22 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
 
-/* --- B2 会话内查找条（⌘F，消息流顶部浮层，仅当前激活会话） --- */
+/* --- B2 in-session find bar (cmd+F, floating at the top of the message flow, active session only) --- */
 .find-bar {
   position: absolute; z-index: 60;
-  /* 水平居中用 margin auto（left/right 归零）而非 translateX：
-     ringpop 入场动画要占用 transform，translateX 会被覆盖导致动画结束跳位 */
+  /* horizontal centering uses margin auto (left/right zeroed) rather than translateX:
+     the ringpop entrance animation occupies transform, so translateX would be overridden and the element would jump when the animation ends */
   left: 0; right: 0; margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
   display: flex; align-items: center; gap: 6px;
   background: var(--ctl-bg); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
   padding: 5px 6px 5px 5px;
-  animation: ringpop .18s ease-out; /* 与 ring-pop 系同款入场（淡入 + 上滑） */
+  animation: ringpop .18s ease-out; /* same entrance as the ring-pop family (fade in + slide up) */
 }
 
 [data-theme="light"] .find-bar { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); } /* style-token-ignore */
 
-/* 输入框 = .inp 语言：--bg 底 + --line-soft 边 + r8 + 蓝色聚焦光晕 */
+/* input = the .inp language: --bg base + --line-soft border + r8 + blue focus glow */
 .find-inp {
   background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
   padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
@@ -644,7 +644,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .find-count.none { color: var(--faint); }
 
-/* 导航/关闭小按钮 = .q-btn 同语言（20px 底板 + hover --panel-2） */
+/* navigation/close small buttons = the .q-btn language (20px plate + hover --panel-2) */
 .find-bar button {
   line-height: 0;
 }
@@ -662,9 +662,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .find-flash { animation: findflash 1.6s ease-out; border-radius: 8px; }
 
-/* --- B2 上下文明细卡压缩入口（ring-pop 底部全宽小按钮） --- */
+/* --- B2 context detail card compress entry (full-width small button at the ring-pop bottom) --- */
 
-/* .confirm-btn 小号变体：同边框/底色/圆角语言，尺寸随卡片内缩 */
+/* small .confirm-btn variant: same border/base/radius language, sized down for the card interior */
 .cx-compact-btn {
   width: 100%; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: 7px;
@@ -680,9 +680,9 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .cx-compact-btn.busy { opacity: .7; cursor: default; }
 
-/* --- C2 消息分叉按钮 + 分支树 tab --- */
-/* 分叉按钮已移到一轮 output 结尾（.turn-acts），气泡旁只留排队操作组 */
-/* 分支树列表：整行可点（切换会话）才挂 hover 高亮；当前支行不可点、仅 accent 边框标示 */
+/* --- C2 message fork button + branch tree tab --- */
+/* the fork button moved to a turn's output tail (.turn-acts); only the queue action group remains beside the bubble */
+/* branch tree list: hover highlight only on fully clickable rows (session switching); the current branch's row is not clickable, marked only by the accent border */
 
 .bt-row {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
@@ -698,15 +698,15 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .bt-row.cur:hover { background: none; }
 
-/* 子分支缩进 + 竖线引导线（每深一级嵌套一层容器，深度不限样式统一） */
+/* child branch indent + vertical guide line (one nested container per depth level, uniform styling at any depth) */
 
-/* 空态提示 */
+/* empty-state hint */
 
-/* ── 阶段5：右栏终端 + 浏览器 pane ───────────────────────────────────── */
+/* ── stage 5: right-sidebar terminal + browser pane ───────────────────────────────────── */
 
-/* xterm.js 结构样式：内联自 @xterm/xterm css（MIT，随 node_modules 版本升级时同步核对）。
-   DOM 分层（viewport/screen canvas/helper textarea）由库版本决定，勿手改结构；
-   仅 viewport 背景按本项目改为透明（隐藏滚动条、底色走 xterm theme.background）。 */
+/* xterm.js structural styles: inlined from @xterm/xterm css (MIT; re-verify on node_modules version bumps).
+   The DOM layering (viewport/screen canvas/helper textarea) is decided by the library version — do not hand-edit the structure;
+   only the viewport background is made transparent for this project (scrollbar hidden, base color comes from xterm theme.background). */
 .xterm {
     position: relative;
     user-select: none;
@@ -742,8 +742,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 }
 
 .xterm .xterm-viewport {
-    /* 原库此处为 #000（mac 滚动条不透明背景），本项目隐藏滚动条且主题底色走
-       xterm theme.background，改透明让卡片底透出 */
+    /* the original library uses #000 here (mac scrollbar's opaque background); this project hides the scrollbar and the theme base color goes through
+       xterm theme.background, so it's made transparent to let the card base show through */
     background-color: transparent;
     overflow-y: scroll;
     cursor: default;
@@ -871,7 +871,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
     position: relative;
 }
 
-/* ── 终端 pane（右栏）：卡片底 + 内边距，隐藏 xterm 原生滚动条（ZCode 同款） ── */
+/* ── terminal pane (right sidebar): card base + padding, xterm's native scrollbar hidden (same as ZCode) ── */
 .tpane {
   display: flex; flex-direction: column;
   height: 100%; min-height: 0;
@@ -889,14 +889,14 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .tpane-host .xterm-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
-/* ── 浏览器 pane（右栏，复刻 ZCode EmbeddedBrowserPaneParts 布局） ── */
+/* ── browser pane (right sidebar, replicating the ZCode EmbeddedBrowserPaneParts layout) ── */
 .bpane {
   display: flex; flex-direction: column;
   height: 100%; min-height: 0;
   background: var(--card);
 }
 
-/* 工具栏：44px 高，icon 钮 + 地址栏 + 更多 */
+/* toolbar: 44px tall, icon buttons + address bar + more */
 .bpane-bar {
   flex: none;
   display: flex; align-items: center; gap: 4px;
@@ -904,7 +904,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
   border-bottom: 1px solid var(--line-soft);
 }
 
-/* 地址栏：内嵌卡面，加载态左侧转圈 */
+/* address bar: inset card face, spinner on the left while loading */
 .bpane-addr {
   flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 6px;
@@ -931,17 +931,17 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .bpane-input::placeholder { color: var(--faint); }
 
-/* 更多菜单锚点 */
+/* more-menu anchor */
 .bpane-more-wrap { position: relative; }
 
 .bpane-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; z-index: 500; }
 
-/* 视口：iframe 铺满，空态/错误态叠加层 */
+/* viewport: iframe fills, empty/error states as overlays */
 .bpane-view { flex: 1; min-height: 0; position: relative; background: #fff; } /* style-token-ignore */
 
 .bpane-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; } /* style-token-ignore */
 
-/* 空态：居中图标 + 标题/副文 */
+/* empty state: centered icon + title/subtitle */
 .bpane-empty {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -955,7 +955,7 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .bpane-empty-sub { font-size: var(--ui-fs-sm); color: var(--dim); max-width: 320px; line-height: 1.6; }
 
-/* 加载错误态：错误图标 + 文案 + 重试/外部打开 */
+/* load error state: error icon + text + retry/open externally */
 .bpane-err {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -981,8 +981,8 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 
 .bpane-err-acts .btn:hover { background: var(--panel-3); }
 
-/* Windows 无边框拖动：.sp-head 承载 data-tauri-drag-region，其子级控件与弹层需退出
-   拖动区，否则点击会变成拖窗口（与 .chat-head button 的 no-drag 规则同款，见 main-chat.css） */
+/* Windows frameless dragging: .sp-head carries data-tauri-drag-region; its child controls and popovers must opt out
+   of the drag region, or clicks would drag the window (same no-drag rule as .chat-head button, see main-chat.css) */
 .sp-head button,
 .sp-head input,
 .sp-head .sp-pop { -webkit-app-region: no-drag; }

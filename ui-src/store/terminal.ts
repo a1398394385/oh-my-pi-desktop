@@ -1,5 +1,6 @@
-// 终端数据帧总线（PTY 输出/退出不经全局 notify，直推订阅者，避免整树重渲染）。
-// PLAN P3 明确:本总线不经 zustand,原样保留为独立模块。
+// Terminal frame bus (PTY output/exit skips the global notify, pushing straight to subscribers
+// to avoid whole-tree re-renders).
+// PLAN P3 is explicit: this bus bypasses zustand and stays a standalone module as-is.
 import type { TerminalFrame } from "./shapes";
 
 const terminalListeners = new Set<(frame: TerminalFrame) => void>();

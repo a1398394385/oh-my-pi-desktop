@@ -1,12 +1,14 @@
-// 「工作中 N 秒」行（原 WorkLine.jsx；流式状态行已合并进 ChatLoading——
-// 转圈 + 动态文字现在挂在消息流末位、输入框正上方靠左，不再独立成行）。
+// "Working Ns" row (the former WorkLine.jsx; the streaming status row has been merged into
+// ChatLoading — the spinner + dynamic text now hangs at the end of the message stream,
+// above the composer and flush left, no longer a standalone row).
 import { useEffect, useState } from "react";
 import { activeOpen } from "../../store";
 import { fmtDuration } from "./util";
 import { t } from "../../i18n";
 
-// 「工作中 N 秒」：250ms 轮询按真实时间取值（setInterval(1000) 与 turnStartAt 相位不对齐，
-// 且主线程被流式重绘阻塞时回调被压缩补跳）
+// "Working Ns": 250ms polling reads real time (setInterval(1000) is not phase-aligned with
+// turnStartAt, and when the main thread is blocked by streaming redraws the callbacks get
+// compressed and skipped)
 export function WorkSec() {
   const [sec, setSec] = useState(() => {
     const cur = activeOpen();

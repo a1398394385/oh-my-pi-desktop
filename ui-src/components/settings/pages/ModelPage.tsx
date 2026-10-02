@@ -1,9 +1,11 @@
-// 设置·模型页（原 ui/settings/models.js 419 行 + providers.js 289 行平移）：
-// 左列 = 模型角色入口 + 已认证供应商分组列表（凭证在上 / models.yml 配置在下）；
-// 右卡四视图 = 供应商详情（模型启停 + 配额 + 登出）/ 模型角色（@role 二级级联分配）/
-//              添加供应商（卡片网格）/ 供应商详情页（登录 / API key 二选一）。
-// 视图开关与选中项沿用 store 字段（mpAddView / mpRolesView / mpDetailProv / selectedProvider），
-// 登录横幅与粘贴码弹窗来自 ../common.jsx。
+// Settings · Model page (ported from ui/settings/models.js 419 lines + providers.js 289 lines):
+// left column = model role entry + authenticated provider group list (credentials on top /
+// models.yml config below);
+// right card four views = provider detail (model enable/disable + quota + logout) /
+// model roles (@role two-level cascading assignment) /
+// add provider (card grid) / provider detail page (login / API key, either one).
+// View switches and selections reuse store fields (mpAddView / mpRolesView / mpDetailProv /
+// selectedProvider); login banner and paste-code dialog come from ../common.jsx.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../../../store";
@@ -15,7 +17,7 @@ import { fmtLimitWindow, limitTone } from "../../../lib/limits";
 import type { LimitWindow } from "../../../lib/limits";
 import type { AllProviderEntry } from "../../../types/frames";
 
-// 目录模型条目（modelCatalog 字段，models_catalog 回包落地；字段为 host 下发）
+// Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
 interface CatalogModel {
   id: string;
   name: string;
@@ -23,18 +25,18 @@ interface CatalogModel {
   enabled: boolean;
   context?: number | null;
   vision?: boolean;
-  authSource?: string; // "cred" 存储凭证 / "config" models.yml 手写
+  authSource?: string; // "cred" stored credential / "config" hand-written in models.yml
 }
 
-// 模型角色条目（modelRoles 字段）
+// Model role entry (modelRoles field)
 interface ModelRole {
   id: string;
   name: string;
-  tag?: string | null; // 宿主 ModelRoleEntry 为 string | null
-  value?: string | null; // 未配置为 null/缺省
+  tag?: string | null; // host ModelRoleEntry is string | null
+  value?: string | null; // unconfigured is null/absent
 }
 
-// 供应商配额结果（providerLimits 落地结构；accounts 为多账号扩展，字段形状同顶层）
+// Provider quota result (providerLimits landed shape; accounts is the multi-account extension, field shape same as top level)
 interface ProviderLimits {
   provider: string;
   label?: string;
@@ -47,7 +49,7 @@ interface ProviderLimits {
 
 // Purpose blurb keys for built-in roles (values are i18n keys; custom roles show a
 // generic blurb; name/tag come from host-provided base metadata)
-// Record 而非字面量联合：RolesView 用任意 role.id 索引
+// Record rather than a literal union: RolesView indexes by arbitrary role.id
 const ROLE_DESC_KEYS: Record<string, string> = {
   default: "settingsPage.model.roleDesc.default",
   smol: "settingsPage.model.roleDesc.smol",
@@ -60,7 +62,7 @@ const ROLE_DESC_KEYS: Record<string, string> = {
   advisor: "settingsPage.model.roleDesc.advisor",
 };
 
-// 配额明细单段（原 ui/ringpop.js buildLimitsSection 平移为组件）：语义/配色走 lib/limits 共享定义
+// One quota detail section (ui/ringpop.js buildLimitsSection ported to a component): semantics/colors use the shared definitions in lib/limits
 function LimitsSection({ limits }: { limits: ProviderLimits }) {
   const { t } = useTranslation();
   let body: ReactNode;
@@ -71,8 +73,8 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
   } else if (!limits.windows?.length && !limits.balance) {
     body = t("settingsPage.model.quotaUnavailable");
   } else {
-    // 余额类供应商（host 侧 synthesize 的 metric:'credits' 窗口 + balance）只显示余额数字，
-    // 不渲染进度条和百分比；有百分比窗口的供应商仍按窗口渲染
+    // Balance-type providers (host-side synthesized metric:'credits' windows + balance) show only
+    // the balance number, no progress bars or percentages; providers with percentage windows still render per window
     const pctWindows = limits.windows.filter((w) => w.metric !== "credits");
     if (!pctWindows.length && limits.balance?.amount != null) {
       body = (
@@ -118,15 +120,16 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
   );
 }
 
-// 供应商配额段：consume providerLimits（store.js 的 provider_limits_result 落地）。
-// 旧响应污染判定平移：provider 未变才渲染数据，否则回退「配额读取中…」占位。
+// Provider quota section: consumes providerLimits (provider_limits_result landed by store.js).
+// Old stale-response guard ported: render data only when the provider matches; otherwise fall
+// back to the "loading quota…" placeholder.
 function QuotaSection({ provider }: { provider: string }) {
   const { t } = useTranslation();
   const lim = useAppStore((s) => s.providerLimits);
   if (!lim || lim.provider !== provider) {
     return <div className="mp-lim">{t("settingsPage.model.quotaLoading")}</div>;
   }
-  // 多账号：逐账号各渲染一段（头部右侧显示账号身份）；单账号走原有单段路径
+  // Multi-account: one section per account (account identity shown at the head's right); single account takes the original single-section path
   if (Array.isArray(lim.accounts) && lim.accounts.length > 1) {
     return (
       <div className="mp-lim">
@@ -143,7 +146,7 @@ function QuotaSection({ provider }: { provider: string }) {
   );
 }
 
-// 角色选择器当前值显示：未配置 →「默认」；精确匹配目录模型 → 模型名；其余（别名/带级别后缀）→ 原文
+// Current value display of the role selector: unconfigured → "default"; exact catalog model hit → model name; otherwise (alias / level-suffixed) → raw value
 function roleSelLabel(role: ModelRole): string {
   if (!role.value) return role.id === "default" ? t("settingsPage.model.roleUnset") : t("settingsPage.model.roleDefault");
   const hit = useAppStore.getState().modelCatalog.find((m) => m.id === role.value);
@@ -151,23 +154,26 @@ function roleSelLabel(role: ModelRole): string {
   return role.value;
 }
 
-// 角色行的模型选择器：二级级联（一级供应商行 + hover 右弹浮层），交互对齐输入框模型菜单
-// （180ms 悬停意图延时 / 150ms 宽限关闭 / 右缘越界翻左）。浮层挂在 .sel 下而非一级菜单内——
-// .menu.model 带 overflow-y:auto 会裁掉绝对定位子元素。宽度由 .mp-role-sel / .mp-role-menu 统一。
+// Model selector of a role row: two-level cascade (level-1 provider rows + hover right flyout),
+// interaction aligned with the composer model menu
+// (180ms hover-intent delay / 150ms grace close / flip left on right-edge overflow). The flyout
+// is mounted under .sel rather than inside the level-1 menu —
+// .menu.model carries overflow-y:auto which would clip absolutely positioned children. Widths
+// unified by .mp-role-sel / .mp-role-menu.
 function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogModel[] }) {
   const [open, setOpen] = useState(false);
-  const [flyProv, setFlyProv] = useState<string | null>(null); // 当前二级浮层的供应商
+  const [flyProv, setFlyProv] = useState<string | null>(null); // provider of the current level-2 flyout
   const selRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const flyRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> 供应商行元素（flyout 顶部对齐用）
-  const hideT = useRef<TimerHandle | undefined>(undefined); // 浮层关闭宽限
-  const switchT = useRef<TimerHandle | undefined>(undefined); // 行切换悬停意图延时
+  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> provider row element (for flyout top alignment)
+  const hideT = useRef<TimerHandle | undefined>(undefined); // flyout close grace
+  const switchT = useRef<TimerHandle | undefined>(undefined); // row-switch hover-intent delay
 
-  // 卸载清计时器
+  // Clear timers on unmount
   useEffect(() => () => { clearTimeout(hideT.current); clearTimeout(switchT.current); }, []);
 
-  // 点击选择器外关闭（旧版 closeAllMenus 的全局等价）
+  // Close on click outside the selector (global equivalent of the old closeAllMenus)
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -182,9 +188,12 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  // 浮层坐标：.sel 相对（offsetParent）。二级列表向上展开——底缘对齐供应商行底缘
-  // （两菜单 padding 均 5px，+5 让末行与行高对齐），向上不会撑出设置滚动区下缘；上方空间不足
-  // 则限高 + 内部滚动，顶缘最多到设置滚动区上沿 4px；浮层与一级菜单边框交叠 4px，右缘越界翻左。
+  // Flyout coordinates: relative to .sel (offsetParent). The level-2 list opens upward —
+  // bottom edge aligned with the provider row's bottom edge
+  // (both menus pad 5px; +5 aligns the last row with the row height), so it never pushes past
+  // the settings scroll area's bottom; when space above is insufficient, cap height + scroll
+  // internally, top edge at most 4px below the settings scroll area's top; the flyout overlaps
+  // the level-1 menu border by 4px and flips left on right-edge overflow.
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const sel = selRef.current;
@@ -220,7 +229,7 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
   const byProv = new Map<string, CatalogModel[]>();
   for (const m of allModels) {
     if (!byProv.has(m.provider)) byProv.set(m.provider, []);
-    byProv.get(m.provider)!.push(m); // 上一行 has() 已建组必命中
+    byProv.get(m.provider)!.push(m); // the has() on the previous line guarantees the group exists
   }
 
   return (
@@ -243,7 +252,7 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
               className={"mi prov" + (prov === flyProv ? " on" : "")}
               key={prov}
               ref={(el) => { if (el) rowRefs.current.set(prov, el); else rowRefs.current.delete(prov); }}
-              // 行切换加 180ms 悬停意图延时：指针斜向穿过中间行去够浮层时不抢焦
+              // 180ms hover-intent delay on row switch: don't steal focus when the pointer diagonally crosses middle rows toward the flyout
               onMouseEnter={() => {
                 clearTimeout(hideT.current);
                 if (prov === flyProv) return;
@@ -285,10 +294,10 @@ function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogMo
   );
 }
 
-// 右卡：模型角色视图（srow 行 + 二级级联模型选择器 + 自定义角色删除按钮）
+// Right card: model roles view (srow rows + two-level cascading model selector + delete button for custom roles)
 function RolesView() {
   const { t } = useTranslation();
-  // 目录全量（含未启用模型）：角色值可指向任意目录模型，host 校验与底座解析均走 availableModels 全量
+  // Full catalog (including disabled models): role values may point at any catalog model; host validation and base resolution both use the full availableModels
   const allModels = useAppStore((s) => s.modelCatalog);
   const modelRoles = useAppStore((s) => s.modelRoles);
   return (
@@ -315,8 +324,8 @@ function RolesView() {
           </div>
           <div className="srow-ctl">
             <RolePicker role={role} allModels={allModels} />
-            {/* 按钮列与自定义行的删除按钮同列对齐：内置角色放 X 清除（有值时；= 传 null 回继承默认），
-                自定义角色放 trash 删除（.skill-trash-btn 全站删除语言；传 null = 从 modelRoles 移除） */}
+            {/* Button column aligned with the delete button of custom rows: built-in roles get an X clear button (when set; = send null to revert to the inherited default),
+                custom roles get a trash delete (.skill-trash-btn is the app-wide delete language; sending null = removed from modelRoles) */}
             {role.id in ROLE_DESC_KEYS ? (
               role.value ? (
                 <button
@@ -354,27 +363,31 @@ function RolesView() {
   );
 }
 
-// OMP 登录流程启动（原 ui/settings/providers.js startProviderLogin 平移）
+// Start the OMP login flow (ported from ui/settings/providers.js startProviderLogin)
 function startProviderLogin(id: string) {
   if (useAppStore.getState().loginBusy) {
     toast(t("settingsPage.model.loginBusy"));
     return;
   }
   const reqId = useAppStore.getState().loginReqId + 1;
-  // 旧版 showLoginBanner("…正在启动登录…")；React 版横幅数据在 store.loginBanner，由组件渲染
+  // Old showLoginBanner("…starting login…"); React version keeps banner data in store.loginBanner, rendered by the component
   setBump({ loginBusy: true, loginReqId: reqId, loginBanner: t("settingsPage.model.loginStarting", { id }) });
   send({ type: "provider_login", provider: id, reqId });
 }
 
-// 「添加供应商」视图：右卡两列圆角卡片，列出全部受支持供应商（原 renderAddProviderView 平移）。
-// 纯渲染不发请求：凭证数由各视图入口显式 send get_all_providers 拉取（此处再发会与
-// all_providers 响应处理器互调成无限重绘）。
-// PROV_IC 本地放宽为 Record：页面用任意供应商 id 索引（common.tsx 侧保持原导出不动）
+// "Add provider" view: two-column rounded cards in the right card, listing all supported
+// providers (ported from renderAddProviderView).
+// Pure render, no requests: credential counts are fetched explicitly via send get_all_providers
+// at each view entry (sending here too would ping-pong with the
+// all_providers response handler into infinite re-render).
+// PROV_IC loosened locally to Record: the page indexes by arbitrary provider ids (the export in common.tsx stays untouched)
 const provIc: Record<string, string> = PROV_IC;
 
-// 同系列供应商合并：添加列表折叠为一张系列卡（title/note），详情页按成员分块
-//（块头 id + region 标签 + 方式标签，方式由成员 login 推导）。members 的键序即块顺序；
-// 不在 allProvidersCache 里的成员 id 静默跳过（UI 列表来源随底座增减）。
+// Same-family providers merged: the add list collapses each family into one card (title/note),
+// the detail page blocks by member
+// (block head id + region tag + method tag, method derived from the member's login). Key order
+// of members is the block order; member ids not in allProvidersCache
+// are silently skipped (the UI list source grows and shrinks with the base).
 // note holds an i18n key (brand-family blurb, bilingual); resolved via t() at render.
 const PROVIDER_FAMILIES: Record<string, { title: string; note: string; members: Record<string, string> }> = {
   zai: {
@@ -419,7 +432,7 @@ const PROVIDER_FAMILIES: Record<string, { title: string; note: string; members: 
   },
 };
 
-// 反查：provider id -> 系列 id（不在任何系列里的供应商平铺展示）
+// Reverse lookup: provider id -> family id (providers in no family are laid out flat)
 const FAMILY_OF: Record<string, string> = {};
 for (const [fid, fam] of Object.entries(PROVIDER_FAMILIES)) {
   for (const id of Object.keys(fam.members)) FAMILY_OF[id] = fid;
@@ -427,7 +440,7 @@ for (const [fid, fam] of Object.entries(PROVIDER_FAMILIES)) {
 function AddProviderView() {
   const { t } = useTranslation();
   const allProvidersCache = useAppStore((s) => s.allProvidersCache);
-  // 平铺序列 + 系列折叠：命中系列的成员收进系列卡（位置=首成员原位，成员序=FAMILIES 定义序）
+  // Flat sequence + family folding: family members collapse into the family card (position = first member's original slot, member order = FAMILIES definition order)
   type Row =
     | { kind: "plain"; p: AllProviderEntry }
     | { kind: "family"; fid: string; members: AllProviderEntry[] };
@@ -486,7 +499,7 @@ function AddProviderView() {
                     className="ap-card ap-card2"
                     key={row.fid}
                     onClick={() => {
-                      // 系列卡合成 entry：id 用系列 id（详情页据此进系列模式）
+                      // Family card synthesizes an entry: id is the family id (the detail page enters family mode on it)
                       setBump({ mpDetailProv: { ...row.members[0], id: row.fid, label: fam.note } });
                     }}
                   >
@@ -503,7 +516,7 @@ function AddProviderView() {
               })()
             ),
           )}
-          {/* 末位固定卡片：手动添加 = 配置层 models.yml */}
+          {/* Trailing fixed card: manual add = config-layer models.yml */}
           <div
             className="ap-card ap-card2"
             onClick={() => {
@@ -525,14 +538,16 @@ function AddProviderView() {
   );
 }
 
-// 成员块：登录卡或 API key 输入框二选一（方式由 prov.login 推导）。
-// grouped = 系列模式：渲染块头（id + 区域 + 方式标签）；单供应商模式沿用整页布局。
-// API key 方式仅非登录型供应商：登录型（oauth/device/custom）凭证经浏览器授权归属到目录供应商
-// （store-as），目录里没有同名 provider，粘 key 只会产生永不可用的孤立凭证
+// Member block: either a login card or an API key input (method derived from prov.login).
+// grouped = family mode: render the block head (id + region + method tag); single-provider
+// mode keeps the full-page layout.
+// API key only for non-login providers: login-type (oauth/device/custom) credentials belong to
+// the catalog provider via browser auth (store-as); the catalog has no same-name provider, so
+// pasting a key would only create an orphan credential that can never be used
 function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region?: string; grouped?: boolean }) {
   const { t } = useTranslation();
   const [key, setKey] = useState("");
-  const [saving, setSaving] = useState(false); // 保存进行中：输入框置灰、按钮转圈，直到 provider_key_done 回包把本视图切回列表
+  const [saving, setSaving] = useState(false); // save in flight: input dimmed, button spins until the provider_key_done reply switches this view back to the list
   return (
     <div className="pd-member">
       {grouped ? (
@@ -592,7 +607,7 @@ function MemberBlock({ prov, region, grouped }: { prov: AllProviderEntry; region
   );
 }
 
-// 供应商详情页：单供应商一块；系列卡进入时按 FAMILIES 成员序分块（仅渲染列表里实际存在的成员）
+// Provider detail page: one block per single provider; entering from a family card blocks by FAMILIES member order (only members actually present in the list are rendered)
 function ProviderDetailView() {
   const { t } = useTranslation();
   const p = useAppStore((s) => s.mpDetailProv);
@@ -601,8 +616,9 @@ function ProviderDetailView() {
   const fam = PROVIDER_FAMILIES[p.id];
   const members = fam
     ? Object.entries(fam.members).map(([id, region]) => ({
-        // 成员不在 allProvidersCache（如 minimax-cn 无 OAuth/VENDOR 条目）时合成兜底：
-        // 底座 bundled 目录仍支持该 provider，粘 key 即可用（无登录流、无凭证）
+        // Fallback synthesis when a member is not in allProvidersCache (e.g. minimax-cn has no
+        // OAuth/VENDOR entry): the base bundled catalog still supports the provider — pasting a
+        // key just works (no login flow, no credential)
         prov: allProvidersCache?.find((x) => x.id === id) ?? { id, label: "", login: false, accounts: 0 },
         region,
       }))
@@ -615,7 +631,7 @@ function ProviderDetailView() {
           className="save-btn"
           onClick={() => {
             setBump({ mpDetailProv: null });
-            // 返回列表时重拉凭证数：详情页里可能刚发生登录/登出
+            // Refetch credential counts when returning to the list: a login/logout may have just happened on the detail page
             send({ type: "get_all_providers" });
           }}
         >
@@ -634,7 +650,7 @@ function ProviderDetailView() {
   );
 }
 
-// 右卡：选中供应商详情（模型启停 + 配额 + 登出）
+// Right card: selected provider detail (model enable/disable + quota + logout)
 function ProviderModelsView({ prov, models }: { prov: string; models: CatalogModel[] }) {
   const { t } = useTranslation();
   const anyOn = models.some((m) => m.enabled);
@@ -655,20 +671,20 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
         <b>{(provIc[prov] || "✦") + " " + prov}</b>
         <span className="sp" />
         <span className="tag">{t("settingsPage.model.modelsCount", { count: models.length })}</span>
-        {/* 凭证类供应商提供登出（多账号一次登出全部凭证，与 CLI auth-broker logout 一致）；
-            config 类（models.yml 手写 apiKey）优先级高于存储凭证，删除凭证无效，不显示按钮 */}
+        {/* Credential-type providers offer logout (multi-account logs out all credentials at once, same as CLI auth-broker logout);
+            config-type (models.yml hand-written apiKey) takes priority over stored credentials, deleting credentials is ineffective, so no button */}
         {models[0]?.authSource === "cred" ? (
           <button type="button" className="save-btn danger" onClick={logout}>{t("settingsPage.model.logout")}</button>
         ) : null}
       </div>
-      {/* 供应商配额：命中 host 侧 60s 缓存，切换供应商即重查（发送见 ModelPage effect） */}
+      {/* Provider quota: hits the host-side 60s cache; switching providers re-queries (send see ModelPage effect) */}
       <QuotaSection provider={prov} />
       <div className="mp-ml"><span>{t("settingsPage.model.modelList")}</span></div>
       {models.map((m) => (
         <div className="mp-row" key={m.id}>
           <span>{m.name}</span>
-          {/* 上下文按十进制厂商标称：1000000 → 1M、1310720 → 1.3M、200000 → 200k。
-              不用 1024 进制换算——catalog 值是十进制标称，1000000 会被算成 977k */}
+          {/* Context formatted as decimal vendor nominal: 1000000 → 1M, 1310720 → 1.3M, 200000 → 200k.
+              No 1024-base conversion — catalog values are decimal nominals; 1000000 would compute as 977k */}
           {m.context ? (
             <span className="tag">
               {m.context >= 1000000
@@ -708,28 +724,29 @@ export default function ModelPage() {
   const mpRolesView = useAppStore((s) => s.mpRolesView);
   const mpDetailProv = useAppStore((s) => s.mpDetailProv);
   let selectedProvider = useAppStore((s) => s.selectedProvider);
-  // 左列分组：provider -> models（modelCatalog，models_catalog 回包落地）
+  // Left-column grouping: provider -> models (modelCatalog, landed from the models_catalog reply)
   const groups = new Map<string, CatalogModel[]>();
   for (const m of modelCatalog) {
     if (!groups.has(m.provider)) groups.set(m.provider, []);
     groups.get(m.provider)!.push(m);
   }
-  // 选中项兜底：非角色视图且未选中 / 选中的供应商已不在目录时，取第一个分组
-  //（渲染期静默写 store，同旧 S 写语义不 bump；条件收敛，不会反复触发）
+  // Selection fallback: not in roles view and nothing selected / the selected provider is no
+  // longer in the catalog — take the first group
+  // (silent store write during render, same old S-write semantics without bump; condition converges, cannot retrigger)
   if (!mpRolesView && (!selectedProvider || !groups.has(selectedProvider))) {
     selectedProvider = groups.keys().next().value ?? null;
     useAppStore.setState({ selectedProvider });
   }
-  // 分组：登录/API key 凭证在上，models.yml 配置在下，中间横线 + 组标识
+  // Grouping: login/API key credentials on top, models.yml config below, with a divider + group label between
   const credEntries: Array<[string, CatalogModel[]]> = [];
   const configEntries: Array<[string, CatalogModel[]]> = [];
   for (const entry of groups) {
     (entry[1][0]?.authSource === "config" ? configEntries : credEntries).push(entry);
   }
   const sel = selectedProvider;
-  const models = (sel ? groups.get(sel) : undefined) || []; // sel 为 null 时原样得 undefined → [],等价
+  const models = (sel ? groups.get(sel) : undefined) || []; // sel null yields undefined → [], equivalent
   const showProvDetail = !mpAddView && !mpRolesView && groups.size > 0;
-  // 供应商配额：命中 host 侧 60s 缓存，进入详情 / 切换供应商即重查
+  // Provider quota: hits the host-side 60s cache; re-query on entering detail / switching provider
   useEffect(() => {
     if (showProvDetail && sel) send({ type: "get_provider_limits", provider: sel });
   }, [showProvDetail, sel]);
@@ -756,7 +773,7 @@ export default function ModelPage() {
           type="button"
           onClick={() => {
             setBump({ mpAddView: true, mpRolesView: false });
-            // 进入添加视图时拉最新凭证数，登出后「已配置」回显即时收敛
+            // Fetch latest credential counts when entering the add view so the "configured" display converges right after logout
             send({ type: "get_all_providers" });
           }}
         >
@@ -765,7 +782,7 @@ export default function ModelPage() {
       </div>
       <div className="set-card mp">
         <div className="mp-l">
-          {/* 模型角色入口：全局 @role → 模型分配，置于供应商列表之上 */}
+          {/* Model role entry: global @role → model assignment, placed above the provider list */}
           <div
             className={"pv" + (mpRolesView ? " on" : "")}
             onClick={() => {
@@ -816,7 +833,7 @@ export default function ModelPage() {
           ) : mpRolesView ? (
             <RolesView />
           ) : showProvDetail ? (
-            // sel 在协议数据下必已选(groups 非空才有此分支),! 断言同原版直传
+            // sel is guaranteed chosen under protocol data (this branch exists only when groups is non-empty), the ! assertion passes it through like the original
             <ProviderModelsView prov={sel!} models={models} />
           ) : (
             <div className="set-group-desc">
@@ -825,7 +842,7 @@ export default function ModelPage() {
           )}
         </div>
       </div>
-      {/* 登录进行中横幅 + 粘贴码弹窗已上提至 Settings 壳根部（common.jsx），切页不中断登录 */}
+      {/* Login-in-progress banner + paste-code dialog hoisted to the Settings shell root (common.jsx); page switches don't interrupt login */}
     </div>
   );
 }

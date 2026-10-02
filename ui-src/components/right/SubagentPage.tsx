@@ -1,6 +1,6 @@
-// 子代理页：卡片列表 + 点击进详情。
-// 详情骨架（今日定稿，必须保留）：#rightBody 加 detail 类，rb-head 固定（返回 + 名字/状态），
-// rb-scroll 滚动承载过程流。
+// Subagent page: card list + click into detail.
+// Detail skeleton (finalized today, must keep): #rightBody gets the detail class, rb-head
+// fixed (back + name/status), scrolling rb-scroll carries the process stream.
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
@@ -8,7 +8,8 @@ import { inlineCodeHtml } from "./helpers";
 import { Spin } from "../chat/parts";
 import type { SubagentState, SubagentToolCall } from "../../types/session";
 
-// 子代理条目与工具行统一用 store 共享类型(types/session.ts),字段以本页读取为准
+// Subagent entries and tool rows uniformly use the store's shared types (types/session.ts);
+// fields per this page's reads
 
 export default function SubagentPage() {
   const { t } = useTranslation();
@@ -18,7 +19,7 @@ export default function SubagentPage() {
     return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noSubagents")}</div>;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
-    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} />; // 上一行 has() 已守卫必存在
+    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} />; // the has() on the previous line guarantees presence
   }
   return (
     <>
@@ -27,8 +28,10 @@ export default function SubagentPage() {
           key={id}
           className={"sub-card " + (sub.streaming ? "running" : sub.status)}
           onClick={() => {
-            // 入场动画标记：与 selectedSubagent 同次 setState（订阅者渲染时读到），
-            // 宏任务静默复位——复位无订阅者不触发渲染，kids-in 类保留，动画不被截断（原 notify 语义）
+            // Entrance-animation flag: set in the same setState as selectedSubagent (subscribers
+            // read it at render); silent macrotask reset — the reset has no subscribers so no
+            // render fires, the kids-in class stays and the animation isn't cut short (old
+            // notify semantics)
             useAppStore.setState((st) => ({ selectedSubagent: id, animateSubKids: true }));
             setTimeout(() => {
               useAppStore.setState({ animateSubKids: false });
@@ -48,16 +51,18 @@ export default function SubagentPage() {
   );
 }
 
-// 详情：返回 + 名字/状态固定在顶，过程流（工具行 + 当前文本）滚动
+// Detail: back + name/status pinned at top; the process stream (tool rows + current text) scrolls
 function SubagentDetail({ sub }: { sub: SubagentState }) {
   const { t } = useTranslation();
   const headRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // 脉冲标记渲染时读 getState（不订阅）：置位随 selectedSubagent 写入驱动本组件渲染，
-  // 宏任务静默复位不触发订阅——kids-in 类保留至下次渲染，入场动画不被截断（原 notify 后首帧为 true）
+  // The pulse flag is read via getState at render (not subscribed): setting it rides the
+  // selectedSubagent write driving this component's render; the silent macrotask reset fires
+  // no subscription — the kids-in class survives until the next render, the entrance animation
+  // isn't cut short (the first frame after the old notify was true)
   const kids = !!useAppStore.getState().animateSubKids;
   const back = () => {
-    // 收起：详情内容上收（0.3s）后切回列表
+    // Collapse: detail content lifts away (0.3s) then switches back to the list
     for (const el of [headRef.current, scrollRef.current]) el?.classList.add("lift");
     setTimeout(() => {
       setBump({ selectedSubagent: null });
@@ -88,15 +93,16 @@ function SubagentDetail({ sub }: { sub: SubagentState }) {
   );
 }
 
-// 工具行轻量摘要：命令 / 路径 / 模式等首个可读参数
+// Lightweight tool-row summary: first readable arg among command / path / pattern etc.
 function toolSummary(t: SubagentToolCall): string {
-  // args 在 store 侧为 unknown(宿主透传);本页只读取这几个摘要字段
+  // args is unknown on the store side (host pass-through); this page reads only these summary fields
   const a = (t.args || {}) as { command?: string; path?: string; pattern?: string; files?: string[] };
   return a.command || a.path || a.pattern || a.files?.[0] || t.files?.[0] || "";
 }
 
-// TODO(tool-row-wave)：完整工具行视觉（tool-labels.js 各标签渲染）依赖旧 core.js，
-// 待主对话区（chat-wave）翻译后统一复用；此处先以「标签 + 摘要」行呈现
+// TODO(tool-row-wave): the full tool-row visuals (per-label rendering from tool-labels.js)
+// depend on the old core.js; to be unified and reused after the main chat area (chat-wave) is
+// translated; for now rendered as "label + summary" rows
 function ToolLine({ t }: { t: SubagentToolCall }) {
   const sum = toolSummary(t);
   return (

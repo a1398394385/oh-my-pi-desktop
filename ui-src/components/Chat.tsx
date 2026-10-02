@@ -1,12 +1,17 @@
-// 会话区：TODO 进程卡（statusWrap）+ 消息流（stream）+ 消息轨道（msgRail）+
-// 「工作中 N 秒」行（WorkSec）+ 会话内查找（⌘F）。流式状态行（转圈+动态文字）在 ChatLoading。
-// 迁移自 ui/chat.js renderChat + markdown.js 的滚动收尾：
-// - 滚动跟随（stickBottom 语义）：切会话强制落底；贴底时任何重渲染（流式追加/展开体）
-//   保持钉底。贴底判定必须在 DOM 更新前——用 scroll 监听持续记录的渲染前状态，
-//   渲染后 scrollHeight 已变不可回推（120px 容差同原版）。
-// - 「滚动至结尾」按钮：常驻 stream 末尾（原 ensureScrollBottom），显隐由 scroll 事件
-//   命令式切换（4px 容差防亚像素抖动，高频滚动不进 React 状态）。
+// Chat area: TODO process card (statusWrap) + message stream (stream) + message rail
+// (msgRail) + "working Ns" row (WorkSec) + in-session find (⌘F). The streaming status row
+// (spinner + dynamic text) lives in ChatLoading.
+// Migrated from renderChat in ui/chat.js + the scroll handling of markdown.js:
+// - Scroll following (stickBottom semantics): switching sessions forces bottom; when glued
+//   to the bottom, any re-render (streaming append / expand body) stays pinned. The
+//   at-bottom check must happen before the DOM update — use the pre-render state recorded
+//   continuously by the scroll listener; after rendering, scrollHeight has already changed
+//   and cannot be inferred backwards (120px tolerance as in the original).
+// - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
+//   visibility toggled imperatively from scroll events (4px tolerance against subpixel
+//   jitter; high-frequency scrolling stays out of React state).
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, isJunkPlaceholder, send } from "../store";
 import Icon from "../Icon";
 import TodoCard from "./chat/TodoCard";
@@ -19,14 +24,17 @@ import type { RailEntry } from "./chat/chat-types";
 import { updateRailVisibility } from "../shell";
 import MainSessionTree from "./chat/MainSessionTree";
 
-// 按钮显隐：仅当消息流还有向下滚动余量时显示（4px 容差防亚像素抖动）
+// Button visibility: shown only while the message stream still has downward scroll room
+// (4px tolerance against subpixel jitter)
 function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) {
   if (!el || !btn) return;
   btn.classList.toggle("hidden", !(el.scrollHeight - el.scrollTop - el.clientHeight > 4));
 }
 
 export default function Chat() {
-  // 当前会话订阅：所有 session 写入走 updateSession 换引用（items/draft/streaming 变化即重渲染）
+  const { t } = useTranslation();
+  // Current session subscription: all session writes go through updateSession swapping the
+  // reference (items/draft/streaming changes re-render)
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const activePath = useAppStore((st) => st.activePath);
   const mainViewMode = useAppStore((st) => st.mainViewMode);
@@ -34,7 +42,7 @@ export default function Chat() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
   const prevItemsLen = useRef(0);
-  const atBottom = useRef(true); // 渲染前的贴底状态（scroll 监听持续记录）
+  const atBottom = useRef(true); // pre-render at-bottom state (recorded continuously by the scroll listener)
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const onScroll = () => {
@@ -43,7 +51,7 @@ export default function Chat() {
     atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     updateScrollBottomVis(el, btnRef.current);
 
-    // 滚动期间点亮右侧滚动条，停止后平滑淡出
+    // Light up the right scrollbar while scrolling, fade out smoothly after it stops
     el.classList.add("scrolling");
     clearTimeout(scrollTimer.current);
     scrollTimer.current = setTimeout(() => {
@@ -51,7 +59,8 @@ export default function Chat() {
     }, 800);
   };
 
-  // 切会话强制落底 + 发送新消息时置顶 + 流式期间贴近底部则跟随（useLayoutEffect 在 paint 前完成，不闪旧位置）
+  // Force bottom on session switch + top on new outgoing message + follow during streaming
+  // when near the bottom (useLayoutEffect finishes before paint, no flash of the old position)
   useLayoutEffect(() => {
     const el = streamRef.current;
     if (!el || !s) return;
@@ -61,27 +70,33 @@ export default function Chat() {
     const isNewUserMsg = currentLen > prevItemsLen.current && s.items[currentLen - 1]?.role === "user";
     prevItemsLen.current = currentLen;
 
-    // 切换会话时 stream 节点被复用，旧会话的 scrollTop 对新会话无意义；
-    // 发出新消息时强制滚到底部（最后一轮 min-height:100% 使得新消息刚好置顶）；
-    // 流式期间若贴底则持续跟随
+    // On session switch the stream node is reused, and the old session's scrollTop is
+    // meaningless for the new one;
+    // on a new outgoing message force-scroll to the bottom (the last turn's min-height:100%
+    // puts the new message right at the top);
+    // during streaming, keep following while glued to the bottom
     if (switched || isNewUserMsg || atBottom.current) {
       el.scrollTop = el.scrollHeight;
-      atBottom.current = true; // scroll 事件异步 fire，先同步落定防同帧二次渲染回弹
+      atBottom.current = true; // the scroll event fires async; settle synchronously first to prevent a same-frame re-render bounce
     }
     updateScrollBottomVis(el, btnRef.current);
   }, [s?.items, s?.assistantDraft]);
 
-  // 轨道显隐初始化：.dock 与会话区同帧挂载，#main 尺寸不因内部挂载改变，
-  // ResizeObserver 不触发；initShell 观察发起时 dock 可能尚未存在（会话异步恢复），
-  // 故此处挂载即主动算一次（启动恢复 / 新建会话切回都经此 remount）
+  // Rail visibility init: .dock mounts in the same frame as the chat area, #main's size does
+  // not change from inner mounting, so the ResizeObserver does not fire; the dock may not
+  // exist yet when initShell sets up its observer (sessions restore async), so compute once
+  // proactively on mount here (both startup restore and switching back to a newly created
+  // session pass through this remount)
   useLayoutEffect(() => {
     updateRailVisibility();
   }, []);
 
   const snapLockUntil = useRef(0);
 
-  // 阻断标签弹窗/内嵌展开卡向外层消息流的滚动渗透（到达边界时不向外层链式传播）
-  // 并提供轮次吸顶磁吸停靠：消息距离顶部过低时，下一次滚动精准卡在 offsetTop，Agent 流程完整展示
+  // Block scroll bleed-through from tab popups / inline expand cards into the outer message
+  // stream (no chained propagation outward at the boundary)
+  // and provide turn snap-to-top docking: when the next message sits too close to the top,
+  // the next scroll lands exactly on its offsetTop, showing the full agent flow
   useEffect(() => {
     const stream = streamRef.current;
     if (!stream) return;
@@ -93,7 +108,7 @@ export default function Chat() {
         ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList",
       );
       if (card) {
-        // 寻找当前触发点所在的最内层可纵向滚动的容器
+        // Find the innermost vertically scrollable container containing the current trigger point
         let scroller: HTMLElement | null = target;
         while (scroller && scroller !== card) {
           const style = window.getComputedStyle(scroller);
@@ -113,13 +128,15 @@ export default function Chat() {
           }
         }
 
-        // 卡片当前区域不可纵向滚动：完全阻止滚轮事件渗透带动外层消息流
+        // The card's current area is not vertically scrollable: fully block the wheel event
+        // from bleeding through and dragging the outer message stream
         if (!scroller) {
           e.preventDefault();
           return;
         }
 
-        // 检查滚动边界：到顶继续向上滚，或到底继续向下滚时，阻止默认行为（禁止向上渗透）
+        // Check scroll boundaries: when continuing up at the top or down at the bottom,
+        // prevent the default behavior (no upward bleed-through)
         const { scrollTop, scrollHeight, clientHeight } = scroller;
         const delta = e.deltaY;
         if (delta > 0 && scrollTop + clientHeight >= scrollHeight - 1) {
@@ -131,8 +148,9 @@ export default function Chat() {
         }
       }
 
-      // 轮次吸顶磁吸停靠：如果下一条消息与消息区域上边距过低（即将吸顶），
-      // 下一次向下滚动只滚动至刚好让该消息吸附在顶端，保证下方 Agent 处理流程完整展示
+      // Turn snap-to-top docking: if the next message sits too close to the stream's top
+      // edge (about to snap), the next downward scroll goes only as far as pinning that
+      // message at the top, ensuring the agent's processing flow below is shown in full
       if (e.deltaY > 0) {
         const now = Date.now();
         if (now < snapLockUntil.current) {
@@ -158,13 +176,13 @@ export default function Chat() {
     return () => stream.removeEventListener("wheel", onWheel);
   }, []);
 
-  // 滚动至结尾按钮（常驻末位，显隐走 scroll 监听）
+  // Scroll-to-end button (permanently last; visibility driven by the scroll listener)
   const scrollBottomBtn = (
     <button
       id="scrollBottom"
       className="scroll-bottom hidden"
       type="button"
-      title="滚动到底部"
+      title={t("chat.scrollBottomTitle")}
       ref={btnRef}
       onClick={() => {
         const el = streamRef.current;
@@ -180,7 +198,7 @@ export default function Chat() {
       <>
         <div id="statusWrap" />
         <div id="stream" ref={streamRef} onScroll={onScroll}>
-          <div className="text-faint text-ui-base py-[12px] px-[10px]">点左侧任务或「新建任务」开始</div>
+          <div className="text-faint text-ui-base py-[12px] px-[10px]">{t("chat.emptyHint")}</div>
           {scrollBottomBtn}
         </div>
       </>
@@ -191,13 +209,15 @@ export default function Chat() {
     return <MainSessionTree />;
   }
 
-  // 消息轨道数据：渲染期随 items 遍历收集（key 与 data-fk 锚点同源）
+  // Message rail data: collected during render along the items traversal (key shares the
+  // same source as the data-fk anchors)
   const railEntries: RailEntry[] = [];
   const streamTail =
     s.streaming || s.assistantDraft ? (
       <>
         {(s.streaming || s.assistantDraft) && <WorkSec />}
-        {/* 流式尾巴纯文本渲染（BUG-007 三连雷）：定稿才交给 AssistantMsg */}
+        {/* Streaming tail rendered as plain text (BUG-007 triple mine): only the finalized
+            text goes to AssistantMsg */}
         {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
           <div className="msg assistant md-body streaming-draft stream-plain">{s.assistantDraft}</div>
         )}
@@ -208,13 +228,14 @@ export default function Chat() {
   return (
     <>
       <TodoCard />
-      {/* 外部进程写入提示条：宿主 session_external_write 帧置位，重新加载从磁盘重建清除 */}
+      {/* External-process write notice bar: set by the host's session_external_write frame;
+          cleared when a reload rebuilds from disk */}
       {s.externalWrite && (
         <div className="extw-bar">
           <Icon name="info" />
-          <span className="extw-tx">此会话正在被其他进程写入（如 CLI），视图可能不同步</span>
+          <span className="extw-tx">{t("chat.externalWriteNotice")}</span>
           <button type="button" className="save-btn" onClick={() => send({ type: "reload_session", path: activePath })}>
-            重新加载
+            {t("chat.reload")}
           </button>
         </div>
       )}

@@ -1,10 +1,11 @@
-// 会话条目判别联合 + openSessions 容器 + 全局 store S 的形状类型。
-// 条目字段以 components/chat/items.tsx appendItem/renderItems 分发处的实际读取为准
-// (items.tsx:21-69 逐 role 分发、:87 pending steer、:95-131 合并组伪条目);
-// 线上形状锚定 host/state.ts TranscriptItem(messages 帧,见 ./frames);
-// meta/err 为前端本地条目(store.ts 推送,不经 host)。
-// 可变展开标志(expanded/branching/cmdExpanded/diffExpanded/readExpanded/briefDiff 等)
-// 由组件就地写入条目对象(引用稳定,跨全量重绘保留),故全部声明为可选可写。
+// Session-entry discriminated union + the openSessions container + shape types for the global store S.
+// Entry fields follow what components/chat/items.tsx actually reads at its appendItem/renderItems dispatch
+// (items.tsx:21-69 per-role dispatch, :87 pending steer, :95-131 merged-group pseudo entries);
+// on-wire shape is anchored to host/state.ts TranscriptItem (messages frame, see ./frames);
+// meta/err are frontend-local entries (pushed by store.ts, never through the host).
+// Mutable expansion flags (expanded/branching/cmdExpanded/diffExpanded/readExpanded/briefDiff etc.)
+// are written in place onto entry objects by components (reference-stable, preserved across full redraws),
+// hence all declared optional and writable.
 
 import type {
   ContextDetailFrame,
@@ -29,12 +30,12 @@ import type {
   DiskSessionRow,
   ApprovalMode,
 } from "./frames";
-// SchemaDef 是设置 schema 条目的权威形状(SETTINGS_SCHEMA 对齐),定义在 settings/placement.ts
+// SchemaDef is the authoritative shape of settings schema entries (aligned with SETTINGS_SCHEMA), defined in settings/placement.ts
 import type { SchemaDef } from "../components/settings/placement";
 
-// ---------- 工具 args/details(items.tsx 经 util.ts 谓词读取的点;字段清单自 P2-C chat-types.ts 并入) ----------
+// ---------- Tool args/details (points read by items.tsx via util.ts predicates; field list merged from P2-C chat-types.ts) ----------
 
-/** ask 工具的 questions 结构化参数(ApprovalCard/提问行读取) */
+/** Structured questions parameter of the ask tool (read by ApprovalCard / question rows) */
 export interface AskQuestion {
   question?: string;
   multi?: boolean;
@@ -43,19 +44,19 @@ export interface AskQuestion {
   options?: { label?: string; description?: string }[];
 }
 
-/** 工具 args:host 工具帧透传的参数 JSON。只约束本仓实际读取的字段
-    (类型按 host 协议取值),其余键经索引签名以 unknown 透传 */
+/** Tool args: parameter JSON passed through by host tool frames. Only fields this repo actually reads
+    are constrained (typed per the host protocol); other keys pass through as unknown via the index signature */
 export interface ToolArgs {
-  path?: string; // items.tsx:115-118 设备组判定(isDeviceEvent → args?.path)
+  path?: string; // device-group check at items.tsx:115-118 (isDeviceEvent → args?.path)
   files?: string[];
   command?: string;
   pattern?: string;
-  // 设备调用 JSON 字符串(deviceCmd 运行时再解析),形状不定
+  // device-call JSON string (parsed at runtime by deviceCmd), shape not fixed
   content?: unknown;
   op?: string;
   name?: string;
   application?: string;
-  // hub application 参数列表
+  // hub application argument list
   args?: unknown[];
   text?: string;
   task?: string;
@@ -77,12 +78,12 @@ export interface ToolArgs {
   [key: string]: unknown;
 }
 
-/** 工具回包 details:host 结构化数据。只约束本仓实际读取的字段,其余透传 */
+/** Tool reply details: host structured data. Only fields this repo actually reads are constrained; the rest pass through */
 export interface ToolDetails {
-  isDirectory?: boolean; // items.tsx:103-106 查阅组判定(isReadEvent → details?.isDirectory)
-  resolvedPath?: string; // parts.tsx openReadFileInSidebar 读取
+  isDirectory?: boolean; // read-group check at items.tsx:103-106 (isReadEvent → details?.isDirectory)
+  resolvedPath?: string; // read by parts.tsx openReadFileInSidebar
   displayContent?: {
-    // parts.tsx openReadFileInSidebar 读取(读取行内联展示的节选内容)
+    // read by parts.tsx openReadFileInSidebar (excerpt content shown inline on read rows)
     text?: string;
     startLine?: number;
     lineNumbers?: number[] | null;
@@ -90,115 +91,115 @@ export interface ToolDetails {
   [key: string]: unknown;
 }
 
-// ---------- 会话条目判别联合 ----------
+// ---------- Session-entry discriminated union ----------
 
-/** user 消息(items.tsx:21-23 读 text;:87 读 pending === "steer" 收集待消费气泡) */
+/** User message (items.tsx:21-23 reads text; :87 reads pending === "steer" to collect bubbles awaiting consumption) */
 export interface UserItem {
   role: "user";
   text: string;
-  pending?: string | null; // "steer" = 流式中发送、待消费(store.ts 落地)
-  steerDone?: boolean; // 消费完成标记(store.ts 写入)
-  entryId?: string; // 落盘条目 id(branch_session 分叉定位;host TranscriptItem.entryId)
-  images?: Array<{ type: "image"; data: string; mimeType: string }>; // 图片附件
+  pending?: string | null; // "steer" = sent mid-stream, awaiting consumption (landed by store.ts)
+  steerDone?: boolean; // consumed-done marker (written by store.ts)
+  entryId?: string; // persisted entry id (fork targeting for branch_session; host TranscriptItem.entryId)
+  images?: Array<{ type: "image"; data: string; mimeType: string }>; // image attachments
 }
 
-/** assistant 消息(items.tsx:25-28 读 text;junk 占位符不渲染) */
+/** Assistant message (items.tsx:25-28 reads text; junk placeholders are not rendered) */
 export interface AssistantItem {
   role: "assistant";
   text: string;
-  entryId?: string; // output 尾部分叉锚点(host turn_end.assistantEntryId 回填)
-  endMs?: number; // 该轮结束时刻
-  branching?: boolean; // 分叉请求进行中(TurnActs 就地写入)
-  streaming?: boolean; // 生成中(组件就地写入)
+  entryId?: string; // tail fork anchor of the output (backfilled from host turn_end.assistantEntryId)
+  endMs?: number; // end timestamp of this turn
+  branching?: boolean; // fork request in flight (written in place by TurnActs)
+  streaming?: boolean; // generating (written in place by components)
 }
 
-/** thinking 行(items.tsx:30-33 读 item.thinking || item.text) */
+/** Thinking row (items.tsx:30-33 reads item.thinking || item.text) */
 export interface ThinkingItem {
   role: "thinking";
   text: string;
-  thinking?: string; // 思考正文(与 text 分离时优先)
-  expandable?: boolean; // 可展开(有完整思考块)
-  expanded?: boolean; // 展开态(组件就地写入)
-  streaming?: boolean; // 思考进行中(store.ts 就地写入:thinking_delta 按此找累积目标)
+  thinking?: string; // thinking body (preferred when separate from text)
+  expandable?: boolean; // expandable (has a full thinking block)
+  expanded?: boolean; // expanded state (written in place by components)
+  streaming?: boolean; // thinking in progress (written in place by store.ts: thinking_delta locates its accumulation target via this)
 }
 
-/** 工具行(items.tsx:35-37 整条目传 ToolRow;:95-131 合并组伪条目 { role:"tool", text, name?, group }) */
+/** Tool row (items.tsx:35-37 passes the whole entry to ToolRow; :95-131 merged-group pseudo entry { role:"tool", text, name?, group }) */
 export interface ToolItem {
   role: "tool";
   text: string;
-  name?: string; // 合并组伪条目标 "read"/"device"/"cmd" 供 toolKind 分发(items.tsx:106/118/129)
+  name?: string; // merged-group pseudo entries tag "read"/"device"/"cmd" for toolKind dispatch (items.tsx:106/118/129)
   toolCallId?: string;
   args?: ToolArgs;
   files?: string[];
   details?: ToolDetails;
-  group?: ChatItem[]; // 合并组(更改/查阅/终端/设备)收纳的成员条目(运行期均为 tool 条目)
+  group?: ChatItem[]; // member entries collected by a merged group (changes/reads/terminal/device) (all tool entries at runtime)
   output?: string;
   added?: number;
   removed?: number;
-  running?: boolean; // 执行中(store.ts 落地:tool 帧置位、tool_update 复位;clearRunningTools 兜底)
+  running?: boolean; // executing (landed by store.ts: set by tool frames, reset by tool_update; clearRunningTools as fallback)
   todo?: { content?: string; total?: number; done?: number };
   diffContent?: string;
-  streaming?: boolean; // 执行中(组件就地写入)
-  cmdExpanded?: boolean; // 终端输出展开(组件就地写入)
-  diffExpanded?: boolean; // diff 展开(组件就地写入)
-  readExpanded?: boolean; // 查阅内容展开(组件就地写入)
-  briefDiff?: string; // 行内联展开的单文件 diff(组件就地写入)
+  streaming?: boolean; // executing (written in place by components)
+  cmdExpanded?: boolean; // terminal output expanded (written in place by components)
+  diffExpanded?: boolean; // diff expanded (written in place by components)
+  readExpanded?: boolean; // read content expanded (written in place by components)
+  briefDiff?: string; // single-file diff for inline expansion (written in place by components)
 }
 
-/** loop 组(items.tsx:39-42 整条目传 LoopGroup;组内收纳本轮过程条目) */
+/** Loop group (items.tsx:39-42 passes the whole entry to LoopGroup; collects this turn's process entries) */
 export interface LoopItem {
   role: "loop";
   text: string;
-  items?: ChatItem[]; // 本轮过程(thinking/tool/中间 assistant)
-  collapsed?: boolean; // 默认收起;展开态由前端切换
+  items?: ChatItem[]; // this turn's process (thinking/tool/intermediate assistant)
+  collapsed?: boolean; // collapsed by default; expanded state toggled by the frontend
   durationSec?: number | null;
   usage?: TurnUsage | null;
 }
 
-/** 本地 bash 行(! 前缀;items.tsx:44-46 读 text) */
+/** Local bash row (! prefix; items.tsx:44-46 reads text) */
 export interface BashItem {
   role: "bash";
-  text: string; // 命令原文
-  output?: string; // 输出文本(截断后)
-  running?: boolean; // bash_start → bash_done 之间
+  text: string; // original command text
+  output?: string; // output text (after truncation)
+  running?: boolean; // between bash_start and bash_done
   exitCode?: number | null;
   cancelled?: boolean;
   timedOut?: boolean;
   truncated?: boolean;
-  excludeFromContext?: boolean; // !! 前缀
-  error?: string | null; // 执行失败错误信息
-  cmdExpanded?: boolean; // 输出展开(组件就地写入)
+  excludeFromContext?: boolean; // !! prefix
+  error?: string | null; // execution failure message
+  cmdExpanded?: boolean; // output expanded (written in place by components)
 }
 
-/** @ 提及回读行(items.tsx:48-50 读 item.files) */
+/** @ mention read-back row (items.tsx:48-50 reads item.files) */
 export interface MentionItem {
   role: "mention";
-  text: string; // 线上恒 ""(host attachEntry 扫描直推)
+  text: string; // always "" on the wire (pushed directly by the host attachEntry scan)
   files?: string[];
 }
 
-/** 居中文案行(items.tsx:52-55 读 text;前端本地条目,不经 host) */
+/** Centered text row (items.tsx:52-55 reads text; frontend-local entry, never through the host) */
 export interface MetaItem {
   role: "meta";
   text: string;
 }
 
-/** 阶段分隔行(items.tsx:57-65 读 text;压缩/交接/重命名) */
+/** Phase separator row (items.tsx:57-65 reads text; compact/handoff/rename) */
 export interface PhaseItem {
   role: "phase";
   text: string;
-  phase?: "start" | "done"; // start 仅来自瞬时帧;落盘转出皆为 done
-  command?: string; // compact/handoff/rename:start 行与 done 行按此对照吸收
+  phase?: "start" | "done"; // start only comes from transient frames; everything replayed from disk is done
+  command?: string; // compact/handoff/rename: start and done rows are matched and absorbed by this
 }
 
-/** 错误行(items.tsx:67-69 兜底分支读 text;前端本地条目,不经 host。
-    role 为 "error" 对齐 store.ts error 帧落地值,SessionRow 亦按此判定会话错误态) */
+/** Error row (items.tsx:67-69 fallback branch reads text; frontend-local entry, never through the host.
+    role "error" matches the value landed by the store.ts error frame; SessionRow also detects the session error state by this) */
 export interface ErrItem {
   role: "error";
   text: string;
 }
 
-/** 会话条目判别联合(role 字面量判别;items.tsx appendItem 逐分支消费) */
+/** Session-entry discriminated union (discriminated by role literals; consumed branch by branch by items.tsx appendItem) */
 export type ChatItem =
   | UserItem
   | AssistantItem
@@ -211,30 +212,30 @@ export type ChatItem =
   | PhaseItem
   | ErrItem;
 
-/** 兼容别名:store.ts 批的条目类型名(收口接线后统一为 ChatItem) */
+/** Compatibility alias: the entry type name used in the store.ts batch (to be unified as ChatItem after the narrowing rewiring) */
 export type SessionItem = ChatItem;
 
-/** 消息轨道刻度(items.tsx 各 railEntries.push 点;MsgRail 按 key 查 DOM 定位) */
+/** Message rail ticks (each railEntries.push site in items.tsx; MsgRail locates DOM nodes by key) */
 export interface RailEntry {
-  key: string; // 与 data-fk 锚点同源
+  key: string; // same origin as the data-fk anchor
   role: string; // "user" | "assistant" | "thinking" | "tool" | "meta" | "bash" | "mention" | "err"
   text: string;
 }
 
-// ---------- openSessions 容器 ----------
+// ---------- openSessions container ----------
 
-/** 挂起审批(store.ts:991-998 approval_request 落地;ApprovalCard 消费) */
+/** Pending approval (landed by store.ts:991-998 approval_request; consumed by ApprovalCard) */
 export interface PendingApproval {
   requestId: string;
   title: string;
-  options: string[]; // editor/plan 变体为稳定 id(submit/cancel/approve/refine)
+  options: string[]; // editor/plan variants use stable ids (submit/cancel/approve/refine)
   editable: boolean;
-  editableIndex?: number; // 可编辑输入行在 options 中的下标(editor 变体协议字段)
+  editableIndex?: number; // index of the editable input row within options (editor-variant protocol field)
   prefill: string;
-  answer: string | null; // 用户已选答案;null = 未决
+  answer: string | null; // user's chosen answer; null = pending
 }
 
-/** 子代理工具调用行(store.ts subagent_event 累积) */
+/** Subagent tool-call row (accumulated by store.ts subagent_event) */
 export interface SubagentToolCall {
   name: string;
   args?: unknown;
@@ -249,13 +250,13 @@ export interface SubagentToolCall {
   diffContent?: string;
 }
 
-/** 子代理聚合用量(store.ts subagent_progress 落地) */
+/** Subagent aggregated usage (landed by store.ts subagent_progress) */
 export interface SubagentUsage {
   cost?: number;
   durationMs?: number;
   requests?: number;
   toolCount?: number;
-  tokens?: Record<string, number>; // TODO(收口核对): 底座 progress 分桶对象,随 SDK
+  tokens?: Record<string, number>; // TODO(narrowing pass): bucketed object of base progress; follows the SDK
   contextTokens?: number;
   contextWindow?: number;
   currentTool?: string;
@@ -267,7 +268,7 @@ export interface SubagentUsage {
   recentTools?: unknown[];
 }
 
-/** 子代理运行态(store.ts subagent_lifecycle 落地 + progress/event 累积) */
+/** Subagent runtime state (landed by store.ts subagent_lifecycle + accumulated by progress/event) */
 export interface SubagentState {
   agent: string;
   description: string;
@@ -275,14 +276,14 @@ export interface SubagentState {
   name?: string;
   parent?: string;
   registeredAt?: number;
-  text: string; // 子代理文本 delta 累积
+  text: string; // accumulated subagent text deltas
   tools: SubagentToolCall[];
   streaming: boolean;
   usage?: SubagentUsage;
 }
 
-/** 已打开会话(openSessions 容器值;store.ts openSessions.set(msg.path, {...}) 创建,
-    后续字段由帧处理/组件交互在运行期写入,非创建时必有) */
+/** An opened session (openSessions container value; created by store.ts openSessions.set(msg.path, {...}),
+    later fields are written at runtime by frame handling / component interaction, not necessarily present at creation) */
 export interface OpenSession {
   sessionId: string;
   cwd: string;
@@ -291,43 +292,43 @@ export interface OpenSession {
   assistantDraft: string;
   streaming: boolean;
   turnStartAt?: number | null;
-  turnItemStart?: number | null; // 本轮条目起点(sealRunItems 用)
-  workingText?: string | null; // 处理进程区文案(正在处理…/思考中…/intent)
+  turnItemStart?: number | null; // entry start index of this turn (used by sealRunItems)
+  workingText?: string | null; // activity indicator text (busy / thinking / intent)
   subagents: Map<string, SubagentState>;
   model: string | null;
   thinking: string;
   isGit: boolean;
   todos: TodoPhase[];
-  goal?: GoalState | null; // goal 帧置位
-  planMode?: boolean; // plan_mode 帧置位
-  queued?: QueuedMessage[]; // queued 帧 followUp 落地
-  steering?: QueuedMessage[]; // queued 帧 steering 落地
-  externalWrite?: boolean; // 宿主检出外部进程写入
-  autoResolved?: string; // thinking_level 帧 configured==="auto" 时的 resolved 生效值
-  ctx?: { tokens: number; window: number; percent: number }; // context 帧落地
-  stats?: SessionStatsPayload; // session_stats 帧落地
-  title?: string | null; // 会话标题（session_title_changed 或创建时带入）
+  goal?: GoalState | null; // set by the goal frame
+  planMode?: boolean; // set by the plan_mode frame
+  queued?: QueuedMessage[]; // landed from the queued frame's followUp
+  steering?: QueuedMessage[]; // landed from the queued frame's steering
+  externalWrite?: boolean; // the host detected writes from an external process
+  autoResolved?: string; // effective resolved value when the thinking_level frame has configured === "auto"
+  ctx?: { tokens: number; window: number; percent: number }; // landed from the context frame
+  stats?: SessionStatsPayload; // landed from the session_stats frame
+  title?: string | null; // session title (from session_title_changed, or carried in at creation)
 }
 
-/** openSessions 容器:key = 会话文件路径(store.ts openSessions;LRU 上限 8) */
+/** openSessions container: key = session file path (store.ts openSessions; LRU cap of 8) */
 export type OpenSessions = Map<string, OpenSession>;
 
-// ---------- 全局 store S ----------
+// ---------- Global store S ----------
 
-/** file_view 文件页视图态(store file_content 帧回包补全;FilePage/parts.tsx 就地构造)。
-    非 FileContentFrame 子集:前端本地态(reqRange/image/full)与帧字段混装,故独立声明 */
+/** file_view file-page view state (completed by the store from file_content frame replies; constructed in place by FilePage/parts.tsx).
+    Not a subset of FileContentFrame: frontend-local state (reqRange/image/full) mixes with frame fields, hence declared standalone */
 export interface FileViewState {
   path: string;
-  text?: string; // 已读到的内容(节选或全文件)
-  error?: string | null; // 读取失败信息
-  startLine: number; // text 首行对应的全文件行号
-  lineNumbers: (number | null)[] | null; // 节选行号清单(行号高亮用;null 元素 = 工具省略的空洞行);全文件为 null
-  full?: boolean; // 已是全文件(file_content 回包置位)
-  reqRange: [number, number] | null; // 请求的行号范围(path:59-123 选择器解析而来)
-  image?: boolean; // 图片预览分支(read_image 回包走 rightState.imageContent)
+  text?: string; // content read so far (excerpt or full file)
+  error?: string | null; // read failure message
+  startLine: number; // full-file line number of the first line of text
+  lineNumbers: (number | null)[] | null; // excerpt line-number list (for line-number highlighting; null elements = hole lines omitted by the tool); null for a full file
+  full?: boolean; // already the full file (set by a file_content reply)
+  reqRange: [number, number] | null; // requested line range (parsed from the path:59-123 selector)
+  image?: boolean; // image preview branch (read_image replies go through rightState.imageContent)
 }
 
-/** 记忆文件落地(store.ts memory_file 帧;status: idle/loading/done/error) */
+/** Memory file state (store.ts memory_file frame; status: idle/loading/done/error) */
 export interface MemoryDetailState {
   base: string | null;
   files: string[] | null;
@@ -338,20 +339,20 @@ export interface MemoryDetailState {
   error: string | null;
 }
 
-/** 全局状态 S 的形状(store.ts S 声明;字段名与 core.js 一致) */
+/** Shape of the global state S (declared as S in store.ts; field names match core.js) */
 export interface AppState {
   activePath: string | null;
   selectedSubagent: string | null;
   ws: WebSocket | null;
   pendingCreate: boolean;
   hostSettings: SettingsPayload | null;
-  settingsSchema: Record<string, SchemaDef> | null; // SettingsSchemaFrame["schema"];条目形状同 SETTINGS_SCHEMA
+  settingsSchema: Record<string, SchemaDef> | null; // SettingsSchemaFrame["schema"]; entry shape matches SETTINGS_SCHEMA
   modelCatalog: ModelCatalogEntry[];
   selectedProvider: string | null;
   mpAddView: boolean;
   mpRolesView: boolean;
   modelRoles: ModelRoleEntry[] | null;
-  mpDetailProv: AllProviderEntry | null; // 供应商详情页当前供应商(卡片点击写入)
+  mpDetailProv: AllProviderEntry | null; // current provider on the provider detail page (written by card clicks)
   allProvidersCache: AllProviderEntry[] | null;
   loginBusy: boolean;
   agentAssets: AgentAssetsPayload | null;
@@ -359,66 +360,66 @@ export interface AppState {
   isCreatingNew: boolean;
   newSessionProject: string;
   newSessionBranch: string;
-  newSessionBranches: string[]; // git_branches 帧 branches 落地(新建会话页分支选择;分支名清单)
+  newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
-  defaultModelCfg: string | null; // models 帧 defaultModel 落地
-  defaultThinkingCfg: string | null; // models 帧 defaultThinking 落地
+  defaultModelCfg: string | null; // landed from the models frame's defaultModel
+  defaultThinkingCfg: string | null; // landed from the models frame's defaultThinking
   newSessionDirty: boolean;
   pendingNewPrompt: { text: string; files: PromptAttachment[] } | null;
-  pendingFiles: (PromptAttachment & { id: number })[]; // 输入框附件 chip(带前端本地 id,发送时剥离)
+  pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   fileSeq: number;
-  viewMode: string; // "project" | …(侧栏视图)
+  viewMode: string; // "project" | … (sidebar view)
   isProjectManageMode: boolean;
   allProjects: string[];
   removedProjects: string[];
   archivedSessions: (DiskSessionRow & { cwd: string })[];
   animateGdKids: boolean;
   animateThinkBody: boolean;
-  animateSubKids?: boolean; // 子代理详情入场动画标记(运行时挂上,SubagentPage 专用)
+  animateSubKids?: boolean; // subagent detail entrance-animation flag (attached at runtime, SubagentPage only)
   todoCollapsed: boolean;
-  gitViewMode: string; // "tree" | …(右栏 Git Diff 视图)
+  gitViewMode: string; // "tree" | … (right-panel Git Diff view)
   selectedFile: string | null;
   fileView: FileViewState | null;
-  fileViewPending: string | null; // 请求中的文件路径
-  briefDiffPending: string | null; // 请求中的行内 diff 路径
+  fileViewPending: string | null; // file path with a request in flight
+  briefDiffPending: string | null; // inline-diff path with a request in flight
   rightTab: string | null;
   zoomLevel: number;
   approvalMode: ApprovalMode;
   loginReqId: number;
-  evtHost: string | null; // host 进程实例 ID(ready.hi / 盖戳事件.hi);变化 = host 已重启
-  evtSeq: number; // 该实例下已应用的最高事件序号(位置落后的事件直接丢弃)
-  // ---- React 版新增 UI 态(原版散在 DOM class / 局部变量上) ----
+  evtHost: string | null; // host process instance id (ready.hi / stamped event .hi); a change means the host restarted
+  evtSeq: number; // highest applied event sequence number under this instance (events behind the position are dropped outright)
+  // ---- UI state added in the React port (previously scattered across DOM classes / local variables) ----
   connected: boolean;
   connText: string;
-  toastMsg: string | null; // 当前 toast 文本(null = 隐藏)
-  composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // 外部填输入框的信号(分叉回填 / 排队消息编辑)
-  findOpen: boolean; // 会话内查找栏开合(FindBar 同步;Esc 中断生成前的守卫)
-  menuSignal: { name: string; seq: number } | null; // 外部打开 composer 菜单的信号(快捷键 Alt+M)
-  draftHasContent: boolean; // 输入框是否有草稿(Composer 每次渲染同步,Esc 二次确认用)
-  escArmedUntil: number; // Esc 二次确认窗口的截止时刻(> 现在 = 发送钮显示取消图标)
-  // ---- 输入框 sigil 补全态 ----
-  commands: SlashCommand[] | null; // 当前会话斜杠命令清单(null = 未拉取,弹层显示加载中)
-  commandsSessionId: string | null; // 清单归属会话 id,切会话即失效
-  mentionReqSeq: number; // list_files 请求序号(reqId 生成器,前端自增)
-  mentionResult: { reqId: number; matches: FileMatch[] } | null; // 最新 @ 候选响应;reqId 不匹配即过期
+  toastMsg: string | null; // current toast text (null = hidden)
+  composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // signal to fill the composer externally (fork backfill / queued-message editing)
+  findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
+  menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)
+  draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
+  escArmedUntil: number; // deadline of the Esc double-confirm window (> now = the send button shows a cancel icon)
+  // ---- Composer sigil completion state ----
+  commands: SlashCommand[] | null; // slash command list of the current session (null = not fetched yet, the popover shows loading)
+  commandsSessionId: string | null; // session id the list belongs to; invalidated on session switch
+  mentionReqSeq: number; // list_files request counter (reqId generator, frontend-incremented)
+  mentionResult: { reqId: number; matches: FileMatch[] } | null; // latest @ candidates response; stale as soon as the reqId no longer matches
   sidebarCollapsed: boolean;
   rightCollapsed: boolean;
-  mainViewMode: "chat" | "tree"; // 主区域视图模式（消息流 vs 会话条目树）
-  // ---- 设置中心 ----
-  settingsOpen: boolean; // 全屏 overlay 开合
-  settingsPage: string; // 当前设置页 id
+  mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
+  // ---- Settings center ----
+  settingsOpen: boolean; // fullscreen overlay open state
+  settingsPage: string; // current settings page id
   providerLimits: ProviderLimitsResultFrame | null;
-  loginBanner: string | null; // OMP 登录进度横幅文本
-  loginPromptData: LoginPromptFrame | null; // login_prompt 粘贴码弹窗数据
-  assetFile: AssetFileFrame | null; // asset_file 回包(skills/agents 编辑器按 kind 过滤)
-  assetFileSaved: { kind: string; at: number } | null; // asset_file_saved 落地(引用变化驱动「已保存」态)
-  assetSaved: { kind: string; at: number } | null; // 同上,agents 页消费
-  assetErr: { kind: string; message: string; at: number } | null; // error 帧带 kind 时落地
-  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // MCP 单服务器测试结果:name -> { status, error?, log?, ts }
-  memoryDetail: MemoryDetailState; // memory_file 帧落地
-  // ---- ringpop 弹卡瞬态数据(hover 上下文环明细卡,移开即弃,下次悬停清零重请求) ----
+  loginBanner: string | null; // OMP login progress banner text
+  loginPromptData: LoginPromptFrame | null; // login_prompt paste-code dialog data
+  assetFile: AssetFileFrame | null; // asset_file reply (skills/agents editors filter by kind)
+  assetFileSaved: { kind: string; at: number } | null; // landed from asset_file_saved (reference change drives the "saved" indicator)
+  assetSaved: { kind: string; at: number } | null; // same as above, consumed by the agents page
+  assetErr: { kind: string; message: string; at: number } | null; // landed when the error frame carries kind
+  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results: name -> { status, error?, log?, ts }
+  memoryDetail: MemoryDetailState; // landed from the memory_file frame
+  // ---- ringpop popover transient data (hover context-ring detail card; discard-on-leave, cleared and re-requested on the next hover) ----
   ctxDetail: ContextDetailFrame | null;
   ctxLimits: LimitsResultFrame | null;
 }

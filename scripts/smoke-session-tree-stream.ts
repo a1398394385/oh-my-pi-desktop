@@ -1,4 +1,4 @@
-// 会话树分段与分支切换锚定逻辑单测
+// Unit test for session-tree segmentation and branch-switch anchoring
 import { splitSequenceIntoSections } from "../ui-src/components/chat/sessionTreeUtil";
 import type { StreamItem, EntryNode } from "../ui-src/components/chat/sessionTreeUtil";
 
@@ -18,7 +18,7 @@ const dummyNode = (id: string, text: string): EntryNode => ({
   role: "user",
 });
 
-// 测试场景 1：纯线性链（无分叉）
+// Test scenario 1: a pure linear chain (no fork)
 {
   const sequence: StreamItem[] = [
     { type: "node", node: dummyNode("1", "node 1"), isLeaf: false, onPath: true },
@@ -32,7 +32,7 @@ const dummyNode = (id: string, text: string): EntryNode => ({
   console.log("✓ 测试 1 通过：纯线性链正确划分为单个根段");
 }
 
-// 测试场景 2：中间包含单个分叉点
+// Test scenario 2: a single fork point in the middle
 {
   const sequence: StreamItem[] = [
     { type: "node", node: dummyNode("1", "node 1"), isLeaf: false, onPath: true },
@@ -48,13 +48,13 @@ const dummyNode = (id: string, text: string): EntryNode => ({
 
   const sections = splitSequenceIntoSections(sequence);
   assert(sections.length === 2, `包含 1 个分叉点时应有 2 个段，实际为 ${sections.length}`);
-  // 上半部分
+  // Upper half
   assert(sections[0].fork === null, "第 1 段应该为根段，fork 为 null");
   assert(sections[0].nodes.length === 2, "第 1 段应该包含分叉点之上的 2 个节点");
   assert(sections[0].nodes[0].node.id === "1", "第 1 个节点为 1");
   assert(sections[0].nodes[1].node.id === "2", "第 2 个节点为 2");
 
-  // 下半部分（切换区域）
+  // Lower half (the switching region)
   assert(sections[1].fork !== null, "第 2 段应该包含分叉点");
   assert(sections[1].fork?.parentId === "2", "分叉点 parentId 应该为 2");
   assert(sections[1].fork?.selectedId === "3a", "分叉点选中的分支为 3a");
@@ -63,7 +63,7 @@ const dummyNode = (id: string, text: string): EntryNode => ({
   console.log("✓ 测试 2 通过：单个分叉点准确切分为上半部分与下半部分切换区域");
 }
 
-// 测试场景 3：根部分叉（根节点就有多个分叉）
+// Test scenario 3: forks at the root (the root node itself has multiple forks)
 {
   const sequence: StreamItem[] = [
     {
@@ -83,7 +83,7 @@ const dummyNode = (id: string, text: string): EntryNode => ({
   console.log("✓ 测试 3 通过：根部分叉段准确处理");
 }
 
-// 测试场景 4：多层嵌套分叉（分叉点内还有子分叉点）
+// Test scenario 4: nested multi-level forks (fork points containing more fork points)
 {
   const sequence: StreamItem[] = [
     { type: "node", node: dummyNode("1", "node 1"), isLeaf: false, onPath: true },

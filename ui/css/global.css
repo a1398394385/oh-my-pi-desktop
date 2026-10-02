@@ -1,7 +1,7 @@
 /* ============================================================
- * global.css —— 全局基座：token 变量、@theme 映射、base 重置、全站控件语言基类（.tg/.sel/.inp/.confirm-btn/.ring-pop 系…）
- * 由 ui/style.css 机械切分而来：域内保持原相对顺序，禁止跨文件重排。
- * 级联顺序 = 入口 @import 顺序：global → main → settings。
+ * global.css — global base: token variables, @theme mapping, base reset, site-wide control base classes (.tg/.sel/.inp/.confirm-btn/.ring-pop family...)
+ * Mechanically split out of ui/style.css: keep the original relative order within the domain, no cross-file reordering.
+ * Cascade order = the entry @import order: global -> main -> settings.
  * ============================================================ */
 
 @theme inline {
@@ -42,19 +42,19 @@
   --font-mono: var(--mono);
 }
 
-/* ── tokens：底座 + 嵌套卡片 ─────────────────────────────────────────── */
+/* ── tokens: base + nested cards ─────────────────────────────────────────── */
 :root {
-  --base:      #292B2C;   /* 窗口底座 */
-  --card:      #161616;   /* 中栏 / 右栏卡片 */
-  --inset:     #2B2B2B;   /* 输入框 / TODO 内嵌卡片 */
-  --select:    #3F4141;   /* 当前会话高亮 */
+  --base:      #292B2C;   /* window base */
+  --card:      #161616;   /* middle / right column cards */
+  --inset:     #2B2B2B;   /* input fields / TODO inset cards */
+  --select:    #3F4141;   /* current session highlight */
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
   --panel-2:   #353738;
   --panel-3:   var(--select);
-  /* 二级重叠卡的上层卡面（ZCode bg-surface 同款语义：低透明度罩色，
-     压在页面底上形成比输入卡更「浮」的层级，勿换实色） */
+  /* Upper card face of stacked second-level cards (same semantics as ZCode bg-surface:
+     a low-opacity veil floating a level above the page base, higher than the input card — do not swap to a solid color) */
   --surface:   rgba(255,255,255,.05);
   --line:      #3A3C3D;
   --line-soft: rgba(255,255,255,.06);
@@ -69,9 +69,9 @@
   --yellow:    #febc2e;
   --blue:      #6fb3d8;
   --purple:    #a86fe0;
-  --accent:    #4a9eff;   /* 全站唯一强调色（开关/聚焦环/选中图标） */
-  /* bash 模式（输入框 ! 前缀）配色别名：对齐 TUI bashMode 主题色 dark=cyan / light=green；
-     桌面无 cyan token，暗色就近映射青蓝 --blue，浅色映射 --green（沿用 :root 定义） */
+  --accent:    #4a9eff;   /* the site's only accent color (switches/focus rings/selected icons) */
+  /* Bash-mode (composer ! prefix) color aliases: aligned with the TUI bashMode theme colors dark=cyan / light=green;
+     the desktop has no cyan token, so dark maps to the nearby --blue and light maps to --green (both defined in :root) */
   --bash:      var(--blue);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -89,7 +89,7 @@
   --todo-w: 280px;
   --chat-gutter: 48px;
   --ctl-bg: var(--panel-2);
-  /* 动效纪律：弹簧/迅捷两条曲线，全站复用 */
+  /* Motion discipline: two curves (spring/swift), reused site-wide */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --swift:  cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -110,7 +110,7 @@
   --text:      #1d1d21;
   --dim:       #5d5d65;
   --faint:     #808088;
-  --bash:      var(--green); /* bash 模式：浅色 = green（--green 沿 :root 暗色定义继承） */
+  --bash:      var(--green); /* bash mode: light = green (--green inherits the :root dark-theme definition) */
   --ctl-bg:    var(--inset);
 }
 
@@ -211,14 +211,14 @@ button { font: inherit; }
 
 .act .caret { color: var(--faint); }
 
-/* 展开体插入时从上往下逐步揭示（仅点击展开那一次，带 .drop 类才触发） */
+/* Expansion body reveals top-down when inserted (only on the click-through expand, triggered via the .drop class) */
 @keyframes ed-drop {
   from { clip-path: inset(0 0 100% 0); opacity: .25; }
   to { clip-path: inset(0 0 0 0); opacity: 1; }
 }
 
-/* 收起：ed-drop 的反向（底部向上收拢 + 淡出），动画结束后由 JS 移除节点。
-   easing 与展开一致用 ease-out：动作前置，避免前段停滞造成的拖沓感 */
+/* Collapse: the reverse of ed-drop (gather upward from the bottom + fade out); JS removes the node after the animation.
+   Same ease-out easing as expand: front-load the motion to avoid the sluggish feel of a stalled opening */
 @keyframes ed-lift {
   from { clip-path: inset(0 0 0 0); opacity: 1; }
   to { clip-path: inset(0 0 100% 0); opacity: .25; }
@@ -236,7 +236,7 @@ button { font: inherit; }
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: transparent; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-base);
-  padding: 5px 9px; border-radius: 8px; cursor: pointer; /* ZCode ghost 按钮 rounded-lg */
+  padding: 5px 9px; border-radius: 8px; cursor: pointer; /* ZCode ghost button rounded-lg */
   max-width: 180px; white-space: nowrap; overflow: hidden;
   line-height: 1;
 }
@@ -253,10 +253,10 @@ button { font: inherit; }
   margin-top: -0.5px;
 }
 
-/* 权限/模型/思考三个选择器字重对齐 ZCode（含胶囊文字本身）；
-   仅这三个，后台任务/子智能体计数钮不跟着加粗 */
-/* 全站图标垂直对齐：inline svg 默认按基线对齐（基线=盒子底部），视觉偏高 1-2px；
-   middle 让图标与文本 x-height 中线对齐（Icon 组件与 hydrateIcons 注入的 svg 一并生效） */
+/* The permission/model/thinking selectors match ZCode font weight (pill text included);
+   only these three — background-task/subagent count buttons do not follow */
+/* Site-wide icon vertical alignment: inline svg defaults to baseline alignment (baseline = box bottom), visually 1-2px too high;
+   middle aligns icons to the text x-height center (applies to both the Icon component and svg injected by hydrateIcons) */
 svg { vertical-align: middle; }
 
 .pill-btn:hover { background: var(--panel-2); color: var(--text); }
@@ -272,7 +272,7 @@ svg { vertical-align: middle; }
   padding: 12px 12px 14px;
   min-width: 192px; /* 240px × 0.8 */
   font-size: var(--ui-fs-base); color: var(--dim);
-  animation: ringpop .18s ease-out; /* 逐步渲染:淡入 + 上滑,非瞬间显示 */
+  animation: ringpop .18s ease-out; /* progressive render: fade in + slide up, not an instant flash */
 }
 
 @keyframes ringpop {
@@ -339,7 +339,7 @@ svg { vertical-align: middle; }
   filter: brightness(1.1);
 }
 
-/* 消息刻度弹出卡：复用 .ring-pop 底色/圆角/阴影/ringpop 动画，与上下文明细卡同款 */
+/* Message-tick popover: reuses .ring-pop background/radius/shadow/ringpop animation, same as the context detail card */
 .rail-pop { max-width: 320px; max-height: 240px; overflow-y: auto; cursor: default; }
 
 .rail-pop .rp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
@@ -356,10 +356,10 @@ svg { vertical-align: middle; }
   font-size: var(--ui-fs-sm);
   color: var(--faint);
   margin-left: 2px;
-  /* ZCode 同款：菜单向上弹出但尖角保持朝下（ChevronDownIcon），不做展开旋转 */
+  /* Same as ZCode: menu pops upward but the chevron stays pointing down (ChevronDownIcon), no expand rotation */
 }
 
-/* composer 内胶囊（模型/思考/权限）：尖角同 wb 规则，朝下 */
+/* Composer pills (model/thinking/permission): chevrons follow the wb rule, pointing down */
 .pill-btn .caret-svg {
   transition: transform .18s var(--swift);
 }
@@ -383,7 +383,7 @@ svg { vertical-align: middle; }
   align-items: center;
   justify-content: center;
   flex: none;
-  /* UA 样式表给 button 默认灰底，须显式清掉，否则未 hover 也像高亮（queue 卡 .q-btn 同款配方） */
+  /* The UA stylesheet gives buttons a default gray background that must be cleared explicitly, or they look highlighted even without hover (same recipe as the queue card .q-btn) */
   background: none;
   border: 0;
   padding: 0;
@@ -410,15 +410,15 @@ svg { vertical-align: middle; }
   color: var(--text);
 }
 
-/* ── 统一弹出/展开入场动画：淡入 + 按弹出方向滑入 ──────────────────
-   所有菜单弹层与展开体共用。--pop-from 控制起始位移：
-   向下弹出 -6px（下拉/右键菜单）｜向上弹出 6px（composer 胶囊）｜列表展开 -4px */
+/* ── Unified popover/expand entrance animation: fade in + slide along the pop direction ──────────────────
+   Shared by all menu popovers and expansion bodies. --pop-from sets the initial offset:
+   downward -6px (dropdown/context menus) | upward 6px (composer pills) | list expand -4px */
 @keyframes popIn {
   from { opacity: 0; transform: translateY(var(--pop-from, -6px)); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── 下拉菜单（composer 内 absolute，bottom 定位；随容器 zoom 缩放不错位；宽度调小更紧凑） ── */
+/* ── Dropdown menu (absolute inside the composer, bottom-positioned; scales with the container zoom without drifting; narrower for compactness) ── */
 .menu {
   position: absolute; bottom: 44px;
   background: var(--ctl-bg);
@@ -432,7 +432,7 @@ svg { vertical-align: middle; }
 
 [data-theme="light"] .menu { background: var(--panel); box-shadow: 0 12px 32px rgba(0,0,0,.18); } /* style-token-ignore */
 
-.menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; } /* 上弹：自下方滑入 */
+.menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; } /* pops up: slides in from below */
 
 .menu .mi {
   display: flex; align-items: center; gap: 7px;
@@ -454,12 +454,12 @@ svg { vertical-align: middle; }
 
 .menu .mi .ck { width: 14px; color: var(--green); flex: none; }
 
-/* 菜单项内图标（分支选项等）：固定 18px 栏宽居中，风格随 FA 图标体系 */
+/* Icons inside menu items (branch options etc.): centered in a fixed 18px column, following the FA icon system */
 .menu .mi .mi-ic { width: 18px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
 
-/* sigil 补全卡（@ 文件候选 / 行首 / 命令候选）：与输入框卡一模一样的圆角卡片（内容换成候选
-   列表），两张卡上下排列——同宽、间距 2px、最大高度 = 输入框卡 2.6 倍（定位/限高由 place.js
-   placePaletteCard 计算）。配色与阴影逐项对齐 #composer.in-welcome 卡。 */
+/* Sigil completion card (@ file candidates / line start / command candidates): the exact same rounded card as the composer (content swapped for the candidate
+   list), the two cards stacked — same width, 2px apart, max height = 2.6x the composer card (positioning and height capping
+   computed by placePaletteCard in place.js). Colors and shadows match the #composer.in-welcome card item by item. */
 .menu.palette {
   min-width: 0;
   max-width: none;
@@ -472,15 +472,15 @@ svg { vertical-align: middle; }
 
 [data-theme="light"] .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07); } /* style-token-ignore */
 
-.menu.palette .mi { border-radius: 8px; } /* 卡内行圆角比卡小一档（16px 卡 → 8px 行） */
+.menu.palette .mi { border-radius: 8px; } /* row radius one notch below the card (16px card -> 8px row) */
 
-.menu.palette .mi.on { background: var(--panel-3); } /* 键盘高亮（基类只有 :hover，无 .on） */
+.menu.palette .mi.on { background: var(--panel-3); } /* keyboard highlight (the base class only has :hover, no .on) */
 
 .menu.palette .mi .mi-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 模型/思考菜单：勾推到行右端；模型/思考/权限三处勾统一灰色 */
+/* Model/thinking menus: checkmark pushed to the row's right end; all three (model/thinking/permission) use the same gray checkmark */
 #modelMenu .mi .ck,
 #thinkMenu .mi .ck { order: 1; margin-left: auto; }
 
@@ -488,7 +488,7 @@ svg { vertical-align: middle; }
 #modelMenu .mi .ck,
 #thinkMenu .mi .ck { color: hsl(0, 0%, 58%); } /* style-token-ignore */
 
-/* 权限模式菜单（大行：图标+标题+描述，调小至 280px） */
+/* Permission mode menu (large rows: icon + title + description, shrunk to 280px) */
 .menu.mode { min-width: min(280px, 100%); padding: 6px; }
 
 .menu.mode .mi.big { display: flex; gap: 8px; align-items: flex-start; padding: 7px 9px; }
@@ -505,25 +505,25 @@ svg { vertical-align: middle; }
 
 .menu.mode .mi.big .ck { margin-top: 2px; }
 
-/* 计划模式行：与下面三个权限模式行以通栏横线分隔（-6px 抵消 .menu.mode 的 6px 内边距） */
+/* Plan-mode row: separated from the three permission-mode rows below by a full-width line (-6px cancels .menu.mode's 6px padding) */
 .menu.mode .mode-sep { height: 1px; background: var(--line); margin: 5px -6px; }
 
-/* 无会话时不可点：降透明度，且不给 hover 高亮（hover 高亮只挂在可点元素上） */
+/* Disabled with no session: lower opacity, no hover highlight (hover highlights only go on clickable elements) */
 .menu.mode .mi.off { opacity: .45; cursor: default; }
 
 .menu.mode .mi.off:hover { background: none; }
 
-/* 模型菜单（二级级联：一级供应商行，二级模型浮层）。
-   容器对齐 ZCode dropdown-menu：rounded-lg(8px) + p-1(4px)；选项间距按需求 5px */
+/* Model menu (two-level cascade: top-level provider rows, second-level model flyout).
+   Container aligned with ZCode dropdown-menu: rounded-lg(8px) + p-1(4px); row gap 5px as required */
 .menu.model {
   min-width: 200px; max-height: 320px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 5px;
   border-radius: 8px; padding: 4px;
 }
 
-.menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; } /* 二级模型列表同款 */
+.menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; } /* same for the second-level model list */
 
-/* ZCode 观感：模型菜单选项字重 500（截图确认其菜单字比正文粗） */
+/* ZCode look: model menu options use font-weight 500 (screenshots confirm its menu text is bolder than body text) */
 .menu.model .mi, .menu.flyout .mi { font-weight: 500; }
 
 #modelMenu .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
@@ -536,15 +536,15 @@ svg { vertical-align: middle; }
 
 .mp-role-sel .mi.prov.on, .mp-role-sel .mi.on { background: var(--panel-3); }
 
-/* 浮层挂窄胶囊下，absolute 收缩适配会被包含块可用宽压窄 → width:max-content 脱离该限制 */
+/* The flyout hangs under a narrow pill; absolute shrink-to-fit would be squeezed by the containing block's available width -> width:max-content escapes that limit */
 .mp-role-sel .menu.flyout { width: max-content; min-width: 250px; }
 
 [data-theme="light"] .srow.mp-role-row:hover { background: none; }
 
-/* 二级浮层：复用 .menu 基类（底色/边框/圆角/阴影/popIn），left/top 由 JS 按
-   #composer 坐标系写入（挂在 #composer 下，规避 .menu.model overflow-y 裁切）。
-   宽度随当前展开提供商的模型列表自适应（width:max-content，对齐 ZCode
-   DropdownMenuSubContent w-max），不再吃 220px 固定下限导致宽于内容 */
+/* Second-level flyout: reuses the .menu base class (background/border/radius/shadow/popIn); left/top are written by JS in
+   #composer's coordinate system (mounted under #composer to avoid clipping by .menu.model's overflow-y).
+   Width adapts to the expanded provider's model list (width:max-content, aligned with ZCode
+   DropdownMenuSubContent w-max) instead of eating a fixed 220px floor and outgrowing the content */
 .menu.flyout {
   bottom: auto;
   width: max-content;
@@ -554,19 +554,19 @@ svg { vertical-align: middle; }
 
 .menu.flyout .mi .ck { order: 1; margin-left: auto; }
 
-/* 上下文容量弹层（调小至 280px） */
+/* Context capacity popover (shrunk to 280px) */
 .menu.ctx { min-width: 280px; padding: 12px 14px; cursor: default; }
 
 .cx-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
-/* 卡片内无上文段时(如新建会话页仅配额):限额段是唯一内容,去掉悬空横线 */
+/* When the card has no preceding section (e.g. new-session page with quota only): the quota section is the only content, drop the dangling divider */
 .ring-pop .cx-sec.no-div { border-top: 0; margin-top: 0; padding-top: 0; }
 
 .lx-bar { height: 6px; border-radius: 3px; background: var(--panel-3); overflow: hidden; }
 
 .lx-bar i { display: block; height: 100%; border-radius: 3px; }
 
-/* tab 总览 / 新增弹层：复用 .menu 视觉，锚定 sp-head（absolute 随面板 zoom 缩放不错位） */
+/* Tab overview / new-tab popover: reuses .menu visuals, anchored to sp-head (absolute scales with the panel zoom without drifting) */
 .sp-head .menu.sp-pop {
   top: calc(100% + 4px); bottom: auto; left: 6px; right: auto;
   width: 248px; min-width: 0; padding: 6px; z-index: 510;
@@ -574,7 +574,7 @@ svg { vertical-align: middle; }
 
 .sp-pop .mi.on { background: var(--panel-3); }
 
-/* 打开中行的逐项关闭钮：hover 行才出现（对齐 tab 头关闭钮语义） */
+/* Per-item close buttons on open rows: appear on row hover (same semantics as the tab-header close button) */
 .sp-pop .mi .mi-x {
   margin-left: auto; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
@@ -598,35 +598,35 @@ svg { vertical-align: middle; }
 
 .sp-pop .mi .mi-x:hover { background: var(--panel-2); color: var(--text); }
 
-/* 后台命令行（右侧栏） */
+/* Background command line (right sidebar) */
 .srow.bgcmd-row { cursor: pointer; user-select: none; }
 
 .srow.bgcmd-row.on { background: var(--panel-2); }
 
 .srow.bgcmd-row.on .bgcmd-caret svg { transform: rotate(0deg); }
 
-/* ── 轻量 diff（自研，移植 ZCode lightweight-diff-preview）：行背景 color-mix +
-   行首 inset 状态条 + 行号 gutter 着色表达增删，不显示 +/-/空格 marker ── */
+/* ── Lightweight diff (in-house, ported from ZCode lightweight-diff-preview): row background color-mix +
+   inset status bar at the row head + gutter number coloring to express additions/deletions, no +/-/space markers ── */
 :root {
-  --diff-added: var(--green-soft);  /* 增进行主色：14% 行背景 + 18% gutter 底 + 状态条 */
-  --diff-removed: var(--err);       /* 删行主色，同上加色规则 */
+  --diff-added: var(--green-soft);  /* added-row key color: 14% row bg + 18% gutter base + status bar */
+  --diff-removed: var(--err);       /* removed-row key color, same tinting rules */
 }
 
-/* 页面切换入场：交错上浮 + 去模糊；hidden 切换 display 时自动重放 */
+/* Page-switch entrance: staggered float up + deblur; auto-replays when hidden toggles display */
 @keyframes setRise {
   from { opacity: 0; transform: translateY(10px); filter: blur(3px); }
   to   { opacity: 1; transform: none; filter: none; }
 }
 
-/* 设置页刷新钮：以模型页基准 ×1.2（图标 14→17、底板 26→31），所有页面统一取用 */
+/* Settings refresh button: model-page baseline x1.2 (icon 14->17, plate 26->31), shared by all pages */
 .pg-refresh { margin-left: auto; width: 31px; height: 31px; }
 
 .pg-refresh svg { display: block; }
 
-/* 模型页:刷新按钮移到「＋ 添加供应商」左侧,不再靠右 */
+/* Model page: the refresh button moves to the left of "+ Add Provider", no longer flush right */
 .set-desc-row .pg-refresh { margin-left: 0; }
 
-/* 操作行内刷新钮与更多/新建成组,不吃靠右外边距 */
+/* In action rows the refresh button groups with more/new-add and skips the flush-right margin */
 .mcp-actions-wrap .pg-refresh, .skills-actions-wrap .pg-refresh { margin-left: 0; }
 
 .pg-refresh.spin svg { animation: pgspin .5s linear; }
@@ -696,7 +696,7 @@ svg { vertical-align: middle; }
 
 .inp.disabled { color: var(--faint); pointer-events: none; box-shadow: none; }
 
-/* 保存按钮 = .send 语言：--panel-3 底 r9 方块 */
+/* Save button = the .send language: --panel-3 base, r9 square */
 .save-btn {
   flex: none; border: 0; background: var(--panel-3); color: var(--dim);
   border-radius: 9px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
@@ -709,17 +709,17 @@ svg { vertical-align: middle; }
 
 .save-btn:active { transform: scale(.95); }
 
-/* 危险变体（登出等）：同 .save-btn 尺寸语言，hover 变红提示破坏性 */
+/* Danger variant (sign-out etc.): same size language as .save-btn, hover turns red to signal destructiveness */
 .save-btn.danger:hover { background: var(--panel-2); color: var(--err); }
 
-/* 保存进行中:按钮置灰不可点,busy 变体图标转圈(复用 pgspin) */
+/* Save in progress: button grayed out and unclickable; the busy variant spins the icon (reuses pgspin) */
 .save-btn:disabled { opacity: .6; cursor: default; }
 
 .save-btn:disabled:hover, .save-btn:disabled:active { background: var(--panel-3); transform: none; }
 
 .save-btn.busy svg { animation: pgspin .8s linear infinite; }
 
-/* 开关：弹簧滑动 + 按住压扁拟物 */
+/* Toggle switch: spring slide + press-to-squash skeuomorphism */
 .tg {
   width: 38px; height: 23px; border-radius: 999px; background: var(--panel-3);
   position: relative; cursor: pointer; flex: none;
@@ -744,10 +744,10 @@ svg { vertical-align: middle; }
 
 .tg.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
-/* 设置页 srow 内的分段胶囊：字号对齐 .sel，高度对齐设置页按钮体系（31px，add-btn/刷新钮同高） */
+/* Segmented pills inside settings srows: font size aligned with .sel, height aligned with the settings button system (31px, same as add-btn/refresh) */
 .srow .mcp-type-pill { font-size: var(--ui-fs-base); min-height: 31px; }
 
-/* 下拉 = .pill-btn 语言：透明胶囊，hover --panel-2 */
+/* Dropdown = the .pill-btn language: transparent pill, hover --panel-2 */
 .sel {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; border-radius: 999px; padding: 5px 10px;
@@ -768,13 +768,13 @@ svg { vertical-align: middle; }
 .sel > .menu {
   position: absolute; top: calc(100% + 6px); right: 0; left: auto; bottom: auto;
   min-width: 170px;
-  --pop-from: -6px; /* 下弹：自上方滑入 */
+  --pop-from: -6px; /* pops down: slides in from above */
 }
 
 .add-btn {
   margin-left: auto; border: 1px solid var(--line); background: transparent;
   color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
-  height: 31px; /* 与刷新钮(.pg-refresh 31×31)同高，各页新建/添加按钮统一高度 */
+  height: 31px; /* same height as the refresh button (.pg-refresh 31x31), unified height for per-page new/add buttons */
 }
 
 .add-btn:hover { background: var(--panel-2); }
@@ -787,7 +787,7 @@ svg { vertical-align: middle; }
 
 .pv .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
 
-/* OMP 登录粘贴码弹窗 */
+/* OMP login paste-code dialog */
 .lp-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; } /* style-token-ignore */
 
 .lp-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 380px; max-width: calc(100vw - 48px); }
@@ -815,7 +815,7 @@ svg { vertical-align: middle; }
   gap: 4px;
 }
 
-/* 传输协议分段 = .sel 胶囊语言：透明胶囊，hover --panel-2，选中 --panel-3 */
+/* Transport protocol segment = the .sel pill language: transparent pill, hover --panel-2, selected --panel-3 */
 .mcp-type-pill {
   padding: 5px 12px;
   border-radius: 999px;
@@ -838,7 +838,7 @@ svg { vertical-align: middle; }
   font-weight: 500;
 }
 
-/* 命中消息闪烁强调：背景高亮渐隐（accent 派生，与 .inp 聚焦光晕同源） */
+/* Hit-message flash emphasis: background highlight fading out (accent-derived, same origin as the .inp focus glow) */
 @keyframes findflash {
   0% { background: rgba(74, 158, 255, 0.22); box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.10); }
   100% { background: transparent; box-shadow: none; }
@@ -869,4 +869,4 @@ svg { vertical-align: middle; }
 
 @keyframes bpane-rot { to { transform: rotate(360deg); } }
 
-/* 滚动条规则见文件开头「全局滚动条统一」段（同一套 hover 才现语义） */
+/* Scrollbar rules: see the "unified global scrollbars" section at the top of this file (same hover-to-reveal semantics) */

@@ -1,6 +1,8 @@
-// 下拉菜单基件（ZCodium dropdown-menu 平移）：内容卡/选项行对齐本仓 .menu/.mi 语言
-// （--ctl-bg 卡面 + --line 边 + r-md + popIn 入场；选项 r6 + hover --select + 左侧 ✓ 勾位）。
-// 键盘导航 / 焦点管理由 Radix 提供；z 层沿用菜单系 60。
+// Dropdown-menu base component (ported from ZCodium dropdown-menu): the content
+// card / item rows align with this repo's .menu/.mi language (--ctl-bg surface
+// + --line border + r-md + popIn entrance; items r6 + hover --select + a left
+// ✓ check slot). Keyboard navigation / focus management provided by Radix;
+// z-layer follows the menu family's 60.
 import * as React from "react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 

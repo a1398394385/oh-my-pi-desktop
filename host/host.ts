@@ -1,16 +1,20 @@
-// omp 宿主薄入口（编译产物的主模块）。
+// Thin host entry (main module of the compiled artifact).
 //
-// argv 分流：零参数 = 桌面宿主（Tauri 壳 spawn 时从不带参数），动态装载 main.ts；
-// 非空 = 以 CLI 身份运行，交 SDK 的 runCli 分发。后者覆盖 `__omp_worker_*` 选择器：
-// SDK 在编译形态下把 worker 子进程 re-entry 到当前可执行文件
-// （worker-client.ts resolveWorkerSpawnCmd → [process.execPath, workerArg]），
-// omp CLI 自身在 cli.ts 分发这些选择器，本产物若不分发，每个 worker 都会被
-// 启动成完整桌面宿主——永不退出、各常驻 ~250MB；Windows 下 daemon broker 客户端
-// 10s 连接超时后重试，每 10s 泄漏一个宿主进程（内存无限增长，BUG-026）。
+// argv routing: zero args = desktop host (the Tauri shell never spawns with
+// args), dynamically loading main.ts; non-empty = run as the CLI, handing off
+// to the SDK's runCli. The latter covers `__omp_worker_*` selectors: in
+// compiled form the SDK re-enters worker subprocesses into the current
+// executable (worker-client.ts resolveWorkerSpawnCmd → [process.execPath,
+// workerArg]). The omp CLI itself dispatches these selectors in cli.ts; if this
+// artifact did not dispatch them, every worker would be started as a full
+// desktop host — never exiting, each resident at ~250MB; on Windows the daemon
+// broker client retries after its 10s connect timeout, leaking one host
+// process every 10s (unbounded memory growth, BUG-026).
 //
-// 分流必须在宿主静态图求值之前（ESM 静态 import 先于任何顶层代码执行），所以
-// 宿主主体放 main.ts、worker 路径只动态拉取 CLI 轻入口（其静态图不含 TUI 与
-// native addon 的运行时加载）。
+// The routing must happen before the host's static graph is evaluated (ESM
+// static imports run before any top-level code), so the host body lives in
+// main.ts and the worker path only dynamically pulls the light CLI entry
+// (whose static graph excludes runtime loading of the TUI and native addons).
 // The GUI-launched host has a stripped PATH (nvm/Homebrew commands invisible):
 // fire the PATH augment before loading the body (overlapping main.ts's static
 // graph load incl. the SDK); main.ts awaits the same promise.
@@ -22,8 +26,10 @@ if (argv.length === 0) {
 	await import("./main.ts");
 } else {
 	const { declareWorkerHostEntry } = await import("@oh-my-pi/pi-utils/worker-host");
-	// 对齐 CLI 进程入口（cli.ts isProcessEntry 分支）：本进程即分发入口，登记为
-	// 合法 worker 宿主，使 worker 子进程（如 stats activity）能再 spawn worker 线程。
+  // Mirror the CLI process entry (the isProcessEntry branch in cli.ts): this
+  // process is the dispatch entry, so register as a legitimate worker host,
+  // letting worker subprocesses (e.g. stats activity) spawn further worker
+  // threads.
 	declareWorkerHostEntry();
 	const { runCli } = await import("@oh-my-pi/pi-coding-agent/cli");
 	await runCli(argv);

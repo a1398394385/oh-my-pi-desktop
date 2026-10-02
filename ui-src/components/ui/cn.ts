@@ -1,4 +1,5 @@
-// 类合成：clsx 拼接 + tailwind-merge 冲突去重（Radix 基件复写 className 的标准组合）。
+// Class composition: clsx concatenation + tailwind-merge conflict dedupe (the
+// standard combo for Radix base components overriding className).
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 

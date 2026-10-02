@@ -1,19 +1,29 @@
-// Bun 宿主进程：库内嵌 omp SDK 的多会话容器（仿 etower-agent 的 session 池形式）。
-// 本文件是宿主主体，由薄入口 host.ts 在零参数形态下动态装载（argv 分流见 host.ts）。
+// Bun host process: a multi-session container for the library-embedded omp
+// SDK (modeled after etower-agent's session pool).
+// This file is the host body, dynamically loaded by the thin entry host.ts
+// in the zero-arg form (argv routing: see host.ts).
 //
-// 进程模型：
-// - 进程级底座只装配一次（authStorage / modelRegistry / settings），逐会话注入（bootstrap.ts + profile.ts）
-// - 每个会话 = 进程内一个 AgentSession + 私有 AgentRegistry（多顶层并发必传）
-// - 会话落在独立 profile 下，与用户 CLI 的 ~/.omp/agent 隔离；profile 沿用旧 RPC 版的认证（agent.db）
-// - UI 壳通过 WebSocket 连入：命令（94 个 RPC，host/rpc/ 九域处理器表）+ 窄事件流
-// - stdout 首行打印 `READY ws://127.0.0.1:<port>`，由 Tauri 壳读取后转告前端
+// Process model:
+// - The process-level base is assembled once (authStorage / modelRegistry /
+//   settings) and injected per session (bootstrap.ts + profile.ts)
+// - Each session = one in-process AgentSession + a private AgentRegistry
+//   (mandatory for multiple concurrent top-level agents)
+// - Sessions live under a dedicated profile, isolated from the user CLI's
+//   ~/.omp/agent; the profile reuses the old RPC version's auth (agent.db)
+// - The UI shell connects over WebSocket: commands (94 RPCs, the nine domain
+//   handler tables in host/rpc/) + a narrow event stream
+// - The first stdout line prints `READY ws://127.0.0.1:<port>`, read by the
+//   Tauri shell and relayed to the frontend
 //
-// 本文件只保留：启动序言（profile 装配）、WS 服务壳（ready 帧 + RPC 分发）、
-// 宿主级后台任务（配额刷新/外部写入检测/看门狗/孤儿自愈）。
-// 模块分工：bootstrap.ts（SDK 加载闸门）/ state.ts（共享状态与推送桥）/ profile.ts（profile·env·开关）/
-// frames.ts（models/settings 帧组装）/ session-lifecycle.ts（会话生命周期与事件接线）/
-// plan.ts · goal.ts · queue.ts（域逻辑）/ translate.ts（omp 事件→窄事件）/
-// rpc/（RPC 处理器九域）/ assets.ts · extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · pty.ts。
+// This file keeps only: the startup prologue (profile assembly), the WS
+// server shell (ready frame + RPC dispatch), and host-level background tasks
+// (quota refresh / external-write detection / watchdog / orphan self-healing).
+// Module split: bootstrap.ts (SDK load gate) / state.ts (shared state and push
+// bridge) / profile.ts (profile·env·toggles) / frames.ts (models/settings
+// frame assembly) / session-lifecycle.ts (session lifecycle and event wiring) /
+// plan.ts · goal.ts · queue.ts (domain logic) / translate.ts (omp events →
+// narrow events) / rpc/ (nine RPC handler domains) / assets.ts ·
+// extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · pty.ts.
 import { stat, open } from "node:fs/promises";
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID } from "./state.ts";
@@ -26,14 +36,16 @@ import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { refreshAllLimits } from "./limits/index.ts";
 import { augmentGuiPath } from "./gui-path.ts";
 
-// ---------- 启动序言：激活持久化 profile，装配进程级底座 ----------
+// ---------- Startup prologue: activate the persisted profile, assemble the process-level base ----------
 // PATH augment completion point: the first RPC after UI connects
 // (list_agent_assets → MCP health probes) already spawns subprocesses, so it
 // must complete before that. host.ts fired it early, overlapping the SDK
 // static graph load — usually zero wait here.
 await augmentGuiPath();
-// profile 初始化不等在线模型目录发现（applyProfile 内 refreshInBackground），
-// ready 帧携带磁盘缓存目录立即可用；目录后台补全后经 onModelsRefreshed 补推 models 帧。
+// Profile init does not wait for online model catalog discovery
+// (refreshInBackground inside applyProfile); the ready frame carries the
+// disk-cached catalog and is immediately usable. Once the background refresh
+// completes, a catch-up models frame is pushed via onModelsRefreshed.
 const activeWs: { value: unknown } = { value: null };
 H.onModelsRefreshed = () => {
   const ws = activeWs.value as { send(data: string): unknown } | null;
@@ -49,9 +61,9 @@ profileReady.catch((err) => {
   process.exitCode = 1;
 });
 
-// ---------- WebSocket 服务 ----------
+// ---------- WebSocket server ----------
 const server = Bun.serve<{ sessionId: string | null }>({
-  port: 0, // 动态端口：多 workspace 并行开同名应用时固定端口会撞
+  port: 0, // Dynamic port: a fixed one would clash when multiple workspaces run the same app in parallel
   fetch(req, srv) {
     if (srv.upgrade(req)) return;
     return new Response("websocket only", { status: 400 });
@@ -65,7 +77,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
           ws.send(
             JSON.stringify({
               type: "ready",
-              hi: HOST_INSTANCE_ID, // 握手不占事件序号，但携带实例身份供 UI 立即比对
+              hi: HOST_INSTANCE_ID, // The handshake takes no event seq, but carries instance identity for immediate UI comparison
               approvalMode: H.settings.get("tools.approvalMode"),
               models: modelsPayload(),
               ...modelsDefaults(),
@@ -95,13 +107,13 @@ const server = Bun.serve<{ sessionId: string | null }>({
       try {
         await dispatchRpc(ws, msg);
       } catch (err) {
-        // 单条命令失败不拖垮宿主，错误如实上报前端
+        // A single failed command must not take down the host; report the error to the frontend as-is
         ws.send(JSON.stringify({ type: "error", sessionId: msg.sessionId ?? null, kind: msg.kind ?? null, message: String(err) }));
         process.stderr.write(`[host] 命令 ${msg.type} 失败: ${err}\n`);
       }
     },
     close(ws) {
-      // 前端断开：清理其名下终端 PTY，防孤儿 shell 进程
+      // Frontend disconnected: dispose its terminal PTYs to prevent orphan shell processes
       if (activeWs.value === ws) activeWs.value = null;
       disposeTerminalsOf(ws);
     },
@@ -109,14 +121,15 @@ const server = Bun.serve<{ sessionId: string | null }>({
 });
 
 process.on("SIGTERM", async () => {
-  // Tauri 壳退出兜底；dispose 触发落盘收尾
+  // Tauri shell exit fallback; dispose triggers the persistence wind-down
   await Promise.allSettled([...sessions.values()].map((e) => e.session.dispose()));
   await closeAllSharedMcpConnections();
   process.exit(0);
 });
 
-// 父进程死亡自监测：tauri dev 杀进程树时壳的 Exit 回调可能来不及 kill，
-// 宿主轮询 ppid，父进程消失就自行退出，杜绝孤儿进程
+// Parent-death self-monitor: when tauri dev kills the process tree, the
+// shell's Exit callback may not get to kill us in time. The host polls its
+// ppid and exits itself once the parent is gone, precluding orphan processes
 const parentPid = process.ppid;
 setInterval(() => {
   try {
@@ -126,11 +139,14 @@ setInterval(() => {
   }
 }, 2000);
 
-// ---------- 宿主内存看门狗 ----------
-// 失控会话/缓存累积可能把宿主 RSS 推到吃光整机内存。Bun/JSC 没有可用的堆上限开关
-// （BUN_JSC_forceRAMSize 实测不生效），改为 RSS 轮询：超限打日志后以退出码 86 退出，
-// Tauri 壳识别 86 限频重启宿主（src-tauri/src/lib.rs），前端重试环自动接入新 WS 端口，
-// 磁盘会话不受影响。正常使用远达不到该阈值，仅作失控兜底。
+// ---------- Host memory watchdog ----------
+// Runaway sessions / cache buildup can push host RSS to consume the whole
+// machine's memory. Bun/JSC has no usable heap cap switch (BUN_JSC_forceRAMSize
+// measured as ineffective), so fall back to RSS polling: past the limit, log
+// and exit with code 86. The Tauri shell recognizes 86 and rate-limitedly
+// restarts the host (src-tauri/src/lib.rs); the frontend retry loop reconnects
+// to the new WS port automatically and disk sessions are unaffected. Normal
+// usage stays far below the threshold — this is only a runaway fallback.
 const HOST_RSS_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 setInterval(() => {
   const rss = process.memoryUsage.rss();
@@ -143,9 +159,11 @@ setInterval(() => {
 console.log(`READY ws://127.0.0.1:${server.port}`);
 process.stderr.write(`[host][启动计时] WS 服务就绪 [t=${performance.now().toFixed(0)}ms]\n`);
 
-// 配额后台刷新:启动时预载所有已配置供应商(模型目录里出现过的 provider),
-// 此后每 5 分钟按账号全量重拉;缓存 TTL 同为 5min,前台 hover/切页永远命中缓存,
-// 对供应商的实际请求频率严格等于本节奏。
+// Background quota refresh: at startup, preloads every configured provider
+// (any provider that has appeared in the model catalog), then re-pulls all
+// accounts every 5 minutes; cache TTL is likewise 5min, so foreground
+// hover/page switches always hit the cache, and the real request rate to
+// providers strictly equals this cadence.
 const LIMITS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 function configuredLimitProviders() {
   const seen = new Map<string, string>();
@@ -170,18 +188,23 @@ setInterval(() => {
   void profileReady.then(runLimitsRefresh);
 }, LIMITS_REFRESH_INTERVAL_MS);
 
-// ---------- 宿主池外部写入检测 ----------
-// 池内会话 = desktop 正持有内存态的全集（宿主池无上限，前端 OPEN_SESSIONS_MAX 只管 UI LRU）。
-// 锁文件无信号（.lock.os 是 advisory 残留、publish 持有窗口 <500ms），唯一可靠信号 =
-// 文件被本进程之外的进程追加：从 pollKnownSize 起读新增完整行，行内 id 不在 manager
-// 内存索引里 = 外部写入（CLI 对话/改名/压缩都会落新条目）。自己写入的 id 必先进过内存，零误报。
+// ---------- Host pool external-write detection ----------
+// Pooled sessions = the full set desktop currently holds in memory (the host
+// pool is unbounded; the frontend's OPEN_SESSIONS_MAX only governs UI LRU).
+// The lock file carries no signal (.lock.os is an advisory leftover, the
+// publish hold window is <500ms); the only reliable signal is the file being
+// appended by a process other than ours: read the new complete lines from
+// pollKnownSize onward — an id not present in the manager's in-memory index
+// means an external write (CLI conversation/rename/compact all persist new
+// entries). Ids we wrote ourselves always pass through memory first, so zero
+// false positives.
 const POLL_EXTERNAL_WRITES_MS = 2000;
 async function pollExternalWrites() {
   for (const [sessionId, entry] of sessions.entries()) {
     try {
       const st = await stat(entry.path);
       if (st.size === entry.pollKnownSize) continue;
-      if (st.size < entry.pollKnownSize) entry.pollKnownSize = 0; // 全量重写：从头再扫
+      if (st.size < entry.pollKnownSize) entry.pollKnownSize = 0; // Full rewrite: rescan from the start
       const fh = await open(entry.path, "r");
       let data: Buffer;
       try {
@@ -191,7 +214,7 @@ async function pollExternalWrites() {
       } finally {
         await fh.close();
       }
-      // 只消费到最后一个完整行（半行留待下次，避免读到写一半的 JSON）
+      // Consume up to the last complete line only (partial lines wait for the next poll, avoiding half-written JSON)
       let lineEnd = -1;
       for (let i = 0; i < data.length; i++) if (data[i] === 10) lineEnd = i;
       if (lineEnd < 0) continue;
@@ -204,11 +227,13 @@ async function pollExternalWrites() {
         if (line.trim()) {
           try {
             const o = JSON.parse(line) as { id?: unknown; type?: unknown };
-            // 文件书架行不参与判定：header（type "session"，带 sessionId 形状的 id 但
-            // getEntries 明确不含 header）与 title slot 行；只有真条目比对内存索引
+            // File bookkeeping rows are excluded from the check: the header
+            // (type "session", its id has sessionId shape but getEntries
+            // explicitly excludes headers) and the title slot row; only real
+            // entries are compared against the in-memory index
             if (typeof o.id === "string" && o.type !== "session") newIds.push(o.id);
           } catch {
-            // 完整但损坏的行：跳过
+            // A complete but corrupted line: skip
           }
         }
       }
@@ -220,7 +245,7 @@ async function pollExternalWrites() {
       const ws = entry.attachedWs as { send(data: string): unknown } | null;
       ws?.send(JSON.stringify({ type: "session_external_write", sessionId }));
     } catch (err) {
-      // 新会话文件是懒落盘（首条条目才创建）：ENOENT = 尚无可监测对象，静默跳过
+      // New session files are lazily persisted (created on the first entry): ENOENT = nothing to monitor yet, skip silently
       if ((err as { code?: string }).code === "ENOENT") continue;
       process.stderr.write(`[host] 外部写入轮询失败 ${entry.path}: ${err instanceof Error ? err.message : String(err)}\n`);
     }

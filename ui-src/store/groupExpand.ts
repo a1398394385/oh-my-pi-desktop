@@ -1,4 +1,4 @@
-// 查阅组/设备组等模块级展开态(WeakMap)的渲染通道:变更 bump 一次,订阅者重渲染。
+// Render channel for module-level expansion state (WeakMaps) of read/device groups etc.: bump once per change, subscribers re-render.
 import { useSyncExternalStore } from "react";
 import type { ToolItem } from "../types/session";
 
@@ -17,13 +17,13 @@ export function useGroupExpandVersion(): number {
   );
 }
 
-// 模块级展开状态 WeakMap（以组首 item 为键，跨全量重绘保留）
+// Module-level expansion state WeakMaps (keyed by the group-head item, preserved across full redraws)
 export const rdExpand = new WeakMap<ToolItem, boolean>();
 export const chgExpand = new WeakMap<ToolItem, boolean>();
 export const cmdExpand = new WeakMap<ToolItem, boolean>();
 export const devExpand = new WeakMap<ToolItem, boolean>();
 
-/** 当子项被拷贝替换时，若旧子项作为组首持有展开状态，将状态迁移至新对象 */
+/** When a child item is replaced by a copy, migrate the expansion state to the new object if the old one held it as the group head */
 export function migrateGroupExpand(from?: ToolItem, to?: ToolItem): void {
   if (!from || !to) return;
   if (rdExpand.has(from)) rdExpand.set(to, rdExpand.get(from)!);

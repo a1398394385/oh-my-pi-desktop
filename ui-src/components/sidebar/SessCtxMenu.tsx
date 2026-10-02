@@ -1,6 +1,7 @@
-// 会话行右键菜单（ui/sidebar.js initSidebar 的 contextmenu 分支平移）：
-// 复制 sessionId/文件路径 + 重命名 + 归档。原版捕获阶段拦截 shell 菜单的协调问题在
-// React 版不存在（菜单即组件），选词撤销逻辑留在 Sidebar 容器层。
+// Session row context menu (ported from the contextmenu branch of ui/sidebar.js initSidebar):
+// copy sessionId/file path + rename + archive. The old version's capture-phase interception
+// to coordinate with the shell menu doesn't exist in the React version (the menu is a
+// component); word-selection undo logic stays in the Sidebar container layer.
 import { useTranslation } from "react-i18next";
 import { send, toast } from "../../store";
 import Menu from "./Menu";

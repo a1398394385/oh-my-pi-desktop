@@ -1,6 +1,9 @@
-// 计划模式域：/plan 命令分发、plan_mode 状态帧、提案审批闭环（xd://propose）、
-// 落盘 mode_change 恢复。审批/自动保存语义对齐底座 plan-mode（resolveApprovedPlan /
-// autosaveApprovedPlan）；桌面差异 = 无 paused 中间态、审批走 requestApproval WS 桥。
+// Plan mode domain: /plan command dispatch, plan_mode state frames, the
+// proposal approval loop (xd://propose), and persisted mode_change restore.
+// Approval/autosave semantics align with the base plan-mode
+// (resolveApprovedPlan / autosaveApprovedPlan); desktop differences = no
+// paused intermediate state, approvals go through the requestApproval WS
+// bridge.
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { hostI18n } from "../ui-src/i18n/host.ts";
@@ -13,14 +16,14 @@ import {
 import { pushCommandOutput, requestApproval, type PoolEntry } from "./state.ts";
 
 const PLAN_MODE_NAME = "plan";
-const PLAN_FILE_URL = "local://PLAN.md"; // 与 ACP 默认计划文件同址
+const PLAN_FILE_URL = "local://PLAN.md"; // same location as the ACP default plan file
 // Stable option ids on the plan approval frame: the UI renders localized
 // labels from these ids and returns the chosen id — display text never
 // crosses the wire, so the contract survives language switches.
 const PLAN_APPROVE = "approve";
 const PLAN_REFINE = "refine";
 
-/** 计划模式状态帧：UI 据此显示/隐藏权限胶囊右侧的「计划」退出按钮。 */
+/** Plan-mode state frame: the UI shows/hides the "Plan" exit button right of the permission pill based on it. */
 export function pushPlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const state = entry.session.getPlanModeState();
   ws.send(
@@ -33,7 +36,7 @@ export function pushPlanMode(ws: { send(data: string): unknown }, sessionId: str
   );
 }
 
-/** local:// 计划文件的磁盘路径（对齐 ACP 的 #resolveAcpPlanFilePath） */
+/** Disk path of the local:// plan file (aligned with ACP's #resolveAcpPlanFilePath) */
 function planFilePathOnDisk(entry: PoolEntry, url: string): string {
   const normalized = url.startsWith("local:") ? normalizeLocalScheme(url) : url;
   return resolveLocalUrlToPath(normalized, {
@@ -42,7 +45,7 @@ function planFilePathOnDisk(entry: PoolEntry, url: string): string {
   });
 }
 
-/** 读计划文件内容；不存在返回 null（resolveApprovedPlan 据此走兜底） */
+/** Read the plan file content; null when absent (resolveApprovedPlan falls back based on this) */
 async function readPlanContent(entry: PoolEntry, url: string): Promise<string | null> {
   try {
     return await Bun.file(planFilePathOnDisk(entry, url)).text();
@@ -51,7 +54,7 @@ async function readPlanContent(entry: PoolEntry, url: string): Promise<string | 
   }
 }
 
-/** 会话本地根下的计划文件（最新优先）：agent 丢了 extra.title 时 resolveApprovedPlan 的兜底 */
+/** Plan files under the session-local root (newest first): the resolveApprovedPlan fallback when the agent lost extra.title */
 async function listPlanFilesOf(entry: PoolEntry): Promise<string[]> {
   try {
     const dir = planFilePathOnDisk(entry, "local://");
@@ -65,8 +68,10 @@ async function listPlanFilesOf(entry: PoolEntry): Promise<string[]> {
   }
 }
 
-// 提案处理器：agent 写 xd://propose 后由底座调用（返回的 tool result 回到模型侧）。
-// 批准 → 记计划引用 + 自动保存计划 + 退出计划模式；驳回 → 保持计划模式继续打磨。
+// Proposal handler: invoked by the base after the agent writes xd://propose
+// (the returned tool result goes back to the model side).
+// Approve -> record the plan reference + autosave the plan + exit plan mode;
+// reject -> stay in plan mode and keep polishing.
 async function handlePlanProposal(
   ws: { send(data: string): unknown },
   sessionId: string,
@@ -89,14 +94,14 @@ async function handlePlanProposal(
     [PLAN_APPROVE, PLAN_REFINE],
   );
   if (answer !== PLAN_APPROVE) {
-    // 驳回：把刚评审的路径提为状态路径，下一轮提案针对这份计划继续改
+    // Rejected: promote the just-reviewed path to the state path so the next proposal keeps editing this plan
     if (state.planFilePath !== planFilePath) entry.session.setPlanModeState({ ...state, planFilePath });
     return {
       content: [{ type: "text" as const, text: hostI18n.t("flows.plan.refineResult", { path: planFilePath }) }],
       details,
     };
   }
-  entry.session.setPlanReferencePath(planFilePath); // 下一轮把计划正文作为上下文注入
+  entry.session.setPlanReferencePath(planFilePath); // inject the plan body as context next turn
   const planContent = (await readPlanContent(entry, planFilePath)) ?? "";
   try {
     await autosaveApprovedPlan({
@@ -116,8 +121,10 @@ async function handlePlanProposal(
 }
 
 /**
- * 进出计划模式。persist=false 用于从落盘 mode_change 恢复（不重复记账）。
- * 进模式后提案处理器负责 xd://propose 的审批闭环——不装它，agent 的提案无人接收。
+ * Enter/exit plan mode. persist=false is for restoring from a persisted
+ * mode_change (no double bookkeeping).
+ * Once inside, the proposal handler owns the xd://propose approval loop —
+ * without it installed, nobody receives the agent's proposals.
  */
 export function setPlanMode(
   ws: { send(data: string): unknown },
@@ -147,9 +154,12 @@ export function setPlanMode(
 }
 
 /**
- * /plan 的 args 分发（底座 TUI handlePlanModeCommand 的裁剪版：桌面无 paused 中间态，
- * 退出即清状态）。无参 = 反转当前状态；带 prompt = 开启后把 prompt 当首个计划轮次。
- * 返回 prompt（调用方转正常 prompt 链路）或 null（已消费）。
+ * Dispatch /plan args (a trimmed version of the base TUI
+ * handlePlanModeCommand: the desktop has no paused intermediate state; exit
+ * clears state immediately). No args = toggle the current state; with a
+ * prompt = enable and use the prompt as the first plan turn.
+ * Returns the prompt (caller forwards it into the normal prompt path) or
+ * null (consumed).
  */
 export function handlePlanCommand(
   ws: { send(data: string): unknown },
@@ -177,11 +187,11 @@ export function handlePlanCommand(
   return null;
 }
 
-/** 会话重开时按最后一条 mode_change 恢复计划模式（TUI #reconcileModeFromSession 的桌面版） */
+/** Restore plan mode from the last mode_change when a session reopens (desktop version of TUI #reconcileModeFromSession) */
 export function reconcilePlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry, entries: any[]) {
   const last = [...entries].reverse().find((e) => e?.type === "mode_change");
   if (last?.mode !== PLAN_MODE_NAME) {
-    pushPlanMode(ws, sessionId, entry); // 非计划模式也要推帧：UI 需要明确置 false
+    pushPlanMode(ws, sessionId, entry); // push the frame even outside plan mode: the UI needs an explicit false
     return;
   }
   const planFilePath = typeof last.data?.planFilePath === "string" ? last.data.planFilePath : PLAN_FILE_URL;

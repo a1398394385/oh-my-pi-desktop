@@ -1,5 +1,6 @@
-// 设置·MCP 页：多源全量发现、红绿灯状态、iOS 开关、实时搜索、行内延展编辑表单。
-// 旧版 ui/settings/mcp.js 的 1:1 React 平移；DOM 类名与 git 464131d 的 pg-mcp 骨架对齐。
+// Settings · MCP page: multi-source full discovery, status dots, iOS toggles, live search,
+// inline expand-down edit form.
+// 1:1 React port of the old ui/settings/mcp.js; DOM class names aligned with the pg-mcp skeleton at git 464131d.
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,25 +22,25 @@ import {
 
 const NEW_KEY = "__new__";
 
-// MCP 作用域条目（agent_assets 回包 mcp.scopes；字段为 host 下发）
+// MCP scope entry (mcp.scopes in the agent_assets reply; fields sent by host)
 interface McpScope {
   id: string;
   name: string;
   count?: number;
-  dir?: string; // 该作用域对应的配置目录（「打开配置」用）
+  dir?: string; // config directory of the scope (used by "open config")
 }
 
-// 服务器来源信息（跨源同名服务器用 source.path 区分；providerName 仅展示）
+// Server source info (same-name servers across sources distinguished by source.path; providerName display-only)
 interface McpSource {
   path?: string;
   providerName?: string;
 }
 
-// MCP 服务器条目（agentAssets.mcp.servers；字段为 host 下发，缺省可空）
+// MCP server entry (agentAssets.mcp.servers; fields sent by host, may be absent)
 interface McpServer {
   name: string;
   enabled: boolean;
-  status?: string; // connected / error / 其他就绪态
+  status?: string; // connected / error / other ready states
   error?: string;
   log?: string;
   transport?: string; // stdio / http / sse
@@ -55,15 +56,15 @@ interface McpServer {
   source?: McpSource;
 }
 
-// 测试结果条目（mcpTestResults[name]，mcp_server_tested 回包落地）
+// Test result entry (mcpTestResults[name], landed from the mcp_server_tested reply)
 interface McpTestResult {
   ts: number;
-  status: string; // "ok" 或其他失败态
+  status: string; // "ok" or other failure states
   error?: string;
   log?: string;
 }
 
-// MCP 报错日志弹窗（对齐全站 Radix Dialog 风格）
+// MCP error log dialog (aligned with the app-wide Radix Dialog style)
 function McpLogDialog({
   serverName,
   error,
@@ -143,7 +144,7 @@ function McpLogDialog({
   );
 }
 
-// 表单组装的 server 对象（stdio / 远程两种形态，字段按 transport 取舍）
+// Server object assembled from the form (stdio / remote shapes, fields chosen by transport)
 interface McpPayload {
   name: string;
   transport: string;
@@ -181,7 +182,7 @@ function parseJsonKv(text: string, invalidMsg: string): Record<string, string> |
   return out;
 }
 
-// 作用域列表（收敛为 Profile 与 Project，缺数据时给 Profile 兜底项，且 Project 严格限定在有效工作区内）
+// Scope list (converged to Profile and Project; a Profile fallback item when data is missing, and Project strictly limited to valid workspaces)
 function currentMcpScopes(validProjectCwds?: Set<string>): McpScope[] {
   const st = useAppStore.getState();
   const mcp = st.agentAssets?.mcp;
@@ -203,7 +204,7 @@ function getScopedMcpServers(scope: string): McpServer[] {
   return allServers.filter((s) => s.scope === scope);
 }
 
-// 状态点样式与标题
+// Status dot style and title
 function dotState(s: McpServer): { cls: string; title: string } {
   if (!s.enabled) return { cls: "off", title: ti("settingsPage.mcp.dotDisabled") };
   if (s.status === "connected") return { cls: "ok", title: ti("settingsPage.mcp.dotRunning") };
@@ -211,7 +212,7 @@ function dotState(s: McpServer): { cls: string; title: string } {
   return { cls: "ok", title: ti("settingsPage.mcp.dotReady") };
 }
 
-// 通用下拉（.sel 容器 + .menu，行为对齐旧版 wireSel：点击切换、点项回调、点外部关闭）
+// Generic dropdown (.sel container + .menu, behavior aligned with the old wireSel: click to toggle, item-click callback, click-outside close)
 interface SelProps {
   id?: string;
   className?: string;
@@ -221,7 +222,7 @@ interface SelProps {
   menuId?: string;
   menuClassName?: string;
   children?: ReactNode;
-  onPick: (mi: HTMLElement) => void; // 被选中的 .mi 元素
+  onPick: (mi: HTMLElement) => void; // the picked .mi element
 }
 function Sel({ id, className, btnClassName, btnTitle, btnChildren, menuId, menuClassName, children, onPick }: SelProps) {
   const [open, setOpen] = useState(false);
@@ -264,12 +265,12 @@ function Sel({ id, className, btnClassName, btnTitle, btnChildren, menuId, menuC
   );
 }
 
-// 行的唯一键：跨源同名服务器用 source.path 区分
+// Unique key of a row: same-name servers across sources distinguished by source.path
 function rowKey(s: McpServer): string {
   return `${s.name}\n${s.source?.path || s.cwd || ""}`;
 }
 
-// 服务器行 + 行内向下延展编辑区（点击行展开，再点收起，点其他行切换）
+// Server row + inline expand-down edit area (click a row to expand, click again to collapse, click another row to switch)
 interface ServerRowProps {
   server: McpServer;
   scopeAll: boolean;
@@ -342,7 +343,7 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, on
   );
 }
 
-// iOS 开关：本地乐观翻转 + 回写宿主
+// iOS toggle: local optimistic flip + write back to host
 function Toggle({ server }: { server: McpServer }) {
   const { t } = useTranslation();
   return (
@@ -352,7 +353,8 @@ function Toggle({ server }: { server: McpServer }) {
       onClick={(e) => {
         e.stopPropagation();
         const nextEnabled = !server.enabled;
-        // 乐观换引用：拷贝 agentAssets → mcp → servers 数组并替换该 server（字段写入即通知，状态点/统计随重渲染刷新）
+        // Optimistic reference swap: copy agentAssets → mcp → the servers array and replace
+        // that server (field write notifies immediately; status dots/counts refresh on re-render)
         const st = useAppStore.getState();
         const assets = st.agentAssets;
         const mcp = assets?.mcp;
@@ -374,9 +376,9 @@ function Toggle({ server }: { server: McpServer }) {
   );
 }
 
-// 行内延展编辑表单（.mem-expand，同记忆页模式）
+// Inline expand-down edit form (.mem-expand, same pattern as the memory page)
 interface McpEditorProps {
-  server: McpServer | null; // null = 新建
+  server: McpServer | null; // null = create new
   defaultScope: string;
   onClose: () => void;
   onViewLog?: (info: { name: string; error?: string; log?: string }) => void;
@@ -415,7 +417,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
   );
   const [testing, setTesting] = useState(false);
 
-  // 测试结果（来自 mcpTestResults，集成方在 mcp_server_tested 回包里落地）
+  // Test result (from mcpTestResults; the integration lands it on the mcp_server_tested reply)
   const result: McpTestResult | undefined = !server ? undefined : useAppStore.getState().mcpTestResults?.[server.name];
   const lastTs = useRef<number>(result?.ts || 0);
   useEffect(() => {
@@ -425,7 +427,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     }
   }, [result]);
 
-  // 当外部 server 对象更新（如宿主下发最新 agent_assets）时，同步重置内部表单状态
+  // When the external server object updates (e.g. the host delivers fresh agent_assets), reset the internal form state in sync
   useEffect(() => {
     if (server) {
       setName(server.name || "");
@@ -458,7 +460,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     ? t("settingsPage.mcp.editorNewSub")
     : t("settingsPage.mcp.editorEditSub", { name: server.name, source: server.source?.providerName || t("settingsPage.mcp.editorConfigFile") });
 
-  // 由表单内容组装 server 对象（测试用）；缺必填项返回 null 并 toast
+  // Assemble the server object from form content (for testing); return null + toast when required fields are missing
   const buildPayload = (): McpPayload | null => {
     const finalSharing = isProjectScope && sharing === "global" ? "session" : sharing;
     if (transport === "stdio") {
@@ -748,8 +750,8 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
 
 export default function McpPage() {
   const { t } = useTranslation();
-  // 渲染数据走字段 selector：agent_assets / mcp_server_tested 落地帧均全量换新引用
-  //（含 mcp 段 servers 数组），字段订阅即可感知
+  // Render data via field selectors: agent_assets / mcp_server_tested landing frames swap all
+  // references fresh (including the servers array under the mcp section), so field subscriptions notice
   const agentAssets = useAppStore((s) => s.agentAssets);
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
@@ -759,10 +761,10 @@ export default function McpPage() {
 
   const [mcpScope, setMcpScope] = useState("profile");
   const [mcpSearchQuery, setMcpSearchQuery] = useState("");
-  const [openKey, setOpenKey] = useState<string | null>(null); // 服务器 name 或 NEW_KEY；null = 收起
+  const [openKey, setOpenKey] = useState<string | null>(null); // server name or NEW_KEY; null = collapsed
   const [logModal, setLogModal] = useState<{ name: string; error?: string; log?: string } | null>(null);
   const [spinning, setSpinning] = useState(false);
-  useExtSources(); // 扩展中心全 scope 数据（行内来源徽标匹配用）
+  useExtSources(); // extension-center data for all scopes (for matching inline source badges)
 
   const allScopes = currentMcpScopes(validProjectCwds);
   const profileScope = allScopes.find((s) => s.id === "profile") || { id: "profile", name: "Profile" };
@@ -771,7 +773,8 @@ export default function McpPage() {
     allScopes.find((s) => s.id === mcpScope) || profileScope;
   const activeScope = curScope.id;
 
-  // 每次渲染直接读 store（agentAssets 订阅已保证回包时重渲染）；不用 useMemo 缓存可变单例
+  // Read the store directly each render (the agentAssets subscription already guarantees
+  // re-render on replies); no useMemo caching of the mutable singleton
   const scopedNow = getScopedMcpServers(activeScope);
 
   const q = mcpSearchQuery.trim().toLowerCase();

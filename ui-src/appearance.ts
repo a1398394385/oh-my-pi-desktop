@@ -1,11 +1,13 @@
-// 外观偏好：localStorage 落盘 + documentElement 落地（CSS 变量与 dataset 开关）。
-// 设置页（Settings 容器）与全局快捷键（keys.js 的 Ctrl+T）共用的单一实现，
-// 平移自旧版 ui/settings/index.js 的 saveUiPrefs / applyAppearance / applyHostAppearance。
+// Appearance preferences: persisted to localStorage + applied to
+// documentElement (CSS variables and dataset switches).
+// The single implementation shared by the settings page (Settings container)
+// and global shortcuts (Ctrl+T in keys.js), ported from the old
+// ui/settings/index.js saveUiPrefs / applyAppearance / applyHostAppearance.
 import { useAppStore } from "./store";
 
 const UI_PREF_KEY = "omp-ui-settings";
 
-// 字体选项：外观页字体下拉与 applyAppearance 共用
+// Font options: shared by the appearance page font dropdown and applyAppearance
 export const FONT_LABELS: Record<string, string> = {
   default: "系统默认",
   zcode: "标准系统无衬线",
@@ -25,14 +27,14 @@ export const FONT_STACKS: Record<string, string> = {
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
 
-// 外观偏好落盘（localStorage）
+// Persist appearance preferences (localStorage)
 export function saveUiPrefs(): void {
   try {
     localStorage.setItem(UI_PREF_KEY, JSON.stringify(useAppStore.getState().uiPrefs));
   } catch {}
 }
 
-// 外观偏好 → documentElement CSS 变量与 dataset 开关
+// Appearance preferences -> documentElement CSS variables and dataset switches
 export function applyAppearance(): void {
   const { uiPrefs } = useAppStore.getState();
   const root = document.documentElement;
@@ -44,12 +46,15 @@ export function applyAppearance(): void {
   root.dataset.showThinking = uiPrefs.showThinking ? "on" : "off";
 }
 
-// 宿主设置中纯外观副作用部分：仅 hideThinkingBlock 影响外观——同步进 uiPrefs.showThinking
-// 并落盘、应用。其余宿主字段（代理/超时/开关）由页面组件以 S.hostSettings 为数据源受控渲染。
+// The purely-appearance side effects of host settings: only hideThinkingBlock
+// affects appearance -- synced into uiPrefs.showThinking, persisted and applied.
+// The other host fields (proxy/timeouts/toggles) are rendered under control by
+// page components with S.hostSettings as the data source.
 export function applyHostAppearance(hostSettings: { hideThinkingBlock?: unknown } | null | undefined): void {
   if (!hostSettings || typeof hostSettings.hideThinkingBlock !== "boolean") return;
   const showThinking = !hostSettings.hideThinkingBlock;
-  // 写换新对象（selector 组件按引用感知）+ _v bump（旧 useStore 订阅兜底）
+  // Write a new object (selector components sense it by reference) + _v bump
+  // (old useStore subscription fallback)
   useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking } }));
   saveUiPrefs();
   applyAppearance();

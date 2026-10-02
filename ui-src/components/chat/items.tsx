@@ -1,7 +1,9 @@
-// 消息条目列表 → JSX：连续编辑事件（edit/write/apply_patch）合并为一个「更改」组，
-// steer 待消费气泡收集到末尾统一渲染（消费前位置一直低于处理进程区），其余逐条分发。
-// 迁移自 ui/chat.js renderItemList/appendChatItem；railEntries 随遍历收集（消息轨道数据：
-// 每条消息一道刻度——key 与 data-fk 锚点同源，MsgRail 按 key 查 DOM 定位）。
+// Message item list → JSX: consecutive edit events (edit/write/apply_patch) merge into one
+// "Changes" group, steer bubbles pending consumption are collected and rendered together at
+// the end (before consumption they always sit below the processing area), everything else
+// dispatches per item. Migrated from renderItemList/appendChatItem in ui/chat.js;
+// railEntries are collected along the traversal (message rail data: one tick per message —
+// the key shares the same source as the data-fk anchors; MsgRail locates the DOM by key).
 import type { ReactElement, ReactNode } from "react";
 import type { ChatItem, RailEntry } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
@@ -18,19 +20,21 @@ import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import { t } from "../../i18n";
 
-// 单条消息 → JSX（railEntries 副作用随渲染路径收集，与原 appendChatItem 的 push 同序）
+// Single message → JSX (the railEntries side effect is collected along the render path, same
+// order as the former appendChatItem's push)
 function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): ReactElement | null {
   if (item.role === "user") {
     railEntries.push({ key, role: "user", text: item.text });
     return <UserMsg item={item} fk={key} key={key} />;
   }
   if (item.role === "assistant") {
-    if (isJunkPlaceholder(item.text)) return null; // 占位符消息不渲染、不进轨道
+    if (isJunkPlaceholder(item.text)) return null; // junk placeholder messages render nothing and stay off the rail
     railEntries.push({ key, role: "assistant", text: item.text });
     return <AssistantMsg text={item.text} fk={key} key={key} />;
   }
   if (item.role === "thinking") {
-    // 任何设置下思考标签都显示，hideThinkingBlock 只决定默认展开与否（store 流式事件控制）
+    // The thinking label always shows under any setting; hideThinkingBlock only decides the
+    // default expand state (controlled by streaming events in the store)
     railEntries.push({ key, role: "thinking", text: item.thinking || item.text });
     return <ThinkingRow item={item} fk={key} key={key} />;
   }
@@ -42,7 +46,8 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
     railEntries.push({ key, role: "meta", text: loopSummaryText(item) });
     return <LoopGroup item={item} fk={key} railEntries={railEntries} key={key} />;
   }
-  // 本地 bash 执行行（! 前缀）与 @ 提及回读行：不进合并组，逐条渲染
+  // Local bash execution rows (! prefix) and @ mention read-back rows: not merged into
+  // groups, rendered one by one
   if (item.role === "bash") {
     railEntries.push({ key, role: "bash", text: item.text });
     return <BashRow item={item} key={key} />;
@@ -55,7 +60,8 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
     railEntries.push({ key, role: "meta", text: item.text });
     return <div className="act" key={key}>{item.text}</div>;
   }
-  // 阶段分隔行（后台压缩/交接/重命名）：居中横线夹字，不进左对齐动作行
+  // Phase separator row (background compact / handoff / rename): centered text between
+  // horizontal lines, not in the left-aligned action rows
   if (item.role === "phase") {
     railEntries.push({ key, role: "meta", text: item.text });
     return (
@@ -70,10 +76,10 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;
 }
 
-// 本轮 output 的末尾 assistant：
-// 1. 仅顶层（pfx === ""）且非 junk 消息有效；loop 组内子项不显示。
-// 2. 其后到下一条 user 之间若还有 tool、loop 组、bash、或后续有效 assistant，不显示。
-// 3. 若到列表末尾仍未遇到 user（当前处于最新一轮），流程必须已结束（非 streaming、非 draft、无 running 工具）。
+// The tail assistant of this turn's output:
+// 1. Valid only at top level (pfx === "") and for non-junk messages; sub-items inside loop groups do not show.
+// 2. If a tool, loop group, bash, or a later valid assistant appears between it and the next user, do not show.
+// 3. If no user is encountered until the list end (currently the latest turn), the flow must have finished (not streaming, no draft, no running tool).
 function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean {
   if (pfx !== "") return false;
   let hasLaterUser = false;
@@ -83,16 +89,17 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
       hasLaterUser = true;
       break;
     }
-    // 若后续还有 tool、loop 组或 bash，说明该 output 之后流程还在继续，不显示
+    // If a later tool, loop group, or bash exists, the flow continues after this output; do not show
     if (next.role === "tool" || next.role === "loop" || next.role === "bash") {
       return false;
     }
-    // 若后续还有有效 assistant，说明当前不是最后一段 output，不显示
+    // If a later valid assistant exists, this is not the last output segment; do not show
     if (next.role === "assistant" && !isJunkPlaceholder(next.text)) {
       return false;
     }
   }
-  // 若其后没有下一条 user，说明属于当前最新一轮：若流程未结束（streaming/draft/running 项），不显示
+  // No next user after it means it belongs to the current latest turn: if the flow has not
+  // finished (streaming/draft/running item), do not show
   if (!hasLaterUser) {
     const st = useAppStore.getState();
     const active = st.activePath ? st.openSessions.get(st.activePath) : undefined;
@@ -112,7 +119,7 @@ export function renderItems(
   railEntries: RailEntry[],
   streamTail?: ReactNode,
 ): ReactElement[] {
-  // 子级容器（如 LoopGroup 内部）：保持原来的平铺渲染机制
+  // Child container (e.g. inside LoopGroup): keep the original flat rendering mechanism
   if (pfx !== "") {
     const out: ReactElement[] = [];
     const pendingSteers: { item: ChatItem; key: string }[] = [];
@@ -182,7 +189,7 @@ export function renderItems(
     return out;
   }
 
-  // 顶层主对话流：按轮次（TurnSection）分组吸顶
+  // Top-level main chat flow: grouped by turn (TurnSection) for snap-to-top
   interface TurnGroup {
     key: string;
     userKey: string;
@@ -290,7 +297,7 @@ export function renderItems(
     turns.push(currentTurn);
   }
 
-  // 最新一轮若正在流式输出，将流式尾巴追加到最后一轮内容末尾
+  // If the latest turn is streaming, append the streaming tail to the end of the last turn's content
   if (streamTail && turns.length > 0) {
     turns[turns.length - 1].flowNodes.push(
       <div key="stream-tail-wrap">{streamTail}</div>,

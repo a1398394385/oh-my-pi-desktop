@@ -1,5 +1,6 @@
-// 会话生命周期域帧：列表/归档拆分、创建激活、标题同步、外部写入、模型与思考档、
-// 重命名/归档/停止/压缩回执、分叉与条目树导航。自 store/ws.ts onMessage 平移。
+// Session lifecycle-domain frames: list/archive splitting, creation and activation, title sync,
+// external writes, model and thinking level, rename/archive/stop/compact receipts, fork and
+// entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { activateSession, clearBranchingMarks, activeOpen, updateSession } from "../session";
 import { t } from "../../i18n";
@@ -8,7 +9,7 @@ import type { HandlerSlice } from "./types";
 
 export const sessionHandlers = {
   session_list(msg) {
-    // 归档条目拆出：不进 diskProjects，单独存 archivedSessions 供侧栏归档区渲染
+    // Split out archived entries: they don't go into diskProjects; stored separately as archivedSessions for the sidebar archive area
     const st2 = useAppStore.getState();
     const archived: typeof st2.archivedSessions = [];
     const diskProjects: typeof st2.diskProjects = [];
@@ -59,8 +60,8 @@ export const sessionHandlers = {
         thinking: msg.thinking ?? "auto",
         isGit: !!msg.isGit,
         todos: [],
-        goal: null, // goal 状态（宿主 goal 帧置位；会话状态卡目标区展示）
-        planMode: false, // 计划模式（宿主 plan_mode 帧置位）
+        goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
+        planMode: false, // plan mode (set by the host plan_mode frame)
         title: msg.title ?? null,
       } as OpenSession),
       isCreatingNew: false,
@@ -69,7 +70,7 @@ export const sessionHandlers = {
     // owns them (fresh session without snapshot = cleared; reloaded session = snapshot restored;
     // clearing first would wipe the outgoing session's just-saved snapshot)
     activateSession(msg.path);
-    useAppStore.getState().refreshGitDiff(); // 右栏 Git Diff 页需要 git status 数据，提前预取
+    useAppStore.getState().refreshGitDiff(); // the right-panel Git Diff page needs git status data; prefetch early
     const st3 = useAppStore.getState();
     if (st3.pendingNewPrompt) {
       const { text, files } = st3.pendingNewPrompt;
@@ -85,21 +86,21 @@ export const sessionHandlers = {
             text,
             ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
           });
-          // 同 sendPrompt：发送即置运行态（计时/停止钮不等到宿主 turn_start）
+          // Same as sendPrompt: set the running state on send (clock/stop button don't wait for the host's turn_start)
           next.streaming = true;
           next.turnStartAt = Date.now();
         });
         st3.ws!.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
-        // 钉底跟随由 Chat 组件的滚动 effect 处理
+        // Pin-to-bottom following is handled by the Chat component's scroll effect
       }
     }
     if (st3.pendingCreate) {
       useAppStore.setState({ pendingCreate: false });
-      st3.send({ type: "list_sessions" }); // 新会话已落盘，重拉列表
+      st3.send({ type: "list_sessions" }); // the new session has been persisted; refetch the list
     }
   },
   session_title_changed(msg) {
-    // 1. 更新对应已打开会话的 title（当前激活会话若为此会话也会因此更新）
+    // 1. Update the title of the matching opened session (the currently active session updates too if it is this one)
     updateSession(
       msg.sessionId,
       (s) => {
@@ -107,7 +108,7 @@ export const sessionHandlers = {
       },
       false,
     );
-    // 2. 更新磁盘项目列表中对应会话的 title（保证侧栏等引用的标题同步更新）
+    // 2. Update the session's title in the on-disk project list (keeps titles referenced by the sidebar in sync)
     useAppStore.setState((st) => {
       let projectsChanged = false;
       const diskProjects = st.diskProjects.map((p) => {
@@ -138,8 +139,10 @@ export const sessionHandlers = {
       return patch;
     });
   },
-  // 宿主检出外部进程写入本会话（CLI 对话/改名）：置位提示条，直到重新加载。
-  // 会话被前端 LRU 驱逐时帧丢弃，切回走池复用分支时宿主按 entry.externalWrite 补发
+  // The host detected an external process writing to this session (CLI chat/rename): set the
+  // notice strip until reload. If the session was evicted by the frontend LRU the frame is
+  // dropped; on switch-back through the pool-reuse branch the host re-sends based on
+  // entry.externalWrite
   session_external_write(msg) {
     updateSession(
       msg.sessionId,
@@ -163,9 +166,9 @@ export const sessionHandlers = {
   session_renamed(msg) {
     if (msg.ok) {
       useAppStore.getState().toast(t("notify.renamed"));
-      useAppStore.getState().send({ type: "list_sessions" }); // 列表数据以宿主为唯一真源，重拉最稳
+      useAppStore.getState().send({ type: "list_sessions" }); // the host is the sole source of truth for list data; refetching is the safest
     } else {
-      // 帧形状无 error 字段(ok 恒 true,失败路径仅防御兜底);断言只为补类型,不改运行期读取
+      // The frame shape has no error field (ok is always true; the failure path is a defensive fallback only); the assertion just supplies the type, runtime reads unchanged
       const renamedErr = msg as { error?: string };
       useAppStore.getState().toast(renamedErr.error ?? t("notify.renameFailed"));
     }
@@ -175,7 +178,7 @@ export const sessionHandlers = {
       useAppStore.getState().toast(t(msg.archived ? "notify.archived" : "notify.unarchived"));
       useAppStore.getState().send({ type: "list_sessions" });
     } else {
-      const archivedErr = msg as { error?: string }; // 同上:仅防御性兜底
+      const archivedErr = msg as { error?: string }; // same as above: defensive fallback only
       useAppStore.getState().toast(archivedErr.error ?? t("notify.archiveFailed"));
     }
   },
@@ -186,7 +189,7 @@ export const sessionHandlers = {
     useAppStore.getState().toast(msg.ok ? t("notify.contextCompacted") : (msg.error ?? t("notify.compactFailed")));
   },
   session_branched(msg) {
-    // 分叉回执：清除防连点标记（items mutate,空补丁换引用通知）；transcript 由 load_session 推的 messages 帧重建
+    // Fork receipt: clear the double-click guards (items mutated, empty patch swaps the reference to notify); the transcript is rebuilt from the messages frame pushed by load_session
     {
       const cur = activeOpen();
       if (cur) {
@@ -200,7 +203,7 @@ export const sessionHandlers = {
     }
     useAppStore.getState().toast(t("notify.forked"));
     if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, msg.selectedImages, { guard: true });
-    useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // 复用磁盘会话加载链路
+    useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
     useAppStore.getState().send({ type: "list_sessions" });
   },
   session_tree(msg) {
@@ -222,8 +225,9 @@ export const sessionHandlers = {
     }));
   },
   session_navigated(msg) {
-    // 树内导航回执：transcript 由 messages 帧重建；成功后条目树作废重拉
-    //（被放弃路径已成为兄弟分支，旧树结构失效），user 消息原文回填输入框（重问）
+    // In-tree navigation receipt: the transcript is rebuilt from the messages frame; on success the
+    // entry tree is invalidated and refetched (the abandoned path became a sibling branch, the old
+    // tree structure is stale), and the original user message is backfilled into the composer (to re-ask)
     {
       const cur = activeOpen();
       if (cur) {
@@ -244,5 +248,5 @@ export const sessionHandlers = {
   },
 } satisfies HandlerSlice;
 
-// 域键集（供 index 的穷尽断言交叉验证）
+// Domain key set (for the exhaustive-assertion cross-check in index)
 export type SessionFrames = keyof typeof sessionHandlers;

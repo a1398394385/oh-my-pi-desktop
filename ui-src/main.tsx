@@ -1,4 +1,5 @@
-// React 版前端入口：挂载 App + 原生菜单 action 分发 + WS 连接（或浏览器 preview 模式）。
+// React frontend entry: mounts App + native menu action dispatch + WS
+// connection (or browser preview mode).
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -8,7 +9,8 @@ import { initKeys } from "./keys";
 import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
 
-// 启动即恢复本地主题（旧版 shell.js initShell 语义；system 值由 prefers-color-scheme 决定）
+// Restore the local theme at startup (the old shell.js initShell semantics;
+// the system value is decided by prefers-color-scheme)
 {
   const savedTheme = localStorage.getItem("omp-theme");
   if (savedTheme === "light" || savedTheme === "dark") document.documentElement.dataset.theme = savedTheme;
@@ -17,13 +19,16 @@ import type { ToolItem } from "./types/session";
   }
 }
 
-// 启动即恢复本地「减弱动态效果」偏好（外观页设置；system 时移除属性，回落系统 prefers-reduced-motion）
+// Restore the local "reduce motion" preference at startup (appearance page
+// setting; with system, remove the attribute and fall back to the system
+// prefers-reduced-motion)
 {
   const savedMotion = localStorage.getItem("omp-motion");
   if (savedMotion === "on" || savedMotion === "off") document.documentElement.dataset.motion = savedMotion;
 }
 
-// ⌘, 打开/关闭设置中心（旧版 core.js 全局 keydown 平移；Esc 由 Settings 容器处理）
+// ⌘, opens/closes the settings hub (ported from the old core.js global
+// keydown; Esc is handled by the Settings container)
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === ",") {
     e.preventDefault();
@@ -32,15 +37,17 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// 全局快捷键（注册表见 ui-src/keys.js；组件内绑定的键不在此重复挂）
+// Global shortcuts (registry in ui-src/keys.js; keys bound inside components
+// are not re-mounted here)
 initKeys();
 
-// 原生菜单 action → 既有能力分发（src-tauri 菜单项 id，经 "menu-action" 事件转发）。
+// Native menu action -> dispatch to existing capabilities (src-tauri menu item
+// ids, forwarded via the "menu-action" event).
 function dispatchMenuAction(action: unknown): void {
   switch (action) {
     case "new-session":
       if (useAppStore.getState().isCreatingNew) {
-        setBump({ newSessionDirty: false }); // 原「写+notify」合并
+        setBump({ newSessionDirty: false }); // the old "write + notify" merged
         initNewSessionModel(true);
       }
       showWelcomeScreen(null);
@@ -68,7 +75,8 @@ function dispatchMenuAction(action: unknown): void {
   }
 }
 
-// 启动即进欢迎页（新建态）；磁盘列表到达前 project 兜底 "/"
+// Enter the welcome page (creating-new state) at startup; project falls back
+// to "/" before the disk list arrives
 showWelcomeScreen(null);
 
 // Init i18n before the first render; uiPrefs.lang is resolved at store
@@ -88,21 +96,27 @@ function Root() {
   return <ErrorBoundary><App key={lang} /></ErrorBoundary>;
 }
 
-// index.html 静态骨架带 #root 挂载点；非空断言（缺失即壳骨架破坏，任其自然抛错）
+// index.html's static skeleton carries the #root mount point; non-null
+// assertion (absence means the shell skeleton is broken; let it throw)
 const root = createRoot(document.getElementById("root")!);
 root.render(<Root />);
 
-// 原生菜单事件（Tauri 环境）；浏览器直连调试时无 __TAURI__，跳过
+// Native menu events (Tauri environment); no __TAURI__ when debugging straight
+// in the browser, skip
 window.__TAURI__?.event?.listen("menu-action", (e) => dispatchMenuAction(e.payload?.action));
 
 if (new URLSearchParams(location.search).has("preview")) {
-  // 浏览器对照：?preview=1 注入动作样本（编辑行/更改组/查阅组/读取行/思考/终端卡），不连宿主
+  // Browser comparison: ?preview=1 injects action samples (edit rows / change
+  // groups / read groups / read rows / thinking / terminal cards); no host
+  // connection
   const diffSample = ["@@ -1,4 +1,5 @@", " body {", "-  color: red;", "+  color: blue;", "+  margin: 0;", " }"].join("\n");
   const readItem = (p: string): ToolItem => ({
     role: "tool", name: "read", text: "", args: { path: p }, files: [p],
     details: { resolvedPath: p, displayContent: { text: "body {\n  color: red;\n}", startLine: 1 } },
   });
-  // 一次性换 openSessions Map 引用注入样本（等价旧「S 静默写 + openSessions.set」，_v bump 合并原尾部 notify）
+  // Inject samples by swapping the openSessions Map reference in one shot
+  // (equivalent to the old "S silent write + openSessions.set", with the _v bump
+  // merging the old trailing notify)
   useAppStore.setState(st => ({
     openSessions: new Map(st.openSessions).set("/preview", {
       sessionId: "preview",
@@ -146,7 +160,8 @@ if (new URLSearchParams(location.search).has("preview")) {
     rightTab: "subagent",
     rightTabs: ["subagent"],
   }));
-  // 浏览器对照调试钩子（仅 preview 模式）：暴露 store 供冒烟读取 getState（P3 终态,旧 S/notify 退役）
+  // Browser comparison debug hook (preview mode only): expose the store for
+  // smoke reads via getState (P3 end state; the old S/notify retired)
   window.__dbg = { useAppStore };
   setConnected(true, "预览");
 } else {

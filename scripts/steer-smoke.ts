@@ -1,10 +1,10 @@
-// steer 链路冒烟：流式中发 prompt 排队为转向消息，验证 peek/edit/drop 与消费注入。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/steer-smoke.ts [宿主ws地址]
-// 断言覆盖：
-//   1. 流式中第二条 prompt 进入 steer 队列（peek_queued 可见）
-//   2. edit_queued 改文本后回包即新文本（索引对齐用户消息）
-//   3. drop_queued 全清后队列为空（不误删系统 notice 的路径走全清分支）
-//   4. steer 消费注入：强指令 steer 后 turn_end 回复体现指令
+// Steer-path smoke test: a prompt sent while streaming is queued as a steering message; verify peek/edit/drop and consumption injection.
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/steer-smoke.ts [host ws url]
+// Assertions cover:
+//   1. While streaming, the second prompt enters the steer queue (visible via peek_queued)
+//   2. After edit_queued changes the text, the reply carries the new text (index aligned to user messages)
+//   3. After drop_queued clears all, the queue is empty (the path that spares system notices goes through the clear-all branch)
+//   4. Steer consumption injection: after a strong-instruction steer, the turn_end reply reflects the instruction
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 
@@ -52,14 +52,14 @@ const assert = (cond: boolean, msg: string) => {
 const state = {
   sessionId: null as string | null,
   deltaText: "",
-  streamingSeen: false, // 收到首个流中事件，确认 turn 在跑
-  phase: 0 as 0 | 1 | 2, // 0=排队/立即发送/放回/删除验证 1=等待消费注入 2=完成
-  nowSent: false, // send_now 已发（断言状态机门）
-  requeued: false, // requeue 已发
-  dropped: false, // drop 已发
-  sawSpontaneous: false, // 收到过 host 自发推送（prompt resolve / turn_end 触发，非 peek 回包）
-  sawConsumed: false, // 收到过 steer_consumed（消费前通知）
-  frameStats: {} as Record<string, number>, // 帧计数：排查 UI 卡死用的 host 输出量化
+  streamingSeen: false, // First mid-stream event received; the turn is confirmed running
+  phase: 0 as 0 | 1 | 2, // 0=queue/send-now/requeue/drop checks 1=awaiting consumption injection 2=done
+  nowSent: false, // send_now sent (a gate for the assertion state machine)
+  requeued: false, // requeue sent
+  dropped: false, // drop sent
+  sawSpontaneous: false, // Received at least one host-initiated push (triggered by prompt resolve / turn_end, not a peek reply)
+  sawConsumed: false, // Received at least one steer_consumed (pre-consumption notification)
+  frameStats: {} as Record<string, number>, // Frame counters: quantifying host output for UI-freeze diagnosis
 };
 
 const ORIG = "排队中的原文";
@@ -90,7 +90,7 @@ ws.onmessage = async (ev) => {
       break;
     }
     case "event":
-      // 首个事件 = turn 已在流中（isStreaming 已置位），此刻发第二条 prompt 应排队（followUp）
+      // First event = the turn is already streaming (isStreaming set); the second prompt sent now should be queued (followUp)
       if (!state.streamingSeen) {
         state.streamingSeen = true;
         ws.send(JSON.stringify({ type: "prompt", sessionId: state.sessionId, text: ORIG }));
@@ -105,7 +105,7 @@ ws.onmessage = async (ev) => {
       }
       break;
     case "queued": {
-      state.sawSpontaneous = true; // 本测试不发 peek，收到的全是 host 推送
+      state.sawSpontaneous = true; // This test never sends peek; everything received is a host push
       const f: string[] = (msg.followUp ?? []).map((m: any) => m.text);
       const st: string[] = (msg.steering ?? []).map((m: any) => m.text);
       if (state.phase === 0 && !state.nowSent && f.includes(ORIG)) {
@@ -123,7 +123,7 @@ ws.onmessage = async (ev) => {
       } else if (state.phase === 0 && state.dropped && f.length === 0 && st.length === 0) {
         console.log("断言4 ✓ drop 后两队列皆空");
         state.phase = 1;
-        // 强指令排队：loop 完自动消费后应立即体现，作为「自动消费注入」证据
+        // Enqueue a strong instruction: auto-consumed once the loop ends and reflected immediately -- evidence of auto-consumption injection
         ws.send(
           JSON.stringify({
             type: "prompt",

@@ -10,6 +10,7 @@ export const chatEn = {
   labelFind: "Find",
   labelWebSearch: "Web search",
   labelAsk: "Ask",
+  labelSessionContext: "Session search",
   labelDebug: "Debug",
   labelMemory: "Memory",
   labelDevice: "Device",
@@ -163,6 +164,14 @@ export const chatEn = {
   filterNoTools: "No tools",
   filterUserOnly: "User only",
   filterAll: "All",
+  // ---- lightweight diff viewer (diff/LightweightDiff.tsx) ----
+  diffOmitted_one: "… Content too long, {{count}} more line omitted",
+  diffOmitted_other: "… Content too long, {{count}} more lines omitted",
+  // ---- chat shell (Chat.tsx) ----
+  scrollBottomTitle: "Scroll to bottom",
+  emptyHint: "Pick a session on the left or start a new task",
+  externalWriteNotice: "This session is being written by another process (e.g. the CLI); the view may be out of sync",
+  reload: "Reload",
   // ---- cross-day timestamp ----
   clockDate: "{{m}}/{{d}} {{hm}}",
   // ---- approval card option ids (host-built approval frames; ApprovalCard) ----

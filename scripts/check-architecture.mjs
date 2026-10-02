@@ -1,28 +1,28 @@
 #!/usr/bin/env node
-// 架构棘轮门禁（借鉴 pi-desktop check-architecture，适配本仓库目录）：
-// 1. 热区文件硬上限（SHRINK OR STAY STABLE，只挡增长、不溯既往缩减）：
-//    host/main.ts ≤ 280（RPC 查表化后 main 只剩分发壳与宿主级任务）、ui-src/store/session.ts ≤ 800，超限即挂；
-// 2. 新增文件行数上限：相对基准 commit 新增（git diff --diff-filter=A）的文件
-//    TS/TSX ≤ 800 行、Rust ≤ 1000 行。基准默认 main（--base <rev> 或环境变量
-//    ARCHITECTURE_BASE 可覆盖；基准不存在时回退 HEAD^，均不可用时跳过新增检查）。
-// 源根：host/ ui-src/ scripts/ src-tauri/src/（scripts/ 的 .mjs 不设限——门禁/工具脚本自身豁免）。
-// 豁免目录：node_modules/dist/target 等构建产物（不在源根内的 ui/ docs/ .agents/ .local/ 天然不查）。
-// 用法：node scripts/check-architecture.mjs [--base <rev>]
+// Architecture ratchet gate (adapted from pi-desktop check-architecture for this repo's layout):
+// 1. Hard caps for hot-spot files (SHRINK OR STAY STABLE: block growth, no retroactive relaxation on shrink):
+//    host/main.ts <= 280 (after table-driven RPC, main only keeps the dispatch shell and host-level tasks), ui-src/store/session.ts <= 800; over the cap fails,
+// 2. Line caps for newly added files: files added since the base commit (git diff --diff-filter=A)
+//    are capped at 800 lines for TS/TSX and 1000 for Rust. Base defaults to main (--base <rev> or the env var
+//    ARCHITECTURE_BASE can override; falls back to HEAD^ when the base is missing, and the new-file check is skipped when neither exists).
+// Source roots: host/ ui-src/ scripts/ src-tauri/src/ (.mjs under scripts/ is uncapped -- gate/tool scripts are themselves exempt).
+// Exempt dirs: build outputs such as node_modules/dist/target (ui/ docs/ .agents/ .local/ outside the source roots are naturally unchecked).
+// Usage: node scripts/check-architecture.mjs [--base <rev>]
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 const root = process.cwd();
-// 源根与受限扩展名：统计范围 = 源根内 .ts/.tsx/.rs（.mjs 不进统计）
+// Source roots and tracked extensions: scope = .ts/.tsx/.rs within the source roots (.mjs excluded from stats)
 const sourceRoots = ["host", "ui-src", "scripts", "src-tauri/src"];
 const sourceExtensions = new Set([".ts", ".tsx", ".rs"]);
 const excludedSegments = new Set(["node_modules", "dist", "out", "release", "target", "coverage"]);
 
-// 热区硬上限：缩减后不自动收紧（固定常量棘轮），超限即挂
+// Hard caps for hot spots: no auto-tightening after a shrink (fixed-constant ratchet); over the cap fails
 const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
-  // CSS 样式域（main.css 先按页面域切 5 份、main-chat 再按组件域切 4 份；域文件顺序 = 入口 @import 级联顺序；死类清理后收紧）
+  // CSS style domains (main.css split into 5 page domains, main-chat further into 4 component domains; domain file order = entry @import cascade order; tightened after dead-class cleanup)
   { path: "ui/css/global.css", max: 880 },
   { path: "ui/css/main-shell.css", max: 170 },
   { path: "ui/css/main-sidebar.css", max: 810 },
@@ -51,7 +51,7 @@ function isSourcePath(filePath) {
   return sourceExtensions.has(extname(filePath));
 }
 
-// 已跟踪 + 未忽略的未跟踪文件（git ls-files -co --exclude-standard）
+// Tracked + non-ignored untracked files (git ls-files -co --exclude-standard)
 function trackedSourceFiles() {
   return git(["ls-files", "-co", "--exclude-standard"]).split("\n").filter(Boolean).filter(isSourcePath);
 }
@@ -91,7 +91,7 @@ function fallbackBase() {
   }
 }
 
-// 基准 commit 以来「本次新增」的源文件（含未提交时工作区对照：diff 亦覆盖工作区改动）
+// Source files newly added since the base commit (uncommitted workspace included: diff also covers working-tree changes)
 function addedSourceFiles(base) {
   if (!base) return [];
   return git(["diff", "--name-only", "--diff-filter=A", base]).split("\n").filter(Boolean).filter(isSourcePath);
@@ -104,12 +104,12 @@ if (requestedBase && requestedBase !== base) {
 }
 
 const files = trackedSourceFiles();
-// HOT_LIMITS 中的非源码路径（如 .css）不入 sourceExtensions（避免误入新文件检查），此处并入行数统计
+// Non-source paths in HOT_LIMITS (e.g. .css) are not in sourceExtensions (kept out of the new-file check); fold them into line counting here
 const locByPath = new Map([...files, ...HOT_LIMITS.map((h) => h.path)].map((p) => [p, locFor(p)]));
 const addedFiles = addedSourceFiles(base);
 const failures = [];
 
-// ---- 检查 1：热区硬上限 ----
+// ---- Check 1: hard caps for hot spots ----
 for (const { path, max } of HOT_LIMITS) {
   const loc = locByPath.get(path);
   if (loc === undefined) {
@@ -119,7 +119,7 @@ for (const { path, max } of HOT_LIMITS) {
   }
 }
 
-// ---- 检查 2：新增文件行数上限（.d.ts 声明文件不查）----
+// ---- Check 2: line caps for newly added files (.d.ts declaration files unchecked) ----
 for (const path of addedFiles) {
   const max = NEW_FILE_LIMITS[extname(path)];
   const loc = locByPath.get(path) ?? locFor(path);

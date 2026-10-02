@@ -1,22 +1,31 @@
-// 自研轻量 diff 渲染：移植 ZCode packages/ui/src/components/ui/lightweight-diff-preview.tsx
-// （纯 CSS 行解析，无第三方依赖）。只用行背景 color-mix + 行首 inset 状态条 + 行号 gutter
-// 着色表达增删，不显示 unified diff 的 +/-/空格 marker。
-// 语法染色移植 ZCode highlighted-lightweight-diff-preview：整段内容一次 tokenize
-// （ZCode 同款，跨行语法状态一致），按行回贴 token span；行底色仍归本组件 CSS。
-// 行过滤同 ZCode collectPlainTextPreviewLines：文件头（diff --git/index/---/+++ 等）与
-// hunk 头（@@）一律不渲染，只画 hunk 正文——预览不暴露协议头。
+// In-house lightweight diff renderer: ported from ZCode
+// packages/ui/src/components/ui/lightweight-diff-preview.tsx (pure CSS line
+// parsing, no third-party deps). Additions/removals are conveyed only via line
+// background color-mix + an inset status bar at line start + line-number gutter
+// coloring; the unified diff +/-/space markers are not shown.
+// Syntax highlighting is ported from ZCode highlighted-lightweight-diff-preview:
+// the whole content is tokenized in one pass (same as ZCode, so cross-line
+// syntax state stays consistent), and token spans are pasted back per line;
+// line background colors remain owned by this component's CSS.
+// Line filtering matches ZCode collectPlainTextPreviewLines: file headers
+// (diff --git/index/---/+++ etc.) and hunk headers (@@) are never rendered —
+// only hunk bodies are drawn, so previews do not expose protocol headers.
 import { useMemo } from "react";
 import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens.jsx";
+import { useTranslation } from "react-i18next";
 
-// 渲染行数上限：host 对 file_diff 回包按 500k 字符截断，超长 diff 只画前 MAX 行，
-// 尾部补一行省略提示，避免单文件超大 diff 卡渲染
+// Render line cap: the host truncates file_diff responses at 500k chars;
+// oversized diffs draw only the first MAX lines plus a trailing omission
+// notice, preventing a single huge file diff from stalling rendering
 const MAX_RENDER_LINES = 4000;
 
 const HUNK_RE = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?/;
 const META_RE = /^(?:diff --git |index |--- |\+\+\+ |new file mode |deleted file mode |similarity index |rename from |rename to |old mode |new mode )/;
 const NOTE_RE = /^\\ /;
-// 底座 edit 工具 details.diff 的行号格式（TUI 同款）：「符号 + 行号 + |/│ + 文本」，
-// 符号 ∈ 空格(上下文) / -(旧) / +(新)；分隔符也可能是全角 │。非 unified diff，无 hunk 头
+// Line-number format of the base edit tool's details.diff (same as the TUI):
+// "sign + line number + |/│ + text", where the sign is space (context) /
+// - (old) / + (new); the separator may also be the full-width │. Not a unified
+// diff — no hunk headers
 const LN_RE = /^([-+\s])\s*(\d+)[|│](.*)$/;
 
 export interface DiffRow {
@@ -31,15 +40,17 @@ interface ParsedDiff {
   omitted: number;
 }
 
-// 解析 unified diff 文本为行结构：按 +/-/空格 前缀分类正文行并跟踪 hunk 头里的
-// 新旧行号；文件头与 hunk 头跳过不渲染（行号仍在 hunk 头处对齐，残缺 hunk 宽容记账）。
+// Parse unified diff text into row structures: body lines are classified by
+// their +/-/space prefix while old/new line numbers are tracked from hunk
+// headers; file headers and hunk headers are skipped for rendering (line
+// numbers still align at hunk headers; truncated hunks are tolerated).
 function parseUnifiedDiff(diff: string | null | undefined): ParsedDiff {
   const lines = String(diff ?? "").split("\n");
   const rows: DiffRow[] = [];
   let oldLine = 0;
   let newLine = 0;
   let omitted = 0;
-  let inHunk = false; // ZCode 同款过滤：进 hunk 前只认 hunk 头，进了之后 @@/文件头全跳过
+  let inHunk = false; // Same filter as ZCode: before entering a hunk only hunk headers count; once inside, @@/file headers are all skipped
   for (let i = 0; i < lines.length; i++) {
     if (rows.length >= MAX_RENDER_LINES) {
       omitted = lines.length - i;
@@ -61,14 +72,14 @@ function parseUnifiedDiff(diff: string | null | undefined): ParsedDiff {
     } else if (raw.startsWith("-")) {
       rows.push({ kind: "removed", text: raw.slice(1), no: oldLine++ });
     } else {
-      // 空格前缀上下文行；完全空行按上下文兜底（git 正文不会输出空行）
+      // Space-prefixed context line; a fully empty line falls back to context (git bodies never emit blank lines)
       rows.push({ kind: "context", text: raw.startsWith(" ") ? raw.slice(1) : raw, no: newLine++, oldNo: oldLine++ });
     }
   }
   return { rows, omitted };
 }
 
-// 解析底座行号 diff（edit 工具 details.diff）：每行自带新旧行号，无需 hunk 头对齐
+// Parse the base's line-number diff (edit tool details.diff): each line carries its own old/new line number, no hunk-header alignment needed
 function parseLnDiff(diff: string | null | undefined): ParsedDiff {
   const lines = String(diff ?? "").split("\n");
   const rows: DiffRow[] = [];
@@ -88,7 +99,7 @@ function parseLnDiff(diff: string | null | undefined): ParsedDiff {
   return { rows, omitted };
 }
 
-// 统一入口：unified diff 优先；无 hunk 正文（底座行号格式）时回落行号解析
+// Unified entry point: unified diff first; falls back to line-number parsing when there is no hunk body (base line-number format)
 function parseDiff(diff: string | null | undefined): ParsedDiff {
   const unified = parseUnifiedDiff(diff);
   if (unified.rows.length > 0) return unified;
@@ -102,8 +113,9 @@ interface LightweightDiffProps {
 }
 
 export default function LightweightDiff({ diff, lang = null, className = "" }: LightweightDiffProps) {
+  const { t } = useTranslation();
   const { rows, omitted } = useMemo(() => parseDiff(diff), [diff]);
-  // 整段内容（行文本按序 join）一次 tokenize，按行下标回贴；lang 为空/超长按纯文本渲染
+  // Tokenize the whole content (line texts joined in order) in one pass and paste back by line index; empty lang or oversized content renders as plain text
   const code = useMemo(() => rows.map((r) => r.text).join("\n"), [rows]);
   const tokens = useCodeTokens(code, lang);
   return (
@@ -121,7 +133,7 @@ export default function LightweightDiff({ diff, lang = null, className = "" }: L
             </code>
           </div>
         ))}
-        {omitted > 0 && <div className="py-[4px] px-[12px] text-faint">… 内容过长，已省略剩余 {omitted} 行</div>}
+        {omitted > 0 && <div className="py-[4px] px-[12px] text-faint">{t("chat.diffOmitted", { count: omitted })}</div>}
       </div>
     </div>
   );

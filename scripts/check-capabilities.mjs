@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// 能力清单一致性门禁（借鉴 OBF 产品控制平面的最小版）：
-// host/capabilities.json 是 RPC 能力的单一事实源，本脚本把它与宿主实际分发的
-// method 做双向 diff——任何一侧漂移都 exit 1。
-// 分发形态（2026-09-28 第三刀起）：main.ts 查表分发，实际 method 全集 =
-// host/rpc/*.ts 各域 handler 表的对象方法键（首参 ws/_ws 的两级缩进成员）。
-// 用法：node scripts/check-capabilities.mjs
+// Capabilities manifest consistency gate (minimal version borrowed from the OBF product control plane):
+// host/capabilities.json is the single source of truth for RPC capabilities; this script bidirectional-diffs it against
+// the methods the host actually dispatches -- any drift on either side exits 1.
+// Dispatch shape (since the third cut on 2026-09-28): main.ts dispatches via lookup tables, so the actual method set =
+// the object-method keys of each domain handler table in host/rpc/*.ts (members indented two levels whose first param is ws/_ws).
+// Usage: node scripts/check-capabilities.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +18,8 @@ const rpcSources = readdirSync(rpcDir)
   .map((f) => readFileSync(join(rpcDir, f), "utf8"))
   .join("\n");
 
-// 域 handler 表的键即实际分发的 method 全集：对象方法简写（可选 async），
-// 首参为 ws/_ws，缩进 2 空格（顶层函数不缩进，天然排除辅助函数）。
+// The keys of each domain handler table are the full set of actually dispatched methods: object-method shorthand (optionally async),
+// first param ws/_ws, indented 2 spaces (top-level functions are not indented, so helpers are naturally excluded).
 const dispatchCases = new Set(
   [...rpcSources.matchAll(/^ {2}(?:async )?([a-z_][a-z0-9_]*)\( ?(?:ws|_ws)[,)]/gm)].map((m) => m[1]),
 );

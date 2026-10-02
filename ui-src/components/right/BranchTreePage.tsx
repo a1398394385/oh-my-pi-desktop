@@ -1,5 +1,6 @@
-// 分支树页：当前会话家族（get_session_tree 懒加载，切会话后旧数据视为过期）
-// + 按 parentSession 组树渲染 + 点击分支行切换会话。
+// Branch tree page: current session's family (get_session_tree lazily fetched; old data
+// counts as stale after a session switch)
+// + tree rendering grouped by parentSession + clicking a branch row switches sessions.
 import { Fragment, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, activateSession, refreshGitDiff, hideWelcomeScreen, saveUnseen } from "../../store";
@@ -7,10 +8,11 @@ import type { DiskProject, SessionBranch } from "../../types/frames";
 import { t } from "../../i18n";
 import { fmtAgo } from "./helpers";
 
-// 家族分支条目:唯一来源 types/frames 的 SessionBranch(host get_session_tree 回包)
+// Family branch entry: sole source is types/frames' SessionBranch (host get_session_tree reply)
 type BranchEntry = SessionBranch;
 
-// 分支行标题：title → 磁盘列表首消息截断 → 「未命名分支」（分支刚建未入 list_sessions 时无首消息）
+// Branch row title: title → truncated first message from the disk list → "unnamed branch"
+// (no first message when the branch was just created and isn't in list_sessions yet)
 function branchLabel(b: BranchEntry, diskProjects: DiskProject[]): string {
   if (b.title && b.title.trim()) return b.title;
   const fm = diskProjects.flatMap((p) => p.sessions).find((x) => x.path === b.path)?.firstMessage;
@@ -18,18 +20,20 @@ function branchLabel(b: BranchEntry, diskProjects: DiskProject[]): string {
   return t("right.unnamedBranch");
 }
 
-// 点击分支行切换会话：与侧栏列表点击同一套动作（已打开直接激活，否则走宿主 load_session）
+// Click a branch row to switch sessions: the same action set as clicking the sidebar list
+// (already open → activate directly; otherwise the host load_session)
 function loadBranchSession(path: string) {
   useAppStore.setState({ isCreatingNew: false });
   hideWelcomeScreen();
-  // 未读标记摘除换新 Set（原 mutate + 末尾 notify；订阅 unseenFinished 的侧栏按引用感知）
+  // Unread mark removal swaps in a new Set (formerly mutate + notify at the end; the sidebar
+  // subscribing to unseenFinished notices by reference)
   useAppStore.setState((st) => ({ unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== path)) }));
   saveUnseen();
   if (useAppStore.getState().openSessions.has(path)) {
     activateSession(path);
     refreshGitDiff();
   } else {
-    send({ type: "reload_settings" }); // 本地 config 可能已改，拉取最新模型设置
+    send({ type: "reload_settings" }); // local config may have changed; fetch the latest model settings
     send({ type: "load_session", path });
   }
   // selectedFile/selectedSubagent cleanup is owned by restoreRightPanel (already-open branch)
@@ -41,17 +45,19 @@ export default function BranchTreePage() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const rightState = useAppStore((st) => st.rightState);
-  // 过期数据重拉（原渲染体内联请求移此；pending 防重读 getState，回包由 store 落缓存）。
-  // 无依赖数组 = 每次渲染后检查，对齐原「渲染体每次重绘检查」语义（请求失败解除 pending 后下次渲染重拉）
+  // Stale-data refetch (the inline request from the old render body moved here; dedup via
+  // pending reads getState, replies land in the store cache).
+  // No dependency array = check after every render, matching the old "check on every repaint"
+  // semantics (a failed request clears pending and the next render refetches)
   useEffect(() => {
     const st = useAppStore.getState();
     const session = st.activePath ? st.openSessions.get(st.activePath) : undefined;
     if (!session) return;
     const tree = st.rightState.sessionTree;
-    if (tree && tree.sessionId === session.sessionId) return; // 未过期
-    if (st.rightState.sessionTreePending) return; // 防重
+    if (tree && tree.sessionId === session.sessionId) return; // not stale
+    if (st.rightState.sessionTreePending) return; // dedup
     useAppStore.setState((st2) => ({
-      rightState: { ...st2.rightState, sessionTreePending: true, treeFor: session.sessionId }, // 回包未带 sessionId 时归属用
+      rightState: { ...st2.rightState, sessionTreePending: true, treeFor: session.sessionId }, // for attribution when the reply carries no sessionId
     }));
     send({ type: "get_session_tree", sessionId: session.sessionId });
   });
@@ -59,7 +65,7 @@ export default function BranchTreePage() {
     return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   const tree = rightState.sessionTree;
-  const stale = !tree || tree.sessionId !== s.sessionId; // 切换会话后旧数据视为过期
+  const stale = !tree || tree.sessionId !== s.sessionId; // old data counts as stale after switching sessions
   if (stale) {
     return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
   }
@@ -67,7 +73,8 @@ export default function BranchTreePage() {
   if (branches.length <= 1) {
     return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]" /* style-token-ignore */>{t("right.noOtherBranches")}</div>;
   }
-  // 按 parentSession 组树：根支（无父或父不在家族列表）在顶层，子支随父缩进（深度不限，样式统一）
+  // Group into a tree by parentSession: root branches (no parent, or parent absent from the
+  // family list) at the top, children indented under parents (unlimited depth, uniform styling)
   const byId = new Map(branches.map((b: BranchEntry) => [b.sessionId, b] as const));
   const kidsOf = new Map<string, BranchEntry[]>();
   const roots: BranchEntry[] = [];
@@ -78,9 +85,10 @@ export default function BranchTreePage() {
       kidsOf.set(b.parentSession, list);
     } else roots.push(b);
   }
-  // 断言：缺失 modified 时回退值 0 经 Date.parse  coercion 与原版一致（NaN）
+  // Assertion: the fallback 0 for a missing modified coerces through Date.parse the same as
+  // the original (NaN)
   const byTime = (x: BranchEntry, y: BranchEntry): number =>
-    Date.parse((y.modified || 0) as string) - Date.parse((x.modified || 0) as string); // 同级新的在前
+    Date.parse((y.modified || 0) as string) - Date.parse((x.modified || 0) as string); // newer first within a level
   roots.sort(byTime);
   for (const l of kidsOf.values()) l.sort(byTime);
   return (
@@ -90,10 +98,11 @@ export default function BranchTreePage() {
   );
 }
 
-// 单层分支行（当前分支 cur 高亮不可点）+ 嵌套子支容器（自带竖线引导线，逐级缩进）
+// Single-level branch rows (current branch cur highlighted, unclickable) + nested child
+// containers (vertical guide lines, indented per level)
 function BranchLevel({ items, kidsOf, depth }: { items: BranchEntry[]; kidsOf: Map<string, BranchEntry[]>; depth: number }) {
   const { t } = useTranslation();
-  const diskProjects = useAppStore((st) => st.diskProjects); // 标题首消息兜底数据（磁盘会话列表）变化时重渲染
+  const diskProjects = useAppStore((st) => st.diskProjects); // re-render when the title-fallback source (disk session list) changes
   return (
     <div className={depth > 0 ? "ml-2.5 pl-2.5 border-l border-line-soft" : undefined}>
       {items.map((b) => {

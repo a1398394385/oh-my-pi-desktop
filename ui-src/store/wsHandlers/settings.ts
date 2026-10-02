@@ -1,5 +1,6 @@
-// 设置中心数据域帧：登录流程、供应商与配额、资产/记忆/MCP 编辑器回包、
-// 输入框 sigil 候选（斜杠命令清单 / @ 文件匹配）。自 store/ws.ts onMessage 平移。
+// Settings-center data-domain frames: login flow, providers and quotas, asset/memory/MCP editor
+// replies, composer sigil candidates (slash command list / @ file matches). Moved over from
+// store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { t } from "../../i18n";
 import type { McpAssetsPayload } from "../../types/frames";
@@ -10,7 +11,7 @@ export const settingsHandlers = {
     useAppStore.setState((s) => ({ ctxLimits: msg }));
   },
   provider_limits_result(msg) {
-    // 模型管理页配额：按选中供应商落地，组件按 providerLimits 渲染（防旧响应污染由组件判 provider）
+    // Models-management page quotas: landed for the selected provider; components render from providerLimits (components check provider to prevent stale-response pollution)
     if (msg.provider === useAppStore.getState().selectedProvider) {
       useAppStore.setState((s) => ({ providerLimits: msg }));
     }
@@ -48,14 +49,16 @@ export const settingsHandlers = {
     useAppStore.getState().toast(t("notify.configPath", { path: msg.path }));
   },
   asset_file(msg) {
-    // skills/agents/mcp 编辑器共用帧，全量落地，页面按 kind 过滤（每次赋新对象触发 effect）。
-    // 补 type 字段构造完整帧对象(kind 缺省兜底为原行为);新对象引用驱动「已保存」态复位
+    // Frame shared by the skills/agents/mcp editors; landed wholesale, pages filter by kind (each
+    // fresh object assignment triggers the effect). The type field is added to build a complete
+    // frame object (kind defaulting preserves the original behavior); the fresh object reference
+    // drives the "saved" indicator reset
     useAppStore.setState((s) => ({
       assetFile: { type: "asset_file", kind: msg.kind ?? "agent", path: msg.path, content: msg.content },
     }));
   },
   memory_file(msg) {
-    // 首次目录级读取带 files；行展开/rollout 只回 content（旧版 memInbox 语义平移）
+    // The first directory-level read carries files; row expansion/rollout returns only content (semantics moved over from the old memInbox)
     useAppStore.setState((s) => {
       const md = s.memoryDetail;
       const next = msg.files
@@ -82,9 +85,9 @@ export const settingsHandlers = {
     useAppStore.getState().toast(t(msg.kind === "skill" ? "notify.skillDeleted" : "notify.fileDeleted"));
   },
   mcp_server_tested(msg) {
-    // 旧版 handleMcpServerTested 平移：测试结果落地 + 行状态点同步 + toast（全量换引用）
+    // Moved over from the old handleMcpServerTested: land the test result + sync the row status dot + toast (wholesale reference swap)
     useAppStore.setState((st) => {
-      // mcp 段逐字段形状随底座扫描函数(frames.ts TODO),此处只取 servers 数组的测试相关字段
+      // Per-field shape of the mcp section follows the base scan function (frames.ts TODO); only test-related fields of the servers array are read here
       const mcp = st.agentAssets?.mcp as { servers?: { name: string; status?: string; error?: string; log?: string }[] } | undefined;
       const servers = mcp?.servers;
       const srv = servers?.find((x) => x.name === msg.name);
@@ -95,7 +98,7 @@ export const settingsHandlers = {
       );
       return {
         mcpTestResults,
-        // mcp 经窄类型 as 读 servers(spread 运行期保留全部字段),静态侧断言还原完整负载类型
+        // mcp reads servers through a narrowed type via as (the spread keeps all fields at runtime); the static-side assertion restores the full payload type
         agentAssets: { ...st.agentAssets!, mcp: { ...mcp, servers: nextServers } as McpAssetsPayload },
       };
     });
@@ -105,20 +108,20 @@ export const settingsHandlers = {
         : t("notify.mcpProbeFailed", { name: msg.name, error: msg.error || "" }),
     );
   },
-  // ---- 输入框 sigil：斜杠命令清单（宿主 list_commands 回包；list_files 的 @ 候选回包） ----
+  // ---- Composer sigil: slash command list (host list_commands reply; @ candidates reply of list_files) ----
   commands(msg) {
     useAppStore.setState((s) => ({
       commands: Array.isArray(msg.commands) ? msg.commands : [],
-      commandsSessionId: msg.sessionId ?? "new", // 无会话回包 = 新建页清单
+      commandsSessionId: msg.sessionId ?? "new", // a reply without a session = the new-session page's list
     }));
   },
   file_matches(msg) {
-    if (msg.reqId !== useAppStore.getState().mentionReqSeq) return; // 过期响应：用户已继续输入，丢弃
+    if (msg.reqId !== useAppStore.getState().mentionReqSeq) return; // stale response: the user kept typing, drop it
     useAppStore.setState((s) => ({
       mentionResult: { reqId: msg.reqId, matches: Array.isArray(msg.matches) ? msg.matches : [] },
     }));
   },
 } satisfies HandlerSlice;
 
-// 域键集（供 index 的穷尽断言交叉验证）
+// Domain key set (for the exhaustive-assertion cross-check in index)
 export type SettingsFrames = keyof typeof settingsHandlers;

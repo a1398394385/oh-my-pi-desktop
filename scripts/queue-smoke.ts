@@ -1,8 +1,8 @@
-// 宿主排队链路冒烟：流式中排队 → drop/send_now/requeue RPC → steer 与 followUp 两条消费路径。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/queue-smoke.ts [宿主ws地址]
-// 不传地址时本脚本自行拉起宿主子进程，退出时清理测试产生的会话文件。
-// 断言覆盖：排队视图顺序与增删、send_now 转 steering、requeue 回顶端、
-// steer 与 followUp 消费均发 steer_consumed、最终队列排空、无 error 与帧洪泛。
+// Host queueing smoke test: enqueue while streaming -> drop/send_now/requeue RPCs -> both consumption paths (steer and followUp).
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/queue-smoke.ts [host ws url]
+// Without an address the script spawns the host child process itself and cleans up the session files it created on exit.
+// Assertions cover: queued view order and add/remove, send_now converting to steering, requeue back to the top,
+// steer and followUp consumption both emitting steer_consumed, the queue finally drained, and no error or frame flooding.
 import { spawn, type ChildProcess } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -18,13 +18,13 @@ interface WireMsg {
 }
 
 function asWireMsg(raw: unknown): WireMsg | null {
-  // 帧边界宽接口转换：字段全为 unknown，读取处再做窄化
+  // Frame-boundary loose interface conversion: all fields unknown; narrowing happens at read sites
   if (raw && typeof raw === "object" && "type" in raw && typeof raw.type === "string")
     return raw as WireMsg;
   return null;
 }
 
-// 从队列快照/消费帧里提取用户消息文本序列（非字符串一律落空串，断言自然失败暴露形状变化）
+// Extract the user-message text sequence from queue snapshots/consumption frames (non-strings become empty strings, so assertions fail naturally on shape drift)
 function texts(list: unknown): string[] {
   if (!Array.isArray(list)) return [];
   return list.map((m) => {
@@ -32,7 +32,7 @@ function texts(list: unknown): string[] {
     return "";
   });
 }
-// steer_consumed.texts 是纯字符串数组（区别于 queued 快照的对象数组）
+// steer_consumed.texts is a plain string array (unlike the queued snapshot's object array)
 function consumedTexts(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((t): t is string => typeof t === "string");
@@ -77,14 +77,14 @@ if (!wsUrl) {
 const ws = new WebSocket(wsUrl);
 const failTimeout = setTimeout(() => fail("180s 内未完成全部断言"), 180_000);
 
-// 三条排队消息用固定可区分文本，各断言按文本匹配
+// The three queued messages use fixed distinguishable texts; each assertion matches by text
 const TXT_A = "排队甲：只回复「甲」两个字";
 const TXT_B = "排队乙：只回复「乙」两个字";
 const TXT_C = "排队丙：只回复「丙」两个字";
 
 type Step = { name: string; match: (msg: WireMsg, ctx: string) => boolean };
 
-// 步骤机：按序消费帧，当前步骤 match 成功即推进；无关帧忽略
+// Step machine: consume frames in order; a match on the current step advances it; irrelevant frames are ignored
 const steps: Step[] = [
   {
     name: "首轮 turn_start 后连发三条排队",
@@ -196,7 +196,7 @@ ws.onmessage = (ev) => {
     steps.shift();
     passed++;
     if (steps.length === 0) {
-      // 收尾断言：无帧洪泛（循环重发/重复推送会把这两类帧刷爆）
+      // Final assertions: no frame flooding (resend loops/duplicate pushes would blow up these two frame types)
       assert((frameCounts.event ?? 0) < 3000, `event 帧异常多: ${frameCounts.event}（疑似循环）`);
       assert((frameCounts.queued ?? 0) < 60, `queued 帧异常多: ${frameCounts.queued}（疑似循环）`);
       console.log(`帧统计: ${JSON.stringify(frameCounts)}`);
@@ -207,7 +207,7 @@ ws.onmessage = (ev) => {
 
 ws.onopen = () => {
   console.log("WS 已连接");
-  // 建会话（可选指定便宜模型，默认走 profile 配置）
+  // Create a session (cheap model optional; defaults to the profile config)
   ws.send(
     JSON.stringify({
       type: "create_session",

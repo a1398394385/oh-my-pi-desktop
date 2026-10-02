@@ -1,23 +1,35 @@
 /**
- * pi-kimi-keepalive 桌面移植版（从 https://github.com/realOliverSama/pi-kimi-keepalive
- * a05bafd / v0.3.8 的 src/index.ts 移植自有化，后续在本仓库迭代）。
+ * pi-kimi-keepalive desktop port (self-owned port of src/index.ts from
+ * https://github.com/realOliverSama/pi-kimi-keepalive a05bafd / v0.3.8,
+ * iterated in this repo afterwards).
  *
- * 机制：before_provider_request 只读捕获末次 kimi-code 真实请求全文（含
- * cache_control 标记）；会话空闲时把捕获请求重放为一个小型非流式调用——
- * max_tokens 钳到 16、去 thinking/stream、tool_choice:none（400 时一次性降级重试），
- * 会话前缀逐字节不变，供应商自动前缀缓存视其为延续并按 cache-read 价重启 TTL。
- * 探测永不进入会话流（无合成消息/工具调用，只留聚合统计与 probe-log 落盘）。
+ * Mechanism: before_provider_request read-only captures the last full real
+ * kimi-code request (including cache_control markers); when the session goes
+ * idle, the captured request is replayed as a tiny non-streaming call —
+ * max_tokens clamped to 16, thinking/stream stripped, tool_choice:none (one
+ * downgraded retry on 400) — with the session prefix byte-for-byte unchanged,
+ * so the vendor's automatic prefix cache treats it as a continuation and
+ * restarts the TTL at cache-read prices. Probes never enter the session
+ * stream (no synthetic messages/tool calls; only aggregate stats and the
+ * probe-log are persisted).
  *
- * 护栏：agent 忙时跳过、maxidle 后停、连续 cache miss / 网络错误断路、auth 失败
- * 即停、会话 spend cap 到顶即停；新一轮真实请求总是重新武装并清除粘性暂停。
+ * Guardrails: skip while the agent is busy, stop after maxidle, circuit-break
+ * on consecutive cache misses / network errors, stop immediately on auth
+ * failure, stop when the session spend cap is reached; a fresh real request
+ * always re-arms and clears the sticky pause.
  *
- * 相对上游的裁剪（桌面端 hasUI=false，这些路径在桌面宿主内不可达）：
- *   - runSetupWizard（TUI 首跑向导，依赖 pi.ui.input/confirm）
- *   - pi.registerCommand("/keepalive" 斜杠命令；桌面斜杠命令是 UI 侧另一套）
- *   - 状态行（pi.ui.setStatus）与 statusLines 汇报——桌面侧状态可视化后续按需重做
- * 探测主链路（捕获/调度/重放/断路/落盘）逐行保持上游逻辑。
- * 配置真源：omp-desktop.json 的 keepalive 段（随 profile 独立，见 keepalive-config.ts；
- * 上游 state.json 仅保留 probe-log 审计日志用途）。运行时只有节奏字段会回写。
+ * Cut relative to upstream (desktop hasUI=false, these paths are unreachable
+ * inside the desktop host):
+ *   - runSetupWizard (TUI first-run wizard, depends on pi.ui.input/confirm)
+ *   - pi.registerCommand("/keepalive" slash command; desktop slash commands
+ *     are a separate UI-side system)
+ *   - status line (pi.ui.setStatus) and statusLines reporting — desktop-side
+ *     status visualization to be redone as needed later
+ * The main probe chain (capture/schedule/replay/circuit-break/persist) keeps
+ * upstream logic line by line.
+ * Config source of truth: the keepalive section of omp-desktop.json
+ * (per-profile, see keepalive-config.ts; upstream state.json is kept only for
+ * the probe-log audit log). Only cadence fields are written back at runtime.
  */
 import { appendFileSync, mkdirSync } from "node:fs";
 import type { CostPerM, ParsedUsage, ProbeDialect } from "./keepalive-lib.ts";
@@ -48,9 +60,9 @@ import {
   type ProbeConfig,
 } from "./keepalive-config.ts";
 
-/** 捕获请求所属模型的字段面（底座 ExtensionContext["model"] 的窄视图）。 */
+/** Field face of the model the captured request belongs to (narrow view of the base ExtensionContext["model"]). */
 interface KeepaliveModel {
-  /** catalog id（"provider/model"），targets 的匹配键 */
+  /** catalog id ("provider/model"), the match key for targets */
   id: string;
   provider: string;
   baseUrl?: string;
@@ -59,8 +71,9 @@ interface KeepaliveModel {
 }
 
 /**
- * 扩展事件上下文的窄视图（底座 ExtensionContext 的结构化子集，照
- * host/acp-context.ts 的内联窄类型先例）。探测链路只读这些成员。
+ * Narrow view of the extension event context (a structural subset of the base
+ * ExtensionContext, following the inline narrow-type precedent in
+ * host/acp-context.ts). The probe chain only reads these members.
  */
 export interface KeepaliveContext {
   model?: KeepaliveModel | null;
@@ -68,7 +81,7 @@ export interface KeepaliveContext {
   modelRegistry?: unknown;
 }
 
-/** 扩展注入面：底座对内联扩展只要求可挂事件监听。 */
+/** Extension injection face: the base only requires inline extensions to attach event listeners. */
 export interface KeepalivePi {
   on(event: "before_provider_request", handler: (ev: { payload: unknown }, ctx: KeepaliveContext) => void): void;
   on(event: "session_start", handler: (ev: unknown, ctx: KeepaliveContext) => void | Promise<void>): void;
@@ -140,12 +153,12 @@ interface Stats {
   spendUsd: number;
 }
 
-/** 扩展宿主注入项：isWanted = 该会话当前是否值得保活（host 侧维护的未读态）。 */
+/** Host-injected extension options: isWanted = whether this session is currently worth keeping alive (an unread state maintained host-side). */
 export interface KeepaliveHostOptions {
   isWanted: () => boolean;
 }
 
-/** 创建 keepalive 扩展工厂（session-lifecycle 按实验开关条件注入）。 */
+/** Create the keepalive extension factory (session-lifecycle injects it conditionally on the experimental switch). */
 export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
   return (pi: KeepalivePi): void => {
     // ---------- mutable state ----------
@@ -179,8 +192,10 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     // ---------- persistence ----------
 
     function persistConfig(): void {
-      // 运行时只有节奏字段会变（smart 增长/回落、default miss 回退 5m），
-      // 其余字段归设置页真源；只回写 intervalMs 防并发覆盖用户改动
+      // Only cadence fields change at runtime (smart growth/fallback, default
+      // miss backing off to 5m); all other fields belong to the settings-page
+      // source of truth; write back only intervalMs to avoid concurrently
+      // overwriting user edits
       try {
         writeKeepaliveConfig({ intervalMs: config.intervalMs });
       } catch (error) {
@@ -190,8 +205,10 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
 
     function isTargetModel(context: KeepaliveContext | null): boolean {
       const model = context?.model;
-      // 目标模型由设置页 targets 配置（catalog id 匹配）；上游硬编码 kimi-code，
-      // 桌面版泛化。baseUrl 必须有值——探测请求要直接打供应商端点
+      // Target models are configured via the settings page targets (catalog id
+      // match); upstream hardcodes kimi-code, the desktop version generalizes.
+      // baseUrl must be set — the probe request hits the vendor endpoint
+      // directly
       if (!model || !config.targets.includes(model.id)) return false;
       return typeof model.baseUrl === "string" && model.baseUrl.length > 0;
     }
@@ -207,8 +224,9 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     }
 
     function armed(): boolean {
-      // 桌面域单开关：扩展被注入即探测（omp-desktop.json keepalive.enabled），
-      // 不再有上游 config.enabled 的第二层探测开关
+      // Desktop-domain single switch: the extension being injected means
+      // probing (omp-desktop.json keepalive.enabled); no second-layer probe
+      // switch like upstream's config.enabled anymore
       return Boolean(capture && !pausedReason && !inflight);
     }
 
@@ -230,8 +248,9 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     async function onTick(): Promise<void> {
       if (!ctx || !capture) return;
       if (!opts.isWanted()) {
-        // 用户已看过该会话（未读清零）：停探测清定时器；下一次 turn 完成产生
-        // 新未读时 agent_end 会重新武装
+        // The user has already seen this session (unread cleared): stop
+        // probing and clear the timer; agent_end re-arms when the next
+        // completed turn produces new unread activity
         clearTimer();
         return;
       }

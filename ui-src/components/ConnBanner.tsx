@@ -1,13 +1,17 @@
-// 连接看门狗横幅：宿主连接持续失败超阈值时，在主区顶部给出可操作恢复面
-// （对照 PI-Desktop #850 的启动看门狗——把「静默等不到宿主」变成「可重试、可取证」）。
-// 自动重试环（ws.ts scheduleReconnect）持续在跑，横幅不中断不替代它：连上即消失。
-// 退出/关闭走窗口自身控件（交通灯/标题栏），此处不重复提供。
+// Connection watchdog banner: when host connection failures persist past a threshold, show an
+// actionable recovery surface at the top of the main area
+// (cf. PI-Desktop #850's startup watchdog — turning "silently never reaching the host" into
+// "retryable, diagnosable").
+// The automatic retry loop (ws.ts scheduleReconnect) keeps running; the banner neither
+// interrupts nor replaces it: it disappears once connected.
+// Quit/close uses the window's own controls (traffic lights/title bar), not duplicated here.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store";
 
-// 阈值取 30s：覆盖宿主冷启动的最坏路径（模型目录走代理刷新可 >15s），
-// 又早于 Rust 侧 ws_url 的 60s 超时——两者之间用户就该看到可操作提示
+// Threshold of 30s: covers the host cold-start worst path (model catalog refresh over a proxy
+// can take >15s), while staying ahead of the Rust side's 60s ws_url timeout — users should
+// see an actionable hint between the two
 const SHOW_AFTER_MS = 30_000;
 
 export default function ConnBanner() {
@@ -17,7 +21,8 @@ export default function ConnBanner() {
   const connFailSince = useAppStore((s) => s.connFailSince);
   const [now, setNow] = useState(Date.now());
 
-  // 失败期间每秒刷新一次（驱动「已等待 Ns」与阈值判定）；连接正常时无定时器
+  // Refresh once per second while failing (drives the "waited Ns" text and threshold check);
+  // no timer while connected
   useEffect(() => {
     if (connected || connFailSince == null) return;
     const t = setInterval(() => setNow(Date.now()), 1000);

@@ -1,6 +1,9 @@
-// 输入框 sigil 补全卡（@ 文件候选 / 行首 / 命令候选共用）：输入框卡的同款圆角卡片，
-// 两张卡片上下排列（间距 2px、同宽、最大高度 = 输入框卡 2.6 倍，定位见 placePaletteCard）。
-// 复用既有 .menu/.mi/.sub 基类与 popIn 动画，只改卡片外观与定位。
+// Composer sigil completion card (shared by @ file candidates / line-leading /
+// command candidates): the same rounded card as the composer card, two cards
+// stacked vertically (2px gap, same width, max height = 2.6x the composer card;
+// see placePaletteCard for positioning).
+// Reuses the existing .menu/.mi/.sub base classes and the popIn animation;
+// only the card look and positioning differ.
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,9 +11,9 @@ import { placePaletteCard } from "./place";
 import { pathBase, useAppStore } from "../../store";
 import { BUILTIN_DESC_ZH } from "../../i18n/locales/commands-zh-CN";
 
-/** @ 文件候选（mentionResult.matches 元素） */
+/** @ file candidate (an element of mentionResult.matches) */
 export type FileItem = { path: string; dir: boolean };
-/** 斜杠命令候选（commands 清单元素的结构子集） */
+/** Slash command candidate (structural subset of the commands list element) */
 export type CommandItem = { name: string; aliases?: string[]; description?: string; hint?: string | null; source?: string };
 export type PaletteItem = FileItem | CommandItem;
 
@@ -25,18 +28,21 @@ type PaletteMenuProps = {
 };
 
 /**
- * mode: "file" | "command"；items: file 为 {path,dir}、command 为 {name,aliases,description,hint}；
- * index 当前高亮项；loading 拉取中（显示加载中…）。
+ * mode: "file" | "command"; items: {path,dir} for file,
+ * {name,aliases,description,hint} for command; index is the currently
+ * highlighted item; loading means fetching (shows loading...).
  */
 export default function PaletteMenu({ mode, items, index, loading, composerRef, onPick, onHover }: PaletteMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   const lang = useAppStore((s) => s.uiPrefs.lang);
-  // 挂载即定位；候选/加载态变化引起高度变化后重新定位（底缘始终贴输入框卡上方 2px）
+  // Position on mount; re-position after candidate/loading changes alter the
+  // height (the bottom edge always hugs 2px above the composer card)
   useLayoutEffect(() => {
     placePaletteCard(composerRef.current, menuRef.current);
   }, [composerRef, items.length, loading, mode]);
-  // 键盘上下移动高亮时，把高亮行滚动进可视区（block:"nearest" 不跳动容器）
+  // When the keyboard moves the highlight, scroll the highlighted row into view
+  // (block:"nearest" does not jump the container)
   useLayoutEffect(() => {
     menuRef.current?.querySelector(".mi.on")?.scrollIntoView({ block: "nearest" });
   }, [index]);
@@ -54,13 +60,13 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
           let desc = "";
           let hint: string | null = null;
           if (mode === "file") {
-            if (!("path" in it)) return null; // 类型守卫：mode 与 items 同源，file 候选必含 path
+            if (!("path" in it)) return null; // type guard: mode and items share one source; file candidates always carry path
             const tail = pathBase(it.path) || it.path;
             label = it.dir ? tail + "/" : tail;
             key = it.path;
             desc = it.path;
           } else {
-            if (!("name" in it)) return null; // 类型守卫：command 候选必含 name
+            if (!("name" in it)) return null; // type guard: command candidates always carry name
             label = "/" + it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");
             key = it.name;
             // Built-in command descriptions: zh-CN maps through the dictionary;

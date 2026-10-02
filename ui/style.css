@@ -1,25 +1,28 @@
-/* ── Tailwind v4 基座(P4):仅 theme + utilities,不导入 Preflight/reset(保住既有控件与壳层样式);
-   token 经 @theme inline 间接引用下方 :root 变量(浅色覆盖自动生效),utility 侧使用 bg-card/text-dim/border-line 等。
-   复合类全站语言(.srow/.pill-btn/.tg/.sel/.inp/.add-btn/.confirm-btn/.mem-expand 与布局骨架)保留在 CSS,不用 utility 重写。── */
+/* ── Tailwind v4 base (P4): theme + utilities only, no Preflight/reset import (keeps existing
+   controls and shell-layer styles intact); tokens indirectly reference the :root variables below
+   via @theme inline (light-theme overrides keep working), utilities use bg-card/text-dim/border-line etc.
+   Site-wide compound-class language (.srow/.pill-btn/.tg/.sel/.inp/.add-btn/.confirm-btn/.mem-expand
+   and layout skeletons) stays in CSS — do not rewrite with utilities. ── */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "../ui-src/**/*.{ts,tsx}";
 
 /* ============================================================
- * 样式域拆分（见 ui/css/）：@import 顺序 = 级联顺序，禁止重排。
- *   global.css           token/重置/全站控件基类
- *   main-shell.css       主页面·全局通用（布局骨架/层级刻度/滚动条/Windows 标题栏/全局弹窗）
- *   main-sidebar.css     主页面·左边栏（会话/项目组/搜索卡片/重命名/归档）
- *   main-chat.css        主页面·中栏消息流（气泡/markdown/工具行/审批卡/消息轨道）
- *   main-composer.css    主页面·中栏输入区（dock/底栏/goal/queue/发送钮/Lexical）
- *   main-streamdown.css  主页面·streamdown 渲染引擎层
- *   main-tree.css        主页面·消息区会话树瀑布流
- *   main-welcome.css     主页面·欢迎页（新建会话居中页与延展卡片）
- *   main-right.css       主页面·右边栏（tab 栏/文件页/Git Diff/分支树/终端/浏览器）
- *   settings.css         设置页（pg-* 各页与导航）
- *   settings-mcp.css     设置页·MCP 服务器页（自 settings.css 拆出，级联紧随）
- * 域内规则保持切分时的原始相对顺序；新增样式按所属域追加到对应文件末尾。
+ * Style domain split (see ui/css/): @import order = cascade order, no reordering.
+ *   global.css           tokens / reset / site-wide control base classes
+ *   main-shell.css       main page, global shared (layout skeleton / z-index scale / scrollbars / Windows title bar / global dialogs)
+ *   main-sidebar.css     main page, left sidebar (sessions / project groups / search card / rename / archive)
+ *   main-chat.css        main page, middle-column message flow (bubbles / markdown / tool rows / approval cards / message track)
+ *   main-composer.css    main page, middle-column input area (dock / bottom bar / goal / queue / send button / Lexical)
+ *   main-streamdown.css  main page, streamdown rendering engine layer
+ *   main-tree.css        main page, session-tree waterfall in the message area
+ *   main-welcome.css     main page, welcome page (new-session centered page and expansion cards)
+ *   main-right.css       main page, right sidebar (tab bar / file view / Git Diff / branch tree / terminal / browser)
+ *   settings.css         settings pages (pg-* pages and navigation)
+ *   settings-mcp.css     settings, MCP servers page (split out of settings.css, cascades right after)
+ * Rules inside each domain keep their original relative order from the split;
+ * append new styles at the end of the matching domain file.
  * ============================================================ */
 @import "./css/global.css";
 @import "./css/main-shell.css";

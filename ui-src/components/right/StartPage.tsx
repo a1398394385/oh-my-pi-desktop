@@ -1,5 +1,6 @@
-// 空态启动器（右栏 tab 全部关闭，对齐 ZCode side-pane 空态）：
-// 居中图标 + 标题/副文两行 + 入口钮列表（h-12 横条，宽容器经容器查询切成两列网格）。
+// Empty-state launcher (all right panel tabs closed, aligned with ZCode's side-pane empty
+// state): centered icon + title/subtitle lines + entry button list (h-12 bars; the wide
+// container switches to a two-column grid via container queries).
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
 import Icon from "../../Icon";

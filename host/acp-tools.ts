@@ -1,28 +1,30 @@
-// opencode-acp 压缩工具面适配层。
+// Adapter layer for the opencode-acp compression tool surface.
 //
-// 目标：把 opencode-acp（Active Context Pruning）的 5 个上下文管理工具
-// （compress / decompress / search_context / acp_status / acp_context_recap）
-// 以 opencode-acp 原版的参数 schema 与描述文本注册进 omp SDK 会话，
-// 让模型在 omp-desktop 里看到与 opencode 宿主一致的 ACP 工具面。
+// Goal: register opencode-acp's (Active Context Pruning) five context
+// management tools (compress / decompress / search_context / acp_status /
+// acp_context_recap) into the omp SDK session with the original
+// opencode-acp parameter schemas and description texts, so the model sees the
+// same ACP tool surface in omp-desktop as in the opencode host.
 //
-// 边界（诚实声明，不是静默假实现）：
-// - 本适配层只做「工具可见 + 参数校验 + 适配层状态回执」；
-//   opencode-acp 的压缩执行引擎（SessionStateRegistry / prepareSession /
-//   prune / nudge / mNNNNN ref 注入）运行在 opencode 插件 API 上，
-//   未随本文件移植。compress 等调用会返回明确的适配层状态说明，
-//   绝不伪造“压缩成功”。
-// - schema 与 description 逐字取自 opencode-acp 源码：
-//   lib/compress/range.ts、decompress.ts、search.ts、status.ts、recap.ts、
-//   lib/prompts/compress-range.ts、lib/prompts/extensions/tool.ts。
-// - 工具签名遵循 omp 的 ToolDefinition（execute(toolCallId, params, signal,
-//   onUpdate, ctx) → AgentToolResult { content: TextContent[] }），经
-//   createAgentSession({ customTools }) 注册。
+// Boundaries (honest declaration, not a silent fake):
+// - This adapter only provides "tool visibility + parameter validation +
+//   adapter-state receipts"; opencode-acp's compression engine
+//   (SessionStateRegistry / prepareSession / prune / nudge / mNNNNN ref
+//   injection) runs on the opencode plugin API and was NOT ported with this
+//   file. compress and friends return an explicit adapter-state explanation
+//   and never fake "compression succeeded".
+// - schemas and descriptions are taken verbatim from the opencode-acp source:
+//   lib/compress/range.ts, decompress.ts, search.ts, status.ts, recap.ts,
+//   lib/prompts/compress-range.ts, lib/prompts/extensions/tool.ts.
+// - Tool signatures follow omp's ToolDefinition (execute(toolCallId, params,
+//   signal, onUpdate, ctx) -> AgentToolResult { content: TextContent[] }),
+//   registered via createAgentSession({ customTools }).
 import { type } from "@oh-my-pi/omptype";
 import type { AcpBlock, AcpSessionState } from "./acp-state.ts";
 import { messageText, ACP_TOOL_NAMES } from "./acp-state.ts";
 import { expandToTransactionBounds, serializeForArchive } from "./acp-context.ts";
 
-// ---- 描述文本（opencode-acp 原文移植） --------------------------------
+// ---- description texts (ported verbatim from opencode-acp) ----
 
 const COMPRESS_DESCRIPTION = `Collapse a range in the conversation into a detailed summary.
 
@@ -161,7 +163,7 @@ Call this tool to re-fetch a specific block's summary without decompressing the 
 Args:
 - blockId: optional block number (e.g., 5). If omitted, lists all active blocks with brief info.`;
 
-// ---- 参数 schema（opencode-acp 原文的 zod schema → omptype/ArkType 直译） ----
+// ---- parameter schemas (zod schemas from the opencode-acp source, transcribed to omptype/ArkType) ----
 
 const compressEntrySchema = type({
   "topic?": type("string").describe(
@@ -243,9 +245,9 @@ const recapParams = type({
 });
 
 
-// ---- 工具执行体（真实现：读写 AcpSessionState，视图变换见 acp-context.ts） ----
+// ---- tool bodies (real implementation: reads/writes AcpSessionState; view transform in acp-context.ts) ----
 
-/** 粗估 token（4 chars/token——只用于 status 展示，不参与压缩判定）。 */
+/** Rough token estimate (4 chars/token — status display only, never used for compression decisions). */
 function estTokens(text: string): number {
 	return Math.ceil(text.length / 4);
 }
@@ -277,7 +279,7 @@ export function createAcpCompressTools(state: AcpSessionState) {
 				if (messages.length === 0) {
 					return textResult("Error: no conversation view captured yet — send at least one message first.");
 				}
-				// 逐 entry 定位 + 配对闭合 + 重叠校验
+				// Per-entry locating + pair closure + overlap validation
 				const ranges: Array<{ first: number; last: number; entry: Record<string, unknown> }> = [];
 				for (const entry of entries) {
 					const range = state.locateRange(String(entry.startId), String(entry.endId));
@@ -295,7 +297,7 @@ export function createAcpCompressTools(state: AcpSessionState) {
 						return textResult("Error: content ranges overlap — merge them into one entry or fix boundaries.");
 					}
 				}
-				// 与现有活跃块只允许「完全覆盖」（消费），部分重叠拒绝
+				// Existing active blocks only allow full coverage (consumption); partial overlap is rejected
 				for (const r of ranges) {
 					for (const block of state.activeBlocks()) {
 						const anchors = state.locateBlockAnchors(block);
@@ -309,8 +311,9 @@ export function createAcpCompressTools(state: AcpSessionState) {
 						}
 					}
 			}
-			// 硬保护：ACP 自身工具的调用/结果绝不可压缩（摘要即历史契约——
-			// 压掉块元数据的载体后 decompress 与追溯都会断）
+			// Hard protection: calls/results of ACP's own tools must never be
+			// compressed (summaries are the history contract — compressing the
+			// carrier of block metadata breaks both decompress and traceability)
 			for (const r of ranges) {
 				for (let i = r.first; i <= r.last; i++) {
 					const m = messages[i] as { role?: string; toolName?: string; content?: unknown };
@@ -331,7 +334,7 @@ export function createAcpCompressTools(state: AcpSessionState) {
 					}
 				}
 			}
-			// 建块（从后往前；覆盖的旧块被消费，其引用注入新块 summary 头部）
+				// Create blocks (back-to-front; covered old blocks are consumed, their references injected into the new block's summary header)
 			const created: string[] = [];
 			for (const r of [...ranges].reverse()) {
 				const entry = r.entry;
@@ -452,8 +455,8 @@ export function createAcpCompressTools(state: AcpSessionState) {
 				const blocks = state.activeBlocks();
 				if (blocks.length === 0) return textResult("No compressed blocks to search. Nothing has been compressed yet.");
 
-				// TF 打分（权重与 opencode-acp search.ts 一致：topic 0.15/cap 0.45、
-				// summary 0.04/cap 0.20、全词命中 ×1.2、短语 +0.25、存在性奖励 +0.05 补偿 CJK）
+				// TF scoring (weights match opencode-acp search.ts: topic 0.15/cap 0.45,
+				// summary 0.04/cap 0.20, whole-word hit x1.2, phrase +0.25, existence bonus +0.05 compensating CJK)
 				const terms = query.split(/\s+/).filter(Boolean);
 				const countOccurrences = (text: string, term: string): number => {
 					let count = 0;
@@ -478,8 +481,10 @@ export function createAcpCompressTools(state: AcpSessionState) {
 							if (topic.includes(term) || summary.includes(term)) hitTerms++;
 						}
 						if (summary.includes(query)) relevance += 0.25;
-						// 存在性奖励：任一 term 命中即 +0.05——补偿 CJK（英文全词加成依赖空格
-						// 分词，对无空格中文永不触发，纯 TF 会把已命中块压到阈值下）
+						// Existence bonus: +0.05 when any term hits — compensates CJK (the
+						// English whole-word boost depends on space tokenization and never
+						// fires for unspaced Chinese; pure TF would push already-hit blocks
+						// below the threshold)
 						if (hitTerms > 0) relevance += 0.05;
 						return { block, relevance };
 					})

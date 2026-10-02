@@ -1,14 +1,16 @@
-// 会话统计行：输入框 dock 下方常驻一行，展示整会话口径的
-// 缓存利用率 / 输入 / 输出 / 缓存读 / 缓存写 / 成本 / 活跃时长。
-// 数据由 host 在 turn 进行中（每轮模型结束 / 每次工具结束）与加载会话时经
-// session_stats 帧推送，落在会话对象的 stats 字段（见 store.js），不做 hover 按需请求。
+// Session stats bar: a permanent row under the composer dock showing session-wide
+// cache hit rate / input / output / cache read / cache write / cost / active time.
+// Data is pushed by the host while a turn is running (at each model-turn end / each tool
+// end) and when loading a session, via session_stats frames landing on the session object's
+// stats field (see store.js); no on-demand hover requests.
 import { useEffect, useReducer } from "react";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../store";
 import { useTranslation } from "react-i18next";
 
 export default function SessionStatsBar() {
   const { t } = useTranslation();
-  // 当前会话订阅：session_stats 帧走 updateSession 换 session 引用，selector 即可感知
+  // Current session subscription: session_stats frames go through updateSession swapping
+  // the session reference, so the selector picks them up
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const st = session?.stats;
   const streaming = session?.streaming === true;
@@ -22,7 +24,7 @@ export default function SessionStatsBar() {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [streaming]);
-  if (!st) return null; // 首轮结束前（或会话未加载完）没有统计，不占位
+  if (!st) return null; // no stats before the first turn ends (or while the session is still loading); take no space
 
   const activeMs = st.activeMs + (streaming && st.receivedAt !== undefined ? Date.now() - st.receivedAt : 0);
   const cost = (st.cost ?? 0) + (st.advisorCost ?? 0);

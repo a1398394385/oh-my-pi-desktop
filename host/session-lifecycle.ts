@@ -1,6 +1,8 @@
-// 会话生命周期域：create/load 两条入口（池复用与磁盘重建）、事件接线（attachEntry 的
-// 审批 UI 上下文 + 扩展 runner 注入 + 子代理 eventBus 转发 + 排队竞态兜底）、
-// 快照推送族（goal/todos/context/stats）。自 main.ts 平移（拆分第二刀）。
+// Session lifecycle domain: the create/load entry points (pool reuse vs disk
+// rebuild), event wiring (attachEntry's approval UI context + extension
+// runner injection + subagent eventBus forwarding + queueing race fallback),
+// and the snapshot push family (goal/todos/context/stats). Relocated from
+// main.ts (second split cut).
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -41,15 +43,17 @@ export function isGitWorktree(cwd: string): boolean {
   return p.exitCode === 0 && p.stdout.toString().trim() === "true";
 }
 
-// 池外会话的磁盘解析：扫全部会话文件（与 list_sessions 同源），按底座会话 id 匹配
-// 出文件路径。用于对未打开的历史会话做 rename/archive 等操作。
+// Disk resolution for sessions outside the pool: scans all session files
+// (same source as list_sessions) and matches the file path by the base's
+// session id. Used for rename/archive and similar operations on unopened
+// history sessions.
 export async function sessionPathFromDisk(sessionId: string): Promise<string> {
   const hit = (await SessionManager.listAll()).find((s: any) => s.id === sessionId);
   if (!hit) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   return hit.path;
 }
 
-// 复制会话工件目录（如生成的代码片段、图表等）：会话文件同名的无后缀目录
+// Copy a session's artifacts dir (generated code snippets, charts, etc.): the extension-less directory named after the session file
 export async function copySessionArtifactsIfAny(sourceSessionFile: string, destinationSessionFile: string): Promise<void> {
   if (!sourceSessionFile.endsWith(".jsonl") || !destinationSessionFile.endsWith(".jsonl")) return;
   const srcDir = sourceSessionFile.slice(0, -6);
@@ -63,7 +67,7 @@ export async function copySessionArtifactsIfAny(sourceSessionFile: string, desti
   } catch {}
 }
 
-/** goal 状态帧：会话状态卡顶部目标区展示（无 goal 推 null，前端连分隔线一起隐藏）。 */
+/** Goal state frame: shown in the session state card's goal area (pushes null when there is no goal; the frontend hides the separator too). */
 function pushGoal(sessionId: string) {
   const entry = sessions.get(sessionId);
   const w = entry?.attachedWs as { send(data: string): unknown } | null;
@@ -88,8 +92,8 @@ function pushGoal(sessionId: string) {
   );
 }
 
-/** 待办清单帧：冷加载/池内复用均推（TodoTracker 构造时已从 transcript 分支同步）。
-    前端 session_created 重建对象后靠它回填历史存量；空清单不推（无卡）。 */
+/** Todos frame: pushed on both cold load and pool reuse (TodoTracker already synced from the transcript branch at construction).
+    The frontend relies on it to backfill history after rebuilding objects on session_created; empty lists are not pushed (no card). */
 function pushTodos(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const phases = entry.session.getTodoPhases();
   if (phases.length > 0) {
@@ -114,9 +118,11 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
   }
 }
 
-// 会话累计统计（TUI status-line 的 token/cache/cost/time 段汇总）：输入框下方状态行常驻显示。
-// 与上下文明细卡（get_context_detail 的 breakdown/stats）不同，这里是「整会话」口径：
-// tokens 含历史累加，时长含进行中窗口
+// Session cumulative stats (the token/cache/cost/time segments of the TUI
+// status line, summed): displayed permanently on the status row below the
+// composer. Unlike the context detail card (get_context_detail's
+// breakdown/stats), this is whole-session scope: tokens include the
+// accumulated history, duration includes the in-flight window
 //
 // Token figures come from sessionManager.getUsageStatistics() (the index-level
 // cumulative counter the TUI status line itself reads in
@@ -130,9 +136,11 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 // so it is monotonic.
 function buildSessionStats(entry: PoolEntry) {
   const usage = entry.manager.getUsageStatistics();
-  // 缓存利用率（TUI cache_hit 段同款公式）：cacheRead/(cacheRead+cacheWrite+input)。
-  // 分母含未命中 input，Anthropic/OpenRouter（miss 记 input）与 DeepSeek（miss 记 input、
-  // cacheWrite 为 0）都还原成 hit/(hit+miss)
+  // Cache hit rate (same formula as the TUI's cache_hit segment):
+  // cacheRead/(cacheRead+cacheWrite+input). The denominator includes missed
+  // input, so both Anthropic/OpenRouter (misses recorded as input) and
+  // DeepSeek (misses recorded as input with cacheWrite at 0) reduce to
+  // hit/(hit+miss)
   const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
   return {
     tokens: {
@@ -143,9 +151,9 @@ function buildSessionStats(entry: PoolEntry) {
     },
     cost: usage.cost,
     cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
-    // TUI cost 段同款：会话总成本 = 主会话成本 + advisor 成本（未启用 advisor 时为 0）
+    // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
     advisorCost: entry.session.getAdvisorCost(),
-    // 活跃时长含进行中窗口（与 TUI getActiveMs 一致：空闲墙钟不计）
+    // Active duration includes the in-flight window (matching TUI getActiveMs: idle wall time excluded)
     activeMs: entry.activeMs + (entry.activeStartedAt === null ? 0 : Date.now() - entry.activeStartedAt),
   };
 }
@@ -170,28 +178,37 @@ function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
 
 export async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const acpState = new AcpSessionState();
-  // 实验性功能页的总开关（omp-desktop.json 的 acp.enabled，默认开启）：只决定本会话
-  // 是否注入 ACP 工具面与 context 视图改写；会话创建后无法热切换，故开关变更对新会话生效
+  // Master switch on the experimental features page (omp-desktop.json's
+  // acp.enabled, default on): only decides whether this session injects the
+  // ACP tool surface and the context view rewrite; it cannot hot-toggle
+  // after session creation, so switch changes take effect on new sessions
   const acpEnabled = readAcpEnabled();
-  // 历史会话检索开关（omp-desktop.json 的 sessionContext.enabled，实验性功能页可关）
+  // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, can be off on the experimental features page)
   const sessionContextEnabled = readSessionContextEnabled();
-  // 缓存保活开关（omp-desktop.json 的 keepalive.enabled，实验性功能页，缺省关）。
-  // 防双载：插件中心/钩子总开关任一开启时 extension discovery 会从 ~/.omp/plugins
-  // 加载上游原版 keepalive，此时跳过内嵌注入，避免同进程双实例双探测
+  // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
+  // features page, default off). Double-load guard: when either the plugin
+  // hub / hooks master switch is on, extension discovery loads the upstream
+  // original keepalive from ~/.omp/plugins, so skip the embedded injection
+  // to avoid two instances probing twice in one process
   const keepaliveOn = readKeepaliveEnabled() && !(readPluginsEnabled() || readHooksEnabled());
-  // nudge 分母：omp-desktop.json 的 acp.contextWindow（固定值，如 2000000 / "1M"）
-  // 优先于模型注册表窗口；两者皆未知则 nudge 整体禁用
+  // nudge denominator: omp-desktop.json's acp.contextWindow (a fixed value
+  // like 2000000 / "1M") wins over the model registry window; if both are
+  // unknown, nudge is disabled entirely
   const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
   acpState.modelContextWindow =
     parseAcpContextWindow((readAcpRaw()?.acp as Record<string, unknown> | undefined)?.contextWindow) ||
     Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) ||
     0;
   acpState.nudge = readAcpNudgeConfig();
-  // system prompt 防复读段（acp.systemPrompt，实验性功能页可开，默认关）：只在
-  // ACP 启用时追加；opencode-acp 原版默认注入，这里做成显式开关留给用户
+  // system prompt anti-replay section (acp.systemPrompt, can be enabled on
+  // the experimental features page, default off): only appended when ACP is
+  // enabled; opencode-acp injects it by default — here it is an explicit
+  // switch left to the user
   const acpSystemPrompt = acpEnabled && (readAcpRaw().acp as { systemPrompt?: unknown } | undefined)?.systemPrompt === true;
-  // keepalive 扩展的 isWanted 闭包源：entry 在 createAgentSession 之后才建，经 holder
-  // 延迟引用；load 命中池复用同一 entry，未读态随 entry 存续
+  // Closure source for the keepalive extension's isWanted: the entry is
+  // built only after createAgentSession, so reference it lazily via a
+  // holder; a load hitting the pool reuses the same entry, and the unread
+  // state lives with the entry
   const kaHolder: { entry?: PoolEntry } = {};
   const result = await createAgentSession({
     cwd,
@@ -200,56 +217,56 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     settings: H.settings,
     model: initialModel ?? H.modelOverride,
     systemPrompt: acpSystemPrompt ? (defaultPrompt: string[]) => [...defaultPrompt, ACP_SYSTEM_PROMPT] : undefined,
-    agentRegistry: new AgentRegistry(), // 默认全局 registry 每 generation 只许一个 Main，多会话必传私有实例
-    sessionManager, // host 侧 manager 必须注入 SDK：否则 rename/compact/branch 走 entry.manager（孤儿实例）操作到另一个会话文件
-    // read_session_context（历史会话检索）：只读自身 profile 的会话，见 host/session-context.ts
+    agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
+    sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
+    // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
     customTools: [
       ...(acpEnabled ? createAcpCompressTools(acpState) : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
-    ] as never, // ACP 压缩工具（compress/decompress/search_context/acp_status/acp_context_recap），见 host/acp-tools.ts；omptype/ArkType schema 与包类型 TSchema 品牌不兼容，运行时一致
+    ] as never, // ACP compress tools (compress/decompress/search_context/acp_status/acp_context_recap), see host/acp-tools.ts; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
-      ...(acpEnabled ? [createAcpContextExtension(acpState)] : []), // context 事件视图变换：ref 注入 + 压缩块替换，见 host/acp-context.ts
-      ...(keepaliveOn ? [createKeepaliveExtension({ isWanted: () => kaHolder.entry?.keepaliveWanted === true })] : []), // 前缀缓存保活：仅未读会话空闲重放末次请求，见 host/keepalive.ts
-    ] as never, // 内联扩展结构化窄类型与包类型签名品牌不兼容，运行时一致（同 customTools 先例）
+      ...(acpEnabled ? [createAcpContextExtension(acpState)] : []), // context event view transforms: ref injection + compress-block replacement, see host/acp-context.ts
+      ...(keepaliveOn ? [createKeepaliveExtension({ isWanted: () => kaHolder.entry?.keepaliveWanted === true })] : []), // prefix cache keepalive: idle sessions that are unread replay the last request, see host/keepalive.ts
+    ] as never, // The inline extension's structural narrow type is brand-incompatible with the package's type signature, identical at runtime (same precedent as customTools)
     disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()),
     enableMCP: false,
-    hasUI: true, // 审批 gate 的 fail-cold 判定走 runner.hasUI()：不开则非 yolo 模式下所有需审批工具直接报错
+    hasUI: true, // The approval gate's fail-cold check goes through runner.hasUI(): without it, every approval-requiring tool errors out outright in non-yolo mode
   });
   const { session } = result;
   const sessionId = crypto.randomUUID();
   const entry: PoolEntry = {
     session,
-    sessionResult: result, // setToolUIContext 等宿主注入点
+    sessionResult: result, // Host injection points such as setToolUIContext
     unsubscribe: () => {},
     attachedWs: null,
-    providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // 请求侧 getApiKey 的粘性键
-    keepaliveWanted: false, // 创建时用户正看着新会话：无未读，不保活；turn 收尾时置 true
+    providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // Sticky key for the request-side getApiKey
+    keepaliveWanted: false, // At creation the user is watching the new session: nothing unread, no keepalive; set true at turn wrap-up
     transcript,
-    assistantDraft: "", // 当前 turn 的流式文本累积，turn_end 时定稿
+    assistantDraft: "", // Streaming text accumulated for the current turn, finalized at turn_end
     thinkingDraft: "",
     thinkingStartedAt: null,
     activeMs: 0,
     activeStartedAt: null,
     statsPushedAt: null,
     path: session.sessionFile,
-    pollKnownSize: 0, // 外部写入检测：0 = 未首扫
+    pollKnownSize: 0, // External-write detection: 0 = not first-scanned yet
     externalWrite: false,
     cwd,
     isGit: isGitWorktree(cwd),
-    queuedTexts: [], // 排队消息文本快照（turn_end 竞态兜底）
+    queuedTexts: [], // Queued message text snapshot (turn_end race fallback)
     consumedTexts: [],
-    parkedFollowUp: [], // followUp 暂存区（见 state.ts 类型注释）
-    manager: sessionManager, // rename/compact 等需要直接操作 SessionManager 的 RPC 用
+    parkedFollowUp: [], // followUp parking lot (see the type comments in state.ts)
+    manager: sessionManager, // For RPCs that need to operate the SessionManager directly, like rename/compact
     title: sessionManager.getSessionName() ?? null,
     mentionScanIndex: 0,
     goal: new GoalController({
-      // SDK 具体会话类型与窄接口的泛型签名不完全结构兼容，边界处收敛为具名窄接口
+      // The SDK's concrete session type and the narrow interface are not fully structurally compatible in their generic signatures; converge to a named narrow interface at the boundary
       session: session as unknown as GoalSession,
       output: (text) => pushCommandOutput(sessionId, text),
       onChange: () => pushGoal(sessionId),
     }),
   };
-  kaHolder.entry = entry; // keepalive isWanted 闭包生效（见 createSessionCore 头部）
+  kaHolder.entry = entry; // The keepalive isWanted closure takes effect (see the top of createSessionCore)
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
@@ -257,11 +274,11 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
-    // todo 工具落盘后推送最新任务清单（TodoTracker 在工具结果后更新）
+    // After the todo tool persists, push the latest task list (TodoTracker updates after the tool result)
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
     }
-    // 关键执行事件实时推送上下文占用，更新前端上下文大小圆环
+    // Push context usage live on key execution events, updating the frontend's context-size ring
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
       pushContext(ws, sessionId, entry);
     }
@@ -274,24 +291,31 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
       maybePushSessionStats(ws, sessionId, entry);
     }
-    // goal 模式钩子：续跑调度与工具集收尾（对齐 TUI #handleGoalSessionEvent 的分支）
+    // Goal mode hooks: re-run scheduling and tool-set wind-down (aligned with the branches of the TUI's #handleGoalSessionEvent)
     if (ev.type === "agent_start") entry.goal.onAgentStart();
     if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) entry.goal.onUserMessage();
     if (ev.type === "goal_updated") entry.goal.onGoalUpdated(ev.state);
-    // 会话活跃时长计时（TUI status-line time_spent 同款）：agent_start 开窗（幂等，重入不双计），
-    // 真正收尾的 agent_end 折窗；isTerminal === false 的中间 agent_end 之后还会续跑，不折
+    // Session active-duration timing (same as the TUI status-line
+    // time_spent): agent_start opens the window (idempotent — re-entry does
+    // not double-count), the truly-final agent_end closes it; intermediate
+    // agent_end with isTerminal === false keeps running, so no close
     if (ev.type === "agent_start") {
       if (entry.activeStartedAt === null) entry.activeStartedAt = Date.now();
     } else if (ev.type === "agent_end" && ev.isTerminal !== false && entry.activeStartedAt !== null) {
       entry.activeMs += Math.max(0, Date.now() - entry.activeStartedAt);
       entry.activeStartedAt = null;
     }
-    // turn 真正结束后推送上下文占用（此时消息已定稿）；同时校准排队行（steer 已消费）
+    // After a turn truly ends, push context usage (messages are final by
+    // then); also calibrate the queued rows (steer consumed)
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
-      // 缓存保活：turn 收尾 = 有未读产出，从现在起空闲时值得保活（用户 mark_seen/切走再看会清掉）
+      // Cache keepalive: turn wrap-up = unread output exists, worth keeping
+      // alive while idle from now on (the user's mark_seen / switching away
+      // and back clears it)
       entry.keepaliveWanted = true;
-      // fileMention 回读：底座在 prompt() 内部追加 fileMention 消息（请求数组 + 落盘），
-      // 没有对应事件；这里扫自 mentionScanIndex 起的新条目转成 mention 帧下发
+      // fileMention read-back: the base appends fileMention messages inside
+      // prompt() (request array + persistence) with no matching event; scan
+      // the new entries from mentionScanIndex onward here and turn them into
+      // mention frames
       const entries = entry.manager.getEntries();
       for (let i = entry.mentionScanIndex; i < entries.length; i++) {
         const e = entries[i];
@@ -304,12 +328,16 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       entry.mentionScanIndex = entries.length;
       pushContext(ws, sessionId, entry);
       pushSessionStats(ws, sessionId, entry);
-      // goal 终局评估：完成收尾 / 无进展抑制 / 调度续跑（对齐 TUI #handleGoalSessionEvent）
+      // Goal final assessment: completion wind-down / no-progress suppression / scheduling the re-run (aligned with the TUI's #handleGoalSessionEvent)
       void entry.goal.onAgentEnd(ev.messages ?? []);
-      // 收尾竞态兜底：底座在 run 收尾 abort 时，正在 claim 的队列消息会被丢弃且不回队
-      // （agent.ts #prepareQueuedMessageBatch 的 dequeue-先移出 + abort-不 restore），表现为
-      // 「上次快照里有、现在队列没有、dequeue hook 从未通知消费」。host 重新发送该消息。
-      // parked 暂存的消息同样计入现存集合——它们不在底座队列是设计使然，不是被吞。
+      // Wrap-up race fallback: when the base aborts during a run's wind-down,
+      // queue messages being claimed get dropped and never restored
+      // (agent.ts #prepareQueuedMessageBatch's dequeue-removes-first +
+      // abort-does-not-restore), showing up as "in the last snapshot, gone
+      // from the queue now, and the dequeue hook never reported
+      // consumption". The host re-sends such messages. Parked messages also
+      // count as present — their absence from the base queue is by design,
+      // not being swallowed.
       const a = entry.session.agent as any;
       const cur = [...a.peekFollowUpQueue(), ...entry.parkedFollowUp, ...a.peekSteeringQueue()]
         .filter((m: any) => isUserQueuedMessage(m))
@@ -325,11 +353,13 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
         });
       }
-      // 逐轮放回：parked 有剩余时放回 1 条并触发消费（每条独立 turn）。
-      // 兜底重发刚起了新 run 的场合（lost 非空）本轮不放，等那个 run 的 agent_end 接续。
+      // Per-turn release: when parked entries remain, put 1 back and trigger
+      // consumption (each its own independent turn). When the fallback
+      // re-send just started a new run (lost non-empty), release nothing this
+      // round — wait for that run's agent_end to continue.
       if (lost.length === 0 && entry.parkedFollowUp.length > 0) {
         for (const m of releaseOneParked(entry)) a.followUp(m);
-        // agent_end 事件先于 isStreaming 复位的窗口里 continue 会 busy：等 idle 后补一次
+        // In the window where the agent_end event precedes the isStreaming reset, continue reports busy: retry once after idle
         a.continue().catch(() => {
           a.waitForIdle?.()
             .then(() => a.continue())
@@ -341,9 +371,9 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       sendQueued(ws, sessionId, entry);
     }
   });
-  // 审批/对话框：非 yolo 模式下审批 gate 通过 ExtensionUIContext.select 挂起等用户选择
+  // Approvals/dialogs: in non-yolo mode the approval gate suspends via ExtensionUIContext.select awaiting the user's choice
   const uiCtx = {
-    // ask 等工具的 UI 超时从对话框呈现起算，而不是工具发起时
+    // UI timeout for tools like ask counts from dialog presentation, not from when the tool invoked
     timeoutStartsOnPresentation: true,
     select(title: string, options: any[], dialogOptions?: any): Promise<string | undefined> {
       return requestApproval(
@@ -376,7 +406,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       });
     },
     editor(title: string, prefill?: string, dialogOptions?: any): Promise<string | undefined> {
-      // ask 的「Other」自定义输入走这里；缺实现会 undefined is not a function 直接挂工具
+      // ask's "Other" free-text input goes through here; a missing implementation kills the tool outright with undefined is not a function
       return new Promise((resolve) => {
         const requestId = crypto.randomUUID();
         const settle = (v: string | undefined) => {
@@ -406,15 +436,21 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     },
   };
   entry.sessionResult.setToolUIContext(uiCtx, true);
-  // 关键一步（ACP 同款，acp-agent.ts:2631）：runner.hasUI() 判的是 initialize 注入的 uiContext，
-  // 只调 setToolUIContext 不够——审批 gate 会 fail-closed「no interactive UI」。
+  // The crucial step (same as ACP, acp-agent.ts:2631): runner.hasUI() checks
+  // the uiContext injected via initialize; calling only setToolUIContext is
+  // not enough — the approval gate would fail closed with "no interactive
+  // UI".
   //
-  // actions / contextActions 必须给全：runner.initialize 把 contextActions.getModel 直接赋给内部
-  // #getModel（runner.ts:695，没有 ?? 兜底），传空对象会让它变成 undefined；此后任何经
-  // createCustomToolContext 求值 ctx.model 的 customTool（sdk.ts:987）都抛
-  // 「getModel is not a function」——2026-09-23 实测 read_session_context 因此整工具失败。
-  // 第三参传 undefined 而不是空对象：空对象同样会把 #waitForIdleFn / #newSessionHandler 等赋成
-  // undefined，只有 undefined 才保留 runner 的 no-op 默认（runner.ts:704 `if (commandContextActions)`）。
+  // actions / contextActions must be complete: runner.initialize assigns
+  // contextActions.getModel directly to the internal #getModel (runner.ts:695,
+  // no ?? fallback), so passing an empty object makes it undefined; any
+  // customTool afterwards that evaluates ctx.model via
+  // createCustomToolContext (sdk.ts:987) throws "getModel is not a function"
+  // — measured 2026-09-23, read_session_context failed wholesale because of
+  // this. The third argument must be undefined rather than an empty object:
+  // an empty object would likewise assign undefined into #waitForIdleFn /
+  // #newSessionHandler etc.; only undefined preserves the runner's no-op
+  // defaults (runner.ts:704 `if (commandContextActions)`).
   entry.session.extensionRunner?.initialize(
     {
       sendMessage: (message, options) => {
@@ -436,7 +472,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       setActiveTools: async (toolNames) => {
         await entry.session.setActiveToolsByName(toolNames);
       },
-      // 桌面无扩展命令面：UI 命令清单走 pushCommands 的 buildAvailableSlashCommands 独立路径
+      // The desktop has no extension command surface: the UI command list goes through pushCommands' separate buildAvailableSlashCommands path
       getCommands: () => [],
       setModel: async (model) => {
         if (!(await entry.session.modelRegistry.getApiKey(model))) return false;
@@ -466,19 +502,23 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         await entry.session.compact();
       },
     },
-    undefined, // 命令上下文动作：桌面未接扩展命令面，保留 runner 默认 no-op
+    undefined, // Command context actions: the desktop wires no extension command surface; keep the runner's default no-op
     uiCtx,
     "rpc",
   );
 
-  // 整棵 spawn 树共享根会话的 eventBus（sdk.ts:1341）：子代理 lifecycle/event/progress 帧都在上面。
-  // host 侧补齐的派生数据（AgentProgress 本身没有的）：
-  //   registeredAt —— lifecycle started 帧到达时刻（详情卡 Registered 时间戳）
-  //   name / parent —— task 工具调用的 args 里带子代理名，toolCallId 记归属方
-  //                   （根会话=Main，子代理流里=该子代理），parentToolCallId 反查「Spawned by X」
-  const subRegistered = new Map<string, number>(); // subagentId -> started 时刻
-  const subSpawnCall = new Map<string, string>(); // subagentId -> 父 task toolCallId
-  const callOwner = new Map<string, { owner: string; names: string[] }>(); // task toolCallId -> 归属 + spawn 的子代理名
+  // The whole spawn tree shares the root session's eventBus (sdk.ts:1341):
+  // subagent lifecycle/event/progress frames all travel on it. Derived data
+  // the host fills in (absent from AgentProgress itself):
+  //   registeredAt — when the lifecycle started frame arrived (the detail
+  //                  card's Registered timestamp)
+  //   name / parent — the task tool call's args carry the subagent name,
+  //                   toolCallId records the owner (root session = Main,
+  //                   inside a subagent stream = that subagent), and
+  //                   parentToolCallId reverse-looks-up "Spawned by X"
+  const subRegistered = new Map<string, number>(); // subagentId -> started timestamp
+  const subSpawnCall = new Map<string, string>(); // subagentId -> parent task toolCallId
+  const callOwner = new Map<string, { owner: string; names: string[] }>(); // task toolCallId -> owner + spawned subagent names
   const spawnTools: Record<string, true> = { task: true, agent: true };
   const spawnNames = (args: Record<string, unknown>): string[] => {
     const items = Array.isArray(args.tasks) ? args.tasks : [args];
@@ -494,7 +534,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     const owner = callOwner.get(spawnCall);
     return owner?.owner ?? "Main";
   };
-  // 根会话里的 task 调用：归属 Main
+  // Task calls in the root session: owned by Main
   const unsubSpawnRoot = entry.session.subscribe((ev: any) => {
     if (ev.type === "tool_execution_start" && spawnTools[ev.toolName]) {
       callOwner.set(ev.toolCallId, { owner: "Main", names: spawnNames(ev.args) });
@@ -519,13 +559,13 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         }),
       ),
     );
-    // 终态帧后补发最后一帧 progress（节流可能压掉），保证结束时成本/token 落到最终值
+    // After a terminal-status frame, re-send the last progress frame (throttling may have swallowed it) so cost/tokens settle at final values
     if (p.status !== "started") {
       const last = subLastProgress.get(p.id);
       if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last }));
     }
   });
-  // 聚合进度帧：成本/时长/请求/工具/token/上下文（高频且累积，500ms 节流；状态变化立即发）
+  // Aggregate progress frames: cost/duration/requests/tools/tokens/context (high-frequency and cumulative, throttled at 500ms; status changes send immediately)
   const subLastProgress = new Map<string, Record<string, unknown>>();
   const subSentAt = new Map<string, number>();
   const subSentStatus = new Map<string, string>();
@@ -559,15 +599,17 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, name: subName(p.id, p.agent), parent: subParent(p.id), registeredAt: subRegistered.get(p.id), ...payload }));
   });
   const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
-    // 子代理流里的 task 调用：归属该子代理（嵌套 spawn）
+    // Task calls inside a subagent stream: owned by that subagent (nested spawn)
     if (event.type === "tool_execution_start" && spawnTools[event.toolName]) {
       callOwner.set(event.toolCallId, { owner: subName(id, id), names: spawnNames(event.args) });
     }
     const ui = translateSubagentEvent(event);
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "subagent_event", sessionId, subagentId: id, ...ui })));
   });
-  // 消费前通知：即将注入的排队/steer 用户消息推给 UI（气泡转正）；同时记入已消费
-  // 清单，供 turn_end 的收尾竞态兜底 diff 排除（hook 触发 ≠ 注入成功，但不重复重发）
+  // Pre-consumption notice: queued/steer user messages about to be injected
+  // are pushed to the UI (bubbles finalized); they are also recorded in the
+  // consumed list so the turn_end wrap-up race fallback diff can exclude
+  // them (hook fired ≠ injection succeeded, but they are not re-sent)
   const detachDequeueHook = entry.session.agent.addBeforeQueuedMessageDequeueHook(() => {
     const texts = [...entry.session.agent.peekFollowUpQueue(), ...entry.session.agent.peekSteeringQueue()]
       .filter((m) => isUserQueuedMessage(m))
@@ -577,7 +619,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
   });
-  // 监听底座会话标题变更（模型自动生成标题或 /rename 等）
+  // Listen for base session title changes (auto-generated model titles, /rename, etc.)
   const unsubTitle = entry.session.sessionManager.onSessionNameChanged?.(() => {
     const title = entry.session.sessionManager.getSessionName() ?? "";
     entry.title = title || null;
@@ -629,16 +671,21 @@ export async function handleCreateSession(ws: any, cwd?: string, modelStr?: stri
 
 export async function handleLoadSession(ws: any, sessionPath: string) {
   if (!sessionPath) throw new Error(hostI18n.t("errors.param.missingPath"));
-  // 池内已有同 path 条目：复用，不重建。重建会让同一会话文件被两个 AgentSession 同时
-  // 持有（各自落盘互相覆盖），旧条目连同它的订阅一并泄漏在池里。
-  // 命中路径：前端会话 LRU 驱逐后切回（同一 ws，只重推快照）；前端 reload 后点击
-  // （新 ws，重挂订阅——旧订阅发往已关闭的连接，事件会丢）。
+  // A pooled entry with the same path already exists: reuse it, do not
+  // rebuild. Rebuilding would leave the same session file held by two
+  // AgentSessions at once (each persisting and overwriting the other), and
+  // the old entry would leak in the pool along with its subscriptions.
+  // Hit paths: switching back after the frontend's session LRU eviction
+  // (same ws, snapshots merely re-pushed); a click after frontend reload
+  // (new ws, subscriptions re-attached — old subscriptions would send to a
+  // closed connection and events would be lost).
   for (const [sessionId, entry] of sessions.entries()) {
     if (entry.path !== sessionPath) continue;
-    // 用户打开/切回该会话 = 已读：停止缓存保活探测（新一轮 turn 收尾会重新置位）
+    // The user opening/switching back to this session = seen: stop cache
+    // keepalive probing (the next turn's wrap-up will set it again)
     entry.keepaliveWanted = false;
     if (entry.attachedWs !== ws) {
-      entry.unsubscribe(); // 先解旧订阅，否则同一事件会发两份
+      entry.unsubscribe(); // Detach old subscriptions first, or the same event would be sent twice
       attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     }
     ws.send(
@@ -653,27 +700,28 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
         title: entry.title ?? null,
       }),
     );
-    pushPlanMode(ws, sessionId, entry); // 复用快照同推计划状态（前端 reload 后靠它显示「计划」按钮）
+    pushPlanMode(ws, sessionId, entry); // The reuse snapshot also pushes plan state (the frontend relies on it to show the "plan" button after reload)
     ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
-    pushTodos(ws, sessionId, entry); // 复用快照同推待办存量（否则前端重建对象后历史 TODO 不展示）
-    pushGoal(sessionId); // goal 状态存量（会话状态卡目标区）
+    pushTodos(ws, sessionId, entry); // The reuse snapshot also pushes the todos backlog (otherwise history TODOs vanish after the frontend rebuilds objects)
+    pushGoal(sessionId); // Goal state backlog (session state card goal area)
     pushContext(ws, sessionId, entry);
-    pushSessionStats(ws, sessionId, entry); // 复用快照同推整会话统计（否则前端重建对象后 stats 为空）
-    if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // LRU 驱逐期间检出的，切回时补发
+    pushSessionStats(ws, sessionId, entry); // The reuse snapshot also pushes whole-session stats (otherwise stats stay empty after the frontend rebuilds objects)
+    if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // Detected during LRU eviction; re-sent on switch-back
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
   }
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
   const transcript = entriesToTranscript(entries);
-  // 会话原始 cwd：getEntries() 不含 session header，用 peekSessionInit 读
-  // （open 内部同源；目录不可达时它返回 null，兜底 HOME）
+  // The session's original cwd: getEntries() excludes the session header, so
+  // read it via peekSessionInit (same source as open's internals; it returns
+  // null when the directory is unreachable — fall back to HOME)
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const workCwd = peek?.cwd ?? defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
-  // 历史 mention 已在 transcript 里：fileMention 回读游标对齐到全量条目尾，避免首轮回读重发
+  // Historical mentions are already in the transcript: align the fileMention read-back cursor to the tail of all entries, avoiding a re-send on the first read-back
   entry.mentionScanIndex = entries.length;
-  // 历史会话的活跃时长初值：内存计时器只覆盖本次打开后的时间，从磁盘条目按轮次累加补上存量
+  // Active-duration seed for a past session: the in-memory timer only covers time since this open; seed the backlog by summing per-turn spans from the disk entries
   entry.activeMs = sumRunDurationMs(entries);
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
@@ -688,15 +736,15 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
       title: entry.title ?? null,
     }),
   );
-  reconcilePlanMode(ws, sessionId, entry, entries); // 落盘 mode_change 恢复计划模式（必须在 session_created 之后推帧）
-  await entry.goal.restore(); // 目标模式恢复（落盘 mode_change goal/goal_paused；对齐 TUI 不主动续跑）
+  reconcilePlanMode(ws, sessionId, entry, entries); // Restore plan mode from persisted mode_change (frames must be pushed after session_created)
+  await entry.goal.restore(); // Goal mode restore (persisted mode_change goal/goal_paused; aligned with the TUI, no proactive re-run)
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
-  // 恢复会话的存量任务清单（TodoTracker 构造时从 transcript 分支同步）
+  // Restored session's todos backlog (TodoTracker synced from the transcript branch at construction)
   pushTodos(ws, sessionId, entry);
-  pushGoal(sessionId); // goal 状态存量（restore 之后推送，会话状态卡目标区）
-  // 恢复会话的初始上下文占用（system prompt + 历史）
+  pushGoal(sessionId); // Goal state backlog (pushed after restore; session state card goal area)
+  // Restored session's initial context usage (system prompt + history)
   pushContext(ws, sessionId, entry);
-  // 恢复会话的整会话统计（tokens/cost 从磁盘 assistant 消息的 usage 累加；时长为内存态，重载后从 0 起算）
+  // Restored session's whole-session stats (tokens/cost summed from disk assistant messages' usage; duration is in-memory state, restarting from 0 on reload)
   pushSessionStats(ws, sessionId, entry);
   process.stderr.write(
     `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,

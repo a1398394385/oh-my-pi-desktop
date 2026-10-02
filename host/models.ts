@@ -1,5 +1,6 @@
-// 模型目录与设置快照：availableModels（注册表全量）→ scopedModels（enabledModels 过滤）
-// → modelsPayload/modelCatalog（前端两种视图）；settingsSnapshot 是 get_settings 的 payload。
+// Model catalog and settings snapshot: availableModels (full registry) ->
+// scopedModels (enabledModels filter) -> modelsPayload/modelCatalog (two
+// frontend views); settingsSnapshot is the get_settings payload.
 import path from "node:path";
 import fs from "node:fs";
 import { H, enabledDefaults } from "./state.ts";
@@ -22,10 +23,10 @@ export function modelsPayload() {
   }));
 }
 
-// 桌面端无 TUI 图像协议：terminal.showImages 条件恒 false（将来支持图像协议时只改此常量）
+// Desktop has no TUI image protocol: the terminal.showImages condition is always false (when image protocol support arrives, change only this constant)
 const HAS_IMAGE_PROTOCOL = false;
 
-// 逐键取当前生效值，未配置时回落 schema 默认值（503 次纯内存读，无 I/O）
+// Take the effective value per key, falling back to the schema default when unconfigured (503 pure in-memory reads, no I/O)
 function computeValues(): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   for (const k of Object.keys(SETTINGS_SCHEMA)) {
@@ -47,7 +48,7 @@ function computeValues(): Record<string, unknown> {
   return values;
 }
 
-// 12 个条件函数，按底座 settings-defs.ts CONDITIONS 语义实现；每条整体 try/catch 返回 false
+// 12 condition functions implementing the semantics of the base settings-defs.ts CONDITIONS; each wrapped in try/catch returning false
 function computeConditions(): Record<string, boolean> {
   const g = (k: string): unknown => {
     try {
@@ -93,9 +94,11 @@ export function settingsSnapshot() {
   };
 }
 
-// 扫描 models.yml 的 providers 段,返回其中以 apiKey 显式配置认证的供应商 id。
-// 该 key 在 getApiKey 优先级中高于存储凭证,因此视为「配置文件」来源;其余可用供应商
-// 即「登录/API key 凭证」来源。models.yml 为手写配置,这里用缩进扫描而非完整 YAML 解析。
+// Scan the providers section of models.yml and return the ids of providers
+// explicitly authenticating via apiKey. That key outranks stored credentials
+// in getApiKey priority, so they count as the "config file" source; other
+// available providers are the "login/API key credential" source. models.yml
+// is hand-written, so scan by indentation instead of a full YAML parse.
 function configAuthProviders(): Set<string> {
   const result = new Set<string>();
   let raw = "";
@@ -119,7 +122,7 @@ function configAuthProviders(): Set<string> {
       }
       continue;
     }
-    if (indent <= sectionIndent) break; // 离开 providers 段
+    if (indent <= sectionIndent) break; // left the providers section
     const entry = trimmed.match(/^["']?([A-Za-z0-9_.-]+)["']?\s*:\s*$/);
     if (entry && indent === sectionIndent + 2) {
       current = entry[1];
@@ -146,14 +149,16 @@ export function modelCatalog() {
       context: ctx,
       vision,
       efforts: getSupportedEfforts(m),
-      // 认证来源:config = models.yml 显式 apiKey;cred = 登录/存储凭证
+      // Auth source: config = explicit apiKey in models.yml; cred = login/stored credential
       authSource: configSet.has(m.provider) ? "config" : "cred",
     };
   });
 }
 
-// 新建会话的配置文件默认：模型 = default 角色解析结果（与底座建新会话的实际选择一致），
-// 思考级别 = defaultThinkingLevel 原文（"auto" 或具体档位）。目录里没有时为 null。
+// Config-file defaults for a new session: model = the default role's
+// resolution (same as the base's actual choice when creating a new session),
+// thinking level = the raw defaultThinkingLevel ("auto" or a concrete
+// level). null when absent from the catalog.
 export function modelsDefaults() {
   const { model } = resolveModelRoleValue(formatModelRoleAlias("default"), H.availableModels, { settings: H.settings });
   return {
@@ -162,9 +167,13 @@ export function modelsDefaults() {
   };
 }
 
-// 模型角色（@role）快照：内置 9 角色优先 + settings 里出现的自定义角色。
-// value = modelRoles 里的显式配置原文（可能是 "provider/model"、"@smol" 别名或带 ":level" 后缀）；
-// resolved = 以 "@role" 展开解析出的实际生效模型（未显式配置时走内置优先级链/角色回退）。
+// Model role (@role) snapshot: 9 built-in roles first + custom roles present
+// in settings.
+// value = the raw explicit config from modelRoles (may be "provider/model",
+// an "@smol" alias, or carry a ":level" suffix);
+// resolved = the effectively active model resolved by expanding "@role"
+// (unconfigured roles go through the built-in priority chain / role
+// fallback).
 export function modelRolesPayload() {
   return getKnownRoleIds(H.settings).map((role) => {
     const info = getRoleInfo(role, H.settings);

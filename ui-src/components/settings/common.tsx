@@ -1,16 +1,18 @@
-// 设置中心公共件：Promise 风格确认弹窗、OMP 登录横幅 / 粘贴码弹窗、空态行、供应商图标映射。
-// 平移自 ui/settings/providers.js（confirmDialog / showLoginBanner / showLoginPrompt）与
-// ui/settings/index.js 顶部 PROV_IC；弹窗 DOM 语言（.lp-mask/.lp-box/.login-banner）与旧版 1:1。
+// Settings hub shared pieces: Promise-style confirm dialog, OMP login banner / paste-code
+// dialog, empty-state row, provider icon map.
+// Ported from ui/settings/providers.js (confirmDialog / showLoginBanner / showLoginPrompt)
+// and PROV_IC at the top of ui/settings/index.js; dialog DOM language (.lp-mask/.lp-box/
+// .login-banner) is 1:1 with the old version.
 import { useEffect, useState } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { useAppStore, setBump, send } from "../../store";
 import { t } from "../../i18n";
 
-// 供应商图标映射（原 ui/settings/index.js 顶部 PROV_IC 原样平移）
+// Provider icon map (ported verbatim from PROV_IC at the top of ui/settings/index.js)
 export const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "minimax-code-cn": "◆", "opencode-zen": "✦", llama: "●", "local-proxy": "▣" };
 
-// 通用二次确认弹窗入参（均带默认值，除 title 外皆可省略）
+// Props of the generic confirm dialog (all optional except title, all with defaults)
 export interface ConfirmDialogProps {
   title: string;
   message?: string;
@@ -18,9 +20,11 @@ export interface ConfirmDialogProps {
   danger?: boolean;
 }
 
-// 通用二次确认弹窗：复用登录粘贴码的 lp-mask/lp-box 弹窗语言，danger 时确认钮走红。
-// 返回 Promise<boolean>，点遮罩/取消均视为 false（替代原生 confirm，WKWebView 下观感统一）。
-// 命令式 API：每次调用往 document.body 挂一个独立 React root，关闭即卸载（旧版 DOM 直挂的等价物）。
+// Generic confirm dialog: reuses the login paste-code lp-mask/lp-box dialog language; the
+// confirm button turns red on danger. Returns Promise<boolean>; clicking the mask or cancel
+// resolves false (replaces native confirm, consistent look under WKWebView).
+// Imperative API: each call mounts an independent React root on document.body and unmounts
+// on close (equivalent of the old version's direct DOM mounting).
 export function confirmDialog({ title, message = "", confirmText, danger = false }: ConfirmDialogProps): Promise<boolean> {
   return new Promise((resolve) => {
     const host = document.createElement("div");
@@ -54,8 +58,9 @@ export function confirmDialog({ title, message = "", confirmText, danger = false
   });
 }
 
-// 登录进行中底部进度条：显示状态 + 取消按钮（关浏览器授权页后可手动中断）。
-// 数据源 loginBanner selector（store 的 login_progress / login_done 回包落地；null = 隐藏）。
+// Bottom progress bar while login is in flight: status + cancel button (manual interrupt
+// after closing the browser auth page).
+// Data source: loginBanner selector (store handles login_progress / login_done replies; null = hidden).
 export function LoginBanner() {
   const loginBanner = useAppStore((s) => s.loginBanner);
   if (loginBanner == null) return null;
@@ -69,13 +74,14 @@ export function LoginBanner() {
   );
 }
 
-// 登录流程的粘贴码弹窗（host 经 login_prompt 中转）。数据源 loginPromptData selector
-// （{ id, message, secret, reqId }）；确定/取消均回 login_prompt_reply（空串 = 取消），
-// 遮罩点击仅关闭弹窗——host 侧流程仍等输入（旧版语义保留）。
+// Paste-code dialog of the login flow (host relays via login_prompt). Data source:
+// loginPromptData selector ({ id, message, secret, reqId }); both confirm and cancel reply
+// login_prompt_reply (empty string = cancel); mask click only closes the dialog — the host
+// side still waits for input (old semantics preserved).
 export function LoginPrompt() {
-  const msg = useAppStore((s) => s.loginPromptData); // 回包负载，形状见 LoginPromptFrame
+  const msg = useAppStore((s) => s.loginPromptData); // reply payload, shape see LoginPromptFrame
   const [text, setText] = useState("");
-  // 每次新弹窗（id 变化）清空输入框
+  // Clear the input on each new dialog (id change)
   useEffect(() => { setText(""); }, [msg?.id]);
   if (!msg) return null;
   const close = () => { setBump({ loginPromptData: null }); };
@@ -109,9 +115,10 @@ export function LoginPrompt() {
   );
 }
 
-// 空态行：设置卡片列表（agents / commands / hooks 等）的加载中与空数据占位。
-// 默认 srow 行形态（<div class="srow"><div class="srow-tx"><span>…）；MCP / 技能页传
-// cls="mcp-empty-row" / "skill-empty-row" 覆盖为旧版对应空态类。
+// Empty-state row: loading and empty-data placeholder for settings card lists
+// (agents / commands / hooks etc.).
+// Default srow row shape (<div class="srow"><div class="srow-tx"><span>…); MCP / skills
+// pages pass cls="mcp-empty-row" / "skill-empty-row" to override with the old empty-state classes.
 export function emptyRow(text: string, cls?: string) {
   if (cls) return <div className={cls}><span>{text}</span></div>;
   return <div className="srow"><div className="srow-tx"><span>{text}</span></div></div>;

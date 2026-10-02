@@ -1,6 +1,7 @@
-// 设置域 RPC：底座设置读写、实验性开关（acp/sessionContext/hooks/plugins/skills）、
-// 桌面环境（代理/证书）、profile 切换、审批模式与审批应答、计划模式开关。
-// 自 main.ts message 分发平移（第三刀）。
+// Settings domain RPC: base settings read/write, experimental switches
+// (acp/sessionContext/hooks/plugins/skills), desktop env (proxy/certs),
+// profile switching, approval mode and approval responses, plan-mode toggle.
+// Moved over from the main.ts message dispatch (third slice).
 import path from "node:path";
 import fs from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -32,7 +33,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "settings_schema", schema: SETTINGS_SCHEMA }));
   },
   async reload_settings(ws) {
-    // 本地 config 文件可能被手工修改：从磁盘重载（仅模型设置），并推送新模型列表
+    // Local config files may have been hand-edited: reload from disk (model settings only) and push the new model list
     try {
       await H.settings.reloadFromDisk();
       rebuildScopedModels();
@@ -72,12 +73,12 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     } else if (t === "record") {
       if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(hostI18n.t("errors.setting.mustBeObject", { key }));
     }
-    // 逐键附加校验：ask.timeout 必须非负
+    // Per-key extra validation: ask.timeout must be non-negative
     if (key === "ask.timeout" && (typeof value !== "number" || value < 0)) throw new Error(hostI18n.t("errors.setting.askTimeoutNonNegative"));
     H.settings.set(key, value);
-    // 写后副作用：睡眠防止需立即应用到进程
+    // Post-write side effect: sleep prevention must apply to the process immediately
     if (key === "power.sleepPrevention") applySleepPrevention(value);
-    // 模型相关键：重建 scoped 目录并推送 models 帧
+    // Model-related keys: rebuild the scoped catalog and push a models frame
     const isModelKey = ["enabledModels", "enabledProviders", "disabledProviders", "modelRoleStorage", "modelTags", "modelProviderOrder", "cycleOrder"].includes(key);
     if (isModelKey) rebuildScopedModels();
     await H.settings.flush();
@@ -94,13 +95,15 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     initHostI18n(lang);
   },
   async set_acp_enabled(ws, msg) {
-    // 实验性功能页开关：写入 omp-desktop.json 的 acp.enabled（只影响此后创建的会话——
-    // 工具面与 context 扩展在 createSessionCore 里注入，无法热插拔到已打开的会话）
+    // Experimental features page switch: writes acp.enabled in
+    // omp-desktop.json (affects only sessions created afterwards — the tool
+    // surface and context extension are injected in createSessionCore and
+    // cannot be hot-swapped into already-open sessions)
     await writeAcpEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_acp_config(ws, msg) {
-    // 实验性功能页：更新 omp-desktop.json 的 acp 配置段
+    // Experimental features page: update the acp config section of omp-desktop.json
     const raw = readAcpRaw();
     const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
     const patch = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
@@ -108,37 +111,40 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_session_context_enabled(ws, msg) {
-    // 实验性功能页开关：写入 omp-desktop.json 的 sessionContext.enabled（同上，只影响此后创建的会话）
+    // Experimental features page switch: writes sessionContext.enabled in omp-desktop.json (same as above; affects only sessions created afterwards)
     await writeSessionContextEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_keepalive_enabled(ws, msg) {
-    // 实验性功能页开关：写入 omp-desktop.json 的 keepalive.enabled（只影响此后创建的会话；
-    // 探测参数在 keepalive 段内其余字段，随 profile 独立）
+    // Experimental features page switch: writes keepalive.enabled in
+    // omp-desktop.json (affects only sessions created afterwards; probe
+    // parameters live in the keepalive section's other fields, per-profile)
     writeKeepaliveEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_keepalive_config(ws, msg) {
-    // 实验性功能页参数：读-合并-写 omp-desktop.json 的 keepalive 段（duration/USD 字段
-    // 接受 "8m"/"$1.5" 字符串；非法值忽略该字段。已打开会话的扩展实例不重读磁盘——
-    // 写入只影响此后创建的会话）
+    // Experimental features page parameters: read-merge-write the keepalive
+    // section of omp-desktop.json (duration/USD fields accept "8m"/"$1.5"
+    // strings; invalid values skip the field. Extension instances of open
+    // sessions never re-read disk — writes affect only sessions created
+    // afterwards)
     writeKeepaliveConfig((msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_hooks_enabled(ws, msg) {
-    // 钩子总开关：写入 omp-desktop.json 的 hooks.enabled（只影响此后创建的会话）
+    // Hooks master switch: writes hooks.enabled in omp-desktop.json (affects only sessions created afterwards)
     await writeHooksEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async set_plugins_enabled(ws, msg) {
-    // 插件总开关：写入 omp-desktop.json 的 plugins.enabled（只影响此后创建的会话）
+    // Plugins master switch: writes plugins.enabled in omp-desktop.json (affects only sessions created afterwards)
     await writePluginsEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async set_skills_enabled(ws, msg) {
-    // 技能总开关：写入底座 settings.json 的 skills.enabled（getGroup("skills") 各加载点消费）
+    // Skills master switch: writes skills.enabled to the base settings.json (consumed by every getGroup("skills") load site)
     H.settings.set("skills.enabled", !!msg.enabled);
     await H.settings.flush();
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
@@ -173,12 +179,12 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     if (mode !== "yolo" && mode !== "write" && mode !== "always-ask") {
       throw new Error(hostI18n.t("errors.setting.invalidApprovalMode", { mode }));
     }
-    // execute-time 解析：无需重建会话，下一个工具调用即生效（对全部会话生效——settings 全进程共享）
+    // Resolved at execute time: no session rebuild needed, effective on the next tool call (applies to all sessions — settings are process-wide shared)
     H.settings.override("tools.approvalMode", mode);
     ws.send(JSON.stringify({ type: "approval_mode", mode }));
   },
   set_plan_mode(ws, msg) {
-    // 计划模式开关：UI 从权限模式菜单进入、从权限胶囊右侧的「计划」按钮退出
+    // Plan-mode toggle: entered from the permission-mode menu in the UI, exited via the "Plan" button right of the permission pill
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     setPlanMode(ws, msg.sessionId, entry, msg.enabled === true);
@@ -190,7 +196,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
   },
   ui_error(_ws, msg) {
-    // 前端未捕获错误上报（WKWebView 无 console，dev 终端是唯一出口）
+    // Frontend uncaught-error reporting (WKWebView has no console; the dev terminal is the only outlet)
     process.stderr.write(`[ui] ${msg.message}\n`);
   },
   async open_folder(_ws, msg) {

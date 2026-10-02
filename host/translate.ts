@@ -1,12 +1,16 @@
-// omp 事件 → 前端窄事件翻译层：前端只认 UiEvent 这些 kind，不依赖 omp 事件 shape 细节。
-// 实时流（translateEvent）与磁盘历史（entriesToTranscript）共用同一套工具条目摘要逻辑。
+// omp events → frontend narrow-event translate layer: the frontend only knows
+// these UiEvent kinds and does not depend on omp event shape details.
+// The live stream (translateEvent) and the disk history (entriesToTranscript)
+// share the same tool-entry summary logic.
 import os from "node:os";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 import { REF_TAG_RE } from "./acp-context.ts";
 
-// 剥 ACP 注入/复读的 <dcp-message-id> 标签：落盘保留原文（历史事实），推给 UI 前统一清洗。
-// 实时 text_delta 流式期间的短暂闪现由前端渲染层（AssistantMsg）兜底。
+// Strip the <dcp-message-id> tags injected/replayed by ACP: disk keeps the
+// original text (historical fact); scrub uniformly before pushing to the UI.
+// Brief flashes during live text_delta streaming are handled by the frontend
+// render layer (AssistantMsg).
 function stripDcpTags(s: string): string {
 	const out = s.replace(REF_TAG_RE, "");
 	return out === s ? s : out.trim();
@@ -22,9 +26,9 @@ export type UiEvent =
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string }
   | { kind: "error"; text: string } // provider/request failure (quota, auth, transport)
-  | { kind: "mention"; files: string[] }; // @ 提及回读（attachEntry 的 agent_end 扫描直发，不经 translateEvent）
+  | { kind: "mention"; files: string[] }; // @ mention read-back (sent directly by the agent_end scan in attachEntry, not via translateEvent)
 
-// 工具设备路径（xd://tui、xd://mcp__xxx 等）：读/写它是调用设备，不是文件读写
+// Tool device paths (xd://tui, xd://mcp__xxx, ...): reading/writing one invokes a device, not a file read/write
 function isDevicePath(p: unknown): boolean {
   return typeof p === "string" && /^[a-z][a-z0-9+.-]*:\/\//i.test(p);
 }
@@ -43,7 +47,7 @@ function collectFiles(name: string, args: any, details?: any): string[] {
     const norm = p.replace(/\\/g, "/");
     const i = out.findIndex((x) => x === norm || x.endsWith("/" + norm) || norm.endsWith("/" + x));
     if (i < 0) out.push(norm);
-    else if (norm.length > out[i].length) out[i] = norm; // 相对路径与绝对路径视为同一文件，保留更完整的
+    else if (norm.length > out[i].length) out[i] = norm; // Relative and absolute paths count as the same file; keep the more complete one
   };
   if (Array.isArray(args?.edits)) for (const e of args.edits) push(e?.path ?? e?.file_path);
   if (Array.isArray(args?.paths)) for (const p of args.paths) push(p);
@@ -65,10 +69,11 @@ function collectFiles(name: string, args: any, details?: any): string[] {
 function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   if (!args || typeof args !== "object") return {};
   if (name === "bash" || name === "shell") return { command: String(args.command ?? "").slice(0, 4000) };
-  if (name === "eval") return { command: String(args.code ?? args.command ?? "").slice(0, 4000) }; // JS 求值，走终端卡片渲染
+  if (name === "eval") return { command: String(args.code ?? args.command ?? "").slice(0, 4000) }; // JS evaluation, rendered as a terminal card
   if (name === "grep") return { pattern: String(args.pattern ?? args.query ?? "").slice(0, 500), path: pathOf(args) };
   if (name === "glob") return { pattern: String(args.pattern ?? "").slice(0, 500), path: pathOf(args) };
   if (name === "web_search") return { query: String(args.query ?? "").slice(0, 1000) };
+  if (name === "read_session_context") return { query: args.query, sessionId: args.sessionId, fromTurn: args.fromTurn, toTurn: args.toTurn };
   if (name === "ask") return { questions: capValue(args.questions) };
   if (name === "debug") {
     return { action: args.action, program: args.program, file: args.file, line: args.line, function: args.function, expression: args.expression };
@@ -107,7 +112,7 @@ function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   return out;
 }
 
-// 结构化参数（ask.questions / retain.memories 等）超限降级为截断 JSON 字符串，保护 WebSocket 帧
+// Structured params (ask.questions / retain.memories etc.) over the cap degrade to a truncated JSON string, protecting the WebSocket frame
 function capValue(v: unknown, max = 8000): unknown {
   if (v === undefined) return v;
   const s = JSON.stringify(v) ?? "";
@@ -131,7 +136,7 @@ function thinkingLabel(sec: number): string {
   return hostI18n.t("flows.think.durationMinSec", { m: Math.floor(sec / 60), s: String(sec % 60).padStart(2, "0") });
 }
 
-// 工具结果文本：拼接 result.content 里的 text 段（截断，详细走 artifact）
+// Tool result text: joins the text segments of result.content (truncated; details go through the artifact)
 function resultText(result: unknown, max = 20_000): string {
   if (!result || typeof result !== "object" || !("content" in result) || !Array.isArray(result.content)) return "";
   return result.content
@@ -151,10 +156,10 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
   const files = collectFiles(name, args, details);
   if (files.length) patch.files = files;
   if (name === "read") {
-    // 透传 TUI 同款渲染数据：displayContent 是模型所见的原文（无行号前缀），行号范围来自 truncation.shownRange
+    // Pass through the TUI-style render data: displayContent is the original text the model saw (no line-number prefix), the line range comes from truncation.shownRange
     const dc = details?.displayContent;
     if (dc && typeof dc.text === "string" && dc.text) {
-      const MAX = 200_000; // WebSocket 传输与前端渲染的现实边界，正常 read（自带截断）远达不到
+      const MAX = 200_000; // A realistic bound for WebSocket transport and frontend rendering; a normal read (self-truncating) stays far below
       let text = dc.text;
       let lineNumbers = Array.isArray(dc.lineNumbers) ? dc.lineNumbers : undefined;
       if (text.length > MAX) {
@@ -170,11 +175,11 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
         shownRange: details.meta?.truncation?.shownRange,
       };
     }
-    // 目录读取兜底：无 displayContent 时也要带 isDirectory（前端据此过滤出查阅组）
+    // Directory-read fallback: carry isDirectory even without displayContent (the frontend filters the browsed group by it)
     else if (details?.isDirectory) patch.details = { isDirectory: true };
   }
   if (name === "bash" || name === "shell" || name === "eval") {
-    // 终端/求值工具：把输出文本带给前端展开卡片（截断，详细走 artifact）
+    // Terminal/eval tools: carry the output text for the frontend's expandable card (truncated; details go through the artifact)
     const text = resultText(result);
     if (text) patch.output = text;
     return patch;
@@ -196,9 +201,10 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     };
     return patch;
   }
-  // 标签型工具（联网搜索/提问/调试/GitHub/LSP/记忆五件套）：结果文本供给前端展开卡
+  // Tagged tools (web search / ask / debug / GitHub / LSP / the memory suite): result text feeds the frontend's expandable card
   if (
     name === "web_search" || name === "ask" || name === "debug" || name === "github" || name === "lsp" ||
+    name === "read_session_context" ||
     name === "retain" || name === "recall" || name === "reflect" || name === "learn" || name === "memory_edit"
   ) {
     const text = resultText(result);
@@ -206,17 +212,21 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     return patch;
   }
   if (Array.isArray(details?.perFileResults) && details.perFileResults.length > 1) {
-    return patch; // 多文件「更改」不带行数
+    return patch; // Multi-file "changes" carry no line counts
   }
   if (typeof details?.diff === "string") {
     Object.assign(patch, diffStats(details.diff));
-    // 把当次工具的真实修改一并带给前端：编辑行内联展开直接渲染它（新文件/无 git 基线时
-    // git diff 只能给全量新增，与 +N-M 摘要对不上）；截断上限与 file_diff 回包一致口径
+    // Carry the tool's real modification for this call too: the edit row's
+    // inline expansion renders it directly (for a new file / no git baseline,
+    // git diff can only show the whole thing as additions, mismatching the
+    // +N-M summary); truncation cap matches the file_diff reply's scope
     patch.diffContent = details.diff.slice(0, 500_000);
   }
   else if ((name === "write" || name === "edit") && typeof args?.content === "string") {
-    // 写入工具设备（xd://tui 等）不是文件编辑：既没有文件 diff 可看，按 content 行数算的
-    // 增删也是假的——改为下发设备回包文本，供设备行展开查看
+    // Writing a tool device (xd://tui etc.) is not a file edit: there is no
+    // file diff to show, and add/remove counts derived from content line
+    // counts would be fake — send the device's reply text instead, for the
+    // device row's expansion
     if (isDevicePath(args?.path)) {
       const text = resultText(result);
       if (text) patch.output = text;
@@ -234,16 +244,21 @@ function isJunkPlaceholderText(text?: string | null): boolean {
   return t === "." || t === "。" || t === "·" || t === "•";
 }
 
-// user message content（string 或 blocks）→ 纯文本，与底座 branch() 的提取口径一致
+// user message content (string or blocks) → plain text, same extraction scope as the base's branch()
 function userEntryText(content: any): string {
   if (typeof content === "string") return content;
   return (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
 }
 
-// agent_end 时本轮用户消息必然已落盘：把 transcript 中缺 entryId 的 user 条目与磁盘
-// entries 里的 user message 按文本对齐回填（底座事件流不携带 entry id，只能事后对齐；
-// 隐藏伴随/系统注入消息文本不同，按相等匹配天然跳过；from 指针保序，重复文本也对得上）。
-// 返回本轮补上的最后一个 entryId（供 turn_end 事件增量下发），无可补则 undefined。
+// At agent_end this round's user messages are necessarily persisted: align
+// and backfill the transcript's user entries lacking entryId against the
+// user messages in the disk entries by text (the base's event stream carries
+// no entry id, so alignment can only happen after the fact; hidden
+// companion/system-injected messages have different text, so equality
+// matching naturally skips them; the from pointer preserves order, so
+// duplicate texts still line up). Returns the last entryId backfilled this
+// round (for the turn_end event's incremental delivery), or undefined when
+// there was nothing to backfill.
 export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
   const pending = entry.transcript.filter((t) => t.role === "user" && !t.entryId);
   if (pending.length === 0) return undefined;
@@ -254,7 +269,7 @@ export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
   let from = 0;
   for (const item of pending) {
     const hit = users.findIndex((u, i) => i >= from && u.text === item.text);
-    if (hit < 0) continue; // 尚未落盘（排队中）等下轮 turn_end 再补
+    if (hit < 0) continue; // Not yet persisted (still queued); backfill next turn_end
     item.entryId = users[hit].id;
     from = hit + 1;
     last = item.entryId;
@@ -262,11 +277,17 @@ export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
   return last;
 }
 
-// agent_end 时本轮 assistant 也已落盘：把 transcript 中本轮缺 entryId 的 assistant 与磁盘
-// assistant 条目按序对齐回填（事件流不携带 entry id，同 backfillUserEntryIds 的口径）。
-// 有本轮 user 锚点时 pending 与候选都从它之后取——历史同文本不会错配；锚点未落盘则本轮不补，
-// 等下轮 turn_end。无锚点（孤儿 assistant）时 pending 必是最新一批，与候选尾部对齐。
-// 返回本轮最后一条补上的 entryId（轮末 output 分叉按钮的寻址键），无可补则 undefined。
+// At agent_end this round's assistant messages are also persisted: align and
+// backfill the transcript's assistant entries lacking entryId this round
+// against the disk assistant entries in order (the event stream carries no
+// entry id, same scope as backfillUserEntryIds). With this round's user
+// anchor present, both pending and candidates start after it — historical
+// same-text entries cannot be mismatched; if the anchor is not yet
+// persisted, skip this round and wait for the next turn_end. Without an
+// anchor (orphan assistants), pending is necessarily the newest batch,
+// aligned with the candidates' tail. Returns the last entryId backfilled
+// this round (the addressing key for the fork button on the round-final
+// output), or undefined when there was nothing to backfill.
 export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string): string | undefined {
   const all = entry.transcript;
   const raw: SessionEntry[] = entry.manager?.getEntries() ?? [];
@@ -289,7 +310,7 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
   let last: string | undefined;
   for (let i = 0; i < pending.length; i++) {
     const id = cands[offset + i];
-    if (!id) break; // 尚未落盘（排队中）等下轮 turn_end 再补
+    if (!id) break; // Not yet persisted (still queued); backfill next turn_end
     pending[i].entryId = id;
     last = id;
   }
@@ -336,7 +357,7 @@ function uiToolPayload(item: TranscriptItem): Extract<UiEvent, { kind: "tool" }>
   return { kind: "tool", name: item.name ?? item.text, toolCallId: item.toolCallId, args: item.args, files: item.files };
 }
 
-// 累加本 run 全部 assistant 消息的 token 用量（agent_end.messages 只含本次 run 新增，不含载入的历史）
+// Sum the token usage of all assistant messages of this run (agent_end.messages only contains what this run added, not the loaded history)
 function sumRunUsage(messages: any[]): TurnUsage | null {
   let out: TurnUsage | null = null;
   for (const m of messages ?? []) {
@@ -353,13 +374,18 @@ function sumRunUsage(messages: any[]): TurnUsage | null {
 export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
   switch (ev.type) {
     case "turn_start":
-      // run 内每个模型轮的真实起点（排队消息消费的续轮同样经过这里）：
-      // 轮边界是服务端权威投影（ZCode turnHeader 同款语义），UI 不得靠
-      // agent_start/agent_end 的 run 级近似重猜——那是排队消费续轮对 UI 隐形的根因
+      // The true start of each model turn inside a run (continuation turns
+      // from consuming queued messages also pass through here): the turn
+      // boundary is the server's authoritative projection (same semantics as
+      // ZCode's turnHeader); the UI must not re-guess it from the run-level
+      // approximation of agent_start/agent_end — that is the root cause of
+      // queued-consumption continuation turns being invisible to the UI
       return { kind: "turn_start" };
     case "turn_end": {
-      // run 内每个模型轮的真实结束：封存本轮过程。usage 只取本轮 assistant 消息；
-      // 整 run 用量、userEntryId 回填、列表刷新由 agent_end 映射的 runEnd 帧负责
+      // The true end of each model turn inside a run: seals this turn's
+      // process. usage only takes this turn's assistant messages; whole-run
+      // usage, userEntryId backfill, and list refresh are the runEnd frame's
+      // job (mapped from agent_end)
       const u = ev.message?.usage;
       return {
         kind: "turn_end",
@@ -370,8 +396,10 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       };
     }
     case "thinking_level_changed":
-      // auto 判定帧：configured==="auto" 时 resolved 为本轮判定档位（切进 auto 的 provisional 帧无 resolved）；
-      // 人工切档帧无 configured。只透传，前端自行决定显示。
+      // auto-resolution frame: when configured==="auto", resolved is the
+      // level picked for this turn (the provisional frame emitted when
+      // switching into auto has no resolved); manual-switch frames have no
+      // configured. Pass through only; the frontend decides display.
       return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
     case "message_end": {
       // A failed request emits an error assistant message (stopReason "error",
@@ -399,7 +427,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       }
       if (ame?.type === "thinking_delta") {
         entry.thinkingDraft += ame.delta ?? "";
-        // hideThinkingBlock 只影响 UI 默认展开与否，不影响数据下发：增量照常转发供流式展示
+        // hideThinkingBlock only affects the UI's default expansion, not data delivery: deltas still forward for streaming display
         return { kind: "thinking_delta", text: ame.delta ?? "" };
       }
       if (ame?.type === "thinking_end") {
@@ -430,7 +458,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         files: collectFiles(ev.toolName, ev.args),
       };
       entry.transcript.push(item);
-      // intent：模型在工具参数里写的 i 字段（agent-loop 已提取成字符串），working 状态行直接显示
+      // intent: the i field the model wrote in the tool args (agent-loop already extracted it into a string), shown directly on the working status row
       return { ...uiToolPayload(item), intent: typeof ev.intent === "string" && ev.intent.trim() ? ev.intent.trim() : undefined };
     }
     case "tool_execution_end": {
@@ -449,11 +477,11 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         todo: item?.todo,
         output: item?.output,
         details: item?.details,
-        diffContent: item?.diffContent, // 编辑行内联展开优先用当次回包的真实 diff
+        diffContent: item?.diffContent, // The edit row's inline expansion prefers the real diff from this call's reply
       };
     }
     case "agent_end":
-      // isTerminal === false 表示 maintenance/异步投递还会续跑，不是真正结束
+      // isTerminal === false means maintenance/async delivery will keep running; not a true end
       if (ev.isTerminal === false) return null;
       flushAssistantDraft(entry);
       const userEntryId = backfillUserEntryIds(entry);
@@ -469,8 +497,10 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
   }
 }
 
-// 后台耗时命令的阶段分隔行文案：[执行中, 完成]。执行中由 host 瞬时帧下发，
-// 完成由落盘痕（compaction / title_change 条目）转出——两端共用此表。
+// Phase separator row text for background long-running commands:
+// [in-progress, done]. In-progress comes from the host's transient frame,
+// done is translated from the disk trace (compaction / title_change
+// entries) — both ends share this table.
 // Getters translate on every read so a language switch is picked up
 // immediately (module-load-time constants would freeze the startup language).
 export const PHASE_TEXT: Record<string, [string, string]> = {
@@ -485,9 +515,12 @@ export const PHASE_TEXT: Record<string, [string, string]> = {
   },
 };
 
-// 磁盘历史条目 → 前端 transcript（思考块可展开；工具带路径/命令/行数）
-// 轮次分组：一条用户消息开启一轮，轮内 thinking/tool/中间 assistant 收进 loop 组（收起显示），
-// 只把最后一条 assistant 文本留在组外作为该轮的对外结果——与实时 turn_end 的收起行为一致。
+// Disk history entries → frontend transcript (thinking blocks expandable;
+// tools carry path/command/line counts)
+// Turn grouping: one user message opens a turn; the turn's thinking/tool/
+// intermediate assistant items are collected into a loop group (displayed
+// collapsed), leaving only the last assistant text outside the group as the
+// turn's outward result — matching the live turn_end collapse behavior.
 export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   const out: TranscriptItem[] = [];
   const byId = new Map<string, TranscriptItem>();
@@ -519,9 +552,12 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   };
 
   for (const e of entries) {
-    // 执行痕条目 → 阶段分隔行：任一端执行（CLI/桌面），另一端加载会话即显示执行记录。
-    // compaction.method 区分交接与压缩（旧会话无 method，按压缩显示）；
-    // title_change 只认用户改名（source "auto" 是新会话自动起标题，不算执行记录）
+    // Execution-trace entries → phase separator rows: whichever end executed
+    // (CLI/desktop), loading the session on the other end shows the record.
+    // compaction.method distinguishes handoff from compact (old sessions have
+    // no method, displayed as compact); title_change only counts user renames
+    // (source "auto" is a new session's auto-generated title, not an
+    // execution record)
     if (e.type === "compaction") {
       finalizeRun();
       const cmd = e.method === "handoff" ? "handoff" : "compact";
@@ -546,7 +582,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       continue;
     }
     if (role === "bashExecution") {
-      // ! 本地命令结果：平铺成 bash 行，不开启新轮次、不进 loop 组
+      // ! local command result: flattened into a bash row; opens no new turn, joins no loop group
       out.push({
         role: "bash",
         text: msg.command,
@@ -560,7 +596,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       continue;
     }
     if (role === "fileMention") {
-      // @ 提及已读取：平铺成 mention 行
+      // @ mention already read: flattened into a mention row
       out.push({ role: "mention", text: "", files: (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")) });
       continue;
     }
@@ -591,7 +627,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
         }
       }
       if (!isJunkPlaceholderText(text) || images.length > 0) {
-        finalizeRun(); // 有效用户输入开启新一轮
+        finalizeRun(); // Valid user input opens a new turn
         out.push({
           role: "user",
           text,
@@ -612,7 +648,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
         run.usage.cacheWrite += msg.usage.cacheWrite || 0;
       }
     }
-    const sink = run ? run.items : out; // run 外的孤儿 assistant（无轮首用户消息）直接平铺，保持旧行为
+    const sink = run ? run.items : out; // Orphan assistants outside a run (no turn-leading user message) flatten directly, preserving old behavior
     if (typeof content === "string") {
       const plain = stripDcpTags(content);
       if (!isJunkPlaceholderText(plain)) {
@@ -651,12 +687,16 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   return out;
 }
 
-// ---------- 会话内条目树（TUI /tree 数据源） ----------
-// SessionTreeNode 森林（manager.getTree()）→ 前端显示节点。行文本口径对齐底座
-// tree-selector 的 #getEntryDisplayText：按条目类型给单行摘要，bookkeeping 类
-// 条目只留类型标签；默认视图隐藏的两类（设置类条目 / 无文本的非叶 assistant）
-// 用 isSettings / emptyAssistant 标记，过滤在前端做（与底座 filter 语义一致）。
-// 安装版底座该函数位于 pi-tui/chat/transcript-entry（新版才挪到 session-context，跟随安装版）
+// ---------- In-session entry tree (TUI /tree data source) ----------
+// SessionTreeNode forest (manager.getTree()) → frontend display nodes. Row
+// text scope aligns with the base tree-selector's #getEntryDisplayText: a
+// one-line summary per entry type, bookkeeping entries keep only the type
+// label; the two kinds hidden in the default view (settings-kind entries /
+// textless non-leaf assistants) are flagged with isSettings /
+// emptyAssistant, and the filtering happens in the frontend (same filter
+// semantics as the base). In the installed base this function lives at
+// pi-tui/chat/transcript-entry (only newer versions moved it to
+// session-context — follow the installed one)
 import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import type { SessionEntry, SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
 
@@ -675,14 +715,14 @@ const TREE_SETTINGS_KINDS: Record<string, true> = {
   reset_boundary: true,
 };
 
-// AgentMessage 是 Message 联合 + 自定义消息联合，成员字段不一；统一按可选字段读
+// AgentMessage is a union of Message + custom message unions with varying member fields; read uniformly as optional fields
 function msgField(msg: unknown, key: string): unknown {
   return typeof msg === "object" && msg !== null && key in msg
     ? (msg as Record<string, unknown>)[key]
     : undefined;
 }
 
-// 单行化：折行/制表归空格、剥 ANSI 与控制字符、限长（右栏行宽有限）
+// Single-line normalization: folds newlines/tabs to spaces, strips ANSI and control characters, caps length (right-pane row width is limited)
 function treeNorm(s: unknown, max = 160): string {
   const t = String(s ?? "")
     .replace(/\x1b\[[0-9;:]*m/g, "")
@@ -703,8 +743,10 @@ function treeContentText(content: unknown): string {
   );
 }
 
-// 工具调用行摘要（对齐底座 tree-selector #formatToolCall）：toolResult 行显示
-// 它对应的调用（命令/路径/模式），超长截断 + 省略号，右栏一眼能看出干了什么
+// Tool call row summary (aligned with the base tree-selector
+// #formatToolCall): a toolResult row shows its corresponding call
+// (command/path/pattern), truncated with an ellipsis when too long, so the
+// right pane tells at a glance what was done
 function treeShortenPath(p: string): string {
   const home = os.homedir();
   return p.startsWith(home) ? "~" + p.slice(home.length) : p;
@@ -748,8 +790,10 @@ function treeFormatToolCall(name: string, args: Record<string, unknown>): string
   }
 }
 
-// 全树收集 assistant 消息 content 里的 toolCall 块：toolResult 条目只有 toolCallId，
-// 行摘要要靠它找回调用的 name/arguments（与底座 #flattenTree 建 toolCallMap 同思路）
+// Collect toolCall blocks from assistant message content across the whole
+// tree: toolResult entries only carry toolCallId, and the row summary needs
+// it to find the call's name/arguments back (same idea as the base's
+// #flattenTree building a toolCallMap)
 function collectToolCalls(roots: SessionTreeNode[]): Map<string, { name: string; args: Record<string, unknown> }> {
   const map = new Map<string, { name: string; args: Record<string, unknown> }>();
   const walk = (node: SessionTreeNode): void => {
@@ -774,7 +818,7 @@ function collectToolCalls(roots: SessionTreeNode[]): Map<string, { name: string;
   return map;
 }
 
-// 条目 → 行显示文本（对齐底座 tree-selector 摘要口径的精简版）
+// Entry → row display text (a slimmed version aligned with the base tree-selector summary scope)
 function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: string; args: Record<string, unknown> }>): string {
   switch (entry.type) {
     case "message": {
@@ -795,7 +839,7 @@ function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: strin
         if (msgField(msg, "stopReason") === "aborted") return hostI18n.t("flows.tree.aborted");
         return "";
       }
-      return treeNorm(content); // user / developer / 其他角色
+      return treeNorm(content); // user / developer / other roles
     }
     case "custom_message":
       return treeNorm(treeContentText(entry.content));
@@ -827,13 +871,13 @@ function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: strin
 export type EntryTreeNode = {
   id: string;
   kind: string; // entry.type
-  role?: string; // message 角色（message 条目才有）
-  text: string; // 行显示文本
-  label?: string; // 用户标注（底座 getTree 已解析）
+  role?: string; // message role (message entries only)
+  text: string; // row display text
+  label?: string; // user label (already resolved by the base's getTree)
   ts?: string; // entry.timestamp
-  userReq?: boolean; // isUserRequestEntry：「仅用户」过滤用
-  emptyAssistant?: boolean; // 无文本的非叶 assistant：默认过滤隐藏
-  isSettings?: boolean; // bookkeeping 条目：仅「全部」模式显示
+  userReq?: boolean; // isUserRequestEntry: for the "user only" filter
+  emptyAssistant?: boolean; // Textless non-leaf assistant: hidden by the default filter
+  isSettings?: boolean; // bookkeeping entry: shown only in "all" mode
   children: EntryTreeNode[];
 };
 
@@ -855,7 +899,7 @@ export function treeToDisplay(roots: SessionTreeNode[], leafId: string | null): 
     if (node.label) out.label = node.label;
     if (isUserRequestEntry(entry)) out.userReq = true;
     if (TREE_SETTINGS_KINDS[entry.type]) out.isSettings = true;
-    // 与底座默认过滤一致：无文本且非错误/中止的 assistant（纯工具调用容器）默认隐藏，叶除外
+    // Matching the base's default filter: a textless assistant that is neither error nor aborted (a pure tool-call container) is hidden by default, except the leaf
     if (role === "assistant" && !isLeaf && !text) {
       const sr = msgField(entry.message, "stopReason");
       if (sr === undefined || sr === "stop" || sr === "toolUse") out.emptyAssistant = true;
@@ -865,10 +909,13 @@ export function treeToDisplay(roots: SessionTreeNode[], leafId: string | null): 
   return roots.map(walk);
 }
 
-// 整会话活跃时长（毫秒）：按 entriesToTranscript 同款轮次分段，累加每轮「有效用户输入 → 轮末」
-// 的墙钟跨度（每轮至少 1 秒，与 loop 组 durationSec 同口径）。
-// 用于加载历史会话时给 host 的内存计时器一个初值——不能靠累加 transcript 里的 loop 组：
-// 纯对话轮（无工具调用）不生成 loop 组，那样会漏轮（实测 2 轮只出 1 个 loop）。
+// Whole-session active duration (ms): segments turns the same way
+// entriesToTranscript does, summing each turn's "valid user input → turn
+// end" wall-clock span (at least 1 second per turn, same scope as the loop
+// group's durationSec). Used to seed the host's in-memory timer when loading
+// a past session — it cannot come from summing the transcript's loop groups:
+// pure-conversation turns (no tool calls) generate no loop group, so turns
+// would be missed (measured: 2 turns produced only 1 loop).
 export function sumRunDurationMs(entries: any[]): number {
   let total = 0;
   let startMs = 0;
@@ -896,7 +943,7 @@ export function sumRunDurationMs(entries: any[]): number {
               .filter((b: any) => b?.type === "text")
               .map((b: any) => b.text)
               .join("\n");
-      if (isJunkPlaceholderText(text)) continue; // 隐藏伴随/占位消息不开轮
+      if (isJunkPlaceholderText(text)) continue; // Hidden companion/placeholder messages open no turn
       flush();
       startMs = ts;
       endMs = ts;
@@ -909,7 +956,7 @@ export function sumRunDurationMs(entries: any[]): number {
   return total;
 }
 
-// 子代理事件 → 前端窄事件（纯转发，不落父会话 transcript；文本由前端按 subagentId 累积）
+// Subagent events → frontend narrow events (pure forwarding, not persisted into the parent session's transcript; text is accumulated by the frontend keyed on subagentId)
 export function translateSubagentEvent(ev: any): UiEvent | null {
   switch (ev.type) {
     case "agent_start":

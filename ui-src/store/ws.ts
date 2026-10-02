@@ -1,6 +1,7 @@
-// WS 连接 slice：ws/connected/connText、send、connect 重试环、stamped event 守卫
-// 与帧分发入口。全帧业务处理在 store/wsHandlers/（五域处理器表）；
-// session 域重逻辑下沉 store/session.ts，终端帧直推 store/terminal.ts。
+// WS connection slice: ws/connected/connText, send, the connect retry loop, the stamped event
+// guard, and the frame dispatch entry. All frame business handling lives in store/wsHandlers/
+// (five-domain handler tables); heavy session-domain logic sank into store/session.ts, terminal
+// frames are pushed straight to store/terminal.ts.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
@@ -13,7 +14,7 @@ export interface WsSlice {
   ws: WebSocket | null;
   connected: boolean;
   connText: string;
-  /** 首次失去连接（或从未连上）的时刻；恢复连接清 null。ConnBanner 据此判定持续失败时长 */
+  /** Timestamp of the first lost connection (or never connected); cleared to null on reconnect. ConnBanner uses it to measure the continuous failure duration */
   connFailSince: number | null;
   send(obj: unknown): void;
   setConnected(ok: boolean, text: string): void;
@@ -37,8 +38,9 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     set((s) => ({
       connected: ok,
       connText: text,
-      // 语义 = 距上次成功连接经过的时间（从未连上则从首次 connect 起算），
-      // 冷启动 >15s 的情况计入是预期行为：30s 仍连不上就该给恢复面
+      // Semantics = time elapsed since the last successful connection (counted from the first
+      // connect when never connected); counting the >15s cold-start case is expected behavior:
+      // after 30s without a connection the recovery surface should appear
       connFailSince: ok ? null : (s.connFailSince ?? Date.now()),
     }));
   },
@@ -48,8 +50,9 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       return;
     }
     get().setConnected(false, t("notify.connecting"));
-    // 宿主冷启动可能 >15s(模型目录走代理刷新阻塞 READY):ws_url 失败不放弃,
-    // 周期重试直到拿到端口(BUG-008:曾表现为 profile 菜单 fallback 单项)
+    // Host cold start may take >15s (the model catalog refresh through a proxy blocks READY): a
+    // ws_url failure doesn't give up; retry periodically until the port arrives (BUG-008: previously
+    // surfaced as the profile menu degrading to a single fallback entry)
     let url: string;
     try {
       url = await invoke("ws_url");
@@ -65,15 +68,15 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       reconnectAttempt = 0;
       get().setConnected(true, t("notify.connected"));
       get().send({ type: "list_sessions" });
-      // 启动时欢迎页先于连接渲染，get_git_branches 曾被 send 丢弃；连接就绪后补拉
+      // At startup the welcome page renders before the connection; get_git_branches was once dropped by send — refetch once connected
       if (get().isCreatingNew && get().newSessionProject) get().send({ type: "get_git_branches", cwd: get().newSessionProject });
-      // 设置页若在连接就绪前打开，4 个数据请求被 send 丢弃；连接就绪后补拉
+      // If the settings page opened before the connection was ready, its data requests were dropped by send — refetch once connected
       if (get().settingsOpen) get().refreshSettingsData();
       // Resend the current UI locale unconditionally so a (re)started host
       // converges on the frontend's persisted language.
       get().send({ type: "set_locale", lang: get().uiPrefs.lang });
     };
-    // 断线后自动重连(3s),宿主重启期间 UI 不至于永久停留在旧状态
+    // Auto-reconnect after disconnect (3s) so the UI doesn't get permanently stuck in stale state during a host restart
     ws.onclose = () => {
       get().setConnected(false, t("notify.disconnected"));
       scheduleReconnect(get().connect);
@@ -114,8 +117,9 @@ function scheduleReconnect(connect: () => Promise<void>): void {
   setTimeout(() => void connect(), delay);
 }
 
-// Tauri 壳注入的全局对象（浏览器直连调试时不存在）。invoke 返回形状随命令而异、
-// event 载荷为宿主/壳消息，均为真实外部边界：默认 any，调用点按需收窄。
+// Global object injected by the Tauri shell (absent in browser direct-connect debugging). invoke
+// return shapes vary per command and event payloads are host/shell messages — both are real
+// external boundaries: default to any, narrowed as needed at call sites.
 declare global {
   interface Window {
     __TAURI__?: {
@@ -128,16 +132,18 @@ declare global {
 
 export const invoke = window.__TAURI__?.core?.invoke;
 
-// ---------- 帧分发入口 ----------
-// msg 为宿主 WS 帧;入口 JSON.parse 结果即 HostFrame 判别联合(types/frames 镜像发送端构造)。
-// 带位置戳的主动推送先过守卫（RPC 响应无 hi 不受影响），再交 wsHandlers 表分发。
+// ---------- Frame dispatch entry ----------
+// msg is a host WS frame; the entry's JSON.parse result is exactly the HostFrame discriminated
+// union (types/frames mirrors sender-side construction).
+// Unsolicited pushes carrying a position stamp pass the guard first (RPC replies without hi are
+// unaffected), then go to the wsHandlers tables for dispatch.
 function onMessage(msg: HostFrame): void {
-  const stamped = msg as { hi?: string; seq?: number }; // 戳字段仅部分帧携带,守卫只读不写,不破坏后续判别
+  const stamped = msg as { hi?: string; seq?: number }; // stamp fields are carried by only some frames; the guard only reads them, never writes, so later discrimination is intact
   if (stamped.hi !== undefined && !admitStampedEvent(stamped)) return;
   dispatchFrame(msg);
 }
 
-// WKWebView 无 console：未捕获错误上报宿主日志 + toast
+// WKWebView has no console: report uncaught errors to the host log + toast
 window.onerror = (msg) => {
   useAppStore.getState().toast(String(msg).slice(0, 120));
   useAppStore.getState().send({ type: "ui_error", message: String(msg).slice(0, 300) });

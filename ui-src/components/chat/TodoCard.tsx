@@ -1,11 +1,14 @@
-// TODO 进程卡 + 胶囊：流式任务的阶段/待办清单（statusCard）与收起态（capsule）。
-// 迁移自 ui/right.js renderStatusCard + initRight 的卡片交互（DOM 位置在 #statusWrap）。
+// TODO process card + capsule: the streaming task's phases/todo list (statusCard) and its
+// collapsed state (capsule).
+// Migrated from renderStatusCard in ui/right.js + initRight's card interactions (DOM
+// position at #statusWrap).
 import { Fragment } from "react";
 import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 
-// 待办行的任务/阶段形状（store todos 帧透传，只约束本组件读取的字段）
+// Task/phase shape of a todo row (passed through by the store's todos frame; constrains
+// only the fields this component reads)
 interface TodoTask {
   status?: string;
   content: string;
@@ -17,7 +20,8 @@ interface TodoPhase {
   tasks: TodoTask[];
 }
 
-// 待办行的状态图标与文本（completed → <s> 删除线；blocked 附阻塞原因）
+// Status icon and text of a todo row (completed → <s> strikethrough; blocked appends the
+// blocker reason)
 function TodoRow({ t }: { t: TodoTask }) {
   const st = t.status;
   const text = t.content + (st === "blocked" && t.blocker ? `（${t.blocker}）` : "");
@@ -55,7 +59,7 @@ export default function TodoCard() {
         <div
           id="statusCard"
           onClick={() => {
-            // 卡片空白处点击收起为胶囊
+            // Clicking the card's blank area collapses it into the capsule
             setBump({ todoCollapsed: true });
           }}
         >

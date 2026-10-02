@@ -1,12 +1,17 @@
-// 输入区：附件行 + Lexical 编辑器 + cbar（添加/权限模式/后台任务/子智能体/上下文环/模型/
-// 思考/发送）+ 三个弹出菜单 + sigil 补全面板。迁移自 ui/composer.js（578 行），P7 起基于
-// Lexical（RichText + History + TypeaheadMenuPlugin）。
-// 契约：草稿为模块级单例（EditorState 快照 + 压平纯文本，见 composer/lexical/draft.ts，
-// 欢迎页 ↔ dock 两个挂载位切换不丢值）；composerSetSignal（seq 信号）effect 回填（含图片）；
-// 发送/停止合一（流式且无草稿 → 停止）；模型/思考菜单读 store 的 modelNames/modelEfforts；
-// 补全选中插 ChipNode（decorator 原子节点），序列化文本与旧 textarea 的插入文本逐字节一致，
-// 编辑器压平视图（composer/lexical/flat.ts）保证 WS 发送的 prompt 内容格式不变。
-// 排队卡不在此处：由 App 在 .dock 前作相邻兄弟渲染（ZCode 负 margin 二级重叠卡，见 ui/style.css）。
+// Composer area: attachment row + Lexical editor + cbar (add / permission mode /
+// background tasks / subagents / context ring / model / think / send) + three popup
+// menus + sigil completion panel. Migrated from ui/composer.js (578 lines); Lexical
+// based since P7 (RichText + History + TypeaheadMenuPlugin).
+// Contract: draft is a module-level singleton (EditorState snapshot + flattened plain
+// text, see composer/lexical/draft.ts; switching between the welcome and dock mount
+// slots never loses it); composerSetSignal (seq signal) backfilled by effect (images
+// included); send/stop unified (streaming with no draft -> stop); model/think menus
+// read modelNames/modelEfforts from the store; accepting a completion inserts a
+// ChipNode (decorator atom node) whose serialized text is byte-identical to the old
+// textarea insertion, and the editor flattened view (composer/lexical/flat.ts) keeps
+// the prompt content format sent over WS unchanged.
+// Queue card does not live here: App renders it as an adjacent sibling before .dock
+// (ZCode-style negative-margin two-level stacked card, see ui/style.css).
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useCallback } from "react";
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
@@ -45,8 +50,9 @@ import {
 import ComposerPlugin from "./composer/lexical/ComposerPlugin";
 import type { ComposerHandle } from "./composer/lexical/ComposerPlugin";
 
-// 斜杠命令候选过滤：空 query 全量按 source 分组排序（builtin→skill→extension→custom→其他）；
-// 非空先 name/aliases 前缀命中、次之 includes、再按 source 序兜底；上限 50
+// Slash command candidate filter: empty query returns all, grouped and sorted by
+// source (builtin->skill->extension->custom->others); non-empty first matches
+// name/aliases by prefix, then by includes, then falls back to source order; cap 50
 const SRC_RANK: Record<string, number> = { builtin: 0, skill: 1, extension: 2, custom: 3, file: 4 };
 function filterCommands(list: CommandItem[] | null | undefined, query: string): CommandItem[] {
   if (!Array.isArray(list) || !list.length) return [];
@@ -64,19 +70,23 @@ function filterCommands(list: CommandItem[] | null | undefined, query: string): 
   return [...pre.sort(byRank), ...incl.sort(byRank)].slice(0, 50);
 }
 
-// 待发送附件上限：图片走 ImageContent（base64），文本类文件内联进 prompt
+// Size cap for attachments to send: images go through ImageContent (base64),
+// text-like files are inlined into the prompt
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024;
 
-// 供应商符号（复制自 ui/settings/index.js PROV_IC；该模块顶层有设置页绑定副作用，不宜引入）
+// Provider sigils (copied from ui/settings/index.js PROV_IC; that module has
+// settings-page binding side effects at top level, so importing it is not viable)
 const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "minimax-code-cn": "◆", "opencode-zen": "✦", llama: "●", "local-proxy": "▣" };
 
-// 上下文环周长：2π×6.5（与 CSS dasharray 一致）
+// Context ring circumference: 2*pi*6.5 (matches the CSS dasharray)
 const RING_C = 40.84;
 
-// 底栏分级收缩的最大级数（权限模式/思考/模型→纯图标、隐藏子智能体、隐藏后台任务）
+// Max stage of the bottom-bar graded collapse (permission mode/think/model ->
+// icon only, hide subagents, hide background tasks)
 const BAR_STAGES = 5;
 
-// 组装随 prompt 下发的附件载荷（发送后由调用方清空 pendingFiles）
+// Build the attachment payload sent along with the prompt (caller clears
+// pendingFiles after sending)
 function buildAttachPayload(): PromptAttachment[] {
   return useAppStore
     .getState()
@@ -87,7 +97,8 @@ function buildAttachPayload(): PromptAttachment[] {
     );
 }
 
-// 会话工具行的结构子集（bgTaskCount 只读这些字段；全量形态见 store）
+// Structural subset of a session tool row (bgTaskCount reads only these fields;
+// see the store for the full shape)
 type BgToolItem = {
   role?: string;
   name?: string;
@@ -96,8 +107,10 @@ type BgToolItem = {
   running?: boolean;
 };
 
-// 后台命令运行计数（原 right.js getBgTasksForSession 的 runningCount 部分平移：
-// 只遍历 s.items 顶层——封进 loop 组的工具不再计；hub start 计入、stop/cancel 抵消同名进程）
+// Running background command count (ported from the runningCount part of the old
+// right.js getBgTasksForSession: only iterates top-level s.items -- tools wrapped
+// in loop groups no longer count; hub start counts in, stop/cancel offsets the
+// same-named process)
 function bgTaskCount(s: { items?: BgToolItem[] } | null | undefined) {
   if (!s) return 0;
   let n = 0;
@@ -109,8 +122,9 @@ function bgTaskCount(s: { items?: BgToolItem[] } | null | undefined) {
       const args = it.args || {};
       const op = args.op || "cmd";
       const proc = args.name || args.application || "";
-      // 只按 start/stop/cancel 配对计后台进程。不能回落到 it.running：那是「hub 工具
-      // 执行中」（tool 帧到 tool_update 之间），list/status 之类同样命中，不是进程存活态
+      // Only count background processes by pairing start/stop/cancel. Do not fall
+      // back to it.running: that means "hub tool executing" (between the tool and
+      // tool_update frames); list/status hit it equally, it is not liveness
       if (op === "start") {
         n++;
         if (proc) live.add(proc);
@@ -125,7 +139,7 @@ function bgTaskCount(s: { items?: BgToolItem[] } | null | undefined) {
   return Math.max(0, n);
 }
 
-// 运行中子智能体计数（原 right.js getRunningSubagentCount 平移）
+// Running subagent count (ported from the old right.js getRunningSubagentCount)
 function subagentCount(s: { subagents?: Map<string, { streaming?: boolean; status?: string }> } | null | undefined) {
   if (!s?.subagents) return 0;
   return [...s.subagents.values()].filter((x) => x.streaming || x.status === "started").length;
@@ -133,7 +147,8 @@ function subagentCount(s: { subagents?: Map<string, { streaming?: boolean; statu
 
 type MenuName = "mode" | "model" | "think";
 
-// Typeahead 候选项包装：data 带原始候选（FileItem / CommandItem），key 取 path / name
+// Typeahead option wrapper: data carries the raw candidate (FileItem /
+// CommandItem), key takes path / name
 class PalOption extends MenuOption {
   data: PaletteItem;
   constructor(data: PaletteItem) {
@@ -149,8 +164,10 @@ type ComposerProps = {
 
 export default function Composer({ inWelcome, blocking = false }: ComposerProps) {
   const { t } = useTranslation();
-  // ---- store 订阅（selector 逐字段，禁止 selector 内构造新对象/数组） ----
-  // 当前会话（updateSession 帧处理换 session/Map 引用，selector 按引用感知）
+  // ---- store subscriptions (field-by-field selectors; constructing new
+  // objects/arrays inside selectors is forbidden) ----
+  // Active session (updateSession frame handling swaps the session/Map reference,
+  // the selector senses it by reference)
   const activePath = useAppStore((st) => st.activePath);
   const draftKey = inWelcome ? "welcome" : (activePath || "welcome");
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
@@ -166,38 +183,43 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const approvalMode = useAppStore((st) => st.approvalMode);
   const rightCollapsed = useAppStore((st) => st.rightCollapsed);
   const rightTab = useAppStore((st) => st.rightTab);
-  // 无赋值订阅：模型目录在 models/ready 帧到达时换 Map 引用，订阅引用才能在目录
-  // 刷新后重渲染（下方 modelShort 内部 getState 读最新表）。commandsSessionId 与 commands
-  // 同帧写入（ws.ts list_commands 回包），归属判定在 onQueryChange 内 getState 现取
+  // No-assignment subscription: the model catalog swaps its Map reference when the
+  // models/ready frame arrives, so subscribing to the reference re-renders after a
+  // catalog refresh (modelShort below reads the latest table via getState).
+  // commandsSessionId and commands are written in the same frame (ws.ts
+  // list_commands reply); ownership is decided on the spot via getState inside
+  // onQueryChange
   useAppStore((st) => st.modelNames);
 
   const rootRef = useRef<HTMLDivElement>(null); // #composer
-  const [ctxRingEl, setCtxRingEl] = useState<HTMLSpanElement | null>(null); // #ctxRing 元素（callback ref,环后渲染也挂得上 hover）
-  const lexRef = useRef<ComposerHandle | null>(null); // 编辑器句柄（focus/setText/clear）
+  const [ctxRingEl, setCtxRingEl] = useState<HTMLSpanElement | null>(null); // #ctxRing element (callback ref; hover attaches even when the ring renders later)
+  const lexRef = useRef<ComposerHandle | null>(null); // editor handle (focus/setText/clear)
   const cbarRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null); // filePicker
   const modeBtnRef = useRef<HTMLButtonElement>(null);
   const modelBtnRef = useRef<HTMLButtonElement>(null);
   const thinkBtnRef = useRef<HTMLButtonElement>(null);
-  const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | "think" | null（互斥）
-  const [stopPending, setStopPending] = useState(false); // 停止钮防连点（turn_end 复位）
-  const barStageRef = useRef(0); // 上次收缩级数（变化时收起打开中的菜单）
-  // 编辑器文本镜像（模块级 draftText 的渲染态）：输入后刷新发送钮 ready 态与 bash-mode 类，
-  // 等价原 onInput 里的 notify/forceRender
+  const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | "think" | null (mutually exclusive)
+  const [stopPending, setStopPending] = useState(false); // stop-button double-click guard (reset on turn_end)
+  const barStageRef = useRef(0); // last collapse stage (close open menus when it changes)
+  // Editor text mirror (render state of the module-level draftText): after input it
+  // refreshes the send button ready state and the bash-mode class, equivalent to the
+  // notify/forceRender in the old onInput
   const [text, setText] = useState(() => getDraftText(draftKey));
   const onTextChange = useCallback((t: string) => setText(t), []);
 
-  // ---- sigil 补全面板（TypeaheadMenuPlugin 受控态） ----
-  const [taKind, setTaKind] = useState<"file" | "command" | null>(null); // 触发种类（打开中）
+  // ---- sigil completion panel (TypeaheadMenuPlugin controlled state) ----
+  const [taKind, setTaKind] = useState<"file" | "command" | null>(null); // trigger kind (while open)
   const [taQuery, setTaQuery] = useState("");
-  const [taReqId, setTaReqId] = useState(0); // @ 候选请求序号（与 mentionResult.reqId 配对）
-  const [taOpen, setTaOpen] = useState(false); // 面板开合（键盘命令让路判定）
+  const [taReqId, setTaReqId] = useState(0); // @ candidate request sequence (paired with mentionResult.reqId)
+  const [taOpen, setTaOpen] = useState(false); // panel open/close (for yielding to keyboard commands)
   const taOpenRef = useRef(false);
   useEffect(() => {
     taOpenRef.current = taOpen;
   }, [taOpen]);
-  // 关闭通道：TypeaheadMenuPlugin 无受控 close，用 key 重挂清 resolution；同时复位开合标记
-  // 与去重键（重开 = 重新触发 = 重新请求，对齐旧版 setPalette(null) 语义）
+  // Close channel: TypeaheadMenuPlugin has no controlled close, so remount via key
+  // clears the resolution; also reset the open flag and the dedupe key (reopen =
+  // re-trigger = re-request, aligned with the old setPalette(null) semantics)
   const [closeTick, bumpClose] = useReducer((x: number) => x + 1, 0);
   const closeTypeahead = useCallback(() => {
     if (!taOpenRef.current) return;
@@ -206,20 +228,26 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     lastKeyRef.current = null;
     bumpClose();
   }, []);
-  const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ 候选 150ms 防抖
-  // 最近一次触发的 kind/quoted（triggerFn 写，onQueryChange/onSelectOption 读）
+  const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ candidate 150ms debounce
+  // kind/quoted of the most recent trigger (written by triggerFn, read by
+  // onQueryChange/onSelectOption)
   const lastTriggerRef = useRef<{ kind: "file" | "command"; quoted: boolean } | null>(null);
-  // 触发态去重键：Lexical 的 updateListener 连 selection-only 更新也会回调 onQueryChange，
-  // 同一触发态只执行一次请求副作用（对齐旧版只在文本 input 时跑 updatePalette）
+  // Trigger-state dedupe key: Lexical's updateListener also fires onQueryChange
+  // for selection-only updates; the same trigger state runs the request side
+  // effect only once (aligned with the old updatePalette running only on text input)
   const lastKeyRef = useRef<string | null>(null);
 
-  // ---- 附件隔离与恢复（挂载时从草稿恢复，变动时保存至草稿） ----
+  // ---- Attachment isolation and restore (restore from draft on mount, save to
+  // draft on change) ----
   const restoredRef = useRef(false);
   useLayoutEffect(() => {
     useAppStore.setState({ pendingFiles: getDraftFiles(draftKey) });
-    // 草稿镜像与编辑器内容都随槽切换：useState 初值只在首个 draftKey 求值，而 Lexical
-    // 编辑器实例跨 draftKey 复用（initialConfig.editorState 仅首次生效），不同步会带着
-    // 上个槽的文本残留——并被 updateListener 写进新槽（跨会话草稿泄漏 + ready 态常亮）
+    // Both the draft mirror and the editor content follow slot switches: the
+    // useState initial value is evaluated only for the first draftKey, while the
+    // Lexical editor instance is reused across draftKeys (initialConfig.editorState
+    // takes effect only once); without syncing, stale text from the previous slot
+    // lingers -- and gets written into the new slot by updateListener
+    // (cross-session draft leak + ready state stuck on)
     setText(getDraftText(draftKey));
     lexRef.current?.setText(getDraftText(draftKey));
     restoredRef.current = true;
@@ -231,19 +259,24 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   }, [draftKey, pendingFiles]);
 
   const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
-  // 运行中的本地 bash 行（! 前缀命令）：停止形态同样覆盖——点停止发 bash_abort 而非 abort_session
+  // Running local bash row (!-prefixed command): the stop form covers it too --
+  // clicking stop sends bash_abort instead of abort_session
   const bashRunning = !!s?.items?.some((x: { role?: string; running?: boolean }) => x.role === "bash" && x.running);
   const stopping = (!!s?.streaming || bashRunning) && !hasDraft;
-  // Esc 二次确认窗口内：有草稿时发送钮短暂显示取消图标（再按一次 Esc 即中断生成）
+  // Inside the Esc double-confirm window: with a draft the send button briefly
+  // shows the cancel icon (pressing Esc again interrupts generation)
   const escArmed = Date.now() < (escArmedUntil ?? 0);
   const canAbort = stopping || escArmed;
 
-  // ---- 外部回填信号（分叉 selectedText / 排队消息编辑），对齐原 setComposerValue（含图片） ----
+  // ---- External backfill signal (fork selectedText / queued message edit),
+  // aligned with the old setComposerValue (images included) ----
   useEffect(() => {
     const sig = composerSetSignal;
     if (!sig || !lexRef.current) return;
-    // guard=异步回填（分叉/跳转回包）：RPC 往返期间用户已打了新草稿则放弃覆盖，
-    // 用户的新意图优先（对齐 PI-Desktop #934「完成回调只拥有它提交的那份草稿」语义）
+    // guard = async backfill (fork/jump reply): if the user typed a new draft
+    // during the RPC round trip, skip the overwrite -- the user's new intent wins
+    // (aligned with PI-Desktop #934 "the completion callback owns only the draft
+    // it submitted")
     if (sig.guard && (getDraftText(draftKey).trim() || useAppStore.getState().pendingFiles.length)) {
       useAppStore.setState({ composerSetSignal: null });
       return;
@@ -255,7 +288,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       return;
     }
     lexRef.current.setText(sig.text);
-    // 底座 ImageContent[] 转本地附件 chip：字段形态 { type:"image", data, mimeType }，兼容嵌套 source 形态
+    // Convert base ImageContent[] to local attachment chips: field shape
+    // { type:"image", data, mimeType }, nested source shape tolerated
     interface BackfillImage {
       name?: string;
       data?: string;
@@ -263,10 +297,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       mediaType?: string;
       source?: { type?: string; data?: string; mimeType?: string; mediaType?: string };
     }
-    // 形状随底座 SDK(frames.ts selectedImages/editorImages TODO),只约束本 effect 读取的字段
+    // Shape follows the base SDK (frames.ts selectedImages/editorImages TODO);
+    // only constrain the fields this effect reads
     const backfillImages = (sig.images ?? []) as BackfillImage[];
-    // 附件追加 + 信号清零 + 渲染触发合并为一次 setState（pendingFiles 容器换新引用,
-    // id 编号取 store 当前 fileSeq 递增,等价原逐个 ++fileSeq）
+    // Attachment append + signal reset + render trigger merged into one setState
+    // (pendingFiles container gets a new reference; ids continue from the store's
+    // current fileSeq, equivalent to the old per-item ++fileSeq)
     useAppStore.setState((st) => {
       const files = [...st.pendingFiles];
       let seq = st.fileSeq;
@@ -286,26 +322,29 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     lexRef.current.focus();
   });
 
-  // ---- 挂载位切换（欢迎页 ↔ dock 实例重建）：欢迎页聚焦 ----
+  // ---- Mount slot switch (welcome <-> dock rebuilds the instance): focus on welcome ----
   useLayoutEffect(() => {
     if (inWelcome) lexRef.current?.focus();
   }, [inWelcome]);
 
-  // ---- 草稿有无同步到 store（全局 Esc 的二次确认要知道输入框里有没有内容） ----
+  // ---- Sync draft presence to the store (global Esc double-confirm needs to
+  // know whether the composer has content) ----
   useEffect(() => {
-    // 静默写（不 bump：原代码写后无 notify，带 bump 会渲染循环）
+    // Silent write (no bump: the old code had no notify after the write; with bump
+    // it would render-loop)
     useAppStore.setState({ draftHasContent: hasDraft });
   });
 
-  // ---- 发送链路（原 sendPrompt 平移） ----
+  // ---- Send path (ported from the old sendPrompt) ----
   // Resolved here because sendPrompt's local `t` (draft text) shadows the
   // translation function inside its scope.
   const needSessionMsg = t("composer.needSession");
   const clearDraft = () => {
     lexRef.current?.clear();
     clearDraftState(draftKey);
-    // 直接同步镜像：Lexical clear() 的 updateListener 异步触发，届时槽已删成空串，
-    // changed 判定（空===空）会跳过 onTextChange，text 将残留已发送的旧文本
+    // Sync the mirror directly: Lexical clear() triggers updateListener
+    // asynchronously, by then the slot is already emptied and the changed check
+    // (empty===empty) skips onTextChange, leaving the sent text behind in `text`
     setText("");
     setBump({ pendingFiles: [] });
   };
@@ -315,13 +354,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const ws = useAppStore.getState().ws;
     if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;
 
-    // bash 模式（! 前缀，!! = 结果不进模型上下文）：本地执行，不出 user 气泡，
-    // 行由 bash_start 帧建立（对齐 TUI input-controller 的发送路由）
+    // bash mode (! prefix, !! = result kept out of model context): executed
+    // locally, no user bubble; the row is created by the bash_start frame
+    // (aligned with the TUI input-controller send routing)
     if (isBashMode(t)) {
       const raw = t.trim();
       const excludeFromContext = raw.startsWith("!!");
       const command = excludeFromContext ? raw.slice(2).trim() : raw.slice(1).trim();
-      if (!command) return; // `!` / `!!` 空命令：无动作（TUI 同款）
+      if (!command) return; // `!` / `!!` with empty command: no action (same as TUI)
       if (!s) {
         toast(needSessionMsg);
         return;
@@ -331,7 +371,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       return;
     }
 
-    // 新建态：草稿存 pendingNewPrompt，session_created 回执后由 store 代发
+    // Creating-new state: store the draft in pendingNewPrompt; the store sends it
+    // after the session_created receipt
     if (isCreatingNew || !s) {
       useAppStore.setState({ pendingNewPrompt: { text: t, files } });
       clearDraft();
@@ -344,14 +385,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       useAppStore.setState({ pendingCreate: true });
       return;
     }
-    // 提取图片载荷供前端气泡即时渲染
+    // Extract image payloads for immediate frontend bubble rendering
     const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = files
       .filter((f) => f.kind === "image" && typeof f.data === "string")
       .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
 
-    // 流式中发送 = 进待发送队列（followUp，当前 loop 完自动消费）；Ctrl+↵ 则是 steer——
-    // 立即注入（当前工具批次后），气泡固定在消息流底部，分割发生在消费时刻（steer_consumed）
-    // updateSession 换 session/Map 引用：selector 订阅组件（本组件/QueueCard）与旧 useStore 组件均感知
+    // Sending while streaming = enqueue as followUp (auto-consumed when the
+    // current loop finishes); Ctrl+↵ is steer -- immediate injection (after the
+    // current tool batch), the bubble is pinned at the bottom of the message
+    // flow, and the split happens at consumption time (steer_consumed)
+    // updateSession swaps the session/Map reference: both selector-subscribed
+    // components (this component / QueueCard) and the old useStore components see it
     if (s.streaming) {
       updateSession(s.sessionId, (next) => {
         if (steer) {
@@ -375,19 +419,23 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           text: t,
           ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
         });
-        // 本地即刻置运行态：计时从发送起算、发送钮转停止（宿主 turn_start 到达后保留起点不重置）
+        // Set the running state locally right away: the timer starts at send time
+        // and the send button flips to stop (the host turn_start keeps the origin
+        // without resetting it once it arrives)
         next.streaming = true;
         next.turnStartAt = Date.now();
       });
     }
     clearDraft();
     ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
-    // 钉底跟随由 Chat 组件的滚动 effect 处理
+    // Pin-to-bottom following is handled by Chat's scroll effect
   };
 
-  // ---- sigil 触发检测（triggerFn）：全局压平视图 + detectTrigger，语义与旧 updatePalette
-  // 的检测段一致（无会话且非新建页时命令不触发）；触发区间须完整落在 anchor 文本节点内
-  // （Typeahead 的替换区间按节点内偏移定位） ----
+  // ---- sigil trigger detection (triggerFn): global flattened view +
+  // detectTrigger, semantics identical to the detection section of the old
+  // updatePalette (commands do not trigger with no session and outside the
+  // creating-new page); the trigger range must fall entirely inside the anchor
+  // text node (Typeahead locates the replacement range by in-node offsets) ----
   const triggerFn = useCallback<TriggerFn>(
     (_text, editor) =>
       editor.read(() => {
@@ -408,7 +456,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (t.kind === "command") {
           const st = useAppStore.getState();
           const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-          if (!sess && !st.isCreatingNew) return fail(); // 无会话且非新建页：命令不可用
+          if (!sess && !st.isCreatingNew) return fail(); // no session and not creating-new: commands unavailable
         }
         const nodeStart = $leafStart(node);
         if (nodeStart == null || t.start < nodeStart) return fail();
@@ -418,12 +466,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     [],
   );
 
-  // ---- 触发后的请求副作用（onQueryChange）：斜杠命令清单拉取 / @ 文件候选 150ms 防抖，
-  // 平移旧 updatePalette 的请求段（含 commands:null 静默写、reqId 自增丢弃过期响应） ----
+  // ---- Post-trigger request side effect (onQueryChange): slash command list
+  // fetch / @ file candidates with 150ms debounce, ported from the request
+  // section of the old updatePalette (including the silent commands:null write
+  // and reqId increment to drop stale responses) ----
   const onQueryChange = useCallback((q: string | null) => {
     const trig = lastTriggerRef.current;
     const key = q == null || !trig ? null : `${trig.kind}|${trig.quoted ? 1 : 0}|${q}`;
-    if (key === lastKeyRef.current) return; // 同一触发态的重复 update：副作用幂等跳过
+    if (key === lastKeyRef.current) return; // repeated update for the same trigger state: idempotent skip of side effects
     lastKeyRef.current = key;
     if (!trig || q == null) return;
     setTaKind(trig.kind);
@@ -431,16 +481,18 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const st = useAppStore.getState();
     const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
     if (trig.kind === "command") {
-      // 清单归属：会话 id 或新建页哨兵（新建页走无会话清单，隐藏会话级命令）
+      // List ownership: session id or the creating-new sentinel (creating-new uses
+      // the sessionless list, hiding session-level commands)
       const cmdKey = sess ? sess.sessionId : "new";
       if (st.commandsSessionId !== cmdKey) {
-        useAppStore.setState({ commands: null }); // 清单过期：拉取期间弹层显示加载中
+        useAppStore.setState({ commands: null }); // list stale: popup shows loading during fetch
         send({ type: "list_commands", sessionId: sess?.sessionId, cwd: sess ? undefined : st.newSessionProject || undefined });
       }
     } else {
-      // @ 文件候选：150ms 防抖后发 list_files（宿主 fuzzyFind 是磁盘扫描）
+      // @ file candidates: send list_files after a 150ms debounce (the host
+      // fuzzyFind is a disk scan)
       const reqId = st.mentionReqSeq + 1;
-      useAppStore.setState({ mentionReqSeq: reqId }); // 静默自增（原 ++ 后无 notify）
+      useAppStore.setState({ mentionReqSeq: reqId }); // silent increment (the old code did ++ without notify)
       const cwd = sess ? undefined : st.newSessionProject || undefined;
       clearTimeout(mentionTimer.current ?? undefined);
       mentionTimer.current = setTimeout(() => {
@@ -450,8 +502,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
   }, []);
 
-  // 候选与加载态渲染期从 store 现算（file_matches/commands 回包 setState 触发重渲染），
-  // 不存快照——回包帧到达即出候选，无需再次击键
+  // Candidates and loading state are computed from the store at render time (the
+  // file_matches/commands replies setState and trigger a re-render); no snapshot
+  // is stored -- candidates appear the moment the reply frame arrives, no extra
+  // keystroke needed
   const taItems: PaletteItem[] =
     taKind === "file"
       ? mentionResult && mentionResult.reqId === taReqId
@@ -463,10 +517,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const taLoading = taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" ? commands === null : false;
   const taOptions = taItems.map((it) => new PalOption(it));
 
-  // ---- 接受补全：文件/命令 → ChipNode（序列化 = insertFile/insertCommand 原文）；目录 →
-  // 纯文本替换且光标停在 token 尾（无尾随空格），update 后 triggerFn 重算触发、链式展开
-  // 该目录内容（对齐旧版 dispatchEvent(input) 重算触发；chip 后为 element anchor，无法
-  // 再触发文本级 typeahead，故目录链式必须走纯文本） ----
+  // ---- Accepting a completion: file/command -> ChipNode (serialization =
+  // insertFile/insertCommand verbatim); directory -> plain-text replacement with
+  // the caret parked at the token tail (no trailing space), triggerFn recomputes
+  // the trigger after update and chains into that directory's contents (aligned
+  // with the old dispatchEvent(input) trigger recompute; after a chip the anchor
+  // is an element node, text-level typeahead can no longer trigger, so directory
+  // chaining must go through plain text) ----
   const onSelectOption = useCallback((option: PalOption, node: TextNode | null, closeMenu: () => void) => {
     const trig = lastTriggerRef.current;
     if (!trig || !node) {
@@ -476,7 +533,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const it = option.data;
     if (trig.kind === "file") {
       if (!("path" in it)) {
-        closeMenu(); // 类型守卫：kind=file 时候选必为 FileItem
+        closeMenu(); // type guard: candidates must be FileItem when kind=file
         return;
       }
       const next = insertFile(it.path, it.dir, trig.quoted);
@@ -490,7 +547,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       }
     } else {
       if (!("name" in it)) {
-        closeMenu(); // 类型守卫：kind=command 时候选必为 CommandItem
+        closeMenu(); // type guard: candidates must be CommandItem when kind=command
         return;
       }
       const chip = $createChipNode(insertCommand(it.name));
@@ -500,8 +557,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     closeMenu();
   }, []);
 
-  // 面板渲染：沿用 PaletteMenu（.menu/.mi 视觉 + placePaletteCard 锚定 #composer 卡片上方，
-  // 与旧版逐像素一致）；导航/高亮/接受走插件给的 itemProps
+  // Panel rendering: reuses PaletteMenu (.menu/.mi visuals + placePaletteCard
+  // anchoring the card above #composer, pixel-identical to the old version);
+  // navigation/highlight/accept go through the plugin-provided itemProps
   const menuRenderFn: MenuRenderFn<PalOption> = (_anchorRef, itemProps) => (
     <PaletteMenu
       mode={taKind === "command" ? "command" : "file"}
@@ -519,7 +577,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const onTaOpen = useCallback(() => setTaOpen(true), []);
   const onTaClose = useCallback(() => setTaOpen(false), []);
 
-  // ---- 附件处理：支持选文件/粘贴截图/拖拽文件入列 ----
+  // ---- Attachment handling: pick files / paste screenshots / drag-drop files into the list ----
   const addIncomingFiles = useCallback(async (picked: File[]) => {
     const added: (PromptAttachment & { id: number })[] = [];
     for (const file of picked) {
@@ -531,7 +589,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (file.type.startsWith("image/")) {
           const dataUrl = await new Promise<string>((ok, no) => {
             const r = new FileReader();
-            r.onload = () => ok(r.result as string); // readAsDataURL 结果必为 dataURL 字符串
+            r.onload = () => ok(r.result as string); // readAsDataURL result is always a dataURL string
             r.onerror = () => no(r.error);
             r.readAsDataURL(file);
           });
@@ -545,7 +603,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       }
     }
     if (added.length === 0) return;
-    // 附件入列 + 渲染触发合并为一次 setState（pendingFiles 容器换新引用）
+    // Attachment append + render trigger merged into one setState (pendingFiles
+    // container gets a new reference)
     useAppStore.setState((st) => {
       let seq = st.fileSeq;
       const files = [...st.pendingFiles];
@@ -554,14 +613,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     });
   }, []);
 
-  // 附件选择（原 filePicker change 平移）
+  // Attachment picking (ported from the old filePicker change)
   const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
     const picked = [...(e.target.files ?? [])];
-    e.target.value = ""; // 允许重复选同一文件
+    e.target.value = ""; // allow picking the same file again
     await addIncomingFiles(picked);
   };
 
-  // ---- 剪贴板图片粘贴（Cmd+V 截屏识别） ----
+  // ---- Clipboard image paste (Cmd+V screenshot detection) ----
   useEffect(() => {
     const comp = rootRef.current;
     if (!comp) return;
@@ -613,12 +672,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
   };
 
-  // ---- 停止钮防连点复位（原 turn_end 重绘时复位 disabled） ----
+  // ---- Stop-button double-click guard reset (the old code reset disabled when
+  // turn_end repainted) ----
   useEffect(() => {
     if (!canAbort) setStopPending(false);
   }, [canAbort]);
 
-  // ---- 点外部 / 窗口失焦 / omp:close-menus 协调关菜单（原 window click/blur → closeAllMenus） ----
+  // ---- Coordinated menu closing on outside click / window blur / omp:close-menus
+  // (old window click/blur -> closeAllMenus) ----
   useEffect(() => {
     const close = () => {
       setOpenMenu(null);
@@ -634,10 +695,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     };
   }, [closeTypeahead]);
 
-  // ---- 卸载清理 @ 候选防抖定时器 ----
+  // ---- Unmount cleanup of the @ candidate debounce timer ----
   useEffect(() => () => clearTimeout(mentionTimer.current ?? undefined), []);
 
-  // ---- 底栏分级收缩（原 fitComposerBar 平移；bar-N 类为命令式追加，className prop 恒定 React 不会覆盖） ----
+  // ---- Bottom-bar graded collapse (ported from the old fitComposerBar; bar-N
+  // classes are appended imperatively, React never overrides them since the
+  // className prop stays constant) ----
   const fit = () => {
     const comp = rootRef.current;
     const cbar = cbarRef.current;
@@ -645,12 +708,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     comp.classList.remove("bar-1", "bar-2", "bar-3", "bar-4", "bar-5");
     let stage = 0;
     if (cbar) {
-      // 需求宽度 = 各可见子项 offsetWidth 之和 + 间隙（不用 scrollWidth：overflow:hidden 的
-      // flex 容器在 WebKit 下对 flex:none 子项的 scrollWidth 被钳到 clientWidth，不可靠）
+      // Needed width = sum of visible children's offsetWidth + gaps (not
+      // scrollWidth: in WebKit an overflow:hidden flex container clamps
+      // scrollWidth to clientWidth for flex:none children, unreliable)
       const gap = parseFloat(window.getComputedStyle(cbar).columnGap) || 6;
       const needWidth = () => {
         const vis = [...cbar.children].filter(
-          (k) => !k.classList.contains("sp") && (k as HTMLElement).offsetWidth > 0, // children 均为元素节点;offsetWidth 仅 HTMLElement 声明,收窄即可
+          (k) => !k.classList.contains("sp") && (k as HTMLElement).offsetWidth > 0, // children are all element nodes; offsetWidth is declared only on HTMLElement, narrowing suffices
         );
         return vis.reduce((a, k) => a + (k as HTMLElement).offsetWidth, 0) + gap * Math.max(0, vis.length - 1);
       };
@@ -661,7 +725,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
     if (stage !== barStageRef.current) {
       barStageRef.current = stage;
-      // 阶段变化会移动按钮，打开中的菜单锚点随之失效，直接收起
+      // A stage change moves the buttons, anchors of open menus go stale; just close them
       if (comp.querySelector(".menu.open")) {
         setOpenMenu(null);
         closeTypeahead();
@@ -669,7 +733,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
   };
   useLayoutEffect(fit);
-  // 窗口/分栏/缩放引起 composer 宽度变化时重新适配
+  // Re-fit when the composer width changes due to window/split/zoom changes
   useEffect(() => {
     const comp = rootRef.current;
     if (!comp || typeof ResizeObserver === "undefined") return;
@@ -677,22 +741,25 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     ro.observe(comp);
     return () => ro.disconnect();
   }, []);
-  // 壳缩放后重算底栏收缩（zoom 不触发 ResizeObserver，shell.js 经 omp:zoom 通知）
+  // Recompute the bottom-bar collapse after shell zoom (zoom does not trigger
+  // ResizeObserver; shell.js notifies via omp:zoom)
   useEffect(() => {
     window.addEventListener("omp:zoom", fit);
     return () => window.removeEventListener("omp:zoom", fit);
   }, []);
 
-  // ---- cbar 各按钮态 ----
+  // ---- cbar button states ----
   const modeMeta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
-  const menuDisabled = !(s || isCreatingNew); // 无会话且非新建态：模型/思考不可用
+  const menuDisabled = !(s || isCreatingNew); // no session and not creating-new: model/think unavailable
 
-  // ---- 外部打开菜单信号（快捷键 Alt+M）：与 composerSetSignal 同款的一次性信号 ----
+  // ---- External menu-open signal (shortcut Alt+M): a one-shot signal like
+  // composerSetSignal ----
   useEffect(() => {
     const sig = menuSignal;
     if (!sig) return;
-    useAppStore.setState({ menuSignal: null }); // 静默写（原同：清零本身不触发重渲染）
-    // 信号由 keys.ts 按固定菜单名写入("model"/"think"/"mode"),断言收窄为本组件的菜单名联合
+    useAppStore.setState({ menuSignal: null }); // silent write (same as before: the reset alone does not re-render)
+    // The signal is written by keys.ts with fixed menu names ("model"/"think"/"mode");
+    // the assertion narrows to this component's menu name union
     const menuName = sig.name as MenuName;
     if (!menuDisabled) setOpenMenu(menuName);
   });
@@ -706,31 +773,35 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const bgTasks = bgTaskCount(s);
   const bgSubs = subagentCount(s);
 
-  // 菜单按钮通用开关：再点同钮收起，互斥由单 state 天然保证；
-  // 打开前先协调全局菜单（设置页 Sel 等 DOM class 态菜单经 closeAllMenus 收起）
+  // Menu button toggle: clicking the same button again closes; mutual exclusion
+  // comes naturally from the single state; coordinate global menus before opening
+  // (DOM class-state menus such as the settings page Sel close via closeAllMenus)
   const toggleMenu = (name: MenuName) => (e: MouseEvent) => {
-    e.stopPropagation(); // 不冒泡给 window 级关闭监听
+    e.stopPropagation(); // do not bubble to the window-level close listener
     if (openMenu !== name) closeAllMenus();
     setOpenMenu(openMenu === name ? null : name);
   };
 
-  // 后台任务/子智能体按钮：展开并切换右栏对应 tab，再点收起右栏（原 right.js 绑定平移）
+  // Background task / subagent button: expand and switch the right panel to the
+  // matching tab; clicking again collapses the right panel (ported from the old
+  // right.js binding)
   const toggleBgTab = (tab: string) => () => {
     if (!s) return;
     const st = useAppStore.getState();
     if (!st.rightCollapsed && st.rightTab === tab) {
       setBump({ rightCollapsed: true });
     } else {
-      setBump({ rightTab: tab, selectedFile: null, selectedSubagent: null, rightCollapsed: false, todoCollapsed: true }); // 展开右栏时进程卡让位收起（parts.jsx 同款）
+      setBump({ rightTab: tab, selectedFile: null, selectedSubagent: null, rightCollapsed: false, todoCollapsed: true }); // expanding the right panel yields to collapse the process card (same as parts.jsx)
     }
   };
 
-  // Lexical 初始化配置：nodes 注册 ChipNode；editorState 取模块级草稿快照（挂载位切换恢复）
+  // Lexical init config: nodes registers ChipNode; editorState takes the
+  // module-level draft snapshot (restored on mount slot switch)
   const initialConfig = useMemo(
     () => ({
       namespace: "omp-composer",
       onError(error: Error) {
-        throw error; // 快速失败：编辑器内部异常不静默吞
+        throw error; // fail fast: never silently swallow editor-internal exceptions
       },
       nodes: [ChipNode],
       editorState: getDraftState(draftKey) ?? undefined,
@@ -772,7 +843,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             </div>
             <HistoryPlugin />
             <ComposerPlugin draftKey={draftKey} handleRef={lexRef} onTextChange={onTextChange} sendPrompt={sendPrompt} typeaheadOpenRef={taOpenRef} />
-            {/* key 重挂 = 关闭面板通道（closeTypeahead）；triggerFn/onQueryChange 零依赖稳定，避免监听反复重注册 */}
+            {/* key remount = the close-panel channel (closeTypeahead); triggerFn/onQueryChange have zero deps and stay stable, avoiding repeated listener re-registration */}
             <LexicalTypeaheadMenuPlugin
               key={closeTick}
               parent={rootRef.current ?? undefined}
@@ -786,7 +857,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             />
           </LexicalComposer>
         ) : (
-          /* 无 contentEditable 语义环境（happy-dom 冒烟）的降级占位：不初始化 Lexical，编辑操作全部空转 */
+          /* Degraded placeholder for environments without contentEditable semantics
+             (happy-dom smoke): Lexical is not initialized, editing operations all no-op */
           <div id="input" className="inp-ce" />
         )}
         <div className="cbar" ref={cbarRef}>
@@ -803,7 +875,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <Icon name={modeMeta.icon} id="modeIcon" />
             <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
           </button>
-          {/* 计划模式（仅会话内可开）：胶囊右侧以 | 分隔的小按钮，hover 时图标变 X 表示点击退出 */}
+          {/* Plan mode (only available inside a session): a small button right of
+              the pill separated by |; on hover the icon flips to X meaning click to exit */}
           {s?.planMode && (
             <>
               <span className="cbar-sep" id="planSep">|</span>
@@ -886,11 +959,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
                     : t("composer.send")
             }
             onClick={() => {
-              // 取消形态（停止生成 / Esc 示警窗口）：中止生成；发送形态：照常发送/排队
+              // Cancel form (stop generation / Esc warning window): abort
+              // generation; send form: send/queue as usual
               if (canAbort) {
                 if (stopPending) return;
-                setStopPending(true); // 防连点：turn_end / bash_done 后复位
-                // 中止仅在流式/命令运行中可用(此时 s 必在);escArmed 无会话路径不可达,可选链仅防御
+                setStopPending(true); // double-click guard: reset on turn_end / bash_done
+                // Abort is available only while streaming/running a command (s is
+                // guaranteed then); the escArmed no-session path is unreachable,
+                // the optional chain is defensive only
                 send({ type: bashRunning && !s?.streaming ? "bash_abort" : "abort_session", sessionId: s?.sessionId });
                 return;
               }
@@ -900,20 +976,23 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <Icon name={canAbort ? "stopSolid" : "arrowRight"} size={16} />
           </button>
         </div>
-        {/* 权限模式（omp 三值，大行样式） */}
+        {/* Permission mode (omp three values, large-row style) */}
         {openMenu === "mode" && <ModeMenu btnRef={modeBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
-        {/* 模型（宿主 enabledModels 过滤后下发，按 provider 分组；二级浮层为 #composer 直接子节点） */}
+        {/* Model (delivered after the host filters enabledModels, grouped by
+            provider; the second-level overlay is a direct child of #composer) */}
         {openMenu === "model" && <ModelMenu btnRef={modelBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
         <input type="file" id="filePicker" multiple hidden ref={pickerRef} onChange={onPick} />
-        {/* 思考级别（只列当前模型支持的档位） */}
+        {/* Think level (only lists tiers supported by the current model) */}
         {openMenu === "think" && <ThinkMenu btnRef={thinkBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
       </div>
     </>
   );
 }
 
-// 上下文环（原 renderComposerBar 的 ctxRing 段平移）：从顶端顺时针填充；无数据空环；
-// 新建态也展示空环。hover 弹上下文明细卡见 chat/CtxCard.jsx（ringRef 仅作锚点，不动内部 svg）
+// Context ring (ported from the ctxRing section of the old renderComposerBar):
+// filled clockwise from the top; empty ring without data; the creating-new state
+// also shows an empty ring. The hover context detail card lives in
+// chat/CtxCard.jsx (ringRef is only an anchor, the inner svg is untouched)
 function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
   if (!s && !isCreatingNew) return null;
@@ -937,7 +1016,8 @@ function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } } | null | und
   );
 }
 
-// 模型显示名：modelNames 查表，无表项时取 id 尾段（原 renderComposerBar 同款）
+// Model display name: look up modelNames; without an entry take the id tail
+// (same as the old renderComposerBar)
 function modelShort(id: string | null | undefined) {
   if (!id) return "";
   return useAppStore.getState().modelNames.get(id) ?? id.split("/").pop();

@@ -1,4 +1,5 @@
-// 侧边栏会话搜索卡片：位于新建任务下方，卡片样式对齐新建任务，支持按会话标题搜索，点击或回车切换到对应会话详情页。
+// Sidebar session search card: below the new-task entry, card style aligned with it; supports
+// searching by session title; click or Enter switches to the session's detail page.
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,7 @@ export default function SidebarSearch() {
   const listRef = useRef<HTMLDivElement>(null);
   const isKeyboardNavRef = useRef(false);
 
-  // 汇总所有磁盘会话（未重命名/未打标会话以 firstMessage 兜底标签呈现，对齐侧栏 SessionRow）
+  // Aggregate all disk sessions (unnamed/untitled sessions display with the firstMessage fallback label, aligned with the sidebar SessionRow)
   const allSessions = useMemo(() => {
     const list: SessionMatch[] = [];
     const seenPaths = new Set<string>();
@@ -76,14 +77,14 @@ export default function SidebarSearch() {
     listRef.current?.scrollTo({ top: 0 });
   }, [matches]);
 
-  // 键盘上下导航时自动将高亮项滚动至可视区域
+  // During keyboard up/down navigation, auto-scroll the highlighted item into view
   useEffect(() => {
     if (!open || !isKeyboardNavRef.current) return;
     const activeEl = listRef.current?.querySelector<HTMLElement>(".side-search-item.on");
     activeEl?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex, open]);
 
-  // 点击外部收起搜索结果浮层
+  // Collapse the search results popover on outside click
   useEffect(() => {
     if (!open) return;
     const onClickOutside = (e: globalThis.MouseEvent) => {
@@ -95,7 +96,7 @@ export default function SidebarSearch() {
     return () => window.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
-  // 打开会话详情页：切换到该会话、展开对应项目并关闭欢迎屏
+  // Open the session detail page: switch to the session, expand its project, and close the welcome screen
   const handleOpenSession = (path: string, cwd?: string) => {
     useAppStore.setState({ isCreatingNew: false });
     hideWelcomeScreen();
@@ -187,7 +188,7 @@ export default function SidebarSearch() {
         </button>
       ) : null}
 
-      {/* 搜索结果浮层 */}
+      {/* Search results popover */}
       {open && kw && (
         <div ref={listRef} className="side-search-pop" onClick={(e) => e.stopPropagation()}>
           {matches.length === 0 ? (

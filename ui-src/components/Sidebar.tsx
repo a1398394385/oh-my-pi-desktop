@@ -1,8 +1,10 @@
-// 左栏：新建任务入口 + 视图切换（最近/项目）+ 会话列表（tasklist）+ 底部账号/设置。
-// 迁移自 ui/sidebar.js（800 行）：renderList/taskRow/归档区/项目拖拽排序/右键菜单/
-// 确认弹窗/添加项目弹层/⌘N。契约：渲染数据经 useAppStore selector 订阅（diskProjects/
-// pinnedSessions/viewMode/管理态等），事件内写状态换新引用并带 _v bump；
-// DOM 结构与类名对照 ui/index.html + sidebar.js。
+// Left sidebar: new-task entry + view switch (recent/projects) + session list (tasklist) +
+// bottom account/settings.
+// Migrated from ui/sidebar.js (800 lines): renderList/taskRow/archive section/project drag
+// reorder/context menu/confirm dialog/add-project popover/⌘N. Contract: render data subscribed
+// via useAppStore selectors (diskProjects/pinnedSessions/viewMode/manage mode etc.), events
+// write state with fresh references plus _v bump;
+// DOM structure and class names cross-checked against ui/index.html + sidebar.js.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,7 +26,7 @@ import ProjAddPop from "./sidebar/ProjAddPop";
 import SidebarSearch from "./sidebar/SidebarSearch";
 import { computeSidebarSessionShortcuts } from "./sidebar/util";
 
-// 删除/移除二次确认弹窗内容
+// Content of the delete/remove confirm dialog
 interface ConfirmSpec {
   title: string;
   message: string;
@@ -33,7 +35,7 @@ interface ConfirmSpec {
   onConfirm: () => void;
 }
 
-// 会话行右键菜单（entry + 视口坐标 + 行 key）
+// Session row context menu (entry + viewport coords + row key)
 interface SessCtxSpec {
   entry: SessionInfo;
   x: number;
@@ -41,14 +43,15 @@ interface SessCtxSpec {
   key: string;
 }
 
-// 项目拖动几何：base 为按下时刻各项目组头+子列表的占位快照
+// Project drag geometry: base is a snapshot of every project group head + child list's
+// footprint taken at pointer-down
 interface ProjDragGroup {
   cwd: string;
   top: number;
   h: number;
 }
 
-// 拖动候选（按下未过 5px 阈值）；groups 非 null 表示已进入拖动态
+// Drag candidate (pressed but under the 5px threshold); groups non-null means dragging has begun
 interface ProjDragPending {
   cwd: string;
   pointerId: number;
@@ -73,18 +76,19 @@ interface ProjDragActive extends Omit<ProjDragPending, "groups"> {
 
 type ProjDrag = ProjDragPending | ProjDragActive;
 
-// 清理模式进入前的展开/条数快照（只记进入时刻的存量项目）
+// Snapshot of expansion/limits taken before entering manage mode (records only the projects existing at entry)
 interface ManageSnap {
   cwd: string;
   wasExpanded: boolean;
   limit: number | null;
 }
 
-// 点新建（含已在欢迎页时再点）：明确回到配置文件默认——清手选标记 + 强制重校准
+// Click "new" (including clicking again while already on the welcome page): explicitly return
+// to the profile defaults — clear the manual-pick mark + force recalibration
 function newTaskAction() {
   if (useAppStore.getState().isCreatingNew) {
-    useAppStore.setState({ newSessionDirty: false }); // 静默写（同原 S 赋值不 bump）
-    initNewSessionModel(true); // 写 newSessionModel/newSessionThinking 标量，消费者已全部 selector 订阅，字段写入即通知
+    useAppStore.setState({ newSessionDirty: false }); // silent write (same old S assignment without bump)
+    initNewSessionModel(true); // writes newSessionModel/newSessionThinking scalars; consumers all subscribe via selectors, so field writes notify
   }
   showWelcomeScreen(activeOpen()?.cwd);
 }
@@ -97,7 +101,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const viewMode = useAppStore((s) => s.viewMode);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const hostSettings = useAppStore((s) => s.hostSettings);
-  // getAvailableProjects() 渲染期直调（内部读最新态），其底层字段须各自订阅，变化才触发重渲染
+  // getAvailableProjects() called directly during render (reads latest state internally); its
+  // underlying fields must each be subscribed so changes trigger re-render
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
   const expandedProjects = useAppStore((s) => s.expandedProjects);
@@ -107,17 +112,17 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const archivedSessions = useAppStore((s) => s.archivedSessions);
   void allProjects;
   void removedProjects;
-  // 弹层/局部交互态（原版散在 body append 的临时 DOM 与模块变量上）
+  // Popover/local interaction state (formerly scattered across body-appended temp DOM and module vars)
   const [confirmDlg, setConfirmDlg] = useState<ConfirmSpec | null>(null); // { title, message, confirmText, danger, onConfirm }
-  const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } 会话行右键菜单
-  const [projMenu, setProjMenu] = useState<{ cwd: string; rect: DOMRect } | null>(null); // { cwd, rect } 项目行「⋯」菜单
-  const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } 手动添加项目弹层锚点
-  const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }：行内重命名态（key 区分置顶/最近/项目组中的同一会话副本）
+  const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } session row context menu
+  const [projMenu, setProjMenu] = useState<{ cwd: string; rect: DOMRect } | null>(null); // { cwd, rect } project row "⋯" menu
+  const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } manual add-project popover anchor
+  const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
   const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx, x, y, left, w, grabY }
-  const dragRef = useRef<ProjDrag | null>(null); // 指针事件期间的最新拖动状态，避免高频 pointermove 读到旧闭包
-  const suppressProjClickRef = useRef(false); // 拖动结束后吞掉同一次 pointerup 产生的 click
+  const dragRef = useRef<ProjDrag | null>(null); // latest drag state during pointer events; keeps high-frequency pointermove from reading a stale closure
+  const suppressProjClickRef = useRef(false); // swallow the click produced by the same pointerup after a drag ends
   const listRef = useRef<HTMLDivElement>(null);
-  const selBeforeCtxRef = useRef<string | null>(null); // 右键前选区（WebKit 右键选词撤销用）
+  const selBeforeCtxRef = useRef<string | null>(null); // selection before right-click (for WebKit word-selection undo)
   const manageSnap = useRef<ManageSnap[] | null>(null); // Snapshot of project expansion and limits before entering manage mode
 
   const closeProjPopups = () => {
@@ -126,12 +131,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     setSessCtx(null);
   };
 
-  // ⌘N 新建任务（原 initSidebar 的 document keydown）
+  // ⌘N new task (document keydown in the old initSidebar)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        // 设置页打开时 ⌘N 不抢占（旧版 settingsOpen 检查平移；事件期读最新态）
+        // ⌘N yields while the settings page is open (old settingsOpen check ported; reads latest state during the event)
         if (useAppStore.getState().settingsOpen) return;
         newTaskAction();
       }
@@ -140,7 +145,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // —— 删除会话确认（管理模式行内按钮 / 归档区彻底删除共用） ——
+  // —— Delete-session confirm (shared by the manage-mode inline button / archive hard-delete) ——
   const askDeleteSession = (s: SessionInfo) => {
     const sTitle = s.title || s.firstMessage || s.id || t("sidebar.untitledSession");
     setConfirmDlg({
@@ -152,20 +157,20 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         send({ type: "delete_session", path: s.path });
         const st = useAppStore.getState();
         if (st.activePath === s.path) {
-          // openSessions 容器换新引用（静默写，重渲染由 showWelcomeScreen 的 _v bump 负责）
+          // openSessions container swapped to a fresh reference (silent write; re-render handled by showWelcomeScreen's _v bump)
           useAppStore.setState((cur) => {
             const openSessions = new Map(cur.openSessions);
             openSessions.delete(s.path);
             return { openSessions };
           });
-          useAppStore.setState({ activePath: null }); // 静默写（同原 S 赋值不 bump）
+          useAppStore.setState({ activePath: null }); // silent write (same old S assignment without bump)
           showWelcomeScreen(s.cwd || st.newSessionProject);
         }
       },
     });
   };
 
-  // —— 移除项目确认（组头「移除」钮与「⋯」菜单共用） ——
+  // —— Remove-project confirm (shared by the group-head "remove" button and the "⋯" menu) ——
   const askRemoveProject = (cwd: string) => {
     const projName = pathBase(cwd) || cwd;
     setConfirmDlg({
@@ -179,7 +184,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     });
   };
 
-  // —— 会话行右键菜单：记录右键前选区，弹出后撤销本次右键新产生的选词（WebKit） ——
+  // —— Session row context menu: record the pre-right-click selection, then undo the word
+  // selection this right-click produced after the menu opens (WebKit) ——
   const onSessContext = (e: ReactMouseEvent, entry: SessionInfo, key: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -191,8 +197,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     });
   };
 
-  // —— 项目拖拽排序（Pointer Events 自绘，对照 ZCode 的拖动浮层与让位动画） ——
-  // 按下先记录候选，超过 5px 才进入拖动态；这样普通点击仍然只负责展开/收起。
+  // —— Project drag reorder (Pointer Events, self-drawn; cross-checked against ZCode's drag
+  // overlay and yield animation) ——
+  // Pointer-down first records a candidate; dragging begins only past 5px; plain clicks still
+  // just expand/collapse.
   const onPointerDownHead = (e: ReactPointerEvent, cwd: string) => {
     dragRef.current = {
       cwd,
@@ -205,13 +213,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   const beginProjDrag = (e: ReactPointerEvent, pending: ProjDragPending): ProjDragActive | undefined => {
     const z = useAppStore.getState().zoomLevel || 1;
-    const heads = [...listRef.current!.querySelectorAll<HTMLElement>(".project-scroll > .proj")]; // 事件期列表必已挂载
+    const heads = [...listRef.current!.querySelectorAll<HTMLElement>(".project-scroll > .proj")]; // the list is guaranteed mounted by event time
     const base: ProjDragGroup[] = heads.map((head) => {
       const rect = head.getBoundingClientRect();
       const kids = head.nextElementSibling?.classList.contains("proj-kids") ? head.nextElementSibling : null;
       return {
-        cwd: head.dataset.cwd!, // .proj 组头必带 data-cwd（ProjGroup 渲染保证）
-        // getBoundingClientRect 返回屏幕像素；让位 transform 与拖拽位移都在 zoom 后的 CSS 坐标中计算。
+        cwd: head.dataset.cwd!, // a .proj group head always carries data-cwd (guaranteed by ProjGroup rendering)
+        // getBoundingClientRect returns screen pixels; yield transforms and drag displacement are both computed in zoomed CSS coordinates.
         top: rect.top / z,
         h: (rect.height + (kids?.getBoundingClientRect().height ?? 0)) / z,
       };
@@ -237,7 +245,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       iconName: projectIconName(project, useAppStore.getState().expandedProjects.has(pending.cwd)),
     };
     dragRef.current = drag;
-    // React 状态更新要等本轮事件结束；先同步锁住选择，避免 WebKit 在首个移动事件中选中文本。
+    // React state updates wait until the event turn ends; synchronously lock out selection
+    // first so WebKit doesn't select text in the first move event.
     listRef.current?.classList.add("proj-dragging");
     window.getSelection()?.removeAllRanges();
     setDrag(drag);
@@ -277,9 +286,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       if (!started) return;
     }
     e.preventDefault();
-    // 指针捕获期间 WebKit 仍可能保留旧的 Range；每次位移都清掉，防止拖过项目时出现蓝色选区。
+    // WebKit may keep a stale Range while the pointer is captured; clear on every move to
+    // prevent blue selections while dragging across projects.
     window.getSelection()?.removeAllRanges();
-    updateProjDrag(e, dragRef.current as ProjDragActive); // 经 beginProjDrag 后 dragRef 必为拖动态
+    updateProjDrag(e, dragRef.current as ProjDragActive); // after beginProjDrag, dragRef is guaranteed the active-drag shape
   };
 
   const endProjDrag = (commit: boolean): boolean => {
@@ -299,7 +309,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const merged = [...st.allProjects];
     for (const c of order) if (!merged.includes(c)) merged.unshift(c);
     const arr = [...order, ...merged.filter((c) => !order.includes(c))];
-    useAppStore.setState({ allProjects: arr }); // 字段写入即通知（allProjects 引用变化驱动侧栏重渲染）
+    useAppStore.setState({ allProjects: arr }); // field write notifies (allProjects reference change drives sidebar re-render)
     send({ type: "reorder_projects", order: arr });
     return true;
   };
@@ -322,22 +332,23 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     return true;
   };
 
-  // —— 列表数据 ——
+  // —— List data ——
   const manage = isProjectManageMode;
-  // 置顶列表：跨项目聚合，位于项目列表上方；磁盘上已不存在的置顶自动忽略
+  // Pinned list: aggregated across projects, above the project list; pinned entries no longer
+  // on disk are ignored automatically
   const pinnedRows = diskProjects
     .flatMap((p) => p.sessions)
     .filter((s) => pinnedSessions.has(s.path))
     .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
-  // 可见项目 = 所有项目列表 - 已移除；历史里的项目兜底并入（兼容旧宿主）
+  // Visible projects = all project list - removed; history-only projects merged as fallback (old-host compatibility)
   const visible = getAvailableProjects();
-  // 最近视图：全部会话按修改时间倒序，最多 50 条
+  // Recent view: all sessions by modified time descending, at most 50
   const flat = diskProjects
     .flatMap((p) => p.sessions.map((s) => ({ ...s, repo: pathBase(p.cwd) })))
     .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
     .slice(0, 50);
 
-  // 计算 ⌘1~0 快捷键映射（运行中优先，未读补齐，顺序与列表一致）
+  // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list)
   const shortcuts = useMemo(() => {
     return computeSidebarSessionShortcuts({
       viewMode,
@@ -373,7 +384,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     />
   );
 
-  // 「项目」标题行 ＋ 按钮：Tauri 环境弹系统目录选择框；纯浏览器开发环境退回手动输入弹层
+  // "Projects" heading row + buttons: Tauri opens the system directory picker; plain browser
+  // dev falls back to the manual-input popover
   const onSecAdd = (e: ReactMouseEvent) => {
     e.stopPropagation();
     if (projAdd) {
@@ -392,21 +404,23 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       setProjAdd({ rect });
     }
   };
-  // 垃圾桶：进出清理模式；进入时全部项目展开且不限制条数。
-  // 退出时恢复进入前的展开/条数状态(之前收起的收回、展开的保持)——快照只记进入时刻
-  // 的存量项目,清理模式中新展开的不回滚
+  // Trash: enters/exits manage mode; on entry all projects expand with no row limit.
+  // On exit, restore the expansion/limit state from before entry (previously collapsed
+  // re-collapse, expanded stay) — the snapshot only records projects existing at entry;
+  // ones newly expanded during manage mode are not rolled back
   const onSecTrash = (e: ReactMouseEvent) => {
     e.stopPropagation();
     const st = useAppStore.getState();
     const nextManage = !st.isProjectManageMode;
-    // 展开态/条数上限容器换新引用,随管理态一并 setBump(等价旧 mutate+末尾 notify)
+    // Expanded-set/limit containers swapped to fresh references and setBump'd together with the
+    // manage flag (equivalent of the old mutate + notify at the end)
     const nextExpanded = new Set(st.expandedProjects);
     const nextLimits = new Map(st.projectLimits);
     if (nextManage) {
       manageSnap.current = visible.map((pr) => ({
         cwd: pr.cwd,
         wasExpanded: st.expandedProjects.has(pr.cwd),
-        limit: st.projectLimits.get(pr.cwd) ?? null, // 无条目时 get 为 undefined,归一为 null(同原版 has()?get():null)
+        limit: st.projectLimits.get(pr.cwd) ?? null, // get yields undefined when absent; normalized to null (same as the old has()?get():null)
       }));
       for (const pr of visible) {
         nextExpanded.add(pr.cwd);
@@ -449,7 +463,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         }}
         onMouseDown={(e) => {
           if (e.button !== 2) return;
-          const sel = window.getSelection(); // 记录右键前选区，供选词撤销对比
+          const sel = window.getSelection(); // record the pre-right-click selection for the word-selection undo comparison
           selBeforeCtxRef.current = sel ? sel.toString() : null;
         }}
       >
@@ -480,11 +494,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
             </div>
             <div className="project-scroll">
               {(() => {
-                let oi = 0; // 其余组（不含拖组）的序位，用于让位位移计算
+                let oi = 0; // ordinal of the other groups (excluding the dragged one), for yield displacement
                 return visible.map((p) => {
                   const isSelf = drag && p.cwd === drag.cwd;
                   const i = isSelf ? -1 : oi++;
-                  // 拖组占位插入 drag.idx：其后各组下移 selfH；拖组原位置之后的组先上移回填
+                  // The dragged group's placeholder inserts at drag.idx: groups after it move
+                  // down by selfH; groups after the dragged group's original slot first move up to backfill
                   const ty = drag && !isSelf
                     ? (drag.idx <= i ? drag.selfH : 0) - (drag.k0 <= i ? drag.selfH : 0)
                     : 0;
@@ -541,7 +556,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         </button>
       </div>
 
-      {/* —— 弹层（portal 到 body） —— */}
+      {/* —— Popovers (portaled to body) —— */}
       {confirmDlg && (
         <ConfirmDialog {...confirmDlg} onClose={() => setConfirmDlg(null)} />
       )}

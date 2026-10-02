@@ -80,6 +80,12 @@ export default function WindowControls() {
       <button type="button" className="win-btn win-close" title={t("common.close")} onClick={() => void win().close()}>
         <CloseIcon />
       </button>
+      {/* Invisible hit extension to the window's literal top-right corner: the host
+         cards are inset by --shell-gap, so the corner itself would be a dead zone —
+         Windows users slam the mouse there by muscle memory. Hover highlights the
+         close button (CSS :has), click closes. Must stay no-drag (fixed-position
+         descendant of the header's data-tauri-drag-region). */}
+      <div className="win-hot" aria-hidden="true" onClick={() => void win().close()} />
     </div>
   );
 }

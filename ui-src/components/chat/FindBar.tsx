@@ -1,6 +1,8 @@
-// 会话内查找（⌘F）：消息级定位——跳到命中消息并闪烁强调，不做文本内关键字高亮。
-// 迁移自 ui/chat.js 的 findBar 段。索引范围为当前会话 items 中 user/assistant/thinking
-// 的纯文本（含 loop 组子项，递归）；key 与 data-fk 锚点同源。
+// In-session find (⌘F): message-level locating — jumps to the hit message and flashes it;
+// no in-text keyword highlighting.
+// Migrated from the findBar section of ui/chat.js. The index covers the plain text of
+// user/assistant/thinking items in the current session (including loop group sub-items,
+// recursively); keys share the same source as the data-fk anchors.
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ChatItem, LoopItem } from "./chat-types";
@@ -10,13 +12,14 @@ import { t } from "../../i18n";
 import { patchActiveItem } from "./parts";
 import Icon from "../../Icon";
 
-// 查找索引项：key 与 items.tsx 的 data-fk 锚点同源
+// Find index entry: the key shares the same source as the data-fk anchors in items.tsx
 interface FindMatch {
   key: string;
   text: string;
 }
 
-// 建文本索引：key 结构 = 顶层下标，或 "loop下标-子下标[-…]"（与 items.tsx 的 data-fk 同源）
+// Build the text index: key structure = top-level index, or "loopIndex-subIndex[-…]"
+// (same source as data-fk in items.tsx)
 function buildFindIndex(s: { items: ChatItem[] }): FindMatch[] {
   const out: FindMatch[] = [];
   const walk = (items: ChatItem[], pfx: string) => {
@@ -36,19 +39,20 @@ function buildFindIndex(s: { items: ChatItem[] }): FindMatch[] {
 }
 
 export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivElement | null> }) {
-  const activePath = useAppStore((s) => s.activePath); // 切会话收起判定依赖（订阅变化触发重渲染）
+  const activePath = useAppStore((s) => s.activePath); // dependency of the collapse-on-switch check (subscribing to changes triggers re-render)
   const [open, _setOpen] = useState(false);
-  // 开合同步到 store：全局快捷键需要知道查找栏开着（Esc 先关查找、不中断生成）；静默写（原无 notify）
+  // Sync open state to the store: global shortcuts need to know the find bar is open (Esc
+  // closes find first and does not interrupt generation); silent write (formerly no notify)
   const setOpen = (v: boolean) => {
     _setOpen(v);
     useAppStore.setState({ findOpen: v });
   };
-  const [count, setCount] = useState(""); // "1/3" | "无结果" | ""
+  const [count, setCount] = useState(""); // "1/3" | the misc.noResults label | ""
   const barRef = useRef<HTMLDivElement | null>(null);
   const inpRef = useRef<HTMLInputElement | null>(null);
   const matchesRef = useRef<FindMatch[]>([]);
   const cursorRef = useRef(-1);
-  const pathRef = useRef<string | null>(null); // 打开时所在会话（切换会话收起）
+  const pathRef = useRef<string | null>(null); // the session the bar was opened in (collapses on session switch)
 
   const close = () => {
     setOpen(false);
@@ -65,14 +69,16 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     setCount(`${cursorRef.current + 1}/${matchesRef.current.length}`);
   };
 
-  // 命中元素短暂闪烁强调（背景高亮渐隐）；重触发需先移除类再强制 reflow
+  // Briefly flash the hit element (background highlight fading out); retriggering requires
+  // removing the class first and forcing a reflow
   const flashFindTarget = (el: HTMLElement) => {
     el.classList.remove("find-flash");
     void el.offsetWidth;
     el.classList.add("find-flash");
   };
 
-  // 跳转：dir 1=下一个 -1=上一个，循环导航。命中的 loop 子项在组收起时先展开再定位
+  // Jump: dir 1 = next, -1 = previous, cyclic navigation. A hit inside a collapsed loop
+  // sub-item expands the group first, then locates
   const gotoMatch = (dir: number) => {
     const matches = matchesRef.current;
     if (!matches.length) return;
@@ -85,13 +91,15 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     const seg = m.key.split("-").map(Number);
     let expanded = false;
     if (seg.length > 1) {
-      // key 前缀段全是 loop 容器：逐层下钻，任一层收起都展开（外层收起时内层未渲染）；
-      // 展开走拷贝替换（含 _v bump），DOM 就位后再定位（延迟一拍）
+      // All leading key segments are loop containers: drill down level by level, expanding
+      // any collapsed one (inner levels are unrendered while an outer one is collapsed);
+      // expansion goes through copy-replace (with _v bump), then locate once the DOM is in
+      // place (delayed one frame)
       let box: { items?: ChatItem[] } & Partial<Pick<LoopItem, "collapsed">> = { items: s.items };
       for (let k = 0; k < seg.length - 1; k++) {
         const next = box.items?.[seg[k]];
         if (!next) break;
-        if (next.role !== "loop") break; // 前缀段按构造必为 loop 容器;非 loop 即索引损坏,终止下钻
+        if (next.role !== "loop") break; // prefix segments are loop containers by construction; a non-loop means the index is corrupt, stop drilling
         box = next;
         if (box.collapsed) {
           patchActiveItem(next, (it) => { it.collapsed = false; });
@@ -100,7 +108,8 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
       }
     }
     const locate = () => {
-      // data-fk 锚点即消息容器 div，收窄为 HTMLElement（classList/offsetWidth 需要）
+      // The data-fk anchor is the message container div; narrow to HTMLElement (needed for
+      // classList/offsetWidth)
       const el = streamRef.current?.querySelector(`[data-fk="${m.key}"]`) as HTMLElement | null;
       if (!el) return;
       el.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -123,8 +132,9 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     else updateCount();
   };
 
-  // ⌘F 打开（preventDefault 阻止 WKWebView 默认行为）；Esc 关闭。
-  // 设置页全屏覆盖层打开时不响应（旧版 settingsOpen 检查平移）
+  // ⌘F opens (preventDefault blocks WKWebView's default behavior); Esc closes.
+  // No response while the settings page's fullscreen overlay is open (ported from the old
+  // settingsOpen check)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
@@ -140,7 +150,8 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // 打开后：浮层贴消息流顶部（absolute 相对 #main，水平居中交 CSS）+ 聚焦全选
+  // After opening: the overlay hugs the top of the message stream (absolute relative to
+  // #main; horizontal centering left to CSS) + focus and select all
   useEffect(() => {
     if (!open) return;
     pathRef.current = activePath;
@@ -149,11 +160,12 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
     const inp = inpRef.current;
     if (!inp) return;
     inp.focus();
-    inp.select(); // 已有词时全选，直接输入即覆盖
+    inp.select(); // select all when a word exists; typing directly overwrites
     if (inp.value.trim()) runFind();
   }, [open]);
 
-  // 切会话即收起（同会话的流式重绘不收；activePath 订阅驱动重渲染）
+  // Collapse on session switch (same-session streaming redraws do not collapse; the
+  // activePath subscription drives the re-render)
   useEffect(() => {
     if (open && pathRef.current !== activePath) close();
   });

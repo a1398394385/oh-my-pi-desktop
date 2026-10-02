@@ -2,14 +2,14 @@
    Domain rules and entry @import order: see the header comment in ui/style.css) */
 
 /* ════════════════════════════════════════════════════════════
-   MCP 服务器页面改版（像素级还原参考图）
+   MCP servers page redesign (pixel-faithful to the reference mock)
    ════════════════════════════════════════════════════════════ */
-/* 一级标题与边距同步 .set-tt（1.75 + 下边距 25） */
+/* level-1 title and margins in sync with .set-tt (1.75 + bottom margin 25) */
 .mcp-header { margin-bottom: 25px; }
 
 .mcp-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
 
-/* 第一行：作用域胶囊 + 统计 + 搜索框 */
+/* first row: scope pill + stats + search box */
 .mcp-bar-primary {
   display: flex;
   align-items: center;
@@ -42,7 +42,7 @@
   align-items: center;
 }
 
-/* 搜索框 = .inp 语言：--bg 底 + --line-soft 边 + r9 + 蓝色聚焦光晕 */
+/* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
 .mcp-search-input {
   width: 100%;
   height: 30px;
@@ -63,7 +63,7 @@
 
 .mcp-search-input::placeholder { color: var(--faint); }
 
-/* 第二行：已安装计数 + 操作按钮 */
+/* second row: installed count + action buttons */
 .mcp-bar-secondary {
   display: flex;
   align-items: center;
@@ -77,7 +77,7 @@
   gap: 8px;
 }
 
-/* 更多(⋯)按钮 = .sel 胶囊内的尺寸载体：底板/hover 由外层 .sel 提供（刷新钮走 .plus-btn） */
+/* more(...) button = a size carrier inside the .sel pill: plate/hover come from the outer .sel (the refresh button uses .plus-btn) */
 .mcp-btn-icon {
   width: 26px;
   height: 26px;
@@ -91,7 +91,7 @@
   cursor: pointer;
 }
 
-/* 新建按钮 = .add-btn 语言：透明底 + --line 描边 + hover --panel-2，高度与刷新钮一致 */
+/* new button = the .add-btn language: transparent base + --line border + hover --panel-2, same height as the refresh button */
 .mcp-btn-new {
   display: inline-flex;
   align-items: center;
@@ -111,7 +111,7 @@
 
 .mcp-btn-new:active { transform: scale(.95); }
 
-/* MCP 列表容器 */
+/* MCP list container */
 .mcp-list-wrap {
   margin-top: 4px;
 }
@@ -136,7 +136,7 @@
   font-size: var(--ui-fs-sm);
 }
 
-/* MCP 服务器条目行 */
+/* MCP server entry row */
 .mcp-server-row {
   display: flex;
   align-items: center;
@@ -161,7 +161,7 @@
   opacity: .6;
 }
 
-/* 左侧圆角方块图标与状态点（色值走 token，浅色主题自动适配） */
+/* left rounded square icon and status dot (colors via tokens, auto-adapts to light theme) */
 .mcp-icon-box {
   width: 40px;
   height: 40px;
@@ -201,7 +201,7 @@
   display: none;
 }
 
-/* 中间服务信息 */
+/* middle service info */
 .mcp-server-info {
   flex: 1;
   min-width: 0;
@@ -290,7 +290,7 @@
   border-color: var(--dim);
 }
 
-/* 右侧开关控制 */
+/* right-side toggle control */
 .mcp-server-ctrl {
   display: inline-flex;
   align-items: center;
@@ -298,9 +298,9 @@
   flex-shrink: 0;
 }
 
-/* 开关复用全站 .tg（accent 强调色 + 弹簧滑动），见设置页定义处 */
+/* the toggle reuses the site-wide .tg (accent color + spring slide), see its definition on the settings page */
 
-/* MCP 弹窗相关表单元素 */
+/* MCP dialog form elements */
 .mcp-form-group {
   margin-bottom: 14px;
 }

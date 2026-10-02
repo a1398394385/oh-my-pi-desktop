@@ -1,5 +1,6 @@
-// 通用图标组件：icons.js 的 icon() 返回 svg 字符串，React 侧经 dangerouslySetInnerHTML 注入。
-// size 覆盖注册表默认尺寸（viewBox 不变）；className/title 透传到承载 span。
+// Generic icon component: icons.js's icon() returns an svg string, injected on
+// the React side via dangerouslySetInnerHTML. size overrides the registry
+// default (viewBox unchanged); className/title pass through to the host span.
 import type { CSSProperties } from "react";
 import { icon } from "../ui/icons";
 

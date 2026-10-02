@@ -1,5 +1,7 @@
-// 归档区（ui/sidebar.js renderArchived/archivedRow 平移）：列表底部折叠分组（默认收起，
-// 不持久化），条目可恢复/彻底删除；纯展示承载行（点击不打开会话），hover 高亮只挂行内按钮。
+// Archive section (ported from ui/sidebar.js renderArchived/archivedRow): collapsible group at
+// the list bottom (collapsed by default, not persisted); entries can be restored or hard
+// deleted; display-only carrier rows (clicking doesn't open the session), hover highlight only
+// on inline buttons.
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../store";
@@ -32,7 +34,7 @@ function ArchRow({ s, onDelete, animate, index }: {
   );
 }
 
-// 展开容器：mount 时 0fr→1fr；animate 时逐行 kids-in 错峰（对齐项目分组）
+// Expanded container: 0fr→1fr on mount; staggered kids-in rows when animate (aligned with project groups)
 function ArchKids({ list, animate, closing, onDelete }: {
   list: SessionInfo[];
   animate: boolean;
@@ -41,7 +43,7 @@ function ArchKids({ list, animate, closing, onDelete }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current!; // mount 后即存在（原 JS 直接解引用，保持同一假设）
+    const el = ref.current!; // exists right after mount (the old JS dereferenced directly; same assumption kept)
     el.style.gridTemplateRows = "0fr";
     requestAnimationFrame(() => requestAnimationFrame(() => { el.style.gridTemplateRows = ""; }));
   }, []);
@@ -67,8 +69,8 @@ export default function ArchivedSection({ onDelete }: { onDelete: (s: SessionInf
   const list = useAppStore((s) => s.archivedSessions) ?? [];
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
-  if (list.length === 0) return null; // 无归档条目整区隐藏
-  // 收起动画中再点头部：直接重开（kids 未卸载，closing 类摘掉即过渡回展开）
+  if (list.length === 0) return null; // hide the whole section when there are no archived entries
+  // Clicking the head mid-collapse animation: reopen directly (kids not yet unmounted; removing the closing class transitions back to expanded)
   const toggle = () => {
     if (!expanded) setExpanded(true);
     else if (closing) setClosing(false);
@@ -83,7 +85,7 @@ export default function ArchivedSection({ onDelete }: { onDelete: (s: SessionInf
   const open = expanded && !closing;
   return (
     <>
-      {/* 整头可点（折叠/展开），hover 高亮合法挂头行 */}
+      {/* Whole head is clickable (collapse/expand); hover highlight legitimately on the head row */}
       <div
         className={"arch-head" + (open ? "" : " collapsed")}
         title={open ? t("sidebar.collapseArchive") : t("sidebar.expandArchive")}

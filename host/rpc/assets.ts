@@ -1,6 +1,7 @@
-// 资产域 RPC：skills/agents/mcp 磁盘资产的读写/新建/删除、记忆文件读取、
-// 扩展中心清单与开关、MCP 服务器启停/测试/保存（外部来源解耦）/删除。
-// 自 main.ts message 分发平移（第三刀）。
+// Asset domain RPC: read/write/create/delete of skills/agents/mcp disk
+// assets, memory file reads, extensions center listing and switches, MCP
+// server enable/test/save (external-source decoupling)/delete.
+// Moved over from the main.ts message dispatch (third slice).
 import path from "node:path";
 import fs from "node:fs";
 import { mkdir, readdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -47,7 +48,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     const file = path.resolve(raw);
     const rel = path.relative(path.resolve(path.join(H.agentDir, "memories")), file);
     if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(hostI18n.t("errors.memory.outsideDir", { path: raw }));
-    // 工作区记忆是目录：返回顶层 .md 清单（按修改时间新→旧）并默认读最新的一个
+    // Workspace memories are directories: return the top-level .md list (newest first by mtime) and read the newest one by default
     let target = file;
     let files: string[] | undefined;
     let rollouts: string[] | undefined;
@@ -79,7 +80,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "asset_file_saved", kind, path: file }));
   },
   async asset_file_create(ws, msg) {
-    // 按作用域与资产类型落位：agent=agents/<name>.md、skill=skills/<name>/SKILL.md、mcp=该级 mcp.json（幂等，已存在则直接返回内容）
+    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent; returns existing content directly)
     const kind = String(msg.kind ?? "agent") as AssetKind;
     if (kind === "mcp") {
       const file = mcpCandidates(assetOmpDir(kind, msg.scope, msg.cwd))[0];
@@ -132,7 +133,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     if (!fs.existsSync(file)) throw new Error(hostI18n.t("errors.asset.skillFileNotFound", { file }));
     const skillDir = path.dirname(file);
     const parentDir = path.dirname(skillDir);
-    // 如果是常规的 <skillName>/SKILL.md，安全删除整个技能目录
+    // For a regular <skillName>/SKILL.md, safely delete the whole skill directory
     if (path.basename(file).toLowerCase() === "skill.md" && parentDir && parentDir !== skillDir) {
       await rm(skillDir, { recursive: true, force: true });
     } else {
@@ -142,7 +143,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async list_extensions(ws, msg) {
-    // 扩展中心数据帧：scope=profile（用户级+原生）或 project:<cwd>（项目级）
+    // Extensions center data frame: scope=profile (user level + native) or project:<cwd> (project level)
     ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
   },
   async toggle_extension_item(ws, msg) {
@@ -151,7 +152,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   },
   async toggle_extension_provider(ws, msg) {
     const enabled = await toggleExtensionProvider(msg.providerId);
-    // 与 set_setting 的 model 键副作用对齐：重建 scoped 目录并推送 models 帧
+    // Aligned with set_setting's model-key side effect: rebuild the scoped catalog and push a models frame
     rebuildScopedModels();
     ws.send(JSON.stringify(modelsFrame()));
     ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
@@ -192,11 +193,11 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     const scope = String(msg.scope ?? "profile");
     const isProject = scope.startsWith("project:");
     const sourcePath = msg.sourcePath ? String(msg.sourcePath) : undefined;
-    // 规则 2：项目作用域禁止配置为 global，强制纠正为 project
+    // Rule 2: the project scope forbids global; force-correct to project
     if (isProject && cfg.sharing === "global") {
       cfg.sharing = "project";
     }
-    // 规则 1：缺省严格为 session 会话级
+    // Rule 1: the default is strictly the session level
     if (!cfg.sharing) {
       cfg.sharing = "session";
     }
@@ -210,10 +211,10 @@ export const assetsHandlers: Record<string, RpcHandler> = {
 
     const isExternalSource = Boolean(sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath));
     if (isExternalSource && !msg.forceImport) {
-      // 外部来源解耦：共享模式记录至 omp-desktop.json，不创建本地 shadow 覆盖，保持外部工具动态直读
+      // External-source decoupling: record the sharing mode in omp-desktop.json, create no local shadow override, keep external tools read dynamically
       await setMcpSharingConfig(sourcePath!, name, cfg.sharing);
     } else {
-      // 原生 OMP MCP 或显式导入：写入 mcp.json 并同步记录在 omp-desktop.json
+      // Native OMP MCP or explicit import: write mcp.json and record the sharing in omp-desktop.json in sync
       await updateMCPServer(targetPath, name, cfg);
       await setMcpSharingConfig(targetPath, name, cfg.sharing);
       if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {

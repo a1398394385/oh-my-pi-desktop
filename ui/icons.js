@@ -1,85 +1,87 @@
 // ════════════════════════════════════════════════════════════
-// 统一图标注册表：项目内所有静态 SVG 图标集中于此，只存一份
-// 取用方式：
-//   JS  中：icon("folder") / icon("caret", 12)
-//   HTML 中：<span class="..." data-icon="folder" data-size="23"></span>
-//           （app.js 启动时 hydrateIcons() 会把占位 span 替换为 svg，
-//             并复制占位元素上的 class / id / style）
-// 动态图形（如 ctxRing 进度环）不属于图标，仍在 index.html 内联。
-// 图层（后者同名覆盖前者）：自定义 → Font Awesome 实心 → Lucide 线条风 → vscode-icons 文件类型彩色
+// Unified icon registry: every static SVG icon in the project lives here, stored once.
+// Usage:
+//   JS:    icon("folder") / icon("caret", 12)
+//   HTML:  <span class="..." data-icon="folder" data-size="23"></span>
+//          (on startup hydrateIcons() replaces the placeholder span with the svg
+//           and copies class / id / style from the placeholder element)
+// Dynamic graphics (e.g. the ctxRing progress ring) are not icons; they stay inline in index.html.
+// Layers (later ones override earlier by name): custom -> Font Awesome solid -> Lucide line-style -> vscode-icons file-type colored
 // ════════════════════════════════════════════════════════════
-// 自定义图标（FA 没有的，如应用 Logo）：直接写在这里
-// Lucide 线条风层（最顶层）：同名覆盖 FA 实心图标，达到 ZCode 同款观感；
-// 未覆盖到的名（logo/termBox 等）仍由自定义层 / FA 层兜底
+// Custom icons (ones FA lacks, e.g. the app logo): written directly here
+// The Lucide line-style layer (topmost) overrides FA solid icons by name for the ZCode look;
+// names it doesn't cover (logo/termBox etc.) still fall back to the custom / FA layers
 import { FA_ICONS } from "./fa-icons.js";
 import { LUCIDE_ICONS } from "./lucide-icons.js";
 import { FILE_TYPE_ICONS } from "./file-icons.js";
 
 const ICONS = {
-  // ZCode 项目/新建任务图标：保持 Lucide 同款线条风。
+  // ZCode project / new-task icons: keep the Lucide line style.
   house: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></svg>',
   messagePlus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/><path d="M12 8v6"/><path d="M9 11h6"/></svg>',
-  // 线条风上/右箭头（lucide arrow-up / arrow-right）：发送钮图标
+  // Line-style up/right arrows (lucide arrow-up / arrow-right): send button icon
   arrowUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>',
   arrowRight: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
-  // Command 键位图标（lucide command）
+  // Command key icon (lucide command)
   command: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>',
-  // 对齐 ZCodium SquareIcon + fill-current：发送钮停止形态
+  // Aligned with ZCodium SquareIcon + fill-current: send button stop state
   stopSolid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>',
   logo: '<svg width="16" height="16" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  // 线条风信息圆圈（lucide info）：组标题旁 hover 提示图标。FA circle-info 是实心块，手写线条版对齐 lucide 观感（同 refresh 先例）
+  // Line-style info circle (lucide info): hover hint icon next to group titles. FA circle-info is a solid block; a hand-drawn line version matches the lucide look (same precedent as refresh)
   info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
-  // 盾牌 + 感叹号：FA Free 无 shield-exclamation（Pro 专属），用 shield 路径 + evenodd 镂空合成
+  // Shield + exclamation: FA Free has no shield-exclamation (Pro-only), composed from the shield path + an evenodd cut-out
   shieldWarn: '<svg width="16" height="16" viewBox="0 0 512 512"><path fill="currentColor" fill-rule="evenodd" d="M256 0c4.6 0 9.2 1 13.4 2.9L457.8 82.8c22 9.3 38.4 31 38.3 57.2-.5 99.2-41.3 280.7-213.6 363.2-16.7 8-36.1 8-52.8 0-172.4-82.5-213.1-264-213.6-363.2-.1-26.2 16.3-47.9 38.3-57.2L242.7 2.9C246.9 1 251.4 0 256 0zM234 152h44a24 24 0 0 1 24 24v96a24 24 0 0 1-24 24h-44a24 24 0 0 1-24-24v-96a24 24 0 0 1 24-24zM256 336a26 26 0 1 1 0 52 26 26 0 1 1 0-52z"/></svg>',
-  // 带长方形完整外壳的终端图标（区别于主对话区的纯 >_）
+  // Terminal icon with a full rectangular shell (unlike the bare >_ in the main chat area)
   termBox: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M4.5 6.2l2.3 1.8-2.3 1.8"/><path d="M8.5 9.8h3"/></svg>',
-  // 线框文件夹 + 加号（打开文件夹）
+  // Wireframe folder + plus (open folder)
   folderPlus: '<svg width="14" height="14" viewBox="0 0 512 512"><path fill="currentColor" d="M64 400l384 0c8.8 0 16-7.2 16-16l0-240c0-8.8-7.2-16-16-16l-149.3 0c-17.3 0-34.2-5.6-48-16L212.3 83.2c-2.8-2.1-6.1-3.2-9.6-3.2L64 80c-8.8 0-16 7.2-16 16l0 288c0 8.8 7.2 16 16 16zm384 48L64 448c-35.3 0-64-28.7-64-64L0 96C0 60.7 28.7 32 64 32l138.7 0c13.8 0 27.3 4.5 38.4 12.8l38.4 28.8c5.5 4.2 12.3 6.4 19.2 6.4L448 80c35.3 0 64 28.7 64 64l0 240c0 35.3-28.7 64-64 64zM240 220c0-8.8 7.2-16 16-16s16 7.2 16 16l0 32 32 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-32 0 0 32c0 8.8-7.2 16-16 16s-16-7.2-16-16l0-32-32 0c-8.8 0-16-7.2-16-16s7.2-16 16-16l32 0 0-32z"/></svg>',
-  // 线条风刷新（feather rotate-cw）：设置页刷新钮统一用此图标，FA 的 rotateRight 是实心块，
-  // 同尺寸下视觉面积过大，观感像常亮底板
+  // Line-style refresh (feather rotate-cw): the unified icon for settings-page refresh buttons.
+  // FA rotateRight is a solid block — too visually heavy at the same size, reads like a lit background
   refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
-  // Git Diff 行级写操作（feather 线条族，与 refresh 同风格）：暂存 + / 取消暂存 − / 丢弃（逆时针回退箭头）
+  // Git Diff line-level write actions (feather line family, same style as refresh): stage + / unstage - / discard (counter-clockwise revert arrow)
   stage: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   unstage: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   discard: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
-  // 线条风暂停/播放（feather）：goal 目标栏的暂停/继续（同位变换），FA 为实心块
+  // Line-style pause/play (feather): pause/resume in the goal bar (in-place swap); FA versions are solid blocks
   pause: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
   play: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
-  // 线条风上下尖角（feather chevron）：会话内查找条的上一个/下一个
+  // Line-style up/down chevrons (feather chevron): previous/next in the in-session find bar
   chevronUp: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
   chevronDown: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
-  // 线条风向下双箭头（lucide chevrons-down）：右边栏标签页总览图标，对齐 ZCodium ChevronsDownIcon
+  // Line-style double-down arrows (lucide chevrons-down): right-sidebar tab-overview icon, aligned with ZCodium ChevronsDownIcon
   chevronsDown: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>',
-  // 线条风消息分叉（feather git-branch：竖线 + 分叉圆点）：消息行分叉按钮与右栏分支 tab 用。
-  // 命名避开 branch——该名已被 FA 层实心 code-branch 占用（Git Diff tab 在用），自定义层同名会被覆盖
+  // Line-style message fork (feather git-branch: vertical line + branch dots): the message-row
+  // fork button and the right-sidebar branch tab. Named to avoid "branch" — that name is taken
+  // by the FA layer's solid code-branch (used by the Git Diff tab), which would override a custom-layer same-name entry
   fork: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
-  // 线条风复制（feather copy：两个重叠方框）：轮末 output 复制按钮，与 fork 同族 stroke-width=2
+  // Line-style copy (feather copy: two overlapping rectangles): turn-end output copy button, same family as fork with stroke-width=2
   copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
   wrapText: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"/><path d="M3 11h15a3 3 0 1 1 0 6h-4"/><path d="m14 15-2 2 2 2"/><path d="M3 17h2"/></svg>',
-  // 会话树 tab（lucide list-tree 线条版）：右栏条目树页签，与 fork（文件级分支）区分
+  // Session-tree tab (lucide list-tree, line version): right-sidebar entry-tree tab, distinct from fork (file-level branch)
   tree: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg>',
-  // 实验性功能分类图标：线条风锥形烧瓶（lucide 层参数同款 stroke-width=1.5 / viewBox 24）
+  // Experimental-feature category icon: line-style conical flask (lucide-layer params: stroke-width=1.5 / viewBox 24)
   flask: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3v6.4L4.9 18.4a2 2 0 0 0 1.8 3.1h10.6a2 2 0 0 0 1.8-3.1L14.5 9.4V3"/><path d="M8.2 3h7.6"/><path d="M6.9 14.5h10.2"/></svg>',
-  // 计划模式：线条风计划书（折角文档 + 正文行）。FA / Lucide 层都没有 plan 语义图标，
-  // 手写线条版与 refresh / flask 同族（stroke-width 1.7 / viewBox 24）
+  // Plan mode: line-style plan document (dog-eared page + body lines). Neither FA nor Lucide
+  // has a plan-semantics icon; hand-drawn line version in the refresh / flask family (stroke-width 1.7 / viewBox 24)
   plan: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.75H7A2.25 2.25 0 0 0 4.75 5v14A2.25 2.25 0 0 0 7 21.25h10A2.25 2.25 0 0 0 19.25 19V8z"/><path d="M14 2.75V8h5.25"/><path d="M8.5 13h7M8.5 16.5h4"/></svg>',
-  // 线条风归档（lucide archive）：会话行悬停归档按钮
+  // Line-style archive (lucide archive): hover archive button on session rows
   archive: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
 };
 
-// Font Awesome 层：同名覆盖自定义默认（fa-icons.js 由 .local/build-fa-icons.py 生成）
+// Font Awesome layer: overrides custom defaults by name (fa-icons.js generated by .local/build-fa-icons.py)
 Object.assign(ICONS, FA_ICONS);
 
-// Lucide 线条风层：同名覆盖 FA 层（lucide-icons.js 由脚本生成，见文件头注释）
+// Lucide line-style layer: overrides the FA layer by name (lucide-icons.js generated by a script, see that file's header)
 Object.assign(ICONS, LUCIDE_ICONS);
 
-// vscode-icons 文件类型彩色层（最顶层）：同名覆盖 lucide 线条层的 ft* 文件图标
-//（file-icons.js 由 .local/build-file-icons.py 生成，尺寸 16 与被覆盖层一致）
+// vscode-icons file-type colored layer (topmost): overrides the lucide line-style layer's ft* file icons by name
+// (file-icons.js generated by .local/build-file-icons.py, size 16 matching the overridden layer)
 Object.assign(ICONS, FILE_TYPE_ICONS);
 
-// 取图标：size 省略时用注册表默认尺寸；传入时覆盖 width/height（保持 viewBox 不变）。
-// 变体缓存（BUG-007）：渲染热路径每个 Icon 每帧都会调用，replace 正则乘以组件数量
-// 在长会话下是主线程热点——同名+同尺寸只算一次，之后查表。
+// Get an icon: omitting size uses the registry default; passing it overrides width/height (viewBox unchanged).
+// Variant cache (BUG-007): the render hot path calls this for every Icon every frame; the replace
+// regex times the component count is a main-thread hotspot in long sessions — compute each
+// name+size variant once, then look it up.
 const iconVariantCache = {};
 function icon(name, size) {
   const d = ICONS[name];
@@ -89,8 +91,8 @@ function icon(name, size) {
   return (iconVariantCache[key] ??= d.replace(/width="\d+" height="\d+"/, `width="${size}" height="${size}"`));
 }
 
-// ---------- 按文件名取文件类型图标（vscode-icons 彩色层） ----------
-// 扩展名（小写）→ 注册表键；特殊文件名优先于扩展名（dockerfile 无扩展名语义）
+// ---------- File-type icon by file name (vscode-icons colored layer) ----------
+// Extension (lowercase) -> registry key; special file names take priority over extensions (dockerfile has no extension semantics)
 const FILE_NAME_ICONS = {
   dockerfile: "ftDocker",
   "docker-compose.yml": "ftDocker",
@@ -128,8 +130,8 @@ function fileTypeIcon(name) {
   return FILE_EXT_ICONS[ext] || "ftFile";
 }
 
-// 把 HTML 里的占位元素 <span class/id/style data-icon="name" data-size="N"></span>
-// 替换为对应 svg，并复制占位元素上的 class / id / style
+// Replaces placeholder elements in HTML <span class/id/style data-icon="name" data-size="N"></span>
+// with the matching svg, copying class / id / style from the placeholder element
 function hydrateIcons(root) {
   (root || document).querySelectorAll("[data-icon]").forEach((el) => {
     const html = icon(el.dataset.icon, el.dataset.size ? +el.dataset.size : undefined);
@@ -146,5 +148,5 @@ function hydrateIcons(root) {
   });
 }
 
-// ESM 导出（React 迁移）：esbuild 打包时与各覆盖层合并后的最终注册表一并导出
+// ESM exports (React migration): the bundler also exports the final registry merged with all override layers
 export { icon, hydrateIcons, ICONS, fileTypeIcon };

@@ -1,4 +1,5 @@
-// @ 文件提及行（fileMention 落盘回读）：单行 dim 文本「读取 <paths>」，路径等宽，无展开。
+// @ file mention row (fileMention persisted read-back): a single dim text line "Read
+// <paths>" via the chat.labelRead key, paths in monospace, no expansion.
 import type { MentionItem } from "../../types/session";
 import { t } from "../../i18n";
 

@@ -1,13 +1,13 @@
-// 斜杠命令面冒烟：已移除的 8 条命令既不进候选清单、也不执行；其余命令分发不受影响。
-// 用法：bun scripts/smoke-slash-commands.ts [宿主ws地址]
-// 不传地址时本脚本自行拉起宿主子进程，退出时删除测试产生的会话文件。零模型调用。
-// 断言覆盖：
-//   1. list_commands 清单不含 model/models/switch/prewalk/fast/skillful/extended-context/computer/force
-//   2. 清单仍含 compact/todo/context/usage/handoff/plan（过滤没有误伤；plan 是桌面注入的
-//      TUI-only 条目，底座清单不含它）
-//   3. 手输已移除命令（含别名 /models、冒号形式 /force:bash）→ command_output 提示 + command_result(consumed)
-//   4. 已移除命令不产生任何事件帧（既不执行也不落成 prompt）
-//   5. 未移除命令照常执行（/context 走 builtin 分发）
+// Slash-command surface smoke test: the 8 removed commands neither enter the candidate list nor execute; other command dispatch is unaffected.
+// Usage: bun scripts/smoke-slash-commands.ts [host ws url]
+// Without an address the script spawns the host child process itself and deletes the session files it created on exit. Zero model calls.
+// Assertions cover:
+//   1. The list_commands list excludes model/models/switch/prewalk/fast/skillful/extended-context/computer/force
+//   2. The list still contains compact/todo/context/usage/handoff/plan (the filter took no collateral; plan is desktop-injected
+//      and TUI-only, absent from the base list)
+//   3. Typing a removed command by hand (including the /models alias and the /force:bash colon form) -> command_output notice + command_result(consumed)
+//   4. A removed command produces no event frames (neither executes nor lands as a prompt)
+//   5. Non-removed commands execute as usual (/context goes through the builtin dispatch)
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -93,7 +93,7 @@ const created = await waitFor((f) => f.type === "session_created", "session_crea
 const sessionId = created.sessionId!;
 createdFiles.push(created.path!);
 
-// 1)+2) 候选清单：已移除的不在列，该留的仍在
+// 1)+2) Candidate list: removed ones absent, keepers still present
 send({ type: "list_commands", sessionId });
 const commandsFrame = await waitFor((f) => f.type === "commands", "commands 清单");
 const names = (commandsFrame.commands ?? []).map((c) => c.name);
@@ -107,7 +107,7 @@ for (const n of KEPT) {
 }
 console.log(`✓ 候选清单 ${names.length} 条：已移除 ${REMOVED.join("/")} 均不在列，保留项齐备`);
 
-// 3) 手输已移除命令：提示 + 消费（含别名与冒号形式）
+// 3) Typing a removed command: notice + consumed (including the alias and colon forms)
 const cases: Array<{ text: string; hint: string }> = [
   { text: "/model", hint: "/model 已移除" },
   { text: "/models", hint: "/models 已移除" },
@@ -130,11 +130,11 @@ for (const c of cases) {
   console.log(`✓ ${c.text} → ${out.text}`);
 }
 
-// 4) 拦截的命令不产生事件帧（没偷偷开 turn）
+// 4) Intercepted commands produce no event frames (no sneaky turn opened)
 const eventsAfter = seen.filter((f) => f.type === "event").length;
 if (eventsAfter !== eventsBefore) fail(`拦截的命令仍触发 ${eventsAfter - eventsBefore} 条事件帧`);
 
-// 5) 未移除命令照常执行
+// 5) Non-removed commands execute as usual
 send({ type: "prompt", sessionId, text: "/context", images: [] });
 const ctxOut = await waitFor((f) => f.type === "command_output" && String(f.text).startsWith("Context window"), "/context 的 command_output");
 await waitFor((f) => f.type === "command_result" && f.text === "/context", "/context 的 command_result");

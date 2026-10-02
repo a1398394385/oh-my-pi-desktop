@@ -1,6 +1,7 @@
-// 本地 bash 执行行（输入框 ! 前缀命令）：复用终端行（ToolRow CmdRow）的视觉语言——
-// 上命令、下输出的展开卡 + ed-arrow 箭头。状态区：运行中转圈 / exit 码 /
-// 已取消 / 不进上下文标签 / 错误文本。默认收起，点击头部展开。
+// Local bash execution row (composer ! prefix commands): reuses the terminal row's (ToolRow
+// CmdRow) visual language — an expand card with the command on top and output below + an
+// ed-arrow arrow. Status area: spinner while running / exit code / cancelled / not-in-context
+// tag / error text. Collapsed by default; click the header to expand.
 import type { BashItem } from "../../types/session";
 import Icon from "../../Icon";
 import { Ellip, useLift, Spin, patchActiveItem } from "./parts";
@@ -13,7 +14,8 @@ export default function BashRow({ item }: { item: BashItem }) {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
     else patchActiveItem(item, (it) => { it.cmdExpanded = true; });
   };
-  // 状态区：running 转圈优先；error 红字；cancelled 灰标；其余按 exitCode 着色
+  // Status area: the running spinner takes priority; error in red; cancelled in a gray tag;
+  // the rest colored by exitCode
   let status;
   if (item.running) status = <Spin />;
   else if (item.error != null) status = <span className="bad">{item.error}</span>;

@@ -1,9 +1,10 @@
-// 右栏共享小工具：escapeHtml / fmtAgo / inlineCodeHtml。
+// Right panel shared utilities: escapeHtml / fmtAgo / inlineCodeHtml.
 import { t } from "../../i18n";
-// markdown.js（escapeHtml）、sidebar.js（fmtAgo）、tool-rows.js（fillInlineCode）的同名实现
-// 均 import 旧 core.js——esbuild 打包会把整个命令式 UI 树的顶层副作用（window.onerror 等）
-// 拖进 React bundle，与 store.js 冲突，故在此等价实现。
-/** HTML 转义（markdown.js escapeHtml 等价实现） */
+// The same-named implementations in markdown.js (escapeHtml), sidebar.js (fmtAgo) and
+// tool-rows.js (fillInlineCode) all import the old core.js — esbuild bundling would drag the
+// whole imperative UI tree's top-level side effects (window.onerror etc.) into the React
+// bundle, conflicting with store.js, hence these equivalent implementations.
+/** HTML escaping (equivalent of markdown.js escapeHtml) */
 export function escapeHtml(str: unknown): string {
   return String(str ?? "")
     .replace(/&/g, "&amp;")
@@ -13,7 +14,7 @@ export function escapeHtml(str: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-/** 相对时间（与 sidebar/util.ts 同款键化实现，紧凑风格） */
+/** Relative time (same keyed implementation as sidebar/util.ts, compact style) */
 export function fmtAgo(iso: string): string {
   const sec = (Date.now() - Date.parse(iso)) / 1000;
   if (sec < 60) return t("sidebar.agoNow");
@@ -22,7 +23,7 @@ export function fmtAgo(iso: string): string {
   return t("sidebar.agoDay", { n: Math.floor(sec / 86400) });
 }
 
-/** `反引号` 片段转 <code>（tool-rows.js fillInlineCode 的 html 版，step-title 经 innerHTML 注入用） */
+/** `backtick` spans → <code> (HTML version of tool-rows.js fillInlineCode, for step-title innerHTML injection) */
 export function inlineCodeHtml(text: unknown): string {
   return String(text || "")
     .split(/(`[^`]+`)/)

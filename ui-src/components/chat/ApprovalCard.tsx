@@ -1,8 +1,12 @@
-// 审批卡（ask/confirm/editor 对话框）：ZCodium PermissionDialog 同款——
-// 「等待确认」标题 + 问题正文 + 编号选项行 + 底部键盘提示与确认钮。
-// 交互对齐 ZCodium：单击选中、再单击 / 回车 / 确认钮应答，数字键直接应答，上下 / Tab 移动选中；
-// editable（editor 对话框）时提交行内嵌输入（ZCodium 反馈行样式，空输入按取消处理）。
-// 应答后 answer 定格（chosen/dim/disabled），本地点击即时生效。
+// Approval card (ask/confirm/editor dialogs): same as ZCodium's PermissionDialog —
+// an "awaiting confirmation" title + question body + numbered option rows + bottom
+// keyboard hint and confirm button.
+// Interaction mirrors ZCodium: single click selects, second click / Enter / the confirm
+// button answers, number keys answer directly, up/down / Tab move the selection;
+// with editable (editor dialogs) the submit row embeds an inline input (ZCodium feedback
+// row styling; empty input is treated as cancel).
+// After answering, the answer freezes (chosen/dim/disabled); local clicks take effect
+// immediately.
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppStore } from "../../store/index";
@@ -23,7 +27,8 @@ const optionLabel = (opt: string): string => {
   return key ? t(key) : opt;
 };
 
-// 审批请求条目（store 从 host approval 帧构造）：answer/prefill 由本卡就地写回
+// Approval request entry (built by the store from host approval frames): answer/prefill
+// are written back in place by this card
 interface ApprovalItem {
   title?: string;
   options: string[];
@@ -36,12 +41,12 @@ interface ApprovalItem {
 
 export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   const [selected, setSelected] = useState(0);
-  const selectedRef = useRef(0); // 确认按钮读取最新选项，不依赖 React 下一次渲染
+  const selectedRef = useRef(0); // the confirm button reads the latest option without waiting for React's next render
   const select = (i: number) => {
     selectedRef.current = i;
     setSelected(i);
   };
-  const [chosen, setChosen] = useState(-1); // 应答行下标（本地定格；重挂载回落到 answer 比对）
+  const [chosen, setChosen] = useState(-1); // answered row index (frozen locally; remount falls back to matching against answer)
   const listRef = useRef<HTMLDivElement | null>(null);
   const inpRef = useRef<HTMLInputElement | null>(null);
   const answered = item.answer !== null;
@@ -55,11 +60,12 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     const opt = item.options[i];
     let answer: string | null | undefined = opt;
     if (item.editable) {
-      if (i === inpIdx) answer = inpRef.current!.value.trim() || null; // 空输入按取消处理（editable 行必已挂载）
+      if (i === inpIdx) answer = inpRef.current!.value.trim() || null; // empty input is treated as cancel (the editable row is guaranteed mounted)
       else answer = undefined;
     }
     setChosen(i);
-    // 答案写回挂起审批条目：按 requestId 定位，拷贝数组与元素替换（selector 与 _v 订阅方都能感知）
+    // Write the answer back to the pending approval entry: locate by requestId, copy the
+    // array and replace the element (both the selector and _v subscribers pick it up)
     useAppStore.setState((st) => {
       for (const [p, sess] of st.openSessions) {
         const list = sess.pendingApprovals;
@@ -74,7 +80,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     useAppStore.getState().send({ type: "approval_response", requestId: item.requestId, answer });
   };
 
-  // 选中并聚焦第 i 行（editable 行聚焦内嵌输入）
+  // Select and focus row i (the editable row focuses its inline input)
   const focusRow = (i: number) => {
     select(i);
     const row = listRef.current?.querySelector<HTMLElement>(`[data-idx="${i}"]`);
@@ -82,7 +88,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   };
   const move = (from: number, d: number) => focusRow((from + d + n) % n);
 
-  // 行键盘：数字键直接应答；上下 / 左右 / Tab 移动；回车应答本行（对齐 ZCodium PermissionDialog）
+  // Row keyboard: number keys answer directly; up/down / left/right / Tab move; Enter
+  // answers this row (mirroring ZCodium's PermissionDialog)
   const onRowKey = (i: number) => (e: ReactKeyboardEvent<HTMLElement>) => {
     if (e.key >= "1" && e.key <= String(n)) {
       e.preventDefault();
@@ -99,8 +106,10 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     }
   };
 
-  // 内嵌输入键盘（ZCodium 反馈行同款）：回车提交、上下 / Tab 换行、Esc 失焦；
-  // stopPropagation——输入行按键不触发全局快捷键（Esc 中断生成等）
+  // Inline input keyboard (same as ZCodium's feedback row): Enter submits, up/down / Tab
+  // change rows, Esc blurs;
+  // stopPropagation — key presses on the input row must not trigger global shortcuts (Esc
+  // interrupting generation, etc.)
   const onInpKey = (e: ReactKeyboardEvent<HTMLElement>) => {
     e.stopPropagation();
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -118,7 +127,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     }
   };
 
-  // 挂载聚焦选中行（数字 / 回车快捷键即刻可用）；已有输入焦点时不抢（用户可能正在打字）
+  // Focus the selected row on mount (number / Enter shortcuts usable at once); do not steal
+  // an existing input focus (the user may be typing)
   useEffect(() => {
     const ae = document.activeElement;
     if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as HTMLElement).isContentEditable)) return;
@@ -149,7 +159,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
             (answered ? (i === frozenChosen ? " chosen selected" : " dim") : "");
           const sel = !answered && i === selected;
           if (i === inpIdx) {
-            // 非受控输入：输入只写回 item.prefill（全量重绘时保住已输入内容），不触发重渲染
+            // Uncontrolled input: typing only writes back item.prefill (preserving entered
+            // content across full redraws), without triggering a re-render
             return (
               <div
                 key={opt}

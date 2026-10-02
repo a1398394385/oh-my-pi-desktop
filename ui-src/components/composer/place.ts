@@ -1,8 +1,14 @@
-// composer 菜单定位（原 composer.js openComposerMenu 的定位主体平移，不依赖 shell.js）：
-// 锚定按钮（left 跟随、底部贴按钮上方 8px 向上展开），右缘不越界。
-// 垂直方向按按钮实时 offsetTop 计算而非固定 bottom:44px——后者只在单行布局侥幸成立，
-// 换行/分级收缩导致按钮位移后弹窗会脱离按钮（新建会话窄窗口错位 bug 的根因）。
-// 上方视口空间不足时改限高 + 内部滚动，菜单顶最多到视口上沿 4px，底缘仍贴按钮上方。
+// Composer menu positioning (ported from the positioning body of the old
+// composer.js openComposerMenu, no shell.js dependency):
+// anchored to the button (left follows it, bottom hugs 8px above the button,
+// expanding upward), right edge never overflows.
+// Vertically, compute from the button's live offsetTop instead of a fixed
+// bottom:44px -- the latter only holds by luck in single-row layouts; once
+// wrapping or graded collapse moves the button, the popup detaches from it (the
+// root cause of the new-session narrow-window misplacement bug).
+// When the viewport space above is insufficient, switch to capped height +
+// internal scrolling; the menu top reaches at most 4px below the viewport top,
+// and the bottom edge still hugs above the button.
 import { useAppStore } from "../../store";
 
 export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | null, btn: HTMLElement | null): void {
@@ -24,11 +30,17 @@ export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | 
   menu.style.bottom = "auto";
 }
 
-// sigil 补全卡定位：与输入框卡外缘同宽对齐，底缘贴卡片上缘上方 2px（屏幕像素，不随界面
-// 缩放翻倍）——两张一模一样的圆角卡片上下排列（内容更多的那张在上）。最大高度 = 输入框卡
-// 高度的 ratio 倍（2.6）；上方视口不足时底缘不动、顶最多到视口上沿 4px，超出部分内部滚动。
-// 垂直位置用 bottom 锚定（= padding box 高 + 顶边框 + 间距）而非 top 测量：不依赖弹层自身
-// 高度的一次性测量，候选到达/字体加载引起高度变化时不会留出过期的空隙。
+// Sigil completion card positioning: align flush with the composer card's outer
+// edges, bottom edge 2px above the card's top edge (screen pixels, not doubled
+// by UI zoom) -- two identical rounded cards stacked vertically (the one with
+// more content on top). Max height = ratio times the composer card height
+// (2.6); when the viewport above is insufficient, the bottom edge stays put and
+// the top reaches at most 4px below the viewport top, overflowing content
+// scrolls internally.
+// The vertical position is anchored via bottom (= padding box height + top
+// border + gap) rather than a top measurement: no one-shot measurement of the
+// popup's own height, so height changes from candidates arriving or fonts
+// loading never leave a stale gap.
 export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | null, ratio = 2.6): void {
   if (!comp || !menu) return;
   const z = useAppStore.getState().zoomLevel || 1;
@@ -37,10 +49,12 @@ export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | n
   const borderTop = Number.parseFloat(cs.borderTopWidth) || 0;
   menu.style.maxHeight = "";
   menu.style.overflowY = "";
-  // containing block 是 #composer 的 padding box：外缘对齐 = 左移左边框宽 + 卡片的 border-box 宽
+  // The containing block is #composer's padding box: flush alignment = shift
+  // left by the left border width + the card's border-box width
   menu.style.left = -borderLeft + "px";
   menu.style.width = comp.offsetWidth + "px";
-  // 底缘锚定：padding box 底缘上方 (padding 高 + 顶边框 + 间距/zoom)，即卡片上缘上方 2 屏幕像素
+  // Bottom anchoring: (padding height + top border + gap/zoom) above the
+  // padding box bottom edge, i.e. 2 screen pixels above the card's top edge
   menu.style.bottom = comp.clientHeight + borderTop + 2 / z + "px";
   menu.style.top = "auto";
   const maxH = Math.round(comp.offsetHeight * ratio);
@@ -48,7 +62,9 @@ export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | n
     menu.style.maxHeight = maxH + "px";
     menu.style.overflowY = "auto";
   }
-  // 上方可用高度（layout px）：视口上沿 4px 为止，减去间距与 containing block 到卡片外缘的边框差
+  // Available height above (layout px): up to 4px below the viewport top,
+  // minus the gap and the border difference from the containing block to the
+  // card's outer edge
   const avail = Math.round((comp.getBoundingClientRect().top - 4) / z) - borderTop - Math.ceil(2 / z);
   if (menu.offsetHeight > avail) {
     menu.style.maxHeight = Math.max(80, avail) + "px";
@@ -56,10 +72,15 @@ export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | n
   }
 }
 
-// 模型二级菜单（flyout）定位：
-// 1. 水平：默认向右弹出并与一级菜单边框交叠 4px（视觉无缝连接），右缘越界则翻到左侧。
-// 2. 最大高度限制：确保二级下拉框绝对不超出屏幕，超出部分内部滚动。
-// 3. 垂直定位：中部对齐一级下拉框选中的供应商项（向上下两边展开），并钳位在视口上下安全边界内。
+// Model second-level menu (flyout) positioning:
+// 1. Horizontal: pop out rightward by default, overlapping the first-level
+//    menu's border by 4px (visually seamless); flip to the left if the right
+//    edge overflows.
+// 2. Max height cap: the second-level dropdown absolutely never exceeds the
+//    screen; overflowing content scrolls internally.
+// 3. Vertical: center on the selected provider row of the first-level dropdown
+//    (expanding both up and down), clamped inside the viewport's safe
+//    boundaries.
 export function placeFlyoutMenu(
   fly: HTMLElement | null,
   menu: HTMLElement | null,
@@ -71,26 +92,27 @@ export function placeFlyoutMenu(
   const z = useAppStore.getState().zoomLevel || 1;
   const margin = 8;
 
-  // 1. 水平定位：与一级菜单边框交叠 4px，右缘越界则翻到左侧
+  // 1. Horizontal positioning: overlap the first-level menu's border by 4px;
+  // flip to the left if the right edge overflows
   fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px";
   const boundRight = boundary ? boundary.getBoundingClientRect().right : window.innerWidth;
   if (fly.getBoundingClientRect().right > boundRight - margin) {
     fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px";
   }
 
-  // 2. 最大高度限制：确保二级下拉框绝对不超出屏幕
+  // 2. Max height cap: the second-level dropdown absolutely never exceeds the screen
   const maxScreenH = window.innerHeight - margin * 2;
   const maxHInContainer = Math.max(80, Math.floor(maxScreenH / z));
   fly.style.maxHeight = maxHInContainer + "px";
   fly.style.overflowY = "auto";
 
-  // 3. 垂直定位：中部对齐供应商行
+  // 3. Vertical positioning: center on the provider row
   const rowRect = row.getBoundingClientRect();
   const rowCenterY = rowRect.top + rowRect.height / 2;
   const flyH = fly.offsetHeight;
   let screenTop = rowCenterY - (flyH * z) / 2;
 
-  // 视口上下边界保护：向上或向下平移，确保整体停留在屏幕内
+  // Viewport top/bottom boundary guard: shift up or down to keep it on screen
   const minScreenY = margin;
   const maxScreenY = window.innerHeight - margin;
   if (screenTop + flyH * z > maxScreenY) {
@@ -100,7 +122,7 @@ export function placeFlyoutMenu(
     screenTop = minScreenY;
   }
 
-  // 4. 换算回包含块（offsetParent）内的相对坐标
+  // 4. Convert back to relative coordinates inside the containing block (offsetParent)
   const container = (fly.offsetParent as HTMLElement | null) ?? menu.offsetParent ?? document.body;
   const containerRect = container.getBoundingClientRect();
   fly.style.top = Math.round((screenTop - containerRect.top) / z) + "px";

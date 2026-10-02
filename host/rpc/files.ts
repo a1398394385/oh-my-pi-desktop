@@ -1,5 +1,6 @@
-// 文件与 git 域 RPC：文件页读取（文本/图片/目录树）、单文件 diff、git 状态/分支/写操作。
-// 自 main.ts message 分发平移（第三刀）。
+// File and git domain RPC: file page reads (text/image/dir tree), single-file
+// diff, git status/branches/write operations.
+// Moved over from the main.ts message dispatch (third slice).
 import path from "node:path";
 import fs from "node:fs";
 import { defaultCwd } from "../state.ts";
@@ -7,8 +8,11 @@ import { isGitWorktree } from "../session-lifecycle.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
-// git 写操作共用：参数数组直传子进程（无 shell 拼接，天然防注入），失败时把 stderr
-// 汇总成 error 字段交调用方回包（不抛异常炸连接），成功返回 stdout/stderr
+// Shared by git write operations: argument arrays go straight to the
+// subprocess (no shell concatenation, injection-proof by construction); on
+// failure stderr is summarized into an error field for the caller's reply
+// (no exception blows up the connection); on success stdout/stderr are
+// returned
 function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string; stderr: string } | { ok: false; error: string } {
   const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
   if (p.exitCode !== 0) {
@@ -17,15 +21,18 @@ function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string;
   return { ok: true, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
 }
 
-// git 写操作 RPC 的 paths 参数：字符串数组、去空
+// paths parameter of git write RPCs: string array, empties dropped
 function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
 }
 
 export const filesHandlers: Record<string, RpcHandler> = {
   async get_file_diff(ws, msg) {
-    // 单文件详细 diff：tracked 走 git diff HEAD，untracked/仓库外文件用 --no-index 生成纯新增。
-    // cwd 外的文件（如 ~/.omp 全局配置）不拒绝：找它自己所在的 git 仓库；不在任何仓库就整文件当新增。
+    // Detailed single-file diff: tracked files go through git diff HEAD;
+    // untracked/out-of-repo files use --no-index to render a pure addition.
+    // Files outside cwd (e.g. ~/.omp global config) are not rejected: locate
+    // the git repo they live in; outside any repo, the whole file renders as
+    // an addition.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const filePath = String(msg.path ?? "");
     if (!filePath) throw new Error(hostI18n.t("errors.param.missingPath"));
@@ -40,9 +47,12 @@ export const filesHandlers: Record<string, RpcHandler> = {
       if (topLevel && abs.startsWith(topLevel + path.sep)) repoCwd = topLevel;
     }
     const rel = path.relative(path.resolve(repoCwd), abs);
-    // tracked 检查必须用 rel（相对 repoCwd）：工具调用常给绝对路径或仓库根相对路径，
-    // 直接拿原始 filePath 当 pathspec 会让 git 报 outside repository——tracked 误判为
-    // false 后走 --no-index 兜底，整个文件被渲染成纯新增（diff 显示与 +N-M 摘要不符的根因）
+    // The tracked check must use rel (relative to repoCwd): tool calls often
+    // pass absolute or repo-root-relative paths; feeding the raw filePath as
+    // the pathspec makes git report outside repository — once tracked is
+    // misjudged as false, the --no-index fallback renders the whole file as a
+    // pure addition (the root cause of diff views disagreeing with +N-M
+    // summaries)
     const tracked = Bun.spawnSync(["git", "-C", repoCwd, "ls-files", "--error-unmatch", "--", rel], {
       stdout: "ignore",
       stderr: "ignore",
@@ -51,7 +61,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
       ? ["diff", "HEAD", "--", rel]
       : ["diff", "--no-index", "--", "/dev/null", abs];
     const p = Bun.spawnSync(["git", "-C", repoCwd, ...args], { stdout: "pipe", stderr: "pipe" });
-    // --no-index 有差异时 exitCode=1 属正常
+    // exitCode=1 from --no-index with differences is normal
     if (p.exitCode > 1) throw new Error(hostI18n.t("errors.git.diffFailed", { detail: p.stderr.toString().trim().slice(0, 200) }));
     ws.send(
       JSON.stringify({
@@ -63,7 +73,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     );
   },
   async read_file(ws, msg) {
-    // 文件页全文件内容（读取行点击 / 文件树点击详情共用）；限 2MB 文本文件
+    // Full file content for the file page (shared by read-line clicks / file-tree click details); text files capped at 2MB
     const p = String(msg.path ?? "");
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     const stat = fs.statSync(p, { throwIfNoEntry: false });
@@ -81,8 +91,10 @@ export const filesHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "file_content", path: p, text: buf.toString("utf8") }));
   },
   async read_image(ws, msg) {
-    // 图片二进制读取（对话附件预览等）：后缀白名单 + 8MB 上限，base64 回传；
-    // 路径校验对齐 read_file 的宽松度（仅要求非空且是文件）
+    // Image binary read (conversation attachment previews etc.): extension
+    // whitelist + 8MB cap, returned as base64;
+    // path validation matches read_file's looseness (only requires non-empty
+    // and is-a-file)
     const p = String(msg.path ?? "");
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     const MIME: Record<string, string> = {
@@ -112,7 +124,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "image_content", path: p, mime: MIME[ext], data: buf.toString("base64") }));
   },
   async list_dir(ws, msg) {
-    // 文件树单层列表：目录优先、字母序；隐藏 .git/.DS_Store
+    // Single-level file tree listing: directories first, alphabetical; hides .git/.DS_Store
     const dir = String(msg.path ?? "");
     if (!dir) throw new Error(hostI18n.t("errors.param.missingPath"));
     const stat = fs.statSync(dir, { throwIfNoEntry: false });
@@ -126,7 +138,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "dir_list", path: dir, entries }));
   },
   git_stage(ws, msg) {
-    // 暂存：git add -- <paths>（数组参数直传，-- 防路径注入）
+    // Stage: git add -- <paths> (argument array passed straight through; -- prevents path injection)
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
@@ -135,7 +147,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     else ws.send(JSON.stringify({ type: "git_staged", cwd, ok: true }));
   },
   git_unstage(ws, msg) {
-    // 取消暂存：git reset HEAD -- <paths>
+    // Unstage: git reset HEAD -- <paths>
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
@@ -144,8 +156,10 @@ export const filesHandlers: Record<string, RpcHandler> = {
     else ws.send(JSON.stringify({ type: "git_unstaged", cwd, ok: true }));
   },
   git_discard(ws, msg) {
-    // 丢弃工作区改动（破坏性，UI 侧已二次确认，host 直接执行）：
-    // tracked 走 checkout -- 恢复，untracked 走 clean -f -- 精确路径删除；逐路径处理，任一失败即回错
+    // Discard working-tree changes (destructive, already double-confirmed on
+    // the UI side, host executes directly):
+    // tracked files restore via checkout --; untracked files delete exactly
+    // via clean -f --; per-path processing, any failure replies with the error
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
@@ -162,8 +176,10 @@ export const filesHandlers: Record<string, RpcHandler> = {
     else ws.send(JSON.stringify({ type: "git_discarded", cwd, ok: true }));
   },
   git_commit(ws, msg) {
-    // 提交：message 经数组参数传（无 shell 拼接，防注入）；paths 省略 = 提交全部已暂存，
-    // 给定 = pathspec 提交（git 自动暂存这些路径的改动并只提交它们）。回包带新提交 sha。
+    // Commit: message goes through the argument array (no shell
+    // concatenation, injection-proof); paths omitted = commit everything
+    // staged, given = pathspec commit (git auto-stages those paths' changes
+    // and commits only them). The reply carries the new commit sha.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const message = String(msg.message ?? "");
     if (!message.trim()) throw new Error(hostI18n.t("errors.param.missingMessage"));
@@ -182,17 +198,17 @@ export const filesHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "git_committed", cwd, ok: true, commit: sha.stdout.trim() }));
   },
   git_push(ws, msg) {
-    // 推送当前分支（不自动 -u）：无 upstream 时 git 报错，stderr 透传为 error
+    // Push the current branch (no automatic -u): without an upstream git errors, stderr passes through as error
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const r = runGitChecked(cwd, ["push"]);
     if (!r.ok) ws.send(JSON.stringify({ type: "git_pushed", cwd, error: r.error }));
     else {
-      // push 的进度/结果输出（分支更新行）在 stderr，成功时取作 result
+      // push's progress/result output (branch update lines) lands on stderr; take it as result on success
       ws.send(JSON.stringify({ type: "git_pushed", cwd, ok: true, result: r.stderr.trim() || r.stdout.trim() }));
     }
   },
   get_git_diff(ws, msg) {
-    // 当前会话 project 的改动文件清单（树/平铺展示用）
+    // Changed-files list of the current session's project (for tree/flat display)
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const p = Bun.spawnSync(["git", "-C", cwd, "status", "--short"], { stdout: "pipe", stderr: "pipe" });
     if (p.exitCode !== 0) throw new Error(hostI18n.t("errors.git.statusFailed", { detail: p.stderr.toString().trim().slice(0, 200) || hostI18n.t("errors.git.notARepo") }));
@@ -202,10 +218,12 @@ export const filesHandlers: Record<string, RpcHandler> = {
       .filter((l) => l.trim())
       .map((line) => {
         let path = line.slice(3);
-        const arrow = path.indexOf(" -> "); // rename：R  old -> new
+        const arrow = path.indexOf(" -> "); // rename: R  old -> new
         if (arrow >= 0) path = path.slice(arrow + 4);
-        // XY 两列拆开（X=暂存区/index 状态，Y=工作区状态），供 UI 行级暂存/取消暂存按钮判定；
-        // untracked（??）本质是未暂存的新文件，归 unstaged、不给 staged
+        // Split the XY columns (X = index/staged state, Y = working-tree
+        // state) so the UI can decide per-row stage/unstage buttons;
+        // untracked (??) is essentially an unstaged new file: count as
+        // unstaged, never staged
         const xy = line.slice(0, 2);
         return {
           code: line.slice(0, 2).trim() || "?",

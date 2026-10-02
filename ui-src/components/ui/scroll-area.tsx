@@ -1,4 +1,4 @@
-// 滚动区基件（ZCodium scroll-area 平移）：thumb 用 --line 色。
+// Scroll-area base component (ported from ZCodium scroll-area): thumb uses the --line color.
 import * as React from "react";
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
 

@@ -10,6 +10,7 @@ export const chatZh = {
   labelFind: "查找",
   labelWebSearch: "联网搜索",
   labelAsk: "提问",
+  labelSessionContext: "历史会话检索",
   labelDebug: "调试",
   labelMemory: "记忆",
   labelDevice: "设备",
@@ -155,6 +156,13 @@ export const chatZh = {
   filterNoTools: "无工具",
   filterUserOnly: "仅用户",
   filterAll: "全部",
+  // ---- lightweight diff viewer (diff/LightweightDiff.tsx) ----
+  diffOmitted: "… 内容过长，已省略剩余 {{count}} 行",
+  // ---- chat shell (Chat.tsx) ----
+  scrollBottomTitle: "滚动到底部",
+  emptyHint: "点左侧任务或「新建任务」开始",
+  externalWriteNotice: "此会话正在被其他进程写入（如 CLI），视图可能不同步",
+  reload: "重新加载",
   // ---- cross-day timestamp (TurnActs fmtClock) ----
   clockDate: "{{m}}月{{d}}日 {{hm}}",
   // ---- approval card option ids (host-built approval frames; ApprovalCard) ----

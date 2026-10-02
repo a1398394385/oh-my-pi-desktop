@@ -1,7 +1,7 @@
-// 子代理透传冒烟：诱导主会话调 task 工具，断言收到 subagent_lifecycle + subagent_event 帧。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-subagent.ts
-// 帧语义（BUG-007 修复后）：turn_end 每模型轮各一帧，lifecycle 帧可能晚于首个轮帧到达——
-// 断言按 runEnd=true 的收尾帧过滤（与 smoke-sendnow 同款），轮内帧只等不判。
+// Subagent passthrough smoke test: induce the main session to call the task tool and assert subagent_lifecycle + subagent_event frames arrive.
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-subagent.ts
+// Frame semantics (after the BUG-007 fix): one turn_end per model round, and the lifecycle frame may arrive later than the first round frame --
+// assertions filter by the runEnd=true final frame (same as smoke-sendnow); in-round frames are waited on, not judged.
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -56,7 +56,7 @@ ws.onmessage = (ev) => {
     case "subagent_lifecycle":
       state.lifecycle++;
       console.log(`lifecycle: ${msg.agent} → ${msg.status}（${msg.description?.slice(0, 40)}）`);
-      if (msg.status === "started") state.events = state.events; // 保持
+      if (msg.status === "started") state.events = state.events; // keep
       break;
     case "subagent_event":
       state.events++;

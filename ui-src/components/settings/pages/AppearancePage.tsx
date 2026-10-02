@@ -1,6 +1,7 @@
-// 设置页：外观（pg-appearance）。界面主题/字体/字号、代码主题/行号/换行/字号、双主题代码预览。
-// 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-appearance">，
-// 绑定参照 ui/settings/index.js 的 initSettings（themeSel/fontSel/num-ctl/tgLineNo/tgWrap）。
+// Settings page: appearance (pg-appearance). UI theme/font/font size, code theme/line
+// numbers/wrap/font size, dual-theme code preview.
+// Old reference: <div class="set-page" id="pg-appearance"> in git show 464131d:ui/index.html,
+// bindings per initSettings in ui/settings/index.js (themeSel/fontSel/num-ctl/tgLineNo/tgWrap).
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, toast } from "../../../store";
@@ -9,7 +10,7 @@ import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 
-// 下拉选项（旧版 .mi 一一对应；ck/sub/disabled 均可选）
+// Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
 interface SelOption {
   v: string;
   label: ReactNode;
@@ -18,14 +19,14 @@ interface SelOption {
   disabled?: boolean;
 }
 
-// Sel 下拉选择器 props
+// Sel dropdown props
 interface SelProps {
   label: ReactNode;
   options: SelOption[];
   onPick: (v: string) => void;
 }
 
-// ---------- 主题（旧版 shell.js applyTheme 的等价物；General 与 Appearance 各持一份） ----------
+// ---------- Theme (equivalent of the old shell.js applyTheme; General and Appearance each hold a copy) ----------
 const themeMq = window.matchMedia("(prefers-color-scheme: dark)");
 function currentThemeMode(): string {
   try { return localStorage.getItem("omp-theme") || "dark"; } catch { return "dark"; }
@@ -36,17 +37,17 @@ function applyTheme(mode: string): void {
   try { localStorage.setItem("omp-theme", mode); } catch {}
 }
 
-// ---------- 减弱动态效果（omp-motion：system 跟随系统 / on 强制减弱 / off 强制动画） ----------
+// ---------- Reduce motion (omp-motion: system follows the OS / on force-reduced / off force-animated) ----------
 function currentMotionMode(): string {
   try { return localStorage.getItem("omp-motion") || "system"; } catch { return "system"; }
 }
 function applyMotion(mode: string): void {
-  // system 时移除属性回落 media query；on/off 由 html[data-motion] 强制规则接管
+  // system removes the attribute to fall back to the media query; on/off is taken over by html[data-motion] forced rules
   if (mode === "system") delete document.documentElement.dataset.motion;
   else document.documentElement.dataset.motion = mode;
   try { localStorage.setItem("omp-motion", mode); } catch {}
 }
-// 主题图标对齐 ZCodium THEME_MODES（lucide 线条层：monitor/sun/moon）
+// Theme icons aligned with ZCodium THEME_MODES (lucide line layer: monitor/sun/moon)
 function themeIcon(mode: string): string {
   return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
 }
@@ -60,7 +61,7 @@ function themeLabel(mode: string): ReactNode {
   );
 }
 
-// 本地偏好落盘（旧版 saveUiPrefs）+ 外观应用（旧版 applyAppearance）
+// Persist local prefs (old saveUiPrefs) + apply appearance (old applyAppearance)
 const FONT_STACKS: Record<string, string> = {
   default: "var(--sans)",
   zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -80,7 +81,7 @@ const FONT_LABEL_KEYS: Record<string, string> = {
   heiti: "settingsPage.appearance.fontHeiti",
   mono: "settingsPage.appearance.fontMono",
 };
-// 本地偏好落盘（读 store 真实引用序列化，勿用 liveRef——其枚举不转发）
+// Persist local prefs (serialize the store's real reference; don't use liveRef — its enumeration isn't forwarded)
 function saveUiPrefs() {
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
 }
@@ -95,7 +96,7 @@ function applyAppearance() {
   root.dataset.showThinking = p.showThinking ? "on" : "off";
 }
 
-// ---------- 下拉选择器：旧版 wireSel 的受控等价物 ----------
+// ---------- Dropdown selector: controlled equivalent of the old wireSel ----------
 function Sel({ label, options, onPick }: SelProps) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -135,7 +136,7 @@ function Sel({ label, options, onPick }: SelProps) {
   );
 }
 
-// 字号步进（旧版 stepFont： clamp -> save -> apply；uiPrefs 换新对象写入 + bump）
+// Font-size stepping (old stepFont: clamp -> save -> apply; uiPrefs written as a fresh object + bump)
 function stepFont(key: "uiFontSize" | "codeFontSize", delta: number, min: number, max: number): void {
   useAppStore.setState((st) => ({
     uiPrefs: { ...st.uiPrefs, [key]: Math.min(max, Math.max(min, st.uiPrefs[key] + delta)) },
@@ -152,13 +153,13 @@ export default function AppearancePage() {
   const [codeFs, setCodeFs] = useState(useAppStore.getState().uiPrefs.codeFontSize);
   const [lineNo, setLineNo] = useState(!!useAppStore.getState().uiPrefs.lineNumbers);
   const [wrap, setWrap] = useState(!!useAppStore.getState().uiPrefs.codeWrap);
-  // 预览卡「当前生效」标签跟随实际明暗（dataset.theme 是全局唯一事实来源）
+  // Preview card "currently active" tag follows the actual light/dark state (dataset.theme is the single global source of truth)
   const [dark, setDark] = useState(document.documentElement.dataset.theme !== "light");
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => setDark(document.documentElement.dataset.theme !== "light");
     mq.addEventListener("change", sync);
-    const timer = setInterval(sync, 1000); // dataset.theme 变化无事件，低成本轮询兜底
+    const timer = setInterval(sync, 1000); // dataset.theme changes fire no event; cheap polling as a fallback
     return () => {
       mq.removeEventListener("change", sync);
       clearInterval(timer);
@@ -194,7 +195,7 @@ export default function AppearancePage() {
     saveUiPrefs();
     applyAppearance();
   };
-  // 字号步进（范围沿用旧版 settings/index.js 的 clamp：界面 11-18、代码 10-18）
+  // Font-size stepping (range keeps the old clamp in settings/index.js: UI 11-18, code 10-18)
   const stepUiFs = (d: number) => {
     stepFont("uiFontSize", d, 11, 18);
     setUiFs(useAppStore.getState().uiPrefs.uiFontSize);

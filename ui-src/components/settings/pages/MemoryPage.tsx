@@ -1,6 +1,8 @@
-// 记忆设置页：工作区记忆总开关 + 记忆文件列表，点击记忆行向下延展出详情区
-// （左栏文件树 + 右侧 markdown 渲染，语义 1:1 平移 ui/settings/memory.js）。
-// Markdown 渲染是记忆页专用的简化实现（整体先转义再排版，防注入），与主对话区 markdown 引擎相互独立。
+// Memory settings page: workspace memory master switch + memory file list; clicking a memory
+// row expands the detail area downward
+// (left file tree + right markdown rendering; semantics ported 1:1 from ui/settings/memory.js).
+// The markdown rendering is a simplified memory-page-specific implementation (escape everything
+// first, then lay out — injection-safe), independent of the main chat area's markdown engine.
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,14 +12,14 @@ import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 
-// 记忆条目（agent_assets 回包 memories 列表项；host 下发，字段以回包为准）
+// Memory entry (list item of memories in the agent_assets reply; sent by host, fields per the reply)
 interface MemoryItem {
   path: string;
   name?: string;
-  project?: string; // 工作区名（优先于 name 展示）
+  project?: string; // workspace name (displayed in preference to name)
 }
 
-// ---------- 记忆页专用 markdown 渲染（先整体转义再排版，输出安全 HTML） ----------
+// ---------- Memory-page-specific markdown rendering (escape everything first, then lay out; outputs safe HTML) ----------
 function mdEscape(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -154,17 +156,17 @@ function renderMarkdown(src: unknown): string {
   return out.join("");
 }
 
-// rollout 文件名隐藏 threadId 前缀，只留 slug 部分
+// Hide the threadId prefix of rollout file names, keep only the slug part
 function rolloutLabel(n: string): string {
   return n.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-?/i, "") || n;
 }
 
-// ---------- 延展区：头部 + 左栏文件树 + 右侧内容 ----------
+// ---------- Expanded area: head + left file tree + right content ----------
 function MemoryExpand({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const d = useAppStore((s) => s.memoryDetail);
-  const [rolloutOpen, setRolloutOpen] = useState(true); // rollout 组展开态（组件随切行重挂载，天然复位为展开）
-  // 子项入场动画标记用后即焚（对齐旧版 animateMdKids：本次渲染带 kids-in，随后复位）
+  const [rolloutOpen, setRolloutOpen] = useState(true); // rollout group expanded state (the component remounts on row switch, naturally resets to expanded)
+  // One-shot flag for child entrance animation (aligned with the old animateMdKids: this render carries kids-in, then resets)
   const [kidsIn, setKidsIn] = useState(false);
   useEffect(() => {
     if (!kidsIn) return;
@@ -172,12 +174,12 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
     return () => cancelAnimationFrame(t);
   }, [kidsIn]);
   const mainRef = useRef<HTMLDivElement>(null);
-  // 每次切换文件后内容区滚回顶部（对齐旧版 scrollTop = 0）
+  // Scroll the content area back to top after each file switch (aligned with the old scrollTop = 0)
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [d.active?.name, d.active?.rollout, d.status]);
 
-  // 点击左栏文件：切选中并读取（active 由 memory_file 回包落 store，点击即发出请求）
+  // Click a left-tree file: switch selection and read (active lands in the store via the memory_file reply; the click sends the request)
   const pickFile = (name: string, rollout: boolean) => {
     if (d.active && d.active.name === name && d.active.rollout === rollout) return;
     useAppStore.setState((st) => ({
@@ -188,7 +190,7 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
   const toggleRollout = () => {
     const open = !rolloutOpen;
     setRolloutOpen(open);
-    if (open) setKidsIn(true); // 组展开时子项入场
+    if (open) setKidsIn(true); // children enter when the group expands
   };
 
   const mdIt = (name: string, rollout: boolean) => {
@@ -205,7 +207,7 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
     );
   };
 
-  // 正文：读取中 / 失败 / markdown 渲染（空文件占位对齐旧版）
+  // Body: loading / failed / markdown rendering (empty-file placeholder aligned with the old version)
   let body: ReactNode;
   if (d.status === "loading") body = t("settingsPage.shared.reading");
   else if (d.status === "error") body = t("settingsPage.memory.readFail", { error: d.error ?? "" });
@@ -245,20 +247,20 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ---------- 页面 ----------
+// ---------- Page ----------
 export default function MemoryPage() {
   const { t } = useTranslation();
   const memories = useAppStore((s) => s.agentAssets?.memories ?? null);
-  const [openPath, setOpenPath] = useState<string | null>(null); // 当前向下延展的记忆行（条目 path）
+  const [openPath, setOpenPath] = useState<string | null>(null); // memory row currently expanded downward (entry path)
 
-  // 点击项目行：该行向下延展出详情区；再次点击收起，点其他行则切换
+  // Click a project row: expand the detail area under that row; click again to collapse, click another row to switch
   const openRow = (m: MemoryItem) => {
     if (openPath === m.path) {
       setOpenPath(null);
       return;
     }
     setOpenPath(m.path);
-    // 重置详情态：清空清单，进入读取中（rollout 组展开态在 MemoryExpand 本地，随重挂载复位）
+    // Reset detail state: clear the file list, enter loading (the rollout group's expanded state is local to MemoryExpand, reset on remount)
     useAppStore.setState((st) => ({
       memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "loading", content: "", error: null },
     }));
@@ -266,7 +268,7 @@ export default function MemoryPage() {
   };
   const closeRow = () => setOpenPath(null);
 
-  // 列表重建（agent_assets 回包）后，已展开的行若不复存在则收起（对齐旧版 renderAssetPages 的 closeMemoryRow）
+  // After the list rebuilds (agent_assets reply), collapse an expanded row that no longer exists (aligned with the old renderAssetPages' closeMemoryRow)
   useEffect(() => {
     if (openPath && memories && !memories.some((m) => m.path === openPath)) setOpenPath(null);
   }, [memories, openPath]);

@@ -1,8 +1,8 @@
-// 宿主冒烟：真模型驱动完整链路（list → create 落盘 → prompt → load 恢复历史）。
-// 用法：OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke.ts [宿主ws地址]
-// 不传地址时本脚本自行拉起宿主子进程，退出时清理测试产生的会话文件。
-// 断言覆盖：turn_end 携带累加 usage；read 工具 details 透传 displayContent；
-// load 恢复的历史按轮次收进 loop 组（过程收起、最终 assistant 留组外）。
+// Host smoke test: a real model drives the full chain (list -> create persisted -> prompt -> load restores history).
+// Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke.ts [host ws url]
+// Without an address the script spawns the host child process itself and cleans up the session files it created on exit.
+// Assertions cover: turn_end carries cumulative usage; the read tool's details pass displayContent through;
+// history restored by load is grouped into loop groups per round (process collapsed, final assistant left outside the group).
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 
@@ -85,12 +85,12 @@ ws.onmessage = async (ev) => {
         assert(state.deltaText.includes("SMOKE-PROBE-LINE-1"), "回复应引用探针文件首行");
         assert(msg.usage && msg.usage.input > 0 && msg.usage.output > 0, `turn_end 应带 usage: ${JSON.stringify(msg.usage)}`);
         console.log(`usage: input=${msg.usage.input} output=${msg.usage.output} cacheRead=${msg.usage.cacheRead} cacheWrite=${msg.usage.cacheWrite}`);
-        // 关掉旧连接视角，从磁盘 load 恢复同一会话
+        // Drop the old connection's view; load the same session back from disk
         ws.send(JSON.stringify({ type: "load_session", path: createdFiles[0] }));
       }
       break;
     case "messages": {
-      // load 后宿主直接回 messages（历史快照）；只处理 load 产生的那次
+      // After load the host replies with messages directly (a history snapshot); only handle the one produced by the load
       if (state.loadedId) break;
       state.loadedId = msg.sessionId;
       console.log("恢复历史:", JSON.stringify(msg.messages.map((m: any) => ({ r: m.role, t: (m.text || "").slice(0, 20) }))));

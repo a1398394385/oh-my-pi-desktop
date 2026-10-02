@@ -7,7 +7,8 @@ import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
 
-// 待消费气泡的左侧操作组：排队态（立即发送/编辑/删除）｜steer 态（编辑/放回队列顶端）
+// Left-side action group of a pending-consumption bubble: queued state (send now / edit /
+// delete) | steer state (edit / requeue to top)
 function PendingActs({ item }: { item: UserItem }) {
   const s = activeOpen();
   const mk = (title: string, ic: string, fn: (sess: OpenSession, item: UserItem) => void) => (
@@ -40,8 +41,9 @@ function PendingActs({ item }: { item: UserItem }) {
   );
 }
 
-// 带 entryId 的历史用户消息 hover 出现的分叉按钮已移除：分叉改挂在一轮 output 结尾
-//（见 TurnActs.jsx），气泡旁只保留排队/steer 操作组。
+// The fork button that used to appear on hover of historical user messages with an entryId
+// has been removed: forking now hangs at the end of a turn's output (see TurnActs.jsx);
+// only the queued/steer action group remains beside the bubble.
 export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const images = item.images ?? [];
@@ -50,7 +52,8 @@ export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
     name: t("chat.imageN", { n: i + 1 }),
   }));
 
-  // 排队/steer 待消费消息：hover 气泡左侧出操作组（消费后 pending 清除即普通历史消息）
+  // Queued/steer pending-consumption message: hover shows the action group to the left of
+  // the bubble (once consumed, pending clears and it becomes an ordinary historical message)
   const cls = item.pending ? "user-bubble pending" : "user-bubble";
   return (
     <div className="msg user" data-fk={fk || undefined}>

@@ -1,9 +1,9 @@
 {
-  "host": 1068,
-  "ui-src": 2456,
-  "scripts": 578,
-  "src-tauri/src": 56,
-  "ui": 525,
-  ".githooks": 4,
-  "(root)": 7
+  "host": 0,
+  "ui-src": 0,
+  "scripts": 4,
+  "src-tauri/src": 0,
+  "ui": 13,
+  ".githooks": 0,
+  "(root)": 1
 }

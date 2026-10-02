@@ -1,8 +1,11 @@
-// 输入区补全 chip 节点：@ 文件 / 斜杠命令候选接受后插入的原子节点（DecoratorNode）。
-// __text 即序列化文本（如 "@src/foo.ts "、"/compact "），取值与 textarea 时代
-// insertFile / insertCommand 的插入文本逐字节一致（含尾随空格）——编辑器的纯文本
-// 视图（flat.ts）与发送序列化都直接消费 getTextContent()，保证 WS prompt 格式不变。
-// chip 不可内联编辑（原子），可整体删除（isKeyboardSelectable 默认 true）。
+// Completion chip node for the composer: an atomic node (DecoratorNode)
+// inserted after accepting an @ file / slash command candidate.
+// __text is the serialized text (e.g. "@src/foo.ts ", "/compact "), byte-identical
+// (trailing space included) to the insertion text of the textarea era's
+// insertFile / insertCommand -- both the editor's plain-text view (flat.ts) and
+// send serialization consume getTextContent() directly, keeping the WS prompt
+// format unchanged. The chip is not inline-editable (atomic) and deletable as
+// a whole (isKeyboardSelectable defaults to true).
 import { DecoratorNode, $applyNodeReplacement } from "lexical";
 import type { LexicalNode, SerializedLexicalNode, Spread } from "lexical";
 import type { JSX } from "react";
@@ -29,7 +32,7 @@ export class ChipNode extends DecoratorNode<JSX.Element> {
     this.__text = text;
   }
 
-  // 序列化文本：$getRoot().getTextContent() 与 flat.ts 压平都经此取值
+  // Serialized text: both $getRoot().getTextContent() and flat.ts flattening read it here
   getTextContent(): string {
     return this.getLatest().__text;
   }
@@ -39,7 +42,8 @@ export class ChipNode extends DecoratorNode<JSX.Element> {
   }
 
   createDOM(): HTMLElement {
-    // DOM 壳只承担文档流占位，视觉由 decorate() 渲染（Lexical 装饰层）
+    // The DOM shell is only a document-flow placeholder; visuals are rendered
+    // by decorate() (Lexical decorator layer)
     return document.createElement("span");
   }
 
@@ -48,7 +52,8 @@ export class ChipNode extends DecoratorNode<JSX.Element> {
   }
 
   decorate(): JSX.Element {
-    // 展示文本去掉尾随空格（那是发送文本里的分隔符，视觉间距由 chip 自身承担）
+    // Display text drops the trailing space (that is a delimiter in the send
+    // text; visual spacing is carried by the chip itself)
     return <span className="chip">{this.__text.replace(/ +$/, "")}</span>;
   }
 

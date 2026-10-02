@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-// preview 调试钩子（main.jsx preview 模式注入），类型输入之一
+// Preview debug hook (injected by main.jsx in preview mode), one of the type inputs
 declare global {
   interface Window {
     __dbg?: Record<string, unknown>;

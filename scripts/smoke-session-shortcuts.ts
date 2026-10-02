@@ -1,7 +1,7 @@
-// 快捷键跳转会话与视觉提示单测
-// 严格验证：
-// 1. 优先级：优先跳转到正在运行中的会话；如果正在运行中的会话不足 9 个，就用存在未读消息的会话来补齐。
-// 2. 对应关系：数字 1~9 的顺序与左侧会话列表的顺序保持一致。
+// Unit test for session-jump shortcuts and visual hints
+// Strictly verifies:
+// 1. Priority: jump to running sessions first; if fewer than 9 are running, fill the rest with sessions that have unread messages.
+// 2. Mapping: digits 1-9 follow the order of the left session list.
 
 import { computeSidebarSessionShortcuts, SHORTCUT_DIGITS } from "../ui-src/components/sidebar/util";
 
@@ -14,15 +14,15 @@ function assert(cond: boolean, msg: string) {
 
 console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
 
-// 场景 1：普通会话、未读会话、运行中会话交错排列
+// Scenario 1: normal, unread, and running sessions interleaved
 {
   const sessions = [
-    { path: "/p/s1", modified: "2026-09-27T10:00:00Z" }, // 0: 未读
-    { path: "/p/s2", modified: "2026-09-27T09:00:00Z" }, // 1: 普通
-    { path: "/p/s3", modified: "2026-09-27T08:00:00Z" }, // 2: 运行中
-    { path: "/p/s4", modified: "2026-09-27T07:00:00Z" }, // 3: 运行中
-    { path: "/p/s5", modified: "2026-09-27T06:00:00Z" }, // 4: 普通
-    { path: "/p/s6", modified: "2026-09-27T05:00:00Z" }, // 5: 未读
+    { path: "/p/s1", modified: "2026-09-27T10:00:00Z" }, // 0: unread
+    { path: "/p/s2", modified: "2026-09-27T09:00:00Z" }, // 1: normal
+    { path: "/p/s3", modified: "2026-09-27T08:00:00Z" }, // 2: running
+    { path: "/p/s4", modified: "2026-09-27T07:00:00Z" }, // 3: running
+    { path: "/p/s5", modified: "2026-09-27T06:00:00Z" }, // 4: normal
+    { path: "/p/s6", modified: "2026-09-27T05:00:00Z" }, // 5: unread
   ];
 
   const openSessions = new Map<string, { streaming?: boolean; items?: { role: string; running?: boolean }[] }>([
@@ -43,10 +43,10 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
     unseenFinished,
   });
 
-  // 运行中有 2 个：s3, s4
-  // 未读补齐有 2 个：s1, s6
-  // 入选 4 个：s1, s3, s4, s6
-  // 按列表物理顺序：
+  // 2 running: s3, s4
+  // 2 filled from unread: s1, s6
+  // 4 selected: s1, s3, s4, s6
+  // In physical list order:
   // s1 -> 1
   // s3 -> 2
   // s4 -> 3
@@ -61,13 +61,13 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
   console.log("✓ 场景 1（运行中+未读混合交错排序）通过");
 }
 
-// 场景 2：运行中超过 9 个，优先取列表前 9 个运行中会话，未读不入选
+// Scenario 2: more than 9 running; take the first 9 running sessions in the list; unread never selected
 {
   const sessions = Array.from({ length: 15 }, (_, i) => ({
     path: `/p/run_${i}`,
     modified: new Date(Date.now() - i * 1000).toISOString(),
   }));
-  // 再加 5 个未读
+  // Add 5 more unread
   const unreadSessions = Array.from({ length: 5 }, (_, i) => ({
     path: `/p/unread_${i}`,
     modified: new Date(Date.now() - (i + 20) * 1000).toISOString(),
@@ -91,7 +91,7 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
   });
 
   assert(shortcuts.size === 9, `候选会话数量应满额 9，实际为 ${shortcuts.size}`);
-  // 前 9 个运行中分别对应 1~9
+  // The first 9 running map to 1-9
   for (let i = 0; i < 9; i++) {
     const expectedDigit = SHORTCUT_DIGITS[i];
     assert(shortcuts.get(`/p/run_${i}`) === expectedDigit, `run_${i} 应当对应 ${expectedDigit}，实际为 ${shortcuts.get(`/p/run_${i}`)}`);
@@ -101,23 +101,23 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
   console.log("✓ 场景 2（运行中超过 9 个截断与未读排斥）通过");
 }
 
-// 场景 3：运行中不足 9 个，用未读补齐至满额 9 个
+// Scenario 3: fewer than 9 running; fill up to the full 9 with unread
 {
-  // 3 个运行中，分布在不同位置
-  // 10 个未读
+  // 3 running, at different positions
+  // 10 unread
   const sessions = [
-    { path: "/p/u0", modified: "2026-09-27T20:00:00Z" }, // 0: 未读
-    { path: "/p/r0", modified: "2026-09-27T19:00:00Z" }, // 1: 运行中
-    { path: "/p/u1", modified: "2026-09-27T18:00:00Z" }, // 2: 未读
-    { path: "/p/u2", modified: "2026-09-27T17:00:00Z" }, // 3: 未读
-    { path: "/p/r1", modified: "2026-09-27T16:00:00Z" }, // 4: 运行中
-    { path: "/p/u3", modified: "2026-09-27T15:00:00Z" }, // 5: 未读
-    { path: "/p/u4", modified: "2026-09-27T14:00:00Z" }, // 6: 未读
-    { path: "/p/r2", modified: "2026-09-27T13:00:00Z" }, // 7: 运行中
-    { path: "/p/u5", modified: "2026-09-27T12:00:00Z" }, // 8: 未读（补齐末位）
-    { path: "/p/u6", modified: "2026-09-27T11:00:00Z" }, // 9: 未读（超出补齐额度）
-    { path: "/p/u7", modified: "2026-09-27T10:00:00Z" }, // 10: 未读（超出补齐额度）
-    { path: "/p/u8", modified: "2026-09-27T09:00:00Z" }, // 11: 未读（超出补齐额度）
+    { path: "/p/u0", modified: "2026-09-27T20:00:00Z" }, // 0: unread
+    { path: "/p/r0", modified: "2026-09-27T19:00:00Z" }, // 1: running
+    { path: "/p/u1", modified: "2026-09-27T18:00:00Z" }, // 2: unread
+    { path: "/p/u2", modified: "2026-09-27T17:00:00Z" }, // 3: unread
+    { path: "/p/r1", modified: "2026-09-27T16:00:00Z" }, // 4: running
+    { path: "/p/u3", modified: "2026-09-27T15:00:00Z" }, // 5: unread
+    { path: "/p/u4", modified: "2026-09-27T14:00:00Z" }, // 6: unread
+    { path: "/p/r2", modified: "2026-09-27T13:00:00Z" }, // 7: running
+    { path: "/p/u5", modified: "2026-09-27T12:00:00Z" }, // 8: unread (last fill slot)
+    { path: "/p/u6", modified: "2026-09-27T11:00:00Z" }, // 9: unread (beyond the fill quota)
+    { path: "/p/u7", modified: "2026-09-27T10:00:00Z" }, // 10: unread (beyond the fill quota)
+    { path: "/p/u8", modified: "2026-09-27T09:00:00Z" }, // 11: unread (beyond the fill quota)
   ];
 
   const openSessions = new Map([
@@ -141,8 +141,8 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
     unseenFinished,
   });
 
-  // 运行中有 3 个（全部入选）；需要补齐 6 个未读（取列表前 6 个未读：u0~u5）
-  // 总计 9 个：u0(0), r0(1), u1(2), u2(3), r1(4), u3(5), u4(6), r2(7), u5(8)
+  // 3 running (all selected); 6 unread needed to fill (the first 6 unread in the list: u0-u5)
+  // 9 in total: u0(0), r0(1), u1(2), u2(3), r1(4), u3(5), u4(6), r2(7), u5(8)
   assert(shortcuts.size === 9, `候选会话数量应为 9，实际为 ${shortcuts.size}`);
   assert(shortcuts.get("/p/u0") === "1");
   assert(shortcuts.get("/p/r0") === "2");
@@ -159,19 +159,19 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
   console.log("✓ 场景 3（运行中补齐未读至 9 个且顺序一致）通过");
 }
 
-// 场景 4：项目视图下的置顶与折叠项目判定
+// Scenario 4: pinned and collapsed-project handling in the project view
 {
   const projA = {
     cwd: "/projA",
     sessions: [
-      { path: "/projA/s1", modified: "2026-09-27T10:00:00Z" }, // 置顶 + 运行中
-      { path: "/projA/s2", modified: "2026-09-27T09:00:00Z" }, // 未读
+      { path: "/projA/s1", modified: "2026-09-27T10:00:00Z" }, // Pinned + running
+      { path: "/projA/s2", modified: "2026-09-27T09:00:00Z" }, // Unread
     ],
   };
   const projB = {
     cwd: "/projB",
     sessions: [
-      { path: "/projB/s1", modified: "2026-09-27T08:00:00Z" }, // 折叠项目中的运行中
+      { path: "/projB/s1", modified: "2026-09-27T08:00:00Z" }, // Running inside a collapsed project
     ],
   };
 
@@ -179,7 +179,7 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
     viewMode: "project",
     diskProjects: [projA, projB],
     pinnedSessions: new Set(["/projA/s1"]),
-    expandedProjects: new Set(["/projA"]), // 仅 projA 展开，projB 折叠
+    expandedProjects: new Set(["/projA"]), // Only projA expanded, projB collapsed
     projectLimits: new Map(),
     isProjectManageMode: false,
     openSessions: new Map([
@@ -189,9 +189,9 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
     unseenFinished: new Set(["/projA/s2"]),
   });
 
-  // 置顶的 /projA/s1 在最顶端 -> 1
-  // 展开项目中的 /projA/s2 -> 2
-  // 折叠项目 projB 不在可见列表 -> 不分配
+  // Pinned /projA/s1 at the very top -> 1
+  // /projA/s2 in the expanded project -> 2
+  // Collapsed project projB is not in the visible list -> no slot assigned
   assert(shortcuts.size === 2, `项目视图下可见候选应为 2，实际为 ${shortcuts.size}`);
   assert(shortcuts.get("/projA/s1") === "1");
   assert(shortcuts.get("/projA/s2") === "2");

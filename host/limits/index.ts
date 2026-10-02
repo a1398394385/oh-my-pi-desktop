@@ -1,10 +1,12 @@
-// 限额查询适配层:把 token-monitor 移植的 vendor fetch(CJS)对接到 omp 的
-// authStorage。omp provider id → vendor fetchXxxLimits 的 options 由本层按
-// 凭证与 baseUrl 合成;结果按 omp provider 缓存 60s,避免 hover 反复打供应商。
+// Limits query adapter layer: wires the token-monitor ported vendor fetch
+// (CJS) onto omp's authStorage. The options for omp provider id -> vendor
+// fetchXxxLimits are synthesized here from the credential and baseUrl; results
+// are cached 60s per omp provider to avoid hammering vendors on every hover.
 
 import { getOAuthProviders } from "../bootstrap.ts";
-// vendor 为 CJS，静态 import 由 bundler 打包（bun build --compile 不追踪 createRequire
-// 的动态 require，会漏打导致打包形态运行时 Cannot find module）
+// vendor is CJS; static imports get bundled (bun build --compile does not
+// track createRequire dynamic requires, which would be missed and cause
+// Cannot find module at runtime in the packaged build)
 import { fetchKimiLimits as _fetchKimiLimits } from "./vendor/providers/kimi/limits.js";
 import { fetchZaiLimits as _fetchZaiLimits } from "./vendor/providers/zai/limits.js";
 import { fetchOpenRouterLimits as _fetchOpenRouterLimits } from "./vendor/providers/openrouter/limits.js";
@@ -22,7 +24,7 @@ import { fetchCursorLimits as _fetchCursorLimits } from "./vendor/providers/curs
 
 type VendorFetch = (options: Record<string, unknown>, deps: Record<string, unknown>) => Promise<LimitProviderRow | LimitProviderRow[]>;
 
-// vendor 为 CJS、无类型声明,这里按统一 schema 声明其返回结构
+// vendor is CJS with no type declarations; declare its return shape here against a unified schema
 interface LimitWindow {
   kind: string;
   label: string;
@@ -67,15 +69,19 @@ const fetchCodexLimits = _fetchCodexLimits as unknown as VendorFetch;
 const fetchAntigravityLimits = _fetchAntigravityLimits as unknown as VendorFetch;
 const fetchCursorLimits = _fetchCursorLimits as unknown as VendorFetch;
 
-// 缓存 TTL = 后台刷新周期(5min,host.ts LIMITS_REFRESH_INTERVAL_MS):后台定时全量重拉写缓存,
-// 前台 hover/切页永远命中缓存,对供应商的实际请求频率严格等于后台节奏。
-// 键统一 provider#凭证id(无凭证/非存储 key 回退 provider 裸键),三条查询路径共用同一份缓存。
+// Cache TTL = background refresh interval (5min, host.ts
+// LIMITS_REFRESH_INTERVAL_MS): the background timer re-pulls everything and
+// writes the cache, foreground hover/page-switch always hits cache, so the
+// real request rate to vendors strictly equals the background cadence.
+// Keys are uniformly provider#credentialId (no credential / non-stored key
+// falls back to the bare provider key); all three query paths share one cache.
 const LIMITS_CACHE_TTL_MS = 5 * 60 * 1000;
 const limitsCache = new Map<string, { at: number; row: LimitProviderRow }>();
 
-// 供应商配置:omp provider id → vendor fetch + 标签。
-// native = 无 authStorage 凭证也调用(vendor 自己从本机/环境发现凭据,
-// 如 claude 读 ~/.claude、codex 读 ~/.codex、cursor 依赖 tokscale)。
+// Vendor specs: omp provider id -> vendor fetch + label.
+// native = invoked even without an authStorage credential (the vendor
+// discovers credentials from the machine/environment itself, e.g. claude
+// reads ~/.claude, codex reads ~/.codex, cursor relies on tokscale).
 interface VendorSpec {
   vendor: string;
   label: string;
@@ -83,7 +89,7 @@ interface VendorSpec {
   fetch: (key: string, baseUrl: string) => Promise<LimitProviderRow | LimitProviderRow[]>;
 }
 
-// baseUrl 判断 GLM 区域:bigmodel.cn = 国内站,其余走 z.ai 国际站
+// baseUrl decides the GLM region: bigmodel.cn = CN site, everything else goes to the z.ai international site
 function zaiRegionForBaseUrl(baseUrl: string): string {
   return baseUrl.includes("bigmodel.cn") ? "bigmodel-cn" : "global";
 }
@@ -135,19 +141,20 @@ const VENDOR_SPECS: Record<string, VendorSpec> = {
   "minimax-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
   "minimax-code": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
   "minimax-code-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
-  // claude:authStorage 的 anthropic OAuth token 经 CLAUDE_CODE_OAUTH_TOKEN 注入;
-  // 无凭证时 vendor 自己发现 ~/.claude / macOS keychain
+  // claude: authStorage's anthropic OAuth token is injected via
+  // CLAUDE_CODE_OAUTH_TOKEN; without a credential the vendor discovers
+  // ~/.claude / macOS keychain itself
   anthropic: {
     vendor: "claude",
     label: "Claude",
     native: true,
     fetch: (key) => fetchClaudeLimits({}, key ? { env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: key } } : {})
   },
-  // codex/cursor:靠本机已登录的 CLI / IDE 状态(tokscale 扫描),不接 authStorage
+  // codex/cursor: rely on locally logged-in CLI / IDE state (tokscale scan), not wired to authStorage
   "openai-codex": { vendor: "codex", label: "OpenAI Codex", native: true, fetch: () => fetchCodexLimits({}, {}) },
   "openai-codex-device": { vendor: "codex", label: "OpenAI Codex", native: true, fetch: () => fetchCodexLimits({}, {}) },
   cursor: { vendor: "cursor", label: "Cursor", native: true, fetch: () => fetchCursorLimits({}, {}) },
-  // antigravity:omp 的 Google OAuth token 组装成 vendor 的托管账户
+  // antigravity: omp's Google OAuth token is assembled into the vendor's managed account
   "google-antigravity": {
     vendor: "antigravity",
     label: "Google Antigravity",
@@ -166,23 +173,26 @@ const VENDOR_SPECS: Record<string, VendorSpec> = {
   },
   xai: { vendor: "grok", label: "xAI (Grok)", native: true, fetch: (key) => fetchGrokLimits({ grokBearerToken: key }, {}) },
   "xai-oauth": { vendor: "grok", label: "xAI (Grok)", native: true, fetch: (key) => fetchGrokLimits({ grokBearerToken: key }, {}) },
-  // cookie 型供应商:omp 凭证是 API key 形态接不上,靠环境变量 cookie 兜底
+  // cookie-based vendors: omp credentials are API-key shaped and don't fit; fall back to environment-variable cookies
   "alibaba-coding-plan": { vendor: "alibaba", label: "Alibaba", native: true, fetch: () => fetchAlibabaLimits({}, {}) },
   "alibaba-token-plan": { vendor: "alibaba", label: "Alibaba", native: true, fetch: () => fetchAlibabaLimits({}, {}) },
   commandcode: { vendor: "commandcode", label: "Command Code", native: true, fetch: () => fetchCommandcodeLimits({}, {}) },
   "ollama-cloud": { vendor: "ollama", label: "Ollama", native: true, fetch: () => fetchOllamaLimits({}, {}) }
 };
 
-// 多账户 vendor 返回数组时取最优:有窗口的 ok 行优先,否则第一行
+// When a multi-account vendor returns an array, pick the best row: ok rows with windows first, else the first row
 function pickRow(result: LimitProviderRow | LimitProviderRow[]): LimitProviderRow {
   const rows = Array.isArray(result) ? result : [result];
   return rows.find((r) => r.status === "ok" && r.windows.length > 0) ?? rows[0];
 }
 
-// 查会话当前供应商的限额。凭证经 authStorage.getApiKey 解析
-// (支持 OAuth 自动续期与 env 兜底);native 供应商无凭证也尝试本机发现。
-// keyOverride 显式传入时会话请求已解析好的 key(多账号 sticky 对齐),null 表示已解析但无凭证;
-// cacheTag 是该 key 对应凭证的缓存键后缀(#id,与模型页 accounts/后台预载共用同一缓存行)。
+// Query the current session provider's limits. The credential is resolved via
+// authStorage.getApiKey (supports OAuth auto-renewal and env fallback); native
+// providers still attempt local discovery without a credential.
+// keyOverride explicitly carries a key already resolved for the session request
+// (multi-account sticky alignment), null means resolved but no credential;
+// cacheTag is the cache-key suffix (#id) of that key's credential, sharing the
+// same cache row as the models-page accounts / background preload.
 export async function fetchSessionLimits(
   authStorage: KeyResolver,
   ompProvider: string,
@@ -208,7 +218,7 @@ export async function fetchSessionLimits(
       row = pickRow(await spec.fetch(key ?? "", baseUrl));
     }
   } catch (error) {
-    // vendor fetch 抛出的错误带字符串 status(unauthorized/rateLimited/…)
+    // errors thrown by vendor fetch carry a string status (unauthorized/rateLimited/...)
     const status = error instanceof Error && "status" in error ? String(error.status) : "";
     row = {
       provider: spec.vendor,
@@ -221,9 +231,11 @@ export async function fetchSessionLimits(
   return { vendor: spec.vendor, label: spec.label, row };
 }
 
-// 启动预载/定时刷新:对给定 omp provider 列表按账号逐凭证拉取配额,写入与
-// 前台共用的一致键(provider#id;无凭证供应商回退 provider 裸键)。TTL=刷新周期,
-// 后台刷新之间前台查询全部命中缓存。单供应商失败不影响其余。
+// Startup preload / scheduled refresh: pull quotas per credential per account
+// for the given omp provider list, written under the same keys the foreground
+// uses (provider#id; providers without credentials fall back to the bare
+// provider key). TTL = refresh interval, so between background refreshes every
+// foreground query hits cache. One provider failing does not affect the rest.
 export async function refreshAllLimits(
   authStorage: any,
   providers: Array<{ id: string; baseUrl: string }>
@@ -231,20 +243,24 @@ export async function refreshAllLimits(
   await Promise.allSettled(providers.map((p) => fetchProviderAccountsLimits(authStorage, p.id, p.baseUrl)));
 }
 
-// ---------- 多账号配额(一个供应商可登录多个账号,逐凭证拉配额) ----------
+// ---------- multi-account quotas (one provider can be logged into multiple accounts; pull quotas per credential) ----------
 
 export interface AccountLimitRow {
-  /** authStorage 凭证行 id(单凭证回退路径为 0) */
+  /** authStorage credential row id (0 on the single-credential fallback path) */
   id: number;
-  /** 账号身份:email ?? accountId ?? orgName,api_key 凭证无身份为空串 */
+  /** Account identity: email ?? accountId ?? orgName; api_key credentials have no identity and yield an empty string */
   label: string;
   row: LimitProviderRow;
 }
 
-// 枚举供应商的全部未禁用凭证,逐个解析为可用 key 后拉配额:
-// - api_key: key 直接可用
-// - oauth: access token 可能过期,走官方 refreshCredentialById 刷新后取最新,失败回退存量 token
-// 无凭证(单凭证 native 供应商本机发现 / listAuthCredentials 不可用)回退单行 fetchSessionLimits。
+// Enumerate all non-disabled credentials of the provider, resolve each into a
+// usable key, then pull quotas:
+// - api_key: the key is directly usable
+// - oauth: the access token may be expired; refresh via the official
+//   refreshCredentialById and take the latest, falling back to the stored
+//   token on failure
+// No credentials (single-credential native provider local discovery /
+// listAuthCredentials unavailable) falls back to a single-row fetchSessionLimits.
 export async function fetchProviderAccountsLimits(
   authStorage: any,
   ompProvider: string,
@@ -255,7 +271,7 @@ export async function fetchProviderAccountsLimits(
 
   let creds: Array<{ id: number; credential: any }> = [];
   try {
-    // 门面方法 listStoredCredentials 只返回活跃凭证(禁用墓碑留在 store 层)
+    // facade method listStoredCredentials returns only active credentials (disable tombstones stay in the store layer)
     creds = (authStorage.listStoredCredentials(ompProvider) ?? []).map((c: any) => ({
       id: c.id,
       credential: c.credential,
@@ -308,9 +324,11 @@ function credentialIdentity(credential: any): string {
   return credential?.email ?? credential?.accountId ?? credential?.orgName ?? "";
 }
 
-// 模型管理页「添加供应商」视图的数据源:与底座 TUI `/login` 同一份列表(getOAuthProviders),
-// 外加底座无登录流但仍可配 API key 的供应商(VENDOR_SPECS 独有项,如 minimax)。
-// 配额查询能力另由 VENDOR_SPECS 提供,未收录者配额段显示「暂不支持」。
+// Data source for the models page "add provider" view: the same list as the
+// base TUI `/login` (getOAuthProviders), plus providers that have no base
+// login flow but still accept an API key (VENDOR_SPECS-only entries, e.g.
+// minimax). Quota lookup is provided separately by VENDOR_SPECS; providers
+// not listed there show a "not supported yet" quota section.
 export function listAllProviders(): Array<{ id: string; label: string }> {
   const rows = getOAuthProviders().map((p) => ({ id: p.id, label: p.name }));
   const seen = new Set(rows.map((r) => r.id));

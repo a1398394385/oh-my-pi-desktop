@@ -1,6 +1,7 @@
-// 设置·子智能体资产页（原 ui/settings/agents.js + index.html #pg-agents 平移）：
-// 作用域胶囊（全局 / Profile / 项目三级）+ 左侧资产列表 + 右侧行内编辑器。
-// 点击列表行读取该级 agent 定义（Markdown + YAML frontmatter）进编辑器，保存后新派生的子代理立即生效。
+// Settings · subagent assets page (ported from ui/settings/agents.js + index.html #pg-agents):
+// scope capsule (global / Profile / project, three levels) + left asset list + right inline editor.
+// Clicking a list row reads that level's agent definition (Markdown + YAML frontmatter) into the
+// editor; after saving, newly derived subagents take effect immediately.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, pathBase } from "../../../store";
@@ -9,7 +10,7 @@ import { confirmDialog, emptyRow } from "../common";
 import ScopeSel from "../ScopeSel";
 import type { AgentAssetsPayload } from "../../../types/frames";
 
-// 资产条目：宿主 list_agent_assets 回包的 agent 负载字段（边界以宿主回包为准）
+// Asset entry: agent payload fields of the host list_agent_assets reply (boundary defined by the host reply)
 interface AssetItem {
   name: string;
   path: string;
@@ -17,7 +18,7 @@ interface AssetItem {
   command?: string;
 }
 
-// 资产分组：一级作用域（global / profile / project:<cwd>）+ 展示元信息
+// Asset group: level-one scope (global / profile / project:<cwd>) + display metadata
 interface AssetSection {
   scope: string;
   label: string;
@@ -25,7 +26,7 @@ interface AssetSection {
   items: AssetItem[];
 }
 
-// 宿主两级负载归一化成 {profileSec, projectSecs}
+// Normalize the host's two-level payload into {profileSec, projectSecs}
 function assetSections(data: AgentAssetsPayload["agents"] | null | undefined, validProjectCwds?: Set<string>): { profileSec: AssetSection; projectSecs: AssetSection[]; all: AssetSection[] } | null {
   if (!data) return null;
   const sec = (scope: string, items: AssetItem[], dir: string, label: string): AssetSection => ({ scope, label, dir, items });
@@ -42,7 +43,7 @@ function assetSections(data: AgentAssetsPayload["agents"] | null | undefined, va
 
 export default function AgentsPage() {
   const { t } = useTranslation();
-  // 渲染数据走字段 selector：ws 侧落地帧全量换新引用（含 assetErr），字段订阅即可感知
+  // Render data via field selectors: ws-side landing frames swap all references fresh (including assetErr), so field subscriptions notice
   const agentAssets = useAppStore((s) => s.agentAssets);
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
@@ -50,21 +51,21 @@ export default function AgentsPage() {
     allProjects.filter((c) => !removedProjects.includes(c))
   );
 
-  const [scope, setScope] = useState("profile"); // 当前作用域键（原 assetScope.agent）
-  const [spin, setSpin] = useState(false); // 刷新钮旋转
-  const [selPath, setSelPath] = useState<string | null>(null); // 编辑器当前文件路径（原 assetSelPath.agent）
-  const [text, setText] = useState(""); // 编辑器内容（受控 textarea）
-  const [editorOpen, setEditorOpen] = useState(false); // 编辑器显隐（原 #agentEditor.hidden）
-  const [status, setStatus] = useState(""); // aeStatus 行
-  const [newName, setNewName] = useState(""); // 新建名称输入
+  const [scope, setScope] = useState("profile"); // current scope key (formerly assetScope.agent)
+  const [spin, setSpin] = useState(false); // refresh button spin
+  const [selPath, setSelPath] = useState<string | null>(null); // editor's current file path (formerly assetSelPath.agent)
+  const [text, setText] = useState(""); // editor content (controlled textarea)
+  const [editorOpen, setEditorOpen] = useState(false); // editor visibility (formerly #agentEditor.hidden)
+  const [status, setStatus] = useState(""); // aeStatus line
+  const [newName, setNewName] = useState(""); // create-new name input
 
   const data = agentAssets?.agents;
   const sections = assetSections(data, validProjectCwds);
-  // 当前作用域失效（如 Profile 被移除）时回落 profile
+  // Fall back to profile when the current scope is stale (e.g. the Profile got removed)
   if (sections && !sections.all.some((s) => s.scope === scope)) setScope("profile");
   const cur = sections?.all.find((s) => s.scope === scope) ?? sections?.profileSec;
 
-  // asset_file 回包（读取/新建成功）：载入编辑器（原 openAssetEditor）
+  // asset_file reply (read/create succeeded): load into the editor (formerly openAssetEditor)
   const file = useAppStore((s) => s.assetFile);
   useEffect(() => {
     if (!file || file.kind !== "agent" || !file.path) return;
@@ -74,21 +75,22 @@ export default function AgentsPage() {
     setEditorOpen(true);
   }, [file]);
 
-  // asset_file_saved 回包：状态行显示「已保存」（原 core.js assetStatus(kind, "已保存")）
+  // asset_file_saved reply: status line shows "saved" (formerly core.js assetStatus(kind, "saved"))
   const saved = useAppStore((s) => s.assetSaved);
   useEffect(() => {
     if (!saved || saved.kind !== "agent") return;
     setStatus(t("settingsPage.shared.saved"));
   }, [saved]);
 
-  // 资产操作失败（读取/保存/新建抛错）：宿主回 error 帧，store 落 assetErr 时清掉进行中状态
+  // Asset operation failure (read/save/create threw): host replies with an error frame; when
+  // the store lands assetErr, clear in-progress state
   const err = useAppStore((s) => s.assetErr);
   useEffect(() => {
     if (!err || err.kind !== "agent") return;
     setStatus(err.message);
   }, [err]);
 
-  // 当前作用域解析成 {scope, cwd?}（原 assetScopeParts）
+  // Resolve the current scope into {scope, cwd?} (formerly assetScopeParts)
   const scopeParts = (): { scope: string; cwd?: string } => {
     const ci = scope.indexOf(":");
     return ci < 0 ? { scope } : { scope: scope.slice(0, ci), cwd: scope.slice(ci + 1) };

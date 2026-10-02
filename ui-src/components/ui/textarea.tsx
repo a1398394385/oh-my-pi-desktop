@@ -1,5 +1,7 @@
-// 多行输入基件（ZCodium textarea 平移）：视觉对齐 .inp 同款（--bg 底 + --line-soft 边 + r9 +
-// accent 聚焦光晕）；rows/尺寸由使用处传，field-sizing 等 zai 特性不带。
+// Textarea base component (ported from ZCodium textarea): visually aligned with
+// .inp (--bg background + --line-soft border + r9 + accent focus glow);
+// rows/sizes are passed by the usage site; zai-specific features like
+// field-sizing are not carried over.
 import * as React from "react";
 
 import { cn } from "./cn.js";

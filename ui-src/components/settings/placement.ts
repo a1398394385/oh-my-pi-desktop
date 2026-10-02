@@ -1,10 +1,13 @@
-// 分布终稿（附录 B 逐字转写）：pageId → Section[]。
-// Section.from = "tab/组名"，按 SETTINGS_SCHEMA 声明序（Object.keys 序）展开该组键，
-// 先 includePrefix（前缀命中才收）再剔 excludePrefix/excludeKeys。
-// keys（显式键列表）用于无 UI 的高级页分组（运行时生成）与极少数显式段。
-// 组标题在 SchemaRows 内解析：titleZh ?? GROUPS_ZH[组名] ?? 组名。
+// Final placement (verbatim transcription of Appendix B): pageId → Section[].
+// Section.from = "tab/group name" expands that group's keys in SETTINGS_SCHEMA declaration
+// order (Object.keys order): includePrefix first (keep only prefix hits), then strip
+// excludePrefix/excludeKeys.
+// keys (explicit key list) is for advanced-page groups without UI metadata (generated at
+// runtime) and a few explicit sections.
+// Group titles are resolved in SchemaRows: titleZh ?? GROUPS_ZH[group] ?? group.
 
-// 设置段形状：from/keys 二选一驱动展开，其余均为可选过滤/展示字段。
+// Settings section shape: from/keys (either one) drives expansion; the rest are optional
+// filter/display fields.
 // titleZh/titleEn and hint/hintEn are paired bilingual fields (en falls back to the zh
 // value when absent); SchemaRows picks one per the active language.
 export interface Section {
@@ -19,8 +22,8 @@ export interface Section {
   hintEn?: string;
 }
 
-// schema 单个键的定义形状（与 SETTINGS_SCHEMA 对齐；ui 元数据为可选）。
-// ui 与 def 均允许未列出的附加字段，避免底座加键时此处报错。
+// Shape of a single schema key definition (aligned with SETTINGS_SCHEMA; ui metadata optional).
+// Both ui and def allow unlisted extra fields so new base keys don't error here.
 export interface SchemaUi {
   tab?: string;
   group?: string;
@@ -42,7 +45,7 @@ export interface SchemaDef {
 }
 
 export const PAGE_PLACEMENT: Record<string, Section[]> = {
-  // ── 现有页吸收（追加于既有内容之后，除注明替换处） ──
+  // ── Absorbed into existing pages (appended after existing content, except where replacement is noted) ──
   "pg-appearance": [
     { from: "appearance/Theme", titleZh: "主题名", titleEn: "Theme name" },
     { from: "appearance/Composer", titleZh: "合成器", titleEn: "Composer" },
@@ -79,7 +82,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     },
   ],
 
-  // ── 新主题页（pg-* 组件 + SchemaRows） ──
+  // ── New topic pages (pg-* components + SchemaRows) ──
   "pg-model-behavior": [
     { from: "model/Thinking", excludeKeys: ["hideThinkingBlock"] },
     { titleZh: "思考预算", titleEn: "Thinking budgets", hint: "不同思考级别下用于推理的 token 预算", hintEn: "Token budget used for reasoning at each thinking level", keys: ["thinkingBudgets.minimal", "thinkingBudgets.low", "thinkingBudgets.medium", "thinkingBudgets.high", "thinkingBudgets.xhigh", "thinkingBudgets.max"] },
@@ -138,17 +141,18 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "tasks/Subagents" },
     { from: "tasks/Isolation" },
   ],
-  // pg-advanced：无静态 sections —— 运行时按「无 ui 元数据的键」首段前缀动态分组（见 AdvancedPage）
+  // pg-advanced: no static sections — grouped at runtime by the first path segment of keys lacking ui metadata (see AdvancedPage)
 };
 
-// 展开一个 section 为具体键序（SETTINGS_SCHEMA 声明序）。schema 由调用方传入
-// （SchemaRows 传 S.settingsSchema，校验脚本传导入的 SETTINGS_SCHEMA）。
+// Expand a section into a concrete key list (SETTINGS_SCHEMA declaration order). The schema
+// is passed by the caller (SchemaRows passes S.settingsSchema, validation scripts pass the
+// imported SETTINGS_SCHEMA).
 export function expandSection(section: Section, schema: Record<string, SchemaDef>): string[] {
   let keys: string[];
   if (section.keys) {
     keys = section.keys.filter((k) => schema[k]);
   } else {
-    const from = section.from!; // from 与 keys 二选一(placement 数据保证),同原版直接解引用
+    const from = section.from!; // from/keys are mutually exclusive (guaranteed by placement data); dereference directly as the original did
     const slash = from.indexOf("/");
     const tab = from.slice(0, slash);
     const group = from.slice(slash + 1);
@@ -161,11 +165,11 @@ export function expandSection(section: Section, schema: Record<string, SchemaDef
     });
   }
   const excludeKeys = section.excludeKeys;
-  if (excludeKeys) keys = keys.filter((k) => !excludeKeys.includes(k)); // 闭包内 TS 不保持窄化,先取局部常量
+  if (excludeKeys) keys = keys.filter((k) => !excludeKeys.includes(k)); // TS doesn't keep narrowing inside closures; hoist to a local const first
   return keys;
 }
 
-// 排除项或在特定设置页硬编码渲染的特殊键归属
+// Keys excluded from expansion, or hardcoded-rendered on a specific settings page
 export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "hideThinkingBlock": "pg-general",
   "ask.timeout": "pg-general",
@@ -178,7 +182,7 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "extensionHandlers.toolCallTimeoutMs": "pg-hooks",
 };
 
-// 预置默认静态映射（覆盖 SETTINGS_ZH 的所有设置项），在 schema 尚未加载或离线测试时充当后备
+// Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests
 const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-general": [
     "autoResume", "power.sleepPrevention", "git.enabled", "startup.quiet",
@@ -326,7 +330,7 @@ for (const [p, keys] of Object.entries(DEFAULT_PAGE_KEYS)) {
 }
 
 /**
- * 根据 placement 规则将所有键映射到所在的设置页面 pageId
+ * Map every key to its settings page pageId per the placement rules
  */
 export function buildKeyToPageMap(schema?: Record<string, SchemaDef> | null): Record<string, string> {
   const map: Record<string, string> = { ...STATIC_KEY_PAGE_MAP };
@@ -350,7 +354,7 @@ export function buildKeyToPageMap(schema?: Record<string, SchemaDef> | null): Re
 }
 
 /**
- * 根据 placement.ts 定位 key 对应的 pageId
+ * Locate the pageId for a key per placement.ts
  */
 export function getPageIdForKey(key: string, schema?: Record<string, SchemaDef> | null): string {
   if (SPECIAL_KEY_PAGES[key]) return SPECIAL_KEY_PAGES[key];

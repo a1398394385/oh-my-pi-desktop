@@ -1,21 +1,25 @@
-// 右栏浏览器页：UI 复刻 ZCode EmbeddedBrowserPaneParts（工具栏/地址栏/空态/加载错误态）。
-// 渲染载体：Tauri v2 无窗口内子 webview（WKWebView 限制，tauri::Webview 仅建窗时用），
-// 故用 iframe 承载页面 + tauri-plugin-opener 兜底「外部浏览器打开」（跨域下无法读
-// 标题/前进后退，导航栈由本组件自维护——ZCode 侦察报告的推荐替代方案）。
+// Right panel browser page: UI replicates ZCode's EmbeddedBrowserPaneParts (toolbar/address
+// bar/empty state/load-error state).
+// Render vehicle: Tauri v2 has no window-internal child webview (a WKWebView limitation;
+// tauri::Webview is only for window creation), so an iframe hosts the page +
+// tauri-plugin-opener as the "open in external browser" fallback (cross-origin pages can't be
+// read for title/back-forward; the navigation stack is self-maintained here — the recommended
+// alternative from the ZCode reconnaissance report).
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
 import { invoke, toast, type TimerHandle } from "../../store";
 import { t } from "../../i18n";
 
-// ---------- URL 归一化（embeddedBrowserHelpers.normalizeBrowserUrl 简化版） ----------
-// 无 scheme 时：localhost/回环/内网 IP/显式端口 -> http，其余 -> https（对齐现代浏览器地址栏）
+// ---------- URL normalization (simplified embeddedBrowserHelpers.normalizeBrowserUrl) ----------
+// Without a scheme: localhost/loopback/intranet IPs/explicit port -> http, others -> https
+// (aligned with modern browser address bars)
 const LOOPBACK_RE = /^(localhost|127\.|\[::1\]|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 const HOST_PORT_RE = /^[\w.-]+:\d+([\/?#]|$)/;
 export function normalizeBrowserUrl(raw: unknown): string | null {
   let u = String(raw ?? "").trim();
   if (!u) return null;
-  if (/^javascript:/i.test(u)) return null; // 禁止伪协议注入 iframe
+  if (/^javascript:/i.test(u)) return null; // block pseudo-protocol injection into the iframe
   if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u)) {
     u = LOOPBACK_RE.test(u) || HOST_PORT_RE.test(u) ? "http://" + u : "https://" + u;
   }
@@ -25,7 +29,7 @@ export function normalizeBrowserUrl(raw: unknown): string | null {
     return null;
   }
 }
-// 地址栏回显：去掉 https:// 与末尾斜杠
+// Address bar display: strip https:// and the trailing slash
 function displayBrowserUrl(href: string): string {
   try {
     const u = new URL(href);
@@ -36,7 +40,7 @@ function displayBrowserUrl(href: string): string {
   }
 }
 
-// 加载超时：超过即视为加载失败（iframe 跨域不给错误事件，只能超时兜底）
+// Load timeout: exceeding it counts as a load failure (cross-origin iframes give no error events; timeout is the only fallback)
 const LOAD_TIMEOUT_MS = 20000;
 
 async function openExternal(url: string) {
@@ -49,22 +53,22 @@ async function openExternal(url: string) {
 }
 
 export default function BrowserPage() {
-  // 导航栈：跨域 iframe 读不到 history，前进/后退由自建栈驱动
+  // Navigation stack: history is unreadable from a cross-origin iframe, so back/forward run on a self-built stack
   const { t } = useTranslation();
-  const [stack, setStack] = useState<string[]>([]); // 已加载 URL 序列（含当前）
-  const [idx, setIdx] = useState(-1); // 当前在栈中的位置
+  const [stack, setStack] = useState<string[]>([]); // loaded URL sequence (incl. current)
+  const [idx, setIdx] = useState(-1); // current position in the stack
   const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false); // 加载失败态（超时/abort）
-  const [nonce, setNonce] = useState(0); // reload 用：同 URL 强制重载
-  const [addr, setAddr] = useState(""); // 地址栏输入值
+  const [failed, setFailed] = useState(false); // load-failed state (timeout/abort)
+  const [nonce, setNonce] = useState(0); // for reload: force-reload the same URL
+  const [addr, setAddr] = useState(""); // address bar input value
   const [menuOpen, setMenuOpen] = useState(false);
-  const loadTimer = useRef<TimerHandle | undefined>(undefined); // DOM setTimeout 句柄；undefined 语义同原版 null（clearTimeout 容忍）
+  const loadTimer = useRef<TimerHandle | undefined>(undefined); // DOM setTimeout handle; undefined has the old null semantics (clearTimeout tolerates it)
 
   const current = idx >= 0 ? stack[idx] : null;
   const canBack = idx > 0;
   const canForward = idx < stack.length - 1;
 
-  // 导航：压栈截掉前向分支，驱动 iframe 换 src
+  // Navigate: push truncates the forward branch, drives the iframe's src change
   const navigate = (href: string | null) => {
     if (!href) {
       toast(t("right.invalidUrl"));
@@ -115,16 +119,16 @@ export default function BrowserPage() {
     reload();
   };
 
-  // iframe 加载完成（跨域页也能触发 load——只要服务器返回了内容）
+  // iframe finished loading (cross-origin pages still fire load — as long as the server returned content)
   const onIframeLoad = () => {
     clearTimeout(loadTimer.current);
     setLoading(false);
     setFailed(false);
   };
 
-  // 卸载清超时
+  // Clear the timeout on unmount
   useEffect(() => () => clearTimeout(loadTimer.current), []);
-  // 更多菜单随全局菜单协调关闭
+  // The more-menu closes in coordination with the global menu
   useEffect(() => {
     const close = () => setMenuOpen(false);
     document.addEventListener("omp:close-menus", close);
@@ -143,7 +147,7 @@ export default function BrowserPage() {
 
   return (
     <div className="bpane">
-      {/* 工具栏：后退 / 前进 / 刷新 / 地址栏 / 外部打开 / 更多 */}
+      {/* Toolbar: back / forward / reload / address bar / open external / more */}
       <div className="bpane-bar">
         <button className="icon-btn" title={t("right.back")} disabled={!canBack} onClick={goBack}>
           <Icon name="back" size={14} />
@@ -217,7 +221,7 @@ export default function BrowserPage() {
         </div>
       </div>
 
-      {/* 视口：空态 / iframe / 加载错误态 三态叠加 */}
+      {/* Viewport: empty state / iframe / load-error state, three stacked states */}
       <div className="bpane-view">
         {!current && (
           <div className="bpane-empty">

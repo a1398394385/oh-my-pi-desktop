@@ -1,8 +1,9 @@
-// 设置页：实验性功能（pg-experimental）。
-// 二级分类 1：ACP 上下文压缩（总开关 + 阈值 / 目标线 / 上下文窗口 / 候选建议 / 用户消息保护）
-// 二级分类 2：会话与检索（历史会话检索 read_session_context）
-// 二级分类 3：缓存保活（pi-kimi-keepalive 桌面移植版，总开关 + 探测参数配置化，omp-desktop.json 随 profile 独立）
-// 样式语言与外观页一致：set-page / set-tt / set-group-tt / set-group-desc / set-card / .srow / .tg / .sel / .inp。
+// Settings page: experimental features (pg-experimental).
+// Section 1: ACP context compaction (master switch + thresholds / target line / context window / candidate suggestions / user message protection)
+// Section 2: sessions & retrieval (past-session retrieval read_session_context)
+// Section 3: cache keepalive (desktop port of pi-kimi-keepalive, master switch + configurable
+// probe parameters; omp-desktop.json lives independently per profile)
+// Styling language matches the appearance page: set-page / set-tt / set-group-tt / set-group-desc / set-card / .srow / .tg / .sel / .inp.
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
@@ -69,7 +70,7 @@ function Sel({
   );
 }
 
-/** ms → "8m"/"1h30m"/"45s" 展示（host 侧解析接受同一语法回写） */
+/** Format ms → "8m"/"1h30m"/"45s" for display (the host-side parser accepts the same syntax for writes) */
 function fmtDur(ms: number): string {
   if (ms <= 0) return "0";
   const s = Math.floor(ms / 1000);
@@ -81,7 +82,7 @@ function fmtDur(ms: number): string {
   return `${sec}s`;
 }
 
-/** 缓存保活参数行输入（受控 + onBlur 提交 + 回推真值刷新，照 ACP 上下文窗口输入模式） */
+/** Keepalive parameter row input (controlled + commit on blur + push-back refresh of the true value, following the ACP context window input pattern) */
 function KaInput({
   value,
   placeholder,
@@ -149,7 +150,8 @@ export default function ExperimentalPage() {
     }
   };
 
-  // 缓存保活参数写回：host 读-合并-写 omp-desktop.json keepalive 段（非法值忽略该字段并回推真值刷新输入框）
+  // Keepalive parameter write-back: the host reads-merges-writes the keepalive section of
+  // omp-desktop.json (invalid values ignore that field and push the true value back to refresh the input)
   const updateKa = (patch: Record<string, unknown>) => {
     send({ type: "set_keepalive_config", config: patch });
   };
@@ -158,11 +160,11 @@ export default function ExperimentalPage() {
     <div className="set-page" id="pg-experimental">
       <div className="set-tt">{t("settingsPage.nav.experimental")}</div>
 
-      {/* 二级分类 1：ACP 上下文压缩 */}
+      {/* Section 1: ACP context compaction */}
       <div className="set-group-tt">{t("settingsPage.exp.acpGroup")}</div>
       <div className="set-group-desc">{t("settingsPage.exp.acpGroupDesc")}</div>
       <div className="set-card">
-        {/* 1. 总开关 */}
+        {/* 1. Master switch */}
         <div className="srow">
           <div className="srow-tx">
             <b className="srow-hd">
@@ -180,7 +182,7 @@ export default function ExperimentalPage() {
           </div>
         </div>
 
-        {/* 2. 开始提醒阈值（软提醒） */}
+        {/* 2. Start-reminder threshold (soft reminder) */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.softTitle")}</b>
@@ -198,7 +200,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 3. 强制压缩阈值（强提醒） */}
+        {/* 3. Forced compaction threshold (hard reminder) */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.hardTitle")}</b>
@@ -216,7 +218,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 4. 上下文窗口容量覆盖 */}
+        {/* 4. Context window size override */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.ctxWinTitle")}</b>
@@ -244,7 +246,7 @@ export default function ExperimentalPage() {
           </div>
         </div>
 
-        {/* 5. 候选区间建议 */}
+        {/* 5. Candidate range suggestions */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.candidatesTitle")}</b>
@@ -261,7 +263,7 @@ export default function ExperimentalPage() {
           </div>
         </div>
 
-        {/* 6. 保护用户提问 */}
+        {/* 6. Protect user prompts */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.protectTitle")}</b>
@@ -278,7 +280,7 @@ export default function ExperimentalPage() {
           </div>
         </div>
 
-        {/* 7. 系统提示词防复读 */}
+        {/* 7. Anti-repetition in system prompt */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.sysPromptTitle")}</b>
@@ -296,7 +298,7 @@ export default function ExperimentalPage() {
         </div>
       </div>
 
-      {/* 二级分类 2：会话与检索 */}
+      {/* Section 2: sessions & retrieval */}
       <div className="set-group-tt">{t("settingsPage.exp.sessionGroup")}</div>
       <div className="set-group-desc">{t("settingsPage.exp.sessionGroupDesc")}</div>
       <div className="set-card">
@@ -318,11 +320,11 @@ export default function ExperimentalPage() {
         </div>
       </div>
 
-      {/* 二级分类 3：缓存保活 */}
+      {/* Section 3: cache keepalive */}
       <div className="set-group-tt">{t("settingsPage.exp.kaGroup")}</div>
       <div className="set-group-desc">{t("settingsPage.exp.kaGroupDesc")}</div>
       <div className="set-card">
-        {/* 1. 总开关：本应用是否加载扩展 */}
+        {/* 1. Master switch: whether this app loads the extension */}
         <div className="srow">
           <div className="srow-tx">
             <b className="srow-hd">
@@ -340,7 +342,7 @@ export default function ExperimentalPage() {
           </div>
         </div>
 
-        {/* 2. 保活模型（可多选；空 = 不探测任何模型） */}
+        {/* 2. Keepalive models (multi-select; empty = probe no models) */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaModelsTitle")}</b>
@@ -376,7 +378,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 3. 探测模式 */}
+        {/* 3. Probe mode */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaModeTitle")}</b>
@@ -393,7 +395,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 4. 探测节奏（固定模式生效；smart 自管） */}
+        {/* 4. Probe cadence (effective in fixed mode; smart self-manages) */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaIntervalTitle")}</b>
@@ -407,7 +409,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 5. 空闲停止时限 */}
+        {/* 5. Idle stop deadline */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaIdleTitle")}</b>
@@ -421,7 +423,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 6. 连续未命中暂停 */}
+        {/* 6. Pause after consecutive misses */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaMissTitle")}</b>
@@ -435,7 +437,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 7. 连续失败熔断 */}
+        {/* 7. Circuit-break after consecutive failures */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaErrTitle")}</b>
@@ -449,7 +451,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 8. 会话花费上限 */}
+        {/* 8. Per-session spend cap */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaSpendTitle")}</b>
@@ -463,7 +465,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 9. 最小提示 tokens */}
+        {/* 9. Minimum prompt tokens */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaMinPromptTitle")}</b>
@@ -477,7 +479,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 10. 探测输出上限 */}
+        {/* 10. Probe output cap */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaOutputTitle")}</b>

@@ -1,5 +1,7 @@
-// 输入框基件（ZCodium input 平移，尺寸变体裁掉——本仓 .inp 单一形态）：视觉对齐 .inp——
-// --bg 底 + --line-soft 边 + r9 + ui-sm 字号 + accent 半透明聚焦光晕（ring 即 box-shadow 实现）。
+// Input base component (ported from ZCodium input, size variants dropped —
+// this repo's .inp is a single shape): visually aligned with .inp — --bg
+// background + --line-soft border + r9 + ui-sm font size + accent translucent
+// focus glow (the ring is implemented as box-shadow).
 import * as React from "react";
 
 import { cn } from "./cn.js";

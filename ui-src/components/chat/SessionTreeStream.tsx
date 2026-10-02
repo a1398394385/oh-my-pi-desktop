@@ -1,4 +1,5 @@
-// 会话条目树瀑布流组件：自上而下的线性单轴流，遇分叉处通过单排横向滚轮切换，卡片支持原地抽屉展开。
+// Session entry tree waterfall component: a top-down linear single-axis flow; at forks,
+// branches switch via a single-row horizontal scroller; cards support in-place drawer expansion.
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../Icon";
 import { fmtAgo } from "../right/helpers";
@@ -32,27 +33,29 @@ export default function SessionTreeStream({
   onNavigate,
   isCompact = false,
 }: SessionTreeStreamProps) {
-  // 分叉点选中的子分支 ID：Map<parentId, childId>
+  // Child branch id chosen at each fork: Map<parentId, childId>
   const [selectedBranches, setSelectedBranches] = useState<Map<string, string>>(() => new Map());
-  // 展开抽屉的节点集合
+  // Set of nodes whose drawers are expanded
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
-  // 待跳转确认的节点
+  // Node pending jump confirmation
   const [confirmNode, setConfirmNode] = useState<EntryNode | null>(null);
   // Node id the keyboard cursor points at (null = no cursor yet)
   const [cursorId, setCursorId] = useState<string | null>(null);
 
-  // 容器 ref 与切换分支时的视口锚定 ref
+  // Container ref plus the viewport-anchoring ref used when switching branches
   const containerRef = useRef<HTMLDivElement>(null);
   const switchingForkRef = useRef<{ parentId: string; top: number } | null>(null);
-  // 分叉点下方的最小高度支撑，防止短分支导致页面高度塌缩把内容顶上来
+  // Minimum-height support below fork points, preventing short branches from collapsing
+  // the page height and pushing content up
   const [branchMinHeights, setBranchMinHeights] = useState<Map<string, number>>(() => new Map());
 
-  // 过滤条件或根变动时清空最小高度垫高
+  // Clear the minimum-height padding when the filter or roots change
   useEffect(() => {
     setBranchMinHeights(new Map());
   }, [filter, roots]);
 
-  // 切换分支：记录被点击分叉点的视口 top，计算下方所需撑底高度
+  // Switch branch: record the clicked fork point's viewport top, and compute the support
+  // height needed below
   const onSelectBranchWithAnchor = (parentId: string, childId: string) => {
     const hub = containerRef.current?.querySelector(`[data-fork-parent="${parentId}"]`) as HTMLElement | null;
     const scrollEl = containerRef.current?.closest(".overflow-y-auto") as HTMLElement | null;
@@ -62,7 +65,8 @@ export default function SessionTreeStream({
       const scrollRect = scrollEl.getBoundingClientRect();
       switchingForkRef.current = { parentId, top: hubRect.top };
 
-      // 保证分叉点下方至少填满视口剩余空间，防止短分支导致页面高度骤缩把内容顶上来
+      // Ensure the area below the fork point fills at least the viewport's remaining space,
+      // preventing short branches from shrinking the page height abruptly and pushing content up
       const remaining = scrollRect.bottom - hubRect.bottom;
       if (remaining > 20) {
         setBranchMinHeights((prev) => {
@@ -80,7 +84,8 @@ export default function SessionTreeStream({
     });
   };
 
-  // 屏幕重绘前校准：如果分叉点视口 top 发生微小偏移，无感补偿 scrollTop 确保上半部分绝对纹丝不动
+  // Calibrate before repaint: if the fork point's viewport top shifts slightly, compensate
+  // scrollTop imperceptibly so the upper half stays absolutely still
   useLayoutEffect(() => {
     const target = switchingForkRef.current;
     if (!target) return;
@@ -97,8 +102,8 @@ export default function SessionTreeStream({
     }
   }, [selectedBranches]);
 
-  // 弹窗打开时 Esc 优先关闭；Enter 触发默认主动作「跳转」（焦点落在弹框按钮上时
-  // 交给原生按钮激活，不抢）
+  // While the dialog is open, Esc closes it first; Enter triggers the default primary
+  // action "jump" (left to the native button when focus is on a dialog button; not stolen)
   useEffect(() => {
     if (!confirmNode) return;
     const onKey = (e: KeyboardEvent) => {
@@ -118,7 +123,7 @@ export default function SessionTreeStream({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [confirmNode]);
 
-  // 根据当前分叉选择与过滤模式计算瀑布流单线序列
+  // Compute the waterfall single-line sequence from the current fork selections and filter mode
   const sequence = buildStreamSequence(roots, leafId, activeIds, selectedBranches, filter);
   const badgeId = badgeTargetId(roots, leafId, filter);
 
@@ -241,7 +246,7 @@ export default function SessionTreeStream({
         data-node-id={node.id}
         className={`stream-node-item is-${roleBadgeType} ${isCurrent || isLeaf ? "is-leaf" : ""} ${isCursor ? "is-cursor" : ""}`}
       >
-        {/* 竖线左侧的悬停快捷跳转按钮 */}
+        {/* Hover quick-jump button on the left of the vertical line */}
         {!isCurrent && (
           <button
             type="button"
@@ -257,10 +262,10 @@ export default function SessionTreeStream({
           </button>
         )}
 
-        {/* 导轨上的节点圆形微徽标 */}
+        {/* Circular node micro-badge on the spine */}
         <div className="spine-bullet" title={roleBadgeText} />
 
-        {/* 标签卡片主体 */}
+        {/* Label card body */}
         <div className="node-card">
           <div
             className="node-card-header"
@@ -286,7 +291,7 @@ export default function SessionTreeStream({
             </div>
           </div>
 
-          {/* 展开内容抽屉面板 */}
+          {/* Expanded content drawer panel */}
           {isExpanded && (
             <div className="node-detail-panel show">
               <div className="detail-section-title">{t("chat.entryFullContent")}</div>
@@ -331,10 +336,11 @@ export default function SessionTreeStream({
 
   return (
     <div ref={containerRef} className={`stream-container ${isCompact ? "compact" : ""}`}>
-      {/* 贯穿全流的纵向单线轴导轨 */}
+      {/* The single vertical line spine running through the whole flow */}
       <div className="stream-spine" />
 
-      {/* 按分叉点分段渲染：保持上半部分不动，下方区域平滑切换 */}
+      {/* Render in sections split at fork points: the upper half stays put while the area
+          below switches smoothly */}
       {sections.map((sec, secIdx) => {
         const sectionKey = sec.fork ? `fork-sec-${sec.fork.parentId}` : "root-sec";
         const branchKey = sec.fork ? `branch-${sec.fork.parentId}-${sec.fork.selectedId}` : "root-branch";
@@ -362,7 +368,7 @@ export default function SessionTreeStream({
         );
       })}
 
-      {/* 跳转二次确认弹框 */}
+      {/* Jump confirmation dialog */}
       {confirmNode ? (
         <div
           className="lp-mask fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 z-50"
@@ -418,7 +424,7 @@ export default function SessionTreeStream({
   );
 }
 
-// ── 分叉点横向切换组件 ──
+// ── Fork point horizontal switcher ──
 function ForkSwitcher({
   item,
   selectedBranches,
@@ -435,7 +441,8 @@ function ForkSwitcher({
   const pillsRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 滚轮控制横向滑动，并在滚动时动态显示滚动条（停止 650ms 平滑淡出）
+  // Wheel drives horizontal sliding, and the scrollbar shows dynamically while scrolling
+  // (smoothly fades out 650ms after it stops)
   useEffect(() => {
     const hub = containerRef.current;
     const pills = pillsRef.current;
@@ -469,7 +476,8 @@ function ForkSwitcher({
     };
   }, []);
 
-  // 保证当前选中的分支药丸在可视范围内（仅横向局部滚动，严禁使用 scrollIntoView 避免纵向祖先容器抖动）
+  // Keep the currently selected branch pill in view (horizontal local scrolling only;
+  // never scrollIntoView, to avoid shaking vertical ancestor containers)
   useEffect(() => {
     const pills = pillsRef.current;
     if (!pills) return;

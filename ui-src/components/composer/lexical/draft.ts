@@ -1,6 +1,7 @@
-// 模块级输入草稿（按会话/欢迎页隔离）：
-// EditorState 快照供挂载恢复（initialConfig.editorState），text 为压平后的纯文本
-// （发送 / hasDraft / bash 前缀判定读取）。写入方只有 ComposerPlugin 的 updateListener。
+// Module-level composer drafts (isolated per session / welcome page):
+// the EditorState snapshot serves mount restoration (initialConfig.editorState);
+// text is the flattened plain text (read by send / hasDraft / bash prefix
+// detection). The only writer is ComposerPlugin's updateListener.
 import type { EditorState } from "lexical";
 import type { PromptAttachment } from "../../../types/frames";
 
@@ -50,9 +51,12 @@ export function clearDraftState(key: string): void {
   drafts.delete(key || "welcome");
 }
 
-// contentEditable 支持探测：happy-dom 等环境 contentEditable 属性可读但缺 Lexical 的
-// 运行时依赖(MutationObserver 等,挂载即 ReferenceError)——两项都满足才初始化 Lexical,
-// 否则 Composer 降级渲染只读占位,相关操作全部空转(冒烟环境即走此分支)。
+// contentEditable support probe: in environments like happy-dom the
+// contentEditable attribute is readable but Lexical's runtime dependencies are
+// missing (MutationObserver etc. -- mounting throws ReferenceError immediately)
+// -- initialize Lexical only when both hold; otherwise the Composer degrades to
+// a read-only placeholder and related operations all no-op (the smoke
+// environment takes this branch).
 const probe = (() => {
   try {
     if (typeof MutationObserver === "undefined") return false;

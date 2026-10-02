@@ -1,10 +1,10 @@
-// 新建会话契约冒烟：配置默认下发 + configured 回推 + 懒建会话的列表兜底。
-// 用法：bun scripts/smoke-newsession.ts [宿主ws地址]
-// 断言覆盖（对应 2026-09-20 系列修复，回归即失败）：
-//   1. ready 帧携带 defaultModel/defaultThinking（host 侧配置下发契约）
-//   2. create_session 带 thinking 时回推 configured 值（传 auto 回 auto，不是生效值 high）
-//   3. 新建后立即 list_sessions 必含该会话（BUG-005：底座懒建文件，内存池兜底）
-// 不发 prompt，无真实模型调用，跑完即退。
+// New-session contract smoke test: config defaults delivered + configured echoed back + the list fallback for lazily-created sessions.
+// Usage: bun scripts/smoke-newsession.ts [host ws url]
+// Assertions cover (the 2026-09-20 fix series; any regression fails):
+//   1. The ready frame carries defaultModel/defaultThinking (the host-side config delivery contract)
+//   2. create_session with thinking echoes the configured value (passing auto returns auto, not the effective high)
+//   3. Immediately after creation, list_sessions must include the session (BUG-005: the base lazily creates the file; the in-memory pool is the fallback)
+// No prompts sent, no real model calls; exits when done.
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,8 +12,8 @@ import path from "node:path";
 
 const args = process.argv.slice(2);
 
-// list_sessions 的历史扫描会把临时 cwd 并入 omp-desktop.json 的 allProjects 落盘，
-// 退出前（含失败路径）必须还原，否则每次冒烟都在用户配置里留幽灵项目
+// list_sessions' history scan merges the temp cwd into omp-desktop.json's allProjects and persists it,
+// so it must be restored before exit (including failure paths); otherwise every smoke run leaves a ghost project in the user config
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -29,7 +29,7 @@ function restoreCfg() {
   if (child?.pid) {
     child.kill("SIGTERM");
     child = null;
-    try { execSync("sleep 0.8"); } catch {} // 等 host 退完再写回，防退出钩子把测试态写回
+    try { execSync("sleep 0.8"); } catch {} // Wait for the host to finish exiting before writing back, so an exit hook cannot write the test state back
   }
   try {
     if (cfgExisted) writeFileSync(cfgPath, cfgBackup!);
@@ -94,7 +94,7 @@ await new Promise((resolve, reject) => {
   ws.onerror = () => reject(new Error("ws 连接失败"));
 }).catch((e) => fail(String(e)));
 
-// ---- 断言 1：ready 帧配置默认下发 ----
+// ---- Assertion 1: ready frame delivers config defaults ----
 const ready = await waitType("ready").catch((e) => fail(String(e)));
 assert(ready.defaultModel != null, `ready 帧 defaultModel=${ready.defaultModel}`);
 assert(ready.defaultThinking != null, `ready 帧 defaultThinking=${ready.defaultThinking}`);
@@ -102,13 +102,13 @@ assert(ready.defaultThinking != null, `ready 帧 defaultThinking=${ready.default
 const cwd = await mkdtemp(path.join(tmpdir(), "omp-smoke-ns-"));
 tmpDirs.push(cwd);
 
-// ---- 断言 2：显式 thinking 回推 configured 值 ----
+// ---- Assertion 2: explicit thinking echoes the configured value ----
 const mark1 = frames.length;
 ws.send(JSON.stringify({ type: "create_session", cwd, thinking: "auto" }));
 const created1 = await waitType("session_created", mark1).catch((e) => fail(String(e)));
 assert(created1.thinking === "auto", `带 auto 建会话回推 configured=${created1.thinking}（应为 auto，不是生效值）`);
 
-// ---- 断言 3：立即 list_sessions 含新会话（BUG-005 回归） ----
+// ---- Assertion 3: immediate list_sessions includes the new session (BUG-005 regression) ----
 const mark2 = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
 const list = await waitType("session_list", mark2).catch((e) => fail(String(e)));
@@ -116,7 +116,7 @@ const inList = (l: any, p: string) =>
   (l.projects ?? []).flatMap((pr: any) => pr.sessions ?? []).some((s: any) => s.path === p);
 assert(inList(list, created1.path), "新建后立即 list_sessions 含该会话（内存池兜底）");
 
-// ---- 断言 4：reload_settings 的 models 帧也携带配置默认（点新建的重拉路径） ----
+// ---- Assertion 4: reload_settings' models frame also carries config defaults (the refetch path when clicking new) ----
 const mark4 = frames.length;
 ws.send(JSON.stringify({ type: "reload_settings" }));
 const models = await waitType("models", mark4).catch((e) => fail(String(e)));

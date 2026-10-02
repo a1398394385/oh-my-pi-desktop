@@ -1,6 +1,6 @@
-// 设置页：电脑控制（pg-computer）。tgComputer 开关：写宿主机 computer.enabled。
-// 旧版参照：git show 464131d:ui/index.html 的 <div class="set-page" id="pg-computer">，
-// 绑定参照 ui/settings/index.js initSettings 的 wireToggle("tgComputer")。
+// Settings page: computer control (pg-computer). tgComputer toggle: writes host computer.enabled.
+// Old reference: <div class="set-page" id="pg-computer"> in git show 464131d:ui/index.html,
+// binding per wireToggle("tgComputer") in ui/settings/index.js initSettings.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
@@ -10,8 +10,8 @@ import { PAGE_PLACEMENT } from "../placement";
 export default function ComputerPage() {
   const { t } = useTranslation();
   const hs = useAppStore((s) => s.hostSettings);
-  const [on, setOn] = useState(!!hs?.computerEnabled); // 初值布尔，类型可推断
-  // settings 回包后同步开关态
+  const [on, setOn] = useState(!!hs?.computerEnabled); // boolean initial value, type inferable
+  // Sync the toggle state after the settings reply
   useEffect(() => {
     setOn(!!useAppStore.getState().hostSettings?.computerEnabled);
   }, [hs]);

@@ -1,18 +1,23 @@
-// 配额与上下文域 RPC：会话配额（get_limits，多账号粘性对齐）、模型页逐账号配额、
-// 上下文明细（含 MCP 工具 schema token 估算）。自 main.ts message 分发平移（第三刀）。
+// Quota and context domain RPC: session quotas (get_limits, multi-account
+// sticky alignment), models-page per-account quotas, context detail
+// (including MCP tool schema token estimation). Moved over from the main.ts
+// message dispatch (third slice).
 import { Tokenizer } from "../bootstrap.ts";
 import { H, sessions, type PoolEntry } from "../state.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits } from "../limits/index.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
-// MCP 工具 schema token 估算缓存:tools roster 身份不变就不重算
+// MCP tool schema token estimate cache: skip recomputation while the tools roster identity is unchanged
 const mcpTokensCache = new WeakMap<object, number>();
 
-// MCP 工具(mcp__ 前缀)schema token 单独估算;breakdown 的 systemToolsTokens 含全部工具,
-// 前端展示时减去即得纯内置系统工具。roster 身份不变就不重算。
-// 注:发布的 pi-coding-agent npm 包不含 modes/utils/context-usage,这里用
-// Tokenizer 直接数 wire schema JSON(approximate 模式),不引 SDK 内部模块。
+// MCP tools (mcp__ prefix) schema tokens are estimated separately;
+// breakdown's systemToolsTokens includes all tools, so the frontend
+// subtracts this to get pure built-in system tools. No recomputation while
+// the roster identity is unchanged.
+// Note: the published pi-coding-agent npm package lacks
+// modes/utils/context-usage, so we count the wire schema JSON directly with
+// Tokenizer (approximate mode) instead of importing SDK internals.
 function estimateMcpToolsTokens(entry: PoolEntry): number {
   const tools = entry.session.state?.tools;
   if (!Array.isArray(tools)) return 0;
@@ -55,8 +60,9 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     );
   },
   async get_limits(ws, msg) {
-    // 会话当前供应商的套餐限额(token-monitor 移植逻辑,host/limits/)
-    // 无会话时(UI 输入框空环 hover)允许按 msg.provider 查询,只显示配额段
+    // Plan limits of the session's current provider (token-monitor port, host/limits/)
+    // Without a session (empty-ring hover in the composer) allow querying by
+    // msg.provider, showing only the quota section
     const entry = msg.sessionId ? sessions.get(msg.sessionId) : undefined;
     const ompProvider = entry?.session.model?.provider || String(msg.provider ?? "");
     if (!ompProvider) throw new Error(hostI18n.t("errors.limits.noModelSelected"));
@@ -66,9 +72,12 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     } catch {
       baseUrl = "";
     }
-    // 多账号对齐:与会话请求同参(providerSessionId 粘性 + modelId)解析凭证,
-    // 明细卡配额即本会话实际命中的账号;key 反查凭证 id 后以 #id 为缓存键
-    // (与模型页 accounts/后台预载共用同一缓存行),身份标签一并回填
+    // Multi-account alignment: resolve the credential with the same
+    // parameters as the session request (providerSessionId stickiness +
+    // modelId), so the detail card's quota is the account this session
+    // actually hits; reverse-lookup the credential id from the key and use
+    // #id as the cache key (sharing one cache row with the models-page
+    // accounts / background preload), filling in the identity label too
     let keyOverride: string | null | undefined;
     let cacheTag: string | undefined;
     let accountLabel = "";
@@ -104,7 +113,7 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     );
   },
   async get_provider_limits(ws, msg) {
-    // 模型管理页按供应商读配额(多账号逐凭证,命中 limits 60s 缓存)
+    // Models page reads quotas per provider (multi-account per credential, hitting the limits 60s cache)
     const ompProvider = String(msg.provider ?? "");
     if (!ompProvider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     let baseUrl = "";
@@ -121,7 +130,7 @@ export const limitsHandlers: Record<string, RpcHandler> = {
         provider: ompProvider,
         label,
         unsupported: vendor === null,
-        // 顶层字段取首个账号(单账号消费方兼容);多账号时前端读 accounts 逐段渲染
+        // Top-level fields take the first account (compatible with single-account consumers); with multiple accounts the frontend reads accounts and renders each
         status: first?.status ?? "unavailable",
         planLabel: first?.planLabel ?? "",
         accountLabel: accounts[0]?.label || first?.accountLabel || "",

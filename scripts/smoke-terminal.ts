@@ -1,7 +1,7 @@
-// 终端 PTY 冒烟：真起宿主 + WS 连入，走 terminal_create/write/resize/dispose 全链路。
-// 断言：PTY 建帧回包；敲 echo 有回显数据帧（含期望输出）；resize 后 stty size 反映新尺寸；
-// dispose 后桥进程退出（terminal_exit 帧或会话消失）。
-// 用法：bun scripts/smoke-terminal.ts
+// Terminal PTY smoke test: really start the host + connect over WS and exercise the full terminal_create/write/resize/dispose chain.
+// Assertions: the PTY create frame replies; typing echo yields echo data frames (with the expected output); after resize, stty size reflects the new dimensions;
+// after dispose the bridge process exits (a terminal_exit frame or the session disappearing).
+// Usage: bun scripts/smoke-terminal.ts
 import { spawn } from "node:child_process";
 
 const child = spawn("bun", ["host/host.ts"], {
@@ -53,14 +53,14 @@ if (!created) fail("未收到 terminal_created 回包");
 if (created.id !== termId) fail(`terminal_created id 不符: ${created.id}`);
 console.log(`✓ terminal_created（shell=${created.shell}）`);
 
-// 敲命令：回显帧必须带 echo 的输出
+// Type a command: the echo frame must contain echo's output
 send({ type: "terminal_write", id: termId, data: "echo pty-smoke-$((40+2))\n" });
 await sleep(1200);
 buf = dataFrames.join("");
 if (!buf.includes("pty-smoke-42")) fail("回显帧缺少 echo 输出\n--- 实际输出 ---\n" + buf.slice(-400));
 console.log("✓ echo 回显帧含 pty-smoke-42");
 
-// resize：80x24 -> 100x30，stty size 应输出 "30 100"
+// resize: 80x24 -> 100x30; stty size should print "30 100"
 send({ type: "terminal_resize", id: termId, cols: 100, rows: 30 });
 await sleep(400);
 send({ type: "terminal_write", id: termId, data: "stty size\n" });
@@ -69,7 +69,7 @@ buf = dataFrames.join("");
 if (!buf.includes("30 100")) fail("resize 未生效（stty size 无 30 100）");
 console.log("✓ resize 生效（stty size -> 30 100）");
 
-// 销毁：宿主杀桥进程，桥退出应推 terminal_exit
+// Dispose: the host kills the bridge process, whose exit should push terminal_exit
 send({ type: "terminal_dispose", id: termId });
 await sleep(1500);
 if (!exitFrame) fail("dispose 后未收到 terminal_exit 帧");

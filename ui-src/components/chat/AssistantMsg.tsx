@@ -1,13 +1,17 @@
-// assistant 消息：markdown 渲染走 streamdown（P6：替换 ui/markdown.js 正则管线）。
-// streamdown 输出的仍是标准 markdown 元素，这里经 components 把既有 .md-* 类挂回
-// 各元素，style.css 的 .md-body 规则继续命中；代码块/表格壳/图片是 streamdown 深度
-// 定制结构（带 data-streamdown 属性标记），样式由 style.css 末尾 P6 块接管。
-// streaming 变体（流式尾巴）多挂 streaming-draft 类。
+// Assistant message: markdown rendering goes through streamdown (P6: replaces the
+// ui/markdown.js regex pipeline).
+// streamdown still emits standard markdown elements; components here re-attach the existing
+// .md-* classes so the .md-body rules in style.css keep hitting; code blocks / table shells
+// / images are streamdown's deeply customized structures (marked with data-streamdown
+// attributes), styled by the P6 block at the end of style.css.
+// The streaming variant (streaming tail) additionally carries the streaming-draft class.
 //
-// 性能红线（2026-09-21 卡死事故）：此处必须保持 React.memo——
-// delta 帧触发的全树重渲染会让每条历史消息重跑 markdown 解析管线，
-// 长会话下主线程被 10 次/秒的全量重解析占满，应用假死（合成线程动画照转）。
-// memo 后历史消息 props 不变直接跳过，只有流式中的那条重解析。
+// Performance red line (2026-09-21 freeze incident): React.memo must stay here —
+// a delta-frame-induced full-tree re-render would rerun the markdown parsing pipeline for
+// every historical message; in long sessions the main thread gets saturated by 10-per-second
+// full reparses and the app appears dead (the compositor thread keeps animating).
+// With memo, historical messages with unchanged props are skipped outright; only the one
+// still streaming re-parses.
 import { createElement, isValidElement, memo, useState } from "react";
 import type { JSX } from "react";
 import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
@@ -17,11 +21,13 @@ import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { t } from "../../i18n";
 
-// 代码高亮插件单例（内部缓存 Shiki highlighter，JS 正则引擎免 wasm）：
-// themes = [light, dark]，取 VSCode 同款 light-plus / dark-plus（与文件页
-// ui-src/lib/highlighter.ts 同款配色，但各持各的 highlighter 实例互不影响）。
-// token 颜色落在行内 CSS 变量（--sdm-c / --shiki-dark），主题切换由 P6 CSS 按
-// html[data-theme] 换读变量，运行时即时生效、无需重新渲染。
+// Code highlight plugin singleton (caches a Shiki highlighter internally; JS regex engine,
+// no wasm): themes = [light, dark], using the VSCode-matching light-plus / dark-plus (same
+// palette as the file view's ui-src/lib/highlighter.ts, but each holds its own highlighter
+// instance without interference).
+// Token colors land on inline CSS variables (--sdm-c / --shiki-dark); theme switching is
+// handled by P6 CSS re-reading the variables per html[data-theme], taking effect instantly
+// at runtime without re-rendering.
 const codePlugin = createCodePlugin({ themes: ["light-plus", "dark-plus"] });
 
 const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
@@ -37,11 +43,13 @@ const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
   text: "txt",
 };
 
-// 元素映射的 props 形状：hast node 是 react-markdown 附加的非 DOM 属性，解构剥掉再透传
+// Props shape for the element mapping: the hast node is a non-DOM attribute attached by
+// react-markdown; destructure it away before passing through
 type ElProps<K extends keyof JSX.IntrinsicElements> = JSX.IntrinsicElements[K] & { node?: unknown };
 
-// 挂回 .md-* 类的元素工厂。mdComponents 必须是模块级常量保持引用稳定——
-// streamdown 内部按 block memo 并比较 components 引用，内联字面量会击穿缓存。
+// Element factory that re-attaches .md-* classes. mdComponents must be a module-level
+// constant to stay reference-stable — streamdown memoizes per block and compares the
+// components reference; an inline literal would punch through the cache.
 function mdTag<K extends keyof JSX.IntrinsicElements>(tag: K, className: string) {
   return ({ node, ...rest }: ElProps<K>) => createElement(tag, { ...rest, className });
 }
@@ -98,24 +106,28 @@ const mdComponents: Components = {
   blockquote: mdTag("blockquote", "md-quote"),
   hr: mdTag("hr", "md-hr"),
   table: mdTag("table", "md-table"),
-  // 链接：沿用旧管线行为（新标签页打开；streamdown 的外链确认弹窗挂在内部 a 组件上，覆盖后自然绕开）
+  // Links: keep the old pipeline behavior (open in a new tab; streamdown's external-link
+  // confirm dialog hangs on its internal a component and is naturally bypassed by this override)
   a: ({ node, ...rest }: ElProps<"a">) =>
     createElement("a", { ...rest, className: "md-link", target: "_blank", rel: "noopener noreferrer" }),
-  // 任务列表勾选框：type/disabled 显式写死（不依赖上游属性透传），类命中 .md-task-cb
+  // Task-list checkboxes: type/disabled hardcoded explicitly (not relying on upstream
+  // attribute pass-through); the class hits .md-task-cb
   input: ({ node, ...rest }: ElProps<"input">) =>
     createElement("input", { ...rest, type: "checkbox", disabled: true, className: "md-task-cb" }),
   code: mdCodeBlock,
   inlineCode: mdTag("code", "md-inline-code"),
 };
 
-// streamdown 配置常量（保持引用稳定，避免流式帧重置其内部 context）：
-// 行号/限高全关（对齐旧 .md-code-block 视觉），控件只留代码块复制按钮
+// streamdown config constants (kept reference-stable to avoid resetting its internal
+// context on streaming frames): line numbers and height caps all off (matching the old
+// .md-code-block visuals); controls keep only the code-block copy button
 const mdControls = { code: { copy: true, download: false }, table: false, image: false };
 const MD_LINK_SAFETY_OFF = { enabled: false };
 
-// 剥 ACP <dcp-message-id> 标签：host 推帧已剥落盘原文，但流式 text_delta 期间的
-// 标签片段会直达渲染（host 无法可靠切割跨 delta 的标签），此处兜底清洗。
-// 与 host/acp-context.ts 的 REF_TAG_RE 同款口径。
+// Strip ACP <dcp-message-id> tags: the host strips them from persisted text before pushing
+// frames, but tag fragments during streaming text_delta reach rendering directly (the host
+// cannot reliably split tags across deltas); this is the fallback cleanup.
+// Same pattern as REF_TAG_RE in host/acp-context.ts.
 const DCP_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
 function stripDcpTags(s: string): string {
   const out = s.replace(DCP_TAG_RE, "");

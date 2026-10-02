@@ -1,17 +1,18 @@
-// 项目列表 slice：磁盘项目列表、置顶/展开/限额/未读标记、归档区、侧栏视图模式。
-// 自 store.ts 平移（P3 波 2）。容器在波 3 组件切 selector 时改为「变更换引用」。
+// Projects slice: on-disk project list, pin/expand/limit/unseen marks, the archive area, sidebar
+// view mode. Moved over from store.ts (P3 wave 2). Containers switch to "swap reference on change"
+// in wave 3 when components move to selectors.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import type { DiskProject, DiskSessionRow } from "../types/frames";
 
 export interface ProjectsSlice {
-  viewMode: string; // "project" | …（侧栏视图）
+  viewMode: string; // "project" | … (sidebar view)
   isProjectManageMode: boolean;
   allProjects: string[];
   removedProjects: string[];
   archivedSessions: (DiskSessionRow & { cwd: string })[];
   diskProjects: DiskProject[];
-  projectLimits: Map<string, number>; // cwd -> 已显示条数（默认 5，步进 5）
+  projectLimits: Map<string, number>; // cwd -> rows shown (default 5, step 5)
   expandedProjects: Set<string>;
   pinnedSessions: Set<string>;
   unseenFinished: Set<string>;
@@ -32,7 +33,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   pinnedSessions: new Set(),
   unseenFinished: new Set<string>(JSON.parse(localStorage.getItem("omp-unseen-finished") || "[]")),
 
-  // 严格以 omp-desktop.json allProjects 为准，排除已移除项目；不并入未在清单内的 diskProjects
+  // Strictly follow omp-desktop.json allProjects, excluding removed projects; diskProjects not in the list are not merged in
   getAvailableProjects() {
     const st = get();
     const removedSet = new Set(st.removedProjects);
@@ -49,7 +50,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   expandProject(cwd: string) {
     if (!cwd) return;
     const st = get();
-    if (st.expandedProjects.has(cwd)) return; // 已处于展开态，不用动
+    if (st.expandedProjects.has(cwd)) return; // already expanded, nothing to do
     const nextExpanded = new Set(st.expandedProjects);
     nextExpanded.add(cwd);
     const nextLimits = new Map(st.projectLimits);

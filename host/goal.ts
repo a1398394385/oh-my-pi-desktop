@@ -1,12 +1,17 @@
-// /goal 命令的桌面实现 + 目标续跑调度（语义对齐 omp CLI TUI 的 goal）。
-// 底座 /goal 只有 handleTui（BUILTIN 里无 handle），ACP 分发 executeAcpBuiltinSlashCommand
-// 不会接手——桌面在 dispatchSlashInput 前置拦截本命令。TUI 的菜单/编辑器交互换成
-// command_output 提示；状态机（create/replace/pause/resume/drop/budget）、goal 工具集暴露、
-// goal-continuation 隐藏续跑与「无进展抑制」（连续续跑轮没有新工具活动即停）均对齐
-// interactive-mode 的 handleGoalModeCommand / #scheduleGoalContinuation / #handleGoalSessionEvent。
+// Desktop implementation of the /goal command + goal continuation scheduling
+// (semantics aligned with the omp CLI TUI goal). The base /goal only has
+// handleTui (no handle in BUILTIN), so the ACP dispatcher
+// executeAcpBuiltinSlashCommand never picks it up — the desktop intercepts
+// this command ahead of dispatchSlashInput. TUI menu/editor interactions are
+// replaced with command_output notices; the state machine
+// (create/replace/pause/resume/drop/budget), goal tool-set exposure,
+// goal-continuation hidden follow-ups and the no-progress suppression (stop
+// when consecutive continuation turns produce no new tool activity) all align
+// with interactive-mode's handleGoalModeCommand / #scheduleGoalContinuation /
+// #handleGoalSessionEvent.
 import { hostI18n } from "../ui-src/i18n/host.ts";
 
-/** 目标记录（落盘 mode_change 的 modeData.goal 同构；字段校验见 goalFromModeData）。 */
+/** Goal record (isomorphic to modeData.goal of the persisted mode_change; field validation in goalFromModeData). */
 export interface GoalLike {
   id: string;
   objective: string;
@@ -24,7 +29,7 @@ export interface GoalStateLike {
   goal: GoalLike;
 }
 
-/** GoalController 依赖的会话窄接口（AgentSession 的 goal 相关面，结构满足即可）。 */
+/** Narrow session interface GoalController depends on (the goal-related face of AgentSession; structural typing suffices). */
 export interface GoalSession {
   getGoalModeState(): GoalStateLike | undefined;
   setGoalModeState(state: GoalStateLike | undefined): void;
@@ -62,7 +67,7 @@ export interface GoalSession {
 type GoalSubcommand = "set" | "pause" | "resume" | "drop" | "budget";
 const GOAL_SUBCOMMANDS: Record<string, true> = { set: true, pause: true, resume: true, drop: true, budget: true };
 
-/** 首词是子命令则拆出，否则整体视为 objective（对齐 TUI parseGoalSubcommand）。 */
+/** Split off the first word when it is a subcommand, otherwise treat the whole input as the objective (aligned with TUI parseGoalSubcommand). */
 function parseGoalSubcommand(args: string): { sub: GoalSubcommand | undefined; rest: string } {
   const trimmed = args.trim();
   if (!trimmed) return { sub: undefined, rest: "" };
@@ -74,7 +79,7 @@ function parseGoalSubcommand(args: string): { sub: GoalSubcommand | undefined; r
   return { sub: undefined, rest: trimmed };
 }
 
-/** 从落盘 modeData 校验恢复 goal 记录（对齐 TUI #goalFromModeData）。 */
+/** Validate and restore a goal record from persisted modeData (aligned with TUI #goalFromModeData). */
 function goalFromModeData(modeData: { goal?: unknown } | undefined): GoalLike | undefined {
   const goal = modeData?.goal;
   if (!goal || typeof goal !== "object") return undefined;
@@ -102,7 +107,7 @@ function goalFromModeData(modeData: { goal?: unknown } | undefined): GoalLike | 
   };
 }
 
-/** 键排序的稳定序列化：续跑活动指纹不因对象键序抖动而误判为「有新活动」。 */
+/** Key-sorted stable serialization: continuation activity fingerprints must not misjudge "new activity" due to object key-order jitter. */
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
@@ -110,7 +115,7 @@ function stableStringify(value: unknown): string {
   return "{" + entries.map(([k, v]) => JSON.stringify(k) + ":" + stableStringify(v)).join(",") + "}";
 }
 
-/** 模型可见的工具活动指纹（排除 callId/时间戳等每轮都变的字段；对齐 TUI #goalContinuationActivity）。 */
+/** Model-visible tool activity fingerprint (excludes per-turn fields like callId/timestamps; aligned with TUI #goalContinuationActivity). */
 function goalContinuationActivity(messages: unknown[]): string {
   const digests: string[] = [];
   const record = (value: unknown): void => {
@@ -139,11 +144,12 @@ export class GoalController {
   readonly #session: GoalSession;
   readonly #output: (text: string) => void;
   readonly #onChange: () => void;
-  /** 进入 goal 模式前的工具集（exit 时恢复）；恢复来的 goal 在 restore() 记录。 */
+  /** Tool set before entering goal mode (restored on exit); for restored goals it is recorded in restore(). */
   #prevTools: string[] | undefined;
   #timer: NodeJS.Timeout | undefined;
-  // 目标期间的会话成本增量（goal 记录无 cost 字段：以会话 cost 锚点差量累计；
-  // 重开会话从恢复时刻起算，历史增量不回溯）
+  // Session cost delta during the goal (goal records carry no cost field:
+  // accumulated as deltas against a session cost anchor; a reopened session
+  // counts from the restore moment, historical deltas are not backfilled)
   #costUsed = 0;
   #costAnchor = 0;
   #pendingContinuationTurns = 0;
@@ -163,12 +169,12 @@ export class GoalController {
     this.#onChange();
   }
 
-  /** 目标期间已消耗成本（会话 cost 增量累计，美元）。 */
+  /** Cost consumed during the goal (accumulated session cost deltas, USD). */
   get costUsed(): number {
     return this.#costUsed;
   }
 
-  /** /goal 的 args 分发。返回 objective（调用方转正常 prompt 链路）或 null（已消费）。 */
+  /** Dispatch /goal args. Returns the objective (caller forwards it into the normal prompt path) or null (consumed). */
   async handleCommand(args: string): Promise<string | null> {
     const s = this.#session;
     if (s.getPlanModeState()?.enabled) {
@@ -183,9 +189,10 @@ export class GoalController {
     switch (sub) {
       case "set":
         return await this.#dispatch(this.#handleSet(rest));
-      // pause/resume/drop/budget 是 void 动作：必须显式返回 null（本地消费）。
-      // 漏返回会让 dispatchSlashInput 把 undefined 当 objective 转给 prompt()，
-      // 底座 parseSlashCommand(undefined) 报 text.startsWith TypeError
+      // pause/resume/drop/budget are void actions: must explicitly return null
+      // (consumed locally). A missing return would let dispatchSlashInput hand
+      // undefined to prompt() as the objective, and the base
+      // parseSlashCommand(undefined) throws text.startsWith TypeError
       case "pause":
         await this.#dispatch(this.#pause());
         return null;
@@ -221,7 +228,7 @@ export class GoalController {
     return null;
   }
 
-  /** 命令动作统一出口：状态变更后通知宿主推 goal 帧（会话状态卡刷新）。 */
+  /** Unified exit for command actions: notify the host to push a goal frame after state changes (session state card refresh). */
   async #dispatch<T>(action: Promise<T>): Promise<T> {
     try {
       return await action;
@@ -230,13 +237,13 @@ export class GoalController {
     }
   }
 
-  // ---------- 事件钩子（宿主事件订阅转发，对齐 TUI #handleGoalSessionEvent） ----------
+  // ---------- event hooks (host event subscription forwarding, aligned with TUI #handleGoalSessionEvent) ----------
 
   onAgentStart(): void {
     this.cancel();
   }
 
-  /** 用户真实消息（非 synthetic）到达：重置抑制，下一轮结束照常评估续跑。 */
+  /** A real user message (not synthetic) arrived: reset suppression and evaluate continuation normally at the next turn end. */
   onUserMessage(): void {
     this.#resetSuppression();
   }
@@ -246,7 +253,7 @@ export class GoalController {
       if (this.#pendingContinuationTurns > 0) {
         this.#pendingContinuationTurns--;
         const activity = goalContinuationActivity(messages);
-        // 无活动或与上一轮活动完全相同 → 无进展，抑制下一次续跑（防原地空转）
+        // No activity or identical to last turn's activity -> no progress; suppress the next continuation (prevents spinning in place)
         this.#suppressNext = activity.length === 0 || activity === this.#previousActivity;
         this.#previousActivity = activity;
       } else {
@@ -260,12 +267,12 @@ export class GoalController {
       }
       this.schedule();
     } finally {
-      this.#notify(); // 每轮收尾 tokensUsed/时长有变，刷新会话状态卡
+      this.#notify(); // tokensUsed/duration changed at turn end; refresh the session state card
     }
   }
 
   onGoalUpdated(state: GoalStateLike | undefined): void {
-    // 模型侧 goal 工具 drop：退出并恢复工具集（TUI 在清标志前处理，便于恢复快照）
+    // Model-side goal tool drop: exit and restore the tool set (TUI handles it before clearing the flag, so the snapshot is easy to restore)
     if (state?.goal?.status === "dropped") {
       void this.#exitGoalMode({ reason: "dropped", silent: true }).then(() => this.#notify());
       return;
@@ -274,7 +281,7 @@ export class GoalController {
     this.#notify();
   }
 
-  /** 取消挂起的续跑定时器。 */
+  /** Cancel the pending continuation timer. */
   cancel(): void {
     if (this.#timer) {
       clearTimeout(this.#timer);
@@ -282,7 +289,7 @@ export class GoalController {
     }
   }
 
-  /** 冷加载恢复（对齐 TUI #reconcileModeFromSession 的 goal 段）：不主动续跑，等下一个 agent_end。 */
+  /** Cold-load restore (aligned with the goal part of TUI #reconcileModeFromSession): no proactive continuation; wait for the next agent_end. */
   async restore(): Promise<void> {
     const s = this.#session;
     this.#costAnchor = s.getSessionStats().cost;
@@ -299,8 +306,9 @@ export class GoalController {
       return;
     }
     if (goal.status === "complete") {
-      // 强退错过完成事件（completeGoalFromTool 落盘了终态 goal）：恢复即补完成收尾，
-      // 不把已完成目标复活成进行中
+      // Force-quit missed the completion event (completeGoalFromTool already
+      // persisted the terminal goal): backfill the completion wrap-up on
+      // restore instead of reviving a completed goal as in-progress
       s.sessionManager.appendModeChange("none");
       s.sessionManager.appendCustomEntry("goal-completed", {
         objective: goal.objective,
@@ -314,7 +322,7 @@ export class GoalController {
     }
     s.setGoalModeState({ enabled: ctx.mode === "goal", mode: "active", goal });
     const restored = await s.goalRuntime.onThreadResumed({});
-    // sdk 初始工具集无条件排除 goal：恢复后补回，模型才能对本目标 resume/complete/drop
+    // The sdk's initial tool set unconditionally excludes goal: add it back after restore so the model can resume/complete/drop this goal
     if (restored?.goal) {
       const prev = s.getEnabledToolNames().filter((n) => n !== "goal");
       this.#prevTools = prev;
@@ -323,7 +331,7 @@ export class GoalController {
     this.#notify();
   }
 
-  // ---------- 内部动作 ----------
+  // ---------- internal actions ----------
 
   #pausedState(): GoalStateLike | undefined {
     const state = this.#session.getGoalModeState();
@@ -465,9 +473,9 @@ export class GoalController {
     this.cancel();
   }
 
-  // ---------- 续跑调度（对齐 TUI #scheduleGoalContinuation） ----------
+  // ---------- continuation scheduling (aligned with TUI #scheduleGoalContinuation) ----------
 
-  /** goal 处于 active 且允许续跑时挂 800ms 定时器发隐藏续跑消息。 */
+  /** When the goal is active and continuation is allowed, arm an 800ms timer to send the hidden continuation message. */
   schedule(): void {
     this.cancel();
     const s = this.#session;
@@ -487,7 +495,7 @@ export class GoalController {
 
   async #fireContinuation(prompt: string): Promise<void> {
     const s = this.#session;
-    // TUI #isAutoSubmitBlocked 同款：忙时丢弃本轮，下一个 agent_end 会重新调度
+    // Same as TUI #isAutoSubmitBlocked: drop this round when busy; the next agent_end reschedules
     if (s.isStreaming || s.isCompacting || s.hasPostPromptWork) return;
     const state = s.getGoalModeState();
     if (!state?.enabled || state.goal.status !== "active") return;

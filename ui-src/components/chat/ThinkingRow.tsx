@@ -1,14 +1,18 @@
-// 思考行：任何设置下思考标签都显示（uiPrefs.showThinking 只决定流式开始时默认展开与否，
-// 展开态记在 item.expanded 上由 store 写入）。标签行点击展开/收起 think-body。
-// 迁移自 ui/tool-labels.js renderThink；原版展开时的视口锚定在 React 下天然成立——
-// DOM 节点复用、scrollTop 不动即「点击行不动」，贴底时由 Chat 的滚动 effect 钉底。
+// Thinking row: the thinking label always shows under any setting (uiPrefs.showThinking
+// only decides the default expand state when streaming starts; the expand state is recorded
+// on item.expanded and written by the store). Click the label row to expand/collapse
+// think-body.
+// Migrated from renderThink in ui/tool-labels.js; the original's viewport anchoring on
+// expansion holds naturally under React — DOM node reuse + an unchanged scrollTop means
+// "the clicked row does not move", and when glued to the bottom Chat's scroll effect pins it.
 import { useEffect, useRef } from "react";
 import Icon from "../../Icon";
 import { useLift, patchActiveItem } from "./parts";
 import { t } from "../../i18n";
 
-// 思考行可渲染的最小形状:thinking 条目本身;tool 条目(name==="thinking")经 ToolRow 兜底
-// 分流进来时这些可选字段运行期为 undefined(结构性兼容,无需断言)
+// Minimal renderable shape of a thinking row: the thinking entry itself; when a tool entry
+// (name === "thinking") is routed in via the ToolRow fallback, these optional fields are
+// undefined at runtime (structurally compatible, no assertion needed)
 interface ThinkRowItem {
   text: string;
   thinking?: string;
@@ -23,8 +27,9 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
   const open = item.expanded && !closing;
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // think-scroll 底部虚化解禁：滚到底（或内容不足一屏）时加 no-fade（滚动职责在内层
-  // .think-scroll：外层保持自然高度，左侧竖线不随滚动移出视口）
+  // think-scroll bottom blur release: add no-fade when scrolled to the bottom (or content
+  // shorter than one screen) (scrolling duty is on the inner .think-scroll: the outer layer
+  // keeps its natural height so the left vertical line never scrolls out of view)
   useEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;

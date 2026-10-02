@@ -1,14 +1,14 @@
-// 项目管理链路冒烟：add（置顶并入）/ reorder（顺序唯一真源）/ pin（置顶会话）/ remove（移出项目列表）。
-// 用法：bun scripts/smoke-projects.ts [宿主ws地址]
-// ⚠ 直接读写 omp-desktop.json，任何退出路径（含断言失败）都会还原原文件；还原前先杀 host，
-//    避免 host 内存态在退出钩子里把测试状态写回。
-// 断言覆盖：
-//   1. add_project：新项目 unshift 置顶，session_list 立即可见
-//   2. add_project 二次：更新为最新置顶（相对顺序 B 在 A 前）
-//   3. reorder_projects：以 UI 传序为准（A 反超 B），未涵盖项保持原序
-//   4. set_session_pinned：pinnedSessions 落盘可见
-//   5. remove_project：进 removedProjects、出 allProjects
-// 零模型调用。
+// Project management smoke test: add (merged at top) / reorder (order as the single source of truth) / pin (pinned sessions) / remove (out of the project list).
+// Usage: bun scripts/smoke-projects.ts [host ws url]
+// WARNING: reads and writes omp-desktop.json directly; every exit path (including assertion failures) restores the original file; the host is killed first,
+//    so its in-memory state cannot write the test state back in an exit hook.
+// Assertions cover:
+//   1. add_project: the new project is unshifted to the top and immediately visible in session_list
+//   2. add_project a second time: refreshed as the newest top (relative order B before A)
+//   3. reorder_projects: the order sent by the UI wins (A overtakes B); items not covered keep their order
+//   4. set_session_pinned: pinnedSessions is visible in the persisted file
+//   5. remove_project: into removedProjects, out of allProjects
+// Zero model calls.
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
@@ -25,14 +25,14 @@ let child: ReturnType<typeof spawn> | null = null;
 let wsUrl = args[0];
 let restored = false;
 
-// 还原必须先于 exit：kill host（SIGTERM 异步）→ 等其退出窗口 → 写回原文
+// Restore must precede exit: kill the host (SIGTERM is async) -> wait out its exit window -> write the original back
 function restoreCfg() {
   if (restored) return;
   restored = true;
   if (child?.pid) {
     child.kill("SIGTERM");
     child = null;
-    try { execSync("sleep 0.8"); } catch {} // 同步等 800ms 让 host 退完再写回（Bun 主线程 Atomics.wait 不可靠）
+    try { execSync("sleep 0.8"); } catch {} // Sleep synchronously 800ms for the host to finish exiting before writing back (Bun main-thread Atomics.wait is unreliable)
   }
   try {
     if (cfgExisted) writeFileSync(cfgPath, cfgBackup);
@@ -103,36 +103,36 @@ const dirB = await mkdtemp(path.join(tmpdir(), "omp-smoke-prjB-"));
 tmpDirs.push(dirA, dirB);
 const idxOf = (l: any, c: string) => (l.allProjects ?? []).indexOf(c);
 
-// ---- 断言 1：add 置顶并入 ----
+// ---- Assertion 1: add merges at the top ----
 let mark = frames.length;
 ws.send(JSON.stringify({ type: "add_project", cwd: dirA }));
 let list = await waitType("session_list", mark).catch((e) => fail(String(e)));
 assert(idxOf(list, dirA) === 0, `add_project A 置顶（allProjects[0]）`);
 
-// ---- 断言 2：二次 add 更新置顶 ----
+// ---- Assertion 2: a second add refreshes the top ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "add_project", cwd: dirB }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));
 assert(idxOf(list, dirB) === 0 && idxOf(list, dirA) === 1, `add_project B 新置顶（B=0, A=1）`);
 
-// ---- 断言 3：reorder 顺序为唯一真源 ----
-ws.send(JSON.stringify({ type: "reorder_projects", order: [dirA, dirB] })); // 无回包
+// ---- Assertion 3: the reorder order is the single source of truth ----
+ws.send(JSON.stringify({ type: "reorder_projects", order: [dirA, dirB] })); // no reply frame
 mark = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));
 assert(idxOf(list, dirA) < idxOf(list, dirB), `reorder 后 A 反超 B（A=${idxOf(list, dirA)}, B=${idxOf(list, dirB)}）`);
 
-// ---- 断言 4：pin 落盘可见 ----
+// ---- Assertion 4: pin visible in the persisted file ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "create_session", cwd: dirA }));
 const created = await waitType("session_created", mark).catch((e) => fail(String(e)));
-ws.send(JSON.stringify({ type: "set_session_pinned", path: created.path, pinned: true })); // 无回包
+ws.send(JSON.stringify({ type: "set_session_pinned", path: created.path, pinned: true })); // no reply frame
 mark = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));
 assert((list.pinnedSessions ?? []).includes(created.path), "set_session_pinned 进 pinnedSessions");
 
-// ---- 断言 5：remove 打标记（allProjects 保留条目是设计：最近视图可见 + add 可恢复）----
+// ---- Assertion 5: remove flags the entry (keeping it in allProjects is by design: visible in Recent + recoverable via add) ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "remove_project", cwd: dirA }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));

@@ -1,4 +1,5 @@
-// 气泡基件（ZCodium popover 平移）：浮层卡语言（--ctl-bg 卡面 + --line 边 + r-md + popIn 入场）。
+// Popover base component (ported from ZCodium popover): floating-card language
+// (--ctl-bg surface + --line border + r-md + popIn entrance).
 import * as React from "react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 

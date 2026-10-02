@@ -1,5 +1,7 @@
-// 文件页：空态为当前项目文件树（懒加载单层展开），点击文件进详情
-//（read_file 整文件 / read_image 图片预览；rb-head 面包屑固定 + rb-scroll 滚动骨架）。
+// File page: empty state is the current project's file tree (lazily loaded one level per
+// expand); clicking a file enters the detail
+// (read_file for whole files / read_image for image previews; rb-head breadcrumb pinned +
+// scrolling rb-scroll skeleton).
 import { Fragment, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,16 +12,16 @@ import { langOfPath } from "../../lib/highlighter";
 import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens";
 import type { FileViewState } from "../../types/session";
 
-const FILE_VIEW_MAX_LINES = 800; // 全文件超长时的展示窗口：有读取范围则以范围起始行开头，否则从头
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]); // 与宿主 read_image 白名单一致
+const FILE_VIEW_MAX_LINES = 800; // display window for over-long whole files: start at the request range's first line when present, otherwise from the top
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]); // matches the host's read_image whitelist
 
 export default function FilePage() {
   const fileView = useAppStore((s) => s.fileView);
   if (fileView) return <FvDetail />;
-  return <FileTree />; // 空态：当前项目文件树
+  return <FileTree />; // empty state: current project file tree
 }
 
-// 空态：当前项目文件树（懒加载单层展开；点击文件进详情）
+// Empty state: current project file tree (lazily loaded one level per expand; click a file to enter detail)
 function FileTree() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
@@ -42,11 +44,13 @@ function FileTree() {
   );
 }
 
-// 单层渲染：缓存未命中时发起 list_dir（pending 集合防重，dir_list 回包由 store 落缓存）
+// Single-level render: send list_dir on cache miss (pending set prevents duplicates; the
+// dir_list reply lands in the store cache)
 function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
   const { t } = useTranslation();
   const rightState = useAppStore((s) => s.rightState);
-  // 原渲染体内的 list_dir 请求移入 effect；防重与缓存命中读 getState（渲染与 effect 之间状态可能已推进）
+  // The list_dir request formerly in the render body moved into an effect; dedup and cache-hit
+  // reads use getState (state may have advanced between render and effect)
   useEffect(() => {
     const rs = useAppStore.getState().rightState;
     if (rs.fileTreeDirs.get(dirPath) !== undefined) return;
@@ -72,7 +76,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
                 className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
                 style={{ paddingLeft: 6 + depth * 14 + "px" }}
                 onClick={() => {
-                  // 展开/收起：换新 Set + 新 rightState 引用（订阅者按引用感知）
+                  // Expand/collapse: fresh Set + fresh rightState reference (subscribers notice by reference)
                   useAppStore.setState((st) => {
                     const fileTreeExpanded = new Set(st.rightState.fileTreeExpanded);
                     if (fileTreeExpanded.has(full)) fileTreeExpanded.delete(full);
@@ -109,7 +113,8 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
   );
 }
 
-// 点击文件：图片分叉发 read_image 走图片预览（宿主 8MB 上限 + 后缀白名单），其余发 read_file
+// Click a file: images branch to read_image for preview (host 8MB cap + extension
+// whitelist), everything else sends read_file
 function openFileView(full: string) {
   if (IMAGE_EXTS.has(full.split(".").pop() ?? "")) {
     setBump({ fileView: { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null, image: true }, fileViewPending: full });
@@ -120,10 +125,12 @@ function openFileView(full: string) {
   }
 }
 
-// 文件路径面包屑：项目内「项目名 › 相对段」，项目外全路径；分隔符用向右箭头图标
+// File path breadcrumb: inside the project "project name › relative segments", full path
+// outside; separator uses the right-chevron icon
 function FileCrumb({ absPath }: { absPath: string }) {
   const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
-  // Windows 反斜杠路径先归一为 "/"，否则前缀匹配失败会把整条路径渲染成一个段
+  // Normalize Windows backslash paths to "/" first, else the prefix match fails and the whole
+  // path renders as one segment
   const root = (cwd || "").replace(/\\/g, "/").replace(/\/+$/, "");
   const abs = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
   let segs: (string | undefined)[];
@@ -148,12 +155,13 @@ function FileCrumb({ absPath }: { absPath: string }) {
   );
 }
 
-// 文件详情：先渲染读取到的内容，read_file 回包后切整文件（请求范围行号高亮 + 起始行滚到顶部）
+// File detail: render the read content first, switch to the whole file after the read_file
+// reply (request-range line highlighting + start line scrolled to top)
 function FvDetail() {
   const { t } = useTranslation();
-  const fv = useAppStore((s) => s.fileView)!; // 断言:FilePage 入口 if (fileView) 已守卫,与原版一致
+  const fv = useAppStore((s) => s.fileView)!; // assertion: FilePage's entry if (fileView) already guards, same as the original
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  // 全文件就绪后把读取范围起始行滚到可视区顶部
+  // Once the whole file is ready, scroll the request range's start line to the top of the view
   useEffect(() => {
     if (!fv.full || fv.reqRange == null) return;
     bodyRef.current?.querySelector(".fv-ln.hl")?.scrollIntoView({ block: "start" });
@@ -172,7 +180,7 @@ function FvDetail() {
         <FileCrumb absPath={fv.path} />
       </div>
       <div className="rb-scroll">
-        {/* 图片预览：read_image 回包（store 存入 rightState.imageContent）到达后渲染 */}
+        {/* Image preview: rendered once the read_image reply (store puts it in rightState.imageContent) arrives */}
         {fv.image ? (
           <FvImage fv={fv} />
         ) : !fv.text && !fv.error ? (
@@ -190,12 +198,14 @@ function FvDetail() {
   );
 }
 
-// 文本内容：行号 + 文本；全文件超长时截 800 行窗口（起点对齐请求范围的起始行）。
-// 语法染色：可视窗口整段一次 tokenize（上限见 highlighter.js），按行回贴 span
+// Text content: line numbers + text; over-long whole files cut to an 800-line window (start
+// aligned with the request range's first line).
+// Syntax coloring: the visible window is tokenized in one pass (cap see highlighter.js),
+// spans re-attached per line
 function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDivElement | null> }) {
   const { t } = useTranslation();
-  const lines = (fv.text ?? "").split("\n"); // text 恒在(协议数据);?? "" 仅为类型兜底,协议下与原版一致
-  if (lines[lines.length - 1] === "") lines.pop(); // 末尾换行不算一行
+  const lines = (fv.text ?? "").split("\n"); // text is always present (protocol data); the ?? "" is only a type fallback, same as the original under the protocol
+  if (lines[lines.length - 1] === "") lines.pop(); // a trailing newline doesn't count as a line
   const [reqStart, reqEnd] = fv.reqRange || [];
   let winStartLine = fv.startLine || 1;
   let shown = lines;
@@ -211,7 +221,7 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
       <div className="pt-1 pr-2 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */ ref={bodyRef}>
         {shown.map((tx, i) => {
           const n = lineNoOf(i);
-          // 请求的行号范围内只高亮行号列，不动内容；null = 工具省略的空洞行
+          // Only the line-number column is highlighted within the requested range, content untouched; null = hole lines omitted by the tool
           const hl = n != null && reqStart != null && reqEnd != null && n >= reqStart && n <= reqEnd;
           return (
             <div key={i} className="flex items-baseline">
@@ -230,7 +240,7 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
   );
 }
 
-// 图片详情：image_content 回包按 path 匹配（超限/失败回 error 时显示错误态文案）
+// Image detail: image_content replies matched by path (over-limit/failure replies error → the error-state text shows)
 function FvImage({ fv }: { fv: FileViewState }) {
   const { t } = useTranslation();
   const ic = useAppStore((s) => s.rightState.imageContent);

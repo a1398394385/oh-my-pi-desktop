@@ -1,6 +1,7 @@
-// 设置·技能页（React 版）：多目录发现、启用开关、搜索、行内延展编辑。
-// 逻辑 1:1 平移 ui/settings/skills.js；DOM 对照 git 464131d ui/index.html #pg-skills。
-// 编辑器走 .mem-expand 向下延展模式（行 .on 高亮 + caret 旋转 + popIn）。
+// Settings · Skills page (React version): multi-directory discovery, enable toggles, search,
+// inline expand-down editing.
+// Logic ported 1:1 from ui/settings/skills.js; DOM cross-check git 464131d ui/index.html #pg-skills.
+// The editor uses the .mem-expand expand-down pattern (row .on highlight + caret rotation + popIn).
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
@@ -12,16 +13,16 @@ import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
 
-// 技能条目（agent_assets 回包 skills 各目录列表项；host 下发）
+// Skill entry (list item of each directory under skills in the agent_assets reply; sent by host)
 interface SkillItem {
   name: string;
   path: string;
   enabled: boolean;
   description?: string;
-  provider?: string; // 来源插件名；native 不显示
+  provider?: string; // source plugin name; hidden for native
 }
 
-// 项目级技能分组（agentAssets.skills.projects 元素）
+// Project-level skill group (element of agentAssets.skills.projects)
 interface SkillProject {
   cwd: string;
   name: string;
@@ -29,7 +30,7 @@ interface SkillProject {
   skills: SkillItem[];
 }
 
-// agentAssets.skills 下发结构（字段为 host 下发，缺省可空）
+// Delivered structure under agentAssets.skills (fields sent by host, may be absent)
 interface SkillsData {
   globalDir?: string;
   global?: SkillItem[];
@@ -39,7 +40,7 @@ interface SkillsData {
   projects?: SkillProject[];
 }
 
-// 页面内派生的作用域分段
+// Scope section derived in-page
 interface SkillSection {
   scope: string; // "profile" / "project:<cwd>"
   label: string;
@@ -49,23 +50,24 @@ interface SkillSection {
 
 export default function SkillsPage() {
   const { t } = useTranslation();
-  // 渲染数据走字段 selector：agentAssets / assetFile / assetFileSaved 落地帧均换新引用；
-  // onToggle 乐观写也走 setState 换引用链（见 onToggle），字段订阅即可感知
+  // Render data via field selectors: agentAssets / assetFile / assetFileSaved landing frames
+  // all swap in fresh references; the optimistic write in onToggle also goes through the
+  // setState reference-swap chain (see onToggle), so field subscriptions notice it
   const agentAssets = useAppStore((s) => s.agentAssets);
   const hostSettings = useAppStore((s) => s.hostSettings);
-  // 技能总开关（底座 skills.enabled，缺省视为开启）；关闭时页面其余控件灰显禁用
+  // Skills master switch (base skills.enabled, defaults to on); when off the rest of the page's controls are dimmed and disabled
   const skillsEnabled = hostSettings?.skillsEnabled !== false;
   const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [query, setQuery] = useState("");
-  const [moreOpen, setMoreOpen] = useState(false); // more 菜单
-  const [spin, setSpin] = useState(false); // 刷新按钮旋转
-  const [openPath, setOpenPath] = useState<string | null>(null); // 向下延展编辑的技能 path（null = 收起）
-  const [editText, setEditText] = useState(""); // 编辑器内容（本地受控）
-  const [editLoading, setEditLoading] = useState(false); // 等 asset_file 回包填内容
-  const [editStatus, setEditStatus] = useState(""); // 保存中… / 已保存
-  const seenStamp = useRef<unknown>(null); // 已消费的 asset_file_saved 回包（按引用判重）
+  const [moreOpen, setMoreOpen] = useState(false); // more menu
+  const [spin, setSpin] = useState(false); // refresh button spin
+  const [openPath, setOpenPath] = useState<string | null>(null); // path of the skill being edited expand-down (null = collapsed)
+  const [editText, setEditText] = useState(""); // editor content (locally controlled)
+  const [editLoading, setEditLoading] = useState(false); // waiting for the asset_file reply to fill content
+  const [editStatus, setEditStatus] = useState(""); // saving… / saved
+  const seenStamp = useRef<unknown>(null); // already-consumed asset_file_saved reply (dedup by reference)
   const statusTimer = useRef<TimerHandle | undefined>(undefined);
-  useExtSources(); // 扩展中心全 scope 数据（行内来源徽标匹配用）
+  useExtSources(); // extension-center data for all scopes (for matching inline source badges)
 
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
@@ -73,8 +75,8 @@ export default function SkillsPage() {
     allProjects.filter((c) => !removedProjects.includes(c))
   );
 
-  // ---------- 数据派生（同旧版 currentSkillSections/getActiveSkillSection） ----------
-  const data: SkillsData | undefined = agentAssets?.skills as SkillsData | undefined; // frames 侧 skills 暂 unknown(host/assets.ts 内部扫描决定),本页按实际读取收窄
+  // ---------- Data derivation (same as old currentSkillSections/getActiveSkillSection) ----------
+  const data: SkillsData | undefined = agentAssets?.skills as SkillsData | undefined; // skills is temporarily unknown on the frames side (decided by the internal scan in host/assets.ts); this page narrows by actual reads
   const profileSec: SkillSection = {
     scope: "profile",
     label: `Profile · ${data?.profileName ?? "default"}`,
@@ -91,7 +93,7 @@ export default function SkillsPage() {
     }));
   const sections: SkillSection[] = [profileSec, ...projectSecs];
 
-  // 当前作用域失效时回落到 profile 级
+  // Fall back to the profile level when the current scope is stale
   const curSec: SkillSection =
     sections.find((s) => s.scope === scope) || profileSec;
 
@@ -99,7 +101,7 @@ export default function SkillsPage() {
   const q = query.trim().toLowerCase();
   const filtered = curSec.items.filter((item) => !q || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q)));
 
-  // ---------- 全局点击关闭 more 菜单（作用域下拉由 ScopeSel 自管理；对应旧版 closeAllMenus） ----------
+  // ---------- Global click closes the more menu (the scope dropdown self-manages; equivalent of the old closeAllMenus) ----------
   useEffect(() => {
     if (!moreOpen) return;
     const close = () => setMoreOpen(false);
@@ -107,7 +109,7 @@ export default function SkillsPage() {
     return () => document.removeEventListener("click", close);
   }, [moreOpen]);
 
-  // asset_file 回包：匹配当前延展区则填入编辑器
+  // asset_file reply: fill the editor if it matches the current expanded row
   const assetFile = useAppStore((s) => s.assetFile);
   useEffect(() => {
     if (openPath && editLoading && assetFile && assetFile.kind === "skill" && assetFile.path === openPath) {
@@ -116,12 +118,12 @@ export default function SkillsPage() {
     }
   });
 
-  // asset_file_saved 回包：延展区状态行「已保存」，2s 后清除
+  // asset_file_saved reply: expanded area status line shows "saved", cleared after 2s
   const assetFileSaved = useAppStore((s) => s.assetFileSaved);
   useEffect(() => {
     const st = assetFileSaved;
     if (!st || st.kind !== "skill" || seenStamp.current === st) return;
-    seenStamp.current = st; // 无论延展区是否还开着都记为已消费，防重放
+    seenStamp.current = st; // mark consumed regardless of whether the expanded area is still open, to prevent replays
     if (!openPath) return;
     setEditStatus(t("settingsPage.shared.saved"));
     clearTimeout(statusTimer.current);
@@ -129,7 +131,7 @@ export default function SkillsPage() {
   }, [assetFileSaved, openPath]);
   useEffect(() => () => clearTimeout(statusTimer.current), []);
 
-  // ---------- 交互（1:1 平移旧版事件绑定） ----------
+  // ---------- Interaction (1:1 port of the old event bindings) ----------
   function toggleSkills() {
     const next = !skillsEnabled;
     send({ type: "set_skills_enabled", enabled: next });
@@ -137,7 +139,7 @@ export default function SkillsPage() {
   }
 
   function toggleEditor(s: SkillItem) {
-    if (openPath === s.path) { setOpenPath(null); return; } // 再点收起
+    if (openPath === s.path) { setOpenPath(null); return; } // clicking again collapses
     setOpenPath(s.path);
     setEditText(t("settingsPage.shared.reading"));
     setEditLoading(true);
@@ -147,7 +149,8 @@ export default function SkillsPage() {
 
   function onToggle(item: SkillItem) {
     const next = !item.enabled;
-    // 乐观换引用：拷贝 agentAssets → skills → item 所在段数组并替换该 item（字段写入即通知，统计/开关随重渲染刷新）
+    // Optimistic reference swap: copy agentAssets → skills → the section array containing the
+    // item and replace that item (field write notifies immediately; counts/toggles refresh on re-render)
     const st = useAppStore.getState();
     const skills = st.agentAssets?.skills as SkillsData | undefined;
     const replace = (arr: SkillItem[]) => arr.map((x) => (x === item ? { ...item, enabled: next } : x));
@@ -209,7 +212,7 @@ export default function SkillsPage() {
     if (!openPath) return;
     if (await confirmDialog({ title: t("settingsPage.skills.deleteTitle"), message: t("settingsPage.skills.deleteMsgUndo", { name: s.name }), confirmText: t("common.delete"), danger: true })) {
       send({ type: "asset_skill_delete", path: openPath });
-      setOpenPath(null); // 同旧版：确认后立即收起延展区
+      setOpenPath(null); // same as old version: collapse the expanded area right after confirming
     }
   }
 
@@ -349,7 +352,7 @@ export default function SkillsPage() {
               ))}
         </div>
       </div>
-      {/* 技能编辑：点击行向下延展编辑区（见上方 mem-expand） */}
+      {/* Skill editing: click a row to expand the editor downward (see mem-expand above) */}
       <SchemaRows sections={PAGE_PLACEMENT["pg-skills"]} />
       </div>
     </div>

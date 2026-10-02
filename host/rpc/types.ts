@@ -1,3 +1,3 @@
-// RPC 处理器签名：ws 为 Bun WS、msg 为 JSON.parse 后的请求体（any，边界处逐字段收窄）。
-// 异常由 main.ts 分发壳统一捕获回 error 帧，处理器只管业务。
+// RPC handler signature: ws is a Bun WS, msg is the JSON.parse'd request body (any, narrowed field-by-field at the boundary).
+// Exceptions are caught uniformly by the main.ts dispatch shell and replied as error frames; handlers mind business only.
 export type RpcHandler = (ws: any, msg: any) => void | Promise<void>;
