@@ -46,6 +46,7 @@
 | BUG-036 | 升级底座 18.5.0 后 host:build 加载期即炸——build-host.ts 深依赖 pi-natives 内部模块，上游导出改名 | 2026-10-03 |
 | BUG-037 | Windows 上 check-style-tokens 误报 shadcn 基件 9 处违规——vendor 目录排除被反斜杠路径击穿 | 2026-10-03 |
 | BUG-038 | Windows 终端默认起 PowerShell 5.1 不跟随用户 pwsh 7——默认 shell 硬编码 powershell.exe，无探测 | 2026-10-03 |
+| BUG-039 | 项目打开后终端起始目录落在用户主目录——无活跃会话时空 cwd 回落宿主 process.cwd()（GUI 启动目录） | 2026-10-03 |
 
 ---
 
@@ -534,3 +535,17 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：throwaway 脚本真起 PTY（createTerminal→读 session.shell→dispose）——本机默认解析 `pwsh.exe`；设 `SHELL=C:\fake\overwrite.exe` 时传给 PTY 的即该值（以 CreateProcessW 报错形态证明覆盖优先级生效，探测未参与）；`bun run check` 八步全绿。
 
 **教训**：跨平台默认 shell 不能硬编码 powershell.exe——Windows「用户默认 shell」没有系统 API，pwsh-first 探测是唯一可靠路径（底座 loader 同款顺序）；GUI 进程 env 里没有 SHELL 可读。
+
+### BUG-039: 终端起始目录落用户主目录——空 cwd 回落宿主 process.cwd()
+
+**现象**：打开 oh-my-pi-desktop 项目后开右栏终端，提示符落在 `C:\Users\<user>` 而非项目目录。
+
+**分诊**：②确认存量缺陷——终端功能引入即如此。
+
+**根因**：三层回落链全部没有项目语义：① 前端 `terminal_create` 仅在「有活跃会话」时传会话 cwd，否则发空串（`TerminalPage.tsx` 的 `cwd: s?.cwd ?? ""`）；② 宿主 `rpc/terminal.ts` 对空 cwd 回落宿主进程 `process.cwd()`；③ 宿主由 Tauri GUI spawn（`src-tauri/src/lib.rs` 的 `cmd.spawn()` 未设 current_dir），继承 GUI 起始目录——Windows 下从开始菜单/双击启动即用户主目录。「当前项目」信息只存在于会话层，无会话时没有任何带项目语义的兜底。
+
+**修复**：`TerminalPage.tsx` 创建 PTY 的回落链改为 会话 cwd → `getAvailableProjects()[0]?.cwd`（主项目目录，与新建会话默认/欢迎屏同一惯例）→ 空串（宿主兜底不变）。
+
+**验证**：`bun x tsc --noEmit` + 七道门禁全绿；用户 dev 实测确认（无会话开终端落主项目目录）。
+
+**教训**：GUI 宿主的 `process.cwd()` 是任意的启动目录，任何「默认工作目录」语义都不能落到它上面；应用内已有主项目惯例（`getAvailableProjects()[0]`）就直接复用，不要发明第二套默认。

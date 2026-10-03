@@ -171,13 +171,18 @@ function ensureSession(container: HTMLElement) {
   });
   session.mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
-  // Start the PTY: cwd takes the current active session's project directory
+  // Start the PTY: cwd takes the current active session's project directory, falling
+  // back to the primary project (getAvailableProjects()[0], same convention as new-session
+  // defaults) when no session is open. An empty cwd would make the host fall back to its
+  // own process.cwd(), which for a GUI-spawned host is the arbitrary launch dir (usually
+  // the home dir) — not a project-centric default.
   const s = activeOpen();
-  const inherit = useAppStore.getState().uiPrefs.terminalInheritProfile !== false;
+  const st = useAppStore.getState();
+  const inherit = st.uiPrefs.terminalInheritProfile !== false;
   send({
     type: "terminal_create",
     id: PERSIST_KEY,
-    cwd: s?.cwd ?? "",
+    cwd: s?.cwd || st.getAvailableProjects()[0]?.cwd || "",
     cols: term.cols,
     rows: term.rows,
     inheritProfile: inherit,
