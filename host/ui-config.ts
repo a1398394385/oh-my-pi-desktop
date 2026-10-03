@@ -66,6 +66,7 @@ const PREFS_FIELDS: Record<string, (v: unknown) => unknown> = {
   codeWrap: v => (typeof v === "boolean" ? v : undefined),
   showThinking: v => (typeof v === "boolean" ? v : undefined),
   expandToolOutput: v => (typeof v === "boolean" ? v : undefined),
+  ctxRingProbeCount: v => (typeof v === "boolean" ? v : undefined),
   terminalInheritProfile: v => (typeof v === "boolean" ? v : undefined),
   terminalFont: v => (typeof v === "string" ? v : undefined),
 };

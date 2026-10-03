@@ -86,7 +86,7 @@ if (slashTa) {
 }
 // __dbg is the debug hook injected by main.tsx in preview mode (the zustand store); the happy-dom Window type has no declaration for it.
 // Writes go through setState to swap the value (the selector subscribing to commands picks it up automatically; no manual trigger needed)
-const dbg = (window as unknown as { __dbg?: { useAppStore: { getState(): { commands: unknown[]; commandsSessionId: string }; setState(p: Record<string, unknown>): void } } })
+const dbg = (window as unknown as { __dbg?: { useAppStore: { getState(): { commands: unknown[]; commandsSessionId: string; bumpSessionActivity(id: string): void }; setState(p: Record<string, unknown>): void } } })
   .__dbg;
 if (!dbg) throw new Error("__dbg 调试钩子未注入");
 dbg.useAppStore.setState({
@@ -244,6 +244,32 @@ await sleep(80);
 const bar2 = $("#statsBar")?.textContent ?? "";
 await sleep(1300);
 ok("收尾后时长冻结在宿主上报值", ($("#statsBar")?.textContent ?? "") === bar2 && bar2.includes("1分5秒"));
+
+// 10. Sidebar activity bump on message send (regression: a resumed historical session kept
+//     showing the previous run's end time for the whole loop — the list refreshed only at
+//     runEnd). bumpSessionActivity (invoked right after the Composer's prompt send) must
+//     restamp the row to now, which also lifts it to the top of the Recent sort.
+dbg.useAppStore.setState({
+  diskProjects: [{
+    cwd: "/path/to/project-foo",
+    sessions: [
+      { id: "test-rec-1", path: "/path/to/rec1.json", title: "历史会话", modified: new Date(Date.now() - 2 * 3600_000).toISOString(), cwd: "/path/to/project-foo", archived: false },
+      { id: "test-rec-2", path: "/path/to/rec2.json", title: "较新会话", modified: new Date(Date.now() - 60_000).toISOString(), cwd: "/path/to/project-foo", archived: false },
+    ],
+  }],
+  viewMode: "recent",
+});
+await sleep(100);
+const pathOrder = () => Array.from(document.querySelectorAll("#sidebar .task")).map((el) => (el as HTMLElement).dataset.path);
+const beforeBump = pathOrder();
+const rowBeforeBump = document.querySelector('.task[data-path="/path/to/rec1.json"]');
+ok("发送前历史会话显示旧时间（2小时）", (rowBeforeBump?.textContent || "").includes("2小时"));
+dbg.useAppStore.getState().bumpSessionActivity("test-rec-1");
+await sleep(100);
+const rowAfterBump = document.querySelector('.task[data-path="/path/to/rec1.json"]');
+const afterBump = pathOrder();
+ok("发送消息后行时间立即变为刚刚", (rowAfterBump?.textContent || "").includes("刚刚"));
+ok("发送消息后会话浮到最近列表顶部", beforeBump[0] === "/path/to/rec2.json" && afterBump[0] === "/path/to/rec1.json");
 
 
 let fail = 0;

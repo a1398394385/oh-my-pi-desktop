@@ -88,7 +88,9 @@ export const {
   readDisabledServers,
   readEnabledServers,
 } = await import("@oh-my-pi/pi-coding-agent/mcp/config-writer");
-export const { connectToServer, disconnectServer } = await import("@oh-my-pi/pi-coding-agent/mcp/client");
+export const { connectToServer, disconnectServer, listTools } = await import("@oh-my-pi/pi-coding-agent/mcp/client");
+// Dynamic import is load-order-mandated here, same as the line above (header: setProfile must precede the SDK graph)
+export const { MCPTool } = await import("@oh-my-pi/pi-coding-agent/mcp/tool-bridge");
 // Model roles (@role): catalog/metadata pure functions + a resolver from role value to concrete model (for the settings page role config)
 export const { getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS } = await import(
   "@oh-my-pi/pi-coding-agent/config/model-roles"
@@ -138,6 +140,11 @@ export const { PROPOSE_DEVICE_NAME } = await import("@oh-my-pi/pi-tui/tools/reso
 export const { parseSkillInvocation, buildSkillPromptMessage } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/skills"
 );
+// Settings registry handle for the skills group (18.5.0): replaces the removed
+// Settings.getGroup("skills") in the creating-new page's skill discovery.
+// Dynamic like every SDK import here: setProfile must precede the coding-agent
+// graph (file-header constraint), which a static import would violate.
+export const { cfgSkills } = await import("@oh-my-pi/pi-coding-agent/extensibility/settings");
 // Skill discovery for the creating-new page's command list (same path an
 // AgentSession runs; see rpc/prompt.ts pushNewSessionCommands)
 export const { discoverSkills } = await import("@oh-my-pi/pi-coding-agent/sdk");

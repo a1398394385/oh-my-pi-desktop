@@ -8,7 +8,7 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
-import type { ContextDetailFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
+import type { ContextDetailFrame, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import { activeOpen, getSupportedThinkingForModel } from "./session";
 import { saveRightSnapshot } from "./right";
 import { detectLang } from "../i18n";
@@ -51,6 +51,7 @@ export interface UiSlice {
   mentionResult: { reqId: number; matches: FileMatch[] } | null; // latest @ candidates response; stale as soon as the reqId no longer matches the current request
   ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
   ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
+  keepaliveStatus: KeepaliveStatusFrame | null; // most recent keepalive_status reply (same ringpop transient pattern; the context card's cache-warming section consumes it)
   mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
   // Agent Hub: middle-card roster of the session's subagents (opened by double-tap ← in an
   // empty composer). The right sidebar links to hubSel — it renders the linked detail page
@@ -149,6 +150,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   mentionResult: null,
   ctxDetail: null,
   ctxLimits: null,
+  keepaliveStatus: null,
   mainViewMode: "chat",
   hubOpen: false,
   hubSel: null,
@@ -255,6 +257,11 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       newSessionBranches: [],
     }));
     get().send({ type: "get_git_branches", cwd });
+    // New-session MCP warm-up: the project is known the moment the user starts
+    // typing — pool the shared connections now so create_session mounts
+    // instantly (idle TTL reclaims them if the user never sends)
+    get().send({ type: "preload_mcp", cwd });
+    console.debug("[mcp] preload requested for", cwd);
     if (cwd) get().expandProject(cwd);
   },
 

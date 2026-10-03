@@ -10,7 +10,8 @@ import {
   updateMCPServer,
   removeMCPServer,
 } from "../bootstrap.ts";
-import { H } from "../state.ts";
+import { H, sessions } from "../state.ts";
+import { releaseMcpForSession, preloadMcpForCwd } from "../mcp-mount.ts";
 import {
   listAgentAssets,
   probeMcpServerHealth,
@@ -185,7 +186,28 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     mcpHealthCache.delete(name);
     const probe = await probeMcpServerHealth(msg.server || { name });
-    ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status, error: probe.error, log: probe.log }));
+    // probeMcpServerHealth returns "connected"/"error"; the frontend contract for
+    // this reply is "ok"/"error" (McpServerTestedFrame consumers + smoke-mcp-sharing)
+    ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status === "connected" ? "ok" : "error", error: probe.error, log: probe.log }));
+  },
+  async mcp_detach(_ws, msg) {
+    // Frontend LRU eviction signal: release the evicted session's MCP pool
+    // references and unmount its tool surface (pool boundary semantics — no
+    // mid-session toggling). Reopening goes through load_session, which
+    // re-mounts idempotently.
+    const p = String(msg.path ?? "").trim();
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    for (const [key, entry] of sessions.entries()) {
+      if (entry.path === p) releaseMcpForSession(key, entry);
+    }
+  },
+  async preload_mcp(_ws, msg) {
+    // New-session warm-up: the frontend fires this the moment the project for a
+    // not-yet-created session is known (welcome-screen project selection), so
+    // shared connections are pooled before create_session arrives
+    const cwd = String(msg.cwd ?? "").trim();
+    if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
+    await preloadMcpForCwd(cwd);
   },
   async save_mcp_server(ws, msg) {
     const name = String(msg.name ?? "").trim();

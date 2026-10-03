@@ -207,6 +207,7 @@ export function railToolText(item: ToolItem): string {
   }
   const parts = [item.text];
   if (item.args?.command) parts.push(String(item.args.command));
+  if (item.args?.query) parts.push(String(item.args.query));
   if (item.name === "hub") {
     const op = item.args?.op || "";
     const n = item.args?.name || item.args?.application || "";

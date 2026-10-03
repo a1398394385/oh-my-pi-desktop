@@ -144,6 +144,13 @@ export const hostErrorsEn = {
   mcp: {
     userCancelled: "Generation cancelled by user",
   },
+  wizard: {
+    missingBaseUrl: "Missing baseUrl",
+    invalidProviderName: "Provider name must be non-empty and contain no whitespace",
+    noModels: "No models selected",
+    badInput: "Invalid input modalities (only text / image are supported)",
+    badThinking: "Invalid thinking config (bad mode or effort levels; at least one level required)",
+  },
 };
 
 export default hostErrorsEn;

@@ -202,6 +202,7 @@ function scheduleEvict(): void {
     streaming sessions (evicting a streaming session would lose its subsequent event frames — dropped
     on findBySessionId misses). */
 export function evictOpenSessions(): void {
+  const evicted: string[] = [];
   useAppStore.setState((st) => {
     if (st.openSessions.size <= OPEN_SESSIONS_MAX) return {};
     const openSessions = new Map(st.openSessions);
@@ -209,9 +210,13 @@ export function evictOpenSessions(): void {
       if (openSessions.size <= OPEN_SESSIONS_MAX) break;
       if (p === st.activePath || s.streaming) continue;
       openSessions.delete(p);
+      evicted.push(p);
     }
     return { openSessions };
   });
+  // Pool boundary: tell the host to drop the evicted sessions' MCP mounts
+  // (idempotent; switching back re-mounts through the load_session path)
+  for (const p of evicted) useAppStore.getState().send({ type: "mcp_detach", path: p });
 }
 
 // Clear the fork/navigation double-click guards (item.branching lives with the item data), recursing into loop groups

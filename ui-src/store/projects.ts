@@ -17,6 +17,8 @@ export interface ProjectsSlice {
   pinnedSessions: Set<string>;
   unseenFinished: Set<string>;
   getAvailableProjects(): { cwd: string; sessions: DiskSessionRow[] }[];
+  /** Optimistically stamp the sidebar row's activity time at message send (see impl). */
+  bumpSessionActivity(sessionId: string): void;
   saveUnseen(): void;
   expandProject(cwd: string): void;
 }
@@ -41,6 +43,27 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
     return st.allProjects
       .filter((cwd) => !removedSet.has(cwd))
       .map((cwd) => ({ cwd, sessions: sessionsOf.get(cwd) ?? [] }));
+  },
+
+  // Sidebar activity clock = the two user-visible moments only: message send (this bump,
+  // optimistic) and run end (the authoritative session_list refresh at runEnd). Without the
+  // bump, a resumed historical session keeps showing the previous run's end time for the
+  // whole loop; bumping per turn_start instead would make the row's time/ordering jitter
+  // through a long tool loop. Only the timestamp is swapped — row order stays with the host.
+  bumpSessionActivity(sessionId: string) {
+    const st = get();
+    const inProjects = st.diskProjects.some((p) => p.sessions.some((r) => r.id === sessionId));
+    const inArchived = st.archivedSessions.some((r) => r.id === sessionId);
+    if (!inProjects && !inArchived) return; // not listed yet (fresh session): the session_created list refresh carries it
+    const iso = new Date().toISOString();
+    set({
+      diskProjects: st.diskProjects.map((p) =>
+        p.sessions.some((r) => r.id === sessionId)
+          ? { ...p, sessions: p.sessions.map((r) => (r.id === sessionId ? { ...r, modified: iso } : r)) }
+          : p,
+      ),
+      archivedSessions: inArchived ? st.archivedSessions.map((r) => (r.id === sessionId ? { ...r, modified: iso } : r)) : st.archivedSessions,
+    });
   },
 
   saveUnseen() {

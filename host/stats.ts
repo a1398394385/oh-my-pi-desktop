@@ -85,3 +85,75 @@ export async function collectUsageStats() {
     heat,
   };
 }
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "*",
+};
+
+/**
+ * Handle HTTP requests for stats dashboards (/api/* and /api/events).
+ * Returns null if the request is not an API request.
+ * `srv` is used to exempt the long-lived SSE stream from Bun's per-request
+ * idle timeout (default ~10s kills an otherwise healthy event stream; the
+ * official standalone dashboard does the same via server.timeout(req, 0)).
+ */
+export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Request, seconds: number) => void }): Promise<Response | null> {
+  const url = new URL(req.url);
+  if (!url.pathname.startsWith("/api/")) return null;
+
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: CORS_HEADERS });
+  }
+
+  if (url.pathname === "/api/events") {
+    srv?.timeout(req, 0);
+    const { statsLive } = await import("@oh-my-pi/omp-stats/live");
+    const live = statsLive();
+    live.start();
+    const encoder = new TextEncoder();
+    let cleanup = () => {};
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const send = (status: unknown) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(status)}\n\n`));
+        };
+        send(live.status());
+        const unsubscribe = live.subscribe(send);
+        const heartbeat = setInterval(
+          () => controller.enqueue(encoder.encode(": keep-alive\n\n")),
+          15_000,
+        );
+        cleanup = () => {
+          unsubscribe();
+          clearInterval(heartbeat);
+        };
+      },
+      cancel() {
+        cleanup();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  try {
+    const { handleApi } = await import("@oh-my-pi/omp-stats/server");
+    const res = await handleApi(req);
+    const headers = new Headers(res.headers);
+    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+      headers.set(k, v);
+    }
+    return new Response(res.body, { status: res.status, headers });
+  } catch (err: unknown) {
+    return Response.json({ error: String(err) }, { status: 500, headers: CORS_HEADERS });
+  }
+}
+

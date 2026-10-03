@@ -5,7 +5,8 @@
 // directly. SDK references and load-order constraints: see bootstrap.ts.
 import os from "node:os";
 import type { createAgentSession } from "./bootstrap.ts";
-import type { GoalController } from "./goal.ts";
+import type { KeepaliveState } from "./keepalive.ts";
+import type { AuthStorage } from "@oh-my-pi/pi-ai";
 
 // ---------- Session pool types (declared up front for profile-switch cleanup) ----------
 export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
@@ -63,6 +64,13 @@ export type PoolEntry = {
   // set true when a turn truly wraps up (unread output exists), set false on
   // user create/load/send/mark_seen — only sessions the user has not seen yet are probed
   keepaliveWanted: boolean;
+  // Latest keepalive runtime snapshot reported by the injected extension
+  // (undefined = the extension was never injected for this entry: keepalive
+  // off or the plugin double-load guard at creation time)
+  keepaliveState?: KeepaliveState;
+  // Session id for keepalive_status pushes fired from reportState (set right
+  // after entry creation; the closure cannot capture the pre-generated id)
+  keepaliveSid?: string;
   transcript: TranscriptItem[];
   assistantDraft: string; // Streaming text accumulated for the current turn, finalized at turn_end
   thinkingDraft: string;
@@ -95,6 +103,26 @@ export type PoolEntry = {
   // the rest here; each agent_end puts 1 back and triggers consumption —
   // queued messages stay FIFO across turns, one independent turn each
   parkedFollowUp: any[];
+  // Consumed-pending texts (queue-card double-display fix): texts already
+  // announced to the UI via steer_consumed whose injection has not been
+  // confirmed yet. The base keeps a dequeued message visible through the
+  // preparation claim (peekFollowUpQueue/peekSteeringQueue prepend claimed
+  // originals), and releasing the claim fires no onQueueChange — so the
+  // realtime queued frame would re-add the consumed message to the queue
+  // card for the whole turn, until the agent_end calibration drops it.
+  // sendQueued filters these texts; cleared on user message_start
+  // (injection confirmed) and at terminal agent_end (abort-restore
+  // visibility).
+  consumedPending: Set<string>;
+  // Pooled MCP mounts (mcp-mount.ts): release handles for every connection
+  // this session acquired (shared pool entries + private session-level
+  // connections), and a generation counter fencing async mounts that complete
+  // after the session was detached/evicted in the meantime
+  mcpReleases: Array<() => void>;
+  // In-flight mount promise (mcp-mount.ts): the prompt path awaits it (bounded)
+  // so the first request carries the full tool surface; cleared on completion
+  mcpMountInFlight?: Promise<void>;
+  mcpMountGen: number;
   // (18.5) RpcSubagentRegistry built from this session's subagent event bus on
   // first attach (modes/rpc/rpc-subagents): control_subagent resolves live
   // subagents through it; lives on the entry so a frontend reload reuses the
@@ -141,7 +169,8 @@ export const H = {
   currentProfile: "",
   // Process-level base (one per process, dynamically reloaded with activeProfile)
   agentDir: "",
-  authStorage: undefined as any,
+  // Placeholder until applyProfile() finishes; RPC handlers only run after that.
+  authStorage: undefined as unknown as AuthStorage,
   modelRegistry: undefined as any,
   settings: undefined as any,
   // OMP login flow (the default entry for adding providers) in-flight flag and prompt relay table

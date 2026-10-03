@@ -3,6 +3,7 @@
 // fetchXxxLimits are synthesized here from the credential and baseUrl; results
 // are cached 60s per omp provider to avoid hammering vendors on every hover.
 
+import type { AuthCredential, AuthStorage } from "@oh-my-pi/pi-ai";
 import { getOAuthProviders } from "../bootstrap.ts";
 // vendor is CJS; static imports get bundled (bun build --compile does not
 // track createRequire dynamic requires, which would be missed and cause
@@ -237,7 +238,7 @@ export async function fetchSessionLimits(
 // provider key). TTL = refresh interval, so between background refreshes every
 // foreground query hits cache. One provider failing does not affect the rest.
 export async function refreshAllLimits(
-  authStorage: any,
+  authStorage: AuthStorage,
   providers: Array<{ id: string; baseUrl: string }>
 ): Promise<void> {
   await Promise.allSettled(providers.map((p) => fetchProviderAccountsLimits(authStorage, p.id, p.baseUrl)));
@@ -256,23 +257,22 @@ export interface AccountLimitRow {
 // Enumerate all non-disabled credentials of the provider, resolve each into a
 // usable key, then pull quotas:
 // - api_key: the key is directly usable
-// - oauth: the access token may be expired; refresh via the official
-//   refreshCredentialById and take the latest, falling back to the stored
-//   token on failure
+// - oauth: the access token may be expired; refresh via oauth.refresh and
+//   take the latest, falling back to the stored token on failure
 // No credentials (single-credential native provider local discovery /
 // listAuthCredentials unavailable) falls back to a single-row fetchSessionLimits.
 export async function fetchProviderAccountsLimits(
-  authStorage: any,
+  authStorage: AuthStorage,
   ompProvider: string,
   baseUrl: string
 ): Promise<{ vendor: string | null; label: string; accounts: AccountLimitRow[] }> {
   const spec = VENDOR_SPECS[ompProvider];
   if (!spec) return { vendor: null, label: ompProvider, accounts: [] };
 
-  let creds: Array<{ id: number; credential: any }> = [];
+  let creds: Array<{ id: number; credential: AuthCredential }> = [];
   try {
-    // facade method listStoredCredentials returns only active credentials (disable tombstones stay in the store layer)
-    creds = (authStorage.listStoredCredentials(ompProvider) ?? []).map((c: any) => ({
+    // credentials.list returns only active rows (disable tombstones stay in the store layer)
+    creds = authStorage.credentials.list(ompProvider).map((c) => ({
       id: c.id,
       credential: c.credential,
     }));
@@ -295,9 +295,9 @@ export async function fetchProviderAccountsLimits(
       key = credential.key ?? "";
     } else if (credential?.type === "oauth") {
       try {
-        const snap = await authStorage.refreshCredentialById(id);
+        const snap = await authStorage.oauth.refresh(id);
         const c = snap?.credential;
-        key = c?.type === "oauth" ? (c.access ?? "") : (c as any)?.key ?? "";
+        key = c?.type === "oauth" ? c.access : c?.type === "api_key" ? c.key : "";
       } catch {
         key = credential.access ?? "";
       }
@@ -320,8 +320,8 @@ export async function fetchProviderAccountsLimits(
   return { vendor: spec.vendor, label: spec.label, accounts };
 }
 
-function credentialIdentity(credential: any): string {
-  return credential?.email ?? credential?.accountId ?? credential?.orgName ?? "";
+function credentialIdentity(credential: AuthCredential): string {
+  return credential?.type === "oauth" ? (credential.email ?? credential.accountId ?? credential.orgName ?? "") : "";
 }
 
 // Data source for the models page "add provider" view: the same list as the

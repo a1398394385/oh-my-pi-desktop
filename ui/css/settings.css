@@ -1098,3 +1098,49 @@
 }
 
 .set-win-ctl .win-controls { margin-right: 0; }
+
+/* ── Manual provider wizard (ModelProviderWizard.tsx, nested in the model page add view)──
+   Shares the MCP editor form classes (mcp-form-*, settings-mcp.css); this block
+   adds the probe row, the tickable model list and the expand-down metadata editor. */
+.mcp-form-quarter { flex: 1; min-width: 110px; }
+
+.mpw-sel { width: 100%; justify-content: space-between; }
+
+.mpw-probe-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.mpw-err { color: var(--err); font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mpw-count { color: var(--dim); font-size: var(--ui-fs-base); white-space: nowrap; }
+
+.mpw-list { margin-top: 10px; max-height: 42vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.mpw-mrow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; }
+.mpw-mrow + .mpw-mrow, .mpw-list .mem-expand + .mpw-mrow { border-top: 1px solid var(--line); }
+.mpw-mrow:hover { background: var(--panel-2); }
+.mpw-mrow.on { background: var(--panel); }
+.mpw-check { accent-color: var(--accent); width: 14px; height: 14px; flex: none; margin: 0; }
+.mpw-mid { color: var(--text); font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono, ui-monospace, monospace); }
+.mpw-mname { color: var(--dim); font-size: var(--ui-sm, var(--ui-fs-base)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mpw-cat { color: var(--green); }
+.mpw-caret { flex: none; }
+.mpw-caret svg { transition: transform .15s ease; }
+.mpw-mrow.on .mpw-caret svg { transform: rotate(180deg); }
+.mpw-list .mem-expand { border-top: 1px solid var(--line); padding: 10px 12px 12px; }
+/* provider-detail rows (mp-r) host the same editor: matching inset */
+.mp-r .mem-expand { padding: 10px 12px 12px; }
+.mpw-meta-hint { color: var(--faint); font-size: var(--ui-fs-sm); margin: 0 0 10px; }
+
+/* effort-level chips (multi-select): pill outline, accent fill when picked */
+.mpw-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 3px 0 1px; }
+.mpw-chip { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; }
+.mpw-chip:hover { background: var(--panel-2); color: var(--text); }
+.mpw-chip.on { border-color: var(--accent); color: var(--accent); background: var(--panel-2); }
+.mpw-chip:disabled { opacity: .5; cursor: default; }
+/* inherited effort list shown next to the label while the chip set is untouched */
+.mpw-ef-hint { color: var(--faint); font-size: var(--ui-fs-sm); margin-left: 8px; }
+/* second-level expander toggle (capability fields): hugs the row above */
+.mpw-adv-toggle { margin: -8px 0 2px; }
+
+.mpw-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+
+.mpw-meta-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.mpw-meta-head .tg { flex: none; }
+.mpw-meta-label { color: var(--text); font-size: var(--ui-fs-base); white-space: nowrap; }
+.mpw-meta-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }

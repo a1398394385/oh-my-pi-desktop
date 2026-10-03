@@ -24,6 +24,8 @@
  *   main-right-caps.css  main page, right sidebar, capabilities page (split out of main-right.css, cascades right after it)
  *   settings.css         settings pages (pg-* pages and navigation)
  *   settings-mcp.css     settings, MCP servers page (split out of settings.css, cascades right after)
+ *   settings-stats.css   settings, stats & analytics page (split out of settings.css, cascades right after)
+ *   settings-stats-port.css settings, stats page: ported omp-stats rules missing from the first cut (cascades right after settings-stats.css)
  * Rules inside each domain keep their original relative order from the split;
  * append new styles at the end of the matching domain file.
  * ============================================================ */
@@ -41,3 +43,6 @@
 @import "./css/main-right-caps.css";
 @import "./css/settings.css";
 @import "./css/settings-mcp.css";
+@import "./css/settings-stats.css";
+@import "./css/settings-stats-port.css";
+

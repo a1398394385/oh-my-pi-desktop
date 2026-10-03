@@ -33,9 +33,13 @@ function findUnclosedQuote(text: string): number | null {
 export type FileTrigger = { kind: "file"; start: number; end: number; query: string; quoted: boolean };
 /** Line-leading / slash command completion trigger range */
 export type CommandTrigger = { kind: "command"; start: number; end: number; query: string };
+/** Slash-command subcommand completion trigger range (e.g. "/memory vi"):
+ *    the command name is fully typed and the caret is in the first argument
+ *    token; query is the argument text, command the typed command name */
+export type CommandArgsTrigger = { kind: "commandArgs"; start: number; end: number; query: string; command: string };
 /** Line-leading $ skill completion trigger range */
 export type SkillTrigger = { kind: "skill"; start: number; end: number; query: string };
-export type Trigger = FileTrigger | CommandTrigger | SkillTrigger;
+export type Trigger = FileTrigger | CommandTrigger | CommandArgsTrigger | SkillTrigger;
 
 /**
  * Trigger detection. Returns:
@@ -43,9 +47,9 @@ export type Trigger = FileTrigger | CommandTrigger | SkillTrigger;
  *   { kind:"file", start, end, query, quoted }      -- @ file mention completion
  *   { kind:"command", start, end, query }           -- line-leading / slash
  *                                                      command completion
- *   { kind:"skill", start, end, query }             -- line-leading $ skill
- *                                                      completion ($name is
- *                                                      sugar for /skill:name)
+ *   { kind:"commandArgs", start, end, query, command } -- subcommand
+ *                                                      completion past the
+ *                                                      typed command name
  * start/end is the token's range in text (used for replacement); query is the
  * search term without the sigil.
  */
@@ -87,6 +91,24 @@ export function detectTrigger(text: string, caret: number): Trigger | null {
     const query = text.slice(start + 1, caret);
     if (/\s/.test(query)) return null; // arguments started: close the popup
     return { kind: "skill", start, end: caret, query };
+  }
+  // Slash-command subcommand completion ("/memory vi"): the caret sits past a
+  // text-head "/name" + whitespace, inside the first argument token. The
+  // token scan above cannot reach this (the whitespace truncated the token,
+  // so ch is a plain word character); the argument text is everything past
+  // the whitespace run and must stay whitespace-free — past the subcommand
+  // slot no popup (buildArgumentCompletions `includes(" ") -> null`). The
+  // whitespace run is \s+, not the base's single \s: an accepted command
+  // chip serializes with a trailing space the display hides (ChipNode drops
+  // it visually), so the user's own space lands as a second one. The caret's
+  // own token keeps @-mention priority (the branches above run first), and
+  // Composer's triggerFn drops commands with no declared subcommands.
+  // Single-line domain like the base's currentLine slice: any newline before
+  // the caret disqualifies.
+  const head = text.slice(0, caret);
+  const m = head.includes("\n") ? null : head.match(/^\s*\/(\S+)\s+(\S*)$/);
+  if (m) {
+    return { kind: "commandArgs", start: caret - m[2].length, end: caret, query: m[2], command: m[1].toLowerCase() };
   }
   return null;
 }

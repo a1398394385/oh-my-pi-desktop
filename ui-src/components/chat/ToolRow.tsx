@@ -175,7 +175,7 @@ function renderGlob(item: ToolItem) {
   return (
     <div className="act read">
       <Icon name="ftFile" size={15} />
-      <span className="lbl">{t("chat.labelFind")}</span>
+      <span className="lbl">{t("chat.labelGlob")}</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}
       {item.running && <Spin />}
@@ -259,6 +259,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
         <Icon name={iconName} size={15} />
         <span className="lbl">{label}</span>
         <Ellip className="path" title={summaryTitle || summary}>{summary}</Ellip>
+        {item.running && <Spin />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>
@@ -266,6 +267,13 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
       {item.cmdExpanded && <ContentCard item={item} lift={closing} />}
     </>
   );
+}
+// Semantic find (jfind) row: query + optional path scope, expandable with ranked hits
+function renderFind(item: ToolItem) {
+  const query = item.args?.query || item.text || "";
+  const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
+  const summary = dir ? `${query} · ${dir}` : query;
+  return <ExpandableRow item={item} iconName="search" label={t("chat.labelFind")} summary={summary} summaryTitle={query} />;
 }
 // Web search row
 function renderWebSearch(item: ToolItem) {
@@ -463,6 +471,7 @@ function toolKind(item: ToolItem) {
   if (name === "hub") return "hub";
   if (name === "grep" || name === "ast-grep") return "grep";
   if (name === "glob") return "glob";
+  if (name === "find") return "find";
   if (name.startsWith("mcp__")) return "mcp";
   if (name === "todo") return "todo";
   if (name === "read") return "read";
@@ -497,6 +506,8 @@ export default function ToolRow({ item }: { item: ToolItem }) {
       return renderGrep(item);
     case "glob":
       return renderGlob(item);
+    case "find":
+      return renderFind(item);
     case "mcp":
       return renderMcp(item);
     case "todo":

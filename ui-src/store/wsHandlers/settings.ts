@@ -3,7 +3,7 @@
 // store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { t } from "../../i18n";
-import type { McpAssetsPayload } from "../../types/frames";
+import type { ManualProbeCatalogMatch, McpAssetsPayload } from "../../types/frames";
 import type { HandlerSlice } from "./types";
 
 export const settingsHandlers = {
@@ -53,6 +53,65 @@ export const settingsHandlers = {
   },
   models_config_path(msg) {
     useAppStore.getState().toast(t("notify.configPath", { path: msg.path }));
+  },
+  provider_models_probe(msg) {
+    useAppStore.setState((s) => ({
+      manualProbe: { models: msg.models ?? [], failed: !!msg.failed, message: msg.message, at: Date.now() },
+      manualProbing: false,
+    }));
+  },
+  provider_model_test(msg) {
+    useAppStore.setState((s) => ({
+      modelTestResults: {
+        ...s.modelTestResults,
+        [msg.model]: {
+          status: msg.ok ? "ok" : "fail",
+          latencyMs: msg.latencyMs,
+          ...(msg.ok ? {} : { message: msg.message }),
+          ...(msg.ok && msg.reply ? { reply: msg.reply } : {}),
+          ts: Date.now(),
+        },
+      },
+    }));
+  },
+  provider_models_saved(msg) {
+    useAppStore.getState().toast(t("notify.wizardSaved", { provider: msg.provider, count: msg.count }));
+    // models/models_catalog frames pushed by the host already refreshed the left column;
+    // land back on the add-view card grid
+    useAppStore.setState((s) => ({ manualSaving: false, mpManualView: false }));
+    useAppStore.getState().send({ type: "get_all_providers" });
+  },
+  provider_model_saved(msg) {
+    const saved = {
+      name: msg.model.name ?? null,
+      contextWindow: msg.model.contextWindow ?? null,
+      maxTokens: msg.model.maxTokens ?? null,
+      cost: msg.model.cost ?? null,
+    };
+    const bare = saved.name == null && saved.contextWindow == null && saved.maxTokens == null && saved.cost == null;
+    useAppStore.setState((s) => {
+      // Merge back into both snapshots (wizard probe + provider-detail meta)
+      // so the editor's "saved" prefill stays current without a refetch.
+      const probe = s.manualProbe;
+      const meta = s.providerMeta?.provider === msg.provider ? s.providerMeta : null;
+      return {
+        manualModelSaving: null,
+        manualProbe: probe
+          ? { ...probe, models: probe.models.map((m) => (m.id === msg.model.id ? { ...m, saved } : m)) }
+          : probe,
+        providerMeta: meta
+          ? { ...meta, rows: { ...meta.rows, [msg.model.id]: { ...meta.rows[msg.model.id], saved: bare ? null : saved } } }
+          : meta,
+      };
+    });
+    useAppStore.getState().toast(t("notify.wizardModelSaved", { model: msg.model.id }));
+  },
+  provider_model_meta(msg) {
+    // Stale-response guard: only the currently selected provider's snapshot lands
+    if (msg.provider !== useAppStore.getState().selectedProvider) return;
+    const rows: Record<string, { saved: ManualProbeCatalogMatch | null; catalog: ManualProbeCatalogMatch | null }> = {};
+    for (const row of msg.models ?? []) rows[row.id] = { saved: row.saved, catalog: row.catalog };
+    useAppStore.setState((s) => ({ providerMeta: { provider: msg.provider, exists: !!msg.exists, rows } }));
   },
   asset_file(msg) {
     // Frame shared by the skills/agents/mcp editors; landed wholesale, pages filter by kind (each

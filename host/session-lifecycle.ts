@@ -30,16 +30,34 @@ import { createAcpContextExtension, ACP_SYSTEM_PROMPT } from "./acp-context.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
 import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
+import { readKeepaliveEnabled } from "./keepalive-config.ts";
+import type { KeepaliveState } from "./keepalive.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { readAcpRaw, readAcpEnabled, readAcpNudgeConfig, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
-import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { dispatchFromToolEnd, installProposalHandler, setFreshSessionFactory } from "./plan-approve.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
+import { mountMcpForSession } from "./mcp-mount.ts";
 
+/** keepalive_status frame body (shared by the RPC reply and the reportState push). */
+export function keepaliveStatusPayload(sessionId: string, state: KeepaliveState | undefined) {
+  return {
+    type: "keepalive_status" as const,
+    sessionId,
+    enabled: state !== undefined && readKeepaliveEnabled(),
+    active: state?.active ?? false,
+    probes: state?.probes ?? 0,
+    hits: state?.hits ?? 0,
+    misses: state?.misses ?? 0,
+    errors: state?.errors ?? 0,
+    savedUsd: state?.savedUsd ?? 0,
+    spendUsd: state?.spendUsd ?? 0,
+    nextProbeAt: state?.nextProbeAt ?? null,
+  };
+}
 export function isGitWorktree(cwd: string): boolean {
   const p = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdout: "pipe", stderr: "ignore" });
   return p.exitCode === 0 && p.stdout.toString().trim() === "true";
@@ -137,6 +155,7 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 // index-level #usage accumulates per entry on insert and is never windowed,
 // so it is monotonic.
 function buildSessionStats(entry: PoolEntry) {
+  const now = Date.now();
   const usage = entry.manager.getUsageStatistics();
   // Cache hit rate (same formula as the TUI's cache_hit segment):
   // cacheRead/(cacheRead+cacheWrite+input). The denominator includes missed
@@ -155,8 +174,12 @@ function buildSessionStats(entry: PoolEntry) {
     cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
     // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
     advisorCost: entry.session.getAdvisorCost(),
+    // Same-clock stamp as activeMs (sampled in the same call): the frontend extrapolates
+    // the duration from this instant, so the frame's transport/queueing delay cannot
+    // rewind the displayed figure
+    statsAt: now,
     // Active duration includes the in-flight window (matching TUI getActiveMs: idle wall time excluded)
-    activeMs: entry.activeMs + (entry.activeStartedAt === null ? 0 : Date.now() - entry.activeStartedAt),
+    activeMs: entry.activeMs + (entry.activeStartedAt === null ? 0 : now - entry.activeStartedAt),
   };
 }
 
@@ -228,7 +251,24 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     ] as never, // ACP compress tools (compress/decompress/search_context/acp_status/acp_context_recap), see host/acp-tools.ts; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
       ...(acpEnabled ? [createAcpContextExtension(acpState)] : []), // context event view transforms: ref injection + compress-block replacement, see host/acp-context.ts
-      ...(keepaliveOn ? [createKeepaliveExtension({ isWanted: () => kaHolder.entry?.keepaliveWanted === true })] : []), // prefix cache keepalive: idle sessions that are unread replay the last request, see host/keepalive.ts
+      ...(keepaliveOn ? [createKeepaliveExtension({
+        // Same kaHolder entry as isWanted: reports that fire before the entry
+        // exists (extension injection happens inside createAgentSession) are
+        // dropped; the entry ships a zeroed initial snapshot instead
+        isWanted: () => kaHolder.entry?.keepaliveWanted === true,
+        reportState: (s) => {
+          const entry = kaHolder.entry;
+          if (!entry) return;
+          entry.keepaliveState = s;
+          // Push the fresh snapshot so the context ring's center counter and
+          // the detail card stay live without polling (report cadence is
+          // per-probe/per-schedule, low frequency)
+          const ws = entry.attachedWs as { readyState?: number; send?: (d: string) => void } | null;
+          if (ws && ws.readyState === 1 && entry.keepaliveSid) {
+            ws.send(JSON.stringify(stampEvent(keepaliveStatusPayload(entry.keepaliveSid, s))));
+          }
+        },
+      })] : []), // prefix cache keepalive: idle sessions that are unread replay the last request, see host/keepalive.ts
     ] as never, // The inline extension's structural narrow type is brand-incompatible with the package's type signature, identical at runtime (same precedent as customTools)
     disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()),
     enableMCP: false,
@@ -243,6 +283,12 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     attachedWs: null,
     providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // Sticky key for the request-side getApiKey
     keepaliveWanted: false, // At creation the user is watching the new session: nothing unread, no keepalive; set true at turn wrap-up
+    // Zeroed snapshot until the extension's first report; presence of the
+    // field also marks the injection for get_keepalive_status (sessions
+    // created while keepalive was off keep it undefined)
+    keepaliveState: keepaliveOn
+      ? { active: false, probes: 0, hits: 0, misses: 0, errors: 0, savedUsd: 0, spendUsd: 0, nextProbeAt: null }
+      : undefined,
     transcript,
     assistantDraft: "", // Streaming text accumulated for the current turn, finalized at turn_end
     thinkingDraft: "",
@@ -255,7 +301,10 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     externalWrite: false,
     cwd,
     isGit: isGitWorktree(cwd),
-    parkedFollowUp: [], // followUp parking lot (see the type comments in state.ts)
+    parkedFollowUp: [], // follow-up parking lot (see the type comments in state.ts)
+    consumedPending: new Set(), // consumed-but-uninjected queue texts (see the type comments in state.ts)
+    mcpReleases: [], // pooled MCP mount handles (see mcp-mount.ts)
+    mcpMountGen: 0, // fences async mounts completing after detach/eviction
     manager: sessionManager, // For RPCs that need to operate the SessionManager directly, like rename/compact
     title: sessionManager.getSessionName() ?? null,
     mentionScanIndex: 0,
@@ -267,6 +316,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     }),
   };
   kaHolder.entry = entry; // The keepalive isWanted closure takes effect (see the top of createSessionCore)
+  entry.keepaliveSid = sessionId; // reportState pushes need the id; the closure predates its generation
   // (18.4.9) Subagent control registry: accumulates subagent snapshots from
   // the session's observability bus (created here, before any subagent can
   // spawn, so control_subagent never misses an id); control_subagent resolves
@@ -277,10 +327,26 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   // in bootstrap.ts is dynamically imported).
   const { RpcSubagentRegistry } = await import("@oh-my-pi/pi-coding-agent/modes/rpc/rpc-subagents");
   entry.subagentRegistry = new RpcSubagentRegistry(result.subagentEventBus ?? result.eventBus, () => {});
+  // Fire-and-forget MCP mount: pooling boundaries only (create / first load /
+  // switch-back after eviction) — never blocks the session's critical path
+  void mountMcpForSession(sessionId, entry);
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
 export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any) {
+  // Realtime queue push coalescing (shared by the onQueueChange subscription
+  // below and the user message_start injection confirmation): bursts of queue
+  // mutations (park + release + steer in one operation) coalesce into one
+  // microtask push.
+  let queuePushPending = false;
+  const scheduleQueuePush = () => {
+    if (queuePushPending) return;
+    queuePushPending = true;
+    queueMicrotask(() => {
+      queuePushPending = false;
+      sendQueued(ws, sessionId, entry);
+    });
+  };
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
@@ -310,7 +376,17 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       maybePushSessionStats(ws, sessionId, entry);
     }
     if (ev.type === "agent_start") entry.goal.onAgentStart();
-    if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) entry.goal.onUserMessage();
+    if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) {
+      entry.goal.onUserMessage();
+      // Injection confirmation for a consumed queued/steer message: the
+      // preparation claim is released by now, so stop suppressing its text
+      // and recalibrate the queue view (keeps abort-restored messages
+      // visible). Empty set = ordinary direct prompt, no extra frame.
+      if (entry.consumedPending.size > 0) {
+        entry.consumedPending.clear();
+        scheduleQueuePush();
+      }
+    }
     if (ev.type === "goal_updated") entry.goal.onGoalUpdated(ev.state);
     // (18.5) Prompt-cache warming lifecycle: the cache warmer's refresh
     // windows surface as session events; forward them so the UI can show a
@@ -337,6 +413,11 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       // alive while idle from now on (the user's mark_seen / switching away
       // and back clears it)
       entry.keepaliveWanted = true;
+      // Abort-restore visibility: cancelled preparation put its messages
+      // back into the agent queues while their texts were still suppressed
+      // from the queue view; the terminal-end calibration below must see the
+      // unfiltered state
+      entry.consumedPending.clear();
       // fileMention read-back: the base appends fileMention messages inside
       // prompt() (request array + persistence) with no matching event; scan
       // the new entries from mentionScanIndex onward here and turn them into
@@ -622,6 +703,11 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   const subSentStatus = new Map<string, string>();
   const unsubProgress = eventBus.on("task:subagent:progress", (p: any) => {
     const pr = p.progress ?? {};
+    // Subagent identity lives inside the progress object (AgentProgress.id) — the
+    // channel payload's top level carries no id field (base contract; the TUI's
+    // session-observer reads progress.id the same way)
+    const subagentId: string | undefined = pr.id;
+    if (!subagentId) return;
     const payload = {
       agent: p.agent,
       status: pr.status,
@@ -630,7 +716,9 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       durationMs: pr.durationMs,
       requests: pr.requests,
       toolCount: pr.toolCount,
-      tokens: pr.tokens,
+      // Base progress.tokens is a plain cumulative number; the frontend contract
+      // (and the history-replay path below) expects the bucketed shape
+      tokens: typeof pr.tokens === "number" ? { total: pr.tokens } : pr.tokens,
       contextTokens: pr.contextTokens,
       contextWindow: pr.contextWindow,
       currentTool: pr.currentTool,
@@ -641,13 +729,13 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       resolvedThinkingLevel: pr.resolvedThinkingLevel,
       recentTools: pr.recentTools,
     };
-    subLastProgress.set(p.id, payload);
+    subLastProgress.set(subagentId, payload);
     const now = Date.now();
-    const statusChanged = subSentStatus.get(p.id) !== pr.status;
-    if (!statusChanged && now - (subSentAt.get(p.id) ?? 0) < 500) return;
-    subSentAt.set(p.id, now);
-    subSentStatus.set(p.id, pr.status);
-    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, name: subName(p.id, p.agent), parent: subParent(p.id), registeredAt: subRegistered.get(p.id), ...payload }));
+    const statusChanged = subSentStatus.get(subagentId) !== pr.status;
+    if (!statusChanged && now - (subSentAt.get(subagentId) ?? 0) < 500) return;
+    subSentAt.set(subagentId, now);
+    subSentStatus.set(subagentId, pr.status);
+    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload }));
   });
   const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
     // Task calls inside a subagent stream: owned by that subagent (nested spawn)
@@ -658,13 +746,19 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "subagent_event", sessionId, subagentId: id, ...ui })));
   });
   // Pre-consumption notice: queued/steer user messages about to be injected
-  // are pushed to the UI (bubbles finalized). The old consumedTexts bookkeeping
-  // fed the turn_end diff backstop, which the 18.5 native restore removed.
+  // are pushed to the UI (bubbles finalized). The texts also enter
+  // consumedPending so sendQueued keeps suppressing them from the queue view
+  // until the injection confirms (see PoolEntry.consumedPending): the base's
+  // preparation claim keeps a dequeued message visible in the peek views, and
+  // the claim's release fires no onQueueChange, so without the suppression
+  // the realtime queued frame would re-add the consumed message to the queue
+  // card for the whole turn (until the agent_end calibration).
   const detachDequeueHook = entry.session.agent.addBeforeQueuedMessageDequeueHook(() => {
     const texts = [...entry.session.agent.peekFollowUpQueue(), ...entry.session.agent.peekSteeringQueue()]
       .filter((m) => isUserQueuedMessage(m))
       .map((m) => toRestoredQueuedMessage(m).text);
     if (texts.length > 0) {
+      for (const t of texts) entry.consumedPending.add(t);
       ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
   });
@@ -673,15 +767,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   // frame follows each mutation instead of the turn_end-only snapshot. Bursts
   // (park + release + steer in one operation) coalesce into one microtask
   // push; turn_end keeps its explicit sendQueued as the final calibration.
-  let queuePushPending = false;
-  const unsubQueueChange = entry.session.agent.onQueueChange(() => {
-    if (queuePushPending) return;
-    queuePushPending = true;
-    queueMicrotask(() => {
-      queuePushPending = false;
-      sendQueued(ws, sessionId, entry);
-    });
-  });
+  const unsubQueueChange = entry.session.agent.onQueueChange(scheduleQueuePush);
   // (18.4.9) Session-file transfer notice: when the base moves this session
   // to a fresh sibling file (another live process owns the old one / the old
   // file was replaced or is contested), repoint the pool entry and restart
@@ -861,6 +947,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
   const seenToolCalls = new Set<string>();
   const toolEvents: Record<string, unknown>[] = [];
   let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
+  let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
   let model: string | null = null;
   let task: string | undefined;
   let readOnly: boolean | undefined;
@@ -917,6 +1004,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
         cacheWrite += u.cacheWrite || 0;
         total += u.totalTokens || 0;
         cost += u.cost?.total || 0;
+        if (u.totalTokens && u.totalTokens > 0) lastContextTokens = u.totalTokens;
       }
       continue;
     }
@@ -948,10 +1036,23 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
       requests,
       toolCount: seenToolCalls.size,
       tokens: { input, output, cacheRead, cacheWrite, total },
+      contextTokens: lastContextTokens || undefined,
+      contextWindow: modelRegistryContextWindow(model),
       resolvedModel: model,
     },
     toolEvents,
   };
+}
+
+// Context window for a replayed subagent's model: live registry lookup (the
+// same fields host/models.ts reads off the base model objects)
+function modelRegistryContextWindow(model: string | null): number | undefined {
+  if (!model) return undefined;
+  const entry = H.availableModels.find((m) => `${m.provider}/${m.id}` === model) as
+    | { contextWindow?: number; contextLength?: number }
+    | undefined;
+  const w = entry?.contextWindow ?? entry?.contextLength;
+  return typeof w === "number" && w > 0 ? w : undefined;
 }
 
 // includeTools: also replay the per-tool event stream (cold loads where the frontend store is
@@ -1048,6 +1149,9 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
       replaySubagentHistory(ws, sessionPath, sessionId, true);
     }
     if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // Detected during LRU eviction; re-sent on switch-back
+    // Switch-back after frontend eviction: re-mount if the previous detach
+    // released the session's MCP holds (idempotent — mounted sessions return)
+    void mountMcpForSession(sessionId, entry);
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
   }

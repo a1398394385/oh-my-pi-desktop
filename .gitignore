@@ -6,3 +6,4 @@ ui/dist/
 host-dist
 host-dist/
 .playwright-mcp/
+.codegraph/

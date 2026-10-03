@@ -14,14 +14,17 @@ export default function SessionStatsBar() {
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const st = session?.stats;
   const streaming = session?.streaming === true;
-  // Repaint once per second while the session runs: token frames only arrive at
+  // Repaint 4x per second while the session runs: token frames only arrive at
   // model-turn / tool boundaries, so a long streaming answer would otherwise
-  // freeze the active-time figure. The frame's own timestamp (receivedAt) is the
+  // freeze the active-time figure. A 1s interval both misaligns with the
+  // frame's extrapolation phase (Math.round then stalls/double-steps whole
+  // seconds) and gets compressed/skipped when streaming redraws block the main
+  // thread — same lesson as WorkLine's WorkSec. The frame's own statsAt is the
   // baseline, so the extrapolated value stays accurate across frames.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
     if (!streaming) return;
-    const timer = setInterval(tick, 1000);
+    const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [streaming]);
   if (!st) return null; // no stats before the first turn ends (or while the session is still loading); take no space

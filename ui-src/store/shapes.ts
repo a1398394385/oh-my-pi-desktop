@@ -40,6 +40,7 @@ export interface UiPrefs {
   codeWrap: boolean;
   showThinking: boolean;
   expandToolOutput: boolean;
+  ctxRingProbeCount?: boolean;
   lang: "zh-CN" | "en";
   terminalInheritProfile?: boolean;
   terminalFont?: string;

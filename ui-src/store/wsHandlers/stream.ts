@@ -307,7 +307,8 @@ export const streamHandlers = {
           cacheHitRate: msg.cacheHitRate,
           advisorCost: msg.advisorCost,
           activeMs: msg.activeMs,
-          receivedAt: Date.now(), // baseline for the local duration extrapolation while running (see SessionStatsBar)
+          statsAt: msg.statsAt,
+          receivedAt: msg.statsAt, // host stamp sampled with activeMs: extrapolation stays monotonic across frames (local landing time would rewind it by the transport delay)
         };
       },
       false,
@@ -321,6 +322,7 @@ export const streamHandlers = {
     useAppStore.setState((s) => ({
       gitDiffCache: { ...s.gitDiffCache, loading: false },
       rightState: { ...s.rightState, sessionTreePending: false }, // branch-tree request failed: clear the pending flag so the next render refetches
+      manualSaving: false, // wizard save failed: release the in-flight button (probe self-clears via its reply frame)
     }));
     // Error landing for settings-center asset/memory read failures (the old version wrote aeStatus / memory inline state)
     if (msg.kind) useAppStore.setState((s) => ({ assetErr: { kind: msg.kind!, message: msg.message, at: Date.now() } }));

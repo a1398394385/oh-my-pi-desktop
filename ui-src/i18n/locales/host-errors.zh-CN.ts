@@ -148,6 +148,13 @@ export const hostErrorsZh = {
   mcp: {
     userCancelled: "用户中止生成",
   },
+  wizard: {
+    missingBaseUrl: "缺少 baseUrl",
+    invalidProviderName: "供应商名称不能为空且不能包含空白字符",
+    noModels: "未选择任何模型",
+    badInput: "输入类型取值无效（仅支持 text / image）",
+    badThinking: "思考配置无效（模式或级别取值错误，级别至少一项）",
+  },
 };
 
 export default hostErrorsZh;

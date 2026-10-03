@@ -7,6 +7,7 @@
 
 import { H, type PoolEntry } from "./state.ts";
 import { getLspStatus, createSessionMemoryRuntimeContext } from "./bootstrap.ts";
+import { mcpMountedSnapshot } from "./mcp-mount.ts";
 
 /** Narrow structural view of MCPManager the snapshot reads (the SDK manager satisfies it) */
 interface McpManagerView {
@@ -102,7 +103,7 @@ export async function buildCapabilitiesSnapshot(entry: PoolEntry, sessionId: str
   const runner = session.extensionRunner;
   return {
     sessionId, // echo the pool key the frontend holds (≠ the base's internal session id)
-    mcp: mcpManager ? snapshotMcp(mcpManager) : { servers: [], tools: 0 },
+    mcp: mcpMountedSnapshot(sessionId) ?? { servers: [], tools: 0 },
     lsp: getLspStatus().map((s) => ({ name: s.name, status: s.status, fileTypes: s.fileTypes, error: s.error })),
     advisor: {
       configured: advisor.configured,

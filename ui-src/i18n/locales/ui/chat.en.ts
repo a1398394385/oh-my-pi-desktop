@@ -8,6 +8,7 @@ export const chatEn = {
   labelTodo: "Todo",
   labelSearch: "Search",
   labelFind: "Find",
+  labelGlob: "Glob",
   labelWebSearch: "Web search",
   labelAsk: "Ask",
   labelSessionContext: "Session search",
@@ -76,6 +77,14 @@ export const chatEn = {
   compacting: "Compacting…",
   noModelAvailable: "No model available",
   ctxNoData: "No context usage data",
+  // ---- cache warming section (CtxCard.tsx) ----
+  kaTitle: "Cache warming",
+  kaProbesLabel: "Probes",
+  kaHitsMisses: "{{hits}} hits · {{misses}} misses",
+  kaNextLabel: "Next probe",
+  kaPaused: "Paused",
+  kaSpendLabel: "Spend",
+  kaSaved: "saved {{v}}",
   // ---- in-chat find bar (FindBar.tsx) ----
   findPlaceholder: "Find in conversation…",
   findNoResult: "No results",
@@ -138,6 +147,7 @@ export const chatEn = {
   allDone: "All done",
   sessionStatus: "Session status",
   collapseToCapsule: "Collapse to capsule",
+  resizeTodo: "Drag to resize the card",
   // ---- approval card (ApprovalCard.tsx) ----
   awaitingConfirm: "Awaiting confirmation",
   confirmOptions: "Confirmation options",

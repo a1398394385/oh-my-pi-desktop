@@ -48,6 +48,8 @@ export const notifyZh = {
   loginFailed: "{{provider}} 登录失败：{{message}}",
   apiKeySaved: "{{provider}} API key 已保存，模型列表已刷新",
   configPath: "配置文件：{{path}}",
+  wizardSaved: "{{provider}} 已保存（{{count}} 个模型），已写入 models.yml",
+  wizardModelSaved: "{{model}} 元数据已保存到 models.yml",
   skillDeleted: "技能已删除",
   fileDeleted: "文件已删除",
   mcpConnected: "MCP [{{name}}] 连接成功",

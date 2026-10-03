@@ -17,7 +17,7 @@ import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
 import { updateSession } from "../store/session";
-import type { PromptAttachment } from "../types/frames";
+import type { PromptAttachment, SlashCommand } from "../types/frames";
 import { closeAllMenus } from "../shell";
 import Icon from "../Icon";
 import AttachRow from "./composer/AttachRow";
@@ -35,9 +35,9 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { LexicalTypeaheadMenuPlugin, MenuOption } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import type { TriggerFn, MenuRenderFn } from "@lexical/react/LexicalTypeaheadMenuPlugin";
-import { $getSelection, $isRangeSelection, $isTextNode } from "lexical";
-import type { TextNode } from "lexical";
-import { $createChipNode, ChipNode } from "./composer/lexical/ChipNode";
+import { $createTextNode, $getSelection, $isRangeSelection, $isTextNode } from "lexical";
+import type { TextNode, LexicalNode } from "lexical";
+import { $createChipNode, ChipNode, $isChipNode } from "./composer/lexical/ChipNode";
 import { GhostNode } from "./composer/lexical/GhostNode";
 import GhostTextPlugin from "./composer/lexical/GhostTextPlugin";
 import { $flattenWithCaret, $leafStart, $selectAfter } from "./composer/lexical/flat";
@@ -88,6 +88,14 @@ function filterSkills(list: CommandItem[] | null | undefined, query: string): Co
     else if (n.includes(q)) incl.push(c);
   }
   return [...pre.sort(byBare), ...incl.sort(byBare)].slice(0, 50);
+}
+// Subcommand candidate filter for commandArgs triggers: prefix match,
+// lowercase (aligned with the base TUI's buildArgumentCompletions); entries
+// reuse the CommandItem shape (name/description/hint = usage)
+function filterSubcommands(subs: SlashCommand["subcommands"] | undefined, query: string): CommandItem[] {
+  if (!Array.isArray(subs) || !subs.length) return [];
+  const q = (query || "").toLowerCase();
+  return subs.filter((s) => s.name.toLowerCase().startsWith(q)).map((s) => ({ name: s.name, description: s.description, hint: s.usage }));
 }
 
 
@@ -224,14 +232,15 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | "think" | null (mutually exclusive)
   const [stopPending, setStopPending] = useState(false); // stop-button double-click guard (reset on turn_end)
   const barStageRef = useRef(0); // last collapse stage (close open menus when it changes)
-  // Editor text mirror (render state of the module-level draftText): after input it
+
   // refreshes the send button ready state and the bash-mode class, equivalent to the
   // notify/forceRender in the old onInput
   const [text, setText] = useState(() => getDraftText(draftKey));
   const onTextChange = useCallback((t: string) => setText(t), []);
 
   // ---- sigil completion panel (TypeaheadMenuPlugin controlled state) ----
-  const [taKind, setTaKind] = useState<"file" | "command" | "skill" | null>(null); // trigger kind (while open)
+  const [taKind, setTaKind] = useState<"file" | "command" | "commandArgs" | "skill" | null>(null); // trigger kind (while open)
+  const [taCommand, setTaCommand] = useState(""); // typed command name (commandArgs triggers; empty otherwise)
   const [taQuery, setTaQuery] = useState("");
   const [taReqId, setTaReqId] = useState(0); // @ candidate request sequence (paired with mentionResult.reqId)
   const [taOpen, setTaOpen] = useState(false); // panel open/close (for yielding to keyboard commands)
@@ -252,8 +261,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   }, []);
   const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ candidate 150ms debounce
   // kind/quoted of the most recent trigger (written by triggerFn, read by
-  // onQueryChange/onSelectOption)
-  const lastTriggerRef = useRef<{ kind: "file" | "command" | "skill"; quoted: boolean } | null>(null);
+  // onQueryChange/onSelectOption); command carries the typed slash-command
+  // name for commandArgs triggers
+  const lastTriggerRef = useRef<{ kind: "file" | "command" | "commandArgs" | "skill"; quoted: boolean; command?: string } | null>(null);
   // Trigger-state dedupe key: Lexical's updateListener also fires onQueryChange
   // for selection-only updates; the same trigger state runs the request side
   // effect only once (aligned with the old updatePalette running only on text input)
@@ -459,6 +469,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
     clearDraft();
     ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
+    // Sidebar time = user-message time: stamp the list row now (steer/queued sends count too);
+    // the runEnd session_list refresh later carries the authoritative end time
+    useAppStore.getState().bumpSessionActivity(s.sessionId);
     // Pin-to-bottom following is handled by Chat's scroll effect
   };
 
@@ -487,12 +500,24 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (t.kind !== "file") {
           const st = useAppStore.getState();
           const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-          if (sess?.isSubagent && t.kind === "command") return fail(); // subagents do not support slash commands
+          if (sess?.isSubagent && (t.kind === "command" || t.kind === "commandArgs")) return fail(); // subagents do not support slash commands
           if (!sess && !st.isCreatingNew) return fail(); // no session and not creating-new: commands unavailable
+          // Subcommand completion only applies to commands that declared
+          // subcommands; a null list (not fetched yet) stays eligible so the
+          // panel can show loading and onQueryChange fetches the list
+          if (t.kind === "commandArgs") {
+            const list = st.commands;
+            const cmd = list?.find((c) => c.name === t.command || c.aliases?.includes(t.command));
+            if (list && (!cmd || !cmd.subcommands.length)) return fail();
+          }
         }
         const nodeStart = $leafStart(node);
         if (nodeStart == null || t.start < nodeStart) return fail();
-        lastTriggerRef.current = { kind: t.kind, quoted: t.kind === "file" ? !!t.quoted : false };
+        lastTriggerRef.current = {
+          kind: t.kind,
+          quoted: t.kind === "file" ? !!t.quoted : false,
+          command: t.kind === "commandArgs" ? t.command : undefined,
+        };
         return { leadOffset: t.start - nodeStart, matchingString: t.query, replaceableString: full.slice(t.start, t.end) };
       }),
     [],
@@ -504,12 +529,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // and reqId increment to drop stale responses) ----
   const onQueryChange = useCallback((q: string | null) => {
     const trig = lastTriggerRef.current;
-    const key = q == null || !trig ? null : `${trig.kind}|${trig.quoted ? 1 : 0}|${q}`;
+    const key = q == null || !trig ? null : `${trig.kind}${trig.command ? ":" + trig.command : ""}|${trig.quoted ? 1 : 0}|${q}`;
     if (key === lastKeyRef.current) return; // repeated update for the same trigger state: idempotent skip of side effects
     lastKeyRef.current = key;
     if (!trig || q == null) return;
     setTaKind(trig.kind);
     setTaQuery(q);
+    setTaCommand(trig.command ?? "");
     const st = useAppStore.getState();
     const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
     if (trig.kind !== "file") {
@@ -545,11 +571,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         : []
       : taKind === "command"
         ? filterCommands(commands, taQuery)
+        : taKind === "commandArgs"
+          ? filterSubcommands(commands?.find((c) => c.name === taCommand || c.aliases?.includes(taCommand))?.subcommands, taQuery)
         : taKind === "skill"
           ? filterSkills(commands, taQuery)
           : [];
   const taLoading =
-    taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" || taKind === "skill" ? commands === null : false;
+    taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" || taKind === "commandArgs" || taKind === "skill" ? commands === null : false;
   const taOptions = taItems.map((it) => new PalOption(it));
 
   // ---- Accepting a completion: file -> ChipNode (serialization = insertFile
@@ -562,13 +590,21 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // is an element node, text-level typeahead can no longer trigger, so directory
   // chaining must go through plain text) ----
   const onSelectOption = useCallback((option: PalOption, node: TextNode | null, closeMenu: () => void) => {
+    // A null node with a live trigger is the empty-query corner: Lexical's
+    // $splitNodeContainingQuery returns undefined when startOffset equals the
+    // selection offset (splitText(o, o)); only the commandArgs branch needs
+    // the fallback (file/command/skill close as before)
     const trig = lastTriggerRef.current;
-    if (!trig || !node) {
+    if (!trig || (!node && trig.kind !== "commandArgs")) {
       closeMenu();
       return;
     }
     const it = option.data;
     if (trig.kind === "file") {
+      if (!node) {
+        closeMenu(); // unreachable via the guard above; keeps the narrowing explicit
+        return;
+      }
       if (!("path" in it)) {
         closeMenu(); // type guard: candidates must be FileItem when kind=file
         return;
@@ -582,14 +618,90 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         node.replace(chip);
         $selectAfter(chip);
       }
+    } else if (trig.kind === "commandArgs") {
+      if (!("name" in it)) {
+        closeMenu(); // type guard: candidates must be CommandItem when kind=commandArgs
+        return;
+      }
+      // The accepted subcommand merges with the typed command into ONE chip
+      // ("/memory view ") so the highlight renders as a single unit: absorb
+      // the left neighbor — the command chip (chip-after-chip path), or the
+      // hand-typed "/memory" text node — into the merged chip text. Empty
+      // query: no split node exists, so resolve the replacement target from
+      // the collapsed caret's anchor text node; that is the one-space tail
+      // node the auto-opened palette parked the caret in (absorbing the
+      // neighbor also collapses the doubled whitespace).
+      let target: TextNode | null = node;
+      if (!target) {
+        const sel = $getSelection();
+        const anchor = $isRangeSelection(sel) && sel.isCollapsed() ? sel.anchor : null;
+        const anchorNode = anchor?.type === "text" ? anchor.getNode() : null;
+        target = anchorNode && $isTextNode(anchorNode) && anchorNode.isSimpleText() ? anchorNode : null;
+      }
+      if (!target) {
+        closeMenu();
+        return;
+      }
+      let text = it.name + " ";
+      let absorbAt: LexicalNode | null = null; // the node whose text folds into the merged chip
+      const skipped: LexicalNode[] = []; // pure-whitespace nodes between the query and the command prefix
+      let scan: LexicalNode | null = target.getPreviousSibling();
+      while (scan && $isTextNode(scan) && scan.getTextContent().trim() === "") {
+        skipped.push(scan);
+        scan = scan.getPreviousSibling();
+      }
+      if (scan && $isChipNode(scan)) {
+        absorbAt = scan;
+      } else if (scan && $isTextNode(scan) && scan.getTextContent().trimEnd().toLowerCase().endsWith("/" + trig.command)) {
+        absorbAt = scan;
+      }
+      if (absorbAt) {
+        // Keep the user's original casing in the merged chip text
+        text = absorbAt.getTextContent().trimEnd() + " " + text;
+      }
+      const chip = $createChipNode(text);
+      target.replace(chip);
+      absorbAt?.remove();
+      for (const sk of skipped) sk.remove();
+      if (!absorbAt) {
+        // Merge did not apply (no recognizable command prefix at the left):
+        // keep the separator space a hand-typed query relied on
+        const left = chip.getPreviousSibling();
+        if (left && $isTextNode(left) && !/\s$/.test(left.getTextContent())) {
+          chip.insertBefore($createTextNode(" "));
+        }
+      }
+      $selectAfter(chip);
     } else {
+      if (!node) {
+        closeMenu(); // unreachable via the guard above; keeps the narrowing explicit
+        return;
+      }
       if (!("name" in it)) {
         closeMenu(); // type guard: candidates must be CommandItem when kind=command/skill
         return;
       }
       const chip = $createChipNode(insertCommand(it.name));
       node.replace(chip);
-      $selectAfter(chip);
+      // Commands with declared subcommands: park the caret inside a one-space
+      // text node right after the chip instead of the element slot. An empty
+      // text node is not viable (Lexical normalizes it away into a managed
+      // line break); the extra space is inert on every consumer --
+      // detectTrigger's \s+ swallows the doubled whitespace and the host's
+      // parseSlashCommand splits on \s+ -- while the text anchor lets
+      // triggerFn's next run (this very update) resolve a commandArgs trigger
+      // and open the subcommand palette immediately. Commands without
+      // subcommands keep the plain post-chip caret (nothing to complete).
+      const hasSubcommands = (useAppStore.getState().commands ?? []).some(
+        (c) => c.name === it.name && c.subcommands.length > 0,
+      );
+      if (hasSubcommands) {
+        const tail = $createTextNode(" ");
+        chip.insertAfter(tail);
+        tail.select(1, 1);
+      } else {
+        $selectAfter(chip);
+      }
     }
     closeMenu();
   }, []);
@@ -1040,8 +1152,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 // filled clockwise from the top; empty ring without data; the creating-new state
 // also shows an empty ring. The hover context detail card lives in
 // chat/CtxCard.jsx (ringRef is only an anchor, the inner svg is untouched)
-function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
+function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number }; sessionId?: string } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
+  // Cache-warming probe count for this session (pushed by the host on every
+  // keepalive reportState; only sessions with the extension injected report).
+  // Hidden by the ctxRingProbeCount pref (default on).
+  const ka = useAppStore((st) => st.keepaliveStatus);
+  const showCount = useAppStore((st) => st.uiPrefs.ctxRingProbeCount) !== false;
+  const probes = showCount && ka && s?.sessionId && ka.sessionId === s.sessionId && ka.enabled && ka.probes > 0 ? (ka.probes > 99 ? "99" : String(ka.probes)) : null;
   if (!s && !isCreatingNew) return null;
   const p = s?.ctx ? Math.min(1, s.ctx.percent / 100) : 0;
   const cls = "ctx-ring" + (s?.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
@@ -1058,6 +1176,11 @@ function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number } } | null | und
           transform="rotate(-90 8 8)"
           style={{ strokeDashoffset: String(RING_C * (1 - p)) }}
         />
+        {probes ? (
+          <text x="8" y="8.6" textAnchor="middle" fontSize="8" fill="currentColor">
+            {probes}
+          </text>
+        ) : null}
       </svg>
     </span>
   );

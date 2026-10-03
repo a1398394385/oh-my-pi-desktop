@@ -30,10 +30,10 @@ function ContextGauge({ tokens, window }: { tokens: number; window: number }) {
   if (!window) return null;
   const pct = Math.min(100, Math.round((tokens / window) * 100));
   return (
-    <div className="hub-gauge" title={`${tokens}/${window}`}>
+    <div className="hub-gauge" title={`${tokens}/${window} (${pct}%)`}>
       <div className="hub-gauge-fill" style={{ width: pct + "%" }} />
       <span className="hub-gauge-tx">
-        {tokens} / {window}
+        {fmtTokens(tokens)} / {fmtTokens(window)} · {pct}%
       </span>
     </div>
   );

@@ -153,9 +153,25 @@ interface Stats {
   spendUsd: number;
 }
 
+/** Runtime state snapshot pushed to the host at every state-change point (consumed by the get_keepalive_status RPC; all counters are per injected extension instance). */
+export interface KeepaliveState {
+  /** Armed right now: capture held, not paused, no probe in flight */
+  active: boolean;
+  probes: number;
+  hits: number;
+  misses: number;
+  errors: number;
+  savedUsd: number;
+  spendUsd: number;
+  /** ms epoch of the next scheduled probe; null = nothing scheduled (paused, deadline held mid-turn, or never armed) */
+  nextProbeAt: number | null;
+}
+
 /** Host-injected extension options: isWanted = whether this session is currently worth keeping alive (an unread state maintained host-side). */
 export interface KeepaliveHostOptions {
   isWanted: () => boolean;
+  /** State reporting sink (optional: absent in isolated/test use); called on every state-change point — scheduling, probe settle, pause, re-arm. */
+  reportState?: (s: KeepaliveState) => void;
 }
 
 /** Create the keepalive extension factory (session-lifecycle injects it conditionally on the experimental switch). */
@@ -189,6 +205,22 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     let smartPaused = false;
     const stats: Stats = { probes: 0, hits: 0, misses: 0, errors: 0, savedUsd: 0, spendUsd: 0 };
 
+    // Snapshot sink for the host-side entry (get_keepalive_status RPC): every
+    // state-change point funnels through here; the host drops reports that
+    // arrive before its pool entry exists.
+    function reportState(): void {
+      opts.reportState?.({
+        active: armed(),
+        probes: stats.probes,
+        hits: stats.hits,
+        misses: stats.misses,
+        errors: stats.errors,
+        savedUsd: stats.savedUsd,
+        spendUsd: stats.spendUsd,
+        nextProbeAt,
+      });
+    }
+
     // ---------- persistence ----------
 
     function persistConfig(): void {
@@ -221,6 +253,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         timer = null;
       }
       nextProbeAt = null;
+      reportState(); // unscheduled now (paused / deadline held / shut down)
     }
 
     function armed(): boolean {
@@ -243,6 +276,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       if (timer && typeof (timer as { unref?: unknown }).unref === "function") {
         (timer as unknown as { unref: () => void }).unref();
       }
+      reportState(); // nextProbeAt set: armed and scheduled
     }
 
     async function onTick(): Promise<void> {
@@ -429,6 +463,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
           `probe spend ${formatUsd(stats.spendUsd)} reached the cap ${formatUsd(config.spendCapUsd)}`,
         );
       }
+      reportState(); // probe settled: counters moved, cap pause may have fired
     }
 
     /**
@@ -529,6 +564,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       if (errorStreak >= config.maxErrorStreak) {
         pause(`${errorStreak} consecutive probe failures (last: ${message})`);
       }
+      reportState(); // probe failed: error counter moved, streak pause may have fired
     }
 
     function debug(...parts: unknown[]): void {
@@ -597,6 +633,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         missStreak = 0;
         errorStreak = 0;
       }
+      reportState(); // capture (re)armed / sticky pause cleared: armed() may have flipped
     });
 
     pi.on("session_start", async (_event, sessionCtx) => {

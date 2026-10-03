@@ -307,6 +307,11 @@ export const sessionHandlers = {
     // MCP runtime is process-global: apply to whatever snapshot is held, regardless of which session's attach pushed the frame
     useAppStore.setState((s) => (s.capabilities ? { capabilities: { ...s.capabilities, mcp: msg.mcp } } : {}));
   },
+  // Cache-warming runtime snapshot (get_keepalive_status reply): ringpop popover transient
+  // alongside ctxDetail/ctxLimits — the context detail card's warming section renders it
+  keepalive_status(msg) {
+    useAppStore.setState((s) => ({ keepaliveStatus: msg }));
+  },
  } satisfies HandlerSlice;
 
 // Domain key set (for the exhaustive-assertion cross-check in index)

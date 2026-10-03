@@ -17,8 +17,16 @@ import { hostI18n } from "../ui-src/i18n/host.ts";
 
 function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const agent = entry.session.agent;
+  // Consumed-pending suppression (see PoolEntry.consumedPending): the base's
+  // preparation claim keeps a dequeued message visible in the peek views, and
+  // the claim's release fires no onQueueChange — without this filter the
+  // realtime queued frame would re-add an already-consumed message to the
+  // queue card for the whole turn (until the agent_end calibration).
   const view = (list: readonly any[]) =>
-    list.filter((m) => isUserQueuedMessage(m)).map((m) => toRestoredQueuedMessage(m));
+    list
+      .filter((m) => isUserQueuedMessage(m))
+      .map((m) => toRestoredQueuedMessage(m))
+      .filter((m) => !entry.consumedPending.has(m.text));
   const followUp = [...view(agent.peekFollowUpQueue()), ...view(entry.parkedFollowUp)];
   const steering = view(agent.peekSteeringQueue());
   ws.send(JSON.stringify(stampEvent({ type: "queued", sessionId, followUp, steering })));

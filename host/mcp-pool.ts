@@ -126,8 +126,10 @@ export async function acquireSharedMcpConnection(params: {
       resolvedConfig.cwd = scopeKey;
     }
 
-    const testName = `shared_${sharing}_${serverName}`;
-    const conn = await connectToServer(testName, resolvedConfig);
+    // The connection name IS the server name: MCPTool mints `mcp__<name>_<tool>`
+    // from connection.name, so a synthetic prefix here would corrupt every
+    // mounted tool's name.
+    const conn = await connectToServer(serverName, resolvedConfig);
 
     const entry: SharedMcpConnection = {
       poolKey,
@@ -150,7 +152,7 @@ export async function acquireSharedMcpConnection(params: {
         if (live && live.refCount > 0) {
           process.stderr.write(`[mcp-pool] 共享连接 "${serverName}" 意外断开，正在就地透明重连...\n`);
           // Re-connect and swap the connection handle once it succeeds
-          void connectToServer(testName, resolvedConfig)
+          void connectToServer(serverName, resolvedConfig)
             .then((newConn) => {
               if (sharedPool.get(poolKey) === live) {
                 live.connection = newConn;

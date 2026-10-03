@@ -87,6 +87,68 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
   );
 }
 
+// Cache-warming runtime snapshot (keepalive_status reply). Local contract mirror: frames.ts is
+// host-owned; this pins only the wire shape the section reads
+interface KaStatus {
+  sessionId: string;
+  enabled: boolean; // global switch on AND extension injected at creation; false = no section
+  active: boolean; // armed at the last report (contract completeness; not displayed)
+  probes: number;
+  hits: number;
+  misses: number;
+  errors: number;
+  savedUsd: number;
+  spendUsd: number;
+  nextProbeAt: number | null; // ms epoch; null = nothing scheduled (paused / never armed)
+}
+
+// Probe money is sub-cent by nature (cache-read priced): keep the "$0.0012" shape under a
+// cent, two decimals above
+const fmtKaUsd = (v: number) => (v === 0 ? "$0" : "$" + v.toFixed(v < 0.01 ? 4 : 2));
+
+// Next-probe countdown: recomputes every second while mounted (the popcard is hover-transient,
+// so the interval lives and dies with the open section); a due probe clamps at 00:00
+function KaNextCell({ at }: { at: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const left = Math.max(0, Math.round((at - now) / 1000));
+  return <>{`${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`}</>;
+}
+
+// Cache-warming section (keepalive_status reply): same cx-sec structure as the quota section.
+// Rendered only after the reply lands with enabled=true — while in flight nothing occupies
+// space (the card's discard-on-move-away policy); a session without warming gets no section
+function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
+  return (
+    <div className={"cx-sec ka-sec pb-[2px]" + (noDiv ? " no-div" : "")}>
+      <div className="flex justify-between items-baseline text-[13.5px] pt-[2px] pb-[10px]" /* style-token-ignore */>
+        <b>{t("chat.kaTitle")}</b>
+      </div>
+      <div className="grid grid-cols-3 gap-[10px] min-w-[268px]">
+        <div className="flex flex-col gap-[5px] min-w-0">
+          <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaProbesLabel")}</div>
+          <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */>{ka.probes}</div>
+          <div className="text-faint text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaHitsMisses", { hits: ka.hits, misses: ka.misses })}</div>
+        </div>
+        <div className="flex flex-col gap-[5px] min-w-0">
+          <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaNextLabel")}</div>
+          <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */>
+            {ka.nextProbeAt == null ? t("chat.kaPaused") : <KaNextCell at={ka.nextProbeAt} />}
+          </div>
+        </div>
+        <div className="flex flex-col gap-[5px] min-w-0">
+          <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaSpendLabel")}</div>
+          <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */>{fmtKaUsd(ka.spendUsd)}</div>
+          <div className="text-faint text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaSaved", { v: fmtKaUsd(ka.savedUsd) })}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Composition row dot colors: token equivalent of the old 6-step hardcoded blues (tokens only, no hardcoded hex)
 const ROW_DOT_COLORS = ["var(--blue)", "var(--accent)", "var(--dim)", "var(--faint)", "var(--blue)", "var(--accent)"];
 
@@ -105,6 +167,7 @@ interface CtxBreakdown {
 export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
   const ctxDetail = useAppStore((s) => s.ctxDetail); // response arrival triggers redraw (while the card is open)
   const ctxLimits = useAppStore((s) => s.ctxLimits);
+  const keepaliveStatus = useAppStore((s) => s.keepaliveStatus);
   const cur = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const [open, setOpen] = useState(false);
   const [noModel, setNoModel] = useState(false); // no session and no model picked in the composer: the card shows "no model available"
@@ -139,11 +202,12 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
       enterTimer.current = setTimeout(() => {
         // Clear the popcard's transient data (discard on move-away): last time's leftovers
         // are not shown; after results arrive the store fills them in (silent write, no bump)
-        useAppStore.setState({ ctxDetail: null, ctxLimits: null });
+        useAppStore.setState({ ctxDetail: null, ctxLimits: null, keepaliveStatus: null });
         setOpen(true);
         if (s) {
           st.send({ type: "get_context_detail", sessionId: s.sessionId });
           st.send({ type: "get_limits", sessionId: s.sessionId });
+          st.send({ type: "get_keepalive_status", sessionId: s.sessionId });
         } else {
           // Popping outside a session is allowed: no context detail, only the quota of the
           // provider of the model currently selected in the composer
@@ -208,6 +272,10 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
   // at runtime, and the presentation layer's existing fallback semantics stay unchanged
   const b = (ctxDetail?.breakdown ?? null) as CtxBreakdown | null;
   const limits: CtxLimits | null = (ctxLimits ?? null) as CtxLimits | null;
+  // Warming snapshot consumed through the local contract; a reply for another session
+  // (switched mid-flight) or enabled=false renders nothing
+  const ka = (keepaliveStatus ?? null) as KaStatus | null;
+  const kaThis = ka && cur && ka.sessionId === cur.sessionId && ka.enabled ? ka : null;
   // Compact-context entry: shown only when the session is non-empty and usage > 0; disabled
   // while streaming (races with the running turn).
   // Compacting is non-destructive, so it runs directly without a confirm; pending is set on
@@ -263,6 +331,7 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
         </>
       ) : null}
       {limits ? <LimitsSection limits={limits} noDiv={!b} /> : null}
+      {kaThis ? <KaSection ka={kaThis} noDiv={!b && !limits} /> : null}
       {canCompact && (
         <div className="mt-[10px] pt-[10px] border-t border-line-soft">
           <button

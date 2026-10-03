@@ -38,7 +38,12 @@ const HOT_LIMITS = [
   { path: "ui/css/main-right.css", max: 1060 },
   { path: "ui/css/main-right-caps.css", max: 120 },
   { path: "ui/css/settings.css", max: 1420 },
+  { path: "ui/css/settings-stats.css", max: 750 },
+  // Ported omp-stats rules split out of settings-stats.css (first adaptation cut
+  // covered only ~1/3 of the official styles; the rest cascades right after).
+  { path: "ui/css/settings-stats-port.css", max: 1100 },
 ];
+
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
 
 function git(args) {

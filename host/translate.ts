@@ -59,6 +59,7 @@ function collectFiles(name: string, args: any, details?: any): string[] {
     while ((m = re.exec(args.input))) push(m[1].trim());
   }
   if (Array.isArray(details?.perFileResults)) for (const f of details.perFileResults) push(f?.path);
+  if (Array.isArray(details?.hits)) for (const h of details.hits) push(h?.rel);
   if (typeof details?.path === "string") push(details.path);
   if (typeof details?.resolvedPath === "string") push(details.resolvedPath);
   const p = pathOf(args);
@@ -72,6 +73,13 @@ function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   if (name === "eval") return { command: String(args.code ?? args.command ?? "").slice(0, 4000) }; // JS evaluation, rendered as a terminal card
   if (name === "grep") return { pattern: String(args.pattern ?? args.query ?? "").slice(0, 500), path: pathOf(args) };
   if (name === "glob") return { pattern: String(args.pattern ?? "").slice(0, 500), path: pathOf(args) };
+  if (name === "find") {
+    return {
+      query: String(args.query ?? "").slice(0, 500),
+      grep_keywords: Array.isArray(args.grep_keywords) ? args.grep_keywords.map(String).slice(0, 20) : undefined,
+      path: pathOf(args),
+    };
+  }
   if (name === "web_search") return { query: String(args.query ?? "").slice(0, 1000) };
   if (name === "read_session_context") return { query: args.query, sessionId: args.sessionId, fromTurn: args.fromTurn, toTurn: args.toTurn };
   if (name === "ask") return { questions: capValue(args.questions) };
@@ -201,14 +209,16 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     };
     return patch;
   }
-  // Tagged tools (web search / ask / debug / GitHub / LSP / the memory suite): result text feeds the frontend's expandable card
+  // Tagged tools (find / web search / ask / debug / GitHub / LSP / the memory suite): result text feeds the frontend's expandable card
   if (
+    name === "find" ||
     name === "web_search" || name === "ask" || name === "debug" || name === "github" || name === "lsp" ||
     name === "read_session_context" ||
     name === "retain" || name === "recall" || name === "reflect" || name === "learn" || name === "memory_edit"
   ) {
     const text = resultText(result);
     if (text) patch.output = text;
+    if (details) patch.details = details;
     return patch;
   }
   if (Array.isArray(details?.perFileResults) && details.perFileResults.length > 1) {

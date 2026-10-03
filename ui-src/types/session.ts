@@ -11,6 +11,7 @@ import type {
   ContextDetailFrame,
   FileMatch,
   GoalState,
+  KeepaliveStatusFrame,
   LimitsResultFrame,
   LoginPromptFrame,
   ModelCatalogEntry,
@@ -274,7 +275,7 @@ export interface SubagentUsage {
   durationMs?: number;
   requests?: number;
   toolCount?: number;
-  tokens?: Record<string, number>; // TODO(narrowing pass): bucketed object of base progress; follows the SDK
+  tokens?: Record<string, number>; // host normalizes the base's plain cumulative number to { total }
   contextTokens?: number;
   contextWindow?: number;
   currentTool?: string;
@@ -447,4 +448,5 @@ export interface AppState {
   // ---- ringpop popover transient data (hover context-ring detail card; discard-on-leave, cleared and re-requested on the next hover) ----
   ctxDetail: ContextDetailFrame | null;
   ctxLimits: LimitsResultFrame | null;
+  keepaliveStatus: KeepaliveStatusFrame | null;
 }

@@ -10,11 +10,13 @@ import { applyActivityTimes } from "../session-activity.ts";
 import {
   handleCreateSession,
   handleLoadSession,
+  keepaliveStatusPayload,
   sessionPathFromDisk,
   copySessionArtifactsIfAny,
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
@@ -122,6 +124,17 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       if (entry.path === p) entry.keepaliveWanted = false;
     }
   },
+  get_keepalive_status(ws, msg) {
+    // Pure query for the context detail card: the entry's latest keepalive
+    // snapshot (host/keepalive.ts reportState) + the global switch. enabled
+    // follows the global switch but is forced false for sessions that never
+    // got the extension injected (created before the switch went on, or the
+    // plugin double-load guard skipped injection); unknown/off sessions
+    // report the zeroed disabled shape instead of erroring, so the card can
+    // poll blindly.
+    const state = sessions.get(String(msg.sessionId ?? ""))?.keepaliveState;
+    ws.send(JSON.stringify(keepaliveStatusPayload(String(msg.sessionId ?? ""), state)));
+  },
   async reload_session(ws, msg) {
     // Force a rebuild from disk (the "reload" action on the external-write
     // notice bar): the pool-reuse branch only pushes the in-memory snapshot
@@ -131,6 +144,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, e] of sessions.entries()) {
       if (e.path !== p) continue;
+      releaseMcpForSession(key, e);
       e.unsubscribe();
       sessions.delete(key);
     }
@@ -153,6 +167,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, entry] of sessions.entries()) {
       if (entry.path === p) {
+        try { releaseMcpForSession(key, entry); } catch {}
         try { entry.unsubscribe(); } catch {}
         sessions.delete(key);
       }

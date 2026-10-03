@@ -19,6 +19,7 @@ import {
   executeAcpBuiltinSlashCommand,
   fuzzyFind,
   discoverSkills,
+  cfgSkills,
 } from "../bootstrap.ts";
 import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
@@ -147,7 +148,7 @@ function sendCommandsFrame(
         description: c.description ?? "",
         hint: c.input?.hint ?? null,
         source: c.source,
-        subcommands: (c.subcommands ?? []).map((s) => ({ name: s.name, description: s.description ?? "" })),
+        subcommands: (c.subcommands ?? []).map((s) => ({ name: s.name, description: s.description ?? "", usage: s.usage ?? null })),
       })),
     }),
   );
@@ -169,7 +170,7 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
   if (!skills) {
     skills = (
       await discoverSkills(cwd, H.agentDir, {
-        ...H.settings.getGroup("skills"),
+        ...cfgSkills.get(H.settings),
         disabledExtensions: settingsGet(H.settings, "disabledExtensions") ?? [],
       })
     ).skills;
@@ -384,6 +385,13 @@ async function handlePrompt(
   }
   // The user sending a message in this session = a seen interaction: clear the cache-keepalive unread state (this turn's wrap-up will set it again)
   entry.keepaliveWanted = false;
+  // First-turn cache gate: the desktop opens sessions ready-to-chat, so the
+  // mount (async, fired at pool entry) can still be in flight when the first
+  // prompt lands. A mount landing between turns forks the prefix cache (tools
+  // array + rebuilt system prompt), so wait for it here — bounded, so a slow
+  // server degrades to today's behavior (one cache miss) instead of hanging
+  // the send (5s budget; the preload RPC usually settles the pool long before).
+  if (entry.mcpMountInFlight) await Promise.race([entry.mcpMountInFlight, Bun.sleep(5000)]);
   // Attachments: images go through SDK ImageContent; text-kind file contents are inlined into the prompt (same as pasting files in the CLI)
   const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
   for (const f of files ?? []) {

@@ -3,6 +3,7 @@
 // the provider list. Moved over from the main.ts message dispatch (third
 // slice).
 import { authPolicyFor, formatModelRoleAlias, resolveModelRoleValue } from "../bootstrap.ts";
+import { completeSimple } from "@oh-my-pi/pi-ai";
 import { H, sessions, enabledDefaults } from "../state.ts";
 import { modelCatalog, modelRolesPayload, rebuildScopedModels } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
@@ -127,6 +128,54 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     await H.settings.flush();
     ws.send(JSON.stringify({ type: "model_roles", roles: modelRolesPayload() }));
   },
+  // Single-model connectivity test (settings page model row "test" button):
+  // sends one minimal completion through the base's full protocol stack —
+  // transport/API selection, credential resolution (resolver covers OAuth
+  // minting + account rotation) and auth retry all run exactly as in a chat
+  // turn. Replies with a provider_model_test frame (ok:false instead of a
+  // throw so the row attributes the failure itself).
+  async test_provider_model(ws, msg) {
+    const id = String(msg.id ?? "");
+    const model = H.availableModels.find((m) => `${m.provider}/${m.id}` === id);
+    if (!model) throw new Error(hostI18n.t("errors.model.unknown", { model: id }));
+    const started = Date.now();
+    let reply = "";
+    try {
+      const message = await completeSimple(
+        model,
+        { messages: [{ role: "user", content: "ping", timestamp: Date.now() }] },
+        {
+          apiKey: H.modelRegistry.resolver(model),
+          disableReasoning: true,
+          signal: AbortSignal.timeout(60_000),
+        },
+      );
+      if (message.stopReason === "error") throw new Error(message.errorMessage ?? "provider error");
+      reply = Array.isArray(message.content)
+        ? message.content.filter((c) => c.type === "text").map((c) => c.text).join("")
+        : "";
+    } catch (err) {
+      ws.send(
+        JSON.stringify({
+          type: "provider_model_test",
+          model: id,
+          ok: false,
+          latencyMs: Date.now() - started,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return;
+    }
+    ws.send(
+      JSON.stringify({
+        type: "provider_model_test",
+        model: id,
+        ok: true,
+        latencyMs: Date.now() - started,
+        reply: reply.slice(0, 120),
+      }),
+    );
+  },
   async get_usage_stats(ws) {
     ws.send(JSON.stringify({ type: "usage_stats", stats: await collectUsageStats() }));
   },
@@ -137,7 +186,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
         providers: listAllProviders().map((p) => {
           let accounts = 0;
           try {
-            accounts = (H.authStorage.listStoredCredentials?.(p.id) ?? []).length;
+            accounts = H.authStorage.credentials.list(p.id).length;
           } catch {}
           const loginKind = authPolicyFor(p.id)?.login?.kind;
           return {

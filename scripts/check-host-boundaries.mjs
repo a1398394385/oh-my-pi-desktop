@@ -56,6 +56,14 @@ const ALLOWED_EDGES = new Set([
   "translate.ts→acp-context.ts",
   // Shared MCP connection pool: main.ts drives lifecycle and RPC, depends on bootstrap's connectToServer and state
   "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
+  // Session-bound MCP mounting (pool-lifecycle boundaries): mcp-mount owns the
+  // per-session tool-surface mounts; it computes visibility from assets' scan,
+  // acquires from the pool, and reads/stamps state. Consumers: session-lifecycle
+  // (create + switch-back mount), rpc/assets (mcp_detach), rpc/session
+  // (delete/reload release), capabilities (registry snapshot).
+  "mcp-mount.ts→bootstrap.ts", "mcp-mount.ts→mcp-pool.ts", "mcp-mount.ts→assets.ts", "mcp-mount.ts→state.ts",
+  "session-lifecycle.ts→mcp-mount.ts", "rpc/assets.ts→mcp-mount.ts", "rpc/session.ts→mcp-mount.ts",
+  "capabilities.ts→mcp-mount.ts",
   // Plan mode domain: main.ts mounts the /plan dispatch and the plan_mode RPC; approval/output bridges and event stamps live in state
   "main.ts→plan.ts", "plan.ts→bootstrap.ts", "plan.ts→state.ts",
   // Plan approval flow (the five next-step options + execution-model slider): plan.ts installs the
@@ -80,6 +88,9 @@ const ALLOWED_EDGES = new Set([
   "keepalive.ts→keepalive-config.ts", "keepalive.ts→keepalive-lib.ts",
   // Config source of truth = the keepalive section of omp-desktop.json (per-profile independent); reads/writes go through state.ts's H
   "keepalive-config.ts→state.ts",
+  // PoolEntry carries the keepalive runtime snapshot type (type-only import,
+  // same precedent as state.ts→goal.ts holding the controller instance)
+  "state.ts→keepalive.ts",
   // UI config persistence (omp-desktop.json ui section: locale/theme/motion/prefs):
   // applyProfile re-reads the locale on every profile apply; the set_locale /
   // set_ui_prefs RPCs write it; frames.ts carries the readUiConfig projection;
@@ -104,6 +115,9 @@ const ALLOWED_EDGES = new Set([
   "rpc/session.ts→rpc/types.ts",
   "rpc/session.ts→bootstrap.ts", "rpc/session.ts→state.ts", "rpc/session.ts→profile.ts",
   "rpc/session.ts→translate.ts", "rpc/session.ts→session-lifecycle.ts",
+  // get_keepalive_status reads the global switch alongside the entry snapshot
+  // (same precedent as rpc/settings.ts→keepalive-config.ts)
+  "rpc/session.ts→keepalive-config.ts",
   // Session activity time (list/branch rows): the SDK reports `modified` as the
   // file mtime, which a `session_exit` diagnostic frame refreshes, so
   // rpc/session.ts rewrites it to the last `message` frame's timestamp
@@ -121,6 +135,9 @@ const ALLOWED_EDGES = new Set([
   "rpc/settings.ts→keepalive-config.ts", // set_keepalive_config merges into state.json
   "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
   "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
+  "rpc/index.ts→rpc/provider-wizard.ts",
+  "rpc/provider-wizard.ts→rpc/types.ts", "rpc/provider-wizard.ts→state.ts",
+  "rpc/provider-wizard.ts→rpc/login.ts", // shared catalog convergence push (refreshCatalogAndPush)
   "rpc/assets.ts→rpc/types.ts", "rpc/assets.ts→bootstrap.ts", "rpc/assets.ts→state.ts",
   "rpc/assets.ts→assets.ts", "rpc/assets.ts→profile.ts", "rpc/assets.ts→extensions.ts",
   "rpc/assets.ts→models.ts", "rpc/assets.ts→frames.ts",

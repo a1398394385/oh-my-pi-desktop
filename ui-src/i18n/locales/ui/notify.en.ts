@@ -46,6 +46,8 @@ export const notifyEn = {
   loginFailed: "{{provider}} sign-in failed: {{message}}",
   apiKeySaved: "{{provider}} API key saved, model list refreshed",
   configPath: "Config file: {{path}}",
+  wizardSaved: "{{provider}} saved ({{count}} models) to models.yml",
+  wizardModelSaved: "{{model}} metadata saved to models.yml",
   skillDeleted: "Skill deleted",
   fileDeleted: "File deleted",
   mcpConnected: "MCP [{{name}}] connected",

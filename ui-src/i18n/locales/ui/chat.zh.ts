@@ -8,6 +8,7 @@ export const chatZh = {
   labelTodo: "待办",
   labelSearch: "搜索",
   labelFind: "查找",
+  labelGlob: "匹配",
   labelWebSearch: "联网搜索",
   labelAsk: "提问",
   labelSessionContext: "历史会话检索",
@@ -70,6 +71,14 @@ export const chatZh = {
   compacting: "压缩中…",
   noModelAvailable: "暂无可用模型",
   ctxNoData: "上下文用量暂无数据",
+  // ---- cache warming section (CtxCard.tsx) ----
+  kaTitle: "缓存保温",
+  kaProbesLabel: "运行次数",
+  kaHitsMisses: "命中 {{hits}} · 未中 {{misses}}",
+  kaNextLabel: "下次运行",
+  kaPaused: "已暂停",
+  kaSpendLabel: "消耗成本",
+  kaSaved: "节省 {{v}}",
   // ---- in-chat find bar (FindBar.tsx) ----
   findPlaceholder: "在会话中查找…",
   findNoResult: "无结果",
@@ -130,6 +139,7 @@ export const chatZh = {
   allDone: "全部完成",
   sessionStatus: "会话状态",
   collapseToCapsule: "收起为胶囊",
+  resizeTodo: "拖动调整卡片大小",
   // ---- approval card (ApprovalCard.tsx) ----
   awaitingConfirm: "等待确认",
   confirmOptions: "确认选项",

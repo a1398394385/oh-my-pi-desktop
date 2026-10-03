@@ -31,7 +31,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     reply({ type: "login_progress", provider, message: hostI18n.t("flows.login.starting") });
     let promptSeq = 0;
     try {
-      const identity = await H.authStorage.login(provider, {
+      const identity = await H.authStorage.oauth.login(provider, {
         signal: H.loginAbort.signal,
         onAuth: (info: { url?: string; launchUrl?: string; instructions?: string }) => {
           if (H.loginAbort?.signal.aborted) return;
@@ -95,7 +95,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     // UI offers no logout entry for those providers
     const provider = String(msg.provider ?? "");
     if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
-    await H.authStorage.remove(provider);
+    await H.authStorage.credentials.remove(provider);
     H.availableModels = H.availableModels.filter((m) => m.provider !== provider);
     rebuildScopedModels();
     ws.send(JSON.stringify(modelsFrame()));
@@ -112,7 +112,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
   },
   // ---- Per-account disable/restore (manual tombstones) ----
   // OMP has no user entry for "disable one account but keep the credential":
-  // disableCredentialById is public yet only auto-failure paths call it, and no
+  // credentials.disable is public yet only auto-failure paths call it, and no
   // restore API exists at all. The host closes the loop:
   // - disable: SDK soft-delete (the tombstone row keeps full token material);
   // - restore: read the preserved credential back from agent.db (readonly
@@ -130,7 +130,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     const provider = String(msg.provider ?? "");
     const id = Number(msg.id);
     if (!provider || !Number.isInteger(id)) throw new Error(hostI18n.t("errors.param.missingProvider"));
-    if (!H.authStorage.disableCredentialById(id, MANUAL_DISABLE_CAUSE)) {
+    if (!(await H.authStorage.credentials.disable(id, MANUAL_DISABLE_CAUSE))) {
       throw new Error(hostI18n.t("errors.account.notFound"));
     }
     await pushProviderAccounts(ws, provider);
@@ -157,7 +157,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
         row.credential_type === "api_key"
           ? { type: "api_key", key: parsed.key, ...(parsed.source === "login" ? { source: "login" } : {}) }
           : { type: "oauth", ...parsed };
-      H.authStorage.upsertCredential(provider, credential);
+      await H.authStorage.credentials.upsert(provider, credential);
     } finally {
       db.close();
     }
@@ -183,7 +183,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     if (loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom") {
       throw new Error(hostI18n.t("errors.login.browserOnly", { provider }));
     }
-    H.authStorage.upsertCredential(provider, { type: "api_key", key });
+    await H.authStorage.credentials.upsert(provider, { type: "api_key", key });
     await H.modelRegistry.refresh();
     H.availableModels = H.modelRegistry.getAvailable();
     rebuildScopedModels();
@@ -217,20 +217,20 @@ interface WsLike {
   send(data: string): void;
 }
 
-// provider_accounts reply frame: active rows from the facade, disabled rows via
-// listDisabledCredentials (identity slice only, never token material)
+// provider_accounts reply frame: active rows via credentials.list, disabled
+// rows via credentials.listDisabled (identity slice only, never token material)
 async function pushProviderAccounts(ws: WsLike, provider: string) {
-  const active = (H.authStorage.listStoredCredentials(provider) ?? []).map((c: { id: number; credential?: { email?: string; accountId?: string; orgName?: string } }) => ({
+  const active = H.authStorage.credentials.list(provider).map((c) => ({
     id: c.id,
-    label: c.credential?.email ?? c.credential?.accountId ?? c.credential?.orgName ?? "",
+    label: c.credential?.type === "oauth" ? (c.credential.email ?? c.credential.accountId ?? c.credential.orgName ?? "") : "",
   }));
-  const disabledRows = (await H.authStorage.listDisabledCredentials(provider)) ?? [];
+  const disabledRows = await H.authStorage.credentials.listDisabled(provider);
   ws.send(
     JSON.stringify({
       type: "provider_accounts",
       provider,
       active,
-      disabled: disabledRows.map((d: { id: number; email?: string; accountId?: string; orgName?: string; cause: string; disabledAtMs?: number }) => ({
+      disabled: disabledRows.map((d) => ({
         id: d.id,
         label: d.email ?? d.accountId ?? d.orgName ?? "",
         cause: d.cause,
@@ -244,7 +244,7 @@ async function pushProviderAccounts(ws: WsLike, provider: string) {
 // Post-mutation catalog convergence (same flow as provider_logout's tail):
 // disabling the last active credential removes the provider, restoring one
 // brings it back — either way the registry re-discovers and both frames re-push
-async function refreshCatalogAndPush(ws: WsLike) {
+export async function refreshCatalogAndPush(ws: WsLike) {
   try {
     await H.modelRegistry.refresh();
   } catch (err) {

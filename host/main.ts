@@ -23,7 +23,7 @@
 // frame assembly) / session-lifecycle.ts (session lifecycle and event wiring) /
 // plan.ts · goal.ts · queue.ts (domain logic) / translate.ts (omp events →
 // narrow events) / rpc/ (nine RPC handler domains) / assets.ts ·
-// extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · pty.ts.
+// extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · mcp-mount.ts · pty.ts.
 import { stat, open } from "node:fs/promises";
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID } from "./state.ts";
@@ -37,6 +37,7 @@ import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { refreshAllLimits } from "./limits/index.ts";
 import { augmentGuiPath } from "./gui-path.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { handleStatsHttp } from "./stats.ts";
 
 // ---------- Startup prologue: activate the persisted profile, assemble the process-level base ----------
 // PATH augment completion point: the first RPC after UI connects
@@ -66,8 +67,10 @@ profileReady.catch((err) => {
 // ---------- WebSocket server ----------
 const server = Bun.serve<{ sessionId: string | null }>({
   port: 0, // Dynamic port: a fixed one would clash when multiple workspaces run the same app in parallel
-  fetch(req, srv) {
+  async fetch(req, srv) {
     if (srv.upgrade(req)) return;
+    const statsRes = await handleStatsHttp(req, srv);
+    if (statsRes) return statsRes;
     return new Response("websocket only", { status: 400 });
   },
   websocket: {

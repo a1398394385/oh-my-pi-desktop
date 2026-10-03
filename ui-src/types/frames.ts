@@ -152,7 +152,7 @@ export interface SlashCommand {
   hint: string | null;
   // TODO(narrowing pass): source comes from base InternalAvailableSlashCommand.source (builtin/extension/custom/skill etc.)
   source: string;
-  subcommands: { name: string; description: string }[];
+  subcommands: { name: string; description: string; usage: string | null }[];
 }
 
 /** @ file candidate (host/host.ts:342-367 listFileMatches) */
@@ -375,9 +375,13 @@ export interface SessionStatsPayload {
   cacheHitRate: number;
   advisorCost: number;
   activeMs: number;
-  // UI-local only: when this frame landed (host does not send it). The active-time
+  /** Host clock stamp sampled in the same call as activeMs (extrapolation baseline, see receivedAt). */
+  statsAt: number;
+  // UI-local only: copied from the frame's statsAt on landing. The active-time
   // figure is sampled at push time, so the bar extrapolates it locally while the
-  // session is running instead of freezing until the next frame.
+  // session is running instead of freezing until the next frame. Using the host
+  // stamp (not the local landing time) keeps the figure monotonic across frames:
+  // transport/queueing delay would otherwise rewind it on every landing.
   receivedAt?: number;
 }
 
@@ -1029,6 +1033,75 @@ export interface ModelsConfigPathFrame {
   path: string;
 }
 
+/** Catalog metadata the base would auto-inherit for an unedited wizard model (host/rpc/provider-wizard.ts) */
+export interface ManualProbeCatalogMatch {
+  name?: string | null;
+  contextWindow?: number | null;
+  maxTokens?: number | null;
+  reasoning?: boolean;
+  input?: ("text" | "image")[] | null; // accepted input modalities (null = unknown)
+  supportsTools?: boolean | null; // native tool-call support (null = unknown)
+  thinking?: { mode: string; efforts?: string[]; defaultLevel?: string } | null; // effort-control config
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number } | null;
+}
+
+/** One model row from the wizard probe (endpoint-reported values + catalog match) */
+export interface ManualProbeModel {
+  id: string;
+  name: string;
+  contextWindow: number | null; // endpoint-reported, null when the endpoint did not say
+  maxTokens: number | null;
+  catalog: ManualProbeCatalogMatch | null; // null = no bundled-catalog match by id
+  saved: ManualProbeCatalogMatch | null; // custom metadata already persisted in models.yml (null = bare/inherited row)
+}
+
+/** Wizard probe reply (host/rpc/provider-wizard.ts probe_provider_models) */
+export interface ProviderModelsProbeFrame {
+  type: "provider_models_probe";
+  models: ManualProbeModel[];
+  failed?: boolean;
+  message?: string; // failure reason when failed
+}
+
+/** Wizard per-model save reply (host/rpc/provider-wizard.ts save_provider_model) */
+export interface ProviderModelSavedFrame {
+  type: "provider_model_saved";
+  provider: string;
+  model: { id: string; name?: string; contextWindow?: number; maxTokens?: number; cost?: { input: number; output: number; cacheRead: number; cacheWrite: number } };
+}
+
+/** One model row's metadata snapshot for a persisted provider (provider_model_meta reply) */
+export interface ProviderModelMetaRow {
+  id: string;
+  saved: ManualProbeCatalogMatch | null;
+  catalog: ManualProbeCatalogMatch | null;
+}
+
+/** Provider-detail metadata snapshot frame (host/rpc/provider-wizard.ts provider_model_meta) */
+export interface ProviderModelMetaFrame {
+  type: "provider_model_meta";
+  provider: string;
+  exists: boolean;
+  models: ProviderModelMetaRow[];
+}
+
+/** Single-model connectivity test reply (host/rpc/models.ts test_provider_model) */
+export interface ProviderModelTestFrame {
+  type: "provider_model_test";
+  model: string; // catalog id "provider/modelId"
+  ok: boolean;
+  latencyMs: number;
+  reply?: string; // first 120 chars of the model's text answer (ok only)
+  message?: string; // failure reason when !ok
+}
+
+/** Wizard save reply (host/rpc/provider-wizard.ts save_provider_models) */
+export interface ProviderModelsSavedFrame {
+  type: "provider_models_saved";
+  provider: string;
+  count: number;
+}
+
 /** Model roles frame (host/host.ts:1848 get_model_roles / 1861 set_model_role) */
 export interface ModelRolesFrame {
   type: "model_roles";
@@ -1131,11 +1204,11 @@ export interface MemoryFileFrame {
   content: string;
 }
 
-/** MCP server test reply (host/host.ts:2006 test_mcp_server) */
+/** MCP server test reply (host/rpc/assets.ts test_mcp_server) */
 export interface McpServerTestedFrame {
   type: "mcp_server_tested";
   name: string;
-  status: string;
+  status: "ok" | "error";
   error?: string;
   log?: string;
 }
@@ -1365,6 +1438,24 @@ export interface CacheWarmingFrame {
   seq?: number;
 }
 
+/** Cache keepalive runtime snapshot reply (host/rpc/session.ts get_keepalive_status; pure query for the context detail card) */
+export interface KeepaliveStatusFrame {
+  type: "keepalive_status";
+  sessionId: string;
+  /** Effective keepalive for this session: the global switch is on AND the extension was injected at creation (sessions predating the switch, or skipped by the plugin double-load guard, report false) */
+  enabled: boolean;
+  /** Armed at the last report (capture held, not paused, no probe in flight) */
+  active: boolean;
+  probes: number;
+  hits: number;
+  misses: number;
+  errors: number;
+  savedUsd: number;
+  spendUsd: number;
+  /** ms epoch of the next scheduled probe; null = nothing scheduled (paused, deadline held mid-turn, or never armed) */
+  nextProbeAt: number | null;
+}
+
 // ---------- UI → host client frames ----------
 
 /** UI locale switch (UI → host; fire-and-forget, host persists it and applies it to its own surfaces) */
@@ -1375,7 +1466,7 @@ export interface SetLocaleFrame {
 
 // ---------- Frame union ----------
 
-/** Discriminated union of all host → UI frames (83 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (84 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -1435,6 +1526,11 @@ export type HostFrame =
   | LoginDoneFrame
   | ProviderKeyDoneFrame
   | ModelsConfigPathFrame
+  | ProviderModelsProbeFrame
+  | ProviderModelSavedFrame
+  | ProviderModelMetaFrame
+  | ProviderModelTestFrame
+  | ProviderModelsSavedFrame
   | ModelRolesFrame
   | UsageStatsFrame
   | AgentAssetsFrame
@@ -1462,4 +1558,5 @@ export type HostFrame =
   | BgJobsFrame
   | SubagentControlledFrame
   | CompletionFrame
-  | CacheWarmingFrame;
+  | CacheWarmingFrame
+  | KeepaliveStatusFrame;

@@ -18,7 +18,7 @@ export type CommandItem = { name: string; aliases?: string[]; description?: stri
 export type PaletteItem = FileItem | CommandItem;
 
 type PaletteMenuProps = {
-  mode: "file" | "command" | "skill";
+  mode: "file" | "command" | "commandArgs" | "skill";
   items: PaletteItem[];
   index: number;
   loading: boolean;
@@ -72,6 +72,14 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
             label = "$" + it.name.replace(/^skill:/, "");
             key = it.name;
             desc = it.description || "";
+          } else if (mode === "commandArgs") {
+            if (!("name" in it)) return null; // type guard: subcommand candidates carry name
+            // No sigil prefix and no builtin dictionary: subcommand names
+            // (view/stats/...) would collide with command-name keys
+            label = it.name;
+            key = it.name;
+            desc = it.description || "";
+            hint = it.hint || null;
           } else {
             if (!("name" in it)) return null; // type guard: command candidates always carry name
             label = "/" + it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");

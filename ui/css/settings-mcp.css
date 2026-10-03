@@ -342,6 +342,10 @@
   box-shadow: 0 0 0 3px rgba(74, 158, 255, .13);
 }
 
+/* Disabled state (metadata editor with the custom-metadata toggle off) */
+.mcp-form-input:disabled,
+.mcp-form-textarea:disabled { opacity: .5; cursor: default; }
+
 /* Command-style fields render monospace */
 .mcp-form-code,
 .mcp-form-textarea { font-family: var(--mono); }
@@ -360,6 +364,7 @@
 .sel.mcp-form-sel { position: relative; display: flex; width: 100%; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--bg); padding: 0; }
 .sel.mcp-form-sel:hover, .sel.mcp-form-sel:has(.menu.open) { background: var(--panel-2); }
 .mcp-form-sel-btn { display: inline-flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 6px 10px; background: none; border: 0; color: var(--text); font-size: var(--ui-fs-sm); line-height: 1.5; cursor: pointer; }
+.mcp-form-sel-btn:disabled { opacity: .5; cursor: default; }
 .mcp-form-sel-btn .caret-svg { margin-left: auto; display: inline-flex; color: var(--faint); }
 
 /* Collapsible env / headers section */

@@ -94,6 +94,36 @@ body.resizing .resizer {
   overscroll-behavior: contain; /* embedded in the session scroll flow, stops the scroll chain */
 }
 
+#statusWrap {
+  position: absolute;
+  top: 56px;
+  right: 14px;
+  z-index: 60;
+  width: 280px;
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+  /* Right-aligned flex column: an over-wide resized card keeps its right edge pinned and overflows leftward */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* Corner resize grip: drag to resize the card per session (size lives in memory only,
+   never persisted). The card is docked to the right edge (#statusWrap right:14px), so
+   the grip sits at the bottom-left corner: dragging left widens the card, dragging
+   right narrows it, dragging down lengthens the list. */
+#statusCard { position: relative; }
+#statusCard .sc-resize {
+  position: absolute; left: 4px; bottom: 4px;
+  width: 13px; height: 13px;
+  cursor: nesw-resize;
+  touch-action: none;
+  background:
+    linear-gradient(45deg, transparent 52%, var(--faint) 52%, var(--faint) 64%, transparent 64%),
+    linear-gradient(45deg, transparent 72%, var(--faint) 72%, var(--faint) 84%, transparent 84%);
+}
+#statusCard .sc-resize:hover { filter: brightness(1.4); }
+
 .todo {
   display: flex; gap: 9px; padding: 6px 2px;
   font-size: var(--ui-fs-base); line-height: 1.45;

@@ -88,13 +88,14 @@ export const limitsHandlers: Record<string, RpcHandler> = {
           baseUrl,
           modelId: model?.id,
         })) ?? null;
-      const hit = (H.authStorage.listStoredCredentials?.(ompProvider) ?? []).find((c: any) => {
+      const hit = H.authStorage.credentials.list(ompProvider).find((c) => {
         const cred = c.credential;
-        return cred?.type === "api_key" ? cred.key === keyOverride : cred?.access === keyOverride;
+        if (cred?.type === "api_key") return cred.key === keyOverride;
+        return cred?.type === "oauth" ? cred.access === keyOverride : false;
       });
       if (hit) cacheTag = `#${hit.id}`;
-      const cred: any = hit?.credential;
-      accountLabel = cred?.email ?? cred?.accountId ?? cred?.orgName ?? "";
+      const cred = hit?.credential;
+      accountLabel = cred?.type === "oauth" ? (cred.email ?? cred.accountId ?? cred.orgName ?? "") : "";
     }
     const { vendor, label, row } = await fetchSessionLimits(H.authStorage, ompProvider, baseUrl, keyOverride, cacheTag);
     ws.send(

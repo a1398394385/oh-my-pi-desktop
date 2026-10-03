@@ -648,8 +648,32 @@ export async function probeMcpServerHealth(server: {
   }
 }
 
+export interface McpServerAsset {
+  name: string;
+  transport: "stdio" | "http" | "sse";
+  command?: string;
+  args?: string[];
+  url?: string;
+  headers?: Record<string, string>;
+  env?: Record<string, string>;
+  cwd?: string;
+  enabled: boolean;
+  source: {
+    provider: string;
+    providerName: string;
+    path: string;
+    level: "user" | "project" | "native";
+  };
+  scope: string; // "profile" | `project:${cwd}`
+  projectName?: string;
+  status: "connected" | "error" | "disabled" | "unknown";
+  error?: string;
+  log?: string;
+  sharing?: "session" | "project" | "global";
+}
+
 // Discover and merge all MCP servers across global, profile and each workspace project, following the omp source mcps capability
-export async function loadAllMcpScoped() {
+export async function loadAllMcpScoped(options?: { probe?: boolean }) {
   clearCapabilityFsCache();
   const userMcpPath = path.join(H.agentDir, "mcp.json");
   const [disabledList, forcedList] = await Promise.all([
@@ -665,31 +689,8 @@ export async function loadAllMcpScoped() {
     return true;
   };
 
-  type McpServerItem = {
-    name: string;
-    transport: "stdio" | "http" | "sse";
-    command?: string;
-    args?: string[];
-    url?: string;
-    headers?: Record<string, string>;
-    env?: Record<string, string>;
-    cwd?: string;
-    enabled: boolean;
-    source: {
-      provider: string;
-      providerName: string;
-      path: string;
-      level: "user" | "project" | "native";
-    };
-    scope: string; // "profile" | `project:${cwd}`
-    projectName?: string;
-    status: "connected" | "error" | "disabled" | "unknown";
-    error?: string;
-    log?: string;
-    sharing?: "session" | "project" | "global";
-  };
 
-  const allServersMap = new Map<string, McpServerItem>();
+  const allServersMap = new Map<string, McpServerAsset>();
   const rawFileCache = new Map<string, any>();
   const readRawSharing = async (filePath?: string, serverName?: string): Promise<"session" | "project" | "global" | undefined> => {
     if (!filePath || !serverName) return undefined;
@@ -819,7 +820,7 @@ export async function loadAllMcpScoped() {
         const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
         const sharing: "session" | "project" | "global" =
           rawSharing === "project" ? "project" : "session"; // rule 2: global forbidden inside a project; rule 1: default session
-        const item: McpServerItem = {
+        const item: McpServerAsset = {
           name: s.name,
           transport,
           command: s.command,
@@ -939,20 +940,24 @@ export async function loadAllMcpScoped() {
 
   const serverList = Array.from(allServersMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-  // 3. Concurrent health checks (fast probes against enabled servers, 2s timeout)
-  const enabledServers = serverList.filter((s) => s.enabled);
-  await Promise.all(
-    enabledServers.map(async (s) => {
-      const probe = await probeMcpServerHealth(s);
-      if (probe) {
-        s.status = probe.status;
-        s.error = probe.error;
-        s.log = probe.log;
-      } else {
-        s.status = "connected";
-      }
-    })
-  );
+  // 3. Concurrent health checks (fast probes against enabled servers, 2s timeout).
+  // Skipped on the session-mount path ({ probe: false }): mounting must not pay
+  // the per-server connect budget — status stays "unknown" there.
+  if (options?.probe !== false) {
+    const enabledServers = serverList.filter((s) => s.enabled);
+    await Promise.all(
+      enabledServers.map(async (s) => {
+        const probe = await probeMcpServerHealth(s);
+        if (probe) {
+          s.status = probe.status;
+          s.error = probe.error;
+          s.log = probe.log;
+        } else {
+          s.status = "connected";
+        }
+      })
+    );
+  }
 
   for (const s of serverList) {
     if (!s.enabled) {

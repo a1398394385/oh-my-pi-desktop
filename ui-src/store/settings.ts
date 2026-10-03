@@ -14,6 +14,8 @@ import type {
   AllProviderEntry,
   UsageStats,
   AgentAssetsPayload,
+  ManualProbeModel,
+  ManualProbeCatalogMatch,
   ExtensionsFrame,
 } from "../types/frames";
 import type { MemoryDetailState } from "../types/session";
@@ -30,7 +32,14 @@ export interface SettingsSlice {
   mpAddView: boolean;
   mpRolesView: boolean;
   mpDetailProv: AllProviderEntry | null; // current provider on the provider detail page (written by card clicks)
-  allProvidersCache: AllProviderEntry[] | null;
+  allProvidersCache: AllProviderEntry[] | null; // all_providers reply cache (add-view card grid)
+  mpManualView: boolean; // manual-add wizard view (nested under mpAddView)
+  manualProbe: { models: ManualProbeModel[]; failed: boolean; message?: string; at: number } | null; // latest probe reply
+  manualProbing: boolean; // probe request in flight
+  manualSaving: boolean; // save request in flight
+  manualModelSaving: string | null; // per-model metadata save in flight (model id)
+  providerMeta: { provider: string; exists: boolean; rows: Record<string, { saved: ManualProbeCatalogMatch | null; catalog: ManualProbeCatalogMatch | null }> } | null; // provider_model_meta reply (detail-list editor prefill)
+  modelTestResults: Record<string, { status: "running" | "ok" | "fail"; latencyMs?: number; message?: string; reply?: string; ts: number }>; // per-model connectivity test (provider_model_test reply)
   loginBusy: boolean;
   loginReqId: number;
   loginBanner: string | null; // OMP login progress banner text
@@ -69,6 +78,13 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   loginBanner: null,
   loginPromptData: null,
   agentAssets: null,
+  mpManualView: false,
+  manualProbe: null,
+  manualProbing: false,
+  manualSaving: false,
+  manualModelSaving: null,
+  modelTestResults: {},
+  providerMeta: null,
   extensions: null,
   extensionsByScope: {},
   usageStats: null,

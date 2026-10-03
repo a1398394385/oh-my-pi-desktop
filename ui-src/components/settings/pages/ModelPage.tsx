@@ -15,6 +15,8 @@ import Icon from "../../../Icon";
 import { PROV_IC, confirmDialog } from "../common";
 import { fmtLimitWindow, limitTone } from "../../../lib/limits";
 import type { LimitWindow } from "../../../lib/limits";
+import ModelProviderWizard from "./ModelProviderWizard";
+import ModelMetaEditor from "../ModelMetaEditor";
 import type { AllProviderEntry } from "../../../types/frames";
 
 // Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
@@ -590,12 +592,11 @@ function AddProviderView() {
               })()
             ),
           )}
-          {/* Trailing fixed card: manual add = config-layer models.yml */}
+          {/* Trailing fixed card: manual add opens the wizard view (writes models.yml via RPC) */}
           <div
             className="ap-card ap-card2"
             onClick={() => {
-              send({ type: "open_models_config" });
-              toast(t("settingsPage.model.manualAddToast"));
+              setBump({ mpManualView: true });
             }}
           >
             <div className="ap-l1">
@@ -603,7 +604,7 @@ function AddProviderView() {
               <span className="flex-1 min-w-0 truncate text-ui-base text-text">{t("settingsPage.model.manualAdd")}</span>
             </div>
             <div className="ap-l2">
-              <span className="tag ap-vendor">models.yml</span>
+              <span className="tag ap-vendor">{t("settingsPage.model.wizardCardTag")}</span>
             </div>
           </div>
         </div>
@@ -727,7 +728,17 @@ function ProviderDetailView() {
 // Right card: selected provider detail (model enable/disable + quota + logout)
 function ProviderModelsView({ prov, models }: { prov: string; models: CatalogModel[] }) {
   const { t } = useTranslation();
+  const providerMeta = useAppStore((s) => s.providerMeta);
+  const modelSaving = useAppStore((s) => s.manualModelSaving);
+  const testResults = useAppStore((s) => s.modelTestResults);
+  const [metaOpen, setMetaOpen] = useState<string | null>(null);
   const anyOn = models.some((m) => m.enabled);
+  const isConfig = models[0]?.authSource === "config";
+  const meta = providerMeta?.provider === prov ? providerMeta : null;
+  // Config-layer providers: fetch the per-model metadata snapshot for editor prefill
+  useEffect(() => {
+    if (isConfig) send({ type: "provider_model_meta", provider: prov });
+  }, [prov, isConfig]);
   const logout = async () => {
     const ok = await confirmDialog({
       title: t("settingsPage.model.logoutConfirmTitle", { provider: prov }),
@@ -756,36 +767,100 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
       {/* Account rows only for credential-backed providers (config-file apiKey rows have no authStorage rows) */}
       {models[0]?.authSource === "cred" ? <AccountsSection prov={prov} /> : null}
       <div className="mp-ml"><span>{t("settingsPage.model.modelList")}</span></div>
-      {models.map((m) => (
-        <div className="mp-row" key={m.id}>
-          <span>{m.name}</span>
-          {/* Context formatted as decimal vendor nominal: 1000000 → 1M, 1310720 → 1.3M, 200000 → 200k.
-              No 1024-base conversion — catalog values are decimal nominals; 1000000 would compute as 977k */}
-          {m.context ? (
-            <span className="tag">
-              {m.context >= 1000000
-                ? (Math.round(m.context / 100000) / 10).toString().replace(/\.0$/, "") + "M"
-                : m.context >= 1000
-                  ? Math.round(m.context / 1000) + "k"
-                  : String(m.context)}
-            </span>
-          ) : null}
-          {m.vision ? <span className="tag">{t("settingsPage.model.visionTag")}</span> : null}
-          <span className="sp" />
-          <div
-            className={"tg" + (m.enabled ? " on" : "")}
-            onClick={() => {
-              if (m.enabled && useAppStore.getState().modelCatalog.filter((x) => x.enabled).length <= 1) {
-                toast(t("settingsPage.model.keepOneModel"));
-                return;
-              }
-              send({ type: "set_enabled_model", id: m.id, enabled: !m.enabled });
-            }}
-          >
-            <i />
+      {models.map((m) => {
+        const metaRow = meta?.rows?.[m.id];
+        const open = metaOpen === m.id;
+        return (
+          <div key={m.id}>
+            <div className="mp-row">
+              <span>{m.name}</span>
+              {/* Context formatted as decimal vendor nominal: 1000000 → 1M, 1310720 → 1.3M, 200000 → 200k.
+                  No 1024-base conversion — catalog values are decimal nominals; 1000000 would compute as 977k */}
+              {m.context ? (
+                <span className="tag">
+                  {m.context >= 1000000
+                    ? (Math.round(m.context / 100000) / 10).toString().replace(/\.0$/, "") + "M"
+                    : m.context >= 1000
+                      ? Math.round(m.context / 1000) + "k"
+                      : String(m.context)}
+                </span>
+              ) : null}
+              {m.vision ? <span className="tag">{t("settingsPage.model.visionTag")}</span> : null}
+              {metaRow?.saved ? <span className="tag mpw-cat">{t("settingsPage.model.wizardCustomMeta")}</span> : null}
+              <span className="sp" />
+              {/* Connectivity test result tag (persists until the next test):
+                  latency on success (title carries the model's reply), error
+                  message on failure */}
+              {(() => {
+                const tr = testResults[m.id];
+                if (!tr) return null;
+                if (tr.status === "running")
+                  return (
+                    <span className="tag" title={t("settingsPage.model.testingBtn")}>
+                      {t("settingsPage.model.testingBtn")}
+                    </span>
+                  );
+                const latency = tr.latencyMs == null ? "" : tr.latencyMs < 1000 ? `${tr.latencyMs}ms` : `${Math.round(tr.latencyMs / 100) / 10}s`;
+                return tr.status === "ok" ? (
+                  <span className="tag" style={{ color: "var(--green)" }} title={tr.reply || latency}>
+                    {latency}
+                  </span>
+                ) : (
+                  <span className="tag" style={{ color: "var(--err)" }} title={tr.message ?? ""}>
+                    {t("settingsPage.model.testFail")}
+                  </span>
+                );
+              })()}
+              <button
+                type="button"
+                className="save-btn"
+                disabled={testResults[m.id]?.status === "running"}
+                onClick={() => {
+                  setBump({ modelTestResults: { ...testResults, [m.id]: { status: "running", ts: Date.now() } } });
+                  send({ type: "test_provider_model", id: m.id });
+                }}
+              >
+                {testResults[m.id]?.status === "running" ? t("settingsPage.model.testingBtn") : t("settingsPage.model.testBtn")}
+              </button>
+              {isConfig ? (
+                <button
+                  type="button"
+                  className="plus-btn mpw-caret"
+                  title={t("settingsPage.model.wizardEditMeta")}
+                  onClick={() => setMetaOpen(open ? null : m.id)}
+                >
+                  <Icon name="caret" size={14} className={open ? "rot" : ""} />
+                </button>
+              ) : null}
+              <div
+                className={"tg" + (m.enabled ? " on" : "")}
+                onClick={() => {
+                  if (m.enabled && useAppStore.getState().modelCatalog.filter((x) => x.enabled).length <= 1) {
+                    toast(t("settingsPage.model.keepOneModel"));
+                    return;
+                  }
+                  send({ type: "set_enabled_model", id: m.id, enabled: !m.enabled });
+                }}
+              >
+                <i />
+              </div>
+            </div>
+            {open ? (
+              <ModelMetaEditor
+                modelId={m.id}
+                displayName={m.name}
+                catalog={metaRow?.catalog ?? null}
+                saved={metaRow?.saved ?? null}
+                saving={modelSaving === m.id}
+                onSave={(row) => {
+                  setBump({ manualModelSaving: m.id });
+                  send({ type: "save_provider_model", provider: prov, model: row });
+                }}
+              />
+            ) : null}
           </div>
-        </div>
-      ))}
+        );
+      })}
       {!anyOn ? (
         <div className="set-group-desc" style={{ marginTop: "8px" }}>{t("settingsPage.model.noEnabledModels")}</div>
       ) : null}
@@ -798,6 +873,7 @@ export default function ModelPage() {
   const modelCatalog = useAppStore((s) => s.modelCatalog);
   const mpAddView = useAppStore((s) => s.mpAddView);
   const mpRolesView = useAppStore((s) => s.mpRolesView);
+  const mpManualView = useAppStore((s) => s.mpManualView);
   const mpDetailProv = useAppStore((s) => s.mpDetailProv);
   let selectedProvider = useAppStore((s) => s.selectedProvider);
   // Left-column grouping: provider -> models (modelCatalog, landed from the models_catalog reply)
@@ -821,6 +897,10 @@ export default function ModelPage() {
   }
   const sel = selectedProvider;
   const models = (sel ? groups.get(sel) : undefined) || []; // sel null yields undefined → [], equivalent
+  // Leaving the add view (left-column provider click, login_done) must also close the wizard
+  useEffect(() => {
+    if (!mpAddView) setBump({ mpManualView: false });
+  }, [mpAddView]);
   const showProvDetail = !mpAddView && !mpRolesView && groups.size > 0;
   // Provider quota: hits the host-side 60s cache; re-query on entering detail / switching provider
   useEffect(() => {
@@ -905,7 +985,7 @@ export default function ModelPage() {
         </div>
         <div className="mp-r">
           {mpAddView ? (
-            mpDetailProv ? <ProviderDetailView /> : <AddProviderView />
+            mpDetailProv ? <ProviderDetailView /> : mpManualView ? <ModelProviderWizard /> : <AddProviderView />
           ) : mpRolesView ? (
             <RolesView />
           ) : showProvDetail ? (

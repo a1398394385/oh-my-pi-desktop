@@ -1,10 +1,11 @@
 // Settings page: experimental features (pg-experimental).
 // Section 1: ACP context compaction (master switch + thresholds / target line / context window / candidate suggestions / user message protection)
 // Section 2: sessions & retrieval (past-session retrieval read_session_context)
-// Section 3: cache keepalive (desktop port of pi-kimi-keepalive, master switch + configurable
+// Section 3: cache warming (desktop port of pi-kimi-keepalive, master switch + configurable
 // probe parameters; omp-desktop.json lives independently per profile)
 // Styling language matches the appearance page: set-page / set-tt / set-group-tt / set-group-desc / set-card / .srow / .tg / .sel / .inp.
 import { useEffect, useState, type ReactNode } from "react";
+import { saveUiPrefs } from "../../../appearance";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
@@ -129,6 +130,7 @@ export default function ExperimentalPage() {
   const kaConfig = hostSettings?.keepaliveConfig;
   const kaMode = kaConfig?.mode ?? "default";
   const kaTargets = kaConfig?.targets ?? [];
+  const ringCount = useAppStore((s) => s.uiPrefs.ctxRingProbeCount);
   const modelCatalog = useAppStore((s) => s.modelCatalog);
 
   const acpConfig = hostSettings?.acpConfig;
@@ -491,6 +493,23 @@ export default function ExperimentalPage() {
             disabled={!kaEnabled}
             onSubmit={(v) => updateKa({ maxOutputTokens: v })}
           />
+        </div>
+
+        {/* 11. Context-ring center counter (UI pref, default on; independent of the master switch) */}
+        <div className="srow">
+          <div className="srow-tx">
+            <b>{t("settingsPage.exp.kaRingTitle")}</b>
+            <span>{t("settingsPage.exp.kaRingDesc")}</span>
+          </div>
+          <div
+            className={"tg" + (ringCount !== false ? " on" : "")}
+            onClick={() => {
+              useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, ctxRingProbeCount: ringCount === false } }));
+              saveUiPrefs();
+            }}
+          >
+            <i></i>
+          </div>
         </div>
       </div>
     </div>

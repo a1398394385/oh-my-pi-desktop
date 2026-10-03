@@ -239,6 +239,14 @@ export async function applyProfile(profileName: string) {
   // without it, third-party sources the user disabled still show up / count as enabled at the discovery layer)
   initializeWithSettings(H.settings);
 
+  // Base cache warming off, unconditionally: the desktop ships its own cache
+  // keepalive (host/keepalive.ts, keepalive.enabled in omp-desktop.json), and
+  // the two probing loops must never run at once in one process. Written to
+  // the runtime override layer only — the user's config.yml keeps whatever
+  // they chose there for the CLI (no global-layer write, no pollution).
+  const cacheWarmingSetting = lookupSetting("providers.cacheWarming");
+  if (cacheWarmingSetting) H.settings.writeValue(cacheWarmingSetting, "off", "override");
+
   H.desktopEnvPath = path.join(H.agentDir, "desktop-env.json");
   H.desktopEnvFilePresent = fs.existsSync(H.desktopEnvPath);
   H.desktopEnv = H.desktopEnvFilePresent ? readDesktopEnv() : defaultDesktopEnv();
