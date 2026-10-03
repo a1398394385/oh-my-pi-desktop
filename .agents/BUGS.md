@@ -504,3 +504,19 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：守卫故障注入（把旧深 import + 真实调用形态临时写回 build-host.ts）→ `check-omp-imports` 精准报 `No matching export ... for import "containsVersionSentinel"` 退出码 1，还原后恢复通过；`bun run host:build` 实跑通过（内联校验在真实 baseline `.node` 上命中 stamp 分支，`PI_NATIVES_VERSION_STAMP:18.5.0`）。
 
 **教训**：升级 `@oh-my-pi/*` 是跨包 API 契约变更，本仓对底座的取用有三类耦合面——公共入口、子路径 exports（`pi-tui/chat/...` 这类）、包内未导出文件的深路径（`pi-natives/native/...`）——后两类上游不承诺稳定。防线必须机器化（check 干跑 + RULE-010 升级 SOP），不靠记性。
+
+
+
+### BUG-037: Windows 上样式门禁误报 shadcn 基件——vendor 目录排除被路径分隔符击穿
+
+**现象**：Windows 机器 `bun run check` 第三步 `check-style-tokens` 红，报 `ui-src/components/ui/*.tsx`（dialog/dropdown-menu/input/select/textarea/scroll-area）共 9 处任意值 utility（`rounded-[6px]`/`rounded-[9px]`/`rounded-[inherit]`/`leading-[1.55]`）；macOS 上同一门禁绿。
+
+**分诊**：⑤环境特定 + ②存量缺陷——脚本自引入起在 Windows 上排除逻辑就失效，与任何近期改动无关。
+
+**根因**：`scripts/check-style-tokens.mjs` 用 `rel.startsWith("ui-src/components/ui/")` 排除 shadcn vendor 目录（设计意图见该脚本头注释：基件是上游移植，不受本仓样式治理），但 `path.relative()` 在 Windows 返回反斜杠路径（`ui-src\components\ui\...`），正斜杠前缀永不匹配 → Windows 上 vendor 排除失效，shadcn 自带的设计值被当本仓违规报出。
+
+**修复**：L42 归一 `relative()` 结果的分隔符（`split(/[\\/]/).join("/")`）。vendor tsx 零改动——上游移植文件保持原样便于同步，正确治理是排除而非逐行豁免/改值。
+
+**验证**：门禁单跑绿；故障注入（向非 vendor 的 `ui-src/App.tsx` 临时加 `rounded-[7px]`）仍被抓、exit 1，还原后恢复；`bun run check` 八步全绿（3.2s）。
+
+**教训**：跨平台脚本里「字符串前缀匹配路径」必须先归一分隔符。Windows 上跑红的门禁先查脚本的平台假设再怀疑业务代码——本例险些按「存量欠账」误诊去改 9 处 vendor 文件（把基件改出本仓私有 diff，制造未来同步 shadcn 的冲突面）。

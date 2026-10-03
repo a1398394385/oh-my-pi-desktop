@@ -39,8 +39,8 @@ const problems = [];
 
 // ---- Check 1: TSX arbitrary-value utilities ----
 for (const file of walkTsx(uiSrcDir)) {
-  const rel = relative(root, file);
-  if (rel.startsWith(VENDOR_TSX + "/")) continue; // shadcn vendor, unchecked
+  const rel = relative(root, file).split(/[\\/]/).join("/"); // normalize separators: Windows relative() yields backslashes, breaking the vendor-prefix check below
+   if (rel.startsWith(VENDOR_TSX + "/")) continue; // shadcn vendor, unchecked
   const lines = readFileSync(file, "utf8").split("\n");
   lines.forEach((line, i) => {
     if (EXEMPT_MARK.test(line)) return;
