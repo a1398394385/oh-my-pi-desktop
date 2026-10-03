@@ -37,7 +37,7 @@ export async function handleListSessions(ws: any) {
   // takes effect).
   const listed = new Set(all.map((s: any) => s.path));
   for (const [sid, entry] of sessions.entries()) {
-    if (listed.has(entry.path)) continue;
+    if (listed.has(entry.path) || entry.isSubagent) continue;
     if (H.desktopProjects.removedProjects.includes(entry.cwd)) continue;
     const list = byProject.get(entry.cwd) ?? [];
     list.push({

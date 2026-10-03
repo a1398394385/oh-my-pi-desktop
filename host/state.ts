@@ -96,8 +96,10 @@ export type PoolEntry = {
   manager: any;
   // User-renamed title (lazily created, unpersisted sessions are invisible to
   // listAll, so the fallback entry in list_sessions renders through this;
-  // for persisted ones the base's title slot wins — this field is an in-memory fallback only)
   title: string | null;
+  // Subagent session identity (derived from parent session file on disk)
+  isSubagent?: boolean;
+  parentPath?: string;
   // fileMention read-back cursor: at agent_end, re-reads manager.getEntries()
   // and turns fileMention entries added since this index into mention frames
   // (the base persists them inside prompt() with no matching event)

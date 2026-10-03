@@ -5,7 +5,7 @@
 // bridges into the regular subagent tab; x kills via kill_subagent.
 import { useEffect, useMemo, useReducer, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, fmtTokens, fmtDurationMs, send } from "../../store";
+import { useAppStore, fmtTokens, fmtDurationMs, send, openSessionByPath } from "../../store";
 import { openRightTab } from "../right/tabs";
 import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, type SegT } from "../right/subShared";
 import type { SubagentState } from "../../types/session";
@@ -110,9 +110,15 @@ export default function AgentHub() {
           st.toggleHubMode();
           return;
         case "Enter": {
-          // Bridge into the regular subagent detail tab and leave the hub
+          // Open the subagent session (or fallback to subagent detail tab) and leave the hub
           const id = st.hubSel;
           if (!id) return;
+          const sub = s?.subagents.get(id);
+          if (sub?.sessionFile) {
+            st.closeHub();
+            openSessionByPath(sub.sessionFile);
+            return;
+          }
           st.closeHub();
           openRightTab("subagent");
           useAppStore.setState({ selectedSubagent: id, rightCollapsed: false });
@@ -242,7 +248,19 @@ function HubRow({ row, flat, selected, onSelect, t }: { row: Row; flat: boolean;
   const age = ageText(Math.max(1, Math.round((Date.now() - lastActivity) / 1000)), t);
   const model = modelShort(sub.usage?.resolvedModel);
   return (
-    <button type="button" role="option" aria-selected={selected} className={"hub-row" + (selected ? " on" : "")} onClick={onSelect}>
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      className={"hub-row" + (selected ? " on" : "")}
+      onClick={onSelect}
+      onDoubleClick={() => {
+        if (sub.sessionFile) {
+          useAppStore.getState().closeHub();
+          openSessionByPath(sub.sessionFile);
+        }
+      }}
+    >
       <span className="hub-row-head">
         {row.prefix ? (
           <span className="hub-branch text-faint">{row.prefix}</span>

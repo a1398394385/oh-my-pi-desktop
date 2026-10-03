@@ -186,6 +186,11 @@ export const chatEn = {
   planRefine: "Refine plan",
   planSaveQuit: "Save and quit",
   planDisabled: "Context nearly full",
+  // ---- subagent session mode ----
+  subagentBadge: "Subagent",
+  subagentReadonlyHint: "Subagent session is in read-only mode, sending messages is disabled",
+  subagentSlashNotSupported: "Slash and terminal commands are not supported in subagent sessions",
+  backToParentSession: "‹ Back to main session",
 };
 
 export default chatEn;

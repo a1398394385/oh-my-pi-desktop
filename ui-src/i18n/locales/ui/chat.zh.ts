@@ -177,6 +177,11 @@ export const chatZh = {
   planRefine: "继续修改计划",
   planSaveQuit: "保存并退出",
   planDisabled: "上下文接近上限",
+  // ---- subagent session mode ----
+  subagentBadge: "子代理",
+  subagentReadonlyHint: "子代理会话为只读浏览模式，不可输入消息",
+  subagentSlashNotSupported: "子代理会话暂不支持 Slash 命令与终端命令",
+  backToParentSession: "‹ 返回主会话",
 };
 
 export default chatZh;

@@ -112,3 +112,18 @@
    --code-fs zoom levels. */
 .hub-detail .act.read.hub-act { margin: 6px 0; padding-right: 0; }
 .hub-act-time { flex: none; white-space: nowrap; padding-right: 2px; font-family: var(--mono); font-size: var(--code-fs, 12px); color: var(--faint); }
+
+/* Subagent top bar badge and return button */
+.subagent-return-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px;
+  padding: 0 12px; font-size: var(--ui-fs-sm); border-radius: 6px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  cursor: pointer; flex: none;
+}
+.subagent-return-btn:hover { background: var(--panel-3); }
+.subagent-head-badge {
+  display: inline-flex; align-items: center; padding: 1px 6px; margin-left: 6px;
+  font-size: var(--ui-fs-sm); color: var(--accent); background: var(--panel-2);
+  border: 1px solid var(--line-soft); border-radius: 4px; flex: none;
+}
+

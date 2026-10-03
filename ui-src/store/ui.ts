@@ -59,6 +59,8 @@ export interface UiSlice {
   hubMode: "flat" | "tree";
   hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
   hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
+  pendingOpenHub?: boolean; // pending hub open request during asynchronous session load
+  pendingHubSel?: string | null;
   uiPrefs: UiPrefs;
   toast(msg: unknown): void;
   openHub(): void;
@@ -151,6 +153,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   hubMode: "flat",
   hubRightWasCollapsed: false,
   hubPrevTab: null,
+  pendingOpenHub: false,
+  pendingHubSel: null,
   uiPrefs: uiPrefsInit,
 
   openHub() {

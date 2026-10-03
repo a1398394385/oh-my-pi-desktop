@@ -359,6 +359,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // Resolved here because sendPrompt's local `t` (draft text) shadows the
   // translation function inside its scope.
   const needSessionMsg = t("composer.needSession");
+  const subagentNoSlashMsg = t("chat.subagentSlashNotSupported");
   const clearDraft = () => {
     lexRef.current?.clear();
     clearDraftState(draftKey);
@@ -373,6 +374,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const files = buildAttachPayload();
     const ws = useAppStore.getState().ws;
     if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;
+
+    // Subagent sessions do not support slash or terminal commands
+    if (s?.isSubagent && (t.startsWith("/") || isBashMode(t))) {
+      toast(subagentNoSlashMsg);
+      return;
+    }
 
     // bash mode (! prefix, !! = result kept out of model context): executed
     // locally, no user bubble; the row is created by the bash_start frame
@@ -478,6 +485,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (t.kind !== "file") {
           const st = useAppStore.getState();
           const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+          if (sess?.isSubagent && t.kind === "command") return fail(); // subagents do not support slash commands
           if (!sess && !st.isCreatingNew) return fail(); // no session and not creating-new: commands unavailable
         }
         const nodeStart = $leafStart(node);
@@ -777,7 +785,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
   // ---- cbar button states ----
   const modeMeta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
-  const menuDisabled = !(s || isCreatingNew); // no session and not creating-new: model/think unavailable
+  const menuDisabled = !(s || isCreatingNew) || Boolean(s?.isSubagent); // subagents cannot switch models
 
   // ---- External menu-open signal (shortcut Alt+M): a one-shot signal like
   // composerSetSignal ----

@@ -324,6 +324,8 @@ export interface OpenSession {
   ctx?: { tokens: number; window: number; percent: number }; // landed from the context frame
   stats?: SessionStatsPayload; // landed from the session_stats frame
   title?: string | null; // session title (from session_title_changed, or carried in at creation)
+  isSubagent?: boolean;
+  parentPath?: string;
 }
 
 /** openSessions container: key = session file path (store.ts openSessions; LRU cap of 8) */

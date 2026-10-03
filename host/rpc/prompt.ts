@@ -377,6 +377,10 @@ async function handlePrompt(
 ) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
+  // Subagent session focus: slash commands and terminal commands are not supported
+  if (entry.isSubagent && (text.trim().startsWith("/") || text.trim().startsWith("!"))) {
+    throw new Error(hostI18n.t("errors.prompt.subagentSlashNotSupported"));
+  }
   // The user sending a message in this session = a seen interaction: clear the cache-keepalive unread state (this turn's wrap-up will set it again)
   entry.keepaliveWanted = false;
   // Attachments: images go through SDK ImageContent; text-kind file contents are inlined into the prompt (same as pasting files in the CLI)

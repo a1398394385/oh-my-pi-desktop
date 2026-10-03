@@ -576,7 +576,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // After a terminal-status frame, re-send the last progress frame (throttling may have swallowed it) so cost/tokens settle at final values
     if (p.status !== "started") {
       const last = subLastProgress.get(p.id);
-      if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last }));
+      if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last, status: p.status }));
     }
   });
   // Aggregate progress frames: cost/duration/requests/tools/tokens/context (high-frequency and cumulative, throttled at 500ms; status changes send immediately)
@@ -755,6 +755,7 @@ interface HistAggregation {
   title: string;
   registeredAt: number;
   readOnly?: boolean;
+  status: string;
   progress: Record<string, unknown>;
   toolEvents: Record<string, unknown>[];
 }
@@ -771,6 +772,9 @@ interface HistEntry {
     role?: string;
     content?: string | { type?: string; text?: string }[];
     usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; totalTokens?: number; cost?: { total?: number } };
+    stopReason?: string;
+    errorMessage?: string;
+    isError?: boolean;
   };
   data?: { toolCallId?: string; toolName?: string; args?: unknown };
 }
@@ -789,6 +793,10 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
     return null;
   }
   let isChild = false;
+  const tombstoned = fs.existsSync(`${file}.tombstone`);
+  let aborted = tombstoned;
+  let lastStopReason: string | undefined;
+  let lastIsError: boolean | undefined;
   const seenToolCalls = new Set<string>();
   const toolEvents: Record<string, unknown>[] = [];
   let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
@@ -821,6 +829,15 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
     if (e.type === "message" && e.message) {
       const ts = Date.parse(e.timestamp ?? "") || 0;
       if (ts > lastTs) lastTs = ts;
+      if (e.message.role === "assistant") {
+        lastStopReason = e.message.stopReason;
+        if (e.message.stopReason === "aborted" || e.message.errorMessage === "Request was aborted") {
+          aborted = true;
+        }
+      }
+      if (e.message.role === "toolResult") {
+        lastIsError = e.message.isError === true;
+      }
       // The child's first user message is the (wrapped) assignment — recover the task text for
       // the roster/detail fallback chain (live runs get it from progress frames instead)
       if (task === undefined && e.message.role === "user") {
@@ -850,12 +867,20 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
     }
   }
   if (!isChild) return null;
+  const status: "completed" | "aborted" | "failed" =
+    aborted
+      ? "aborted"
+      : lastStopReason === "error" || lastIsError
+        ? "failed"
+        : "completed";
+
   return {
     title: path.basename(file, ".jsonl"),
     registeredAt,
     readOnly,
+    status,
     progress: {
-      status: "completed",
+      status,
       task,
       cost,
       durationMs: Math.max(0, lastTs - registeredAt),
@@ -899,7 +924,7 @@ export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: s
         subagentId,
         agent: agg.title,
         description: "",
-        status: "completed",
+        status: agg.status,
         name: agg.title,
         parent: "Main",
         registeredAt: agg.registeredAt,
@@ -945,6 +970,8 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
         thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
         isGit: entry.isGit,
         title: entry.title ?? null,
+        isSubagent: entry.isSubagent,
+        parentPath: entry.parentPath,
       }),
     );
     pushPlanMode(ws, sessionId, entry); // The reuse snapshot also pushes plan state (the frontend relies on it to show the "plan" button after reload)
@@ -972,6 +999,14 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const workCwd = peek?.cwd ?? defaultCwd;
   const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
+  // Subagent session detection: child transcript lives inside <parentSessionFile minus .jsonl>/
+  const parentSessionFile = `${path.dirname(sessionPath)}.jsonl`;
+  const isSubagent = fs.existsSync(parentSessionFile);
+  entry.isSubagent = isSubagent;
+  entry.parentPath = isSubagent ? parentSessionFile : undefined;
+  if (isSubagent && !entry.title) {
+    entry.title = path.basename(sessionPath, ".jsonl");
+  }
   // Historical mentions are already in the transcript: align the fileMention read-back cursor to the tail of all entries, avoiding a re-send on the first read-back
   entry.mentionScanIndex = entries.length;
   // Active-duration seed for a past session: the in-memory timer only covers time since this open; seed the backlog by summing per-turn spans from the disk entries
@@ -987,6 +1022,8 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
       thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
       isGit: entry.isGit,
       title: entry.title ?? null,
+      isSubagent: entry.isSubagent,
+      parentPath: entry.parentPath,
     }),
   );
   reconcilePlanMode(ws, sessionId, entry, entries); // Restore plan mode from persisted mode_change (frames must be pushed after session_created)

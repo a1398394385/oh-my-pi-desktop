@@ -551,6 +551,8 @@ export interface SessionCreatedFrame {
   thinking: string;
   isGit: boolean;
   title?: string | null;
+  isSubagent?: boolean;
+  parentPath?: string;
 }
 
 /** Session list frame (host/host.ts:2645-2656 handleListSessions) */

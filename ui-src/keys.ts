@@ -61,7 +61,33 @@ function handleEsc(): boolean | undefined {
     return true;
   }
 
-  // 1. tree page: one esc switches back to messages
+  // 1. subagent session: Esc returns to the parent session's Agent Hub
+  const s = activeOpen();
+  if (s?.isSubagent && s.parentPath) {
+    const subFilePath = st.activePath;
+    const parentPath = s.parentPath;
+    const parent = st.openSessions.get(parentPath);
+    let matchedId: string | null = null;
+    if (parent && subFilePath) {
+      for (const [id, sub] of parent.subagents) {
+        if (sub.sessionFile === subFilePath) {
+          matchedId = id;
+          break;
+        }
+      }
+    }
+    if (st.openSessions.has(parentPath)) {
+      openSessionByPath(parentPath);
+      useAppStore.getState().openHub();
+      if (matchedId) useAppStore.getState().setHubSel(matchedId);
+    } else {
+      useAppStore.setState({ pendingOpenHub: true, pendingHubSel: matchedId });
+      openSessionByPath(parentPath);
+    }
+    return true;
+  }
+
+  // 2. tree page: one esc switches back to messages
   if (st.mainViewMode === "tree") {
     st.setMainViewMode("chat");
     setTimeout(() => {
@@ -88,7 +114,6 @@ function handleEsc(): boolean | undefined {
     return true;
   }
 
-  const s = activeOpen();
   const bashRunning = !!s?.items?.some((x) => x.role === "bash" && x.running);
   const hasText = !!(st.draftHasContent || (st.pendingFiles && st.pendingFiles.length > 0));
 
@@ -183,6 +208,7 @@ function openCyclePreview(
 function cycleModel(delta: number): void {
   const st = useAppStore.getState();
   const s = activeOpen();
+  if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
   if (s) {
     st.send({ type: "cycle_model", sessionId: s.sessionId, direction: delta > 0 ? "forward" : "backward" });
@@ -236,6 +262,7 @@ function closeThinkMenu(): void {
 function cycleThinking(): void {
   const st = useAppStore.getState();
   const s = activeOpen();
+  if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
   const levels = getSupportedThinkingForModel(s?.model || st.newSessionModel);
   if (levels.length === 0) return;
@@ -252,7 +279,9 @@ function cycleThinking(): void {
 function openModelMenu(): void {
   const st = useAppStore.getState();
   if (st.settingsOpen) return; // menus under the settings overlay are invisible, do not open
-  if (!activeOpen() && !st.isCreatingNew) return;
+  const s = activeOpen();
+  if (s?.isSubagent) return;
+  if (!s && !st.isCreatingNew) return;
   setBump({ cyclePreview: null, menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
 }
 
@@ -261,6 +290,7 @@ function openModelMenu(): void {
 function togglePlanMode(): void {
   const st = useAppStore.getState();
   const s = activeOpen();
+  if (s?.isSubagent) return;
   if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !s.planMode });
   else if (st.isCreatingNew) setBump({ newSessionPlanMode: !st.newSessionPlanMode });
 }
@@ -514,6 +544,12 @@ function onKeyDown(e: KeyboardEvent): void {
         if (now - hubLastLeftAt <= HUB_LEFT_WINDOW_MS) {
           hubLastLeftAt = 0;
           e.preventDefault();
+          const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+          if (s?.isSubagent && s.parentPath) {
+            // Subagent session: double-tap ← returns to parent main session (aligned with TUI unfocus)
+            openSessionByPath(s.parentPath);
+            return;
+          }
           st.openHub();
           return;
         }

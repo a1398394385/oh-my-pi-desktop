@@ -33,6 +33,8 @@ export const hostErrorsEn = {
   prompt: {
     emptyMessage: "Message is empty",
     imageOnlyFallback: "Please see the attached image.",
+    subagentReadonly: "Subagent sessions are read-only. Sending messages is not supported.",
+    subagentSlashNotSupported: "Slash and terminal commands are not supported in subagent sessions",
   },
   bash: {
     busy: "A bash command is already running; press stop or wait for it to finish",

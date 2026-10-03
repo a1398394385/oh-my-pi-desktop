@@ -37,6 +37,8 @@ export const hostErrorsZh = {
   prompt: {
     emptyMessage: "消息为空",
     imageOnlyFallback: "请查看附件图片。",
+    subagentReadonly: "子代理会话为只读，不支持发送消息",
+    subagentSlashNotSupported: "子代理会话暂不支持 Slash 命令与终端命令",
   },
   bash: {
     busy: "已有 bash 命令在执行，先按停止或等它结束",

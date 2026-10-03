@@ -36,7 +36,8 @@ export const sessionHandlers = {
       pinnedSessions: new Set<string>(msg.pinnedSessions ?? []),
     }));
     const st3 = useAppStore.getState();
-    if (st3.activePath && !diskProjects.some((p) => p.sessions.some((r) => r.path === st3.activePath))) {
+    const curSession = st3.activePath ? st3.openSessions.get(st3.activePath) : undefined;
+    if (st3.activePath && !curSession?.isSubagent && !diskProjects.some((p) => p.sessions.some((r) => r.path === st3.activePath))) {
       useAppStore.setState((s) => {
         if (!s.activePath) return {};
         const openSessions = new Map(s.openSessions);
@@ -63,6 +64,9 @@ export const sessionHandlers = {
         todos: [],
         goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
         planMode: s.newSessionPlanMode, // seeded from the create intent; the host's plan_mode frame confirms right after
+        title: msg.title ?? null,
+        isSubagent: Boolean(msg.isSubagent),
+        parentPath: msg.parentPath,
       } as OpenSession),
       isCreatingNew: false,
       newSessionPlanMode: false, // intent consumed by the created session
@@ -73,6 +77,12 @@ export const sessionHandlers = {
     activateSession(msg.path);
     useAppStore.getState().refreshGitDiff(); // the right-panel Git Diff page needs git status data; prefetch early
     const st3 = useAppStore.getState();
+    if (st3.pendingOpenHub) {
+      const sel = st3.pendingHubSel;
+      useAppStore.setState({ pendingOpenHub: false, pendingHubSel: null });
+      useAppStore.getState().openHub();
+      if (sel) useAppStore.getState().setHubSel(sel);
+    }
     if (st3.pendingNewPrompt) {
       const { text, files } = st3.pendingNewPrompt;
       useAppStore.setState({ pendingNewPrompt: null });

@@ -6,7 +6,7 @@
 // counterparts; full capabilities (resizer drag/zoom) are noted in IMPLEMENTATION_PLAN.
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, pathBase } from "./store";
+import { useAppStore, pathBase, openSessionByPath } from "./store";
 import { initShell, toggleSidebar, toggleRightPanel } from "./shell";
 import Icon from "./Icon";
 import Sidebar from "./components/Sidebar";
@@ -39,6 +39,7 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
   const diskProjects = useAppStore((s) => s.diskProjects);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
+  const isSubagent = Boolean(session?.isSubagent);
   const title = isCreatingNew
     ? t("misc.newTask")
     : session
@@ -49,8 +50,20 @@ function ChatHead({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => v
       <button className="icon-btn" title={t("misc.collapseSidebar", { mod: MOD })} id="sidebarToggle" onClick={onToggleSidebar}>
         <Icon name={sidebarCollapsed ? "collapseRight" : "collapseLeft"} />
       </button>
+      {isSubagent && session?.parentPath ? (
+        <button
+          type="button"
+          className="subagent-return-btn mr-2"
+          onClick={() => openSessionByPath(session.parentPath!)}
+        >
+          {t("chat.backToParentSession")}
+        </button>
+      ) : null}
       <Icon name="folderOld" style={{ color: "var(--faint)" }} />
-      <span className="text-ui-md font-semibold truncate min-w-0 flex-1" id="chatTitle">{title}</span>
+      <span className="text-ui-md font-semibold truncate min-w-0 flex-1" id="chatTitle">
+        {title}
+        {isSubagent && <span className="subagent-head-badge">{t("chat.subagentBadge")}</span>}
+      </span>
       <span className="sp"></span>
       <button className="icon-btn" title={t("misc.collapseRightPanel")} id="panelToggle" onClick={onToggleRight}>
         <Icon name={rightCollapsed ? "collapseLeft" : "collapseRight"} />
