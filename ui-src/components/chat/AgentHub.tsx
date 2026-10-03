@@ -101,6 +101,7 @@ export default function AgentHub() {
           sel(-1);
           return;
         case "ArrowLeft": {
+          e.preventDefault();
           // Double-tap ← closes the hub (the open gesture in reverse, TUI parity)
           const now = Date.now();
           if (now - lastLeftAt.current <= DOUBLE_LEFT_MS) st.closeHub();
@@ -108,9 +109,12 @@ export default function AgentHub() {
           return;
         }
         case "t":
+          e.preventDefault();
           st.toggleHubMode();
           return;
         case "Enter": {
+          e.preventDefault();
+          e.stopPropagation();
           // Open the subagent session (or fallback to subagent detail tab) and leave the hub
           const id = st.hubSel;
           if (!id) return;
@@ -126,6 +130,7 @@ export default function AgentHub() {
           return;
         }
         case "x": {
+          e.preventDefault();
           const id = st.hubSel;
           const sub = id ? s?.subagents.get(id) : undefined;
           if (!id || !sub || !sub.streaming) return;
