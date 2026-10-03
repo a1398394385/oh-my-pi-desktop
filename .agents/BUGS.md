@@ -43,6 +43,9 @@
 | BUG-033 | 会话树页进入停在最顶端、且条目只能鼠标操作——落底判据挂在挂载上 + 无键盘导航 | 2026-10-01 |
 | BUG-034 | 供应商报错（配额/鉴权）不进消息区——失败原因只存在于 assistant 的 `errorMessage` 字段，翻译层无此分支 | 2026-10-01 |
 | BUG-035 | 统计行整轮不刷新、压缩后 token 倒退——口径取成「活动窗口筛选」且只在 turn 收尾推送 | 2026-10-01 |
+| BUG-036 | 升级底座 18.5.0 后 host:build 加载期即炸——build-host.ts 深依赖 pi-natives 内部模块，上游导出改名 | 2026-10-03 |
+| BUG-037 | Windows 上 check-style-tokens 误报 shadcn 基件 9 处违规——vendor 目录排除被反斜杠路径击穿 | 2026-10-03 |
+| BUG-038 | Windows 终端默认起 PowerShell 5.1 不跟随用户 pwsh 7——默认 shell 硬编码 powershell.exe，无探测 | 2026-10-03 |
 
 ---
 
@@ -485,4 +488,19 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **已知遗留**：真实模型端到端（应用内肉眼确认整行随会话走动）需在有凭据的 profile 验收——测试 profile 无可用模型，自动化跑不了真实 turn（`scripts/smoke-newsession.ts` 在该 profile 下停在 `ready 帧 defaultModel=null`，与本修复无关）。
 
 
+### BUG-036: 升级底座到 18.5.0 后 host:build 直接 SyntaxError——build-host.ts 深依赖 pi-natives 内部模块，上游导出改名
 
+**现象**：`bun run host:build` 在脚本加载期即炸：`SyntaxError: Export named 'containsVersionSentinel' not found in module '.../pi-natives/native/version-sentinel.js'`，构建链（host:build → ui:build → tauri build）一步走不下去。
+
+**分诊**：①确认回归——`@oh-my-pi/*` 从 18.4.x 升 18.5.0 后首次构建暴露，升版前 host:build 正常。
+
+**根因**：`scripts/build-host.ts` 为校验 `.node` 与包版本一致，深路径 import `node_modules/@oh-my-pi/pi-natives/native/version-sentinel.js`——该文件随 npm 包发布但**不在 package `exports` 内**，属上游内部模块，其导出名上游不承诺稳定。18.5.0 上游把「按版本哨兵导出名」方案重构为「链接后版本戳」方案，`containsVersionSentinel`/`versionSentinelFor` 两个导出消失；Bun 在 ESM 链接期校验命名导出，直接抛 SyntaxError。而 tsconfig 只 include `ui-src`，`scripts/` 与 `host/` 对底座的取用零静态门禁（RULE-004 早已点破本仓无 import 门禁），升级依赖时无人发现。
+
+**修复**：三层防线——
+1. `scripts/build-host.ts`：删深 import，版本校验逻辑（stamp + legacy 哨兵）内联为 `addonBytesMatchVersion()`，头部注释标明镜像来源与失效时重新镜像的方法——此后上游改函数名不再影响本仓；
+2. 新增 `scripts/check-omp-imports.mjs` 挂进 `bun run check`：对 `host/host.ts` 与 `scripts/build-host.ts` 两个入口 `bun build --target=bun` 干跑（打包不执行、链接期校验导出），把底座导出/子路径漂移从「构建/运行期」提前到「升级后跑 check 时」暴露；host 入口同时覆盖 `host/` 里全部子路径 exports 依赖（如 `@oh-my-pi/pi-tui/chat/transcript-entry`）。须带 `--external omp-legacy-pi-modules`（与 build-host 一致，pi-coding-agent 内部可选动态 import）；注意干跑的 tree-shake：无引用的 import 会被消除不报错，守卫只对「真实调用点」的漂移可靠；
+3. `docs/PITFALLS.md` 补升级底座 SOP；立 RULE-010。
+
+**验证**：守卫故障注入（把旧深 import + 真实调用形态临时写回 build-host.ts）→ `check-omp-imports` 精准报 `No matching export ... for import "containsVersionSentinel"` 退出码 1，还原后恢复通过；`bun run host:build` 实跑通过（内联校验在真实 baseline `.node` 上命中 stamp 分支，`PI_NATIVES_VERSION_STAMP:18.5.0`）。
+
+**教训**：升级 `@oh-my-pi/*` 是跨包 API 契约变更，本仓对底座的取用有三类耦合面——公共入口、子路径 exports（`pi-tui/chat/...` 这类）、包内未导出文件的深路径（`pi-natives/native/...`）——后两类上游不承诺稳定。防线必须机器化（check 干跑 + RULE-010 升级 SOP），不靠记性。

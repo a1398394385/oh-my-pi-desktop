@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 9 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 10 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -17,6 +17,7 @@
 | RULE-007 | 键盘上下导航切换选择的滚动列表必须绑定激活项 scrollIntoView 视口跟随 | 全部交互式列表与下拉浮层 |
 | RULE-008 | 列出外部来源资产的宿主扫描必须复用底座来源判定,禁止自建目录枚举绕过来源开关 | host/ 资产发现层 |
 | RULE-009 | 整文件回写源码必须显式 UTF-8,回写后必须核对非 ASCII 内容未变 | 全部脚本/生成器/批量改写 |
+| RULE-010 | 升级 @oh-my-pi/* 底座版本后必须实跑 check 与 host:build,禁止只改 pin + install 就交付 | 依赖升级流程 |
 
 ---
 
@@ -115,3 +116,13 @@
 **How to apply**:写批量改写脚本前先确认读/写两侧都显式 UTF-8;写回后立刻跑门禁 `bun run check:encoding`(或 `node scripts/check-encoding.mjs`;给未跟踪文件用 `node scripts/check-encoding.mjs <file>`)。门禁三项:非法 UTF-8 字节、乱码特征字符(GBK 误读 UTF-8 的标点/外来字母/PUA 残片)、双重编码指纹(阈值经 67455 行干净语料校准:0 误报、对坏版本召回 493/507 行)。提交侧由 `.githooks/pre-commit` 拦暂存区(`git config core.hooksPath .githooks`;`--no-verify` 绕过需在 commit 描述写明理由)。确需在文档里引用乱码做证据,把该文件加进 `scripts/check-encoding.mjs` 的 `EVIDENCE_DOCS`(仅豁免乱码指纹,编码合法性仍查)。给 agent 的整文件改写任务(含 `scripts/`、`host/` 里的生成器)同样适用。review checklist:diff 里出现大段非 ASCII 中文改动 ↔ 是否预期;出现无 `encoding=` 的 `open(`、无 `-Encoding utf8` 的 `Set-Content`、`toString("latin1"/"binary")` ↔ 该处是否真的在处理非 UTF-8 数据源。真出事时的恢复顺序:先用「引入该次改动的提交 diff 的 `-`/`+` 行对」逐 hunk 精确回填,不要反解乱码(本例反推会漏 2/3 的行)。
 
 **关联**:BUG-026
+
+### RULE-010: 升级 @oh-my-pi/* 底座版本后必须实跑 check 与 host:build,禁止只改版本号就交付
+
+**规则**:改动 package.json 里任何 `@oh-my-pi/*` 版本 pin(或重装 node_modules)后,必须依次实跑 `bun run check` 与 `bun run host:build`,两者全绿才算升级完成。check 内含 `check-omp-imports`(`scripts/check-omp-imports.mjs`):对 `host/host.ts` 与 `scripts/build-host.ts` 干跑 `bun build --target=bun`(打包不执行、链接期校验命名导出),底座导出改名或子路径 exports 删除会在此显式报错。
+
+**Why**:BUG-036——底座 18.5.0 把版本哨兵方案重构为版本戳,`build-host.ts` 深路径 import 的导出名消失,`host:build` 加载期即炸;本仓 tsconfig 只覆盖 ui-src,`host/` 与 `scripts/` 对底座的子路径(`pi-tui/chat/transcript-entry` 等)与深路径(`pi-natives/native/...`)依赖零静态门禁,不实跑无从发现。上游对这两类取用路径不承诺稳定。
+
+**How to apply**:升级流程固定为:改 pin → `bun install` → `bun run check` → `bun run host:build` → 需要发版再走 ui:build + tauri build。check 报 `No matching export` / `Could not resolve` 时按报错同步调用点(深路径参照 BUG-036 的内联处理)。注意守卫的 tree-shake 边界:干跑只对「真实调用点」的漂移可靠,升级后仍须实跑 host:build 兜底。review checklist:diff 含 `@oh-my-pi/*` 版本变化 ↔ 同一改动内出现过 check 与 host:build 的执行记录。
+
+**关联**:BUG-036

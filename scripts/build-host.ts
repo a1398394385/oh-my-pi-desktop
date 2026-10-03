@@ -7,10 +7,32 @@
 // so a failed compile leaves no non-stub embedded-addon.js behind that would misclassify dev mode as compiled).
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-	containsVersionSentinel,
-	versionSentinelFor,
-} from "../node_modules/@oh-my-pi/pi-natives/native/version-sentinel.js";
+// Version-identity check, mirrored from @oh-my-pi/pi-natives native/version-sentinel.js
+// (as of 18.5.0). Deliberately inlined instead of deep-imported: that file ships in the
+// npm package but is not exposed via package `exports`, and upstream renames its helpers
+// between releases (per-release sentinel -> post-link stamp in 18.5.0), which broke the
+// deep import at Bun's link time when the base version was bumped (BUG-036). If the
+// check below fails right after a base upgrade, re-mirror from the installed
+// version-sentinel.js of the new version.
+const VERSION_STAMP_MAGIC = "PI_NATIVES_VERSION_STAMP:";
+
+// True when addon bytes identify themselves as exactly `version`: the post-link stamp
+// slot for current addons, or the pre-stamp legacy sentinel export name.
+function addonBytesMatchVersion(bytes: Buffer, version: string): boolean {
+	if (version.length === 0) return false;
+	// Current addons: fixed-size stamp slot "PI_NATIVES_VERSION_STAMP:<version>\0" written after linking.
+	if (bytes.indexOf(`${VERSION_STAMP_MAGIC}${version}\0`, 0, "utf8") !== -1) return true;
+	// Pre-stamp addons: exact `__piNativesV18_5_0` export (a longer name must not match).
+	const needle = `__piNativesV${version.replace(/[^A-Za-z0-9]/g, "_")}`;
+	for (let at = bytes.indexOf(needle); at !== -1; at = bytes.indexOf(needle, at + 1)) {
+		const next = bytes[at + needle.length];
+		const continues =
+			next !== undefined &&
+			((next >= 0x30 && next <= 0x39) || (next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a) || next === 0x5f);
+		if (!continues) return true;
+	}
+	return false;
+}
 
 const repoRoot = path.join(import.meta.dir, "..");
 const nativesPkgDir = path.join(repoRoot, "node_modules", "@oh-my-pi", "pi-natives");
@@ -39,7 +61,6 @@ async function resetEmbeddedAddon(): Promise<void> {
 
 async function embedNativeAddon(): Promise<void> {
 	await resetEmbeddedAddon();
-	const sentinel = versionSentinelFor(version);
 	const entries: Record<string, Uint8Array> = {};
 	const files: string[] = [];
 	for (const { variant, filename } of candidates) {
@@ -48,9 +69,9 @@ async function embedNativeAddon(): Promise<void> {
 		if (!(await file.exists())) continue;
 		// Must be a Node Buffer: Buffer.indexOf supports substring search, Uint8Array.indexOf only matches a single byte
 		const bytes = await fs.readFile(sourcePath);
-		if (!containsVersionSentinel(bytes, sentinel)) {
+		if (!addonBytesMatchVersion(bytes, version)) {
 			throw new Error(
-				`${sourcePath} 不含 @oh-my-pi/pi-natives@${version} 版本哨兵 \`${sentinel}\`，依赖版本不一致，请重装依赖`,
+				`${sourcePath} 不含 @oh-my-pi/pi-natives@${version} 版本标识（stamp / legacy sentinel），依赖版本不一致，请重装依赖；若刚升级底座版本，按 scripts/build-host.ts 头部注释重新镜像版本校验逻辑`,
 			);
 		}
 		entries[filename] = bytes;

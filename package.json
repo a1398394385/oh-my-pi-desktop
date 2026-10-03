@@ -20,7 +20,7 @@
     "check:capabilities": "node scripts/check-capabilities.mjs",
     "check:boundaries": "node scripts/check-host-boundaries.mjs",
     "check:encoding": "node scripts/check-encoding.mjs",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && bun run ui:typecheck"
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun run ui:typecheck"
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",
