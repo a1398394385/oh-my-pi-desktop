@@ -10,6 +10,7 @@
 // with interactive-mode's handleGoalModeCommand / #scheduleGoalContinuation /
 // #handleGoalSessionEvent.
 import { hostI18n } from "../ui-src/i18n/host.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 /** Goal record (isomorphic to modeData.goal of the persisted mode_change; field validation in goalFromModeData). */
 export interface GoalLike {
@@ -181,7 +182,7 @@ export class GoalController {
       this.#output(hostI18n.t("flows.goal.planModeBlocked"));
       return null;
     }
-    if (!s.settings.get("goal.enabled")) {
+    if (!settingsGet(s.settings, "goal.enabled")) {
       this.#output(hostI18n.t("flows.goal.notEnabled"));
       return null;
     }
@@ -295,7 +296,7 @@ export class GoalController {
     this.#costAnchor = s.getSessionStats().cost;
     const ctx = s.sessionManager.buildSessionContext();
     if (ctx.mode !== "goal" && ctx.mode !== "goal_paused") return;
-    if (!s.settings.get("goal.enabled")) {
+    if (!settingsGet(s.settings, "goal.enabled")) {
       s.goalRuntime.clearAccounting();
       s.sessionManager.appendModeChange("none");
       return;
@@ -479,7 +480,7 @@ export class GoalController {
   schedule(): void {
     this.cancel();
     const s = this.#session;
-    const modes = s.settings.get("goal.continuationModes");
+    const modes = settingsGet(s.settings, "goal.continuationModes");
     if (!Array.isArray(modes) || !modes.includes("interactive")) return;
     if (s.getPlanModeState()?.enabled) return;
     if (this.#suppressNext) return;

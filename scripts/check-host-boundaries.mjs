@@ -41,6 +41,14 @@ const ALLOWED_EDGES = new Set([
   "main.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
   "translate.ts→state.ts",
   "state.ts→bootstrap.ts",
+  // 18.5.0 settings registry adapter: dotted-path settings reads/writes route
+  // through settings-compat.ts (registry handles obtained via bootstrap)
+  "settings-compat.ts→bootstrap.ts",
+  "main.ts→settings-compat.ts", "models.ts→settings-compat.ts", "assets.ts→settings-compat.ts",
+  "frames.ts→settings-compat.ts", "extensions.ts→settings-compat.ts", "goal.ts→settings-compat.ts",
+  "plan.ts→settings-compat.ts", "plan-approve.ts→settings-compat.ts", "profile.ts→settings-compat.ts",
+  "rpc/assets.ts→settings-compat.ts", "rpc/models.ts→settings-compat.ts", "rpc/prompt.ts→settings-compat.ts",
+  "rpc/settings.ts→settings-compat.ts", "rpc/settings.ts→bootstrap.ts",
   // Desktop implementation of the /goal command + goal-resume scheduling: main.ts mounts the command dispatch and event hooks;
   // state.ts's PoolEntry holds the controller instance (goal.ts depends only on its own narrow interface, one-way downward)
   "main.ts→goal.ts", "state.ts→goal.ts",

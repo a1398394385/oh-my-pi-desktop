@@ -112,3 +112,22 @@
    --code-fs zoom levels. */
 .hub-detail .act.read.hub-act { margin: 6px 0; padding-right: 0; }
 .hub-act-time { flex: none; white-space: nowrap; padding-right: 2px; font-family: var(--mono); font-size: var(--code-fs, 12px); color: var(--faint); }
+
+/* ---- 18.5 hub extension: card controls, background jobs, cache warming ---- */
+/* Row action buttons (subagent stop/steer, background-job cancel): one shared mini icon button */
+.hub-row-acts { margin-left: auto; flex: none; display: inline-flex; gap: 2px; }
+.hub-ibtn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--dim); cursor: pointer; }
+.hub-ibtn:hover { background: var(--panel-2); color: var(--text); }
+/* Steer inline input: expands in place below the row content (mem-expand's downward popIn entrance; no separator border inside cards) */
+.hub-steer { display: flex; align-items: center; gap: 4px; animation: popIn .3s ease-out; --pop-from: -4px; }
+.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); }
+.hub-steer-input:focus { outline: none; border-color: var(--accent); }
+/* Background jobs section rows: command + cwd left, pid count / exitCode + cancel right */
+.hub-bg-list { margin-top: 3px; display: flex; flex-direction: column; gap: 5px; }
+.hub-bg-row { display: flex; align-items: center; gap: 6px; font-size: var(--ui-fs-sm); }
+.hub-bg-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hub-bg-cmd { font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-bg-cwd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-bg-st { flex: none; white-space: nowrap; }
+/* Cache-warming transient above the detail status line */
+.hub-warming { color: var(--accent); }

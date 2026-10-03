@@ -6,6 +6,7 @@
 // old version did not notify) only set, no bump.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
+import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import { activeOpen, getSupportedThinkingForModel } from "./session";
@@ -60,6 +61,7 @@ export interface UiSlice {
   hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
   hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
   uiPrefs: UiPrefs;
+  hubWarming: string | null; // sessionId with a cache-warming run in flight (cache_warming frame; landed by landCacheWarming)
   toast(msg: unknown): void;
   openHub(): void;
   closeHub(): void;
@@ -152,6 +154,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   hubRightWasCollapsed: false,
   hubPrevTab: null,
   uiPrefs: uiPrefsInit,
+  hubWarming: null,
 
   openHub() {
     const st = get();
@@ -316,3 +319,22 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     } catch {}
   },
 });
+
+// ---------- Cache-warming landing (18.5 cache_warming frames; called by the wsHandlers table) ----------
+// Lost-end guard: a warming run whose end frame never arrives (host crash mid-warm) clears
+// itself after this, so the hub detail's transient indicator cannot stick forever
+const WARMING_MAX_MS = 30_000;
+let warmingTimer: TimerHandle | undefined;
+
+/** Land a cache_warming phase transition into hubWarming (the hub detail status line consumes it) */
+export function landCacheWarming(sessionId: string, phase: "start" | "end"): void {
+  if (phase === "start") {
+    useAppStore.setState({ hubWarming: sessionId });
+    clearTimeout(warmingTimer);
+    warmingTimer = setTimeout(() => useAppStore.setState({ hubWarming: null }), WARMING_MAX_MS);
+  } else {
+    clearTimeout(warmingTimer);
+    // A stale end (another session warmed later) must not clear the newer run
+    useAppStore.setState((st) => (st.hubWarming === sessionId ? { hubWarming: null } : {}));
+  }
+}

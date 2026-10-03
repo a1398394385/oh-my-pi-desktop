@@ -662,3 +662,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 #stream::after { content: ""; position: sticky; bottom: 0; display: block; height: 36px; flex: none; pointer-events: none;
   background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--bg) 40%, transparent) 35%, color-mix(in srgb, var(--bg) 85%, transparent) 70%, var(--bg) 100%); }
 
+
+/* ghost inline completion (GhostNode) + model capability badges (18.5) */
+.ghost-t { color: var(--faint); user-select: none; pointer-events: none; }
+.cap-b { flex: none; padding: 0 5px; border: 1px solid var(--line-soft); border-radius: 8px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 16px; }
+.cap-b + .cap-b { margin-left: 4px; }

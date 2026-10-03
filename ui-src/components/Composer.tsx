@@ -38,6 +38,8 @@ import type { TriggerFn, MenuRenderFn } from "@lexical/react/LexicalTypeaheadMen
 import { $getSelection, $isRangeSelection, $isTextNode } from "lexical";
 import type { TextNode } from "lexical";
 import { $createChipNode, ChipNode } from "./composer/lexical/ChipNode";
+import { GhostNode } from "./composer/lexical/GhostNode";
+import GhostTextPlugin from "./composer/lexical/GhostTextPlugin";
 import { $flattenWithCaret, $leafStart, $selectAfter } from "./composer/lexical/flat";
 import {
   getDraftState,
@@ -832,7 +834,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       onError(error: Error) {
         throw error; // fail fast: never silently swallow editor-internal exceptions
       },
-      nodes: [ChipNode],
+      // GhostNode registers for drafts that still carry one (stripped on mount)
+      nodes: [ChipNode, GhostNode],
       editorState: getDraftState(draftKey) ?? undefined,
     }),
     [draftKey],
@@ -872,6 +875,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             </div>
             <HistoryPlugin />
             <ComposerPlugin draftKey={draftKey} handleRef={lexRef} onTextChange={onTextChange} sendPrompt={sendPrompt} typeaheadOpenRef={taOpenRef} />
+            {/* Ghost inline completion (complete_text RPC); mounted after ComposerPlugin to share the same update stream */}
+            <GhostTextPlugin typeaheadOpenRef={taOpenRef} />
             {/* key remount = the close-panel channel (closeTypeahead); triggerFn/onQueryChange have zero deps and stay stable, avoiding repeated listener re-registration */}
             <LexicalTypeaheadMenuPlugin
               key={closeTick}

@@ -5,10 +5,11 @@ import path from "node:path";
 import fs from "node:fs";
 import { H, enabledDefaults } from "./state.ts";
 import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue } from "./bootstrap.ts";
-import { SETTINGS_SCHEMA, getDefault } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { orderedSettings } from "./bootstrap.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 export function rebuildScopedModels() {
-  const enabledEntries: string[] = H.settings.get("enabledModels") ?? [];
+  const enabledEntries: string[] = settingsGet(H.settings, "enabledModels") ?? [];
   enabledDefaults.clear();
   for (const e of enabledEntries) enabledDefaults.set(e.split(":")[0], e.split(":")[1] ?? null);
   H.scopedModels =
@@ -20,30 +21,43 @@ export function modelsPayload() {
     id: `${m.provider}/${m.id}`,
     name: m.name ?? m.id,
     efforts: getSupportedEfforts(m),
+    // 18.5 capability axes read straight off the registry model: the
+    // keepalive-relevant cache tier in seconds (long tier wins, short as
+    // fallback — absent means unvalidated, never warmed), native or delegated
+    // web-search grounding, native or delegated image generation
+    ...(modelCapabilityAxes(m) ?? {}),
   }));
+}
+
+// Shared 18.5 capability-axis projection (undefined fields omitted so the
+// frame shape stays backward-compatible for models without the axes)
+function modelCapabilityAxes(m: {
+  promptCache?: { short?: number; long?: number };
+  webSearch?: unknown;
+  webSearchModel?: unknown;
+  hostedImage?: unknown;
+  imageModel?: unknown;
+}): { promptCache?: number; webSearch?: boolean; imageGen?: boolean } | undefined {
+  const promptCache = m.promptCache ? (m.promptCache.long ?? m.promptCache.short) : undefined;
+  const webSearch = !!(m.webSearch || m.webSearchModel);
+  const imageGen = !!(m.hostedImage || m.imageModel);
+  if (promptCache === undefined && !webSearch && !imageGen) return undefined;
+  return {
+    ...(promptCache !== undefined ? { promptCache } : {}),
+    ...(webSearch ? { webSearch } : {}),
+    ...(imageGen ? { imageGen } : {}),
+  };
 }
 
 // Desktop has no TUI image protocol: the terminal.showImages condition is always false (when image protocol support arrives, change only this constant)
 const HAS_IMAGE_PROTOCOL = false;
 
-// Take the effective value per key, falling back to the schema default when unconfigured (503 pure in-memory reads, no I/O)
+// Effective value per registered key: the layered read already falls back to
+// the schema default when unconfigured
 function computeValues(): Record<string, unknown> {
   const values: Record<string, unknown> = {};
-  for (const k of Object.keys(SETTINGS_SCHEMA)) {
-    let v: unknown;
-    try {
-      v = H.settings.get(k);
-    } catch {
-      v = undefined;
-    }
-    if (v === undefined) {
-      try {
-        v = getDefault(k);
-      } catch {
-        v = undefined;
-      }
-    }
-    values[k] = v;
+  for (const s of orderedSettings()) {
+    values[s.id] = s.layered(H.settings);
   }
   return values;
 }
@@ -52,7 +66,7 @@ function computeValues(): Record<string, unknown> {
 function computeConditions(): Record<string, boolean> {
   const g = (k: string): unknown => {
     try {
-      return H.settings.get(k);
+      return settingsGet(H.settings, k);
     } catch {
       return undefined;
     }
@@ -82,9 +96,9 @@ function computeConditions(): Record<string, boolean> {
 
 export function settingsSnapshot() {
   return {
-    hideThinkingBlock: !!H.settings.get("hideThinkingBlock"),
-    computerEnabled: !!H.settings.get("computer.enabled"),
-    approvalMode: H.settings.get("tools.approvalMode"),
+    hideThinkingBlock: !!settingsGet(H.settings, "hideThinkingBlock"),
+    computerEnabled: !!settingsGet(H.settings, "computer.enabled"),
+    approvalMode: settingsGet(H.settings, "tools.approvalMode"),
     desktopEnv: H.desktopEnv,
     activeProfile: H.currentProfile,
     availableProfiles: H.cachedProfiles,
@@ -151,6 +165,7 @@ export function modelCatalog() {
       efforts: getSupportedEfforts(m),
       // Auth source: config = explicit apiKey in models.yml; cred = login/stored credential
       authSource: configSet.has(m.provider) ? "config" : "cred",
+      ...(modelCapabilityAxes(m) ?? {}),
     };
   });
 }
@@ -163,7 +178,7 @@ export function modelsDefaults() {
   const { model } = resolveModelRoleValue(formatModelRoleAlias("default"), H.availableModels, { settings: H.settings });
   return {
     defaultModel: model ? `${model.provider}/${model.id}` : null,
-    defaultThinking: (H.settings.get("defaultThinkingLevel") as string | undefined) ?? null,
+    defaultThinking: (settingsGet(H.settings, "defaultThinkingLevel") as string | undefined) ?? null,
   };
 }
 

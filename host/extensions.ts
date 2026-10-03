@@ -26,6 +26,7 @@ import {
   commandPreview,
   setMcpServerEnabled,
 } from "./bootstrap.ts";
+import { settingsGet, settingsSet } from "./settings-compat.ts";
 
 // Source metadata of WS-shipped entries (a serializable subset of the base SourceMeta)
 export interface ExtSource {
@@ -147,7 +148,7 @@ function buildDetail(kind: string, ext: {
 export async function buildExtensionsPayload(scope: unknown): Promise<ExtensionsPayload> {
   const scopeId = typeof scope === "string" && scope.startsWith("project:") ? scope : "profile";
   const cwd = scopeId.startsWith("project:") ? scopeId.slice("project:".length) : undefined;
-  const disabledIds = (H.settings.get("disabledExtensions") ?? []) as string[];
+  const disabledIds = (settingsGet(H.settings, "disabledExtensions") ?? []) as string[];
   const all = await loadAllExtensions(cwd, disabledIds);
   const extensions: ExtensionItem[] = [];
   for (const ext of all) {
@@ -206,15 +207,15 @@ export async function toggleExtensionItem(id: unknown, enabled: unknown, sourceP
     });
     return;
   }
-  const disabled = new Set<string>((H.settings.get("disabledExtensions") ?? []) as string[]);
+  const disabled = new Set<string>((settingsGet(H.settings, "disabledExtensions") ?? []) as string[]);
   if (on) disabled.delete(extId);
   else disabled.add(extId);
-  H.settings.set("disabledExtensions", Array.from(disabled));
+  settingsSet(H.settings, "disabledExtensions", Array.from(disabled));
   if (kind === "skill") {
     const name = extId.slice(colon + 1);
-    const ignored = new Set<string>((H.settings.get("skills.ignoredSkills") ?? []) as string[]);
+    const ignored = new Set<string>((settingsGet(H.settings, "skills.ignoredSkills") ?? []) as string[]);
     if (on) ignored.delete(name);
-    H.settings.set("skills.ignoredSkills", Array.from(ignored));
+    settingsSet(H.settings, "skills.ignoredSkills", Array.from(ignored));
   }
   await H.settings.flush();
 }

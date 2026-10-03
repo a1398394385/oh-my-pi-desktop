@@ -12,6 +12,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId } from "../../store";
+import type { ModelCaps } from "../../store/session";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
 import type { ModelRoleEntry } from "../../types/frames";
@@ -33,6 +34,8 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const modelNames = useAppStore((st) => st.modelNames);
   const modelRoles = useAppStore((st) => st.modelRoles);
   const cyclePreview = useAppStore((st) => st.cyclePreview);
+  // Capability axes per model id (18.5 models frame; swaps reference with the catalog)
+  const modelCaps = useAppStore((st) => st.modelCaps);
   const curModel = s?.model || newSessionModel;
   const menuRef = useRef<HTMLDivElement>(null);
   const flyRef = useRef<HTMLDivElement>(null);
@@ -138,6 +141,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             >
               <span className="ck">{active ? "✓" : ""}</span>
               {en.role} : {modelName(en.model)}
+              <CapBadges caps={modelCaps.get(en.model)} />
             </div>
           );
         })}
@@ -235,10 +239,31 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
               (groups.get(flyProv) ?? []).map(([id, name]) => (
                 <div className="mi" data-model={id} key={id} onClick={() => pickModel(id)}>
                   <span className="ck">{curModel === id ? "✓" : ""}</span>{name}
+                  <CapBadges caps={modelCaps.get(id)} />
                 </div>
               ))}
         </div>
       )}
+    </>
+  );
+}
+
+// Capability badges at model-row tails (18.5 models frame axes): small text
+// chips for prompt-cache keepalive / built-in web search / image generation;
+// rendered only for axes the host actually reports
+function CapBadges({ caps }: { caps: ModelCaps | undefined }) {
+  const { t } = useTranslation();
+  if (!caps) return null;
+  const badges: string[] = [];
+  if ((caps.promptCache ?? 0) > 0) badges.push(t("compExt.capCache"));
+  if (caps.webSearch) badges.push(t("compExt.capWeb"));
+  if (caps.imageGen) badges.push(t("compExt.capImg"));
+  if (badges.length === 0) return null;
+  return (
+    <>
+      {badges.map((label) => (
+        <span className="cap-b" key={label}>{label}</span>
+      ))}
     </>
   );
 }

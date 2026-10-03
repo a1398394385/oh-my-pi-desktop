@@ -10,6 +10,7 @@ import { listAllProviders } from "../limits/index.ts";
 import { collectUsageStats } from "../stats.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { settingsGet, settingsSet } from "../settings-compat.ts";
 
 export const modelsHandlers: Record<string, RpcHandler> = {
   async set_model(ws, msg) {
@@ -67,7 +68,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   async cycle_model(ws, msg) {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    const cycleOrder = (H.settings.get("cycleOrder") as string[]).slice();
+    const cycleOrder = (settingsGet(H.settings, "cycleOrder") as string[]).slice();
     const result = await entry.session.cycleRoleModels(cycleOrder, msg.direction === "backward" ? "backward" : "forward");
     if (!result) {
       // Mirrors the CLI's "Only one role model available" status (undefined =
@@ -93,7 +94,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     const id = String(msg.id ?? "");
     const on = !!msg.enabled;
     if (!H.availableModels.some((m) => `${m.provider}/${m.id}` === id)) throw new Error(hostI18n.t("errors.model.unknown", { model: id }));
-    let entries: string[] = (H.settings.get("enabledModels") ?? []).slice();
+    let entries: string[] = (settingsGet(H.settings, "enabledModels") ?? []).slice();
     if (entries.length === 0) {
       entries = H.availableModels.map((m) => `${m.provider}/${m.id}`);
     }
@@ -103,7 +104,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
       without.push(prev ?? id);
     }
       if (without.length === 0) throw new Error(hostI18n.t("errors.model.keepAtLeastOne"));
-    H.settings.set("enabledModels", without);
+    settingsSet(H.settings, "enabledModels", without);
     await H.settings.flush();
     rebuildScopedModels();
     if (H.scopedModels.length === 0) throw new Error(hostI18n.t("errors.model.noneAfterFilter"));

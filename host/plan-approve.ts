@@ -26,7 +26,6 @@ import { hostI18n } from "../ui-src/i18n/host.ts";
 import {
   autosaveApprovedPlan,
   copyLocalArtifacts,
-  normalizeLocalScheme,
   PROPOSE_DEVICE_NAME,
   readSdkPrompt,
   resolveApprovedPlan,
@@ -35,6 +34,7 @@ import {
   writeDeviceDispatch,
 } from "./bootstrap.ts";
 import { pushCommandOutput, requestApproval, type PoolEntry } from "./state.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 // Stable option ids on the plan approval frame. The UI renders localized
 // labels from these ids and returns the chosen id, so display text never
@@ -74,7 +74,7 @@ function planState(entry: PoolEntry): PlanApprovalState {
 
 /** The role-cycle slider, always parked on `default` so execution defaults to the default model. */
 function buildExecutionSlider(entry: PoolEntry): ExecutionSlider | undefined {
-  const cycle = entry.session.getRoleModelCycle(entry.session.settings.get("cycleOrder") as string[]);
+  const cycle = entry.session.getRoleModelCycle(settingsGet(entry.session.settings, "cycleOrder") as string[]);
   if (!cycle || cycle.models.length <= 1) return undefined; // a lone tier is no choice
   const defaultIndex = cycle.models.findIndex((m) => m.role === "default");
   const startIndex = defaultIndex >= 0 ? defaultIndex : cycle.currentIndex;
@@ -86,8 +86,10 @@ function buildExecutionSlider(entry: PoolEntry): ExecutionSlider | undefined {
 }
 
 /** Disk path of the local:// plan file. */
+// normalizeLocalScheme was removed from tools/path-utils in 18.5.0; the
+// 3-line canonicalization lives here now
 function planFilePathOnDisk(entry: PoolEntry, url: string): string {
-  const normalized = url.startsWith("local:") ? normalizeLocalScheme(url) : url;
+  const normalized = url.startsWith("local:") ? url.replace(/^(local:)\/(?!\/)/, "$1//") : url;
   return resolveLocalUrlToPath(normalized, {
     getArtifactsDir: () => entry.session.sessionManager.getArtifactsDir(),
     getSessionId: () => entry.session.sessionManager.getSessionId(),
@@ -383,7 +385,7 @@ async function dispatchApprovedTurn(
 ): Promise<boolean> {
   const session = entry.session;
   if (args.roleIndex !== undefined) {
-    const cycle = session.getRoleModelCycle(session.settings.get("cycleOrder") as string[]);
+    const cycle = session.getRoleModelCycle(settingsGet(session.settings, "cycleOrder") as string[]);
     const chosen = cycle?.models[args.roleIndex];
     if (chosen) await session.applyRoleModel(chosen);
   }

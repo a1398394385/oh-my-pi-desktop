@@ -21,11 +21,17 @@ export const hostErrorsZh = {
     missingProviderId: "缺少供应商 id",
     missingMcpName: "缺少 MCP 服务器名称",
     missingSkillName: "缺少技能名称",
+    missingSubagentId: "缺少 subagentId",
+  },
+  subagent: {
+    invalidAction: "不支持的控制动作: {{action}}",
+    registryUnavailable: "子代理注册表不可用",
   },
   session: {
     notFound: "会话不存在: {{sessionId}}",
     invalidTitle: "标题无效（清洗后为空或会话已释放）",
     emptyNoCompact: "会话为空，没有可压缩的历史",
+    emptyNoFork: "会话为空，没有可分叉的内容",
     cannotLocateSource: "无法定位源会话文件",
     entryNotFound: "未找到条目: {{entryId}}",
     forkCreateFailed: "分叉创建新会话文件失败",

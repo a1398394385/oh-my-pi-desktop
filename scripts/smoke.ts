@@ -80,13 +80,17 @@ ws.onmessage = async (ev) => {
     }
     case "event":
       if (msg.kind === "text_delta") state.deltaText += msg.text;
-      else if (msg.kind === "turn_end") {
+      else if (msg.kind === "turn_end" && msg.runEnd !== false) {
+        // A read-tool prompt ends its tool round first (runEnd:false, no text
+        // yet); only the final round carries the reply.
         console.log(`回复: ${state.deltaText.trim().slice(0, 80)}`);
         assert(state.deltaText.includes("SMOKE-PROBE-LINE-1"), "回复应引用探针文件首行");
         assert(msg.usage && msg.usage.input > 0 && msg.usage.output > 0, `turn_end 应带 usage: ${JSON.stringify(msg.usage)}`);
         console.log(`usage: input=${msg.usage.input} output=${msg.usage.output} cacheRead=${msg.usage.cacheRead} cacheWrite=${msg.usage.cacheWrite}`);
-        // Drop the old connection's view; load the same session back from disk
-        ws.send(JSON.stringify({ type: "load_session", path: createdFiles[0] }));
+        // Drop the old connection's view; reload the same session from disk
+        // (load_session would reuse the in-memory pool snapshot, which stays
+        // flat — loop grouping only exists in the disk rebuild path)
+        ws.send(JSON.stringify({ type: "reload_session", path: createdFiles[0] }));
       }
       break;
     case "messages": {

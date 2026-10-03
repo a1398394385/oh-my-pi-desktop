@@ -9,6 +9,8 @@ import sidebar from "./ui/sidebar.zh";
 import right from "./ui/right.zh";
 import misc from "./ui/misc.zh";
 import notify from "./ui/notify.zh";
+import hubExt from "./ui/hub-ext-zh-CN";
+import compExt from "./ui/comp-ext-zh-CN";
 
 const zhCN = {
   common,
@@ -19,6 +21,8 @@ const zhCN = {
   right,
   misc,
   notify,
+  hubExt,
+  compExt,
 };
 
 export default zhCN;

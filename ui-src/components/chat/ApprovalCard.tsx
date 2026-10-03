@@ -15,6 +15,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppStore } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
+import type { AskQuestion } from "../../types/session";
 
 // Stable option ids sent by host-built approval frames (editor/plan variants).
 // Labels come from i18n so the wire stays language-independent; SDK-generated
@@ -62,6 +63,9 @@ interface ApprovalItem {
   requestId: string;
   answer?: string | null;
   prefill?: string;
+  // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
+  // form rendered as radio/checkbox rows with one submit for all answers
+  questions?: AskQuestion[];
 }
 
 export default function ApprovalCard({ item }: { item: ApprovalItem }) {
@@ -90,6 +94,54 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   const inpIdx = item.editable ? (item.editableIndex ?? -1) : -1;
   // Plan rows the operator may not pick (context nearly full).
   const disabled = new Set(item.disabledIndices ?? []);
+
+  // ---- Ask-dialog variant (questions[]): merged radio/checkbox form ----
+  const askQs = (item.questions ?? []).filter((q): q is AskQuestion => !!q && Array.isArray(q.options) && q.options.length > 0);
+  // One selection set per question (single = exactly one index, defaulted to
+  // the recommended row; multi = any subset, empty by default). Mirrors the
+  // base's timeout auto-selection semantics.
+  const [picks, setPicks] = useState<number[][]>(() =>
+    askQs.map((q) => (q.multi ? [] : [q.recommended !== undefined && q.recommended >= 0 ? q.recommended : 0])),
+  );
+  const picksRef = useRef(picks);
+  const togglePick = (qi: number, oi: number, multi: boolean | undefined) => {
+    if (answered) return;
+    setPicks((prev) => {
+      const next = prev.slice();
+      next[qi] = multi ? (next[qi]?.includes(oi) ? next[qi].filter((j) => j !== oi) : [...(next[qi] ?? []), oi]) : [oi];
+      picksRef.current = next;
+      return next;
+    });
+  };
+  // One approval_response carrying every answer: answer = JSON of the base's
+  // ExtensionAskDialogSubmitResult (host parses; a parse failure counts as cancel)
+  const submitAll = () => {
+    if (item.answer !== null) return;
+    const results = askQs.map((q, i) => {
+      const labels = (q.options ?? []).map((o) => o.label ?? "");
+      const picked = (picksRef.current[i] ?? []).filter((j) => j < labels.length && labels[j]);
+      return {
+        id: q.id ?? String(i),
+        question: q.question ?? "",
+        options: labels,
+        multi: !!q.multi,
+        selectedOptions: picked.map((j) => labels[j]),
+      };
+    });
+    const answer = JSON.stringify({ kind: "submit", results });
+    useAppStore.setState((st) => {
+      for (const [p, sess] of st.openSessions) {
+        const list = sess.pendingApprovals;
+        const j = list?.findIndex((r) => r.requestId === item.requestId) ?? -1;
+        if (!list || j < 0) continue;
+        const pendingApprovals = list.slice();
+        pendingApprovals[j] = { ...list[j], answer };
+        return { openSessions: new Map(st.openSessions).set(p, { ...sess, pendingApprovals }) };
+      }
+      return {};
+    });
+    useAppStore.getState().send({ type: "approval_response", requestId: item.requestId, answer });
+  };
 
   const choose = (i: number) => {
     if (item.answer !== null) return;
@@ -226,7 +278,40 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           <span className="approval-slider-detail">{item.slider.segments[sliderIndex]?.detail}</span>
         </div>
       )}
-      <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
+      {askQs.length > 0 ? (
+        <div className="ask-form" role="form">
+          {askQs.map((q, qi) => (
+            <div className="ask-q" key={q.id ?? qi}>
+              <div className="ask-q-t">
+                {qi + 1}. {q.header ? <b>{q.header}</b> : null}
+                {q.question}
+              </div>
+              <div className="approval-list" role={q.multi ? "group" : "radiogroup"} aria-label={q.question}>
+                {(q.options ?? []).map((o, oi) => {
+                  const on = (picks[qi] ?? []).includes(oi);
+                  return (
+                    <label key={oi} className={"approval-opt ask-opt" + (on ? " selected" : "") + (answered ? " dim" : "")}>
+                      <input
+                        type={q.multi ? "checkbox" : "radio"}
+                        name={`${item.requestId}:${qi}`}
+                        checked={on}
+                        disabled={answered}
+                        onChange={() => togglePick(qi, oi, q.multi)}
+                      />
+                      <span className="approval-label">
+                        {o.label}
+                        {oi === q.recommended ? " ★" : ""}
+                        {o.description ? <span className="ask-desc">{o.description}</span> : null}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
         {item.options.map((opt, i) => {
           const num = answered && i === frozenChosen ? "✓" : `${i + 1}.`;
           const isDisabled = disabled.has(i);
@@ -288,17 +373,29 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           );
         })}
       </div>
-      {!answered && (
-        <div className="approval-foot">
-          <span className="approval-hint">
-            <Icon name="info" size={15} />
-            {t("chat.approvalHint")}
-          </span>
-          <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>
-            {t("common.confirm")}
-          </button>
-        </div>
       )}
+      {!answered &&
+        (askQs.length > 0 ? (
+          <div className="approval-foot">
+            <span className="approval-hint">
+              <Icon name="info" size={15} />
+              {t("compExt.askMultiHint")}
+            </span>
+            <button type="button" className="approval-confirm" onClick={submitAll}>
+              {t("compExt.askSubmitAll")}
+            </button>
+          </div>
+        ) : (
+          <div className="approval-foot">
+            <span className="approval-hint">
+              <Icon name="info" size={15} />
+              {t("chat.approvalHint")}
+            </span>
+            <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>
+              {t("common.confirm")}
+            </button>
+          </div>
+        ))}
     </div>
   );
 }

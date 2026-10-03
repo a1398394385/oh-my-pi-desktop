@@ -27,6 +27,7 @@
 import { stat, open } from "node:fs/promises";
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID } from "./state.ts";
+import { hostI18n } from "../ui-src/i18n/host.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
 import { settingsFrame, modelsFrame } from "./frames.ts";
@@ -35,6 +36,7 @@ import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { refreshAllLimits } from "./limits/index.ts";
 import { augmentGuiPath } from "./gui-path.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 // ---------- Startup prologue: activate the persisted profile, assemble the process-level base ----------
 // PATH augment completion point: the first RPC after UI connects
@@ -78,7 +80,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
             JSON.stringify({
               type: "ready",
               hi: HOST_INSTANCE_ID, // The handshake takes no event seq, but carries instance identity for immediate UI comparison
-              approvalMode: H.settings.get("tools.approvalMode"),
+              approvalMode: settingsGet(H.settings, "tools.approvalMode"),
               models: modelsPayload(),
               roles: modelRolesPayload(),
               ...modelsDefaults(),

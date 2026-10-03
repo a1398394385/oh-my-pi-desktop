@@ -124,10 +124,16 @@ export async function readSdkPrompt(fileName: string): Promise<string> {
   const srcRoot = new URL("../", import.meta.resolve("@oh-my-pi/pi-coding-agent/plan-mode/approved-plan")).pathname;
   return await Bun.file(srcRoot + "prompts/system/" + fileName).text();
 }
-export const { normalizeLocalScheme, resolveToCwd } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
+export const { resolveToCwd } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
 // xd://propose dispatch metadata: the out-of-band plan-approval trigger keys off
 // it exactly like the base TUI's event-controller (host/plan-approve.ts).
 export const { writeDeviceDispatch } = await import("@oh-my-pi/pi-coding-agent/tools/resolve");
+// Settings registry (18.5.0): Settings' string-key get/set was replaced by
+// registry handles; importing config/all-settings registers every domain's
+// settings (the registry stays empty until then — the SDK main entry does not
+// load it), so compat lookups and the settings-page schema snapshot need this.
+export const { orderedSettings } = await import("@oh-my-pi/pi-coding-agent/config/all-settings");
+export const { lookup: lookupSetting } = await import("@oh-my-pi/pi-coding-agent/config/registry");
 export const { PROPOSE_DEVICE_NAME } = await import("@oh-my-pi/pi-tui/tools/resolve");
 export const { parseSkillInvocation, buildSkillPromptMessage } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/skills"

@@ -3,10 +3,11 @@
 // name, model badge right, task line, metrics line), an aggregate usage summary, and the
 // keybind bar at the top. Selection links to the right sidebar's hub detail page; Enter
 // bridges into the regular subagent tab; x kills via kill_subagent.
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, send } from "../../store";
 import { openRightTab } from "../right/tabs";
+import { SubControls, SteerInput } from "../right/SubControls";
 import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, type SegT } from "../right/subShared";
 import type { SubagentState } from "../../types/session";
 
@@ -225,14 +226,14 @@ export default function AgentHub() {
       {/* Roster rows */}
       <div className="hub-list" role="listbox">
         {rows.map((row) => (
-          <HubRow key={row.id} row={row} flat={hubMode === "flat"} selected={row.id === hubSel} onSelect={() => useAppStore.getState().setHubSel(row.id)} t={t} />
+          <HubRow key={row.id} row={row} flat={hubMode === "flat"} selected={row.id === hubSel} onSelect={() => useAppStore.getState().setHubSel(row.id)} sessionId={s.sessionId} t={t} />
         ))}
       </div>
     </div>
   );
 }
 
-function HubRow({ row, flat, selected, onSelect, t }: { row: Row; flat: boolean; selected: boolean; onSelect: () => void; t: SegT }) {
+function HubRow({ row, flat, selected, onSelect, t, sessionId }: { row: Row; flat: boolean; selected: boolean; onSelect: () => void; t: SegT; sessionId: string }) {
   const { sub } = row;
   const st = subStatus(sub);
   const segs = usageSegments(sub, t, { model: false });
@@ -241,8 +242,11 @@ function HubRow({ row, flat, selected, onSelect, t }: { row: Row; flat: boolean;
   const lastActivity = (sub.registeredAt ?? Date.now()) + (sub.usage?.durationMs ?? 0);
   const age = ageText(Math.max(1, Math.round((Date.now() - lastActivity) / 1000)), t);
   const model = modelShort(sub.usage?.resolvedModel);
+  // Steer input expands in place below the row (div root: the controls are buttons, which
+  // cannot nest inside the old <button> root)
+  const [steerOpen, setSteerOpen] = useState(false);
   return (
-    <button type="button" role="option" aria-selected={selected} className={"hub-row" + (selected ? " on" : "")} onClick={onSelect}>
+    <div role="option" aria-selected={selected} className={"hub-row" + (selected ? " on" : "")} onClick={onSelect}>
       <span className="hub-row-head">
         {row.prefix ? (
           <span className="hub-branch text-faint">{row.prefix}</span>
@@ -251,6 +255,7 @@ function HubRow({ row, flat, selected, onSelect, t }: { row: Row; flat: boolean;
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {flat && sub.parent && sub.parent !== "Main" ? <span className="text-faint"> ↳ {sub.parent}</span> : null}
         {model ? <span className="hub-model">{model}</span> : null}
+        {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
       </span>
       <span className="hub-task text-faint">{sub.description || sub.task || sub.text.slice(0, 80) || "…"}</span>
       {/* Metrics (left) and timing info (right) share one line */}
@@ -258,6 +263,7 @@ function HubRow({ row, flat, selected, onSelect, t }: { row: Row; flat: boolean;
         <span className="hub-meta-usage">{segs.join(" · ")}</span>
         <span className="hub-meta-right">{times.concat(age).join(" · ")}</span>
       </span>
-    </button>
+      {steerOpen && sub.streaming ? <SteerInput sessionId={sessionId} agentId={row.id} onClose={() => setSteerOpen(false)} /> : null}
+    </div>
   );
 }

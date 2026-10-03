@@ -28,6 +28,7 @@ import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handl
 import { handleListSessions } from "./session";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { settingsGet } from "../settings-compat.ts";
 
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file contents
 interface PromptAttachment {
@@ -169,7 +170,7 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
     skills = (
       await discoverSkills(cwd, H.agentDir, {
         ...H.settings.getGroup("skills"),
-        disabledExtensions: H.settings.get("disabledExtensions") ?? [],
+        disabledExtensions: settingsGet(H.settings, "disabledExtensions") ?? [],
       })
     ).skills;
   }
@@ -456,6 +457,24 @@ function handleGetMessages(ws: any, sessionId: string) {
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
 }
 
+
+// ---------- Word completion (18.4.9 ghost text) ----------
+// One predictor per process, the base RPC layer's own flow control (one
+// engine request in flight; a newer request replaces the one waiting). The
+// engine method follows the spelling.autocomplete setting exactly like the
+// TUI's predict_word. Dynamic import because a static one would hoist the SDK
+// graph above bootstrap's setProfile (profile red line).
+let wordPredictor: { predict(method: unknown, text: string, cursor: number): Promise<string | null> } | undefined;
+async function predictWordSuffix(text: string): Promise<string | null> {
+  if (!wordPredictor) {
+    const { RpcWordPredictor } = await import("@oh-my-pi/pi-coding-agent/modes/rpc/rpc-mode");
+    wordPredictor = new RpcWordPredictor();
+  }
+  // Layered setting read returns the engine id ("off" disables); the
+  // predictor's own signature narrows it on the SDK side
+  return wordPredictor.predict(settingsGet(H.settings, "spelling.autocomplete"), text, text.length);
+}
+
 export const promptHandlers: Record<string, RpcHandler> = {
   async prompt(ws, msg) {
     // steer=true: mid-stream, inject immediately instead of queueing (after the current tool batch); when idle the base ignores the flag and opens a turn as usual
@@ -581,5 +600,23 @@ export const promptHandlers: Record<string, RpcHandler> = {
         matches: await listFileMatches(root, query),
       }),
     );
+  },
+  async complete_text(ws, msg) {
+    // Ghost-text completion for the composer draft: cursor is the draft's end
+    // (contract v1 carries text only). Best-effort — engine off, no
+    // prediction, a superseding request, or an unreachable prediction daemon
+    // all answer an empty suggestion instead of an error frame.
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const text = String(msg.text ?? "");
+    let suggestion = "";
+    if (text) {
+      try {
+        suggestion = (await predictWordSuffix(text)) ?? "";
+      } catch {
+        // Prediction daemon unavailable: no ghost text this round
+      }
+    }
+    ws.send(JSON.stringify(stampEvent({ type: "completion", sessionId: msg.sessionId, suggestion })));
   },
 };

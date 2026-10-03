@@ -35,6 +35,35 @@ export interface SessionSlice {
   openSessions: Map<string, OpenSession>; // path -> {sessionId,cwd,items,assistantDraft,streaming,subagents,...}
   modelNames: Map<string, string>; // "provider/id" -> display name (moved over from composer.js)
   modelEfforts: Map<string, string[]>; // "provider/id" -> thinking level list
+  modelCaps: Map<string, ModelCaps>; // "provider/id" -> capability axes (18.5 models frame extension)
+  // Latest word-completion reply (complete_text RPC): overwritten per frame;
+  // GhostTextPlugin matches it against its pending request and drops stale hits
+  completionResult: CompletionResult | null;
+  // Background job snapshots per session id (18.5 bg_jobs frames; full-replace semantics)
+  bgJobs: Map<string, BgJobEntry[]>;
+}
+
+/** Model capability axes appended to models-frame entries (contract v1: promptCache = keepalive tier seconds) */
+export interface ModelCaps {
+  promptCache?: number;
+  webSearch?: boolean;
+  imageGen?: boolean;
+}
+
+/** Store landing shape of the host `completion` frame (complete_text RPC reply) */
+export interface CompletionResult {
+  sessionId: string;
+  suggestion: string;
+}
+
+/** One background job row (18.5 BgJobsFrame jobs entry; snapshot per session) */
+export interface BgJobEntry {
+  id: string;
+  command: string | null;
+  cwd: string | null;
+  pids: number[];
+  exitCode: number | null;
+  running: boolean;
 }
 
 export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = () => ({
@@ -48,6 +77,9 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
   openSessions: new Map(),
   modelNames: new Map(),
   modelEfforts: new Map(),
+  modelCaps: new Map(),
+  completionResult: null,
+  bgJobs: new Map(),
 });
 
 // ---------- Shared helpers (session domain) ----------
@@ -207,16 +239,31 @@ function clearRunningTools(s: OpenSession): void {
 // The models frame is a full scopedModels snapshot (ready / models / enable-disable pushes agree),
 // rebuilt per frame instead of merged: merging would leave disabled models lingering in the
 // composer menu
-export function ingestModels(models?: { id: string; name?: string | null; efforts?: string[] | null }[]): void {
+export function ingestModels(
+  models?: {
+    id: string;
+    name?: string | null;
+    efforts?: string[] | null;
+    promptCache?: number;
+    webSearch?: boolean;
+    imageGen?: boolean;
+  }[],
+): void {
   useAppStore.setState(() => {
     if (!models?.length) return {};
     const modelNames = new Map<string, string>();
     const modelEfforts = new Map<string, string[]>();
+    const modelCaps = new Map<string, ModelCaps>();
     for (const m of models) {
       modelNames.set(m.id, m.name || m.id);
       if (Array.isArray(m.efforts)) modelEfforts.set(m.id, m.efforts);
+      // Capability axes land only when the host reports them (wire-absent
+      // fields stay absent in the map)
+      if (m.promptCache !== undefined || m.webSearch !== undefined || m.imageGen !== undefined) {
+        modelCaps.set(m.id, { promptCache: m.promptCache, webSearch: m.webSearch, imageGen: m.imageGen });
+      }
     }
-    return { modelNames, modelEfforts };
+    return { modelNames, modelEfforts, modelCaps };
   });
 }
 

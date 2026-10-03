@@ -1,8 +1,8 @@
 // Session lifecycle domain: the create/load entry points (pool reuse vs disk
 // rebuild), event wiring (attachEntry's approval UI context + extension
-// runner injection + subagent eventBus forwarding + queueing race fallback),
-// and the snapshot push family (goal/todos/context/stats). Relocated from
-// main.ts (second split cut).
+// runner injection + subagent eventBus forwarding + realtime queue push +
+// session-file transfer notices), and the snapshot push family
+// (goal/todos/context/stats). Relocated from main.ts (second split cut).
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -255,8 +255,6 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     externalWrite: false,
     cwd,
     isGit: isGitWorktree(cwd),
-    queuedTexts: [], // Queued message text snapshot (turn_end race fallback)
-    consumedTexts: [],
     parkedFollowUp: [], // followUp parking lot (see the type comments in state.ts)
     manager: sessionManager, // For RPCs that need to operate the SessionManager directly, like rename/compact
     title: sessionManager.getSessionName() ?? null,
@@ -269,6 +267,16 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     }),
   };
   kaHolder.entry = entry; // The keepalive isWanted closure takes effect (see the top of createSessionCore)
+  // (18.4.9) Subagent control registry: accumulates subagent snapshots from
+  // the session's observability bus (created here, before any subagent can
+  // spawn, so control_subagent never misses an id); control_subagent resolves
+  // live refs through it. The output sink is a no-op — the host already
+  // forwards task:subagent:* channels into its own frames in attachEntry.
+  // Dynamic import because a static one would hoist the SDK graph above
+  // bootstrap's setProfile (profile red line; same reason every SDK handle
+  // in bootstrap.ts is dynamically imported).
+  const { RpcSubagentRegistry } = await import("@oh-my-pi/pi-coding-agent/modes/rpc/rpc-subagents");
+  entry.subagentRegistry = new RpcSubagentRegistry(result.subagentEventBus ?? result.eventBus, () => {});
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
@@ -301,10 +309,17 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
       maybePushSessionStats(ws, sessionId, entry);
     }
-    // Goal mode hooks: re-run scheduling and tool-set wind-down (aligned with the branches of the TUI's #handleGoalSessionEvent)
     if (ev.type === "agent_start") entry.goal.onAgentStart();
     if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) entry.goal.onUserMessage();
     if (ev.type === "goal_updated") entry.goal.onGoalUpdated(ev.state);
+    // (18.5) Prompt-cache warming lifecycle: the cache warmer's refresh
+    // windows surface as session events; forward them so the UI can show a
+    // "keeping cache warm" indicator on idle unread sessions
+    if (ev.type === "cache_warming_start") {
+      ws.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "start" })));
+    } else if (ev.type === "cache_warming_end") {
+      ws.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "end", outcome: ev.outcome })));
+    }
     // Session active-duration timing (same as the TUI status-line
     // time_spent): agent_start opens the window (idempotent — re-entry does
     // not double-count), the truly-final agent_end closes it; intermediate
@@ -340,34 +355,17 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       pushSessionStats(ws, sessionId, entry);
       // Goal final assessment: completion wind-down / no-progress suppression / scheduling the re-run (aligned with the TUI's #handleGoalSessionEvent)
       void entry.goal.onAgentEnd(ev.messages ?? []);
-      // Wrap-up race fallback: when the base aborts during a run's wind-down,
-      // queue messages being claimed get dropped and never restored
-      // (agent.ts #prepareQueuedMessageBatch's dequeue-removes-first +
-      // abort-does-not-restore), showing up as "in the last snapshot, gone
-      // from the queue now, and the dequeue hook never reported
-      // consumption". The host re-sends such messages. Parked messages also
-      // count as present — their absence from the base queue is by design,
-      // not being swallowed.
+      // (18.5) The old wrap-up race fallback (queuedTexts/consumedTexts diff
+      // + re-send of swallowed messages) is gone: the base now restores
+      // undelivered queued messages itself on abort/wind-down
+      // (pi-agent-core agent.ts #restoreUndeliveredQueuedMessages runs in the
+      // run's finally, #cancelQueuedMessagePreparation restores live claims),
+      // and every one of those restores fires onQueueChange, so the realtime
+      // queue push below already mirrors the true queue state.
       const a = entry.session.agent as any;
-      const cur = [...a.peekFollowUpQueue(), ...entry.parkedFollowUp, ...a.peekSteeringQueue()]
-        .filter((m: any) => isUserQueuedMessage(m))
-        .map((m: any) => toRestoredQueuedMessage(m).text);
-      const curSet = new Set(cur);
-      const lost = (entry.queuedTexts ?? []).filter(
-        (t) => !curSet.has(t) && !(entry.consumedTexts ?? []).includes(t),
-      );
-      for (const t of lost) {
-        process.stderr.write(`[host] 排队消息被收尾竞态吞掉，重新发送: ${t.slice(0, 60)}\n`);
-        entry.consumedTexts.push(t);
-        entry.session.prompt(t).catch((err: unknown) => {
-          ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
-        });
-      }
       // Per-turn release: when parked entries remain, put 1 back and trigger
-      // consumption (each its own independent turn). When the fallback
-      // re-send just started a new run (lost non-empty), release nothing this
-      // round — wait for that run's agent_end to continue.
-      if (lost.length === 0 && entry.parkedFollowUp.length > 0) {
+      // consumption (each its own independent turn)
+      if (entry.parkedFollowUp.length > 0) {
         for (const m of releaseOneParked(entry)) a.followUp(m);
         // In the window where the agent_end event precedes the isStreaming reset, continue reports busy: retry once after idle
         a.continue().catch(() => {
@@ -443,6 +441,45 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           ),
         );
       });
+    },
+    // (18.5) Rich ask dialog: the ask tool with a questions array surfaces
+    // here instead of per-question select() rounds. The frame reuses the
+    // approval channel (options are the submit/cancel actions; the questions
+    // ride the questions field); approval_response answers with
+    // answer = JSON.stringify(ExtensionAskDialogSubmitResult). Aborts and
+    // unknown answers resolve undefined (the base treats that as cancelled).
+    askDialog(questions: unknown[], dialogOptions?: any): Promise<unknown> {
+      const { promise, resolve } = Promise.withResolvers<unknown>();
+      const requestId = crypto.randomUUID();
+      const parseAskAnswer = (answer: string) => {
+        try {
+          const parsed = JSON.parse(answer) as { kind?: unknown };
+          if (parsed && parsed.kind === "submit") return parsed;
+        } catch {
+          // Malformed submissions count as cancelled, not as an error frame
+        }
+        return undefined;
+      };
+      const settle = (v: string | undefined) => {
+        pendingApprovals.delete(requestId);
+        resolve(v === undefined ? undefined : parseAskAnswer(v));
+      };
+      pendingApprovals.set(requestId, { resolve: settle, questions });
+      dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
+      const first = (questions[0] ?? {}) as { header?: string; question?: string };
+      ws.send(
+        JSON.stringify(
+          stampEvent({
+            type: "approval_request",
+            sessionId,
+            requestId,
+            title: first.header ?? first.question ?? "ask",
+            options: ["submit", "cancel"],
+            questions,
+          }),
+        ),
+      );
+      return promise;
     },
   };
   entry.sessionResult.setToolUIContext(uiCtx, true);
@@ -621,17 +658,39 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "subagent_event", sessionId, subagentId: id, ...ui })));
   });
   // Pre-consumption notice: queued/steer user messages about to be injected
-  // are pushed to the UI (bubbles finalized); they are also recorded in the
-  // consumed list so the turn_end wrap-up race fallback diff can exclude
-  // them (hook fired ≠ injection succeeded, but they are not re-sent)
+  // are pushed to the UI (bubbles finalized). The old consumedTexts bookkeeping
+  // fed the turn_end diff backstop, which the 18.5 native restore removed.
   const detachDequeueHook = entry.session.agent.addBeforeQueuedMessageDequeueHook(() => {
     const texts = [...entry.session.agent.peekFollowUpQueue(), ...entry.session.agent.peekSteeringQueue()]
       .filter((m) => isUserQueuedMessage(m))
       .map((m) => toRestoredQueuedMessage(m).text);
     if (texts.length > 0) {
-      entry.consumedTexts.push(...texts);
       ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
+  });
+  // (18.4.4) Realtime queue push: the agent notifies after every queue
+  // mutator (enqueue, dequeue-on-delivery, clear, restore), so the queued
+  // frame follows each mutation instead of the turn_end-only snapshot. Bursts
+  // (park + release + steer in one operation) coalesce into one microtask
+  // push; turn_end keeps its explicit sendQueued as the final calibration.
+  let queuePushPending = false;
+  const unsubQueueChange = entry.session.agent.onQueueChange(() => {
+    if (queuePushPending) return;
+    queuePushPending = true;
+    queueMicrotask(() => {
+      queuePushPending = false;
+      sendQueued(ws, sessionId, entry);
+    });
+  });
+  // (18.4.9) Session-file transfer notice: when the base moves this session
+  // to a fresh sibling file (another live process owns the old one / the old
+  // file was replaced or is contested), repoint the pool entry and restart
+  // external-write detection from byte 0 — the new file is this session's
+  // journal from its first line, and every id in it is known to the manager.
+  const unsubPersistenceNotice = entry.manager?.onPersistenceNotice?.((notice: { from: string; to: string }) => {
+    entry.path = notice.to;
+    entry.pollKnownSize = 0;
+    process.stderr.write(`[host] 会话文件已转移 ${notice.from} -> ${notice.to}\n`);
   });
   // MCP connection status → capabilities_mcp incremental frames. The manager
   // is process-global while attach is per-session: with several sessions
@@ -660,6 +719,8 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     unsubProgress();
     unsubEvents();
     detachDequeueHook();
+    unsubQueueChange();
+    unsubPersistenceNotice?.();
     unsubMcp?.();
   };
   entry.attachedWs = ws;
