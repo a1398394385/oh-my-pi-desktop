@@ -125,9 +125,9 @@ body:has(#sidebar.collapsed) .chat-head {
   position: relative;
 }
 
-/* The last turn stretches to a full screen when shorter than the viewport, so scrolling to bottom sticks this turn's messages at the top while the previous turn is fully pushed off-screen */
+/* The last turn stretches to a full screen when shorter than the viewport, so scrolling to bottom sticks this turn's messages at the top while the previous turn is fully pushed off-screen. Subtract the 36px bottom fade spacer (#stream::after, main-composer.css): it is in-flow and counts as scrollable height, so an unstretched 100% + spacer leaves a bogus 36px scroll range that lets the user scroll up under the sticky user bubble even when everything fits */
 #stream > .turn-section:last-of-type {
-  min-height: 100%;
+  min-height: calc(100% - 36px);
 }
 
 .turn-body {
@@ -182,7 +182,7 @@ body:has(#sidebar.collapsed) .chat-head {
 }
 
 /* Pinned user message: text capped at 5.5 lines with inner scroll; the bottom half-line fades out (same treatment as .think-scroll; FadeBox adds .no-fade when at bottom/fit). */
-.sticky-user-wrap .user-msg-text { user-select: text; -webkit-user-select: text; max-height: calc(1.55em * 5.5); overflow-y: auto;
+.sticky-user-wrap .user-msg-text { user-select: text; -webkit-user-select: text; width: 100%; max-width: 100%; max-height: calc(1.55em * 5.5); overflow-y: auto;
   overscroll-behavior: contain; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent); }
 .sticky-user-wrap .user-msg-text.no-fade { -webkit-mask-image: none; mask-image: none; }
 
@@ -847,3 +847,13 @@ body:has(#right.collapsed) #right-resizer {
 
 .rail-tick.on { background: var(--text); } /* mountain-peak brightening */
 .turn-acts { box-sizing: border-box; padding-left: max(0px, calc((100% - min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))))) / 2)); } /* full-width box leaves no flanking gap for WebKit's crossed-selection fill to paint (BUG-030); left padding mirrors the shared column cap so buttons keep the column's left edge */
+
+/* Scroll-gesture ownership (Chat.tsx): while a wheel-driven stream scroll is in progress
+   (the .wheel-through class, armed by stream-targeted wheels and expired 1s after the last
+   one), inline expand cards become pointer-transparent so a pointer drifting over them
+   cannot hijack the wheel — the event passes through to the stream natively in every web
+   engine. After 1s of wheel idle the class lifts and the cards scroll again with their own
+   overscroll containment. Selector kept in sync with INLINE_CARD_SELECTOR in Chat.tsx. */
+#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card) {
+  pointer-events: none;
+}

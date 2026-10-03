@@ -2,11 +2,13 @@
 // (msgRail) + "working Ns" row (WorkSec) + in-session find (⌘F). The streaming status row
 // (spinner + dynamic text) lives in ChatLoading.
 // Migrated from renderChat in ui/chat.js + the scroll handling of markdown.js:
-// - Scroll following (stickBottom semantics): switching sessions forces bottom; when glued
-//   to the bottom, any re-render (streaming append / expand body) stays pinned. The
-//   at-bottom check must happen before the DOM update — use the pre-render state recorded
-//   continuously by the scroll listener; after rendering, scrollHeight has already changed
-//   and cannot be inferred backwards (120px tolerance as in the original).
+// - Scroll following (stickBottom semantics): switching sessions jumps to the latest
+//   content; when glued to the bottom, any re-render (streaming append / expand body)
+//   stays pinned. The at-bottom check must happen before the DOM update — use the
+//   pre-render state recorded continuously by the scroll listener; after rendering,
+//   scrollHeight has already changed and cannot be inferred backwards (120px tolerance as
+//   in the original). The target itself is latestScrollTop() — see its comment for why the
+//   plain scrollHeight target is wrong.
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events (4px tolerance against subpixel
 //   jitter; high-frequency scrolling stays out of React state).
@@ -25,11 +27,69 @@ import { updateRailVisibility } from "../shell";
 import MainSessionTree from "./chat/MainSessionTree";
 import AgentHub from "./chat/AgentHub";
 
-// Button visibility: shown only while the message stream still has downward scroll room
-// (4px tolerance against subpixel jitter)
+// Bottom fade reserve: #stream::after (main-composer.css) is a sticky 36px spacer that
+// counts as real scrollable height, and the sticky user bubble's own bottom fade is 36px
+// (main-chat.css .sticky-user-wrap::after)
+const FADE_RESERVE = 36;
+
+// Scroll-gesture ownership across wheel-eating overlays. Two mechanisms:
+// 1. Inline expand cards (.ed-brief/.chg-body/... inside the stream): while a wheel-driven
+//    stream scroll is in progress the stream carries a .wheel-through class that makes the
+//    cards pointer-transparent (CSS, main-chat.css) — the wheel passes through to the
+//    stream natively, no preventDefault involved, so behavior is identical in every web
+//    engine (the desktop shell hosts a WKWebView, whose wheel-cancel semantics differ from
+//    Chromium). The class is armed by wheels targeting the stream and expires 1s after the
+//    last one; content-growth scrolls (streaming bottom-follow) never arm it, so cards
+//    stay scrollable while output streams. Keep the CSS selector in sync with
+//    INLINE_CARD_SELECTOR below.
+// 2. Floating popups (popcards .ring-pop / menus, portaled outside the stream): a
+//    document-capture wheel listener redirects their wheels back to the stream while the
+//    scroll gesture is stream-owned. Ownership model: the first wheel after an idle gap
+//    longer than GESTURE_IDLE_MS decides the owner by pointer location (stream / popup /
+//    other). While a stream-owned gesture continues, popup wheels are redirected —
+//    regardless of how the pointer moved onto it and regardless of inter-stroke pauses,
+//    because every wheel refreshes the gesture. Only after the whole gesture has been
+//    idle for over 1s does the popup receive wheels again (its own scroll + overscroll
+//    containment). (Pointer-transparency is not used for popups: flipping pointer-events
+//    under a hovering pointer fires pointerout and the ring-pop grace-close logic would
+//    dismiss the card, violating the "stop 1s, then scroll the card" contract.)
+const GESTURE_IDLE_MS = 1000;
+const POPUP_SELECTOR = ".ring-pop, .menu, .ctx-menu";
+// Inline expand cards with their own vertical scroll (same list as the bleed-through
+// guard in the stream wheel listener and the .wheel-through CSS in main-chat.css; keep
+// all three in sync)
+const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList";
+
+// "Show the latest" scroll target. The plain scrollHeight target overshoots the newest
+// turn by the sticky spacer's height whenever that turn fits the viewport (fresh send /
+// short turn), which pins the sticky user bubble 36px above its flow position and drags
+// the turn's flow content (Working row, streaming draft) up under the bubble's 36px fade
+// mask. Target the newest content's real end + the spacer instead, clamped to the newest
+// turn's top: a fitting turn is shown from its top (bubble at the scrollport top, flow
+// content clear below it) while a taller turn keeps following its bottom.
+function latestScrollTop(el: HTMLElement): number {
+  let last = el.lastElementChild as HTMLElement | null;
+  while (last && last.classList.contains("scroll-bottom")) last = last.previousElementSibling as HTMLElement | null;
+  if (!last) return 0;
+  const max = el.scrollHeight - el.clientHeight;
+  if (last.classList.contains("turn-section")) {
+    // The section itself stretches to the viewport (min-height:100%), so its box end is
+    // not the content end; the last child (turn-body / turn-acts) carries it
+    const inner = last.lastElementChild as HTMLElement | null;
+    const end = last.offsetTop + (inner ? inner.offsetTop + inner.offsetHeight : last.offsetHeight);
+    return Math.min(max, Math.max(last.offsetTop, end + FADE_RESERVE - el.clientHeight));
+  }
+  // Top-level node after the sections (pending steer bubble): keep it above the fade at the
+  // stream end; a stream shorter than the viewport just pins to its top
+  return Math.min(max, Math.max(0, last.offsetTop + last.offsetHeight + FADE_RESERVE - el.clientHeight));
+}
+
+// Button visibility: shown while the view sits above the latest-content position (newer
+// content to jump down to); 4px tolerance against subpixel jitter, imperative toggle out
+// of React state
 function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) {
   if (!el || !btn) return;
-  btn.classList.toggle("hidden", !(el.scrollHeight - el.scrollTop - el.clientHeight > 4));
+  btn.classList.toggle("hidden", el.scrollTop >= latestScrollTop(el) - 4);
 }
 
 export default function Chat() {
@@ -74,11 +134,12 @@ export default function Chat() {
 
     // On session switch the stream node is reused, and the old session's scrollTop is
     // meaningless for the new one;
-    // on a new outgoing message force-scroll to the bottom (the last turn's min-height:100%
-    // puts the new message right at the top);
+    // on a new outgoing message jump to the newest-content position (the last turn's
+    // min-height:100% puts the new message right at the top; a turn that fits the viewport
+    // top-aligns, so its flow content stays clear of the sticky bubble's fade mask);
     // during streaming, keep following while glued to the bottom
     if (switched || isNewUserMsg || atBottom.current) {
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = latestScrollTop(el);
       atBottom.current = true; // the scroll event fires async; settle synchronously first to prevent a same-frame re-render bounce
     }
     updateScrollBottomVis(el, btnRef.current);
@@ -98,17 +159,19 @@ export default function Chat() {
   // Block scroll bleed-through from tab popups / inline expand cards into the outer message
   // stream (no chained propagation outward at the boundary)
   // and provide turn snap-to-top docking: when the next message sits too close to the top,
-  // the next scroll lands exactly on its offsetTop, showing the full agent flow
+  // the next scroll lands exactly on its offsetTop, showing the full agent flow.
+  // Document-level capture with a lazy streamRef read: at mount the session is usually not
+  // restored yet, so the first render is the empty-state tree whose #stream node gets
+  // REPLACED when the real tree mounts — a node captured here (or a listener attached to it)
+  // would dangle on the detached node forever.
   useEffect(() => {
-    const stream = streamRef.current;
-    if (!stream) return;
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY === 0) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      const card = target.closest<HTMLElement>(
-        ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList",
-      );
+      const stream = streamRef.current;
+      if (!stream || !stream.contains(target)) return;
+      const card = target.closest<HTMLElement>(INLINE_CARD_SELECTOR);
       if (card) {
         // Find the innermost vertically scrollable container containing the current trigger point
         let scroller: HTMLElement | null = target;
@@ -174,8 +237,53 @@ export default function Chat() {
       }
     };
 
-    stream.addEventListener("wheel", onWheel, { passive: false });
-    return () => stream.removeEventListener("wheel", onWheel);
+    document.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => document.removeEventListener("wheel", onWheel, { capture: true });
+  }, []);
+
+  // Scroll-gesture ownership (see the module-level comment): arm .wheel-through on
+  // wheel-driven stream scrolls (inline expand cards become pointer-transparent via CSS)
+  // and redirect stream-owned gesture wheels on floating popups back to the stream
+  const gestureOwner = useRef<"stream" | "popup" | "other">("other");
+  const lastWheelAt = useRef(0);
+  const wheelThroughTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    const armWheelThrough = (stream: HTMLElement) => {
+      stream.classList.add("wheel-through");
+      clearTimeout(wheelThroughTimer.current);
+      wheelThroughTimer.current = setTimeout(() => stream.classList.remove("wheel-through"), GESTURE_IDLE_MS);
+    };
+    const onWheelCapture = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // Lazy read: the #stream node at effect time may belong to the empty-state tree and
+      // be replaced once the session restores (see the bleed/snap effect comment above)
+      const stream = streamRef.current;
+      if (!stream) return;
+      const inStream = stream.contains(target);
+      const inPopup = !inStream && !!target.closest(POPUP_SELECTOR);
+      const now = Date.now();
+      // First wheel after the idle gap decides the owner by pointer location
+      if (now - lastWheelAt.current > GESTURE_IDLE_MS) {
+        gestureOwner.current = inStream ? "stream" : inPopup ? "popup" : "other";
+      }
+      lastWheelAt.current = now;
+      if (gestureOwner.current === "stream" && inPopup) {
+        e.preventDefault();
+        e.stopPropagation();
+        stream.scrollTop += e.deltaY;
+        armWheelThrough(stream);
+      } else if (inStream && !inPopup && !target.closest(INLINE_CARD_SELECTOR)) {
+        // A wheel on the plain stream surface: a wheel-driven scroll is in progress
+        armWheelThrough(stream);
+      }
+    };
+    document.addEventListener("wheel", onWheelCapture, { passive: false, capture: true });
+    return () => {
+      document.removeEventListener("wheel", onWheelCapture, { capture: true });
+      clearTimeout(wheelThroughTimer.current);
+    };
   }, []);
 
   // Scroll-to-end button (permanently last; visibility driven by the scroll listener)
@@ -188,7 +296,7 @@ export default function Chat() {
       ref={btnRef}
       onClick={() => {
         const el = streamRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
+        if (el) el.scrollTop = latestScrollTop(el);
       }}
     >
       <Icon name="down" />
