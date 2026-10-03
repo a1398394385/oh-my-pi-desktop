@@ -1,0 +1,114 @@
+/* ============================================================
+ * main-hub.css — main page, middle-column Agent Hub card (TUI parity roster:
+ *  keybind bar, aggregate usage line, Flat/By-parent roster rows) plus the
+ *  right-sidebar linked detail page (Task/Current/Usage/Lineage/Changes/Recent activity).
+ *  New domain (kept out of main-chat.css, which is at its ratchet cap).
+ * ============================================================ */
+
+/* Middle card: fills the stream slot while the hub is open */
+#agentHub {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 12px 16px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: var(--ui-fs-base); color: var(--text);
+}
+
+#agentHub.hub-empty { align-items: flex-start; }
+
+/* Keybind bar pinned at the top: kbd chip + action label per shortcut */
+.hub-keys {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel);
+}
+.hub-keys .hub-title { font-weight: 600; margin-right: 6px; }
+.hub-key { display: inline-flex; align-items: center; gap: 5px; color: var(--dim); font-size: var(--ui-fs-sm); }
+.hub-key kbd {
+  padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--panel-2);
+  font-family: var(--mono); font-size: var(--code-fs, 12px); color: var(--text);
+}
+
+/* Roster header: Roster · Flat / By parent · status counts */
+.hub-head { display: flex; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }
+.hub-mode {
+  border: 0; background: none; padding: 0 2px; cursor: pointer;
+  font: inherit; font-size: var(--ui-fs-sm); color: var(--faint);
+}
+.hub-mode.on { color: var(--accent); font-weight: 600; }
+.hub-head .hub-st.st-running { color: var(--green); }
+.hub-head .hub-st.st-completed { color: var(--green-soft); }
+.hub-head .hub-st.st-failed, .hub-head .hub-st.st-aborted { color: var(--err); }
+
+/* Aggregate usage line */
+.hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; }
+.hub-usage .hub-cost { color: var(--statusLineCost, var(--accent)); }
+
+/* Roster rows */
+.hub-list { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+.hub-row {
+  position: relative;
+  display: flex; flex-direction: column; align-items: stretch; gap: 7.5px;
+  padding: 5px 8px; border: 1px solid transparent; border-radius: var(--r-md);
+  background: none; text-align: left; font: inherit; cursor: pointer;
+}
+.hub-row:hover { background: var(--panel-2); }
+.hub-row.on { background: var(--panel); border-color: var(--line); }
+.hub-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hub-branch { flex: none; font-family: var(--mono); white-space: pre; }
+.hub-row .sub-dot.st-running { color: var(--green); }
+.hub-row .sub-dot.st-completed { color: var(--green-soft); }
+.hub-row .sub-dot.st-failed, .hub-row .sub-dot.st-aborted { color: var(--err); }
+.hub-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-model { margin-left: auto; flex: none; font-size: var(--ui-fs-sm); color: var(--dim); }
+.hub-task {
+  font-size: var(--ui-fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hub-meta {
+  font-size: var(--ui-fs-sm); color: var(--faint);
+  display: flex; align-items: baseline; gap: 8px;
+}
+.hub-meta-usage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-meta-right { margin-left: auto; flex: none; white-space: nowrap; }
+
+/* ---- Right-sidebar linked detail page ---- */
+.hub-detail { padding: 8px 0 0; font-size: var(--ui-fs-base); color: var(--text); }
+.hub-detail-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hub-detail-head .sub-dot.st-running { color: var(--green); }
+.hub-detail-head .sub-dot.st-completed { color: var(--green-soft); }
+.hub-detail-head .sub-dot.st-failed, .hub-detail-head .sub-dot.st-aborted { color: var(--err); }
+.hub-detail-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-sm); }
+/* Status + elapsed/age + model, a right-aligned column at the card's top-right */
+.hub-detail-st { margin-left: auto; flex: none; display: flex; flex-direction: column; align-items: flex-end; white-space: nowrap; line-height: 1.5; }
+.hub-detail-model { font-size: var(--ui-fs-sm); }
+
+.hub-sec {
+  margin-top: 12px; padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  font-weight: 600; color: var(--accent); font-size: var(--ui-fs-sm);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.hub-sec-body { margin-top: 3px; font-size: var(--ui-fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+/* Task markdown: keep the section's small scale instead of .md-body's larger body size */
+.hub-task-md { font-size: var(--ui-fs-sm); }
+
+/* Context gauge: token/contextWindow bar */
+.hub-gauge {
+  position: relative; margin-top: 6px; height: 14px;
+  border-radius: 4px; background: var(--panel-2); overflow: hidden;
+}
+.hub-gauge-fill { height: 100%; background: var(--accent); opacity: .45; }
+.hub-gauge-tx {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--code-fs, 12px); color: var(--text); font-family: var(--mono);
+}
+
+/* Recent activity feed: reuses the main message area's event-row classes (.act read);
+   only the spacing (denser than chat) and the leading clock cell are hub-specific.
+   Clock cell sizes to its content — a fixed width overlaps the icon at larger
+   --code-fs zoom levels. */
+.hub-detail .act.read.hub-act { margin: 6px 0; padding-right: 0; }
+.hub-act-time { flex: none; white-space: nowrap; padding-right: 2px; font-family: var(--mono); font-size: var(--code-fs, 12px); color: var(--faint); }

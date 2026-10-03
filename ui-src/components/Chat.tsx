@@ -23,6 +23,7 @@ import { renderItems } from "./chat/items";
 import type { RailEntry } from "./chat/chat-types";
 import { updateRailVisibility } from "../shell";
 import MainSessionTree from "./chat/MainSessionTree";
+import AgentHub from "./chat/AgentHub";
 
 // Button visibility: shown only while the message stream still has downward scroll room
 // (4px tolerance against subpixel jitter)
@@ -38,6 +39,7 @@ export default function Chat() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const activePath = useAppStore((st) => st.activePath);
   const mainViewMode = useAppStore((st) => st.mainViewMode);
+  const hubOpen = useAppStore((st) => st.hubOpen);
   const streamRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
@@ -192,6 +194,10 @@ export default function Chat() {
       <Icon name="down" />
     </button>
   );
+
+  if (hubOpen) {
+    return <AgentHub />;
+  }
 
   if (!s) {
     return (

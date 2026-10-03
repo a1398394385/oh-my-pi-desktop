@@ -27,6 +27,7 @@ export interface UiSlice {
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
+  newSessionPlanMode: boolean; // plan-mode intent for the next session (consumed by create_session; the host confirms via the plan_mode frame)
   defaultModelCfg: string | null; // landed from the models frame's defaultModel
   defaultThinkingCfg: string | null; // landed from the models frame's defaultThinking
   newSessionDirty: boolean;
@@ -39,6 +40,8 @@ export interface UiSlice {
   composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // signal to fill the composer externally (fork backfill / queued-message editing); guard = async backfill, give up overwriting when the draft is non-empty
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
   menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)
+  cyclePreview: { entries: { role: string; model: string }[]; activeRole: string; activeModel: string } | null; // ctrl+p quick-switch preview: the cycleOrder role list + the slot just switched to (drives the model menu's transient preview mode; manual menu opens always null it)
+  thinkMenuAuto: boolean; // shift+tab auto-opened the think menu (normal content; auto-collapses on 0.8s pause / Shift release — manual opens always clear it)
   draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
   escArmedUntil: number; // deadline of the Esc double-confirm window (> now = the send button shows a cancel icon)
   commands: SlashCommand[] | null; // slash command list of the current session (null = not fetched yet, the popover shows loading)
@@ -48,19 +51,33 @@ export interface UiSlice {
   ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
   ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
   mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
+  // Agent Hub: middle-card roster of the session's subagents (opened by double-tap ← in an
+  // empty composer). The right sidebar links to hubSel — it renders the linked detail page
+  // while the hub is open and cannot be opened manually.
+  hubOpen: boolean;
+  hubSel: string | null; // selected subagentId
+  hubMode: "flat" | "tree";
+  hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
+  hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
   uiPrefs: UiPrefs;
   toast(msg: unknown): void;
+  openHub(): void;
+  closeHub(): void;
+  setHubSel(id: string | null): void;
+  toggleHubMode(): void;
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
   setWelcomeProject(cwd?: string): void;
   initNewSessionModel(force?: boolean): void;
-  pickModelId(id: string): void;
+  pickModelId(id: string, role?: string): void;
   pickThinkingLevel(lv: string): void;
 }
 
 const uiPrefsInit: UiPrefs = {
+  theme: "dark", // placeholder; main.tsx applies the cached/file value before the first render
+  motion: "system", // placeholder; same
   uiFont: "default",
   uiFontSize: 13,
   codeFontSize: 12,
@@ -68,17 +85,21 @@ const uiPrefsInit: UiPrefs = {
   codeWrap: false,
   showThinking: true,
   expandToolOutput: true,
-  lang: "zh-CN", // placeholder; resolved from storage or detection below
+  lang: "zh-CN", // placeholder; resolved from the cache or detection below
   terminalInheritProfile: true,
   terminalFont: "",
 };
+// First-frame render cache (write-through mirror of omp-desktop.json's ui
+// section; the file stays the source of truth and the ready frame reconciles
+// any drift on every startup).
 let storedUiPrefs: Partial<UiPrefs> = {};
 try {
   storedUiPrefs = JSON.parse(localStorage.getItem("omp-ui-settings") || "{}");
 } catch {}
 Object.assign(uiPrefsInit, storedUiPrefs);
-// Resolve the startup language: stored preference wins; otherwise detect from
-// the system locale and persist the result so it survives restarts.
+// Resolve the startup language: cached preference wins; otherwise detect from
+// the system locale and persist the result so it survives restarts (the ready
+// frame's uiConfig.locale corrects this against the file afterwards).
 if (storedUiPrefs.lang !== "zh-CN" && storedUiPrefs.lang !== "en") {
   uiPrefsInit.lang = detectLang(undefined);
   try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefsInit)); } catch {}
@@ -102,6 +123,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionIsGit: false,
   newSessionModel: "",
   newSessionThinking: "auto",
+  newSessionPlanMode: false,
   defaultModelCfg: null,
   defaultThinkingCfg: null,
   newSessionDirty: false,
@@ -113,6 +135,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   composerSetSignal: null,
   findOpen: false,
   menuSignal: null,
+  cyclePreview: null,
+  thinkMenuAuto: false,
   draftHasContent: false,
   escArmedUntil: 0,
   commands: null,
@@ -122,7 +146,50 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   ctxDetail: null,
   ctxLimits: null,
   mainViewMode: "chat",
+  hubOpen: false,
+  hubSel: null,
+  hubMode: "flat",
+  hubRightWasCollapsed: false,
+  hubPrevTab: null,
   uiPrefs: uiPrefsInit,
+
+  openHub() {
+    const st = get();
+    // Expand the right panel for the linked detail; inject the special "hub" tab (not
+    // manually openable — only the hub linkage adds it) and activate it, remembering the
+    // prior tab/collapse state for closeHub. The user may switch away while the hub stays
+    // open and click back; closing the hub removes the tab.
+    set({
+      hubOpen: true,
+      hubRightWasCollapsed: st.rightCollapsed,
+      rightCollapsed: false,
+      hubPrevTab: st.rightTab === "hub" ? st.hubPrevTab : st.rightTab,
+      rightTabs: st.rightTabs.includes("hub") ? st.rightTabs : [...st.rightTabs, "hub"],
+      rightTab: "hub",
+    });
+  },
+
+  closeHub() {
+    const st = get();
+    set({
+      hubOpen: false,
+      hubSel: null,
+      rightCollapsed: st.hubRightWasCollapsed,
+      rightTabs: st.rightTabs.filter((n) => n !== "hub"),
+      rightTab: st.rightTab === "hub" ? st.hubPrevTab : st.rightTab,
+    });
+    setTimeout(() => {
+      (document.querySelector("#composer #input") as HTMLElement | null)?.focus();
+    }, 0);
+  },
+
+  setHubSel(id) {
+    set({ hubSel: id });
+  },
+
+  toggleHubMode() {
+    set((s) => ({ hubMode: s.hubMode === "flat" ? "tree" : "flat" }));
+  },
 
   toast(msg) {
     set((s) => ({ toastMsg: String(msg) }));
@@ -212,11 +279,13 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set({ newSessionModel, newSessionThinking: th });
   },
 
-  /** Model picked (shared by the model menu and Ctrl+P cycling): with a live session, sent via the host; in new-session state, persisted, with the level falling back when invalid */
-  pickModelId(id) {
+  /** Model picked (shared by the model menu and Ctrl+P cycling): with a live session, sent via the host
+   * (role set = the "Model Role" section pick; the host applies it through the CLI role path); in
+   * new-session state, persisted, with the level falling back when invalid */
+  pickModelId(id, role) {
     const s = activeOpen();
     if (s) {
-      get().send({ type: "set_model", sessionId: s.sessionId, model: id });
+      get().send({ type: "set_model", sessionId: s.sessionId, model: id, role });
       return;
     }
     set((st) => ({ newSessionModel: id, newSessionDirty: true })); // after a manual pick: later models frames no longer overwrite with the config default

@@ -6,6 +6,7 @@ import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
 import type { GitStatusFile } from "../types/frames";
+import type { CapabilitiesSnapshot } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
 
@@ -23,8 +24,12 @@ export interface RightSlice {
   gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
   briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
+  capabilities: CapabilitiesSnapshot | null; // active session's subsystem runtime snapshot (capabilities page)
+  capabilitiesFor: string | null; // sessionId the snapshot belongs to (stale on session switch until refetched)
+  capabilitiesLoading: boolean;
   setBriefDiff(path: string, diff: string | undefined): void;
   refreshGitDiff(force?: boolean): void;
+  fetchCapabilities(): void;
 }
 
 /** Cap of the edit-row diff cache (by file count). A full diff can reach hundreds of KB; without a cap it grows linearly with the number of edited files. */
@@ -63,6 +68,9 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   gitDiffCache: { cwd: null, files: [], loading: false },
   fileDiffCache: { path: null, diff: "", loading: false },
   briefDiffCache: new Map(),
+  capabilities: null,
+  capabilitiesFor: null,
+  capabilitiesLoading: false,
 
   /** Write to the edit-row diff cache and evict the least-recently-used file (the value may be undefined: a placeholder meaning "requested, awaiting reply") */
   setBriefDiff(path, diff) {
@@ -87,6 +95,18 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
       gitDiffCache: { ...st.gitDiffCache, loading: true, cwd: s.cwd },
     }));
     useAppStore.getState().send({ type: "get_git_diff", cwd: s.cwd });
+  },
+
+  // Capabilities page fetch: on mount, session switch, and the sp-head refresh button.
+  // MCP updates also arrive live afterwards via the capabilities_mcp frame.
+  fetchCapabilities() {
+    const s = activeOpen();
+    if (!s) {
+      useAppStore.setState({ capabilities: null, capabilitiesFor: null, capabilitiesLoading: false });
+      return;
+    }
+    useAppStore.setState({ capabilitiesLoading: true });
+    get().send({ type: "get_capabilities", sessionId: s.sessionId });
   },
 });
 

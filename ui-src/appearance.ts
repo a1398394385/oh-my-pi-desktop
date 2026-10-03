@@ -1,22 +1,20 @@
-// Appearance preferences: persisted to localStorage + applied to
-// documentElement (CSS variables and dataset switches).
-// The single implementation shared by the settings page (Settings container)
-// and global shortcuts (Ctrl+T in keys.js), ported from the old
-// ui/settings/index.js saveUiPrefs / applyAppearance / applyHostAppearance.
-import { useAppStore } from "./store";
+// Appearance preferences: applied to documentElement (CSS variables and
+// dataset switches) and persisted file-first — omp-desktop.json's ui section
+// is the single source of truth, mirrored into localStorage as the first-frame
+// render cache (write-through on save, reconciled against the file on every
+// ready/settings frame). Shared by the settings pages (Settings container),
+// global shortcuts (keys.js) and the frame handlers (wsHandlers/config).
+import i18next from "./i18n";
+import { useAppStore, send } from "./store";
+import { invoke } from "./store/ws";
+import { applyTheme, applyMotion } from "./shell";
+import type { UiPrefs } from "./store/shapes";
 
 const UI_PREF_KEY = "omp-ui-settings";
+const THEME_KEY = "omp-theme";
+const MOTION_KEY = "omp-motion";
 
 // Font options: shared by the appearance page font dropdown and applyAppearance
-export const FONT_LABELS: Record<string, string> = {
-  default: "系统默认",
-  zcode: "标准系统无衬线",
-  pingfang: "苹方 / PingFang SC",
-  songti: "宋体 / Songti SC",
-  kaiti: "楷体 / KaiTi SC",
-  heiti: "黑体 / Heiti SC",
-  mono: "等宽",
-};
 export const FONT_STACKS: Record<string, string> = {
   default: "var(--sans)",
   zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -27,11 +25,17 @@ export const FONT_STACKS: Record<string, string> = {
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
 
-// Persist appearance preferences (localStorage)
+/** Cache-mirror the current prefs (+lang) into omp-ui-settings; theme/motion have their own keys. */
+function mirrorPrefsCache(prefs: UiPrefs): void {
+  const { theme: _t, motion: _m, ...cached } = prefs;
+  try { localStorage.setItem(UI_PREF_KEY, JSON.stringify(cached)); } catch {}
+}
+
+/** Persist appearance prefs: write omp-desktop.json via set_ui_prefs + mirror the localStorage cache. */
 export function saveUiPrefs(): void {
-  try {
-    localStorage.setItem(UI_PREF_KEY, JSON.stringify(useAppStore.getState().uiPrefs));
-  } catch {}
+  mirrorPrefsCache(useAppStore.getState().uiPrefs);
+  const { theme: _t, motion: _m, lang: _l, ...prefs } = useAppStore.getState().uiPrefs;
+  send({ type: "set_ui_prefs", prefs });
 }
 
 // Appearance preferences -> documentElement CSS variables and dataset switches
@@ -59,3 +63,92 @@ export function applyHostAppearance(hostSettings: { hideThinkingBlock?: unknown 
   saveUiPrefs();
   applyAppearance();
 }
+
+/** Narrow a frame-side prefs object to the known UiPrefs appearance fields (invalid values dropped). */
+function prefsProjection(src: unknown): Partial<UiPrefs> {
+  const out: Partial<UiPrefs> = {};
+  if (!src || typeof src !== "object") return out;
+  const s = src as Record<string, unknown>;
+  if (typeof s.uiFont === "string") out.uiFont = s.uiFont;
+  if (typeof s.uiFontSize === "number" && s.uiFontSize >= 11 && s.uiFontSize <= 18) out.uiFontSize = s.uiFontSize;
+  if (typeof s.codeFontSize === "number" && s.codeFontSize >= 10 && s.codeFontSize <= 18) out.codeFontSize = s.codeFontSize;
+  if (typeof s.lineNumbers === "boolean") out.lineNumbers = s.lineNumbers;
+  if (typeof s.codeWrap === "boolean") out.codeWrap = s.codeWrap;
+  if (typeof s.showThinking === "boolean") out.showThinking = s.showThinking;
+  if (typeof s.expandToolOutput === "boolean") out.expandToolOutput = s.expandToolOutput;
+  if (typeof s.terminalInheritProfile === "boolean") out.terminalInheritProfile = s.terminalInheritProfile;
+  if (typeof s.terminalFont === "string") out.terminalFont = s.terminalFont;
+  return out;
+}
+
+/**
+ * Reconcile uiPrefs against the ready/settings frame's uiConfig (read from
+ * omp-desktop.json on the host — the authoritative view). Per dimension:
+ * file value wins -> apply + refresh the localStorage cache; file empty but
+ * cache warm -> one-time migration upload (the ack frame then lands as a
+ * normal reconcile). The locale dimension additionally repairs the "detected
+ * language was pushed over the file's explicit choice" startup window.
+ */
+// Default prefs baseline (migration check: only upload when a cached value differs)
+const DEFAULT_PREFS: Record<string, unknown> = {
+  uiFont: "default",
+  uiFontSize: 13,
+  codeFontSize: 12,
+  lineNumbers: true,
+  codeWrap: false,
+  showThinking: true,
+  expandToolOutput: true,
+  terminalInheritProfile: true,
+  terminalFont: "",
+};
+
+export function applyUiConfig(cfg: unknown): void {
+  if (!cfg || typeof cfg !== "object") return;
+  const c = cfg as { locale?: unknown; theme?: unknown; motion?: unknown; prefs?: unknown };
+
+  // theme: file wins; cache-only value migrates up once
+  if (c.theme === "dark" || c.theme === "light" || c.theme === "system") {
+    applyTheme(c.theme);
+    try { localStorage.setItem(THEME_KEY, c.theme); } catch {}
+  } else {
+    const cachedTheme = localStorage.getItem(THEME_KEY);
+    if (cachedTheme) send({ type: "set_ui_prefs", theme: cachedTheme });
+  }
+
+  // motion: same shape as theme
+  if (c.motion === "system" || c.motion === "on" || c.motion === "off") {
+    applyMotion(c.motion);
+    try { localStorage.setItem(MOTION_KEY, c.motion); } catch {}
+  } else {
+    const cachedMotion = localStorage.getItem(MOTION_KEY);
+    if (cachedMotion) send({ type: "set_ui_prefs", motion: cachedMotion });
+  }
+
+  // prefs: file wins -> merge into the store + re-apply; cache-only value migrates up once
+  const filePrefs = prefsProjection(c.prefs);
+  if (Object.keys(filePrefs).length > 0) {
+    useAppStore.setState(st => {
+      const merged = { ...st.uiPrefs, ...filePrefs };
+      mirrorPrefsCache(merged);
+      return { uiPrefs: merged };
+    });
+    applyAppearance();
+  } else {
+    const { theme: _t, motion: _m, lang: _l, ...cachedPrefs } = useAppStore.getState().uiPrefs;
+    // Only migrate when the cache actually carries a non-default change
+    const hasAny = Object.entries(cachedPrefs).some(([k, v]) => JSON.stringify(v) !== JSON.stringify(DEFAULT_PREFS[k]));
+    if (hasAny) send({ type: "set_ui_prefs", prefs: cachedPrefs });
+  }
+
+  // locale: an explicit file value beats the startup-detected language (the
+  // onopen set_locale may have pushed the detection over it during the
+  // cache-miss window — re-send to repair the file, then switch the UI)
+  if ((c.locale === "zh-CN" || c.locale === "en") && c.locale !== useAppStore.getState().uiPrefs.lang) {
+    const loc = c.locale;
+    useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, lang: loc } }));
+    void i18next.changeLanguage(loc);
+    send({ type: "set_locale", lang: loc });
+    invoke?.("set_menu_language", { lang: loc })?.catch((err: unknown) => console.warn("set_menu_language:", err));
+  }
+}
+

@@ -1,18 +1,21 @@
-// Window shell: theme (dark/light/system), ⌘ and menu zoom, menu coordination,
-// sidebar drag-resize, content column width segments, message rail visibility,
-// fixed menu coordinate compensation, railToolText.
+// Window shell: theme (dark/light/system), motion, ⌘ and menu zoom, menu
+// coordination, sidebar drag-resize, content column width segments, message
+// rail visibility, fixed menu coordinate compensation, railToolText.
 // Ported 1:1 from ui/shell.js + the railToolText section of ui/ringpop.js; no
 // dependency on old ui/ modules.
 // DOM side effects stay imperative; React components cooperate via the
 // omp:close-menus / omp:zoom custom events.
-import { useAppStore, setBump, type TimerHandle } from "./store";
+import { useAppStore, send, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
 import { t } from "./i18n";
 
-// Theme mode: legal values of the localStorage omp-theme key (the read-back
-// value is narrowed by an assertion in initShell)
+// Theme/motion modes. Persistence is file-first: omp-desktop.json's ui section
+// is the source of truth (saveTheme/saveMotion write it via the set_ui_prefs
+// RPC and mirror the value into localStorage, which only serves as the
+// first-frame render cache read at startup).
 type ThemeMode = "dark" | "light" | "system";
+type MotionMode = "system" | "on" | "off";
 
 // ---------- Menu coordination ----------
 // React-side consumers (Composer menus and other state-driven ones) listen for
@@ -28,24 +31,46 @@ export function closeAllMenus(): void {
 // ---------- Theme (dark / light / system) ----------
 let themeMode: ThemeMode = "dark";
 const themeMq = matchMedia("(prefers-color-scheme: dark)");
+
+/** Apply a theme to the DOM and mirror it into the store (no persistence — callers decide). */
 export function applyTheme(mode: ThemeMode): void {
   themeMode = mode;
   const dark = mode === "system" ? themeMq.matches : mode === "dark";
   document.documentElement.dataset.theme = dark ? "dark" : "light";
-  try {
-    localStorage.setItem("omp-theme", mode);
-  } catch {}
+  useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, theme: mode } }));
   for (const h of document.querySelectorAll(".fd-holder")) h.classList.toggle("d2h-dark-color-scheme", dark);
   // The settings page theme Sel's selected label is per-page component state
-  // (AppearancePage/GeneralPage have their own ports); they treat dataset.theme
-  // as the single source of truth, so the DOM label is not touched here.
+  // (AppearancePage reads uiPrefs.theme); dataset.theme stays the effective-truth for previews.
+}
+
+/** User-driven theme switch: apply + persist to omp-desktop.json (+ cache mirror). */
+export function saveTheme(mode: ThemeMode): void {
+  applyTheme(mode);
+  try { localStorage.setItem("omp-theme", mode); } catch {}
+  send({ type: "set_ui_prefs", theme: mode });
 }
 
 // Native menu "toggle dark/light theme": swap dark and light (the system state
 // snaps to the currently effective color first, then switches)
 export function toggleTheme(): void {
   const dark = themeMode === "system" ? themeMq.matches : themeMode === "dark";
-  applyTheme(dark ? "light" : "dark");
+  saveTheme(dark ? "light" : "dark");
+}
+
+// ---------- Reduce motion (system follows the OS / on force-reduced / off force-animated) ----------
+/** Apply a motion mode to the DOM and mirror it into the store (no persistence — callers decide). */
+export function applyMotion(mode: MotionMode): void {
+  // system removes the attribute to fall back to the media query; on/off is taken over by html[data-motion] forced rules
+  if (mode === "system") delete document.documentElement.dataset.motion;
+  else document.documentElement.dataset.motion = mode;
+  useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, motion: mode } }));
+}
+
+/** User-driven motion switch: apply + persist to omp-desktop.json (+ cache mirror). */
+export function saveMotion(mode: MotionMode): void {
+  applyMotion(mode);
+  try { localStorage.setItem("omp-motion", mode); } catch {}
+  send({ type: "set_ui_prefs", motion: mode });
 }
 
 // ---------- Sidebar collapse toggles (shared by the topbar button / native menu / ⌘B) ----------
@@ -196,13 +221,8 @@ export function initShell(): void {
   themeMq.addEventListener("change", () => {
     if (themeMode === "system") applyTheme("system");
   });
-  try {
-    const saved = localStorage.getItem("omp-theme");
-    // The localStorage read-back is asserted to be one of the three values (the
-    // only writer is applyTheme; legal at runtime)
-    if (saved) applyTheme(saved as ThemeMode);
-  } catch {}
-
+  // Startup theme/motion restoration lives in main.tsx (before React mounts);
+  // here only the system-mode media listener remains.
   attachResizer("left-resizer", "--left-w", 180, false);
   // Right panel drag handle (ZCode Side Pane size contract): min 240px, max 65% viewport width
   attachResizer("right-resizer", "--right-w", 240, true, 0.65);

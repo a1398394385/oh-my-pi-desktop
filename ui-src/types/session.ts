@@ -19,6 +19,7 @@ import type {
   AssetFileFrame,
   PromptAttachment,
   ProviderLimitsResultFrame,
+  ProviderAccountsFrame,
   QueuedMessage,
   SessionStatsPayload,
   SettingsPayload,
@@ -228,7 +229,17 @@ export interface RailEntry {
 export interface PendingApproval {
   requestId: string;
   title: string;
-  options: string[]; // editor/plan variants use stable ids (submit/cancel/approve/refine)
+  options: string[]; // editor/plan variants use stable ids (submit/cancel/plan:execute/plan:compact/plan:keep/plan:refine/plan:save-quit)
+  // Live context usage for the plan-approval keep-context row (raw numbers; the
+  // UI localizes the "Approve and keep context (~44k / 1m)" label).
+  keepContextTokens?: { tokens: number; contextWindow: number };
+  // Row indices the operator may not pick (plan approval disables keep-context
+  // once the context is nearly full).
+  disabledIndices?: number[];
+  // Execution-model tier slider rendered above the plan options; the picked
+  // index travels back in the approval_response `sliderIndex` field.
+  slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
+  sliderIndex?: number;
   editable: boolean;
   editableIndex?: number; // index of the editable input row within options (editor-variant protocol field)
   prefill: string;
@@ -248,6 +259,7 @@ export interface SubagentToolCall {
   output?: string;
   details?: unknown;
   diffContent?: string;
+  at?: number; // frontend arrival timestamp (Recent activity clock)
 }
 
 /** Subagent aggregated usage (landed by store.ts subagent_progress) */
@@ -276,6 +288,10 @@ export interface SubagentState {
   name?: string;
   parent?: string;
   registeredAt?: number;
+  sessionFile?: string | null; // child transcript file (Lineage/Output path)
+  readOnly?: boolean; // child session_init.readOnly, host-recovered (Agent Hub Changes line)
+  advisor?: boolean; // advisor transcript (__advisor stem), host-derived like the TUI registry kind
+  task?: string; // latest task text from progress frames (fallback when lifecycle description is empty)
   text: string; // accumulated subagent text deltas
   tools: SubagentToolCall[];
   streaming: boolean;
@@ -411,6 +427,7 @@ export interface AppState {
   settingsOpen: boolean; // fullscreen overlay open state
   settingsPage: string; // current settings page id
   providerLimits: ProviderLimitsResultFrame | null;
+  providerAccounts: ProviderAccountsFrame | null;
   loginBanner: string | null; // OMP login progress banner text
   loginPromptData: LoginPromptFrame | null; // login_prompt paste-code dialog data
   assetFile: AssetFileFrame | null; // asset_file reply (skills/agents editors filter by kind)

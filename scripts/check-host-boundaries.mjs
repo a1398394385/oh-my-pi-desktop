@@ -50,6 +50,12 @@ const ALLOWED_EDGES = new Set([
   "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
   // Plan mode domain: main.ts mounts the /plan dispatch and the plan_mode RPC; approval/output bridges and event stamps live in state
   "main.ts→plan.ts", "plan.ts→bootstrap.ts", "plan.ts→state.ts",
+  // Plan approval flow (the five next-step options + execution-model slider): plan.ts installs the
+  // xd://propose handler, session-lifecycle owns the event subscription that dispatches the approval
+  // out of band. plan-approve gets its fresh-session factory INJECTED by session-lifecycle rather
+  // than importing it back — the dependency is one-way by construction, so no cycle enters the table.
+  "plan.ts→plan-approve.ts", "plan-approve.ts→bootstrap.ts", "plan-approve.ts→state.ts",
+  "session-lifecycle.ts→plan-approve.ts", "rpc/settings.ts→plan-approve.ts",
   // Session lifecycle domain: main.ts mounts the create/load dispatches; the lifecycle depends on plan (restoring plan mode),
   // queue (queued-race fallback), profile (experiment switches), assets (plugin/hook switches)
   "main.ts→session-lifecycle.ts",
@@ -66,10 +72,12 @@ const ALLOWED_EDGES = new Set([
   "keepalive.ts→keepalive-config.ts", "keepalive.ts→keepalive-lib.ts",
   // Config source of truth = the keepalive section of omp-desktop.json (per-profile independent); reads/writes go through state.ts's H
   "keepalive-config.ts→state.ts",
-  // UI locale persistence (omp-desktop.json ui section): applyProfile re-reads
-  // it on every profile apply; the set_locale RPC writes it; read/write goes
-  // through state.ts's H (same as keepalive-config)
-  "profile.ts→ui-locale.ts", "rpc/settings.ts→ui-locale.ts", "ui-locale.ts→state.ts",
+  // UI config persistence (omp-desktop.json ui section: locale/theme/motion/prefs):
+  // applyProfile re-reads the locale on every profile apply; the set_locale /
+  // set_ui_prefs RPCs write it; frames.ts carries the readUiConfig projection;
+  // read/write goes through state.ts's H (same as keepalive-config)
+  "profile.ts→ui-config.ts", "rpc/settings.ts→ui-config.ts", "ui-config.ts→state.ts",
+  "frames.ts→ui-config.ts",
   // Queued message domain: followUp/steering views, park staging plus send-now/requeue/drop
   "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
   // Experiment switches (acp/sessionContext section) live in omp-desktop.json alongside the profile
@@ -111,6 +119,13 @@ const ALLOWED_EDGES = new Set([
   "rpc/terminal.ts→rpc/types.ts", "rpc/terminal.ts→pty.ts",
   "rpc/limits.ts→rpc/types.ts", "rpc/limits.ts→bootstrap.ts", "rpc/limits.ts→state.ts",
   "rpc/limits.ts→limits",
+  // Session capabilities snapshot domain (right-panel page): state sources via bootstrap,
+  // pool state via state.ts; session-lifecycle pushes the MCP incremental frame
+  "capabilities.ts→bootstrap.ts", "capabilities.ts→state.ts",
+  "session-lifecycle.ts→capabilities.ts",
+  "rpc/capabilities.ts→rpc/types.ts", "rpc/capabilities.ts→state.ts",
+  "rpc/capabilities.ts→capabilities.ts",
+  "rpc/index.ts→rpc/capabilities.ts",
 ]);
 
 // Scan one level of host/ plus the host/rpc/ subdirectory (keys carry a path prefix like rpc/session.ts)

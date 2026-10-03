@@ -92,10 +92,10 @@ export default function GitDiffPage() {
   const gitBusy = useGitBusy();
   const [confirm, setConfirm] = useState<DiscardConfirm | null>(null);
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   if (!s.isGit) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.notGitRepoParen")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("right.notGitRepoParen")}</div>;
   }
   if (selectedFile) {
     return <GdFileDetail />;
@@ -125,7 +125,7 @@ export default function GitDiffPage() {
   return (
     <>
       {/* Toolbar: commit message input (value kept in rightState.commitMsg across repaints) + commit (all staged) + push */}
-      <div className="flex items-center gap-1.5 pt-0.5 px-2 pb-2">
+      <div className="flex items-center gap-1.5 pt-0.5 pb-2">
         <input
           className="inp gd-commit-inp"
           type="text"
@@ -164,9 +164,9 @@ export default function GitDiffPage() {
         </button>
       </div>
       {gitDiffCache.cwd !== s.cwd || gitDiffCache.loading ? (
-        <div className="py-3 px-2.5 text-faint text-ui-base">{gitDiffCache.loading ? t("common.loading") : t("right.clickRefresh")}</div>
+        <div className="py-3 text-faint text-ui-base">{gitDiffCache.loading ? t("common.loading") : t("right.clickRefresh")}</div>
       ) : gitDiffCache.files.length === 0 ? (
-        <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.worktreeClean")}</div>
+        <div className="py-3 text-faint text-ui-base">{t("right.worktreeClean")}</div>
       ) : gitViewMode === "flat" ? (
         gitDiffCache.files.map((f) => <GitFileRow key={f.path} f={f} displayPath={f.path} depth={0} onDiscard={onDiscard} />)
       ) : (
@@ -197,9 +197,9 @@ function GdFileDetail() {
       </div>
       <div className="rb-scroll">
         {fileDiffCache.loading && fileDiffCache.path === selectedFile ? (
-          <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>
+          <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>
         ) : fileDiffCache.path !== selectedFile || !fileDiffCache.diff ? (
-          <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noDiffContent")}</div>
+          <div className="py-3 text-faint text-ui-base">{t("right.noDiffContent")}</div>
         ) : (
           <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(selectedFile)} className="fd-holder" />
         )}

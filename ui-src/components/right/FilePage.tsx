@@ -26,7 +26,7 @@ function FileTree() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   return (
     <>
@@ -62,7 +62,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
   }, [dirPath]);
   const entries = rightState.fileTreeDirs.get(dirPath);
   if (entries === undefined) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>;
   }
   return (
     <>
@@ -140,7 +140,7 @@ function FileCrumb({ absPath }: { absPath: string }) {
     segs = abs.split("/").filter(Boolean);
   }
   return (
-    <div className="flex items-center gap-0.5 text-ui-xs text-faint mb-2 px-2 overflow-hidden whitespace-nowrap" title={absPath}>
+    <div className="flex items-center gap-0.5 text-ui-xs text-faint mb-2 overflow-hidden whitespace-nowrap" title={absPath}>
       {segs.map((seg, i) => (
         <Fragment key={i}>
           {i > 0 && (
@@ -184,11 +184,11 @@ function FvDetail() {
         {fv.image ? (
           <FvImage fv={fv} />
         ) : !fv.text && !fv.error ? (
-          <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>
+          <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>
         ) : (
           <>
             {fv.error && (
-              <div className="text-ui-xs text-faint mt-2 px-2">{t("right.errorParen", { error: fv.error })}</div>
+              <div className="text-ui-xs text-faint mt-2">{t("right.errorParen", { error: fv.error })}</div>
             )}
             <FvBody fv={fv} bodyRef={bodyRef} />
           </>
@@ -218,7 +218,7 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
   const tokens = useCodeTokens(shown.join("\n"), langOfPath(fv.path));
   return (
     <>
-      <div className="pt-1 pr-2 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */ ref={bodyRef}>
+      <div className="pt-1 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */ ref={bodyRef}>
         {shown.map((tx, i) => {
           const n = lineNoOf(i);
           // Only the line-number column is highlighted within the requested range, content untouched; null = hole lines omitted by the tool
@@ -232,7 +232,7 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
         })}
       </div>
       {fv.full && lines.length > shown.length && (
-        <div className="text-ui-xs text-faint mt-2 px-2">
+        <div className="text-ui-xs text-faint mt-2">
           {t("right.fileWindow", { total: lines.length, start: winStartLine, end: winStartLine + shown.length - 1 })}
         </div>
       )}
@@ -245,10 +245,10 @@ function FvImage({ fv }: { fv: FileViewState }) {
   const { t } = useTranslation();
   const ic = useAppStore((s) => s.rightState.imageContent);
   if (!ic || ic.path !== fv.path) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>;
   }
   if (ic.error) {
-    return <div className="text-ui-xs text-faint mt-2 px-2">{t("right.errorParen", { error: ic.error })}</div>;
+    return <div className="text-ui-xs text-faint mt-2">{t("right.errorParen", { error: ic.error })}</div>;
   }
   return <img className="block max-w-full h-auto bg-panel-2 border border-line rounded-md p-1.5 box-border" src={`data:${ic.mime};base64,${ic.data}`} alt={pathBase(fv.path)} />;
 }

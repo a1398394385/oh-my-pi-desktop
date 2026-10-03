@@ -72,6 +72,7 @@ export default function App() {
     initShell();
   }, []);
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
+  const hubOpen = useAppStore((s) => s.hubOpen);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
   const activePath = useAppStore((s) => s.activePath);
@@ -85,7 +86,7 @@ export default function App() {
         <ChatHead onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
         <ConnBanner />
         {isCreatingNew ? <Welcome /> : <Chat />}
-        {!isCreatingNew && (
+        {!isCreatingNew && !hubOpen && (
           <>
             {/* Goal bar -> queue card -> input dock: three stacked cards from
                 top down (the goal bar shifts up as the queue grows). Each card

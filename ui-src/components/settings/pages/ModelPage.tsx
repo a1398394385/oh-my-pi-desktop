@@ -44,7 +44,7 @@ interface ProviderLimits {
   status?: string;
   windows: LimitWindow[];
   balance?: { amount?: number | null; currency?: string } | null;
-  accounts?: Array<Partial<ProviderLimits> & { label?: string; accountLabel?: string }>;
+  accounts?: Array<Partial<ProviderLimits> & { id?: string | number; label?: string; accountLabel?: string }>;
 }
 
 // Purpose blurb keys for built-in roles (values are i18n keys; custom roles show a
@@ -62,9 +62,36 @@ const ROLE_DESC_KEYS: Record<string, string> = {
   advisor: "settingsPage.model.roleDesc.advisor",
 };
 
-// One quota detail section (ui/ringpop.js buildLimitsSection ported to a component): semantics/colors use the shared definitions in lib/limits
-function LimitsSection({ limits }: { limits: ProviderLimits }) {
+// One quota detail section (ui/ringpop.js buildLimitsSection ported to a component): semantics/colors use the shared definitions in lib/limits.
+// prov/accountId wire the per-account disable action into the card head (settings page only;
+// the composer ctx card has its own LimitsSection and stays untouched).
+function LimitsSection({ limits, prov, accountId }: { limits: ProviderLimits; prov?: string; accountId?: string | number }) {
   const { t } = useTranslation();
+  const acc = useAppStore((s) => s.providerAccounts);
+  // Disable lives on the quota card of its account; offered only with 2+ active
+  // accounts — disabling the last one removes the provider from the left list
+  // and the cards with it, leaving the tombstone unreachable (use logout there).
+  const credId = accountId != null && accountId !== "" ? Number(accountId) : NaN;
+  const activeAcc = prov && acc?.provider === prov ? acc : null;
+  const disablable =
+    prov != null &&
+    activeAcc != null &&
+    activeAcc.active.length > 1 &&
+    Number.isInteger(credId) &&
+    credId > 0 &&
+    activeAcc.active.some((a) => a.id === credId);
+  const disable = async () => {
+    const ok = await confirmDialog({
+      title: t("settingsPage.model.disableConfirmTitle", { account: limits.label || prov }),
+      message: t("settingsPage.model.disableConfirmMsg"),
+      confirmText: t("settingsPage.model.disableAccount"),
+      danger: true,
+    });
+    if (!ok) return;
+    send({ type: "provider_disable_account", provider: prov, id: credId });
+    toast(t("settingsPage.model.disablingAccount"));
+    send({ type: "get_provider_limits", provider: prov }); // card count changed — re-query
+  };
   let body: ReactNode;
   if (limits.unsupported) {
     body = t("settingsPage.model.quotaUnsupported");
@@ -113,7 +140,11 @@ function LimitsSection({ limits }: { limits: ProviderLimits }) {
     <div className="cx-sec lx-sec">
       <div className="lx-head">
         <b>{t("settingsPage.model.quotaRemaining")}</b>
-        <span className="lx-prov">{limits.label ?? ""}</span>
+        {disablable ? (
+          <button type="button" className="save-btn danger" onClick={() => void disable()}>
+            {t("settingsPage.model.disableAccount")}
+          </button>
+        ) : null}
       </div>
       <div className="lx-body">{body}</div>
     </div>
@@ -129,22 +160,65 @@ function QuotaSection({ provider }: { provider: string }) {
   if (!lim || lim.provider !== provider) {
     return <div className="mp-lim">{t("settingsPage.model.quotaLoading")}</div>;
   }
-  // Multi-account: one section per account (account identity shown at the head's right); single account takes the original single-section path
+  // Multi-account: one section per account; single account takes the original single-section
+  // path (accountId from accounts[0] — 0/absent on the credential-less native fallback)
   if (Array.isArray(lim.accounts) && lim.accounts.length > 1) {
     return (
       <div className="mp-lim">
         {lim.accounts.map((a, i) => (
-          <LimitsSection key={i} limits={{ ...lim, ...a, label: a.label || a.accountLabel || t("settingsPage.model.accountN", { n: i + 1 }) }} />
+          <LimitsSection
+            key={i}
+            prov={provider}
+            accountId={a.id}
+            limits={{ ...lim, ...a, label: a.label || a.accountLabel || t("settingsPage.model.accountN", { n: i + 1 }) }}
+          />
         ))}
       </div>
     );
   }
   return (
     <div className="mp-lim">
-      <LimitsSection limits={lim} />
+      <LimitsSection prov={provider} accountId={lim.accounts?.[0]?.id} limits={lim} />
     </div>
   );
 }
+
+// Disabled-account section: tombstone rows with restore. Restoring re-upserts the
+// preserved credential (host closes OMP's missing loop); auto-disabled tombstones
+// (invalid_grant etc.) are display-only. The disable action itself lives on each
+// account's quota card (LimitsSection).
+function AccountsSection({ prov }: { prov: string }) {
+  const { t } = useTranslation();
+  const acc = useAppStore((s) => s.providerAccounts);
+  useEffect(() => {
+    send({ type: "provider_list_accounts", provider: prov });
+  }, [prov]);
+  const enable = (id: number) => {
+    send({ type: "provider_enable_account", provider: prov, id });
+    toast(t("settingsPage.model.enablingAccount"));
+    send({ type: "get_provider_limits", provider: prov }); // the restored account gets its quota card back
+  };
+  if (!acc || acc.provider !== prov || acc.disabled.length === 0) return null;
+  return (
+    <>
+      <div className="mp-ml"><span>{t("settingsPage.model.disabledSection")}</span></div>
+      {acc.disabled.map((d) => (
+        <div className="mp-row" key={d.id}>
+          <span className="truncate text-dim" title={d.cause}>
+            {(d.label ? d.label + " · " : "") + d.cause}
+          </span>
+          <span className="sp" />
+          {d.manual ? (
+            <button type="button" className="save-btn" onClick={() => enable(d.id)}>
+              {t("settingsPage.model.enableAccount")}
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </>
+  );
+}
+
 
 // Current value display of the role selector: unconfigured → "default"; exact catalog model hit → model name; otherwise (alias / level-suffixed) → raw value
 function roleSelLabel(role: ModelRole): string {
@@ -679,6 +753,8 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
       </div>
       {/* Provider quota: hits the host-side 60s cache; switching providers re-queries (send see ModelPage effect) */}
       <QuotaSection provider={prov} />
+      {/* Account rows only for credential-backed providers (config-file apiKey rows have no authStorage rows) */}
+      {models[0]?.authSource === "cred" ? <AccountsSection prov={prov} /> : null}
       <div className="mp-ml"><span>{t("settingsPage.model.modelList")}</span></div>
       {models.map((m) => (
         <div className="mp-row" key={m.id}>

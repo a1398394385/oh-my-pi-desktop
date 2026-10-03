@@ -139,11 +139,11 @@ export default function BgCmdPage() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const [openId, setOpenId] = useState<string | null>(null);
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   const { tasks } = getBgTasksForSession(s);
   if (tasks.length === 0) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noBgCommands")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("right.noBgCommands")}</div>;
   }
   return (
     <div className="slist" style={{ padding: "4px 0" }}>

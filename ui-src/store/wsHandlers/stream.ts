@@ -36,6 +36,10 @@ export const streamHandlers = {
         requestId: msg.requestId,
         title: msg.title,
         options: msg.options,
+        keepContextTokens: msg.keepContextTokens,
+        disabledIndices: msg.disabledIndices,
+        slider: msg.slider,
+        sliderIndex: msg.slider?.index,
         editable: !!msg.editable,
         editableIndex: msg.editableIndex,
         prefill: msg.prefill ?? "",
@@ -143,10 +147,13 @@ export const streamHandlers = {
         agent: msg.agent,
         description: msg.description ?? "",
         status: msg.status,
-        // host-filled derived fields: display name / parent agent / registration time
+        // host-filled derived fields: display name / parent agent / registration time / transcript file
         name: msg.name ?? prev?.name,
         parent: msg.parent ?? prev?.parent,
         registeredAt: msg.registeredAt ?? prev?.registeredAt,
+        sessionFile: msg.sessionFile ?? prev?.sessionFile,
+        readOnly: msg.readOnly ?? prev?.readOnly,
+        advisor: msg.advisor ?? prev?.advisor,
         text: prev?.text ?? "",
         tools: prev?.tools ?? [],
         streaming: msg.status === "started",
@@ -179,6 +186,7 @@ export const streamHandlers = {
           recentTools: msg.recentTools,
         };
         if (msg.status) prev.status = msg.status;
+        if (msg.task) prev.task = msg.task;
         if (msg.name && !prev.name) prev.name = msg.name;
         if (msg.parent && !prev.parent) prev.parent = msg.parent;
         if (msg.registeredAt && !prev.registeredAt) prev.registeredAt = msg.registeredAt;
@@ -201,7 +209,7 @@ export const streamHandlers = {
         const sub = s.subagents.get(msg.subagentId);
         if (!sub) return;
         if (msg.kind === "turn_start") sub.streaming = true;
-        else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, files: msg.files, toolCallId: msg.toolCallId, running: true });
+        else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, files: msg.files, toolCallId: msg.toolCallId, running: true, at: Date.now() });
         else if (msg.kind === "tool_update") {
           const last =
             [...sub.tools].reverse().find((t) => t.toolCallId && t.toolCallId === msg.toolCallId) ||

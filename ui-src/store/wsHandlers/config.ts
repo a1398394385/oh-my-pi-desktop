@@ -2,6 +2,7 @@
 // profile switch, approval mode, usage stats, asset lists, extension lists. Moved over from
 // store/ws.ts onMessage.
 import { useAppStore } from "../index";
+import { applyUiConfig } from "../../appearance";
 import { hostInstanceReset, ingestModelDefaults, ingestModels } from "../session";
 import { clearRightSnapshots } from "../right";
 import { t } from "../../i18n";
@@ -17,12 +18,16 @@ export const configHandlers = {
     // approvalMode is an un-narrowed string on the host side (same as SettingsSnapshot.approvalMode); the three-value validation lives in the host
     const approvalMode = (msg.approvalMode as ApprovalMode | undefined) ?? st.approvalMode;
     ingestModels(msg.models);
+    if (msg.roles) useAppStore.setState({ modelRoles: msg.roles });
     useAppStore.setState({ approvalMode });
     // When the welcome page shows at startup, the ready frame arrives after the first initNewSessionModel: recalibrate immediately once config defaults land
     if (ingestModelDefaults(msg) && useAppStore.getState().isCreatingNew && !useAppStore.getState().newSessionDirty) {
       useAppStore.getState().initNewSessionModel(true);
     }
     if (msg.settings) {
+      // File-first reconcile (omp-desktop.json ui section) BEFORE the host-settings
+      // hideThinkingBlock overlay: the base settings stay the authority for showThinking
+      applyUiConfig(msg.settings.uiConfig);
       // Field-level whitelist merge: only hideThinkingBlock in the host settings frame affects local appearance prefs
       if (typeof msg.settings.hideThinkingBlock === "boolean") {
         useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
@@ -32,6 +37,7 @@ export const configHandlers = {
   },
   models(msg) {
     ingestModels(msg.models);
+    if (msg.roles) useAppStore.setState({ modelRoles: msg.roles });
     if (ingestModelDefaults(msg) && useAppStore.getState().isCreatingNew && !useAppStore.getState().newSessionDirty) {
       useAppStore.getState().initNewSessionModel(true);
     }
@@ -43,6 +49,8 @@ export const configHandlers = {
     useAppStore.setState((s) => ({ modelRoles: msg.roles ?? [] }));
   },
   settings(msg) {
+    // Same ordering as the ready handler: file-first reconcile, then the host overlay
+    applyUiConfig(msg.settings?.uiConfig);
     if (typeof msg.settings?.hideThinkingBlock === "boolean") {
       useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
     }

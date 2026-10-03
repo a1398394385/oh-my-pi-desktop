@@ -69,6 +69,25 @@ function filterCommands(list: CommandItem[] | null | undefined, query: string): 
   const byRank = (a: CommandItem, b: CommandItem) => rank(a) - rank(b) || a.name.localeCompare(b.name);
   return [...pre.sort(byRank), ...incl.sort(byRank)].slice(0, 50);
 }
+// $ skill candidate filter: the source==="skill" entries of the same commands
+// list; matching uses the bare name (strip the "skill:" prefix the host reports)
+function filterSkills(list: CommandItem[] | null | undefined, query: string): CommandItem[] {
+  if (!Array.isArray(list) || !list.length) return [];
+  const bare = (c: CommandItem) => c.name.replace(/^skill:/, "");
+  const skills = list.filter((c) => c.source === "skill");
+  const byBare = (a: CommandItem, b: CommandItem) => bare(a).localeCompare(bare(b));
+  const q = (query || "").toLowerCase();
+  if (!q) return skills.sort(byBare).slice(0, 50);
+  const pre: CommandItem[] = [];
+  const incl: CommandItem[] = [];
+  for (const c of skills) {
+    const n = bare(c).toLowerCase();
+    if (n.startsWith(q)) pre.push(c);
+    else if (n.includes(q)) incl.push(c);
+  }
+  return [...pre.sort(byBare), ...incl.sort(byBare)].slice(0, 50);
+}
+
 
 // Size cap for attachments to send: images go through ImageContent (base64),
 // text-like files are inlined into the prompt
@@ -178,6 +197,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
   const newSessionModel = useAppStore((st) => st.newSessionModel);
   const newSessionThinking = useAppStore((st) => st.newSessionThinking);
+  const newSessionPlanMode = useAppStore((st) => st.newSessionPlanMode);
   const commands = useAppStore((st) => st.commands);
   const mentionResult = useAppStore((st) => st.mentionResult);
   const approvalMode = useAppStore((st) => st.approvalMode);
@@ -209,7 +229,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const onTextChange = useCallback((t: string) => setText(t), []);
 
   // ---- sigil completion panel (TypeaheadMenuPlugin controlled state) ----
-  const [taKind, setTaKind] = useState<"file" | "command" | null>(null); // trigger kind (while open)
+  const [taKind, setTaKind] = useState<"file" | "command" | "skill" | null>(null); // trigger kind (while open)
   const [taQuery, setTaQuery] = useState("");
   const [taReqId, setTaReqId] = useState(0); // @ candidate request sequence (paired with mentionResult.reqId)
   const [taOpen, setTaOpen] = useState(false); // panel open/close (for yielding to keyboard commands)
@@ -231,7 +251,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // @ candidate 150ms debounce
   // kind/quoted of the most recent trigger (written by triggerFn, read by
   // onQueryChange/onSelectOption)
-  const lastTriggerRef = useRef<{ kind: "file" | "command"; quoted: boolean } | null>(null);
+  const lastTriggerRef = useRef<{ kind: "file" | "command" | "skill"; quoted: boolean } | null>(null);
   // Trigger-state dedupe key: Lexical's updateListener also fires onQueryChange
   // for selection-only updates; the same trigger state runs the request side
   // effect only once (aligned with the old updatePalette running only on text input)
@@ -381,6 +401,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         cwd: useAppStore.getState().newSessionProject || undefined,
         model: newSessionModel || undefined,
         thinking: newSessionThinking || undefined,
+        planMode: newSessionPlanMode || undefined,
       });
       useAppStore.setState({ pendingCreate: true });
       return;
@@ -389,6 +410,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = files
       .filter((f) => f.kind === "image" && typeof f.data === "string")
       .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
+
 
     // Sending while streaming = enqueue as followUp (auto-consumed when the
     // current loop finishes); Ctrl+↵ is steer -- immediate injection (after the
@@ -433,8 +455,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
   // ---- sigil trigger detection (triggerFn): global flattened view +
   // detectTrigger, semantics identical to the detection section of the old
-  // updatePalette (commands do not trigger with no session and outside the
-  // creating-new page); the trigger range must fall entirely inside the anchor
+  // updatePalette (command/skill lists need a session or the creating-new
+  // page); the trigger range must fall entirely inside the anchor
   // text node (Typeahead locates the replacement range by in-node offsets) ----
   const triggerFn = useCallback<TriggerFn>(
     (_text, editor) =>
@@ -453,7 +475,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (caret == null) return fail();
         const t = detectTrigger(full, caret);
         if (!t) return fail();
-        if (t.kind === "command") {
+        if (t.kind !== "file") {
           const st = useAppStore.getState();
           const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
           if (!sess && !st.isCreatingNew) return fail(); // no session and not creating-new: commands unavailable
@@ -480,7 +502,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setTaQuery(q);
     const st = useAppStore.getState();
     const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-    if (trig.kind === "command") {
+    if (trig.kind !== "file") {
       // List ownership: session id or the creating-new sentinel (creating-new uses
       // the sessionless list, hiding session-level commands)
       const cmdKey = sess ? sess.sessionId : "new";
@@ -513,12 +535,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         : []
       : taKind === "command"
         ? filterCommands(commands, taQuery)
-        : [];
-  const taLoading = taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" ? commands === null : false;
+        : taKind === "skill"
+          ? filterSkills(commands, taQuery)
+          : [];
+  const taLoading =
+    taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" || taKind === "skill" ? commands === null : false;
   const taOptions = taItems.map((it) => new PalOption(it));
 
-  // ---- Accepting a completion: file/command -> ChipNode (serialization =
-  // insertFile/insertCommand verbatim); directory -> plain-text replacement with
+  // ---- Accepting a completion: file -> ChipNode (serialization = insertFile
+  // verbatim); command/skill -> ChipNode (insertCommand; a skill entry's name is
+  // "skill:<name>", so the chip text is "/skill:<name> " which the host
+  // dispatches); directory -> plain-text replacement with
   // the caret parked at the token tail (no trailing space), triggerFn recomputes
   // the trigger after update and chains into that directory's contents (aligned
   // with the old dispatchEvent(input) trigger recompute; after a chip the anchor
@@ -547,7 +574,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       }
     } else {
       if (!("name" in it)) {
-        closeMenu(); // type guard: candidates must be CommandItem when kind=command
+        closeMenu(); // type guard: candidates must be CommandItem when kind=command/skill
         return;
       }
       const chip = $createChipNode(insertCommand(it.name));
@@ -562,7 +589,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // navigation/highlight/accept go through the plugin-provided itemProps
   const menuRenderFn: MenuRenderFn<PalOption> = (_anchorRef, itemProps) => (
     <PaletteMenu
-      mode={taKind === "command" ? "command" : "file"}
+      mode={taKind ?? "file"}
       items={taItems}
       index={itemProps.selectedIndex ?? 0}
       loading={taLoading}
@@ -775,10 +802,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
   // Menu button toggle: clicking the same button again closes; mutual exclusion
   // comes naturally from the single state; coordinate global menus before opening
-  // (DOM class-state menus such as the settings page Sel close via closeAllMenus)
+  // (DOM class-state menus such as the settings page Sel close via closeAllMenus).
+  // A manual open always shows the full menu: drop any ctrl+p preview state
   const toggleMenu = (name: MenuName) => (e: MouseEvent) => {
     e.stopPropagation(); // do not bubble to the window-level close listener
     if (openMenu !== name) closeAllMenus();
+    useAppStore.setState({ cyclePreview: null, thinkMenuAuto: false });
     setOpenMenu(openMenu === name ? null : name);
   };
 
@@ -875,16 +904,21 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <Icon name={modeMeta.icon} id="modeIcon" />
             <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
           </button>
-          {/* Plan mode (only available inside a session): a small button right of
-              the pill separated by |; on hover the icon flips to X meaning click to exit */}
-          {s?.planMode && (
+          {/* Plan mode: a small button right of the pill separated by |; on hover
+              the icon flips to X meaning click to exit (in a session = host mode,
+              new-session page = local create_session intent) */}
+          {(s?.planMode || (!s && newSessionPlanMode)) && (
             <>
               <span className="cbar-sep" id="planSep">|</span>
               <button
                 className="pill-btn plan-btn"
                 id="planBtn"
                 title={t("composer.planOnTitle")}
-                onClick={() => send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: false })}
+                onClick={() => {
+                  // In a session the host owns the mode; on the new-session page the button clears the local intent
+                  if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: false });
+                  else setBump({ newSessionPlanMode: false });
+                }}
               >
                 <span className="plan-ic">
                   <Icon name="plan" size={16} />

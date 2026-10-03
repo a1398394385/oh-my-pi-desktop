@@ -1,7 +1,8 @@
 // Composer sigil trigger computation (@ file completion / line-leading /
-// command completion / ! bash mode): pure functions, no React dependency.
-// Semantics aligned with the base TUI's autocomplete.ts extractAtPrefix /
-// findLeadingSlashCommandStart and input-controller.ts's isBashMode.
+// command completion / line-leading $ skill completion / ! bash mode): pure
+// functions, no React dependency. Semantics aligned with the base TUI's
+// autocomplete.ts extractAtPrefix / findLeadingSlashCommandStart and
+// input-controller.ts's isBashMode.
 
 // Word-boundary delimiters: hitting any of these characters inside a trigger
 // token truncates it (aligned with the TUI)
@@ -32,7 +33,9 @@ function findUnclosedQuote(text: string): number | null {
 export type FileTrigger = { kind: "file"; start: number; end: number; query: string; quoted: boolean };
 /** Line-leading / slash command completion trigger range */
 export type CommandTrigger = { kind: "command"; start: number; end: number; query: string };
-export type Trigger = FileTrigger | CommandTrigger;
+/** Line-leading $ skill completion trigger range */
+export type SkillTrigger = { kind: "skill"; start: number; end: number; query: string };
+export type Trigger = FileTrigger | CommandTrigger | SkillTrigger;
 
 /**
  * Trigger detection. Returns:
@@ -40,6 +43,9 @@ export type Trigger = FileTrigger | CommandTrigger;
  *   { kind:"file", start, end, query, quoted }      -- @ file mention completion
  *   { kind:"command", start, end, query }           -- line-leading / slash
  *                                                      command completion
+ *   { kind:"skill", start, end, query }             -- line-leading $ skill
+ *                                                      completion ($name is
+ *                                                      sugar for /skill:name)
  * start/end is the token's range in text (used for replacement); query is the
  * search term without the sigil.
  */
@@ -74,6 +80,14 @@ export function detectTrigger(text: string, caret: number): Trigger | null {
     if (/\s/.test(query)) return null; // the command name is typed out and the argument section is entered: close the popup
     return { kind: "command", start, end: caret, query };
   }
+  if (ch === "$" && text.slice(0, start).trim() === "") {
+    // Line-leading $ triggers skill completion (same line-start rule as /:
+    // the accepted candidate inserts "/skill:<name>", which the host only
+    // dispatches in leading position, so mid-prompt $ stays inert)
+    const query = text.slice(start + 1, caret);
+    if (/\s/.test(query)) return null; // arguments started: close the popup
+    return { kind: "skill", start, end: caret, query };
+  }
   return null;
 }
 
@@ -91,8 +105,10 @@ export function insertFile(value: string, dir: boolean, quoted: boolean): string
   return "@" + body + (dir ? "" : " ");
 }
 
-/** Insertion text after accepting a command candidate: command name + space
-    goes straight into the argument section */
+/** Insertion text after accepting a command/skill candidate: command name +
+    space goes straight into the argument section (skill entries reuse this --
+    their name is "skill:<name>", so the text becomes "/skill:<name> " which
+    the host dispatches via parseSkillInvocation) */
 export function insertCommand(name: string): string {
   return "/" + name + " ";
 }

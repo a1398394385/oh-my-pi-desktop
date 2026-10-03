@@ -31,9 +31,10 @@ export const composerZh = {
   planMode: "计划模式",
   planModeDesc: "先只读调研并产出计划，批准后才动手改代码",
   planModeHint: "先只读规划，批准计划后再执行",
-  planModeNeedSession: "需要先新建或打开一个会话",
   // ModelMenu.tsx
   noModels: "未配置可用模型",
+  modelRoleCategory: "模型角色",
+  onlyOneRoleModel: "仅有一个可用的角色模型",
   // ThinkMenu.tsx
   reasoning: "推理强度",
   // QueueCard.tsx

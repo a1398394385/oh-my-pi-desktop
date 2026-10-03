@@ -4,6 +4,7 @@
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import type {
+  ProviderAccountsFrame,
   ProviderLimitsResultFrame,
   LoginPromptFrame,
   AssetFileFrame,
@@ -39,6 +40,7 @@ export interface SettingsSlice {
   extensionsByScope: Record<string, ExtensionsFrame>; // same as above but accumulated per scope (for cross-scope matching of source badges on the assets page)
   usageStats: UsageStats | null;
   providerLimits: ProviderLimitsResultFrame | null; // provider_limits_result quota frame
+  providerAccounts: ProviderAccountsFrame | null; // provider_accounts account list frame
   assetFile: AssetFileFrame | null; // asset_file reply (skills/agents editors filter by kind)
   assetFileSaved: { kind: string; at: number } | null; // landed from asset_file_saved (reference change drives the "saved" indicator)
   assetSaved: { kind: string; at: number } | null; // same as above, consumed by the agents page
@@ -71,6 +73,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   extensionsByScope: {},
   usageStats: null,
   providerLimits: null,
+  providerAccounts: null,
   assetFile: null,
   assetFileSaved: null,
   assetSaved: null,

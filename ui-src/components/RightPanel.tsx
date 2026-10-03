@@ -15,10 +15,12 @@ import Icon from "../Icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
   TAB_META,
+  AUTO_TABS,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
 } from "./right/tabs";
 import StartPage from "./right/StartPage";
 import SubagentPage from "./right/SubagentPage";
+import HubDetailPage from "./right/HubDetailPage";
 import GitDiffPage from "./right/GitDiffPage";
 import FilePage from "./right/FilePage";
 import BgCmdPage from "./right/BgCmdPage";
@@ -26,6 +28,7 @@ import BranchTreePage from "./right/BranchTreePage";
 import SessionTreePage from "./right/SessionTreePage";
 import TerminalPage from "./right/TerminalPage";
 import BrowserPage from "./right/BrowserPage";
+import CapabilitiesPage from "./right/CapabilitiesPage";
 import { t } from "../i18n";
 import WindowControls from "./WindowControls";
 import { IS_WINDOWS } from "../platform";
@@ -100,14 +103,16 @@ function TabOverview({ onClose }: { onClose: () => void }) {
           >
             <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
             {t(TAB_META[name].label)}
-            <Tip label={t("common.close")}>
-              <span
-                className="mi-x"
-                onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
-              >
-                <Icon name="xmark" size={12} />
-              </span>
-            </Tip>
+            {!AUTO_TABS.has(name) && (
+              <Tip label={t("common.close")}>
+                <span
+                  className="mi-x"
+                  onClick={(e) => { e.stopPropagation(); closeRightTab(name); if (!useAppStore.getState().rightTabs.length) onClose(); }}
+                >
+                  <Icon name="xmark" size={12} />
+                </span>
+              </Tip>
+            )}
           </div>
         ))}
         {recents.length > 0 && <div className="mh">{t("right.recentlyClosed")}</div>}
@@ -147,31 +152,35 @@ function AddTabMenu({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="sp-pop-scroll">
-        {Object.keys(TAB_META).map((name) => {
-          const off = name === "gitdiff" && !isGit;
-          const on = rightTabs.includes(name);
-          return (
-            <Tip key={name} label={off ? t("right.notGitRepo") : undefined}>
-              <div
-                className={"mi" + (off ? " empty" : "")}
-                onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
-              >
-                <span className="ck">{on ? "✓" : ""}</span>
-                <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
-                {t(TAB_META[name].label)}
-              </div>
-            </Tip>
-          );
-        })}
+        {Object.keys(TAB_META)
+          .filter((name) => !AUTO_TABS.has(name))
+          .map((name) => {
+            const off = name === "gitdiff" && !isGit;
+            const on = rightTabs.includes(name);
+            return (
+              <Tip key={name} label={off ? t("right.notGitRepo") : undefined}>
+                <div
+                  className={"mi" + (off ? " empty" : "")}
+                  onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
+                >
+                  <span className="ck">{on ? "✓" : ""}</span>
+                  <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
+                  {t(TAB_META[name].label)}
+                </div>
+              </Tip>
+            );
+          })}
       </div>
     </div>
   );
 }
 
-// Single tab: equal-width flex, native drag reorder, hover-only close button, middle-click close
+// Single tab: equal-width flex, native drag reorder, hover-only close button, middle-click close.
+// Auto tabs (the Agent Hub linkage) have no close affordance — their lifecycle is tied to the hub.
 function TabButton({ name, on }: { name: string; on: boolean }) {
   const { t } = useTranslation();
   const [over, setOver] = useState(false);
+  const auto = AUTO_TABS.has(name);
   return (
     <button
       className={"rtab" + (on ? " on" : "") + (over ? " drag-over" : "")}
@@ -195,7 +204,7 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
         if (src && src !== name) moveRightTab(src, name);
       }}
       onAuxClick={(e) => {
-        if (e.button === 1) {
+        if (e.button === 1 && !auto) {
           e.preventDefault();
           closeRightTab(name);
         }
@@ -203,14 +212,16 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
     >
       <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
       <span className="rtab-tx">{t(TAB_META[name].label)}</span>
-      <Tip label={t("common.close")}>
-        <span
-          className="rtab-x"
-          onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
-        >
-          <Icon name="xmark" size={12} />
-        </span>
-      </Tip>
+      {!auto && (
+        <Tip label={t("common.close")}>
+          <span
+            className="rtab-x"
+            onClick={(e) => { e.stopPropagation(); closeRightTab(name); }}
+          >
+            <Icon name="xmark" size={12} />
+          </span>
+        </Tip>
+      )}
     </button>
   );
 }
@@ -283,8 +294,11 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
       document.removeEventListener("keydown", esc);
     };
   }, []);
-  // Non-git sessions keep no Git Diff tab (both the open list and the active tab fall back)
+  // Non-git sessions keep no Git Diff tab (both the open list and the active tab fall back).
+  // Restored snapshots may also carry a stale "hub" tab without a live hub — drop it.
+  const hubOpen = useAppStore((st) => st.hubOpen);
   let tabs = rightTabs;
+  if (!hubOpen && tabs.includes("hub")) tabs = tabs.filter((n) => n !== "hub");
   if (!s?.isGit && tabs.includes("gitdiff")) {
     const i = tabs.indexOf("gitdiff");
     tabs = tabs.filter((n) => n !== "gitdiff");
@@ -295,15 +309,14 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     });
   }
   const isGitTab = rightTab === "gitdiff";
-  // Detail mode (the old renderRightBody detail branches added .detail to #rightBody; check
-  // order aligned with the original: gitdiff passes the !s/!isGit fallbacks first, so
-  // selectedFile doesn't enter detail on non-git)
+  const isCapsTab = rightTab === "caps";
   const detail =
     (rightTab === "gitdiff" && !!s?.isGit && !!selectedFile) ||
     (rightTab === "file" && !!fileView) ||
     (rightTab === "subagent" && !!selectedSubagent && !!s?.subagents?.has(selectedSubagent));
   let body;
-  if (rightTab === null) body = <StartPage />; // all tabs closed: centered start page
+  if (rightTab === "hub") body = <HubDetailPage />;
+  else if (rightTab === null) body = <StartPage />; // all tabs closed: centered start page
   else if (rightTab === "gitdiff") body = <GitDiffPage />;
   else if (rightTab === "bgcmd") body = <BgCmdPage />;
   else if (rightTab === "file") body = <FilePage />;
@@ -311,6 +324,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "sessiontree") body = <SessionTreePage />;
   else if (rightTab === "terminal") body = <TerminalPage />;
   else if (rightTab === "browser") body = <BrowserPage />;
+  else if (rightTab === "caps") body = <CapabilitiesPage />;
   else body = <SubagentPage />;
   return (
     // Provider scoped locally to the right panel (App.tsx untouched; the coordinator handles
@@ -383,6 +397,20 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
                 }}
               >
                 {gitViewMode === "tree" ? t("right.treeView") : t("right.flatView")}
+              </button>
+            </Tip>
+           )}
+          {isCapsTab && (
+            <Tip label={t("right.refresh")}>
+              <button
+                className="icon-btn"
+                id="capsRefresh"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  useAppStore.getState().fetchCapabilities();
+                }}
+              >
+                <Icon name="refresh" />
               </button>
             </Tip>
           )}

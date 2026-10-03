@@ -169,7 +169,14 @@ export const chatZh = {
   approvalSubmit: "提交",
   approvalCancel: "取消",
   planApprove: "批准并执行",
-  planRefine: "继续修改",
+  planApproveCompact: "批准并压缩上下文",
+  // {{count}} = 当前上下文 token，{{window}} = 模型上下文窗口。
+  // 无用量数据时 host 不下发 optionLabels，此处只渲染基础文案。
+  planApproveKeep: "批准并保留上下文",
+  planApproveKeepCounted: "批准并保留上下文（~{{count}} / {{window}}）",
+  planRefine: "继续修改计划",
+  planSaveQuit: "保存并退出",
+  planDisabled: "上下文接近上限",
 };
 
 export default chatZh;

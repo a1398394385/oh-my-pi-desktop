@@ -10,12 +10,13 @@ import appIcon from "../../../ui/app-icon.png";
 import { useAppStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
 import { applyAppearance } from "../../appearance";
 
-export { FONT_LABELS, FONT_STACKS, saveUiPrefs, applyAppearance, applyHostAppearance } from "../../appearance";
 import Icon from "../../Icon";
 import { SETTINGS_ZH } from "../../i18n/locales/settings-zh-CN";
 import { SETTINGS_EN } from "../../i18n/locales/settings-en";
 import { buildKeyToPageMap } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
+import WindowControls from "../WindowControls";
+import { IS_WINDOWS } from "../../platform";
 import GeneralPage from "./pages/GeneralPage";
 import AppearancePage from "./pages/AppearancePage";
 import KeyboardPage from "./pages/KeyboardPage";
@@ -353,6 +354,16 @@ export default function Settings() {
       <div id="setBody" ref={setBodyRef}>
         <Page />
       </div>
+      {/* Windows frameless window controls: the fullscreen settings overlay (z-index 300) covers
+          the shell headers that normally carry .win-controls (chat-head / sp-head), so the
+          overlay pins its own copy to the setBody card's top-right corner. Windows only, and
+          only while open (a hidden copy would keep a redundant resize listener alive);
+          the component no-ops in browser preview (no window API). */}
+      {IS_WINDOWS && settingsOpen && (
+        <div className="set-win-ctl">
+          <WindowControls />
+        </div>
+      )}
     </div>
   );
 }

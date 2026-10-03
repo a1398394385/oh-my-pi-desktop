@@ -110,6 +110,7 @@ export const hostErrorsZh = {
     keepAtLeastOne: "至少保留一个启用模型",
     noneAfterFilter: "启用列表过滤后没有可用模型",
     invalidRoleName: "非法角色名: {{role}}",
+    roleUnresolved: "角色「{{role}}」没有解析到可用模型",
   },
   limits: {
     noModelSelected: "会话尚未选择模型",
@@ -119,6 +120,10 @@ export const hostErrorsZh = {
     noneInFlight: "当前没有进行中的登录流程",
     keyEmpty: "API key 不能为空",
     browserOnly: "{{provider}} 仅支持浏览器登录授权，不支持 API key",
+  },
+  account: {
+    notFound: "账号不存在或已恢复",
+    restoreUnsupported: "当前 profile 无本地凭据库，无法恢复已停用账号，请重新登录",
   },
   queue: {
     parkedNotFound: "暂存排队消息不存在: {{index}}",

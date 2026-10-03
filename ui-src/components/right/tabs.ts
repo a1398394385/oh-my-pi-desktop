@@ -23,7 +23,15 @@ export const TAB_META: Record<string, TabMeta> = {
   sessiontree: { label: "right.tabSessiontree", icon: "tree" },
   terminal: { label: "right.tabTerminal", icon: "termBox" },
   browser: { label: "right.tabBrowser", icon: "globe" },
+  caps: { label: "right.tabCaps", icon: "stats" },
+  hub: { label: "right.hubTitle", icon: "agents" },
 };
+
+// Tabs the user cannot open or close by hand: the "hub" tab appears only while the
+// middle-card Agent Hub is open (openHub injects it, closeHub removes it). The add menu
+// hides them; tab close affordances (× / middle click) are disabled for them.
+export const AUTO_TABS: ReadonlySet<string> = new Set(["hub"]);
+
 // Tab close hooks: registered by pages with host-side resources (e.g. the terminal PTY);
 // invoked to destroy them before the tab closes
 // (used by TerminalPage: closing the "Terminal" tab kills the pty-bridge subprocess)

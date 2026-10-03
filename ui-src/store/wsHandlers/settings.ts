@@ -16,6 +16,12 @@ export const settingsHandlers = {
       useAppStore.setState((s) => ({ providerLimits: msg }));
     }
   },
+  provider_accounts(msg) {
+    // Models-management page account section: same stale-response guard as providerLimits
+    if (msg.provider === useAppStore.getState().selectedProvider) {
+      useAppStore.setState((s) => ({ providerAccounts: msg }));
+    }
+  },
   all_providers(msg) {
     useAppStore.setState((s) => ({ allProvidersCache: msg.providers ?? [] }));
   },

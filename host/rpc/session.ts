@@ -2,7 +2,7 @@
 // compact/branch/tree navigation, plus project list add/remove/reorder.
 // Relocated from the message dispatch in main.ts (third cut).
 import fs from "node:fs";
-import { SessionManager, USER_INTERRUPT_LABEL } from "../bootstrap.ts";
+import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
 import { H, sessions } from "../state.ts";
 import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
@@ -84,7 +84,7 @@ export async function handleListSessions(ws: any) {
 
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
-    await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking);
+    await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true);
   },
   async load_session(ws, msg) {
     await handleLoadSession(ws, msg.path);
@@ -229,6 +229,14 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
     ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
+  },
+  async kill_subagent(_ws, msg) {
+    // Agent Hub kill: abort one spawned subagent by its SDK id via the global
+    // AgentRegistry (kept-alive agent refs live there regardless of the TUI).
+    // Unknown/terminal ids (e.g. hist-* replays) resolve to nothing — no-op.
+    const ref = AgentRegistry.global().get(String(msg.subagentId ?? ""));
+    if (!ref?.session) return;
+    await ref.session.abort({ reason: USER_INTERRUPT_LABEL });
   },
   async rename_session(ws, msg) {
     // Session rename: goes through the base's SessionManager.setSessionName

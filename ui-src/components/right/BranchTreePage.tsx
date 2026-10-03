@@ -62,16 +62,16 @@ export default function BranchTreePage() {
     send({ type: "get_session_tree", sessionId: session.sessionId });
   });
   if (!s) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
   const tree = rightState.sessionTree;
   const stale = !tree || tree.sessionId !== s.sessionId; // old data counts as stale after switching sessions
   if (stale) {
-    return <div className="py-3 px-2.5 text-faint text-ui-base">{t("common.loading")}</div>;
+    return <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>;
   }
   const branches = tree.branches ?? [];
   if (branches.length <= 1) {
-    return <div className="py-[18px] px-3.5 text-faint text-ui-base leading-[1.6]" /* style-token-ignore */>{t("right.noOtherBranches")}</div>;
+    return <div className="py-[18px] text-faint text-ui-base leading-[1.6]" /* style-token-ignore */>{t("right.noOtherBranches")}</div>;
   }
   // Group into a tree by parentSession: root branches (no parent, or parent absent from the
   // family list) at the top, children indented under parents (unlimited depth, uniform styling)
@@ -92,7 +92,7 @@ export default function BranchTreePage() {
   roots.sort(byTime);
   for (const l of kidsOf.values()) l.sort(byTime);
   return (
-    <div className="py-1.5 px-2">
+    <div className="py-1.5">
       <BranchLevel items={roots} kidsOf={kidsOf} depth={0} />
     </div>
   );

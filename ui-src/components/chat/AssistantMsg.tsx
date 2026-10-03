@@ -28,7 +28,8 @@ import { t } from "../../i18n";
 // Token colors land on inline CSS variables (--sdm-c / --shiki-dark); theme switching is
 // handled by P6 CSS re-reading the variables per html[data-theme], taking effect instantly
 // at runtime without re-rendering.
-const codePlugin = createCodePlugin({ themes: ["light-plus", "dark-plus"] });
+// Exported for reuse by secondary markdown surfaces (e.g. the hub detail page's Task block).
+export const codePlugin = createCodePlugin({ themes: ["light-plus", "dark-plus"] });
 
 const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
   javascript: "js",
@@ -93,7 +94,8 @@ function mdCodeBlock({ className, children }: ElProps<"code">) {
   );
 }
 
-const mdComponents: Components = {
+// Reference-stable element map shared with secondary markdown surfaces (hub detail Task).
+export const mdComponents: Components = {
   p: mdTag("p", "md-p"),
   h1: mdTag("h1", "md-h md-h1"),
   h2: mdTag("h2", "md-h md-h2"),
@@ -120,9 +122,10 @@ const mdComponents: Components = {
 
 // streamdown config constants (kept reference-stable to avoid resetting its internal
 // context on streaming frames): line numbers and height caps all off (matching the old
-// .md-code-block visuals); controls keep only the code-block copy button
-const mdControls = { code: { copy: true, download: false }, table: false, image: false };
-const MD_LINK_SAFETY_OFF = { enabled: false };
+// .md-code-block visuals); controls keep only the code-block copy button.
+// Exported alongside mdComponents for secondary markdown surfaces.
+export const mdControls = { code: { copy: true, download: false }, table: false, image: false };
+export const MD_LINK_SAFETY_OFF = { enabled: false };
 
 // Strip ACP <dcp-message-id> tags: the host strips them from persisted text before pushing
 // frames, but tag fragments during streaming text_delta reach rendering directly (the host

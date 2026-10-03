@@ -1082,3 +1082,19 @@
 .ka-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ka-target { font-size: var(--ui-fs-xs); font-weight: 500; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; cursor: pointer; }
 .ka-target:hover { border-color: var(--dim); }
+
+/* ── Windows window controls on the settings overlay (WindowControls.tsx, Windows only)──
+   The overlay covers the shell headers that normally carry .win-controls, so it pins its own copy
+   to the setBody card's top-right corner, inside that card's empty 32px top padding band (setBody
+   has no header row of its own). The 6px inset is geometric, not a taste call: the close button's
+   hover plate must stay within the card's --r-card corner, i.e. sqrt(2) × (16px − inset) ≤ 16px,
+   so 6px is the smallest round value that clears the curve with margin.
+   The -2px header-compensating margin is dropped here (fixed positioning owns the edges). */
+.set-win-ctl {
+  position: fixed;
+  top: calc(var(--shell-gap) + 6px);
+  right: calc(var(--shell-gap) + 6px);
+  z-index: 601; /* just above the 600 hover-hint tier: a tooltip in the corner must not cover the close button */
+}
+
+.set-win-ctl .win-controls { margin-right: 0; }

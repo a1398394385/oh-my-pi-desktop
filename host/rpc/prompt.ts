@@ -18,8 +18,9 @@ import {
   SKILL_PROMPT_MESSAGE_TYPE,
   executeAcpBuiltinSlashCommand,
   fuzzyFind,
+  discoverSkills,
 } from "../bootstrap.ts";
-import { sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
@@ -158,12 +159,23 @@ async function pushCommands(ws: { send(data: string): unknown }, sessionId: stri
 // Command list for the new-session page (no session entry): skills / custom
 // commands borrow any pooled session (same config loading, identical across
 // sessions); file commands scan the new project's cwd; session-level
-// commands are hidden. With an empty pool, skills fall back to none.
+// commands are hidden. With an empty pool, skills run the same discovery a
+// session would (discoverSkills) — the creating-new page must still offer
+// skill candidates ($ / /skill: completion) on a cold host.
 async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: string) {
   const any = sessions.values().next().value as PoolEntry | undefined;
+  let skills = any?.session.skills as unknown;
+  if (!skills) {
+    skills = (
+      await discoverSkills(cwd, H.agentDir, {
+        ...H.settings.getGroup("skills"),
+        disabledExtensions: H.settings.get("disabledExtensions") ?? [],
+      })
+    ).skills;
+  }
   const stub = {
     customCommands: any?.session.customCommands ?? [],
-    skills: any?.session.skills ?? [],
+    skills,
     skillsSettings: any?.session.skillsSettings ?? { enableSkillCommands: true },
     setSlashCommands: () => {},
     sessionManager: { getCwd: () => cwd },

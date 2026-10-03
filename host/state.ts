@@ -176,16 +176,39 @@ export function pushCommandOutput(sessionId: string, text: string) {
   if (w) w.send(JSON.stringify({ type: "command_output", sessionId, text }));
 }
 
-// Pending approval requests: approval_response / abort cleanup happens on the dispatch side of main.ts
-export const pendingApprovals = new Map<string, { resolve: (v: string | undefined) => void }>();
+// Pending approval requests: approval_response / abort cleanup happens on the dispatch side of main.ts.
+// `onSliderIndex` fires before resolve() so the plan approval flow can read the
+// picked execution tier; ordinary approvals never set it.
+export const pendingApprovals = new Map<
+  string,
+  { resolve: (v: string | undefined) => void; onSliderIndex?: (index: number) => void }
+>();
 
-/** Approval request frame: send approval_request to the UI and wait for approval_response to settle; agent abort (AbortSignal) ends as cancelled */
+/**
+ * Approval request frame: send approval_request to the UI and wait for
+ * approval_response to settle; agent abort (AbortSignal) ends as cancelled.
+ *
+ * `presentation` carries the plan-approval extras the plain confirm/editor
+ * variants do not use: the keep-context row's live token counts, disabled row
+ * indices, the execution-model slider, and the editor inline-input flags.
+ * Absent for every other approval, so the frame shape is unchanged there.
+ * `onSliderIndex` receives the tier the operator picked, delivered just before
+ * the promise settles (the plan flow reads it in its own continuation).
+ */
 export function requestApproval(
   ws: { send(data: string): unknown },
   sessionId: string,
   title: string,
   options: string[],
   signal?: AbortSignal,
+  presentation?: {
+    keepContextTokens?: { tokens: number; contextWindow: number };
+    disabledIndices?: number[];
+    slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
+    editable?: boolean;
+    editableIndex?: number;
+  },
+  onSliderIndex?: (index: number) => void,
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
   const { promise, resolve } = Promise.withResolvers<string | undefined>();
@@ -193,9 +216,23 @@ export function requestApproval(
     pendingApprovals.delete(requestId);
     resolve(v);
   };
-  pendingApprovals.set(requestId, { resolve: settle });
+  pendingApprovals.set(requestId, { resolve: settle, onSliderIndex });
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
-  ws.send(JSON.stringify(stampEvent({ type: "approval_request", sessionId, requestId, title, options })));
+  ws.send(
+    JSON.stringify(
+      stampEvent({
+        type: "approval_request",
+        sessionId,
+        requestId,
+        title,
+        options,
+        ...(presentation?.keepContextTokens ? { keepContextTokens: presentation.keepContextTokens } : {}),
+        ...(presentation?.disabledIndices ? { disabledIndices: presentation.disabledIndices } : {}),
+        ...(presentation?.slider ? { slider: presentation.slider } : {}),
+        ...(presentation?.editable ? { editable: true, editableIndex: presentation.editableIndex ?? 0 } : {}),
+      }),
+    ),
+  );
   return promise;
 }

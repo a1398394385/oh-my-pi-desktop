@@ -1,10 +1,13 @@
-// Approval card (ask/confirm/editor dialogs): same as ZCodium's PermissionDialog —
+// Approval card (ask/confirm/editor/plan dialogs): same as ZCodium's PermissionDialog —
 // an "awaiting confirmation" title + question body + numbered option rows + bottom
 // keyboard hint and confirm button.
 // Interaction mirrors ZCodium: single click selects, second click / Enter / the confirm
 // button answers, number keys answer directly, up/down / Tab move the selection;
 // with editable (editor dialogs) the submit row embeds an inline input (ZCodium feedback
 // row styling; empty input is treated as cancel).
+// The plan variant adds an execution-model tier slider above the options and may
+// disable the keep-context row once the context is nearly full (both host-driven:
+// slider/disabledIndices ride the frame, the picked index rides back on the answer).
 // After answering, the answer freezes (chosen/dim/disabled); local clicks take effect
 // immediately.
 import { useEffect, useRef, useState } from "react";
@@ -19,19 +22,41 @@ import { t } from "../../i18n";
 const OPTION_LABEL_KEYS: Record<string, string> = {
   submit: "chat.approvalSubmit",
   cancel: "chat.approvalCancel",
-  approve: "chat.planApprove",
-  refine: "chat.planRefine",
+  "plan:execute": "chat.planApprove",
+  "plan:compact": "chat.planApproveCompact",
+  "plan:keep": "chat.planApproveKeep",
+  "plan:refine": "chat.planRefine",
+  "plan:save-quit": "chat.planSaveQuit",
 };
-const optionLabel = (opt: string): string => {
+const optionLabel = (opt: string, keepTokens?: { tokens: number; contextWindow: number }): string => {
+  // The keep-context row carries live token counts; the host sends raw numbers so
+  // the formatted label stays localizable. A zero window (no model resolved)
+  // falls back to the bare label rather than rendering "/ 0".
+  if (opt === "plan:keep" && keepTokens && keepTokens.contextWindow > 0) {
+    return t("chat.planApproveKeepCounted", {
+      count: formatTokens(keepTokens.tokens),
+      window: formatTokens(keepTokens.contextWindow),
+    });
+  }
   const key = OPTION_LABEL_KEYS[opt];
   return key ? t(key) : opt;
 };
+
+/** Token count the way the plan review shows it (44k / 1m). */
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}k`;
+  return String(n);
+}
 
 // Approval request entry (built by the store from host approval frames): answer/prefill
 // are written back in place by this card
 interface ApprovalItem {
   title?: string;
   options: string[];
+  keepContextTokens?: { tokens: number; contextWindow: number };
+  disabledIndices?: number[];
+  slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
   editable?: boolean;
   editableIndex?: number;
   requestId: string;
@@ -47,6 +72,15 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     setSelected(i);
   };
   const [chosen, setChosen] = useState(-1); // answered row index (frozen locally; remount falls back to matching against answer)
+  // The picked execution tier (plan variant). The host parked it on `default`;
+  // left/right (or clicking a segment) moves it, and the index rides back on
+  // the answer so approval can apply the role model.
+  const [sliderIndex, setSliderIndex] = useState(item.slider?.index ?? 0);
+  const sliderIndexRef = useRef(sliderIndex);
+  const setTier = (i: number) => {
+    sliderIndexRef.current = i;
+    setSliderIndex(i);
+  };
   const listRef = useRef<HTMLDivElement | null>(null);
   const inpRef = useRef<HTMLInputElement | null>(null);
   const answered = item.answer !== null;
@@ -54,6 +88,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   // editable protocol: editableIndex points at the inline-input row (host
   // always sends it with the frame); located by index, never by display text.
   const inpIdx = item.editable ? (item.editableIndex ?? -1) : -1;
+  // Plan rows the operator may not pick (context nearly full).
+  const disabled = new Set(item.disabledIndices ?? []);
 
   const choose = (i: number) => {
     if (item.answer !== null) return;
@@ -72,12 +108,17 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         const j = list?.findIndex((r) => r.requestId === item.requestId) ?? -1;
         if (!list || j < 0) continue;
         const pendingApprovals = list.slice();
-        pendingApprovals[j] = { ...list[j], answer: answer ?? opt };
+        pendingApprovals[j] = { ...list[j], answer: answer ?? opt, sliderIndex: sliderIndexRef.current };
         return { openSessions: new Map(st.openSessions).set(p, { ...sess, pendingApprovals }) };
       }
       return {};
     });
-    useAppStore.getState().send({ type: "approval_response", requestId: item.requestId, answer });
+    useAppStore.getState().send({
+      type: "approval_response",
+      requestId: item.requestId,
+      answer,
+      ...(item.slider ? { sliderIndex: sliderIndexRef.current } : {}),
+    });
   };
 
   // Select and focus row i (the editable row focuses its inline input)
@@ -86,14 +127,26 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     const row = listRef.current?.querySelector<HTMLElement>(`[data-idx="${i}"]`);
     (row?.querySelector("input") ?? row)?.focus({ preventScroll: true });
   };
-  const move = (from: number, d: number) => focusRow((from + d + n) % n);
+  // Step d rows, skipping disabled ones (the plan keep row is often disabled).
+  const move = (from: number, d: number) => {
+    let i = from;
+    for (let step = 0; step < n; step++) {
+      i = (i + d + n) % n;
+      if (!disabled.has(i)) {
+        focusRow(i);
+        return;
+      }
+    }
+  };
 
   // Row keyboard: number keys answer directly; up/down / left/right / Tab move; Enter
-  // answers this row (mirroring ZCodium's PermissionDialog)
+  // answers this row (mirroring ZCodium's PermissionDialog). A number key on a
+  // disabled row is ignored rather than answering it.
   const onRowKey = (i: number) => (e: ReactKeyboardEvent<HTMLElement>) => {
     if (e.key >= "1" && e.key <= String(n)) {
       e.preventDefault();
-      choose(Number(e.key) - 1);
+      const target = Number(e.key) - 1;
+      if (!disabled.has(target)) choose(target);
     } else if (e.key === "ArrowUp" || e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey)) {
       e.preventDefault();
       move(i, -1);
@@ -149,15 +202,41 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     <div className="approval-card">
       <div className="approval-head">{t("chat.awaitingConfirm")}</div>
       <div className="approval-title">{item.title}</div>
+      {/* Execution-model tier slider (plan variant): pick which configured role
+          model runs the approved plan. Segments are click targets, so the hover
+          highlight is an affordance here, not decoration. */}
+      {item.slider && !answered && (
+        <div className="approval-slider">
+          <span className="approval-slider-cap">{item.slider.caption}</span>
+          <div className="approval-slider-track" role="radiogroup" aria-label={item.slider.caption}>
+            {item.slider.segments.map((seg, i) => (
+              <button
+                key={seg.label}
+                type="button"
+                role="radio"
+                aria-checked={i === sliderIndex}
+                className={"approval-seg" + (i === sliderIndex ? " on" : "")}
+                onClick={() => setTier(i)}
+                title={seg.detail}
+              >
+                {seg.label}
+              </button>
+            ))}
+          </div>
+          <span className="approval-slider-detail">{item.slider.segments[sliderIndex]?.detail}</span>
+        </div>
+      )}
       <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
         {item.options.map((opt, i) => {
           const num = answered && i === frozenChosen ? "✓" : `${i + 1}.`;
+          const isDisabled = disabled.has(i);
           const cls =
             "approval-opt" +
             (i === inpIdx ? " has-input" : "") +
-            (!answered && i === selected ? " selected" : "") +
+            (isDisabled ? " disabled" : "") +
+            (!answered && !isDisabled && i === selected ? " selected" : "") +
             (answered ? (i === frozenChosen ? " chosen selected" : " dim") : "");
-          const sel = !answered && i === selected;
+          const sel = !answered && !isDisabled && i === selected;
           if (i === inpIdx) {
             // Uncontrolled input: typing only writes back item.prefill (preserving entered
             // content across full redraws), without triggering a re-render
@@ -195,14 +274,16 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
               className={cls}
               role="option"
               aria-selected={sel || (answered && i === frozenChosen)}
+              aria-disabled={isDisabled || undefined}
+              title={isDisabled ? t("chat.planDisabled") : undefined}
               tabIndex={sel ? 0 : -1}
-              disabled={answered}
+              disabled={answered || isDisabled}
               onFocus={() => !answered && select(i)}
               onKeyDown={onRowKey(i)}
               onClick={() => (sel ? choose(i) : focusRow(i))}
             >
               <span className="approval-num">{num}</span>
-              <span className="approval-label">{optionLabel(opt)}</span>
+              <span className="approval-label">{optionLabel(opt, item.keepContextTokens)}</span>
             </button>
           );
         })}

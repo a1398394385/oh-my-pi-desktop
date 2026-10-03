@@ -30,12 +30,14 @@ import { createAcpContextExtension, ACP_SYSTEM_PROMPT } from "./acp-context.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
 import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
+import { snapshotMcp } from "./capabilities.ts";
 import { readAcpRaw, readAcpEnabled, readAcpNudgeConfig, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
-import { pushPlanMode, reconcilePlanMode } from "./plan.ts";
+import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
+import { dispatchFromToolEnd, installProposalHandler, setFreshSessionFactory } from "./plan-approve.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 
 export function isGitWorktree(cwd: string): boolean {
@@ -277,6 +279,14 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // After the todo tool persists, push the latest task list (TodoTracker updates after the tool result)
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
+    }
+    // Plan approval rides a `write` to xd://propose, dispatched OUT of band
+    // exactly like the base TUI's event-controller (issue #7684): awaiting it
+    // here would hold the subscription for the whole execution turn, and
+    // awaiting the operator inside the tool handler would deadlock abort()'s
+    // waitForIdle. Never awaited — see host/plan-approve.ts.
+    if (ev.type === "tool_execution_end" && !ev.isError) {
+      dispatchFromToolEnd(ws, sessionId, entry, ev.toolName, ev.result);
     }
     // Push context usage live on key execution events, updating the frontend's context-size ring
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
@@ -555,6 +565,10 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           name: subName(p.id, p.agent),
           parent: subParent(p.id),
           registeredAt: subRegistered.get(p.id),
+          sessionFile: p.sessionFile ?? null,
+          // Agent Hub "Changes" line flags, recovered from the transcript (see readSubagentInitFlags)
+          readOnly: p.sessionFile ? readSubagentInitFlags(p.sessionFile) : undefined,
+          advisor: p.sessionFile ? path.basename(p.sessionFile).startsWith("__advisor") : undefined,
           detached: p.detached ?? false,
         }),
       ),
@@ -619,6 +633,19 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
   });
+  // MCP connection status → capabilities_mcp incremental frames. The manager
+  // is process-global while attach is per-session: with several sessions
+  // attached the same state is pushed once per attach — idempotent on the
+  // frontend (identical content overwrites), so no cross-entry dedup here.
+  // Re-reading the full manager state per event beats replaying event payloads
+  // (out-of-order/coalesced events cannot desync the view).
+  const unsubMcp = entry.sessionResult?.mcpManager?.addConnectionStatusListener?.(() => {
+    ws.send(
+      JSON.stringify(
+        stampEvent({ type: "capabilities_mcp", mcp: snapshotMcp(entry.sessionResult.mcpManager) }),
+      ),
+    );
+  });
   // Listen for base session title changes (auto-generated model titles, /rename, etc.)
   const unsubTitle = entry.session.sessionManager.onSessionNameChanged?.(() => {
     const title = entry.session.sessionManager.getSessionName() ?? "";
@@ -633,14 +660,14 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     unsubProgress();
     unsubEvents();
     detachDequeueHook();
+    unsubMcp?.();
   };
   entry.attachedWs = ws;
   sessions.set(sessionId, entry);
 }
 
-export async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thinkingLevel?: string) {
-  const workDir = typeof cwd === "string" && cwd ? cwd : defaultCwd;
-  const targetModel = modelStr ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === modelStr) : undefined;
+/** Create a session on `cwd` with `model`, attach it, and push session_created. */
+async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string) {
   const { sessionId, entry, eventBus } = await createSessionCore(
     workDir,
     SessionManager.create(workDir),
@@ -665,8 +692,227 @@ export async function handleCreateSession(ws: any, cwd?: string, modelStr?: stri
       title: entry.title ?? null,
     }),
   );
-  pushPlanMode(ws, sessionId, entry);
+  return { sessionId, entry };
+}
+
+// Plan approval needs a fresh session (approve-and-execute / save-and-quit) but
+// cannot import this module back — it is the caller. Inject the factory instead.
+setFreshSessionFactory((ws, entry) => spawnSession(ws, entry.cwd, entry.session.model).then((r) => r.entry));
+
+export async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thinkingLevel?: string, planMode?: boolean) {
+  const workDir = typeof cwd === "string" && cwd ? cwd : defaultCwd;
+  const targetModel = modelStr ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === modelStr) : undefined;
+  const { sessionId, entry } = await spawnSession(ws, workDir, targetModel, thinkingLevel);
+  // Session born with plan mode (intent picked on the new-session page): same
+  // entry path as the menu toggle (persist + pushPlanMode inside)
+  if (planMode) setPlanMode(ws, sessionId, entry, true);
+  else pushPlanMode(ws, sessionId, entry);
   process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
+}
+
+// ---- Subagent history replay ----
+// Child subagent runs persist as <session file minus .jsonl>/<subagent name>.jsonl (the SDK's
+// artifact layout; each child header carries a parentSession backlink). Live sessions learn
+// about them through the event subscriptions, but a session rebuilt from disk never sees those
+// frames — scan the artifacts dir and re-emit lifecycle/progress (+ the tool stream for cold
+// loads) so the right sidebar's subagent page reconstructs past runs. Synthesized ids take a
+// hist- prefix: they can never collide with a live SDK subagentId.
+const HIST_SUBAGENT_RECENT_MS = 60_000; // a file still being written belongs to a live subagent — skip, its frames arrive live
+
+// Agent Hub "Changes" line: the TUI decides Read-only vs shared from the agent-registry kind
+// and the child session's persisted session_init.readOnly (stamped by the SDK at spawn);
+// subagent frames carry neither, so the flags are recovered from the transcript file itself.
+// session_init is appended at spawn start — the file's first chunk always covers it.
+function readSubagentInitFlags(file: string): boolean | undefined {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    return undefined;
+  }
+  try {
+    const buf = Buffer.alloc(65536);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    for (const line of buf.subarray(0, n).toString("utf8").split("\n")) {
+      if (!line.includes("session_init")) continue;
+      try {
+        const j = JSON.parse(line);
+        if (j.type === "session_init") return j.readOnly === true;
+      } catch {}
+    }
+  } catch {
+  } finally {
+    fs.closeSync(fd);
+  }
+  return undefined;
+}
+
+// Advisor transcripts use the SDK-reserved __advisor stem (the same signal the TUI agent
+// registry uses for kind: "advisor")
+const isAdvisorTranscript = (file: string) => path.basename(file).startsWith("__advisor");
+
+interface HistAggregation {
+  title: string;
+  registeredAt: number;
+  readOnly?: boolean;
+  progress: Record<string, unknown>;
+  toolEvents: Record<string, unknown>[];
+}
+
+// Minimal structural view of a persisted session entry; the file is our own SDK's JSONL, the
+// try/catch-per-line scan plus optional chaining below keep a bad line from aborting the pass
+interface HistEntry {
+  type?: string;
+  timestamp?: string;
+  parentSession?: string;
+  model?: string;
+  readOnly?: boolean;
+  message?: {
+    role?: string;
+    content?: string | { type?: string; text?: string }[];
+    usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; totalTokens?: number; cost?: { total?: number } };
+  };
+  data?: { toolCallId?: string; toolName?: string; args?: unknown };
+}
+
+// The SDK wraps the subagent assignment in this fixed prefix (subagent-user-prompt.md) before
+// it becomes the child's first user message; strip it so the replayed task matches live frames
+const SUBAGENT_PROMPT_PREFIX = "Complete assignment thoroughly:\n\n";
+
+// Parse one child session file into the aggregated progress payload + tool event stream;
+// returns null when the file is not a child of parentSessionPath (foreign/corrupt)
+function aggregateSubagentHistory(file: string, parentSessionPath: string): HistAggregation | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+  let isChild = false;
+  const seenToolCalls = new Set<string>();
+  const toolEvents: Record<string, unknown>[] = [];
+  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
+  let model: string | null = null;
+  let task: string | undefined;
+  let readOnly: boolean | undefined;
+  let registeredAt = 0;
+  let lastTs = 0;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let e: HistEntry;
+    try {
+      e = JSON.parse(line) as HistEntry; // own SDK's persisted JSONL; fields read defensively below
+    } catch {
+      continue;
+    }
+    if (e.type === "session") {
+      // Only true child session files carry the parentSession backlink; a stray top-level
+      // session file (or a same-named foreign child) must not be replayed
+      if (!e.parentSession || path.resolve(e.parentSession) !== path.resolve(parentSessionPath)) return null;
+      isChild = true;
+      registeredAt = Date.parse(e.timestamp ?? "") || 0;
+      continue;
+    }
+    if (e.type === "session_init") {
+      readOnly = e.readOnly === true;
+      continue;
+    }
+    if (e.type === "model_change" && !model) model = e.model ?? null;
+    if (e.type === "message" && e.message) {
+      const ts = Date.parse(e.timestamp ?? "") || 0;
+      if (ts > lastTs) lastTs = ts;
+      // The child's first user message is the (wrapped) assignment — recover the task text for
+      // the roster/detail fallback chain (live runs get it from progress frames instead)
+      if (task === undefined && e.message.role === "user") {
+        const c = e.message.content;
+        const text = Array.isArray(c)
+          ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").join("\n")
+          : (c ?? "");
+        task = text.startsWith(SUBAGENT_PROMPT_PREFIX) ? text.slice(SUBAGENT_PROMPT_PREFIX.length) : text;
+      }
+      const u = e.message.usage;
+      if (e.message.role === "assistant" && u) {
+        requests++;
+        input += u.input || 0;
+        output += u.output || 0;
+        cacheRead += u.cacheRead || 0;
+        cacheWrite += u.cacheWrite || 0;
+        total += u.totalTokens || 0;
+        cost += u.cost?.total || 0;
+      }
+      continue;
+    }
+    if (e.type === "custom" && e.data?.toolCallId && e.data?.toolName) {
+      if (seenToolCalls.has(e.data.toolCallId)) continue; // duplicate record of the same call
+      seenToolCalls.add(e.data.toolCallId);
+      toolEvents.push({ kind: "tool", name: e.data.toolName, toolCallId: e.data.toolCallId, args: e.data.args });
+      toolEvents.push({ kind: "tool_update", name: e.data.toolName, toolCallId: e.data.toolCallId, running: false });
+    }
+  }
+  if (!isChild) return null;
+  return {
+    title: path.basename(file, ".jsonl"),
+    registeredAt,
+    readOnly,
+    progress: {
+      status: "completed",
+      task,
+      cost,
+      durationMs: Math.max(0, lastTs - registeredAt),
+      requests,
+      toolCount: seenToolCalls.size,
+      tokens: { input, output, cacheRead, cacheWrite, total },
+      resolvedModel: model,
+    },
+    toolEvents,
+  };
+}
+
+// includeTools: also replay the per-tool event stream (cold loads where the frontend store is
+// guaranteed empty). Same-store switch-backs must pass false — replaying tool events would
+// append duplicates next to the live entries.
+export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: string, includeTools: boolean) {
+  if (!sessionPath.endsWith(".jsonl")) return;
+  let names: string[];
+  try {
+    names = fs.readdirSync(sessionPath.slice(0, -".jsonl".length));
+  } catch {
+    return; // no artifacts dir: the session never spawned subagents (or pre-artifact base)
+  }
+  for (const name of names) {
+    if (!name.endsWith(".jsonl")) continue;
+    const file = path.join(sessionPath.slice(0, -".jsonl".length), name);
+    try {
+      if (!fs.statSync(file).isFile()) continue;
+      // Still being written = a live subagent of a pooled session; its real frames arrive through subscriptions
+      if (Date.now() - fs.statSync(file).mtimeMs < HIST_SUBAGENT_RECENT_MS) continue;
+    } catch {
+      continue;
+    }
+    const agg = aggregateSubagentHistory(file, sessionPath);
+    if (!agg) continue;
+    const subagentId = "hist-" + name.slice(0, -".jsonl".length);
+    ws.send(
+      JSON.stringify({
+        type: "subagent_lifecycle",
+        sessionId,
+        subagentId,
+        agent: agg.title,
+        description: "",
+        status: "completed",
+        name: agg.title,
+        parent: "Main",
+        registeredAt: agg.registeredAt,
+        sessionFile: file,
+        readOnly: agg.readOnly,
+        advisor: path.basename(file).startsWith("__advisor"),
+      }),
+    );
+    if (includeTools) {
+      for (const ev of agg.toolEvents) ws.send(JSON.stringify({ type: "subagent_event", sessionId, subagentId, ...ev }));
+    }
+    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, registeredAt: agg.registeredAt, ...agg.progress }));
+  }
 }
 
 export async function handleLoadSession(ws: any, sessionPath: string) {
@@ -684,7 +930,8 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     // The user opening/switching back to this session = seen: stop cache
     // keepalive probing (the next turn's wrap-up will set it again)
     entry.keepaliveWanted = false;
-    if (entry.attachedWs !== ws) {
+    const frontendReloaded = entry.attachedWs !== ws; // capture before attachEntry overwrites it
+    if (frontendReloaded) {
       entry.unsubscribe(); // Detach old subscriptions first, or the same event would be sent twice
       attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     }
@@ -706,6 +953,12 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     pushGoal(sessionId); // Goal state backlog (session state card goal area)
     pushContext(ws, sessionId, entry);
     pushSessionStats(ws, sessionId, entry); // The reuse snapshot also pushes whole-session stats (otherwise stats stay empty after the frontend rebuilds objects)
+    if (frontendReloaded) {
+      // Frontend reload: its store was wiped, so replay the subagent history (the full tool
+      // stream — the store is guaranteed empty, no duplicates can stack up). Same-ws
+      // switch-backs skip: the live entries are still in the store.
+      replaySubagentHistory(ws, sessionPath, sessionId, true);
+    }
     if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // Detected during LRU eviction; re-sent on switch-back
     process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
@@ -746,6 +999,9 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   pushContext(ws, sessionId, entry);
   // Restored session's whole-session stats (tokens/cost summed from disk assistant messages' usage; duration is in-memory state, restarting from 0 on reload)
   pushSessionStats(ws, sessionId, entry);
+  // Restored session's subagent history: the child run files live in the sibling artifacts
+  // dir; the frontend store is empty on this path, so replay the full stream
+  replaySubagentHistory(ws, sessionPath, sessionId, true);
   process.stderr.write(
     `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,
   );

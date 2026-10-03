@@ -27,11 +27,16 @@ const HOT_LIMITS = [
   { path: "ui/css/main-shell.css", max: 170 },
   { path: "ui/css/main-sidebar.css", max: 810 },
   { path: "ui/css/main-chat.css", max: 960 },
+  // Approval cards split out of main-chat.css (the plan variant added the
+  // execution-model slider + a disabled row, which overflowed the chat cap).
+  { path: "ui/css/main-chat-approval.css", max: 160 },
   { path: "ui/css/main-composer.css", max: 670 },
   { path: "ui/css/main-streamdown.css", max: 280 },
   { path: "ui/css/main-tree.css", max: 450 },
+  { path: "ui/css/main-hub.css", max: 160 },
   { path: "ui/css/main-welcome.css", max: 190 },
-  { path: "ui/css/main-right.css", max: 1000 },
+  { path: "ui/css/main-right.css", max: 1060 },
+  { path: "ui/css/main-right-caps.css", max: 120 },
   { path: "ui/css/settings.css", max: 1420 },
 ];
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };

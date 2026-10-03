@@ -551,7 +551,7 @@ body:has(#right.collapsed) #right-resizer {
    At most 9.5 rows, inner scroll beyond that; the bottom half-row fades, auto-cleared when scrolled to bottom */
 .think-body {
   margin: -6px 0 12px;
-  /* dding: 1px 12px 6px 19px; /* left padding = icon 13 + gap 6: body text aligns with the "thinking" label text. top padding 1px: body inside the line sits 1px below the line's top end (same rule as the change-group first row) */
+  padding: 1px 12px 6px 19px; /* left padding = icon 13 + gap 6: body text aligns with the "thinking" label text. top padding 1px: body inside the line sits 1px below the line's top end (same rule as the change-group first row) */
   position: relative;
   font-size: var(--code-fs, 12px); line-height: 1.55; color: var(--faint);
   /* loose relaxes punctuation kinsoku: closing brackets/commas may start a line, avoiding glued blocks shifting wholesale and leaving a large end-of-line gap; words/paths stay intact (paths may only break after /), code blocks unaffected by break-all */
@@ -823,103 +823,6 @@ body:has(#right.collapsed) #right-resizer {
 [data-theme="light"] .scroll-bottom { box-shadow: 0 4px 12px rgba(0,0,0,.12); } /* style-token-ignore */
 
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
-
-/* Approval cards (ask/confirm/editor dialogs): same as ZCodium PermissionDialog — rounded bordered card +
-   "waiting for confirmation" title + question body + numbered option rows (hover highlight / selected plate, number and enter as quick answers)
-   + bottom keyboard hint row and confirm button; when editable, the "submit" row embeds an input (ZCodium feedback-row styling) */
-.approval-card {
-  margin: 0;
-  background: var(--inset);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-card);
-  padding: 12px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-
-.approval-head {
-  font-size: var(--ui-fs-base); font-weight: 500; color: var(--dim); line-height: 1.3;
-}
-
-.approval-title {
-  color: var(--text); font-family: var(--ui-font, var(--sans));
-  font-size: var(--ui-fs-base); line-height: 1.5;
-  white-space: pre-wrap; word-break: break-word;
-  max-height: 160px; overflow-y: auto;
-  overscroll-behavior: contain; /* embedded in the session scroll flow, stops the scroll chain */
-  margin: 0;
-}
-
-.approval-list { display: flex; flex-direction: column; gap: 4px; }
-
-.approval-opt {
-  display: flex; align-items: center; gap: 12px;
-  width: 100%; padding: 8px 12px; border: 0; background: transparent;
-  border-radius: var(--r-lg);
-  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
-  text-align: left; cursor: pointer;
-  transition: background .15s var(--swift);
-}
-
-.approval-opt:hover { background: var(--panel-2); }
-
-.approval-opt.selected { background: var(--select); }
-
-/* rows disabled after the answer freezes: no hover highlight (hover only goes on clickable elements), the chosen row keeps its selected plate */
-.approval-opt:disabled { cursor: default; }
-
-.approval-opt:disabled:hover { background: none; }
-
-.approval-opt.chosen, .approval-opt.chosen:hover { background: var(--select); }
-
-.approval-num { flex: none; width: 20px; color: var(--faint); font-weight: 500; }
-
-.approval-opt.selected .approval-num { color: var(--text); }
-
-.approval-opt.chosen .approval-num { color: var(--green); }
-
-.approval-opt.dim { opacity: .4; }
-
-.approval-label { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
-
-.approval-opt.has-input { cursor: text; }
-
-.approval-opt:focus-visible,
-.approval-confirm:focus-visible { outline: none; }
-
-/* editable "submit" row embedded input: transparent borderless input like ZCodium's feedback row */
-.approval-inp {
-  flex: 1; min-width: 0;
-  background: transparent; border: 0; outline: none; padding: 0;
-  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
-}
-
-.approval-inp::placeholder { color: var(--faint); font-weight: 400; }
-
-.approval-inp:disabled { opacity: 1; -webkit-text-fill-color: var(--text); } /* submitted content stays readable after freezing */
-
-.approval-foot {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 0 4px;
-}
-
-.approval-hint {
-  display: inline-flex; align-items: center; gap: 8px; min-width: 0;
-  color: var(--dim); font-size: var(--ui-fs-base);
-}
-
-.approval-hint svg { flex: none; color: var(--text); }
-
-/* confirm button = same as ZCodium's bg-brand button (h-8 rounded-lg) */
-.approval-confirm {
-  flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
-  background: var(--accent); color: #fff;
-  font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
-  cursor: pointer; transition: opacity .15s var(--swift);
-}
-
-.approval-confirm:hover { opacity: .8; }
-
-.approval-confirm:disabled { opacity: .45; cursor: default; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
    Ticks expand equidistantly from the rail's midline (30 physical screen pixels apart, proportionally compressed by JS when too many);

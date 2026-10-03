@@ -3,28 +3,23 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { menuZoom, toggleTheme, toggleSidebar } from "./shell";
+import { menuZoom, toggleTheme, toggleSidebar, applyTheme, applyMotion } from "./shell";
 import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnected, openSettings, closeSettings, setBump } from "./store";
 import { initKeys } from "./keys";
 import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
 
-// Restore the local theme at startup (the old shell.js initShell semantics;
-// the system value is decided by prefers-color-scheme)
+// Restore the first-frame render cache (the localStorage mirror of
+// omp-desktop.json's ui section) before React mounts — this is what keeps the
+// startup paint flicker-free. The ready frame later reconciles against the
+// file (source of truth) and refreshes the cache; a cache miss falls back to
+// the dark theme + system motion defaults. Calling the shared appliers also
+// seeds the store and shell's system-mode media listener correctly.
 {
   const savedTheme = localStorage.getItem("omp-theme");
-  if (savedTheme === "light" || savedTheme === "dark") document.documentElement.dataset.theme = savedTheme;
-  else if (savedTheme === "system") {
-    document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-}
-
-// Restore the local "reduce motion" preference at startup (appearance page
-// setting; with system, remove the attribute and fall back to the system
-// prefers-reduced-motion)
-{
+  applyTheme(savedTheme === "light" || savedTheme === "dark" || savedTheme === "system" ? savedTheme : "dark");
   const savedMotion = localStorage.getItem("omp-motion");
-  if (savedMotion === "on" || savedMotion === "off") document.documentElement.dataset.motion = savedMotion;
+  applyMotion(savedMotion === "on" || savedMotion === "off" ? savedMotion : "system");
 }
 
 // ⌘, opens/closes the settings hub (ported from the old core.js global

@@ -28,8 +28,8 @@ import { stat, open } from "node:fs/promises";
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID } from "./state.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
-import { modelsPayload, modelsDefaults } from "./models.ts";
-import { settingsFrame } from "./frames.ts";
+import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
+import { settingsFrame, modelsFrame } from "./frames.ts";
 import { dispatchRpc } from "./rpc/index";
 import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
@@ -49,7 +49,7 @@ await augmentGuiPath();
 const activeWs: { value: unknown } = { value: null };
 H.onModelsRefreshed = () => {
   const ws = activeWs.value as { send(data: string): unknown } | null;
-  if (ws) ws.send(JSON.stringify({ type: "models", models: modelsPayload(), ...modelsDefaults() }));
+  if (ws) ws.send(JSON.stringify(modelsFrame()));
 };
 const profileReady = (async () => {
   H.currentProfile = initialProfile;
@@ -80,6 +80,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
               hi: HOST_INSTANCE_ID, // The handshake takes no event seq, but carries instance identity for immediate UI comparison
               approvalMode: H.settings.get("tools.approvalMode"),
               models: modelsPayload(),
+              roles: modelRolesPayload(),
               ...modelsDefaults(),
               settings: settingsFrame(),
             }),

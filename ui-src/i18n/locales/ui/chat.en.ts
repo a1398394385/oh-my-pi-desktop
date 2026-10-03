@@ -178,7 +178,14 @@ export const chatEn = {
   approvalSubmit: "Submit",
   approvalCancel: "Cancel",
   planApprove: "Approve and execute",
-  planRefine: "Keep refining",
+  planApproveCompact: "Approve and compact context",
+  // {{count}} = live context tokens, {{window}} = the model context window.
+  // Without usage the host omits optionLabels and this renders bare.
+  planApproveKeep: "Approve and keep context",
+  planApproveKeepCounted: "Approve and keep context (~{{count}} / {{window}})",
+  planRefine: "Refine plan",
+  planSaveQuit: "Save and quit",
+  planDisabled: "Context nearly full",
 };
 
 export default chatEn;

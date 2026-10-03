@@ -1,7 +1,7 @@
 // Composer sigil completion card (shared by @ file candidates / line-leading /
-// command candidates): the same rounded card as the composer card, two cards
-// stacked vertically (2px gap, same width, max height = 2.6x the composer card;
-// see placePaletteCard for positioning).
+// command candidates / line-leading $ skill candidates): the same rounded card
+// as the composer card, two cards stacked vertically (2px gap, same width, max
+// height = 2.6x the composer card; see placePaletteCard for positioning).
 // Reuses the existing .menu/.mi/.sub base classes and the popIn animation;
 // only the card look and positioning differ.
 import { useLayoutEffect, useRef } from "react";
@@ -18,7 +18,7 @@ export type CommandItem = { name: string; aliases?: string[]; description?: stri
 export type PaletteItem = FileItem | CommandItem;
 
 type PaletteMenuProps = {
-  mode: "file" | "command";
+  mode: "file" | "command" | "skill";
   items: PaletteItem[];
   index: number;
   loading: boolean;
@@ -28,8 +28,8 @@ type PaletteMenuProps = {
 };
 
 /**
- * mode: "file" | "command"; items: {path,dir} for file,
- * {name,aliases,description,hint} for command; index is the currently
+ * mode: "file" | "command" | "skill"; items: {path,dir} for file,
+ * {name,aliases,description,hint} for command/skill; index is the currently
  * highlighted item; loading means fetching (shows loading...).
  */
 export default function PaletteMenu({ mode, items, index, loading, composerRef, onPick, onHover }: PaletteMenuProps) {
@@ -65,6 +65,13 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
             label = it.dir ? tail + "/" : tail;
             key = it.path;
             desc = it.path;
+          } else if (mode === "skill") {
+            if (!("name" in it)) return null; // type guard: skill candidates are command-list entries carrying name
+            // The palette is entered via $, so the row shows the bare name with
+            // the $ sigil; the accepted chip text is "/skill:<name>"
+            label = "$" + it.name.replace(/^skill:/, "");
+            key = it.name;
+            desc = it.description || "";
           } else {
             if (!("name" in it)) return null; // type guard: command candidates always carry name
             label = "/" + it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");

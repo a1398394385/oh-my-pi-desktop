@@ -3,6 +3,7 @@
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { activateSession, clearBranchingMarks, activeOpen, updateSession } from "../session";
+import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession } from "../../types/session";
 import type { HandlerSlice } from "./types";
@@ -61,10 +62,10 @@ export const sessionHandlers = {
         isGit: !!msg.isGit,
         todos: [],
         goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
-        planMode: false, // plan mode (set by the host plan_mode frame)
-        title: msg.title ?? null,
+        planMode: s.newSessionPlanMode, // seeded from the create intent; the host's plan_mode frame confirms right after
       } as OpenSession),
       isCreatingNew: false,
+      newSessionPlanMode: false, // intent consumed by the created session
     }));
     // selectedFile/selectedSubagent are NOT pre-cleared here: activateSession → restoreRightPanel
     // owns them (fresh session without snapshot = cleared; reloaded session = snapshot restored;
@@ -163,6 +164,29 @@ export const sessionHandlers = {
       s.thinking = msg.level;
     });
   },
+  // Quick-switch receipt (ctrl+p role cycle): ok=false = fewer than two
+  // resolvable roles — surface the CLI's status line message as a toast and
+  // collapse the preview menu (its optimistic open assumed a cyclable list)
+  cycle_model(msg) {
+    if (!msg.ok) {
+      useAppStore.getState().toast(t("composer.onlyOneRoleModel"));
+      if (useAppStore.getState().cyclePreview) {
+        useAppStore.setState({ cyclePreview: null });
+        closeAllMenus();
+      }
+      return;
+    }
+    updateSession(msg.sessionId, (s) => {
+      if (msg.model) s.model = msg.model;
+      if (msg.thinking) s.thinking = msg.thinking;
+    });
+    // Authoritative correction of the preview highlight (the local prediction
+    // can diverge when several roles resolve to the same model)
+    const st = useAppStore.getState();
+    if (st.cyclePreview && msg.model) {
+      useAppStore.setState({ cyclePreview: { ...st.cyclePreview, activeRole: msg.role ?? st.cyclePreview.activeRole, activeModel: msg.model } });
+    }
+  },
   session_renamed(msg) {
     if (msg.ok) {
       useAppStore.getState().toast(t("notify.renamed"));
@@ -246,7 +270,14 @@ export const sessionHandlers = {
     useAppStore.setState({ mainViewMode: "chat" });
     if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
   },
-} satisfies HandlerSlice;
+  capabilities(msg) {
+    useAppStore.setState({ capabilities: msg.snapshot, capabilitiesFor: msg.snapshot.sessionId, capabilitiesLoading: false });
+  },
+  capabilities_mcp(msg) {
+    // MCP runtime is process-global: apply to whatever snapshot is held, regardless of which session's attach pushed the frame
+    useAppStore.setState((s) => (s.capabilities ? { capabilities: { ...s.capabilities, mcp: msg.mcp } } : {}));
+  },
+ } satisfies HandlerSlice;
 
 // Domain key set (for the exhaustive-assertion cross-check in index)
 export type SessionFrames = keyof typeof sessionHandlers;

@@ -8,6 +8,7 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { saveUiPrefs, applyAppearance } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { invoke } from "../../../store/ws";
 import type { DesktopEnv } from "../../../types/frames";
@@ -29,31 +30,6 @@ interface SelProps {
   label: ReactNode;
   options: SelOption[];
   onPick: (v: string) => void;
-}
-
-// Persist local prefs (old saveUiPrefs; serialize the store's real reference; don't use liveRef — its enumeration isn't forwarded)
-function saveUiPrefs() {
-  try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
-}
-// Apply appearance (old applyAppearance: font size/font/line numbers/wrap/thinking-block data attributes)
-const FONT_STACKS: Record<string, string> = {
-  default: "var(--sans)",
-  zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  pingfang: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-  songti: '"Songti SC", "STSong", "SimSun", serif',
-  kaiti: '"Kaiti SC", "STKaiti", "KaiTi", serif',
-  heiti: '"Heiti SC", "SimHei", "STHeiti", sans-serif',
-  mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-};
-function applyAppearance() {
-  const p = useAppStore.getState().uiPrefs;
-  const root = document.documentElement;
-  root.style.setProperty("--ui-fs", p.uiFontSize + "px");
-  root.style.setProperty("--code-fs", p.codeFontSize + "px");
-  root.style.setProperty("--ui-font", FONT_STACKS[p.uiFont] || "var(--sans)");
-  root.dataset.lineNumbers = p.lineNumbers ? "on" : "off";
-  root.dataset.codeWrap = p.codeWrap ? "on" : "off";
-  root.dataset.showThinking = p.showThinking ? "on" : "off";
 }
 
 // ---------- Dropdown selector: controlled equivalent of the old wireSel (.sel/.menu/.mi structure 1:1) ----------

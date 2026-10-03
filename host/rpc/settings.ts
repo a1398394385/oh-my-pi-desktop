@@ -20,7 +20,8 @@ import {
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { setPlanMode } from "../plan.ts";
-import { writeUiLocale } from "../ui-locale.ts";
+import { dispatchFromToolEnd } from "../plan-approve.ts";
+import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
@@ -93,6 +94,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     if (lang !== "zh-CN" && lang !== "en") throw new Error(hostI18n.t("errors.setting.invalidLocale", { lang }));
     writeUiLocale(lang);
     initHostI18n(lang);
+  },
+  set_ui_prefs(ws, msg) {
+    // Desktop-owned appearance settings (theme/motion/prefs): merge-write the
+    // ui section of omp-desktop.json, then ack with a fresh settings frame —
+    // the frame's uiConfig is read back from disk, so the frontend reconciles
+    // its localStorage cache against what actually landed (stale-cache guard)
+    writeUiPrefs({ theme: msg.theme, motion: msg.motion, prefs: msg.prefs });
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_acp_enabled(ws, msg) {
     // Experimental features page switch: writes acp.enabled in
@@ -189,9 +198,33 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     setPlanMode(ws, msg.sessionId, entry, msg.enabled === true);
   },
+  /**
+   * Smoke-only: replay a `write` to xd://propose so the plan-approval card can
+   * be exercised without a model. Gated on OMP_PLAN_APPROVE_SMOKE=1, which only
+   * the smoke script sets; without it the frame is a no-op, so a real build can
+   * never be driven down the approval path by a stray client.
+   */
+  smoke_plan_propose(ws, msg) {
+    if (process.env.OMP_PLAN_APPROVE_SMOKE !== "1") return;
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    dispatchFromToolEnd(ws, msg.sessionId, entry, "write", {
+      details: {
+        xdev: {
+          tool: "propose",
+          mode: "execute",
+          args: { title: String(msg.title ?? "smoke") },
+          inner: { planFilePath: String(msg.planFilePath), title: String(msg.title ?? "smoke"), planExists: true },
+        },
+      },
+    });
+  },
   approval_response(ws, msg) {
     const pending = pendingApprovals.get(msg.requestId);
     if (!pending) throw new Error(hostI18n.t("errors.setting.approvalNotFound", { requestId: msg.requestId }));
+    // The plan approval slider rides the same response; deliver it before
+    // resolve() so the flow's continuation already sees the picked tier.
+    if (pending.onSliderIndex && typeof msg.sliderIndex === "number") pending.onSliderIndex(msg.sliderIndex);
     pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
     ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
   },

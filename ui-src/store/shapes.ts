@@ -26,8 +26,13 @@ export type GitWriteFrame =
 /** Terminal frame union (terminal_created/data/exit share one branch, pushed straight to terminal-page subscribers) */
 export type TerminalFrame = TerminalCreatedFrame | TerminalDataFrame | TerminalExitFrame;
 
-/** UI prefs (runtime shape after merging the omp-ui-settings localStorage) */
+/** UI prefs (runtime shape: theme/motion + appearance fields + lang).
+ * Persistence is file-first — omp-desktop.json's ui section is the source of
+ * truth; the merged omp-ui-settings localStorage (plus the omp-theme /
+ * omp-motion keys for those two) is only the first-frame render cache. */
 export interface UiPrefs {
+  theme: "dark" | "light" | "system";
+  motion: "system" | "on" | "off";
   uiFont: string;
   uiFontSize: number;
   codeFontSize: number;

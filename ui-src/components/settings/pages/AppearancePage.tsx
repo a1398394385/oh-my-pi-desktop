@@ -9,6 +9,8 @@ import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { saveUiPrefs, applyAppearance, FONT_STACKS } from "../../../appearance";
+import { saveTheme, saveMotion } from "../../../shell";
 
 // Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
 interface SelOption {
@@ -26,33 +28,12 @@ interface SelProps {
   onPick: (v: string) => void;
 }
 
-// ---------- Theme (equivalent of the old shell.js applyTheme; General and Appearance each hold a copy) ----------
-const themeMq = window.matchMedia("(prefers-color-scheme: dark)");
-function currentThemeMode(): string {
-  try { return localStorage.getItem("omp-theme") || "dark"; } catch { return "dark"; }
-}
-function applyTheme(mode: string): void {
-  const dark = mode === "system" ? themeMq.matches : mode === "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  try { localStorage.setItem("omp-theme", mode); } catch {}
-}
-
-// ---------- Reduce motion (omp-motion: system follows the OS / on force-reduced / off force-animated) ----------
-function currentMotionMode(): string {
-  try { return localStorage.getItem("omp-motion") || "system"; } catch { return "system"; }
-}
-function applyMotion(mode: string): void {
-  // system removes the attribute to fall back to the media query; on/off is taken over by html[data-motion] forced rules
-  if (mode === "system") delete document.documentElement.dataset.motion;
-  else document.documentElement.dataset.motion = mode;
-  try { localStorage.setItem("omp-motion", mode); } catch {}
-}
 // Theme icons aligned with ZCodium THEME_MODES (lucide line layer: monitor/sun/moon)
 function themeIcon(mode: string): string {
   return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
 }
 function themeLabel(mode: string): ReactNode {
-  const key = mode === "system" ? "themeSystem" : mode === "light" ? "themeLight" : "themeDark";
+  const key = mode === "system" ? "themeSystem" : mode === "light" ? "themeLight" : mode === "themeDark";
   return (
     <span className="inline-flex items-center gap-1.5">
       <Icon name={themeIcon(mode)} size={14} />
@@ -61,16 +42,6 @@ function themeLabel(mode: string): ReactNode {
   );
 }
 
-// Persist local prefs (old saveUiPrefs) + apply appearance (old applyAppearance)
-const FONT_STACKS: Record<string, string> = {
-  default: "var(--sans)",
-  zcode: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  pingfang: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-  songti: '"Songti SC", "STSong", "SimSun", serif',
-  kaiti: '"Kaiti SC", "STKaiti", "KaiTi", serif',
-  heiti: '"Heiti SC", "SimHei", "STHeiti", sans-serif',
-  mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-};
 // Font display-name key table: values are i18n keys resolved via t() at render time
 const FONT_LABEL_KEYS: Record<string, string> = {
   default: "settingsPage.appearance.fontDefault",
@@ -81,20 +52,6 @@ const FONT_LABEL_KEYS: Record<string, string> = {
   heiti: "settingsPage.appearance.fontHeiti",
   mono: "settingsPage.appearance.fontMono",
 };
-// Persist local prefs (serialize the store's real reference; don't use liveRef — its enumeration isn't forwarded)
-function saveUiPrefs() {
-  try { localStorage.setItem("omp-ui-settings", JSON.stringify(useAppStore.getState().uiPrefs)); } catch {}
-}
-function applyAppearance() {
-  const p = useAppStore.getState().uiPrefs;
-  const root = document.documentElement;
-  root.style.setProperty("--ui-fs", p.uiFontSize + "px");
-  root.style.setProperty("--code-fs", p.codeFontSize + "px");
-  root.style.setProperty("--ui-font", FONT_STACKS[p.uiFont] || "var(--sans)");
-  root.dataset.lineNumbers = p.lineNumbers ? "on" : "off";
-  root.dataset.codeWrap = p.codeWrap ? "on" : "off";
-  root.dataset.showThinking = p.showThinking ? "on" : "off";
-}
 
 // ---------- Dropdown selector: controlled equivalent of the old wireSel ----------
 function Sel({ label, options, onPick }: SelProps) {
@@ -147,7 +104,7 @@ function stepFont(key: "uiFontSize" | "codeFontSize", delta: number, min: number
 
 export default function AppearancePage() {
   const { t } = useTranslation();
-  const [theme, setTheme] = useState(currentThemeMode());
+  const [theme, setTheme] = useState<string>(useAppStore.getState().uiPrefs.theme);
   const [font, setFont] = useState(useAppStore.getState().uiPrefs.uiFont || "default");
   const [uiFs, setUiFs] = useState(useAppStore.getState().uiPrefs.uiFontSize);
   const [codeFs, setCodeFs] = useState(useAppStore.getState().uiPrefs.codeFontSize);
@@ -168,7 +125,7 @@ export default function AppearancePage() {
 
   const pickTheme = (mode: string) => {
     setTheme(mode);
-    applyTheme(mode);
+    saveTheme(mode === "dark" || mode === "light" ? mode : "system");
   };
   const pickFont = (f: string) => {
     setFont(f);
@@ -176,10 +133,10 @@ export default function AppearancePage() {
     saveUiPrefs();
     applyAppearance();
   };
-  const [motion, setMotion] = useState(currentMotionMode());
+  const [motion, setMotion] = useState<string>(useAppStore.getState().uiPrefs.motion);
   const pickMotion = (mode: string) => {
     setMotion(mode);
-    applyMotion(mode);
+    saveMotion(mode === "on" || mode === "off" ? mode : "system");
   };
   const toggleLineNo = () => {
     const on = !lineNo;

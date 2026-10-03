@@ -106,7 +106,7 @@
 #input::placeholder { color: var(--faint); }
 
 /* Selected attachments row: files laid out left to right, text input starts a new line */
-.attach-row { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; }
+.attach-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 6px; }
 
 /* The working status row has merged into .chat-loading (see ChatLoading.jsx); the old .work-line styles were removed with it */
 .chat-loading[hidden] { display: none; } /* display:flex would override the UA's [hidden]; declare it explicitly */
@@ -332,6 +332,9 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 }
 
 .atchip-x:hover { color: var(--text); background: var(--bg); }
+
+/* Image attachment preview: 64px square card; no overflow clipping so the floating .atchip-x stays visible */
+.at-thumb { position: relative; flex: none; width: 64px; height: 64px; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 8px; }
 
 .cbar {
   display: flex;

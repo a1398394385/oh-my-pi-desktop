@@ -31,9 +31,10 @@ export const composerEn = {
   planMode: "Plan mode",
   planModeDesc: "Research read-only and produce a plan, then code after approval",
   planModeHint: "Plan read-only first, execute after the plan is approved",
-  planModeNeedSession: "Create or open a session first",
   // ModelMenu.tsx
   noModels: "No models configured",
+  modelRoleCategory: "Model Role",
+  onlyOneRoleModel: "Only one role model available",
   // ThinkMenu.tsx
   reasoning: "Reasoning level",
   // QueueCard.tsx

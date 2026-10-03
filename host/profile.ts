@@ -11,7 +11,7 @@ import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings } from "./bootstrap.ts";
 import { rebuildScopedModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
-import { readUiLocale } from "./ui-locale.ts";
+import { readUiLocale } from "./ui-config.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 
 // ---------- desktop env (desktop-env.json under agentDir: proxy / CA certs) ----------

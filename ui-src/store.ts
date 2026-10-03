@@ -6,6 +6,7 @@
 // subscriptions (2026-09-24).
 import { useAppStore } from "./store/index";
 export { useAppStore, setBump } from "./store/index";
+export type { AppStore } from "./store/index";
 export { invoke } from "./store/ws";
 export { onTerminalFrame } from "./store/terminal";
 export { fmtTokens, fmtDurationMs, pathBase } from "./store/utils";
@@ -58,7 +59,7 @@ export const showWelcomeScreen = (preferredCwd?: string | null): void =>
 export const hideWelcomeScreen = (): void => useAppStore.getState().hideWelcomeScreen();
 export const setWelcomeProject = (cwd?: string): void => useAppStore.getState().setWelcomeProject(cwd);
 export const initNewSessionModel = (force = false): void => useAppStore.getState().initNewSessionModel(force);
-export const pickModelId = (id: string): void => useAppStore.getState().pickModelId(id);
+export const pickModelId = (id: string, role?: string): void => useAppStore.getState().pickModelId(id, role);
 export const pickThinkingLevel = (lv: string): void => useAppStore.getState().pickThinkingLevel(lv);
 export const getAvailableProjects = (): { cwd: string; sessions: DiskSessionRow[] }[] =>
   useAppStore.getState().getAvailableProjects();

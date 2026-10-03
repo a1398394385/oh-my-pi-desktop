@@ -90,7 +90,7 @@ export const {
 } = await import("@oh-my-pi/pi-coding-agent/mcp/config-writer");
 export const { connectToServer, disconnectServer } = await import("@oh-my-pi/pi-coding-agent/mcp/client");
 // Model roles (@role): catalog/metadata pure functions + a resolver from role value to concrete model (for the settings page role config)
-export const { getKnownRoleIds, getRoleInfo, formatModelRoleAlias } = await import(
+export const { getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS } = await import(
   "@oh-my-pi/pi-coding-agent/config/model-roles"
 );
 export const { resolveModelRoleValue } = await import("@oh-my-pi/pi-coding-agent/config/model-resolver");
@@ -110,11 +110,31 @@ export const { parseSlashCommand } = await import("@oh-my-pi/pi-coding-agent/sla
 // Plan mode: proposal parsing + post-approval autosave + local:// plan file path resolution
 export const { resolveApprovedPlan } = await import("@oh-my-pi/pi-coding-agent/plan-mode/approved-plan");
 export const { autosaveApprovedPlan } = await import("@oh-my-pi/pi-coding-agent/plan-mode/plan-autosave");
-export const { resolveLocalUrlToPath } = await import("@oh-my-pi/pi-coding-agent/internal-urls");
-export const { normalizeLocalScheme } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
+export const { resolveLocalUrlToPath, copyLocalArtifacts } = await import(
+  "@oh-my-pi/pi-coding-agent/internal-urls"
+);
+// Plan-mode approval prompts: read from the SDK's prompt files at runtime so
+// the approved turn carries the base TUI's exact wording (inline plan +
+// per-step verification + todo tracking). Desktop has no bunfig
+// [loader] ".md" = "text" entry (unlike oh-my-pi) and the package's exports
+// map `./prompts/*` to a single level, so neither an import attribute nor
+// `@oh-my-pi/pi-coding-agent/prompts/system/x.md` resolves — anchoring on an
+// already-exported module's own path and walking up to the package src root.
+export async function readSdkPrompt(fileName: string): Promise<string> {
+  const srcRoot = new URL("../", import.meta.resolve("@oh-my-pi/pi-coding-agent/plan-mode/approved-plan")).pathname;
+  return await Bun.file(srcRoot + "prompts/system/" + fileName).text();
+}
+export const { normalizeLocalScheme, resolveToCwd } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
+// xd://propose dispatch metadata: the out-of-band plan-approval trigger keys off
+// it exactly like the base TUI's event-controller (host/plan-approve.ts).
+export const { writeDeviceDispatch } = await import("@oh-my-pi/pi-coding-agent/tools/resolve");
+export const { PROPOSE_DEVICE_NAME } = await import("@oh-my-pi/pi-tui/tools/resolve");
 export const { parseSkillInvocation, buildSkillPromptMessage } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/skills"
 );
+// Skill discovery for the creating-new page's command list (same path an
+// AgentSession runs; see rpc/prompt.ts pushNewSessionCommands)
+export const { discoverSkills } = await import("@oh-my-pi/pi-coding-agent/sdk");
 export const { SKILL_PROMPT_MESSAGE_TYPE } = await import("@oh-my-pi/pi-coding-agent/session/messages");
 export const { fuzzyFind } = await import("@oh-my-pi/pi-natives");
 // Extensions hub (ported from /extensions): unified discovery + provider toggles (consumed by host/extensions.ts)
@@ -143,3 +163,6 @@ export const { commandPreview } = await import("@oh-my-pi/pi-tui/overlays/extens
 export const { getEnabledPlugins } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
 );
+// Session capabilities snapshot (right-panel page): LSP runtime status + memory backend status
+export const { getLspStatus } = await import("@oh-my-pi/pi-coding-agent/lsp/servers");
+export const { createSessionMemoryRuntimeContext } = await import("@oh-my-pi/pi-coding-agent/memory-backend/runtime");

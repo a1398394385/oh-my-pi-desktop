@@ -235,14 +235,16 @@ body.resizing .resizer {
 
 #rightBody {
   flex: 1; overflow-y: auto; min-height: 0;
-  padding: 8px 0 4px; /* zero left/right: the tab bar/action bar/detail blocks all span full width; the sidebar is one whole */
+  /* uniform 8px global inset for every page: hover highlights and cards must not touch the sidebar edges;
+     page roots must not re-add their own side padding (that doubles the inset) */
+  padding: 8px 8px 4px;
 }
 
 /* Detail page header (modeled on the ZCode panel structure): back + title pinned at the top, only the content area scrolls.
-   the block itself spans full width (one of the right sidebar's three zones); inner content uses a uniform 8px side inset */
+   the side inset comes from #rightBody's global padding */
 #rightBody.detail { overflow: hidden; display: flex; flex-direction: column; }
 
-.rb-head { flex: none; padding: 0 8px; }
+.rb-head { flex: none; padding: 0; }
 
 .rb-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -257,23 +259,8 @@ body.resizing .resizer {
 
 .pend-ico svg { display: block; }
 
-/* subagent cards and flow */
-.sub-card {
-  display: block; text-align: left;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-md);
-  background: var(--panel);
-  padding: 8px 10px;
-  cursor: pointer; margin: 0 8px 8px; box-sizing: border-box;
-}
-
-.sub-card:hover { border-color: var(--line); }
-
-.sub-card.running .sub-dot { color: var(--green); }
-
-.sub-card.completed .sub-dot { color: var(--green-soft); }
-
-.sub-card.failed .sub-dot { color: var(--err); }
+/* Subagent list cards reuse the Agent Hub roster row style (.hub-row in main-hub.css);
+   the detail reuses the Agent Hub inspector (HubDetail), no page-specific styles remain here */
 
 /* ---------- right-sidebar empty-state launcher (all tabs closed, aligned with the ZCode side-pane empty state) ---------- */
 /* centered column: decorative icon + title/subtitle lines + entry button list; container queries switch wide containers to a two-column grid */
@@ -323,7 +310,7 @@ body.resizing .resizer {
 /* path breadcrumb: in-project "project name > relative segments" / full path outside projects, caret icons between segments, single-line truncation */
 
 /* file body: no card base/border (the VSCode editor area is the panel itself, no nested box),
-   the line-number gutter carries its own left padding, 8px of breathing room on the right */
+   the line-number gutter carries its own left padding; side breathing room comes from #rightBody's global inset */
 
 .fv-ln {
   flex: none; min-width: 3.5em; padding: 0 10px 0 8px; text-align: right;
@@ -986,3 +973,4 @@ html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break
 .sp-head button,
 .sp-head input,
 .sp-head .sp-pop { -webkit-app-region: no-drag; }
+

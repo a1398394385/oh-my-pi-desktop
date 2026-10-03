@@ -3,7 +3,7 @@
 // English low/medium/...; auto/off are filled in by the store).
 // With a session it goes through the host; creating-new state lands in
 // newSessionThinking + localStorage.
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, getSupportedThinkingForModel, pickThinkingLevel } from "../../store";
@@ -29,6 +29,14 @@ export default function ThinkMenu({ btnRef, composerRef, onClose }: ThinkMenuPro
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
+  // Drop the shift+tab auto-open flag on unmount so a pending auto-close
+  // timer (keys.ts) cannot close a freshly manually reopened menu
+  useEffect(
+    () => () => {
+      if (useAppStore.getState().thinkMenuAuto) useAppStore.setState({ thinkMenuAuto: false });
+    },
+    [],
+  );
 
   const levels: string[] = getSupportedThinkingForModel(s?.model || newSessionModel);
   const curThinking = s?.thinking || newSessionThinking;

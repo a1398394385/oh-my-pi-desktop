@@ -22,10 +22,11 @@
 import {
   useAppStore, setBump, send, toast, activeOpen, openSessionByPath, getAvailableProjects,
   getSupportedThinkingForModel, pickModelId, pickThinkingLevel, toolExpandKey,
-  type TimerHandle,
+  type TimerHandle, type AppStore,
 } from "./store";
 import { t } from "./i18n";
 import { saveUiPrefs, applyAppearance } from "./appearance";
+import type { ModelRoleEntry } from "./types/frames";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/sidebar/util";
@@ -52,6 +53,12 @@ function handleEsc(): boolean | undefined {
   }
   if (document.querySelector(".lp-mask")) {
     return false; // modal dialogs like the tree-jump confirmation close first
+  }
+
+  // 0. agent hub: Esc closes it (and restores the right panel / composer focus)
+  if (st.hubOpen) {
+    st.closeHub();
+    return true;
   }
 
   // 1. tree page: one esc switches back to messages
@@ -115,23 +122,117 @@ function handleEsc(): boolean | undefined {
   return false;
 }
 
-/** app.model.cycleForward / cycleBackward: move through models in host delivery
- * order (same order as the model menu) */
+/** app.model.cycleForward / cycleBackward: cycle role models the CLI way —
+ * through the settings cycleOrder (default smol/default/slow), each role
+ * resolving to its model, unresolvable roles skipped, "default" falling back
+ * to the current model. With a live session the host runs the exact CLI path
+ * (session.cycleRoleModels: keeps role-slot tracking + explicit role thinking
+ * levels); the creating-new state computes the same cycle locally.
+ * While cycling, the model menu auto-opens in preview mode (cyclePreview):
+ * only the cycle list is shown with the switched-to slot highlighted; it
+ * auto-collapses after a 0.8s cycling pause or when Ctrl is released */
+let cyclePreviewT: TimerHandle | undefined;
+
+function closeCyclePreview(): void {
+  clearTimeout(cyclePreviewT);
+  cyclePreviewT = undefined;
+  if (!useAppStore.getState().cyclePreview) return;
+  setBump({ cyclePreview: null });
+  closeAllMenus();
+}
+
+/** Resolve the current cycle slot, mirroring the host's getRoleModelCycle:
+ * the previous preview slot wins while its role AND model still match
+ * (= lastRole tracking); otherwise the first entry whose model equals the
+ * current model; 0 as the last resort. Model-only matching alone would
+ * mispredict when two roles resolve to the same model (e.g. default and a
+ * custom role pointing at one model — the landing looks like a skip) */
+function cycleIndex(
+  entries: { role: string; model: string }[],
+  cur: string,
+  prev?: { activeRole: string; activeModel: string } | null,
+): number {
+  if (prev) {
+    const i = entries.findIndex((e) => e.role === prev.activeRole);
+    if (i !== -1 && entries[i].model === prev.activeModel) return i;
+  }
+  const byModel = entries.findIndex((e) => e.model === cur);
+  return byModel === -1 ? 0 : byModel;
+}
+
+/** Open/re-arm the ctrl+p preview menu. next = the exact slot when the caller
+ * computed it; otherwise a local prediction (instant highlight; the host's
+ * cycle_model receipt corrects the first press) */
+function openCyclePreview(
+  st: AppStore,
+  delta: number,
+  cur: string,
+  next?: { role: string; model: string },
+): void {
+  const entries = roleCycleEntries(st.hostSettings?.values.cycleOrder, st.modelRoles ?? [], cur);
+  if (entries.length < 2) return; // nothing to cycle: no preview (the host reply toasts)
+  const i = cycleIndex(entries, cur, st.cyclePreview);
+  const target = next ?? entries[(i + delta + entries.length) % entries.length];
+  if (!st.settingsOpen) {
+    setBump({ cyclePreview: { entries, activeRole: target.role, activeModel: target.model }, menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
+  }
+  clearTimeout(cyclePreviewT);
+  cyclePreviewT = setTimeout(closeCyclePreview, 800);
+}
+
 function cycleModel(delta: number): void {
   const st = useAppStore.getState();
   const s = activeOpen();
   if (!s && !st.isCreatingNew) return;
-  const ids = [...st.modelNames.keys()];
-  if (ids.length === 0) {
+  if (s) {
+    st.send({ type: "cycle_model", sessionId: s.sessionId, direction: delta > 0 ? "forward" : "backward" });
+    openCyclePreview(st, delta, s.model ?? "");
+    return;
+  }
+  const cur = st.newSessionModel;
+  const entries = roleCycleEntries(st.hostSettings?.values.cycleOrder, st.modelRoles ?? [], cur);
+  if (entries.length === 0) {
     toast(t("composer.noModels"));
     return;
   }
-  const cur = s?.model || st.newSessionModel;
-  const i = ids.indexOf(cur);
-  pickModelId(i < 0 ? ids[delta > 0 ? 0 : ids.length - 1] : ids[(i + delta + ids.length) % ids.length]);
+  if (entries.length === 1) {
+    toast(t("composer.onlyOneRoleModel"));
+    return;
+  }
+  const next = entries[(cycleIndex(entries, cur, st.cyclePreview) + delta + entries.length) % entries.length];
+  pickModelId(next.model);
+  openCyclePreview(st, delta, cur, next);
 }
 
-/** app.thinking.cycle: cycle through tiers supported by the current model (auto -> off -> each tier -> auto) */
+/** Resolve the creating-new role cycle (same semantics as the base
+ * getRoleModelCycle): cycleOrder roles -> resolved models, skipping roles
+ * with no resolvable model; the "default" role falls back to the current
+ * model when unassigned */
+function roleCycleEntries(cycleOrder: unknown, roles: ModelRoleEntry[], cur: string): { role: string; model: string }[] {
+  const order = Array.isArray(cycleOrder) ? (cycleOrder as string[]) : ["smol", "default", "slow"];
+  const byId = new Map(roles.map((r) => [r.id, r]));
+  const entries: { role: string; model: string }[] = [];
+  for (const role of order) {
+    const model = role === "default" ? (byId.get(role)?.resolved ?? cur) : byId.get(role)?.resolved;
+    if (model) entries.push({ role, model });
+  }
+  return entries;
+}
+
+/** app.thinking.cycle: cycle through tiers supported by the current model (auto -> off -> each tier -> auto).
+ * Same transient-menu treatment as ctrl+p: the think menu auto-opens (normal
+ * content — it already ✓-marks the current tier) and auto-collapses after a
+ * 0.8s cycling pause or when Shift is released */
+let thinkMenuT: TimerHandle | undefined;
+
+function closeThinkMenu(): void {
+  clearTimeout(thinkMenuT);
+  thinkMenuT = undefined;
+  if (!useAppStore.getState().thinkMenuAuto) return;
+  useAppStore.setState({ thinkMenuAuto: false });
+  closeAllMenus();
+}
+
 function cycleThinking(): void {
   const st = useAppStore.getState();
   const s = activeOpen();
@@ -139,21 +240,29 @@ function cycleThinking(): void {
   const levels = getSupportedThinkingForModel(s?.model || st.newSessionModel);
   if (levels.length === 0) return;
   pickThinkingLevel(levels[(levels.indexOf(s?.thinking || st.newSessionThinking) + 1) % levels.length]);
+  if (!st.settingsOpen) {
+    setBump({ thinkMenuAuto: true, menuSignal: { name: "think", seq: (st.menuSignal?.seq ?? 0) + 1 } });
+  }
+  clearTimeout(thinkMenuT);
+  thinkMenuT = setTimeout(closeThinkMenu, 800);
 }
 
-/** app.model.select: open the model selection menu (Composer consumes menuSignal) */
+/** app.model.select: open the model selection menu (Composer consumes menuSignal);
+ * a manual open always shows the full menu — clear any ctrl+p preview state */
 function openModelMenu(): void {
   const st = useAppStore.getState();
   if (st.settingsOpen) return; // menus under the settings overlay are invisible, do not open
   if (!activeOpen() && !st.isCreatingNew) return;
-  setBump({ menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
+  setBump({ cyclePreview: null, menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
 }
 
-/** app.plan.toggle: plan mode open/close (session only, same routing as the permission mode menu) */
+/** app.plan.toggle: plan mode open/close (same routing as the permission mode menu:
+ * live toggle in a session, local create_session intent on the new-session page) */
 function togglePlanMode(): void {
+  const st = useAppStore.getState();
   const s = activeOpen();
-  if (!s) return;
-  send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !s.planMode });
+  if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !s.planMode });
+  else if (st.isCreatingNew) setBump({ newSessionPlanMode: !st.newSessionPlanMode });
 }
 
 /** app.agents.hub: right sidebar open/close (same routing as the topbar right-panel button) */
@@ -369,11 +478,48 @@ function setCommandPressed(on: boolean): void {
   );
 }
 
+// Agent Hub open gesture: double-tap ← while focus sits anywhere in the middle card
+// (#main) and the composer draft is empty — same 500ms window as the hub's close gesture
+const HUB_LEFT_WINDOW_MS = 500;
+let hubLastLeftAt = 0;
+// Clicking the message flow never lands DOM focus inside #main (non-focusable content blurs
+// to body), so a target-containment check alone makes the gesture unreachable after a click.
+// Track the last pointerdown scope and let body focus inherit it.
+let lastPointerInMain = false;
+
 function onKeyDown(e: KeyboardEvent): void {
   // Modifier held state: holding Command (Ctrl on Windows) activates the
   // sidebar shortcut badge hints + transient expansion
   if (modDown(e)) {
     setCommandPressed(true);
+  }
+
+  // Agent Hub open gesture: bare ← inside #main with an empty draft. Checked before the
+  // binding lookup (a bare arrow has no registered binding); while the hub is open its own
+  // capture-phase listener owns ← (double-tap closes), so this only fires when closed.
+  if (
+    e.key === "ArrowLeft" &&
+    !e.altKey &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.shiftKey &&
+    !e.repeat
+  ) {
+    const st = useAppStore.getState();
+    if (!st.hubOpen && !st.settingsOpen && !st.draftHasContent && e.target instanceof Node) {
+      const main = document.getElementById("main");
+      const inScope = e.target === document.body ? lastPointerInMain : !!main?.contains(e.target);
+      if (inScope) {
+        const now = Date.now();
+        if (now - hubLastLeftAt <= HUB_LEFT_WINDOW_MS) {
+          hubLastLeftAt = 0;
+          e.preventDefault();
+          st.openHub();
+          return;
+        }
+        hubLastLeftAt = now;
+      }
+    }
   }
 
   // Shortcut session jump: Command/Ctrl + 1~9 (⌘0 is reserved for zoom reset,
@@ -404,6 +550,9 @@ function onKeyUp(e: KeyboardEvent): void {
   if (!modDown(e) || (IS_WINDOWS ? e.key === "Control" : e.key === "Meta")) {
     setCommandPressed(false);
   }
+  // ctrl+p preview / shift+tab think menu: releasing the modifier collapses them immediately
+  if (e.key === "Control") closeCyclePreview();
+  if (e.key === "Shift") closeThinkMenu();
 }
 
 function onBlur(): void {
@@ -414,6 +563,15 @@ function onBlur(): void {
 export function initKeys(): void {
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("keyup", onKeyUp);
+  // Pointer scope memory for the hub open gesture (see hubLastLeftAt above); capture phase so
+  // it records even when inner controls stopPropagation
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      lastPointerInMain = e.target instanceof Node && !!document.getElementById("main")?.contains(e.target);
+    },
+    true,
+  );
   window.addEventListener("blur", onBlur);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onBlur();

@@ -1,27 +1,13 @@
-// Plan mode domain: /plan command dispatch, plan_mode state frames, the
-// proposal approval loop (xd://propose), and persisted mode_change restore.
-// Approval/autosave semantics align with the base plan-mode
-// (resolveApprovedPlan / autosaveApprovedPlan); desktop differences = no
-// paused intermediate state, approvals go through the requestApproval WS
-// bridge.
-import { readdir, stat } from "node:fs/promises";
-import path from "node:path";
+// Plan mode domain: /plan command dispatch, plan_mode state frames, and
+// persisted mode_change restore. The proposal approval loop itself lives in
+// ./plan-approve.ts (the five next-step options + the execution-model slider,
+// ported from the base TUI's InteractiveMode approval flow).
 import { hostI18n } from "../ui-src/i18n/host.ts";
-import {
-  resolveApprovedPlan,
-  autosaveApprovedPlan,
-  resolveLocalUrlToPath,
-  normalizeLocalScheme,
-} from "./bootstrap.ts";
-import { pushCommandOutput, requestApproval, type PoolEntry } from "./state.ts";
+import { installProposalHandler } from "./plan-approve.ts";
+import { pushCommandOutput, type PoolEntry } from "./state.ts";
 
 const PLAN_MODE_NAME = "plan";
 const PLAN_FILE_URL = "local://PLAN.md"; // same location as the ACP default plan file
-// Stable option ids on the plan approval frame: the UI renders localized
-// labels from these ids and returns the chosen id — display text never
-// crosses the wire, so the contract survives language switches.
-const PLAN_APPROVE = "approve";
-const PLAN_REFINE = "refine";
 
 /** Plan-mode state frame: the UI shows/hides the "Plan" exit button right of the permission pill based on it. */
 export function pushPlanMode(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
@@ -34,90 +20,6 @@ export function pushPlanMode(ws: { send(data: string): unknown }, sessionId: str
       planFilePath: state?.planFilePath ?? null,
     }),
   );
-}
-
-/** Disk path of the local:// plan file (aligned with ACP's #resolveAcpPlanFilePath) */
-function planFilePathOnDisk(entry: PoolEntry, url: string): string {
-  const normalized = url.startsWith("local:") ? normalizeLocalScheme(url) : url;
-  return resolveLocalUrlToPath(normalized, {
-    getArtifactsDir: () => entry.session.sessionManager.getArtifactsDir(),
-    getSessionId: () => entry.session.sessionManager.getSessionId(),
-  });
-}
-
-/** Read the plan file content; null when absent (resolveApprovedPlan falls back based on this) */
-async function readPlanContent(entry: PoolEntry, url: string): Promise<string | null> {
-  try {
-    return await Bun.file(planFilePathOnDisk(entry, url)).text();
-  } catch {
-    return null;
-  }
-}
-
-/** Plan files under the session-local root (newest first): the resolveApprovedPlan fallback when the agent lost extra.title */
-async function listPlanFilesOf(entry: PoolEntry): Promise<string[]> {
-  try {
-    const dir = planFilePathOnDisk(entry, "local://");
-    const files = (await readdir(dir, { withFileTypes: true })).filter((d) => d.isFile() && /plan\.md$/i.test(d.name));
-    const stamped = await Promise.all(
-      files.map(async (d) => ({ name: d.name, mtime: (await stat(path.join(dir, d.name))).mtimeMs })),
-    );
-    return stamped.sort((a, b) => b.mtime - a.mtime).map((f) => `local://${f.name}`);
-  } catch {
-    return [];
-  }
-}
-
-// Proposal handler: invoked by the base after the agent writes xd://propose
-// (the returned tool result goes back to the model side).
-// Approve -> record the plan reference + autosave the plan + exit plan mode;
-// reject -> stay in plan mode and keep polishing.
-async function handlePlanProposal(
-  ws: { send(data: string): unknown },
-  sessionId: string,
-  entry: PoolEntry,
-  title: string,
-) {
-  const state = entry.session.getPlanModeState();
-  if (!state?.enabled) throw new Error(hostI18n.t("errors.plan.notActive"));
-  const { planFilePath, title: resolvedTitle } = await resolveApprovedPlan({
-    suppliedTitle: title,
-    statePlanFilePath: state.planFilePath,
-    readPlan: (url: string) => readPlanContent(entry, url),
-    listPlanFiles: () => listPlanFilesOf(entry),
-  });
-  const details = { planFilePath, title: resolvedTitle, planExists: true };
-  const answer = await requestApproval(
-    ws,
-    sessionId,
-    hostI18n.t("flows.plan.approvalTitle", { title: resolvedTitle, path: planFilePath }),
-    [PLAN_APPROVE, PLAN_REFINE],
-  );
-  if (answer !== PLAN_APPROVE) {
-    // Rejected: promote the just-reviewed path to the state path so the next proposal keeps editing this plan
-    if (state.planFilePath !== planFilePath) entry.session.setPlanModeState({ ...state, planFilePath });
-    return {
-      content: [{ type: "text" as const, text: hostI18n.t("flows.plan.refineResult", { path: planFilePath }) }],
-      details,
-    };
-  }
-  entry.session.setPlanReferencePath(planFilePath); // inject the plan body as context next turn
-  const planContent = (await readPlanContent(entry, planFilePath)) ?? "";
-  try {
-    await autosaveApprovedPlan({
-      settings: entry.session.settings,
-      cwd: entry.session.sessionManager.getCwd(),
-      title: resolvedTitle,
-      planContent,
-    });
-  } catch (err) {
-    process.stderr.write(`[host] 计划自动保存失败: ${String(err)}\n`);
-  }
-  setPlanMode(ws, sessionId, entry, false);
-  return {
-    content: [{ type: "text" as const, text: hostI18n.t("flows.plan.approvedResult", { path: planFilePath }) }],
-    details,
-  };
 }
 
 /**
@@ -143,7 +45,9 @@ export function setPlanMode(
       workflow: previous?.workflow ?? "parallel",
       reentry: previous !== undefined,
     });
-    entry.session.setPlanProposalHandler?.((title: string) => handlePlanProposal(ws, sessionId, entry, title));
+    // The handler only validates the plan and returns a dumb tool result; the
+    // approval card is raised out of band from tool_execution_end.
+    installProposalHandler(ws, sessionId, entry);
     if (persist) entry.manager.appendModeChange?.(PLAN_MODE_NAME, { planFilePath });
   } else {
     entry.session.setPlanProposalHandler?.(null);

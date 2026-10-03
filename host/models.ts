@@ -4,7 +4,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { H, enabledDefaults } from "./state.ts";
-import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, resolveModelRoleValue } from "./bootstrap.ts";
+import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue } from "./bootstrap.ts";
 import { SETTINGS_SCHEMA, getDefault } from "@oh-my-pi/pi-coding-agent/config/settings";
 
 export function rebuildScopedModels() {
@@ -173,7 +173,9 @@ export function modelsDefaults() {
 // an "@smol" alias, or carry a ":level" suffix);
 // resolved = the effectively active model resolved by expanding "@role"
 // (unconfigured roles go through the built-in priority chain / role
-// fallback).
+// fallback);
+// builtin = whether the id is one of the SDK's built-in roles (the composer
+// model menu groups custom roles under its "Model Role" section).
 export function modelRolesPayload() {
   return getKnownRoleIds(H.settings).map((role) => {
     const info = getRoleInfo(role, H.settings);
@@ -186,6 +188,7 @@ export function modelRolesPayload() {
       value,
       resolved: model ? `${model.provider}/${model.id}` : null,
       resolvedName: (model?.name as string) ?? null,
+      builtin: (MODEL_ROLE_IDS as readonly string[]).includes(role),
     };
   });
 }

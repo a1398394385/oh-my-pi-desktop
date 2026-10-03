@@ -530,6 +530,8 @@ svg { vertical-align: middle; }
 
 #modelMenu .mi.prov.on { background: var(--panel-3); }
 
+#modelMenu .mi.on { background: var(--panel-3); } /* ctrl+p cycle preview: the slot just switched to */
+
 .mp-role-sel .menu.flyout .mi { white-space: nowrap; }
 
 .mp-role-sel .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }

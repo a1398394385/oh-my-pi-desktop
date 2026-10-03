@@ -2,7 +2,7 @@
 // enable/disable (set_enabled_model), role read/write, catalog snapshots and
 // the provider list. Moved over from the main.ts message dispatch (third
 // slice).
-import { authPolicyFor } from "../bootstrap.ts";
+import { authPolicyFor, formatModelRoleAlias, resolveModelRoleValue } from "../bootstrap.ts";
 import { H, sessions, enabledDefaults } from "../state.ts";
 import { modelCatalog, modelRolesPayload, rebuildScopedModels } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
@@ -14,14 +14,29 @@ import type { RpcHandler } from "./types";
 export const modelsHandlers: Record<string, RpcHandler> = {
   async set_model(ws, msg) {
     const entry = sessions.get(msg.sessionId);
-    process.stderr.write(`[host] set_model: ${msg.model} entry=${!!entry}\n`);
+    process.stderr.write(`[host] set_model: ${msg.model} role=${msg.role ?? "-"} entry=${!!entry}\n`);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    const target = H.scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
-    if (!target) throw new Error(hostI18n.t("errors.model.unknown", { model: msg.model }));
-    await entry.session.setModel(target); // persist defaults to false; effective only in this session
-    // Apply the ":thinking" default level carried by the enabledModels entry, same as CLI behavior
-    const defaultLevel = enabledDefaults.get(msg.model);
-    if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
+    if (msg.role) {
+      // Role pick (the composer menu's "Model Role" section): resolve the role
+      // fresh and apply it through the CLI role path — the model change is
+      // recorded with the role name so ctrl+p role cycling tracks the slot,
+      // and an explicit ":level" on the role value is applied
+      const resolved = resolveModelRoleValue(formatModelRoleAlias(msg.role), H.availableModels, { settings: H.settings });
+      if (!resolved.model) throw new Error(hostI18n.t("errors.model.roleUnresolved", { role: msg.role }));
+      await entry.session.applyRoleModel({
+        role: msg.role,
+        model: resolved.model,
+        thinkingLevel: resolved.thinkingLevel,
+        explicitThinkingLevel: resolved.explicitThinkingLevel,
+      });
+    } else {
+      const target = H.scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
+      if (!target) throw new Error(hostI18n.t("errors.model.unknown", { model: msg.model }));
+      await entry.session.setModel(target); // persist defaults to false; effective only in this session
+      // Apply the ":thinking" default level carried by the enabledModels entry, same as CLI behavior
+      const defaultLevel = enabledDefaults.get(msg.model);
+      if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
+    }
     const model = `${entry.session.model.provider}/${entry.session.model.id}`;
     // After a model switch, return the configured selector ("auto" or a
     // concrete level): the bottom-right shows the user-configured mode; the
@@ -43,6 +58,32 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     // Return the configured selector ("auto" or a concrete level); the clamped effective value never reaches the UI
     ws.send(
       JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.configuredThinkingLevel?.() ?? "auto" }),
+    );
+  },
+  // Quick switch (ctrl+p / shift+ctrl+p): cycles the session through the roles
+  // in the settings cycleOrder (default smol/default/slow) — the exact CLI
+  // path (session.cycleRoleModels), keeping role-slot tracking; roles whose
+  // configured model is missing/unavailable are skipped inside the SDK
+  async cycle_model(ws, msg) {
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const cycleOrder = (H.settings.get("cycleOrder") as string[]).slice();
+    const result = await entry.session.cycleRoleModels(cycleOrder, msg.direction === "backward" ? "backward" : "forward");
+    if (!result) {
+      // Mirrors the CLI's "Only one role model available" status (undefined =
+      // zero or one resolvable role): not an error, just nothing to cycle
+      ws.send(JSON.stringify({ type: "cycle_model", sessionId: msg.sessionId, ok: false }));
+      return;
+    }
+    ws.send(
+      JSON.stringify({
+        type: "cycle_model",
+        sessionId: msg.sessionId,
+        ok: true,
+        model: `${result.model.provider}/${result.model.id}`,
+        role: result.role,
+        thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
+      }),
     );
   },
   get_models_catalog(ws) {

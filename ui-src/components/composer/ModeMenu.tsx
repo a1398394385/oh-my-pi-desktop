@@ -40,7 +40,8 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
   const menuRef = useRef<HTMLDivElement>(null);
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const approvalMode = useAppStore((st) => st.approvalMode);
-  const planOn = !!s?.planMode;
+  const newSessionPlanMode = useAppStore((st) => st.newSessionPlanMode);
+  const planOn = s ? !!s.planMode : newSessionPlanMode;
   // Position on mount (the old openComposerMenu: positioned once when opened)
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
@@ -53,17 +54,17 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
     onClose();
   };
 
-  // Plan mode: switchable only inside a session (the mode state hangs on the
-  // session); setting is confirmed by the host's plan_mode frame
+  // Plan mode: inside a session it toggles the live mode via the host; on the
+  // new-session page it flips the local intent consumed by create_session
   const togglePlan = () => {
-    if (!s) return;
-    send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !planOn });
+    if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !planOn });
+    else setBump({ newSessionPlanMode: !newSessionPlanMode });
     onClose();
   };
 
   return (
     <div className="menu mode open" id="modeMenu" ref={menuRef}>
-      <div className={"mi big" + (s ? "" : " off")} id="planModeRow" onClick={togglePlan} title={s ? t("composer.planModeHint") : t("composer.planModeNeedSession")}>
+      <div className="mi big" id="planModeRow" onClick={togglePlan} title={t("composer.planModeHint")}>
         <span className="mi-ic"><Icon name="plan" /></span>
         <span className="mi-tx">
           <span className="mi-tt">{t("composer.planMode")}</span>

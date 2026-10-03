@@ -106,6 +106,7 @@ export const hostErrorsEn = {
     keepAtLeastOne: "Keep at least one enabled model",
     noneAfterFilter: "No available models left after filtering the enabled list",
     invalidRoleName: "Invalid role name: {{role}}",
+    roleUnresolved: "Role \"{{role}}\" resolves to no available model",
   },
   limits: {
     noModelSelected: "Session has no model selected yet",
@@ -115,6 +116,10 @@ export const hostErrorsEn = {
     noneInFlight: "No login flow is currently in progress",
     keyEmpty: "API key must not be empty",
     browserOnly: "{{provider}} only supports browser-based login, not API keys",
+  },
+  account: {
+    notFound: "Account not found or already restored",
+    restoreUnsupported: "This profile has no local credential store; restore is unavailable — log in again",
   },
   queue: {
     parkedNotFound: "Parked queued message not found: {{index}}",

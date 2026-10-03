@@ -67,6 +67,14 @@ export interface KeepaliveConfig {
   mode: "default" | "smart";
 }
 
+/** omp-desktop.json ui-section projection (host/ui-config.ts readUiConfig) — the file-first authority for desktop-owned appearance settings */
+export interface UiConfigPayload {
+  locale?: "zh-CN" | "en"; // explicit file value only; undefined = never set
+  theme?: "dark" | "light" | "system";
+  motion?: "system" | "on" | "off";
+  prefs?: Record<string, unknown>;
+}
+
 /** Settings frame payload = base snapshot + host-side experimental toggles (host/frames.ts settingsFrame) */
 export type SettingsPayload = SettingsSnapshot & {
   acpEnabled: boolean;
@@ -77,6 +85,7 @@ export type SettingsPayload = SettingsSnapshot & {
   hooksEnabled: boolean;
   pluginsEnabled?: boolean;
   skillsEnabled?: boolean;
+  uiConfig?: UiConfigPayload;
 };
 
 /** Model catalog entry (host/models.ts:17-23 modelsPayload) */
@@ -105,7 +114,7 @@ export interface ModelCatalogEntry {
   authSource: "config" | "cred";
 }
 
-/** Model role entry (host/models.ts:168-181 modelRolesPayload) */
+/** Model role entry (host/models.ts modelRolesPayload) */
 export interface ModelRoleEntry {
   id: string;
   name: string;
@@ -113,6 +122,8 @@ export interface ModelRoleEntry {
   value: string | null;
   resolved: string | null;
   resolvedName: string | null;
+  /** one of the SDK's built-in roles vs a user-defined custom role */
+  builtin: boolean;
 }
 
 /** Provider list entry (host/host.ts:1661-1684: {id,label} from listAllProviders + login/accounts) */
@@ -453,13 +464,12 @@ export interface PromptAttachment {
 }
 
 // ---------- Frame members (mirroring each sender-side construction site) ----------
-
-/** Handshake frame (host/host.ts:674-684 open; not stamped, hi attached directly) */
 export interface ReadyFrame {
   type: "ready";
   hi: string;
   approvalMode: string;
   models: ModelEntry[];
+  roles: ModelRoleEntry[];
   defaultModel: string | null;
   defaultThinking: string | null;
   settings: SettingsPayload;
@@ -749,6 +759,32 @@ export interface ProviderLimitsResultFrame {
   accounts: LimitsAccount[];
 }
 
+/** Active account row (provider_accounts frame) */
+export interface ProviderAccountEntry {
+  id: number;
+  /** email ?? accountId ?? orgName; api_key credentials carry no identity */
+  label: string;
+}
+
+/** Disabled account tombstone row (provider_accounts frame) */
+export interface ProviderDisabledAccount {
+  id: number;
+  label: string;
+  /** Verbatim disable cause (manual marker or captured auto-failure error) */
+  cause: string;
+  disabledAtMs: number | null;
+  /** Disabled via omp-desktop (restorable); auto-disabled rows are display-only */
+  manual: boolean;
+}
+
+/** Provider account list reply (host/rpc/login.ts provider_list_accounts / disable/restore pushes) */
+export interface ProviderAccountsFrame {
+  type: "provider_accounts";
+  provider: string;
+  active: ProviderAccountEntry[];
+  disabled: ProviderDisabledAccount[];
+}
+
 /** Stage reply (host/host.ts:1396-1397 git_stage) */
 export interface GitStagedFrame {
   type: "git_staged";
@@ -832,7 +868,15 @@ export interface ApprovalRequestFrame {
   sessionId: string;
   requestId: string;
   title: string; // confirm variant is `${title}\n${message}`
-  options: string[]; // editor/plan variants pass stable ids (submit/cancel/approve/refine); the UI renders localized text by id
+  options: string[]; // editor/plan variants pass stable ids (submit/cancel/plan:execute/plan:compact/plan:keep/plan:refine/plan:save-quit); the UI renders localized text by id
+  // Live context usage for the plan-approval keep-context row. Raw numbers, not
+  // a rendered label: the UI localizes "Approve and keep context (~44k / 1m)".
+  keepContextTokens?: { tokens: number; contextWindow: number };
+  // Row indices the operator may not pick (plan approval disables keep-context
+  // once the context is nearly full).
+  disabledIndices?: number[];
+  // Execution-model tier slider shown above the plan options.
+  slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
   editable?: boolean; // always true for the editor variant only
   // Index of the inline-input row within options (editor variant). Protocol
   // field: locating the row by id/index, never by display text.
@@ -871,13 +915,23 @@ export interface SettingsSchemaFrame {
   schema: Record<string, unknown>;
 }
 
-/** Model catalog frame (host/host.ts:80-82 modelsFrame, multiple send sites; the login flow carries reqId via a reply wrapper) */
 export interface ModelsFrame {
   type: "models";
   models: ModelEntry[];
+  roles: ModelRoleEntry[];
   defaultModel: string | null;
   defaultThinking: string | null;
   reqId?: number | null; // only carried by the reply wrapper of provider_login
+}
+
+/** Quick-switch result (host/rpc/models.ts cycle_model): ok=false = fewer than two resolvable roles, nothing to cycle */
+export interface CycleModelFrame {
+  type: "cycle_model";
+  sessionId: string;
+  ok: boolean;
+  model?: string;
+  role?: string;
+  thinking?: string;
 }
 
 /** Models-management page catalog frame (host/host.ts:1658 and other send sites; the login flow carries reqId via a reply wrapper) */
@@ -1053,6 +1107,58 @@ export interface ProfileSwitchedFrame {
   profile: string;
 }
 
+/** Body types of the capabilities snapshot (mirrors host/capabilities.ts CapabilitiesSnapshot) */
+export interface CapabilitiesSnapshot {
+  sessionId: string;
+  mcp: { servers: { name: string; status: string }[]; tools: number };
+  lsp: { name: string; status: string; fileTypes?: string[]; error?: string }[];
+  advisor: {
+    configured: boolean;
+    active: boolean;
+    model?: string;
+    contextWindow: number;
+    contextTokens: number;
+    tokens: { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number; total: number };
+    cost: number;
+    messages: { user: number; assistant: number; total: number };
+    advisors: { name: string; status: string; model?: string; cost: number; tokensTotal: number; messagesTotal: number }[];
+  };
+  memory: {
+    backend: string;
+    active: boolean;
+    writable?: boolean;
+    searchable?: boolean;
+    scope?: string;
+    workingCount?: number;
+    episodicCount?: number;
+    tripleCount?: number;
+    lastMemory?: string;
+    database?: string;
+    message?: string;
+    error?: string;
+  };
+  extensions: {
+    loaded: boolean;
+    paths: string[];
+    tools: string[];
+    commands: string[];
+    diagnostics: { type: string; message: string; path: string }[];
+  };
+}
+
+/** Capabilities snapshot reply (host/rpc/capabilities.ts get_capabilities; right-panel capabilities page) */
+export interface CapabilitiesFrame {
+  type: "capabilities";
+  snapshot: CapabilitiesSnapshot;
+}
+
+/** MCP connection-status incremental push (host/session-lifecycle attachEntry; process-global, carries no sessionId) */
+export interface CapabilitiesMcpFrame {
+  type: "capabilities_mcp";
+  mcp: { servers: { name: string; status: string }[]; tools: number };
+}
+
+
 /** Terminal data frame (onData callback of host/host.ts:2073 terminal_create) */
 export interface TerminalDataFrame {
   type: "terminal_data";
@@ -1110,6 +1216,9 @@ export interface SubagentLifecycleFrame {
   name: string;
   parent: string;
   registeredAt?: number; // only set after started (a Map lookup may be undefined)
+  sessionFile?: string | null; // child transcript file (agent hub lineage/output)
+  readOnly?: boolean; // child session_init.readOnly, host-recovered (Agent Hub Changes line)
+  advisor?: boolean; // advisor transcript (__advisor stem), host-derived like the TUI registry kind
   detached: boolean;
   hi?: string; // stamped frame
   seq?: number;
@@ -1181,7 +1290,7 @@ export interface SetLocaleFrame {
 
 // ---------- Frame union ----------
 
-/** Discriminated union of all host → UI frames (75 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (78 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -1216,6 +1325,7 @@ export type HostFrame =
   | ContextDetailFrame
   | LimitsResultFrame
   | ProviderLimitsResultFrame
+  | ProviderAccountsFrame
   | GitStagedFrame
   | GitUnstagedFrame
   | GitDiscardedFrame
@@ -1232,6 +1342,7 @@ export type HostFrame =
   | SettingsFrame
   | SettingsSchemaFrame
   | ModelsFrame
+  | CycleModelFrame
   | ModelsCatalogFrame
   | AllProvidersFrame
   | LoginProgressFrame
@@ -1249,6 +1360,8 @@ export type HostFrame =
   | MemoryFileFrame
   | McpServerTestedFrame
   | ProfileSwitchedFrame
+  | CapabilitiesFrame
+  | CapabilitiesMcpFrame
   | TerminalDataFrame
   | TerminalExitFrame
   | TerminalCreatedFrame

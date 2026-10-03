@@ -2,6 +2,8 @@
 // relayed through a UI dialog), logout, API key writing, login cancel and
 // prompt replies, opening models.yml. Moved over from the main.ts message
 // dispatch (third slice).
+import { Database } from "bun:sqlite";
+import { getAgentDbPath } from "@oh-my-pi/pi-utils";
 import path from "node:path";
 import fs from "node:fs";
 import { authPolicyFor } from "../bootstrap.ts";
@@ -108,6 +110,60 @@ export const loginHandlers: Record<string, RpcHandler> = {
       process.stderr.write(`[host] 登出后模型目录刷新失败: ${err}\n`);
     }
   },
+  // ---- Per-account disable/restore (manual tombstones) ----
+  // OMP has no user entry for "disable one account but keep the credential":
+  // disableCredentialById is public yet only auto-failure paths call it, and no
+  // restore API exists at all. The host closes the loop:
+  // - disable: SDK soft-delete (the tombstone row keeps full token material);
+  // - restore: read the preserved credential back from agent.db (readonly
+  //   SELECT — the SDK never surfaces token material of disabled rows) and
+  //   re-upsert it; upsert re-inserts the row and the store purges the
+  //   superseded tombstone by identity-key match.
+  // The cause string doubles as the restore gate: auto-disabled tombstones
+  // (invalid_grant / revoked) stay unrestorable so they cannot die twice.
+  async provider_list_accounts(ws, msg) {
+    const provider = String(msg.provider ?? "");
+    if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
+    await pushProviderAccounts(ws, provider);
+  },
+  async provider_disable_account(ws, msg) {
+    const provider = String(msg.provider ?? "");
+    const id = Number(msg.id);
+    if (!provider || !Number.isInteger(id)) throw new Error(hostI18n.t("errors.param.missingProvider"));
+    if (!H.authStorage.disableCredentialById(id, MANUAL_DISABLE_CAUSE)) {
+      throw new Error(hostI18n.t("errors.account.notFound"));
+    }
+    await pushProviderAccounts(ws, provider);
+    await refreshCatalogAndPush(ws);
+  },
+  async provider_enable_account(ws, msg) {
+    const provider = String(msg.provider ?? "");
+    const id = Number(msg.id);
+    if (!provider || !Number.isInteger(id)) throw new Error(hostI18n.t("errors.param.missingProvider"));
+    let db: Database;
+    try {
+      db = new Database(getAgentDbPath(H.agentDir), { readonly: true });
+    } catch {
+      // No local credential store (e.g. auth-broker profile) — nothing to restore from
+      throw new Error(hostI18n.t("errors.account.restoreUnsupported"));
+    }
+    try {
+      const row = db
+        .query("SELECT provider, credential_type, data FROM auth_credentials WHERE id = ? AND disabled_cause = ?")
+        .get(id, MANUAL_DISABLE_CAUSE) as { provider: string; credential_type: string; data: string } | undefined;
+      if (!row || row.provider !== provider) throw new Error(hostI18n.t("errors.account.notFound"));
+      const parsed = JSON.parse(row.data) as Record<string, unknown>;
+      const credential =
+        row.credential_type === "api_key"
+          ? { type: "api_key", key: parsed.key, ...(parsed.source === "login" ? { source: "login" } : {}) }
+          : { type: "oauth", ...parsed };
+      H.authStorage.upsertCredential(provider, credential);
+    } finally {
+      db.close();
+    }
+    await pushProviderAccounts(ws, provider);
+    await refreshCatalogAndPush(ws);
+  },
   provider_login_cancel(_ws, _msg) {
     // Explicit user cancel (e.g. closed the login page): abort the in-flight login flow
     if (H.loginInFlight && H.loginAbort) H.loginAbort.abort();
@@ -152,3 +208,50 @@ export const loginHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "models_config_path", path: modelsPath }));
   },
 };
+
+// Manual disable cause marker: exact-match restore key in provider_enable_account
+const MANUAL_DISABLE_CAUSE = "disabled by user (omp-desktop)";
+
+// Minimal ws surface used by the helpers below (full ws type is the dispatch shell's concern)
+interface WsLike {
+  send(data: string): void;
+}
+
+// provider_accounts reply frame: active rows from the facade, disabled rows via
+// listDisabledCredentials (identity slice only, never token material)
+async function pushProviderAccounts(ws: WsLike, provider: string) {
+  const active = (H.authStorage.listStoredCredentials(provider) ?? []).map((c: { id: number; credential?: { email?: string; accountId?: string; orgName?: string } }) => ({
+    id: c.id,
+    label: c.credential?.email ?? c.credential?.accountId ?? c.credential?.orgName ?? "",
+  }));
+  const disabledRows = (await H.authStorage.listDisabledCredentials(provider)) ?? [];
+  ws.send(
+    JSON.stringify({
+      type: "provider_accounts",
+      provider,
+      active,
+      disabled: disabledRows.map((d: { id: number; email?: string; accountId?: string; orgName?: string; cause: string; disabledAtMs?: number }) => ({
+        id: d.id,
+        label: d.email ?? d.accountId ?? d.orgName ?? "",
+        cause: d.cause,
+        disabledAtMs: d.disabledAtMs ?? null,
+        manual: d.cause === MANUAL_DISABLE_CAUSE,
+      })),
+    }),
+  );
+}
+
+// Post-mutation catalog convergence (same flow as provider_logout's tail):
+// disabling the last active credential removes the provider, restoring one
+// brings it back — either way the registry re-discovers and both frames re-push
+async function refreshCatalogAndPush(ws: WsLike) {
+  try {
+    await H.modelRegistry.refresh();
+  } catch (err) {
+    process.stderr.write(`[host] 账号变更后模型目录刷新失败: ${err}\n`);
+  }
+  H.availableModels = H.modelRegistry.getAvailable();
+  rebuildScopedModels();
+  ws.send(JSON.stringify(modelsFrame()));
+  ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+}

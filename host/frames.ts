@@ -5,16 +5,18 @@
 // profile->models edge already exists) — carried over from the original
 // main.ts comment "do not sink models.ts, avoid module cycles".
 import { H } from "./state.ts";
-import { modelsPayload, modelsDefaults, settingsSnapshot } from "./models.ts";
+import { modelsPayload, modelsDefaults, modelRolesPayload, settingsSnapshot } from "./models.ts";
 import { readAcpConfig, readAcpEnabled, readSessionContextEnabled } from "./profile.ts";
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import { readHooksEnabled, readPluginsEnabled } from "./assets.ts";
+import { readUiConfig } from "./ui-config.ts";
 
 // Unified models frame assembly: catalog + config defaults for new sessions
-// (defaultModel/defaultThinking), shared by every send site to avoid missing
-// default fields
+// (defaultModel/defaultThinking) + the model-role snapshot (the composer
+// model menu's "Model Role" section and the ctrl+p role cycle both read it),
+// shared by every send site to avoid missing default fields
 export function modelsFrame() {
-  return { type: "models", models: modelsPayload(), ...modelsDefaults() };
+  return { type: "models", models: modelsPayload(), roles: modelRolesPayload(), ...modelsDefaults() };
 }
 
 /** Settings frame = base settings snapshot + host-side experimental switches. */
@@ -29,5 +31,8 @@ export function settingsFrame() {
     hooksEnabled: readHooksEnabled(),
     pluginsEnabled: readPluginsEnabled(),
     skillsEnabled: !!H.settings.get("skills.enabled"),
+    // omp-desktop.json ui-section projection (locale/theme/motion/prefs): the
+    // authoritative source the frontend reconciles its localStorage cache against
+    uiConfig: readUiConfig(),
   };
 }
