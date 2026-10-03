@@ -7,6 +7,8 @@ import sidebar from "./ui/sidebar.en";
 import right from "./ui/right.en";
 import misc from "./ui/misc.en";
 import notify from "./ui/notify.en";
+import hubExt from "./ui/hub-ext-en";
+import compExt from "./ui/comp-ext-en";
 
 const en = {
   common,
@@ -17,6 +19,8 @@ const en = {
   right,
   misc,
   notify,
+  hubExt,
+  compExt,
 };
 
 export default en;

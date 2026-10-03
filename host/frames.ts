@@ -10,6 +10,7 @@ import { readAcpConfig, readAcpEnabled, readSessionContextEnabled } from "./prof
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import { readHooksEnabled, readPluginsEnabled } from "./assets.ts";
 import { readUiConfig } from "./ui-config.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 // Unified models frame assembly: catalog + config defaults for new sessions
 // (defaultModel/defaultThinking) + the model-role snapshot (the composer
@@ -30,7 +31,7 @@ export function settingsFrame() {
     keepaliveConfig: readKeepaliveProbeConfig(),
     hooksEnabled: readHooksEnabled(),
     pluginsEnabled: readPluginsEnabled(),
-    skillsEnabled: !!H.settings.get("skills.enabled"),
+    skillsEnabled: !!settingsGet(H.settings, "skills.enabled"),
     // omp-desktop.json ui-section projection (locale/theme/motion/prefs): the
     // authoritative source the frontend reconciles its localStorage cache against
     uiConfig: readUiConfig(),

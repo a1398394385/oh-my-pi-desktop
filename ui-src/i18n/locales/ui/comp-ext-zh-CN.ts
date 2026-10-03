@@ -1,0 +1,14 @@
+// zh copy for the composer/approval 18.5 extension domain (ghost completion,
+// model capability badges, ask multi-question merged submit). Keys are
+// prefixed `compExt.` — see ui-src/i18n/README.md.
+export const compExtZh = {
+  // ModelMenu.tsx capability badges
+  capCache: "缓存",
+  capWeb: "联网",
+  capImg: "图像",
+  // ApprovalCard.tsx ask multi-question merged submit
+  askMultiHint: "逐题选择，一次提交全部答案",
+  askSubmitAll: "提交全部答案",
+};
+
+export default compExtZh;

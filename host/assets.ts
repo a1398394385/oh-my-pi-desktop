@@ -19,6 +19,7 @@ import {
   isUserSourceEnabled,
 } from "./bootstrap.ts";
 import { getMcpSharingConfig } from "./profile.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 async function firstHeading(file: string): Promise<string> {
   try {
@@ -111,8 +112,8 @@ function isAssetSourceOn(provider: string, level: "user" | "project"): boolean {
   if (!isProviderEnabled(provider)) return false;
   if (level === "project") return true;
   if (isUserSourceEnabled(provider)) return true;
-  if (provider === "claude") return H.settings.get("skills.enableClaudeUser") === true;
-  if (provider === "codex") return H.settings.get("skills.enableCodexUser") === true;
+  if (provider === "claude") return settingsGet(H.settings, "skills.enableClaudeUser") === true;
+  if (provider === "codex") return settingsGet(H.settings, "skills.enableCodexUser") === true;
   return false;
 }
 
@@ -132,7 +133,7 @@ function allSkillRoots(): string[] {
     path.join(H.agentDir, "managed-skills"),
   ];
   try {
-    const customDirs = (H.settings.get("skills.customDirectories") ?? []) as string[];
+    const customDirs = (settingsGet(H.settings, "skills.customDirectories") ?? []) as string[];
     for (const cd of customDirs) {
       const exp = cd.startsWith("~/") ? path.join(os.homedir(), cd.slice(2)) : path.resolve(cd);
       roots.push(exp);
@@ -271,8 +272,8 @@ async function parseSkillFile(filePath: string, provider: string, scope: string,
 
 // Scan multi-source skills across global, profile and each project, following the omp source discovery logic
 export async function loadAllSkillsScoped() {
-  const disabled = new Set<string>(((H.settings.get("disabledExtensions") ?? []) as string[]));
-  const ignored = new Set<string>(((H.settings.get("skills.ignoredSkills") ?? []) as string[]));
+  const disabled = new Set<string>(((settingsGet(H.settings, "disabledExtensions") ?? []) as string[]));
+  const ignored = new Set<string>(((settingsGet(H.settings, "skills.ignoredSkills") ?? []) as string[]));
   const isSkillDisabled = (name: string) => disabled.has(`skill:${name}`) || ignored.has(name);
 
   // Profile-level directory sources (current profile skills, managed-skills, plus compatible external user-level directories)
@@ -287,7 +288,7 @@ export async function loadAllSkillsScoped() {
     { dir: path.join(os.homedir(), ".opencode", "skills"), provider: "opencode" },
   ];
   try {
-    const customDirs = (H.settings.get("skills.customDirectories") ?? []) as string[];
+    const customDirs = (settingsGet(H.settings, "skills.customDirectories") ?? []) as string[];
     for (const cd of customDirs) {
       const exp = cd.startsWith("~/") ? path.join(os.homedir(), cd.slice(2)) : path.resolve(cd);
       profileSources.push({ dir: exp, provider: "custom" });
@@ -1094,7 +1095,7 @@ export async function listAgentAssets() {
   const mcp = await loadAllMcpScoped();
 
   const hooks: HookAssetItem[] = [];
-  const disabled = new Set<string>((H.settings.get("disabledExtensions") ?? []) as string[]);
+  const disabled = new Set<string>((settingsGet(H.settings, "disabledExtensions") ?? []) as string[]);
   const hookExts = [".ts", ".js", ".mjs", ".cjs", ".sh", ".bash", ".py"];
 
   const scanHookDir = async (dir: string, phase: "pre" | "post", scope: "profile" | "project", cwd?: string, projectName?: string) => {
@@ -1153,6 +1154,6 @@ export async function listAgentAssets() {
     hooks,
     mcp,
     plugins: [] as { name: string }[],
-    flags: { enableMCP: false, disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()), computerEnabled: !!H.settings.get("computer.enabled") },
+    flags: { enableMCP: false, disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()), computerEnabled: !!settingsGet(H.settings, "computer.enabled") },
   };
 }

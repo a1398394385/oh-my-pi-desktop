@@ -1,9 +1,8 @@
 // RPC handler aggregation and dispatch. Merges the ten domain handler tables;
-// unknown commands reply with an error frame (matching the old switch
+// unknown commands reply with the error frame (matching the old switch
 // default). Exceptions are caught by the message shell in main.ts and returned
 // as error frames. Exhaustiveness is guarded by the RPC manifest check in
-// scripts/check-capabilities.mjs (all 95 methods resolvable); the handler
-// table's key set matches the manifest.
+// scripts/check-capabilities.mjs (all 111 methods resolvable); the handler
 import { sessionHandlers } from "./session";
 import { promptHandlers } from "./prompt";
 import { filesHandlers } from "./files";

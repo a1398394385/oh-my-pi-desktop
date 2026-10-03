@@ -5,7 +5,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { SETTINGS_SCHEMA } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { lookupSetting } from "../bootstrap.ts";
 import { H, sessions, pendingApprovals, type DesktopEnv } from "../state.ts";
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
@@ -25,13 +25,14 @@ import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
+import { settingsSet, settingsSchemaRecord } from "../settings-compat.ts";
 
 export const settingsHandlers: Record<string, RpcHandler> = {
   get_settings(ws) {
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   get_settings_schema(ws) {
-    ws.send(JSON.stringify({ type: "settings_schema", schema: SETTINGS_SCHEMA }));
+    ws.send(JSON.stringify({ type: "settings_schema", schema: settingsSchemaRecord() }));
   },
   async reload_settings(ws) {
     // Local config files may have been hand-edited: reload from disk (model settings only) and push the new model list
@@ -47,7 +48,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   async set_setting(ws, msg) {
     const key = String(msg.key ?? "");
     let value = msg.value;
-    const def = SETTINGS_SCHEMA[key];
+    const def = lookupSetting(key);
     if (!def) throw new Error(hostI18n.t("errors.unknownSetting", { key }));
     const t = def.type;
     if (t === "number") {
@@ -65,7 +66,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     } else if (t === "string") {
       if (typeof value !== "string") throw new Error(hostI18n.t("errors.setting.mustBeString", { key }));
     } else if (t === "enum") {
-      if (!def.values.includes(value)) throw new Error(hostI18n.t("errors.setting.mustBeOneOf", { key, values: def.values.join("/") }));
+      if (!def.enumValues?.includes(value)) throw new Error(hostI18n.t("errors.setting.mustBeOneOf", { key, values: def.enumValues?.join("/") ?? "" }));
     } else if (t === "array") {
       if (!Array.isArray(value)) throw new Error(hostI18n.t("errors.setting.mustBeArray", { key }));
       const d = def.default;
@@ -76,7 +77,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     }
     // Per-key extra validation: ask.timeout must be non-negative
     if (key === "ask.timeout" && (typeof value !== "number" || value < 0)) throw new Error(hostI18n.t("errors.setting.askTimeoutNonNegative"));
-    H.settings.set(key, value);
+    settingsSet(H.settings, key, value);
     // Post-write side effect: sleep prevention must apply to the process immediately
     if (key === "power.sleepPrevention") applySleepPrevention(value);
     // Model-related keys: rebuild the scoped catalog and push a models frame
@@ -154,7 +155,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   },
   async set_skills_enabled(ws, msg) {
     // Skills master switch: writes skills.enabled to the base settings.json (consumed by every getGroup("skills") load site)
-    H.settings.set("skills.enabled", !!msg.enabled);
+    settingsSet(H.settings, "skills.enabled", !!msg.enabled);
     await H.settings.flush();
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
@@ -189,7 +190,8 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       throw new Error(hostI18n.t("errors.setting.invalidApprovalMode", { mode }));
     }
     // Resolved at execute time: no session rebuild needed, effective on the next tool call (applies to all sessions — settings are process-wide shared)
-    H.settings.override("tools.approvalMode", mode);
+    const approvalMode = lookupSetting("tools.approvalMode");
+    if (approvalMode) H.settings.writeValue(approvalMode, mode, "override");
     ws.send(JSON.stringify({ type: "approval_mode", mode }));
   },
   set_plan_mode(ws, msg) {
@@ -225,6 +227,9 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // The plan approval slider rides the same response; deliver it before
     // resolve() so the flow's continuation already sees the picked tier.
     if (pending.onSliderIndex && typeof msg.sliderIndex === "number") pending.onSliderIndex(msg.sliderIndex);
+    // Plain approvals take the raw string; the ask-dialog variant's stored
+    // resolve (session-lifecycle askDialog) parses the serialized
+    // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
     pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
     ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
   },

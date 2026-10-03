@@ -83,8 +83,11 @@ export type PoolEntry = {
   path: string; // Session file path (on-disk identity)
   cwd: string;
   isGit: boolean;
-  queuedTexts: string[]; // Snapshot of queued message texts from the last push (fallback for the turn_end race)
-  consumedTexts: string[]; // Texts already handed to the UI for consumption (dequeue hook) / already re-sent as fallback
+  // (18.5) The old queuedTexts/consumedTexts turn_end diff backstop is gone:
+  // the base now restores undelivered queued messages on abort
+  // (pi-agent-core agent.ts #restoreUndeliveredQueuedMessages) and every
+  // queue mutation fires onQueueChange, which session-lifecycle pushes as
+  // realtime queued frames; turn_end keeps one calibration push only
   // followUp parking lot (including hidden companions, original queue
   // elements): the base's injection boundary drains the followUp queue to
   // empty, so multiple queued messages would ride out in the same run. The
@@ -92,6 +95,11 @@ export type PoolEntry = {
   // the rest here; each agent_end puts 1 back and triggers consumption —
   // queued messages stay FIFO across turns, one independent turn each
   parkedFollowUp: any[];
+  // (18.5) RpcSubagentRegistry built from this session's subagent event bus on
+  // first attach (modes/rpc/rpc-subagents): control_subagent resolves live
+  // subagents through it; lives on the entry so a frontend reload reuses the
+  // accumulated snapshots instead of starting blind
+  subagentRegistry?: unknown;
   // The session's SessionManager instance: used by rename (setSessionName) and to rebuild the transcript after compact
   manager: any;
   // User-renamed title (lazily created, unpersisted sessions are invisible to
@@ -183,7 +191,14 @@ export function pushCommandOutput(sessionId: string, text: string) {
 // picked execution tier; ordinary approvals never set it.
 export const pendingApprovals = new Map<
   string,
-  { resolve: (v: string | undefined) => void; onSliderIndex?: (index: number) => void }
+  {
+    resolve: (v: string | undefined) => void;
+    onSliderIndex?: (index: number) => void;
+    // (18.5) Ask-dialog variant: the questions pushed on the frame; the
+    // entry's resolve (session-lifecycle askDialog) parses the serialized
+    // ExtensionAskDialogSubmitResult answer itself
+    questions?: unknown[];
+  }
 >();
 
 /**
@@ -211,6 +226,7 @@ export function requestApproval(
     editableIndex?: number;
   },
   onSliderIndex?: (index: number) => void,
+  questions?: unknown[],
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
   const { promise, resolve } = Promise.withResolvers<string | undefined>();
@@ -218,7 +234,7 @@ export function requestApproval(
     pendingApprovals.delete(requestId);
     resolve(v);
   };
-  pendingApprovals.set(requestId, { resolve: settle, onSliderIndex });
+  pendingApprovals.set(requestId, { resolve: settle, onSliderIndex, questions });
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
   ws.send(
@@ -229,10 +245,8 @@ export function requestApproval(
         requestId,
         title,
         options,
+        ...(questions ? { questions } : {}),
         ...(presentation?.keepContextTokens ? { keepContextTokens: presentation.keepContextTokens } : {}),
-        ...(presentation?.disabledIndices ? { disabledIndices: presentation.disabledIndices } : {}),
-        ...(presentation?.slider ? { slider: presentation.slider } : {}),
-        ...(presentation?.editable ? { editable: true, editableIndex: presentation.editableIndex ?? 0 } : {}),
       }),
     ),
   );

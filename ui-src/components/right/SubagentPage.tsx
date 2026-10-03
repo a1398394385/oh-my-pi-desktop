@@ -3,10 +3,11 @@
 // reuses the Agent Hub inspector (HubDetail from HubDetailPage) under a back-to-list button.
 // Detail skeleton (must keep): #rightBody gets the detail class, rb-head fixed (back button),
 // scrolling rb-scroll carries the inspector.
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
 import { HubDetail } from "./HubDetailPage";
+import { SubControls, SteerInput } from "./SubControls";
 import { usageSegments, timeSegments, modelShort, subStatus } from "./subShared";
 import type { SubagentState } from "../../types/session";
 
@@ -32,12 +33,12 @@ export default function SubagentPage() {
     return <div className="py-3 text-faint text-ui-base">{t("right.noSubagents")}</div>;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
-    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} />; // the has() on the previous line guarantees presence
+    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} sessionId={s.sessionId} />; // the has() on the previous line guarantees presence
   }
   return (
     <div className="hub-list">
       {[...s.subagents].map(([id, sub]) => (
-        <SubCard key={id} id={id} sub={sub} />
+        <SubCard key={id} id={id} sub={sub} sessionId={s.sessionId} />
       ))}
     </div>
   );
@@ -45,15 +46,17 @@ export default function SubagentPage() {
 
 // List card: reuses the Agent Hub roster row style (.hub-row), flat surface with
 // hover-only highlight (no permanent "on" state on this page)
-function SubCard({ id, sub }: { id: string; sub: SubagentState }) {
+function SubCard({ id, sub, sessionId }: { id: string; sub: SubagentState; sessionId: string }) {
   const { t } = useTranslation();
   const st = subStatus(sub);
   const segs = usageSegments(sub, t, { model: false });
   const times = timeSegments(sub, t, Date.now());
   const model = modelShort(sub.usage?.resolvedModel);
+  // Steer input expands in place below the row (div root: controls are buttons, which cannot
+  // nest inside the old <button> root)
+  const [steerOpen, setSteerOpen] = useState(false);
   return (
-    <button
-      type="button"
+    <div
       className="hub-row"
       onClick={() => {
         // Entrance-animation flag: set in the same setState as selectedSubagent (subscribers
@@ -70,6 +73,7 @@ function SubCard({ id, sub }: { id: string; sub: SubagentState }) {
         <span className={"sub-dot st-" + st}>{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {model ? <span className="hub-model">{model}</span> : null}
+        {sub.streaming ? <SubControls sessionId={sessionId} agentId={id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
       </span>
       <span className="hub-task text-faint">{sub.description || sub.task || sub.text.slice(0, 80) || "…"}</span>
       {segs.length > 0 || times.length > 0 ? (
@@ -78,14 +82,15 @@ function SubCard({ id, sub }: { id: string; sub: SubagentState }) {
           <span className="hub-meta-right">{times.join(" · ")}</span>
         </span>
       ) : null}
-    </button>
+      {steerOpen && sub.streaming ? <SteerInput sessionId={sessionId} agentId={id} onClose={() => setSteerOpen(false)} /> : null}
+    </div>
   );
 }
 
 // Detail: back-to-list pinned at top; the Agent Hub inspector (shared with the hub tab's
 // linked detail page) scrolls beneath it. Back switches immediately (same as the gitdiff /
 // file details — no collapse animation)
-function SubagentDetail({ sub }: { sub: SubagentState }) {
+function SubagentDetail({ sub, sessionId }: { sub: SubagentState; sessionId: string }) {
   const { t } = useTranslation();
   useTick(!!sub.streaming);
   // The pulse flag is read via getState at render (not subscribed): setting it rides the
@@ -101,7 +106,7 @@ function SubagentDetail({ sub }: { sub: SubagentState }) {
         </button>
       </div>
       <div className={"rb-scroll" + (kids ? " kids-in" : "")}>
-        <HubDetail sub={sub} t={t} />
+        <HubDetail sub={sub} sessionId={sessionId} t={t} />
       </div>
     </>
   );

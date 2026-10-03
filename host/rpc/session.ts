@@ -3,7 +3,7 @@
 // Relocated from the message dispatch in main.ts (third cut).
 import fs from "node:fs";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions } from "../state.ts";
+import { H, sessions, stampEvent } from "../state.ts";
 import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
 import { applyActivityTimes } from "../session-activity.ts";
@@ -82,6 +82,28 @@ export async function handleListSessions(ws: any) {
   );
 }
 
+
+// 18.5 background job rows for the bg_jobs frame: snapshot list (running +
+// recent, already owner-scoped by the base) enriched per id with inspection
+// data (command/cwd only exist on process-backed jobs; pids are live only
+// while running). Deduped by id in case a row transitions between lists.
+function bgJobsPayload(entry: { session: { getAsyncJobSnapshot?: () => any; inspectAsyncJob?: (id: string) => any } }) {
+  const snapshot = entry.session.getAsyncJobSnapshot?.();
+  if (!snapshot) return [];
+  const rows = new Map<string, { id: string; status?: string }>();
+  for (const job of [...(snapshot.running ?? []), ...(snapshot.recent ?? [])]) rows.set(job.id, job);
+  return [...rows.values()].map((job) => {
+    const inspected = entry.session.inspectAsyncJob?.(job.id);
+    return {
+      id: job.id,
+      command: inspected?.command ?? null,
+      cwd: inspected?.cwd ?? null,
+      pids: Array.isArray(inspected?.pids) ? inspected.pids : [],
+      exitCode: typeof inspected?.exitCode === "number" ? inspected.exitCode : null,
+      running: job.status === "running",
+    };
+  });
+}
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
     await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true);
@@ -485,5 +507,147 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }
+  },
+  async fork_session(ws, msg) {
+    // 18.5 base fork, desktop semantics aligned with branch_session: the
+    // source session stays pooled and untouched; the fork becomes an
+    // independent pooled session and the frontend switches to it. Without
+    // entryId, SessionManager.forkFrom copies ALL entries + artifacts into a
+    // fresh file (the base's whole-session fork); with entryId the new file
+    // holds the root→entry path inclusive (the base's entry fork via
+    // createBranchedSession with artifact copy), and a user-message target's
+    // text backfills the composer through selectedText.
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    try {
+      // An empty session has nothing to fork and no file on disk (lazy
+      // persistence): refuse up front instead of letting forkFrom throw
+      // ForkSourceNotFoundError on a never-written path
+      if (entry.manager.getEntries().length === 0) {
+        throw new Error(hostI18n.t("errors.session.emptyNoFork"));
+      }
+      // Ensure the source's latest state is persisted before copying
+      await entry.manager.flush();
+      const sourcePath = entry.path ?? (await sessionPathFromDisk(msg.sessionId));
+      if (!sourcePath) throw new Error(hostI18n.t("errors.session.cannotLocateSource"));
+      const entryId = msg.entryId === undefined || msg.entryId === null ? "" : String(msg.entryId);
+      let newSessionFile: string | undefined;
+      let selectedText: string | null = null;
+      if (entryId) {
+        const tempManager = await SessionManager.open(sourcePath);
+        const targetEntry = tempManager.getEntry(entryId);
+        if (!targetEntry) throw new Error(hostI18n.t("errors.session.entryNotFound", { entryId }));
+        // Inclusive cut, artifacts copied by the base (unlike branch_session,
+        // no step-back to the parent for user messages — the native fork
+        // keeps the target entry itself)
+        newSessionFile = tempManager.createBranchedSession(entryId, { copyArtifacts: true });
+        if (!newSessionFile) throw new Error(hostI18n.t("errors.session.forkCreateFailed"));
+        if (targetEntry.type === "message" && targetEntry.message.role === "user") {
+          selectedText =
+            typeof targetEntry.message.content === "string"
+              ? targetEntry.message.content
+              : (targetEntry.message.content ?? [])
+                  .filter((b: { type?: string }) => b?.type === "text")
+                  .map((b: { text?: string }) => b.text ?? "")
+                  .join("\n");
+        }
+      } else {
+        const peek = await SessionManager.peekSessionInit(sourcePath);
+        // repairInterruptedTail: a live (mid-turn) source can carry a dangling
+        // tool call; the base's /tan fork pairs it with synthetic aborted
+        // results so the fork's transcript stays well-formed
+        const forked = await SessionManager.forkFrom(sourcePath, peek?.cwd ?? entry.cwd, undefined, undefined, {
+          repairInterruptedTail: true,
+        });
+        newSessionFile = forked.getSessionFile();
+        if (!newSessionFile) throw new Error(hostI18n.t("errors.session.forkCreateFailed"));
+      }
+      // Fresh manager on the new file, then a pooled session like branch_session
+      const newManager = await SessionManager.open(newSessionFile);
+      const newEntries = newManager.getEntries();
+      const newTranscript = entriesToTranscript(newEntries);
+      const newPeek = await SessionManager.peekSessionInit(newSessionFile);
+      const workCwd = newPeek?.cwd ?? entry.cwd;
+      const { sessionId: newSessionId, entry: newEntry, eventBus: newBus } = await createSessionCore(
+        workCwd,
+        newManager,
+        newTranscript,
+        entry.session.model,
+      );
+      newEntry.mentionScanIndex = newEntries.length;
+      newEntry.activeMs = sumRunDurationMs(newEntries);
+      attachEntry(ws, newSessionId, newEntry, newBus);
+      sessions.set(newSessionId, newEntry);
+      ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: newTranscript }));
+      ws.send(
+        JSON.stringify({
+          type: "session_forked",
+          sessionId: msg.sessionId,
+          ok: true,
+          newSessionId,
+          newPath: newSessionFile,
+          selectedText,
+        }),
+      );
+      await handleListSessions(ws); // Sidebar project tree refresh, same as branch_session
+    } catch (err) {
+      ws.send(JSON.stringify({ type: "session_forked", sessionId: msg.sessionId, ok: false, error: String(err) }));
+    }
+  },
+  get_bg_jobs(ws, msg) {
+    // 18.5 background job snapshot: the model's backgrounded bash/task/eval
+    // rows (async job manager scoped to this session). Enriches the snapshot
+    // list with per-job inspection (cwd / live pids / exit code) in one frame.
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    ws.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId: msg.sessionId, jobs: bgJobsPayload(entry) })));
+  },
+  cancel_bg_job(ws, msg) {
+    // Cancel one running background job; unknown/foreign ids come back false
+    // (no-op), then the refreshed snapshot goes out either way
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const jobId = String(msg.jobId ?? "");
+    if (jobId) entry.session.cancelAsyncJob?.(jobId);
+    ws.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId: msg.sessionId, jobs: bgJobsPayload(entry) })));
+  },
+  async control_subagent(ws, msg) {
+    // 18.4.9 subagent control: cancel aborts one running subagent (unknown /
+    // finished ids are a no-op success), steer sends the host's text to it as
+    // its user. Handlers come from the base's RPC layer; they resolve the
+    // live ref through the session's RpcSubagentRegistry (created in
+    // createSessionCore before any subagent can spawn). Dynamic import
+    // because a static one would hoist the SDK graph above bootstrap's
+    // setProfile (profile red line).
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const agentId = String(msg.agentId ?? "");
+    if (!agentId) throw new Error(hostI18n.t("errors.param.missingSubagentId"));
+    const action = msg.action === "cancel" || msg.action === "steer" ? msg.action : undefined;
+    if (!action) throw new Error(hostI18n.t("errors.subagent.invalidAction", { action: String(msg.action) }));
+    const registry = entry.subagentRegistry as { getSubagents: () => unknown[] } | undefined;
+    if (!registry) throw new Error(hostI18n.t("errors.subagent.registryUnavailable"));
+    const { handleRpcCancelSubagent, handleRpcSteerSubagent } = await import(
+      "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-mode"
+    );
+    if (action === "cancel") {
+      await handleRpcCancelSubagent(registry, agentId);
+      ws.send(JSON.stringify(stampEvent({ type: "subagent_controlled", sessionId: msg.sessionId, agentId, ok: true })));
+      return;
+    }
+    const text = String(msg.text ?? "");
+    if (!text.trim()) throw new Error(hostI18n.t("errors.param.missingMessage"));
+    const failure = await handleRpcSteerSubagent(registry, agentId, text);
+    ws.send(
+      JSON.stringify(
+        stampEvent({
+          type: "subagent_controlled",
+          sessionId: msg.sessionId,
+          agentId,
+          ok: !failure,
+          ...(failure ? { error: failure } : {}),
+        }),
+      ),
+    );
   },
 };

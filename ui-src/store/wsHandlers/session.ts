@@ -240,6 +240,26 @@ export const sessionHandlers = {
     useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
     useAppStore.getState().send({ type: "list_sessions" });
   },
+  session_forked(msg) {
+    // 18.5 base fork receipt (fork_session): same switch flow as
+    // session_branched — clear the in-flight guards, backfill the cut entry's
+    // text, then load the new pooled session from disk
+    {
+      const cur = activeOpen();
+      if (cur) {
+        clearBranchingMarks(cur.items);
+        updateSession(cur.sessionId, () => {});
+      }
+    }
+    if (!msg.ok) {
+      useAppStore.getState().toast(msg.error ?? t("notify.forkFailed"));
+      return;
+    }
+    useAppStore.getState().toast(t("notify.forked"));
+    if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, undefined, { guard: true });
+    useAppStore.getState().send({ type: "load_session", path: msg.newPath });
+    useAppStore.getState().send({ type: "list_sessions" });
+  },
   session_tree(msg) {
     useAppStore.setState((s) => ({
       rightState: {

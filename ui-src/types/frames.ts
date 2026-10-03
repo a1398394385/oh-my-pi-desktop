@@ -94,6 +94,12 @@ export interface ModelEntry {
   name: string;
   // TODO(narrowing pass): getSupportedEfforts return type follows the base SDK (list of level ids or null)
   efforts: string[] | null;
+  // 18.5 capability axes read straight off the registry model: prompt-cache
+  // keepalive tier in seconds (long tier preferred, short as fallback),
+  // native/delegated web-search grounding, native/delegated image generation.
+  promptCache?: number;
+  webSearch?: boolean;
+  imageGen?: boolean;
 }
 
 /** Defaults for new-session config (host/models.ts:157-164 modelsDefaults) */
@@ -112,6 +118,10 @@ export interface ModelCatalogEntry {
   vision: boolean;
   efforts: string[] | null; // same TODO as ModelEntry.efforts
   authSource: "config" | "cred";
+  // Same 18.5 capability axes as ModelEntry (models-management page view).
+  promptCache?: number;
+  webSearch?: boolean;
+  imageGen?: boolean;
 }
 
 /** Model role entry (host/models.ts modelRolesPayload) */
@@ -623,6 +633,17 @@ export interface SessionBranchedFrame {
   error?: string; // failure only
 }
 
+/** Session fork reply (18.5 base fork: whole-session copy or root→entryId slice into a new pooled session; host/rpc/session.ts fork_session) */
+export interface SessionForkedFrame {
+  type: "session_forked";
+  sessionId: string; // source session the UI asked on
+  ok: boolean;
+  newSessionId?: string; // success only: the new pooled session to switch to
+  newPath?: string; // success only: new session file path
+  selectedText?: string | null; // success only: entryId fork backfills the composer with the cut message's text
+  error?: string; // failure only
+}
+
 /** Cross-file branch-family tree reply (host/host.ts:940 failure / 965-979 success) */
 export interface SessionTreeFrame {
   type: "session_tree";
@@ -864,6 +885,18 @@ export interface ApprovalResolvedFrame {
   requestId: string;
 }
 
+// Wire shape of one ask-dialog question (mirrors the base's
+// ExtensionAskDialogQuestion from pi-tui/overlays/ask-dialog; the host passes
+// it through verbatim on the approval_request frame).
+export interface AskDialogQuestionWire {
+  id: string;
+  question: string;
+  header?: string;
+  multi?: boolean;
+  recommended?: number;
+  options: { label: string; description?: string }[];
+}
+
 /** Approval request frame (host/host.ts:2136 select stamped / 2278 confirm stamped / 2301 editor stamped) */
 export interface ApprovalRequestFrame {
   type: "approval_request";
@@ -884,6 +917,10 @@ export interface ApprovalRequestFrame {
   // field: locating the row by id/index, never by display text.
   editableIndex?: number;
   prefill?: string; // editor variant only
+  // Ask-dialog variant only (18.5 uiCtx.askDialog): the multi-question form.
+  // Mirrors the base's ExtensionAskDialogQuestion; approval_response answers
+  // with answer = JSON.stringify(ExtensionAskDialogSubmitResult).
+  questions?: AskDialogQuestionWire[];
   hi?: string; // stamped frame
   seq?: number;
 }
@@ -1282,6 +1319,52 @@ export interface QueuedFrame {
   seq?: number;
 }
 
+/** Background job snapshot (18.5 AgentSession async jobs: bash/task/eval rows the model backgrounded; host/rpc/session.ts get_bg_jobs/cancel_bg_job; stamped) */
+export interface BgJobsFrame {
+  type: "bg_jobs";
+  sessionId: string;
+  jobs: {
+    id: string;
+    command: string | null; // process-backed jobs only (bash)
+    cwd: string | null;
+    pids: number[]; // live pids while running, empty once settled
+    exitCode: number | null; // null while running or when the body reported none
+    running: boolean;
+  }[];
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Subagent control receipt (18.5 handleRpcCancelSubagent/handleRpcSteerSubagent; host/rpc/session.ts control_subagent; stamped) */
+export interface SubagentControlledFrame {
+  type: "subagent_controlled";
+  sessionId: string;
+  agentId: string;
+  ok: boolean;
+  error?: string; // steer refusal detail (base-provided message)
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Word-completion reply (18.5 RpcWordPredictor ghost text; host/rpc/prompt.ts complete_text; stamped) */
+export interface CompletionFrame {
+  type: "completion";
+  sessionId: string;
+  suggestion: string; // "" = engine off / no prediction / superseded by a newer request
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Prompt-cache warming lifecycle (18.5 session events cache_warming_start/end forwarded by host/session-lifecycle.ts; stamped) */
+export interface CacheWarmingFrame {
+  type: "cache_warming";
+  sessionId: string;
+  phase: "start" | "end";
+  outcome?: string; // end only: hit | miss | error | aborted
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
 // ---------- UI → host client frames ----------
 
 /** UI locale switch (UI → host; fire-and-forget, host persists it and applies it to its own surfaces) */
@@ -1292,7 +1375,7 @@ export interface SetLocaleFrame {
 
 // ---------- Frame union ----------
 
-/** Discriminated union of all host → UI frames (78 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (83 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -1374,4 +1457,9 @@ export type HostFrame =
   | SubagentProgressFrame
   | SubagentEventFrame
   | SteerConsumedFrame
-  | QueuedFrame;
+  | QueuedFrame
+  | SessionForkedFrame
+  | BgJobsFrame
+  | SubagentControlledFrame
+  | CompletionFrame
+  | CacheWarmingFrame;

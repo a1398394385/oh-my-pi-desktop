@@ -8,11 +8,12 @@ import path from "node:path";
 import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts";
-import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings } from "./bootstrap.ts";
+import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { rebuildScopedModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 // ---------- desktop env (desktop-env.json under agentDir: proxy / CA certs) ----------
 export function defaultDesktopEnv(): DesktopEnv {
@@ -224,7 +225,7 @@ export async function applyProfile(profileName: string) {
   const reg = H.modelRegistry;
   reg.refreshInBackground();
   void reg.awaitBackgroundRefresh().then(() => {
-    if (H.modelRegistry !== reg) return; // profile switched again during refresh: drop the old registry callback
+    if (H.modelRegistry !== reg || !H.settings) return; // profile switched again during refresh, or the refresh landed before Settings.init finished (18.5.0's non-empty built-in catalog makes this reachable): drop the callback — applyProfile's own later rebuild covers it
     H.availableModels = reg.getAvailable();
     rebuildScopedModels();
     process.stderr.write(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
@@ -249,8 +250,9 @@ export async function applyProfile(profileName: string) {
   // apply so the host language follows the active profile's persisted preference
   initHostI18n(readUiLocale());
 
-  const sleep = String(H.settings.get("power.sleepPrevention") ?? "off");
-  if (H.settings.isConfigured("power.sleepPrevention") && sleep !== "off") applySleepPrevention(sleep);
+  const sleepSetting = lookupSetting("power.sleepPrevention");
+  const sleep = String(settingsGet(H.settings, "power.sleepPrevention") ?? "off");
+  if (sleepSetting && H.settings.isConfigured(sleepSetting) && sleep !== "off") applySleepPrevention(sleep);
   else applySleepPrevention("off");
 
   H.availableModels = H.modelRegistry.getAvailable();

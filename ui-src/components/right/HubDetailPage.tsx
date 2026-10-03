@@ -14,6 +14,8 @@ import { Ellip, Spin } from "../chat/parts";
 import { codePlugin, mdComponents, mdControls, MD_LINK_SAFETY_OFF } from "../chat/AssistantMsg";
 import Icon from "../../Icon";
 import type { SubagentState } from "../../types/session";
+import { sendGetBgJobs, sendCancelBgJob } from "./hubExt";
+import type { BgJobEntry } from "../../store/session";
 
 // Relative "active N ago" age (same bucketing as the roster)
 function ageText(sec: number, t: SegT): { text: string; isNow: boolean } {
@@ -52,16 +54,26 @@ export default function HubDetailPage() {
   if (!sub) {
     return <div className="py-3 text-faint text-ui-base">{t("right.hubEmpty")}</div>;
   }
-  return <HubDetail sub={sub} t={t} />;
+  return <HubDetail sub={sub} sessionId={s?.sessionId} t={t} />;
 }
 
-export function HubDetail({ sub, t }: { sub: SubagentState; t: SegT }) {
+export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; sessionId?: string }) {
   const st = subStatus(sub);
   const u = sub.usage;
   const now = Date.now();
   const elapsed = sub.streaming && sub.registeredAt ? now - sub.registeredAt : (u?.durationMs ?? 0);
   const lastActivity = sub.registeredAt ? sub.registeredAt + (u?.durationMs ?? 0) : undefined;
   const age = lastActivity ? ageText(Math.max(1, Math.round((now - lastActivity) / 1000)), t) : null;
+  // Hub extension state (18.5): bg-jobs snapshot map (canonical wsHandlers landing) +
+  // cache-warming transient. Selectors return stored references / primitives — never fresh
+  // objects; null jobs (no entry yet) renders the pending state.
+  const bgJobs = useAppStore((s2) => s2.bgJobs);
+  const warming = useAppStore((s2) => (sessionId ? s2.hubWarming === sessionId : false));
+  const jobs: BgJobEntry[] | null = sessionId ? (bgJobs.get(sessionId) ?? null) : null;
+  // Detail open = fetch time for the session's background jobs (snapshot replies refresh it)
+  useEffect(() => {
+    if (sessionId) sendGetBgJobs(sessionId);
+  }, [sessionId]);
   const model = modelShort(u?.resolvedModel);
   const current = u?.currentTool
     ? u.currentTool + (u.currentToolArgs ? ` · ${JSON.stringify(u.currentToolArgs)}` : "")
@@ -82,6 +94,7 @@ export function HubDetail({ sub, t }: { sub: SubagentState; t: SegT }) {
         <span className="hub-detail-id text-faint">{sub.agent}</span>
         {/* Status + elapsed/age pinned to the top-right; model sits beneath */}
         <span className="hub-detail-st text-ui-sm text-faint">
+          {warming ? <span className="hub-warming">{t("hubExt.warming")}</span> : null}
           <span className="hub-detail-st-line">
             {st}
             {segs.length > 0 ? " · " + segs.join(" · ") : ""}
@@ -175,6 +188,47 @@ export function HubDetail({ sub, t }: { sub: SubagentState; t: SegT }) {
           })
         )}
       </div>
+
+      {/* Background jobs (session-scoped, 18.5 contract v1): fetched when the detail opens,
+          refreshed by bg_jobs snapshot replies. Unknown session (no sessionId) hides it. */}
+      {sessionId ? (
+        <>
+          <div className="hub-sec">{t("hubExt.bgTitle")}</div>
+          {jobs === null ? (
+            <div className="hub-sec-body text-faint">{t("hubExt.bgPending")}</div>
+          ) : jobs.length === 0 ? (
+            <div className="hub-sec-body text-faint">{t("hubExt.bgEmpty")}</div>
+          ) : (
+            <div className="hub-bg-list">
+              {jobs.map((j) => (
+                <div className="hub-bg-row" key={j.id}>
+                  <span className="hub-bg-main">
+                    <Ellip className="hub-bg-cmd" title={j.command ?? undefined}>
+                      {j.command || "—"}
+                    </Ellip>
+                    <Ellip className="hub-bg-cwd text-faint" title={j.cwd ?? undefined}>
+                      {j.cwd || "—"}
+                    </Ellip>
+                  </span>
+                  <span className="hub-bg-st text-faint">
+                    {j.running ? t("hubExt.bgPids", { n: j.pids.length }) : t("hubExt.bgExit", { code: j.exitCode ?? "—" })}
+                  </span>
+                  {j.running ? (
+                    <button
+                      type="button"
+                      className="hub-ibtn"
+                      title={t("hubExt.bgCancel")}
+                      onClick={() => sendCancelBgJob(sessionId, j.id)}
+                    >
+                      <Icon name="stopSolid" size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

@@ -17,11 +17,17 @@ export const hostErrorsEn = {
     missingProviderId: "Missing provider id",
     missingMcpName: "Missing MCP server name",
     missingSkillName: "Missing skill name",
+    missingSubagentId: "Missing subagentId",
+  },
+  subagent: {
+    invalidAction: "Unsupported control action: {{action}}",
+    registryUnavailable: "Subagent registry unavailable",
   },
   session: {
     notFound: "Session not found: {{sessionId}}",
     invalidTitle: "Invalid title (empty after sanitizing, or session already released)",
     emptyNoCompact: "Session is empty; there is no history to compact",
+    emptyNoFork: "Session is empty; there is nothing to fork",
     cannotLocateSource: "Cannot locate the source session file",
     entryNotFound: "Entry not found: {{entryId}}",
     forkCreateFailed: "Failed to create the branched session file",

@@ -5,6 +5,7 @@
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { installProposalHandler } from "./plan-approve.ts";
 import { pushCommandOutput, type PoolEntry } from "./state.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 const PLAN_MODE_NAME = "plan";
 const PLAN_FILE_URL = "local://PLAN.md"; // same location as the ACP default plan file
@@ -75,7 +76,7 @@ export function handlePlanCommand(
     pushCommandOutput(sessionId, hostI18n.t("flows.plan.goalModeBlocked"));
     return null;
   }
-  if (!entry.session.settings.get("plan.enabled")) {
+  if (!settingsGet(entry.session.settings, "plan.enabled")) {
     pushCommandOutput(sessionId, hostI18n.t("flows.plan.notEnabled"));
     return null;
   }

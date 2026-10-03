@@ -12,6 +12,7 @@ import {
   rebuildMessages,
   updateSession,
 } from "../session";
+import { landCacheWarming } from "../ui";
 import type { HandlerSlice } from "./types";
 
 // Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
@@ -43,6 +44,9 @@ export const streamHandlers = {
         editable: !!msg.editable,
         editableIndex: msg.editableIndex,
         prefill: msg.prefill ?? "",
+        // Ask-dialog variant (18.5 uiCtx.askDialog): the multi-question form;
+        // ApprovalCard renders it as one merged submit
+        questions: msg.questions,
         answer: null,
       });
     });
@@ -122,6 +126,17 @@ export const streamHandlers = {
         if (pending >= 0) s.items.splice(pending, 1);
       }
     });
+  },
+  // Word-completion reply (18.5 complete_text RPC): overwrite-per-frame store
+  // landing; GhostTextPlugin matches it against its pending request (session +
+  // draft text) and silently drops stale hits
+  completion(msg) {
+    useAppStore.setState({ completionResult: { sessionId: msg.sessionId, suggestion: msg.suggestion ?? "" } });
+  },
+  // Background job snapshot (18.5 get_bg_jobs/cancel_bg_job replies): replace
+  // the per-session slice wholesale (the frame is a full snapshot)
+  bg_jobs(msg) {
+    useAppStore.setState((st) => ({ bgJobs: new Map(st.bgJobs).set(msg.sessionId, msg.jobs) }));
   },
   // Slash command consumed locally by the host: withdraw the optimistically inserted user bubble (the last same-text one without an entryId)
   command_result(msg) {
@@ -229,6 +244,17 @@ export const streamHandlers = {
       },
       false,
     );
+  },
+  // Subagent control receipt (18.5 cancel/steer control_subagent): pure wire
+  // acknowledgement — the next lifecycle/progress frame carries the effect; no
+  // UI consumer yet (registered for the exhaustive HandlerMap gate)
+  subagent_controlled(msg) {
+    if (!msg.ok && msg.error) useAppStore.getState().toast(msg.error);
+  },
+  // Prompt-cache warming lifecycle (18.5 cache_warming start/end): drives the hub detail's
+  // transient "cache warming" line (ui slice hubWarming, with a lost-end self-clear guard)
+  cache_warming(msg) {
+    landCacheWarming(msg.sessionId, msg.phase);
   },
   todos(msg) {
     updateSession(

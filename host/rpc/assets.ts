@@ -32,6 +32,7 @@ import { rebuildScopedModels } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { settingsGet, settingsSet } from "../settings-compat.ts";
 
 export const assetsHandlers: Record<string, RpcHandler> = {
   async list_agent_assets(ws) {
@@ -113,8 +114,8 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     const name = String(msg.name ?? "").trim();
     const enabled = Boolean(msg.enabled);
     if (!name) throw new Error(hostI18n.t("errors.param.missingSkillName"));
-    const disabled = new Set<string>(((H.settings.get("disabledExtensions") ?? []) as string[]));
-    const ignored = new Set<string>(((H.settings.get("skills.ignoredSkills") ?? []) as string[]));
+    const disabled = new Set<string>(((settingsGet(H.settings, "disabledExtensions") ?? []) as string[]));
+    const ignored = new Set<string>(((settingsGet(H.settings, "skills.ignoredSkills") ?? []) as string[]));
     const skillExtId = `skill:${name}`;
     if (enabled) {
       disabled.delete(skillExtId);
@@ -122,8 +123,8 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     } else {
       disabled.add(skillExtId);
     }
-    H.settings.set("disabledExtensions", Array.from(disabled));
-    H.settings.set("skills.ignoredSkills", Array.from(ignored));
+    settingsSet(H.settings, "disabledExtensions", Array.from(disabled));
+    settingsSet(H.settings, "skills.ignoredSkills", Array.from(ignored));
     await H.settings.flush();
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },

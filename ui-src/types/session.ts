@@ -36,8 +36,11 @@ import type { SchemaDef } from "../components/settings/placement";
 
 // ---------- Tool args/details (points read by items.tsx via util.ts predicates; field list merged from P2-C chat-types.ts) ----------
 
-/** Structured questions parameter of the ask tool (read by ApprovalCard / question rows) */
+/** Structured questions parameter of the ask tool (read by ApprovalCard / question rows);
+    id is the ask-dialog correlation key echoed back in the merged answer (wire-required, optional
+    locally for tool-args rows the host builds without ids) */
 export interface AskQuestion {
+  id?: string;
   question?: string;
   multi?: boolean;
   header?: string;
@@ -243,6 +246,9 @@ export interface PendingApproval {
   editable: boolean;
   editableIndex?: number; // index of the editable input row within options (editor-variant protocol field)
   prefill: string;
+  // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
+  // form; ApprovalCard renders radio/checkbox rows and one submit for all
+  questions?: AskQuestion[];
   answer: string | null; // user's chosen answer; null = pending
 }
 

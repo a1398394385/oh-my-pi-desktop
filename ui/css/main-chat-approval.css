@@ -137,3 +137,19 @@
 
 .approval-confirm:disabled { opacity: .45; cursor: default; }
 
+
+/* Ask multi-question merged form (questions[] rides the approval frame): one
+   radio/checkbox group per question, a single submit for all answers. Option
+   rows reuse .approval-opt; .ask-q stacks question blocks */
+.ask-q { display: flex; flex-direction: column; gap: 4px; }
+
+.ask-q + .ask-q { margin-top: 10px; }
+
+.ask-q-t { color: var(--text); overflow-wrap: anywhere; }
+
+.ask-q-t b { color: var(--dim); font-weight: 500; margin-right: 6px; }
+
+/* native radio/checkbox take the number slot's place; accent follows the theme */
+.ask-opt input { flex: none; margin: 0; accent-color: var(--accent); }
+
+.ask-opt .ask-desc { display: block; color: var(--faint); font-size: var(--ui-fs-sm); }

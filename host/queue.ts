@@ -3,6 +3,10 @@
 // injection boundary drain), per-turn release, send-now/release/delete.
 // Base queue entries carry hidden companions (image descriptions / magic
 // keyword notices); operations always extract them as a group.
+// 18.5: every agent-side queue mutation notifies onQueueChange subscribers
+// (realtime queued-frame push lives in session-lifecycle.ts), so the handlers
+// below no longer snapshot queued texts nor call sendQueued after mutating —
+// only turn_end keeps one explicit push as the final calibration.
 import {
   isUserQueuedMessage,
   isHiddenUserCompanion,
@@ -17,8 +21,6 @@ function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entr
     list.filter((m) => isUserQueuedMessage(m)).map((m) => toRestoredQueuedMessage(m));
   const followUp = [...view(agent.peekFollowUpQueue()), ...view(entry.parkedFollowUp)];
   const steering = view(agent.peekSteeringQueue());
-  // Snapshot for race-condition backstop: full view + all steering user messages (at turn_end, diff "had last time / gone now / consumption not notified" = swallowed)
-  entry.queuedTexts = [...followUp, ...steering].map((m) => m.text);
   ws.send(JSON.stringify(stampEvent({ type: "queued", sessionId, followUp, steering })));
 }
 
@@ -42,7 +44,9 @@ function parkFollowUpTail(entry: PoolEntry) {
   let start = cut;
   while (start > 0 && isHiddenUserCompanion(queue[start - 1])) start--;
   entry.parkedFollowUp.push(...queue.filter((_, i) => i >= start));
-  agent.replaceQueues(agent.peekSteeringQueue(), queue.filter((_, i) => i < start));
+  // Single-queue replace (18.4.4): only the followUp side changes, and the
+  // mutation itself fires onQueueChange, which pushes the queued frame
+  agent.replaceQueue("followUp", queue.filter((_, i) => i < start));
 }
 
 // Extract the pi-th user message from the parked staging (with its leading hidden companions); returns the extracted elements
@@ -98,7 +102,7 @@ function handlePeekQueued(ws: { send(data: string): unknown }, sessionId: string
 }
 
 function handleDropQueued(
-  ws: { send(data: string): unknown },
+  _ws: { send(data: string): unknown },
   sessionId: string,
   which: "followUp" | "steering",
   index?: number,
@@ -119,18 +123,18 @@ function handleDropQueued(
   } else {
     next = removeUserMessage(queue, index);
   }
-  agent.replaceQueues(
-    which === "steering" ? next : agent.peekSteeringQueue(),
-    which === "steering" ? agent.peekFollowUpQueue() : next,
-  );
-  sendQueued(ws, sessionId, entry);
+  // Single-queue replace (18.4.4): the untouched queue keeps its live claims,
+  // and every branch above funnels into one mutation that fires onQueueChange
+  // (realtime queued push). Parked-only branches still replace the base queue
+  // with itself, which notifies unconditionally — no explicit push needed.
+  agent.replaceQueue(which, next);
 }
 
 // Send now: turn the index-th followUp entry (full view, including parked
 // staging) into a steer injection;
 // park all remaining queued messages so this run injects only the clicked
 // one
-async function handleSendNow(ws: { send(data: string): unknown }, sessionId: string, index: number) {
+async function handleSendNow(_ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   const agent = entry.session.agent;
@@ -149,19 +153,20 @@ async function handleSendNow(ws: { send(data: string): unknown }, sessionId: str
     }
     if (target < 0) throw new Error(hostI18n.t("errors.queue.messageNotFound", { index }));
     restored = toRestoredQueuedMessage(queue[target]);
-    agent.replaceQueues(agent.peekSteeringQueue(), removeUserMessage(queue, index));
+    agent.replaceQueue("followUp", removeUserMessage(queue, index));
   } else {
     // Target lives in the parked staging: extract it and re-enqueue via steer (images re-described by the SDK; rare path)
     const [msg] = extractParkedAt(entry, index - queueUserCount).filter((m) => isUserQueuedMessage(m));
     restored = toRestoredQueuedMessage(msg);
   }
+  // steer() enqueues into the steering queue and parkFollowUpTail trims the
+  // base queue — both fire onQueueChange, so the queued frame goes out live
   await entry.session.steer(restored.text, restored.images);
   parkFollowUpTail(entry);
-  sendQueued(ws, sessionId, entry);
 }
 
 // Requeue: move the index-th steer-queue entry back to the top of followUp (dropping the steer marker)
-function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, index: number) {
+function handleRequeue(_ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   const agent = entry.session.agent;
@@ -178,10 +183,13 @@ function handleRequeue(ws: { send(data: string): unknown }, sessionId: string, i
   if (target < 0) throw new Error(hostI18n.t("errors.queue.steerNotFound", { index }));
   const moved: any = { ...queue[target] };
   delete moved.steering;
+  // Both queues change here (steering loses the entry, followUp gains it at
+  // the top), so the two-queue replaceQueues stays: one atomic mutation, one
+  // onQueueChange notification, and listeners never observe the message in
+  // both queues or in neither
   agent.replaceQueues(removeUserMessage(queue, index), [moved, ...agent.peekFollowUpQueue()]);
   // moved becomes the single 1st entry of the base queue; the former queue head retreats to the parked head (keeping FIFO order)
   parkFollowUpTail(entry);
-  sendQueued(ws, sessionId, entry);
 }
 
 export { sendQueued, parkFollowUpTail, releaseOneParked, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue };
