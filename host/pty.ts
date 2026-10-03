@@ -3,16 +3,35 @@
 // create/write/resize/dispose quartet to the frontend + data-frame /
 // exit-frame push-back.
 import { PtySession as NativePty } from "@oh-my-pi/pi-natives";
+import { spawnSync } from "node:child_process";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 
 const isWindows = process.platform === "win32";
 
-function resolveDefaultShell(): string {
+let windowsDefaultShell: string | undefined;
+
+async function resolveDefaultShell(): Promise<string> {
   if (isWindows) {
     if (process.env.SHELL) return process.env.SHELL;
-    return "powershell.exe";
+    // Prefer pwsh (PowerShell 7) when installed, fall back to the bundled Windows
+    // PowerShell 5.1 — same preference order as pi-natives' own probe
+    // (native/loader-state.js tries "pwsh.exe" before "powershell.exe").
+    // Probed once per host process; a fixed fallback would pin every terminal
+    // to 5.1 even on machines whose default shell is pwsh 7.
+    windowsDefaultShell ??= probeCommand("pwsh.exe") ?? "powershell.exe";
+    return windowsDefaultShell;
   }
   return process.env.SHELL || "/bin/zsh";
+}
+
+// True when `cmd` starts and exits cleanly (ENOENT / nonzero -> null).
+function probeCommand(cmd: string): string | null {
+  try {
+    const r = spawnSync(cmd, ["-NoProfile", "-NoLogo", "-Command", "exit 0"], { timeout: 10_000 });
+    return r.status === 0 ? cmd : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildShellArgs(shell: string, inheritProfile?: boolean): string[] {
@@ -66,7 +85,7 @@ export async function createTerminal(
   onExit: (code: number) => void,
 ): Promise<PtySession> {
   const id = opts.id;
-  const shell = opts.shell ?? resolveDefaultShell();
+  const shell = opts.shell ?? (await resolveDefaultShell());
   const args = buildShellArgs(shell, opts.inheritProfile);
 
   const native = new NativePty();

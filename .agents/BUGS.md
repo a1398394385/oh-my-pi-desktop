@@ -520,3 +520,17 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：门禁单跑绿；故障注入（向非 vendor 的 `ui-src/App.tsx` 临时加 `rounded-[7px]`）仍被抓、exit 1，还原后恢复；`bun run check` 八步全绿（3.2s）。
 
 **教训**：跨平台脚本里「字符串前缀匹配路径」必须先归一分隔符。Windows 上跑红的门禁先查脚本的平台假设再怀疑业务代码——本例险些按「存量欠账」误诊去改 9 处 vendor 文件（把基件改出本仓私有 diff，制造未来同步 shadcn 的冲突面）。
+
+### BUG-038: Windows 终端默认起 PowerShell 5.1——默认 shell 硬编码，不探测 pwsh
+
+**现象**：Windows 机器右栏终端打开就是 Windows PowerShell 5.1（`PSVersion 5.1.26100.x`），用户机器默认 shell 已设为 pwsh 7 也不跟随。
+
+**分诊**：②确认存量缺陷——自终端功能引入即如此。
+
+**根因**：`host/pty.ts` 的 `resolveDefaultShell()` Windows 兜底硬编码 `"powershell.exe"`（=5.1）。前端 `terminal_create` 只发 id/cwd/cols/rows 不传 shell；`SHELL` 环境变量在 Windows GUI 进程基本不存在；应用也没有终端 shell 设置项、不读系统/Windows Terminal 默认——三条路全断，永远落到硬编码值。而「用户默认 shell」在 Windows 没有可靠系统 API（Windows Terminal 的默认 profile 是其私有配置）。
+
+**修复**：Windows 默认改为探测式 pwsh 优先——`spawnSync("pwsh.exe", ["-NoProfile","-NoLogo","-Command","exit 0"])` 起得来就用 pwsh 7，ENOENT/非零回落 `powershell.exe`，探测结果进程内缓存一次。与 pi-natives loader 自己的探测顺序（native/loader-state.js 先 `pwsh.exe` 后 `powershell.exe`）一致。`SHELL` env 显式覆盖保持最高优先（现行为不变）。
+
+**验证**：throwaway 脚本真起 PTY（createTerminal→读 session.shell→dispose）——本机默认解析 `pwsh.exe`；设 `SHELL=C:\fake\overwrite.exe` 时传给 PTY 的即该值（以 CreateProcessW 报错形态证明覆盖优先级生效，探测未参与）；`bun run check` 八步全绿。
+
+**教训**：跨平台默认 shell 不能硬编码 powershell.exe——Windows「用户默认 shell」没有系统 API，pwsh-first 探测是唯一可靠路径（底座 loader 同款顺序）；GUI 进程 env 里没有 SHELL 可读。
