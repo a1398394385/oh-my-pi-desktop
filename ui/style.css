@@ -50,3 +50,12 @@
 @import "./css/settings-stats.css";
 @import "./css/settings-stats-port.css";
 
+/* ============================================================
+ * Theme variants (openhanako port): imported after global.css
+ * so they can override :root token definitions
+ * ============================================================ */
+@import "./themes/midnight.css";
+@import "./themes/deep-think.css";
+@import "./themes/coral.css";
+@import "./themes/warm-paper.css";
+
