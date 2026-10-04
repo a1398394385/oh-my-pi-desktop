@@ -107,8 +107,9 @@ export function applyUiConfig(cfg: unknown): void {
   const c = cfg as { locale?: unknown; theme?: unknown; motion?: unknown; prefs?: unknown };
 
   // theme: file wins; cache-only value migrates up once
-  if (c.theme === "dark" || c.theme === "light" || c.theme === "system") {
-    applyTheme(c.theme);
+  // Only apply if it's a valid theme (built-in or custom theme ID from THEMES)
+  if (typeof c.theme === "string" && c.theme) {
+    applyTheme(c.theme as any);
     try { localStorage.setItem(THEME_KEY, c.theme); } catch {}
   } else {
     const cachedTheme = localStorage.getItem(THEME_KEY);

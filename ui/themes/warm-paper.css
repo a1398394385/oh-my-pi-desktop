@@ -1,0 +1,47 @@
+/*
+ * Theme: Warm Paper (暖纸)
+ * Origin: openhanako/desktop/src/themes/warm-paper.css
+ * Palette: Warm paper white with traditional calligraphy aesthetics
+ * Adapted for omp-desktop token system
+ * Note: Paper texture removed (44KB base64 → external asset decision deferred)
+ */
+
+[data-theme="warm-paper"] {
+  /* ── Core surface layers ──────────────────────────────────────────────── */
+  --base:      #F4F0EA;   /* sidebar (from openhanako --sidebar-bg) */
+  --card:      #FCFAF5;   /* middle/right cards (from openhanako --bg-card) */
+  --inset:     #FAF5E9;   /* input fields (from openhanako --jian-note-bg) */
+  --select:    #F0EBE3;   /* current session highlight (derived: card - 5% darker) */
+  --bg:        var(--card);
+  --sidebar:   var(--base);
+  --panel:     var(--inset);
+  --panel-2:   #F2EDE5;   /* derived: panel - 3% darker */
+  --panel-3:   var(--select);
+  --surface:   rgba(0,0,0,.04);  /* floating veil (openhanako --overlay-subtle semantics) */
+
+  /* ── Borders & dividers ────────────────────────────────────────────────── */
+  --line:      rgba(122, 96, 88, 0.18);  /* from openhanako --border */
+  --line-soft: rgba(0,0,0,.06);
+
+  /* ── Text hierarchy ────────────────────────────────────────────────────── */
+  --text:      #3B3D3F;   /* from openhanako --text */
+  --dim:       #6B6F73;   /* from openhanako --text-light */
+  --faint:     #8E9196;   /* from openhanako --text-muted */
+
+  /* ── Accent & interactive ──────────────────────────────────────────────── */
+  --accent:    #537D96;   /* calm blue-grey (from openhanako --accent) */
+  --blue:      #5A8FA8;   /* derived: accent + 8% lighter for link color */
+  --bash:      var(--green); /* bash mode uses green in light themes */
+
+  /* ── Status colors ─────────────────────────────────────────────────────── */
+  --green:     #7BAE7F;   /* from openhanako --green */
+  --green-soft:#6FA073;   /* derived: green - 8% saturation */
+  --orange:    #EC8F8D;   /* from openhanako --coral */
+  --red:       #C96B6B;   /* derived from openhanako danger palette */
+  --err:       #8B3A3A;   /* from openhanako --danger */
+  --yellow:    #D9A86C;   /* derived: warm tone consistent with paper */
+  --purple:    #8B7A9E;   /* derived: muted purple for warm paper palette */
+
+  /* ── Control backgrounds ───────────────────────────────────────────────── */
+  --ctl-bg:    var(--inset);
+}

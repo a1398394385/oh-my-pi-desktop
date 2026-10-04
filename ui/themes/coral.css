@@ -1,0 +1,46 @@
+/*
+ * Theme: Coral (珊瑚)
+ * Origin: openhanako/desktop/src/themes/coral.css
+ * Palette: Japanese washi paper white, ink blue, coral red, antique gold
+ * Adapted for omp-desktop token system
+ */
+
+[data-theme="coral"] {
+  /* ── Core surface layers ──────────────────────────────────────────────── */
+  --base:      #FCF1E4;   /* sidebar (from openhanako --sidebar-bg) */
+  --card:      #FFFBF3;   /* middle/right cards (from openhanako --bg-card) */
+  --inset:     #FFF6E6;   /* input fields (from openhanako --jian-note-bg) */
+  --select:    #F8F0E0;   /* current session highlight (derived: card - 5% darker) */
+  --bg:        var(--card);
+  --sidebar:   var(--base);
+  --panel:     var(--inset);
+  --panel-2:   #FAF2E2;   /* derived: panel - 3% darker */
+  --panel-3:   var(--select);
+  --surface:   rgba(0,0,0,.04);  /* floating veil (openhanako --overlay-subtle semantics) */
+
+  /* ── Borders & dividers ────────────────────────────────────────────────── */
+  --line:      rgba(243, 126, 99, 0.18);  /* from openhanako --border */
+  --line-soft: rgba(0,0,0,.06);
+
+  /* ── Text hierarchy ────────────────────────────────────────────────────── */
+  --text:      #1A3049;   /* from openhanako --text (ink blue) */
+  --dim:       #314153;   /* from openhanako --text-light */
+  --faint:     #727F89;   /* from openhanako --text-muted */
+
+  /* ── Accent & interactive ──────────────────────────────────────────────── */
+  --accent:    #1A3049;   /* ink blue (from openhanako --accent) */
+  --blue:      #2A4A65;   /* derived: accent + 10% lighter for link color */
+  --bash:      var(--green); /* bash mode uses green in light themes */
+
+  /* ── Status colors ─────────────────────────────────────────────────────── */
+  --green:     #6E8C7A;   /* from openhanako --green */
+  --green-soft:#5E7C6A;   /* derived: green - 10% saturation */
+  --orange:    #F37E63;   /* from openhanako --coral */
+  --red:       #D17063;   /* derived from coral palette */
+  --err:       #A3483B;   /* from openhanako --danger */
+  --yellow:    #D9A86C;   /* derived: antique gold tone */
+  --purple:    #7A6B8C;   /* derived: grey-purple for coral palette */
+
+  /* ── Control backgrounds ───────────────────────────────────────────────── */
+  --ctl-bg:    var(--inset);
+}

@@ -1,0 +1,51 @@
+/*
+ * Theme: Midnight (青夜)
+ * Origin: openhanako/desktop/src/themes/midnight.css
+ * Palette: Deep cyan-blue + warm rose, soft dark
+ * Adapted for omp-desktop token system
+ */
+
+[data-theme="midnight"] {
+  /* ── Core surface layers (openhanako → omp-desktop mapping) ──────────────── */
+  --base:      #34424B;   /* sidebar (from openhanako --sidebar-bg) */
+  --card:      #445560;   /* middle/right cards (from openhanako --bg-card) */
+  --inset:     #4B5A63;   /* input fields (from openhanako --jian-note-bg) */
+  --select:    #515F69;   /* current session highlight (derived: card + 10% lighter) */
+  --bg:        var(--card);
+  --sidebar:   var(--base);
+  --panel:     var(--inset);
+  --panel-2:   #556370;   /* derived: panel + 8% lighter */
+  --panel-3:   var(--select);
+  --surface:   rgba(255,255,255,.05);  /* floating veil (openhanako --overlay-light semantics) */
+
+  /* ── Overlay layers (from openhanako) ──────────────────────────────────── */
+  --overlay-subtle: rgba(255, 255, 255, 0.03);  /* code blocks, subtle insets */
+  --overlay-light:  rgba(255, 255, 255, 0.05);
+  --overlay-medium: rgba(255, 255, 255, 0.08);
+
+  /* ── Borders & dividers ────────────────────────────────────────────────── */
+  --line:      rgba(170, 121, 141, 0.16);  /* from openhanako --border */
+  --line-soft: rgba(255,255,255,.06);
+
+  /* ── Text hierarchy ────────────────────────────────────────────────────── */
+  --text:      #E1EAF0;   /* from openhanako --text */
+  --dim:       #B7C5CE;   /* from openhanako --text-light */
+  --faint:     #A3B5C0;   /* from openhanako --text-muted */
+
+  /* ── Accent & interactive ──────────────────────────────────────────────── */
+  --accent:    #C99AAF;   /* warm rose (from openhanako --accent) */
+  --blue:      #B9E2FF;   /* link color (from openhanako --link) */
+  --bash:      var(--blue); /* bash mode uses link color in dark themes */
+
+  /* ── Status colors ─────────────────────────────────────────────────────── */
+  --green:     #8CC790;   /* from openhanako --green */
+  --green-soft:#7AB885;   /* derived: green - 10% saturation */
+  --orange:    #EAB2A0;   /* from openhanako --coral */
+  --red:       #E09090;   /* derived from openhanako mood palette */
+  --err:       #C77070;   /* from openhanako --danger */
+  --yellow:    #F5D899;   /* derived: warm tone consistent with palette */
+  --purple:    #C99AAF;   /* reuse accent (rose) for purple semantics */
+
+  /* ── Control backgrounds ───────────────────────────────────────────────── */
+  --ctl-bg:    var(--panel-2);
+}

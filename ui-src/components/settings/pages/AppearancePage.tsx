@@ -11,6 +11,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { saveUiPrefs, applyAppearance, FONT_STACKS } from "../../../appearance";
 import { saveTheme, saveMotion } from "../../../shell";
+import { THEMES, type ThemeId } from "../../../theme-registry";
 
 // Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
 interface SelOption {
@@ -32,12 +33,21 @@ interface SelProps {
 function themeIcon(mode: string): string {
   return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
 }
-function themeLabel(mode: string): ReactNode {
-  const key = mode === "system" ? "themeSystem" : mode === "light" ? "themeLight" : "themeDark";
+function themeLabel(themeId: string): ReactNode {
+  if (themeId === "system") {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <Icon name="monitor" size={14} />
+        {ti("settingsPage.appearance.themeSystem")}
+      </span>
+    );
+  }
+  const entry = THEMES[themeId as ThemeId];
+  if (!entry) return themeId;
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Icon name={themeIcon(mode)} size={14} />
-      {ti("settingsPage.appearance." + key)}
+      <Icon name={entry.mode === "light" ? "sun" : "moon"} size={14} />
+      {entry.name}
     </span>
   );
 }
@@ -125,7 +135,7 @@ export default function AppearancePage() {
 
   const pickTheme = (mode: string) => {
     setTheme(mode);
-    saveTheme(mode === "dark" || mode === "light" ? mode : "system");
+    saveTheme(mode as any);
   };
   const pickFont = (f: string) => {
     setFont(f);
@@ -173,9 +183,12 @@ export default function AppearancePage() {
           <Sel
             label={themeLabel(theme)}
             options={[
-              { v: "dark", label: themeLabel("dark"), ck: theme === "dark" ? "✓" : "" },
-              { v: "light", label: themeLabel("light"), ck: theme === "light" ? "✓" : "" },
               { v: "system", label: themeLabel("system"), ck: theme === "system" ? "✓" : "" },
+              ...Object.keys(THEMES).map((id) => ({
+                v: id,
+                label: themeLabel(id),
+                ck: theme === id ? "✓" : "",
+              })),
             ]}
             onPick={pickTheme}
           />

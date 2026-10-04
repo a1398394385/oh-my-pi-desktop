@@ -31,7 +31,7 @@ export type TerminalFrame = TerminalCreatedFrame | TerminalDataFrame | TerminalE
  * truth; the merged omp-ui-settings localStorage (plus the omp-theme /
  * omp-motion keys for those two) is only the first-frame render cache. */
 export interface UiPrefs {
-  theme: "dark" | "light" | "system";
+  theme: string; // ThemeId | "system" (expanded to accept custom theme IDs)
   motion: "system" | "on" | "off";
   uiFont: string;
   uiFontSize: number;

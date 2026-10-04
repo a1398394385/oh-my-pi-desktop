@@ -44,12 +44,10 @@ export function writeUiLocale(locale: HostLang): void {
 
 // ---------- theme / motion / appearance prefs (the set_ui_prefs RPC path) ----------
 
-export type UiThemeMode = "dark" | "light" | "system";
+export type UiThemeMode = "dark" | "light" | "system" | string;
 export type UiMotionMode = "system" | "on" | "off";
 
-/** Legal theme values (anything else on disk reads back as undefined -> the frontend falls back). */
-const THEME_MODES: Record<string, true> = { dark: true, light: true, system: true };
-/** Legal motion values (same tolerance as theme). */
+/** Legal motion values. */
 const MOTION_MODES: Record<string, true> = { system: true, on: true, off: true };
 
 /**
@@ -99,7 +97,7 @@ export function readUiConfig(): UiConfig {
   const motion = section.motion;
   return {
     locale: locale === "en" || locale === "zh-CN" ? locale : undefined,
-    theme: typeof theme === "string" && THEME_MODES[theme] ? (theme as UiThemeMode) : undefined,
+    theme: typeof theme === "string" && theme ? (theme as UiThemeMode) : undefined,
     motion: typeof motion === "string" && MOTION_MODES[motion] ? (motion as UiMotionMode) : undefined,
     prefs: sanitizePrefs(section.prefs),
   };
@@ -112,7 +110,7 @@ export function readUiConfig(): UiConfig {
  */
 export function writeUiPrefs(patch: { theme?: unknown; motion?: unknown; prefs?: unknown }): void {
   const next: Record<string, unknown> = { ...readSection() };
-  if (patch.theme !== undefined && typeof patch.theme === "string" && THEME_MODES[patch.theme]) {
+  if (patch.theme !== undefined && typeof patch.theme === "string" && patch.theme) {
     next.theme = patch.theme;
   }
   if (patch.motion !== undefined && typeof patch.motion === "string" && MOTION_MODES[patch.motion]) {
