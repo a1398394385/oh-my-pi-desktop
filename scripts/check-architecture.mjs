@@ -30,6 +30,9 @@ const HOT_LIMITS = [
   // Approval cards split out of main-chat.css (the plan variant added the
   // execution-model slider + a disabled row, which overflowed the chat cap).
   { path: "ui/css/main-chat-approval.css", max: 160 },
+  // Ask multi-question form styles split out of main-chat-approval.css (the
+  // "Other" custom-answer row overflowed the approval cap).
+  { path: "ui/css/main-chat-ask.css", max: 120 },
   { path: "ui/css/main-composer.css", max: 670 },
   { path: "ui/css/main-streamdown.css", max: 280 },
   { path: "ui/css/main-tree.css", max: 450 },

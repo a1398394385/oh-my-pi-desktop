@@ -252,6 +252,10 @@ export interface PendingApproval {
   // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
   // form; ApprovalCard renders radio/checkbox rows and one submit for all
   questions?: AskQuestion[];
+  // Ask-dialog variant only: frontend-local drafts of the per-question
+  // "Other (type your own)" custom answers (written in place by ApprovalCard
+  // like prefill, never sent as a frame field of its own)
+  otherDrafts?: string[];
   answer: string | null; // user's chosen answer; null = pending
 }
 

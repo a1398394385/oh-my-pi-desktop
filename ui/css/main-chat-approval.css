@@ -137,19 +137,16 @@
 
 .approval-confirm:disabled { opacity: .45; cursor: default; }
 
+/* Ask form foot: cancel + submit button pair on the right (the .ask-* form
+   styles live in main-chat-ask.css, cascaded right after this file) */
+.approval-foot-actions { display: flex; flex: none; gap: 8px; }
 
-/* Ask multi-question merged form (questions[] rides the approval frame): one
-   radio/checkbox group per question, a single submit for all answers. Option
-   rows reuse .approval-opt; .ask-q stacks question blocks */
-.ask-q { display: flex; flex-direction: column; gap: 4px; }
+/* secondary cancel button (outline style) next to the accent confirm */
+.approval-cancel {
+  flex: none; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: transparent; color: var(--dim);
+  font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+  cursor: pointer;
+}
 
-.ask-q + .ask-q { margin-top: 10px; }
-
-.ask-q-t { color: var(--text); overflow-wrap: anywhere; }
-
-.ask-q-t b { color: var(--dim); font-weight: 500; margin-right: 6px; }
-
-/* native radio/checkbox take the number slot's place; accent follows the theme */
-.ask-opt input { flex: none; margin: 0; accent-color: var(--accent); }
-
-.ask-opt .ask-desc { display: block; color: var(--faint); font-size: var(--ui-fs-sm); }
+.approval-cancel:hover { background: var(--panel-2); color: var(--text); }

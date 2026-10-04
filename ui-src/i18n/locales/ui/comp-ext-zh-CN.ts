@@ -9,6 +9,8 @@ export const compExtZh = {
   // ApprovalCard.tsx ask multi-question merged submit
   askMultiHint: "逐题选择，一次提交全部答案",
   askSubmitAll: "提交全部答案",
+  askOther: "其他（自定义答案）",
+  askOtherPlaceholder: "输入自定义答案…",
 };
 
 export default compExtZh;

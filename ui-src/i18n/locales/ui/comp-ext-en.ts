@@ -9,6 +9,8 @@ export const compExtEn = {
   // ApprovalCard.tsx ask multi-question merged submit
   askMultiHint: "Answer each question, then submit once",
   askSubmitAll: "Submit answers",
+  askOther: "Other (type your own)",
+  askOtherPlaceholder: "Type your answer…",
 };
 
 export default compExtEn;

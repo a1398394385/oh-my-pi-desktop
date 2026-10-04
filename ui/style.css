@@ -15,6 +15,7 @@
  *   main-sidebar.css     main page, left sidebar (sessions / project groups / search card / rename / archive)
  *   main-chat.css        main page, middle-column message flow (bubbles / markdown / tool rows / message track)
  *   main-chat-approval.css main page, middle column, approval cards (split out of main-chat.css, cascades right after it)
+ *   main-chat-ask.css    main page, middle column, ask multi-question form (split out of main-chat-approval.css, cascades right after it)
  *   main-composer.css    main page, middle-column input area (dock / bottom bar / goal / queue / send button / Lexical)
  *   main-streamdown.css  main page, streamdown rendering engine layer
  *   main-tree.css        main page, session-tree waterfall in the message area
@@ -35,6 +36,7 @@
 @import "./css/main-sidebar.css";
 @import "./css/main-chat.css";
 @import "./css/main-chat-approval.css";
+@import "./css/main-chat-ask.css";
 @import "./css/main-composer.css";
 @import "./css/main-streamdown.css";
 @import "./css/main-tree.css";

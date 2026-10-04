@@ -66,6 +66,9 @@ interface ApprovalItem {
   // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
   // form rendered as radio/checkbox rows with one submit for all answers
   questions?: AskQuestion[];
+  // Frontend-local drafts of the per-question "Other" custom answers
+  // (written in place like prefill to survive full redraws)
+  otherDrafts?: string[];
 }
 
 export default function ApprovalCard({ item }: { item: ApprovalItem }) {
@@ -106,6 +109,14 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   const picksRef = useRef(picks);
   const togglePick = (qi: number, oi: number, multi: boolean | undefined) => {
     if (answered) return;
+    // Single questions are exclusive with their "Other" row: picking an
+    // option drops a pending custom answer
+    if (!multi && othersRef.current[qi]) {
+      const nextO = othersRef.current.slice();
+      nextO[qi] = false;
+      othersRef.current = nextO;
+      setOthers(nextO);
+    }
     setPicks((prev) => {
       const next = prev.slice();
       next[qi] = multi ? (next[qi]?.includes(oi) ? next[qi].filter((j) => j !== oi) : [...(next[qi] ?? []), oi]) : [oi];
@@ -113,22 +124,65 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       return next;
     });
   };
+  // "Other (type your own)" row per question (base-parity with the TUI dialog):
+  // single = exclusive with the options (toggling it clears the pick), multi =
+  // rides alongside checked options. Opening the row focuses its input.
+  const [others, setOthers] = useState<boolean[]>(() => askQs.map(() => false));
+  const othersRef = useRef(others);
+  const otherInps = useRef<(HTMLInputElement | null)[]>([]);
+  const pendingFocusRef = useRef(-1);
+  const toggleOther = (qi: number) => {
+    if (answered) return;
+    const next = othersRef.current.slice();
+    next[qi] = !next[qi];
+    othersRef.current = next;
+    setOthers(next);
+    if (next[qi]) {
+      pendingFocusRef.current = qi;
+      if (!askQs[qi].multi) {
+        setPicks((prev) => {
+          const p = prev.slice();
+          p[qi] = [];
+          picksRef.current = p;
+          return p;
+        });
+      }
+    }
+  };
+  // Guards double submit/cancel before the approval_resolved frame lands and
+  // the entry is removed (item.answer lags one render behind)
+  const askDoneRef = useRef(false);
   // One approval_response carrying every answer: answer = JSON of the base's
   // ExtensionAskDialogSubmitResult (host parses; a parse failure counts as cancel)
   const submitAll = () => {
-    if (item.answer !== null) return;
+    if (askDoneRef.current || item.answer !== null) return;
+    askDoneRef.current = true;
     const results = askQs.map((q, i) => {
       const labels = (q.options ?? []).map((o) => o.label ?? "");
       const picked = (picksRef.current[i] ?? []).filter((j) => j < labels.length && labels[j]);
+      // "Other" answer: rides the customInput field (ExtensionAskDialogResultItem)
+      const custom = othersRef.current[i] ? (item.otherDrafts?.[i] ?? "").trim() : "";
       return {
         id: q.id ?? String(i),
         question: q.question ?? "",
         options: labels,
         multi: !!q.multi,
         selectedOptions: picked.map((j) => labels[j]),
+        ...(custom ? { customInput: custom } : {}),
       };
     });
     const answer = JSON.stringify({ kind: "submit", results });
+    writeAnswer(answer);
+  };
+  // Cancel sends a non-submit answer: the host's askDialog parser resolves
+  // only kind:"submit" payloads, anything else settles as cancelled
+  const cancelAsk = () => {
+    if (askDoneRef.current || item.answer !== null) return;
+    askDoneRef.current = true;
+    writeAnswer("cancel");
+  };
+  // Write the answer back to the pending approval entry (freeze) and reply to the host
+  const writeAnswer = (answer: string) => {
     useAppStore.setState((st) => {
       for (const [p, sess] of st.openSessions) {
         const list = sess.pendingApprovals;
@@ -232,12 +286,31 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     }
   };
 
+  // Ask-form keyboard: one delegated handler moves focus through every form
+  // control (option radios/checkboxes and "Other" inputs) in render order.
+  // preventDefault also suppresses the native same-group radio switching so
+  // arrows behave identically on radio, checkbox, and text rows.
+  const askFormRef = useRef<HTMLDivElement | null>(null);
+  const onAskFormKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (answered) return;
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    const rows = askFormRef.current?.querySelectorAll<HTMLElement>("input[data-ask-row]");
+    if (!rows || rows.length === 0) return;
+    const idx = Array.prototype.indexOf.call(rows, e.target);
+    if (idx < 0) return;
+    e.preventDefault();
+    rows[(idx + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus({ preventScroll: true });
+  };
+
   // Focus the selected row on mount (number / Enter shortcuts usable at once); do not steal
-  // an existing input focus (the user may be typing)
+  // an existing input focus (the user may be typing). The ask-form variant
+  // focuses its first control instead (arrow navigation usable at once).
   useEffect(() => {
     const ae = document.activeElement;
     if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as HTMLElement).isContentEditable)) return;
-    const row = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    const row =
+      listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ??
+      askFormRef.current?.querySelector<HTMLElement>("input[data-ask-row]");
     (row?.querySelector("input") ?? row)?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -279,7 +352,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         </div>
       )}
       {askQs.length > 0 ? (
-        <div className="ask-form" role="form">
+        <div className="ask-form" role="form" ref={askFormRef} onKeyDown={onAskFormKey}>
           {askQs.map((q, qi) => (
             <div className="ask-q" key={q.id ?? qi}>
               <div className="ask-q-t">
@@ -294,6 +367,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                       <input
                         type={q.multi ? "checkbox" : "radio"}
                         name={`${item.requestId}:${qi}`}
+                        data-ask-row
                         checked={on}
                         disabled={answered}
                         onChange={() => togglePick(qi, oi, q.multi)}
@@ -306,6 +380,52 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                     </label>
                   );
                 })}
+                {/* "Other (type your own)": base parity with the TUI dialog's custom-answer row */}
+                <label
+                  className={"approval-opt ask-opt ask-other-opt" + (others[qi] ? " selected" : "") + (answered ? " dim" : "")}
+                >
+                  <input
+                    type={q.multi ? "checkbox" : "radio"}
+                    name={`${item.requestId}:${qi}`}
+                    data-ask-row
+                    checked={others[qi] ?? false}
+                    disabled={answered}
+                    onChange={() => toggleOther(qi)}
+                  />
+                  <span className="approval-label">{t("compExt.askOther")}</span>
+                </label>
+                {others[qi] && (
+                  <div className="ask-other">
+                    {/* Uncontrolled input: typing only writes back the draft on
+                        item.otherDrafts (survives full redraws without re-rendering) */}
+                    <input
+                      type="text"
+                      data-ask-row
+                      className="approval-inp"
+                      placeholder={t("compExt.askOtherPlaceholder")}
+                      defaultValue={item.otherDrafts?.[qi] ?? ""}
+                      disabled={answered}
+                      ref={(el) => {
+                        otherInps.current[qi] = el;
+                        if (el && pendingFocusRef.current === qi) {
+                          pendingFocusRef.current = -1;
+                          el.focus();
+                        }
+                      }}
+                      onChange={(e) => {
+                        if (!item.otherDrafts) item.otherDrafts = [];
+                        item.otherDrafts[qi] = e.target.value;
+                      }}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          submitAll();
+                        }
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -381,9 +501,14 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
               <Icon name="info" size={15} />
               {t("compExt.askMultiHint")}
             </span>
-            <button type="button" className="approval-confirm" onClick={submitAll}>
-              {t("compExt.askSubmitAll")}
-            </button>
+            <span className="approval-foot-actions">
+              <button type="button" className="approval-cancel" onClick={cancelAsk}>
+                {t("chat.approvalCancel")}
+              </button>
+              <button type="button" className="approval-confirm" onClick={submitAll}>
+                {t("compExt.askSubmitAll")}
+              </button>
+            </span>
           </div>
         ) : (
           <div className="approval-foot">
