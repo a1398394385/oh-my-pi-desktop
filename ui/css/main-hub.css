@@ -87,7 +87,7 @@
 .hub-sec {
   margin-top: 12px; padding-top: 8px;
   border-top: 1px solid var(--line-soft);
-  font-weight: 600; color: var(--accent); font-size: var(--ui-fs-sm);
+  font-weight: 700; color: var(--accent); font-size: var(--ui-fs-sm);
   text-transform: uppercase; letter-spacing: .04em;
 }
 .hub-sec-body { margin-top: 3px; font-size: var(--ui-fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
