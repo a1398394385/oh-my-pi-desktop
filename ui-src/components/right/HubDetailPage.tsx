@@ -9,7 +9,6 @@ import { useAppStore, fmtTokens, fmtDurationMs } from "../../store";
 import { modelShort, fmtClock, subStatus, type SegT } from "./subShared";
 import { rowSpec } from "./subRowSpec";
 import { Ellip, Spin } from "../chat/parts";
-import MdSurface from "../chat/MdSurface";
 import Icon from "../../Icon";
 import type { SubagentState } from "../../types/session";
 import { sendGetBgJobs, sendCancelBgJob } from "./hubExt";
@@ -104,7 +103,8 @@ export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; 
       {task ? (
         <>
           <div className="hub-sec">{t("right.hubTask")}</div>
-          <MdSurface text={task} className="hub-sec-body hub-task-md md-body md-surface" />
+          {/* Plain text, same call as the task card's assignment area (markdown rendering dropped) */}
+          <div className="hub-sec-body hub-task-md whitespace-pre-wrap">{task}</div>
         </>
       ) : null}
 
