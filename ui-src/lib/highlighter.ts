@@ -13,6 +13,7 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { pathBase } from "../store/utils";
 import darkPlus from "shiki/themes/dark-plus.mjs";
 import lightPlus from "shiki/themes/light-plus.mjs";
+import nord from "shiki/themes/nord.mjs";
 import langJs from "shiki/langs/javascript.mjs";
 import langTs from "shiki/langs/typescript.mjs";
 import langJsx from "shiki/langs/jsx.mjs";
@@ -111,10 +112,13 @@ export function langOfPath(path: string | null | undefined): string | null {
   return EXT_TO_LANG[lower.slice(i + 1)] || null;
 }
 
-// App light/dark theme: shell.js writes html[data-theme]=dark|light (system is
-// already resolved to a concrete value)
+// App light/dark theme: shell.js writes html[data-theme]=dark|light|midnight|... (system is
+// already resolved to a concrete value). Custom themes use softer Shiki themes.
 export function currentCodeTheme(): string {
-  return document.documentElement.dataset.theme === "light" ? "light-plus" : "dark-plus";
+  const theme = document.documentElement.dataset.theme;
+  if (theme === "light") return "light-plus";
+  if (theme === "midnight") return "nord";  // softer colors for midnight
+  return "dark-plus";
 }
 
 // The default export of shiki/langs/*.mjs is already a LanguageRegistration
@@ -134,8 +138,6 @@ const LANG_MODULES: Record<string, LanguageRegistration[]> = {
   graphql: langGraphql, latex: langTex,
 };
 
-// Theme name -> theme definition (createHighlighterCore ships no bundledThemes)
-const THEMES = { "dark-plus": darkPlus, "light-plus": lightPlus };
 
 // Singleton highlighter: langs are lazy-registered (loadLanguage), the engine is
 // JS regex (no wasm async loading)
@@ -143,7 +145,7 @@ let highlighterPromise: Promise<HighlighterCore> | null = null;
 function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighterCore({
-      themes: [darkPlus, lightPlus],
+      themes: [darkPlus, lightPlus, nord],
       langs: [],
       engine: createJavaScriptRegexEngine(),
     });

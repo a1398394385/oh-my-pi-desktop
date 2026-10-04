@@ -22,7 +22,7 @@
   position: relative;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--card);
+  background: var(--overlay-subtle, var(--card));
   box-shadow: none;
 }
 
@@ -37,8 +37,14 @@
   margin: 0 !important;
 }
 
+/* Legacy dark theme uses a specific gray */
 [data-theme="dark"] .md-body [data-streamdown="code-block"] {
   background: #2B2B2B;
+}
+
+/* Legacy light theme uses panel-2 */
+[data-theme="light"] .md-body [data-streamdown="code-block"] {
+  background: var(--panel-2);
 }
 
 .md-body .md-code-language-icon {
@@ -271,5 +277,31 @@
 .md-body [data-streamdown="image-wrapper"] img {
   max-width: 100%;
   border-radius: 8px;
+}
+
+/* ── Shiki code token theme switching ──
+   Streamdown generates tokens with both light (--sdm-c) and dark (--shiki-dark) color variables,
+   then uses Tailwind's dark: variant to switch between them. Since these are runtime-generated
+   arbitrary-value classes (dark:text-[var(--shiki-dark)]) not in our source scan, we override
+   with direct attribute selectors to make theme switching work. */
+
+/* Light theme: use --sdm-c (light-plus colors) */
+[data-theme="light"] .md-body .md-streamdown-code span[style*="--sdm-c"] {
+  color: var(--sdm-c, inherit) !important;
+}
+
+[data-theme="light"] .md-body .md-streamdown-code span[style*="--sdm-tbg"] {
+  background-color: var(--sdm-tbg) !important;
+}
+
+/* Dark themes: use --shiki-dark (dark-plus for dark, nord for midnight) */
+[data-theme="dark"] .md-body .md-streamdown-code span[style*="--shiki-dark"],
+[data-theme="midnight"] .md-body .md-streamdown-code span[style*="--shiki-dark"] {
+  color: var(--shiki-dark, var(--sdm-c, inherit)) !important;
+}
+
+[data-theme="dark"] .md-body .md-streamdown-code span[style*="--shiki-dark-bg"],
+[data-theme="midnight"] .md-body .md-streamdown-code span[style*="--shiki-dark-bg"] {
+  background-color: var(--shiki-dark-bg, var(--sdm-tbg)) !important;
 }
 

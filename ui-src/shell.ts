@@ -9,12 +9,13 @@ import { useAppStore, send, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
 import { t } from "./i18n";
+import { THEMES, resolveTheme, type ThemeId } from "./theme-registry";
 
 // Theme/motion modes. Persistence is file-first: omp-desktop.json's ui section
 // is the source of truth (saveTheme/saveMotion write it via the set_ui_prefs
 // RPC and mirror the value into localStorage, which only serves as the
 // first-frame render cache read at startup).
-type ThemeMode = "dark" | "light" | "system";
+type ThemeMode = ThemeId | "system";
 type MotionMode = "system" | "on" | "off";
 
 // ---------- Menu coordination ----------
@@ -28,17 +29,30 @@ export function closeAllMenus(): void {
   for (const b of document.querySelectorAll(".pill-btn.active")) b.classList.remove("active");
 }
 
-// ---------- Theme (dark / light / system) ----------
+// ---------- Theme (dark / light / system / custom themes) ----------
 let themeMode: ThemeMode = "dark";
 const themeMq = matchMedia("(prefers-color-scheme: dark)");
 
 /** Apply a theme to the DOM and mirror it into the store (no persistence — callers decide). */
 export function applyTheme(mode: ThemeMode): void {
   themeMode = mode;
-  const dark = mode === "system" ? themeMq.matches : mode === "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, theme: mode } }));
-  for (const h of document.querySelectorAll(".fd-holder")) h.classList.toggle("d2h-dark-color-scheme", dark);
+  // Resolve concrete theme: system → dark/light based on OS, custom theme IDs stay as-is
+  let concreteTheme: string;
+  if (mode === "system") {
+    concreteTheme = themeMq.matches ? "dark" : "light";
+  } else {
+    concreteTheme = mode;
+  }
+  // Set data-theme to the concrete theme ID (midnight/coral/dark/light/etc.)
+  document.documentElement.dataset.theme = concreteTheme;
+  setBump({ uiPrefs: { ...useAppStore.getState().uiPrefs, theme: mode } });
+
+  // Diff viewer theme class follows the theme's mode (light vs dark)
+  const themeEntry = THEMES[concreteTheme as ThemeId];
+  const isDark = themeEntry ? themeEntry.mode === "dark" : concreteTheme === "dark";
+  for (const h of document.querySelectorAll(".fd-holder")) {
+    h.classList.toggle("d2h-dark-color-scheme", isDark);
+  }
   // The settings page theme Sel's selected label is per-page component state
   // (AppearancePage reads uiPrefs.theme); dataset.theme stays the effective-truth for previews.
 }
@@ -53,8 +67,11 @@ export function saveTheme(mode: ThemeMode): void {
 // Native menu "toggle dark/light theme": swap dark and light (the system state
 // snaps to the currently effective color first, then switches)
 export function toggleTheme(): void {
-  const dark = themeMode === "system" ? themeMq.matches : themeMode === "dark";
-  saveTheme(dark ? "light" : "dark");
+  const effectiveTheme = document.documentElement.dataset.theme || "dark";
+  const themeEntry = THEMES[effectiveTheme as ThemeId];
+  const isDark = themeEntry ? themeEntry.mode === "dark" : effectiveTheme === "dark";
+  // Toggle to the opposite built-in theme
+  saveTheme(isDark ? "light" : "dark");
 }
 
 // ---------- Reduce motion (system follows the OS / on force-reduced / off force-animated) ----------
@@ -63,7 +80,7 @@ export function applyMotion(mode: MotionMode): void {
   // system removes the attribute to fall back to the media query; on/off is taken over by html[data-motion] forced rules
   if (mode === "system") delete document.documentElement.dataset.motion;
   else document.documentElement.dataset.motion = mode;
-  useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, motion: mode } }));
+  setBump({ uiPrefs: { ...useAppStore.getState().uiPrefs, motion: mode } });
 }
 
 /** User-driven motion switch: apply + persist to omp-desktop.json (+ cache mirror). */

@@ -7,22 +7,34 @@
 // Visual semantics live in CSS on the wrapper class chain: .md-surface carries the TUI-parity
 // rules (ui/css/main-chat.css); surfaces needing their own font size or page height set them in
 // their domain CSS (e.g. .cmd-card-cmd.task-md).
-import { createElement, isValidElement, useState, type JSX } from "react";
+import { createElement, isValidElement, useState, useEffect, type JSX } from "react";
 import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
-import { createCodePlugin } from "@streamdown/code";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { t } from "../../i18n";
+import { CODE_PLUGINS, resolvePluginKey, type CodePluginKey } from "../../lib/code-plugin-registry";
 
-// Code highlight plugin singleton (caches a Shiki highlighter internally; JS regex engine,
-// no wasm): themes = [light, dark], using the VSCode-matching light-plus / dark-plus (same
-// palette as the file view's ui-src/lib/highlighter.ts, but each holds its own highlighter
-// instance without interference).
-// Token colors land on inline CSS variables (--sdm-c / --shiki-dark); theme switching is
-// handled by P6 CSS re-reading the variables per html[data-theme], taking effect instantly
-// at runtime without re-rendering.
-export const codePlugin = createCodePlugin({ themes: ["light-plus", "dark-plus"] });
+// Subscribe to theme changes and switch the active plugin key when the concrete theme changes.
+// Reads from html[data-theme] (the resolved theme: "dark"/"light"/"midnight"/etc.) rather than
+// uiPrefs.theme (which may be "system"), ensuring the plugin matches the actual displayed theme.
+function useActiveCodePlugin() {
+  const [pluginKey, setPluginKey] = useState<CodePluginKey>(() =>
+    resolvePluginKey(document.documentElement.dataset.theme || "dark")
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const concreteTheme = document.documentElement.dataset.theme || "dark";
+      const newKey = resolvePluginKey(concreteTheme);
+      setPluginKey(newKey);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return pluginKey;
+}
 
 const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
   javascript: "js",
@@ -123,10 +135,16 @@ type MdSurfaceProps = { text: string } & Omit<JSX.IntrinsicElements["div"], "chi
 
 // The single markdown entry: wrapper div carries the surface's classes (md-body + md-surface
 // and any domain class); remaining props (style/data-*) pass through to the wrapper.
+// The codePlugin switches per theme (default uses dark-plus, midnight uses nord) to match
+// the theme's color intensity.
 export default function MdSurface({ text, ...rest }: MdSurfaceProps) {
+  const pluginKey = useActiveCodePlugin();
+  const codePlugin = CODE_PLUGINS[pluginKey];
+
   return (
     <div {...rest}>
       <Streamdown
+        key={pluginKey}
         plugins={{ code: codePlugin, cjk }}
         components={mdComponents}
         lineNumbers={false}
