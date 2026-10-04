@@ -582,6 +582,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 4px 6px;
+  border: 0;
+  background: transparent;
   border-radius: var(--r-sm);
   cursor: pointer;
   text-align: left;

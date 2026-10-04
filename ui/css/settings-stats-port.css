@@ -317,23 +317,31 @@
 	isolation: isolate;
 }
 
+/* Capsule highlight follows the settings-page pill language (.mcp-type-pill):
+   hover --panel-2, selected --panel-3; flat, no border or shadow. */
 #pg-stats .segmented-thumb {
 	position: absolute;
 	top: 2px;
 	bottom: 2px;
-	border-radius: 6px;
-	background: var(--raised);
-	border: 1px solid var(--line-3);
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+	border-radius: var(--r-chip);
+	background: var(--panel-2);
 	transition:
 		left var(--dur-2) var(--ease-out),
-		width var(--dur-2) var(--ease-out);
+		width var(--dur-2) var(--ease-out),
+		background var(--dur-1) var(--ease);
 	z-index: -1;
 }
 
+#pg-stats .segmented-thumb[data-active="true"] {
+	background: var(--panel-3);
+}
+
 #pg-stats .segmented-option {
+	position: relative;
 	height: 24px;
 	padding: 0 10px;
+	border: 0;
+	background: transparent;
 	border-radius: 6px;
 	font-size: 12.5px;
 	font-weight: 500;
@@ -342,7 +350,21 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
+	cursor: pointer;
 	transition: color var(--dur-1) var(--ease);
+}
+
+/* Short vertical separator between options; kept clear of the card frame's
+   top/bottom edges and drawn above the sliding capsule. */
+#pg-stats .segmented-option:not(:first-of-type)::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	height: 12px;
+	width: 1px;
+	background: var(--line-2);
 }
 
 #pg-stats .segmented-option:hover {
@@ -664,10 +686,10 @@
 
 #pg-stats .bar-list-fill {
 	position: absolute;
-	top: 3px;
-	bottom: 3px;
+	top: 0;
+	bottom: 0;
 	left: 0;
-	border-radius: 5px;
+	border-radius: var(--r-sm);
 	z-index: -1;
 	opacity: 0.16;
 	transition: width var(--dur-3) var(--ease-out);
