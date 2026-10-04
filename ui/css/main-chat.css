@@ -284,6 +284,23 @@ body:has(#right.collapsed) #right-resizer {
 
 .md-body .md-h4 { font-size: calc(var(--ui-fs) * 1.1); }
 
+/* Unified markdown surface semantics (MdSurface.tsx), TUI parity (tui/src/components/markdown.ts:
+   headings colored mdHeading at body size; blocks separated by exactly one blank line). Added on
+   EVERY markdown surface; font size stays per-surface (cards set --code-fs on their wrapper).
+   Selectors match .md-body specificity and rely on source order (this block follows the base
+   rules above). */
+.md-surface :is(.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6) {
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--accent);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.md-surface :is(.md-p, .md-ul, .md-ol, .md-quote, .md-hr) { margin: 0; }
+.md-surface li { margin: 0; line-height: 1.55; }
+.md-surface .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
+.md-surface .space-y-4 > * + * { margin-top: 1.5em; }
+
 .md-body .md-inline-code {
   font-family: var(--mono) !important;
   font-size: var(--code-fs, 12px) !important;
@@ -764,30 +781,14 @@ body:has(#right.collapsed) #right-resizer {
   mask-image: none;
 }
 
-/* Task row's expanded assignment card (.task-md, ToolRow.tsx TaskBody), aligned with the TUI task
-   card's markdown rendering (tui/src/tools/task.ts createMarkdownSectionRenderer):
-   - code font size (not the app base size); param page height customized to 9.5 lines
-     (the generic cmd-card-cmd page is 4.5)
-   - headings keep body size and take the accent heading color, no rules/size jumps
-   - exactly one blank line between top-level blocks: streamdown wraps blocks in a space-y-4
-     container and the chat-stream md rules add block margins, which would stack into phantom
-     empty lines */
+/* Task row's expanded assignment card (.task-md, ToolRow.tsx TaskBody): code font size and a
+   customized 9.5-line page (the generic cmd-card-cmd page is 4.5). The shared markdown
+   semantics come from .md-surface (see the .md-surface block above). */
 .cmd-card-cmd.task-md {
   font-size: var(--code-fs);
   line-height: 1.5;
   max-height: calc(1.5em * 9.5);
 }
-.cmd-card-cmd.task-md :is(.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6) {
-  font-size: inherit;
-  font-weight: 500;
-  color: var(--accent);
-  border-bottom: none;
-  padding-bottom: 0;
-}
-.cmd-card-cmd.task-md :is(.md-p, .md-ul, .md-ol, .md-blockquote, .md-hr) { margin: 0; }
-.cmd-card-cmd.task-md li { margin: 0; line-height: 1.55; }
-.cmd-card-cmd.task-md .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
-.cmd-card-cmd.task-md .space-y-4 > * + * { margin-top: 1.5em; }
 
 /* Local bash execution row (! prefix, BashRow): reuses .cmd row styles, status area right-aligned. exit 0 uses --dim, non-zero/errors use --err; "not in context" is a small faint tag */
 .bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }

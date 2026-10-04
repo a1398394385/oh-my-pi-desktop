@@ -5,13 +5,11 @@
 // a back-to-list button pinned above (see SubagentPage).
 import { useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
-import { Streamdown } from "streamdown";
-import { cjk } from "@streamdown/cjk";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../store";
 import { modelShort, fmtClock, subStatus, type SegT } from "./subShared";
 import { rowSpec } from "./subRowSpec";
 import { Ellip, Spin } from "../chat/parts";
-import { codePlugin, mdComponents, mdControls, MD_LINK_SAFETY_OFF } from "../chat/AssistantMsg";
+import MdSurface from "../chat/MdSurface";
 import Icon from "../../Icon";
 import type { SubagentState } from "../../types/session";
 import { sendGetBgJobs, sendCancelBgJob } from "./hubExt";
@@ -106,19 +104,7 @@ export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; 
       {task ? (
         <>
           <div className="hub-sec">{t("right.hubTask")}</div>
-          <div className="hub-sec-body hub-task-md md-body">
-            <Streamdown
-              plugins={{ code: codePlugin, cjk }}
-              components={mdComponents}
-              lineNumbers={false}
-              codeBlockMaxHeight={400}
-              tableMaxHeight={0}
-              controls={mdControls}
-              linkSafety={MD_LINK_SAFETY_OFF}
-            >
-              {task}
-            </Streamdown>
-          </div>
+          <MdSurface text={task} className="hub-sec-body hub-task-md md-body md-surface" />
         </>
       ) : null}
 
