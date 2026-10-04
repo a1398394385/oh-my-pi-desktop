@@ -9,7 +9,6 @@ import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, u
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
 import { isDevicePath, deviceNameOf } from "./util";
 import ThinkingRow from "./ThinkingRow";
-import MdSurface from "./MdSurface";
 import { t } from "../../i18n";
 
 // ---------- Terminal row (bash/shell/eval) and background tool row (hub): expand card with command on top, output below ----------
@@ -252,8 +251,8 @@ function TaskBody({ item }: { item: ToolItem }) {
   return (
     <>
       {assignment ? (
-        <FadeBox className="cmd-card-cmd task-md">
-          <MdSurface text={truncateText(assignment)} className="md-body md-surface" />
+        <FadeBox className="cmd-card-cmd task-md" as="pre">
+          <LinkedText text={truncateText(assignment)} />
         </FadeBox>
       ) : (
         <FadeBox className="cmd-card-cmd">{truncateText(args ? JSON.stringify(args, null, 2) : t("chat.noParams"))}</FadeBox>

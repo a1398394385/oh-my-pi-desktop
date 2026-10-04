@@ -763,6 +763,19 @@ body:has(#right.collapsed) #right-resizer {
   max-height: calc(1.5em * 4.5); overflow-y: auto; font: inherit; line-height: 1.5;
 }
 
+/* Light theme: the cmd-card family (terminal/background/wait/task/ask/hub expansions) stays on
+   the theme surface with the same token set as bash-out/ed-brief instead of the hardcoded dark
+   island above — light-gray-on-white text was the readability bug. Dark values stay untouched. */
+[data-theme="light"] .cmd-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+[data-theme="light"] .cmd-card-cmd {
+  color: var(--text);
+  border-bottom-color: var(--line-soft);
+}
+[data-theme="light"] .cmd-card-out { color: var(--dim); }
+
 /* Bottom half-row gradient mask (same technique as think-body, cleared by JS adding .no-fade when scrolled to bottom). ed-brief (inline diff) already matches ZCode's no-mask look and is exempt from this group */
 .cmd-card-cmd, .cmd-card-out {
   -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 0.75em), transparent), linear-gradient(black, black);
