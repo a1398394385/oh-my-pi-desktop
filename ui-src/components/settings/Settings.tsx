@@ -136,6 +136,7 @@ export default function Settings() {
   const lang = useAppStore((s) => s.uiPrefs.lang);
   const [searchQuery, setSearchQuery] = useState("");
   const setBodyRef = useRef<HTMLDivElement | null>(null);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
 
   // Lookup map: locate the pageId owning a key per placement.ts
@@ -248,11 +249,41 @@ export default function Settings() {
     return () => handle?.removeEventListener("mousedown", onDown);
   }, []);
 
+  // Scroll listener: dynamically show scrollbars while scrolling, smoothly fade out after stopping (never persistent)
+  useEffect(() => {
+    const container = settingsRef.current;
+    if (!container || !settingsOpen) return;
+
+    const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+
+    const onScrollCapture = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (!target || !target.classList) return;
+      target.classList.add("scrolling");
+      const existing = timers.get(target);
+      if (existing) clearTimeout(existing);
+      timers.set(
+        target,
+        setTimeout(() => {
+          target.classList.remove("scrolling");
+          timers.delete(target);
+        }, 600),
+      );
+    };
+
+    container.addEventListener("scroll", onScrollCapture, { capture: true, passive: true });
+    return () => {
+      container.removeEventListener("scroll", onScrollCapture, { capture: true });
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, [settingsOpen]);
+
   const Page = PAGES[pageId] || GeneralPage;
   const profileName = (hostSettings && hostSettings.activeProfile) || "default";
 
   return (
-    <div id="settings" className={settingsOpen ? "" : "hidden"}>
+    <div id="settings" ref={settingsRef} className={settingsOpen ? "" : "hidden"}>
       {/* OMP login-in-progress banner + paste-code dialog: mounted at the shell root so page switches or logging in on any settings page don't interrupt it (old version mounted globally on document.body) */}
       <LoginBanner />
       <LoginPrompt />

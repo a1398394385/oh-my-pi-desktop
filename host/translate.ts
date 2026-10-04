@@ -2,10 +2,19 @@
 // these UiEvent kinds and does not depend on omp event shape details.
 // The live stream (translateEvent) and the disk history (entriesToTranscript)
 // share the same tool-entry summary logic.
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { editDiffString } from "@oh-my-pi/pi-natives";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 import { REF_TAG_RE } from "./acp-context.ts";
+
+// In-flight write tool snapshot before mutation: caches the pre-write text to
+// generate an accurate diff between the old and new file contents when the
+// tool completes, avoiding whole-file addition fallbacks for existing files.
+const pendingWrites = new Map<string, { path: string; oldText?: string }>();
+
 
 // Strip the <dcp-message-id> tags injected/replayed by ACP: disk keeps the
 // original text (historical fact); scrub uniformly before pushing to the UI.
@@ -71,7 +80,7 @@ function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   if (!args || typeof args !== "object") return {};
   if (name === "bash" || name === "shell") return { command: String(args.command ?? "").slice(0, 4000) };
   if (name === "eval") return { command: String(args.code ?? args.command ?? "").slice(0, 4000) }; // JS evaluation, rendered as a terminal card
-  if (name === "grep") return { pattern: String(args.pattern ?? args.query ?? "").slice(0, 500), path: pathOf(args) };
+  if (name === "grep" || name === "ast_grep") return { pattern: String(args.pattern ?? args.query ?? args.pat ?? "").slice(0, 500), path: pathOf(args) };
   if (name === "glob") return { pattern: String(args.pattern ?? "").slice(0, 500), path: pathOf(args) };
   if (name === "find") {
     return {
@@ -97,6 +106,24 @@ function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   if (name === "learn") return { memory: args.memory, skill: args.skill?.name };
   if (name === "memory_edit") return { op: args.op, id: args.id };
   if (name === "todo") return { op: args.op, task: args.task, i: args.i };
+  if (name === "task") {
+    // Subagent spawn: the assignment text (flat task / batch context) is the card's main content;
+    // per-item task text capped individually so one big item cannot swallow the whole frame
+    return {
+      name: args.name,
+      agent: args.agent,
+      task: typeof args.task === "string" ? args.task.slice(0, 20_000) : undefined,
+      context: typeof args.context === "string" ? args.context.slice(0, 20_000) : undefined,
+      tasks: Array.isArray(args.tasks)
+        ? args.tasks.map((it) => ({
+            name: it?.name,
+            agent: it?.agent,
+            isolated: it?.isolated,
+            task: typeof it?.task === "string" ? it.task.slice(0, 8000) : undefined,
+          }))
+        : undefined,
+    };
+  }
   if (name === "hub") {
     return {
       op: args.op,
@@ -158,7 +185,7 @@ function resultText(result: unknown, max = 20_000): string {
     .slice(0, max);
 }
 
-function summarizeResult(name: string, args: any, result: any): Partial<TranscriptItem> {
+function summarizeResult(name: string, args: any, result: any, pendingWrite?: { path: string; oldText?: string }): Partial<TranscriptItem> {
   const details = result?.details ?? (result && typeof result === "object" && "diff" in result ? result : undefined);
   const patch: Partial<TranscriptItem> = {};
   const files = collectFiles(name, args, details);
@@ -181,6 +208,9 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
         totalLines: details.totalLines,
         resolvedPath: details.resolvedPath ?? (details.meta?.source?.type === "path" ? details.meta.source.value : undefined),
         shownRange: details.meta?.truncation?.shownRange,
+        // Summarized reads (elided body): the only "partial read" marker with no
+        // truncation/lineNumbers; the frontend derives the shown range from it
+        summary: typeof details.summary?.lines === "number" ? details.summary : undefined,
       };
     }
     // Directory-read fallback: carry isDirectory even without displayContent (the frontend filters the browsed group by it)
@@ -193,6 +223,21 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     return patch;
   }
   if (name === "hub") {
+    const text = resultText(result);
+    if (text) patch.output = text;
+    if (details) patch.details = details;
+    return patch;
+  }
+  if (name === "wait") {
+    // Coordination wait: the frontend's wait row summarizes details.jobs/agents; the model-facing
+    // text (consumed peer message / nothing-to-wait notice) feeds the expandable card
+    const text = resultText(result);
+    if (text) patch.output = text;
+    if (details) patch.details = details;
+    return patch;
+  }
+  if (name === "task") {
+    // Subagent spawn: details carry results/progress/async state for the expandable card
     const text = resultText(result);
     if (text) patch.output = text;
     if (details) patch.details = details;
@@ -222,6 +267,10 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     return patch;
   }
   if (Array.isArray(details?.perFileResults) && details.perFileResults.length > 1) {
+    if (typeof details?.diff === "string") {
+      patch.diffContent = details.diff.slice(0, 500_000);
+    }
+    if (details) patch.details = details;
     return patch; // Multi-file "changes" carry no line counts
   }
   if (typeof details?.diff === "string") {
@@ -232,11 +281,45 @@ function summarizeResult(name: string, args: any, result: any): Partial<Transcri
     // +N-M summary); truncation cap matches the file_diff reply's scope
     patch.diffContent = details.diff.slice(0, 500_000);
   }
-  else if ((name === "write" || name === "edit") && typeof args?.content === "string") {
+  else if (name === "write" && typeof args?.content === "string") {
     // Writing a tool device (xd://tui etc.) is not a file edit: there is no
     // file diff to show, and add/remove counts derived from content line
     // counts would be fake — send the device's reply text instead, for the
     // device row's expansion
+    if (isDevicePath(args?.path)) {
+      const text = resultText(result);
+      if (text) patch.output = text;
+    } else {
+      const newText = args.content;
+      const targetPath = pendingWrite?.path ?? pathOf(args);
+      if (pendingWrite?.oldText !== undefined) {
+        try {
+          const diffRes = editDiffString(pendingWrite.oldText, newText, targetPath);
+          if (diffRes?.diff) {
+            Object.assign(patch, diffStats(diffRes.diff));
+            patch.diffContent = diffRes.diff.slice(0, 500_000);
+          } else {
+            patch.added = 0;
+            patch.removed = 0;
+            patch.diffContent = "";
+          }
+        } catch {
+          patch.added = Math.max(1, newText.split("\n").length);
+          patch.removed = 0;
+        }
+      } else {
+        patch.added = Math.max(1, newText.split("\n").length);
+        patch.removed = 0;
+        try {
+          const diffRes = editDiffString("", newText, targetPath);
+          if (diffRes?.diff) {
+            patch.diffContent = diffRes.diff.slice(0, 500_000);
+          }
+        } catch {}
+      }
+    }
+  }
+  else if (name === "edit" && typeof args?.content === "string") {
     if (isDevicePath(args?.path)) {
       const text = resultText(result);
       if (text) patch.output = text;
@@ -458,6 +541,21 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
     }
     case "tool_execution_start": {
       flushAssistantDraft(entry);
+      if (ev.toolName === "write" && ev.toolCallId) {
+        const p = pathOf(ev.args);
+        if (p && !isDevicePath(p)) {
+          const abs = path.resolve(entry.cwd, p);
+          try {
+            if (fs.existsSync(abs) && fs.statSync(abs).isFile() && fs.statSync(abs).size <= 2_000_000) {
+              pendingWrites.set(ev.toolCallId, { path: abs, oldText: fs.readFileSync(abs, "utf8") });
+            } else {
+              pendingWrites.set(ev.toolCallId, { path: abs });
+            }
+          } catch {
+            pendingWrites.set(ev.toolCallId, { path: abs });
+          }
+        }
+      }
       const args = toolArgsForUi(ev.toolName, ev.args);
       const item: TranscriptItem = {
         role: "tool",
@@ -476,7 +574,9 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         entry.transcript.findLast?.((t) => t.role === "tool" && t.toolCallId === ev.toolCallId) ??
         [...entry.transcript].reverse().find((t) => t.role === "tool" && t.toolCallId === ev.toolCallId) ??
         [...entry.transcript].reverse().find((t) => t.role === "tool" && t.name === ev.toolName);
-      if (item) Object.assign(item, summarizeResult(ev.toolName, { ...(item.args || {}), ...(ev.args || {}) }, ev.result));
+      const pendingWrite = ev.toolCallId ? pendingWrites.get(ev.toolCallId) : undefined;
+      if (ev.toolCallId) pendingWrites.delete(ev.toolCallId);
+      if (item) Object.assign(item, summarizeResult(ev.toolName, { ...(item.args || {}), ...(ev.args || {}) }, ev.result, pendingWrite));
       return {
         kind: "tool_update",
         name: ev.toolName,
@@ -534,6 +634,7 @@ export const PHASE_TEXT: Record<string, [string, string]> = {
 export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   const out: TranscriptItem[] = [];
   const byId = new Map<string, TranscriptItem>();
+  const fileHistory = new Map<string, string>();
   let run: { items: TranscriptItem[]; usage: TurnUsage | null; startMs: number; endMs: number } | null = null;
 
   const finalizeRun = () => {
@@ -588,7 +689,27 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     if (role === "toolResult") {
       if (run && ts) run.endMs = ts;
       const item = byId.get(msg.toolCallId);
-      if (item) Object.assign(item, summarizeResult(msg.toolName, item.args, msg));
+      if (item) {
+        let pendingWrite: { path: string; oldText?: string } | undefined;
+        if (msg.toolName === "write") {
+          const p = pathOf(item.args);
+          if (p && !isDevicePath(p)) {
+            const oldText = fileHistory.get(p);
+            pendingWrite = { path: p, oldText };
+            if (typeof item.args?.content === "string") {
+              fileHistory.set(p, item.args.content);
+            }
+          }
+        }
+        Object.assign(item, summarizeResult(msg.toolName, item.args, msg, pendingWrite));
+        if (msg.toolName === "read") {
+          const p = pathOf(item.args);
+          const readText = msg.details?.displayContent?.text;
+          if (p && typeof readText === "string") {
+            fileHistory.set(p, readText);
+          }
+        }
+      }
       continue;
     }
     if (role === "bashExecution") {
@@ -742,6 +863,16 @@ function treeNorm(s: unknown, max = 160): string {
   return t.length > max ? t.slice(0, max) + "…" : t;
 }
 
+// Full-text variant for message-class rows: the host sends the complete text
+// (line breaks kept); the collapsed row truncates via CSS single-line ellipsis
+// and the expanded drawer is the full-content scrollable view.
+function treeNormMulti(s: unknown): string {
+  return String(s ?? "")
+    .replace(/\x1b\[[0-9;:]*m/g, "")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+    .trim();
+}
+
 function treeContentText(content: unknown): string {
   if (typeof content === "string") return stripDcpTags(content);
   if (!Array.isArray(content)) return "";
@@ -843,20 +974,20 @@ function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: strin
       }
       if (role === "bashExecution") return `[bash]: ${treeNorm(msgField(msg, "command"), 80)}`;
       if (role === "assistant") {
-        if (content) return treeNorm(content);
+        if (content) return treeNormMulti(content);
         const err = msgField(msg, "errorMessage");
         if (typeof err === "string" && err) return treeNorm(err, 80);
         if (msgField(msg, "stopReason") === "aborted") return hostI18n.t("flows.tree.aborted");
         return "";
       }
-      return treeNorm(content); // user / developer / other roles
+      return treeNormMulti(content); // user / developer / other roles
     }
     case "custom_message":
-      return treeNorm(treeContentText(entry.content));
+      return treeNormMulti(treeContentText(entry.content));
     case "compaction":
       return `[compaction: ${Math.round((entry.tokensBefore ?? 0) / 1000)}k tokens]`;
     case "branch_summary":
-      return treeNorm(entry.summary);
+      return treeNormMulti(entry.summary);
     case "model_change":
       return `[model: ${entry.model}]`;
     case "model_usage":

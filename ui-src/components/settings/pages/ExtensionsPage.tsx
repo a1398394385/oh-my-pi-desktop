@@ -5,7 +5,7 @@
 // unified entry list (kind icon / source badge / state) + inline .mem-expand detail (same data
 // side as the TUI inspector; rule parsing / tool file headers / command previews are
 // precomputed and sent by the host).
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import { t as ti } from "../../../i18n";
@@ -62,17 +62,28 @@ function stateLabel(ext: ExtensionItem): string {
 
 // Item toggle: shadowed is unclickable; provider-level reasons don't flip optimistically
 // (server frames are authoritative); manual disable gives instant feedback
-function ItemToggle({ ext, scope }: { ext: ExtensionItem; scope: string }) {
+function ItemToggle({ ext, scope, disabled }: { ext: ExtensionItem; scope: string; disabled?: boolean }) {
   const { t } = useTranslation();
+  const isProvDisabled = disabled || ext.disabledReason === "provider-disabled";
+  const isShadowed = ext.state === "shadowed";
+  const isInteractive = !isShadowed && !isProvDisabled;
   const on = ext.state === "active";
-  const optimistic = ext.state !== "shadowed" && (!ext.disabledReason || ext.disabledReason === "item-disabled");
+  const optimistic = isInteractive && (!ext.disabledReason || ext.disabledReason === "item-disabled");
+  const tip = isShadowed
+    ? t("settingsPage.ext.shadowedTip")
+    : isProvDisabled
+    ? t("settingsPage.ext.reasonProviderDisabled")
+    : on
+    ? t("settingsPage.shared.enabledTip")
+    : t("settingsPage.shared.disabledTip");
+
   return (
     <div
-      className={`tg${on ? " on" : ""}${ext.state === "shadowed" ? " disabled" : ""}`}
-      title={ext.state === "shadowed" ? t("settingsPage.ext.shadowedTip") : on ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
+      className={`tg${on ? " on" : ""}${!isInteractive ? " disabled" : ""}`}
+      title={tip}
       onClick={(e) => {
         e.stopPropagation();
-        if (ext.state === "shadowed") return;
+        if (!isInteractive) return;
         const next = !on;
         if (optimistic) {
           const st = useAppStore.getState().extensions;
@@ -180,6 +191,9 @@ function ExtDetail({ ext, onClose }: { ext: ExtensionItem; onClose: () => void }
       </div>
       <div className="ext-detail">
         <KV k={t("settingsPage.ext.kvSource")} v={`${ext.source.providerName} · ${LEVEL_LABEL_KEYS[ext.source.level] ? t(LEVEL_LABEL_KEYS[ext.source.level]) : ext.source.level}`} />
+        {ext.state === "shadowed" ? (
+          <KV k={t("settingsPage.ext.kvOverriddenBy")} v={ext.shadowedBy ?? t("settingsPage.shared.sameNameEntry")} />
+        ) : null}
         <KV k={t("settingsPage.ext.kvPath")} v={ext.path} />
         {ext.trigger ? <KV k={t("settingsPage.ext.kvTrigger")} v={ext.trigger} /> : null}
         <KV k={t("settingsPage.ext.kvDesc")} v={desc} />
@@ -279,24 +293,55 @@ export default function ExtensionsPage() {
     };
   }, []);
 
-  // Keep the selected branch pill in view (horizontal-only local scroll; never scrollIntoView — it would shake vertical ancestor containers)
-  useEffect(() => {
+  // Handle provider selection:
+  // 1. Clicking the rightmost visible pill auto-scrolls left so the next pill slides under the cursor
+  // 2. Clicking the leftmost visible pill auto-scrolls right so the prev pill slides under the cursor
+  const handleProvSelect = (pid: string, targetEl?: HTMLElement) => {
+    setProv(pid);
     const pills = pillsRef.current;
     if (!pills) return;
-    const activeEl = pills.querySelector(".fork-pill.active") as HTMLElement | null;
-    if (!activeEl) return;
+
+    if (!targetEl) {
+      if (pid === "all") pills.scrollTo({ left: 0, behavior: "smooth" });
+      return;
+    }
 
     const pillsRect = pills.getBoundingClientRect();
-    const activeRect = activeEl.getBoundingClientRect();
-    const pillLeft = activeRect.left - pillsRect.left + pills.scrollLeft;
-    const pillRight = pillLeft + activeEl.offsetWidth;
-    const scrollLeft = pills.scrollLeft;
-    const clientWidth = pills.clientWidth;
+    const targetRect = targetEl.getBoundingClientRect();
 
-    if (pillLeft < scrollLeft) {
-      pills.scrollTo({ left: Math.max(0, pillLeft - 12), behavior: "smooth" });
-    } else if (pillRight > scrollLeft + clientWidth) {
-      pills.scrollTo({ left: pillRight - clientWidth + 12, behavior: "smooth" });
+    const nextEl = targetEl.nextElementSibling as HTMLElement | null;
+    const prevEl = targetEl.previousElementSibling as HTMLElement | null;
+
+    // Check whether nextEl overflows or target is near the right edge of the viewport
+    const nextOverflow = nextEl ? nextEl.getBoundingClientRect().right > pillsRect.right - 6 : false;
+    const isRightEdge = targetRect.right >= pillsRect.right - 24;
+
+    // Check whether prevEl overflows or target is near the left edge of the viewport
+    const prevOverflow = prevEl ? prevEl.getBoundingClientRect().left < pillsRect.left + 6 : false;
+    const isLeftEdge = targetRect.left <= pillsRect.left + 24;
+
+    if (nextEl && (nextOverflow || isRightEdge)) {
+      // Right end: slide left so nextEl takes targetEl's spot under the cursor
+      const delta = nextEl.offsetLeft - targetEl.offsetLeft;
+      pills.scrollTo({
+        left: Math.min(pills.scrollWidth - pills.clientWidth, pills.scrollLeft + delta),
+        behavior: "smooth",
+      });
+    } else if (prevEl && (prevOverflow || isLeftEdge)) {
+      // Left end: slide right so prevEl takes targetEl's spot under the cursor
+      const delta = targetEl.offsetLeft - prevEl.offsetLeft;
+      pills.scrollTo({
+        left: Math.max(0, pills.scrollLeft - delta),
+        behavior: "smooth",
+      });
+    } else if (pid === "all") {
+      pills.scrollTo({ left: 0, behavior: "smooth" });
+    }
+  };
+
+  useEffect(() => {
+    if (prov === "all") {
+      pillsRef.current?.scrollTo({ left: 0, behavior: "smooth" });
     }
   }, [prov]);
 
@@ -322,19 +367,39 @@ export default function ExtensionsPage() {
   };
 
   const items = payload?.extensions ?? [];
+  const enabledProvIds = useMemo(() => {
+    return new Set((payload?.providers ?? []).filter((p) => p.enabled).map((p) => p.id));
+  }, [payload?.providers]);
+  const sortedProviders = useMemo(() => {
+    const list = [...(payload?.providers ?? [])];
+    return list.sort((a, b) => {
+      if (a.enabled === b.enabled) return 0;
+      return a.enabled ? -1 : 1;
+    });
+  }, [payload?.providers]);
   const query = q.trim().toLowerCase();
   const filtered = items
-    .filter((ext) => (prov === "all" ? true : ext.source.provider === prov))
+    .filter((ext) => {
+      if (prov === "all") {
+        return enabledProvIds.has(ext.source.provider) && ext.state !== "shadowed";
+      }
+      return ext.source.provider === prov;
+    })
     .filter((ext) =>
       !query
         ? true
-        : [ext.name, ext.displayName, ext.description, ext.trigger, ext.path].some((f) => f?.toLowerCase().includes(query)),
+        : [ext.name, ext.displayName, ext.description, ext.trigger, ext.path, ext.source?.providerName].some((f) =>
+            f?.toLowerCase().includes(query),
+          ),
     )
     .sort((a, b) => {
       const ko = KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
       return ko !== 0 ? ko : a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" });
     });
-  const countOf = (pid: string) => (pid === "all" ? items.length : items.filter((x) => x.source.provider === pid).length);
+  const countOf = (pid: string) =>
+    pid === "all"
+      ? items.filter((x) => enabledProvIds.has(x.source.provider) && x.state !== "shadowed").length
+      : items.filter((x) => x.source.provider === pid).length;
   const selProv = prov === "all" ? null : (payload?.providers.find((p) => p.id === prov) ?? null);
 
   return (
@@ -356,93 +421,68 @@ export default function ExtensionsPage() {
           <span className="ext-divider">|</span>
           <span className="text-ui-base text-dim">{t("settingsPage.ext.countItems", { count: filtered.length })}</span>
         </div>
-        <div className="ext-search-wrap">
-          <span className="ext-search-icon"><Icon name="search" size={14} /></span>
-          <input
-            type="text"
-            className="ext-search-input"
-            placeholder={t("settingsPage.ext.searchPlaceholder")}
-            spellCheck="false"
-            autoComplete="off"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="ext-bar-secondary">
-        <div className="fork-pills ext-prov-pills" ref={pillsRef}>
-          <button
-            type="button"
-            className={`fork-pill ${prov === "all" ? "active" : ""}`}
-            onClick={() => setProv("all")}
-          >
-            <span>{t("settingsPage.ext.allSources")}</span>
-            <span className="fork-pill-len">{countOf("all")}</span>
-          </button>
-          {(payload?.providers ?? []).map((p) => {
-            const isActive = prov === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                className={`fork-pill ${isActive ? "active" : ""}`}
-                onClick={() => setProv(p.id)}
-                title={p.description || p.displayName}
+        <div className="ext-bar-actions">
+          {selProv ? (
+            <div className="ext-prov-ctl">
+              <span className="text-ui-sm text-dim">{t("settingsPage.ext.enableSource")}</span>
+              <div
+                className={`tg${selProv.enabled ? " on" : ""}`}
+                title={selProv.enabled ? t("settingsPage.ext.sourceEnabledTip") : t("settingsPage.shared.disabledTip")}
+                onClick={() => {
+                  const nextEnabled = !selProv.enabled;
+                  const st = useAppStore.getState().extensions;
+                  if (st) {
+                    useAppStore.setState({
+                      extensions: {
+                        ...st,
+                        providers: st.providers.map((p) => (p.id === selProv.id ? { ...p, enabled: nextEnabled } : p)),
+                        extensions: st.extensions.map((x) =>
+                          x.source.provider === selProv.id
+                            ? nextEnabled
+                              ? { ...x, state: "active" as const, disabledReason: undefined }
+                              : { ...x, state: "disabled" as const, disabledReason: "provider-disabled" as const }
+                            : x,
+                        ),
+                      },
+                    });
+                  }
+                  send({ type: "toggle_extension_provider", providerId: selProv.id, scope });
+                }}
               >
-                <span className="truncate max-w-[160px]">{p.displayName}</span>
-                <span className="fork-pill-len">{countOf(p.id)}</span>
-              </button>
-            );
-          })}
-        </div>
-        {selProv ? (
-          <div className="ext-prov-ctl">
-            <span className="text-ui-sm text-dim">{t("settingsPage.ext.enableSource")}</span>
-            <div
-              className={`tg${selProv.enabled ? " on" : ""}`}
-              title={selProv.enabled ? t("settingsPage.ext.sourceEnabledTip") : t("settingsPage.shared.disabledTip")}
-              onClick={() => {
-                const st = useAppStore.getState().extensions;
-                if (st) {
-                  useAppStore.setState({
-                    extensions: {
-                      ...st,
-                      providers: st.providers.map((p) => (p.id === selProv.id ? { ...p, enabled: !p.enabled } : p)),
-                    },
-                  });
-                }
-                send({ type: "toggle_extension_provider", providerId: selProv.id, scope });
-              }}
-            >
-              <i />
-            </div>
-            {selProv.foreignUserSource ? (
-              <>
-                <span className="text-ui-sm text-dim">{t("settingsPage.ext.userConfig")}</span>
-                <div
-                  className={`tg${selProv.userSourceEnabled ? " on" : ""}`}
-                  title={selProv.userSourceEnabled ? t("settingsPage.ext.userSourceOn") : t("settingsPage.ext.userSourceOff")}
-                  onClick={() => {
-                    const st = useAppStore.getState().extensions;
-                    if (st) {
-                      useAppStore.setState({
-                        extensions: {
-                          ...st,
-                          providers: st.providers.map((p) => (p.id === selProv.id ? { ...p, userSourceEnabled: !p.userSourceEnabled } : p)),
-                        },
-                      });
+                <i />
+              </div>
+              {selProv.foreignUserSource ? (
+                <>
+                  <span className={`text-ui-sm text-dim${!selProv.enabled ? " opacity-50" : ""}`}>{t("settingsPage.ext.userConfig")}</span>
+                  <div
+                    className={`tg${selProv.userSourceEnabled ? " on" : ""}${!selProv.enabled ? " disabled" : ""}`}
+                    title={
+                      !selProv.enabled
+                        ? t("settingsPage.ext.reasonProviderDisabled")
+                        : selProv.userSourceEnabled
+                        ? t("settingsPage.ext.userSourceOn")
+                        : t("settingsPage.ext.userSourceOff")
                     }
-                    send({ type: "toggle_extension_user_source", providerId: selProv.id, scope });
-                  }}
-                >
-                  <i />
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="ext-actions-wrap">
+                    onClick={() => {
+                      if (!selProv.enabled) return;
+                      const st = useAppStore.getState().extensions;
+                      if (st) {
+                        useAppStore.setState({
+                          extensions: {
+                            ...st,
+                            providers: st.providers.map((p) => (p.id === selProv.id ? { ...p, userSourceEnabled: !p.userSourceEnabled } : p)),
+                          },
+                        });
+                      }
+                      send({ type: "toggle_extension_user_source", providerId: selProv.id, scope });
+                    }}
+                  >
+                    <i />
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="button"
             className={`icon-btn pg-refresh${spinning ? " spin" : ""}`}
@@ -451,10 +491,50 @@ export default function ExtensionsPage() {
           >
             <Icon name="refresh" size={17} />
           </button>
+          <div className="ext-search-wrap">
+            <span className="ext-search-icon"><Icon name="search" size={14} /></span>
+            <input
+              type="text"
+              className="ext-search-input"
+              placeholder={t("settingsPage.ext.searchPlaceholder")}
+              spellCheck="false"
+              autoComplete="off"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="ext-list-wrap">
+      <div className="ext-bar-secondary">
+        <div className="fork-pills ext-prov-pills" ref={pillsRef}>
+          <button
+            type="button"
+            className={`fork-pill prov-enabled ${prov === "all" ? "active" : ""}`}
+            onClick={(e) => handleProvSelect("all", e.currentTarget)}
+          >
+            <span>{t("settingsPage.ext.allSources")}</span>
+            <span className="fork-pill-len">{countOf("all")}</span>
+          </button>
+          {sortedProviders.map((p) => {
+            const isActive = prov === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`fork-pill ${p.enabled ? "prov-enabled" : "prov-disabled"} ${isActive ? "active" : ""}`}
+                onClick={(e) => handleProvSelect(p.id, e.currentTarget)}
+                title={p.description || p.displayName}
+              >
+                <span className="truncate max-w-[160px]">{p.displayName}</span>
+                <span className="fork-pill-len">{countOf(p.id)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="ext-list-wrap" key={`${scope}-${prov}`}>
         {!payload ? (
           <div className="set-card">{emptyRow(t("common.loading"))}</div>
         ) : !filtered.length ? (
@@ -471,10 +551,11 @@ export default function ExtensionsPage() {
                 <div className="set-card">
                   {g.items.map((ext) => {
                     const open = openId === ext.id;
+                    const isProvDisabled = ext.disabledReason === "provider-disabled" || (selProv ? !selProv.enabled : false);
                     return (
                       <div key={ext.id} className="ext-row-wrap">
                         <div
-                          className={`srow ext-row${open ? " on" : ""}${ext.state !== "active" ? " off" : ""}`}
+                          className={`srow ext-row${open ? " on" : ""}${ext.state !== "active" ? " off" : ""}${isProvDisabled ? " prov-disabled" : ""}`}
                           onClick={() => setOpenId(open ? null : ext.id)}
                         >
                           <span className="ext-kind-ic" title={KIND_LABEL[ext.kind] ? t(KIND_LABEL[ext.kind]) : ext.kind}>
@@ -484,14 +565,31 @@ export default function ExtensionsPage() {
                             <b>{ext.displayName}</b>
                             <span>{ext.description ?? ext.trigger ?? ext.path}</span>
                           </div>
-                          {ext.state === "shadowed" ? (
-                            <div className="ext-badges">
-                              <span className="tag ext-tag-warn">{t("settingsPage.shared.shadowedTag")}</span>
-                            </div>
-                          ) : null}
+                          <div className="ext-badges">
+                            <span
+                              className="tag ext-tag-prov"
+                              title={t("settingsPage.ext.sourceTitle", {
+                                provider: ext.source.providerName || ext.source.provider,
+                                level: LEVEL_LABEL_KEYS[ext.source.level] ? t(LEVEL_LABEL_KEYS[ext.source.level]) : ext.source.level,
+                                state: stateLabel(ext),
+                              })}
+                            >
+                              {ext.source.providerName || ext.source.provider}
+                            </span>
+                            {ext.state === "shadowed" ? (
+                              <span
+                                className="tag ext-tag-warn"
+                                title={t("settingsPage.shared.stateShadowedBy", {
+                                  name: ext.shadowedBy || t("settingsPage.shared.sameNameEntry"),
+                                })}
+                              >
+                                {t("settingsPage.shared.shadowedTag")}
+                              </span>
+                            ) : null}
+                          </div>
                           <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
                           <div className="srow-ctl">
-                            <ItemToggle ext={ext} scope={scope} />
+                            <ItemToggle ext={ext} scope={scope} disabled={isProvDisabled} />
                           </div>
                         </div>
                         {open ? <ExtDetail ext={ext} onClose={() => setOpenId(null)} /> : null}

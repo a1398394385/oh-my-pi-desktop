@@ -426,7 +426,31 @@
 
 .ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
-.ext-prov-pills { flex: 0 1 auto; min-width: 0; }
+.ext-bar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
+
+.ext-prov-pills { flex: 1 1 100%; min-width: 0; }
+.ext-prov-pills .fork-pill.prov-enabled {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+.ext-prov-pills .fork-pill.prov-disabled {
+  background: transparent;
+  border-color: var(--line-soft);
+  color: var(--faint);
+  opacity: .7;
+}
+.ext-prov-pills .fork-pill.prov-disabled:hover {
+  background: var(--panel);
+  color: var(--dim);
+  opacity: 1;
+}
+.ext-prov-pills .fork-pill.active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border-color: var(--accent);
+  color: var(--text);
+  opacity: 1;
+}
 
 .ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 
@@ -446,13 +470,18 @@
 
 .ext-search-input::placeholder { color: var(--faint); }
 
-.ext-bar-secondary { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.ext-bar-secondary { display: flex; align-items: center; margin-bottom: 12px; }
 
-.ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0; }
+@keyframes extFadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0; animation: extFadeIn .2s ease-out; }
 
 .ext-actions-wrap { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-.ext-list-wrap { margin-top: 4px; }
+.ext-list-wrap { margin-top: 4px; animation: extFadeIn .2s ease-out; }
 
 /* groups (by capability type): group titles reuse .set-group-tt, the first group tightens its gap to the toolbar */
 .ext-group:first-child .set-group-tt { margin-top: 6px; }
@@ -468,6 +497,7 @@
 .ext-row-wrap:first-child .ext-row { border-top: 0; }
 
 .ext-row.off .srow-tx b { color: var(--dim); }
+.ext-row.prov-disabled { opacity: .55; }
 
 /* descriptions truncated to one line (following the group card row style: name + one-line summary) */
 .ext-row .srow-tx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -477,6 +507,15 @@
 .ext-badges { display: flex; align-items: center; gap: 6px; flex: none; }
 
 .ext-tag-warn { color: var(--yellow); border-color: var(--yellow); }
+.ext-tag-prov {
+  color: var(--dim);
+  background: var(--panel-2);
+  border-color: var(--line-soft);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .ext-row .srow-tx { flex: 1; }
 
@@ -1061,6 +1100,34 @@
 /* expansion-area bottom buttons uniformly use .confirm-btn / .confirm-btn.danger (the global confirmation dialog language) */
 
 /* ── settings sidebar resize (#setNavResizer, logic in Settings.tsx) and scrollbar fade-in ── */
+#settings *::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  transition: background-color .25s ease-out;
+}
+
+#settings *:hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+
+#settings *.scrolling::-webkit-scrollbar-thumb,
+#settings *.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: var(--panel-3);
+}
+
+#settings *::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--panel-3) 45%, var(--dim));
+}
+
+#settings * {
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .25s ease-out;
+}
+
+#settings *.scrolling,
+#settings *.is-scrolling {
+  scrollbar-color: var(--panel-3) transparent;
+}
+
 #setNav { position: relative; }
 
 #setNavResizer {
@@ -1144,3 +1211,7 @@
 .mpw-meta-head .tg { flex: none; }
 .mpw-meta-label { color: var(--text); font-size: var(--ui-fs-base); white-space: nowrap; }
 .mpw-meta-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+/* hooks page inline editor (shares the agents editor layout; #aeText counterpart) */
+#hookText { flex: 1; min-height: 320px; background: none; border: 0; outline: none; resize: vertical; padding: 12px 14px; color: var(--text); font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.6; }
+#hookPhasePills .mcp-type-pill { min-height: 26px; padding: 0 10px; font-size: var(--ui-fs-sm); }

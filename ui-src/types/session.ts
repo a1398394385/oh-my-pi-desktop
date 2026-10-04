@@ -3,7 +3,7 @@
 // (items.tsx:21-69 per-role dispatch, :87 pending steer, :95-131 merged-group pseudo entries);
 // on-wire shape is anchored to host/state.ts TranscriptItem (messages frame, see ./frames);
 // meta/err are frontend-local entries (pushed by store.ts, never through the host).
-// Mutable expansion flags (expanded/branching/cmdExpanded/diffExpanded/readExpanded/briefDiff etc.)
+// Mutable expansion flags (expanded/branching/cmdExpanded/diffExpanded/readExpanded etc.)
 // are written in place onto entry objects by components (reference-stable, preserved across full redraws),
 // hence all declared optional and writable.
 
@@ -93,6 +93,8 @@ export interface ToolDetails {
     startLine?: number;
     lineNumbers?: number[] | null;
   };
+  shownRange?: { start: number; end: number }; // truncated read: lines actually shown (meta.truncation.shownRange via the host)
+  summary?: { lines: number; elidedSpans?: number; elidedLines?: number }; // summarized read: shown line count with elided spans
   [key: string]: unknown;
 }
 
@@ -148,7 +150,7 @@ export interface ToolItem {
   cmdExpanded?: boolean; // terminal output expanded (written in place by components)
   diffExpanded?: boolean; // diff expanded (written in place by components)
   readExpanded?: boolean; // read content expanded (written in place by components)
-  briefDiff?: string; // single-file diff for inline expansion (written in place by components)
+
 }
 
 /** Loop group (items.tsx:39-42 passes the whole entry to LoopGroup; collects this turn's process entries) */

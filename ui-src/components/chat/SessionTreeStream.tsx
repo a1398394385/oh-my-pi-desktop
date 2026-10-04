@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../Icon";
 import { fmtAgo } from "../right/helpers";
-import { toast } from "../../store";
+import { toast, type TimerHandle } from "../../store";
 import { t } from "../../i18n";
 import type { EntryNode, StreamItem, StreamSection } from "./sessionTreeUtil";
 import {
@@ -22,6 +22,21 @@ interface SessionTreeStreamProps {
   navigating?: boolean;
   onNavigate: (node: EntryNode, summarize: boolean) => void;
   isCompact?: boolean;
+}
+
+// Detail-drawer scrollbar reveal timers (scroll -> visible, 650ms idle -> hidden),
+// keyed by element so multiple expanded drawers stay independent.
+const detailScrollTimers = new WeakMap<HTMLElement, TimerHandle>();
+function flashDetailScrollbar(el: HTMLElement): void {
+  el.classList.add("is-scrolling");
+  clearTimeout(detailScrollTimers.get(el));
+  detailScrollTimers.set(el, setTimeout(() => el.classList.remove("is-scrolling"), 650));
+}
+
+// Native-tooltip cap: the host now sends full text (the drawer owns full display),
+// raw tooltips of thousands of chars would be unusable.
+function tooltipText(text: string, max = 200): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 export default function SessionTreeStream({
@@ -270,7 +285,7 @@ export default function SessionTreeStream({
           <div
             className="node-card-header"
             onClick={() => toggleExpand(node.id)}
-            title={node.text || t("chat.emptyEntry")}
+            title={tooltipText(node.text || t("chat.emptyEntry"))}
           >
             <span className={`role-badge ${roleBadgeType}`}>
               {roleBadgeText}
@@ -295,7 +310,10 @@ export default function SessionTreeStream({
           {isExpanded && (
             <div className="node-detail-panel show">
               <div className="detail-section-title">{t("chat.entryFullContent")}</div>
-              <div className="detail-body font-mono text-ui-sm">
+              <div
+                className="detail-body font-mono text-ui-sm"
+                onScroll={(e) => flashDetailScrollbar(e.currentTarget)}
+              >
                 {node.label ? `[${node.label}] ` : ""}
                 {node.text || t("chat.emptyEntryContent")}
               </div>
@@ -525,7 +543,7 @@ function ForkSwitcher({
                   onSelectBranch(item.parentId, opt.id);
                   toast(t("chat.switchedToBranch", { index: i + 1 }));
                 }}
-                title={summaryText}
+                title={tooltipText(summaryText)}
               >
                 <span className="fork-pill-index">#{i + 1}</span>
                 <span className="truncate max-w-[200px]">{labelText}{summaryText}</span>

@@ -226,6 +226,8 @@ patchPreviewSession({
     advisorCost: 0,
     activeMs: 65_000,
     receivedAt: Date.now(),
+    tokenSpeed: 42.5,
+    avgTtft: 350,
   },
 });
 await sleep(150);
@@ -235,6 +237,7 @@ const bar1 = $("#statsBar")?.textContent ?? "";
 const d0 = bar0.match(/(\d+)分(\d+)秒/);
 const d1 = bar1.match(/(\d+)分(\d+)秒/);
 ok("统计行渲染整会话口径（缓存利用率 99.0% / 时长 1分5秒）", bar0.includes("99.0%") && bar0.includes("1分5秒"));
+ok("统计行包含 Token 速度与平均首字时间", bar0.includes("42.5 tok/s") && bar0.includes("350ms"));
 ok(
   "运行中时长在两条统计帧之间继续走",
   !!d0 && !!d1 && Number(d1[1]) * 60 + Number(d1[2]) > Number(d0[1]) * 60 + Number(d0[2]),

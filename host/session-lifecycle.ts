@@ -163,6 +163,37 @@ function buildSessionStats(entry: PoolEntry) {
   // DeepSeek (misses recorded as input with cacheWrite at 0) reduce to
   // hit/(hit+miss)
   const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+
+  let totalAssistantDuration = 0;
+  let totalAssistantOutput = 0;
+  let totalTtft = 0;
+  let ttftCount = 0;
+
+  const entries: any[] = typeof entry.manager?.getEntries === "function" ? entry.manager.getEntries() : [];
+  for (const item of entries) {
+    if (item?.type === "message" && item.message?.role === "assistant") {
+      const msg = item.message;
+      if (typeof msg.ttft === "number" && Number.isFinite(msg.ttft) && msg.ttft > 0) {
+        totalTtft += msg.ttft;
+        ttftCount++;
+      }
+      const dur = typeof msg.duration === "number" && Number.isFinite(msg.duration) ? msg.duration : 0;
+      const out = typeof msg.usage?.output === "number" && Number.isFinite(msg.usage.output) ? msg.usage.output : 0;
+      if (dur > 0 && out > 0) {
+        totalAssistantDuration += dur;
+        totalAssistantOutput += out;
+      }
+    }
+  }
+
+  const tokenSpeed =
+    totalAssistantDuration > 0
+      ? (totalAssistantOutput * 1000) / totalAssistantDuration
+      : typeof (entry.session as any)?.tokenRate?.rate === "function"
+        ? (entry.session as any).tokenRate.rate()
+        : null;
+  const avgTtft = ttftCount > 0 ? totalTtft / ttftCount : null;
+
   return {
     tokens: {
       input: usage.input,
@@ -180,6 +211,8 @@ function buildSessionStats(entry: PoolEntry) {
     statsAt: now,
     // Active duration includes the in-flight window (matching TUI getActiveMs: idle wall time excluded)
     activeMs: entry.activeMs + (entry.activeStartedAt === null ? 0 : now - entry.activeStartedAt),
+    tokenSpeed,
+    avgTtft,
   };
 }
 

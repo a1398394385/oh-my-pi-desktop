@@ -383,6 +383,8 @@ export interface SessionStatsPayload {
   // stamp (not the local landing time) keeps the figure monotonic across frames:
   // transport/queueing delay would otherwise rewind it on every landing.
   receivedAt?: number;
+  tokenSpeed?: number | null;
+  avgTtft?: number | null;
 }
 
 /** Context-detail breakdown (context_detail frame, host/host.ts:1283-1301 + estimateMcpToolsTokens) */
@@ -465,8 +467,8 @@ export interface AgentAssetsPayload {
   flags: { enableMCP: boolean; disableExtensionDiscovery: boolean; computerEnabled: boolean };
 }
 
-/** Asset kind (host/assets.ts:56 AssetKind) */
-export type AssetKind = "agent" | "skill" | "mcp";
+/** Asset kind (host/assets.ts AssetKind) */
+export type AssetKind = "agent" | "skill" | "mcp" | "hook";
 
 /** Prompt attachment (UI → host; host/host.ts:2666-2672 PromptAttachment, sent by the UI along with the prompt) */
 export interface PromptAttachment {

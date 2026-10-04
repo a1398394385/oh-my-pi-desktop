@@ -197,6 +197,16 @@ export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: numb
 
 // ---------- Message rail tool summary (ported from ui/ringpop.js railToolText) ----------
 // Tool message summary: tool name + command/file, comma-joined
+// Subagent spawn summary for the task row's rail entry: spawn count once known (mirrors the
+// TUI header meta "Task N agents"), else the flat form's agent type ⟦bracketed⟧
+function taskRailSummary(args: Record<string, unknown>, details?: unknown): string {
+  const d = details as { results?: unknown[]; progress?: unknown[] } | undefined;
+  const count = d?.results?.length ?? d?.progress?.length ?? (Array.isArray(args.tasks) ? args.tasks.length : 0);
+  if (count > 0) return t("chat.taskSummaryBatch", { count });
+  const agent = typeof args.agent === "string" ? args.agent.trim() : "";
+  if (agent && agent !== "task") return `⟦${agent}⟧`;
+  return typeof args.task === "string" ? args.task.split("\n")[0].trim() : "";
+}
 export function railToolText(item: ToolItem): string {
   if (item.group) {
     // Group titles and rail summaries share one source: read / terminal / device / change
@@ -206,6 +216,27 @@ export function railToolText(item: ToolItem): string {
     return [label, ...item.group.flatMap((g) => (g.role === "tool" ? g.files || [] : []))].filter(Boolean).join(" · ");
   }
   const parts = [item.text];
+  if (item.name === "wait") {
+    // The raw tool name "wait" is meaningless in the rail; lead with the label and job counts
+    parts.length = 0;
+    parts.push(t("chat.labelWait"));
+    const jobs = (item.details as { jobs?: { status?: string }[] } | undefined)?.jobs;
+    if (jobs?.length) {
+      const settled = jobs.filter((j) => j.status && j.status !== "running").length;
+      parts.push(
+        settled === 0
+          ? t("chat.waitSummaryRunning", { count: jobs.length })
+          : t("chat.waitSummarySettled", { settled, count: jobs.length }),
+      );
+    }
+  }
+  if (item.name === "task") {
+    // Subagent spawn: replace the bare tool name with the label + spawn summary (name/brief/agent)
+    parts.length = 0;
+    parts.push(t("chat.labelTask"));
+    const summary = taskRailSummary(item.args || {}, item.details);
+    if (summary) parts.push(summary);
+  }
   if (item.args?.command) parts.push(String(item.args.command));
   if (item.args?.query) parts.push(String(item.args.query));
   if (item.name === "hub") {

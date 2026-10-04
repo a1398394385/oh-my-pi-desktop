@@ -106,6 +106,9 @@ export const hostErrorsZh = {
     mdOnly: "仅支持 .md {{kind}} 定义文件",
     skillDirForbidden: "路径不在允许的技能目录内: {{raw}}",
     dirForbidden: "路径不在允许的 {{kind}} 目录内: {{raw}}",
+    invalidToolName: "工具名仅允许字母、数字、-、_ 或 *",
+    invalidPhase: "钩子 phase 只能是 pre 或 post",
+    hookExtOnly: "仅支持钩子脚本文件 (.ts/.js/.mjs/.cjs/.sh/.bash/.py): {{raw}}",
   },
   plan: {
     notActive: "计划模式未激活",

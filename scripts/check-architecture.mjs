@@ -33,6 +33,9 @@ const HOT_LIMITS = [
   { path: "ui/css/main-composer.css", max: 670 },
   { path: "ui/css/main-streamdown.css", max: 280 },
   { path: "ui/css/main-tree.css", max: 450 },
+  // Fork-point segments + branch switcher split out of main-tree.css (the
+  // summary inline-scroll rework overflowed the tree cap).
+  { path: "ui/css/main-tree-fork.css", max: 160 },
   { path: "ui/css/main-hub.css", max: 160 },
   { path: "ui/css/main-welcome.css", max: 190 },
   { path: "ui/css/main-right.css", max: 1060 },

@@ -289,3 +289,25 @@ export function subscribeCodeTheme(listener: (theme: string) => void): () => voi
     themeListeners.delete(listener);
   };
 }
+
+// Cold-start warmup: the first highlight of a language pays engine creation +
+// grammar registration + first tokenize on the main thread, which users feel as a
+// stall when it lands on the first read-row expansion. Warming the common
+// languages during startup idle moves that cost off the interaction path. Cheap
+// by design: one tiny sample per language, results enter the normal cache.
+export function warmupHighlighter(langs: string[]): void {
+  const warm = () => {
+    void getHighlighter()
+      .then(async (h) => {
+        for (const lang of langs) {
+          const mod = LANG_MODULES[lang];
+          if (!mod || h.getLoadedLanguages().includes(lang)) continue;
+          await h.loadLanguage(mod);
+        }
+        h.codeToTokens("const x = 1;", { lang: langs[0], theme: currentCodeTheme() });
+      })
+      .catch(() => {}); // warmup is best-effort; failures surface on first real use
+  };
+  if (typeof requestIdleCallback !== "undefined") requestIdleCallback(warm, { timeout: 2000 });
+  else setTimeout(warm, 800);
+}

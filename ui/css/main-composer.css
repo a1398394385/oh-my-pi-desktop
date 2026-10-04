@@ -82,7 +82,7 @@
 [data-theme="light"] #statusCard { box-shadow: 0 10px 28px rgba(0,0,0,.12); } /* style-token-ignore */
 
 #input {
-  width: 100%; min-height: 54px; max-height: 120px;
+  width: 100%; min-height: 54px; max-height: calc(1.5em * 12.5);
   background: transparent; border: 0; outline: none; resize: none;
   box-shadow: none;
   color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-md); line-height: 1.5;
@@ -606,7 +606,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 /* ============================== P7 (Composer -> Lexical) ============================== */
 /* contentEditable inherits the old textarea's #input styles: height adapts to content (clamped by #input's
-   max-height at <=120px, inner scroll beyond — the textarea-era resizeInput JS is no longer needed), wrapping semantics aligned with
+   max-height at <=12.5 lines, inner scroll beyond — the textarea-era resizeInput JS is no longer needed), wrapping semantics aligned with
    the textarea's pre-wrap + break-word; overflow-y added explicitly (divs get no UA default scrolling) */
 #input.inp-ce {
   overflow-y: auto;

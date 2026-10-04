@@ -18,6 +18,7 @@
  *   main-composer.css    main page, middle-column input area (dock / bottom bar / goal / queue / send button / Lexical)
  *   main-streamdown.css  main page, streamdown rendering engine layer
  *   main-tree.css        main page, session-tree waterfall in the message area
+ *   main-tree-fork.css   main page, session tree: fork-point segments + branch switcher (split out of main-tree.css, cascades right after it)
  *   main-hub.css         main page, middle-column Agent Hub card + right-sidebar linked detail
  *   main-welcome.css     main page, welcome page (new-session centered page and expansion cards)
  *   main-right.css       main page, right sidebar (tab bar / file view / Git Diff / branch tree / terminal / browser / subagents page)
@@ -37,6 +38,7 @@
 @import "./css/main-composer.css";
 @import "./css/main-streamdown.css";
 @import "./css/main-tree.css";
+@import "./css/main-tree-fork.css";
 @import "./css/main-hub.css";
 @import "./css/main-welcome.css";
 @import "./css/main-right.css";

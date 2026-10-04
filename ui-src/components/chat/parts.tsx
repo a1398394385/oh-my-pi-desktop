@@ -253,14 +253,30 @@ export function Counts({ item }: { item: ToolItem }) {
   );
 }
 
+// ---------- This call's own diff (shared by the edit row's expansion request gate and EditBrief) ----------
+// Prefer the file-specific diff from details.perFileResults (multi-file apply_patch), else the
+// reply's diffContent. Both land with tool_update, so this is read live rather than snapshotted
+// at expansion time: a row expanded while the tool was still running (which fell back to the
+// git-diff cache) switches to the real per-call diff the moment it arrives.
+export function ownDiffOf(item: ToolItem, path: string): string | undefined {
+  const perFiles = (item.details as { perFileResults?: { path?: string; diff?: unknown }[] } | undefined)?.perFileResults;
+  if (Array.isArray(perFiles) && path) {
+    const match = perFiles.find((f) =>
+      typeof f?.path === "string" && (f.path === path || f.path.endsWith("/" + path) || path.endsWith("/" + f.path)),
+    );
+    if (match && typeof match.diff === "string") return match.diff;
+  }
+  return item.diffContent;
+}
+
 // ---------- Brief diff body for the edit row's inline expansion (formerly buildEditBrief) ----------
-// Diff source: item.briefDiff (the real modification from this tool response, takes priority) → briefDiffCache[path]
-// (git diff; the right-panel detail and inline expansion share one response). It is attached
-// to the item per call rather than cached per path — multiple edits to the same file each
-// see their own on expansion, without overwriting each other
+// Diff source: ownDiffOf (the real modification from this tool response, takes priority) →
+// briefDiffCache[path] (git diff; the right-panel detail and inline expansion share one
+// response). The per-call diff lives on the item, so multiple edits to the same file each
+// see their own on expansion, without overwriting each other.
 export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; lift?: boolean }) {
   const briefDiffCache = useAppStore((s) => s.briefDiffCache); // Map reference subscription: response/placeholder writes trigger redraw
-  const diff = item.briefDiff !== undefined ? item.briefDiff : briefDiffCache.get(path);
+  const diff = ownDiffOf(item, path) ?? briefDiffCache.get(path);
   const cls = "ed-brief" + (lift ? " lift" : " drop");
   if (diff === undefined) {
     // Two kinds of "not yet arrived": the tool itself is still running (this response not
@@ -284,6 +300,44 @@ export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; 
 // Click the whole row to expand/collapse; the expand body shows the raw text read this time
 // (details.displayContent.text, no line-number prefixes), line numbers come from
 // startLine/lineNumbers, falling back to sequential indices. No content means not expandable.
+
+/** Format a line range the way the TUI suffixes a read path: `:140-215` (single line `:140`). */
+function fmtRange(start: number, end: number): string {
+  return start === end ? `:${start}` : `:${start}-${end}`;
+}
+
+// The row's `:start-end` badge. Shown only for partial reads; full reads carry none:
+// 1. an explicit selector in args.path (the range the model asked for, TUI parity);
+// 2. the lines actually shown — elided lineNumbers endpoints, truncation's shownRange,
+//    or a summarized read's span (no lineNumbers at all; sequential numbering applies);
+//    suppressed when the derived span covers the whole file (totalLines).
+export function readRangeLabel(item: ToolItem): string {
+  const d = item.details;
+  const sel = readSelectorRange(item.args?.path);
+  if (sel) return fmtRange(sel[0], sel[1]);
+  const dc = d?.displayContent;
+  let start: number | undefined;
+  let end: number | undefined;
+  if (Array.isArray(dc?.lineNumbers)) {
+    for (const n of dc.lineNumbers) {
+      if (typeof n !== "number") continue;
+      if (start === undefined || n < start) start = n;
+      if (end === undefined || n > end) end = n;
+    }
+  }
+  if (start === undefined && d?.shownRange) {
+    start = d.shownRange.start;
+    end = d.shownRange.end;
+  }
+  if (start === undefined && typeof d?.summary?.lines === "number" && dc?.text) {
+    start = dc.startLine ?? 1;
+    end = start + d.summary.lines - 1;
+  }
+  if (start === undefined || end === undefined) return "";
+  if (typeof d?.totalLines === "number" && start <= 1 && end >= d.totalLines) return ""; // full-file read
+  return fmtRange(start, end);
+}
+
 export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }) {
   let path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
   if (!path && item.text) {
@@ -292,6 +346,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   }
   const cleanPath = stripReadSelector(path);
   const { dir } = splitPath(cleanPath);
+  const rangeLabel = readRangeLabel(item);
   const [closing, close] = useLift();
   // The expand body reads details.displayContent. Missing content has two kinds: result not
   // yet arrived (item.running, e.g. "expanded by default while running" set readExpanded
@@ -333,6 +388,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
             <FileChip path={cleanPath} nameClass={hasContent ? "ed-name" : ""} onNameClick={hasContent ? () => openReadFileInSidebar(item, path || cleanPath) : undefined} />
             {" "}
             {dir && <Ellip className="path" title={cleanPath}>{dir}</Ellip>}
+            {rangeLabel && <span className="path">{rangeLabel}</span>}
           </>
         ) : (
           item.text || "read"
@@ -417,13 +473,14 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   // The raw path may carry selectors (path:59-123 / path:683:raw): strip all selector
   // segments to get a clean path, and take the first line range in the selector for
-  // right-panel line highlight
+  // right-panel line highlight. The range is read off args.path — resolvedPath and the files
+  // backfill are clean, so reading the selector off `raw` (resolvedPath-first) yields null
   const raw = String(d.resolvedPath || item.args?.path || path);
   let clean = stripReadSelector(raw);
   if (!clean.startsWith("/")) clean = (s?.cwd || "") + "/" + clean;
   const offset = typeof item.args?.offset === "number" ? item.args.offset : undefined;
   const limit = typeof item.args?.limit === "number" ? item.args.limit : undefined;
-  let reqRange: [number, number] | null = readSelectorRange(raw);
+  let reqRange: [number, number] | null = readSelectorRange(item.args?.path);
   if (!reqRange && (offset !== undefined || limit !== undefined)) {
     const start = offset ?? 1;
     reqRange = [start, limit !== undefined ? start + limit - 1 : start];

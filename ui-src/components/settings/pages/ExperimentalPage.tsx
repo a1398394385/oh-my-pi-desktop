@@ -406,7 +406,7 @@ export default function ExperimentalPage() {
           <KaInput
             value={kaConfig ? fmtDur(kaConfig.intervalMs) : ""}
             placeholder="8m"
-            disabled={!kaEnabled || kaMode === "smart"}
+            disabled={!kaEnabled}
             onSubmit={(v) => updateKa({ intervalMs: v })}
           />
         </div>

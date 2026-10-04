@@ -13,15 +13,25 @@
  *           user's explicit paid confirmation, unlike upstream's two-layer
  *           config.enabled semantics)
  * The probe-log.jsonl audit log stays in ~/.omp/cache-keepalive/ (append-only,
- * no config semantics).
+ * no config semantics). Smart mode additionally keeps two per-model TTL stores:
+ * the climbing value in ~/.omp/cache-keepalive/model-ttl.json (the local-store
+ * stand-in for a browser localStorage) and the confirmed value in the section's
+ * modelTtlMs map, written when a climb ends at a cache miss.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { H } from "./state.ts";
 
 export const STATE_DIR = join(homedir(), ".omp", "cache-keepalive");
 export const PROBE_LOG_FILE = join(STATE_DIR, "probe-log.jsonl");
+/**
+ * Local store for each model's climbing probe TTL (smart mode). The host has
+ * no browser localStorage, so this JSON file is its stand-in: written on every
+ * cadence change, read as the second tier of per-model TTL resolution. Kept
+ * global (not per-profile): the vendor's cache TTL is a model property.
+ */
+export const MODEL_TTL_FILE = join(STATE_DIR, "model-ttl.json");
 
 /** Fallback timeout for a single probe request. */
 export const PROBE_TIMEOUT_MS = 30_000;
@@ -69,9 +79,7 @@ export const DEFAULT_PROBE_CONFIG: Readonly<ProbeConfig> = Object.freeze({
 });
 
 // smart-mode constants
-export const SMART_BASE_MS = 8 * 60_000; // smart starting/floor cadence (matches the default interval)
-export const SMART_STEP_MS = 30_000; // +30s per 3-hit confirmation
-export const SMART_CONFIRM_HITS = 3;
+export const SMART_STEP_MS = 30_000; // +30s per successful probe (per model)
 export const SMART_MAX_CONTEXT_TOKENS = 200_000; // context cap: grow only below this
 /**
  * default-mode safe floor: the nominal cache TTL. A miss while probing above
@@ -80,6 +88,74 @@ export const SMART_MAX_CONTEXT_TOKENS = 200_000; // context cap: grow only below
  * miss AT this floor counts toward the miss-pause threshold.
  */
 export const DEFAULT_FALLBACK_MS = 5 * 60_000;
+
+// ---------- per-model TTL stores (smart-mode dynamic probing) ----------
+
+/** Read the whole local store; entries below the cadence floor are dropped (missing/corrupt file → empty map). */
+function readModelTtlStore(): Record<string, number> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(MODEL_TTL_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= MIN_INTERVAL_MS) out[id] = Math.floor(value);
+  }
+  return out;
+}
+
+/** Merge-write one model's climbing TTL into the local store (floored at the cadence lower bound). */
+export function writeModelTtlMs(modelId: string, ttlMs: number): void {
+  mkdirSync(STATE_DIR, { recursive: true });
+  const store = readModelTtlStore();
+  store[modelId] = Math.max(MIN_INTERVAL_MS, Math.floor(ttlMs));
+  writeFileSync(MODEL_TTL_FILE, JSON.stringify(store, null, 2));
+}
+
+/** The modelTtlMs map in the keepalive section (confirmed values; written when a climb ends at a cache miss). */
+function readConfirmedMap(): Record<string, number> {
+  const map = readSection().modelTtlMs;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {};
+  const out: Record<string, number> = {};
+  for (const [id, value] of Object.entries(map as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= MIN_INTERVAL_MS) out[id] = Math.floor(value);
+  }
+  return out;
+}
+
+/** Write one model's confirmed TTL into the section's modelTtlMs map, preserving the section's other keys. */
+export function writeConfirmedModelTtlMs(modelId: string, ttlMs: number): void {
+  const map = readConfirmedMap();
+  map[modelId] = Math.max(MIN_INTERVAL_MS, Math.floor(ttlMs));
+  writeSection({ ...readSection(), modelTtlMs: map });
+}
+
+/** Drop a model's confirmed TTL — a fresh probe missed at/above it, so it is stale. */
+export function clearConfirmedModelTtl(modelId: string): void {
+  const map = readConfirmedMap();
+  if (!(modelId in map)) return;
+  delete map[modelId];
+  writeSection({ ...readSection(), modelTtlMs: map });
+}
+
+/**
+ * Per-model cadence resolution, spec order: confirmed value in omp-desktop.json
+ * (the model's recorded max TTL) → climbing value in the local store →
+ * settings-page default (intervalMs).
+ */
+export interface ResolvedModelTtl {
+  ms: number;
+  /** True when ms is the config-file confirmed value: authoritative max TTL, climbing must stay off. */
+  confirmed: boolean;
+}
+export function resolveModelTtlMs(modelId: string, fallbackMs: number): ResolvedModelTtl {
+  const confirmed = readConfirmedMap()[modelId];
+  if (confirmed !== undefined) return { ms: confirmed, confirmed: true };
+  return { ms: readModelTtlStore()[modelId] ?? fallbackMs, confirmed: false };
+}
 
 // ---------- atomic read/write of the omp-desktop.json keepalive section ----------
 

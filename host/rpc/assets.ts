@@ -82,7 +82,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "asset_file_saved", kind, path: file }));
   },
   async asset_file_create(ws, msg) {
-    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent; returns existing content directly)
+    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent), hook=hooks/<phase>/<tool>.ts (from a phase-aware template)
     const kind = String(msg.kind ?? "agent") as AssetKind;
     if (kind === "mcp") {
       const file = mcpCandidates(assetOmpDir(kind, msg.scope, msg.cwd))[0];
@@ -94,6 +94,25 @@ export const assetsHandlers: Record<string, RpcHandler> = {
       const content = `{\n  "mcpServers": {}\n}\n`;
       await writeFile(file, content, "utf8");
       ws.send(JSON.stringify({ type: "asset_file", kind, path: file, content }));
+      return;
+    }
+    if (kind === "hook") {
+      const toolName = String(msg.name ?? "").trim();
+      if (!/^(\*|[A-Za-z0-9][A-Za-z0-9_-]*)$/.test(toolName)) throw new Error(hostI18n.t("errors.asset.invalidToolName"));
+      const phase = msg.phase === "pre" || msg.phase === "post" ? msg.phase : null;
+      if (!phase) throw new Error(hostI18n.t("errors.asset.invalidPhase"));
+      const dir = path.join(assetOmpDir(kind, msg.scope, msg.cwd), "hooks", phase);
+      const file = path.join(dir, `${toolName}.ts`);
+      if (fs.existsSync(file)) throw new Error(hostI18n.t("errors.asset.alreadyExists", { kind, name: toolName }));
+      await mkdir(dir, { recursive: true });
+      const filter = toolName === "*" ? "" : `\t\tif (event.toolName !== "${toolName}") return;\n`;
+      const content =
+        phase === "pre"
+          ? `/**\n * Pre-tool hook: runs before the tool executes (pi.on("tool_call")).\n * File name targets one tool ("*" matches all); reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("tool_call", async (event) => {\n${filter}\t\t// Block the call: return { block: true, reason: "not allowed" };\n\t\t// Revise the input: return { input: { ...event.input } };\n\t});\n}\n`
+          : `/**\n * Post-tool hook: runs after the tool executes (pi.on("tool_result")).\n * File name targets one tool ("*" matches all); reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("tool_result", async (event) => {\n${filter}\t\t// Revise the result: return { content: [{ type: "text", text: "..." }] };\n\t});\n}\n`;
+      await writeFile(file, content, "utf8");
+      ws.send(JSON.stringify({ type: "asset_file", kind, path: file, content }));
+      ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
       return;
     }
     const name = String(msg.name ?? "").trim().toLowerCase();

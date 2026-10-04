@@ -20,6 +20,8 @@ import {
   getAllProvidersInfo,
   isUserSourceEnabled,
   isForeignUserProvider,
+  getDisabledProviders,
+  setDisabledProviders,
   parseRuleConditionAndScope,
   parseRuleAgents,
   toolFileHeaderDescription,
@@ -149,12 +151,71 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
   const scopeId = typeof scope === "string" && scope.startsWith("project:") ? scope : "profile";
   const cwd = scopeId.startsWith("project:") ? scopeId.slice("project:".length) : undefined;
   const disabledIds = (settingsGet(H.settings, "disabledExtensions") ?? []) as string[];
-  const all = await loadAllExtensions(cwd, disabledIds);
+  // Temporarily bypass disabledProviders filter during extension discovery so disabled
+  // providers' entries are always discovered and rendered, rather than disappearing when disabled.
+  const savedDisabledProviders = getDisabledProviders();
+  let all: Awaited<ReturnType<typeof loadAllExtensions>>;
+  try {
+    if (savedDisabledProviders.length > 0) {
+      setDisabledProviders([]);
+    }
+    all = await loadAllExtensions(cwd, disabledIds);
+  } finally {
+    if (savedDisabledProviders.length > 0) {
+      setDisabledProviders(savedDisabledProviders);
+    }
+  }
+
+  const disabledProvSet = new Set(savedDisabledProviders);
   const extensions: ExtensionItem[] = [];
+
+  // Re-resolve shadowing against the *effective* provider state (post-restore).
+  // Discovery ran with disabledProviders bypassed so disabled sources' entries
+  // still render — but that also let those entries claim dedupe keys and shadow
+  // same-name entries from enabled lower-priority sources, producing
+  // "shadowed by a disabled source" rows that contradict runtime (disabled
+  // sources never load). Re-run the same first-wins dedupe over entries that
+  // actually load: enabled provider, not item-disabled, not an opt-out foreign
+  // user source (mirrors base resolveState gates; the claude-plugins
+  // omp-native-root exemption reads origin off raw._source, which sanitizeRaw
+  // never touches on the local objects).
+  const winnerMap = new Map<string, (typeof all)[0]>();
+  for (const ext of all) {
+    if (disabledProvSet.has(ext.source.provider)) continue;
+    if (ext.disabledReason === "item-disabled") continue;
+    const origin = (ext.raw as { _source?: { origin?: string } } | undefined)?._source?.origin;
+    const nativeMarketplaceRoot = ext.source.provider === "claude-plugins" && origin !== undefined && origin !== "claude";
+    if (!nativeMarketplaceRoot && ext.source.level === "user" && !isUserSourceEnabled(ext.source.provider)) continue;
+    const key = `${ext.kind}:${ext.name}`;
+    if (!winnerMap.has(key)) winnerMap.set(key, ext);
+  }
+
   for (const ext of all) {
     const isProject = ext.source.level === "project";
     if (cwd ? !isProject : isProject) continue;
     const raw = sanitizeRaw(ext.kind, ext.raw);
+    const winner = winnerMap.get(`${ext.kind}:${ext.name}`);
+    let state = ext.state;
+    let disabledReason = ext.disabledReason;
+    let shadowedBy = ext.shadowedBy;
+    if (disabledProvSet.has(ext.source.provider)) {
+      state = "disabled";
+      disabledReason = "provider-disabled";
+    } else if (winner && winner !== ext && ext.state !== "disabled") {
+      // A same-name entry that loads at runtime wins: shadowed, and
+      // shadowedBy points at the live winner (not a bypassed claimant)
+      state = "shadowed";
+      disabledReason = "shadowed";
+      const winnerProv = winner.source?.providerName || winner.source?.provider || "";
+      shadowedBy = `${winnerProv} · ${winner.displayName || winner.name}`;
+    } else if (ext.state === "shadowed") {
+      // Shadowed only under the bypass window (the claimant was from a
+      // disabled source, an item-disabled row, or an opt-out user source):
+      // this entry is the live one
+      state = "active";
+      disabledReason = undefined;
+      shadowedBy = undefined;
+    }
     extensions.push({
       id: ext.id,
       kind: ext.kind,
@@ -164,9 +225,9 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
       trigger: ext.trigger,
       path: ext.path,
       source: ext.source,
-      state: ext.state,
-      disabledReason: ext.disabledReason,
-      shadowedBy: ext.shadowedBy,
+      state,
+      disabledReason,
+      shadowedBy,
       raw,
       detail: buildDetail(ext.kind, { path: ext.path, description: ext.description, raw }),
     });

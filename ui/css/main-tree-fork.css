@@ -1,0 +1,147 @@
+/* ============================================================
+ * main-tree-fork.css — main page, session tree: fork-point segments and branch
+ *  switching area (stream-section-block / stream-branch-section / fork hub + pills).
+ *  Split out of main-tree.css (SHRINK OR STAY STABLE ratchet); cascades right after it,
+ *  keep this order in ui/style.css's @import list.
+ * ============================================================ */
+
+/* fork-point segments and branch switching area */
+.stream-section-block {
+  position: relative;
+  width: 100%;
+}
+
+.stream-branch-section {
+  position: relative;
+  width: 100%;
+  animation: branch-section-fade-in .18s ease-out;
+}
+
+/* fork-point switcher */
+.stream-fork-hub {
+  position: relative;
+  margin: 12px 0 14px 64px;
+  z-index: 2;
+}
+
+.stream-container.compact .stream-fork-hub {
+  margin: 10px 0 12px 54px;
+}
+
+.fork-container {
+  background: var(--card);
+  border: 1px dashed rgba(74, 158, 255, 0.4);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.fork-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.fork-title {
+  font-size: var(--ui-fs-xs);
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.3px;
+}
+
+.fork-hint {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}
+
+.fork-pills {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 6px;
+  padding: 2px 2px 6px 2px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .3s ease;
+}
+
+.fork-pills.is-scrolling {
+  scrollbar-color: var(--line) transparent;
+}
+
+.fork-pills::-webkit-scrollbar {
+  height: 4px;
+}
+
+.fork-pills::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fork-pills::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+  transition: background-color .3s ease;
+}
+
+.fork-pills.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.fork-pills.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+
+.fork-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 9px;
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .15s ease;
+}
+
+.fork-pill:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--line-soft);
+}
+
+.fork-pill.active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.fork-pill-index {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+.fork-pill.active .fork-pill-index {
+  color: var(--accent);
+}
+
+.fork-pill-len {
+  font-size: var(--ui-fs-xs);
+  background: var(--panel-2);
+  color: var(--faint);
+  padding: 0 4px;
+  border-radius: 4px;
+}

@@ -1,15 +1,15 @@
 // Edit row (edit/write/apply_patch single file) and the "Changes" group (consecutive edit
 // events merged / a multi-file single event).
 // Migrated from renderEdit/renderChange/renderChangeGroup/buildChangeBody in
-// ui/tool-labels.js. Clicking a row expands/collapses the inline diff (ed-brief); the first
-// expansion fetches that file's diff from the host on demand, and the response re-renders
-// after file_diff writes it into briefDiffCache.
+// ui/tool-labels.js. Clicking a row expands/collapses the inline diff (ed-brief); the body
+// prefers this call's own diff (ownDiffOf, arrives with tool_update) and only falls back to
+// the git diff fetched from the host on demand (response re-renders via briefDiffCache).
 import type { ToolItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { bumpGroupExpand, useGroupExpandVersion, rdExpand, chgExpand } from "../../store/groupExpand";
 export { rdExpand, chgExpand };
 import Icon from "../../Icon";
-import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
+import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub, ownDiffOf } from "./parts";
 import { splitPath } from "./util";
 import { t } from "../../i18n";
 
@@ -18,26 +18,17 @@ function filesOf(item: ToolItem): string[] {
   return uniqueFiles(item.files?.length ? item.files : item.args?.files || (item.args?.path ? [item.args.path] : []));
 }
 
-// Expand (the collapse animation is handled by the caller's useLift): set the flag and fetch
-// that file's diff on demand on first expansion.
+// Expand (the collapse animation is handled by the caller's useLift): set the flag; with no
+// per-call diff yet (tool still running / none arrived), fetch that file's git diff on demand.
 // apply is the write channel that lands item fields: top-level rows and in-group sub-rows
 // each go through their own copy chain
 function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => void) => void) {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-  // Prefer the real modification from this tool response (diffContent): for new files / no
-  // git baseline, a git diff is reduced to a full-file addition, mismatching the row's
-  // +N-M summary. Attached to the item (not cached per path) — multiple edits of the same
-  // file each see their own on expansion; when diffContent is missing (old sessions /
-  // multi-file patches) fall back to git diff
-  const willSetBrief = item.diffContent != null && item.briefDiff === undefined;
   apply((it) => {
     it.diffExpanded = true;
-    if (willSetBrief) it.briefDiff = item.diffContent;
   });
-  // The request condition reads item.briefDiff after the set in the original version (once
-  // willSetBrief has set it, no request happens)
-  if (path && !willSetBrief && item.briefDiff === undefined && s?.isGit && st.briefDiffCache.get(path) === undefined && st.briefDiffPending !== path) {
+  if (path && ownDiffOf(item, path) == null && s?.isGit && st.briefDiffCache.get(path) === undefined && st.briefDiffPending !== path) {
     useAppStore.setState({ briefDiffPending: path }); // silent write (the old code wrote S.xxx directly without notify)
     st.send({ type: "get_file_diff", cwd: s.cwd, path });
   }

@@ -102,6 +102,9 @@ export const hostErrorsEn = {
     mdOnly: "Only .md {{kind}} definition files are supported",
     skillDirForbidden: "Path is outside the allowed skill directories: {{raw}}",
     dirForbidden: "Path is outside the allowed {{kind}} directories: {{raw}}",
+    invalidToolName: "Tool name may only contain letters, digits, - and _, or be *",
+    invalidPhase: "Hook phase must be pre or post",
+    hookExtOnly: "Only hook script files are supported (.ts/.js/.mjs/.cjs/.sh/.bash/.py): {{raw}}",
   },
   plan: {
     notActive: "Plan mode is not active",

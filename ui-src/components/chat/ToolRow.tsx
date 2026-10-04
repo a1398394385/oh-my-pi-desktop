@@ -9,6 +9,9 @@ import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, u
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
 import { isDevicePath, deviceNameOf } from "./util";
 import ThinkingRow from "./ThinkingRow";
+import { Streamdown } from "streamdown";
+import { cjk } from "@streamdown/cjk";
+import { codePlugin, mdComponents, mdControls, MD_LINK_SAFETY_OFF } from "./AssistantMsg";
 import { t } from "../../i18n";
 
 // ---------- Terminal row (bash/shell/eval) and background tool row (hub): expand card with command on top, output below ----------
@@ -183,6 +186,108 @@ function renderGlob(item: ToolItem) {
   );
 }
 
+// Wait row: coordination wait (background jobs / peer messages), mirrors the TUI's waitToolRenderer
+// summary. The full job snapshot is available via the expandable card (details JSON / output text).
+function renderWait(item: ToolItem) {
+  const details = item.details as { jobs?: { status?: string }[]; agents?: unknown[]; waited?: { body?: unknown } | null } | undefined;
+  let summary = "";
+  const jobs = details?.jobs;
+  if (jobs?.length) {
+    const settled = jobs.filter((j) => j.status && j.status !== "running").length;
+    summary =
+      settled === 0
+        ? t("chat.waitSummaryRunning", { count: jobs.length })
+        : t("chat.waitSummarySettled", { settled, count: jobs.length });
+  } else if (details?.agents?.length) {
+    summary = t("chat.waitSummaryAgents", { count: details.agents.length });
+  } else if (details?.waited?.body != null) {
+    summary = typeof details.waited.body === "string" ? details.waited.body : JSON.stringify(details.waited.body);
+  }
+  return <ExpandableRow item={item} iconName="pause" label={t("chat.labelWait")} summary={summary || item.text || ""} />;
+}
+
+// Task row: subagent spawn (flat or batch), mirrors the TUI task card. Header meta is the
+// spawn count ("Task 3 agents"); the expanded card shows the assignment text plus one
+// `• name ⟦agent⟧` bullet per spawned subagent (TUI parity: names and types only).
+function taskSpawnCount(item: ToolItem): number {
+  const args = item.args || {};
+  const details = item.details as { results?: unknown[]; progress?: unknown[] } | undefined;
+  return (
+    details?.results?.length ??
+    details?.progress?.length ??
+    (Array.isArray(args.tasks) ? args.tasks.length : 0)
+  );
+}
+function taskSummary(item: ToolItem): string {
+  const count = taskSpawnCount(item);
+  if (count > 0) return t("chat.taskSummaryBatch", { count });
+  const args = item.args || {};
+  const agent = typeof args.agent === "string" ? args.agent.trim() : "";
+  if (agent && agent !== "task") return `⟦${agent}⟧`;
+  return typeof args.task === "string" ? args.task.split("\n")[0].trim() : "";
+}
+function renderTask(item: ToolItem) {
+  return <ExpandableRow item={item} iconName="agents" label={t("chat.labelTask")} summary={taskSummary(item) || item.text || ""} />;
+}
+// One spawned subagent row for the expanded card's result body. Source: resolved results first,
+// then live progress — never the call args (the args box shows the assignment text only).
+// Agent type is ⟦bracketed⟧ unless it is the default.
+function taskSpawnRows(item: ToolItem): { name: string; agent: string }[] {
+  const details = item.details as
+    | { results?: { id?: unknown; agent?: unknown }[]; progress?: { id?: unknown; agent?: unknown }[] }
+    | undefined;
+  const source = details?.results?.length ? details.results : details?.progress;
+  if (!source?.length) return [];
+  return source.map((r) => ({
+    name: typeof r.id === "string" ? r.id : "",
+    agent: typeof r.agent === "string" ? r.agent : "",
+  }));
+}
+// Expanded task card, TUI layout: the assignment text (Goal/Constraints/Contract) on top; the
+// spawn list (• name ⟦agent⟧) as the result body once any details exist. The model-facing
+// spawn-feedback text (item.output) is deliberately hidden when structured details exist — it
+// is coordination instruction for the model, not user content.
+function TaskBody({ item }: { item: ToolItem }) {
+  const args = item.args || {};
+  const assignment = typeof args.task === "string" && args.task.trim() ? args.task : typeof args.context === "string" ? args.context : "";
+  const rows = taskSpawnRows(item);
+  return (
+    <>
+      {assignment ? (
+        <FadeBox className="cmd-card-cmd task-md md-body">
+          <Streamdown
+            plugins={{ code: codePlugin, cjk }}
+            components={mdComponents}
+            lineNumbers={false}
+            codeBlockMaxHeight={400}
+            tableMaxHeight={0}
+            controls={mdControls}
+            linkSafety={MD_LINK_SAFETY_OFF}
+          >
+            {truncateText(assignment)}
+          </Streamdown>
+        </FadeBox>
+      ) : (
+        <FadeBox className="cmd-card-cmd">{truncateText(args ? JSON.stringify(args, null, 2) : t("chat.noParams"))}</FadeBox>
+      )}
+      {rows.length > 0 ? (
+        <div className="cmd-card-out">
+          {rows.map((r, i) => (
+            <div key={i}>
+              {`• ${r.name}`}
+              {r.agent && r.agent !== "task" ? ` ⟦${r.agent}⟧` : ""}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <FadeBox className="cmd-card-out" as="pre">
+          {item.output ? <LinkedText text={item.output} /> : item.running ? <Spin /> : t("chat.noOutput")}
+        </FadeBox>
+      )}
+    </>
+  );
+}
+
 // ---------- MCP row ----------
 function renderMcp(item: ToolItem) {
   const tool = String(item.name || "").split("__").slice(2).join("__");
@@ -234,16 +339,20 @@ function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
     (item.details ? truncateText(JSON.stringify(item.details, null, 2)) : "");
   return (
     <div className={"cmd-card" + (lift ? " lift" : " drop")}>
-      {item.name === "ask" && Array.isArray(item.args?.questions) ? (
+      {item.name === "task" ? (
+        <TaskBody item={item} />
+      ) : item.name === "ask" && Array.isArray(item.args?.questions) ? (
         <AskArgs questions={item.args.questions} />
       ) : (
         <FadeBox className="cmd-card-cmd">
           {truncateText(item.args ? JSON.stringify(item.args, null, 2) : t("chat.noParams"))}
         </FadeBox>
       )}
-      <FadeBox className="cmd-card-out" as="pre">
-        {outText ? <LinkedText text={outText} /> : item.running ? <Spin /> : t("chat.noOutput")}
-      </FadeBox>
+      {item.name !== "task" && (
+        <FadeBox className="cmd-card-out" as="pre">
+          {outText ? <LinkedText text={outText} /> : item.running ? <Spin /> : t("chat.noOutput")}
+        </FadeBox>
+      )}
     </div>
   );
 }
@@ -469,11 +578,13 @@ function toolKind(item: ToolItem) {
   if (name === "thinking") return "think";
   if (name === "bash" || name === "shell" || name === "eval") return "cmd";
   if (name === "hub") return "hub";
-  if (name === "grep" || name === "ast-grep") return "grep";
+  if (name === "grep" || name === "ast_grep") return "grep";
   if (name === "glob") return "glob";
   if (name === "find") return "find";
   if (name.startsWith("mcp__")) return "mcp";
   if (name === "todo") return "todo";
+  if (name === "wait") return "wait";
+  if (name === "task") return "task";
   if (name === "read") return "read";
   if (name === "web_search") return "websearch";
   if (name === "ask") return "ask";
@@ -512,6 +623,10 @@ export default function ToolRow({ item }: { item: ToolItem }) {
       return renderMcp(item);
     case "todo":
       return renderTodo(item);
+    case "wait":
+      return renderWait(item);
+    case "task":
+      return renderTask(item);
     case "readgroup":
       return renderReadGroup(item);
     case "cmdgroup":

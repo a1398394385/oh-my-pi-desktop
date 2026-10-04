@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 // notice, preventing a single huge file diff from stalling rendering
 const MAX_RENDER_LINES = 4000;
 
-const HUNK_RE = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?/;
+const HUNK_RE = /^@@(?:\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?)?/;
 const META_RE = /^(?:diff --git |index |--- |\+\+\+ |new file mode |deleted file mode |similarity index |rename from |rename to |old mode |new mode )/;
 const NOTE_RE = /^\\ /;
 // Line-number format of the base edit tool's details.diff (same as the TUI):
@@ -59,8 +59,8 @@ function parseUnifiedDiff(diff: string | null | undefined): ParsedDiff {
     const raw = lines[i];
     const hunk = HUNK_RE.exec(raw);
     if (hunk) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[3]);
+      oldLine = Number(hunk[1] || 1);
+      newLine = Number(hunk[3] || 1);
       inHunk = true;
       continue;
     }
@@ -100,7 +100,7 @@ function parseLnDiff(diff: string | null | undefined): ParsedDiff {
 }
 
 // Unified entry point: unified diff first; falls back to line-number parsing when there is no hunk body (base line-number format)
-function parseDiff(diff: string | null | undefined): ParsedDiff {
+export function parseDiff(diff: string | null | undefined): ParsedDiff {
   const unified = parseUnifiedDiff(diff);
   if (unified.rows.length > 0) return unified;
   return parseLnDiff(diff);

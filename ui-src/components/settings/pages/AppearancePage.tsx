@@ -33,7 +33,7 @@ function themeIcon(mode: string): string {
   return mode === "system" ? "monitor" : mode === "light" ? "sun" : "moon";
 }
 function themeLabel(mode: string): ReactNode {
-  const key = mode === "system" ? "themeSystem" : mode === "light" ? "themeLight" : mode === "themeDark";
+  const key = mode === "system" ? "themeSystem" : mode === "light" ? "themeLight" : "themeDark";
   return (
     <span className="inline-flex items-center gap-1.5">
       <Icon name={themeIcon(mode)} size={14} />

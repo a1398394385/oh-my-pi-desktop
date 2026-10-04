@@ -546,6 +546,7 @@ export function applyEvent(msg: EventFrame): void {
       if (st.uiPrefs.expandToolOutput) toolItem[toolExpandKey(msg.name)] = true;
       s.items.push(toolItem);
       if (msg.intent) s.workingText = msg.intent;
+      else if (msg.name === "wait") s.workingText = t("notify.waiting"); // wait tool declares intent "optional" — show what it blocks on
     });
   } else if (msg.kind === "tool_update") {
     updateSession(msg.sessionId, (s) => {

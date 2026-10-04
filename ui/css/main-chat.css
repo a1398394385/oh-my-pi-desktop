@@ -567,8 +567,14 @@ body:has(#right.collapsed) #right-resizer {
   overflow-y: auto;
   /* once scrolled to an edge the scroll chain stops: further wheel/trackpad gestures no longer carry to the outer session area */
   overscroll-behavior: contain;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 0.775em), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 0.775em), transparent), linear-gradient(black, black);
+  -webkit-mask-size: calc(100% - 10px) 100%, 10px 100%;
+  -webkit-mask-position: left top, right top;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(to bottom, black calc(100% - 0.775em), transparent), linear-gradient(black, black);
+  mask-size: calc(100% - 10px) 100%, 10px 100%;
+  mask-position: left top, right top;
+  mask-repeat: no-repeat;
 }
 
 .think-body::before {
@@ -741,8 +747,14 @@ body:has(#right.collapsed) #right-resizer {
 
 /* Bottom half-row gradient mask (same technique as think-body, cleared by JS adding .no-fade when scrolled to bottom). ed-brief (inline diff) already matches ZCode's no-mask look and is exempt from this group */
 .cmd-card-cmd, .cmd-card-out {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.75em), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 0.75em), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 0.75em), transparent), linear-gradient(black, black);
+  -webkit-mask-size: calc(100% - 10px) 100%, 10px 100%;
+  -webkit-mask-position: left top, right top;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(to bottom, black calc(100% - 0.75em), transparent), linear-gradient(black, black);
+  mask-size: calc(100% - 10px) 100%, 10px 100%;
+  mask-position: left top, right top;
+  mask-repeat: no-repeat;
   /* all three are embedded in the session scroll flow: the scroll chain stops at the boundary, no longer carrying to the outer layer */
   overscroll-behavior: contain;
 }
@@ -751,6 +763,31 @@ body:has(#right.collapsed) #right-resizer {
   -webkit-mask-image: none;
   mask-image: none;
 }
+
+/* Task row's expanded assignment card (.task-md, ToolRow.tsx TaskBody), aligned with the TUI task
+   card's markdown rendering (tui/src/tools/task.ts createMarkdownSectionRenderer):
+   - code font size (not the app base size); param page height customized to 9.5 lines
+     (the generic cmd-card-cmd page is 4.5)
+   - headings keep body size and take the accent heading color, no rules/size jumps
+   - exactly one blank line between top-level blocks: streamdown wraps blocks in a space-y-4
+     container and the chat-stream md rules add block margins, which would stack into phantom
+     empty lines */
+.cmd-card-cmd.task-md {
+  font-size: var(--code-fs);
+  line-height: 1.5;
+  max-height: calc(1.5em * 9.5);
+}
+.cmd-card-cmd.task-md :is(.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6) {
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--accent);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.cmd-card-cmd.task-md :is(.md-p, .md-ul, .md-ol, .md-blockquote, .md-hr) { margin: 0; }
+.cmd-card-cmd.task-md li { margin: 0; line-height: 1.55; }
+.cmd-card-cmd.task-md .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
+.cmd-card-cmd.task-md .space-y-4 > * + * { margin-top: 1.5em; }
 
 /* Local bash execution row (! prefix, BashRow): reuses .cmd row styles, status area right-aligned. exit 0 uses --dim, non-zero/errors use --err; "not in context" is a small faint tag */
 .bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
@@ -850,10 +887,37 @@ body:has(#right.collapsed) #right-resizer {
 
 /* Scroll-gesture ownership (Chat.tsx): while a wheel-driven stream scroll is in progress
    (the .wheel-through class, armed by stream-targeted wheels and expired 1s after the last
-   one), inline expand cards become pointer-transparent so a pointer drifting over them
-   cannot hijack the wheel — the event passes through to the stream natively in every web
-   engine. After 1s of wheel idle the class lifts and the cards scroll again with their own
-   overscroll containment. Selector kept in sync with INLINE_CARD_SELECTOR in Chat.tsx. */
-#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card) {
+   one), inline expand cards AND message-content scrollers become pointer-transparent so a
+   pointer drifting over them cannot hijack the wheel — the event passes through to the
+   stream natively in every web engine. After 1s of wheel idle the class lifts and the
+   inner scrollers own their wheels again (with their own overscroll containment).
+   Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in Chat.tsx. */
+#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text) {
   pointer-events: none;
 }
+
+/* ── Inline expansion cards: scrollbars visible during scroll/hover, matching VSCode scrollbarSlider and #stream ── */
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList).scrolling::-webkit-scrollbar-thumb,
+#todoList :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb {
+  transition: background-color 0.25s ease-out;
+}
+
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList):hover :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title, #todoList):hover::-webkit-scrollbar-thumb,
+:is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title).scrolling::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList).scrolling :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+#todoList.scrolling::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--dim) 50%, transparent);
+}
+
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:hover,
+#todoList::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dim);
+}
+
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:active,
+#todoList::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--dim) 80%, var(--text));
+}
+

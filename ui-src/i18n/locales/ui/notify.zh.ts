@@ -14,6 +14,7 @@ export const notifyZh = {
   thinkingLabel: "思考",
   thinkingDone: "思考 · {{label}}",
   thinkingTookSeconds: "持续了几秒",
+  waiting: "等待后台任务或同伴消息…",
   // Desktop notifications (store/session.ts, store/wsHandlers/stream.ts)
   approvalTitle: "等待审批",
   bgSessionTitle: "后台会话",

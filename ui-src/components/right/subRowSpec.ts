@@ -32,7 +32,7 @@ export function rowSpec(call: SubagentToolCall): RowSpec {
   const file = uniqueFiles(call.files?.length ? call.files : a.path ? [a.path] : [])[0] || "";
   if (name === "bash" || name === "shell" || name === "eval")
     return { icon: "termBox", label: "chat.labelTerminal", summary: a.command || "" };
-  if (name === "grep" || name === "ast-grep")
+  if (name === "grep" || name === "ast_grep")
     return { icon: "read", label: "chat.labelSearch", summary: [a.pattern, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };
   if (name === "glob")
     return { icon: "ftFile", label: "chat.labelGlob", summary: [a.pattern, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };

@@ -59,6 +59,13 @@ const POPUP_SELECTOR = ".ring-pop, .menu, .ctx-menu";
 // guard in the stream wheel listener and the .wheel-through CSS in main-chat.css; keep
 // all three in sync)
 const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList";
+// Message-content scrollers own their wheels when hovered directly (a wheel on them must
+// not arm .wheel-through, otherwise the arming tick would flip them pointer-transparent
+// and the next tick hijacks the gesture into the stream). Deliberately NOT part of
+// INLINE_CARD_SELECTOR: the bleed-through guard would block stream scrolling over their
+// short/non-scrollable areas, and code blocks/tables are far too prevalent for that.
+// Both selectors ARE part of the .wheel-through CSS transparency list (superset).
+const SCROLL_OWNER_SELECTOR = `${INLINE_CARD_SELECTOR}, .md-code-block-frame [data-streamdown="code-block-body"], .sticky-user-wrap .user-msg-text`;
 
 // "Show the latest" scroll target. The plain scrollHeight target overshoots the newest
 // turn by the sticky spacer's height whenever that turn fits the viewport (fresh send /
@@ -274,15 +281,45 @@ export default function Chat() {
         e.stopPropagation();
         stream.scrollTop += e.deltaY;
         armWheelThrough(stream);
-      } else if (inStream && !inPopup && !target.closest(INLINE_CARD_SELECTOR)) {
-        // A wheel on the plain stream surface: a wheel-driven scroll is in progress
+      } else if (inStream && !inPopup && !target.closest(SCROLL_OWNER_SELECTOR)) {
+        // A wheel on the plain stream surface (or on non-owning content like tables):
+        // a wheel-driven scroll is in progress
         armWheelThrough(stream);
       }
     };
+
+    // Card scroll capture: light up scrollbars while an inner card scroll container is scrolling.
+    // Covers cards anywhere in the shell (the dock's approval card lives outside #stream).
+    const cardScrollTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+    const onScrollCapture = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (!target || !target.classList) return;
+      const stream = streamRef.current;
+      if (stream && target === stream) return; // #stream lights its own scrollbar in the stream scroll listener
+      const card = target.closest<HTMLElement>(INLINE_CARD_SELECTOR);
+      if (!card) return;
+      target.classList.add("scrolling");
+      if (card && card !== target) card.classList.add("scrolling");
+      const existing = cardScrollTimers.get(target);
+      if (existing) clearTimeout(existing);
+      cardScrollTimers.set(
+        target,
+        setTimeout(() => {
+          target.classList.remove("scrolling");
+          if (card && card !== target) card.classList.remove("scrolling");
+          cardScrollTimers.delete(target);
+        }, 500),
+      );
+    };
+
     document.addEventListener("wheel", onWheelCapture, { passive: false, capture: true });
+    document.addEventListener("scroll", onScrollCapture, { passive: true, capture: true });
     return () => {
       document.removeEventListener("wheel", onWheelCapture, { capture: true });
+      document.removeEventListener("scroll", onScrollCapture, { capture: true });
       clearTimeout(wheelThroughTimer.current);
+      for (const t of cardScrollTimers.values()) clearTimeout(t);
+      cardScrollTimers.clear();
     };
   }, []);
 

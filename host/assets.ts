@@ -61,7 +61,12 @@ export function nearestProjectOmpDir(cwd: string): string | null {
 // Read-write roots for disk assets (agent definitions / skills / MCP configs):
 // the current profile's agentDir/<sub>, plus the nearest .omp/<sub> above each
 // valid desktop project
-export type AssetKind = "agent" | "skill" | "mcp";
+export type AssetKind = "agent" | "skill" | "mcp" | "hook";
+
+// Hook script extensions accepted by the hooks list scan (listAgentAssets) and
+// resolveAssetFile. Only .ts/.js are actually imported by the base extension
+// loader; the rest are listed for visibility and editing of existing files.
+export const HOOK_EXTS: Record<string, true> = { ".ts": true, ".js": true, ".mjs": true, ".cjs": true, ".sh": true, ".bash": true, ".py": true };
 
 export interface AssetRoot { dir: string; scope: string; cwd?: string }
 
@@ -98,6 +103,16 @@ export function assetOmpDir(kind: AssetKind, scope: unknown, cwd?: unknown): str
 // mcp.json candidate files (dotted one read with priority, unprefixed one is the primary write target)
 export function mcpCandidates(dir: string): string[] {
   return [path.join(dir, "mcp.json"), path.join(dir, ".mcp.json")];
+}
+
+// Writable hook roots: profile agentDir/hooks + each valid project's nearest .omp/hooks
+// (mirrors the scanHookDir paths in listAgentAssets)
+function hookDirRoots(): string[] {
+  const roots = [path.join(H.agentDir, "hooks")];
+  for (const cwd of validDesktopProjects()) {
+    roots.push(path.join(nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp"), "hooks"));
+  }
+  return roots;
 }
 
 // External source switch resolution (mirrors base discovery load conditions;
@@ -170,6 +185,15 @@ export function resolveAssetFile(kind: AssetKind, p: unknown): string {
       return file;
     }
     throw new Error(hostI18n.t("errors.asset.jsonTomlOnly", { raw }));
+  }
+  if (kind === "hook") {
+    if (!HOOK_EXTS[path.extname(file)]) throw new Error(hostI18n.t("errors.asset.hookExtOnly", { raw }));
+    const ok = hookDirRoots().some((root) => {
+      const rel = path.relative(root, file);
+      return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+    });
+    if (!ok) throw new Error(hostI18n.t("errors.asset.dirForbidden", { kind, raw }));
+    return file;
   }
   if (!file.endsWith(".md")) throw new Error(hostI18n.t("errors.asset.mdOnly", { kind: kind === "skill" ? "skill" : "agent" }));
   if (kind === "skill") {
@@ -1101,7 +1125,7 @@ export async function listAgentAssets() {
 
   const hooks: HookAssetItem[] = [];
   const disabled = new Set<string>((settingsGet(H.settings, "disabledExtensions") ?? []) as string[]);
-  const hookExts = [".ts", ".js", ".mjs", ".cjs", ".sh", ".bash", ".py"];
+  // HOOK_EXTS membership table (host/assets.ts top) is shared with resolveAssetFile
 
   const scanHookDir = async (dir: string, phase: "pre" | "post", scope: "profile" | "project", cwd?: string, projectName?: string) => {
     try {
@@ -1110,7 +1134,7 @@ export async function listAgentAssets() {
         if (e.name.startsWith(".")) continue;
         if (!e.isFile() && !e.isSymbolicLink()) continue;
         const ext = path.extname(e.name);
-        if (!hookExts.includes(ext) && ext !== "") continue;
+        if (!HOOK_EXTS[ext] && ext !== "") continue;
         const fullPath = path.join(dir, e.name);
         const baseName = e.name.includes(".") ? e.name.slice(0, e.name.lastIndexOf(".")) : e.name;
         const tool = baseName === "*" ? "*" : baseName;

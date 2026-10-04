@@ -448,6 +448,22 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   font-variant-numeric: tabular-nums;
 }
 
+/* Additions/removals (key colors --diff-added/--diff-removed from global.css): row background
+   14% color-mix; the sticky gutter re-bases (18% mix over --bg), colors its line number, and
+   carries the 3px inset status bar at the row head (kept visible over horizontal scroll) */
+.ldiff-row.ldiff-added { background: color-mix(in srgb, var(--diff-added) 14%, transparent); }
+.ldiff-row.ldiff-removed { background: color-mix(in srgb, var(--diff-removed) 14%, transparent); }
+.ldiff-added > .ldiff-gutter {
+  background: color-mix(in srgb, var(--diff-added) 18%, var(--bg));
+  color: var(--diff-added);
+  box-shadow: inset 3px 0 0 var(--diff-added);
+}
+.ldiff-removed > .ldiff-gutter {
+  background: color-mix(in srgb, var(--diff-removed) 18%, var(--bg));
+  color: var(--diff-removed);
+  box-shadow: inset 3px 0 0 var(--diff-removed);
+}
+
 .ldiff-code { display: block; flex: 1; min-width: 0; padding: 0 12px; white-space: pre; }
 
 /* patch annotations like "\\ No newline at end of file" */

@@ -154,9 +154,14 @@ export const { fuzzyFind } = await import("@oh-my-pi/pi-natives");
 export const { loadAllExtensions, toggleProvider, toggleUserSource } = await import(
   "@oh-my-pi/pi-coding-agent/modes/components/extensions/state-manager"
 );
-export const { getAllProvidersInfo, isUserSourceEnabled, isProviderEnabled, isForeignUserProvider } = await import(
-  "@oh-my-pi/pi-coding-agent/discovery"
-);
+export const {
+  getAllProvidersInfo,
+  isUserSourceEnabled,
+  isProviderEnabled,
+  isForeignUserProvider,
+  getDisabledProviders,
+  setDisabledProviders,
+} = await import("@oh-my-pi/pi-coding-agent/discovery");
 // Settings injection into the capability discovery registry: CLI entries
 // (main.ts/ttsr-cli/read-cli) all call initializeWithSettings after
 // Settings.init, syncing disabledProviders/enabledProviders into the in-memory

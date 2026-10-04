@@ -8,6 +8,7 @@ import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnec
 import { initKeys } from "./keys";
 import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
+import { warmupHighlighter } from "./lib/highlighter";
 
 // Restore the first-frame render cache (the localStorage mirror of
 // omp-desktop.json's ui section) before React mounts — this is what keeps the
@@ -123,7 +124,7 @@ if (new URLSearchParams(location.search).has("preview")) {
         { role: "thinking", text: "思考 · 3 秒", expandable: true, expanded: true,
           thinking: "1. 定位颜色定义\n2. 替换为 blue\n" + "逐行核对相邻规则的级联影响\n".repeat(12) },
         { role: "tool", name: "edit", text: "", args: { path: "src/style.css" }, files: ["src/style.css"],
-          added: 2, removed: 1, diffExpanded: true, briefDiff: diffSample },
+          added: 2, removed: 1, diffExpanded: true, diffContent: diffSample },
         { role: "assistant", text: "样式改完了，顺手补两个文件。" },
         { role: "tool", name: "write", text: "", args: { path: "src/a.ts" }, files: ["src/a.ts"], added: 10, removed: 0 },
         { role: "tool", name: "edit", text: "", args: { path: "src/b.ts" }, files: ["src/b.ts"], added: 2, removed: 5 },
@@ -162,3 +163,7 @@ if (new URLSearchParams(location.search).has("preview")) {
 } else {
   connect();
 }
+
+// Warm the highlighter's common grammars during startup idle so the first
+// read-row expansion does not pay shiki's cold-start on the click path
+warmupHighlighter(["typescript", "tsx", "markdown", "json"]);

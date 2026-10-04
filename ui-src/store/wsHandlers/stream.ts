@@ -309,6 +309,8 @@ export const streamHandlers = {
           activeMs: msg.activeMs,
           statsAt: msg.statsAt,
           receivedAt: msg.statsAt, // host stamp sampled with activeMs: extrapolation stays monotonic across frames (local landing time would rewind it by the transport delay)
+          tokenSpeed: msg.tokenSpeed,
+          avgTtft: msg.avgTtft,
         };
       },
       false,

@@ -12,6 +12,7 @@ export const notifyEn = {
   thinkingLabel: "Thinking",
   thinkingDone: "Thinking · {{label}}",
   thinkingTookSeconds: "took a few seconds",
+  waiting: "Waiting for background work or a peer…",
   // Desktop notifications (store/session.ts, store/wsHandlers/stream.ts)
   approvalTitle: "Awaiting approval",
   bgSessionTitle: "Background session",

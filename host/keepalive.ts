@@ -29,7 +29,12 @@
  * upstream logic line by line.
  * Config source of truth: the keepalive section of omp-desktop.json
  * (per-profile, see keepalive-config.ts; upstream state.json is kept only for
- * the probe-log audit log). Only cadence fields are written back at runtime.
+ * the probe-log audit log). Runtime write-back: fixed mode backs the global
+ * intervalMs off to the 5m safe floor on a miss; smart mode probes each
+ * model's max TTL dynamically (climbing value in the local model-ttl store,
+ * miss-confirmed value in the section's modelTtlMs map — authoritative once
+ * recorded: probing runs at it with climbing off until it misses, which
+ * clears the entry and restarts the climb) and never touches intervalMs.
  */
 import { appendFileSync, mkdirSync } from "node:fs";
 import type { CostPerM, ParsedUsage, ProbeDialect } from "./keepalive-lib.ts";
@@ -48,15 +53,18 @@ import {
 import {
   DEFAULT_FALLBACK_MS,
   DEFAULT_PROBE_CONFIG,
+  MIN_INTERVAL_MS,
   PROBE_LOG_FILE,
   PROBE_TIMEOUT_MS,
-  STATE_DIR,
-  SMART_BASE_MS,
-  SMART_CONFIRM_HITS,
   SMART_MAX_CONTEXT_TOKENS,
   SMART_STEP_MS,
+  STATE_DIR,
+  clearConfirmedModelTtl,
   readKeepaliveProbeConfig,
+  resolveModelTtlMs,
+  writeConfirmedModelTtlMs,
   writeKeepaliveConfig,
+  writeModelTtlMs,
   type ProbeConfig,
 } from "./keepalive-config.ts";
 
@@ -198,11 +206,19 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     let pausedReason: string | null = null;
     let missStreak = 0;
     let errorStreak = 0;
-    // smart-mode runtime state (cadence itself lives in config.intervalMs, persisted)
-    let smartHitStreak = 0;
-    // Set when a smart-mode miss pauses probing; only re-selecting smart mode
-    // clears it (a fresh real turn does NOT resume probing in this case).
-    let smartPaused = false;
+    // Effective probe cadence (ms): fixed mode tracks config.intervalMs (a
+    // miss back-off rewrites both); smart mode holds the captured model's
+    // resolved TTL (omp-desktop.json modelTtlMs → local model-ttl store →
+    // settings-page default intervalMs).
+    let currentTtlMs = DEFAULT_PROBE_CONFIG.intervalMs;
+    // Interval of the last probe that HIT in the current climb (null = nothing
+    // confirmed yet); a miss consumes it to persist the confirmed TTL.
+    let lastGoodTtlMs: number | null = null;
+    // Smart-mode growth hold: true while the cadence is the config file's
+    // confirmed max TTL (or the 200k guard pinned the base) — probing runs at
+    // it with climbing off; only a miss at it clears the recorded value, lifts
+    // the hold, and restarts the climb.
+    let growthHeld = false;
     const stats: Stats = { probes: 0, hits: 0, misses: 0, errors: 0, savedUsd: 0, spendUsd: 0 };
 
     // Snapshot sink for the host-side entry (get_keepalive_status RPC): every
@@ -224,10 +240,11 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     // ---------- persistence ----------
 
     function persistConfig(): void {
-      // Only cadence fields change at runtime (smart growth/fallback, default
-      // miss backing off to 5m); all other fields belong to the settings-page
-      // source of truth; write back only intervalMs to avoid concurrently
-      // overwriting user edits
+      // Fixed-mode cadence write-back (miss backing off to 5m); smart mode
+      // persists per-model TTLs via the model-ttl store / modelTtlMs map and
+      // never touches the global intervalMs. All other fields belong to the
+      // settings-page source of truth; write back only intervalMs to avoid
+      // concurrently overwriting user edits
       try {
         writeKeepaliveConfig({ intervalMs: config.intervalMs });
       } catch (error) {
@@ -266,7 +283,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     function schedule(delayMs?: number): void {
       clearTimer();
       if (!armed()) return;
-      const delay = Math.max(1_000, delayMs ?? config.intervalMs);
+      const delay = Math.max(1_000, delayMs ?? currentTtlMs);
       nextProbeAt = Date.now() + delay;
       timer = setTimeout(() => {
         timer = null;
@@ -440,6 +457,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
           // probe renews it. Reset the streak so the new cadence gets a fresh
           // chance before a pause is considered.
           config.intervalMs = DEFAULT_FALLBACK_MS;
+          currentTtlMs = DEFAULT_FALLBACK_MS;
           missStreak = 0;
           persistConfig();
           debug(
@@ -467,57 +485,93 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     }
 
     /**
-     * smart-mode cadence adaptation.
-     *
-     * config.intervalMs doubles as the persisted "last confirmed cadence":
-     * promotion only ever happens after SMART_CONFIRM_HITS consecutive hits, so
-     * the value on disk is always one the cache has actually held for. A miss
-     * steps back 30s to that last confirmed value (never below the 8m floor),
-     * persists it, and pauses probing — a fresh real turn does NOT resume;
-     * only re-selecting smart mode continues.
+     * smart-mode per-model TTL probing, two regimes:
+     * - climb (no recorded value): every hit confirms the cadence it ran at
+     *   (lastGoodTtlMs) and grows the next one by SMART_STEP_MS, written to the
+     *   local model-ttl store; a miss persists the last confirmed value into
+     *   omp-desktop.json's modelTtlMs map as the model's max TTL and switches
+     *   to the held regime.
+     * - held (recorded max TTL): probing runs at the recorded value with
+     *   climbing off; a miss there means the record is stale — clear it and
+     *   restart the climb from the re-resolved cadence. The miss probe itself
+     *   rebuilt the cache either way, so probing never pauses on these misses.
      * Contexts above 200k tokens are never pushed upward and immediately revert
-     * to the floor cadence, because a miss there costs too much full-price
+     * to the base cadence, because a miss there costs too much full-price
      * input to risk.
      */
     function smartAdaptAfterHit(inputTokens: number): void {
+      if (!capture) return;
+      const modelId = capture.model.id;
       if (inputTokens > SMART_MAX_CONTEXT_TOKENS) {
-        // Too expensive to experiment; drop to floor and stop growing.
-        if (config.intervalMs > SMART_BASE_MS) {
-          config.intervalMs = SMART_BASE_MS;
-          persistConfig();
+        // Too expensive to experiment; drop to the base cadence and stop growing.
+        growthHeld = true;
+        if (currentTtlMs > config.intervalMs) {
+          currentTtlMs = config.intervalMs;
+          writeModelTtlMs(modelId, currentTtlMs);
           debug(
-            `smart: context ${inputTokens} tokens exceeds ${SMART_MAX_CONTEXT_TOKENS / 1000}k — cadence back to the 8m floor`,
+            `smart: context ${inputTokens} tokens exceeds ${SMART_MAX_CONTEXT_TOKENS / 1000}k — cadence back to the ${formatDuration(currentTtlMs)} base`,
           );
         }
-        smartHitStreak = 0;
         return;
       }
-      smartHitStreak += 1;
-      if (smartHitStreak < SMART_CONFIRM_HITS) return;
+      lastGoodTtlMs = currentTtlMs;
+      if (growthHeld) return;
       const roomUnderMaxIdle =
-        config.maxIdleMs === 0 || config.intervalMs + SMART_STEP_MS < config.maxIdleMs;
-      if (roomUnderMaxIdle) {
-        config.intervalMs += SMART_STEP_MS; // 3-hit-confirmed value stays on disk
-        persistConfig();
-        debug(
-          `smart: ${smartHitStreak} consecutive hits — cadence grows to ${formatDuration(config.intervalMs)}`,
-        );
-      }
-      smartHitStreak = 0;
+        config.maxIdleMs === 0 || currentTtlMs + SMART_STEP_MS < config.maxIdleMs;
+      if (!roomUnderMaxIdle) return;
+      currentTtlMs += SMART_STEP_MS;
+      writeModelTtlMs(modelId, currentTtlMs);
+      debug(`smart: probe hit — next TTL for ${modelId} grows to ${formatDuration(currentTtlMs)}`);
     }
 
     function smartAdaptAfterMiss(): void {
-      smartHitStreak = 0;
-      const fellBack = config.intervalMs > SMART_BASE_MS;
-      if (fellBack) {
-        // Step back to the last confirmed cadence before pausing.
-        config.intervalMs = Math.max(SMART_BASE_MS, config.intervalMs - SMART_STEP_MS);
-        persistConfig();
+      if (!capture) return;
+      const modelId = capture.model.id;
+      if (growthHeld) {
+        // The recorded max TTL missed a live probe: it is stale. Clear it,
+        // lift the hold, and restart the climb from the re-resolved cadence
+        // (local store → settings default).
+        growthHeld = false;
+        lastGoodTtlMs = null;
+        clearConfirmedModelTtl(modelId);
+        currentTtlMs = resolveModelTtlMs(modelId, config.intervalMs).ms;
+        debug(
+          `smart: cache miss at the recorded max TTL — ${modelId} entry cleared; climb restarts at ${formatDuration(currentTtlMs)}`,
+        );
+        return;
       }
-      smartPaused = true;
-      pause(
-        `cache miss in smart mode — cadence ${fellBack ? `back to ${formatDuration(config.intervalMs)}` : "already at the floor"}; probing stopped until smart mode is re-selected`,
-      );
+      if (lastGoodTtlMs !== null) {
+        // The climb found the ceiling: persist the last cadence the cache
+        // actually held as the model's max TTL and keep probing at it.
+        currentTtlMs = lastGoodTtlMs;
+        lastGoodTtlMs = null;
+        growthHeld = true;
+        writeConfirmedModelTtlMs(modelId, currentTtlMs);
+        writeModelTtlMs(modelId, currentTtlMs);
+        debug(
+          `smart: cache miss — ${modelId} max TTL confirmed at ${formatDuration(currentTtlMs)} (saved to the config file); probing continues at it`,
+        );
+        return;
+      }
+      // Nothing confirmed in this climb: the cadence it started at already
+      // missed. Drop any stale confirmed value (it failed a fresh probe), back
+      // off toward the nominal-TTL window, and keep probing — the climb
+      // restarts from the shorter cadence once probes hit again.
+      clearConfirmedModelTtl(modelId);
+      const next = Math.max(MIN_INTERVAL_MS, Math.min(currentTtlMs - SMART_STEP_MS, DEFAULT_FALLBACK_MS));
+      if (next < currentTtlMs) {
+        currentTtlMs = next;
+        writeModelTtlMs(modelId, currentTtlMs);
+        debug(
+          `smart: cache miss with nothing confirmed — cadence descends to ${formatDuration(currentTtlMs)}; probing continues`,
+        );
+        return;
+      }
+      // Already at the descent floor and still missing: count toward the miss pause.
+      missStreak += 1;
+      if (missStreak >= config.maxMissStreak) {
+        pause("probes stopped hitting the prefix cache; waiting for your next real turn");
+      }
     }
 
     /**
@@ -533,7 +587,8 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         const entry = {
           at: new Date().toISOString(),
           mode: config.mode,
-          intervalMs: config.intervalMs,
+          model: capture?.model.id,
+          intervalMs: currentTtlMs,
           promptTokens: prompt,
           cachedTokens: cached,
           uncachedTokens: Math.max(0, prompt - cached),
@@ -557,7 +612,6 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         // automatic recovery after the next real turn starts from a clean slate.
         missStreak = 0;
         errorStreak = 0;
-        smartHitStreak = 0;
         pause("captured credentials rejected; will recapture after your next real turn");
         return;
       }
@@ -614,22 +668,24 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       };
       // This request refreshed the target cache, so the cadence restarts from
       // now: agent_end must not resume a deadline this turn invalidated.
+      // Smart mode treats each real request as a new cache generation:
+      // re-resolve this model's cadence (config confirmed max TTL → local
+      // store → settings default). A recorded max TTL stays authoritative
+      // across generations — no re-climbing; only a miss at it clears the
+      // entry and restarts the climb. Fixed mode runs the global interval.
+      if (config.mode === "smart") {
+        const resolved = resolveModelTtlMs(model.id, config.intervalMs);
+        currentTtlMs = resolved.ms;
+        growthHeld = resolved.confirmed;
+      } else {
+        currentTtlMs = config.intervalMs;
+      }
       targetRequestThisTurn = true;
       // A fresh real request means fresh credentials and a warm prefix cache;
-      // automatically recover from any sticky pause. Exception: a smart-mode
-      // miss intentionally parks probing until the user re-selects smart mode.
+      // automatically recover from any sticky pause.
       if (pausedReason !== null || missStreak > 0 || errorStreak > 0) {
-        if (smartPaused) {
-          if (pausedReason !== null) {
-            debug("fresh real request observed — smart-mode miss pause kept; re-select smart mode to resume");
-            missStreak = 0;
-            errorStreak = 0;
-            return;
-          }
-        } else {
-          pausedReason = null;
-          debug("fresh real request observed — keepalive unpaused");
-        }
+        pausedReason = null;
+        debug("fresh real request observed — keepalive unpaused");
         missStreak = 0;
         errorStreak = 0;
       }
@@ -644,6 +700,9 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       suspendedProbeAt = null;
       targetRequestThisTurn = false;
       lastSettledAt = Date.now();
+      currentTtlMs = config.intervalMs;
+      lastGoodTtlMs = null;
+      growthHeld = false;
       clearTimer();
     });
 
