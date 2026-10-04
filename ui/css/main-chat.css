@@ -334,7 +334,8 @@ body:has(#right.collapsed) #right-resizer {
   padding-bottom: 0;
 }
 .md-body.md-surface :is(.md-p, .md-ul, .md-ol, .md-quote, .md-hr, .md-table, .md-table-wrap) { margin: 0; }
-.md-body.md-surface li { margin: 0; line-height: 1.55; }
+.md-body.md-surface :is(.md-p, li) { line-height: 1.55; }
+.md-body.md-surface li { margin: 0; }
 .md-body.md-surface .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
 .md-body.md-surface .space-y-4 > * + * { margin-top: 1.5em; }
 
@@ -783,12 +784,14 @@ body:has(#right.collapsed) #right-resizer {
 
 /* Task row's expanded assignment card (.task-md, ToolRow.tsx TaskBody): code font size and a
    customized 9.5-line page (the generic cmd-card-cmd page is 4.5). The shared markdown
-   semantics come from .md-surface (see the .md-surface block above). */
+   semantics come from .md-surface (see the .md-surface block above); the inner .md-body class
+   would otherwise re-assert the app base size (13.5px/1.7) over the card's code size. */
 .cmd-card-cmd.task-md {
   font-size: var(--code-fs);
   line-height: 1.5;
   max-height: calc(1.5em * 9.5);
 }
+.cmd-card-cmd.task-md .md-body { font-size: inherit; line-height: inherit; }
 
 /* Local bash execution row (! prefix, BashRow): reuses .cmd row styles, status area right-aligned. exit 0 uses --dim, non-zero/errors use --err; "not in context" is a small faint tag */
 .bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
