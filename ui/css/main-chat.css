@@ -284,23 +284,6 @@ body:has(#right.collapsed) #right-resizer {
 
 .md-body .md-h4 { font-size: calc(var(--ui-fs) * 1.1); }
 
-/* Unified markdown surface semantics (MdSurface.tsx), TUI parity (tui/src/components/markdown.ts:
-   headings colored mdHeading at body size; blocks separated by exactly one blank line). Added on
-   EVERY markdown surface; font size stays per-surface (cards set --code-fs on their wrapper).
-   Selectors match .md-body specificity and rely on source order (this block follows the base
-   rules above). */
-.md-surface :is(.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6) {
-  font-size: inherit;
-  font-weight: 500;
-  color: var(--accent);
-  border-bottom: none;
-  padding-bottom: 0;
-}
-.md-surface :is(.md-p, .md-ul, .md-ol, .md-quote, .md-hr) { margin: 0; }
-.md-surface li { margin: 0; line-height: 1.55; }
-.md-surface .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
-.md-surface .space-y-4 > * + * { margin-top: 1.5em; }
-
 .md-body .md-inline-code {
   font-family: var(--mono) !important;
   font-size: var(--code-fs, 12px) !important;
@@ -337,6 +320,23 @@ body:has(#right.collapsed) #right-resizer {
 }
 
 .md-body li { margin: 4px 0; line-height: 1.65; width: fit-content; max-width: 100%; }
+
+/* Unified markdown surface semantics (MdSurface.tsx), TUI parity (tui/src/components/markdown.ts:
+   headings colored mdHeading at body size; blocks separated by exactly one blank line). Added on
+   EVERY markdown surface as md-body + md-surface. Specificity is .md-body.md-surface (0,3,x) on
+   purpose: base rules like .md-body li / .md-body .md-quote sit later in this file at (0,2,x) and
+   would otherwise resurrect their margins. */
+.md-body.md-surface :is(.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6) {
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--accent);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.md-body.md-surface :is(.md-p, .md-ul, .md-ol, .md-quote, .md-hr, .md-table, .md-table-wrap) { margin: 0; }
+.md-body.md-surface li { margin: 0; line-height: 1.55; }
+.md-body.md-surface .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
+.md-body.md-surface .space-y-4 > * + * { margin-top: 1.5em; }
 
 .md-body .md-task-cb {
   margin-right: 6px;
