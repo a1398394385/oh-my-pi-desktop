@@ -27,6 +27,7 @@ import {
   toolFileHeaderDescription,
   commandPreview,
   setMcpServerEnabled,
+  clearCapabilityFsCache,
 } from "./bootstrap.ts";
 import { settingsGet, settingsSet } from "./settings-compat.ts";
 
@@ -166,6 +167,14 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
   const scopeId = typeof scope === "string" && scope.startsWith("project:") ? scope : "profile";
   const cwd = scopeId.startsWith("project:") ? scopeId.slice("project:".length) : undefined;
   const disabledIds = (settingsGet(H.settings, "disabledExtensions") ?? []) as string[];
+  // This page is the explicit "I just edited config files on disk" refresh, so
+  // discovery must cold-read. The capability fs cache (contentCache/dirCache,
+  // keyed by absolute path) is process-lifetime and nothing else clears it for
+  // context-files, so a file the user just created/edited/filled in (e.g. a
+  // previously empty ~/.agents/AGENTS.md) would keep its first-read verdict —
+  // including the cached "empty -> null" that keeps it out of this page —
+  // until the host restarts. Mirrors invalidateSshCaches() in host/rpc/ssh.ts.
+  clearCapabilityFsCache();
   // Temporarily bypass disabledProviders filter during extension discovery so disabled
   // providers' entries are always discovered and rendered, rather than disappearing when disabled.
   const savedDisabledProviders = getDisabledProviders();
