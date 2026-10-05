@@ -47,7 +47,6 @@ export const miscEn = {
   noWorkspaceMatch: "No matching workspaces",
   openFolder: "Open folder",
   remoteConn: "Remote connection",
-  remoteConnSoon: "Remote connection is coming soon",
   // keys.ts runtime toasts
   thinkingExpandOn: "Thinking: expanded while running",
   thinkingExpandOff: "Thinking: collapsed while running",
@@ -90,6 +89,12 @@ export const miscEn = {
   keysZoomIn: "Zoom in",
   keysZoomOut: "Zoom out",
   keysZoomReset: "Reset zoom",
+  keysGroupSystem: "System",
+  keysGroupSystemDesc: "Bound by the OS or the native shell (menu bar / window management); dispatched outside the app, not configurable.",
+  keysSystemClose: "Close window: hide to background (the close button also hides; the app never quits)",
+  keysSystemQuit: "Quit app",
+  keysSystemHide: "Hide app",
+  keysSystemMinimize: "Minimize window",
   // Host boot error codes (store/ws.ts translateHostError; codes emitted by src-tauri/src/lib.rs)
   bootAssetDirFailed: "Failed to resolve the app resource directory",
   bootHostSidecarMissing: "Host sidecar not found",

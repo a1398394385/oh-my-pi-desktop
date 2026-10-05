@@ -1,7 +1,8 @@
 // Limits query adapter layer: wires the token-monitor ported vendor fetch
 // (CJS) onto omp's authStorage. The options for omp provider id -> vendor
 // fetchXxxLimits are synthesized here from the credential and baseUrl; results
-// are cached 60s per omp provider to avoid hammering vendors on every hover.
+// are cached 5min per omp provider/credential (TTL = the background refresh
+// cadence in main.ts) so foreground queries never hit vendors directly.
 
 import type { AuthCredential, AuthStorage } from "@oh-my-pi/pi-ai";
 import { getOAuthProviders } from "../bootstrap.ts";
@@ -95,6 +96,14 @@ function zaiRegionForBaseUrl(baseUrl: string): string {
   return baseUrl.includes("bigmodel.cn") ? "bigmodel-cn" : "global";
 }
 
+// baseUrl decides the MiniMax region: minimaxi.com = CN site, minimax.io =
+// international; pinning it skips the cross-region endpoint churn (a key from
+// the other region answers auth-shaped errors, costing 2-3 extra round trips
+// before the right endpoint is reached). Unknown hosts keep the both-region order.
+function minimaxRegionForBaseUrl(baseUrl: string): "cn" | "en" | undefined {
+  return baseUrl.includes("minimaxi.com") ? "cn" : baseUrl.includes("minimax.io") ? "en" : undefined;
+}
+
 const VENDOR_SPECS: Record<string, VendorSpec> = {
   "kimi-code": {
     vendor: "kimi",
@@ -138,12 +147,10 @@ const VENDOR_SPECS: Record<string, VendorSpec> = {
     native: true,
     fetch: (key) => fetchDeepSeekLimits({ deepseekApiKey: key }, {})
   },
-  minimax: { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
-  "minimax-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
-  "minimax-code": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
-  "minimax-code-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key) => fetchMinimaxLimits({ minimaxApiKey: key }, {}) },
-  // claude: authStorage's anthropic OAuth token is injected via
-  // CLAUDE_CODE_OAUTH_TOKEN; without a credential the vendor discovers
+  minimax: { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  "minimax-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  "minimax-code": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  "minimax-code-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
   // ~/.claude / macOS keychain itself
   anthropic: {
     vendor: "claude",

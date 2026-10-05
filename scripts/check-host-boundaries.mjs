@@ -97,6 +97,15 @@ const ALLOWED_EDGES = new Set([
   // read/write goes through state.ts's H (same as keepalive-config)
   "profile.ts→ui-config.ts", "rpc/settings.ts→ui-config.ts", "ui-config.ts→state.ts",
   "frames.ts→ui-config.ts",
+  // Desktop-owned browser routing (omp-desktop.json browser section: the
+  // "use an external browser" switch). applyProfile re-applies it on every
+  // profile apply; the set_external_browser RPC writes it; frames.ts carries
+  // the readExternalBrowserEnabled projection. Same shape as ui-config: the
+  // file lives under the profile agent dir (read/write through state.ts's H)
+  // and the base keys are pinned via bootstrap.ts's lookupSetting.
+  "profile.ts→browser-config.ts", "rpc/settings.ts→browser-config.ts",
+  "browser-config.ts→state.ts", "browser-config.ts→bootstrap.ts",
+  "frames.ts→browser-config.ts",
   // Queued message domain: followUp/steering views, park staging plus send-now/requeue/drop
   "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
   // Experiment switches (acp/sessionContext section) live in omp-desktop.json alongside the profile
@@ -151,6 +160,14 @@ const ALLOWED_EDGES = new Set([
   "rpc/capabilities.ts→rpc/types.ts", "rpc/capabilities.ts→state.ts",
   "rpc/capabilities.ts→capabilities.ts",
   "rpc/index.ts→rpc/capabilities.ts",
+  // SSH remote workspaces (welcome-flow remote connection): host CRUD + workspace
+  // stubs over the base's ssh.json / capability caches (bootstrap handles), stub
+  // marker owned by remote-workspaces.ts; list_sessions decorates project rows
+  // with the remote label (no system-prompt injection — the base owns the prompt)
+  "rpc/index.ts→rpc/ssh.ts",
+  "rpc/ssh.ts→rpc/types.ts", "rpc/ssh.ts→bootstrap.ts", "rpc/ssh.ts→remote-workspaces.ts",
+  "remote-workspaces.ts→bootstrap.ts",
+  "rpc/session.ts→remote-workspaces.ts",
 ]);
 
 // Scan one level of host/ plus the host/rpc/ subdirectory (keys carry a path prefix like rpc/session.ts)

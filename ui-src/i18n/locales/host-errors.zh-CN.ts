@@ -46,6 +46,7 @@ export const hostErrorsZh = {
     subagentReadonly: "子代理会话为只读，不支持发送消息",
     subagentSlashNotSupported: "子代理会话暂不支持 Slash 命令与终端命令",
   },
+  computerGateClosed: "电脑控制未在设置页开启：请先打开设置页的总开关，再在会话内运行 /computer on",
   bash: {
     busy: "已有 bash 命令在执行，先按停止或等它结束",
   },
@@ -56,7 +57,6 @@ export const hostErrorsZh = {
     fastRemoved: "服务档（fast）切换已移除",
     skillsSettingPage: "技能清单开关请到设置页操作",
     extContextSettingPage: "扩展上下文开关请到设置页操作",
-    computerSettingPage: "电脑控制开关请到设置页操作",
     forceRemoved: "强制工具选择已移除",
     useForkButton: "会话分叉请点击回复下方的分叉按钮",
   },
@@ -122,6 +122,7 @@ export const hostErrorsZh = {
     noneAfterFilter: "启用列表过滤后没有可用模型",
     invalidRoleName: "非法角色名: {{role}}",
     roleUnresolved: "角色「{{role}}」没有解析到可用模型",
+    roleKindMismatch: "模型 {{model}} 与角色 {{role}} 接受的类别不兼容（如 SPEECH 仅接受 TTS、DICTATION 仅接受 STT 模型）",
   },
   limits: {
     noModelSelected: "会话尚未选择模型",
@@ -150,6 +151,16 @@ export const hostErrorsZh = {
   },
   mcp: {
     userCancelled: "用户中止生成",
+  },
+  ssh: {
+    missingName: "缺少主机名称",
+    nameInvalid: "主机名不合法: {{detail}}",
+    missingAddress: "缺少主机地址",
+    portInvalid: "端口必须是 1-65535 的整数",
+    hostNotFound: "未找到 SSH 主机: {{name}}",
+    invalidPath: "远程路径无效（需为以 / 开头的绝对路径）: {{path}}",
+    unreachable: "SSH 连接失败: {{detail}}",
+    dirMissing: "远程目录不存在: {{path}}",
   },
   wizard: {
     missingBaseUrl: "缺少 baseUrl",

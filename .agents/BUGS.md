@@ -48,6 +48,7 @@
 | BUG-038 | Windows 终端默认起 PowerShell 5.1 不跟随用户 pwsh 7——默认 shell 硬编码 powershell.exe，无探测 | 2026-10-03 |
 | BUG-039 | 项目打开后终端起始目录落在用户主目录——无活跃会话时空 cwd 回落宿主 process.cwd()（GUI 启动目录） | 2026-10-03 |
 | BUG-040 | 发消息后「工作中 Ns」紧贴气泡被渐隐吞掉——贴底目标把 sticky 底部占位的 36px 算进内容 | 2026-10-03 |
+| BUG-041 | Windows 安装版使用统计永远「同步失败」——桌面宿主分支未声明 worker host，stats 解析 worker 回退编译产物虚拟路径不可加载 | 2026-10-04 |
 
 ---
 
@@ -563,3 +564,43 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：`vite build` + 本地静态服务 + Chromium（`?preview=1`）逐态实测——(1) 首条消息发出：`scrollTop 0`，气泡底→首行间距 43px（修前 7px），首行/转圈均落在蒙版区外，回底钮按新口径正确隐藏；(2) 短回合结算（loop 折叠）/二次发送叠在短回合上：同前，间距 42.7~43px；(3) 长回合（40 段）：跟随时仍稳在最大滚动位（971/971），滚上去后按钮出现、点击回落 (971 → 971)、按钮转隐；(4) 长回合成长期（草稿 300→900→1600）：未超屏时停在回合顶（不顶气泡），超过一屏后无缝切回贴底跟随；(5) 结算后的长回合：静止位在 `acts 底边 = 视口高 - 36`（底部渐隐带正上方），与设计留白一致；(6) 流式中追加 steer 气泡（长流短流两态）：落点均在底部渐隐带之上；(7) `bun run check` 八步 + `smoke:react` 全绿。
 
 **教训**：计算「滚到底」不能直接用 `scrollHeight`——任何参与布局的 sticky 渐隐占位/留白块都会被算成内容，让贴底目标系统性过冲，把「贴着滚动口顶端的吸附元素」与「紧随其后的内容」压到一起。目标应锚定「最新内容真实末边 + 预留渐隐高度」，并给「回合装得下」的常见情形回落到回合顶部，否则短回合永远停留在被顶起 36px 的状态。现象上「内容被淡出」容易被误判成蒙版本身的问题，实为滚动落点问题——蒙版没错，是内容站错了位置。
+
+### BUG-041: Windows 安装版使用统计永远「同步失败」——桌面宿主分支未声明 worker host，stats 解析 worker 回退编译产物虚拟路径不可加载
+
+**现象**：Windows 打包版设置页「使用统计」右上角实时徽标恒为「同步失败」，tooltip 是 `BuildMessage: ModuleNotFound resolving "B:\~BUN\root\sync-worker.ts" (entry point)`，每 10s 重试每 10s 失败，统计零导入；macOS 打包版正常。
+
+**分诊**：②确认存量缺陷——自 stats 服务器并入桌面宿主（host/stats.ts）即如此，仅 Windows 打包形态可观测（用户 omp-desktop profile 当日日志 75+64 条 `Stats live sync failed` 实锤）。
+
+**根因**：两层叠加。① `host/host.ts` 只在 argv 非空分支 `declareWorkerHostEntry()`，桌面宿主分支（argv=0，正是 stats 服务器所在进程）里 `workerHostEntry()` 恒为 null；omp-stats `createSyncWorker()` 于是回退 `new Worker(new URL("./sync-worker.ts", import.meta.url).href)`——编译产物里该 URL 解析为虚拟内嵌路径 `B:\~BUN\root\sync-worker.ts`，Windows Bun 无法作为 worker 入口加载 → ModuleNotFound。macOS 不可见是因为 omp-stats `defaultWorkerCount()` 对 darwin 固定 1（串行解析、从不 spawn worker）。② 补上 declare 后又揭出第二层：worker 线程重入 omp-host.exe → runCli 分发 `__omp_worker_stats_sync`，cli.ts 对这个零导出模块的动态 import 被 bun 单文件编译改写成惰性工厂调用 `(KVr(),{})`，模块体（`self.onmessage = ...`）永不求值，分发器留下的缓冲 onmessage 吞掉所有消息——不报错、永远 syncing。
+
+**修复**：`host/host.ts` 两处。① declare 提到路由前、两分支共用（自分发入口协议：本入口能分发 worker 选择器就应注册为 worker host）。② `__omp_worker_stats_sync` 选择器不再借道 runCli，在入口直接 `await import("@oh-my-pi/omp-stats/sync-worker")`（从入口 import 的改写会正确求值模块体），并按 cli.ts 同款「先寄存再重放」处理早到消息，setInterval 挂住线程。防回归：`scripts/smoke-stats-sync-worker.ts`（起产物 → /api/events → 断言 idle 且 fixture 计入；未修复产物上实测 FAIL/error，修复产物 PASS）。
+
+**教训**：库内嵌宿主把自己当「CLI 编译产物」时，SDK 的 worker 协议责任要在**宿主形态的每个分支**核对——declare 只写在 CLI 分支，意味着宿主进程内一切线程 worker（stats 解析、js_eval）全部走降级路径；平台差异（darwin 串行）会掩盖故障面。另外 bun 单文件编译对零导出模块的动态 import 改写存在不求值陷阱（详见 PITFALLS「Windows MSI 打包」节），新选择器在产物里必须实测消息往返，不能只看分发不报错。
+
+### BUG-042: 切换 MiniMax 后上下文明细卡配额段等 ~1s——无会话 hover 走裸 provider 缓存键从未被预热，冷抓再叠加跨区域端点回退
+
+**现象**：把输入区模型切到 MiniMax 供应商后 hover 上下文环，明细卡弹出的配额段要等接近 1 秒才出现；后台配额缓存明明每 5 分钟全量刷新。
+
+**分诊**：②确认存量缺陷——多账号 `provider#credentialId` 缓存键体系落地后即如此，对「凭证存 authStorage 的 API-key 型供应商」（MiniMax 无 OAuth 流程，只能 API key 向导配置，必属此类）必现。
+
+**根因**：两层叠加。① 缓存键错位：`host/rpc/limits.ts` 的 `get_limits` 只在**有会话**分支做 key 反查（getApiKey → credentials.list 反查 → `#id` cacheTag），与后台刷新（`refreshAllLimits` → `fetchProviderAccountsLimits`，只写 `provider#id` 行）共享缓存；输入区切完供应商还没开会话时走**无会话**分支，cacheTag 恒 undefined → 裸 `provider` 键——凭证存在时后台从不写裸键行 → 每次超过 TTL 的首次 hover 必冷抓。② 冷抓耗时被 MiniMax 拉满：`VENDOR_SPECS.minimax*` 不传 `minimaxApiHost`，vendor 端点序默认 `[EN tokenPlan, EN legacy, CN tokenPlan, CN legacy]`，CN key 打 EN 端点返回 200 + `base_resp.status_code 1004`（auth 形态）→ 逐端点回退，2~3 次 HTTPS 往返 ≈ 1s。
+
+**修复**：三处。① `host/rpc/limits.ts`：无会话分支同样走 getApiKey + 反查（提取 `accountForResolvedKey` 共用），共享 `#id` 缓存行，顺带补上无会话路径的账号 label；② `host/limits/index.ts`：新增 `minimaxRegionForBaseUrl`（minimaxi.com→cn / minimax.io→en，仿 zaiRegionForBaseUrl），四个 minimax spec 传入 `minimaxApiHost` 锁区域，未知 host 保持双区域序；③ `host/rpc/login.ts`：`provider_set_key` 后 fire-and-forget 预热该供应商配额缓存，消掉刚配完 key 到下个 5 分钟 tick 之间的冷窗。
+
+**验证**：`.local/verify-limits-cache.ts`（临时,已删）——真实 AuthStorage + 录制型 fake fetch：后台预热 1 次请求；旧无会话形态复现冷抓（extra=1）；新形态 `#id` 命中（extra=0）；CN baseUrl 全程不碰 EN 端点、区域内在 token_plan→legacy 回退后 ok；EN baseUrl 只碰 EN 端点。8/8 PASS。`bun run check` 六道门禁绿；`ui:typecheck` 报 `ComputerPage.tsx` `Section` 未定义——存量 WIP,与本次无关（本次未触 ui-src）。
+
+**教训**：给「预热缓存 + 前台读缓存」设计缓存键时，要枚举**前台读取方的全部入口形态**（有会话/无会话/多账号 sticky/按 provider 直查），任何一种形态的键合成路径没有预热方对应写入，该形态就永远冷路径——TTL 越长，症状越像「缓存没生效」。跨区域供应商（MiniMax 双域名、zai 双站点）的限额查询必须从 baseUrl 锁区域，否则冷路径延迟会被端点回退序放大数倍。
+
+### BUG-043: 缓存保活永远显示「已暂停」——靶标匹配拿设置页的拼合 catalog id 比注册表裸 model id，捕获永不成立
+
+**现象**：实验功能页开了缓存保活、靶标模型已配置（deepseek/zhipu/minimax 均已选），但上下文明细卡保活段的「下次运行」恒为「已暂停」，探测计数永远为 0。
+
+**分诊**：②确认存量缺陷——keepalive 桌面移植引入 selectable targets 时即如此，凡通过设置页配置靶标的用户必现（即全部用户：UI 是靶标的唯一写入方）。
+
+**根因**：id 格式两侧错位。设置页靶标选择器的数据源是 composer 模型菜单 `modelNames`，其 key 是宿主 `models.ts` 拼合出的 **`provider/model` 复合 id**（`const id = \`${m.provider}/${m.id}\``，与 models 帧/UI 全站一致）；而 keepalive 扩展在 `before_provider_request` 里做捕获门禁的 `isTargetModel` 拿 **SDK 注册表 `ctx.model.id`（裸名，如 `glm-5.3`）** 去 `config.targets.includes(model.id)`——拼合串永远 ≠ 裸名，捕获永不成立 → `capture` 恒 null → `armed()` 恒 false → `agent_end` 的 `schedule()` 永远是空操作 → `nextProbeAt` 恒 null → 卡片恒「已暂停」。移植时的类型注释「catalog id ("provider/model")」是对 SDK 上下文的错误假设。smart 模式的 per-model TTL 存储（modelTtlMs 确认值 / model-ttl.json 爬升值）与 probe-log 的 model 字段同用裸 id，一并统一。
+
+**修复**：`host/keepalive.ts` 新增 `catalogId(model) = \`${provider}/${id}\``，五处统一改用复合 id：`isTargetModel` 靶标匹配、smart 模式 `resolveModelTtlMs` 读取、`smartAdaptAfterHit`/`smartAdaptAfterMiss` 的 TTL 写入键、probe-log 的 model 字段。存储键无历史迁移负担（捕获从未成功过，旧键不存在）；修正 `KeepaliveModel.id` 的错误注释。
+
+**验证**：`.local/verify-keepalive-targets.ts`（临时,已删）——真实 `createKeepaliveExtension` 走 session_start → before_provider_request → agent_end 事件链（temp omp-desktop.json 复刻设置页写入的复合靶标）：非靶标 provider 同名裸 id 不布防；复合靶标（裸 id + 正确 provider）布防且 `nextProbeAt ≈ now + intervalMs`（±5s）。3/3 PASS。`bun run check` 全绿（含 tsc）。
+
+**教训**：在两个 id 体系（SDK 注册表裸名 vs 宿主/UI 拼合 catalog id）之间做任何**等值匹配**前，先核对两侧字段的实际取值格式——类型注释写的「catalog id」可能是移植时的假设而非事实。跨边界传递的 key（配置文件里人可见、UI 可回显的字段）应统一到 UI 侧格式；隔离实现里对 SDK 形状的每一处假设，都要用真实事件上下文验一次。

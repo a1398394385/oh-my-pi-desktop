@@ -70,12 +70,17 @@ import {
 
 /** Field face of the model the captured request belongs to (narrow view of the base ExtensionContext["model"]). */
 interface KeepaliveModel {
-  /** catalog id ("provider/model"), the match key for targets */
+  /** Bare model id (the registry tail, e.g. "glm-5.3"); the settings-page target key is the compound form below */
   id: string;
   provider: string;
   baseUrl?: string;
   api?: string;
   cost?: Partial<CostPerM> | undefined;
+}
+
+/** Compound catalog id ("provider/model") — the key format the settings-page targets, the models frame and every UI surface use. */
+function catalogId(model: KeepaliveModel): string {
+  return `${model.provider}/${model.id}`;
 }
 
 /**
@@ -258,7 +263,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       // match); upstream hardcodes kimi-code, the desktop version generalizes.
       // baseUrl must be set — the probe request hits the vendor endpoint
       // directly
-      if (!model || !config.targets.includes(model.id)) return false;
+      if (!model || !config.targets.includes(catalogId(model))) return false;
       return typeof model.baseUrl === "string" && model.baseUrl.length > 0;
     }
 
@@ -501,7 +506,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
      */
     function smartAdaptAfterHit(inputTokens: number): void {
       if (!capture) return;
-      const modelId = capture.model.id;
+      const modelId = catalogId(capture.model);
       if (inputTokens > SMART_MAX_CONTEXT_TOKENS) {
         // Too expensive to experiment; drop to the base cadence and stop growing.
         growthHeld = true;
@@ -526,7 +531,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
 
     function smartAdaptAfterMiss(): void {
       if (!capture) return;
-      const modelId = capture.model.id;
+      const modelId = catalogId(capture.model);
       if (growthHeld) {
         // The recorded max TTL missed a live probe: it is stale. Clear it,
         // lift the hold, and restart the climb from the re-resolved cadence
@@ -587,7 +592,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         const entry = {
           at: new Date().toISOString(),
           mode: config.mode,
-          model: capture?.model.id,
+          model: capture ? catalogId(capture.model) : null,
           intervalMs: currentTtlMs,
           promptTokens: prompt,
           cachedTokens: cached,
@@ -674,7 +679,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       // across generations — no re-climbing; only a miss at it clears the
       // entry and restarts the climb. Fixed mode runs the global interval.
       if (config.mode === "smart") {
-        const resolved = resolveModelTtlMs(model.id, config.intervalMs);
+        const resolved = resolveModelTtlMs(catalogId(model), config.intervalMs);
         currentTtlMs = resolved.ms;
         growthHeld = resolved.confirmed;
       } else {

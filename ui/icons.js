@@ -2,10 +2,11 @@
 // Unified icon registry: every static SVG icon in the project lives here, stored once.
 // Usage:
 //   JS:    icon("folder") / icon("caret", 12)
-//   HTML:  <span class="..." data-icon="folder" data-size="23"></span>
-//          (on startup hydrateIcons() replaces the placeholder span with the svg
-//           and copies class / id / style from the placeholder element)
-// Dynamic graphics (e.g. the ctxRing progress ring) are not icons; they stay inline in index.html.
+//   JSX:   <Icon name="folder" size={23} /> (ui-src/Icon.tsx, injects the registry svg)
+//          Legacy HTML placeholder path: hydrateIcons() swaps a <span data-icon="name"
+//          data-size="N"> for the svg and copies class / id / style; the React app
+//          uses the Icon component instead.
+// Dynamic graphics (e.g. the ctxRing progress ring) are not icons; they render as React components.
 // Layers (later ones override earlier by name): custom -> Font Awesome solid -> Lucide line-style -> vscode-icons file-type colored
 // ════════════════════════════════════════════════════════════
 // Custom icons (ones FA lacks, e.g. the app logo): written directly here

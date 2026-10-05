@@ -8,8 +8,9 @@ import path from "node:path";
 import fs from "node:fs";
 import { authPolicyFor } from "../bootstrap.ts";
 import { H, loginPendingPrompts } from "../state.ts";
-import { rebuildScopedModels, modelCatalog } from "../models.ts";
+import { rebuildScopedModels, modelCatalog, syncAvailableModels, capabilityKeysPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
+import { fetchProviderAccountsLimits } from "../limits/index.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
@@ -66,7 +67,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
       });
       // Login succeeded: re-pull the model catalog (new credentials unlock providers) and push the latest list
       await H.modelRegistry.refresh();
-      H.availableModels = H.modelRegistry.getAvailable();
+      syncAvailableModels();
       rebuildScopedModels();
       reply(modelsFrame());
       reply({ type: "models_catalog", models: modelCatalog() });
@@ -97,15 +98,17 @@ export const loginHandlers: Record<string, RpcHandler> = {
     if (!provider) throw new Error(hostI18n.t("errors.param.missingProvider"));
     await H.authStorage.credentials.remove(provider);
     H.availableModels = H.availableModels.filter((m) => m.provider !== provider);
-    rebuildScopedModels();
+    H.allModels = H.allModels.filter((m) => m.provider !== provider);
     ws.send(JSON.stringify(modelsFrame()));
     ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+    ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     try {
       await H.modelRegistry.refresh();
-      H.availableModels = H.modelRegistry.getAvailable();
+      syncAvailableModels();
       rebuildScopedModels();
       ws.send(JSON.stringify(modelsFrame()));
       ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+      ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     } catch (err) {
       process.stderr.write(`[host] 登出后模型目录刷新失败: ${err}\n`);
     }
@@ -185,10 +188,19 @@ export const loginHandlers: Record<string, RpcHandler> = {
     }
     await H.authStorage.credentials.upsert(provider, { type: "api_key", key });
     await H.modelRegistry.refresh();
-    H.availableModels = H.modelRegistry.getAvailable();
+    syncAvailableModels();
     rebuildScopedModels();
     ws.send(JSON.stringify(modelsFrame()));
+    // Warm the quota cache for the new credential now (fire-and-forget):
+    // the 5-min background timer would otherwise leave the first ctx-card /
+    // models-page hover cold-fetching the vendor
+    let limitsBaseUrl = "";
+    try {
+      limitsBaseUrl = H.modelRegistry.getProviderBaseUrl(provider) ?? "";
+    } catch {}
+    void fetchProviderAccountsLimits(H.authStorage, provider, limitsBaseUrl).catch(() => {});
     ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+    ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     ws.send(JSON.stringify({ type: "provider_key_done", provider, ok: true }));
   },
   login_prompt_reply(_ws, msg) {
@@ -250,8 +262,9 @@ export async function refreshCatalogAndPush(ws: WsLike) {
   } catch (err) {
     process.stderr.write(`[host] 账号变更后模型目录刷新失败: ${err}\n`);
   }
-  H.availableModels = H.modelRegistry.getAvailable();
+  syncAvailableModels();
   rebuildScopedModels();
   ws.send(JSON.stringify(modelsFrame()));
   ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+  ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
 }

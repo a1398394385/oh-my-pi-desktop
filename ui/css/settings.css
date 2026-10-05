@@ -331,7 +331,7 @@
   min-width: 0;
 }
 
-.set-page > * { animation: setRise .45s var(--swift) both; }
+.set-page > * { animation: setRise .45s var(--swift) backwards; }
 
 .set-page > *:nth-child(2) { animation-delay: 40ms; }
 
@@ -1215,3 +1215,20 @@
 /* hooks page inline editor (shares the agents editor layout; #aeText counterpart) */
 #hookText { flex: 1; min-height: 320px; background: none; border: 0; outline: none; resize: vertical; padding: 12px 14px; color: var(--text); font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.6; }
 #hookPhasePills .mcp-type-pill { min-height: 26px; padding: 0 10px; font-size: var(--ui-fs-sm); }
+
+/* Settings sel dropdown: lift the open pill's card above the following cards.
+   Entrance animations (setRise) give sibling cards stacking contexts while they
+   run; with fill both Chromium even kept them after the end (identity matrix /
+   blur(0) computed transform/filter, never "none"), so later siblings painted
+   over the absolutely positioned .menu (z-index 500) no matter the z-index on
+   the .sel itself — it never escaped the card's own stacking context. Fix is
+   two-fold: fill backwards drops the contexts once animations settle, and the
+   open card rises to 600 so it also wins during the entrance window. */
+.set-card:has(.sel .menu.open) { position: relative; z-index: 600; }
+
+/* Conditional sub-rows revealed inside a settings card (pg-computer's external
+   browser routes): indented one step with a left guide, mem-expand's downward
+   popIn entrance. Not a standalone region — the rows stay direct .set-card
+   children, so only the wrapper takes the border/padding. */
+.ext-rows { border-top: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; }
+.ext-rows > .srow { padding-left: 30px; }

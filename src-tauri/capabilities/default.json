@@ -13,9 +13,6 @@
     "dialog:allow-open",
     "opener:allow-open-url",
     "opener:allow-default-urls",
-    "notification:default",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
-    "global-shortcut:allow-is-registered"
+    "notification:default"
   ]
 }

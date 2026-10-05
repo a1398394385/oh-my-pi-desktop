@@ -20,6 +20,10 @@ export interface Section {
   titleEn?: string;
   hint?: string;
   hintEn?: string;
+  // Stable id so a page can own the layout of its own sections (pg-computer
+  // renders each section as heading + one rounded card instead of SchemaRows'
+  // default heading + card pair)
+  id?: string;
 }
 
 // Shape of a single schema key definition (aligned with SETTINGS_SCHEMA; ui metadata optional).
@@ -65,8 +69,10 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "memory/Hindsight" },
     { from: "memory/Sharpshooter" },
   ],
-  "pg-browser": [{ from: "tools/Grep & Browser", includePrefix: ["browser."], titleZh: "浏览器环境", titleEn: "Browser environment" }],
-  "pg-computer": [{ from: "tools/Computer", titleZh: "电脑控制", titleEn: "Computer control" }],
+  "pg-computer": [
+    { id: "computer", from: "tools/Computer", excludeKeys: ["computer.enabled", "computer.display"], titleZh: "电脑控制", titleEn: "Computer control" },
+    { id: "browser", from: "tools/Grep & Browser", includePrefix: ["browser."], excludeKeys: ["browser.enabled", "browser.tern", "browser.cmux", "browser.relay", "browser.relayUrl", "browser.cdpUrl"], titleZh: "浏览器使用", titleEn: "Browser use" },
+  ],
   "pg-mcp": [{ from: "tools/Discovery & MCP" }],
   "pg-plugins": [
     { from: "tools/Extensions", titleZh: "扩展运行", titleEn: "Extension runtime" },
@@ -94,12 +100,17 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "model/Vision" },
   ],
   "pg-providers": [
-    { from: "providers/Services" },
+    // Web-search-specific rows (timeout, SearXNG endpoint, Exa toggles) moved to the capability
+    // backends page; excluded here so they render in exactly one place
+    { from: "providers/Services", excludeKeys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"] },
     { from: "providers/Fireworks" },
     { from: "providers/Tiny Model" },
     { from: "providers/Protocol" },
     { from: "providers/Timeouts" },
     { from: "providers/Privacy" },
+  ],
+  "pg-capabilities": [
+    { titleZh: "搜索相关设置", titleEn: "Search settings", keys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"] },
   ],
   "pg-interaction": [
     { from: "interaction/Input" },
@@ -128,7 +139,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "shell/Eval & Runtimes" },
   ],
   "pg-tools": [
-    { from: "tools/Available Tools", excludeKeys: ["computer.enabled"] },
+    { from: "tools/Available Tools", excludeKeys: ["computer.enabled", "browser.enabled"] },
     { from: "tools/Todos" },
     { from: "tools/Grep & Browser", excludePrefix: ["browser."], titleZh: "Grep", titleEn: "Grep" },
     { from: "tools/GitHub" },
@@ -174,6 +185,13 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "hideThinkingBlock": "pg-general",
   "ask.timeout": "pg-general",
   "computer.enabled": "pg-computer",
+  "computer.display": "pg-computer",
+  "browser.enabled": "pg-computer",
+  // External browser routes: gated behind the pg-computer "use an external
+  // browser" switch, rendered from ComputerPage's own section
+  "browser.relay": "pg-computer",
+  "browser.relayUrl": "pg-computer",
+  "browser.cdpUrl": "pg-computer",
   "commands.enableClaudeUser": "pg-skills",
   "commands.enableClaudeProject": "pg-skills",
   "commands.enableOpencodeUser": "pg-skills",
@@ -219,17 +237,14 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "launch.enabled", "speechgen.enabled", "generate_image.enabled", "images.questionTimeoutMs",
     "checkpoint.enabled", "fetch.enabled", "vault.enabled", "github.enabled",
     "github.cache.enabled", "github.cache.softTtlSec", "github.cache.hardTtlSec", "web_search.enabled",
-    "security.enabled", "ask.enabled", "browser.enabled", "tools.intentTracing",
+    "security.enabled", "ask.enabled", "tools.intentTracing",
     "tools.abortOnFabricatedResult", "tools.speculativeExecution.enabled", "tools.speculativeExecution.maxInFlight", "tools.maxTimeout",
     "async.enabled", "irc.timeoutMs", "tasks.todoClearDelay", "dev.autoqa",
     "dev.autoqaPush.endpoint",
   ],
   "pg-computer": [
-    "computer.enabled", "computer.display", "computer.maxWidth", "computer.maxHeight",
-  ],
-  "pg-browser": [
-    "browser.cdpUrl", "browser.relay", "browser.relayUrl", "browser.headless",
-    "browser.cmux", "browser.freezeOnTurnEnd", "browser.idleCloseSec", "browser.screenshotDir",
+    "computer.maxWidth", "computer.maxHeight",
+    "browser.headless", "browser.freezeOnTurnEnd", "browser.idleCloseSec", "browser.screenshotDir",
   ],
   "pg-mcp": [
     "tools.xdev", "tools.xdevDocs", "tools.xdevInlineDevices", "mcp.enableProjectConfig",
@@ -310,13 +325,12 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   ],
   "pg-providers": [
     "providers.maxInFlightRequests", "providers.openai-codex.codeMode", "providers.openai-codex.codeModeDirectTools", "providers.ollama-cloud.maxConcurrency",
-    "providers.webSearchOrder", "providers.webSearchExclude", "providers.webSearchTimeoutSeconds", "providers.webSearchGeminiModel",
-    "providers.antigravityEndpoint", "providers.imageOrder", "live.voice", "providers.tts",
-    "tts.localModel", "tts.localVoice", "speech.enabled", "speech.mode",
+    "providers.antigravityEndpoint", "live.voice",
+    "tts.localVoice", "speech.enabled", "speech.mode",
     "speech.enhanced", "speech.voice", "providers.fetch", "codexResets.autoRedeem",
-    "codexResets.minBlockedMinutes", "codexResets.keepCredits", "codexResets.salvageHorizonHours", "exa.enabled",
-    "exa.searchDelayMs", "searxng.endpoint", "providers.fireworksTier", "providers.judgmentProvider",
-    "providers.tinyModel", "providers.tinyModelDevice", "providers.tinyModelDtype", "providers.unexpectedStopModel",
+    "codexResets.minBlockedMinutes", "codexResets.keepCredits", "codexResets.salvageHorizonHours",
+    "providers.fireworksTier",
+    "providers.tinyModelDevice", "providers.tinyModelDtype",
     "providers.kimiApiFormat", "providers.openaiWebsockets", "providers.cacheRetention", "providers.openrouterVariant",
     "provider.appendOnlyContext", "providers.streamFirstEventTimeoutSeconds", "providers.streamIdleTimeoutSeconds", "secrets.enabled",
   ],

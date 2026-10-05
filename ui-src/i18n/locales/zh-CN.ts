@@ -11,6 +11,7 @@ import misc from "./ui/misc.zh";
 import notify from "./ui/notify.zh";
 import hubExt from "./ui/hub-ext-zh-CN";
 import compExt from "./ui/comp-ext-zh-CN";
+import ssh from "./ui/ssh.zh";
 
 const zhCN = {
   common,
@@ -23,6 +24,7 @@ const zhCN = {
   notify,
   hubExt,
   compExt,
+  ssh,
 };
 
 export default zhCN;

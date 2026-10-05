@@ -1,8 +1,8 @@
-// RPC handler aggregation and dispatch. Merges the eleven domain handler tables;
+// RPC handler aggregation and dispatch. Merges the twelve domain handler tables;
 // unknown commands reply with the error frame (matching the old switch
 // default). Exceptions are caught by the message shell in main.ts and returned
 // as error frames. Exhaustiveness is guarded by the RPC manifest check in
-// scripts/check-capabilities.mjs (all 117 methods resolvable); the handler
+// scripts/check-capabilities.mjs (all 126 methods resolvable); the handler
 import { sessionHandlers } from "./session";
 import { promptHandlers } from "./prompt";
 import { filesHandlers } from "./files";
@@ -14,6 +14,7 @@ import { terminalHandlers } from "./terminal";
 import { limitsHandlers } from "./limits";
 import { wizardHandlers } from "./provider-wizard";
 import { capabilitiesHandlers } from "./capabilities";
+import { sshHandlers } from "./ssh";
 import hostI18n from "../../ui-src/i18n/host";
 
 export const rpcHandlers: Record<string, RpcHandler> = {
@@ -28,6 +29,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...limitsHandlers,
   ...wizardHandlers,
   ...capabilitiesHandlers,
+  ...sshHandlers,
 };
 
 /** Single-command dispatch: table lookup + invoke; unknown commands reply with error (old switch default semantics) */

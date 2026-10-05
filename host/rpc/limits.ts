@@ -36,6 +36,24 @@ function estimateMcpToolsTokens(entry: PoolEntry): number {
   return tokens;
 }
 
+// Reverse-lookup the credential row that supplied a resolved key: the #id tag
+// makes get_limits share one limits-cache row with the background refresh and
+// the models-page account queries (the bare provider row is never prewarmed
+// while credentials exist, so an untagged query cold-fetches on every TTL
+// expiry); the label is the account identity shown on the ctx card
+function accountForResolvedKey(ompProvider: string, key: string | null): { cacheTag?: string; accountLabel: string } {
+  const hit = H.authStorage.credentials.list(ompProvider).find((c) => {
+    const cred = c.credential;
+    if (cred?.type === "api_key") return cred.key === key;
+    return cred?.type === "oauth" ? cred.access === key : false;
+  });
+  const cred = hit?.credential;
+  return {
+    cacheTag: hit ? `#${hit.id}` : undefined,
+    accountLabel: cred?.type === "oauth" ? (cred.email ?? cred.accountId ?? cred.orgName ?? "") : "",
+  };
+}
+
 export const limitsHandlers: Record<string, RpcHandler> = {
   async get_context_detail(ws, msg) {
     const entry = sessions.get(msg.sessionId);
@@ -73,11 +91,11 @@ export const limitsHandlers: Record<string, RpcHandler> = {
       baseUrl = "";
     }
     // Multi-account alignment: resolve the credential with the same
-    // parameters as the session request (providerSessionId stickiness +
-    // modelId), so the detail card's quota is the account this session
-    // actually hits; reverse-lookup the credential id from the key and use
-    // #id as the cache key (sharing one cache row with the models-page
-    // accounts / background preload), filling in the identity label too
+    // parameters as the request (session: providerSessionId stickiness +
+    // modelId; empty-ring hover: default cascade resolution), so the detail
+    // card's quota is the account the request actually hits. The #id tag
+    // shares one cache row with the background preload / models page — an
+    // untagged bare-provider key would cold-fetch on every TTL expiry.
     let keyOverride: string | null | undefined;
     let cacheTag: string | undefined;
     let accountLabel = "";
@@ -88,14 +106,10 @@ export const limitsHandlers: Record<string, RpcHandler> = {
           baseUrl,
           modelId: model?.id,
         })) ?? null;
-      const hit = H.authStorage.credentials.list(ompProvider).find((c) => {
-        const cred = c.credential;
-        if (cred?.type === "api_key") return cred.key === keyOverride;
-        return cred?.type === "oauth" ? cred.access === keyOverride : false;
-      });
-      if (hit) cacheTag = `#${hit.id}`;
-      const cred = hit?.credential;
-      accountLabel = cred?.type === "oauth" ? (cred.email ?? cred.accountId ?? cred.orgName ?? "") : "";
+      ({ cacheTag, accountLabel } = accountForResolvedKey(ompProvider, keyOverride));
+    } else {
+      keyOverride = (await H.authStorage.getApiKey(ompProvider, undefined, { baseUrl })) ?? null;
+      ({ cacheTag, accountLabel } = accountForResolvedKey(ompProvider, keyOverride));
     }
     const { vendor, label, row } = await fetchSessionLimits(H.authStorage, ompProvider, baseUrl, keyOverride, cacheTag);
     ws.send(

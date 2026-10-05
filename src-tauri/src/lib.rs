@@ -12,8 +12,7 @@ use std::time::Duration;
 // menu strip, duplicating the custom-drawn title bar (ui-src/components/TitleBar.tsx)
 #[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
@@ -439,21 +438,6 @@ pub fn run() {
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
                 .build(),
         )
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    // Respond to press only: release fires again and must be filtered
-                    if event.state == ShortcutState::Pressed {
-                        // Global summon: unminimize -> show -> focus the main window
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.unminimize();
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
-                    }
-                })
-                .build(),
-        )
         // Close-to-background: red traffic light / ⌘W only hides the window instead of
         // closing it (closing the last window would terminate the app and the Bun host).
         // Quit remains available via ⌘Q, the app-menu Quit item, and Dock right-click Quit.
@@ -490,16 +474,6 @@ pub fn run() {
                 app.on_menu_event(|app, event| {
                     let _ = app.emit("menu-action", serde_json::json!({ "action": event.id().0 }));
                 });
-            }
-            // Global summon shortcut: Ctrl+Shift+M on Windows (the Win key is
-            // over-occupied by the system), ⌘⇧M on macOS; if another app holds it,
-            // log and skip instead of panicking
-            #[cfg(target_os = "windows")]
-            let summon = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyM);
-            #[cfg(not(target_os = "windows"))]
-            let summon = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyM);
-            if let Err(e) = app.handle().global_shortcut().register(summon) {
-                eprintln!("[shell] 注册全局唤起快捷键失败（可能被其他应用占用）: {e}");
             }
             spawn_host(app.handle(), cell.clone(), child_cell.clone(), restart_cell.clone());
             Ok(())

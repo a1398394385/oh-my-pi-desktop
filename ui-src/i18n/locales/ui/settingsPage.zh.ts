@@ -10,8 +10,7 @@ export const settingsPageZh = {
     general: "常规",
     appearance: "外观",
     model: "模型设置",
-    browser: "浏览器控制",
-    computer: "电脑控制",
+    computer: "电脑与浏览器",
     keyboard: "键盘快捷键",
     extensions: "扩展",
     memory: "记忆",
@@ -22,6 +21,7 @@ export const settingsPageZh = {
     hooks: "钩子",
     modelBehavior: "模型行为",
     providers: "服务商",
+    capabilities: "能力后端",
     interaction: "交互",
     context: "上下文",
     files: "文件",
@@ -134,6 +134,38 @@ export const settingsPageZh = {
     previewDarkTag: "深色",
     previewActive: "当前生效",
   },
+  // ---- Capability backends page (CapabilityPage.tsx) ----
+  cap: {
+    desc: "非对话类能力的专用模型与后端密钥：网络搜索、语音合成、语音听写、智能判定、图像生成。",
+    keysTitle: "搜索引擎 API Key",
+    keysDesc: "按引擎粘贴 API Key；也可用环境变量配置（无需在此保存）。未配置的引擎仅在选择后仍可回退到内置链。",
+    keyConfigured: "密钥已配置（存储凭证或环境变量）",
+    keyMissing: "未配置。需要 {{env}} 环境变量，或在此粘贴 API Key",
+    configured: "已配置",
+    clearKey: "清除已保存的密钥",
+    keyPlaceholder: "粘贴 API Key",
+    web: {
+      title: "网络搜索",
+      desc: "web_search 工具使用的搜索后端（search 类模型或带联网能力的对话模型）；不设置则走内置优先链（默认公共搜索）",
+    },
+    speech: {
+      title: "语音合成",
+      desc: "朗读助手输出的 TTS 模型（本地默认 Kokoro，音色等朗读选项见「交互」页）",
+    },
+    dictation: {
+      title: "语音听写",
+      desc: "麦克风语音转文字的 STT 模型（本地默认 Parakeet，开关与语言见「交互」页的语音设置）",
+    },
+    judge: {
+      title: "智能判定",
+      desc: "自动思考难度、意外停止检测、Eval 判分、AI 辅助 git 暂存使用的判定模型（judge/tiny/对话模型均可）",
+    },
+    image: {
+      title: "图像生成",
+      desc: "generate_image 使用的图像模型",
+    },
+  },
+
   // ---- Models page (ModelPage.tsx) ----
   model: {
     desc: "管理自定义模型供应商，配置后可在聊天时选择使用。",
@@ -1443,9 +1475,22 @@ export const settingsPageZh = {
   },
   // ---- Computer control page (ComputerPage.tsx) ----
   computer: {
-    writtenToast: "已写入。电脑控制对之后新建的会话生效。",
-    enableTitle: "启用电脑控制",
-    enableDesc: "允许 Agent 使用截图、输入、辅助功能等电脑控制工具。新会话后生效。",
+    writtenToast: "总开关已写入。",
+    enableTitle: "电脑控制总开关",
+    enableDesc: "总开关：关闭时所有会话均不可用；开启后仍需在会话内运行 /computer on，才对该会话启用截图、输入、辅助功能等电脑控制。关闭总开关会同时强制关掉所有会话内的开启状态。",
+    displayTitle: "显示器",
+    displayDesc: "电脑控制截图的目标屏幕；选择“全部”时合成所有显示器。",
+    allDisplays: "全部显示器（合成）",
+    primaryTag: "主屏",
+    notDetected: "未检测到",
+    detectFailed: "显示器检测失败",
+  },
+  // ---- Browser section of the computer & browser page (ComputerPage.tsx) ----
+  browser: {
+    enableTitle: "浏览器总开关",
+    enableDesc: "总开关：开启后所有会话直接可用，无需会话内单独开启；关闭后浏览器工具与 /browser 命令一并停用，并自动过滤浏览器类 MCP 服务器。切换对已打开的会话即时生效。",
+    externalTitle: "使用外置浏览器",
+    externalDesc: "默认关闭：浏览器由 omp 自己拉起，复用系统中已安装的 Chrome/Chromium/Edge（独立临时配置，不占用你的日常浏览器）。开启后改用你自己启动的浏览器，继承它的登录态与扩展；中继优先于 CDP。",
   },
   // ---- SchemaRows.tsx ----
   schema: {

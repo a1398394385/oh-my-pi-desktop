@@ -15,6 +15,7 @@ import Icon from "../Icon";
 import Composer from "./Composer";
 import ProjectMenu from "./welcome/ProjectMenu";
 import BranchMenu from "./welcome/BranchMenu";
+import RemoteDialog from "./welcome/RemoteDialog";
 
 function greeting() {
   const h = new Date().getHours();
@@ -33,6 +34,7 @@ export default function Welcome() {
   // body then positions itself
   const [projMenu, setProjMenu] = useState<DOMRect | null>(null);
   const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
+  const [remoteDlg, setRemoteDlg] = useState(false);
 
   const menuOpen = !!projMenu || !!branchMenu;
 
@@ -68,7 +70,12 @@ export default function Welcome() {
     setBranchMenu(e.currentTarget.getBoundingClientRect());
   };
 
-  const projName = newSessionProject ? pathBase(newSessionProject) || newSessionProject : t("misc.projectFallback");
+  // Remote workspace stubs display their host:path label instead of the stub dir basename
+  const projEntry = useAppStore((s) => s.diskProjects).find((p) => p.cwd === newSessionProject);
+  const projName = newSessionProject
+    ? projEntry?.remoteLabel || pathBase(newSessionProject) || newSessionProject
+    : t("misc.projectFallback");
+  const projIsRemote = projEntry?.remote === true;
 
   return (
     <div id="welcomeScreen" className="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto pt-[30px] px-[20px] pb-[80px]">
@@ -102,7 +109,7 @@ export default function Welcome() {
                 >
                   <Icon name="xmark" size={12} />
                 </span>
-                <span className={"wb-ic-folder" + (/[\u4e00-\u9fa5]/.test(projName) ? " is-cjk" : "")}><Icon name="folder" size={15} /></span>
+                <span className={"wb-ic-folder" + (/[\u4e00-\u9fa5]/.test(projName) ? " is-cjk" : "")}><Icon name={projIsRemote ? "cloud" : "folder"} size={15} /></span>
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>
@@ -126,8 +133,9 @@ export default function Welcome() {
               the capsule card's upper half; the two cards are siblings, same width,
               edges aligned.*/}
           <Composer inWelcome={true} />
-          {projMenu && <ProjectMenu anchorRect={projMenu} onClose={() => setProjMenu(null)} />}
+          {projMenu && <ProjectMenu anchorRect={projMenu} onClose={() => setProjMenu(null)} onOpenRemote={() => setRemoteDlg(true)} />}
           {branchMenu && <BranchMenu anchorRect={branchMenu} onClose={() => setBranchMenu(null)} />}
+          {remoteDlg && <RemoteDialog onClose={() => setRemoteDlg(false)} />}
         </div>
       </div>
     </div>

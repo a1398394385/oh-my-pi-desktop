@@ -2,10 +2,10 @@
 // enable/disable (set_enabled_model), role read/write, catalog snapshots and
 // the provider list. Moved over from the main.ts message dispatch (third
 // slice).
-import { authPolicyFor, formatModelRoleAlias, resolveModelRoleValue } from "../bootstrap.ts";
+import { authPolicyFor, formatModelRoleAlias, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
 import { completeSimple } from "@oh-my-pi/pi-ai";
 import { H, sessions, enabledDefaults } from "../state.ts";
-import { modelCatalog, modelRolesPayload, rebuildScopedModels } from "../models.ts";
+import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { listAllProviders } from "../limits/index.ts";
 import { collectUsageStats } from "../stats.ts";
@@ -121,8 +121,14 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(role)) throw new Error(hostI18n.t("errors.model.invalidRoleName", { role }));
     // The UI writes only exact "provider/model" (or null to clear back to the default chain); aliases/suffixes are left for hand-editing settings.json
     const value = msg.value == null || msg.value === "" ? undefined : String(msg.value);
-    if (value && !H.availableModels.some((m) => `${m.provider}/${m.id}` === value)) {
+    const model = value ? H.allModels.find((m) => `${m.provider}/${m.id}` === value) : undefined;
+    if (value && !model) {
       throw new Error(hostI18n.t("errors.model.unknown", { model: value }));
+    }
+    // Kind gate, same predicate as the base's role candidate pool: role resolution skips
+    // models the role's accepts() rejects, so persisting one would be a silently dead assignment
+    if (model && !getRoleInfo(role, H.settings).accepts(model)) {
+      throw new Error(hostI18n.t("errors.model.roleKindMismatch", { role, model: value }));
     }
     H.settings.setModelRole(role, value);
     await H.settings.flush();
@@ -180,28 +186,36 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "usage_stats", stats: await collectUsageStats() }));
   },
   get_all_providers(ws) {
+    // Chat providers only: engine/judge auth ids (CAPABILITY_AUTH_IDS) are not text-LLM
+    // vendors — their keys are managed on the settings capability page instead
+    const hidden = new Set<string>(CAPABILITY_AUTH_IDS);
     ws.send(
       JSON.stringify({
         type: "all_providers",
-        providers: listAllProviders().map((p) => {
-          let accounts = 0;
-          try {
-            accounts = H.authStorage.credentials.list(p.id).length;
-          } catch {}
-          const loginKind = authPolicyFor(p.id)?.login?.kind;
-          return {
-            ...p,
-            // Login capability: only oauth-code/device-code/custom have a real
-            // authorization flow (browser/device code/vendor-custom);
-            // api-key providers in the base merely "paste a key and verify";
-            // the detail page already has an API Key input, so no duplicate
-            // entry
-            login: loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom",
-            // Configured account count: active authStorage credentials (models.yml/env-layer configs not counted)
-            accounts,
-          };
-        }),
+        providers: listAllProviders()
+          .filter((p) => !hidden.has(p.id))
+          .map((p) => {
+            let accounts = 0;
+            try {
+              accounts = H.authStorage.credentials.list(p.id).length;
+            } catch {}
+            const loginKind = authPolicyFor(p.id)?.login?.kind;
+            return {
+              ...p,
+              // Login capability: only oauth-code/device-code/custom have a real
+              // authorization flow (browser/device code/vendor-custom);
+              // api-key providers in the base merely "paste a key and verify";
+              // the detail page already has an API Key input, so no duplicate
+              // entry
+              login: loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom",
+              // Configured account count: active authStorage credentials (models.yml/env-layer configs not counted)
+              accounts,
+            };
+          }),
       }),
     );
+  },
+  get_capability_keys(ws) {
+    ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
   },
 };

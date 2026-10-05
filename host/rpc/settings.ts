@@ -6,6 +6,8 @@ import path from "node:path";
 import fs from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { lookupSetting } from "../bootstrap.ts";
+import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
+import type { DesktopDisplay, DesktopSession } from "@oh-my-pi/pi-natives";
 import { H, sessions, pendingApprovals, type DesktopEnv } from "../state.ts";
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
@@ -22,6 +24,7 @@ import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config
 import { setPlanMode } from "../plan.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
+import { writeExternalBrowserEnabled } from "../browser-config.ts";
 import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
@@ -80,12 +83,42 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     settingsSet(H.settings, key, value);
     // Post-write side effect: sleep prevention must apply to the process immediately
     if (key === "power.sleepPrevention") applySleepPrevention(value);
+    // Post-write side effect: closing the computer-use master gate force-kills
+    // every live session's per-session opt-in (the pinned overlay in
+    // session-lifecycle blocks parent forwarding, so an explicit sweep is needed)
+    if (key === "computer.enabled" && value !== true) {
+      const gate = lookupSetting("computer.enabled");
+      if (gate) for (const entry of sessions.values()) entry.session.settings.writeValue(gate, false, "override");
+    }
     // Model-related keys: rebuild the scoped catalog and push a models frame
     const isModelKey = ["enabledModels", "enabledProviders", "disabledProviders", "modelRoleStorage", "modelTags", "modelProviderOrder", "cycleOrder"].includes(key);
     if (isModelKey) rebuildScopedModels();
     await H.settings.flush();
     if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async list_displays(ws) {
+    // Enumerate physical displays through the natives desktop adapter for the
+    // computer-control display dropdown. A short-lived session is enough
+    // (listDisplays is read-only); failures degrade to an empty list + error.
+    let displays: Array<Pick<DesktopDisplay, "id" | "name" | "width" | "height" | "isPrimary">> = [];
+    let error: string | null = null;
+    let session: DesktopSession | null = null;
+    try {
+      session = createDesktopSession({});
+      displays = (await session.listDisplays()).map(d => ({
+        id: String(d.id),
+        name: String(d.name ?? d.id),
+        width: d.width,
+        height: d.height,
+        isPrimary: !!d.isPrimary,
+      }));
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      await session?.close().catch(() => {});
+    }
+    ws.send(JSON.stringify({ type: "displays", displays, error }));
   },
   set_locale(_ws, msg) {
     // UI locale switch, fire-and-forget per the frame protocol (the frontend
@@ -102,6 +135,17 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // the frame's uiConfig is read back from disk, so the frontend reconciles
     // its localStorage cache against what actually landed (stale-cache guard)
     writeUiPrefs({ theme: msg.theme, motion: msg.motion, prefs: msg.prefs });
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  set_external_browser(ws, msg) {
+    // Desktop-owned browser routing switch: persists browser.external in
+    // omp-desktop.json and applies it to the base settings immediately — off
+    // pins browser.relay/browser.cdpUrl to "no external browser" on the runtime
+    // override layer (config.yml is never rewritten, so flipping the switch
+    // back on restores the user's own external routes), on clears the override
+    // so those routes apply again. A fresh settings frame carries the state the
+    // base actually ended up with, so the frontend reconciles against it.
+    writeExternalBrowserEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_acp_enabled(ws, msg) {

@@ -184,7 +184,8 @@ export const H = {
   desktopProjectsPath: "",
   desktopProjects: { allProjects: [], removedProjects: [], expandedProjects: [], pinnedSessions: [], archivedSessions: [], mcpSharing: {} } as DesktopProjects,
   // Model catalog (refreshed with profile / login / start-stop)
-  availableModels: [] as any[],
+  availableModels: [] as any[], // chat-only pool: sessions, enable/disable scoping, composer menu
+  allModels: [] as any[], // all kinds incl. keyless local runners: settings catalog + role assignment
   scopedModels: [] as any[],
   modelOverride: undefined as any,
   cachedProfiles: ["default", "omp-desktop"] as string[],

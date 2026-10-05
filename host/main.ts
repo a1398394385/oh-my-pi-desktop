@@ -10,7 +10,7 @@
 //   (mandatory for multiple concurrent top-level agents)
 // - Sessions live under a dedicated profile, isolated from the user CLI's
 //   ~/.omp/agent; the profile reuses the old RPC version's auth (agent.db)
-// - The UI shell connects over WebSocket: commands (94 RPCs, the nine domain
+// - The UI shell connects over WebSocket: commands (119 RPCs, the eleven domain
 //   handler tables in host/rpc/) + a narrow event stream
 // - The first stdout line prints `READY ws://127.0.0.1:<port>`, read by the
 //   Tauri shell and relayed to the frontend

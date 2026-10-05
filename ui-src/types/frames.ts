@@ -86,6 +86,10 @@ export type SettingsPayload = SettingsSnapshot & {
   pluginsEnabled?: boolean;
   skillsEnabled?: boolean;
   uiConfig?: UiConfigPayload;
+  // omp-desktop.json browser.external (host/browser-config.ts): desktop-owned
+  // browser routing switch. Off = OMP launches the browser (relay/cdpUrl pinned
+  // off on the override layer); on = the config.yml external routes apply.
+  externalBrowserEnabled?: boolean;
 };
 
 /** Model catalog entry (host/models.ts:17-23 modelsPayload) */
@@ -113,6 +117,9 @@ export interface ModelCatalogEntry {
   id: string;
   name: string;
   provider: string;
+  // Catalog kind from host modelCatalog (chat/tiny/image/search/tts/stt/judge); the
+  // settings roles view filters kind-role candidate menus by it
+  kind: string;
   enabled: boolean;
   context: number | null;
   vision: boolean;
@@ -132,6 +139,27 @@ export interface ModelRoleEntry {
   value: string | null;
   resolved: string | null;
   resolvedName: string | null;
+  /** one of the SDK's built-in roles vs a user-defined custom role */
+  builtin: boolean;
+  /** "chat" | "kind" per the base's role metadata; kind roles render on the capability page */
+  section?: string;
+}
+
+/** Capability engine key entry (host/models.ts capabilityKeysPayload: web-search engines + judge backend) */
+export interface CapabilityKeyEntry {
+  id: string;
+  label: string;
+  envVar: string;
+  /** a key resolves now (stored credential or env alias) */
+  configured: boolean;
+  /** a removable stored credential exists (env-var-only config cannot be cleared here) */
+  stored: boolean;
+}
+
+/** Capability keys frame (host get_capability_keys / pushed after key mutations) */
+export interface CapabilityKeysFrame {
+  type: "capability_keys";
+  keys: CapabilityKeyEntry[];
   /** one of the SDK's built-in roles vs a user-defined custom role */
   builtin: boolean;
 }
@@ -200,6 +228,9 @@ export interface DiskSessionRow {
 /** Project grouping (projects mapping of handleListSessions, host/host.ts:2628-2646) */
 export interface DiskProject {
   cwd: string;
+  /** Remote SSH workspace stub: project row shows host:path and the cloud icon */
+  remote?: boolean;
+  remoteLabel?: string;
   sessions: DiskSessionRow[];
 }
 
@@ -1458,6 +1489,47 @@ export interface KeepaliveStatusFrame {
   nextProbeAt: number | null;
 }
 
+/** Physical display enumeration reply (host/rpc/settings.ts list_displays; feeds the computer-control display dropdown) */
+export interface DisplaysFrame {
+  type: "displays";
+  displays: Array<{ id: string; name: string; width: number; height: number; isPrimary: boolean }>;
+  error: string | null;
+}
+
+/** SSH host table reply (host/rpc/ssh.ts ssh_list_hosts / after save/remove; user-scope ssh.json entries) */
+export interface SshHostsFrame {
+  type: "ssh_hosts";
+  hosts: Array<{
+    name: string;
+    host: string;
+    username?: string;
+    port?: number;
+    keyPath?: string;
+    description?: string;
+    compat?: boolean;
+  }>;
+}
+
+/** SSH connectivity probe reply (host/rpc/ssh.ts ssh_test_host) */
+export interface SshTestResultFrame {
+  type: "ssh_test_result";
+  /** Probe target alias; null when the form was probed inline before saving */
+  name: string | null;
+  ok: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
+/** Remote workspace creation reply (host/rpc/ssh.ts add_remote_workspace; ok:false carries the probe error) */
+export interface RemoteWorkspaceAddedFrame {
+  type: "remote_workspace_added";
+  ok: boolean;
+  cwd?: string;
+  host?: string;
+  remotePath?: string;
+  error?: string;
+}
+
 // ---------- UI → host client frames ----------
 
 /** UI locale switch (UI → host; fire-and-forget, host persists it and applies it to its own surfaces) */
@@ -1534,6 +1606,7 @@ export type HostFrame =
   | ProviderModelTestFrame
   | ProviderModelsSavedFrame
   | ModelRolesFrame
+  | CapabilityKeysFrame
   | UsageStatsFrame
   | AgentAssetsFrame
   | ExtensionsFrame
@@ -1561,4 +1634,8 @@ export type HostFrame =
   | SubagentControlledFrame
   | CompletionFrame
   | CacheWarmingFrame
-  | KeepaliveStatusFrame;
+  | KeepaliveStatusFrame
+  | DisplaysFrame
+  | SshHostsFrame
+  | SshTestResultFrame
+  | RemoteWorkspaceAddedFrame;

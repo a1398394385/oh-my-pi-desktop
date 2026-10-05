@@ -118,7 +118,9 @@ function KaNextCell({ at }: { at: number }) {
   return <>{`${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`}</>;
 }
 
-// Cache-warming section (keepalive_status reply): same cx-sec structure as the quota section.
+// Cache-warming section (keepalive_status reply): same cx-sec structure as the quota
+// section — the header right side carries hits/misses (the same slot as the quota
+// section's provider label), and the body is a 4-cell grid: probes / next / spend / saved.
 // Rendered only after the reply lands with enabled=true — while in flight nothing occupies
 // space (the card's discard-on-move-away policy); a session without warming gets no section
 function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
@@ -126,12 +128,12 @@ function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
     <div className={"cx-sec ka-sec pb-[2px]" + (noDiv ? " no-div" : "")}>
       <div className="flex justify-between items-baseline text-[13.5px] pt-[2px] pb-[10px]" /* style-token-ignore */>
         <b>{t("chat.kaTitle")}</b>
+        <span className="text-faint text-[11.5px]" /* style-token-ignore */>{t("chat.kaHitsMisses", { hits: ka.hits, misses: ka.misses })}</span>
       </div>
-      <div className="grid grid-cols-3 gap-[10px] min-w-[268px]">
+      <div className="grid grid-cols-4 gap-[10px] min-w-[300px]" /* style-token-ignore */>
         <div className="flex flex-col gap-[5px] min-w-0">
           <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaProbesLabel")}</div>
           <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */>{ka.probes}</div>
-          <div className="text-faint text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaHitsMisses", { hits: ka.hits, misses: ka.misses })}</div>
         </div>
         <div className="flex flex-col gap-[5px] min-w-0">
           <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaNextLabel")}</div>
@@ -142,7 +144,10 @@ function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
         <div className="flex flex-col gap-[5px] min-w-0">
           <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaSpendLabel")}</div>
           <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */>{fmtKaUsd(ka.spendUsd)}</div>
-          <div className="text-faint text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaSaved", { v: fmtKaUsd(ka.savedUsd) })}</div>
+        </div>
+        <div className="flex flex-col gap-[5px] min-w-0">
+          <div className="text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>{t("chat.kaSavedLabel")}</div>
+          <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */>{fmtKaUsd(ka.savedUsd)}</div>
         </div>
       </div>
     </div>

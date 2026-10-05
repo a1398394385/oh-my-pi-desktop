@@ -1,0 +1,42 @@
+// zh copy for the ssh domain (welcome remote-connection dialog). Keys are
+// prefixed `ssh.` — see ui-src/i18n/README.md.
+export const sshZh = {
+  // RemoteDialog.tsx
+  title: "远程连接",
+  desc: "连接 SSH 主机上的远程工作区（OMP 原生 ssh:// 支持）",
+  hostSection: "SSH 主机",
+  noHosts: "尚未配置 SSH 主机",
+  newHost: "新建主机",
+  editHost: "编辑主机",
+  edit: "编辑",
+  nameLabel: "名称",
+  namePh: "my-server",
+  addressLabel: "地址",
+  addressPh: "10.0.0.1 或 hostname",
+  userLabel: "用户名（可选）",
+  userPh: "root",
+  portLabel: "端口（默认 22）",
+  portPh: "22",
+  keyPathLabel: "私钥路径（可选）",
+  keyPathPh: "C:\\Users\\me\\.ssh\\id_ed25519",
+  descLabel: "备注（可选）",
+  descPh: "生产服务器",
+  nameAddressRequired: "名称与地址为必填项",
+  saveHost: "保存主机",
+  deleteHost: "删除主机",
+  testBtn: "测试",
+  testing: "测试中…",
+  testOk: "连接成功（{{ms}}ms）",
+  testFail: "连接失败",
+  cancelForm: "取消编辑",
+  pathSection: "远程工作区",
+  pathLabel: "远程路径",
+  pathPh: "/home/user/project",
+  connect: "连接",
+  connecting: "连接中…",
+  connectedToast: "已连接 {{label}}，发送消息开始任务",
+  connFail: "连接失败",
+  cancel: "取消",
+};
+
+export default sshZh;

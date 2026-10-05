@@ -11,12 +11,17 @@ import type {
   SettingsPayload,
   ModelCatalogEntry,
   ModelRoleEntry,
+  CapabilityKeyEntry,
   AllProviderEntry,
   UsageStats,
   AgentAssetsPayload,
   ManualProbeModel,
   ManualProbeCatalogMatch,
   ExtensionsFrame,
+  DisplaysFrame,
+  SshHostsFrame,
+  SshTestResultFrame,
+  RemoteWorkspaceAddedFrame,
 } from "../types/frames";
 import type { MemoryDetailState } from "../types/session";
 import type { SchemaDef } from "../components/settings/placement";
@@ -28,6 +33,7 @@ export interface SettingsSlice {
   settingsSchema: Record<string, SchemaDef> | null; // entry shape matches SETTINGS_SCHEMA
   modelCatalog: ModelCatalogEntry[];
   modelRoles: ModelRoleEntry[] | null;
+  capabilityKeys: CapabilityKeyEntry[] | null;
   selectedProvider: string | null;
   mpAddView: boolean;
   mpRolesView: boolean;
@@ -54,6 +60,10 @@ export interface SettingsSlice {
   assetFileSaved: { kind: string; at: number } | null; // landed from asset_file_saved (reference change drives the "saved" indicator)
   assetSaved: { kind: string; at: number } | null; // same as above, consumed by the agents page
   assetErr: { kind: string; message: string; at: number } | null; // landed when the error frame carries kind
+  computerDisplays: DisplaysFrame | null; // list_displays reply: physical displays for the computer-control dropdown (null = not yet detected)
+  sshHosts: SshHostsFrame["hosts"]; // user-scope ssh.json host table (welcome remote-connection dialog)
+  sshTestResult: (Omit<SshTestResultFrame, "type"> & { ts: number }) | null; // latest connectivity probe (ts correlates replies)
+  remoteWorkspaceAdded: (Omit<RemoteWorkspaceAddedFrame, "type"> & { ts: number }) | null; // latest add_remote_workspace reply (dialog closes itself on ok)
   mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results
   memoryDetail: MemoryDetailState; // landed from the memory_file frame
   openSettings(pageId?: string): void;
@@ -68,6 +78,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   settingsSchema: null,
   modelCatalog: [],
   modelRoles: null,
+  capabilityKeys: null,
   selectedProvider: null,
   mpAddView: false,
   mpRolesView: false,
@@ -94,7 +105,11 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   assetFileSaved: null,
   assetSaved: null,
   assetErr: null,
+  sshHosts: [],
+  sshTestResult: null,
+  remoteWorkspaceAdded: null,
   mcpTestResults: {},
+  computerDisplays: null,
   memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "idle", content: "", error: null },
 
   openSettings(pageId = "pg-general") {
@@ -110,6 +125,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
     if (!get().settingsSchema) get().send({ type: "get_settings_schema" });
     get().send({ type: "get_settings" });
     get().send({ type: "get_models_catalog" });
+    get().send({ type: "get_capability_keys" });
     get().send({ type: "list_agent_assets" });
     get().send({ type: "get_usage_stats" });
   },

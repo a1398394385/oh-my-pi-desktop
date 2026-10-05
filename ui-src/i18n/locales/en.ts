@@ -9,6 +9,7 @@ import misc from "./ui/misc.en";
 import notify from "./ui/notify.en";
 import hubExt from "./ui/hub-ext-en";
 import compExt from "./ui/comp-ext-en";
+import ssh from "./ui/ssh.en";
 
 const en = {
   common,
@@ -21,6 +22,7 @@ const en = {
   notify,
   hubExt,
   compExt,
+  ssh,
 };
 
 export default en;

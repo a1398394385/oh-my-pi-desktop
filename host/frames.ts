@@ -10,6 +10,7 @@ import { readAcpConfig, readAcpEnabled, readSessionContextEnabled } from "./prof
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import { readHooksEnabled, readPluginsEnabled } from "./assets.ts";
 import { readUiConfig } from "./ui-config.ts";
+import { readExternalBrowserEnabled } from "./browser-config.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 // Unified models frame assembly: catalog + config defaults for new sessions
@@ -35,5 +36,9 @@ export function settingsFrame() {
     // omp-desktop.json ui-section projection (locale/theme/motion/prefs): the
     // authoritative source the frontend reconciles its localStorage cache against
     uiConfig: readUiConfig(),
+    // omp-desktop.json browser.external: desktop-owned browser routing switch
+    // (off = OMP launches the browser, relay/cdpUrl pinned off regardless of
+    // what config.yml holds; on = config.yml's external routes apply again)
+    externalBrowserEnabled: readExternalBrowserEnabled(),
   };
 }
