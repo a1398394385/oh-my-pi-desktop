@@ -84,7 +84,7 @@ export const chatZh = {
   kaNextLabel: "下次运行",
   kaPaused: "已暂停",
   kaSpendLabel: "消耗成本",
-  kaSaved: "节省 {{v}}",
+  kaSavedLabel: "节省成本",
   // ---- in-chat find bar (FindBar.tsx) ----
   findPlaceholder: "在会话中查找…",
   findNoResult: "无结果",

@@ -46,7 +46,10 @@ export const configHandlers = {
     useAppStore.setState((s) => ({ modelCatalog: msg.models ?? [] }));
   },
   model_roles(msg) {
-    useAppStore.setState((s) => ({ modelRoles: msg.roles ?? [] }));
+    useAppStore.setState({ modelRoles: msg.roles ?? [] });
+  },
+  capability_keys(msg) {
+    useAppStore.setState({ capabilityKeys: msg.keys ?? [] });
   },
   settings(msg) {
     // Same ordering as the ready handler: file-first reconcile, then the host overlay
@@ -85,6 +88,17 @@ export const configHandlers = {
   },
   approval_mode(msg) {
     useAppStore.setState((s) => ({ approvalMode: msg.mode }));
+  },
+  ssh_hosts(msg) {
+    useAppStore.setState({ sshHosts: msg.hosts ?? [] });
+  },
+  ssh_test_result(msg) {
+    const { type: _type, ...rest } = msg;
+    useAppStore.setState({ sshTestResult: { ...rest, ts: Date.now() } });
+  },
+  remote_workspace_added(msg) {
+    const { type: _type, ...rest } = msg;
+    useAppStore.setState({ remoteWorkspaceAdded: { ...rest, ts: Date.now() } });
   },
 } satisfies HandlerSlice;
 

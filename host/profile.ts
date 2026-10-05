@@ -9,9 +9,10 @@ import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
-import { rebuildScopedModels } from "./models.ts";
+import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-config.ts";
+import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
 
@@ -226,7 +227,7 @@ export async function applyProfile(profileName: string) {
   reg.refreshInBackground();
   void reg.awaitBackgroundRefresh().then(() => {
     if (H.modelRegistry !== reg || !H.settings) return; // profile switched again during refresh, or the refresh landed before Settings.init finished (18.5.0's non-empty built-in catalog makes this reachable): drop the callback — applyProfile's own later rebuild covers it
-    H.availableModels = reg.getAvailable();
+    syncAvailableModels();
     rebuildScopedModels();
     process.stderr.write(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
     H.onModelsRefreshed?.();
@@ -257,13 +258,17 @@ export async function applyProfile(profileName: string) {
   // UI locale lives in the same per-profile omp-desktop.json: re-read on every
   // apply so the host language follows the active profile's persisted preference
   initHostI18n(readUiLocale());
+  // Browser routing (omp-desktop.json's browser.external): off by default pins
+  // relay/cdpUrl to "no external browser" on the override layer, so a browser
+  // configured in the user's config.yml cannot outrank the desktop default.
+  applyExternalBrowserSetting(readExternalBrowserEnabled());
 
   const sleepSetting = lookupSetting("power.sleepPrevention");
   const sleep = String(settingsGet(H.settings, "power.sleepPrevention") ?? "off");
   if (sleepSetting && H.settings.isConfigured(sleepSetting) && sleep !== "off") applySleepPrevention(sleep);
   else applySleepPrevention("off");
 
-  H.availableModels = H.modelRegistry.getAvailable();
+  syncAvailableModels();
   rebuildScopedModels();
   H.modelOverride = process.env.OMP_DESKTOP_MODEL
     ? H.availableModels.find((m) => `${m.provider}/${m.id}` === process.env.OMP_DESKTOP_MODEL)
@@ -330,7 +335,7 @@ export function readAcpConfig(): {
     return dflt;
   };
   return {
-    enabled: acp.enabled !== false,
+    enabled: acp.enabled === true,
     maxContextLimit: fmtLimit(acp.maxContextLimit, "55%"),
     minContextLimit: fmtLimit(acp.minContextLimit, "45%"),
     contextWindow: typeof acp.contextWindow === "string" ? acp.contextWindow : (acp.contextWindow ? String(acp.contextWindow) : ""),
@@ -340,13 +345,13 @@ export function readAcpConfig(): {
   };
 }
 
-/** ACP master switch (acp.enabled in omp-desktop.json). Missing/invalid
- *  values count as on, preserving pre-switch behavior — only an explicit
- *  false turns it off. */
+/** ACP master switch (acp.enabled in omp-desktop.json). Experimental
+ *  feature: missing/invalid values count as off (new-user default) — only
+ *  an explicit true turns it on. */
 export function readAcpEnabled(): boolean {
   const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
-  if (!acp || typeof acp !== "object") return true;
-  return acp.enabled !== false;
+  if (!acp || typeof acp !== "object") return false;
+  return acp.enabled === true;
 }
 
 /** Write acp.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the acp section. */
@@ -357,11 +362,11 @@ export async function writeAcpEnabled(enabled: boolean): Promise<void> {
 }
 
 /** History session search (read_session_context) master switch (sessionContext.enabled in omp-desktop.json).
- *  Same semantics as readAcpEnabled: missing/invalid values count as on; only an explicit false turns it off. */
+ *  Same semantics as readAcpEnabled: missing/invalid values count as off (new-user default); only an explicit true turns it on. */
 export function readSessionContextEnabled(): boolean {
   const section = readAcpRaw().sessionContext as Record<string, unknown> | undefined;
-  if (!section || typeof section !== "object") return true;
-  return section.enabled !== false;
+  if (!section || typeof section !== "object") return false;
+  return section.enabled === true;
 }
 
 /** Write sessionContext.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */

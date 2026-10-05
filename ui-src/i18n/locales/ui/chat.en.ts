@@ -90,7 +90,7 @@ export const chatEn = {
   kaNextLabel: "Next probe",
   kaPaused: "Paused",
   kaSpendLabel: "Spend",
-  kaSaved: "saved {{v}}",
+  kaSavedLabel: "Saved",
   // ---- in-chat find bar (FindBar.tsx) ----
   findPlaceholder: "Find in conversation…",
   findNoResult: "No results",

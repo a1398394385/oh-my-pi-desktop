@@ -237,11 +237,11 @@ function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
 export async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   const acpState = new AcpSessionState();
   // Master switch on the experimental features page (omp-desktop.json's
-  // acp.enabled, default on): only decides whether this session injects the
+  // acp.enabled, default off for new users): only decides whether this session injects the
   // ACP tool surface and the context view rewrite; it cannot hot-toggle
   // after session creation, so switch changes take effect on new sessions
   const acpEnabled = readAcpEnabled();
-  // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, can be off on the experimental features page)
+  // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, default off for new users)
   const sessionContextEnabled = readSessionContextEnabled();
   // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
   // features page, default off). Double-load guard: when either the plugin
@@ -272,7 +272,14 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     cwd,
     authStorage: H.authStorage,
     modelRegistry: H.modelRegistry,
-    settings: H.settings,
+    // Per-session settings child with computer use pinned OFF: the settings-page
+    // computer.enabled switch is the master gate (checked at /computer dispatch
+    // in rpc/prompt.ts) and a session opts in via /computer on — the config
+    // value never auto-enables a desktop session. Other runtime overrides
+    // (/extended-context, /browser headless, model-role pins) stay in this child
+    // instead of leaking host-wide; config-layer reads still fall through to
+    // H.settings live (Settings.overlay forwards parent changes to children).
+    settings: H.settings.overlay({ "computer.enabled": false }),
     model: initialModel ?? H.modelOverride,
     systemPrompt: acpSystemPrompt ? (defaultPrompt: string[]) => [...defaultPrompt, ACP_SYSTEM_PROMPT] : undefined,
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance

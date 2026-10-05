@@ -429,7 +429,10 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
   overflow: auto;
   background: var(--bg);
   line-height: 1.6; /* ZCode leading-relaxed */
-  overscroll-behavior: contain;
+  /* no overscroll-behavior here: unconstrained .ldiff instances (right-panel diff detail) grow
+     to content height, and contain on a non-scrollable scroll container would swallow vertical
+     wheels instead of chaining to the outer .rb-scroll scroller. Stream-embedded instances
+     declare contain at their embedding site (.ed-brief > .ldiff in main-chat.css). */
 }
 
 /* without wrapping, the inner scroll surface computes one uniform max-content width: if each row stretched itself,

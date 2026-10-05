@@ -1,0 +1,42 @@
+// en copy for the ssh domain (welcome remote-connection dialog). Keys are
+// prefixed `ssh.` — see ui-src/i18n/README.md.
+export const sshEn = {
+  // RemoteDialog.tsx
+  title: "Remote Connection",
+  desc: "Connect a remote workspace on an SSH host (native OMP ssh:// support)",
+  hostSection: "SSH Host",
+  noHosts: "No SSH hosts configured yet",
+  newHost: "New Host",
+  editHost: "Edit Host",
+  edit: "Edit",
+  nameLabel: "Name",
+  namePh: "my-server",
+  addressLabel: "Address",
+  addressPh: "10.0.0.1 or hostname",
+  userLabel: "Username (optional)",
+  userPh: "root",
+  portLabel: "Port (default 22)",
+  portPh: "22",
+  keyPathLabel: "Identity key path (optional)",
+  keyPathPh: "C:\\Users\\me\\.ssh\\id_ed25519",
+  descLabel: "Description (optional)",
+  descPh: "Production server",
+  nameAddressRequired: "Name and address are required",
+  saveHost: "Save Host",
+  deleteHost: "Delete host",
+  testBtn: "Test",
+  testing: "Testing…",
+  testOk: "Connected ({{ms}}ms)",
+  testFail: "Connection failed",
+  cancelForm: "Cancel editing",
+  pathSection: "Remote Workspace",
+  pathLabel: "Remote path",
+  pathPh: "/home/user/project",
+  connect: "Connect",
+  connecting: "Connecting…",
+  connectedToast: "Connected to {{label}} — send a message to start",
+  connFail: "Connection failed",
+  cancel: "Cancel",
+};
+
+export default sshEn;

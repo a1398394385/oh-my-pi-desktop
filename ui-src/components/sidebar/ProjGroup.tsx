@@ -19,6 +19,8 @@ export interface ProjectIconSource {
   workspaceIdentity?: unknown;
   isHome?: unknown;
   home?: unknown;
+  /** SSH remote-workspace display label ("host:/remote/path"); set on session_list project rows */
+  remoteLabel?: string;
 }
 
 // Project entry (structural subset of getAvailableProjects/diskProjects elements;
@@ -164,7 +166,8 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
     useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
-  const name = p.name || pathBase(p.cwd) || p.cwd;
+  // Remote SSH workspace stubs show host:path (the stub path stays in the tooltip)
+  const name = p.name || p.remoteLabel || pathBase(p.cwd) || p.cwd;
   return (
     <>
       <div
@@ -191,7 +194,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
         }}
       >
         <span className={"fic" + (/[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
-        <span className="pname" title={p.cwd}>{name}</span>
+        <span className="pname" title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}>{name}</span>
         {isProjectManageMode ? (
           <button
             className="proj-rm-btn"

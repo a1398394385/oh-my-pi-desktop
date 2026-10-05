@@ -69,14 +69,14 @@
    - `.local/`：本地开发脚本目录，不入库（`.gitignore` 已排除），用法见其 `README.md`。
 2. **取用规则（禁止内联 SVG 字面量）**：
    - JS 中：`icon("folder")` / `icon("caret", 12)`——第二个参数覆盖尺寸，viewBox 不变。
-   - HTML 中：`<span class="..." data-icon="folder" data-size="23"></span>` 占位；`hydrateIcons()`（app.js 启动时）替换为 svg 并复制占位元素上的 `class` / `id` / `style`。
-   - 动态图形（ctxRing 进度环、trend/donut 图表）不是图标，仍在 index.html 内联。
+   - JSX 中：`<Icon name="folder" size={23} />`（`ui-src/Icon.tsx`；内部调 `icon()` 把注册表 svg 注入承载 span，`class`/`id`/`style`/`title` 透传）。
+   - 动态图形（ctxRing 进度环、统计页图表）不是图标，现均为 React 组件内联渲染（ctxRing 见 `ui-src/components/Composer.tsx`，统计页图表见 `ui-src/components/settings/stats/charts/`）。
 3. **新增/换图标**：改 `.local/build-fa-icons.py` 顶部 `MAPPING`（注册表名 → FA 子目录/图标名/尺寸），跑 `python3 .local/build-fa-icons.py` 重新生成。FA 没有的自定义图标才写进 `ui/icons.js`。
 4. **方向与状态语义**：
    - 可展开尖角一律用图标（`caret` 系列），方向与弹出方向一致：向上弹出的菜单（输入区各胶囊）默认尖角朝上、展开时旋转 180°；向下弹出的（`.sel` 下拉）默认朝下、展开时旋转。
-   - 展开/收起类图标要随状态切换（如边栏开关 `collapseLeft`/`collapseRight`），在对应的 setter 里 `btn.innerHTML = icon(...)` 同步替换。
+   - 展开/收起类图标要随状态切换（如边栏开关 `collapseLeft`/`collapseRight`，见 `ui-src/App.tsx` 按状态选 name 的 `<Icon>`）；React 侧由状态驱动重渲染，不需要命令式替换 DOM。
    - 主对话区展开图标原地旋转（思考行 chevron 转 90°、工具行 `.ed-arrow` 转 90°、changebar `#chv` 转 180°），禁止换元素。
-5. **加载顺序**：`index.html` 按 `vendor → fa-icons.js → icons.js → app.js` 依次引入，不可调换（icons.js 依赖 FA_ICONS）。
+5. **引入方式**：`index.html` 只引 `style.css` 与 `../ui-src/main.tsx`（不再有 vendor/图标注册表的 script 标签）；图标注册表作为 ES 模块引入——`ui/icons.js` 顶部静态 `import` 三个层文件（fa / lucide / file-icons），层叠覆盖顺序固定在 `ui/icons.js` 内。
 
 ## 弹出卡片设计规范（ring-pop 系）
 
@@ -87,7 +87,7 @@
 3. **定位**：`position: fixed; z-index: 110`，坐标一律经 `placeMenu()` 写入（内部除以 `zoomLevel` 补偿界面缩放）；弹出位置贴在锚点旁（上下文明细卡在环正上方 7px），边缘距视口至少 8px。
 4. **交互闭环（hover 宽限模式）**：锚点 `mouseenter` 不立即弹卡——先起 150ms 悬停定器，鼠标停够才弹出（划过不打扰），提前离开则取消；锚点 `mouseleave` 时不立即收卡——朝卡片方向离开则启动 200~250ms 宽限定器，途中有 `relatedTarget` 进入卡片则取消；卡片自身 `mouseenter` 取消关闭、`mouseleave` 关闭。悬停期间数据到达只重绘内容，不重建锚点（「移开即弃」策略）。
 5. **内容结构**：卡片头一行（标题 + 右侧辅助信息，如百分比），正文摘要式呈现（长文本截断 + `pre-wrap`），单行数值布局沿用「值 | 百分比」竖线分隔右对齐（`.cx-val`/`.cx-sep`/`.cx-pct` 同款）。
-6. **参考实现**：上下文明细卡见 `ui/app.js` `buildCtxCard()`/`mountRingPop()`。
+6. **参考实现**：上下文明细卡见 `ui-src/components/chat/CtxCard.tsx`（旧 `ui/ringpop.js` 的 ctxRing/buildCtxCard/mountRingPop 1:1 React 移植，含 150ms 悬停定器与宽限期逻辑）。
 
 ## 本文件维护
 

@@ -12,8 +12,7 @@ export const settingsPageEn = {
     general: "General",
     appearance: "Appearance",
     model: "Models",
-    browser: "Browser Control",
-    computer: "Computer Control",
+    computer: "Computer & Browser",
     keyboard: "Keyboard Shortcuts",
     extensions: "Extensions",
     memory: "Memory",
@@ -24,6 +23,7 @@ export const settingsPageEn = {
     hooks: "Hooks",
     modelBehavior: "Model Behavior",
     providers: "Providers",
+    capabilities: "Capability Backends",
     interaction: "Interaction",
     context: "Context",
     files: "Files",
@@ -142,7 +142,38 @@ export const settingsPageEn = {
     previewDarkTag: "Dark",
     previewActive: "Active",
   },
-  // ---- Models page (ModelPage.tsx) ----
+  // ---- Capability backends page (CapabilityPage.tsx) ----
+  cap: {
+    desc: "Dedicated models and engine keys for non-chat capabilities: web search, speech, dictation, judgment, image generation.",
+    keysTitle: "Search engine API keys",
+    keysDesc: "Paste a per-engine API key here, or configure the environment variable instead. Engines without a key still fall back to the built-in chain after selection.",
+    keyConfigured: "Key configured (stored credential or environment variable)",
+    keyMissing: "Not configured. Set the {{env}} environment variable, or paste an API key here",
+    configured: "Configured",
+    clearKey: "Clear the saved key",
+    keyPlaceholder: "Paste API key",
+    web: {
+      title: "Web search",
+      desc: "Search backend for the web_search tool (search-kind models or chat models with grounding); unset follows the built-in priority chain (public search by default)",
+    },
+    speech: {
+      title: "Speech",
+      desc: "TTS model for reading assistant output aloud (local Kokoro by default; voice options live on the Interaction page)",
+    },
+    dictation: {
+      title: "Dictation",
+      desc: "STT model for microphone dictation (local Parakeet by default; enable/language options live on the Interaction page)",
+    },
+    judge: {
+      title: "Judge",
+      desc: "Judgment model for auto-thinking, unexpected-stop detection, Eval scoring, and AI-assisted git staging (judge/tiny/chat models all qualify)",
+    },
+    image: {
+      title: "Image generation",
+      desc: "Image model used by generate_image",
+    },
+  },
+
   model: {
     desc: "Manage custom model providers; configured models become selectable in chats.",
     refresh: "Refresh",
@@ -1478,9 +1509,22 @@ export const settingsPageEn = {
   },
   // ---- Computer control page (ComputerPage.tsx) ----
   computer: {
-    writtenToast: "Saved. Computer control applies to sessions created afterwards.",
-    enableTitle: "Enable computer control",
-    enableDesc: "Allow the agent to use computer control tools such as screenshots, input and accessibility. Applies to new sessions.",
+    writtenToast: "Master switch saved.",
+    enableTitle: "Computer control master switch",
+    enableDesc: "Master switch: while off, computer control is unavailable in every session; while on, run /computer on inside a session to enable screenshots, input and accessibility for that session. Turning the master switch off also force-closes the per-session opt-in in every live session.",
+    displayTitle: "Display",
+    displayDesc: "Target screen for computer-control capture; “All” composites every display.",
+    allDisplays: "All displays (composite)",
+    primaryTag: "primary",
+    notDetected: "not detected",
+    detectFailed: "Display detection failed",
+  },
+  // ---- Browser section of the computer & browser page (ComputerPage.tsx) ----
+  browser: {
+    enableTitle: "Browser master switch",
+    enableDesc: "Master switch: while on, every session can use the browser tool right away — no per-session opt-in; while off, the browser tool and the /browser command are both unavailable, and browser-automation MCP servers are filtered out. Toggling applies to already-open sessions immediately.",
+    externalTitle: "Use an external browser",
+    externalDesc: "Off by default: omp launches the browser itself, reusing a Chrome/Chromium/Edge already installed on the system (throwaway profile, your everyday browser untouched). Turn it on to drive a browser you started yourself, inheriting its logins and extensions; the relay takes precedence over CDP.",
   },
   // ---- SchemaRows.tsx ----
   schema: {

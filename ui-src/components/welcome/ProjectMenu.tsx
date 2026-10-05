@@ -13,9 +13,10 @@ import Icon from "../../Icon";
 interface ProjectMenuProps {
   anchorRect: DOMRect;
   onClose: () => void;
+  onOpenRemote: () => void;
 }
+export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: ProjectMenuProps) {
 
-export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
   const { t } = useTranslation();
   const newSessionProject = useAppStore((s) => s.newSessionProject);
   // getAvailableProjects() reads the store live during render: subscribe to its data-source
@@ -122,14 +123,14 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
             <div
               key={p.cwd}
               className={"wb-proj-item" + (p.cwd === newSessionProject ? " selected" : "")}
-              title={p.cwd}
+              title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}
               onClick={(e) => {
                 e.stopPropagation();
                 choose(p.cwd);
               }}
             >
-              <Icon name="folderLine" size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
-              <span className="wb-proj-item-name flex-1 truncate">{pathBase(p.cwd) || p.cwd}</span>
+              <Icon name={p.remote ? "cloud" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
+              <span className="wb-proj-item-name flex-1 truncate">{p.remoteLabel || pathBase(p.cwd) || p.cwd}</span>
             </div>
           ))
         )}
@@ -145,8 +146,8 @@ export default function ProjectMenu({ anchorRect, onClose }: ProjectMenuProps) {
           title={t("misc.remoteConn")}
           onClick={(e) => {
             e.stopPropagation();
-            toast(t("misc.remoteConnSoon"));
             onClose();
+            onOpenRemote();
           }}
         >
           <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={15} /></span>

@@ -18,25 +18,8 @@ import type { LimitWindow } from "../../../lib/limits";
 import ModelProviderWizard from "./ModelProviderWizard";
 import ModelMetaEditor from "../ModelMetaEditor";
 import type { AllProviderEntry } from "../../../types/frames";
+import { RolePicker, type CatalogModel, type ModelRole } from "../RolePicker";
 
-// Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
-interface CatalogModel {
-  id: string;
-  name: string;
-  provider: string;
-  enabled: boolean;
-  context?: number | null;
-  vision?: boolean;
-  authSource?: string; // "cred" stored credential / "config" hand-written in models.yml
-}
-
-// Model role entry (modelRoles field)
-interface ModelRole {
-  id: string;
-  name: string;
-  tag?: string | null; // host ModelRoleEntry is string | null
-  value?: string | null; // unconfigured is null/absent
-}
 
 // Provider quota result (providerLimits landed shape; accounts is the multi-account extension, field shape same as top level)
 interface ProviderLimits {
@@ -63,6 +46,7 @@ const ROLE_DESC_KEYS: Record<string, string> = {
   task: "settingsPage.model.roleDesc.task",
   advisor: "settingsPage.model.roleDesc.advisor",
 };
+
 
 // One quota detail section (ui/ringpop.js buildLimitsSection ported to a component): semantics/colors use the shared definitions in lib/limits.
 // prov/accountId wire the per-account disable action into the card head (settings page only;
@@ -221,170 +205,25 @@ function AccountsSection({ prov }: { prov: string }) {
   );
 }
 
-
-// Current value display of the role selector: unconfigured → "default"; exact catalog model hit → model name; otherwise (alias / level-suffixed) → raw value
-function roleSelLabel(role: ModelRole): string {
-  if (!role.value) return role.id === "default" ? t("settingsPage.model.roleUnset") : t("settingsPage.model.roleDefault");
-  const hit = useAppStore.getState().modelCatalog.find((m) => m.id === role.value);
-  if (hit) return hit.name;
-  return role.value;
-}
-
-// Model selector of a role row: two-level cascade (level-1 provider rows + hover right flyout),
-// interaction aligned with the composer model menu
-// (180ms hover-intent delay / 150ms grace close / flip left on right-edge overflow). The flyout
-// is mounted under .sel rather than inside the level-1 menu —
-// .menu.model carries overflow-y:auto which would clip absolutely positioned children. Widths
-// unified by .mp-role-sel / .mp-role-menu.
-function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogModel[] }) {
-  const [open, setOpen] = useState(false);
-  const [flyProv, setFlyProv] = useState<string | null>(null); // provider of the current level-2 flyout
-  const selRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const flyRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> provider row element (for flyout top alignment)
-  const hideT = useRef<TimerHandle | undefined>(undefined); // flyout close grace
-  const switchT = useRef<TimerHandle | undefined>(undefined); // row-switch hover-intent delay
-
-  // Clear timers on unmount
-  useEffect(() => () => { clearTimeout(hideT.current); clearTimeout(switchT.current); }, []);
-
-  // Close on click outside the selector (global equivalent of the old closeAllMenus)
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!selRef.current?.contains(e.target as Node | null)) {
-        clearTimeout(hideT.current);
-        clearTimeout(switchT.current);
-        setOpen(false);
-        setFlyProv(null);
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  // Flyout coordinates: relative to .sel (offsetParent). The level-2 list opens upward —
-  // bottom edge aligned with the provider row's bottom edge
-  // (both menus pad 5px; +5 aligns the last row with the row height), so it never pushes past
-  // the settings scroll area's bottom; when space above is insufficient, cap height + scroll
-  // internally, top edge at most 4px below the settings scroll area's top; the flyout overlaps
-  // the level-1 menu border by 4px and flips left on right-edge overflow.
-  useLayoutEffect(() => {
-    const menu = menuRef.current;
-    const sel = selRef.current;
-    const fly = flyRef.current;
-    if (!menu || !sel || !fly || !flyProv) return;
-    const row = rowRefs.current.get(flyProv);
-    if (!row) return;
-    const z = useAppStore.getState().zoomLevel || 1;
-    fly.style.maxHeight = "";
-    fly.style.overflowY = "";
-    const rowBottom = menu.offsetTop + row.offsetTop - menu.scrollTop + row.offsetHeight;
-    fly.style.top = "auto";
-    fly.style.bottom = sel.clientHeight - rowBottom - 5 + "px";
-    const bound = sel.closest("#setBody") ?? document.body;
-    const boundRect = bound.getBoundingClientRect();
-    const availAbove = Math.round((boundRect.top - 4) / z) + rowBottom + 5;
-    if (fly.offsetHeight > availAbove) {
-      fly.style.maxHeight = Math.max(80, availAbove) + "px";
-      fly.style.overflowY = "auto";
-    }
-    fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px";
-    if (fly.getBoundingClientRect().right > boundRect.right - 8) {
-      fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px";
-    }
-  }, [flyProv, open]);
-
-  const pick = (value: string) => {
-    if ((role.value ?? null) !== value) send({ type: "set_model_role", role: role.id, value });
-    setOpen(false);
-    setFlyProv(null);
-  };
-
-  const byProv = new Map<string, CatalogModel[]>();
-  for (const m of allModels) {
-    if (!byProv.has(m.provider)) byProv.set(m.provider, []);
-    byProv.get(m.provider)!.push(m); // the has() on the previous line guarantees the group exists
-  }
-
-  return (
-    <div
-      className="sel mp-role-sel"
-      role="button"
-      ref={selRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        setOpen((v) => !v);
-        if (open) setFlyProv(null);
-      }}
-    >
-      <span>{roleSelLabel(role)}</span>
-      <span className="caret-svg"><Icon name="caret" size={14} /></span>
-      {open && (
-        <div className="menu model mp-role-menu open" ref={menuRef}>
-          {[...byProv].map(([prov, models]) => (
-            <div
-              className={"mi prov" + (prov === flyProv ? " on" : "")}
-              key={prov}
-              ref={(el) => { if (el) rowRefs.current.set(prov, el); else rowRefs.current.delete(prov); }}
-              // 180ms hover-intent delay on row switch: don't steal focus when the pointer diagonally crosses middle rows toward the flyout
-              onMouseEnter={() => {
-                clearTimeout(hideT.current);
-                if (prov === flyProv) return;
-                clearTimeout(switchT.current);
-                switchT.current = setTimeout(() => setFlyProv(prov), 180);
-              }}
-              onMouseLeave={() => clearTimeout(switchT.current)}
-              onClick={(e) => {
-                e.stopPropagation();
-                clearTimeout(hideT.current);
-                clearTimeout(switchT.current);
-                setFlyProv(prov === flyProv ? null : prov);
-              }}
-            >
-              {prov}
-              <span className="sub"><Icon name="chevronRight" size={14} /></span>
-            </div>
-          ))}
-        </div>
-      )}
-      {flyProv && (
-        <div
-          className="menu flyout open"
-          ref={flyRef}
-          onMouseEnter={() => { clearTimeout(hideT.current); clearTimeout(switchT.current); }}
-          onMouseLeave={() => {
-            clearTimeout(hideT.current);
-            hideT.current = setTimeout(() => setFlyProv(null), 150);
-          }}
-        >
-          {byProv.get(flyProv)!.map((m) => (
-            <div className={"mi" + (role.value === m.id ? " on" : "")} key={m.id} onClick={(e) => { e.stopPropagation(); pick(m.id); }}>
-              <span className="ck">{role.value === m.id ? "✓" : ""}</span>{m.name}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Right card: model roles view (srow rows + two-level cascading model selector + delete button for custom roles)
 function RolesView() {
   const { t } = useTranslation();
-  // Full catalog (including disabled models): role values may point at any catalog model; host validation and base resolution both use the full availableModels
+  // Full catalog including disabled models (role values may point at a disabled catalog entry);
+  // RolePicker narrows it per role by accepted model kinds, the host re-validates on write
   const allModels = useAppStore((s) => s.modelCatalog);
   const modelRoles = useAppStore((s) => s.modelRoles);
+  // Chat and custom roles only: kind roles (web/speech/dictation/judge/image) live on the
+  // capability backends page together with their engine-key configuration
+  const chatRoles = (modelRoles ?? []).filter((r) => r.section !== "kind");
   return (
     <>
       <div className="mp-head">
         <b>{t("settingsPage.model.roleEntry")}</b>
         <span className="sp" />
-        <span className="tag">{t("settingsPage.model.rolesCount", { count: modelRoles?.length ?? 0 })}</span>
+        <span className="tag">{t("settingsPage.model.rolesCount", { count: chatRoles.length })}</span>
       </div>
       <div className="set-group-desc mp-role-desc">{t("settingsPage.model.rolesDesc")}</div>
-      {(modelRoles ?? []).map((role) => (
+      {chatRoles.map((role) => (
         <div className="srow mp-role-row" key={role.id}>
           <div className="srow-tx">
             <b>
@@ -513,6 +352,12 @@ const FAMILY_OF: Record<string, string> = {};
 for (const [fid, fam] of Object.entries(PROVIDER_FAMILIES)) {
   for (const id of Object.keys(fam.members)) FAMILY_OF[id] = fid;
 }
+
+// Synthetic catalog providers (base pi-catalog "local" local-inference seeds and "web"
+// search-engine seeds) stay out of the provider list on this page — they are not text-LLM
+// vendors and get their own dedicated config pages. Their models remain in modelCatalog
+// so the role pickers (tiny/memory/web candidate pools) keep working.
+const HIDDEN_PROVIDERS: Record<string, true> = { local: true, web: true };
 function AddProviderView() {
   const { t } = useTranslation();
   const allProvidersCache = useAppStore((s) => s.allProvidersCache);
@@ -835,7 +680,7 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
               <div
                 className={"tg" + (m.enabled ? " on" : "")}
                 onClick={() => {
-                  if (m.enabled && useAppStore.getState().modelCatalog.filter((x) => x.enabled).length <= 1) {
+                  if (m.enabled && useAppStore.getState().modelCatalog.filter((x) => x.enabled && !HIDDEN_PROVIDERS[x.provider]).length <= 1) {
                     toast(t("settingsPage.model.keepOneModel"));
                     return;
                   }
@@ -876,9 +721,11 @@ export default function ModelPage() {
   const mpManualView = useAppStore((s) => s.mpManualView);
   const mpDetailProv = useAppStore((s) => s.mpDetailProv);
   let selectedProvider = useAppStore((s) => s.selectedProvider);
-  // Left-column grouping: provider -> models (modelCatalog, landed from the models_catalog reply)
+  // Left-column grouping: provider -> models (modelCatalog, landed from the models_catalog reply);
+  // hidden synthetic providers (HIDDEN_PROVIDERS) get no group, so they never show as list rows
   const groups = new Map<string, CatalogModel[]>();
   for (const m of modelCatalog) {
+    if (HIDDEN_PROVIDERS[m.provider]) continue;
     if (!groups.has(m.provider)) groups.set(m.provider, []);
     groups.get(m.provider)!.push(m);
   }

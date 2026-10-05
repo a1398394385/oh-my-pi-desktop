@@ -42,6 +42,7 @@ export const hostErrorsEn = {
     subagentReadonly: "Subagent sessions are read-only. Sending messages is not supported.",
     subagentSlashNotSupported: "Slash and terminal commands are not supported in subagent sessions",
   },
+  computerGateClosed: "Computer control is off in Settings: enable the master switch there first, then run /computer on in the session",
   bash: {
     busy: "A bash command is already running; press stop or wait for it to finish",
   },
@@ -52,7 +53,6 @@ export const hostErrorsEn = {
     fastRemoved: "Service tier (fast) switching has been removed",
     skillsSettingPage: "Toggle the skill list on the settings page",
     extContextSettingPage: "Toggle extended context on the settings page",
-    computerSettingPage: "Toggle computer control on the settings page",
     forceRemoved: "Forced tool selection has been removed",
     useForkButton: "Use the fork button under the reply to fork the session",
   },
@@ -118,6 +118,7 @@ export const hostErrorsEn = {
     noneAfterFilter: "No available models left after filtering the enabled list",
     invalidRoleName: "Invalid role name: {{role}}",
     roleUnresolved: "Role \"{{role}}\" resolves to no available model",
+    roleKindMismatch: "Model {{model}} does not match the kind accepted by role {{role}} (e.g. SPEECH takes TTS and DICTATION takes STT models only)",
   },
   limits: {
     noModelSelected: "Session has no model selected yet",
@@ -146,6 +147,16 @@ export const hostErrorsEn = {
   },
   mcp: {
     userCancelled: "Generation cancelled by user",
+  },
+  ssh: {
+    missingName: "Missing host name",
+    nameInvalid: "Invalid host name: {{detail}}",
+    missingAddress: "Missing host address",
+    portInvalid: "Port must be an integer between 1 and 65535",
+    hostNotFound: "SSH host not found: {{name}}",
+    invalidPath: "Invalid remote path (absolute path starting with / required): {{path}}",
+    unreachable: "SSH connection failed: {{detail}}",
+    dirMissing: "Remote directory does not exist: {{path}}",
   },
   wizard: {
     missingBaseUrl: "Missing baseUrl",

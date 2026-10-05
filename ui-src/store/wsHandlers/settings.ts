@@ -186,6 +186,10 @@ export const settingsHandlers = {
       mentionResult: { reqId: msg.reqId, matches: Array.isArray(msg.matches) ? msg.matches : [] },
     }));
   },
+  // ---- Computer-control display dropdown (host list_displays reply) ----
+  displays(msg) {
+    useAppStore.setState({ computerDisplays: msg });
+  },
 } satisfies HandlerSlice;
 
 // Domain key set (for the exhaustive-assertion cross-check in index)

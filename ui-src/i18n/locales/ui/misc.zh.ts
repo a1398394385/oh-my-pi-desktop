@@ -47,7 +47,6 @@ export const miscZh = {
   noWorkspaceMatch: "无匹配工作区",
   openFolder: "打开文件夹",
   remoteConn: "远程连接",
-  remoteConnSoon: "远程连接功能即将推出",
   // keys.ts runtime toasts
   thinkingExpandOn: "思考过程：运行时展开",
   thinkingExpandOff: "思考过程：运行时保持收起",
@@ -90,6 +89,12 @@ export const miscZh = {
   keysZoomIn: "放大",
   keysZoomOut: "缩小",
   keysZoomReset: "重置缩放",
+  keysGroupSystem: "系统级",
+  keysGroupSystemDesc: "由操作系统或原生壳层绑定（菜单栏 / 窗口管理），不走应用内按键派发，不可配置。",
+  keysSystemClose: "关闭窗口：隐藏到后台（点关闭按钮同样隐藏，不退出应用）",
+  keysSystemQuit: "退出应用",
+  keysSystemHide: "隐藏应用",
+  keysSystemMinimize: "最小化窗口",
   // Host boot error codes (store/ws.ts translateHostError; codes emitted by src-tauri/src/lib.rs)
   bootAssetDirFailed: "读取应用资源目录失败",
   bootHostSidecarMissing: "未找到宿主 sidecar",

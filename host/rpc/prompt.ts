@@ -57,7 +57,6 @@ const REMOVED_SLASH_COMMANDS: Record<string, string> = {
   fast: "errors.removedCmd.fastRemoved",
   skillful: "errors.removedCmd.skillsSettingPage",
   "extended-context": "errors.removedCmd.extContextSettingPage",
-  computer: "errors.removedCmd.computerSettingPage",
   force: "errors.removedCmd.forceRemoved",
   fork: "errors.removedCmd.useForkButton",
 };
@@ -276,6 +275,20 @@ async function dispatchSlashInput(
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
+  // 2.6) /computer: the settings-page switch is the master gate. Every session
+  // starts with computer use off (per-session opt-in via the pinned overlay in
+  // session-lifecycle); mutating forms only work while the gate is open, while
+  // the read-only "status" always passes to the base command.
+  if (
+    parsedSlash?.name === "computer" &&
+    parsedSlash.args.trim().toLowerCase() !== "status" &&
+    !settingsGet(H.settings, "computer.enabled")
+  ) {
+    ws.send(JSON.stringify({ type: "command_output", sessionId, text: hostI18n.t("errors.computerGateClosed") }));
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+
 
   // 3) builtin: the 41 commands executable without a TUI. The desktop's
   // prompt RPC returns immediately and all turn output flows through the

@@ -265,6 +265,60 @@ interface SchemaRowsProps {
   sections?: Section[] | null; // placement sections for the page; when absent, render nothing
 }
 
+// Rows only (no heading, no card): for pages that merge schema rows into their
+// own .set-card so one rounded card holds the whole section. Returns a fragment
+// so the rows stay direct .set-card children (the :first-child/:last-child
+// radius rules in global.css need that).
+export function SchemaRowsBare({ sections }: SchemaRowsProps) {
+  const rows = useSchemaRows(sections);
+  return <>{rows}</>;
+}
+
+// Section heading only (no card): pairs with SchemaRowsBare when a page owns the
+// card chrome itself. Resolves the same title/hint chain as SchemaRows.
+export function SchemaGroupTitle({ sections }: SchemaRowsProps) {
+  const lang = useAppStore((s) => s.uiPrefs.lang);
+  const groups = lang === "zh-CN" ? GROUPS_ZH : GROUPS_EN;
+  const section = sections?.[0];
+  if (!section) return null;
+  let title = lang === "zh-CN" ? section.titleZh : (section.titleEn ?? section.titleZh);
+  if (!title && section.from) {
+    const group = section.from.slice(section.from.indexOf("/") + 1);
+    title = groups[group] ?? group;
+  }
+  const hint = lang === "zh-CN" ? section.hint : (section.hintEn ?? section.hint);
+  return (
+    <div className="set-group-tt">
+      {title}
+      {hint && (
+        <span className="gtt-hint" data-hint={hint}>
+          <Icon name="info" size={14} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Expand sections into bare .srow elements (schema values pulled live from the store)
+function useSchemaRows(sections?: Section[] | null): ReactElement[] {
+  const schema = useAppStore((s) => s.settingsSchema);
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  const conditions = hostSettings?.conditions || {};
+  const values = hostSettings?.values || {};
+  const rows: ReactElement[] = [];
+  if (!schema || !sections) return rows;
+  for (const section of sections) {
+    for (const k of expandSection(section, schema).filter((k) => {
+      const cond = schema[k].ui?.condition;
+      // Conditional hiding: don't render when the condition is known and false; render when unknown/absent
+      return !(cond && conditions[cond] === false);
+    })) {
+      rows.push(<SchemaRow key={k} k={k} def={schema[k]} value={values[k]} />);
+    }
+  }
+  return rows;
+}
+
 export default function SchemaRows({ sections }: SchemaRowsProps) {
   const schema = useAppStore((s) => s.settingsSchema);
   const hostSettings = useAppStore((s) => s.hostSettings);
@@ -290,6 +344,8 @@ export default function SchemaRows({ sections }: SchemaRowsProps) {
       title = groups[group] ?? group;
     }
     const hint = lang === "zh-CN" ? section.hint : (section.hintEn ?? section.hint);
+    // id'd sections are laid out by their page (ComputerPage), skip them here
+    if (section.id) continue;
     out.push(
       <div key={section.from ?? title ?? out.length}>
         <div className="set-group-tt">

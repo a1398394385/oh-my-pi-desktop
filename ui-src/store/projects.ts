@@ -16,7 +16,7 @@ export interface ProjectsSlice {
   expandedProjects: Set<string>;
   pinnedSessions: Set<string>;
   unseenFinished: Set<string>;
-  getAvailableProjects(): { cwd: string; sessions: DiskSessionRow[] }[];
+  getAvailableProjects(): { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[] }[];
   /** Optimistically stamp the sidebar row's activity time at message send (see impl). */
   bumpSessionActivity(sessionId: string): void;
   saveUnseen(): void;
@@ -39,10 +39,18 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   getAvailableProjects() {
     const st = get();
     const removedSet = new Set(st.removedProjects);
-    const sessionsOf = new Map(st.diskProjects.map((p) => [p.cwd, p.sessions]));
+    const byCwd = new Map(st.diskProjects.map((p) => [p.cwd, p]));
     return st.allProjects
       .filter((cwd) => !removedSet.has(cwd))
-      .map((cwd) => ({ cwd, sessions: sessionsOf.get(cwd) ?? [] }));
+      .map((cwd) => {
+        const entry = byCwd.get(cwd);
+        return {
+          cwd,
+          // Remote SSH workspace stubs carry their display fields onto the sidebar/welcome rows
+          ...(entry?.remote ? { remote: true, remoteLabel: entry.remoteLabel } : {}),
+          sessions: entry?.sessions ?? [],
+        };
+      });
   },
 
   // Sidebar activity clock = the two user-visible moments only: message send (this bump,

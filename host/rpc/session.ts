@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
 import { H, sessions, stampEvent } from "../state.ts";
+import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
 import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
 import { applyActivityTimes } from "../session-activity.ts";
@@ -57,20 +58,26 @@ export async function handleListSessions(ws: any) {
   // History scan: merge newly seen projects into the all-projects list (reached both at startup and on UI reconnect)
   if (mergeHistoryProjects([...byProject.keys()])) await saveDesktopProjects();
   const projects = [...byProject.entries()]
-    .map(([cwd, list]) => ({
-      cwd,
-      sessions: list
-        .sort((a, b) => b.modified.getTime() - a.modified.getTime())
-        .map((s) => ({
-          id: s.id,
-          path: s.path,
-          title: s.title ?? null,
-          firstMessage: s.firstMessage.slice(0, 80),
-          modified: s.modified.toISOString(),
-          messageCount: s.messageCount,
-          archived: H.desktopProjects.archivedSessions.includes(s.path),
-        })),
-    }))
+    .map(([cwd, list]) => {
+      // Remote SSH workspace stubs: mark the project row so the UI swaps the
+      // folder icon for the cloud and shows host:path instead of the stub path
+      const remote = readRemoteWorkspaceInfo(cwd);
+      return {
+        cwd,
+        ...(remote ? { remote: true, remoteLabel: `${remote.host}:${remote.remotePath}` } : {}),
+        sessions: list
+          .sort((a, b) => b.modified.getTime() - a.modified.getTime())
+          .map((s) => ({
+            id: s.id,
+            path: s.path,
+            title: s.title ?? null,
+            firstMessage: s.firstMessage.slice(0, 80),
+            modified: s.modified.toISOString(),
+            messageCount: s.messageCount,
+            archived: H.desktopProjects.archivedSessions.includes(s.path),
+          })),
+      };
+    })
     .sort((a, b) => Date.parse(b.sessions[0].modified) - Date.parse(a.sessions[0].modified));
   ws.send(
     JSON.stringify({

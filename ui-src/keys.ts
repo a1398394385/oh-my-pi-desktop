@@ -391,7 +391,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: [MOD, ","], get label() { return t("misc.keysToggleSettings"); } },
       { keys: ["Esc"], get label() { return t("misc.keysCloseOverlays"); } },
       { keys: [MOD, "F"], get label() { return t("misc.keysFindInSession"); } },
-      { keys: ["Alt", "A"], chords: ["alt+a"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
+      { keys: [MOD, "Alt", "B"], chords: ["alt+meta+b", "meta+alt+b"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
     ],
   },
   {
@@ -441,6 +441,22 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: [MOD, "+"], get label() { return t("misc.keysZoomIn"); } },
       { keys: [MOD, "−"], get label() { return t("misc.keysZoomOut"); } },
       { keys: [MOD, "0"], get label() { return t("misc.keysZoomReset"); } },
+    ],
+  },
+  {
+    // OS / native-shell bindings: dispatched outside the web app (native menu
+    // bar, window manager, Rust shell). Display only -- never re-bound here.
+    get title() { return t("misc.keysGroupSystem"); },
+    get desc() { return t("misc.keysGroupSystemDesc"); },
+    items: [
+      // Close-to-background: CloseRequested is intercepted in the Rust shell (lib.rs)
+      { keys: IS_WINDOWS ? ["Alt", "F4"] : [MOD, "W"], get label() { return t("misc.keysSystemClose"); } },
+      // macOS native menu bar only (build_menu is a no-op on other platforms)
+      ...(IS_WINDOWS ? [] : [
+        { keys: [MOD, "Q"], get label() { return t("misc.keysSystemQuit"); } },
+        { keys: [MOD, "H"], get label() { return t("misc.keysSystemHide"); } },
+        { keys: [MOD, "M"], get label() { return t("misc.keysSystemMinimize"); } },
+      ]),
     ],
   },
 ];

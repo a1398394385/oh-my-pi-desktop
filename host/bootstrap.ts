@@ -184,3 +184,13 @@ export const { getEnabledPlugins } = await import(
 // Session capabilities snapshot (right-panel page): LSP runtime status + memory backend status
 export const { getLspStatus } = await import("@oh-my-pi/pi-coding-agent/lsp/servers");
 export const { createSessionMemoryRuntimeContext } = await import("@oh-my-pi/pi-coding-agent/memory-backend/runtime");
+// SSH host config (ssh.json) writer, shell quoting/argv guards, and the
+// capability cache reset. Dynamic imports are load-order-mandated (header:
+// setProfile must precede the coding-agent graph). After any ssh.json mutation
+// the in-memory capability caches must be reset so ssh:// URL resolution
+// re-reads the file (same reset the base's /ssh command performs).
+export const { readSSHConfigFile, addSSHHost, updateSSHHost, removeSSHHost, validateHostName } = await import(
+  "@oh-my-pi/pi-coding-agent/ssh/config-writer"
+);
+export const { reset: resetCapabilities } = await import("@oh-my-pi/pi-coding-agent/capability");
+export const { sanitizeHostName, buildSshTarget, quotePosixPath } = await import("@oh-my-pi/pi-coding-agent/ssh/utils");

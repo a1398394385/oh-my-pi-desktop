@@ -3,8 +3,9 @@
 // frontend views); settingsSnapshot is the get_settings payload.
 import path from "node:path";
 import fs from "node:fs";
+import { modelKind } from "@oh-my-pi/pi-catalog/types";
 import { H, enabledDefaults } from "./state.ts";
-import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue } from "./bootstrap.ts";
+import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue, authPolicyFor } from "./bootstrap.ts";
 import { orderedSettings } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
 
@@ -14,6 +15,15 @@ export function rebuildScopedModels() {
   for (const e of enabledEntries) enabledDefaults.set(e.split(":")[0], e.split(":")[1] ?? null);
   H.scopedModels =
     enabledDefaults.size > 0 ? H.availableModels.filter((m) => enabledDefaults.has(`${m.provider}/${m.id}`)) : H.availableModels;
+}
+
+/** Re-take both availability pools after a registry refresh: availableModels stays chat-only
+ * (sessions, enable/disable scoping, composer menu); allModels adds every other kind including
+ * keyless local runners, the pool the settings catalog and model-role assignment read — the same
+ * surface as the base's roleCandidatePool (registry.getAvailable("all")). */
+export function syncAvailableModels() {
+  H.availableModels = H.modelRegistry.getAvailable();
+  H.allModels = H.modelRegistry.getAvailable("all");
 }
 
 export function modelsPayload() {
@@ -151,7 +161,7 @@ export function modelCatalog() {
   const enabled = new Set(enabledDefaults.keys());
   const allEnabled = enabled.size === 0;
   const configSet = configAuthProviders();
-  return H.availableModels.map((m) => {
+  return H.allModels.map((m) => {
     const id = `${m.provider}/${m.id}`;
     const ctx = (m as any).contextWindow ?? (m as any).contextLength ?? null;
     const vision = Array.isArray((m as any).input) ? (m as any).input.includes("image") : !!(m as any).vision;
@@ -159,6 +169,9 @@ export function modelCatalog() {
       id,
       name: m.name ?? m.id,
       provider: m.provider,
+      // Catalog kind (chat/tiny/image/search/tts/stt/judge): the UI filters kind-role
+      // candidate menus by it, mirroring the base's role accepts() pools
+      kind: modelKind(m),
       enabled: allEnabled || enabled.has(id),
       context: ctx,
       vision,
@@ -195,15 +208,60 @@ export function modelRolesPayload() {
   return getKnownRoleIds(H.settings).map((role) => {
     const info = getRoleInfo(role, H.settings);
     const value = H.settings.getModelRole(role) ?? null;
-    const { model } = resolveModelRoleValue(formatModelRoleAlias(role), H.availableModels, { settings: H.settings });
+    const { model } = resolveModelRoleValue(formatModelRoleAlias(role), H.allModels, { settings: H.settings });
+
     return {
       id: role,
+      builtin: (MODEL_ROLE_IDS as readonly string[]).includes(role),
+      section: info.section,
       name: info.name,
       tag: info.tag ?? null,
       value,
       resolved: model ? `${model.provider}/${model.id}` : null,
       resolvedName: (model?.name as string) ?? null,
-      builtin: (MODEL_ROLE_IDS as readonly string[]).includes(role),
+    };
+  });
+}
+
+// Auth ids consumed only by non-chat runners — the key-based web-search engines and the
+// TypeSafe judge backend (mirrors the base's web/search/providers/* table + typesafe auth).
+// They stay out of the add-provider grid (chat providers only) and surface on the settings
+// capability page instead, where their API keys are managed.
+export const CAPABILITY_AUTH_IDS = [
+  "tavily",
+  "exa",
+  "kagi",
+  "brave",
+  "jina",
+  "firecrawl",
+  "tinyfish",
+  "synthetic",
+  "typesafe",
+] as const;
+
+const CAPABILITY_AUTH_LABELS: Record<string, string> = {
+  tavily: "Tavily",
+  exa: "Exa",
+  kagi: "Kagi",
+  brave: "Brave",
+  jina: "Jina",
+  firecrawl: "Firecrawl",
+  tinyfish: "TinyFish",
+  synthetic: "Synthetic",
+  typesafe: "TypeSafe",
+};
+
+// Snapshot for the capability page: per engine, whether a key resolves now (stored credential
+// or env alias) and whether a removable stored credential exists
+export function capabilityKeysPayload() {
+  return CAPABILITY_AUTH_IDS.map((id) => {
+    const policy = authPolicyFor(id);
+    return {
+      id,
+      label: CAPABILITY_AUTH_LABELS[id] ?? id,
+      envVar: policy?.env?.vars?.[0] ?? `${id.toUpperCase().replace(/-/g, "_")}_API_KEY`,
+      configured: H.authStorage.keys.source(id, { env: "aliases" }) !== undefined,
+      stored: H.authStorage.credentials.list(id).length > 0,
     };
   });
 }

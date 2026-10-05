@@ -21,7 +21,6 @@ import GeneralPage from "./pages/GeneralPage";
 import AppearancePage from "./pages/AppearancePage";
 import KeyboardPage from "./pages/KeyboardPage";
 import ExperimentalPage from "./pages/ExperimentalPage";
-import BrowserPage from "./pages/BrowserPage";
 import ComputerPage from "./pages/ComputerPage";
 import PluginsPage from "./pages/PluginsPage";
 import ExtensionsPage from "./pages/ExtensionsPage";
@@ -34,6 +33,7 @@ import AgentsPage from "./pages/AgentsPage";
 import StatsPage from "./pages/StatsPage";
 import ModelBehaviorPage from "./pages/ModelBehaviorPage";
 import ProvidersPage from "./pages/ProvidersPage";
+import CapabilityPage from "./pages/CapabilityPage";
 import InteractionPage from "./pages/InteractionPage";
 import ContextPage from "./pages/ContextPage";
 import FilesPage from "./pages/FilesPage";
@@ -51,7 +51,6 @@ const NAV_SECTIONS = [
       { id: "pg-general", icon: "sliders", label: "settingsPage.nav.general" },
       { id: "pg-appearance", icon: "palette", label: "settingsPage.nav.appearance" },
       { id: "pg-model", icon: "box", label: "settingsPage.nav.model" },
-      { id: "pg-browser", icon: "globe", label: "settingsPage.nav.browser" },
       { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
       { id: "pg-keyboard", icon: "keyboard", label: "settingsPage.nav.keyboard" },
     ],
@@ -73,6 +72,7 @@ const NAV_SECTIONS = [
     items: [
       { id: "pg-model-behavior", icon: "think", label: "settingsPage.nav.modelBehavior" },
       { id: "pg-providers", icon: "cloud", label: "settingsPage.nav.providers" },
+      { id: "pg-capabilities", icon: "search", label: "settingsPage.nav.capabilities" },
       { id: "pg-interaction", icon: "comment", label: "settingsPage.nav.interaction" },
       { id: "pg-context", icon: "folderOpen", label: "settingsPage.nav.context" },
       { id: "pg-files", icon: "file", label: "settingsPage.nav.files" },
@@ -96,7 +96,6 @@ const PAGES: Record<string, ComponentType> = {
   "pg-appearance": AppearancePage,
   "pg-keyboard": KeyboardPage,
   "pg-experimental": ExperimentalPage,
-  "pg-browser": BrowserPage,
   "pg-computer": ComputerPage,
   "pg-plugins": PluginsPage,
   "pg-extensions": ExtensionsPage,
@@ -109,6 +108,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-stats": StatsPage,
   "pg-model-behavior": ModelBehaviorPage,
   "pg-providers": ProvidersPage,
+  "pg-capabilities": CapabilityPage,
   "pg-interaction": InteractionPage,
   "pg-context": ContextPage,
   "pg-files": FilesPage,

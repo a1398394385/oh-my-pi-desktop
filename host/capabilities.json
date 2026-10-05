@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "host WebSocket RPC 能力清单（单一事实源）。check-capabilities.mjs 双向 diff 本清单与 host.ts switch 实际分发的 method：清单有而 host 无 = 过期条目，host 有而清单无 = 未登记能力，两者都阻断（借鉴 OBF 产品控制平面：无证据的能力不存在）。",
-  "kinds": ["session", "project", "prompt", "transcript", "file", "git", "approval", "model", "settings", "usage", "asset", "mcp", "provider", "shell"],
+  "kinds": ["session", "project", "prompt", "transcript", "file", "git", "approval", "model", "settings", "usage", "asset", "mcp", "provider", "shell", "ssh"],
   "risks": ["read", "write", "destructive"],
   "methods": [
     { "id": "create_session", "kind": "session", "risk": "write" },
@@ -59,12 +59,14 @@
     { "id": "set_enabled_model", "kind": "model", "risk": "write" },
     { "id": "get_model_roles", "kind": "model", "risk": "read" },
     { "id": "set_model_role", "kind": "model", "risk": "write" },
+    { "id": "get_capability_keys", "kind": "model", "risk": "read", "note": "能力后端页：web 搜索引擎/TypeSafe 判定的 API Key 状态（可解析=stored 凭证或环境变量）" },
     { "id": "test_provider_model", "kind": "model", "risk": "read", "note": "单模型连通性测试：走底座完整协议栈发一次最小补全（disableReasoning，60s 超时），回 provider_model_test 帧" },
     { "id": "get_settings", "kind": "settings", "risk": "read" },
     { "id": "reload_settings", "kind": "settings", "risk": "write" },
     { "id": "set_setting", "kind": "settings", "risk": "write" },
     { "id": "set_desktop_env", "kind": "settings", "risk": "write" },
     { "id": "get_settings_schema", "kind": "settings", "risk": "read" },
+    { "id": "list_displays", "kind": "settings", "risk": "read", "note": "电脑控制设置页显示器下拉：经 pi-natives 短会话枚举物理显示器（只读），回 displays 帧" },
     { "id": "set_acp_enabled", "kind": "settings", "risk": "write", "note": "写入 omp-desktop.json 的 acp.enabled，只影响此后创建的会话" },
     { "id": "set_acp_config", "kind": "settings", "risk": "write", "note": "更新 omp-desktop.json 的 acp 配置段" },
     { "id": "set_session_context_enabled", "kind": "settings", "risk": "write", "note": "写入 omp-desktop.json 的 sessionContext.enabled，只影响此后创建的会话" },
@@ -77,6 +79,7 @@
     { "id": "set_skills_enabled", "kind": "settings", "risk": "write", "note": "写入底座 settings.json 的 skills.enabled，控制技能加载" },
     { "id": "set_locale", "kind": "settings", "risk": "write", "note": "UI 语言偏好：写入 omp-desktop.json 的 ui.locale 并即时应用到宿主消息；fire-and-forget 无回包" },
     { "id": "set_ui_prefs", "kind": "settings", "risk": "write", "note": "桌面外观设置：合并写入 omp-desktop.json ui 段 theme/motion/prefs，回发 settings 帧供前端校正 localStorage 缓存" },
+    { "id": "set_external_browser", "kind": "settings", "risk": "write", "note": "电脑与浏览器页外置浏览器开关：写入 omp-desktop.json browser.external 并即时把 browser.relay/cdpUrl 固定在「不用外置」或恢复配置层取值，config.yml 本身不被改写" },
     { "id": "ui_error", "kind": "settings", "risk": "write", "note": "前端未捕获错误上报宿主日志" },
     { "id": "switch_profile", "kind": "settings", "risk": "write", "note": "切换后全量重载会话池" },
     { "id": "get_todos", "kind": "usage", "risk": "read" },
@@ -122,6 +125,11 @@
     { "id": "terminal_resize", "kind": "shell", "risk": "write" },
     { "id": "terminal_dispose", "kind": "shell", "risk": "write", "note": "释放 PTY，不删用户数据" },
     { "id": "open_models_config", "kind": "shell", "risk": "write", "note": "唤起系统打开 models.yml" },
-    { "id": "open_folder", "kind": "shell", "risk": "write", "note": "唤起 Finder" }
+    { "id": "open_folder", "kind": "shell", "risk": "write", "note": "唤起 Finder" },
+    { "id": "ssh_list_hosts", "kind": "ssh", "risk": "read", "note": "读用户级 ssh.json 主机表（OMP 原生格式）" },
+    { "id": "ssh_save_host", "kind": "ssh", "risk": "write", "note": "新增/更新 ssh.json 主机（同 omp ssh add/update），写后重置底座能力缓存" },
+    { "id": "ssh_remove_host", "kind": "ssh", "risk": "write", "note": "从 ssh.json 移除主机" },
+    { "id": "ssh_test_host", "kind": "ssh", "risk": "read", "note": "BatchMode 连通性探测（echo 往返），不改状态" },
+    { "id": "add_remote_workspace", "kind": "ssh", "risk": "write", "note": "SSH 远程工作区：先远程 test -d 校验路径，再落本地桩目录 + .omp/remote-workspace.json 标记" }
   ]
 }

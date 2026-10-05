@@ -9,6 +9,7 @@ import { saveUiPrefs } from "../../../appearance";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
+import { ModelCascadePicker } from "../RolePicker";
 import type { AcpConfig } from "../../../types/frames";
 
 const MAX_LIMIT_OPTIONS = ["35%", "45%", "50%", "55%", "60%", "70%", "80%"];
@@ -131,7 +132,8 @@ export default function ExperimentalPage() {
   const kaMode = kaConfig?.mode ?? "default";
   const kaTargets = kaConfig?.targets ?? [];
   const ringCount = useAppStore((s) => s.uiPrefs.ctxRingProbeCount);
-  const modelCatalog = useAppStore((s) => s.modelCatalog);
+  const modelNames = useAppStore((s) => s.modelNames);
+  const modelCatalog = useAppStore((s) => s.modelCatalog); // chip display names (covers disabled picked targets too)
 
   const acpConfig = hostSettings?.acpConfig;
   const maxLimit = acpConfig?.maxContextLimit || "55%";
@@ -370,13 +372,13 @@ export default function ExperimentalPage() {
               </div>
             )}
           </div>
-          <Sel
+          <ModelCascadePicker
             label={t("settingsPage.exp.addModel")}
-            disabled={!kaEnabled || modelCatalog.filter((m) => !kaTargets.includes(m.id)).length === 0}
-            options={modelCatalog
-              .filter((m) => !kaTargets.includes(m.id))
-              .map((m) => ({ v: m.id, label: m.name, ck: "" }))}
-            onPick={(v) => updateKa({ targets: [...kaTargets, v] })}
+            // Same content as the composer model menu (modelNames = host-enabled chat
+            // models): synthetic providers (local/web) and non-chat kinds never list here
+            models={[...modelNames].filter(([id]) => !kaTargets.includes(id)).map(([id, name]) => ({ id, name, provider: id.split("/")[0] }))}
+            disabled={!kaEnabled || [...modelNames.keys()].every((id) => kaTargets.includes(id))}
+            onPick={(id) => updateKa({ targets: [...kaTargets, id] })}
           />
         </div>
 

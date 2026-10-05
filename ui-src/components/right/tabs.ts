@@ -53,7 +53,7 @@ export function openRightTab(name: string): void {
   }));
 }
 
-/** Tab toggle shared by the bottom-bar button and the shortcut (Alt+A): open and current →
+/** Tab toggle shared by the bottom-bar button and the shortcut (Mod+Alt+B): open and current →
  * collapse the right panel; otherwise switch to that tab and expand */
 export function toggleRightTab(name: string): void {
   const st = useAppStore.getState();
