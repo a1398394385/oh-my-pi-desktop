@@ -1,3 +1,4 @@
+# develop
 node_modules/
 src-tauri/target/
 .local/
@@ -5,5 +6,9 @@ ui/assets/
 ui/dist/
 host-dist
 host-dist/
+
+# Agent
 .playwright-mcp/
 .codegraph/
+.omc/
+.zcode/
