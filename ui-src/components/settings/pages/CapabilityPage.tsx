@@ -14,7 +14,8 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
-import { RolePicker, roleSelLabel, type CatalogModel, type ModelRole } from "../RolePicker";
+import { RolePicker, roleSelLabel, type ModelRole } from "../RolePicker";
+import type { CatalogModel } from "../../ModelPicker";
 import type { CapabilityKeyEntry } from "../../../types/frames";
 
 // Flat single-level picker for the WEB role: lists the usable search engines directly (no
@@ -87,7 +88,7 @@ function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: Catalog
 
 // One kind-role row: name + tag + blurb on the left, the kind-filtered picker on the right.
 // `picker` overrides the ctl content (the WEB row swaps in the flat WebSearchSel).
-function CapabilityRoleRow({ role, allModels, desc, picker }: { role: ModelRole; allModels: CatalogModel[]; desc: string; picker?: React.ReactNode }) {
+function CapabilityRoleRow({ role, desc, picker }: { role: ModelRole; desc: string; picker?: React.ReactNode }) {
   return (
     <div className="srow set-row">
       <div className="srow-tx">
@@ -98,7 +99,7 @@ function CapabilityRoleRow({ role, allModels, desc, picker }: { role: ModelRole;
         <span>{desc}</span>
       </div>
       <div className="srow-ctl">
-        {picker ?? <RolePicker role={role} allModels={allModels} />}
+        {picker ?? <RolePicker role={role} />}
       </div>
     </div>
   );
@@ -212,7 +213,6 @@ export default function CapabilityPage() {
         <Group title={t("settingsPage.cap.web.title")} hint={t("settingsPage.cap.keysDesc")}>
           <CapabilityRoleRow
             role={webRole}
-            allModels={allModels}
             desc={t("settingsPage.cap.web.desc")}
             picker={<WebSearchSel role={webRole} allModels={allModels} />}
           />
@@ -224,26 +224,26 @@ export default function CapabilityPage() {
 
       {role("speech") && (
         <Group title={t("settingsPage.cap.speech.title")}>
-          <CapabilityRoleRow role={role("speech")!} allModels={allModels} desc={t("settingsPage.cap.speech.desc")} />
+          <CapabilityRoleRow role={role("speech")!} desc={t("settingsPage.cap.speech.desc")} />
         </Group>
       )}
 
       {role("dictation") && (
         <Group title={t("settingsPage.cap.dictation.title")}>
-          <CapabilityRoleRow role={role("dictation")!} allModels={allModels} desc={t("settingsPage.cap.dictation.desc")} />
+          <CapabilityRoleRow role={role("dictation")!} desc={t("settingsPage.cap.dictation.desc")} />
         </Group>
       )}
 
       {role("judge") && (
         <Group title={t("settingsPage.cap.judge.title")}>
-          <CapabilityRoleRow role={role("judge")!} allModels={allModels} desc={t("settingsPage.cap.judge.desc")} />
+          <CapabilityRoleRow role={role("judge")!} desc={t("settingsPage.cap.judge.desc")} />
           {typesafeKey ? <KeyRow entry={typesafeKey} /> : null}
         </Group>
       )}
 
       {role("image") && (
         <Group title={t("settingsPage.cap.image.title")}>
-          <CapabilityRoleRow role={role("image")!} allModels={allModels} desc={t("settingsPage.cap.image.desc")} />
+          <CapabilityRoleRow role={role("image")!} desc={t("settingsPage.cap.image.desc")} />
         </Group>
       )}
 

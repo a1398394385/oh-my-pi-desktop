@@ -35,6 +35,7 @@ import {
 } from "./bootstrap.ts";
 import { pushCommandOutput, requestApproval, type PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { safeStderr } from "./stderr.ts";
 
 // Stable option ids on the plan approval frame. The UI renders localized
 // labels from these ids and returns the chosen id, so display text never
@@ -313,7 +314,7 @@ async function approvePlan(
     } catch (err) {
       compactOutcome = err instanceof CompactionCancelledError ? "cancelled" : "failed";
       if (compactOutcome === "failed") {
-        process.stderr.write(`[host] plan approval compaction failed: ${describe(err)}\n`);
+        safeStderr(`[host] plan approval compaction failed: ${describe(err)}\n`);
       }
     } finally {
       session.clearPlanInternalAbortPending();
@@ -331,7 +332,7 @@ async function approvePlan(
       presentation.enabled.includes("read") ? presentation.enabled : [...presentation.enabled, "read"],
       presentation.mounted,
     )
-    .catch((err: unknown) => process.stderr.write(`[host] plan tool restore failed: ${describe(err)}\n`));
+    .catch((err: unknown) => safeStderr(`[host] plan tool restore failed: ${describe(err)}\n`));
   session.setPlanReferencePath(planFilePath);
 
   try {
@@ -342,7 +343,7 @@ async function approvePlan(
       planContent,
     });
   } catch (err) {
-    process.stderr.write(`[host] plan autosave failed: ${describe(err)}\n`);
+    safeStderr(`[host] plan autosave failed: ${describe(err)}\n`);
   }
 
   // A cancelled compaction is the operator aborting the distillation, not the
@@ -470,7 +471,7 @@ export function dispatchFromToolEnd(ws: Ws, sessionId: string, entry: PoolEntry,
     return;
   }
   void runApproval(ws, sessionId, entry, details.planFilePath, details.title).catch((err: unknown) => {
-    process.stderr.write(`[host] plan approval dispatch failed: ${describe(err)}\n`);
+    safeStderr(`[host] plan approval dispatch failed: ${describe(err)}\n`);
   });
 }
 

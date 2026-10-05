@@ -28,7 +28,9 @@ import { writeExternalBrowserEnabled } from "../browser-config.ts";
 import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
+import { openExternal } from "../open-external.ts";
 import { settingsSet, settingsSchemaRecord } from "../settings-compat.ts";
+import { safeStderr } from "../stderr.ts";
 
 export const settingsHandlers: Record<string, RpcHandler> = {
   get_settings(ws) {
@@ -45,7 +47,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify(modelsFrame()));
       ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
     } catch (err) {
-      process.stderr.write(`[host] reload_settings 失败: ${err}\n`);
+      safeStderr(`[host] reload_settings 失败: ${err}\n`);
     }
   },
   async set_setting(ws, msg) {
@@ -279,14 +281,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   },
   ui_error(_ws, msg) {
     // Frontend uncaught-error reporting (WKWebView has no console; the dev terminal is the only outlet)
-    process.stderr.write(`[ui] ${msg.message}\n`);
+    safeStderr(`[ui] ${msg.message}\n`);
   },
   async open_folder(_ws, msg) {
     const raw = String(msg.path ?? "");
     if (raw) {
       try {
         if (!fs.existsSync(raw)) await mkdir(raw, { recursive: true });
-        Bun.spawn(["open", raw], { stdout: "ignore", stderr: "ignore" });
+        openExternal(raw);
       } catch {}
     }
   },

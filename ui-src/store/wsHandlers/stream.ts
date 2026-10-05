@@ -12,7 +12,9 @@ import {
   rebuildMessages,
   updateSession,
 } from "../session";
+import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
+import { emitBrowserFrame } from "../browserMirror";
 import type { HandlerSlice } from "./types";
 
 // Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
@@ -106,10 +108,15 @@ export const streamHandlers = {
       }
     });
   },
-  // Text output of slash commands (e.g. the /model "Current model" echo): lands as a meta row
+  // Text output of slash commands (e.g. the /computer status echo): lands as a meta row, or as
+  // an expandable command card when the frame carries the typed command line (slash dispatch)
   command_output(msg) {
     updateSession(msg.sessionId, (s) => {
-      s.items.push({ role: "meta", text: String(msg.text ?? "") });
+      s.items.push({
+        role: "meta",
+        text: String(msg.text ?? ""),
+        ...(msg.command ? { command: msg.command, cmdExpanded: true } : {}),
+      });
     });
   },
   // Background command phase rows: start inserts an in-flight row; fail withdraws that command's
@@ -148,6 +155,18 @@ export const streamHandlers = {
             s.items.splice(i, 1);
             break;
           }
+        }
+        // A consumed command never opens a model run, but the composer's optimistic
+        // send already flipped streaming on at submit time. No turn_start will ever
+        // arrive to confirm a run, and stop is a no-op against an idle session (no
+        // turn_end either), so the spinner would wedge forever (ghost "unstoppable
+        // agent loop" after e.g. /computer on). turnItemStart is only set by a
+        // host-confirmed turn_start (or a steer injection), so null + streaming
+        // means the running state is still local-only and safe to retract here.
+        if (s.streaming && s.turnItemStart == null) {
+          s.streaming = false;
+          s.workingText = null;
+          s.turnStartAt = null;
         }
       }
     });
@@ -319,6 +338,12 @@ export const streamHandlers = {
   context_detail(msg) {
     // ringpop popover transient data; CtxCard subscribes and repaints (updates while collapsed don't rebuild; discard-on-leave)
     useAppStore.setState((s) => ({ ctxDetail: msg }));
+  },
+  browser_tabs(msg) {
+    landBrowserTabs(msg.tabs ?? [], msg.active === true);
+  },
+  browser_frame(msg) {
+    emitBrowserFrame(msg);
   },
   error(msg) {
     useAppStore.setState((s) => ({

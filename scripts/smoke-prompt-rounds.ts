@@ -51,7 +51,7 @@ async function cleanup() {
 
 async function startHost(): Promise<{ child: ReturnType<typeof spawn>; wsUrl: string }> {
   const c = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env },
     stdio: ["ignore", "pipe", "inherit"],
   });

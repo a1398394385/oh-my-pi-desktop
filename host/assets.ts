@@ -20,6 +20,7 @@ import {
 } from "./bootstrap.ts";
 import { getMcpSharingConfig } from "./profile.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { safeStderr } from "./stderr.ts";
 
 async function firstHeading(file: string): Promise<string> {
   try {
@@ -774,7 +775,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
       });
     }
   } catch (err) {
-    process.stderr.write(`[host] MCP 用户级发现失败: ${err}\n`);
+    safeStderr(`[host] MCP 用户级发现失败: ${err}\n`);
   }
 
   // Read the current profile's mcp.json directly so freshly saved config and the sharing field stay 100% in sync
@@ -869,7 +870,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
         count++;
       }
     } catch (err) {
-      process.stderr.write(`[host] MCP 项目级发现失败 (${cwd}): ${err}\n`);
+      safeStderr(`[host] MCP 项目级发现失败 (${cwd}): ${err}\n`);
     }
 
     // Read the project .omp/mcp.json directly so project-level additions and sharing sync 100%

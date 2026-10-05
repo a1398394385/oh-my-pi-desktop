@@ -5,8 +5,8 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import type { GitStatusFile } from "../types/frames";
-import type { CapabilitiesSnapshot } from "../types/frames";
+import { openRightTab } from "../components/right/tabs";
+import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
 
@@ -28,6 +28,10 @@ export interface RightSlice {
   capabilitiesFor: string | null; // sessionId the snapshot belongs to (stale on session switch until refetched)
   capabilitiesLoading: boolean;
   setBriefDiff(path: string, diff: string | undefined): void;
+  browserTabs: BrowserTabInfo[]; // Agent built-in browser tabs (process-global mirror list, host browser_tabs pushes)
+  browserViewTab: string | null; // tab name the live view mirrors
+  browserPinned: boolean; // user picked a tab by hand; suspends follow-the-agent
+  setBrowserViewTab(name: string | null, pinned: boolean): void;
   refreshGitDiff(force?: boolean): void;
   fetchCapabilities(): void;
 }
@@ -71,7 +75,16 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   capabilities: null,
   capabilitiesFor: null,
   capabilitiesLoading: false,
+  browserTabs: [],
+  browserViewTab: null,
+  browserPinned: false,
 
+  // Live-view tab selection: pin=true marks an explicit user pick (suspends
+  // follow-the-agent); the host switches the mirrored screencast target.
+  setBrowserViewTab(name, pinned) {
+    useAppStore.setState({ browserViewTab: name, browserPinned: pinned });
+    if (name) get().send({ type: "browser_mirror_select", name });
+  },
   /** Write to the edit-row diff cache and evict the least-recently-used file (the value may be undefined: a placeholder meaning "requested, awaiting reply") */
   setBriefDiff(path, diff) {
     useAppStore.setState((st) => {
@@ -206,4 +219,32 @@ export function restoreRightPanel(path: string): void {
 export function clearRightSnapshots(): void {
   rightSnapshots.clear();
   persistRightSnapshots();
+}
+
+// ---------- Agent browser mirror landing (browser_tabs pushes; process-global, not per-session) ----------
+
+// One auto-open per activation burst: set on the 0→n edge, cleared when the
+// tab list drains to zero — a manual collapse between edges is never fought.
+let browserAutoLatch = false;
+
+/** Land a browser_tabs push. On the activation edge, auto-open the right panel's browser tab so the Agent's browsing surfaces itself. */
+export function landBrowserTabs(tabs: BrowserTabInfo[], active: boolean): void {
+  useAppStore.setState({ browserTabs: tabs });
+  if (tabs.length === 0) {
+    browserAutoLatch = false;
+    return;
+  }
+  if (!active || browserAutoLatch) return;
+  browserAutoLatch = true;
+  const st = useAppStore.getState();
+  if (st.rightTab !== "browser" || !st.rightTabs.includes("browser") || st.rightCollapsed) {
+    openRightTab("browser");
+    if (st.rightCollapsed) useAppStore.setState({ rightCollapsed: false });
+  }
+}
+
+/** Drop mirror UI state (host restart ready frame: the old list is stale until the next subscribe). */
+export function resetBrowserMirrorUi(): void {
+  browserAutoLatch = false;
+  useAppStore.setState({ browserTabs: [], browserViewTab: null, browserPinned: false });
 }

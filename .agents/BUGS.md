@@ -49,6 +49,7 @@
 | BUG-039 | 项目打开后终端起始目录落在用户主目录——无活跃会话时空 cwd 回落宿主 process.cwd()（GUI 启动目录） | 2026-10-03 |
 | BUG-040 | 发消息后「工作中 Ns」紧贴气泡被渐隐吞掉——贴底目标把 sticky 底部占位的 36px 算进内容 | 2026-10-03 |
 | BUG-041 | Windows 安装版使用统计永远「同步失败」——桌面宿主分支未声明 worker host，stats 解析 worker 回退编译产物虚拟路径不可加载 | 2026-10-04 |
+| BUG-044 | 桌面版 computer use 全不可用——薄入口在 worker 线程 runCli 返回后无条件 process.exit(0)，worker 刚 ready 就被秒杀 | 2026-10-05 |
 
 ---
 
@@ -604,3 +605,45 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：`.local/verify-keepalive-targets.ts`（临时,已删）——真实 `createKeepaliveExtension` 走 session_start → before_provider_request → agent_end 事件链（temp omp-desktop.json 复刻设置页写入的复合靶标）：非靶标 provider 同名裸 id 不布防；复合靶标（裸 id + 正确 provider）布防且 `nextProbeAt ≈ now + intervalMs`（±5s）。3/3 PASS。`bun run check` 全绿（含 tsc）。
 
 **教训**：在两个 id 体系（SDK 注册表裸名 vs 宿主/UI 拼合 catalog id）之间做任何**等值匹配**前，先核对两侧字段的实际取值格式——类型注释写的「catalog id」可能是移植时的假设而非事实。跨边界传递的 key（配置文件里人可见、UI 可回显的字段）应统一到 UI 侧格式；隔离实现里对 SDK 形状的每一处假设，都要用真实事件上下文验一次。
+
+### BUG-044: 桌面版 computer use 全不可用——薄入口在 worker 线程 `runCli` 返回后无条件 `process.exit(0)`，worker 刚发出 ready 就被秒杀
+
+**现象**：桌面版（Windows 打包/开发形态）computer 工具任何调用立即失败：`computer.capabilities()` 抛 `Error: Computer worker exited`，截图/AX/点击全不可用；同一 else 分支的线程 worker（浏览器镜像 tab、终端输出、eval）也在启动瞬间退出（探针实测四类在 0.4s 内 `close`，computer 还能看到 `{"type":"ready"}`）。native 后端本身完好——把那次退出挡住后 capabilities 返回 `backend: win32 / capture+input+ax: true / capturePermission..axPermission: granted / displayCount: 2`。
+
+**分诊**：①本仓新引入——364a13d 薄入口改造把「argv 非空 = 以 CLI 身份运行，`runCli` 返回即 `process.exit(0)`」写成通则，ad8ef9a（BUG-041）只给 `__omp_worker_stats_sync` 补了托底；computer/tab/terminal-output/eval 四类线程 worker 走的正是没有托底的 else 分支。
+
+**根因**：worker 线程的存活责任挂在 message port 上，不在宿主入口。cli.ts `runWorkerEntrypoint()` 对选择器分支只做「装 inbox → import worker 模块（computer 再 `startComputerWorker()`）→ return」——分发一返回，线程就只剩 parentPort 的 message 监听器撑着事件循环（子进程形态不同：`runIpcSubprocessWorker` 自己 await IPC 循环）。`host/host.ts` 的 else 分支在 `runCli(argv)` 返回后无条件 `process.exit(0)`，于是 `__omp_worker_computer` 线程在发出 `{"type":"ready"}` 后约 40ms 被自己的入口杀掉；宿主的 `ready` 与 `close` 事件几乎同时到达，`spawnComputerWorker()` 的 `wrapWorker` 把它翻译成 `Computer worker exited`。定位法：在 worker 线程里包一层、先 patch `process.exit` 打印调用栈再 import 宿主模块——单帧落在 host.ts 顶层的 `process.exit(0)`；patch 成空操作后线程存活并正常应答 ping/capabilities。
+
+**修复**：`host/host.ts` else 分支改为「非主线程 + worker 选择器」时 `setInterval(() => {}, 2 ** 30)` 挂住线程（与 stats_sync 分支同一托底），其余形态仍 `process.exit(0)`。防回归：新增 `scripts/smoke-computer-worker.ts`——以 `new Worker(host/host.ts, { type: "module", argv: ["__omp_worker_computer"] })` 重入宿主入口，断言 ready → ping/pong → close/closed，握手前 close 直接判失败。
+
+**验证**：修复前 dev 源起线程实测 `0.03s ready → 0.04s close`、无 pong（安装版编译产物同签名）；修复后 smoke 全绿（EXIT=0），capabilities 探针 `ok:true`（win32 / capture+input+ax granted / displayCount 2）。产物形态未能跑通 `--smoke-test`：它在测试 profile 上先死在无关的 stats dashboard `HTTP 500`（test profile 无 stats.db），未走到 computer 检查；故产物侧以「安装版复现签名 + 同源编译」佐证。
+
+**教训**：宿主入口把 SDK 的 worker 协议转发给 `runCli` 时，**线程 worker 与子进程 worker 的退出责任不同**——子进程自己守着 IPC 循环、父进程断连后再退出是对的，线程全靠 port 监听器，入口「分发完就 exit」对后者等于秒杀。给这类隐式协议补分支要按**选择器全集**过一遍（这次只给 stats_sync 补了托底），而不是只验当前出问题的那个；`--smoke-test` 里每个 worker 家族各有一条 ping/pong 断言，是这类 bug 的天然防线。
+
+### BUG-045: 外部写入误报警 + 重载后「进行中」消失——reload_session 把仍在跑的 AgentSession 抽稀成孤儿，轮询把自己的孤儿写入当成「别的进程」
+
+**现象**：应用内与会话对话中途，突然提示「此会话正在被其他进程写入（如 CLI），视图可能不同步」；点重新加载后，会话不再显示进行中，但实际上那轮生成仍在继续（用户确认没有任何 CLI/别的写入方）。
+
+**分诊**：①本仓新引入——外部写入轮询（`host/main.ts pollExternalWrites`，逐 2s 比对「文件新增行里不在 `entry.manager.getEntries()` 索引中的 id」）只在「同文件存在第二个写入者」时才会触发，而桌面自身就会制造这种写入者。
+
+**根因**：`reload_session`（host/rpc/session.ts）对池内条目只做 unsubscribe + 出池，随后从磁盘重建。若那轮生成还在跑，旧 AgentSession 既不被 abort 也不被 dispose：它继续无头执行并落盘（事件发给已注销的订阅、UI 的 streaming 状态只由事件驱动，重建条目从磁盘起就是空闲态）——「重载后不显示进行中但确实还在跑」；同时孤儿的持续写入（含空闲后缓存保活持久化的 usage 行、退出时的 session_exit 行）的 id 不在重建管理器的内存索引里，轮询判为外部写入——「确确实实没有别的地方在写入」。磁盘证据（2026-10-05）：`01a10cb3` 带 `parentSession=01a10c91` 回链、宿主死亡瞬间诞生，是 SDK 所有权租约被占后 `moveOffSessionFile` 的产物——当晚确有第二个 omp 进程碰过该会话；且会话文件被转移后前端仍持有旧路径，按路径匹配的池扫描（load 复用/reload/mark_seen）会漏掉活条目、在死文件上再建一个会话，属同类「第二写入者」来源。
+
+**修复**：`reload_session` 三处收口：①忙态拒绝——`activeStartedAt !== null`（回合进行中）、`queuedMessageCount > 0`、后台任务 running 任一成立即抛 `errors.session.reloadBusy`（前端 toast，实时视图继续流式，提示条保留）；②空闲重载改为 `session.dispose()` 全量收尾（停缓存保活/后台任务/残余写入者，SIGTERM 收尾同款路径）再出池重建；③重建改用条目**当前** `entry.path` 而非请求路径。配套：`PoolEntry.previousPaths` 记录持久化转移的旧位置（`onPersistenceNotice` 追加），`handleLoadSession` 复用扫描 / `reload_session` / `mark_seen` 三处按「当前或历史路径」匹配，杜绝在废弃文件上分叉第二活会话；`Chat.tsx` 提示条的重载按钮在 `s.streaming` 时禁用并带 `chat.reloadRunning` 提示（zh/en）。
+
+**验证**：`scripts/tmp-verify-reload.ts`（临时，已删）真实宿主 + glm-5.3-flash 全链路：流式中途发 `reload_session` → 收到 reloadBusy 拒绝帧、该轮继续完整流式到 turn_end（含全部 30 行输出）→ 空闲后重载从磁盘重建（历史含完整回复）→ 重建会话再发一轮正常应答 → 全程 0 个 `session_external_write` 帧（含重载后跨多个轮询窗口）。`bun run check` 全绿（含 tsc、能力清单、边界、注释语言等 8 项）。
+
+**教训**：「按路径换血重建」类 RPC 必须先过**存活检查**——视图刷新绝不能把 worker 抽稀成孤儿，否则孤儿自己就会变成「外部写入」的假信号源；轮询式外部检测的判定基准（内存索引）只对「单一管理器」成立，任何会制造第二管理器/第二会话的路径（reload、文件转移后的路径失配）都是它的误报入口。文件被 SDK 转移后，前端持有的旧路径仍是有效身份，池匹配必须认历史路径。
+
+### BUG-046: 同一会话一夜间多出两份完整拷贝——宿主重叠窗口内，垂死宿主的退出补写把整份 journal fork 成新 ID 文件
+
+**现象**：会话列表出现三份「AskUser 其他选项输入框过短」：原件 `01a10c91` + `01a10c97-eaf5`（56 条快照）+ `01a10cb3`（128 条快照），后两者是带 `parentSession` 回链的完整 journal 拷贝；同晚另两个并行会话（`01a10c7f`/`01a10c85`）也被各复制了一份（`eadd`/`eaec`）。
+
+**分诊**：①非数据损坏，是 SDK（pi-coding-agent）的会话属主保护：同一会话文件「谁先写谁拥有」（Windows 命名互斥体，进程死内核自动释放），非属主进程一旦再写——哪怕只补一条 `session_exit` 诊断——就把整份 journal 搬到新 UUID 的兄弟文件（`#moveOffSessionFile("open-elsewhere")`），防止两进程写坏同一文件。②两次复制均有宿主日志实证：23:04:05 宿主 23376（父壳已死、stderr 管道已断）在 5 分钟一次的配额刷新回调里 `process.stderr.write` 撞 EPIPE（host/main.ts:193）→ unhandled rejection → 致命退栈给每个打开的会话补写退出记录，而当时 3 个标签会话的属主已在接班宿主 25680（23:01 起）手里 → 24ms 内 fork 出 3 个副本；23:34:07 宿主 9760 的父死自监视触发裸 `process.exit(0)` → SDK 进程退出钩子同样补写 → 又 fork 出第二份。③会话列表按磁盘 `.jsonl` 全量扫描、不按 `parentSession` 折叠，故三份同显。
+
+**根因**：三缺陷叠加——(1) stderr 写无 EPIPE 保护，一条定时器里的日志就能把宿主炸进致命退栈；(2) 孤儿宿主的一切自退路径（父死自监视裸 exit、致命退栈）都会向「已易主」的会话 journal 补写记录，而补写=抢属主=fork；(3) 宿主重叠窗口客观存在（壳重启、双开实例、tauri dev 杀树残骸），属主必然先被接班宿主拿走。垂死进程的任何「顺手补写」在多进程共享存储下都是写冲突源。
+
+**修复**：(1) 新增 `host/stderr.ts` 的 `safeStderr`（吞同步抛 + 模块顶层挂 error 空监听），host 下 54 处 `process.stderr.write`/`console.error` 全量替换；(2) `host/main.ts` 父死自监视由裸 `process.exit(0)` 改为 `process.kill(self, "SIGKILL")` 硬退出——SIGKILL 跳过全部 JS 退栈，零 journal 写入零 fork；journal appends 本就逐条同步落盘，仅损失本进程的 exit 诊断行，且该路径只在父壳已死时触发，与旧路径相比只减不增（旧的裸 exit 同样不做异步清理，唯一多做的是引发 fork 的补写）。边界表同步登记 16 条 `→stderr.ts` 依赖边。残余风险（未修）：RSS 看门狗 `process.exit(86)` 需保留退出码给壳重启逻辑，重叠窗口内仍可能 fork；UI 列表不折叠 fork（修复③④范畴）。
+
+**验证**：safeStderr 契约 3/3（单串透传/多参拼接对齐 console.error/写失败吞掉）；SIGKILL 自杀跳过 exit 钩子（探针红绿：SIGKILL 无 flag、`exit(0)` 有 flag）；孤儿链路实跑：spawn 真宿主 → READY → 父进程退出 → ≤2.5s 内自灭、tasklist 无残留、宿主日志干净；`bun run host:build` 通过；真实宿主冒烟起机、WS 握手、会话列表、配额刷新日志（当年炸机的那一行）全走 safeStderr；八项门禁全绿（host/main.ts 278/280）。注：`scripts/smoke.ts` 的「应有历史 project」断言因测试 profile 历史被前次清理而空挂，与本次改动无关。
+
+**教训**：进程级管道（stdout/stderr）在父壳死亡后就是地雷，守护进程的一切日志写入必须有 EPIPE 兜底——日志永远不许杀进程。垂死进程应当零写入退出：诊断、审计、埋点类「退出补写」在多进程共享存储下等于写冲突；Windows 上壳的 TerminateProcess 天然零退栈，而一切「自己 process.exit」的路径都会跑钩子，自毁手段必须与写入意图匹配。

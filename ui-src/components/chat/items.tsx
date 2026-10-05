@@ -16,6 +16,7 @@ import TurnActs from "./TurnActs";
 import ThinkingRow from "./ThinkingRow";
 import ToolRow from "./ToolRow";
 import BashRow from "./BashRow";
+import CommandRow from "./CommandRow";
 import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import { t } from "../../i18n";
@@ -58,6 +59,7 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   }
   if (item.role === "meta") {
     railEntries.push({ key, role: "meta", text: item.text });
+    if (item.command) return <CommandRow item={item} key={key} />;
     return <div className="act" key={key}>{item.text}</div>;
   }
   // Phase separator row (background compact / handoff / rename): centered text between

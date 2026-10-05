@@ -30,6 +30,7 @@ import { handleListSessions } from "./session";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
+import { safeStderr } from "../stderr.ts";
 
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file contents
 interface PromptAttachment {
@@ -230,6 +231,12 @@ async function dispatchSlashInput(
   const trimmed = text.trim();
   if (!trimmed.startsWith("/")) return text;
 
+  // Slash-command returns carry the typed command line so the UI can render them as a
+  // command card (header = what was typed) instead of an anonymous meta row
+  const sendCommandOutput = (out: string): void => {
+    ws.send(JSON.stringify({ type: "command_output", sessionId, text: out, command: trimmed }));
+  };
+
   // 1) /skill:<name>: the base's prompt() does not handle it, the host must dispatch (matching ACP #tryRunSkillCommand)
   const parsed = parseSkillInvocation(trimmed);
   const skill = parsed && entry.session.skillsSettings?.enableSkillCommands
@@ -253,7 +260,7 @@ async function dispatchSlashInput(
   // 2) Removed commands: neither executed nor turned into a prompt (the list is already filtered in pushCommands; this intercepts hand-typed input)
   const removedHint = removedSlashHint(trimmed);
   if (removedHint) {
-    ws.send(JSON.stringify({ type: "command_output", sessionId, text: removedHint }));
+    sendCommandOutput(removedHint);
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
@@ -284,7 +291,7 @@ async function dispatchSlashInput(
     parsedSlash.args.trim().toLowerCase() !== "status" &&
     !settingsGet(H.settings, "computer.enabled")
   ) {
-    ws.send(JSON.stringify({ type: "command_output", sessionId, text: hostI18n.t("errors.computerGateClosed") }));
+    sendCommandOutput(hostI18n.t("errors.computerGateClosed"));
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
@@ -326,7 +333,7 @@ async function dispatchSlashInput(
         bgOutputs.push(t);
         return;
       }
-      ws.send(JSON.stringify({ type: "command_output", sessionId, text: t }));
+      sendCommandOutput(t);
     },
     refreshCommands: () => pushCommands(ws, sessionId, entry),
     reloadPlugins: () => pushCommands(ws, sessionId, entry),
@@ -354,12 +361,12 @@ async function dispatchSlashInput(
           // sent; failure/abort: no trace to write, send fail to retract the
           // in-progress row, error details live in the output rows
           if (!bgSucceeded) ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "fail", command: phaseKey }));
-          for (const t of outs) ws.send(JSON.stringify({ type: "command_output", sessionId, text: t }));
+          for (const t of outs) sendCommandOutput(t);
         })
         .catch((err: unknown) => {
           bgOutputs = null;
           ws.send(JSON.stringify({ type: "command_phase", sessionId, phase: "fail", command: phaseKey }));
-          ws.send(JSON.stringify({ type: "command_output", sessionId, text: hostI18n.t("errors.commandFailed", { detail: err instanceof Error ? err.message : String(err) }) }));
+          sendCommandOutput(hostI18n.t("errors.commandFailed", { detail: err instanceof Error ? err.message : String(err) }));
         });
     },
     notifyTitleChanged: () => {
@@ -570,7 +577,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
         // Since the user ran a command, explicitly cross the gate so the full
         // in-memory entries (including this one) are written to disk.
         entry.manager.ensureOnDisk?.().catch((err: unknown) => {
-          process.stderr.write(`[host] ensureOnDisk 失败: ${String(err)}\n`);
+          safeStderr(`[host] ensureOnDisk 失败: ${String(err)}\n`);
         });
         ws.send(
           JSON.stringify({

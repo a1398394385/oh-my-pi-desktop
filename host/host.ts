@@ -19,7 +19,7 @@
 // fire the PATH augment before loading the body (overlapping main.ts's static
 // graph load incl. the SDK); main.ts awaits the same promise.
 import { augmentGuiPath } from "./gui-path.ts";
-import { declareWorkerHostEntry } from "@oh-my-pi/pi-utils/worker-host";
+import { declareWorkerHostEntry, isWorkerHostSelector } from "@oh-my-pi/pi-utils/worker-host";
 
 // Declare in BOTH branches, before any dynamic import: this entry dispatches
 // `__omp_worker_*` selectors (below), and the desktop host itself spawns
@@ -60,5 +60,13 @@ if (argv.length === 0) {
 } else {
 	const { runCli } = await import("@oh-my-pi/pi-coding-agent/cli");
 	await runCli(argv);
-	process.exit(0);
+	// Worker THREADS (computer, browser tab, terminal output, eval) re-enter this entry through
+	// workerHostEntry() and their selector dispatch returns as soon as the worker module has taken
+	// the message port — the port listeners, not this entry, keep the thread's loop alive until the
+	// parent terminates it. Exiting here killed those workers right after their `ready` handshake
+	// (every desktop computer-use call failed with `Computer worker exited`), the same trap the
+	// stats-sync branch above sidesteps with its own hold (BUG-044). Worker SUBPROCESSES keep their
+	// own IPC loop and drain it when the parent goes away, so the explicit exit stays correct there.
+	if (!Bun.isMainThread && isWorkerHostSelector(argv[0])) setInterval(() => {}, 2 ** 30);
+	else process.exit(0);
 }

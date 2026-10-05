@@ -38,7 +38,7 @@ if (!profile || profile === "default") {
   process.exit(1);
 }
 
-const repoRoot = new URL("..", import.meta.url).pathname;
+const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url));
 const cfgDir = path.join(homedir(), ".omp", "profiles", profile, "agent");
 const cfgPath = path.join(cfgDir, "omp-desktop.json");
 

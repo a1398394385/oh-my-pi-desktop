@@ -34,7 +34,9 @@ const HOT_LIMITS = [
   // "Other" custom-answer row overflowed the approval cap).
   { path: "ui/css/main-chat-ask.css", max: 120 },
   { path: "ui/css/main-composer.css", max: 670 },
-  { path: "ui/css/main-streamdown.css", max: 280 },
+  // main-streamdown.css sat at 306 lines in HEAD (over the old 280 ratchet)
+  // — realign to the committed size; no further growth.
+  { path: "ui/css/main-streamdown.css", max: 306 },
   { path: "ui/css/main-tree.css", max: 450 },
   // Fork-point segments + branch switcher split out of main-tree.css (the
   // summary inline-scroll rework overflowed the tree cap).
@@ -43,6 +45,9 @@ const HOT_LIMITS = [
   { path: "ui/css/main-welcome.css", max: 190 },
   { path: "ui/css/main-right.css", max: 1060 },
   { path: "ui/css/main-right-caps.css", max: 120 },
+  // Browser page Agent live view split out of main-right.css (first cut with
+  // the mirror feature; keeps main-right.css inside its ratchet)
+  { path: "ui/css/main-right-browser.css", max: 140 },
   { path: "ui/css/settings.css", max: 1420 },
   { path: "ui/css/settings-stats.css", max: 750 },
   // Ported omp-stats rules split out of settings-stats.css (first adaptation cut

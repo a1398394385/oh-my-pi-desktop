@@ -5,6 +5,9 @@
 // button answers, number keys answer directly, up/down / Tab move the selection;
 // with editable (editor dialogs) the submit row embeds an inline input (ZCodium feedback
 // row styling; empty input is treated as cancel).
+// While pending the card substitutes the composer (the App dock hides it), so a
+// document-capture listener owns up/down/Enter from anywhere in the session
+// view — no click on the card needed to arm the keys first.
 // The plan variant adds an execution-model tier slider above the options and may
 // disable the keep-context row once the context is nearly full (both host-driven:
 // slider/disabledIndices ride the frame, the picked index rides back on the answer).
@@ -90,6 +93,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   };
   const listRef = useRef<HTMLDivElement | null>(null);
   const inpRef = useRef<HTMLInputElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null); // card root: visibility + containment checks for the global key capture
   const answered = item.answer !== null;
   const n = item.options.length;
   // editable protocol: editableIndex points at the inline-input row (host
@@ -286,34 +290,118 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     }
   };
 
-  // Ask-form keyboard: one delegated handler moves focus through every form
-  // control (option radios/checkboxes and "Other" inputs) in render order.
-  // preventDefault also suppresses the native same-group radio switching so
-  // arrows behave identically on radio, checkbox, and text rows.
+  // Ask-form container: the mount-focus effect and the global key capture below
+  // query its rows (option radios/checkboxes and "Other" inputs)
   const askFormRef = useRef<HTMLDivElement | null>(null);
-  const onAskFormKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (answered) return;
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    const rows = askFormRef.current?.querySelectorAll<HTMLElement>("input[data-ask-row]");
-    if (!rows || rows.length === 0) return;
-    const idx = Array.prototype.indexOf.call(rows, e.target);
-    if (idx < 0) return;
-    e.preventDefault();
-    rows[(idx + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus({ preventScroll: true });
-  };
 
   // Focus the selected row on mount (number / Enter shortcuts usable at once); do not steal
   // an existing input focus (the user may be typing). The ask-form variant
   // focuses its first control instead (arrow navigation usable at once).
   useEffect(() => {
     const ae = document.activeElement;
-    if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as HTMLElement).isContentEditable)) return;
+    // Skip only a *visible* focused editor: the composer hides the moment the
+    // approval dock takes over, but its Lexical root can still report as
+    // activeElement until layout settles — that must not block the row focus
+    if (
+      ae &&
+      ae.getClientRects().length > 0 &&
+      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as HTMLElement).isContentEditable)
+    )
+      return;
     const row =
       listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ??
       askFormRef.current?.querySelector<HTMLElement>("input[data-ask-row]");
     (row?.querySelector("input") ?? row)?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // ---- Global key capture: the pending card substitutes the composer ----
+  // The dock hides the composer while an approval is pending (App.tsx), so the
+  // card is the page's input surface: up/down step its rows and Enter answers
+  // from anywhere in the session view. Registered on document capture, so it
+  // also serves in-card keydowns; it yields to (a) editable surfaces outside
+  // the card (sidebar search / right-panel terminal & browser / popup inputs),
+  // (b) the settings page, modal masks and the image lightbox, (c) focused
+  // buttons (Enter keeps native activation — Cancel stays Cancel), and (d) the
+  // tree page's arrow cursor (its window-capture listener runs before this
+  // one). Landing on a single-choice option row also checks it: the checked
+  // plate is the row highlight, so arrows alone pick the answer; multi rows
+  // keep Space-to-check semantics.
+  useEffect(() => {
+    if (answered) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return; // IME composition owns every key
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== "Enter") return;
+      const root = cardRef.current;
+      if (!root || root.getClientRects().length === 0) return; // hidden = not the active surface
+      if (useAppStore.getState().settingsOpen || document.querySelector(".lp-mask,[data-modal]")) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (!target) return;
+      if (!root.contains(target) && target !== document.body && target !== document.documentElement) {
+        // Outside the card only the bare session page counts (#main message
+        // flow); focusables elsewhere keep their own arrow semantics
+        const main = document.getElementById("main");
+        if (!main || !main.contains(target)) return;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as HTMLElement).isContentEditable) return;
+      }
+      if (e.key === "Enter") {
+        if (target.closest("button")) return; // native activation: Cancel / slider segments / option rows
+        e.preventDefault();
+        e.stopPropagation();
+        if (askQs.length > 0) submitAll();
+        else {
+          const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));
+          const i = rows.findIndex((r) => r.contains(document.activeElement ?? target));
+          choose(i >= 0 ? i : selectedRef.current);
+        }
+        return;
+      }
+      const d = e.key === "ArrowDown" ? 1 : -1;
+      if (askQs.length > 0) {
+        // Ask form: step through every form control in render order (option
+        // rows, "Other" rows, open "Other" inputs), wrapping around
+        const rows = Array.from(root.querySelectorAll<HTMLInputElement>("input[data-ask-row]"));
+        if (rows.length === 0) return;
+        let idx = rows.findIndex((r) => r === document.activeElement);
+        if (idx < 0) {
+          // No row focused yet: seed from the first question's current pick
+          // (the recommended row by default) so the first press moves one step
+          const first = root.querySelector<HTMLElement>(".ask-q");
+          const q0Opts = first ? first.querySelectorAll("input[data-oi]").length : 0;
+          idx = othersRef.current[0] ? q0Opts : (picksRef.current[0]?.[0] ?? -1);
+          if (d < 0) idx = rows.length; // wraps onto the last row below
+        }
+        const row = rows[(idx + d + rows.length) % rows.length];
+        e.preventDefault();
+        e.stopPropagation();
+        row.focus();
+        const qi = row.getAttribute("data-qi");
+        const oi = row.getAttribute("data-oi");
+        if (qi !== null && oi !== null && !askQs[Number(qi)]?.multi) togglePick(Number(qi), Number(oi), false);
+      } else {
+        // Option listbox: the same stepping the in-card rows use (disabled rows skipped)
+        const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));
+        if (rows.length === 0) return;
+        let idx = rows.findIndex((r) => r === document.activeElement || r.contains(document.activeElement));
+        if (idx < 0) idx = selectedRef.current;
+        for (let step = 0; step < rows.length; step++) {
+          idx = (idx + d + rows.length) % rows.length;
+          const row = rows[idx];
+          if (!row.classList.contains("disabled") && !(row instanceof HTMLButtonElement && row.disabled)) {
+            e.preventDefault();
+            e.stopPropagation();
+            focusRow(idx);
+            return;
+          }
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+    // The captured closures read refs / DOM / functional state only, and the
+    // card remounts per requestId, so [answered] is the sole lifecycle edge
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answered]);
 
   const frozenChosen = answered
     ? chosen >= 0
@@ -324,7 +412,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     : -1;
 
   return (
-    <div className="approval-card">
+    <div className="approval-card" ref={cardRef}>
       <div className="approval-head">{t("chat.awaitingConfirm")}</div>
       <div className="approval-title">{item.title}</div>
       {/* Execution-model tier slider (plan variant): pick which configured role
@@ -352,7 +440,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         </div>
       )}
       {askQs.length > 0 ? (
-        <div className="ask-form" role="form" ref={askFormRef} onKeyDown={onAskFormKey}>
+        <div className="ask-form" role="form" ref={askFormRef}>
           {askQs.map((q, qi) => (
             <div className="ask-q" key={q.id ?? qi}>
               <div className="ask-q-t">
@@ -368,6 +456,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                         type={q.multi ? "checkbox" : "radio"}
                         name={`${item.requestId}:${qi}`}
                         data-ask-row
+                        data-qi={qi}
+                        data-oi={oi}
                         checked={on}
                         disabled={answered}
                         onChange={() => togglePick(qi, oi, q.multi)}
@@ -388,6 +478,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                     type={q.multi ? "checkbox" : "radio"}
                     name={`${item.requestId}:${qi}`}
                     data-ask-row
+                    data-qi={qi}
                     checked={others[qi] ?? false}
                     disabled={answered}
                     onChange={() => toggleOther(qi)}

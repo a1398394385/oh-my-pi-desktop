@@ -45,7 +45,7 @@ session.subscribe((ev: any) => {
 
 // Long task: read a probe file + sleep 3 + summarize (same shape as steer-smoke, multiple tool turns)
 import { writeFileSync } from "node:fs";
-const probeFile = `/tmp/omp-probe-drain-${Date.now()}.txt`;
+const probeFile = `${os.tmpdir()}/omp-probe-drain-${Date.now()}.txt`;
 writeFileSync(probeFile, "PROBE-A\nPROBE-B\n");
 void session
   .prompt(

@@ -11,6 +11,9 @@ import type { RpcHandler } from "./types";
 // MCP tool schema token estimate cache: skip recomputation while the tools roster identity is unchanged
 const mcpTokensCache = new WeakMap<object, number>();
 
+// Opening line of the SDK's memory guidance block (prompts/memories/read-path.md).
+const MEMORY_HEADING = "# Memory Guidance";
+
 // MCP tools (mcp__ prefix) schema tokens are estimated separately;
 // breakdown's systemToolsTokens includes all tools, so the frontend
 // subtracts this to get pure built-in system tools. No recomputation while
@@ -34,6 +37,61 @@ function estimateMcpToolsTokens(entry: PoolEntry): number {
   const tokens = new Tokenizer(model).countTokens(fragments);
   mcpTokensCache.set(tools, tokens);
   return tokens;
+}
+
+// Repo rules (AGENTS.md / CLAUDE.md) and the memory block both reach the model
+// as tagged regions inside systemPrompt block 1, which the core's
+// getContextBreakdown folds wholly into systemContextTokens. Splitting them back
+// out lets the card show them as their own rows instead of burying them in
+// "Other" — repo rules are ~96% of that bucket, memory sits next to it.
+// Cache key: the prompt array identity (rebuildSystemPrompt returns a fresh
+// array on every content change, and holds it stable in between), so repeated
+// hovers skip the scan + re-tokenize entirely.
+const systemContextSplitCache = new WeakMap<string[], SystemContextSplit>();
+
+interface SystemContextSplit {
+  repoRulesTokens: number;
+  memoryTokens: number;
+}
+
+// A region runs from its open tag to its close tag; file contents nested inside
+// may themselves mention the tag in prose, so the close is matched from the end
+// of the block. A missing region contributes 0 rather than a guessed share.
+// Memory's region is delimited by the "# Memory Guidance" heading the SDK's
+// read-path template renders (memories/index.ts) up to the next "## " heading —
+// it has no closing tag, and the memory summary/lessons bodies are free prose
+// that must not be treated as delimiters.
+function splitSystemContextRegions(session: PoolEntry["session"]): SystemContextSplit {
+  const blocks = session.systemPrompt;
+  if (!Array.isArray(blocks) || blocks.length === 0) return { repoRulesTokens: 0, memoryTokens: 0 };
+  const cached = systemContextSplitCache.get(blocks);
+  if (cached !== undefined) return cached;
+  const tokenizer = new Tokenizer(session.model);
+  const repoRuleFragments: string[] = [];
+  const memoryFragments: string[] = [];
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i];
+    const ruleOpen = block.indexOf("<repo-rules>");
+    if (ruleOpen !== -1) {
+      const ruleClose = block.lastIndexOf("</repo-rules>");
+      if (ruleClose !== -1) {
+        repoRuleFragments.push(block.slice(ruleOpen, ruleClose - ruleOpen + "</repo-rules>".length));
+      }
+    }
+    const memoryOpen = block.indexOf(MEMORY_HEADING);
+    if (memoryOpen === -1) continue;
+    // The block ends either at the next "## " heading (MCP server instructions,
+    // auto-learn guidance) or at the end of the append region.
+    const nextHeading = block.indexOf("\n## ", memoryOpen + MEMORY_HEADING.length);
+    const end = nextHeading === -1 ? block.length : nextHeading + 1;
+    memoryFragments.push(block.slice(memoryOpen, end));
+  }
+  const split: SystemContextSplit = {
+    repoRulesTokens: repoRuleFragments.length > 0 ? tokenizer.countTokens(repoRuleFragments) : 0,
+    memoryTokens: memoryFragments.length > 0 ? tokenizer.countTokens(memoryFragments) : 0,
+  };
+  systemContextSplitCache.set(blocks, split);
+  return split;
 }
 
 // Reverse-lookup the credential row that supplied a resolved key: the #id tag
@@ -60,11 +118,22 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const b = entry.session.getContextBreakdown();
     const st = entry.session.getSessionStats();
+    const { repoRulesTokens, memoryTokens } = splitSystemContextRegions(entry.session);
     ws.send(
       JSON.stringify({
         type: "context_detail",
         sessionId: msg.sessionId,
-        breakdown: b ? { ...b, mcpToolsTokens: estimateMcpToolsTokens(entry) } : null,
+        breakdown: b
+          ? {
+              ...b,
+              mcpToolsTokens: estimateMcpToolsTokens(entry),
+              // Split out of systemContextTokens (which counts all of block 1+):
+              // each gets its own row; "Other" shows what is left.
+              repoRulesTokens,
+              memoryTokens,
+              otherTokens: Math.max(0, b.systemContextTokens - repoRulesTokens - memoryTokens),
+            }
+          : null,
         stats: {
           tokens: st.tokens,
           userMessages: st.userMessages,

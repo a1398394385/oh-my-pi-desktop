@@ -37,7 +37,8 @@ import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { refreshAllLimits } from "./limits/index.ts";
 import { augmentGuiPath } from "./gui-path.ts";
 import { settingsGet } from "./settings-compat.ts";
-import { handleStatsHttp } from "./stats.ts";
+import { browserMirrorOnWsClose, browserMirrorOnWsOpen, startBrowserMirror } from "./browser-mirror.ts";
+import { safeStderr } from "./stderr.ts";
 
 // ---------- Startup prologue: activate the persisted profile, assemble the process-level base ----------
 // PATH augment completion point: the first RPC after UI connects
@@ -60,7 +61,7 @@ const profileReady = (async () => {
   await applyProfile(H.currentProfile);
 })();
 profileReady.catch((err) => {
-  process.stderr.write(`[host] Profile 初始化失败: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+  safeStderr(`[host] Profile 初始化失败: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
   process.exitCode = 1;
 });
 
@@ -75,8 +76,8 @@ const server = Bun.serve<{ sessionId: string | null }>({
   },
   websocket: {
     open(ws) {
-      activeWs.value = ws;
-      process.stderr.write(`[host] WS 客户端接入（前端加载与连接全链路 OK） [t=${performance.now().toFixed(0)}ms]\n`);
+      browserMirrorOnWsOpen(ws);
+      safeStderr(`[host] WS 客户端接入（前端加载与连接全链路 OK） [t=${performance.now().toFixed(0)}ms]\n`);
       void profileReady.then(
         () => {
           ws.send(
@@ -115,16 +116,20 @@ const server = Bun.serve<{ sessionId: string | null }>({
       } catch (err) {
         // A single failed command must not take down the host; report the error to the frontend as-is
         ws.send(JSON.stringify({ type: "error", sessionId: msg.sessionId ?? null, kind: msg.kind ?? null, message: String(err) }));
-        process.stderr.write(`[host] 命令 ${msg.type} 失败: ${err}\n`);
+        safeStderr(`[host] 命令 ${msg.type} 失败: ${err}\n`);
       }
     },
     close(ws) {
       // Frontend disconnected: dispose its terminal PTYs to prevent orphan shell processes
       if (activeWs.value === ws) activeWs.value = null;
-      disposeTerminalsOf(ws);
+      browserMirrorOnWsClose(ws);
     },
   },
 });
+
+// Agent browser live mirror: poll the SDK tab registry for the UI's auto-open
+// signal + screencast subscription (host/browser-mirror.ts).
+startBrowserMirror();
 
 process.on("SIGTERM", async () => {
   // Tauri shell exit fallback; dispose triggers the persistence wind-down
@@ -135,13 +140,26 @@ process.on("SIGTERM", async () => {
 
 // Parent-death self-monitor: when tauri dev kills the process tree, the
 // shell's Exit callback may not get to kill us in time. The host polls its
-// ppid and exits itself once the parent is gone, precluding orphan processes
+// ppid and exits itself once the parent is gone, precluding orphan processes.
+// The exit is a hard SIGKILL, not process.exit(0): a normal exit fires the
+// SDK's process-exit hook, which appends a session_exit entry to every open
+// session's journal — and during a host-overlap window (shell restart, two
+// app instances) those sessions are already owned by the successor host, so
+// that append forks the whole journal into duplicate session files
+// (2026-10-05 triple-session incident). SIGKILL skips all JS teardown: zero
+// journal writes, zero forks. Journal appends are synchronously durable per
+// write, so the only thing lost is this process's exit diagnostic entry —
+// and this path only runs when the shell is already gone.
 const parentPid = process.ppid;
 setInterval(() => {
   try {
     process.kill(parentPid, 0);
   } catch {
-    process.exit(0);
+    try {
+      process.kill(process.pid, "SIGKILL");
+    } catch {
+      process.exit(0); // SIGKILL self-kill unavailable: fall back to a normal exit
+    }
   }
 }, 2000);
 
@@ -157,13 +175,13 @@ const HOST_RSS_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 setInterval(() => {
   const rss = process.memoryUsage.rss();
   if (rss > HOST_RSS_LIMIT_BYTES) {
-    process.stderr.write(`[host] RSS ${(rss / 1048576) | 0}MB 超上限 2048MB，主动退出等待壳重启\n`);
+    safeStderr(`[host] RSS ${(rss / 1048576) | 0}MB 超上限 2048MB，主动退出等待壳重启\n`);
     process.exit(86);
   }
 }, 30_000);
 
 console.log(`READY ws://127.0.0.1:${server.port}`);
-process.stderr.write(`[host][启动计时] WS 服务就绪 [t=${performance.now().toFixed(0)}ms]\n`);
+safeStderr(`[host][启动计时] WS 服务就绪 [t=${performance.now().toFixed(0)}ms]\n`);
 
 // Background quota refresh: at startup, preloads every configured provider
 // (any provider that has appeared in the model catalog), then re-pulls all
@@ -186,7 +204,7 @@ function configuredLimitProviders() {
 const runLimitsRefresh = () => {
   const providers = configuredLimitProviders();
   void refreshAllLimits(H.authStorage, providers).then(() => {
-    process.stderr.write(`[host] 配额预载/刷新完成: ${providers.length} 个供应商\n`);
+    safeStderr(`[host] 配额预载/刷新完成: ${providers.length} 个供应商\n`);
   });
 };
 void profileReady.then(runLimitsRefresh);
@@ -253,7 +271,7 @@ async function pollExternalWrites() {
     } catch (err) {
       // New session files are lazily persisted (created on the first entry): ENOENT = nothing to monitor yet, skip silently
       if ((err as { code?: string }).code === "ENOENT") continue;
-      process.stderr.write(`[host] 外部写入轮询失败 ${entry.path}: ${err instanceof Error ? err.message : String(err)}\n`);
+      safeStderr(`[host] 外部写入轮询失败 ${entry.path}: ${err instanceof Error ? err.message : String(err)}\n`);
     }
   }
 }

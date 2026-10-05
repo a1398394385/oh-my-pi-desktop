@@ -39,6 +39,7 @@ export const hostErrorsZh = {
     alreadyAtPosition: "已在当前位置",
     navigateCancelled: "导航被取消",
     summaryAborted: "分支摘要已中止",
+    reloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再重新加载；当前视图仍在实时更新",
   },
   prompt: {
     emptyMessage: "消息为空",

@@ -73,6 +73,8 @@ export const chatEn = {
   ctxSystemPrompt: "System prompt",
   ctxSkills: "Skills",
   ctxMessages: "Messages",
+  ctxRepoRules: "Repo rules",
+  ctxMemory: "Memory",
   ctxOther: "Other",
   balance: "Balance {{amount}} {{currency}}",
   remainingQuota: "Remaining quota",
@@ -190,6 +192,7 @@ export const chatEn = {
   emptyHint: "Pick a session on the left or start a new task",
   externalWriteNotice: "This session is being written by another process (e.g. the CLI); the view may be out of sync",
   reload: "Reload",
+  reloadRunning: "Can't reload while generating (the view stays live); stop the generation first",
   // ---- cross-day timestamp ----
   clockDate: "{{m}}/{{d}} {{hm}}",
   // ---- approval card option ids (host-built approval frames; ApprovalCard) ----

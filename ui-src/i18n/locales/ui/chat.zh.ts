@@ -67,6 +67,8 @@ export const chatZh = {
   ctxSystemPrompt: "系统提示词",
   ctxSkills: "技能",
   ctxMessages: "消息",
+  ctxRepoRules: "仓库规则",
+  ctxMemory: "记忆",
   ctxOther: "其他",
   balance: "余额 {{amount}} {{currency}}",
   remainingQuota: "剩余额度",
@@ -181,6 +183,7 @@ export const chatZh = {
   emptyHint: "点左侧任务或「新建任务」开始",
   externalWriteNotice: "此会话正在被其他进程写入（如 CLI），视图可能不同步",
   reload: "重新加载",
+  reloadRunning: "生成中不能重载（视图仍在实时更新），先停止生成",
   // ---- cross-day timestamp (TurnActs fmtClock) ----
   clockDate: "{{m}}月{{d}}日 {{hm}}",
   // ---- approval card option ids (host-built approval frames; ApprovalCard) ----

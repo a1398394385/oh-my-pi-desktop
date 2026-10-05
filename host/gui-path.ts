@@ -9,6 +9,7 @@
 // covers every downstream spawn: assets.ts health probe ({...process.env})
 // and the SDK stdio transport ({...Bun.env}, Bun.env === process.env).
 
+import { safeStderr } from "./stderr.ts";
 const SENTINEL_BEGIN = "__OMP_PATH_BEGIN__";
 const SENTINEL_END = "__OMP_PATH_END__";
 const SHELL_TIMEOUT_MS = 3000;
@@ -41,7 +42,7 @@ function run(): Promise<void> {
     const shell = process.env.SHELL || "/bin/zsh";
     const shellPath = await readShellPath(shell);
     if (!shellPath) {
-      process.stderr.write(`[host] PATH augment skipped: ${shell} -ilc returned no PATH (keeping GUI default PATH)\n`);
+      safeStderr(`[host] PATH augment skipped: ${shell} -ilc returned no PATH (keeping GUI default PATH)\n`);
       return;
     }
     const current = (process.env.PATH ?? "").split(":").filter(Boolean);
@@ -49,13 +50,13 @@ function run(): Promise<void> {
     const additions = shellPath.split(":").filter((p) => p && !seen.has(p));
     if (!additions.length) return;
     process.env.PATH = [...current, ...additions].join(":");
-    process.stderr.write(`[host] PATH augmented: appended ${additions.length} entries from ${shell}\n`);
+    safeStderr(`[host] PATH augmented: appended ${additions.length} entries from ${shell}\n`);
   })();
 }
 
 export function augmentGuiPath(): Promise<void> {
   if (!promise) promise = run().catch((err) => {
-    process.stderr.write(`[host] PATH augment error: ${err}\n`);
+    safeStderr(`[host] PATH augment error: ${err}\n`);
   });
   return promise;
 }

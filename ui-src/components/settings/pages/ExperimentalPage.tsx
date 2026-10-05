@@ -9,7 +9,7 @@ import { saveUiPrefs } from "../../../appearance";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
-import { ModelCascadePicker } from "../RolePicker";
+import { EnabledModelPicker } from "../../ModelPicker";
 import type { AcpConfig } from "../../../types/frames";
 
 const MAX_LIMIT_OPTIONS = ["35%", "45%", "50%", "55%", "60%", "70%", "80%"];
@@ -372,11 +372,11 @@ export default function ExperimentalPage() {
               </div>
             )}
           </div>
-          <ModelCascadePicker
+          <EnabledModelPicker
             label={t("settingsPage.exp.addModel")}
-            // Same content as the composer model menu (modelNames = host-enabled chat
+            // Same pool as the composer model menu (modelNames = host-enabled chat
             // models): synthetic providers (local/web) and non-chat kinds never list here
-            models={[...modelNames].filter(([id]) => !kaTargets.includes(id)).map(([id, name]) => ({ id, name, provider: id.split("/")[0] }))}
+            exclude={kaTargets}
             disabled={!kaEnabled || [...modelNames.keys()].every((id) => kaTargets.includes(id))}
             onPick={(id) => updateKa({ targets: [...kaTargets, id] })}
           />

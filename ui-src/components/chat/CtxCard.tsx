@@ -154,8 +154,22 @@ function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
   );
 }
 
-// Composition row dot colors: token equivalent of the old 6-step hardcoded blues (tokens only, no hardcoded hex)
-const ROW_DOT_COLORS = ["var(--blue)", "var(--accent)", "var(--dim)", "var(--faint)", "var(--blue)", "var(--accent)"];
+// Composition row dot colors, one entry per row in the order the rows are built
+// below. Single-direction hue ramp (cyan -> magenta, top to bottom) defined in
+// ui/css/main-right.css as --ctx-1..--ctx-5 on .ring-pop. Only five steps for
+// eight rows: the rows form three groups of related categories and each group
+// shares a step, so the dot reads as "which group" while the ramp still rotates
+// one way down the card.
+const ROW_DOT_COLORS = [
+  "var(--ctx-1)", // system tools
+  "var(--ctx-1)", // MCP tools
+  "var(--ctx-2)", // system prompt
+  "var(--ctx-2)", // memory
+  "var(--ctx-2)", // skills
+  "var(--ctx-3)", // repo rules
+  "var(--ctx-4)", // other
+  "var(--ctx-5)", // messages
+];
 
 // Context detail composition (S.ctxDetail.breakdown): constrains only the fields this component reads
 interface CtxBreakdown {
@@ -167,6 +181,12 @@ interface CtxBreakdown {
   skillsTokens: number;
   messagesTokens: number;
   systemContextTokens: number;
+  /** Host-side split of systemContextTokens: the <repo-rules> region (AGENTS.md / CLAUDE.md). */
+  repoRulesTokens?: number;
+  /** Host-side split of systemContextTokens: the memory guidance block. */
+  memoryTokens?: number;
+  /** Host-side remainder of systemContextTokens after the regions above. */
+  otherTokens?: number;
 }
 
 export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
@@ -308,20 +328,31 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
           <div className="cx-bar">
             <i style={{ width: `${Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1)}%` }} />
           </div>
-          {/* Composition rows are a fixed set of 6 (same categories as ZCode): value and
-              percentage right-aligned with equal width, dotted separator between.
-              MCP tools = schema tokens of mcp__-prefixed tools (estimated separately by the
-              host); Other = system context injection */}
+          {/* Composition rows (same categories as ZCode, ordered system-side first
+              with the conversation tail last): value and percentage right-aligned with
+              equal width, dotted separator between. MCP tools = schema tokens of
+              mcp__-prefixed tools (estimated separately by the host); Repo rules = the
+              <repo-rules> region (AGENTS.md / CLAUDE.md) and Memory = the memory guidance
+              block, both split out of the system-context block by the host; Other = the
+              remaining system context injection (workstation, <critical>, MCP
+              instructions, …) */}
           {(() => {
             const mcpTokens = b.mcpToolsTokens ?? 0;
             const pct = (v: number) => (b.usedTokens > 0 ? ((v / b.usedTokens) * 100).toFixed(1) : "0.0") + "%";
+            // Absent host split (older frame, or a prompt carrying neither region):
+            // keep the rows at 0 and leave Other as the untouched bucket.
+            const repoRules = b.repoRulesTokens ?? 0;
+            const memory = b.memoryTokens ?? 0;
+            const other = b.otherTokens ?? b.systemContextTokens;
             const rows: [string, number][] = [
               [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTokens)],
               [t("chat.ctxMcpTools"), mcpTokens],
               [t("chat.ctxSystemPrompt"), b.systemPromptTokens],
+              [t("chat.ctxMemory"), memory],
               [t("chat.ctxSkills"), b.skillsTokens],
+              [t("chat.ctxRepoRules"), repoRules],
+              [t("chat.ctxOther"), Math.max(0, other)],
               [t("chat.ctxMessages"), b.messagesTokens],
-              [t("chat.ctxOther"), b.systemContextTokens],
             ];
             return rows.map(([label, v], i) => (
               <div className="cx-row" key={label}>

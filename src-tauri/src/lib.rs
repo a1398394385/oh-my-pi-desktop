@@ -10,10 +10,17 @@ use std::time::Duration;
 
 // Native menu bar is macOS-only: on Windows it renders as a white in-window
 // menu strip, duplicating the custom-drawn title bar (ui-src/components/TitleBar.tsx)
+// Menu/MenuItem are shared by the macOS menu bar and the tray menu below.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use tauri::menu::{Menu, MenuItem};
 #[cfg(target_os = "macos")]
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, PredefinedMenuItem, Submenu};
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
+// System tray (Windows/macOS): makes the close-to-background state visible
+// and reachable. Linux is skipped (libappindicator wiring not worth it).
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
@@ -40,6 +47,18 @@ type RestartCell = Arc<Mutex<RestartGate>>;
 /// GUI launches usually lack ~/.bun on PATH; probe common install locations first,
 /// fall back to PATH otherwise.
 fn resolve_bun() -> PathBuf {
+    if cfg!(windows) {
+        // Official installer location (%USERPROFILE%\.bun\bin\bun.exe); usually
+        // only the user PATH references it, which a GUI-launched dev shell may
+        // not inherit.
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let c = PathBuf::from(&home).join(".bun").join("bin").join("bun.exe");
+            if c.is_file() {
+                return c;
+            }
+        }
+        return PathBuf::from("bun");
+    }
     if let Ok(home) = std::env::var("HOME") {
         let candidates = [
             PathBuf::from(&home).join(".bun/bin/bun"),
@@ -399,23 +418,100 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Frontend call (startup + language switch): rebuild the native menu bar
-/// with the given locale ("zh-CN"/"en"). Registered on every platform, but
-/// only macOS renders a menu bar (see build_menu) — elsewhere it's a no-op.
+/// Bring the main window back from hidden/minimized state and focus it.
+/// Shared by the tray icon, the single-instance relaunch callback, and the
+/// macOS Dock reopen event.
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+/// Tray menu labels — same static two-language table approach as the macOS
+/// menu bar labels (zh-CN fallback keeps the pre-invoke startup default).
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn tray_labels(lang: &str) -> (String, String) {
+    match lang {
+        "en" => ("Show Main Window".into(), "Quit".into()),
+        _ => ("显示主窗口".into(), "退出".into()),
+    }
+}
+
+/// Build the locale-dependent tray menu (show / quit items).
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn tray_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    let (show_label, quit_label) = tray_labels(lang);
+    let show = MenuItem::with_id(app, "tray_show", show_label, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray_quit", quit_label, true, None::<&str>)?;
+    Menu::with_items(app, &[&show, &quit])
+}
+
+/// System tray icon. The window close button only hides the window (the Bun
+/// host and its workers keep running by design — agents continue in the
+/// background); the tray keeps that state discoverable and recoverable:
+/// Windows left-click (or the menu item) reopens the window, macOS opens the
+/// menu on click, and the menu's Quit is the only real full exit on Windows.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn build_tray(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
+    let menu = tray_menu(app, lang)?;
+    let mut builder = TrayIconBuilder::with_id("main")
+        .tooltip("omp desktop")
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id().0.as_str() {
+            "tray_show" => show_main_window(app),
+            "tray_quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    // Windows convention: plain left click reopens the window, the menu stays
+    // on right click. On macOS a tray click opens the menu itself (default
+    // show_menu_on_left_click), so the show action lives in the menu item only.
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder
+            .show_menu_on_left_click(false)
+            .on_tray_icon_event(|tray, event| {
+                if matches!(
+                    event,
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }
+                ) {
+                    show_main_window(tray.app_handle());
+                }
+            });
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
+/// Frontend call (startup + language switch): rebuild the native menu bar and
+/// the tray menu with the given locale ("zh-CN"/"en"). Registered on every
+/// platform; only macOS renders a menu bar, Windows/macOS carry the tray,
+/// elsewhere it's a no-op.
 #[tauri::command]
 fn set_menu_language(app: tauri::AppHandle, lang: String) -> Result<(), String> {
     if lang != "zh-CN" && lang != "en" {
         return Err(format!("set_menu_language: unsupported lang {lang}"));
     }
     #[cfg(target_os = "macos")]
+    build_menu(&app, &lang).map_err(|e| e.to_string())?;
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
-        build_menu(&app, &lang).map_err(|e| e.to_string())
+        let menu = tray_menu(&app, &lang).map_err(|e| e.to_string())?;
+        if let Some(tray) = app.tray_by_id("main") {
+            tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+        }
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (&app, &lang);
-        Ok(())
-    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let _ = (&app, &lang);
+    Ok(())
 }
 
 pub fn run() {
@@ -426,6 +522,14 @@ pub fn run() {
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
     let restart_cell: RestartCell = Arc::new(Mutex::new(RestartGate::default()));
     tauri::Builder::default()
+        // Single-instance lock MUST be the first registered plugin: a relaunch
+        // (Start Menu / shortcut / `open`) focuses the existing window instead
+        // of spawning a whole new process tree (desktop + host + brokers +
+        // workers) — the hidden close-to-background instances used to
+        // accumulate unbounded otherwise.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -440,9 +544,12 @@ pub fn run() {
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
                 .build(),
         )
-        // Close-to-background: red traffic light / ⌘W only hides the window instead of
-        // closing it (closing the last window would terminate the app and the Bun host).
-        // Quit remains available via ⌘Q, the app-menu Quit item, and Dock right-click Quit.
+        // Close-to-background: red X / ⌘W only hides the window — the Bun host
+        // and its workers keep running (agents continue in the background, the
+        // same semantics as other desktop agents). The tray icon keeps that
+        // hidden state discoverable and recoverable; a relaunch focuses the
+        // existing window via the single-instance plugin; real exit stays on
+        // ⌘Q / the app-menu Quit item / the tray menu Quit.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -477,6 +584,12 @@ pub fn run() {
                     let _ = app.emit("menu-action", serde_json::json!({ "action": event.id().0 }));
                 });
             }
+            // System tray: built with the zh-CN default, aligned with the
+            // persisted language by the frontend's set_menu_language call.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            if let Err(e) = build_tray(app.handle(), "zh-CN") {
+                eprintln!("[shell] 构建托盘失败: {e}");
+            }
             spawn_host(app.handle(), cell.clone(), child_cell.clone(), restart_cell.clone());
             Ok(())
         })
@@ -498,11 +611,7 @@ pub fn run() {
                 // into hide above): bring the main window back to the front.
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { has_visible_windows: false, .. } => {
-                    if let Some(win) = app.get_webview_window("main") {
-                        let _ = win.unminimize();
-                        let _ = win.show();
-                        let _ = win.set_focus();
-                    }
+                    show_main_window(app.handle());
                 }
                 _ => {}
             }

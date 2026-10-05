@@ -12,11 +12,12 @@ import { collectUsageStats } from "../stats.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet, settingsSet } from "../settings-compat.ts";
+import { safeStderr } from "../stderr.ts";
 
 export const modelsHandlers: Record<string, RpcHandler> = {
   async set_model(ws, msg) {
     const entry = sessions.get(msg.sessionId);
-    process.stderr.write(`[host] set_model: ${msg.model} role=${msg.role ?? "-"} entry=${!!entry}\n`);
+    safeStderr(`[host] set_model: ${msg.model} role=${msg.role ?? "-"} entry=${!!entry}\n`);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     if (msg.role) {
       // Role pick (the composer menu's "Model Role" section): resolve the role

@@ -1243,3 +1243,35 @@
 .srow.set-row:hover, .set-row:hover { background: none; }
 .set-row .srow-ctl { justify-content: flex-end; }
 .set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
+
+/* Custom-role creation form (pg-model RolesView inline expand): name input + cascade
+   picker + add button on one line, hint below. The .mem-expand shell carries the
+   downward popIn entrance and the mp-r padding (see .mp-r .mem-expand above). */
+.mp-role-add-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.mp-role-add .set-group-desc { margin: 8px 0 0; }
+
+/* Quick-switch (ctrl+p cycleOrder) row controls: same 22px geometry as .mp-role-clear so the
+   control column aligns across rows; arrows/reorder are neutral actions, hover highlights only */
+.mp-cycle-btn {
+  border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; transition: color .15s, transform .1s;
+}
+
+.mp-cycle-btn:hover:not(:disabled) { color: var(--text); transform: scale(1.1); }
+
+.mp-cycle-btn:disabled { opacity: .35; cursor: default; }
+
+/* Add-role dropdown under the cycle list: the shared picker shell (ModelPicker.tsx
+   .sel.mp-role-sel) dressed as the block-level form select (the .mcp-form-sel language) —
+   square corners, fs-sm, full width, caret pinned right */
+.mp-cycle-add { margin-top: 10px; max-width: 320px; }
+
+.mp-cycle-add .sel { display: flex; width: 100%; border-radius: 8px; padding: 6px 10px; font-size: var(--ui-fs-sm); }
+
+.mp-cycle-add .sel > span:first-child { flex: 1; min-width: 0; text-align: left; }
+
+.mp-cycle-add .sel .caret-svg { margin-left: auto; }
+
+.mp-cycle-add .sel.disabled { opacity: .5; cursor: default; }

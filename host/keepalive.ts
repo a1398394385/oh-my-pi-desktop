@@ -67,6 +67,7 @@ import {
   writeModelTtlMs,
   type ProbeConfig,
 } from "./keepalive-config.ts";
+import { safeStderr } from "./stderr.ts";
 
 /** Field face of the model the captured request belongs to (narrow view of the base ExtensionContext["model"]). */
 interface KeepaliveModel {
@@ -628,7 +629,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
 
     function debug(...parts: unknown[]): void {
       if (process.env.PI_KEEPALIVE_DEBUG) {
-        process.stderr.write(`[pi-kimi-keepalive] ${parts.map(String).join(" ")}\n`);
+        safeStderr(`[pi-kimi-keepalive] ${parts.map(String).join(" ")}\n`);
       }
     }
 

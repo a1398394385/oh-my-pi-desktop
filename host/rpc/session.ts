@@ -20,6 +20,7 @@ import {
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { safeStderr } from "../stderr.ts";
 
 export async function handleListSessions(ws: any) {
   const all = await SessionManager.listAll(); // All project directories, pinned first
@@ -113,6 +114,27 @@ function bgJobsPayload(entry: { session: { getAsyncJobSnapshot?: () => any; insp
     };
   });
 }
+
+/** Whether this pooled session still has live work: an in-flight turn (agent_start opened the
+    active-duration window), undelivered queued messages, or running background jobs. Evicting
+    (reload/delete) such a session orphans the running AgentSession — it keeps working and
+    persisting headless while the rebuilt view shows an idle session. */
+function sessionBusy(entry: {
+  activeStartedAt: number | null;
+  session: { queuedMessageCount?: number; getAsyncJobSnapshot?: () => any };
+}): boolean {
+  if (entry.activeStartedAt !== null) return true;
+  if ((entry.session.queuedMessageCount ?? 0) > 0) return true;
+  const jobs = entry.session.getAsyncJobSnapshot?.();
+  return Array.isArray(jobs?.running) && jobs.running.length > 0;
+}
+
+/** Pool-entry path match that tolerates a session file moved by the SDK (persistence notice):
+    the frontend keeps the path it was handed at open time, so previous locations must keep
+    resolving to the live entry instead of forking a second session over the abandoned file. */
+function sessionEntryMatchesPath(entry: { path: string; previousPaths?: string[] }, p: string): boolean {
+  return entry.path === p || (entry.previousPaths?.includes(p) ?? false);
+}
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
     await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true);
@@ -128,7 +150,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     const p = String(msg.path ?? "").trim();
     if (!p) return;
     for (const entry of sessions.values()) {
-      if (entry.path === p) entry.keepaliveWanted = false;
+      if (sessionEntryMatchesPath(entry, p)) entry.keepaliveWanted = false;
     }
   },
   get_keepalive_status(ws, msg) {
@@ -146,16 +168,42 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // Force a rebuild from disk (the "reload" action on the external-write
     // notice bar): the pool-reuse branch only pushes the in-memory snapshot
     // and cannot see content written by external processes; release mode
-    // matches delete_session (unsubscribe + leave the pool)
+    // matches delete_session (unsubscribe + leave the pool).
+    //
+    // A live session must never be evicted while work is in flight: the
+    // orphaned AgentSession would keep running headless (events go nowhere,
+    // the UI loses the in-progress state) and keep persisting entries whose
+    // ids are unknown to the rebuilt manager — pollExternalWrites would then
+    // blame "another process" for writes this host itself made. Refuse while
+    // a turn / queued messages / background jobs are live; the notice bar
+    // stays and the live view keeps streaming.
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    let rebuildPath = p;
     for (const [key, e] of sessions.entries()) {
-      if (e.path !== p) continue;
+      if (!sessionEntryMatchesPath(e, p)) continue;
+      if (sessionBusy(e)) throw new Error(hostI18n.t("errors.session.reloadBusy"));
+      // Rebuild from the entry's CURRENT file, not the (possibly stale) request
+      // path: after an SDK persistence move the frontend still holds the old
+      // path, and rebuilding that would fork a second live session over a dead
+      // file while the real one keeps writing its new location.
+      rebuildPath = e.path;
       releaseMcpForSession(key, e);
       e.unsubscribe();
       sessions.delete(key);
+      // Full teardown, not just unsubscribe: a surviving session keeps its
+      // cache-warmer/keepalive (which persists usage rows while idle) and any
+      // straggler writers alive — the same false "external write" trigger this
+      // reload exists to clear. dispose() is the sanctioned terminal path
+      // (SIGTERM wind-down uses it); it appends one session_exit row, which
+      // the rebuild below reads back like any other persisted row.
+      try {
+        await e.session.dispose();
+      } catch (err) {
+        safeStderr(`[host] reload_session 释放旧会话失败: ${err}\n`);
+      }
     }
-    await handleLoadSession(ws, p);
+    await handleLoadSession(ws, rebuildPath);
   },
   async list_sessions(ws) {
     await handleListSessions(ws);
@@ -193,14 +241,14 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
-      if (err?.code !== "ENOENT") process.stderr.write(`[host] 删除会话文件失败: ${err}\n`);
+      if (err?.code !== "ENOENT") safeStderr(`[host] 删除会话文件失败: ${err}\n`);
     }
     if (p.endsWith(".jsonl")) {
       const artifactsDir = p.slice(0, -6);
       try {
         await fs.promises.rm(artifactsDir, { recursive: true, force: true });
       } catch (err: any) {
-        if (err?.code !== "ENOENT") process.stderr.write(`[host] 删除会话产物目录失败: ${err}\n`);
+        if (err?.code !== "ENOENT") safeStderr(`[host] 删除会话产物目录失败: ${err}\n`);
       }
     }
     await handleListSessions(ws);

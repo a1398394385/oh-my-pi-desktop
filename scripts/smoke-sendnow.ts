@@ -7,13 +7,14 @@
 // plus a final runEnd=true frame when the run is fully over (host mapping of agent_end; not a round; assertions filter by runEnd)
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 
 const args = process.argv.slice(2);
 
 let child: ReturnType<typeof spawn> | null = null;
 let wsUrl = args[0];
 const createdFiles: string[] = [];
-const probeFile = `/tmp/omp-desktop-sendnow-${Date.now()}.txt`;
+const probeFile = `${os.tmpdir()}/omp-desktop-sendnow-${Date.now()}.txt`;
 
 function fail(msg: string): never {
   console.error("✗ " + msg);
@@ -23,7 +24,7 @@ function fail(msg: string): never {
 
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env },
     stdio: ["ignore", "pipe", "inherit"],
   });

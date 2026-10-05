@@ -20,6 +20,7 @@ import { connectToServer, disconnectServer, listTools, MCPTool } from "./bootstr
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
 import { loadAllMcpScoped, type McpServerAsset } from "./assets.ts";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
+import { safeStderr } from "./stderr.ts";
 
 /** Registry entry shape (structure-compatible with capabilities.ts McpRuntimeStatus) */
 interface MountedStatus {
@@ -74,7 +75,7 @@ export async function preloadMcpForCwd(cwd: string): Promise<void> {
   try {
     ({ servers } = await loadAllMcpScoped({ probe: false }));
   } catch (err) {
-    process.stderr.write(`[mcp-mount] 预载可见集计算失败: ${err}\n`);
+    safeStderr(`[mcp-mount] 预载可见集计算失败: ${err}\n`);
     return;
   }
   const shared = visibleMcpServers(servers, cwd).filter(
@@ -92,11 +93,11 @@ export async function preloadMcpForCwd(cwd: string): Promise<void> {
         });
         release(); // refCount back to 0: the idle TTL now owns the connection
       } catch (err) {
-        process.stderr.write(`[mcp-mount] 预载服务器 "${s.name}" 失败: ${err}\n`);
+        safeStderr(`[mcp-mount] 预载服务器 "${s.name}" 失败: ${err}\n`);
       }
     }),
   );
-  process.stderr.write(`[mcp-mount] 预载完成 cwd=${cwd}: ${shared.length} 台共享服务器已入池(耗时 ${Date.now() - startedAt}ms)\n`);
+  safeStderr(`[mcp-mount] 预载完成 cwd=${cwd}: ${shared.length} 台共享服务器已入池(耗时 ${Date.now() - startedAt}ms)\n`);
 }
 
 /** Assemble the transport config for one server (union discriminant must be a literal) */
@@ -132,7 +133,7 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   try {
     ({ servers } = await loadAllMcpScoped({ probe: false }));
   } catch (err) {
-    process.stderr.write(`[mcp-mount] 可见集计算失败: ${err}\n`);
+    safeStderr(`[mcp-mount] 可见集计算失败: ${err}\n`);
     return;
   }
   if (stale(entry, gen)) return;
@@ -195,7 +196,7 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
       statuses.push({ name: s.name, status: "connected" });
       holds.push(hold);
     } catch (err) {
-      process.stderr.write(`[mcp-mount] 服务器 "${s.name}" 挂载失败: ${err}\n`);
+      safeStderr(`[mcp-mount] 服务器 "${s.name}" 挂载失败: ${err}\n`);
       statuses.push({ name: s.name, status: "disconnected" });
     }
   }
@@ -210,11 +211,11 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   try {
     void entry.session.refreshMCPTools(tools);
   } catch (err) {
-    process.stderr.write(`[mcp-mount] 工具面刷新失败: ${err}\n`);
+    safeStderr(`[mcp-mount] 工具面刷新失败: ${err}\n`);
   }
   if (!stale(entry, gen)) pushMcpFrame(sessionId, entry);
   if (tools.length || statuses.length) {
-    process.stderr.write(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 挂载 ${statuses.length} 台 MCP 服务器 / ${tools.length} 个工具\n`);
+    safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 挂载 ${statuses.length} 台 MCP 服务器 / ${tools.length} 个工具\n`);
   }
 }
 

@@ -427,9 +427,18 @@ export interface SessionStatsPayload {
   avgTtft?: number | null;
 }
 
-/** Context-detail breakdown (context_detail frame, host/host.ts:1283-1301 + estimateMcpToolsTokens) */
-// TODO(narrowing pass): breakdown is the base getContextBreakdown() expansion + mcpToolsTokens; bucket shape follows the SDK
-export type ContextBreakdown = Record<string, unknown> & { mcpToolsTokens: number };
+/** Context-detail breakdown (context_detail frame, host/rpc/limits.ts get_context_detail) */
+// TODO(narrowing pass): breakdown is the base getContextBreakdown() expansion + the host's
+// derived buckets; the SDK fields keep following the core package
+export type ContextBreakdown = Record<string, unknown> & {
+  mcpToolsTokens: number;
+  /** Tokens of the <repo-rules> region (AGENTS.md / CLAUDE.md), split out of systemContextTokens. */
+  repoRulesTokens: number;
+  /** Tokens of the memory guidance block, split out of systemContextTokens. */
+  memoryTokens: number;
+  /** systemContextTokens minus the regions above: the genuine remainder. */
+  otherTokens: number;
+};
 
 /** Inner stats of the context_detail frame (host/host.ts:1291-1300) */
 export interface ContextDetailStats {
@@ -554,6 +563,7 @@ export interface CommandOutputFrame {
   type: "command_output";
   sessionId: string;
   text: string;
+  command?: string; // typed slash-command line (dispatchSlashInput senders only): the UI renders these as a command card instead of a plain meta row
 }
 
 /** Command consumed-result frame (host/host.ts:2703 / 2713 / 2719 / 2802 / 2853) */
@@ -1334,6 +1344,36 @@ export interface TerminalCreatedFrame {
   shell: string;
 }
 
+/** One Agent browser tab in the mirror list (host/browser-mirror.ts MirrorTabInfo) */
+export interface BrowserTabInfo {
+  name: string;
+  url: string;
+  title: string;
+  kind: string;
+  /** Whether the backend supports a CDP screencast (cmux/tern surfaces do not) */
+  mirrorable: boolean;
+}
+
+/** Agent browser tab-list push (host/browser-mirror.ts poll; stamped). `active` marks the 0→n activation edge the UI auto-opens on. */
+export interface BrowserTabsFrame {
+  type: "browser_tabs";
+  tabs: BrowserTabInfo[];
+  active: boolean;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Agent browser screencast still (host/browser-mirror.ts Page.screencastFrame; unstamped, terminal-data style) */
+export interface BrowserMirrorFrame {
+  type: "browser_frame";
+  name: string;
+  data: string; // base64 jpeg
+  ts: number;
+  w?: number; // page viewport width in device px (screencast metadata)
+  h?: number; // height, same unit
+  s?: number; // page scale factor; CSS px = device px / s
+}
+
 /** Context usage frame (host/host.ts:2146-2156 pushContext; stamped) */
 export interface ContextFrame {
   type: "context";
@@ -1631,6 +1671,8 @@ export type HostFrame =
   | TerminalDataFrame
   | TerminalExitFrame
   | TerminalCreatedFrame
+  | BrowserTabsFrame
+  | BrowserMirrorFrame
   | ContextFrame
   | SessionStatsFrame
   | EventFrame

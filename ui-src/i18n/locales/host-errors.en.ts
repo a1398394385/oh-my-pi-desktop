@@ -35,6 +35,7 @@ export const hostErrorsEn = {
     alreadyAtPosition: "Already at the current position",
     navigateCancelled: "Navigation cancelled",
     summaryAborted: "Branch summary aborted",
+    reloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before reloading — the current view stays live",
   },
   prompt: {
     emptyMessage: "Message is empty",

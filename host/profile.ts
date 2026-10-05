@@ -15,6 +15,8 @@ import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
+import type * as BunFfi from "bun:ffi";
+import { safeStderr } from "./stderr.ts";
 
 // ---------- desktop env (desktop-env.json under agentDir: proxy / CA certs) ----------
 export function defaultDesktopEnv(): DesktopEnv {
@@ -141,7 +143,7 @@ export function mergeHistoryProjects(cwds: string[]): boolean {
   for (const cwd of cwds) {
     if (!cwd || typeof cwd !== "string") continue;
     if (cwd === "/" || cwd === home) continue;
-    if (cwd.startsWith("/tmp") || cwd.startsWith("/private/tmp") || cwd.startsWith("/var/folders")) continue;
+    if (isTempDirPath(cwd)) continue;
     if (H.desktopProjects.removedProjects.includes(cwd)) continue;
     if (!fs.existsSync(cwd)) continue;
     if (!H.desktopProjects.allProjects.includes(cwd)) {
@@ -152,16 +154,75 @@ export function mergeHistoryProjects(cwds: string[]): boolean {
   return added;
 }
 
-// ---------- sleep prevention (caffeinate, toggled by the power.sleepPrevention setting) ----------
-let sleepProc: ReturnType<typeof Bun.spawn> | null = null;
+// ---------- sleep prevention (toggled by the power.sleepPrevention setting) ----------
+// darwin: caffeinate helper bound to the host pid. win32: kernel32
+// SetThreadExecutionState(ES_CONTINUOUS | flags) via bun:ffi — per-thread, and
+// the host's JS thread persists for the process lifetime, so CONTINUOUS holds
+// until reset. Both are released by applySleepPrevention("off").
+const ES_CONTINUOUS = 0x8000_0000;
+const ES_SYSTEM_REQUIRED = 0x0000_0001;
+const ES_DISPLAY_REQUIRED = 0x0000_0002;
+const WIN_SLEEP_FLAGS: Record<string, number> = {
+  idle: ES_SYSTEM_REQUIRED,
+  display: ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED,
+  // Windows has no counterpart of caffeinate -s (system awake while the
+  // display may sleep); SYSTEM_REQUIRED is the closest safe mapping.
+  system: ES_SYSTEM_REQUIRED,
+};
+type WinSleepSetter = (flags: number) => unknown;
+let winSleepSetter: WinSleepSetter | null | undefined;
+function windowsSleepFlags(flags: number): void {
+  if (winSleepSetter === undefined) {
+    try {
+      // Lazy require so non-Windows hosts never touch bun:ffi; a load failure
+      // caches null (warn once, stay a no-op instead of throwing per toggle).
+      const ffi = require("bun:ffi") as { dlopen: typeof BunFfi.dlopen };
+      winSleepSetter = ffi.dlopen("kernel32.dll", {
+        SetThreadExecutionState: { args: ["u32"], returns: "u32" },
+      }).symbols.SetThreadExecutionState as WinSleepSetter;
+    } catch (err) {
+      winSleepSetter = null;
+      safeStderr(`[host] sleep prevention unavailable (kernel32 load failed: ${err})\n`);
+      return;
+    }
+  }
+  try {
+    winSleepSetter?.(flags);
+  } catch {}
+}
+
+let sleepProc: Bun.Subprocess | null = null;
 export function applySleepPrevention(level: string) {
   try {
     sleepProc?.kill();
   } catch {}
   sleepProc = null;
-  if (process.platform !== "darwin" || level === "off") return;
+  if (level === "off") {
+    if (process.platform === "win32") windowsSleepFlags(ES_CONTINUOUS); // clear requirements, keep continuity semantics
+    return;
+  }
+  if (process.platform === "win32") {
+    const flags = WIN_SLEEP_FLAGS[level];
+    if (flags === undefined) return;
+    windowsSleepFlags(ES_CONTINUOUS | flags);
+    return;
+  }
+  if (process.platform !== "darwin") return;
   const args = level === "system" ? ["-i", "-s"] : level === "display" ? ["-i", "-d"] : ["-i"];
   sleepProc = Bun.spawn(["caffeinate", ...args, "-w", String(process.pid)], { stdout: "ignore", stderr: "ignore" });
+}
+
+// True when cwd sits under the OS temp dir — keeps throwaway probe/smoke
+// sessions out of the merged desktop project list. Covers macOS (/tmp,
+// /private/tmp, /var/folders) and Windows/Linux via os.tmpdir() (case-folded
+// on Windows, where drive-letter and profile casing vary).
+function isTempDirPath(cwd: string): boolean {
+  if (cwd.startsWith("/tmp") || cwd.startsWith("/private/tmp") || cwd.startsWith("/var/folders")) return true;
+  const t = os.tmpdir();
+  if (!t) return false;
+  const fold = process.platform === "win32";
+  const [a, b] = fold ? [cwd.toLowerCase(), t.toLowerCase()] : [cwd, t];
+  return a.startsWith(b);
 }
 
 // ---------- Profile list and switching ----------
@@ -213,7 +274,7 @@ export async function applyProfile(profileName: string) {
   // Startup segment timing (performance.now() zeroed at process start): locate the big cost centers before the ready frame
   let t = performance.now();
   H.authStorage = await discoverAuthStorage(H.agentDir);
-  process.stderr.write(`[host][启动计时] discoverAuthStorage: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(`[host][启动计时] discoverAuthStorage: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
   t = performance.now();
   H.modelRegistry = new ModelRegistry(H.authStorage);
   // Aligned with CLI startup semantics (refreshInBackground in main.ts): the
@@ -229,13 +290,13 @@ export async function applyProfile(profileName: string) {
     if (H.modelRegistry !== reg || !H.settings) return; // profile switched again during refresh, or the refresh landed before Settings.init finished (18.5.0's non-empty built-in catalog makes this reachable): drop the callback — applyProfile's own later rebuild covers it
     syncAvailableModels();
     rebuildScopedModels();
-    process.stderr.write(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
+    safeStderr(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
     H.onModelsRefreshed?.();
   });
-  process.stderr.write(`[host][启动计时] modelRegistry 构造(缓存目录)+后台刷新启动: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(`[host][启动计时] modelRegistry 构造(缓存目录)+后台刷新启动: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
   t = performance.now();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
-  process.stderr.write(`[host][启动计时] Settings.init: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(`[host][启动计时] Settings.init: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
   // Sync the capability discovery registry: disabledProviders/enabledProviders -> in-memory registry (same call as the CLI entry;
   // without it, third-party sources the user disabled still show up / count as enabled at the discovery layer)
   initializeWithSettings(H.settings);
@@ -275,14 +336,14 @@ export async function applyProfile(profileName: string) {
     : undefined;
 
   if (process.env.OMP_DESKTOP_MODEL && !H.modelOverride) {
-    process.stderr.write(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
+    safeStderr(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
   }
   if (H.scopedModels.length === 0) {
-    process.stderr.write("[host] 当前 profile 无可用模型（尚未配置 API Key 或 models.yml）\n");
+    safeStderr("[host] 当前 profile 无可用模型（尚未配置 API Key 或 models.yml）\n");
   }
 
   await refreshAvailableProfiles();
-  process.stderr.write(
+  safeStderr(
     `[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length} [t=${t0.toFixed(0)}ms→${performance.now().toFixed(0)}ms, 总耗时 ${(performance.now() - t0).toFixed(0)}ms]\n`,
   );
 }

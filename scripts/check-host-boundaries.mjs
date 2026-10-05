@@ -41,6 +41,16 @@ const ALLOWED_EDGES = new Set([
   "main.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
   "translate.ts→state.ts",
   "state.ts→bootstrap.ts",
+  // Safe stderr logging (EPIPE-swallowing wrapper): every host module that
+  // logs to the shell pipe goes through safeStderr, so a dead parent shell
+  // can no longer turn a log line into an unhandled rejection that drags the
+  // host into fork-inducing fatal teardown (2026-10-05 session-duplication
+  // incident). Leaf utility: imports nothing.
+  "acp-context.ts→stderr.ts", "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "gui-path.ts→stderr.ts",
+  "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
+  "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
+  "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
+  "rpc/session.ts→stderr.ts", "rpc/settings.ts→stderr.ts",
   // 18.5.0 settings registry adapter: dotted-path settings reads/writes route
   // through settings-compat.ts (registry handles obtained via bootstrap)
   "settings-compat.ts→bootstrap.ts",
@@ -121,6 +131,13 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/session.ts", "rpc/index.ts→rpc/prompt.ts", "rpc/index.ts→rpc/files.ts",
   "rpc/index.ts→rpc/models.ts", "rpc/index.ts→rpc/settings.ts", "rpc/index.ts→rpc/login.ts",
   "rpc/index.ts→rpc/assets.ts", "rpc/index.ts→rpc/terminal.ts", "rpc/index.ts→rpc/limits.ts",
+  "rpc/index.ts→rpc/browser.ts",
+  // Agent browser live mirror (right-panel live view of the built-in browser):
+  // main starts the registry poll and tracks the UI ws lifecycle; the rpc
+  // domain only forwards the three mirror commands (one-way downward)
+  "main.ts→browser-mirror.ts",
+  "rpc/browser.ts→rpc/types.ts", "rpc/browser.ts→browser-mirror.ts",
+  "browser-mirror.ts→state.ts", // frame stamps (stampEvent) share the push infra
   "rpc/session.ts→rpc/types.ts",
   "rpc/session.ts→bootstrap.ts", "rpc/session.ts→state.ts", "rpc/session.ts→profile.ts",
   "rpc/session.ts→translate.ts", "rpc/session.ts→session-lifecycle.ts",
@@ -144,6 +161,7 @@ const ALLOWED_EDGES = new Set([
   "rpc/settings.ts→keepalive-config.ts", // set_keepalive_config merges into state.json
   "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
   "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
+  "rpc/login.ts→open-external.ts", "rpc/settings.ts→open-external.ts", // cross-platform browser/folder launch (rundll32 / open / xdg-open)
   "rpc/index.ts→rpc/provider-wizard.ts",
   "rpc/provider-wizard.ts→rpc/types.ts", "rpc/provider-wizard.ts→state.ts",
   "rpc/provider-wizard.ts→rpc/login.ts", // shared catalog convergence push (refreshCatalogAndPush)

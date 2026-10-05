@@ -20,7 +20,7 @@ function fail(msg: string): never {
 
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

@@ -36,7 +36,7 @@ process.on("SIGINT", () => { restore(); process.exit(1); });
 process.on("SIGTERM", () => { restore(); process.exit(1); });
 
 child = spawn("bun", ["host/host.ts"], {
-  cwd: new URL("..", import.meta.url).pathname,
+  cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
   env: { ...process.env, OMP_PROFILE: profile },
   stdio: ["ignore", "pipe", "inherit"],
 });

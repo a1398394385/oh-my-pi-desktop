@@ -126,7 +126,7 @@ ARGUMENTS:
 - startId?: string — range start (message or block ref)
 - endId?: string — range end (message or block ref)
 - toFile?: string — if provided, writes restored content to this file path (must be under
-  /tmp or ~/.cache/opencode/) instead of inflating context. Block(s) stay compressed.
+  the system temp dir or ~/.cache/opencode/) instead of inflating context. Block(s) stay compressed.
 
 IMPORTANT:
 - Decompressing inflates context. Check context usage before decompressing.
@@ -209,7 +209,7 @@ const decompressParams = type({
     'Range end: message ref (e.g., "m00200") or block ref (e.g., "b5"). Used with startId.',
   ),
   "toFile?": type("string").describe(
-    "If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under /tmp or ~/.cache/opencode/. Example: '/tmp/block52.txt'",
+    "If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under the system temp dir or ~/.cache/opencode/. Example: '<temp dir>/block52.txt'",
   ),
   "full?": type("boolean").describe(
     "If true, restores ALL content down to original messages (multi-level decompress). Default: false — restores one tier up (e.g., decompressing a T2 block restores T1 summaries, not raw messages). Use full:true only when you need the exact original content and have context budget for it.",
@@ -401,9 +401,9 @@ export function createAcpCompressTools(state: AcpSessionState) {
 					const path = await import("node:path");
 					const fs = await import("node:fs/promises");
 					const resolved = path.resolve(toFile.replace(/^~/, os.homedir()));
-					const allowed = ["/tmp", path.join(os.homedir(), ".cache")].some((p) => resolved.startsWith(p));
+					const allowed = ["/tmp", path.join(os.homedir(), ".cache"), os.tmpdir()].some((p) => resolved.startsWith(p));
 					if (!allowed) {
-						return textResult("Error: toFile path must be under /tmp or ~/.cache/.");
+						return textResult("Error: toFile path must be under the system temp dir or ~/.cache/.");
 					}
 					const targets = blockId
 						? [state.blocks.get(Number(/^b(\d+)$/.exec(blockId)?.[1] ?? "-1"))].filter(

@@ -14,6 +14,7 @@ import path from "node:path";
 import { connectToServer, disconnectServer } from "./bootstrap.ts";
 import { H } from "./state.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
+import { safeStderr } from "./stderr.ts";
 
 export type McpSharingMode = "session" | "project" | "global";
 
@@ -150,19 +151,19 @@ export async function acquireSharedMcpConnection(params: {
       conn.transport.onClose = () => {
         const live = sharedPool.get(poolKey);
         if (live && live.refCount > 0) {
-          process.stderr.write(`[mcp-pool] 共享连接 "${serverName}" 意外断开，正在就地透明重连...\n`);
+          safeStderr(`[mcp-pool] 共享连接 "${serverName}" 意外断开，正在就地透明重连...\n`);
           // Re-connect and swap the connection handle once it succeeds
           void connectToServer(serverName, resolvedConfig)
             .then((newConn) => {
               if (sharedPool.get(poolKey) === live) {
                 live.connection = newConn;
-                process.stderr.write(`[mcp-pool] 共享连接 "${serverName}" 透明重连成功\n`);
+                safeStderr(`[mcp-pool] 共享连接 "${serverName}" 透明重连成功\n`);
               } else {
                 void disconnectServer(newConn).catch(() => {});
               }
             })
             .catch((err) => {
-              process.stderr.write(`[mcp-pool] 共享连接 "${serverName}" 透明重连失败: ${err}\n`);
+              safeStderr(`[mcp-pool] 共享连接 "${serverName}" 透明重连失败: ${err}\n`);
             });
         }
       };
@@ -206,9 +207,9 @@ export function releaseSharedMcpConnection(poolKey: string): void {
         sharedPool.delete(poolKey);
         try {
           await disconnectServer(current.connection);
-          process.stderr.write(`[mcp-pool] 闲置超时(${IDLE_TTL_MS / 1000}s)，已安全关闭共享实例: ${current.serverName}\n`);
+          safeStderr(`[mcp-pool] 闲置超时(${IDLE_TTL_MS / 1000}s)，已安全关闭共享实例: ${current.serverName}\n`);
         } catch (err) {
-          process.stderr.write(`[mcp-pool] 关闭共享实例出错: ${err}\n`);
+          safeStderr(`[mcp-pool] 关闭共享实例出错: ${err}\n`);
         }
       }
     }, IDLE_TTL_MS);

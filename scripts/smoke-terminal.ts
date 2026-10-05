@@ -3,9 +3,10 @@
 // after dispose the bridge process exits (a terminal_exit frame or the session disappearing).
 // Usage: bun scripts/smoke-terminal.ts
 import { spawn } from "node:child_process";
+import os from "node:os";
 
 const child = spawn("bun", ["host/host.ts"], {
-  cwd: new URL("..", import.meta.url).pathname,
+  cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
   stdio: ["ignore", "pipe", "inherit"],
 });
 function fail(msg: string): never {
@@ -46,15 +47,18 @@ ws.onmessage = (ev) => {
 const send = (obj: unknown) => ws.send(JSON.stringify(obj));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const termId = "smoke-terminal";
-send({ type: "terminal_create", id: termId, cwd: "/tmp", cols: 80, rows: 24 });
+send({ type: "terminal_create", id: termId, cwd: os.tmpdir(), cols: 80, rows: 24 });
 
 await sleep(1500);
 if (!created) fail("未收到 terminal_created 回包");
 if (created.id !== termId) fail(`terminal_created id 不符: ${created.id}`);
 console.log(`✓ terminal_created（shell=${created.shell}）`);
 
-// Type a command: the echo frame must contain echo's output
-send({ type: "terminal_write", id: termId, data: "echo pty-smoke-$((40+2))\n" });
+// Type a command: the echo frame must contain echo's output. pwsh needs CR as
+// Enter (a bare LF opens a continuation prompt instead of executing).
+const isWin = process.platform === "win32";
+const eol = isWin ? "\r" : "\n";
+send({ type: "terminal_write", id: termId, data: `echo pty-smoke-$((40+2))${eol}` });
 await sleep(1200);
 buf = dataFrames.join("");
 if (!buf.includes("pty-smoke-42")) fail("回显帧缺少 echo 输出\n--- 实际输出 ---\n" + buf.slice(-400));
@@ -63,7 +67,8 @@ console.log("✓ echo 回显帧含 pty-smoke-42");
 // resize: 80x24 -> 100x30; stty size should print "30 100"
 send({ type: "terminal_resize", id: termId, cols: 100, rows: 30 });
 await sleep(400);
-send({ type: "terminal_write", id: termId, data: "stty size\n" });
+// stty is POSIX-only; pwsh reads the same "rows cols" pair from the .NET console.
+send({ type: "terminal_write", id: termId, data: isWin ? `echo "$([Console]::WindowHeight) $([Console]::WindowWidth)"${eol}` : `stty size${eol}` });
 await sleep(1200);
 buf = dataFrames.join("");
 if (!buf.includes("30 100")) fail("resize 未生效（stty size 无 30 100）");

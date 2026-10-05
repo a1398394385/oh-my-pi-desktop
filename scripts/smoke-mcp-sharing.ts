@@ -2,13 +2,13 @@
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-mcp-sharing.ts
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 const profile = process.env.OMP_PROFILE || "omp-desktop-test";
 const agentDir = path.join(homedir(), ".omp/profiles", profile, "agent");
 const profileMcpPath = path.join(agentDir, "mcp.json");
-const testProjectDir = path.join("/tmp", `omp-mcp-test-${Date.now()}`);
+const testProjectDir = path.join(tmpdir(), `omp-mcp-test-${Date.now()}`);
 mkdirSync(path.join(testProjectDir, ".omp"), { recursive: true });
 
 const profileExisted = existsSync(profileMcpPath);
@@ -16,7 +16,7 @@ const profileBackup = profileExisted ? readFileSync(profileMcpPath, "utf8") : nu
 const desktopJsonPath = path.join(agentDir, "omp-desktop.json");
 const desktopExisted = existsSync(desktopJsonPath);
 const desktopBackup = desktopExisted ? readFileSync(desktopJsonPath, "utf8") : null;
-const fakeExternalSource = path.join("/tmp", `fake-ext-mcp-${Date.now()}.json`);
+const fakeExternalSource = path.join(tmpdir(), `fake-ext-mcp-${Date.now()}.json`);
 
 let child: ReturnType<typeof spawn> | null = null;
 let restored = false;
@@ -48,7 +48,7 @@ process.on("SIGINT", () => { restore(); process.exit(1); });
 process.on("SIGTERM", () => { restore(); process.exit(1); });
 
 child = spawn("bun", ["host/host.ts"], {
-  cwd: new URL("..", import.meta.url).pathname,
+  cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
   env: { ...process.env, OMP_PROFILE: profile },
   stdio: ["ignore", "pipe", "inherit"],
 });

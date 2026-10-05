@@ -147,6 +147,13 @@ export type PoolEntry = {
   // An external process (e.g. the CLI) has been seen writing this session:
   // once set, the notice bar stays until reload (cleared when entries are rebuilt)
   externalWrite: boolean;
+  // Session file locations this entry previously owned (most recent last):
+  // the SDK's persistence notice moves a contested session to a sibling file
+  // and the host repoints entry.path, but the frontend keeps the path it was
+  // handed at open time — path-keyed RPCs must still resolve the live entry
+  // through its old locations instead of forking a second session over the
+  // abandoned file
+  previousPaths: string[];
 };
 
 // key = the sessionId the frontend holds

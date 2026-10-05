@@ -7,7 +7,7 @@ export const compExtEn = {
   capWeb: "web",
   capImg: "image",
   // ApprovalCard.tsx ask multi-question merged submit
-  askMultiHint: "Answer each question, then submit once",
+  askMultiHint: "↑/↓ to move (selects single-choice) · Space checks multi · Enter submits",
   askSubmitAll: "Submit answers",
   askOther: "Other (type your own)",
   askOtherPlaceholder: "Type your answer…",

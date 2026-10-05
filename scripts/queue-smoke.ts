@@ -55,7 +55,7 @@ const assert = (cond: boolean, msg: string) => {
 
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env },
     stdio: ["ignore", "pipe", "inherit"],
   });

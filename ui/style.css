@@ -24,6 +24,7 @@
  *   main-welcome.css     main page, welcome page (new-session centered page and expansion cards)
  *   main-right.css       main page, right sidebar (tab bar / file view / Git Diff / branch tree / terminal / browser / subagents page)
  *   main-right-caps.css  main page, right sidebar, capabilities page (split out of main-right.css, cascades right after it)
+ *   main-right-browser.css main page, right sidebar, browser page Agent live view (split out of main-right.css, cascades right after main-right-caps.css)
  *   settings.css         settings pages (pg-* pages and navigation)
  *   settings-mcp.css     settings, MCP servers page (split out of settings.css, cascades right after)
  *   settings-stats.css   settings, stats & analytics page (split out of settings.css, cascades right after)
@@ -49,6 +50,7 @@
 @import "./css/main-welcome.css";
 @import "./css/main-right.css";
 @import "./css/main-right-caps.css";
+@import "./css/main-right-browser.css";
 @import "./css/settings.css";
 @import "./css/settings-mcp.css";
 @import "./css/settings-stats.css";

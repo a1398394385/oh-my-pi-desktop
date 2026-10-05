@@ -10,6 +10,8 @@ import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
 import { warmupHighlighter } from "./lib/highlighter";
 import { resolveTheme } from "./theme-registry";
+import { landBrowserTabs } from "./store/right";
+import { emitBrowserFrame } from "./store/browserMirror";
 
 // Restore the first-frame render cache (the localStorage mirror of
 // omp-desktop.json's ui section) before React mounts — this is what keeps the
@@ -158,8 +160,16 @@ if (new URLSearchParams(location.search).has("preview")) {
     rightTabs: ["subagent"],
   }));
   // Browser comparison debug hook (preview mode only): expose the store for
-  // smoke reads via getState (P3 end state; the old S/notify retired)
-  window.__dbg = { useAppStore };
+  // smoke reads via getState (P3 end state; the old S/notify retired), plus
+  // the browser-mirror landing/bus emitters so UI smokes drive the real
+  // frame paths (auto-open + screencast stills) without a WS
+  window.__dbg = {
+    useAppStore,
+    landBrowserTabs: (tabs: unknown[], active: boolean) =>
+      landBrowserTabs(tabs as Parameters<typeof landBrowserTabs>[0], active),
+    emitBrowserFrame: (frame: { name: string; data: string; ts: number }) =>
+      emitBrowserFrame({ type: "browser_frame", ...frame }),
+  };
   setConnected(true, "预览");
 } else {
   connect();

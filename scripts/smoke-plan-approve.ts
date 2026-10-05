@@ -49,7 +49,7 @@ async function cleanup() {
 
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     // Enables the smoke-only propose replay in the spawned host.
     env: { ...process.env, OMP_PLAN_APPROVE_SMOKE: "1" },
     stdio: ["ignore", "pipe", "inherit"],

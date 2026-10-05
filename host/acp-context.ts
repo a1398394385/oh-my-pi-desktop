@@ -18,6 +18,7 @@ import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { AcpSessionState } from "./acp-state.ts";
 import { ACP_TOOL_NAMES } from "./acp-state.ts";
 import { messageText } from "./acp-state.ts";
+import { safeStderr } from "./stderr.ts";
 
 export const REF_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
 
@@ -295,7 +296,7 @@ export function createAcpContextExtension(state: AcpSessionState) {
 				return { messages: transformContext(state, ev.messages) };
 			} catch (err) {
 				// A view transform failure must never blow up the request: pass the original view through and log
-				console.error(`[ACP] context transform failed, passing through:`, err);
+				safeStderr(`[ACP] context transform failed, passing through:`, err);
 				return { messages: ev.messages };
 			}
 		});

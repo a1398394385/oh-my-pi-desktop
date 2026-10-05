@@ -4,7 +4,7 @@
 import { useAppStore } from "../index";
 import { applyUiConfig } from "../../appearance";
 import { hostInstanceReset, ingestModelDefaults, ingestModels } from "../session";
-import { clearRightSnapshots } from "../right";
+import { clearRightSnapshots, resetBrowserMirrorUi } from "../right";
 import { t } from "../../i18n";
 import type { ApprovalMode } from "../../types/frames";
 import type { SchemaDef } from "../../components/settings/placement";
@@ -14,7 +14,12 @@ export const configHandlers = {
   ready(msg) {
     // The handshake frame takes no seq: reset only when the instance changes; on reconnect (same hi) keep the seen position to avoid false gaps
     const st = useAppStore.getState();
-    if (msg.hi && st.evtHost !== msg.hi) hostInstanceReset(msg.hi, 0);
+    // A fresh host instance means the browser-mirror poll restarted: drop the
+    // stale tab list until the page resubscribes (auto-open latch included).
+    if (msg.hi && st.evtHost !== msg.hi) {
+      hostInstanceReset(msg.hi, 0);
+      resetBrowserMirrorUi();
+    }
     // approvalMode is an un-narrowed string on the host side (same as SettingsSnapshot.approvalMode); the three-value validation lives in the host
     const approvalMode = (msg.approvalMode as ApprovalMode | undefined) ?? st.approvalMode;
     ingestModels(msg.models);

@@ -1,11 +1,12 @@
 // Settings · Model page (ported from ui/settings/models.js 419 lines + providers.js 289 lines):
-// left column = model role entry + authenticated provider group list (credentials on top /
-// models.yml config below);
-// right card four views = provider detail (model enable/disable + quota + logout) /
-// model roles (@role two-level cascading assignment) /
-// add provider (card grid) / provider detail page (login / API key, either one).
-// View switches and selections reuse store fields (mpAddView / mpRolesView / mpDetailProv /
-// selectedProvider); login banner and paste-code dialog come from ../common.jsx.
+// left column = model role entry + ctrl+p quick-switch entry + authenticated provider group
+// list (credentials on top / models.yml config below);
+// right card five views = provider detail (model enable/disable + quota + logout) /
+// model roles (@role two-level cascading assignment + custom-role creation) /
+// quick-switch cycle-order editor / add provider (card grid) / provider detail page (login / API
+// key, either one).
+// View switches and selections reuse store fields (mpAddView / mpRolesView / mpCycleView /
+// mpDetailProv / selectedProvider); login banner and paste-code dialog come from ../common.jsx.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../../../store";
@@ -18,7 +19,8 @@ import type { LimitWindow } from "../../../lib/limits";
 import ModelProviderWizard from "./ModelProviderWizard";
 import ModelMetaEditor from "../ModelMetaEditor";
 import type { AllProviderEntry } from "../../../types/frames";
-import { RolePicker, type CatalogModel, type ModelRole } from "../RolePicker";
+import { RolePicker, type ModelRole } from "../RolePicker";
+import { EnabledModelPicker, ConfiguredModelPicker, type CatalogModel } from "../../ModelPicker";
 
 
 // Provider quota result (providerLimits landed shape; accounts is the multi-account extension, field shape same as top level)
@@ -212,17 +214,68 @@ function RolesView() {
   // RolePicker narrows it per role by accepted model kinds, the host re-validates on write
   const allModels = useAppStore((s) => s.modelCatalog);
   const modelRoles = useAppStore((s) => s.modelRoles);
+  // Custom-role creation: name + model picked in the inline expand form, persisted through the
+  // host's set_model_role (any valid name creates a custom role; same regex as the host side)
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newModel, setNewModel] = useState<string | null>(null);
   // Chat and custom roles only: kind roles (web/speech/dictation/judge/image) live on the
   // capability backends page together with their engine-key configuration
   const chatRoles = (modelRoles ?? []).filter((r) => r.section !== "kind");
+  // Custom roles accept chat-kind models only (RolePicker's ROLE_KINDS fallback), so the
+  // creation form offers the same pool the new row's picker will
+  const chatModels = allModels.filter((m) => (m.kind ?? "chat") === "chat");
+  const nameValid = /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(newName);
+  const nameDup = (modelRoles ?? []).some((r) => r.id === newName);
+  const submitNew = () => {
+    if (!nameValid || nameDup || !newModel) return;
+    send({ type: "set_model_role", role: newName, value: newModel });
+    setAdding(false);
+    setNewName("");
+    setNewModel(null);
+  };
   return (
     <>
       <div className="mp-head">
         <b>{t("settingsPage.model.roleEntry")}</b>
         <span className="sp" />
+        <button type="button" className="add-btn" onClick={() => setAdding((v) => !v)}>
+          {t("settingsPage.model.addRole")}
+        </button>
         <span className="tag">{t("settingsPage.model.rolesCount", { count: chatRoles.length })}</span>
       </div>
       <div className="set-group-desc mp-role-desc">{t("settingsPage.model.rolesDesc")}</div>
+      {adding ? (
+        <div className="mem-expand mp-role-add">
+          <div className="mp-role-add-row">
+            <input
+              type="text"
+              className="inp"
+              placeholder={t("settingsPage.model.roleNamePh")}
+              spellCheck={false}
+              autoComplete="off"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+            <ConfiguredModelPicker
+              filter={(m) => (m.kind ?? "chat") === "chat"}
+              label={newModel ? (chatModels.find((m) => m.id === newModel)?.name ?? newModel) : t("settingsPage.model.roleDefault")}
+              selectedId={newModel ?? undefined}
+              onPick={setNewModel}
+            />
+            <button
+              type="button"
+              className="save-btn"
+              disabled={!nameValid || nameDup || !newModel}
+              title={nameDup ? t("settingsPage.model.roleNameDup") : !nameValid && newName ? t("settingsPage.model.roleNameInvalid") : undefined}
+              onClick={submitNew}
+            >
+              {t("settingsPage.model.addRoleBtn")}
+            </button>
+          </div>
+          <div className="set-group-desc">{t("settingsPage.model.addRoleDesc")}</div>
+        </div>
+      ) : null}
       {chatRoles.map((role) => (
         <div className="srow mp-role-row" key={role.id}>
           <div className="srow-tx">
@@ -238,7 +291,7 @@ function RolesView() {
             </span>
           </div>
           <div className="srow-ctl">
-            <RolePicker role={role} allModels={allModels} />
+            <RolePicker role={role} />
             {/* Button column aligned with the delete button of custom rows: built-in roles get an X clear button (when set; = send null to revert to the inherited default),
                 custom roles get a trash delete (.skill-trash-btn is the app-wide delete language; sending null = removed from modelRoles) */}
             {role.id in ROLE_DESC_KEYS ? (
@@ -274,6 +327,118 @@ function RolesView() {
           </div>
         </div>
       ))}
+    </>
+  );
+}
+
+// Right card: ctrl+p quick-switch editor — the settings cycleOrder as an ordered role list
+// (reorder / remove / add), written through set_setting (the host validates the string array,
+// rebuilds the scoped catalog and pushes settings + models frames; keys.ts' roleCycleEntries
+// reads the same values for the preview menu)
+const DEFAULT_CYCLE_ORDER = ["smol", "default", "slow"];
+function CycleView() {
+  const { t } = useTranslation();
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  const modelRoles = useAppStore((s) => s.modelRoles);
+  // Add-role dropdown state lives inside EnabledModelPicker (pinnedRows section)
+  const raw = hostSettings?.values?.cycleOrder;
+  const order: string[] = Array.isArray(raw) ? (raw as string[]) : DEFAULT_CYCLE_ORDER;
+  const roles = modelRoles ?? [];
+  const byId = Object.fromEntries(roles.map((r) => [r.id, r]));
+  // Single write path: every mutation ships the full list (the host validates + persists)
+  const write = (next: string[]) => send({ type: "set_setting", key: "cycleOrder", value: next });
+  const move = (i: number, delta: number) => {
+    const j = i + delta;
+    if (j < 0 || j >= order.length) return;
+    const next = order.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    write(next);
+  };
+  // Chat-kind roles only may join the cycle (built-in chat roles + custom roles);
+  // kind roles (web/image/speech/…) are not text LLMs, unresolvable roles are
+  // still fine — roleCycleEntries/the host skip them at cycle time
+  const addable = roles.filter((r) => r.section !== "kind" && !order.includes(r.id));
+  return (
+    <>
+      <div className="mp-head">
+        <b>{t("settingsPage.model.cycleEntry")}</b>
+        <span className="sp" />
+        <span className="tag">{t("settingsPage.model.rolesCount", { count: order.length })}</span>
+      </div>
+      <div className="set-group-desc mp-role-desc">{t("settingsPage.model.cycleDesc")}</div>
+      {order.map((id, i) => {
+        const r = byId[id];
+        const resolved = r?.resolvedName ?? r?.resolved;
+        return (
+          <div className="srow mp-role-row mp-cycle-row" key={id}>
+            <div className="srow-tx">
+              <b>
+                {r?.name ?? id}
+                {r?.tag ? <span className="tag">{r.tag}</span> : null}
+              </b>
+              <span>
+                {id}
+                {resolved ? ` · ${resolved}` : ` · ${t("settingsPage.model.roleUnset")}`}
+              </span>
+            </div>
+            <div className="srow-ctl">
+              <button
+                type="button"
+                className="mp-cycle-btn"
+                disabled={i === 0}
+                title={t("settingsPage.model.cycleMoveUp")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  move(i, -1);
+                }}
+              >
+                <Icon name="chevronUp" size={12} />
+              </button>
+              <button
+                type="button"
+                className="mp-cycle-btn"
+                disabled={i === order.length - 1}
+                title={t("settingsPage.model.cycleMoveDown")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  move(i, 1);
+                }}
+              >
+                <Icon name="chevronDown" size={12} />
+              </button>
+              <button
+                type="button"
+                className="mp-cycle-btn"
+                title={t("settingsPage.model.cycleRemove")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  write(order.filter((_, x) => x !== i));
+                }}
+              >
+                <Icon name="xmark" size={14} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      {order.length === 0 ? <div className="set-group-desc">{t("settingsPage.model.cycleEmpty")}</div> : null}
+      <div className="mp-cycle-add">
+        <EnabledModelPicker
+          label={t("settingsPage.model.cycleAdd")}
+          // Roles-only dropdown (cycleOrder stores role ids; picking a model has no
+          // cycle meaning), so no onPick — the cascade stays hidden and pinnedRows
+          // carries the addable chat-kind roles
+          pinnedRows={addable.map((r) => ({
+            key: r.id,
+            label: r.name,
+            sub: r.id,
+            onPick: () => write([...order, r.id]),
+          }))}
+          emptyText={t("settingsPage.model.cycleNoneLeft")}
+          disabled={addable.length === 0}
+          menuClassName="menu"
+        />
+      </div>
     </>
   );
 }
@@ -718,6 +883,7 @@ export default function ModelPage() {
   const modelCatalog = useAppStore((s) => s.modelCatalog);
   const mpAddView = useAppStore((s) => s.mpAddView);
   const mpRolesView = useAppStore((s) => s.mpRolesView);
+  const mpCycleView = useAppStore((s) => s.mpCycleView);
   const mpManualView = useAppStore((s) => s.mpManualView);
   const mpDetailProv = useAppStore((s) => s.mpDetailProv);
   let selectedProvider = useAppStore((s) => s.selectedProvider);
@@ -732,7 +898,7 @@ export default function ModelPage() {
   // Selection fallback: not in roles view and nothing selected / the selected provider is no
   // longer in the catalog — take the first group
   // (silent store write during render, same old S-write semantics without bump; condition converges, cannot retrigger)
-  if (!mpRolesView && (!selectedProvider || !groups.has(selectedProvider))) {
+  if (!mpRolesView && !mpCycleView && (!selectedProvider || !groups.has(selectedProvider))) {
     selectedProvider = groups.keys().next().value ?? null;
     useAppStore.setState({ selectedProvider });
   }
@@ -748,7 +914,7 @@ export default function ModelPage() {
   useEffect(() => {
     if (!mpAddView) setBump({ mpManualView: false });
   }, [mpAddView]);
-  const showProvDetail = !mpAddView && !mpRolesView && groups.size > 0;
+  const showProvDetail = !mpAddView && !mpRolesView && !mpCycleView && groups.size > 0;
   // Provider quota: hits the host-side 60s cache; re-query on entering detail / switching provider
   useEffect(() => {
     if (showProvDetail && sel) send({ type: "get_provider_limits", provider: sel });
@@ -775,7 +941,7 @@ export default function ModelPage() {
           className="add-btn"
           type="button"
           onClick={() => {
-            setBump({ mpAddView: true, mpRolesView: false });
+            setBump({ mpAddView: true, mpRolesView: false, mpCycleView: false });
             // Fetch latest credential counts when entering the add view so the "configured" display converges right after logout
             send({ type: "get_all_providers" });
           }}
@@ -789,21 +955,31 @@ export default function ModelPage() {
           <div
             className={"pv" + (mpRolesView ? " on" : "")}
             onClick={() => {
-              setBump({ mpAddView: false, mpRolesView: true });
+              setBump({ mpAddView: false, mpRolesView: true, mpCycleView: false });
               send({ type: "get_model_roles" });
             }}
           >
             <span className="pv-ic"><Icon name="sliders" size={14} /></span>
             <span className="flex-1 min-w-0 truncate font-semibold">{t("settingsPage.model.roleEntry")}</span>
           </div>
+          {/* Ctrl+P quick-switch cycle order, a subpage right under the model roles */}
+          <div
+            className={"pv" + (mpCycleView ? " on" : "")}
+            onClick={() => {
+              setBump({ mpAddView: false, mpRolesView: false, mpCycleView: true });
+            }}
+          >
+            <span className="pv-ic"><Icon name="command" size={14} /></span>
+            <span className="flex-1 min-w-0 truncate font-semibold">{t("settingsPage.model.cycleEntry")}</span>
+          </div>
           <div className="pd-div mp-div" />
           <div className="set-sec mp-grp">{t("settingsPage.model.groupAuthenticated")}</div>
           {credEntries.map(([prov, ms]) => (
             <div
-              className={"pv" + (!mpRolesView && prov === sel ? " on" : "")}
+              className={"pv" + (!mpRolesView && !mpCycleView && prov === sel ? " on" : "")}
               key={prov}
               onClick={() => {
-                setBump({ mpAddView: false, mpRolesView: false, selectedProvider: prov });
+                setBump({ mpAddView: false, mpRolesView: false, mpCycleView: false, selectedProvider: prov });
               }}
             >
               <span className="pv-ic">{provIc[prov] || "✦"}</span>
@@ -815,10 +991,10 @@ export default function ModelPage() {
           {configEntries.length > 0 ? <div className="set-sec mp-grp">{t("settingsPage.model.groupConfigFile")}</div> : null}
           {configEntries.map(([prov, ms]) => (
             <div
-              className={"pv" + (!mpRolesView && prov === sel ? " on" : "")}
+              className={"pv" + (!mpRolesView && !mpCycleView && prov === sel ? " on" : "")}
               key={prov}
               onClick={() => {
-                setBump({ mpAddView: false, mpRolesView: false, selectedProvider: prov });
+                setBump({ mpAddView: false, mpRolesView: false, mpCycleView: false, selectedProvider: prov });
               }}
             >
               <span className="pv-ic">{provIc[prov] || "✦"}</span>
@@ -835,6 +1011,8 @@ export default function ModelPage() {
             mpDetailProv ? <ProviderDetailView /> : mpManualView ? <ModelProviderWizard /> : <AddProviderView />
           ) : mpRolesView ? (
             <RolesView />
+          ) : mpCycleView ? (
+            <CycleView />
           ) : showProvDetail ? (
             // sel is guaranteed chosen under protocol data (this branch exists only when groups is non-empty), the ! assertion passes it through like the original
             <ProviderModelsView prov={sel!} models={models} />

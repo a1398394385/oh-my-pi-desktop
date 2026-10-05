@@ -8,7 +8,7 @@
 ## 项目架构
 
 1. **Tauri 桌面外壳 (`src-tauri/`)**：
-   - 管理原生窗口、原生菜单、macOS 交通灯（titleBarStyle: Overlay, x: 16, y: 18）。
+   - 管理原生窗口、原生菜单、macOS 交通灯（titleBarStyle: Overlay, x: 16, y: 18）；系统托盘（Windows/macOS，关窗=隐藏到托盘、托盘 Quit 全量退出）+ 单实例锁（再启动聚焦已有窗口，杜绝多棵 host 进程树累积）。
    - 负责启动和管理 Bun 宿主进程（`host/host.ts`），并向前端传递 WebSocket 动态端口。
 2. **Bun 宿主进程 (`host/host.ts`)**：
    - 共享底座（authStorage / modelRegistry / settings）。

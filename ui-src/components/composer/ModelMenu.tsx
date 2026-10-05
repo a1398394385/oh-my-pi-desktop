@@ -7,12 +7,14 @@
 // child of #composer (fragment sibling slot; the old version attached to
 // composerEl to dodge .menu.model's overflow-y:auto clipping); with a session
 // it goes through the host set_model, in creating-new state it lands in
-// localStorage.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+// localStorage. The cascade interaction (hover intent / grace close / row
+// markup) lives in the shared components/ModelPicker.tsx core; this menu only
+// keeps the composer-specific placement math.
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId } from "../../store";
-import type { ModelCaps } from "../../store/session";
+import { CapBadges, useCascadeFlyout } from "../ModelPicker";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
 import type { ModelRoleEntry } from "../../types/frames";
@@ -40,19 +42,16 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const menuRef = useRef<HTMLDivElement>(null);
   const flyRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> provider row element (for flyout alignment)
-  const [flyProv, setFlyProv] = useState<string | null>(null); // provider of the current second-level flyout
-  const hideT = useRef<ReturnType<typeof setTimeout> | null>(null); // flyout close grace period
-  const switchT = useRef<ReturnType<typeof setTimeout> | null>(null); // row-switch hover intent delay
+  const { flyProv, provRowProps, flyoutProps } = useCascadeFlyout();
 
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
-  // Unmount timer cleanup; also drop ctrl+p preview state so a later
-  // auto-close timer (keys.ts) cannot close a freshly manually opened menu
+  // Unmount: drop ctrl+p preview state so a later auto-close timer (keys.ts)
+  // cannot close a freshly manually opened menu (cascade timers live in the
+  // shared useCascadeFlyout hook)
   useEffect(
     () => () => {
-      clearTimeout(hideT.current ?? undefined);
-      clearTimeout(switchT.current ?? undefined);
       if (useAppStore.getState().cyclePreview) useAppStore.setState({ cyclePreview: null });
     },
     [],
@@ -167,20 +166,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             <div
               className={"mi prov" + (ROLE_SECTION_KEY === flyProv ? " on" : "")}
               ref={(el) => { if (el) rowRefs.current.set(ROLE_SECTION_KEY, el); else rowRefs.current.delete(ROLE_SECTION_KEY); }}
-              // Same hover-intent / click toggle semantics as the provider rows below
-              onMouseEnter={() => {
-                clearTimeout(hideT.current ?? undefined);
-                if (ROLE_SECTION_KEY === flyProv) return;
-                clearTimeout(switchT.current ?? undefined);
-                switchT.current = setTimeout(() => setFlyProv(ROLE_SECTION_KEY), 180);
-              }}
-              onMouseLeave={() => clearTimeout(switchT.current ?? undefined)}
-              onClick={(e) => {
-                e.stopPropagation();
-                clearTimeout(hideT.current ?? undefined);
-                clearTimeout(switchT.current ?? undefined);
-                setFlyProv(ROLE_SECTION_KEY === flyProv ? null : ROLE_SECTION_KEY);
-              }}
+              {...provRowProps(ROLE_SECTION_KEY)}
             >
               {t("composer.modelRoleCategory")}
               <span className="sub"><Icon name="chevronRight" size={10} /></span>
@@ -193,24 +179,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             className={"mi prov" + (prov === flyProv ? " on" : "")}
             key={prov}
             ref={(el) => { if (el) rowRefs.current.set(prov, el); else rowRefs.current.delete(prov); }}
-            // Row switch adds a 180ms hover intent delay: the pointer cutting
-            // diagonally through middle rows toward the flyout does not steal
-            // focus (the flyout's mouseenter cancels the pending switch);
-            // dwelling long enough switches the provider; clicking still
-            // expands/collapses immediately
-            onMouseEnter={() => {
-              clearTimeout(hideT.current ?? undefined);
-              if (prov === flyProv) return;
-              clearTimeout(switchT.current ?? undefined);
-              switchT.current = setTimeout(() => setFlyProv(prov), 180);
-            }}
-            onMouseLeave={() => clearTimeout(switchT.current ?? undefined)}
-            onClick={(e) => {
-              e.stopPropagation();
-              clearTimeout(hideT.current ?? undefined);
-              clearTimeout(switchT.current ?? undefined);
-              setFlyProv(prov === flyProv ? null : prov);
-            }}
+            {...provRowProps(prov)}
           >
             {prov}
             <span className="sub"><Icon name="chevronRight" size={10} /></span>
@@ -218,15 +187,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
         ))}
       </div>
       {flyProv && (
-        <div
-          className="menu flyout open"
-          ref={flyRef}
-          onMouseEnter={() => { clearTimeout(hideT.current ?? undefined); clearTimeout(switchT.current ?? undefined); }}
-          onMouseLeave={() => {
-            clearTimeout(hideT.current ?? undefined);
-            hideT.current = setTimeout(() => setFlyProv(null), 150);
-          }}
-        >
+        <div className="menu flyout open" ref={flyRef} {...flyoutProps}>
           {flyProv === ROLE_SECTION_KEY
             ? customRoles.map((role) => (
                 <div className="mi" data-role={role.id} key={role.id} onClick={() => pickRole(role)}>
@@ -244,26 +205,6 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
               ))}
         </div>
       )}
-    </>
-  );
-}
-
-// Capability badges at model-row tails (18.5 models frame axes): small text
-// chips for prompt-cache keepalive / built-in web search / image generation;
-// rendered only for axes the host actually reports
-function CapBadges({ caps }: { caps: ModelCaps | undefined }) {
-  const { t } = useTranslation();
-  if (!caps) return null;
-  const badges: string[] = [];
-  if ((caps.promptCache ?? 0) > 0) badges.push(t("compExt.capCache"));
-  if (caps.webSearch) badges.push(t("compExt.capWeb"));
-  if (caps.imageGen) badges.push(t("compExt.capImg"));
-  if (badges.length === 0) return null;
-  return (
-    <>
-      {badges.map((label) => (
-        <span className="cap-b" key={label}>{label}</span>
-      ))}
     </>
   );
 }

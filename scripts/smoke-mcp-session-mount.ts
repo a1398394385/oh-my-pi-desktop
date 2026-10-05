@@ -5,13 +5,13 @@
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-mcp-session-mount.ts
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 const profile = process.env.OMP_PROFILE || "omp-desktop-test";
 const agentDir = path.join(homedir(), ".omp/profiles", profile, "agent");
 const profileMcpPath = path.join(agentDir, "mcp.json");
-const workDir = path.join("/tmp", `omp-mount-smoke-${Date.now()}`);
+const workDir = path.join(tmpdir(), `omp-mount-smoke-${Date.now()}`);
 mkdirSync(path.join(workDir, "proj"), { recursive: true });
 
 const profileExisted = existsSync(profileMcpPath);
@@ -89,7 +89,7 @@ process.on("SIGINT", () => { restore(); process.exit(1); });
 process.on("SIGTERM", () => { restore(); process.exit(1); });
 
 child = spawn("bun", ["host/host.ts"], {
-  cwd: new URL("..", import.meta.url).pathname,
+  cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
   env: { ...process.env, OMP_PROFILE: profile },
   stdio: ["ignore", "pipe", "inherit"],
 });

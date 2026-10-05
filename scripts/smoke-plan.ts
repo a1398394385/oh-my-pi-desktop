@@ -26,7 +26,7 @@ function fail(msg: string): never {
 
 function launchHost(): Promise<string> {
   child = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env },
     stdio: ["ignore", "pipe", "inherit"],
   });

@@ -41,6 +41,7 @@ import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { dispatchFromToolEnd, installProposalHandler, setFreshSessionFactory } from "./plan-approve.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
+import { safeStderr } from "./stderr.ts";
 
 /** keepalive_status frame body (shared by the RPC reply and the reportState push). */
 export function keepaliveStatusPayload(sessionId: string, state: KeepaliveState | undefined) {
@@ -348,6 +349,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     path: session.sessionFile,
     pollKnownSize: 0, // External-write detection: 0 = not first-scanned yet
     externalWrite: false,
+    previousPaths: [], // Persistence-move history: old file locations keep resolving to this entry (see state.ts)
     cwd,
     isGit: isGitWorktree(cwd),
     parkedFollowUp: [], // follow-up parking lot (see the type comments in state.ts)
@@ -502,7 +504,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           a.waitForIdle?.()
             .then(() => a.continue())
             .catch((err: unknown) => {
-              process.stderr.write(`[host] 排队消息续轮触发失败: ${String(err)}\n`);
+              safeStderr(`[host] 排队消息续轮触发失败: ${String(err)}\n`);
             });
         });
       }
@@ -632,7 +634,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     {
       sendMessage: (message, options) => {
         void entry.session.sendCustomMessage(message, options).catch((err: unknown) => {
-          process.stderr.write(`[host] 扩展 sendMessage 失败: ${String(err)}\n`);
+          safeStderr(`[host] 扩展 sendMessage 失败: ${String(err)}\n`);
         });
       },
       sendUserMessage: (content, options) => {
@@ -823,9 +825,14 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   // external-write detection from byte 0 — the new file is this session's
   // journal from its first line, and every id in it is known to the manager.
   const unsubPersistenceNotice = entry.manager?.onPersistenceNotice?.((notice: { from: string; to: string }) => {
+    // Keep the abandoned location resolvable to this entry: the frontend still
+    // keys the session by the path it was handed, and a path-only match would
+    // otherwise rebuild a second live session over the dead file on the next
+    // load/reload through it
+    entry.previousPaths.push(notice.from);
     entry.path = notice.to;
     entry.pollKnownSize = 0;
-    process.stderr.write(`[host] 会话文件已转移 ${notice.from} -> ${notice.to}\n`);
+    safeStderr(`[host] 会话文件已转移 ${notice.from} -> ${notice.to}\n`);
   });
   // MCP connection status → capabilities_mcp incremental frames. The manager
   // is process-global while attach is per-session: with several sessions
@@ -903,7 +910,7 @@ export async function handleCreateSession(ws: any, cwd?: string, modelStr?: stri
   // entry path as the menu toggle (persist + pushPlanMode inside)
   if (planMode) setPlanMode(ws, sessionId, entry, true);
   else pushPlanMode(ws, sessionId, entry);
-  process.stderr.write(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
+  safeStderr(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
 }
 
 // ---- Subagent history replay ----
@@ -1162,7 +1169,9 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   // (new ws, subscriptions re-attached — old subscriptions would send to a
   // closed connection and events would be lost).
   for (const [sessionId, entry] of sessions.entries()) {
-    if (entry.path !== sessionPath) continue;
+    // previousPaths: a persistence move left the frontend holding the old path —
+    // it must reuse this live entry, not fork a second session over the dead file
+    if (entry.path !== sessionPath && !(entry.previousPaths?.includes(sessionPath) ?? false)) continue;
     // The user opening/switching back to this session = seen: stop cache
     // keepalive probing (the next turn's wrap-up will set it again)
     entry.keepaliveWanted = false;
@@ -1201,7 +1210,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     // Switch-back after frontend eviction: re-mount if the previous detach
     // released the session's MCP holds (idempotent — mounted sessions return)
     void mountMcpForSession(sessionId, entry);
-    process.stderr.write(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
+    safeStderr(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
     return;
   }
   const manager = await SessionManager.open(sessionPath);
@@ -1253,7 +1262,5 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   // Restored session's subagent history: the child run files live in the sibling artifacts
   // dir; the frontend store is empty on this path, so replay the full stream
   replaySubagentHistory(ws, sessionPath, sessionId, true);
-  process.stderr.write(
-    `[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`,
-  );
+  safeStderr(`[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`);
 }

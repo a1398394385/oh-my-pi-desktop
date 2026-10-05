@@ -385,7 +385,16 @@ export default function Chat() {
         <div className="extw-bar">
           <Icon name="info" />
           <span className="extw-tx">{t("chat.externalWriteNotice")}</span>
-          <button type="button" className="save-btn" onClick={() => send({ type: "reload_session", path: activePath })}>
+          {/* While this session itself is generating, a rebuild is refused host-side (it would
+              orphan the running turn); disable it here too so the click is not a dead end.
+              The live view keeps streaming, so nothing needs reloading mid-turn. */}
+          <button
+            type="button"
+            className="save-btn"
+            disabled={!!s.streaming}
+            title={s.streaming ? t("chat.reloadRunning") : undefined}
+            onClick={() => send({ type: "reload_session", path: activePath })}
+          >
             {t("chat.reload")}
           </button>
         </div>

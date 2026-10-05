@@ -38,6 +38,7 @@ export interface SettingsSlice {
   selectedProvider: string | null;
   mpAddView: boolean;
   mpRolesView: boolean;
+  mpCycleView: boolean; // ctrl+p quick-switch cycle-order editor (left-column subpage under model roles)
   mpDetailProv: AllProviderEntry | null; // current provider on the provider detail page (written by card clicks)
   allProvidersCache: AllProviderEntry[] | null; // all_providers reply cache (add-view card grid)
   mpManualView: boolean; // manual-add wizard view (nested under mpAddView)
@@ -84,6 +85,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   selectedProvider: null,
   mpAddView: false,
   mpRolesView: false,
+  mpCycleView: false,
   mpDetailProv: null,
   allProvidersCache: null,
   loginBusy: false,

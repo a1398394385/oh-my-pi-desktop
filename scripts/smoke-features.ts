@@ -61,7 +61,7 @@ function fail(msg: string): never {
 
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env },
     stdio: ["ignore", "pipe", "inherit"],
   });
@@ -280,7 +280,7 @@ const errFrame = await waitType("error", mark).catch((e) => fail(String(e)));
 assert(String(errFrame.message).includes("会话不存在"), `未知 sessionId 归档回 error（${errFrame.message}）`);
 
 // ---- Assertion 10: read_image (png succeeds; oversized/non-image suffix errors) ----
-const iconPath = path.join(new URL("..", import.meta.url).pathname, "ui/app-icon.png");
+const iconPath = path.join(Bun.fileURLToPath(new URL("..", import.meta.url)), "ui/app-icon.png");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "read_image", path: iconPath }));
 r = await waitType("image_content", mark).catch((e) => fail(String(e)));

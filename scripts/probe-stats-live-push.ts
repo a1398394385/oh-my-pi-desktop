@@ -8,6 +8,7 @@
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/probe-stats-live-push.ts
 import { attachEntry } from "../host/session-lifecycle.ts";
 import type { PoolEntry } from "../host/state.ts";
+import os from "node:os";
 
 type Listener = (ev: Record<string, unknown>) => void;
 
@@ -64,8 +65,8 @@ const entry = {
   activeMs: 1000,
   activeStartedAt: null,
   statsPushedAt: null,
-  path: "/tmp/probe.jsonl",
-  cwd: "/tmp",
+  path: `${os.tmpdir()}/probe.jsonl`,
+  cwd: os.tmpdir(),
   isGit: false,
   queuedTexts: [],
   consumedTexts: [],

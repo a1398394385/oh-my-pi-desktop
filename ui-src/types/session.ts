@@ -189,6 +189,8 @@ export interface MentionItem {
 export interface MetaItem {
   role: "meta";
   text: string;
+  command?: string; // typed slash-command line that produced this output: renders as an expandable command card (CommandRow)
+  cmdExpanded?: boolean; // card body expand state (defaults true: a command's output is the answer the user asked for, unlike incidental bash output)
 }
 
 /** Phase separator row (items.tsx:57-65 reads text; compact/handoff/rename) */
@@ -382,6 +384,7 @@ export interface AppState {
   selectedProvider: string | null;
   mpAddView: boolean;
   mpRolesView: boolean;
+  mpCycleView: boolean; // ctrl+p quick-switch cycle-order editor (left-column subpage under model roles)
   modelRoles: ModelRoleEntry[] | null;
   mpDetailProv: AllProviderEntry | null; // current provider on the provider detail page (written by card clicks)
   allProvidersCache: AllProviderEntry[] | null;

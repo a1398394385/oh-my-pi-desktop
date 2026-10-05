@@ -13,6 +13,23 @@
 
 .cx-total { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); }
 
+/* Context-card composition row dots: a 5-step single-direction hue ramp (cyan 195° -> magenta 335°,
+   rotating one way top-to-bottom so the rows read as an ordered sequence rather than unrelated
+   categories. Only 5 steps: the eight rows form three adjacent groups sharing a step — system
+   tools/MCP tools, then system prompt/memory/skills, then the three singletons below.
+   Chroma stays in a muted 38-54% band (a fully saturated ramp reads as loud markers on a small
+   8px dot); min pairwise CIE-Lab dE76 20.7 dark / 16.4 light, and every step keeps >=2.7:1 WCAG
+   contrast against its card surface so the dot stays visible.
+   Assigned by row index in CtxCard.tsx (ROW_DOT_COLORS) — keep the two in lockstep. */
+.ring-pop {
+  --ctx-1: #79c0d7; --ctx-2: #7080d1; --ctx-3: #9167cb; --ctx-4: #c45ec4; --ctx-5: #bd5681;
+}
+/* Light theme re-derives the ramp at a darker lightness end (46% -> 38%): the dark values sit too
+   pale on a white card. Hue rotation and step order are unchanged. */
+[data-theme="light"] .ring-pop {
+  --ctx-1: #3f90ab; --ctx-2: #3f4fa2; --ctx-3: #643e98; --ctx-4: #8f3d8f; --ctx-5: #863c5b;
+}
+
 /* the header's "context" value column matches .cx-row's spec: equal-width column right-aligned + tabular numerals, so the separators line up with the rows below */
 .cx-total .cx-val { min-width: 5.5ch; color: var(--text); font-size: var(--ui-fs-base); text-align: right; font-variant-numeric: tabular-nums; }
 

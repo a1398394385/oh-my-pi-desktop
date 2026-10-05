@@ -3,6 +3,7 @@
 // prompt replies, opening models.yml. Moved over from the main.ts message
 // dispatch (third slice).
 import { Database } from "bun:sqlite";
+import { openExternal } from "../open-external.ts";
 import { getAgentDbPath } from "@oh-my-pi/pi-utils";
 import path from "node:path";
 import fs from "node:fs";
@@ -13,6 +14,7 @@ import { modelsFrame } from "../frames.ts";
 import { fetchProviderAccountsLimits } from "../limits/index.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { safeStderr } from "../stderr.ts";
 
 export const loginHandlers: Record<string, RpcHandler> = {
   async provider_login(ws, msg) {
@@ -37,11 +39,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
         onAuth: (info: { url?: string; launchUrl?: string; instructions?: string }) => {
           if (H.loginAbort?.signal.aborted) return;
           const url = info.launchUrl ?? info.url;
-          if (url) {
-            try {
-              Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
-            } catch {}
-          }
+          if (url) openExternal(url);
           reply({
             type: "login_progress",
             provider,
@@ -110,7 +108,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
       ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     } catch (err) {
-      process.stderr.write(`[host] 登出后模型目录刷新失败: ${err}\n`);
+      safeStderr(`[host] 登出后模型目录刷新失败: ${err}\n`);
     }
   },
   // ---- Per-account disable/restore (manual tombstones) ----
@@ -215,7 +213,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
     const modelsPath = path.join(H.agentDir, "models.yml");
     try {
       if (!fs.existsSync(modelsPath)) fs.writeFileSync(modelsPath, "# omp provider config; edit per the docs\n");
-      Bun.spawn(["open", modelsPath], { stdout: "ignore", stderr: "ignore" });
+      openExternal(modelsPath);
     } catch {}
     ws.send(JSON.stringify({ type: "models_config_path", path: modelsPath }));
   },
@@ -260,7 +258,7 @@ export async function refreshCatalogAndPush(ws: WsLike) {
   try {
     await H.modelRegistry.refresh();
   } catch (err) {
-    process.stderr.write(`[host] 账号变更后模型目录刷新失败: ${err}\n`);
+    safeStderr(`[host] 账号变更后模型目录刷新失败: ${err}\n`);
   }
   syncAvailableModels();
   rebuildScopedModels();
