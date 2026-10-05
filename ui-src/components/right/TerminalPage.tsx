@@ -1,8 +1,9 @@
 // Right panel terminal page: xterm.js + host real PTY (pty-bridge subprocess, over the WS
 // terminal.* channel).
-// Session lifecycle aligned with ZCode's sidePaneTerminalSessionRegistry: module-level
-// singleton, tab switches only move the DOM (scrollback and running processes survive);
-// closing the "Terminal" tab destroys the PTY via the tabs.js close hook.
+// One terminal per conversation session (keyed by session path; the host multiplexes
+// PTYs by frontend-supplied id). Session/tab switches only move the DOM (scrollback
+// and running processes survive); closing the "Terminal" tab or deleting the session
+// destroys that session's PTY.
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -11,7 +12,7 @@ import type { TerminalFrame } from "../../store";
 import { t } from "../../i18n";
 import { registerTabCloseHook } from "./tabs";
 
-// Right-panel tab-level persistentKey: only one terminal tab exists; the session is reused under this key
+// Right-panel tab-level persistentKey prefix; per-session ids are `key:<sessionPath>`
 const PERSIST_KEY = "right-terminal";
 
 // Terminal font stack (same idea as ZCode's DEFAULT_TERMINAL_FONT_FAMILY: monospace + Nerd Font fallback)
@@ -49,15 +50,20 @@ function buildTheme() {
   };
 }
 
-// ---------- Module-level session singleton ----------
-// Terminal frames use the store's TerminalFrame discriminated union (terminal_created/data/exit)
+// ---------- Per-session terminals ----------
+// Each session owns an independent PTY keyed by its session path (the host already
+// multiplexes PTYs by frontend-supplied id). Switching sessions only moves DOM;
+// closing the terminal tab or deleting the session destroys that session's PTY.
+// Detached terminals of background sessions keep running (long commands survive
+// a switch); they die with the app via the host's WS-disconnect cleanup.
 
-// Session singleton shape (field semantics per the comment list above)
+// TermSession shape (fields per the comment list above)
 interface TermSession {
   term: Terminal;
   fit: FitAddon;
   hostEl: HTMLDivElement;
-  id: string | null;
+  id: string; // frontend-generated, unique per session path
+  ready: boolean; // terminal_created received (PTY accepts writes)
   dead: boolean;
   detached: boolean;
   lastDims: string;
@@ -68,49 +74,31 @@ interface TermSession {
   rafTimer: number | null;
 }
 
-let session: TermSession | null = null;
+const sessions = new Map<string, TermSession>(); // session path (or "welcome") -> terminal
 
-function fitAndResize() {
-  if (!session) return;
-  const { term, fit } = session;
+/** Terminal id sent to the host: unique per session path. */
+const termIdFor = (key: string) => `${PERSIST_KEY}:${key}`;
+
+function fitAndResize(own: TermSession) {
+  const { term, fit } = own;
   try { fit.fit(); } catch { return; }
   const dims = term.cols + "x" + term.rows;
-  if (dims !== session.lastDims) {
-    session.lastDims = dims;
+  if (dims !== own.lastDims) {
+    own.lastDims = dims;
     // PTY ready → send resize; when not ready the create frame carries the first-frame size, no top-up needed here
-    if (session.id && !session.dead) send({ type: "terminal_resize", id: session.id, cols: term.cols, rows: term.rows });
+    if (own.ready && !own.dead) send({ type: "terminal_resize", id: own.id, cols: term.cols, rows: term.rows });
   }
 }
 
-function scheduleFit() {
-  if (!session || session.rafTimer) return;
-  session.rafTimer = requestAnimationFrame(() => {
-    session!.rafTimer = null; // assertion: same as the original — throws as-is if the singleton was disposed (in practice the RAF fires first within the lifetime)
-    fitAndResize();
+function scheduleFit(own: TermSession) {
+  if (own.rafTimer) return;
+  own.rafTimer = requestAnimationFrame(() => {
+    own.rafTimer = null;
+    fitAndResize(own);
   });
 }
 
-// Subscribe to PTY data frames (mounted once at session creation; the subscription lives with the singleton)
-function bindFrameChannel() {
-  session!.unsubFrame = onTerminalFrame((frame: TerminalFrame) => { // assertion: only called after ensureSession builds the singleton, non-null
-    if (!session || frame.id !== session.id) return;
-    if (frame.type === "terminal_data") {
-      session.term.write(frame.data);
-    } else if (frame.type === "terminal_exit") {
-      session.dead = true;
-      session.term.write(`\r\n\x1b[90m${t("right.procExited", { code: frame.code })}\x1b[0m\r\n`);
-    }
-  });
-}
-
-function ensureSession(container: HTMLElement) {
-  if (session) {
-    // Reuse: move the DOM back into the new container (scrollback and processes survive)
-    container.appendChild(session.hostEl);
-    session.detached = false;
-    scheduleFit();
-    return;
-  }
+function createTermSession(key: string, container: HTMLElement): TermSession {
   const customFont = useAppStore.getState().uiPrefs.terminalFont?.trim();
   const term = new Terminal({
     fontSize: 13,
@@ -128,20 +116,36 @@ function ensureSession(container: HTMLElement) {
   term.open(hostEl);
   fit.fit(); // synchronous first fit: the create frame carries the correct size, avoiding a startup-output/resize race
 
-  session = {
+  const own: TermSession = {
     term, fit, hostEl,
-    id: null, dead: false, detached: false,
+    id: termIdFor(key), ready: false, dead: false, detached: false,
     lastDims: term.cols + "x" + term.rows,
     pendingWrites: [],
     unsubFrame: null, ro: null, mo: null, rafTimer: null,
   };
-  bindFrameChannel();
+
+  // PTY frames are routed by id: each session's subscription only consumes its own
+  // created/data/exit frames (created = PTY ready, flush buffered input)
+  own.unsubFrame = onTerminalFrame((frame: TerminalFrame) => {
+    if (frame.id !== own.id) return;
+    if (frame.type === "terminal_created") {
+      own.ready = true;
+      if (own.pendingWrites.length) {
+        for (const d of own.pendingWrites) send({ type: "terminal_write", id: own.id, data: d });
+        own.pendingWrites.length = 0;
+      }
+    } else if (frame.type === "terminal_data") {
+      own.term.write(frame.data);
+    } else if (frame.type === "terminal_exit") {
+      own.dead = true;
+      own.term.write(`\r\n\x1b[90m${t("right.procExited", { code: frame.code })}\x1b[0m\r\n`);
+    }
+  });
 
   // User input -> PTY (buffered until the PTY is ready; flushed at once after create)
   term.onData((data) => {
-    // assertion: onData is registered while the singleton lives, so session is non-null when the callback fires (same as the original)
-    if (session!.id && !session!.dead) send({ type: "terminal_write", id: session!.id, data });
-    else session!.pendingWrites.push(data);
+    if (own.ready && !own.dead) send({ type: "terminal_write", id: own.id, data });
+    else own.pendingWrites.push(data);
   });
 
   // Clipboard: ⌘/Ctrl+C copies when there's a selection; ⌘/Ctrl+V pastes manually (prevents double writes)
@@ -161,15 +165,14 @@ function ensureSession(container: HTMLElement) {
   });
 
   // Container size change -> fit -> resize frame (RAF-coalesced; dragging the width doesn't thrash)
-  session.ro = new ResizeObserver(scheduleFit);
-  session.ro.observe(container);
+  own.ro = new ResizeObserver(() => scheduleFit(own));
+  own.ro.observe(container);
 
-  // Theme hot-reload: follows data-theme switches (same idea as ZCode's MutationObserver)
-  session.mo = new MutationObserver(() => {
-    if (!session) return;
-    session.term.options.theme = buildTheme();
+  // Theme hot-reload: follows data-theme switches (same idea as Zcode's MutationObserver)
+  own.mo = new MutationObserver(() => {
+    own.term.options.theme = buildTheme();
   });
-  session.mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  own.mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   // Start the PTY: cwd takes the current active session's project directory, falling
   // back to the primary project (getAvailableProjects()[0], same convention as new-session
@@ -181,56 +184,65 @@ function ensureSession(container: HTMLElement) {
   const inherit = st.uiPrefs.terminalInheritProfile !== false;
   send({
     type: "terminal_create",
-    id: PERSIST_KEY,
+    id: own.id,
     cwd: s?.cwd || st.getAvailableProjects()[0]?.cwd || "",
     cols: term.cols,
     rows: term.rows,
     inheritProfile: inherit,
   });
+  return own;
 }
 
-// Component unmount only moves the DOM away to keep it alive; real destruction goes through the tab close hook
-function detachSession() {
-  if (!session || session.detached) return;
-  session.detached = true;
-  session.hostEl.remove();
-}
-
-// Destroy: triggered by the tabs.js hook when the "Terminal" tab closes (PTY process reclaimed too)
-function disposeSession() {
-  if (!session) return;
-  const st = session;
-  session = null;
-  if (st.id && !st.dead) send({ type: "terminal_dispose", id: st.id });
-  st.unsubFrame?.();
-  st.ro?.disconnect();
-  st.mo?.disconnect();
-  if (st.rafTimer) cancelAnimationFrame(st.rafTimer);
-  try { st.term.dispose(); } catch {}
-  st.hostEl.remove();
-}
-
-registerTabCloseHook("terminal", disposeSession);
-
-// PTY-ready reply (terminal_created routed via the terminal frame bus bypass, see store.onMessage):
-// record the session id, flush user input buffered during session creation
-onTerminalFrame((frame: TerminalFrame) => {
-  if (frame.type === "terminal_created" && session && !session.id) {
-    session.id = frame.id;
-    if (session.pendingWrites.length) {
-      for (const d of session.pendingWrites) send({ type: "terminal_write", id: frame.id, data: d });
-      session.pendingWrites.length = 0;
-    }
+function ensureSession(container: HTMLElement, key: string) {
+  const existing = sessions.get(key);
+  if (existing) {
+    // Reuse: move the DOM back into the new container (scrollback and processes survive)
+    container.appendChild(existing.hostEl);
+    existing.detached = false;
+    scheduleFit(existing);
+    return;
   }
+  sessions.set(key, createTermSession(key, container));
+}
+
+// Component unmount only moves the DOM away to keep it alive; real destruction goes
+// through the tab close hook or disposeSessionFor
+function detachSession(key: string) {
+  const own = sessions.get(key);
+  if (!own || own.detached) return;
+  own.detached = true;
+  own.hostEl.remove();
+}
+
+/** Destroy the terminal owned by session `key` (tab close / session delete; PTY process reclaimed too). */
+export function disposeSessionFor(key: string) {
+  const own = sessions.get(key);
+  if (!own) return;
+  sessions.delete(key);
+  if (!own.dead) send({ type: "terminal_dispose", id: own.id });
+  own.unsubFrame?.();
+  own.ro?.disconnect();
+  own.mo?.disconnect();
+  if (own.rafTimer) cancelAnimationFrame(own.rafTimer);
+  try { own.term.dispose(); } catch {}
+  own.hostEl.remove();
+}
+
+registerTabCloseHook("terminal", () => {
+  // The close button is clicked in the current session's right panel context
+  disposeSessionFor(useAppStore.getState().activePath || "welcome");
 });
 
 export default function TerminalPage() {
   const ref = useRef<HTMLDivElement | null>(null);
+  // Terminal identity follows the active session: switching sessions swaps the
+  // attached PTY (each session keeps its own scrollback and running processes)
+  const key = useAppStore((st) => st.activePath || "welcome");
   useEffect(() => {
     const el = ref.current;
-    if (el) ensureSession(el);
-    return () => detachSession();
-  }, []);
+    if (el) ensureSession(el, key);
+    return () => detachSession(key);
+  }, [key]);
   return (
     <div className="tpane">
       <div className="tpane-host-wrap" ref={ref} />

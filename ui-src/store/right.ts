@@ -111,22 +111,52 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
 });
 
 // ---------- Per-session right panel snapshots: save outgoing / restore incoming on switch ----------
-// Right panel tab layout is remembered per session. Snapshots are in-memory only
-// (app lifetime, not persisted across restarts).
+// Right panel tab layout is remembered per session. Snapshots are persisted to
+// localStorage so they survive app restarts (key: omp-right-snapshots, LRU order
+// encoded as insertion order via array of [path, snapshot] pairs).
 
-/** Per-session snapshot: tab layout + gitdiff file selection + file page detail state */
+/** Per-session snapshot: tab layout + collapsed state + gitdiff file selection + file page detail state */
 interface RightPanelSnapshot {
   rightTabs: string[];
   rightTab: string | null;
   rightRecentClosed: { name: string; at: number }[];
   selectedFile: string | null;
   fileView: FileViewState | null;
+  rightCollapsed: boolean; // panel expand/collapse follows the session too
 }
 
 /** Snapshot table cap (per session count). openSessions LRU cap is 8; snapshots can
  *  outlive evicted sessions, so cap the table to prevent unbounded growth. */
 const RIGHT_SNAPSHOT_MAX = 32;
-const rightSnapshots = new Map<string, RightPanelSnapshot>(); // insertion order = LRU order; restore re-inserts to touch
+const RIGHT_SNAPSHOT_STORAGE_KEY = "omp-right-snapshots";
+
+/** Restore persisted snapshots on module load; corrupted data is dropped wholesale. */
+function loadRightSnapshots(): Map<string, RightPanelSnapshot> {
+  try {
+    const raw = localStorage.getItem(RIGHT_SNAPSHOT_STORAGE_KEY);
+    if (!raw) return new Map();
+    const pairs = JSON.parse(raw) as [string, RightPanelSnapshot][];
+    // Backfill for entries persisted before rightCollapsed joined the snapshot
+    // (undefined must not leak into setState; collapsed is the safe default)
+    for (const [, snap] of pairs) if (snap.rightCollapsed === undefined) snap.rightCollapsed = true;
+    return new Map(pairs);
+  } catch {
+    return new Map();
+  }
+}
+
+const rightSnapshots = loadRightSnapshots(); // insertion order = LRU order; restore re-inserts to touch
+
+/** Serialize the snapshot table to localStorage (a few KB at most, written on
+ *  save/restore/clear — i.e. once per session switch, never per keystroke). */
+function persistRightSnapshots(): void {
+  try {
+    localStorage.setItem(RIGHT_SNAPSHOT_STORAGE_KEY, JSON.stringify([...rightSnapshots]));
+  } catch {
+    // Quota failures (extremely unlikely at this size) just lose persistence,
+    // in-memory behavior is unaffected.
+  }
+}
 
 /** Save the right panel snapshot for session `path` (call before activePath switches away; null = no session, skip) */
 export function saveRightSnapshot(path: string | null): void {
@@ -141,10 +171,12 @@ export function saveRightSnapshot(path: string | null): void {
     // Skip half-loaded views (empty text would restore stuck in loading) and image views
     // (they depend on the global imageContent frame) — neither is snapshotted
     fileView: st.fileViewPending || st.fileView?.image ? null : st.fileView,
+    rightCollapsed: st.rightCollapsed,
   });
   while (rightSnapshots.size > RIGHT_SNAPSHOT_MAX) {
     rightSnapshots.delete(rightSnapshots.keys().next().value as string);
   }
+  persistRightSnapshots();
 }
 
 /** Restore the right panel for session `path` (call after activateSession switches in).
@@ -157,6 +189,7 @@ export function restoreRightPanel(path: string): void {
   if (snap) {
     rightSnapshots.delete(path);
     rightSnapshots.set(path, snap); // LRU touch
+    persistRightSnapshots();
   }
   useAppStore.setState(
     snap ?? {
@@ -172,4 +205,5 @@ export function restoreRightPanel(path: string): void {
 /** Clear all snapshots (profile switch = different session universe, paths no longer trustworthy) */
 export function clearRightSnapshots(): void {
   rightSnapshots.clear();
+  persistRightSnapshots();
 }

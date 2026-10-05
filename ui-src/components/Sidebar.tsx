@@ -14,6 +14,7 @@ import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
   getAvailableProjects, openSettings, pathBase,
 } from "../store";
+import { disposeSessionFor } from "./right/TerminalPage";
 import Icon from "../Icon";
 import SessionRow from "./sidebar/SessionRow";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./sidebar/SessionRow";
@@ -155,6 +156,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       danger: true,
       onConfirm: () => {
         send({ type: "delete_session", path: s.path });
+        // The deleted session's terminal PTY must die with it (prevents orphan shells)
+        disposeSessionFor(s.path);
         const st = useAppStore.getState();
         if (st.activePath === s.path) {
           // openSessions container swapped to a fresh reference (silent write; re-render handled by showWelcomeScreen's _v bump)
