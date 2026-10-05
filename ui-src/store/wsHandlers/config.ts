@@ -50,6 +50,11 @@ export const configHandlers = {
   },
   capability_keys(msg) {
     useAppStore.setState({ capabilityKeys: msg.keys ?? [] });
+    // A key save/clear can flip an engine's availability — refetch so the web-search picker filters on fresh data
+    useAppStore.getState().send({ type: "get_search_availability" });
+  },
+  search_availability(msg) {
+    useAppStore.setState({ searchAvailability: msg.availability ?? {} });
   },
   settings(msg) {
     // Same ordering as the ready handler: file-first reconcile, then the host overlay

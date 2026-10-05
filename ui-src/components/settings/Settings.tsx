@@ -51,6 +51,7 @@ const NAV_SECTIONS = [
       { id: "pg-general", icon: "sliders", label: "settingsPage.nav.general" },
       { id: "pg-appearance", icon: "palette", label: "settingsPage.nav.appearance" },
       { id: "pg-model", icon: "box", label: "settingsPage.nav.model" },
+      { id: "pg-capabilities", icon: "bulb", label: "settingsPage.nav.capabilities" },
       { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
       { id: "pg-keyboard", icon: "keyboard", label: "settingsPage.nav.keyboard" },
     ],
@@ -72,7 +73,6 @@ const NAV_SECTIONS = [
     items: [
       { id: "pg-model-behavior", icon: "think", label: "settingsPage.nav.modelBehavior" },
       { id: "pg-providers", icon: "cloud", label: "settingsPage.nav.providers" },
-      { id: "pg-capabilities", icon: "search", label: "settingsPage.nav.capabilities" },
       { id: "pg-interaction", icon: "comment", label: "settingsPage.nav.interaction" },
       { id: "pg-context", icon: "folderOpen", label: "settingsPage.nav.context" },
       { id: "pg-files", icon: "file", label: "settingsPage.nav.files" },

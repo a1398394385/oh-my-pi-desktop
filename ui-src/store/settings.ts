@@ -34,6 +34,7 @@ export interface SettingsSlice {
   modelCatalog: ModelCatalogEntry[];
   modelRoles: ModelRoleEntry[] | null;
   capabilityKeys: CapabilityKeyEntry[] | null;
+  searchAvailability: Record<string, boolean> | null; // get_search_availability reply (null = not fetched yet); keys are catalog ids "web/<engine>"
   selectedProvider: string | null;
   mpAddView: boolean;
   mpRolesView: boolean;
@@ -79,6 +80,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   modelCatalog: [],
   modelRoles: null,
   capabilityKeys: null,
+  searchAvailability: null,
   selectedProvider: null,
   mpAddView: false,
   mpRolesView: false,
@@ -126,6 +128,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
     get().send({ type: "get_settings" });
     get().send({ type: "get_models_catalog" });
     get().send({ type: "get_capability_keys" });
+    get().send({ type: "get_search_availability" });
     get().send({ type: "list_agent_assets" });
     get().send({ type: "get_usage_stats" });
   },

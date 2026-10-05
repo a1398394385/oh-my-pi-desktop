@@ -469,9 +469,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
     clearDraft();
     ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
-    // Sidebar time = user-message time: stamp the list row now (steer/queued sends count too);
-    // the runEnd session_list refresh later carries the authoritative end time
-    useAppStore.getState().bumpSessionActivity(s.sessionId);
+    // Sidebar time = user-message time: stamp the list row now (steer/queued sends count
+    // too); the runEnd session_list refresh later carries the authoritative end time.
+    // Match by path (activePath = this session's file path): the pool sessionId is a
+    // per-open UUID and never equals the list row's disk session id
+    useAppStore.getState().bumpSessionActivity(activePath!);
     // Pin-to-bottom following is handled by Chat's scroll effect
   };
 

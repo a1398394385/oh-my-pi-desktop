@@ -515,9 +515,12 @@ svg { vertical-align: middle; }
 .menu.mode .mi.off:hover { background: none; }
 
 /* Model menu (two-level cascade: top-level provider rows, second-level model flyout).
-   Container aligned with ZCode dropdown-menu: rounded-lg(8px) + p-1(4px); row gap 5px as required */
+   Container aligned with ZCode dropdown-menu: rounded-lg(8px) + p-1(4px); row gap 5px as required.
+   overscroll-behavior: contain — wheeling past the list's edge must not chain to the settings
+   page scroll container, or the open menu rides its trigger out of view ("escapes upward"). */
 .menu.model {
   min-width: 200px; max-height: 320px; overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 5px;
   border-radius: 8px; padding: 4px;
 }
@@ -552,6 +555,7 @@ svg { vertical-align: middle; }
   bottom: auto;
   width: max-content;
   min-width: 128px; max-height: 320px; overflow-y: auto;
+  overscroll-behavior: contain;
   z-index: 501;
 }
 

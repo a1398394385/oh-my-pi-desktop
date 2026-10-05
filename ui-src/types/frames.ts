@@ -164,6 +164,15 @@ export interface CapabilityKeysFrame {
   builtin: boolean;
 }
 
+/** Search engine availability frame (host get_search_availability): per catalog id
+ * ("web/<engine>") whether the engine is selectable now — the base's explicit-availability
+ * predicate (key configured / free public engine / local instance). Drives the flat
+ * candidate list of the special-features web-search picker; null in the store = not fetched. */
+export interface SearchAvailabilityFrame {
+  type: "search_availability";
+  availability: Record<string, boolean>;
+}
+
 /** Provider list entry (host/host.ts:1661-1684: {id,label} from listAllProviders + login/accounts) */
 export interface AllProviderEntry {
   id: string;
@@ -1607,6 +1616,7 @@ export type HostFrame =
   | ProviderModelsSavedFrame
   | ModelRolesFrame
   | CapabilityKeysFrame
+  | SearchAvailabilityFrame
   | UsageStatsFrame
   | AgentAssetsFrame
   | ExtensionsFrame

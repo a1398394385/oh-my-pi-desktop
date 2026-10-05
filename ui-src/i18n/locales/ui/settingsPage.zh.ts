@@ -21,7 +21,7 @@ export const settingsPageZh = {
     hooks: "钩子",
     modelBehavior: "模型行为",
     providers: "服务商",
-    capabilities: "能力后端",
+    capabilities: "特殊功能",
     interaction: "交互",
     context: "上下文",
     files: "文件",
@@ -138,10 +138,9 @@ export const settingsPageZh = {
     previewDarkTag: "深色",
     previewActive: "当前生效",
   },
-  // ---- Capability backends page (CapabilityPage.tsx) ----
+  // ---- Special features page (CapabilityPage.tsx) ----
   cap: {
-    desc: "非对话类能力的专用模型与后端密钥：网络搜索、语音合成、语音听写、智能判定、图像生成。",
-    keysTitle: "搜索引擎 API Key",
+    desc: "为聊天之外的特殊功能指定专属模型与引擎密钥：网络搜索、语音合成、语音听写、智能判定、图像生成。",
     keysDesc: "按引擎粘贴 API Key；也可用环境变量配置（无需在此保存）。未配置的引擎仅在选择后仍可回退到内置链。",
     keyConfigured: "密钥已配置（存储凭证或环境变量）",
     keyMissing: "未配置。需要 {{env}} 环境变量，或在此粘贴 API Key",
@@ -150,7 +149,7 @@ export const settingsPageZh = {
     keyPlaceholder: "粘贴 API Key",
     web: {
       title: "网络搜索",
-      desc: "web_search 工具使用的搜索后端（search 类模型或带联网能力的对话模型）；不设置则走内置优先链（默认公共搜索）",
+      desc: "web_search 工具使用的搜索后端（下拉里只列已配置密钥 / 免费 / 本地的搜索引擎）；不设置则走内置优先链（默认公共搜索）",
     },
     speech: {
       title: "语音合成",

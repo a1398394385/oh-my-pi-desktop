@@ -1,22 +1,95 @@
-// Settings · Capability backends page: the five model-kind roles (web search / speech /
+// Settings · Special features page: the five model-kind roles (web search / speech /
 // dictation / judge / image) plus their engine API keys. Split out of the Model page on
 // purpose — the provider grid there lists text-LLM vendors only, so non-chat runners
 // (search engines, the TypeSafe judge backend) are configured here instead.
-// Rows reuse the RolesView language (.srow.mp-role-row, hover disabled) and the provider
-// detail key-input language (.pd-key-row + .inp + .save-btn).
-import { useEffect, useState } from "react";
+// Page chrome follows the shared settings group idiom (.set-group-tt heading above one
+// .set-card, same as the extensions/memory pages); rows use the canonical settings-card row
+// language (.srow.set-row: standard geometry, row hover off, ctl right-aligned) and the
+// engine keys reuse the provider-detail key-input language (.pd-key-row + .inp + .save-btn).
+// Search-related schema settings render their own titled group via SchemaRows (kept outside
+// the cards, never nested).
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
-import { RolePicker, type CatalogModel, type ModelRole } from "../RolePicker";
+import { RolePicker, roleSelLabel, type CatalogModel, type ModelRole } from "../RolePicker";
 import type { CapabilityKeyEntry } from "../../../types/frames";
 
-// One kind-role row: name + tag + blurb on the left, the kind-filtered picker on the right
-function CapabilityRoleRow({ role, allModels, desc }: { role: ModelRole; allModels: CatalogModel[]; desc: string }) {
+// Flat single-level picker for the WEB role: lists the usable search engines directly (no
+// provider cascade). Usability comes from the host's search_availability frame — the base's
+// explicit-availability predicate per engine (key configured / free public engine / local
+// instance); until the reply lands, every search-kind model renders unfiltered. A current
+// value that is not an available engine (e.g. a grounding chat model hand-set in settings)
+// is appended so it stays visible and can be switched away from.
+function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: CatalogModel[] }) {
+  const { t } = useTranslation();
+  const availability = useAppStore((s) => s.searchAvailability);
+  const [open, setOpen] = useState(false);
+  const selRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside the selector (same contract as the cascade picker)
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!selRef.current?.contains(e.target as Node | null)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const engines = allModels.filter((m) => (m.kind ?? "chat") === "search" && (availability ? availability[m.id] !== false : true));
+  const currentId = role.value ?? null;
+  const current = currentId ? allModels.find((m) => m.id === currentId) : undefined;
+  const items: { id: string | null; label: string }[] = [
+    { id: null, label: t("settingsPage.model.roleDefault") },
+    ...engines.map((m) => ({ id: m.id as string | null, label: m.name })),
+  ];
+  if (current && !engines.some((m) => m.id === current.id)) items.push({ id: current.id, label: current.name });
+
+  const pick = (id: string | null) => {
+    if ((role.value ?? null) !== id) send({ type: "set_model_role", role: role.id, value: id });
+    setOpen(false);
+  };
+
   return (
-    <div className="srow mp-role-row">
+    <div
+      className="sel mp-role-sel"
+      role="button"
+      ref={selRef}
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen((v) => !v);
+      }}
+    >
+      <span>{roleSelLabel(role)}</span>
+      <span className="caret-svg"><Icon name="caret" size={14} /></span>
+      {open && (
+        <div className="menu model mp-role-menu open">
+          {items.map((it) => (
+            <div
+              className={"mi" + (currentId === it.id ? " on" : "")}
+              key={it.id ?? "__default"}
+              onClick={(e) => {
+                e.stopPropagation();
+                pick(it.id);
+              }}
+            >
+              <span className="ck">{currentId === it.id ? "✓" : ""}</span>{it.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One kind-role row: name + tag + blurb on the left, the kind-filtered picker on the right.
+// `picker` overrides the ctl content (the WEB row swaps in the flat WebSearchSel).
+function CapabilityRoleRow({ role, allModels, desc, picker }: { role: ModelRole; allModels: CatalogModel[]; desc: string; picker?: React.ReactNode }) {
+  return (
+    <div className="srow set-row">
       <div className="srow-tx">
         <b>
           {role.name}
@@ -25,7 +98,7 @@ function CapabilityRoleRow({ role, allModels, desc }: { role: ModelRole; allMode
         <span>{desc}</span>
       </div>
       <div className="srow-ctl">
-        <RolePicker role={role} allModels={allModels} />
+        {picker ?? <RolePicker role={role} allModels={allModels} />}
       </div>
     </div>
   );
@@ -43,7 +116,7 @@ function KeyRow({ entry }: { entry: CapabilityKeyEntry }) {
     setBusy(false);
   }, [entry.configured, entry.stored]);
   return (
-    <div className="srow mp-role-row cap-key-row">
+    <div className="srow set-row">
       <div className="srow-tx">
         <b>{entry.label}</b>
         <span>
@@ -103,6 +176,23 @@ function KeyRow({ entry }: { entry: CapabilityKeyEntry }) {
   );
 }
 
+// Group chrome shared by every capability block: heading (optional hover hint) + one card
+function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <>
+      <div className="set-group-tt">
+        {title}
+        {hint ? (
+          <span className="gtt-hint" data-hint={hint}>
+            <Icon name="info" size={14} />
+          </span>
+        ) : null}
+      </div>
+      <div className="set-card">{children}</div>
+    </>
+  );
+}
+
 export default function CapabilityPage() {
   const { t } = useTranslation();
   const allModels = useAppStore((s) => s.modelCatalog);
@@ -112,74 +202,52 @@ export default function CapabilityPage() {
   const role = (id: string) => kindRoles.find((r) => r.id === id);
   const webKeys = (capabilityKeys ?? []).filter((k) => k.id !== "typesafe");
   const typesafeKey = (capabilityKeys ?? []).find((k) => k.id === "typesafe");
+  const webRole = role("web");
   return (
     <div className="set-page" id="pg-capabilities">
       <div className="set-tt">{t("settingsPage.nav.capabilities")}</div>
       <div className="set-group-desc">{t("settingsPage.cap.desc")}</div>
 
-      {role("web") && (
-        <div className="set-card">
-          <div className="mp-head">
-            <b>{t("settingsPage.cap.web.title")}</b>
-            <span className="sp" />
-            <span className="tag">{role("web")!.tag ?? "WEB"}</span>
-          </div>
-          <CapabilityRoleRow role={role("web")!} allModels={allModels} desc={t("settingsPage.cap.web.desc")} />
-          <div className="mp-head">
-            <b>{t("settingsPage.cap.keysTitle")}</b>
-          </div>
-          <div className="set-group-desc">{t("settingsPage.cap.keysDesc")}</div>
+      {webRole && (
+        <Group title={t("settingsPage.cap.web.title")} hint={t("settingsPage.cap.keysDesc")}>
+          <CapabilityRoleRow
+            role={webRole}
+            allModels={allModels}
+            desc={t("settingsPage.cap.web.desc")}
+            picker={<WebSearchSel role={webRole} allModels={allModels} />}
+          />
           {webKeys.map((k) => (
             <KeyRow entry={k} key={k.id} />
           ))}
-          <SchemaRows sections={PAGE_PLACEMENT["pg-capabilities"]} />
-        </div>
+        </Group>
       )}
 
       {role("speech") && (
-        <div className="set-card">
-          <div className="mp-head">
-            <b>{t("settingsPage.cap.speech.title")}</b>
-            <span className="sp" />
-            <span className="tag">{role("speech")!.tag ?? "SPEECH"}</span>
-          </div>
+        <Group title={t("settingsPage.cap.speech.title")}>
           <CapabilityRoleRow role={role("speech")!} allModels={allModels} desc={t("settingsPage.cap.speech.desc")} />
-        </div>
+        </Group>
       )}
 
       {role("dictation") && (
-        <div className="set-card">
-          <div className="mp-head">
-            <b>{t("settingsPage.cap.dictation.title")}</b>
-            <span className="sp" />
-            <span className="tag">{role("dictation")!.tag ?? "DICTATION"}</span>
-          </div>
+        <Group title={t("settingsPage.cap.dictation.title")}>
           <CapabilityRoleRow role={role("dictation")!} allModels={allModels} desc={t("settingsPage.cap.dictation.desc")} />
-        </div>
+        </Group>
       )}
 
       {role("judge") && (
-        <div className="set-card">
-          <div className="mp-head">
-            <b>{t("settingsPage.cap.judge.title")}</b>
-            <span className="sp" />
-            <span className="tag">{role("judge")!.tag ?? "JUDGE"}</span>
-          </div>
+        <Group title={t("settingsPage.cap.judge.title")}>
           <CapabilityRoleRow role={role("judge")!} allModels={allModels} desc={t("settingsPage.cap.judge.desc")} />
           {typesafeKey ? <KeyRow entry={typesafeKey} /> : null}
-        </div>
+        </Group>
       )}
 
       {role("image") && (
-        <div className="set-card">
-          <div className="mp-head">
-            <b>{t("settingsPage.cap.image.title")}</b>
-            <span className="sp" />
-            <span className="tag">{role("image")!.tag ?? "IMAGE"}</span>
-          </div>
+        <Group title={t("settingsPage.cap.image.title")}>
           <CapabilityRoleRow role={role("image")!} allModels={allModels} desc={t("settingsPage.cap.image.desc")} />
-        </div>
+        </Group>
       )}
+
+      <SchemaRows sections={PAGE_PLACEMENT["pg-capabilities"]} />
     </div>
   );
 }

@@ -22,6 +22,14 @@ globalThis.ResizeObserver = class {
   unobserve() {}
   disconnect() {}
 };
+globalThis.MutationObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+};
 globalThis.matchMedia = (q: string) => ({
   matches: false,
   media: q,
@@ -267,7 +275,12 @@ const pathOrder = () => Array.from(document.querySelectorAll("#sidebar .task")).
 const beforeBump = pathOrder();
 const rowBeforeBump = document.querySelector('.task[data-path="/path/to/rec1.json"]');
 ok("发送前历史会话显示旧时间（2小时）", (rowBeforeBump?.textContent || "").includes("2小时"));
-dbg.useAppStore.getState().bumpSessionActivity("test-rec-1");
+// Root-cause guard: a call with the host pool's per-open UUID (what the regression
+// originally passed) must be a no-op — row ids are disk session ids, never equal
+dbg.useAppStore.getState().bumpSessionActivity("3f2a8c1e-pool-uuid-not-a-row-id");
+await sleep(60);
+ok("按运行实例 id 调用不生效（id 与列表行永不相等）", (document.querySelector('.task[data-path="/path/to/rec1.json"]')?.textContent || "").includes("2小时"));
+dbg.useAppStore.getState().bumpSessionActivity("/path/to/rec1.json");
 await sleep(100);
 const rowAfterBump = document.querySelector('.task[data-path="/path/to/rec1.json"]');
 const afterBump = pathOrder();

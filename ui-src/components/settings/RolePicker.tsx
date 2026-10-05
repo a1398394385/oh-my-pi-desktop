@@ -1,7 +1,7 @@
 // Shared two-level cascade model picker. `ModelCascadePicker` is the generic
 // interaction (trigger .sel + provider menu + hover flyout); `RolePicker` is the
 // role-specific shell consumed by the Model page's chat-role editor (RolesView)
-// and the Capability backends page — candidate filtering mirrors the base's
+// and the Special features page — candidate filtering mirrors the base's
 // roleCandidatePool. The keepalive targets picker (ExperimentalPage) consumes the
 // generic picker directly.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";

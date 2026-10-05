@@ -5,7 +5,7 @@
 import { authPolicyFor, formatModelRoleAlias, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
 import { completeSimple } from "@oh-my-pi/pi-ai";
 import { H, sessions, enabledDefaults } from "../state.ts";
-import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS } from "../models.ts";
+import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS, searchAvailabilityPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { listAllProviders } from "../limits/index.ts";
 import { collectUsageStats } from "../stats.ts";
@@ -217,5 +217,8 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   },
   get_capability_keys(ws) {
     ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
+  },
+  async get_search_availability(ws) {
+    ws.send(JSON.stringify({ type: "search_availability", availability: await searchAvailabilityPayload() }));
   },
 };

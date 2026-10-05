@@ -23,7 +23,7 @@ export const settingsPageEn = {
     hooks: "Hooks",
     modelBehavior: "Model Behavior",
     providers: "Providers",
-    capabilities: "Capability Backends",
+    capabilities: "Special Features",
     interaction: "Interaction",
     context: "Context",
     files: "Files",
@@ -142,10 +142,9 @@ export const settingsPageEn = {
     previewDarkTag: "Dark",
     previewActive: "Active",
   },
-  // ---- Capability backends page (CapabilityPage.tsx) ----
+  // ---- Special features page (CapabilityPage.tsx) ----
   cap: {
-    desc: "Dedicated models and engine keys for non-chat capabilities: web search, speech, dictation, judgment, image generation.",
-    keysTitle: "Search engine API keys",
+    desc: "Dedicated models and engine keys for special features beyond chat: web search, speech, dictation, judgment, image generation.",
     keysDesc: "Paste a per-engine API key here, or configure the environment variable instead. Engines without a key still fall back to the built-in chain after selection.",
     keyConfigured: "Key configured (stored credential or environment variable)",
     keyMissing: "Not configured. Set the {{env}} environment variable, or paste an API key here",
@@ -154,7 +153,7 @@ export const settingsPageEn = {
     keyPlaceholder: "Paste API key",
     web: {
       title: "Web search",
-      desc: "Search backend for the web_search tool (search-kind models or chat models with grounding); unset follows the built-in priority chain (public search by default)",
+      desc: "Search backend for the web_search tool (the picker lists only usable engines: key configured / free / local); unset follows the built-in priority chain (public search by default)",
     },
     speech: {
       title: "Speech",

@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { modelKind } from "@oh-my-pi/pi-catalog/types";
 import { H, enabledDefaults } from "./state.ts";
-import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue, authPolicyFor } from "./bootstrap.ts";
+import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue, authPolicyFor, getSearchProvider } from "./bootstrap.ts";
 import { orderedSettings } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
 
@@ -264,4 +264,27 @@ export function capabilityKeysPayload() {
       stored: H.authStorage.credentials.list(id).length > 0,
     };
   });
+}
+
+// Per-engine explicit availability for the special-features web-search picker, keyed by full
+// catalog id ("web/<engine>"): each provider's isExplicitlyAvailable predicate (key configured
+// / free public engine / local instance) is the single source of truth — the UI must not
+// duplicate these checks. Loading every provider module here is deliberate: this payload is
+// requested only when the settings page opens, not at startup, preserving the search-first-use
+// lazy boundary. Unknown engines and predicate throws count as unavailable.
+export async function searchAvailabilityPayload(): Promise<Record<string, boolean>> {
+  const engines = H.allModels.filter((m) => modelKind(m) === "search");
+  const availability: Record<string, boolean> = {};
+  await Promise.all(
+    engines.map(async (m) => {
+      const id = `${m.provider}/${m.id}`;
+      try {
+        const provider = await getSearchProvider(m.id);
+        availability[id] = await Promise.resolve(provider.isExplicitlyAvailable(H.authStorage));
+      } catch {
+        availability[id] = false;
+      }
+    }),
+  );
+  return availability;
 }

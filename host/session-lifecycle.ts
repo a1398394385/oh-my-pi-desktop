@@ -315,6 +315,15 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     hasUI: true, // The approval gate's fail-cold check goes through runner.hasUI(): without it, every approval-requiring tool errors out outright in non-yolo mode
   });
   const { session } = result;
+  // Host-side runtime identity: a fresh pool UUID, deliberately NOT the disk
+  // SessionInfo.id. Two reasons (base session-manager.ts): (1) persistence is lazy — a
+  // brand-new session has no file/SessionInfo until its first assistant message, while
+  // this key must route WS frames the moment the pool entry exists; (2) the disk id is
+  // re-minted over the session's life (maintenance paths rename the file and rewrite the
+  // header id), which would orphan a disk-id-keyed pool entry. Consequence for consumers:
+  // matching a pool session against anything disk-derived (session_list rows, the
+  // frontend's openSessions map, branch/fork results) must go by `path`, never by id —
+  // the pool UUID and disk ids never coincide.
   const sessionId = crypto.randomUUID();
   const entry: PoolEntry = {
     session,

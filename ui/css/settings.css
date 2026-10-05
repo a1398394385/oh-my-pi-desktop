@@ -1232,3 +1232,14 @@
    children, so only the wrapper takes the border/padding. */
 .ext-rows { border-top: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; }
 .ext-rows > .srow { padding-left: 30px; }
+
+/* Canonical settings-card row (.set-row on top of .srow): non-clickable rows living directly
+   in a standalone .set-card. Standard .srow geometry is pinned, row hover is off (only
+   control-level affordances highlight), the ctl column right-aligns, and a .tag inside the
+   title rides the same flex line. Pages must NOT reuse context-bound row classes instead —
+   e.g. .mp-role-row is sized for the Model page's own padded .mp-r pane (2px side padding),
+   and dropping it into a standalone card makes the content hug the card edges. */
+.set-row { padding: 13px 16px; }
+.srow.set-row:hover, .set-row:hover { background: none; }
+.set-row .srow-ctl { justify-content: flex-end; }
+.set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }

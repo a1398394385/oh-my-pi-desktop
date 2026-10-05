@@ -146,6 +146,21 @@ function buildDetail(kind: string, ext: {
   return undefined;
 }
 
+// Context-file shadowing key mirroring the base capability dedupe key:
+// scope-only — "user" or "project:<depth>" — ignoring the basename, because
+// the base keys context files per scope, not per file name. Reads level/depth
+// off the raw (unsanitized) ContextFile via type guards; returns a stable
+// fallback when the raw shape is missing.
+function ctxFileShadowKey(raw: unknown): string {
+  if (raw !== null && typeof raw === "object" && "level" in raw) {
+    const level: unknown = raw.level;
+    if (level === "user") return "context-file:user";
+    const depth: unknown = "depth" in raw ? raw.depth : 0;
+    return `context-file:project:${Math.max(0, typeof depth === "number" ? depth : 0)}`;
+  }
+  return "context-file:unknown";
+}
+
 // Aggregate entry: the data frame of the list_extensions RPC. project:<cwd> sees only project-level entries; profile sees the rest.
 export async function buildExtensionsPayload(scope: unknown): Promise<ExtensionsPayload> {
   const scopeId = typeof scope === "string" && scope.startsWith("project:") ? scope : "profile";
@@ -186,7 +201,15 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
     const origin = (ext.raw as { _source?: { origin?: string } } | undefined)?._source?.origin;
     const nativeMarketplaceRoot = ext.source.provider === "claude-plugins" && origin !== undefined && origin !== "claude";
     if (!nativeMarketplaceRoot && ext.source.level === "user" && !isUserSourceEnabled(ext.source.provider)) continue;
-    const key = `${ext.kind}:${ext.name}`;
+    // Shadowing key must mirror the base capability dedupe key exactly.
+    // Most kinds are name-keyed, where the extension id (`kind:name`) already
+    // matches. Context files are the exception: the base key is scope-only —
+    // "user", or "project:<depth>" — ignoring the basename, so monorepo
+    // same-named files at different depths coexist, while same-scope files
+    // (e.g. AGENTS.md + CLAUDE.md in one directory) mutually shadow. The id
+    // (level + basename) matches neither dimension, so derive the key from
+    // the raw ContextFile's level/depth instead.
+    const key = ext.kind === "context-file" ? ctxFileShadowKey(ext.raw) : ext.id;
     if (!winnerMap.has(key)) winnerMap.set(key, ext);
   }
 
@@ -194,7 +217,7 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
     const isProject = ext.source.level === "project";
     if (cwd ? !isProject : isProject) continue;
     const raw = sanitizeRaw(ext.kind, ext.raw);
-    const winner = winnerMap.get(`${ext.kind}:${ext.name}`);
+    const winner = winnerMap.get(ext.kind === "context-file" ? ctxFileShadowKey(ext.raw) : ext.id);
     let state = ext.state;
     let disabledReason = ext.disabledReason;
     let shadowedBy = ext.shadowedBy;

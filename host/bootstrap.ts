@@ -96,6 +96,10 @@ export const { getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_ID
   "@oh-my-pi/pi-coding-agent/config/model-roles"
 );
 export const { resolveModelRoleValue } = await import("@oh-my-pi/pi-coding-agent/config/model-resolver");
+// Web-search engine table (lazy provider modules): the capability page asks each engine's
+// explicit-availability predicate (key configured / free / local) for its flat search picker.
+// Dynamic import like every SDK binding above: load-order-mandated (setProfile must precede the SDK graph).
+export const { getSearchProvider } = await import("@oh-my-pi/pi-coding-agent");
 
 // Persisted profile read at startup (the host.ts startup prologue writes state.H and performs the first applyProfile)
 export const initialProfile = savedProfile;

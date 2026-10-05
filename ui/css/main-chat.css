@@ -499,13 +499,24 @@ body:has(#right.collapsed) #right-resizer {
   align-items: center;
 }
 
+/* Icon.tsx wraps every svg in a bare carrier span; two fixes on the svg itself:
+   display:block neutralizes the global `svg { vertical-align: middle }`, which otherwise pushes
+   the icon ~1-1.5px below center inside the carrier span's line box;
+   position:relative + top:-0.5px (not negative margin: that collapses into the carrier span and
+   corrupts the flex row height) lifts the icon onto the text ink, which sits ~0.5px above the
+   line-height:1 box center of .lbl. */
 .act > svg:first-child,
-.act > .c-ic > svg,
+.act > span:first-child > svg,
 .chg-item > svg:first-child,
-.cmd > .c-ic > svg {
+.chg-item > span:first-child > svg {
   display: block;
   flex: none;
-  margin-top: -0.5px;
+  position: relative;
+  top: -0.5px;
+}
+.cmd > .c-ic > span > svg {
+  display: block;
+  flex: none;
 }
 
 .act.t2 { margin-top: 28px; }
