@@ -12,6 +12,8 @@ use std::time::Duration;
 // menu strip, duplicating the custom-drawn title bar (ui-src/components/TitleBar.tsx)
 #[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
