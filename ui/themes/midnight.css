@@ -16,6 +16,7 @@
   --panel:     var(--inset);
   --panel-2:   #556370;   /* derived: panel + 8% lighter */
   --panel-3:   var(--select);
+  --code-bg:   #394751;   /* recessed code surface */
   --surface:   rgba(255,255,255,.05);  /* floating veil (openhanako --overlay-light semantics) */
 
   /* ── Overlay layers (from openhanako) ──────────────────────────────────── */

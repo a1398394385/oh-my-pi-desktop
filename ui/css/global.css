@@ -122,7 +122,8 @@ html, body { height: 100%; }
 
 html { background: var(--base); color-scheme: dark; font-size: var(--ui-fs-base); }
 
-html[data-theme="light"] { color-scheme: light; }
+html[data-theme="light"],
+html[data-theme-mode="light"] { color-scheme: light; }
 
 body {
   background: var(--base);

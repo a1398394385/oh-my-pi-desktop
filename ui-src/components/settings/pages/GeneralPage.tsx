@@ -8,7 +8,7 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
-import { saveUiPrefs, applyAppearance } from "../../../appearance";
+import { saveUiPrefs, saveUiLocale, applyAppearance } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { invoke } from "../../../store/ws";
 import type { DesktopEnv } from "../../../types/frames";
@@ -163,7 +163,7 @@ export default function GeneralPage() {
     if (v !== "zh-CN" && v !== "en") return;
     if (v === useAppStore.getState().uiPrefs.lang) return;
     useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, lang: v } }));
-    saveUiPrefs();
+    saveUiLocale();
     void i18next.changeLanguage(v);
     send({ type: "set_locale", lang: v });
     // Rebuild the native menu with the new locale (no-op outside Tauri).

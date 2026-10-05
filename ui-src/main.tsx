@@ -9,6 +9,7 @@ import { initKeys } from "./keys";
 import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
 import { warmupHighlighter } from "./lib/highlighter";
+import { resolveTheme } from "./theme-registry";
 
 // Restore the first-frame render cache (the localStorage mirror of
 // omp-desktop.json's ui section) before React mounts — this is what keeps the
@@ -18,7 +19,7 @@ import { warmupHighlighter } from "./lib/highlighter";
 // seeds the store and shell's system-mode media listener correctly.
 {
   const savedTheme = localStorage.getItem("omp-theme");
-  applyTheme(savedTheme === "light" || savedTheme === "dark" || savedTheme === "system" ? savedTheme : "dark");
+  applyTheme(savedTheme === "system" ? "system" : resolveTheme(savedTheme));
   const savedMotion = localStorage.getItem("omp-motion");
   applyMotion(savedMotion === "on" || savedMotion === "off" ? savedMotion : "system");
 }

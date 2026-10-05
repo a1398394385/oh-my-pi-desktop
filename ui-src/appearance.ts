@@ -9,6 +9,7 @@ import { useAppStore, send } from "./store";
 import { invoke } from "./store/ws";
 import { applyTheme, applyMotion } from "./shell";
 import type { UiPrefs } from "./store/shapes";
+import { resolveTheme } from "./theme-registry";
 
 const UI_PREF_KEY = "omp-ui-settings";
 const THEME_KEY = "omp-theme";
@@ -36,6 +37,11 @@ export function saveUiPrefs(): void {
   mirrorPrefsCache(useAppStore.getState().uiPrefs);
   const { theme: _t, motion: _m, lang: _l, ...prefs } = useAppStore.getState().uiPrefs;
   send({ type: "set_ui_prefs", prefs });
+}
+
+/** Persist the locale in the first-frame cache without requesting an appearance settings ack. */
+export function saveUiLocale(): void {
+  mirrorPrefsCache(useAppStore.getState().uiPrefs);
 }
 
 // Appearance preferences -> documentElement CSS variables and dataset switches
@@ -109,8 +115,9 @@ export function applyUiConfig(cfg: unknown): void {
   // theme: file wins; cache-only value migrates up once
   // Only apply if it's a valid theme (built-in or custom theme ID from THEMES)
   if (typeof c.theme === "string" && c.theme) {
-    applyTheme(c.theme as any);
-    try { localStorage.setItem(THEME_KEY, c.theme); } catch {}
+    const theme = c.theme === "system" ? "system" : resolveTheme(c.theme);
+    applyTheme(theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
   } else {
     const cachedTheme = localStorage.getItem(THEME_KEY);
     if (cachedTheme) send({ type: "set_ui_prefs", theme: cachedTheme });
@@ -152,4 +159,3 @@ export function applyUiConfig(cfg: unknown): void {
     invoke?.("set_menu_language", { lang: loc })?.catch((err: unknown) => console.warn("set_menu_language:", err));
   }
 }
-

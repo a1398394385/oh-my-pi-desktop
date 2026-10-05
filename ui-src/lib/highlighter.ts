@@ -11,6 +11,7 @@
 import { createHighlighterCore, type HighlighterCore, type LanguageRegistration } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { pathBase } from "../store/utils";
+import { getThemeById } from "../theme-registry";
 import darkPlus from "shiki/themes/dark-plus.mjs";
 import lightPlus from "shiki/themes/light-plus.mjs";
 import nord from "shiki/themes/nord.mjs";
@@ -115,10 +116,7 @@ export function langOfPath(path: string | null | undefined): string | null {
 // App light/dark theme: shell.js writes html[data-theme]=dark|light|midnight|... (system is
 // already resolved to a concrete value). Custom themes use softer Shiki themes.
 export function currentCodeTheme(): string {
-  const theme = document.documentElement.dataset.theme;
-  if (theme === "light") return "light-plus";
-  if (theme === "midnight") return "nord";  // softer colors for midnight
-  return "dark-plus";
+  return getThemeById(document.documentElement.dataset.theme || "dark")?.shikiTheme || "dark-plus";
 }
 
 // The default export of shiki/langs/*.mjs is already a LanguageRegistration

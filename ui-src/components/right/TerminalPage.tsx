@@ -35,7 +35,7 @@ function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 function isDarkTheme() {
-  return document.documentElement.getAttribute("data-theme") !== "light";
+  return document.documentElement.getAttribute("data-theme-mode") === "dark";
 }
 function buildTheme() {
   const dark = isDarkTheme();

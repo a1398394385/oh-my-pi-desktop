@@ -5,7 +5,7 @@ export interface ThemeEntry {
   id: string;
   name: string;
   mode: 'dark' | 'light';
-  shikiTheme: 'dark-plus' | 'light-plus';
+  shikiTheme: 'dark-plus' | 'light-plus' | 'nord';
 }
 
 export const THEMES: Record<string, ThemeEntry> = {
@@ -28,7 +28,7 @@ export const THEMES: Record<string, ThemeEntry> = {
     id: 'midnight',
     name: 'Midnight (青夜)',
     mode: 'dark',
-    shikiTheme: 'dark-plus',
+    shikiTheme: 'nord',
   },
   'warm-paper': {
     id: 'warm-paper',

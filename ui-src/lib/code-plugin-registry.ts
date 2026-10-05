@@ -5,6 +5,7 @@
 // Streamdown's createCodePlugin caches the highlighter internally; switching plugins
 // is instant (no re-init cost), and switching back reuses the cached instance.
 import { createCodePlugin } from "@streamdown/code";
+import { getThemeById } from "../theme-registry";
 
 // Plugin instances: each key holds a [light, dark] theme pair
 export const CODE_PLUGINS = {
@@ -14,17 +15,8 @@ export const CODE_PLUGINS = {
 
 export type CodePluginKey = keyof typeof CODE_PLUGINS;
 
-// Theme ID -> plugin key mapping: determines which codePlugin to use for each theme.
-// Built-in themes (dark/light) use default (dark-plus); custom themes like midnight
-// use nord (softer colors).
-export const THEME_PLUGIN_MAP: Record<string, CodePluginKey> = {
-  dark: "default",
-  light: "default",
-  midnight: "nord",
-};
-
-// Resolve the active plugin key from the current theme ID (falls back to default
-// when the theme is not in the map, supporting future custom themes without migration)
+// Resolve the active plugin from the theme registry so new themes inherit their
+// declared Shiki palette without another mapping table.
 export function resolvePluginKey(themeId: string): CodePluginKey {
-  return THEME_PLUGIN_MAP[themeId] || "default";
+  return getThemeById(themeId)?.shikiTheme === "nord" ? "nord" : "default";
 }

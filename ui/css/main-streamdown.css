@@ -22,7 +22,7 @@
   position: relative;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--overlay-subtle, var(--card));
+  background: var(--code-bg, var(--overlay-subtle, var(--card)));
   box-shadow: none;
 }
 
@@ -250,7 +250,7 @@
   color: var(--sdm-c, inherit);
 }
 
-[data-theme="dark"] .md-body [data-streamdown="code-block-body"] pre span[style] {
+:is([data-theme="dark"], html[data-theme-mode="dark"]) .md-body [data-streamdown="code-block-body"] pre span[style] {
   color: var(--shiki-dark, var(--sdm-c, inherit));
 }
 
@@ -304,4 +304,3 @@
 [data-theme="midnight"] .md-body .md-streamdown-code span[style*="--shiki-dark-bg"] {
   background-color: var(--shiki-dark-bg, var(--sdm-tbg)) !important;
 }
-

@@ -11,7 +11,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { saveUiPrefs, applyAppearance, FONT_STACKS } from "../../../appearance";
 import { saveTheme, saveMotion } from "../../../shell";
-import { THEMES, type ThemeId } from "../../../theme-registry";
+import { THEMES, resolveTheme, type ThemeId } from "../../../theme-registry";
 
 // Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
 interface SelOption {
@@ -47,7 +47,7 @@ function themeLabel(themeId: string): ReactNode {
   return (
     <span className="inline-flex items-center gap-1.5">
       <Icon name={entry.mode === "light" ? "sun" : "moon"} size={14} />
-      {entry.name}
+      {ti(THEME_LABEL_KEYS[themeId] || entry.name)}
     </span>
   );
 }
@@ -61,6 +61,15 @@ const FONT_LABEL_KEYS: Record<string, string> = {
   kaiti: "settingsPage.appearance.fontKaiti",
   heiti: "settingsPage.appearance.fontHeiti",
   mono: "settingsPage.appearance.fontMono",
+};
+
+const THEME_LABEL_KEYS: Record<string, string> = {
+  dark: "settingsPage.appearance.themeDark",
+  light: "settingsPage.appearance.themeLight",
+  midnight: "settingsPage.appearance.themeMidnight",
+  "warm-paper": "settingsPage.appearance.themeWarmPaper",
+  "deep-think": "settingsPage.appearance.themeDeepThink",
+  coral: "settingsPage.appearance.themeCoral",
 };
 
 // ---------- Dropdown selector: controlled equivalent of the old wireSel ----------
@@ -120,11 +129,11 @@ export default function AppearancePage() {
   const [codeFs, setCodeFs] = useState(useAppStore.getState().uiPrefs.codeFontSize);
   const [lineNo, setLineNo] = useState(!!useAppStore.getState().uiPrefs.lineNumbers);
   const [wrap, setWrap] = useState(!!useAppStore.getState().uiPrefs.codeWrap);
-  // Preview card "currently active" tag follows the actual light/dark state (dataset.theme is the single global source of truth)
-  const [dark, setDark] = useState(document.documentElement.dataset.theme !== "light");
+  // Preview card "currently active" tag follows the actual light/dark state.
+  const [dark, setDark] = useState(document.documentElement.dataset.themeMode === "dark");
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const sync = () => setDark(document.documentElement.dataset.theme !== "light");
+    const sync = () => setDark(document.documentElement.dataset.themeMode === "dark");
     mq.addEventListener("change", sync);
     const timer = setInterval(sync, 1000); // dataset.theme changes fire no event; cheap polling as a fallback
     return () => {
@@ -134,8 +143,9 @@ export default function AppearancePage() {
   }, []);
 
   const pickTheme = (mode: string) => {
-    setTheme(mode);
-    saveTheme(mode as any);
+    const theme = mode === "system" ? "system" : resolveTheme(mode);
+    setTheme(theme);
+    saveTheme(theme);
   };
   const pickFont = (f: string) => {
     setFont(f);

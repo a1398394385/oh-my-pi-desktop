@@ -32,6 +32,10 @@
  * append new styles at the end of the matching domain file.
  * ============================================================ */
 @import "./css/global.css";
+@import "./themes/midnight.css";
+@import "./themes/coral.css";
+@import "./themes/warm-paper.css";
+@import "./themes/deep-think.css";
 @import "./css/main-shell.css";
 @import "./css/main-sidebar.css";
 @import "./css/main-chat.css";
@@ -58,4 +62,3 @@
 @import "./themes/deep-think.css";
 @import "./themes/coral.css";
 @import "./themes/warm-paper.css";
-

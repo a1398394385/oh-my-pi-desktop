@@ -9,7 +9,7 @@ import { useAppStore, send, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
 import { t } from "./i18n";
-import { THEMES, resolveTheme, type ThemeId } from "./theme-registry";
+import { THEMES, type ThemeId } from "./theme-registry";
 
 // Theme/motion modes. Persistence is file-first: omp-desktop.json's ui section
 // is the source of truth (saveTheme/saveMotion write it via the set_ui_prefs
@@ -50,11 +50,12 @@ export function applyTheme(mode: ThemeMode): void {
   // Diff viewer theme class follows the theme's mode (light vs dark)
   const themeEntry = THEMES[concreteTheme as ThemeId];
   const isDark = themeEntry ? themeEntry.mode === "dark" : concreteTheme === "dark";
+  document.documentElement.dataset.themeMode = isDark ? "dark" : "light";
   for (const h of document.querySelectorAll(".fd-holder")) {
     h.classList.toggle("d2h-dark-color-scheme", isDark);
   }
   // The settings page theme Sel's selected label is per-page component state
-  // (AppearancePage reads uiPrefs.theme); dataset.theme stays the effective-truth for previews.
+  // (AppearancePage reads uiPrefs.theme); dataset.themeMode tracks the effective mode.
 }
 
 /** User-driven theme switch: apply + persist to omp-desktop.json (+ cache mirror). */
