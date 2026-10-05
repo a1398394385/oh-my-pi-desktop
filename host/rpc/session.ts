@@ -2,6 +2,7 @@
 // compact/branch/tree navigation, plus project list add/remove/reorder.
 // Relocated from the message dispatch in main.ts (third cut).
 import fs from "node:fs";
+import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
 import { H, sessions, stampEvent } from "../state.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
@@ -26,11 +27,35 @@ export async function handleListSessions(ws: any) {
   const all = await SessionManager.listAll(); // All project directories, pinned first
   // mtime tracks non-activity writes (session_exit frames); use the last message time instead
   await applyActivityTimes(all);
-  const byProject = new Map<string, any[]>();
+  // Canonical grouping: the same directory reached through different spellings
+  // (case, separators, symlink/junction vs real path — the 2026-10 mklink
+  // incident) is ONE project row. Key = realpath+case-normalized path; the
+  // spelling shown to the UI is picked per group below. normalizePathForComparison
+  // hits the filesystem per distinct spelling, so cache within this call.
+  const normCache = new Map<string, string>();
+  const norm = (p: string) => {
+    let k = normCache.get(p);
+    if (k === undefined) normCache.set(p, (k = normalizePathForComparison(p)));
+    return k;
+  };
+  // Row shape consumed by the frame mapping below (disk SessionInfo plus the
+  // synthetic pool-fallback entries).
+  interface ListedSession {
+    id: string;
+    path: string;
+    title?: string | null;
+    firstMessage?: string;
+    modified: Date;
+    messageCount?: number;
+    cwd?: string;
+  }
+  const NO_CWD_KEY = "\0nocwd"; // sentinel: sessions without a cwd never merge into a real project
+  const groups = new Map<string, ListedSession[]>();
   for (const s of all) {
-    const list = byProject.get(s.cwd) ?? [];
+    const key = s.cwd ? norm(s.cwd) : NO_CWD_KEY;
+    const list = groups.get(key) ?? [];
     list.push(s);
-    byProject.set(s.cwd, list);
+    groups.set(key, list);
   }
   // In-memory pool fallback: the base lazily creates session files (persisted
   // on the first content), so a disk-only scan misses freshly created
@@ -43,7 +68,8 @@ export async function handleListSessions(ws: any) {
   for (const [sid, entry] of sessions.entries()) {
     if (listed.has(entry.path) || entry.isSubagent) continue;
     if (H.desktopProjects.removedProjects.includes(entry.cwd)) continue;
-    const list = byProject.get(entry.cwd) ?? [];
+    const key = entry.cwd ? norm(entry.cwd) : NO_CWD_KEY;
+    const list = groups.get(key) ?? [];
     list.push({
       id: sid,
       path: entry.path,
@@ -53,33 +79,55 @@ export async function handleListSessions(ws: any) {
       messageCount: 0,
       cwd: entry.cwd,
     });
-    byProject.set(entry.cwd, list);
+    groups.set(key, list);
     listed.add(entry.path);
   }
-  // History scan: merge newly seen projects into the all-projects list (reached both at startup and on UI reconnect)
-  if (mergeHistoryProjects([...byProject.keys()])) await saveDesktopProjects();
-  const projects = [...byProject.entries()]
-    .map(([cwd, list]) => {
+  // Display spelling per group: candidates = live allProjects entries first (the
+  // frontend joins allProjects ↔ projects by exact cwd string, so those spellings
+  // keep the expanded/removed/pinned lists matching), then the newest session
+  // spellings still on disk. Self-canonical spellings (realpath(cwd) === cwd: true
+  // casing, not a link) win over mangled variants; otherwise the first candidate.
+  const pickDisplayCwd = (key: string, sorted: ListedSession[]): string => {
+    const candidates: string[] = [];
+    for (const p of H.desktopProjects.allProjects) {
+      if (norm(p) === key && !H.desktopProjects.removedProjects.includes(p) && fs.existsSync(p)) candidates.push(p);
+    }
+    for (const s of sorted) {
+      if (s.cwd && fs.existsSync(s.cwd) && !candidates.includes(s.cwd)) candidates.push(s.cwd);
+    }
+    for (const c of candidates) {
+      try {
+        if (fs.realpathSync(c) === c) return c;
+      } catch {
+        // unresolvable spelling (OS blocks traversal): keep it only as plain candidate
+      }
+    }
+    return candidates[0] ?? sorted[0]?.cwd ?? "";
+  };
+  const projects = [...groups.entries()]
+    .map(([key, list]) => {
+      list.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+      const cwd = pickDisplayCwd(key, list);
       // Remote SSH workspace stubs: mark the project row so the UI swaps the
       // folder icon for the cloud and shows host:path instead of the stub path
       const remote = readRemoteWorkspaceInfo(cwd);
       return {
         cwd,
         ...(remote ? { remote: true, remoteLabel: `${remote.host}:${remote.remotePath}` } : {}),
-        sessions: list
-          .sort((a, b) => b.modified.getTime() - a.modified.getTime())
-          .map((s) => ({
-            id: s.id,
-            path: s.path,
-            title: s.title ?? null,
-            firstMessage: s.firstMessage.slice(0, 80),
-            modified: s.modified.toISOString(),
-            messageCount: s.messageCount,
-            archived: H.desktopProjects.archivedSessions.includes(s.path),
-          })),
+        sessions: list.map((s) => ({
+          id: s.id,
+          path: s.path,
+          title: s.title ?? null,
+          firstMessage: (s.firstMessage ?? "").slice(0, 80),
+          modified: s.modified.toISOString(),
+          messageCount: s.messageCount,
+          archived: H.desktopProjects.archivedSessions.includes(s.path),
+        })),
       };
     })
     .sort((a, b) => Date.parse(b.sessions[0].modified) - Date.parse(a.sessions[0].modified));
+  // History scan: merge newly seen projects into the all-projects list (reached both at startup and on UI reconnect)
+  if (mergeHistoryProjects(projects.map((p) => p.cwd))) await saveDesktopProjects();
   ws.send(
     JSON.stringify({
       type: "session_list",
