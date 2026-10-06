@@ -21,6 +21,8 @@ export interface ProjectIconSource {
   home?: unknown;
   /** SSH remote-workspace display label ("host:/remote/path"); set on session_list project rows */
   remoteLabel?: string;
+  /** The app-owned "work without a project" row (icon, not a folder). */
+  isDefault?: boolean;
 }
 
 // Project entry (structural subset of getAvailableProjects/diskProjects elements;
@@ -29,6 +31,7 @@ export interface ProjectIconSource {
 export interface ProjectInfo extends ProjectIconSource {
   cwd: string;
   name?: string;
+  isDefault?: boolean;
   sessions: SessionInfo[];
 }
 
@@ -38,6 +41,7 @@ export interface ProjectInfo extends ProjectIconSource {
 // future-field compatibility while retaining the ssh/http-path and ~-directory detection.
 export function projectIconName(p: ProjectIconSource, expanded: boolean): string {
   const cwd = p.cwd || "";
+  if (p.isDefault) return "comment"; // app-owned backing dir, not a folder
   const remote = Boolean(p.remote || p.remoteWorkspace || p.workspaceIdentity) || /^(ssh|https?):\/\//i.test(cwd);
   const home = Boolean(p.isHome || p.home) || cwd === "~";
   if (remote) return "cloud";
@@ -166,8 +170,9 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
     useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
-  // Remote SSH workspace stubs show host:path (the stub path stays in the tooltip)
-  const name = p.name || p.remoteLabel || pathBase(p.cwd) || p.cwd;
+  // Remote SSH workspace stubs show host:path (the stub path stays in the tooltip);
+// the default row shows a fixed label instead of its dir name ("default").
+  const name = p.isDefault ? t("misc.defaultProject") : p.name || p.remoteLabel || pathBase(p.cwd) || p.cwd;
   return (
     <>
       <div
@@ -175,6 +180,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
         data-cwd={p.cwd}
         style={{ transform: ty ? `translateY(${ty}px)` : undefined }}
         onPointerDown={(e) => {
+          if (p.isDefault) return; // the fixed default row is pinned first and never reorders
           if (e.button !== 0 || (e.target as Element).closest("button")) return; // inline buttons (＋/⋯/remove) unaffected; e.target is always an Element at runtime
           e.currentTarget.setPointerCapture?.(e.pointerId);
           onPointerDownHead(e, p.cwd);
@@ -196,6 +202,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
         <span className={"fic" + (/[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
         <span className="pname" title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}>{name}</span>
         {isProjectManageMode ? (
+          p.isDefault ? null : (
           <button
             className="proj-rm-btn"
             title={t("sidebar.removeProjectCwd", { cwd: p.cwd })}
@@ -206,6 +213,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
           >
             {t("sidebar.remove")}
           </button>
+          )
         ) : (
           <>
             <button

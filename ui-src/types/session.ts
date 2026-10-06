@@ -408,6 +408,7 @@ export interface AppState {
   isProjectManageMode: boolean;
   allProjects: string[];
   removedProjects: string[];
+  defaultWorkspace: string; // app-owned backing dir for "work without a project"
   archivedSessions: (DiskSessionRow & { cwd: string })[];
   animateGdKids: boolean;
   animateThinkBody: boolean;

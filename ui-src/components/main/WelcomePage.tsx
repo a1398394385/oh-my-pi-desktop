@@ -9,7 +9,7 @@
 // clientHeight-offsetTop positioning); the two menus are mutually exclusive,
 // closed by window click / blur (the global close semantics of the old shell.js closeAllMenus).
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { useAppStore, toast, pathBase } from "../../store";
+import { useAppStore, setWelcomeProject, pathBase } from "../../store";
 import { t } from "../../i18n";
 import Icon from "../../Icon";
 import Composer from "../Composer";
@@ -70,11 +70,16 @@ export default function Welcome() {
     setBranchMenu(e.currentTarget.getBoundingClientRect());
   };
 
-  // Remote workspace stubs display their host:path label instead of the stub dir basename
+  // Remote workspace stubs display their host:path label instead of the stub dir basename;
+// the app-owned default workspace shows its fixed label (its dir name is internal).
+  const defaultWorkspace = useAppStore((s) => s.defaultWorkspace);
+  const projIsDefault = Boolean(defaultWorkspace) && newSessionProject === defaultWorkspace;
   const projEntry = useAppStore((s) => s.diskProjects).find((p) => p.cwd === newSessionProject);
-  const projName = newSessionProject
-    ? projEntry?.remoteLabel || pathBase(newSessionProject) || newSessionProject
-    : t("misc.projectFallback");
+  const projName = projIsDefault
+    ? t("misc.defaultProject")
+    : newSessionProject
+      ? projEntry?.remoteLabel || pathBase(newSessionProject) || newSessionProject
+      : t("misc.projectFallback");
   const projIsRemote = projEntry?.remote === true;
 
   return (
@@ -104,12 +109,15 @@ export default function Welcome() {
                   title={t("misc.noProject")}
                   onClick={(e) => {
                     e.stopPropagation();
-                    toast(t("misc.noProjectSoon"));
+                    // The default row is app-owned and cannot be "cleared" to nothing;
+                    // pick the first real project instead (falls back to the label-only state).
+                    const firstReal = useAppStore.getState().getAvailableProjects().find((p) => !p.isDefault);
+                    setWelcomeProject(firstReal?.cwd ?? "");
                   }}
                 >
                   <Icon name="xmark" size={12} />
                 </span>
-                <span className={"wb-ic-folder" + (/[\u4e00-\u9fa5]/.test(projName) ? " is-cjk" : "")}><Icon name={projIsRemote ? "cloud" : "folder"} size={15} /></span>
+                <span className={"wb-ic-folder" + (/[\u4e00-\u9fa5]/.test(projName) ? " is-cjk" : "")}><Icon name={projIsDefault ? "comment" : projIsRemote ? "cloud" : "folder"} size={15} /></span>
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>

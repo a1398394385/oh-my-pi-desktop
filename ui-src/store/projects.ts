@@ -10,13 +10,15 @@ export interface ProjectsSlice {
   isProjectManageMode: boolean;
   allProjects: string[];
   removedProjects: string[];
+  /** App-owned backing dir for "work without a project" (from the session_list frame). */
+  defaultWorkspace: string;
   archivedSessions: (DiskSessionRow & { cwd: string })[];
   diskProjects: DiskProject[];
   projectLimits: Map<string, number>; // cwd -> rows shown (default 5, step 5)
   expandedProjects: Set<string>;
   pinnedSessions: Set<string>;
   unseenFinished: Set<string>;
-  getAvailableProjects(): { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[] }[];
+  getAvailableProjects(): { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[]; isDefault?: boolean }[];
   /** Optimistically stamp the sidebar row's activity time at message send (see impl). */
   bumpSessionActivity(path: string): void;
   saveUnseen(): void;
@@ -28,6 +30,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   isProjectManageMode: false,
   allProjects: [],
   removedProjects: [],
+  defaultWorkspace: "",
   archivedSessions: [],
   diskProjects: [],
   projectLimits: new Map(),
@@ -40,7 +43,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
     const st = get();
     const removedSet = new Set(st.removedProjects);
     const byCwd = new Map(st.diskProjects.map((p) => [p.cwd, p]));
-    return st.allProjects
+    const rows: { cwd: string; remote?: boolean; remoteLabel?: string; isDefault?: boolean; sessions: DiskSessionRow[] }[] = st.allProjects
       .filter((cwd) => !removedSet.has(cwd))
       .map((cwd) => {
         const entry = byCwd.get(cwd);
@@ -51,6 +54,14 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
           sessions: entry?.sessions ?? [],
         };
       });
+    // The app-owned "work without a project" dir is never in allProjects (the host
+    // refuses to register it), so its row is injected here — always first, never
+    // removable. Its sessions still arrive through diskProjects keyed by cwd.
+    if (st.defaultWorkspace) {
+      const entry = byCwd.get(st.defaultWorkspace);
+      rows.unshift({ cwd: st.defaultWorkspace, isDefault: true, sessions: entry?.sessions ?? [] });
+    }
+    return rows;
   },
 
   // Sidebar activity clock = the two user-visible moments only: message send (this bump,

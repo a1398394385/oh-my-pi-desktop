@@ -216,7 +216,11 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   const beginProjDrag = (e: ReactPointerEvent, pending: ProjDragPending): ProjDragActive | undefined => {
     const z = useAppStore.getState().zoomLevel || 1;
-    const heads = [...listRef.current!.querySelectorAll<HTMLElement>(".project-scroll > .proj")]; // the list is guaranteed mounted by event time
+    // The fixed default row renders a .proj head too, but it is pinned first and
+    // not draggable — drop it from the drag geometry so k0/idx index only the
+    // reorderable rows (otherwise the committed order shifts by one).
+    const defaultWorkspace = useAppStore.getState().defaultWorkspace;
+    const heads = [...listRef.current!.querySelectorAll<HTMLElement>(".project-scroll > .proj")].filter((h) => h.dataset.cwd !== defaultWorkspace); // the list is guaranteed mounted by event time
     const base: ProjDragGroup[] = heads.map((head) => {
       const rect = head.getBoundingClientRect();
       const kids = head.nextElementSibling?.classList.contains("proj-kids") ? head.nextElementSibling : null;
@@ -305,11 +309,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     suppressProjClickRef.current = true;
     setTimeout(() => { suppressProjClickRef.current = false; }, 0);
     if (!commit) return true;
+    const st = useAppStore.getState();
+    // d.base already excludes the fixed default row (see beginProjDrag); still drop
+    // it from allProjects so a stale manifest entry can't ride into the RPC.
     const others = d.base.filter((g) => g.cwd !== d.cwd).map((g) => g.cwd);
     const order = [...others];
     order.splice(d.idx, 0, d.cwd);
-    const st = useAppStore.getState();
-    const merged = [...st.allProjects];
+    const merged = st.allProjects.filter((c) => c !== st.defaultWorkspace);
     for (const c of order) if (!merged.includes(c)) merged.unshift(c);
     const arr = [...order, ...merged.filter((c) => !order.includes(c))];
     useAppStore.setState({ allProjects: arr }); // field write notifies (allProjects reference change drives sidebar re-render)

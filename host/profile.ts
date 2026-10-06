@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
-import { H, DesktopEnv, DesktopProjects, defaultCwd, sessions } from "./state.ts";
+import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
@@ -73,7 +73,10 @@ export function readDesktopProjects(): DesktopProjects {
       }
     }
     return {
-      allProjects: strs(raw.allProjects),
+      // Strip the app-owned backing dir on read: an older build (or a hand-edited
+      // manifest) may have recorded it as a project, and the sidebar's fixed row
+      // is injected by the frontend instead — keeping it here would render twice.
+      allProjects: strs(raw.allProjects).filter((c) => c !== defaultWorkspaceDir),
       removedProjects: strs(raw.removedProjects),
       expandedProjects: strs(raw.expandedProjects),
       pinnedSessions: strs(raw.pinnedSessions),
@@ -143,6 +146,7 @@ export function mergeHistoryProjects(cwds: string[]): boolean {
   for (const cwd of cwds) {
     if (!cwd || typeof cwd !== "string") continue;
     if (cwd === "/" || cwd === home) continue;
+    if (cwd === defaultWorkspaceDir) continue; // app-owned backing dir, not a registrable project
     if (isTempDirPath(cwd)) continue;
     if (H.desktopProjects.removedProjects.includes(cwd)) continue;
     if (!fs.existsSync(cwd)) continue;
@@ -316,6 +320,9 @@ export async function applyProfile(profileName: string) {
 
   H.desktopProjectsPath = path.join(H.agentDir, "omp-desktop.json");
   H.desktopProjects = readDesktopProjects();
+  // The "work without a project" backing dir must exist before any agent is
+  // spawned there (agents cannot run without a real cwd).
+  ensureDefaultWorkspaceDir();
   // UI locale lives in the same per-profile omp-desktop.json: re-read on every
   // apply so the host language follows the active profile's persisted preference
   initHostI18n(readUiLocale());

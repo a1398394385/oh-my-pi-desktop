@@ -11,6 +11,7 @@ export const hostErrorsZh = {
   param: {
     missingPath: "缺少 path",
     missingCwd: "缺少 cwd",
+    reservedProject: "该目录是内置的「默认项目」，无需添加",
     missingOrder: "缺少 order",
     missingTitle: "缺少 title",
     missingEntryId: "缺少 entryId",

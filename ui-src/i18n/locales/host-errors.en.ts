@@ -7,6 +7,7 @@ export const hostErrorsEn = {
   param: {
     missingPath: "Missing parameter: path",
     missingCwd: "Missing parameter: cwd",
+    reservedProject: "This directory is the built-in Default project; no need to add it",
     missingOrder: "Missing parameter: order",
     missingTitle: "Missing parameter: title",
     missingEntryId: "Missing parameter: entryId",

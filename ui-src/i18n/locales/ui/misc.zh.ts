@@ -39,7 +39,7 @@ export const miscZh = {
   projectDirTitle: "项目目录: {{path}}",
   gitBranchTitle: "Git 分支: {{branch}}",
   noProject: "不在项目中工作",
-  noProjectSoon: "不在项目中工作功能即将推出",
+  defaultProject: "默认项目",
   // welcome/ProjectMenu.tsx
   pickProjectFolder: "选择项目文件夹",
   projectPathPrompt: "请输入项目文件夹绝对路径：",

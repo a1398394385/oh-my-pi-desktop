@@ -3,7 +3,9 @@
 // let bindings are read-only to importers, object properties can be assigned
 // cross-module); containers whose reference never changes (Maps) are exported
 // directly. SDK references and load-order constraints: see bootstrap.ts.
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import type { createAgentSession } from "./bootstrap.ts";
 import type { KeepaliveState } from "./keepalive.ts";
 import type { AuthStorage } from "@oh-my-pi/pi-ai";
@@ -160,6 +162,18 @@ export type PoolEntry = {
 export const sessions = new Map<string, PoolEntry>();
 
 export const defaultCwd = os.homedir();
+
+// The "work without a project" backing directory. It is app-owned: always a real
+// cwd for agents (they cannot run without one) but never a registrable project —
+// the project-list guards live in profile.ts / rpc/session.ts, and the frontend
+// injects it as a fixed row instead of reading it from omp-desktop.json.
+export const defaultWorkspaceDir = path.join(os.homedir(), ".omp-default");
+
+/** Idempotent mkdir so the backing directory exists before any agent spawns there. */
+export function ensureDefaultWorkspaceDir(): string {
+  fs.mkdirSync(defaultWorkspaceDir, { recursive: true });
+  return defaultWorkspaceDir;
+}
 
 // Desktop project manifest (omp-desktop.json under the current profile's config dir, full paths)
 export type DesktopProjects = {

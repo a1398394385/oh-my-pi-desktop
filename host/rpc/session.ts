@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, stampEvent } from "../state.ts";
+import { H, sessions, stampEvent, defaultWorkspaceDir } from "../state.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
 import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
@@ -136,6 +136,9 @@ export async function handleListSessions(ws: any) {
       removedProjects: H.desktopProjects.removedProjects,
       expandedProjects: H.desktopProjects.expandedProjects,
       pinnedSessions: H.desktopProjects.pinnedSessions,
+      // App-owned backing dir for "work without a project": the frontend renders
+      // it as a fixed row and never registers it in allProjects.
+      defaultWorkspace: defaultWorkspaceDir,
     }),
   );
 }
@@ -344,6 +347,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // Manual add: if it hits the removed list, move it back to all projects; otherwise merge it in as a new project (pinned to the top, immediately visible)
     const cwd = String(msg.cwd ?? "").trim();
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
+    // The app-owned "work without a project" backing dir is a fixed sidebar row,
+    // not a registrable project: adding it would duplicate that row and let the
+    // user remove it.
+    if (cwd === defaultWorkspaceDir) throw new Error(hostI18n.t("errors.param.reservedProject"));
     const ri = H.desktopProjects.removedProjects.indexOf(cwd);
     if (ri >= 0) H.desktopProjects.removedProjects.splice(ri, 1);
     if (!H.desktopProjects.allProjects.includes(cwd)) H.desktopProjects.allProjects.unshift(cwd);

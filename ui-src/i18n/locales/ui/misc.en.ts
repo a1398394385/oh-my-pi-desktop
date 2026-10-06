@@ -39,7 +39,7 @@ export const miscEn = {
   projectDirTitle: "Project directory: {{path}}",
   gitBranchTitle: "Git branch: {{branch}}",
   noProject: "Work without a project",
-  noProjectSoon: "Working without a project is coming soon",
+  defaultProject: "Default project",
   // welcome/ProjectMenu.tsx
   pickProjectFolder: "Choose project folder",
   projectPathPrompt: "Enter the absolute path of the project folder:",

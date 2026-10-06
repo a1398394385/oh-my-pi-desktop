@@ -59,7 +59,7 @@ export const setWelcomeProject = (cwd?: string): void => useAppStore.getState().
 export const initNewSessionModel = (force = false): void => useAppStore.getState().initNewSessionModel(force);
 export const pickModelId = (id: string, role?: string): void => useAppStore.getState().pickModelId(id, role);
 export const pickThinkingLevel = (lv: string): void => useAppStore.getState().pickThinkingLevel(lv);
-export type AvailableProject = { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[] };
+export type AvailableProject = { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[]; isDefault?: boolean };
 export const getAvailableProjects = (): AvailableProject[] =>
   useAppStore.getState().getAvailableProjects();
 export const saveUnseen = (): void => useAppStore.getState().saveUnseen();

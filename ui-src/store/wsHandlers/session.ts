@@ -32,6 +32,7 @@ export const sessionHandlers = {
       archivedSessions: archived,
       allProjects: msg.allProjects ?? [],
       removedProjects: msg.removedProjects ?? [],
+      defaultWorkspace: msg.defaultWorkspace ?? "",
       expandedProjects,
       pinnedSessions: new Set<string>(msg.pinnedSessions ?? []),
     }));

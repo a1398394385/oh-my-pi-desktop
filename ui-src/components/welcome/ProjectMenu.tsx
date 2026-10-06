@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, toast, invoke, getAvailableProjects, setWelcomeProject, pathBase } from "../../store";
+import { useAppStore, send, invoke, getAvailableProjects, setWelcomeProject, pathBase } from "../../store";
 import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
 
@@ -129,8 +129,8 @@ export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: Proje
                 choose(p.cwd);
               }}
             >
-              <Icon name={p.remote ? "cloud" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
-              <span className="wb-proj-item-name flex-1 truncate">{p.remoteLabel || pathBase(p.cwd) || p.cwd}</span>
+              <Icon name={p.isDefault ? "comment" : p.remote ? "cloud" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
+              <span className="wb-proj-item-name flex-1 truncate">{p.isDefault ? t("misc.defaultProject") : p.remoteLabel || pathBase(p.cwd) || p.cwd}</span>
             </div>
           ))
         )}
@@ -159,8 +159,11 @@ export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: Proje
           title={t("misc.noProject")}
           onClick={(e) => {
             e.stopPropagation();
-            toast(t("misc.noProjectSoon"));
-            onClose();
+            // The app-owned backing dir is injected as the fixed first project row,
+            // so picking it is just choosing that row — no add_project RPC.
+            const d = useAppStore.getState().defaultWorkspace;
+            if (d) choose(d); // choose() closes the menu itself
+            else onClose();
           }}
         >
           <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="comment" size={15} /></span>

@@ -629,6 +629,8 @@ export interface SessionListFrame {
   removedProjects: string[];
   expandedProjects: string[];
   pinnedSessions: string[];
+  /** App-owned backing dir for "work without a project" (never in allProjects). */
+  defaultWorkspace?: string;
 }
 
 /** Full message snapshot frame (host/host.ts:873 / 912 / 1031 / 2552 / 2586 / 2768 / 2868) */
