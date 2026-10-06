@@ -9,8 +9,7 @@ import { createRoot } from "react-dom/client";
 import { useAppStore, setBump, send } from "../../store";
 import { t } from "../../i18n";
 
-// Provider icon map (ported verbatim from PROV_IC at the top of ui/settings/index.js)
-export const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "minimax-code-cn": "◆", "opencode-zen": "✦", llama: "●", "local-proxy": "▣" };
+export { PROV_IC } from "../shared/models/providers";
 
 // Props of the generic confirm dialog (all optional except title, all with defaults)
 export interface ConfirmDialogProps {

@@ -1,5 +1,5 @@
 // Single zustand store (P3 wave 2: slice composition). AppStore = the intersection composition of
-// six slices; fields and initial values moved over from store.ts with zero field renames.
+// eight slices; fields and initial values moved over from store.ts with zero field renames.
 // Module-level functions in the slice files close over this file's useAppStore (runtime calls,
 // no load-time evaluation — ESM-cycle safe).
 import { create } from "zustand";
@@ -8,9 +8,11 @@ import { createSessionSlice, type SessionSlice } from "./session";
 import { createProjectsSlice, type ProjectsSlice } from "./projects";
 import { createRightSlice, type RightSlice } from "./right";
 import { createSettingsSlice, type SettingsSlice } from "./settings";
+import { createModelsSlice, type ModelsSlice } from "./models";
+import { createEntryTreeSlice, type EntryTreeSlice } from "./entry-tree";
 import { createWsSlice, type WsSlice } from "./ws";
 
-export interface AppStore extends UiSlice, SessionSlice, ProjectsSlice, RightSlice, SettingsSlice, WsSlice {}
+export interface AppStore extends UiSlice, SessionSlice, ProjectsSlice, RightSlice, SettingsSlice, ModelsSlice, EntryTreeSlice, WsSlice {}
 
 export const useAppStore = create<AppStore>()((...a) => ({
   ...createUiSlice(...a),
@@ -18,6 +20,8 @@ export const useAppStore = create<AppStore>()((...a) => ({
   ...createProjectsSlice(...a),
   ...createRightSlice(...a),
   ...createSettingsSlice(...a),
+  ...createModelsSlice(...a),
+  ...createEntryTreeSlice(...a),
   ...createWsSlice(...a),
 }));
 

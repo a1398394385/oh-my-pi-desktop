@@ -1,0 +1,42 @@
+/* Shiki dual-theme tokens: variables sit on the token span's inline style; only tokens with a background (diff classes)
+   apply the background variables; plain tokens keep the current theme's text color. */
+.md-body [data-streamdown="code-block-body"] pre span[style] {
+  color: var(--sdm-c, inherit);
+}
+
+:is([data-theme="dark"], html[data-theme-mode="dark"]) .md-body [data-streamdown="code-block-body"] pre span[style] {
+  color: var(--shiki-dark, var(--sdm-c, inherit));
+}
+
+.md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+  background-color: var(--sdm-tbg);
+}
+
+[data-theme="dark"] .md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+  background-color: var(--shiki-dark-bg, var(--sdm-tbg));
+}
+
+/* ── Shiki code token theme switching ──
+   Streamdown generates tokens with both light (--sdm-c) and dark (--shiki-dark) color variables,
+   then uses Tailwind's dark: variant to switch between them. Since these are runtime-generated
+   arbitrary-value classes (dark:text-[var(--shiki-dark)]) not in our source scan, we override
+   with direct attribute selectors to make theme switching work. */
+/* Light theme: use --sdm-c (light-plus colors) */
+[data-theme="light"] .md-body .md-streamdown-code span[style*="--sdm-c"] {
+  color: var(--sdm-c, inherit) !important;
+}
+
+[data-theme="light"] .md-body .md-streamdown-code span[style*="--sdm-tbg"] {
+  background-color: var(--sdm-tbg) !important;
+}
+
+/* Dark themes: use --shiki-dark (dark-plus for dark, nord for midnight) */
+[data-theme="dark"] .md-body .md-streamdown-code span[style*="--shiki-dark"],
+[data-theme="midnight"] .md-body .md-streamdown-code span[style*="--shiki-dark"] {
+  color: var(--shiki-dark, var(--sdm-c, inherit)) !important;
+}
+
+[data-theme="dark"] .md-body .md-streamdown-code span[style*="--shiki-dark-bg"],
+[data-theme="midnight"] .md-body .md-streamdown-code span[style*="--shiki-dark-bg"] {
+  background-color: var(--shiki-dark-bg, var(--sdm-tbg)) !important;
+}

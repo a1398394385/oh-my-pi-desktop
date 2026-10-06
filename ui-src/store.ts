@@ -1,5 +1,5 @@
-// P3 end state: the data layer lives in store/ (index composes six slices:
-// ui/session/projects/right/settings/ws + shapes/terminal/utils/groupExpand).
+// P3 end state: the data layer lives in store/ (index composes eight slices:
+// ui/session/projects/right/settings/models/entry-tree/ws + shapes/terminal/utils/groupExpand).
 // This file is a barrel re-export keeping the external import path "../store"
 // unchanged. History: the S/useStore/notify version bridges and the container
 // liveRef proxy were retired when components moved fully to selector-based
@@ -18,8 +18,6 @@ export {
   evictOpenSessions,
   isJunkPlaceholder,
   toolExpandKey,
-  ingestModels,
-  getSupportedThinkingForModel,
   sealRunItems,
   dropQueueMsg,
   editQueueMsg,
@@ -72,3 +70,5 @@ export const refreshGitDiff = (force = false): void => useAppStore.getState().re
 export const openSettings = (pageId = "pg-general"): void => useAppStore.getState().openSettings(pageId);
 export const closeSettings = (): void => useAppStore.getState().closeSettings();
 export const refreshSettingsData = (): void => useAppStore.getState().refreshSettingsData();
+
+export { ingestModels, getSupportedThinkingForModel } from "./store/models";

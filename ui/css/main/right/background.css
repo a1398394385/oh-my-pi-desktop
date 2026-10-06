@@ -1,0 +1,51 @@
+/* Background command line (right sidebar) */
+.srow.bgcmd-row { cursor: pointer; user-select: none; }
+
+.srow.bgcmd-row.on { background: var(--panel-2); }
+
+.srow.bgcmd-row.on .bgcmd-caret svg { transform: rotate(0deg); }
+
+.bgcmd-expand.lift { animation: ed-lift .3s ease-out forwards; }
+
+.bgcmd-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  flex: none; background: var(--background-idle);
+}
+
+.bgcmd-dot.running {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--tint-job-running-450);
+}
+
+.bgcmd-caret { flex: none; display: flex; align-items: center; color: var(--faint); }
+
+.bgcmd-caret svg { transition: transform .15s var(--swift); transform: rotate(-90deg); }
+
+.bgcmd-expand {
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--tint-black-120);
+  padding: 10px 12px;
+  animation: popIn .3s ease-out;
+  --pop-from: -4px;
+}
+
+[data-theme="light"] .bgcmd-expand { background: var(--tint-black-30); }
+.bgcmd-meta-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--ui-fs-sm); color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.bgcmd-meta-row b { color: var(--text); font-weight: 500; }
+
+.bgcmd-meta-tag {
+  font-size: var(--ui-fs-xs); color: var(--dim);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 0 6px; line-height: 16px;
+}
+
+.bgcmd-meta-tag.running {
+  color: var(--green);
+  border-color: var(--tint-job-running-350);
+  background: var(--tint-job-running-80);
+}

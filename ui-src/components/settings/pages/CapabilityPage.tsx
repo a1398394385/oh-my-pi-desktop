@@ -89,6 +89,7 @@ function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: Catalog
 // One kind-role row: name + tag + blurb on the left, the kind-filtered picker on the right.
 // `picker` overrides the ctl content (the WEB row swaps in the flat WebSearchSel).
 function CapabilityRoleRow({ role, desc, picker }: { role: ModelRole; desc: string; picker?: React.ReactNode }) {
+  const allModels = useAppStore((s) => s.modelCatalog);
   return (
     <div className="srow set-row">
       <div className="srow-tx">
@@ -99,7 +100,7 @@ function CapabilityRoleRow({ role, desc, picker }: { role: ModelRole; desc: stri
         <span>{desc}</span>
       </div>
       <div className="srow-ctl">
-        {picker ?? <RolePicker role={role} />}
+        {picker ?? <RolePicker role={role} allModels={allModels} />}
       </div>
     </div>
   );

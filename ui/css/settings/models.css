@@ -1,0 +1,159 @@
+[data-theme="light"] .srow.mp-role-row:hover { background: none; }
+
+.mp { display: grid; grid-template-columns: 315px 1fr; }
+
+.pv { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 8px; color: var(--dim); cursor: pointer; font-size: var(--ui-fs-base); min-width: 0; }
+
+.pv:hover { background: var(--panel-2); color: var(--text); }
+
+.pv.on { background: var(--panel-3); color: var(--text); }
+
+/* the X clear button outside the picker's right (inherits defaults): same geometry as .skill-trash-btn (padding 4 + icon 14 = 22px),
+   keeping column alignment with custom-row delete buttons; neutral clear semantics, not destructive */
+.mp-role-clear {
+  border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; transition: color .15s, transform .1s;
+}
+
+.mp-role-clear:hover { color: var(--text); transform: scale(1.1); }
+
+/* the role row itself is not clickable (only the pill/X/trash are) -> the default .srow hover highlight is off:
+   hover highlights are a clickability affordance, allowed only on elements with click behavior */
+.mp-role-row:hover, .srow.mp-role-row:hover { background: none; }
+
+.mp-role-row .srow-ctl { justify-content: flex-end; }
+
+.mp-role-row:not(:has(.skill-trash-btn)):not(:has(.mp-role-clear)) .srow-ctl { padding-right: 28px; }
+.mp-l { background: var(--tint-black-180); border-right: 1px solid var(--line-soft); padding: 8px; border-radius: var(--r-card) 0 0 var(--r-card); min-height: 280px; display: flex; flex-direction: column; gap: 4px; }
+[data-theme="light"] .mp-l { background: var(--tint-black-40); }
+.pv .pv-ic { width: 16px; text-align: center; flex: none; }
+
+/* left provider group labels and dividers: unified to the global UI font size and regular weight (overriding .set-sec's small-size tracking styles) */
+.mp-grp { padding: 8px 10px 4px; font-size: var(--ui-fs-base); letter-spacing: normal; }
+
+.mp-l .mp-div { margin: 6px 16px; }
+
+.mp-r { padding: 14px 16px 16px; min-width: 0; }
+
+.mp-lim { margin: -4px 0 12px; font-size: var(--ui-fs-sm); color: var(--dim); }
+
+.mp-lim .lx-sec + .lx-sec { margin-top: 8px; }
+
+/* spacing between per-account quota sections */
+.mp-lim .lx-body { min-width: 0; }
+
+.mp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+
+.mp-head .sp, .mp-ml .sp { flex: 1; }
+
+.mp-ml { display: flex; align-items: center; margin: 8px 0 6px; font-size: var(--ui-fs-sm); color: var(--dim); }
+
+.mp-row { display: flex; align-items: center; gap: 8px; padding: 12px 7px; font-size: var(--ui-fs-base); border-top: 1px solid var(--line-soft); }
+
+.mp-row .sp { flex: 1; }
+
+/* model role row: the srow embedded in mp-r narrows both side margins; inline name tags as badges */
+.mp-role-row { padding: 12px 2px; }
+
+.mp-role-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
+
+.mp-role-desc { margin: -4px 0 4px; }
+
+.mpw-sel { width: 100%; justify-content: space-between; }
+
+.mpw-probe-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+
+.mpw-err { color: var(--err); font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mpw-count { color: var(--dim); font-size: var(--ui-fs-base); white-space: nowrap; }
+
+.mpw-list { margin-top: 10px; max-height: 42vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-sm); }
+
+.mpw-mrow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; }
+
+.mpw-mrow + .mpw-mrow, .mpw-list .mem-expand + .mpw-mrow { border-top: 1px solid var(--line); }
+
+.mpw-mrow:hover { background: var(--panel-2); }
+
+.mpw-mrow.on { background: var(--panel); }
+
+.mpw-check { accent-color: var(--accent); width: 14px; height: 14px; flex: none; margin: 0; }
+
+.mpw-mid { color: var(--text); font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono, ui-monospace, monospace); }
+
+.mpw-mname { color: var(--dim); font-size: var(--ui-sm, var(--ui-fs-base)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mpw-cat { color: var(--green); }
+
+.mpw-caret { flex: none; }
+
+.mpw-caret svg { transition: transform .15s ease; }
+
+.mpw-mrow.on .mpw-caret svg { transform: rotate(180deg); }
+
+.mpw-list .mem-expand { border-top: 1px solid var(--line); padding: 10px 12px 12px; }
+
+/* provider-detail rows (mp-r) host the same editor: matching inset */
+.mp-r .mem-expand { padding: 10px 12px 12px; }
+
+.mpw-meta-hint { color: var(--faint); font-size: var(--ui-fs-sm); margin: 0 0 10px; }
+
+/* effort-level chips (multi-select): pill outline, accent fill when picked */
+.mpw-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 3px 0 1px; }
+
+.mpw-chip { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; }
+
+.mpw-chip:hover { background: var(--panel-2); color: var(--text); }
+
+.mpw-chip.on { border-color: var(--accent); color: var(--accent); background: var(--panel-2); }
+
+.mpw-chip:disabled { opacity: .5; cursor: default; }
+
+/* inherited effort list shown next to the label while the chip set is untouched */
+.mpw-ef-hint { color: var(--faint); font-size: var(--ui-fs-sm); margin-left: 8px; }
+
+/* second-level expander toggle (capability fields): hugs the row above */
+.mpw-adv-toggle { margin: -8px 0 2px; }
+
+.mpw-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+
+.mpw-meta-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+
+.mpw-meta-head .tg { flex: none; }
+
+.mpw-meta-label { color: var(--text); font-size: var(--ui-fs-base); white-space: nowrap; }
+
+.mpw-meta-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+/* Custom-role creation form (pg-model RolesView inline expand): name input + cascade
+   picker + add button on one line, hint below. The .mem-expand shell carries the
+   downward popIn entrance and the mp-r padding. */
+.mp-role-add-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.mp-role-add .set-group-desc { margin: 8px 0 0; }
+
+/* Quick-switch (ctrl+p cycleOrder) row controls: same 22px geometry as .mp-role-clear so the
+   control column aligns across rows; arrows/reorder are neutral actions, hover highlights only */
+.mp-cycle-btn {
+  border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; transition: color .15s, transform .1s;
+}
+
+.mp-cycle-btn:hover:not(:disabled) { color: var(--text); transform: scale(1.1); }
+
+.mp-cycle-btn:disabled { opacity: .35; cursor: default; }
+
+/* Add-role dropdown under the cycle list: the shared picker shell (RolePicker.tsx
+   .sel.mp-role-sel) dressed as the block-level form select (the .mcp-form-sel language) —
+   square corners, fs-sm, full width, caret pinned right */
+.mp-cycle-add { margin-top: 10px; max-width: 320px; }
+
+.mp-cycle-add .sel { display: flex; width: 100%; border-radius: 8px; padding: 6px 10px; font-size: var(--ui-fs-sm); }
+
+.mp-cycle-add .sel > span:first-child { flex: 1; min-width: 0; text-align: left; }
+
+.mp-cycle-add .sel .caret-svg { margin-left: auto; }
+
+.mp-cycle-add .sel.disabled { opacity: .5; cursor: default; }

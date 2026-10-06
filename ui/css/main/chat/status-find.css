@@ -1,0 +1,137 @@
+#todoList {
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* embedded in the session scroll flow, stops the scroll chain */
+}
+
+#statusWrap {
+  position: absolute;
+  top: 56px;
+  right: 14px;
+  z-index: 60;
+  width: 280px;
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+  /* Right-aligned flex column: an over-wide resized card keeps its right edge pinned and overflows leftward */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* Corner resize grip: drag to resize the card per session (size lives in memory only,
+   never persisted). The card is docked to the right edge (#statusWrap right:14px), so
+   the grip sits at the bottom-left corner: dragging left widens the card, dragging
+   right narrows it, dragging down lengthens the list. */
+#statusCard { position: relative; }
+
+#statusCard .sc-resize {
+  position: absolute; left: 4px; bottom: 4px;
+  width: 13px; height: 13px;
+  cursor: nesw-resize;
+  touch-action: none;
+  background:
+    linear-gradient(45deg, transparent 52%, var(--faint) 52%, var(--faint) 64%, transparent 64%),
+    linear-gradient(45deg, transparent 72%, var(--faint) 72%, var(--faint) 84%, transparent 84%);
+}
+
+#statusCard .sc-resize:hover { filter: brightness(1.4); }
+
+.todo {
+  display: flex; gap: 9px; padding: 6px 2px;
+  font-size: var(--ui-fs-base); line-height: 1.45;
+  color: var(--dim); border-radius: 7px;
+}
+
+.todo .ck { color: var(--green); font-style: normal; flex: none; }
+
+.todo .ar { color: var(--text); font-style: normal; flex: none; }
+
+.todo .ci { color: var(--faint); font-style: normal; flex: none; }
+
+.todo.done { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--todo-strike-dark); }
+[data-theme="light"] .todo.done { text-decoration-color: var(--todo-strike-light); }
+.todo.done .ck { color: var(--green-soft); }
+
+.todo.cur { color: var(--text); }
+
+.todo.blocked .ci { color: var(--err); }
+
+#capsule {
+  display: flex; align-items: center; gap: 8px;
+  width: 280px; max-width: 100%;
+  margin: 0;
+  background: var(--inset); border: 0;
+  color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-base);
+  border-radius: 999px; padding: 8px 14px;
+  cursor: pointer;
+  box-shadow: 0 8px 22px var(--tint-black-360);
+  text-align: left;
+}
+
+[data-theme="light"] #capsule { box-shadow: 0 8px 22px var(--tint-black-120); }
+#capsule:hover { background: var(--panel-2); }
+
+#capsule .cap-ic { flex: none; color: var(--text); font-style: normal; }
+
+#capsule .cap-tx {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+#capsule .cap-n { flex: none; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+/* --- B2 in-session find bar (cmd+F, floating at the top of the message flow, active session only) --- */
+.find-bar {
+  position: absolute; z-index: 60;
+  /* horizontal centering uses margin auto (left/right zeroed) rather than translateX:
+     the ringpop entrance animation occupies transform, so translateX would be overridden and the element would jump when the animation ends */
+  left: 0; right: 0; margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
+  display: flex; align-items: center; gap: 6px;
+  background: var(--ctl-bg); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: 0 8px 26px var(--tint-black-400);
+  padding: 5px 6px 5px 5px;
+  animation: ringpop .18s ease-out; /* same entrance as the ring-pop family (fade in + slide up) */
+}
+
+[data-theme="light"] .find-bar { box-shadow: 0 8px 24px var(--tint-black-180); }
+/* input = the .inp language: --bg base + --line-soft border + r8 + blue focus glow */
+.find-inp {
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
+  width: 200px; outline: none; min-width: 0;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+
+.find-inp:focus { border-color: var(--tint-accent-500); box-shadow: 0 0 0 3px var(--tint-accent-130); }
+.find-count {
+  flex: none; min-width: 36px; text-align: center;
+  font-size: var(--ui-fs-xs); color: var(--dim);
+}
+
+.find-count.none { color: var(--faint); }
+
+/* navigation/close small buttons = the .q-btn language (20px plate + hover --panel-2) */
+.find-bar button {
+  line-height: 0;
+}
+
+.find-bar button > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.find-bar button svg {
+  display: block;
+}
+
+.find-flash { animation: findflash 1.6s ease-out; border-radius: 8px; }
+
+#statusCard .sc-head { pointer-events: none; }
+
+.sc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+
+.sc-head b { font-size: var(--ui-fs-md); }
+
+.sc-head .frac { color: var(--dim); font-size: var(--ui-fs-base); }

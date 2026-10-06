@@ -1,0 +1,137 @@
+/* ---- extension center (pg-extensions) ---- */
+.ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+
+.ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.ext-bar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
+
+.ext-prov-pills { flex: 1 1 100%; min-width: 0; }
+
+.ext-prov-pills .fork-pill.prov-enabled {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.ext-prov-pills .fork-pill.prov-disabled {
+  background: transparent;
+  border-color: var(--line-soft);
+  color: var(--faint);
+  opacity: .7;
+}
+
+.ext-prov-pills .fork-pill.prov-disabled:hover {
+  background: var(--panel);
+  color: var(--dim);
+  opacity: 1;
+}
+
+.ext-prov-pills .fork-pill.active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border-color: var(--accent);
+  color: var(--text);
+  opacity: 1;
+}
+
+.ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
+
+/* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
+.ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; }
+
+.ext-search-icon { position: absolute; left: 10px; color: var(--faint); pointer-events: none; display: inline-flex; align-items: center; }
+
+.ext-search-input {
+  width: 100%; height: 30px; padding: 0 10px 0 32px;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 9px;
+  color: var(--text); font-size: var(--ui-fs-sm); outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+
+.ext-search-input:focus { border-color: var(--tint-accent-500); box-shadow: 0 0 0 3px var(--tint-accent-130); }
+.ext-search-input::placeholder { color: var(--faint); }
+
+.ext-bar-secondary { display: flex; align-items: center; margin-bottom: 12px; }
+
+@keyframes extFadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ext-prov-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0; animation: extFadeIn .2s ease-out; }
+
+.ext-actions-wrap { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.ext-list-wrap { margin-top: 4px; animation: extFadeIn .2s ease-out; }
+
+/* groups (by capability type): group titles reuse .set-group-tt, the first group tightens its gap to the toolbar */
+.ext-group:first-child .set-group-tt { margin-top: 6px; }
+
+.ext-group .set-group-tt { display: flex; align-items: baseline; gap: 6px; }
+
+.ext-cnt { color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* rows: fully clickable (.srow-style hover), non-active entry names dimmed.
+   rows are wrapped in .ext-row-wrap so the .srow+.srow adjacent selector never matches; the divider goes on the row itself */
+.ext-row { cursor: pointer; user-select: none; border-top: 1px solid var(--line-soft); }
+
+.ext-row-wrap:first-child .ext-row { border-top: 0; }
+
+.ext-row.off .srow-tx b { color: var(--dim); }
+
+.ext-row.prov-disabled { opacity: .55; }
+
+/* descriptions truncated to one line (following the group card row style: name + one-line summary) */
+.ext-row .srow-tx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+
+.ext-kind-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: var(--faint); }
+
+.ext-badges { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.ext-tag-warn { color: var(--yellow); border-color: var(--yellow); }
+
+.ext-tag-prov {
+  color: var(--dim);
+  background: var(--panel-2);
+  border-color: var(--line-soft);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-row .srow-tx { flex: 1; }
+
+.ext-row .srow-ctl { margin-left: 10px; }
+
+/* detail area (carried by mem-expand): key-value rows + body block */
+.ext-detail { padding: 10px 16px 14px 38px; display: flex; flex-direction: column; gap: 7px; }
+
+.ext-kv { display: flex; gap: 10px; font-size: var(--ui-fs-sm); align-items: baseline; min-width: 0; }
+
+.ext-k { flex: none; width: 64px; color: var(--faint); }
+
+.ext-v { color: var(--dim); word-break: break-all; min-width: 0; white-space: pre-wrap; }
+
+.ext-state { font-size: var(--ui-fs-sm); color: var(--faint); }
+
+.ext-pre {
+  margin: 2px 0 0; padding: 10px 12px; max-height: 260px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 9px;
+  font: var(--code-fs, 11.5px)/1.6 var(--mono); color: var(--dim); white-space: pre-wrap; word-break: break-word;
+}
+
+.ext-params { display: flex; flex-direction: column; gap: 3px; }
+
+.ext-param { display: flex; gap: 8px; align-items: baseline; }
+
+.ext-param b { font-weight: 500; color: var(--text); font-family: var(--mono); font-size: var(--ui-fs-sm); }
+
+.ext-param i { font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); }
+
+/* Conditional sub-rows revealed inside a settings card (pg-computer's external
+   browser routes): indented one step with a left guide, mem-expand's downward
+   popIn entrance. Not a standalone region — the rows stay direct .set-card
+   children, so only the wrapper takes the border/padding. */
+.ext-rows { border-top: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; }
+
+.ext-rows > .srow { padding-left: 30px; }

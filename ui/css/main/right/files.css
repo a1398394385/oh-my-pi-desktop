@@ -1,0 +1,27 @@
+/* ---------- File view (entered via read-row / file-tree click) ---------- */
+/* file tree (empty state) row */
+.ft-caret { flex: none; display: inline-flex; align-items: center; width: 12px; color: var(--faint); }
+
+.ft-caret svg { transition: transform .3s ease; }
+
+.ft-caret.open svg { transform: rotate(90deg); }
+
+.ft-file-ic { width: auto; }
+
+/* path breadcrumb: in-project "project name > relative segments" / full path outside projects, caret icons between segments, single-line truncation */
+/* file body: no card base/border (the VSCode editor area is the panel itself, no nested box),
+   the line-number gutter carries its own left padding; side breathing room comes from #rightBody's global inset */
+.fv-ln {
+  flex: none; min-width: 3.5em; padding: 0 10px 0 8px; text-align: right;
+  color: var(--faint); user-select: none;
+}
+
+/* highlight line numbers within the requested read range (numbers only, content untouched) */
+.fv-ln.hl { color: var(--accent); font-weight: 600; }
+/* right-sidebar git diff container: no card base/border, blends into the sidebar (VSCode's SCM diff sits directly on the editor face) */
+.fd-holder {
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+[data-theme="dark"] .fd-holder { color-scheme: dark; }

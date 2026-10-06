@@ -1,0 +1,67 @@
+/* ---- Right-sidebar linked detail page ---- */
+.hub-detail { padding: 8px 0 0; font-size: var(--ui-fs-base); color: var(--text); }
+
+.hub-detail-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+.hub-detail-head .sub-dot.st-running { color: var(--green); }
+
+.hub-detail-head .sub-dot.st-completed { color: var(--green-soft); }
+
+.hub-detail-head .sub-dot.st-failed, .hub-detail-head .sub-dot.st-aborted { color: var(--err); }
+
+.hub-detail-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-sm); }
+
+/* Status + elapsed/age + model, a right-aligned column at the card's top-right */
+.hub-detail-st { margin-left: auto; flex: none; display: flex; flex-direction: column; align-items: flex-end; white-space: nowrap; line-height: 1.5; }
+
+.hub-detail-model { font-size: var(--ui-fs-sm); }
+
+.hub-sec {
+  margin-top: 12px; padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  font-weight: 700; color: var(--accent); font-size: var(--ui-fs-sm);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+
+.hub-sec-body { margin-top: 3px; font-size: var(--ui-fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+
+/* Task markdown: keep the section's small scale instead of .md-body's larger body size */
+.hub-task-md { font-size: var(--ui-fs-sm); }
+
+/* Context gauge: token/contextWindow bar */
+.hub-gauge {
+  position: relative; margin-top: 6px; height: 14px;
+  border-radius: 4px; background: var(--panel-2); overflow: hidden;
+}
+
+.hub-gauge-fill { height: 100%; background: var(--accent); opacity: .45; }
+
+.hub-gauge-tx {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--code-fs, 12px); color: var(--text); font-family: var(--mono);
+}
+
+/* Recent activity feed: reuses the main message area's event-row classes (.act read);
+   only the spacing (denser than chat) and the leading clock cell are hub-specific.
+   Clock cell sizes to its content — a fixed width overlaps the icon at larger
+   --code-fs zoom levels. */
+.hub-detail .act.read.hub-act { margin: 6px 0; padding-right: 0; }
+
+.hub-act-time { flex: none; white-space: nowrap; padding-right: 2px; font-family: var(--mono); font-size: var(--code-fs, 12px); color: var(--faint); }
+
+/* Background jobs section rows: command + cwd left, pid count / exitCode + cancel right */
+.hub-bg-list { margin-top: 3px; display: flex; flex-direction: column; gap: 5px; }
+
+.hub-bg-row { display: flex; align-items: center; gap: 6px; font-size: var(--ui-fs-sm); }
+
+.hub-bg-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.hub-bg-cmd { font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.hub-bg-cwd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.hub-bg-st { flex: none; white-space: nowrap; }
+
+/* Cache-warming transient above the detail status line */
+.hub-warming { color: var(--accent); }

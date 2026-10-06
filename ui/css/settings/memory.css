@@ -1,0 +1,75 @@
+.srow.mem-row { cursor: pointer; }
+
+.srow.mem-row.on { background: var(--panel-2); }
+
+.srow.mem-row.on .mem-caret svg { transform: rotate(0deg); }
+
+.md-grp .caret { flex: none; transition: transform .12s; }
+
+.md-grp.closed .caret { transform: rotate(-90deg); }
+
+.mem-caret { flex: none; display: flex; align-items: center; color: var(--faint); }
+
+.mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
+
+.mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* expands downward on entrance */ }
+
+.mem-exp-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); color: var(--faint); border-bottom: 1px solid var(--line-soft); }
+
+.mem-body { display: flex; flex: 1; min-height: 220px; max-height: calc(var(--ui-fs-base) * 1.7 * 20); border-top: 1px solid var(--line-soft); }
+
+.mem-expand .mem-body { border-top: 0; }
+
+.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ }
+
+.md-it, .md-grp { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: var(--ui-fs-sm); color: var(--dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+
+.md-it.top { font-weight: 600; }
+
+.md-it:hover, .md-grp:hover { background: var(--panel-2); color: var(--text); }
+
+.md-it.on { background: var(--panel-2); color: var(--text); }
+
+.md-it.sub { padding-left: 26px; font-family: var(--mono); font-size: var(--ui-fs-xs); }
+
+.md-grp { margin-top: 2px; }
+
+.md-grp .cnt { margin-left: auto; font-size: var(--ui-fs-xs); color: var(--faint); flex: none; }
+
+.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ }
+
+.md-main h1, .md-main h2, .md-main h3, .md-main h4 { margin: 14px 0 6px; font-weight: 600; line-height: 1.4; }
+
+.md-main h1 { font-size: 17px; }
+
+.md-main h2 { font-size: 15px; }
+
+.md-main h3 { font-size: 13.5px; }
+
+.md-main h4 { font-size: var(--ui-fs-base); }
+
+.md-main h1:first-child, .md-main h2:first-child, .md-main h3:first-child { margin-top: 0; }
+
+.md-main p { margin: 6px 0; }
+
+.md-main ul, .md-main ol { margin: 6px 0; padding-left: 22px; }
+
+.md-main li { margin: 2px 0; }
+
+.md-main code { font-family: var(--mono); font-size: var(--code-fs, 12px); background: var(--panel-2); border-radius: 4px; padding: 1px 4px; }
+
+.md-main pre { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; overflow: auto; margin: 8px 0; overscroll-behavior: contain; /* embedded in .md-main's scroll flow, stops the scroll chain */ }
+
+.md-main pre code { background: none; padding: 0; }
+
+.md-main blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--line); color: var(--dim); }
+
+.md-main a { color: var(--accent); }
+
+.md-main hr { border: 0; border-top: 1px solid var(--line-soft); margin: 12px 0; }
+
+.md-main table { border-collapse: collapse; margin: 8px 0; }
+
+.md-main th, .md-main td { border: 1px solid var(--line); padding: 4px 10px; font-size: var(--ui-fs-sm); }
+
+.md-main th { background: var(--panel-2); font-weight: 600; }

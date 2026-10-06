@@ -8,58 +8,63 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "../ui-src/**/*.{ts,tsx}";
 
-/* ============================================================
- * Style domain split (see ui/css/): @import order = cascade order, no reordering.
- *   global.css           tokens / reset / site-wide control base classes
- *   main-shell.css       main page, global shared (layout skeleton / z-index scale / scrollbars / Windows title bar / global dialogs)
- *   main-sidebar.css     main page, left sidebar (sessions / project groups / search card / rename / archive)
- *   main-chat.css        main page, middle-column message flow (bubbles / markdown / tool rows / message track)
- *   main-chat-approval.css main page, middle column, approval cards (split out of main-chat.css, cascades right after it)
- *   main-chat-ask.css    main page, middle column, ask multi-question form (split out of main-chat-approval.css, cascades right after it)
- *   main-composer.css    main page, middle-column input area (dock / bottom bar / goal / queue / send button / Lexical)
- *   main-streamdown.css  main page, streamdown rendering engine layer
- *   main-tree.css        main page, session-tree waterfall in the message area
- *   main-tree-fork.css   main page, session tree: fork-point segments + branch switcher (split out of main-tree.css, cascades right after it)
- *   main-hub.css         main page, middle-column Agent Hub card + right-sidebar linked detail
- *   main-welcome.css     main page, welcome page (new-session centered page and expansion cards)
- *   main-right.css       main page, right sidebar (tab bar / file view / Git Diff / branch tree / terminal / browser / subagents page)
- *   main-right-caps.css  main page, right sidebar, capabilities page (split out of main-right.css, cascades right after it)
- *   main-right-browser.css main page, right sidebar, browser page Agent live view (split out of main-right.css, cascades right after main-right-caps.css)
- *   settings.css         settings pages (pg-* pages and navigation)
- *   settings-mcp.css     settings, MCP servers page (split out of settings.css, cascades right after)
- *   settings-stats.css   settings, stats & analytics page (split out of settings.css, cascades right after)
- *   settings-stats-port.css settings, stats page: ported omp-stats rules missing from the first cut (cascades right after settings-stats.css)
- * Rules inside each domain keep their original relative order from the split;
- * append new styles at the end of the matching domain file.
- * ============================================================ */
-@import "./css/global.css";
-@import "./themes/midnight.css";
-@import "./themes/coral.css";
-@import "./themes/warm-paper.css";
-@import "./themes/deep-think.css";
-@import "./css/main-shell.css";
-@import "./css/main-sidebar.css";
-@import "./css/main-chat.css";
-@import "./css/main-chat-approval.css";
-@import "./css/main-chat-ask.css";
-@import "./css/main-composer.css";
-@import "./css/main-streamdown.css";
-@import "./css/main-tree.css";
-@import "./css/main-tree-fork.css";
-@import "./css/main-hub.css";
-@import "./css/main-welcome.css";
-@import "./css/main-right.css";
-@import "./css/main-right-caps.css";
-@import "./css/main-right-browser.css";
-@import "./css/settings.css";
-@import "./css/settings-mcp.css";
-@import "./css/settings-stats.css";
-@import "./css/settings-stats-port.css";
+/* Domain imports retain base-before-variant precedence. Shared selectors stay unscoped. */
+@import "./css/global/tokens.css";
+@import "./css/global/base.css";
+@import "./css/global/controls.css";
+@import "./css/global/animations.css";
+@import "./css/global/scrollbars.css";
+@import "./css/global/overlays.css";
+@import "./css/global/context-card.css";
+@import "./css/shared/code-typography.css";
+@import "./css/main/shell.css";
+@import "./css/main/sidebar.css";
+@import "./css/main/center.css";
+@import "./css/main/chat/messages.css";
+@import "./css/shared/markdown.css";
+@import "./css/shared/code-blocks.css";
+@import "./css/main/chat/approval.css";
+@import "./css/main/chat/ask.css";
+@import "./css/main/composer.css";
+@import "./css/main/composer-menus.css";
+@import "./css/shared/model-picker.css";
+@import "./css/main/chat/streamdown.css";
+@import "./css/shared/code-theme.css";
+@import "./css/main/tree/stream.css";
+@import "./css/main/tree/fork.css";
+@import "./css/shared/choice-pills.css";
+@import "./css/main/hub.css";
+@import "./css/shared/agent.css";
+@import "./css/main/right/hub-detail.css";
+@import "./css/main/welcome.css";
+@import "./css/main/chat/status-find.css";
+@import "./css/main/right/common.css";
+@import "./css/main/right/files.css";
+@import "./css/main/right/background.css";
+@import "./css/main/right/git.css";
+@import "./css/shared/code-view.css";
+@import "./css/main/right/branches.css";
+@import "./css/main/right/terminal.css";
+@import "./css/main/right/browser.css";
+@import "./css/main/right/capabilities.css";
+@import "./css/settings/common.css";
+@import "./css/settings/shortcuts.css";
+@import "./css/settings/agents.css";
+@import "./css/settings/memory.css";
+@import "./css/settings/extensions.css";
+@import "./css/settings/appearance.css";
+@import "./css/settings/models.css";
+@import "./css/settings/providers.css";
+@import "./css/settings/stats-legacy.css";
+@import "./css/settings/skills.css";
+@import "./css/settings/experimental.css";
+@import "./css/settings/hooks.css";
+@import "./css/settings/mcp.css";
+@import "./css/settings/forms.css";
+@import "./css/settings/stats.css";
+@import "./css/settings/stats-port.css";
 
-/* ============================================================
- * Theme variants (openhanako port): imported after global.css
- * so they can override :root token definitions
- * ============================================================ */
+/* Keep the previously effective theme overrides at the end. */
 @import "./themes/midnight.css";
 @import "./themes/deep-think.css";
 @import "./themes/coral.css";

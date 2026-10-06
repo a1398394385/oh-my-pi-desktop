@@ -1,0 +1,54 @@
+/* Model menu (two-level cascade: top-level provider rows, second-level model flyout).
+   Container aligned with ZCode dropdown-menu: rounded-lg(8px) + p-1(4px); row gap 5px as required.
+   overscroll-behavior: contain — wheeling past the list's edge must not chain to the settings
+   page scroll container, or the open menu rides its trigger out of view ("escapes upward"). */
+.menu.model {
+  min-width: 200px; max-height: 320px; overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 5px;
+  border-radius: 8px; padding: 4px;
+}
+
+.menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; }
+
+/* same for the second-level model list */
+/* ZCode look: model menu options use font-weight 500 (screenshots confirm its menu text is bolder than body text) */
+.menu.model .mi, .menu.flyout .mi { font-weight: 500; }
+
+#modelMenu .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
+
+#modelMenu .mi.prov.on { background: var(--panel-3); }
+
+#modelMenu .mi.on { background: var(--panel-3); }
+
+/* ctrl+p cycle preview: the slot just switched to */
+.mp-role-sel .menu.flyout .mi { white-space: nowrap; }
+
+.mp-role-sel .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
+
+.mp-role-sel .mi.prov.on, .mp-role-sel .mi.on { background: var(--panel-3); }
+
+/* The flyout hangs under a narrow pill; absolute shrink-to-fit would be squeezed by the containing block's available width -> width:max-content escapes that limit */
+.mp-role-sel .menu.flyout { width: max-content; min-width: 250px; }
+
+/* Second-level flyout: reuses the .menu base class (background/border/radius/shadow/popIn); left/top are written by JS in
+   #composer's coordinate system (mounted under #composer to avoid clipping by .menu.model's overflow-y).
+   Width adapts to the expanded provider's model list (width:max-content, aligned with ZCode
+   DropdownMenuSubContent w-max) instead of eating a fixed 220px floor and outgrowing the content */
+.menu.flyout {
+  bottom: auto;
+  width: max-content;
+  min-width: 128px; max-height: 320px; overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 501;
+}
+
+.menu.flyout .mi .ck { order: 1; margin-left: auto; }
+
+/* Model-page role-row picker: reuses the composer's two-level cascade (top-level provider rows + hover right flyout).
+   the pill flexes with content, width unlocked; the top-level popup menu is page-wide 250 (.mp-role-menu attaches to level one only),
+   the second-level flyout expands dynamically to the longest model name */
+.mp-role-sel { padding: 7px 10px; }
+
+/* 4px taller than the regular .sel */
+.mp-role-menu { width: 250px; }

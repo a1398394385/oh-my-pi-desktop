@@ -271,11 +271,8 @@ export const sessionHandlers = {
   },
   entry_tree(msg) {
     useAppStore.setState((s) => ({
-      rightState: {
-        ...s.rightState,
-        entryTree: { sessionId: msg.sessionId ?? s.rightState.entryTreeFor, leafId: msg.leafId ?? null, roots: msg.roots ?? [] },
-        entryTreePending: false,
-      },
+      entryTree: { sessionId: msg.sessionId ?? s.entryTreeFor, leafId: msg.leafId ?? null, roots: msg.roots ?? [] },
+      entryTreePending: false,
     }));
   },
   session_navigated(msg) {
@@ -290,7 +287,7 @@ export const sessionHandlers = {
       }
     }
     useAppStore.setState((s) => ({
-      rightState: { ...s.rightState, entryTreeNav: false, navFrom: null, entryTree: msg.ok ? null : s.rightState.entryTree },
+      entryTreeNav: false, navFrom: null, entryTree: msg.ok ? null : s.entryTree,
     }));
     if (!msg.ok) {
       useAppStore.getState().toast(msg.error ?? t("notify.navigateFailed"));

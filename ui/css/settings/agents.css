@@ -1,0 +1,17 @@
+.ae-head .inp { width: 140px; flex: none; }
+/* subagents page: list + editor two-column layout */
+.agents-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+
+.agents-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.4fr; gap: 12px; align-items: start; margin-top: 12px; }
+
+.agent-editor { display: flex; flex-direction: column; min-height: 420px; }
+
+.ae-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }
+
+.ae-head b { font-size: var(--ui-fs-base); font-weight: 500; flex: none; }
+
+.ae-head #aePath { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+#aeText { flex: 1; min-height: 320px; background: none; border: 0; outline: none; resize: vertical; padding: 12px 14px; color: var(--text); font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.6; }
+
+.ae-status { padding: 8px 14px; font-size: var(--ui-fs-sm); color: var(--faint); border-top: 1px solid var(--line-soft); min-height: 30px; }

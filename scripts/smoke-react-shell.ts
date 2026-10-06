@@ -147,12 +147,18 @@ await sleep(100);
 ok("tree 页面按一次 Esc 切回对话", dbg.useAppStore.getState().mainViewMode === "chat");
 
 // 3. With text, pressing Esc twice -> clears the input
-dbg.useAppStore.setState({ draftHasContent: true, pendingFiles: [], mainViewMode: "chat" });
+const originalSetComposerValue = dbg.useAppStore.getState().setComposerValue;
+let clearedByEsc = false;
+dbg.useAppStore.setState({ draftHasContent: true, pendingFiles: [{ id: "esc-smoke", name: "draft.png", kind: "image", data: "", mimeType: "image/png" }], mainViewMode: "chat",
+  setComposerValue(text, images, opts) { clearedByEsc = text === "" && images?.length === 0; originalSetComposerValue(text, images, opts); },
+});
 pressEsc();
 await sleep(50);
 pressEsc();
 await sleep(100);
-ok("有文字连按两次 Esc 触发清空输入框", dbg.useAppStore.getState().composerSetSignal?.text === "");
+ok("有文字连按两次 Esc 触发清空输入框", clearedByEsc);
+
+dbg.useAppStore.setState({ setComposerValue: originalSetComposerValue, pendingFiles: [] });
 
 // 4. In tree mode, switching sessions (hideWelcomeScreen / activateSession) resets to chat mode
 dbg.useAppStore.setState({ mainViewMode: "tree" });

@@ -1,11 +1,11 @@
 // Right panel slice: tab/view mode, the file page, the three Git diff caches, right panel runtime
-// state (file tree / session tree / entry tree / git write receipts).
+// state (file tree / branch tree / git write receipts).
 // Moved over from store.ts (P3 wave 2). The briefDiffCache LRU gate is kept as-is.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import { openRightTab } from "../components/right/tabs";
+import { openRightTab } from "../components/main/right/tabs";
 import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
@@ -48,11 +48,6 @@ const rightStateInit: RightState = {
   sessionTree: null,
   sessionTreePending: false,
   treeFor: null,
-  entryTree: null, // in-session entry tree (/tree): { sessionId, leafId, roots }
-  entryTreePending: false,
-  entryTreeFor: null,
-  navFrom: null, // origin of navigate_tree: "fork" (output-tail fork) or null (tree-page jump); decides the receipt message
-  entryTreeNav: false, // navigate_tree in flight (double-click guard)
   imageContent: null,
   gitWrite: null,
 };
@@ -142,7 +137,6 @@ interface RightPanelSnapshot {
  *  outlive evicted sessions, so cap the table to prevent unbounded growth. */
 const RIGHT_SNAPSHOT_MAX = 32;
 const RIGHT_SNAPSHOT_STORAGE_KEY = "omp-right-snapshots";
-
 /** Restore persisted snapshots on module load; corrupted data is dropped wholesale. */
 function loadRightSnapshots(): Map<string, RightPanelSnapshot> {
   try {
@@ -151,7 +145,16 @@ function loadRightSnapshots(): Map<string, RightPanelSnapshot> {
     const pairs = JSON.parse(raw) as [string, RightPanelSnapshot][];
     // Backfill for entries persisted before rightCollapsed joined the snapshot
     // (undefined must not leak into setState; collapsed is the safe default)
-    for (const [, snap] of pairs) if (snap.rightCollapsed === undefined) snap.rightCollapsed = true;
+    for (const [, snap] of pairs) {
+      if (snap.rightCollapsed === undefined) snap.rightCollapsed = true;
+      if (snap.rightTab === "sessiontree") {
+        const index = snap.rightTabs.indexOf("sessiontree");
+        snap.rightTab = snap.rightTabs.slice(index + 1).find((name) => name !== "sessiontree")
+          ?? snap.rightTabs.slice(0, index).reverse().find((name) => name !== "sessiontree") ?? null;
+      }
+      snap.rightTabs = snap.rightTabs.filter((name) => name !== "sessiontree");
+      snap.rightRecentClosed = snap.rightRecentClosed.filter((item) => item.name !== "sessiontree");
+    }
     return new Map(pairs);
   } catch {
     return new Map();
@@ -204,15 +207,12 @@ export function restoreRightPanel(path: string): void {
     rightSnapshots.set(path, snap); // LRU touch
     persistRightSnapshots();
   }
-  useAppStore.setState(
-    snap ?? {
-      selectedFile: null,
-      fileView: null,
-      selectedSubagent: null,
-      fileViewPending: null,
-      briefDiffPending: null,
-    },
-  );
+  useAppStore.setState({
+    ...(snap ?? { selectedFile: null, fileView: null }),
+    selectedSubagent: null,
+    fileViewPending: null,
+    briefDiffPending: null,
+  });
 }
 
 /** Clear all snapshots (profile switch = different session universe, paths no longer trustworthy) */

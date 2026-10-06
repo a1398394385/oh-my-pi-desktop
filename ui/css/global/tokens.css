@@ -1,0 +1,239 @@
+@theme inline {
+  --color-base: var(--base);
+  --color-card: var(--card);
+  --color-inset: var(--inset);
+  --color-select: var(--select);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-text: var(--text);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-green: var(--green);
+  --color-orange: var(--orange);
+  --color-red: var(--red);
+  --color-err: var(--err);
+  --color-yellow: var(--yellow);
+  --color-blue: var(--blue);
+  --color-purple: var(--purple);
+  --color-bash: var(--bash);
+  --color-diff-added: var(--green);
+  --color-diff-removed: var(--err);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-card: var(--r-card);
+  --text-ui-xs: var(--ui-fs-xs);
+  --text-ui-sm: var(--ui-fs-sm);
+  --text-ui-base: var(--ui-fs-base);
+  --text-ui-md: var(--ui-fs-md);
+  --text-ui-lg: var(--ui-fs-lg);
+  --text-ui-xl: var(--ui-fs-xl);
+  --font-sans: var(--ui-font, var(--sans));
+  --font-mono: var(--mono);
+}
+
+/* ── tokens: base + nested cards ─────────────────────────────────────────── */
+:root {
+  --base:      #292B2C;   /* window base */
+  --card:      #161616;   /* middle / right column cards */
+  --inset:     #2B2B2B;   /* input fields / TODO inset cards */
+  --select:    #3F4141;   /* current session highlight */
+  --bg:        var(--card);
+  --sidebar:   var(--base);
+  --panel:     var(--inset);
+  --panel-2:   #353738;
+  --panel-3:   var(--select);
+  /* Upper card face of stacked second-level cards (same semantics as ZCode bg-surface:
+     a low-opacity veil floating a level above the page base, higher than the input card — do not swap to a solid color) */
+  --surface:   rgba(255,255,255,.05);
+  --line:      #3A3C3D;
+  --line-soft: rgba(255,255,255,.06);
+  --text:      #ededef;
+  --dim:       #b0b0b6;
+  --faint:     #8c8c92;
+  --green:     #34c759;
+  --green-soft:#3cb54f;
+  --orange:    #e5a14e;
+  --red:       #ff5f57;
+  --err:       #d05c52;
+  --yellow:    #febc2e;
+  --blue:      #6fb3d8;
+  --purple:    #a86fe0;
+  --accent:    #4a9eff;   /* the site's only accent color (switches/focus rings/selected icons) */
+  /* Bash-mode (composer ! prefix) color aliases: aligned with the TUI bashMode theme colors dark=cyan / light=green;
+     the desktop has no cyan token, so dark maps to the nearby --blue and light maps to --green (both defined in :root) */
+  --bash:      var(--blue);
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --ui-font: var(--sans);
+  --ui-fs: 13px;
+  --code-fs: 12px;
+  --ui-fs-xs: calc(var(--ui-fs) * 0.77);   /* ~10px */
+  --ui-fs-sm: calc(var(--ui-fs) * 0.88);   /* ~11.5px */
+  --ui-fs-base: var(--ui-fs);              /* 13px */
+  --ui-fs-md: calc(var(--ui-fs) * 1.04);   /* ~13.5px */
+  --ui-fs-lg: calc(var(--ui-fs) * 1.15);   /* ~15px */
+  --ui-fs-xl: calc(var(--ui-fs) * 1.25);   /* ~16.25px */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 12px; --r-card: 16px;
+  --shell-gap: 8px;
+  --todo-w: 280px;
+  --chat-gutter: 48px;
+  --ctl-bg: var(--panel-2);
+  /* Motion discipline: two curves (spring/swift), reused site-wide */
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --swift:  cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme="light"] {
+  --base:      #dcdce0;
+  --card:      #f6f6f8;
+  --inset:     #ffffff;
+  --select:    #cfd0d4;
+  --bg:        var(--card);
+  --sidebar:   var(--base);
+  --panel:     var(--inset);
+  --panel-2:   #e8e8ec;
+  --panel-3:   var(--select);
+  --surface:   rgba(0,0,0,.04);
+  --line:      #d0d0d6;
+  --line-soft: rgba(0,0,0,.06);
+  --text:      #1d1d21;
+  --dim:       #5d5d65;
+  --faint:     #808088;
+  --bash:      var(--green); /* bash mode: light = green (--green inherits the :root dark-theme definition) */
+  --ctl-bg:    var(--inset);
+}
+
+/* ── Lightweight diff (in-house, ported from ZCode lightweight-diff-preview): row background color-mix +
+   inset status bar at the row head + gutter number coloring to express additions/deletions, no +/-/space markers ── */
+:root {
+  --diff-added: var(--green-soft);  /* added-row key color: 14% row bg + 18% gutter base + status bar */
+  --diff-removed: var(--err);       /* removed-row key color, same tinting rules */
+}
+
+:root {
+  --hm0: #33333d;
+  --hm1: #2f4a6b;
+  --hm2: #3d6ea8;
+  --hm3: #4a9eff;
+  --hm4: #79b8ff;
+}
+:root[data-theme="light"] {
+  --hm0: #e4e4e9;
+  --hm1: #bcd6f3;
+  --hm2: #84b8ee;
+  --hm3: #4a9eff;
+  --hm4: #1f7ae0;
+}
+
+/* Existing fixed palettes and alpha colors, extracted without visual changes. */
+:root {
+  --tint-success-140: rgba(52,199,89,.14);
+  --tint-accent-220: rgba(74, 158, 255, 0.22);
+  --tint-accent-100: rgba(74, 158, 255, 0.10);
+  --tint-accent-350: rgba(74, 158, 255, .35);
+  --accent-fixed: #4a9eff;
+  --danger-fixed: #d05c52;
+  --white: #fff;
+  --tint-black-500: rgba(0,0,0,.5);
+  --tint-black-180: rgba(0,0,0,.18);
+  --tint-white-25: rgba(255,255,255,.025);
+  --tint-black-20: rgba(0,0,0,.02);
+  --tint-accent-500: rgba(74,158,255,.5);
+  --tint-accent-130: rgba(74,158,255,.13);
+  --button-hover-dark: #4a4c4d;
+  --button-hover-light: #bdbfc4;
+  --toggle-thumb: #f2f2f4;
+  --tint-black-400: rgba(0,0,0,.4);
+  --tint-black-450: rgba(0,0,0,.45);
+  --window-close: #e81123;
+  --black: #000;
+  --tint-black-150: rgba(0, 0, 0, 0.15);
+  --tint-black-50: rgba(0, 0, 0, 0.05);
+  --command-surface: #323232;
+  --command-text: #e5e7eb;
+  --tint-white-120: rgba(255, 255, 255, .12);
+  --command-output: #a8b0ba;
+  --tint-black-350: rgba(0,0,0,.35);
+  --tint-black-120: rgba(0,0,0,.12);
+  --todo-strike-dark: #4a4a52;
+  --todo-strike-light: #c2c2ca;
+  --tint-black-360: rgba(0,0,0,.36);
+  --streamdown-surface: #2B2B2B;
+  --tint-white-750: rgba(255, 255, 255, 0.75);
+  --tint-black-280: rgba(0, 0, 0, 0.28);
+  --tint-black-70: rgba(0, 0, 0, 0.07);
+  --menu-check: hsl(0, 0%, 58%);
+  --send-stop: hsl(360, 67%, 60%);
+  --tint-black-380: rgba(0,0,0,.38);
+  --context-ring-hover: #363636;
+  --send-idle: hsl(0, 0%, 17%);
+  --send-ready: hsl(210, 66%, 48%);
+  --project-menu-surface: #222222;
+  --tint-white-180: rgba(255, 255, 255, 0.18);
+  --tint-white-80: rgba(255, 255, 255, 0.08);
+  --tint-black-60: rgba(0, 0, 0, 0.06);
+  --tint-black-200: rgba(0, 0, 0, 0.2);
+  --background-idle: #888;
+  --tint-job-running-450: rgba(74, 222, 128, 0.45);
+  --tint-black-30: rgba(0, 0, 0, 0.03);
+  --tint-job-running-350: rgba(74, 222, 128, 0.35);
+  --tint-job-running-80: rgba(74, 222, 128, 0.08);
+  --tint-git-added-140: rgba(60,181,79,.14);
+  --tint-danger-140: rgba(208,92,82,.14);
+  --tint-git-modified-140: rgba(229,161,78,.14);
+  --tint-nav-hover-420: rgba(63, 65, 65, .42);
+  --tint-black-220: rgba(0,0,0,.22);
+  --tint-black-80: rgba(0,0,0,.08);
+  --tint-danger-150: rgba(208, 92, 82, 0.15);
+  --tint-danger-350: rgba(208, 92, 82, 0.35);
+  --tint-danger-120: rgba(208, 92, 82, 0.12);
+  --tint-white-200: rgba(255, 255, 255, 0.2);
+  --avatar-surface: #1c1e1f;
+  --avatar-light-end: #c8c8ce;
+  --tint-accent-400: rgba(74, 158, 255, 0.4);
+  --tint-black-250: rgba(0, 0, 0, 0.25);
+  --tint-accent-200: rgba(74, 158, 255, 0.2);
+  --tint-accent-450: rgba(74, 158, 255, 0.45);
+  --tint-role-user-120: rgba(111, 179, 216, 0.12);
+  --tint-role-user-300: rgba(111, 179, 216, 0.3);
+  --tint-role-assistant-120: rgba(168, 111, 224, 0.12);
+  --tint-role-assistant-300: rgba(168, 111, 224, 0.3);
+  --tint-success-120: rgba(52, 199, 89, 0.12);
+  --tint-success-300: rgba(52, 199, 89, 0.3);
+  --tint-role-system-120: rgba(254, 188, 46, 0.12);
+  --tint-role-system-300: rgba(254, 188, 46, 0.3);
+  --tint-accent-120: rgba(74, 158, 255, 0.12);
+  --welcome-pill-active: #444444;
+  --preview-line-number: #9aa4b2;
+  --code-surface-light: #f6f8fa;
+  --code-text-light: #24292f;
+  --preview-line-number-light: #b6bec9;
+  --code-keyword-light: #cf222e;
+  --code-value-light: #8250df;
+  --code-string-light: #0a3069;
+  --code-number-light: #0550ae;
+  --preview-code-dark: #0d1117;
+  --preview-text-dark: #c9d1d9;
+  --preview-line-number-dark: #484f58;
+  --code-value-dark: #79c0ff;
+  --code-type-dark: #ffa657;
+  --code-string-dark: #a5d6ff;
+  --code-keyword-dark: #ff7b72;
+  --tint-success-700: rgba(52, 199, 89, .7);
+  --tint-danger-700: rgba(208, 92, 82, .7);
+  --tint-black-40: rgba(0,0,0,.04);
+  --tint-white-140: rgba(255,255,255,.14);
+  --tint-white-60: rgba(255,255,255,.06);
+  --tint-black-160: rgba(0,0,0,.16);
+  --code-surface-dark: #19191d;
+  --tint-black-100: rgba(0, 0, 0, 0.1);
+  --tint-white-100: rgba(255, 255, 255, 0.1);
+  --code-text-dark: #d1d5db;
+  --tint-accent-70: rgba(74, 158, 255, 0.07);
+  --tint-white-20: rgba(255, 255, 255, 0.02);
+}

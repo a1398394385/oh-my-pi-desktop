@@ -3,11 +3,12 @@
 // store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { applyUiConfig } from "../../appearance";
-import { hostInstanceReset, ingestModelDefaults, ingestModels } from "../session";
+import { hostInstanceReset } from "../session";
+import { ingestModelDefaults, ingestModels } from "../models";
 import { clearRightSnapshots, resetBrowserMirrorUi } from "../right";
 import { t } from "../../i18n";
 import type { ApprovalMode } from "../../types/frames";
-import type { SchemaDef } from "../../components/settings/placement";
+import type { SchemaDef } from "../../types/settings";
 import type { HandlerSlice } from "./types";
 
 export const configHandlers = {

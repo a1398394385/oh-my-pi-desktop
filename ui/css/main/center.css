@@ -1,0 +1,91 @@
+.chat-head > .win-controls { margin-right: -12px; }
+
+#main {
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; flex: 1; position: relative;
+  overflow: hidden;
+  background: var(--card);
+  border-radius: var(--r-card);
+  margin: var(--shell-gap) 0;
+  transition: margin 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
+
+body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
+
+/* The TODO process card (#statusWrap: absolute + z-60 + shadow) overlays the message area when expanded, without squeezing the message/input content column width; the card sits outside the scroll container and does not scroll */
+.chat-head {
+  height: 48px; flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: padding-left 0.25s cubic-bezier(0.2, 0, 0, 1);
+  min-width: 0;
+}
+
+body:has(#sidebar.collapsed) .chat-head {
+  padding-left: 78px;
+}
+
+.chat-head button,
+#sidebar button,
+#sidebar .nav-item,
+#sidebar .task,
+#sidebar .proj,
+#sidebar .more-link {
+  -webkit-app-region: no-drag;
+}
+
+/* Connection watchdog banner (host unreachable >30s): full-width strip below the main chat-head, unmounts on reconnect */
+.conn-banner {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--ui-fs-base);
+  color: var(--text);
+  min-width: 0;
+}
+
+.conn-banner-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+  color: var(--dim);
+}
+
+.dock,
+.queue-card,
+.goal-card,
+.turn-flow,
+.sticky-user-inner,
+#stream > *:not(.scroll-bottom):not(.turn-section) {
+  width: 100%;
+  /* Four-stage shrink (margin = distance from the content column to the main card edge; --col-max/--col-max-35 are written by JS
+     as 50%/35% of screen width):
+     1. content pinned at 50% screen width, margin keeps shrinking -> 2. margin pinned at 75px/side, content shrinks to 35% screen width
+     -> 3. content pinned at 35% screen width, margin shrinks to 20px/side -> 4. margin pinned at 20px/side, content keeps shrinking.
+     Chat messages stay width-aligned with the bottom composer (queue card matches the dock width, stacked cards don't drift) */
+  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* Subagent top bar badge and return button */
+.subagent-return-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px;
+  padding: 0 12px; font-size: var(--ui-fs-sm); border-radius: 6px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  cursor: pointer; flex: none;
+}
+
+.subagent-return-btn:hover { background: var(--panel-3); }
+
+.subagent-head-badge {
+  display: inline-flex; align-items: center; padding: 1px 6px; margin-left: 6px;
+  font-size: var(--ui-fs-sm); color: var(--accent); background: var(--panel-2);
+  border: 1px solid var(--line-soft); border-radius: 4px; flex: none;
+}

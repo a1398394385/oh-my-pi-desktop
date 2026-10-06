@@ -1,0 +1,35 @@
+/* ── Layout: middle / right rounded cards inset on the base ───────────────────────────────── */
+/* ── site-wide z-index scale (the single source of truth; pick a tier here for new overlays, don't invent your own) ────────────
+   20   .sticky-user-wrap (sticky user message bar)
+   60   #statusWrap (#main inset TODO card) / .find-bar / #msgRail / .resizer (in-panel fixed overlays)
+   100  .dock (composer container: its inner dropdown menus cap here, always below hover cards/settings/toasts)
+   200  .ring-pop (hover detail cards)
+   300  #settings (fullscreen settings center)
+   400  #toast (notifications: must sit above the settings center and composer)
+   500  dropdown menus/flyouts: the .menu family (incl. .menu.flyout 501), .sel > .menu, .sp-pop(510),
+        .bpane-menu, .side-search-pop, .ctx-menu, .proj-add-pop, #wbProjectMenu/#wbBranchMenu,
+        plus Radix Select / DropdownMenu / Popover portal layers
+   600  hover hints: Radix Tooltip / .gtt-hint
+   900  .proj-drag-overlay (drag overlay)
+   999  .login-banner
+   1000 modal masks and dialogs: .confirm-mask / .lp-mask / Radix Dialog / image lightbox
+   Column containers #sidebar / #right use isolation:isolate as their own layer: popovers inside never escape the column. */
+/* ── unified global scrollbars ─────────────────────────────────────────────────────────
+   WebView2/Chromium default to persistent classic scrollbars (the white track is jarring in dark mode). The whole site uses this one set instead:
+   thin thumb + transparent track + thumb appears only while hovering the container — visually uniform, never persistent. Elements needing fully hidden scrollbars
+   (#tasklist / .rtabs / xterm viewport) do their own display:none / width:0 and are unaffected. */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner { background: transparent; }
+
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+*:hover::-webkit-scrollbar-thumb { background-color: var(--panel-3); }
+
+*::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--panel-3) 45%, var(--dim)); }

@@ -1,0 +1,27 @@
+.ask-q { display: flex; flex-direction: column; gap: 4px; }
+
+.ask-q + .ask-q { margin-top: 10px; }
+
+.ask-q-t { color: var(--text); overflow-wrap: anywhere; }
+
+.ask-q-t b { color: var(--dim); font-weight: 500; margin-right: 6px; }
+
+/* native radio/checkbox take the number slot's place; accent follows the theme */
+.ask-opt input { flex: none; margin: 0; accent-color: var(--accent); }
+
+.ask-opt .ask-desc { display: block; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+/* Keyboard cursor plate: the row hosting the focused control takes a hover-level
+   highlight so global arrow navigation stays visible on multi questions and
+   "Other" rows (where the checked --select plate lives elsewhere); :not(.selected)
+   keeps the stronger checked plate winning on the row that owns both */
+.ask-opt:has(input:focus):not(.selected) { background: var(--panel-2); }
+/* ask form: "Other" custom-answer row (dimmed label, lit when selected) and
+   its inline input, indented to align with the option labels */
+.ask-other-opt .approval-label { color: var(--dim); }
+
+.ask-other-opt.selected .approval-label { color: var(--text); }
+
+.ask-other { display: flex; padding: 2px 12px 2px 25px; }
+
+.ask-other .approval-inp { font-weight: 400; }

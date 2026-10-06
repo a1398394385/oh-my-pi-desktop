@@ -9,7 +9,8 @@ import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
-import { activeOpen, getSupportedThinkingForModel } from "./session";
+import { activeOpen } from "./session";
+import { getSupportedThinkingForModel } from "./models";
 import { saveRightSnapshot } from "./right";
 import { detectLang } from "../i18n";
 
@@ -29,8 +30,6 @@ export interface UiSlice {
   newSessionModel: string;
   newSessionThinking: string;
   newSessionPlanMode: boolean; // plan-mode intent for the next session (consumed by create_session; the host confirms via the plan_mode frame)
-  defaultModelCfg: string | null; // landed from the models frame's defaultModel
-  defaultThinkingCfg: string | null; // landed from the models frame's defaultThinking
   newSessionDirty: boolean;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   fileSeq: number;
@@ -129,8 +128,6 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionModel: "",
   newSessionThinking: "auto",
   newSessionPlanMode: false,
-  defaultModelCfg: null,
-  defaultThinkingCfg: null,
   newSessionDirty: false,
   pendingFiles: [],
   fileSeq: 0,

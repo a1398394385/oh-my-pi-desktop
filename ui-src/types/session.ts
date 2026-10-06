@@ -33,7 +33,7 @@ import type {
   ApprovalMode,
 } from "./frames";
 // SchemaDef is the authoritative shape of settings schema entries (aligned with SETTINGS_SCHEMA), defined in settings/placement.ts
-import type { SchemaDef } from "../components/settings/placement";
+import type { SchemaDef } from "./settings";
 
 // ---------- Tool args/details (points read by items.tsx via util.ts predicates; field list merged from P2-C chat-types.ts) ----------
 

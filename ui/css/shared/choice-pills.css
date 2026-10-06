@@ -1,0 +1,87 @@
+.fork-pills {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 6px;
+  padding: 2px 2px 6px 2px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .3s ease;
+}
+
+.fork-pills.is-scrolling {
+  scrollbar-color: var(--line) transparent;
+}
+
+.fork-pills::-webkit-scrollbar {
+  height: 4px;
+}
+
+.fork-pills::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fork-pills::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+  transition: background-color .3s ease;
+}
+
+.fork-pills.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.fork-pills.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+
+.fork-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 9px;
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .15s ease;
+}
+
+.fork-pill:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--line-soft);
+}
+
+.fork-pill.active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.fork-pill-index {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+.fork-pill.active .fork-pill-index {
+  color: var(--accent);
+}
+
+.fork-pill-len {
+  font-size: var(--ui-fs-xs);
+  background: var(--panel-2);
+  color: var(--faint);
+  padding: 0 4px;
+  border-radius: 4px;
+}

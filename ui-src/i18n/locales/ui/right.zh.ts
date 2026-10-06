@@ -4,7 +4,6 @@ export const rightZh = {
   tabBgcmd: "后台命令",
   tabFile: "文件",
   tabTree: "分支",
-  tabSessiontree: "会话树",
   tabTerminal: "终端",
   tabBrowser: "浏览器",
   searchTabs: "搜索标签页",

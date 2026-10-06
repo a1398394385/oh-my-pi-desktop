@@ -1,0 +1,6 @@
+/* cache keep-alive model pill (.stag visuals + click-to-remove; clickable, so hover feedback is allowed) */
+.ka-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.ka-target { font-size: var(--ui-fs-xs); font-weight: 500; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; cursor: pointer; }
+
+.ka-target:hover { border-color: var(--dim); }

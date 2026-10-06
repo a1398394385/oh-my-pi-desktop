@@ -2,7 +2,6 @@
 // Moved over from store.ts, which re-exports them so external import paths stay unchanged.
 import type {
   DirEntry,
-  EntryTreeNode,
   GitCommittedFrame,
   GitDiscardedFrame,
   GitPushedFrame,
@@ -56,11 +55,6 @@ export interface RightState {
   sessionTree: { sessionId: string | null; branches: SessionBranch[] } | null;
   sessionTreePending: boolean;
   treeFor: string | null;
-  entryTree: { sessionId: string | null; leafId: string | null; roots: EntryTreeNode[] } | null;
-  entryTreePending: boolean;
-  entryTreeFor: string | null;
-  navFrom: string | null; // origin of navigate_tree: "fork" (output-tail fork) or null (tree-page jump); decides the receipt message
-  entryTreeNav: boolean; // navigate_tree in flight (double-click guard)
   imageContent: ImageContentFrame | null; // read_image reply (consumed by the image preview page)
   gitWrite: GitWriteFrame | null; // git write-op reply (the reply settles the button busy state)
 }

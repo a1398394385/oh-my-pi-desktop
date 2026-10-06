@@ -1,0 +1,726 @@
+#pg-stats {
+  /* Token bridge: map stats variables to omp-desktop system design tokens */
+  --bg: var(--base);
+  --panel: var(--panel-2);
+  /* --card intentionally not redefined: inherit the global token (a self-reference
+     here would be cyclic and invalidate every var(--card) use in this subtree) */
+  --raised: var(--panel-3);
+  --overlay: var(--panel-3);
+  --hover: var(--panel-2);
+  --press: var(--panel-3);
+  --selected: var(--panel-3);
+
+  --line-1: var(--line-soft);
+  --line-2: var(--line);
+  --line-3: var(--line);
+  --line-4: var(--line);
+
+  --ink-1: var(--text);
+  --ink-2: var(--dim);
+  --ink-3: var(--faint);
+  --ink-4: var(--faint);
+  --ink-inverse: var(--bg);
+
+  --accent-a: var(--accent);
+  --accent-b: var(--purple);
+  --accent-soft: var(--panel-2);
+  --accent-line: var(--accent);
+  --focus: var(--accent);
+  --accent-gradient: linear-gradient(100deg, var(--accent-a), var(--accent-b));
+
+  --ok: var(--green);
+  --ok-soft: color-mix(in srgb, var(--green) 14%, transparent);
+  --warn: var(--orange);
+  --warn-soft: color-mix(in srgb, var(--orange) 14%, transparent);
+  --bad: var(--err);
+  --bad-soft: color-mix(in srgb, var(--err) 14%, transparent);
+  --live: var(--green);
+
+  --chart-grid: var(--line-1);
+  --chart-axis: var(--faint);
+  --chart-cursor: var(--line);
+  --chart-primary: var(--accent);
+  --chart-secondary: var(--purple);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.45);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --r-chip: 6px;
+  --r-control: 8px;
+  --r-panel: var(--r-card);
+  --r-pill: 999px;
+
+  /* Motion tokens used by the ported rules (--ease-out curve matches --swift) */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: var(--swift);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 360ms;
+  --stagger: 40ms;
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  color: var(--text);
+}
+
+/* Container & Topbar */
+#pg-stats .stats-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+#pg-stats .stats-top-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+#pg-stats .stats-range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Two-column layout: left sub-navigation + right main content */
+#pg-stats .stats-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+#pg-stats .stats-nav {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 8px;
+}
+
+#pg-stats .stats-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#pg-stats .stats-nav-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+  padding: 4px 8px;
+}
+
+#pg-stats .stats-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  font-size: var(--ui-fs-base);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+  width: 100%;
+}
+
+#pg-stats .stats-nav-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+#pg-stats .stats-nav-item.on {
+  background: var(--panel-2);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+#pg-stats .stats-nav-icon {
+  flex-shrink: 0;
+}
+
+#pg-stats .stats-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pg-stats .stats-nav-hotkey {
+  font-size: 10px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+}
+
+#pg-stats .stats-main-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+#pg-stats .stats-route-container {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+
+/* The keep-alive route mount sets `hidden` on inactive sections; an author-level
+   display rule would override the UA [hidden] style and stack every section. */
+#pg-stats .stats-route-container[hidden] {
+  display: none;
+}
+
+/* The stats dashboard wants the full settings body width: 30px gutters instead
+   of the generic centered .set-page column. */
+#pg-stats.set-page {
+  max-width: none;
+  margin-left: 30px;
+  margin-right: 30px;
+}
+
+/* Page Header & Common Stacks */
+#pg-stats .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+#pg-stats .page-title {
+  font-size: calc(var(--ui-fs) * 1.35);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+#pg-stats .page-description {
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+#pg-stats .page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#pg-stats .stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+#pg-stats .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#pg-stats .grid {
+  display: grid;
+  gap: 20px;
+}
+
+#pg-stats .grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#pg-stats .grid-main-side {
+  grid-template-columns: 2fr 1fr;
+}
+
+@media (max-width: 900px) {
+  #pg-stats .grid-2,
+  #pg-stats .grid-main-side {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cards & Stats */
+#pg-stats .card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#pg-stats .card[data-flush="true"] {
+  padding: 0;
+}
+
+#pg-stats .card[data-flush="true"] .card-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-1);
+}
+
+#pg-stats .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+#pg-stats .card-title {
+  font-size: var(--ui-fs-base);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#pg-stats .card-description {
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+#pg-stats .card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#pg-stats .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--min-width, 180px), 1fr));
+  gap: 12px;
+}
+
+#pg-stats .stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#pg-stats .stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#pg-stats .stat-value {
+  font-size: calc(var(--ui-fs) * 1.5);
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+#pg-stats .stat-hint {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}
+
+#pg-stats .stat-spark {
+  margin-top: 4px;
+}
+
+/* Tables */
+#pg-stats .table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+#pg-stats .table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--ui-fs-sm);
+}
+
+#pg-stats .table th {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+#pg-stats .table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-1);
+  color: var(--text);
+}
+
+#pg-stats .table tbody tr:hover {
+  background: var(--panel-2);
+}
+
+#pg-stats .table tbody tr.selected {
+  background: var(--panel-3);
+}
+
+#pg-stats .table-dense td {
+  padding: 6px 12px;
+}
+
+/* Badges & Dots */
+#pg-stats .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  color: var(--dim);
+  border: 1px solid var(--line-1);
+}
+
+#pg-stats .badge[data-tone="ok"] {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 25%, transparent);
+}
+
+#pg-stats .badge[data-tone="warn"] {
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  color: var(--orange);
+  border-color: color-mix(in srgb, var(--orange) 25%, transparent);
+}
+
+#pg-stats .badge[data-tone="bad"] {
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 25%, transparent);
+}
+
+#pg-stats .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--faint);
+}
+
+#pg-stats .dot[data-tone="ok"],
+#pg-stats .dot[data-tone="live"] {
+  background: var(--green);
+}
+
+#pg-stats .dot[data-tone="warn"] {
+  background: var(--orange);
+}
+
+#pg-stats .dot[data-tone="bad"] {
+  background: var(--err);
+}
+
+#pg-stats .dot[data-pulse="true"] {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 30%, transparent);
+}
+
+/* Meters */
+#pg-stats .meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-3);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+#pg-stats .meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+#pg-stats .meter-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 80px;
+}
+
+#pg-stats .meter-cell-text {
+  font-family: var(--font-mono);
+  font-size: var(--ui-fs-sm);
+  text-align: right;
+}
+
+/* Swatches & Labels */
+#pg-stats .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+#pg-stats .label-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#pg-stats .label-cell-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#pg-stats .label-cell-primary {
+  font-weight: 500;
+  color: var(--text);
+}
+
+#pg-stats .label-cell-secondary {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}
+
+/* Charts & Tooltips */
+#pg-stats .chart-wrap {
+  width: 100%;
+  position: relative;
+}
+
+#pg-stats .chart-svg {
+  width: 100%;
+  overflow: visible;
+}
+
+#pg-stats .chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-size: var(--ui-fs-sm);
+  box-shadow: var(--shadow-2);
+  z-index: 20;
+}
+
+#pg-stats .chart-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+
+#pg-stats .legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+#pg-stats .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+#pg-stats .legend-item[data-hidden="true"] {
+  opacity: 0.35;
+}
+
+#pg-stats .share-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel-3);
+  width: 100%;
+}
+
+#pg-stats .bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#pg-stats .bar-list-row {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+#pg-stats .bar-list-row:hover {
+  background: var(--panel-2);
+}
+
+/* LiveChip */
+#pg-stats .live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#pg-stats .live-chip:hover:not(:disabled) {
+  background: var(--panel-3);
+  border-color: var(--line-3);
+  color: var(--text);
+}
+
+#pg-stats .live-chip-count {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+}
+
+/* Drawers & Modals */
+#pg-stats .drawer-scrim,
+#pg-stats .modal-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--tint-black-450);
+  z-index: 120;
+}
+
+#pg-stats .drawer-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(680px, 92vw);
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-3);
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+}
+
+#pg-stats .modal-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, 90vw);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+/* Json & Code blocks */
+#pg-stats .json-block,
+#pg-stats .code-block {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+/* Utility Helpers */
+#pg-stats .num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+#pg-stats .mono {
+  font-family: var(--font-mono);
+}
+
+#pg-stats .truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pg-stats .dim {
+  color: var(--dim);
+}
+
+#pg-stats .muted {
+  color: var(--faint);
+}
+
+#pg-stats .micro {
+  font-size: 11px;
+}
+
+#pg-stats .tone-ok {
+  color: var(--green);
+}
+
+#pg-stats .tone-warn {
+  color: var(--orange);
+}
+
+#pg-stats .tone-bad {
+  color: var(--err);
+}
+
+#pg-stats .spin {
+  animation: stats-spin 1s linear infinite;
+}
+
+@keyframes stats-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

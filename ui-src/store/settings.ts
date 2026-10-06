@@ -9,8 +9,6 @@ import type {
   LoginPromptFrame,
   AssetFileFrame,
   SettingsPayload,
-  ModelCatalogEntry,
-  ModelRoleEntry,
   CapabilityKeyEntry,
   AllProviderEntry,
   UsageStats,
@@ -24,15 +22,13 @@ import type {
   RemoteWorkspaceAddedFrame,
 } from "../types/frames";
 import type { MemoryDetailState } from "../types/session";
-import type { SchemaDef } from "../components/settings/placement";
+import type { SchemaDef } from "../types/settings";
 
 export interface SettingsSlice {
   settingsOpen: boolean; // fullscreen overlay open state
   settingsPage: string; // current settings page id
   hostSettings: SettingsPayload | null;
   settingsSchema: Record<string, SchemaDef> | null; // entry shape matches SETTINGS_SCHEMA
-  modelCatalog: ModelCatalogEntry[];
-  modelRoles: ModelRoleEntry[] | null;
   capabilityKeys: CapabilityKeyEntry[] | null;
   searchAvailability: Record<string, boolean> | null; // get_search_availability reply (null = not fetched yet); keys are catalog ids "web/<engine>"
   selectedProvider: string | null;
@@ -78,8 +74,6 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   settingsPage: "pg-general",
   hostSettings: null,
   settingsSchema: null,
-  modelCatalog: [],
-  modelRoles: null,
   capabilityKeys: null,
   searchAvailability: null,
   selectedProvider: null,

@@ -1,0 +1,299 @@
+/* ── session tree (message-area waterfall: MainSessionTree / SessionTreeStream)────────────────
+   the session tree page moved into the middle-column message area (Chat.tsx mainViewMode==="tree"), relocated from main-right.css. */
+/* row text: single-line truncation; role coloring (token semantics aligned with the chat area's user/assistant/tool hierarchy) */
+.st-user { color: var(--accent); }
+
+.st-asst { color: var(--green); }
+
+.st-tool { color: var(--faint); }
+
+.st-sys { color: var(--faint); font-size: var(--ui-fs-xs); }
+
+/* active path (root -> current leaf) marker: accent dot + brighter text */
+/* current-leaf badge + time: pinned right column, unaffected by text truncation */
+.st-confirm-text {
+  max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── session tree's new waterfall and fork-switching view (Session Tree Stream) ── */
+.stream-container {
+  position: relative;
+  width: 100%;
+}
+
+.stream-spine {
+  position: absolute;
+  top: 18px;
+  bottom: 24px;
+  left: 42px;
+  width: 2px;
+  background: var(--line);
+  z-index: 1;
+  border-radius: 1px;
+}
+
+.stream-node-item {
+  position: relative;
+  margin-bottom: 10px; /* spacing +2px (8px -> 10px) */
+  padding-left: 64px;
+  z-index: 2;
+}
+
+.stream-node-item:last-child {
+  margin-bottom: 0;
+}
+
+/* hover jump button left of the vertical line */
+.node-jump-btn {
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px);
+  transition: opacity .15s ease, transform .15s ease, background .12s, color .12s, border-color .12s;
+  z-index: 5;
+  box-shadow: 0 2px 8px var(--tint-black-250);
+}
+
+.node-jump-btn:hover {
+  background: var(--panel-2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.stream-node-item:hover .node-jump-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.spine-bullet {
+  position: absolute;
+  left: 33px;
+  top: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s ease;
+  z-index: 3;
+}
+
+.spine-bullet::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.stream-node-item.is-leaf .spine-bullet {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--tint-accent-200);
+}
+
+.stream-node-item.is-leaf .spine-bullet::after {
+  background: var(--accent);
+}
+
+.node-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: background .12s, border-color .12s, box-shadow .12s;
+  overflow: hidden;
+}
+
+.node-card:hover {
+  background: var(--panel-2);
+  border-color: var(--line-soft);
+}
+
+.stream-node-item.is-leaf .node-card {
+  border-color: var(--tint-accent-450);
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+}
+
+.node-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--ui-fs-sm);
+  min-height: 34px;
+}
+
+.node-card-header .role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ui-fs-xs);
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.role-badge.user {
+  background: var(--tint-role-user-120);
+  color: var(--blue);
+  border: 1px solid var(--tint-role-user-300);
+}
+
+.role-badge.assistant {
+  background: var(--tint-role-assistant-120);
+  color: var(--purple);
+  border: 1px solid var(--tint-role-assistant-300);
+}
+
+.role-badge.tool {
+  background: var(--tint-success-120);
+  color: var(--green);
+  border: 1px solid var(--tint-success-300);
+}
+
+.role-badge.system {
+  background: var(--tint-role-system-120);
+  color: var(--yellow);
+  border: 1px solid var(--tint-role-system-300);
+}
+
+.node-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.node-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.leaf-tag {
+  font-size: var(--ui-fs-xs);
+  color: var(--accent);
+  background: var(--tint-accent-120);
+  border: 1px solid var(--tint-accent-400);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 500;
+}
+
+.node-time {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}
+
+.node-card .ed-arrow {
+  color: var(--faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  transition: transform .2s ease, color .15s;
+  flex: none;
+}
+
+.node-card:hover .ed-arrow {
+  color: var(--dim);
+}
+
+.node-card .ed-arrow.open {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.node-detail-panel {
+  padding: 10px 12px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  animation: ed-drop .18s ease-out;
+}
+
+.detail-section-title {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.detail-body {
+  font-size: var(--ui-fs-sm);
+  line-height: 1.6;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  /* slim scrollbar revealed only while scrolling (same pattern as .fork-pills);
+     overrides the global hover-visible thumb */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .3s ease;
+}
+
+.detail-body.is-scrolling {
+  scrollbar-color: var(--line) transparent;
+}
+
+.detail-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.detail-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.detail-body::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+}
+
+.detail-body.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.detail-body.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* keyboard cursor (arrow keys move, enter jumps): accent outline + left bar; deliberately not the whole-row hover highlight
+   — hover is a clickability affordance, the cursor is a keyboard positioning state; different semantics */
+.stream-node-item.is-cursor .node-card { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.stream-node-item.is-cursor .spine-bullet { border-color: var(--accent); }
+
+.stream-node-item.is-cursor::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--accent); z-index: 4; }

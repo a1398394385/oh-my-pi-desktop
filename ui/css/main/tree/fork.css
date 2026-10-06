@@ -1,0 +1,48 @@
+/* fork-point segments and branch switching area */
+.stream-section-block {
+  position: relative;
+  width: 100%;
+}
+
+.stream-branch-section {
+  position: relative;
+  width: 100%;
+  animation: branch-section-fade-in .18s ease-out;
+}
+
+/* fork-point switcher */
+.stream-fork-hub {
+  position: relative;
+  margin: 12px 0 14px 64px;
+  z-index: 2;
+}
+
+.fork-container {
+  background: var(--card);
+  border: 1px dashed var(--tint-accent-400);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  box-shadow: 0 4px 16px var(--tint-black-150);
+}
+
+.fork-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.fork-title {
+  font-size: var(--ui-fs-xs);
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.3px;
+}
+
+.fork-hint {
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}

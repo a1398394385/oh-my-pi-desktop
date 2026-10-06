@@ -1,0 +1,91 @@
+#root {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+.resizer {
+  width: var(--shell-gap);
+  flex: none;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 60;
+  position: relative;
+  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
+}
+
+.resizer::after {
+  content: "";
+  position: absolute;
+  top: var(--shell-gap);
+  bottom: var(--shell-gap);
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.resizer:hover::after, body.resizing .resizer::after { background: var(--blue); }
+
+body.resizing { user-select: none; cursor: col-resize; }
+
+/* No content-visibility on the message flow (BUG-017): reconciling the initial 120px estimate against real heights (38~5000px)
+   lands near the viewport and causes frame jumps/flicker with no input — always on fast scroll, gone only after one render;
+   measured to bring no layout benefit (see the A/B in BUG-017). Long-list performance goes the virtualization route (U4.3). */
+body:has(#right.collapsed) #right-resizer {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── right-sidebar cards: collapse and transition animations ──────────────────────────────────────── */
+#right {
+  /* the column container forms its own stacking context: popovers inside cap here, so the settings center/notifications can cover them full-screen */
+  isolation: isolate;
+  width: var(--right-w, 320px);
+  min-width: 0;
+  max-width: var(--right-w, 320px);
+  background: var(--card);
+  border-radius: var(--r-card);
+  margin: var(--shell-gap) var(--shell-gap) var(--shell-gap) 0;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  flex: none;
+  overflow: hidden;
+  opacity: 1;
+  visibility: visible;
+  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1),
+              max-width 0.25s cubic-bezier(0.2, 0, 0, 1),
+              margin 0.25s cubic-bezier(0.2, 0, 0, 1),
+              opacity 0.2s ease,
+              visibility 0.25s;
+}
+
+#right > * {
+  width: var(--right-w, 320px);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+#right.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  margin-right: 0 !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.resizing #sidebar,
+body.resizing #sidebar > *,
+body.resizing #right,
+body.resizing #right > *,
+body.resizing #main,
+body.resizing .chat-head,
+body.resizing #stream,
+body.resizing .dock,
+body.resizing .resizer {
+  transition: none !important;
+}

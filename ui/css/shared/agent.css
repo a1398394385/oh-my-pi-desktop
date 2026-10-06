@@ -1,0 +1,53 @@
+.hub-row {
+  position: relative;
+  display: flex; flex-direction: column; align-items: stretch; gap: 7.5px;
+  padding: 5px 8px; border: 1px solid transparent; border-radius: var(--r-md);
+  background: none; text-align: left; font: inherit; cursor: pointer;
+}
+
+.hub-row:hover { background: var(--panel-2); }
+
+.hub-row.on { background: var(--panel); border-color: var(--line); }
+
+.hub-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+.hub-branch { flex: none; font-family: var(--mono); white-space: pre; }
+
+.hub-row .sub-dot.st-running { color: var(--green); }
+
+.hub-row .sub-dot.st-completed { color: var(--green-soft); }
+
+.hub-row .sub-dot.st-failed, .hub-row .sub-dot.st-aborted { color: var(--err); }
+
+.hub-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hub-model { margin-left: auto; flex: none; font-size: var(--ui-fs-sm); font-weight: 700; color: var(--dim); }
+
+.hub-task {
+  font-size: var(--ui-fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.hub-meta {
+  font-size: var(--ui-fs-sm); color: var(--faint);
+  display: flex; align-items: baseline; gap: 8px;
+}
+
+.hub-meta-usage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hub-meta-right { margin-left: auto; flex: none; white-space: nowrap; }
+
+/* ---- 18.5 hub extension: card controls, background jobs, cache warming ---- */
+/* Row action buttons (subagent stop/steer, background-job cancel): one shared mini icon button */
+.hub-row-acts { margin-left: auto; flex: none; display: inline-flex; gap: 2px; }
+
+.hub-ibtn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--dim); cursor: pointer; }
+
+.hub-ibtn:hover { background: var(--panel-2); color: var(--text); }
+
+/* Steer inline input: expands in place below the row content (mem-expand's downward popIn entrance; no separator border inside cards) */
+.hub-steer { display: flex; align-items: center; gap: 4px; animation: popIn .3s ease-out; --pop-from: -4px; }
+
+.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); }
+
+.hub-steer-input:focus { outline: none; border-color: var(--accent); }

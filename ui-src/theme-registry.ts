@@ -23,7 +23,7 @@ export const THEMES: Record<string, ThemeEntry> = {
     shikiTheme: 'light-plus',
   },
 
-  // Openhanako port (方案A精选4个主题)
+  // Four selected Openhanako themes
   midnight: {
     id: 'midnight',
     name: 'Midnight (青夜)',

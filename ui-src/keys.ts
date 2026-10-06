@@ -29,7 +29,7 @@ import { saveUiPrefs, applyAppearance } from "./appearance";
 import type { ModelRoleEntry } from "./types/frames";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
-import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/sidebar/util";
+import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
 
 // ---------- Actions ----------
 

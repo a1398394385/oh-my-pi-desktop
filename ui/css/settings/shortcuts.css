@@ -1,0 +1,16 @@
+/* keycaps on the keyboard shortcuts page */
+.sc-keys { display: flex; gap: 5px; flex: none; align-items: center; }
+
+.sc-key {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 22px; padding: 0 7px; box-sizing: border-box;
+  border-radius: 6px; border: 1px solid var(--tint-white-140);
+  background: var(--inset);
+  font-size: 11px; color: var(--dim);
+  box-shadow: 0 1.5px 0 var(--tint-white-60);
+}
+
+[data-theme="light"] .sc-key {
+  border-color: var(--tint-black-160);
+  box-shadow: 0 1.5px 0 var(--tint-black-70);
+}

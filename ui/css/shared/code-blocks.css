@@ -1,0 +1,79 @@
+/* Multi-line code card (follows the code-block font isolation hard rule) */
+.md-code-block {
+  margin: 14px 0;
+  background: var(--code-surface-dark);
+  border: 1px solid var(--tint-white-80);
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative; /* anchor for absolutely positioned actions */
+}
+
+[data-theme="light"] .md-code-block {
+  background: var(--code-surface-light);
+  border-color: var(--tint-black-100);
+}
+
+.md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--tint-black-250);
+  border-bottom: 1px solid var(--tint-white-60);
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  user-select: none;
+}
+
+[data-theme="light"] .md-code-head {
+  background: var(--tint-black-40);
+  border-bottom-color: var(--tint-black-60);
+}
+
+.md-code-lang {
+  font-family: var(--mono) !important;
+  text-transform: lowercase;
+}
+
+.md-copy-btn {
+  background: transparent;
+  border: 1px solid var(--tint-white-100);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--ui-fs-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.md-copy-btn:hover {
+  background: var(--tint-white-100);
+  color: var(--text);
+}
+
+.md-copy-btn.copied {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.md-code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  line-height: 1.6;
+}
+
+.md-code-block code {
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  color: var(--code-text-dark);
+}
+
+[data-theme="light"] .md-code-block code {
+  color: var(--code-text-light);
+}

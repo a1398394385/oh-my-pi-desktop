@@ -1,0 +1,185 @@
+.sp-pop .mi.on { background: var(--panel-3); }
+
+/* Per-item close buttons on open rows: appear on row hover (same semantics as the tab-header close button) */
+.sp-pop .mi .mi-x {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 5px;
+  color: var(--faint); opacity: 0; transition: opacity .12s;
+  line-height: 0;
+}
+
+.sp-pop .mi .mi-x > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.sp-pop .mi .mi-x svg {
+  display: block;
+}
+
+.sp-pop .mi:hover .mi-x { opacity: 1; }
+
+.sp-pop .mi .mi-x:hover { background: var(--panel-2); color: var(--text); }
+
+/* side panel (subagents / Git Diff dual tabs) */
+#sidepanel {
+  flex: 1; margin: 0 0 8px; min-height: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: flex; flex-direction: column;
+  padding: 0 0 4px; /* full-bleed: the tab bar/action bar/detail blocks span the sidebar width; the sidebar is one whole */
+}
+
+/* tab header (ZCode Side Pane style): one h-12 row + bottom divider;
+   overview button on the left / equal-width tabs in the middle / new-tab button on the right (.sp-head is the popover positioning context) */
+.sp-head {
+  position: relative;
+  display: flex; gap: 4px; align-items: center; flex: none;
+  height: 48px; padding: 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* right-sidebar tab bar: equal-width layout (flex 1 1 0 + min/max widths), horizontal scroll on overflow with the scrollbar hidden */
+.rtabs { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+
+.rtabs::-webkit-scrollbar { display: none; }
+
+.rtab {
+  position: relative; flex: 1 1 0; min-width: 56px; max-width: 156px; height: 28px;
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; color: var(--dim);
+  font: inherit; font-size: var(--ui-fs-sm);
+  padding: 0 6px 0 8px; border-radius: 7px; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+
+.rtab:hover { background: var(--panel-2); color: var(--text); }
+
+/* active: plate highlight + brighter text (hover uses the same panel-2 plate; the active state differs by text color) */
+.rtab.on { background: var(--panel-2); color: var(--text); }
+
+.rtab.drag-over { background: var(--panel-2); }
+
+.rtab-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--faint); line-height: 1; }
+
+.rtab-ic svg { display: block; margin-top: -0.5px; }
+
+.rtab.on .rtab-ic, .rtab:hover .rtab-ic { color: inherit; }
+
+/* fade-out mask for overlong titles (12px fade on the right, leaving room for the close button; pure CSS, no JS animation) */
+.rtab-tx {
+  flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to right, var(--black) calc(100% - 12px), transparent);
+}
+
+.rtab-x {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 5px;
+  color: var(--faint); opacity: 0; transition: opacity .12s;
+  line-height: 0;
+}
+
+.rtab-x > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.rtab-x svg {
+  display: block;
+}
+
+.rtab:hover .rtab-x { opacity: 1; }
+
+.rtab-x:hover { background: var(--panel-3); color: var(--text); }
+
+.sp-pop-search {
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 8px; margin-bottom: 4px;
+  background: var(--inset); border: 1px solid var(--line-soft); border-radius: 7px;
+  color: var(--faint);
+}
+
+.sp-pop-search input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+  font: inherit; font-size: var(--ui-fs-sm); color: var(--text);
+}
+
+.sp-pop-scroll { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
+
+#rightBody {
+  flex: 1; overflow-y: auto; min-height: 0;
+  /* uniform 8px global inset for every page: hover highlights and cards must not touch the sidebar edges;
+     page roots must not re-add their own side padding (that doubles the inset) */
+  padding: 8px 8px 4px;
+}
+
+/* Detail page header (modeled on the ZCode panel structure): back + title pinned at the top, only the content area scrolls.
+   the side inset comes from #rightBody's global padding */
+#rightBody.detail { overflow: hidden; display: flex; flex-direction: column; }
+
+.rb-head { flex: none; padding: 0; }
+
+.rb-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+}
+
+.placeholder { color: var(--faint); font-size: var(--ui-fs-base); padding: 12px 10px; }
+
+/* Unified placeholder while a tool result is pending (Spin in components/chat/parts.jsx): loader icon spinning + ellipsis.
+   Serves two kinds of spots — inline in tool rows with no output slot (grep/glob/MCP/todo/terminal group rows),
+   and the dashed placeholder inside expansion bodies (.placeholder in .cmd-card-out / .ed-brief) */
+.pend-ico { display: inline-flex; animation: chat-load-spin 1s linear infinite; }
+
+.pend-ico svg { display: block; }
+
+/* Subagent list cards reuse the Agent Hub roster row style (.hub-row in main-hub.css);
+   the detail reuses the Agent Hub inspector (HubDetail), no page-specific styles remain here */
+/* ---------- right-sidebar empty-state launcher (all tabs closed, aligned with the ZCode side-pane empty state) ---------- */
+/* centered column: decorative icon + title/subtitle lines + entry button list; container queries switch wide containers to a two-column grid */
+.rt-start {
+  min-height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px 16px; text-align: center;
+  container-type: inline-size;
+}
+
+.rt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; }
+
+.rt-item {
+  display: flex; align-items: center; gap: 12px;
+  height: 48px; padding: 0 12px;
+  border: 0; border-radius: var(--r-lg);
+  background: var(--panel); color: var(--text);
+  font: inherit; font-size: var(--ui-fs-base); font-weight: 500;
+  cursor: pointer; transition: background .12s;
+}
+
+.rt-item:hover { background: var(--panel-2); }
+
+.rt-item.off { opacity: .4; cursor: default; }
+
+.rt-item-ic { display: inline-flex; align-items: center; flex: none; color: var(--faint); }
+
+.rt-item:hover .rt-item-ic { color: var(--dim); }
+
+.rt-item.off .rt-item-ic, .rt-item.off:hover .rt-item-ic { color: var(--faint); }
+
+@container (min-width: 480px) {
+  .rt-list { display: grid; grid-template-columns: 1fr 1fr; max-width: 480px; }
+}
+
+/* Windows frameless dragging: .sp-head carries data-tauri-drag-region; its child controls and popovers must opt out
+   of the drag region, or clicks would drag the window (same no-drag rule as .chat-head button, see main-chat.css) */
+.sp-head button,
+.sp-head input,
+.sp-head .sp-pop { -webkit-app-region: no-drag; }

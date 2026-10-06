@@ -3,7 +3,7 @@
 // 1. Priority: jump to running sessions first; if fewer than 9 are running, fill the rest with sessions that have unread messages.
 // 2. Mapping: digits 1-9 follow the order of the left session list.
 
-import { computeSidebarSessionShortcuts, SHORTCUT_DIGITS } from "../ui-src/components/sidebar/util";
+import { computeSidebarSessionShortcuts, SHORTCUT_DIGITS } from "../ui-src/components/main/sidebar/util";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) {

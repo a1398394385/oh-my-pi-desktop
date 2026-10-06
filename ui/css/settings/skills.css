@@ -1,0 +1,271 @@
+/* ════════════════════════════════════════════════════════════
+   skills page redesign (modeled on the new design mock)
+   ════════════════════════════════════════════════════════════ */
+/* level-1 title and margins in sync with .set-tt (1.75 + bottom margin 25) */
+.skills-header { margin-bottom: 25px; }
+
+.skills-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
+
+/* skills master toggle off: the rest of the page grays out and blocks interaction (same "enable the master toggle first" semantics as the hooks page; the master toggle card sits outside the container and is unaffected) */
+.skills-off-dim { opacity: .45; pointer-events: none; }
+
+/* single-line toolbar: scope pill + stats + more/refresh/new + search box (search box flush right; under narrow widths the search box/pill compress first) */
+.skills-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.skills-scope-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
+
+/* stats text and scope labels never wrap: under narrow widths the pill label truncates with an ellipsis */
+.skills-bar #skillsTotalCount { white-space: nowrap; }
+
+.skills-bar .scope-sel-btn { min-width: 0; }
+
+.skills-bar .scope-sel-btn > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.skills-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 240px;
+  margin-left: auto;
+}
+
+.skills-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--faint);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
+.skills-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 32px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+
+.skills-search-input:focus {
+  border-color: var(--tint-accent-500);
+  box-shadow: 0 0 0 3px var(--tint-accent-130);
+}
+
+.skills-search-input::placeholder { color: var(--faint); }
+
+/* action buttons: more + refresh + new (not part of compression; under narrow widths the search box/scope pill compress) */
+.skills-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* more(...) button = a size carrier inside the .sel pill: plate/hover come from the outer .sel (the refresh button uses .plus-btn) */
+.skills-btn-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* new button = the .add-btn language: transparent base + --line border + hover --panel-2, same height as the refresh button */
+.skills-btn-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  height: 31px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  cursor: pointer;
+  transition: background .15s var(--swift);
+}
+
+.skills-btn-new span { white-space: nowrap; }
+
+.skills-btn-new:hover { background: var(--panel-2); }
+
+.skills-btn-new:active { transform: scale(.95); }
+
+/* skill card list */
+.skills-list-wrap {
+  margin-top: 4px;
+}
+
+.skills-card-list {
+  background: var(--panel);
+  border: 1px solid var(--tint-white-80);
+  border-radius: var(--r-card);
+  box-shadow: 0 8px 26px var(--tint-black-350);
+  overflow: hidden;
+}
+
+[data-theme="light"] .skills-card-list {
+  border-color: var(--tint-black-80);
+  box-shadow: 0 8px 24px var(--tint-black-80);
+}
+
+.skill-empty-row {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+}
+
+/* skill card single row */
+.skill-item-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: background .15s;
+}
+
+.skill-item-row:last-child {
+  border-bottom: none;
+}
+
+.skill-item-row:hover {
+  background: var(--tint-white-25);
+}
+
+[data-theme="light"] .skill-item-row:hover {
+  background: var(--tint-black-20);
+}
+
+.skill-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  flex-shrink: 0;
+  margin-right: 14px;
+}
+
+.skill-info {
+  flex: 1;
+  min-width: 0;
+  cursor: inherit;
+  padding-right: 16px;
+}
+
+.skill-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skill-provider-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ctl-bg);
+  color: var(--faint);
+  border: 1px solid var(--line-soft);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.skill-desc {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.skill-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.sem-body {
+  flex: 1;
+  padding: 14px 18px;
+  min-height: 360px;
+  display: flex;
+}
+
+/* MCP form variant: form groups stacked vertically (the default horizontal layout only fits a single editor textarea) */
+.sem-body.form {
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */
+}
+
+/* list card nested in the expansion area: editor height tightened (the dialog-era 340px full-screen height no longer applies) */
+.mem-expand .sem-body { min-height: 0; }
+
+.mem-expand #skEditText { min-height: 260px; }
+
+/* editor textarea = the .inp language: --bg base + r9 + blue focus glow */
+#skEditText {
+  width: 100%;
+  flex: 1;
+  min-height: 340px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--code-fs, 12px);
+  line-height: 1.6;
+  padding: 12px 14px;
+  resize: vertical;
+  outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+
+#skEditText:focus {
+  border-color: var(--tint-accent-500);
+  box-shadow: 0 0 0 3px var(--tint-accent-130);
+}
+
+.sem-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--line-soft);
+}

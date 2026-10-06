@@ -16,8 +16,9 @@
    - 通过 WebSocket 向 UI 提供双向 RPC 协议（会话创建/加载、模型切换、分支查询与切换、权限模式、Git diff 等）。
 3. **Web 前端 (`ui-src/`,构建产物 `ui/dist/`)**：
    - 技术栈：**React 19 + TypeScript + Vite 8 + Tailwind v4 + zustand**（P1–P4 已迁移完成）；markdown 渲染 **streamdown**（+cjk/code 插件,`chat/AssistantMsg.tsx`）；输入框 **Lexical**（`Composer.tsx` + `composer/lexical/`）；shadcn/Radix 基件在 `components/ui/`（button/dialog/select/switch/tooltip 等,类合成 cn=clsx+tailwind-merge）。
-   - 状态：单一 zustand store `ui-src/store/`（index 组合六 slice:ui/session/projects/right/settings/ws；终端帧总线 terminal、组展开通道 groupExpand 不经 zustand）；组件一律 `useAppStore(selector)` 订阅,写入 `setBump({...})`（setState 别名）或 slice action；**容器(Map/Set/数组)变更必须换新引用**；selector 禁止返回新构造对象（用 useShallow）；禁 zustand subscribe 里 set（React 19 死循环）。
-   - 样式域：`ui/style.css` 为入口（token 变量(:root)+ `@theme inline` 映射 + tailwind @import + 样式域 @import），实体在 `ui/css/` 按域分文件：`global.css`（token/重置/全站控件基类）、主页面 12 域（`main-shell.css` 布局骨架/层级/滚动条/全局弹窗、`main-sidebar.css` 左边栏、`main-chat.css` 中栏消息流、`main-composer.css` 中栏输入区、`main-streamdown.css` streamdown 渲染层、`main-tree.css` 消息区会话树、`main-tree-fork.css` 会话树·分叉段+分支切换区（自 main-tree.css 拆出级联紧随）、`main-hub.css` 中栏 Agent Hub 卡片+右栏联动详情、`main-welcome.css` 欢迎页、`main-right.css` 右边栏、`main-right-caps.css` 右边栏·能力页（自 main-right.css 拆出级联紧随）、`main-chat-ask.css` 中栏·ask 多问题表单（自 main-chat-approval.css 拆出级联紧随））、`settings.css`（设置页）、`settings-mcp.css`（设置页·MCP 服务器页，自 settings.css 拆出级联紧随）；**@import 顺序 = 级联顺序，禁止重排/跨文件挪规则**，新增样式按所属域追加到对应文件末尾（行数上限见 check-architecture 棘轮）。**未导入 Preflight**（border utility 需显式 border-style 语义注意）；复合类全站语言保留 CSS 定义（见下）。构建：`bun run ui:build`（产物 ui/dist）、`ui:typecheck`、`ui:dev`（浏览器 preview `?preview=1`）。
+   - 状态：单一 zustand store `ui-src/store/`（index 组合 ui/session/projects/right/settings/ws/models/entry-tree slice；终端帧总线 terminal、组展开通道 groupExpand 不经 zustand）；组件一律 `useAppStore(selector)` 订阅,写入 `setBump({...})`（setState 别名）或 slice action；**容器(Map/Set/数组)变更必须换新引用**；selector 禁止返回新构造对象（用 useShallow）；禁 zustand subscribe 里 set（React 19 死循环）。
+   - 页面：`components/main/` 组合左栏 `sidebar/`、中栏 `MainColumn.tsx`（消息 `chat/`、会话条目树 `tree/`、Agent Hub）与右栏 `right/`；设置页在 `components/settings/`；跨页面控件在 `components/shared/`。会话条目树只在中栏显示，右栏保留分支树。
+   - 样式域：`ui/style.css` 为唯一入口，实体在 `ui/css/global/`（token、重置、全站控件与浮层）、`shared/`（公共模型选择、代码视图与子代理控件）、`main/`（布局、左栏、中栏、消息、会话树、Hub、输入区及 `right/` 各标签页）、`settings/`（通用外壳与子页面）。**@import 顺序 = 级联顺序，跨域移动或调整导入顺序必须验证渲染等价**；公共规则唯一声明，专属规则归对应页面。CSS 文件行数上限由 `scripts/check-architecture.mjs` 维护。**未导入 Preflight**（border utility 需显式 border-style 语义注意）；复合类全站语言保留 CSS 定义（见下）。构建：`bun run ui:build`（产物 ui/dist）、`ui:typecheck`、`ui:dev`（浏览器 `?preview=1` 仅加载样例，不读取本地会话）。
    - `ui/index.html`、`ui/icons.js`（图标注册表）、`ui/fa-icons.js`（FA 生成物）、`ui/lucide-icons.js`、`ui/file-icons.js` 图标体系不变。
 
 ## 整体 UI 风格对齐 VSCode（全站基准）
@@ -59,8 +60,8 @@
 3. **颜色只用 token**（`--panel-*`/`--line*`/`--accent`/`--err`/`--green`…），禁止硬编码十六进制；hover 底板 `--panel-2`、行 hover 用 `.srow` 同款 2.5% 微高亮。
 4. **图标尺寸/风格**：同语义控件跨页取同一图标、同一 `data-size`；新增图标进 `ui/icons.js` 注册表（FA 是实心块时优先手写线条版，如 `refresh`）。
 5. **整页按钮风格统一**：同一页面（含其弹层/详情视图）内所有按钮必须复用同一尺寸体系的既有类，禁止混排不同大小的按钮——工具行/卡片头部一律用小号 `.save-btn`（危险操作 `.danger` 变体 hover 变红），大号 `.confirm-btn`（及 `.danger`）只用于弹窗与延展区底部操作行，`.add-btn` 31px 用于页级新建。往页面里加按钮先看同页/同类页已有按钮的高度与 padding，取同一类。
-6. **交互反馈约束（全站通用）**：**没有点击反馈的位置，不允许触发 hover 高亮**——hover 高亮是「可点」的 affordance，只能挂在有点击行为的元素上。行内只有局部控件可点时（如角色行的胶囊/删除按钮），高亮只挂控件、不挂承载行；`.srow` 的默认行 hover 仅用于整行可点的列表（记忆/技能行），纯展示承载行必须显式关闭——用更高特异性 `.srow.xxx-row:hover { background: none }`（`ui/css/global.css` 里 `.srow:hover` 的位置可能在覆盖规则之后，同特异性会反杀），浅色主题规则一并覆盖。
-7. **卡片行统一 `.set-row`**：独立 `.set-card` 内的不可点行一律 `.srow.set-row`（标准行几何 13px 16px、关行 hover、ctl 右对齐、标题内 `.tag` 弹性排列，定义在 `ui/css/settings.css` 末尾）；**禁止**复用其他页面的上下文行类——模型页 `.mp-role-row` 是为其自带内边距的 `.mp-r` 面板设计的（2px 侧边距），挪进独立卡片内容会贴边。新设置页的行结构照抄 `CapabilityPage.tsx` 的 `Group` + `.srow.set-row` 组合。
+6. **交互反馈约束（全站通用）**：**没有点击反馈的位置，不允许触发 hover 高亮**——hover 高亮是「可点」的 affordance，只能挂在有点击行为的元素上。行内只有局部控件可点时（如角色行的胶囊/删除按钮），高亮只挂控件、不挂承载行；`.srow` 的默认行 hover 仅用于整行可点的列表（记忆/技能行），纯展示承载行必须显式关闭——用更高特异性 `.srow.xxx-row:hover { background: none }`（`ui/css/global/controls.css` 里 `.srow:hover` 的位置可能在覆盖规则之后，同特异性会反杀），浅色主题规则一并覆盖。
+7. **卡片行统一 `.set-row`**：独立 `.set-card` 内的不可点行一律 `.srow.set-row`（标准行几何 13px 16px、关行 hover、ctl 右对齐、标题内 `.tag` 弹性排列，定义在 `ui/css/settings/common.css` 末尾）；**禁止**复用其他页面的上下文行类——模型页 `.mp-role-row` 是为其自带内边距的 `.mp-r` 面板设计的（2px 侧边距），挪进独立卡片内容会贴边。新设置页的行结构照抄 `CapabilityPage.tsx` 的 `Group` + `.srow.set-row` 组合。
 
 ## 图标系统
 
@@ -81,7 +82,7 @@
 
 ## 弹出卡片设计规范（ring-pop 系）
 
-所有「锚点 hover 弹卡」（上下文明细卡及后续同类卡片）必须共用同一套设计，基类为 `.ring-pop`（`ui/css/global.css`），不得另起炉灶：
+所有「锚点 hover 弹卡」（上下文明细卡及后续同类卡片）必须共用同一套设计，基类为 `.ring-pop`（`ui/css/global/overlays.css`），不得另起炉灶：
 
 1. **容器样式**：背景 `var(--ctl-bg)`、1px `var(--line)` 边框、圆角 `var(--r-md)`、阴影 `0 12px 32px rgba(0,0,0,.5)`（浅色主题降透明度至 `.18`，用 `[data-theme="light"] .ring-pop` 覆盖）、内边距 `12px 12px 14px`、`min-width: 192px`、字号 `var(--ui-fs-base)`、正文色 `var(--dim)`、标题 `<b>` 为 `var(--text)` + `font-weight: 500`。
 2. **弹出动画**：统一使用 `animation: ringpop .18s ease-out`（`@keyframes ringpop`：淡入 + 自上方 6px 上滑归位），禁止瞬显或其他入场动画；卡片自身的变体样式挂在叠加类上（如 `.rail-pop`），动画不重定义。

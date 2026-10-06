@@ -1,0 +1,327 @@
+.icon-btn {
+  border: 0; background: transparent; color: var(--dim);
+  width: 26px; height: 26px; border-radius: var(--r-sm);
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--ui-fs-base);
+  line-height: 0;
+}
+
+.icon-btn > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.icon-btn svg {
+  display: block;
+}
+
+.icon-btn:hover { background: var(--panel-2); color: var(--text); }
+
+.icon-btn.on { background: var(--select); color: var(--text); }
+
+.icon-btn:focus-visible,
+.task:focus-visible,
+.nav-item:focus-visible,
+.pill-btn:focus-visible,
+.send:focus-visible,
+.set-back:focus-visible,
+.set-item:focus-visible,
+.sel:focus-visible,
+.save-btn:focus-visible,
+.num-btn:focus-visible,
+.tg:focus-visible,
+.add-btn:focus-visible {
+  outline: 2px solid var(--accent, var(--blue));
+  outline-offset: 1px;
+}
+
+.pill-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; background: transparent; color: var(--dim);
+  font: inherit; font-size: var(--ui-fs-base);
+  padding: 5px 9px; border-radius: 8px; cursor: pointer; /* ZCode ghost button rounded-lg */
+  max-width: 180px; white-space: nowrap; overflow: hidden;
+  line-height: 1;
+}
+
+.pill-btn > span {
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pill-btn > svg, .pill-btn > span > svg {
+  display: block;
+  flex: none;
+  margin-top: -0.5px;
+}
+
+/* The permission/model/thinking selectors match ZCode font weight (pill text included);
+   only these three — background-task/subagent count buttons do not follow */
+/* Site-wide icon vertical alignment: inline svg defaults to baseline alignment (baseline = box bottom), visually 1-2px too high;
+   middle aligns icons to the text x-height center (applies to both the Icon component and svg injected by hydrateIcons) */
+svg { vertical-align: middle; }
+
+.pill-btn:hover { background: var(--panel-2); color: var(--text); }
+
+.pill-btn.yolo { color: var(--orange); }
+
+.confirm-btn {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-3);
+  color: var(--text);
+  font-size: var(--ui-fs-base);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .12s, filter .12s;
+}
+
+.confirm-btn:hover {
+  background: var(--panel-2);
+}
+
+.confirm-btn.danger {
+  background: var(--err, var(--danger-fixed));
+  border-color: transparent;
+  color: var(--white);
+}
+
+.confirm-btn.danger:hover {
+  filter: brightness(1.1);
+}
+
+.pill-btn:disabled, .send:disabled { opacity: .45; cursor: default; }
+
+.plus-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  /* The UA stylesheet gives buttons a default gray background that must be cleared explicitly, or they look highlighted even without hover (same recipe as the queue card .q-btn) */
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+  transition: background .12s, color .12s;
+}
+
+.plus-btn > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.plus-btn svg {
+  display: block;
+}
+
+.plus-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* ── Dropdown menu (absolute inside the composer, bottom-positioned; scales with the container zoom without drifting; narrower for compactness) ── */
+.menu {
+  position: absolute; bottom: 44px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 5px;
+  min-width: 150px;
+  box-shadow: 0 12px 32px var(--tint-black-500);
+  display: none; z-index: 500;
+}
+
+[data-theme="light"] .menu { background: var(--panel); box-shadow: 0 12px 32px var(--tint-black-180); }
+.menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; }
+
+/* pops up: slides in from below */
+.menu .mi {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 9px; border-radius: 6px;
+  font-size: var(--ui-fs-base); color: var(--text); cursor: pointer;
+}
+
+.menu .mi:hover { background: var(--panel-3); }
+
+.menu .mi.empty { cursor: default; color: var(--dim); }
+
+.menu .mi.empty:hover { background: transparent; }
+
+.menu .mi .sub { margin-left: auto; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+.menu .sep { height: 1px; background: var(--line); margin: 5px 4px; }
+
+.menu .mh { font-size: var(--ui-fs-sm); color: var(--faint); padding: 5px 8px 2px; }
+
+.menu .mi .ck { width: 14px; color: var(--green); flex: none; }
+
+/* Icons inside menu items (branch options etc.): centered in a fixed 18px column, following the FA icon system */
+.menu .mi .mi-ic { width: 18px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+
+.srow {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px;
+  transition: background .15s var(--swift);
+}
+
+.srow:hover { background: var(--tint-white-25); }
+[data-theme="light"] .srow:hover { background: var(--tint-black-20); }
+.srow + .srow { border-top: 1px solid var(--line-soft); }
+
+.srow.disabled { opacity: .45; }
+
+.srow.disabled:hover { background: none; }
+
+.inp {
+  display: inline-block; background: var(--bg); border: 1px solid var(--line-soft);
+  border-radius: 9px; padding: 6px 10px; color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm);
+  min-width: 240px; outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+
+.inp::placeholder { color: var(--faint); }
+
+.inp:focus { border-color: var(--tint-accent-500); box-shadow: 0 0 0 3px var(--tint-accent-130); }
+.inp.disabled { color: var(--faint); pointer-events: none; box-shadow: none; }
+
+/* Save button = the .send language: --panel-3 base, r9 square */
+.save-btn {
+  flex: none; border: 0; background: var(--panel-3); color: var(--dim);
+  border-radius: 9px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
+  transition: background .15s var(--swift), color .15s var(--swift), transform .12s var(--swift);
+}
+
+.save-btn:hover { background: var(--button-hover-dark); color: var(--text); }
+[data-theme="light"] .save-btn:hover { background: var(--button-hover-light); }
+.save-btn:active { transform: scale(.95); }
+
+/* Danger variant (sign-out etc.): same size language as .save-btn, hover turns red to signal destructiveness */
+.save-btn.danger:hover { background: var(--panel-2); color: var(--err); }
+
+/* Save in progress: button grayed out and unclickable; the busy variant spins the icon (reuses pgspin) */
+.save-btn:disabled { opacity: .6; cursor: default; }
+
+.save-btn:disabled:hover, .save-btn:disabled:active { background: var(--panel-3); transform: none; }
+
+.save-btn.busy svg { animation: pgspin .8s linear infinite; }
+
+/* Toggle switch: spring slide + press-to-squash skeuomorphism */
+.tg {
+  width: 38px; height: 23px; border-radius: 999px; background: var(--panel-3);
+  position: relative; cursor: pointer; flex: none;
+  transition: background .22s var(--swift);
+  border: 0; padding: 0;
+}
+
+.tg i {
+  position: absolute; top: 2.5px; left: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--toggle-thumb); pointer-events: none;
+  box-shadow: 0 1px 3px var(--tint-black-400);
+  transition: left .24s var(--spring), width .24s var(--spring);
+}
+
+.tg:active i { width: 21px; }
+
+.tg.on { background: var(--accent); }
+
+.tg.on i { left: 18px; }
+
+.tg.on:active i { left: 15px; }
+
+.tg.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
+/* Segmented pills inside settings srows: font size aligned with .sel, height aligned with the settings button system (31px, same as add-btn/refresh) */
+.srow .mcp-type-pill { font-size: var(--ui-fs-base); min-height: 31px; }
+
+/* Dropdown = the .pill-btn language: transparent pill, hover --panel-2 */
+.sel {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; border-radius: 999px; padding: 5px 10px;
+  font-size: var(--ui-fs-base); cursor: pointer; flex: none;
+  background: transparent; color: var(--dim);
+  position: relative;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.sel:hover, .sel:has(.menu.open) { background: var(--panel-2); color: var(--text); }
+
+.sel i { color: var(--faint); font-style: normal; font-size: var(--ui-fs-sm); }
+
+.sel .caret-svg { color: var(--faint); transition: transform .22s var(--spring); }
+
+.sel:has(.menu.open) .caret-svg { transform: rotate(180deg); }
+
+.sel > .menu {
+  position: absolute; top: calc(100% + 6px); right: 0; left: auto; bottom: auto;
+  min-width: 170px;
+  --pop-from: -6px; /* pops down: slides in from above */
+}
+
+.add-btn {
+  margin-left: auto; border: 1px solid var(--line); background: transparent;
+  color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
+  height: 31px; /* same height as the refresh button (.pg-refresh 31x31), unified height for per-page new/add buttons */
+}
+
+.add-btn:hover { background: var(--panel-2); }
+
+.menu .mi.disabled { color: var(--faint); cursor: default; }
+
+.menu .mi.disabled:hover { background: transparent; }
+
+.menu .mi .sub { margin-left: auto; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+.pv .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+.mcp-type-pills {
+  display: flex;
+  gap: 4px;
+}
+
+/* Transport protocol segment = the .sel pill language: transparent pill, hover --panel-2, selected --panel-3 */
+.mcp-type-pill {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+  cursor: pointer;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.mcp-type-pill:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.mcp-type-pill.on {
+  background: var(--panel-3);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }
+
+.num {
+  border: 0; padding: 3px 4px;
+  font-size: var(--ui-fs-base); min-width: 44px; text-align: center; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.num i { font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); }
+
+.tag.on { color: var(--text); border-color: var(--dim); }
+
+.tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }

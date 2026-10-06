@@ -1,0 +1,250 @@
+.md-body [data-streamdown="code-block"] {
+  display: block !important;
+  flex: none !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  gap: 0 !important;
+  margin: 16px 0;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--code-bg, var(--overlay-subtle, var(--card)));
+  box-shadow: none;
+}
+
+.md-body .md-code-block-frame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  margin: 16px 0;
+}
+
+.md-body .md-code-block-frame > [data-streamdown="code-block"] {
+  margin: 0 !important;
+}
+
+/* Legacy dark theme uses a specific gray */
+[data-theme="dark"] .md-body [data-streamdown="code-block"] {
+  background: var(--streamdown-surface);
+}
+
+/* Legacy light theme uses panel-2 */
+[data-theme="light"] .md-body [data-streamdown="code-block"] {
+  background: var(--panel-2);
+}
+
+.md-body .md-code-language-icon {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  line-height: 0;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.md-body .md-code-language-icon > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.md-body .md-code-language-icon svg {
+  display: block;
+  width: 13px !important;
+  height: 13px !important;
+  transform: translateY(-2px); /* aligns with the English baseline (flattens the abcd bottom edge, no dipping with the gy descender) */
+}
+
+.md-body [data-streamdown="code-block-header"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 72px 0 36px;
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+  user-select: none;
+}
+
+.md-body [data-streamdown="code-block-header"] > span:first-child {
+  color: var(--dim);
+  font-family: var(--mono) !important;
+  font-size: var(--ui-fs-sm);
+  text-transform: lowercase;
+}
+
+/* Streamdown's button wrapper carries its own negative margin; floats to the title bar's right, taking no code-area height. */
+.md-body [data-streamdown="code-block"] > :not([data-streamdown]) {
+  position: absolute !important;
+  top: 0 !important;
+  right: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  box-sizing: border-box !important;
+  height: 40px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+  z-index: 2 !important;
+}
+
+.md-body [data-streamdown="code-block-actions"] {
+  position: static !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  height: 40px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+
+.md-body [data-streamdown="code-block-actions"] > * {
+  pointer-events: auto !important;
+}
+
+.md-body [data-streamdown="code-block-copy-button"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--faint) !important;
+  line-height: 0 !important;
+  cursor: pointer !important;
+  transition: background .12s var(--swift), color .12s var(--swift);
+}
+
+.md-body [data-streamdown="code-block-wrap-button"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--faint) !important;
+  line-height: 0 !important;
+  cursor: pointer !important;
+  transition: background .12s var(--swift), color .12s var(--swift);
+}
+
+.md-body [data-streamdown="code-block-wrap-button"] > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.md-body [data-streamdown="code-block-wrap-button"] svg,
+.md-body [data-streamdown="code-block-copy-button"] svg {
+  display: block !important;
+}
+
+.md-body [data-streamdown="code-block-wrap-button"]:hover,
+.md-body [data-streamdown="code-block-copy-button"]:hover {
+  background: var(--panel-2) !important;
+  color: var(--text) !important;
+}
+
+.md-body [data-streamdown="code-block-wrap-button"][aria-pressed="true"] {
+  background: var(--panel-2) !important;
+  color: var(--text) !important;
+}
+
+.md-body [data-streamdown="code-block-wrap-button"]:focus-visible,
+.md-body [data-streamdown="code-block-copy-button"]:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px;
+}
+
+.md-body [data-streamdown="code-block-copy-button"] svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.md-body [data-streamdown="code-block-body"] {
+  display: block !important;
+  flex: none !important;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  max-height: 400px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  gap: 0 !important;
+}
+
+.md-body [data-streamdown="code-block-body"] pre {
+  margin: 0;
+  padding: 4px 14px 14px;
+  overflow: visible;
+  white-space: pre !important;
+  overflow-wrap: normal;
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  line-height: 1.65;
+}
+
+.md-body [data-streamdown="code-block-body"] pre code {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  color: var(--text);
+}
+
+.md-body [data-streamdown="code-block-body"] pre code > span.block {
+  width: fit-content;
+}
+
+.md-body [data-streamdown="code-block"][data-wrap="on"] [data-streamdown="code-block-body"] pre,
+.md-body [data-streamdown="code-block"][data-wrap="on"] [data-streamdown="code-block-body"] pre code {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+}
+
+/* table shell: aligned with .md-table-wrap (the table itself gets the .md-table class via components and follows existing rules) */
+.md-body [data-streamdown="table-wrapper"] {
+  width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+/* images: the old pipeline didn't render them; this is only basic containment so nothing breaks */
+.md-body [data-streamdown="image-wrapper"] {
+  margin: 14px 0;
+}
+
+.md-body [data-streamdown="image-wrapper"] img {
+  max-width: 100%;
+  border-radius: 8px;
+}

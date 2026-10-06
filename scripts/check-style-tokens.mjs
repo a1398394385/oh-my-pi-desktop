@@ -2,7 +2,7 @@
 // Style token gate (borrowed from pi-desktop check-style-tokens, trimmed to this repo's stack):
 // 1. Tailwind arbitrary-value utilities are banned in ui-src/**/*.tsx (text-/rounded-/leading-/tracking-/font-[...]);
 //    font size/line height/radius/weight must go through @theme-mapped token utilities (text-ui-sm/rounded-md etc.);
-// 2. Raw color values are banned on non-token-definition lines of ui/style.css and ui/css/*.css (#abc / #aabbcc / rgb( / rgba( / hsl();
+// 2. Raw color values are banned on non-token-definition lines of ui/style.css and ui/css/**/*.css (#abc / #aabbcc / rgb( / rgba( / hsl();
 //    colors must go through the --token variables defined in :root and [data-theme] blocks.
 // Exemptions:
 //   - CSS lines starting with -- (token definition lines; :root / @theme / light-theme overrides all use them);
@@ -50,17 +50,33 @@ for (const file of walkTsx(uiSrcDir)) {
   });
 }
 
-// ---- Check 2: raw colors in ui/style.css + ui/css/*.css (inside @keyframes and -- token-definition lines exempt) ----
+// ---- Check 2: raw colors in ui/style.css + ui/css/**/*.css (inside @keyframes and -- token-definition lines exempt) ----
 {
-  const cssFiles = [styleCss, ...readdirSync(join(root, "ui", "css")).filter((f) => f.endsWith(".css")).map((f) => join(root, "ui", "css", f))];
+  function walkCss(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const file = join(dir, entry.name);
+    return entry.isDirectory() ? walkCss(file) : entry.name.endsWith(".css") ? [file] : [];
+  });
+}
+const cssFiles = [styleCss, ...walkCss(join(root, "ui", "css"))];
   for (const file of cssFiles) {
     const rel = relative(root, file);
     const lines = readFileSync(file, "utf8").split("\n");
-    let kfDepth = 0; // @keyframes brace depth; >0 means inside an animation block
-    lines.forEach((line, i) => {
+    let depth = 0;
+    let keyframeDepth = null;
+    let inComment = false;
+    lines.forEach((source, i) => {
+      const line = source.replace(/\/\*[\s\S]*?\*\//g, "");
+      if (inComment) {
+        if (line.includes("*/")) inComment = false;
+        return;
+      }
+      if (line.includes("/*")) { inComment = true; return; }
       const startsKf = /@keyframes\b/.test(line);
-      const inKf = startsKf || kfDepth > 0; // Judge with the pre-update depth (a single-line full keyframes also counts as inside)
-      kfDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+      if (startsKf) keyframeDepth = depth;
+      const inKf = keyframeDepth !== null;
+      depth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+      if (keyframeDepth !== null && depth <= keyframeDepth) keyframeDepth = null;
       if (inKf) return;
       if (/^\s*--/.test(line)) return; // token definition line
       if (EXEMPT_MARK.test(line)) return; // explicit exemption

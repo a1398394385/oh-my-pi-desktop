@@ -1,0 +1,88 @@
+.wb-pill .caret {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  margin-left: 2px;
+  /* Same as ZCode: menu pops upward but the chevron stays pointing down (ChevronDownIcon), no expand rotation */
+}
+
+/* Composer pills (model/thinking/permission): chevrons follow the wb rule, pointing down */
+.pill-btn .caret-svg {
+  transition: transform .18s var(--swift);
+}
+
+.wb-pill.active .caret {
+  color: var(--tint-white-750);
+}
+
+.wb-pill span:not(.caret) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sigil completion card (@ file candidates / line start / command candidates): the exact same rounded card as the composer (content swapped for the candidate
+   list), the two cards stacked — same width, 2px apart, max height = 2.6x the composer card (positioning and height capping
+   computed by placePaletteCard in place.js). Colors and shadows match the #composer.in-welcome card item by item. */
+.menu.palette {
+  min-width: 0;
+  max-width: none;
+  padding: 8px;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px var(--tint-black-280);
+}
+
+[data-theme="light"] .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px var(--tint-black-70); }
+.menu.palette .mi { border-radius: 8px; }
+
+/* row radius one notch below the card (16px card -> 8px row) */
+.menu.palette .mi.on { background: var(--panel-3); }
+
+/* keyboard highlight (the base class only has :hover, no .on) */
+.menu.palette .mi .mi-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Model/thinking menus: checkmark pushed to the row's right end; all three (model/thinking/permission) use the same gray checkmark */
+#modelMenu .mi .ck,
+#thinkMenu .mi .ck { order: 1; margin-left: auto; }
+
+#modeMenu .mi .ck,
+#modelMenu .mi .ck,
+#thinkMenu .mi .ck { color: var(--menu-check); }
+/* Permission mode menu (large rows: icon + title + description, shrunk to 280px) */
+.menu.mode { min-width: min(280px, 100%); padding: 6px; }
+
+.menu.mode .mi.big { display: flex; gap: 8px; align-items: flex-start; padding: 7px 9px; }
+
+.menu.mode .mi-ic { font-size: var(--ui-fs-base); width: 18px; text-align: center; flex: none; margin-top: 1px; }
+
+.menu.mode .mi-ic svg { display: block; margin: 0 auto; }
+
+.menu.mode .mi-tx { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+
+.menu.mode .mi-tt { font-size: var(--ui-fs-base); font-weight: 500; color: var(--text); }
+
+.menu.mode .mi-desc { font-size: var(--ui-fs-xs); color: var(--faint); line-height: 1.35; }
+
+.menu.mode .mi.big .ck { margin-top: 2px; }
+
+/* Plan-mode row: separated from the three permission-mode rows below by a full-width line (-6px cancels .menu.mode's 6px padding) */
+.menu.mode .mode-sep { height: 1px; background: var(--line); margin: 5px -6px; }
+
+/* Disabled with no session: lower opacity, no hover highlight (hover highlights only go on clickable elements) */
+.menu.mode .mi.off { opacity: .45; cursor: default; }
+
+.menu.mode .mi.off:hover { background: none; }
+
+#thinkMenu { min-width: 100px; }
+
+/* file-view image preview: max-width adaptive, --panel-2 base (transparent pngs look right in both themes), token border radius */
+/* --- send button stop state (streaming with empty input / Esc alert window): persistent red highlight --- */
+.send.stopping {
+  background: var(--send-stop);
+  color: var(--white);
+}
+
+.send.stopping:hover:not(:disabled) { filter: brightness(1.12); }

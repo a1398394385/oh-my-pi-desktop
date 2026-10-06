@@ -1,0 +1,668 @@
+.act .caret { color: var(--faint); }
+
+.act.change .sep { color: var(--faint); flex: none; }
+
+#statusCard .sc-head .icon-btn { pointer-events: auto; }
+
+/* Message-tick popover: reuses .ring-pop background/radius/shadow/ringpop animation, same as the context detail card */
+.rail-pop { max-width: 320px; max-height: 240px; overflow-y: auto; cursor: default; }
+
+.rail-pop .rp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+
+.rail-pop .rp-role { color: var(--text); font-weight: 500; font-size: var(--ui-fs-md); }
+
+.rail-pop .rp-idx { color: var(--faint); font-size: 11.5px; flex: none; }
+
+.rail-pop .rp-body { color: var(--dim); font-size: var(--ui-fs-base); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+
+#stream {
+  flex: 1; min-height: 0; overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  box-sizing: border-box;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ── Message-area scrollbars: clearly visible while scrolling/hovering, smoothly fade after stopping ── */
+#stream::-webkit-scrollbar {
+  width: 8px;
+}
+
+#stream::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#stream::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background-color 0.25s ease-out;
+}
+
+#stream:hover::-webkit-scrollbar-thumb,
+#stream.scrolling::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--dim) 50%, transparent);
+}
+
+#stream::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dim);
+}
+
+/* ── Turn containers and sticky structure ── */
+#stream > .turn-section {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* The last turn stretches to a full screen when shorter than the viewport, so scrolling to bottom sticks this turn's messages at the top while the previous turn is fully pushed off-screen. Subtract the 36px bottom fade spacer (#stream::after, main-composer.css): it is in-flow and counts as scrollable height, so an unstretched 100% + spacer leaves a bogus 36px scroll range that lets the user scroll up under the sticky user bubble even when everything fits */
+#stream > .turn-section:last-of-type {
+  min-height: calc(100% - 36px);
+}
+
+.turn-body {
+  width: 100%;
+  position: relative;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.turn-flow {
+  padding-top: 15px; /* 5px more spacing to the agent process flow behind (10px -> 15px) */
+  /* BFC: keeps the trailing markdown paragraph's margin-bottom (8px) inside the flow instead of collapsing it into a dead band above .turn-acts, where hover drops on the way to its buttons. */
+  display: flow-root; overflow: clip; /* clip: crossed-selection gap bands confine to the column instead of bleeding full-width (BUG-030) */
+}
+
+.turn-flow > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Sticky user message bar: no divider line, 36px soft gradient fade mask on the bottom edge */
+.sticky-user-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  background: var(--bg);
+  padding: 12px 0 4px;
+  border-bottom: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sticky-user-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 36px;
+  background: linear-gradient(
+    to bottom,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 85%, transparent) 30%,
+    color-mix(in srgb, var(--bg) 40%, transparent) 65%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.sticky-user-inner {
+  width: 100%;
+}
+
+/* Pinned user message: text capped at 5.5 lines with inner scroll; the bottom half-line fades out (same treatment as .think-scroll; FadeBox adds .no-fade when at bottom/fit). */
+.sticky-user-wrap .user-msg-text { user-select: text; -webkit-user-select: text; width: 100%; max-width: 100%; max-height: calc(1.55em * 5.5); overflow-y: auto;
+  overscroll-behavior: contain; -webkit-mask-image: linear-gradient(to bottom, var(--black) calc(100% - 0.775em), transparent); mask-image: linear-gradient(to bottom, var(--black) calc(100% - 0.775em), transparent); }
+
+.sticky-user-wrap .user-msg-text.no-fade { -webkit-mask-image: none; mask-image: none; }
+
+.sticky-user-wrap .msg.user {
+  margin: 0; /* remove the 90px gap force-fed by the waterfall, full content-column width */
+  width: 100%;
+}
+
+.sticky-user-wrap .msg.user .user-bubble {
+  width: 100%;
+  max-width: 100%; /* wider user message card, matching the message area width */
+  box-sizing: border-box;
+}
+
+/* ── Message layout and bubbles in the main chat area ── */
+.msg {
+  width: 100%;
+  margin: 14px 0;
+}
+
+/* Streaming tail renders as plain text (BUG-007): no markdown parsing; md-body takes over rich text once finalized */
+.msg.assistant.stream-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  color: var(--text);
+  margin: 8px 0;
+  overflow: clip; /* same selection-paint clip as .md-body below */
+}
+
+.msg.assistant.md-body {
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+  overflow: clip; /* clip WebKit's full-width selection gap-fill at the message box so drag-selection never paints the side bands; unlike overflow:hidden this creates no BFC, child margins keep collapsing */
+}
+
+.msg.user {
+  display: flex;
+  justify-content: flex-end;
+  /* Top margin = spacing from the previous turn's Agent answer: collapses to max with .msg's 14px, so it must reach 90px itself */
+  margin: 90px 0 22px; /* 22px to the Agent reply below (14+8) */
+  user-select: none; /* row itself carries no text: keep the whole row out of drag-selection (trailing flex space was painted blue); text re-enabled on .user-msg-text */
+  -webkit-user-select: none;
+}
+
+.msg.user .user-bubble {
+  /* Cap = half the content column's max width (50vw); 82% is the relative fallback when the column narrows */
+  max-width: min(25vw, 82%);
+  background: var(--inset);
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  font-size: var(--ui-fs-md);
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 2px 8px var(--tint-black-150);
+}
+
+[data-theme="light"] .msg.user .user-bubble {
+  box-shadow: 0 2px 8px var(--tint-black-50);
+}
+
+/* user-select:text counters .msg.user's none: only the text line boxes get the selection color, not the bubble around them */
+.user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
+
+.act {
+  color: var(--dim); font-size: var(--ui-fs-base); margin: 20px 0;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  /* Event-row content is 15px narrower than body text: the content-column max-width on #stream>* is an ID selector and can't be overridden here, so padding shrinks the content box instead; click-expanded card bodies are siblings and unaffected */
+  padding-right: 15px;
+}
+
+/* Row-head labels (edit/change/todo/read/search/find/MCP/thinking...): uniform code font size, dimmer than body text;
+   flex:none + nowrap keeps anonymous text items from wrapping per-character into a vertical strip when long parameters squeeze;
+   line-height: 1 removes half-leading so icons align flush top and bottom with the accompanying row-head text */
+.act .lbl, .chg-item .lbl {
+  flex: none; white-space: nowrap; font-size: var(--code-fs, 12px); color: var(--faint);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Icon.tsx wraps every svg in a bare carrier span; two fixes on the svg itself:
+   display:block neutralizes the global `svg { vertical-align: middle }`, which otherwise pushes
+   the icon ~1-1.5px below center inside the carrier span's line box;
+   position:relative + top:-0.5px (not negative margin: that collapses into the carrier span and
+   corrupts the flex row height) lifts the icon onto the text ink, which sits ~0.5px above the
+   line-height:1 box center of .lbl. */
+.act > svg:first-child,
+.act > span:first-child > svg,
+.chg-item > svg:first-child,
+.chg-item > span:first-child > svg {
+  display: block;
+  flex: none;
+  position: relative;
+  top: -0.5px;
+}
+
+.cmd > .c-ic > span > svg {
+  display: block;
+  flex: none;
+}
+
+.act.t2 { margin-top: 28px; }
+
+.act.err { color: var(--err); }
+
+/* Phase separator rows (background compaction/handoff/rename): centered line sandwiching text; 30px clear of the previous result (adjacent bottom margins 14/20px are both under 30, so after margin collapsing the actual gap is 30px) */
+.act.phase {
+  margin: 30px 0 12px;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+  padding-right: 0; /* cancel the event-row content-box right inset, truly centered on the body column */
+}
+
+.act.phase .ph-line { flex: 1; height: 1px; background: var(--line); }
+
+.act.phase span { flex: none; }
+
+/* External-process write notice strip: full-width at the top of the chat area (between TodoCard and the message flow), rebuilt from disk on reload */
+.extw-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 8px 0; padding: 6px 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--dim); font-size: var(--ui-fs-base);
+}
+
+.extw-bar .extw-tx { flex: 0 1 auto; min-width: 0; }
+
+/* button hugs the text: the session-status popover at the top right covers the row tail */
+.extw-bar svg { flex: none; color: var(--blue); }
+
+/* Loop collapsed summary row: the turn's process auto-collapses at turn end, the trailing arrow toggles on click; user-select:none mirrors .msg.user (no anonymous text in the row, .lp-tx is exempt). Spacing is internalized into padding: WKWebView cross-selection only paints bare gaps outside child boxes, the row box itself stays unpainted (BUG-030) */
+.act.loop { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--faint); user-select: none; -webkit-user-select: none; margin: 0; padding: 20px 0; }
+
+/* Neighbor margins toward the row zeroed (row padding owns the gap); first-child loop absorbs flow's padding-top, keeping the 35px bubble gap. */
+.turn-flow > *:has(+ .act.loop) { margin-bottom: 0; }
+
+.act.loop + * { margin-top: 0; }
+
+.turn-flow:has(> .act.loop:first-child) { padding-top: 0; }
+
+.turn-flow > .act.loop:first-child { padding-top: 35px; }
+
+.act.loop .lp-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; user-select: text; -webkit-user-select: text; }
+
+.act.loop .lp-arrow { flex: none; color: var(--faint); display: inline-flex; align-items: center; }
+
+.act.loop .lp-arrow svg { transition: transform .2s ease; }
+
+.act.loop .lp-arrow.open svg { transform: rotate(90deg); }
+
+.act.loop:hover { color: var(--dim); }
+
+/* Collapsed state (sealed): a thin line separates the summary row from the output below.Line drawn as background 20px above the box edge: the space below it stays inside the row's box, no bare margin band for cross-selection to paint. */
+.act.loop.sealed { padding-bottom: 30px; background: linear-gradient(var(--line-soft), var(--line-soft)) left bottom 20px / 100% 1px no-repeat; }
+
+.act svg { flex: none; }
+
+/* Thinking row */
+.act.think .th-ic { color: var(--faint); display: inline-flex; }
+
+.act.think .th-more { color: var(--faint); cursor: pointer; }
+
+/* Thinking content expansion area: no card base, blends into the background, the area is marked only by the left vertical line (same set as the change groups, centered on the row-head
+   thinking icon's center); the font matches action-row labels — code font size (adjustable in settings) + label color.
+   At most 9.5 rows, inner scroll beyond that; the bottom half-row fades, auto-cleared when scrolled to bottom */
+.think-body {
+  margin: -6px 0 12px;
+  padding: 1px 12px 6px 19px; /* left padding = icon 13 + gap 6: body text aligns with the "thinking" label text. top padding 1px: body inside the line sits 1px below the line's top end (same rule as the change-group first row) */
+  position: relative;
+  font-size: var(--code-fs, 12px); line-height: 1.55; color: var(--faint);
+  /* loose relaxes punctuation kinsoku: closing brackets/commas may start a line, avoiding glued blocks shifting wholesale and leaving a large end-of-line gap; words/paths stay intact (paths may only break after /), code blocks unaffected by break-all */
+  white-space: pre-wrap; word-break: normal; line-break: loose;
+  overscroll-behavior: contain;
+}
+
+/* Scrolling happens only in the inner layer: the vertical line (::before) stays on .think-body and never scrolls out of view.
+   max-height subtracts the outer top/bottom padding (1+6=7px) so the visible row count matches the original implementation; the bottom half-row fades,
+   cleared by JS adding .no-fade when scrolled to bottom */
+.think-body .think-scroll {
+  max-height: calc(1.55em * 9.5 + 5px);
+  overflow-y: auto;
+  /* once scrolled to an edge the scroll chain stops: further wheel/trackpad gestures no longer carry to the outer session area */
+  overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 0.775em), transparent), linear-gradient(black, black);
+  -webkit-mask-size: calc(100% - 10px) 100%, 10px 100%;
+  -webkit-mask-position: left top, right top;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(to bottom, black calc(100% - 0.775em), transparent), linear-gradient(black, black);
+  mask-size: calc(100% - 10px) 100%, 10px 100%;
+  mask-position: left top, right top;
+  mask-repeat: no-repeat;
+}
+
+.think-body::before {
+  content: "";
+  position: absolute;
+  left: 5.5px; top: 0; bottom: 4px;
+  width: 2px; border-radius: 1px;
+  background: var(--line);
+}
+
+.think-body .think-scroll.no-fade {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* Edit row: file icon + file name + line delta (no path shown) */
+.act.edit .add, .chg-item .add { color: var(--green-soft); font-weight: 500; }
+
+.act.edit .del, .chg-item .del { color: var(--red); opacity: .9; font-weight: 500; }
+
+/* Minimal arrow appearing after the row tail on whole-row hover (shared by edit/terminal rows), 6px from the label content (aligned with thinking rows) */
+.act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow {
+  color: var(--faint); opacity: 0; transition: opacity .12s; flex: none;
+  display: inline-flex; align-items: center;
+}
+
+.cmd .ed-arrow { margin-left: -2px; }
+
+/* container gap 8px, net 6px */
+.act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow { opacity: 1; }
+
+/* On expand the same chevron rotates 90° in place to point down — no icon swap, no size change, no jump */
+.ed-arrow svg { transition: transform .2s ease; }
+
+.ed-arrow.open svg { transform: rotate(90deg); }
+
+/* File name: underline on hover, click opens in the right sidebar (edit row -> git diff; read row -> file content) */
+.act .ed-name { cursor: pointer; }
+
+.act .ed-name:hover { text-decoration: underline; }
+
+/* Main-chat expansion bodies: own 0.2s (faster than the 0.3s elsewhere; the chat flow is high-frequency) */
+.ed-brief.drop, .cmd-card.drop, .bash-out.drop { animation: ed-drop .2s ease-out; }
+
+.ed-brief.lift, .cmd-card.lift, .bash-out.lift, .chg-body.lift, .think-body.lift { animation: ed-lift .2s ease-out forwards; }
+
+/* Inline diff expanding downward after an edit-row click (same container language as ZCode EditInlineDiffContent: rounded-xl + border + card base, no inner padding — diff rows carry their own px, 240px height cap with inner scrolling) */
+.ed-brief {
+  margin: -6px 0 12px; /* left edge aligned with the label-row icon (inside groups, positioned by .chg-body's padding, no extra indent) */
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 0;
+  font-family: var(--mono); font-size: var(--code-fs, 12px);
+  line-height: 1.5; max-height: 240px; overflow: hidden;
+  /* embedded in the session scroll flow: the scroll chain stops at the boundary, no longer carrying to the outer layer */
+  overscroll-behavior: contain;
+}
+
+.ed-brief > .ldiff {
+  max-height: 240px;
+  overflow-y: auto;
+  background: transparent;
+  overscroll-behavior: contain;
+}
+
+/* Change row: multi-file list, no line counts; files laid out in one row, ellipsis at the tail when overlong */
+.act.change { flex-wrap: nowrap; overflow: hidden; }
+
+.act.change .chips-lane {
+  flex: 1; min-width: 0; display: block;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Change group (consecutive edit events merged): rows in the expansion body left-align with the "changes" label text (indent = pencil icon 13 + gap 6,
+   same column as the edit/write label text). Indenting goes through padding: #stream>*'s margin-left:auto (an ID selector) would crush margin-left.
+   the group header's 20px bottom margin collapses with the body's -6px into 14px — matching the card-popup-to-label spacing (the edit-row ed-brief baseline);
+   padding-top 1px: the first label inside the line sits 1px below the line's top end.
+   inner rows pad 5px, 10px between neighbors — uniform pairwise row spacing (including rows with expanded briefs, see .chg-body .ed-brief) */
+.chg-body { margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box; }
+
+/* The full left vertical line: centered on the group header's pencil icon (13px wide) (6.5 - line width 2/2 = 5.5).
+   top end flush with the expansion body's top edge (top:0): no longer reaching up into the group header row to cover the icon; the gap to the group header text = the header mb 20 and
+   body mt -6 collapsed into 14px, matching the card-popup margin. When an inner row expands a diff the body grows and the line extends with it */
+.chg-body::before {
+  content: "";
+  position: absolute;
+  left: 5.5px; top: 0; bottom: 4px;
+  width: 2px; border-radius: 1px;
+  background: var(--line);
+}
+
+.chg-body.drop { animation: ed-drop .2s ease-out; }
+
+/* Expansion body inside a group: left-aligned with the group's row icons (exempt from .ed-brief's left indent); row pb 5 + mt 9 = 14px spacing (matches the top-level edit-row brief baseline, no more touching/overlap); mb 5 + next row's pt 5 = 10px, consistent with neighboring-row spacing */
+.chg-body .ed-brief { width: auto; align-self: stretch; margin: 9px 0 5px; }
+
+/* the nested expansion body fills the group's content column instead of taking #stream>*'s 100% width */
+/* Terminal output card inside a group: same spacing system as the group's ed-brief (the top-level .cmd-card's -6/12 is designed around the .cmd row's mb 20 collapse) */
+.chg-body .cmd-card { margin: 9px 0 5px; }
+
+.chg-item {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: nowrap; max-width: 100%; box-sizing: border-box; overflow: hidden;
+  padding: 5px 15px 5px 0; color: var(--dim); font-size: var(--ui-fs-base);
+}
+
+.chg-item .lbl, .chg-item .ed-arrow, .chg-item .f-ic, .chg-item > svg:first-child { flex: none; }
+
+.chg-item .ed-name { cursor: pointer; }
+
+.chg-item .ed-name:hover { text-decoration: underline; }
+
+/* Todo row */
+.act.todo { flex-wrap: nowrap; width: 100%; }
+
+.act.todo .td-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.act.todo .td-n { color: var(--faint); margin-left: auto; flex: none; }
+
+/* Read/grep/glob/MCP rows: single-line truncation, ellipsis at the tail of parameters/dirs, file-name icons never shrink */
+.act.read, .act.mcp { flex-wrap: nowrap; overflow: hidden; }
+
+.act.read .path, .act.mcp .path {
+  color: var(--faint);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.act.read .f-ic { flex: none; }
+
+/* File-type small icon */
+.f-ic { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Body paragraphs (semibold + inline code) */
+.step-title {
+  font-size: var(--ui-fs-md); font-weight: 600; line-height: 1.65;
+  margin: 20px 0 6px; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+.step-title code {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  background: var(--panel-2); border-radius: 4px;
+  padding: 1px 5px; color: var(--dim); font-weight: 400;
+}
+
+.cmd {
+  /* matches .act row spacing: consecutive terminal rows collapsing 12px margins would look denser than elsewhere */
+  margin: 20px 0; font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  color: var(--dim);
+  display: flex; gap: 8px; align-items: center;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  /* same as .act event rows: content box inset 15px on the right to differ from body text; the expanded .cmd-card is exempt */
+  padding-right: 15px;
+}
+
+/* Rounded card expanding downward after a terminal-row click: command on top, output below, base #323232. mt -6: collapses with the .cmd row's mb 20 into 14px — matching the edit-row ed-brief popup-to-label spacing baseline */
+.cmd-card {
+  margin: -6px 0 12px; background: var(--command-surface); border-radius: 10px;
+  padding: 10px 12px; font-family: var(--mono); font-size: var(--code-fs, 12px);
+  overscroll-behavior: contain;
+}
+
+.cmd-card-cmd {
+  color: var(--command-text); white-space: pre-wrap; word-break: break-all;
+  padding-bottom: 8px; border-bottom: 1px solid var(--tint-white-120);
+  line-height: 1.5; max-height: calc(1.5em * 4.5); overflow-y: auto;
+}
+
+.cmd-card-out {
+  margin: 8px 0 0; color: var(--command-output); white-space: pre-wrap; word-break: break-word;
+  max-height: calc(1.5em * 4.5); overflow-y: auto; font: inherit; line-height: 1.5;
+}
+
+/* Light theme: the cmd-card family (terminal/background/wait/task/ask/hub expansions) stays on
+   the theme surface with the same token set as bash-out/ed-brief instead of the hardcoded dark
+   island above — light-gray-on-white text was the readability bug. Dark values stay untouched. */
+[data-theme="light"] .cmd-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+[data-theme="light"] .cmd-card-cmd {
+  color: var(--text);
+  border-bottom-color: var(--line-soft);
+}
+
+[data-theme="light"] .cmd-card-out { color: var(--dim); }
+
+/* Bottom half-row gradient mask (same technique as think-body, cleared by JS adding .no-fade when scrolled to bottom). ed-brief (inline diff) already matches ZCode's no-mask look and is exempt from this group */
+.cmd-card-cmd, .cmd-card-out {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 0.75em), transparent), linear-gradient(black, black);
+  -webkit-mask-size: calc(100% - 10px) 100%, 10px 100%;
+  -webkit-mask-position: left top, right top;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(to bottom, black calc(100% - 0.75em), transparent), linear-gradient(black, black);
+  mask-size: calc(100% - 10px) 100%, 10px 100%;
+  mask-position: left top, right top;
+  mask-repeat: no-repeat;
+  /* all three are embedded in the session scroll flow: the scroll chain stops at the boundary, no longer carrying to the outer layer */
+  overscroll-behavior: contain;
+}
+
+.cmd-card-cmd.no-fade, .cmd-card-out.no-fade {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* Task row's expanded assignment card (.task-md, ToolRow.tsx TaskBody): code font size and a
+   customized 9.5-line page (the generic cmd-card-cmd page is 4.5). The shared markdown
+   semantics come from .md-surface (see the .md-surface block above); the inner .md-body class
+   would otherwise re-assert the app base size (13.5px/1.7) over the card's code size. */
+.cmd-card-cmd.task-md {
+  font-size: var(--code-fs);
+  line-height: 1.5;
+  max-height: calc(1.5em * 9.5);
+}
+
+.cmd-card-cmd.task-md .md-body { font-size: inherit; line-height: inherit; }
+
+/* Local bash execution row (! prefix, BashRow): reuses .cmd row styles, status area right-aligned. exit 0 uses --dim, non-zero/errors use --err; "not in context" is a small faint tag */
+.bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+
+.bash-row .bash-status .bad { color: var(--err); }
+
+/* bash row expansion body: monospace output block (unlike .cmd-card, colors use only existing tokens) */
+.bash-out {
+  margin: -6px 0 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px);
+  line-height: 1.5; color: var(--dim);
+  max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  overscroll-behavior: contain;
+}
+
+/* @ mention readback row (MentionRow): single dim line, path truncated in monospace */
+.act.mention { flex-wrap: nowrap; overflow: hidden; }
+
+.act.mention .m-paths { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--code-fs, 12px); }
+
+/* External links inside tool expansion cards: same color as md-link, underline on hover; cmd+click opens the system browser (see tool-labels.js) */
+/* ask expansion parameters: question + option list (starred = recommended), replacing raw JSON */
+.ask-q + .ask-q { margin-top: 8px; border-top: 1px solid var(--tint-white-120); padding-top: 8px; }
+.ask-opt { color: var(--dim); padding-left: 14px; }
+
+.ask-opt + .ask-opt { margin-top: 4px; }
+
+.ask-opt.rec { color: var(--text); }
+
+.cmd .c-ic {
+  color: var(--faint); flex: none; font-family: var(--ui-font, var(--sans)); font-size: var(--code-fs, 12px);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; /* gap matches the .act label spacing */
+}
+
+.cmd .c-tx {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  flex: 0 1 auto; min-width: 0; /* no stretch: the arrow hugs the label end for short commands, long commands shrink into an ellipsis */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* command text inside terminal group rows (.chg-item): same truncation as .cmd .c-tx (no .cmd wrapper under :scope, so the style doesn't apply automatically) */
+.chg-item .c-tx {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Two-part JS truncation "..." structure: native text-overflow:ellipsis hugs the preceding text; this adds a 3px gap (e-dot only shows when e-tx is clipped, see ellipsizable in tool-rows.js) */
+.e-wrap { display: inline-flex; min-width: 0; overflow: hidden; }
+
+.e-wrap .e-tx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+
+.e-wrap .e-dot { flex: none; margin-left: 3px; }
+
+/* scroll-to-bottom floating button (centered at the bottom of the flow area) */
+.scroll-bottom {
+  position: sticky; bottom: 10px;
+  margin: 16px auto 2px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 5; box-shadow: 0 4px 12px var(--tint-black-350);
+}
+
+.scroll-bottom:hover { color: var(--text); background: var(--panel-2); }
+
+[data-theme="light"] .scroll-bottom { box-shadow: 0 4px 12px var(--tint-black-120); }
+.flash { animation: flashBg 1.2s ease; border-radius: 8px; }
+
+/* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
+   Ticks expand equidistantly from the rail's midline (30 physical screen pixels apart, proportionally compressed by JS when too many);
+   a tick defaults to 37.5 physical pixels long (horizontal) and 3.9 physical pixels thick (vertical, pill-rounded ends); on hover they form a continuous mountain range:
+   a global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick center (nearest line brightened x2.5, animation continuous through the gaps),
+   and after hovering 150ms a ring-pop message card pops to the right of the peak tick */
+#msgRail {
+  position: absolute; left: 8px; width: 22px; z-index: 60;
+  pointer-events: none; /* the container itself doesn't block messages; ticks are individually hoverable */
+}
+
+/* Hide the left message rail when the content column margin < 65px (JS adds .rail-off to #main from the measured margin), so ticks don't crowd the content column */
+#main.rail-off #msgRail { display: none; }
+
+.rail-tick {
+  position: absolute; left: 0; height: 4px; border-radius: 4px; /* placeholder; actual thickness/pill rounding written by JS from devicePixelRatio */
+  background: var(--panel-3); cursor: pointer; pointer-events: auto;
+  width: 3px; /* placeholder; actual length written by JS from devicePixelRatio */
+  transition: background .05s ease-out; /* zero width transition: mouse events are the smoothing source, chasing real-time tracking; the 150ms delay only gates the popover */
+  will-change: width; /* width rewritten at high frequency; hint for compositor-layer optimization */
+}
+
+.rail-tick.on { background: var(--text); }
+
+/* mountain-peak brightening */
+.turn-acts { box-sizing: border-box; padding-left: max(0px, calc((100% - min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))))) / 2)); }
+
+/* full-width box leaves no flanking gap for WebKit's crossed-selection fill to paint (BUG-030); left padding mirrors the shared column cap so buttons keep the column's left edge */
+/* Scroll-gesture ownership (Chat.tsx): while a wheel-driven stream scroll is in progress
+   (the .wheel-through class, armed by stream-targeted wheels and expired 1s after the last
+   one), inline expand cards AND message-content scrollers become pointer-transparent so a
+   pointer drifting over them cannot hijack the wheel — the event passes through to the
+   stream natively in every web engine. After 1s of wheel idle the class lifts and the
+   inner scrollers own their wheels again (with their own overscroll containment).
+   Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in Chat.tsx. */
+#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text) {
+  pointer-events: none;
+}
+
+/* ── Inline expansion cards: scrollbars visible during scroll/hover, matching VSCode scrollbarSlider and #stream ── */
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList).scrolling::-webkit-scrollbar-thumb,
+#todoList :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb {
+  transition: background-color 0.25s ease-out;
+}
+
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList):hover :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title, #todoList):hover::-webkit-scrollbar-thumb,
+:is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title).scrolling::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList).scrolling :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+#todoList.scrolling::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--dim) 50%, transparent);
+}
+
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:hover,
+#todoList::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dim);
+}
+
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:active,
+#todoList::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--dim) 80%, var(--text));
+}

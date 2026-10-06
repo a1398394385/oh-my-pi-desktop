@@ -1,0 +1,147 @@
+/* ── Markdown rendering support ── */
+.md-body { width: fit-content; max-width: 100%;
+  font-size: var(--ui-fs-md);
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.md-body .md-p { margin: 8px 0; line-height: 1.7; width: fit-content; max-width: 100%; }
+
+.md-body .md-h {
+  font-weight: 600;
+  color: var(--text);
+  margin: 20px 0 8px;
+  line-height: 1.35;
+}
+
+.md-body .md-h1 { font-size: calc(var(--ui-fs) * 1.55); border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+
+.md-body .md-h2 { font-size: calc(var(--ui-fs) * 1.35); border-bottom: 1px solid var(--line-soft); padding-bottom: 5px; }
+
+.md-body .md-h3 { font-size: calc(var(--ui-fs) * 1.2); }
+
+.md-body .md-h4 { font-size: calc(var(--ui-fs) * 1.1); }
+
+.md-body .md-inline-code {
+  font-family: var(--mono) !important;
+  font-size: var(--code-fs, 12px) !important;
+  background: var(--tint-white-80);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: inherit; /* same color as the normal output text beside it */
+}
+
+[data-theme="light"] .md-body .md-inline-code {
+  color: var(--code-keyword-light);
+  background: var(--tint-black-60);
+}
+
+.md-body strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.md-body em {
+  font-style: italic;
+}
+
+.md-body del {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+/* List indent uses padding, not margin: markers render inside the padding area (right edge against the content), left edge sits right of the paragraph's left boundary; a margin formulation would leave markers hanging outside the content box, numbers sticking out past the paragraph's left edge */
+.md-body .md-ul, .md-body .md-ol {
+  margin: 8px 0;
+  padding-left: 2em;
+}
+
+.md-body li { margin: 4px 0; line-height: 1.65; width: fit-content; max-width: 100%; }
+
+/* Unified markdown surface semantics (MdSurface.tsx), TUI parity (tui/src/components/markdown.ts:
+   headings colored mdHeading at body size; blocks separated by exactly one blank line). Added on
+   EVERY markdown surface as md-body + md-surface. Specificity is .md-body.md-surface (0,3,x) on
+   purpose: base rules like .md-body li / .md-body .md-quote sit later in this file at (0,2,x) and
+   would otherwise resurrect their margins. */
+.md-body.md-surface :is(.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6) {
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--accent);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.md-body.md-surface :is(.md-p, .md-ul, .md-ol, .md-quote, .md-hr, .md-table, .md-table-wrap) { margin: 0; }
+
+.md-body.md-surface :is(.md-p, li) { line-height: 1.55; }
+
+.md-body.md-surface li { margin: 0; }
+
+.md-body.md-surface .space-y-4 > * { margin-top: 0; margin-bottom: 0; }
+
+.md-body.md-surface .space-y-4 > * + * { margin-top: 1.5em; }
+
+.md-body .md-task-cb {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.md-body .md-quote {
+  border-left: 3px solid var(--accent-fixed);
+  background: var(--tint-accent-70);
+  padding: 8px 14px;
+  margin: 12px 0;
+  border-radius: 0 6px 6px 0;
+  color: var(--dim);
+}
+
+.md-body .md-hr {
+  border: 0;
+  height: 1px;
+  background: var(--line-soft);
+  margin: 20px 0;
+}
+
+.md-body .md-link {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.md-body .md-link:hover {
+  text-decoration: underline;
+}
+
+/* Table rendering */
+.md-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ui-fs-base);
+  margin: 12px 0;
+}
+
+.md-table th, .md-table td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.md-table th {
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+.md-table tr:nth-child(even) {
+  background: var(--tint-white-20);
+}
+
+[data-theme="light"] .md-table tr:nth-child(even) {
+  background: var(--tint-black-20);
+}

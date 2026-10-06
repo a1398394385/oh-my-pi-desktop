@@ -9,7 +9,7 @@
 // Exempt dirs: build outputs such as node_modules/dist/target (ui/ docs/ .agents/ .local/ outside the source roots are naturally unchecked).
 // Usage: node scripts/check-architecture.mjs [--base <rev>]
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 const root = process.cwd();
@@ -22,38 +22,72 @@ const excludedSegments = new Set(["node_modules", "dist", "out", "release", "tar
 const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
-  // CSS style domains (main.css split into 5 page domains, main-chat further into 4 component domains; domain file order = entry @import cascade order; tightened after dead-class cleanup)
-  { path: "ui/css/global.css", max: 880 },
-  { path: "ui/css/main-shell.css", max: 170 },
-  { path: "ui/css/main-sidebar.css", max: 810 },
-  { path: "ui/css/main-chat.css", max: 960 },
-  // Approval cards split out of main-chat.css (the plan variant added the
-  // execution-model slider + a disabled row, which overflowed the chat cap).
-  { path: "ui/css/main-chat-approval.css", max: 160 },
-  // Ask multi-question form styles split out of main-chat-approval.css (the
-  // "Other" custom-answer row overflowed the approval cap).
-  { path: "ui/css/main-chat-ask.css", max: 120 },
-  { path: "ui/css/main-composer.css", max: 670 },
-  // main-streamdown.css sat at 306 lines in HEAD (over the old 280 ratchet)
-  // — realign to the committed size; no further growth.
-  { path: "ui/css/main-streamdown.css", max: 306 },
-  { path: "ui/css/main-tree.css", max: 450 },
-  // Fork-point segments + branch switcher split out of main-tree.css (the
-  // summary inline-scroll rework overflowed the tree cap).
-  { path: "ui/css/main-tree-fork.css", max: 160 },
-  { path: "ui/css/main-hub.css", max: 160 },
-  { path: "ui/css/main-welcome.css", max: 190 },
-  { path: "ui/css/main-right.css", max: 1060 },
-  { path: "ui/css/main-right-caps.css", max: 120 },
-  // Browser page Agent live view split out of main-right.css (first cut with
-  // the mirror feature; keeps main-right.css inside its ratchet)
-  { path: "ui/css/main-right-browser.css", max: 140 },
-  { path: "ui/css/settings.css", max: 1420 },
-  { path: "ui/css/settings-stats.css", max: 750 },
-  // Ported omp-stats rules split out of settings-stats.css (first adaptation cut
-  // covered only ~1/3 of the official styles; the rest cascades right after).
-  { path: "ui/css/settings-stats-port.css", max: 1100 },
 ];
+
+const CSS_LIMITS = {
+  "global/animations.css": 70,
+  "global/base.css": 30,
+  "global/context-card.css": 103,
+  "global/controls.css": 330,
+  "global/overlays.css": 140,
+  "global/scrollbars.css": 40,
+  "global/tokens.css": 240,
+  "main/center.css": 100,
+  "main/chat/approval.css": 150,
+  "main/chat/ask.css": 40,
+  "main/chat/messages.css": 670,
+  "main/chat/status-find.css": 140,
+  "main/chat/streamdown.css": 250,
+  "main/composer-menus.css": 90,
+  "main/composer.css": 654,
+  "main/hub.css": 60,
+  "main/right/background.css": 60,
+  "main/right/branches.css": 20,
+  "main/right/browser.css": 167,
+  "main/right/capabilities.css": 70,
+  "main/right/common.css": 190,
+  "main/right/files.css": 30,
+  "main/right/git.css": 60,
+  "main/right/hub-detail.css": 70,
+  "main/right/terminal.css": 190,
+  "main/shell.css": 100,
+  "main/sidebar.css": 653,
+  "main/tree/fork.css": 60,
+  "main/tree/stream.css": 299,
+  "main/welcome.css": 180,
+  "settings/agents.css": 20,
+  "settings/appearance.css": 50,
+  "settings/common.css": 590,
+  "settings/experimental.css": 10,
+  "settings/extensions.css": 140,
+  "settings/forms.css": 100,
+  "settings/hooks.css": 10,
+  "settings/mcp.css": 300,
+  "settings/memory.css": 80,
+  "settings/models.css": 159,
+  "settings/providers.css": 40,
+  "settings/shortcuts.css": 20,
+  "settings/skills.css": 280,
+  "settings/stats-legacy.css": 50,
+  "settings/stats-port.css": 1040,
+  "settings/stats.css": 726,
+  "shared/agent.css": 60,
+  "shared/choice-pills.css": 90,
+  "shared/code-blocks.css": 80,
+  "shared/code-theme.css": 50,
+  "shared/code-typography.css": 30,
+  "shared/code-view.css": 60,
+  "shared/markdown.css": 150,
+  "shared/model-picker.css": 60,
+};
+for (const [path, max] of Object.entries(CSS_LIMITS)) HOT_LIMITS.push({ path: "ui/css/" + path, max });
+
+function cssFiles(dir) {
+  return readdirSync(resolve(root, dir), { withFileTypes: true }).flatMap((entry) => {
+    const path = dir + "/" + entry.name;
+    return entry.isDirectory() ? cssFiles(path) : entry.name.endsWith(".css") ? [path] : [];
+  });
+}
 
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
 
@@ -74,7 +108,7 @@ function isSourcePath(filePath) {
 
 // Tracked + non-ignored untracked files (git ls-files -co --exclude-standard)
 function trackedSourceFiles() {
-  return git(["ls-files", "-co", "--exclude-standard"]).split("\n").filter(Boolean).filter(isSourcePath);
+  return git(["ls-files", "-co", "--exclude-standard"]).split("\n").filter(Boolean).filter(isSourcePath).filter((path) => existsSync(resolve(root, path)));
 }
 
 function locFor(filePath) {
@@ -115,7 +149,7 @@ function fallbackBase() {
 // Source files newly added since the base commit (uncommitted workspace included: diff also covers working-tree changes)
 function addedSourceFiles(base) {
   if (!base) return [];
-  return git(["diff", "--name-only", "--diff-filter=A", base]).split("\n").filter(Boolean).filter(isSourcePath);
+  return git(["diff", "--name-only", "--diff-filter=A", base]).split("\n").filter(Boolean).filter(isSourcePath).filter((path) => existsSync(resolve(root, path)));
 }
 
 const { base: requestedBase } = parseArgs();
@@ -126,9 +160,14 @@ if (requestedBase && requestedBase !== base) {
 
 const files = trackedSourceFiles();
 // Non-source paths in HOT_LIMITS (e.g. .css) are not in sourceExtensions (kept out of the new-file check); fold them into line counting here
-const locByPath = new Map([...files, ...HOT_LIMITS.map((h) => h.path)].map((p) => [p, locFor(p)]));
-const addedFiles = addedSourceFiles(base);
+const styles = cssFiles("ui/css");
+const locByPath = new Map([...files, ...styles, ...HOT_LIMITS.map((h) => h.path)].filter((p) => existsSync(resolve(root, p))).map((p) => [p, locFor(p)]));
+const addedFiles = [...new Set([...addedSourceFiles(base), ...git(["ls-files", "--others", "--exclude-standard"]).split("\n").filter(isSourcePath)])];
 const failures = [];
+
+for (const path of styles) {
+  if (!(path.slice("ui/css/".length) in CSS_LIMITS)) failures.push(`${path} 未登记样式上限；新增 CSS 文件须登记`);
+}
 
 // ---- Check 1: hard caps for hot spots ----
 for (const { path, max } of HOT_LIMITS) {

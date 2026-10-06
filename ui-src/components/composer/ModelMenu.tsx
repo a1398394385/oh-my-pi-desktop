@@ -7,21 +7,16 @@
 // child of #composer (fragment sibling slot; the old version attached to
 // composerEl to dodge .menu.model's overflow-y:auto clipping); with a session
 // it goes through the host set_model, in creating-new state it lands in
-// localStorage. The cascade interaction (hover intent / grace close / row
-// markup) lives in the shared components/ModelPicker.tsx core; this menu only
-// keeps the composer-specific placement math.
+// localStorage.
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId } from "../../store";
-import { CapBadges, useCascadeFlyout } from "../ModelPicker";
+import type { ModelCaps } from "../../store/models";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
+import ModelCascadeMenu, { type PickerRole } from "../shared/models/ModelCascadeMenu";
 import type { ModelRoleEntry } from "../../types/frames";
-
-// Flyout slot key for the custom-role group; "@"-prefixed on purpose so a
-// custom role named like a provider can never collide with the provider keys
-const ROLE_SECTION_KEY = "@roles";
 
 type ModelMenuProps = {
   btnRef: RefObject<HTMLButtonElement | null>;
@@ -40,16 +35,12 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const modelCaps = useAppStore((st) => st.modelCaps);
   const curModel = s?.model || newSessionModel;
   const menuRef = useRef<HTMLDivElement>(null);
-  const flyRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLDivElement>()); // prov -> provider row element (for flyout alignment)
-  const { flyProv, provRowProps, flyoutProps } = useCascadeFlyout();
 
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
-  // Unmount: drop ctrl+p preview state so a later auto-close timer (keys.ts)
-  // cannot close a freshly manually opened menu (cascade timers live in the
-  // shared useCascadeFlyout hook)
+  // Unmount timer cleanup; also drop ctrl+p preview state so a later
+  // auto-close timer (keys.ts) cannot close a freshly manually opened menu
   useEffect(
     () => () => {
       if (useAppStore.getState().cyclePreview) useAppStore.setState({ cyclePreview: null });
@@ -66,12 +57,9 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   // scrolls. Do not clamp to 0: when the menu sticks out above the composer
   // carousel-style, offsetTop is negative and the flyout must follow the row
   // above the composer; clamping would slide the whole flyout out of place.
-  useLayoutEffect(() => {
-    const menu = menuRef.current;
+  const positionFlyout = (menu: HTMLDivElement, fly: HTMLDivElement, row: HTMLDivElement) => {
     const comp = composerRef.current;
-    const row = rowRefs.current.get(flyProv ?? "");
-    const fly = flyRef.current;
-    if (!menu || !comp || !row || !fly || !flyProv) return;
+    if (!comp) return;
     const z = useAppStore.getState().zoomLevel || 1;
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
@@ -87,7 +75,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     if (fly.getBoundingClientRect().right > window.innerWidth - 8) {
       fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px"; // right edge overflows: flip left
     }
-  }, [flyProv]);
+  };
 
   // Model picked: with a session it goes through the host; creating-new state
   // lands in localStorage (a manual pick is no longer overridden by the config
@@ -100,7 +88,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   // Role picked: same routing, but the role id travels along so the host
   // applies the CLI role path (role-tracked model change + explicit role
   // thinking level)
-  const pickRole = (role: ModelRoleEntry & { resolved: string }) => {
+  const pickRole = (role: PickerRole) => {
     pickModelId(role.resolved, role.id);
     onClose();
   };
@@ -110,14 +98,6 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const customRoles = (modelRoles ?? []).filter(
     (r): r is ModelRoleEntry & { resolved: string } => !r.builtin && !!r.resolved,
   );
-
-  // Group by provider (host-delivered ids look like "provider/modelId")
-  const groups = new Map<string, [string, string][]>();
-  for (const [id, name] of modelNames) {
-    const prov = id.split("/")[0];
-    if (!groups.has(prov)) groups.set(prov, []);
-    groups.get(prov)!.push([id, name]);
-  }
 
   // ctrl+p preview mode: a transient flat list of exactly the cyclable roles
   // (cycleOrder resolution), the just-switched-to slot highlighted; rows stay
@@ -148,63 +128,34 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     );
   }
 
-  if (modelNames.size === 0) {
-    return (
-      <div className="menu model open" id="modelMenu" ref={menuRef}>
-        <div className="mi empty" style={{ color: "var(--dim)", cursor: "default", justifyContent: "center", padding: "8px 12px" }}>
-          {t("composer.noModels")}
-        </div>
-      </div>
-    );
-  }
+  return <ModelCascadeMenu
+    models={[...modelNames].map(([id, name]) => ({ id, name, provider: id.split("/")[0] }))}
+    selectedId={curModel ?? undefined} onPick={pickModel}
+    roles={modelNames.size > 0 ? customRoles : []} roleLabel={t("composer.modelRoleCategory")} onPickRole={pickRole}
+    renderModelMeta={(model) => <CapBadges caps={modelCaps.get(model.id)} />}
+    emptyContent={<div className="mi empty" style={{ color: "var(--dim)", cursor: "default", justifyContent: "center", padding: "8px 12px" }}>{t("composer.noModels")}</div>}
+    menuId="modelMenu" arrowSize={10}
+    positionMenu={(menu) => placeComposerMenu(composerRef.current, menu, btnRef.current)}
+    positionFlyout={positionFlyout}
+  />;
+}
 
+// Capability badges at model-row tails (18.5 models frame axes): small text
+// chips for prompt-cache keepalive / built-in web search / image generation;
+// rendered only for axes the host actually reports
+function CapBadges({ caps }: { caps: ModelCaps | undefined }) {
+  const { t } = useTranslation();
+  if (!caps) return null;
+  const badges: string[] = [];
+  if ((caps.promptCache ?? 0) > 0) badges.push(t("compExt.capCache"));
+  if (caps.webSearch) badges.push(t("compExt.capWeb"));
+  if (caps.imageGen) badges.push(t("compExt.capImg"));
+  if (badges.length === 0) return null;
   return (
     <>
-      <div className="menu model open" id="modelMenu" ref={menuRef}>
-        {customRoles.length > 0 && (
-          <>
-            <div
-              className={"mi prov" + (ROLE_SECTION_KEY === flyProv ? " on" : "")}
-              ref={(el) => { if (el) rowRefs.current.set(ROLE_SECTION_KEY, el); else rowRefs.current.delete(ROLE_SECTION_KEY); }}
-              {...provRowProps(ROLE_SECTION_KEY)}
-            >
-              {t("composer.modelRoleCategory")}
-              <span className="sub"><Icon name="chevronRight" size={10} /></span>
-            </div>
-            <div className="sep" />
-          </>
-        )}
-        {[...groups].map(([prov]) => (
-          <div
-            className={"mi prov" + (prov === flyProv ? " on" : "")}
-            key={prov}
-            ref={(el) => { if (el) rowRefs.current.set(prov, el); else rowRefs.current.delete(prov); }}
-            {...provRowProps(prov)}
-          >
-            {prov}
-            <span className="sub"><Icon name="chevronRight" size={10} /></span>
-          </div>
-        ))}
-      </div>
-      {flyProv && (
-        <div className="menu flyout open" ref={flyRef} {...flyoutProps}>
-          {flyProv === ROLE_SECTION_KEY
-            ? customRoles.map((role) => (
-                <div className="mi" data-role={role.id} key={role.id} onClick={() => pickRole(role)}>
-                  <span className="ck">{curModel === role.resolved ? "✓" : ""}</span>
-                  {role.name} : {role.resolvedName ?? role.resolved}
-                </div>
-              ))
-            : // When flyProv is truthy, groups always has that key (the grouping
-              // is self-built); the ?? [] only satisfies strict typing
-              (groups.get(flyProv) ?? []).map(([id, name]) => (
-                <div className="mi" data-model={id} key={id} onClick={() => pickModel(id)}>
-                  <span className="ck">{curModel === id ? "✓" : ""}</span>{name}
-                  <CapBadges caps={modelCaps.get(id)} />
-                </div>
-              ))}
-        </div>
-      )}
+      {badges.map((label) => (
+        <span className="cap-b" key={label}>{label}</span>
+      ))}
     </>
   );
 }

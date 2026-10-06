@@ -20,7 +20,7 @@
 // justification in the commit message.
 // Usage: node scripts/check-comment-language.mjs [--update]
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 const root = process.cwd();
@@ -124,7 +124,8 @@ const files = git(["ls-files", "-co", "--exclude-standard"])
     const family = familyOf(filePath);
     return dir && family ? { filePath, dir, family } : null;
   })
-  .filter(Boolean);
+  .filter(Boolean)
+  .filter(({ filePath }) => existsSync(resolve(root, filePath)));
 
 for (const { filePath, dir, family } of files) {
   counts.set(dir, counts.get(dir) + countChineseCommentLines(filePath, family));

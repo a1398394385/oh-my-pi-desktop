@@ -1,0 +1,292 @@
+.mcp-header { margin-bottom: 25px; }
+
+.mcp-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
+
+/* first row: scope pill + stats + search box */
+.mcp-bar-primary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.mcp-scope-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcp-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
+
+.mcp-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 240px;
+}
+
+.mcp-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--faint);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
+.mcp-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 32px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+}
+
+.mcp-search-input:focus {
+  border-color: var(--tint-accent-500);
+  box-shadow: 0 0 0 3px var(--tint-accent-130);
+}
+
+.mcp-search-input::placeholder { color: var(--faint); }
+
+/* second row: installed count + action buttons */
+.mcp-bar-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.mcp-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* more(...) button = a size carrier inside the .sel pill: plate/hover come from the outer .sel (the refresh button uses .plus-btn) */
+.mcp-btn-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* new button = the .add-btn language: transparent base + --line border + hover --panel-2, same height as the refresh button */
+.mcp-btn-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  height: 31px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  cursor: pointer;
+  transition: background .15s var(--swift);
+}
+
+.mcp-btn-new:hover { background: var(--panel-2); }
+
+.mcp-btn-new:active { transform: scale(.95); }
+
+/* MCP list container */
+.mcp-list-wrap {
+  margin-top: 4px;
+}
+
+.mcp-card-list {
+  background: var(--panel);
+  border: 1px solid var(--tint-white-80);
+  border-radius: var(--r-card);
+  box-shadow: 0 8px 26px var(--tint-black-350);
+  overflow: hidden;
+}
+
+[data-theme="light"] .mcp-card-list {
+  border-color: var(--tint-black-80);
+  box-shadow: 0 8px 24px var(--tint-black-80);
+}
+
+.mcp-empty-row {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+}
+
+/* MCP server entry row */
+.mcp-server-row {
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: background .15s;
+}
+
+.mcp-server-row:last-child {
+  border-bottom: none;
+}
+
+.mcp-server-row:hover {
+  background: var(--tint-white-25);
+}
+
+[data-theme="light"] .mcp-server-row:hover {
+  background: var(--tint-black-20);
+}
+
+.mcp-server-row.disabled {
+  opacity: .6;
+}
+
+/* left rounded square icon and status dot (colors via tokens, auto-adapts to light theme) */
+.mcp-icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  flex-shrink: 0;
+  margin-right: 14px;
+  position: relative;
+}
+
+.mcp-status-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--panel);
+}
+
+.mcp-status-dot.ok {
+  background: var(--green);
+  box-shadow: 0 0 5px var(--tint-success-700);
+}
+
+.mcp-status-dot.err {
+  background: var(--err);
+  box-shadow: 0 0 5px var(--tint-danger-700);
+}
+
+.mcp-status-dot.off {
+  display: none;
+}
+
+/* middle service info */
+.mcp-server-info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 16px;
+  cursor: inherit;
+}
+
+.mcp-server-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-server-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ctl-bg);
+  color: var(--faint);
+  border: 1px solid var(--line-soft);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.mcp-server-badge.mcp-badge-shared {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--ctl-bg));
+  text-transform: none;
+}
+
+.mcp-form-hint {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.mcp-server-cmd {
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
+  margin-top: 3px;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.mcp-server-err {
+  font-size: var(--ui-fs-sm);
+  color: var(--err);
+  margin-top: 4px;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-word;
+}
+
+.mcp-err-icon {
+  font-size: 12px;
+  color: var(--dim);
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  user-select: none;
+}
+
+.mcp-log-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--ui-fs-xs);
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  flex-shrink: 0;
+  transition: background .12s, border-color .12s;
+}
+
+.mcp-log-btn:hover {
+  background: var(--line);
+  border-color: var(--dim);
+}
+
+/* right-side toggle control */
+.mcp-server-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}

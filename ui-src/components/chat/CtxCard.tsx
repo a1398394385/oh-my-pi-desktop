@@ -156,7 +156,7 @@ function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
 
 // Composition row dot colors, one entry per row in the order the rows are built
 // below. Single-direction hue ramp (cyan -> magenta, top to bottom) defined in
-// ui/css/main-right.css as --ctx-1..--ctx-5 on .ring-pop. Only five steps for
+// ui/css/global/context-card.css as --ctx-1..--ctx-5 on .ring-pop. Only five steps for
 // eight rows: the rows form three groups of related categories and each group
 // shares a step, so the dot reads as "which group" while the ramp still rotates
 // one way down the card.

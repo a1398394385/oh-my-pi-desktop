@@ -1,0 +1,138 @@
+.ring-pop {
+  position: fixed; z-index: 200;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 32px var(--tint-black-500);
+  padding: 12px 12px 14px;
+  min-width: 192px; /* 240px × 0.8 */
+  font-size: var(--ui-fs-base); color: var(--dim);
+  animation: ringpop .18s ease-out; /* progressive render: fade in + slide up, not an instant flash */
+}
+
+[data-theme="light"] .ring-pop { box-shadow: 0 12px 32px var(--tint-black-180); }
+.ring-pop b { color: var(--text); font-weight: 500; }
+
+.confirm-box {
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 32px var(--tint-black-500);
+  padding: 16px 18px 14px;
+  width: 320px;
+  max-width: calc(100vw - 48px);
+  animation: ringpop .18s ease-out;
+  display: flex; flex-direction: column; gap: 10px;
+  box-sizing: border-box;
+}
+
+[data-theme="light"] .confirm-box {
+  box-shadow: 0 12px 32px var(--tint-black-180);
+}
+
+.confirm-title {
+  font-size: var(--ui-fs-md);
+  font-weight: 500;
+  color: var(--text);
+  margin: 0;
+}
+
+.confirm-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 4px;
+}
+
+/* OMP login paste-code dialog */
+.lp-mask { position: fixed; inset: 0; background: var(--tint-black-450); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.lp-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 380px; max-width: calc(100vw - 48px); }
+
+.lp-msg { font-size: var(--ui-fs-base); color: var(--text); margin-bottom: 10px; word-break: break-all; }
+
+.cf-msg { font-size: var(--ui-fs-sm); color: var(--dim); line-height: 1.6; margin: -4px 0 10px; white-space: pre-wrap; }
+
+.lp-box .inp { width: 100%; box-sizing: border-box; margin-bottom: 12px; }
+
+.lp-row { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ── Windows window control buttons (frameless window; WindowControls.tsx renders on Windows only)──
+   Blended into existing card headers: on the top right of the middle column's .chat-head when the right sidebar is collapsed, or of the right sidebar's .sp-head when expanded.
+   Highlight uses the site-wide .icon-btn language (26x26, --r-sm, --panel-2); negative margins cancel the header padding to leave a 4px breathing room from the card edge.
+   .win-hot is a transparent fixed overlay over the window's literal top-right corner (the cards are inset by --shell-gap): hovering it highlights the close button via :has, clicking closes — the Windows muscle-memory slam corner.
+   Dragging/double-click maximize is handled by the Tauri core via the header's data-tauri-drag-region. */
+.win-controls {
+  display: flex; align-items: center; gap: 2px; flex: none;
+  margin-right: -2px; /* .sp-head padding (6px) minus the 4px card-edge breathing room */
+}
+
+/* .chat-head padding (16px) minus 4px */
+.win-controls .win-btn {
+  width: 26px; height: 26px; border: 0; border-radius: var(--r-sm);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dim); cursor: default;
+}
+
+.win-controls .win-btn:hover { background: var(--panel-2); color: var(--text); }
+
+.win-controls .win-btn.win-close:hover { background: var(--window-close); color: var(--white); }
+/* .win-hot hover lights the close button exactly as hovering the button itself */
+.win-controls:has(.win-hot:hover) .win-btn.win-close { background: var(--window-close); color: var(--white); }
+.win-hot {
+  position: fixed; top: 0; right: 0;
+  width: 40px; height: 40px; /* covers the --shell-gap inset corner plus a forgiving margin into the close button */
+  z-index: 60; /* in-panel fixed-overlay tier (see the z-index scale above) */
+  cursor: default;
+  -webkit-app-region: no-drag; /* fixed descendant of the header drag region: must opt out or clicks would drag */
+}
+
+/* ── global confirmation dialog (ring-pop-family global overlay; relocated to the global-shared domain from main-chat.css)── */
+/* ── global confirmation dialog (strictly follows the ring-pop family visuals and ringpop entrance animation spec) ── */
+.confirm-mask {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--tint-black-450);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.confirm-desc {
+  font-size: var(--ui-fs-base);
+  color: var(--dim);
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* context menu (copy sessionId; fixed positioning needs zoom compensation) */
+.ctx-menu {
+  position: fixed; z-index: 500;
+  display: flex; flex-direction: column;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 32px var(--tint-black-500);
+  padding: 5px; min-width: 170px;
+  animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
+}
+
+[data-theme="light"] .ctx-menu { box-shadow: 0 12px 32px var(--tint-black-180); }
+.ctx-menu button {
+  border: none; background: none;
+  text-align: left; font-size: var(--ui-fs-base);
+  padding: 7px 10px; border-radius: 7px;
+  cursor: pointer; color: var(--text);
+}
+
+.ctx-menu button:hover { background: var(--panel-3); }
+
+/* ── toast ── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--text); font-size: var(--ui-fs-base);
+  padding: 8px 16px; border-radius: 999px;
+  box-shadow: 0 8px 24px var(--tint-black-500);
+  z-index: 400; white-space: nowrap;
+}
+
+[data-theme="light"] #toast { box-shadow: 0 8px 24px var(--tint-black-180); }

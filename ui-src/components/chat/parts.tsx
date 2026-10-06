@@ -16,7 +16,7 @@ import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { langOfPath } from "../../lib/highlighter";
 import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens";
-import { openRightTab } from "../RightPanel";
+import { openRightTab } from "../main/right/RightPanel";
 import LightweightDiff from "../diff/LightweightDiff";
 import { t } from "../../i18n";
 

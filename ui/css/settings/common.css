@@ -1,0 +1,582 @@
+/* Settings refresh button: model-page baseline x1.2 (icon 14->17, plate 26->31), shared by all pages */
+.pg-refresh { margin-left: auto; width: 31px; height: 31px; }
+
+.pg-refresh svg { display: block; }
+
+/* Model page: the refresh button moves to the left of "+ Add Provider", no longer flush right */
+.set-desc-row .pg-refresh { margin-left: 0; }
+
+/* In action rows the refresh button groups with more/new-add and skips the flush-right margin */
+.mcp-actions-wrap .pg-refresh, .skills-actions-wrap .pg-refresh { margin-left: 0; }
+
+.pg-refresh.spin svg { animation: pgspin .5s linear; }
+
+.set-card > .srow:first-child { border-top-left-radius: var(--r-card); border-top-right-radius: var(--r-card); }
+
+.set-card > .srow:last-child { border-bottom-left-radius: var(--r-card); border-bottom-right-radius: var(--r-card); }
+
+#agentScopeMenu .mi, #skillScopeMenu .mi, #mcpScopeMenu .mi, .scope-menu .mi {
+  padding: 9px 12px;
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-base);
+}
+
+#agentScopeMenu .mi .mi-label, #skillScopeMenu .mi .mi-label, #mcpScopeMenu .mi .mi-label, .scope-menu .mi .mi-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-menu .sep, #agentScopeMenu .sep, #skillScopeMenu .sep, #mcpScopeMenu .sep {
+  flex: none;
+  margin: 6px 4px;
+}
+
+/* scope menu: 340px wide, max height 2/3 of the screen; the Profile header and workspace column headers stay pinned while the project list scrolls */
+#agentScopeMenu, #skillScopeMenu, #mcpScopeMenu, .scope-menu {
+  width: 340px;
+  padding: 6px;
+  left: 0;
+  right: auto;
+  max-height: calc(100vh * 2 / 3);
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-base);
+}
+
+#agentScopeMenu.open, #skillScopeMenu.open, #mcpScopeMenu.open, .scope-menu.open {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.scope-menu-top {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scope-menu-header {
+  flex: none;
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  padding: 6px 12px 4px;
+  user-select: none;
+  font-weight: 500;
+}
+
+.scope-menu-projects {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* advanced page has no UI key names: shown in monospace */
+.adv-key { font-family: var(--mono); }
+
+/* scope dropdown button (ScopeSel, the only implementation site-wide): the button is just a size carrier; plate/text color/hover come from the outer .sel */
+.scope-sel-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
+
+/* ── settings center ── */
+#settings {
+  position: fixed; inset: 0; z-index: 300;
+  display: grid; grid-template-columns: var(--setnav-w, 180px) 1fr;
+  background: var(--base);
+  padding: 0 var(--shell-gap) var(--shell-gap) 0;
+}
+
+#settings.hidden { display: none; }
+
+#setNav {
+  background: transparent; padding: 40px 10px 0;
+  display: flex; flex-direction: column;
+  /* same as #sidebar: navigation text not selectable; the tap-selection blue is noise */
+  user-select: none;
+  -webkit-user-select: none;
+  /* a grid item's min-height:auto stretches with content and overflows (at settings height 560 the row height blows up to 1192);
+     with scrolling delegated to .set-nav-scroll, this must be zeroed so row stretching works */
+  min-height: 0;
+}
+
+/* nav scroll area: back button pinned at the top, only this scrolls; the bottom avatar keeps its sticky bottom pin */
+.set-nav-scroll { flex: 1; min-height: 0; margin-top: 6px; overflow-y: auto; display: flex; flex-direction: column; }
+
+#setNav button { -webkit-app-region: no-drag; }
+
+.set-back {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 10px; color: var(--dim); cursor: pointer;
+  border-radius: 10px; font-size: var(--ui-fs-base);
+  border: 0; background: var(--base); width: 100%; text-align: left; font: inherit;
+  transition: background .18s var(--swift), color .18s var(--swift);
+}
+
+.set-back:hover { background: var(--tint-nav-hover-420); color: var(--text); }
+[data-theme="light"] .set-back:hover { background: var(--tint-black-60); }
+.set-back svg { transition: transform .22s var(--spring); }
+
+.set-back:hover svg { transform: translateX(-2px); }
+
+/* settings left-sidebar search box and results */
+.set-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+
+.set-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--faint);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.set-search-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 24px 0 28px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: var(--ui-fs-sm);
+  outline: none;
+  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  box-sizing: border-box;
+  -webkit-app-region: no-drag;
+}
+
+.set-search-input:focus {
+  border-color: var(--tint-accent-500);
+  box-shadow: 0 0 0 3px var(--tint-accent-130);
+}
+
+.set-search-input::placeholder { color: var(--faint); }
+
+.set-search-clear {
+  position: absolute;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  transition: color .14s var(--swift);
+}
+
+.set-search-clear:hover { color: var(--text); }
+
+.set-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.set-search-count {
+  font-size: 10px;
+  letter-spacing: .05em;
+  color: var(--faint);
+  padding: 6px 10px 4px;
+  user-select: none;
+}
+
+.set-search-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--dim);
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  transition: background .16s var(--swift), color .16s var(--swift);
+  box-sizing: border-box;
+}
+
+.set-search-item:hover {
+  background: var(--tint-nav-hover-420);
+  color: var(--text);
+}
+
+[data-theme="light"] .set-search-item:hover {
+  background: var(--tint-black-60);
+}
+
+.set-search-item.on {
+  background: var(--select);
+  color: var(--text);
+}
+
+.set-search-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+}
+
+.set-search-item-label {
+  font-size: var(--ui-fs-base);
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.set-search-item-page {
+  font-size: 10px;
+  color: var(--faint);
+  background: var(--inset);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.set-search-item-desc {
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.set-search-item:hover .set-search-item-desc {
+  color: var(--dim);
+}
+
+.set-search-empty {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  padding: 30px 10px;
+  text-align: center;
+}
+
+.set-sec {
+  font-size: 10.5px; letter-spacing: .08em; color: var(--faint);
+  padding: 22px 12px 8px; user-select: none;
+}
+
+.set-sec:first-of-type { padding-top: 14px; }
+
+.set-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border-radius: 10px;
+  color: var(--dim); cursor: pointer;
+  border: 0; background: transparent; width: 100%; text-align: left; font: inherit;
+  font-size: var(--ui-fs-base); font-weight: 600;
+  transition: background .16s var(--swift), color .16s var(--swift);
+}
+
+.set-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
+[data-theme="light"] .set-item:hover { background: var(--tint-black-60); }
+.set-item.on { background: var(--select); color: var(--text); }
+
+.set-item .si {
+  width: 20px; flex: none; display: inline-flex; justify-content: center;
+  color: var(--faint);
+  transition: color .16s var(--swift);
+}
+
+.set-item:hover .si { color: var(--dim); }
+
+.set-item.on .si { color: var(--accent, var(--blue)); }
+
+.set-foot {
+  margin-top: auto; display: flex; align-items: center; gap: 10px;
+  padding: 12px 10px 9px 4px;
+  /* pixel-aligned with the main sidebar's .side-foot (avatar left edge 14px, vertical center 34px, gap 10px),
+     so the bottom-left avatar/title doesn't move a pixel when entering/leaving settings */
+  position: sticky; bottom: 0;
+  background: var(--base);
+}
+
+#setBody {
+  overflow-y: auto; padding: 32px 40px 60px;
+  background: var(--card);
+  border-radius: var(--r-card);
+  margin: var(--shell-gap) 0 0;
+  min-width: 0;
+}
+
+/* same dynamic width logic as the middle-column card: min(50vw, 100% - clamp gutter) */
+.set-page {
+  width: 100%;
+  max-width: min(50vw, calc(100% - clamp(24px, 6vw, 100px)));
+  margin-left: auto;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.set-page > * { animation: setRise .45s var(--swift) backwards; }
+
+.set-page > *:nth-child(2) { animation-delay: 40ms; }
+
+.set-page > *:nth-child(3) { animation-delay: 80ms; }
+
+.set-page > *:nth-child(4) { animation-delay: 120ms; }
+
+.set-page > *:nth-child(5) { animation-delay: 160ms; }
+
+.set-page > *:nth-child(6) { animation-delay: 200ms; }
+
+.set-page > *:nth-child(n+7) { animation-delay: 240ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .set-page > * { animation: none; }
+  .set-back svg, .sel .caret-svg, .tg i { transition: none; }
+}
+
+/* level-1 titles: one step larger (1.6 -> 1.75); the +5px bottom margin is carried by the first element after the title */
+.set-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
+
+/* per settings page: the title-to-first-element gap is enlarged uniformly (replacing hand-written margin-top in pages) */
+.set-page > .set-tt + * { margin-top: 29px; }
+
+/* explanatory text under the models page title */
+.set-desc { font-size: var(--ui-fs-sm); color: var(--faint); }
+
+.stag {
+  font-size: var(--ui-fs-xs); font-weight: 500; letter-spacing: .03em; color: var(--dim);
+  border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px;
+}
+
+.stag.on { color: var(--text); border-color: var(--dim); }
+
+.set-group-tt { font-size: var(--ui-fs-base); font-weight: 600; margin: 28px 2px 10px; }
+
+/* hover hint icon next to group titles (lightweight CSS tooltip, token-colored; not a ring-pop card, so no JS positioning) */
+.gtt-hint { position: relative; display: inline-flex; align-items: center; margin-left: 6px; color: var(--faint); cursor: help; vertical-align: -2px; }
+
+.gtt-hint::after {
+  content: attr(data-hint);
+  position: absolute; left: 0; top: calc(100% + 8px);
+  background: var(--ctl-bg); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: 0 12px 32px var(--tint-black-500);
+  color: var(--dim); font-size: var(--ui-fs-base); font-weight: 400;
+  padding: 6px 10px; white-space: nowrap; z-index: 600;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity .15s ease, transform .15s ease;
+  pointer-events: none;
+}
+
+.gtt-hint:hover::after { opacity: 1; visibility: visible; transform: translateY(0); }
+
+[data-theme="light"] .gtt-hint::after { box-shadow: 0 12px 32px var(--tint-black-180); }
+.set-group-desc { font-size: var(--ui-fs-sm); color: var(--faint); margin: -6px 2px 10px; line-height: 1.6; }
+
+.set-group-desc code, .set-note code, .srow-tx code {
+  font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  background: var(--panel-2); border-radius: 4px; padding: 1px 5px;
+}
+
+/* settings card: standalone card language (--panel base + 8% white border + r-card + deep shadow) */
+.set-card {
+  background: var(--panel);
+  border: 1px solid var(--tint-white-80);
+  border-radius: var(--r-card);
+  box-shadow: 0 8px 26px var(--tint-black-350);
+}
+
+[data-theme="light"] .set-card {
+  border-color: var(--tint-black-80);
+  box-shadow: 0 8px 24px var(--tint-black-80);
+}
+
+.set-note {
+  margin: 16px 0 0; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--tint-white-80);
+  border-left: 2px solid var(--accent); border-radius: var(--r-lg);
+  display: flex; flex-direction: column; gap: 4px;
+}
+
+[data-theme="light"] .set-note { border-color: var(--tint-black-80); border-left-color: var(--accent); }
+.set-note b { font-size: var(--ui-fs-base); font-weight: 500; }
+
+.set-note span { font-size: var(--ui-fs-sm); color: var(--faint); line-height: 1.6; }
+
+.srow-tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+.srow-tx b { font-size: var(--ui-fs-base); font-weight: 500; }
+
+.srow-tx span { font-size: var(--ui-fs-sm); color: var(--faint); line-height: 1.55; }
+
+.srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
+
+/* schema warning row (.srow-tx span has higher specificity, so .srow-tx .srow-wn overrides color/font-size) */
+.srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
+
+/* red warning right of the toggle title (experimental features page): title + warning side by side inside the b.
+   font size sm (one step below the title) keeps it on the title's line without wrapping; color/font-size must beat .srow-tx span,
+   hence the .srow-tx b.srow-hd prefix. Whole-phrase wrapping is allowed on narrow windows. */
+.srow-tx b.srow-hd { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+.srow-tx b.srow-hd .srow-wn-inline { color: var(--err); font-size: var(--ui-fs-sm); }
+
+/* number stepper = the .plus-btn language; tabular numerals don't jitter */
+.num-ctl {
+  display: inline-flex; align-items: center; gap: 2px; flex: none;
+  background: var(--bg); border: 1px solid var(--line-soft);
+  border-radius: 9px; padding: 2px;
+}
+
+.num-btn {
+  width: 24px; height: 22px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--dim); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .15s var(--swift), color .15s var(--swift), transform .1s var(--swift);
+}
+
+.num-btn:hover { background: var(--panel-2); color: var(--text); }
+
+.num-btn:active { transform: scale(.88); }
+
+.set-desc-row { display: flex; align-items: center; gap: 12px; margin: 10px 0 14px; }
+
+/* rows = the memory-page row language: fully clickable, .on highlight when expanded, the trailing caret straightens on expand */
+.skill-item-row, .mcp-server-row { cursor: pointer; }
+
+.skill-item-row.on, .mcp-server-row.on { background: var(--panel-2); }
+
+.skill-item-row.on .mem-caret svg, .mcp-server-row.on .mem-caret svg { transform: rotate(0deg); }
+
+/* the toggle reuses the site-wide .tg (accent color + spring slide), see its definition on the settings page */
+/* delete trash button */
+.skill-trash-btn {
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color .15s, transform .1s;
+  border-radius: 4px;
+}
+
+.skill-trash-btn:hover {
+  color: var(--err);
+  transform: scale(1.1);
+}
+
+/* skill/MCP inline edit area (expands downward): container, header, footer and form body.
+   dialog container classes (modal/backdrop/dialog/head etc.) were removed along with the dialog-to-expansion migration */
+.mem-exp-head .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* expansion-area bottom buttons uniformly use .confirm-btn / .confirm-btn.danger (the global confirmation dialog language) */
+/* ── settings sidebar resize (#setNavResizer, logic in Settings.tsx) and scrollbar fade-in ── */
+#settings *::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  transition: background-color .25s ease-out;
+}
+
+#settings *:hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+
+#settings *.scrolling::-webkit-scrollbar-thumb,
+#settings *.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: var(--panel-3);
+}
+
+#settings *::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--panel-3) 45%, var(--dim));
+}
+
+#settings * {
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .25s ease-out;
+}
+
+#settings *.scrolling,
+#settings *.is-scrolling {
+  scrollbar-color: var(--panel-3) transparent;
+}
+
+#setNav { position: relative; }
+
+#setNavResizer {
+  position: absolute; top: 0; right: -5px;
+  width: 10px; height: 100%;
+  cursor: col-resize; z-index: 60;
+}
+
+#setNavResizer::after {
+  content: ""; position: absolute;
+  top: var(--shell-gap); bottom: var(--shell-gap);
+  left: 50%; width: 2px; margin-left: -1px;
+  border-radius: 1px; background: transparent;
+}
+
+#setNavResizer:hover::after, body.resizing #setNavResizer::after { background: var(--blue); }
+
+/* ── Windows window controls on the settings overlay (WindowControls.tsx, Windows only)──
+   The overlay covers the shell headers that normally carry .win-controls, so it pins its own copy
+   to the setBody card's top-right corner, inside that card's empty 32px top padding band (setBody
+   has no header row of its own). The 6px inset is geometric, not a taste call: the close button's
+   hover plate must stay within the card's --r-card corner, i.e. sqrt(2) × (16px − inset) ≤ 16px,
+   so 6px is the smallest round value that clears the curve with margin.
+   The -2px header-compensating margin is dropped here (fixed positioning owns the edges). */
+.set-win-ctl {
+  position: fixed;
+  top: calc(var(--shell-gap) + 6px);
+  right: calc(var(--shell-gap) + 6px);
+  z-index: 601; /* just above the 600 hover-hint tier: a tooltip in the corner must not cover the close button */
+}
+
+.set-win-ctl .win-controls { margin-right: 0; }
+
+/* ── Manual provider wizard (ModelProviderWizard.tsx, nested in the model page add view)──
+   Shares the MCP editor form classes (mcp-form-*, settings-mcp.css); this block
+   adds the probe row, the tickable model list and the expand-down metadata editor. */
+.mcp-form-quarter { flex: 1; min-width: 110px; }
+
+/* Settings sel dropdown: lift the open pill's card above the following cards.
+   Entrance animations (setRise) give sibling cards stacking contexts while they
+   run; with fill both Chromium even kept them after the end (identity matrix /
+   blur(0) computed transform/filter, never "none"), so later siblings painted
+   over the absolutely positioned .menu (z-index 500) no matter the z-index on
+   the .sel itself — it never escaped the card's own stacking context. Fix is
+   two-fold: fill backwards drops the contexts once animations settle, and the
+   open card rises to 600 so it also wins during the entrance window. */
+.set-card:has(.sel .menu.open) { position: relative; z-index: 600; }
+
+/* Canonical settings-card row (.set-row on top of .srow): non-clickable rows living directly
+   in a standalone .set-card. Standard .srow geometry is pinned, row hover is off (only
+   control-level affordances highlight), the ctl column right-aligns, and a .tag inside the
+   title rides the same flex line. Pages must NOT reuse context-bound row classes instead —
+   e.g. .mp-role-row is sized for the Model page's own padded .mp-r pane (2px side padding),
+   and dropping it into a standalone card makes the content hug the card edges. */
+.set-row { padding: 13px 16px; }
+
+.srow.set-row:hover, .set-row:hover { background: none; }
+
+.set-row .srow-ctl { justify-content: flex-end; }
+
+.set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }

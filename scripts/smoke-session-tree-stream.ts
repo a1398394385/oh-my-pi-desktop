@@ -1,6 +1,6 @@
 // Unit test for session-tree segmentation and branch-switch anchoring
-import { splitSequenceIntoSections } from "../ui-src/components/chat/sessionTreeUtil";
-import type { StreamItem, EntryNode } from "../ui-src/components/chat/sessionTreeUtil";
+import { splitSequenceIntoSections } from "../ui-src/components/main/tree/sessionTreeUtil";
+import type { StreamItem, EntryNode } from "../ui-src/components/main/tree/sessionTreeUtil";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) {

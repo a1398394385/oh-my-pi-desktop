@@ -75,7 +75,7 @@ function listFiles(argv) {
   if (explicit.length) return explicit;
   const args = argv.includes("--staged")
     ? ["diff", "--cached", "--name-only", "--diff-filter=ACMR"]
-    : ["ls-files"];
+    : ["ls-files", "-co", "--exclude-standard"];
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);
 }
 

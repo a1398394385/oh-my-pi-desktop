@@ -6,7 +6,7 @@
 import type { AssistantItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
-import { copyText } from "../sidebar/util";
+import { copyText } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 import { t as i18nT } from "../../i18n";

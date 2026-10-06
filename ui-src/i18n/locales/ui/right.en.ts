@@ -4,7 +4,6 @@ export const rightEn = {
   tabBgcmd: "Background Commands",
   tabFile: "Files",
   tabTree: "Branches",
-  tabSessiontree: "Session Tree",
   tabTerminal: "Terminal",
   tabBrowser: "Browser",
   searchTabs: "Search tabs",

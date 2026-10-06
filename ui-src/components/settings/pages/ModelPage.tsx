@@ -291,7 +291,7 @@ function RolesView() {
             </span>
           </div>
           <div className="srow-ctl">
-            <RolePicker role={role} />
+            <RolePicker role={role} allModels={allModels} />
             {/* Button column aligned with the delete button of custom rows: built-in roles get an X clear button (when set; = send null to revert to the inherited default),
                 custom roles get a trash delete (.skill-trash-btn is the app-wide delete language; sending null = removed from modelRoles) */}
             {role.id in ROLE_DESC_KEYS ? (

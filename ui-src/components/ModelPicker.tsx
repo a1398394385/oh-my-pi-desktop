@@ -18,7 +18,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactM
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store";
 import type { TimerHandle } from "../store";
-import type { ModelCaps } from "../store/session";
+import type { ModelCaps } from "../store/models";
 import Icon from "../Icon";
 
 // Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
