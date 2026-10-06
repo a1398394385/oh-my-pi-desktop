@@ -20,7 +20,7 @@ use tauri::Emitter;
 // System tray (Windows/macOS): makes the close-to-background state visible
 // and reachable. Linux is skipped (libappindicator wiring not worth it).
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
@@ -611,7 +611,7 @@ pub fn run() {
                 // into hide above): bring the main window back to the front.
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { has_visible_windows: false, .. } => {
-                    show_main_window(app.handle());
+                    show_main_window(app.app_handle());
                 }
                 _ => {}
             }
