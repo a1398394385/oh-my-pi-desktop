@@ -160,6 +160,7 @@ export const chatEn = {
   sendNow: "Send now (inject after the current step)",
   imageN: "Image {{n}}",
   clickToZoom: "Click to view full size",
+  copyMsg: "Copy this message",
   // ---- todo card (TodoCard.tsx) ----
   allDone: "All done",
   sessionStatus: "Session status",

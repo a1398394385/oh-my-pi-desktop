@@ -108,8 +108,8 @@ const MAX_ATTACH_BYTES = 10 * 1024 * 1024;
 // settings-page binding side effects at top level, so importing it is not viable)
 const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "minimax-code-cn": "◆", "opencode-zen": "✦", llama: "●", "local-proxy": "▣" };
 
-// Context ring circumference: 2*pi*6.5 (matches the CSS dasharray)
-const RING_C = 40.84;
+// Context ring circumference: 2*pi*7 (matches the CSS dasharray)
+const RING_C = 43.98;
 
 // Max stage of the bottom-bar graded collapse (permission mode/think/model ->
 // icon only, hide subagents, hide background tasks)
@@ -1212,19 +1212,19 @@ function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number }; sessionId?: s
   const cls = "ctx-ring" + (s?.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
   return (
     <span className={cls} id="ctxRing" title="" ref={ringRef}>
-      <svg viewBox="0 0 16 16" width="14" height="14">
-        <circle className="track" cx="8" cy="8" r="6.5" />
+      <svg viewBox="0 0 16 16" width="16" height="16">
+        <circle className="track" cx="8" cy="8" r="7" />
         <circle
           className="fill"
           id="ctxRingFill"
           cx="8"
           cy="8"
-          r="6.5"
+          r="7"
           transform="rotate(-90 8 8)"
           style={{ strokeDashoffset: String(RING_C * (1 - p)) }}
         />
         {probes ? (
-          <text x="8" y="8.6" textAnchor="middle" fontSize="8" fill="currentColor">
+          <text x="8" y="8" textAnchor="middle" dominantBaseline="central" fontSize="8" fill="currentColor">
             {probes}
           </text>
         ) : null}

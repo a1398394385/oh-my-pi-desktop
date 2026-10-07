@@ -72,6 +72,7 @@ const CSS_LIMITS = {
   "settings/providers.css": 40,
   "settings/shortcuts.css": 20,
   "settings/skills.css": 280,
+  "settings/shell.css": 50,
   "settings/stats-legacy.css": 50,
   "settings/stats-port.css": 1040,
   "settings/stats.css": 726,

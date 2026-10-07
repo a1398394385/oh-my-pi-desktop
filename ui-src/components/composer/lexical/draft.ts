@@ -52,7 +52,7 @@ export function clearDraftState(key: string): void {
 }
 
 // Cleared-draft stash (per composer slot, module-level = gone at app exit):
-// Ctrl+C / double-Esc clears push the draft here while the
+// Double-Esc clears push the draft here while the
 // composer.recallClearedDrafts setting is on; Ctrl+↑/Ctrl+↓ walk it back into
 // the composer. cursor -1 = the live draft (browsing base snapshot), 0..n-1 =
 // stash entries oldest-to-newest.

@@ -40,6 +40,7 @@ import FilesPage from "./pages/FilesPage";
 import ShellPage from "./pages/ShellPage";
 import ToolsPage from "./pages/ToolsPage";
 import TasksPage from "./pages/TasksPage";
+import DeveloperPage from "./pages/DeveloperPage";
 import AdvancedPage from "./pages/AdvancedPage";
 
 // Side navigation items: page id → icon / label (1:1 with the old DOM data-page).
@@ -79,6 +80,7 @@ const NAV_SECTIONS = [
       { id: "pg-shell", icon: "termBox", label: "Shell" },
       { id: "pg-tools", icon: "plug", label: "settingsPage.nav.tools" },
       { id: "pg-tasks", icon: "todo", label: "settingsPage.nav.tasks" },
+      { id: "pg-developer", icon: "code", label: "settingsPage.nav.developer" },
       { id: "pg-advanced", icon: "settings", label: "settingsPage.nav.advanced" },
       { id: "pg-experimental", icon: "flask", label: "settingsPage.nav.experimental" },
     ],
@@ -115,6 +117,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-shell": ShellPage,
   "pg-tools": ToolsPage,
   "pg-tasks": TasksPage,
+  "pg-developer": DeveloperPage,
   "pg-advanced": AdvancedPage,
 };
 

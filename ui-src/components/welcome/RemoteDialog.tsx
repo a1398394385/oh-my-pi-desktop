@@ -104,6 +104,11 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
   const remoteWorkspaceAdded = useAppStore((s) => s.remoteWorkspaceAdded);
   const [selected, setSelected] = useState<string | null>(sshHosts[0]?.name ?? null);
   // Add/edit form: null = closed (host list shown); "__new__" = creating; otherwise the edited host name
+  // True while the initial "__new__" below was chosen only because the async
+  // host list hadn't landed yet (cold start opens the dialog before the first
+  // ssh_hosts reply); the first non-empty list swaps the auto-opened form back
+  // to the host list, mirroring the [selected] correction below.
+  const autoNewRef = useRef(sshHosts.length === 0);
   const [editing, setEditing] = useState<string | null>(sshHosts.length === 0 ? "__new__" : null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [formError, setFormError] = useState("");
@@ -148,6 +153,15 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     send({ type: "ssh_list_hosts" });
   }, []);
+
+  // Cold-start reopening: hosts DO exist — drop the form auto-opened from the
+  // empty-store snapshot and show the list instead.
+  useEffect(() => {
+    if (autoNewRef.current && sshHosts.length > 0) {
+      autoNewRef.current = false;
+      setEditing(null);
+    }
+  }, [sshHosts]);
 
   // Keep selection valid as the host list refreshes (save/remove replies)
   useEffect(() => {

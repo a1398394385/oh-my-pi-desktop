@@ -6,6 +6,7 @@
 // (title row + WeakMap expand state + useLift collapse animation).
 import type { ChatItem, ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, roExpand } from "../../store/groupExpand";
+import { useEffect, useRef } from "react";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 import { useLift, uniqueFiles } from "./parts";
@@ -37,6 +38,30 @@ export default function ReadonlyGroup({ subs, pfx }: { subs: ChatItem[]; pfx: st
   const [closing, close] = useLift();
   const head = subs[0] as ToolItem;
   const open = roExpand.has(head) && !closing;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // Scroll edge fades (see .ro-body.ro-scroll/.rt/.rb in readonly-group.css): track whether
+  // the body overflows and which scroll extremes are reached, so the mask only fades edges
+  // with hidden content; re-runs when the expansion body mounts (content height settles via
+  // ResizeObserver — inner rows can stream in while the body stays open)
+  useEffect(() => {
+    if (!roExpand.has(head)) return;
+    const el = bodyRef.current;
+    if (!el) return;
+    const sync = () => {
+      const scrolls = el.scrollHeight > el.clientHeight + 1;
+      el.classList.toggle("ro-scroll", scrolls);
+      el.classList.toggle("rt", scrolls && el.scrollTop <= 1);
+      el.classList.toggle("rb", scrolls && el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    };
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      ro.disconnect();
+    };
+  }, [roExpand.has(head)]);
   const toggle = () => {
     if (roExpand.has(head)) close(() => { roExpand.delete(head); bumpGroupExpand(); });
     else {
@@ -54,7 +79,7 @@ export default function ReadonlyGroup({ subs, pfx }: { subs: ChatItem[]; pfx: st
         </span>
       </div>
       {roExpand.has(head) && (
-        <div className={"ro-body" + (closing ? " lift" : " drop")}>
+        <div ref={bodyRef} className={"ro-body" + (closing ? " lift" : " drop")}>
           {/* already the folded run: skip the level-2 scan or the block would nest inside itself */}
           {renderItems(subs, pfx, [], undefined, { noReadonlyFold: true })}
         </div>

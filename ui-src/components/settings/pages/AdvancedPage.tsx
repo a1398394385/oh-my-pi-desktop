@@ -20,8 +20,8 @@ type SchemaMap = Record<string, { ui?: unknown }>;
 // TUI-only prefixes: every consumer of these keys lives in the base's TUI layer
 // (interactive-mode / status-line-host / pi-tui renderer), which the desktop
 // host never loads — editing them here has no effect, so the groups stay hidden.
-// ui-carrying keys under these prefixes (statusLine.preset, tui.mouse…) are
-// unaffected: they render on their placement pages, not here.
+// statusLine.* is fully covered by HIDDEN_KEYS (hidden everywhere); remaining
+// ui-carrying tui.* keys (tui.mouse…) render on their placement pages, not here.
 const TUI_ONLY_PREFIXES: Record<string, true> = { tui: true, statusLine: true };
 
 // advPrefix: language-specific prefix → group title dictionary; the "" prefix

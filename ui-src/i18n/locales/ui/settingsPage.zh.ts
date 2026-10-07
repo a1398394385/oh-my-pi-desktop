@@ -27,6 +27,7 @@ export const settingsPageZh = {
     files: "文件",
     tools: "工具",
     tasks: "任务·子代理",
+    developer: "开发者",
     advanced: "高级",
     experimental: "实验性功能",
     stats: "使用统计",
@@ -167,6 +168,7 @@ export const settingsPageZh = {
       title: "图像生成",
       desc: "generate_image 使用的图像模型",
     },
+    emptyModels: "无可用模型（请先登录提供此类模型的供应商）",
   },
 
   // ---- Models page (ModelPage.tsx) ----
@@ -1500,6 +1502,30 @@ export const settingsPageZh = {
     editorPlaceholder: "点击左侧钩子载入编辑，或用上方工具名新建。",
     pickFirst: "请先从左侧选择一个钩子。",
   },
+  // ---- Shell page graphical interceptor editor (ShellPage.tsx) ----
+  shellPage: {
+    rulesLabel: "拦截规则",
+    rulesHint: "自上而下首条匹配；命中后按 message 提示智能体改用 tool",
+    rulesCount: "{{count}} 条",
+    rulesEmpty: "暂无拦截规则，所有 shell 命令直接放行",
+    addRule: "添加规则",
+    ruleNewTitle: "新建拦截规则",
+    ruleEditTitle: "编辑拦截规则 #{{index}}",
+    patternLabel: "匹配正则（pattern）",
+    patternPlaceholder: "^\\s*(cat|head|tail|less|more)\\s+",
+    toolLabel: "建议工具（tool）",
+    toolPlaceholder: "read",
+    messageLabel: "拦截提示（message）",
+    messagePlaceholder: "Use the `read` tool instead of cat.",
+    flagsLabel: "正则标志（flags，可空）",
+    flagsPlaceholder: "i",
+    flagsHint: "JS 正则标志（如 i、m、s）；留空 = 无标志",
+    ruleRequired: "pattern、tool、message 均不能为空",
+    regexInvalid: "正则表达式无效：{{err}}",
+    ruleDeleteConfirm: "确定删除这条拦截规则？",
+    moveUp: "上移",
+    moveDown: "下移",
+  },
   // ---- Computer control page (ComputerPage.tsx) ----
   computer: {
     writtenToast: "总开关已写入。",
@@ -1530,14 +1556,6 @@ export const settingsPageZh = {
     typeEnum: "枚举",
     typeArray: "数组",
     typeRecord: "对象",
-    shapeBand: "状态条（默认）",
-    shapeBox: "圆角框",
-    shapeClaude: "Claude Code 风格",
-    shapePi: "Pi 风格",
-    shapeBorderless: "无边框",
-    shapeRule: "顶部分隔栏",
-    shapeField: "紧凑字段",
-    shapeRail: "强调导轨",
   },
   // ---- ScopeSel.tsx ----
   scopeSel: {

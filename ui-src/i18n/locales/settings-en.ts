@@ -4,8 +4,6 @@
 // ui.label / ui.description are already English. Same for option labels
 // (`dict[key]?.[value] ?? option.label ?? value`) and group titles.
 // Exceptions that NEED real entries here:
-// - composer.shape: the schema declares ui.options = "runtime" and SchemaRows
-//   hardcodes the option list, so the English labels must live here.
 // - Keys whose registry entry carries no ui metadata (skills.*/memories.*/
 //   mnemopi.*/hindsight.*/sharpshooter.* …): without an entry the raw key
 //   would render as the label. Listed below, grouped by settings page.
@@ -39,7 +37,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "images.urls.options": { "label": "Image publishing options", "description": "JSON object keyed by backend name configuring each image URL publishing backend (gist, s3, …); the backend chain is chosen in the Vision group on the Model behavior page" },
   "images.urls.credentials": { "label": "Image publishing credentials", "description": "JSON object keyed by backend name holding access credentials for each image URL publishing backend" },
   "stt.language": { "label": "Recognition language", "description": "Recognition language code for voice dictation (e.g. zh, en)" },
-  "composer.recallClearedDrafts": { "label": "Recall Cleared Drafts", "description": "Keep drafts cleared with Ctrl+C or double-Escape in local history until exit (recall with Ctrl+↑/Ctrl+↓); disabling affects future clears only" },
+  "composer.recallClearedDrafts": { "label": "Recall Cleared Drafts", "description": "Keep drafts cleared with double-Escape in local history until exit (recall with Ctrl+↑/Ctrl+↓); disabling affects future clears only" },
 
   // ---- pg-memory: local pipeline tuning ----
   "autolearn.minToolCalls": { "label": "Minimum tool calls", "description": "A session must accumulate at least this many tool calls before lesson extraction is considered at the end" },
@@ -89,11 +87,39 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   // ---- pg-memory: Sharpshooter tuning ----
   "sharpshooter.intervalMinutes": { "label": "Consolidation interval (minutes)", "description": "Run interval of background decision-file consolidation" },
   "sharpshooter.injectionTokenLimit": { "label": "Injection token cap", "description": "Token budget for injecting decision files into context" },
+
+  // ---- pg-shell: bash interceptor + shell minimizer (ui-less keys adopted from the advanced page) ----
+  "bashInterceptor.patterns": { "label": "Interception rules", "description": "Ordered command interception rules (JSON array): each has pattern (regex), flags (optional), tool and message; first match wins, edited graphically on the Shell page" },
+  "shellMinimizer.settingsPath": { "label": "Minimizer settings file", "description": "Path to a TOML settings file whose values override field-level defaults (~ is expanded)" },
+  "shellMinimizer.only": { "label": "Minimize only these programs", "description": "Program-name allowlist (comma-separated, e.g. git); empty = all built-in filters active" },
+  "shellMinimizer.except": { "label": "Minimizer exemptions", "description": "Program names excluded from output minimization (comma-separated)" },
+  "shellMinimizer.maxCaptureBytes": { "label": "Max capture bytes", "description": "Fall back to raw un-minimized output once a command exceeds this many bytes (default 4 MiB)" },
+  "shellMinimizer.legacyFilters": { "label": "Legacy filters", "description": "Fall back to the legacy grep/find/pytest filter behavior; unset defers to the OMP_MINIMIZER_LEGACY_FILTERS env var" },
+  "bash.autoBackground.thresholdMs": { "label": "Bash auto-background threshold (ms)", "description": "Automatically background a command once it runs longer than this (default 60000 = 1 minute)" },
+  "eval.autoBackground.thresholdMs": { "label": "Eval auto-background threshold (ms)", "description": "Automatically background an eval cell once it runs longer than this (default 60000 = 1 minute)" },
+
+  // ---- pg-developer: auto QA / garbage collection / low-level compaction (ui-less keys) ----
+  "dev.autoqaPush.token": { "label": "Auto QA push token", "description": "Auth token submitted alongside Auto QA reports (a credential entry)" },
+  "dev.autoqaConsent": { "label": "Auto QA consent", "description": "Consent decision for automatic reporting: unset asks on the first report; granted records and (when push is configured) ships grievances; denied silently skips every report" },
+  "gc.blobs": { "label": "Collect blob garbage", "description": "Reclaim blob files (content-addressed artifacts such as images) no longer referenced by any session" },
+  "gc.archive": { "label": "Archive old sessions", "description": "Compress past-retention session transcripts to .jsonl.gz and drop their listing/stats rows" },
+  "gc.wal": { "label": "Checkpoint SQLite WALs", "description": "Merge SQLite write-ahead logs back into their database files, reclaiming disk space" },
+  "gc.coldArchiveAfterDays": { "label": "Archive after (days)", "description": "Sessions idle for at least this many days become eligible for archiving" },
+  "gc.retainNewestGlobal": { "label": "Keep newest globally", "description": "Number of newest sessions kept unarchived regardless of retention" },
+  "gc.retainNewestPerCwd": { "label": "Keep newest per directory", "description": "Number of newest sessions kept unarchived per working directory" },
+  "gc.stale": { "label": "Sweep stale leftovers (opt-in)", "description": "Deletes user-visible leftovers (debug reports, collab replicas) and session markers pointing at missing transcripts; off by default because it removes user-visible files" },
+  "gc.staleRetainNewest": { "label": "Stale sweep keep-newest", "description": "Newest stale entries always kept by the stale sweep" },
+  "gc.staleRetainDays": { "label": "Stale sweep retention days", "description": "Stale entries younger than this many days are never swept" },
+  "compaction.reserveTokens": { "label": "Compaction reserve tokens", "description": "Token headroom reserved after compaction; unset counts as unconfigured so small-window sessions derive a proportional reserve" },
+  "compaction.keepRecentTokens": { "label": "Keep-recent token budget", "description": "Token budget of the most recent messages always kept verbatim when compacting" },
+  "compaction.autoContinue": { "label": "Auto-continue after compaction", "description": "Resume the run automatically once compaction completes" },
+  "compaction.remoteEndpoint": { "label": "Remote compaction endpoint", "description": "Endpoint URL to delegate server-side compaction summarization to" },
+  "compaction.v2RetainedMessageBudget": { "label": "V2 retained-message budget", "description": "Token budget of messages retained verbatim beyond the summary by the remote streaming V2 compaction pipeline" },
 };
 
 export const OPTS_EN: Record<string, Record<string, string>> = {
   "hindsight.recallBudget": { "low": "Low", "mid": "Mid", "high": "High" },
-  "composer.shape": { "band": "Status bar (default)", "box": "Rounded box", "claude": "Claude Code style", "pi": "Pi style", "borderless": "Borderless", "rule": "Top separator", "field": "Compact field", "rail": "Accent rail" },
+  "dev.autoqaConsent": { "unset": "Not asked", "granted": "Granted", "denied": "Denied" },
 };
 
 export const GROUPS_EN: Record<string, string> = {};

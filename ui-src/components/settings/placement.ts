@@ -3,10 +3,11 @@
 // order (Object.keys order): includePrefix first (keep only prefix hits), then strip
 // excludePrefix/excludeKeys.
 // keys (explicit key list) is for advanced-page groups without UI metadata (generated at
-// runtime) and a few explicit sections.
+// runtime) and a few explicit sections. from + keys combine: the expanded group first,
+// then the explicit keys appended (ui-less keys adopted into a ui-carrying group's card).
 // Group titles are resolved in SchemaRows: titleZh ?? GROUPS_ZH[group] ?? group.
 
-// Settings section shape: from/keys (either one) drives expansion; the rest are optional
+// Settings section shape: from and/or keys drive expansion; the rest are optional
 // filter/display fields.
 // titleZh/titleEn and hint/hintEn are paired bilingual fields (en falls back to the zh
 // value when absent); SchemaRows picks one per the active language.
@@ -37,8 +38,6 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   // ── Absorbed into existing pages (appended after existing content, except where replacement is noted) ──
   "pg-appearance": [
     { from: "appearance/Theme", titleZh: "主题名", titleEn: "Theme name" },
-    { from: "appearance/Composer", titleZh: "合成器", titleEn: "Composer" },
-    { from: "appearance/Status Line", titleZh: "状态栏", titleEn: "Status line" },
     { from: "appearance/Display", titleZh: "显示", titleEn: "Display" },
     { from: "appearance/Images", titleZh: "图像", titleEn: "Images" },
   ],
@@ -123,7 +122,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     {
       titleZh: "钩子运行配置",
       titleEn: "Hook runtime config",
-      keys: ["statusLine.showHookStatus", "extensionHandlers.toolCallTimeoutMs"],
+      keys: ["extensionHandlers.toolCallTimeoutMs"],
     },
   ],
 
@@ -182,8 +181,25 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "files/LSP" },
   ],
   "pg-shell": [
-    { from: "shell/Bash" },
-    { from: "shell/Eval & Runtimes" },
+    // Interceptor/minimizer rows move out of the Bash group into their own cards
+    // below it, so each feature renders in exactly one place. The ui-less
+    // auto-background threshold key joins the Bash group's card via keys-append.
+    { from: "shell/Bash", keys: ["bash.autoBackground.thresholdMs"], excludeKeys: ["bashInterceptor.enabled", "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel"] },
+    // id'd section: ShellPage owns the layout — the enabled toggle (SchemaRowsBare)
+    // and the graphical rules editor (bashInterceptor.patterns, see
+    // SPECIAL_KEY_PAGES) share one card
+    { id: "bashInterceptor", titleZh: "Shell 拦截器", titleEn: "Shell Interceptor", keys: ["bashInterceptor.enabled"] },
+    // ui-less minimizer keys adopted from the advanced page (settingsPath/only/
+    // except/maxCaptureBytes/legacyFilters) join their ui-carrying siblings here
+    {
+      titleZh: "Shell 精简器", titleEn: "Shell Minimizer",
+      keys: [
+        "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel", "shellMinimizer.settingsPath",
+        "shellMinimizer.only", "shellMinimizer.except", "shellMinimizer.maxCaptureBytes",
+        "shellMinimizer.legacyFilters",
+      ],
+    },
+    { from: "shell/Eval & Runtimes", keys: ["eval.autoBackground.thresholdMs"] },
   ],
   "pg-tools": [
     { from: "tools/Available Tools", excludeKeys: ["computer.enabled", "browser.enabled"] },
@@ -193,28 +209,34 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "tools/IDA Pro" },
     { from: "tools/Output Limits" },
     { from: "tools/Execution" },
-    { from: "tools/Developer" },
+    { from: "tools/Developer", excludeKeys: ["dev.autoqa", "dev.autoqaPush.endpoint"] },
   ],
   "pg-tasks": [
     { from: "tasks/Modes" },
     { from: "tasks/Subagents" },
     { from: "tasks/Isolation" },
   ],
+  // Developer page: low-level runtime knobs aggregated from the advanced page (gc,
+  // compaction, dev-prefix autoqa keys) plus the autoqa rows moved out of the tools
+  // page's Developer group; user-facing compaction switches stay on pg-context
+  "pg-developer": [
+    { titleZh: "自动 QA", titleEn: "Auto QA", keys: ["dev.autoqa", "dev.autoqaPush.endpoint", "dev.autoqaPush.token", "dev.autoqaConsent"] },
+    { titleZh: "垃圾回收（GC）", titleEn: "Garbage collection", keys: ["gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal", "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays"] },
+    { titleZh: "压缩（底层）", titleEn: "Compaction (low-level)", keys: ["compaction.reserveTokens", "compaction.keepRecentTokens", "compaction.autoContinue", "compaction.remoteEndpoint", "compaction.v2RetainedMessageBudget"] },
+  ],
   // pg-advanced: no static sections — grouped at runtime by the first path segment of keys lacking ui metadata (see AdvancedPage)
 };
 
 // Expand a section into a concrete key list (SETTINGS_SCHEMA declaration order). The schema
 // is passed by the caller (SchemaRows passes S.settingsSchema, validation scripts pass the
-// imported SETTINGS_SCHEMA).
+// imported SETTINGS_SCHEMA). from and keys combine: the from-group expands first, then the
+// explicit keys append (adopting ui-less keys into a ui-carrying group's card).
 export function expandSection(section: Section, schema: Record<string, SchemaDef>): string[] {
   let keys: string[];
-  if (section.keys) {
-    keys = section.keys.filter((k) => schema[k]);
-  } else {
-    const from = section.from!; // from/keys are mutually exclusive (guaranteed by placement data); dereference directly as the original did
-    const slash = from.indexOf("/");
-    const tab = from.slice(0, slash);
-    const group = from.slice(slash + 1);
+  if (section.from) {
+    const slash = section.from.indexOf("/");
+    const tab = section.from.slice(0, slash);
+    const group = section.from.slice(slash + 1);
     keys = Object.keys(schema).filter((k) => {
       const ui = schema[k].ui;
       if (!ui || ui.tab !== tab || ui.group !== group) return false;
@@ -222,6 +244,9 @@ export function expandSection(section: Section, schema: Record<string, SchemaDef
       if (section.excludePrefix && section.excludePrefix.some((p) => k.startsWith(p))) return false;
       return true;
     });
+    if (section.keys) keys = keys.concat(section.keys.filter((k) => schema[k] && !keys.includes(k)));
+  } else {
+    keys = (section.keys ?? []).filter((k) => schema[k]);
   }
   const excludeKeys = section.excludeKeys;
   if (excludeKeys) keys = keys.filter((k) => !excludeKeys.includes(k)); // TS doesn't keep narrowing inside closures; hoist to a local const first
@@ -244,7 +269,6 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "commands.enableClaudeProject": "pg-skills",
   "commands.enableOpencodeUser": "pg-skills",
   "commands.enableOpencodeProject": "pg-skills",
-  "statusLine.showHookStatus": "pg-hooks",
   "extensionHandlers.toolCallTimeoutMs": "pg-hooks",
   // Fully managed by dedicated graphical controls (model page eye-toggle /
   // role cards / ctrl+p cycle editor, skills page master switch / row toggles,
@@ -261,6 +285,10 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   // instead" (memories/settings.ts); the memory page's local-pipeline group
   // keys off memory.backend directly, so this legacy switch stays invisible
   "memories.enabled": "pg-memory",
+  // Graphical rules editor on the Shell page (fixed-structure JSON array:
+  // pattern/flags/tool/message per rule, ordered first-match); no raw
+  // SchemaRows editor anywhere
+  "bashInterceptor.patterns": "pg-shell",
 };
 
 // Keys hidden from every settings surface (page rendering AND search). Consumers
@@ -275,6 +303,18 @@ export const HIDDEN_KEYS: Record<string, true> = {
   doubleEscapeAction: true,
   "browser.tern": true,
   "browser.cmux": true,
+  // TUI interactive-mode only (consumers in src/modes/interactive-mode.ts):
+  // composer/status-line chrome that the desktop host never loads — the
+  // desktop renders its own Lexical composer and React status widgets
+  "composer.shape": true,
+  "composer.tokenRate": true,
+  "statusLine.preset": true,
+  "statusLine.separator": true,
+  "statusLine.contextLine": true,
+  "statusLine.sessionAccent": true,
+  "statusLine.transparent": true,
+  "statusLine.compactThinkingLevel": true,
+  "statusLine.showHookStatus": true,
   "startup.showSplash": true,
   "startup.setupWizard": true,
   "startup.changelogMode": true,
@@ -320,8 +360,8 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "github.cache.enabled", "github.cache.softTtlSec", "github.cache.hardTtlSec", "web_search.enabled",
     "security.enabled", "ask.enabled", "tools.intentTracing",
     "tools.abortOnFabricatedResult", "tools.speculativeExecution.enabled", "tools.speculativeExecution.maxInFlight", "tools.maxTimeout",
-    "async.enabled", "irc.timeoutMs", "tasks.todoClearDelay", "dev.autoqa",
-    "dev.autoqaPush.endpoint", "ida.python", "ida.installDir", "ida.maxOpen", "ida.idleCloseSec",
+    "async.enabled", "irc.timeoutMs", "tasks.todoClearDelay",
+    "ida.python", "ida.installDir", "ida.maxOpen", "ida.idleCloseSec",
   ],
   "pg-computer": [
     "computer.maxWidth", "computer.maxHeight",
@@ -336,9 +376,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   ],
   "pg-appearance": [
     "theme.dark", "theme.light", "symbolPreset", "colorBlindMode",
-    "composer.shape", "composer.tokenRate", "statusLine.preset", "statusLine.separator",
-    "statusLine.contextLine", "statusLine.sessionAccent", "statusLine.transparent", "statusLine.compactThinkingLevel",
-    "statusLine.showHookStatus", "terminal.showImages", "images.autoResize", "images.blockImages",
+    "terminal.showImages", "images.autoResize", "images.blockImages",
     "tui.resizeScrollback", "terminal.showProgress", "tui.textSizing", "tui.renderMermaid",
     "tui.reactions", "tui.codexResetFireworks", "tui.titleState", "tui.titleSpinner",
     "tui.hyperlinks", "tui.mouse", "tui.tight", "display.shimmer",
@@ -384,9 +422,12 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   ],
   "pg-shell": [
     "bash.enabled", "bash.allowCompoundCommands", "bash.autoBackground.enabled", "bash.patterns",
-    "bashInterceptor.enabled", "bash.direnv", "bash.direnvLoadTimeoutMs", "shellMinimizer.enabled",
-    "shellMinimizer.sourceOutlineLevel", "eval.py", "eval.js", "eval.tools.enabled",
-    "eval.workpool.freshAgents", "eval.autoBackground.enabled", "python.kernelMode", "python.interpreter",
+    "bashInterceptor.enabled", "bashInterceptor.patterns", "bash.direnv", "bash.direnvLoadTimeoutMs",
+    "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel", "shellMinimizer.settingsPath",
+    "shellMinimizer.only", "shellMinimizer.except", "shellMinimizer.maxCaptureBytes", "shellMinimizer.legacyFilters",
+    "eval.py", "eval.js", "eval.tools.enabled",
+    "eval.workpool.freshAgents", "eval.autoBackground.enabled", "eval.autoBackground.thresholdMs", "python.kernelMode",
+    "python.interpreter", "bash.autoBackground.thresholdMs",
   ],
   "pg-tasks": [
     "plan.enabled", "plan.defaultOnStartup", "plan.autosave", "plan.autosaveDir",
@@ -397,12 +438,19 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "task.isolation.enabled", "isolation.backend", "worktree.clone", "worktree.cleanSource",
     "task.isolation.apply", "task.isolation.merge", "task.isolation.commits", "worktree.base",
   ],
+  "pg-developer": [
+    "dev.autoqa", "dev.autoqaPush.endpoint", "dev.autoqaPush.token", "dev.autoqaConsent",
+    "gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal",
+    "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays",
+    "compaction.reserveTokens", "compaction.keepRecentTokens", "compaction.autoContinue",
+    "compaction.remoteEndpoint", "compaction.v2RetainedMessageBudget",
+  ],
   "pg-skills": [
     "skills.enableSkillCommands", "commands.enableClaudeUser", "commands.enableClaudeProject", "commands.enableOpencodeUser",
     "commands.enableOpencodeProject", "skills.registryUrl",
   ],
   "pg-hooks": [
-    "statusLine.showHookStatus", "extensionHandlers.toolCallTimeoutMs",
+    "extensionHandlers.toolCallTimeoutMs",
   ],
   "pg-providers": [
     "providers.maxInFlightRequests", "providers.openai-codex.codeMode", "providers.openai-codex.codeModeDirectTools", "providers.ollama-cloud.maxConcurrency",

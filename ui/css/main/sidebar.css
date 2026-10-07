@@ -74,7 +74,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .nav-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 [data-theme="light"] .nav-item:hover { background: var(--tint-black-60); }
-.nav-item svg { color: var(--dim); flex: none; display: block; margin-top: -0.5px; }
+.nav-item svg { color: var(--dim); flex: none; display: block; }
 .seg {
   display: flex; background: var(--tint-black-220);
   border-radius: 999px; padding: 2px;

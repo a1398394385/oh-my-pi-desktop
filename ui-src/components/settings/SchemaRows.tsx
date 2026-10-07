@@ -35,26 +35,8 @@ interface SelOption {
   label: string;
 }
 
-// Composer shape options (mirrors omp's getComposerShapeOptions; the schema
-// declares ui.options = "runtime", so this hardcoded list is the only source —
-// labels come from the language-specific opts dictionary, falling back to the
-// settingsPage pack when the dictionary has no entry).
-function composerShapeOptions(opts: Record<string, Record<string, string>>): SelOption[] {
-  return [
-    { v: "band", label: opts["composer.shape"]?.["band"] ?? t("settingsPage.schema.shapeBand") },
-    { v: "box", label: opts["composer.shape"]?.["box"] ?? t("settingsPage.schema.shapeBox") },
-    { v: "claude", label: opts["composer.shape"]?.["claude"] ?? t("settingsPage.schema.shapeClaude") },
-    { v: "pi", label: opts["composer.shape"]?.["pi"] ?? t("settingsPage.schema.shapePi") },
-    { v: "borderless", label: opts["composer.shape"]?.["borderless"] ?? t("settingsPage.schema.shapeBorderless") },
-    { v: "rule", label: opts["composer.shape"]?.["rule"] ?? t("settingsPage.schema.shapeRule") },
-    { v: "field", label: opts["composer.shape"]?.["field"] ?? t("settingsPage.schema.shapeField") },
-    { v: "rail", label: opts["composer.shape"]?.["rail"] ?? t("settingsPage.schema.shapeRail") },
-  ];
-}
-
 /** Resolve the available option list of a setting from the schema and omp source code */
 function resolveSettingOptions(k: string, def: SchemaDef, opts: Record<string, Record<string, string>>): SelOption[] {
-  if (k === "composer.shape") return composerShapeOptions(opts);
   if (k === "theme.dark") return DARK_THEMES.map((t) => ({ v: t, label: opts["theme.dark"]?.[t] ?? t }));
   if (k === "theme.light") return LIGHT_THEMES.map((t) => ({ v: t, label: opts["theme.light"]?.[t] ?? t }));
 

@@ -174,7 +174,7 @@ function renderGlob(item: ToolItem) {
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
   return (
     <div className="act read">
-      <Icon name="ftFile" size={15} />
+      <Icon name="match" size={15} />
       <span className="lbl">{t("chat.labelGlob")}</span>
       <Ellip className="path" title={pat}>{pat}</Ellip>
       {dir && <Ellip className="path">{dir}</Ellip>}

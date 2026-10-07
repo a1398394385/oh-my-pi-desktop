@@ -52,17 +52,18 @@
   align-items: center;
 }
 
-.pill-btn > svg, .pill-btn > span > svg {
-  display: block;
-  flex: none;
-  margin-top: -0.5px;
-}
-
 /* The permission/model/thinking selectors match ZCode font weight (pill text included);
-   only these three — background-task/subagent count buttons do not follow */
-/* Site-wide icon vertical alignment: inline svg defaults to baseline alignment (baseline = box bottom), visually 1-2px too high;
-   middle aligns icons to the text x-height center (applies to both the Icon component and svg injected by hydrateIcons) */
+   only these — background-task/subagent count buttons do not follow */
+/* Raw inline svgs outside the Icon component (e.g. streamdown output): baseline alignment
+   (baseline = box bottom) reads 1-2px too high, so middle aligns them to the text x-height
+   center. The React Icon component uses the .pi-ic recipe below instead. */
 svg { vertical-align: middle; }
+
+/* Icon host span — the Font Awesome alignment recipe: an inline-flex box sized exactly to the
+   svg, bottom edge dipped 0.15em below the text baseline. In flex rows vertical-align is
+   ignored and align-items centers the box, so the recipe is a no-op there. */
+.pi-ic { display: inline-flex; align-items: center; justify-content: center; vertical-align: -0.15em; }
+.pi-ic svg { display: block; }
 
 .pill-btn:hover { background: var(--panel-2); color: var(--text); }
 

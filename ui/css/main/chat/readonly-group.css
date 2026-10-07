@@ -2,18 +2,47 @@
    reuses the shared .act row + .ed-arrow language in messages.css (selector lists live
    there); only the expansion body is defined here. Block flow (not flex) on purpose: flex
    would disable margin collapsing and double the gaps between inner labels — in block
-   flow the inner .act/.cmd rows collapse exactly like top-level rows. Inner labels
-   (level-3 groups / single rows) offset 15px to the right of the block header. Top margin
+   flow the inner .act/.cmd rows collapse exactly like top-level rows. Inner content is
+   inset 21px — the header icon (15px) plus the .act row gap (6px) — so the inner rows'
+   icons line up with the header label text (the "探" of "探索了 …"), not the header icon.
+   Top margin
    0 (not the group bodies' usual -6): the header-to-first-label gap must equal the general
    label spacing, not the card-popup 7px attach. Same drop/lift animation language as
    .chg-body, no vertical line of its own */
 
-.ro-body { margin: 0 0 12px; padding-left: 15px; max-width: 100%; box-sizing: border-box; }
+.ro-body { margin: 0 0 12px; padding-left: 21px; max-width: 100%; box-sizing: border-box; }
 
 /* Long expansions cap and scroll inside the body — the same contract as .chg-body: wheels
    over the body scroll it, never the outer stream (the MessagePage wheel guard already
    treats .ro-body as a card). */
 .ro-body { max-height: 480px; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Scroll edge fades. The mask is fixed to the box while content scrolls underneath, so rows
+   fade out/in at the top and bottom edges as they enter or leave the viewport. Active only
+   while the body actually scrolls (.ro-scroll, set from ReadonlyGroup) and each end's fade
+   is dropped at the respective scroll extreme (.rt/.rb), so resting content is never dimmed.
+   Two stacked gradients union into top + bottom fades. */
+.ro-body.ro-scroll {
+  --ro-fade: 14px;
+  -webkit-mask-image:
+    linear-gradient(to bottom, transparent, var(--black) var(--ro-fade)),
+    linear-gradient(to top, transparent, var(--black) var(--ro-fade));
+  mask-image:
+    linear-gradient(to bottom, transparent, var(--black) var(--ro-fade)),
+    linear-gradient(to top, transparent, var(--black) var(--ro-fade));
+}
+.ro-body.ro-scroll.rt {
+  -webkit-mask-image: linear-gradient(to top, transparent, var(--black) var(--ro-fade));
+  mask-image: linear-gradient(to top, transparent, var(--black) var(--ro-fade));
+}
+.ro-body.ro-scroll.rb {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, var(--black) var(--ro-fade));
+  mask-image: linear-gradient(to bottom, transparent, var(--black) var(--ro-fade));
+}
+.ro-body.ro-scroll.rt.rb {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
 
 .ro-body.drop { animation: ed-drop .2s ease-out; }
 .ro-body.lift { animation: ed-lift .2s ease-out forwards; }

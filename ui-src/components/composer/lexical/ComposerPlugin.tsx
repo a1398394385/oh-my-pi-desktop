@@ -39,7 +39,7 @@ import type { PasteCommandType } from "lexical";
 import { useAppStore } from "../../../store";
 import { editQueueMsg } from "../../../store/session";
 import { $flattenText, $setText } from "./flat";
-import { saveDraft, getDraftText, stashClearedDraft, recallClearedDraft } from "./draft";
+import { saveDraft, getDraftText, recallClearedDraft } from "./draft";
 
 // Enter key-swallow window for IME candidate confirmation (ms): on WebKit,
 // compositionend and the following Enter keydown land in nearly the same tick;
@@ -202,7 +202,7 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
           COMMAND_PRIORITY_NORMAL,
         ),
         // Ctrl+↑/Ctrl+↓: walk the cleared-draft stash (older / back toward the
-        // live draft) -- the Ctrl+C and double-Esc clear paths push into it
+        // live draft) -- the double-Esc clear path pushes into it
         // while composer.recallClearedDrafts is on; browsing from the live
         // draft snapshots it as the base entry so Ctrl+↓ can come back.
         // Bound on KEY_DOWN_COMMAND, not KEY_ARROW_*_COMMAND: Lexical's core
@@ -211,9 +211,6 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
         // the panel is open (candidate navigation).
         // Ctrl+Q: enqueue as follow-up (also available while the panel is open;
         // the old palette interception block did not include q)
-        // Ctrl+C: with no active selection, clear the draft into the
-        // recall stash (while composer.recallClearedDrafts is on) -- a
-        // selection keeps the native copy. Same clear path as double-Esc.
         editor.registerCommand(
           KEY_DOWN_COMMAND,
           (ev) => {
@@ -224,20 +221,6 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
             }
             if (ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
               return recallStep(ev, ev.key === "ArrowUp" ? 1 : -1);
-            }
-            if (ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "c" || ev.key === "C") && !ev.isComposing) {
-              const hasSelection = editor.read(() => {
-                const sel = $getSelection();
-                return sel !== null && !sel.isCollapsed;
-              });
-              if (hasSelection) return false;
-              const key = draftKeyRef.current;
-              const st = useAppStore.getState();
-              if (!getDraftText(key).trim() && st.pendingFiles.length === 0) return false;
-              if (st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) stashClearedDraft(key);
-              ev.preventDefault();
-              st.setComposerValue("", []);
-              return true;
             }
             return false;
           },

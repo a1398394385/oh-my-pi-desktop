@@ -29,6 +29,7 @@ export const settingsPageEn = {
     files: "Files",
     tools: "Tools",
     tasks: "Tasks & Subagents",
+    developer: "Developer",
     advanced: "Advanced",
     experimental: "Experimental",
     stats: "Usage Stats",
@@ -171,6 +172,7 @@ export const settingsPageEn = {
       title: "Image generation",
       desc: "Image model used by generate_image",
     },
+    emptyModels: "No models available (sign in to a provider that offers this kind of model first)",
   },
 
   model: {
@@ -1530,6 +1532,30 @@ export const settingsPageEn = {
     editorPlaceholder: "Click a hook on the left to load it, or create one with the tool name above.",
     pickFirst: "Select a hook from the list first.",
   },
+  // ---- Shell page graphical interceptor editor (ShellPage.tsx) ----
+  shellPage: {
+    rulesLabel: "Interception rules",
+    rulesHint: "First match wins, top to bottom; a hit returns message and points the agent at tool",
+    rulesCount: "{{count}} rules",
+    rulesEmpty: "No interception rules; every shell command runs through",
+    addRule: "Add rule",
+    ruleNewTitle: "New interception rule",
+    ruleEditTitle: "Edit interception rule #{{index}}",
+    patternLabel: "Match regex (pattern)",
+    patternPlaceholder: "^\\s*(cat|head|tail|less|more)\\s+",
+    toolLabel: "Suggested tool (tool)",
+    toolPlaceholder: "read",
+    messageLabel: "Block message (message)",
+    messagePlaceholder: "Use the `read` tool instead of cat.",
+    flagsLabel: "Regex flags (flags, optional)",
+    flagsPlaceholder: "i",
+    flagsHint: "JS regex flags (e.g. i, m, s); empty = none",
+    ruleRequired: "pattern, tool and message are all required",
+    regexInvalid: "Invalid regex: {{err}}",
+    ruleDeleteConfirm: "Delete this interception rule?",
+    moveUp: "Move up",
+    moveDown: "Move down",
+  },
   // ---- Computer control page (ComputerPage.tsx) ----
   computer: {
     writtenToast: "Master switch saved.",
@@ -1560,14 +1586,6 @@ export const settingsPageEn = {
     typeEnum: "Enum",
     typeArray: "Array",
     typeRecord: "Record",
-    shapeBand: "Status bar (default)",
-    shapeBox: "Rounded box",
-    shapeClaude: "Claude Code style",
-    shapePi: "Pi style",
-    shapeBorderless: "Borderless",
-    shapeRule: "Top divider",
-    shapeField: "Compact field",
-    shapeRail: "Accent rail",
   },
   // ---- ScopeSel.tsx ----
   scopeSel: {

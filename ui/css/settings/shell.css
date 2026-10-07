@@ -1,0 +1,35 @@
+/* Shell settings page (ShellPage.tsx): bash-interceptor graphical rules editor.
+   Rows reuse the memory-page row language (.srow + .on highlight + .mem-caret); the
+   form body reuses the MCP editor classes (.mem-expand / .sem-body.form / .mcp-form-*).
+   Only the pieces those don't cover live here. */
+
+/* summary head: display row — only the trailing count tag / add button are
+   clickable, so the row-level hover affordance is off */
+.srow.itcp-head:hover,
+[data-theme="light"] .srow.itcp-head:hover { background: none; }
+
+/* rule row: fully clickable, .on highlight while its editor is expanded */
+.srow.itcp-row { cursor: pointer; }
+
+.srow.itcp-row.on { background: var(--panel-2); }
+
+.srow.itcp-row .mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
+
+.srow.itcp-row.on .mem-caret svg { transform: rotate(0deg); }
+
+/* tool badge row title: tag pill + optional /flags suffix */
+.itcp-flags { font-family: var(--mono); font-size: var(--ui-fs-xs); color: var(--faint); }
+
+/* pattern snippet: mono, single line, clamped so long regexes don't blow the row */
+.itcp-pattern {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* pattern field takes the remaining width next to the half-width tool field */
+.itcp-form-pattern { flex: 2; min-width: 240px; }
+
+/* move-down head button = the arrowUp icon flipped */
+.itcp-flip svg { transform: rotate(180deg); }

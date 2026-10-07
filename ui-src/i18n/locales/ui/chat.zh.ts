@@ -149,6 +149,7 @@ export const chatZh = {
   sendNow: "立即发送（当前步骤后注入）",
   imageN: "图片 {{n}}",
   clickToZoom: "点击查看大图",
+  copyMsg: "复制这条消息",
   // ---- todo card (TodoCard.tsx) ----
   allDone: "全部完成",
   sessionStatus: "会话状态",

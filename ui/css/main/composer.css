@@ -198,7 +198,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; }
 
 /* dots = queued for sending */
-.qc-dots svg { display: block; margin-top: -0.5px; }
+.qc-dots svg { display: block; }
 
 .qc-tx {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -311,7 +311,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .atchip .at-ic { flex: none; display: inline-flex; align-items: center; color: var(--faint); line-height: 1; }
 
-.atchip .at-ic svg { display: block; width: 12px !important; height: 12px !important; margin-top: -1.2px; }
+.atchip .at-ic svg { display: block; width: 12px !important; height: 12px !important; }
 
 .atchip .at-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; display: inline-flex; align-items: center; }
 
@@ -427,8 +427,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 /* context usage ring: grows clockwise from the top, temperature-colored; hover shows the detail card */
 .ctx-ring {
-  width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center;
-  padding: 4px; border-radius: 7px; /* reserve at rest; the hover plate appears without shifting layout (border-box: 22 = 14 ring + 4x2 padding) */
+  width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px; border-radius: 7px; /* reserve at rest; the hover plate appears without shifting layout (border-box: 24 = 16 ring + 4x2 padding) */
 }
 
 .ctx-ring:hover { background: var(--context-ring-hover); }
@@ -440,7 +440,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .ctx-ring .fill {
   fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round;
-  stroke-dasharray: 40.84; stroke-dashoffset: 40.84; /* circumference 2pi x 6.5 */
+  stroke-dasharray: 43.98; stroke-dashoffset: 43.98; /* circumference 2pi x 7 */
   transition: stroke-dashoffset .3s;
 }
 

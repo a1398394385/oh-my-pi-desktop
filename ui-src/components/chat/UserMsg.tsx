@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { OpenSession } from "../../store";
 import type { UserItem } from "../../types/session";
-import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg } from "../../store";
+import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
+import { copyText } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
@@ -58,6 +59,21 @@ export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
+        {item.text ? (
+          <button
+            className="ub-copy q-btn"
+            title={t("chat.copyMsg")}
+            onClick={(e) => {
+              e.stopPropagation();
+              copyText(item.text || "").then(
+                () => useAppStore.getState().toast(t("chat.copiedToClipboard")),
+                () => useAppStore.getState().toast(t("chat.copyFailed")),
+              );
+            }}
+          >
+            <Icon name="copy" size={13} />
+          </button>
+        ) : null}
         {images.length > 0 && (
           <div className="user-msg-images mb-2 flex flex-wrap gap-2">
             {images.map((img, idx) => {

@@ -110,6 +110,9 @@ export function ModelCascadePicker({
   disabled,
   roles,
   roleLabel,
+  // Rendered when both the candidate list and the role section are empty
+  // (RolePicker passes a "no models" hint; keepalive's synthesized list never hits this)
+  emptyContent,
   onPick,
   onPickRole,
 }: {
@@ -122,7 +125,8 @@ export function ModelCascadePicker({
   disabled?: boolean;
   // Referenceable-role section above the provider cascade (settings role rows)
   roles?: ReadonlyArray<PickerRole>;
-  roleLabel?: ReactNode;
+  roleLabel?: string;
+  emptyContent?: ReactNode;
   onPick: (id: string) => void;
   onPickRole?: (role: PickerRole) => void;
 }) {
@@ -199,7 +203,7 @@ export function ModelCascadePicker({
       <span>{label}</span>
       <span className="caret-svg"><Icon name="caret" size={14} /></span>
       {open && <ModelCascadeMenu models={models} selectedId={selectedId} selectedRoleId={selectedRoleId} onPick={pick}
-        roles={roles} roleLabel={roleLabel} onPickRole={onPickRole}
+        roles={roles} roleLabel={roleLabel} onPickRole={onPickRole} emptyContent={emptyContent}
         menuClassName="mp-role-menu" highlightSelected positionFlyout={positionFlyout} />}
 
     </div>
@@ -239,6 +243,13 @@ export function RolePicker({ role, allModels }: { role: ModelRole; allModels: Ca
       selectedRoleId={referencedRoleId(role.value) ?? undefined}
       roles={roleRefs}
       roleLabel={roleRefs.length > 0 ? t("settingsPage.model.roleRefGroup") : undefined}
+      // Empty-state row shown when the role's kind filter leaves no candidates
+      // (same .mi empty styling as the composer's no-models row)
+      emptyContent={
+        <div className="mi empty" style={{ color: "var(--dim)", cursor: "default", justifyContent: "center", padding: "8px 12px" }}>
+          {t("settingsPage.cap.emptyModels")}
+        </div>
+      }
       onPick={(value) => {
         if ((role.value ?? null) !== value) send({ type: "set_model_role", role: role.id, value });
       }}

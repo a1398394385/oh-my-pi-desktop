@@ -35,7 +35,7 @@ export function rowSpec(call: SubagentToolCall): RowSpec {
   if (name === "grep" || name === "ast_grep")
     return { icon: "read", label: "chat.labelSearch", summary: [a.pattern, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };
   if (name === "glob")
-    return { icon: "ftFile", label: "chat.labelGlob", summary: [a.pattern, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };
+    return { icon: "match", label: "chat.labelGlob", summary: [a.pattern, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };
   if (name === "find")
     return { icon: "search", label: "chat.labelFind", summary: [a.query, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };
   if (name === "read") return { icon: "read", label: "chat.labelRead", summary: file };

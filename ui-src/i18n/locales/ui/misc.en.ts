@@ -79,7 +79,6 @@ export const miscEn = {
   keysSteer: "Inject immediately (steer while generating)",
   keysQueue: "Add to send queue",
   keysRecall: "Recall queued message (last sent, first back)",
-  keysClearDraft: "Clear the composer (no selection; stashed for recall while the setting is on)",
   keysRecallCleared: "Browse cleared drafts (↑ older / ↓ back to live input)",
   keysGroupTree: "Session tree",
   keysGroupTreeDesc: "Key behavior inside the session tree page.",

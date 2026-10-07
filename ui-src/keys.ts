@@ -99,8 +99,7 @@ function handleEsc(): boolean | undefined {
   }
 
   // Second Esc while in the clear confirmation stage: perform the clear (the
-  // cleared draft goes to the recall stash while composer.recallClearedDrafts
-  // is on -- same path as Ctrl+C in the composer)
+  // cleared draft goes to the recall stash while composer.recallClearedDrafts is on)
   if (escArmedAction === "clear") {
     clearTimeout(doubleEscTimer);
     escArmedAction = null;
@@ -428,7 +427,6 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["Ctrl", "↵"], get label() { return t("misc.keysSteer"); } },
       { keys: ["Ctrl", "Q"], get label() { return t("misc.keysQueue"); } },
       { keys: ["Alt", "↑"], get label() { return t("misc.keysRecall"); } },
-      { keys: ["Ctrl", "C"], get label() { return t("misc.keysClearDraft"); } },
       { keys: ["Ctrl", "↑/↓"], get label() { return t("misc.keysRecallCleared"); } },
     ],
   },
