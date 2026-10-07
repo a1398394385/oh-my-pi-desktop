@@ -80,11 +80,11 @@ mod imp {
 
     // CoreText / CoreFoundation FFI: declaring the handful of C functions here
     // keeps the crate dependency-free (same thin-shell stance as the rest).
-    #[link(name = "CoreText", kind = "dylib")]
+    #[link(name = "CoreText", kind = "framework")]
     extern "C" {
         fn CTFontManagerCopyAvailableFontFamilyNames() -> isize; // CFArrayRef
     }
-    #[link(name = "CoreFoundation", kind = "dylib")]
+    #[link(name = "CoreFoundation", kind = "framework")]
     extern "C" {
         fn CFArrayGetCount(array: isize) -> isize;
         fn CFArrayGetValueAtIndex(array: isize, idx: isize) -> isize; // CFStringRef
