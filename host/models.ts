@@ -68,6 +68,13 @@ function computeValues(): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   for (const s of orderedSettings()) {
     values[s.id] = s.layered(H.settings);
+    // Desktop default flip: readonly-run folding (>=3 merge) is ON unless the user
+    // explicitly sets display.hideToolActivity=false. The base's own default is
+    // false (TUI semantics: hide tool activity entirely), which must not leak
+    // into the desktop's folding threshold.
+    if (s.id === "display.hideToolActivity" && s.provenance?.(H.settings) === "default") {
+      values[s.id] = true;
+    }
   }
   return values;
 }

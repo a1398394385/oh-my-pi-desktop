@@ -160,7 +160,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "colorBlindMode": { "label": "色盲模式", "description": "diff 新增行使用蓝色而非绿色" },
   "images.autoResize": { "label": "自动调整图像大小", "description": "将大图像调整为最大 2000x2000，以提升模型兼容性" },
   "images.blockImages": { "label": "屏蔽图像", "description": "阻止图像被发送给 LLM 提供商" },
-  "display.hideToolActivity": { "label": "隐藏工具活动", "description": "把消息流里的只读工具行（读文件、搜索、命令等）全部收进「探索了…」折叠块，点击仍可展开；默认仅连续 3 条以上才折叠" },
+  "display.hideToolActivity": { "label": "隐藏工具活动", "description": "开启（默认）：连续 3 条及以上只读工具行（读文件、搜索、命令等）合并为「探索了…」折叠块，点击可展开；关闭：只读工具行全部平铺显示，不做合并" },
   "display.showTokenUsage": { "label": "显示 Token 用量", "description": "在每轮结束的摘要行上显示该轮 token 用量（输入/输出/缓存）" },
   "advisor.enabled": { "label": "启用顾问", "description": "配对第二个模型（分配给 'advisor' 角色），被动审查每一轮并注入提示。" },
   "prewalk.enabled": { "label": "启用预演", "description": "先使用当前活跃模型启动，然后在计划提醒的待办清单产生后的第一次编辑/写入时切换到快速/廉价模型（默认 'smol' 角色）——强模型规划、提交待办并开始实现后再交接。可用 --prewalk / --no-prewalk 按会话覆盖。" },

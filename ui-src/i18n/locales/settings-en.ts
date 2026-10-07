@@ -98,6 +98,9 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "bash.autoBackground.thresholdMs": { "label": "Bash auto-background threshold (ms)", "description": "Automatically background a command once it runs longer than this (default 60000 = 1 minute)" },
   "eval.autoBackground.thresholdMs": { "label": "Eval auto-background threshold (ms)", "description": "Automatically background an eval cell once it runs longer than this (default 60000 = 1 minute)" },
 
+  // ---- pg-appearance: desktop-semantics override (schema description carries the TUI meaning) ----
+  "display.hideToolActivity": { "label": "Hide tool activity", "description": "On (default): runs of 3+ read-only tool rows (file reads, searches, commands) merge into the \"explored…\" collapsible block; off: read-only tool rows always lay out flat, never merged" },
+
   // ---- pg-developer: auto QA / garbage collection / low-level compaction (ui-less keys) ----
   "dev.autoqaPush.token": { "label": "Auto QA push token", "description": "Auth token submitted alongside Auto QA reports (a credential entry)" },
   "dev.autoqaConsent": { "label": "Auto QA consent", "description": "Consent decision for automatic reporting: unset asks on the first report; granted records and (when push is configured) ships grievances; denied silently skips every report" },

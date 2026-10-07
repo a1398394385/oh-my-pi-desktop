@@ -20,6 +20,8 @@ initI18n("zh-CN");
 const { useAppStore } = await import("../ui-src/store");
 const { loopSummaryText } = await import("../ui-src/components/chat/LoopGroup");
 const { applyColorBlindMode } = await import("../ui-src/appearance");
+const { renderItems } = await import("../ui-src/components/chat/items");
+const { default: ReadonlyGroup } = await import("../ui-src/components/chat/ReadonlyGroup");
 
 const setValues = (values: Record<string, unknown>) =>
   useAppStore.setState((s) => ({ hostSettings: { ...(s.hostSettings ?? {}), values } as never }));
@@ -45,7 +47,17 @@ try {
   applyColorBlindMode(undefined);
   assert.equal(document.documentElement.dataset.colorblind, undefined, "未设置不挂属性");
 
-  console.log("✓ 设置对接：Loop 摘要（耗时常显 + 用量门控）与色盲模式根属性正确");
+  // 6. hideToolActivity folding: 3 read-only rows merge unless the setting is explicitly false
+  const roItems = [1, 2, 3].map((n) => ({ role: "tool", name: "read", toolCallId: "t" + n, args: { path: "/f" + n }, result: "" })) as never[];
+  const merged = (vals: Record<string, unknown>) => {
+    setValues(vals);
+    return renderItems(roItems, "", []).some((el) => el.type === ReadonlyGroup);
+  };
+  assert.ok(merged({}), "未设置（默认开）：>=3 只读行合并");
+  assert.ok(merged({ "display.hideToolActivity": true }), "显式开：合并");
+  assert.ok(!merged({ "display.hideToolActivity": false }), "显式关：平铺不合并");
+
+  console.log("✓ 设置对接：Loop 摘要（耗时常显+用量门控）、色盲根属性、只读折叠三态正确");
 } finally {
   win.happyDOM.close();
   process.exit(0); // imported store modules keep timers alive; assertions are done
