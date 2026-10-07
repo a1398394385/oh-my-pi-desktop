@@ -132,8 +132,11 @@ export function ModelCascadePicker({
   onPickRole?: (role: PickerRole) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Level-1 menu flips upward when there is no room below the pill (role lists
+  // taller than the settings scroll area) and more room above — .sel-up carries
+  // the whole upward language including the caret rotation
+  const [up, setUp] = useState(false);
   const selRef = useRef<HTMLDivElement>(null);
-
   // Close on click outside the selector (global equivalent of the old closeAllMenus)
   useEffect(() => {
     if (!open) return;
@@ -148,6 +151,28 @@ export function ModelCascadePicker({
       releaseDropdown(close);
     };
   }, [open]);
+
+  // Level-1 menu placement: defaults to the CSS "drop below" (.sel > .menu);
+  // when the rendered menu overflows the settings scroll area's bottom edge,
+  // flip to .sel-up (bottom-anchored) if more room remains above, otherwise cap
+  // the height and scroll internally — same policy as the flyout below
+  const positionMenu = (menu: HTMLDivElement) => {
+    const sel = selRef.current;
+    if (!sel) return;
+    const z = useAppStore.getState().zoomLevel || 1;
+    const bound = sel.closest("#setBody") ?? document.body;
+    const selRect = sel.getBoundingClientRect();
+    const boundRect = bound.getBoundingClientRect();
+    const availBelow = Math.round((boundRect.bottom - selRect.bottom) / z) - 6;
+    if (menu.offsetHeight <= availBelow) {
+      setUp(false);
+      return;
+    }
+    const availAbove = Math.round((selRect.top - boundRect.top) / z) - 6;
+    setUp(availAbove > availBelow);
+    menu.style.maxHeight = Math.max(80, Math.max(availAbove, availBelow)) + "px";
+    menu.style.overflowY = "auto";
+  };
 
   // Flyout coordinates: relative to .sel (offsetParent). The level-2 list defaults to opening upward —
   // bottom edge aligned with the provider row's bottom edge
@@ -195,7 +220,7 @@ export function ModelCascadePicker({
 
   return (
     <div
-      className={"sel mp-role-sel" + (disabled ? " disabled" : "")}
+      className={"sel mp-role-sel" + (disabled ? " disabled" : "") + (up ? " sel-up" : "")}
       role="button"
       ref={selRef}
       onClick={(e) => {
@@ -208,7 +233,7 @@ export function ModelCascadePicker({
       <span className="caret-svg"><Icon name="caret" size={14} /></span>
       {open && <ModelCascadeMenu models={models} selectedId={selectedId} selectedRoleId={selectedRoleId} onPick={pick}
         roles={roles} roleLabel={roleLabel} onPickRole={onPickRole} emptyContent={emptyContent}
-        menuClassName="mp-role-menu" highlightSelected positionFlyout={positionFlyout} />}
+        menuClassName="mp-role-menu" highlightSelected positionMenu={positionMenu} positionFlyout={positionFlyout} />}
 
     </div>
   );
