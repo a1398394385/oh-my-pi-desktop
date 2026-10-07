@@ -36,7 +36,7 @@ function loadBranchSession(path: string) {
     send({ type: "reload_settings" }); // local config may have changed; fetch the latest model settings
     send({ type: "load_session", path });
   }
-  // selectedFile/selectedSubagent cleanup is owned by restoreRightPanel (already-open branch)
+  // selectedFile/selectedSubagent cleanup is owned by restoreRightSlot (already-open branch)
   // and the session_created frame (host-load branch) — resetting here would clobber the
   // just-restored per-session right panel state
 }

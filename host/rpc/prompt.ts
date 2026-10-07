@@ -19,12 +19,14 @@ import {
   executeAcpBuiltinSlashCommand,
   fuzzyFind,
   discoverSkills,
+  discoverCustomTSCommands,
   cfgSkills,
 } from "../bootstrap.ts";
 import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
+import { pushComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue } from "../queue.ts";
 import { handleListSessions } from "./session";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
@@ -135,8 +137,9 @@ function sendCommandsFrame(
   list: InternalAvailableSlashCommand[],
   hideSessionCommands: boolean,
 ) {
+  const computerGateOpen = settingsGet(H.settings, "computer.enabled") === true;
   const commands = list
-    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]))
+    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]) && (computerGateOpen || c.name !== "computer"))
     .concat(GOAL_SLASH_COMMAND, PLAN_SLASH_COMMAND);
   ws.send(
     JSON.stringify({
@@ -159,26 +162,23 @@ async function pushCommands(ws: { send(data: string): unknown }, sessionId: stri
 }
 
 // Command list for the new-session page (no session entry): skills / custom
-// commands borrow any pooled session (same config loading, identical across
-// sessions); file commands scan the new project's cwd; session-level
-// commands are hidden. With an empty pool, skills run the same discovery a
-// session would (discoverSkills) — the creating-new page must still offer
-// skill candidates ($ / /skill: completion) on a cold host.
+// commands are cwd-dependent (project-level .agents/skills etc.), so run the
+// same discovery a session would against the requested cwd. Never borrow a
+// pooled session's snapshot: it belongs to that session's cwd, and edits to
+// disabledExtensions do not re-discover live sessions, so it can be stale too.
+// File commands scan the new project's cwd; session-level commands are hidden.
 async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: string) {
-  const any = sessions.values().next().value as PoolEntry | undefined;
-  let skills = any?.session.skills as unknown;
-  if (!skills) {
-    skills = (
-      await discoverSkills(cwd, H.agentDir, {
-        ...cfgSkills.get(H.settings),
-        disabledExtensions: settingsGet(H.settings, "disabledExtensions") ?? [],
-      })
-    ).skills;
-  }
+  const [skillsRes, customRes] = await Promise.all([
+    discoverSkills(cwd, H.agentDir, {
+      ...cfgSkills.get(H.settings),
+      disabledExtensions: settingsGet(H.settings, "disabledExtensions") ?? [],
+    }),
+    discoverCustomTSCommands(cwd, H.agentDir),
+  ]);
   const stub = {
-    customCommands: any?.session.customCommands ?? [],
-    skills,
-    skillsSettings: any?.session.skillsSettings ?? { enableSkillCommands: true },
+    customCommands: customRes.commands,
+    skills: skillsRes.skills,
+    skillsSettings: cfgSkills.get(H.settings),
     setSlashCommands: () => {},
     sessionManager: { getCwd: () => cwd },
   } as unknown as AvailableCommandsSession;
@@ -282,15 +282,11 @@ async function dispatchSlashInput(
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
-  // 2.6) /computer: the settings-page switch is the master gate. Every session
-  // starts with computer use off (per-session opt-in via the pinned overlay in
-  // session-lifecycle); mutating forms only work while the gate is open, while
-  // the read-only "status" always passes to the base command.
-  if (
-    parsedSlash?.name === "computer" &&
-    parsedSlash.args.trim().toLowerCase() !== "status" &&
-    !settingsGet(H.settings, "computer.enabled")
-  ) {
+  // 2.6) /computer: the settings-page switch is the master gate. While closed
+  // the command is fully inert — every form (on/off/status alike) is refused
+  // with the gate hint, and the palette never lists it (sendCommandsFrame
+  // filters it out), so hand-typed input is the only surface left to catch.
+  if (parsedSlash?.name === "computer" && !settingsGet(H.settings, "computer.enabled")) {
     sendCommandOutput(hostI18n.t("errors.computerGateClosed"));
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
@@ -384,6 +380,7 @@ async function dispatchSlashInput(
     },
   };
   const r = await executeAcpBuiltinSlashCommand(trimmed, runtime);
+  if (parsedSlash?.name === "computer") pushComputerMode(ws, sessionId, entry); // /computer on|off flips the per-session overlay; keep the composer button in lockstep
   if (r === false) return text; // Not a builtin → pass through to prompt as-is (file/custom/extension commands are expanded by the base)
   if ("prompt" in r) return r.prompt; // E.g. /force <tool> <prompt>: the remaining text becomes the prompt
   ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));

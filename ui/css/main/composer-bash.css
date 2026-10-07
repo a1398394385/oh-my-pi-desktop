@@ -1,0 +1,101 @@
+/* Bash mode (! as the first composer character): all bash-mode visuals live
+   here — border/placeholder recolor, the identifying halo ring (both themes,
+   dock + in-welcome card), and the collapse animation that folds the tool bar
+   and attachment row away. Imported after composer.css. */
+
+/* Border and placeholder text take the --bash color. The border rule beats
+   the three-state borders (hover line / focus accent): effective in both the
+   dock and in-welcome states */
+#composer.bash-mode,
+#composer.bash-mode:hover,
+#composer.bash-mode:focus-within,
+.dock:has(#composer.bash-mode),
+.dock:has(#composer.bash-mode):hover,
+.dock:has(#composer.bash-mode):focus-within { border-color: var(--bash); }
+
+#composer.bash-mode #input::placeholder { color: var(--bash); }
+
+/* Placeholder recolor for the Lexical editor: aligned with the
+   #composer.bash-mode #input::placeholder rule above */
+#composer.bash-mode .lex-ph { color: var(--bash); }
+
+/* Halo ring: 1px solid ring + 3px translucent halo (the same recipe as the
+   settings search focus ring), themed via --bash (dark --blue / light --green)
+   so both themes get a distinct identifying border */
+.dock:has(#composer.bash-mode) {
+  box-shadow: 0 0 0 1px var(--bash), 0 0 0 3px color-mix(in srgb, var(--bash) 22%, transparent);
+}
+
+/* in-welcome keeps its card elevation shadow underneath (welcome.css) */
+#composer.in-welcome.bash-mode {
+  box-shadow:
+    0 12px 40px var(--tint-black-280),
+    0 0 0 1px var(--bash),
+    0 0 0 3px color-mix(in srgb, var(--bash) 22%, transparent);
+}
+
+[data-theme="light"] .dock:has(#composer.bash-mode) {
+  box-shadow: 0 0 0 1px var(--bash), 0 0 0 3px color-mix(in srgb, var(--bash) 16%, transparent);
+}
+
+[data-theme="light"] #composer.in-welcome.bash-mode {
+  box-shadow:
+    0 12px 40px var(--tint-black-70),
+    0 0 0 1px var(--bash),
+    0 0 0 3px color-mix(in srgb, var(--bash) 16%, transparent);
+}
+
+/* Collapse: the attachment row and the whole tool bar (attachment picker,
+   permission/plan, context ring, model, thinking, send button) fold away with
+   a grid-rows height animation; the composer shrinks to the bare input line
+   and grows back when the ! prefix is removed */
+.attach-fold, .cbar-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .18s var(--swift); }
+
+.attach-fold > .attach-row, .cbar-fold > .cbar {
+  min-height: 0; overflow: hidden;
+  transition: opacity .12s var(--swift), margin-top .18s var(--swift), padding-bottom .18s var(--swift);
+}
+
+#composer.bash-mode .attach-fold, #composer.bash-mode .cbar-fold { grid-template-rows: 0fr; }
+
+#composer.bash-mode .cbar {
+  margin-top: 0; opacity: 0; visibility: hidden;
+  transition: opacity .12s var(--swift), margin-top .18s var(--swift), visibility 0s .18s;
+}
+
+#composer.bash-mode .attach-row {
+  opacity: 0; padding-bottom: 0; visibility: hidden;
+  transition: opacity .12s var(--swift), padding-bottom .18s var(--swift), visibility 0s .18s;
+}
+
+/* Half-height command line: bash mode also collapses the input area itself --
+   min-height 54 -> 24px (one line) and the composer padding 12/14/10 -> 7/14/7,
+   roughly halving the card (110 -> ~38px). The transition lives on the base
+   selectors so both entering and leaving animate. */
+#composer, #input { transition: padding .18s var(--swift), min-height .18s var(--swift); }
+
+#composer.bash-mode { padding: 7px 14px; }
+
+#composer.bash-mode #input { min-height: 24px; }
+
+/* bash completion card rows: monospace like a terminal prompt list, the kind
+   tag (cmd/dir/file) right-aligned in the UI font */
+.menu.palette.bash .mi { font-family: var(--mono); font-size: calc(var(--ui-fs-base) - 1px); }
+
+.menu.palette.bash .mi .sub {
+  margin-left: auto; color: var(--faint);
+  font-family: var(--ui-font); font-size: var(--ui-fs-sm);
+}
+
+/* Reduced motion (fold transitions; same system-default + html[data-motion]
+   override scheme as the composer.css spinner rules) */
+@media (prefers-reduced-motion: reduce) {
+  .attach-fold, .cbar-fold, .attach-fold > .attach-row, .cbar-fold > .cbar,
+  #composer.bash-mode .cbar, #composer.bash-mode .attach-row,
+  #composer, #input { transition: none; }
+}
+
+html[data-motion="on"] .attach-fold, html[data-motion="on"] .cbar-fold,
+html[data-motion="on"] .attach-fold > .attach-row, html[data-motion="on"] .cbar-fold > .cbar,
+html[data-motion="on"] #composer.bash-mode .cbar, html[data-motion="on"] #composer.bash-mode .attach-row,
+html[data-motion="on"] #composer, html[data-motion="on"] #input { transition: none; }

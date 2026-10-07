@@ -30,6 +30,7 @@ import type { ModelRoleEntry } from "./types/frames";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
+import { stashClearedDraft } from "./components/composer/lexical/draft";
 
 // ---------- Actions ----------
 
@@ -97,11 +98,16 @@ function handleEsc(): boolean | undefined {
     return true;
   }
 
-  // Second Esc while in the clear confirmation stage: perform the clear
+  // Second Esc while in the clear confirmation stage: perform the clear (the
+  // cleared draft goes to the recall stash while composer.recallClearedDrafts
+  // is on -- same path as Ctrl+C in the composer)
   if (escArmedAction === "clear") {
     clearTimeout(doubleEscTimer);
     escArmedAction = null;
     setBump({ escArmedUntil: 0 });
+    if (st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+      stashClearedDraft(st.activePath || "welcome");
+    }
     st.setComposerValue("", []);
     return true;
   }
@@ -422,6 +428,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["Ctrl", "↵"], get label() { return t("misc.keysSteer"); } },
       { keys: ["Ctrl", "Q"], get label() { return t("misc.keysQueue"); } },
       { keys: ["Alt", "↑"], get label() { return t("misc.keysRecall"); } },
+      { keys: ["Ctrl", "C"], get label() { return t("misc.keysClearDraft"); } },
+      { keys: ["Ctrl", "↑/↓"], get label() { return t("misc.keysRecallCleared"); } },
     ],
   },
   {

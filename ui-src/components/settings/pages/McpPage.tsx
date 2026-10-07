@@ -789,7 +789,6 @@ export default function McpPage() {
     );
   });
 
-  const totalCount = scopedNow.length;
   const installedCount = scopedNow.filter((s) => s.enabled).length;
 
   const toggleEditor = (key: string) => setOpenKey((cur) => (cur === key ? null : key));
@@ -838,8 +837,6 @@ export default function McpPage() {
             profile={{ id: profileScope.id, label: profileScope.name }}
             projects={projectScopes.map((s) => ({ id: s.id, label: s.name }))}
           />
-          <span className="mcp-divider">|</span>
-          <span className="text-ui-base text-dim">MCP {totalCount}</span>
         </div>
         <div className="mcp-search-wrap">
           <span className="mcp-search-icon"><Icon name="search" size={14} /></span>

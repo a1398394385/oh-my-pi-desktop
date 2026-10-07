@@ -607,6 +607,13 @@ export interface PlanModeFrame {
   planFilePath: string | null;
 }
 
+/** Computer-use session state frame (host/computer-mode.ts pushComputerMode) */
+export interface ComputerModeFrame {
+  type: "computer_mode";
+  sessionId: string;
+  enabled: boolean;
+}
+
 /** Session created/reused snapshot frame (host/host.ts:2513-2524 / 2540-2551 / 2573-2584 session_created) */
 export interface SessionCreatedFrame {
   type: "session_created";
@@ -801,6 +808,14 @@ export interface BashDoneFrame {
   truncated?: boolean; // success only
   output?: string; // success only
   error?: string; // failure only
+}
+
+/** ! bash-mode completion reply (host/rpc/bash-complete.ts): items carry the
+    full token replacement text (cmd/dir/file kinds) */
+export interface BashCompleteResultFrame {
+  type: "bash_complete_result";
+  reqId: number;
+  items: Array<{ label: string; kind: "cmd" | "dir" | "file" }>;
 }
 
 /** Context detail reply (host/host.ts:1283-1301 get_context_detail) */
@@ -1354,13 +1369,14 @@ export interface BrowserTabInfo {
   kind: string;
   /** Whether the backend supports a CDP screencast (cmux/tern surfaces do not) */
   mirrorable: boolean;
+  /** Jsonl path of the session that created the tab; absent when unpooled/unowned — the UI filters the mirror to the displayed session by it */
+  ownerPath?: string;
 }
 
-/** Agent browser tab-list push (host/browser-mirror.ts poll; stamped). `active` marks the 0→n activation edge the UI auto-opens on. */
+/** Agent browser tab-list push (host/browser-mirror.ts poll; stamped). Per-owner activation edges (auto-open) are derived here from consecutive snapshots. */
 export interface BrowserTabsFrame {
   type: "browser_tabs";
   tabs: BrowserTabInfo[];
-  active: boolean;
   hi?: string; // stamped frame
   seq?: number;
 }
@@ -1581,6 +1597,17 @@ export interface RemoteWorkspaceAddedFrame {
   error?: string;
 }
 
+/** Remote directory listing reply (host/rpc/ssh.ts ssh_list_dirs; single-level names under the echoed path) */
+export interface SshDirsFrame {
+  type: "ssh_dirs";
+  ok: boolean;
+  /** Directory the listing describes (the request's base path) */
+  path: string;
+  /** Subdirectory names (no trailing slash); absent on failure */
+  dirs?: string[];
+  error?: string;
+}
+
 // ---------- UI → host client frames ----------
 
 /** UI locale switch (UI → host; fire-and-forget, host persists it and applies it to its own surfaces) */
@@ -1602,6 +1629,7 @@ export type HostFrame =
   | GoalFrame
   | TodosFrame
   | PlanModeFrame
+  | ComputerModeFrame
   | SessionCreatedFrame
   | SessionListFrame
   | MessagesFrame
@@ -1623,6 +1651,7 @@ export type HostFrame =
   | BashStartFrame
   | BashChunkFrame
   | BashDoneFrame
+  | BashCompleteResultFrame
   | ContextDetailFrame
   | LimitsResultFrame
   | ProviderLimitsResultFrame
@@ -1692,4 +1721,5 @@ export type HostFrame =
   | DisplaysFrame
   | SshHostsFrame
   | SshTestResultFrame
-  | RemoteWorkspaceAddedFrame;
+  | RemoteWorkspaceAddedFrame
+  | SshDirsFrame;

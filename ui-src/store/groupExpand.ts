@@ -22,6 +22,7 @@ export const rdExpand = new WeakMap<ToolItem, boolean>();
 export const chgExpand = new WeakMap<ToolItem, boolean>();
 export const cmdExpand = new WeakMap<ToolItem, boolean>();
 export const devExpand = new WeakMap<ToolItem, boolean>();
+export const roExpand = new WeakMap<ToolItem, boolean>();
 
 /** When a child item is replaced by a copy, migrate the expansion state to the new object if the old one held it as the group head */
 export function migrateGroupExpand(from?: ToolItem, to?: ToolItem): void {
@@ -30,5 +31,6 @@ export function migrateGroupExpand(from?: ToolItem, to?: ToolItem): void {
   if (chgExpand.has(from)) chgExpand.set(to, chgExpand.get(from)!);
   if (cmdExpand.has(from)) cmdExpand.set(to, cmdExpand.get(from)!);
   if (devExpand.has(from)) devExpand.set(to, devExpand.get(from)!);
+  if (roExpand.has(from)) roExpand.set(to, roExpand.get(from)!);
 }
 

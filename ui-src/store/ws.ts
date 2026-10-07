@@ -42,6 +42,9 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       // connect when never connected); counting the >15s cold-start case is expected behavior:
       // after 30s without a connection the recovery surface should appear
       connFailSince: ok ? null : (s.connFailSince ?? Date.now()),
+      // The shell is usable the moment the WS is up; the project pill shows the
+      // label-only placeholder until session_list lands the default project.
+      ...(ok && s.bootSplash ? { bootSplash: false } : {}),
     }));
   },
   async connect(): Promise<void> {

@@ -42,6 +42,35 @@ const embeddedAddonPath = path.join(nativeDir, "embedded-addon.js");
 const platformTag = `${process.platform}-${process.arch}`;
 const archiveFilename = `embedded-addons.${platformTag}.tar.gz`;
 const version = (JSON.parse(await Bun.file(path.join(nativesPkgDir, "package.json")).text())).version as string;
+// Prompt mirrors: host/prompts/*.md are verbatim copies of the SDK's approval
+// prompts, inlined into the exe via bunfig's text loader (host/bootstrap.ts
+// readSdkPrompt — the standalone exe cannot read SDK files at runtime). Every
+// build verifies the mirrors match the installed SDK, so a base upgrade cannot
+// silently ship stale approval wording; run with --sync-prompts to refresh.
+const codingAgentPkgDir = path.join(repoRoot, "node_modules", "@oh-my-pi", "pi-coding-agent");
+const sdkPromptsDir = path.join(codingAgentPkgDir, "src", "prompts", "system");
+const mirrorDir = path.join(repoRoot, "host", "prompts");
+const promptMirrors = ["plan-mode-approved.md", "plan-mode-compact-instructions.md"] as const;
+
+if (process.argv.includes("--sync-prompts")) {
+	for (const file of promptMirrors) {
+		await fs.copyFile(path.join(sdkPromptsDir, file), path.join(mirrorDir, file));
+	}
+	console.log(`已同步 ${promptMirrors.length} 个 prompt 镜像到 host/prompts/`);
+	process.exit(0);
+}
+
+async function verifyPromptMirrors(): Promise<void> {
+	const stale: string[] = [];
+	for (const file of promptMirrors) {
+		if ((await Bun.file(path.join(mirrorDir, file)).text()) !== (await Bun.file(path.join(sdkPromptsDir, file)).text())) stale.push(file);
+	}
+	if (stale.length > 0) {
+		throw new Error(
+			`host/prompts 镜像与已安装 SDK 不一致：${stale.join("、")}。底座升级后请运行 bun run host:sync-prompts 重新镜像`,
+		);
+	}
+}
 
 const candidates =
 	process.arch === "x64"
@@ -89,6 +118,7 @@ async function embedNativeAddon(): Promise<void> {
 	console.log(`已内嵌 native addon：${files.length} 个变体，tar.gz 共 ${(archiveBytes.length / 1024 / 1024).toFixed(1)} MB`);
 }
 
+await verifyPromptMirrors();
 await embedNativeAddon();
 try {
 	const build = Bun.spawnSync(

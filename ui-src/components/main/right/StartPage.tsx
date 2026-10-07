@@ -17,7 +17,7 @@ export default function StartPage() {
       <div className="text-[length:20px] font-semibold leading-[28px] text-text" /* style-token-ignore */>{t("right.openTab")}</div>
       <div className="text-ui-base leading-5 text-dim mt-1 mb-5">{t("right.startSub")}</div>
       <div className="rt-list">
-        {["subagent", "gitdiff", "file", "bgcmd", "tree", "terminal", "browser"].map((name) => {
+        {["subagent", "gitdiff", "file", "bgcmd", "tree", "terminal", "browser", "mirror"].map((name) => {
           const meta = TAB_META[name];
           const off = name === "gitdiff" && !s?.isGit;
           return (

@@ -49,6 +49,7 @@ export const hostErrorsZh = {
     subagentSlashNotSupported: "子代理会话暂不支持 Slash 命令与终端命令",
   },
   computerGateClosed: "电脑控制未在设置页开启：请先打开设置页的总开关，再在会话内运行 /computer on",
+  computerUnavailable: "此会话无法启用电脑控制（computer eval 前导不可用）",
   bash: {
     busy: "已有 bash 命令在执行，先按停止或等它结束",
   },

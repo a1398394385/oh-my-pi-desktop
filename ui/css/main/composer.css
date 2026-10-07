@@ -1,6 +1,8 @@
-/* The input area and the stats row below share the same column width (same four-stage shrink, centered); the stats row sits outside the dock and is not part of the input card */
-.dock,
-.stats-bar {
+/* The input dock follows the four-stage shrink so the composer stays
+   width-aligned with the message column (see center.css for the stages). The
+   stats row below is deliberately NOT part of this constraint: it may run
+   wider than the composer (own rule further down). */
+.dock {
   flex: none;
   width: 100%;
   /* Same four-stage shrink logic as chat messages (see the shared rule comment above); stops narrowing at the floor (260px, matching #composer's min-width) */
@@ -21,7 +23,7 @@
 
 /* Input card border: line-soft at rest, slightly brighter on mouse hover; keyboard focus leaves the border unchanged */
 .dock,
-#composer.in-welcome { transition: border-color .15s var(--swift); }
+#composer.in-welcome { transition: border-color .15s var(--swift), box-shadow .18s var(--swift); }
 
 .dock:hover,
 #composer.in-welcome:hover { border-color: var(--line); }
@@ -33,6 +35,13 @@
 
 /* Session stats row: a permanent line below the input dock (whole-session cache utilization/tokens/cost/active time); display-only with no click behavior, no hover highlight */
 .stats-bar {
+  flex: none;
+  /* Wider ceiling than the composer: the metrics line may exceed the input
+     card's four-stage max-width (aligned with the header's 16px side padding)
+     and only wraps past the full main-column width */
+  width: 100%;
+  max-width: calc(100% - 32px);
+  min-width: 0;
   margin: 0 auto 10px;
   display: flex;
   flex-wrap: wrap;
@@ -411,6 +420,11 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .plan-btn:hover { background: var(--panel-2); color: var(--text); }
 
+/* computer-use toggle: screen icon between the plan button and background tasks; lit (accent) = the per-session opt-in is on */
+.computer-btn { padding: 5px 7px; }
+
+.computer-btn.on, .computer-btn.on:hover { color: var(--accent); }
+
 /* context usage ring: grows clockwise from the top, temperature-colored; hover shows the detail card */
 .ctx-ring {
   width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center;
@@ -459,16 +473,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 .send.stop, .send.stopping { background: var(--send-stop); color: var(--white); }
 .send.stop:hover:not(:disabled), .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
-
-/* bash mode (composer ! prefix): border and placeholder text take the --bash color. the border rule beats the three-state borders (hover line / focus accent): effective in both the dock and in-welcome states */
-#composer.bash-mode,
-#composer.bash-mode:hover,
-#composer.bash-mode:focus-within,
-.dock:has(#composer.bash-mode),
-.dock:has(#composer.bash-mode):hover,
-.dock:has(#composer.bash-mode):focus-within { border-color: var(--bash); }
-
-#composer.bash-mode #input::placeholder { color: var(--bash); }
 
 .highlight-mode {
   color: var(--orange) !important;
@@ -622,9 +626,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
-
-/* bash-mode (! prefix) placeholder recolor: aligned with the old #composer.bash-mode #input::placeholder */
-#composer.bash-mode .lex-ph { color: var(--bash); }
 
 /* completion chips (@files / slash-command atomic nodes): small pills, token palette, per-theme rendering */
 .chip {

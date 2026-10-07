@@ -20,6 +20,10 @@ export interface Section {
   titleEn?: string;
   hint?: string;
   hintEn?: string;
+  // Visibility gate: the section renders only while the live settings value at
+  // `key` strictly equals `equals` (checked in SchemaRows against
+  // hostSettings.values; used by the memory page's backend-specific groups)
+  when?: { key: string; equals: string };
   // Stable id so a page can own the layout of its own sections (pg-computer
   // renders each section as heading + one rounded card instead of SchemaRows'
   // default heading + card pair)
@@ -44,15 +48,54 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "interaction/Power" },
   ],
   "pg-memory": [
+    // Auto-Learn comes first: its controller + managed-skill output are
+    // backend-independent (even with memory off), only the learn-tool write
+    // path needs local/mnemopi/hindsight — see autolearn.enabled's label
+    { titleZh: "自动学习", titleEn: "Auto-Learn", keys: ["autolearn.enabled", "autolearn.autoContinue", "autolearn.minToolCalls"] },
     { from: "memory/General", titleZh: "记忆引擎", titleEn: "Memory engine" },
-    { from: "memory/Auto-Learn" },
-    { from: "memory/Mnemopi" },
-    { from: "memory/Hindsight" },
-    { from: "memory/Sharpshooter" },
+    // Backend-specific groups (ui-less keys adopted from the advanced page;
+    // memories.enabled stays hidden — the base marks it "use memory.backend
+    // instead"). Each group is gated on the live memory.backend value, so the
+    // page shows exactly the active provider's settings.
+    {
+      when: { key: "memory.backend", equals: "local" },
+      titleZh: "本地记忆管线", titleEn: "Local memory pipeline",
+      keys: [
+        "memories.maxRolloutsPerStartup", "memories.maxRolloutAgeDays", "memories.minRolloutIdleHours",
+        "memories.threadScanLimit", "memories.maxRawMemoriesForGlobal", "memories.stage1Concurrency",
+        "memories.stage1LeaseSeconds", "memories.stage1RetryDelaySeconds", "memories.phase2LeaseSeconds",
+        "memories.phase2RetryDelaySeconds", "memories.phase2HeartbeatSeconds", "memories.rolloutPayloadPercent",
+        "memories.phase1InputTokenLimit", "memories.fallbackTokenLimit", "memories.summaryInjectionTokenLimit",
+      ],
+    },
+    { when: { key: "memory.backend", equals: "mnemopi" }, from: "memory/Mnemopi" },
+    {
+      when: { key: "memory.backend", equals: "mnemopi" },
+      titleZh: "Mnemopi 底层", titleEn: "Mnemopi internals",
+      keys: ["mnemopi.retainEveryNTurns", "mnemopi.recallLimit", "mnemopi.recallContextTurns", "mnemopi.recallMaxQueryChars", "mnemopi.injectionTokenLimit", "mnemopi.debug"],
+    },
+    { when: { key: "memory.backend", equals: "hindsight" }, from: "memory/Hindsight" },
+    {
+      when: { key: "memory.backend", equals: "hindsight" },
+      titleZh: "Hindsight 底层", titleEn: "Hindsight internals",
+      keys: [
+        "hindsight.bankIdPrefix", "hindsight.bankMission", "hindsight.retainMission", "hindsight.retainEveryNTurns",
+        "hindsight.retainOverlapTurns", "hindsight.retainContext", "hindsight.recallBudget", "hindsight.recallMaxTokens",
+        "hindsight.recallContextTurns", "hindsight.recallMaxQueryChars", "hindsight.recallTypes", "hindsight.debug",
+        "hindsight.requestTimeoutMs", "hindsight.reflectTimeoutMs", "hindsight.recallTimeoutMs", "hindsight.retainTimeoutMs",
+        "hindsight.mentalModelMaxRenderChars",
+      ],
+    },
+    { when: { key: "memory.backend", equals: "sharpshooter" }, from: "memory/Sharpshooter" },
+    {
+      when: { key: "memory.backend", equals: "sharpshooter" },
+      titleZh: "Sharpshooter 底层", titleEn: "Sharpshooter internals",
+      keys: ["sharpshooter.intervalMinutes", "sharpshooter.injectionTokenLimit"],
+    },
   ],
   "pg-computer": [
     { id: "computer", from: "tools/Computer", excludeKeys: ["computer.enabled", "computer.display"], titleZh: "电脑控制", titleEn: "Computer control" },
-    { id: "browser", from: "tools/Grep & Browser", includePrefix: ["browser."], excludeKeys: ["browser.enabled", "browser.tern", "browser.cmux", "browser.relay", "browser.relayUrl", "browser.cdpUrl"], titleZh: "浏览器使用", titleEn: "Browser use" },
+    { id: "browser", from: "tools/Grep & Browser", includePrefix: ["browser."], excludeKeys: ["browser.enabled", "browser.relay", "browser.relayUrl", "browser.cdpUrl"], titleZh: "浏览器使用", titleEn: "Browser use" },
   ],
   "pg-mcp": [{ from: "tools/Discovery & MCP" }],
   "pg-plugins": [
@@ -60,7 +103,22 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { titleZh: "市场与更新", titleEn: "Marketplace & updates", keys: ["marketplace.autoUpdate"] },
     { titleZh: "外部扩展与禁用名单", titleEn: "External extensions & disabled list", keys: ["extensions", "disabledExtensions"], hint: "手动指定额外加载的扩展路径，或指定禁用的插件/扩展模块 ID（逗号分隔）", hintEn: "Manually specify extra extension paths to load, or extension module IDs to disable (comma-separated)" },
   ],
-  "pg-skills": [{ from: "tasks/Commands & Skills", includePrefix: ["skills."], titleZh: "技能命令", titleEn: "Skill commands" }],
+  "pg-skills": [
+    {
+      // Merged section (was two cards): the skill-command registration toggle
+      // plus directory-level loading switches + custom roots + glob allowlist.
+      titleZh: "技能设置",
+      titleEn: "Skill settings",
+      keys: [
+        "skills.enableSkillCommands",
+        "skills.enablePiUser", "skills.enablePiProject",
+        "skills.enableAgentsUser", "skills.enableAgentsProject",
+        "skills.enableClaudeUser", "skills.enableClaudeProject", "skills.enableCodexUser",
+        "skills.customDirectories", "skills.includeSkills",
+        "skills.registryUrl",
+      ],
+    },
+  ],
   "pg-hooks": [
     {
       titleZh: "钩子运行配置",
@@ -92,12 +150,20 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   ],
   "pg-capabilities": [
     { titleZh: "搜索相关设置", titleEn: "Search settings", keys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"] },
+    // ui-less keys adopted from the advanced page: per-destination options and
+    // credentials for the image URL publishing chain (backends/enabled/command
+    // live in the model-behavior Vision group)
+    { titleZh: "图像发布后端", titleEn: "Image publishing backends", keys: ["images.urls.options", "images.urls.credentials"] },
   ],
   "pg-interaction": [
     { from: "interaction/Input" },
     { from: "interaction/Approvals" },
     { from: "interaction/Notifications", excludeKeys: ["ask.timeout"] },
     { from: "interaction/Speech" },
+    // ui-less key adopted from the advanced page: transcription language for
+    // the dictation switches in the Speech group above (stt.enabled/modelName/
+    // submitTrigger); the capabilities page's dictation section points here too
+    { titleZh: "语音转文字语言", titleEn: "Speech-to-text language", keys: ["stt.language"] },
     { from: "interaction/Collab" },
     { from: "interaction/Stream" },
     { from: "interaction/Magic Keywords" },
@@ -124,6 +190,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "tools/Todos" },
     { from: "tools/Grep & Browser", excludePrefix: ["browser."], titleZh: "Grep", titleEn: "Grep" },
     { from: "tools/GitHub" },
+    { from: "tools/IDA Pro" },
     { from: "tools/Output Limits" },
     { from: "tools/Execution" },
     { from: "tools/Developer" },
@@ -158,7 +225,7 @@ export function expandSection(section: Section, schema: Record<string, SchemaDef
   }
   const excludeKeys = section.excludeKeys;
   if (excludeKeys) keys = keys.filter((k) => !excludeKeys.includes(k)); // TS doesn't keep narrowing inside closures; hoist to a local const first
-  return keys;
+  return keys.filter((k) => !HIDDEN_KEYS[k]);
 }
 
 // Keys excluded from expansion, or hardcoded-rendered on a specific settings page
@@ -179,19 +246,52 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "commands.enableOpencodeProject": "pg-skills",
   "statusLine.showHookStatus": "pg-hooks",
   "extensionHandlers.toolCallTimeoutMs": "pg-hooks",
+  // Fully managed by dedicated graphical controls (model page eye-toggle /
+  // role cards / ctrl+p cycle editor, skills page master switch / row toggles,
+  // extensions page source master switch / foreign-tool-dir opt-in), written
+  // through dedicated RPCs — no raw SchemaRows editor anywhere
+  "enabledModels": "pg-model",
+  "modelRoles": "pg-model",
+  "cycleOrder": "pg-model",
+  "skills.enabled": "pg-skills",
+  "skills.ignoredSkills": "pg-skills",
+  "enabledProviders": "pg-extensions",
+  "disabledProviders": "pg-extensions",
+  // The base marks this "Hidden from UI — users should use memory.backend
+  // instead" (memories/settings.ts); the memory page's local-pipeline group
+  // keys off memory.backend directly, so this legacy switch stays invisible
+  "memories.enabled": "pg-memory",
+};
+
+// Keys hidden from every settings surface (page rendering AND search). Consumers
+// live only in the base's CLI/TUI startup path (main.ts entry, setup wizard,
+// splash, startup changelog banner, startup update check) or its TUI layer,
+// none of which the desktop host loads — editing them here has no effect on the
+// desktop app. (browser.tern/browser.cmux: Tern-pane / cmux-WKWebView browser
+// surfaces never exist under the desktop host, which drives its own browser
+// mirror.) startup.quiet stays visible: it also gates the SDK-side xd:// mount
+// notices, which desktop sessions do emit.
+export const HIDDEN_KEYS: Record<string, true> = {
+  doubleEscapeAction: true,
+  "browser.tern": true,
+  "browser.cmux": true,
+  "startup.showSplash": true,
+  "startup.setupWizard": true,
+  "startup.changelogMode": true,
+  "startup.checkUpdate": true,
 };
 
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests
 const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-general": [
     "autoResume", "power.sleepPrevention", "git.enabled", "startup.quiet",
-    "startup.showSplash", "startup.setupWizard", "startup.checkUpdate", "update.channel",
-    "marketplace.autoUpdate", "startup.changelogMode", "ask.timeout", "hideThinkingBlock",
+    "update.channel",
+    "marketplace.autoUpdate", "ask.timeout", "hideThinkingBlock",
   ],
   "pg-interaction": [
     "steeringMode", "followUpMode", "interruptMode", "tui.vimMode",
     "tui.vimModeDisplay", "loop.mode", "loop.conditionTimeoutMs", "composer.recallClearedDrafts",
-    "doubleEscapeAction", "treeFilterMode", "autocompleteMaxVisible", "spelling.typoDetection",
+    "treeFilterMode", "autocompleteMaxVisible", "spelling.typoDetection",
     "spelling.autocomplete", "spelling.autocorrect", "emojiAutocomplete", "paste.largeMenuThreshold",
     "magicKeywords.enabled", "magicKeywords.ultrathink", "magicKeywords.orchestrate", "magicKeywords.workflow",
     "completion.notify", "error.notify", "ask.notify", "recap.enabled",
@@ -221,7 +321,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "security.enabled", "ask.enabled", "tools.intentTracing",
     "tools.abortOnFabricatedResult", "tools.speculativeExecution.enabled", "tools.speculativeExecution.maxInFlight", "tools.maxTimeout",
     "async.enabled", "irc.timeoutMs", "tasks.todoClearDelay", "dev.autoqa",
-    "dev.autoqaPush.endpoint",
+    "dev.autoqaPush.endpoint", "ida.python", "ida.installDir", "ida.maxOpen", "ida.idleCloseSec",
   ],
   "pg-computer": [
     "computer.maxWidth", "computer.maxHeight",
@@ -299,7 +399,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   ],
   "pg-skills": [
     "skills.enableSkillCommands", "commands.enableClaudeUser", "commands.enableClaudeProject", "commands.enableOpencodeUser",
-    "commands.enableOpencodeProject",
+    "commands.enableOpencodeProject", "skills.registryUrl",
   ],
   "pg-hooks": [
     "statusLine.showHookStatus", "extensionHandlers.toolCallTimeoutMs",

@@ -5,7 +5,7 @@ import { useAppStore } from "../index";
 import { applyUiConfig } from "../../appearance";
 import { hostInstanceReset } from "../session";
 import { ingestModelDefaults, ingestModels } from "../models";
-import { clearRightSnapshots, resetBrowserMirrorUi } from "../right";
+import { clearRightSlots, resetBrowserMirrorUi } from "../right";
 import { t } from "../../i18n";
 import type { ApprovalMode } from "../../types/frames";
 import type { SchemaDef } from "../../types/settings";
@@ -39,6 +39,11 @@ export const configHandlers = {
         useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
       }
       useAppStore.setState({ hostSettings: msg.settings });
+      // Master gate closed: drop any pending create intent so a session born
+      // after this never carries a stale computerMode:true
+      if (msg.settings.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
+        useAppStore.setState({ newSessionComputerMode: false });
+      }
     }
   },
   models(msg) {
@@ -69,6 +74,9 @@ export const configHandlers = {
       useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
     }
     useAppStore.setState({ hostSettings: msg.settings });
+    if (msg.settings?.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
+      useAppStore.setState({ newSessionComputerMode: false }); // same gate-close cleanup as the ready handler above
+    }
     if (msg.restartHint) useAppStore.getState().toast(t("notify.savedRestartHint"));
   },
   settings_schema(msg) {
@@ -76,7 +84,7 @@ export const configHandlers = {
     useAppStore.setState((s) => ({ settingsSchema: msg.schema as Record<string, SchemaDef> }));
   },
   profile_switched(msg) {
-    clearRightSnapshots(); // profile switch = different session universe, per-session snapshots no longer trustworthy
+    clearRightSlots(); // profile switch = different session universe, per-session slots (and their resources) no longer trustworthy
     useAppStore.setState((s) => ({
       openSessions: new Map(),
       activePath: null,
@@ -89,7 +97,11 @@ export const configHandlers = {
     useAppStore.setState((s) => ({ usageStats: msg.stats }));
   },
   agent_assets(msg) {
-    useAppStore.setState((s) => ({ agentAssets: msg.assets }));
+    // Skill/asset toggles land here: drop the composer's cached command list
+    // so the next $ // / completion refetches it (the cache key alone would
+    // keep serving the pre-toggle list — disabled skills stayed, enabled ones
+    // stayed hidden).
+    useAppStore.setState((s) => ({ agentAssets: msg.assets, commands: null, commandsSessionId: null }));
   },
   extensions(msg) {
     useAppStore.setState((s) => ({
@@ -110,6 +122,10 @@ export const configHandlers = {
   remote_workspace_added(msg) {
     const { type: _type, ...rest } = msg;
     useAppStore.setState({ remoteWorkspaceAdded: { ...rest, ts: Date.now() } });
+  },
+  ssh_dirs(msg) {
+    const { type: _type, ...rest } = msg;
+    useAppStore.setState({ sshDirs: { ...rest, ts: Date.now() } });
   },
 } satisfies HandlerSlice;
 

@@ -7,11 +7,14 @@
 // .inp inputs, .save-btn row buttons, .add-btn page-level new, .confirm-btn
 // footer actions — per the settings-consistency rules these are global base
 // classes, not dialog-private styles.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast, setWelcomeProject } from "../../store";
+import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
 import { confirmDialog } from "../settings/common";
+import { copyText } from "../main/sidebar/util";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 // Host row shape from the ssh_hosts frame (see SshHostsFrame)
@@ -33,6 +36,67 @@ function hostSubtitle(h: SshHostRow): string {
   return `${user}${h.host}${port}`;
 }
 
+// Probe/connect outcome panel. The text is selectable (user-select: text) and
+// the raw ssh diagnostic is copied verbatim — no toast: a toast auto-hides in
+// 2.2s, cannot be selected, and sits below the dialog mask (z 400 < 1000).
+// Status rides on the border color, the copy button is the only chrome.
+function ResultPanel({ ok, text, copyLabel, onCopy }: { ok: boolean; text: string; copyLabel: string; onCopy: () => void }) {
+  return (
+    <div className="rd-result" data-ok={ok}>
+      <div className="rd-result-bar">
+        {!ok && <span className="mcp-err-icon" title={text}>ⓘ</span>}
+        <button type="button" className="save-btn" onClick={onCopy}>
+          <Icon name="copy" size={12} />
+          {copyLabel}
+        </button>
+      </div>
+      <pre className="rd-result-body">{text}</pre>
+    </div>
+  );
+}
+
+// Workspace-path directory picker, portaled to <body> so it escapes the
+// dialog's scrolling container and stacks above the dialog card (z 1000):
+// anchored inside the card it was clipped/covered by the dialog chrome.
+// Fixed-position + placeMenu, same recipe as BranchMenu.
+function DirPicker({ anchor, dirs, activeIdx, onPick }: { anchor: HTMLElement; dirs: string[]; activeIdx: number; onPick: (name: string) => void }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current!;
+    placeMenu(menu, 0, 0);
+    const rect = menu.getBoundingClientRect();
+    const a = anchor.getBoundingClientRect();
+    const left = Math.max(8, Math.min(a.left, window.innerWidth - rect.width - 8));
+    const top = Math.max(8, Math.min(a.bottom + 6, window.innerHeight - rect.height - 8));
+    menu.style.width = a.width + "px";
+    placeMenu(menu, left, top);
+  });
+
+  // Arrow-key navigation: keep the active row visible inside the scrolling menu
+  // (same recipe as PaletteMenu).
+  useLayoutEffect(() => {
+    menuRef.current?.querySelector(".mi.on")?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx]);
+
+  return createPortal(
+    <div className="menu open rd-dirs" ref={menuRef}>
+      {dirs.map((name, i) => (
+        <div
+          key={name}
+          className={i === activeIdx ? "mi on" : "mi"}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onPick(name)}
+        >
+          <span className="mi-ic"><Icon name="folderLine" size={15} /></span>
+          <span className="truncate">{name}</span>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
 export default function RemoteDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const sshHosts = useAppStore((s) => s.sshHosts);
@@ -47,8 +111,39 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
+  // Probe/connect outcome rendered inline in the dialog. A toast cannot be used
+  // for failures here: it auto-hides, forbids selection, and hides behind the
+  // dialog mask — the user needs the ssh diagnostic to stay put and be copyable.
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const testTsRef = useRef(0);
   const addedTsRef = useRef(remoteWorkspaceAdded?.ts);
+  // Directory-picker state: the base path the current listing describes and its
+  // entries. Fetched by debounced ssh_list_dirs while the path input is focused.
+  const [dirList, setDirList] = useState<{ path: string; dirs: string[] } | null>(null);
+  const [pathFocused, setPathFocused] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const pathWrapRef = useRef<HTMLDivElement>(null);
+  const sshDirs = useAppStore((s) => s.sshDirs);
+  // Base directory the typed path points into ("/" for "ho", "/home" for "/home/x").
+  // Trailing slash is stripped to match the host's normalized echo (otherwise the
+  // reply for a just-picked "/home/" would never match and the picker would close).
+  const dirBase = remotePath.includes("/")
+    ? (remotePath.slice(0, remotePath.lastIndexOf("/") + 1).replace(/\/+$/, "") || "/")
+    : "";
+  const dirBaseRef = useRef(dirBase);
+  dirBaseRef.current = dirBase;
+  // Picker rows: the dirs filtered by the typed tail of the current base. The
+  // tail is the segment after the last separator — dirBase strips it, so
+  // slicing by dirBase.length would leave the "/" in ("/home/" → tail "/")
+  // and filter every dir out, killing the picker below a new subpath.
+  const tail = remotePath.slice(remotePath.lastIndexOf("/") + 1);
+  const matched = pathFocused && dirList && dirList.path === dirBase
+    ? dirList.dirs.filter((n) => n.startsWith(tail)).slice(0, 50)
+    : [];
+  // Any keystroke re-filters the list: the active row returns to the top.
+  useEffect(() => {
+    setActiveIdx(0);
+  }, [dirBase, remotePath]);
 
   useEffect(() => {
     send({ type: "ssh_list_hosts" });
@@ -63,13 +158,53 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
     if (!sshHosts.some((h) => h.name === selected)) setSelected(sshHosts[0].name);
   }, [sshHosts, selected]);
 
+  // The probe verdict describes the form as it was tested. Any field edit after
+  // a green probe invalidates it: saving gated on a stale probe would persist an
+  // untested target (the new flow requires test → save, not type-over-a-green).
+  useEffect(() => {
+    setResult(null);
+  }, [form]);
+
+  // Directory picker: while the path input is focused, list the base directory
+  // of the typed path (debounced). In form mode this section only exists after
+  // a green probe, so the inline fields are known-reachable credentials.
+  useEffect(() => {
+    if (!pathFocused || !dirBase) {
+      setDirList(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (editing !== null) {
+        send({ type: "ssh_list_dirs", host: form.host.trim(), username: form.username.trim(), port: form.port.trim(), keyPath: form.keyPath.trim(), path: dirBaseRef.current });
+      } else if (selected) {
+        send({ type: "ssh_list_dirs", name: selected, path: dirBaseRef.current });
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [dirBase, pathFocused, editing, selected, form.host, form.username, form.port, form.keyPath]);
+
+  // Listing replies: only the frame matching the base we're still typing into
+  // lands (stale replies for abandoned prefixes are ignored, keeping the last
+  // good list so the picker survives a mid-typing base change). No ts-dedup:
+  // two host replies can share one millisecond, and the [sshDirs] dependency
+  // already guarantees one run per distinct reply.
+  useEffect(() => {
+    if (!sshDirs) return;
+    if (!sshDirs.ok) {
+      if (sshDirs.path === dirBaseRef.current) setDirList(null);
+      return;
+    }
+    if (sshDirs.path !== dirBaseRef.current) return;
+    setDirList({ path: sshDirs.path, dirs: sshDirs.dirs ?? [] });
+  }, [sshDirs]);
+
   // Probe replies: release the testing state and surface the outcome
   useEffect(() => {
     if (!sshTestResult || sshTestResult.ts === testTsRef.current) return;
     testTsRef.current = sshTestResult.ts;
     setTesting(false);
-    if (sshTestResult.ok) toast(t("ssh.testOk", { ms: sshTestResult.latencyMs }));
-    else toast(`${t("ssh.testFail")}: ${sshTestResult.error ?? ""}`);
+    if (sshTestResult.ok) setResult({ ok: true, text: t("ssh.testOk", { ms: sshTestResult.latencyMs }) });
+    else setResult({ ok: false, text: `${t("ssh.testFail")}: ${sshTestResult.error ?? ""}` });
   }, [sshTestResult, t]);
 
   // Creation replies: on success register the stub as a project, select it for
@@ -79,7 +214,7 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
     addedTsRef.current = remoteWorkspaceAdded.ts;
     setConnecting(false);
     if (!remoteWorkspaceAdded.ok || !remoteWorkspaceAdded.cwd) {
-      toast(`${t("ssh.connFail")}: ${remoteWorkspaceAdded.error ?? ""}`);
+      setResult({ ok: false, text: `${t("ssh.connFail")}: ${remoteWorkspaceAdded.error ?? ""}` });
       return;
     }
     send({ type: "add_project", cwd: remoteWorkspaceAdded.cwd });
@@ -128,6 +263,15 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
     send({ type: "ssh_remove_host", name: h.name });
   };
 
+  // Copy the raw diagnostic verbatim — the user pastes it into a bug report.
+  const copyResult = () => {
+    if (!result) return;
+    copyText(result.text).then(
+      () => toast(t("ssh.copiedResult")),
+      () => toast(t("ssh.copyResultFailed")),
+    );
+  };
+
   const testTarget = () => {
     if (editing !== null) {
       // Inline form: probe the typed fields without saving
@@ -136,6 +280,7 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
         return;
       }
       setTesting(true);
+      setResult(null);
       send({
         type: "ssh_test_host",
         host: form.host.trim(),
@@ -145,13 +290,23 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
       });
     } else if (selected) {
       setTesting(true);
+      setResult(null);
       send({ type: "ssh_test_host", name: selected });
     }
+  };
+
+  // Complete the typed path to a picked directory; the trailing "/" makes the
+  // next listing open that directory — picking walks the tree one hop at a
+  // time. dirBase has no trailing slash ("/" for root, "/home" for "/home/x"),
+  // so it must be re-inserted between base and name.
+  const pickDir = (name: string) => {
+    setRemotePath(`${dirBase === "/" ? "" : dirBase}/${name}/`);
   };
 
   const connect = () => {
     if (!selected || !remotePath.trim()) return;
     setConnecting(true);
+    setResult(null);
     send({ type: "add_remote_workspace", host: selected, remotePath: remotePath.trim() });
     // Safety release: a host-side hang must not freeze the button forever
     setTimeout(() => setConnecting(false), 30_000);
@@ -166,16 +321,16 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
         className="confirm-box"
-        style={{ width: "520px", maxWidth: "92vw", maxHeight: "82vh", display: "flex", flexDirection: "column" }}
+        style={{ width: "650px", maxWidth: "92vw", maxHeight: "82vh", display: "flex", flexDirection: "column" }}
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogTitle className="confirm-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Icon name="cloud" size={16} />
+          <Icon name="server" size={16} />
           <span>{t("ssh.title")}</span>
         </DialogTitle>
         <div style={{ color: "var(--faint)", fontSize: "var(--ui-fs-sm)", marginTop: "2px" }}>{t("ssh.desc")}</div>
 
-        <div style={{ flex: 1, minHeight: 0, marginTop: "14px", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0, marginTop: "14px", overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
           {/* Host section: saved rows (click to select) or the add/edit form */}
           <div style={labelStyle}>{t("ssh.hostSection")}</div>
           {editing === null ? (
@@ -196,7 +351,7 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
                   onClick={() => setSelected(h.name)}
                 >
                   <span className="flex-none flex items-center justify-center" style={{ color: h.name === selected ? "var(--accent)" : "var(--dim)" }}>
-                    <Icon name="cloud" size={15} />
+                    <Icon name="server" size={15} />
                   </span>
                   <div className="flex-1 min-w-0">
                     <div style={{ fontWeight: 500, fontSize: "var(--ui-fs-base)" }}>{h.name}</div>
@@ -217,21 +372,21 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
               </button>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
+            <div className="rd-form" style={{ display: "flex", flexDirection: "column" }}>
               <div style={rowStyle}>
                 <div className="flex-1 min-w-0">
                   <label style={labelStyle}>{t("ssh.nameLabel")}</label>
                   <input className="inp w-full" value={form.name} placeholder={t("ssh.namePh")} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <label style={labelStyle}>{t("ssh.addressLabel")}</label>
-                  <input className="inp w-full" value={form.host} placeholder={t("ssh.addressPh")} onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))} />
+                  <label style={labelStyle}>{t("ssh.userLabel")}</label>
+                  <input className="inp w-full" value={form.username} placeholder={t("ssh.userPh")} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
                 </div>
               </div>
               <div style={rowStyle}>
                 <div className="flex-1 min-w-0">
-                  <label style={labelStyle}>{t("ssh.userLabel")}</label>
-                  <input className="inp w-full" value={form.username} placeholder={t("ssh.userPh")} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
+                  <label style={labelStyle}>{t("ssh.addressLabel")}</label>
+                  <input className="inp w-full" value={form.host} placeholder={t("ssh.addressPh")} onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))} />
                 </div>
                 <div style={{ width: "110px", flex: "none" }}>
                   <label style={labelStyle}>{t("ssh.portLabel")}</label>
@@ -252,8 +407,15 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
               </div>
               {formError && <div style={{ color: "var(--err)", fontSize: "var(--ui-fs-sm)", marginBottom: "10px" }}>{formError}</div>}
               <div style={{ display: "flex", gap: "8px" }}>
-                <button className="save-btn" onClick={saveHost}>{t("ssh.saveHost")}</button>
-                <button className="save-btn" onClick={testTarget} disabled={testing}>{testing ? t("ssh.testing") : t("ssh.testBtn")}</button>
+                <button
+                  className={result?.ok ? "save-btn rd-test-ok" : "save-btn"}
+                  onClick={testTarget}
+                  disabled={testing}
+                  title={result?.ok ? result.text : undefined}
+                >
+                  {testing ? t("ssh.testing") : t("ssh.testBtn")}
+                </button>
+                <button className="save-btn" style={{ marginLeft: "auto" }} onClick={saveHost} disabled={!result?.ok} title={result?.ok ? undefined : t("ssh.saveAfterTest")}>{t("ssh.saveHost")}</button>
                 {sshHosts.length > 0 && (
                   <button className="save-btn" onClick={() => setEditing(null)}>{t("ssh.cancelForm")}</button>
                 )}
@@ -261,32 +423,76 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Path section: only meaningful with a selected host */}
-          <div style={{ ...labelStyle, marginTop: "16px" }}>{t("ssh.pathSection")}</div>
-          <input
-            className="inp w-full"
-            value={remotePath}
-            placeholder={t("ssh.pathPh")}
-            disabled={!selectedHost}
-            onChange={(e) => setRemotePath(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && selected && remotePath.trim()) {
-                e.preventDefault();
-                connect();
-              }
-            }}
-          />
-          {selectedHost && (
-            <div style={{ color: "var(--faint)", fontSize: "var(--ui-fs-sm)", marginTop: "6px" }} className="truncate">
-              ssh://{selectedHost.name}
-              {remotePath.trim().replace(/\/+$/, "") || "/…"}
-            </div>
+          {/* Path section: gated by reachability — in list mode a selected host,
+              in form mode only after a green probe (the new flow: test → save) */}
+          {(editing === null ? Boolean(selectedHost) : result?.ok === true) && (
+            <>
+              <div style={{ ...labelStyle, marginTop: "16px" }}>{t("ssh.pathSection")}</div>
+              <div ref={pathWrapRef}>
+                <input
+                  className="inp w-full"
+                  value={remotePath}
+                  placeholder={t("ssh.pathPh")}
+                  disabled={!selectedHost && editing === null}
+                  onChange={(e) => setRemotePath(e.target.value)}
+                  onFocus={() => setPathFocused(true)}
+                  onBlur={() => setTimeout(() => setPathFocused(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && dirList) {
+                      // Close the picker only; without the stop the dialog's own
+                      // Esc handling would dismiss the whole dialog.
+                      e.stopPropagation();
+                      setDirList(null);
+                      return;
+                    }
+                    // Keyboard picking: arrows move the active row, Tab/Enter
+                    // complete to it (Tab keeps focus so completion can chain).
+                    if (matched.length > 0) {
+                      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                        e.preventDefault();
+                        const step = e.key === "ArrowDown" ? 1 : matched.length - 1;
+                        setActiveIdx((i) => (i + step) % matched.length);
+                        return;
+                      }
+                      if (e.key === "Tab" || e.key === "Enter") {
+                        e.preventDefault();
+                        pickDir(matched[Math.min(activeIdx, matched.length - 1)]);
+                        return;
+                      }
+                    }
+                    if (e.key === "Enter" && selected && remotePath.trim() && editing === null) {
+                      e.preventDefault();
+                      connect();
+                    }
+                  }}
+                />
+                {matched.length > 0 && pathWrapRef.current && (
+                  <DirPicker
+                    anchor={pathWrapRef.current}
+                    dirs={matched}
+                    activeIdx={Math.min(activeIdx, matched.length - 1)}
+                    onPick={pickDir}
+                  />
+                )}
+              </div>
+              {selectedHost && editing === null && (
+                <div style={{ color: "var(--faint)", fontSize: "var(--ui-fs-sm)", marginTop: "6px" }} className="truncate">
+                  ssh://{selectedHost.name}
+                  {remotePath.trim().replace(/\/+$/, "") || "/…"}
+                </div>
+              )}
+            </>
           )}
+
+          {/* Probe/connect failure outcome. Success needs no panel — the test
+              button carries a pale-green tint instead (see .rd-test-ok); the
+              user only needs the ssh diagnostic to stay put and be copyable. */}
+          {result && !result.ok && <ResultPanel ok={result.ok} text={result.text} copyLabel={t("ssh.copyResult")} onCopy={copyResult} />}
         </div>
 
         <DialogFooter className="confirm-actions" style={{ marginTop: "16px" }}>
           <button className="confirm-btn" onClick={onClose}>{t("ssh.cancel")}</button>
-          <button className="confirm-btn" onClick={connect} disabled={!selected || !remotePath.trim() || connecting}>
+          <button className="confirm-btn" onClick={connect} disabled={editing !== null || !selected || !remotePath.trim() || connecting} title={editing !== null ? t("ssh.saveFirst") : undefined}>
             {connecting ? t("ssh.connecting") : t("ssh.connect")}
           </button>
         </DialogFooter>

@@ -21,6 +21,9 @@ interface Props {
   roles?: readonly PickerRole[];
   roleLabel?: ReactNode;
   onPickRole?: (role: PickerRole) => void;
+  // Marks a role row ✓ by role id (settings role rows store "@role" values, not the
+  // resolved model); falls back to the resolved-model match used by the composer menu
+  selectedRoleId?: string;
   renderModelMeta?: (model: PickerModel) => ReactNode;
   emptyContent?: ReactNode;
   menuClassName?: string;
@@ -34,7 +37,7 @@ interface Props {
 const ROLE_GROUP = "@roles";
 
 // Controlled menu content: adapters own candidate filtering, RPC and geometry.
-export default function ModelCascadeMenu({ models, selectedId, onPick, roles = [], roleLabel, onPickRole,
+export default function ModelCascadeMenu({ models, selectedId, onPick, roles = [], roleLabel, onPickRole, selectedRoleId,
   renderModelMeta, emptyContent, menuClassName = "", menuId, arrowSize = 14, highlightSelected = false,
   positionMenu, positionFlyout }: Props) {
   const [group, setGroup] = useState<string | null>(null);
@@ -93,7 +96,7 @@ export default function ModelCascadeMenu({ models, selectedId, onPick, roles = [
       }}>
       {group === ROLE_GROUP ? roles.map((role) => <div className="mi" data-role={role.id} key={role.id}
         onClick={(e) => { e.stopPropagation(); onPickRole!(role); }}>
-        <span className="ck">{selectedId === role.resolved ? "✓" : ""}</span>
+        <span className="ck">{selectedRoleId === role.id || selectedId === role.resolved ? "✓" : ""}</span>
         {role.name} : {role.resolvedName ?? role.resolved}
       </div>) : (groups.get(group) ?? []).map((model) => <div
         className={"mi" + (highlightSelected && selectedId === model.id ? " on" : "")}

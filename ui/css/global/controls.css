@@ -154,7 +154,7 @@ svg { vertical-align: middle; }
   font-size: var(--ui-fs-base); color: var(--text); cursor: pointer;
 }
 
-.menu .mi:hover { background: var(--panel-3); }
+.menu .mi:hover, .menu .mi.on { background: var(--panel-3); } /* .on = keyboard-active row (picker arrow-key navigation) */
 
 .menu .mi.empty { cursor: default; color: var(--dim); }
 
@@ -269,25 +269,26 @@ svg { vertical-align: middle; }
   --pop-from: -6px; /* pops down: slides in from above */
 }
 
+/* Mirror variants for pills whose menu has no room below: opens upward (caret included) and sizes to the widest label instead of the 170px base */
+.sel.sel-up > .menu { top: auto; bottom: calc(100% + 6px); --pop-from: 6px; }
+.sel.sel-up .caret-svg { transform: rotate(180deg); }
+.sel.sel-up:has(.menu.open) .caret-svg { transform: rotate(0deg); }
+.sel.sel-wide > .menu { min-width: 300px; width: max-content; max-width: 420px; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.sel.sel-wide .mi { white-space: nowrap; }
 .add-btn {
   margin-left: auto; border: 1px solid var(--line); background: transparent;
   color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
   height: 31px; /* same height as the refresh button (.pg-refresh 31x31), unified height for per-page new/add buttons */
 }
-
 .add-btn:hover { background: var(--panel-2); }
 
 .menu .mi.disabled { color: var(--faint); cursor: default; }
-
 .menu .mi.disabled:hover { background: transparent; }
 
 .menu .mi .sub { margin-left: auto; color: var(--faint); font-size: var(--ui-fs-sm); }
 
 .pv .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
-.mcp-type-pills {
-  display: flex;
-  gap: 4px;
-}
+.mcp-type-pills { display: flex; gap: 4px; }
 
 /* Transport protocol segment = the .sel pill language: transparent pill, hover --panel-2, selected --panel-3 */
 .mcp-type-pill {

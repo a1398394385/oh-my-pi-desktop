@@ -11,8 +11,10 @@ is forbidden — new copy must go through a pack.
   the `ui` section of omp-desktop.json, written by the `set_locale` RPC)
 - `locales/zh-CN.ts`, `locales/en.ts` — UI strings (domain-prefixed keys)
 - `locales/settings-zh-CN.ts` — settings-schema translations (object values
-  `{label, description?, warning?}`; `en` falls back to the schema's own
-  `ui.label` English text, so `settings-en.ts` stays mostly empty)
+  `{label, description?, warning?}`). `en` falls back to the schema's own
+  `ui.label` English text — but keys whose registry entry carries no `ui`
+  metadata (skills.*/memories.*/mnemopi.*/hindsight.*/sharpshooter.* …) would
+  render the raw key, so they carry real entries in `settings-en.ts`
 - `locales/commands-zh-CN.ts` — built-in slash-command descriptions (same
   fallback: `en` uses the command's own English description)
 - `locales/host-zh-CN.ts`, `locales/host-en.ts` — host message strings

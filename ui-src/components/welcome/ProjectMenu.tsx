@@ -1,5 +1,5 @@
 // Project picker menu (pops upward): search filter + project list + open folder / remote
-// connection / work without a project.
+// connection actions.
 // Migrated from ui/welcome.js renderWbProjectList and the initWelcome project menu events;
 // conditional-render mounting opens it, the search state resets to empty on mount (matching
 // the old searchInput.value="" on open), and the search box focuses after 40ms.
@@ -129,7 +129,7 @@ export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: Proje
                 choose(p.cwd);
               }}
             >
-              <Icon name={p.isDefault ? "comment" : p.remote ? "cloud" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
+              <Icon name={p.isDefault ? "comment" : p.remote ? "server" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
               <span className="wb-proj-item-name flex-1 truncate">{p.isDefault ? t("misc.defaultProject") : p.remoteLabel || pathBase(p.cwd) || p.cwd}</span>
             </div>
           ))
@@ -150,24 +150,8 @@ export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: Proje
             onOpenRemote();
           }}
         >
-          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="cloud" size={15} /></span>
+          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="server" size={15} /></span>
           <span className="wb-proj-action-tx flex-1 truncate">{t("misc.remoteConn")}</span>
-        </div>
-        <div
-          className="wb-proj-action-item"
-          id="wbProjNoProject"
-          title={t("misc.noProject")}
-          onClick={(e) => {
-            e.stopPropagation();
-            // The app-owned backing dir is injected as the fixed first project row,
-            // so picking it is just choosing that row — no add_project RPC.
-            const d = useAppStore.getState().defaultWorkspace;
-            if (d) choose(d); // choose() closes the menu itself
-            else onClose();
-          }}
-        >
-          <span className="wb-proj-action-ic flex items-center justify-center text-dim flex-none"><Icon name="comment" size={15} /></span>
-          <span className="wb-proj-action-tx flex-1 truncate">{t("misc.noProject")}</span>
         </div>
       </div>
     </div>

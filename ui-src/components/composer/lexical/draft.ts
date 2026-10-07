@@ -51,6 +51,38 @@ export function clearDraftState(key: string): void {
   drafts.delete(key || "welcome");
 }
 
+// Cleared-draft stash (per composer slot, module-level = gone at app exit):
+// Ctrl+C / double-Esc clears push the draft here while the
+// composer.recallClearedDrafts setting is on; Ctrl+↑/Ctrl+↓ walk it back into
+// the composer. cursor -1 = the live draft (browsing base snapshot), 0..n-1 =
+// stash entries oldest-to-newest.
+export interface ClearedDraft {
+  text: string;
+  files: PendingFile[];
+}
+const clearedStash = new Map<string, { items: ClearedDraft[]; cursor: number; snapshot: ClearedDraft | null }>();
+
+export function stashClearedDraft(key = "welcome"): void {
+  const d = getDraft(key);
+  if (!d.text.trim() && d.files.length === 0) return;
+  const st = clearedStash.get(key) ?? { items: [], cursor: -1, snapshot: null };
+  st.items.push({ text: d.text, files: [...d.files] });
+  st.cursor = -1;
+  st.snapshot = null;
+  clearedStash.set(key, st);
+}
+
+// Move the browsing cursor one step (dir 1 = older, -1 = newer) and return the
+// draft to show; null = stash empty. cursor -1 = the live draft (pre-browsing
+// snapshot, possibly empty), 0 = newest stash entry, n-1 = oldest.
+export function recallClearedDraft(key = "welcome", dir: 1 | -1): ClearedDraft | null {
+  const st = clearedStash.get(key);
+  if (!st || st.items.length === 0) return null;
+  if (st.cursor === -1 && dir === 1) st.snapshot = { text: getDraftText(key), files: [...getDraftFiles(key)] };
+  st.cursor = Math.min(Math.max(st.cursor + dir, -1), st.items.length - 1);
+  return st.cursor === -1 ? st.snapshot : st.items[st.items.length - 1 - st.cursor];
+}
+
 // contentEditable support probe: in environments like happy-dom the
 // contentEditable attribute is readable but Lexical's runtime dependencies are
 // missing (MutationObserver etc. -- mounting throws ReferenceError immediately)

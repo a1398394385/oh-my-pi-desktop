@@ -188,7 +188,7 @@
 .user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
 
 .act {
-  color: var(--dim); font-size: var(--ui-fs-base); margin: 20px 0;
+  color: var(--dim); font-size: var(--ui-fs-base); margin: 16px 0;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   /* Event-row content is 15px narrower than body text: the content-column max-width on #stream>* is an ID selector and can't be overridden here, so padding shrinks the content box instead; click-expanded card bodies are siblings and unaffected */
   padding-right: 15px;
@@ -212,6 +212,7 @@
    line-height:1 box center of .lbl. */
 .act > svg:first-child,
 .act > span:first-child > svg,
+.act.think .th-ic svg,
 .chg-item > svg:first-child,
 .chg-item > span:first-child > svg {
   display: block;
@@ -338,7 +339,7 @@
 .act.edit .del, .chg-item .del { color: var(--red); opacity: .9; font-weight: 500; }
 
 /* Minimal arrow appearing after the row tail on whole-row hover (shared by edit/terminal rows), 6px from the label content (aligned with thinking rows) */
-.act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow {
+.act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow, .act.ro .ed-arrow {
   color: var(--faint); opacity: 0; transition: opacity .12s; flex: none;
   display: inline-flex; align-items: center;
 }
@@ -346,7 +347,7 @@
 .cmd .ed-arrow { margin-left: -2px; }
 
 /* container gap 8px, net 6px */
-.act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow { opacity: 1; }
+.act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow, .act.ro:hover .ed-arrow { opacity: 1; }
 
 /* On expand the same chevron rotates 90° in place to point down — no icon swap, no size change, no jump */
 .ed-arrow svg { transition: transform .2s ease; }
@@ -389,16 +390,20 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Change group (consecutive edit events merged): rows in the expansion body left-align with the "changes" label text (indent = pencil icon 13 + gap 6,
-   same column as the edit/write label text). Indenting goes through padding: #stream>*'s margin-left:auto (an ID selector) would crush margin-left.
-   the group header's 20px bottom margin collapses with the body's -6px into 14px — matching the card-popup-to-label spacing (the edit-row ed-brief baseline);
-   padding-top 1px: the first label inside the line sits 1px below the line's top end.
-   inner rows pad 5px, 10px between neighbors — uniform pairwise row spacing (including rows with expanded briefs, see .chg-body .ed-brief) */
-.chg-body { margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box; }
+/* Change group (consecutive edit events merged): rows in the expansion body left-align with the "changes" label text (indent = pencil icon 13 + gap 6, same column as the edit/write label text).
+   Indenting goes through padding: #stream>*'s margin-left:auto (an ID selector) would crush margin-left. The group header's 16px bottom margin collapses with the body's -6px into 10px — matching the card-popup-to-label spacing (the edit-row ed-brief baseline);
+   padding-top 1px: the first label inside the line sits 1px below the line's top end. Inner rows pad 5px, 10px between neighbors — uniform pairwise row spacing (including rows with expanded briefs, see .chg-body .ed-brief) */
+.chg-body {
+  margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box;
+  /* Long expansions cap and scroll inside the body — the same contract as .ed-brief/.cmd-card (wheels over the body scroll it, never the outer stream; the
+     MessagePage wheel guard already treats .chg-body as a card). Column-flex children must not shrink, or flex compresses the rows instead of overflowing. */
+  max-height: 480px; overflow-y: auto; overscroll-behavior: contain;
+}
 
+.chg-body > * { flex-shrink: 0; }
 /* The full left vertical line: centered on the group header's pencil icon (13px wide) (6.5 - line width 2/2 = 5.5).
-   top end flush with the expansion body's top edge (top:0): no longer reaching up into the group header row to cover the icon; the gap to the group header text = the header mb 20 and
-   body mt -6 collapsed into 14px, matching the card-popup margin. When an inner row expands a diff the body grows and the line extends with it */
+   top end flush with the expansion body's top edge (top:0): no longer reaching up into the group header row to cover the icon; the gap to the group header text = the header mb 16 and
+   body mt -6 collapsed into 10px, matching the card-popup margin. Anchored to the body's padding box, so once the capped body scrolls the line keeps spanning the visible window while the rows scroll behind it (like .think-body's outer line over .think-scroll) */
 .chg-body::before {
   content: "";
   position: absolute;
@@ -413,7 +418,7 @@
 .chg-body .ed-brief { width: auto; align-self: stretch; margin: 9px 0 5px; }
 
 /* the nested expansion body fills the group's content column instead of taking #stream>*'s 100% width */
-/* Terminal output card inside a group: same spacing system as the group's ed-brief (the top-level .cmd-card's -6/12 is designed around the .cmd row's mb 20 collapse) */
+/* Terminal output card inside a group: same spacing system as the group's ed-brief (the top-level .cmd-card's -6/12 is designed around the .cmd row's mb 16 collapse) */
 .chg-body .cmd-card { margin: 9px 0 5px; }
 
 .chg-item {
@@ -463,7 +468,7 @@
 
 .cmd {
   /* matches .act row spacing: consecutive terminal rows collapsing 12px margins would look denser than elsewhere */
-  margin: 20px 0; font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
+  margin: 16px 0; font-family: var(--mono) !important; font-size: var(--code-fs, 12px) !important;
   color: var(--dim);
   display: flex; gap: 8px; align-items: center;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
@@ -605,10 +610,7 @@
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
-   Ticks expand equidistantly from the rail's midline (30 physical screen pixels apart, proportionally compressed by JS when too many);
-   a tick defaults to 37.5 physical pixels long (horizontal) and 3.9 physical pixels thick (vertical, pill-rounded ends); on hover they form a continuous mountain range:
-   a global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick center (nearest line brightened x2.5, animation continuous through the gaps),
-   and after hovering 150ms a ring-pop message card pops to the right of the peak tick */
+   Ticks sit 30 physical pixels apart (JS-compressed when too many), 25 long x 3.9 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line brightened x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
 #msgRail {
   position: absolute; left: 8px; width: 22px; z-index: 60;
   pointer-events: none; /* the container itself doesn't block messages; ticks are individually hoverable */
@@ -638,31 +640,31 @@
    stream natively in every web engine. After 1s of wheel idle the class lifts and the
    inner scrollers own their wheels again (with their own overscroll containment).
    Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in Chat.tsx. */
-#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text) {
+#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text) {
   pointer-events: none;
 }
 
 /* ── Inline expansion cards: scrollbars visible during scroll/hover, matching VSCode scrollbarSlider and #stream ── */
-:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
-:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList).scrolling::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList).scrolling::-webkit-scrollbar-thumb,
 #todoList :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb {
   transition: background-color 0.25s ease-out;
 }
 
-:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList):hover :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList):hover :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
 :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title, #todoList):hover::-webkit-scrollbar-thumb,
 :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title).scrolling::-webkit-scrollbar-thumb,
-:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList).scrolling :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList).scrolling :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
 #todoList.scrolling::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--dim) 50%, transparent);
 }
 
-:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:hover,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:hover,
 #todoList::-webkit-scrollbar-thumb:hover {
   background-color: var(--dim);
 }
 
-:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:active,
+:is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb:active,
 #todoList::-webkit-scrollbar-thumb:active {
   background-color: color-mix(in srgb, var(--dim) 80%, var(--text));
 }

@@ -6,6 +6,9 @@ export const rightZh = {
   tabTree: "分支",
   tabTerminal: "终端",
   tabBrowser: "浏览器",
+  tabAgentBrowser: "Agent 浏览器",
+  mirrorEmpty: "当前会话的 Agent 未在浏览",
+  mirrorOtherSessions: "其他会话的 {{n}} 个标签页不在此显示",
   searchTabs: "搜索标签页",
   openTabs: "打开中",
   noMatchTabs: "无匹配的标签页",
@@ -64,7 +67,6 @@ export const rightZh = {
   loadFailedSub: "网站可能拒绝了嵌入请求，或网络不可用。可重试，或在外部浏览器打开。",
   openExternalShort: "外部打开",
   // ---- Agent 内置浏览器实时视图（右栏浏览器页，host/browser-mirror.ts） ----
-  modeAgent: "Agent",
   modeManual: "手动浏览",
   agentLive: "实时",
   agentLiveSub: "正在实时镜像 Agent 的内置浏览器",

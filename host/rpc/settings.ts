@@ -22,6 +22,7 @@ import {
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { setPlanMode } from "../plan.ts";
+import { setComputerMode, pushComputerMode } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
@@ -90,7 +91,11 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // session-lifecycle blocks parent forwarding, so an explicit sweep is needed)
     if (key === "computer.enabled" && value !== true) {
       const gate = lookupSetting("computer.enabled");
-      if (gate) for (const entry of sessions.values()) entry.session.settings.writeValue(gate, false, "override");
+      if (gate)
+        for (const [sid, entry] of sessions.entries()) {
+          entry.session.settings.writeValue(gate, false, "override");
+          pushComputerMode(ws, sid, entry); // force-close every live opt-in: the composer button must go dark
+        }
     }
     // Model-related keys: rebuild the scoped catalog and push a models frame
     const isModelKey = ["enabledModels", "enabledProviders", "disabledProviders", "modelRoleStorage", "modelTags", "modelProviderOrder", "cycleOrder"].includes(key);
@@ -245,6 +250,12 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     setPlanMode(ws, msg.sessionId, entry, msg.enabled === true);
+  },
+  set_computer_mode(ws, msg) {
+    // Computer-use toggle: the screen-icon button in the composer (per-session opt-in; the settings-page master gate is checked inside)
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    setComputerMode(ws, msg.sessionId, entry, msg.enabled === true);
   },
   /**
    * Smoke-only: replay a `write` to xd://propose so the plan-approval card can

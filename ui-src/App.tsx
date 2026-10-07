@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import Sidebar from "./components/main/sidebar/Sidebar";
 import RightPanel from "./components/main/right/RightPanel";
 import Settings from "./components/settings/Settings";
+import BootSplash from "./components/BootSplash";
 
 function Toast() {
   const toastMsg = useAppStore((s) => s.toastMsg);
@@ -38,6 +39,7 @@ export default function App() {
       <div id="right-resizer" className="resizer" title={t("misc.dragResize")} hidden={rightCollapsed}></div>
       <RightPanel collapsed={rightCollapsed} />
       <Settings />
+      <BootSplash />
       <Toast />
     </>
   );

@@ -7,8 +7,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAppStore, send } from "../../store";
 import { t } from "../../i18n";
-import ModelCascadeMenu, { type PickerModel } from "../shared/models/ModelCascadeMenu";
-export type { PickerModel } from "../shared/models/ModelCascadeMenu";
+import ModelCascadeMenu, { type PickerModel, type PickerRole } from "../shared/models/ModelCascadeMenu";
+export type { PickerModel, PickerRole } from "../shared/models/ModelCascadeMenu";
 import Icon from "../../Icon";
 
 // Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
@@ -59,6 +59,32 @@ export function roleAcceptsModel(role: ModelRole, m: CatalogModel): boolean {
   return role.id !== "web" || kind !== "chat" || !!m.webSearch;
 }
 
+// Referenced role id extracted from a role value ("@smol", "@smol:high",
+// legacy "pi/smol", "*" shorthand for default); null when the value names a
+// concrete model. Mirrors the base resolver's alias prefixes.
+export function referencedRoleId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const s = value.trim();
+  if (s === "*") return "default";
+  const m = /^@([A-Za-z0-9_-]+)/.exec(s) ?? /^pi\/([A-Za-z0-9_-]+)/.exec(s);
+  return m ? m[1] : null;
+}
+
+// Cycle guard for offering `selfId -> targetId` as a reference: walk the chain
+// from target through each role's current @-reference; reaching selfId means
+// the new wiring would loop (the base resolver breaks cycles by falling back
+// to the built-in priority chain — better to not offer the row at all).
+function referencesBackTo(roles: ReadonlyArray<ModelRole>, selfId: string, targetId: string): boolean {
+  let cur: string | null = targetId;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    if (cur === selfId) return true;
+    seen.add(cur);
+    cur = referencedRoleId(roles.find((r) => r.id === cur)?.value);
+  }
+  return false;
+}
+
 // Current value display of the role selector: unconfigured → "default"; exact catalog model hit → model name; otherwise (alias / level-suffixed) → raw value
 export function roleSelLabel(role: ModelRole): string {
   if (!role.value) return role.id === "default" ? t("settingsPage.model.roleUnset") : t("settingsPage.model.roleDefault");
@@ -80,15 +106,25 @@ export function ModelCascadePicker({
   models,
   label,
   selectedId,
+  selectedRoleId,
   disabled,
+  roles,
+  roleLabel,
   onPick,
+  onPickRole,
 }: {
   models: ReadonlyArray<PickerModel>;
   label: ReactNode;
   // Model id marked ✓ in the flyout (role value; keepalive adds nothing)
   selectedId?: string;
+  // Role id marked ✓ in the roles flyout (role rows storing "@role" values)
+  selectedRoleId?: string;
   disabled?: boolean;
+  // Referenceable-role section above the provider cascade (settings role rows)
+  roles?: ReadonlyArray<PickerRole>;
+  roleLabel?: ReactNode;
   onPick: (id: string) => void;
+  onPickRole?: (role: PickerRole) => void;
 }) {
   const [open, setOpen] = useState(false);
   const selRef = useRef<HTMLDivElement>(null);
@@ -162,7 +198,8 @@ export function ModelCascadePicker({
     >
       <span>{label}</span>
       <span className="caret-svg"><Icon name="caret" size={14} /></span>
-      {open && <ModelCascadeMenu models={models} selectedId={selectedId} onPick={pick}
+      {open && <ModelCascadeMenu models={models} selectedId={selectedId} selectedRoleId={selectedRoleId} onPick={pick}
+        roles={roles} roleLabel={roleLabel} onPickRole={onPickRole}
         menuClassName="mp-role-menu" highlightSelected positionFlyout={positionFlyout} />}
 
     </div>
@@ -173,13 +210,41 @@ export function ModelCascadePicker({
  * display and write-back stay role-specific; the cascade interaction lives in
  * ModelCascadePicker. */
 export function RolePicker({ role, allModels }: { role: ModelRole; allModels: CatalogModel[] }) {
+  const modelRoles = useAppStore((s) => s.modelRoles);
+  // Reference section: chat-section roles only (a kind role's value must expand to a
+  // model its accepts() takes; cross-references would evade that), never the row
+  // itself, and never a role whose current @-chain loops back to this row.
+  const roleRefs =
+    role.section === "kind"
+      ? []
+      : (modelRoles ?? [])
+          .filter(
+            (r) =>
+              r.section !== "kind" &&
+              r.id !== role.id &&
+              !referencesBackTo(modelRoles ?? [], role.id, r.id),
+          )
+          .map((r) => ({
+            id: r.id,
+            name: r.name,
+            // What the target currently resolves to ("Not set" when unconfigured)
+            resolved: r.resolved ?? t("settingsPage.model.roleUnset"),
+            resolvedName: r.resolvedName,
+          }));
   return (
     <ModelCascadePicker
       models={allModels.filter((m) => roleAcceptsModel(role, m))}
       label={roleSelLabel(role)}
       selectedId={role.value ?? undefined}
+      selectedRoleId={referencedRoleId(role.value) ?? undefined}
+      roles={roleRefs}
+      roleLabel={roleRefs.length > 0 ? t("settingsPage.model.roleRefGroup") : undefined}
       onPick={(value) => {
         if ((role.value ?? null) !== value) send({ type: "set_model_role", role: role.id, value });
+      }}
+      onPickRole={(target) => {
+        const value = `@${target.id}`;
+        if (role.value !== value) send({ type: "set_model_role", role: role.id, value });
       }}
     />
   );

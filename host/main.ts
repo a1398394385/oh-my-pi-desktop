@@ -31,6 +31,7 @@ import { hostI18n } from "../ui-src/i18n/host.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
 import { settingsFrame, modelsFrame } from "./frames.ts";
+import { handleStatsHttp } from "./stats.ts";
 import { dispatchRpc } from "./rpc/index";
 import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";

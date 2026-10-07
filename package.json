@@ -4,11 +4,12 @@
   "scripts": {
     "host": "bun host/host.ts",
     "host:build": "bun scripts/build-host.ts",
+    "host:sync-prompts": "bun scripts/build-host.ts --sync-prompts",
     "smoke": "OMP_PROFILE=omp-desktop-test bun scripts/smoke.ts",
     "smoke:queue": "OMP_PROFILE=omp-desktop-test bun scripts/queue-smoke.ts",
     "smoke:features": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-features.ts",
     "smoke:plan": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-plan-approve.ts",
-    "dev": "bun run ui:build && tauri dev",
+    "dev": "bun run ui:build && tauri dev --config src-tauri/tauri.dev.conf.json",
     "ui:build": "vite build",
     "ui:watch": "vite build --watch",
     "ui:dev": "vite",
@@ -19,9 +20,12 @@
     "smoke:project-group": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-project-group.ts",
     "smoke:browsermirrorui": "OMP_PROFILE=omp-desktop-test bun run ui:build && OMP_PROFILE=omp-desktop-test bun scripts/smoke-browser-mirror-ui.ts",
     "check:capabilities": "node scripts/check-capabilities.mjs",
-    "check:boundaries": "node scripts/check-host-boundaries.mjs",
+    "smoke:skill-commands": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-skill-commands.ts",
+    "smoke:ssh-result": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-ssh-result.ts",
+    "smoke:command-cache": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-command-cache-invalidate.ts",
     "check:encoding": "node scripts/check-encoding.mjs",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun run ui:typecheck"
+    "check:i18n-keys": "bun scripts/check-i18n-keys.ts",
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/check-i18n-keys.ts && bun run ui:typecheck"
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",

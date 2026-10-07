@@ -10,7 +10,15 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import { EnabledModelPicker } from "../../ModelPicker";
+import { IS_WINDOWS } from "../../../platform";
 import type { AcpConfig } from "../../../types/frames";
+import {
+  listDevices,
+  startAudioCapture,
+  stopAudioCapture,
+  writeAudioPref,
+  type AudioDevice,
+} from "../../chat/railAudio";
 
 const MAX_LIMIT_OPTIONS = ["35%", "45%", "50%", "55%", "60%", "70%", "80%"];
 const MIN_LIMIT_OPTIONS = ["25%", "35%", "40%", "45%", "50%", "60%"];
@@ -26,11 +34,17 @@ function Sel({
   options,
   onPick,
   disabled,
+  dropUp,
+  wide,
 }: {
   label: ReactNode;
   options: SelOption[];
   onPick: (v: string) => void;
   disabled?: boolean;
+  /** Open the menu upward (used when the row sits where a dropdown would clip the viewport). */
+  dropUp?: boolean;
+  /** Wider menu for option labels that overflow the 170px base (device names). */
+  wide?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -40,9 +54,10 @@ function Sel({
     return () => document.removeEventListener("click", close);
   }, [open]);
 
+  const cls = "sel" + (disabled ? " disabled" : "") + (dropUp ? " sel-up" : "") + (wide ? " sel-wide" : "");
   return (
     <div
-      className={"sel" + (disabled ? " disabled" : "")}
+      className={cls}
       onClick={(e) => {
         if (disabled) return;
         e.stopPropagation();
@@ -134,6 +149,20 @@ export default function ExperimentalPage() {
   const ringCount = useAppStore((s) => s.uiPrefs.ctxRingProbeCount);
   const modelNames = useAppStore((s) => s.modelNames);
   const modelCatalog = useAppStore((s) => s.modelCatalog); // chip display names (covers disabled picked targets too)
+
+  // Message-rail music reactivity: Windows-only (the Rust capture module is
+  // `#![cfg(windows)]`). Platform comes from the shared UA probe in
+  // ui-src/platform.ts — the shell exposes no os API, so window.__TAURI__.os is
+  // undefined and would disable the switch on every platform.
+  // Prefs are read through selectors (not a plain getState call) so the switch
+  // and device row re-render the moment a write lands.
+  const isWindows = IS_WINDOWS;
+  const railMusic = useAppStore((s) => s.uiPrefs.railMusic === true);
+  const railMusicDevice = useAppStore((s) => s.uiPrefs.railMusicDevice ?? "");
+  const [devices, setDevices] = useState<AudioDevice[]>([]);
+  useEffect(() => {
+    void listDevices().then(setDevices);
+  }, []);
 
   const acpConfig = hostSettings?.acpConfig;
   const maxLimit = acpConfig?.maxContextLimit || "55%";
@@ -512,6 +541,60 @@ export default function ExperimentalPage() {
           >
             <i></i>
           </div>
+        </div>
+      </div>
+
+      {/* Section 4: message-rail music reactivity (Windows only) */}
+      <div className="set-group-tt">{t("settingsPage.exp.railMusicGroup")}</div>
+      <div className="set-group-desc">{t("settingsPage.exp.railMusicGroupDesc")}</div>
+      <div className="set-card">
+        {/* 1. Master switch */}
+        <div className="srow">
+          <div className="srow-tx">
+            <b className="srow-hd">
+              {t("settingsPage.exp.railMusicTitle")}
+              {isWindows && <span className="srow-wn-inline">{t("settingsPage.exp.railMusicWarn")}</span>}
+            </b>
+            <span>{t("settingsPage.exp.railMusicDesc")}</span>
+          </div>
+          <div
+            className={"tg" + (railMusic ? " on" : "") + (isWindows ? "" : " disabled")}
+            id="tgRailMusic"
+            onClick={() => {
+              if (!isWindows) return;
+              const next = !railMusic;
+              writeAudioPref(next, railMusicDevice);
+              void (next ? startAudioCapture(railMusicDevice) : stopAudioCapture());
+            }}
+          >
+            <i></i>
+          </div>
+        </div>
+
+        {/* 2. Capture device (empty id = console default endpoint) */}
+        <div className={"srow" + (railMusic && isWindows ? "" : " disabled")}>
+          <div className="srow-tx">
+            <b>{t("settingsPage.exp.railDeviceTitle")}</b>
+            <span>{t("settingsPage.exp.railDeviceDesc")}</span>
+          </div>
+          <Sel
+            label={devices.find((d) => d.id === railMusicDevice)?.name ?? t("settingsPage.exp.railDeviceDefault")}
+            disabled={!railMusic || !isWindows}
+            dropUp
+            wide
+            options={[
+              { v: "", label: t("settingsPage.exp.railDeviceDefault"), ck: railMusicDevice === "" ? "✓" : "" },
+              ...devices.map((d) => ({
+                v: d.id,
+                label: d.name,
+                ck: railMusicDevice === d.id ? "✓" : "",
+              })),
+            ]}
+            onPick={(v) => {
+              writeAudioPref(true, v);
+              void startAudioCapture(v); // restart on the newly picked endpoint
+            }}
+          />
         </div>
       </div>
     </div>

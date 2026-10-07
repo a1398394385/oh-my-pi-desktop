@@ -16,7 +16,9 @@
  * Guardrails: skip while the agent is busy, stop after maxidle, circuit-break
  * on consecutive cache misses / network errors, stop immediately on auth
  * failure, stop when the session spend cap is reached; a fresh real request
- * always re-arms and clears the sticky pause.
+ * always re-arms and clears the sticky pause. A session the user has read
+ * since the timer was armed still gets one farewell probe at the pending
+ * deadline, then stops (the re-arm check, not the tick gate, ends the loop).
  *
  * Cut relative to upstream (desktop hasUI=false, these paths are unreachable
  * inside the desktop host):
@@ -264,8 +266,19 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       // match); upstream hardcodes kimi-code, the desktop version generalizes.
       // baseUrl must be set — the probe request hits the vendor endpoint
       // directly
-      if (!model || !config.targets.includes(catalogId(model))) return false;
-      return typeof model.baseUrl === "string" && model.baseUrl.length > 0;
+      if (!model || !config.targets.includes(catalogId(model))) {
+        // One debug line pins every capture-chain break to its layer (BUG-050:
+        // empty targets = session_start never reached the extension so config
+        // stayed default; BUG-043: right session, wrong catalog id; join them
+        // and the list itself tells which side is wrong)
+        debug(`target miss: ${model ? catalogId(model) : "(no model)"} vs targets=[${config.targets.join(", ")}]`);
+        return false;
+      }
+      if (typeof model.baseUrl !== "string" || model.baseUrl.length === 0) {
+        debug(`target miss: ${catalogId(model)} carries no baseUrl — probe endpoint unresolvable`);
+        return false;
+      }
+      return true;
     }
 
     // ---------- scheduling ----------
@@ -304,13 +317,13 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
 
     async function onTick(): Promise<void> {
       if (!ctx || !capture) return;
-      if (!opts.isWanted()) {
-        // The user has already seen this session (unread cleared): stop
-        // probing and clear the timer; agent_end re-arms when the next
-        // completed turn produces new unread activity
-        clearTimer();
-        return;
-      }
+      // Note: an already-read session (isWanted false) is NOT stopped here.
+      // It gets one farewell probe at the already-scheduled deadline — the
+      // cache the user just consumed stays warm for one more cadence in case
+      // they return — and the re-arm check after the probe is what stops the
+      // loop. Arming only ever happens at agent_end (host sets wanted right
+      // before), so a read session can never re-arm itself into an infinite
+      // farewell loop.
       if (!ctx.isIdle()) {
         // Hold the deadline instead of dropping it: agent_end resumes it, so the
         // probe fires as soon as the turn that overran it finishes.
@@ -324,7 +337,16 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         return;
       }
       await runProbe();
-      if (!pausedReason) schedule();
+      if (pausedReason) return; // pause() already cleared the timer
+      if (opts.isWanted()) {
+        schedule();
+        return;
+      }
+      // Farewell probe done and the session has been read since this timer
+      // was armed: stop instead of re-arming. agent_end re-arms when the next
+      // completed turn produces new unread output.
+      debug("farewell probe settled — session already read; not re-arming");
+      clearTimer();
     }
 
     function pause(reason: string): void {

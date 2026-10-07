@@ -10,7 +10,7 @@ import { invoke } from "./ws";
 // Per-session right panel snapshots: activateSession is the single funnel for all session
 // activations, so save/restore hooks live here (right.ts also imports activeOpen from this
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
-import { saveRightSnapshot, restoreRightPanel } from "./right";
+import { saveRightSlot, restoreRightSlot } from "./right";
 import { t } from "../i18n";
 import type { ApprovalMode, EventFrame, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
@@ -32,6 +32,9 @@ export interface SessionSlice {
   evtSeq: number; // highest applied event sequence number under this instance (events behind the position are dropped outright)
   pendingCreate: boolean;
   pendingNewPrompt: { text: string; files: PromptAttachment[] } | null;
+  // ! bash command submitted on the welcome page: executed right after the
+  // auto-created session lands (session_created handler)
+  pendingNewBash: { command: string; excludeFromContext: boolean } | null;
   openSessions: Map<string, OpenSession>; // path -> {sessionId,cwd,items,assistantDraft,streaming,subagents,...}
   // Latest word-completion reply (complete_text RPC): overwritten per frame;
   // GhostTextPlugin matches it against its pending request and drops stale hits
@@ -64,6 +67,7 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
   evtSeq: 0,
   pendingCreate: false,
   pendingNewPrompt: null,
+  pendingNewBash: null,
   openSessions: new Map(),
   completionResult: null,
   bgJobs: new Map(),
@@ -133,7 +137,7 @@ const OPEN_SESSIONS_MAX = 8;
  *  incoming session's right panel after (per-session independence). */
 export function activateSession(path: string): void {
   const prev = useAppStore.getState().activePath;
-  if (prev !== path) saveRightSnapshot(prev); // same-path re-activation: neither save nor restore
+  if (prev !== path) saveRightSlot(prev); // same-path re-activation: neither save nor restore
   useAppStore.setState((st) => {
     const cur = st.openSessions.get(path);
     const openSessions = new Map(st.openSessions);
@@ -145,13 +149,13 @@ export function activateSession(path: string): void {
   });
   // Read receipt: frontend switches between already-open sessions send no load_session; the unread state kept alive by cache keepalive is cleared via this message
   useAppStore.getState().send({ type: "mark_seen", path });
-  if (prev !== path) restoreRightPanel(path); // no snapshot (first open/newly created) = inherit current panel
+  if (prev !== path) restoreRightSlot(path); // no snapshot (first open/newly created) = inherit current panel
   scheduleEvict();
 }
 
 /** Unified switch/open session: clear new-session state, close welcome, drop unread mark,
  *  then activate or load via host and refresh Git Diff. selectedFile/selectedSubagent
- *  cleanup is owned by restoreRightPanel (already-open branch) and the session_created
+ *  cleanup is owned by restoreRightSlot (already-open branch) and the session_created
  *  frame (host-load branch) — resetting here would clobber the just-restored panel state. */
 export function openSessionByPath(path: string, cwd?: string): void {
   useAppStore.setState({ isCreatingNew: false });
@@ -478,6 +482,7 @@ export function applyEvent(msg: EventFrame): void {
         toolCallId: msg.toolCallId,
         // wire shape is Record<string, unknown>; narrowed here to the supertype of the fields this repo reads
         args: msg.args as ToolArgs | undefined,
+        intent: msg.intent,
         files: msg.files,
         // The tool frame = the tool starts executing (args arrived, result not yet); only the
         // tool_update frame sets it back to false. Set for every tool unconditionally: the result

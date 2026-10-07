@@ -70,7 +70,11 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   // carry the disk session's own id — the two never coincide. Without the bump, a resumed
   // historical session keeps showing the previous run's end time for the whole loop; bumping
   // per turn_start instead would make the row's time/ordering jitter through a long tool
-  // loop. Only the timestamp is swapped — row order stays with the host list.
+  // loop. The stamp alone is not enough: inside a project group the row order comes
+  // from the host's last list_sessions snapshot (no frontend sort), so a stamped row
+  // would render "just now" while sitting below an older one. Re-sort the group by the
+  // same descending rule the host applies, so time and position agree until the next
+  // authoritative refresh.
   bumpSessionActivity(path: string) {
     const st = get();
     const inProjects = st.diskProjects.some((p) => p.sessions.some((r) => r.path === path));
@@ -78,12 +82,20 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
     if (!inProjects && !inArchived) return; // not listed yet (fresh session): the session_created list refresh carries it
     const iso = new Date().toISOString();
     set({
-      diskProjects: st.diskProjects.map((p) =>
-        p.sessions.some((r) => r.path === path)
-          ? { ...p, sessions: p.sessions.map((r) => (r.path === path ? { ...r, modified: iso } : r)) }
-          : p,
-      ),
-      archivedSessions: inArchived ? st.archivedSessions.map((r) => (r.path === path ? { ...r, modified: iso } : r)) : st.archivedSessions,
+      diskProjects: st.diskProjects.map((p) => {
+        if (!p.sessions.some((r) => r.path === path)) return p;
+        return {
+          ...p,
+          sessions: p.sessions
+            .map((r) => (r.path === path ? { ...r, modified: iso } : r))
+            .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified)),
+        };
+      }),
+      archivedSessions: inArchived
+        ? st.archivedSessions
+            .map((r) => (r.path === path ? { ...r, modified: iso } : r))
+            .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
+        : st.archivedSessions,
     });
   },
 

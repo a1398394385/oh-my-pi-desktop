@@ -32,6 +32,15 @@ export const streamHandlers = {
       false,
     );
   },
+  computer_mode(msg) {
+    updateSession(
+      msg.sessionId,
+      (s) => {
+        s.computerMode = !!msg.enabled;
+      },
+      false,
+    );
+  },
   approval_request(msg) {
     updateSession(msg.sessionId, (s) => {
       s.pendingApprovals ??= [];
@@ -107,6 +116,11 @@ export const streamHandlers = {
         it.truncated = !!msg.truncated;
       }
     });
+  },
+  // ! bash-mode completion reply: transient like mentionResult (reqId-stamped;
+  // the plugin ignores results whose reqId lags its latest request)
+  bash_complete_result(msg) {
+    useAppStore.setState({ bashCompleteResult: { reqId: msg.reqId, items: msg.items } });
   },
   // Text output of slash commands (e.g. the /computer status echo): lands as a meta row, or as
   // an expandable command card when the frame carries the typed command line (slash dispatch)
@@ -340,7 +354,7 @@ export const streamHandlers = {
     useAppStore.setState((s) => ({ ctxDetail: msg }));
   },
   browser_tabs(msg) {
-    landBrowserTabs(msg.tabs ?? [], msg.active === true);
+    landBrowserTabs(msg.tabs ?? []);
   },
   browser_frame(msg) {
     emitBrowserFrame(msg);
@@ -348,7 +362,7 @@ export const streamHandlers = {
   error(msg) {
     useAppStore.setState((s) => ({
       gitDiffCache: { ...s.gitDiffCache, loading: false },
-      rightState: { ...s.rightState, sessionTreePending: false }, // branch-tree request failed: clear the pending flag so the next render refetches
+      rightState: { ...s.rightState, sessionTreePending: false, fileTreePending: new Set() }, // branch-tree/file-tree request failed: clear pending so collapse-reexpand retries
       manualSaving: false, // wizard save failed: release the in-flight button (probe self-clears via its reply frame)
     }));
     // Error landing for settings-center asset/memory read failures (the old version wrote aeStatus / memory inline state)

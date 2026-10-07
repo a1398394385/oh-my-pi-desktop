@@ -18,7 +18,7 @@ export type TranscriptItem = {
   name?: string;
   toolCallId?: string;
   args?: Record<string, unknown>;
-  files?: string[];
+  intent?: string; // model-written `i` intent, extracted by the agent loop and stripped from args; the wait row's only "parameter"
   added?: number;
   removed?: number;
   diffContent?: string; // Real unified diff of this edit/write call (the tool reply's details.diff is a truncated copy)
@@ -62,6 +62,10 @@ export type PoolEntry = {
   // with multiple accounts the detail-card quota matches the account this
   // session actually hits
   providerSessionId: string;
+  // Whether the extension runner's session_start was already dispatched for
+  // this entry (attachEntry re-runs on pool reuse; a repeat dispatch resets
+  // extension state — keepalive would drop its capture)
+  extSessionStarted?: boolean;
   // Cache keepalive intent (source of the keepalive extension's isWanted):
   // set true when a turn truly wraps up (unread output exists), set false on
   // user create/load/send/mark_seen — only sessions the user has not seen yet are probed
@@ -297,7 +301,12 @@ export function requestApproval(
         title,
         options,
         ...(questions ? { questions } : {}),
-        ...(presentation?.keepContextTokens ? { keepContextTokens: presentation.keepContextTokens } : {}),
+        // Presentation fields ride the frame verbatim (slider / disabledIndices /
+        // keepContextTokens / editable*): the UI renders each when present. They
+        // were once hand-picked onto the frame and the slider was missed, so the
+        // approval card silently dropped it and execution fell back to the
+        // default role tier without the operator seeing a choice.
+        ...(presentation ?? {}),
       }),
     ),
   );

@@ -24,6 +24,7 @@ docs/ 住面向人的文档,.agents/ 住 agent 工作文档(决策记录 / 硬�
 | 调研 | docs/(如 openbitfun-borrow-*.md) | 时点快照,决策输入 | 不承诺随代码更新;被 ADR 消化后价值递减 |
 | 会话交接 | docs/handoff-*.md | 跨 session 交接快照 | 时点产物,交接完成后价值递减 |
 | agent 工作流 | .agents/(issue-tracker / triage-labels / domain) | agent 在本仓的工作约定 | — |
+| 子系统手册 | docs/systems/<name>.md | 活文档:一个子系统的跨文件链路地图 + 排障 runbook | 该子系统行为链路与排障步骤的 SSOT;上游坑归 PITFALLS,事故归 BUGS |
 
 目录规则:不新建 docs/<random>/ 或 .agents/<random>/ 目录;要落盘新类型,先在本表登记再写文件。
 
@@ -48,6 +49,9 @@ docs/ 住面向人的文档,.agents/ 住 agent 工作文档(决策记录 / 硬�
 │
 ├─ 外部调研 / 同类项目对照
 │  └─ 写 docs/<主题>-*.md(时点快照,注明调研日期)
+│
+├─ 子系统链路/排障知识聚拢(跨文件链路地图、症状→检查点)
+│  └─ 写子系统手册: docs/systems/<name>.md(活文档,随代码同步更新,区别于时点快照;事实以代码为 SSOT,手册只画链路与排障路径)
 │
 ├─ 环境变量/命令/配置变更
 │  └─ 更新根 AGENTS.md 速查段

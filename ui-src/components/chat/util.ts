@@ -99,6 +99,17 @@ export function isCmdEvent(item: ChatItem): item is ToolItem {
   return item.role === "tool" && ["bash", "shell", "eval"].includes(item.name || "");
 }
 
+// Read-only tool events (the level-2 fold in items.tsx classifies by this): everything
+// except edit/write/apply_patch (isEditEvent; device writes excluded by it stay read-only
+// as device events), task, wait and ask. read/bash/shell/eval/grep/glob/web_search and all
+// other tools (todo/memory/mcp/hub/device/...) are read-only.
+export function isReadonlyEvent(item: ChatItem): item is ToolItem {
+  if (item.role !== "tool") return false;
+  const n = item.name || "";
+  if (n === "task" || n === "wait" || n === "ask") return false;
+  return !isEditEvent(item);
+}
+
 // Duration formatting: seconds / minutes-seconds
 export function fmtDuration(sec: number): string {
   sec = Math.max(1, Math.round(sec));

@@ -40,6 +40,12 @@ export const chatZh = {
   changeFilesMultiple: "更改 · 多 个文件",
   readFiles: "查阅 · {{count}} 个文件",
   readFilesMultiple: "查阅 · 多 个文件",
+  // ---- read-only merge block (ReadonlyGroup.tsx roSummaryText) ----
+  roExplored: "探索了 ",
+  roSep: "、",
+  roFiles: "{{count}} 份文件",
+  roTasks: "{{count}} 项任务",
+  roCmds: "{{count}} 条命令",
   // ---- truncation notices (plurals / interpolation) ----
   truncated: " …(截断,共{{count}}字)",
   outputTruncated: "\n…（输出已截断）",
@@ -153,6 +159,8 @@ export const chatZh = {
   confirmOptions: "确认选项",
   typeToSubmit: "输入内容后提交…",
   approvalHint: "使用 Tab / 上下键选择，回车确认",
+  approvalCollapse: "暂时收起，查看上方输出",
+  approvalExpand: "展开问题卡片",
   // ---- assistant message code block (AssistantMsg.tsx) ----
   disableWordWrap: "关闭自动换行",
   enableWordWrap: "开启自动换行",

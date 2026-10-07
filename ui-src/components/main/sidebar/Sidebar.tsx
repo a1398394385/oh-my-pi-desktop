@@ -14,9 +14,9 @@ import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
   getAvailableProjects, openSettings, pathBase,
 } from "../../../store";
-import { disposeSessionFor } from "../right/TerminalPage";
-import Icon from "../../../Icon";
+import { disposeRightSlot } from "../../../store/right";
 import SessionRow from "./SessionRow";
+import Icon from "../../../Icon";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./SessionRow";
 import ProjGroup, { projectIconName } from "./ProjGroup";
 import type { ProjectIconSource } from "./ProjGroup";
@@ -156,8 +156,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       danger: true,
       onConfirm: () => {
         send({ type: "delete_session", path: s.path });
-        // The deleted session's terminal PTY must die with it (prevents orphan shells)
-        disposeSessionFor(s.path);
+        // The deleted session's slot dies with it: disposeRightSlot cascades host
+        // resources (its PTY via the slot disposer) and drops the persisted layout
+        disposeRightSlot(s.path);
         const st = useAppStore.getState();
         if (st.activePath === s.path) {
           // openSessions container swapped to a fresh reference (silent write; re-render handled by showWelcomeScreen's _v bump)

@@ -13,7 +13,7 @@ import { applyAppearance } from "../../appearance";
 import Icon from "../../Icon";
 import { SETTINGS_ZH } from "../../i18n/locales/settings-zh-CN";
 import { SETTINGS_EN } from "../../i18n/locales/settings-en";
-import { buildKeyToPageMap } from "./placement";
+import { buildKeyToPageMap, HIDDEN_KEYS } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
 import WindowControls from "../WindowControls";
 import { IS_WINDOWS } from "../../platform";
@@ -149,6 +149,7 @@ export default function Settings() {
     const keys = schema ? Array.from(new Set([...Object.keys(settings), ...Object.keys(schema)])) : Object.keys(settings);
     const items: Array<{ key: string; label: string; description: string; pageId: string; pageTitle: string }> = [];
     for (const k of keys) {
+      if (HIDDEN_KEYS[k]) continue; // hidden keys never render, so search must not offer them either
       const entry = settings[k];
       const ui = schema?.[k]?.ui;
       const label = entry?.label ?? ui?.label ?? "";
@@ -337,7 +338,17 @@ export default function Settings() {
                     key={it.key}
                     type="button"
                     className={"set-search-item" + (pageId === it.pageId ? " on" : "")}
-                    onClick={() => openSettings(it.pageId)}
+                    onClick={() => {
+                      openSettings(it.pageId);
+                      // Land on the row: page render + entrance animations settle in a
+                      // couple of frames, then scroll the row into view and pulse it once.
+                      setTimeout(() => {
+                        const el = setBodyRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(it.key)}"]`);
+                        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+                        el?.classList.add("search-flash");
+                        setTimeout(() => el?.classList.remove("search-flash"), 1500);
+                      }, 80);
+                    }}
                     title={`${it.label} (${it.pageTitle})`}
                   >
                     <div className="set-search-item-main">

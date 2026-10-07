@@ -188,7 +188,7 @@ function sessionEntryMatchesPath(entry: { path: string; previousPaths?: string[]
 }
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
-    await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true);
+    await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true, msg.computerMode === true);
   },
   async load_session(ws, msg) {
     await handleLoadSession(ws, msg.path);

@@ -21,9 +21,35 @@ use tauri::Emitter;
 // and reachable. Linux is skipped (libappindicator wiring not worth it).
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use tauri::tray::TrayIconBuilder;
+#[cfg(target_os = "windows")]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
+
+// System-audio spectrum capture for the message-rail music effect. Windows-only:
+// the real module is `#![cfg(windows)]`; other platforms compile same-named
+// command stubs so the single generate_handler! list below holds everywhere,
+// without pulling the Windows SDK crates in.
+#[cfg(target_os = "windows")]
+mod audio;
+#[cfg(not(target_os = "windows"))]
+mod audio {
+    #[tauri::command]
+    pub fn audio_devices() -> Result<Vec<String>, String> {
+        Err("audio spectrum capture is Windows-only".into())
+    }
+    #[tauri::command]
+    pub fn audio_start(_device_id: String) -> Result<(), String> {
+        Err("audio spectrum capture is Windows-only".into())
+    }
+    #[tauri::command]
+    pub fn audio_stop() -> Result<(), String> {
+        Err("audio spectrum capture is Windows-only".into())
+    }
+}
+#[cfg(target_os = "windows")]
+use audio::AudioState;
 
 struct HostState {
     url: Option<String>,
@@ -456,8 +482,14 @@ fn tray_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<tauri::menu::M
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn build_tray(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
     let menu = tray_menu(app, lang)?;
+    // Dev builds label the tray so a dev instance running next to the packaged
+    // app is distinguishable in the tray (both would otherwise read the same).
+    #[cfg(debug_assertions)]
+    let tray_name = "omp desktop dev";
+    #[cfg(not(debug_assertions))]
+    let tray_name = "omp desktop";
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("omp desktop")
+        .tooltip(tray_name)
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().0.as_str() {
             "tray_show" => show_main_window(app),
@@ -514,6 +546,9 @@ fn set_menu_language(app: tauri::AppHandle, lang: String) -> Result<(), String> 
     Ok(())
 }
 
+/// Tauri shell: only owns windows, spawning/reaping the Bun host process, and
+/// relaying the host WS address to the frontend.
+/// All business logic lives in the Bun host process (host/host.ts, in-repo omp SDK).
 pub fn run() {
     let cell: WsUrlCell = Arc::new(Mutex::new(HostState {
         url: None,
@@ -521,7 +556,13 @@ pub fn run() {
     }));
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
     let restart_cell: RestartCell = Arc::new(Mutex::new(RestartGate::default()));
-    tauri::Builder::default()
+    // Audio capture state lives behind a Windows-only builder step; on other
+    // platforms the builder is unchanged and the module does not exist.
+    #[cfg(target_os = "windows")]
+    let builder = tauri::Builder::default().manage(AudioState::default());
+    #[cfg(not(target_os = "windows"))]
+    let builder = tauri::Builder::default();
+    builder
         // Single-instance lock MUST be the first registered plugin: a relaunch
         // (Start Menu / shortcut / `open`) focuses the existing window instead
         // of spawning a whole new process tree (desktop + host + brokers +
@@ -593,10 +634,16 @@ pub fn run() {
             spawn_host(app.handle(), cell.clone(), child_cell.clone(), restart_cell.clone());
             Ok(())
         })
+        // One invoke_handler ONLY: Builder::invoke_handler replaces any previous
+        // registration — stacking a second one here once silently dropped the
+        // whole main command table (frontend: "Command ws_url not found").
         .invoke_handler(tauri::generate_handler![
             ws_url,
             send_desktop_notification,
-            set_menu_language
+            set_menu_language,
+            audio::audio_devices,
+            audio::audio_start,
+            audio::audio_stop
         ])
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")

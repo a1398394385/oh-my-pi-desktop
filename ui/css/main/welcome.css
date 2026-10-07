@@ -128,11 +128,6 @@
   display: block;
 }
 
-.wb-ic-folder.is-cjk svg {
-  transform-origin: top center;
-  transform: scaleY(1.2); /* CJK square glyphs are tall; extending the bottom aligns with the Han glyph base */
-}
-
 .wb-pill:hover .wb-ic-folder,
 .wb-pill.active .wb-ic-folder { opacity: 0; }
 
@@ -167,3 +162,47 @@
   border-color: var(--line-soft);
   box-shadow: 0 12px 40px var(--tint-black-70);
 }
+
+/* ── remote-connection dialog: probe/connect result panel (RemoteDialog.tsx ResultPanel) ──
+   Stands in for a toast: a toast auto-hides after 2.2s, cannot be selected, and
+   sits at z 400 — under the dialog mask (z 1000), so a failure was invisible.
+   The status rides on the border (token only), the text is selectable. */
+.rd-result {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.rd-result[data-ok="false"] { border-left-color: var(--err); }
+
+.rd-result-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 6px 10px;
+}
+
+.rd-result-body {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Directory picker: portaled to <body> by DirPicker so it escapes the dialog's
+   scrolling container and stacks above the dialog card (z 1000). */
+.menu.rd-dirs { position: fixed; z-index: 1200; top: auto; bottom: auto; left: auto; right: auto;
+  min-width: 240px; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; --pop-from: -6px; }
+/* .inp's global 240px min-width overflows the two-column form rows, causing horizontal card scroll. */
+.rd-form .inp { min-width: 0; }
+/* Green test button after a probe OK stands in for the removed success panel. */
+.rd-test-ok, .save-btn.rd-test-ok:hover { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }

@@ -7,6 +7,9 @@ import { defaultCwd } from "../state.ts";
 import { isGitWorktree } from "../session-lifecycle.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { quotePosixPath } from "../bootstrap.ts";
+import { resolveRemoteTarget, readUserSshHost } from "../remote-workspaces.ts";
+import { runSshCommand, formatSshError, type SshHostConfigShape } from "./ssh.ts";
 
 // Shared by git write operations: argument arrays go straight to the
 // subprocess (no shell concatenation, injection-proof by construction); on
@@ -24,6 +27,17 @@ function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string;
 // paths parameter of git write RPCs: string array, empties dropped
 function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
+}
+
+// Remote-workspace branch shared by the file RPCs: a local path inside a stub
+// resolves to the host config (from user-scope ssh.json) plus the remote POSIX
+// path; null keeps the caller on the plain local-fs path.
+async function remoteTargetFor(localPath: string): Promise<{ config: SshHostConfigShape; remotePath: string } | null> {
+  const target = resolveRemoteTarget(localPath);
+  if (!target) return null;
+  const config = await readUserSshHost(target.host);
+  if (!config) throw new Error(hostI18n.t("errors.ssh.hostNotFound", { name: target.host }));
+  return { config, remotePath: target.remotePath };
 }
 
 export const filesHandlers: Record<string, RpcHandler> = {
@@ -76,6 +90,26 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // Full file content for the file page (shared by read-line clicks / file-tree click details); text files capped at 2MB
     const p = String(msg.path ?? "");
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    const remote = await remoteTargetFor(p);
+    if (remote) {
+      // Same caps as the local branch: 2MB text limit + NUL sniff on the head
+      const q = quotePosixPath(remote.remotePath);
+      const size = await runSshCommand(remote.config, `wc -c < ${q}`, 8_000);
+      if (size.code !== 0) throw new Error(formatSshError(size.stderr, size.stdout, size.code));
+      const bytes = Number(size.stdout.trim());
+      if (bytes > 2_000_000) {
+        ws.send(JSON.stringify({ type: "file_content", path: p, error: hostI18n.t("errors.file.tooLarge", { size: (bytes / 1e6).toFixed(1) }) }));
+        return;
+      }
+      const cat = await runSshCommand(remote.config, `cat ${q}`, 20_000);
+      if (cat.code !== 0) throw new Error(formatSshError(cat.stderr, cat.stdout, cat.code));
+      if (cat.stdout.slice(0, 8000).includes("\0")) {
+        ws.send(JSON.stringify({ type: "file_content", path: p, error: hostI18n.t("errors.file.binaryNoPreview") }));
+        return;
+      }
+      ws.send(JSON.stringify({ type: "file_content", path: p, text: cat.stdout }));
+      return;
+    }
     const stat = fs.statSync(p, { throwIfNoEntry: false });
     if (!stat?.isFile()) throw new Error(hostI18n.t("errors.file.notAFile", { path: p }));
     if (stat.size > 2_000_000) {
@@ -111,6 +145,22 @@ export const filesHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "image_content", path: p, error: hostI18n.t("errors.image.unsupportedFormat", { ext: ext || hostI18n.t("errors.image.noExtension") }) }));
       return;
     }
+    const remote = await remoteTargetFor(p);
+    if (remote) {
+      const q = quotePosixPath(remote.remotePath);
+      const size = await runSshCommand(remote.config, `wc -c < ${q}`, 8_000);
+      if (size.code !== 0) throw new Error(formatSshError(size.stderr, size.stdout, size.code));
+      const bytes = Number(size.stdout.trim());
+      if (bytes > 8_000_000) {
+        ws.send(JSON.stringify({ type: "image_content", path: p, error: hostI18n.t("errors.image.tooLarge", { size: (bytes / 1e6).toFixed(1) }) }));
+        return;
+      }
+      // GNU base64 wraps at 76 columns (macOS never does): strip all whitespace for the data URL
+      const b64 = await runSshCommand(remote.config, `base64 < ${q}`, 30_000);
+      if (b64.code !== 0) throw new Error(formatSshError(b64.stderr, b64.stdout, b64.code));
+      ws.send(JSON.stringify({ type: "image_content", path: p, mime: MIME[ext], data: b64.stdout.replace(/\s+/g, "") }));
+      return;
+    }
     const stat = fs.statSync(p, { throwIfNoEntry: false });
     if (!stat?.isFile()) {
       ws.send(JSON.stringify({ type: "image_content", path: p, error: hostI18n.t("errors.file.notAFile", { path: p }) }));
@@ -127,6 +177,25 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // Single-level file tree listing: directories first, alphabetical; hides .git/.DS_Store
     const dir = String(msg.path ?? "");
     if (!dir) throw new Error(hostI18n.t("errors.param.missingPath"));
+    const remote = await remoteTargetFor(dir);
+    if (remote) {
+      // ls -1ap marks directories with a trailing "/"; the reply echoes the local
+      // stub path so the frontend tree cache keys keep matching
+      const result = await runSshCommand(remote.config, `ls -1ap ${quotePosixPath(remote.remotePath)}`, 8_000);
+      if (result.code !== 0) throw new Error(formatSshError(result.stderr, result.stdout, result.code));
+      const entries: { name: string; dir: boolean }[] = [];
+      for (const line of result.stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === "./" || trimmed === "../") continue;
+        const isDir = trimmed.endsWith("/");
+        const name = isDir ? trimmed.slice(0, -1) : trimmed;
+        if (!name || name === ".git" || name === ".DS_Store") continue;
+        entries.push({ name, dir: isDir });
+      }
+      entries.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+      ws.send(JSON.stringify({ type: "dir_list", path: dir, entries }));
+      return;
+    }
     const stat = fs.statSync(dir, { throwIfNoEntry: false });
     if (!stat?.isDirectory()) throw new Error(hostI18n.t("errors.file.notADirectory", { path: dir }));
     const entries: { name: string; dir: boolean }[] = [];

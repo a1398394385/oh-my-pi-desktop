@@ -287,7 +287,7 @@ async function approvePlan(
     await writeFile(dest, planContent);
     exitPlanModeState(entry);
     pushPlanState(ws, sessionId, entry);
-    return dispatchApprovedTurn(next, {
+    return dispatchApprovedTurn(ws, next, {
       planFilePath,
       planContent,
       preserveContext,
@@ -352,7 +352,7 @@ async function approvePlan(
     pushCommandOutput(sessionId, hostI18n.t("flows.plan.compactCancelled"));
     return false;
   }
-  return dispatchApprovedTurn(entry, { planFilePath, planContent, preserveContext, roleIndex, title });
+  return dispatchApprovedTurn(ws, entry, { planFilePath, planContent, preserveContext, roleIndex, title });
 }
 
 /** Clear plan-mode state (the desktop has no paused intermediate state). */
@@ -381,6 +381,7 @@ function pushPlanState(ws: Ws, sessionId: string, entry: PoolEntry) {
  * turn. Runs after plan-mode exit so the pre-plan model restore cannot revert it.
  */
 async function dispatchApprovedTurn(
+  ws: Ws,
   entry: PoolEntry,
   args: { planFilePath: string; planContent: string; preserveContext: boolean; roleIndex: number | undefined; title: string },
 ): Promise<boolean> {
@@ -388,7 +389,20 @@ async function dispatchApprovedTurn(
   if (args.roleIndex !== undefined) {
     const cycle = session.getRoleModelCycle(settingsGet(session.settings, "cycleOrder") as string[]);
     const chosen = cycle?.models[args.roleIndex];
-    if (chosen) await session.applyRoleModel(chosen);
+    if (chosen) {
+      await session.applyRoleModel(chosen);
+      // Mirror the set_model RPC's session_model push: without it the composer
+      // keeps showing the pre-approval model while the approved turn already
+      // runs on the chosen role model.
+      ws.send(
+        JSON.stringify({
+          type: "session_model",
+          sessionId: session.sessionManager.getSessionId(),
+          model: `${session.model.provider}/${session.model.id}`,
+          thinking: session.configuredThinkingLevel?.() ?? "auto",
+        }),
+      );
+    }
   }
 
   // Seed an auto name from the plan title so the fresh session is not unnamed

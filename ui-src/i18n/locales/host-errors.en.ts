@@ -45,6 +45,7 @@ export const hostErrorsEn = {
     subagentSlashNotSupported: "Slash and terminal commands are not supported in subagent sessions",
   },
   computerGateClosed: "Computer control is off in Settings: enable the master switch there first, then run /computer on in the session",
+  computerUnavailable: "Computer use is unavailable in this session (the computer eval prelude did not activate)",
   bash: {
     busy: "A bash command is already running; press stop or wait for it to finish",
   },

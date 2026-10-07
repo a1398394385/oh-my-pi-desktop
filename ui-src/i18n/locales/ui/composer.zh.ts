@@ -6,6 +6,8 @@ export const composerZh = {
   permissionMode: "权限模式",
   planOnTitle: "计划模式已开启，点击退出",
   planLabel: "计划",
+  computerOnTitle: "Computer Use 已开启，点击关闭",
+  computerOffTitle: "Computer Use 已关闭，点击开启",
   bgCommands: "后台命令",
   subagents: "子智能体",
   switchModel: "切换模型",

@@ -33,6 +33,7 @@ import { rebuildScopedModels } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
+import { safeStderr } from "../stderr.ts";
 import { settingsGet, settingsSet } from "../settings-compat.ts";
 
 export const assetsHandlers: Record<string, RpcHandler> = {
@@ -146,6 +147,16 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     settingsSet(H.settings, "disabledExtensions", Array.from(disabled));
     settingsSet(H.settings, "skills.ignoredSkills", Array.from(ignored));
     await H.settings.flush();
+    // The base's cfgSkillsAndCommandsDiscovery listener covers skills.* edits
+    // but not disabledExtensions, so live sessions keep their stale skill
+    // lists until restart. Re-discover them here to close that gap host-side.
+    await Promise.all(
+      [...sessions.values()].map((e) =>
+        e.session.refreshSkillsAndCommands().catch((err) => {
+          safeStderr(`[host] skill toggle: session refresh failed: ${String(err)}\n`);
+        })
+      )
+    );
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async asset_skill_delete(ws, msg) {

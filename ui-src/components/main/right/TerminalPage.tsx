@@ -11,6 +11,7 @@ import { send, activeOpen, onTerminalFrame, useAppStore } from "../../../store";
 import type { TerminalFrame } from "../../../store";
 import { t } from "../../../i18n";
 import { registerTabCloseHook } from "./tabs";
+import { registerSlotDisposer } from "../../../store/right";
 
 // Right-panel tab-level persistentKey prefix; per-session ids are `key:<sessionPath>`
 const PERSIST_KEY = "right-terminal";
@@ -202,7 +203,14 @@ function ensureSession(container: HTMLElement, key: string) {
     scheduleFit(existing);
     return;
   }
-  sessions.set(key, createTermSession(key, container));
+  const own = createTermSession(key, container);
+  sessions.set(key, own);
+  // Tie this PTY's lifetime to the session's right-panel slot (slot disposal cascades:
+  // session delete / disk gone / LRU trim / profile switch). Registered exactly once
+  // per created session (reuse branch above skips it), and re-registered if the
+  // session is ever recreated after disposal. The slot always exists by now: session
+  // activation and the welcome view materialize it (restoreRightSlot).
+  registerSlotDisposer(key, () => disposeSessionFor(key));
 }
 
 // Component unmount only moves the DOM away to keep it alive; real destruction goes
@@ -238,11 +246,20 @@ export default function TerminalPage() {
   // Terminal identity follows the active session: switching sessions swaps the
   // attached PTY (each session keeps its own scrollback and running processes)
   const key = useAppStore((st) => st.activePath || "welcome");
+  // Key captured at mount: focusing below runs once when the tab opens, not on later
+  // session switches (those must not steal focus from the chat composer)
+  const keyAtMount = useRef(key);
   useEffect(() => {
     const el = ref.current;
     if (el) ensureSession(el, key);
     return () => detachSession(key);
   }, [key]);
+  // Declared after the effect above so the session exists in the map on mount.
+  // Focus is pure DOM (works before terminal_created): typing works immediately —
+  // input sent before the PTY is ready is buffered (pendingWrites) and flushed then.
+  useEffect(() => {
+    sessions.get(keyAtMount.current)?.term.focus();
+  }, []);
   return (
     <div className="tpane">
       <div className="tpane-host-wrap" ref={ref} />

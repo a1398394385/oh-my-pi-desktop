@@ -251,6 +251,11 @@ function MemoryExpand({ onClose }: { onClose: () => void }) {
 export default function MemoryPage() {
   const { t } = useTranslation();
   const memories = useAppStore((s) => s.agentAssets?.memories ?? null);
+  // The file-backed memory list (agentDir/memories) is local-pipeline-only
+  // property: hindsight keeps memories server-side and mnemopi in SQLite
+  // banks, and the base explicitly blocks non-local callers from stale files
+  // (memory-protocol.ts fileBackedRootUnavailableError)
+  const backendLocal = useAppStore((s) => s.hostSettings?.values?.["memory.backend"]) === "local";
   const [openPath, setOpenPath] = useState<string | null>(null); // memory row currently expanded downward (entry path)
 
   // Click a project row: expand the detail area under that row; click again to collapse, click another row to switch
@@ -276,39 +281,43 @@ export default function MemoryPage() {
   return (
     <div className="set-page" id="pg-memory">
       <div className="set-tt">{t("settingsPage.nav.memory")}</div>
-      <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(0, 1)} />
-      <div className="set-group-tt">{t("settingsPage.memory.filesGroup")}</div>
-      <div className="set-card" id="memoryList">
-        {!memories ? (
-          <div className="srow">
-            <div className="srow-tx">
-              <span>{t("common.loading")}</span>
-            </div>
-          </div>
-        ) : memories.length === 0 ? (
-          <div className="srow">
-            <div className="srow-tx">
-              <span>{t("settingsPage.shared.emptyNone")}</span>
-            </div>
-          </div>
-        ) : (
-          memories.map((m) => (
-            <Fragment key={m.path}>
-              <div className={"srow mem-row" + (openPath === m.path ? " on" : "")} onClick={() => openRow(m)}>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(0, 2)} />
+      {backendLocal && (
+        <>
+          <div className="set-group-tt">{t("settingsPage.memory.filesGroup")}</div>
+          <div className="set-card" id="memoryList">
+            {!memories ? (
+              <div className="srow">
                 <div className="srow-tx">
-                  <b>{m.project ?? m.name}</b>
-                  {m.path && <span>{m.path}</span>}
+                  <span>{t("common.loading")}</span>
                 </div>
-                <span className="mem-caret">
-                  <Icon name="caretSlim" size={14} />
-                </span>
               </div>
-              {openPath === m.path && <MemoryExpand onClose={closeRow} />}
-            </Fragment>
-          ))
-        )}
-      </div>
-      <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(1)} />
+            ) : memories.length === 0 ? (
+              <div className="srow">
+                <div className="srow-tx">
+                  <span>{t("settingsPage.shared.emptyNone")}</span>
+                </div>
+              </div>
+            ) : (
+              memories.map((m) => (
+                <Fragment key={m.path}>
+                  <div className={"srow mem-row" + (openPath === m.path ? " on" : "")} onClick={() => openRow(m)}>
+                    <div className="srow-tx">
+                      <b>{m.project ?? m.name}</b>
+                      {m.path && <span>{m.path}</span>}
+                    </div>
+                    <span className="mem-caret">
+                      <Icon name="caretSlim" size={14} />
+                    </span>
+                  </div>
+                  {openPath === m.path && <MemoryExpand onClose={closeRow} />}
+                </Fragment>
+              ))
+            )}
+          </div>
+        </>
+      )}
+      <SchemaRows sections={PAGE_PLACEMENT["pg-memory"].slice(2)} />
     </div>
   );
 }

@@ -120,16 +120,27 @@ export const { autosaveApprovedPlan } = await import("@oh-my-pi/pi-coding-agent/
 export const { resolveLocalUrlToPath, copyLocalArtifacts } = await import(
   "@oh-my-pi/pi-coding-agent/internal-urls"
 );
-// Plan-mode approval prompts: read from the SDK's prompt files at runtime so
-// the approved turn carries the base TUI's exact wording (inline plan +
-// per-step verification + todo tracking). Desktop has no bunfig
-// [loader] ".md" = "text" entry (unlike oh-my-pi) and the package's exports
-// map `./prompts/*` to a single level, so neither an import attribute nor
-// `@oh-my-pi/pi-coding-agent/prompts/system/x.md` resolves — anchoring on an
-// already-exported module's own path and walking up to the package src root.
-export async function readSdkPrompt(fileName: string): Promise<string> {
-  const srcRoot = new URL("../", import.meta.resolve("@oh-my-pi/pi-coding-agent/plan-mode/approved-plan")).pathname;
-  return await Bun.file(srcRoot + "prompts/system/" + fileName).text();
+// Plan-mode approval prompts: inlined as text from the host/prompts mirrors
+// (bunfig [loader] ".md" = "text"), so the compiled exe carries them. Reading
+// the SDK package at runtime is impossible in a standalone exe: the prompt
+// files are outside the bundle graph and import.meta.resolve fails there,
+// which killed plan approval with "Cannot find package
+// '@oh-my-pi/pi-coding-agent'" (see .agents/BUGS.md). The package's exports
+// map does not expose prompts/, so a direct package import is not an option
+// either. Mirrors are verified against the installed SDK on every host:build;
+// after a base upgrade run `bun run host:sync-prompts`.
+import planModeApproved from "./prompts/plan-mode-approved.md";
+import planModeCompactInstructions from "./prompts/plan-mode-compact-instructions.md";
+
+const SDK_PROMPTS: Record<string, string> = {
+  "plan-mode-approved.md": planModeApproved,
+  "plan-mode-compact-instructions.md": planModeCompactInstructions,
+};
+
+export function readSdkPrompt(fileName: string): string {
+  const text = SDK_PROMPTS[fileName];
+  if (text === undefined) throw new Error(`unknown SDK prompt: ${fileName}`);
+  return text;
 }
 export const { resolveToCwd } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
 // xd://propose dispatch metadata: the out-of-band plan-approval trigger keys off
@@ -152,7 +163,7 @@ export const { parseSkillInvocation, buildSkillPromptMessage } = await import(
 export const { cfgSkills } = await import("@oh-my-pi/pi-coding-agent/extensibility/settings");
 // Skill discovery for the creating-new page's command list (same path an
 // AgentSession runs; see rpc/prompt.ts pushNewSessionCommands)
-export const { discoverSkills } = await import("@oh-my-pi/pi-coding-agent/sdk");
+export const { discoverSkills, discoverCustomTSCommands } = await import("@oh-my-pi/pi-coding-agent/sdk");
 export const { SKILL_PROMPT_MESSAGE_TYPE } = await import("@oh-my-pi/pi-coding-agent/session/messages");
 export const { fuzzyFind } = await import("@oh-my-pi/pi-natives");
 // Extensions hub (ported from /extensions): unified discovery + provider toggles (consumed by host/extensions.ts)

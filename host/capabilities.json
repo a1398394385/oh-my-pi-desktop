@@ -21,6 +21,7 @@
     { "id": "cancel_bg_job", "kind": "session", "risk": "write", "note": "18.5 取消一个运行中的后台任务，回推刷新后的 bg_jobs 快照" },
     { "id": "get_session_tree", "kind": "session", "risk": "read", "note": "跨文件分支家族扫盘连图" },
     { "id": "set_plan_mode", "kind": "session", "risk": "write", "note": "计划模式开关（会话级状态）" },
+    { "id": "set_computer_mode", "kind": "session", "risk": "write", "note": "Computer Use 会话级开关（输入框屏幕图标按钮；主门控仍由设置页 computer.enabled 把守）" },
     { "id": "smoke_plan_propose", "kind": "session", "risk": "read", "note": "冒烟专用：重放 xd://propose 派发以在无模型下触发计划审批卡；仅当 OMP_PLAN_APPROVE_SMOKE=1 时生效，否则空操作" },
     { "id": "remove_project", "kind": "project", "risk": "write", "note": "仅从桌面项目列表移除，不删文件" },
     { "id": "set_project_expanded", "kind": "project", "risk": "write" },
@@ -37,9 +38,9 @@
     { "id": "get_entry_tree", "kind": "transcript", "risk": "read", "note": "会话内条目树（TUI /tree 同款数据源）" },
     { "id": "navigate_tree", "kind": "transcript", "risk": "write", "note": "同文件内移动 leaf，被放弃路径保留为兄弟分支" },
     { "id": "get_file_diff", "kind": "file", "risk": "read" },
-    { "id": "read_file", "kind": "file", "risk": "read" },
-    { "id": "list_dir", "kind": "file", "risk": "read" },
-    { "id": "read_image", "kind": "file", "risk": "read", "note": "图片二进制 base64 回传；后缀白名单 + 8MB 上限" },
+    { "id": "read_file", "kind": "file", "risk": "read", "note": "文件页整读（2MB 上限）；远程工作区桩路径自动分流 ssh cat" },
+    { "id": "list_dir", "kind": "file", "risk": "read", "note": "文件树单层列举；远程工作区桩路径自动分流 ssh ls -1ap" },
+    { "id": "read_image", "kind": "file", "risk": "read", "note": "图片二进制 base64 回传；后缀白名单 + 8MB 上限；远程工作区桩路径分流 ssh base64" },
     { "id": "list_files", "kind": "file", "risk": "read", "note": "@ 文件候选" },
     { "id": "get_git_diff", "kind": "git", "risk": "read" },
     { "id": "get_git_branches", "kind": "git", "risk": "read" },
@@ -125,6 +126,7 @@
     { "id": "provider_model_meta", "kind": "provider", "risk": "read", "note": "读取 models.yml 中该供应商每模型的自定义元数据快照（编辑器预填）" },
     { "id": "bash_exec", "kind": "shell", "risk": "write", "note": "! 本地命令执行，结果落盘 + 专用帧流" },
     { "id": "bash_abort", "kind": "shell", "risk": "write", "note": "中止正在执行的本地命令" },
+    { "id": "bash_complete", "kind": "shell", "risk": "read", "note": "! 命令补全：PATH 可执行名 + cwd 路径候选" },
     { "id": "terminal_create", "kind": "shell", "risk": "write", "note": "右栏终端起真 PTY 子进程" },
     { "id": "terminal_write", "kind": "shell", "risk": "write" },
     { "id": "terminal_resize", "kind": "shell", "risk": "write" },
@@ -135,6 +137,7 @@
     { "id": "ssh_save_host", "kind": "ssh", "risk": "write", "note": "新增/更新 ssh.json 主机（同 omp ssh add/update），写后重置底座能力缓存" },
     { "id": "ssh_remove_host", "kind": "ssh", "risk": "write", "note": "从 ssh.json 移除主机" },
     { "id": "ssh_test_host", "kind": "ssh", "risk": "read", "note": "BatchMode 连通性探测（echo 往返），不改状态" },
+    { "id": "ssh_list_dirs", "kind": "ssh", "risk": "read", "note": "远端目录列举（ls -1ap 单层），远程工作区路径选择器的数据源" },
     { "id": "add_remote_workspace", "kind": "ssh", "risk": "write", "note": "SSH 远程工作区：先远程 test -d 校验路径，再落本地桩目录 + .omp/remote-workspace.json 标记" }
   ]
 }

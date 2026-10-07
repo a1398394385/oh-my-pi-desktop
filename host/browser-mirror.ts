@@ -12,14 +12,16 @@
 // Page.startScreencast without disturbing the worker (Chromium multiplexes
 // CDP sessions per target; this is exactly how DevTools mirrors a page).
 //
-// Frames: browser_tabs (stamped push, tab list + activation edge for the
-// auto-open signal) and browser_frame (unstamped jpeg stills, terminal-data
-// style). The screencast only runs while the UI subscribed (browser page
-// visible); the 500ms poll always runs (cheap snapshot + diff) so the
-// activation edge is detected even before the UI opens the page.
+// Frames: browser_tabs (stamped push; every tab carries ownerPath — the jsonl
+// path of the session that created it, so the UI can filter the mirror to the
+// displayed session and derive per-owner activation edges) and browser_frame
+// (unstamped jpeg stills, terminal-data style). The screencast only runs
+// while the UI subscribed (browser page visible); the 500ms poll always runs
+// (cheap snapshot + diff) and pushes every tab-list change regardless of
+// subscription — per-owner edges must be derivable even with the page closed.
 import type * as SupervisorModule from "@oh-my-pi/pi-coding-agent/tools/browser/tab-supervisor";
 import type { CDPSession, Target } from "puppeteer-core";
-import { stampEvent } from "./state.ts";
+import { sessions, stampEvent } from "./state.ts";
 
 /** Minimal send surface of a UI WebSocket connection. */
 export interface MirrorWs {
@@ -34,6 +36,8 @@ export interface MirrorTabInfo {
 	kind: string;
 	/** Whether this backend supports a CDP screencast (cmux/tern surfaces do not). */
 	mirrorable: boolean;
+	/** Jsonl path of the session that created the tab (undefined: no owner, or the owner session is no longer pooled). */
+	ownerPath?: string;
 }
 
 /** Page.screencastFrame CDP event (only the fields the mirror consumes). */
@@ -112,10 +116,17 @@ export function browserMirrorSubscribe(ws: MirrorWs, opts: { width?: number }): 
 	uiWs = ws;
 	subscribed = true;
 	if (opts.width && Number.isFinite(opts.width)) {
-		streamWidth = Math.max(320, Math.min(2200, Math.round(opts.width * 1.5)));
+		const next = Math.max(320, Math.min(3840, Math.round(opts.width * 1.5)));
+		if (next !== streamWidth) {
+			streamWidth = next;
+			// A live attachment keeps the maxWidth it was started with —
+			// restart the cast so a panel resize/DPR change takes effect
+			// immediately (Page.startScreencast is safely re-issueable).
+			if (attachment) void restartScreencast(attachment.cdp);
+		}
 	}
 	// Immediate snapshot so the page renders the tab list before any change.
-	sendTabs(lastTabs, false);
+	sendTabs(lastTabs);
 	void poll();
 }
 
@@ -231,22 +242,23 @@ function dispatchInput(input: MirrorInput, cdp: CDPSession): void {
 // ---------- Poll: registry snapshot + diff + attach reconciliation ----------
 async function poll(): Promise<void> {
 	try {
-		const { listTabs } = await supervisor();
+		const { listTabs, getTab } = await supervisor();
 		const tabs: MirrorTabInfo[] = listTabs().map((tab) => ({
 			name: tab.name,
 			url: tab.url,
 			title: tab.title,
 			kind: tab.kind,
 			mirrorable: MIRRORABLE_KINDS[tab.kind] === true,
+			ownerPath: pathForOwnerSession(getTab(tab.name)?.ownerSessionId),
 		}));
 		const json = JSON.stringify(tabs);
 		if (json !== lastTabsJson) {
-			const becameActive = lastTabs.length === 0 && tabs.length > 0;
 			lastTabs = tabs;
 			lastTabsJson = json;
-			// Activation edges always reach the UI (auto-open signal); other
-			// churn only while subscribed (fresh url/title for the live view).
-			if (becameActive || subscribed) sendTabs(tabs, becameActive);
+			// Every diff reaches the UI, subscribed or not: per-owner
+			// activation edges (auto-open signals) are derived UI-side from
+			// consecutive snapshots, so a closed mirror page must not miss them.
+			sendTabs(tabs);
 		}
 		await reconcile(tabs);
 	} catch {
@@ -255,14 +267,29 @@ async function poll(): Promise<void> {
 	}
 }
 
-function sendTabs(tabs: MirrorTabInfo[], becameActive: boolean): void {
+/**
+ * Map a tab-creating session id to its jsonl path in the host pool.
+ * PoolEntry.providerSessionId (= sessionManager.getSessionId()) is the same id
+ * the supervisor records as TabSession.ownerSessionId. Undefined when the tab
+ * has no owner or its session is no longer pooled (closed / external process).
+ */
+function pathForOwnerSession(ownerSessionId: string | undefined): string | undefined {
+	if (!ownerSessionId) return undefined;
+	for (const entry of sessions.values()) {
+		if (entry.providerSessionId === ownerSessionId) return entry.path;
+	}
+	return undefined;
+}
+
+function sendTabs(tabs: MirrorTabInfo[]): void {
 	if (!uiWs) return;
 	try {
-		uiWs.send(JSON.stringify(stampEvent({ type: "browser_tabs", tabs, active: becameActive })));
+		uiWs.send(JSON.stringify(stampEvent({ type: "browser_tabs", tabs })));
 	} catch {
 		// dead connection: main.ts close() clears uiWs
 	}
 }
+
 
 async function reconcile(tabs: MirrorTabInfo[]): Promise<void> {
 	if (subscribed && (!selected || !tabs.some((t) => t.name === selected && t.mirrorable))) {
@@ -328,18 +355,30 @@ async function attach(tabInfo: MirrorTabInfo): Promise<void> {
 	cdp.on("disconnected", () => {
 		if (attachment?.cdp === cdp) attachment = null;
 	});
-	const maxDim = streamWidth;
-	await cdp.send("Page.startScreencast", {
-		format: "jpeg",
-		quality: 60,
-		maxWidth: maxDim,
-		maxHeight: maxDim,
-		everyNthFrame: 1,
-	});
+	await restartScreencast(cdp);
 	attachment = { name: tabInfo.name, cdp, wokeAt: 0 };
 	// A settle-frozen page drops input and stops producing frames; watching it
 	// implies active. Idempotent — the supervisor's next run re-asserts either state.
 	void wakeIfFrozen(tabInfo.name);
+}
+
+/**
+ * (Re)start the CDP screencast at the current stream width. quality 85: the
+ * mirror replaces reading the page — 60 turned text to mush on HiDPI panels;
+ * Chromium only produces frames on change, so the sharper jpeg stays cheap.
+ */
+async function restartScreencast(cdp: CDPSession): Promise<void> {
+	// Page.startScreencast rejects while a cast is already active — stop
+	// first; stopping an idle page is a harmless no-op.
+	await cdp.send("Page.stopScreencast").catch(() => undefined);
+	const maxDim = streamWidth;
+	await cdp.send("Page.startScreencast", {
+		format: "jpeg",
+		quality: 85,
+		maxWidth: maxDim,
+		maxHeight: maxDim,
+		everyNthFrame: 1,
+	});
 }
 
 /**

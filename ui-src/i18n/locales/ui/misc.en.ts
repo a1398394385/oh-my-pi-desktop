@@ -38,7 +38,6 @@ export const miscEn = {
   projectFallback: "Project",
   projectDirTitle: "Project directory: {{path}}",
   gitBranchTitle: "Git branch: {{branch}}",
-  noProject: "Work without a project",
   defaultProject: "Default project",
   // welcome/ProjectMenu.tsx
   pickProjectFolder: "Choose project folder",
@@ -80,6 +79,8 @@ export const miscEn = {
   keysSteer: "Inject immediately (steer while generating)",
   keysQueue: "Add to send queue",
   keysRecall: "Recall queued message (last sent, first back)",
+  keysClearDraft: "Clear the composer (no selection; stashed for recall while the setting is on)",
+  keysRecallCleared: "Browse cleared drafts (↑ older / ↓ back to live input)",
   keysGroupTree: "Session tree",
   keysGroupTreeDesc: "Key behavior inside the session tree page.",
   keysTreeMove: "Move the entry cursor (stops at the ends, no wrap)",
@@ -103,6 +104,9 @@ export const miscEn = {
   bootHostRestartStopped: "Host keeps exiting on memory limits; automatic restart stopped",
   bootHostNotReady: "Host not ready within 60s; check the terminal logs",
   bootNotifyFailed: "Failed to send the notification",
+  // BootSplash.tsx
+  bootConnecting: "Connecting…",
+  skipBoot: "Skip",
 };
 
 export default miscEn;

@@ -17,10 +17,11 @@ import {
   quotePosixPath,
 } from "../bootstrap.ts";
 import { ensureRemoteWorkspaceDir, normalizeRemotePath, readUserSshHost } from "../remote-workspaces.ts";
+import { safeStderr } from "../stderr.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 
-interface SshHostConfigShape {
+export interface SshHostConfigShape {
   host: string;
   username?: string;
   port?: number;
@@ -49,12 +50,47 @@ function invalidateSshCaches(): void {
   clearCapabilityFsCache();
 }
 
+// Longest error we surface in a frame (the rest is only interesting in the host log).
+const MAX_ERROR_CHARS = 3000;
+
+/**
+ * Windows OpenSSH escapes every non-ASCII byte of a message as literal
+ * `\NNN` octal (mprintf keeps diagnostics ASCII-safe). Left as-is the user sees
+ * `\350\202\226...` instead of their CJK username. Re-encode the escape runs
+ * back to bytes so the original UTF-8 text survives the round trip.
+ *
+ * The run matters: one CJK glyph is 3 escaped bytes, and decoding them one at a
+ * time fails (a continuation byte alone is not valid UTF-8). NUL bytes are
+ * dropped — they are password-prompt padding, not content.
+ */
+function decodeSshOctalEscapes(text: string): string {
+  if (!text.includes("\\")) return text;
+  const utf8 = new TextDecoder("utf-8", { fatal: true });
+  return text.replace(/(?:\\[0-7]{1,3})+/g, (run) => {
+    const bytes: number[] = [];
+    for (const octal of run.slice(1).split("\\")) bytes.push(Number.parseInt(octal, 8));
+    try {
+      return utf8.decode(Uint8Array.from(bytes)).replace(/\0/g, "");
+    } catch {
+      // Not valid UTF-8 on its own (a lone escape): keep the literal text.
+      return run;
+    }
+  });
+}
+
+/** Tidy an ssh diagnostic for display: octal escapes decoded, CRLF folded, tail-capped. */
+export function formatSshError(stderr: string, stdout: string, code: number | null): string {
+  const raw = stderr.trim() || stdout.trim() || `exit ${code ?? "killed"}`;
+  const text = decodeSshOctalEscapes(raw).replace(/\r\n/g, "\n").trim();
+  return text.length > MAX_ERROR_CHARS ? `${text.slice(0, MAX_ERROR_CHARS)}\n…` : text;
+}
+
 /**
  * Run one SSH command against a host config. BatchMode keeps failures
  * non-interactive (no password prompts hanging the RPC); accept-new records
  * first-seen host keys instead of blocking. Returns exit code, stdout, stderr.
  */
-async function runSshCommand(host: SshHostConfigShape, command: string, timeoutMs = 15_000): Promise<{ code: number | null; stdout: string; stderr: string }> {
+export async function runSshCommand(host: SshHostConfigShape, command: string, timeoutMs = 15_000): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const args = [
     "-o",
     "BatchMode=yes",
@@ -76,6 +112,28 @@ async function runSshCommand(host: SshHostConfigShape, command: string, timeoutM
   } finally {
     clearTimeout(timer);
   }
+}
+/**
+ * Resolve an RPC target: by saved alias (msg.name), or from inline form fields
+ * (host required, username/port/keyPath optional). Shared by the probe and the
+ * directory listing so both accept the same message shape.
+ */
+async function resolveHostConfig(msg: Record<string, unknown>): Promise<{ name: string | null; config: SshHostConfigShape }> {
+  const name = typeof msg.name === "string" && msg.name.trim() ? msg.name.trim() : null;
+  if (name) {
+    const config = await readUserSshHost(name);
+    if (!config) throw new Error(hostI18n.t("errors.ssh.hostNotFound", { name }));
+    return { name, config };
+  }
+  const host = String(msg.host ?? "").trim();
+  if (!host) throw new Error(hostI18n.t("errors.ssh.missingAddress"));
+  const config: SshHostConfigShape = { host };
+  const username = String(msg.username ?? "").trim();
+  const keyPath = String(msg.keyPath ?? "").trim();
+  if (username) config.username = username;
+  if (msg.port !== undefined && msg.port !== null && msg.port !== "") config.port = Number(msg.port);
+  if (keyPath) config.keyPath = keyPath;
+  return { name, config };
 }
 
 export const sshHandlers: Record<string, RpcHandler> = {
@@ -117,34 +175,54 @@ export const sshHandlers: Record<string, RpcHandler> = {
     await sendHostList(ws);
   },
   async ssh_test_host(ws, msg) {
-    const name = typeof msg.name === "string" && msg.name.trim() ? msg.name.trim() : null;
-    // Resolve the target: by saved alias, or from inline fields (testing the
-    // add form before saving). Inline requires an address.
-    let config: SshHostConfigShape | undefined;
-    if (name) {
-      config = await readUserSshHost(name);
-      if (!config) throw new Error(hostI18n.t("errors.ssh.hostNotFound", { name }));
-    } else {
-      const host = String(msg.host ?? "").trim();
-      if (!host) throw new Error(hostI18n.t("errors.ssh.missingAddress"));
-      config = { host };
-      const username = String(msg.username ?? "").trim();
-      const keyPath = String(msg.keyPath ?? "").trim();
-      if (username) config.username = username;
-      if (msg.port !== undefined && msg.port !== null && msg.port !== "") config.port = Number(msg.port);
-      if (keyPath) config.keyPath = keyPath;
-    }
+    const { name, config } = await resolveHostConfig(msg);
     const startedAt = Date.now();
     const result = await runSshCommand(config, "echo PI_SSH_OK");
     const latencyMs = Date.now() - startedAt;
     const ok = result.code === 0 && result.stdout.trim() === "PI_SSH_OK";
+    if (!ok) {
+      // The frame caps the error for the dialog; the untruncated diagnostic
+      // (which is what a bug report needs) only lives in the host log.
+      const full = decodeSshOctalEscapes(result.stderr || result.stdout).replace(/\r\n/g, "\n").trim();
+      safeStderr(`[host] SSH 探测失败 ${buildSshTarget(config.username, config.host)} (exit ${result.code ?? "killed"}):\n${full}\n`);
+    }
     ws.send(
       JSON.stringify({
         type: "ssh_test_result",
         name,
         ok,
         latencyMs,
-        ...(ok ? {} : { error: (result.stderr.trim() || result.stdout.trim() || `exit ${result.code ?? "killed"}`).slice(0, 300) }),
+        ...(ok ? {} : { error: formatSshError(result.stderr, result.stdout, result.code) }),
+      }),
+    );
+  },
+  // Remote directory listing for the workspace-path picker: `ls -1ap` prints one
+  // name per line with a trailing "/" on directories. Failure (missing dir, no
+  // perms) replies ok:false — the picker closes silently, the user keeps typing.
+  async ssh_list_dirs(ws, msg) {
+    const base = normalizeRemotePath(msg.path);
+    if (!base) {
+      ws.send(JSON.stringify({ type: "ssh_dirs", ok: false, path: String(msg.path ?? "") }));
+      return;
+    }
+    const { config } = await resolveHostConfig(msg);
+    const result = await runSshCommand(config, `ls -1ap ${quotePosixPath(base)}`, 8_000);
+    const dirs =
+      result.code === 0
+        ? result.stdout
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.endsWith("/") && line !== "./" && line !== "../")
+            .map((line) => line.slice(0, -1))
+            .filter((name) => name.length > 0)
+            .slice(0, 200)
+        : undefined;
+    ws.send(
+      JSON.stringify({
+        type: "ssh_dirs",
+        ok: result.code === 0,
+        path: base,
+        ...(dirs ? { dirs } : { error: formatSshError(result.stderr, result.stdout, result.code) }),
       }),
     );
   },
@@ -164,7 +242,7 @@ export const sshHandlers: Record<string, RpcHandler> = {
         JSON.stringify({
           type: "remote_workspace_added",
           ok: false,
-          error: hostI18n.t("errors.ssh.unreachable", { detail: (probe.stderr.trim() || `exit ${probe.code}`).slice(0, 300) }),
+          error: hostI18n.t("errors.ssh.unreachable", { detail: formatSshError(probe.stderr, probe.stdout, probe.code) }),
         }),
       );
       return;

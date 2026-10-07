@@ -13,6 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PuppeteerBrowserKind } from "@oh-my-pi/pi-coding-agent/tools/browser/registry";
+import type { PoolEntry } from "../host/state.ts";
 
 const agentDir = mkdtempSync(join(tmpdir(), "omp-browsermirror-"));
 writeFileSync(join(agentDir, "omp-desktop.json"), JSON.stringify({ ui: { locale: "en" } }, null, 2));
@@ -31,8 +32,7 @@ const fail = (msg: string): never => {
 // Fake UI websocket capturing every pushed frame.
 interface SentFrame {
   type: string;
-  tabs?: { name: string; mirrorable: boolean; url?: string }[];
-  active?: boolean;
+  tabs?: { name: string; mirrorable: boolean; ownerPath?: string; url?: string }[];
   name?: string;
   data?: string;
   w?: number;
@@ -62,8 +62,9 @@ async function waitForFrame(pred: (f: SentFrame) => boolean, ms: number): Promis
 
 try {
   const mirror = await import("../host/browser-mirror.ts");
-  const { H } = await import("../host/state.ts");
+  const { H, sessions } = await import("../host/state.ts");
   const { Settings } = await import("../host/bootstrap.ts");
+
   H.agentDir = agentDir;
   H.settings = await Settings.init({ cwd: agentDir, agentDir });
 
@@ -81,19 +82,27 @@ try {
   check("empty snapshot carries no tabs", emptySnapshot?.tabs?.length === 0, JSON.stringify(emptySnapshot?.tabs));
 
   // 2. Open a real tab on the built-in (headless) Chromium — the exact
-  // acquire path invokeBrowser takes in the host process.
+  // acquire path invokeBrowser takes in the host process. The fake pool entry
+  // below lets pathForOwnerSession resolve the tab's ownerSessionId to a jsonl
+  // path, exactly as a live AgentSession would.
+  const fakePath = "/smoke/owner-session.jsonl";
+  sessions.set(fakePath, { providerSessionId: "smoke-owner-1", path: fakePath } as unknown as PoolEntry);
   const kind: PuppeteerBrowserKind = { kind: "headless", headless: true };
   const browser = await acquireBrowser(kind, { cwd: agentDir });
-  await acquireTab("main", browser, { timeoutMs: 60_000, url: "about:blank" });
+  await acquireTab("main", browser, { timeoutMs: 60_000, url: "about:blank", ownerSessionId: "smoke-owner-1" });
   check("tab registered in the supervisor registry", listTabs().some((t) => t.name === "main"));
 
-  // 3. The poll must push the activation edge (auto-open signal).
+  // 3. The poll must push the tab list on the next diff (auto-open edges are
+  // derived UI-side from these continuous snapshots).
   const edge = await waitForFrame((f) => f.type === "browser_tabs" && (f.tabs?.length ?? 0) > 0, 4000);
-  check("activation edge pushed as browser_tabs", !!edge);
-  check("edge flagged active (auto-open signal)", edge?.active === true, String(edge?.active));
+  check("tab list pushed as browser_tabs", !!edge);
   check(
     "tab marked mirrorable",
     edge?.tabs?.some((t) => t.name === "main" && t.mirrorable) === true,
+  );
+  check(
+    "tab carries the owner session path",
+    edge?.tabs?.some((t) => t.name === "main" && t.ownerPath === fakePath) === true,
   );
 
   // 4. Screencast stills must flow (reconcile attaches on the next poll tick).
@@ -141,6 +150,14 @@ try {
   } else {
     check("interactive click reaches the page", false, "page or geometry missing");
   }
+
+  // 4c. Re-subscribing wider while attached must restart the cast in place
+  // (panel resize path — the attachment used to keep its original maxWidth).
+  mirror.browserMirrorSubscribe(fakeWs, { width: 1200 });
+  if (page0) await page0.setContent("<h1>resize repaint</h1>").catch(() => undefined);
+  const resized = await waitForFrame((f) => f.type === "browser_frame" && typeof f.data === "string" && f.data.length > 100, 8000);
+  check("re-subscribe wider keeps frames flowing", !!resized, resized ? `jpeg ${resized.data?.length}B` : "no frame");
+
 
   // 5. Unsubscribe must stop the stream (no further stills after a grace period).
   const countAtUnsub = sent.filter((f) => f.type === "browser_frame").length;

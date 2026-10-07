@@ -40,6 +40,7 @@ import { useAppStore } from "../../../store";
 import type { CompletionResult } from "../../../store/session";
 import { $flattenText, $flattenWithCaret } from "./flat";
 import { $createGhostNode, $findGhostNode } from "./GhostNode";
+import { isBashMode } from "../trigger";
 
 // Typing pause before a completion request fires (input settled)
 const REQUEST_DEBOUNCE_MS = 200;
@@ -99,7 +100,9 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
     const requestCompletion = () => {
       const { text, caret } = editor.read(() => $flattenWithCaret());
       lastTextRef.current = text;
-      if (!text.trim() || caret !== text.length || composingRef.current || typeaheadOpenRef.current) {
+      // ! bash mode: no prose ghost over a shell command line (the bash
+      // completion card owns that domain)
+      if (!text.trim() || caret !== text.length || composingRef.current || typeaheadOpenRef.current || isBashMode(text)) {
         lastReqRef.current = null;
         return;
       }

@@ -50,6 +50,7 @@ const ALLOWED_EDGES = new Set([
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
   "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
+  "rpc/assets.ts→stderr.ts",
   "rpc/session.ts→stderr.ts", "rpc/settings.ts→stderr.ts",
   // 18.5.0 settings registry adapter: dotted-path settings reads/writes route
   // through settings-compat.ts (registry handles obtained via bootstrap)
@@ -82,6 +83,11 @@ const ALLOWED_EDGES = new Set([
   // than importing it back — the dependency is one-way by construction, so no cycle enters the table.
   "plan.ts→plan-approve.ts", "plan-approve.ts→bootstrap.ts", "plan-approve.ts→state.ts",
   "session-lifecycle.ts→plan-approve.ts", "rpc/settings.ts→plan-approve.ts",
+  // Computer-use session state (the composer's screen-icon toggle): push/set
+  // mirror plan.ts's frame contract; the pinned overlay lives in the session
+  // settings child, the master gate in H.settings (bootstrap lookup).
+  "computer-mode.ts→bootstrap.ts", "computer-mode.ts→state.ts", "computer-mode.ts→settings-compat.ts",
+  "session-lifecycle.ts→computer-mode.ts", "rpc/prompt.ts→computer-mode.ts", "rpc/settings.ts→computer-mode.ts",
   // Session lifecycle domain: main.ts mounts the create/load dispatches; the lifecycle depends on plan (restoring plan mode),
   // queue (queued-race fallback), profile (experiment switches), assets (plugin/hook switches)
   "main.ts→session-lifecycle.ts",
@@ -132,6 +138,7 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/models.ts", "rpc/index.ts→rpc/settings.ts", "rpc/index.ts→rpc/login.ts",
   "rpc/index.ts→rpc/assets.ts", "rpc/index.ts→rpc/terminal.ts", "rpc/index.ts→rpc/limits.ts",
   "rpc/index.ts→rpc/browser.ts",
+  "rpc/index.ts→rpc/bash-complete.ts",
   // Agent browser live mirror (right-panel live view of the built-in browser):
   // main starts the registry poll and tracks the UI ws lifecycle; the rpc
   // domain only forwards the three mirror commands (one-way downward)
@@ -150,8 +157,12 @@ const ALLOWED_EDGES = new Set([
   "rpc/session.ts→session-activity.ts",
   "rpc/prompt.ts→rpc/types.ts", "rpc/prompt.ts→rpc/session.ts",
   "rpc/prompt.ts→bootstrap.ts", "rpc/prompt.ts→state.ts", "rpc/prompt.ts→translate.ts",
+  // ! bash-mode completion: PATH scan + cwd path candidates (reads the pool for the session cwd, replies on its ws)
+  "rpc/bash-complete.ts→rpc/types.ts", "rpc/bash-complete.ts→state.ts",
   "rpc/prompt.ts→session-lifecycle.ts", "rpc/prompt.ts→plan.ts", "rpc/prompt.ts→queue.ts",
   "rpc/files.ts→rpc/types.ts", "rpc/files.ts→state.ts", "rpc/files.ts→session-lifecycle.ts",
+  // Remote-workspace file RPCs: path translation via the stub marker + ssh exec/error helpers from the ssh domain
+  "rpc/files.ts→bootstrap.ts", "rpc/files.ts→remote-workspaces.ts", "rpc/files.ts→rpc/ssh.ts",
   "rpc/models.ts→rpc/types.ts", "rpc/models.ts→bootstrap.ts", "rpc/models.ts→state.ts",
   "rpc/models.ts→models.ts", "rpc/models.ts→frames.ts", "rpc/models.ts→limits",
   "rpc/models.ts→stats.ts",
@@ -186,6 +197,9 @@ const ALLOWED_EDGES = new Set([
   "rpc/ssh.ts→rpc/types.ts", "rpc/ssh.ts→bootstrap.ts", "rpc/ssh.ts→remote-workspaces.ts",
   "remote-workspaces.ts→bootstrap.ts",
   "rpc/session.ts→remote-workspaces.ts",
+  // Probe failures are diagnostics: the untruncated ssh stderr goes to the host
+  // log via safeStderr (same one-way edge as the other RPC domains)
+  "rpc/ssh.ts→stderr.ts",
 ]);
 
 // Scan one level of host/ plus the host/rpc/ subdirectory (keys carry a path prefix like rpc/session.ts)

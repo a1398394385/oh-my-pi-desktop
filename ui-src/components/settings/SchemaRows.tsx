@@ -250,7 +250,7 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
   }
 
   return (
-    <div className="srow">
+    <div className="srow" data-key={k}>
       <div className="srow-tx">
         <b className={adv ? "adv-key" : undefined}>{label}</b>
         {warn && <span className="srow-wn">{warn}</span>}
@@ -308,6 +308,7 @@ function useSchemaRows(sections?: Section[] | null): ReactElement[] {
   const rows: ReactElement[] = [];
   if (!schema || !sections) return rows;
   for (const section of sections) {
+    if (section.when && values[section.when.key] !== section.when.equals) continue;
     for (const k of expandSection(section, schema).filter((k) => {
       const cond = schema[k].ui?.condition;
       // Conditional hiding: don't render when the condition is known and false; render when unknown/absent
@@ -330,6 +331,7 @@ export default function SchemaRows({ sections }: SchemaRowsProps) {
 
   const out: ReactElement[] = [];
   for (const section of sections) {
+    if (section.when && values[section.when.key] !== section.when.equals) continue;
     const keys = expandSection(section, schema).filter((k) => {
       const cond = schema[k].ui?.condition;
       // Conditional hiding: don't render when the condition is known and false; render when unknown/absent

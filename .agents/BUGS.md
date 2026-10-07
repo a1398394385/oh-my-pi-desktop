@@ -50,6 +50,10 @@
 | BUG-040 | 发消息后「工作中 Ns」紧贴气泡被渐隐吞掉——贴底目标把 sticky 底部占位的 36px 算进内容 | 2026-10-03 |
 | BUG-041 | Windows 安装版使用统计永远「同步失败」——桌面宿主分支未声明 worker host，stats 解析 worker 回退编译产物虚拟路径不可加载 | 2026-10-04 |
 | BUG-044 | 桌面版 computer use 全不可用——薄入口在 worker 线程 runCli 返回后无条件 process.exit(0)，worker 刚 ready 就被秒杀 | 2026-10-05 |
+| BUG-047 | 安装版批准计划后收尾崩——readSdkPrompt 用 import.meta.resolve 运行时读 SDK 包，standalone exe 无 node_modules 可解析 | 2026-10-06 |
+| BUG-048 | 批准卡无模型滑条且批准后静默切 default 模型、输入框仍显示旧模型——requestApproval 帧手挑字段漏 slider 等 4 个 + applyRoleModel 后不推 session_model | 2026-10-06 |
+| BUG-049 | SSH 测试报错既看不懂又复制不了——Windows OpenSSH 八进制转义外泄 + toast 承担了不可抄的诊断 | 2026-10-06 |
+| BUG-050 | 缓存保活自移植起从未布防过——嵌入式宿主只调 initialize 不发 session_start，扩展 config 恒为空靶标默认值 | 2026-10-07 |
 
 ---
 
@@ -647,3 +651,60 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：safeStderr 契约 3/3（单串透传/多参拼接对齐 console.error/写失败吞掉）；SIGKILL 自杀跳过 exit 钩子（探针红绿：SIGKILL 无 flag、`exit(0)` 有 flag）；孤儿链路实跑：spawn 真宿主 → READY → 父进程退出 → ≤2.5s 内自灭、tasklist 无残留、宿主日志干净；`bun run host:build` 通过；真实宿主冒烟起机、WS 握手、会话列表、配额刷新日志（当年炸机的那一行）全走 safeStderr；八项门禁全绿（host/main.ts 278/280）。注：`scripts/smoke.ts` 的「应有历史 project」断言因测试 profile 历史被前次清理而空挂，与本次改动无关。
 
 **教训**：进程级管道（stdout/stderr）在父壳死亡后就是地雷，守护进程的一切日志写入必须有 EPIPE 兜底——日志永远不许杀进程。垂死进程应当零写入退出：诊断、审计、埋点类「退出补写」在多进程共享存储下等于写冲突；Windows 上壳的 TerminateProcess 天然零退栈，而一切「自己 process.exit」的路径都会跑钩子，自毁手段必须与写入意图匹配。
+
+### BUG-047: 安装版批准计划后收尾崩——readSdkPrompt 用 import.meta.resolve 运行时读 SDK 包，standalone exe 无 node_modules 可解析
+
+**现象**：Windows 安装版批准计划（任一选项）后收尾失败，消息区报 `Cannot find package '@oh-my-pi/pi-coding-agent' imported from B:\~BUN\root\omp-host.exe`；计划模式本身、提案、审批卡均正常，死点固定在批准后的执行派发。
+
+**分诊**：①确认存量缺陷。`readSdkPrompt` 自引入起就以 `import.meta.resolve("@oh-my-pi/pi-coding-agent/plan-mode/approved-plan")` 锚定包 src 根再读 `prompts/system/*.md`——dev 形态（bun 跑源码）两条解析都通，编译形态从未可用（与 BUG-041 同族：编译产物虚拟路径）。
+
+**根因**：standalone exe 里「运行时读 node_modules」是死路：(1) 虚拟 FS（`B:\~BUN\root\`）里没有 node_modules，`import.meta.resolve` 运行时直接抛「Cannot find package」（Bun 1.4.2 最小复现 exe 实证，措辞 `Cannot find module ... from 'B:\~BUN\root\repro.exe'`）；(2) md 文件不在 import 依赖图内，`bun build --compile` 根本不会把它打进产物——即使 resolve 成功也无文件可读。SDK 的 exports 又不暴露 `prompts/` 子路径，包内直接 import 不可行。
+
+**修复**：prompt 镜像入仓（`host/prompts/`，与 SDK 逐字节一致）+ 根 `bunfig.toml` 声明 `[loader] ".md" = "text"`（oh-my-pi 源码仓同款）+ `readSdkPrompt` 改静态 import 镜像文件查表（构建期内联字符串，dev/编译同一路径）；`scripts/build-host.ts` 每次构建校验镜像 == 已装 SDK，漂移即败并提示 `bun run host:sync-prompts`（对齐 BUG-036 的「镜像 + 失效提示」哲学）。
+
+**验证**：probe 最小 exe 实测编译产物内 `.md` import 返回完整文本（type string / 922B / 内容正确）；故障注入三态（篡改镜像 → host:build 精准拦截报文件名 → sync 恢复 → 重建通过）；`bun run smoke:plan` 13 断言全绿；`bun run check` 全绿。
+
+**教训**：standalone exe 中一切「运行时解析/读取 node_modules」的路径（import.meta.resolve、动态拼接 import、读包内非 import 文件）都是死路，包内文本资源必须构建期内联；dev 形态全通会系统性掩盖这类问题，凡新增触碰 SDK 资源的路径，最低验证要过一次 `host:build` 后的 exe 实测。
+
+### BUG-048: 批准卡无模型滑条且批准后静默切 default 模型、输入框仍显示旧模型——requestApproval 帧手挑字段漏 slider 等 4 个 + applyRoleModel 后不推 session_model
+
+**现象**：用户在 kimi 会话批准计划执行后报错收尾（BUG-047 叠加），打「继续」续跑：输入框右下角仍显示 kimi，上下文明细环额度卡显示 GLM 余额，实际请求也发给 GLM（journal 实证：`mode_change:none` 后 7ms `model_change:zhipu-coding-plan/glm-5.3 role=default`，其后 40 条消息全 glm），直到手动切回 kimi；且批准卡上从未出现执行模型滑条。
+
+**分诊**：②两个叠加缺陷（同一批准链）：A. `host/state.ts` `requestApproval` 帧 spread 手挑字段，只透传了 `keepContextTokens`——`slider`/`disabledIndices`/`editable`/`editableIndex` 全部没上帧；UI 端组件/store/消费链齐全，纯发送端漏字段。B. `dispatchApprovedTurn` 的 `applyRoleModel` 与手动切换的 `set_model` RPC 推送契约不对称：后者推 `session_model` 帧刷新输入框显示，前者什么都不推。
+
+**根因**：A 使 UI 永远收不到滑条 → 不渲染、不回传 `sliderIndex` → host 端 `pickedTier` 兜底为本地构造的 `slider.index`（default 档）→ 静默 `applyRoleModel`(default 角色 = GLM)，用户无从看见也无从选择（滑条 UI 与回传协议都在，唯独帧上没数据）；B 使切换发生后 UI 模型显示冻结在旧值。另 keep 行禁用（>95% 上下文）与 save-quit 路径编辑框标志同因失效。
+
+**修复**：帧构造改 `...(presentation ?? {})` 整体透传（滑条、禁用行、编辑器标志一并恢复；字段名即帧字段名，整体透传杜绝再漏）；`dispatchApprovedTurn` 增加 `ws` 参数，`applyRoleModel` 成功后镜像 `set_model` 推送 `session_model`（sessionId 取 session 自身 id——execute 分支作用于新 fork 的会话）。
+
+**验证**：帧构造 throwaway 探针 6/6（slider 五字段 + options 完整）；`bun run smoke:plan` 13 断言全绿；`bun run check` 全绿。限制：无模型 profile 下 `slider` 不下发、`roleIndex` 分支不可达，`session_model` 推送未获自动断言——帧形状与 `set_model` 既有通道逐字段一致，UI 处理器既有，首次真模型批准时人工复核一次即可。
+
+**教训**：帧构造里「手挑字段 spread」是漏字段模板——payload 字段与帧字段同名时应整体透传，让类型系统当透传面的 SSOT；复用既有 RPC 的副作用（applyRoleModel）时必须核对其完整推送契约（谁推 `session_model`），任何新路径改 session 状态都要与 UI 同步成对出现。
+
+### BUG-049: SSH 测试报错既看不懂又复制不了——Windows OpenSSH 八进制转义外泄 + toast 承担了不可抄的诊断
+
+**现象**：欢迎页远程连接对话框点「测试」，弹出的失败文本形如 `\350\202\226\351\211\264\346\235\276@10.147.17.244: Permission denied (publickey,...)`；文本 2.2 秒自动消失，且无法选中复制。
+
+**分诊**：三缺陷叠加——(1) **编码**：Windows OpenSSH 把诊断里的非 ASCII 字节逐个转义成字面 `\NNN`（mprintf 保持诊断 ASCII-safe），底座与桌面都不还原，用户看到的是八进制而非自己的中文用户名；Git 自带 ssh 同样如此，非本机 ssh.exe 版本问题。(2) **截断**：`ssh_test_host` 把 stderr `.slice(0, 300)`，Windows 私钥权限告警的 `@@@@` 横幅 + 前 5 行就吃掉 300 字符，真正的失败原因（`Load key ...: bad permissions`）被整段切掉。(3) **承载**：失败走 `toast(...)`，而 `#toast` 是 `white-space: nowrap` + 2.2s 自动隐藏 + 无 `user-select`，且 `z-index: 400` 低于 Radix 对话框遮罩的 1000——它在对话框打开时本就压在遮罩下，即使没超时也读不到。
+
+**根因**：(1)(2) 在 `host/rpc/ssh.ts` 取原始 stderr 后直接当 UTF-8 用；(3) 把「需要用户读并粘贴的诊断」当成了瞬时通知——toast 的契约是「一句话、不需要留存」，与 ssh 错误的诉求正交。
+
+**修复**：(1) 新增 `decodeSshOctalEscapes`，把**连续的**转义段还原成字节再按 UTF-8 解码（必须整段：一个汉字 = 3 个转义字节，逐个解码会让续字节单独校验失败；`\000` 这类口令提示填充字节丢弃）；非法 UTF-8 序列回退保留字面文本，不吐 U+FFFD。(2) 抽出 `formatSshError` 统一「解码 + CRLF 折叠 + 尾截断」，上限 3000（覆盖最长的 `@` 横幅 + 权限说明）；未截断原文经 `safeStderr` 落宿主日志（新增边界边 `rpc/ssh.ts→stderr.ts`）。(3) `RemoteDialog` 改内联 `.rd-result` 面板：`user-select: text`、最大高度 220px 内滚、带「复制详情」按钮逐字复制，成功/失败靠左边框 `--green`/`--err` 区分，不再用 toast。
+
+**验证**：真实目标端到端（走宿主 WS RPC，不是模拟）——`ssh_test_host` 与 `add_remote_workspace` 两条失败路径的 `error` 字段均为可读中文用户名 + 完整 `Permission denied` 行，宿主日志另有未截断副本；`bun run smoke:ssh-result` 17/17（走真实 UI 路径：欢迎页 → 项目胶囊 → `#wbProjRemote` → 对话框 → 落失败帧 → 断言可选中/可复制/无 toast，成功态 data-ok=true）；`bun run check` 全绿；`bun run host:build` 通过。限制：冒烟用 happy-dom，`getComputedStyle` 可验证 `user-select` 计算值，但 WKWebView 上的真实拖选手感未人工复核。
+
+**教训**：外部进程的 stderr 是**不可信字节流**，不是「拿来 trim 一下就能显示的字符串」——先按字节解码再做截断，截断要在解码之后（否则切一半的多字节序列会碎）；连续转义是「一个逻辑字符」的边界，不能逐 token 解码。承载面也要对：toast / snackbar / badge 装不下「需要留存、需要选中、需要粘贴」的诊断，这类内容该有自己的可复制容器——`user-select` 缺失和 z-index 低于父遮罩是两类独立缺陷，会各自让错误不可读。
+
+### BUG-050: 缓存保活自移植起从未布防过——嵌入式宿主只调 initialize 不发 session_start，扩展 config 恒为空靶标默认值
+
+**现象**：实验功能页开了缓存保活、靶标已配置，但上下文明细卡保活段「下次运行」恒为「已暂停」，探测计数恒 0，`~/.omp/cache-keepalive/probe-log.jsonl` 从未产生。turn 完整结束后、用户无任何操作时同样如此。
+
+**分诊**：②确认存量缺陷——8110d48 移植当天起即坏，BUG-043（catalog id 错配）修的是真问题但被这个更上游的断链完全掩盖：`isTargetModel` 在 config 加载之前就死了，靶标格式对不对根本轮不到判。
+
+**根因**：嵌入式 SDK 宿主必须自己派发 `session_start`——SDK 内只有模式层会发（TUI 的 extension-ui-controller/runtime-init.ts:212、ACP 的 acp-agent.ts:2644、print/rpc/task 模式的 initializeExtensions）。桌面宿主 session-lifecycle.ts:634 照抄了 ACP 的 `runner.initialize(...)`（注释自称 same as acp-agent.ts:2631）却漏抄了它紧随其后的 `await emit({ type: "session_start" })`。keepalive 扩展的 config 只在 session_start handler 里从 omp-desktop.json 加载；事件永不到达 → config 恒为 `DEFAULT_PROBE_CONFIG`（targets=[]）→ `isTargetModel` 恒 false → capture 永不建立 → `armed()` 恒 false → agent_end 从不布防 → nextProbeAt 恒 null。UI 的 enabled:true 来自 entry 的初始零值快照（注入开关开着就有），与扩展是否真的初始化无关，掩盖了断链。
+
+**修复**：`host/session-lifecycle.ts` attachEntry 的 initialize 之后补 `emit({ type: "session_start" })`，用 `entry.extSessionStarted`（host/state.ts PoolEntry 新字段）守卫——attachEntry 在池复用/前端重连时会重跑，重复派发会重置扩展状态（keepalive 丢 capture 清 timer）。
+
+**验证**：全隔离复现台（OMP_PROFILE=omp-desktop-test + models.yml 自定义 mock provider + 本地 https 自签 mock 服务，宿主带 NODE_TLS_REJECT_UNAUTHORIZED=0 以过探测的 https-only endpoint 守卫）——修复前：turn 完整跑完（mock 收到真实请求）而 active 恒 false、150s 零布防；修复后：capture 建立（active:true）→ agent_end 布防（nextProbeAt=+30s）→ onTick 到点 → 探测真实发出（mock 收到 probe 请求、probes 1→2、hits 1→2）→ 30s 循环持续重排。`bun run check` 全绿。
+
+**教训**：照抄上游某个调用点的「仪式」时要抄完整条链——SDK 的 initialize 和 session_start emit 是配对的（三个模式层全都 emit），只抄一半就是静默半死状态；「开关开了 + UI 有渲染」不等于扩展初始化过（entry 初始快照就能撑起 enabled:true）。调试此案的关键手法：给宿主开 PI_KEEPALIVE_DEBUG、在 isTargetModel/before_provider_request 入口加一次性诊断行，一条 `[diag] target miss: targets=[...]` 直接把断链钉在 config 加载层。
+

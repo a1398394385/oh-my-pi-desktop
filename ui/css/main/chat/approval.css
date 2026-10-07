@@ -8,6 +8,7 @@
 }
 
 .approval-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: var(--ui-fs-base); font-weight: 500; color: var(--dim); line-height: 1.3;
 }
 

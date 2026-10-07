@@ -11,7 +11,7 @@ import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import { activeOpen } from "./session";
 import { getSupportedThinkingForModel } from "./models";
-import { saveRightSnapshot } from "./right";
+import { saveRightSlot, restoreRightSlot } from "./right";
 import { detectLang } from "../i18n";
 
 /** setTimeout handle (DOM vs Node return types differ; unified alias; TS environments with Node types return Timeout) */
@@ -30,6 +30,7 @@ export interface UiSlice {
   newSessionModel: string;
   newSessionThinking: string;
   newSessionPlanMode: boolean; // plan-mode intent for the next session (consumed by create_session; the host confirms via the plan_mode frame)
+  newSessionComputerMode: boolean; // computer-use intent for the next session (consumed by create_session; the host opts the fresh session in and confirms via the computer_mode frame)
   newSessionDirty: boolean;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   fileSeq: number;
@@ -48,6 +49,8 @@ export interface UiSlice {
   commandsSessionId: string | null; // session id the list belongs to; invalidated on session switch
   mentionReqSeq: number; // list_files request counter (reqId generator, frontend-incremented)
   mentionResult: { reqId: number; matches: FileMatch[] } | null; // latest @ candidates response; stale as soon as the reqId no longer matches the current request
+  bashCompleteSeq: number; // bash_complete request counter (reqId generator, frontend-incremented)
+  bashCompleteResult: { reqId: number; items: Array<{ label: string; kind: "cmd" | "dir" | "file" }> } | null; // latest ! completion reply; stale when the reqId lags the current request
   ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
   ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
   keepaliveStatus: KeepaliveStatusFrame | null; // most recent keepalive_status reply (same ringpop transient pattern; the context card's cache-warming section consumes it)
@@ -64,6 +67,8 @@ export interface UiSlice {
   pendingHubSel?: string | null;
   uiPrefs: UiPrefs;
   hubWarming: string | null; // sessionId with a cache-warming run in flight (cache_warming frame; landed by landCacheWarming)
+  /** Full-window boot veil: true from launch until the first session_list frame (preview mode clears it at mount); covers the welcome page's "/" placeholder window during host cold start. */
+  bootSplash: boolean;
   toast(msg: unknown): void;
   openHub(): void;
   closeHub(): void;
@@ -128,6 +133,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionModel: "",
   newSessionThinking: "auto",
   newSessionPlanMode: false,
+  newSessionComputerMode: false,
   newSessionDirty: false,
   pendingFiles: [],
   fileSeq: 0,
@@ -145,6 +151,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   commandsSessionId: null,
   mentionReqSeq: 0,
   mentionResult: null,
+  bashCompleteSeq: 0,
+  bashCompleteResult: null,
   ctxDetail: null,
   ctxLimits: null,
   keepaliveStatus: null,
@@ -158,6 +166,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   pendingHubSel: null,
   uiPrefs: uiPrefsInit,
   hubWarming: null,
+  bootSplash: true,
 
   openHub() {
     const st = get();
@@ -215,8 +224,13 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
 
   showWelcomeScreen(preferredCwd) {
     const alreadyOpen = get().isCreatingNew;
-    saveRightSnapshot(get().activePath); // entering new-session page = leaving current session: snapshot before activePath is nulled
+    // Leaving a live session: its slot takes the projection. Callers that already
+    // nulled activePath (disk-gone branch in wsHandlers/session.ts) skip this — they
+    // disposed the slot themselves.
+    const leaving = get().activePath;
+    if (leaving) saveRightSlot(leaving);
     set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat" }));
+    restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
       set({ newSessionDirty: false });
@@ -225,12 +239,16 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     const st = get();
     const avail = st.getAvailableProjects();
     const stored = localStorage.getItem("omp-new-project");
+    // No valid pick yet (startup before session_list): keep the empty
+    // placeholder instead of "/" — the label-only pill reads as "loading",
+    // and wsHandlers/session.ts reconciles to the default project once the
+    // frame lands.
     const targetProject =
       (preferredCwd && avail.some((p) => p.cwd === preferredCwd) ? preferredCwd : null) ||
       (st.newSessionProject && avail.some((p) => p.cwd === st.newSessionProject) ? st.newSessionProject : null) ||
       (stored && avail.some((p) => p.cwd === stored) ? stored : null) ||
       avail[0]?.cwd ||
-      "/";
+      "";
     if (!alreadyOpen || targetProject !== st.newSessionProject) get().setWelcomeProject(targetProject);
     get().initNewSessionModel();
   },
@@ -242,7 +260,11 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   setWelcomeProject(cwd) {
     if (!cwd) {
       const avail = get().getAvailableProjects();
-      cwd = avail[0]?.cwd || "/";
+      cwd = avail[0]?.cwd ?? "";
+      // Startup before session_list: no real project exists yet — stay on the
+      // empty placeholder (no localStorage pollution, no request for "/"),
+      // the session_list reconciliation picks the default project later.
+      if (!cwd) return;
     }
     try {
       localStorage.setItem("omp-new-project", cwd);

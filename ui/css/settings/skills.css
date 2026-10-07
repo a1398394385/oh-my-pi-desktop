@@ -9,39 +9,27 @@
 /* skills master toggle off: the rest of the page grays out and blocks interaction (same "enable the master toggle first" semantics as the hooks page; the master toggle card sits outside the container and is unaffected) */
 .skills-off-dim { opacity: .45; pointer-events: none; }
 
-/* single-line toolbar: scope pill + stats + more/refresh/new + search box (search box flush right; under narrow widths the search box/pill compress first) */
-.skills-bar {
+/* toolbar aligned with the MCP page: first row scope pill + search box, second row installed count + actions */
+.skills-bar-primary {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 28px; /* same gap the old .set-group-tt kept above the toolbar */
+  margin-bottom: 16px;
 }
 
 .skills-scope-wrap {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 0 1 auto;
-  min-width: 0;
 }
-
-.skills-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
-
-/* stats text and scope labels never wrap: under narrow widths the pill label truncates with an ellipsis */
-.skills-bar #skillsTotalCount { white-space: nowrap; }
-
-.skills-bar .scope-sel-btn { min-width: 0; }
-
-.skills-bar .scope-sel-btn > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .skills-search-wrap {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 120px;
-  min-width: 0;
-  max-width: 240px;
-  margin-left: auto;
+  width: 240px;
 }
 
 .skills-search-icon {
@@ -74,12 +62,18 @@
 
 .skills-search-input::placeholder { color: var(--faint); }
 
-/* action buttons: more + refresh + new (not part of compression; under narrow widths the search box/scope pill compress) */
+/* second row: installed count + action buttons */
+.skills-bar-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .skills-actions-wrap {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  flex: none;
 }
 
 /* more(...) button = a size carrier inside the .sel pill: plate/hover come from the outer .sel (the refresh button uses .plus-btn) */

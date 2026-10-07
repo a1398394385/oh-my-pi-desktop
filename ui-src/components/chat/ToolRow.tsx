@@ -330,6 +330,10 @@ function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
         <TaskBody item={item} />
       ) : item.name === "ask" && Array.isArray(item.args?.questions) ? (
         <AskArgs questions={item.args.questions} />
+      ) : item.name === "wait" ? (
+        // wait's schema has no parameters — the harness strips the injected `i` intent field
+        // before execution, so the model-written intent is the only thing to show as params
+        <FadeBox className="cmd-card-cmd">{item.intent || t("chat.noParams")}</FadeBox>
       ) : (
         <FadeBox className="cmd-card-cmd">
           {truncateText(item.args ? JSON.stringify(item.args, null, 2) : t("chat.noParams"))}

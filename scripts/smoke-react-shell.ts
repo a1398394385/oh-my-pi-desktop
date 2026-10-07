@@ -231,6 +231,45 @@ const patchPreviewSession = (patch: Record<string, unknown>) => {
   openSessions.set("/preview", { ...cur, ...patch });
   store.setState({ activePath: "/preview", openSessions });
 };
+// 9.5 Computer-use toggle button (composer cbar): gated by the settings-page
+//     master switch (hostSettings.computerEnabled) — hidden entirely while
+//     closed. When open: sits between the plan button and the background-task
+     // buttons; lights up (accent .on) with the session's computerMode; on the
+//     new-session page the click flips the local create intent instead.
+{
+  ok("主门关闭（无 hostSettings）时 computer 钮不渲染", !$("#computerBtn"));
+  store.setState({ hostSettings: { computerEnabled: true } });
+  await sleep(80);
+  const cbarBtns = Array.from(document.querySelectorAll(".cbar > button")).map((el) => el.id);
+  ok("主门开启后 computer 钮出现且位于权限胶囊之后", cbarBtns.indexOf("computerBtn") > cbarBtns.indexOf("modeBtn"));
+  if (cbarBtns.includes("bgTaskBtn")) ok("computer 钮位于后台任务钮之前", cbarBtns.indexOf("computerBtn") < cbarBtns.indexOf("bgTaskBtn"));
+  const cuBtn = $("#computerBtn") as HTMLButtonElement | null;
+  ok("computer 钮常驻可点（无 disabled）", !!cuBtn && !cuBtn.disabled);
+  patchPreviewSession({ computerMode: true });
+  await sleep(80);
+  ok("computerMode 开启后钮点亮（.on）且 title 提示点击关闭", !!cuBtn?.classList.contains("on") && cuBtn?.title.includes("点击关闭"));
+  patchPreviewSession({ computerMode: false });
+  await sleep(80);
+  ok("computerMode 关闭后钮熄灭且 title 提示点击开启", !cuBtn?.classList.contains("on") && (cuBtn?.title || "").includes("点击开启"));
+  cuBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  ok("无 WS 时会话内点击不抛错", !document.body.getAttribute("data-error"));
+  // New-session page (no active session): the app mounts the WELCOME composer
+  // (a separate instance) — re-query the button, the old reference is detached
+  const prevPath = store.getState().activePath;
+  store.setState({ activePath: null, isCreatingNew: true, newSessionComputerMode: false });
+  await sleep(80);
+  const cuBtnNew = $("#computerBtn") as HTMLButtonElement | null;
+  ok("新建页无会话时钮可点且熄灭", !!cuBtnNew && !cuBtnNew.disabled && !cuBtnNew.classList.contains("on"));
+  cuBtnNew?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(80);
+  ok("新建页点击后本地 intent 翻转且钮点亮", store.getState().newSessionComputerMode === true && !!$("#computerBtn")?.classList.contains("on"));
+  // Closing the master gate hides the button again (render condition), regardless of the lit intent
+  store.setState({ hostSettings: { computerEnabled: false } });
+  await sleep(80);
+  ok("主门再次关闭后 computer 钮消失（含点亮的 intent 态）", !$("#computerBtn"));
+  store.setState({ activePath: prevPath, isCreatingNew: false, newSessionComputerMode: false });
+  await sleep(80);
+}
 patchPreviewSession({
   streaming: true,
   stats: {
@@ -292,6 +331,37 @@ const rowAfterBump = document.querySelector('.task[data-path="/path/to/rec1.json
 const afterBump = pathOrder();
 ok("发送消息后行时间立即变为刚刚", (rowAfterBump?.textContent || "").includes("刚刚"));
 ok("发送消息后会话浮到最近列表顶部", beforeBump[0] === "/path/to/rec2.json" && afterBump[0] === "/path/to/rec1.json");
+
+// 11. Same bump in the PROJECT view: group rows are not re-sorted by the sidebar (the order
+//     comes straight from the host list_sessions snapshot, already descending), so a stamped
+//     row used to render "just now" while sitting below an older one. The stamp must carry
+//     the row with it.
+const projSessions = [
+  { id: "test-proj-2", path: "/path/to/proj2.json", title: "组内最近", modified: new Date(Date.now() - 60_000).toISOString(), cwd: "/path/to/project-proj", archived: false },
+  { id: "test-proj-1", path: "/path/to/proj1.json", title: "组内较旧", modified: new Date(Date.now() - 9 * 60_000).toISOString(), cwd: "/path/to/project-proj", archived: false },
+];
+dbg.useAppStore.setState({
+  diskProjects: [{ cwd: "/path/to/project-proj", sessions: projSessions }],
+  allProjects: ["/path/to/project-proj"],
+  expandedProjects: new Set(["/path/to/project-proj"]),
+  viewMode: "project",
+});
+await sleep(100);
+const projBefore = pathOrder();
+ok(
+  `项目视图展开后按宿主快照顺序渲染（实际 ${projBefore.join()}）`,
+  projBefore.join() === "/path/to/proj2.json,/path/to/proj1.json",
+);
+dbg.useAppStore.getState().bumpSessionActivity("/path/to/proj1.json");
+await sleep(100);
+ok(
+  `项目视图内置顶时间后该行同时上浮（实际 ${pathOrder().join()}）`,
+  pathOrder().join() === "/path/to/proj1.json,/path/to/proj2.json",
+);
+ok(
+  "项目视图上浮后时间显示为刚刚",
+  (document.querySelector('.task[data-path="/path/to/proj1.json"]')?.textContent || "").includes("刚刚"),
+);
 
 
 let fail = 0;

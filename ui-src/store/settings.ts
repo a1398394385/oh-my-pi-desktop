@@ -20,6 +20,7 @@ import type {
   SshHostsFrame,
   SshTestResultFrame,
   RemoteWorkspaceAddedFrame,
+  SshDirsFrame,
 } from "../types/frames";
 import type { MemoryDetailState } from "../types/session";
 import type { SchemaDef } from "../types/settings";
@@ -62,6 +63,7 @@ export interface SettingsSlice {
   sshHosts: SshHostsFrame["hosts"]; // user-scope ssh.json host table (welcome remote-connection dialog)
   sshTestResult: (Omit<SshTestResultFrame, "type"> & { ts: number }) | null; // latest connectivity probe (ts correlates replies)
   remoteWorkspaceAdded: (Omit<RemoteWorkspaceAddedFrame, "type"> & { ts: number }) | null; // latest add_remote_workspace reply (dialog closes itself on ok)
+  sshDirs: (Omit<SshDirsFrame, "type"> & { ts: number }) | null; // latest ssh_list_dirs reply (path matches the picker's current base)
   mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results
   memoryDetail: MemoryDetailState; // landed from the memory_file frame
   openSettings(pageId?: string): void;
@@ -106,6 +108,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   sshHosts: [],
   sshTestResult: null,
   remoteWorkspaceAdded: null,
+  sshDirs: null,
   mcpTestResults: {},
   computerDisplays: null,
   memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "idle", content: "", error: null },

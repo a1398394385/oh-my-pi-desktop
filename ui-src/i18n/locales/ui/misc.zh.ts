@@ -38,7 +38,6 @@ export const miscZh = {
   projectFallback: "项目",
   projectDirTitle: "项目目录: {{path}}",
   gitBranchTitle: "Git 分支: {{branch}}",
-  noProject: "不在项目中工作",
   defaultProject: "默认项目",
   // welcome/ProjectMenu.tsx
   pickProjectFolder: "选择项目文件夹",
@@ -80,6 +79,8 @@ export const miscZh = {
   keysSteer: "立即注入（生成中 steer）",
   keysQueue: "加入待发送队列",
   keysRecall: "拉回排队消息（后发先回）",
+  keysClearDraft: "清空输入框（无选区时；开启找回已清除草稿时入本地历史）",
+  keysRecallCleared: "翻找已清除的草稿（↑ 更旧 / ↓ 返回当前输入）",
   keysGroupTree: "会话树",
   keysGroupTreeDesc: "会话树页面内的按键行为。",
   keysTreeMove: "移动条目游标（停在首尾，不循环）",
@@ -103,6 +104,9 @@ export const miscZh = {
   bootHostRestartStopped: "宿主反复因内存超限退出，已停止自动重启",
   bootHostNotReady: "宿主进程 60s 内未就绪，查看终端日志定位",
   bootNotifyFailed: "发送通知失败",
+  // BootSplash.tsx
+  bootConnecting: "正在连接…",
+  skipBoot: "跳过",
 };
 
 export default miscZh;

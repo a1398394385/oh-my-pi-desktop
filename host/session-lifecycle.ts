@@ -38,6 +38,7 @@ import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
+import { pushComputerMode, setComputerMode } from "./computer-mode.ts";
 import { dispatchFromToolEnd, installProposalHandler, setFreshSessionFactory } from "./plan-approve.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
@@ -686,6 +687,19 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     "rpc",
   );
 
+  // Session-start dispatch for extension observers: embedded hosts must emit
+  // it themselves (TUI: extension-ui-controller / runtime-init.ts:212; ACP:
+  // acp-agent.ts:2644). The desktop originally called initialize only — the
+  // ACP precedent minus its trailing emit — so extensions keyed on
+  // session_start (keepalive's probe-config load) never initialized and kept
+  // their default empty-target config forever. Guarded: attachEntry re-runs on
+  // pool reuse / frontend reload, and a repeat session_start resets extension
+  // state (keepalive drops capture and timers).
+  if (!entry.extSessionStarted) {
+    entry.extSessionStarted = true;
+    void entry.session.extensionRunner?.emit({ type: "session_start" });
+  }
+
   // The whole spawn tree shares the root session's eventBus (sdk.ts:1341):
   // subagent lifecycle/event/progress frames all travel on it. Derived data
   // the host fills in (absent from AgentProgress itself):
@@ -895,6 +909,7 @@ async function spawnSession(ws: any, workDir: string, targetModel: any, thinking
       title: entry.title ?? null,
     }),
   );
+  pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
   return { sessionId, entry };
 }
 
@@ -902,7 +917,7 @@ async function spawnSession(ws: any, workDir: string, targetModel: any, thinking
 // cannot import this module back — it is the caller. Inject the factory instead.
 setFreshSessionFactory((ws, entry) => spawnSession(ws, entry.cwd, entry.session.model).then((r) => r.entry));
 
-export async function handleCreateSession(ws: any, cwd?: string, modelStr?: string, thinkingLevel?: string, planMode?: boolean) {
+export async function handleCreateSession(ws: { send(data: string): unknown }, cwd?: string, modelStr?: string, thinkingLevel?: string, planMode?: boolean, computerMode?: boolean) {
   const workDir = typeof cwd === "string" && cwd ? cwd : defaultCwd;
   const targetModel = modelStr ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === modelStr) : undefined;
   const { sessionId, entry } = await spawnSession(ws, workDir, targetModel, thinkingLevel);
@@ -910,6 +925,10 @@ export async function handleCreateSession(ws: any, cwd?: string, modelStr?: stri
   // entry path as the menu toggle (persist + pushPlanMode inside)
   if (planMode) setPlanMode(ws, sessionId, entry, true);
   else pushPlanMode(ws, sessionId, entry);
+  // Session born with computer use (intent picked on the new-session page):
+  // same entry path as the composer toggle — the master gate is checked inside
+  // (closed gate surfaces a command_output hint and the frame stays off)
+  if (computerMode) setComputerMode(ws, sessionId, entry, true);
   safeStderr(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
 }
 
@@ -1195,6 +1214,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
       }),
     );
     pushPlanMode(ws, sessionId, entry); // The reuse snapshot also pushes plan state (the frontend relies on it to show the "plan" button after reload)
+    pushComputerMode(ws, sessionId, entry); // Reuse snapshot: per-session computer opt-in state (the composer button relies on it)
     ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
     pushTodos(ws, sessionId, entry); // The reuse snapshot also pushes the todos backlog (otherwise history TODOs vanish after the frontend rebuilds objects)
     pushGoal(sessionId); // Goal state backlog (session state card goal area)
@@ -1250,6 +1270,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     }),
   );
   reconcilePlanMode(ws, sessionId, entry, entries); // Restore plan mode from persisted mode_change (frames must be pushed after session_created)
+  pushComputerMode(ws, sessionId, entry); // Disk rebuild starts from the pinned-off overlay; the explicit frame resets any stale lit button
   await entry.goal.restore(); // Goal mode restore (persisted mode_change goal/goal_paused; aligned with the TUI, no proactive re-run)
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
   // Restored session's todos backlog (TodoTracker synced from the transcript branch at construction)

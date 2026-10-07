@@ -49,6 +49,14 @@ function pathOf(args: any): string {
   return "";
 }
 
+// The desktop edit tool addresses its target as an "[path#TAG]" header line inside
+// args.input (not args.path) — extract the path so the change row/group shows the file
+function editInputPath(input: unknown): string {
+  if (typeof input !== "string") return "";
+  const m = /^\[([^\[\]#\n]+?)(?:#[0-9a-fA-F]{4})?\]\s*$/m.exec(input);
+  return m ? m[1].trim() : "";
+}
+
 function collectFiles(name: string, args: any, details?: any): string[] {
   const out: string[] = [];
   const push = (p: unknown) => {
@@ -66,6 +74,10 @@ function collectFiles(name: string, args: any, details?: any): string[] {
     const re = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
     let m: RegExpExecArray | null;
     while ((m = re.exec(args.input))) push(m[1].trim());
+  }
+  if (name === "edit") {
+    const p = editInputPath(args?.input);
+    if (p) push(p);
   }
   if (Array.isArray(details?.perFileResults)) for (const f of details.perFileResults) push(f?.path);
   if (Array.isArray(details?.hits)) for (const h of details.hits) push(h?.rel);
@@ -139,7 +151,7 @@ function toolArgsForUi(name: string, args: any): Record<string, unknown> {
     };
   }
   const files = collectFiles(name, args);
-  const path = pathOf(args);
+  const path = pathOf(args) || (name === "edit" ? editInputPath(args?.input) : "");
   const out: Record<string, unknown> = {};
   if (path) out.path = path;
   if (files.length) out.files = files;
@@ -447,7 +459,7 @@ function isErrorOnlyMessage(msg: unknown): boolean {
 }
 
 function uiToolPayload(item: TranscriptItem): Extract<UiEvent, { kind: "tool" }> {
-  return { kind: "tool", name: item.name ?? item.text, toolCallId: item.toolCallId, args: item.args, files: item.files };
+  return { kind: "tool", name: item.name ?? item.text, toolCallId: item.toolCallId, args: item.args, files: item.files, intent: item.intent };
 }
 
 // Sum the token usage of all assistant messages of this run (agent_end.messages only contains what this run added, not the loaded history)
@@ -557,6 +569,10 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         }
       }
       const args = toolArgsForUi(ev.toolName, ev.args);
+      // intent: the `i` field the model wrote in the tool args (agent-loop already extracted it
+      // into a string and stripped it from args); kept on the item for the working status row
+      // and the wait row's param card
+      const intent = typeof ev.intent === "string" && ev.intent.trim() ? ev.intent.trim() : undefined;
       const item: TranscriptItem = {
         role: "tool",
         text: ev.toolName,
@@ -564,10 +580,10 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         toolCallId: ev.toolCallId,
         args,
         files: collectFiles(ev.toolName, ev.args),
+        intent,
       };
       entry.transcript.push(item);
-      // intent: the i field the model wrote in the tool args (agent-loop already extracted it into a string), shown directly on the working status row
-      return { ...uiToolPayload(item), intent: typeof ev.intent === "string" && ev.intent.trim() ? ev.intent.trim() : undefined };
+      return uiToolPayload(item);
     }
     case "tool_execution_end": {
       const item =
@@ -801,6 +817,8 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
           expandable: true,
         });
       } else if (block.type === "toolCall") {
+        // block.intent: the extracted `i` (persisted alongside the raw arguments, which still
+        // carry `i`); toolArgsForUi filters args, so intent is the only surviving copy
         const item: TranscriptItem = {
           role: "tool",
           text: block.name,
@@ -808,6 +826,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
           toolCallId: block.id,
           args: toolArgsForUi(block.name, block.arguments),
           files: collectFiles(block.name, block.arguments),
+          intent: typeof block.intent === "string" ? block.intent : undefined,
         };
         byId.set(block.id, item);
         sink.push(item);

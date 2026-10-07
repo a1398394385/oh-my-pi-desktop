@@ -1163,9 +1163,14 @@ export async function listAgentAssets() {
     }
   }
   // Memory file names use omp's encodeProjectPath (strip cwd's leading slash,
-  // replace / \ : with -, wrap both ends in --).
+  // replace / \ : with -, wrap both ends in --). The base creates the directory
+  // through getMemoryRoot, which case-folds the cwd to lower case on win32
+  // (#12596, memories/storage.ts normalizeScopeCwd) — fold the same way here or
+  // the === lookup never matches the on-disk (lower-cased) name and the list
+  // stays empty on Windows.
   const validProjects = validDesktopProjects();
-  const encodeProjectPath = (cwd: string) => `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  const encodeProjectPath = (cwd: string) =>
+    `--${(process.platform === "win32" ? cwd.toLowerCase() : cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
   let memories: { name: string; path: string; project?: string }[] = [];
   try {
     const entries = await readdir(memoriesDir, { withFileTypes: true });

@@ -6,6 +6,8 @@ export const composerEn = {
   permissionMode: "Permission mode",
   planOnTitle: "Plan mode is on, click to exit",
   planLabel: "Plan",
+  computerOnTitle: "Computer use is on, click to turn off",
+  computerOffTitle: "Computer use is off, click to turn on",
   bgCommands: "Background commands",
   subagents: "Subagents",
   switchModel: "Switch model",

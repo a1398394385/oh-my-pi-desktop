@@ -137,6 +137,7 @@ export interface ToolItem {
   name?: string; // merged-group pseudo entries tag "read"/"device"/"cmd" for toolKind dispatch (items.tsx:106/118/129)
   toolCallId?: string;
   args?: ToolArgs;
+  intent?: string; // model-written `i` intent (stripped from args by the agent loop); the wait row's only "parameter"
   files?: string[];
   details?: ToolDetails;
   group?: ChatItem[]; // member entries collected by a merged group (changes/reads/terminal/device) (all tool entries at runtime)
@@ -332,6 +333,7 @@ export interface OpenSession {
   todos: TodoPhase[];
   goal?: GoalState | null; // set by the goal frame
   planMode?: boolean; // set by the plan_mode frame
+  computerMode?: boolean; // set by the computer_mode frame
   queued?: QueuedMessage[]; // landed from the queued frame's followUp
   steering?: QueuedMessage[]; // landed from the queued frame's steering
   externalWrite?: boolean; // the host detected writes from an external process
@@ -402,6 +404,7 @@ export interface AppState {
   defaultThinkingCfg: string | null; // landed from the models frame's defaultThinking
   newSessionDirty: boolean;
   pendingNewPrompt: { text: string; files: PromptAttachment[] } | null;
+  pendingNewBash: { command: string; excludeFromContext: boolean } | null;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   fileSeq: number;
   viewMode: string; // "project" | … (sidebar view)
@@ -428,6 +431,7 @@ export interface AppState {
   // ---- UI state added in the React port (previously scattered across DOM classes / local variables) ----
   connected: boolean;
   connText: string;
+  bootSplash: boolean; // full-window boot veil until the first session_list frame (see UiSlice)
   toastMsg: string | null; // current toast text (null = hidden)
   composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // signal to fill the composer externally (fork backfill / queued-message editing)
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)

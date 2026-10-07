@@ -87,3 +87,22 @@ export async function readUserSshHost(name: string): Promise<{ host: string; use
   return (config.hosts ?? {})[name];
 }
 
+/** Resolve a local path inside a remote-workspace stub to its remote target.
+ *  Deterministic prefix match against the workspaces root (no ancestor walk):
+ *  the first path segment under <remote dir>/workspaces is the stub dir, whose
+ *  marker carries the host and remote root; remaining segments join onto the
+ *  remote POSIX path. Returns null for normal local-session paths — one
+ *  string compare, no fs access on the miss path. Mixed "/" and "\" input is
+ *  normalized because the frontend tree joins entries with "/". */
+export function resolveRemoteTarget(localPath: string): RemoteWorkspaceInfo | null {
+  const wsRoot = path.join(getRemoteDir(), "workspaces").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
+  const norm = localPath.replace(/\\/g, "/");
+  if (!norm.startsWith(wsRoot)) return null;
+  const segments = norm.slice(wsRoot.length).split("/").filter(Boolean);
+  if (!segments.length) return null;
+  const info = readRemoteWorkspaceInfo(path.join(getRemoteDir(), "workspaces", segments[0]));
+  if (!info) return null;
+  const rel = segments.slice(1).filter((s) => s !== "." && s !== "..");
+  return { host: info.host, remotePath: rel.length ? `${info.remotePath}/${rel.join("/")}` : info.remotePath };
+}
+

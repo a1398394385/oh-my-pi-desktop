@@ -6,6 +6,9 @@ export const rightEn = {
   tabTree: "Branches",
   tabTerminal: "Terminal",
   tabBrowser: "Browser",
+  tabAgentBrowser: "Agent Browser",
+  mirrorEmpty: "This session's Agent is not browsing",
+  mirrorOtherSessions: "{{n}} tab(s) from other sessions are hidden here",
   searchTabs: "Search tabs",
   openTabs: "Open",
   noMatchTabs: "No matching tabs",
@@ -64,7 +67,6 @@ export const rightEn = {
   loadFailedSub: "The site may refuse embedding, or the network is unavailable. Retry, or open in an external browser.",
   openExternalShort: "Open Externally",
   // ---- Agent built-in browser live view (right-panel browser page, host/browser-mirror.ts) ----
-  modeAgent: "Agent",
   modeManual: "Manual",
   agentLive: "LIVE",
   agentLiveSub: "Mirroring the Agent's built-in browser in real time",

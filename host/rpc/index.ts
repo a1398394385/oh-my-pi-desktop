@@ -16,6 +16,7 @@ import { wizardHandlers } from "./provider-wizard";
 import { capabilitiesHandlers } from "./capabilities";
 import { browserHandlers } from "./browser";
 import { sshHandlers } from "./ssh";
+import { bashCompleteHandlers } from "./bash-complete";
 import hostI18n from "../../ui-src/i18n/host";
 
 export const rpcHandlers: Record<string, RpcHandler> = {
@@ -32,6 +33,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...capabilitiesHandlers,
   ...browserHandlers,
   ...sshHandlers,
+  ...bashCompleteHandlers,
 };
 
 /** Single-command dispatch: table lookup + invoke; unknown commands reply with error (old switch default semantics) */

@@ -10,7 +10,7 @@ import Icon from "../../../Icon";
 import { confirmDialog, emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
-import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
+import { ExtSourceTag, useExtSources, refreshExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
 
 // Skill entry (list item of each directory under skills in the agent_assets reply; sent by host)
@@ -97,7 +97,7 @@ export default function SkillsPage() {
   const curSec: SkillSection =
     sections.find((s) => s.scope === scope) || profileSec;
 
-  const totalCount = curSec.items.length;
+  const installedCount = curSec.items.filter((item) => item.enabled).length;
   const q = query.trim().toLowerCase();
   const filtered = curSec.items.filter((item) => !q || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q)));
 
@@ -163,6 +163,7 @@ export default function SkillsPage() {
     }
     if (st.agentAssets && nextSkills) useAppStore.setState({ agentAssets: { ...st.agentAssets, skills: nextSkills } });
     send({ type: "asset_skill_toggle", name: item.name, enabled: next });
+    refreshExtSources(); // the ext-center tag beside the switch reads per-scope snapshots; refetch so the "disabled" tag follows the toggle
   }
 
   async function onRowDelete(s: SkillItem) {
@@ -183,8 +184,10 @@ export default function SkillsPage() {
       if (curSec.dir) send({ type: "open_folder", path: curSec.dir });
     } else if (id === "enableAll") {
       for (const s of curSec.items) if (!s.enabled) send({ type: "asset_skill_toggle", name: s.name, enabled: true });
+      refreshExtSources();
     } else if (id === "disableAll") {
       for (const s of curSec.items) if (s.enabled) send({ type: "asset_skill_toggle", name: s.name, enabled: false });
+      refreshExtSources();
     }
   }
 
@@ -240,9 +243,7 @@ export default function SkillsPage() {
       </div>
 
       <div className={skillsEnabled ? "" : "skills-off-dim"}>
-      <div className="set-group-tt" id="skillsInstalledLabel">{t("settingsPage.skills.installedLabel")}</div>
-
-      <div className="skills-bar">
+      <div className="skills-bar-primary">
         <div className="skills-scope-wrap">
           <ScopeSel
             value={scope}
@@ -250,9 +251,17 @@ export default function SkillsPage() {
             profile={{ id: profileSec.scope, label: profileSec.label }}
             projects={projectSecs.map((s) => ({ id: s.scope, label: s.label }))}
           />
-          <span className="skills-divider">|</span>
-          <span className="text-ui-base text-dim" id="skillsTotalCount">{t("settingsPage.skills.countLabel", { count: totalCount })}</span>
         </div>
+        <div className="skills-search-wrap">
+          <span className="skills-search-icon"><Icon name="search" size={14} /></span>
+          <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder={t("settingsPage.skills.searchPlaceholder")} spellCheck={false} autoComplete="off"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
+        </div>
+      </div>
+
+      <div className="skills-bar-secondary">
+        <div className="text-ui-sm font-medium text-dim">{t("settingsPage.skills.installedCount", { count: installedCount })}</div>
         <div className="skills-actions-wrap">
           <div className="sel" id="skillsMoreSel">
             <button type="button" className="skills-btn-icon" id="skillsMoreBtn" title={t("settingsPage.shared.moreOptions")}
@@ -282,12 +291,6 @@ export default function SkillsPage() {
             <Icon name="plus" size={14} />
             <span>{t("settingsPage.shared.newBtn")}</span>
           </button>
-        </div>
-        <div className="skills-search-wrap">
-          <span className="skills-search-icon"><Icon name="search" size={14} /></span>
-          <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder={t("settingsPage.skills.searchPlaceholder")} spellCheck={false} autoComplete="off"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
         </div>
       </div>
 

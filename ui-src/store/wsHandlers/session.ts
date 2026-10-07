@@ -6,6 +6,7 @@ import { activateSession, clearBranchingMarks, activeOpen, updateSession } from 
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession } from "../../types/session";
+import { disposeRightSlot } from "../right";
 import type { HandlerSlice } from "./types";
 
 export const sessionHandlers = {
@@ -34,11 +35,19 @@ export const sessionHandlers = {
       removedProjects: msg.removedProjects ?? [],
       defaultWorkspace: msg.defaultWorkspace ?? "",
       expandedProjects,
-      pinnedSessions: new Set<string>(msg.pinnedSessions ?? []),
+      pinnedSessions: new Set(msg.pinnedSessions ?? []),
+      // First frame lands = host is up and the project list is real: drop the
+      // boot veil (idempotent on later frames; the project reconciliation
+      // below swaps the "/" placeholder in the same commit cycle).
+      bootSplash: false,
     }));
     const st3 = useAppStore.getState();
     const curSession = st3.activePath ? st3.openSessions.get(st3.activePath) : undefined;
     if (st3.activePath && !curSession?.isSubagent && !diskProjects.some((p) => p.sessions.some((r) => r.path === st3.activePath))) {
+      // Active session vanished from disk: destroy its slot (host resources — terminal
+      // PTY — die with it) before the panel leaves it. showWelcomeScreen then restores
+      // the welcome pseudo-slot; its own save is skipped (activePath already null).
+      disposeRightSlot(st3.activePath);
       useAppStore.setState((s) => {
         if (!s.activePath) return {};
         const openSessions = new Map(s.openSessions);
@@ -46,6 +55,15 @@ export const sessionHandlers = {
         return { openSessions, activePath: null };
       });
       useAppStore.getState().showWelcomeScreen(useAppStore.getState().newSessionProject || useAppStore.getState().getAvailableProjects()[0]?.cwd);
+    }
+    // Startup reconciliation: the welcome page mounts before this frame lands, so its
+    // project briefly falls back to the "/" placeholder (no disk list yet); once the real
+    // list arrives (default workspace pinned first), swap any invalid pick back to the
+    // default row. A valid pick (including one the user just chose) is left untouched.
+    const st4 = useAppStore.getState();
+    const avail = st4.getAvailableProjects();
+    if (st4.isCreatingNew && avail.length > 0 && !avail.some((p) => p.cwd === st4.newSessionProject)) {
+      st4.setWelcomeProject(avail[0].cwd);
     }
   },
   session_created(msg) {
@@ -65,16 +83,18 @@ export const sessionHandlers = {
         todos: [],
         goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
         planMode: s.newSessionPlanMode, // seeded from the create intent; the host's plan_mode frame confirms right after
+        computerMode: s.newSessionComputerMode, // seeded from the create intent; the host's computer_mode frame confirms right after
         title: msg.title ?? null,
         isSubagent: Boolean(msg.isSubagent),
         parentPath: msg.parentPath,
       } as OpenSession),
       isCreatingNew: false,
       newSessionPlanMode: false, // intent consumed by the created session
+      newSessionComputerMode: false, // intent consumed by the created session
     }));
-    // selectedFile/selectedSubagent are NOT pre-cleared here: activateSession → restoreRightPanel
-    // owns them (fresh session without snapshot = cleared; reloaded session = snapshot restored;
-    // clearing first would wipe the outgoing session's just-saved snapshot)
+    // selectedFile/selectedSubagent are NOT pre-cleared here: activateSession → restoreRightSlot
+    // owns them (fresh session without slot = cleared; reloaded session = slot restored;
+    // clearing first would wipe the outgoing session's just-saved slot)
     activateSession(msg.path);
     useAppStore.getState().refreshGitDiff(); // the right-panel Git Diff page needs git status data; prefetch early
     const st3 = useAppStore.getState();
@@ -105,6 +125,13 @@ export const sessionHandlers = {
         st3.ws!.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
         // Pin-to-bottom following is handled by the Chat component's scroll effect
       }
+    }
+    if (st3.pendingNewBash) {
+      const { command, excludeFromContext } = st3.pendingNewBash;
+      useAppStore.setState({ pendingNewBash: null });
+      const s = st3.openSessions.get(st3.activePath ?? "");
+      // The bash_start frame creates the row; no optimistic bubble needed
+      if (s) st3.send({ type: "bash_exec", sessionId: s.sessionId, command, excludeFromContext });
     }
     if (st3.pendingCreate) {
       useAppStore.setState({ pendingCreate: false });

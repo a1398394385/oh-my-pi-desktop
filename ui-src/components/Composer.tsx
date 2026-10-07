@@ -31,6 +31,7 @@ import CtxCard from "./chat/CtxCard";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
+import BashCompletePlugin from "./composer/lexical/BashCompletePlugin";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { LexicalTypeaheadMenuPlugin, MenuOption } from "@lexical/react/LexicalTypeaheadMenuPlugin";
@@ -208,6 +209,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const newSessionModel = useAppStore((st) => st.newSessionModel);
   const newSessionThinking = useAppStore((st) => st.newSessionThinking);
   const newSessionPlanMode = useAppStore((st) => st.newSessionPlanMode);
+  const newSessionComputerMode = useAppStore((st) => st.newSessionComputerMode);
+  const computerGateOn = useAppStore((st) => st.hostSettings?.computerEnabled === true);
   const commands = useAppStore((st) => st.commands);
   const mentionResult = useAppStore((st) => st.mentionResult);
   const approvalMode = useAppStore((st) => st.approvalMode);
@@ -382,27 +385,41 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
-    const t = getDraftText(draftKey).trim();
+    // raw: untrimmed editor text (bash-mode detection requires ! as the first
+    // character, leading whitespace keeps it off); t: trimmed for send payloads
+    const raw = getDraftText(draftKey);
+    const t = raw.trim();
     const files = buildAttachPayload();
     const ws = useAppStore.getState().ws;
     if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;
 
     // Subagent sessions do not support slash or terminal commands
-    if (s?.isSubagent && (t.startsWith("/") || isBashMode(t))) {
+    if (s?.isSubagent && (t.startsWith("/") || isBashMode(raw))) {
       toast(subagentNoSlashMsg);
       return;
     }
 
-    // bash mode (! prefix, !! = result kept out of model context): executed
-    // locally, no user bubble; the row is created by the bash_start frame
-    // (aligned with the TUI input-controller send routing)
-    if (isBashMode(t)) {
-      const raw = t.trim();
+    // bash mode (! as the first character, !! = result kept out of model
+    // context): executed locally, no user bubble; the row is created by the
+    // bash_start frame (aligned with the TUI input-controller send routing)
+    if (isBashMode(raw)) {
       const excludeFromContext = raw.startsWith("!!");
       const command = excludeFromContext ? raw.slice(2).trim() : raw.slice(1).trim();
       if (!command) return; // `!` / `!!` with empty command: no action (same as TUI)
-      if (!s) {
-        toast(needSessionMsg);
+      // Welcome page (no session yet): auto-create one like a first message,
+      // then execute after the session_created receipt
+      if (isCreatingNew || !s) {
+        useAppStore.setState({ pendingNewBash: { command, excludeFromContext } });
+        clearDraft();
+        send({
+          type: "create_session",
+          cwd: useAppStore.getState().newSessionProject || undefined,
+          model: newSessionModel || undefined,
+          thinking: newSessionThinking || undefined,
+          planMode: newSessionPlanMode || undefined,
+          computerMode: newSessionComputerMode || undefined,
+        });
+        useAppStore.setState({ pendingCreate: true });
         return;
       }
       clearDraft();
@@ -421,6 +438,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         model: newSessionModel || undefined,
         thinking: newSessionThinking || undefined,
         planMode: newSessionPlanMode || undefined,
+        computerMode: newSessionComputerMode || undefined,
       });
       useAppStore.setState({ pendingCreate: true });
       return;
@@ -977,7 +995,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         aria-hidden={blocking ? true : undefined}
         style={blocking ? { display: "none" } : undefined}
       >
-        <AttachRow />
+        <div className="attach-fold">
+          <AttachRow />
+        </div>
         {CONTENT_EDITABLE_OK ? (
           <LexicalComposer initialConfig={initialConfig}>
             <div className="lex-wrap">
@@ -999,6 +1019,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             <ComposerPlugin draftKey={draftKey} handleRef={lexRef} onTextChange={onTextChange} sendPrompt={sendPrompt} typeaheadOpenRef={taOpenRef} />
             {/* Ghost inline completion (complete_text RPC); mounted after ComposerPlugin to share the same update stream */}
             <GhostTextPlugin typeaheadOpenRef={taOpenRef} />
+            {/* ! bash-mode completion card (whole-line domain; shares the yield ref) */}
+            <BashCompletePlugin typeaheadOpenRef={taOpenRef} composerRef={rootRef} />
             {/* key remount = the close-panel channel (closeTypeahead); triggerFn/onQueryChange have zero deps and stay stable, avoiding repeated listener re-registration */}
             <LexicalTypeaheadMenuPlugin
               key={closeTick}
@@ -1017,7 +1039,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
              (happy-dom smoke): Lexical is not initialized, editing operations all no-op */
           <div id="input" className="inp-ce" />
         )}
-        <div className="cbar" ref={cbarRef}>
+        <div className="cbar-fold">
+          <div className="cbar" ref={cbarRef}>
           <button className="icon-btn plus-btn" id="plusBtn" title={t("composer.addContext")} onClick={() => pickerRef.current?.click()}>
             <Icon name="plus" />
           </button>
@@ -1054,6 +1077,27 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
                 <span id="planLabel">{t("composer.planLabel")}</span>
               </button>
             </>
+          )}
+          {/* Computer use: screen-icon toggle between the plan button and the
+              background-task buttons; lit (accent) = the per-session opt-in is
+              on. In a session the host owns the state (set_computer_mode RPC);
+              on the new-session page it flips the local create intent (same
+              shape as plan mode), consumed by create_session. The whole button
+              only exists while the settings-page master gate is open — closing
+              it also force-kills every live opt-in (host sweep) and removes
+              /computer from the palette, so nothing dangles. */}
+          {computerGateOn && (
+            <button
+              className={"pill-btn computer-btn" + ((s?.computerMode || (!s && newSessionComputerMode)) ? " on" : "")}
+              id="computerBtn"
+              title={(s?.computerMode || (!s && newSessionComputerMode)) ? t("composer.computerOnTitle") : t("composer.computerOffTitle")}
+              onClick={() => {
+                if (s) send({ type: "set_computer_mode", sessionId: s.sessionId, enabled: !s.computerMode });
+                else setBump({ newSessionComputerMode: !newSessionComputerMode });
+              }}
+            >
+              <Icon name="computer" size={15} />
+            </button>
           )}
           {bgTasks > 0 && (
             <button
@@ -1136,6 +1180,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           >
             <Icon name={canAbort ? "stopSolid" : "arrowRight"} size={16} />
           </button>
+          </div>
         </div>
         {/* Permission mode (omp three values, large-row style) */}
         {openMenu === "mode" && <ModeMenu btnRef={modeBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}

@@ -56,7 +56,7 @@ const POPUP_SELECTOR = ".ring-pop, .menu, .ctx-menu";
 // Inline expand cards with their own vertical scroll (same list as the bleed-through
 // guard in the stream wheel listener and the .wheel-through CSS in main-chat.css; keep
 // all three in sync)
-const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .approval-card, #todoList";
+const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, #todoList";
 // Message-content scrollers own their wheels when hovered directly (a wheel on them must
 // not arm .wheel-through, otherwise the arming tick would flip them pointer-transparent
 // and the next tick hijacks the gesture into the stream). Deliberately NOT part of

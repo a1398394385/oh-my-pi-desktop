@@ -347,9 +347,14 @@
 
 .set-page > *:nth-child(n+7) { animation-delay: 240ms; }
 
+/* Search-result landing: one-shot background pulse on the targeted row */
+.srow.search-flash { animation: searchFlash 1.4s ease-out; }
+@keyframes searchFlash { 0%, 55% { background: var(--tint-accent-200); } 100% { background: transparent; } }
+
 @media (prefers-reduced-motion: reduce) {
   .set-page > * { animation: none; }
   .set-back svg, .sel .caret-svg, .tg i { transition: none; }
+  .srow.search-flash { animation-duration: .01s; }
 }
 
 /* level-1 titles: one step larger (1.6 -> 1.75); the +5px bottom margin is carried by the first element after the title */

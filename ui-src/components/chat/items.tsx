@@ -1,6 +1,7 @@
 // Message item list → JSX: consecutive edit events (edit/write/apply_patch) merge into one
 // "Changes" group, steer bubbles pending consumption are collected and rendered together at
-// the end (before consumption they always sit below the processing area), everything else
+// the end (before consumption they always sit below the processing area); a run of >=3
+// consecutive read-only events folds into one ReadonlyGroup block, everything else
 // dispatches per item. Migrated from renderItemList/appendChatItem in ui/chat.js;
 // railEntries are collected along the traversal (message rail data: one tick per message —
 // the key shares the same source as the data-fk anchors; MsgRail locates the DOM by key).
@@ -8,7 +9,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { ChatItem, RailEntry } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
 import { useAppStore } from "../../store/index";
-import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf } from "./util";
+import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf, isReadonlyEvent } from "./util";
 import { railToolText } from "../../shell";
 import UserMsg from "./UserMsg";
 import AssistantMsg from "./AssistantMsg";
@@ -19,6 +20,7 @@ import BashRow from "./BashRow";
 import CommandRow from "./CommandRow";
 import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
+import ReadonlyGroup, { roSummaryText } from "./ReadonlyGroup";
 import { t } from "../../i18n";
 
 // Single message → JSX (the railEntries side effect is collected along the render path, same
@@ -115,11 +117,37 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
   return true;
 }
 
+// Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
+// Thinking items inside the run are collected into the block but not counted; any other
+// role or a non-read-only tool event ends the run. Returns null when the run holds fewer
+// than 3 read-only events (the caller then falls through to the per-type group blocks).
+function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next: number } | null {
+  const run: ChatItem[] = [];
+  let roCount = 0;
+  let j = i;
+  while (j < items.length) {
+    const it = items[j];
+    if (isReadonlyEvent(it)) {
+      run.push(it);
+      roCount++;
+      j++;
+    } else if (it.role === "thinking") {
+      run.push(it);
+      j++;
+    } else break;
+  }
+  return roCount >= 3 ? { run, next: j } : null;
+}
+
+// noReadonlyFold: the level-2 fold is skipped (used by ReadonlyGroup's expansion body,
+// whose items are already the folded run — re-scanning them would nest a block inside
+// itself and recurse infinitely)
 export function renderItems(
   items: ChatItem[],
   pfx: string,
   railEntries: RailEntry[],
   streamTail?: ReactNode,
+  opts?: { noReadonlyFold?: boolean },
 ): ReactElement[] {
   // Child container (e.g. inside LoopGroup): keep the original flat rendering mechanism
   if (pfx !== "") {
@@ -131,6 +159,16 @@ export function renderItems(
       if (item.role === "user" && item.pending === "steer") {
         pendingSteers.push({ item, key });
         continue;
+      }
+      // Level-2 fold first: a >=3 read-only run wraps the level-3 groups below
+      if (!opts?.noReadonlyFold && isReadonlyEvent(item)) {
+        const g = scanReadonlyRun(items, i);
+        if (g) {
+          railEntries.push({ key, role: "tool", text: roSummaryText(g.run) });
+          out.push(<ReadonlyGroup subs={g.run} pfx={key + "-"} key={key} />);
+          i = g.next - 1;
+          continue;
+        }
       }
       if (isEditEvent(item)) {
         const subs: ChatItem[] = [item];
@@ -229,6 +267,16 @@ export function renderItems(
     }
 
     let node: ReactElement | null = null;
+
+    // Level-2 fold first: a >=3 read-only run wraps the level-3 groups below
+    if (!opts?.noReadonlyFold && isReadonlyEvent(item)) {
+      const g = scanReadonlyRun(items, i);
+      if (g) {
+        railEntries.push({ key, role: "tool", text: roSummaryText(g.run) });
+        node = <ReadonlyGroup subs={g.run} pfx={key + "-"} key={key} />;
+        i = g.next - 1;
+      }
+    }
 
     if (isEditEvent(item)) {
       const subs: ChatItem[] = [item];

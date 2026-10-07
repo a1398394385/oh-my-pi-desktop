@@ -93,7 +93,15 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   };
   const listRef = useRef<HTMLDivElement | null>(null);
   const inpRef = useRef<HTMLInputElement | null>(null);
-  const cardRef = useRef<HTMLDivElement | null>(null); // card root: visibility + containment checks for the global key capture
+  const cardRef = useRef<HTMLElement | null>(null); // card root: visibility + containment checks for the global key capture
+  // Collapsed to a slim bar while the user reads the agent output above; the
+  // ref (not state) guards the global key capture so arrows/Enter pass through
+  const [collapsed, setCollapsed] = useState(false);
+  const collapsedRef = useRef(false);
+  const setCardCollapsed = (v: boolean) => {
+    collapsedRef.current = v;
+    setCollapsed(v);
+  };
   const answered = item.answer !== null;
   const n = item.options.length;
   // editable protocol: editableIndex points at the inline-input row (host
@@ -330,6 +338,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     if (answered) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.keyCode === 229) return; // IME composition owns every key
+      if (collapsedRef.current) return; // collapsed: the card yields the keyboard to the page
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== "Enter") return;
       const root = cardRef.current;
@@ -411,9 +420,41 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         : -1
     : -1;
 
+  // Collapsed: a slim bar in place of the card (the pending question rides as a
+  // one-line summary); clicking anywhere on it restores the full card
+  if (collapsed) {
+    const minLabel = item.title?.trim() || askQs[0]?.question || askQs[0]?.header || "";
+    return (
+      <button
+        type="button"
+        className="approval-min"
+        ref={(el) => { cardRef.current = el; }}
+        title={t("chat.approvalExpand")}
+        onClick={() => setCardCollapsed(false)}
+      >
+        <Icon name="comment" size={14} />
+        <span className="approval-min-tt">{t("chat.awaitingConfirm")}</span>
+        {minLabel ? <span className="approval-min-q">{minLabel}</span> : null}
+        <Icon name="chevronUp" size={14} />
+      </button>
+    );
+  }
+
   return (
-    <div className="approval-card" ref={cardRef}>
-      <div className="approval-head">{t("chat.awaitingConfirm")}</div>
+    <div className="approval-card" ref={(el) => { cardRef.current = el; }}>
+      <div className="approval-head">
+        {t("chat.awaitingConfirm")}
+        {!answered && (
+          <button
+            type="button"
+            className="approval-collapse-btn"
+            title={t("chat.approvalCollapse")}
+            onClick={() => setCardCollapsed(true)}
+          >
+            <Icon name="chevronDown" size={14} />
+          </button>
+        )}
+      </div>
       <div className="approval-title">{item.title}</div>
       {/* Execution-model tier slider (plan variant): pick which configured role
           model runs the approved plan. Segments are click targets, so the hover

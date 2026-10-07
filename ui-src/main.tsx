@@ -10,8 +10,9 @@ import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
 import { warmupHighlighter } from "./lib/highlighter";
 import { resolveTheme } from "./theme-registry";
-import { landBrowserTabs } from "./store/right";
+import { landBrowserTabs, restoreRightSlot } from "./store/right";
 import { emitBrowserFrame } from "./store/browserMirror";
+import { syncAudioToPref } from "./components/chat/railAudio";
 
 // Restore the first-frame render cache (the localStorage mirror of
 // omp-desktop.json's ui section) before React mounts — this is what keeps the
@@ -74,8 +75,9 @@ function dispatchMenuAction(action: unknown): void {
   }
 }
 
-// Enter the welcome page (creating-new state) at startup; project falls back
-// to "/" before the disk list arrives
+// Enter the welcome page (creating-new state) at startup; the project stays on
+// the empty placeholder until session_list lands the default project (the
+// static + React boot veil covers the wait).
 showWelcomeScreen(null);
 
 // Init i18n before the first render; uiPrefs.lang is resolved at store
@@ -165,14 +167,20 @@ if (new URLSearchParams(location.search).has("preview")) {
   // frame paths (auto-open + screencast stills) without a WS
   window.__dbg = {
     useAppStore,
-    landBrowserTabs: (tabs: unknown[], active: boolean) =>
-      landBrowserTabs(tabs as Parameters<typeof landBrowserTabs>[0], active),
+    landBrowserTabs: (tabs: unknown[]) =>
+      landBrowserTabs(tabs as Parameters<typeof landBrowserTabs>[0]),
     emitBrowserFrame: (frame: { name: string; data: string; ts: number }) =>
       emitBrowserFrame({ type: "browser_frame", ...frame }),
   };
+  useAppStore.setState({ bootSplash: false }); // preview mounts with samples, no host boot to wait for
   setConnected(true, "预览");
 } else {
+  restoreRightSlot(null); // startup: bring back the welcome slot's persisted layout (if any)
   connect();
+  // Message-rail music reactivity (Windows only): the persisted pref owns the
+  // capture lifecycle. The store was already hydrated from the localStorage
+  // mirror before React mounted, so the pref is readable right here.
+  void syncAudioToPref();
 }
 
 // Warm the highlighter's common grammars during startup idle so the first

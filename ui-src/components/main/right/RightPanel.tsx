@@ -27,6 +27,7 @@ import BgCmdPage from "./BgCmdPage";
 import BranchTreePage from "./BranchTreePage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
+import MirrorPage from "./MirrorPage";
 import CapabilitiesPage from "./CapabilitiesPage";
 import { t } from "../../../i18n";
 import WindowControls from "../../WindowControls";
@@ -322,6 +323,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "tree") body = <BranchTreePage />;
   else if (rightTab === "terminal") body = <TerminalPage />;
   else if (rightTab === "browser") body = <BrowserPage />;
+  else if (rightTab === "mirror") body = <MirrorPage />;
   else if (rightTab === "caps") body = <CapabilitiesPage />;
   else body = <SubagentPage />;
   return (

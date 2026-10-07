@@ -113,10 +113,12 @@ export function detectTrigger(text: string, caret: number): Trigger | null {
   return null;
 }
 
-/** The composer is in bash mode: after trimStart it starts with ! (aligned
-    with the TUI input-controller isBashMode) */
+/** The composer is in bash mode: `!` must be the very first character. Stricter
+    than the TUI's trimStart semantics (desktop decision): leading whitespace
+    (even one space) keeps bash mode off so the mode is only ever entered from
+    an empty composer. */
 export function isBashMode(text: string): boolean {
-  return text.trimStart().startsWith("!");
+  return text.startsWith("!");
 }
 
 /** Insertion text after accepting a file candidate: quote paths with spaces;

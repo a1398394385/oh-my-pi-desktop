@@ -77,31 +77,40 @@ const dbg = (window as unknown as { __dbg?: DbgHook }).__dbg;
 if (!dbg) throw new Error("__dbg hook missing (preview mode?)");
 await sleep(300);
 
-const TAB = { name: "main", url: "https://example.com/live", title: "Example", kind: "headless", mirrorable: true };
+const TAB = { name: "main", url: "https://example.com/live", title: "Example", kind: "headless", mirrorable: true, ownerPath: "/smoke/a.jsonl" };
+const OTHER = { name: "other", url: "https://other.example/x", title: "Other", kind: "headless", mirrorable: true, ownerPath: "/smoke/b.jsonl" };
 
-// ---- Auto-open on the activation edge ----
-dbg.useAppStore.setState({ rightCollapsed: true, rightTabs: [], rightTab: null, browserTabs: [], browserViewTab: null, browserPinned: false });
-await dbg.landBrowserTabs([TAB], true);
+// ---- Foreign-session edge: the displayed panel must stay untouched ----
+dbg.useAppStore.setState({ rightCollapsed: true, rightTabs: [], rightTab: null, browserTabs: [], browserViewTab: null, browserPinned: false, activePath: "/smoke/a.jsonl" });
+await dbg.landBrowserTabs([OTHER]);
 await sleep(80);
 let st = dbg.useAppStore.getState();
-ok("edge: browser tab injected and activated", st.rightTab === "browser" && st.rightTabs.includes("browser"));
+ok("foreign edge: displayed panel untouched (no mirror tab)", st.rightTab === null && !st.rightTabs.includes("mirror"));
+ok("foreign edge: panel stays collapsed", st.rightCollapsed === true);
+
+// ---- Own-session edge: auto-open the mirror in the displayed panel ----
+await dbg.landBrowserTabs([OTHER, TAB]);
+await sleep(80);
+st = dbg.useAppStore.getState();
+ok("edge: mirror tab injected and activated", st.rightTab === "mirror" && st.rightTabs.includes("mirror"));
 ok("edge: right panel expanded", st.rightCollapsed === false);
-ok("edge: agent view mounts (tab pill)", (($(".bpane-tabs")?.textContent ?? "").includes("main")));
+ok("edge: agent view mounts (own tab pill)", (($(".bpane-tabs")?.textContent ?? "").includes("main")));
+ok("edge: foreign tab pill filtered out", !(($(".bpane-tabs")?.textContent ?? "").includes("other")));
 ok("edge: url row shows the mirrored page url", (($(".bpane-urlrow")?.textContent ?? "").includes("example.com/live")));
 ok("edge: live badge renders", !!$(".bpane-live-badge"));
 
-// ---- Latch: a manual collapse is not fought until the tab list drains ----
+// ---- Latch: a manual collapse is not fought until the owner's tabs drain ----
 dbg.useAppStore.setState({ rightCollapsed: true });
-await dbg.landBrowserTabs([{ ...TAB, url: "https://example.com/next" }], false);
+await dbg.landBrowserTabs([{ ...TAB, url: "https://example.com/next" }, OTHER]);
 await sleep(80);
 st = dbg.useAppStore.getState();
 ok("latch: non-edge churn does not re-expand", st.rightCollapsed === true);
 
-await dbg.landBrowserTabs([], false);
-await dbg.landBrowserTabs([TAB], true);
+await dbg.landBrowserTabs([OTHER]);
+await dbg.landBrowserTabs([OTHER, TAB]);
 await sleep(80);
 st = dbg.useAppStore.getState();
-ok("drain-to-zero rearms the auto-open", st.rightCollapsed === false && st.rightTab === "browser");
+ok("drain-to-zero rearms the auto-open", st.rightCollapsed === false && st.rightTab === "mirror");
 
 // ---- Screencast still through the frame bus -> <img> ----
 // The agent view subscribes only while connected (preview sets connected).
@@ -111,15 +120,19 @@ const img = $(".bpane-live-img") as HTMLImageElement | null;
 ok("still: live img rendered from the bus frame", !!img);
 ok("still: img carries the jpeg data url", (img?.getAttribute("src") ?? "").startsWith("data:image/jpeg;base64,/9j/"));
 
+// happy-dom rects are zero-sized; pin a viewport-sized rect for the input mapping
+const rectPatch = { left: 0, top: 0, width: 600, height: 400, right: 600, bottom: 400 } as DOMRect;
+if (img) {
+  const patchable = img as unknown as { getBoundingClientRect(): DOMRect }; // test-only rect pin
+  patchable.getBoundingClientRect = () => rectPatch;
+}
+
 // ---- Interactive mirror: viewport events map to page coords and leave as
 // browser_input frames (capture by overriding the store's send) ----
 const captured: Record<string, unknown>[] = [];
 dbg.useAppStore.setState({ send: (obj: Record<string, unknown>) => captured.push(obj) });
 const view = $(".bpane-liveview") as HTMLElement | null;
-const rectPatch = { left: 0, top: 0, width: 600, height: 400, right: 600, bottom: 400 } as DOMRect;
 if (view && img) {
-  // happy-dom rects are zero-sized; pin a viewport-sized rect for the mapping
-  (img as unknown as { getBoundingClientRect(): DOMRect }).getBoundingClientRect = () => rectPatch;
   view.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: 300, clientY: 200, button: 0, detail: 1 }));
   view.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true, cancelable: true, clientX: 300, clientY: 200, button: 0, detail: 1 }));
   view.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "a" }));
@@ -134,10 +147,29 @@ ok("input: mouse press posted with mapped page coords", mouseDown !== undefined 
 ok("input: printable key posted as text op", textFrame !== undefined && textFrame.text === "a", JSON.stringify(textFrame));
 ok("input: Enter posted as key down/up pair", inputFrames.filter((m) => m.op === "key" && m.key === "enter").length >= 2, JSON.stringify(enterFrame));
 
-// ---- Manual mode stays reachable (segmented pills) ----
-const pills = Array.from(document.querySelectorAll(".bpane .mcp-type-pill")).map((b) => (b.textContent ?? "").trim());
-ok("mode pills render (Agent + manual)", pills.includes("Agent") && pills.some((p) => p.includes("手动") || p.includes("Manual")));
+// ---- Manual browse stays reachable as its own tab (the mode pills are gone) ----
+st = dbg.useAppStore.getState() as { rightTabs: string[] };
+dbg.useAppStore.setState({ rightTabs: st.rightTabs.includes("browser") ? st.rightTabs : [...st.rightTabs, "browser"], rightTab: "browser" });
+await sleep(80);
+ok("manual: browser page renders its address bar", !!$(".bpane-input"));
+ok("manual: no mode pills remain", document.querySelectorAll(".bpane .mcp-type-pill").length === 0);
 ok("no uncaught error marker", !document.body.getAttribute("data-error"));
+
+// ---- Drain edge: the displayed session's last tab closing auto-closes the mirror tab ----
+await dbg.landBrowserTabs([OTHER]); // /smoke/a.jsonl drains, OTHER keeps browsing
+await sleep(80);
+st = dbg.useAppStore.getState();
+ok("drain: mirror tab auto-closed", !st.rightTabs.includes("mirror"));
+ok("drain: neighbor tab stays active", st.rightTab === "browser");
+
+// ---- Drain to the LAST tab: the auto-close collapses the panel (manual-close semantics) ----
+await dbg.landBrowserTabs([OTHER, TAB]); // re-arm the owner's edge, mirror re-opens
+await sleep(80);
+dbg.useAppStore.setState({ rightTabs: ["mirror"], rightTab: "mirror", rightCollapsed: false });
+await dbg.landBrowserTabs([OTHER]); // the displayed session's last tab closes
+await sleep(80);
+st = dbg.useAppStore.getState();
+ok("last-tab drain: right panel auto-collapses", st.rightTabs.length === 0 && st.rightCollapsed === true);
 
 const failed = asserts.filter(([, cond]) => !cond);
 for (const [name, cond] of asserts) console.log(`${cond ? "✓" : "✗"} ${name}`);

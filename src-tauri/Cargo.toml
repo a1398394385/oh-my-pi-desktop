@@ -20,3 +20,10 @@ tauri-plugin-notification = "2"
 tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Windows-only: system-audio loopback capture (WASAPI) + FFT for the message-rail
+# music reactive effect. Gated at build time so other platforms keep compiling
+# without pulling the Windows SDK crates in.
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.25"
+rustfft = "6"

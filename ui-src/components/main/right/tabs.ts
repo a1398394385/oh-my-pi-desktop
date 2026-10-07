@@ -22,6 +22,7 @@ export const TAB_META: Record<string, TabMeta> = {
   tree: { label: "right.tabTree", icon: "fork" },
   terminal: { label: "right.tabTerminal", icon: "termBox" },
   browser: { label: "right.tabBrowser", icon: "globe" },
+  mirror: { label: "right.tabAgentBrowser", icon: "monitor" },
   caps: { label: "right.tabCaps", icon: "stats" },
   hub: { label: "right.hubTitle", icon: "agents" },
 };
@@ -82,6 +83,8 @@ export function closeRightTab(name: string): void {
     // Closing the current tab: the active item falls back to a neighboring tab; otherwise
     // unchanged (tab-list changes notify via field subscription)
     rightTab: st.rightTab === name ? tabs[Math.min(i, tabs.length - 1)] ?? null : st.rightTab,
+    // Closing the last tab collapses the whole panel; every reopen path re-expands it
+    ...(tabs.length === 0 ? { rightCollapsed: true } : {}),
   });
 }
 

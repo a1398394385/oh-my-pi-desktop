@@ -8,7 +8,12 @@
   </head>
   <body>
     <!-- React mount point: three-column shell / welcome / session area / composer / right sidebar / toast all render as components -->
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static boot veil: painted by the CSS before any JS parses (boot.css in
+           style.css); React's createRoot replaces it in the same frame the React
+           BootSplash mounts, so no blank/main-page flash precedes the splash. -->
+      <div id="bootSplash" class="bs-static"><span class="bs-spin" aria-hidden="true"></span></div>
+    </div>
     <script type="module" src="../ui-src/main.tsx"></script>
   </body>
 </html>

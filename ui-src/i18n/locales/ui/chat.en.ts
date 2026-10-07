@@ -44,6 +44,15 @@ export const chatEn = {
   readFiles_one: "Read · {{count}} file",
   readFiles_other: "Read · {{count}} files",
   readFilesMultiple: "Read · multiple files",
+  // ---- read-only merge block (ReadonlyGroup.tsx roSummaryText) ----
+  roExplored: "Explored ",
+  roSep: ", ",
+  roFiles_one: "{{count}} file",
+  roFiles_other: "{{count}} files",
+  roTasks_one: "{{count}} task",
+  roTasks_other: "{{count}} tasks",
+  roCmds_one: "{{count}} command",
+  roCmds_other: "{{count}} commands",
   // ---- truncation notices (plurals / interpolation) ----
   truncated_one: " …(truncated, {{count}} char)",
   truncated_other: " …(truncated, {{count}} chars)",
@@ -161,6 +170,8 @@ export const chatEn = {
   confirmOptions: "Confirmation options",
   typeToSubmit: "Type and submit…",
   approvalHint: "Use Tab / arrow keys to select, Enter to confirm",
+  approvalCollapse: "Collapse to read the output above",
+  approvalExpand: "Expand the question card",
   // ---- assistant message code block (AssistantMsg.tsx) ----
   disableWordWrap: "Disable word wrap",
   enableWordWrap: "Enable word wrap",

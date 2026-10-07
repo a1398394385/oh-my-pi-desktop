@@ -101,23 +101,23 @@ export default function Welcome() {
                 title={t("misc.projectDirTitle", { path: newSessionProject })}
                 onClick={toggleProjMenu}
               >
-                {/* Project clear button: ZCode-style hover icon swap (hidden by default; on
-                    capsule hover folder fades out, × fades in) */}
+                {/* Project reset button: ZCode-style hover icon swap (hidden by default; on
+                    capsule hover folder fades out, × fades in); clicking picks the default project */}
                 <span
                   className="wb-proj-clear"
                   id="wbProjClear"
-                  title={t("misc.noProject")}
+                  title={t("misc.defaultProject")}
                   onClick={(e) => {
                     e.stopPropagation();
-                    // The default row is app-owned and cannot be "cleared" to nothing;
-                    // pick the first real project instead (falls back to the label-only state).
-                    const firstReal = useAppStore.getState().getAvailableProjects().find((p) => !p.isDefault);
-                    setWelcomeProject(firstReal?.cwd ?? "");
+                    // The default row is app-owned and always the fixed first row; picking it
+                    // replaces the old "clear to no project" semantics.
+                    if (defaultWorkspace) setWelcomeProject(defaultWorkspace);
                   }}
                 >
                   <Icon name="xmark" size={12} />
                 </span>
-                <span className={"wb-ic-folder" + (/[\u4e00-\u9fa5]/.test(projName) ? " is-cjk" : "")}><Icon name={projIsDefault ? "comment" : projIsRemote ? "cloud" : "folder"} size={15} /></span>
+                {/* Folder icon at the same visual size as the picker rows' icons */}
+                <span className="wb-ic-folder"><Icon name={projIsDefault ? "comment" : projIsRemote ? "server" : "folder"} size={15} /></span>
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>

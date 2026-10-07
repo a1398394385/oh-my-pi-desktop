@@ -5,7 +5,7 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import { openRightTab } from "../components/main/right/tabs";
+import { openRightTab, closeRightTab } from "../components/main/right/tabs";
 import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
@@ -118,133 +118,251 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   },
 });
 
-// ---------- Per-session right panel snapshots: save outgoing / restore incoming on switch ----------
-// Right panel tab layout is remembered per session. Snapshots are persisted to
-// localStorage so they survive app restarts (key: omp-right-snapshots, LRU order
-// encoded as insertion order via array of [path, snapshot] pairs).
+// ---------- Unified per-session right-panel slots (single source of truth) ----------
+// Each session — and the "welcome" pseudo-session for the no-session view — owns one
+// slot holding its tab layout, collapse state and session-scoped view state. The store
+// fields (rightTabs/rightTab/rightRecentClosed/selectedFile/fileView/rightCollapsed)
+// are the LIVE PROJECTION of the current slot: switching writes the outgoing
+// projection into its slot and loads the incoming one; mid-session tab operations
+// only touch the projection and are captured at the next switch. Slots persist to
+// localStorage as one table; host-side resources (terminal PTY) register disposers
+// that run when the slot is disposed (session delete / disk gone / LRU eviction /
+// profile switch).
 
-/** Per-session snapshot: tab layout + collapsed state + gitdiff file selection + file page detail state */
-interface RightPanelSnapshot {
-  rightTabs: string[];
-  rightTab: string | null;
-  rightRecentClosed: { name: string; at: number }[];
+/** One session's right-panel slot. */
+interface RightSlot {
+  tabs: string[];
+  active: string | null;
+  recentClosed: { name: string; at: number }[];
   selectedFile: string | null;
   fileView: FileViewState | null;
-  rightCollapsed: boolean; // panel expand/collapse follows the session too
+  collapsed: boolean;
+  /** Runtime-only host-resource teardown callbacks; never persisted. */
+  disposers: Set<() => void>;
 }
 
-/** Snapshot table cap (per session count). openSessions LRU cap is 8; snapshots can
- *  outlive evicted sessions, so cap the table to prevent unbounded growth. */
-const RIGHT_SNAPSHOT_MAX = 32;
-const RIGHT_SNAPSHOT_STORAGE_KEY = "omp-right-snapshots";
-/** Restore persisted snapshots on module load; corrupted data is dropped wholesale. */
-function loadRightSnapshots(): Map<string, RightPanelSnapshot> {
+/** Pseudo-session key for the no-session view (welcome / new-session page). */
+const WELCOME_SLOT = "welcome";
+
+/** Slot table cap. openSessions LRU cap is 8; slots can outlive evicted sessions
+ *  (they keep per-session panel memory), so cap higher to bound growth. */
+const RIGHT_SLOT_MAX = 32;
+const RIGHT_SLOT_STORAGE_KEY = "omp-right-slots";
+
+/** Persisted slot row (disposers stripped). */
+type PersistedSlot = Omit<RightSlot, "disposers">;
+
+/** Restore persisted slots on module load. The legacy snapshot table is dropped
+ *  wholesale (deliberate one-way switch, no migration); corrupted rows are skipped. */
+function loadRightSlots(): Map<string, RightSlot> {
   try {
-    const raw = localStorage.getItem(RIGHT_SNAPSHOT_STORAGE_KEY);
+    localStorage.removeItem("omp-right-snapshots");
+    const raw = localStorage.getItem(RIGHT_SLOT_STORAGE_KEY);
     if (!raw) return new Map();
-    const pairs = JSON.parse(raw) as [string, RightPanelSnapshot][];
-    // Backfill for entries persisted before rightCollapsed joined the snapshot
-    // (undefined must not leak into setState; collapsed is the safe default)
-    for (const [, snap] of pairs) {
-      if (snap.rightCollapsed === undefined) snap.rightCollapsed = true;
-      if (snap.rightTab === "sessiontree") {
-        const index = snap.rightTabs.indexOf("sessiontree");
-        snap.rightTab = snap.rightTabs.slice(index + 1).find((name) => name !== "sessiontree")
-          ?? snap.rightTabs.slice(0, index).reverse().find((name) => name !== "sessiontree") ?? null;
-      }
-      snap.rightTabs = snap.rightTabs.filter((name) => name !== "sessiontree");
-      snap.rightRecentClosed = snap.rightRecentClosed.filter((item) => item.name !== "sessiontree");
+    const pairs = JSON.parse(raw) as [string, PersistedSlot][];
+    const out = new Map<string, RightSlot>();
+    for (const [path, p] of pairs) {
+      if (!p || !Array.isArray(p.tabs)) continue;
+      out.set(path, {
+        ...p,
+        active: p.active ?? null,
+        recentClosed: p.recentClosed ?? [],
+        selectedFile: p.selectedFile ?? null,
+        fileView: p.fileView ?? null,
+        collapsed: p.collapsed ?? true,
+        disposers: new Set(),
+      });
     }
-    return new Map(pairs);
+    return out;
   } catch {
     return new Map();
   }
 }
 
-const rightSnapshots = loadRightSnapshots(); // insertion order = LRU order; restore re-inserts to touch
+const rightSlots = loadRightSlots(); // insertion order = LRU order; save/restore touch
 
-/** Serialize the snapshot table to localStorage (a few KB at most, written on
- *  save/restore/clear — i.e. once per session switch, never per keystroke). */
-function persistRightSnapshots(): void {
+/** Serialize the slot table to localStorage (a few KB at most, written on
+ *  save/restore/dispose — i.e. once per session switch, never per keystroke). */
+function persistRightSlots(): void {
   try {
-    localStorage.setItem(RIGHT_SNAPSHOT_STORAGE_KEY, JSON.stringify([...rightSnapshots]));
+    const rows = [...rightSlots].map(
+      ([path, s]) => [path, { tabs: s.tabs, active: s.active, recentClosed: s.recentClosed, selectedFile: s.selectedFile, fileView: s.fileView, collapsed: s.collapsed } satisfies PersistedSlot],
+    );
+    localStorage.setItem(RIGHT_SLOT_STORAGE_KEY, JSON.stringify(rows));
   } catch {
-    // Quota failures (extremely unlikely at this size) just lose persistence,
-    // in-memory behavior is unaffected.
+    // Quota failures just lose persistence; in-memory behavior is unaffected.
   }
 }
 
-/** Save the right panel snapshot for session `path` (call before activePath switches away; null = no session, skip) */
-export function saveRightSnapshot(path: string | null): void {
-  if (!path) return;
+/** Write the live projection into session `path`'s slot (null = the welcome pseudo-slot). */
+export function saveRightSlot(path: string | null): void {
+  const key = path ?? WELCOME_SLOT;
   const st = useAppStore.getState();
-  rightSnapshots.delete(path);
-  rightSnapshots.set(path, {
-    rightTabs: st.rightTabs.slice(),
-    rightTab: st.rightTab,
-    rightRecentClosed: st.rightRecentClosed.slice(),
+  const disposers = rightSlots.get(key)?.disposers ?? new Set(); // slot update, not destruction: keep live disposers
+  rightSlots.delete(key);
+  rightSlots.set(key, {
+    tabs: st.rightTabs.slice(),
+    active: st.rightTab,
+    recentClosed: st.rightRecentClosed.slice(),
     selectedFile: st.selectedFile,
     // Skip half-loaded views (empty text would restore stuck in loading) and image views
-    // (they depend on the global imageContent frame) — neither is snapshotted
+    // (they depend on the global imageContent frame) — neither is persisted
     fileView: st.fileViewPending || st.fileView?.image ? null : st.fileView,
-    rightCollapsed: st.rightCollapsed,
+    collapsed: st.rightCollapsed,
+    disposers,
   });
-  while (rightSnapshots.size > RIGHT_SNAPSHOT_MAX) {
-    rightSnapshots.delete(rightSnapshots.keys().next().value as string);
-  }
-  persistRightSnapshots();
+  trimRightSlots();
+  persistRightSlots();
 }
 
-/** Restore the right panel for session `path` (call after activateSession switches in).
- *  No snapshot (first open / newly created / first switch back after restart): inherit the
- *  tab layout (visual continuity) but clear session-scoped detail state — selectedFile/
- *  fileView data belongs to the previous session. Transients of the previous session
- *  (pending flags / subagent selection) are always cleared. */
-export function restoreRightPanel(path: string): void {
-  const snap = rightSnapshots.get(path);
-  if (snap) {
-    rightSnapshots.delete(path);
-    rightSnapshots.set(path, snap); // LRU touch
-    persistRightSnapshots();
-  }
-  useAppStore.setState({
-    ...(snap ?? { selectedFile: null, fileView: null }),
-    selectedSubagent: null,
-    fileViewPending: null,
-    briefDiffPending: null,
-  });
+/** LRU trim: while over cap, dispose the least-recently-touched slot (eldest insert). */
+function trimRightSlots(): void {
+  while (rightSlots.size > RIGHT_SLOT_MAX) disposeRightSlot(rightSlots.keys().next().value as string);
 }
 
-/** Clear all snapshots (profile switch = different session universe, paths no longer trustworthy) */
-export function clearRightSnapshots(): void {
-  rightSnapshots.clear();
-  persistRightSnapshots();
+/** Load session `path`'s slot into the live projection (null = welcome). No slot yet
+ *  (first activation): materialize one from the current projection — the layout is
+ *  inherited (visual continuity) while session-scoped detail state clears. Transients
+ *  of the previous session are always cleared. */
+export function restoreRightSlot(path: string | null): void {
+  const key = path ?? WELCOME_SLOT;
+  const slot = rightSlots.get(key);
+  if (slot) {
+    rightSlots.delete(key);
+    rightSlots.set(key, slot); // LRU touch
+    persistRightSlots();
+    useAppStore.setState({
+      rightTabs: slot.tabs.slice(),
+      rightTab: slot.active,
+      rightRecentClosed: slot.recentClosed.slice(),
+      selectedFile: slot.selectedFile,
+      fileView: slot.fileView,
+      rightCollapsed: slot.collapsed,
+      selectedSubagent: null,
+      fileViewPending: null,
+      briefDiffPending: null,
+    });
+    return;
+  }
+  const st = useAppStore.getState();
+  rightSlots.set(key, {
+    tabs: st.rightTabs.slice(),
+    active: st.rightTab,
+    recentClosed: st.rightRecentClosed.slice(),
+    selectedFile: null,
+    fileView: null,
+    collapsed: st.rightCollapsed,
+    disposers: new Set(),
+  });
+  persistRightSlots();
+  useAppStore.setState({ selectedFile: null, fileView: null, selectedSubagent: null, fileViewPending: null, briefDiffPending: null });
+}
+
+/** Destroy session `path`'s slot: run its disposers (host resources — terminal PTY),
+ *  drop it, persist. Session deletion / disk disappearance / profile switch. */
+export function disposeRightSlot(path: string): void {
+  const slot = rightSlots.get(path);
+  if (!slot) return;
+  rightSlots.delete(path);
+  for (const fn of slot.disposers) fn();
+  persistRightSlots();
+}
+
+/** Register a host-resource teardown callback on session `path`'s slot (pages owning
+ *  host-side resources call this on mount; the slot exists by then — activation
+ *  materializes it). */
+export function registerSlotDisposer(path: string, fn: () => void): void {
+  rightSlots.get(path)?.disposers.add(fn);
+}
+
+/** Directed auto-open: activate tab `name` inside a background session's slot without
+ *  touching the displayed panel (browser mirror auto-open lands where the browsing
+ *  session lives, not where the user is looking). */
+export function openTabInSlot(path: string, name: string): void {
+  let slot = rightSlots.get(path);
+  if (!slot) {
+    // Background-created session never activated in the UI: a minimal slot with just
+    // this tab (inheriting the displayed layout would leak another session's panel)
+    slot = { tabs: [name], active: name, recentClosed: [], selectedFile: null, fileView: null, collapsed: false, disposers: new Set() };
+    rightSlots.set(path, slot);
+  } else {
+    rightSlots.delete(path);
+    rightSlots.set(path, slot); // LRU touch
+    if (!slot.tabs.includes(name)) slot.tabs = [...slot.tabs, name];
+    slot.active = name;
+    slot.collapsed = false; // auto-open implies "shown": expand on the next visit, same as the foreground branch
+  }
+  trimRightSlots();
+  persistRightSlots();
+}
+
+/** Remove tab `name` from background session `path`'s slot (mirror auto-close
+ *  on the owner's drain edge). Neighbor fallback and the last-tab collapse
+ *  mirror the foreground closeRightTab semantics. */
+export function closeTabInSlot(path: string, name: string): void {
+  const slot = rightSlots.get(path);
+  if (!slot) return;
+  const i = slot.tabs.indexOf(name);
+  if (i < 0) return;
+  slot.tabs = slot.tabs.filter((t) => t !== name);
+  if (slot.active === name) slot.active = slot.tabs[Math.min(i, slot.tabs.length - 1)] ?? null;
+  if (slot.tabs.length === 0) slot.collapsed = true;
+  persistRightSlots();
+}
+
+/** Clear every slot (profile switch = different session universe, paths no longer
+ *  trustworthy); disposers run — host resources die with the table. */
+export function clearRightSlots(): void {
+  for (const slot of rightSlots.values()) for (const fn of slot.disposers) fn();
+  rightSlots.clear();
+  persistRightSlots();
 }
 
 // ---------- Agent browser mirror landing (browser_tabs pushes; process-global, not per-session) ----------
 
-// One auto-open per activation burst: set on the 0→n edge, cleared when the
-// tab list drains to zero — a manual collapse between edges is never fought.
-let browserAutoLatch = false;
+// Owners whose activation edge has already been surfaced. An owner is latched
+// from its first tab until its tab list drains to zero — a manual collapse in
+// between is never fought, and a fresh burst re-opens. Per-owner (not global):
+// the mirror is session-scoped, so each session gets its own edge.
+const browserOwnerLatch = new Set<string>();
 
-/** Land a browser_tabs push. On the activation edge, auto-open the right panel's browser tab so the Agent's browsing surfaces itself. */
-export function landBrowserTabs(tabs: BrowserTabInfo[], active: boolean): void {
+/** Land a browser_tabs push: store the global list, then surface per-owner
+ *  activation edges (a session's first tab) — the displayed session's edge
+ *  opens the mirror right panel; a background session's edge pre-opens the
+ *  mirror inside ITS slot without touching the displayed panel. The drain
+ *  edge (a session's last tab closing) auto-closes that session's mirror tab
+ *  the same way a manual close would. */
+export function landBrowserTabs(tabs: BrowserTabInfo[]): void {
   useAppStore.setState({ browserTabs: tabs });
-  if (tabs.length === 0) {
-    browserAutoLatch = false;
-    return;
+  const owners = new Set<string>();
+  for (const tab of tabs) {
+    if (tab.ownerPath) owners.add(tab.ownerPath);
   }
-  if (!active || browserAutoLatch) return;
-  browserAutoLatch = true;
   const st = useAppStore.getState();
-  if (st.rightTab !== "browser" || !st.rightTabs.includes("browser") || st.rightCollapsed) {
-    openRightTab("browser");
-    if (st.rightCollapsed) useAppStore.setState({ rightCollapsed: false });
+  for (const owner of owners) {
+    if (browserOwnerLatch.has(owner)) continue;
+    browserOwnerLatch.add(owner);
+    if (owner === st.activePath) {
+      if (st.rightTab !== "mirror" || !st.rightTabs.includes("mirror") || st.rightCollapsed) {
+        openRightTab("mirror");
+        if (st.rightCollapsed) useAppStore.setState({ rightCollapsed: false });
+      }
+    } else {
+      openTabInSlot(owner, "mirror");
+    }
+  }
+  for (const prev of browserOwnerLatch) {
+    if (owners.has(prev)) continue;
+    browserOwnerLatch.delete(prev);
+    // Drain edge: close the mirror tab through the regular path (last-tab
+    // close collapses the panel there); background owners close in-slot.
+    if (prev === st.activePath) closeRightTab("mirror");
+    else closeTabInSlot(prev, "mirror");
   }
 }
 
 /** Drop mirror UI state (host restart ready frame: the old list is stale until the next subscribe). */
 export function resetBrowserMirrorUi(): void {
-  browserAutoLatch = false;
+  browserOwnerLatch.clear();
   useAppStore.setState({ browserTabs: [], browserViewTab: null, browserPinned: false });
 }

@@ -13,6 +13,7 @@
    900  .proj-drag-overlay (drag overlay)
    999  .login-banner
    1000 modal masks and dialogs: .confirm-mask / .lp-mask / Radix Dialog / image lightbox
+   1100 #bootSplash (boot veil: above everything until the first session_list frame)
    Column containers #sidebar / #right use isolation:isolate as their own layer: popovers inside never escape the column. */
 /* ── unified global scrollbars ─────────────────────────────────────────────────────────
    WebView2/Chromium default to persistent classic scrollbars (the white track is jarring in dark mode). The whole site uses this one set instead:

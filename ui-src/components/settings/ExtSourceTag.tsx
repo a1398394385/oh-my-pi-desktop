@@ -27,6 +27,17 @@ export function useExtSources(): void {
   }, [scopes]);
 }
 
+// Re-request every known scope after an on-page toggle: the cached per-scope
+// snapshots still carry the pre-toggle state, which kept rendering the stale
+// 已禁用/被遮蔽 warning tag next to a switch the user had just flipped.
+export function refreshExtSources(): void {
+  const byScope = useAppStore.getState().extensionsByScope;
+  send({ type: "list_extensions", scope: "profile" });
+  for (const sc of byScope.profile?.scopes ?? []) {
+    if (sc.id !== "profile") send({ type: "list_extensions", scope: sc.id });
+  }
+}
+
 // Match an extension entry across scopes: exact path first, then kind+name; when several share a name, active wins
 function matchExt(items: ExtensionItem[], kind: string, name: string, path?: string): ExtensionItem | undefined {
   const candidates = path

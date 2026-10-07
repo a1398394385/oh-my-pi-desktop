@@ -44,7 +44,7 @@ export function projectIconName(p: ProjectIconSource, expanded: boolean): string
   if (p.isDefault) return "comment"; // app-owned backing dir, not a folder
   const remote = Boolean(p.remote || p.remoteWorkspace || p.workspaceIdentity) || /^(ssh|https?):\/\//i.test(cwd);
   const home = Boolean(p.isHome || p.home) || cwd === "~";
-  if (remote) return "cloud";
+  if (remote) return "server";
   if (home) return "house";
   return expanded ? "folderOpen" : "folder";
 }
@@ -199,7 +199,9 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
           toggle();
         }}
       >
-        <span className={"fic" + (/[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
+        {/* the default row's comment icon skips the CJK 1.2× stretch so it keeps the same
+            visual size as the picker rows' icons */}
+        <span className={"fic" + (!p.isDefault && /[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
         <span className="pname" title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}>{name}</span>
         {isProjectManageMode ? (
           p.isDefault ? null : (
