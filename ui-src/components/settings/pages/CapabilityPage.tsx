@@ -16,6 +16,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { RolePicker, roleSelLabel, type ModelRole } from "../RolePicker";
 import type { CatalogModel } from "../../ModelPicker";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import type { CapabilityKeyEntry } from "../../../types/frames";
 
 // Flat single-level picker for the WEB role: lists the usable search engines directly (no
@@ -33,11 +34,16 @@ function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: Catalog
   // Close on click outside the selector (same contract as the cascade picker)
   useEffect(() => {
     if (!open) return;
+    const close = () => setOpen(false);
+    claimDropdown(close);
     const onDoc = (e: MouseEvent) => {
-      if (!selRef.current?.contains(e.target as Node | null)) setOpen(false);
+      if (!selRef.current?.contains(e.target as Node | null)) close();
     };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      releaseDropdown(close);
+    };
   }, [open]);
 
   const engines = allModels.filter((m) => (m.kind ?? "chat") === "search" && (availability ? availability[m.id] !== false : true));

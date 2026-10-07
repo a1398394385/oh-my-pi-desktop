@@ -11,6 +11,7 @@ import { PAGE_PLACEMENT } from "../placement";
 import { saveUiPrefs, saveUiLocale, applyAppearance } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { invoke } from "../../../store/ws";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import type { DesktopEnv } from "../../../types/frames";
 
 // Native names for the language badge and picker labels (never translated)
@@ -38,8 +39,12 @@ function Sel({ label, options, onPick }: SelProps) {
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [open]);
   return (
     <div
@@ -88,8 +93,12 @@ function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: st
   useEffect(() => {
     if (!open) return;
     const close = () => { setOpen(false); setFilter(""); };
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [open]);
   // Lazy load on first open (trigger click is a user gesture, so the invoke
   // lands outside of any startup burst); a failure pins the fallback.

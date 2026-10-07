@@ -6,7 +6,8 @@
 // auto-inherits them from the bundled catalog by model id (the probe reply carries
 // the same match as placeholder values); endpoint-reported contextWindow/maxTokens
 // are written only when the catalog has no match for that model id.
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../../../store";
 import Icon from "../../../Icon";
@@ -35,6 +36,14 @@ export default function ModelProviderWizard() {
   const [api, setApi] = useState<WizardApi>("openai-completions");
   const [apiKey, setApiKey] = useState("");
   const [apiOpen, setApiOpen] = useState(false);
+  // API-type dropdown joins the settings-wide exclusivity slot (this one has no
+  // outside-click close of its own; picking an option leaves it open by design)
+  useEffect(() => {
+    if (!apiOpen) return;
+    const close = () => setApiOpen(false);
+    claimDropdown(close);
+    return () => releaseDropdown(close);
+  }, [apiOpen]);
   // ticked model ids + per-model edits + which row is expanded
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [edits, setEdits] = useState<Record<string, ModelEdit>>({});

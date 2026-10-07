@@ -12,6 +12,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources, refreshExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 
 // Skill entry (list item of each directory under skills in the agent_assets reply; sent by host)
 interface SkillItem {
@@ -105,8 +106,12 @@ export default function SkillsPage() {
   useEffect(() => {
     if (!moreOpen) return;
     const close = () => setMoreOpen(false);
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [moreOpen]);
 
   // asset_file reply: fill the editor if it matches the current expanded row

@@ -13,6 +13,7 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows, { SchemaRowsBare, SchemaGroupTitle } from "../SchemaRows";
 import { PAGE_PLACEMENT, type Section } from "../placement";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 
 // This page owns the layout of both its sections (Section.id): each one is a
 // group heading + exactly one rounded card. The computer card starts with the
@@ -40,8 +41,12 @@ function Sel({ label, options, onPick }: { label: ReactNode; options: SelOption[
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [open]);
   return (
     <div

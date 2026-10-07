@@ -11,6 +11,7 @@ import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import { EnabledModelPicker } from "../../ModelPicker";
 import { IS_WINDOWS } from "../../../platform";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import type { AcpConfig } from "../../../types/frames";
 import {
   listDevices,
@@ -50,8 +51,12 @@ function Sel({
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [open]);
 
   const cls = "sel" + (disabled ? " disabled" : "") + (dropUp ? " sel-up" : "") + (wide ? " sel-wide" : "");

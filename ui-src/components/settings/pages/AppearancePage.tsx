@@ -11,6 +11,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { saveUiPrefs, applyAppearance, FONT_STACKS } from "../../../appearance";
 import { saveTheme, saveMotion } from "../../../shell";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import { THEMES, resolveTheme, type ThemeId } from "../../../theme-registry";
 
 // Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
@@ -78,8 +79,12 @@ function Sel({ label, options, onPick }: SelProps) {
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [open]);
   return (
     <div

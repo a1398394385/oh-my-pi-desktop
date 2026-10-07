@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
+import { claimDropdown, releaseDropdown } from "../../lib/dropdownExclusive";
 
 export interface ScopeSelOption {
   id: string; // "profile" | "project:<cwd>"
@@ -25,8 +26,12 @@ export default function ScopeSel({ value, onChange, profile, projects }: {
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
+    claimDropdown(close);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
   }, [open]);
   const cur = value === profile.id ? profile : (projects.find((p) => p.id === value) ?? profile);
   const pick = (id: string) => (e: { stopPropagation: () => void }) => {

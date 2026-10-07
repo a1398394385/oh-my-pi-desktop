@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "../../store";
 import Icon from "../../Icon";
 import type { ManualProbeCatalogMatch } from "../../types/frames";
+import { claimDropdown, releaseDropdown } from "../../lib/dropdownExclusive";
 
 // User-facing thinking levels, least → most intensive (mirrors the base Effort enum)
 export const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -141,11 +142,16 @@ function MetaSel({ value, onChange, options, inheritLabel, disabled }: {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return undefined;
-    const close = (ev: MouseEvent) => {
+    const onDoc = (ev: MouseEvent) => {
       if (!ref.current?.contains(ev.target as Node | null)) setOpen(false);
     };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    const close = () => setOpen(false);
+    claimDropdown(close);
+    document.addEventListener("click", onDoc);
+    return () => {
+      document.removeEventListener("click", onDoc);
+      releaseDropdown(close);
+    };
   }, [open]);
   const cur = value === "" ? inheritLabel : (options.find((o) => o.v === value)?.label ?? value);
   return (

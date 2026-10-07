@@ -20,6 +20,7 @@ import { useAppStore } from "../store";
 import type { TimerHandle } from "../store";
 import type { ModelCaps } from "../store/models";
 import Icon from "../Icon";
+import { claimDropdown, releaseDropdown } from "../lib/dropdownExclusive";
 
 // Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
 export interface CatalogModel {
@@ -176,15 +177,20 @@ function SettingsCascadePicker({
   // Close on click outside the selector (global equivalent of the old closeAllMenus)
   useEffect(() => {
     if (!open) return undefined;
+    const close = () => {
+      clearTimers();
+      setOpen(false);
+      setFlyProv(null);
+    };
+    claimDropdown(close);
     const onDoc = (e: MouseEvent) => {
-      if (!selRef.current?.contains(e.target as Node | null)) {
-        clearTimers();
-        setOpen(false);
-        setFlyProv(null);
-      }
+      if (!selRef.current?.contains(e.target as Node | null)) close();
     };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      releaseDropdown(close);
+    };
   }, [open]);
 
   // Flyout coordinates: relative to .sel (offsetParent). The level-2 list defaults to opening upward —
