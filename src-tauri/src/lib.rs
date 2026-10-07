@@ -31,6 +31,9 @@ use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 // the real module is `#![cfg(windows)]`; other platforms compile same-named
 // command stubs so the single generate_handler! list below holds everywhere,
 // without pulling the Windows SDK crates in.
+// System font-family enumeration for the settings terminal-font picker
+// (Windows GDI / macOS CoreText; other platforms return an empty list).
+mod fonts;
 #[cfg(target_os = "windows")]
 mod audio;
 #[cfg(not(target_os = "windows"))]
@@ -642,6 +645,7 @@ pub fn run() {
             send_desktop_notification,
             set_menu_language,
             audio::audio_devices,
+            fonts::list_font_families,
             audio::audio_start,
             audio::audio_stop
         ])

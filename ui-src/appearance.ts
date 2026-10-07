@@ -84,6 +84,9 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
   if (typeof s.expandToolOutput === "boolean") out.expandToolOutput = s.expandToolOutput;
   if (typeof s.terminalInheritProfile === "boolean") out.terminalInheritProfile = s.terminalInheritProfile;
   if (typeof s.terminalFont === "string") out.terminalFont = s.terminalFont;
+  if (typeof s.terminalFontSize === "number" && s.terminalFontSize >= 10 && s.terminalFontSize <= 20) {
+    out.terminalFontSize = s.terminalFontSize;
+  }
   return out;
 }
 
@@ -106,6 +109,7 @@ const DEFAULT_PREFS: Record<string, unknown> = {
   expandToolOutput: true,
   terminalInheritProfile: true,
   terminalFont: "",
+  terminalFontSize: 13,
 };
 
 export function applyUiConfig(cfg: unknown): void {

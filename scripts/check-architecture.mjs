@@ -69,6 +69,7 @@ const CSS_LIMITS = {
   "settings/mcp.css": 300,
   "settings/memory.css": 80,
   "settings/models.css": 159,
+  "settings/font-picker.css": 20,
   "settings/providers.css": 40,
   "settings/shortcuts.css": 20,
   "settings/skills.css": 280,

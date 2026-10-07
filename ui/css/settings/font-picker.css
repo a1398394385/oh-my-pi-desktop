@@ -1,0 +1,15 @@
+/* Terminal font picker (GeneralPage FontPicker): .sel trigger + filtered,
+   self-previewing menu. The trigger/menu/menu-item row language is the global
+   .sel/.menu/.mi set (controls.css); only the filter input and the scroll-list
+   geometry live here. */
+
+.fm-menu { padding: 6px; min-width: 264px; }
+
+/* Filter input: the .inp base language (r9 + focus glow) tightened to menu scale */
+.fm-menu .fm-filter { width: 100%; box-sizing: border-box; min-width: 0; padding: 4px 8px; }
+
+/* Preview list: capped + contained scrolling; each row renders its own name in
+   the family it selects (inline style from FontPicker) */
+.fm-menu .fm-list { max-height: 280px; overflow-y: auto; overscroll-behavior: contain; margin-top: 4px; }
+
+.fm-menu .mi { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

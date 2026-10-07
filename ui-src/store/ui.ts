@@ -97,6 +97,7 @@ const uiPrefsInit: UiPrefs = {
   lang: "zh-CN", // placeholder; resolved from the cache or detection below
   terminalInheritProfile: true,
   terminalFont: "",
+  terminalFontSize: 13,
 };
 // First-frame render cache (write-through mirror of omp-desktop.json's ui
 // section; the file stays the source of truth and the ready frame reconciles

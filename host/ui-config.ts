@@ -69,6 +69,7 @@ const PREFS_FIELDS: Record<string, (v: unknown) => unknown> = {
   railMusicDevice: v => (typeof v === "string" ? v : undefined),
   terminalInheritProfile: v => (typeof v === "boolean" ? v : undefined),
   terminalFont: v => (typeof v === "string" ? v : undefined),
+  terminalFontSize: v => (typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 20 ? v : undefined),
 };
 
 /** Filter an unknown prefs object down to known fields with valid types (invalid fields are skipped). */

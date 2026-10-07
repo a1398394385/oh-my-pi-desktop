@@ -47,6 +47,8 @@ export interface UiPrefs {
   lang: "zh-CN" | "en";
   terminalInheritProfile?: boolean;
   terminalFont?: string;
+  /** Terminal font size in px (10-20); 13 = the historical hardcoded default. */
+  terminalFontSize?: number;
 }
 
 /** Right panel runtime state (RightState container shape; branch-tree/entry-tree node types come from types/frames) */

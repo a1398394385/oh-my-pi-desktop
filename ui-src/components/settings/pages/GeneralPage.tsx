@@ -73,6 +73,97 @@ function Sel({ label, options, onPick }: SelProps) {
   );
 }
 
+// ---------- Terminal font picker: .sel trigger + filtered, self-previewing menu ----------
+// The family list comes from the Tauri `list_font_families` command (system
+// enumeration, cached at module level — it cannot change within a run). When
+// the command is unavailable (browser preview) or fails, the picker swaps
+// itself for the passed free-text fallback so a typo-prone path still exists.
+let fontListCache: string[] | null | undefined; // undefined = never asked, null = failed
+
+function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: string) => void; fallback: ReactNode }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [fonts, setFonts] = useState<string[] | null | undefined>(fontListCache);
+  const [filter, setFilter] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    const close = () => { setOpen(false); setFilter(""); };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+  // Lazy load on first open (trigger click is a user gesture, so the invoke
+  // lands outside of any startup burst); a failure pins the fallback.
+  useEffect(() => {
+    if (!open || fonts !== undefined) return;
+    if (!invoke) {
+      fontListCache = null;
+      setFonts(null);
+      return;
+    }
+    invoke("list_font_families").then(
+      (list: unknown) => {
+        fontListCache = Array.isArray(list) ? (list as string[]) : null;
+        setFonts(fontListCache);
+      },
+      () => {
+        fontListCache = null;
+        setFonts(null);
+        toast(t("settingsPage.general.terminalFontLoadFail"));
+      },
+    );
+  }, [open, fonts, t]);
+
+  if (fonts === null) return <>{fallback}</>;
+  const lower = filter.trim().toLowerCase();
+  const hits = (fonts ?? []).filter((f) => !lower || f.toLowerCase().includes(lower));
+  const cssFamily = (name: string) => `"${name.replace(/"/g, '\\"')}", monospace`;
+  return (
+    <div
+      className="sel"
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen(!open);
+      }}
+    >
+      {value || t("settingsPage.general.terminalFontDefault")} <Icon name="caret" size={14} className="caret-svg" />
+      <div className={"menu fm-menu" + (open ? " open" : "")} onClick={(e) => e.stopPropagation()}>
+        <input
+          className="inp fm-filter"
+          placeholder={t("settingsPage.general.terminalFontFilterPh")}
+          value={filter}
+          autoFocus
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <div className="fm-list">
+          {!lower && (
+            <div className="mi" onClick={() => { setOpen(false); setFilter(""); onPick(""); }}>
+              <span className="ck">{value ? "" : "✓"}</span>
+              {t("settingsPage.general.terminalFontDefault")}
+            </div>
+          )}
+          {fonts === undefined ? (
+            <div className="mi empty">{t("common.loading")}</div>
+          ) : hits.length === 0 ? (
+            <div className="mi empty">{t("settingsPage.general.terminalFontNoMatch")}</div>
+          ) : (
+            hits.map((f) => (
+              <div
+                key={f}
+                className="mi"
+                style={{ fontFamily: cssFamily(f) }}
+                onClick={() => { setOpen(false); setFilter(""); onPick(f); }}
+              >
+                <span className="ck">{value === f ? "✓" : ""}</span>
+                {f}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GeneralPage() {
   const hs = useAppStore((s) => s.hostSettings); // selector subscription refreshes on replies
   const { t } = useTranslation();
@@ -104,6 +195,9 @@ export default function GeneralPage() {
   );
   const [terminalFont, setTerminalFont] = useState(
     useAppStore.getState().uiPrefs.terminalFont || ""
+  );
+  const [terminalFontSize, setTerminalFontSize] = useState(
+    useAppStore.getState().uiPrefs.terminalFontSize ?? 13
   );
   const termFontRef = useRef<HTMLInputElement>(null);
 
@@ -155,6 +249,26 @@ export default function GeneralPage() {
     }));
     saveUiPrefs();
     toast(f ? t("settingsPage.general.terminalFontSaved", { font: f }) : t("settingsPage.general.terminalFontReset"));
+  };
+  // Font picker select: same persistence as the free-text save, minus the trim
+  // (the picker hands over exact family names).
+  const pickTerminalFont = (f: string) => {
+    setTerminalFont(f);
+    useAppStore.setState((st) => ({
+      uiPrefs: { ...st.uiPrefs, terminalFont: f },
+    }));
+    saveUiPrefs();
+    toast(f ? t("settingsPage.general.terminalFontSaved", { font: f }) : t("settingsPage.general.terminalFontReset"));
+  };
+  const pickTerminalFontSize = (v: string) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 10 || n > 20) return;
+    setTerminalFontSize(n);
+    useAppStore.setState((st) => ({
+      uiPrefs: { ...st.uiPrefs, terminalFontSize: n },
+    }));
+    saveUiPrefs();
+    toast(t("settingsPage.general.terminalFontSizeSaved", { size: n }));
   };
   // Language switch: persist to uiPrefs, switch i18next, notify the host.
   // <App key={lang}> in main.tsx re-mounts the tree, so the new locale applies
@@ -245,16 +359,39 @@ export default function GeneralPage() {
             <span>{t("settingsPage.general.terminalFontDesc")}</span>
           </div>
           <div className="srow-ctl">
-            <input
-              className="inp"
-              id="termFontInput"
-              placeholder='ui-monospace, "SF Mono", Menlo, monospace'
+            <FontPicker
               value={terminalFont}
-              ref={termFontRef}
-              onChange={(e) => setTerminalFont(e.target.value)}
+              onPick={pickTerminalFont}
+              fallback={
+                <>
+                  <input
+                    className="inp"
+                    id="termFontInput"
+                    placeholder='ui-monospace, "SF Mono", Menlo, monospace'
+                    value={terminalFont}
+                    ref={termFontRef}
+                    onChange={(e) => setTerminalFont(e.target.value)}
+                  />
+                  <button className="save-btn" id="termFontSave" onClick={saveTerminalFont}>{t("common.save")}</button>
+                </>
+              }
             />
-            <button className="save-btn" id="termFontSave" onClick={saveTerminalFont}>{t("common.save")}</button>
           </div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx">
+            <b>{t("settingsPage.general.terminalFontSizeTitle")}</b>
+            <span>{t("settingsPage.general.terminalFontSizeDesc")}</span>
+          </div>
+          <Sel
+            label={`${terminalFontSize} px`}
+            options={[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((n) => ({
+              v: String(n),
+              label: `${n} px`,
+              ck: n === terminalFontSize ? "✓" : "",
+            }))}
+            onPick={pickTerminalFontSize}
+          />
         </div>
       </div>
       <div className="set-group-tt">{t("settingsPage.general.groupNetwork")}</div>

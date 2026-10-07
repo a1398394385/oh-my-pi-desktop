@@ -76,6 +76,22 @@ interface TermSession {
 }
 
 const sessions = new Map<string, TermSession>(); // session path (or "welcome") -> terminal
+// Font pref hot-reload: the settings page writes terminalFont/terminalFontSize
+// into uiPrefs; apply them to every live session (including detached ones) and
+// re-fit so rows/cols follow the new metrics. Subscribe stays read-only (no
+// setState inside — the React 19 store subscription contract).
+useAppStore.subscribe((s, prev) => {
+  if (s.uiPrefs.terminalFont === prev.uiPrefs.terminalFont
+    && s.uiPrefs.terminalFontSize === prev.uiPrefs.terminalFontSize) return;
+  const family = s.uiPrefs.terminalFont?.trim() || TERM_FONT;
+  const size = s.uiPrefs.terminalFontSize ?? 13;
+  for (const own of sessions.values()) {
+    own.term.options.fontFamily = family;
+    own.term.options.fontSize = size;
+    scheduleFit(own);
+  }
+});
+
 
 /** Terminal id sent to the host: unique per session path. */
 const termIdFor = (key: string) => `${PERSIST_KEY}:${key}`;
@@ -100,9 +116,10 @@ function scheduleFit(own: TermSession) {
 }
 
 function createTermSession(key: string, container: HTMLElement): TermSession {
-  const customFont = useAppStore.getState().uiPrefs.terminalFont?.trim();
+  const st0 = useAppStore.getState();
+  const customFont = st0.uiPrefs.terminalFont?.trim();
   const term = new Terminal({
-    fontSize: 13,
+    fontSize: st0.uiPrefs.terminalFontSize ?? 13,
     fontFamily: customFont || TERM_FONT,
     theme: buildTheme(),
     cursorBlink: true,
