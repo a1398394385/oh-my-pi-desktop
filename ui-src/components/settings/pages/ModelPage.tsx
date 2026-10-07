@@ -19,7 +19,7 @@ import type { LimitWindow } from "../../../lib/limits";
 import ModelProviderWizard from "./ModelProviderWizard";
 import ModelMetaEditor from "../ModelMetaEditor";
 import type { AllProviderEntry } from "../../../types/frames";
-import { RolePicker, type ModelRole } from "../RolePicker";
+import { RolePicker, referencedRoleId, type ModelRole } from "../RolePicker";
 import { EnabledModelPicker, ConfiguredModelPicker, type CatalogModel } from "../../ModelPicker";
 
 
@@ -286,7 +286,7 @@ function RolesView() {
             <span>
               {[
                 t(ROLE_DESC_KEYS[role.id] ?? "settingsPage.model.roleCustom"),
-                role.value && !allModels.some((m) => m.id === role.value) ? t("settingsPage.model.roleConfigValue", { value: role.value }) : null,
+                role.value && !referencedRoleId(role.value) && !allModels.some((m) => m.id === role.value) ? t("settingsPage.model.roleConfigValue", { value: role.value }) : null,
               ].filter(Boolean).join(" · ")}
             </span>
           </div>
