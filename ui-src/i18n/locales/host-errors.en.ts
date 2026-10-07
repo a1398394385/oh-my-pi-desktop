@@ -120,6 +120,7 @@ export const hostErrorsEn = {
     keepAtLeastOne: "Keep at least one enabled model",
     noneAfterFilter: "No available models left after filtering the enabled list",
     invalidRoleName: "Invalid role name: {{role}}",
+    unknownRoleRef: "Unknown role reference: {{value}}",
     roleUnresolved: "Role \"{{role}}\" resolves to no available model",
     roleKindMismatch: "Model {{model}} does not match the kind accepted by role {{role}} (e.g. SPEECH takes TTS and DICTATION takes STT models only)",
   },

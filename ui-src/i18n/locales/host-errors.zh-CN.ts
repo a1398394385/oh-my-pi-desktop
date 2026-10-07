@@ -124,6 +124,7 @@ export const hostErrorsZh = {
     keepAtLeastOne: "至少保留一个启用模型",
     noneAfterFilter: "启用列表过滤后没有可用模型",
     invalidRoleName: "非法角色名: {{role}}",
+    unknownRoleRef: "未知角色引用: {{value}}",
     roleUnresolved: "角色「{{role}}」没有解析到可用模型",
     roleKindMismatch: "模型 {{model}} 与角色 {{role}} 接受的类别不兼容（如 SPEECH 仅接受 TTS、DICTATION 仅接受 STT 模型）",
   },

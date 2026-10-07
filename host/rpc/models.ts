@@ -2,7 +2,7 @@
 // enable/disable (set_enabled_model), role read/write, catalog snapshots and
 // the provider list. Moved over from the main.ts message dispatch (third
 // slice).
-import { authPolicyFor, formatModelRoleAlias, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
+import { authPolicyFor, formatModelRoleAlias, getKnownRoleIds, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
 import { completeSimple } from "@oh-my-pi/pi-ai";
 import { H, sessions, enabledDefaults } from "../state.ts";
 import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS, searchAvailabilityPayload } from "../models.ts";
@@ -120,14 +120,24 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     // Any valid name may be written: edits known roles and also creates custom roles from the input menu (overwriting an old value of the same name)
     const role = String(msg.role ?? "");
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(role)) throw new Error(hostI18n.t("errors.model.invalidRoleName", { role }));
-    // The UI writes only exact "provider/model" (or null to clear back to the default chain); aliases/suffixes are left for hand-editing settings.json
+    // The UI writes exact "provider/model" or a role reference ("@smol", the
+    // RolePicker reference section; optionally thinking-suffixed). Other alias
+    // forms ("*", legacy "pi/…") stay hand-edit-only in settings.json.
     const value = msg.value == null || msg.value === "" ? undefined : String(msg.value);
-    const model = value ? H.allModels.find((m) => `${m.provider}/${m.id}` === value) : undefined;
-    if (value && !model) {
+    const ref = value ? /^@([A-Za-z0-9_-]+)/.exec(value) : null;
+    const model = value && !ref ? H.allModels.find((m) => `${m.provider}/${m.id}` === value) : undefined;
+    if (value && !ref && !model) {
       throw new Error(hostI18n.t("errors.model.unknown", { model: value }));
     }
+    // The referenced role must exist (built-in or user-defined); cycles are not
+    // checked here — the UI never offers one and the base resolver breaks them
+    if (ref && !getKnownRoleIds(H.settings).includes(ref[1])) {
+      throw new Error(hostI18n.t("errors.model.unknownRoleRef", { value }));
+    }
     // Kind gate, same predicate as the base's role candidate pool: role resolution skips
-    // models the role's accepts() rejects, so persisting one would be a silently dead assignment
+    // models the role's accepts() rejects, so persisting one would be a silently dead
+    // assignment. References are exempt: their target resolves through the pool each
+    // time, and the UI only offers them for chat roles anyway
     if (model && !getRoleInfo(role, H.settings).accepts(model)) {
       throw new Error(hostI18n.t("errors.model.roleKindMismatch", { role, model: value }));
     }
