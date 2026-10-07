@@ -319,14 +319,48 @@ export const HIDDEN_KEYS: Record<string, true> = {
   "startup.setupWizard": true,
   "startup.changelogMode": true,
   "startup.checkUpdate": true,
+  // CLI entry path only (main.ts): desktop has its own session list, its own
+  // update story, and no marketplace auto-update scheduler. git.enabled gates
+  // nothing but the TUI status bar's git segment (verified: no tool consumer).
+  "autoResume": true,
+  "update.channel": true,
+  "marketplace.autoUpdate": true,
+  "git.enabled": true,
+  // pi-tui rendering switches + theme name maps (setAutoThemeMapping /
+  // setSymbolPreset effects feed the TUI theme engine only; the desktop has
+  // its own CSS token themes, shiki dark-plus/light-plus, and diff colors).
+  // display.hideToolActivity / showTokenUsage / showTurnTime / colorBlindMode
+  // are NOT here: the desktop implements its own consumers for those.
+  "theme.dark": true,
+  "theme.light": true,
+  "symbolPreset": true,
+  "terminal.showImages": true,
+  "terminal.showProgress": true,
+  "tui.resizeScrollback": true,
+  "tui.textSizing": true,
+  "tui.renderMermaid": true,
+  "tui.reactions": true,
+  "tui.codexResetFireworks": true,
+  "tui.titleState": true,
+  "tui.titleSpinner": true,
+  "tui.hyperlinks": true,
+  "tui.mouse": true,
+  "tui.tight": true,
+  "tui.imeSafeCursor": true,
+  "display.shimmer": true,
+  "display.pinnedAgents": true,
+  "display.subagentLivePreview": true,
+  "display.smoothStreaming": true,
+  "display.cacheMissMarker": true,
+  "display.collapseCompacted": true,
+  "showHardwareCursor": true,
+  "task.showResolvedModelBadge": true,
 };
 
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests
 const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-general": [
-    "autoResume", "power.sleepPrevention", "git.enabled", "startup.quiet",
-    "update.channel",
-    "marketplace.autoUpdate", "ask.timeout", "hideThinkingBlock",
+    "power.sleepPrevention", "startup.quiet", "ask.timeout", "hideThinkingBlock",
   ],
   "pg-interaction": [
     "steeringMode", "followUpMode", "interruptMode", "tui.vimMode",
@@ -375,14 +409,9 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "extensionHandlers.toolCallTimeoutMs", "marketplace.autoUpdate", "extensions", "disabledExtensions",
   ],
   "pg-appearance": [
-    "theme.dark", "theme.light", "symbolPreset", "colorBlindMode",
-    "terminal.showImages", "images.autoResize", "images.blockImages",
-    "tui.resizeScrollback", "terminal.showProgress", "tui.textSizing", "tui.renderMermaid",
-    "tui.reactions", "tui.codexResetFireworks", "tui.titleState", "tui.titleSpinner",
-    "tui.hyperlinks", "tui.mouse", "tui.tight", "display.shimmer",
-    "display.pinnedAgents", "display.smoothStreaming", "display.hideToolActivity", "display.showTokenUsage",
-    "display.showTurnTime", "display.cacheMissMarker", "display.collapseCompacted", "showHardwareCursor",
-    "tui.imeSafeCursor", "task.showResolvedModelBadge",
+    "colorBlindMode",
+    "images.autoResize", "images.blockImages",
+    "display.hideToolActivity", "display.showTokenUsage", "display.showTurnTime",
   ],
   "pg-model-behavior": [
     "advisor.enabled", "prewalk.enabled", "advisor.syncBacklog", "advisor.immuneTurns",

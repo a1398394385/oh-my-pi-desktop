@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import type { LoopItem } from "../../types/session";
 import type { RailEntry } from "./chat-types";
 import { fmtTokens } from "../../store/utils";
+import { useAppStore } from "../../store";
 import { fmtDuration } from "./util";
 import Icon from "../../Icon";
 import { useLift, patchActiveItem } from "./parts";
@@ -15,20 +16,28 @@ import { renderItems } from "./items";
 import { t } from "../../i18n";
 
 // Collapsed loop group summary text: worked-for duration + total usage composed of input,
-// output, cache read [, cache write] token counts via the chat.workedFor / chat.totalUsage keys
+// output, cache read [, cache write] token counts via the chat.workedFor / chat.totalUsage
+// keys. Both segments are host-setting-gated (display.showTokenUsage / display.showTurnTime,
+// base defaults false — TUI parity); with both off the row falls back to a plain label.
 export function loopSummaryText(item: LoopItem) {
+  const values = useAppStore.getState().hostSettings?.values;
   const parts = [];
-  if (item.durationSec != null) parts.push(t("chat.workedFor", { duration: fmtDuration(item.durationSec) }));
-  const u = item.usage;
-  if (u) {
-    const seg = [`input ${fmtTokens(u.input)}`, `output ${fmtTokens(u.output)}`, `cache read ${fmtTokens(u.cacheRead)}`];
-    if (u.cacheWrite > 0) seg.push(`cache write ${fmtTokens(u.cacheWrite)}`);
-    parts.push(t("chat.totalUsage", { usage: seg.join(", ") }));
+  if (values?.["display.showTurnTime"] === true && item.durationSec != null) {
+    parts.push(t("chat.workedFor", { duration: fmtDuration(item.durationSec) }));
   }
-  return parts.join(", ");
+  if (values?.["display.showTokenUsage"] === true) {
+    const u = item.usage;
+    if (u) {
+      const seg = [`input ${fmtTokens(u.input)}`, `output ${fmtTokens(u.output)}`, `cache read ${fmtTokens(u.cacheRead)}`];
+      if (u.cacheWrite > 0) seg.push(`cache write ${fmtTokens(u.cacheWrite)}`);
+      parts.push(t("chat.totalUsage", { usage: seg.join(", ") }));
+    }
+  }
+  return parts.join(", ") || t("chat.processLog");
 }
 
 export default function LoopGroup({ item, fk, railEntries }: { item: LoopItem; fk?: string; railEntries: RailEntry[] }) {
+  useAppStore((s) => s.hostSettings); // re-render on settings flips (usage/time gating reads it in render)
   const [closing, close] = useLift();
   const kidsRef = useRef<HTMLDivElement | null>(null);
 

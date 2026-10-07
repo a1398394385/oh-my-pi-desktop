@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, type ReactElement, type RefObject } from "
 import { useAppStore, send, toast } from "../../store";
 import { t } from "../../i18n";
 import Icon from "../../Icon";
-import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH, DARK_THEMES, LIGHT_THEMES } from "../../i18n/locales/settings-zh-CN";
+import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH } from "../../i18n/locales/settings-zh-CN";
 import { SETTINGS_EN, OPTS_EN, GROUPS_EN } from "../../i18n/locales/settings-en";
 import { expandSection, type Section, type SchemaDef } from "./placement";
 import { Switch } from "../ui/switch";
@@ -37,8 +37,6 @@ interface SelOption {
 
 /** Resolve the available option list of a setting from the schema and omp source code */
 function resolveSettingOptions(k: string, def: SchemaDef, opts: Record<string, Record<string, string>>): SelOption[] {
-  if (k === "theme.dark") return DARK_THEMES.map((t) => ({ v: t, label: opts["theme.dark"]?.[t] ?? t }));
-  if (k === "theme.light") return LIGHT_THEMES.map((t) => ({ v: t, label: opts["theme.light"]?.[t] ?? t }));
 
   if (Array.isArray(def.ui?.options) && def.ui.options.length > 0) {
     return def.ui.options.map((o) => {

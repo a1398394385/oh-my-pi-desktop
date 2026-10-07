@@ -87,6 +87,7 @@ try {
   assert.equal(openMenus().length, 0, "选完后全部收起");
   await click(langSel());
   assert.equal(openMenus().length, 1, "释放后可再次打开");
+  console.log("✓ 设置页下拉互斥：展开下一个自动收起上一个，选项/外点正常释放");
 } finally {
   await act(async () => { root.unmount(); });
   win.happyDOM.close();

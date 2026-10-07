@@ -5,7 +5,7 @@ import { useAppStore } from "../../../store";
 import SchemaRows from "../SchemaRows";
 import { ADV_PREFIX_ZH } from "../../../i18n/locales/settings-zh-CN";
 import { ADV_PREFIX_EN } from "../../../i18n/locales/settings-en";
-import { PAGE_PLACEMENT, SPECIAL_KEY_PAGES } from "../placement";
+import { PAGE_PLACEMENT, SPECIAL_KEY_PAGES, HIDDEN_KEYS } from "../placement";
 
 // Section shape produced by the advanced page: explicit keys only (no from expansion), titleZh already resolved via the prefix map/fallback
 interface AdvSection {
@@ -39,6 +39,7 @@ function buildSections(schema: SchemaMap | null | undefined, advPrefix: Record<s
   const order: string[] = [];
   const groups = new Map<string, string[]>();
   for (const k of Object.keys(schema)) {
+    if (HIDDEN_KEYS[k]) continue; // hidden keys never render anywhere
     if (schema[k].ui || placed.has(k)) continue; // collect only ui-less keys not explicitly placed
     const dot = k.indexOf(".");
     const prefix = dot === -1 ? "" : k.slice(0, dot);

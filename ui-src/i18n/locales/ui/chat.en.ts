@@ -73,6 +73,7 @@ export const chatEn = {
   // ---- loop group summary (LoopGroup.tsx) ----
   workedFor: "Worked for {{duration}}",
   totalUsage: "Total usage {{usage}}",
+  processLog: "Process log (enable token/time in Appearance settings)",
   // ---- thinking row (ThinkingRow.tsx) ----
   thinkingFallback: "Thinking · took a few seconds",
   // ---- context ring card (CtxCard.tsx) ----

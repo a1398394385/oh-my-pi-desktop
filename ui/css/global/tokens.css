@@ -20,7 +20,7 @@
   --color-blue: var(--blue);
   --color-purple: var(--purple);
   --color-bash: var(--bash);
-  --color-diff-added: var(--green);
+  --color-diff-added: var(--diff-added);
   --color-diff-removed: var(--err);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
@@ -114,6 +114,7 @@
   --diff-added: var(--green-soft);  /* added-row key color: 14% row bg + 18% gutter base + status bar */
   --diff-removed: var(--err);       /* removed-row key color, same tinting rules */
 }
+:root[data-colorblind="on"] { --diff-added: var(--blue); }
 
 :root {
   --hm0: #33333d;

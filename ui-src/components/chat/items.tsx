@@ -120,8 +120,11 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
 // Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
 // Thinking items inside the run are collected into the block but not counted; any other
 // role or a non-read-only tool event ends the run. Returns null when the run holds fewer
-// than 3 read-only events (the caller then falls through to the per-type group blocks).
+// than `min` read-only events (the caller then falls through to the per-type group blocks).
+// min is 3 by default and drops to 1 while display.hideToolActivity is on: every tool
+// activity row then collapses into the "explored…" block instead of cluttering the stream.
 function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next: number } | null {
+  const min = useAppStore.getState().hostSettings?.values?.["display.hideToolActivity"] === true ? 1 : 3;
   const run: ChatItem[] = [];
   let roCount = 0;
   let j = i;
@@ -136,7 +139,7 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
       j++;
     } else break;
   }
-  return roCount >= 3 ? { run, next: j } : null;
+  return roCount >= min ? { run, next: j } : null;
 }
 
 // noReadonlyFold: the level-2 fold is skipped (used by ReadonlyGroup's expansion body,

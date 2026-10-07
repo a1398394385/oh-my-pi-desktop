@@ -7,8 +7,8 @@
 // - Keys whose registry entry carries no ui metadata (skills.*/memories.*/
 //   mnemopi.*/hindsight.*/sharpshooter.* …): without an entry the raw key
 //   would render as the label. Listed below, grouped by settings page.
-// DARK_THEMES / LIGHT_THEMES are language-neutral id lists and are therefore
-// exported only from settings-zh-CN.ts.
+// (theme.dark/theme.light option lists used to live here as language-neutral
+// id arrays; both keys are now TUI-only and hidden — see HIDDEN_KEYS.)
 export const SETTINGS_EN: Record<string, { label: string; description?: string; warning?: string }> = {
   // ---- pg-plugins ----
   "extensions": { "label": "External extension paths", "description": "List of external extension packages or file directory paths to register manually (comma-separated)" },

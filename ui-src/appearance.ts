@@ -70,6 +70,13 @@ export function applyHostAppearance(hostSettings: { hideThinkingBlock?: unknown 
   applyAppearance();
 }
 
+/** colorBlindMode (host setting): diff-added key color switches green -> blue. */
+export function applyColorBlindMode(value: unknown): void {
+  const root = document.documentElement;
+  if (value === true) root.dataset.colorblind = "on";
+  else delete root.dataset.colorblind;
+}
+
 /** Narrow a frame-side prefs object to the known UiPrefs appearance fields (invalid values dropped). */
 function prefsProjection(src: unknown): Partial<UiPrefs> {
   const out: Partial<UiPrefs> = {};

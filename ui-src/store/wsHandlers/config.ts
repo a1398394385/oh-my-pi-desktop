@@ -2,7 +2,7 @@
 // profile switch, approval mode, usage stats, asset lists, extension lists. Moved over from
 // store/ws.ts onMessage.
 import { useAppStore } from "../index";
-import { applyUiConfig } from "../../appearance";
+import { applyUiConfig, applyColorBlindMode } from "../../appearance";
 import { hostInstanceReset } from "../session";
 import { ingestModelDefaults, ingestModels } from "../models";
 import { clearRightSlots, resetBrowserMirrorUi } from "../right";
@@ -38,6 +38,7 @@ export const configHandlers = {
       if (typeof msg.settings.hideThinkingBlock === "boolean") {
         useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
       }
+      applyColorBlindMode(msg.settings.values?.colorBlindMode);
       useAppStore.setState({ hostSettings: msg.settings });
       // Master gate closed: drop any pending create intent so a session born
       // after this never carries a stale computerMode:true
@@ -73,6 +74,7 @@ export const configHandlers = {
     if (typeof msg.settings?.hideThinkingBlock === "boolean") {
       useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
     }
+    applyColorBlindMode(msg.settings?.values?.colorBlindMode);
     useAppStore.setState({ hostSettings: msg.settings });
     if (msg.settings?.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
       useAppStore.setState({ newSessionComputerMode: false }); // same gate-close cleanup as the ready handler above

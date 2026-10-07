@@ -64,6 +64,7 @@ export const chatZh = {
   // ---- loop group summary (LoopGroup.tsx) ----
   workedFor: "已工作 {{duration}}",
   totalUsage: "总消耗 {{usage}}",
+  processLog: "过程记录（Token 与耗时显示在外观设置中开启）",
   // ---- thinking row (ThinkingRow.tsx) ----
   thinkingFallback: "思考 · 持续了几秒",
   // ---- context ring card (CtxCard.tsx) ----
