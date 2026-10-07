@@ -27,26 +27,17 @@ const setValues = (values: Record<string, unknown>) =>
 try {
   const item = { role: "loop", collapsed: true, items: [], durationSec: 37, usage: { input: 1200, output: 340, cacheRead: 9000, cacheWrite: 0 } } as never;
 
-  // 1. base defaults (both off): plain fallback label, no usage/time leak
+  // 1. turn time is unconditional (display.showTurnTime hidden — desktop made it always-on)
   setValues({});
-  assert.equal(loopSummaryText(item), "过程记录（Token 与耗时显示在外观设置中开启）", "双关时兜底文案");
+  const base = loopSummaryText(item);
+  assert.ok(base.includes("已工作") && !base.includes("总消耗"), "默认仅耗时（常显）: " + base);
 
-  // 2. showTurnTime only
-  setValues({ "display.showTurnTime": true });
-  const withTime = loopSummaryText(item);
-  assert.ok(withTime.includes("已工作") && !withTime.includes("总消耗"), "仅耗时: " + withTime);
-
-  // 3. showTokenUsage only
+  // 2. showTokenUsage adds the usage segment on top
   setValues({ "display.showTokenUsage": true });
   const withUsage = loopSummaryText(item);
-  assert.ok(withUsage.includes("总消耗") && withUsage.includes("input 1.2K") && !withUsage.includes("已工作"), "仅用量: " + withUsage);
+  assert.ok(withUsage.includes("总消耗") && withUsage.includes("input 1.2K") && withUsage.includes("已工作"), "耗时+用量: " + withUsage);
 
-  // 4. both on
-  setValues({ "display.showTokenUsage": true, "display.showTurnTime": true });
-  const both = loopSummaryText(item);
-  assert.ok(both.includes("已工作") && both.includes("总消耗"), "双开: " + both);
-
-  // 5. colorBlindMode root attribute
+  // 3. colorBlindMode root attribute
   applyColorBlindMode(true);
   assert.equal(document.documentElement.dataset.colorblind, "on", "开启挂 data-colorblind");
   applyColorBlindMode(false);
@@ -54,7 +45,7 @@ try {
   applyColorBlindMode(undefined);
   assert.equal(document.documentElement.dataset.colorblind, undefined, "未设置不挂属性");
 
-  console.log("✓ 设置对接：Loop 摘要门控（耗时/用量/双关兜底）与色盲模式根属性正确");
+  console.log("✓ 设置对接：Loop 摘要（耗时常显 + 用量门控）与色盲模式根属性正确");
 } finally {
   win.happyDOM.close();
   process.exit(0); // imported store modules keep timers alive; assertions are done

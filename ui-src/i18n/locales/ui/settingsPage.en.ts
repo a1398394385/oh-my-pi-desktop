@@ -96,8 +96,6 @@ export const settingsPageEn = {
     askTimeoutDesc: "omp ask.timeout: automatically pick the recommended option after N seconds without a response to a question; 0 = never time out (default).",
     askTimeoutSaved: "Ask timeout saved: {{secs}}s{{suffix}}",
     neverTimeout: " (never)",
-    showThinkingTitle: "Show thinking",
-    showThinkingDesc: "Show the model's thinking content in the message stream. Maps to omp hideThinkingBlock.",
   },
   // ---- Appearance page (AppearancePage.tsx) ----
   appearance: {
@@ -128,6 +126,10 @@ export const settingsPageEn = {
     motionSystem: "System",
     motionOn: "On",
     motionOff: "Off",
+    showThinkingTitle: "Show thinking",
+    showThinkingDesc: "Show the model's thinking content in the message stream (Ctrl+T toggles the same switch). Maps to omp hideThinkingBlock.",
+    toolOutputTitle: "Expand tool output while running",
+    toolOutputDesc: "Auto-expand output cards while a tool runs and collapse when it finishes (Ctrl+O toggles the same switch).",
     groupCode: "Code",
     codeDesc: "Set the theme, font size and display of code content, independent of the UI font size.",
     lightThemeTitle: "Light code theme",

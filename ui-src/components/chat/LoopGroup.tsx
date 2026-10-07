@@ -14,17 +14,15 @@ import Icon from "../../Icon";
 import { useLift, patchActiveItem } from "./parts";
 import { renderItems } from "./items";
 import { t } from "../../i18n";
-
 // Collapsed loop group summary text: worked-for duration + total usage composed of input,
 // output, cache read [, cache write] token counts via the chat.workedFor / chat.totalUsage
-// keys. Both segments are host-setting-gated (display.showTokenUsage / display.showTurnTime,
-// base defaults false — TUI parity); with both off the row falls back to a plain label.
+// keys. The duration always shows (display.showTurnTime is TUI-only and hidden — the
+// desktop made turn time unconditional); the usage segment stays gated by
+// display.showTokenUsage (base default false, TUI parity).
 export function loopSummaryText(item: LoopItem) {
   const values = useAppStore.getState().hostSettings?.values;
   const parts = [];
-  if (values?.["display.showTurnTime"] === true && item.durationSec != null) {
-    parts.push(t("chat.workedFor", { duration: fmtDuration(item.durationSec) }));
-  }
+  if (item.durationSec != null) parts.push(t("chat.workedFor", { duration: fmtDuration(item.durationSec) }));
   if (values?.["display.showTokenUsage"] === true) {
     const u = item.usage;
     if (u) {

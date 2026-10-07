@@ -92,8 +92,6 @@ export const settingsPageZh = {
     askTimeoutDesc: "omp ask.timeout：提问无人响应 N 秒后自动选择推荐项；0 = 永不超时（默认）。",
     askTimeoutSaved: "提问超时时间已保存：{{secs}} 秒{{suffix}}",
     neverTimeout: "（永不超时）",
-    showThinkingTitle: "显示思考过程",
-    showThinkingDesc: "在消息流中展示模型的思考内容。对应 omp hideThinkingBlock。",
   },
   // ---- Appearance page (AppearancePage.tsx) ----
   appearance: {
@@ -124,6 +122,10 @@ export const settingsPageZh = {
     motionSystem: "跟随系统",
     motionOn: "开启",
     motionOff: "关闭",
+    showThinkingTitle: "显示思考过程",
+    showThinkingDesc: "在消息流中展示模型的思考内容（Ctrl+T 切换同一开关）。对应 omp hideThinkingBlock。",
+    toolOutputTitle: "工具输出运行时展开",
+    toolOutputDesc: "工具运行中自动展开输出卡片，完成时折叠（Ctrl+O 切换同一开关）。",
     groupCode: "代码设置",
     codeDesc: "设置代码内容的主题、字号和显示方式，不受界面字号影响。",
     lightThemeTitle: "浅色代码主题",

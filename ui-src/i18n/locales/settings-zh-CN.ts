@@ -162,7 +162,6 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "images.blockImages": { "label": "屏蔽图像", "description": "阻止图像被发送给 LLM 提供商" },
   "display.hideToolActivity": { "label": "隐藏工具活动", "description": "把消息流里的只读工具行（读文件、搜索、命令等）全部收进「探索了…」折叠块，点击仍可展开；默认仅连续 3 条以上才折叠" },
   "display.showTokenUsage": { "label": "显示 Token 用量", "description": "在每轮结束的摘要行上显示该轮 token 用量（输入/输出/缓存）" },
-  "display.showTurnTime": { "label": "显示轮次耗时", "description": "在每轮结束的摘要行上显示从提问到产出的总耗时（含工具调用）" },
   "advisor.enabled": { "label": "启用顾问", "description": "配对第二个模型（分配给 'advisor' 角色），被动审查每一轮并注入提示。" },
   "prewalk.enabled": { "label": "启用预演", "description": "先使用当前活跃模型启动，然后在计划提醒的待办清单产生后的第一次编辑/写入时切换到快速/廉价模型（默认 'smol' 角色）——强模型规划、提交待办并开始实现后再交接。可用 --prewalk / --no-prewalk 按会话覆盖。" },
   "advisor.syncBacklog": { "label": "顾问同步积压", "description": "当顾问落后这么多轮时，将主代理暂停最多 30 秒。关闭则禁用追赶延迟。" },

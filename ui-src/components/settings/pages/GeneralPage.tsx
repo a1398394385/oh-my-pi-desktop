@@ -8,7 +8,7 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
-import { saveUiPrefs, saveUiLocale, applyAppearance } from "../../../appearance";
+import { saveUiPrefs, saveUiLocale } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { invoke } from "../../../store/ws";
 import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
@@ -198,7 +198,6 @@ export default function GeneralPage() {
       setAskTimeout(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
     }
   }, [hs]);
-  const [showThinking, setShowThinking] = useState(!!useAppStore.getState().uiPrefs.showThinking);
   const [terminalInherit, setTerminalInherit] = useState(
     useAppStore.getState().uiPrefs.terminalInheritProfile !== false
   );
@@ -232,15 +231,6 @@ export default function GeneralPage() {
       return;
     }
     switchProfile(name);
-  };
-  const toggleThinking = () => {
-    const on = !showThinking;
-    setShowThinking(on);
-    // uiPrefs written as a fresh object + bump (equivalent of the old mutate + local setState-driven visibility)
-    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, showThinking: on } }));
-    saveUiPrefs();
-    applyAppearance();
-    send({ type: "set_setting", key: "hideThinkingBlock", value: !on });
   };
   const toggleTerminalInherit = () => {
     const next = !terminalInherit;
@@ -439,10 +429,6 @@ export default function GeneralPage() {
               onChange={(e) => setAskTimeout(e.target.value)} />
             <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>{t("common.save")}</button>
           </div>
-        </div>
-        <div className="srow">
-          <div className="srow-tx"><b>{t("settingsPage.general.showThinkingTitle")}</b><span>{t("settingsPage.general.showThinkingDesc")}</span></div>
-          <div className={"tg" + (showThinking ? " on" : "")} id="tgThinking" onClick={toggleThinking}><i></i></div>
         </div>
       </div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-general"]} />

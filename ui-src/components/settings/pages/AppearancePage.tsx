@@ -4,7 +4,7 @@
 // bindings per initSettings in ui/settings/index.js (themeSel/fontSel/num-ctl/tgLineNo/tgWrap).
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, toast } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
@@ -177,6 +177,24 @@ export default function AppearancePage() {
     saveUiPrefs();
     applyAppearance();
   };
+  // Message-stream display switches (the Ctrl+T / Ctrl+O shortcuts toggle the
+  // same uiPrefs fields, so both entrances stay in sync for free)
+  const [showThinking, setShowThinking] = useState(!!useAppStore.getState().uiPrefs.showThinking);
+  const [expandToolOutput, setExpandToolOutput] = useState(!!useAppStore.getState().uiPrefs.expandToolOutput);
+  const toggleThinking = () => {
+    const on = !showThinking;
+    setShowThinking(on);
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, showThinking: on } }));
+    saveUiPrefs();
+    applyAppearance();
+    send({ type: "set_setting", key: "hideThinkingBlock", value: !on });
+  };
+  const toggleToolOutput = () => {
+    const on = !expandToolOutput;
+    setExpandToolOutput(on);
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput: on } }));
+    saveUiPrefs();
+  };
   // Font-size stepping (range keeps the old clamp in settings/index.js: UI 11-18, code 10-18)
   const stepUiFs = (d: number) => {
     stepFont("uiFontSize", d, 11, 18);
@@ -238,6 +256,14 @@ export default function AppearancePage() {
               </button>
             ))}
           </div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx"><b>{t("settingsPage.appearance.showThinkingTitle")}</b><span>{t("settingsPage.appearance.showThinkingDesc")}</span></div>
+          <div className={"tg" + (showThinking ? " on" : "")} id="tgThinking" onClick={toggleThinking}><i></i></div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx"><b>{t("settingsPage.appearance.toolOutputTitle")}</b><span>{t("settingsPage.appearance.toolOutputDesc")}</span></div>
+          <div className={"tg" + (expandToolOutput ? " on" : "")} id="tgToolOutput" onClick={toggleToolOutput}><i></i></div>
         </div>
       </div>
       <div className="set-group-tt">{t("settingsPage.appearance.groupCode")}</div>
