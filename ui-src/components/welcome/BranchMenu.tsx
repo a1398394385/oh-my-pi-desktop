@@ -1,24 +1,26 @@
-// Branch menu (pops upward): newSessionBranches list + ✓ check on the current branch + click
+// Branch menu (pops upward): branch list + ✓ check on the current branch + click
 // to switch.
 // Migrated from the wbBranchBtn open logic in ui/welcome.js; the git_branch_switched reply is
 // landed by the store + toast.
 // Aligned with the original: the menu container doesn't block clicks — clicking any item
 // (including blank space bubbling to window) closes it.
+// Parameterized (branches/current/cwd): shared by the welcome branch picker and the
+// main-column header chip; the welcome call site passes the newSession* fields.
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useAppStore, send } from "../../store";
+import { send } from "../../store";
 import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
 
 interface BranchMenuProps {
   anchorRect: DOMRect;
   onClose: () => void;
+  branches: string[];
+  current: string;
+  cwd: string;
 }
 
-export default function BranchMenu({ anchorRect, onClose }: BranchMenuProps) {
-  const branches = useAppStore((s) => s.newSessionBranches);
-  const curBranch = useAppStore((s) => s.newSessionBranch);
-  const project = useAppStore((s) => s.newSessionProject);
+export default function BranchMenu({ anchorRect, onClose, branches, current, cwd }: BranchMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -41,11 +43,11 @@ export default function BranchMenu({ anchorRect, onClose }: BranchMenuProps) {
           key={b}
           className="mi"
           onClick={() => {
-            if (b !== curBranch) send({ type: "switch_git_branch", cwd: project, branch: b });
+            if (b !== current) send({ type: "switch_git_branch", cwd, branch: b });
             onClose();
           }}
         >
-          <span className="ck">{b === curBranch ? "✓" : ""}</span>
+          <span className="ck">{b === current ? "✓" : ""}</span>
           {/* Branch icon same as the branch-picker capsule (branch), keeping the global icon style consistent */}
           <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
           {b}

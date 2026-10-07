@@ -24,6 +24,7 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
   min-width: 0;
 }
 
+
 body:has(#sidebar.collapsed) .chat-head {
   padding-left: 78px;
 }

@@ -33,6 +33,9 @@ export interface UiSlice {
   newSessionComputerMode: boolean; // computer-use intent for the next session (consumed by create_session; the host opts the fresh session in and confirms via the computer_mode frame)
   newSessionDirty: boolean;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
+  // Git branch chip in the main-column header (MainHeader): branches of the ACTIVE session's
+  // cwd, landed from the same git_branches frame as the new-session picker (cwd-routed)
+  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[] } | null;
   fileSeq: number;
   animateGdKids: boolean;
   animateThinkBody: boolean;
@@ -129,6 +132,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   isCreatingNew: false,
   newSessionProject: "",
   newSessionBranch: "",
+  headerGit: null,
   newSessionBranches: [],
   newSessionIsGit: false,
   newSessionModel: "",

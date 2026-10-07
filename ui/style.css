@@ -21,6 +21,7 @@
 @import "./css/main/shell.css";
 @import "./css/main/sidebar.css";
 @import "./css/main/center.css";
+@import "./css/main/head-chips.css";
 @import "./css/main/chat/messages.css";
 @import "./css/main/chat/readonly-group.css";
 @import "./css/shared/markdown.css";

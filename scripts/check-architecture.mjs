@@ -34,6 +34,7 @@ const CSS_LIMITS = {
   "global/scrollbars.css": 40,
   "global/tokens.css": 240,
   "main/center.css": 100,
+  "main/head-chips.css": 40,
   "main/chat/approval.css": 150,
   "main/chat/approval-collapse.css": 40,
   "main/chat/ask.css": 40,

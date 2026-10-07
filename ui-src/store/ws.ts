@@ -73,6 +73,10 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       get().send({ type: "list_sessions" });
       // At startup the welcome page renders before the connection; get_git_branches was once dropped by send — refetch once connected
       if (get().isCreatingNew && get().newSessionProject) get().send({ type: "get_git_branches", cwd: get().newSessionProject });
+      // Same drop-window refetch for the header branch chip (active session's cwd)
+      const activePath = get().activePath;
+      const activeCwd = activePath ? get().openSessions.get(activePath)?.cwd : undefined;
+      if (activeCwd) get().send({ type: "get_git_branches", cwd: activeCwd });
       // If the settings page opened before the connection was ready, its data requests were dropped by send — refetch once connected
       if (get().settingsOpen) get().refreshSettingsData();
       // Resend the current UI locale unconditionally so a (re)started host

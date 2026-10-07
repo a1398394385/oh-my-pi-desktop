@@ -30,17 +30,36 @@ function onTerminalFrame(msg: FrameOf<"terminal_created" | "terminal_data" | "te
 
 export const filesHandlers = {
   git_branches(msg) {
-    if (msg.cwd !== useAppStore.getState().newSessionProject) return;
-    useAppStore.setState((s) => ({
-      newSessionIsGit: !!msg.isGit,
-      newSessionBranch: msg.current || "",
-      newSessionBranches: msg.branches || [],
-    }));
+    // cwd-routed: the same frame feeds the new-session picker and the main-column
+    // header chip (active session's cwd) — both sinks are independent
+    const st = useAppStore.getState();
+    if (msg.cwd === st.newSessionProject) {
+      useAppStore.setState({
+        newSessionIsGit: !!msg.isGit,
+        newSessionBranch: msg.current || "",
+        newSessionBranches: msg.branches || [],
+      });
+    }
+    const activeCwd = st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined;
+    if (msg.cwd === activeCwd) {
+      useAppStore.setState({
+        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [] },
+      });
+    }
   },
   git_branch_switched(msg) {
-    if (msg.cwd !== useAppStore.getState().newSessionProject) return;
-    useAppStore.setState((s) => ({ newSessionBranch: msg.branch }));
-    useAppStore.getState().toast(t("notify.branchSwitched", { branch: msg.branch }));
+    const st = useAppStore.getState();
+    const activeCwd = st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined;
+    let matched = false;
+    if (msg.cwd === st.newSessionProject) {
+      matched = true;
+      useAppStore.setState({ newSessionBranch: msg.branch });
+    }
+    if (msg.cwd === activeCwd && st.headerGit) {
+      matched = true;
+      useAppStore.setState({ headerGit: { ...st.headerGit, current: msg.branch } });
+    }
+    if (matched) useAppStore.getState().toast(t("notify.branchSwitched", { branch: msg.branch }));
   },
   git_status(msg) {
     const dirs = new Set<string>();
