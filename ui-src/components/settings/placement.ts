@@ -140,7 +140,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   "pg-providers": [
     // Web-search-specific rows (timeout, SearXNG endpoint, Exa toggles) moved to the capability
     // backends page; excluded here so they render in exactly one place
-    { from: "providers/Services", excludeKeys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"] },
+    { from: "providers/Services", excludeKeys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs", "speech.enabled", "speech.mode", "speech.enhanced", "speech.voice", "tts.localVoice"] },
     { from: "providers/Fireworks" },
     { from: "providers/Tiny Model" },
     { from: "providers/Protocol" },
@@ -153,16 +153,17 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     // credentials for the image URL publishing chain (backends/enabled/command
     // live in the model-behavior Vision group)
     { titleZh: "图像发布后端", titleEn: "Image publishing backends", keys: ["images.urls.options", "images.urls.credentials"] },
+    // Kokoro speech-generation details (the tts tool / ask-tool vocalizer):
+    // every speech-related key lives on this page per the voice-sections move
+    { titleZh: "语音生成细节", titleEn: "Speech generation details", keys: ["speech.enhanced", "speech.voice", "tts.localVoice"] },
   ],
   "pg-interaction": [
     { from: "interaction/Input" },
     { from: "interaction/Approvals" },
     { from: "interaction/Notifications", excludeKeys: ["ask.timeout"] },
-    { from: "interaction/Speech" },
-    // ui-less key adopted from the advanced page: transcription language for
-    // the dictation switches in the Speech group above (stt.enabled/modelName/
-    // submitTrigger); the capabilities page's dictation section points here too
-    { titleZh: "语音转文字语言", titleEn: "Speech-to-text language", keys: ["stt.language"] },
+    // Speech group (stt.enabled/submitTrigger) and the stt.language single-row
+    // group live in the custom VoiceTtsSection/VoiceSttSection blocks on the
+    // capabilities page (pages/VoiceSection.tsx)
     { from: "interaction/Collab" },
     { from: "interaction/Stream" },
     { from: "interaction/Magic Keywords" },
@@ -486,13 +487,18 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-providers": [
     "providers.maxInFlightRequests", "providers.openai-codex.codeMode", "providers.openai-codex.codeModeDirectTools", "providers.ollama-cloud.maxConcurrency",
     "providers.antigravityEndpoint", "live.voice",
-    "tts.localVoice", "speech.enabled", "speech.mode",
-    "speech.enhanced", "speech.voice", "providers.fetch", "codexResets.autoRedeem",
+    "providers.fetch", "codexResets.autoRedeem",
     "codexResets.minBlockedMinutes", "codexResets.keepCredits", "codexResets.salvageHorizonHours",
     "providers.fireworksTier",
     "providers.tinyModelDevice", "providers.tinyModelDtype",
     "providers.kimiApiFormat", "providers.openaiWebsockets", "providers.cacheRetention", "providers.openrouterVariant",
     "provider.appendOnlyContext", "providers.streamFirstEventTimeoutSeconds", "providers.streamIdleTimeoutSeconds", "secrets.enabled",
+  ],
+  "pg-capabilities": [
+    // Speech keys render on this page (voice sections + Kokoro details group);
+    // the map only drives settings-search page jumps
+    "tts.localVoice", "speech.enabled", "speech.mode", "speech.enhanced", "speech.voice",
+    "stt.enabled", "stt.language", "stt.submitTrigger",
   ],
 };
 

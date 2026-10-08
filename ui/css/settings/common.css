@@ -585,3 +585,11 @@
 .set-row .srow-ctl { justify-content: flex-end; }
 
 .set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
+
+/* Voice sections (InteractionPage VoiceSection): language code input width + the
+   dictation test button's live-recording look */
+.voice-lang-inp { width: 110px; }
+
+.voice-test-btn.rec { color: var(--err); }
+
+.voice-test-btn.rec:hover { background: var(--panel-2); }

@@ -50,6 +50,7 @@ export const hostErrorsZh = {
   },
   computerGateClosed: "电脑控制未在设置页开启：请先打开设置页的总开关，再在会话内运行 /computer on",
   computerUnavailable: "此会话无法启用电脑控制（computer eval 前导不可用）",
+  sttModelNotReady: "语音识别模型未下载：请先在设置 → 交互 → 语音识别中下载模型，再开启总开关",
   bash: {
     busy: "已有 bash 命令在执行，先按停止或等它结束",
   },

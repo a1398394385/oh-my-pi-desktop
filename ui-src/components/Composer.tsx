@@ -52,6 +52,7 @@ import {
 } from "./composer/lexical/draft";
 import ComposerPlugin from "./composer/lexical/ComposerPlugin";
 import type { ComposerHandle } from "./composer/lexical/ComposerPlugin";
+import { setTtsDuck } from "../lib/speechOut";
 
 // Slash command candidate filter: empty query returns all, grouped and sorted by
 // source (builtin->skill->extension->custom->others); non-empty first matches
@@ -211,6 +212,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const newSessionPlanMode = useAppStore((st) => st.newSessionPlanMode);
   const newSessionComputerMode = useAppStore((st) => st.newSessionComputerMode);
   const computerGateOn = useAppStore((st) => st.hostSettings?.computerEnabled === true);
+  // Voice conversation mode = synthesis + dictation switches both on; the mic
+  // button toggles them together and lights while they hold
+  const voiceMode = useAppStore(
+    (st) => st.hostSettings?.values?.["speech.enabled"] === true && st.hostSettings?.values?.["stt.enabled"] === true,
+  );
+  const voiceStt = useAppStore((st) => st.voiceStt);
+  const sttSubmitSignal = useAppStore((st) => st.sttSubmitSignal);
+  const lastSubmitSeqRef = useRef(0);
   const commands = useAppStore((st) => st.commands);
   const mentionResult = useAppStore((st) => st.mentionResult);
   const approvalMode = useAppStore((st) => st.approvalMode);
@@ -235,6 +244,37 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | "think" | null (mutually exclusive)
   const [stopPending, setStopPending] = useState(false); // stop-button double-click guard (reset on turn_end)
   const barStageRef = useRef(0); // last collapse stage (close open menus when it changes)
+  // Push-to-talk: the press arms a 180ms timer — a quick tap never reaches
+  // stt_start (its click toggles the voice mode); holding past the timer
+  // starts dictation and the release click is swallowed
+  const PTT_DELAY_MS = 180;
+  const pttTimerRef = useRef<number | undefined>(undefined);
+  const pttDownRef = useRef(false);
+  const holdTalkRef = useRef(false);
+  const beginMicTalk = () => {
+    if (pttTimerRef.current !== undefined) return;
+    pttTimerRef.current = window.setTimeout(() => {
+      pttTimerRef.current = undefined;
+      pttDownRef.current = true;
+      setTtsDuck(true);
+      send({ type: "stt_start", sessionId: s?.sessionId ?? "", anchor: getDraftText(draftKey) });
+    }, PTT_DELAY_MS);
+  };
+  const endMicTalk = () => {
+    if (pttTimerRef.current !== undefined) {
+      // Released before the delay: a quick tap, let the click toggle the mode
+      clearTimeout(pttTimerRef.current);
+      pttTimerRef.current = undefined;
+      return;
+    }
+    pttDownRef.current = false;
+    setTtsDuck(false);
+    holdTalkRef.current = true;
+    send({ type: "stt_stop" });
+  };
+
+  // Unmount safety: a pending press timer must not fire stt_start after the composer is gone
+  useEffect(() => () => clearTimeout(pttTimerRef.current), []);
 
   // refreshes the send button ready state and the bash-mode class, equivalent to the
   // notify/forceRender in the old onInput
@@ -921,6 +961,15 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const modeMeta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
   const menuDisabled = !(s || isCreatingNew) || Boolean(s?.isSubagent); // subagents cannot switch models
 
+
+  // ---- Dictation auto-submit (stt.submitTrigger met): one-shot signal, the
+  // effect closure always sees the freshest sendPrompt ----
+  useEffect(() => {
+    if (sttSubmitSignal === 0 || sttSubmitSignal === lastSubmitSeqRef.current) return;
+    lastSubmitSeqRef.current = sttSubmitSignal;
+    sendPrompt();
+  }, [sttSubmitSignal]);
+
   // ---- External menu-open signal (shortcut Alt+M): a one-shot signal like
   // composerSetSignal ----
   useEffect(() => {
@@ -1147,6 +1196,39 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           >
             <Icon name="think" size={16} />
             <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+          </button>
+          {/* Voice conversation: mic toggle left of send; lit = synthesis +
+              dictation. Click toggles both switches; hold while lit =
+              push-to-talk (the release click is swallowed). */}
+          <button
+            className={"pill-btn mic-btn" + (voiceMode ? " on" : "") + (voiceStt ? " rec" : "")}
+            id="voiceBtn"
+            title={
+              voiceStt
+                ? (voiceStt.state === "recording" ? t("composer.voiceListening") : t("composer.voiceTranscribing")) +
+                  (voiceStt.message ? ` — ${voiceStt.message}` : "")
+                : voiceMode
+                  ? t("composer.voiceOnTitle")
+                  : t("composer.voiceOffTitle")
+            }
+            onPointerDown={(e) => {
+              if (!voiceMode || e.button !== 0) return;
+              beginMicTalk();
+            }}
+            onPointerUp={endMicTalk}
+            onPointerLeave={endMicTalk}
+            onClick={() => {
+              // A release after push-to-talk is not a mode toggle
+              if (holdTalkRef.current) {
+                holdTalkRef.current = false;
+                return;
+              }
+              const next = !voiceMode;
+              send({ type: "set_setting", key: "speech.enabled", value: next });
+              send({ type: "set_setting", key: "stt.enabled", value: next });
+            }}
+          >
+            <Icon name="mic" size={15} />
           </button>
           <button
             className={"send" + (canAbort ? " stop" : hasDraft ? " ready" : "") + (canAbort ? " stopping" : "")}

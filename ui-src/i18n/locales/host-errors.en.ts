@@ -46,6 +46,7 @@ export const hostErrorsEn = {
   },
   computerGateClosed: "Computer control is off in Settings: enable the master switch there first, then run /computer on in the session",
   computerUnavailable: "Computer use is unavailable in this session (the computer eval prelude did not activate)",
+  sttModelNotReady: "Speech recognition model not downloaded: download it first under Settings → Interaction → Speech recognition, then enable the master switch",
   bash: {
     busy: "A bash command is already running; press stop or wait for it to finish",
   },

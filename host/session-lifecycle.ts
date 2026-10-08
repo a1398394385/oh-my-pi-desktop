@@ -40,6 +40,7 @@ import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { pushComputerMode, setComputerMode } from "./computer-mode.ts";
 import { dispatchFromToolEnd, installProposalHandler, setFreshSessionFactory } from "./plan-approve.ts";
+import { handleVoiceEvent } from "./voice.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
@@ -405,6 +406,10 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   const unsubSession = entry.session.subscribe((ev) => {
     const ui = translateEvent(ev, entry);
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
+    // TTS vocalization bridge (speech.enabled): forwards this session's
+    // deltas as tts_* frames (spoken UI-side) when it is the session the user
+    // last prompted
+    handleVoiceEvent(ws, ev, sessionId);
     // After the todo tool persists, push the latest task list (TodoTracker updates after the tool result)
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));

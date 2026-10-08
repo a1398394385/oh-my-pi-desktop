@@ -23,6 +23,10 @@ export const composerEn = {
   oversizeFile: "\"{{name}}\" exceeds 10MB, not added",
   readFail: "Failed to read \"{{name}}\"",
   imageN: "Image {{n}}",
+  voiceOnTitle: "Voice conversation on (spoken replies + hold to talk) — click to turn off",
+  voiceOffTitle: "Voice conversation off — click to enable (spoken replies + dictation)",
+  voiceListening: "Listening — release to finish",
+  voiceTranscribing: "Transcribing…",
   // ModeMenu.tsx
   modeAlwaysAsk: "Manual approval",
   modeWrite: "Default",

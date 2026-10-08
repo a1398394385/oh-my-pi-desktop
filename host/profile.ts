@@ -9,6 +9,7 @@ import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
+import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-config.ts";
@@ -344,6 +345,10 @@ export async function applyProfile(profileName: string) {
 
   syncAvailableModels();
   rebuildScopedModels();
+  // Voice runtimes (vocalizer model source + the STT controller) latch the
+  // profile's settings/registry instances: rewire them to the new base
+  initVoiceMode();
+
   H.modelOverride = process.env.OMP_DESKTOP_MODEL
     ? H.availableModels.find((m) => `${m.provider}/${m.id}` === process.env.OMP_DESKTOP_MODEL)
     : undefined;

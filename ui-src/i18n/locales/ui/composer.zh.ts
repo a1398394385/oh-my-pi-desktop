@@ -23,6 +23,10 @@ export const composerZh = {
   oversizeFile: "「{{name}}」超过 10MB，未添加",
   readFail: "读取「{{name}}」失败",
   imageN: "图片{{n}}",
+  voiceOnTitle: "语音对话已开启（朗读回复 + 按住此处说话），点击关闭",
+  voiceOffTitle: "语音对话已关闭，点击开启（朗读回复 + 语音听写）",
+  voiceListening: "正在听写，松开结束",
+  voiceTranscribing: "正在转写…",
   // ModeMenu.tsx
   modeAlwaysAsk: "手动批准",
   modeWrite: "默认",

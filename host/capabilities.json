@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "host WebSocket RPC 能力清单（单一事实源）。check-capabilities.mjs 双向 diff 本清单与 host.ts switch 实际分发的 method：清单有而 host 无 = 过期条目，host 有而清单无 = 未登记能力，两者都阻断（借鉴 OBF 产品控制平面：无证据的能力不存在）。",
-  "kinds": ["session", "project", "prompt", "transcript", "file", "git", "approval", "model", "settings", "usage", "asset", "mcp", "provider", "shell", "ssh"],
+  "kinds": ["session", "project", "prompt", "transcript", "file", "git", "approval", "model", "settings", "usage", "asset", "mcp", "provider", "shell", "ssh", "voice"],
   "risks": ["read", "write", "destructive"],
   "methods": [
     { "id": "create_session", "kind": "session", "risk": "write" },
@@ -138,6 +138,10 @@
     { "id": "ssh_remove_host", "kind": "ssh", "risk": "write", "note": "从 ssh.json 移除主机" },
     { "id": "ssh_test_host", "kind": "ssh", "risk": "read", "note": "BatchMode 连通性探测（echo 往返），不改状态" },
     { "id": "ssh_list_dirs", "kind": "ssh", "risk": "read", "note": "远端目录列举（ls -1ap 单层），远程工作区路径选择器的数据源" },
-    { "id": "add_remote_workspace", "kind": "ssh", "risk": "write", "note": "SSH 远程工作区：先远程 test -d 校验路径，再落本地桩目录 + .omp/remote-workspace.json 标记" }
+    { "id": "add_remote_workspace", "kind": "ssh", "risk": "write", "note": "SSH 远程工作区：先远程 test -d 校验路径，再落本地桩目录 + .omp/remote-workspace.json 标记" },
+    { "id": "stt_start", "kind": "voice", "risk": "write", "note": "语音听写按下：带按压时草稿文本为锚点，启动麦克风采集（STTController）；test=true 走设置页测试模式，最终文本经 stt_test_result 帧回传而非写输入框" },
+    { "id": "stt_stop", "kind": "voice", "risk": "write", "note": "语音听写松开：结束采集并转写缓冲音频；stt_submit 帧在满足 submitTrigger 时触发自动提交" },
+    { "id": "voice_status", "kind": "voice", "risk": "read", "note": "设置页语音区状态快照：dictation 角色解析出的具体模型 + 本地缓存就绪态 + 下载中标志，回 voice_status 帧" },
+    { "id": "stt_download", "kind": "voice", "risk": "write", "note": "设置页下载当前 dictation 模型：进度经 stt_download_progress 帧流式回传，完成后回推 voice_status" }
   ]
 }

@@ -47,6 +47,11 @@ export interface UiSlice {
   cyclePreview: { entries: { role: string; model: string }[]; activeRole: string; activeModel: string } | null; // ctrl+p quick-switch preview: the cycleOrder role list + the slot just switched to (drives the model menu's transient preview mode; manual menu opens always null it)
   thinkMenuAuto: boolean; // shift+tab auto-opened the think menu (normal content; auto-collapses on 0.8s pause / Shift release — manual opens always clear it)
   draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
+  voiceStt: { state: "recording" | "transcribing"; message?: string } | null; // dictation runtime state (stt_state frame; null = idle — the mic button's recording look)
+  sttSubmitSignal: number; // seq incremented by each stt_submit frame (the Composer effect sends the prompt; plain number = only ordering matters)
+  voiceStatus: { modelId: string | null; modelKey: string | null; ready: boolean; downloading: boolean } | null; // voice_status reply: dictation model + cache state (settings page voice sections)
+  voiceDownload: { percent: number; status: string; label: string; at: number } | null; // live STT model download progress (stt_download_progress frame)
+  sttTestResult: { text: string; at: number } | null; // test-mode dictation result (stt_test_result frame; at drives the result box refresh)
   escArmedUntil: number; // deadline of the Esc double-confirm window (> now = the send button shows a cancel icon)
   commands: SlashCommand[] | null; // slash command list of the current session (null = not fetched yet, the popover shows loading)
   commandsSessionId: string | null; // session id the list belongs to; invalidated on session switch
@@ -151,6 +156,11 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   cyclePreview: null,
   thinkMenuAuto: false,
   draftHasContent: false,
+  voiceStt: null,
+  sttSubmitSignal: 0,
+  voiceStatus: null,
+  voiceDownload: null,
+  sttTestResult: null,
   escArmedUntil: 0,
   commands: null,
   commandsSessionId: null,

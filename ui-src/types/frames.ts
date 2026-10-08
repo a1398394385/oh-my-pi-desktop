@@ -1528,6 +1528,90 @@ export interface CompletionFrame {
   seq?: number;
 }
 
+/** Dictation target text (host/voice.ts SttTarget bridge; stamped). The host
+ * joins anchor + committed + volatile into one full draft string, so the
+ * frontend only ever calls setComposerValue with it. */
+export interface SttDraftFrame {
+  type: "stt_draft";
+  sessionId: string;
+  text: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Dictation lifecycle / progress (host/voice.ts SttCallbacks bridge; stamped).
+ * state "idle" ends the capture (message carries warnings or download progress). */
+export interface SttStateFrame {
+  type: "stt_state";
+  sessionId: string;
+  state: "recording" | "transcribing" | "idle";
+  message?: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Dictation auto-submit (host/voice.ts; the configured stt.submitTrigger was met; stamped) */
+export interface SttSubmitFrame {
+  type: "stt_submit";
+  sessionId: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Speech-out delta (host/voice.ts handleVoiceEvent; stamped). The UI-side
+ * system speechSynthesis speaks these — the bundled Kokoro has no Chinese
+ * G2P, OS voices cover both languages. */
+export interface TtsDeltaFrame {
+  type: "tts_delta";
+  sessionId: string;
+  text: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Speak the buffered trailing partial now (message/turn end; stamped) */
+export interface TtsFlushFrame {
+  type: "tts_flush";
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Silence playback immediately (user message / abort; stamped) */
+export interface TtsStopFrame {
+  type: "tts_stop";
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Test-mode dictation result (settings page; final text; stamped) */
+export interface SttTestResultFrame {
+  type: "stt_test_result";
+  sessionId: string;
+  text: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** STT model download progress (settings page; stamped) */
+export interface SttDownloadProgressFrame {
+  type: "stt_download_progress";
+  percent: number;
+  status: string;
+  label: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** Voice settings snapshot reply (settings page: dictation model + cache state) */
+export interface VoiceStatusFrame {
+  type: "voice_status";
+  modelId: string | null;
+  modelKey: string | null;
+  ready: boolean;
+  downloading: boolean;
+}
+
+
 /** Prompt-cache warming lifecycle (18.5 session events cache_warming_start/end forwarded by host/session-lifecycle.ts; stamped) */
 export interface CacheWarmingFrame {
   type: "cache_warming";
@@ -1717,6 +1801,15 @@ export type HostFrame =
   | SubagentControlledFrame
   | CompletionFrame
   | CacheWarmingFrame
+  | SttDraftFrame
+  | SttStateFrame
+  | SttSubmitFrame
+  | TtsDeltaFrame
+  | TtsFlushFrame
+  | TtsStopFrame
+  | SttTestResultFrame
+  | SttDownloadProgressFrame
+  | VoiceStatusFrame
   | KeepaliveStatusFrame
   | DisplaysFrame
   | SshHostsFrame

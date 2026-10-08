@@ -93,10 +93,10 @@ export const { connectToServer, disconnectServer, listTools } = await import("@o
 // Dynamic import is load-order-mandated here, same as the line above (header: setProfile must precede the SDK graph)
 export const { MCPTool } = await import("@oh-my-pi/pi-coding-agent/mcp/tool-bridge");
 // Model roles (@role): catalog/metadata pure functions + a resolver from role value to concrete model (for the settings page role config)
-export const { getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS } = await import(
+export const { getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, roleCandidatePool } = await import(
   "@oh-my-pi/pi-coding-agent/config/model-roles"
 );
-export const { resolveModelRoleValue } = await import("@oh-my-pi/pi-coding-agent/config/model-resolver");
+export const { resolveModelRoleValue, resolveRoleChain } = await import("@oh-my-pi/pi-coding-agent/config/model-resolver");
 // Web-search engine table (lazy provider modules): the capability page asks each engine's
 // explicit-availability predicate (key configured / free / local) for its flat search picker.
 // Dynamic import like every SDK binding above: load-order-mandated (setProfile must precede the SDK graph).
@@ -210,3 +210,12 @@ export const { readSSHConfigFile, addSSHHost, updateSSHHost, removeSSHHost, vali
 );
 export const { reset: resetCapabilities } = await import("@oh-my-pi/pi-coding-agent/capability");
 export const { sanitizeHostName, buildSshTarget, quotePosixPath } = await import("@oh-my-pi/pi-coding-agent/ssh/utils");
+// Voice conversation (dictation + model management): the STTController
+// coordinates native microphone capture with transcription; the downloader
+// trio manages the local speech-model cache (status probe / download with
+// progress); resolveSttModelSpec maps a catalog model id onto the downloader
+// key. TTS runs UI-side on the system speechSynthesis, so the vocalizer is no
+// longer imported. Dynamic like every SDK binding here: setProfile must
+// precede the coding-agent graph (file-header constraint).
+export const { STTController, isSttModelCached, downloadSttModel } = await import("@oh-my-pi/pi-coding-agent/stt");
+export const { resolveSttModelSpec } = await import("@oh-my-pi/pi-coding-agent/stt/models");

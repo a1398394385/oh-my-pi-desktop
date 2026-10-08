@@ -82,6 +82,13 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     }
     // Per-key extra validation: ask.timeout must be non-negative
     if (key === "ask.timeout" && (typeof value !== "number" || value < 0)) throw new Error(hostI18n.t("errors.setting.askTimeoutNonNegative"));
+    // Voice gate: enabling dictation requires the resolved STT model to be
+    // fully cached — otherwise the first push-to-talk would stall on a
+    // multi-hundred-MB download the settings page was meant to preflight
+    if (key === "stt.enabled" && value === true) {
+      const { isDictationModelReady } = await import("../voice.ts");
+      if (!(await isDictationModelReady())) throw new Error(hostI18n.t("errors.sttModelNotReady"));
+    }
     settingsSet(H.settings, key, value);
     // Post-write side effect: sleep prevention must apply to the process immediately
     if (key === "power.sleepPrevention") applySleepPrevention(value);

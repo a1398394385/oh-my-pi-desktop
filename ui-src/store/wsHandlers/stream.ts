@@ -15,6 +15,7 @@ import {
 import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
 import { emitBrowserFrame } from "../browserMirror";
+import { feedTtsDelta, flushTts, stopTts } from "../../lib/speechOut";
 import type { HandlerSlice } from "./types";
 
 // Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
@@ -288,6 +289,48 @@ export const streamHandlers = {
   // transient "cache warming" line (ui slice hubWarming, with a lost-end self-clear guard)
   cache_warming(msg) {
     landCacheWarming(msg.sessionId, msg.phase);
+  },
+  // Dictation lifecycle: recording/transcribing drive the mic button look,
+  // idle with a message surfaces the host-side warning/progress once
+  stt_state(msg) {
+    if (msg.state === "idle") {
+      useAppStore.setState({ voiceStt: null });
+      if (msg.message) useAppStore.getState().toast(msg.message);
+    } else {
+      useAppStore.setState({ voiceStt: { state: msg.state, ...(msg.message ? { message: msg.message } : {}) } });
+    }
+  },
+  // Dictation target text: the host already joined anchor + committed +
+  // volatile, so landing is one external composer fill
+  stt_draft(msg) {
+    useAppStore.getState().setComposerValue(msg.text);
+  },
+  // Dictation auto-submit (stt.submitTrigger met): bump the signal the
+  // Composer effect watches to send the prompt
+  stt_submit() {
+    useAppStore.setState((s) => ({ sttSubmitSignal: s.sttSubmitSignal + 1 }));
+  },
+  // Speech-out frames: the host forwards mode-filtered assistant deltas; the
+  // system speechSynthesis (lib/speechOut) speaks them UI-side
+  tts_delta(msg) {
+    feedTtsDelta(msg.text);
+  },
+  tts_flush() {
+    flushTts();
+  },
+  tts_stop() {
+    stopTts();
+  },
+  // Settings-page voice sections: model status snapshot / download progress /
+  // test-mode dictation result
+  voice_status(msg) {
+    useAppStore.setState({ voiceStatus: { modelId: msg.modelId, modelKey: msg.modelKey, ready: msg.ready, downloading: msg.downloading } });
+  },
+  stt_download_progress(msg) {
+    useAppStore.setState({ voiceDownload: { percent: msg.percent, status: msg.status, label: msg.label, at: Date.now() } });
+  },
+  stt_test_result(msg) {
+    useAppStore.setState({ sttTestResult: { text: msg.text, at: Date.now() } });
   },
   todos(msg) {
     updateSession(

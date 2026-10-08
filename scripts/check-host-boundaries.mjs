@@ -208,6 +208,16 @@ const ALLOWED_EDGES = new Set([
   // Probe failures are diagnostics: the untruncated ssh stderr goes to the host
   // log via safeStderr (same one-way edge as the other RPC domains)
   "rpc/ssh.ts→stderr.ts",
+  // Voice conversation (speech synthesis + dictation): voice.ts bridges the
+  // session-event stream to the vocalizer and owns the STT controller
+  // (SDK handles via bootstrap, settings via settings-compat, frames stamped
+  // via state). session-lifecycle feeds it events; profile re-wires it on
+  // switch; the rpc domain forwards the two push-to-talk commands.
+  "voice.ts→bootstrap.ts", "voice.ts→state.ts", "voice.ts→settings-compat.ts",
+  "session-lifecycle.ts→voice.ts", "profile.ts→voice.ts",
+  "rpc/index.ts→rpc/voice.ts", "rpc/voice.ts→rpc/types.ts", "rpc/voice.ts→voice.ts",
+  "rpc/settings.ts→voice.ts",
+  "rpc/voice.ts→state.ts", "rpc/voice.ts→settings-compat.ts",
 ]);
 
 // Scan one level of host/ plus the host/rpc/ subdirectory (keys carry a path prefix like rpc/session.ts)

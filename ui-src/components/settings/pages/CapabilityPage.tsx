@@ -1,6 +1,7 @@
-// Settings · Special features page: the five model-kind roles (web search / speech /
-// dictation / judge / image) plus their engine API keys. Split out of the Model page on
-// purpose — the provider grid there lists text-LLM vendors only, so non-chat runners
+// Settings · Special features page: the model-kind roles (web search /
+// dictation / judge / image — the speech tts-model picker lives inside the
+// voice output block, VoiceTtsSection) plus their engine API keys. Split out
+// of the Model page on
 // (search engines, the TypeSafe judge backend) are configured here instead.
 // Page chrome follows the shared settings group idiom (.set-group-tt heading above one
 // .set-card, same as the extensions/memory pages); rows use the canonical settings-card row
@@ -17,6 +18,7 @@ import { PAGE_PLACEMENT } from "../placement";
 import { RolePicker, roleSelLabel, type ModelRole } from "../RolePicker";
 import type { CatalogModel } from "../../ModelPicker";
 import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { VoiceSttSection, VoiceTtsSection } from "./VoiceSection";
 import type { CapabilityKeyEntry } from "../../../types/frames";
 
 // Flat single-level picker for the WEB role: lists the usable search engines directly (no
@@ -229,17 +231,9 @@ export default function CapabilityPage() {
         </Group>
       )}
 
-      {role("speech") && (
-        <Group title={t("settingsPage.cap.speech.title")}>
-          <CapabilityRoleRow role={role("speech")!} desc={t("settingsPage.cap.speech.desc")} />
-        </Group>
-      )}
+      <VoiceTtsSection />
 
-      {role("dictation") && (
-        <Group title={t("settingsPage.cap.dictation.title")}>
-          <CapabilityRoleRow role={role("dictation")!} desc={t("settingsPage.cap.dictation.desc")} />
-        </Group>
-      )}
+      <VoiceSttSection />
 
       {role("judge") && (
         <Group title={t("settingsPage.cap.judge.title")}>

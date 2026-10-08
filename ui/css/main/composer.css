@@ -424,6 +424,18 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .computer-btn { padding: 5px 7px; }
 
 .computer-btn.on, .computer-btn.on:hover { color: var(--accent); }
+/* voice-conversation mic toggle: left of send; lit (accent) = synthesis +
+   dictation mode; .rec pulses while a push-to-talk capture is live */
+.mic-btn { padding: 5px 7px; }
+
+.mic-btn.on, .mic-btn.on:hover { color: var(--accent); }
+
+.mic-btn.rec, .mic-btn.rec:hover { color: var(--err); animation: mic-pulse 1.2s ease-in-out infinite; }
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 
 /* context usage ring: grows clockwise from the top, temperature-colored; hover shows the detail card */
 .ctx-ring {

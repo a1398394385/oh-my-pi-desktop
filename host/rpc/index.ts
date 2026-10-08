@@ -16,6 +16,7 @@ import { wizardHandlers } from "./provider-wizard";
 import { capabilitiesHandlers } from "./capabilities";
 import { browserHandlers } from "./browser";
 import { sshHandlers } from "./ssh";
+import { voiceHandlers } from "./voice";
 import { bashCompleteHandlers } from "./bash-complete";
 import hostI18n from "../../ui-src/i18n/host";
 
@@ -33,6 +34,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...capabilitiesHandlers,
   ...browserHandlers,
   ...sshHandlers,
+  ...voiceHandlers,
   ...bashCompleteHandlers,
 };
 
