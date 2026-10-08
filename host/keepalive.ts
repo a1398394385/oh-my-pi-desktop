@@ -70,6 +70,10 @@ import {
   type ProbeConfig,
 } from "./keepalive-config.ts";
 import { safeStderr } from "./stderr.ts";
+// Central logger: warn lines land in the app-wide rotating log (the profile's
+// logs/omp.<date>.<pid>.log) and are flushed immediately, so probe failures
+// stay diagnosable without PI_KEEPALIVE_DEBUG.
+import { logger } from "@oh-my-pi/pi-utils";
 
 /** Field face of the model the captured request belongs to (narrow view of the base ExtensionContext["model"]). */
 interface KeepaliveModel {
@@ -188,6 +192,8 @@ export interface KeepaliveHostOptions {
   isWanted: () => boolean;
   /** State reporting sink (optional: absent in isolated/test use); called on every state-change point — scheduling, probe settle, pause, re-arm. */
   reportState?: (s: KeepaliveState) => void;
+  /** Disk session file of the owning pool entry (optional; short name only) — tags warn lines so a failure can be traced back to its session. */
+  sessionFile?: () => string | null | undefined;
 }
 
 /** Create the keepalive extension factory (session-lifecycle injects it conditionally on the experimental switch). */
@@ -316,7 +322,15 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     }
 
     async function onTick(): Promise<void> {
-      if (!ctx || !capture) return;
+      if (!ctx || !capture) {
+        // A scheduled tick with no context/capture should be impossible (arming
+        // requires a capture); leaving it silent once cost a full diagnosis.
+        logWarn("keepalive tick dropped — context or capture missing", {
+          hasContext: ctx !== null,
+          hasCapture: capture !== null,
+        });
+        return;
+      }
       // Note: an already-read session (isWanted false) is NOT stopped here.
       // It gets one farewell probe at the already-scheduled deadline — the
       // cache the user just consumed stays warm for one more cadence in case
@@ -353,6 +367,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       pausedReason = reason;
       clearTimer();
       debug(`pi-kimi-keepalive paused — ${reason}`);
+      logWarn("keepalive paused", { reason, model: capture ? catalogId(capture.model) : null });
     }
 
     // ---------- probing ----------
@@ -391,6 +406,12 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
             ? "host exposes no request-auth resolver — falling back to captured headers"
             : `host could not resolve credentials (${auth.error ?? "unknown error"}) — falling back to captured headers`,
         );
+        // Root cause of the "no credentials" failure that follows below: the
+        // recordFailure line cannot carry why resolution failed.
+        logWarn("keepalive probe auth unresolved; falling back to captured headers", {
+          model: catalogId(capture.model),
+          cause: auth === null ? "host exposes no request-auth resolver" : (auth.error ?? "unknown error"),
+        });
       }
       return headers.authorization ? headers : null;
     }
@@ -401,7 +422,16 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       try {
         const dialect = resolveProbeDialect(capture.payload, capture.api);
         const endpoint = probeEndpoint(dialect);
-        if (!endpoint) return false;
+        if (!endpoint) {
+          // Silent-failure path: without this line an unresolvable endpoint
+          // re-arms forever with no probe, no counter and no log.
+          logWarn("keepalive probe endpoint unresolvable", {
+            model: catalogId(capture.model),
+            baseUrl: capture.baseUrl,
+            api: capture.api,
+          });
+          return false;
+        }
         for (let attempt = 1 as 1 | 2; attempt <= 2; attempt++) {
           const built = buildProbeBody(capture.payload, config.maxOutputTokens, dialect, attempt);
           if (!built.ok) {
@@ -635,6 +665,12 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       stats.errors += 1;
       errorStreak += 1;
       debug("probe failed:", message);
+      logWarn("keepalive probe failed", {
+        model: capture ? catalogId(capture.model) : null,
+        endpoint: capture ? probeEndpoint(resolveProbeDialect(capture.payload, capture.api)) : null,
+        error: message,
+        errorStreak,
+      });
       if (/^HTTP 40[13]\b/.test(message)) {
         // Credentials are dead regardless of history; clear the streaks so the
         // automatic recovery after the next real turn starts from a clean slate.
@@ -653,6 +689,18 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       if (process.env.PI_KEEPALIVE_DEBUG) {
         safeStderr(`[pi-kimi-keepalive] ${parts.map(String).join(" ")}\n`);
       }
+    }
+
+    // Warn-level mirror of the failure paths into the app-wide rotating log:
+    // probe failures are otherwise invisible after the fact (the UI card has no
+    // error cell and probe-log.jsonl only records successful probes), which
+    // made live incidents undiagnosable without a debug env restart.
+    function logWarn(message: string, fields: Record<string, unknown>): void {
+      const sessionFile = opts.sessionFile?.();
+      logger.warn(message, {
+        ...(sessionFile ? { sessionFile: sessionFile.split(/[\\/]/).pop() } : {}),
+        ...fields,
+      });
     }
 
     // ---------- hooks ----------

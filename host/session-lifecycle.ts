@@ -310,6 +310,9 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
             ws.send(JSON.stringify(stampEvent(keepaliveStatusPayload(entry.keepaliveSid, s))));
           }
         },
+        // Disk session file (short name) tagging the extension's warn lines in
+        // the app-wide log, so a probe failure traces back to its session
+        sessionFile: () => kaHolder.entry?.session.sessionManager.getSessionFile() ?? null,
       })] : []), // prefix cache keepalive: idle sessions that are unread replay the last request, see host/keepalive.ts
     ] as never, // The inline extension's structural narrow type is brand-incompatible with the package's type signature, identical at runtime (same precedent as customTools)
     disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()),

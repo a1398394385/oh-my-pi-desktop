@@ -101,6 +101,21 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 
 ## 7. 排障 runbook
 
+### 7.0 第一现场:应用通用日志(warn 级,免配置)
+
+探测**失败**与**熔断**自 2026-10-08 起直接落应用通用日志(profile 的 `logs/omp.<日期>.<PID>.log`,logger.warn 立即落盘,不需要 PI_KEEPALIVE_DEBUG):
+
+| warn message | 含义 | 关键字段 |
+|---|---|---|
+| `keepalive probe failed` | 一次探测尝试失败(计 errors;连续 `maxErrorStreak` 次后熔断) | `sessionFile`(归属会话)、`model`、`endpoint`、`error`(HTTP 状态 / network error / 凭据缺失的根因消息)、`errorStreak` |
+| `keepalive paused` | 熔断/暂停(所有 pause 来源) | `reason`、`model` |
+| `keepalive probe auth unresolved; falling back to captured headers` | 凭据解析失败回落捕获 headers(后续多半跟着 "no Kimi credentials" 失败) | `cause`(解析失败根因) |
+| `keepalive probe endpoint unresolvable` | baseUrl 非 https 导致端点拼不出(静默重排路径,以前无任何痕迹) | `baseUrl`、`api` |
+| `keepalive tick dropped — context or capture missing` | 已排 timer 但 ctx/capture 缺失(理论不可达,出现即状态机被外力重置) | `hasContext`、`hasCapture` |
+
+**注意:UI 上下文卡不显示 errors 计数,probe-log.jsonl 只记成功探测**——失败只能在这些 warn 行里找。成功路径零 warn 行。
+
+
 ### 7.1 第一刀:PI_KEEPALIVE_DEBUG=1
 
 宿主启动时带 `PI_KEEPALIVE_DEBUG=1`,stderr 出 `[pi-kimi-keepalive]` 线。链路每一环都有输出,按下表直读结论:
