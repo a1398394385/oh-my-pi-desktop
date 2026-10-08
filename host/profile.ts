@@ -13,6 +13,7 @@ import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
+import { reconcileComputerDisplay } from "./computer-display.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
 import type * as BunFfi from "bun:ffi";
@@ -330,6 +331,11 @@ export async function applyProfile(profileName: string) {
   // relay/cdpUrl to "no external browser" on the override layer, so a browser
   // configured in the user's config.yml cannot outrank the desktop default.
   applyExternalBrowserSetting(readExternalBrowserEnabled());
+  // Computer-use display: computer.display persists a Win32 monitor handle, so
+  // a value that resolved before a reboot names nothing afterwards (the base
+  // then rejects every capture). Re-point it at the same physical monitor on
+  // every profile apply — i.e. before any session can read a dead value.
+  void reconcileComputerDisplay().catch(err => safeStderr(`[host] computer.display 对账失败: ${err}\n`));
 
   const sleepSetting = lookupSetting("power.sleepPrevention");
   const sleep = String(settingsGet(H.settings, "power.sleepPrevention") ?? "off");

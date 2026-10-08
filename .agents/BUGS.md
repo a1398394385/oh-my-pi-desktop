@@ -54,6 +54,7 @@
 | BUG-048 | 批准卡无模型滑条且批准后静默切 default 模型、输入框仍显示旧模型——requestApproval 帧手挑字段漏 slider 等 4 个 + applyRoleModel 后不推 session_model | 2026-10-06 |
 | BUG-049 | SSH 测试报错既看不懂又复制不了——Windows OpenSSH 八进制转义外泄 + toast 承担了不可抄的诊断 | 2026-10-06 |
 | BUG-050 | 缓存保活自移植起从未布防过——嵌入式宿主只调 initialize 不发 session_start，扩展 config 恒为空靶标默认值 | 2026-10-07 |
+| BUG-051 | 重启后电脑控制整体失效——computer.display 存的是 Win32 显示器句柄，开机即换值，底座失配硬失败 | 2026-10-08 |
 
 ---
 
@@ -707,4 +708,18 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：全隔离复现台（OMP_PROFILE=omp-desktop-test + models.yml 自定义 mock provider + 本地 https 自签 mock 服务，宿主带 NODE_TLS_REJECT_UNAUTHORIZED=0 以过探测的 https-only endpoint 守卫）——修复前：turn 完整跑完（mock 收到真实请求）而 active 恒 false、150s 零布防；修复后：capture 建立（active:true）→ agent_end 布防（nextProbeAt=+30s）→ onTick 到点 → 探测真实发出（mock 收到 probe 请求、probes 1→2、hits 1→2）→ 30s 循环持续重排。`bun run check` 全绿。
 
 **教训**：照抄上游某个调用点的「仪式」时要抄完整条链——SDK 的 initialize 和 session_start emit 是配对的（三个模式层全都 emit），只抄一半就是静默半死状态；「开关开了 + UI 有渲染」不等于扩展初始化过（entry 初始快照就能撑起 enabled:true）。调试此案的关键手法：给宿主开 PI_KEEPALIVE_DEBUG、在 isTargetModel/before_provider_request 入口加一次性诊断行，一条 `[diag] target miss: targets=[...]` 直接把断链钉在 config 加载层。
+
+### BUG-051: 重启后电脑控制整体失效——computer.display 存的是 Win32 显示器句柄，开机即换值，底座失配硬失败
+
+**现象**：`/computer on` 后任何 `computer.*` 调用失败 `InvalidTarget: selected display '65649' is not active`（`computer.windows()` 即抛），设置页显示器下拉里那一项显示「未检测到」并置灰，用户重选后才恢复。同一台 G271U（`\\.\DISPLAY1`，`MONITOR\STD2701`）10-05 记录为 65649（`0x10071`）、10-08 为 65709（`0x100AD`）——中间只隔了重启。
+
+**分诊**：⑤环境特定 + ②存量缺陷。句柄语义一直如此，只是要过一次重启才暴露；本仓把它持久化到 config.yml 后就成了必然故障。
+
+**根因**：`pi-natives` 的 Windows 显示器 id 是裸 `HMONITOR`——`crates/pi-natives/src/desktop/win32/capture.rs` 取 `xcap::Monitor::id()`，xcap 0.9.6 的 Windows 实现是 `Ok(self.h_monitor.0 as u32)`，值来自 `EnumDisplayMonitors` 回调，内核每次开机重新分配（同一次开机内跨进程稳定，三个独立进程实测同值）。桌面端把这个值写进 config.yml 的 `computer.display` 长期持有；底座 `DisplaySelector::Id` 未命中时直接 `invalid_target`（capture.rs），既不回退也不提示，于是整条电脑控制链路（截图/输入/AX/窗口枚举）一起死掉。
+
+**修复**：桌面端开机对账 `host/computer-display.ts`——把「用户选的是哪台物理显示器」按**开机稳定的身份**（EDID 友好名 + 分辨率 + 主屏标志，G271U/3840×2160/primary）记在 omp-desktop.json 的 `computerDisplay` 段；`applyProfile` 每次应用（含开机）枚举显示器，`computer.display` 已失效时按该身份重新指向当前 id（写回 config.yml + 刷新记忆），设置页选中后（`set_setting` 的 `computer.display` 分支）同样落一次记忆。**不做猜测**：无记忆或候选不唯一时保持原值 + stderr 提示用户重选，绝不静默换屏。`rpc/settings.ts` 的 `list_displays` 复用同一枚举（消除重复实现）。
+
+**验证**：`bun run smoke:computer-display` 三阶段真宿主实跑全绿——A 失效 id + 有记忆 → `2000000000 → 65709`（G271U，无重启下真值）；B 有效 id + 无记忆 → 记忆落盘且值不动；C 失效 id + 无记忆 → 不写任何替代值。`bun run check` 全绿（含新增 5 条依赖边）。未覆盖：真重启后的取值（该轮用篡改 id 模拟，机制等价——句柄失配即与重启后同态）。
+
+**教训**：跨层保存「别的层生成的标识符」前先问它会活多久——句柄、指针、自增 id 一律只活一个进程/一次开机，能跨重启的只有设备自身属性（EDID 名、序列号、几何）。派生的持久状态必须有一个**每次启动都跑的对账点**（`applyProfile` 这类位置是天然落点）：失效时要么按稳定身份重解析，要么显式报错，静默采用别的目标比直接失败更糟。
 

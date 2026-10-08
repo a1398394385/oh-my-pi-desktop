@@ -6,8 +6,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { lookupSetting } from "../bootstrap.ts";
-import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
-import type { DesktopDisplay, DesktopSession } from "@oh-my-pi/pi-natives";
+import { listPhysicalDisplays, reconcileComputerDisplay } from "../computer-display.ts";
 import { H, sessions, pendingApprovals, type DesktopEnv } from "../state.ts";
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
@@ -101,30 +100,19 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     const isModelKey = ["enabledModels", "enabledProviders", "disabledProviders", "modelRoleStorage", "modelTags", "modelProviderOrder", "cycleOrder"].includes(key);
     if (isModelKey) rebuildScopedModels();
     await H.settings.flush();
+    // Computer-use display pick: remember which physical monitor this id names.
+    // The id itself is a Win32 handle that dies with the boot, so the pick is
+    // recorded by EDID name + geometry and re-resolved on the next boot
+    // (host/computer-display.ts).
+    if (key === "computer.display") await reconcileComputerDisplay();
     if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async list_displays(ws) {
     // Enumerate physical displays through the natives desktop adapter for the
-    // computer-control display dropdown. A short-lived session is enough
-    // (listDisplays is read-only); failures degrade to an empty list + error.
-    let displays: Array<Pick<DesktopDisplay, "id" | "name" | "width" | "height" | "isPrimary">> = [];
-    let error: string | null = null;
-    let session: DesktopSession | null = null;
-    try {
-      session = createDesktopSession({});
-      displays = (await session.listDisplays()).map(d => ({
-        id: String(d.id),
-        name: String(d.name ?? d.id),
-        width: d.width,
-        height: d.height,
-        isPrimary: !!d.isPrimary,
-      }));
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-    } finally {
-      await session?.close().catch(() => {});
-    }
+    // computer-control display dropdown (read-only; failures degrade to an
+    // empty list + error). Same enumeration the boot-time reconciliation uses.
+    const { displays, error } = await listPhysicalDisplays();
     ws.send(JSON.stringify({ type: "displays", displays, error }));
   },
   set_locale(_ws, msg) {

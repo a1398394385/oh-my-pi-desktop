@@ -88,6 +88,14 @@ const ALLOWED_EDGES = new Set([
   // settings child, the master gate in H.settings (bootstrap lookup).
   "computer-mode.ts→bootstrap.ts", "computer-mode.ts→state.ts", "computer-mode.ts→settings-compat.ts",
   "session-lifecycle.ts→computer-mode.ts", "rpc/prompt.ts→computer-mode.ts", "rpc/settings.ts→computer-mode.ts",
+  // Computer-use display reconciliation: computer.display persists a Win32
+  // monitor handle (xcap Monitor::id() = HMONITOR), which the kernel reassigns
+  // every boot; computer-display.ts remembers the picked monitor by EDID name +
+  // geometry in omp-desktop.json and re-points the setting. applyProfile runs it
+  // on every profile apply (host boot included), the set_setting RPC on a pick,
+  // and rpc/settings' list_displays reuses its enumeration.
+  "computer-display.ts→settings-compat.ts", "computer-display.ts→state.ts", "computer-display.ts→stderr.ts",
+  "profile.ts→computer-display.ts", "rpc/settings.ts→computer-display.ts",
   // Session lifecycle domain: main.ts mounts the create/load dispatches; the lifecycle depends on plan (restoring plan mode),
   // queue (queued-race fallback), profile (experiment switches), assets (plugin/hook switches)
   "main.ts→session-lifecycle.ts",

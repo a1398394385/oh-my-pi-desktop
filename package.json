@@ -23,6 +23,7 @@
     "smoke:skill-commands": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-skill-commands.ts",
     "smoke:ssh-result": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-ssh-result.ts",
     "smoke:command-cache": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-command-cache-invalidate.ts",
+    "smoke:computer-display": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-computer-display.ts",
     "check:encoding": "node scripts/check-encoding.mjs",
     "check:i18n-keys": "bun scripts/check-i18n-keys.ts",
     "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/check-i18n-keys.ts && bun run ui:typecheck"
