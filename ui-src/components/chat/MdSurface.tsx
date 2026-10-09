@@ -49,6 +49,45 @@ const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
   text: "txt",
 };
 
+// Rescue `**<bare-url>**` immediately followed by a non-space character (typically CJK
+// punctuation such as （): micromark's GFM autolink swallows the closing `**` into the
+// URL path — trailing punctuation is only trimmed before whitespace/EOF — which breaks
+// emphasis pairing and renders the `**` literally. Rewriting the bare URL as an
+// angle-bracket autolink gives it a hard boundary, so the `**` stays a text-level
+// delimiter and the bold parses. Code fences and inline code spans are left verbatim.
+const STRONG_URL_RE = /\*\*(https?:\/\/[^\s<>`]+)\*\*(?=[^\s<(])/g;
+const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const INLINE_CODE_RE = /(`+)(?:[\s\S]*?[^`])?\1(?!`)/g;
+
+function fixStrongAutolinkLine(line: string): string {
+  const spans: string[] = [];
+  const masked = line.replace(INLINE_CODE_RE, (span) => `\u0000${spans.push(span) - 1}\u0000`);
+  return masked
+    .replace(STRONG_URL_RE, "**<$1>**")
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)]);
+}
+
+export function fixStrongAutolink(text: string): string {
+  let fence = ""; // open fence sequence; empty when outside fenced code
+  return text
+    .split("\n")
+    .map((line) => {
+      const fenceMatch = line.match(FENCE_LINE_RE);
+      if (fence) {
+        if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) {
+          fence = "";
+        }
+        return line; // inside fenced code: verbatim
+      }
+      if (fenceMatch) {
+        fence = fenceMatch[1];
+        return line; // fence opener line itself: verbatim
+      }
+      return fixStrongAutolinkLine(line);
+    })
+    .join("\n");
+}
+
 // Props shape for the element mapping: the hast node is a non-DOM attribute attached by
 // react-markdown; destructure it away before passing through
 type ElProps<K extends keyof JSX.IntrinsicElements> = JSX.IntrinsicElements[K] & { node?: unknown };
@@ -153,7 +192,7 @@ export default function MdSurface({ text, ...rest }: MdSurfaceProps) {
         controls={mdControls}
         linkSafety={MD_LINK_SAFETY_OFF}
       >
-        {text}
+        {fixStrongAutolink(text)}
       </Streamdown>
     </div>
   );
