@@ -151,12 +151,29 @@ function onMessage(msg: HostFrame): void {
 }
 
 // WKWebView has no console: report uncaught errors to the host log + toast
-window.onerror = (msg) => {
+window.onerror = (msg, source, line, col, error) => {
   useAppStore.getState().toast(String(msg).slice(0, 120));
-  useAppStore.getState().send({ type: "ui_error", message: String(msg).slice(0, 300) });
+  useAppStore.getState().send({ type: "ui_error", message: formatUiError(String(msg), { source, line, col, error }) });
 };
 window.addEventListener("unhandledrejection", (e) => {
-  useAppStore.getState().send({ type: "ui_error", message: "unhandledrejection: " + String(e.reason).slice(0, 300) });
+  useAppStore
+    .getState()
+    .send({ type: "ui_error", message: formatUiError(`unhandledrejection: ${String(e.reason)}`, { error: e.reason }) });
 });
+
+// The toast keeps the visible one-liner; the host log is the only forensic record a WKWebView
+// leaves, so it must also carry where the error was thrown (source position) and the stack --
+// without them a reported error cannot be located at all (the file:line in a minified bundle is
+// not enough to find the throw site in source). Both are truncated: a deep component stack is
+// worthless in a single log line and the host has no console to fall back on.
+const UI_ERROR_STACK_LIMIT = 2000;
+function formatUiError(
+  msg: string,
+  where: { source?: string; line?: number; col?: number; error?: unknown },
+): string {
+  const at = where.source ? ` @ ${where.source}:${where.line ?? 0}:${where.col ?? 0}` : "";
+  const stack = where.error instanceof Error ? where.error.stack : undefined;
+  return `${msg.slice(0, 300)}${at}${stack ? `\n${stack.slice(0, UI_ERROR_STACK_LIMIT)}` : ""}`;
+}
 
 export { onMessage };
