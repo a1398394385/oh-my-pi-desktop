@@ -182,6 +182,7 @@ export function menuZoom(dir: 1 | -1 | 0 | "in" | "out" | "reset"): void {
   if (dir === 1 || dir === "in") useAppStore.setState({ zoomLevel: Math.min(2, +(cur + 0.1).toFixed(2)) });
   else if (dir === -1 || dir === "out") useAppStore.setState({ zoomLevel: Math.max(0.6, +(cur - 0.1).toFixed(2)) });
   else useAppStore.setState({ zoomLevel: 1 });
+  try { localStorage.setItem("omp-zoom", String(useAppStore.getState().zoomLevel)); } catch {}
   applyZoom();
 }
 
@@ -286,6 +287,10 @@ export function initShell(): void {
   attachResizer("right-resizer", "--right-w", 240, true, 0.65);
 
   updateContentColMax();
+  // Apply the persisted zoom level (store hydrated from localStorage at init):
+  // the zoom targets only exist now that App has mounted, and nothing else
+  // calls applyZoom before the first menuZoom/shortcut
+  applyZoom();
   window.addEventListener("resize", () => {
     updateContentColMax();
     // On window resize, anchors of open composer menus go stale as buttons

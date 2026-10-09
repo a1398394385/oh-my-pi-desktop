@@ -131,7 +131,12 @@ let toastTimer: TimerHandle | undefined;
 let composerSetSeq = 0;
 
 export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get) => ({
-  zoomLevel: 1,
+  // UI zoom (Cmd +/-, menu zoom): persisted across launches like
+  // omp-sidebar-collapsed; clamped to the menuZoom range, corrupt values fall back to 1
+  zoomLevel: (() => {
+    const saved = Number.parseFloat(localStorage.getItem("omp-zoom") ?? "");
+    return Number.isFinite(saved) ? Math.min(2, Math.max(0.6, saved)) : 1;
+  })(),
   isCommandPressed: false,
   sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
   // Right panel always starts collapsed on launch (no cross-launch expansion memory;
