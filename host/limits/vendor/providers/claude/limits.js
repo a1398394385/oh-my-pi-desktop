@@ -1,17 +1,15 @@
 'use strict';
 
-// Claude limits provider: OAuth and Web session credentials, the CLI fallback,
-// identity/prepaid caches, and the usage → provider-window mapping. Reached
-// through providerFetchers() in src/shared/limits/collector.js, which re-exports
-// the handful of names the widget and the tests use.
+// Claude limits provider: OAuth and Web session credentials, identity/prepaid
+// caches, and the usage → provider-window mapping. Reached through
+// providerFetchers() in src/shared/limits/collector.js, which re-exports the
+// handful of names the widget and the tests use.
 
-const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { BROWSER_USER_AGENT } = require('../../browserUserAgent');
 const { normalizeLimitProvider } = require('../../limits/core');
-const { abortError } = require('../../probeDeadline');
 const { hashKey } = require('../../hashKey');
 const {
   PLAN_LABEL_ALIASES,
@@ -46,9 +44,6 @@ const CLAUDE_PREPAID_IDLE_TTL_FACTOR = 6;
 const CLAUDE_PREPAID_CACHE_STATE_KEY = 'claude.prepaid-cache';
 const CLAUDE_SESSION_WINDOW_MINUTES = 5 * 60;
 const CLAUDE_WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
-function shouldTryClaudeCliFallback(error) {
-  return ['notConfigured', 'sourceRateLimited', 'unavailable', 'error'].includes(error?.status);
-}
 
 function normalizeClaudeWebCookie(value) {
   const raw = typeof value === 'string' ? value.trim() : '';
@@ -195,6 +190,10 @@ function claudeCredentialsFromOauth(oauth, meta = {}) {
   };
 }
 
+// Quota data may only come from OMP's own credentials, never from another
+// tool's machine state (~/.claude, WSL homes, WinCred, the login keychain, or a
+// spawned CLI). The only local-credential lane left is the explicitly
+// configured CLAUDE_CODE_OAUTH_TOKEN, which callers thread in through `deps.env`.
 async function readClaudeCredentials(deps = {}) {
   const env = deps.env || process.env;
   if (env.CLAUDE_CODE_OAUTH_TOKEN) {
@@ -206,49 +205,6 @@ async function readClaudeCredentials(deps = {}) {
       identity: 'env:CLAUDE_CODE_OAUTH_TOKEN',
       accountLabel: ''
     };
-  }
-
-  for (const candidate of await rankClaudeCredentialFiles(deps)) {
-    try {
-      const raw = await readJsonFile(candidate.path, deps);
-      const fileShape = raw && typeof raw === 'object' && raw.claudeAiOauth ? 'claudeAiOauth' : 'root';
-      const oauth = extractClaudeOauth(raw);
-      const credentials = claudeCredentialsFromOauth(oauth, {
-        source: 'file',
-        filePath: candidate.path,
-        fileShape,
-        identity: `path:${candidate.identityLabel}:${oauth?.subscriptionType || ''}:${oauth?.rateLimitTier || ''}`
-      });
-      if (credentials) return credentials;
-    } catch (error) {
-      if (error.code !== 'ENOENT') continue;
-    }
-  }
-
-  if ((deps.platform || process.platform) === 'win32' && deps.readWindowsCredential !== false) {
-    const text = await readWindowsClaudeCredentials(deps).catch(() => '');
-    if (text) {
-      try {
-        const oauth = extractClaudeOauth(JSON.parse(text));
-        const credentials = claudeCredentialsFromOauth(oauth, {
-          source: 'wincred',
-          identity: `wincred:Claude Code-credentials:${oauth?.subscriptionType || ''}:${oauth?.rateLimitTier || ''}`
-        });
-        if (credentials) return credentials;
-      } catch (_) {}
-    }
-  }
-
-  if ((deps.platform || process.platform) === 'darwin' && deps.readMacKeychain !== false) {
-    const text = await readMacKeychainSecret('Claude Code-credentials', deps).catch(() => '');
-    if (text) {
-      const oauth = extractClaudeOauth(JSON.parse(text));
-      const credentials = claudeCredentialsFromOauth(oauth, {
-        source: 'keychain',
-        identity: `keychain:Claude Code-credentials:${oauth?.subscriptionType || ''}:${oauth?.rateLimitTier || ''}`
-      });
-      if (credentials) return credentials;
-    }
   }
 
   throw errorWithStatus('notConfigured', 'Claude credentials not found');
@@ -345,42 +301,6 @@ function readWindowsCredentialSecret(_service, targets, deps = {}) {
     }
   }
   return '';
-}
-
-function readMacKeychainSecret(service, deps = {}) {
-  const spawnFn = deps.spawn || spawn;
-  const signal = deps.signal;
-  if (signal?.aborted) return Promise.reject(abortError(signal));
-  return new Promise((resolve, reject) => {
-    const child = spawnFn('security', ['find-generic-password', '-s', service, '-w'], { windowsHide: true });
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener?.('abort', onAbort);
-      callback(value);
-    };
-    const onAbort = () => {
-      try { child.kill('SIGTERM'); } catch (_) {}
-      finish(reject, abortError(signal));
-    };
-    const timer = setTimeout(() => {
-      try { child.kill('SIGTERM'); } catch (_) {}
-      finish(reject, new Error('macOS keychain lookup timed out'));
-    }, 5000);
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => finish(reject, error));
-    child.on('close', (code) => {
-      if (code !== 0) finish(reject, new Error(stderr.trim() || `security exited ${code}`));
-      else finish(resolve, stdout.trim());
-    });
-    signal?.addEventListener?.('abort', onAbort, { once: true });
-    if (signal?.aborted) onAbort();
-  });
 }
 
 function fetchClaudeWebJson(url, headers, deps = {}, options = {}) {
@@ -576,36 +496,6 @@ async function refreshClaudeAccessToken(refreshToken, deps = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-async function writeClaudeCredentials(filePath, fileShape, updated, deps = {}) {
-  const readFile = deps.readFile || fs.promises.readFile;
-  const writeFile = deps.writeFile || fs.promises.writeFile;
-  const rename = deps.rename || fs.promises.rename;
-  let existing;
-  try {
-    existing = JSON.parse(await readFile(filePath, 'utf8'));
-  } catch (_) { return false; }
-  if (!existing || typeof existing !== 'object') return false;
-  if (fileShape === 'claudeAiOauth') {
-    existing.claudeAiOauth = { ...(existing.claudeAiOauth || {}), ...updated };
-  } else {
-    Object.assign(existing, updated);
-  }
-  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    await writeFile(tmpPath, `${JSON.stringify(existing, null, 2)}\n`, { mode: 0o600 });
-    await rename(tmpPath, filePath);
-    return true;
-  } catch (_) {
-    try { await (deps.unlink || fs.promises.unlink)(tmpPath); } catch (__) {}
-    return false;
-  }
-}
-
-async function persistClaudeRefresh(credentials, refreshed, deps = {}) {
-  if (credentials.source !== 'file' || !credentials.filePath) return;
-  await writeClaudeCredentials(credentials.filePath, credentials.fileShape, refreshed, deps).catch(() => {});
 }
 
 function callClaudeUsage(accessToken, deps = {}) {
@@ -1211,33 +1101,19 @@ async function resolveClaudeOauthIdentity(credentials, deps = {}) {
   }
 }
 
-async function delegatedClaudeRefresh(currentCredentials, deps = {}) {
-  // Spawn `claude /status` in a PTY and let Claude Code itself refresh the token.
-  // Matches CodexBar's strategy — Claude Code is a native Anthropic application,
-  // so OAuth credential use stays within sanctioned channels. Best-effort: if the
-  // probe fails we still re-read in case Claude Code touched the credentials.
-  await touchClaudeAuthPath(deps).catch(() => null);
-  const fresh = await readClaudeCredentials(deps);
-  if (!fresh.accessToken || fresh.accessToken === currentCredentials.accessToken) {
-    throw errorWithStatus('unauthorized', 'Claude Code did not refresh the OAuth token');
-  }
-  return fresh;
-}
-
+// OMP-only refresh: rotate the token with the refresh token the credential
+// itself carries. The macOS lane that spawned Claude Code to refresh on our
+// behalf is gone, so every platform takes the same path.
 async function refreshClaudeCredentials(currentCredentials, deps = {}) {
-  const platform = deps.platform || process.platform;
-  if (platform === 'darwin') return delegatedClaudeRefresh(currentCredentials, deps);
   if (!currentCredentials.refreshToken) {
     throw errorWithStatus('unauthorized', 'No refresh token available');
   }
   const refreshed = await refreshClaudeAccessToken(currentCredentials.refreshToken, deps);
-  await persistClaudeRefresh(currentCredentials, refreshed, deps);
   return { ...currentCredentials, ...refreshed };
 }
 
 async function fetchClaudeLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
-  const platform = deps.platform || process.platform;
   const webCookie = claudeWebCookie(deps.env || process.env, options);
   if (webCookie) return fetchClaudeWebLimits(webCookie, deps, options);
   let oauthIdentity = null;
@@ -1249,9 +1125,9 @@ async function fetchClaudeLimits(options = {}, deps = {}) {
       { allowStale: true }
     )?.identity || null;
 
-    // Proactive refresh only on non-darwin: mac uses delegated (spawning Claude Code)
-    // which is expensive; CodexBar's design likewise refreshes reactively, not on expiry.
-    if (platform !== 'darwin' && credentials.refreshToken && credentials.expiresAt
+    // Proactive refresh when the credential carries a refresh token and is close
+    // to expiry; the reactive retry below still covers an unexpected 401.
+    if (credentials.refreshToken && credentials.expiresAt
       && credentials.expiresAt - nowMs < CLAUDE_REFRESH_LEEWAY_MS) {
       try {
         const previousCredentials = credentials;
@@ -1291,25 +1167,7 @@ async function fetchClaudeLimits(options = {}, deps = {}) {
     // A successful quota response without a stable account identity must not
     // create a new row keyed by credential storage location or a different
     // fallback source. Let LimitsRuntime retain the previous account row.
-    if (error?.code === 'CLAUDE_IDENTITY_UNAVAILABLE') throw error;
-    if (!shouldTryClaudeCliFallback(error)) throw error;
-    try {
-      if (!await isClaudeCliAuthenticated(deps)) throw error;
-      const text = await runClaudeUsageCli(deps);
-      const provider = mapClaudeCliUsageToProvider(text, {
-        updatedAt: nowIso(nowMs),
-        now: new Date(nowMs)
-      });
-      if (!oauthIdentity) return provider;
-      return {
-        ...provider,
-        accountKey: oauthIdentity.accountKey,
-        accountEmail: oauthIdentity.accountEmail,
-        accountName: oauthIdentity.accountName
-      };
-    } catch (_) {
-      throw error;
-    }
+    throw error;
   }
 }
 
@@ -1692,45 +1550,6 @@ finally:
 `.trim();
 }
 
-async function runClaudePtyProbe(slashCommand, exitMarkerRegex, deps = {}) {
-  if ((deps.platform || process.platform) === 'win32') {
-    throw errorWithStatus('unavailable', 'Claude CLI PTY probe is not available on Windows yet');
-  }
-  const env = deps.env || process.env;
-  const platform = deps.platform || process.platform;
-  const command = existingClaudeCommandCandidates(claudeCommandCandidates(env, platform), deps)[0];
-  if (!command) throw errorWithStatus('notConfigured', 'Claude CLI not found');
-  const probeDir = deps.claudeProbeDir || path.join(os.tmpdir(), 'token-monitor-claude-probe');
-  fs.mkdirSync(probeDir, { recursive: true });
-  const runEnv = {
-    ...env,
-    DISABLE_AUTOUPDATER: '1',
-    TERM: env.TERM && env.TERM !== 'dumb' ? env.TERM : 'xterm-256color',
-    COLORTERM: env.COLORTERM || 'truecolor',
-    TOKEN_MONITOR_CLAUDE_COMMAND_PATH: command,
-    TOKEN_MONITOR_CLAUDE_PROBE_DIR: probeDir,
-    TOKEN_MONITOR_CLAUDE_CLI_TIMEOUT: String(deps.claudeCliTimeoutSeconds || 35),
-    TOKEN_MONITOR_CLAUDE_SLASH_COMMAND: slashCommand,
-    TOKEN_MONITOR_CLAUDE_EXIT_MARKER_REGEX: exitMarkerRegex || ''
-  };
-  const pythonCandidates = deps.pythonCommand ? [deps.pythonCommand] : ['python3', 'python'];
-  let lastError = null;
-  for (const python of pythonCandidates) {
-    try {
-      return await runProcessText(python, ['-c', claudePtyPythonScript()], {
-        ...deps,
-        env: runEnv,
-        cwd: probeDir,
-        timeoutMs: Number(deps.claudeCliTimeoutMs || 45000)
-      });
-    } catch (error) {
-      lastError = error;
-      if (error.code !== 'ENOENT') break;
-    }
-  }
-  throw lastError || errorWithStatus('unavailable', 'Python PTY runner unavailable');
-}
-
 function claudeDirectInvocation(command, args, platform, env) {
   if (platform !== 'win32' || /\.exe$/i.test(command)) return { command, args };
   const commandShell = envValue(env, 'ComSpec') || 'cmd.exe';
@@ -1767,55 +1586,10 @@ function runClaudeAuthStatus(deps = {}) {
   );
 }
 
-async function isClaudeCliAuthenticated(deps = {}) {
-  if (typeof deps.isClaudeCliAuthenticated === 'function') {
-    return await deps.isClaudeCliAuthenticated() === true;
-  }
-  try {
-    const clean = stripAnsiCodes(await runClaudeAuthStatus(deps)).trim();
-    const start = clean.indexOf('{');
-    const end = clean.lastIndexOf('}');
-    if (start === -1 || end < start) return false;
-    const status = JSON.parse(clean.slice(start, end + 1));
-    return status?.loggedIn === true;
-  } catch (_) {
-    return false;
-  }
-}
-
-async function runClaudeUsageCli(deps = {}) {
-  if (deps.runClaudeUsageCli) return deps.runClaudeUsageCli();
-  if ((deps.platform || process.platform) === 'win32') return runClaudeDirectUsageCli(deps);
-  return runClaudePtyProbe('/usage', 'currentsession.*?[0-9]{1,3}(?:\\.[0-9]+)?%', deps);
-}
-
-function runClaudeDirectUsageCli(deps = {}) {
-  return runClaudeDirectCommand(
-    ['/usage'],
-    deps,
-    Number(deps.claudeDirectCliTimeoutMs || 12000)
-  );
-}
-
-async function touchClaudeAuthPath(deps = {}) {
-  if (deps.touchClaudeAuthPath) return deps.touchClaudeAuthPath();
-  // Spawn `claude /status` in PTY to let Claude Code itself perform an auth check
-  // and refresh the OAuth token if needed. We don't parse output — the side-effect
-  // (mutated credentials file / Keychain entry) is the signal. Permissive exit
-  // marker matches common /status output tokens so we exit promptly on success.
-  return runClaudePtyProbe('/status', '(?:loggedin|subscription|account|model|version|email|organization)', {
-    ...deps,
-    claudeCliTimeoutSeconds: deps.claudeStatusTimeoutSeconds || 20,
-    claudeCliTimeoutMs: deps.claudeStatusTimeoutMs || 25000
-  });
-}
-
 module.exports = {
   claudeCommandCandidates,
   claudeWebCookie,
-  delegatedClaudeRefresh,
   fetchClaudeLimits,
-  isClaudeCliAuthenticated,
   mapClaudeCliUsageToProvider,
   mapClaudeUsageToProvider,
   normalizeClaudeWebCookieInput,
@@ -1824,6 +1598,5 @@ module.exports = {
   refreshClaudeAccessToken,
   refreshClaudeCredentials,
   runClaudeAuthStatus,
-  touchClaudeAuthPath,
   wslClaudeCredentialPaths
 };

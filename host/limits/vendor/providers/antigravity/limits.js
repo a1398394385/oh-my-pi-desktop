@@ -1,10 +1,9 @@
 'use strict';
 
-// Antigravity limits provider: RPC snapshot plus the OAuth/probe helpers in
-// this folder. Reached through providerFetchers() in src/shared/limits/collector.js.
+// Antigravity limits provider: OMP's managed Google accounts only. Reached
+// through providerFetchers() in src/shared/limits/collector.js.
 
 const antigravityOAuth = require('./oauth');
-const antigravityProbe = require('./probe');
 const {
   normalizeLimitProvider
 } = require('../../limits/core');
@@ -83,7 +82,6 @@ function antigravityAccountError(account, error, nowMs) {
 
 async function fetchAntigravityLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
-  const probeFn = deps.antigravityProbe || antigravityProbe.probe;
   const scope = options.limitRefreshScope?.provider === 'antigravity' ? options.limitRefreshScope : null;
   const accounts = antigravityOAuth.normalizeManagedAccounts(
     options.antigravityManagedAccounts || deps.antigravityManagedAccounts,
@@ -94,34 +92,30 @@ async function fetchAntigravityLimits(options = {}, deps = {}) {
       || (!scope.accountKey || scope.accountKey === account.accountKey)
       && (!scope.accountEmail || scope.accountEmail === account.accountEmail));
 
+  // Quota data may only come from OMP's own credentials. Without a managed
+  // account there is nothing left to read: the local RPC probe — and with it
+  // the language-server process scan, the listening-port lookup and the
+  // installed-app OAuth client discovery — is gone.
   if (accounts.length === 0 && !scope) {
-    try {
-      return mapAntigravitySnapshot(await probeFn(deps), { nowMs, source: 'rpc' });
-    } catch (error) {
-      return normalizeLimitProvider({
-        provider: 'antigravity',
-        accountKey: '',
-        accountLabel: '',
-        source: 'rpc',
-        status: providerStatusFromError(error),
-        updatedAt: nowIso(nowMs),
-        windows: []
-      });
-    }
+    return normalizeLimitProvider({
+      provider: 'antigravity',
+      accountKey: '',
+      accountLabel: '',
+      source: '',
+      status: 'notConfigured',
+      updatedAt: nowIso(nowMs),
+      windows: []
+    });
   }
 
-  const localPromise = scope?.sourceDetail === 'oauth'
-    ? Promise.resolve(null)
-    : probeFn(deps).then(
-        (snapshot) => mapAntigravitySnapshot(snapshot, { nowMs, source: 'rpc' }),
-        () => null
-      );
+  // OMP-managed accounts are the only remaining source, so there is never a
+  // local snapshot to merge into the remote rows (the merge block below is
+  // therefore inert).
+  const localPromise = Promise.resolve(null);
   const remotePromise = Promise.all(accounts.map(async (account) => {
     try {
       const snapshot = await antigravityOAuth.fetchRemoteSnapshot(account, {
         ...deps,
-        collapsePools: antigravityProbe._collapsePools,
-        quotaSummaryWindows: antigravityProbe._quotaSummaryWindows,
         onCredentialRenewed: (managedAccount, credentials, previous) => (
           deps.onAntigravityCredentialsRenewed?.({ account: managedAccount, credentials, previous })
         )

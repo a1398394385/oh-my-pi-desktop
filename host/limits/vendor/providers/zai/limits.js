@@ -1,7 +1,5 @@
 'use strict';
 
-const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const { normalizeLimitProvider } = require('../../limits/core');
@@ -13,7 +11,6 @@ const {
 const { hashKey } = require('../../hashKey');
 const { runWithProbeDeadline } = require('../../probeDeadline');
 const { readJson, writeJsonAtomic, sharedDataDir } = require('../../config');
-const { discoverZcodeConnection, zcodeDataBaseDir } = require('./zcodeDiscovery');
 
 const ZAI_FETCH_TIMEOUT_MS = 12_000;
 
@@ -275,15 +272,12 @@ async function fetchJson(url, key, deps = {}) {
   }, { signal: deps.signal, deadlineMs });
 }
 
-// Three independent account pools feed one GLM row, in parallel: the paid
-// subscription quota (console key), the cash balance (console key), and the
-// ZCode Start/Weekend plan buckets (local ZCode login). A pool only renders
-// when it actually has something — an empty pool is absent, not zero. The
-// console key also answers quota for users without ZCode; the ZCode login
-// also answers plan buckets for users without a console key.
-// An empty lane: attempted marks a lane that ran and found nothing, so the
-// row reports unavailable rather than contradicting the detected-login pill.
-const emptyLane = (attempted = false) => ({ windows: [], plan: '', accountKey: '', hasAnything: false, attempted });
+// Two account pools feed one GLM row, in parallel: the paid subscription
+// quota and the cash balance, both from the console key stored in omp. A pool
+// only renders when it actually has something — an empty pool is absent, not
+// zero. Without a key the row is notConfigured.
+// An empty lane stands in for a missing key.
+const emptyLane = () => ({ windows: [], plan: '', accountKey: '', hasAnything: false });
 
 // Maps a lane error onto a provider status: timeouts degrade to unavailable,
 // every other classified status (unauthorized, sourceRateLimited, …) passes
@@ -348,125 +342,27 @@ async function fetchZaiLimits(options = {}, deps = {}) {
     })()
     : Promise.resolve(emptyLane());
 
-  // The billing query shared by both discovery shapes: an account-level
-  // endpoint answering with every plan's buckets regardless of which
-  // provider is selected in ZCode.
-  const fetchZcodeBilling = async (token) => {
-    const payload = await runWithProbeDeadline(async ({ signal }) => {
-      const deviceMid = zcodeDeviceMid({ ...deps, env, homeDir: deps.homeDir || options.homeDir });
-      const response = await (deps.fetch || fetch)(zcodeStartPlanBalanceUrl(), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          ...(deviceMid ? { 'X-Device-Mid': deviceMid } : {})
-        },
-        signal
-      });
-      if (!response.ok) {
-        const error = new Error(`zcode billing returned ${response.status}`);
-        error.status = response.status === 401 || response.status === 403
-          ? 'unauthorized'
-          : response.status === 429 ? 'sourceRateLimited' : 'unavailable';
-        throw error;
-      }
-      return response.json();
-    }, { signal: deps.signal, deadlineMs: Number(deps.zaiFetchTimeoutMs || deps.fetchTimeoutMs || ZAI_FETCH_TIMEOUT_MS) });
-    const usage = parseZcodeStartPlanBalances(payload);
-    // Empty balances with an active plan are a legal mid-state (a grant not
-    // yet effective), so a fulfilled-but-empty query still counts as attempted.
-    return {
-      windows: usage.windows,
-      plan: usage.plan,
-      accountKey: hashKey('zai', token),
-      hasAnything: usage.windows.length > 0,
-      attempted: true
-    };
-  };
+  const [keyResult] = await Promise.allSettled([keyLane]);
 
-  const planLane = (async () => {
-    const discovery = discoverZcodeConnection(options, {
-      readFileSync: deps.readFileSync || fs.readFileSync,
-      env,
-      homeDir: deps.homeDir || options.homeDir || os.homedir()
-    });
-    // Mirror-key quota on the console-key endpoint; classified errors (429,
-    // auth) propagate, empty results keep the lane attempted, not unconfigured.
-    if (discovery.kind === 'coding-quota' && discovery.entitled) {
-      const mirrorKey = discovery.credential?.token;
-      if (mirrorKey) {
-        const mirrorRegion = discovery.family === 'bigmodel' ? 'bigmodel-cn' : 'global';
-        // Billing is account-level, so it runs alongside quota; failures never
-        // block the quota answer. Subscription only enriches usable quota.
-        const [quotaResult, billingResult] = await Promise.allSettled([
-          mirrorKey === key && mirrorRegion === region
-            ? Promise.resolve(null)
-            : fetchJson(zaiQuotaUrl(mirrorRegion), mirrorKey, deps),
-          discovery.billing ? fetchZcodeBilling(discovery.billing.credential.token) : Promise.resolve(null),
-        ]);
-        let usage = { plan: '', windows: [] };
-        if (quotaResult.status === 'fulfilled' && quotaResult.value !== null) {
-          usage = parseZaiUsage(quotaResult.value);
-          if (usage.windows.length) {
-            try {
-              const subscription = await fetchJson(zaiSubscriptionUrl(mirrorRegion), mirrorKey, deps);
-              usage = parseZaiUsage(quotaResult.value, subscription);
-            } catch (_) {}
-          }
-        }
-        const billing = billingResult.status === 'fulfilled' ? billingResult.value : null;
-        return {
-          windows: [...usage.windows, ...(billing ? billing.windows : [])],
-          plan: usage.plan || (billing ? billing.plan : ''),
-          accountKey: mirrorKey === key && mirrorRegion === region ? '' : hashKey('zai', mirrorKey),
-          hasAnything: usage.windows.length > 0 || Boolean(billing?.hasAnything),
-          attempted: true,
-          error: quotaResult.status === 'rejected' ? quotaResult.reason : null
-        };
-      }
-      return emptyLane(true);
-    }
-    if (discovery.kind !== 'start-billing' || !discovery.entitled || !discovery.credential) {
-      return emptyLane();
-    }
-    return fetchZcodeBilling(discovery.credential.token);
-  })();
-
-  const [keyResult, planResult] = await Promise.allSettled([keyLane, planLane]);
-
-  const lanes = [keyResult, planResult].filter((result) => result.status === 'fulfilled');
-  // Both lanes can answer for the same account: the omp-stored credential and
-  // ZCode's mirror key are different token strings (ZCode rotates its mirror
-  // on every login), so the mirrorKey === key skip above rarely fires. One row
-  // renders one window per kind+label — the UI has no account axis — so the
-  // first lane's copy wins (keyLane first: it is the credential configured in
-  // omp) and later duplicates from other lanes are dropped.
+  const lane = keyResult.status === 'fulfilled' ? keyResult.value : null;
+  // One row renders one window per kind+label — the UI has no account axis —
+  // so duplicates inside the lane are dropped, first copy wins.
   const windowIdentities = new Set();
-  const windows = lanes.flatMap((result) => result.value.windows).filter((window) => {
+  const windows = (lane?.windows || []).filter((window) => {
     const identity = `${window?.kind || ''}|${window?.label || ''}`;
     if (windowIdentities.has(identity)) return false;
     windowIdentities.add(identity);
     return true;
   });
-  const accountKey = lanes.map((result) => result.value.accountKey).filter(Boolean)[0] || '';
-  const accountLabel = lanes.map((result) => result.value.plan).filter(Boolean)[0] || '';
-  // Errors affect status, never the data from a healthy request. The user's
-  // console-key quota error takes precedence over a ZCode-managed failure.
-  const keyError = keyResult.status === 'rejected' ? keyResult.reason : keyResult.value.error;
-  const hasAnything = lanes.some((result) => result.value.hasAnything);
-  const balance = lanes.map((result) => result.value.balance).filter(Boolean)[0] || null;
-  // The plan buckets come from the local ZCode login, not the console key, so
-  // a ZCode-only row reports oauth while a keyed row reports api. A lane that
-  // ran but produced nothing — an entitled plan whose grants are not yet
-  // effective, or a mirror key with no subscription under it — reports
-  // unavailable rather than notConfigured: the login is detected, so "not
-  // configured" would contradict the settings pill. Billing 401/403 also maps
-  // to unavailable, mirroring ZCode's own classifyAvailabilityError: the
-  // mirror token is ZCode-managed and rotates there, not here.
-  const planError = planResult.status === 'rejected'
-    ? planResult.reason
-    : planResult.value?.error || null;
-  const planAttempted = !key && planResult.status === 'fulfilled' && Boolean(planResult.value.attempted);
-  const source = key ? 'api' : (hasAnything || planError || planAttempted ? 'oauth' : '');
+  const accountKey = lane?.accountKey || '';
+  const accountLabel = lane?.plan || '';
+  // Errors affect status, never the data from a healthy request.
+  const keyError = keyResult.status === 'rejected' ? keyResult.reason : lane?.error || null;
+  const hasAnything = Boolean(lane?.hasAnything);
+  const balance = lane?.balance || null;
+  // The console key is the only credential this provider reads, so a keyed row
+  // reports api and a keyless one reports notConfigured.
+  const source = key ? 'api' : '';
   return normalizeLimitProvider({
     provider: 'zai',
     ...(accountKey ? { accountKey } : {}),
@@ -474,9 +370,8 @@ async function fetchZaiLimits(options = {}, deps = {}) {
     ...(balance ? { balance } : {}),
     source,
     status: keyError ? laneErrorStatus(keyError)
-      : planError ? (planError.status === 'sourceRateLimited' ? 'sourceRateLimited' : 'unavailable')
-        : hasAnything ? 'ok'
-          : key || planAttempted ? 'unavailable' : 'notConfigured',
+      : hasAnything ? 'ok'
+        : key ? 'unavailable' : 'notConfigured',
     updatedAt,
     windows,
     region
@@ -613,163 +508,6 @@ function zcodeRecordCumulativeSpend({ accountKey, totalSpent, now, storePath, re
   };
 }
 
-// ZCode Start/Weekend plan quota lives on ZCode's own billing endpoint, not
-// the shared subscription quota above. Single origin, no region split; the
-// gateway rejects requests without the ZCode client's device id (code 3001
-// "parameter error"), so the id rides along from ZCode's own telemetry state.
-function zcodeDeviceMid(deps = {}) {
-  const readFileSync = deps.readFileSync || fs.readFileSync;
-  const env = deps.env || process.env;
-  const homeDir = deps.homeDir || os.homedir();
-  try {
-    const state = JSON.parse(readFileSync(
-      path.join(zcodeDataBaseDir(env, homeDir), '.zcode', 'v2', 'telemetry-state.json'),
-      'utf8'
-    ));
-    const deviceMid = String(state?.deviceMid || '').trim();
-    return deviceMid || null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function zcodeStartPlanBalanceUrl() {
-  return 'https://zcode.z.ai/api/v1/zcode-plan/billing/balance';
-}
-
-// Mirrors ZCode's normalizeZaiStartPlanBalanceLimits: one window per balance
-// bucket. The grant period lives on the plan entitlement, not the bucket, so
-// callers pass an entitlement_id → period map alongside the payload; daily
-// grants map to the shared daily lane, one-time grants take the billing lane
-// without windowMinutes.
-function zcodePlanBucketWindow(balance, periodByEntitlement = new Map()) {
-  const total = numberOrNull(balance?.total_units);
-  let used = numberOrNull(balance?.used_units);
-  let remaining = numberOrNull(balance?.remaining_units);
-  if (used === null && total !== null && remaining !== null) used = Math.max(0, total - remaining);
-  if (remaining === null && total !== null && used !== null) remaining = Math.max(0, total - used);
-  if (total === null && used === null && remaining === null) return null;
-  let usedPercent = null;
-  if (total !== null && total > 0) {
-    if (remaining !== null) usedPercent = clampPercent(100 - (remaining / total) * 100);
-    else if (used !== null) usedPercent = clampPercent((used / total) * 100);
-  }
-  if (usedPercent === null) usedPercent = clampPercent(balance?.percentage);
-  const period = periodByEntitlement.get(JSON.stringify([balance?.plan_id || '', balance?.entitlement_id || '']))
-    || String(balance?.period || '');
-  const label = String(balance?.show_name || '').trim() || 'Start Plan';
-  const resetsAt = toIso(balance?.expires_at ?? balance?.period_end);
-  const window = {
-    kind: period === 'daily' ? 'daily' : 'billing',
-    label,
-    limitId: String(balance?.plan_id || '').trim(),
-    ...(usedPercent !== null ? { usedPercent, remainingPercent: Math.max(0, Math.min(100, 100 - usedPercent)) } : {}),
-    showMeter: usedPercent !== null,
-    ...(period === 'daily' ? { windowMinutes: 24 * 60 } : {})
-  };
-  if (used !== null) window.used = used;
-  if (remaining !== null) window.remaining = remaining;
-  if (total !== null) window.limit = total;
-  if (resetsAt) {
-    window.resetsAt = resetsAt;
-    if (period === 'daily') window.boundaryKind = 'reset';
-    else if (period === 'one_time') window.boundaryKind = 'expiry';
-  }
-  return window;
-}
-
-function zcodePeriodByEntitlement(payload) {
-  const periodByEntitlement = new Map();
-  const plans = Array.isArray(payload?.data?.plans) ? payload.data.plans : [];
-  for (const plan of plans) {
-    const entitlements = Array.isArray(plan?.entitlements) ? plan.entitlements : [];
-    for (const entitlement of entitlements) {
-      const id = String(entitlement?.entitlement_id || '').trim();
-      const period = String(entitlement?.period || '').trim();
-      if (id && period) periodByEntitlement.set(JSON.stringify([plan?.plan_id || '', id]), period);
-    }
-  }
-  return periodByEntitlement;
-}
-
-function parseZcodeStartPlanBalances(payload) {
-  const periodByEntitlement = zcodePeriodByEntitlement(payload);
-  const balances = Array.isArray(payload?.data?.balances) ? payload.data.balances : [];
-  const groups = new Map();
-  for (const [index, balance] of balances.entries()) {
-    const window = zcodePlanBucketWindow(balance, periodByEntitlement);
-    if (!window) continue;
-    // The API model name is the aggregation grain, independent of the
-    // Start/Weekend grant and of any present or future model version.
-    const identity = String(balance.show_name || '').trim().toLowerCase();
-    const period = periodByEntitlement.get(JSON.stringify([balance.plan_id || '', balance.entitlement_id || '']))
-      || String(balance.period || '');
-    const complete = Number.isFinite(window.limit) && window.limit > 0 && Number.isFinite(window.remaining);
-    const key = JSON.stringify([identity,
-      // Unknown identity or incomplete numbers cannot safely be added.
-      identity.length && complete ? '' : index]);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ window, period });
-  }
-  const windows = [...groups.entries()].map(([key, entries]) => {
-    // Sort before picking the representative so payload order changes no UI.
-    entries.sort((a, b) => a.window.label.localeCompare(b.window.label)
-      || a.window.limitId.localeCompare(b.window.limitId));
-    const window = { ...entries[0].window };
-    if (entries.length > 1) {
-      window.limit = entries.reduce((sum, entry) => sum + entry.window.limit, 0);
-      window.remaining = entries.reduce((sum, entry) => sum + entry.window.remaining, 0);
-      window.used = entries.reduce((sum, entry) => sum + entry.window.used, 0);
-      window.usedPercent = clampPercent(window.used / window.limit * 100);
-      window.remainingPercent = 100 - window.usedPercent;
-      window.limitId = `zcode-model:${hashKey(key)}`;
-    } else if (!window.limitId) {
-      window.limitId = `zcode-bucket:${hashKey(key)}`;
-    }
-    const periods = [...new Set(entries.map(entry => entry.period))].sort();
-    const boundaries = [...new Map(entries
-      .filter(entry => entry.window.resetsAt)
-      .map(entry => {
-        const boundary = {
-          at: entry.window.resetsAt,
-          kind: entry.window.boundaryKind || null
-        };
-        return [`${boundary.at}:${boundary.kind}`, boundary];
-      })).values()]
-      .sort((a, b) => a.at.localeCompare(b.at) || String(a.kind || '').localeCompare(String(b.kind || '')));
-    const nextAt = boundaries[0]?.at || null;
-    const nextBoundaries = boundaries.filter(boundary => boundary.at === nextAt);
-    const nextKinds = new Set(nextBoundaries.map(boundary => boundary.kind).filter(Boolean));
-    if (nextAt) {
-      window.resetsAt = nextAt;
-      if (nextBoundaries.every(boundary => boundary.kind)) {
-        window.boundaryKind = nextKinds.size > 1 ? 'mixed' : [...nextKinds][0];
-      } else {
-        delete window.boundaryKind;
-      }
-    }
-    const uniformDaily = periods.length === 1 && periods[0] === 'daily'
-      && new Set(boundaries.map(boundary => boundary.at)).size === 1;
-    if (!uniformDaily) {
-      window.kind = 'billing';
-      delete window.windowMinutes;
-      // resetsAt remains the compatibility/scheduling timestamp. boundaryKind
-      // tells every presentation surface whether that earliest change is a
-      // replenishing reset, a grant expiry, or both at the same instant.
-    }
-    return window;
-  }).sort((a, b) => a.label.localeCompare(b.label) || a.limitId.localeCompare(b.limitId));
-  // Prefer renewing daily entitlements, then a stable identity as a tie-break.
-  // Weekend ids also contain start-plan, so matching that substring is not
-  // enough to choose the account header.
-  const plans = (Array.isArray(payload?.data?.plans) ? payload.data.plans : [])
-    .filter(entry => entry?.status === 'active')
-    .sort((a, b) => Number(Array.isArray(b.entitlements) && b.entitlements.some(entry => entry?.period === 'daily'))
-      - Number(Array.isArray(a.entitlements) && a.entitlements.some(entry => entry?.period === 'daily'))
-      || String(a.plan_id || a.name || '').localeCompare(String(b.plan_id || b.name || '')));
-  return { plan: String(plans[0]?.name || '').trim(), windows };
-}
-
 module.exports = {
   ZAI_FETCH_TIMEOUT_MS,
   ZAI_QUOTA_URL,
@@ -780,6 +518,5 @@ module.exports = {
   zaiSubscriptionUrl,
   zaiDashboardUrl,
   parseZaiUsage,
-  parseZcodeStartPlanBalances,
   fetchZaiLimits
 };

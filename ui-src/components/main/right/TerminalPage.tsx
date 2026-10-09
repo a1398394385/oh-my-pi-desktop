@@ -19,6 +19,37 @@ const PERSIST_KEY = "right-terminal";
 // Terminal font stack (same idea as ZCode's DEFAULT_TERMINAL_FONT_FAMILY: monospace + Nerd Font fallback)
 const TERM_FONT = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "MesloLGS NF", "Hack Nerd Font", monospace';
 
+/** Create the Terminal and mount it with xterm's DOM char-size strategy (see the comment below). */
+function newTerminal(hostEl: HTMLElement, fontSize: number, fontFamily: string): Terminal {
+  const opts = {
+    fontSize,
+    fontFamily,
+    theme: buildTheme(),
+    cursorBlink: true,
+    scrollback: 5000,
+    allowProposedApi: false,
+  };
+  // OffscreenCanvas is typed as an always-present global, but it is a configurable property that
+  // this helper temporarily hides; the optional-shaped view is the only way TS accepts `delete`.
+  const g = globalThis as { OffscreenCanvas?: typeof OffscreenCanvas };
+  // WKWebView's canvas 2D does not see user-installed fonts (~/Library/Fonts): for a font like
+  // Fira Code, measureText("W") returns the default sans metrics (13px -> 12.27) while the DOM
+  // measures the real advance (8.0). xterm v6 decides its char-size strategy inside open() and
+  // prefers the OffscreenCanvas one, so the wrong 12.27 became the cell width; the DOM renderer
+  // then padded every glyph up to that width (letter-spacing 4.27px) — vscode-like wide letter
+  // spacing, and ~35% fewer columns. Hiding OffscreenCanvas across the constructor + open() call
+  // makes CharSizeService fall back to its DOM measure element, which reads the font correctly.
+  const saved = g.OffscreenCanvas;
+  try {
+    delete g.OffscreenCanvas;
+    const term = new Terminal(opts);
+    term.open(hostEl);
+    return term;
+  } finally {
+    if (saved) g.OffscreenCanvas = saved;
+  }
+}
+
 // ---------- Theme: CSS token -> xterm ITheme (dark/light ANSI palettes) ----------
 const ANSI_DARK = {
   black: "#1c1c1e", red: "#ff6b68", green: "#34c759", yellow: "#febc2e",
@@ -118,20 +149,12 @@ function scheduleFit(own: TermSession) {
 function createTermSession(key: string, container: HTMLElement): TermSession {
   const st0 = useAppStore.getState();
   const customFont = st0.uiPrefs.terminalFont?.trim();
-  const term = new Terminal({
-    fontSize: st0.uiPrefs.terminalFontSize ?? 13,
-    fontFamily: customFont || TERM_FONT,
-    theme: buildTheme(),
-    cursorBlink: true,
-    scrollback: 5000,
-    allowProposedApi: false,
-  });
-  const fit = new FitAddon();
-  term.loadAddon(fit);
   const hostEl = document.createElement("div");
   hostEl.className = "tpane-host";
   container.appendChild(hostEl);
-  term.open(hostEl);
+  const term = newTerminal(hostEl, st0.uiPrefs.terminalFontSize ?? 13, customFont || TERM_FONT);
+  const fit = new FitAddon();
+  term.loadAddon(fit);
   fit.fit(); // synchronous first fit: the create frame carries the correct size, avoiding a startup-output/resize race
 
   const own: TermSession = {
@@ -192,18 +215,19 @@ function createTermSession(key: string, container: HTMLElement): TermSession {
   });
   own.mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
-  // Start the PTY: cwd takes the current active session's project directory, falling
-  // back to the primary project (getAvailableProjects()[0], same convention as new-session
-  // defaults) when no session is open. An empty cwd would make the host fall back to its
-  // own process.cwd(), which for a GUI-spawned host is the arbitrary launch dir (usually
-  // the home dir) — not a project-centric default.
+  // Start the PTY: cwd takes the current active session's project directory; with
+  // no session open (welcome page) it follows the project picked in the welcome
+  // project selector (newSessionProject), falling back to the primary project
+  // (getAvailableProjects()[0]). An empty cwd would make the host fall back to its
+  // own process.cwd(), which for a GUI-spawned host is the arbitrary launch dir
+  // (usually the home dir) — not a project-centric default.
   const s = activeOpen();
   const st = useAppStore.getState();
   const inherit = st.uiPrefs.terminalInheritProfile !== false;
   send({
     type: "terminal_create",
     id: own.id,
-    cwd: s?.cwd || st.getAvailableProjects()[0]?.cwd || "",
+    cwd: s?.cwd || st.newSessionProject || st.getAvailableProjects()[0]?.cwd || "",
     cols: term.cols,
     rows: term.rows,
     inheritProfile: inherit,

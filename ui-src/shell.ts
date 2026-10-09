@@ -8,6 +8,7 @@
 import { useAppStore, send, setBump, type TimerHandle } from "./store";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
+import { yieldSummary } from "./components/chat/util";
 import { t } from "./i18n";
 import { THEMES, type ThemeId } from "./theme-registry";
 
@@ -102,7 +103,6 @@ export function toggleRightPanel(): void {
   const rightCollapsed = !useAppStore.getState().rightCollapsed;
   // Expanding the right panel yields to collapse the process card (same as parts.jsx)
   setBump(rightCollapsed ? { rightCollapsed } : { rightCollapsed, todoCollapsed: true });
-  localStorage.setItem("omp-right-collapsed", rightCollapsed ? "1" : "0");
 }
 
 // ---------- Sidebar drag-resize ----------
@@ -253,6 +253,14 @@ export function railToolText(item: ToolItem): string {
     parts.length = 0;
     parts.push(t("chat.labelTask"));
     const summary = taskRailSummary(item.args || {}, item.details);
+    if (summary) parts.push(summary);
+  }
+  if (item.name === "yield") {
+    // Subagent result submission: the bare tool name says nothing, so lead with the label
+    // and the shared submission summary (failure reason / section labels / payload preview)
+    parts.length = 0;
+    parts.push(t("chat.labelYield"));
+    const summary = yieldSummary(item.args);
     if (summary) parts.push(summary);
   }
   if (item.args?.command) parts.push(String(item.args.command));

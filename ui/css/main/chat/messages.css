@@ -530,6 +530,11 @@
 
 .cmd-card-cmd.task-md .md-body { font-size: inherit; line-height: inherit; }
 
+/* Task card spawn list (ToolRow.tsx TaskBody): "• name ⟦agent⟧ → model:thinking" — flex keeps the
+   arrow icon and the faint model name on the row's line */
+.task-sub { display: flex; align-items: center; gap: 6px; }
+.task-sub-arrow, .task-sub-model { color: var(--faint); flex: none; }
+
 /* Local bash execution row (! prefix, BashRow): reuses .cmd row styles, status area right-aligned. exit 0 uses --dim, non-zero/errors use --err; "not in context" is a small faint tag */
 .bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
 

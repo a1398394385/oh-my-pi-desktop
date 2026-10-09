@@ -1645,6 +1645,8 @@ export interface DisplaysFrame {
   type: "displays";
   displays: Array<{ id: string; name: string; width: number; height: number; isPrimary: boolean }>;
   error: string | null;
+  /** TCC preflight label for screen capture: granted | denied | unavailable (native DesktopCapabilities.capturePermission) */
+  capturePermission: string;
 }
 
 /** SSH host table reply (host/rpc/ssh.ts ssh_list_hosts / after save/remove; user-scope ssh.json entries) */

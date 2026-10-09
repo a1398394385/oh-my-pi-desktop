@@ -7,8 +7,9 @@ export { cmdExpand, devExpand };
 import Icon from "../../Icon";
 import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
-import { isDevicePath, deviceNameOf } from "./util";
+import { isDevicePath, deviceNameOf, yieldSummary } from "./util";
 import ThinkingRow from "./ThinkingRow";
+import { modelShort } from "../shared/agent/subShared";
 import { t } from "../../i18n";
 
 // ---------- Terminal row (bash/shell/eval) and background tool row (hub): expand card with command on top, output below ----------
@@ -204,8 +205,8 @@ function renderWait(item: ToolItem) {
 }
 
 // Task row: subagent spawn (flat or batch), mirrors the TUI task card. Header meta is the
-// spawn count ("Task 3 agents"); the expanded card shows the assignment text plus one
-// `• name ⟦agent⟧` bullet per spawned subagent (TUI parity: names and types only).
+// spawn count ("Subagent 3"); the expanded card shows the assignment text plus one
+// `• name ⟦agent⟧ → model:thinking` bullet per spawned subagent.
 function taskSpawnCount(item: ToolItem): number {
   const args = item.args || {};
   const details = item.details as { results?: unknown[]; progress?: unknown[] } | undefined;
@@ -226,24 +227,36 @@ function taskSummary(item: ToolItem): string {
 function renderTask(item: ToolItem) {
   return <ExpandableRow item={item} iconName="agents" label={t("chat.labelTask")} summary={taskSummary(item) || item.text || ""} />;
 }
+// Yield row: a subagent submitting its structured result (the base's YieldTool). The summary
+// is the submission itself — failure reason, incremental section labels, workpool key, or a
+// payload preview — read through the shared yieldSummary so the Hub activity row agrees.
+function renderYield(item: ToolItem) {
+  return <ExpandableRow item={item} iconName="upload" label={t("chat.labelYield")} summary={yieldSummary(item.args) || item.text || ""} />;
+}
 // One spawned subagent row for the expanded card's result body. Source: resolved results first,
 // then live progress — never the call args (the args box shows the assignment text only).
-// Agent type is ⟦bracketed⟧ unless it is the default.
-function taskSpawnRows(item: ToolItem): { name: string; agent: string }[] {
-  const details = item.details as
-    | { results?: { id?: unknown; agent?: unknown }[]; progress?: { id?: unknown; agent?: unknown }[] }
-    | undefined;
+// Agent type is ⟦bracketed⟧ unless it is the default. The base appends the resolved thinking
+// level as a `:<level>` suffix on resolvedModel (only when one was resolved), so the short
+// display name already reads "model:thinking".
+interface TaskSpawnRecord {
+  id?: unknown;
+  agent?: unknown;
+  resolvedModel?: unknown;
+}
+function taskSpawnRows(item: ToolItem): { name: string; agent: string; model: string }[] {
+  const details = item.details as { results?: TaskSpawnRecord[]; progress?: TaskSpawnRecord[] } | undefined;
   const source = details?.results?.length ? details.results : details?.progress;
   if (!source?.length) return [];
   return source.map((r) => ({
     name: typeof r.id === "string" ? r.id : "",
     agent: typeof r.agent === "string" ? r.agent : "",
+    model: modelShort(typeof r.resolvedModel === "string" ? r.resolvedModel : ""),
   }));
 }
 // Expanded task card, TUI layout: the assignment text (Goal/Constraints/Contract) on top; the
-// spawn list (• name ⟦agent⟧) as the result body once any details exist. The model-facing
-// spawn-feedback text (item.output) is deliberately hidden when structured details exist — it
-// is coordination instruction for the model, not user content.
+// spawn list (• name ⟦agent⟧ → model:thinking) as the result body once any details exist. The
+// model-facing spawn-feedback text (item.output) is deliberately hidden when structured details
+// exist — it is coordination instruction for the model, not user content.
 function TaskBody({ item }: { item: ToolItem }) {
   const args = item.args || {};
   const assignment = typeof args.task === "string" && args.task.trim() ? args.task : typeof args.context === "string" ? args.context : "";
@@ -260,9 +273,14 @@ function TaskBody({ item }: { item: ToolItem }) {
       {rows.length > 0 ? (
         <div className="cmd-card-out">
           {rows.map((r, i) => (
-            <div key={i}>
-              {`• ${r.name}`}
-              {r.agent && r.agent !== "task" ? ` ⟦${r.agent}⟧` : ""}
+            <div className="task-sub" key={i}>
+              <span>{`• ${r.name}${r.agent && r.agent !== "task" ? ` ⟦${r.agent}⟧` : ""}`}</span>
+              {r.model ? (
+                <>
+                  <Icon name="arrowRight" size={12} className="task-sub-arrow" />
+                  <span className="task-sub-model">{r.model}</span>
+                </>
+              ) : null}
             </div>
           ))}
         </div>
@@ -576,6 +594,7 @@ function toolKind(item: ToolItem) {
   if (name === "todo") return "todo";
   if (name === "wait") return "wait";
   if (name === "task") return "task";
+  if (name === "yield") return "yield";
   if (name === "read") return "read";
   if (name === "web_search") return "websearch";
   if (name === "ask") return "ask";
@@ -618,6 +637,8 @@ export default function ToolRow({ item }: { item: ToolItem }) {
       return renderWait(item);
     case "task":
       return renderTask(item);
+    case "yield":
+      return renderYield(item);
     case "readgroup":
       return renderReadGroup(item);
     case "cmdgroup":

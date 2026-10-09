@@ -18,9 +18,18 @@ export interface LimitWindow {
   resetsAt?: string | number | null;
 }
 
-// Limit window labels: Record rather than a literal union; raw is any window
-// name delivered by the host
-const LIMIT_LABELS: Record<string, string> = { "5-hour": "5小时", "5h": "5小时", weekly: "每周", daily: "每日", session: "会话" };
+// Plan-window names are canonical and locale-independent: the rolling session window is
+// "5h", the weekly window "7d", a day-long window "1d", and a monthly/billing-cycle window
+// "Month" — one vocabulary on every surface, whatever the vendor called it on the wire
+// (session / 5-hour / 5h, weekly / Weekly, daily, monthly / billing). Only windows that
+// shipped a product-specific label (a plan tier, a named promo pool) keep that label.
+// Record rather than a literal union: raw is any window name delivered by the host.
+const LIMIT_LABELS: Record<string, string> = {
+  session: "5h", "5-hour": "5h", "5h": "5h",
+  "7d": "7d", weekly: "7d",
+  "1d": "1d", daily: "1d",
+  month: "Month", monthly: "Month", billing: "Month",
+};
 
 /** Limit window -> display item: remaining allowance rounded; resetIn = time
  *  until reset (<=1h "xxm", <=1d "xxh xxm", longer "xxd xxh") */

@@ -717,17 +717,28 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   //                   toolCallId records the owner (root session = Main,
   //                   inside a subagent stream = that subagent), and
   //                   parentToolCallId reverse-looks-up "Spawned by X"
-  const subRegistered = new Map<string, number>(); // subagentId -> started timestamp
+  const subRegistered = new Map<string, number>(); // subagentId -> first started timestamp
   const subSpawnCall = new Map<string, string>(); // subagentId -> parent task toolCallId
+  // A kept-alive subagent is re-run by IRC wake turns (base: attachIrcWakeTurnMonitor
+  // creates a FRESH run monitor per wake), so its raw progress counters restart at
+  // zero. Fold every finished run's totals and add them back onto the live run, or the
+  // roster shows only the last (short) wake turn while subagent_event keeps accumulating.
+  const subRunTotals = new Map<
+    string,
+    { requests: number; toolCount: number; cost: number; durationMs: number; tokens: Record<string, number> }
+  >();
+  const subFirstTask = new Map<string, string>(); // original assignment, kept across wake turns
   const callOwner = new Map<string, { owner: string; names: string[] }>(); // task toolCallId -> owner + spawned subagent names
   const spawnTools: Record<string, true> = { task: true, agent: true };
   const spawnNames = (args: Record<string, unknown>): string[] => {
     const items = Array.isArray(args.tasks) ? args.tasks : [args];
     return items.map((t) => (t && typeof t === "object" && "name" in t && typeof t.name === "string" ? t.name : undefined)).filter((n): n is string => !!n);
   };
-  const subName = (id: string, agent: string): string => {
+  // Batch spawns (one task call, N tasks) carry every name; the run's `index` picks this
+  // one, otherwise every roster row would read names[0].
+  const subName = (id: string, agent: string, index?: number): string => {
     const call = callOwner.get(subSpawnCall.get(id) ?? "");
-    return call?.names[0] ?? agent;
+    return call?.names[index ?? 0] ?? call?.names[0] ?? agent;
   };
   const subParent = (id: string): string => {
     const spawnCall = subSpawnCall.get(id);
@@ -743,7 +754,13 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   });
   const unsubLifecycle = eventBus.on("task:subagent:lifecycle", (p: any) => {
     if (p.parentToolCallId) subSpawnCall.set(p.id, p.parentToolCallId);
-    if (p.status === "started") subRegistered.set(p.id, Date.now());
+    // started fires once per run: the first one registers the subagent, later ones are
+    // IRC wake turns reusing the id — archive the finished run instead of resetting
+    // the roster's "Registered"/counters to the wake turn's zeroed progress.
+    if (p.status === "started") {
+      if (subRegistered.has(p.id)) archiveFinishedRun(p.id);
+      else subRegistered.set(p.id, Date.now());
+    }
     ws.send(
       JSON.stringify(
         stampEvent({
@@ -753,7 +770,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           agent: p.agent,
           description: p.description,
           status: p.status,
-          name: subName(p.id, p.agent),
+          name: subName(p.id, p.agent, p.index),
           parent: subParent(p.id),
           registeredAt: subRegistered.get(p.id),
           sessionFile: p.sessionFile ?? null,
@@ -774,6 +791,33 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   const subLastProgress = new Map<string, Record<string, unknown>>();
   const subSentAt = new Map<string, number>();
   const subSentStatus = new Map<string, string>();
+  // Fold the finished run's last progress into the subagent's running totals (called
+  // when a wake turn starts a new run over the same id).
+  const archiveFinishedRun = (id: string): void => {
+    const last = subLastProgress.get(id) as
+      | { requests?: number; toolCount?: number; cost?: number; durationMs?: number; tokens?: Record<string, number> }
+      | undefined;
+    if (!last) return;
+    const totals = subRunTotals.get(id) ?? { requests: 0, toolCount: 0, cost: 0, durationMs: 0, tokens: {} };
+    totals.requests += last.requests ?? 0;
+    totals.toolCount += last.toolCount ?? 0;
+    totals.cost += last.cost ?? 0;
+    totals.durationMs += last.durationMs ?? 0;
+    for (const [key, value] of Object.entries(last.tokens ?? {})) {
+      if (typeof value === "number") totals.tokens[key] = (totals.tokens[key] ?? 0) + value;
+    }
+    subRunTotals.set(id, totals);
+  };
+  const mergeTokens = (
+    totals: Record<string, number>,
+    current: Record<string, number> | undefined,
+  ): Record<string, number> => {
+    const merged: Record<string, number> = { ...totals };
+    for (const [key, value] of Object.entries(current ?? {})) {
+      if (typeof value === "number") merged[key] = (merged[key] ?? 0) + value;
+    }
+    return merged;
+  };
   const unsubProgress = eventBus.on("task:subagent:progress", (p: any) => {
     const pr = p.progress ?? {};
     // Subagent identity lives inside the progress object (AgentProgress.id) — the
@@ -781,17 +825,21 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // session-observer reads progress.id the same way)
     const subagentId: string | undefined = pr.id;
     if (!subagentId) return;
+    const totals = subRunTotals.get(subagentId);
+    const tokens = typeof pr.tokens === "number" ? { total: pr.tokens } : pr.tokens;
+    const task = subFirstTask.get(subagentId) ?? pr.task;
+    if (task && !subFirstTask.has(subagentId)) subFirstTask.set(subagentId, task);
     const payload = {
       agent: p.agent,
       status: pr.status,
-      task: pr.task,
-      cost: pr.cost,
-      durationMs: pr.durationMs,
-      requests: pr.requests,
-      toolCount: pr.toolCount,
+      task,
+      cost: totals ? totals.cost + (pr.cost ?? 0) : pr.cost,
+      durationMs: totals ? totals.durationMs + (pr.durationMs ?? 0) : pr.durationMs,
+      requests: totals ? totals.requests + (pr.requests ?? 0) : pr.requests,
+      toolCount: totals ? totals.toolCount + (pr.toolCount ?? 0) : pr.toolCount,
       // Base progress.tokens is a plain cumulative number; the frontend contract
       // (and the history-replay path below) expects the bucketed shape
-      tokens: typeof pr.tokens === "number" ? { total: pr.tokens } : pr.tokens,
+      tokens: totals ? mergeTokens(totals.tokens, tokens) : tokens,
       contextTokens: pr.contextTokens,
       contextWindow: pr.contextWindow,
       currentTool: pr.currentTool,
@@ -808,7 +856,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     if (!statusChanged && now - (subSentAt.get(subagentId) ?? 0) < 500) return;
     subSentAt.set(subagentId, now);
     subSentStatus.set(subagentId, pr.status);
-    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload }));
+    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent, pr.index), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload }));
   });
   const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
     // Task calls inside a subagent stream: owned by that subagent (nested spawn)

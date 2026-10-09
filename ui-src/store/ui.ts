@@ -65,7 +65,9 @@ export interface UiSlice {
   mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
   // Agent Hub: middle-card roster of the session's subagents (opened by double-tap ← in an
   // empty composer). The right sidebar links to hubSel — it renders the linked detail page
-  // while the hub is open and cannot be opened manually.
+  // while the hub is open and cannot be opened manually. hubOpen / hubPrevTab /
+  // hubRightWasCollapsed are per-session projections owned by the right-panel slots
+  // (saveRightSlot / restoreRightSlot), so each session remembers its own hub state.
   hubOpen: boolean;
   hubSel: string | null; // selected subagentId
   hubMode: "flat" | "tree";
@@ -132,8 +134,9 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   zoomLevel: 1,
   isCommandPressed: false,
   sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
-  // Right panel collapsed by default (matching the old index.html <aside id="right" class="collapsed">); once manually expanded, remembered via localStorage
-  rightCollapsed: localStorage.getItem("omp-right-collapsed") === null ? true : localStorage.getItem("omp-right-collapsed") === "1",
+  // Right panel always starts collapsed on launch (no cross-launch expansion memory;
+  // in-run toggling and the per-session slot memory are untouched)
+  rightCollapsed: true,
   isCreatingNew: false,
   newSessionProject: "",
   newSessionBranch: "",

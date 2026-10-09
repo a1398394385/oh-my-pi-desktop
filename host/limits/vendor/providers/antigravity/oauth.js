@@ -1,7 +1,6 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -153,22 +152,12 @@ function discoverOAuthClient(options = {}) {
   const configuredId = trimmed(env.ANTIGRAVITY_OAUTH_CLIENT_ID);
   const configuredSecret = trimmed(env.ANTIGRAVITY_OAUTH_CLIENT_SECRET);
   if (configuredId && configuredSecret) return { clientId: configuredId, clientSecret: configuredSecret };
-  const fsApi = options.fs || fs;
-  for (const filePath of candidateOAuthArtifacts(options)) {
-    try {
-      const stat = fsApi.statSync(filePath);
-      if (!stat.isFile() || stat.size > 256 * 1024 * 1024) continue;
-      const client = parseClientFromText(fsApi.readFileSync(filePath).toString('latin1'));
-      if (client) return client;
-    } catch (error) {
-      if (error?.code !== 'ENOENT') options.logger?.(`Could not inspect ${filePath}: ${error.message}`);
-    }
-  }
-  // Desktop OAuth clients cannot keep their client secret confidential. Keep
-  // the official Antigravity Hub client as the cross-platform default so a
-  // packaged Token Monitor can sign in without another app or shell-managed
-  // environment variables. Installed artifacts remain ahead of this fallback
-  // so a newer official client can be picked up without a Token Monitor update.
+  // Quota data may only come from OMP's own credentials, so the lane that mined
+  // a client id/secret out of an installed Antigravity.app / Gemini.app bundle
+  // is gone. Desktop OAuth clients cannot keep their client secret
+  // confidential, so the official Antigravity Hub client stays as the
+  // cross-platform default; the ANTIGRAVITY_OAUTH_CLIENT_ID/SECRET environment
+  // pair above is the only override.
   return officialOAuthClient();
 }
 
@@ -472,6 +461,103 @@ function mergeVerifiedModels(available, verified) {
   return merged;
 }
 
+// Quota shapes copied verbatim from the local RPC probe so the remote lane can
+// normalize the daily summary and the model lists without depending on the
+// probe module (which reads machine state). Callers may still override either
+// shaping step through the `deps.quotaSummaryWindows` / `deps.collapsePools`
+// seams.
+function parseResetTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const d = typeof value === 'number' ? new Date(value > 20_000_000_000 ? value : value * 1000) : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function quotaRemainingFraction(bucket) {
+  const direct = bucket?.remainingFraction;
+  if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
+  const remaining = bucket?.remaining;
+  if (typeof remaining?.remainingFraction === 'number' && Number.isFinite(remaining.remainingFraction)) {
+    return remaining.remainingFraction;
+  }
+  if (remaining?.case === 'remainingFraction' && typeof remaining.value === 'number' && Number.isFinite(remaining.value)) {
+    return remaining.value;
+  }
+  return null;
+}
+
+function quotaGroupName(displayName) {
+  const name = String(displayName || '').trim();
+  const lower = name.toLowerCase();
+  if (lower.includes('gemini')) return 'Gemini';
+  if (lower.includes('claude') || lower.includes('gpt')) return 'Claude/GPT';
+  return name || 'Quota';
+}
+
+function quotaBucketKind(bucket) {
+  const aliases = new Set(['session', '5h', '5-hour', 'five hour', 'five-hour']);
+  const candidates = [];
+  for (const value of [bucket?.window, bucket?.bucketId, bucket?.displayName]) {
+    const normalized = String(value || '').trim().toLowerCase().replaceAll('_', '-');
+    if (!normalized) continue;
+    candidates.push(normalized);
+    if (normalized.endsWith(' limit')) candidates.push(normalized.slice(0, -' limit'.length));
+  }
+  for (const candidate of candidates) {
+    if (candidate === 'weekly' || candidate.endsWith('-weekly')) return 'weekly';
+    if (aliases.has(candidate) || [...aliases].some((alias) => candidate.endsWith(`-${alias}`))) return 'session';
+  }
+  return null;
+}
+
+function defaultQuotaSummaryWindows(payload) {
+  const summary = payload?.response || payload?.summary || payload;
+  const groups = Array.isArray(summary?.groups) ? summary.groups : [];
+  const windows = [];
+  for (const group of groups) {
+    const groupName = quotaGroupName(group?.displayName);
+    for (const bucket of Array.isArray(group?.buckets) ? group.buckets : []) {
+      const kind = quotaBucketKind(bucket);
+      if (!kind) continue;
+      const remainingFraction = quotaRemainingFraction(bucket);
+      const disabled = bucket?.disabled === true;
+      windows.push({
+        kind,
+        name: `${groupName} ${kind === 'session' ? '5-hour' : 'weekly'}`,
+        remainingFraction: disabled ? null : remainingFraction,
+        resetTime: parseResetTime(bucket?.resetTime),
+        resetDescription: typeof bucket?.description === 'string' ? bucket.description : '',
+        showMeter: !disabled && remainingFraction !== null
+      });
+    }
+  }
+  const groupRank = (name) => name.startsWith('Gemini ') ? 0 : name.startsWith('Claude/GPT ') ? 1 : 2;
+  const kindRank = (kind) => kind === 'session' ? 0 : 1;
+  return windows.sort((a, b) => groupRank(a.name) - groupRank(b.name) || kindRank(a.kind) - kindRank(b.kind));
+}
+
+function poolForModel(label, modelId) {
+  const lc = `${label || ''} ${modelId || ''}`.toLowerCase();
+  if (lc.includes('gemini') && lc.includes('pro')) return 'Gemini Pro';
+  if (lc.includes('gemini') && lc.includes('flash')) return 'Gemini Flash';
+  return 'Claude';
+}
+
+function defaultCollapsePools(models) {
+  const pools = new Map();
+  for (const m of models) {
+    const name = poolForModel(m.label, m.modelId);
+    const existing = pools.get(name);
+    if (!existing || m.remainingFraction < existing.remainingFraction) {
+      pools.set(name, { name, remainingFraction: m.remainingFraction, resetTime: m.resetTime });
+    } else if (m.remainingFraction === existing.remainingFraction && m.resetTime && existing.resetTime && m.resetTime < existing.resetTime) {
+      // tie-break: earlier reset wins
+      pools.set(name, { name, remainingFraction: m.remainingFraction, resetTime: m.resetTime });
+    }
+  }
+  const order = ['Gemini Pro', 'Gemini Flash', 'Claude'];
+  return order.flatMap((name) => (pools.has(name) ? [pools.get(name)] : []));
+}
+
 async function fetchRemoteSnapshot(account, deps = {}) {
   let credential = await refreshCredential(account?.credential || account?.credentials, {
     ...deps,
@@ -487,7 +573,9 @@ async function fetchRemoteSnapshot(account, deps = {}) {
     await deps.onCredentialRenewed?.(account, credential, previous);
   }
   const projectBody = projectId ? { project: projectId } : {};
-  const quotaSummaryWindows = deps.quotaSummaryWindows;
+  const quotaSummaryWindows = typeof deps.quotaSummaryWindows === 'function'
+    ? deps.quotaSummaryWindows
+    : defaultQuotaSummaryWindows;
   if (typeof quotaSummaryWindows === 'function') {
     // The CLI consumes the daily service's quota. Production can return a
     // different Gemini window for the same credential and project, including
@@ -539,8 +627,7 @@ async function fetchRemoteSnapshot(account, deps = {}) {
       models = [];
     }
   }
-  const collapsePools = deps.collapsePools;
-  if (typeof collapsePools !== 'function') throw new TypeError('collapsePools dependency is required');
+  const collapsePools = typeof deps.collapsePools === 'function' ? deps.collapsePools : defaultCollapsePools;
   return {
     accountEmail: normalizeEmail(account?.accountEmail),
     accountPlan: planFromLoadResponse(loadResponse, credential),

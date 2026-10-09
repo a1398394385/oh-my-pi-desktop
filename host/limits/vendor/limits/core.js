@@ -417,6 +417,17 @@ function normalizeOpenCodeAccountKeyAliases(values, accountKey = '') {
     .slice(0, MAX_OPENCODE_ACCOUNT_KEY_ALIASES);
 }
 
+// Mirrors upstream limits/core.js. Added to this partial port because the
+// ported OpenCode provider requires it to de-duplicate its supplemental Zen
+// windows against the kinds the Go source already answered.
+function openCodeWindowKey(window) {
+  const normalized = normalizeLimitWindow(window);
+  if (!normalized) return '';
+  return [normalized.kind, normalized.metric, normalized.label]
+    .map((value) => String(value || ''))
+    .join(':');
+}
+
 function cursorWindowRank(window) {
   if (window.metric === 'spend') return 4;
   if (window.label === 'Requests' || window.label === 'Cursor Models') return 0;
@@ -532,5 +543,6 @@ module.exports = {
   DEFAULT_LIMITS_REFRESH_MS,
   normalizeLimitProvider,
   normalizeLimitsSummary,
-  normalizeLimitWindow
+  normalizeLimitWindow,
+  openCodeWindowKey
 };

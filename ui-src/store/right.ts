@@ -61,8 +61,8 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   fileView: null,
   fileViewPending: null,
   briefDiffPending: null,
-  // When the right panel is remembered as expanded, the process card starts collapsed (same yield rule as toggleRight/parts.jsx)
-  todoCollapsed: localStorage.getItem("omp-right-collapsed") === "0",
+  // Launch starts with the right panel collapsed, so the process card starts expanded
+  todoCollapsed: false,
   rightState: rightStateInit,
   gitDiffCache: { cwd: null, files: [], loading: false },
   fileDiffCache: { path: null, diff: "", loading: false },
@@ -120,9 +120,10 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
 
 // ---------- Unified per-session right-panel slots (single source of truth) ----------
 // Each session — and the "welcome" pseudo-session for the no-session view — owns one
-// slot holding its tab layout, collapse state and session-scoped view state. The store
-// fields (rightTabs/rightTab/rightRecentClosed/selectedFile/fileView/rightCollapsed)
-// are the LIVE PROJECTION of the current slot: switching writes the outgoing
+// slot holding its tab layout, collapse state, Agent Hub open state and session-scoped
+// view state. The store fields (rightTabs/rightTab/rightRecentClosed/selectedFile/
+// fileView/rightCollapsed/hubOpen/hubPrevTab/hubRightWasCollapsed) are the LIVE
+// PROJECTION of the current slot: switching writes the outgoing
 // projection into its slot and loads the incoming one; mid-session tab operations
 // only touch the projection and are captured at the next switch. Slots persist to
 // localStorage as one table; host-side resources (terminal PTY) register disposers
@@ -137,6 +138,13 @@ interface RightSlot {
   selectedFile: string | null;
   fileView: FileViewState | null;
   collapsed: boolean;
+  // ---- Agent Hub (all runtime-only: a launch always starts on the chat view) ----
+  /** Whether the middle-card Agent Hub is open for this session (per-session, like the tabs). */
+  hubOpen: boolean;
+  /** Right tab to restore when this session's hub closes (ui slice hubPrevTab). */
+  hubPrevTab: string | null;
+  /** Right-panel collapse state to restore when this session's hub closes (ui slice hubRightWasCollapsed). */
+  hubWasCollapsed: boolean;
   /** Runtime-only host-resource teardown callbacks; never persisted. */
   disposers: Set<() => void>;
 }
@@ -149,8 +157,8 @@ const WELCOME_SLOT = "welcome";
 const RIGHT_SLOT_MAX = 32;
 const RIGHT_SLOT_STORAGE_KEY = "omp-right-slots";
 
-/** Persisted slot row (disposers stripped). */
-type PersistedSlot = Omit<RightSlot, "disposers">;
+/** Persisted slot row (runtime-only fields stripped). */
+type PersistedSlot = Omit<RightSlot, "disposers" | "hubOpen" | "hubPrevTab" | "hubWasCollapsed">;
 
 /** Restore persisted slots on module load. The legacy snapshot table is dropped
  *  wholesale (deliberate one-way switch, no migration); corrupted rows are skipped. */
@@ -163,13 +171,20 @@ function loadRightSlots(): Map<string, RightSlot> {
     const out = new Map<string, RightSlot>();
     for (const [path, p] of pairs) {
       if (!p || !Array.isArray(p.tabs)) continue;
+      // The auto-injected "hub" tab is never restored: hubOpen is runtime-only, so every
+      // launch starts hubless and a persisted row carrying the tab would render the hub
+      // detail page with no hub behind it (rows written by older builds included it).
+      const rest = p.tabs.filter((t) => t !== "hub");
       out.set(path, {
-        ...p,
-        active: p.active ?? null,
+        tabs: rest,
+        active: p.active === "hub" ? rest[rest.length - 1] ?? null : p.active ?? null,
         recentClosed: p.recentClosed ?? [],
         selectedFile: p.selectedFile ?? null,
         fileView: p.fileView ?? null,
         collapsed: p.collapsed ?? true,
+        hubOpen: false,
+        hubPrevTab: null,
+        hubWasCollapsed: false,
         disposers: new Set(),
       });
     }
@@ -209,6 +224,9 @@ export function saveRightSlot(path: string | null): void {
     // (they depend on the global imageContent frame) — neither is persisted
     fileView: st.fileViewPending || st.fileView?.image ? null : st.fileView,
     collapsed: st.rightCollapsed,
+    hubOpen: st.hubOpen,
+    hubPrevTab: st.hubPrevTab,
+    hubWasCollapsed: st.hubRightWasCollapsed,
     disposers,
   });
   trimRightSlots();
@@ -238,6 +256,13 @@ export function restoreRightSlot(path: string | null): void {
       selectedFile: slot.selectedFile,
       fileView: slot.fileView,
       rightCollapsed: slot.collapsed,
+      // Hub is per-session: the incoming session brings its own open state (its "hub"
+      // tab rides along in slot.tabs) and its own selection — hubSel indexes the live
+      // subagent map, so the outgoing session's id never carries over.
+      hubOpen: slot.hubOpen,
+      hubSel: null,
+      hubPrevTab: slot.hubPrevTab,
+      hubRightWasCollapsed: slot.hubWasCollapsed,
       selectedSubagent: null,
       fileViewPending: null,
       briefDiffPending: null,
@@ -245,17 +270,39 @@ export function restoreRightSlot(path: string | null): void {
     return;
   }
   const st = useAppStore.getState();
+  // A fresh session inherits the layout but never the outgoing session's hub: hubOpen is
+  // per-session, and its auto-injected tab would otherwise render a hub detail page with
+  // no hub behind it (the right panel hides the tab, not the body).
+  const tabs = st.rightTabs.filter((n) => n !== "hub");
   rightSlots.set(key, {
-    tabs: st.rightTabs.slice(),
-    active: st.rightTab,
+    tabs,
+    active: st.rightTab === "hub" ? tabs[tabs.length - 1] ?? null : st.rightTab,
     recentClosed: st.rightRecentClosed.slice(),
     selectedFile: null,
     fileView: null,
     collapsed: st.rightCollapsed,
+    hubOpen: false,
+    hubPrevTab: null,
+    hubWasCollapsed: false,
     disposers: new Set(),
   });
   persistRightSlots();
-  useAppStore.setState({ selectedFile: null, fileView: null, selectedSubagent: null, fileViewPending: null, briefDiffPending: null });
+  // No slot yet: detail state clears; the hub fields AND the auto-injected tab go with
+  // them — the projection must land in the store too, otherwise the incoming session
+  // keeps the outgoing one's tab list while its own hubOpen is already false.
+  useAppStore.setState({
+    selectedFile: null,
+    fileView: null,
+    selectedSubagent: null,
+    fileViewPending: null,
+    briefDiffPending: null,
+    rightTabs: tabs,
+    rightTab: st.rightTab && tabs.includes(st.rightTab) ? st.rightTab : tabs[tabs.length - 1] ?? null,
+    hubOpen: false,
+    hubSel: null,
+    hubPrevTab: null,
+    hubRightWasCollapsed: false,
+  });
 }
 
 /** Destroy session `path`'s slot: run its disposers (host resources — terminal PTY),
@@ -283,7 +330,7 @@ export function openTabInSlot(path: string, name: string): void {
   if (!slot) {
     // Background-created session never activated in the UI: a minimal slot with just
     // this tab (inheriting the displayed layout would leak another session's panel)
-    slot = { tabs: [name], active: name, recentClosed: [], selectedFile: null, fileView: null, collapsed: false, disposers: new Set() };
+    slot = { tabs: [name], active: name, recentClosed: [], selectedFile: null, fileView: null, collapsed: false, hubOpen: false, hubPrevTab: null, hubWasCollapsed: false, disposers: new Set() };
     rightSlots.set(path, slot);
   } else {
     rightSlots.delete(path);

@@ -295,7 +295,8 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     };
   }, []);
   // Non-git sessions keep no Git Diff tab (both the open list and the active tab fall back).
-  // Restored snapshots may also carry a stale "hub" tab without a live hub — drop it.
+  // The "hub" tab is injected per session while that session's hub is open (openHub); the
+  // hub state now rides the per-session slot, so it is dropped whenever it disagrees.
   const hubOpen = useAppStore((st) => st.hubOpen);
   let tabs = rightTabs;
   if (!hubOpen && tabs.includes("hub")) tabs = tabs.filter((n) => n !== "hub");

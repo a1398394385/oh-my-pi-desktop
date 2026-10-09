@@ -72,8 +72,8 @@ function SubCard({ id, sub, sessionId }: { id: string; sub: SubagentState; sessi
       <span className="hub-row-head">
         <span className={"sub-dot st-" + st}>{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
         <span className="hub-name">{sub.name ?? sub.agent}</span>
-        {model ? <span className="hub-model">{model}</span> : null}
         {sub.streaming ? <SubControls sessionId={sessionId} agentId={id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
+        {model ? <span className="hub-model">{model}</span> : null}
       </span>
       <span className="hub-task text-faint">{sub.description || sub.task || sub.text.slice(0, 80) || "…"}</span>
       {segs.length > 0 || times.length > 0 ? (

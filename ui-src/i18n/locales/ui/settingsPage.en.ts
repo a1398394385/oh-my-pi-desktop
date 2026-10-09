@@ -1610,7 +1610,10 @@ export const settingsPageEn = {
     allDisplays: "All displays (composite)",
     primaryTag: "primary",
     notDetected: "not detected",
-    detectFailed: "Display detection failed",
+    permissionTitle: "Screen Recording permission",
+    permissionDesc: "macOS requires Screen Recording access before this app can capture the screen. Grant it in System Settings, then restart the app for the grant to take effect.",
+    permissionBtn: "Grant access",
+    permissionToast: "System Settings opened — grant access there, then restart the app.",
   },
   // ---- Browser section of the computer & browser page (ComputerPage.tsx) ----
   browser: {

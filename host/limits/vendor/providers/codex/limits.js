@@ -1335,43 +1335,7 @@ function readLiveCodexAuth(deps = {}) {
   }
 }
 
-function readLiveCodexIdentity(deps = {}) {
-  const auth = readLiveCodexAuth(deps);
-  return auth
-    ? codexAuthIdentity(auth)
-    : { email: '', accountLabel: '', providerAccountId: '', accountKey: '' };
-}
-
-async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now(), managedAccounts = []) {
-  const result = await readCodexUsageOrRpc(deps);
-  const payload = await withCodexOAuthResetCredits(result.payload, deps, result.oauthAuthSnapshot);
-  const authIdentity = result.oauthAuthSnapshot
-    ? codexAuthIdentity(result.oauthAuthSnapshot.auth)
-    : readLiveCodexIdentity(deps);
-  const email = authIdentity.email || payload.account?.email || '';
-  const fallbackSeed = payload.account?.email || `${payload.account?.type || 'account'}:${payload.account?.planType || ''}:${deps.codexAuthPath || codexAuthPath(deps.env || process.env)}`;
-  const accountKey = resolvedCodexAccountKey(
-    email,
-    authIdentity.workspaceAccountId || authIdentity.providerAccountId,
-    authIdentity.accountKey || fallbackSeed
-  );
-  const matchingManagedAccount = managedAccounts.find(
-    (account) => managedCodexAccountKey(account, {}, account.email) === accountKey
-  );
-  return mapCodexRateLimitsToProvider(payload, {
-    accountKey,
-    accountEmail: email,
-    accountLabel: codexAccountLabel(payload),
-    accountName: matchingManagedAccount?.workspaceLabel || '',
-    workspaceKind: matchingManagedAccount?.workspaceKind || '',
-    updatedAt: nowIso(nowMs),
-    source: result.source,
-    sourceDetail: result.sourceDetail
-  });
-}
-
 async function fetchCodexLimits(options = {}, deps = {}) {
-  const nowMs = (deps.now || Date.now)();
   const scope = options.limitRefreshScope?.provider === 'codex'
     ? options.limitRefreshScope
     : null;
@@ -1386,24 +1350,18 @@ async function fetchCodexLimits(options = {}, deps = {}) {
       if (scope.accountLabel) return account.accountLabel === scope.accountLabel;
       return false;
     });
-  let includeLiveAccount = options.includeLiveCodexAccount !== false;
-  if (scope) {
-    if (scope.sourceDetail) {
-      includeLiveAccount = includeLiveAccount && scope.sourceDetail !== 'managed';
-    } else if (scope.accountKey) {
-      includeLiveAccount = includeLiveAccount && readLiveCodexIdentity(deps).accountKey === scope.accountKey;
-    }
-  }
-  // Single live account: keep the original single-provider shape (and error
-  // propagation) so a signed-out/not-configured state surfaces as before.
+  // Codex quotas are served from OMP-managed accounts only; the machine's own
+  // Codex login is never consulted. With no managed account there is nothing to
+  // report, so keep the original single-provider error shape (and propagation)
+  // to surface a not-configured state.
   if (managedAccounts.length === 0) {
-    return includeLiveAccount ? fetchLiveCodexAccount(deps, nowMs) : [];
+    throw errorWithStatus('notConfigured', 'Codex account not configured');
   }
 
   const providers = [];
   // Prefer the composite account key; use email only for legacy providers that
   // do not expose one. This keeps same-email workspaces distinct while still
-  // collapsing the live and managed views of the exact same login.
+  // collapsing duplicate views of the exact same login.
   const seen = new Set();
   const identityKeys = (provider) => {
     if (provider.accountKey) return [`key:${provider.accountKey}`];
@@ -1411,17 +1369,6 @@ async function fetchCodexLimits(options = {}, deps = {}) {
   };
   const markSeen = (provider) => { for (const key of identityKeys(provider)) seen.add(key); };
   const alreadySeen = (provider) => identityKeys(provider).some((key) => seen.has(key));
-  // The live system account (the one the Codex app/CLI is currently signed into)
-  // stays visible alongside managed accounts — adding a managed account never
-  // hides the login you are actually using. Best-effort: a signed-out/Keychain-
-  // only live account just drops out, leaving the managed accounts.
-  if (includeLiveAccount) {
-    try {
-      const live = await fetchLiveCodexAccount(deps, nowMs, managedAccounts);
-      providers.push(live);
-      markSeen(live);
-    } catch (_) {}
-  }
   for (const account of managedAccounts) {
     const provider = await fetchManagedCodexAccountLimits(account, options, deps);
     if (alreadySeen(provider)) continue;

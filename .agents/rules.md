@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 10 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 11 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -18,6 +18,7 @@
 | RULE-008 | 列出外部来源资产的宿主扫描必须复用底座来源判定,禁止自建目录枚举绕过来源开关 | host/ 资产发现层 |
 | RULE-009 | 整文件回写源码必须显式 UTF-8,回写后必须核对非 ASCII 内容未变 | 全部脚本/生成器/批量改写 |
 | RULE-010 | 升级 @oh-my-pi/* 底座版本后必须实跑 check 与 host:build,禁止只改 pin + install 就交付 | 依赖升级流程 |
+| RULE-011 | 配额链路只允许 authStorage 的凭证与显式 env,禁止读取第三方工具的机器状态 | host/limits/ 全链路 |
 
 ---
 
@@ -126,3 +127,13 @@
 **How to apply**:升级流程固定为:改 pin → `bun install` → `bun run check` → `bun run host:build` → 需要发版再走 ui:build + tauri build。check 报 `No matching export` / `Could not resolve` 时按报错同步调用点(深路径参照 BUG-036 的内联处理)。注意守卫的 tree-shake 边界:干跑只对「真实调用点」的漂移可靠,升级后仍须实跑 host:build 兜底。review checklist:diff 含 `@oh-my-pi/*` 版本变化 ↔ 同一改动内出现过 check 与 host:build 的执行记录。
 
 **关联**:BUG-036
+
+### RULE-011: 配额链路只允许 authStorage 的凭证与显式 env,禁止读取第三方工具的机器状态
+
+**规则**:`host/limits/index.ts` 的 `VENDOR_SPECS` 映射到的 vendor fetch,**只能**使用调用方传入的凭证(来自 `authStorage.getApiKey`)与显式 env 通道。禁止 vendor 自己去读任何第三方工具的机器状态:`~/.claude`、`~/.codex`、`~/.cline`、`~/.zcode`、`~/.grok`、`~/.factory/.env`、OpenCode 的 `auth.json`、Cursor 的 tokscale 凭据与 `state.vscdb`、MiMo Desktop 的 cookie 库、以及任何查询用 CLI 的 spawn。无凭证时的正确结果是 `notConfigured`,不是「本机扫一下」。
+
+**Why**:移植 token-monitor 时把上游「零配置也能出数」的本地发现 lane 一并搬了进来,后果是配额卡可能显示**另一个账号/另一个工具登录态**的数据,且发起方是 OMP 的 RPC(用户以为是自己配的凭证)。用户明确要求去除全部本地兜底。
+
+**How to apply**:新增/修改 vendor 时先问「这份数据从哪来」:只有 options 字段(由 index.ts 从 authStorage 构造)、`deps` 注入、或显式 env(`TOKEN_MONITOR_*`/厂商 token 名)算合规;出现 `os.homedir()`/`Library/Application Support`/`state.vscdb`/`child_process.spawn`/keychain/`node:sqlite` 读第三方库即为违规。适配层约定:无凭证时 index 直接返回 `notConfigured` 且**不调用** vendor(没有 `native` 开关了);env cookie 型供应商(stepfun/typesafe/alibaba/commandcode/ollama)保持「不吃 API key,只认 env」的既有惯例。回归验证:`host/limits/vendor/` 下任何新增读取点都必须有对应冒烟——假 HOME 里种带标记串的本机态文件 + `PATH=/nonexistent`,跑 vendor fetch 断言结果里不出现该标记串、零子进程。
+
+**关联**:无(BUG 未单独立账,见 2026-10-08 会话)

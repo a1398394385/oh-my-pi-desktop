@@ -276,8 +276,8 @@ function HubRow({ row, flat, selected, onSelect, t, sessionId }: { row: Row; fla
         <span className={"sub-dot st-" + st}>{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {flat && sub.parent && sub.parent !== "Main" ? <span className="text-faint"> ↳ {sub.parent}</span> : null}
-        {model ? <span className="hub-model">{model}</span> : null}
         {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
+        {model ? <span className="hub-model">{model}</span> : null}
       </span>
       <span className="hub-task text-faint">{sub.description || sub.task || sub.text.slice(0, 80) || "…"}</span>
       {/* Metrics (left) and timing info (right) share one line */}

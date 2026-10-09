@@ -214,7 +214,9 @@ async function fetchCursorLimits(options = {}, deps = {}) {
   } else if (typeof deps.readActiveAccount === 'function') {
     accounts = [deps.readActiveAccount()].filter(Boolean);
   } else {
-    accounts = cursorAuth.listAccounts();
+    // Accounts are caller-injected only: never fall back to machine-local state
+    // (the tokscale credential store or Cursor's desktop database).
+    return fetchCursorAccountLimits(null, deps);
   }
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return fetchCursorAccountLimits(null, deps);

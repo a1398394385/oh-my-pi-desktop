@@ -21,7 +21,13 @@
 
 .hub-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Row tail order is [name][stop/steer][badge]: the controls own the auto margin so the
+   pair sits flush at the right edge with the row's 6px gap between them; two auto margins
+   would split the free space and park the badge mid-row. Without controls the badge itself
+   takes the auto margin. */
 .hub-model { margin-left: auto; flex: none; font-size: var(--ui-fs-sm); font-weight: 700; color: var(--dim); }
+
+.hub-row-head:has(.hub-row-acts) .hub-model { margin-left: 0; }
 
 .hub-task {
   font-size: var(--ui-fs-sm);

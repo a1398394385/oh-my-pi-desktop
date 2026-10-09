@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { menuZoom, toggleTheme, toggleSidebar, applyTheme, applyMotion } from "./shell";
-import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnected, openSettings, closeSettings, setBump } from "./store";
+import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnected, openSettings, closeSettings, setBump, activateSession } from "./store";
 import { initKeys } from "./keys";
 import { initI18n } from "./i18n";
 import type { ToolItem } from "./types/session";
@@ -171,11 +171,16 @@ if (new URLSearchParams(location.search).has("preview")) {
       landBrowserTabs(tabs as Parameters<typeof landBrowserTabs>[0]),
     emitBrowserFrame: (frame: { name: string; data: string; ts: number }) =>
       emitBrowserFrame({ type: "browser_frame", ...frame }),
+    // Session switching is a module-level function (not a store action), so smokes can
+    // only drive the per-session slots — and thus the per-session hub state — through
+    // this re-export; a dynamic import would hand back a second module instance.
+    activateSession,
   };
   useAppStore.setState({ bootSplash: false }); // preview mounts with samples, no host boot to wait for
   setConnected(true, "预览");
 } else {
   restoreRightSlot(null); // startup: bring back the welcome slot's persisted layout (if any)
+  useAppStore.setState({ rightCollapsed: true }); // a launch always starts with the right panel collapsed (tab layout memory survives)
   connect();
   // Message-rail music reactivity (Windows only): the persisted pref owns the
   // capture lifecycle. The store was already hydrated from the localStorage

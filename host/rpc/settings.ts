@@ -6,7 +6,10 @@ import path from "node:path";
 import fs from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { lookupSetting } from "../bootstrap.ts";
+import { logger } from "@oh-my-pi/pi-utils";
 import { listPhysicalDisplays, reconcileComputerDisplay } from "../computer-display.ts";
+import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
+import type { DesktopSession } from "@oh-my-pi/pi-natives";
 import { H, sessions, pendingApprovals, type DesktopEnv } from "../state.ts";
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
@@ -119,8 +122,27 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // Enumerate physical displays through the natives desktop adapter for the
     // computer-control display dropdown (read-only; failures degrade to an
     // empty list + error). Same enumeration the boot-time reconciliation uses.
+    // The capture-permission label is read before enumeration: with Screen
+    // Recording denied listDisplays itself throws, and the page still needs the
+    // label to offer the System Settings shortcut.
+    let capturePermission = "unavailable";
+    let session: DesktopSession | null = null;
+    try {
+      session = createDesktopSession({});
+      capturePermission = String(session.capabilities.capturePermission ?? "unavailable");
+    } finally {
+      await session?.close().catch(() => {});
+    }
     const { displays, error } = await listPhysicalDisplays();
-    ws.send(JSON.stringify({ type: "displays", displays, error }));
+    ws.send(JSON.stringify({ type: "displays", displays, error, capturePermission }));
+  },
+  open_screen_recording_settings(_ws) {
+    // The macOS Screen Recording grant lives in System Settings → Privacy &
+    // Security → Screen Recording and can only be made there: the TCC preflight
+    // is non-prompting, so the app cannot ask for it itself. Other platforms
+    // have no equivalent pane (their capture labels follow display enumeration).
+    if (process.platform !== "darwin") return;
+    openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
   },
   set_locale(_ws, msg) {
     // UI locale switch, fire-and-forget per the frame protocol (the frontend
@@ -286,8 +308,12 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
   },
   ui_error(_ws, msg) {
-    // Frontend uncaught-error reporting (WKWebView has no console; the dev terminal is the only outlet)
-    safeStderr(`[ui] ${msg.message}\n`);
+    // Frontend uncaught-error reporting (WKWebView has no console). Two outlets:
+    // the base logger's rotating file (the only sink that survives in a packaged
+    // app — its stderr has no terminal to write to) and stderr for the dev terminal.
+    const message = String(msg.message ?? "");
+    logger.warn(`[ui] ${message}`, { source: "ui" });
+    safeStderr(`[ui] ${message}\n`);
   },
   async open_folder(_ws, msg) {
     const raw = String(msg.path ?? "");

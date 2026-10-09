@@ -55,6 +55,9 @@
 | BUG-049 | SSH 测试报错既看不懂又复制不了——Windows OpenSSH 八进制转义外泄 + toast 承担了不可抄的诊断 | 2026-10-06 |
 | BUG-050 | 缓存保活自移植起从未布防过——嵌入式宿主只调 initialize 不发 session_start，扩展 config 恒为空靶标默认值 | 2026-10-07 |
 | BUG-051 | 重启后电脑控制整体失效——computer.display 存的是 Win32 显示器句柄，开机即换值，底座失配硬失败 | 2026-10-08 |
+| BUG-054 | 子代理列表工具数被 IRC 唤醒 turn 清零——每个 wake run 新建 monitor 从 0 计数，宿主原样转发覆盖累计值 | 2026-10-08 |
+| BUG-055 | 子代理流式行的模型徽标跑到行中间——`hub-model` 与 `hub-row-acts` 两个 auto 外边距平分剩余空间 | 2026-10-08 |
+| BUG-056 | 终端字母间距被撑开近 1.5 倍——WKWebView canvas 量不到用户字体，xterm 单元格宽度多算 53% | 2026-10-08 |
 
 ---
 
@@ -723,3 +726,54 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 
 **教训**：跨层保存「别的层生成的标识符」前先问它会活多久——句柄、指针、自增 id 一律只活一个进程/一次开机，能跨重启的只有设备自身属性（EDID 名、序列号、几何）。派生的持久状态必须有一个**每次启动都跑的对账点**（`applyProfile` 这类位置是天然落点）：失效时要么按稳定身份重解析，要么显式报错，静默采用别的目标比直接失败更糟。
 
+### BUG-054: 子代理列表工具数被 IRC 唤醒 turn 清零——每个 wake run 新建 monitor 从 0 计数，宿主原样转发覆盖累计值
+
+**现象**：Agent Hub 列表里部分 subagent 行显示「1~2 次请求 · 0~2 次工具」，点开详情却是一整页工具行（几十条）；同时该行「启动」时间是最晚那条对等消息的时刻（如 12:22:39 而非 12:17:31）、耗时只有 2 秒、task 描述变成对等消息正文（「Thanks — opencode already has its catalog entry…」）。批量 spawn 时列表里多行还共用同一个名字。
+
+**分诊**：②确认存量缺陷——底座 kept-alive + IRC 唤醒语义自移植起即如此，与本次改动无关；此前被子代理数量少、唤醒不密集掩盖。
+
+**根因**：kept-alive 子代理被对等消息唤醒时，底座 `attachIrcWakeTurnMonitor`（`packages/coding-agent/src/task/executor.ts`）会**为同一 subagentId 新建一个 run monitor**（`createSubagentRunMonitor` → `toolCount/requests/tokens/cost/durationMs` 全部归零），随后发 `started` lifecycle 帧与该 turn 的 progress 帧。宿主 `host/session-lifecycle.ts` 的 `task:subagent:progress` 订阅把这些 per-run 原始值原样转发，前端 `subagent_progress` 又整体覆盖 `usage`——于是列表/详情头部的「N 次工具」被最后一次短唤醒 turn 覆盖；而 `subagent_event`（工具行）跨 run 累积，详情页 Recent activity 仍是几十行。同源的三处附带偏差：`subRegistered` 每次 `started` 重写 → 注册时间被刷新成最后一次唤醒；`progress.task` 被 IRC 消息正文覆盖 → 行描述变成对等消息；一次 task 调用批量 spawn N 个时 `subName()` 取 `names[0]` → 所有行显示第一个名字。
+
+**证据**：会话 `01a1199d-…`（Port* 批次一次 task 调用 spawn 7 个后台子代理）——`PortDevin.jsonl` 的 `irc:incoming` 记录 12:22:39 正文与列表首行描述逐字相同，且等于详情页 `Registered 12:22:39`；该行 usage「1 req · 0 tools · 401 tok · 2秒」正是那次唤醒 turn，而它的 Output 指向 PortDevin.jsonl（run1 的 44 次工具）。
+
+**修复**：`host/session-lifecycle.ts` attachEntry 内（不改底座）——①新增 `subRunTotals` + `archiveFinishedRun`：`started` 帧再次出现（= 新 run 边界）时把上一 run 的最后 progress 折进累计，progress 转发时把累计值加回 `requests/toolCount/cost/durationMs/tokens`（单 run 子代理路径零变化）；②`subRegistered` 只在首次 started 写入，`subFirstTask` 保留首个 assignment；③`subName(id, agent, index)` 按 run 的 `index` 取名字（lifecycle/progress payload 都带 index）。
+
+**验证**：`.local/probe-subagent-wake.ts` 对照实验（Beta sleep 25s 后向 `agent://all` 广播，唤醒已 yield 的 Alpha）——修复前 Alpha 2 个 run、工具事件 3 而 progress.toolCount=1、task 被覆盖成「ping from Beta」；修复后 toolCount=4 == 工具事件 4、task 保留原 assignment、计数单调不回退。回归 `.local/probe-subagent-toolcount.ts`（7 个子代理、无 IRC）仍 9=9 全一致。`bun run check` 全绿。
+
+**教训**：一个 subagentId 对应的是「多次 run」而非「一次 run」——kept-alive/唤醒机制下任何 per-run 的原始计数（toolCount/requests/cost/duration/registeredAt/task）都不能直接当聚合值转发；「同一 id 再次出现 `started`」就是 run 边界信号。残留未处理：底座 `processEvent` 的 `if (resolved) return` 使 run 结束瞬间的工具不计入 toolCount（偏差 ≤ 数个，属于底座行为）。
+
+### BUG-055: 子代理流式行的模型徽标跑到行中间——`hub-model` 与 `hub-row-acts` 两个 auto 外边距平分剩余空间
+
+**现象**：Agent Hub 中栏与右栏子代理列表里，subagent 正在流式（行尾出现停止/steer 两个按钮）时，模型名+思考级别徽标离开行右端、浮在名字与按钮之间的中部；非流式行（无按钮）位置正常。期望布局是徽标贴行最右、两个操作按钮紧邻徽标左侧（间距取行内统一 gap）。
+
+**分诊**：②确认存量缺陷——18.5 子代理控制面加入 `.hub-row-acts` 起即如此，只在流式行暴露。
+
+**根因**：`ui/css/shared/agent.css` 中 `.hub-model { margin-left: auto }`（让徽标贴行右端）与后加的 `.hub-row-acts { margin-left: auto }`（把按钮组推到行右端）并存，而 DOM 尾部顺序是 `[名字][徽标][按钮组]`。flex 容器的剩余空间由**多个 auto 外边距均分**，于是流式行变成 `[名字] ←½空隙→ [徽标] ←½空隙→ [按钮]`——徽标不是被压缩，是被"平分后留在中间"。
+
+**修复**：把尾部顺序调成 `[名字][按钮组][徽标]`，并让 auto 外边距只落一处（徽标默认持有，出现按钮组时让给它）：
+
+```css
+.hub-model { margin-left: auto; flex: none; font-size: var(--ui-fs-sm); font-weight: 700; color: var(--dim); }
+.hub-row-head:has(.hub-row-acts) .hub-model { margin-left: 0; }
+```
+
+配套把 `SubControls` 在 JSX 中移到 `hub-model` 之前（`AgentHubPage.tsx` HubRow 与 `SubagentPage.tsx` SubCard 各一处，DOM 顺序与视觉顺序一致，不用 `order` 改序）。非流式行行为与修复前完全一致（徽标仍贴行右端）；流式行变为 `[名字] …空隙… [按钮组][徽标]`，两者间距由 `.hub-row-head` 的 `gap: 6px` 保证。`.hub-row-head` 被中栏 Hub 行与右栏子代理卡片共用，一处修复覆盖两个面。
+
+**验证**：`bun run ui:dev` + `?preview=1` 注入 streaming/completed 两种行，再把真实 DOM 克隆进 640px 固定宽容器（真实 `agent.css`）测几何——streaming 行 `[名字][按钮组 427–469][徽标 475–623]`：徽标右缘 623 = head 右缘（贴最右）、按钮组→徽标间距 6px（等于行内 gap）、`getComputedStyle(徽标).marginLeft` = `0px`（`:has()` 覆盖生效，auto 已让给按钮组）；completed 行徽标 475–623 仍贴右（`marginLeft: 372.3px` = auto 解析值）。截图目视确认两种行的排布。`bun run check` 全绿。
+
+**教训**：同一 flex 行里"把 X 推到右端"的 auto 外边距只能有一个，且必须落在真正的最右元素上；往行尾追加元素时要同步移交 auto（并把 DOM 顺序排成期望的视觉顺序），否则旧规则继续吃剩余空间，表现为元素停在中间而非被压缩。
+
+
+### BUG-056: 终端字母间距被撑开近 1.5 倍——WKWebView canvas 量不到用户字体，xterm 单元格宽度多算 53%
+
+**现象**：右栏终端用 Fira Code（用户字体，装在 `~/Library/Fonts`）时，字母之间被撑开一大截——同一条 `omp-desktop [main] ⚡ abcdefg` 与 iTerm2 并排对比，字距约为其 1.5 倍；同时列数偏少（换行更早、一屏内容更少）。默认字体栈（`ui-monospace`/SF Mono/Menlo）看不出异常。
+
+**分诊**：②确认存量缺陷——`@xterm/xterm ^6.0.0` 自 35e3f00（2026-09-21 终端 pane 落地）起即如此；v6 才引入 OffscreenCanvas 度量策略，与本次改动无关。
+
+**根因**：xterm v6 的 CharSizeService 优先用 OffscreenCanvas 策略（`try { 画布策略 } catch { DOM 策略 }`），且该选择发生在 `open()` 内、**不是**构造函数里。WKWebView 的 canvas 2D（HTMLCanvas 与 OffscreenCanvas 同表现）**看不到用户目录安装的字体**：`ctx.font = '13px "Fira Code"'` 的 `measureText("W")` 返回默认 sans 的 12.27，而 Fira Code 真实 advance 是 8.0（DOM `offsetWidth/32` 度量在 WKWebView 与 Chromium 上都是 8.0；系统字体 Menlo/Monaco/monospace 在 canvas 上也正确）。于是 `dimensions.css.cell.width = 12.275`，DOM 渲染器再按自带算法 `letterSpacing = cell.width − WidthCache.get("W")` 给每个字形补 `12.275 − 8 = 4.275px` 字距——视觉留白 ×1.53、列数少 35%。字号 15px 同源：cellW 14.1625 vs 9.225。
+
+**修复**：`ui-src/components/main/right/TerminalPage.tsx` 新增 `newTerminal(hostEl, fontSize, fontFamily)`，把 `new Terminal(options)` 与 `term.open(hostEl)` 一起放进「临时摘掉 `globalThis.OffscreenCanvas`、finally 复原」的窗口里，让 CharSizeService 落到它自己的 DOM 度量策略（DOM 能正确解析用户字体）。对系统字体栈零影响：两策略实测 cellW 8.03125 vs 8.036、cellH 均 16。
+
+**验证**：取证工具 `.local/probe-wkwebview.swift`（`swiftc -O` 编译后 `probe-wkwebview <url> <js> [png]`：WKWebView 载页 + `evaluateJavaScript` + `takeSnapshot`）。①独立复现页（xterm 6.0 + 与生产同款 options，WKWebView 加载）：before cellW 12.275 / `.xterm-rows` letter-spacing `4.275px` / cellH 15，after cellW 8 / `normal` / cellH 16；同页对照变体证伪「构造函数期间摘掉就够」（cell 仍 12.275，必须在 `open()` 前后）。②真实 UI 取证（vite dev + `?preview=1` 载入真实 `TerminalPage`，`openRightTab('terminal')` 走真实入场路径，uiPrefs.terminalFont 设为 `"Fira Code"`）：before `rowsLetterSpacing: 4.275px`（首 span 4.272727px），after `normal`（首 span 无 letter-spacing）。③截图目视：控制组宽字距 vs 修复组紧排（后者与 iTerm2 一致）。④`bun run check`、`bun run ui:typecheck`、`bun run ui:build` 全绿；`scripts/smoke-terminal.ts`（PTY 侧链路，未被本次改动触及）仍全绿。
+
+**教训**：xterm 的单元格宽度并不等于字体 advance——它来自「度量策略」，而字距是 DOM 渲染器由二者之差派生的补偿量，所以「字体选对了但排版发虚」的根因通常在度量层而不在 CSS。跨引擎的 canvas 度量不可假设一致（尤其用户安装字体在 WKWebView canvas 上是盲区，`document.fonts.load()`/`ready` 不救），本仓库是 WKWebView 单引擎但浏览器调试路径是 Chromium → **字体/度量类问题必须在 WKWebView 上验证**。追溯上游实现时不能只看「哪段代码做测量」，还要看「什么时候选定」——本 case 里构造函数里删 OffscreenCanvas 无效，只有覆盖到 `open()` 才行，验证脚本必须覆盖真实调用序列。

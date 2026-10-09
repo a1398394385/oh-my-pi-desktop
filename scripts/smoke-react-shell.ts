@@ -94,8 +94,27 @@ if (slashTa) {
 }
 // __dbg is the debug hook injected by main.tsx in preview mode (the zustand store); the happy-dom Window type has no declaration for it.
 // Writes go through setState to swap the value (the selector subscribing to commands picks it up automatically; no manual trigger needed)
-const dbg = (window as unknown as { __dbg?: { useAppStore: { getState(): { commands: unknown[]; commandsSessionId: string; bumpSessionActivity(id: string): void }; setState(p: Record<string, unknown>): void } } })
-  .__dbg;
+const dbg = (window as unknown as {
+  __dbg?: {
+    useAppStore: {
+      getState(): {
+        commands: unknown[];
+        commandsSessionId: string;
+        bumpSessionActivity(id: string): void;
+        openSessions: Map<string, unknown>;
+        activePath: string | null;
+        hubOpen: boolean;
+        hubSel: string | null;
+        rightTabs: string[];
+        rightTab: string | null;
+        openHub(): void;
+        closeHub(): void;
+      };
+      setState(p: Record<string, unknown>): void;
+    };
+    activateSession(path: string): void;
+  };
+}).__dbg;
 if (!dbg) throw new Error("__dbg 调试钩子未注入");
 dbg.useAppStore.setState({
   commands: [{ name: "compact", aliases: [], description: "压缩上下文", source: "builtin", subcommands: [] }],
@@ -363,6 +382,58 @@ ok(
   (document.querySelector('.task[data-path="/path/to/proj1.json"]')?.textContent || "").includes("刚刚"),
 );
 
+
+// Per-session Agent Hub regression: the hub open state (and the auto-injected "hub" tab)
+// belongs to each session's own slot, never shared across switches.
+const openSessions = new Map(dbg.useAppStore.getState().openSessions);
+const mkSession = (path: string) => [
+  path,
+  {
+    sessionId: path,
+    cwd: "/preview",
+    items: [],
+    pendingApprovals: [],
+    assistantDraft: "",
+    streaming: false,
+    turnStartAt: null,
+    subagents: new Map([[`${path}-sub`, { name: "alpha", status: "completed", streaming: false, model: "t" }]]),
+    model: null,
+    thinking: "auto",
+    isGit: false,
+    todos: [],
+    goal: null,
+    planMode: false,
+    computerMode: false,
+    title: path,
+    isSubagent: false,
+  },
+];
+openSessions.set("/smoke-a", mkSession("/smoke-a")[1]);
+openSessions.set("/smoke-b", mkSession("/smoke-b")[1]);
+dbg.useAppStore.setState({ openSessions, isCreatingNew: false });
+
+dbg.activateSession("/smoke-a");
+dbg.useAppStore.getState().openHub();
+await sleep(50);
+const hubA = dbg.useAppStore.getState();
+ok("A 会话打开 Agent Hub", hubA.hubOpen === true && hubA.rightTabs.includes("hub"));
+
+dbg.activateSession("/smoke-b");
+await sleep(50);
+const hubB = dbg.useAppStore.getState();
+ok("切到 B 会话不继承 A 的 Agent Hub", hubB.hubOpen === false && !hubB.rightTabs.includes("hub"));
+
+dbg.activateSession("/smoke-a");
+await sleep(50);
+const hubBack = dbg.useAppStore.getState();
+ok("切回 A 会话恢复其 Agent Hub", hubBack.hubOpen === true && hubBack.rightTabs.includes("hub"));
+
+dbg.useAppStore.getState().closeHub();
+await sleep(50);
+ok("关闭 A 的 Hub 后自身状态清空", dbg.useAppStore.getState().hubOpen === false && !dbg.useAppStore.getState().rightTabs.includes("hub"));
+dbg.activateSession("/smoke-b");
+await sleep(50);
+ok("B 会话始终未被 A 的 Hub 操作影响", dbg.useAppStore.getState().hubOpen === false);
 
 let fail = 0;
 for (const [mark, name] of asserts) {

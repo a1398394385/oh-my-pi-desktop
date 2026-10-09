@@ -14,6 +14,7 @@ import Icon from "../../../Icon";
 import SchemaRows, { SchemaRowsBare, SchemaGroupTitle } from "../SchemaRows";
 import { PAGE_PLACEMENT, type Section } from "../placement";
 import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { IS_MAC } from "../../../platform";
 
 // This page owns the layout of both its sections (Section.id): each one is a
 // group heading + exactly one rounded card. The computer card starts with the
@@ -134,6 +135,16 @@ export default function ComputerPage() {
     send({ type: "list_displays" });
     setTimeout(() => setSpin(false), 600);
   };
+  // Screen capture sits behind a macOS TCC grant; the host reports the
+  // non-prompting preflight label with every displays reply, so the shortcut
+  // below shows up only when the grant is actually missing. The grant is made
+  // in System Settings — the host opens the exact pane (a fresh grant needs an
+  // app restart before this process's preflight flips to granted).
+  const captureDenied = IS_MAC && displaysFrame?.capturePermission === "denied";
+  const grantCapture = (): void => {
+    send({ type: "open_screen_recording_settings" });
+    toast(t("settingsPage.computer.permissionToast"));
+  };
 
   const displays = displaysFrame?.displays ?? [];
   const cur = typeof hs?.values?.["computer.display"] === "string" ? (hs.values["computer.display"] as string) : "all";
@@ -172,10 +183,12 @@ export default function ComputerPage() {
             onPick={(v) => send({ type: "set_setting", key: "computer.display", value: v })}
           />
         </div>
-        {displaysFrame?.error && (
-          <div className="set-note" title={displaysFrame.error}>
-            <b>{t("settingsPage.computer.detectFailed")}</b>
-            <span>{displaysFrame.error}</span>
+        {captureDenied && (
+          <div className="srow set-row">
+            <div className="srow-tx"><b>{t("settingsPage.computer.permissionTitle")}</b><span>{t("settingsPage.computer.permissionDesc")}</span></div>
+            <div className="srow-ctl">
+              <button type="button" className="save-btn" id="crGrant" onClick={grantCapture}>{t("settingsPage.computer.permissionBtn")}</button>
+            </div>
           </div>
         )}
         <SchemaRowsBare sections={SECTION_COMPUTER} />

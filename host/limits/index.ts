@@ -23,6 +23,13 @@ import { fetchGrokLimits as _fetchGrokLimits } from "./vendor/providers/grok/lim
 import { fetchCodexLimits as _fetchCodexLimits } from "./vendor/providers/codex/limits.js";
 import { fetchAntigravityLimits as _fetchAntigravityLimits } from "./vendor/providers/antigravity/limits.js";
 import { fetchCursorLimits as _fetchCursorLimits } from "./vendor/providers/cursor/limits.js";
+import { fetchClineLimits as _fetchClineLimits } from "./vendor/providers/cline/limits.js";
+import { fetchDevinLimits as _fetchDevinLimits } from "./vendor/providers/devin/limits.js";
+import { fetchFactoryLimits as _fetchFactoryLimits } from "./vendor/providers/factory/limits.js";
+import { fetchMimoLimits as _fetchMimoLimits } from "./vendor/providers/mimo/limits.js";
+import { fetchOpenCodeLimits as _fetchOpenCodeLimits } from "./vendor/providers/opencode/limits.js";
+import { fetchStepfunLimits as _fetchStepfunLimits } from "./vendor/providers/stepfun/limits.js";
+import { fetchTypesafeLimits as _fetchTypesafeLimits } from "./vendor/providers/typesafe/limits.js";
 
 type VendorFetch = (options: Record<string, unknown>, deps: Record<string, unknown>) => Promise<LimitProviderRow | LimitProviderRow[]>;
 
@@ -70,6 +77,13 @@ const fetchGrokLimits = _fetchGrokLimits as unknown as VendorFetch;
 const fetchCodexLimits = _fetchCodexLimits as unknown as VendorFetch;
 const fetchAntigravityLimits = _fetchAntigravityLimits as unknown as VendorFetch;
 const fetchCursorLimits = _fetchCursorLimits as unknown as VendorFetch;
+const fetchClineLimits = _fetchClineLimits as unknown as VendorFetch;
+const fetchDevinLimits = _fetchDevinLimits as unknown as VendorFetch;
+const fetchFactoryLimits = _fetchFactoryLimits as unknown as VendorFetch;
+const fetchMimoLimits = _fetchMimoLimits as unknown as VendorFetch;
+const fetchOpenCodeLimits = _fetchOpenCodeLimits as unknown as VendorFetch;
+const fetchStepfunLimits = _fetchStepfunLimits as unknown as VendorFetch;
+const fetchTypesafeLimits = _fetchTypesafeLimits as unknown as VendorFetch;
 
 // Cache TTL = background refresh interval (5min, host.ts
 // LIMITS_REFRESH_INTERVAL_MS): the background timer re-pulls everything and
@@ -81,13 +95,12 @@ const LIMITS_CACHE_TTL_MS = 5 * 60 * 1000;
 const limitsCache = new Map<string, { at: number; row: LimitProviderRow }>();
 
 // Vendor specs: omp provider id -> vendor fetch + label.
-// native = invoked even without an authStorage credential (the vendor
-// discovers credentials from the machine/environment itself, e.g. claude
-// reads ~/.claude, codex reads ~/.codex, cursor relies on tokscale).
+// A vendor is only ever called with a credential resolved from authStorage:
+// quotas are never derived from another tool's local sign-in state, so a
+// provider without a stored credential reports notConfigured instead.
 interface VendorSpec {
   vendor: string;
   label: string;
-  native: boolean;
   fetch: (key: string, baseUrl: string) => Promise<LimitProviderRow | LimitProviderRow[]>;
 }
 
@@ -108,65 +121,58 @@ const VENDOR_SPECS: Record<string, VendorSpec> = {
   "kimi-code": {
     vendor: "kimi",
     label: "Kimi",
-    native: true,
     fetch: (key) => fetchKimiLimits({ kimiApiKey: key }, {})
   },
   moonshot: {
     vendor: "kimi",
     label: "Kimi",
-    native: true,
     fetch: (key) => fetchKimiLimits({ kimiApiKey: key }, {})
   },
   zai: {
     vendor: "zai",
     label: "Z.ai (GLM)",
-    native: true,
     fetch: (key, baseUrl) => fetchZaiLimits({ zaiApiKey: key, zaiApiRegion: zaiRegionForBaseUrl(baseUrl) }, {})
   },
   "zai-coding-plan": {
     vendor: "zai",
     label: "Z.ai (GLM)",
-    native: true,
     fetch: (key, baseUrl) => fetchZaiLimits({ zaiApiKey: key, zaiApiRegion: zaiRegionForBaseUrl(baseUrl) }, {})
   },
   "zhipu-coding-plan": {
     vendor: "zai",
     label: "Z.ai (GLM)",
-    native: true,
     fetch: (key, baseUrl) => fetchZaiLimits({ zaiApiKey: key, zaiApiRegion: zaiRegionForBaseUrl(baseUrl) }, {})
   },
   openrouter: {
     vendor: "openrouter",
     label: "OpenRouter",
-    native: true,
     fetch: (key) => fetchOpenRouterLimits({ openrouterProfiles: { 默认: { apiKey: key } } }, {})
   },
   deepseek: {
     vendor: "deepseek",
     label: "DeepSeek",
-    native: true,
     fetch: (key) => fetchDeepSeekLimits({ deepseekApiKey: key }, {})
   },
-  minimax: { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
-  "minimax-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
-  "minimax-code": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
-  "minimax-code-cn": { vendor: "minimax", label: "MiniMax", native: true, fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
-  // ~/.claude / macOS keychain itself
+  minimax: { vendor: "minimax", label: "MiniMax", fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  "minimax-cn": { vendor: "minimax", label: "MiniMax", fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  "minimax-code": { vendor: "minimax", label: "MiniMax", fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  "minimax-code-cn": { vendor: "minimax", label: "MiniMax", fetch: (key, baseUrl) => fetchMinimaxLimits({ minimaxApiKey: key, minimaxApiHost: minimaxRegionForBaseUrl(baseUrl) }, {}) },
+  // anthropic: the stored credential is handed to the vendor as its env token
   anthropic: {
     vendor: "claude",
     label: "Claude",
-    native: true,
-    fetch: (key) => fetchClaudeLimits({}, key ? { env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: key } } : {})
+    fetch: (key) => fetchClaudeLimits({}, { env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: key } })
   },
-  // codex/cursor: rely on locally logged-in CLI / IDE state (tokscale scan), not wired to authStorage
-  "openai-codex": { vendor: "codex", label: "OpenAI Codex", native: true, fetch: () => fetchCodexLimits({}, {}) },
-  "openai-codex-device": { vendor: "codex", label: "OpenAI Codex", native: true, fetch: () => fetchCodexLimits({}, {}) },
-  cursor: { vendor: "cursor", label: "Cursor", native: true, fetch: () => fetchCursorLimits({}, {}) },
+  // codex/cursor/mimo consume no credential shape this adapter can hand them
+  // (codex wants a codex home, cursor a caller-injected account, mimo a pasted
+  // account cookie), so their rows stay notConfigured until one is wired.
+  "openai-codex": { vendor: "codex", label: "OpenAI Codex", fetch: () => fetchCodexLimits({}, {}) },
+  "openai-codex-device": { vendor: "codex", label: "OpenAI Codex", fetch: () => fetchCodexLimits({}, {}) },
+  cursor: { vendor: "cursor", label: "Cursor", fetch: () => fetchCursorLimits({}, {}) },
   // antigravity: omp's Google OAuth token is assembled into the vendor's managed account
   "google-antigravity": {
     vendor: "antigravity",
     label: "Google Antigravity",
-    native: true,
     fetch: (key) =>
       fetchAntigravityLimits(
         { antigravityManagedAccounts: [{ id: "omp", accountEmail: "", credentials: { accessToken: key, expiresAt: Date.now() + 300_000 } }] },
@@ -176,16 +182,42 @@ const VENDOR_SPECS: Record<string, VendorSpec> = {
   "github-copilot": {
     vendor: "copilot",
     label: "GitHub Copilot",
-    native: true,
     fetch: (key) => fetchCopilotLimits({ copilotToken: key }, {})
   },
-  xai: { vendor: "grok", label: "xAI (Grok)", native: true, fetch: (key) => fetchGrokLimits({ grokBearerToken: key }, {}) },
-  "xai-oauth": { vendor: "grok", label: "xAI (Grok)", native: true, fetch: (key) => fetchGrokLimits({ grokBearerToken: key }, {}) },
+  xai: { vendor: "grok", label: "xAI (Grok)", fetch: (key) => fetchGrokLimits({ grokBearerToken: key }, {}) },
+  "xai-oauth": { vendor: "grok", label: "xAI (Grok)", fetch: (key) => fetchGrokLimits({ grokBearerToken: key }, {}) },
   // cookie-based vendors: omp credentials are API-key shaped and don't fit; fall back to environment-variable cookies
-  "alibaba-coding-plan": { vendor: "alibaba", label: "Alibaba", native: true, fetch: () => fetchAlibabaLimits({}, {}) },
-  "alibaba-token-plan": { vendor: "alibaba", label: "Alibaba", native: true, fetch: () => fetchAlibabaLimits({}, {}) },
-  commandcode: { vendor: "commandcode", label: "Command Code", native: true, fetch: () => fetchCommandcodeLimits({}, {}) },
-  "ollama-cloud": { vendor: "ollama", label: "Ollama", native: true, fetch: () => fetchOllamaLimits({}, {}) }
+  "alibaba-coding-plan": { vendor: "alibaba", label: "Alibaba", fetch: () => fetchAlibabaLimits({}, {}) },
+  "alibaba-token-plan": { vendor: "alibaba", label: "Alibaba", fetch: () => fetchAlibabaLimits({}, {}) },
+  commandcode: { vendor: "commandcode", label: "Command Code", fetch: () => fetchCommandcodeLimits({}, {}) },
+  "ollama-cloud": { vendor: "ollama", label: "Ollama", fetch: () => fetchOllamaLimits({}, {}) },
+  // The key-shaped vendors below take the stored credential as their own token.
+  "cline-pass": { vendor: "cline", label: "Cline", fetch: (key) => fetchClineLimits({ clineApiKey: key }, {}) },
+  // Devin needs an organization beside the token; authStorage only carries the
+  // token, so the organization comes from the vendor's own DEVIN_ORGANIZATION
+  // env lane (without it the row reports notConfigured).
+  devin: { vendor: "devin", label: "Devin", fetch: (key) => fetchDevinLimits({ devinBearerToken: key }, {}) },
+  "factory-droid": { vendor: "factory", label: "Factory Droid", fetch: (key) => fetchFactoryLimits({ factoryApiKey: key }, {}) },
+  // Xiaomi's MiMo lane is account-cookie based and omp's API key is not that
+  // cookie, so nothing is passed in: the row reports notConfigured.
+  xiaomi: { vendor: "mimo", label: "MiMo", fetch: () => fetchMimoLimits({}, {}) },
+  "xiaomi-token-plan-cn": { vendor: "mimo", label: "MiMo", fetch: () => fetchMimoLimits({}, {}) },
+  "xiaomi-token-plan-ams": { vendor: "mimo", label: "MiMo", fetch: () => fetchMimoLimits({}, {}) },
+  "xiaomi-token-plan-sgp": { vendor: "mimo", label: "MiMo", fetch: () => fetchMimoLimits({}, {}) },
+  // OpenCode: the stored key is the Go API key and becomes the default account's profile
+  "opencode-go": {
+    vendor: "opencode",
+    label: "OpenCode",
+    fetch: (key) => fetchOpenCodeLimits({ opencodeProfiles: { 默认: { apiKey: key } } }, {})
+  },
+  "opencode-zen": {
+    vendor: "opencode",
+    label: "OpenCode",
+    fetch: (key) => fetchOpenCodeLimits({ opencodeProfiles: { 默认: { apiKey: key } } }, {})
+  },
+  // cookie-based vendors: omp credentials are API-key shaped and don't fit; fall back to environment-variable tokens
+  stepfun: { vendor: "stepfun", label: "StepFun", fetch: () => fetchStepfunLimits({}, {}) },
+  typesafe: { vendor: "typesafe", label: "TypeSafe", fetch: () => fetchTypesafeLimits({}, {}) }
 };
 
 // When a multi-account vendor returns an array, pick the best row: ok rows with windows first, else the first row
@@ -195,8 +227,8 @@ function pickRow(result: LimitProviderRow | LimitProviderRow[]): LimitProviderRo
 }
 
 // Query the current session provider's limits. The credential is resolved via
-// authStorage.getApiKey (supports OAuth auto-renewal and env fallback); native
-// providers still attempt local discovery without a credential.
+// authStorage.getApiKey (supports OAuth auto-renewal and env fallback) and is
+// the only credential a vendor may use; no credential means no query.
 // keyOverride explicitly carries a key already resolved for the session request
 // (multi-account sticky alignment), null means resolved but no credential;
 // cacheTag is the cache-key suffix (#id) of that key's credential, sharing the
@@ -220,10 +252,10 @@ export async function fetchSessionLimits(
   let row: LimitProviderRow;
   try {
     const key = keyOverride !== undefined ? (keyOverride ?? "") : await authStorage.getApiKey(ompProvider, undefined, { baseUrl });
-    if (!key && !spec.native) {
+    if (!key) {
       row = { provider: spec.vendor, status: "notConfigured", windows: [], updatedAt: new Date().toISOString() };
     } else {
-      row = pickRow(await spec.fetch(key ?? "", baseUrl));
+      row = pickRow(await spec.fetch(key, baseUrl));
     }
   } catch (error) {
     // errors thrown by vendor fetch carry a string status (unauthorized/rateLimited/...)
@@ -266,8 +298,8 @@ export interface AccountLimitRow {
 // - api_key: the key is directly usable
 // - oauth: the access token may be expired; refresh via oauth.refresh and
 //   take the latest, falling back to the stored token on failure
-// No credentials (single-credential native provider local discovery /
-// listAuthCredentials unavailable) falls back to a single-row fetchSessionLimits.
+// No credentials (nothing stored for the provider / listAuthCredentials
+// unavailable) falls back to a single-row fetchSessionLimits.
 export async function fetchProviderAccountsLimits(
   authStorage: AuthStorage,
   ompProvider: string,

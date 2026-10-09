@@ -25,8 +25,11 @@ function resolveProxyUrl(env = process.env) {
 }
 
 // Returns a fetch implementation: uses Bun's proxy option when a standard
-// proxy env is configured, otherwise forwards as-is.
-function createOutboundFetch(env = process.env) {
+// proxy env is configured, otherwise forwards as-is. An injected deps.fetch
+// wins, mirroring upstream (every ported provider threads its probe fetch in
+// through deps so deadlines and cancellation keep working).
+function createOutboundFetch(env = process.env, deps = {}) {
+  if (typeof deps.fetch === 'function') return deps.fetch;
   const proxy = resolveProxyUrl(env);
   return async function outboundFetch(url, init = {}) {
     if (!proxy) return fetch(url, init);

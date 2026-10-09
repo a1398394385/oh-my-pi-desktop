@@ -38,6 +38,7 @@
     { id: 'opencode', label: 'OpenCode' },
     { id: 'cursor', label: 'Cursor' },
     { id: 'antigravity', label: 'Antigravity' },
+    { id: 'cline', label: 'Cline' },
     { id: 'factory', label: 'Factory Droid' },
     { id: 'kimi', label: 'Kimi' },
     { id: 'grok', label: 'Grok' },
@@ -51,12 +52,15 @@
     { id: 'workbuddy', label: 'WorkBuddy' },
     { id: 'qoder', label: 'Qoder' },
     { id: 'deepseek', label: 'DeepSeek' },
+    { id: 'devin', label: 'Devin' },
     { id: 'openrouter', label: 'OpenRouter' },
     { id: 'minimax', label: 'Minimax' },
+    { id: 'typesafe', label: 'TypeSafe' },
     { id: 'volcengine', label: 'Volcengine' },
     { id: 'ollama', label: 'Ollama' },
     { id: 'trae', label: 'Trae CN' },
     { id: 'alibaba', label: 'Alibaba Cloud' },
+    { id: 'stepfun', label: 'StepFun' },
     { id: 'thirdparty', label: 'Third-party APIs' }
   ].map((provider) => Object.freeze({ ...provider })));
 

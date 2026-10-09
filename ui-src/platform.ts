@@ -3,6 +3,9 @@
 // copy come uniformly from here.
 export const IS_WINDOWS = navigator.userAgent.includes("Windows");
 
+/** macOS-only affordances (TCC-backed permissions) key off this */
+export const IS_MAC = navigator.userAgent.includes("Mac");
+
 /** Modifier keycap copy: Ctrl on Windows, ⌘ elsewhere */
 export const MOD = IS_WINDOWS ? "Ctrl" : "⌘";
 

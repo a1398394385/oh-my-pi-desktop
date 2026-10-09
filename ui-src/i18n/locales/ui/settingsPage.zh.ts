@@ -1580,7 +1580,10 @@ export const settingsPageZh = {
     allDisplays: "全部显示器（合成）",
     primaryTag: "主屏",
     notDetected: "未检测到",
-    detectFailed: "显示器检测失败",
+    permissionTitle: "屏幕录制权限",
+    permissionDesc: "macOS 需要屏幕录制授权，本应用才能截取屏幕。请在系统设置中授权，授权后需重启应用才会生效。",
+    permissionBtn: "申请权限",
+    permissionToast: "已打开系统设置，授权后请重启应用。",
   },
   // ---- Browser section of the computer & browser page (ComputerPage.tsx) ----
   browser: {

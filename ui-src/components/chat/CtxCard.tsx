@@ -50,17 +50,29 @@ function LimitsSection({ limits, noDiv }: { limits: CtxLimits; noDiv?: boolean }
     } else if (!pctWindows.length) {
       body = t("chat.limitsUnavailable");
     } else {
+      // Quota tiers never wrap on their own and the track minimum is each tier's own
+      // max-content, so tiers widen to their label instead of the old auto-fit 104px tracks
+      // wrapping the third one. Three tiers still fit one row; four go 2x2 (a single row of
+      // four would make the card wider than the tiers need).
+      const tiers = pctWindows.slice(0, 4);
+      const cols = tiers.length > 3 ? 2 : tiers.length;
       body = (
         <>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-[10px]">
-            {pctWindows.slice(0, 4).map((w, i) => {
+          <div
+            className="grid gap-[10px]"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(max-content, 1fr))` }}
+          >
+            {tiers.map((w, i) => {
               const item = fmtLimitWindow(w);
               return (
                 <div className="flex flex-col gap-[5px] min-w-0" key={i}>
-                  <div className="flex items-center gap-[6px] text-dim text-[11.5px] whitespace-nowrap overflow-hidden" /* style-token-ignore */><span className="truncate">{item.label}</span></div>
+                  {/* Countdown belongs to the tier title (it names the window), not to the value */}
+                  <div className="flex items-center gap-[6px] text-dim text-[11.5px] whitespace-nowrap" /* style-token-ignore */>
+                    <span className="truncate">{item.label}</span>
+                    {item.resetIn ? <span className="text-faint" /* style-token-ignore */>· {item.resetIn}</span> : null}
+                  </div>
                   <div className="text-[15px] font-semibold whitespace-nowrap" /* style-token-ignore */ style={{ color: limitTone(item.remaining) }}>
                     {item.remaining != null ? `${item.remaining}%` : "—"}
-                    {item.resetIn ? <span className="text-faint text-[12px] font-normal" /* style-token-ignore */> · {item.resetIn}</span> : null}
                   </div>
                   <div className="lx-bar">
                     <i style={{ width: `${item.remaining != null ? Math.min(100, item.remaining) : 0}%`, background: limitTone(item.remaining) }} />

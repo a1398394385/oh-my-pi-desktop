@@ -101,13 +101,43 @@ export function isCmdEvent(item: ChatItem): item is ToolItem {
 
 // Read-only tool events (the level-2 fold in items.tsx classifies by this): everything
 // except edit/write/apply_patch (isEditEvent; device writes excluded by it stay read-only
-// as device events), task, wait and ask. read/bash/shell/eval/grep/glob/web_search and all
-// other tools (todo/memory/mcp/hub/device/...) are read-only.
+// as device events), task, wait, ask and yield. read/bash/shell/eval/grep/glob/web_search and
+// all other tools (todo/memory/mcp/hub/device/...) are read-only.
+// `yield` is a subagent submitting its result: a terminal action the user should see stand
+// alone, not one more line inside an "Explored N files" block.
 export function isReadonlyEvent(item: ChatItem): item is ToolItem {
   if (item.role !== "tool") return false;
   const n = item.name || "";
-  if (n === "task" || n === "wait" || n === "ask") return false;
+  if (n === "task" || n === "wait" || n === "ask" || n === "yield") return false;
   return !isEditEvent(item);
+}
+
+// Yield (subagent result submission) one-line summary: the submission's own content, in
+// precedence order failure reason → payload → incremental section labels → workpool key.
+// `type` only reaches last when it is a section label: a plain terminal type ("result") is
+// classification noise to the user, so the payload outranks it. Args are an untyped host
+// pass-through, so every field is narrowed here (the main chat row and the Hub activity row
+// share this one function).
+export function yieldSummary(args: unknown): string {
+  const a = (args && typeof args === "object" ? args : {}) as {
+    error?: unknown;
+    type?: unknown;
+    key?: unknown;
+    data?: unknown;
+  };
+  if (typeof a.error === "string" && a.error) return a.error;
+  if (a.data !== undefined && a.data !== null) {
+    if (typeof a.data === "string") return a.data;
+    try {
+      const json = JSON.stringify(a.data);
+      if (json) return json;
+    } catch {
+      // circular / unserializable payload: fall through to the type label
+    }
+  }
+  if (Array.isArray(a.type) && a.type.length) return a.type.map(String).join(" · ");
+  if (typeof a.key === "number" || typeof a.key === "string") return `#${a.key}`;
+  return "";
 }
 
 // Duration formatting: seconds / minutes-seconds

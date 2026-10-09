@@ -2,7 +2,7 @@
 // Agent Hub detail page's activity feed (HubDetailPage) — mirrors chat/ToolRow.tsx's
 // toolKind dispatch. Labels are i18n keys (chat.*) resolved at render, except "MCP" / the
 // raw tool-name fallback which are already display text.
-import { uniqueFiles, splitPath } from "../../chat/util";
+import { uniqueFiles, splitPath, yieldSummary } from "../../chat/util";
 import type { SubagentToolCall } from "../../../types/session";
 
 // args is an unknown host pass-through; row specs read only these string fields
@@ -45,6 +45,10 @@ export function rowSpec(call: SubagentToolCall): RowSpec {
     const td = call.todo as { content?: string; done?: number; total?: number } | undefined;
     return { icon: "todo", label: "chat.labelTodo", summary: td?.content || a.task || "" };
   }
+  if (name === "yield")
+    // call.args (not the narrowed `a`): yield carries non-string fields (data/key/type)
+    // that Args does not declare — yieldSummary narrows them itself
+    return { icon: "upload", label: "chat.labelYield", summary: yieldSummary(call.args) };
   if (name.startsWith("mcp__")) return { icon: "plug", label: "MCP", summary: name.split("__").slice(2).join("__") };
   if (name === "web_search") return { icon: "globe", label: "chat.labelWebSearch", summary: a.query || "" };
   if (name === "ask") return { icon: "comment", label: "chat.labelAsk", summary: "" };

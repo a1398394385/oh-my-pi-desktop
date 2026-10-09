@@ -16,7 +16,7 @@ omp（oh-my-pi）桌面壳。**库内嵌路线**：单个 Bun 宿主进程内嵌
 
 - 会话 = 宿主进程内一个 `createAgentSession()` 实例，工具在宿主内直接执行，无 host-tool 桥；transcript 按 cwd 分桶持久化（JSONL），重启可恢复
 - 前端 `ui-src/`（React 19 + TypeScript + Vite + Tailwind v4 + zustand + streamdown + Lexical），构建产物 `ui/dist/`
-- `host/limits/`：供应商套餐限额查询（13 家供应商、22 个 omp provider id），凭证优先经 authStorage 解析（OAuth 自动续期）
+- `host/limits/`：供应商套餐限额查询（21 家供应商、34 个 omp provider id），凭证优先经 authStorage 解析（OAuth 自动续期）
 - 画像（profile）隔离：`OMP_PROFILE` 指定，默认 `default`；测试强制用 `omp-desktop-test`
 
 ## 跑

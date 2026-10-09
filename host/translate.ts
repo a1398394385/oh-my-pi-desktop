@@ -118,6 +118,18 @@ function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   if (name === "learn") return { memory: args.memory, skill: args.skill?.name };
   if (name === "memory_edit") return { op: args.op, id: args.id };
   if (name === "todo") return { op: args.op, task: args.task, i: args.i };
+  if (name === "yield") {
+    // Subagent result submission: the payload IS the row's subject (the frontend derives
+    // its one-line summary from these), so carry all four fields through instead of letting
+    // them fall into the generic path/content filter. `data` can be an arbitrary output
+    // object, so it goes through the frame cap like the other structured params.
+    return {
+      type: Array.isArray(args.type) ? args.type.slice(0, 20).map(String) : args.type,
+      key: args.key,
+      data: capValue(args.data),
+      error: typeof args.error === "string" ? args.error.slice(0, 2000) : args.error,
+    };
+  }
   if (name === "task") {
     // Subagent spawn: the assignment text (flat task / batch context) is the card's main content;
     // per-item task text capped individually so one big item cannot swallow the whole frame
@@ -266,11 +278,11 @@ function summarizeResult(name: string, args: any, result: any, pendingWrite?: { 
     };
     return patch;
   }
-  // Tagged tools (find / web search / ask / debug / GitHub / LSP / the memory suite): result text feeds the frontend's expandable card
+  // Tagged tools (find / web search / ask / debug / GitHub / LSP / yield / the memory suite): result text feeds the frontend's expandable card
   if (
     name === "find" ||
     name === "web_search" || name === "ask" || name === "debug" || name === "github" || name === "lsp" ||
-    name === "read_session_context" ||
+    name === "read_session_context" || name === "yield" ||
     name === "retain" || name === "recall" || name === "reflect" || name === "learn" || name === "memory_edit"
   ) {
     const text = resultText(result);
