@@ -1,8 +1,9 @@
 // Settings page: plugins (pg-plugins).
 // Provides the plugin & extension discovery master switch, config rows (SchemaRows), and the
 // installed plugin list. Like the skills/MCP pages the list is scope-switched: the profile
-// section is the profile plugin root, each project section is what a session rooted in that
-// project loads (host merges the user root in and lets the project shadow same-named packages).
+// section lists the profile plugin root's own packages, each project section lists only that
+// project's own root (resolved by the base's registry lookup) — no cross-scope inheritance,
+// and each row carries its own enable toggle writing to that scope's base-native config.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
@@ -11,7 +12,20 @@ import { emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import ScopeSel from "../ScopeSel";
 import { PAGE_PLACEMENT } from "../placement";
-import type { PluginAssetItem, PluginAssetsPayload } from "../../../types/frames";
+import type { PluginAssetItem, PluginAssetsPayload, PluginContents } from "../../../types/frames";
+
+// Content groups rendered inside an expanded plugin row, in display order, each mapped
+// to the extensions-center kind label (settingsPage.ext.kind*)
+const CONTENT_GROUPS: { kind: keyof PluginContents; labelKey: string }[] = [
+  { kind: "extensions", labelKey: "settingsPage.ext.kindModule" },
+  { kind: "tools", labelKey: "settingsPage.ext.kindTool" },
+  { kind: "commands", labelKey: "settingsPage.ext.kindSlash" },
+  { kind: "skills", labelKey: "settingsPage.ext.kindSkill" },
+  { kind: "rules", labelKey: "settingsPage.ext.kindRule" },
+  { kind: "prompts", labelKey: "settingsPage.ext.kindPrompt" },
+  { kind: "hooks", labelKey: "settingsPage.ext.kindHook" },
+  { kind: "mcp", labelKey: "settingsPage.ext.kindMcp" },
+];
 
 export default function PluginsPage() {
   const { t } = useTranslation();
@@ -25,6 +39,7 @@ export default function PluginsPage() {
 
   const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [spin, setSpin] = useState(false);
+  const [openKey, setOpenKey] = useState<string | null>(null); // expanded plugin row (path)
 
   // State detection: no blind guessing before hostSettings lands
   const known = typeof hostSettings?.pluginsEnabled === "boolean";
@@ -47,6 +62,36 @@ export default function PluginsPage() {
     const next = !pluginsEnabled;
     send({ type: "set_plugins_enabled", enabled: next });
     toast(next ? t("settingsPage.plugins.onToast") : t("settingsPage.plugins.offToast"));
+  };
+
+  // Per-row enable toggle: optimistic reference swap on the current section (same
+  // pattern as the skills page), then the host persists to that scope's config file
+  const onToggle = (p: PluginAssetItem) => {
+    const next = !p.enabled;
+    const st = useAppStore.getState();
+    const assets = st.agentAssets;
+    const payload = assets?.plugins as PluginAssetsPayload | undefined;
+    if (assets && payload) {
+      const flip = (x: PluginAssetItem) => (x.path === p.path && x.key === p.key ? { ...x, enabled: next } : x);
+      const isProfile = curSec.scope === "profile";
+      const plugins: PluginAssetsPayload = {
+        ...payload,
+        profile: isProfile ? payload.profile.map(flip) : payload.profile,
+        projects: isProfile
+          ? payload.projects
+          : payload.projects.map((pr) =>
+              pr.cwd === curSec.scope.slice("project:".length) ? { ...pr, plugins: pr.plugins.map(flip) } : pr,
+            ),
+      };
+      useAppStore.setState({ agentAssets: { ...assets, plugins } });
+    }
+    send({
+      type: "asset_plugin_toggle",
+      scope: curSec.scope === "profile" ? "profile" : "project",
+      cwd: curSec.scope === "profile" ? undefined : curSec.scope.slice("project:".length),
+      name: p.key ?? p.name,
+      enabled: next,
+    });
   };
 
   const onRefresh = () => {
@@ -116,18 +161,67 @@ export default function PluginsPage() {
             </div>
           </div>
         ) : (
-          curSec.plugins.map((p: PluginAssetItem) => (
-            <div className="srow" key={p.path || p.name}>
-              <div className="srow-tx">
-                <b>
-                  {p.name}
-                  {p.version && <span style={{ marginLeft: 8, fontSize: "0.85em", color: "var(--dim)" }}>v{p.version}</span>}
-                  {p.scope && <span style={{ marginLeft: 6, fontSize: "0.8em", color: "var(--dim)" }}>[{t(p.scope === "user" ? "settingsPage.shared.levelUser" : "settingsPage.shared.levelProject")}]</span>}
-                </b>
-                <span>{p.description || p.path || t("settingsPage.plugins.pluginFallback")}</span>
+          curSec.plugins.map((p: PluginAssetItem) => {
+            const rowKey = p.path || p.name;
+            const open = openKey === rowKey;
+            const groups = CONTENT_GROUPS.filter((g) => (p.contents?.[g.kind] ?? []).length > 0);
+            return (
+              <div key={rowKey}>
+                {/* Whole row clickable: expand-down detail (mem-expand pattern); the
+                    toggle stops propagation so it never flips the expand state */}
+                <div
+                  className={"srow plug-row" + (open ? " on" : "")}
+                  onClick={() => setOpenKey(open ? null : rowKey)}
+                >
+                  <div className="srow-tx">
+                    <b>
+                      {p.name}
+                      {p.version && <span style={{ marginLeft: 8, fontSize: "0.85em", color: "var(--dim)" }}>v{p.version}</span>}
+                    </b>
+                    <span>{p.description || p.path || t("settingsPage.plugins.pluginFallback")}</span>
+                  </div>
+                  <div className="srow-ctl">
+                    <div
+                      className={"tg" + (p.enabled ? " on" : "")}
+                      title={p.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(p);
+                      }}
+                    >
+                      <i></i>
+                    </div>
+                    <span className="mem-caret">
+                      <Icon name="caretSlim" size={14} />
+                    </span>
+                  </div>
+                </div>
+                {open && (
+                  <div className="mem-expand plug-detail">
+                    {groups.length === 0 ? (
+                      <div className="plug-group">
+                        <span className="plug-empty">{t("settingsPage.plugins.noContents")}</span>
+                      </div>
+                    ) : (
+                      groups.map((g) => (
+                        <div className="plug-group" key={g.kind}>
+                          <span className="plug-kind">{t(g.labelKey)}</span>
+                          <span className="plug-items">
+                            {(p.contents![g.kind] ?? []).map((item) => (
+                              <code key={item.name} className="plug-item" title={item.description || undefined}>
+                                {item.name}
+                                {g.kind === "hooks" && item.description ? <em> · {item.description}</em> : null}
+                              </code>
+                            ))}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

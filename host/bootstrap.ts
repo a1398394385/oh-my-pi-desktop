@@ -197,11 +197,25 @@ export const { commandPreview } = await import("@oh-my-pi/pi-tui/overlays/extens
 export const { getEnabledPlugins } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
 );
+// Manifest-declared plugin entries (tools/hooks/commands/extensions, features
+// included) resolved to on-disk files — the plugins page's "what does this plugin
+// introduce" attribution reuses the base's own resolution so the listing cannot
+// drift from what the loader would pick up.
+export const { resolvePluginManifestEntries } = await import(
+  "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
+);
 // Plugin discovery caches on the base side (enabledPluginsCache keyed by cwd+home,
 // plus the Claude/OMP installed-plugin registry roots). Nothing in the desktop app
 // installs plugins, so without an explicit invalidation before every plugins-page
 // refresh the loader keeps serving the first result for the whole host lifetime.
 export const { clearPluginRootsAndCaches } = await import(
+  "@oh-my-pi/pi-coding-agent/discovery/helpers"
+);
+// Where a cwd's project-level plugins live (<anchor>/.omp/plugins, anchored at the
+// nearest .omp else .git, never the user config root; null when no anchor exists).
+// The plugins page scans and toggles at exactly this root so the UI and the base
+// loader can never disagree about which directory a project section manages.
+export const { resolveActiveProjectRegistryPath } = await import(
   "@oh-my-pi/pi-coding-agent/discovery/helpers"
 );
 // Session capabilities snapshot (right-panel page): LSP runtime status + memory backend status

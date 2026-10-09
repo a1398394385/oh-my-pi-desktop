@@ -1548,6 +1548,7 @@ export const settingsPageEn = {
     noPluginsDescA: "Install plugins via the CLI (",
     noPluginsDescB: "), or configure custom paths in the external extensions field above.",
     pluginFallback: "Installed plugin",
+    noContents: "This plugin declares no static content; if it ships extension modules, what they inject is decided at runtime.",
   },
   // ---- Hooks page (HooksPage.tsx) ----
   hooks: {

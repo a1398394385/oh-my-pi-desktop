@@ -101,6 +101,7 @@
     { "id": "asset_file_write", "kind": "asset", "risk": "write" },
     { "id": "asset_file_create", "kind": "asset", "risk": "write" },
     { "id": "asset_skill_toggle", "kind": "asset", "risk": "write" },
+    { "id": "asset_plugin_toggle", "kind": "asset", "risk": "write", "note": "插件启停：profile 级写 omp-plugins.lock.json plugins[name].enabled；project 级写 <cwd>/.omp/plugin-overrides.json disabled 列表" },
     { "id": "asset_skill_delete", "kind": "asset", "risk": "destructive", "note": "删除技能目录" },
     { "id": "list_commands", "kind": "asset", "risk": "read", "note": "斜杠命令清单（输入框补全用）" },
     { "id": "list_extensions", "kind": "settings", "risk": "read", "note": "扩展中心：按 scope 统一发现能力条目（技能/规则/工具/MCP 等）" },

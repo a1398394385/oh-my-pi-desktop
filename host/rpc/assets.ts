@@ -20,6 +20,8 @@ import {
   assetOmpDir,
   mcpCandidates,
   resolveAssetFile,
+  setPluginEnabled,
+  validDesktopProjects,
   type AssetKind,
 } from "../assets.ts";
 import { setMcpSharingConfig, deleteMcpSharingConfig } from "../profile.ts";
@@ -129,6 +131,27 @@ export const assetsHandlers: Record<string, RpcHandler> = {
         : `---\nname: ${name}\ndescription: \n---\n\n# ${name}\n\n`;
     await writeFile(file, content, "utf8");
     ws.send(JSON.stringify({ type: "asset_file", kind, path: file, content }));
+    ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+  },
+  async asset_plugin_toggle(ws, msg) {
+    const name = String(msg.name ?? "").trim();
+    const enabled = Boolean(msg.enabled);
+    const rawScope = String(msg.scope ?? "profile");
+    if (!name) throw new Error(hostI18n.t("errors.param.missingPluginName"));
+    let scope: "profile" | "project";
+    let cwd: string | undefined;
+    if (rawScope === "project") {
+      cwd = String(msg.cwd ?? "");
+      if (!validDesktopProjects().includes(cwd)) throw new Error(hostI18n.t("errors.asset.unknownProject", { c: cwd }));
+      scope = "project";
+    } else if (rawScope === "profile") {
+      scope = "profile";
+    } else {
+      throw new Error(hostI18n.t("errors.param.unknownPluginScope", { scope: rawScope }));
+    }
+    await setPluginEnabled(scope, cwd, name, enabled);
+    // NOTE: sessions cache their plugin set at spawn — the toggle takes effect for
+    // sessions created afterwards, matching the base's load-time discovery semantics.
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async asset_skill_toggle(ws, msg) {

@@ -490,13 +490,34 @@ export interface HookAssetItem {
   enabled?: boolean;
 }
 
+export interface PluginContentItem {
+  name: string;
+  description?: string;
+}
+
+/** What a plugin package contributes (host/assets.ts scanPluginContents): manifest-declared
+ * entries plus the conventional sibling dirs the base's omp-plugins provider scans. */
+export interface PluginContents {
+  extensions: PluginContentItem[];
+  tools: PluginContentItem[];
+  commands: PluginContentItem[];
+  skills: PluginContentItem[];
+  rules: PluginContentItem[];
+  prompts: PluginContentItem[];
+  hooks: PluginContentItem[];
+  mcp: PluginContentItem[];
+}
+
 export interface PluginAssetItem {
   name: string;
+  /** node_modules package key (dir name, "@scope/name" for scoped) — toggle addressing */
+  key?: string;
   version?: string;
   path?: string;
   scope?: string;
   enabled?: boolean;
   description?: string;
+  contents?: PluginContents;
 }
 
 /** Plugins payload (host/assets.ts loadPluginsScoped): per-scope sections like skills */

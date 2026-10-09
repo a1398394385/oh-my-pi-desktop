@@ -22,6 +22,8 @@ export const hostErrorsZh = {
     missingProviderId: "缺少供应商 id",
     missingMcpName: "缺少 MCP 服务器名称",
     missingSkillName: "缺少技能名称",
+    missingPluginName: "缺少插件名称",
+    unknownPluginScope: "未知的插件作用域: {{scope}}",
     missingSubagentId: "缺少 subagentId",
   },
   subagent: {

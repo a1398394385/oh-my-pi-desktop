@@ -18,6 +18,8 @@ export const hostErrorsEn = {
     missingProviderId: "Missing provider id",
     missingMcpName: "Missing MCP server name",
     missingSkillName: "Missing skill name",
+    missingPluginName: "Missing plugin name",
+    unknownPluginScope: "Unknown plugin scope: {{scope}}",
     missingSubagentId: "Missing subagentId",
   },
   subagent: {

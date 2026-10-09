@@ -1518,6 +1518,7 @@ export const settingsPageZh = {
     noPluginsDescA: "可通过命令行 ",
     noPluginsDescB: " 安装插件，或在上方外部扩展路径中配置自定义路径。",
     pluginFallback: "已安装插件",
+    noContents: "该插件没有静态声明内容；如带扩展模块，其注入内容在运行时决定。",
   },
   // ---- Hooks page (HooksPage.tsx) ----
   hooks: {
