@@ -14,7 +14,7 @@ import {
   resetCapabilities,
   clearCapabilityFsCache,
   buildSshTarget,
-  quotePosixPath,
+  quotePosixArgument,
 } from "../bootstrap.ts";
 import { ensureRemoteWorkspaceDir, normalizeRemotePath, readUserSshHost } from "../remote-workspaces.ts";
 import { safeStderr } from "../stderr.ts";
@@ -206,7 +206,7 @@ export const sshHandlers: Record<string, RpcHandler> = {
       return;
     }
     const { config } = await resolveHostConfig(msg);
-    const result = await runSshCommand(config, `ls -1ap ${quotePosixPath(base)}`, 8_000);
+    const result = await runSshCommand(config, `ls -1ap ${quotePosixArgument(base)}`, 8_000);
     const dirs =
       result.code === 0
         ? result.stdout
@@ -236,7 +236,7 @@ export const sshHandlers: Record<string, RpcHandler> = {
     // Probe before materializing: the stub must not exist for a path that
     // is unreachable or not a directory. Failure replies ok:false (dialog
     // state machine) instead of an error frame.
-    const probe = await runSshCommand(config, `if [ -d ${quotePosixPath(remotePath)} ]; then echo PI_DIR_OK; else echo PI_DIR_MISSING; fi`);
+    const probe = await runSshCommand(config, `if [ -d ${quotePosixArgument(remotePath)} ]; then echo PI_DIR_OK; else echo PI_DIR_MISSING; fi`);
     if (probe.code !== 0) {
       ws.send(
         JSON.stringify({

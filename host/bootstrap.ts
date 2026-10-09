@@ -197,6 +197,13 @@ export const { commandPreview } = await import("@oh-my-pi/pi-tui/overlays/extens
 export const { getEnabledPlugins } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
 );
+// Plugin discovery caches on the base side (enabledPluginsCache keyed by cwd+home,
+// plus the Claude/OMP installed-plugin registry roots). Nothing in the desktop app
+// installs plugins, so without an explicit invalidation before every plugins-page
+// refresh the loader keeps serving the first result for the whole host lifetime.
+export const { clearPluginRootsAndCaches } = await import(
+  "@oh-my-pi/pi-coding-agent/discovery/helpers"
+);
 // Session capabilities snapshot (right-panel page): LSP runtime status + memory backend status
 export const { getLspStatus } = await import("@oh-my-pi/pi-coding-agent/lsp/servers");
 export const { createSessionMemoryRuntimeContext } = await import("@oh-my-pi/pi-coding-agent/memory-backend/runtime");
@@ -209,7 +216,9 @@ export const { readSSHConfigFile, addSSHHost, updateSSHHost, removeSSHHost, vali
   "@oh-my-pi/pi-coding-agent/ssh/config-writer"
 );
 export const { reset: resetCapabilities } = await import("@oh-my-pi/pi-coding-agent/capability");
-export const { sanitizeHostName, buildSshTarget, quotePosixPath } = await import("@oh-my-pi/pi-coding-agent/ssh/utils");
+export const { sanitizeHostName, buildSshTarget } = await import("@oh-my-pi/pi-coding-agent/ssh/utils");
+// Dynamic like every binding in this file: setProfile() must run first (see file header).
+export const { quotePosixArgument } = await import("@oh-my-pi/pi-coding-agent/utils/shell-quote");
 // Voice conversation (dictation + model management): the STTController
 // coordinates native microphone capture with transcription; the downloader
 // trio manages the local speech-model cache (status probe / download with

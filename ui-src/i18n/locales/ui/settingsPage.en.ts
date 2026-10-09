@@ -1538,6 +1538,8 @@ export const settingsPageEn = {
     configGroup: "Configuration",
     configDesc: "Control plugin and extension timeouts, marketplace auto-update mode and custom load paths.",
     installedGroup: "Installed plugins",
+    // Scope count line beside the Profile/project dropdown
+    scopeCount: "Installed {{count}}",
     // Two-part note with an inline <code>omp</code> between them
     installedDescA: "Available plugins detected by the system. Manage installations via the ",
     installedDescB: " CLI.",

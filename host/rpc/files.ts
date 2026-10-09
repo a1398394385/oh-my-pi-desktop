@@ -7,7 +7,7 @@ import { defaultCwd } from "../state.ts";
 import { isGitWorktree } from "../session-lifecycle.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
-import { quotePosixPath } from "../bootstrap.ts";
+import { quotePosixArgument } from "../bootstrap.ts";
 import { resolveRemoteTarget, readUserSshHost } from "../remote-workspaces.ts";
 import { runSshCommand, formatSshError, type SshHostConfigShape } from "./ssh.ts";
 
@@ -93,7 +93,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     const remote = await remoteTargetFor(p);
     if (remote) {
       // Same caps as the local branch: 2MB text limit + NUL sniff on the head
-      const q = quotePosixPath(remote.remotePath);
+      const q = quotePosixArgument(remote.remotePath);
       const size = await runSshCommand(remote.config, `wc -c < ${q}`, 8_000);
       if (size.code !== 0) throw new Error(formatSshError(size.stderr, size.stdout, size.code));
       const bytes = Number(size.stdout.trim());
@@ -147,7 +147,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     }
     const remote = await remoteTargetFor(p);
     if (remote) {
-      const q = quotePosixPath(remote.remotePath);
+      const q = quotePosixArgument(remote.remotePath);
       const size = await runSshCommand(remote.config, `wc -c < ${q}`, 8_000);
       if (size.code !== 0) throw new Error(formatSshError(size.stderr, size.stdout, size.code));
       const bytes = Number(size.stdout.trim());
@@ -181,7 +181,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     if (remote) {
       // ls -1ap marks directories with a trailing "/"; the reply echoes the local
       // stub path so the frontend tree cache keys keep matching
-      const result = await runSshCommand(remote.config, `ls -1ap ${quotePosixPath(remote.remotePath)}`, 8_000);
+      const result = await runSshCommand(remote.config, `ls -1ap ${quotePosixArgument(remote.remotePath)}`, 8_000);
       if (result.code !== 0) throw new Error(formatSshError(result.stderr, result.stdout, result.code));
       const entries: { name: string; dir: boolean }[] = [];
       for (const line of result.stdout.split("\n")) {

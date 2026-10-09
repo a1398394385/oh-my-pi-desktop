@@ -1,26 +1,47 @@
 // Settings page: plugins (pg-plugins).
 // Provides the plugin & extension discovery master switch, config rows (SchemaRows), and the
-// installed plugin list.
+// installed plugin list. Like the skills/MCP pages the list is scope-switched: the profile
+// section is the profile plugin root, each project section is what a session rooted in that
+// project loads (host merges the user root in and lets the project shadow same-named packages).
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import { emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
+import ScopeSel from "../ScopeSel";
 import { PAGE_PLACEMENT } from "../placement";
-import type { PluginAssetItem } from "../../../types/frames";
+import type { PluginAssetItem, PluginAssetsPayload } from "../../../types/frames";
 
 export default function PluginsPage() {
   const { t } = useTranslation();
   const hostSettings = useAppStore((s) => s.hostSettings);
   const agentAssets = useAppStore((s) => s.agentAssets);
-  const plugins = agentAssets?.plugins as PluginAssetItem[] | undefined;
+  const data = agentAssets?.plugins as PluginAssetsPayload | undefined;
 
+  const allProjects = useAppStore((s) => s.allProjects);
+  const removedProjects = useAppStore((s) => s.removedProjects);
+  const validProjectCwds = new Set(allProjects.filter((c) => !removedProjects.includes(c)));
+
+  const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [spin, setSpin] = useState(false);
 
   // State detection: no blind guessing before hostSettings lands
   const known = typeof hostSettings?.pluginsEnabled === "boolean";
   const pluginsEnabled = known && !!hostSettings?.pluginsEnabled;
+
+  const profileSec = {
+    scope: "profile",
+    label: `Profile · ${data?.profileName ?? "default"}`,
+    dir: data?.profileDir,
+    plugins: data?.profile ?? [],
+  };
+  const projectSecs = (data?.projects ?? [])
+    .filter((p) => validProjectCwds.has(p.cwd))
+    .map((p) => ({ scope: `project:${p.cwd}`, label: p.name, dir: p.dir, plugins: p.plugins }));
+  const sections = [profileSec, ...projectSecs];
+  // Fall back to the profile level when the current scope is stale
+  const curSec = sections.find((s) => s.scope === scope) ?? profileSec;
 
   const togglePlugins = () => {
     const next = !pluginsEnabled;
@@ -73,10 +94,21 @@ export default function PluginsPage() {
 
       <div className="set-group-tt">{t("settingsPage.plugins.installedGroup")}</div>
       <div className="set-group-desc">{t("settingsPage.plugins.installedDescA")}<code>omp</code>{t("settingsPage.plugins.installedDescB")}</div>
+      <div className="ext-bar-primary">
+        <ScopeSel
+          value={scope}
+          onChange={setScope}
+          profile={{ id: profileSec.scope, label: profileSec.label }}
+          projects={projectSecs.map((s) => ({ id: s.scope, label: s.label }))}
+        />
+        <div className="text-ui-sm font-medium text-dim" id="pluginsScopeDir" title={curSec.dir}>
+          {t("settingsPage.plugins.scopeCount", { count: curSec.plugins.length })}
+        </div>
+      </div>
       <div className="set-card" id="pluginsList">
         {!agentAssets ? (
           emptyRow(t("common.loading"))
-        ) : !plugins || plugins.length === 0 ? (
+        ) : curSec.plugins.length === 0 ? (
           <div className="srow">
             <div className="srow-tx">
               <b>{t("settingsPage.plugins.noPluginsTitle")}</b>
@@ -84,7 +116,7 @@ export default function PluginsPage() {
             </div>
           </div>
         ) : (
-          plugins.map((p) => (
+          curSec.plugins.map((p: PluginAssetItem) => (
             <div className="srow" key={p.path || p.name}>
               <div className="srow-tx">
                 <b>

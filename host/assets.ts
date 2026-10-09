@@ -6,17 +6,21 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { getPluginsDir } from "@oh-my-pi/pi-utils";
 import { hostI18n } from "../ui-src/i18n/host.ts";
-import { H } from "./state.ts";
+import { H, defaultCwd } from "./state.ts";
+import type { ScopedInstalledPlugin } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader";
 import {
   loadCapability,
   clearCapabilityFsCache,
+  clearPluginRootsAndCaches,
   connectToServer,
   disconnectServer,
   readDisabledServers,
   readEnabledServers,
   isProviderEnabled,
   isUserSourceEnabled,
+  getEnabledPlugins,
 } from "./bootstrap.ts";
 import { getMcpSharingConfig } from "./profile.ts";
 import { settingsGet } from "./settings-compat.ts";
@@ -1043,6 +1047,24 @@ export interface HookAssetItem {
   enabled: boolean;
 }
 
+export interface PluginAssetItem {
+  name: string;
+  version?: string;
+  path?: string;
+  scope?: "user" | "project";
+  enabled?: boolean;
+  description?: string;
+}
+
+export interface PluginAssetsPayload {
+  /** Packages from the current profile's plugin root. */
+  profile: PluginAssetItem[];
+  /** One section per desktop project: what a session rooted there would load. */
+  projects: { cwd: string; name: string; dir: string; plugins: PluginAssetItem[] }[];
+  profileDir: string;
+  profileName?: string;
+}
+
 /** Read hooks.enabled from omp-desktop.json (defaults to off). */
 export function readHooksEnabled(): boolean {
   try {
@@ -1089,6 +1111,71 @@ export async function writePluginsEnabled(enabled: boolean): Promise<void> {
   const dir = path.dirname(H.desktopProjectsPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, plugins: { ...plugins, enabled } }, null, 2));
+}
+
+// Installed plugin packages, scanned per scope the same way skills are: one section
+// for the current profile's plugin root and one per desktop project. A project section
+// is exactly what a session rooted there loads — the base loader merges the user root
+// with the project's nearest .omp/plugins root and lets the project shadow same-named
+// packages — so selecting a scope in the UI answers "what applies here" without the
+// frontend re-deriving shadowing.
+//
+// Its caches (enabledPluginsCache keyed by cwd+home, and the installed-plugin registry
+// roots) are process-global and nothing in the desktop app invalidates them, since no
+// RPC here installs a plugin. Without an explicit clear first, a refresh button would
+// keep returning the snapshot taken at the very first refresh for the host's lifetime.
+export async function loadPluginsScoped(): Promise<PluginAssetsPayload> {
+  clearPluginRootsAndCaches();
+  const toRow = (p: ScopedInstalledPlugin): PluginAssetItem => ({
+    name: p.manifest.name || p.name,
+    version: p.version,
+    path: p.path,
+    scope: p.scope,
+    enabled: p.enabled,
+    description: p.manifest.description,
+  });
+  const scan = async (cwd: string): Promise<PluginAssetItem[]> => {
+    const plugins = await getEnabledPlugins(cwd).catch((err) => {
+      safeStderr(`[host] 插件列表扫描失败 (${cwd}): ${err}\n`);
+      return [] as ScopedInstalledPlugin[];
+    });
+    return plugins.map(toRow).sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  // The profile section scans from the home dir: the base's project-registry lookup
+  // walks up from cwd and stops BEFORE homedir(), so this yields the profile plugin root
+  // alone, never a project's. (getPluginsDir is likewise profile-scoped, not global.)
+  const profile = await scan(defaultCwd);
+  const projects = await Promise.all(
+    validDesktopProjects().map(async (cwd) => ({
+      cwd,
+      name: path.basename(cwd),
+      dir: nearestProjectOmpPluginsDir(cwd),
+      plugins: await scan(cwd),
+    })),
+  );
+  return {
+    profile,
+    projects,
+    profileDir: getPluginsDir(),
+    profileName: H.currentProfile,
+  };
+}
+
+// Where a project's plugin packages live: the nearest project .omp above it, else
+// <cwd>/.omp. The user config root (~/.omp) is NOT a project anchor — the base's
+// registry lookup rejects it (isUserConfigRoot), so a project without its own .omp
+// must not display the user plugin dir as if it were a project-scoped one.
+function nearestProjectOmpPluginsDir(cwd: string): string {
+  let dir = path.resolve(cwd);
+  const root = path.parse(dir).root;
+  const userRoot = path.resolve(os.homedir());
+  for (;;) {
+    if (dir !== userRoot && fs.existsSync(path.join(dir, ".omp"))) return path.join(dir, ".omp", "plugins");
+    if (dir === root) break;
+    dir = path.dirname(dir);
+  }
+  return path.join(path.resolve(cwd), ".omp", "plugins");
 }
 
 export async function listAgentAssets() {
@@ -1188,7 +1275,7 @@ export async function listAgentAssets() {
     agents,
     hooks,
     mcp,
-    plugins: [] as { name: string }[],
+    plugins: await loadPluginsScoped(),
     flags: { enableMCP: false, disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()), computerEnabled: !!settingsGet(H.settings, "computer.enabled") },
   };
 }

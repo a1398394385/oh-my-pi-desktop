@@ -1508,6 +1508,8 @@ export const settingsPageZh = {
     configGroup: "配置项",
     configDesc: "控制插件与扩展的超时时间、市场自动更新模式及自定义加载路径。",
     installedGroup: "已安装插件",
+    // Scope count line beside the Profile/project dropdown
+    scopeCount: "已安装 {{count}}",
     // Two-part note with an inline <code>omp</code> between them
     installedDescA: "系统检测到的可用插件清单。可通过 ",
     installedDescB: " 命令行管理安装。",

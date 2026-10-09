@@ -499,6 +499,14 @@ export interface PluginAssetItem {
   description?: string;
 }
 
+/** Plugins payload (host/assets.ts loadPluginsScoped): per-scope sections like skills */
+export interface PluginAssetsPayload {
+  profile: PluginAssetItem[];
+  projects: { cwd: string; name: string; dir: string; plugins: PluginAssetItem[] }[];
+  profileDir: string;
+  profileName?: string;
+}
+
 export interface AgentAssetsPayload {
   memories: { name: string; path: string; project?: string }[];
   skills: unknown;
@@ -512,7 +520,7 @@ export interface AgentAssetsPayload {
   };
   hooks: HookAssetItem[];
   mcp: McpAssetsPayload;
-  plugins: PluginAssetItem[];
+  plugins: PluginAssetsPayload;
   flags: { enableMCP: boolean; disableExtensionDiscovery: boolean; computerEnabled: boolean };
 }
 
