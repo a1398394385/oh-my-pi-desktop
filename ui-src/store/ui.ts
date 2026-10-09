@@ -256,8 +256,12 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
-      set({ newSessionDirty: false });
-      get().initNewSessionModel(true);
+      // No force recalibration here: switching sessions away from the welcome page
+      // must not throw away the model / thinking pick made on it. The reset to the
+      // profile defaults belongs to the session this page actually starts (the
+      // session_created receipt); the trailing non-force init below only repairs an
+      // invalid pick, and the models frame still re-lands the config default while
+      // newSessionDirty is false.
     }
     const st = get();
     const avail = st.getAvailableProjects();

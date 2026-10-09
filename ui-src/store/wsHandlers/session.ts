@@ -133,9 +133,20 @@ export const sessionHandlers = {
       // The bash_start frame creates the row; no optimistic bubble needed
       if (s) st3.send({ type: "bash_exec", sessionId: s.sessionId, command, excludeFromContext });
     }
+    // The welcome page's model / thinking pick is the intent for the session that
+    // create_session just produced — consumed here like planMode / computerMode,
+    // so it never leaks into the NEXT new-session page. pendingCreate (already
+    // cleared below) is the marker: the host also pushes session_created for plain
+    // loads / plan-approve swaps, which carry no welcome-page intent. Clear the
+    // manual-pick mark first, then force re-seed the profile config default.
+    const fromWelcome = st3.pendingCreate;
     if (st3.pendingCreate) {
       useAppStore.setState({ pendingCreate: false });
       st3.send({ type: "list_sessions" }); // the new session has been persisted; refetch the list
+    }
+    if (fromWelcome) {
+      useAppStore.setState({ newSessionDirty: false }); // silent write (force init below notifies on its own)
+      useAppStore.getState().initNewSessionModel(true);
     }
   },
   session_title_changed(msg) {
