@@ -13,6 +13,7 @@
     "dialog:allow-open",
     "opener:allow-open-url",
     "opener:allow-default-urls",
-    "notification:default"
+    "notification:default",
+    "updater:default"
   ]
 }

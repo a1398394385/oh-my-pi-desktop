@@ -12,6 +12,7 @@ import { saveUiPrefs, saveUiLocale } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { invoke } from "../../../store/ws";
 import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { formatBytes } from "../stats/data/formatters";
 import type { DesktopEnv } from "../../../types/frames";
 
 // Native names for the language badge and picker labels (never translated)
@@ -168,6 +169,141 @@ function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: st
             ))
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- App update row (check / download / restart) ----------
+// Backed by the Rust `update_check` / `update_install` / `update_relaunch` commands
+// (src-tauri/src/update.rs) rather than the updater plugin's JS API: this frontend
+// runs on the withGlobalTauri globals and does not bundle @tauri-apps/*, and the
+// plugin's download progress arrives over an IPC Channel that would have to be
+// hand-built here. Download progress instead arrives as a `update-progress` event,
+// the same shape the audio spectrum uses.
+type UpdatePhase = "idle" | "checking" | "available" | "downloading" | "installed" | "uptodate";
+
+interface UpdateInfoShape {
+  version: string;
+  currentVersion: string;
+  body: string;
+  date?: string | null;
+  available: boolean;
+}
+
+interface UpdateProgressShape {
+  downloaded: number;
+  total?: number | null;
+  finished: boolean;
+}
+
+function UpdateRow() {
+  const { t } = useTranslation();
+  const [phase, setPhase] = useState<UpdatePhase>("idle");
+  const [info, setInfo] = useState<UpdateInfoShape | null>(null);
+  const [progress, setProgress] = useState<UpdateProgressShape | null>(null);
+
+  // Subscribed for the whole row lifetime: the shell is only ~150 MB and a check
+  // that starts a download right after mounting would otherwise miss the first
+  // chunks. Unsubscribed on unmount so a page switch stops the traffic.
+  useEffect(() => {
+    const events = window.__TAURI__?.event;
+    if (!events?.listen) return;
+    const offs = Promise.all([
+      events.listen("update-progress", (e) => setProgress(e.payload as UpdateProgressShape)),
+      events.listen("update-installed", () => setPhase("installed")),
+    ]);
+    return () => {
+      offs.then((list) => list.forEach((off) => (off as () => void)()));
+    };
+  }, []);
+
+  const check = async () => {
+    if (!invoke) {
+      toast(t("settingsPage.general.updateUnsupported"));
+      return;
+    }
+    setPhase("checking");
+    setProgress(null);
+    try {
+      const found = (await invoke("update_check")) as UpdateInfoShape;
+      setInfo(found);
+      setPhase(found.available ? "available" : "uptodate");
+      if (!found.available) toast(t("settingsPage.general.updateUpToDate", { version: found.currentVersion }));
+    } catch (err) {
+      setPhase("idle");
+      toast(t("settingsPage.general.updateFailed", { error: String(err) }));
+    }
+  };
+
+  const install = async () => {
+    if (!invoke) {
+      toast(t("settingsPage.general.updateUnsupported"));
+      return;
+    }
+    setPhase("downloading");
+    setProgress(null);
+    try {
+      await invoke("update_install");
+      // Windows quits during install and never returns here; macOS/Linux land on
+      // the `update-installed` event instead.
+      setPhase("installed");
+    } catch (err) {
+      setPhase(info?.available ? "available" : "idle");
+      toast(t("settingsPage.general.updateInstallFailed", { error: String(err) }));
+    }
+  };
+
+  const restart = () => invoke?.("update_relaunch");
+
+  const busy = phase === "checking" || phase === "downloading";
+
+  return (
+    <div className="srow set-row">
+      <div className="srow-tx">
+        <b>{t("settingsPage.general.updateTitle")}</b>
+        <span>
+          {phase === "uptodate"
+            ? t("settingsPage.general.updateUpToDate", { version: info?.currentVersion ?? "" })
+            : phase === "available"
+              ? t("settingsPage.general.updateAvailable", { version: info?.version ?? "" })
+              : t("settingsPage.general.updateDesc", { version: info?.currentVersion ?? "—" })}
+        </span>
+        {info?.available && info.body && <div className="up-notes">{info.body}</div>}
+      </div>
+      <div className="srow-ctl" style={{ gap: 8 }}>
+        {phase === "downloading" && (
+          <>
+            <span className="up-bar">
+              <i
+                style={{
+                  width: progress?.total ? `${Math.min(100, (progress.downloaded / progress.total) * 100)}%` : "100%",
+                }}
+              />
+            </span>
+            {/* Total half omitted when the server sends no Content-Length */}
+            <span className="up-size">
+              {progress
+                ? progress.total
+                  ? `${formatBytes(progress.downloaded)} / ${formatBytes(progress.total)}`
+                  : formatBytes(progress.downloaded)
+                : t("settingsPage.general.updateDownloading")}
+            </span>
+          </>
+        )}
+        {phase === "available" && (
+          <button className="save-btn" onClick={install}>{t("settingsPage.general.updateDownload")}</button>
+        )}
+        {phase === "installed" && (
+          <button className="save-btn" onClick={restart}>{t("settingsPage.general.updateRestart")}</button>
+        )}
+        <button className="save-btn" disabled={busy} onClick={check}>
+          {phase === "checking"
+            ? t("settingsPage.general.updateChecking")
+            : phase === "downloading"
+              ? t("settingsPage.general.updateDownloading")
+              : t("settingsPage.general.updateCheck")}
+        </button>
       </div>
     </div>
   );
@@ -340,6 +476,7 @@ export default function GeneralPage() {
             onPick={pickLang}
           />
         </div>
+        <UpdateRow />
       </div>
       <div className="set-group-tt">{t("settingsPage.general.groupTerminal")}</div>
       <div className="set-card">

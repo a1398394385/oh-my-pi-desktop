@@ -34,6 +34,7 @@ use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 // System font-family enumeration for the settings terminal-font picker
 // (Windows GDI / macOS CoreText; other platforms return an empty list).
 mod fonts;
+mod update;
 #[cfg(target_os = "windows")]
 mod audio;
 #[cfg(not(target_os = "windows"))]
@@ -577,6 +578,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        // Auto-update. The updater verifies every downloaded bundle against the minisign
+        // pubkey in tauri.conf.json before installing, so this plugin is the only path by
+        // which new code enters an installed app. Restarting afterwards uses core Tauri's
+        // AppHandle::restart (see update.rs), which re-execs the shell and lets setup()
+        // respawn the Bun host — the host child is killed on RunEvent::Exit, so it never
+        // survives the bundle swap.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Window geometry memory: save size/position/maximized on exit and restore on
         // launch (auto via on_window_ready, before the app setup hook below runs).
         // Flags deliberately exclude VISIBLE/DECORATIONS/FULLSCREEN: visibility is owned
@@ -647,7 +655,10 @@ pub fn run() {
             audio::audio_devices,
             fonts::list_font_families,
             audio::audio_start,
-            audio::audio_stop
+            audio::audio_stop,
+            update::update_check,
+            update::update_install,
+            update::update_relaunch
         ])
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")

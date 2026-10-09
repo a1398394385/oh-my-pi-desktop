@@ -1,0 +1,110 @@
+name: release
+
+# Tag-driven only. The tag IS the release version (v1.2.3 -> 1.2.3), and the job
+# refuses to build when the tag disagrees with src-tauri/tauri.conf.json — the
+# updater compares the version compiled into the binary against the one on the
+# manifest, so a mis-tagged build either offers itself as an update forever or
+# never reaches anyone.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (e.g. v0.1.0)"
+        required: true
+
+# A manual run must publish under the tag the user typed, not under the branch it
+# was dispatched from. Exported once so both the version check and tauri-action
+# read the same value.
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS ships arm64 only. `bun build --compile` can cross-compile
+          # (--target=bun-darwin-x64), but scripts/build-host.ts resolves the
+          # pi-natives addon from the RUNNER's process.arch, so an Intel leg would
+          # embed an arm64 .node into an x86_64 app and fail at startup. Fixing that
+          # means threading a target arch through build-host.ts; add the Intel leg
+          # when that exists rather than shipping a broken one now.
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --config src-tauri/tauri.windows.conf.json
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      # Checkout the release tag itself: a manual run is dispatched from a branch,
+      # and building the branch would produce a bundle whose code does not match the
+      # version the manifest advertises.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - run: bun install --frozen-lockfile
+
+      - name: Verify tag matches the app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG}"
+          APP_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          EXPECTED="v${APP_VERSION}"
+          if [ "$TAG" != "$EXPECTED" ]; then
+            echo "::error::Tag $TAG does not match src-tauri/tauri.conf.json version $APP_VERSION (expected $EXPECTED)"
+            exit 1
+          fi
+          echo "Version check passed: $EXPECTED"
+
+      - name: Verify version SSOT
+        run: bun scripts/sync-version.ts --check
+
+      # Compiles host-dist/omp-host.exe for THIS runner's platform — the artifact is
+      # platform-specific (bun --compile embeds the bun runtime and the pi-natives
+      # addon for the build host), so each matrix leg must build its own.
+      - name: Build host
+        run: bun run host:build
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # minisign private key for the updater bundles. Losing it permanently
+          # bricks updates for every installed copy — see the release checklist in
+          # docs/PITFALLS.md.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # No Apple Developer certificate yet: the app ships ad-hoc signed, so
+          # first-time installs need a right-click open (or xattr -dr
+          # com.apple.quarantine). See the ADR for the switch to Developer ID +
+          # notarization once the project is published publicly.
+          APPLE_SIGNING_IDENTITY: "-"
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: ${{ env.RELEASE_TAG }}
+          releaseBody: See the commit history for changes in this release.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

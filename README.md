@@ -35,7 +35,24 @@ bun scripts/probe-sdk.ts           # 仅装配探针
 bun scripts/probe-asset-sources.ts # 来源开关对资产列表的约束
 ```
 
-全仓检查：`bun run check`（编码门禁 / host 边界 / 架构棘轮 / 样式 token 门禁 / typecheck）。冒烟脚本清单见 `scripts/`。
+全仓检查：`bun run check`（编码门禁 / host 边界 / 架构棘轮 / 样式 token 门禁 / 版本号一致性 / typecheck）。冒烟脚本清单见 `scripts/`。
+
+## 发版
+
+```bash
+bun run version:set 0.2.0        # 版本号单源在 src-tauri/tauri.conf.json，自动镜像 Cargo.toml
+git commit -am "release: 0.2.0"
+git tag v0.2.0 && git push origin main --tags
+```
+
+tag 触发 `.github/workflows/release.yml`：校验 tag 与版本号一致 → 各平台构建 → 发 draft Release（含 updater 产物与 `latest.json`）。**检查 draft 后手动 publish**——草稿状态下的 `releases/latest/download/` 不可用。
+
+前置条件（一次性）：
+
+- GitHub secret `TAURI_SIGNING_PRIVATE_KEY` = `~/.tauri/omp-desktop.key` 的**内容**（不是路径）。**这把私钥丢了，已安装的用户将永久收不到更新。**
+- 客户端签名走 ad-hoc（`APPLE_SIGNING_IDENTITY: "-"`）。别人首次安装需右键打开，或 `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`。要消除这一步需购 Apple Developer ID（$99/年）并公证，见 [ADR-0003](.agents/notes/0003-tauri-updater-auto-update.md)。
+
+用户侧入口：设置 → 通用 → 应用 →「检查更新」。
 
 ## 文档
 

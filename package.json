@@ -25,8 +25,10 @@
     "smoke:command-cache": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-command-cache-invalidate.ts",
     "smoke:computer-display": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-computer-display.ts",
     "check:encoding": "node scripts/check-encoding.mjs",
+    "check:version": "bun scripts/sync-version.ts --check",
+    "version:set": "bun scripts/sync-version.ts",
     "check:i18n-keys": "bun scripts/check-i18n-keys.ts",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/check-i18n-keys.ts && bun run ui:typecheck"
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/sync-version.ts --check && bun scripts/check-i18n-keys.ts && bun run ui:typecheck"
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",

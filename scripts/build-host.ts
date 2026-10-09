@@ -3,8 +3,13 @@
 // which the loader unpacks to ~/.omp/natives/<version>/ at runtime. In the npm-published pi-natives,
 // embedded-addon.js is a null stub (the embed flow only exists in the upstream source repo), so a plain bun build --compile
 // produces an exe without the native addon, guaranteed to fail on a clean machine.
-// Flow copied from upstream ci-release-build-binaries.ts: embed -> compile -> reset (reset in finally,
+// Flow copied from upstream ci-release-build-utils: embed -> compile -> reset (reset in finally,
 // so a failed compile leaves no non-stub embedded-addon.js behind that would misclassify dev mode as compiled).
+// The compile step also wipes host-dist first: the Tauri bundle maps the whole host-dist directory
+// into Contents/Resources, so any leftover file there (e.g. a hand-copied pi_natives.*.node from an
+// older base version — the addon actually ships embedded inside the exe, see above) is packaged into
+// the .app and the updater artifact as dead weight. Measured on this repo: two such leftovers
+// inflated the .app from 148 MB to 465 MB and the updater tar.gz from 79 MB to 153 MB.
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 // Version-identity check, mirrored from @oh-my-pi/pi-natives native/version-sentinel.js
@@ -117,6 +122,12 @@ async function embedNativeAddon(): Promise<void> {
 	);
 	console.log(`已内嵌 native addon：${files.length} 个变体，tar.gz 共 ${(archiveBytes.length / 1024 / 1024).toFixed(1)} MB`);
 }
+
+// Wipe host-dist before compiling so only the fresh omp-host artifact survives into the
+// Tauri bundle (see the header note on bundle bloat). Scoped to host-dist, which is
+// gitignored and holds build output only — nothing hand-written lives there.
+const hostDistDir = path.join(repoRoot, "host-dist");
+await fs.rm(hostDistDir, { recursive: true, force: true });
 
 await verifyPromptMirrors();
 await embedNativeAddon();
