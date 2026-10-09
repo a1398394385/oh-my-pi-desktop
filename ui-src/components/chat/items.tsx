@@ -118,9 +118,11 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
 }
 
 // Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
-// Thinking items inside the run are collected into the block but not counted; any other
-// role or a non-read-only tool event ends the run. Returns null when the run holds fewer
-// than `min` read-only events (the caller then falls through to the per-type group blocks).
+// Thinking and request-error rows inside the run are collected into the block but not
+// counted; any other role or a non-read-only tool event ends the run. Returns null when
+// the run holds fewer than `min` read-only events (the caller then falls through to the
+// per-type group blocks). Error rows must not break the scan: a mid-run request failure
+// (e.g. socket closed) would otherwise split one flow into <3 fragments that never fold.
 // min is 3 (the >=3 merge — display.hideToolActivity's desktop default; the host
 // flips an unset base value to true) and becomes Infinity when the user turns the
 // setting off: read-only rows then never merge and always lay out flat.
@@ -136,7 +138,7 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
       run.push(it);
       roCount++;
       j++;
-    } else if (it.role === "thinking") {
+    } else if (it.role === "thinking" || it.role === "error") {
       run.push(it);
       j++;
     } else break;
