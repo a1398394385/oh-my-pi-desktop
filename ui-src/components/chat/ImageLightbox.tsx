@@ -1,8 +1,13 @@
 // Full-size image lightbox preview: exit via background click / ESC / the close button,
 // previous/next switching, zoom (buttons, wheel, double-click, +/- keys) with panning at
 // scale > 1, and download.
+// Portaled to document.body like every other overlay: rendered inline it would sit inside
+// #main, a zoom target — a fixed-position descendant of a zoomed ancestor mis-scales, which
+// pushed the top action bar (close button) off-screen and left viewport regions uncovered
+// (page kept scrolling behind, bubbles painted over the preview).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import { createPortal } from "react-dom";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 
@@ -100,7 +105,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 select-none"
       data-modal="lightbox"
@@ -215,6 +220,7 @@ export default function ImageLightbox({ images, initialIndex = 0, onClose }: Ima
           <Icon name="chevronRight" size={20} />
         </button>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
