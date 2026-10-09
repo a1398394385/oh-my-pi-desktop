@@ -426,7 +426,10 @@ export function applyEvent(msg: EventFrame): void {
       (s) => {
         s.streaming = true;
         s.assistantDraft = "";
-        s.workingText = t("notify.working");
+        // Keep the previous tool's intent showing through in-run continuation turns (the gap
+        // between a finished tool and the next model response); only the run's first turn
+        // (workingText still null from local send) falls back to the generic label
+        s.workingText = s.workingText ?? t("notify.working");
         // Initialize the process start and clock only on the run's first turn: in-run continuations
         // (tool loops) don't reset, otherwise every model turn would form its own group and
         // duration/usage would be per-turn (live vs reloaded views would diverge);
