@@ -8,7 +8,7 @@ import { Ellip, useLift, Spin, patchActiveItem } from "./parts";
 import { t } from "../../i18n";
 
 export default function BashRow({ item }: { item: BashItem }) {
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = item.cmdExpanded && !closing;
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -32,8 +32,9 @@ export default function BashRow({ item }: { item: BashItem }) {
           <Icon name="chevronRight" />
         </span>
       </div>
-      {open && (
-        <pre className={"bash-out" + (closing ? " lift" : " drop")}>
+      {/* Body stays mounted while closing (gated on cmdExpanded alone, not the arrow's `open`) so useLift can animate its height before the commit unmounts it */}
+      {item.cmdExpanded && (
+        <pre ref={liftRef} className="bash-out drop">
           {item.output || (item.running ? <Spin /> : t("chat.noOutput"))}
           {item.truncated ? t("chat.outputTruncated") : ""}
         </pre>

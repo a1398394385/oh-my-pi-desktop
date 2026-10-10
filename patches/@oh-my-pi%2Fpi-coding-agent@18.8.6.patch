@@ -1,0 +1,50 @@
+diff --git a/scripts/legacy-pi-virtual-module.ts b/scripts/legacy-pi-virtual-module.ts
+index f366d9b34c93d3a233487f55c113347aa87cbe54..bf4b5f9fbfaab533d0df56c25e0651c77136f63b 100644
+--- a/scripts/legacy-pi-virtual-module.ts
++++ b/scripts/legacy-pi-virtual-module.ts
+@@ -1,3 +1,4 @@
++import * as fs from "node:fs";
+ import * as path from "node:path";
+ import { isEnoent } from "@oh-my-pi/pi-utils/fs-error";
+ 
+@@ -12,16 +13,18 @@ interface BundledPackage {
+ 	readonly dir: string;
+ 	readonly identifier: string;
+ 	readonly rootShim: string | null;
++	/** Package directory under the @oh-my-pi scope in an npm-install layout (differs for agent: pi-agent-core). */
++	readonly npmDir: string;
+ }
+ 
+ const BUNDLED_PACKAGES: readonly BundledPackage[] = [
+-	{ dir: "agent", identifier: "PiAgentCore", rootShim: null },
+-	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
+-	{ dir: "catalog", identifier: "PiCatalog", rootShim: null },
+-	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
+-	{ dir: "natives", identifier: "PiNatives", rootShim: null },
+-	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts" },
+-	{ dir: "utils", identifier: "PiUtils", rootShim: null },
++	{ dir: "agent", identifier: "PiAgentCore", rootShim: null, npmDir: "pi-agent-core" },
++	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts", npmDir: "pi-ai" },
++	{ dir: "catalog", identifier: "PiCatalog", rootShim: null, npmDir: "pi-catalog" },
++	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts", npmDir: "pi-coding-agent" },
++	{ dir: "natives", identifier: "PiNatives", rootShim: null, npmDir: "pi-natives" },
++	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts", npmDir: "pi-tui" },
++	{ dir: "utils", identifier: "PiUtils", rootShim: null, npmDir: "pi-utils" },
+ ];
+ 
+ const TYPEBOX_MODULE_KEY = "typebox";
+@@ -116,7 +119,13 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
+ 	}
+ 
+ 	for (const pkg of BUNDLED_PACKAGES) {
+-		const packageRoot = path.join(repoRoot, "packages", pkg.dir);
++		// Monorepo checkout resolves under repoRoot/packages; an npm install (e.g. the
++		// desktop host build compiling from node_modules) keeps the packages as scope
++		// siblings of this one, under the npmDir directory name.
++		let packageRoot = path.join(repoRoot, "packages", pkg.dir);
++		if (!fs.existsSync(path.join(packageRoot, "package.json"))) {
++			packageRoot = path.join(packageDir, "..", pkg.npmDir);
++		}
+ 		const manifestPath = path.join(packageRoot, "package.json");
+ 		const manifest: unknown = await Bun.file(manifestPath).json();
+ 		if (!isRecord(manifest) || typeof manifest.name !== "string") {

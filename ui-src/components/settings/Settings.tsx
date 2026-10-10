@@ -28,6 +28,7 @@ import HooksPage from "./pages/HooksPage";
 import ModelPage from "./pages/ModelPage";
 import McpPage from "./pages/McpPage";
 import SkillsPage from "./pages/SkillsPage";
+import AutomationsPage from "./pages/AutomationsPage";
 import MemoryPage from "./pages/MemoryPage";
 import AgentsPage from "./pages/AgentsPage";
 import StatsPage from "./pages/StatsPage";
@@ -66,6 +67,7 @@ const NAV_SECTIONS = [
       { id: "pg-plugins", icon: "plugins", label: "settingsPage.nav.plugins" },
       { id: "pg-mcp", icon: "mcp", label: "settingsPage.nav.mcp" },
       { id: "pg-skills", icon: "skills", label: "settingsPage.nav.skills" },
+      { id: "pg-automations", icon: "play", label: "settingsPage.nav.automations" },
       { id: "pg-hooks", icon: "hook", label: "settingsPage.nav.hooks" },
     ],
   },
@@ -105,6 +107,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-model": ModelPage,
   "pg-mcp": McpPage,
   "pg-skills": SkillsPage,
+  "pg-automations": AutomationsPage,
   "pg-memory": MemoryPage,
   "pg-agents": AgentsPage,
   "pg-stats": StatsPage,
@@ -128,6 +131,10 @@ for (const sec of NAV_SECTIONS) {
     PAGE_LABELS[it.id] = it.label;
   }
 }
+
+// How long the landed search row keeps its tint. Must stay >= the .search-flash animation
+// duration in ui/css/settings/common.css (kept in sync there by SEARCH_FLASH_MS in the comment).
+const SEARCH_FLASH_MS = 2600;
 
 export default function Settings() {
   const { t } = useTranslation();
@@ -344,12 +351,13 @@ export default function Settings() {
                     onClick={() => {
                       openSettings(it.pageId);
                       // Land on the row: page render + entrance animations settle in a
-                      // couple of frames, then scroll the row into view and pulse it once.
+                      // couple of frames, then scroll it into view and hold the tint long
+                      // enough to actually see (SEARCH_FLASH_MS mirrors the CSS duration).
                       setTimeout(() => {
                         const el = setBodyRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(it.key)}"]`);
                         el?.scrollIntoView({ block: "center", behavior: "smooth" });
                         el?.classList.add("search-flash");
-                        setTimeout(() => el?.classList.remove("search-flash"), 1500);
+                        setTimeout(() => el?.classList.remove("search-flash"), SEARCH_FLASH_MS);
                       }, 80);
                     }}
                     title={`${it.label} (${it.pageTitle})`}

@@ -27,6 +27,8 @@ const ICONS = {
   logo: '<svg width="16" height="16" viewBox="0 0 17 17"><rect width="17" height="17" rx="4.5" fill="#3a7bd5"/><path d="M4.8 9.2 7 11.4l5.4-5.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   // Line-style info circle (lucide info): hover hint icon next to group titles. FA circle-info is a solid block; a hand-drawn line version matches the lucide look (same precedent as refresh)
   info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  // Line-style eject (lucide eject): "evict from the in-memory session pool" action on session rows
+  eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 19.5 14h-15z"/><line x1="5" y1="18.5" x2="19" y2="18.5"/></svg>',
   // Shield + exclamation: FA Free has no shield-exclamation (Pro-only), composed from the shield path + an evenodd cut-out
   shieldWarn: '<svg width="16" height="16" viewBox="0 0 512 512"><path fill="currentColor" fill-rule="evenodd" d="M256 0c4.6 0 9.2 1 13.4 2.9L457.8 82.8c22 9.3 38.4 31 38.3 57.2-.5 99.2-41.3 280.7-213.6 363.2-16.7 8-36.1 8-52.8 0-172.4-82.5-213.1-264-213.6-363.2-.1-26.2 16.3-47.9 38.3-57.2L242.7 2.9C246.9 1 251.4 0 256 0zM234 152h44a24 24 0 0 1 24 24v96a24 24 0 0 1-24 24h-44a24 24 0 0 1-24-24v-96a24 24 0 0 1 24-24zM256 336a26 26 0 1 1 0 52 26 26 0 1 1 0-52z"/></svg>',
   // Terminal icon with a full rectangular shell (unlike the bare >_ in the main chat area)

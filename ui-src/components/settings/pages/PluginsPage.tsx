@@ -11,6 +11,7 @@ import Icon from "../../../Icon";
 import { emptyRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import ScopeSel from "../ScopeSel";
+import { useExtSources } from "../ExtSourceTag";
 import { PAGE_PLACEMENT } from "../placement";
 import type { PluginAssetItem, PluginAssetsPayload, PluginContents } from "../../../types/frames";
 
@@ -30,8 +31,9 @@ const CONTENT_GROUPS: { kind: keyof PluginContents; labelKey: string }[] = [
 export default function PluginsPage() {
   const { t } = useTranslation();
   const hostSettings = useAppStore((s) => s.hostSettings);
+  const extByScope = useAppStore((s) => s.extensionsByScope);
+  useExtSources(); // extension-center snapshots feed the partial-effect tag below
   const agentAssets = useAppStore((s) => s.agentAssets);
-  const data = agentAssets?.plugins as PluginAssetsPayload | undefined;
 
   const allProjects = useAppStore((s) => s.allProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
@@ -44,6 +46,7 @@ export default function PluginsPage() {
   // State detection: no blind guessing before hostSettings lands
   const known = typeof hostSettings?.pluginsEnabled === "boolean";
   const pluginsEnabled = known && !!hostSettings?.pluginsEnabled;
+  const data = agentAssets?.plugins as PluginAssetsPayload | undefined;
 
   const profileSec = {
     scope: "profile",
@@ -57,6 +60,23 @@ export default function PluginsPage() {
   const sections = [profileSec, ...projectSecs];
   // Fall back to the profile level when the current scope is stale
   const curSec = sections.find((s) => s.scope === scope) ?? profileSec;
+
+  // Partial effect: an enabled plugin whose static capability entries (from the
+  // extension-center snapshot) are provider-disabled. Its extension modules keep
+  // running via the extension runner (that lane ignores provider switches), while
+  // skills/commands/MCP entries stay hidden — surface the split on the row.
+  const partialLive = (p: PluginAssetItem): boolean => {
+    if (!p.enabled) return false;
+    // Marketplace installs symlink node_modules into the cache dir and the
+    // extension-center entry paths carry the resolved root, so match on the
+    // symlink-resolved path when the host supplied one.
+    const base = p.realPath || p.path;
+    if (!base) return false;
+    const root = base.endsWith("/") ? base : base + "/";
+    return Object.values(extByScope).some((f) =>
+      (f.extensions ?? []).some((e) => e.path?.startsWith(root) && e.disabledReason === "provider-disabled"),
+    );
+  };
 
   const togglePlugins = () => {
     const next = !pluginsEnabled;
@@ -176,7 +196,11 @@ export default function PluginsPage() {
                   <div className="srow-tx">
                     <b>
                       {p.name}
-                      {p.version && <span style={{ marginLeft: 8, fontSize: "0.85em", color: "var(--dim)" }}>v{p.version}</span>}
+                      {partialLive(p) && (
+                        <span className="tag ext-tag-warn" style={{ marginLeft: 8 }} title={t("settingsPage.plugins.partialLiveTip")}>
+                          {t("settingsPage.plugins.partialLiveTag")}
+                        </span>
+                      )}
                     </b>
                     <span>{p.description || p.path || t("settingsPage.plugins.pluginFallback")}</span>
                   </div>

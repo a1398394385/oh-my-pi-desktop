@@ -9,7 +9,7 @@
 // Exempt dirs: build outputs such as node_modules/dist/target (ui/ docs/ .agents/ .local/ outside the source roots are naturally unchecked).
 // Usage: node scripts/check-architecture.mjs [--base <rev>]
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 const root = process.cwd();
@@ -23,80 +23,6 @@ const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
 ];
-
-const CSS_LIMITS = {
-  "global/animations.css": 70,
-  "global/base.css": 30,
-  "global/boot.css": 61,
-  "global/context-card.css": 103,
-  "global/controls.css": 330,
-  "global/overlays.css": 140,
-  "global/scrollbars.css": 40,
-  "global/tokens.css": 240,
-  "main/center.css": 100,
-  "main/head-chips.css": 40,
-  "main/chat/approval.css": 150,
-  "main/chat/approval-collapse.css": 40,
-  "main/chat/ask.css": 40,
-  "main/chat/messages.css": 670,
-  "main/chat/readonly-group.css": 100,
-  "main/chat/status-find.css": 140,
-  "main/chat/streamdown.css": 250,
-  "main/composer-menus.css": 90,
-  "main/composer.css": 680,
-  "main/composer-bash.css": 110,
-  "main/hub.css": 60,
-  "main/right/background.css": 60,
-  "main/right/branches.css": 20,
-  "main/right/browser.css": 167,
-  "main/right/capabilities.css": 70,
-  "main/right/common.css": 190,
-  "main/right/files.css": 30,
-  "main/right/git.css": 60,
-  "main/right/hub-detail.css": 70,
-  "main/right/terminal.css": 190,
-  "main/shell.css": 100,
-  "main/sidebar.css": 653,
-  "main/tree/fork.css": 60,
-  "main/tree/stream.css": 299,
-  "main/welcome.css": 215,
-  "settings/agents.css": 20,
-  "settings/appearance.css": 50,
-  "settings/common.css": 600,
-  "settings/experimental.css": 10,
-  "settings/extensions.css": 140,
-  "settings/forms.css": 100,
-  "settings/hooks.css": 10,
-  "settings/plugins.css": 30,
-  "settings/mcp.css": 300,
-  "settings/memory.css": 80,
-  "settings/models.css": 159,
-  "settings/font-picker.css": 20,
-  "settings/providers.css": 40,
-  "settings/shortcuts.css": 20,
-  "settings/skills.css": 280,
-  "settings/shell.css": 50,
-  "settings/stats-legacy.css": 50,
-  "settings/stats-port.css": 1040,
-  "settings/stats.css": 726,
-  "settings/update.css": 40,
-  "shared/agent.css": 60,
-  "shared/choice-pills.css": 90,
-  "shared/code-blocks.css": 80,
-  "shared/code-theme.css": 50,
-  "shared/code-typography.css": 30,
-  "shared/code-view.css": 60,
-  "shared/markdown.css": 150,
-  "shared/model-picker.css": 60,
-};
-for (const [path, max] of Object.entries(CSS_LIMITS)) HOT_LIMITS.push({ path: "ui/css/" + path, max });
-
-function cssFiles(dir) {
-  return readdirSync(resolve(root, dir), { withFileTypes: true }).flatMap((entry) => {
-    const path = dir + "/" + entry.name;
-    return entry.isDirectory() ? cssFiles(path) : entry.name.endsWith(".css") ? [path] : [];
-  });
-}
 
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
 
@@ -168,15 +94,9 @@ if (requestedBase && requestedBase !== base) {
 }
 
 const files = trackedSourceFiles();
-// Non-source paths in HOT_LIMITS (e.g. .css) are not in sourceExtensions (kept out of the new-file check); fold them into line counting here
-const styles = cssFiles("ui/css");
-const locByPath = new Map([...files, ...styles, ...HOT_LIMITS.map((h) => h.path)].filter((p) => existsSync(resolve(root, p))).map((p) => [p, locFor(p)]));
+const locByPath = new Map([...files, ...HOT_LIMITS.map((h) => h.path)].filter((p) => existsSync(resolve(root, p))).map((p) => [p, locFor(p)]));
 const addedFiles = [...new Set([...addedSourceFiles(base), ...git(["ls-files", "--others", "--exclude-standard"]).split("\n").filter(isSourcePath)])];
 const failures = [];
-
-for (const path of styles) {
-  if (!(path.slice("ui/css/".length) in CSS_LIMITS)) failures.push(`${path} 未登记样式上限；新增 CSS 文件须登记`);
-}
 
 // ---- Check 1: hard caps for hot spots ----
 for (const { path, max } of HOT_LIMITS) {

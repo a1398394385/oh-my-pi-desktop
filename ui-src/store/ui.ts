@@ -41,6 +41,7 @@ export interface UiSlice {
   animateThinkBody: boolean;
   animateSubKids?: boolean; // subagent detail entrance-animation flag (attached at runtime, SubagentPage only)
   toastMsg: string | null; // current toast text (null = hidden)
+  toastErr: boolean; // true = error toast (red icon + --err tinted border)
   composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // signal to fill the composer externally (fork backfill / queued-message editing); guard = async backfill, give up overwriting when the draft is non-empty
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
   menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)
@@ -79,7 +80,7 @@ export interface UiSlice {
   hubWarming: string | null; // sessionId with a cache-warming run in flight (cache_warming frame; landed by landCacheWarming)
   /** Full-window boot veil: true from launch until the first session_list frame (preview mode clears it at mount); covers the welcome page's "/" placeholder window during host cold start. */
   bootSplash: boolean;
-  toast(msg: unknown): void;
+  toast(msg: unknown, error?: boolean): void;
   openHub(): void;
   closeHub(): void;
   setHubSel(id: string | null): void;
@@ -158,6 +159,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   animateGdKids: false,
   animateThinkBody: false,
   toastMsg: null,
+  toastErr: false,
   composerSetSignal: null,
   findOpen: false,
   menuSignal: null,
@@ -229,11 +231,11 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set((s) => ({ hubMode: s.hubMode === "flat" ? "tree" : "flat" }));
   },
 
-  toast(msg) {
-    set((s) => ({ toastMsg: String(msg) }));
+  toast(msg, error = false) {
+    set((s) => ({ toastMsg: String(msg), toastErr: error === true }));
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
-      set((s) => ({ toastMsg: null }));
+      set({ toastMsg: null, toastErr: false });
     }, 2200);
   },
 

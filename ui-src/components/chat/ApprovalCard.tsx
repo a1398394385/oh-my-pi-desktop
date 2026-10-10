@@ -18,7 +18,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppStore } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
-import type { AskQuestion } from "../../types/session";
+import type { AskQuestion, PlanOutput } from "../../types/session";
 
 // Stable option ids sent by host-built approval frames (editor/plan variants).
 // Labels come from i18n so the wire stays language-independent; SDK-generated
@@ -64,6 +64,9 @@ interface ApprovalItem {
   editable?: boolean;
   editableIndex?: number;
   requestId: string;
+  // Plan variant: raw plan text + title + on-disk path, rendered as a scrollable
+  // body between the title and the options
+  plan?: PlanOutput;
   answer?: string | null;
   prefill?: string;
   // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
@@ -456,6 +459,14 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         )}
       </div>
       <div className="approval-title">{item.title}</div>
+      {/* Plan-proposal body: the raw plan text between the title and the options.
+          Content was captured by the host before the proposal turn aborted, so it
+          is complete and independent of the local:// file handle. */}
+      {item.plan && (
+        <div className="approval-plan">
+          <pre>{item.plan.content}</pre>
+        </div>
+      )}
       {/* Execution-model tier slider (plan variant): pick which configured role
           model runs the approved plan. Segments are click targets, so the hover
           highlight is an affordance here, not decoration. */}

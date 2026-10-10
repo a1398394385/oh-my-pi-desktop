@@ -12,6 +12,9 @@
 // inflated the .app from 148 MB to 465 MB and the updater tar.gz from 79 MB to 153 MB.
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+// Build-time helper from the installed base package (patched for npm layouts, see
+// patches/@oh-my-pi%2Fpi-coding-agent*.patch): materializes the legacy Pi virtual module.
+import { createLegacyPiVirtualModulePlugin } from "../node_modules/@oh-my-pi/pi-coding-agent/scripts/legacy-pi-virtual-module.ts";
 // Version-identity check, mirrored from @oh-my-pi/pi-natives native/version-sentinel.js
 // (as of 18.5.0). Deliberately inlined instead of deep-imported: that file ships in the
 // npm package but is not exposed via package `exports`, and upstream renames its helpers
@@ -132,21 +135,21 @@ await fs.rm(hostDistDir, { recursive: true, force: true });
 await verifyPromptMirrors();
 await embedNativeAddon();
 try {
-	const build = Bun.spawnSync(
-		[
-			"bun",
-			"build",
-			"--compile",
-			"--minify",
-			"--external",
-			"omp-legacy-pi-modules",
-			"host/host.ts",
-			"--outfile",
-			"host-dist/omp-host.exe",
-		],
-		{ cwd: repoRoot, stdout: "inherit", stderr: "inherit" },
-	);
-	process.exitCode = build.exitCode ?? 1;
+	// The base's legacy-pi compat layer dynamically imports the "omp-legacy-pi-modules"
+	// virtual module; the build plugin materializes its lazy loader registry in memory.
+	// Without it the compiled exe cannot load any legacy-style plugin extension
+	// (e.g. ponytail) — USE_BUNDLED_PI_MODULES is always true in a compiled binary,
+	// so `--external` there meant a guaranteed runtime failure (BUG-059).
+	const build = await Bun.build({
+		entrypoints: [path.join(repoRoot, "host/host.ts")],
+		minify: true,
+		plugins: [await createLegacyPiVirtualModulePlugin()],
+		compile: { outfile: path.join(hostDistDir, "omp-host.exe") },
+	});
+	if (!build.success) {
+		for (const message of build.logs) console.error(message);
+		process.exitCode = 1;
+	}
 } finally {
 	await resetEmbeddedAddon();
 }

@@ -18,8 +18,9 @@ export interface RightSlice {
   selectedFile: string | null;
   fileView: FileViewState | null;
   fileViewPending: string | null; // file path with a request in flight
-  briefDiffPending: string | null; // inline-diff path with a request in flight
+  briefDiffPending: string | null; // inline diff path with a request in flight
   todoCollapsed: boolean;
+  capsCardCollapsed: boolean; // capabilities card folded (float shape → capsule; right-panel docked shape → section rail)
   rightState: RightState;
   gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
@@ -63,6 +64,7 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   briefDiffPending: null,
   // Launch starts with the right panel collapsed, so the process card starts expanded
   todoCollapsed: false,
+  capsCardCollapsed: false,
   rightState: rightStateInit,
   gitDiffCache: { cwd: null, files: [], loading: false },
   fileDiffCache: { path: null, diff: "", loading: false },

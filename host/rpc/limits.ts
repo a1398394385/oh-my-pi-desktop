@@ -1,7 +1,8 @@
 // Quota and context domain RPC: session quotas (get_limits, multi-account
 // sticky alignment), models-page per-account quotas, context detail
-// (including MCP tool schema token estimation). Moved over from the main.ts
-// message dispatch (third slice).
+// (including MCP token estimation for both presentations: tools-array schema
+// and the prompt-side device catalog / inlined docs). Moved over from the
+// main.ts message dispatch (third slice).
 import { Tokenizer } from "../bootstrap.ts";
 import { H, sessions, type PoolEntry } from "../state.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits } from "../limits/index.ts";
@@ -37,6 +38,67 @@ function estimateMcpToolsTokens(entry: PoolEntry): number {
   const tokens = new Tokenizer(model).countTokens(fragments);
   mcpTokensCache.set(tools, tokens);
   return tokens;
+}
+
+// Device-mounted MCP tools leave the tools array, so their cost moves into prompt
+// text instead: `xd://mcp__x — summary` catalog lines, or a full `## mcp__x` docs
+// block (heading + description + schema) when tools.xdevDocs inlines them. Both are
+// priced here and bucketed by the prompt block that carries them — block 0 shows up
+// as systemPromptTokens, blocks 1+ as systemContextTokens — so the frontend can
+// subtract each bucket from the row it belongs to. Cache key: the systemPrompt array
+// identity (rebuilt on every content change, held stable in between).
+const mcpPromptTokensCache = new WeakMap<string[], McpPromptSplit>();
+
+interface McpPromptSplit {
+  /** Block 0: inlined doc blocks and any device line written into the base prompt. */
+  promptTokens: number;
+  /** Blocks 1+: the mounted-device catalog appended to the project context. */
+  contextTokens: number;
+}
+
+// A mounted tool's doc starts at its own `## <name> — <label>` heading and runs to
+// the next device heading, the next template section, or the next top-level heading;
+// `## Schema` is part of the same doc, every other `## ` heading is not.
+const MCP_DOC_HEADING = /^## mcp__\S+ — /;
+const MCP_DEVICE_LINE = /xd:\/\/mcp__/;
+const SECTION_HEADING = /^(?:# |§ )/;
+
+function splitMcpPromptTokens(session: PoolEntry["session"]): McpPromptSplit {
+  const blocks = session.systemPrompt;
+  if (!Array.isArray(blocks) || blocks.length === 0) return { promptTokens: 0, contextTokens: 0 };
+  const cached = mcpPromptTokensCache.get(blocks);
+  if (cached !== undefined) return cached;
+  const tokenizer = new Tokenizer(session.model);
+  const promptFragments: string[] = [];
+  const contextFragments: string[] = [];
+  blocks.forEach((block, index) => {
+    const bucket = index === 0 ? promptFragments : contextFragments;
+    let doc: string[] | null = null;
+    for (const line of (block ?? "").split("\n")) {
+      if (MCP_DOC_HEADING.test(line)) {
+        if (doc) bucket.push(doc.join("\n"));
+        doc = [line];
+        continue;
+      }
+      if (doc) {
+        if (SECTION_HEADING.test(line) || (line.startsWith("## ") && !line.startsWith("## Schema"))) {
+          bucket.push(doc.join("\n"));
+          doc = null;
+          continue;
+        }
+        doc.push(line);
+        continue;
+      }
+      if (MCP_DEVICE_LINE.test(line)) bucket.push(line);
+    }
+    if (doc) bucket.push(doc.join("\n"));
+  });
+  const split: McpPromptSplit = {
+    promptTokens: promptFragments.length > 0 ? tokenizer.countTokens(promptFragments) : 0,
+    contextTokens: contextFragments.length > 0 ? tokenizer.countTokens(contextFragments) : 0,
+  };
+  mcpPromptTokensCache.set(blocks, split);
+  return split;
 }
 
 // Repo rules (AGENTS.md / CLAUDE.md) and the memory block both reach the model
@@ -119,6 +181,8 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     const b = entry.session.getContextBreakdown();
     const st = entry.session.getSessionStats();
     const { repoRulesTokens, memoryTokens } = splitSystemContextRegions(entry.session);
+    const mcpToolsTokens = estimateMcpToolsTokens(entry);
+    const { promptTokens: mcpPromptTokens, contextTokens: mcpContextTokens } = splitMcpPromptTokens(entry.session);
     ws.send(
       JSON.stringify({
         type: "context_detail",
@@ -126,12 +190,16 @@ export const limitsHandlers: Record<string, RpcHandler> = {
         breakdown: b
           ? {
               ...b,
-              mcpToolsTokens: estimateMcpToolsTokens(entry),
+              mcpToolsTokens,
+              // Device-mounted MCP (tools.xdev on): the cost left the tools array for
+              // prompt text, so each split is subtracted from its own row downstream.
+              mcpPromptTokens,
+              mcpContextTokens,
               // Split out of systemContextTokens (which counts all of block 1+):
               // each gets its own row; "Other" shows what is left.
               repoRulesTokens,
               memoryTokens,
-              otherTokens: Math.max(0, b.systemContextTokens - repoRulesTokens - memoryTokens),
+              otherTokens: Math.max(0, b.systemContextTokens - repoRulesTokens - memoryTokens - mcpContextTokens),
             }
           : null,
         stats: {

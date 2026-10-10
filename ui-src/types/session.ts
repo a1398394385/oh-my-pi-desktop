@@ -234,11 +234,23 @@ export interface RailEntry {
 
 // ---------- openSessions container ----------
 
+/** Plan-mode deliverable carried on the approval frame (and remembered on the
+    session as `planResult`): the todo card's output row and the right panel's
+    file view both render from it. */
+export interface PlanOutput {
+  title: string;
+  path: string; // on-disk path of the local:// plan file (display only; content rides inline)
+  content: string; // raw plan text
+}
+
 /** Pending approval (landed by store.ts:991-998 approval_request; consumed by ApprovalCard) */
 export interface PendingApproval {
   requestId: string;
   title: string;
   options: string[]; // editor/plan variants use stable ids (submit/cancel/plan:execute/plan:compact/plan:keep/plan:refine/plan:save-quit)
+  // Raw plan text + title + on-disk path (plan variant only): the approval card
+  // renders the plan body above the options.
+  plan?: PlanOutput;
   // Live context usage for the plan-approval keep-context row (raw numbers; the
   // UI localizes the "Approve and keep context (~44k / 1m)" label).
   keepContextTokens?: { tokens: number; contextWindow: number };
@@ -311,6 +323,7 @@ export interface SubagentState {
   text: string; // accumulated subagent text deltas
   tools: SubagentToolCall[];
   streaming: boolean;
+  result?: string; // submitted report, landed from terminal lifecycle frames (Result section; undefined while running)
   usage?: SubagentUsage;
 }
 
@@ -321,6 +334,7 @@ export interface OpenSession {
   cwd: string;
   items: ChatItem[];
   pendingApprovals?: PendingApproval[];
+  planResult?: PlanOutput | null; // most recent plan-mode deliverable (updated on each plan approval request; the todo card's output row reads it)
   assistantDraft: string;
   streaming: boolean;
   turnStartAt?: number | null;
@@ -433,6 +447,7 @@ export interface AppState {
   connText: string;
   bootSplash: boolean; // full-window boot veil until the first session_list frame (see UiSlice)
   toastMsg: string | null; // current toast text (null = hidden)
+  toastErr: boolean; // true = error toast (red icon + --err tinted border)
   composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // signal to fill the composer externally (fork backfill / queued-message editing)
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
   menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)

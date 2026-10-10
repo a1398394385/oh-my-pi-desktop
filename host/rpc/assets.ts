@@ -32,7 +32,8 @@ import {
   toggleExtensionUserSource,
 } from "../extensions.ts";
 import { rebuildScopedModels } from "../models.ts";
-import { modelsFrame } from "../frames.ts";
+import { modelsFrame, settingsFrame } from "../frames.ts";
+import { KIMI_CU_SERVER, kimiCuBinaryPath, warmBuiltinServer } from "../mcp-builtin.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
@@ -233,6 +234,26 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     });
     mcpHealthCache.delete(name);
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+  },
+  async test_kimi_cu(ws) {
+    // Computer page's Kimi "Test connection" button: the kimi-cu server is
+    // code-owned (host/mcp-builtin.ts, never in mcp.json), so the test is the
+    // pool warm itself — acquire the shared global connection, release it back
+    // to the idle pool. The reply rides the existing mcp_server_tested frame,
+    // so the frontend toasts the result with the standard MCP wording.
+    const bin = kimiCuBinaryPath();
+    if (!bin) {
+      ws.send(JSON.stringify({ type: "mcp_server_tested", name: KIMI_CU_SERVER, status: "error", error: hostI18n.t("errors.kimiCuNotInstalled") }));
+      return;
+    }
+    const ok = await warmBuiltinServer(KIMI_CU_SERVER);
+    ws.send(
+      JSON.stringify(
+        ok
+          ? { type: "mcp_server_tested", name: KIMI_CU_SERVER, status: "ok" }
+          : { type: "mcp_server_tested", name: KIMI_CU_SERVER, status: "error", error: hostI18n.t("errors.kimiCuConnectFailed") },
+      ),
+    );
   },
   async test_mcp_server(ws, msg) {
     const name = String(msg.name ?? "").trim();

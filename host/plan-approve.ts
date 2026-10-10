@@ -178,6 +178,10 @@ async function approveProposal(
       disabledIndices:
         usage && usage.percent > KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT ? [optionsKeepIndex()] : undefined,
       slider,
+      // Raw plan text + title + on-disk path: the UI renders the plan body above
+      // the options and links the todo card's output row to the file view. Content
+      // was captured before the abort, so it survives the local:// handle reset.
+      plan: { title, path: planFilePathOnDisk(entry, planFilePath), content: planContent },
     } satisfies PlanApprovalPresentation,
     (index) => {
       pickedTier = index;

@@ -147,6 +147,26 @@ export default function ComputerPage() {
   };
 
   const displays = displaysFrame?.displays ?? [];
+  // Computer-use provider pick (omp-desktop.json computer.provider): the Kimi
+  // option is disabled while KimiCU is absent; the kimi-cu server definition
+  // itself is code-owned (host/mcp-builtin.ts, never in mcp.json), so the
+  // button next to the dropdown is a connection test, not a config writer
+  const provider = hs?.computerProvider === "kimi" ? "kimi" : "default";
+  const kimiInstalled = hs?.kimiCuInstalled === true;
+  const providerOptions: SelOption[] = [
+    { v: "default", label: t("settingsPage.computer.providerDefault"), ck: provider === "default" ? "✓" : undefined },
+    {
+      v: "kimi",
+      label: t("settingsPage.computer.providerKimi"),
+      ck: provider === "kimi" ? "✓" : undefined,
+      disabled: !kimiInstalled,
+      sub: kimiInstalled ? undefined : t("settingsPage.computer.providerKimiMissing"),
+    },
+  ];
+  const testKimi = (): void => {
+    // Result toast arrives on the standard mcp_server_tested frame
+    send({ type: "test_kimi_cu" });
+  };
   const cur = typeof hs?.values?.["computer.display"] === "string" ? (hs.values["computer.display"] as string) : "all";
   const curKnown = cur === "all" || displays.some((d) => d.id === cur);
   const optionLabel = (v: string): ReactNode => {
@@ -174,6 +194,24 @@ export default function ComputerPage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.computer.enableTitle")}</b><span>{t("settingsPage.computer.enableDesc")}</span></div>
           <div className={"tg" + (on ? " on" : "")} id="tgComputer" onClick={toggle}><i></i></div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx"><b>{t("settingsPage.computer.providerTitle")}</b><span>{t("settingsPage.computer.providerDesc")}</span></div>
+          <div className="srow-ctl">
+            {/* Test button appears only with the Kimi provider picked, sitting
+                left of the dropdown: one click warms/probes the code-owned
+                kimi-cu connection; the result toasts via mcp_server_tested. */}
+            {provider === "kimi" && (
+              <button type="button" className="save-btn" id="kimiCuCfg" onClick={testKimi}>
+                {t("settingsPage.computer.testBtn")}
+              </button>
+            )}
+            <Sel
+              label={provider === "kimi" ? t("settingsPage.computer.providerKimi") : t("settingsPage.computer.providerDefault")}
+              options={providerOptions}
+              onPick={(v) => send({ type: "set_computer_provider", provider: v })}
+            />
+          </div>
         </div>
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.computer.displayTitle")}</b><span>{t("settingsPage.computer.displayDesc")}</span></div>

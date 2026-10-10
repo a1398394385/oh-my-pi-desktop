@@ -3,7 +3,7 @@
 // Migrated from the shared utilities in ui/tool-rows.js (imperative DOM construction
 // translated to components); pure functions (splitPath/uniqueFiles) are re-imported from the
 // old module instead of being rewritten.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { ChatItem, ToolItem } from "../../types/session";
 import { useAppStore, setBump } from "../../store/index";
@@ -199,7 +199,7 @@ export function LinkedText({ text }: { text?: string }) {
 }
 
 // ---------- Fade mask (adds .no-fade to lift the bottom blur when scrolled to bottom or content is shorter than one screen, formerly attachFadeMask) ----------
-export function FadeBox({ className, as = "div", children, html }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string }) {
+export function FadeBox({ className, as = "div", children, html, liftRef }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string; liftRef?: (el: HTMLElement | null) => void }) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const el = ref.current;
@@ -211,7 +211,8 @@ export function FadeBox({ className, as = "div", children, html }: { className?:
   });
   // Dynamic tag narrowing: `as` actually only takes "div" (default) / "pre" (CmdCard output body);
   // branch rendering + callback ref keeps the ref type of both concrete tags (equivalent to the former <Tag ref>)
-  const refCb = (el: HTMLElement | null) => { ref.current = el; };
+  // liftRef (from useLift) is merged in so the collapse can measure/animate this element's height
+  const refCb = (el: HTMLElement | null) => { ref.current = el; liftRef?.(el); };
   if (as === "pre") {
     return html !== undefined
       ? <pre className={className} ref={refCb} dangerouslySetInnerHTML={{ __html: html }} />
@@ -223,15 +224,35 @@ export function FadeBox({ className, as = "div", children, html }: { className?:
 }
 
 // ---------- Expand-body timing (componentized equivalent of the former liftEl) ----------
-// The expand body plays its .drop/.kids-in entrance animation on mount — React reuses nodes,
-// so streaming redraws do not replay it (equivalent to the former "play only on the click
-// that expands"; switching sessions remounts and replays once, an accepted difference);
-// collapsing first plays the .lift/.closing collapse animation, and the data is committed and
-// the node unmounted only after 210ms (310ms for loop groups).
-export function useLift(): [boolean, (commit: () => void, delay?: number) => void] {
+// The expand body plays its .drop entrance animation on mount — React reuses nodes, so
+// streaming redraws do not replay it (equivalent to the former "play only on the click that
+// expands"; switching sessions remounts and replays once, an accepted difference).
+// Collapsing drives the body's real height to 0 (pinned height -> 0 + fade + bottom margin),
+// so the messages below ride up in sync with the retracting body instead of waiting for the
+// unmount and jumping (the old clip-path lift only hid the overflow, leaving a blank gap).
+// The data is committed and the node unmounted only after 210ms (310ms for loop groups,
+// whose .lp-kids grid-row transition still animates via CSS with the ref left unattached).
+export function useLift(): [boolean, (commit: () => void, delay?: number) => void, (el: HTMLElement | null) => void] {
   const [closing, setClosing] = useState(false);
   const timer = useRef<TimerHandle | undefined>(undefined);
+  const elRef = useRef<HTMLElement | null>(null);
   useEffect(() => () => clearTimeout(timer.current), []);
+  // Attach to the expand body's root element; it is measured here when the collapse starts
+  const liftRef = useCallback((el: HTMLElement | null) => { elRef.current = el; }, []);
+  useLayoutEffect(() => {
+    if (!closing) return;
+    const el = elRef.current;
+    if (!el) return; // no expand body mounted (loop groups animate .lp-kids via CSS instead)
+    // Pin the current height, commit it, then transition to 0: the following messages move
+    // up together with the retracting body, no blank gap before the unmount
+    el.style.height = `${el.scrollHeight}px`;
+    el.style.overflow = "hidden";
+    void el.offsetHeight;
+    el.style.transition = "height .2s ease-out, opacity .2s ease-out, margin-bottom .2s ease-out";
+    el.style.height = "0px";
+    el.style.opacity = "0";
+    el.style.marginBottom = "0";
+  }, [closing]);
   const close = (commit: () => void, delay = 210) => {
     setClosing(true);
     clearTimeout(timer.current);
@@ -240,7 +261,7 @@ export function useLift(): [boolean, (commit: () => void, delay?: number) => voi
       commit();
     }, delay);
   };
-  return [closing, close];
+  return [closing, close, liftRef];
 }
 
 // ---------- Trailing +n/−n line-count changes (shared by edit rows / rows inside change groups, formerly appendCounts) ----------
@@ -274,23 +295,23 @@ export function ownDiffOf(item: ToolItem, path: string): string | undefined {
 // briefDiffCache[path] (git diff; the right-panel detail and inline expansion share one
 // response). The per-call diff lives on the item, so multiple edits to the same file each
 // see their own on expansion, without overwriting each other.
-export function EditBrief({ item, path, lift }: { item: ToolItem; path: string; lift?: boolean }) {
+export function EditBrief({ item, path, liftRef }: { item: ToolItem; path: string; liftRef?: (el: HTMLElement | null) => void }) {
   const briefDiffCache = useAppStore((s) => s.briefDiffCache); // Map reference subscription: response/placeholder writes trigger redraw
   const diff = ownDiffOf(item, path) ?? briefDiffCache.get(path);
-  const cls = "ed-brief" + (lift ? " lift" : " drop");
+  const cls = "ed-brief drop";
   if (diff === undefined) {
     // Two kinds of "not yet arrived": the tool itself is still running (this response not
     // arrived → Spin), or the response arrived but the git diff request is in flight (tool
     // already finished → keep the original text). Same criterion: item.running
     return (
-      <FadeBox className={cls}>
+      <FadeBox className={cls} liftRef={liftRef}>
         <div className="text-faint text-ui-base py-[12px] px-[10px]">{item.running ? <Spin /> : t("common.loading")}</div>
       </FadeBox>
     );
   }
-  if (!diff) return <FadeBox className={cls}><div className="text-faint text-ui-base py-[12px] px-[10px]">{t("chat.noDiffContent")}</div></FadeBox>;
+  if (!diff) return <FadeBox className={cls} liftRef={liftRef}><div className="text-faint text-ui-base py-[12px] px-[10px]">{t("chat.noDiffContent")}</div></FadeBox>;
   return (
-    <FadeBox className={cls}>
+    <FadeBox className={cls} liftRef={liftRef}>
       <LightweightDiff diff={diff} lang={langOfPath(path)} />
     </FadeBox>
   );
@@ -347,7 +368,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   const cleanPath = stripReadSelector(path);
   const { dir } = splitPath(cleanPath);
   const rangeLabel = readRangeLabel(item);
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   // The expand body reads details.displayContent. Missing content has two kinds: result not
   // yet arrived (item.running, e.g. "expanded by default while running" set readExpanded
   // before details arrived) and never present (directory reads, empty results). The former
@@ -401,10 +422,11 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         )}
       </div>
       )}
-      {open && (dc ? (
-        <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(cleanPath || path)} lift={closing} />
+      {/* Body stays mounted while closing (gate on readExpanded alone, not the arrow's `open`) so useLift can animate its height; the commit unmounts it */}
+      {item.readExpanded && canOpen && (dc ? (
+        <ReadBrief text={dc.text} startLine={dc.startLine} lineNumbers={dc.lineNumbers} lang={langOfPath(cleanPath || path)} liftRef={liftRef} />
       ) : (
-        <FadeBox className={"ed-brief" + (closing ? " lift" : " drop")}>
+        <FadeBox className="ed-brief drop" liftRef={liftRef}>
           <div className="text-faint text-ui-base py-[12px] px-[10px]"><Spin /></div>
         </FadeBox>
       ))}
@@ -419,14 +441,14 @@ const MAX_READ_BRIEF_LINES = 500;
 
 // Read expand body: line-number gutter + raw text (reuses the ldiff row structure, no
 // add/remove coloring); syntax highlighting when lang matches
-function ReadBrief({ text, startLine, lineNumbers, lang, lift }: { text?: string; startLine?: number; lineNumbers?: number[] | null; lang: string | null; lift?: boolean }) {
+function ReadBrief({ text, startLine, lineNumbers, lang, liftRef }: { text?: string; startLine?: number; lineNumbers?: number[] | null; lang: string | null; liftRef?: (el: HTMLElement | null) => void }) {
   const allLines = useMemo(() => String(text || "").split("\n"), [text]);
   const omitted = Math.max(0, allLines.length - MAX_READ_BRIEF_LINES);
   const lines = useMemo(() => (omitted > 0 ? allLines.slice(0, MAX_READ_BRIEF_LINES) : allLines), [allLines, omitted]);
   const code = useMemo(() => lines.join("\n"), [lines]);
   const tokens = useCodeTokens(code, lang);
   return (
-    <FadeBox className={"ed-brief" + (lift ? " lift" : " drop")}>
+    <FadeBox className="ed-brief drop" liftRef={liftRef}>
       <div className="ldiff">
         <div className="ldiff-scroll">
           {lines.map((ln, i) => (

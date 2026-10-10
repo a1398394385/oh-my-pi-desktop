@@ -8,7 +8,7 @@ import { Ellip, FadeBox, useLift, patchActiveItem } from "./parts";
 import { t } from "../../i18n";
 
 export default function CommandRow({ item }: { item: MetaItem }) {
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = item.cmdExpanded !== false && !closing;
   const toggle = () => {
     if (item.cmdExpanded !== false) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -23,8 +23,9 @@ export default function CommandRow({ item }: { item: MetaItem }) {
           <Icon name="chevronRight" />
         </span>
       </div>
-      {open && (
-        <div className={"cmd-card" + (closing ? " lift" : " drop")}>
+      {/* Body stays mounted while closing (gated on cmdExpanded alone, not the arrow's `open`) so useLift can animate its height before the commit unmounts it */}
+      {item.cmdExpanded !== false && (
+        <div ref={liftRef} className="cmd-card drop">
           <FadeBox className="cmd-card-cmd">{item.command || t("chat.noCommand")}</FadeBox>
           <FadeBox className="cmd-card-out" as="pre">{item.text || t("chat.noOutput")}</FadeBox>
         </div>

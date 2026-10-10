@@ -7,14 +7,13 @@
 // base keys that would otherwise be picked up from wherever they happen to be
 // configured (hand-edited config.yml, a previous session, another profile).
 //
-// Storage: the `browser` section of omp-desktop.json (per profile, same
-// ui/keepalive/acp pattern in host/ui-config.ts). The user's own config.yml is
-// never rewritten — the switch is applied as a runtime override on top, so
-// dropping the switch back off restores exactly the config.yml state instead of
-// erasing it.
-import { readFileSync, writeFileSync } from "node:fs";
+// Storage: the `browser` section of omp-desktop.json (per profile). The user's
+// own config.yml is never rewritten — the switch is applied as a runtime
+// override on top, so dropping the switch back off restores exactly the
+// config.yml state instead of erasing it.
 import { H } from "./state.ts";
 import { lookupSetting } from "./bootstrap.ts";
+import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 
 // Base keys the desktop switch governs. browser.tern / browser.cmux are not
 // touched: they only resolve inside a Tern pane or a cmux socket, neither of
@@ -22,25 +21,14 @@ import { lookupSetting } from "./bootstrap.ts";
 const RELAY_KEY = "browser.relay";
 const CDP_KEY = "browser.cdpUrl";
 
-/** Read omp-desktop.json in full (missing/corrupt file -> empty object, same tolerance as profile.ts). */
-function readDesktopJson(): Record<string, unknown> {
-  try {
-    return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
 /** Read the `browser` section (missing/invalid section -> empty object). */
 function readSection(): Record<string, unknown> {
-  const section = readDesktopJson().browser;
-  return section && typeof section === "object" ? (section as Record<string, unknown>) : {};
+  return readDesktopSection("browser");
 }
 
 /** Merge-write the `browser` section, preserving other keys of omp-desktop.json and unmentioned fields inside the section. */
 function writeSection(section: Record<string, unknown>): void {
-  const raw = readDesktopJson();
-  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, browser: section }, null, 2));
+  writeDesktopSection("browser", section);
 }
 
 /**

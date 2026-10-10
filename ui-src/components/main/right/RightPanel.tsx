@@ -28,7 +28,7 @@ import BranchTreePage from "./BranchTreePage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
 import MirrorPage from "./MirrorPage";
-import CapabilitiesPage from "./CapabilitiesPage";
+import { CapsDock } from "../../chat/CapsCard";
 import { t } from "../../../i18n";
 import WindowControls from "../../WindowControls";
 import { IS_WINDOWS } from "../../../platform";
@@ -310,7 +310,6 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     });
   }
   const isGitTab = rightTab === "gitdiff";
-  const isCapsTab = rightTab === "caps";
   const detail =
     (rightTab === "gitdiff" && !!s?.isGit && !!selectedFile) ||
     (rightTab === "file" && !!fileView) ||
@@ -325,7 +324,6 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "terminal") body = <TerminalPage />;
   else if (rightTab === "browser") body = <BrowserPage />;
   else if (rightTab === "mirror") body = <MirrorPage />;
-  else if (rightTab === "caps") body = <CapabilitiesPage />;
   else body = <SubagentPage />;
   return (
     // Provider scoped locally to the right panel (App.tsx untouched; the coordinator handles
@@ -401,20 +399,6 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
               </button>
             </Tip>
            )}
-          {isCapsTab && (
-            <Tip label={t("right.refresh")}>
-              <button
-                className="icon-btn"
-                id="capsRefresh"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  useAppStore.getState().fetchCapabilities();
-                }}
-              >
-                <Icon name="refresh" />
-              </button>
-            </Tip>
-          )}
           {IS_WINDOWS && !collapsed && <WindowControls />}
           {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}
           {addOpen && (
@@ -428,6 +412,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
         <div id="rightBody" className={detail ? "detail" : ""}>
           {body}
         </div>
+        <CapsDock />
       </div>
     </aside>
     </TooltipProvider>

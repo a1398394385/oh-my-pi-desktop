@@ -66,6 +66,32 @@ export const sessionHandlers = {
       st4.setWelcomeProject(avail[0].cwd);
     }
   },
+  session_unloaded(msg) {
+    // Pool eviction receipt (session_unload): drop the frontend slot the same
+    // way the "active session vanished from disk" reconciliation does — the
+    // evicted session's row stays in the sidebar (disk file untouched) and
+    // clicking it again re-enters the pool via load_session.
+    const path = String(msg.path ?? "");
+    if (!path) return;
+    const st = useAppStore.getState();
+    if (!st.openSessions.has(path)) return;
+    if (st.activePath === path) {
+      disposeRightSlot(path);
+      useAppStore.setState((s) => {
+        const openSessions = new Map(s.openSessions);
+        openSessions.delete(path);
+        return { openSessions, activePath: null };
+      });
+      useAppStore.getState().showWelcomeScreen(useAppStore.getState().newSessionProject || useAppStore.getState().getAvailableProjects()[0]?.cwd);
+    } else {
+      useAppStore.setState((s) => {
+        const openSessions = new Map(s.openSessions);
+        openSessions.delete(path);
+        return { openSessions };
+      });
+    }
+    useAppStore.getState().toast(t("sidebar.unloadedToast"));
+  },
   session_created(msg) {
     useAppStore.setState((s) => ({
       openSessions: new Map(s.openSessions).set(msg.path, {
@@ -342,6 +368,14 @@ export const sessionHandlers = {
   capabilities_mcp(msg) {
     // MCP runtime is process-global: apply to whatever snapshot is held, regardless of which session's attach pushed the frame
     useAppStore.setState((s) => (s.capabilities ? { capabilities: { ...s.capabilities, mcp: msg.mcp } } : {}));
+  },
+  extension_status(msg) {
+    // Badge table rides the session's snapshot: only merge while the frame belongs to the displayed session
+    useAppStore.setState((s) =>
+      s.capabilities && s.capabilities.sessionId === msg.sessionId
+        ? { capabilities: { ...s.capabilities, extStatuses: msg.statuses } }
+        : {},
+    );
   },
   // Cache-warming runtime snapshot (get_keepalive_status reply): ringpop popover transient
   // alongside ctxDetail/ctxLimits — the context detail card's warming section renders it

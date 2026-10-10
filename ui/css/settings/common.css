@@ -347,9 +347,11 @@
 
 .set-page > *:nth-child(n+7) { animation-delay: 240ms; }
 
-/* Search-result landing: one-shot background pulse on the targeted row */
-.srow.search-flash { animation: searchFlash 1.4s ease-out; }
-@keyframes searchFlash { 0%, 55% { background: var(--tint-accent-200); } 100% { background: transparent; } }
+/* Search-result landing: the targeted row holds its tint for ~1.7s before fading out.
+   Duration must stay <= SEARCH_FLASH_MS (ui-src/components/settings/Settings.tsx), which
+   removes the class after the animation ends. */
+.srow.search-flash { animation: searchFlash 2.4s ease-out; }
+@keyframes searchFlash { 0%, 72% { background: var(--tint-accent-200); } 100% { background: transparent; } }
 
 @media (prefers-reduced-motion: reduce) {
   .set-page > * { animation: none; }

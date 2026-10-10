@@ -148,6 +148,14 @@ export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; 
           <div className="text-faint mt-0.5 break-all">{sub.sessionFile}</div>
         </div>
       ) : null}
+      {/* Submitted report — terminal runs only (a running subagent has no result yet).
+          Sits above Recent activity per the hub layout contract. */}
+      {st !== "running" && sub.result ? (
+        <>
+          <div className="hub-sec">{t("right.hubResult")}</div>
+          <div className="hub-sec-body hub-result">{sub.result}</div>
+        </>
+      ) : null}
 
       <div className="hub-sec">{t("right.hubRecent")}</div>
       <div className="hub-activity">

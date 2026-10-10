@@ -7,6 +7,7 @@
 // seq = globally monotonic event sequence number;
 // only stampEvent frames carry hi/seq (member comments mark them "stamped");
 // RPC request-response frames and the handshake frame are not stamped.
+import type { Automation, AutomationRun } from "../lib/automations";
 
 /** stampEvent stamp (host/host.ts:660-662): process instance id and monotonic sequence number carried by event-stream frames */
 export interface EventStamp {
@@ -90,6 +91,12 @@ export type SettingsPayload = SettingsSnapshot & {
   // browser routing switch. Off = OMP launches the browser (relay/cdpUrl pinned
   // off on the override layer); on = the config.yml external routes apply.
   externalBrowserEnabled?: boolean;
+  // omp-desktop.json computer.provider (host/computer-mode.ts): desktop-owned
+  // computer-use provider pick. "kimi" reroutes the composer screen-icon toggle
+  // to the code-owned kimi-cu MCP server (host/mcp-builtin.ts, never in
+  // mcp.json); the flag gates the Kimi option (KimiCU installed on this machine).
+  computerProvider?: "default" | "kimi";
+  kimiCuInstalled?: boolean;
 };
 
 /** Model catalog entry (host/models.ts:17-23 modelsPayload) */
@@ -232,6 +239,8 @@ export interface DiskSessionRow {
   modified: string; // ISO
   messageCount: number;
   archived: boolean;
+  /** Pool fallback row (session not yet persisted to disk): id is the host pool UUID, not a real disk session id */
+  pending?: boolean;
 }
 
 /** Project grouping (projects mapping of handleListSessions, host/host.ts:2628-2646) */
@@ -431,7 +440,12 @@ export interface SessionStatsPayload {
 // TODO(narrowing pass): breakdown is the base getContextBreakdown() expansion + the host's
 // derived buckets; the SDK fields keep following the core package
 export type ContextBreakdown = Record<string, unknown> & {
+  /** MCP schema tokens carried in the request's tools array (tools.xdev off). */
   mcpToolsTokens: number;
+  /** Device-mounted MCP cost that moved into prompt text: inlined docs (block 0), subtracted from systemPromptTokens. */
+  mcpPromptTokens: number;
+  /** Device-mounted MCP cost that moved into prompt text: the device catalog (blocks 1+), subtracted from the system-context bucket. */
+  mcpContextTokens: number;
   /** Tokens of the <repo-rules> region (AGENTS.md / CLAUDE.md), split out of systemContextTokens. */
   repoRulesTokens: number;
   /** Tokens of the memory guidance block, split out of systemContextTokens. */
@@ -514,6 +528,8 @@ export interface PluginAssetItem {
   key?: string;
   version?: string;
   path?: string;
+  /** Symlink-resolved package root (marketplace installs symlink node_modules into the cache dir; extension-center entry paths use the resolved root) */
+  realPath?: string;
   scope?: string;
   enabled?: boolean;
   description?: string;
@@ -641,6 +657,8 @@ export interface ComputerModeFrame {
   type: "computer_mode";
   sessionId: string;
   enabled: boolean;
+  /** Present when the toggle failed (kimi-cu not installed / connect failed, gate closed, prelude unavailable) — surfaced as a red toast */
+  error?: string;
 }
 
 /** Session created/reused snapshot frame (host/host.ts:2513-2524 / 2540-2551 / 2573-2584 session_created) */
@@ -667,6 +685,13 @@ export interface SessionListFrame {
   pinnedSessions: string[];
   /** App-owned backing dir for "work without a project" (never in allProjects). */
   defaultWorkspace?: string;
+}
+
+/** session_unload receipt: the session left the host's in-memory pool (disk file untouched) */
+export interface SessionUnloadedFrame {
+  type: "session_unloaded";
+  path: string;
+  unloaded: boolean;
 }
 
 /** Full message snapshot frame (host/host.ts:873 / 912 / 1031 / 2552 / 2586 / 2768 / 2868) */
@@ -1023,6 +1048,10 @@ export interface ApprovalRequestFrame {
   // Mirrors the base's ExtensionAskDialogQuestion; approval_response answers
   // with answer = JSON.stringify(ExtensionAskDialogSubmitResult).
   questions?: AskDialogQuestionWire[];
+  // Plan-approval payload: raw plan text + title + on-disk path (read before the
+  // proposal turn aborts). Drives the approval card's plan body and the todo
+  // card's "plan output" row; absent on every other approval variant.
+  plan?: { title: string; path: string; content: string };
   hi?: string; // stamped frame
   seq?: number;
 }
@@ -1321,6 +1350,8 @@ export interface ProfileSwitchedFrame {
 export interface CapabilitiesSnapshot {
   sessionId: string;
   mcp: { servers: { name: string; status: string }[]; tools: number };
+  plugins: string[]; // plugin packages the session actually loaded
+  extStatuses: [string, string][]; // extension-injected status badges (key → text), e.g. ponytail's setStatus
   lsp: { name: string; status: string; fileTypes?: string[]; error?: string }[];
   advisor: {
     configured: boolean;
@@ -1366,6 +1397,13 @@ export interface CapabilitiesFrame {
 export interface CapabilitiesMcpFrame {
   type: "capabilities_mcp";
   mcp: { servers: { name: string; status: string }[]; tools: number };
+}
+
+/** Extension-injected status badge push (host/session-lifecycle uiCtx.setStatus; the capabilities card's plugin-status column) */
+export interface ExtensionStatusFrame {
+  type: "extension_status";
+  sessionId: string;
+  statuses: [string, string][]; // full replacement of the session's badge table
 }
 
 
@@ -1461,6 +1499,7 @@ export interface SubagentLifecycleFrame {
   readOnly?: boolean; // child session_init.readOnly, host-recovered (Agent Hub Changes line)
   advisor?: boolean; // advisor transcript (__advisor stem), host-derived like the TUI registry kind
   detached: boolean;
+  result?: string; // terminal statuses only: submitted report (last assistant text, host-read from the child transcript)
   hi?: string; // stamped frame
   seq?: number;
 }
@@ -1491,6 +1530,7 @@ export interface SubagentProgressFrame {
   name?: string; // carried by regular frames; absent from the terminal-state re-send (2431)
   parent?: string; // same as above
   registeredAt?: number; // same as above
+  sessionFile?: string; // child transcript file; collected from either channel like the TUI registry (started may predate persistence)
 }
 
 /** Subagent event frame (host/host.ts:2473 translateSubagentEvent; stamped) */
@@ -1733,7 +1773,30 @@ export interface SetLocaleFrame {
 
 // ---------- Frame union ----------
 
-/** Discriminated union of all host → UI frames (84 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Automations list snapshot (host/rpc/automations.ts replyList; pushed after every mutating
+ *  automations_* RPC and by the scheduler's UI notify). runs keyed by automation id, ≤10 each. */
+export interface AutomationsListFrame {
+  type: "automations_list";
+  automations: Automation[];
+  runs: Record<string, AutomationRun[]>;
+}
+
+/** Manual-run receipt (automations_run_now reply): the session was created, the prompt turn
+ *  keeps running async (host/automations/scheduler.ts runAutomationNow). */
+export interface AutomationRunStartedFrame {
+  type: "automation_run_started";
+  runId: string;
+  sessionId?: string;
+}
+
+/** Next-run preview (automations_preview reply): up to three future trigger times for the
+ *  submitted schedule (editor live preview; empty array = the schedule never fires). */
+export interface AutomationPreviewFrame {
+  type: "automation_preview";
+  nextRunsAt: number[];
+}
+
+/** Discriminated union of all host → UI frames (87 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -1747,6 +1810,7 @@ export type HostFrame =
   | ComputerModeFrame
   | SessionCreatedFrame
   | SessionListFrame
+  | SessionUnloadedFrame
   | MessagesFrame
   | SessionArchivedFrame
   | SessionAbortedFrame
@@ -1814,6 +1878,7 @@ export type HostFrame =
   | ProfileSwitchedFrame
   | CapabilitiesFrame
   | CapabilitiesMcpFrame
+  | ExtensionStatusFrame
   | TerminalDataFrame
   | TerminalExitFrame
   | TerminalCreatedFrame
@@ -1846,4 +1911,7 @@ export type HostFrame =
   | SshHostsFrame
   | SshTestResultFrame
   | RemoteWorkspaceAddedFrame
-  | SshDirsFrame;
+  | SshDirsFrame
+  | AutomationsListFrame
+  | AutomationRunStartedFrame
+  | AutomationPreviewFrame;

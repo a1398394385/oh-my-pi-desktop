@@ -2,8 +2,9 @@
 // expand); clicking a file enters the detail
 // (read_file for whole files / read_image for image previews; rb-head breadcrumb pinned +
 // scrolling rb-scroll skeleton).
-import { Fragment, useEffect, useRef } from "react";
-import type { RefObject } from "react";
+import { flushSync } from "react-dom";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, pathBase } from "../../../store";
 import { fileTypeIcon } from "../../../../ui/icons";
@@ -190,7 +191,7 @@ function FvDetail() {
             {fv.error && (
               <div className="text-ui-xs text-faint mt-2">{t("right.errorParen", { error: fv.error })}</div>
             )}
-            <FvBody fv={fv} bodyRef={bodyRef} />
+            <FvBody key={fv.path} fv={fv} bodyRef={bodyRef} />
           </>
         )}
       </div>
@@ -198,40 +199,88 @@ function FvDetail() {
   );
 }
 
-// Text content: line numbers + text; over-long whole files cut to an 800-line window (start
-// aligned with the request range's first line).
-// Syntax coloring: the visible window is tokenized in one pass (cap see highlighter.js),
-// spans re-attached per line
+// Rendered window of the sliding-window view. A whole file over the first-window
+// threshold keeps a constant band of rows in the DOM: BACKUP rows before the first
+// visible row, the rest behind. Off-window rows collapse into top/bottom spacers
+// built from the exact row-height formula (var(--code-fs) × 1.55, same as the row
+// boxes), so total scroll height always equals the true file height and re-anchoring
+// never shifts content. Re-anchor (translate the whole band) only when the visible
+// row drifts within RELINE of a window edge — a hysteresis band so normal page
+// scrolling doesn't thrash re-renders.
+const WINDOW_LINES = 1500;
+const BACKUP_LINES = 500;
+const RELINE_LINES = 300;
+
+// Text content: line numbers + text. Over-long whole files render as the sliding
+// window above; syntax coloring tokenizes exactly the rendered window (existing
+// HIGHLIGHT_MAX_CHARS cap applies as before). Content is already fully in memory,
+// so window moves are pure rendering — no extra requests.
 function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDivElement | null> }) {
   const { t } = useTranslation();
   const lines = (fv.text ?? "").split("\n"); // text is always present (protocol data); the ?? "" is only a type fallback, same as the original under the protocol
   if (lines[lines.length - 1] === "") lines.pop(); // a trailing newline doesn't count as a line
   const [reqStart, reqEnd] = fv.reqRange || [];
-  let winStartLine = fv.startLine || 1;
-  let shown = lines;
-  if (fv.full && lines.length > FILE_VIEW_MAX_LINES) {
-    const winStart = reqStart != null ? Math.max(0, Math.min(reqStart - 1, lines.length - FILE_VIEW_MAX_LINES)) : 0;
-    shown = lines.slice(winStart, winStart + FILE_VIEW_MAX_LINES);
-    winStartLine = winStart + 1;
-  }
+  const expandable = !!fv.full && lines.length > FILE_VIEW_MAX_LINES;
+  // Anchor = first visible row (1-based); null until the user scrolls, pinning the
+  // initial view to the request range (or the file top). Remounts reset it
+  // (FvDetail keys FvBody by path).
+  const [anchor, setAnchor] = useState<number | null>(null);
+  const first = Math.max(1, anchor ?? (reqStart ?? 1));
+  const winStart = expandable
+    ? Math.max(0, Math.min(first - 1 - BACKUP_LINES, lines.length - WINDOW_LINES))
+    : 0;
+  const winLen = expandable ? Math.min(WINDOW_LINES, lines.length - winStart) : lines.length;
+  const shown = expandable ? lines.slice(winStart, winStart + winLen) : lines;
+  const winStartLine = winStart + 1;
   const lineNoOf = (i: number): number | null | undefined => (fv.lineNumbers ? fv.lineNumbers[i] : winStartLine + i);
   const tokens = useCodeTokens(shown.join("\n"), langOfPath(fv.path));
+
+  // Scroll driver: measure the live row height each frame (zoom-safe), derive the
+  // first visible row, and re-anchor on edge drift. The re-anchor commits
+  // synchronously (flushSync): the browser paints after the scroll handler
+  // returns, so the window must be committed by then — async React scheduling
+  // would paint the old window at the new scroll offset and show blank spacer
+  // rows while fling-scrolling.
+  useEffect(() => {
+    if (!expandable) return;
+    const scroller = bodyRef.current?.closest(".rb-scroll");
+    if (!(scroller instanceof Element)) return;
+    const onScroll = () => {
+      const row = scroller.querySelector<HTMLElement>("[data-fv-row]");
+      const lineH = row ? row.getBoundingClientRect().height : 0;
+      if (lineH <= 0) return;
+      const firstVisible = Math.floor(scroller.scrollTop / lineH) + 1;
+      if (firstVisible - 1 < winStart + RELINE_LINES || firstVisible - 1 > winStart + winLen - RELINE_LINES) {
+        flushSync(() => setAnchor(firstVisible));
+      }
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, [expandable, winStart, winLen, lines.length]);
+
+  const topPad = expandable ? winStart : 0;
+  const bottomPad = expandable ? lines.length - winStart - winLen : 0;
+  const padStyle = (n: number): CSSProperties | undefined =>
+    n > 0 ? { height: `calc(var(--code-fs, 12px) * 1.55 * ${n})` } : undefined;
+
   return (
     <>
       <div className="pt-1 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */ ref={bodyRef}>
+        {topPad > 0 && <div style={padStyle(topPad)} />}
         {shown.map((tx, i) => {
           const n = lineNoOf(i);
           // Only the line-number column is highlighted within the requested range, content untouched; null = hole lines omitted by the tool
           const hl = n != null && reqStart != null && reqEnd != null && n >= reqStart && n <= reqEnd;
           return (
-            <div key={i} className="flex items-baseline">
+            <div key={winStart + i} data-fv-row={i === 0 ? "" : undefined} className="flex items-baseline">
               <span className={"fv-ln" + (hl ? " hl" : "")}>{n == null ? "…" : String(n)}</span>
               <span className="whitespace-pre text-dim [tab-size:4]">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : tx === "" ? " " : tx}</span>
             </div>
           );
         })}
+        {bottomPad > 0 && <div style={padStyle(bottomPad)} />}
       </div>
-      {fv.full && lines.length > shown.length && (
+      {bottomPad > 0 && (
         <div className="text-ui-xs text-faint mt-2">
           {t("right.fileWindow", { total: lines.length, start: winStartLine, end: winStartLine + shown.length - 1 })}
         </div>

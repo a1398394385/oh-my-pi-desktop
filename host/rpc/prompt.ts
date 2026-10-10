@@ -4,7 +4,7 @@
 // message dispatch in main.ts (third cut).
 import os from "node:os";
 import path from "node:path";
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
 import type {
   AvailableCommandsSession,
@@ -12,6 +12,9 @@ import type {
 } from "@oh-my-pi/pi-coding-agent/slash-commands/available-commands";
 import {
   buildAvailableSlashCommands,
+  createAgentSession,
+  AgentRegistry,
+  SessionManager,
   parseSlashCommand,
   parseSkillInvocation,
   buildSkillPromptMessage,
@@ -24,6 +27,7 @@ import {
 } from "../bootstrap.ts";
 import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
+import { readPluginsEnabled } from "../assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { pushComputerMode } from "../computer-mode.ts";
@@ -161,13 +165,21 @@ async function pushCommands(ws: { send(data: string): unknown }, sessionId: stri
   sendCommandsFrame(ws, sessionId, await buildAvailableSlashCommands(entry.session), false);
 }
 
-// Command list for the new-session page (no session entry): skills / custom
-// commands are cwd-dependent (project-level .agents/skills etc.), so run the
-// same discovery a session would against the requested cwd. Never borrow a
-// pooled session's snapshot: it belongs to that session's cwd, and edits to
-// disabledExtensions do not re-discover live sessions, so it can be stale too.
-// File commands scan the new project's cwd; session-level commands are hidden.
-async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: string) {
+// Command list for the new-session page. Skills / custom / file commands are
+// cwd-dependent and resolved by the same discovery a session would run. For
+// extension commands (plugin registerCommand etc.) there is no session-free
+// shortcut — they only exist on a real session's extension runner — so when
+// the plugins master switch is on, a throwaway sentinel session is spawned on
+// the target cwd once, its full command list harvested, and it is disposed
+// right away. Result cached per cwd keyed by a signature of the plugin inputs
+// (master switch, lock/overrides mtimes, disabledExtensions) so toggles
+// invalidate it; a sentinel crash (e.g. a plugin module throwing at top level)
+// degrades to the sessionless stub with a warn log instead of breaking the
+// composer palette. Session-level command hiding (hideSessionCommands) is
+// applied by sendCommandsFrame as before.
+const newSessionCmdCache = new Map<string, { sig: string; list: InternalAvailableSlashCommand[] }>();
+
+async function stubCommandList(cwd: string): Promise<InternalAvailableSlashCommand[]> {
   const [skillsRes, customRes] = await Promise.all([
     discoverSkills(cwd, H.agentDir, {
       ...cfgSkills.get(H.settings),
@@ -182,7 +194,61 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
     setSlashCommands: () => {},
     sessionManager: { getCwd: () => cwd },
   } as unknown as AvailableCommandsSession;
-  sendCommandsFrame(ws, null, await buildAvailableSlashCommands(stub), true);
+  return buildAvailableSlashCommands(stub);
+}
+
+async function pluginInputsSignature(cwd: string): Promise<string> {
+  const parts: string[] = [String(readPluginsEnabled())];
+  const { getPluginsDir } = await import("@oh-my-pi/pi-utils");
+  for (const f of [path.join(getPluginsDir(), "omp-plugins.lock.json"), path.join(cwd, ".omp", "plugin-overrides.json")]) {
+    try {
+      parts.push(`${f}:${(await stat(f)).mtimeMs}`);
+    } catch {
+      parts.push(`${f}:-`);
+    }
+  }
+  parts.push(JSON.stringify(settingsGet(H.settings, "disabledExtensions") ?? []));
+  return parts.join("|");
+}
+
+async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: string) {
+  let list: InternalAvailableSlashCommand[];
+  if (!readPluginsEnabled()) {
+    // Discovery off: sessions created from this page load no plugins either,
+    // so the sessionless stub is the exact truth.
+    list = await stubCommandList(cwd);
+  } else {
+    const sig = await pluginInputsSignature(cwd);
+    const cached = newSessionCmdCache.get(cwd);
+    if (cached && cached.sig === sig) {
+      list = cached.list;
+    } else {
+      try {
+        const sessionManager = SessionManager.create(cwd);
+        const result = await createAgentSession({
+          cwd,
+          authStorage: H.authStorage,
+          modelRegistry: H.modelRegistry,
+          settings: H.settings,
+          agentRegistry: new AgentRegistry(), // never share the global registry with pooled sessions
+          sessionManager,
+          disableExtensionDiscovery: false, // mirror spawnSession: plugins master switch is on
+          enableMCP: false,
+          hasUI: false,
+        });
+        try {
+          list = await buildAvailableSlashCommands(result.session);
+          newSessionCmdCache.set(cwd, { sig, list });
+        } finally {
+          await result.session.dispose();
+        }
+      } catch (err) {
+        safeStderr(`[commands] sentinel session failed for ${cwd}: ${err instanceof Error ? err.message : String(err)}\n`);
+        list = await stubCommandList(cwd);
+      }
+    }
+  }
+  sendCommandsFrame(ws, null, list, true);
 }
 
 // @ candidates: absolute-path / home-dir prefixes go through readdir prefix

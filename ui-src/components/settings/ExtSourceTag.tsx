@@ -29,7 +29,7 @@ export function useExtSources(): void {
 
 // Re-request every known scope after an on-page toggle: the cached per-scope
 // snapshots still carry the pre-toggle state, which kept rendering the stale
-// 已禁用/被遮蔽 warning tag next to a switch the user had just flipped.
+// Disabled/masked warning tag next to a switch the user had just flipped.
 export function refreshExtSources(): void {
   const byScope = useAppStore.getState().extensionsByScope;
   send({ type: "list_extensions", scope: "profile" });

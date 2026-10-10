@@ -187,7 +187,12 @@ const ROW_DOT_COLORS = [
 interface CtxBreakdown {
   usedTokens: number;
   contextWindow: number;
+  /** MCP schema tokens carried in the request's tools array (tools.xdev off). */
   mcpToolsTokens?: number;
+  /** Host split of the MCP cost in prompt text: inlined docs, block 0. */
+  mcpPromptTokens?: number;
+  /** Host split of the MCP cost in prompt text: the device catalog, blocks 1+. */
+  mcpContextTokens?: number;
   systemToolsTokens: number;
   systemPromptTokens: number;
   skillsTokens: number;
@@ -342,14 +347,20 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
           </div>
           {/* Composition rows (same categories as ZCode, ordered system-side first
               with the conversation tail last): value and percentage right-aligned with
-              equal width, dotted separator between. MCP tools = schema tokens of
-              mcp__-prefixed tools (estimated separately by the host); Repo rules = the
+              equal width, dotted separator between. MCP tools = every shape the MCP
+              cost takes: wire schema carried in the tools array (tools.xdev off), plus
+              the prompt-side splits — inlined `## mcp__x` docs (block 0) and the
+              `xd://mcp__x` device catalog (blocks 1+) — which are subtracted from the
+              system-prompt / other rows they were counted in; Repo rules = the
               <repo-rules> region (AGENTS.md / CLAUDE.md) and Memory = the memory guidance
               block, both split out of the system-context block by the host; Other = the
               remaining system context injection (workstation, <critical>, MCP
               instructions, …) */}
           {(() => {
-            const mcpTokens = b.mcpToolsTokens ?? 0;
+            const mcpTools = b.mcpToolsTokens ?? 0;
+            const mcpPrompt = b.mcpPromptTokens ?? 0;
+            const mcpContext = b.mcpContextTokens ?? 0;
+            const mcpTokens = mcpTools + mcpPrompt + mcpContext;
             const pct = (v: number) => (b.usedTokens > 0 ? ((v / b.usedTokens) * 100).toFixed(1) : "0.0") + "%";
             // Absent host split (older frame, or a prompt carrying neither region):
             // keep the rows at 0 and leave Other as the untouched bucket.
@@ -357,9 +368,9 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
             const memory = b.memoryTokens ?? 0;
             const other = b.otherTokens ?? b.systemContextTokens;
             const rows: [string, number][] = [
-              [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTokens)],
+              [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTools)],
               [t("chat.ctxMcpTools"), mcpTokens],
-              [t("chat.ctxSystemPrompt"), b.systemPromptTokens],
+              [t("chat.ctxSystemPrompt"), Math.max(0, b.systemPromptTokens - mcpPrompt)],
               [t("chat.ctxMemory"), memory],
               [t("chat.ctxSkills"), b.skillsTokens],
               [t("chat.ctxRepoRules"), repoRules],

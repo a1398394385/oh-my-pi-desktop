@@ -349,10 +349,10 @@
 
 .act .ed-name:hover { text-decoration: underline; }
 
-/* Main-chat expansion bodies: own 0.2s (faster than the 0.3s elsewhere; the chat flow is high-frequency) */
+/* Main-chat expansion bodies: own 0.2s entrance reveal (faster than the 0.3s elsewhere; the chat flow is high-frequency).
+   Collapsing is not a CSS class: useLift pins the body's height and transitions it to 0 inline, so the
+   following messages ride up in sync with the retracting body (a clip-path-only lift left a blank gap) */
 .ed-brief.drop, .cmd-card.drop, .bash-out.drop { animation: ed-drop .2s ease-out; }
-
-.ed-brief.lift, .cmd-card.lift, .bash-out.lift, .chg-body.lift, .think-body.lift { animation: ed-lift .2s ease-out forwards; }
 
 /* Inline diff expanding downward after an edit-row click (same container language as ZCode EditInlineDiffContent: rounded-xl + border + card base, no inner padding — diff rows carry their own px, 240px height cap with inner scrolling) */
 .ed-brief {
@@ -605,7 +605,7 @@
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
-   Ticks sit 30 physical pixels apart (JS-compressed when too many), 25 long x 3.9 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line brightened x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
+   Ticks sit 15 CSS px apart (JS-compressed when too many), 12.5 long x 1.95 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line brightened x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
 #msgRail {
   position: absolute; left: 8px; width: 22px; z-index: 60;
   pointer-events: none; /* the container itself doesn't block messages; ticks are individually hoverable */
@@ -615,9 +615,9 @@
 #main.rail-off #msgRail { display: none; }
 
 .rail-tick {
-  position: absolute; left: 0; height: 4px; border-radius: 4px; /* placeholder; actual thickness/pill rounding written by JS from devicePixelRatio */
+  position: absolute; left: 0; height: 4px; border-radius: 4px; /* placeholder; actual thickness/pill rounding written by JS */
   background: var(--panel-3); cursor: pointer; pointer-events: auto;
-  width: 3px; /* placeholder; actual length written by JS from devicePixelRatio */
+  width: 3px; /* placeholder; actual length written by JS */
   transition: background .05s ease-out; /* zero width transition: mouse events are the smoothing source, chasing real-time tracking; the 150ms delay only gates the popover */
   will-change: width; /* width rewritten at high frequency; hint for compositor-layer optimization */
 }

@@ -159,6 +159,16 @@ export const chatZh = {
   allDone: "全部完成",
   sessionStatus: "会话状态",
   collapseToCapsule: "收起为胶囊",
+  planOutput: "计划产出",
+  planOutputHint: "在文件页打开计划文件",
+  // 能力卡片（右下角浮层；MCP/插件行走 right.* 的 caps 键）
+  capsCardTitle: "能力",
+  capsPlugins: "插件",
+  capsFlags: "会话模式",
+  capsDockCollapse: "收起区域",
+  capsDockExpand: "展开区域",
+  capFlagComputer: "Computer Use",
+  capFlagGoal: "目标模式",
   resizeTodo: "拖动调整卡片大小",
   // ---- approval card (ApprovalCard.tsx) ----
   awaitingConfirm: "等待确认",

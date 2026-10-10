@@ -13,9 +13,9 @@ import { modelShort } from "../shared/agent/subShared";
 import { t } from "../../i18n";
 
 // ---------- Terminal row (bash/shell/eval) and background tool row (hub): expand card with command on top, output below ----------
-function CmdCard({ command, item, lift }: { command?: string; item: ToolItem; lift?: boolean }) {
+function CmdCard({ command, item, liftRef }: { command?: string; item: ToolItem; liftRef?: (el: HTMLElement | null) => void }) {
   return (
-    <div className={"cmd-card" + (lift ? " lift" : " drop")}>
+    <div ref={liftRef} className="cmd-card drop">
       <FadeBox className="cmd-card-cmd">{command || t("chat.noCommand")}</FadeBox>
       <FadeBox className="cmd-card-out" as="pre">
         {item.output || (item.running ? <Spin /> : t("chat.noOutput"))}
@@ -24,7 +24,7 @@ function CmdCard({ command, item, lift }: { command?: string; item: ToolItem; li
   );
 }
 function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string; iconLabel?: string }) {
-  const [closing, close] = useLift();
+  const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
     else patchActiveItem(item, (it) => { it.cmdExpanded = true; });
@@ -39,7 +39,7 @@ function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string
           <Icon name="chevronRight" />
         </span>
       </div>
-      {item.cmdExpanded && <CmdCard command={command} item={item} lift={closing} />}
+      {item.cmdExpanded && <CmdCard command={command} item={item} liftRef={liftRef} />}
     </>
   );
 }
@@ -75,7 +75,7 @@ function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onTog
 // One terminal event inside a group = row + its output card expand body (expand state recorded on sub.cmdExpanded), same as ChangeEntry
 function CmdEntry({ sub }: { sub: ToolItem }) {
   const command = sub.args?.command || sub.text || "";
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = !!sub.cmdExpanded && !closing;
   const toggle = () => {
     if (sub.cmdExpanded) close(() => patchGroupSub(sub, (it) => { it.cmdExpanded = false; }));
@@ -84,7 +84,7 @@ function CmdEntry({ sub }: { sub: ToolItem }) {
   return (
     <>
       <CmdRowUI sub={sub} open={open} onToggle={toggle} />
-      {sub.cmdExpanded && <CmdCard command={command} item={sub} lift={closing} />}
+      {sub.cmdExpanded && <CmdCard command={command} item={sub} liftRef={liftRef} />}
     </>
   );
 }
@@ -94,7 +94,7 @@ function CmdEntry({ sub }: { sub: ToolItem }) {
 // (structure mirrors ReadGroup: act.read single row + icon 13 + lbl + chevron)
 function CmdGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = cmdExpand.has(subs[0]) && !closing;
   const toggle = () => {
     if (cmdExpand.has(subs[0])) close(() => { cmdExpand.delete(subs[0]); bumpGroupExpand(); });
@@ -113,7 +113,7 @@ function CmdGroup({ subs }: { subs: ToolItem[] }) {
         </span>
       </div>
       {cmdExpand.has(subs[0]) && (
-        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+        <div ref={liftRef} className="chg-body drop">
           {subs.map((sub, i) => <CmdEntry sub={sub} key={i} />)}
         </div>
       )}
@@ -333,7 +333,7 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
     </div>
   );
 }
-function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
+function ContentCard({ item, liftRef }: { item: ToolItem; liftRef?: (el: HTMLElement | null) => void }) {
   const detailText = item.details?.displayContent?.text;
   // Result text: response output / read raw text / details JSON as fallback; when none of the
   // three exist, branch on running — result not yet arrived shows the Spin placeholder, and
@@ -343,7 +343,7 @@ function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
     detailText ||
     (item.details ? truncateText(JSON.stringify(item.details, null, 2)) : "");
   return (
-    <div className={"cmd-card" + (lift ? " lift" : " drop")}>
+    <div ref={liftRef} className="cmd-card drop">
       {item.name === "task" ? (
         <TaskBody item={item} />
       ) : item.name === "ask" && Array.isArray(item.args?.questions) ? (
@@ -366,7 +366,7 @@ function ContentCard({ item, lift }: { item: ToolItem; lift?: boolean }) {
   );
 }
 function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string }) {
-  const [closing, close] = useLift();
+  const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
     else patchActiveItem(item, (it) => { it.cmdExpanded = true; });
@@ -382,7 +382,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
           <Icon name="chevronRight" />
         </span>
       </div>
-      {item.cmdExpanded && <ContentCard item={item} lift={closing} />}
+      {item.cmdExpanded && <ContentCard item={item} liftRef={liftRef} />}
     </>
   );
 }
@@ -518,7 +518,7 @@ function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
 
 // One device call inside a group = row + its content card expand body (expand state recorded on sub.cmdExpanded), same as the terminal group
 function DeviceEntry({ sub }: { sub: ToolItem }) {
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = !!sub.cmdExpanded && !closing;
   const toggle = () => {
     if (sub.cmdExpanded) close(() => patchGroupSub(sub, (it) => { it.cmdExpanded = false; }));
@@ -527,7 +527,7 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
   return (
     <>
       <DeviceRowUI sub={sub} open={open} onToggle={toggle} />
-      {sub.cmdExpanded && <ContentCard item={sub} lift={closing} />}
+      {sub.cmdExpanded && <ContentCard item={sub} liftRef={liftRef} />}
     </>
   );
 }
@@ -535,7 +535,7 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
 // "Device · tui · N calls" title row: merged group of consecutive same-device calls, click to expand each call downward
 function DeviceGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = devExpand.has(subs[0]) && !closing;
   const toggle = () => {
     if (devExpand.has(subs[0])) close(() => { devExpand.delete(subs[0]); bumpGroupExpand(); });
@@ -555,7 +555,7 @@ function DeviceGroup({ subs }: { subs: ToolItem[] }) {
         </span>
       </div>
       {devExpand.has(subs[0]) && (
-        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+        <div ref={liftRef} className="chg-body drop">
           {subs.map((sub, i) => <DeviceEntry sub={sub} key={i} />)}
         </div>
       )}

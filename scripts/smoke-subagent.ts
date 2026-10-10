@@ -34,7 +34,7 @@ const wsUrl = await new Promise<string>((resolve, reject) => {
 
 const ws = new WebSocket(wsUrl);
 const failTimeout = setTimeout(() => fail("120s 内未完成断言"), 120_000);
-const state = { sessionId: null as string | null, lifecycle: 0, events: 0, text: "", settled: false };
+const state = { sessionId: null as string | null, lifecycle: 0, events: 0, text: "", settled: false, sessionFile: null as string | null };
 
 ws.onmessage = (ev) => {
   const msg = JSON.parse(String(ev.data));
@@ -56,7 +56,11 @@ ws.onmessage = (ev) => {
     case "subagent_lifecycle":
       state.lifecycle++;
       console.log(`lifecycle: ${msg.agent} → ${msg.status}（${msg.description?.slice(0, 40)}）`);
+      if (typeof msg.sessionFile === "string") state.sessionFile = msg.sessionFile;
       if (msg.status === "started") state.events = state.events; // keep
+      break;
+    case "subagent_progress":
+      if (typeof msg.sessionFile === "string") state.sessionFile = msg.sessionFile;
       break;
     case "subagent_event":
       state.events++;
@@ -83,6 +87,11 @@ ws.onclose = async () => {
   clearTimeout(failTimeout);
   if (state.lifecycle === 0) fail("无 lifecycle 帧");
   if (state.events === 0) fail("无 subagent_event 帧");
+  // Regression guard: live roster rows without a sessionFile made Agent Hub's Enter fall
+  // back to the right-panel tab instead of opening the child session (host dropped the
+  // field when forwarding; the history-replay path always carried it).
+  if (!state.sessionFile) fail("live subagent 帧全程未带 sessionFile（Agent Hub 回车将回退右栏详情页而非打开子会话）");
+  console.log(`sessionFile: ${state.sessionFile}`);
   console.log("子代理透传冒烟通过 ✓");
   if (createdFile) await rm(createdFile).catch(() => {});
   if (child?.pid) child.kill("SIGTERM");

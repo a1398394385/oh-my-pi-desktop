@@ -145,8 +145,15 @@ const steps: Step[] = [
     name: "steer 消费甲",
     match: (msg, _ctx) => {
       if (msg.type !== "steer_consumed") return false;
-      assert(consumedTexts(msg.texts).includes(TXT_A), `首次消费应含甲: ${JSON.stringify(msg.texts)}`);
-      console.log("  steer_consumed 甲 ✓");
+      // Exact match: the pre-consumption notice must announce ONLY the messages
+      // actually being dequeued. Announcing the still-queued followUp texts too
+      // would promote them to consumed bubbles prematurely and ahead of the
+      // steer bubble (display order breaks vs the persisted transcript).
+      assert(
+        sameTexts(consumedTexts(msg.texts), [TXT_A]),
+        `steer 消费帧必须恰为[甲],实际: ${JSON.stringify(msg.texts)}`,
+      );
+      console.log("  steer_consumed 恰为[甲] ✓");
       return true;
     },
   },
@@ -154,8 +161,11 @@ const steps: Step[] = [
     name: "followUp 自动消费乙",
     match: (msg, _ctx) => {
       if (msg.type !== "steer_consumed") return false;
-      assert(consumedTexts(msg.texts).includes(TXT_B), `二次消费应含乙: ${JSON.stringify(msg.texts)}`);
-      console.log("  steer_consumed 乙 ✓（loop 完自动消费）");
+      assert(
+        sameTexts(consumedTexts(msg.texts), [TXT_B]),
+        `followUp 消费帧必须恰为[乙],实际: ${JSON.stringify(msg.texts)}`,
+      );
+      console.log("  steer_consumed 恰为[乙] ✓（loop 完自动消费）");
       return true;
     },
   },

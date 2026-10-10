@@ -66,6 +66,11 @@ export type PoolEntry = {
   // this entry (attachEntry re-runs on pool reuse; a repeat dispatch resets
   // extension state — keepalive would drop its capture)
   extSessionStarted?: boolean;
+  // Extension-injected status badges (key → text, e.g. ponytail's setStatus):
+  // captured by the uiCtx.setStatus injected at attachEntry, pushed to the
+  // frontend as extension_status frames and snapshotted into get_capabilities.
+  // Undefined text removes the key. Lives on the entry so it survives re-attach.
+  extStatuses?: Map<string, string>;
   // Cache keepalive intent (source of the keepalive extension's isWanted):
   // set true when a turn truly wraps up (unread output exists), set false on
   // user create/load/send/mark_seen — only sessions the user has not seen yet are probed
@@ -164,6 +169,11 @@ export type PoolEntry = {
 
 // key = the sessionId the frontend holds
 export const sessions = new Map<string, PoolEntry>();
+
+// The currently attached UI websocket (last connection wins). Modules that must
+// not import rpc/ (automations/scheduler) read this from an injected notify
+// callback to push frames; main.ts assigns it on websocket open/close.
+export const activeWs: { value: unknown } = { value: null };
 
 export const defaultCwd = os.homedir();
 
@@ -279,6 +289,10 @@ export function requestApproval(
     slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
     editable?: boolean;
     editableIndex?: number;
+    // Plan-approval payload: the raw plan text plus its title/disk path, read
+    // before the proposal turn is aborted. The approval card renders the text
+    // above the options; the todo card links to the full file in the right panel.
+    plan?: { title: string; path: string; content: string };
   },
   onSliderIndex?: (index: number) => void,
   questions?: unknown[],

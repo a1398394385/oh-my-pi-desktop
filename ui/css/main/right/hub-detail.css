@@ -27,6 +27,11 @@
 
 /* Task markdown: keep the section's small scale instead of .md-body's larger body size */
 .hub-task-md { font-size: var(--ui-fs-sm); }
+/* Submitted report (terminal runs only): pre-wrap block capped with scroll */
+.hub-result {
+  max-height: 260px; overflow-y: auto;
+  white-space: pre-wrap; color: var(--dim);
+}
 
 /* Context gauge: token/contextWindow bar */
 .hub-gauge {

@@ -45,4 +45,4 @@
 }
 
 .ro-body.drop { animation: ed-drop .2s ease-out; }
-.ro-body.lift { animation: ed-lift .2s ease-out forwards; }
+/* Collapse: useLift drives the real height to 0 inline (see messages.css .lift note); no .lift class here */

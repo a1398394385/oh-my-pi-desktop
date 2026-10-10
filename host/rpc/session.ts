@@ -48,6 +48,8 @@ export async function handleListSessions(ws: any) {
     modified: Date;
     messageCount?: number;
     cwd?: string;
+    /** Pool fallback only: session file not yet on disk, so id is the pool UUID, not a real disk session id */
+    pending?: boolean;
   }
   const NO_CWD_KEY = "\0nocwd"; // sentinel: sessions without a cwd never merge into a real project
   const groups = new Map<string, ListedSession[]>();
@@ -73,6 +75,7 @@ export async function handleListSessions(ws: any) {
     list.push({
       id: sid,
       path: entry.path,
+      pending: true, // file not persisted yet: id is the pool UUID, not a disk session id
       title: entry.title, // Lazily created, unpersisted sessions fall back to memory here (including post-rename titles)
       firstMessage: "",
       modified: new Date(),
@@ -117,6 +120,7 @@ export async function handleListSessions(ws: any) {
         sessions: list.map((s) => ({
           id: s.id,
           path: s.path,
+          ...(s.pending ? { pending: true } : {}),
           title: s.title ?? null,
           firstMessage: (s.firstMessage ?? "").slice(0, 80),
           modified: s.modified.toISOString(),
@@ -255,6 +259,33 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       }
     }
     await handleLoadSession(ws, rebuildPath);
+  },
+  async session_unload(ws, msg) {
+    // Manual eviction from the in-memory pool (the desktop counterpart of
+    // exiting the CLI): full teardown identical to reload_session's release
+    // branch — release shared MCP, unsubscribe events, leave the pool, then
+    // dispose (the sanctioned terminal path; wind-down persists remaining
+    // state and appends the session_exit row). The disk file is untouched:
+    // clicking the session row again re-enters the pool through the normal
+    // load_session path. Refuse while busy — an evicted live session would
+    // keep running headless with its events going nowhere.
+    const p = String(msg.path ?? "").trim();
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    let unloaded = false;
+    for (const [key, e] of sessions.entries()) {
+      if (!sessionEntryMatchesPath(e, p)) continue;
+      if (sessionBusy(e)) throw new Error(hostI18n.t("errors.session.unloadBusy"));
+      releaseMcpForSession(key, e);
+      e.unsubscribe();
+      sessions.delete(key);
+      try {
+        await e.session.dispose();
+      } catch (err) {
+        safeStderr(`[host] session_unload 释放会话失败: ${err}\n`);
+      }
+      unloaded = true;
+    }
+    ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded }));
   },
   async list_sessions(ws) {
     await handleListSessions(ws);

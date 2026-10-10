@@ -18,6 +18,7 @@ import { browserHandlers } from "./browser";
 import { sshHandlers } from "./ssh";
 import { voiceHandlers } from "./voice";
 import { bashCompleteHandlers } from "./bash-complete";
+import { automationsHandlers } from "./automations";
 import hostI18n from "../../ui-src/i18n/host";
 
 export const rpcHandlers: Record<string, RpcHandler> = {
@@ -36,6 +37,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...sshHandlers,
   ...voiceHandlers,
   ...bashCompleteHandlers,
+  ...automationsHandlers,
 };
 
 /** Single-command dispatch: table lookup + invoke; unknown commands reply with error (old switch default semantics) */

@@ -52,7 +52,7 @@ export function projectIconName(p: ProjectIconSource, expanded: boolean): string
 // Expanded session container (old buildProjKids): on mount plays the 0fr→1fr expand animation;
 // when animate, rows enter staggered with kids-in.
 // Manage mode shows all sessions; default 5, "show more" loads 5 more per click.
-function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming, shortcuts }: {
+export function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming, shortcuts }: {
   p: ProjectInfo;
   animate: boolean;
   closing: boolean;

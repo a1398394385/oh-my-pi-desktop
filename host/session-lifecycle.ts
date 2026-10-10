@@ -12,7 +12,7 @@ import {
   USER_INTERRUPT_LABEL,
   isUserQueuedMessage,
   toRestoredQueuedMessage,
-} from "./bootstrap.ts";
+ } from "./bootstrap.ts";
 import {
   H,
   sessions,
@@ -237,21 +237,24 @@ function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
   pushSessionStats(ws, sessionId, entry);
 }
 
+
 export async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
-  const acpState = new AcpSessionState();
   // Master switch on the experimental features page (omp-desktop.json's
   // acp.enabled, default off for new users): only decides whether this session injects the
   // ACP tool surface and the context view rewrite; it cannot hot-toggle
   // after session creation, so switch changes take effect on new sessions
   const acpEnabled = readAcpEnabled();
+  const acpState = new AcpSessionState();
   // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, default off for new users)
   const sessionContextEnabled = readSessionContextEnabled();
   // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
-  // features page, default off). Double-load guard: when either the plugin
-  // hub / hooks master switch is on, extension discovery loads the upstream
-  // original keepalive from ~/.omp/plugins, so skip the embedded injection
-  // to avoid two instances probing twice in one process
-  const keepaliveOn = readKeepaliveEnabled() && !(readPluginsEnabled() || readHooksEnabled());
+  // features page, default off). Governed solely by the settings-page switch:
+  // no double-load guard against a separately installed upstream
+  // pi-kimi-keepalive plugin — per product decision the embedded keepalive
+  // runs whenever the switch is on, and a plugin-enabled upstream instance
+  // would probe alongside it (double spend is the user's call: disable the
+  // plugin on the plugins page to keep only the embedded one).
+  const keepaliveOn = readKeepaliveEnabled();
   // nudge denominator: omp-desktop.json's acp.contextWindow (a fixed value
   // like 2000000 / "1M") wins over the model registry window; if both are
   // unknown, nudge is disabled entirely
@@ -336,6 +339,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     sessionResult: result, // Host injection points such as setToolUIContext
     unsubscribe: () => {},
     attachedWs: null,
+    extStatuses: new Map(), // Extension status badges (uiCtx.setStatus); surfaced on the capabilities card
     providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // Sticky key for the request-side getApiKey
     keepaliveWanted: false, // At creation the user is watching the new session: nothing unread, no keepalive; set true at turn wrap-up
     // Zeroed snapshot until the extension's first report; presence of the
@@ -524,6 +528,22 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   const uiCtx = {
     // UI timeout for tools like ask counts from dialog presentation, not from when the tool invoked
     timeoutStartsOnPresentation: true,
+    // Extensions style their status text through ui.theme (e.g. ponytail bails out of
+    // setStatus unless theme.fg exists). There is no terminal here, so hand out a plain
+    // theme: fg returns the text unstyled — the capabilities card renders it verbatim.
+    theme: {
+      fg: (_color: string, text: string) => text,
+    },
+    // Extension status badges (the TUI's status-line hooks, e.g. ponytail's setStatus):
+    // the desktop has no status line, so the badge lands on the capabilities card.
+    // Recorded on the entry (survives re-attach) and pushed as an incremental frame;
+    // get_capabilities replays the full table for fresh mounts.
+    setStatus(key: string, text: string | undefined) {
+      const statuses = entry.extStatuses ?? (entry.extStatuses = new Map());
+      if (text === undefined) statuses.delete(key);
+      else statuses.set(key, text);
+      ws.send(JSON.stringify(stampEvent({ type: "extension_status", sessionId, statuses: [...statuses] })));
+    },
     select(title: string, options: any[], dialogOptions?: any): Promise<string | undefined> {
       return requestApproval(
         ws,
@@ -772,12 +792,14 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           status: p.status,
           name: subName(p.id, p.agent, p.index),
           parent: subParent(p.id),
-          registeredAt: subRegistered.get(p.id),
-          sessionFile: p.sessionFile ?? null,
-          // Agent Hub "Changes" line flags, recovered from the transcript (see readSubagentInitFlags)
-          readOnly: p.sessionFile ? readSubagentInitFlags(p.sessionFile) : undefined,
-          advisor: p.sessionFile ? path.basename(p.sessionFile).startsWith("__advisor") : undefined,
+          // Child transcript file (agent hub Enter/double-click opens it; the base
+          // payload carries it on every lifecycle emit — dropping it here left live
+          // roster rows without a sessionFile until a host reload replayed history)
+          sessionFile: p.sessionFile,
           detached: p.detached ?? false,
+          // Terminal statuses carry the submitted report, read from the settled child
+          // transcript (the lifecycle frame fires after the executor finalized it)
+          result: p.status !== "started" && p.sessionFile ? readSubagentResult(p.sessionFile) : undefined,
         }),
       ),
     );
@@ -831,6 +853,10 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     if (task && !subFirstTask.has(subagentId)) subFirstTask.set(subagentId, task);
     const payload = {
       agent: p.agent,
+      // Child transcript file: the base emits it on the progress channel too (the
+      // TUI registry collects it from either channel); the started lifecycle may
+      // fire before the child session persists — this is where the path first appears
+      sessionFile: p.sessionFile,
       status: pr.status,
       task,
       cost: totals ? totals.cost + (pr.cost ?? 0) : pr.cost,
@@ -875,9 +901,17 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   // the realtime queued frame would re-add the consumed message to the queue
   // card for the whole turn (until the agent_end calibration).
   const detachDequeueHook = entry.session.agent.addBeforeQueuedMessageDequeueHook(() => {
-    const texts = [...entry.session.agent.peekFollowUpQueue(), ...entry.session.agent.peekSteeringQueue()]
-      .filter((m) => isUserQueuedMessage(m))
-      .map((m) => toRestoredQueuedMessage(m).text);
+    // The hook fires before EACH queue's dequeue with no queue argument. The
+    // base always attempts the steering dequeue first (only when that queue is
+    // non-empty) and the followUp dequeue second, so the non-empty queue at
+    // hook time is exactly the one about to be drained. Broadcasting the other
+    // queue's texts as well would promote still-queued messages to consumed
+    // bubbles immediately — and ahead of the steer bubble, since the snapshot
+    // lists followUp first (live transcript order then diverges from the
+    // persisted one until reload).
+    const agent = entry.session.agent;
+    const draining = agent.peekSteeringQueue().length > 0 ? agent.peekSteeringQueue() : agent.peekFollowUpQueue();
+    const texts = draining.filter((m) => isUserQueuedMessage(m)).map((m) => toRestoredQueuedMessage(m).text);
     if (texts.length > 0) {
       for (const t of texts) entry.consumedPending.add(t);
       ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
@@ -940,7 +974,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
 }
 
 /** Create a session on `cwd` with `model`, attach it, and push session_created. */
-async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string) {
+export async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string) {
   const { sessionId, entry, eventBus } = await createSessionCore(
     workDir,
     SessionManager.create(workDir),
@@ -984,7 +1018,7 @@ export async function handleCreateSession(ws: { send(data: string): unknown }, c
   // Session born with computer use (intent picked on the new-session page):
   // same entry path as the composer toggle — the master gate is checked inside
   // (closed gate surfaces a command_output hint and the frame stays off)
-  if (computerMode) setComputerMode(ws, sessionId, entry, true);
+  if (computerMode) void setComputerMode(ws, sessionId, entry, true).catch(() => {});
   safeStderr(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
 }
 
@@ -1025,6 +1059,36 @@ function readSubagentInitFlags(file: string): boolean | undefined {
   return undefined;
 }
 
+// Agent Hub "Result" section: the subagent's submitted report — the last
+// assistant message carrying text (the same source the executor's salvage and
+// lastReportTurnText draw from). Capped so the frame stays small; the UI
+// section scrolls. Purely tool-call assistant messages keep the earlier text.
+const SUBAGENT_RESULT_MAX_CHARS = 16000;
+function readSubagentResult(file: string): string | undefined {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+  let result: string | undefined;
+  for (const line of text.split("\n")) {
+    if (!line.includes('"assistant"')) continue;
+    let e: HistEntry;
+    try {
+      e = JSON.parse(line) as HistEntry;
+    } catch {
+      continue;
+    }
+    if (e.type !== "message" || e.message?.role !== "assistant") continue;
+    const c = e.message.content;
+    const t = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").filter(Boolean).join("\n") : "").trim();
+    if (t) result = t;
+  }
+  if (!result) return undefined;
+  return result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result;
+}
+
 // Advisor transcripts use the SDK-reserved __advisor stem (the same signal the TUI agent
 // registry uses for kind: "advisor")
 const isAdvisorTranscript = (file: string) => path.basename(file).startsWith("__advisor");
@@ -1034,6 +1098,7 @@ interface HistAggregation {
   registeredAt: number;
   readOnly?: boolean;
   status: string;
+  result?: string;
   progress: Record<string, unknown>;
   toolEvents: Record<string, unknown>[];
 }
@@ -1080,6 +1145,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
   let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
   let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
   let model: string | null = null;
+  let result: string | undefined;
   let task: string | undefined;
   let readOnly: boolean | undefined;
   let registeredAt = 0;
@@ -1113,6 +1179,11 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
         if (e.message.stopReason === "aborted" || e.message.errorMessage === "Request was aborted") {
           aborted = true;
         }
+        // Submitted report for the hub detail's Result section (same rule as
+        // readSubagentResult: the last assistant message that carries text)
+        const c = e.message.content;
+        const t = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").filter(Boolean).join("\n") : "").trim();
+        if (t) result = t;
       }
       if (e.message.role === "toolResult") {
         lastIsError = e.message.isError === true;
@@ -1159,6 +1230,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
     registeredAt,
     readOnly,
     status,
+    result: result && result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result,
     progress: {
       status,
       task,
@@ -1223,6 +1295,7 @@ export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: s
         registeredAt: agg.registeredAt,
         sessionFile: file,
         readOnly: agg.readOnly,
+        result: agg.result,
         advisor: path.basename(file).startsWith("__advisor"),
       }),
     );

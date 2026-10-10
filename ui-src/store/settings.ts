@@ -22,6 +22,7 @@ import type {
   RemoteWorkspaceAddedFrame,
   SshDirsFrame,
 } from "../types/frames";
+import type { Automation, AutomationRun } from "../lib/automations";
 import type { MemoryDetailState } from "../types/session";
 import type { SchemaDef } from "../types/settings";
 
@@ -66,6 +67,9 @@ export interface SettingsSlice {
   sshDirs: (Omit<SshDirsFrame, "type"> & { ts: number }) | null; // latest ssh_list_dirs reply (path matches the picker's current base)
   mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results
   memoryDetail: MemoryDetailState; // landed from the memory_file frame
+  automations: Automation[]; // automations_list snapshot (host/rpc/automations.ts; empty until the first reply)
+  automationRuns: Record<string, AutomationRun[]>; // runs history keyed by automation id (≤10 each, newest first)
+  automationPreview: number[] | null; // automations_preview reply: up to 3 future trigger times for the editor form
   openSettings(pageId?: string): void;
   closeSettings(): void;
   refreshSettingsData(): void;
@@ -111,6 +115,9 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   sshDirs: null,
   mcpTestResults: {},
   computerDisplays: null,
+  automations: [],
+  automationRuns: {},
+  automationPreview: null,
   memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "idle", content: "", error: null },
 
   openSettings(pageId = "pg-general") {

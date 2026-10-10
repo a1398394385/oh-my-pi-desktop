@@ -1,3 +1,4 @@
+import Icon from "./Icon";
 import { useAppStore } from "./store";
 import { initShell } from "./shell";
 import MainColumn from "./components/main/MainColumn";
@@ -16,8 +17,14 @@ import BootSplash from "./components/BootSplash";
 
 function Toast() {
   const toastMsg = useAppStore((s) => s.toastMsg);
+  const toastErr = useAppStore((s) => s.toastErr);
   if (!toastMsg) return null;
-  return <div id="toast">{toastMsg}</div>;
+  return (
+    <div id="toast" className={toastErr ? "err" : undefined}>
+      {toastErr && <Icon name="toastErr" size={13} />}
+      {toastMsg}
+    </div>
+  );
 }
 
 

@@ -191,3 +191,6 @@ if (new URLSearchParams(location.search).has("preview")) {
 // Warm the highlighter's common grammars during startup idle so the first
 // read-row expansion does not pay shiki's cold-start on the click path
 warmupHighlighter(["typescript", "tsx", "markdown", "json"]);
+
+// [TAPLOG] tap-to-click diagnostics (temporary); disable via localStorage taplog="0"
+if (localStorage.getItem("taplog") !== "0") void import("./tap-probe");

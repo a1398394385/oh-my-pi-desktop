@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
   "description": "host WebSocket RPC 能力清单（单一事实源）。check-capabilities.mjs 双向 diff 本清单与 host.ts switch 实际分发的 method：清单有而 host 无 = 过期条目，host 有而清单无 = 未登记能力，两者都阻断（借鉴 OBF 产品控制平面：无证据的能力不存在）。",
-  "kinds": ["session", "project", "prompt", "transcript", "file", "git", "approval", "model", "settings", "usage", "asset", "mcp", "provider", "shell", "ssh", "voice"],
+  "kinds": ["session", "project", "prompt", "transcript", "file", "git", "approval", "model", "settings", "usage", "asset", "mcp", "provider", "shell", "ssh", "voice", "automation"],
   "risks": ["read", "write", "destructive"],
   "methods": [
     { "id": "create_session", "kind": "session", "risk": "write" },
     { "id": "load_session", "kind": "session", "risk": "write" },
     { "id": "reload_session", "kind": "session", "risk": "write", "note": "外部写入提示条的重新加载：释放池条目从磁盘重建" },
+    { "id": "session_unload", "kind": "session", "risk": "write", "note": "手动移出内存池（CLI exit 的桌面对应）：完整拆除（MCP/退订/dispose），磁盘文件保留，重新点击经 load_session 回池" },
     { "id": "list_sessions", "kind": "session", "risk": "read" },
     { "id": "delete_session", "kind": "session", "risk": "destructive", "note": "删除磁盘会话文件" },
     { "id": "archive_session", "kind": "session", "risk": "write", "note": "归档记入 omp-desktop.json，归档同时取消置顶" },
@@ -22,6 +23,8 @@
     { "id": "get_session_tree", "kind": "session", "risk": "read", "note": "跨文件分支家族扫盘连图" },
     { "id": "set_plan_mode", "kind": "session", "risk": "write", "note": "计划模式开关（会话级状态）" },
     { "id": "set_computer_mode", "kind": "session", "risk": "write", "note": "Computer Use 会话级开关（输入框屏幕图标按钮；主门控仍由设置页 computer.enabled 把守）" },
+    { "id": "set_computer_provider", "kind": "settings", "risk": "write", "note": "电脑控制供应商选择：写入 omp-desktop.json computer.provider（default=OMP 内置 / kimi=kimi-cu MCP），只影响之后的图标切换，不动已挂载的会话" },
+    { "id": "test_kimi_cu", "kind": "mcp", "risk": "read", "note": "电脑页 Kimi 测试连接按钮：预热代码内置的 kimi-cu 连接（host/mcp-builtin.ts，从不落 mcp.json）并回 mcp_server_tested 帧报告结果；预热即测试" },
     { "id": "smoke_plan_propose", "kind": "session", "risk": "read", "note": "冒烟专用：重放 xd://propose 派发以在无模型下触发计划审批卡；仅当 OMP_PLAN_APPROVE_SMOKE=1 时生效，否则空操作" },
     { "id": "remove_project", "kind": "project", "risk": "write", "note": "仅从桌面项目列表移除，不删文件" },
     { "id": "set_project_expanded", "kind": "project", "risk": "write" },
@@ -144,6 +147,13 @@
     { "id": "stt_start", "kind": "voice", "risk": "write", "note": "语音听写按下：带按压时草稿文本为锚点，启动麦克风采集（STTController）；test=true 走设置页测试模式，最终文本经 stt_test_result 帧回传而非写输入框" },
     { "id": "stt_stop", "kind": "voice", "risk": "write", "note": "语音听写松开：结束采集并转写缓冲音频；stt_submit 帧在满足 submitTrigger 时触发自动提交" },
     { "id": "voice_status", "kind": "voice", "risk": "read", "note": "设置页语音区状态快照：dictation 角色解析出的具体模型 + 本地缓存就绪态 + 下载中标志，回 voice_status 帧" },
-    { "id": "stt_download", "kind": "voice", "risk": "write", "note": "设置页下载当前 dictation 模型：进度经 stt_download_progress 帧流式回传，完成后回推 voice_status" }
+    { "id": "stt_download", "kind": "voice", "risk": "write", "note": "设置页下载当前 dictation 模型：进度经 stt_download_progress 帧流式回传，完成后回推 voice_status" },
+    { "id": "automations_list", "kind": "automation", "risk": "read", "note": "定时任务全量快照：automations.json 现读，回 automations_list 帧（automations + 每任务最近 10 条 runs）" },
+    { "id": "automations_create", "kind": "automation", "risk": "write", "note": "新建定时任务：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限，落盘后回 automations_list 帧" },
+    { "id": "automations_update", "kind": "automation", "risk": "write", "note": "编辑定时任务：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活），落盘后回 automations_list 帧" },
+    { "id": "automations_delete", "kind": "automation", "risk": "destructive", "note": "删除定时任务及其运行历史，落盘后回 automations_list 帧" },
+    { "id": "automations_toggle", "kind": "automation", "risk": "write", "note": "启停开关：只改 enabled（不动 lifecycle/runCount），落盘后回 automations_list 帧" },
+    { "id": "automations_run_now", "kind": "automation", "risk": "write", "note": "立即运行：校验存在且启用后走 scheduler manual 派发（新建会话，turn 异步），回 automation_run_started 帧" },
+    { "id": "automations_preview", "kind": "automation", "risk": "read", "note": "调度预览：给定 schedule 从当前时刻推未来 3 次触发时间，回 automation_preview 帧（无未来触发为空数组）" }
   ]
 }

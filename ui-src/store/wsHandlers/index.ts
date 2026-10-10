@@ -10,11 +10,12 @@ import { sessionHandlers, type SessionFrames } from "./session";
 import { streamHandlers, type StreamFrames } from "./stream";
 import { filesHandlers, type FilesFrames } from "./files";
 import { settingsHandlers, type SettingsFrames } from "./settings";
+import { automationsHandlers, type AutomationsFrames } from "./automations";
 import type { HandlerMap } from "./types";
 import type { HostFrame } from "../../types/frames";
 
 // Exhaustiveness assertion: when a frame type is missed, Missing narrows to that literal and the AssertNever constraint fails
-type Covered = ConfigFrames | SessionFrames | StreamFrames | FilesFrames | SettingsFrames;
+type Covered = ConfigFrames | SessionFrames | StreamFrames | FilesFrames | SettingsFrames | AutomationsFrames;
 type Missing = Exclude<HostFrame["type"], Covered>;
 type AssertNever<T extends never> = T;
 type _allFramesCovered = AssertNever<Missing>;
@@ -25,6 +26,7 @@ export const frameHandlers: HandlerMap = {
   ...streamHandlers,
   ...filesHandlers,
   ...settingsHandlers,
+  ...automationsHandlers,
 };
 
 /** Single-frame dispatch: table-driven (unknown runtime frames silently ignored, same fallback as the old switch default) */

@@ -34,6 +34,10 @@ export const streamHandlers = {
     );
   },
   computer_mode(msg) {
+    // The host attaches `error` when a computer-use toggle failed (kimi-cu
+    // not installed / connect failed, gate closed, prelude unavailable) —
+    // surface it as a red toast on top of the in-session command_output line.
+    if (msg.error) useAppStore.getState().toast(msg.error, true);
     updateSession(
       msg.sessionId,
       (s) => {
@@ -59,8 +63,15 @@ export const streamHandlers = {
         // Ask-dialog variant (18.5 uiCtx.askDialog): the multi-question form;
         // ApprovalCard renders it as one merged submit
         questions: msg.questions,
+        // Plan variant: raw plan text + title + path (the card body + the todo
+        // card's output row render from it)
+        plan: msg.plan,
         answer: null,
       });
+      // Remember the latest plan deliverable at session level: unlike the
+      // approval entry (removed once resolved), the todo card's output row
+      // stays clickable after the plan is approved.
+      if (msg.plan) s.planResult = msg.plan;
     });
     const s = findBySessionId(msg.sessionId);
     if (s) notifyDesktop("approval", s, t("notify.approvalTitle"), msg.title);
@@ -206,8 +217,9 @@ export const streamHandlers = {
         text: prev?.text ?? "",
         tools: prev?.tools ?? [],
         streaming: msg.status === "started",
-        // usage fields accumulated from progress frames (kept when lifecycle re-sends)
-        usage: prev?.usage,
+        // Terminal statuses carry the submitted report; a wake re-run (started over
+        // the same id) invalidates the previous run's result
+        result: msg.status === "started" ? undefined : (msg.result ?? prev?.result),
       });
     });
   },
@@ -239,6 +251,7 @@ export const streamHandlers = {
         if (msg.name && !prev.name) prev.name = msg.name;
         if (msg.parent && !prev.parent) prev.parent = msg.parent;
         if (msg.registeredAt && !prev.registeredAt) prev.registeredAt = msg.registeredAt;
+        if (msg.sessionFile && !prev.sessionFile) prev.sessionFile = msg.sessionFile; // late-arriving child transcript path (started may predate persistence)
       },
       false,
     );

@@ -35,7 +35,7 @@ export function roSummaryText(subs: ChatItem[]): string {
 // one), so the head key of the expand WeakMap is a ToolItem at runtime
 export default function ReadonlyGroup({ subs, pfx }: { subs: ChatItem[]; pfx: string }) {
   useGroupExpandVersion(); // expand state lives on a module-level WeakMap; the groupExpand channel bumps to re-render
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const head = subs[0] as ToolItem;
   const open = roExpand.has(head) && !closing;
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -79,7 +79,7 @@ export default function ReadonlyGroup({ subs, pfx }: { subs: ChatItem[]; pfx: st
         </span>
       </div>
       {roExpand.has(head) && (
-        <div ref={bodyRef} className={"ro-body" + (closing ? " lift" : " drop")}>
+        <div ref={(el) => { bodyRef.current = el; liftRef(el); }} className="ro-body drop">
           {/* already the folded run: skip the level-2 scan or the block would nest inside itself */}
           {renderItems(subs, pfx, [], undefined, { noReadonlyFold: true })}
         </div>

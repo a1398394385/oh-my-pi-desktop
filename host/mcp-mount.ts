@@ -2,7 +2,13 @@
 // connections into a pooled session's tool surface at pool boundaries only —
 // session create / first history load / switch-back after frontend eviction —
 // and releases them on frontend eviction (mcp_detach RPC), session delete or
-// reload. No mid-session dynamic toggling by design.
+// reload. One deliberate exception: the computer-use provider toggle mounts a
+// single named server (kimi-cu) mid-session, see mountServerForSession below.
+//
+// Tool ownership is tracked per server per session (sessionMounts): the pool
+// boundary and mid-session paths mint tools into the same map, so every
+// refreshMCPTools call can rebuild the full surface and a mid-session unmount
+// can surgically drop one server's tools without touching the rest.
 //
 // Connection sharing follows each server's configured level:
 //   - global  → shared pool entry, one connection process-wide
@@ -19,6 +25,7 @@ import type { MCPTool as McpToolInstance } from "@oh-my-pi/pi-coding-agent/mcp/t
 import { connectToServer, disconnectServer, listTools, MCPTool } from "./bootstrap.ts";
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
 import { loadAllMcpScoped, type McpServerAsset } from "./assets.ts";
+import { builtinServerAsset } from "./mcp-builtin.ts";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
 
@@ -28,8 +35,37 @@ interface MountedStatus {
   tools: number;
 }
 
+/** One mounted server's tool instances plus its connection hold */
+interface ServerMount {
+  tools: McpToolInstance[];
+  release: () => void;
+}
+
 /** Per-session mount registry — the capabilities page's MCP data source */
 const mountedRegistry = new Map<string, MountedStatus>();
+
+/**
+ * Per-session, per-server tool ownership: the single source of truth for
+ * rebuilding a session's full MCP tool surface on any refresh. The pool
+ * boundary repopulates it wholesale; the mid-session computer-use toggle
+ * adds/removes one named server inside it.
+ */
+const sessionMounts = new Map<string, Map<string, ServerMount>>();
+
+function flattenMounts(mounts: Map<string, ServerMount>): McpToolInstance[] {
+  const tools: McpToolInstance[] = [];
+  for (const m of mounts.values()) tools.push(...m.tools);
+  return tools;
+}
+
+/** Replace/insert one server's registry row and recompute the tool count from the live surface */
+function upsertRegistry(sessionId: string, name: string, status: "connected" | "disconnected"): void {
+  const mounts = sessionMounts.get(sessionId);
+  const servers = (mountedRegistry.get(sessionId)?.servers ?? []).filter((s) => s.name !== name);
+  servers.push({ name, status });
+  servers.sort((a, b) => a.name.localeCompare(b.name));
+  mountedRegistry.set(sessionId, { servers, tools: mounts ? flattenMounts(mounts).length : 0 });
+}
 
 /** Fenced generation check: true when the session was released/remounted mid-flight (7 lockstep call sites) */
 const stale = (entry: PoolEntry, gen: number): boolean => entry.mcpMountGen !== gen;
@@ -140,11 +176,24 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
 
   const visible = visibleMcpServers(servers, entry.cwd);
 
-  const tools: McpToolInstance[] = [];
   const statuses: MountedStatus["servers"] = [];
   const holds: Array<() => void> = [];
+  // Per-server ownership rebuilt by this pass. Mid-session mounts of servers
+  // this pass does NOT cover (e.g. the disabled-until-toggled kimi-cu) are
+  // carried over so the final surface refresh cannot drop them; a server this
+  // pass DOES mount replaces its carried entry (old hold released in the loop).
+  const carried = new Map(sessionMounts.get(sessionId) ?? []);
+  const fresh = new Map<string, ServerMount>();
 
   for (const s of visible) {
+    // A carried entry under the same name is superseded by this fresh mount
+    const prev = carried.get(s.name);
+    if (prev) {
+      carried.delete(s.name);
+      try {
+        prev.release();
+      } catch {}
+    }
     try {
       const config = toServerConfig(s, entry.cwd);
       let hold: () => void;
@@ -192,7 +241,8 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
         return fresh;
       };
 
-      tools.push(...MCPTool.fromTools(conn, defs, reconnect));
+      const minted = MCPTool.fromTools(conn, defs, reconnect);
+      fresh.set(s.name, { tools: minted, release: hold });
       statuses.push({ name: s.name, status: "connected" });
       holds.push(hold);
     } catch (err) {
@@ -207,15 +257,17 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   }
 
   entry.mcpReleases.push(...holds);
-  mountedRegistry.set(sessionId, { servers: statuses.sort((a, b) => a.name.localeCompare(b.name)), tools: tools.length });
+  sessionMounts.set(sessionId, new Map([...carried, ...fresh]));
+  const surface = flattenMounts(sessionMounts.get(sessionId)!);
+  mountedRegistry.set(sessionId, { servers: statuses.sort((a, b) => a.name.localeCompare(b.name)), tools: surface.length });
   try {
-    void entry.session.refreshMCPTools(tools);
+    void entry.session.refreshMCPTools(surface);
   } catch (err) {
     safeStderr(`[mcp-mount] 工具面刷新失败: ${err}\n`);
   }
   if (!stale(entry, gen)) pushMcpFrame(sessionId, entry);
-  if (tools.length || statuses.length) {
-    safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 挂载 ${statuses.length} 台 MCP 服务器 / ${tools.length} 个工具\n`);
+  if (surface.length || statuses.length) {
+    safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 挂载 ${statuses.length} 台 MCP 服务器 / ${surface.length} 个工具\n`);
   }
 }
 
@@ -232,10 +284,115 @@ export function releaseMcpForSession(sessionId: string, entry: PoolEntry): void 
       h();
     } catch {}
   }
-  if (!holds.length && !mountedRegistry.has(sessionId)) return;
+  // Mid-session server mounts (the computer-use toggle): release their holds
+  // and drop their tool ownership alongside the pool-boundary mounts
+  const mounts = sessionMounts.get(sessionId);
+  if (mounts) {
+    for (const m of mounts.values()) {
+      try {
+        m.release();
+      } catch {}
+    }
+    sessionMounts.delete(sessionId);
+  }
+  if (!holds.length && !mounts && !mountedRegistry.has(sessionId)) return;
   mountedRegistry.delete(sessionId);
   try {
     void entry.session.refreshMCPTools([]);
   } catch {}
   pushMcpFrame(sessionId, entry);
+}
+
+/** Whether a named server is currently mounted into this session's tool surface (mid-session or pool boundary) */
+export function isServerMounted(sessionId: string, name: string): boolean {
+  return sessionMounts.get(sessionId)?.has(name) ?? false;
+}
+
+/**
+ * Mid-session mount of a single named server (the computer-use provider
+ * toggle). Builtin servers (mcp-builtin.ts) resolve from code and shadow any
+ * same-named user mcp.json entry; everything else resolves from the visible
+ * config set. This path deliberately ignores the server's enabled flag for
+ * config-set servers too: kimi-cu used to be written to mcp.json disabled so
+ * it never auto-mounted, and only opt-in sessions light it up. Idempotent per
+ * session; connection sharing follows the server's configured level exactly
+ * like the pool boundary. Returns false when the server is not resolvable
+ * for this cwd or the connect/list fails (details on stderr).
+ */
+export async function mountServerForSession(sessionId: string, entry: PoolEntry, name: string): Promise<boolean> {
+  let perSession = sessionMounts.get(sessionId);
+  if (perSession?.has(name)) return true;
+  let server: McpServerAsset | undefined = builtinServerAsset(name);
+  if (!server) {
+    let servers: McpServerAsset[];
+    try {
+      ({ servers } = await loadAllMcpScoped({ probe: false }));
+    } catch (err) {
+      safeStderr(`[mcp-mount] 中途挂载可见集计算失败: ${err}\n`);
+      return false;
+    }
+    const projectScope = `project:${entry.cwd}`;
+    server = servers.find((s) => s.name === name && (s.scope === "profile" || s.scope === projectScope));
+  }
+  if (!server) return false;
+  try {
+    const config = toServerConfig(server, entry.cwd);
+    let hold: () => void;
+    let conn: MCPServerConnection;
+    if (server.sharing === "global" || server.sharing === "project") {
+      const acquired = await acquireSharedMcpConnection({
+        serverName: name,
+        sharing: server.sharing,
+        scopeKey: server.sharing === "global" ? H.agentDir : entry.cwd,
+        config,
+      });
+      conn = acquired.connection;
+      hold = acquired.release;
+    } else {
+      conn = await connectToServer(name, config);
+      hold = () => {
+        void disconnectServer(conn).catch(() => {});
+      };
+    }
+    const defs = await listTools(conn);
+    const minted = MCPTool.fromTools(conn, defs);
+    perSession = perSession ?? new Map();
+    perSession.set(name, { tools: minted, release: hold });
+    sessionMounts.set(sessionId, perSession);
+    upsertRegistry(sessionId, name, "connected");
+    try {
+      void entry.session.refreshMCPTools(flattenMounts(perSession));
+    } catch (err) {
+      safeStderr(`[mcp-mount] 中途挂载工具面刷新失败: ${err}\n`);
+    }
+    pushMcpFrame(sessionId, entry);
+    safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 中途挂载 ${name}（${minted.length} 个工具）\n`);
+    return true;
+  } catch (err) {
+    safeStderr(`[mcp-mount] 会话中途挂载 "${name}" 失败: ${err}\n`);
+    upsertRegistry(sessionId, name, "disconnected");
+    pushMcpFrame(sessionId, entry);
+    return false;
+  }
+}
+
+/**
+ * Mid-session unmount of a single named server: releases its connection hold
+ * and removes only its tools from the surface (every other mounted server
+ * keeps its tools). Returns false when the server was not mounted.
+ */
+export function unmountServerForSession(sessionId: string, entry: PoolEntry, name: string): boolean {
+  const perSession = sessionMounts.get(sessionId);
+  const mount = perSession?.get(name);
+  if (!perSession || !mount) return false;
+  perSession.delete(name);
+  try {
+    mount.release();
+  } catch {}
+  upsertRegistry(sessionId, name, "disconnected");
+  try {
+    void entry.session.refreshMCPTools(flattenMounts(perSession));
+  } catch {}
+  pushMcpFrame(sessionId, entry);
+  return true;
 }

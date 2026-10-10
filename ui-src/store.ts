@@ -47,7 +47,7 @@ export type TimerHandle = ReturnType<typeof setTimeout>;
 export const send = (obj: unknown): void => useAppStore.getState().send(obj);
 export const setConnected = (ok: boolean, text: string): void => useAppStore.getState().setConnected(ok, text);
 export const connect = (): Promise<void> => useAppStore.getState().connect();
-export const toast = (msg: unknown): void => useAppStore.getState().toast(msg);
+export const toast = (msg: unknown, error?: boolean): void => useAppStore.getState().toast(msg, error);
 export const setComposerValue = (text: string, images: unknown[] | null = []): void =>
   useAppStore.getState().setComposerValue(text, images);
 export const setMainViewMode = (mode: "chat" | "tree"): void =>

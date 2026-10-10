@@ -22,7 +22,7 @@ interface ThinkRowItem {
 }
 
 export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: string }) {
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const expandable = item.expandable || item.thinking;
   const open = item.expanded && !closing;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -60,8 +60,9 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
           </span>
         )}
       </div>
-      {open && (item.thinking || item.streaming) && (
-        <div className="think-body kids-in">
+      {/* Body stays mounted while closing (gated on expanded alone, not the arrow's `open`) so useLift can animate its height before the commit unmounts it */}
+      {(item.expanded || closing) && (item.thinking || item.streaming) && (
+        <div ref={liftRef} className="think-body kids-in">
           <div className="think-scroll" ref={scrollRef}>{item.thinking || "…"}</div>
         </div>
       )}

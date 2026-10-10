@@ -104,6 +104,7 @@ interface TermSession {
   ro: ResizeObserver | null;
   mo: MutationObserver | null;
   rafTimer: number | null;
+  mouseGuard: (() => void) | null; // unhooks the mouseup-loss self-heal listeners
 }
 
 const sessions = new Map<string, TermSession>(); // session path (or "welcome") -> terminal
@@ -162,7 +163,7 @@ function createTermSession(key: string, container: HTMLElement): TermSession {
     id: termIdFor(key), ready: false, dead: false, detached: false,
     lastDims: term.cols + "x" + term.rows,
     pendingWrites: [],
-    unsubFrame: null, ro: null, mo: null, rafTimer: null,
+    unsubFrame: null, ro: null, mo: null, rafTimer: null, mouseGuard: null,
   };
 
   // PTY frames are routed by id: each session's subscription only consumes its own
@@ -204,6 +205,29 @@ function createTermSession(key: string, container: HTMLElement): TermSession {
     }
     return true;
   });
+
+  // macOS WKWebView intermittently drops the mouseup that follows a terminal mousedown
+  // (trackpad clicks especially). xterm then keeps its document-level mousemove listener
+  // armed — and that handler ignores event.buttons — so every later hover grows a
+  // selection from the stale click position. Self-heal: pair mousedown/mouseup ourselves;
+  // a hover with no button held while a click is still unpaired replays a synthetic
+  // mouseup so xterm ends the phantom drag.
+  let clickUnpaired = false;
+  const onDown = (e: MouseEvent) => { if (e.button === 0) clickUnpaired = true; };
+  const onUp = () => { clickUnpaired = false; };
+  const onHover = (e: MouseEvent) => {
+    if (!clickUnpaired || e.buttons !== 0) return;
+    clickUnpaired = false;
+    e.target?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  };
+  hostEl.addEventListener("mousedown", onDown);
+  document.addEventListener("mouseup", onUp);
+  hostEl.addEventListener("mousemove", onHover);
+  own.mouseGuard = () => {
+    hostEl.removeEventListener("mousedown", onDown);
+    document.removeEventListener("mouseup", onUp);
+    hostEl.removeEventListener("mousemove", onHover);
+  };
 
   // Container size change -> fit -> resize frame (RAF-coalesced; dragging the width doesn't thrash)
   own.ro = new ResizeObserver(() => scheduleFit(own));
@@ -270,6 +294,7 @@ export function disposeSessionFor(key: string) {
   sessions.delete(key);
   if (!own.dead) send({ type: "terminal_dispose", id: own.id });
   own.unsubFrame?.();
+  own.mouseGuard?.();
   own.ro?.disconnect();
   own.mo?.disconnect();
   if (own.rafTimer) cancelAnimationFrame(own.rafTimer);

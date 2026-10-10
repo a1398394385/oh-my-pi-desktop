@@ -39,6 +39,7 @@ export const hostErrorsEn = {
     navigateCancelled: "Navigation cancelled",
     summaryAborted: "Branch summary aborted",
     reloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before reloading — the current view stays live",
+    unloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before evicting it from the pool",
   },
   prompt: {
     emptyMessage: "Message is empty",
@@ -48,6 +49,8 @@ export const hostErrorsEn = {
   },
   computerGateClosed: "Computer control is off in Settings: enable the master switch there first, then run /computer on in the session",
   computerUnavailable: "Computer use is unavailable in this session (the computer eval prelude did not activate)",
+  kimiCuNotInstalled: "KimiCU not detected: install KimiCU first, then pick this provider under Settings → Computer & Browser",
+  kimiCuConnectFailed: "kimi-cu connection failed: make sure KimiCU launches correctly (see the host log)",
   sttModelNotReady: "Speech recognition model not downloaded: download it first under Settings → Interaction → Speech recognition, then enable the master switch",
   bash: {
     busy: "A bash command is already running; press stop or wait for it to finish",
@@ -129,6 +132,14 @@ export const hostErrorsEn = {
   },
   limits: {
     noModelSelected: "Session has no model selected yet",
+  },
+  automations: {
+    fieldRequired: "Title, prompt and project directory are all required",
+    scheduleRequired: "A valid schedule is required",
+    invalidCron: "Invalid cron expression: {{expr}}",
+    limitReached: "Automation limit reached ({{limit}})",
+    notFound: "Automation not found: {{id}}",
+    disabled: "Automation is disabled; enable it before running now: {{title}}",
   },
   login: {
     inFlight: "A login flow is already in progress; complete it or try again later",

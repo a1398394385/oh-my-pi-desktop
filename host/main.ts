@@ -26,7 +26,7 @@
 // extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · mcp-mount.ts · pty.ts.
 import { stat, open } from "node:fs/promises";
 import { initialProfile } from "./bootstrap.ts";
-import { H, sessions, HOST_INSTANCE_ID } from "./state.ts";
+import { H, sessions, HOST_INSTANCE_ID, activeWs } from "./state.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
@@ -51,7 +51,6 @@ await augmentGuiPath();
 // (refreshInBackground inside applyProfile); the ready frame carries the
 // disk-cached catalog and is immediately usable. Once the background refresh
 // completes, a catch-up models frame is pushed via onModelsRefreshed.
-const activeWs: { value: unknown } = { value: null };
 H.onModelsRefreshed = () => {
   const ws = activeWs.value as { send(data: string): unknown } | null;
   if (ws) ws.send(JSON.stringify(modelsFrame()));
@@ -77,6 +76,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
   },
   websocket: {
     open(ws) {
+      activeWs.value = ws; // last connection wins; close clears only its own
       browserMirrorOnWsOpen(ws);
       safeStderr(`[host] WS 客户端接入（前端加载与连接全链路 OK） [t=${performance.now().toFixed(0)}ms]\n`);
       void profileReady.then(

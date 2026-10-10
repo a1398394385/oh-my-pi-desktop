@@ -115,6 +115,11 @@ const list = await waitType("session_list", mark2).catch((e) => fail(String(e)))
 const inList = (l: any, p: string) =>
   (l.projects ?? []).flatMap((pr: any) => pr.sessions ?? []).some((s: any) => s.path === p);
 assert(inList(list, created1.path), "新建后立即 list_sessions 含该会话（内存池兜底）");
+// ---- Assertion 3b: the pool fallback row is flagged pending (id is the pool UUID, not a disk session id) ----
+const pendingRow = ((list.projects ?? []) as Array<{ sessions?: Array<{ path?: string; pending?: boolean }> }>) // list is untyped WS JSON
+  .flatMap((pr) => pr.sessions ?? [])
+  .find((s) => s.path === created1.path);
+assert(pendingRow?.pending === true, "兜底行带 pending:true（id 为池 UUID，非磁盘 session id）");
 
 // ---- Assertion 4: reload_settings' models frame also carries config defaults (the refetch path when clicking new) ----
 const mark4 = frames.length;

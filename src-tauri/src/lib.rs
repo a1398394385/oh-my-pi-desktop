@@ -34,6 +34,7 @@ use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 // System font-family enumeration for the settings terminal-font picker
 // (Windows GDI / macOS CoreText; other platforms return an empty list).
 mod fonts;
+mod permissions;
 mod update;
 #[cfg(target_os = "windows")]
 mod audio;
@@ -658,7 +659,9 @@ pub fn run() {
             audio::audio_stop,
             update::update_check,
             update::update_install,
-            update::update_relaunch
+            update::update_relaunch,
+            permissions::system_permission_status,
+            permissions::open_permission_setting
         ])
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")

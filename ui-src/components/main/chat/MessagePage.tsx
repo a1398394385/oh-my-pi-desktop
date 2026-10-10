@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, isJunkPlaceholder, send } from "../../../store";
 import Icon from "../../../Icon";
 import TodoCard from "../../chat/TodoCard";
+import { CapsFloat } from "../../chat/CapsCard";
 import { WorkSec } from "../../chat/WorkLine";
 import ChatLoading from "../../chat/ChatLoading";
 import MsgRail from "../../chat/MsgRail";
@@ -369,6 +370,7 @@ export default function MessagePage() {
   return (
     <>
       <TodoCard />
+      <CapsFloat />
       {/* External-process write notice bar: set by the host's session_external_write frame;
           cleared when a reload rebuilds from disk */}
       {s.externalWrite && (

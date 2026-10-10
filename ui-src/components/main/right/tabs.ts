@@ -23,7 +23,6 @@ export const TAB_META: Record<string, TabMeta> = {
   terminal: { label: "right.tabTerminal", icon: "termBox" },
   browser: { label: "right.tabBrowser", icon: "globe" },
   mirror: { label: "right.tabAgentBrowser", icon: "monitor" },
-  caps: { label: "right.tabCaps", icon: "stats" },
   hub: { label: "right.hubTitle", icon: "agents" },
 };
 

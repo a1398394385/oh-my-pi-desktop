@@ -16,8 +16,8 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename }: {
   onRename: (entry: SessionInfo) => void;
 }) {
   const { t } = useTranslation();
-  const item = (label: string, fn: () => void) => (
-    <button key={label} onClick={() => { onClose(); fn(); }}>{label}</button>
+  const item = (label: string, fn: () => void, disabled = false) => (
+    <button key={label} disabled={disabled} onClick={() => { onClose(); fn(); }}>{label}</button>
   );
   return (
     <Menu
@@ -30,7 +30,7 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename }: {
       {item(t("sidebar.copySessionId"), () => {
         copyText(entry.id ?? "");
         toast(t("sidebar.copySessionIdDone"));
-      })}
+      }, entry.pending)}
       {item(t("sidebar.copySessionPath"), () => {
         copyText(entry.path);
         toast(t("sidebar.copySessionPathDone"));

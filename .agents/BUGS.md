@@ -58,6 +58,9 @@
 | BUG-054 | 子代理列表工具数被 IRC 唤醒 turn 清零——每个 wake run 新建 monitor 从 0 计数，宿主原样转发覆盖累计值 | 2026-10-08 |
 | BUG-055 | 子代理流式行的模型徽标跑到行中间——`hub-model` 与 `hub-row-acts` 两个 auto 外边距平分剩余空间 | 2026-10-08 |
 | BUG-056 | 终端字母间距被撑开近 1.5 倍——WKWebView canvas 量不到用户字体，xterm 单元格宽度多算 53% | 2026-10-08 |
+| BUG-057 | 设置页 MCP/技能列表一直加载不出来——stdio 探测收尾 `await proc.exited` 无超时，忽略 SIGTERM 的 Python MCP 服务器永久挂住整帧 | 2026-10-10 |
+| BUG-058 | steer 消费时仍排队的消息被「同时消费」且排到 steer 前面——dequeue hook 把两个队列全部文本都广播成消费帧 | 2026-10-10 |
+| BUG-059 | 能力卡片不显示插件行与状态徽章——host 编译时 `--external` 排除 legacy 虚拟模块，legacy 插件扩展在编译产物里必加载失败 | 2026-10-10 |
 
 ---
 
@@ -777,3 +780,44 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：取证工具 `.local/probe-wkwebview.swift`（`swiftc -O` 编译后 `probe-wkwebview <url> <js> [png]`：WKWebView 载页 + `evaluateJavaScript` + `takeSnapshot`）。①独立复现页（xterm 6.0 + 与生产同款 options，WKWebView 加载）：before cellW 12.275 / `.xterm-rows` letter-spacing `4.275px` / cellH 15，after cellW 8 / `normal` / cellH 16；同页对照变体证伪「构造函数期间摘掉就够」（cell 仍 12.275，必须在 `open()` 前后）。②真实 UI 取证（vite dev + `?preview=1` 载入真实 `TerminalPage`，`openRightTab('terminal')` 走真实入场路径，uiPrefs.terminalFont 设为 `"Fira Code"`）：before `rowsLetterSpacing: 4.275px`（首 span 4.272727px），after `normal`（首 span 无 letter-spacing）。③截图目视：控制组宽字距 vs 修复组紧排（后者与 iTerm2 一致）。④`bun run check`、`bun run ui:typecheck`、`bun run ui:build` 全绿；`scripts/smoke-terminal.ts`（PTY 侧链路，未被本次改动触及）仍全绿。
 
 **教训**：xterm 的单元格宽度并不等于字体 advance——它来自「度量策略」，而字距是 DOM 渲染器由二者之差派生的补偿量，所以「字体选对了但排版发虚」的根因通常在度量层而不在 CSS。跨引擎的 canvas 度量不可假设一致（尤其用户安装字体在 WKWebView canvas 上是盲区，`document.fonts.load()`/`ready` 不救），本仓库是 WKWebView 单引擎但浏览器调试路径是 Chromium → **字体/度量类问题必须在 WKWebView 上验证**。追溯上游实现时不能只看「哪段代码做测量」，还要看「什么时候选定」——本 case 里构造函数里删 OffscreenCanvas 无效，只有覆盖到 `open()` 才行，验证脚本必须覆盖真实调用序列。
+
+
+### BUG-057: 设置页 MCP/技能列表一直加载不出来——stdio 探测收尾 `await proc.exited` 无超时，忽略 SIGTERM 的 Python MCP 服务器永久挂住整帧
+
+**现象**：`bun run dev` 启动后进设置页，MCP 与技能两页永远停在「加载中」，列表空；但这些服务器实际生效（会话里工具正常可用）。刷新按钮无效，`agent_assets` 帧始终不回来。
+
+**根因**：`host/assets.ts` 的 `probeStdioMcp()` 在收尾处 `proc.kill()`（SIGTERM）后写了一句无上限的 `if (!timedOut) { await proc.exited; }`。Python 写的 MCP 服务器（实测 `mcp-atlassian`）在 `process.on("SIGTERM")` 上不响应，`exited` 永不 settle —— 该探测 promise 也就永不 resolve。`loadAllMcpScoped()` 把所有启用服务器的探测收进一个 `Promise.all`，一个挂住就整批不返回；`listAgentAssets()` 又是「先 await MCP 再返回」的结构，于是承载 skills + mcp + agents + hooks 的**整帧**一起卡死，前端两页同时空白。会话侧不受影响，因为挂载路径走 `loadAllMcpScoped({ probe: false })`，不探测——这正是「列表空但功能可用」这一矛盾表象的来源。
+
+**修复**：把无上限的 `await proc.exited` 换成有界等待：SIGTERM 后最多等 500ms，仍在跑则 `kill(9)` 强杀，再最多等 500ms 收尾，超时也照常返回探测结果。
+
+**验证**：①逐个探测定位（default profile 16 台）：修复前 `atlassian` 20s 未返回、其余 15 台 2s 内完成；修复后 `atlassian` 1757ms connected。②`loadAllMcpScoped({ probe: false })` 580ms / 带探测修复前 >180s 不返回 / 修复后 `listAgentAssets()` 4326ms 返回，skills 30 项、mcp 16 台、11 个项目段。③子进程行为取证：收到 init 应答后 SIGTERM → `exited` 挂起，同一进程 `kill(9)` 立即 exit 137；同组对照实验排除「活跃 reader 阻塞 exited」「stdin flush 阻塞」两种假设（均证伪）。④新增回归冒烟 `scripts/smoke-mcp-probe-timeout.ts`（`bun run smoke:mcp-probe`）：起一台 `process.on("SIGTERM", () => {})` 的假服务器并自记 pid，断言探测在预算内返回 `connected` 且进程已被回收；把修复回退后该冒烟红（`✗ 探测超过 9000ms 未返回`，并留下一个 PPID=1 的孤儿进程，正是本 bug 的次生损害），恢复后绿。⑤`bun run check` 全绿。
+
+**教训**：`Promise.all` 里任何一环都可能永久挂住，上游 `Promise.race` 给的超时只覆盖「握手」不覆盖「收尾」——探活代码里凡是 `await <子进程>.exited` / `await <连接>.close()` 之类的**清理等待**，必须自带上限并有强杀兜底，不能假设被探目标会配合退场（SIGTERM 可被忽略、SIGKILL 才有效）。另外「A 页面空但 A 的功能正常」这种自相矛盾的现象，先怀疑**同一帧里的其他字段把整帧拖死**，而不是 A 自己的扫描逻辑：本例 skills 扫描只要 78ms，却被 MCP 连累。诊断手法是分段计时（`probe:false` 对照 + 逐个探测），能一轮把悬挂点缩到单个服务器。
+
+### BUG-058: steer 消费时仍排队的消息被「同时消费」且排到 steer 前面——dequeue hook 把两个队列全部文本都广播成消费帧
+
+**现象**：消息一处理中，发 steer 消息二、再发排队消息三。运行中的页面显示二/三被**同时**消费，且三排在二的前面；重载会话后顺序恢复正确（一 → 二 → 三，与磁盘持久化一致）。线上会话 `01a12101-eec7-7717-bc62-9f17ed51b112` 实测复现。
+
+**分诊**：①确认回归——18.x 队列消费帧机制引入时即埋入。
+
+**根因**：底座的 `addBeforeQueuedMessageDequeueHook(signal)` 签名**只给 AbortSignal、不给出队的是哪个队列**，且在 steer 出队、followUp 出队前各 fire 一次。`host/session-lifecycle.ts` 的回调每次 fire 都广播 `peekFollowUpQueue() + peekSteeringQueue()` 的**全部**文本。steer 二出队时 followUp 三还在队里，消费帧就把 [三, 二] 一起广播（followUp 在前）。前端 `applySteerConsumed` 对没有 pending 气泡的三**合成一个已消费气泡**并按帧内顺序追加——三立即显示为已消费且排在二前。消息真正落盘是二（回合中注入）→ 三（回合末注入），所以重载后正确。
+
+**修复**：回调里只广播「将要出队的那个队列」的文本。底座恒为 steering 先出队（仅非空时）、followUp 后出队，所以 hook fire 时 peekSteeringQueue() 非空 = 本次出 steering，否则出 followUp。消费帧语义（帧注释 "messages **about to be injected**"）本就该精确等于将注入的消息。
+
+**验证**：新增回归冒烟 `scripts/steer-queue-order-smoke.ts`（`bun run smoke:steer-queue-order`，已注册 package.json）：首轮 bash `sleep 15` 工具执行开始后发 queue + steer，断言首个 steer_consumed 恰为 [steer]、第二个恰为 [queue]。修复前实测首帧为 [queue, steer]（红灯精确复现线上现象），修复后两帧分离且顺序正确。原 `queue-smoke.ts` 的两处消费断言从 `includes` 收紧为精确匹配（边界消费路径行为不变，仍绿）。`bun run check` 全绿，无残留进程。
+
+**教训**：①「预消费通知」帧的文本集合必须与「实际将注入的消息」严格相等——多广播一条就是把没消费的消息画成已消费；②底座 hook 不给上下文时，可用「底座固定调用顺序 + 队列非空状态」反推出队对象（steering 先、followUp 后）；③E2E 复现此类时序 bug 要消竞态：先发 queue 再发 steer，保证 hook fire 时两个队列都处于目标状态；④`send_now` 路径（handleSendNow 会把其余排队消息 park 出底座队列）天然遮蔽此 bug，回归场景必须走直发 steer + 直发 queue。
+
+### BUG-059: 能力卡片不显示插件行与状态徽章——host 编译时 `--external` 排除 legacy 虚拟模块，legacy 插件扩展在编译产物里必加载失败
+
+**现象**：用户启用了 ponytail 插件（插件页开关开、lock `enabled:true`），但能力卡片不显示插件行；设计里「插件向 TUI 注入的状态标识要挂卡片」也完全不出现（`ctx.ui.setStatus` 的徽章）。今天日志每个会话创建都报 `Failed to load/bind extension: Cannot find package 'omp-legacy-pi-modules' imported from /$bunfs/root/omp-host.exe`（ponytail 与 pi-kimi-keepalive 各若干条）。
+
+**分诊**：②确认存量缺陷——`--external omp-legacy-pi-modules` 自 host:build 落地（19f0e95）就带着；10-09 起底座 legacy-pi 兼容层在编译二进制里走 `import("omp-legacy-pi-modules")`（`USE_BUNDLED_PI_MODULES = isCompiledBinary()` 恒真），该 import 从此必炸。
+
+**根因**：三层叠加。①`scripts/build-host.ts` 用 CLI `--external omp-legacy-pi-modules` 绕过「源码树无该虚拟模块、bun build 静态分析炸构建」的问题——但编译产物运行时同样解析不到，`ensureBundledModuleLoadersLoaded()` reject，所有走 `loadLegacyPiModule` 的 legacy 插件扩展（ponytail、keepalive）加载失败，`extensionsResult.extensions` 没有它们 → 快照 `plugins` 空、无人调 `setStatus`。②上游正解是构建插件 `createLegacyPiVirtualModulePlugin()`（内存物化 1525 个懒加载 loader），但其 `collectBundledPiEntries` 的包根推导硬编码 monorepo 布局（`repoRoot/packages/<dir>`），在 desktop 的 node_modules 安装布局下 ENOENT。③host 的 `uiCtx` 缺 `ExtensionUIContext.theme` 必需成员（host 不进 tsc 没拦住），ponytail `syncStatus` 里 `if (!theme?.fg) return` 会静默跳过 setStatus——模块修好后徽章还是不会出现。
+
+**修复**：①底座 `scripts/legacy-pi-virtual-module.ts`：`BundledPackage` 增加 `npmDir` 字段，包根解析先试 monorepo 路径、`package.json` 不存在时回退 `packageDir/../<npmDir>`（scope 兄弟包）；②desktop 侧以 `bun patch` 把同一修改打进已安装的 `@oh-my-pi/pi-coding-agent@18.8.6`（`patches/@oh-my-pi%2Fpi-coding-agent@18.8.6.patch` + `patchedDependencies`，升级底座时补丁冲突显式报错）；③`build-host.ts` 从 CLI spawnSync 改 `Bun.build`，挂 `createLegacyPiVirtualModulePlugin()`，删除 `--external`；④host `uiCtx` 增加 plain theme stub（`fg: (_color, text) => text`）——桌面卡片渲染纯文本，`theme.fg` 剥离样式正好；⑤前端 `CapsCard` 徽章匹配放宽：scoped 包名 `@dietrichgebert/ponytail` 与扩展自定的 key `ponytail` 用 `endsWith('/' + key)` 对上，徽章挂同一插件行而不是劈成 orphan 行。
+
+**验证**：①探针 exe（与 host 同款插件编译）内 `import("omp-legacy-pi-modules")` 成功（1525 loader keys）且 `loadLegacyPiModule(ponytail index.js)` 加载成功、exports 齐全——即修复前报错的那条路径；②重新 `host:build` 成功；③`collectBundledPiEntries` 在 monorepo（1525 条）与 node_modules 布局（1525 条）双通过、底座 `tsc --noEmit` 通过；④preview 冒烟注入快照+`extension_status` 帧：`@dietrichgebert/ponytail` 行尾挂 `🐴 ponytail: ⚡ FULL` 徽章同行渲染（截图确认）；⑤`bun run check` 全绿（含 check-omp-imports 两入口与 i18n 门禁）。
+
+**教训**：①编译产物里的动态 import 不存在「缺了再说」——`--external` 只该用于宿主运行环境真能解析的包，虚拟模块必须由构建插件物化；②底座构建辅助脚本写包路径时要同时支持 monorepo 与 npm 安装两种布局（`npmDir` 映射），否则下游编译宿主接不上；③host 端不进 tsc，实现底座接口（`ExtensionUIContext`）时缺必需成员只有运行时行为差异（ponytail `theme?.fg` 判空静默 return）——对扩展能力面要么补全要么读源码核对；④scoped 包的运行时 key（扩展自定）与包名可能不同层级，匹配逻辑要容忍 scope 尾段。

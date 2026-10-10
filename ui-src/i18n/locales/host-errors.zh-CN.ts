@@ -43,6 +43,7 @@ export const hostErrorsZh = {
     navigateCancelled: "导航被取消",
     summaryAborted: "分支摘要已中止",
     reloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再重新加载；当前视图仍在实时更新",
+    unloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再移出内存池",
   },
   prompt: {
     emptyMessage: "消息为空",
@@ -52,6 +53,8 @@ export const hostErrorsZh = {
   },
   computerGateClosed: "电脑控制未在设置页开启：请先打开设置页的总开关，再在会话内运行 /computer on",
   computerUnavailable: "此会话无法启用电脑控制（computer eval 前导不可用）",
+  kimiCuNotInstalled: "未检测到 KimiCU 应用：请先安装 KimiCU，再在设置 → 电脑与浏览器中选择该供应商",
+  kimiCuConnectFailed: "kimi-cu 连接失败：请确认 KimiCU 可正常启动（详见宿主日志）",
   sttModelNotReady: "语音识别模型未下载：请先在设置 → 交互 → 语音识别中下载模型，再开启总开关",
   bash: {
     busy: "已有 bash 命令在执行，先按停止或等它结束",
@@ -133,6 +136,14 @@ export const hostErrorsZh = {
   },
   limits: {
     noModelSelected: "会话尚未选择模型",
+  },
+  automations: {
+    fieldRequired: "标题、提示词与项目目录均不能为空",
+    scheduleRequired: "缺少有效的调度配置",
+    invalidCron: "非法 cron 表达式: {{expr}}",
+    limitReached: "定时任务数量已达上限 ({{limit}})",
+    notFound: "定时任务不存在: {{id}}",
+    disabled: "定时任务已停用，请先开启再立即运行: {{title}}",
   },
   login: {
     inFlight: "已有登录流程进行中，请完成或稍后再试",

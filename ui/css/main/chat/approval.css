@@ -23,6 +23,29 @@
 
 .approval-list { display: flex; flex-direction: column; gap: 4px; }
 
+/* Plan-proposal body: the raw plan text between the title and the options.
+   Capped + internally scrollable so a long plan cannot push the answer rows
+   out of the dock. */
+.approval-plan {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--panel-3);
+}
+
+.approval-plan pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--ui-fs-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--dim);
+}
+
 /* Execution-model tier slider (plan approval): a caption + segmented track,
    mirroring the TUI's "continue with" row. Segments are buttons, so the hover
    highlight is a real affordance. */

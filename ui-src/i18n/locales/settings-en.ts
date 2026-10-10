@@ -10,6 +10,22 @@
 // (theme.dark/theme.light option lists used to live here as language-neutral
 // id arrays; both keys are now TUI-only and hidden — see HIDDEN_KEYS.)
 export const SETTINGS_EN: Record<string, { label: string; description?: string; warning?: string }> = {
+  // ---- pg-mcp ----
+  // Deliberate rewrites of the registry copy: the shipped text for these three
+  // reads as jargon (device URLs, "shipping schemas"), which is what users hit first.
+  "tools.xdev": {
+    "label": "xd:// Tools",
+    "description": "Master switch for context size. On: rarely used tools (MCP, plugin/extension tools, some built-ins) stop sending their parameter schemas with every request and mount as xd:// devices instead — read xd:// lists the devices, read xd://<tool> shows its docs, write xd://<tool> runs the call. Off: every tool's schema goes out with each request, which gets expensive with many or large MCP servers. (A session granted only read still reaches the devices: write then serves purely as the xd:// transport, and filesystem writes stay denied.)",
+  },
+  "tools.xdevDocs": {
+    "label": "xd:// Prompt Docs",
+    "description": "How much of those devices is written into the system prompt (inlined = paid on every request, in exchange for the model not having to look the tool up first). All devices: docs and schemas inlined together — easiest, costliest; Built-ins only: built-ins inlined, MCP and extension tools read on demand; Catalog only (default): just the name and a one-line summary, fetched when needed — cheapest.",
+  },
+  "tools.xdevInlineDevices": {
+    "label": "xd:// Inline Devices",
+    "description": "Applies only while the setting above is Built-ins only: devices whose names match these glob patterns are inlined as well, one per line (for example mcp__context7_*). Ignored under Catalog only.",
+  },
+
   // ---- pg-plugins ----
   "extensions": { "label": "External extension paths", "description": "List of external extension packages or file directory paths to register manually (comma-separated)" },
   "disabledExtensions": { "label": "Disabled extensions", "description": "Extension or plugin module names/IDs not to load (comma-separated)" },

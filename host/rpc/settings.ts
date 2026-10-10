@@ -24,7 +24,7 @@ import {
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { setPlanMode } from "../plan.ts";
-import { setComputerMode, pushComputerMode } from "../computer-mode.ts";
+import { setComputerMode, pushComputerMode, writeComputerProvider, warmKimiCu } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
@@ -268,11 +268,22 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     setPlanMode(ws, msg.sessionId, entry, msg.enabled === true);
   },
-  set_computer_mode(ws, msg) {
-    // Computer-use toggle: the screen-icon button in the composer (per-session opt-in; the settings-page master gate is checked inside)
+  async set_computer_mode(ws, msg) {
+    // Computer-use toggle: the screen-icon button in the composer (per-session opt-in; the settings-page master gate is checked inside). Provider-aware: default drives the builtin eval prelude, kimi mounts the kimi-cu MCP server into this session's tool surface mid-session.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    setComputerMode(ws, msg.sessionId, entry, msg.enabled === true);
+    await setComputerMode(ws, msg.sessionId, entry, msg.enabled === true);
+  },
+  set_computer_provider(ws, msg) {
+    // Desktop-owned computer-use provider pick (omp-desktop.json computer.provider):
+    // "default" keeps the builtin flow; "kimi" reroutes the composer screen-icon
+    // toggle to the builtin kimi-cu MCP server (mcp-builtin.ts, never in
+    // mcp.json). Affects only subsequent toggles — live sessions keep whatever
+    // they already mounted. Picking kimi warms the shared connection pool.
+    const provider = msg.provider === "kimi" ? "kimi" : "default";
+    writeComputerProvider(provider);
+    warmKimiCu();
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   /**
    * Smoke-only: replay a `write` to xd://propose so the plan-approval card can

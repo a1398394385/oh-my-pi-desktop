@@ -10,6 +10,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { saveUiPrefs, saveUiLocale } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
+import { IS_MAC } from "../../../platform";
 import { invoke } from "../../../store/ws";
 import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import { formatBytes } from "../stats/data/formatters";
@@ -309,6 +310,79 @@ function UpdateRow() {
   );
 }
 
+// ---------- macOS system permissions card ----------
+// Status comes from the Rust `system_permission_status` command (prompt-free
+// TCC preflights); each row's button jumps to the matching System Settings
+// pane via `open_permission_setting`. Granted rows swap the button for a
+// non-interactive "Granted" badge. Re-queried on window focus so toggling a
+// permission in System Settings is reflected the moment the app is fronted.
+interface PermissionStatusShape {
+  accessibility: boolean;
+  screen_capture: boolean;
+  full_disk_access: boolean;
+}
+
+type PermKey = keyof PermissionStatusShape;
+
+function PermissionsCard() {
+  const { t } = useTranslation();
+  const [status, setStatus] = useState<PermissionStatusShape | null>(null);
+
+  useEffect(() => {
+    const inv = invoke; // local capture: TS keeps the null-narrowing inside the refresh closure
+    if (!inv) return;
+    const refresh = () => {
+      inv("system_permission_status")
+        .then((s) => setStatus(s as PermissionStatusShape))
+        .catch((err: unknown) => console.warn("system_permission_status:", err));
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+
+  // Browser preview (no Tauri shell): nothing can be queried or opened, so the
+  // whole group stays hidden instead of showing three dead rows.
+  if (!invoke) return null;
+
+  const rows: { key: PermKey; title: string; desc: string }[] = [
+    { key: "accessibility", title: t("settingsPage.general.permAccessibilityTitle"), desc: t("settingsPage.general.permAccessibilityDesc") },
+    { key: "screen_capture", title: t("settingsPage.general.permScreenTitle"), desc: t("settingsPage.general.permScreenDesc") },
+    { key: "full_disk_access", title: t("settingsPage.general.permFdaTitle"), desc: t("settingsPage.general.permFdaDesc") },
+  ];
+  const inv = invoke; // local capture: TS keeps the null-narrowing inside openPanel
+  const openPanel = (panel: string) => {
+    inv("open_permission_setting", { panel }).catch((err: unknown) =>
+      toast(t("settingsPage.general.permOpenFailed", { error: String(err) })),
+    );
+  };
+
+  return (
+    <>
+      <div className="set-group-tt">{t("settingsPage.general.groupPermissions")}</div>
+      <div className="set-card">
+        {rows.map((row) => {
+          const granted = status ? status[row.key] : false;
+          return (
+            <div className="srow set-row" key={row.key}>
+              <div className="srow-tx"><b>{row.title}</b><span>{row.desc}</span></div>
+              <div className="srow-ctl">
+                {granted ? (
+                  <span className="save-btn perm-ok">{t("settingsPage.general.permGranted")}</span>
+                ) : (
+                  <button className="save-btn" disabled={!status} onClick={() => openPanel(row.key)}>
+                    {status ? t("settingsPage.general.permOpen") : t("settingsPage.general.permChecking")}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 export default function GeneralPage() {
   const hs = useAppStore((s) => s.hostSettings); // selector subscription refreshes on replies
   const { t } = useTranslation();
@@ -568,6 +642,7 @@ export default function GeneralPage() {
           </div>
         </div>
       </div>
+      {IS_MAC && <PermissionsCard />}
       <SchemaRows sections={PAGE_PLACEMENT["pg-general"]} />
     </div>
   );

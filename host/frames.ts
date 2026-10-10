@@ -11,6 +11,8 @@ import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-conf
 import { readHooksEnabled, readPluginsEnabled } from "./assets.ts";
 import { readUiConfig } from "./ui-config.ts";
 import { readExternalBrowserEnabled } from "./browser-config.ts";
+import { kimiCuInstalled } from "./mcp-builtin.ts";
+import { readComputerProvider } from "./computer-mode.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 // Unified models frame assembly: catalog + config defaults for new sessions
@@ -40,5 +42,11 @@ export function settingsFrame() {
     // (off = OMP launches the browser, relay/cdpUrl pinned off regardless of
     // what config.yml holds; on = config.yml's external routes apply again)
     externalBrowserEnabled: readExternalBrowserEnabled(),
+    // omp-desktop.json computer.provider: desktop-owned computer-use provider
+    // pick. The Kimi options additionally report whether KimiCU is installed
+    // and whether the kimi-cu server entry exists in the user-level mcp.json
+    // (the computer page's configure button writes it, globally disabled).
+    computerProvider: readComputerProvider(),
+    kimiCuInstalled: kimiCuInstalled(),
   };
 }

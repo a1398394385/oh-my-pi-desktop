@@ -7,14 +7,17 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir, writeFile } from "node:fs/promises";
-import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions } from "./state.ts";
+import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions, activeWs } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
+import { reloadAutomationScheduler, setAutomationNotify } from "./automations/scheduler.ts";
+import { handleListSessions } from "./rpc/session.ts";
 import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
+import { warmKimiCu } from "./computer-mode.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
 import type * as BunFfi from "bun:ffi";
@@ -337,6 +340,10 @@ export async function applyProfile(profileName: string) {
   // then rejects every capture). Re-point it at the same physical monitor on
   // every profile apply — i.e. before any session can read a dead value.
   void reconcileComputerDisplay().catch(err => safeStderr(`[host] computer.display 对账失败: ${err}\n`));
+  // Computer-use Kimi provider: warm the builtin kimi-cu connection into the
+  // shared pool when the provider pick says kimi (global pool is keyed by the
+  // profile's agentDir, so every profile apply re-warms its own pool entry).
+  warmKimiCu();
 
   const sleepSetting = lookupSetting("power.sleepPrevention");
   const sleep = String(settingsGet(H.settings, "power.sleepPrevention") ?? "off");
@@ -364,6 +371,18 @@ export async function applyProfile(profileName: string) {
   safeStderr(
     `[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length} [t=${t0.toFixed(0)}ms→${performance.now().toFixed(0)}ms, 总耗时 ${(performance.now() - t0).toFixed(0)}ms]\n`,
   );
+
+  // Automations state is per-profile (<agentDir>/automations.json, read fresh on
+  // every store call through H.agentDir): arm the scheduler here — applyProfile
+  // runs exactly once at boot (profileReady) and on every profile switch, so this
+  // single hook covers both boot start and hot-switch re-arm. Run ledger write-backs
+  // refresh the sidebar via the session_list push (the same pattern rpc/session
+  // uses after list-mutating RPCs); the scheduler itself never imports rpc/.
+  setAutomationNotify(() => {
+    const ws = activeWs.value;
+    if (ws) void handleListSessions(ws).catch(() => {});
+  });
+  reloadAutomationScheduler();
 }
 
 // ---------- experimental feature switches (acp / sessionContext sections of omp-desktop.json) ----------

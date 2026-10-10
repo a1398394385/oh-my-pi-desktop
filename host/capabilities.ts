@@ -48,6 +48,8 @@ export interface MemoryStatusView {
 export interface CapabilitiesSnapshot {
   sessionId: string;
   mcp: McpRuntimeStatus;
+  plugins: string[]; // plugin packages the session actually loaded (derived from extension paths)
+  extStatuses: [string, string][]; // extension-injected status badges (key → text), e.g. ponytail's setStatus
   lsp: { name: string; status: string; fileTypes?: string[]; error?: string }[];
   advisor: {
     configured: boolean;
@@ -75,6 +77,12 @@ const modelLabel = (m: unknown): string | undefined => {
   const label = `${String(m.provider)}/${String(m.id)}`;
   return label === "/" ? undefined : label;
 };
+
+/** Plugin package name from a loaded extension's resolved path (…/plugins/node_modules/<name>/…); null for non-plugin extensions */
+function pluginNameFromExtPath(resolvedPath: string): string | null {
+  const m = /\/plugins\/node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(resolvedPath);
+  return m ? (m[1] ?? null) : null;
+}
 
 /** Read the manager's full connection state (a fresh read beats replaying incremental events) */
 export function snapshotMcp(mcpManager: McpManagerView): McpRuntimeStatus {
@@ -104,6 +112,14 @@ export async function buildCapabilitiesSnapshot(entry: PoolEntry, sessionId: str
   return {
     sessionId, // echo the pool key the frontend holds (≠ the base's internal session id)
     mcp: mcpMountedSnapshot(sessionId) ?? { servers: [], tools: 0 },
+    plugins: [
+      ...new Set(
+        entry.sessionResult.extensionsResult.extensions
+          .map((ext) => pluginNameFromExtPath(ext.resolvedPath))
+          .filter((name): name is string => name !== null),
+      ),
+    ].sort(),
+    extStatuses: [...(entry.extStatuses ?? new Map())],
     lsp: getLspStatus().map((s) => ({ name: s.name, status: s.status, fileTypes: s.fileTypes, error: s.error })),
     advisor: {
       configured: advisor.configured,

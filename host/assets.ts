@@ -5,7 +5,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { getPluginsDir } from "@oh-my-pi/pi-utils";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { H } from "./state.ts";
@@ -308,7 +308,7 @@ export async function loadAllSkillsScoped() {
   // Profile-level directory sources (current profile skills, managed-skills, plus compatible external user-level directories)
   const profileSources = [
     { dir: path.join(H.agentDir, "skills"), provider: "native" },
-    { dir: path.join(H.agentDir, "managed-skills"), provider: "managed-skills" },
+    { dir: path.join(H.agentDir, "managed-skills"), provider: "omp-managed" },
     { dir: path.join(os.homedir(), ".agents", "skills"), provider: "agents" },
     { dir: path.join(os.homedir(), ".agent", "skills"), provider: "agents" },
     { dir: path.join(os.homedir(), ".claude", "skills"), provider: "claude" },
@@ -558,8 +558,22 @@ async function probeStdioMcp(server: {
     proc.kill();
   } catch {}
 
+  // SIGTERM is not enough: some stdio MCP servers (python-based ones such as
+  // mcp-atlassian) ignore it and keep running, so `exited` would never settle.
+  // The probe feed the whole agent_assets frame through Promise.all, so one hung
+  // server stalls the entire list. Bound the wait, then escalate to SIGKILL.
   if (!timedOut) {
-    try { await proc.exited; } catch {}
+    const grace = Promise.withResolvers<boolean>();
+    const graceTimer = setTimeout(() => grace.resolve(false), 500);
+    const exited = await Promise.race([proc.exited.then(() => true).catch(() => true), grace.promise]);
+    clearTimeout(graceTimer);
+    if (!exited) {
+      try { proc.kill(9); } catch {}
+      const hard = Promise.withResolvers<void>();
+      const hardTimer = setTimeout(() => hard.resolve(), 500);
+      await Promise.race([proc.exited.catch(() => {}), hard.promise]);
+      clearTimeout(hardTimer);
+    }
   }
 
   await Promise.race([stderrPromise, new Promise((r) => setTimeout(r, 200))]);
@@ -1221,11 +1235,16 @@ async function listInstalledPluginRows(
       }
       const manifest = manifestPkg.omp || manifestPkg.pi;
       if (!manifest) return null; // not an omp plugin
+      let realPath: string | undefined;
+      try {
+        realPath = await realpath(pkgPath); // marketplace installs symlink into node_modules; extension-center entry paths use the resolved root
+      } catch {}
       return {
         name: manifest.name || pkg,
         key: pkg,
         version: manifestPkg.version,
         path: pkgPath,
+        realPath,
         scope,
         enabled: !disabled.has(pkg),
         description: manifest.description,

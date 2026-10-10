@@ -212,6 +212,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const newSessionPlanMode = useAppStore((st) => st.newSessionPlanMode);
   const newSessionComputerMode = useAppStore((st) => st.newSessionComputerMode);
   const computerGateOn = useAppStore((st) => st.hostSettings?.computerEnabled === true);
+  // Kimi provider: the same screen-icon button mounts the kimi-cu MCP server
+  // per session, so it must be visible whenever KimiCU is installed — even
+  // with the builtin master switch off (that switch only gates the builtin)
+  const kimiProviderOn = useAppStore(
+    (st) => st.hostSettings?.computerProvider === "kimi" && st.hostSettings?.kimiCuInstalled === true,
+  );
+  const computerIconOn = computerGateOn || kimiProviderOn;
   // Voice conversation mode = synthesis + dictation switches both on; the mic
   // button toggles them together and lights while they hold
   const voiceMode = useAppStore(
@@ -1131,11 +1138,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               background-task buttons; lit (accent) = the per-session opt-in is
               on. In a session the host owns the state (set_computer_mode RPC);
               on the new-session page it flips the local create intent (same
-              shape as plan mode), consumed by create_session. The whole button
-              only exists while the settings-page master gate is open — closing
-              it also force-kills every live opt-in (host sweep) and removes
-              /computer from the palette, so nothing dangles. */}
-          {computerGateOn && (
+              shape as plan mode), consumed by create_session. The host branches
+              on the settings-page provider pick: default drives the builtin
+              eval prelude (gated by the computer.enabled master switch), kimi
+              mounts the kimi-cu MCP server into this session only — hence the
+              button shows for either the master gate or the Kimi provider. */}
+          {computerIconOn && (
             <button
               className={"pill-btn computer-btn" + ((s?.computerMode || (!s && newSessionComputerMode)) ? " on" : "")}
               id="computerBtn"

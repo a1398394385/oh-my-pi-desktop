@@ -244,7 +244,8 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task-indicator { color: var(--dim); opacity: 1; transition: opacity .12s var(--swift); }
 .task-indicator.error,
-.task-indicator.unread { opacity: 1; }
+.task-indicator.unread,
+.task-indicator.approval { opacity: 1; }
 .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
 /* ZCode hover behavior: the pin takes over the same leading slot; the status dot/spinner doesn't squeeze the title further. */
 .task:hover .task-indicator { opacity: 0; }
@@ -281,6 +282,8 @@ body:has(#sidebar.collapsed) #left-resizer {
 /* project group headers are drag handles; clicks still expand/collapse; crossing the drag threshold enters reordering. */
 .proj { cursor: grab; touch-action: none; }
 .proj:active { cursor: grabbing; }
+/* archive view groups reuse the project head visuals but are plain click-to-expand rows, not drag handles (no #tasklist.project-view there) */
+#tasklist:not(.project-view) .project-scroll > .proj { cursor: pointer; touch-action: auto; }
 .proj:hover { background: var(--panel-2); color: var(--text); }
 .proj svg { flex: none; opacity: .9; color: var(--dim); }
 /* the project icon slot matches ZCode's size-4 slot. */

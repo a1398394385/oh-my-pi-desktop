@@ -23,8 +23,10 @@ const entries = ["host/host.ts", "scripts/build-host.ts"];
 let failed = false;
 for (const entry of entries) {
 	const tmp = mkdtempSync(path.join(tmpdir(), "omp-check-imports-"));
-	// Same external as scripts/build-host.ts: optional runtime dynamic import inside
-	// pi-coding-agent's legacy plugin compat layer; an absent module is a handled fallback.
+	// Dynamic import of the "omp-legacy-pi-modules" virtual module inside pi-coding-agent's
+	// legacy plugin compat layer: it only physically exists when the build plugin
+	// (scripts/build-host.ts) materializes it, so a source-only dry-run must skip it as
+	// external — its absence here does NOT mean the compiled host tolerates it (BUG-059).
 	const build = spawnSync("bun", ["build", "--target=bun", "--external", "omp-legacy-pi-modules", entry, "--outdir", tmp], {
 		cwd: repoRoot,
 		encoding: "utf8",

@@ -35,6 +35,9 @@ export interface ModelRole {
   name: string;
   tag?: string | null; // host ModelRoleEntry is string | null
   value?: string | null; // unconfigured is null/absent
+  /** Effectively active model (host expands the built-in priority chain for unconfigured roles) */
+  resolved?: string | null;
+  resolvedName?: string | null;
   section?: string; // "chat" | "kind" per the base's role metadata; kind roles live on the capability page
 }
 
@@ -86,9 +89,15 @@ function referencesBackTo(roles: ReadonlyArray<ModelRole>, selfId: string, targe
   return false;
 }
 
-// Current value display of the role selector: unconfigured → "default"; exact catalog model hit → model name; otherwise (alias / level-suffixed) → raw value
+// Current value display of the role selector: unconfigured → "default · <resolved model>" (the
+// built-in priority chain's actual target, e.g. the judge chain's typesafe/jev-latest); exact
+// catalog model hit → model name; otherwise (alias / level-suffixed) → raw value
 export function roleSelLabel(role: ModelRole): string {
-  if (!role.value) return role.id === "default" ? t("settingsPage.model.roleUnset") : t("settingsPage.model.roleDefault");
+  if (!role.value) {
+    if (role.id === "default") return t("settingsPage.model.roleUnset");
+    const fallback = role.resolvedName ?? role.resolved;
+    return fallback ? `${t("settingsPage.model.roleDefault")} · ${fallback}` : t("settingsPage.model.roleDefault");
+  }
   const hit = useAppStore.getState().modelCatalog.find((m) => m.id === role.value);
   if (hit) return hit.name;
   return role.value;

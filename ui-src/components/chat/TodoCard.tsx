@@ -6,6 +6,7 @@ import { Fragment, useRef } from "react";
 import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
+import { openRightTab } from "../main/right/RightPanel";
 
 // Per-session card size, keyed by session path. In-memory only (app lifetime), never
 // written to any config file.
@@ -103,6 +104,20 @@ export default function TodoCard() {
     ? current.status === "in_progress" ? "→" : current.status === "blocked" ? "⊘" : "○"
     : "✓";
 
+  // Plan-output row click: open the right panel's Files page directly on the full
+  // plan file (the text was carried on the approval frame, so no read_file round
+  // trip). Same shape as parts.tsx's openReadFileInSidebar.
+  const openPlanOutput = () => {
+    const plan = s?.planResult;
+    if (!plan) return;
+    setBump({
+      fileView: { path: plan.path, text: plan.content, startLine: 1, lineNumbers: null, reqRange: null, full: true },
+      fileViewPending: null,
+      rightCollapsed: false,
+    });
+    openRightTab("file");
+  };
+
   return (
     <div id="statusWrap">
       {!todoCollapsed && (
@@ -123,6 +138,21 @@ export default function TodoCard() {
               <Icon name="collapseCard" />
             </button>
           </div>
+          {s.planResult && (
+            <button
+              className="sc-plan"
+              title={t("chat.planOutputHint")}
+              onClick={(e) => {
+                e.stopPropagation(); // not a blank-area click: must not collapse the card
+                openPlanOutput();
+              }}
+            >
+              <Icon name="plan" size={14} />
+              <span className="sc-plan-lb">{t("chat.planOutput")}</span>
+              <span className="sc-plan-tt">{s.planResult.title}</span>
+              <Icon name="chevronRight" size={11} />
+            </button>
+          )}
           <div id="todoList" style={size ? { maxHeight: size.h } : undefined}>
             {phases.map((phase, pi) =>
               phase.tasks.length === 0 ? null : (

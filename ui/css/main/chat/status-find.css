@@ -18,10 +18,12 @@
   align-items: flex-end;
 }
 
-/* Corner resize grip: drag to resize the card per session (size lives in memory only,
-   never persisted). The card is docked to the right edge (#statusWrap right:14px), so
-   the grip sits at the bottom-left corner: dragging left widens the card, dragging
-   right narrows it, dragging down lengthens the list. */
+/* Corner resize hit area (invisible): drag to resize the card per session (size lives in
+   memory only, never persisted). The card is docked to the right edge (#statusWrap
+   right:14px), so the hit area sits at the bottom-left corner: dragging left widens the
+   card, dragging right narrows it, dragging down lengthens the list. The grip arrow
+   visuals were removed on request; the nesw-resize cursor and tooltip remain the only
+   affordances. */
 #statusCard { position: relative; }
 
 #statusCard .sc-resize {
@@ -29,12 +31,7 @@
   width: 13px; height: 13px;
   cursor: nesw-resize;
   touch-action: none;
-  background:
-    linear-gradient(45deg, transparent 52%, var(--faint) 52%, var(--faint) 64%, transparent 64%),
-    linear-gradient(45deg, transparent 72%, var(--faint) 72%, var(--faint) 84%, transparent 84%);
 }
-
-#statusCard .sc-resize:hover { filter: brightness(1.4); }
 
 .todo {
   display: flex; gap: 9px; padding: 6px 2px;
@@ -55,6 +52,38 @@
 .todo.cur { color: var(--text); }
 
 .todo.blocked .ci { color: var(--err); }
+
+/* Plan-output row (top of the todo card): the latest plan-mode deliverable.
+   Whole-row click target → opens the full plan file in the right panel's Files
+   page, so the hover plate is a real affordance. */
+.sc-plan {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 0; border-radius: 7px;
+  background: transparent;
+  color: var(--dim);
+  font-size: var(--ui-fs-base); line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.sc-plan:hover { background: var(--panel-2); color: var(--text); }
+
+.sc-plan svg { flex: none; color: var(--faint); }
+
+.sc-plan:hover svg { color: var(--text); }
+
+.sc-plan .sc-plan-lb { flex: none; font-weight: 500; color: var(--text); }
+
+.sc-plan .sc-plan-tt {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.sc-plan svg:last-child { color: var(--faint); }
 
 #capsule {
   display: flex; align-items: center; gap: 8px;

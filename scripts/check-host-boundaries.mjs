@@ -59,6 +59,8 @@ const ALLOWED_EDGES = new Set([
   "frames.ts→settings-compat.ts", "extensions.ts→settings-compat.ts", "goal.ts→settings-compat.ts",
   "plan.ts→settings-compat.ts", "plan-approve.ts→settings-compat.ts", "profile.ts→settings-compat.ts",
   "rpc/assets.ts→settings-compat.ts", "rpc/models.ts→settings-compat.ts", "rpc/prompt.ts→settings-compat.ts",
+  // rpc/prompt's list_commands decides the new-session sentinel path via the plugins master switch (readPluginsEnabled)
+  "rpc/prompt.ts→assets.ts",
   "rpc/settings.ts→settings-compat.ts", "rpc/settings.ts→bootstrap.ts",
   // Desktop implementation of the /goal command + goal-resume scheduling: main.ts mounts the command dispatch and event hooks;
   // state.ts's PoolEntry holds the controller instance (goal.ts depends only on its own narrow interface, one-way downward)
@@ -75,6 +77,13 @@ const ALLOWED_EDGES = new Set([
   "mcp-mount.ts→bootstrap.ts", "mcp-mount.ts→mcp-pool.ts", "mcp-mount.ts→assets.ts", "mcp-mount.ts→state.ts",
   "session-lifecycle.ts→mcp-mount.ts", "rpc/assets.ts→mcp-mount.ts", "rpc/session.ts→mcp-mount.ts",
   "capabilities.ts→mcp-mount.ts",
+  // Code-owned builtin MCP servers (computer-use kimi-cu): mcp-builtin holds
+  // the definitions + the pool warm-up (never read from or written to
+  // mcp.json; a same-named user entry is shadowed). mcp-mount resolves
+  // builtins first on the mid-session mount path; rpc/assets' test_kimi_cu
+  // probes via the warm; frames carries the install probe for the option gate.
+  "mcp-builtin.ts→assets.ts", "mcp-builtin.ts→mcp-pool.ts", "mcp-builtin.ts→state.ts", "mcp-builtin.ts→stderr.ts",
+  "mcp-mount.ts→mcp-builtin.ts", "rpc/assets.ts→mcp-builtin.ts", "frames.ts→mcp-builtin.ts",
   // Plan mode domain: main.ts mounts the /plan dispatch and the plan_mode RPC; approval/output bridges and event stamps live in state
   "main.ts→plan.ts", "plan.ts→bootstrap.ts", "plan.ts→state.ts",
   // Plan approval flow (the five next-step options + execution-model slider): plan.ts installs the
@@ -88,6 +97,20 @@ const ALLOWED_EDGES = new Set([
   // settings child, the master gate in H.settings (bootstrap lookup).
   "computer-mode.ts→bootstrap.ts", "computer-mode.ts→state.ts", "computer-mode.ts→settings-compat.ts",
   "session-lifecycle.ts→computer-mode.ts", "rpc/prompt.ts→computer-mode.ts", "rpc/settings.ts→computer-mode.ts",
+  // Computer-use provider pick (omp-desktop.json computer section: default =
+  // OMP builtin / kimi = kimi-cu MCP). Same shape as browser-config: the file
+  // lives under the profile agent dir via state.ts's H. The kimi branch of
+  // setComputerMode drives the mid-session single-server mount/unmount in
+  // mcp-mount (the only mid-session mutator of the tool surface), frames.ts
+  // carries the provider/install projection, profile.ts re-warms on every
+  // profile apply, and rpc/assets' test_kimi_cu RPC probes the builtin
+  // connection. desktop-json.ts is the shared read/merge-write helper both
+  // browser-config and computer-mode consume (extracted so the two sections
+  // share one fault-tolerance + merge-write implementation).
+  "desktop-json.ts→state.ts",
+  "browser-config.ts→desktop-json.ts",
+  "computer-mode.ts→desktop-json.ts", "computer-mode.ts→mcp-mount.ts", "computer-mode.ts→mcp-builtin.ts", "computer-mode.ts→stderr.ts",
+  "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
   // Computer-use display reconciliation: computer.display persists a Win32
   // monitor handle (xcap Monitor::id() = HMONITOR), which the kernel reassigns
   // every boot; computer-display.ts remembers the picked monitor by EDID name +
@@ -218,12 +241,29 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/voice.ts", "rpc/voice.ts→rpc/types.ts", "rpc/voice.ts→voice.ts",
   "rpc/settings.ts→voice.ts",
   "rpc/voice.ts→state.ts", "rpc/voice.ts→settings-compat.ts",
+  // Automations (scheduled tasks): profile.ts arms the scheduler (boot-time
+  // applyProfile = profileReady, plus hot-switch re-arm) and bridges the
+  // session_list notify; the domain reads H via state and reuses spawnSession
+  // for dispatch; rpc/automations.ts is the CRUD/toggle/run_now/preview front
+  // over cron+store+scheduler.
+  "profile.ts→rpc/session.ts", // automations notify pushes session_list via handleListSessions
+  "profile.ts→automations/scheduler.ts",
+  "automations/cron.ts→automations/types.ts",
+  "automations/store.ts→automations/types.ts", "automations/store.ts→state.ts",
+  "automations/scheduler.ts→automations/cron.ts", "automations/scheduler.ts→automations/store.ts",
+  "automations/scheduler.ts→automations/types.ts", "automations/scheduler.ts→state.ts",
+  "automations/scheduler.ts→session-lifecycle.ts", "automations/scheduler.ts→stderr.ts",
+  "rpc/index.ts→rpc/automations.ts",
+  "rpc/automations.ts→rpc/types.ts",
+  "rpc/automations.ts→automations/types.ts", "rpc/automations.ts→automations/cron.ts",
+  "rpc/automations.ts→automations/store.ts", "rpc/automations.ts→automations/scheduler.ts",
 ]);
 
-// Scan one level of host/ plus the host/rpc/ subdirectory (keys carry a path prefix like rpc/session.ts)
+// Scan one level of host/ plus the rpc/ and automations/ subdirectories (keys carry a path prefix like rpc/session.ts)
 const files = [
   ...readdirSync(hostDir).filter((f) => f.endsWith(".ts")),
   ...readdirSync(join(hostDir, "rpc")).filter((f) => f.endsWith(".ts")).map((f) => `rpc/${f}`),
+  ...readdirSync(join(hostDir, "automations")).filter((f) => f.endsWith(".ts")).map((f) => `automations/${f}`),
 ];
 const exportsOf = {}; // file -> full set of named exports
 const importsOf = {}; // file -> [{ target, symbols, typeOnly }]
@@ -273,7 +313,7 @@ for (const [file, imports] of Object.entries(importsOf)) {
     // edges between host/ modules (top level + rpc/). Skip before the edge check
     // so out-of-tree imports neither need allow-listing nor trip the
     // "nonexistent module" probe (only host/ files are scanned for exports).
-    if (imp.target.includes("/") && !imp.target.startsWith("rpc/")) continue;
+    if (imp.target.includes("/") && !imp.target.startsWith("rpc/") && !imp.target.startsWith("automations/")) continue;
     const edge = `${file}→${imp.target}`;
     if (!ALLOWED_EDGES.has(edge)) {
       problems.push(`非法依赖边: ${edge}（不在 ALLOWED_EDGES，改结构须同步表并附理由）`);

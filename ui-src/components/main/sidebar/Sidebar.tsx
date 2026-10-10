@@ -25,7 +25,8 @@ import Menu from "./Menu";
 import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
 import SidebarSearch from "./SidebarSearch";
-import { computeSidebarSessionShortcuts } from "./util";
+import ArchiveGroup from "./ArchiveGroup";
+import { computeSidebarSessionShortcuts, computeArchiveGroups } from "./util";
 
 // Content of the delete/remove confirm dialog
 interface ConfirmSpec {
@@ -544,8 +545,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         ) : viewMode === "archive" ? (
           <>
             <div className="sec-label">{t("sidebar.archivedLabel")}</div>
-            {archivedSessions.map((s) => rowOf(s, {}, `archive:${s.path}`, shortcuts.get(s.path)))}
-            {archivedSessions.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noArchived")}</div>}
+            <div className="project-scroll">
+              {computeArchiveGroups(archivedSessions, visible).map((g) => (
+                <ArchiveGroup key={g.cwd} p={g} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} />
+              ))}
+              {archivedSessions.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noArchived")}</div>}
+            </div>
           </>
         ) : (
           <>

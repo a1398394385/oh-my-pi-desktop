@@ -123,6 +123,8 @@
 }
 
 .ctx-menu button:hover { background: var(--panel-3); }
+.ctx-menu button:disabled { opacity: .45; cursor: default; }
+.ctx-menu button:disabled:hover { background: none; }
 
 /* ── toast ── */
 #toast {
@@ -136,3 +138,12 @@
 }
 
 [data-theme="light"] #toast { box-shadow: 0 8px 24px var(--tint-black-180); }
+
+/* Error toast (toast(msg, true)): --err tinted border + leading red icon; the
+   icon carries the color, the text stays --text for readability. */
+#toast.err {
+  border-color: color-mix(in srgb, var(--err) 45%, transparent);
+  display: flex; align-items: center; gap: 7px;
+}
+
+#toast.err svg { color: var(--err); flex: none; }

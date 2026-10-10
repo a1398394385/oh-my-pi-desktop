@@ -170,6 +170,16 @@ export const chatEn = {
   allDone: "All done",
   sessionStatus: "Session status",
   collapseToCapsule: "Collapse to capsule",
+  planOutput: "Plan output",
+  planOutputHint: "Open the plan file in the Files panel",
+  // Capabilities card (bottom-right overlay; MCP/plugin rows reuse the right.* caps keys)
+  capsCardTitle: "Capabilities",
+  capsPlugins: "Plugins",
+  capsFlags: "Session modes",
+  capsDockCollapse: "Collapse section",
+  capsDockExpand: "Expand section",
+  capFlagComputer: "Computer Use",
+  capFlagGoal: "Goal mode",
   resizeTodo: "Drag to resize the card",
   // ---- approval card (ApprovalCard.tsx) ----
   awaitingConfirm: "Awaiting confirmation",

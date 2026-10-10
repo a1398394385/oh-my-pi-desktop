@@ -37,7 +37,7 @@ function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => 
 // Edit row: pencil + "Edit/Write" label + file chip (clickable to open the right-panel diff) + line-count changes + expand arrow
 export default function EditRow({ item }: { item: ToolItem }) {
   const path = filesOf(item)[0] || "";
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = item.diffExpanded && !closing;
   const toggle = () => {
     if (item.diffExpanded) close(() => patchActiveItem(item, (it) => { it.diffExpanded = false; }));
@@ -59,7 +59,8 @@ export default function EditRow({ item }: { item: ToolItem }) {
           <Icon name="chevronRight" />
         </span>
       </div>
-      {item.diffExpanded && path && <EditBrief item={item} path={path} lift={closing} />}
+      {/* Body stays mounted while closing (gated on diffExpanded alone) so useLift can animate its height before the commit unmounts it */}
+      {item.diffExpanded && path && <EditBrief item={item} path={path} liftRef={liftRef} />}
     </>
   );
 }
@@ -94,7 +95,7 @@ function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
 // One edit event inside a group = row + its inline diff expand body (expand state recorded on sub.diffExpanded)
 function ChangeEntry({ sub }: { sub: ToolItem }) {
   const path = filesOf(sub)[0] || "";
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = !!sub.diffExpanded && !closing;
   const toggle = () => {
     if (sub.diffExpanded) close(() => patchGroupSub(sub, (it) => { it.diffExpanded = false; }));
@@ -103,7 +104,7 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
   return (
     <>
       <ChangeRowUI sub={sub} open={open} onToggle={toggle} />
-      {sub.diffExpanded && path && <EditBrief item={sub} path={path} lift={closing} />}
+      {sub.diffExpanded && path && <EditBrief item={sub} path={path} liftRef={liftRef} />}
     </>
   );
 }
@@ -114,7 +115,7 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
 function ChangeGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const fileCount = uniqueFiles(subs.flatMap((g) => filesOf(g))).length; // 0 → "multiple files" fallback
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = chgExpand.has(subs[0]) && !closing;
   const toggle = () => {
     if (chgExpand.has(subs[0])) close(() => { chgExpand.delete(subs[0]); bumpGroupExpand(); });
@@ -133,7 +134,7 @@ function ChangeGroup({ subs }: { subs: ToolItem[] }) {
         </span>
       </div>
       {chgExpand.has(subs[0]) && (
-        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+        <div ref={liftRef} className="chg-body drop">
           {subs.map((sub, i) => <ChangeEntry sub={sub} key={i} />)}
         </div>
       )}
@@ -178,7 +179,7 @@ function ReadEntry({ sub }: { sub: ToolItem }) {
 function ReadGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const fileCount = uniqueFiles(subs.flatMap((s) => filesOf(s))).length; // 0 → "multiple files" fallback
-  const [closing, close] = useLift();
+  const [closing, close, liftRef] = useLift();
   const open = rdExpand.has(subs[0]) && !closing;
   const toggle = () => {
     if (rdExpand.has(subs[0])) close(() => { rdExpand.delete(subs[0]); bumpGroupExpand(); });
@@ -197,7 +198,7 @@ function ReadGroup({ subs }: { subs: ToolItem[] }) {
         </span>
       </div>
       {rdExpand.has(subs[0]) && (
-        <div className={"chg-body" + (closing ? " lift" : " drop")}>
+        <div ref={liftRef} className="chg-body drop">
           {subs.map((sub, i) => <ReadEntry sub={sub} key={i} />)}
         </div>
       )}

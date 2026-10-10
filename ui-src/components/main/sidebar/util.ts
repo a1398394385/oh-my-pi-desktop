@@ -71,6 +71,39 @@ export function isSessionRunning(
   return !!(open && (open.streaming || open.items?.some((x) => x.role === "bash" && x.running)));
 }
 
+/** Project-order source for archive grouping (structural subset of getAvailableProjects rows). */
+export interface ArchiveProjectOrder {
+  cwd: string;
+  remote?: boolean;
+  remoteLabel?: string;
+  isDefault?: boolean;
+}
+
+/**
+ * Group archived sessions by project for the archive view (mirrors the project view):
+ * groups follow the available-projects order; archived cwds missing from that list are
+ * appended as fallback groups in first-seen order (archivedSessions arrives sorted by
+ * modified descending, so first-seen = newest group first). Empty groups are dropped —
+ * groups are driven by archived rows, never by the project manifest.
+ */
+export function computeArchiveGroups<T extends { cwd?: string; modified: string }>(
+  archived: T[],
+  availableProjects: ArchiveProjectOrder[],
+): (ArchiveProjectOrder & { sessions: T[] })[] {
+  const byCwd = new Map<string, ArchiveProjectOrder & { sessions: T[] }>();
+  for (const p of availableProjects) byCwd.set(p.cwd, { ...p, sessions: [] });
+  for (const s of archived) {
+    if (!s.cwd) continue; // store rows always carry cwd; anything else can't be grouped
+    let g = byCwd.get(s.cwd);
+    if (!g) {
+      g = { cwd: s.cwd, sessions: [] };
+      byCwd.set(s.cwd, g);
+    }
+    g.sessions.push(s);
+  }
+  return [...byCwd.values()].filter((g) => g.sessions.length > 0);
+}
+
 /**
  * Compute the sidebar session ⌘1~9 shortcut mapping:
  * 1. Priority: prefer jumping to running sessions; if fewer than 9 are running, fill with
@@ -88,6 +121,13 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
     orderedSessions.push(s);
   };
 
+  // Project rows in manifest order — shared by the project and archive branches below
+  const projects = st.availableProjects
+    ? st.availableProjects
+    : st.getAvailableProjects
+    ? st.getAvailableProjects()
+    : st.diskProjects.filter((p) => !new Set(st.removedProjects ?? []).has(p.cwd));
+
   if (st.viewMode === "project") {
     // 1. Pinned sessions
     const pinnedRows = st.diskProjects
@@ -95,16 +135,6 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
       .filter((s) => st.pinnedSessions.has(s.path))
       .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
     for (const s of pinnedRows) append(s);
-
-    // 2. Project list (iterate only expanded projects, or visible sessions in manage mode)
-    const removedSet = st.removedProjects instanceof Set
-      ? st.removedProjects
-      : new Set(st.removedProjects ?? []);
-    const projects = st.availableProjects
-      ? st.availableProjects
-      : st.getAvailableProjects
-      ? st.getAvailableProjects()
-      : st.diskProjects.filter((p) => !removedSet.has(p.cwd));
 
     for (const p of projects) {
       const isExpanded = st.isProjectManageMode || st.expandedProjects.has(p.cwd);
@@ -114,9 +144,14 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
       for (const s of visible) append(s);
     }
   } else if (st.viewMode === "archive") {
-    // Archive view: archived sessions by modified time descending
-    const list = st.archivedSessions ?? [];
-    for (const s of list) append(s);
+    // Archive view: grouped by project like the project view — same group order, expand
+    // state and row limit rules, so digits follow the grouped top-to-bottom order
+    const groups = computeArchiveGroups(st.archivedSessions ?? [], projects);
+    for (const g of groups) {
+      if (!st.expandedProjects.has(g.cwd)) continue;
+      const limit = st.projectLimits.get(g.cwd) ?? 5;
+      for (const s of g.sessions.slice(0, limit)) append(s);
+    }
   } else {
     // Recent view: top 50 by modified descending
     const flat = st.diskProjects

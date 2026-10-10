@@ -15,6 +15,8 @@ import { fmtAgo, sessionLabel } from "./util";
 export interface SessionInfo {
   path: string;
   id: string;
+  /** True while the session file is not yet on disk (pool fallback row): id is the host pool UUID, not the real disk session id */
+  pending?: boolean;
   title?: string | null; // host DiskSessionRow is string | null
   firstMessage?: string;
   modified: string;
@@ -115,13 +117,20 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
+  // In the host's live pool (= has an open frontend slot): the eject action
+  // only makes sense for resident sessions; pure disk rows have nothing to evict.
+  const isOpenInPool = openSessions.has(s.path);
   // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
-  // error > unread > running.
+  // error > unread > approval > running.
   // The error state comes from the session's last error row; unopened sessions have no runtime
   // state and only show the persisted unread dot.
   const lastItem = open?.items?.[open.items.length - 1];
   const hasError = !open?.streaming && (lastItem?.role === "error" || (lastItem as { error?: string | null } | undefined)?.error); // the error field is declared only on BashItem; other items read as undefined, same as the original
-  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : open?.streaming ? "loading" : "none";
+  // A session blocked on an ask/approval dialog is waiting on the user, not working: the spinner
+  // would read as "still busy" while nothing moves until the question is answered, so it shows
+  // the attention dot instead.
+  const awaitingApproval = (open?.pendingApprovals?.length ?? 0) > 0;
+  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : open?.streaming ? "loading" : "none";
   // Open session: already open → activate directly (refreshes the right panel's git diff); not
   // open → the host loading chain
   const openSession = () => {
@@ -176,9 +185,9 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       onMouseLeave={handleMouseLeave}
     >
       <span className="relative flex-none w-[16px] h-[16px] inline-flex items-center justify-center">
-        <span className={"task-indicator " + leading} title={leading === "loading" ? t("sidebar.running") : leading === "unread" ? t("sidebar.hasNewResults") : leading === "error" ? t("sidebar.lastRunFailed") : undefined}>
+        <span className={"task-indicator " + leading} title={leading === "loading" ? t("sidebar.running") : leading === "unread" ? t("sidebar.hasNewResults") : leading === "approval" ? t("sidebar.awaitingApproval") : leading === "error" ? t("sidebar.lastRunFailed") : undefined}>
           {leading === "error" ? <span className="w-[6px] h-[6px] rounded-full bg-err" /> : null}
-          {leading === "unread" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
+          {leading === "unread" || leading === "approval" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
         {/* Same as ZCode: on hover Pin takes over the same leading slot; always shown in the
@@ -260,6 +269,18 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         </button>
       ) : (
         <>
+          {isOpenInPool && (
+            <button
+              className="tarchive"
+              title={t("sidebar.unloadFromPool")}
+              onClick={(e) => {
+                e.stopPropagation();
+                send({ type: "session_unload", path: s.path });
+              }}
+            >
+              <Icon name="eject" size={14} />
+            </button>
+          )}
           <button
             className="tarchive"
             title={t("sidebar.archiveSession")}
