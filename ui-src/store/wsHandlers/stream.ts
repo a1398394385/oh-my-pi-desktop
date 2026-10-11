@@ -23,6 +23,24 @@ function uniqueFiles(files: string[] | null | undefined): string[] {
   return [...new Set(files ?? [])];
 }
 
+// Mirror a running subagent's stream state onto its opened transcript view (the
+// openSessions entry keyed by sessionFile): MessagePage's spinner + "Working Ns" row read
+// entry.streaming / entry.turnStartAt, which only main-session frames would otherwise set —
+// subagent streaming arrives on the parent session's subagent_* frames, so the child view
+// stayed spinner-less. Idempotent: skips when the view already matches.
+function syncSubViewStream(parentSessionId: string, subagentId: string, streaming: boolean): void {
+  const parent = findBySessionId(parentSessionId);
+  const sub = parent?.subagents.get(subagentId);
+  if (!parent || !sub?.sessionFile) return;
+  const view = useAppStore.getState().openSessions.get(sub.sessionFile);
+  if (!view?.isSubagent || (view.streaming === streaming && !streaming)) return;
+  updateSession(view.sessionId, (s) => {
+    s.streaming = streaming;
+    s.turnStartAt = streaming ? Date.now() - (sub.usage?.durationMs ?? 0) : null;
+    if (!streaming) s.workingText = null;
+  });
+}
+
 export const streamHandlers = {
   plan_mode(msg) {
     updateSession(
@@ -63,6 +81,8 @@ export const streamHandlers = {
         // Ask-dialog variant (18.5 uiCtx.askDialog): the multi-question form;
         // ApprovalCard renders it as one merged submit
         questions: msg.questions,
+        // The ask tool's `i` intent (host-captured), shown above the questions
+        intent: msg.intent,
         // Plan variant: raw plan text + title + path (the card body + the todo
         // card's output row render from it)
         plan: msg.plan,
@@ -222,6 +242,8 @@ export const streamHandlers = {
         result: msg.status === "started" ? undefined : (msg.result ?? prev?.result),
       });
     });
+    // Terminal/started status also drives the subagent transcript view's spinner + elapsed row
+    syncSubViewStream(msg.sessionId, msg.subagentId, msg.status === "started");
   },
   subagent_progress(msg) {
     updateSession(
@@ -255,6 +277,9 @@ export const streamHandlers = {
       },
       false,
     );
+    // Running heartbeat: keeps the transcript view's spinner + elapsed row alive even if the
+    // view was opened after the run's turn_start (and re-arms it on a wake re-run)
+    syncSubViewStream(msg.sessionId, msg.subagentId, true);
   },
   subagent_event(msg) {
     // Text deltas are high-frequency: mutate in place + 100ms window flush (same as the main-chat text_delta)
@@ -354,6 +379,18 @@ export const streamHandlers = {
       false,
     );
   },
+
+  // Plan deliverable snapshot (reuse/fork restore): repopulates the todo card's
+  // output row the same way the approval frame's `plan` field does.
+  plan_output(msg) {
+    updateSession(
+      msg.sessionId,
+      (s) => {
+        s.planResult = msg.plan;
+      },
+      false,
+    );
+  },
   goal(msg) {
     updateSession(
       msg.sessionId,
@@ -394,6 +431,7 @@ export const streamHandlers = {
           tokens: msg.tokens,
           cost: msg.cost,
           cacheHitRate: msg.cacheHitRate,
+          cacheBreaks: msg.cacheBreaks,
           advisorCost: msg.advisorCost,
           activeMs: msg.activeMs,
           statsAt: msg.statsAt,

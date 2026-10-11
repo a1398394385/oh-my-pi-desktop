@@ -1,13 +1,33 @@
-.ask-q { display: flex; flex-direction: column; gap: 4px; }
+.ask-q { display: flex; flex-direction: column; gap: 10px; }
+
+/* Head (approval-head, ask variant): bold header pill + bold question text,
+   left of the pager / collapse buttons */
+.ask-head-main { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+
+.ask-head-pill { flex: none; padding: 1px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); font-weight: 600; font-size: var(--ui-fs-sm); }
+
+.ask-head-q { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+
+/* Ask pager (approval-head, left of the collapse button): page number + two
+   small icon buttons reusing the collapse button's geometry */
+.ask-pager { flex: none; display: flex; align-items: center; gap: 2px; margin-left: auto; }
+
+.ask-page { color: var(--faint); font-size: var(--ui-fs-sm); padding-right: 2px; }
+
+.ask-page-btn:disabled { opacity: .35; cursor: default; }
+
+.ask-page-btn:disabled:hover { background: transparent; color: var(--faint); }
 
 .ask-q + .ask-q { margin-top: 10px; }
 
-.ask-q-t { color: var(--text); overflow-wrap: anywhere; }
-
-.ask-q-t b { color: var(--dim); font-weight: 500; margin-right: 6px; }
-
-/* native radio/checkbox take the number slot's place; accent follows the theme */
+/* Single-choice rows draw no marker: the row's .selected plate is the only state
+   signal; the radio stays in the DOM for focus/arrow navigation, visually hidden
+   (selection rides the row div's click — see ApprovalCard — not native label
+   forwarding, which real mouse clicks don't take through a pointer-events:none
+   control). Multi checkboxes size to the row's font (native default is smaller). */
 .ask-opt input { flex: none; margin: 0; accent-color: var(--accent); }
+.ask-opt input[type="radio"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ask-opt input[type="checkbox"] { width: 1em; height: 1em; }
 
 .ask-opt .ask-desc { display: block; color: var(--faint); font-size: var(--ui-fs-sm); }
 

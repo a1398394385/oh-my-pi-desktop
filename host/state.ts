@@ -147,6 +147,10 @@ export type PoolEntry = {
   // Subagent session identity (derived from parent session file on disk)
   isSubagent?: boolean;
   parentPath?: string;
+  // Set when the scheduler spawned this session for an automation: surfaced on
+  // session_list rows (sidebar clock badge) and echoed as a live user-message
+  // event (automation sessions have no local composer send to draw the bubble)
+  automation?: { id: string; title: string };
   // fileMention read-back cursor: at agent_end, re-reads manager.getEntries()
   // and turns fileMention entries added since this index into mention frames
   // (the base persists them inside prompt() with no matching event)
@@ -155,6 +159,11 @@ export type PoolEntry = {
   goal: GoalController;
   // External-write detection: file byte size already parsed (0 = not first-scanned yet; the first scan compares the whole file)
   pollKnownSize: number;
+  // Fresh session whose file is lazily persisted: the external-write poll flips
+  // this off and pushes a session_list the moment the file first exists, so the
+  // sidebar's pending row (copy-session-id disabled) clears mid-run instead of
+  // waiting for the run-end list refetch
+  awaitDiskList: boolean;
   // An external process (e.g. the CLI) has been seen writing this session:
   // once set, the notice bar stays until reload (cleared when entries are rebuilt)
   externalWrite: boolean;

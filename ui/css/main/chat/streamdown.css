@@ -248,3 +248,12 @@
   max-width: 100%;
   border-radius: 8px;
 }
+
+/* diagram blocks (```svg / ```mermaid via tui.renderSvg / tui.autoGraph): centered,
+   contained like tables; mermaid inlines its own colors, the img honors the surface */
+.md-body .md-diagram {
+  display: block;
+  max-width: 100%;
+  margin: 14px auto;
+  border-radius: 8px;
+}

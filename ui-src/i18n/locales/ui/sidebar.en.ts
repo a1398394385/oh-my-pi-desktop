@@ -1,6 +1,7 @@
 // en counterpart of sidebar.zh.ts — keep keys in sync.
 export const sidebarEn = {
   newTask: "New Task",
+  automations: "Scheduled Tasks",
   viewRecent: "Recent",
   viewProject: "Projects",
   viewArchive: "Archived",
@@ -31,6 +32,7 @@ export const sidebarEn = {
   lastRunFailed: "Last run failed",
   unpin: "Unpin",
   pinSession: "Pin session",
+  autoSession: "Automation session",
   unarchiveRestore: "Unarchive and restore to the project list",
   restore: "Restore",
   deleteForever: "Delete session permanently",

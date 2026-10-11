@@ -6,6 +6,7 @@ import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
 import { H, sessions, stampEvent, defaultWorkspaceDir } from "../state.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
+import { readAutomations } from "../automations/store.ts";
 import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
 import { applyActivityTimes } from "../session-activity.ts";
@@ -50,6 +51,28 @@ export async function handleListSessions(ws: any) {
     cwd?: string;
     /** Pool fallback only: session file not yet on disk, so id is the pool UUID, not a real disk session id */
     pending?: boolean;
+    /** Set when a live pool entry marks this session as scheduler-spawned (sidebar clock badge) */
+    automation?: { id: string; title: string };
+  }
+  // Automation provenance from the live pool, keyed by path (pool id ≠ disk id,
+  // so match on path like every other pool↔disk join in this function)
+  const automationByPath = new Map<string, { id: string; title: string }>();
+  for (const entry of sessions.values()) {
+    if (entry.automation) automationByPath.set(entry.path, entry.automation);
+  }
+  // Evicted/restarted sessions keep the badge: run rows persist sessionPath at
+  // dispatch time (attachRunSession), so the ledger backfills what the pool lost;
+  // live pool entries win where both exist. Rows older than the 10-run ledger
+  // window (or after the automation was deleted) intentionally lose the marker.
+  const stored = readAutomations();
+  for (const [aid, runs] of Object.entries(stored.runs)) {
+    const title = stored.automations.find((a) => a.id === aid)?.title;
+    if (!title) continue;
+    for (const r of runs) {
+      if (r.sessionPath && !automationByPath.has(r.sessionPath)) {
+        automationByPath.set(r.sessionPath, { id: aid, title });
+      }
+    }
   }
   const NO_CWD_KEY = "\0nocwd"; // sentinel: sessions without a cwd never merge into a real project
   const groups = new Map<string, ListedSession[]>();
@@ -81,6 +104,7 @@ export async function handleListSessions(ws: any) {
       modified: new Date(),
       messageCount: 0,
       cwd: entry.cwd,
+      ...(entry.automation ? { automation: entry.automation } : {}),
     });
     groups.set(key, list);
     listed.add(entry.path);
@@ -121,6 +145,7 @@ export async function handleListSessions(ws: any) {
           id: s.id,
           path: s.path,
           ...(s.pending ? { pending: true } : {}),
+          ...(automationByPath.get(s.path) ? { automation: automationByPath.get(s.path) } : {}),
           title: s.title ?? null,
           firstMessage: (s.firstMessage ?? "").slice(0, 80),
           modified: s.modified.toISOString(),
@@ -210,14 +235,12 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   },
   get_keepalive_status(ws, msg) {
     // Pure query for the context detail card: the entry's latest keepalive
-    // snapshot (host/keepalive.ts reportState) + the global switch. enabled
-    // follows the global switch but is forced false for sessions that never
-    // got the extension injected (created before the switch went on, or the
-    // plugin double-load guard skipped injection); unknown/off sessions
-    // report the zeroed disabled shape instead of erroring, so the card can
-    // poll blindly.
-    const state = sessions.get(String(msg.sessionId ?? ""))?.keepaliveState;
-    ws.send(JSON.stringify(keepaliveStatusPayload(String(msg.sessionId ?? ""), state)));
+    // snapshot (host/keepalive.ts reportState) + the global switch. Target-model
+    // filtering lives in keepaliveStatusPayload (shared with reportState pushes),
+    // so off/non-target/unknown sessions all report the zeroed disabled shape
+    // and the card can poll blindly.
+    const entry = sessions.get(String(msg.sessionId ?? ""));
+    ws.send(JSON.stringify(keepaliveStatusPayload(String(msg.sessionId ?? ""), entry?.keepaliveState)));
   },
   async reload_session(ws, msg) {
     // Force a rebuild from disk (the "reload" action on the external-write

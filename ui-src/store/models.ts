@@ -66,7 +66,23 @@ export function ingestModels(
 
 export function getSupportedThinkingForModel(modelId: string | null | undefined): string[] {
   const efforts = useAppStore.getState().modelEfforts.get(modelId ?? "") ?? [];
-  return efforts.length > 0 ? ["auto", "off", ...efforts] : ["off"];
+  if (efforts.length === 0) return ["off"];
+  // Kimi + providers-page switch off: `auto` is withheld from the menu (the host
+  // pins it to `high` anyway — Kimi re-bills the whole prefix per level switch)
+  const kimiAutoOff = modelId?.startsWith("kimi-code/") && useAppStore.getState().hostSettings?.kimiAutoThinking !== true;
+  return kimiAutoOff ? ["off", ...efforts] : ["auto", "off", ...efforts];
+}
+
+// Per-model default thinking level: the ":level" suffix on the model's
+// enabledModels entry (same CLI convention the host applies on set_model).
+// Reads the latest settings snapshot via getState; null = unset (follow the
+// global defaultThinkingLevel).
+export function modelDefaultThinking(modelId: string | null | undefined): string | null {
+  if (!modelId) return null;
+  const entries = useAppStore.getState().hostSettings?.values?.enabledModels;
+  if (!Array.isArray(entries)) return null;
+  const hit = (entries as string[]).find((e) => e.split(":")[0] === modelId);
+  return hit ? hit.split(":")[1] ?? null : null;
 }
 
 // Extract new-session config defaults from models/ready frames

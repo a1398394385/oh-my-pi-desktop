@@ -11,6 +11,7 @@ import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-conf
 import { readHooksEnabled, readPluginsEnabled } from "./assets.ts";
 import { readUiConfig } from "./ui-config.ts";
 import { readExternalBrowserEnabled } from "./browser-config.ts";
+import { readKimiAutoThinking } from "./kimi-thinking.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
 import { readComputerProvider } from "./computer-mode.ts";
 import { settingsGet } from "./settings-compat.ts";
@@ -48,5 +49,9 @@ export function settingsFrame() {
     // (the computer page's configure button writes it, globally disabled).
     computerProvider: readComputerProvider(),
     kimiCuInstalled: kimiCuInstalled(),
+    // omp-desktop.json kimi.autoThinking: whether Kimi models are offered the
+    // `auto` thinking level (off by default — each level switch re-bills the
+    // whole prefix on Kimi; the settings-page switch on pg-providers)
+    kimiAutoThinking: readKimiAutoThinking(),
   };
 }

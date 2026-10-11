@@ -110,6 +110,13 @@ const ALLOWED_EDGES = new Set([
   "desktop-json.ts→state.ts",
   "browser-config.ts→desktop-json.ts",
   "computer-mode.ts→desktop-json.ts", "computer-mode.ts→mcp-mount.ts", "computer-mode.ts→mcp-builtin.ts", "computer-mode.ts→stderr.ts",
+  // Kimi auto-thinking gate (omp-desktop.json kimi section): the providers-page
+  // switch writes it, the settings frame projects it, and the thinking-level
+  // entry points (set_model/set_thinking/cycle_model/spawnSession) pin `auto`
+  // to `high` on kimi-code while off. Pure-function module over desktop-json.
+  "kimi-thinking.ts→desktop-json.ts",
+  "frames.ts→kimi-thinking.ts", "rpc/settings.ts→kimi-thinking.ts",
+  "rpc/models.ts→kimi-thinking.ts", "session-lifecycle.ts→kimi-thinking.ts",
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
   // Computer-use display reconciliation: computer.display persists a Win32
   // monitor handle (xcap Monitor::id() = HMONITOR), which the kernel reassigns
@@ -164,6 +171,12 @@ const ALLOWED_EDGES = new Set([
   "frames.ts→keepalive-config.ts", // The settings frame carries state.json probe params (feature-page configuration for experiments)
   // Nine RPC handler domains (third cut: the giant message switch became table-driven): main keeps only the dispatch shell
   "main.ts→rpc/index.ts",
+  // Pooled-session file poll (external-write detection + fresh-session disk
+  // materialization): the poll pushes session_list via handleListSessions so
+  // the sidebar's pending row clears mid-run (same integration shape as
+  // profile.ts's automations notify)
+  "main.ts→session-poll.ts",
+  "session-poll.ts→state.ts", "session-poll.ts→rpc/session.ts", "session-poll.ts→stderr.ts",
   "rpc/index.ts→rpc/types.ts",
   "rpc/index.ts→rpc/session.ts", "rpc/index.ts→rpc/prompt.ts", "rpc/index.ts→rpc/files.ts",
   "rpc/index.ts→rpc/models.ts", "rpc/index.ts→rpc/settings.ts", "rpc/index.ts→rpc/login.ts",
@@ -204,6 +217,7 @@ const ALLOWED_EDGES = new Set([
   "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
   "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
   "rpc/login.ts→open-external.ts", "rpc/settings.ts→open-external.ts", // cross-platform browser/folder launch (rundll32 / open / xdg-open)
+  "rpc/login.ts→account-order.ts", // provider_reorder_account: active credential id permutation
   "rpc/index.ts→rpc/provider-wizard.ts",
   "rpc/provider-wizard.ts→rpc/types.ts", "rpc/provider-wizard.ts→state.ts",
   "rpc/provider-wizard.ts→rpc/login.ts", // shared catalog convergence push (refreshCatalogAndPush)
@@ -257,6 +271,9 @@ const ALLOWED_EDGES = new Set([
   "rpc/automations.ts→rpc/types.ts",
   "rpc/automations.ts→automations/types.ts", "rpc/automations.ts→automations/cron.ts",
   "rpc/automations.ts→automations/store.ts", "rpc/automations.ts→automations/scheduler.ts",
+  // session_list backfills the automation badge from the persisted runs ledger
+  // (pool eviction/restart must not drop it); read-only store access
+  "rpc/session.ts→automations/store.ts",
 ]);
 
 // Scan one level of host/ plus the rpc/ and automations/ subdirectories (keys carry a path prefix like rpc/session.ts)

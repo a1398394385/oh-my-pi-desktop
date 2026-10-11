@@ -197,15 +197,16 @@ export const chatEn = {
   // ---- rail tool summary ----
   fileSep: ", ",
   // ---- session stats bar ----
-  statsCacheHit: "Cache hit",
+  statsCacheHit: "Cache",
+  statsCacheBreaksTitle: "Prompt-cache invalidations this session (each one re-bills the whole context as uncached input)",
   statsInput: "In",
   statsOutput: "Out",
-  statsCacheRead: "Cache R",
-  statsCacheWrite: "Cache W",
+  statsCacheRead: "R",
+  statsCacheWrite: "W",
   statsCost: "Cost",
   statsDuration: "Time",
   statsTokenSpeed: "Speed",
-  statsAvgTtft: "Avg TTFT",
+  statsAvgTtft: "TTFT",
   // ---- session-tree filter pills ----
   filterDefault: "Default",
   filterNoTools: "No tools",

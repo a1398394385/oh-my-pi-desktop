@@ -10,6 +10,8 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../../../store";
+import { getSupportedThinkingForModel, modelDefaultThinking } from "../../../store/models";
+import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import { t } from "../../../i18n";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
@@ -53,7 +55,7 @@ const ROLE_DESC_KEYS: Record<string, string> = {
 // One quota detail section (ui/ringpop.js buildLimitsSection ported to a component): semantics/colors use the shared definitions in lib/limits.
 // prov/accountId wire the per-account disable action into the card head (settings page only;
 // the composer ctx card has its own LimitsSection and stays untouched).
-function LimitsSection({ limits, prov, accountId }: { limits: ProviderLimits; prov?: string; accountId?: string | number }) {
+function LimitsSection({ limits, prov, accountId, rank, total }: { limits: ProviderLimits; prov?: string; accountId?: string | number; rank?: number; total?: number }) {
   const { t } = useTranslation();
   const acc = useAppStore((s) => s.providerAccounts);
   // Disable lives on the quota card of its account; offered only with 2+ active
@@ -68,6 +70,17 @@ function LimitsSection({ limits, prov, accountId }: { limits: ProviderLimits; pr
     Number.isInteger(credId) &&
     credId > 0 &&
     activeAcc.active.some((a) => a.id === credId);
+  const rankable = rank != null && total != null && total > 1 && activeAcc != null;
+  // Priority order = the active list order the host serves; a move swaps this
+  // card's id with its neighbour and the host rewrites the storage order.
+  const move = (delta: number) => {
+    const target = rank! + delta;
+    if (!activeAcc || target < 0 || target >= total!) return;
+    const ids = activeAcc.active.map((a) => a.id);
+    [ids[rank!], ids[target]] = [ids[target]!, ids[rank!]!];
+    send({ type: "provider_reorder_account", provider: prov, ids });
+    send({ type: "get_provider_limits", provider: prov }); // card order follows the new ranking — re-query
+  };
   const disable = async () => {
     const ok = await confirmDialog({
       title: t("settingsPage.model.disableConfirmTitle", { account: limits.label || prov }),
@@ -128,11 +141,32 @@ function LimitsSection({ limits, prov, accountId }: { limits: ProviderLimits; pr
     <div className="cx-sec lx-sec">
       <div className="lx-head">
         <b>{t("settingsPage.model.quotaRemaining")}</b>
-        {disablable ? (
-          <button type="button" className="save-btn danger" onClick={() => void disable()}>
-            {t("settingsPage.model.disableAccount")}
-          </button>
-        ) : null}
+        <span className="lx-head-acts">
+          {rankable ? (
+            <>
+              <span className={rank === 0 ? "tag lx-rank lx-rank-first" : "tag lx-rank"}>
+                {rank === 0 ? t("settingsPage.model.priorityInUse", { n: 1 }) : t("settingsPage.model.priorityN", { n: rank! + 1 })}
+              </span>
+              <button type="button" className="icon-btn" disabled={rank === 0} title={t("settingsPage.model.moveUp")} onClick={() => move(-1)}>
+                <Icon name="chevronUp" size={14} />
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                disabled={rank === total! - 1}
+                title={t("settingsPage.model.moveDown")}
+                onClick={() => move(1)}
+              >
+                <Icon name="chevronDown" size={14} />
+              </button>
+            </>
+          ) : null}
+          {disablable ? (
+            <button type="button" className="save-btn danger" onClick={() => void disable()}>
+              {t("settingsPage.model.disableAccount")}
+            </button>
+          ) : null}
+        </span>
       </div>
       <div className="lx-body">{body}</div>
     </div>
@@ -158,6 +192,8 @@ function QuotaSection({ provider }: { provider: string }) {
             key={i}
             prov={provider}
             accountId={a.id}
+            rank={i}
+            total={lim.accounts.length}
             limits={{ ...lim, ...a, label: a.label || a.accountLabel || t("settingsPage.model.accountN", { n: i + 1 }) }}
           />
         ))}
@@ -735,6 +771,78 @@ function ProviderDetailView() {
   );
 }
 
+// Per-model default thinking level pill (enabledModels ":level" suffix — the
+// same CLI convention the host applies on session set_model; outranks the
+// global defaultThinkingLevel). Same interaction shell as GeneralPage's Sel.
+function ThinkSel({ modelId }: { modelId: string }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    claimDropdown(close);
+    document.addEventListener("click", close);
+    return () => {
+      document.removeEventListener("click", close);
+      releaseDropdown(close);
+    };
+  }, [open]);
+  const levels = getSupportedThinkingForModel(modelId);
+  const cur = modelDefaultThinking(modelId);
+  const write = (level: string | null) => {
+    const st = useAppStore.getState();
+    let entries: string[] | undefined = st.hostSettings?.values?.enabledModels as string[] | undefined;
+    // Empty enabledModels = everything enabled: expand the currently enabled
+    // catalog ids first (same first-write semantics as host set_enabled_model)
+    if (!entries || entries.length === 0) {
+      entries = st.modelCatalog.filter((m) => m.enabled).map((m) => m.id);
+    }
+    const next = entries.filter((e) => e.split(":")[0] !== modelId);
+    next.push(level ? `${modelId}:${level}` : modelId);
+    send({ type: "set_setting", key: "enabledModels", value: next });
+  };
+  return (
+    <div
+      className="sel"
+      data-sel="think"
+      title={t("settingsPage.model.thinkDefaultTitle")}
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen(!open);
+      }}
+    >
+      {cur ?? t("settingsPage.model.thinkFollowGlobal")} <Icon name="caret" size={14} className="caret-svg" />
+      <div className={"menu" + (open ? " open" : "")}>
+        <div
+          className="mi"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(false);
+            write(null);
+          }}
+        >
+          <span className="ck">{!cur ? "✓" : ""}</span>
+          {t("settingsPage.model.thinkFollowGlobal")}
+        </div>
+        {levels.map((lv) => (
+          <div
+            className="mi"
+            key={lv}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              write(lv);
+            }}
+          >
+            <span className="ck">{cur === lv ? "✓" : ""}</span>
+            {lv}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Right card: selected provider detail (model enable/disable + quota + logout)
 function ProviderModelsView({ prov, models }: { prov: string; models: CatalogModel[] }) {
   const { t } = useTranslation();
@@ -832,6 +940,7 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
               >
                 {testResults[m.id]?.status === "running" ? t("settingsPage.model.testingBtn") : t("settingsPage.model.testBtn")}
               </button>
+              <ThinkSel modelId={m.id} />
               {isConfig ? (
                 <button
                   type="button"

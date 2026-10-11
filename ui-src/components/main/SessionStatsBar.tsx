@@ -4,9 +4,11 @@
 // Data is pushed by the host while a turn is running (at each model-turn end / each tool
 // end) and when loading a session, via session_stats frames landing on the session object's
 // stats field (see store.js); no on-demand hover requests.
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, type ReactNode } from "react";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../store";
 import { useTranslation } from "react-i18next";
+import Icon from "../../Icon";
+import { cn } from "../ui/cn";
 
 function fmtTokenSpeed(speed: number | null | undefined): string {
   if (speed == null || !Number.isFinite(speed) || speed <= 0) return "—";
@@ -43,24 +45,50 @@ export default function SessionStatsBar() {
 
   const activeMs = st.activeMs + (streaming && st.receivedAt !== undefined ? Date.now() - st.receivedAt : 0);
   const cost = (st.cost ?? 0) + (st.advisorCost ?? 0);
-  const items = [
-    [t("chat.statsCacheHit"), `${(st.cacheHitRate * 100).toFixed(1)}%`],
-    [t("chat.statsInput"), fmtTokens(st.tokens.input)],
-    [t("chat.statsOutput"), fmtTokens(st.tokens.output)],
-    [t("chat.statsCacheRead"), fmtTokens(st.tokens.cacheRead)],
-    [t("chat.statsCacheWrite"), fmtTokens(st.tokens.cacheWrite)],
-    ...(cost > 0 ? [[t("chat.statsCost"), `$${cost.toFixed(4)}`]] : []),
-    [t("chat.statsTokenSpeed"), fmtTokenSpeed(st.tokenSpeed)],
-    [t("chat.statsAvgTtft"), fmtTtft(st.avgTtft)],
-    [t("chat.statsDuration"), fmtDurationMs(activeMs)],
+  // Semantic groups (cache / tokens / cost / performance): tighter spacing inside
+  // a group than between groups. Parts tagged .sb-opt-* are trimmed by the row's
+  // own width (CSS container query in composer.css), so the line never wraps.
+  type Part = { k: string; v: string; cls?: string; extra?: ReactNode };
+  const groups: Part[][] = [
+    [
+      {
+        k: t("chat.statsCacheHit"),
+        v: `${(st.cacheHitRate * 100).toFixed(1)}%`,
+        // Cache invalidations this session (host-side counter, see buildSessionStats):
+        // counter-clockwise arrow + count, display-only
+        extra: (
+          <span className="sb-break" title={t("chat.statsCacheBreaksTitle")}>
+            <Icon name="cacheBreak" />
+            {st.cacheBreaks}
+          </span>
+        ),
+      },
+      { k: t("chat.statsCacheRead"), v: fmtTokens(st.tokens.cacheRead), cls: "sb-opt-cachetok" },
+      { k: t("chat.statsCacheWrite"), v: fmtTokens(st.tokens.cacheWrite), cls: "sb-opt-cachetok" },
+    ],
+    [
+      { k: t("chat.statsInput"), v: fmtTokens(st.tokens.input) },
+      { k: t("chat.statsOutput"), v: fmtTokens(st.tokens.output) },
+    ],
+    cost > 0 ? [{ k: t("chat.statsCost"), v: `$${cost.toFixed(4)}`, cls: "sb-opt-cost" }] : [],
+    [
+      { k: t("chat.statsTokenSpeed"), v: fmtTokenSpeed(st.tokenSpeed) },
+      { k: t("chat.statsAvgTtft"), v: fmtTtft(st.avgTtft), cls: "sb-opt-ttft" },
+      { k: t("chat.statsDuration"), v: fmtDurationMs(activeMs), cls: "sb-opt-duration" },
+    ],
   ];
 
   return (
     <div className="stats-bar" id="statsBar">
-      {items.map(([k, v]) => (
-        <span className="inline-flex items-baseline gap-[5px]" key={k}>
-          <span className="sb-k">{k}</span>
-          <span className="text-dim">{v}</span>
+      {groups.map((parts, gi) => (
+        <span className="sb-group" key={gi}>
+          {parts.map((p) => (
+            <span className={cn("sb-item", p.cls)} key={p.k}>
+              <span className="sb-k">{p.k}</span>
+              <span className="text-dim">{p.v}</span>
+              {p.extra}
+            </span>
+          ))}
         </span>
       ))}
     </div>

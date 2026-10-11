@@ -18,7 +18,7 @@
 
 1. **接官方 `tauri-plugin-updater`，不自造更新协议**。`tauri.conf.json` 开 `bundle.createUpdaterArtifacts`，`plugins.updater.pubkey` 写 minisign 公钥全文（非路径），`endpoints` 指向 `https://github.com/a1398394385/oh-my-pi-desktop/releases/latest/download/latest.json`（tauri-action 生成的静态清单，免自建服务）。
 2. **三个自定义命令取代插件 JS 绑定**（`src-tauri/src/update.rs`）：`update_check` / `update_install` / `update_relaunch`。理由：插件的 `download` 命令用 IPC `Channel` 传进度，前端需手工构造；三个普通命令 + 一个进度事件比在 TS 里复刻 Channel 更省。**下载与安装合成一个命令**——插件的 `check()` 返回 `Update` 句柄供 `install()` 消费，拆成两个命令就得把句柄挂在 managed state 上跨越两次往返，而整包字节无论如何都要驻留内存。
-3. **进度走事件而非 Channel**：`update-progress` 事件，载荷 `{downloaded, total, finished}`；字节累计在 Rust 侧（插件回调给的是 chunk 增量，TS 逐块重加会漂移）。事件形态与既有 `rail-spectrum`（`src-tauri/src/audio.rs`）一致。
+3. **进度走事件而非 Channel**：`update-progress` 事件，载荷 `{downloaded, total, finished}`；字节累计在 Rust 侧（插件回调给的是 chunk 增量，TS 逐块重加会漂移）。事件形态与既有 `rail-spectrum`（`src-tauri/src/audio/`）一致。
 4. **重启用 core Tauri 的 `AppHandle::restart`，不装 `tauri-plugin-process`**：该插件只是包装同一个调用，装它等于为一个函数多开一份 capability。
 5. **版本号单源 = `src-tauri/tauri.conf.json#version`**，`scripts/sync-version.ts` 镜像到 `Cargo.toml`，`--check` 模式挂进 `bun run check`。发版 = `bun run version:set x.y.z`。
 6. **macOS 只发 arm64**：bun 虽可交叉编译（`--target=bun-darwin-x64`，实测可得 x86_64 Mach-O），但 `scripts/build-host.ts` 按**运行者的 `process.arch`** 解析 pi-natives addon，Intel leg 会把 arm64 `.node` 塞进 x86_64 应用并在启动时崩。要修需把目标架构贯穿 build-host.ts，届时再加 leg，而不是现在发一个坏的。

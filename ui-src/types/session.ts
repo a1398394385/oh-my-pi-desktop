@@ -267,6 +267,9 @@ export interface PendingApproval {
   // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
   // form; ApprovalCard renders radio/checkbox rows and one submit for all
   questions?: AskQuestion[];
+  // The ask tool's `i` intent (captured by the host from tool_execution_start),
+  // rendered as an intent chip above the question list
+  intent?: string;
   // Ask-dialog variant only: frontend-local drafts of the per-question
   // "Other (type your own)" custom answers (written in place by ApprovalCard
   // like prefill, never sent as a frame field of its own)
@@ -357,6 +360,8 @@ export interface OpenSession {
   title?: string | null; // session title (from session_title_changed, or carried in at creation)
   isSubagent?: boolean;
   parentPath?: string;
+  /** Set when the host spawned this session for an automation (background slot; sidebar clock badge source) */
+  automation?: { id: string; title: string };
 }
 
 /** openSessions container: key = session file path (store.ts openSessions; LRU cap of 8) */

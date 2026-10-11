@@ -33,7 +33,7 @@ import {
   resolveToCwd,
   writeDeviceDispatch,
 } from "./bootstrap.ts";
-import { pushCommandOutput, requestApproval, type PoolEntry } from "./state.ts";
+import { pushCommandOutput, requestApproval, stampEvent, type PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { safeStderr } from "./stderr.ts";
 
@@ -64,9 +64,12 @@ export type ExecutionSlider = {
 /** Per-request presentation carried alongside the option ids. */
 type PlanApprovalPresentation = NonNullable<Parameters<typeof requestApproval>[5]>;
 
-/** Transient approval-flow state hung off the pool entry (not part of PoolEntry's public shape). */
 type PlanApprovalState = {
   presentation?: ToolPresentation;
+  // Most recent plan deliverable (mirrors the approval frame's `plan`): pushed
+  // as a plan_output snapshot on pool reuse so the todo card's output row
+  // survives a frontend reload.
+  lastPlan?: { title: string; path: string; content: string };
 };
 
 function planState(entry: PoolEntry): PlanApprovalState {
@@ -124,9 +127,13 @@ async function listPlanFilesOf(entry: PoolEntry): Promise<string[]> {
  * Creates the post-approval fresh session. Injected rather than imported:
  * session-lifecycle is the module that calls us (it owns the event
  * subscription the dispatch rides on), so a static import back would be a
- * cycle — the same reason the host boundary table forbids it.
+ * cycle — the same reason the host boundary table forbids it. Returns the
+ * pool key alongside the entry: the execute branch pushes frames to that id.
  */
-type FreshSessionFactory = (ws: Ws, entry: PoolEntry) => Promise<PoolEntry>;
+type FreshSessionFactory = (
+  ws: Ws,
+  entry: PoolEntry,
+) => Promise<{ entry: PoolEntry; sessionId: string }>;
 let createFreshSession: FreshSessionFactory | undefined;
 
 /** Wire the session factory (called once by session-lifecycle at module load). */
@@ -135,11 +142,38 @@ export function setFreshSessionFactory(factory: FreshSessionFactory): void {
 }
 
 /** New session + carry the old session's local:// artifacts across the switch. */
-async function forkWithLocalArtifacts(ws: Ws, entry: PoolEntry, sourceLocalRoot: string): Promise<PoolEntry> {
+async function forkWithLocalArtifacts(
+  ws: Ws,
+  entry: PoolEntry,
+  sourceLocalRoot: string,
+): Promise<{ entry: PoolEntry; sessionId: string }> {
   if (!createFreshSession) throw new Error("plan approval: session factory not installed");
   const next = await createFreshSession(ws, entry);
-  await copyLocalArtifacts(sourceLocalRoot, planFilePathOnDisk(next, "local://"));
+  await copyLocalArtifacts(sourceLocalRoot, planFilePathOnDisk(next.entry, "local://"));
   return next;
+}
+
+/** Push the remembered plan deliverable (pool-reuse snapshot; silent when absent). */
+export function pushPlanOutput(ws: Ws, sessionId: string, entry: PoolEntry) {
+  const plan = planState(entry).lastPlan;
+  if (plan) ws.send(JSON.stringify(stampEvent({ type: "plan_output", sessionId, plan })));
+}
+
+/** Disk-restore fallback: newest `local://` plan file (title falls back to the basename). */
+export async function pushRestoredPlanOutput(ws: Ws, sessionId: string, entry: PoolEntry) {
+  const [newest] = await listPlanFilesOf(entry);
+  if (!newest) return;
+  const content = await readPlanContent(entry, newest);
+  if (content === null) return;
+  ws.send(
+    JSON.stringify(
+      stampEvent({
+        type: "plan_output",
+        sessionId,
+        plan: { title: path.basename(newest).replace(/\.md$/i, ""), path: planFilePathOnDisk(entry, newest), content },
+      }),
+    ),
+  );
 }
 
 /**
@@ -177,11 +211,14 @@ async function approveProposal(
         usage && usage.contextWindow > 0 ? { tokens: usage.tokens, contextWindow: usage.contextWindow } : undefined,
       disabledIndices:
         usage && usage.percent > KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT ? [optionsKeepIndex()] : undefined,
-      slider,
       // Raw plan text + title + on-disk path: the UI renders the plan body above
       // the options and links the todo card's output row to the file view. Content
       // was captured before the abort, so it survives the local:// handle reset.
-      plan: { title, path: planFilePathOnDisk(entry, planFilePath), content: planContent },
+      plan: (planState(entry).lastPlan = {
+        title,
+        path: planFilePathOnDisk(entry, planFilePath),
+        content: planContent,
+      }),
     } satisfies PlanApprovalPresentation,
     (index) => {
       pickedTier = index;
@@ -286,12 +323,16 @@ async function approvePlan(
     // Fresh context: a brand-new session carrying the durable plan across, so
     // the execution turn can still recover it from `local://` after compaction.
     const next = await forkWithLocalArtifacts(ws, entry, sourceLocalRoot);
-    const dest = planFilePathOnDisk(next, planFilePath);
+    const dest = planFilePathOnDisk(next.entry, planFilePath);
     await mkdir(path.dirname(dest), { recursive: true });
     await writeFile(dest, planContent);
     exitPlanModeState(entry);
     pushPlanState(ws, sessionId, entry);
-    return dispatchApprovedTurn(ws, next, {
+    // The approval frame carried the plan on the OLD session's id; repeat it on
+    // the new one so its todo card keeps the plan output row.
+    planState(next.entry).lastPlan = { title, path: dest, content: planContent };
+    pushPlanOutput(ws, next.sessionId, next.entry);
+    return dispatchApprovedTurn(ws, next.entry, {
       planFilePath,
       planContent,
       preserveContext,

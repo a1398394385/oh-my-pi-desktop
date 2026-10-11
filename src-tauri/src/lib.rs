@@ -24,36 +24,36 @@ use tauri::tray::TrayIconBuilder;
 #[cfg(target_os = "windows")]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::Manager;
-use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
-// System-audio spectrum capture for the message-rail music effect. Windows-only:
-// the real module is `#![cfg(windows)]`; other platforms compile same-named
-// command stubs so the single generate_handler! list below holds everywhere,
-// without pulling the Windows SDK crates in.
+// System-audio spectrum capture for the message-rail music effect. The real
+// module is WASAPI loopback on Windows and ScreenCaptureKit on macOS; other
+// platforms compile same-named command stubs so the single generate_handler!
+// list below holds everywhere, without pulling the platform SDK crates in.
 // System font-family enumeration for the settings terminal-font picker
 // (Windows GDI / macOS CoreText; other platforms return an empty list).
 mod fonts;
+mod notify;
 mod permissions;
 mod update;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 mod audio;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 mod audio {
     #[tauri::command]
     pub fn audio_devices() -> Result<Vec<String>, String> {
-        Err("audio spectrum capture is Windows-only".into())
+        Err("audio spectrum capture is unsupported on this platform".into())
     }
     #[tauri::command]
     pub fn audio_start(_device_id: String) -> Result<(), String> {
-        Err("audio spectrum capture is Windows-only".into())
+        Err("audio spectrum capture is unsupported on this platform".into())
     }
     #[tauri::command]
     pub fn audio_stop() -> Result<(), String> {
-        Err("audio spectrum capture is Windows-only".into())
+        Err("audio spectrum capture is unsupported on this platform".into())
     }
 }
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use audio::AudioState;
 
 struct HostState {
@@ -280,30 +280,6 @@ fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
         std::thread::sleep(Duration::from_millis(100));
     }
     Err("host-not-ready".into())
-}
-
-/// Frontend call: send a system notification.
-/// Args (frontend camelCase auto-mapped): title / body / sessionId.
-/// Limitation: the Rust side of tauri-plugin-notification cannot get the
-/// notification-click callback on macOS — clicking only triggers the system
-/// default behavior (focusing this app), so "notification-click" cannot be
-/// emitted here; session_id is currently a placeholder. If "click to switch
-/// session" is ever needed, switch to the plugin's JS-side onAction (supported
-/// there, but this project's frontend doesn't bundle the JS package, so it is absent for now).
-#[tauri::command]
-fn send_desktop_notification(
-    app: tauri::AppHandle,
-    title: String,
-    body: String,
-    session_id: String,
-) -> Result<(), String> {
-    let _ = session_id; // unused on macOS, see the doc comment above
-    app.notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|e| format!("notify-failed: {e}"))
 }
 
 /// Builds the native app menu bar (macOS).
@@ -561,11 +537,11 @@ pub fn run() {
     }));
     let child_cell: ChildCell = Arc::new(Mutex::new(None));
     let restart_cell: RestartCell = Arc::new(Mutex::new(RestartGate::default()));
-    // Audio capture state lives behind a Windows-only builder step; on other
+    // Audio capture state lives behind a platform-gated builder step; on other
     // platforms the builder is unchanged and the module does not exist.
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     let builder = tauri::Builder::default().manage(AudioState::default());
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let builder = tauri::Builder::default();
     builder
         // Single-instance lock MUST be the first registered plugin: a relaunch
@@ -651,7 +627,10 @@ pub fn run() {
         // whole main command table (frontend: "Command ws_url not found").
         .invoke_handler(tauri::generate_handler![
             ws_url,
-            send_desktop_notification,
+            notify::send_desktop_notification,
+            notify::play_alert_sound,
+            notify::notification_permission_status,
+            notify::request_notification_permission,
             set_menu_language,
             audio::audio_devices,
             fonts::list_font_families,

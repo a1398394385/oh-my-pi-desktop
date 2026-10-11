@@ -1,0 +1,124 @@
+/* Main-column · Automations list page (components/main/automations/AutomationsPage.tsx).
+   Header row + status filter pills + fixed two-column card grid: each card carries a
+   status/schedule badge bottom-left and a run-count pill bottom-right. Card chrome reuses
+   the global .icon-btn/.add-btn/.tg/.menu language. Badge colors are user-specified RGB
+   literals (2026-10-11); everything else goes through tokens. */
+
+/* Page container: fills the stream slot, scrolls like #agentHub. No horizontal padding:
+   .al-col shares the message column's four-stage shrink (center.css), which is computed
+   against the container box — padding here would offset that width basis. */
+.al-page {
+  flex: 1; min-height: 0; overflow-y: auto;
+  /* Reserve the scrollbar slot so opening a ⋯ dropdown (page overflow flip) never shifts content horizontally */
+  scrollbar-gutter: stable;
+  padding: 12px 0 16px;
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: var(--ui-fs-base); color: var(--text);
+}
+
+/* Content column: same centered shrink contract as the message area (center.css group) */
+.al-col { display: flex; flex-direction: column; gap: 8px; }
+
+/* Create/edit surface: rounded card embedded in the list page (not a full-page takeover) */
+.al-edit-card {
+  margin-top: 8px;
+  background: var(--panel-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 16px;
+}
+
+/* No-automations state: plain faint text, no onboarding card */
+.al-none { margin-top: 24px; text-align: center; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+/* Header: title left, refresh + new right (pg-refresh carries the auto left margin) */
+.al-head { display: flex; align-items: center; gap: 10px; }
+.al-head .add-btn { margin-left: 0; }
+.al-title { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; letter-spacing: .01em; }
+.al-sub { margin: -2px 0 4px; font-size: var(--ui-fs-sm); color: var(--faint); }
+
+/* Status filter pills (zcode capsule row: all/in-progress/completed/failed) */
+.al-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.al-pill {
+  border: 0; background: none; cursor: pointer;
+  min-height: 26px; padding: 3px 12px; border-radius: 999px;
+  font-size: var(--ui-fs-sm); font-weight: 500; color: var(--dim);
+}
+.al-pill:hover { background: var(--panel-2); color: var(--text); }
+/* Selected pill = the .mcp-type-pill.on house language (surface, not accent) */
+.al-pill.on { background: var(--panel-3); color: var(--text); font-weight: 500; }
+
+/* Card grid: fixed two columns, 15px gutters both axes (user spec) */
+.al-grid {
+  margin-top: 4px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+/* Task card: fully clickable into the edit view. No face of its own — same background as
+   the page, separated by border only (user spec); hover lifts the border, not the fill.
+   No overflow:hidden — the ⋯ dropdown pops out of the card box. */
+.al-card {
+  position: relative; cursor: pointer;
+  display: flex; gap: 10px; align-items: flex-start;
+  min-height: 118px; padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent); border-radius: 12px; background: none;
+}
+.al-card:hover { border-color: var(--line); }
+/* House focus ring (global controls rule covers .icon-btn/.add-btn/.tg already) */
+.al-card:focus-visible, .al-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.al-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Head row: title alone (next-run moved into the bottom-left badge); flex keeps the
+   title blockified so its ellipsis actually clips instead of running under the controls */
+.al-card-head { display: flex; min-width: 0; padding-right: 56px; }
+.al-card-title {
+  font-size: var(--ui-fs-lg); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.al-card-prompt {
+  margin: 0; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; min-height: 2.8em;
+}
+
+/* Bottom row: status/schedule badge left, run-count pill right */
+.al-card-meta { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+/* Active badge: user-picked dark-green surface + green text; paused/completed reuse the
+   neutral gray pair (.gray, same as the run-count pill); failed keeps the error tint. */
+.al-badge {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+  padding: 3px 10px; border-radius: 8px;
+  font-size: var(--ui-fs-sm); color: rgb(70,191,114); background: rgb(26,39,32);
+}
+.al-badge.gray { color: rgb(145,145,145); background: rgb(44,44,44); }
+.al-badge.err { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); flex: none; }
+.al-badge-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Run-count pill: same neutral gray pair, pinned to the row's right end */
+.al-runcount { flex: none; font-size: var(--ui-fs-sm); color: rgb(145,145,145); background: rgb(44,44,44); border-radius: 8px; padding: 3px 10px; }
+/* Light theme: user-picked pastel surfaces (2026-10-11) */
+[data-theme="light"] .al-badge { color: rgb(30,138,62); background: rgb(226,237,230); }
+[data-theme="light"] .al-badge.gray,
+[data-theme="light"] .al-runcount { color: rgb(119,119,119); background: rgb(241,241,241); }
+
+/* Card controls: site-wide toggle language + ⋯ menu. The pair floats over the card's
+   top-right corner so the bottom meta row (run-count pill) reaches the card's right
+   padding edge instead of stopping short of the controls column. */
+.al-card-ctl { position: absolute; top: 10px; right: 10px; display: flex; align-items: center; gap: 4px; }
+.al-menu { position: relative; }
+.al-menu .al-more { width: 27px; height: 27px; }
+.al-menu .al-more:hover { color: var(--text); }
+
+/* Global .menu pops up from the composer (bottom:44px); the card menu drops down instead,
+   left edge aligned with the ⋯ trigger */
+.al-menu-pop { bottom: auto; top: calc(100% + 4px); left: 0; }
+.al-menu .mi .al-mi-ic { display: inline-flex; width: 18px; justify-content: center; color: var(--dim); flex: none; }
+.al-menu .mi.al-danger { color: var(--err); }
+.al-menu .mi.al-danger .al-mi-ic { color: var(--err); }
+
+/* Empty states: plain "no automations" text and the slim filtered placeholder */
+.al-filter-empty {
+  margin-top: 8px; padding: 12px 14px;
+  border: 1px solid var(--line-soft); border-radius: 10px;
+  font-size: var(--ui-fs-sm); color: var(--faint);
+}

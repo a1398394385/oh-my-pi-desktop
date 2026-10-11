@@ -30,7 +30,8 @@ import { createAcpContextExtension, ACP_SYSTEM_PROMPT } from "./acp-context.ts";
 import { createAcpCompressTools } from "./acp-tools.ts";
 import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
-import { readKeepaliveEnabled } from "./keepalive-config.ts";
+import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
+import { gateKimiAutoThinking } from "./kimi-thinking.ts";
 import type { KeepaliveState } from "./keepalive.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { readAcpRaw, readAcpEnabled, readAcpNudgeConfig, readSessionContextEnabled } from "./profile.ts";
@@ -39,26 +40,37 @@ import { createKeepaliveExtension } from "./keepalive.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { pushComputerMode, setComputerMode } from "./computer-mode.ts";
-import { dispatchFromToolEnd, installProposalHandler, setFreshSessionFactory } from "./plan-approve.ts";
+import { dispatchFromToolEnd, installProposalHandler, pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { handleVoiceEvent } from "./voice.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 
-/** keepalive_status frame body (shared by the RPC reply and the reportState push). */
+/** keepalive_status frame body (shared by the RPC reply and the reportState push).
+ * Effective keepalive includes the target check: a session whose current model is not a
+ * configured keepalive target is never probed, so both paths must report the zeroed
+ * disabled shape for it — otherwise a model removed from targets mid-run would keep the
+ * context card's cache-warming section alive via reportState pushes. */
 export function keepaliveStatusPayload(sessionId: string, state: KeepaliveState | undefined) {
+  const entry = sessions.get(sessionId);
+  const model = entry?.session.model as { provider?: string; id?: string } | undefined | null;
+  const targeted =
+    typeof model?.provider === "string" &&
+    typeof model?.id === "string" &&
+    readKeepaliveProbeConfig().targets.includes(`${model.provider}/${model.id}`);
+  const eff = targeted ? state : undefined;
   return {
     type: "keepalive_status" as const,
     sessionId,
-    enabled: state !== undefined && readKeepaliveEnabled(),
-    active: state?.active ?? false,
-    probes: state?.probes ?? 0,
-    hits: state?.hits ?? 0,
-    misses: state?.misses ?? 0,
-    errors: state?.errors ?? 0,
-    savedUsd: state?.savedUsd ?? 0,
-    spendUsd: state?.spendUsd ?? 0,
-    nextProbeAt: state?.nextProbeAt ?? null,
+    enabled: eff !== undefined && readKeepaliveEnabled(),
+    active: eff?.active ?? false,
+    probes: eff?.probes ?? 0,
+    hits: eff?.hits ?? 0,
+    misses: eff?.misses ?? 0,
+    errors: eff?.errors ?? 0,
+    savedUsd: eff?.savedUsd ?? 0,
+    spendUsd: eff?.spendUsd ?? 0,
+    nextProbeAt: eff?.nextProbeAt ?? null,
   };
 }
 export function isGitWorktree(cwd: string): boolean {
@@ -157,6 +169,41 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 // chop off the pre-compaction history and the numbers would jump backwards. The
 // index-level #usage accumulates per entry on insert and is never windowed,
 // so it is monotonic.
+//
+// Prompt-cache invalidation count for the session stats bar: a session's cached
+// prefix normally grows monotonically (each turn appends to the cached prefix),
+// so a cacheRead drop to under half of the session peak means the prefix was
+// lost — model switch, cache TTL expiry, keepalive break, compaction — and the
+// whole context was re-billed as uncached input. Count one break per event:
+// re-arm only after cacheRead climbs back to the peak, and while broken let the
+// peak follow a shrinking baseline (compaction drops the prefix for good) so a
+// later break still registers.
+const CACHE_BREAK_MIN_PEAK = 1000;
+export function countCacheBreaks(
+  entries: ReadonlyArray<{ type?: string; message?: { role?: string; usage?: { cacheRead?: number } } }>,
+): number {
+  let peak = 0;
+  let last = 0;
+  let broken = false;
+  let breaks = 0;
+  for (const item of entries) {
+    if (item?.type !== "message" || item.message?.role !== "assistant") continue;
+    const read = item.message.usage?.cacheRead;
+    const cacheRead = typeof read === "number" && Number.isFinite(read) ? read : 0;
+    if (cacheRead >= peak) {
+      peak = cacheRead;
+      broken = false;
+    } else if (broken) {
+      if (cacheRead > last) peak = cacheRead;
+    } else if (peak >= CACHE_BREAK_MIN_PEAK && cacheRead < peak * 0.5) {
+      breaks++;
+      broken = true;
+    }
+    last = cacheRead;
+  }
+  return breaks;
+}
+
 function buildSessionStats(entry: PoolEntry) {
   const now = Date.now();
   const usage = entry.manager.getUsageStatistics();
@@ -173,6 +220,7 @@ function buildSessionStats(entry: PoolEntry) {
   let ttftCount = 0;
 
   const entries: any[] = typeof entry.manager?.getEntries === "function" ? entry.manager.getEntries() : [];
+  const cacheBreaks = countCacheBreaks(entries);
   for (const item of entries) {
     if (item?.type === "message" && item.message?.role === "assistant") {
       const msg = item.message;
@@ -206,6 +254,7 @@ function buildSessionStats(entry: PoolEntry) {
     },
     cost: usage.cost,
     cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
+    cacheBreaks,
     // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
     advisorCost: entry.session.getAdvisorCost(),
     // Same-clock stamp as activeMs (sampled in the same call): the frontend extrapolates
@@ -357,6 +406,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     statsPushedAt: null,
     path: session.sessionFile,
     pollKnownSize: 0, // External-write detection: 0 = not first-scanned yet
+    awaitDiskList: !fs.existsSync(session.sessionFile), // brand-new only: a loaded/branched session's file already exists
     externalWrite: false,
     previousPaths: [], // Persistence-move history: old file locations keep resolving to this entry (see state.ts)
     cwd,
@@ -394,6 +444,11 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
 }
 
 export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any) {
+  // The ask tool's `i` intent: agent-loop extracts it from the tool args and
+  // carries it on the tool_execution_start event; askDialog takes and clears
+  // it when the card is pushed (same-session tools are serial, a single
+  // value slot cannot cross-contaminate)
+  let askIntent: string | undefined;
   // Realtime queue push coalescing (shared by the onQueueChange subscription
   // below and the user message_start injection confirmation): bursts of queue
   // mutations (park + release + steer in one operation) coalesce into one
@@ -408,6 +463,10 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     });
   };
   const unsubSession = entry.session.subscribe((ev) => {
+    // Stash the ask tool's `i` intent; attached to the askDialog frame on push
+    if (ev.type === "tool_execution_start" && ev.toolName === "ask" && typeof ev.intent === "string" && ev.intent.trim()) {
+      askIntent = ev.intent.trim();
+    }
     const ui = translateEvent(ev, entry);
     if (ui) ws.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
     // TTS vocalization bridge (speech.enabled): forwards this session's
@@ -627,6 +686,8 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       };
       pendingApprovals.set(requestId, { resolve: settle, questions });
       dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
+      const intent = askIntent;
+      askIntent = undefined;
       const first = (questions[0] ?? {}) as { header?: string; question?: string };
       ws.send(
         JSON.stringify(
@@ -637,6 +698,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
             title: first.header ?? first.question ?? "ask",
             options: ["submit", "cancel"],
             questions,
+            intent,
           }),
         ),
       );
@@ -974,18 +1036,30 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
 }
 
 /** Create a session on `cwd` with `model`, attach it, and push session_created. */
-export async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string) {
+export async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string, opts?: { automation?: { id: string; title: string } }) {
   const { sessionId, entry, eventBus } = await createSessionCore(
     workDir,
     SessionManager.create(workDir),
     [],
     targetModel,
   );
+  // Scheduler-spawned session: stamps the pool entry (session_list marker) and
+  // flags session_created as background so the UI registers the slot without
+  // stealing focus / closing the automations view
+  if (opts?.automation) entry.automation = opts.automation;
   if (thinkingLevel) {
     try {
       entry.session.setThinkingLevel(thinkingLevel);
     } catch {}
   }
+  // Kimi auto gate: the SDK default (defaultThinkingLevel: auto) or the UI
+  // override can leave a fresh kimi-code session on `auto` while the
+  // providers-page switch is off — pin it to `high` before the first turn
+  try {
+    const configured = entry.session.configuredThinkingLevel?.();
+    const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
+    if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
+  } catch {}
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
     JSON.stringify({
@@ -997,6 +1071,9 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
       thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
       isGit: entry.isGit,
       title: entry.title ?? null,
+      // Automation-spawned: the UI registers the slot but must not activate it
+      // (no focus steal, automations view stays open)
+      ...(opts?.automation ? { automation: opts.automation, background: true } : {}),
     }),
   );
   pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
@@ -1005,7 +1082,7 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
 
 // Plan approval needs a fresh session (approve-and-execute / save-and-quit) but
 // cannot import this module back — it is the caller. Inject the factory instead.
-setFreshSessionFactory((ws, entry) => spawnSession(ws, entry.cwd, entry.session.model).then((r) => r.entry));
+setFreshSessionFactory((ws, entry) => spawnSession(ws, entry.cwd, entry.session.model));
 
 export async function handleCreateSession(ws: { send(data: string): unknown }, cwd?: string, modelStr?: string, thinkingLevel?: string, planMode?: boolean, computerMode?: boolean) {
   const workDir = typeof cwd === "string" && cwd ? cwd : defaultCwd;
@@ -1346,6 +1423,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     pushComputerMode(ws, sessionId, entry); // Reuse snapshot: per-session computer opt-in state (the composer button relies on it)
     ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
     pushTodos(ws, sessionId, entry); // The reuse snapshot also pushes the todos backlog (otherwise history TODOs vanish after the frontend rebuilds objects)
+    pushPlanOutput(ws, sessionId, entry); // Reuse snapshot: remembered plan deliverable (todo card's output row survives a frontend reload)
     pushGoal(sessionId); // Goal state backlog (session state card goal area)
     pushContext(ws, sessionId, entry);
     pushSessionStats(ws, sessionId, entry); // The reuse snapshot also pushes whole-session stats (otherwise stats stay empty after the frontend rebuilds objects)
@@ -1404,6 +1482,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
   // Restored session's todos backlog (TodoTracker synced from the transcript branch at construction)
   pushTodos(ws, sessionId, entry);
+  await pushRestoredPlanOutput(ws, sessionId, entry); // Disk-restore fallback: newest local:// plan file becomes the todo card's output row
   pushGoal(sessionId); // Goal state backlog (pushed after restore; session state card goal area)
   // Restored session's initial context usage (system prompt + history)
   pushContext(ws, sessionId, entry);

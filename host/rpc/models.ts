@@ -12,6 +12,7 @@ import { collectUsageStats } from "../stats.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet, settingsSet } from "../settings-compat.ts";
+import { gateKimiAutoThinking } from "../kimi-thinking.ts";
 import { safeStderr } from "../stderr.ts";
 
 export const modelsHandlers: Record<string, RpcHandler> = {
@@ -41,6 +42,13 @@ export const modelsHandlers: Record<string, RpcHandler> = {
       if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
     }
     const model = `${entry.session.model.provider}/${entry.session.model.id}`;
+    // Kimi auto gate: an `auto` level reaching a kimi-code session while the
+    // providers-page switch is off is pinned to `high` (Kimi re-bills the whole
+    // prefix on every effort switch). Covers the ":level" default, the role
+    // path and the model's own thinking.defaultLevel in one post-check.
+    const configured = entry.session.configuredThinkingLevel?.();
+    const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
+    if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
     // After a model switch, return the configured selector ("auto" or a
     // concrete level): the bottom-right shows the user-configured mode; the
     // capability-clamped effective value is send-parameter detail and never
@@ -57,7 +65,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   set_thinking(ws, msg) {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    entry.session.setThinkingLevel(msg.level);
+    entry.session.setThinkingLevel(gateKimiAutoThinking(entry.session.model?.provider, msg.level));
     // Return the configured selector ("auto" or a concrete level); the clamped effective value never reaches the UI
     ws.send(
       JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.configuredThinkingLevel?.() ?? "auto" }),
@@ -78,6 +86,11 @@ export const modelsHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "cycle_model", sessionId: msg.sessionId, ok: false }));
       return;
     }
+    // Role cycling may carry a role's `auto` onto a Kimi model: pin it while
+    // the providers-page switch is off, same gate as set_model/set_thinking
+    const cycled = entry.session.configuredThinkingLevel?.();
+    const gated = gateKimiAutoThinking(result.model.provider, cycled);
+    if (gated && gated !== cycled) entry.session.setThinkingLevel(gated);
     ws.send(
       JSON.stringify({
         type: "cycle_model",

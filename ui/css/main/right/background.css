@@ -1,6 +1,12 @@
 /* Background command line (right sidebar) */
 .srow.bgcmd-row { cursor: pointer; user-select: none; }
 
+/* title column grows so status/caret stay pinned right — the .srow default
+   space-between would otherwise float the title to the row centre */
+.bgcmd-row .stext { flex: 1; min-width: 0; }
+
+.bgcmd-row .stext .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .srow.bgcmd-row.on { background: var(--panel-2); }
 
 .srow.bgcmd-row.on .bgcmd-caret svg { transform: rotate(0deg); }

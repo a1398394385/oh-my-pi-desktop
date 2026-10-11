@@ -23,6 +23,8 @@ export interface SessionInfo {
   repo?: string;
   cwd?: string;
   archived?: boolean;
+  /** Set when the host spawned this session for an automation (sidebar clock badge) */
+  automation?: { id: string; title: string };
 }
 
 // Inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
@@ -190,6 +192,13 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           {leading === "unread" || leading === "approval" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
+        {/* Automation-spawned session: the clock marks the row while no status indicator is
+            present; hover hands the slot to the pin button, same as the status dot above. */}
+        {s.automation && leading === "none" && !pinned && !pinnedList ? (
+          <span className="task-auto" title={`${t("sidebar.autoSession")}: ${s.automation.title}`}>
+            <Icon name="clock" size={16} />
+          </span>
+        ) : null}
         {/* Same as ZCode: on hover Pin takes over the same leading slot; always shown in the
             pinned list or when pinned with no state. Archived sessions can't be pinned. */}
         {!s.archived && (

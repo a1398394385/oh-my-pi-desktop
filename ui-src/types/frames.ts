@@ -97,6 +97,10 @@ export type SettingsPayload = SettingsSnapshot & {
   // mcp.json); the flag gates the Kimi option (KimiCU installed on this machine).
   computerProvider?: "default" | "kimi";
   kimiCuInstalled?: boolean;
+  // omp-desktop.json kimi.autoThinking (host/kimi-thinking.ts): whether Kimi
+  // models are offered the `auto` thinking level. Off by default — each level
+  // switch re-bills the whole prefix on Kimi; the providers-page switch.
+  kimiAutoThinking?: boolean;
 };
 
 /** Model catalog entry (host/models.ts:17-23 modelsPayload) */
@@ -241,6 +245,8 @@ export interface DiskSessionRow {
   archived: boolean;
   /** Pool fallback row (session not yet persisted to disk): id is the host pool UUID, not a real disk session id */
   pending?: boolean;
+  /** Set when the host spawned this session for an automation (sidebar clock badge) */
+  automation?: { id: string; title: string };
 }
 
 /** Project grouping (projects mapping of handleListSessions, host/host.ts:2628-2646) */
@@ -394,6 +400,7 @@ export interface QueuedMessage {
 /** Narrow event-stream event (host/translate.ts:10-19 UiEvent; kind-discriminated body of event/subagent_event frames) */
 export type UiEvent =
   | { kind: "turn_start" }
+  | { kind: "user_message"; text: string; automation?: { id: string; title: string } } // automation prompt echo (no local composer send to draw the bubble)
   | { kind: "text_delta"; text: string }
   | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
   | { kind: "thinking_delta"; text: string }
@@ -422,6 +429,8 @@ export interface SessionStatsPayload {
   tokens: Record<string, number>;
   cost: number;
   cacheHitRate: number;
+  /** Prompt-cache invalidation count for the session (host/session-lifecycle.ts buildSessionStats) */
+  cacheBreaks: number;
   advisorCost: number;
   activeMs: number;
   /** Host clock stamp sampled in the same call as activeMs (extrapolation baseline, see receivedAt). */
@@ -644,6 +653,16 @@ export interface TodosFrame {
   seq?: number;
 }
 
+/** Plan deliverable snapshot (host plan-approve.ts pushPlanOutput/pushRestoredPlanOutput):
+ * repopulates the todo card's output row after a frontend reload or execute-branch fork. */
+export interface PlanOutputFrame {
+  type: "plan_output";
+  sessionId: string;
+  plan: { title: string; path: string; content: string };
+  hi?: string; // stamped variant
+  seq?: number;
+}
+
 /** Plan mode state frame (host/host.ts:420-426 pushPlanMode) */
 export interface PlanModeFrame {
   type: "plan_mode";
@@ -673,6 +692,9 @@ export interface SessionCreatedFrame {
   title?: string | null;
   isSubagent?: boolean;
   parentPath?: string;
+  /** Scheduler-spawned session: register the slot but never activate/close the automations view */
+  automation?: { id: string; title: string };
+  background?: boolean;
 }
 
 /** Session list frame (host/host.ts:2645-2656 handleListSessions) */
@@ -1048,6 +1070,10 @@ export interface ApprovalRequestFrame {
   // Mirrors the base's ExtensionAskDialogQuestion; approval_response answers
   // with answer = JSON.stringify(ExtensionAskDialogSubmitResult).
   questions?: AskDialogQuestionWire[];
+  // The ask tool's `i` intent (captured by the host from tool_execution_start);
+  // not rendered by the card (dropped when the head became header-pill + question),
+  // kept for wire parity with the host frame
+  intent?: string;
   // Plan-approval payload: raw plan text + title + on-disk path (read before the
   // proposal turn aborts). Drives the approval card's plan body and the todo
   // card's "plan output" row; absent on every other approval variant.
@@ -1806,6 +1832,7 @@ export type HostFrame =
   | CommandPhaseFrame
   | GoalFrame
   | TodosFrame
+  | PlanOutputFrame
   | PlanModeFrame
   | ComputerModeFrame
   | SessionCreatedFrame

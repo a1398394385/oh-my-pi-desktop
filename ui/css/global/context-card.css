@@ -83,6 +83,17 @@
 
 .lx-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; padding: 2px 0 10px; }
 
+/* 账号优先级：序号徽标 + 上下移钮（多账号卡片头部，右对齐成一排） */
+.lx-head-acts { display: flex; align-items: center; gap: 6px; }
+
+.lx-rank { margin-right: 2px; }
+
+.lx-rank-first { color: var(--accent); border-color: var(--accent); }
+
+.lx-head-acts .icon-btn { width: 22px; height: 22px; flex: none; }
+
+.lx-head-acts .icon-btn:disabled { opacity: .35; cursor: default; }
+
 .lx-prov { color: var(--faint); font-size: 11.5px; }
 
 .lx-body { min-width: 268px; }

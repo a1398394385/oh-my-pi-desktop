@@ -17,7 +17,10 @@ export default defineConfig({
       "/ui-src": fileURLToPath(new URL("./ui-src", import.meta.url)),
     },
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react({ exclude: [/\/node_modules\//, /\/ui-src\/main\.tsx$/] }),
+    tailwindcss(),
+  ],
   build: {
     outDir: "dist", // relative to root -> ui/dist
     emptyOutDir: true,

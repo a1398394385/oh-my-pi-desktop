@@ -456,6 +456,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           <Icon name="messagePlus" size={19} />
           {t("sidebar.newTask")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
         </div>
+        <div className="nav-item" id="navAutomations" onClick={() => useAppStore.getState().openAutomations()}>
+          <Icon name="clock" size={19} />
+          {t("sidebar.automations")}
+        </div>
         <SidebarSearch />
       </div>
       <div className="flex items-center pt-[10px] px-[14px] pb-[8px] gap-[8px] flex-none">

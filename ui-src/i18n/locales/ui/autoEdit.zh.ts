@@ -1,0 +1,43 @@
+// autoEdit: copy for the main-column automation editor (AutomationEditView.tsx).
+// Reusable strings (form labels, weekdays, statuses, dialogs) keep living in
+// settingsPage.automations.* and common.* — only page-specific copy is here.
+const autoEdit = {
+  back: "返回列表",
+  titleCreate: "新建任务",
+  titleEdit: "编辑任务",
+  subtitleCreate: "到点自动新建会话并执行提示词，全程无人值守。",
+  subtitleEdit: "调整调度、提示词与结束条件，保存后立即生效。",
+  tabSettings: "设置",
+  tabHistory: "历史",
+  createBtn: "创建定时任务",
+  untitled: "未命名任务",
+  nextRunLabel: "下一次运行",
+  runCountLabel: "已运行",
+  lastRunLabel: "最近运行",
+  lastResultLabel: "最近结果",
+  neverRun: "暂无记录",
+  lastRunSucceeded: "成功",
+  lastRunFailed: "失败",
+  basicInfo: "基本信息",
+  basicInfoHint: "任务识别与归属",
+  scheduleSection: "运行节奏",
+  scheduleSectionHint: "触发频率与时间",
+  scheduleSummaryHint: "修改后会重新计算下一次运行时间",
+  contentSection: "任务内容",
+  contentSectionHint: "每次运行发送给 Agent 的指令",
+  boundarySection: "执行边界",
+  boundarySectionHint: "结束后停止调度",
+  statusLabel: "状态",
+  lifecycleActive: "进行中",
+  lifecyclePaused: "已暂停",
+  runsColTime: "时间",
+  runsColTrigger: "触发",
+  runsColStatus: "状态",
+  runsColDuration: "耗时",
+  runsColSession: "会话",
+  runsPrevPage: "上一页",
+  runsNextPage: "下一页",
+  runsErrorUnavailable: "错误详情不可用",
+};
+
+export default autoEdit;

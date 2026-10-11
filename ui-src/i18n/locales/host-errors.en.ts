@@ -150,6 +150,7 @@ export const hostErrorsEn = {
   account: {
     notFound: "Account not found or already restored",
     restoreUnsupported: "This profile has no local credential store; restore is unavailable — log in again",
+    reorderMismatch: "Account list changed; the priority order must match the current accounts exactly",
   },
   queue: {
     parkedNotFound: "Parked queued message not found: {{index}}",

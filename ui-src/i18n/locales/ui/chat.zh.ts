@@ -186,15 +186,16 @@ export const chatZh = {
   // ---- rail tool summary (shell.ts railToolText) ----
   fileSep: "、",
   // ---- session stats bar (SessionStatsBar.tsx) ----
-  statsCacheHit: "缓存利用率",
-  statsInput: "输入",
-  statsOutput: "输出",
-  statsCacheRead: "缓存读",
-  statsCacheWrite: "缓存写",
+  statsCacheHit: "缓存",
+  statsCacheBreaksTitle: "本次会话中缓存前缀失效的次数（失效后整段上下文按未缓存输入重新计费）",
+  statsInput: "入",
+  statsOutput: "出",
+  statsCacheRead: "读",
+  statsCacheWrite: "写",
   statsCost: "成本",
   statsDuration: "时长",
-  statsTokenSpeed: "Token 速度",
-  statsAvgTtft: "平均首字时间",
+  statsTokenSpeed: "速度",
+  statsAvgTtft: "TTFT",
   // ---- session-tree filter pills (sessionTreeUtil FILTERS) ----
   filterDefault: "默认",
   filterNoTools: "无工具",

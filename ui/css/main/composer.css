@@ -1,7 +1,6 @@
 /* The input dock follows the four-stage shrink so the composer stays
    width-aligned with the message column (see center.css for the stages). The
-   stats row below is deliberately NOT part of this constraint: it may run
-   wider than the composer (own rule further down). */
+   stats row below reuses the same constraint (own rule further down). */
 .dock {
   flex: none;
   width: 100%;
@@ -36,21 +35,67 @@
 /* Session stats row: a permanent line below the input dock (whole-session cache utilization/tokens/cost/active time); display-only with no click behavior, no hover highlight */
 .stats-bar {
   flex: none;
-  /* Wider ceiling than the composer: the metrics line may exceed the input
-     card's four-stage max-width (aligned with the header's 16px side padding)
-     and only wraps past the full main-column width */
+  /* Same four-stage max-width as the input dock (see .dock): the row is
+     width-aligned with the composer card */
   width: 100%;
-  max-width: calc(100% - 32px);
+  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
   min-width: 0;
   margin: 0 auto 10px;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 3px 14px;
+  gap: 3px 16px;
   padding: 0 6px;
   font-size: var(--ui-fs-sm);
   color: var(--faint);
   font-variant-numeric: tabular-nums;
+  /* Size container: the low-priority parts below are trimmed by the row's own
+     width, not the window's (the main column also shrinks with the side panels) */
+  container-type: inline-size;
+}
+
+/* One metric inside a group: label + value (+ optional trailing indicator) */
+.sb-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+/* One semantic group (cache / tokens / cost / performance): tighter spacing
+   inside a group than between groups, so merged parts still read as one row */
+.sb-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 9px;
+}
+
+/* Width-driven trimming, tuned to the measured part widths (11.44px font, e.g.
+   "缓存 97.3% ⟲3" 90px, "读 246.4K" 60px, "TTFT 1.23s" 65px, "时长 1小时1分钟"
+   88px): full row needs ~700px, and each stage below keeps the row on one line
+   with headroom for longer values instead of wrapping it. Performance first,
+   then the cache token split, then cost, then the duration. */
+@container (max-width: 740px) {
+  .sb-opt-ttft { display: none; }
+}
+
+@container (max-width: 660px) {
+  .sb-opt-cachetok { display: none; }
+}
+
+@container (max-width: 540px) {
+  .sb-opt-cost { display: none; }
+}
+
+@container (max-width: 450px) {
+  .sb-opt-duration { display: none; }
+}
+
+/* Cache-invalidation indicator after the cache-utilization percentage: counter-clockwise arrow + count, inline with the value (display-only, no hover highlight) */
+.sb-break {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 #composer {

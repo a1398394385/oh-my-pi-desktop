@@ -265,7 +265,7 @@ export function useLift(): [boolean, (commit: () => void, delay?: number) => voi
 }
 
 // ---------- Trailing +n/−n line-count changes (shared by edit rows / rows inside change groups, formerly appendCounts) ----------
-export function Counts({ item }: { item: ToolItem }) {
+export function Counts({ item }: { item: Pick<ToolItem, "added" | "removed"> }) {
   return (
     <>
       {(item.added ?? 0) > 0 && <> <span className="add">{`+${item.added}`}</span></>}

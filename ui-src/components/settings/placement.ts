@@ -358,6 +358,20 @@ export const HIDDEN_KEYS: Record<string, true> = {
   "display.collapseCompacted": true,
   "showHardwareCursor": true,
   "task.showResolvedModelBadge": true,
+  // TUI-only input-editor behavior (2026-10-11 dead-key sweep; consumers live in
+  // interactive-mode/input-controller/selector-controller, which the desktop never
+  // loads). Deliberately NOT here: composer.recallClearedDrafts (desktop implements
+  // draft recall itself, ui-src/keys.ts), spelling.* / emojiAutocomplete (kept per
+  // user; spelling.autocomplete actually gates the live ghost-completion engine),
+  // loop.* slated for desktop wiring, paste.largeMenuThreshold a future composer
+  // behavior, tui.renderSvg/tui.autoGraph drive the message-area diagram rendering,
+  // share.*/stream.* await a desktop story.
+  "tui.vimMode": true,
+  "tui.vimModeDisplay": true,
+  "input.bareExitOnEmptySession": true,
+  "input.bareSlashCommands": true,
+  "treeFilterMode": true,
+  "autocompleteMaxVisible": true,
 };
 
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests

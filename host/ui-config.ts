@@ -67,6 +67,8 @@ const PREFS_FIELDS: Record<string, (v: unknown) => unknown> = {
   ctxRingProbeCount: v => (typeof v === "boolean" ? v : undefined),
   railMusic: v => (typeof v === "boolean" ? v : undefined),
   railMusicDevice: v => (typeof v === "string" ? v : undefined),
+  notifyDesktop: v => (typeof v === "boolean" ? v : undefined),
+  notifySound: v => (typeof v === "boolean" ? v : undefined),
   terminalInheritProfile: v => (typeof v === "boolean" ? v : undefined),
   terminalFont: v => (typeof v === "string" ? v : undefined),
   terminalFontSize: v => (typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 20 ? v : undefined),

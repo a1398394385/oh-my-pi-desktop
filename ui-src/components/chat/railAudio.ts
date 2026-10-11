@@ -1,7 +1,8 @@
-// Windows-only bridge between the Rust shell's WASAPI spectrum capture and the
-// message rail's music-reactive ticks.
+// Bridge between the Rust shell's system-audio spectrum capture (WASAPI
+// loopback on Windows, ScreenCaptureKit on macOS) and the message rail's
+// music-reactive ticks.
 //
-// The Rust side (src-tauri/src/audio.rs) streams `rail-spectrum` frames (32
+// The Rust side (src-tauri/src/audio/) streams `rail-spectrum` frames (32
 // log-spaced bands, normalized 0..1) at ~30 fps while capture runs. This module
 // owns the lifecycle — restore the pref, start/stop the capture, and hand the
 // newest windowed spectrum to subscribers on rAF so tick repaints stay on the
@@ -101,8 +102,9 @@ export async function listDevices(): Promise<AudioDevice[]> {
 }
 
 /**
- * Start (or restart) loopback capture on `deviceId`, streaming spectrum frames as
- * `rail-spectrum` events. An empty `deviceId` means the console default endpoint.
+ * Start (or restart) capture on `deviceId`, streaming spectrum frames as
+ * `rail-spectrum` events. An empty `deviceId` means the system default output
+ * (the only source on macOS; the id is ignored there).
  *
  * The event listener is registered exactly once and never torn down between
  * device switches: `audio_start` drops the previous capture thread (Rust side),

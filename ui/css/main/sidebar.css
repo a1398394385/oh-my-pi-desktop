@@ -247,6 +247,14 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task-indicator.unread,
 .task-indicator.approval { opacity: 1; }
 .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
+/* automation badge: same absolute leading slot as the status indicator; hover hands it to the pin */
+.task-auto {
+  position: absolute; inset: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--dim); opacity: 1; transition: opacity .12s var(--swift);
+}
+.task:hover .task-auto { opacity: 0; }
+#tasklist.proj-dragging .task .task-auto { opacity: 1; }
 /* ZCode hover behavior: the pin takes over the same leading slot; the status dot/spinner doesn't squeeze the title further. */
 .task:hover .task-indicator { opacity: 0; }
 /* pin glyph: appears on hover; always shown when pinned and no status indicator is present. */
@@ -314,7 +322,8 @@ body:has(#sidebar.collapsed) #left-resizer {
 /* row hover highlights are off during drag reorder: pointer capture only redirects events, :hover still follows the physical cursor;
    rows flipping base/text color as the cursor sweeps by reads exactly like a selection highlight, and its high-frequency flicker on fast drags is the jumping */
 #tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: var(--dim); }
-#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: var(--dim); }
+#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: rgb(145,145,145); }
+[data-theme="light"] #tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: rgb(119,119,119); }
 #tasklist.proj-dragging .task:not(.on):hover { background: none; color: var(--dim); }
 #tasklist.proj-dragging .task:not(.on):hover .tt { color: var(--dim); }
 #tasklist.proj-dragging .task .task-indicator { opacity: 1; }
@@ -332,9 +341,11 @@ body:has(#sidebar.collapsed) #left-resizer {
   overflow: hidden; text-overflow: clip; white-space: nowrap;
   mask-image: linear-gradient(to right, var(--black) calc(100% - 24px), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - 24px), transparent 100%);
-  color: var(--dim); font-weight: 400;
+  color: rgb(145,145,145); font-weight: 400;
   line-height: 26px;
 }
+/* Light theme: user-picked mid gray (2026-10-11) */
+[data-theme="light"] .proj .pname { color: rgb(119,119,119); }
 .proj .fic svg {
   display: block;
 }

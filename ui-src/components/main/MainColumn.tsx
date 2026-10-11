@@ -4,6 +4,7 @@ import MainHeader from "./MainHeader";
 import Welcome from "./WelcomePage";
 import MessagePage from "./chat/MessagePage";
 import AgentHub from "./AgentHubPage";
+import AutomationsPage from "./automations/AutomationsPage";
 import MainSessionTree from "./tree/MainSessionTree";
 import Composer from "../Composer";
 import ApprovalCard from "../chat/ApprovalCard";
@@ -14,6 +15,7 @@ import ConnBanner from "./ConnBanner";
 
 export default function MainColumn() {
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
+  const automationsOpen = useAppStore((s) => s.automationsOpen);
   const hubOpen = useAppStore((s) => s.hubOpen);
   const mainViewMode = useAppStore((s) => s.mainViewMode);
   const activePath = useAppStore((s) => s.activePath);
@@ -23,8 +25,18 @@ export default function MainColumn() {
       <main id="main">
         <MainHeader onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
         <ConnBanner />
-        {isCreatingNew ? <Welcome /> : hubOpen ? <AgentHub /> : session && mainViewMode === "tree" ? <MainSessionTree /> : <MessagePage />}
-        {!isCreatingNew && !hubOpen && (
+        {automationsOpen && !isCreatingNew ? (
+          <AutomationsPage />
+        ) : isCreatingNew ? (
+          <Welcome />
+        ) : hubOpen ? (
+          <AgentHub />
+        ) : session && mainViewMode === "tree" ? (
+          <MainSessionTree />
+        ) : (
+          <MessagePage />
+        )}
+        {!isCreatingNew && !automationsOpen && !hubOpen && (
           <>
             {/* Goal bar -> queue card -> input dock: three stacked cards from
                 top down (the goal bar shifts up as the queue grows). Each card

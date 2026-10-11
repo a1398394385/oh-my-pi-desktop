@@ -9,6 +9,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { H } from "../host/state.ts";
+import { SessionManager } from "../host/bootstrap.ts";
+import { handleListSessions } from "../host/rpc/session.ts";
 import {
   AUTOMATION_CREATE_LIMIT,
   RUNS_PER_AUTOMATION_KEEP,
@@ -380,6 +382,64 @@ async function main(): Promise<void> {
     await tickAutomations({ now: T0 + 60_000, spawn: goodSpawn() });
     await flushAsync();
     ok("recovery: lastError cleared on success", readOne(a.id)?.lastError === undefined);
+  }
+
+  // ================= 5. session_list badge backfill from the runs ledger =================
+  // handleListSessions must keep the automation badge after pool eviction/restart:
+  // run rows persist sessionPath at dispatch time, so the ledger backfills what
+  // the live pool no longer knows.
+  {
+    H.desktopProjectsPath = path.join(agentDir, "omp-desktop.json");
+    const badge = makeAutomation({ id: "automation-badge", title: "badge run" });
+    const sessionFile = path.join(agentDir, "badge-session.jsonl");
+    writeFileSync(
+      sessionFile,
+      `{"type":"session","version":3}\n{"type":"message","role":"user","timestamp":"2026-10-11T08:00:00.000Z","content":[{"type":"text","text":"hi"}]}\n`,
+    );
+    writeAutomations({
+      automations: [badge],
+      runs: {
+        [badge.id]: [
+          {
+            runId: `${badge.id}:manual:x`,
+            automationId: badge.id,
+            trigger: "manual",
+            status: "succeeded",
+            sessionPath: sessionFile,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          // No sessionPath (pre-attach failure shape): must not mark anything
+          { runId: `${badge.id}:manual:y`, automationId: badge.id, trigger: "manual", status: "succeeded", createdAt: 2, updatedAt: 2 },
+        ],
+      },
+    });
+    // Pool is empty here (sessions Map untouched): only the ledger can badge the row.
+    const info = {
+      id: "disk-1",
+      path: sessionFile,
+      title: "badge session",
+      firstMessage: "hi",
+      modified: new Date(1),
+      messageCount: 1,
+      cwd: agentDir,
+      size: 160,
+    };
+    const realListAll = SessionManager.listAll;
+    // Test-only stub of the disk scan: SessionManager is a final static surface, replace the method wholesale and restore after.
+    const listAllStub = SessionManager as unknown as { listAll: () => Promise<unknown[]> };
+    listAllStub.listAll = async () => [info];
+    try {
+      let sent: { projects?: { sessions: { path: string; automation?: { id: string; title: string } }[] }[] } | null = null;
+      const ws = { send: (d: string) => (sent = JSON.parse(d)) };
+      await handleListSessions(ws);
+      const rows = sent?.projects?.flatMap((p) => p.sessions) ?? [];
+      const hit = rows.find((r) => r.path === sessionFile);
+      ok("list: ledger backfills automation badge", hit !== undefined && hit.automation?.id === badge.id && hit.automation?.title === badge.title, hit);
+      eq("list: run without sessionPath marks nothing", rows.filter((r) => r !== hit && r.automation).length, 0);
+    } finally {
+      listAllStub.listAll = realListAll;
+    }
   }
 }
 

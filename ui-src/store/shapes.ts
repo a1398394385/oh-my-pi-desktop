@@ -40,10 +40,14 @@ export interface UiPrefs {
   showThinking: boolean;
   expandToolOutput: boolean;
   ctxRingProbeCount?: boolean;
-  /** Message-rail music-reactive ticks (Windows only; drives railAudio.ts capture). */
+  /** Message-rail music-reactive ticks (drives railAudio.ts capture). */
   railMusic?: boolean;
-  /** WASAPI render endpoint id; empty string = console default endpoint. */
+  /** Capture device id (WASAPI endpoint on Windows; ignored on macOS); empty string = system default. */
   railMusicDevice?: string;
+  /** Desktop alerts for background session events: system notification (undefined = on). */
+  notifyDesktop?: boolean;
+  /** Desktop alerts: platform alert sound (undefined = on). */
+  notifySound?: boolean;
   lang: "zh-CN" | "en";
   terminalInheritProfile?: boolean;
   terminalFont?: string;

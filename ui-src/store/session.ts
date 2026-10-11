@@ -329,20 +329,48 @@ export function requeueSteerMsg(s: OpenSession, item: SessionItem): void {
   });
 }
 
-// ---------- System notifications (Tauri shell send_desktop_notification; duplicated events → 10s dedupe) ----------
+// ---------- Desktop alerts (system notification + alert sound; both toggled in
+// settings ▸ Interaction, duplicated events → 10s dedupe) ----------
 const notifyLastAt = new Map<string, number>();
+// Event kind → the base settings id gating it (the Notifications group rendered on the
+// Interaction page from the base schema). Defaults mirror the base registry:
+// completion/ask notify on, error notify off.
+const NOTIFY_KIND_SETTING: Record<string, string> = {
+  turn_end: "completion.notify",
+  error: "error.notify",
+  approval: "ask.notify",
+};
 export function notifyDesktop(kind: string, s: OpenSession, title: string, body: string): void {
+  const st = useAppStore.getState();
+  const settingId = NOTIFY_KIND_SETTING[kind];
+  if (settingId) {
+    const v = st.hostSettings?.values?.[settingId];
+    if (settingId === "error.notify" ? v !== "on" : v === "off") return;
+  }
   const now = Date.now();
   const key = `${s.sessionId}:${kind}`;
   if (now - (notifyLastAt.get(key) ?? 0) < 10_000) return;
   notifyLastAt.set(key, now);
   if (!invoke) return; // non-Tauri environment (browser direct-connect debugging): feature absent, skip silently
-  const st = useAppStore.getState();
   const path = [...st.openSessions.entries()].find(([, v]) => v === s)?.[0];
-  if (path === st.activePath && document.hasFocus()) return;
-  invoke("send_desktop_notification", { title, body, sessionId: s.sessionId }).catch((err: unknown) =>
-    console.warn("send_desktop_notification:", err),
-  );
+  if (path === st.activePath && document.hasFocus()) return; // the user is already looking at this session
+  if (st.uiPrefs.notifySound !== false) {
+    invoke("play_alert_sound").catch((err: unknown) => console.warn("play_alert_sound:", err));
+  }
+  if (st.uiPrefs.notifyDesktop !== false) {
+    // macOS rejects the request with a reason when the app lacks notification
+    // authorization (unsigned build, permission denied): keep it in the console
+    // instead of dropping it silently.
+    invoke("send_desktop_notification", { title, body, sessionId: s.sessionId }).catch((err: unknown) =>
+      console.warn("send_desktop_notification:", err),
+    );
+  }
+}
+
+/** Alert title for a session: its on-disk list title, else the generic label. */
+function alertTitle(s: OpenSession): string {
+  const st = useAppStore.getState();
+  return st.diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || t("notify.bgSessionTitle");
 }
 
 // ---------- Streaming delta coalesced rendering: many frames within a 100ms window swap the reference once (prevents high-frequency re-renders from saturating the main thread) ----------
@@ -441,6 +469,14 @@ export function applyEvent(msg: EventFrame): void {
       },
       false,
     );
+  } else if (msg.kind === "user_message") {
+    // Automation prompt echo (host-side send: no local composer bubble exists). Mirror the
+    // local send path: bubble + running state so the clock/stop button don't wait for turn_start.
+    updateSession(msg.sessionId, (s) => {
+      s.items.push({ role: "user", text: msg.text });
+      s.streaming = true;
+      s.turnStartAt = Date.now();
+    });
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
       s.assistantDraft += msg.text;
@@ -578,17 +614,15 @@ export function applyEvent(msg: EventFrame): void {
       useAppStore.setState((st3) => ({ unseenFinished: new Set(st3.unseenFinished).add(p) }));
       useAppStore.getState().saveUnseen();
     }
-    // Background session finished → system notification: the title comes from the session title in
-    // the on-disk list (notify.bgSessionTitle when not listed), the body is the last assistant text
-    // truncated to 80 chars as the summary (notify.finished when absent)
-    const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
-    const summary = (lastA?.text || "").trim();
-    notifyDesktop(
-      "turn_end",
-      s,
-      st2.diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || t("notify.bgSessionTitle"),
-      summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"),
-    );
+    // Background session finished → desktop alert: the title comes from the session title in the
+    // on-disk list (notify.bgSessionTitle when not listed), the body is the last assistant text
+    // truncated to 80 chars as the summary (notify.finished when absent). A run that ended on an
+    // error row has already alerted in the error branch — don't also announce "finished".
+    if (s.items[s.items.length - 1]?.role !== "error") {
+      const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
+      const summary = (lastA?.text || "").trim();
+      notifyDesktop("turn_end", s, alertTitle(s), summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"));
+    }
     // One extra eviction pass after this session leaves streaming state: when a new session is
     // opened while every session is running, the eviction loop deletes nothing because "streaming
     // sessions are protected"; if eviction only triggered at activation, those sessions would keep
@@ -622,6 +656,9 @@ export function applyEvent(msg: EventFrame): void {
       s.assistantDraft = "";
       s.items.push({ role: "error", text: msg.text });
     });
+    // A failed run is exactly what a user working elsewhere must hear about
+    const failed = findBySessionId(msg.sessionId);
+    if (failed) notifyDesktop("error", failed, alertTitle(failed), msg.text.length > 80 ? `${msg.text.slice(0, 80)}…` : msg.text);
   }
 }
 

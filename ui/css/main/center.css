@@ -61,6 +61,7 @@ body:has(#sidebar.collapsed) .chat-head {
 .goal-card,
 .turn-flow,
 .sticky-user-inner,
+.al-page .al-col,
 #stream > *:not(.scroll-bottom):not(.turn-section) {
   width: 100%;
   /* Four-stage shrink (margin = distance from the content column to the main card edge; --col-max/--col-max-35 are written by JS

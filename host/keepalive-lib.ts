@@ -63,9 +63,11 @@ export function resolveProbeDialect(payload: unknown, api: string | undefined): 
   // Anthropic-only request fields.
   if ("output_config" in body || "context_management" in body) return "anthropic-messages";
   // Anthropic carries the system turn in a top-level `system`; OpenAI puts it
-  // inside `messages` and clamps output with `max_completion_tokens`.
+  // inside `messages`. `max_tokens` is NOT a marker: legacy OpenAI-compatible
+  // endpoints (zhipu coding plan, DeepSeek) also send it, and misreading them
+  // as Anthropic probes `<base>/v1/messages` on a `/chat/completions` base,
+  // which 404s every probe (probes stay 0, only errors climb).
   if (Array.isArray(body.system)) return "anthropic-messages";
-  if ("max_tokens" in body && !("max_completion_tokens" in body)) return "anthropic-messages";
   return "openai-completions";
 }
 

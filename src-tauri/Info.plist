@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- ScreenCaptureKit capture for the message-rail music reactivity effect
+       (src-tauri/src/audio/mac.rs). Without this key the TCC prompt is
+       refused outright in packaged builds. -->
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>omp 需要屏幕录制权限来读取系统正在播放的音频,驱动消息区音乐律动。不录屏、不存储音频。</string>
+</dict>
+</plist>

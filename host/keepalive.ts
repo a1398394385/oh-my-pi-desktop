@@ -235,6 +235,11 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     let growthHeld = false;
     const stats: Stats = { probes: 0, hits: 0, misses: 0, errors: 0, savedUsd: 0, spendUsd: 0 };
 
+    // Endpoint protocol shape learned at runtime: the capture event carries no
+    // real URL, so the probe guesses the shape from the payload; a 404 flips
+    // the guess once and remembers it, costing one request instead of silence.
+    let dialectOverride: ProbeDialect | null = null;
+
     // Snapshot sink for the host-side entry (get_keepalive_status RPC): every
     // state-change point funnels through here; the host drops reports that
     // arrive before its pool entry exists.
@@ -331,6 +336,16 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         });
         return;
       }
+      // Re-read the section each tick: a model removed from targets on the settings
+      // page must stop a running session's loop without waiting for session_start
+      // (config is otherwise a creation-time snapshot).
+      config = readKeepaliveProbeConfig();
+      if (!isTargetModel(ctx)) {
+        debug("target removed while running — disarming keepalive");
+        capture = null;
+        clearTimer();
+        return;
+      }
       // Note: an already-read session (isWanted false) is NOT stopped here.
       // It gets one farewell probe at the already-scheduled deadline — the
       // cache the user just consumed stays warm for one more cadence in case
@@ -416,61 +431,84 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       return headers.authorization ? headers : null;
     }
 
+    /** One probe attempt sequence at a fixed protocol shape; returns the last HTTP status (0 = never reached HTTP). */
+    async function probeVia(dialect: ProbeDialect): Promise<number> {
+      const endpoint = probeEndpoint(dialect);
+      if (!endpoint) {
+        // Silent-failure path: without this line an unresolvable endpoint
+        // re-arms forever with no probe, no counter and no log.
+        logWarn("keepalive probe endpoint unresolvable", {
+          model: capture ? catalogId(capture.model) : null,
+          baseUrl: capture?.baseUrl,
+          api: capture?.api,
+        });
+        return 0;
+      }
+      for (let attempt = 1 as 1 | 2; attempt <= 2; attempt++) {
+        const built = buildProbeBody(capture!.payload, config.maxOutputTokens, dialect, attempt);
+        if (!built.ok) {
+          recordFailure(`captured payload not replayable: ${built.reason}`);
+          return 0;
+        }
+        let response: Response;
+        const probeRequestHeaders = await probeHeaders();
+        if (!probeRequestHeaders) {
+          recordFailure("no Kimi credentials available for the probe");
+          return 0;
+        }
+        try {
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers: probeRequestHeaders,
+            body: JSON.stringify(built.body),
+            signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+          });
+        } catch (error) {
+          recordFailure(`network error: ${error instanceof Error ? error.message : String(error)}`);
+          return 0;
+        }
+        const text = await response.text();
+        if (response.ok) {
+          recordProbeResult(text);
+          return response.status;
+        }
+        debug(`probe attempt ${attempt} -> HTTP ${response.status}: ${text.slice(0, 200)}`);
+        // One retry with a further-reduced terminal-parameter set when the
+        // endpoint rejects the probe's extras; the conversation prefix is
+        // never modified.
+        const retryable = response.status === 400 && attempt === 1;
+        if (!retryable) {
+          recordFailure(`HTTP ${response.status}`);
+          return response.status;
+        }
+      }
+      return 400;
+    }
+
     async function runProbe(): Promise<boolean> {
       if (inflight || !capture) return false;
       inflight = true;
       try {
-        const dialect = resolveProbeDialect(capture.payload, capture.api);
-        const endpoint = probeEndpoint(dialect);
-        if (!endpoint) {
-          // Silent-failure path: without this line an unresolvable endpoint
-          // re-arms forever with no probe, no counter and no log.
-          logWarn("keepalive probe endpoint unresolvable", {
-            model: catalogId(capture.model),
-            baseUrl: capture.baseUrl,
-            api: capture.api,
-          });
-          return false;
-        }
-        for (let attempt = 1 as 1 | 2; attempt <= 2; attempt++) {
-          const built = buildProbeBody(capture.payload, config.maxOutputTokens, dialect, attempt);
-          if (!built.ok) {
-            recordFailure(`captured payload not replayable: ${built.reason}`);
-            return false;
-          }
-          let response: Response;
-          const probeRequestHeaders = await probeHeaders();
-          if (!probeRequestHeaders) {
-            recordFailure("no Kimi credentials available for the probe");
-            return false;
-          }
-          try {
-            response = await fetch(endpoint, {
-              method: "POST",
-              headers: probeRequestHeaders,
-              body: JSON.stringify(built.body),
-              signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        const primary = dialectOverride ?? resolveProbeDialect(capture.payload, capture.api);
+        let status = await probeVia(primary);
+        // A 404 means the guessed protocol shape does not exist on this vendor
+        // (e.g. an OpenAI-shaped base got a /v1/messages probe). Flip the shape
+        // once, remember it for the session, and retry — a wrong guess then
+        // costs one request instead of silently zeroing every probe.
+        if (status === 404 && dialectOverride === null) {
+          const flipped = primary === "anthropic-messages" ? "openai-completions" : "anthropic-messages";
+          if (probeEndpoint(flipped)) {
+            logWarn("keepalive probe endpoint 404 — retrying with the other protocol shape", {
+              model: catalogId(capture.model),
+              baseUrl: capture.baseUrl,
+              tried: primary,
+              flipped,
             });
-          } catch (error) {
-            recordFailure(`network error: ${error instanceof Error ? error.message : String(error)}`);
-            return false;
-          }
-          const text = await response.text();
-          if (response.ok) {
-            recordProbeResult(text);
-            return true;
-          }
-          debug(`probe attempt ${attempt} -> HTTP ${response.status}: ${text.slice(0, 200)}`);
-          // One retry with a further-reduced terminal-parameter set when the
-          // endpoint rejects the probe's extras; the conversation prefix is
-          // never modified.
-          const retryable = response.status === 400 && attempt === 1;
-          if (!retryable) {
-            recordFailure(`HTTP ${response.status}`);
-            return false;
+            dialectOverride = flipped;
+            status = await probeVia(flipped);
           }
         }
-        return false;
+        return status >= 200 && status < 300;
       } finally {
         inflight = false;
       }
@@ -667,7 +705,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       debug("probe failed:", message);
       logWarn("keepalive probe failed", {
         model: capture ? catalogId(capture.model) : null,
-        endpoint: capture ? probeEndpoint(resolveProbeDialect(capture.payload, capture.api)) : null,
+        endpoint: capture ? probeEndpoint(dialectOverride ?? resolveProbeDialect(capture.payload, capture.api)) : null,
         error: message,
         errorStreak,
       });
@@ -711,6 +749,9 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       // substitute: omp issues requests for other models (tiers, subagents, small
       // utility models) inside a session whose current model is the target, and a
       // session-model check would capture those foreign payloads as Kimi's.
+      // Targets are re-read live: a model removed on the settings page mid-run
+      // must not re-capture (same freshness rule as onTick).
+      config = readKeepaliveProbeConfig();
       if (!isTargetModel(requestCtx)) return;
       const model = requestCtx.model;
       const payload: unknown = event.payload;
@@ -773,6 +814,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       config = readKeepaliveProbeConfig();
       // Captures are bound to the previous session's credentials; require a new capture.
       capture = null;
+      dialectOverride = null;
       suspendedProbeAt = null;
       targetRequestThisTurn = false;
       lastSettledAt = Date.now();

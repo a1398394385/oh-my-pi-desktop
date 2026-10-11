@@ -93,6 +93,34 @@ export const sessionHandlers = {
     useAppStore.getState().toast(t("sidebar.unloadedToast"));
   },
   session_created(msg) {
+    // Scheduler-spawned (automation) session: register the slot so its live event frames
+    // render without a reload, but stay in the background — no focus steal, the automations
+    // view stays open, and no welcome-page intents are consumed.
+    if (msg.automation) {
+      useAppStore.setState((s) => ({
+        openSessions: new Map(s.openSessions).set(msg.path, {
+          sessionId: msg.sessionId,
+          cwd: msg.cwd,
+          items: [],
+          pendingApprovals: [],
+          assistantDraft: "",
+          streaming: false,
+          turnStartAt: null,
+          subagents: new Map(),
+          model: msg.model ?? null,
+          thinking: msg.thinking ?? "auto",
+          isGit: !!msg.isGit,
+          todos: [],
+          goal: null,
+          planMode: false,
+          computerMode: false,
+          title: msg.title ?? null,
+          isSubagent: false,
+          automation: msg.automation,
+        } as OpenSession),
+      }));
+      return;
+    }
     useAppStore.setState((s) => ({
       openSessions: new Map(s.openSessions).set(msg.path, {
         sessionId: msg.sessionId,
@@ -115,6 +143,7 @@ export const sessionHandlers = {
         parentPath: msg.parentPath,
       } as OpenSession),
       isCreatingNew: false,
+      automationsOpen: false, // any session taking over the main column closes the tasks view
       newSessionPlanMode: false, // intent consumed by the created session
       newSessionComputerMode: false, // intent consumed by the created session
     }));

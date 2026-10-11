@@ -72,6 +72,8 @@ interface ApprovalItem {
   // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
   // form rendered as radio/checkbox rows with one submit for all answers
   questions?: AskQuestion[];
+  // The ask tool's `i` intent (host-captured), rendered above the questions
+  intent?: string;
   // Frontend-local drafts of the per-question "Other" custom answers
   // (written in place like prefill to survive full redraws)
   otherDrafts?: string[];
@@ -138,6 +140,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       picksRef.current = next;
       return next;
     });
+    // Single-choice pick answers the question: auto-advance to the next page
+    if (!multi && qi < askQs.length - 1) goTo(qi + 1);
   };
   // "Other (type your own)" row per question (base-parity with the TUI dialog):
   // single = exclusive with the options (toggling it clears the pick), multi =
@@ -146,6 +150,9 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   const othersRef = useRef(others);
   const otherInps = useRef<(HTMLInputElement | null)[]>([]);
   const pendingFocusRef = useRef(-1);
+  // Bumped on "Other" draft typing: re-renders so the answered-gates (qDoneAt)
+  // see the live draft written by the uncontrolled input
+  const [, setDraftTick] = useState(0);
   const toggleOther = (qi: number) => {
     if (answered) return;
     const next = othersRef.current.slice();
@@ -195,6 +202,27 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     if (askDoneRef.current || item.answer !== null) return;
     askDoneRef.current = true;
     writeAnswer("cancel");
+  };
+  // ---- Pager (multi-question ask): one question per page ----
+  // Single-choice auto-advances on pick; multi advances via Next/Enter. Submit
+  // lives only on the last page and requires every question answered.
+  // picksRef/othersRef are updated synchronously inside togglePick/toggleOther,
+  // so reading them during render yields the same values as the state.
+  const [askPage, setAskPage] = useState(0);
+  const askPageRef = useRef(0);
+  const goTo = (p: number) => {
+    askPageRef.current = p;
+    setAskPage(p);
+  };
+  // A question counts as answered with a picked option or a non-empty "Other" draft
+  const qDoneAt = (qi: number) =>
+    (picksRef.current[qi]?.length ?? 0) > 0 ||
+    (othersRef.current[qi] === true && (item.otherDrafts?.[qi] ?? "").trim().length > 0);
+  const advanceOrSubmit = () => {
+    const p = askPageRef.current;
+    if (!qDoneAt(p)) return;
+    if (p < askQs.length - 1) goTo(p + 1);
+    else if (askQs.every((_, i) => qDoneAt(i))) submitAll();
   };
   // Write the answer back to the pending approval entry (freeze) and reply to the host
   const writeAnswer = (answer: string) => {
@@ -325,6 +353,12 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     (row?.querySelector("input") ?? row)?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Pager focus: after flipping to a page, arm the keyboard on its first control
+  useEffect(() => {
+    if (answered) return;
+    askFormRef.current?.querySelector<HTMLInputElement>("input[data-ask-row]")?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askPage]);
   // ---- Global key capture: the pending card substitutes the composer ----
   // The dock hides the composer while an approval is pending (App.tsx), so the
   // card is the page's input surface: up/down step its rows and Enter answers
@@ -343,7 +377,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       if (e.isComposing || e.keyCode === 229) return; // IME composition owns every key
       if (collapsedRef.current) return; // collapsed: the card yields the keyboard to the page
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== "Enter") return;
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== "Enter" && !/^[1-9]$/.test(e.key)) return;
       const root = cardRef.current;
       if (!root || root.getClientRects().length === 0) return; // hidden = not the active surface
       if (useAppStore.getState().settingsOpen || document.querySelector(".lp-mask,[data-modal]")) return;
@@ -356,11 +390,31 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         if (!main || !main.contains(target)) return;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as HTMLElement).isContentEditable) return;
       }
+      // Digit keys quick-pick the current page's single-choice rows (options
+      // 1..n, then the "Other" row at n+1).
+      if (/^[1-9]$/.test(e.key)) {
+        // Typing surfaces keep their digits. The ask rows' radios/checkboxes are
+        // readOnly inputs hosting focus (the mount-focus row), so they pass.
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as HTMLElement).isContentEditable) {
+          const el = target as HTMLInputElement;
+          if (!(el.tagName === "INPUT" && el.readOnly)) return;
+        }
+        const q = askQs[askPageRef.current];
+        if (!q || q.multi) return;
+        const count = q.options?.length ?? 0;
+        const k = Number(e.key);
+        if (k > count + 1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (k === count + 1) toggleOther(askPageRef.current);
+        else togglePick(askPageRef.current, k - 1, false);
+        return;
+      }
       if (e.key === "Enter") {
         if (target.closest("button")) return; // native activation: Cancel / slider segments / option rows
         e.preventDefault();
         e.stopPropagation();
-        if (askQs.length > 0) submitAll();
+        if (askQs.length > 0) advanceOrSubmit();
         else {
           const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));
           const i = rows.findIndex((r) => r.contains(document.activeElement ?? target));
@@ -376,11 +430,12 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         if (rows.length === 0) return;
         let idx = rows.findIndex((r) => r === document.activeElement);
         if (idx < 0) {
-          // No row focused yet: seed from the first question's current pick
-          // (the recommended row by default) so the first press moves one step
-          const first = root.querySelector<HTMLElement>(".ask-q");
-          const q0Opts = first ? first.querySelectorAll("input[data-oi]").length : 0;
-          idx = othersRef.current[0] ? q0Opts : (picksRef.current[0]?.[0] ?? -1);
+          // No row focused yet: seed from the current page's own pick (the
+          // recommended row by default) so the first press moves one step
+          const page = root.querySelector<HTMLElement>(".ask-q");
+          const qOpts = page ? page.querySelectorAll("input[data-oi]").length : 0;
+          const cur = askPageRef.current;
+          idx = othersRef.current[cur] ? qOpts : (picksRef.current[cur]?.[0] ?? -1);
           if (d < 0) idx = rows.length; // wraps onto the last row below
         }
         const row = rows[(idx + d + rows.length) % rows.length];
@@ -446,7 +501,41 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   return (
     <div className="approval-card" ref={(el) => { cardRef.current = el; }}>
       <div className="approval-head">
-        {t("chat.awaitingConfirm")}
+        {/* Ask variant: the current page's header pill + bold question replace the
+            generic "awaiting confirm" label (the per-page title row is gone) */}
+        {askQs.length > 0 ? (
+          <span className="ask-head-main">
+            {askQs[askPage]?.header ? <span className="ask-head-pill">{askQs[askPage].header}</span> : null}
+            <span className="ask-head-q">{askQs[askPage]?.question}</span>
+          </span>
+        ) : (
+          t("chat.awaitingConfirm")
+        )}
+        {/* Ask pager (multi-question form): page number + prev/next icon buttons,
+            left of the collapse button (Next gates on the answered set) */}
+        {askQs.length > 1 && !answered && (
+          <span className="ask-pager">
+            <span className="ask-page">{askPage + 1} / {askQs.length}</span>
+            <button
+              type="button"
+              className="approval-collapse-btn ask-page-btn"
+              title={t("compExt.askPrev")}
+              disabled={askPage === 0}
+              onClick={() => goTo(askPage - 1)}
+            >
+              <Icon name="chevronLeft" size={12} />
+            </button>
+            <button
+              type="button"
+              className="approval-collapse-btn ask-page-btn"
+              title={t("compExt.askNext")}
+              disabled={askPage >= askQs.length - 1 || !qDoneAt(askPage)}
+              onClick={advanceOrSubmit}
+            >
+              <Icon name="chevronRight" size={12} />
+            </button>
+          </span>
+        )}
         {!answered && (
           <button
             type="button"
@@ -458,7 +547,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           </button>
         )}
       </div>
-      <div className="approval-title">{item.title}</div>
+      {/* Ask variant carries its question in the head; title row is the other variants' */}
+      {askQs.length === 0 && <div className="approval-title">{item.title}</div>}
       {/* Plan-proposal body: the raw plan text between the title and the options.
           Content was captured by the host before the proposal turn aborted, so it
           is complete and independent of the local:// file handle. */}
@@ -493,17 +583,27 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       )}
       {askQs.length > 0 ? (
         <div className="ask-form" role="form" ref={askFormRef}>
-          {askQs.map((q, qi) => (
+          {(() => {
+            const qi = askPage;
+            const q = askQs[qi];
+            if (!q) return null;
+            return (
             <div className="ask-q" key={q.id ?? qi}>
-              <div className="ask-q-t">
-                {qi + 1}. {q.header ? <b>{q.header}</b> : null}
-                {q.question}
-              </div>
               <div className="approval-list" role={q.multi ? "group" : "radiogroup"} aria-label={q.question}>
                 {(q.options ?? []).map((o, oi) => {
                   const on = (picks[qi] ?? []).includes(oi);
                   return (
-                    <label key={oi} className={"approval-opt ask-opt" + (on ? " selected" : "") + (answered ? " dim" : "")}>
+                    <div
+                      key={oi}
+                      className={"approval-opt ask-opt" + (on ? " selected" : "") + (answered ? " dim" : "")}
+                      // Selection rides the row's click: every activation (row text, the
+                      // checkbox itself, Space on the focused input, programmatic click)
+                      // funnels into exactly one click event here. A <label> wrapper would
+                      // double-fire — native label→input forwarding dispatches a second
+                      // click that bubbles back here — and onChange alone misses real
+                      // mouse clicks on the hidden radio in WebKit.
+                      onClick={() => togglePick(qi, oi, q.multi)}
+                    >
                       <input
                         type={q.multi ? "checkbox" : "radio"}
                         name={`${item.requestId}:${qi}`}
@@ -512,19 +612,23 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                         data-oi={oi}
                         checked={on}
                         disabled={answered}
-                        onChange={() => togglePick(qi, oi, q.multi)}
+                        readOnly
+                        aria-label={o.label ?? undefined}
                       />
+                      {/* Single-choice rows carry a number: the digit keys pick it */}
+                      {!q.multi && <span className="approval-num">{oi + 1}.</span>}
                       <span className="approval-label">
                         {o.label}
                         {oi === q.recommended ? " ★" : ""}
                         {o.description ? <span className="ask-desc">{o.description}</span> : null}
                       </span>
-                    </label>
+                    </div>
                   );
                 })}
                 {/* "Other (type your own)": base parity with the TUI dialog's custom-answer row */}
-                <label
+                <div
                   className={"approval-opt ask-opt ask-other-opt" + (others[qi] ? " selected" : "") + (answered ? " dim" : "")}
+                  onClick={() => toggleOther(qi)}
                 >
                   <input
                     type={q.multi ? "checkbox" : "radio"}
@@ -533,10 +637,12 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                     data-qi={qi}
                     checked={others[qi] ?? false}
                     disabled={answered}
-                    onChange={() => toggleOther(qi)}
+                    readOnly
+                    aria-label={t("compExt.askOther")}
                   />
+                  {!q.multi && <span className="approval-num">{(q.options?.length ?? 0) + 1}.</span>}
                   <span className="approval-label">{t("compExt.askOther")}</span>
-                </label>
+                </div>
                 {others[qi] && (
                   <div className="ask-other">
                     {/* Uncontrolled input: typing only writes back the draft on
@@ -558,12 +664,16 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                       onChange={(e) => {
                         if (!item.otherDrafts) item.otherDrafts = [];
                         item.otherDrafts[qi] = e.target.value;
+                        // The draft stays uncontrolled (survives full redraws), but the
+                        // pager/submit answered-gates read it at render time — bump once so
+                        // they track live typing instead of latching a stale disabled state
+                        setDraftTick((v) => v + 1);
                       }}
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                           e.preventDefault();
-                          submitAll();
+                          advanceOrSubmit();
                         }
                       }}
                     />
@@ -571,7 +681,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })()}
         </div>
       ) : (
         <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
@@ -648,9 +759,16 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
               <button type="button" className="approval-cancel" onClick={cancelAsk}>
                 {t("chat.approvalCancel")}
               </button>
-              <button type="button" className="approval-confirm" onClick={submitAll}>
-                {t("compExt.askSubmitAll")}
-              </button>
+              {askPage === askQs.length - 1 && (
+                <button
+                  type="button"
+                  className="approval-confirm"
+                  disabled={!askQs.every((_, i) => qDoneAt(i))}
+                  onClick={submitAll}
+                >
+                  {t("compExt.askSubmitAll")}
+                </button>
+              )}
             </span>
           </div>
         ) : (

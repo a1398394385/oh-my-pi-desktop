@@ -9,8 +9,9 @@
 //   3. the keep-context row ships RAW token numbers, never a rendered label
 //   4. "refine" leaves plan mode active (the model keeps planning)
 //   5. the flow does not hang: approval settles and the turn is not wedged
-//      (the deadlock the out-of-band dispatch exists to prevent)
-//   6. approval_response accepts a sliderIndex without breaking the settle
+//      6. approval_response accepts a sliderIndex without breaking the settle
+//      7. "execute" forks a fresh session that already carries the plan_output
+//         snapshot (the todo card's output row data)
 //
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-plan-approve.ts [host ws url]
 import { spawn } from "node:child_process";
@@ -207,6 +208,35 @@ const afterApprove = frames.length;
 ws.send(JSON.stringify({ type: "set_plan_mode", sessionId: created.sessionId, enabled: true }));
 const reentered = await waitFor((f, _i) => f.type === "plan_mode" && f.enabled === true && _i >= afterApprove, 5_000);
 assert(reentered !== null, "批准后仍可再次进入计划模式（状态机可复用）");
+
+// ---- Assertion 7: "execute" forks a fresh session carrying the plan output ----
+const beforeExec = frames.length;
+ws.send(
+  JSON.stringify({ type: "smoke_plan_propose", sessionId: created.sessionId, title: "smoke", planFilePath: planFileUrl }),
+);
+const third = (await waitFor((f, i) => f.type === "approval_request" && i >= beforeExec, 8_000)) as
+  | { requestId: string }
+  | null;
+assert(third !== null, "第三次提案派发审批卡（execute 前置）");
+if (third) {
+  ws.send(
+    JSON.stringify({ type: "approval_response", requestId: third.requestId, answer: "plan:execute", sliderIndex: 0 }),
+  );
+  const forked = (await waitFor(
+    (f, i) => f.type === "session_created" && i >= beforeExec && f.sessionId !== created.sessionId,
+    10_000,
+  )) as { sessionId: string } | null;
+  assert(forked !== null, "execute 分支 fork 出全新会话");
+  if (forked) {
+    const po = (await waitFor((f) => f.type === "plan_output" && f.sessionId === forked.sessionId, 8_000)) as
+      | { plan?: { title?: string; content?: string } }
+      | null;
+    assert(
+      po !== null && po.plan?.title === "smoke" && String(po.plan?.content).includes("# Smoke plan"),
+      "新会话收到 plan_output 快照（卡片输出行数据齐）",
+    );
+  }
+}
 
 // Leave plan mode before teardown.
 ws.send(JSON.stringify({ type: "set_plan_mode", sessionId: created.sessionId, enabled: false }));

@@ -6,8 +6,10 @@ export const compExtEn = {
   capCache: "cache",
   capWeb: "web",
   capImg: "image",
-  // ApprovalCard.tsx ask multi-question merged submit
-  askMultiHint: "↑/↓ to move (selects single-choice) · Space checks multi · Enter submits",
+  // ApprovalCard.tsx ask multi-question paged form
+  askMultiHint: "↑/↓ to move (single-choice auto-advances) · Space checks multi · all questions need an answer to submit",
+  askPrev: "Previous",
+  askNext: "Next",
   askSubmitAll: "Submit answers",
   askOther: "Other (type your own)",
   askOtherPlaceholder: "Type your answer…",

@@ -10,7 +10,7 @@ import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import { activeOpen } from "./session";
-import { getSupportedThinkingForModel } from "./models";
+import { getSupportedThinkingForModel, modelDefaultThinking } from "./models";
 import { saveRightSlot, restoreRightSlot } from "./right";
 import { detectLang } from "../i18n";
 
@@ -23,6 +23,9 @@ export interface UiSlice {
   sidebarCollapsed: boolean;
   rightCollapsed: boolean;
   isCreatingNew: boolean;
+  /** Full-page scheduled-tasks view in the main column (sidebar top entry); lives outside
+   *  the settings overlay and closes whenever the welcome page or a session takes over. */
+  automationsOpen: boolean;
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
@@ -87,6 +90,8 @@ export interface UiSlice {
   toggleHubMode(): void;
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
+  openAutomations(): void;
+  closeAutomations(): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
   setWelcomeProject(cwd?: string): void;
@@ -144,6 +149,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   // in-run toggling and the per-session slot memory are untouched)
   rightCollapsed: true,
   isCreatingNew: false,
+  automationsOpen: false,
   newSessionProject: "",
   newSessionBranch: "",
   headerGit: null,
@@ -247,6 +253,16 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set({ mainViewMode: mode });
   },
 
+  openAutomations() {
+    // Available from anywhere (incl. the welcome page): entering the tasks
+    // view leaves the new-session page, a session click takes over as usual.
+    set({ automationsOpen: true, isCreatingNew: false });
+  },
+
+  closeAutomations() {
+    set({ automationsOpen: false });
+  },
+
   showWelcomeScreen(preferredCwd) {
     const alreadyOpen = get().isCreatingNew;
     // Leaving a live session: its slot takes the projection. Callers that already
@@ -254,7 +270,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // disposed the slot themselves.
     const leaving = get().activePath;
     if (leaving) saveRightSlot(leaving);
-    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat" }));
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false }));
     restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
@@ -283,7 +299,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   },
 
   hideWelcomeScreen() {
-    set((s) => ({ isCreatingNew: false, mainViewMode: "chat" }));
+    set((s) => ({ isCreatingNew: false, mainViewMode: "chat", automationsOpen: false }));
   },
 
   setWelcomeProject(cwd) {
@@ -356,7 +372,15 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     } catch {}
     const validLevels = getSupportedThinkingForModel(id);
     const cur = get().newSessionThinking;
-    if (!validLevels.includes(cur)) {
+    // Per-model default (enabledModels ":level" suffix) outranks the global default:
+    // switching to the model syncs the composer to that level
+    const modelLevel = modelDefaultThinking(id);
+    if (modelLevel && validLevels.includes(modelLevel)) {
+      set((st) => ({ newSessionThinking: modelLevel }));
+      try {
+        localStorage.setItem("omp-new-thinking", modelLevel);
+      } catch {}
+    } else if (!validLevels.includes(cur)) {
       const fallback = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
       set((st) => ({ newSessionThinking: fallback }));
       try {

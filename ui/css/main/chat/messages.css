@@ -324,9 +324,9 @@
 }
 
 /* Edit row: file icon + file name + line delta (no path shown) */
-.act.edit .add, .chg-item .add { color: var(--green-soft); font-weight: 500; }
+.act.edit .add, .chg-item .add, .act.change .add { color: var(--green-soft); font-weight: 500; }
 
-.act.edit .del, .chg-item .del { color: var(--red); opacity: .9; font-weight: 500; }
+.act.edit .del, .chg-item .del, .act.change .del { color: var(--red); opacity: .9; font-weight: 500; }
 
 /* Minimal arrow appearing after the row tail on whole-row hover (shared by edit/terminal rows), 6px from the label content (aligned with thinking rows) */
 .act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow, .act.ro .ed-arrow {

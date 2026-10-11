@@ -41,6 +41,10 @@ globalThis.matchMedia = (q: string) => ({
 globalThis.location = window.location;
 globalThis.URLSearchParams = window.URLSearchParams;
 globalThis.getComputedStyle = window.getComputedStyle.bind(window); // Needed by the composer's cbar layout effect
+// Event classes: app code constructs CustomEvent with bare globals (shell.ts closeAllMenus / menuZoom) and dispatches them on happy-dom nodes,
+// whose instanceof check runs against happy-dom's own class — without the injection Node's global class is used and dispatchEvent throws
+globalThis.Event = window.Event;
+globalThis.CustomEvent = window.CustomEvent;
 
 // Inject the static DOM (the body structure of index.html)
 document.body.innerHTML = '<div id="root"></div>';
@@ -109,6 +113,7 @@ const dbg = (window as unknown as {
         rightTab: string | null;
         openHub(): void;
         closeHub(): void;
+        send(msg: Record<string, unknown>): void;
       };
       setState(p: Record<string, unknown>): void;
     };
@@ -396,7 +401,7 @@ const mkSession = (path: string) => [
     assistantDraft: "",
     streaming: false,
     turnStartAt: null,
-    subagents: new Map([[`${path}-sub`, { name: "alpha", status: "completed", streaming: false, model: "t" }]]),
+    subagents: new Map([[`${path}-sub`, { name: "alpha", status: "completed", streaming: false, model: "t", text: "", tools: [] }]]),
     model: null,
     thinking: "auto",
     isGit: false,
@@ -434,6 +439,61 @@ ok("关闭 A 的 Hub 后自身状态清空", dbg.useAppStore.getState().hubOpen 
 dbg.activateSession("/smoke-b");
 await sleep(50);
 ok("B 会话始终未被 A 的 Hub 操作影响", dbg.useAppStore.getState().hubOpen === false);
+
+// Model menu keyboard navigation regression: menuSignal (written by the Alt+M shortcut) opens the model menu,
+// ↑/↓/←/→ move the cursor, Enter picks — a live-session pick travels through the host send spy
+const origSend = dbg.useAppStore.getState().send;
+let sentModelMsg: Record<string, unknown> | null = null;
+dbg.useAppStore.setState({
+  activePath: "/smoke-a",
+  isCreatingNew: false,
+  modelNames: new Map([["openai/gpt-5", "GPT-5"], ["openai/gpt-4o", "GPT-4o"], ["anthropic/claude-x", "Claude"]]),
+  modelRoles: [{ id: "r-fast", name: "快速", tag: null, value: null, resolved: "openai/gpt-4o", resolvedName: "GPT-4o", builtin: false }],
+  menuSignal: { name: "model", seq: 1 },
+  send: (msg: unknown) => { sentModelMsg = msg as Record<string, unknown>; origSend(msg); },
+});
+await sleep(80);
+const pressKey = (key: string) => window.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+ok("menuSignal 打开模型菜单（角色组 + 2 个 provider 行）", !!$("#modelMenu") && document.querySelectorAll("#modelMenu .mi.prov").length === 3);
+pressKey("ArrowDown");
+await sleep(30);
+ok("↓ 高亮第一行（模型角色组）", $("#modelMenu .mi.prov.on")?.textContent?.includes("模型角色"));
+pressKey("ArrowRight");
+await sleep(30);
+ok("→ 展开角色浮层", ($(".menu.flyout")?.textContent || "").includes("快速"));
+ok("→ 后光标落在浮层首行", $(".menu.flyout .mi.on")?.textContent?.includes("快速"));
+pressKey("Enter");
+await sleep(50);
+ok("回车选中角色并关闭菜单", !$("#modelMenu") && sentModelMsg?.type === "set_model" && sentModelMsg?.model === "openai/gpt-4o" && sentModelMsg?.role === "r-fast");
+
+// Reopen with no roles: provider cascade is level 1
+dbg.useAppStore.setState({ modelRoles: [], menuSignal: { name: "model", seq: 2 } });
+await sleep(80);
+pressKey("ArrowDown");
+await sleep(30);
+ok("重开后 ↓ 高亮第一个 provider", $("#modelMenu .mi.prov.on")?.textContent?.includes("openai"));
+pressKey("ArrowRight");
+await sleep(30);
+ok("→ 展开 provider 浮层", ($(".menu.flyout")?.textContent || "").includes("GPT-5"));
+pressKey("ArrowDown");
+await sleep(30);
+ok("浮层内 ↓ 移到第二行", $(".menu.flyout .mi.on")?.textContent?.includes("GPT-4o"));
+pressKey("ArrowUp");
+await sleep(30);
+ok("浮层内 ↑ 移回第一行", $(".menu.flyout .mi.on")?.textContent?.includes("GPT-5"));
+pressKey("ArrowLeft");
+await sleep(30);
+ok("← 收起浮层回到一级", !$(".menu.flyout") && $("#modelMenu .mi.prov.on")?.textContent?.includes("openai"));
+pressKey("ArrowUp");
+await sleep(30);
+ok("一级 ↑ 循环到末行", $("#modelMenu .mi.prov.on")?.textContent?.includes("anthropic"));
+pressKey("ArrowRight");
+await sleep(30);
+ok("→ 展开末行 provider 浮层", ($(".menu.flyout")?.textContent || "").includes("Claude"));
+pressKey("Enter");
+await sleep(50);
+ok("回车选中模型并关闭菜单", !$("#modelMenu") && sentModelMsg?.type === "set_model" && sentModelMsg?.model === "anthropic/claude-x" && sentModelMsg?.role === undefined);
+dbg.useAppStore.setState({ send: origSend, menuSignal: null });
 
 let fail = 0;
 for (const [mark, name] of asserts) {

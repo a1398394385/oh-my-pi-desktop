@@ -9,7 +9,7 @@
 // retry at the advanced slot). Manual runs bypass all progression.
 import { randomUUID } from "node:crypto";
 import { spawnSession } from "../session-lifecycle.ts";
-import { H } from "../state.ts";
+import { H, activeWs, stampEvent } from "../state.ts";
 import { safeStderr } from "../stderr.ts";
 import { computeAutomationNextRunAt, isOneShot } from "./cron.ts";
 import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
@@ -270,18 +270,27 @@ export async function runAutomationNow(id: string, spawn: SpawnFn = defaultSpawn
 
 /**
  * Production dispatch: create a pooled session on the automation's cwd (+pinned
- * model) through the same spawnSession path the UI uses, with a sink websocket —
- * event frames are dropped (the transcript still persists on disk; the UI
- * learns about the session via the session_list push instead). The session is
- * titled with the automation name via the same SessionManager entry the
- * rename_session RPC uses, so CLI-side listings see it too. sendPrompt resolves
- * when the prompt turn finishes; a locally-consumed prompt (extension/custom
- * command, no agent turn) is a failure.
+ * model) through the same spawnSession path the UI uses. Instead of the old
+ * sink websocket, events ride a broadcast wrapper that forwards every frame to
+ * the currently connected UI client (activeWs): the prompt bubble, streaming
+ * events and session_created arrive in real time, no reload needed (the
+ * transcript still persists on disk). The session is titled with the
+ * automation name via the same SessionManager entry the rename_session RPC
+ * uses, so CLI-side listings see it too. sendPrompt resolves when the prompt
+ * turn finishes; a locally-consumed prompt (extension/custom command, no agent
+ * turn) is a failure.
  */
 const defaultSpawn: SpawnFn = async (a) => {
-  const dummyWs = { send() {} };
+  // Broadcast to the attached UI client (last connection wins, same as the
+  // session_list pushes); null while no UI is connected — frames drop.
+  const uiWs = {
+    send(data: string) {
+      const w = activeWs.value as { send?: (d: string) => unknown } | null;
+      w?.send?.(data);
+    },
+  };
   const targetModel = a.model ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === a.model) : undefined;
-  const { sessionId, entry } = await spawnSession(dummyWs, a.cwd, targetModel);
+  const { sessionId, entry } = await spawnSession(uiWs, a.cwd, targetModel, undefined, { automation: { id: a.id, title: a.title } });
   try {
     if (await entry.manager.setSessionName(a.title, "user")) {
       entry.title = a.title;
@@ -292,10 +301,20 @@ const defaultSpawn: SpawnFn = async (a) => {
     // Naming is cosmetic: never fail the dispatch over it.
     safeStderr(`[automations] session naming failed ${sessionId.slice(0, 8)}: ${err}\n`);
   }
+  // The sidebar row (carrying the automation marker) appears without waiting
+  // for the run to settle; the settle notification pushes another one.
+  notifyUi();
   return {
     sessionId,
     sessionPath: entry.path,
     sendPrompt: async () => {
+      // No local composer send exists for automation sessions: echo the prompt
+      // as a live user-message event so the UI draws the bubble in real time.
+      uiWs.send(
+        JSON.stringify(
+          stampEvent({ type: "event", sessionId, kind: "user_message", text: a.prompt, automation: { id: a.id, title: a.title } }),
+        ),
+      );
       const agentInvoked = await entry.session.prompt(a.prompt, { streamingBehavior: "followUp" });
       if (agentInvoked === false) throw new Error("prompt consumed locally, no agent turn started");
     },

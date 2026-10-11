@@ -10,6 +10,8 @@ import notify from "./ui/notify.en";
 import hubExt from "./ui/hub-ext-en";
 import compExt from "./ui/comp-ext-en";
 import ssh from "./ui/ssh.en";
+import autoList from "./ui/autoList.en";
+import autoEdit from "./ui/autoEdit.en";
 
 const en = {
   common,
@@ -23,6 +25,8 @@ const en = {
   hubExt,
   compExt,
   ssh,
+  autoList,
+  autoEdit,
 };
 
 export default en;

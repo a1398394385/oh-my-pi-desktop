@@ -3,8 +3,11 @@
 // pinned to the top, separated from providers by a divider) then providers
 // (› indicator); hover 180ms intent delay / click pops the flyout to the
 // right — a role row applies the role's resolved model through the host's CLI
-// role path, a model row switches directly. The flyout renders as a direct
-// child of #composer (fragment sibling slot; the old version attached to
+// role path, a model row switches directly. Keyboard owns the same rows:
+// ↑/↓ move the cursor within the current level, → opens the highlighted row's
+// flyout, ← returns to level 1, Enter picks a row / toggles a provider row
+// (the cursor rides the .on highlight, same as the palette menus). The flyout
+// renders as a direct child of #composer (fragment sibling slot; the old version attached to
 // composerEl to dodge .menu.model's overflow-y:auto clipping); with a session
 // it goes through the host set_model, in creating-new state it lands in
 // localStorage.

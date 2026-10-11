@@ -75,31 +75,29 @@ pub fn system_permission_status() -> PermissionStatus {
     }
 }
 
-/// Security-pane anchor per card row (whitelist: unknown panel ids fail fast
-/// instead of being interpolated into the settings URL).
+/// System Settings deep link per panel id (whitelist: unknown ids fail fast
+/// instead of being interpolated into the settings URL). The privacy panes live
+/// under the Security & Privacy anchor; Notifications is its own ExtensionKit
+/// pane (the old `com.apple.preference.notifications` id no longer routes).
 #[cfg(target_os = "macos")]
-fn pane_anchor(panel: &str) -> Option<&'static str> {
+fn pane_url(panel: &str) -> Option<&'static str> {
     match panel {
-        "accessibility" => Some("Privacy_Accessibility"),
-        "screen_capture" => Some("Privacy_ScreenCapture"),
-        "full_disk_access" => Some("Privacy_AllFiles"),
+        "accessibility" => Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"),
+        "screen_capture" => Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"),
+        "full_disk_access" => Some("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
+        "notifications" => Some("x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
         _ => None,
     }
 }
 
-/// Frontend call: open the System Settings pane matching one card row. The
-/// legacy `x-apple.systempreferences:` URL still routes on Ventura+ (it opens
-/// the right pane, though it cannot deep-link to this app's row inside it).
+/// Frontend call: open the System Settings pane matching one card row.
 #[tauri::command]
 pub fn open_permission_setting(panel: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let anchor =
-            pane_anchor(&panel).ok_or_else(|| format!("unknown permission panel: {panel}"))?;
+        let url = pane_url(&panel).ok_or_else(|| format!("unknown permission panel: {panel}"))?;
         std::process::Command::new("/usr/bin/open")
-            .arg(format!(
-                "x-apple.systempreferences:com.apple.preference.security?{anchor}"
-            ))
+            .arg(url)
             .status()
             .map(|_| ())
             .map_err(|e| format!("open System Settings failed: {e}"))

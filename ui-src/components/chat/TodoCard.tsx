@@ -53,7 +53,7 @@ export default function TodoCard() {
   const cardRef = useRef<HTMLDivElement>(null);
   const phases: TodoPhase[] = s?.todos ?? [];
   const all = phases.flatMap((p) => p.tasks);
-  if (!s || all.length === 0) return <div id="statusWrap" />;
+  if (!s || (all.length === 0 && !s.planResult)) return <div id="statusWrap" />;
 
   const size = (path && todoSizes.get(path)) || undefined;
 
@@ -97,12 +97,15 @@ export default function TodoCard() {
 
 
   const done = all.filter((t) => t.status === "completed").length;
-  const frac = `${done}/${all.length}`;
+  const hasTodos = all.length > 0;
+  const frac = hasTodos ? `${done}/${all.length}` : "";
   const current = all.find((t) => t.status === "in_progress") || all.find((t) => t.status !== "completed");
-  const capLabel = current ? current.content : t("chat.allDone");
+  // Plan-only session (no todo list yet): the plan is pending execution, so the
+  // capsule carries the plan title instead of "all done".
+  const capLabel = current ? current.content : hasTodos ? t("chat.allDone") : s.planResult!.title;
   const capIcon = current
     ? current.status === "in_progress" ? "→" : current.status === "blocked" ? "⊘" : "○"
-    : "✓";
+    : hasTodos ? "✓" : "○";
 
   // Plan-output row click: open the right panel's Files page directly on the full
   // plan file (the text was carried on the approval frame, so no read_file round
@@ -132,7 +135,7 @@ export default function TodoCard() {
         >
           <div className="sc-head">
             <b>{t("chat.sessionStatus")}</b>
-            <span className="frac" id="todoFrac">{frac}</span>
+          {frac && <span className="frac" id="todoFrac">{frac}</span>}
             <span className="flex-1"></span>
             <button className="icon-btn" id="scCollapse" title={t("chat.collapseToCapsule")}>
               <Icon name="collapseCard" />
@@ -172,10 +175,10 @@ export default function TodoCard() {
         </div>
       )}
       {todoCollapsed && (
-        <button id="capsule" title={capLabel + "  " + frac} onClick={() => setBump({ todoCollapsed: false })}>
+        <button id="capsule" title={frac ? capLabel + "  " + frac : capLabel} onClick={() => setBump({ todoCollapsed: false })}>
           <i className="cap-ic">{capIcon}</i>
           <span className="cap-tx">{capLabel}</span>
-          <span className="cap-n">{frac}</span>
+          {frac && <span className="cap-n">{frac}</span>}
         </button>
       )}
     </div>

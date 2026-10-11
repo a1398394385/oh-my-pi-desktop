@@ -23,8 +23,8 @@
 // frame assembly) / session-lifecycle.ts (session lifecycle and event wiring) /
 // plan.ts · goal.ts · queue.ts (domain logic) / translate.ts (omp events →
 // narrow events) / rpc/ (nine RPC handler domains) / assets.ts ·
-// extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · mcp-mount.ts · pty.ts.
-import { stat, open } from "node:fs/promises";
+// extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · mcp-mount.ts · pty.ts ·
+// session-poll.ts (pooled-session file polling).
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID, activeWs } from "./state.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
@@ -35,6 +35,7 @@ import { handleStatsHttp } from "./stats.ts";
 import { dispatchRpc } from "./rpc/index";
 import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
+import { startSessionPoll } from "./session-poll.ts";
 import { refreshAllLimits } from "./limits/index.ts";
 import { augmentGuiPath } from "./gui-path.ts";
 import { settingsGet } from "./settings-compat.ts";
@@ -213,67 +214,5 @@ setInterval(() => {
   void profileReady.then(runLimitsRefresh);
 }, LIMITS_REFRESH_INTERVAL_MS);
 
-// ---------- Host pool external-write detection ----------
-// Pooled sessions = the full set desktop currently holds in memory (the host
-// pool is unbounded; the frontend's OPEN_SESSIONS_MAX only governs UI LRU).
-// The lock file carries no signal (.lock.os is an advisory leftover, the
-// publish hold window is <500ms); the only reliable signal is the file being
-// appended by a process other than ours: read the new complete lines from
-// pollKnownSize onward — an id not present in the manager's in-memory index
-// means an external write (CLI conversation/rename/compact all persist new
-// entries). Ids we wrote ourselves always pass through memory first, so zero
-// false positives.
-const POLL_EXTERNAL_WRITES_MS = 2000;
-async function pollExternalWrites() {
-  for (const [sessionId, entry] of sessions.entries()) {
-    try {
-      const st = await stat(entry.path);
-      if (st.size === entry.pollKnownSize) continue;
-      if (st.size < entry.pollKnownSize) entry.pollKnownSize = 0; // Full rewrite: rescan from the start
-      const fh = await open(entry.path, "r");
-      let data: Buffer;
-      try {
-        data = Buffer.alloc(st.size - entry.pollKnownSize);
-        const { bytesRead } = await fh.read(data, 0, data.length, entry.pollKnownSize);
-        data = data.subarray(0, bytesRead);
-      } finally {
-        await fh.close();
-      }
-      // Consume up to the last complete line only (partial lines wait for the next poll, avoiding half-written JSON)
-      let lineEnd = -1;
-      for (let i = 0; i < data.length; i++) if (data[i] === 10) lineEnd = i;
-      if (lineEnd < 0) continue;
-      const newIds: string[] = [];
-      let lineStart = 0;
-      while (lineStart <= lineEnd) {
-        const nl = data.indexOf(10, lineStart);
-        const line = data.subarray(lineStart, nl).toString("utf8");
-        lineStart = nl + 1;
-        if (line.trim()) {
-          try {
-            const o = JSON.parse(line) as { id?: unknown; type?: unknown };
-            // File bookkeeping rows are excluded from the check: the header
-            // (type "session", its id has sessionId shape but getEntries
-            // explicitly excludes headers) and the title slot row; only real
-            // entries are compared against the in-memory index
-            if (typeof o.id === "string" && o.type !== "session") newIds.push(o.id);
-          } catch {
-            // A complete but corrupted line: skip
-          }
-        }
-      }
-      entry.pollKnownSize += lineStart;
-      if (entry.externalWrite || newIds.length === 0) continue;
-      const known = new Set<string>(entry.manager.getEntries().map((e: { id?: string }) => e?.id));
-      if (!newIds.some((id) => !known.has(id))) continue;
-      entry.externalWrite = true;
-      const ws = entry.attachedWs as { send(data: string): unknown } | null;
-      ws?.send(JSON.stringify({ type: "session_external_write", sessionId }));
-    } catch (err) {
-      // New session files are lazily persisted (created on the first entry): ENOENT = nothing to monitor yet, skip silently
-      if ((err as { code?: string }).code === "ENOENT") continue;
-      safeStderr(`[host] 外部写入轮询失败 ${entry.path}: ${err instanceof Error ? err.message : String(err)}\n`);
-    }
-  }
-}
-setInterval(() => { void pollExternalWrites(); }, POLL_EXTERNAL_WRITES_MS);
+// ---------- Host pooled-session file polling (moved to session-poll.ts) ----------
+startSessionPoll();

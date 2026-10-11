@@ -28,7 +28,6 @@ import HooksPage from "./pages/HooksPage";
 import ModelPage from "./pages/ModelPage";
 import McpPage from "./pages/McpPage";
 import SkillsPage from "./pages/SkillsPage";
-import AutomationsPage from "./pages/AutomationsPage";
 import MemoryPage from "./pages/MemoryPage";
 import AgentsPage from "./pages/AgentsPage";
 import StatsPage from "./pages/StatsPage";
@@ -67,7 +66,6 @@ const NAV_SECTIONS = [
       { id: "pg-plugins", icon: "plugins", label: "settingsPage.nav.plugins" },
       { id: "pg-mcp", icon: "mcp", label: "settingsPage.nav.mcp" },
       { id: "pg-skills", icon: "skills", label: "settingsPage.nav.skills" },
-      { id: "pg-automations", icon: "play", label: "settingsPage.nav.automations" },
       { id: "pg-hooks", icon: "hook", label: "settingsPage.nav.hooks" },
     ],
   },
@@ -107,7 +105,6 @@ const PAGES: Record<string, ComponentType> = {
   "pg-model": ModelPage,
   "pg-mcp": McpPage,
   "pg-skills": SkillsPage,
-  "pg-automations": AutomationsPage,
   "pg-memory": MemoryPage,
   "pg-agents": AgentsPage,
   "pg-stats": StatsPage,

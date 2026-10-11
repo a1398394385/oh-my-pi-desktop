@@ -71,4 +71,4 @@ export const openSettings = (pageId = "pg-general"): void => useAppStore.getStat
 export const closeSettings = (): void => useAppStore.getState().closeSettings();
 export const refreshSettingsData = (): void => useAppStore.getState().refreshSettingsData();
 
-export { ingestModels, getSupportedThinkingForModel } from "./store/models";
+export { ingestModels, getSupportedThinkingForModel, modelDefaultThinking } from "./store/models";

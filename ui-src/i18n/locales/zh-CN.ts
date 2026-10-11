@@ -12,6 +12,8 @@ import notify from "./ui/notify.zh";
 import hubExt from "./ui/hub-ext-zh-CN";
 import compExt from "./ui/comp-ext-zh-CN";
 import ssh from "./ui/ssh.zh";
+import autoList from "./ui/autoList.zh";
+import autoEdit from "./ui/autoEdit.zh";
 
 const zhCN = {
   common,
@@ -25,6 +27,8 @@ const zhCN = {
   hubExt,
   compExt,
   ssh,
+  autoList,
+  autoEdit,
 };
 
 export default zhCN;

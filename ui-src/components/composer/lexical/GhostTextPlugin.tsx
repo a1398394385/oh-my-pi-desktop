@@ -18,9 +18,9 @@
 //    intercepts Enter, so the WebKit compositionend-before-Enter quirk (see
 //    ComposerPlugin's IME_COMMIT_ENTER_WINDOW_MS) cannot leak a confirmation
 //    keystroke into the ghost path.
-//  · Ghost insert/remove updates run with { tag:"historic", discrete:true }:
-//    excluded from the undo stack and committed synchronously, so the own-
-//    update guard (applyingRef) reliably brackets the update listeners.
+//  · Ghost insert/remove updates run with tag ["historic", GHOST_TAG]:
+//    excluded from the undo stack and recognizable by the update listener,
+//    which skips own commits via the tag instead of dismissing the ghost.
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -45,6 +45,10 @@ import { isBashMode } from "../trigger";
 // Typing pause before a completion request fires (input settled)
 const REQUEST_DEBOUNCE_MS = 200;
 
+// Commit tag marking this plugin's own ghost insert/remove updates; the
+// update listener skips those commits instead of dismissing the ghost
+const GHOST_TAG = "ghost-completion";
+
 type Props = {
   // Completion panel open state (the same ref Composer passes to
   // ComposerPlugin): no requests while the sigil palette rides the same text
@@ -53,10 +57,13 @@ type Props = {
 
 export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
   const [editor] = useLexicalComposerContext();
-  // Guards own ghost insert/remove updates against the universal "any
-  // unguarded update dismisses the ghost" rule; discrete:true commits
-  // synchronously so the flag reliably brackets the listeners it masks
-  const applyingRef = useRef(false);
+  // Ghost-tag guard for the universal "any unguarded update dismisses the
+  // ghost" rule. Own updates are identified by commit tag, NOT by a sync
+  // boolean + discrete:true: a discrete update enqueued while an outer
+  // update cycle is active can be dequeued by $processNestedUpdates after
+  // a commit nulled _pendingEditorState, which throws (prod: minified
+  // error #191). Async commit order does not matter here because the
+  // listener matches on tags.
   const composingRef = useRef(false);
   // window.setTimeout returns a plain number under the DOM lib the UI builds
   // against (node's Timeout type leaks in via the dev dependency tree)
@@ -76,15 +83,10 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
       }
     };
 
-    // Own-update-bracketed ghost mutation: historic (never undoable on its
-    // own) + synchronous commit
+    // Own ghost mutation: historic (never undoable on its own) + tagged so
+    // the update listener below can tell it apart from user-driven updates
     const ghostUpdate = (fn: () => void) => {
-      applyingRef.current = true;
-      try {
-        editor.update(fn, { tag: "historic", discrete: true });
-      } finally {
-        applyingRef.current = false;
-      }
+      editor.update(fn, { tag: ["historic", GHOST_TAG] });
     };
 
     // Drop the ghost if present (no-op update when none exists)
@@ -148,8 +150,8 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
       }
     });
 
-    const unregisterUpdates = editor.registerUpdateListener(() => {
-      if (applyingRef.current) return;
+    const unregisterUpdates = editor.registerUpdateListener(({ tags }) => {
+      if (tags.has(GHOST_TAG)) return;
       const text = editor.read(() => $flattenText());
       if (text !== lastTextRef.current) {
         clearTimer();

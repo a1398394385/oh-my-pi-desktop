@@ -13,6 +13,7 @@ import { rebuildScopedModels, modelCatalog, syncAvailableModels, capabilityKeysP
 import { modelsFrame } from "../frames.ts";
 import { fetchProviderAccountsLimits } from "../limits/index.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { reorderProviderAccounts } from "../account-order.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 
@@ -164,6 +165,31 @@ export const loginHandlers: Record<string, RpcHandler> = {
     }
     await pushProviderAccounts(ws, provider);
     await refreshCatalogAndPush(ws);
+  },
+  // ---- Per-account reorder (priority ranking, desktop-only) ----
+  // OMP exposes no reorder API: the pool serves ORDER BY id ASC and the first
+  // row is the account every request uses. The host rewrites the provider's
+  // active row ids in place (an identity permutation with dependent-table
+  // sync) and reloads the in-memory snapshot, so list()/get() and the
+  // models-page account order all follow the user's ranking.
+  async provider_reorder_account(ws, msg) {
+    const provider = String(msg.provider ?? "");
+    const ids = Array.isArray(msg.ids) ? (msg.ids as unknown[]).map(Number).filter(Number.isInteger) : [];
+    if (!provider || ids.length === 0) throw new Error(hostI18n.t("errors.param.missingProvider"));
+    const active = H.authStorage.credentials.list(provider).map((c) => c.id);
+    if (ids.length !== active.length || new Set(ids).size !== ids.length || !ids.every((id) => active.includes(id))) {
+      throw new Error(hostI18n.t("errors.account.reorderMismatch"));
+    }
+    const dbPath = getAgentDbPath(H.agentDir);
+    try {
+      if (!fs.existsSync(dbPath)) throw new Error(hostI18n.t("errors.account.restoreUnsupported"));
+      if (!reorderProviderAccounts(dbPath, provider, ids)) throw new Error(hostI18n.t("errors.account.reorderMismatch"));
+    } catch (err) {
+      safeStderr(`[host] 账号排序失败 (${provider}): ${err}\n`);
+      throw err;
+    }
+    await H.authStorage.credentials.reload();
+    await pushProviderAccounts(ws, provider);
   },
   provider_login_cancel(_ws, _msg) {
     // Explicit user cancel (e.g. closed the login page): abort the in-flight login flow

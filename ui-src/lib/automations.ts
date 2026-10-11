@@ -138,7 +138,10 @@ export function describeSchedule(rule: ScheduleRule, t: TFn): string {
     case "hourly":
       return t("settingsPage.automations.descHourly", { interval: rule.interval, minute: p2(rule.minute) });
     case "daily":
-      return t("settingsPage.automations.descDaily", { interval: rule.interval, time });
+      // interval 1 reads naturally as "每天/Every day", not "每 1 天"
+      return rule.interval === 1
+        ? t("settingsPage.automations.descDailyOne", { time })
+        : t("settingsPage.automations.descDaily", { interval: rule.interval, time });
     case "weekly": {
       const names = (rule.weekdays ?? [])
         .slice()

@@ -115,6 +115,7 @@ function ChangeEntry({ sub }: { sub: ToolItem }) {
 function ChangeGroup({ subs }: { subs: ToolItem[] }) {
   useGroupExpandVersion(); // group expand state lives on a module-level WeakMap; the groupExpand channel bumps to trigger re-render
   const fileCount = uniqueFiles(subs.flatMap((g) => filesOf(g))).length; // 0 → "multiple files" fallback
+  const counts = subs.reduce((a, s) => ({ added: a.added + (s.added ?? 0), removed: a.removed + (s.removed ?? 0) }), { added: 0, removed: 0 });
   const [closing, close, liftRef] = useLift();
   const open = chgExpand.has(subs[0]) && !closing;
   const toggle = () => {
@@ -129,6 +130,7 @@ function ChangeGroup({ subs }: { subs: ToolItem[] }) {
       <div className="act change" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="pencil" size={15} />
         <span className="lbl">{fileCount ? t("chat.changeFiles", { count: fileCount }) : t("chat.changeFilesMultiple")}</span>
+        <Counts item={counts} />
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>

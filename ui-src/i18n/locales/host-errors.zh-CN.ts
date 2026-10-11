@@ -154,6 +154,7 @@ export const hostErrorsZh = {
   account: {
     notFound: "账号不存在或已恢复",
     restoreUnsupported: "当前 profile 无本地凭据库，无法恢复已停用账号，请重新登录",
+    reorderMismatch: "账号列表已变化，优先级顺序必须与当前账号完全一致",
   },
   queue: {
     parkedNotFound: "暂存排队消息不存在: {{index}}",

@@ -1,6 +1,7 @@
 // zh copy for the sidebar domain. Keys are prefixed `sidebar.` — see ui-src/i18n/README.md.
 export const sidebarZh = {
   newTask: "新建任务",
+  automations: "定时任务",
   viewRecent: "最近",
   viewProject: "项目",
   viewArchive: "归档",
@@ -31,6 +32,7 @@ export const sidebarZh = {
   lastRunFailed: "最近一次运行失败",
   unpin: "取消置顶",
   pinSession: "置顶会话",
+  autoSession: "定时任务会话",
   unarchiveRestore: "取消归档，恢复到项目列表",
   restore: "恢复",
   deleteForever: "彻底删除会话",

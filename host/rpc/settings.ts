@@ -23,6 +23,7 @@ import {
 } from "../profile.ts";
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
+import { writeKimiAutoThinking } from "../kimi-thinking.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, warmKimiCu } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
@@ -207,6 +208,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // sessions never re-read disk — writes affect only sessions created
     // afterwards)
     writeKeepaliveConfig((msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async set_kimi_auto_thinking(ws, msg) {
+    // Providers page switch: writes kimi.autoThinking in omp-desktop.json —
+    // whether Kimi models are offered the `auto` thinking level. Takes effect
+    // on the next thinking-level pick/session create (existing sessions keep
+    // their configured level; Kimi + auto + off pins to `high`).
+    writeKimiAutoThinking(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_hooks_enabled(ws, msg) {

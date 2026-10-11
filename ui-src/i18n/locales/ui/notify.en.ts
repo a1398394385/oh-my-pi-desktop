@@ -15,6 +15,7 @@ export const notifyEn = {
   waiting: "Waiting for background work or a peer…",
   // Desktop notifications (store/session.ts, store/wsHandlers/stream.ts)
   approvalTitle: "Awaiting approval",
+  errorTitle: "Run failed",
   bgSessionTitle: "Background session",
   finished: "Finished",
   // Session lifecycle toasts (store/wsHandlers/session.ts)

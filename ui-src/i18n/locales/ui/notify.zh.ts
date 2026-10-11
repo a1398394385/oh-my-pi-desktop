@@ -17,6 +17,7 @@ export const notifyZh = {
   waiting: "等待后台任务或同伴消息…",
   // Desktop notifications (store/session.ts, store/wsHandlers/stream.ts)
   approvalTitle: "等待审批",
+  errorTitle: "运行出错",
   bgSessionTitle: "后台会话",
   finished: "已完成",
   // Session lifecycle toasts (store/wsHandlers/session.ts)

@@ -7,13 +7,17 @@
 // Visual semantics live in CSS on the wrapper class chain: .md-surface carries the TUI-parity
 // rules (ui/css/main-chat.css); surfaces needing their own font size or page height set them in
 // their domain CSS (e.g. .cmd-card-cmd.task-md).
-import { createElement, isValidElement, useState, useEffect, type JSX } from "react";
+import { createElement, isValidElement, useMemo, useState, useEffect, type JSX } from "react";
 import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
+import { createMermaidPlugin, type DiagramPlugin } from "@streamdown/mermaid";
+import type { Viz } from "@viz-js/viz";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { t } from "../../i18n";
+import { useAppStore } from "../../store";
 import { CODE_PLUGINS, resolvePluginKey, type CodePluginKey } from "../../lib/code-plugin-registry";
+import { getThemeById } from "../../theme-registry";
 
 // Subscribe to theme changes and switch the active plugin key when the concrete theme changes.
 // Reads from html[data-theme] (the resolved theme: "dark"/"light"/"midnight"/etc.) rather than
@@ -99,6 +103,70 @@ function mdTag<K extends keyof JSX.IntrinsicElements>(tag: K, className: string)
   return ({ node, ...rest }: ElProps<K>) => createElement(tag, { ...rest, className });
 }
 
+// ```svg → sandboxed image. An <img> loading an SVG document cannot execute its
+// scripts or fetch external resources (browser guarantee), so model output needs no sanitizer.
+function SvgDiagram({ source }: { source: string }) {
+  const url = useMemo(() => URL.createObjectURL(new Blob([source], { type: "image/svg+xml" })), [source]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return <img className="md-diagram" src={url} alt="SVG diagram" />;
+}
+
+// Render-once mermaid sequence ids (mermaid's render() wants a unique id per call).
+let mermaidSeq = 0;
+
+function renderMermaid(source: string): Promise<string> {
+  return mermaidForScheme()
+    .getMermaid()
+    .render(`mmd-${++mermaidSeq}`, source)
+    .then((r) => r.svg);
+}
+
+// graphviz via viz-js (WASM); renderSVGElement throws on bad dot source
+let vizPromise: Promise<Viz> | undefined;
+function renderDot(source: string): Promise<string> {
+  vizPromise ??= import("@viz-js/viz").then((m) => m.instance());
+  return vizPromise.then((viz) => viz.renderSVGElement(source).outerHTML);
+}
+
+// Diagram → sandboxed <img> (same script-proof blob as ```svg). While rendering, or when
+// the engine rejects the source, the caller's plain code block / fallback shows instead.
+function AsyncDiagram({ source, render, alt, language }: { source: string; render: (src: string) => Promise<string>; alt: string; language: string }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setSvg(null);
+    setFailed(false);
+    render(source)
+      .then((out) => {
+        if (alive) setSvg(out);
+      })
+      .catch(() => {
+        if (alive) setFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [source, render]);
+  const url = useMemo(
+    () => (svg ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) : null),
+    [svg],
+  );
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  // Render failure (bad syntax): fall back to the highlighted code block
+  if (failed) {
+    return (
+      <div className="md-code-block-frame">
+        <CodeBlock className="md-streamdown-code" code={source} language={language} lineNumbers={false}>
+          <CodeBlockCopyButton />
+        </CodeBlock>
+      </div>
+    );
+  }
+  if (!url) return null; // render in flight
+  return <img className="md-diagram" src={url} alt={alt} />;
+}
+
 function mdCodeBlock({ className, children }: ElProps<"code">) {
   const [wrapLongLines, setWrapLongLines] = useState(false);
   const isIncomplete = useIsCodeFenceIncomplete();
@@ -108,6 +176,18 @@ function mdCodeBlock({ className, children }: ElProps<"code">) {
     : null;
   const source = (typeof children === "string" ? children : nestedCode || "").replace(/\n+$/, "");
   const extension = CODE_LANGUAGE_EXTENSIONS[language] || language;
+
+  // Diagram blocks gated by the base's switches (undefined = on, the base default):
+  // tui.renderSvg drives ```svg, tui.autoGraph drives ```mermaid and graphviz ```dot.
+  // All stay plain code while the fence is streaming or when rendering is off/failed.
+  const renderSvg = useAppStore((s) => s.hostSettings?.values?.["tui.renderSvg"] !== false);
+  const autoGraph = useAppStore((s) => s.hostSettings?.values?.["tui.autoGraph"] !== false);
+  const complete = !isIncomplete && source.trim().length > 0;
+  if (language === "svg" && renderSvg && complete) return <SvgDiagram source={source} />;
+  if (autoGraph && complete) {
+    if (language === "mermaid") return <AsyncDiagram source={source} render={renderMermaid} alt="Mermaid diagram" language="mermaid" />;
+    if (language === "dot" || language === "graphviz") return <AsyncDiagram source={source} render={renderDot} alt="Graphviz diagram" language="dot" />;
+  }
 
   return (
     <div className="md-code-block-frame">
@@ -169,6 +249,20 @@ export const mdComponents: Components = {
 // .md-code-block visuals); controls keep only the code-block copy button.
 export const mdControls = { code: { copy: true, download: false }, table: false, image: false };
 export const MD_LINK_SAFETY_OFF = { enabled: false };
+
+// Mermaid plugin per color scheme; a rendered diagram is a render-time snapshot, so a
+// later theme switch re-colors only newly rendered diagrams (shiki re-themes via CSS
+// variables, mermaid inlines colors — the known limitation).
+const mermaidPlugins: { light?: DiagramPlugin; dark?: DiagramPlugin } = {};
+function mermaidForScheme(): DiagramPlugin {
+  const theme = document.documentElement.dataset.theme || "dark";
+  const light = getThemeById(theme)?.shikiTheme === "light-plus";
+  const slot = light ? "light" : "dark";
+  mermaidPlugins[slot] ??= createMermaidPlugin({
+    config: { startOnLoad: false, securityLevel: "strict", theme: light ? "default" : "dark" },
+  });
+  return mermaidPlugins[slot]!;
+}
 
 type MdSurfaceProps = { text: string } & Omit<JSX.IntrinsicElements["div"], "children">;
 
