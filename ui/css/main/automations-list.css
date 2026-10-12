@@ -84,22 +84,19 @@
 
 /* Bottom row: status/schedule badge left, run-count pill right */
 .al-card-meta { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
-/* Active badge: user-picked dark-green surface + green text; paused/completed reuse the
-   neutral gray pair (.gray, same as the run-count pill); failed keeps the error tint. */
+/* Active badge: green text (--green-ink, light/dark aware) on a green-tinted card surface
+   (color-mix of --green into --card reproduces the previous per-theme values); paused/completed
+   reuse the neutral gray pair (.gray, same as the run-count pill); failed keeps the error tint. */
 .al-badge {
   display: inline-flex; align-items: center; gap: 5px; min-width: 0;
   padding: 3px 10px; border-radius: 8px;
-  font-size: var(--ui-fs-sm); color: rgb(70,191,114); background: rgb(26,39,32);
+  font-size: var(--ui-fs-sm); color: var(--green-ink); background: color-mix(in srgb, var(--green) 12%, var(--card));
 }
-.al-badge.gray { color: rgb(145,145,145); background: rgb(44,44,44); }
+.al-badge.gray { color: var(--faint); background: var(--panel-2); }
 .al-badge.err { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); flex: none; }
 .al-badge-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Run-count pill: same neutral gray pair, pinned to the row's right end */
-.al-runcount { flex: none; font-size: var(--ui-fs-sm); color: rgb(145,145,145); background: rgb(44,44,44); border-radius: 8px; padding: 3px 10px; }
-/* Light theme: user-picked pastel surfaces (2026-10-11) */
-[data-theme="light"] .al-badge { color: rgb(30,138,62); background: rgb(226,237,230); }
-[data-theme="light"] .al-badge.gray,
-[data-theme="light"] .al-runcount { color: rgb(119,119,119); background: rgb(241,241,241); }
+.al-runcount { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 3px 10px; }
 
 /* Card controls: site-wide toggle language + ⋯ menu. The pair floats over the card's
    top-right corner so the bottom meta row (run-count pill) reaches the card's right

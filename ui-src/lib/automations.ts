@@ -127,8 +127,8 @@ export function isPlausibleCronExpr(expr: string): boolean {
   return parts.every((part) => /^[0-9*/,-]+$/.test(part) && !/[,-]{2,}/.test(part));
 }
 
-/** Structured summary of a builder schedule, e.g. "每 2 周的周一、周三 09:30" /
- *  "Every 2 weeks on Mon, Wed at 09:30". Assembled from settingsPage.automations.* keys. */
+/** Structured summary of a builder schedule, e.g. "every 2 weeks on Mon, Wed at 09:30".
+ *  Assembled from settingsPage.automations.* keys. */
 export function describeSchedule(rule: ScheduleRule, t: TFn): string {
   const time = formatHM(rule.hour, rule.minute);
   const sep = t("settingsPage.automations.listSep") as string;
@@ -138,7 +138,7 @@ export function describeSchedule(rule: ScheduleRule, t: TFn): string {
     case "hourly":
       return t("settingsPage.automations.descHourly", { interval: rule.interval, minute: p2(rule.minute) });
     case "daily":
-      // interval 1 reads naturally as "每天/Every day", not "每 1 天"
+      // interval 1 reads naturally as "Every day", not "Every 1 day"
       return rule.interval === 1
         ? t("settingsPage.automations.descDailyOne", { time })
         : t("settingsPage.automations.descDaily", { interval: rule.interval, time });

@@ -56,6 +56,7 @@
   --dim:       #b0b0b6;
   --faint:     #8c8c92;
   --green:     #34c759;
+  --green-ink: #46bf72;   /* green as readable TEXT on a tinted surface (badges, pills) — lighter in dark, deeper in light */
   --green-soft:#3cb54f;
   --orange:    #e5a14e;
   --red:       #ff5f57;
@@ -104,6 +105,7 @@
   --text:      #1d1d21;
   --dim:       #5d5d65;
   --faint:     #808088;
+  --green-ink: #1e8a3e;
   --bash:      var(--green); /* bash mode: light = green (--green inherits the :root dark-theme definition) */
   --ctl-bg:    var(--inset);
 }

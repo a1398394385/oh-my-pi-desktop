@@ -322,8 +322,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 /* row hover highlights are off during drag reorder: pointer capture only redirects events, :hover still follows the physical cursor;
    rows flipping base/text color as the cursor sweeps by reads exactly like a selection highlight, and its high-frequency flicker on fast drags is the jumping */
 #tasklist.proj-dragging .proj:not(.drag-float):hover { background: none; color: var(--dim); }
-#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: rgb(145,145,145); }
-[data-theme="light"] #tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: rgb(119,119,119); }
+#tasklist.proj-dragging .proj:not(.drag-float):hover .pname { color: var(--faint); }
 #tasklist.proj-dragging .task:not(.on):hover { background: none; color: var(--dim); }
 #tasklist.proj-dragging .task:not(.on):hover .tt { color: var(--dim); }
 #tasklist.proj-dragging .task .task-indicator { opacity: 1; }
@@ -341,11 +340,9 @@ body:has(#sidebar.collapsed) #left-resizer {
   overflow: hidden; text-overflow: clip; white-space: nowrap;
   mask-image: linear-gradient(to right, var(--black) calc(100% - 24px), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - 24px), transparent 100%);
-  color: rgb(145,145,145); font-weight: 400;
+  color: var(--faint); font-weight: 400;
   line-height: 26px;
 }
-/* Light theme: user-picked mid gray (2026-10-11) */
-[data-theme="light"] .proj .pname { color: rgb(119,119,119); }
 .proj .fic svg {
   display: block;
 }
