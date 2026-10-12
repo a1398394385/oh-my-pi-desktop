@@ -66,6 +66,12 @@ export interface KeepaliveConfig {
   maxMissStreak: number;
   maxErrorStreak: number;
   mode: "default" | "smart";
+  /** Probe on cadence while a permission-approval card is waiting (off by default) */
+  probeDuringApproval: boolean;
+  /** Probe on cadence while an ask-user card is waiting (off by default) */
+  probeDuringAsk: boolean;
+  /** Farewell probes still fired after the session has been read (0 = stop immediately, 1 = default) */
+  readWarmups: number;
 }
 
 /** omp-desktop.json ui-section projection (host/ui-config.ts readUiConfig) — the file-first authority for desktop-owned appearance settings */
@@ -136,6 +142,10 @@ export interface ModelCatalogEntry {
   vision: boolean;
   efforts: string[] | null; // same TODO as ModelEntry.efforts
   authSource: "config" | "cred";
+  // Stored credentials exist (host authStorage): gates the logout button and
+  // account rows, independent of authSource — a models.yml provider may
+  // still carry an OAuth login
+  cred?: boolean;
   // Same 18.5 capability axes as ModelEntry (models-management page view).
   promptCache?: number;
   webSearch?: boolean;
@@ -1822,6 +1832,53 @@ export interface AutomationPreviewFrame {
   nextRunsAt: number[];
 }
 
+// ---------- /btw side conversations (host/btw.ts) ----------
+
+/** One Q/A turn of a side-conversation topic (mirrors the SDK BtwHistoryTurn sidecar schema). */
+export interface BtwTurn {
+  question: string;
+  answer: string;
+  status: "running" | "complete" | "cancelled" | "error" | "interrupted";
+  createdAt: number;
+  updatedAt: number;
+  error?: string;
+}
+
+/** A side-conversation topic: the opening turn plus optional follow-up turns (BtwHistoryRecord). */
+export interface BtwRecord extends BtwTurn {
+  id: string;
+  leafId: string | null;
+  followUps?: BtwTurn[];
+}
+
+/** Answer text delta for a running side-conversation turn. */
+export interface BtwDeltaFrame {
+  type: "btw_delta";
+  sessionId: string;
+  recordId: string;
+  delta: string;
+}
+
+/** Topic checkpoint: pushed when a turn starts (status running) and whenever a turn reaches a terminal status. */
+export interface BtwRecordFrame {
+  type: "btw_record";
+  sessionId: string;
+  record: BtwRecord;
+}
+
+/** Full topic list for a session (btw_history RPC reply), newest first. */
+export interface BtwHistoryFrame {
+  type: "btw_history";
+  sessionId: string;
+  records: BtwRecord[];
+}
+
+/** Host asks the UI to open (or focus) a right-panel tab, e.g. /btw pulling up the Side Chat. */
+export interface OpenRightTabFrame {
+  type: "open_right_tab";
+  name: string;
+}
+
 /** Discriminated union of all host → UI frames (87 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
@@ -1941,4 +1998,8 @@ export type HostFrame =
   | SshDirsFrame
   | AutomationsListFrame
   | AutomationRunStartedFrame
-  | AutomationPreviewFrame;
+  | AutomationPreviewFrame
+  | BtwDeltaFrame
+  | BtwRecordFrame
+  | BtwHistoryFrame
+  | OpenRightTabFrame;

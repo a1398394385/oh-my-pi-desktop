@@ -195,9 +195,20 @@ export function parseUsageFromSse(text: string): ParsedUsage {
   return result;
 }
 
-/** True when the probe returned but the prefix cache did not serve it. */
+/** Prefix-cache hit ratio a probe must clear to count as a hit instead of a miss. */
+const MIN_HIT_RATIO = 0.5;
+
+/**
+ * True when the probe returned but the prefix cache did not serve it. A probe
+ * that replays only a sliver of the prefix (a couple hundred tokens out of a
+ * 190k context) still bills every remaining token at full input price, so a
+ * non-zero cache_read is not enough: counting it as a hit both inflates
+ * savedUsd and lets smart mode confirm a TTL that has in fact expired, which
+ * then carries into every later session through the per-model TTL store.
+ */
 export function isCacheMiss(inputTokens: number, cacheReadTokens: number, minPromptTokens: number): boolean {
-  return cacheReadTokens === 0 && inputTokens >= minPromptTokens;
+  if (inputTokens < minPromptTokens) return false;
+  return cacheReadTokens / inputTokens < MIN_HIT_RATIO;
 }
 
 /** USD saved by this probe hitting cache instead of a cold full-price read. */

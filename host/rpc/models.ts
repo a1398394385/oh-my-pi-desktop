@@ -37,8 +37,13 @@ export const modelsHandlers: Record<string, RpcHandler> = {
       const target = H.scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
       if (!target) throw new Error(hostI18n.t("errors.model.unknown", { model: msg.model }));
       await entry.session.setModel(target); // persist defaults to false; effective only in this session
-      // Apply the ":thinking" default level carried by the enabledModels entry, same as CLI behavior
-      const defaultLevel = enabledDefaults.get(msg.model);
+      // Thinking level on switch: the model's ":level" default from enabledModels
+      // outranks the global defaultThinkingLevel; unset → the global level (Kimi-gated).
+      // Without this the base's setModel re-applies the target model's own catalog
+      // default (often off), ignoring the user's deliberate level choice.
+      const defaultLevel =
+        enabledDefaults.get(msg.model) ??
+        gateKimiAutoThinking(entry.session.model?.provider, settingsGet(H.settings, "defaultThinkingLevel") as string | undefined);
       if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
     }
     const model = `${entry.session.model.provider}/${entry.session.model.id}`;

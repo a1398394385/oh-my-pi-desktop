@@ -940,44 +940,6 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
       } catch {}
     }
 
-    // Extra compatibility with e.g. etower-agent's config/mcp-servers.json
-    const etowerFile = path.join(cwd, "config", "mcp-servers.json");
-    if (fs.existsSync(etowerFile)) {
-      try {
-        const raw = JSON.parse(await readFile(etowerFile, "utf8"));
-        for (const [name, cfg] of Object.entries<any>(raw.mcpServers || raw)) {
-          const eKey = serverKey(projScope, name);
-          if (!allServersMap.has(eKey)) {
-            const transport = (cfg.url ? "http" : "stdio") as "stdio" | "http";
-            const enabled = isServerEnabled(name, cfg.enabled);
-            const sharing: "session" | "project" | "global" =
-              cfg.sharing === "project" ? "project" : "session";
-            allServersMap.set(eKey, {
-              name,
-              transport,
-              command: cfg.command,
-              args: cfg.args,
-              url: cfg.url,
-              headers: cfg.headers,
-              env: cfg.env,
-              cwd,
-              enabled,
-              sharing,
-              source: {
-                provider: "etower",
-                providerName: hostI18n.t("flows.mcp.projectConfig"),
-                path: etowerFile,
-                level: "project",
-              },
-              scope: projScope,
-              projectName: path.basename(cwd),
-              status: enabled ? "unknown" : "disabled",
-            });
-            count++;
-          }
-        }
-      } catch {}
-    }
     projectScopeList.push({ cwd, name: path.basename(cwd), dir: primaryOmpDir, count });
   }
 

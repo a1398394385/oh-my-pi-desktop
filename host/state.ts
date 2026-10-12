@@ -272,6 +272,10 @@ export const pendingApprovals = new Map<
     // entry's resolve (session-lifecycle askDialog) parses the serialized
     // ExtensionAskDialogSubmitResult answer itself
     questions?: unknown[];
+    // Owning session id + which user-dialog family the wait belongs to:
+    // the keepalive block-probing toggles read this (keepalive.ts blockState)
+    sessionId: string;
+    blockKind: "approval" | "ask";
   }
 >();
 
@@ -312,7 +316,14 @@ export function requestApproval(
     pendingApprovals.delete(requestId);
     resolve(v);
   };
-  pendingApprovals.set(requestId, { resolve: settle, onSliderIndex, questions });
+  pendingApprovals.set(requestId, {
+    resolve: settle,
+    onSliderIndex,
+    questions,
+    sessionId,
+    // ask's plain select()/editor rounds pass questions; every other caller is a permission-family dialog
+    blockKind: questions ? "ask" : "approval",
+  });
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
   ws.send(

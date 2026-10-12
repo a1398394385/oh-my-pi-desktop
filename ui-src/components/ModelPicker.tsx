@@ -34,7 +34,8 @@ export interface CatalogModel {
   webSearch?: boolean;
   context?: number | null;
   vision?: boolean;
-  authSource?: string; // "cred" stored credential / "config" hand-written in models.yml
+  authSource?: string; // "cred" discovered via login / "config" hand-written in models.yml
+  cred?: boolean; // stored credentials exist: logout button / account rows
 }
 
 // Flyout model row shape: enabled-pool rows carry the capability axes from the models frame

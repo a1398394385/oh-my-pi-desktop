@@ -874,16 +874,17 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
         <b>{(provIc[prov] || "✦") + " " + prov}</b>
         <span className="sp" />
         <span className="tag">{t("settingsPage.model.modelsCount", { count: models.length })}</span>
-        {/* Credential-type providers offer logout (multi-account logs out all credentials at once, same as CLI auth-broker logout);
-            config-type (models.yml hand-written apiKey) takes priority over stored credentials, deleting credentials is ineffective, so no button */}
-        {models[0]?.authSource === "cred" ? (
+        {/* Logout (multi-account logs out all credentials at once, same as CLI auth-broker logout)
+            hangs off stored credentials (cred), not the declaration source: a models.yml
+            provider with an OAuth login (auth: oauth) still offers logout */}
+        {models[0]?.cred ? (
           <button type="button" className="save-btn danger" onClick={logout}>{t("settingsPage.model.logout")}</button>
         ) : null}
       </div>
       {/* Provider quota: hits the host-side 60s cache; switching providers re-queries (send see ModelPage effect) */}
       <QuotaSection provider={prov} />
-      {/* Account rows only for credential-backed providers (config-file apiKey rows have no authStorage rows) */}
-      {models[0]?.authSource === "cred" ? <AccountsSection prov={prov} /> : null}
+      {/* Account rows only when stored credentials exist (config-file apiKey rows have no authStorage rows) */}
+      {models[0]?.cred ? <AccountsSection prov={prov} /> : null}
       <div className="mp-ml"><span>{t("settingsPage.model.modelList")}</span></div>
       {models.map((m) => {
         const metaRow = meta?.rows?.[m.id];

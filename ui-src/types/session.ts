@@ -482,5 +482,5 @@ export interface AppState {
   // ---- ringpop popover transient data (hover context-ring detail card; discard-on-leave, cleared and re-requested on the next hover) ----
   ctxDetail: ContextDetailFrame | null;
   ctxLimits: LimitsResultFrame | null;
-  keepaliveStatus: KeepaliveStatusFrame | null;
+  keepaliveStatus: Record<string, KeepaliveStatusFrame>; // per pool session id
 }

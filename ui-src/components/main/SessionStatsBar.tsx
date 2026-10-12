@@ -58,7 +58,7 @@ export default function SessionStatsBar() {
         // counter-clockwise arrow + count, display-only
         extra: (
           <span className="sb-break" title={t("chat.statsCacheBreaksTitle")}>
-            <Icon name="cacheBreak" />
+            <Icon name="cacheBreak" size={14} />
             {st.cacheBreaks}
           </span>
         ),

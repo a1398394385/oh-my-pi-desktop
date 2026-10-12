@@ -96,6 +96,10 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  /* Match the value next to it (.text-dim + tabular-nums): the row's base
+     color is --faint, which made the count read lighter and smaller */
+  font-size: var(--ui-fs-sm);
+  color: var(--dim);
 }
 
 #composer {

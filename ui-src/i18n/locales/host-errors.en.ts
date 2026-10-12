@@ -26,6 +26,13 @@ export const hostErrorsEn = {
     invalidAction: "Unsupported control action: {{action}}",
     registryUnavailable: "Subagent registry unavailable",
   },
+  btw: {
+    topicNotFound: "Side-chat topic not found: {{recordId}}",
+    stillRunning: "This side-chat topic is still answering; cancel it first",
+    noModel: "No active model available to promote the side chat",
+    emptyQuestion: "Side-chat question must not be empty",
+    cancelledEarly: "The side-chat question was cancelled before it started",
+  },
   session: {
     notFound: "Session not found: {{sessionId}}",
     invalidTitle: "Invalid title (empty after sanitizing, or session already released)",

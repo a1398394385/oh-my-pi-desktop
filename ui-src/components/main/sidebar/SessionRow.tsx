@@ -98,6 +98,17 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
   );
 }
 
+// Automation-spawned session: the clock sits at the right, just left of the relative-time label.
+function AutoBadge({ s }: { s: SessionInfo }) {
+  const { t } = useTranslation();
+  if (!s.automation) return null;
+  return (
+    <span className="task-auto" title={`${t("sidebar.autoSession")}: ${s.automation.title}`}>
+      <Icon name="clock" size={13} />
+    </span>
+  );
+}
+
 export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
   const { t } = useTranslation();
   // State subscribed via selectors (must run before the renaming early return: hooks cannot be conditional)
@@ -192,13 +203,6 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           {leading === "unread" || leading === "approval" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
-        {/* Automation-spawned session: the clock marks the row while no status indicator is
-            present; hover hands the slot to the pin button, same as the status dot above. */}
-        {s.automation && leading === "none" && !pinned && !pinnedList ? (
-          <span className="task-auto" title={`${t("sidebar.autoSession")}: ${s.automation.title}`}>
-            <Icon name="clock" size={16} />
-          </span>
-        ) : null}
         {/* Same as ZCode: on hover Pin takes over the same leading slot; always shown in the
             pinned list or when pinned with no state. Archived sessions can't be pinned. */}
         {!s.archived && (
@@ -246,6 +250,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         </span>
       ) : s.archived ? (
         <>
+          <AutoBadge s={s} />
           <span className="tm">{fmtAgo(s.modified)}</span>
           <button
             className="arch-act"
@@ -297,6 +302,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           >
             <Icon name="archive" size={14} />
           </button>
+          <AutoBadge s={s} />
           <span className="tm">{fmtAgo(s.modified)}</span>
         </>
       )}

@@ -28,6 +28,7 @@ import BranchTreePage from "./BranchTreePage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
 import MirrorPage from "./MirrorPage";
+import BtwPage from "./BtwPage";
 import { CapsDock } from "../../chat/CapsCard";
 import { t } from "../../../i18n";
 import WindowControls from "../../WindowControls";
@@ -324,6 +325,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "terminal") body = <TerminalPage />;
   else if (rightTab === "browser") body = <BrowserPage />;
   else if (rightTab === "mirror") body = <MirrorPage />;
+  else if (rightTab === "btw") body = <BtwPage />;
   else body = <SubagentPage />;
   return (
     // Provider scoped locally to the right panel (App.tsx untouched; the coordinator handles

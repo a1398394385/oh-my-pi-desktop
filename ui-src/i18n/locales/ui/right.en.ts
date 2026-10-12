@@ -134,6 +134,18 @@ export const rightEn = {
   closedMin: "{{n}} min ago",
   closedHour: "{{n}} hr ago",
   closedDay: "{{n}} d ago",
+  // ---- /btw side conversations (right panel BtwPage) ----
+  tabBtw: "Side Chat",
+  btwNoTopics: "No side-chat topics yet",
+  btwNewTopic: "New topic",
+  btwFollowUp: "Follow up in this topic",
+  btwPromote: "Promote to a new session",
+  btwStop: "Cancel the answer",
+  btwTurnCount: "{{n}} turns",
+  btwEmptyAnswer: "(no answer)",
+  btwPhNew: "Ask a side question…",
+  btwPhFollowUp: "Follow up…",
+  btwSend: "Send",
 };
 
 export default rightEn;

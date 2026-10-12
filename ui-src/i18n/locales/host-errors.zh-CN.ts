@@ -30,6 +30,13 @@ export const hostErrorsZh = {
     invalidAction: "不支持的控制动作: {{action}}",
     registryUnavailable: "子代理注册表不可用",
   },
+  btw: {
+    topicNotFound: "侧聊话题不存在: {{recordId}}",
+    stillRunning: "该侧聊话题仍在回答中，请先取消",
+    noModel: "无可用模型，无法升格侧聊",
+    emptyQuestion: "侧聊问题不能为空",
+    cancelledEarly: "侧聊问题在开始前已被取消",
+  },
   session: {
     notFound: "会话不存在: {{sessionId}}",
     invalidTitle: "标题无效（清洗后为空或会话已释放）",

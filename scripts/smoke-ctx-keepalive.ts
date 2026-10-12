@@ -2,7 +2,9 @@
 // store with a fake WS, open the popcard through the real hover timer (mouseenter → 150ms),
 // then drive keepalive_status frames through the real wsHandlers dispatch and assert the
 // request shape, the three section cells (probes / next-run countdown / spend) and the
-// enabled=false + stale-session no-render paths.
+// enabled=false + stale-session no-render paths. Also pins the per-session keying of the
+// snapshots (another session's frame must neither clobber the displayed one nor be lost —
+// switching back to a session that stopped reporting must still render its numbers).
 // Run: PATH=/Volumes/MacApps/Home/.bun/bin:$PATH bun run scripts/smoke-ctx-keepalive.ts
 //
 // The store / i18n / component modules are dynamic imports ON PURPOSE (same reason as
@@ -77,6 +79,21 @@ useAppStore.setState({
         pendingApprovals: [],
       },
     ],
+    [
+      "/p/s2",
+      {
+        sessionId: "s2",
+        items: [],
+        assistantDraft: "",
+        streaming: false,
+        subagents: new Map(),
+        model: "m",
+        thinking: "off",
+        isGit: false,
+        todos: [],
+        pendingApprovals: [],
+      },
+    ],
   ]),
   ws: { readyState: 1, send: (raw: string) => sent.push(JSON.parse(raw)) } as unknown as WebSocket,
 });
@@ -121,10 +138,10 @@ dispatchFrame({
 await sleep(80);
 ok(!!sec(), "section rendered after the reply landed");
 const c2 = cells();
-ok(c2.length === 3, "three metric cells");
-ok(c2[0] === "运行次数12命中 10 · 未中 2", "probes cell: count + hits/misses sub-line");
-ok(c2[1] === "下次运行01:33", "next-run cell: mm:ss countdown");
-ok(c2[2] === "消耗成本$0.0012节省 $0.31", "spend cell: $0.0012 shape + saved secondary");
+ok(c2.length === 4, "four metric cells");
+ok(c2[0] === "运行次数12" && c2[1] === "下次运行01:33", "probes cell + next-run mm:ss countdown");
+ok(document.querySelector(".ka-sec .text-faint")?.textContent === "命中 10 · 未中 2", "hits/misses subtitle in the header slot");
+ok(c2[2] === "消耗成本$0.0012" && c2[3] === "节省成本$0.31", "spend + saved cells");
 
 // ---- 3) null nextProbeAt shows the paused label ----
 dispatchFrame({
@@ -160,7 +177,7 @@ dispatchFrame({
 await sleep(80);
 ok(!sec(), "enabled=false renders no section");
 
-// ---- 5) a reply for another session is dropped ----
+// ---- 5) a reply for another session renders nothing here (it lands under its own key) ----
 dispatchFrame({
   type: "keepalive_status",
   sessionId: "zzz",
@@ -177,6 +194,50 @@ dispatchFrame({
 await sleep(80);
 ok(!sec(), "stale-session reply dropped");
 
+// ---- 6) per-session keying: another session's frame neither clobbers nor is lost ----
+// (regression: one shared slot let a hidden session's reportState push replace the displayed
+// session's snapshot, and a seen session never re-reports — the ring's center count stayed
+// empty after switching back)
+dispatchFrame({
+  type: "keepalive_status",
+  sessionId: "s1",
+  enabled: true,
+  active: false,
+  probes: 3,
+  hits: 3,
+  misses: 0,
+  errors: 0,
+  savedUsd: 0.02,
+  spendUsd: 0.0001,
+  nextProbeAt: null,
+});
+dispatchFrame({
+  type: "keepalive_status",
+  sessionId: "s2",
+  enabled: true,
+  active: true,
+  probes: 7,
+  hits: 4,
+  misses: 3,
+  errors: 0,
+  savedUsd: 0.1,
+  spendUsd: 0.0005,
+  nextProbeAt: null,
+});
+await sleep(80);
+ok(cells()[0] === "运行次数3", "another session's frame left the displayed snapshot intact");
+useAppStore.setState({ activePath: "/p/s2" });
+await sleep(80);
+ok(cells()[0] === "运行次数7", "switching sessions shows that session's own retained snapshot");
+useAppStore.setState({ activePath: "/p/s1" });
+await sleep(80);
+ok(cells()[0] === "运行次数3", "switching back restores the first session's snapshot");
+
+// ---- 7) the hover discard drops only the displayed session's snapshot ----
+anchor.dispatchEvent(new window.Event("mouseenter"));
+await sleep(250); // enter timer is 150ms
+const kaKeys = Object.keys(useAppStore.getState().keepaliveStatus);
+ok(!kaKeys.includes("s1") && kaKeys.includes("s2"), "hover discard dropped only the displayed session's snapshot");
 root.unmount();
 console.log("smoke-ctx-keepalive: all assertions passed");
 process.exit(0);

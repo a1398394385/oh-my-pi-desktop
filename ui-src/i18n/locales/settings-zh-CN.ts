@@ -283,7 +283,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "bash.allowCompoundCommands": { "label": "允许复合命令", "description": "按命令逐条评估字面 && 链；未匹配的命令沿用常规 bash 审批策略与模式" },
   "bash.autoBackground.enabled": { "label": "Bash 自动转后台", "description": "自动把长时间运行的 bash 命令转入后台，并稍后送达结果" },
   "bash.autoBackground.thresholdMs": { "label": "Bash 转后台阈值（毫秒）", "description": "命令运行超过该时长后自动转入后台（默认 60000 = 1 分钟）" },
-  "bash.patterns": { "label": "Bash 审批模式", "description": "有序的 bash 命令审批规则。每项包含 match 与 approval 字段；仅支持 \"*\" 通配符" },
+  "bash.patterns": { "label": "Bash 审批模式", "description": "有序的 bash 命令审批规则。每项包含 match 与 approval 字段；仅支持 \"*\" 通配符，自上而下首条匹配生效，由 Shell 页的图形化编辑器维护" },
   "bashInterceptor.enabled": { "label": "Shell 拦截器", "description": "拦截有专用工具对应的 shell 命令" },
   "bashInterceptor.patterns": { "label": "拦截规则", "description": "有序的命令拦截规则（JSON 数组）：每项含 pattern（正则）、flags（可空）、tool（建议工具）、message（拦截提示）；自上而下首条匹配生效，由 Shell 页的图形化编辑器维护" },
   "bash.direnv": { "label": "direnv 自动加载", "description": "自动把仓库的 direnv/devenv `.envrc` 加载进 bash 会话，使 devenv 工具和环境变量无需手动 `direnv exec` 即可用到。遵循 direnv 的允许列表：未 `direnv allow` 过的 `.envrc` 永不执行" },

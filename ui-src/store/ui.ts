@@ -65,7 +65,12 @@ export interface UiSlice {
   bashCompleteResult: { reqId: number; items: Array<{ label: string; kind: "cmd" | "dir" | "file" }> } | null; // latest ! completion reply; stale when the reqId lags the current request
   ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
   ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
-  keepaliveStatus: KeepaliveStatusFrame | null; // most recent keepalive_status reply (same ringpop transient pattern; the context card's cache-warming section consumes it)
+  // Latest keepalive_status snapshot per pool session id (ringpop transient; the ring's
+  // center count and the context card's cache-warming section consume it). Keyed, not a
+  // single slot: hidden sessions keep reporting (reportState pushes go to the one ws), so
+  // a shared slot let another session's frame clobber the displayed counter — and a seen
+  // session never re-reports, so switching back showed no count at all
+  keepaliveStatus: Record<string, KeepaliveStatusFrame>;
   mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
   // Agent Hub: middle-card roster of the session's subagents (opened by double-tap ← in an
   // empty composer). The right sidebar links to hubSel — it renders the linked detail page
@@ -186,7 +191,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   bashCompleteResult: null,
   ctxDetail: null,
   ctxLimits: null,
-  keepaliveStatus: null,
+  keepaliveStatus: {},
   mainViewMode: "chat",
   hubOpen: false,
   hubSel: null,
@@ -372,13 +377,15 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     } catch {}
     const validLevels = getSupportedThinkingForModel(id);
     const cur = get().newSessionThinking;
-    // Per-model default (enabledModels ":level" suffix) outranks the global default:
-    // switching to the model syncs the composer to that level
-    const modelLevel = modelDefaultThinking(id);
-    if (modelLevel && validLevels.includes(modelLevel)) {
-      set((st) => ({ newSessionThinking: modelLevel }));
+    // Per-model default (enabledModels ":level" suffix) outranks the global default
+    // (defaultThinkingLevel); switching syncs the composer to it. auto withheld
+    // (Kimi switch off) pins to high, matching the host's gateKimiAutoThinking.
+    const wantedRaw = modelDefaultThinking(id) ?? get().defaultThinkingCfg;
+    const wanted = wantedRaw === "auto" && !validLevels.includes("auto") ? "high" : wantedRaw;
+    if (wanted && validLevels.includes(wanted)) {
+      set((st) => ({ newSessionThinking: wanted }));
       try {
-        localStorage.setItem("omp-new-thinking", modelLevel);
+        localStorage.setItem("omp-new-thinking", wanted);
       } catch {}
     } else if (!validLevels.includes(cur)) {
       const fallback = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";

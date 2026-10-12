@@ -168,7 +168,7 @@ const ALLOWED_EDGES = new Set([
   // (why it is its own layer: settingsFrame combines the models snapshot with profile/assets switches; sinking into either side would create a cycle)
   "main.ts→frames.ts",
   "frames.ts→state.ts", "frames.ts→models.ts", "frames.ts→profile.ts", "frames.ts→assets.ts",
-  "frames.ts→keepalive-config.ts", // The settings frame carries state.json probe params (feature-page configuration for experiments)
+  "frames.ts→keepalive-config.ts", // The settings frame carries the omp-desktop.json keepalive section (feature-page configuration for experiments)
   // Nine RPC handler domains (third cut: the giant message switch became table-driven): main keeps only the dispatch shell
   "main.ts→rpc/index.ts",
   // Pooled-session file poll (external-write detection + fresh-session disk
@@ -213,7 +213,7 @@ const ALLOWED_EDGES = new Set([
   "rpc/settings.ts→rpc/types.ts", "rpc/settings.ts→rpc/session.ts",
   "rpc/settings.ts→state.ts", "rpc/settings.ts→models.ts", "rpc/settings.ts→frames.ts",
   "rpc/settings.ts→profile.ts", "rpc/settings.ts→assets.ts", "rpc/settings.ts→plan.ts",
-  "rpc/settings.ts→keepalive-config.ts", // set_keepalive_config merges into state.json
+  "rpc/settings.ts→keepalive-config.ts", // set_keepalive_config merges into the omp-desktop.json keepalive section
   "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
   "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
   "rpc/login.ts→open-external.ts", "rpc/settings.ts→open-external.ts", // cross-platform browser/folder launch (rundll32 / open / xdg-open)
@@ -274,6 +274,14 @@ const ALLOWED_EDGES = new Set([
   // session_list backfills the automation badge from the persisted runs ledger
   // (pool eviction/restart must not drop it); read-only store access
   "rpc/session.ts→automations/store.ts",
+  // /btw side conversations: btw.ts owns the topic lifecycle over the SDK primitives;
+  // rpc/btw.ts narrows the wire and promotes topics into pooled sessions
+  "btw.ts→bootstrap.ts", "btw.ts→state.ts", "btw.ts→stderr.ts",
+  "rpc/btw.ts→btw.ts", "rpc/btw.ts→bootstrap.ts", "rpc/btw.ts→state.ts",
+  "rpc/btw.ts→session-lifecycle.ts", "rpc/btw.ts→stderr.ts", "rpc/btw.ts→rpc/types.ts",
+  "rpc/index.ts→rpc/btw.ts",
+  // /btw slash input dispatches a side question straight from the composer
+  "rpc/prompt.ts→btw.ts",
 ]);
 
 // Scan one level of host/ plus the rpc/ and automations/ subdirectories (keys carry a path prefix like rpc/session.ts)

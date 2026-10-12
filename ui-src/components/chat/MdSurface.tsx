@@ -7,7 +7,7 @@
 // Visual semantics live in CSS on the wrapper class chain: .md-surface carries the TUI-parity
 // rules (ui/css/main-chat.css); surfaces needing their own font size or page height set them in
 // their domain CSS (e.g. .cmd-card-cmd.task-md).
-import { createElement, isValidElement, useMemo, useState, useEffect, type JSX } from "react";
+import { createElement, isValidElement, useMemo, useState, useEffect, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
 import { createMermaidPlugin, type DiagramPlugin } from "@streamdown/mermaid";
@@ -18,6 +18,8 @@ import { t } from "../../i18n";
 import { useAppStore } from "../../store";
 import { CODE_PLUGINS, resolvePluginKey, type CodePluginKey } from "../../lib/code-plugin-registry";
 import { getThemeById } from "../../theme-registry";
+import { FileChip, openExternal, openImagePathPanel } from "./parts";
+import { IMAGE_EXTS } from "./util";
 
 // Subscribe to theme changes and switch the active plugin key when the concrete theme changes.
 // Reads from html[data-theme] (the resolved theme: "dark"/"light"/"midnight"/etc.) rather than
@@ -232,10 +234,35 @@ export const mdComponents: Components = {
   blockquote: mdTag("blockquote", "md-quote"),
   hr: mdTag("hr", "md-hr"),
   table: mdTag("table", "md-table"),
-  // Links: keep the old pipeline behavior (open in a new tab; streamdown's external-link
-  // confirm dialog hangs on its internal a component and is naturally bypassed by this override)
-  a: ({ node, ...rest }: ElProps<"a">) =>
-    createElement("a", { ...rest, className: "md-link", target: "_blank", rel: "noopener noreferrer" }),
+  // Links: single click opens the system browser via the opener plugin — Tauri's WebView
+  // silently ignores target=_blank new-window requests, so a bare <a> never opens. The
+  // streamdown external-link confirm dialog stays bypassed (same as before). Non-http(s)
+  // hrefs (anchors, relative) keep default behavior.
+  a: ({ node, href, ...rest }: ElProps<"a">) =>
+    createElement("a", {
+      ...rest,
+      className: "md-link",
+      onClick: (e: ReactMouseEvent<HTMLAnchorElement>) => {
+        if (href && /^https?:\/\//i.test(href)) {
+          e.preventDefault();
+          e.stopPropagation();
+          void openExternal(href);
+        }
+      },
+    }),
+  // Images: remote/data URLs render inline (the Tauri webview has no CSP restrictions);
+  // a local filesystem path cannot load in the webview, so render it as a clickable file
+  // chip that opens the right-panel image preview (read_image) instead of a broken <img>.
+  img: ({ node, src, alt, ...rest }: ElProps<"img">) => {
+    if (
+      typeof src === "string" &&
+      !/^(https?:|data:|blob:)/i.test(src) &&
+      IMAGE_EXTS[src.split(".").pop()?.toLowerCase() ?? ""]
+    ) {
+      return <FileChip path={src} onNameClick={() => openImagePathPanel(src)} />;
+    }
+    return <img {...rest} src={src} alt={alt} className="md-img" />;
+  },
   // Task-list checkboxes: type/disabled hardcoded explicitly (not relying on upstream
   // attribute pass-through); the class hits .md-task-cb
   input: ({ node, ...rest }: ElProps<"input">) =>

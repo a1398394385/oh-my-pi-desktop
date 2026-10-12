@@ -113,6 +113,17 @@
   text-decoration: underline;
 }
 
+/* Inline images in markdown (remote/data URLs only; local paths render as file chips) */
+.md-body .md-img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  width: auto;
+  height: auto;
+  border-radius: var(--r-sm);
+  margin: 8px 0;
+}
+
 /* Table rendering */
 .md-table-wrap {
   width: 100%;

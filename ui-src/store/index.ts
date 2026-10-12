@@ -11,8 +11,9 @@ import { createSettingsSlice, type SettingsSlice } from "./settings";
 import { createModelsSlice, type ModelsSlice } from "./models";
 import { createEntryTreeSlice, type EntryTreeSlice } from "./entry-tree";
 import { createWsSlice, type WsSlice } from "./ws";
+import { createBtwSlice, type BtwSlice } from "./btw";
 
-export interface AppStore extends UiSlice, SessionSlice, ProjectsSlice, RightSlice, SettingsSlice, ModelsSlice, EntryTreeSlice, WsSlice {}
+export interface AppStore extends UiSlice, SessionSlice, ProjectsSlice, RightSlice, SettingsSlice, ModelsSlice, EntryTreeSlice, WsSlice, BtwSlice {}
 
 export const useAppStore = create<AppStore>()((...a) => ({
   ...createUiSlice(...a),
@@ -23,6 +24,7 @@ export const useAppStore = create<AppStore>()((...a) => ({
   ...createModelsSlice(...a),
   ...createEntryTreeSlice(...a),
   ...createWsSlice(...a),
+  ...createBtwSlice(...a),
 }));
 
 /** Write helper (a passthrough alias of zustand setState; kept as a named entry for component ergonomics and later convergence) */

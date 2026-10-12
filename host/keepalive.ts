@@ -17,8 +17,9 @@
  * on consecutive cache misses / network errors, stop immediately on auth
  * failure, stop when the session spend cap is reached; a fresh real request
  * always re-arms and clears the sticky pause. A session the user has read
- * since the timer was armed still gets one farewell probe at the pending
- * deadline, then stops (the re-arm check, not the tick gate, ends the loop).
+ * since the timer was armed still gets readWarmups farewell probes (1 by
+ * default, 0 = stop immediately) at the cadence, then stops (the re-arm
+ * check, not the tick gate, ends the loop).
  *
  * Cut relative to upstream (desktop hasUI=false, these paths are unreachable
  * inside the desktop host):
@@ -30,8 +31,9 @@
  * The main probe chain (capture/schedule/replay/circuit-break/persist) keeps
  * upstream logic line by line.
  * Config source of truth: the keepalive section of omp-desktop.json
- * (per-profile, see keepalive-config.ts; upstream state.json is kept only for
- * the probe-log audit log). Runtime write-back: fixed mode backs the global
+ * (per-profile, see keepalive-config.ts; the audit log and TTL store under
+ * ~/.omp/cache-keepalive/ are the only other files involved). Runtime
+ * write-back: fixed mode backs the global
  * intervalMs off to the 5m safe floor on a miss; smart mode probes each
  * model's max TTL dynamically (climbing value in the local model-ttl store,
  * miss-confirmed value in the section's modelTtlMs map — authoritative once
@@ -194,6 +196,8 @@ export interface KeepaliveHostOptions {
   reportState?: (s: KeepaliveState) => void;
   /** Disk session file of the owning pool entry (optional; short name only) — tags warn lines so a failure can be traced back to its session. */
   sessionFile?: () => string | null | undefined;
+  /** Which user-dialog families are waiting right now (permission approval / ask). Probing during a block is opt-in per kind (probeDuringApproval / probeDuringAsk). */
+  blockState?: () => { approval: boolean; ask: boolean };
 }
 
 /** Create the keepalive extension factory (session-lifecycle injects it conditionally on the experimental switch). */
@@ -220,6 +224,10 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     let pausedReason: string | null = null;
     let missStreak = 0;
     let errorStreak = 0;
+    // Farewell budget: cadence probes still allowed while the session is read
+    // (config readWarmups; refilled by every real target request). Only
+    // consulted when isWanted() is false.
+    let readWarmupsLeft = DEFAULT_PROBE_CONFIG.readWarmups;
     // Effective probe cadence (ms): fixed mode tracks config.intervalMs (a
     // miss back-off rewrites both); smart mode holds the captured model's
     // resolved TTL (omp-desktop.json modelTtlMs → local model-ttl store →
@@ -346,18 +354,36 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         clearTimer();
         return;
       }
-      // Note: an already-read session (isWanted false) is NOT stopped here.
-      // It gets one farewell probe at the already-scheduled deadline — the
-      // cache the user just consumed stays warm for one more cadence in case
-      // they return — and the re-arm check after the probe is what stops the
-      // loop. Arming only ever happens at agent_end (host sets wanted right
-      // before), so a read session can never re-arm itself into an infinite
-      // farewell loop.
+      // Note: an already-read session (isWanted false) is NOT stopped here as
+      // long as it still has farewell budget (config readWarmups). The cache
+      // the user just consumed stays warm for a few more cadences in case they
+      // return; the re-arm check after the probe spends that budget and stops
+      // the loop once it runs out. Arming only ever happens on a real request
+      // (which is also what refills the budget), so a read session can never
+      // re-arm itself into an infinite farewell loop.
       if (!ctx.isIdle()) {
+        // Long user-dialog waits (permission approval / ask) would otherwise let
+        // the prefix cache expire silently. Opt-in per kind via the settings
+        // toggles; the probes run on the normal cadence and share all accounting.
+        const block = opts.blockState?.();
+        if (
+          block &&
+          ((block.approval && config.probeDuringApproval) || (block.ask && config.probeDuringAsk))
+        ) {
+          suspendedProbeAt = nextProbeAt ?? Date.now();
+          await runProbe();
+          if (pausedReason) return; // pause() already cleared the timer
+          schedule(); // keep the block loop ticking on cadence
+          return;
+        }
         // Hold the deadline instead of dropping it: agent_end resumes it, so the
         // probe fires as soon as the turn that overran it finishes.
         debug("tick skipped: agent busy; the deadline is held for agent_end");
         suspendedProbeAt = nextProbeAt ?? Date.now();
+        // While parked on a user dialog with the toggles off, keep the cadence
+        // timer alive (no probe) so a mid-block settings change takes effect
+        // on the next tick instead of waiting for the next real request.
+        if (block && (block.approval || block.ask)) schedule();
         return;
       }
       const idleFor = Date.now() - lastSettledAt;
@@ -365,15 +391,30 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         pause(`idle for more than maxidle (${formatDuration(idleFor)})`);
         return;
       }
+      // readWarmups = 0 means "stop the moment the session is read": don't spend
+      // a farewell probe on the way out.
+      if (readWarmupsLeft <= 0 && !opts.isWanted()) {
+        debug("farewell budget spent and the session is already read; not probing");
+        clearTimer();
+        return;
+      }
       await runProbe();
       if (pausedReason) return; // pause() already cleared the timer
       if (opts.isWanted()) {
+        readWarmupsLeft = config.readWarmups; // unread again (or still): budget refilled
         schedule();
         return;
       }
-      // Farewell probe done and the session has been read since this timer
-      // was armed: stop instead of re-arming. agent_end re-arms when the next
-      // completed turn produces new unread output.
+      // The session has been read since this timer was armed: each probe from
+      // here on spends one farewell slot (config readWarmups, default 1 = the
+      // historical single farewell probe; 0 stops without probing at all, see
+      // the budget gate above). Only a real request refills the budget.
+      readWarmupsLeft -= 1;
+      if (readWarmupsLeft > 0) {
+        debug(`farewell probe settled — session already read; ${readWarmupsLeft} farewell probe(s) left`);
+        schedule();
+        return;
+      }
       debug("farewell probe settled — session already read; not re-arming");
       clearTimer();
     }
@@ -390,7 +431,9 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     function probeEndpoint(dialect: ProbeDialect): string | null {
       if (!capture) return null;
       const base = capture.baseUrl.replace(/\/+$/, "");
-      if (!/^https:\/\//.test(base)) return null;
+      // https only, except loopback: local model endpoints (llama.cpp, dev
+      // fakes) are plain http and probing them never leaves the machine
+      if (!/^https:\/\//.test(base) && !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/.test(base)) return null;
       if (dialect === "anthropic-messages") {
         // Anthropic-shaped transports serve `/v1/messages` from the base without
         // its own version segment; the host strips it before appending the same
@@ -625,12 +668,15 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       const modelId = catalogId(capture.model);
       if (growthHeld) {
         // The recorded max TTL missed a live probe: it is stale. Clear it,
-        // lift the hold, and restart the climb from the re-resolved cadence
-        // (local store → settings default).
+        // lift the hold, and restart the climb from the settings default.
+        // The local store is the climb cursor, so it still holds the value
+        // this very miss disproved — re-resolving from it would hand back
+        // the same over-long cadence and spin at it until maxIdleMs.
         growthHeld = false;
         lastGoodTtlMs = null;
         clearConfirmedModelTtl(modelId);
-        currentTtlMs = resolveModelTtlMs(modelId, config.intervalMs).ms;
+        writeModelTtlMs(modelId, config.intervalMs);
+        currentTtlMs = config.intervalMs;
         debug(
           `smart: cache miss at the recorded max TTL — ${modelId} entry cleared; climb restarts at ${formatDuration(currentTtlMs)}`,
         );
@@ -680,8 +726,13 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       try {
         const prompt = usage.inputTokens;
         const cached = usage.cacheReadTokens;
+        // The session file name is the only stable handle on the log rows: the
+        // pool id changes every mount and promptTokens alone stops being unique
+        // once two sessions have grown to the same context size.
+        const sessionFile = opts.sessionFile?.();
         const entry = {
           at: new Date().toISOString(),
+          session: sessionFile ? sessionFile.split(/[\\/]/).pop() : null,
           mode: config.mode,
           model: capture ? catalogId(capture.model) : null,
           intervalMs: currentTtlMs,
@@ -798,6 +849,13 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         currentTtlMs = config.intervalMs;
       }
       targetRequestThisTurn = true;
+      // A real request means the session is in use again: refill the farewell
+      // budget a read session spends while the user is away.
+      readWarmupsLeft = config.readWarmups;
+      // Arm the cadence timer mid-turn: a long approval/ask block never reaches
+      // agent_end, so the tick must fire while the turn is parked on a dialog
+      // (onTick probes during blocks only; a plain busy tick just holds).
+      schedule();
       // A fresh real request means fresh credentials and a warm prefix cache;
       // automatically recover from any sticky pause.
       if (pausedReason !== null || missStreak > 0 || errorStreak > 0) {
@@ -821,6 +879,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       currentTtlMs = config.intervalMs;
       lastGoodTtlMs = null;
       growthHeld = false;
+      readWarmupsLeft = config.readWarmups;
       clearTimer();
     });
 

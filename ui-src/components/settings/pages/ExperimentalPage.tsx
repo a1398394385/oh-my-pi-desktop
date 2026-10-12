@@ -431,7 +431,55 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 4. Probe cadence (effective in fixed mode; smart self-manages) */}
+        {/* 4. Probe while a permission approval is waiting */}
+        <div className={"srow" + (kaEnabled ? "" : " disabled")}>
+          <div className="srow-tx">
+            <b>{t("settingsPage.exp.kaApprovalTitle")}</b>
+            <span>{t("settingsPage.exp.kaApprovalDesc")}</span>
+          </div>
+          <div
+            className={"tg" + (kaConfig?.probeDuringApproval ? " on" : "")}
+            onClick={() => {
+              if (!kaEnabled) return;
+              updateKa({ probeDuringApproval: !kaConfig?.probeDuringApproval });
+            }}
+          >
+            <i></i>
+          </div>
+        </div>
+
+        {/* 5. Probe while an ask card is waiting */}
+        <div className={"srow" + (kaEnabled ? "" : " disabled")}>
+          <div className="srow-tx">
+            <b>{t("settingsPage.exp.kaAskTitle")}</b>
+            <span>{t("settingsPage.exp.kaAskDesc")}</span>
+          </div>
+          <div
+            className={"tg" + (kaConfig?.probeDuringAsk ? " on" : "")}
+            onClick={() => {
+              if (!kaEnabled) return;
+              updateKa({ probeDuringAsk: !kaConfig?.probeDuringAsk });
+            }}
+          >
+            <i></i>
+          </div>
+        </div>
+
+        {/* 6. Farewell probes after the session was read */}
+        <div className={"srow" + (kaEnabled ? "" : " disabled")}>
+          <div className="srow-tx">
+            <b>{t("settingsPage.exp.kaReadWarmTitle")}</b>
+            <span>{t("settingsPage.exp.kaReadWarmDesc")}</span>
+          </div>
+          <KaInput
+            value={kaConfig ? String(kaConfig.readWarmups) : ""}
+            placeholder="1"
+            disabled={!kaEnabled}
+            onSubmit={(v) => updateKa({ readWarmups: v })}
+          />
+        </div>
+
+        {/* 7. Probe cadence (effective in fixed mode; smart self-manages) */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaIntervalTitle")}</b>
@@ -445,7 +493,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 5. Idle stop deadline */}
+        {/* 8. Idle stop deadline */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaIdleTitle")}</b>
@@ -459,7 +507,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 6. Pause after consecutive misses */}
+        {/* 9. Pause after consecutive misses */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaMissTitle")}</b>
@@ -473,7 +521,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 7. Circuit-break after consecutive failures */}
+        {/* 10. Circuit-break after consecutive failures */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaErrTitle")}</b>
@@ -487,7 +535,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 8. Per-session spend cap */}
+        {/* 11. Per-session spend cap */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaSpendTitle")}</b>
@@ -501,7 +549,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 9. Minimum prompt tokens */}
+        {/* 12. Minimum prompt tokens */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaMinPromptTitle")}</b>
@@ -515,7 +563,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 10. Probe output cap */}
+        {/* 13. Probe output cap */}
         <div className={"srow" + (kaEnabled ? "" : " disabled")}>
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaOutputTitle")}</b>
@@ -529,7 +577,7 @@ export default function ExperimentalPage() {
           />
         </div>
 
-        {/* 11. Context-ring center counter (UI pref, default on; independent of the master switch) */}
+        {/* 14. Context-ring center counter (UI pref, default on; independent of the master switch) */}
         <div className="srow">
           <div className="srow-tx">
             <b>{t("settingsPage.exp.kaRingTitle")}</b>

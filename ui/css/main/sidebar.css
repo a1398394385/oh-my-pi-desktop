@@ -247,10 +247,10 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task-indicator.unread,
 .task-indicator.approval { opacity: 1; }
 .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
-/* automation badge: same absolute leading slot as the status indicator; hover hands it to the pin */
+/* automation badge: inline, just left of the relative-time label; hover hides it along with the label */
 .task-auto {
-  position: absolute; inset: 0;
-  display: inline-flex; align-items: center; justify-content: center;
+  flex: none;
+  display: inline-flex; align-items: center;
   color: var(--dim); opacity: 1; transition: opacity .12s var(--swift);
 }
 .task:hover .task-auto { opacity: 0; }

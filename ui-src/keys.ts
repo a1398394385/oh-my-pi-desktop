@@ -405,7 +405,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     items: [
       { keys: ["Ctrl", "P"], chords: ["ctrl+p"], get label() { return t("misc.keysNextModel"); }, run: () => cycleModel(1) },
       { keys: ["Ctrl", "⇧", "P"], chords: ["ctrl+shift+p"], get label() { return t("misc.keysPrevModel"); }, run: () => cycleModel(-1) },
-      { keys: ["Alt", "M"], chords: ["alt+m"], get label() { return t("misc.keysOpenModelMenu"); }, run: openModelMenu },
+      { keys: ["Ctrl", "M"], chords: ["ctrl+m"], get label() { return t("misc.keysOpenModelMenu"); }, run: openModelMenu },
       { keys: ["⇧", "Tab"], chords: ["shift+tab"], get label() { return t("misc.keysCycleThinking"); }, run: cycleThinking },
       { keys: ["Ctrl", "T"], chords: ["ctrl+t"], get label() { return t("misc.keysThinkingExpand"); }, run: toggleThinking },
       { keys: ["Alt", "⇧", "P"], chords: ["alt+shift+p"], get label() { return t("misc.keysPlanToggle"); }, run: togglePlanMode },

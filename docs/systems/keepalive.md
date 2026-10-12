@@ -34,19 +34,20 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 | 事件 | 动作 |
 |---|---|
 | `session_start` | 加载 config;清 capture/timer/suspended/爬升值 |
-| `before_provider_request` | 靶标判定→capture;smart 重解 cadence;清 sticky pause;标记 targetRequestThisTurn |
+| `before_provider_request` | 靶标判定→capture;smart 重解 cadence;清 sticky pause;标记 targetRequestThisTurn;**布防 turn 内 cadence timer**(阻塞期探测的 tick 来源) |
 | `agent_start`(turn 开始) | deadline 暂存 `suspendedProbeAt`,清 timer(UI 此刻显示「已暂停」) |
 | `agent_end`(`willContinue !== true` 才算真收尾) | armed → schedule:本轮有靶标请求则 cadence 全额重排,否则恢复暂存 deadline(已过则立刻) |
 | `session_shutdown` | 清 timer |
 
 ### 3.3 到点 onTick:三道闸 + 重排决策(顺序)
 
-1. `ctx.isIdle()` → agent 忙则保住 deadline 不动,agent_end 恢复。
+1. `ctx.isIdle()` → agent 忙:若正卡在用户对话框(审批/ask,宿主经 `blockState` 闭包扫 `pendingApprovals` 的 `sessionId`+`blockKind` 报告)且对应开关(`probeDuringApproval`/`probeDuringAsk`,默认关)开着 → **照常探测并按 cadence 重排**(阻塞保活);开关关但确有对话框挂起 → 只保住 deadline 并让 timer 续命(块中途改开关下一 tick 生效);纯忙(无对话框)→ 保住 deadline 不动,agent_end 恢复。
 2. `maxIdleMs`(默认 1h,0=不限)→ 空闲超限 pause。
-3. `runProbe()` → 探测。
-4. **重排决策**:`isWanted()` true → `schedule()` 下一跳;false(用户已读)→ **不再重排,到此为止**(farewell probe 语义)。
+3. farewell 预算已耗尽且会话已读 → 不探测,直接停(`readWarmups=0` 的语义)。
+4. `runProbe()` → 探测。
+5. **重排决策**:`isWanted()` true → farewell 预算回满 + `schedule()` 下一跳;false(用户已读)→ 扣一次预算,仍有剩余则继续 `schedule()`,扣到 0 才停(见下)。
 
-**已读会话 = 最后一跳(farewell probe)**:布防只发生在 agent_end(宿主此刻刚置 wanted=true),已读翻转发生在布防之后——到点时已读的会话仍按原 cadence 时刻探测这一次,探测完停止;下一次 turn 收尾产生新未读才恢复循环。不存在已读会话反复自我重排的路径。
+**已读会话的 farewell 预算(`readWarmups`,设置页「已读会话的保温次数」)**:布防只发生在真实请求/agent_end(宿主此刻置 wanted=true),已读翻转发生在布防之后——到点时已读的会话仍按原 cadence 时刻探测,每探一次扣一次预算,扣到 0 停止;默认 1 即历史上的一次 farewell probe(最后一跳),0 表示已读即刻停、不再探测;下一次真实请求(含 turn 收尾产生新未读)把预算回满。不存在已读会话反复自我重排的路径。
 
 ### 3.4 探测结果分支
 
@@ -61,7 +62,7 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 
 ### 3.5 探测端点守卫
 
-`probeEndpoint` 只认 `https://` 基址(anthropic 方言拼 `/v1/messages`,openai 方言拼 `/chat/completions`);凭据由宿主现场解析(OAuth token 会过期,不用 capture 时冻结的),解析失败回落捕获 headers。
+`probeEndpoint` 只认 `https://` 基址,环回地址(`127.0.0.1`/`localhost`/`[::1]`)放行明文 http(本地模型端点)(anthropic 方言拼 `/v1/messages`,openai 方言拼 `/chat/completions`);凭据由宿主现场解析(OAuth token 会过期,不用 capture 时冻结的),解析失败回落捕获 headers。
 
 ## 4. keepaliveWanted(未读语义,宿主侧维护)
 
@@ -85,6 +86,9 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 | `maxErrorStreak` | 3 | 连续 error 熔断阈值 |
 | `minPromptTokens` | 512 | miss 判定门限(partial hit 不算 miss) |
 | `maxOutputTokens` | 16 | 探测 max_tokens 钳制 |
+| `probeDuringApproval` | false | 审批卡等待期间按 cadence 继续探测(阻塞保活) |
+| `probeDuringAsk` | false | ask 卡等待期间按 cadence 继续探测 |
+| `readWarmups` | 1 | 已读会话仍按 cadence 探测的次数(0=已读即刻停不探测);真实请求回满 |
 | `modelTtlMs` | `{}` | smart 确认的每模型 max TTL(权威,记入即按它探测) |
 
 磁盘布局:`~/.omp/cache-keepalive/probe-log.jsonl`(每次探测一行审计:命中比/花费)、`model-ttl.json`(smart 爬升中 TTL)。**probe-log 零行 = 一次探测都没跑过**——BUG-050 的第一信号。
@@ -92,6 +96,7 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 ## 6. UI 契约与陷阱
 
 - KaSection 渲染条件:回复已落地 && `enabled`;`enabled` = 全局开关开 && 注入成功(entry.keepaliveState 存在)。
+- **消费侧两份**:圆环中心计数(`Composer.tsx` CtxRing,受 uiPrefs.ctxRingProbeCount 控)与卡片 KaSection;两者都读 `store.keepaliveStatus`——按 pool session id 键控的 `Record`,**不是单槽**(宿主 reportState 推送不按当前显示的会话过滤,单槽会被隐藏会话的帧覆盖且无补偿,BUG-062)。切会话后计数取自该会话自己的快照。
 - **陷阱:`enabled:true` 不代表扩展初始化过**——注入时宿主写入的零值快照就带 enabled,BUG-050 全程 enabled:true 而扩展从未收到任何事件。`active` 字段状态帧里有但 UI 不显示。
 - **「已暂停」= nextProbeAt 为 null 的统一文案,四种来源不分显**:
   1. turn 进行中(agent_start 清了 timer);
@@ -128,6 +133,8 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 | `target miss: <id> carries no baseUrl` | 模型注册表缺 baseUrl,探测端点不可解析 |
 | `pi-kimi-keepalive paused — <原因>` | 熔断,原因在行内(idle / miss streak / error streak / spend cap / 凭据) |
 | `farewell probe settled — session already read` | 正常路径:已读会话最后一跳跑完,不重排 |
+| `farewell probe settled — ... N farewell probe(s) left` | 已读但预算未扣完(`readWarmups`>1),按 cadence 续探 |
+| `farewell budget spent and the session is already read; not probing` | `readWarmups=0` 且会话已读:不再探测,直接停 |
 | `probe hit/miss: ...` | 探测在跑,看计数与 probe-log |
 
 ### 7.2 状态查证(不重启宿主)

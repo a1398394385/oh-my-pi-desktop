@@ -406,10 +406,11 @@ export const sessionHandlers = {
         : {},
     );
   },
-  // Cache-warming runtime snapshot (get_keepalive_status reply): ringpop popover transient
-  // alongside ctxDetail/ctxLimits — the context detail card's warming section renders it
+  // Cache-warming runtime snapshot (get_keepalive_status reply / reportState push): ringpop
+  // popover transient alongside ctxDetail/ctxLimits, but stored per session — the ring's
+  // center count must survive switching back to a session that stopped reporting
   keepalive_status(msg) {
-    useAppStore.setState((s) => ({ keepaliveStatus: msg }));
+    useAppStore.setState((s) => ({ keepaliveStatus: { ...s.keepaliveStatus, [msg.sessionId]: msg } }));
   },
  } satisfies HandlerSlice;
 

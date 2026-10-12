@@ -12,9 +12,9 @@ import Icon from "../../../Icon";
 import { langOfPath } from "../../../lib/highlighter";
 import { CodeTokens, useCodeTokens } from "../../../lib/CodeTokens";
 import type { FileViewState } from "../../../types/session";
+import { IMAGE_EXTS } from "../../chat/util";
 
 const FILE_VIEW_MAX_LINES = 800; // display window for over-long whole files: start at the request range's first line when present, otherwise from the top
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]); // matches the host's read_image whitelist
 
 export default function FilePage() {
   const fileView = useAppStore((s) => s.fileView);
@@ -117,13 +117,19 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
 // Click a file: images branch to read_image for preview (host 8MB cap + extension
 // whitelist), everything else sends read_file
 function openFileView(full: string) {
-  if (IMAGE_EXTS.has(full.split(".").pop() ?? "")) {
-    setBump({ fileView: { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null, image: true }, fileViewPending: full });
-    send({ type: "read_image", path: full });
+  if (IMAGE_EXTS[full.split(".").pop()?.toLowerCase() ?? ""]) {
+    openImageFileView(full);
   } else {
     setBump({ fileView: { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null }, fileViewPending: full });
     send({ type: "read_file", path: full });
   }
+}
+
+// Image file view: renders immediately, the read_image reply fills rightState.imageContent.
+// Shared with the message stream (read rows / inline image chips in markdown).
+export function openImageFileView(full: string) {
+  setBump({ fileView: { path: full, text: "", startLine: 1, lineNumbers: null, reqRange: null, image: true }, fileViewPending: full });
+  send({ type: "read_image", path: full });
 }
 
 // File path breadcrumb: inside the project "project name › relative segments", full path
@@ -167,6 +173,38 @@ function FvDetail() {
     if (!fv.full || fv.reqRange == null) return;
     bodyRef.current?.querySelector(".fv-ln.hl")?.scrollIntoView({ block: "start" });
   });
+  // ⌘/Ctrl+A over the file text selects only this file's rows: the WebView default selects the
+  // whole app (sidebar, chat, this view). A click on non-focusable text leaves focus on body, so
+  // the scope is the event target, the live selection anchor, or the last pointerdown — the same
+  // pointer-scope fallback keys.ts uses for the hub gesture.
+  // shortcut: an over-long file only exposes its rendered window (virtualized rows), so select-all
+  // stops at that window; extend if full-file selection is ever needed.
+  useEffect(() => {
+    let inBody = false;
+    const onPointerDown = (e: PointerEvent) => {
+      inBody = e.target instanceof Node && !!bodyRef.current?.contains(e.target);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "a" || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      const body = bodyRef.current;
+      if (!body) return;
+      const anchor = window.getSelection()?.anchorNode;
+      const scoped = inBody || (e.target instanceof Node && body.contains(e.target)) || (!!anchor && body.contains(anchor));
+      if (!scoped) return;
+      e.preventDefault();
+      const range = document.createRange();
+      range.selectNodeContents(body);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, []);
   return (
     <>
       <div className="rb-head">

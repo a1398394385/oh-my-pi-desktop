@@ -10,7 +10,8 @@ import { useAppStore, setBump } from "../../store/index";
 import { patchSessionItem } from "../../store/session";
 import { invoke } from "../../store/ws";
 import { migrateGroupExpand } from "../../store/groupExpand";
-import { uniqueFiles, splitPath, stripReadSelector, readSelectorRange } from "./util";
+import { uniqueFiles, splitPath, stripReadSelector, readSelectorRange, IMAGE_EXTS } from "./util";
+import { openImageFileView } from "../main/right/FilePage";
 import { MOD, modDown } from "../../platform";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -161,7 +162,7 @@ export function InlineCode({ text }: { text?: string }) {
 // ---------- External link text (URL segments in result output become links; only ⌘+click opens externally in the system browser) ----------
 const LINK_RE = /https?:\/\/[^\s<>"'，、。；：！？]+/u;
 const TRAIL_PUNCT_RE = /[.,;:!?，、。；：！？)\]}〉》」』】'"”’]+$/u;
-async function openExternal(url: string) {
+export async function openExternal(url: string) {
   try {
     if (invoke) await invoke("plugin:opener|open_url", { url });
     else window.open(url, "_blank", "noopener");
@@ -379,7 +380,10 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   const running = !!item.running;
   const canOpen = !item.details?.isDirectory && (!!dc || running);
   const open = item.readExpanded && !closing && canOpen;
-  const hasContent = !!dc?.text;
+  // Image reads carry no displayContent.text: the row (and file name) opens the right-panel
+  // image preview instead of the text expand body
+  const isImage = IMAGE_EXTS[cleanPath.split(".").pop()?.toLowerCase() ?? ""];
+  const hasContent = !!dc?.text || isImage;
   // Expand-state write channel: standalone rows live in session.items (including inside loop groups), sub-items of lookup groups live in item.group
   const writeExpand = (fn: (it: ToolItem) => void) => (inGroup ? patchGroupSub(item, fn) : patchActiveItem(item, fn));
   const toggle = () => {
@@ -399,8 +403,8 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       ) : (
       <div
         className={inGroup ? "chg-item" : "act read"}
-        style={canOpen ? { cursor: "pointer" } : undefined}
-        onClick={canOpen ? toggle : undefined}
+        style={canOpen || isImage ? { cursor: "pointer" } : undefined}
+        onClick={isImage ? () => openReadFileInSidebar(item, path || cleanPath) : canOpen ? toggle : undefined}
       >
         <Icon name="file" size={15} />
         <span className="lbl">{t("chat.labelRead")}</span>
@@ -490,16 +494,21 @@ export function openFileDiffInSidebar(path: string) {
 // content while the full file is requested — the whole file shows once the response arrives
 export function openReadFileInSidebar(item: ToolItem, path: string) {
   const d = item.details;
-  if (!d?.displayContent?.text) return;
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   // The raw path may carry selectors (path:59-123 / path:683:raw): strip all selector
   // segments to get a clean path, and take the first line range in the selector for
   // right-panel line highlight. The range is read off args.path — resolvedPath and the files
   // backfill are clean, so reading the selector off `raw` (resolvedPath-first) yields null
-  const raw = String(d.resolvedPath || item.args?.path || path);
+  const raw = String(d?.resolvedPath || item.args?.path || path);
   let clean = stripReadSelector(raw);
   if (!clean.startsWith("/")) clean = (s?.cwd || "") + "/" + clean;
+  // Image reads carry no displayContent.text — view via the right-panel image preview
+  if (IMAGE_EXTS[clean.split(".").pop()?.toLowerCase() ?? ""]) {
+    openImagePathPanel(clean);
+    return;
+  }
+  if (!d?.displayContent?.text) return;
   const offset = typeof item.args?.offset === "number" ? item.args.offset : undefined;
   const limit = typeof item.args?.limit === "number" ? item.args.limit : undefined;
   let reqRange: [number, number] | null = readSelectorRange(item.args?.path);
@@ -520,5 +529,13 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
     todoCollapsed: true,
   });
   st.send({ type: "read_file", path: clean });
+  openRightTab("file");
+}
+
+// Open a local image (message-stream entry points: read rows, image chips in markdown)
+// in the right-panel image preview, expanding the panel over the process card
+export function openImagePathPanel(full: string) {
+  openImageFileView(full);
+  setBump({ rightCollapsed: false, todoCollapsed: true });
   openRightTab("file");
 }

@@ -61,6 +61,7 @@
 | BUG-057 | 设置页 MCP/技能列表一直加载不出来——stdio 探测收尾 `await proc.exited` 无超时，忽略 SIGTERM 的 Python MCP 服务器永久挂住整帧 | 2026-10-10 |
 | BUG-058 | steer 消费时仍排队的消息被「同时消费」且排到 steer 前面——dequeue hook 把两个队列全部文本都广播成消费帧 | 2026-10-10 |
 | BUG-059 | 能力卡片不显示插件行与状态徽章——host 编译时 `--external` 排除 legacy 虚拟模块，legacy 插件扩展在编译产物里必加载失败 | 2026-10-10 |
+| BUG-062 | 上下文圆环中心的 keepalive 探测计数切走再切回就消失——状态只存「最近一条帧」的单槽，被其他会话的推送覆盖后无补偿 | 2026-10-12 |
 
 ---
 
@@ -821,3 +822,41 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：①探针 exe（与 host 同款插件编译）内 `import("omp-legacy-pi-modules")` 成功（1525 loader keys）且 `loadLegacyPiModule(ponytail index.js)` 加载成功、exports 齐全——即修复前报错的那条路径；②重新 `host:build` 成功；③`collectBundledPiEntries` 在 monorepo（1525 条）与 node_modules 布局（1525 条）双通过、底座 `tsc --noEmit` 通过；④preview 冒烟注入快照+`extension_status` 帧：`@dietrichgebert/ponytail` 行尾挂 `🐴 ponytail: ⚡ FULL` 徽章同行渲染（截图确认）；⑤`bun run check` 全绿（含 check-omp-imports 两入口与 i18n 门禁）。
 
 **教训**：①编译产物里的动态 import 不存在「缺了再说」——`--external` 只该用于宿主运行环境真能解析的包，虚拟模块必须由构建插件物化；②底座构建辅助脚本写包路径时要同时支持 monorepo 与 npm 安装两种布局（`npmDir` 映射），否则下游编译宿主接不上；③host 端不进 tsc，实现底座接口（`ExtensionUIContext`）时缺必需成员只有运行时行为差异（ponytail `theme?.fg` 判空静默 return）——对扩展能力面要么补全要么读源码核对；④scoped 包的运行时 key（扩展自定）与包名可能不同层级，匹配逻辑要容忍 scope 尾段。
+
+### BUG-060: 模型读的图片与消息里的图片链接都无法查看——read 行点击被 `displayContent.text` 门控挡死、markdown 链接 `target="_blank"` 在 Tauri WebView 无处理
+
+**现象**：①消息流里模型读取图片文件的 read 行，点击文件名或整行毫无反应；②assistant 消息里的图片链接（markdown 链接或裸 URL）点击无反应；③`![图](/本地路径.png)` 渲染成破图。
+
+**根因**：三处独立缺陷。①`parts.tsx` 的 `openReadFileInSidebar()` 第一行 `if (!d?.displayContent?.text) return;`——图片读取结果没有文本 `displayContent`（`host/translate.ts` 只在 `dc.text` 为字符串时才带 details），直接 return，`ReadRow` 的 `hasContent` 为 false 连名字点击都不挂；②`MdSurface.tsx` 的 `mdComponents.a` 渲染成 `target="_blank"` 的裸 `<a>`，Tauri WKWebView 对新窗口请求（`window.open`/target=_blank）默认静默忽略，点了几百次也不会开；③本地路径 `<img src="/path/x.png">` 在 `tauri://` origin 的 WebView 里加载不到文件系统，必然破图。
+
+**修复**：①`IMAGE_EXTS` 白名单（镜像 `host/rpc/files.ts` 的 read_image 扩展表）从 `FilePage.tsx` 提到 `chat/util.ts` 共享；`FilePage` 导出 `openImageFileView(full)`（fileView image 分支 + `read_image` RPC）；`ReadRow` 对图片行放开 `hasContent`、整行点击改走右栏图片预览（不进文本展开体）；②`openReadFileInSidebar` 把 clean path 解析提前，图片扩展名走 `openImagePathPanel()`（图片预览 + 展开右栏收起过程卡），文本路径逻辑不变；③`mdComponents.a` 挂 onClick：`https?://` 链接 preventDefault 后经 opener 插件（`plugin:opener|open_url`）打开系统浏览器，非 http(s) 保持默认；④`mdComponents.img`：本地路径图片（非 http/data/blob 且扩展名命中白名单）渲染为可点 `FileChip` 走同一条右栏预览链路，其余照常内联渲染（加 `.md-img`：块级、max-width 100%、max-height 320px——WebView 无 CSP，远程图可直接加载）。
+
+**验证**：happy-dom 冒烟 `.local/smoke-image-view.tsx`（mock WS 捕帧 + `__TAURI__` mock 记录 opener RPC）：链接单击发 `plugin:opener|open_url`、远程图渲染 `img.md-img`、本地图 chip 点击发 `read_image` 且 `fileView.image=true` 右栏展开、图片 read 行整行点击发 `read_image`、文本 read 行文件名仍发 `read_file`（回归）。`ui:typecheck`、`ui:build` 通过。
+
+**教训**：①桌面 WebView（WKWebView）对 `target="_blank"` 的默认处理是「什么也不发生」，WebView 内所有链接类出口要么挂 opener onClick 要么注册 new-window 处理，裸 `<a>` 就是死链接；②「读取类工具行」的可点性不能绑在「结果有文本」上——二进制/图片结果没有 text 但同样是有效结果；③右栏 `read_image` 预览链路（RPC + `FvImage`）早已存在，缺的只是消息流侧入口，接上即可，不需要新 RPC。
+
+### BUG-061: 桌面端 MCP 比底座 CLI 多出一批——host 私有 etower 兼容层直读 `config/mcp-servers.json`,绕过底座发现口径
+
+**现象**:用户在 `~/etower/etower-agent` 跑 omp CLI,`/mcp` 只有 5 台(用户级 native 3 + 项目 `.mcp.json` 2);桌面端同目录会话却挂了 10 多台,MCP 设置页 etower 段也列出 `etower-log`/`etower-mysql`/`excel-reader` 等 CLI 从不注入的服务器。
+
+**根因**:`host/assets.ts` 的 `loadAllMcpScoped()` 有一段底座没有的私有兼容层——逐项目直读 `<cwd>/config/mcp-servers.json` 并并入装配结果(etower-agent 的该文件有 9 台)。该函数是 MCP 设置页与会话挂载(`mcp-mount.ts` → `visibleMcpServers`)的共同数据源,于是显示与真实注入同时被污染;且这条直读不受底座任何 provider 开关(`disabledProviders`/用户级 opt-in)约束。排查中被两个假象带偏过:测试 profile 的陈旧 `config.yml`(`disabledProviders:[claude]`)让 codex/claude-plugins 条目假性泄漏;真实差异(昨晚 23:53 用户把 15 个外来 provider 全禁进 `~/.omp/agent/config.yml`)才是 CLI 只剩 5 台的原因——host 与底座本来就读同一份 profile 配置,并无分叉。
+
+**修复**:删除 `loadAllMcpScoped` 的 etower 兼容直读段(唯一写入点,全仓无其他引用)。desktop 从此与底座 `loadCapability("mcps")` 单一口径:profile 配置开关 + 项目 `.mcp.json`/`.omp/mcp.json` + 来源主开关。
+
+**验证**:真 host(OMP_PROFILE=omp-desktop-test)+ WS `list_agent_assets` 端到端冒烟 `.local/smoke-mcp-align.ts`(5 断言):etower 段恰为 `["etower-memory","jumpserver"]`、无 etower provider 条目、无任何外来 provider 泄漏;`host:build` 通过;`check-host-boundaries`/`check-architecture`/`check-encoding`/`check-comment-language` 绿(`bun run check` 仅剩工作区外的存量 CSS 裸色值失败,与本改动无关)。
+
+**教训**:①desktop 给某仓库开的「兼容直读」私货是口径分叉的常驻源头——底座已有单一发现函数时,宿主层只做装配/展示,不再自己发明第二数据源;②会话挂载与设置页共用 `loadAllMcpScoped`,意味着「显示污染」必然同时是「注入污染」,反过来排查「多出来的 MCP」时优先审宿主侧装配而非底座;③跨 profile 对拍要把两份 `config.yml` 的 `disabledProviders`/`enabledProviders` 一起对齐,否则陈旧测试开关会造出假性回归。
+
+### BUG-062: 上下文圆环中心的 keepalive 探测计数切走再切回就消失——状态只存「最近一条帧」的单槽，被其他会话的推送覆盖后无补偿
+
+**现象**：keepalive 开着时，上下文圆环中心的探测计数（probes）在切到另一个会话再切回来后就空了，不会自己回来（下一次 turn 结束前一直空）。
+
+**分诊**：②确认存量缺陷——计数上环起就如此，与本次改动无关。
+
+**根因**：`ui-src/store/ui.ts` 的 `keepaliveStatus` 是单一全局槽（「最近一条 keepalive_status」）。该帧有两个来源：① `get_keepalive_status` RPC 应答（悬停卡片时按当前会话请求）；② 宿主每次 `reportState` 主动推送（`host/session-lifecycle.ts` 的 reportState → `keepaliveStatusPayload(entry.keepaliveSid, s)`）。推送不按「前端正在显示哪个会话」过滤——单条 WS 上所有挂机会话的探测都往同一个槽里写，于是切到会话 B 时 B 的帧覆盖掉 A 的快照。切回 A 又不会有补偿帧：`mark_seen` 已把 A 标为已读，`isWanted()` 转 false 后只走 farewell probe、不再重排（keepalive.md §3.3），加上渲染门槛是 `ka.sessionId === 当前会话 sessionId`，不匹配就整段隐藏 → 数字消失。同类表现：别的会话晚一条帧到达时，当前会话的数字也会当场消失，不必切会话。
+
+**修复**：`keepaliveStatus` 由单槽改为按 pool session id 键控的 `Record<string, KeepaliveStatusFrame>`；帧处理（`store/wsHandlers/session.ts`）按键合并而非整槽覆盖；消费端（`Composer.tsx` 的 `CtxRing`、`chat/CtxCard.tsx`）读当前会话自己的键；卡片悬停丢弃瞬态时只删当前会话的键（其他会话快照保留）。宿主侧零改动。
+
+**验证**：①happy-dom 冒烟 `scripts/smoke-ctx-keepalive.ts` 增补 6/7 段——另一会话的帧落地后当前会话快照不变、切到该会话显示它自己的快照、切回仍显示原会话快照、悬停丢弃只删当前会话键（把 handler 临时改回整槽覆盖，该段立即红，已验红后还原）；②真实浏览器冒烟 `.local/smoke-ring-probe-count.ts`（`ui:build` + headless Chrome + `?preview=1`）：圆环中心计数 12 → 7 → 12。`ui:typecheck`、`ui:build` 通过。顺带修掉该冒烟里过期的三格断言（KaSection 早已改成四格、命中/未中移到表头副标题，脚本未登记进 package.json 所以没人跑到）。
+
+**教训**：①「宿主按会话推的状态」在单 WS 架构里默认会互相覆盖——前端必须按 sessionId 键控存储，不能假设「最近一条就是当前会话的」；②渲染侧的 `sessionId === 当前` 门槛只解决「不显示错的」，解决不了「对的被冲掉」——凡是有跨会话推送的状态都要键控；③已读会话的 farewell 语义（最后一跳后不再自排）意味着切回后没有补偿帧，被冲掉就是永久缺失，不能指望「下一帧会回来」。

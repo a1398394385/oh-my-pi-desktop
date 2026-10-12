@@ -133,6 +133,18 @@ export const rightZh = {
   closedMin: "{{n}} 分钟前",
   closedHour: "{{n}} 小时前",
   closedDay: "{{n}} 天前",
+  // ---- /btw side conversations (right panel BtwPage) ----
+  tabBtw: "侧聊",
+  btwNoTopics: "还没有侧聊话题",
+  btwNewTopic: "新话题",
+  btwFollowUp: "在此话题中追问",
+  btwPromote: "升格为新会话",
+  btwStop: "取消回答",
+  btwTurnCount: "{{n}} 轮",
+  btwEmptyAnswer: "（无回答）",
+  btwPhNew: "问一个侧边问题…",
+  btwPhFollowUp: "继续追问…",
+  btwSend: "发送",
 };
 
 export default rightZh;

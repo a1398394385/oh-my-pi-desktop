@@ -185,7 +185,9 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     // Interceptor/minimizer rows move out of the Bash group into their own cards
     // below it, so each feature renders in exactly one place. The ui-less
     // auto-background threshold key joins the Bash group's card via keys-append.
-    { from: "shell/Bash", keys: ["bash.autoBackground.thresholdMs"], excludeKeys: ["bashInterceptor.enabled", "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel"] },
+    // bash.patterns joins the same card as the graphical approval rules editor
+    // (ShellPage.tsx, see SPECIAL_KEY_PAGES).
+    { from: "shell/Bash", keys: ["bash.autoBackground.thresholdMs"], excludeKeys: ["bash.patterns", "bashInterceptor.enabled", "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel"] },
     // id'd section: ShellPage owns the layout — the enabled toggle (SchemaRowsBare)
     // and the graphical rules editor (bashInterceptor.patterns, see
     // SPECIAL_KEY_PAGES) share one card
@@ -290,6 +292,10 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   // pattern/flags/tool/message per rule, ordered first-match); no raw
   // SchemaRows editor anywhere
   "bashInterceptor.patterns": "pg-shell",
+  // Same-page graphical rules editor (fixed-structure JSON array: match with
+  // '*' wildcard + approval allow/prompt/deny per rule, ordered first-match);
+  // without this entry it would fall through to the advanced page's raw editor
+  "bash.patterns": "pg-shell",
 };
 
 // Keys hidden from every settings surface (page rendering AND search). Consumers

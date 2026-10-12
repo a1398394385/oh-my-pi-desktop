@@ -243,8 +243,14 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
       // 150ms hover timer: a quick pass-through does not disturb; leaving early cancels
       enterTimer.current = setTimeout(() => {
         // Clear the popcard's transient data (discard on move-away): last time's leftovers
-        // are not shown; after results arrive the store fills them in (silent write, no bump)
-        useAppStore.setState({ ctxDetail: null, ctxLimits: null, keepaliveStatus: null });
+        // are not shown; after results arrive the store fills them in (silent write, no bump).
+        // keepaliveStatus is keyed per session: drop only this session's snapshot, others stay
+        useAppStore.setState((st) => {
+          if (!s) return { ctxDetail: null, ctxLimits: null };
+          const next = { ...st.keepaliveStatus };
+          delete next[s.sessionId];
+          return { ctxDetail: null, ctxLimits: null, keepaliveStatus: next };
+        });
         setOpen(true);
         if (s) {
           st.send({ type: "get_context_detail", sessionId: s.sessionId });
@@ -314,10 +320,10 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
   // at runtime, and the presentation layer's existing fallback semantics stay unchanged
   const b = (ctxDetail?.breakdown ?? null) as CtxBreakdown | null;
   const limits: CtxLimits | null = (ctxLimits ?? null) as CtxLimits | null;
-  // Warming snapshot consumed through the local contract; a reply for another session
-  // (switched mid-flight) or enabled=false renders nothing
-  const ka = (keepaliveStatus ?? null) as KaStatus | null;
-  const kaThis = ka && cur && ka.sessionId === cur.sessionId && ka.enabled ? ka : null;
+  // Warming snapshot consumed through the local contract; the current session's entry only
+  // (a mid-flight reply for another session lands under its own key) — enabled=false renders nothing
+  const ka = (cur ? keepaliveStatus[cur.sessionId] : undefined) as KaStatus | undefined;
+  const kaThis = ka && ka.enabled ? ka : null;
   // Compact-context entry: shown only when the session is non-empty and usage > 0; disabled
   // while streaming (races with the running turn).
   // Compacting is non-destructive, so it runs directly without a confirm; pending is set on

@@ -125,12 +125,12 @@ export function settingsSnapshot() {
   };
 }
 
-// Scan the providers section of models.yml and return the ids of providers
-// explicitly authenticating via apiKey. That key outranks stored credentials
-// in getApiKey priority, so they count as the "config file" source; other
-// available providers are the "login/API key credential" source. models.yml
-// is hand-written, so scan by indentation instead of a full YAML parse.
-function configAuthProviders(): Set<string> {
+// Scan the providers section of models.yml and return every provider id
+// declared there. The section is the "config file" source (hand-written
+// baseUrl/models/auth — apiKey is optional, e.g. `auth: none` local runners);
+// everything else comes from stored login credentials. models.yml is
+// hand-written, so scan by indentation instead of a full YAML parse.
+function configProviders(): Set<string> {
   const result = new Set<string>();
   let raw = "";
   try {
@@ -141,7 +141,6 @@ function configAuthProviders(): Set<string> {
   const lines = raw.split("\n");
   let inProviders = false;
   let sectionIndent = -1;
-  let current: string | null = null;
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -155,11 +154,7 @@ function configAuthProviders(): Set<string> {
     }
     if (indent <= sectionIndent) break; // left the providers section
     const entry = trimmed.match(/^["']?([A-Za-z0-9_.-]+)["']?\s*:\s*$/);
-    if (entry && indent === sectionIndent + 2) {
-      current = entry[1];
-      continue;
-    }
-    if (current && /^apiKey\s*:/.test(trimmed)) result.add(current);
+    if (entry && indent === sectionIndent + 2) result.add(entry[1]);
   }
   return result;
 }
@@ -167,11 +162,17 @@ function configAuthProviders(): Set<string> {
 export function modelCatalog() {
   const enabled = new Set(enabledDefaults.keys());
   const allEnabled = enabled.size === 0;
-  const configSet = configAuthProviders();
+  const configSet = configProviders();
+  const credCache = new Map<string, boolean>();
   return H.allModels.map((m) => {
     const id = `${m.provider}/${m.id}`;
     const ctx = (m as any).contextWindow ?? (m as any).contextLength ?? null;
     const vision = Array.isArray((m as any).input) ? (m as any).input.includes("image") : !!(m as any).vision;
+    let cred = credCache.get(m.provider);
+    if (cred === undefined) {
+      cred = H.authStorage.credentials.list(m.provider).length > 0;
+      credCache.set(m.provider, cred);
+    }
     return {
       id,
       name: m.name ?? m.id,
@@ -183,8 +184,13 @@ export function modelCatalog() {
       context: ctx,
       vision,
       efforts: getSupportedEfforts(m),
-      // Auth source: config = explicit apiKey in models.yml; cred = login/stored credential
+      // authSource = declaration source: config = declared in models.yml (apiKey
+      // optional — `auth: none` runners count too); cred = discovered via login.
+      // cred = stored credentials exist (logout button / account rows hang off
+      // this, independent of the declaration source — a models.yml provider may
+      // still carry an OAuth login).
       authSource: configSet.has(m.provider) ? "config" : "cred",
+      cred,
       ...(modelCapabilityAxes(m) ?? {}),
     };
   });

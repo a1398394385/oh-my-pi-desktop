@@ -4,6 +4,9 @@
 import type { ChatItem, ToolItem } from "./chat-types";
 import { t } from "../../i18n";
 
+// Image extensions openable via the host's read_image RPC (whitelist mirrored from host/rpc/files.ts)
+export const IMAGE_EXTS: Record<string, true> = { png: true, jpg: true, jpeg: true, gif: true, webp: true, bmp: true, svg: true };
+
 // Deduplicate and normalize a file list: unify slashes, drop short paths covered by longer ones
 export function uniqueFiles(files: Iterable<unknown> | null | undefined): string[] {
   const out: string[] = [];

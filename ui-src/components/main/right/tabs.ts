@@ -24,6 +24,7 @@ export const TAB_META: Record<string, TabMeta> = {
   browser: { label: "right.tabBrowser", icon: "globe" },
   mirror: { label: "right.tabAgentBrowser", icon: "monitor" },
   hub: { label: "right.hubTitle", icon: "agents" },
+  btw: { label: "right.tabBtw", icon: "comment" },
 };
 
 // Tabs the user cannot open or close by hand: the "hub" tab appears only while the

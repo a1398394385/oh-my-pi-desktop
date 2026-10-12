@@ -180,7 +180,7 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 // later break still registers.
 const CACHE_BREAK_MIN_PEAK = 1000;
 export function countCacheBreaks(
-  entries: ReadonlyArray<{ type?: string; message?: { role?: string; usage?: { cacheRead?: number } } }>,
+  entries: ReadonlyArray<{ type?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } }>,
 ): number {
   let peak = 0;
   let last = 0;
@@ -188,7 +188,13 @@ export function countCacheBreaks(
   let breaks = 0;
   for (const item of entries) {
     if (item?.type !== "message" || item.message?.role !== "assistant") continue;
-    const read = item.message.usage?.cacheRead;
+    const usage = item.message.usage;
+    // A turn aborted before it billed anything (empty content, stopReason
+    // "aborted") never reached the provider, so its zero cacheRead is not a
+    // lost prefix — counting it registers a break that never happened. Every
+    // real request folds cacheRead into totalTokens, so that is the test.
+    if (typeof usage?.totalTokens !== "number" || usage.totalTokens <= 0) continue;
+    const read = usage.cacheRead;
     const cacheRead = typeof read === "number" && Number.isFinite(read) ? read : 0;
     if (cacheRead >= peak) {
       peak = cacheRead;
@@ -351,6 +357,18 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
         // exists (extension injection happens inside createAgentSession) are
         // dropped; the entry ships a zeroed initial snapshot instead
         isWanted: () => kaHolder.entry?.keepaliveWanted === true,
+        // User-dialog wait census for this session: feeds the block-probing
+        // toggles (probeDuringApproval / probeDuringAsk in keepalive-config)
+        blockState: () => {
+          let approval = false;
+          let ask = false;
+          for (const p of pendingApprovals.values()) {
+            if (p.sessionId !== sessionId) continue;
+            if (p.blockKind === "ask") ask = true;
+            else approval = true;
+          }
+          return { approval, ask };
+        },
         reportState: (s) => {
           const entry = kaHolder.entry;
           if (!entry) return;
@@ -619,7 +637,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           pendingApprovals.delete(requestId);
           resolve(v === "OK");
         };
-        pendingApprovals.set(requestId, { resolve: settle });
+        pendingApprovals.set(requestId, { resolve: settle, sessionId, blockKind: "approval" });
         ws.send(
           JSON.stringify(
             stampEvent({
@@ -641,7 +659,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           pendingApprovals.delete(requestId);
           resolve(v);
         };
-        pendingApprovals.set(requestId, { resolve: settle });
+        pendingApprovals.set(requestId, { resolve: settle, sessionId, blockKind: "ask" });
         dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
         // Stable option ids + editableIndex protocol field: the UI renders
         // localized labels from the ids and locates the inline input row by
@@ -684,7 +702,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         pendingApprovals.delete(requestId);
         resolve(v === undefined ? undefined : parseAskAnswer(v));
       };
-      pendingApprovals.set(requestId, { resolve: settle, questions });
+      pendingApprovals.set(requestId, { resolve: settle, questions, sessionId, blockKind: "ask" });
       dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
       const intent = askIntent;
       askIntent = undefined;

@@ -1294,9 +1294,10 @@ function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number }; sessionId?: s
   // Cache-warming probe count for this session (pushed by the host on every
   // keepalive reportState; only sessions with the extension injected report).
   // Hidden by the ctxRingProbeCount pref (default on).
-  const ka = useAppStore((st) => st.keepaliveStatus);
+  const kaAll = useAppStore((st) => st.keepaliveStatus);
   const showCount = useAppStore((st) => st.uiPrefs.ctxRingProbeCount) !== false;
-  const probes = showCount && ka && s?.sessionId && ka.sessionId === s.sessionId && ka.enabled && ka.probes > 0 ? (ka.probes > 99 ? "99" : String(ka.probes)) : null;
+  const ka = s?.sessionId ? kaAll[s.sessionId] : undefined;
+  const probes = showCount && ka && ka.enabled && ka.probes > 0 ? (ka.probes > 99 ? "99" : String(ka.probes)) : null;
   if (!s && !isCreatingNew) return null;
   const p = s?.ctx ? Math.min(1, s.ctx.percent / 100) : 0;
   const cls = "ctx-ring" + (s?.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");

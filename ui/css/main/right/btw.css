@@ -1,0 +1,199 @@
+/* /btw side-conversation page (right panel tab): topic list + composer. Colors tokens only. */
+
+.btw-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* top action row (title + new topic + refresh) */
+.btw-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  flex: none;
+}
+.btw-top-t {
+  flex: 1;
+  font-size: var(--ui-fs);
+  color: var(--dim);
+  font-weight: 500;
+}
+
+/* topic list */
+.btw-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+.btw-none {
+  color: var(--faint);
+  font-size: var(--ui-fs);
+  padding: 18px 8px;
+  text-align: center;
+}
+
+.btw-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-bottom: 6px;
+  background: transparent;
+  overflow: hidden;
+}
+.btw-card.running {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+.btw-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  cursor: pointer;
+  min-width: 0;
+}
+.btw-row:hover {
+  background: var(--panel-2);
+}
+.btw-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.btw-dot.running {
+  background: var(--accent);
+  animation: btwPulse 1.2s ease-in-out infinite;
+}
+@keyframes btwPulse {
+  50% { opacity: 0.35; }
+}
+.btw-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--ui-fs);
+}
+.btw-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  font-size: calc(var(--ui-fs) * 0.88);
+}
+.btw-n {
+  color: var(--dim);
+}
+.btw-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.btw-card:hover .btw-acts,
+.btw-card.running .btw-acts {
+  opacity: 1;
+}
+
+/* expanded turns */
+.btw-body {
+  border-top: 1px solid var(--line);
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+}
+.btw-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.btw-q {
+  color: var(--dim);
+  font-size: var(--ui-fs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-left: 7px;
+  border-left: 2px solid var(--line);
+}
+.btw-a {
+  color: var(--text);
+  font-size: var(--ui-fs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+}
+.btw-empty {
+  color: var(--faint);
+  font-size: var(--ui-fs);
+  font-style: italic;
+}
+.btw-err {
+  color: var(--err);
+  font-size: calc(var(--ui-fs) * 0.92);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* composer */
+.btw-compose {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 8px;
+}
+.btw-replybar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 6px;
+}
+.btw-reply-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+  font-size: calc(var(--ui-fs) * 0.92);
+}
+.btw-inputrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.btw-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: var(--ui-fs);
+  font-family: inherit;
+  padding: 7px 9px;
+  line-height: 1.45;
+  max-height: 120px;
+}
+.btw-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.btw-input::placeholder {
+  color: var(--faint);
+}
+.btw-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

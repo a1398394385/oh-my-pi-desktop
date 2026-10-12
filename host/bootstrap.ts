@@ -79,6 +79,13 @@ export const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");
 export const { isUserQueuedMessage, isHiddenUserCompanion, toRestoredQueuedMessage } = await import(
   "@oh-my-pi/pi-coding-agent/session/queued-messages"
 );
+// /btw side conversations: turn lifecycle + history sidecar (used by host/btw.ts)
+export const { beginBtwTurn, runBtwTurn, patchLatestBtwTurn } = await import(
+  "@oh-my-pi/pi-coding-agent/session/btw-turn"
+);
+export const { BtwHistoryStore, BtwHistoryConflictError, getBtwLatestTurn, getBtwTurns } = await import(
+  "@oh-my-pi/pi-coding-agent/session/btw-history"
+);
 export const { loadCapability } = await import("@oh-my-pi/pi-coding-agent/discovery");
 export const { clearCache: clearCapabilityFsCache } = await import("@oh-my-pi/pi-coding-agent/capability/fs");
 export const {

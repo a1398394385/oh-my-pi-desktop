@@ -105,6 +105,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "sharpshooter.injectionTokenLimit": { "label": "Injection token cap", "description": "Token budget for injecting decision files into context" },
 
   // ---- pg-shell: bash interceptor + shell minimizer (ui-less keys adopted from the advanced page) ----
+  "bash.patterns": { "label": "Bash approval patterns", "description": "Ordered bash command approval rules. Each item has match and approval fields; only '*' wildcards are supported, first match wins, edited graphically on the Shell page" },
   "bashInterceptor.patterns": { "label": "Interception rules", "description": "Ordered command interception rules (JSON array): each has pattern (regex), flags (optional), tool and message; first match wins, edited graphically on the Shell page" },
   "shellMinimizer.settingsPath": { "label": "Minimizer settings file", "description": "Path to a TOML settings file whose values override field-level defaults (~ is expanded)" },
   "shellMinimizer.only": { "label": "Minimize only these programs", "description": "Program-name allowlist (comma-separated, e.g. git); empty = all built-in filters active" },

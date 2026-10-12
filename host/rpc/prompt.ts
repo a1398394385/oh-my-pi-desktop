@@ -33,6 +33,7 @@ import { handlePlanCommand } from "../plan.ts";
 import { pushComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue } from "../queue.ts";
 import { handleListSessions } from "./session";
+import { btwAsk } from "../btw.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
@@ -131,6 +132,16 @@ const PLAN_SLASH_COMMAND = {
   source: "builtin" as const,
 };
 
+// /btw: same shape as /plan — the base only has handleTui (kept out of the
+// available list), so inject a desktop entry. Hand-typed input is intercepted
+// in dispatchSlashInput below (opens the side panel, asks the question).
+const BTW_SLASH_COMMAND = {
+  name: "btw",
+  description: "Ask a side question in the Side Chat panel",
+  input: { hint: "[question]" },
+  source: "builtin" as const,
+};
+
 // Command list frame: builtin + skill + extension + custom + file commands —
 // the batch that can execute without a TUI (the sister face of
 // executeAcpBuiltinSlashCommand). Mapped into the shape the frontend's
@@ -144,7 +155,7 @@ function sendCommandsFrame(
   const computerGateOpen = settingsGet(H.settings, "computer.enabled") === true;
   const commands = list
     .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]) && (computerGateOpen || c.name !== "computer"))
-    .concat(GOAL_SLASH_COMMAND, PLAN_SLASH_COMMAND);
+    .concat(GOAL_SLASH_COMMAND, PLAN_SLASH_COMMAND, BTW_SLASH_COMMAND);
   ws.send(
     JSON.stringify({
       type: "commands",
@@ -345,6 +356,21 @@ async function dispatchSlashInput(
   if (parsedSlash?.name === "plan") {
     const prompt = handlePlanCommand(ws, sessionId, entry, parsedSlash.args);
     if (prompt !== null) return prompt;
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+  // 2.55) /btw: pull up the Side Chat panel; with a question, start a new topic with it
+  // right away (the panel streams the answer). Same consumption contract as /plan.
+  if (parsedSlash?.name === "btw") {
+    const question = parsedSlash.args.trim();
+    ws.send(JSON.stringify(stampEvent({ type: "open_right_tab", name: "btw" })));
+    if (question) {
+      try {
+        await btwAsk(ws, sessionId, question);
+      } catch (err) {
+        sendCommandOutput(err instanceof Error ? err.message : String(err));
+      }
+    }
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }

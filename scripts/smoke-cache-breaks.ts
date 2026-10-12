@@ -7,10 +7,15 @@
 // still lets a later break register.
 import { countCacheBreaks } from "../host/session-lifecycle.ts";
 
-type Msg = { type?: string; message?: { role?: string; usage?: { cacheRead?: number } } };
+type Msg = { type?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } };
 
 function reads(seq: number[]): Msg[] {
-  return seq.map((cacheRead) => ({ type: "message", message: { role: "assistant", usage: { cacheRead } } }));
+  return seq.map((cacheRead) => ({ type: "message", message: { role: "assistant", usage: { cacheRead, totalTokens: cacheRead + 8 } } }));
+}
+
+/** An assistant entry the user aborted before it billed anything: real shape, zero totalTokens. */
+function aborted(cacheRead = 0): Msg {
+  return { type: "message", message: { role: "assistant", usage: { cacheRead, totalTokens: 0 } } };
 }
 
 const cases: Array<[string, Msg[], number]> = [
@@ -23,10 +28,15 @@ const cases: Array<[string, Msg[], number]> = [
   ["kimi near-full drop amid noise", reads([67072, 5632, 69632, 70656, 89088, 69632, 89856, 70656]), 1],
   ["non-assistant entries ignored", [
     ...reads([20000]),
-    { type: "message", message: { role: "user", usage: { cacheRead: 0 } } },
+    { type: "message", message: { role: "user", usage: { cacheRead: 0, totalTokens: 0 } } },
     { type: "other" },
     ...reads([0]),
   ], 1],
+  // Session 01a12f18: a user-aborted turn (usage all zero, stopReason "aborted")
+  // sits between two real turns and must not register a break.
+  ["aborted turn is not a break", [...reads([119808, 156928]), aborted(), ...reads([157440])], 0],
+  ["aborted turns between two real breaks", [...reads([156928]), aborted(), ...reads([0]), aborted(), ...reads([156928])], 1],
+  ["aborted turn cannot re-arm", [...reads([20000, 0]), aborted(), ...reads([20000])], 1],
 ];
 
 let failures = 0;

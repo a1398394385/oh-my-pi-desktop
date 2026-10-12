@@ -2,9 +2,9 @@
  * Cache keepalive config domain (desktop adaptation layer of the pi-kimi-keepalive
  * a05bafd / v0.3.8 port, self-owned).
  *
- * Upstream keeps probe parameters in ~/.omp/cache-keepalive/state.json (one
- * global copy, shared with the CLI); the desktop port, per user request, moved
- * them into the keepalive section of omp-desktop.json — naturally per-profile
+ * Upstream keeps probe parameters in one global config file; the desktop port,
+ * per user request, moved them into the keepalive section of
+ * omp-desktop.json — naturally per-profile
  * (H.desktopProjectsPath is the current profile's agent dir). The single
  * switch in the section:
  *   enabled whether this app injects the extension and probes (consumed by
@@ -57,6 +57,15 @@ export interface ProbeConfig {
   maxErrorStreak: number;
   /** "default" = fixed interval; "smart" = adaptive cadence that grows while probes keep hitting. */
   mode: "default" | "smart";
+  /** Probe on cadence while a permission-approval card is waiting (off by default). */
+  probeDuringApproval: boolean;
+  /** Probe on cadence while an ask-user card is waiting (off by default). */
+  probeDuringAsk: boolean;
+  /** How many further cadence probes a session the user has already read still
+   *  gets before the loop stops (0 = stop as soon as it is read — no farewell
+   *  probe at all; 1 = the historical single farewell probe). Any real request
+   *  refills the budget. */
+  readWarmups: number;
 }
 
 export const DEFAULT_PROBE_CONFIG: Readonly<ProbeConfig> = Object.freeze({
@@ -76,6 +85,11 @@ export const DEFAULT_PROBE_CONFIG: Readonly<ProbeConfig> = Object.freeze({
   maxMissStreak: 1,
   maxErrorStreak: 3,
   mode: "default",
+  probeDuringApproval: false,
+  probeDuringAsk: false,
+  // 1 = the historical single farewell probe: the pending probe still fires
+  // once after the session is read, then the loop stops.
+  readWarmups: 1,
 });
 
 // smart-mode constants
@@ -225,6 +239,9 @@ function normalizeProbeConfig(raw: Record<string, unknown>): ProbeConfig {
     maxMissStreak: int(raw.maxMissStreak, DEFAULT_PROBE_CONFIG.maxMissStreak, 1),
     maxErrorStreak: int(raw.maxErrorStreak, DEFAULT_PROBE_CONFIG.maxErrorStreak, 1),
     mode: raw.mode === "smart" ? "smart" : "default",
+    probeDuringApproval: raw.probeDuringApproval === true,
+    probeDuringAsk: raw.probeDuringAsk === true,
+    readWarmups: int(raw.readWarmups, DEFAULT_PROBE_CONFIG.readWarmups, 0, 100),
   };
 }
 
@@ -288,6 +305,8 @@ export function writeKeepaliveConfig(patch: Record<string, unknown>): ProbeConfi
     // Filter items to non-empty strings then dedupe (keepalive model pill add/remove goes through the same path)
     next.targets = [...new Set(patch.targets.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim()))];
   }
+  if (typeof patch.probeDuringApproval === "boolean") next.probeDuringApproval = patch.probeDuringApproval;
+  if (typeof patch.probeDuringAsk === "boolean") next.probeDuringAsk = patch.probeDuringAsk;
   const duration = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) && v > 0
       ? Math.round(v)
@@ -314,6 +333,8 @@ export function writeKeepaliveConfig(patch: Record<string, unknown>): ProbeConfi
   if (maxMissStreak !== null) next.maxMissStreak = maxMissStreak;
   const maxErrorStreak = int(patch.maxErrorStreak, 1, 100);
   if (maxErrorStreak !== null) next.maxErrorStreak = maxErrorStreak;
+  const readWarmups = int(patch.readWarmups, 0, 100);
+  if (readWarmups !== null) next.readWarmups = readWarmups;
   const usd =
     typeof patch.spendCapUsd === "number" && Number.isFinite(patch.spendCapUsd) && patch.spendCapUsd >= 0
       ? patch.spendCapUsd
