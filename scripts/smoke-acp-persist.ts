@@ -5,9 +5,9 @@
 // appendCustomEntry -> JSONL -> SessionManager.open -> rebuildAcpState.
 // Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-persist.ts
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { getAgentDir, setProfile } from "@oh-my-pi/pi-utils";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import { projectContext, renderCompactionBlock, splitBlocks } from "../host/acp-projection.ts";
@@ -152,6 +152,10 @@ assert.throws(
 );
 console.log("ok: malformed acpSummary entry rejected loudly");
 
-rmSync(sessionFile);
-rmSync(degradedFile);
+// Delete each session's whole directory: rmSync(file) leaves the session dir
+// plus its .lock.os sidecar behind (T3 cleanup fix). Directory names may start
+// with "-", which is harmless for joined paths.
+rmSync(dirname(sessionFile), { recursive: true, force: true });
+rmSync(dirname(degradedFile), { recursive: true, force: true });
+assert.ok(!existsSync(dirname(sessionFile)) && !existsSync(dirname(degradedFile)), "session dirs fully removed");
 console.log("\nALL ACP T2 PERSIST SMOKE CHECKS PASSED");

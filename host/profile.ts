@@ -13,7 +13,6 @@ import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import { reloadAutomationScheduler, setAutomationNotify } from "./automations/scheduler.ts";
 import { handleListSessions } from "./rpc/session.ts";
-import type { AcpNudgeConfig } from "./acp-state.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
@@ -395,24 +394,6 @@ export function readAcpRaw(): Record<string, unknown> {
   } catch {
     return {};
   }
-}
-
-export function readAcpNudgeConfig(): AcpNudgeConfig {
-  const fallback: AcpNudgeConfig = { maxContextLimit: 0.55, minContextLimit: 0.45 };
-  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
-  if (!acp || typeof acp !== "object") return fallback;
-  const parse = (v: unknown, dflt: number): number => {
-    if (typeof v === "number" && v > 0 && v <= 1) return v;
-    if (typeof v === "string") {
-      const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(v);
-      if (m) return Number(m[1]) / 100;
-    }
-    return dflt;
-  };
-  return {
-    maxContextLimit: parse(acp.maxContextLimit, 0.55),
-    minContextLimit: parse(acp.minContextLimit, 0.45),
-  };
 }
 
 /** Read the full ACP context compression config object. */

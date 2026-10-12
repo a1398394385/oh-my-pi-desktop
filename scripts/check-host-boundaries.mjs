@@ -24,6 +24,11 @@ const ALLOWED_EDGES = new Set([
   // ACP dual-zone compaction (spec §9): persistence/rebuild layer reuses the T1
   // projection shapes; acp-projection stays a pure leaf with no session wiring.
   "acp-persist.ts→acp-projection.ts",
+  // ACP runtime (T3): session-lifecycle assembles compress_context + the
+  // dual-zone projection from acp-runtime; it reuses the T1/T2 shapes and the
+  // prototype's messageFingerprint for view<->entry-id alignment.
+  "session-lifecycle.ts→acp-runtime.ts", "acp-runtime.ts→acp-projection.ts",
+  "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→acp-state.ts", "acp-runtime.ts→stderr.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
@@ -133,8 +138,7 @@ const ALLOWED_EDGES = new Set([
   // queue (queued-race fallback), profile (experiment switches), assets (plugin/hook switches)
   "main.ts→session-lifecycle.ts",
   "session-lifecycle.ts→state.ts", "session-lifecycle.ts→bootstrap.ts",
-  "session-lifecycle.ts→goal.ts", "session-lifecycle.ts→acp-state.ts",
-  "session-lifecycle.ts→acp-context.ts", "session-lifecycle.ts→acp-tools.ts",
+  "session-lifecycle.ts→goal.ts",
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",

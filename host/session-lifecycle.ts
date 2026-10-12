@@ -25,16 +25,14 @@ import {
   type TranscriptItem,
 } from "./state.ts";
 import { GoalController, type GoalSession } from "./goal.ts";
-import { AcpSessionState, parseAcpContextWindow } from "./acp-state.ts";
-import { createAcpContextExtension, ACP_SYSTEM_PROMPT } from "./acp-context.ts";
-import { createAcpCompressTools } from "./acp-tools.ts";
+import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension, acpParamsFromConfig } from "./acp-runtime.ts";
 import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import { gateKimiAutoThinking } from "./kimi-thinking.ts";
 import type { KeepaliveState } from "./keepalive.ts";
 import { snapshotMcp } from "./capabilities.ts";
-import { readAcpRaw, readAcpEnabled, readAcpNudgeConfig, readSessionContextEnabled } from "./profile.ts";
+import { readAcpRaw, readAcpEnabled, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
@@ -299,7 +297,25 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   // ACP tool surface and the context view rewrite; it cannot hot-toggle
   // after session creation, so switch changes take effect on new sessions
   const acpEnabled = readAcpEnabled();
-  const acpState = new AcpSessionState();
+  // ACP dual-zone compaction assembly (spec §10): with the master switch on the
+  // session gets the compress_context tool, the dual-zone request projection
+  // (T1 projectContext behind the context event), and the base auto-compaction
+  // pinned OFF per session — the base shouldCompact judges the stored journal,
+  // which the ACP projection never influences, so leaving it on would let base
+  // compaction fold the journal out from under ACP. The settings child stays a
+  // live object: the §5.3 degrade path writes compaction.enabled back to true
+  // on it (the session's compaction getter resolves the settings every turn).
+  const acpRuntime = acpEnabled
+    ? createAcpRuntime({
+        model: initialModel ?? H.modelOverride,
+        sink: sessionManager,
+        getEntries: () => sessionManager.getEntries(),
+        params: acpParamsFromConfig(readAcpRaw().acp),
+      })
+    : null;
+  // ACP manifest supply: ephemeral manifest generation is T4; until then the
+  // runtime starts with no manifest and compress_context answers "no manifest"
+  // (the assembly or tests inject one via setManifest).
   // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, default off for new users)
   const sessionContextEnabled = readSessionContextEnabled();
   // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
@@ -310,20 +326,6 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   // would probe alongside it (double spend is the user's call: disable the
   // plugin on the plugins page to keep only the embedded one).
   const keepaliveOn = readKeepaliveEnabled();
-  // nudge denominator: omp-desktop.json's acp.contextWindow (a fixed value
-  // like 2000000 / "1M") wins over the model registry window; if both are
-  // unknown, nudge is disabled entirely
-  const sessionModel = (initialModel ?? H.modelOverride) as { contextWindow?: number; contextLength?: number } | undefined;
-  acpState.modelContextWindow =
-    parseAcpContextWindow((readAcpRaw()?.acp as Record<string, unknown> | undefined)?.contextWindow) ||
-    Number(sessionModel?.contextWindow ?? sessionModel?.contextLength ?? 0) ||
-    0;
-  acpState.nudge = readAcpNudgeConfig();
-  // system prompt anti-replay section (acp.systemPrompt, can be enabled on
-  // the experimental features page, default off): only appended when ACP is
-  // enabled; opencode-acp injects it by default — here it is an explicit
-  // switch left to the user
-  const acpSystemPrompt = acpEnabled && (readAcpRaw().acp as { systemPrompt?: unknown } | undefined)?.systemPrompt === true;
   // Closure source for the keepalive extension's isWanted: the entry is
   // built only after createAgentSession, so reference it lazily via a
   // holder; a load hitting the pool reuses the same entry, and the unread
@@ -336,22 +338,23 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     // Per-session settings child with computer use pinned OFF: the settings-page
     // computer.enabled switch is the master gate (checked at /computer dispatch
     // in rpc/prompt.ts) and a session opts in via /computer on — the config
-    // value never auto-enables a desktop session. Other runtime overrides
-    // (/extended-context, /browser headless, model-role pins) stay in this child
-    // instead of leaking host-wide; config-layer reads still fall through to
-    // H.settings live (Settings.overlay forwards parent changes to children).
-    settings: H.settings.overlay({ "computer.enabled": false }),
+    // value never auto-enables a desktop session. ACP sessions additionally
+    // pin compaction.enabled OFF here (see the assembly comment above); other
+    // runtime overrides (/extended-context, /browser headless, model-role pins)
+    // stay in this child instead of leaking host-wide; config-layer reads still
+    // fall through to H.settings live (Settings.overlay forwards parent changes
+    // to children).
+    settings: H.settings.overlay({ "computer.enabled": false, ...(acpEnabled ? { "compaction.enabled": false } : {}) }),
     model: initialModel ?? H.modelOverride,
-    systemPrompt: acpSystemPrompt ? (defaultPrompt: string[]) => [...defaultPrompt, ACP_SYSTEM_PROMPT] : undefined,
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
     // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
     customTools: [
-      ...(acpEnabled ? createAcpCompressTools(acpState) : []),
+      ...(acpRuntime ? [createCompressContextTool(acpRuntime)] : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
-    ] as never, // ACP compress tools (compress/decompress/search_context/acp_status/acp_context_recap), see host/acp-tools.ts; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
+    ] as never, // ACP compress_context (host/acp-runtime.ts) + read_session_context; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
-      ...(acpEnabled ? [createAcpContextExtension(acpState)] : []), // context event view transforms: ref injection + compress-block replacement, see host/acp-context.ts
+      ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime)] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
       ...(keepaliveOn ? [createKeepaliveExtension({
         // Same kaHolder entry as isWanted: reports that fire before the entry
         // exists (extension injection happens inside createAgentSession) are
