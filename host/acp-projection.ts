@@ -15,6 +15,7 @@
 // invariant (P1 probe V4 proved the server enforces it with a 400, so a broken
 // projection must fail loudly here rather than at the API).
 import type { AgentMessage, AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
+import { messageFingerprint } from "./acp-state.ts";
 
 /** Token counter bound to the active model's Tokenizer (byte-estimate fallback is built in). */
 export type CountTokens = (text: string) => number;
@@ -88,13 +89,35 @@ function flattenText(content: string | readonly unknown[] | undefined): string {
  * Split a source message view into logical blocks (spec §3). Deterministic and
  * side-effect free; block ids derive only from entry ids, so a manifest built
  * from an earlier split stays valid as long as the entry ids survive.
+ *
+ * `memo` caches block token counts keyed by message fingerprint + block
+ * suffix + text length (spec §8: the base WeakMap memo misses every round on
+ * the context event's fresh copies, so the host keeps its own Map). The length
+ * term is what catches prune rewrites that a head-only fingerprint would miss.
  */
-export function splitBlocks(source: readonly AcpSourceMessage[], countTokens: CountTokens): AcpBlockInfo[] {
+export function splitBlocks(
+	source: readonly AcpSourceMessage[],
+	countTokens: CountTokens,
+	memo?: Map<string, number>,
+): AcpBlockInfo[] {
 	const blocks: AcpBlockInfo[] = [];
 	for (const { id, message } of source) {
+		// Memo key basis: fingerprint identifies the message, suffix separates
+		// the #t/#x blocks of one assistant message, length detects rewrites.
+		const fp = memo ? messageFingerprint(message) : "";
+		const count = (text: string, suffix = ""): number => {
+			if (!memo) return countTokens(text);
+			const key = `${fp}|${suffix}|${text.length}`;
+			let n = memo.get(key);
+			if (n === undefined) {
+				n = countTokens(text);
+				memo.set(key, n);
+			}
+			return n;
+		};
 		if (message.role === "user" || message.role === "developer") {
 			const text = flattenText(message.content);
-			blocks.push({ id, kind: "user", sourceId: id, tokens: countTokens(text), intent: truncIntent(text) });
+			blocks.push({ id, kind: "user", sourceId: id, tokens: count(text), intent: truncIntent(text) });
 		} else if (message.role === "toolResult") {
 			const text = flattenText(message.content);
 			blocks.push({
@@ -102,7 +125,7 @@ export function splitBlocks(source: readonly AcpSourceMessage[], countTokens: Co
 				kind: "result",
 				sourceId: id,
 				toolCallId: message.toolCallId,
-				tokens: countTokens(text),
+				tokens: count(text),
 				intent: truncIntent(`${message.toolName}: ${text}`),
 			});
 		} else if (message.role === "assistant") {
@@ -119,11 +142,11 @@ export function splitBlocks(source: readonly AcpSourceMessage[], countTokens: Co
 					id: `${id}#t`,
 					kind: "thinking",
 					sourceId: id,
-					tokens: countTokens(thinking),
+					tokens: count(thinking, "t"),
 					intent: truncIntent(thinking),
 				});
 			if (text)
-				blocks.push({ id: `${id}#x`, kind: "text", sourceId: id, tokens: countTokens(text), intent: truncIntent(text) });
+				blocks.push({ id: `${id}#x`, kind: "text", sourceId: id, tokens: count(text, "x"), intent: truncIntent(text) });
 		}
 		// Custom agent messages and anything else are not compression candidates; skip.
 	}

@@ -328,7 +328,9 @@ const e2eKeep = { id: "", summary: "Condensed record of the parser investigation
 const e2eStage = { compressed: false, retried: false };
 const mock = createMockModel({
 	handler: (context) => {
-		const lastUser = [...context.messages].reverse().find((m) => m.role === "user");
+		// T4: the [acp-status] ephemeral is a user-role message too — route on
+		// the last REAL user message, not the status injection.
+		const lastUser = [...context.messages].reverse().find((m) => m.role === "user" && !JSON.stringify(m.content ?? "").includes("[acp-status]"));
 		const lastText = JSON.stringify(lastUser?.content ?? "");
 		const reply = (text: string) => ({ content: [text] as const });
 		const toolCall = (keep: string[], summary: string) => ({

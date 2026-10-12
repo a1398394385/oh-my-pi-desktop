@@ -313,9 +313,9 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
         params: acpParamsFromConfig(readAcpRaw().acp),
       })
     : null;
-  // ACP manifest supply: ephemeral manifest generation is T4; until then the
-  // runtime starts with no manifest and compress_context answers "no manifest"
-  // (the assembly or tests inject one via setManifest).
+  // ACP manifest + ephemeral supply (T4): the projection extension re-derives
+  // the round status (tier + candidate manifest) on every request and appends
+  // the [acp-status] ephemeral when a tier is active (host/acp-runtime.ts).
   // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, default off for new users)
   const sessionContextEnabled = readSessionContextEnabled();
   // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
@@ -394,6 +394,15 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     hasUI: true, // The approval gate's fail-cold check goes through runner.hasUI(): without it, every approval-requiring tool errors out outright in non-yolo mode
   });
   const { session } = result;
+  // ACP tokenizer rebind (spec §8): the runtime counts with the session
+  // model's encoding; model_changed is the AgentSessionEvent signal for a
+  // mid-session switch, and session.model already resolves to the new model
+  // when it fires (same subscribe channel attachEntry consumes below).
+  if (acpRuntime) {
+    session.subscribe((ev: { type: string }) => {
+      if (ev.type === "model_changed") acpRuntime.rebindModel(session.model);
+    });
+  }
   // Host-side runtime identity: a fresh pool UUID, deliberately NOT the disk
   // SessionInfo.id. Two reasons (base session-manager.ts): (1) persistence is lazy — a
   // brand-new session has no file/SessionInfo until its first assistant message, while

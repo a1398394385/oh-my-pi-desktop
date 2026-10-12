@@ -22,8 +22,9 @@ const ALLOWED_EDGES = new Set([
   "main.ts→acp-state.ts", "main.ts→acp-context.ts", "main.ts→acp-tools.ts",
   "acp-context.ts→acp-state.ts", "acp-tools.ts→acp-state.ts", "acp-tools.ts→acp-context.ts",
   // ACP dual-zone compaction (spec §9): persistence/rebuild layer reuses the T1
-  // projection shapes; acp-projection stays a pure leaf with no session wiring.
-  "acp-persist.ts→acp-projection.ts",
+  // projection shapes; acp-projection stays a pure leaf — its only non-local
+  // dep is the pure messageFingerprint helper (T4 token memo keys).
+  "acp-persist.ts→acp-projection.ts", "acp-projection.ts→acp-state.ts",
   // ACP runtime (T3): session-lifecycle assembles compress_context + the
   // dual-zone projection from acp-runtime; it reuses the T1/T2 shapes and the
   // prototype's messageFingerprint for view<->entry-id alignment.
