@@ -35,6 +35,8 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→acp-runtime.ts", "session-lifecycle.ts→acp-persist.ts", "session-lifecycle.ts→acp-plan.ts",
   "acp-runtime.ts→acp-projection.ts", "acp-runtime.ts→acp-plan.ts",
   "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→acp-state.ts", "acp-runtime.ts→stderr.ts",
+  "acp-runtime.ts→acp-recall-tool.ts", "acp-recall-tool.ts→acp-projection.ts",
+  "acp-recall-tool.ts→acp-persist.ts", "session-lifecycle.ts→acp-recall-tool.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",

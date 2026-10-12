@@ -27,6 +27,7 @@ import {
 import { GoalController, type GoalSession } from "./goal.ts";
 import { acpParamsFromConfig } from "./acp-plan.ts";
 import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension } from "./acp-runtime.ts";
+import { createRecallBlockTool } from "./acp-recall-tool.ts";
 import { rebuildAcpState } from "./acp-persist.ts";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
@@ -380,9 +381,9 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
     // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
     customTools: [
-      ...(acpRuntime ? [createCompressContextTool(acpRuntime)] : []),
+      ...(acpRuntime ? [createCompressContextTool(acpRuntime), createRecallBlockTool(acpRuntime)] : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
-    ] as never, // ACP compress_context (host/acp-runtime.ts) + read_session_context; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
+    ] as never, // ACP compress_context + recall_block (host/acp-runtime.ts) + read_session_context; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
       ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime)] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
       ...(keepaliveOn ? [createKeepaliveExtension({

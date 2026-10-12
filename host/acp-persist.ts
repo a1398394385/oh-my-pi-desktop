@@ -101,6 +101,15 @@ function parseSummary(entry: CustomEntry): AcpSummaryData {
 	};
 }
 
+/** Every acpSummary in the journal, file order — the full recall id space (live + superseded). */
+export function listAcpSummaries(entries: readonly SessionEntry[]): AcpSummaryData[] {
+	const summaries: AcpSummaryData[] = [];
+	for (const e of entries) {
+		if (e.type === "custom" && e.customType === ACP_SUMMARY_CUSTOM_TYPE) summaries.push(parseSummary(e));
+	}
+	return summaries;
+}
+
 /**
  * Rebuild ACP state by scanning journal entries (host session start, spec §9).
  * Strong blocks carry the full inherited compressedIds set, so no supersedes
@@ -110,10 +119,7 @@ export function rebuildAcpState(entries: readonly SessionEntry[]): AcpRebuiltSta
 	if (entries.some((e) => e.type === "compaction")) {
 		return { degraded: true, zone: [], compressedBlockIds: new Set() };
 	}
-	const summaries: AcpSummaryData[] = [];
-	for (const e of entries) {
-		if (e.type === "custom" && e.customType === ACP_SUMMARY_CUSTOM_TYPE) summaries.push(parseSummary(e));
-	}
+	const summaries = listAcpSummaries(entries);
 	const superseded = new Set(summaries.flatMap((s) => s.meta.supersedes));
 	const zone = summaries.filter((s) => !superseded.has(s.id));
 	const compressedBlockIds = new Set(zone.flatMap((s) => s.meta.compressedIds));

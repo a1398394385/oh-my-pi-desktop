@@ -37,7 +37,7 @@
 // directories at the end.
 // Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-forced.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@oh-my-pi/pi-utils";
@@ -447,6 +447,10 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	assert.equal(metas[0].method, "strong", "forced execution ran strong semantics");
 	assert.equal(e2e.state.degraded, false, "a successful forced turn leaves ACP active");
 	assert.equal(cfgCompactionEnabled.get(e2e.settings), false, "no degrade: base compaction stays pinned off");
+	// dispose() records the exit diagnostic now and detaches the process-exit
+	// hook — otherwise the exit marker re-creates the session file (and its
+	// mapping dir under the profile) after the rmSync below.
+	await e2e.session.dispose();
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(e2e.sessionDir), "session dir fully removed (incl. lock files)");
@@ -525,6 +529,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	const fileAfter = await Bun.file(e2e.sessionManager.getSessionFile()!).text();
 	assert.ok(fileAfter.startsWith(fileBefore), "the pre-degrade journal is a byte-identical prefix of the post-degrade one");
 	assert.ok(fileAfter.includes('"customType":"acpSummary"'), "the compaction block stays on disk");
+	await e2e.session.dispose(); // same as D: no post-exit session-file resurrection
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(e2e.sessionDir), "session dir fully removed (incl. lock files)");
@@ -566,6 +571,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	// while the base retry machinery finishes its attempt.
 	await e2e.session.prompt("final turn");
 	assert.ok(!JSON.stringify(e2e.calls.at(-1)!.context.messages).includes("[acp-status]"), "no ephemeral after degrade");
+	await e2e.session.dispose(); // same as D: no post-exit session-file resurrection
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(e2e.sessionDir), "session dir fully removed (incl. lock files)");
@@ -642,12 +648,29 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	assert.equal(passthrough.length, 1, "degraded-from-restart sessions project verbatim");
 	assert.ok(!stateB.roundStatus, "no round status after restart degrade");
 	await degraded.close();
-	for (const dir of [join(cwd, "a"), join(cwd, "b")]) {
-		const file = `${dir}.jsonl`;
-		if (existsSync(file)) rmSync(file, { force: true });
+	// SessionManager.create(cwd) materializes the cwd-derived mapping dir under
+	// the profile's agent/sessions root even for throwaway /tmp cwds — remove
+	// the real session dirs, not just the /tmp side (the old cleanup only
+	// unlinked `${cwd}/a.jsonl`, which never existed: files live in the profile).
+	for (const manager of [healthy, degraded]) {
+		const dir = dirname(manager.getSessionFile()!);
+		rmSync(dir, { recursive: true, force: true });
+		assert.ok(!existsSync(dir), "profile-side session dir fully removed");
 	}
 	rmSync(cwd, { recursive: true, force: true });
 	console.log("ok: G rebuild wiring — compaction entry degrades at assembly (state frozen, base chain restored); healthy journal adopted");
+}
+
+// Leak guard: every section above must have removed its profile-side session
+// dirs. SessionManager.create(<tmp cwd>) materializes the cwd-derived mapping
+// dir under <agentDir>/sessions even for throwaway /tmp cwds, so a missed
+// cleanup leaks there (the 40-dir residue this guard now prevents).
+{
+	const sessionsRoot = join(getAgentDir(), "sessions");
+	const leaked = existsSync(sessionsRoot) ? readdirSync(sessionsRoot).filter((n) => n.includes("acp-t7-")) : [];
+	for (const name of leaked) rmSync(join(sessionsRoot, name), { recursive: true, force: true });
+	const after = existsSync(sessionsRoot) ? readdirSync(sessionsRoot).filter((n) => n.includes("acp-t7-")) : [];
+	assert.equal(after.length, 0, `T7 session mapping dirs leaked into the profile: ${leaked.join(", ")}`);
 }
 
 console.log("\nALL ACP T7 FORCED COMPRESSION + GUARD LINE + DEGRADE SMOKE CHECKS PASSED");

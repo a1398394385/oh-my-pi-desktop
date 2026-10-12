@@ -72,7 +72,7 @@ function truncIntent(s: string, n = 100): string {
 	return t.length <= n ? t : `${t.slice(0, n - 1)}…`;
 }
 
-function flattenText(content: string | readonly unknown[] | undefined): string {
+export function flattenText(content: string | readonly unknown[] | undefined): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 	return content

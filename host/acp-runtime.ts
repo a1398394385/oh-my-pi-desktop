@@ -45,7 +45,8 @@ import {
 	type AcpIndexLine,
 	type AcpSourceMessage,
 } from "./acp-projection.ts";
-import { appendAcpSummary, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
+import { appendAcpSummary, listAcpSummaries, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
+import { renderFullIndex, renderNormalBlock, type RecallOutcome } from "./acp-recall-tool.ts";
 import { safeStderr } from "./stderr.ts";
 
 // Parameters, the tier ladder, and the §5.2 decision table live in the pure
@@ -672,6 +673,54 @@ export class AcpRuntimeState {
 			...(warning ? { warning } : {}),
 		};
 	}
+
+	/**
+	 * recall_block entry (spec §6): read-only retrieval — normal blocks render
+	 * from the journal (a tool pair = call + result together), compaction blocks
+	 * return their FULL index (bypassing the §11 4K render truncation), and a
+	 * superseded compaction block redirects along its supersedes chain to the
+	 * newest strong block. Degrade rejects at the entry, same stance as
+	 * compress. The recalled text itself is a normal new tool-result block: no
+	 * exemption, next round's manifest picks it up like any other.
+	 */
+	recall(id: unknown): RecallOutcome {
+		if (this.degraded) {
+			return {
+				ok: false,
+				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
+			};
+		}
+		if (typeof id !== "string" || !id) return { ok: false, error: "recall_block requires a non-empty block id." };
+		const entries = this.#deps.getEntries();
+		const summaries = listAcpSummaries(entries);
+		const summary = summaries.find((s) => s.id === id);
+		if (summary) {
+			// Redirect: journal-order supersedes chains never fork (strong folds the
+			// whole live zone), so walking to the last supersedes parent is exact.
+			const chain = [id];
+			let cur = summary;
+			for (;;) {
+				const next = summaries.filter((s) => s.meta.supersedes.includes(cur.id)).at(-1);
+				if (!next) break;
+				cur = next;
+				chain.push(next.id);
+			}
+			const redirect = chain.length > 1 ? `\n[redirected ${chain.join(" -> ")}: superseded; returning the newest strong block's full index]` : "";
+			return { ok: true, text: renderFullIndex(cur) + redirect };
+		}
+		const source = entries
+			.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
+			.map((e) => ({ id: e.id, message: e.message }));
+		const block = splitBlocks(source, this.#deps.countTokens).find((b) => b.id === id);
+		if (!block) {
+			const live = summaries.filter((s) => !summaries.some((o) => o.meta.supersedes.includes(s.id))).map((s) => s.id);
+			return {
+				ok: false,
+				error: `No block with id "${id}". Live compaction blocks: ${live.length ? live.join(", ") : "(none)"}. Message-block ids appear in index lines and round manifests.`,
+			};
+		}
+		return { ok: true, text: renderNormalBlock(block, source) };
+	}
 }
 
 /** Build a runtime bound to the session model's Tokenizer (spec §8). */
@@ -720,6 +769,7 @@ export function createCompressContextTool(state: AcpRuntimeState) {
 		},
 	};
 }
+
 
 /**
  * Request projection extension: hooks the context event and replaces the view
