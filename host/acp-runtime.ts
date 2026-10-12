@@ -1,10 +1,21 @@
 // ACP dual-zone runtime: per-session state machine + compress_context tool +
-// request projection wiring with ephemeral status (spec §5/§6/§7, tickets T3+T4+T6).
+// request projection wiring with ephemeral status (spec §5/§6/§7, tickets T3+T4+T6+T7).
 //
 // Since T6 the §5.2 table runs on both axes: the zone-size axis (rendered zone
 // tokens vs window × 35%) drives the pending-strong state — the ephemeral
 // annotation on every tier, and strong execution semantics for the next
 // compress once the active zone is past L1 (riding) or past L3 (always).
+//
+// T7 adds the failure-exit set (spec §5.2/§5.3): ultimatum round counting
+// (anchored per request, judged at the request's turn_end), the level-3 forced
+// compression (armed for the next request via AgentSession.setForcedToolChoice
+// — named where the face supports it; the openai-completions transport turns
+// that same push into required+single-tool where it does not, so both spec
+// forms ride one channel; a throw = neither form = degrade), the total-volume
+// guard line (projected total vs window − effectiveReserveTokens), and the
+// permanent degrade (projection off, ephemeral stopped, compress rejected at
+// the entry — customTools cannot be unregistered after session creation — and
+// the base compaction chain restored through the assembly hook).
 //
 // One AcpRuntimeState per session owns everything the tool and the projection
 // need to agree on: the compaction zone (journal order), the compressed-id set
@@ -23,7 +34,7 @@
 // pseudo ids that can never enter a manifest and pass through untouched.
 import { type } from "@oh-my-pi/omptype";
 import type { AgentMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
-import { Tokenizer } from "@oh-my-pi/pi-agent-core";
+import { Tokenizer, effectiveReserveTokens } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { messageFingerprint } from "./acp-state.ts";
 import {
@@ -37,79 +48,18 @@ import {
 import { appendAcpSummary, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
 import { safeStderr } from "./stderr.ts";
 
-// ---- parameters (spec §11; defaults are the SSOT table values) -----------------
+// Parameters, the tier ladder, and the §5.2 decision table live in the pure
+// leaf acp-plan.ts (single decision source, spec §5.1/§5.2/§11).
+import {
+	ACP_DEFAULT_PARAMS,
+	ACP_MANIFEST_RENDER_BUDGET,
+	ACP_ZONE_LIMIT_RATIO,
+	type AcpParams,
+	computeRoundPlan,
+	computeSummaryBudget,
+	computeTier,
+} from "./acp-plan.ts";
 
-export interface AcpParams {
-	/** Prompt tiers by active-zone tokens; boundaries are strict-greater (spec §5.1). */
-	l1: number;
-	l2: number;
-	l3: number;
-	/** Compressed active-zone ceiling: keep + protected <= target (spec §6.3). */
-	target: number;
-	/** A successful compression must fold at least this many tokens (spec §5.2). */
-	minCompress: number;
-	/** Hard cap of the summary budget term (spec §11 "8K"). */
-	summaryBudgetMax: number;
-	/** Divisor of the summary budget basis (spec §11 "÷ 3"). */
-	summaryDivisor: number;
-	/** Protected tail: at least this many recent turns stay uncompressed (0 = off). */
-	tailTurns: number;
-	/** Protected tail: at least this many recent tokens stay uncompressed (0 = off). */
-	tailTokens: number;
-}
-
-export const ACP_DEFAULT_PARAMS: AcpParams = {
-	l1: 100_000,
-	l2: 200_000,
-	l3: 300_000,
-	target: 100_000,
-	minCompress: 20_000,
-	summaryBudgetMax: 8_000,
-	summaryDivisor: 3,
-	tailTurns: 2,
-	tailTokens: 20_000,
-};
-
-/** Prompt tier for an active-zone size (spec §5.1 decision table, strict >). */
-export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): "none" | "L1" | "L2" | "L3" {
-	if (activeTokens > p.l3) return "L3";
-	if (activeTokens > p.l2) return "L2";
-	if (activeTokens > p.l1) return "L1";
-	return "none";
-}
-
-/** The §5.2 two-dimensional decision table as the single implementation. */
-export interface AcpRoundPlan {
-	tier: "none" | "L1" | "L2" | "L3";
-	/** Compress method allowed this round: past L3, or pending-strong riding (§5.2). */
-	method: "normal" | "strong";
-	/** Zone over its line (window × ACP_ZONE_LIMIT_RATIO): the pending-strong state (§5.2 rows 5/6). */
-	pendingStrong: boolean;
-}
-
-/**
- * State -> ephemeral tier + allowed compress method (spec §5.2 decision table).
- * Boundaries are strictly greater on both axes, so active == L3 lands in the
- * L2 tier with normal compression (acceptance 19), and a zone exactly at its
- * line is not pending. The optional `zone` axis enables the pending-strong
- * rows: over the line AND active > L1 the next compress rides strong; at or
- * under L1 it stays normal (no riding); past L3 the method is strong anyway.
- */
-export function computeRoundPlan(
-	activeTokens: number,
-	p: AcpParams = ACP_DEFAULT_PARAMS,
-	zone?: { tokens: number; limitTokens: number },
-): AcpRoundPlan {
-	const pendingStrong = zone !== undefined && zone.limitTokens > 0 && zone.tokens > zone.limitTokens;
-	const strong = activeTokens > p.l3 || (pendingStrong && activeTokens > p.l1);
-	return { tier: computeTier(activeTokens, p), method: strong ? "strong" : "normal", pendingStrong };
-}
-
-/** Zone budget line = window × this ratio (spec §11 zone-limit row). */
-export const ACP_ZONE_LIMIT_RATIO = 0.35;
-
-/** Rendered manifest section stays under this many tokens; overflow drops the tail (spec §11). */
-export const ACP_MANIFEST_RENDER_BUDGET = 8_000;
 
 /** Tier instruction lines for the ephemeral (spec §5.1/§7; deterministic, no wall-clock state). */
 const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams) => string> = {
@@ -125,30 +75,8 @@ const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams) => string> = 
 const PENDING_STRONG_NOTE =
 	"Pending strong: the compression zone is over its budget line — the next compression will be a strong one (the whole zone folds into a single summary block).";
 
-/** Summary budget = min((compressed + merged old summaries) ÷ divisor, cap) (spec §6.5/§11). */
-export function computeSummaryBudget(
-	compressedTokens: number,
-	mergedOldSummaryTokens: number,
-	p: AcpParams = ACP_DEFAULT_PARAMS,
-): number {
-	return Math.min(Math.floor((compressedTokens + mergedOldSummaryTokens) / p.summaryDivisor), p.summaryBudgetMax);
-}
-
-/**
- * Read the `acp` section of omp-desktop.json into params. Unknown or invalid
- * entries fall back to the §11 defaults (same lenient contract as the other
- * acp.* readers in profile.ts).
- */
-export function acpParamsFromConfig(section: unknown): AcpParams {
-	const p = { ...ACP_DEFAULT_PARAMS };
-	if (!section || typeof section !== "object") return p;
-	const s = section as Record<string, unknown>;
-	for (const key of ["l1", "l2", "l3", "target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens"] as const) {
-		const v = s[key];
-		if (typeof v === "number" && v >= 0) p[key] = v;
-	}
-	return p;
-}
+// computeSummaryBudget/acpParamsFromConfig moved to acp-plan.ts with the rest
+// of the §11 parameter layer.
 
 // ---- view -> block-id annotation -----------------------------------------------
 
@@ -187,9 +115,20 @@ export interface AcpRuntimeDeps {
 	sink: AcpSummarySink;
 	/** Journal read for entry-id alignment (SessionManager.getEntries). */
 	getEntries: () => readonly SessionEntry[];
-	/** Session model context window (spec §11 zone line = window × 35%); 0/unknown = no zone limit. */
+	/** Session model context window (spec §11 zone line = window × 35%; §5.3 guard line = window − reserve); 0/unknown = neither line. */
 	contextWindow?: number;
 	params?: Partial<AcpParams>;
+	/**
+	 * Level-3 force channel (spec §5.2/§10): must call
+	 * AgentSession.setForcedToolChoice("compress_context") — the named form on
+	 * faces that support it, and form ② for free on openai-completions faces
+	 * (the transport narrows tools to the forced one + "required" when the face
+	 * lacks named support). A throw means neither form exists: the runtime
+	 * degrades (form ③).
+	 */
+	forceCompressTool?: () => void;
+	/** Degrade side effect (spec §5.3/§10): restore the base compaction chain on the session's settings overlay. */
+	onDegrade?: (reason: string) => void;
 }
 
 /** The current-round compression manifest (runtime-generated each request since T4; tests may pin one via setManifest). */
@@ -243,6 +182,7 @@ export interface CompressOutcome {
 export interface CompressRejection {
 	ok: false;
 	code:
+		| "degraded"
 		| "no-manifest"
 		| "manifest-consumed"
 		| "hallucinated-keep"
@@ -261,6 +201,10 @@ export class AcpRuntimeState {
 	manifest: AcpManifest | null = null;
 	/** Latest round status (tier + manifest) driving the ephemeral; null until the first auto-generated projection. */
 	roundStatus: AcpRoundStatus | null = null;
+	/** §5.3 permanent degrade: projection off, ephemeral stopped, compress rejected, base chain restored. */
+	degraded = false;
+	/** Why the session degraded (observability; empty while active). */
+	degradeReason = "";
 	/** Latest request view annotated with block ids (captured by projectView). */
 	lastSource: AcpSourceMessage[] = [];
 	lastBlocks: AcpBlockInfo[] = [];
@@ -277,11 +221,35 @@ export class AcpRuntimeState {
 	#zoneRenderTokens = new Map<string, number>();
 	/** Zone budget line (spec §11): window × 35%, 0 = no limit (unknown window). */
 	#zoneLimitTokens = 0;
+	/** Total-volume guard line (spec §5.3): window − effectiveReserveTokens; 0 = off (unknown window). */
+	#guardLineTokens = 0;
+	/** Monotonic request counter: one projectView call = one request (context event). */
+	#requestSeq = 0;
+	/** Request seq whose ephemeral carried the L3 ultimatum (spec §5.2 round attribution). */
+	#ultimatumAt = 0;
+	/** Request seq whose projection was over the guard line (spec §5.3). */
+	#guardAt = 0;
+	/** Request seq during which a successful (≥ minCompress) compression landed. */
+	#successAt = 0;
+	/** Request seq the level-3 force is armed for; 0 = none (spec §5.2). */
+	#forcedFor = 0;
+	/** Armed force: the next successful compress executes forced-strong (meta.forced, spec §5.2). */
+	#forcedExecution = false;
+	/** Forced success: the next projection must come back under the guard line or degrade (spec §5.3). */
+	#expectRelief = false;
 
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
 		this.params = { ...ACP_DEFAULT_PARAMS, ...deps.params };
-		this.#zoneLimitTokens = Math.floor((deps.contextWindow ?? 0) * ACP_ZONE_LIMIT_RATIO);
+		this.#recomputeWindowLines(deps.contextWindow ?? 0);
+	}
+
+	/** Both window-derived lines (zone × 35%, guard = window − base reserve); 0 window disables them. */
+	#recomputeWindowLines(contextWindow: number): void {
+		this.#zoneLimitTokens = Math.floor(contextWindow * ACP_ZONE_LIMIT_RATIO);
+		// Reuse the base reserve math verbatim (max(15%, default floor)) so the
+		// guard line matches what the base's own overflow paths would assume.
+		this.#guardLineTokens = contextWindow > 0 ? contextWindow - effectiveReserveTokens(contextWindow, {}) : 0;
 	}
 
 	/** Serialize executions; validation failures inside the lock do not break the chain. */
@@ -331,18 +299,119 @@ export class AcpRuntimeState {
 	 * appended when a tier is active (spec §7). Also refreshes the snapshot the
 	 * compress validation runs against (same coordinate system as the manifest:
 	 * the round status is re-derived from this fresh post-prune view, which is
-	 * the settled round-end state — spec §5.2 round attribution).
+	 * the settled round-end state — spec §5.2 round attribution) and anchors
+	 * the failure-exit state machine to this request (ultimatum/guard lines).
+	 * Degraded sessions pass the original view through verbatim (spec §5.3).
 	 */
 	projectView(view: readonly AgentMessage[]): AgentMessage[] {
+		if (this.degraded) return [...view];
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
 		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo);
 		const kept = new Set(this.lastBlocks.filter((b) => !this.compressed.has(b.id)).map((b) => b.id));
 		const out = projectContext(source, kept, this.zone, this.#deps.countTokens);
 		if (!this.#manifestOverride) this.#refreshRoundStatus();
+		if (this.roundStatus) this.#anchorRound(this.roundStatus);
+		if (this.degraded) return [...view]; // the relief check degraded mid-projection
 		if (this.roundStatus && (this.roundStatus.tier !== "none" || this.roundStatus.pendingStrong)) out.push(this.#renderEphemeral());
 		this.lastProjected = out;
 		return out;
+	}
+
+	/**
+	 * Anchor the failure-exit machine to the request just projected (spec §5.2
+	 * round attribution / §5.3): the L3 ultimatum counts as delivered with this
+	 * request, and a projected total over the guard line arms the direct force
+	 * path (no ultimatum wait). Also resolves the post-force relief check: a
+	 * forced success must bring the total back under the line.
+	 */
+	#anchorRound(rs: AcpRoundStatus): void {
+		this.#requestSeq++;
+		if (this.#expectRelief) {
+			this.#expectRelief = false;
+			if (this.#guardLineTokens > 0 && rs.projectedTokens > this.#guardLineTokens) {
+				this.degrade(`projected total ${rs.projectedTokens} still over the guard line ${this.#guardLineTokens} after the forced compression (spec §5.3)`);
+				return;
+			}
+		}
+		if (rs.tier === "L3") this.#ultimatumAt = this.#requestSeq;
+		if (this.#guardLineTokens > 0 && rs.projectedTokens > this.#guardLineTokens) this.#guardAt = this.#requestSeq;
+	}
+
+	/**
+	 * Turn-end judgment (spec §5.2 round attribution / §5.3 failure exits),
+	 * driven by the session's turn_end event. A turn whose request carried the
+	 * L3 ultimatum (or sat over the guard line) and produced no successful
+	 * compression arms the level-3 force for the next request; a forced turn
+	 * that still ends without success (validation failures, illegal output, or
+	 * an API-error turn — error turns emit turn_end with no tool call)
+	 * degrades. Successful rounds answer everything. Idle sessions never wake
+	 * the machine: no timers, no queues — the next request (whenever it comes)
+	 * consumes the armed force.
+	 */
+	onTurnEnd(): void {
+		if (this.degraded) return;
+		const req = this.#requestSeq;
+		const success = this.#successAt === req;
+		if (this.#forcedFor > 0 && req === this.#forcedFor) {
+			this.#forcedFor = 0;
+			this.#forcedExecution = false;
+			if (!success) {
+				this.degrade(`forced compression turn produced no successful compression (request ${req}, spec §5.2)`);
+				return;
+			}
+			// Relief expectation (spec §5.3): the next projection must come in
+			// under the guard line, or the session degrades.
+			this.#expectRelief = this.#guardLineTokens > 0;
+			return;
+		}
+		if (success) {
+			// A successful compression answers any standing ultimatum and
+			// retires a stale arm (the queue was consumed by another path).
+			this.#forcedFor = 0;
+			this.#forcedExecution = false;
+			return;
+		}
+		if (this.#guardAt === req) return this.#armForce(`projected total over the guard line at request ${req}`);
+		if (this.#ultimatumAt === req) return this.#armForce(`L3 ultimatum unanswered by the turn of request ${req}`);
+	}
+
+	/**
+	 * Arm the level-3 force for the next request (spec §5.2). The only
+	 * host-reachable channel is AgentSession.setForcedToolChoice: the named
+	 * form ① where the face supports it, and form ② for free on
+	 * openai-completions faces, whose transport degrades a named choice to
+	 * "required" + a single-tool list when the face lacks named support. A
+	 * throw means neither form exists (form ③): degrade immediately.
+	 */
+	#armForce(reason: string): void {
+		if (this.#forcedFor > 0) return; // never double-arm
+		try {
+			this.#deps.forceCompressTool?.();
+		} catch (err) {
+			this.degrade(`cannot force compress_context: ${reason} (spec §5.2 form ③)`, err);
+			return;
+		}
+		this.#forcedFor = this.#requestSeq + 1;
+		this.#forcedExecution = true;
+	}
+
+	/**
+	 * Permanently exit ACP for this session (spec §5.3): projection off
+	 * (messages pass through verbatim), ephemeral stopped, compress rejected
+	 * at the entry, and the assembly hook restores the base compaction chain
+	 * on the session settings overlay. Idempotent.
+	 */
+	degrade(reason: string, err?: unknown): void {
+		if (this.degraded) return;
+		this.degraded = true;
+		this.degradeReason = reason;
+		safeStderr(`[ACP] degraded for this session; the base compaction chain takes over: ${reason}`, err);
+		try {
+			this.#deps.onDegrade?.(reason);
+		} catch (hookErr) {
+			safeStderr("[ACP] degrade hook failed", hookErr);
+		}
 	}
 
 	/**
@@ -423,15 +492,15 @@ export class AcpRuntimeState {
 
 	/**
 	 * Rebind the token counter to a new model (spec §8; T3 leftover). The memo
-	 * must go too: cached counts belong to the old encoding.
+	 * must go too: cached counts belong to the old encoding, and both
+	 * window-derived lines (zone × 35%, guard) follow the new window.
 	 */
 	rebindModel(model: unknown): void {
 		const tokenizer = new Tokenizer(model as never);
 		this.#deps.countTokens = (s) => tokenizer.countTokens(s);
 		this.#tokenMemo.clear();
 		this.#zoneRenderTokens.clear();
-		// The zone budget line follows the new model's window (spec §11).
-		this.#zoneLimitTokens = Math.floor(((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0) * ACP_ZONE_LIMIT_RATIO);
+		this.#recomputeWindowLines((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0);
 	}
 
 	/** compress_context entry: mutex + full §6 validation sequence + execution. */
@@ -442,6 +511,15 @@ export class AcpRuntimeState {
 	#validateAndExecute(input: { keep?: string[]; summary?: string }): CompressOutcome | CompressRejection {
 		const p = this.params;
 		const countTokens = this.#deps.countTokens;
+		// §5.3 degrade — customTools cannot be unregistered after session
+		// creation, so the tool surface stays and the entry rejects instead.
+		if (this.degraded) {
+			return {
+				ok: false,
+				code: "degraded",
+				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
+			};
+		}
 		// §6.1 — a consumed (or missing) manifest rejects before anything else.
 		if (!this.manifest) {
 			return { ok: false, code: "no-manifest", error: "No compression manifest for this round." };
@@ -497,12 +575,17 @@ export class AcpRuntimeState {
 		// method is re-derived here from the same settled snapshot the round
 		// status uses (request-anchored judgment, §5.2): past L3, or riding a
 		// zone over its line with active > L1 — a pure zone reset at or under L1
-		// does not ride and stays normal.
+		// does not ride and stays normal. A level-3 armed force overrides to
+		// strong unconditionally (§5.2: forced compression runs strong
+		// semantics with meta.forced=true).
 		const compressedIds = this.manifest.ids.filter((id) => byId.has(id) && !keepSet.has(id));
 		const compressedTokens = compressedIds.reduce((n, id) => n + (byId.get(id)?.tokens ?? 0), 0);
 		const activeTokensBefore = active.reduce((n, b) => n + b.tokens, 0);
 		const zoneTokens = this.#zoneTokens();
-		const method = computeRoundPlan(activeTokensBefore, p, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens }).method;
+		const forced = this.#forcedExecution;
+		const method: "normal" | "strong" = forced
+			? "strong"
+			: computeRoundPlan(activeTokensBefore, p, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens }).method;
 		const mergedOldSummaryTokens = method === "strong" ? zoneTokens : 0;
 		const budget = computeSummaryBudget(compressedTokens, mergedOldSummaryTokens, p);
 		const summaryTokens = countTokens(summary);
@@ -550,27 +633,30 @@ export class AcpRuntimeState {
 		const written = appendAcpSummary(this.#deps.sink, {
 			summary,
 			index,
-			meta: {
-				createdAt: Date.now(),
-				depth: method === "strong" ? this.zone.reduce((m, z) => Math.max(m, z.meta.depth), 0) + 1 : 0,
-				method,
-				keepIds: keep,
-				compressedIds: [...inheritedIds, ...compressedIds],
-				supersedes,
-				tokensBefore: activeTokensBefore,
-				tokensAfter: activeTokensAfter,
-			},
+		meta: {
+			createdAt: Date.now(),
+			depth: method === "strong" ? this.zone.reduce((m, z) => Math.max(m, z.meta.depth), 0) + 1 : 0,
+			method,
+			...(forced ? { forced: true } : {}),
+			keepIds: keep,
+			compressedIds: [...inheritedIds, ...compressedIds],
+			supersedes,
+			tokensBefore: activeTokensBefore,
+			tokensAfter: activeTokensAfter,
+		},
 		});
 		if (method === "strong") this.zone = [written];
 		else this.zone.push(written);
 		for (const id of compressedIds) this.compressed.add(id);
 		this.manifest.consumed = true;
-
-		// minCompress never gates validation (spec §5.2): below it the call still
-		// succeeds — L2 adds a warning, L3 does not count as a successful
-		// compression (the three-strike counter is a later ticket).
+		// minCompress never gates validation (spec §5.2): below it the call
+		// still succeeds — L2 adds a warning; L3 does not count it as a
+		// successful compression for the §5.2/§5.3 failure exits. A pure reset
+		// (folded tokens 0) likewise never counts (§5.2 compressed-set reading).
 		const tierBefore = computeTier(activeTokensBefore, p);
 		const countedAsSuccess = compressedTokens >= p.minCompress;
+		this.#forcedExecution = false;
+		if (countedAsSuccess) this.#successAt = this.#requestSeq;
 		const warning =
 			tierBefore === "L2" && !countedAsSuccess
 				? `compressed ${compressedTokens} tokens is under minCompress ${p.minCompress}; allowed with warning at ${tierBefore} tier.`

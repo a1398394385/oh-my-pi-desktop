@@ -27,8 +27,13 @@ const ALLOWED_EDGES = new Set([
   "acp-persist.ts→acp-projection.ts", "acp-projection.ts→acp-state.ts",
   // ACP runtime (T3): session-lifecycle assembles compress_context + the
   // dual-zone projection from acp-runtime; it reuses the T1/T2 shapes and the
-  // prototype's messageFingerprint for view<->entry-id alignment.
-  "session-lifecycle.ts→acp-runtime.ts", "acp-runtime.ts→acp-projection.ts",
+  // prototype's messageFingerprint for view<->entry-id alignment. T7 adds the
+  // restart-rebuild edge: session-lifecycle adopts the rebuilt zone/compressed
+  // set (or degrades on a base compaction entry) straight from acp-persist,
+  // and the §5.2 decision table + §11 params moved to the pure leaf acp-plan
+  // (single decision source for runtime, assembly, and smokes).
+  "session-lifecycle.ts→acp-runtime.ts", "session-lifecycle.ts→acp-persist.ts", "session-lifecycle.ts→acp-plan.ts",
+  "acp-runtime.ts→acp-projection.ts", "acp-runtime.ts→acp-plan.ts",
   "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→acp-state.ts", "acp-runtime.ts→stderr.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)

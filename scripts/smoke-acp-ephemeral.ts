@@ -38,11 +38,11 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
 import {
 	AcpRuntimeState,
-	computeRoundPlan,
 	createAcpProjectionExtension,
 	createCompressContextTool,
 } from "../host/acp-runtime.ts";
-import type { AcpParams, AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
+import { computeRoundPlan, type AcpParams } from "../host/acp-plan.ts";
+import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { assertToolPairing } from "../host/acp-projection.ts";
 
 assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");

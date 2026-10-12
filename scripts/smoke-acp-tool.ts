@@ -31,13 +31,12 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
 import {
 	AcpRuntimeState,
-	computeSummaryBudget,
-	computeTier,
 	createAcpProjectionExtension,
 	createAcpRuntime,
 	createCompressContextTool,
 } from "../host/acp-runtime.ts";
-import type { AcpParams, AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
+import { computeSummaryBudget, computeTier, type AcpParams } from "../host/acp-plan.ts";
+import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { splitBlocks } from "../host/acp-projection.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 

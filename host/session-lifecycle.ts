@@ -25,7 +25,10 @@ import {
   type TranscriptItem,
 } from "./state.ts";
 import { GoalController, type GoalSession } from "./goal.ts";
-import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension, acpParamsFromConfig } from "./acp-runtime.ts";
+import { acpParamsFromConfig } from "./acp-plan.ts";
+import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension } from "./acp-runtime.ts";
+import { rebuildAcpState } from "./acp-persist.ts";
+import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
@@ -303,16 +306,43 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   // pinned OFF per session — the base shouldCompact judges the stored journal,
   // which the ACP projection never influences, so leaving it on would let base
   // compaction fold the journal out from under ACP. The settings child stays a
-  // live object: the §5.3 degrade path writes compaction.enabled back to true
-  // on it (the session's compaction getter resolves the settings every turn).
+  // live object (hoisted here): the §5.3 degrade path writes compaction.enabled
+  // back to true on it (the session's compaction getter resolves the settings
+  // every turn).
+  const sessionSettings = H.settings.overlay({ "computer.enabled": false, ...(acpEnabled ? { "compaction.enabled": false } : {}) });
+  // Session holder for the T7 force channel: setForcedToolChoice needs the
+  // live session, which only exists after createAgentSession below.
+  const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
   const acpRuntime = acpEnabled
     ? createAcpRuntime({
         model: initialModel ?? H.modelOverride,
         sink: sessionManager,
         getEntries: () => sessionManager.getEntries(),
         params: acpParamsFromConfig(readAcpRaw().acp),
+        // Level-3 force channel (spec §5.2/§10): the named form where the face
+        // supports it (openai-completions faces narrow tools internally = form
+        // ②); a throw (neither form) degrades via form ③.
+        forceCompressTool: () => {
+          const s = acpSession.session;
+          if (!s) throw new Error("session not created yet");
+          s.setForcedToolChoice("compress_context");
+        },
+        // §5.3 degrade: restore the base compaction chain on the live settings
+        // child — the OMP methodOrder takes over from the next turn on.
+        onDegrade: () => cfgCompactionEnabled.override(sessionSettings, true),
       })
     : null;
+  // Restart rebuild (spec §9/T2+T7): adopt the persisted zone/compressed set;
+  // a journal containing a base compaction entry degrades immediately (the
+  // overlay write-back above re-enables the base chain for this session).
+  if (acpRuntime) {
+    const rebuilt = rebuildAcpState(sessionManager.getEntries());
+    if (rebuilt.degraded) acpRuntime.degrade("restart rebuild found a base compaction entry (spec §5.3/§9.1)");
+    else {
+      acpRuntime.zone = rebuilt.zone;
+      for (const id of rebuilt.compressedBlockIds) acpRuntime.compressed.add(id);
+    }
+  }
   // ACP manifest + ephemeral supply (T4): the projection extension re-derives
   // the round status (tier + candidate manifest) on every request and appends
   // the [acp-status] ephemeral when a tier is active (host/acp-runtime.ts).
@@ -344,7 +374,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     // stay in this child instead of leaking host-wide; config-layer reads still
     // fall through to H.settings live (Settings.overlay forwards parent changes
     // to children).
-    settings: H.settings.overlay({ "computer.enabled": false, ...(acpEnabled ? { "compaction.enabled": false } : {}) }),
+    settings: sessionSettings, // hoisted so the ACP §5.3 degrade path can write compaction.enabled back on it
     model: initialModel ?? H.modelOverride,
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
@@ -394,13 +424,16 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     hasUI: true, // The approval gate's fail-cold check goes through runner.hasUI(): without it, every approval-requiring tool errors out outright in non-yolo mode
   });
   const { session } = result;
-  // ACP tokenizer rebind (spec §8): the runtime counts with the session
-  // model's encoding; model_changed is the AgentSessionEvent signal for a
-  // mid-session switch, and session.model already resolves to the new model
-  // when it fires (same subscribe channel attachEntry consumes below).
+  // ACP runtime seams (spec §8 + T7): model_changed rebinds the tokenizer and
+  // the window-derived lines; turn_end drives the §5.2/§5.3 failure-exit
+  // judgment (ultimatum counting, forced-turn resolution — API-error turns
+  // emit turn_end too, so the forced terminal state is reached on every path).
+  // The holder feeds the force channel above.
   if (acpRuntime) {
+    acpSession.session = session;
     session.subscribe((ev: { type: string }) => {
       if (ev.type === "model_changed") acpRuntime.rebindModel(session.model);
+      else if (ev.type === "turn_end") acpRuntime.onTurnEnd();
     });
   }
   // Host-side runtime identity: a fresh pool UUID, deliberately NOT the disk

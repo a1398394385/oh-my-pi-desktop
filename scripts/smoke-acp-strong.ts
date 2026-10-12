@@ -42,11 +42,11 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
 import {
 	AcpRuntimeState,
-	computeRoundPlan,
 	createAcpProjectionExtension,
 	createCompressContextTool,
 } from "../host/acp-runtime.ts";
-import type { AcpParams, AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
+import { computeRoundPlan, type AcpParams } from "../host/acp-plan.ts";
+import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { assertToolPairing, renderCompactionBlock } from "../host/acp-projection.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 
