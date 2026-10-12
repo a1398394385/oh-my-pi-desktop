@@ -85,9 +85,13 @@
 
 压缩方式三级化(Decider 拍板):一级普通压缩(活跃区<L3,压缩块累加);二级强力压缩(活跃区≥L3 或压缩区超 35% 限额时的下一次压缩,重置压缩区为纯摘要初始块,搭便车语义沿自 v6);三级强制压缩(L3 通牒送达后下一轮仍无成功压缩,或总量保险线触发时,tool_choice 强制 compress_context;强制失败即降级 OMP——OQ5 关闭,v3/v5 的模板/拼接硬压路径删除)。「豁免」重新定义为可配置的压缩目标线 target(keep+保护区≤target,默认=L1,可调更低),普通/强力统一生效——OQ4 关闭。档位数值运行时动态可调,配置约束 L3<0.5W−20K 入参数表——OQ3 关闭。四轮审阅(P1 清单轮次归属/P3 recall 截断)处置:通牒轮次归属明确为「送达后下一个 assistant turn 结束才判未响应」,空闲等待不主动唤醒;recall 大结果走底座统一工具结果截断管道(落盘+read 分段,可遍历),不做内置截断;当轮清单改为按块大小降序截断(Decider 拍板)。参考 OMP 压缩链路(docs/compaction.md + session-maintenance.ts 编排):预处理剪枝管道与 ACP 正交并存(prune 先行,ACP 计数用 prune 后值),进度守卫/失败封顶/降级哲学对齐。
 
+
 ### v8 演进(2026-10-12,四轮审阅 3 项 + Decider 裁量)
 
 四轮审阅处置:① L2「强力档」与二级「强力压缩」命名撞车 → 档位改名「加压档」,并新增唯一二维决策表(状态 → 文案档位 → 压缩方式),边界统一严格大于;② 三级强制在「清单可压总量 < minCompress」下无终态 → 先改为 min 取小,**Decider 裁量回退**:极端碎块场景不特化(正常 coding 会话不出现),保留通用终态「强制 turn 无成功压缩即降级 OMP」即可接住,后续视需要再加块数量上限;③ ADR Decision/Consequences 同步至三级体系(此前只加演进段未回改当前值,SSOT 冲突)。
+
+### v9 演进(2026-10-12,Decider 拍板实施宿主)
+**全量实施于 omp-desktop host 层,底座源码零改动**(理由:ACP 本体改动量大且难被底座上游接收;omp-desktop 既有 ACP nudge 原型 host/acp-*.ts 已验证全部接缝)。接缝映射:投影/ephemeral = context 事件 extension;双工具 = `createAgentSession({ customTools })`;压缩块持久化 = SDK `SessionManager.appendCustomEntry`(customType="acpSummary",官方「persist extension state across reloads」通道,`buildSessionContext` 忽略)——§9 存储位置不变(仍 session JSONL),实现通道由「新增 message role + declaration merging」改为 custom entry;精确计数 = import `@oh-my-pi/pi-agent-core` Tokenizer(18.8.6 实证导出)。同日接缝实证补遗:三级强制 = `AgentSession.setForcedToolChoice`(公开 API,已验证,T7 无待验证项);ACP 会话经 `createAgentSession({ settings: Settings.isolated({ "compaction.enabled": false }) })` per-session 关闭底座自动压缩(底座压缩判定用 stored journal 口径、不受 ACP 投影影响,不关则 journal 增长必致误触发——v8「strategy off」语义的 host 实现),降级时恢复。
 
 ## Related(关联)
 
