@@ -21,6 +21,9 @@ const ALLOWED_EDGES = new Set([
   // ACP integration: host body main.ts mounts the acp panel; acp-tools/context depend on the shared acp-state (one-way downward)
   "main.ts→acp-state.ts", "main.ts→acp-context.ts", "main.ts→acp-tools.ts",
   "acp-context.ts→acp-state.ts", "acp-tools.ts→acp-state.ts", "acp-tools.ts→acp-context.ts",
+  // ACP dual-zone compaction (spec §9): persistence/rebuild layer reuses the T1
+  // projection shapes; acp-projection stays a pure leaf with no session wiring.
+  "acp-persist.ts→acp-projection.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
