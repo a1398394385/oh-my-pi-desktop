@@ -1,5 +1,10 @@
 // ACP dual-zone runtime: per-session state machine + compress_context tool +
-// request projection wiring with ephemeral status (spec §5/§6/§7, tickets T3+T4).
+// request projection wiring with ephemeral status (spec §5/§6/§7, tickets T3+T4+T6).
+//
+// Since T6 the §5.2 table runs on both axes: the zone-size axis (rendered zone
+// tokens vs window × 35%) drives the pending-strong state — the ephemeral
+// annotation on every tier, and strong execution semantics for the next
+// compress once the active zone is past L1 (riding) or past L3 (always).
 //
 // One AcpRuntimeState per session owns everything the tool and the projection
 // need to agree on: the compaction zone (journal order), the compressed-id set
@@ -26,6 +31,7 @@ import {
 	renderCompactionBlock,
 	splitBlocks,
 	type AcpBlockInfo,
+	type AcpIndexLine,
 	type AcpSourceMessage,
 } from "./acp-projection.ts";
 import { appendAcpSummary, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
@@ -75,18 +81,32 @@ export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PAR
 /** The §5.2 two-dimensional decision table as the single implementation. */
 export interface AcpRoundPlan {
 	tier: "none" | "L1" | "L2" | "L3";
-	/** Compress method allowed this round. The pending-strong riding row is T6. */
+	/** Compress method allowed this round: past L3, or pending-strong riding (§5.2). */
 	method: "normal" | "strong";
+	/** Zone over its line (window × ACP_ZONE_LIMIT_RATIO): the pending-strong state (§5.2 rows 5/6). */
+	pendingStrong: boolean;
 }
 
 /**
- * State -> ephemeral tier + allowed compress method (spec §5.2 header table).
+ * State -> ephemeral tier + allowed compress method (spec §5.2 decision table).
  * Boundaries are strictly greater on both axes, so active == L3 lands in the
- * L2 tier with normal compression (acceptance 19).
+ * L2 tier with normal compression (acceptance 19), and a zone exactly at its
+ * line is not pending. The optional `zone` axis enables the pending-strong
+ * rows: over the line AND active > L1 the next compress rides strong; at or
+ * under L1 it stays normal (no riding); past L3 the method is strong anyway.
  */
-export function computeRoundPlan(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): AcpRoundPlan {
-	return { tier: computeTier(activeTokens, p), method: activeTokens > p.l3 ? "strong" : "normal" };
+export function computeRoundPlan(
+	activeTokens: number,
+	p: AcpParams = ACP_DEFAULT_PARAMS,
+	zone?: { tokens: number; limitTokens: number },
+): AcpRoundPlan {
+	const pendingStrong = zone !== undefined && zone.limitTokens > 0 && zone.tokens > zone.limitTokens;
+	const strong = activeTokens > p.l3 || (pendingStrong && activeTokens > p.l1);
+	return { tier: computeTier(activeTokens, p), method: strong ? "strong" : "normal", pendingStrong };
 }
+
+/** Zone budget line = window × this ratio (spec §11 zone-limit row). */
+export const ACP_ZONE_LIMIT_RATIO = 0.35;
 
 /** Rendered manifest section stays under this many tokens; overflow drops the tail (spec §11). */
 export const ACP_MANIFEST_RENDER_BUDGET = 8_000;
@@ -99,9 +119,11 @@ const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams) => string> = 
 		`Context pressure is high (L2): compress this round. After compression, keep + the protected tail must stay under the target of ${p.target} tokens.`,
 	L3: () =>
 		"Final notice (L3): the next turn must complete a successful compression, or the host will force one. Call compress_context now with a full summary of the manifest blocks you are not keeping.",
-	// T6 slot: the pending-strong annotation ("next compression will be strong")
-	// appends to whichever line is active once zone-size tracking lands.
 };
+
+/** Pending-strong annotation: uniform across every tier while the zone is over its line (spec §5.2/§7). */
+const PENDING_STRONG_NOTE =
+	"Pending strong: the compression zone is over its budget line — the next compression will be a strong one (the whole zone folds into a single summary block).";
 
 /** Summary budget = min((compressed + merged old summaries) ÷ divisor, cap) (spec §6.5/§11). */
 export function computeSummaryBudget(
@@ -165,7 +187,8 @@ export interface AcpRuntimeDeps {
 	sink: AcpSummarySink;
 	/** Journal read for entry-id alignment (SessionManager.getEntries). */
 	getEntries: () => readonly SessionEntry[];
-	/** Parameter overrides over the §11 defaults. */
+	/** Session model context window (spec §11 zone line = window × 35%); 0/unknown = no zone limit. */
+	contextWindow?: number;
 	params?: Partial<AcpParams>;
 }
 
@@ -185,8 +208,12 @@ export interface AcpManifest {
  */
 export interface AcpRoundStatus {
 	tier: "none" | "L1" | "L2" | "L3";
-	/** Compress method allowed this round (§5.2 table; pending-strong row is T6). */
+	/** Compress method allowed this round (§5.2 table: >L3, or pending-strong riding over L1). */
 	method: "normal" | "strong";
+	/** Zone over its budget line (§5.2 rows 5/6): ephemeral gets the pending-strong annotation. */
+	pendingStrong: boolean;
+	/** Rendered token total of the live zone (the zone-size axis of the §5.2 table). */
+	zoneTokens: number;
 	/** Active-zone tokens, post-prune values (spec §8). */
 	activeTokens: number;
 	/** Token total of the projection (zone renders + surviving active blocks; block-sum approximation). */
@@ -248,10 +275,13 @@ export class AcpRuntimeState {
 	#tokenMemo = new Map<string, number>();
 	/** Zone render token memo: compaction block id -> rendered tokens (blocks are immutable once written). */
 	#zoneRenderTokens = new Map<string, number>();
+	/** Zone budget line (spec §11): window × 35%, 0 = no limit (unknown window). */
+	#zoneLimitTokens = 0;
 
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
 		this.params = { ...ACP_DEFAULT_PARAMS, ...deps.params };
+		this.#zoneLimitTokens = Math.floor((deps.contextWindow ?? 0) * ACP_ZONE_LIMIT_RATIO);
 	}
 
 	/** Serialize executions; validation failures inside the lock do not break the chain. */
@@ -310,7 +340,7 @@ export class AcpRuntimeState {
 		const kept = new Set(this.lastBlocks.filter((b) => !this.compressed.has(b.id)).map((b) => b.id));
 		const out = projectContext(source, kept, this.zone, this.#deps.countTokens);
 		if (!this.#manifestOverride) this.#refreshRoundStatus();
-		if (this.roundStatus && this.roundStatus.tier !== "none") out.push(this.#renderEphemeral());
+		if (this.roundStatus && (this.roundStatus.tier !== "none" || this.roundStatus.pendingStrong)) out.push(this.#renderEphemeral());
 		this.lastProjected = out;
 		return out;
 	}
@@ -343,11 +373,26 @@ export class AcpRuntimeState {
 		const manifestText =
 			keptCount === lines.length ? lines.join("\n") : [...lines.slice(0, keptCount), trailer(lines.length - keptCount)].join("\n");
 		this.manifest = { ids: candidates.slice(0, keptCount).map((b) => b.id), consumed: false };
-		// Projected total = zone renders + surviving active blocks: a deliberate
-		// block-sum approximation of the wire total (per-message overhead and
-		// pass-through non-block messages are excluded; the safety-line check in
-		// T7 will re-derive its own measure).
-		const zoneTokens = this.zone.reduce((n, z) => {
+		const zoneTokens = this.#zoneTokens();
+		const activeTokens = active.reduce((n, b) => n + b.tokens, 0);
+		const plan = computeRoundPlan(activeTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
+		this.roundStatus = {
+			tier: plan.tier,
+			method: plan.method,
+			pendingStrong: plan.pendingStrong,
+			zoneTokens,
+			activeTokens,
+			projectedTokens: activeTokens + zoneTokens,
+			manifestIds: this.manifest.ids,
+			exempted: lines.length - keptCount,
+			manifestText,
+		};
+	}
+
+	/** Rendered token total of the live zone blocks (memoized; immutable once written, spec §8). */
+	#zoneTokens(): number {
+		const countTokens = this.#deps.countTokens;
+		return this.zone.reduce((n, z) => {
 			let t = this.#zoneRenderTokens.get(z.id);
 			if (t === undefined) {
 				t = countTokens(renderCompactionBlock(z, countTokens));
@@ -355,17 +400,6 @@ export class AcpRuntimeState {
 			}
 			return n + t;
 		}, 0);
-		const activeTokens = active.reduce((n, b) => n + b.tokens, 0);
-		const plan = computeRoundPlan(activeTokens, this.params);
-		this.roundStatus = {
-			tier: plan.tier,
-			method: plan.method,
-			activeTokens,
-			projectedTokens: activeTokens + zoneTokens,
-			manifestIds: this.manifest.ids,
-			exempted: lines.length - keptCount,
-			manifestText,
-		};
 	}
 
 	/**
@@ -376,8 +410,10 @@ export class AcpRuntimeState {
 	#renderEphemeral(): AgentMessage {
 		const rs = this.roundStatus!;
 		const text = [
-			`[acp-status] tier=${rs.tier} compress=${rs.method} active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens`,
-			TIER_INSTRUCTIONS[rs.tier](this.params),
+			`[acp-status] tier=${rs.tier} compress=${rs.method} zone=${rs.zoneTokens} tokens active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens`,
+			// Tier none + pending-strong (§5.2 row 6): the annotation IS the message.
+			...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](this.params)]),
+			...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
 			"Compression manifest for this round (largest first; id | tokens | intent):",
 			rs.manifestText,
 		].join("\n");
@@ -394,6 +430,8 @@ export class AcpRuntimeState {
 		this.#deps.countTokens = (s) => tokenizer.countTokens(s);
 		this.#tokenMemo.clear();
 		this.#zoneRenderTokens.clear();
+		// The zone budget line follows the new model's window (spec §11).
+		this.#zoneLimitTokens = Math.floor(((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0) * ACP_ZONE_LIMIT_RATIO);
 	}
 
 	/** compress_context entry: mutex + full §6 validation sequence + execution. */
@@ -454,11 +492,18 @@ export class AcpRuntimeState {
 			return { ok: false, code: "empty-summary", error: "summary must not be empty." };
 		}
 
-		// §6.5 — summary budget; basis = this round's compressed set (+ summaries
-		// merged by a strong reset, which T6 wires in; normal compression merges none).
+		// §6.5 — summary budget; basis = this round's compressed set plus, for a
+		// strong reset, every old summary the zone merges in (§5.2/§11). The
+		// method is re-derived here from the same settled snapshot the round
+		// status uses (request-anchored judgment, §5.2): past L3, or riding a
+		// zone over its line with active > L1 — a pure zone reset at or under L1
+		// does not ride and stays normal.
 		const compressedIds = this.manifest.ids.filter((id) => byId.has(id) && !keepSet.has(id));
 		const compressedTokens = compressedIds.reduce((n, id) => n + (byId.get(id)?.tokens ?? 0), 0);
-		const mergedOldSummaryTokens = 0;
+		const activeTokensBefore = active.reduce((n, b) => n + b.tokens, 0);
+		const zoneTokens = this.#zoneTokens();
+		const method = computeRoundPlan(activeTokensBefore, p, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens }).method;
+		const mergedOldSummaryTokens = method === "strong" ? zoneTokens : 0;
 		const budget = computeSummaryBudget(compressedTokens, mergedOldSummaryTokens, p);
 		const summaryTokens = countTokens(summary);
 		if (summaryTokens > budget) {
@@ -466,39 +511,58 @@ export class AcpRuntimeState {
 				ok: false,
 				code: "summary-over-budget",
 				error:
-					compressedIds.length === 0
+					compressedIds.length === 0 && method !== "strong"
 						? `keep covers the entire manifest — nothing would be compressed, so the summary budget is 0 (${summaryTokens} > ${budget}); unkeep some candidate blocks.`
 						: `summary is ${summaryTokens} tokens, over the budget ${budget} = min((compressed ${compressedTokens} + merged old summaries ${mergedOldSummaryTokens}) / ${p.summaryDivisor}, ${p.summaryBudgetMax}); shorten it.`,
 			};
 		}
 
-		// §6.6 — an empty compressed set rejects. Exception (strong pure reset,
-		// where the basis is the merged old summaries) is T6 and not enabled here.
-		if (compressedIds.length === 0) {
+		// §6.6 — an empty compressed set rejects, EXCEPT a strong pure reset:
+		// folding only the old zone summaries is a legal submission whose budget
+		// basis is those summaries (§5.2/§6 exception; acceptance 14).
+		if (compressedIds.length === 0 && method !== "strong") {
 			return { ok: false, code: "nothing-to-compress", error: "Nothing to compress: the manifest minus keep intersects no active block." };
 		}
 
-		// Execution (normal compression: append to the zone end, no supersede).
-		const activeTokensBefore = active.reduce((n, b) => n + b.tokens, 0);
+		// Execution (§6): normal appends to the zone end; strong supersedes the
+		// whole live zone and inherits its full compressedIds/index union, so the
+		// zone renders as a single block and rebuild never walks supersedes
+		// chains (§9). depth counts strong generations (normal blocks sit at 0).
 		const activeTokensAfter = activeTokensBefore - compressedTokens;
+		const supersedes = method === "strong" ? this.zone.map((z) => z.id) : [];
+		const inheritedIds = new Set<string>();
+		const index: AcpIndexLine[] = [];
+		if (method === "strong") {
+			for (const z of this.zone) {
+				for (const line of z.index) {
+					if (!inheritedIds.has(line.id)) {
+						inheritedIds.add(line.id);
+						index.push(line);
+					}
+				}
+				for (const id of z.meta.compressedIds) inheritedIds.add(id);
+			}
+		}
+		for (const id of compressedIds) {
+			const b = byId.get(id)!;
+			index.push({ id, tokens: b.tokens, intent: b.intent });
+		}
 		const written = appendAcpSummary(this.#deps.sink, {
 			summary,
-			index: compressedIds.map((id) => {
-				const b = byId.get(id)!;
-				return { id, tokens: b.tokens, intent: b.intent };
-			}),
+			index,
 			meta: {
 				createdAt: Date.now(),
-				depth: 0,
-				method: "normal",
+				depth: method === "strong" ? this.zone.reduce((m, z) => Math.max(m, z.meta.depth), 0) + 1 : 0,
+				method,
 				keepIds: keep,
-				compressedIds,
-				supersedes: [],
+				compressedIds: [...inheritedIds, ...compressedIds],
+				supersedes,
 				tokensBefore: activeTokensBefore,
 				tokensAfter: activeTokensAfter,
 			},
 		});
-		this.zone.push(written);
+		if (method === "strong") this.zone = [written];
+		else this.zone.push(written);
 		for (const id of compressedIds) this.compressed.add(id);
 		this.manifest.consumed = true;
 
@@ -536,6 +600,8 @@ export function createAcpRuntime(opts: {
 		countTokens: (s) => tokenizer.countTokens(s),
 		sink: opts.sink,
 		getEntries: opts.getEntries,
+		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
+		contextWindow: (opts.model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0,
 		params: opts.params,
 	});
 }

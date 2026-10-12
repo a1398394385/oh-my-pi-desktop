@@ -124,15 +124,15 @@ function ephemeralText(fx: Fixture): string {
 
 {
 	const p = { l1: 1_000, l2: 2_000, l3: 3_000, ...NO_TAIL } as const;
-	// Strictly-greater boundaries on both axes (§5.2 table).
-	assert.deepEqual(computeRoundPlan(1_000, p), { tier: "none", method: "normal" });
-	assert.deepEqual(computeRoundPlan(1_001, p), { tier: "L1", method: "normal" });
-	assert.deepEqual(computeRoundPlan(2_000, p), { tier: "L1", method: "normal" });
-	assert.deepEqual(computeRoundPlan(2_001, p), { tier: "L2", method: "normal" });
+	// Strictly-greater boundaries on both axes (§5.2 table). The zone axis is
+	// absent here (T6 smoke covers it): a two-arg call has no pending-strong.
+	assert.deepEqual(computeRoundPlan(1_000, p), { tier: "none", method: "normal", pendingStrong: false });
+	assert.deepEqual(computeRoundPlan(1_001, p), { tier: "L1", method: "normal", pendingStrong: false });
+	assert.deepEqual(computeRoundPlan(2_000, p), { tier: "L1", method: "normal", pendingStrong: false });
+	assert.deepEqual(computeRoundPlan(2_001, p), { tier: "L2", method: "normal", pendingStrong: false });
 	// Exactly at L3: L2 tier text + normal compression (no ultimatum, no strong).
-	assert.deepEqual(computeRoundPlan(3_000, p), { tier: "L2", method: "normal" });
-	assert.deepEqual(computeRoundPlan(3_001, p), { tier: "L3", method: "strong" });
-
+	assert.deepEqual(computeRoundPlan(3_000, p), { tier: "L2", method: "normal", pendingStrong: false });
+	assert.deepEqual(computeRoundPlan(3_001, p), { tier: "L3", method: "strong", pendingStrong: false });
 	// The ephemeral reports tier and method together (acceptance 19).
 	const mid = makeFixture({ ...p, target: 10_000 }, [30, 30, 30, 30, 30, 30, 30, 30]);
 	mid.state.projectView(mid.view);
