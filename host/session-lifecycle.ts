@@ -319,12 +319,15 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   // Session holder for the T7 force channel: setForcedToolChoice needs the
   // live session, which only exists after createAgentSession below.
   const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
+  // Same model object feeds the runtime's zone axis and the param conversion
+  // below (percent tier lines derive from this window).
+  const acpModel = initialModel ?? H.modelOverride;
   const acpRuntime = acpEnabled
     ? createAcpRuntime({
-        model: initialModel ?? H.modelOverride,
+        model: acpModel,
         sink: sessionManager,
         getEntries: () => sessionManager.getEntries(),
-        params: acpParamsFromConfig(readAcpRaw().acp),
+        params: acpParamsFromConfig(readAcpRaw().acp, (acpModel as { contextWindow?: number } | null | undefined)?.contextWindow),
         // Level-3 force channel (spec §5.2/§10): the named form where the face
         // supports it (openai-completions faces narrow tools internally = form
         // ②); a throw (neither form) degrades via form ③.

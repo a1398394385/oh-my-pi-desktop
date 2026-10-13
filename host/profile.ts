@@ -396,31 +396,26 @@ export function readAcpRaw(): Record<string, unknown> {
   }
 }
 
-/** Read the full ACP context compression config object. */
+/** Read the ACP config object for the experimental settings page: master
+ * switch + tier ladder. l1/l2/l3 store token counts in absolute mode and
+ * percentages of the session model's context window in percent mode
+ * (converted host-side in acpParamsFromConfig). */
 export function readAcpConfig(): {
   enabled: boolean;
-  maxContextLimit: string;
-  minContextLimit: string;
-  contextWindow: string;
-  candidates: boolean;
-  protectUserMessages: boolean;
-  systemPrompt: boolean;
+  tierMode: "absolute" | "percent";
+  l1?: number;
+  l2?: number;
+  l3?: number;
 } {
   const raw = readAcpRaw();
   const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
-  const fmtLimit = (v: unknown, dflt: string): string => {
-    if (typeof v === "number" && v > 0 && v <= 1) return `${Math.round(v * 100)}%`;
-    if (typeof v === "string" && v.trim()) return v.trim();
-    return dflt;
-  };
+  const num = (v: unknown): number | undefined => (typeof v === "number" && v >= 0 ? v : undefined);
   return {
     enabled: acp.enabled === true,
-    maxContextLimit: fmtLimit(acp.maxContextLimit, "55%"),
-    minContextLimit: fmtLimit(acp.minContextLimit, "45%"),
-    contextWindow: typeof acp.contextWindow === "string" ? acp.contextWindow : (acp.contextWindow ? String(acp.contextWindow) : ""),
-    candidates: acp.candidates === true,
-    protectUserMessages: acp.protectUserMessages !== false,
-    systemPrompt: acp.systemPrompt === true,
+    tierMode: acp.tierMode === "percent" ? "percent" : "absolute",
+    l1: num(acp.l1),
+    l2: num(acp.l2),
+    l3: num(acp.l3),
   };
 }
 

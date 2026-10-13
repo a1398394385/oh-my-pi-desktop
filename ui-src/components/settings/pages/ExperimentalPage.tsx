@@ -1,5 +1,5 @@
 // Settings page: experimental features (pg-experimental).
-// Section 1: ACP context compaction (master switch + thresholds / target line / context window / candidate suggestions / user message protection)
+// Section 1: ACP context compaction (master switch + tier-mode switch + L1/L2/L3 threshold inputs)
 // Section 2: sessions & retrieval (past-session retrieval read_session_context)
 // Section 3: cache warming (desktop port of pi-kimi-keepalive, master switch + configurable
 // probe parameters; omp-desktop.json lives independently per profile)
@@ -20,8 +20,7 @@ import {
   type AudioDevice,
 } from "../../chat/railAudio";
 
-const MAX_LIMIT_OPTIONS = ["35%", "45%", "50%", "55%", "60%", "70%", "80%"];
-const MIN_LIMIT_OPTIONS = ["25%", "35%", "40%", "45%", "50%", "60%"];
+const TIER_DEFAULTS_K = ["100", "200", "300"]; // placeholder lines when a tier value is unconfigured
 
 interface SelOption {
   v: string;
@@ -108,11 +107,14 @@ function KaInput({
   value,
   placeholder,
   disabled,
+  suffix,
   onSubmit,
 }: {
   value: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Unit label rendered after the input (tier rows: K / %) */
+  suffix?: string;
   onSubmit: (v: string) => void;
 }) {
   const [v, setV] = useState(value);
@@ -121,7 +123,7 @@ function KaInput({
     <div className="srow-ctl">
       <input
         className={"inp" + (disabled ? " disabled" : "")}
-        style={{ width: 170 }}
+        style={{ width: suffix ? 120 : 170 }}
         placeholder={placeholder}
         value={v}
         disabled={disabled}
@@ -133,6 +135,7 @@ function KaInput({
           if (e.key === "Enter") e.currentTarget.blur();
         }}
       />
+      {suffix ? <span className="text-faint">{suffix}</span> : null}
     </div>
   );
 }
@@ -168,16 +171,14 @@ export default function ExperimentalPage() {
   }, []);
 
   const acpConfig = hostSettings?.acpConfig;
-  const maxLimit = acpConfig?.maxContextLimit || "55%";
-  const minLimit = acpConfig?.minContextLimit || "45%";
-  const candidates = acpConfig?.candidates ?? false;
-  const protectUser = acpConfig?.protectUserMessages ?? true;
-  const sysPrompt = acpConfig?.systemPrompt ?? false;
-
-  const [cwInput, setCwInput] = useState(acpConfig?.contextWindow || "");
-  useEffect(() => {
-    setCwInput(acpConfig?.contextWindow || "");
-  }, [acpConfig?.contextWindow]);
+  const tierMode = acpConfig?.tierMode ?? "absolute";
+  // Tier rows: absolute mode displays/edits K tokens (×1000 on write); percent mode stores the percentage as-is.
+  const commitTier = (key: "l1" | "l2" | "l3", raw: string) => {
+    const n = Number(raw);
+    // Invalid edits don't write; the push-back refresh on the next settings frame restores the true value.
+    if (!raw || !Number.isFinite(n) || n < 0) return;
+    updateAcp({ [key]: tierMode === "percent" ? n : Math.round(n * 1000) });
+  };
 
   const updateAcp = (patch: Partial<AcpConfig>) => {
     send({ type: "set_acp_config", config: patch });
@@ -218,120 +219,50 @@ export default function ExperimentalPage() {
           </div>
         </div>
 
-        {/* 2. Start-reminder threshold (soft reminder) */}
+        {/* 2. Threshold mode: absolute token lines vs percentages of the model window */}
         <div className={"srow" + (enabled ? "" : " disabled")}>
           <div className="srow-tx">
-            <b>{t("settingsPage.exp.softTitle")}</b>
-            <span>{t("settingsPage.exp.softDesc")}</span>
+            <b>{t("settingsPage.exp.tierModeTitle")}</b>
+            <span>{t("settingsPage.exp.tierModeDesc")}</span>
           </div>
-          <Sel
-            label={minLimit}
-            disabled={!enabled}
-            options={MIN_LIMIT_OPTIONS.map((v) => ({
-              v,
-              label: v === "45%" ? t("settingsPage.exp.recommended", { v }) : v,
-              ck: minLimit === v ? "✓" : "",
-            }))}
-            onPick={(v) => updateAcp({ minContextLimit: v })}
-          />
-        </div>
-
-        {/* 3. Forced compaction threshold (hard reminder) */}
-        <div className={"srow" + (enabled ? "" : " disabled")}>
-          <div className="srow-tx">
-            <b>{t("settingsPage.exp.hardTitle")}</b>
-            <span>{t("settingsPage.exp.hardDesc")}</span>
-          </div>
-          <Sel
-            label={maxLimit}
-            disabled={!enabled}
-            options={MAX_LIMIT_OPTIONS.map((v) => ({
-              v,
-              label: v === "55%" ? t("settingsPage.exp.recommended", { v }) : v,
-              ck: maxLimit === v ? "✓" : "",
-            }))}
-            onPick={(v) => updateAcp({ maxContextLimit: v })}
-          />
-        </div>
-
-        {/* 4. Context window size override */}
-        <div className={"srow" + (enabled ? "" : " disabled")}>
-          <div className="srow-tx">
-            <b>{t("settingsPage.exp.ctxWinTitle")}</b>
-            <span>{t("settingsPage.exp.ctxWinDesc")}</span>
-          </div>
-          <div className="srow-ctl">
-            <input
-              className={"inp" + (enabled ? "" : " disabled")}
-              style={{ width: 170 }}
-              placeholder={t("settingsPage.exp.ctxWinPlaceholder")}
-              value={cwInput}
-              disabled={!enabled}
-              onChange={(e) => setCwInput(e.target.value)}
-              onBlur={() => {
-                if (cwInput.trim() !== (acpConfig?.contextWindow || "")) {
-                  updateAcp({ contextWindow: cwInput.trim() });
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.currentTarget.blur();
-                }
-              }}
-            />
+          <div className="mcp-type-pills">
+            {(["absolute", "percent"] as const).map((m) => (
+              <button
+                type="button"
+                key={m}
+                className={"mcp-type-pill" + (tierMode === m ? " on" : "")}
+                onClick={() => {
+                  if (!enabled || tierMode === m) return;
+                  // Mode switch re-interprets the stored numbers (tokens vs percent);
+                  // null out the tier lines so the new mode starts from defaults.
+                  send({ type: "set_acp_config", config: { tierMode: m, l1: null, l2: null, l3: null } });
+                }}
+              >
+                {t(m === "absolute" ? "settingsPage.exp.tierModeAbsolute" : "settingsPage.exp.tierModePercent")}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* 5. Candidate range suggestions */}
-        <div className={"srow" + (enabled ? "" : " disabled")}>
-          <div className="srow-tx">
-            <b>{t("settingsPage.exp.candidatesTitle")}</b>
-            <span>{t("settingsPage.exp.candidatesDesc")}</span>
-          </div>
-          <div
-            className={"tg" + (candidates ? " on" : "") + (enabled ? "" : " disabled")}
-            onClick={() => {
-              if (!enabled) return;
-              updateAcp({ candidates: !candidates });
-            }}
-          >
-            <i></i>
-          </div>
-        </div>
-
-        {/* 6. Protect user prompts */}
-        <div className={"srow" + (enabled ? "" : " disabled")}>
-          <div className="srow-tx">
-            <b>{t("settingsPage.exp.protectTitle")}</b>
-            <span>{t("settingsPage.exp.protectDesc")}</span>
-          </div>
-          <div
-            className={"tg" + (protectUser ? " on" : "") + (enabled ? "" : " disabled")}
-            onClick={() => {
-              if (!enabled) return;
-              updateAcp({ protectUserMessages: !protectUser });
-            }}
-          >
-            <i></i>
-          </div>
-        </div>
-
-        {/* 7. Anti-repetition in system prompt */}
-        <div className={"srow" + (enabled ? "" : " disabled")}>
-          <div className="srow-tx">
-            <b>{t("settingsPage.exp.sysPromptTitle")}</b>
-            <span>{t("settingsPage.exp.sysPromptDesc")}</span>
-          </div>
-          <div
-            className={"tg" + (sysPrompt ? " on" : "") + (enabled ? "" : " disabled")}
-            onClick={() => {
-              if (!enabled) return;
-              updateAcp({ systemPrompt: !sysPrompt });
-            }}
-          >
-            <i></i>
-          </div>
-        </div>
+        {/* 3..5. L1/L2/L3 tier lines */}
+        {(["l1", "l2", "l3"] as const).map((key, i) => {
+          const stored = acpConfig?.[key];
+          return (
+            <div className={"srow" + (enabled ? "" : " disabled")} key={key}>
+              <div className="srow-tx">
+                <b>{t("settingsPage.exp.tierTitle", { tier: i + 1 })}</b>
+                <span>{t("settingsPage.exp.tierDesc")}</span>
+              </div>
+              <KaInput
+                value={stored === undefined ? "" : tierMode === "percent" ? String(stored) : String(stored / 1000)}
+                placeholder={tierMode === "percent" ? "" : TIER_DEFAULTS_K[i]}
+                suffix={tierMode === "percent" ? "%" : "K"}
+                disabled={!enabled}
+                onSubmit={(raw) => commitTier(key, raw)}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Section 2: sessions & retrieval */}

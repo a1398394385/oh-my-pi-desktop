@@ -41,15 +41,13 @@ export interface SettingsSnapshot {
   conditions: Record<string, boolean>;
 }
 
-/** ACP context compaction config object */
+/** ACP context compaction config object (l1/l2/l3: token counts in absolute mode, percentages of the model context window in percent mode) */
 export interface AcpConfig {
   enabled: boolean;
-  maxContextLimit?: string;
-  minContextLimit?: string;
-  contextWindow?: string;
-  candidates?: boolean;
-  protectUserMessages?: boolean;
-  systemPrompt?: boolean;
+  tierMode?: "absolute" | "percent";
+  l1?: number;
+  l2?: number;
+  l3?: number;
 }
 
 /** Cache keepalive probe parameters (host/keepalive-config.ts ProbeConfig; the keepalive section of omp-desktop.json is the source of truth, independent per profile) */

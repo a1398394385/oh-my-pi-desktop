@@ -98,12 +98,29 @@ export function computeSummaryBudget(
  * Read the `acp` section of omp-desktop.json into params. Unknown or invalid
  * entries fall back to the §11 defaults (same lenient contract as the other
  * acp.* readers in profile.ts).
+ *
+ * tierMode selects the l1/l2/l3 storage semantics: "absolute" (token counts,
+ * the default) or "percent" (shares of the session model's contextWindow,
+ * converted here into token lines so computeTier/computeRoundPlan stay in
+ * tokens). Percent mode without a usable window cannot derive lines, so it
+ * falls back to absolute semantics and warns once on stderr.
  */
-export function acpParamsFromConfig(section: unknown): AcpParams {
+let percentFallbackWarned = false;
+export function acpParamsFromConfig(section: unknown, contextWindow?: number): AcpParams {
 	const p = { ...ACP_DEFAULT_PARAMS };
 	if (!section || typeof section !== "object") return p;
 	const s = section as Record<string, unknown>;
-	for (const key of ["l1", "l2", "l3", "target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens"] as const) {
+	const windowOk = typeof contextWindow === "number" && contextWindow > 0;
+	const percent = s.tierMode === "percent";
+	if (percent && !windowOk && !percentFallbackWarned) {
+		percentFallbackWarned = true;
+		process.stderr.write("acp: tierMode=percent without a usable contextWindow; treating l1/l2/l3 as absolute token values\n");
+	}
+	for (const key of ["l1", "l2", "l3"] as const) {
+		const v = s[key];
+		if (typeof v === "number" && v >= 0) p[key] = percent && windowOk ? Math.round((v / 100) * contextWindow!) : v;
+	}
+	for (const key of ["target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens"] as const) {
 		const v = s[key];
 		if (typeof v === "number" && v >= 0) p[key] = v;
 	}
