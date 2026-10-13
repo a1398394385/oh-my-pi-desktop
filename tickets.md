@@ -242,3 +242,12 @@ P3  探针:保护区 A/B + 参数回填      ← T7(队尾观测)
 
 **Blocked by**: 合并后(主仓直改)
 **Status**: done(2026-10-13,主仓 commits 747d767 实施 + 7d082da spec §11 回填;新冒烟 smoke-acp-tiermode + 九 ACP 冒烟回归 + ui:build + check 全绿;注记:①会话内切模型不重算档位线(percent 锚定会话创建时刻的 contextWindow,与 absolute 现状一致);②tierMode 切换连写 l1/l2/l3=null 防旧语义数字被新模式误读(merge 写无法删键,null 两侧读取器忽略);③percent 模式逐字段回退绝对默认,非整组;④origin:GPT 新旧对比评审中的有效项之一,另两项处置见 .agents/notes/0006)
+
+---
+
+## T13: 工具更名 context_status + 保护区参数入设置页
+
+**What to build**:Decider 拍板——①模型可见面全局改名 acp_status → context_status(底座 acp-bridge=Agent Client Protocol 缩写撞车,消歧义;底座内置无前缀先例但 snake_case 一致);②设置页 ACP 区加 tailTurns/tailTokens 两行(P3 A/B 核心变量);③spec v10.3 同步。
+
+**Blocked by**: T12
+**Status**: done(2026-10-13,主仓 commit 540e7d0;13 文件机械改名含冒烟 mock 路由与 acp-refs journal 匹配,marker [acp-status]/[acp-report]/文件名/函数名按票面保留;保护区两行 KaInput(turn 整数/K ×1000/commit-on-blur);十 ACP 冒烟 + ui:build + check 全绿,grep acp_status 零残留;注记:旧 journal 里 acp_status 的 tool 对重放时不再识别为 status 对——实验期无存量会话,可接受)
