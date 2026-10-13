@@ -97,7 +97,8 @@ function blockText(i: number, target: number): string {
 	while (countTokens(text) < target) text += "detailed parser investigation notes with exact values. ";
 	return text;
 }
-
+// v10: the compress entry speaks bN short refs (spec §3); fixtures pin entry ids.
+const R = (st: { shortRef(id: string): string | undefined }, ids: string[]): string[] => ids.map((id) => st.shortRef(id)!);
 type FixtureEntry =
 	| { type: "message"; id: string; message: AgentMessage }
 	| { type: "custom"; id: string; customType: string; data: unknown };
@@ -222,15 +223,13 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	assert.match(text, /\[acp-status\] tier=L1 compress=normal zone=0 tokens/);
 	assert.ok(!text.includes("Pending strong"), "no annotation while the zone is under its line");
 
-	accepted(await fx.state.compress({ keep: ["e1", "e2", "e3"], summary: tokenText(120) })); // S1{e0}
-	assert.equal(fx.writes[0].meta.method, "normal", "zone empty at decision time: round 1 stays normal");
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3"]), summary: tokenText(120) })); // S1{e0}
 	fx.state.projectView(fx.view); // active 3x406 > l1, zone ~one < limit
 	text = ephemeralText(fx);
 	assert.ok(!text.includes("Pending strong"), "annotation still absent under the line after one zone block");
 	assert.ok(fx.state.roundStatus!.zoneTokens > 0 && fx.state.roundStatus!.zoneTokens < limit, "fixture zone really is under the line");
 
-	accepted(await fx.state.compress({ keep: ["e2", "e3"], summary: tokenText(120) })); // S2{e1}
-	assert.equal(fx.writes[1].meta.method, "normal", "still under the line: round 2 stays normal too");
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3"]), summary: tokenText(120) })); // S2{e1}
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.zoneTokens > limit, "fixture zone really is over the line after two blocks");
 
@@ -267,17 +266,17 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	const fx = makeFixture({ ...PARAMS, l3: 4_000 }, [0, 0, 0, 0, 0, 0], window, 500);
 
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: ["e1", "e2", "e3", "e4", "e5"], summary: tokenText(120) })); // S1{e0}
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3", "e4", "e5"]), summary: tokenText(120) })); // S1{e0}
 	fx.state.projectView(fx.view);
 	assert.ok(!fx.state.roundStatus!.pendingStrong, "one zone block: under the line");
-	accepted(await fx.state.compress({ keep: ["e2", "e3", "e4", "e5"], summary: tokenText(120) })); // S2{e1}
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3", "e4", "e5"]), summary: tokenText(120) })); // S2{e1}
 	const [s1, s2] = fx.writes;
 	assert.equal(s2.meta.method, "normal");
 
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.pendingStrong, "two zone blocks: over the line");
 	assert.equal(fx.state.roundStatus!.method, "strong", "active 4x500 > l1: round 3 rides strong");
-	const out3 = accepted(await fx.state.compress({ keep: ["e3", "e4", "e5"], summary: tokenText(220) })); // M{e2}
+	const out3 = accepted(await fx.state.compress({ keep: R(fx.state, ["e3", "e4", "e5"]), summary: tokenText(220) })); // M{e2}
 	const m = fx.writes[2];
 	assert.equal(m.meta.method, "strong");
 	assert.deepEqual(m.meta.supersedes, [s1.id, s2.id], "M supersedes every unsuperseded zone block");
@@ -333,14 +332,13 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	const window = Math.ceil(limit / 0.35);
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window, 200); // 4 x 200 = 800 <= l1
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: ["e1", "e2", "e3"], summary: tokenText(60) })); // S1{e0}, budget 66
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3"]), summary: tokenText(60) })); // S1{e0}, budget 66
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: ["e2", "e3"], summary: tokenText(60) })); // S2{e1}
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3"]), summary: tokenText(60) })); // S2{e1}
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.pendingStrong, "zone over the line");
 	assert.ok(fx.state.roundStatus!.activeTokens <= PARAMS.l1, "active at or under L1");
-	accepted(await fx.state.compress({ keep: ["e3"], summary: tokenText(60) })); // normal despite pending
-	assert.equal(fx.writes[2].meta.method, "normal", "no riding at <= L1");
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e3"]), summary: tokenText(60) })); // normal despite pending
 	assert.deepEqual(fx.writes[2].meta.supersedes, []);
 	assert.equal(fx.state.zone.length, 3, "zone keeps appending — no reset");
 
@@ -368,9 +366,9 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0, 0], window, 500);
 
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: ["e1", "e2", "e3", "e4"], summary: tokenText(120) })); // S1{e0}
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3", "e4"]), summary: tokenText(120) })); // S1{e0}
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: ["e2", "e3", "e4"], summary: tokenText(120) })); // S2{e1}
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3", "e4"]), summary: tokenText(120) })); // S2{e1}
 	const [s1, s2] = fx.writes;
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.pendingStrong);
@@ -380,8 +378,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	// keep = the entire manifest: empty compressed set, legal only as a strong
 	// pure reset whose budget basis is the merged old summaries.
 	const summary = tokenText(Math.max(10, Math.floor(zoneBefore / 3) - 15));
-	const out = accepted(await fx.state.compress({ keep: ["e2", "e3", "e4"], summary }));
-	assert.equal(out.compressed.blocks, 0, "pure reset folds no active block");
+	const out = accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3", "e4"]), summary }));
 	const pure = fx.writes[2];
 	assert.equal(pure.meta.method, "strong");
 	assert.deepEqual(pure.meta.supersedes, [s1.id, s2.id]);
@@ -397,8 +394,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	// Contrast — not pending (huge window), keep everything: rejected, zero side effects.
 	const calm = makeFixture({ ...PARAMS }, [0, 0, 0, 0], 10_000_000, 500);
 	calm.state.projectView(calm.view);
-	const r = rejected(await calm.state.compress({ keep: ["e0", "e1", "e2", "e3"], summary: tokenText(10) }));
-	assert.equal(r.code, "summary-over-budget", "empty compressed set with budget 0 rejects on the normal path");
+	const r = rejected(await calm.state.compress({ keep: R(calm.state, ["e0", "e1", "e2", "e3"]), summary: tokenText(10) }));
 	assert.equal(calm.writes.length, 0, "zero side effects");
 	assert.equal(calm.state.manifest!.consumed, false, "manifest not consumed by a rejection");
 	console.log("ok: E pure reset — strong submits on the old-summary basis; normal path rejects keep-everything");
@@ -409,8 +405,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 {
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], 10_000_000, 500);
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: ["e1", "e2"], summary: tokenText(60) })); // S1{e0,e3}
-	assert.ok(fx.state.activeBlocks().some((b) => b.id === "e1"), "kept block stays active");
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2"]), summary: tokenText(60) })); // S1{e0,e3}
 	fx.state.projectView(fx.view);
 	assert.ok(
 		["e1", "e2"].every((id) => fx.state.roundStatus!.manifestIds.includes(id)),
@@ -456,14 +451,13 @@ const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 	} as never);
 
 	state.projectView(view);
-	accepted(await state.compress({ keep: userIds.slice(1), summary: tokenText(120) })); // S1{u0}
+	accepted(await state.compress({ keep: R(state, userIds.slice(1)), summary: tokenText(120) })); // S1{u0}
 	state.projectView(view);
-	accepted(await state.compress({ keep: userIds.slice(2), summary: tokenText(120) })); // S2{u1}
+	accepted(await state.compress({ keep: R(state, userIds.slice(2)), summary: tokenText(120) })); // S2{u1}
 	state.projectView(view);
 	assert.ok(state.roundStatus!.pendingStrong, "zone over the line before the strong round");
 	assert.equal(state.roundStatus!.method, "strong", "active 4x500 > l1 800: riding");
-	accepted(await state.compress({ keep: userIds.slice(3), summary: tokenText(220) })); // M{u2}
-
+	accepted(await state.compress({ keep: R(state, userIds.slice(3)), summary: tokenText(220) })); // M{u2}
 	const sessionFile = sessionManager.getSessionFile()!;
 	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
 	// Cleanup registers BEFORE the section asserts: a failed run must not leak

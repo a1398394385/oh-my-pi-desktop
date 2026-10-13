@@ -37,6 +37,15 @@ const ALLOWED_EDGES = new Set([
   "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→acp-state.ts", "acp-runtime.ts→stderr.ts",
   "acp-runtime.ts→acp-recall-tool.ts", "acp-recall-tool.ts→acp-projection.ts",
   "acp-recall-tool.ts→acp-persist.ts", "session-lifecycle.ts→acp-recall-tool.ts",
+  // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
+  // acp-refs (journal-replayed, pure over projection/persist shapes); the
+  // acp_status tool surface + the status/ephemeral renders live in
+  // acp-status-tool (AcpParams from the plan leaf; the runtime feeds it
+  // AcpRoundStatus structurally, no reverse edge).
+  "acp-runtime.ts→acp-refs.ts", "acp-refs.ts→acp-projection.ts",
+  "acp-refs.ts→acp-persist.ts", "acp-refs.ts→acp-state.ts",
+  "acp-runtime.ts→acp-status-tool.ts", "acp-status-tool.ts→acp-plan.ts",
+  "session-lifecycle.ts→acp-status-tool.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",

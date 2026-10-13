@@ -1,13 +1,14 @@
-// recall_block ToolDefinition + rendering (spec §6, ticket T5).
+// recall_block ToolDefinition + rendering + dispatch (spec §6, tickets T5+v10).
 //
-// Split out of acp-runtime.ts for the host file-size gate. The dispatch logic
-// (four id classes: normal block / compaction block / superseded compaction
-// block / unknown) lives on AcpRuntimeState.recall; this module owns the
-// tool surface, the payload rendering, and the base truncation pipeline hookup.
+// Split out of acp-runtime.ts for the host file-size gate. This module owns
+// the tool surface, the payload rendering, the base truncation pipeline
+// hookup, and (since v10) the four-id-class dispatch; the runtime decodes the
+// bN short ref and delegates.
 import { type } from "@oh-my-pi/omptype";
+import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import type { AcpBlockInfo, AcpSourceMessage } from "./acp-projection.ts";
-import { flattenText } from "./acp-projection.ts";
-import type { AcpSummaryData } from "./acp-persist.ts";
+import { flattenText, splitBlocks } from "./acp-projection.ts";
+import { listAcpSummaries, type AcpSummaryData } from "./acp-persist.ts";
 import { enforceInlineByteCap } from "@oh-my-pi/pi-tui/tools/streaming-output";
 
 /** Structural dependency: any runtime exposing recall() (AcpRuntimeState; no import cycle). */
@@ -18,18 +19,20 @@ interface RecallHost {
 export type RecallOutcome = { ok: true; text: string } | { ok: false; error: string };
 
 /** Full-index render for recall — the §11 4K budget exists only in the zone render, never here. */
-export function renderFullIndex(b: AcpSummaryData): string {
+export function renderFullIndex(b: AcpSummaryData, refOf?: (id: string) => string): string {
+	const ref = refOf ?? ((id: string) => id);
 	return [
-		`[acp-recall id=${b.id} compaction block depth=${b.meta.depth} method=${b.meta.method} folded=${b.meta.compressedIds.length}]`,
+		`[acp-recall id=${ref(b.id)} compaction block depth=${b.meta.depth} method=${b.meta.method} folded=${b.meta.compressedIds.length}]`,
 		b.summary,
 		"Full index:",
-		...b.index.map((l) => `${l.id} | ${l.tokens} | ${l.intent}`),
+		...b.index.map((l) => `${ref(l.id)} | ${l.tokens} | ${l.intent}`),
 	].join("\n");
 }
 
 /** Original journal content of one message block (spec §6); tool pairs render call + result together. */
-export function renderNormalBlock(block: AcpBlockInfo, source: readonly AcpSourceMessage[]): string {
-	const header = `[acp-recall id=${block.id} kind=${block.kind} tokens=${block.tokens}]`;
+export function renderNormalBlock(block: AcpBlockInfo, source: readonly AcpSourceMessage[], refOf?: (id: string) => string): string {
+	const ref = refOf ?? ((id: string) => id);
+	const header = `[acp-recall id=${ref(block.id)} kind=${block.kind} tokens=${block.tokens}]`;
 	if (block.kind === "result") {
 		let call = "(tool call not found)";
 		for (const { message } of source) {
@@ -51,9 +54,54 @@ export function renderNormalBlock(block: AcpBlockInfo, source: readonly AcpSourc
 	return `${header}\n${flattenText(message?.content)}`;
 }
 
+/**
+ * recall_block dispatch (spec §6, moved from AcpRuntimeState for the host
+ * file-size gate): four id classes over the journal — normal block (call +
+ * result together), live compaction block (FULL index), superseded compaction
+ * block (redirect along the supersedes chain to the newest strong block),
+ * unknown id (tool error, not silent). `label` renders short refs on every
+ * model-facing id surface (spec §3 v10); the id arriving here is ALREADY
+ * decoded from its short ref by the runtime.
+ */
+export function dispatchRecall(
+	id: string,
+	deps: { getEntries: () => readonly SessionEntry[]; countTokens: (text: string) => number },
+	label: (id: string) => string,
+): RecallOutcome {
+	const entries = deps.getEntries();
+	const summaries = listAcpSummaries(entries);
+	const summary = summaries.find((s) => s.id === id);
+	if (summary) {
+		// Redirect: journal-order supersedes chains never fork (strong folds the
+		// whole live zone), so walking to the last supersedes parent is exact.
+		const chain = [id];
+		let cur = summary;
+		for (;;) {
+			const next = summaries.filter((s) => s.meta.supersedes.includes(cur.id)).at(-1);
+			if (!next) break;
+			cur = next;
+			chain.push(next.id);
+		}
+		const redirect = chain.length > 1 ? `\n[redirected ${chain.map(label).join(" -> ")}: superseded; returning the newest strong block's full index]` : "";
+		return { ok: true, text: renderFullIndex(cur, label) + redirect };
+	}
+	const source = entries
+		.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
+		.map((e) => ({ id: e.id, message: e.message }));
+	const block = splitBlocks(source, deps.countTokens).find((b) => b.id === id);
+	if (!block) {
+		const live = summaries.filter((s) => !summaries.some((o) => o.meta.supersedes.includes(s.id))).map((s) => label(s.id));
+		return {
+			ok: false,
+			error: `No block with id "${id}". Live compaction blocks: ${live.length ? live.join(", ") : "(none)"}. Message-block ids appear in index lines and acp_status manifests.`,
+		};
+	}
+	return { ok: true, text: renderNormalBlock(block, source, label) };
+}
+
 const RECALL_BLOCK_DESCRIPTION = `Fetch a block back from the compaction zone (context management).
 
-Call with the id shown in a summary index line or the round manifest:
+Call with the bN short id shown in a summary index line, the acp_status manifest, or a compress_context result:
 - A message-block id returns the original content from the journal (a tool pair comes back as call + result together). The recalled content is a normal new block with no exemption — later compression rounds treat it like any other.
 - A compaction-block id returns that block's FULL index (the rendered index truncates at 4096 tokens; this bypasses it).
 - A superseded compaction block redirects to the newest strong block's full index.`;

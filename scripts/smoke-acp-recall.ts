@@ -126,12 +126,13 @@ function pushSummary(
 	const a2 = pushMessage(journal, { role: "assistant", content: [{ type: "text", text: "assistant prose gamma" }], usage: USAGE, timestamp: 0 } as never as AgentMessage);
 
 	// Normal blocks: original journal content, tool pair = call + result together.
-	const ru = state.recall(u1);
+	// v10: the tool entry speaks bN short refs (shortRef syncs the registry).
+	const ru = state.recall(state.shortRef(u1));
 	assert.equal(ru.ok, true);
-	assert.match((ru as { text: string }).text, /\[acp-recall id=\S+ kind=user/);
+	assert.match((ru as { text: string }).text, /\[acp-recall id=b\d+ kind=user/);
 	assert.ok((ru as { text: string }).text.includes("unique payload alpha"), "user block content verbatim");
 
-	const rr = state.recall(r1);
+	const rr = state.recall(state.shortRef(r1));
 	assert.equal(rr.ok, true);
 	const rrText = (rr as { text: string }).text;
 	assert.ok(rrText.includes("tool call: bash("), "the pair renders the tool call");
@@ -139,7 +140,7 @@ function pushSummary(
 	assert.ok(rrText.includes("unique payload beta"), "the pair renders the tool result");
 	assert.ok(rrText.includes("tool result:"), "call and result are annotated separately");
 
-	const rx = state.recall(`${a2}#x`);
+	const rx = state.recall(state.shortRef(`${a2}#x`));
 	assert.equal(rx.ok, true);
 	assert.ok((rx as { text: string }).text.includes("assistant prose gamma"), "assistant text block renders");
 
@@ -157,29 +158,29 @@ function pushSummary(
 		{ method: "strong", compressedIds: [u1, r1, a2], supersedes: [S1, S2], depth: 1 },
 	);
 
-	const rm = state.recall(M);
+	const rm = state.recall(state.shortRef(M));
 	assert.equal(rm.ok, true);
 	const rmText = (rm as { text: string }).text;
 	for (const intent of ["alpha record", "beta record", "gamma record"]) assert.ok(rmText.includes(intent), `full index line present: ${intent}`);
 	assert.ok(!rmText.includes("recall_block("), "no render-truncation trailer in a recall");
 
-	const rs1 = state.recall(S1);
+	const rs1 = state.recall(state.shortRef(S1));
 	assert.equal(rs1.ok, true);
 	const rs1Text = (rs1 as { text: string }).text;
-	assert.ok(rs1Text.includes(`[acp-recall id=${M}`), "superseded block redirects to the newest strong block");
-	assert.ok(rs1Text.includes(`${S1} -> ${M}`), "the supersedes chain is annotated");
+	assert.ok(rs1Text.includes(`[acp-recall id=${state.shortRef(M)}`), "superseded block redirects to the newest strong block");
+	assert.ok(rs1Text.includes(`${state.shortRef(S1)} -> ${state.shortRef(M)}`), "the supersedes chain is annotated (short refs)");
 	assert.ok(rs1Text.includes("gamma record"), "the redirect carries the inherited full index");
 
 	// Multi-layer chain: M2 supersedes M; recall(S1) walks S1 -> M -> M2.
 	const M2 = pushSummary(journal, "M2", [{ id: u1, tokens: 10, intent: "folded again" }], { method: "strong", compressedIds: [u1], supersedes: [M], depth: 2 });
-	const rs1b = state.recall(S1);
-	assert.ok((rs1b as { text: string }).text.includes(`${S1} -> ${M} -> ${M2}`), "multi-layer supersedes chain annotated");
+	const rs1b = state.recall(state.shortRef(S1));
+	assert.ok((rs1b as { text: string }).text.includes(`${state.shortRef(S1)} -> ${state.shortRef(M)} -> ${state.shortRef(M2)}`), "multi-layer supersedes chain annotated");
 	assert.ok((rs1b as { text: string }).text.includes("folded again"), "redirect lands on the newest strong block");
 
 	const bad = state.recall("no-such-block");
 	assert.equal(bad.ok, false, "unknown id is a tool error, not silence");
 	assert.match((bad as { error: string }).error, /No block with id "no-such-block"/);
-	assert.ok((bad as { error: string }).error.includes(M2), "the error lists the live compaction blocks");
+	assert.ok((bad as { error: string }).error.includes(state.shortRef(M2)!), "the error lists the live compaction blocks (short refs)");
 	assert.equal(state.recall("").ok, false, "empty id rejects");
 
 	// Degraded sessions reject at the entry (same stance as compress, §5.3).
@@ -201,7 +202,7 @@ function pushSummary(
 	const tool = createRecallBlockTool(state);
 
 	// No ctx (pipeline unreachable): the original text returns untruncated.
-	const bare = (await tool.execute("t0", { id: G }, undefined, undefined, undefined)) as { content: Array<{ type: string; text: string }> };
+	const bare = (await tool.execute("t0", { id: state.shortRef(G) }, undefined, undefined, undefined)) as { content: Array<{ type: string; text: string }> };
 	assert.ok(bare.content[0].text.includes("investigation record 1199"), "without a ctx the full text returns as-is");
 
 	// Real pipeline shape: a stub ctx standing in for the SDK ToolSession.
@@ -212,7 +213,7 @@ function pushSummary(
 			return { id: "spill1", path: spillPath };
 		},
 	};
-	const res = (await tool.execute("t1", { id: G }, undefined, undefined, stubCtx)) as { content: Array<{ type: string; text: string }> };
+	const res = (await tool.execute("t1", { id: state.shortRef(G) }, undefined, undefined, stubCtx)) as { content: Array<{ type: string; text: string }> };
 	const text = res.content[0].text;
 	assert.ok(text.includes("artifact://spill1"), "the inline result points at the spilled artifact");
 	assert.match(text, /elided/, "the inline result carries the elision marker");
@@ -306,9 +307,9 @@ function findFileContaining(dir: string, needle: string): string | null {
 		contextWindow: 100_000,
 		handler: () => {
 			const step = turn++;
-			if (step === 0) return { content: [{ type: "toolCall", name: "recall_block", arguments: { id: r1 } }] };
-			if (step === 1) return { content: ["noted."] };
-			if (step === 2) return { content: [{ type: "toolCall", name: "recall_block", arguments: { id: bigData.id } }] };
+		if (step === 0) return { content: [{ type: "toolCall", name: "recall_block", arguments: { id: state.shortRef(r1) } }] };
+		if (step === 1) return { content: ["noted."] };
+		if (step === 2) return { content: [{ type: "toolCall", name: "recall_block", arguments: { id: state.shortRef(bigData.id) } }] };
 			return { content: ["done."] };
 		},
 	});

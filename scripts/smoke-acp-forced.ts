@@ -287,7 +287,7 @@ const GUARD_WINDOW = 20_000;
 	assert.equal(fx.forceCalls.length, 1);
 	fx.state.projectView(fx.view); // the forced request
 	const folded = fx.state.roundStatus!.manifestIds[0];
-	const keep = fx.state.roundStatus!.manifestIds.filter((id) => id !== folded);
+	const keep = fx.state.roundStatus!.manifestIds.filter((id) => id !== folded).map((id) => fx.state.shortRef(id)!);
 	const out = accepted(await fx.state.compress({ keep, summary: tokenText(10) }));
 	assert.equal(out.countedAsSuccess, true, "folded ~100 >= minCompress 30");
 	fx.state.onTurnEnd(); // forced resolution: success, relief expected

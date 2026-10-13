@@ -43,6 +43,7 @@ import {
 } from "../host/acp-runtime.ts";
 import { computeRoundPlan, type AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
+import { createAcpStatusTool } from "../host/acp-status-tool.ts";
 import { assertToolPairing } from "../host/acp-projection.ts";
 
 assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
@@ -137,6 +138,8 @@ function ephemeralText(fx: Fixture): string {
 	const mid = makeFixture({ ...p, target: 10_000 }, [30, 30, 30, 30, 30, 30, 30, 30]);
 	mid.state.projectView(mid.view);
 	assert.match(ephemeralText(mid), /\[acp-status\] tier=L[12] compress=normal /);
+	assert.ok(!/^b\d+ \| \d+ \| /m.test(ephemeralText(mid)), "v10: the ephemeral carries no manifest lines");
+	assert.match(ephemeralText(mid), /call the acp_status tool/, "the ephemeral points at acp_status");
 	const hot = makeFixture({ ...p, target: 10_000 }, [60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60]);
 	hot.state.projectView(hot.view);
 	assert.match(ephemeralText(hot), /\[acp-status\] tier=L3 compress=strong /, "past L3 the method flips to strong");
@@ -146,7 +149,7 @@ function ephemeralText(fx: Fixture): string {
 	cold.state.projectView(cold.view);
 	assert.ok(!JSON.stringify(cold.state.lastProjected).includes("[acp-status]"), "no ephemeral below L1");
 	assert.equal(cold.state.roundStatus?.tier, "none");
-	console.log("ok: A decision table unique — strict >, =L3 is L2+normal; ephemeral shows tier+method; none injects nothing");
+	console.log("ok: A decision table unique — strict >, =L3 is L2+normal; ephemeral shows tier+method, no manifest; none injects nothing");
 }
 
 // --- B: acceptance 15 — manifest ordering, 8K truncation, re-entry, convergence ------------
@@ -160,7 +163,7 @@ function ephemeralText(fx: Fixture): string {
 	assert.ok(rs.manifestIds.length < fx.state.activeBlocks().length, "manifest truncated under the 8K render budget");
 	assert.ok(rs.exempted > 0, "tail blocks exempted");
 	assert.match(rs.manifestText, /… \d+ more \(exempt this round, re-listed next round\)$/, "exemption trailer present");
-
+	assert.match(rs.manifestText, /^b\d+ \| \d+ \| /, "manifest lines carry bN short refs (v10)");
 	// Descending by block size; every dropped candidate is <= every kept one.
 	const tokensById = new Map(fx.state.activeBlocks().map((b) => [b.id, b.tokens]));
 	const keptTokens = rs.manifestIds.map((id) => tokensById.get(id)!);
@@ -294,26 +297,32 @@ function ephemeralText(fx: Fixture): string {
 const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 {
 	const turnText = (label: string, n: number) => `${label}: ` + "detailed journal text about the parser bug and the failing test. ".repeat(n);
-	// Real manifest consumption: parse the ids out of the ephemeral the model
-	// actually sees; the handler records the count for the post-turn assert.
+	// Real manifest consumption (v10 pull mode): the model first calls
+	// acp_status, parses the bN lines out of the tool RESULT, then compresses;
+	// the handler records the count for the post-turn assert.
 	let parsedManifestCount = 0;
+	let parsedIds: string[] = [];
 	let compressedOnce = false;
 	// Content-directed scripting: route on the last NON-ephemeral user message
 	// (the [acp-status] injection is a user-role message too and sits last).
 	const mock = createMockModel({
-		handler: (context: { messages: Array<{ role: string; content: unknown }> }) => {
+		handler: (context: { messages: Array<{ role: string; content: unknown; toolName?: string }> }) => {
 			const users = [...context.messages].reverse().filter((m) => m.role === "user");
 			const routed = users.find((m) => !textOf(m).includes("[acp-status]")) ?? users[0];
 			const text = textOf(routed ?? { role: "user", content: "" });
 			if (text.includes("compress it now") && !compressedOnce) {
-				const status = users.find((m) => textOf(m).startsWith("[acp-status]"));
-				assert.ok(status, "the compress request carried the ephemeral manifest");
-				const ids = textOf(status!)
+				const statusResult = [...context.messages].reverse().find((m) => m.role === "toolResult" && m.toolName === "acp_status");
+				if (!statusResult) return { content: [{ type: "toolCall", name: "acp_status", arguments: {} }] as const };
+				const statusText = resultText(statusResult.content);
+				assert.ok(statusText.startsWith("[acp-report]"), "the acp_status result carries the dashboard");
+				assert.match(statusText, /tier=L1 compress=normal/, "the tool result reports tier + method");
+				const ids = statusText
 					.split("\n")
-					.filter((l) => /^\S+ \| \d+ \| /.test(l))
+					.filter((l) => /^b\d+ \| \d+ \| /.test(l))
 					.map((l) => l.split(" |")[0]);
-				assert.ok(ids.length > 0, "manifest lines parsed from the ephemeral");
+				assert.ok(ids.length > 0, "manifest lines parsed from the acp_status result");
 				parsedManifestCount = ids.length;
+				parsedIds = ids;
 				compressedOnce = true;
 				return {
 					content: [
@@ -346,7 +355,7 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
-		customTools: [createCompressContextTool(state)] as never,
+		customTools: [createCompressContextTool(state), createAcpStatusTool(state)] as never,
 		getApiKey: async () => "mock-key",
 		extensions: [createAcpProjectionExtension(state)] as never,
 		disableExtensionDiscovery: true,
@@ -382,11 +391,25 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	assert.equal(compressResults.length, 1);
 	const outcome = JSON.parse(resultText(compressResults[0].content)) as CompressOutcome;
 	assert.equal(outcome.ok, true);
-	assert.equal(outcome.compressed.blocks, parsedManifestCount, "the model compressed exactly the ids the ephemeral listed");
+	assert.equal(outcome.compressed.blocks, parsedManifestCount, "the model compressed exactly the ids the acp_status manifest listed");
+	assert.ok(parsedIds.every((id) => /^b\d+$/.test(id)), "the consumed manifest spoke bN short refs end to end");
+	assert.ok(compressResults[0].content !== undefined && JSON.stringify(compressResults[0].content).length > 0, "compress result present");
 
 	await ask("status check after compression", 4);
 	const last = mock.calls.at(-1)!;
 	assert.ok(JSON.stringify(last.context.messages[0]).includes("[acp-summary id="), "zone renders first after compression");
+	// v10 pair retirement (spec §6): the acp_status tool_use/tool_result pair
+	// left the projection after the successful compress — even though the
+	// compress turn sits well inside the protected tail (tailTurns 2).
+	const wire = JSON.stringify(last.context.messages);
+	assert.ok(!wire.includes('"name":"acp_status"'), "the acp_status tool_use left the request");
+	assert.ok(!wire.includes("acp_status result"), "no acp_status residue");
+	const journalHasStatusPair = sessionManager
+		.getEntries()
+		.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
+		.map((e) => e.message as AgentMessage)
+		.some((m) => m.role === "toolResult" && m.toolName === "acp_status");
+	assert.ok(journalHasStatusPair, "storage keeps the pair (projection-only retirement)");
 	// Block text legitimately survives inside the zone's index intent lines,
 	// and the base concatenates its reminder into the first user message
 	// (zone render included) — so zone membership is a substring test (T3

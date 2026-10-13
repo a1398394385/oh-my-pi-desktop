@@ -118,6 +118,9 @@ function assertPristine(fx: Fixture, writesBefore: number) {
 // values themselves are the ACP_DEFAULT_PARAMS defaults covered by tier math.
 const PARAMS_A: Partial<AcpParams> = { l1: 1_000, l2: 2_000, l3: 3_000, target: 10_000, tailTurns: 1, tailTokens: 0 };
 const SUMMARY = "Condensed record of the retired blocks: parser bug traced, values pinned.";
+// v10: the compress entry speaks bN short refs (spec §3); test-supplied
+// manifests still pin entry ids, so keeps resolve them through the registry.
+const R = (st: { shortRef(id: string): string | undefined }, id: string): string => st.shortRef(id)!;
 const activeTokens = (fx: Fixture) => fx.state.activeBlocks().reduce((n, b) => n + b.tokens, 0);
 
 // --- A: §6 validation sequence -----------------------------------------------------
@@ -127,17 +130,18 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 
 // §6.2 — hallucinated keep id rejects the whole call with the full valid candidate set (acceptance 3)
 {
-	const r = rejected(await fx.state.compress({ keep: [fx.ids[0], "ghost-123"], summary: SUMMARY }));
+	const r = rejected(await fx.state.compress({ keep: [R(fx.state, fx.ids[0]), "ghost-123"], summary: SUMMARY }));
 	assert.equal(r.code, "hallucinated-keep");
-	assert.deepEqual(r.validCandidates, fx.ids.slice(0, 7));
+	assert.deepEqual(r.validCandidates, fx.ids.slice(0, 7).map((id) => fx.state.shortRef(id)));
 	assert.match(r.error, /ghost-123/);
+	assert.match(r.error, /Valid candidates: b\d+(, b\d+)*\./, "candidate set rendered with short refs");
 	assertPristine(fx, 0);
-	console.log("ok: A2 ghost keep id rejected with the full valid candidate set, zero side effects");
+	console.log("ok: A2 ghost keep id rejected with the full valid candidate set (short refs), zero side effects");
 }
 
 // §6.2 — protected-tail ids are hallucination-class too
 {
-	const r = rejected(await fx.state.compress({ keep: [fx.ids[7]], summary: SUMMARY }));
+	const r = rejected(await fx.state.compress({ keep: [R(fx.state, fx.ids[7])], summary: SUMMARY }));
 	assert.equal(r.code, "hallucinated-keep");
 	assert.match(r.error, /protected tail/);
 	assertPristine(fx, 0);
@@ -150,7 +154,7 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 	small.state.setManifest(small.ids.slice(0, 7));
 	const keepTokens = small.tokensById.get("e0")!;
 	const protTokens = small.tokensById.get("e7")!;
-	const r = rejected(await small.state.compress({ keep: ["e0"], summary: SUMMARY }));
+	const r = rejected(await small.state.compress({ keep: [R(small.state, "e0")], summary: SUMMARY }));
 	assert.equal(r.code, "over-target");
 	const diff = Number(r.error.match(/reduce keep by (\d+) more tokens/)![1]);
 	assert.equal(diff, keepTokens + protTokens - 100, "reported shortfall = (keep + protected) - target");
@@ -160,7 +164,7 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 
 // §6.4 — empty summary
 {
-	const r = rejected(await fx.state.compress({ keep: [fx.ids[0]], summary: "   " }));
+	const r = rejected(await fx.state.compress({ keep: [R(fx.state, fx.ids[0])], summary: "   " }));
 	assert.equal(r.code, "empty-summary");
 	assertPristine(fx, 0);
 	console.log("ok: A4 empty summary rejected");
@@ -171,7 +175,7 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 {
 	const compressedTokens = fx.ids.slice(1, 7).reduce((n, id) => n + fx.tokensById.get(id)!, 0);
 	const expectedBudget = computeSummaryBudget(compressedTokens, 0, fx.state.params);
-	const r = rejected(await fx.state.compress({ keep: [fx.ids[0]], summary: "word ".repeat(4_000) }));
+	const r = rejected(await fx.state.compress({ keep: [R(fx.state, fx.ids[0])], summary: "word ".repeat(4_000) }));
 	assert.equal(r.code, "summary-over-budget");
 	assert.match(r.error, new RegExp(`budget ${expectedBudget}`));
 	assertPristine(fx, 0);
@@ -184,7 +188,7 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 // the budget is 0, so §6.5 fires first and names the empty compressed set (the
 // literal §6.6 branch is only reachable in strong/pure-reset mode, T6)
 {
-	const r = rejected(await fx.state.compress({ keep: fx.ids.slice(0, 7), summary: SUMMARY }));
+	const r = rejected(await fx.state.compress({ keep: fx.ids.slice(0, 7).map((id) => R(fx.state, id)), summary: SUMMARY }));
 	assert.match(r.error, /nothing would be compressed/);
 	assertPristine(fx, 0);
 	console.log("ok: A6 keep-all-manifest rejected (spec-order note: zero basis fires at §6.5)");
@@ -193,8 +197,8 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 {
 	const activeBefore = activeTokens(fx);
 	const compressedTokens = fx.ids.slice(1, 7).reduce((n, id) => n + fx.tokensById.get(id)!, 0);
-	const out = accepted(await fx.state.compress({ keep: [fx.ids[0]], summary: SUMMARY }));
-	assert.equal(out.blockId, "s1");
+	const out = accepted(await fx.state.compress({ keep: [R(fx.state, fx.ids[0])], summary: SUMMARY }));
+	assert.equal(out.blockId, fx.state.shortRef("s1"));
 	assert.equal(out.compressed.blocks, 6);
 	assert.equal(out.compressed.tokens, compressedTokens);
 	assert.equal(out.kept.blocks, 1);
@@ -222,7 +226,7 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 // §6.2 — a block compressed by the previous round is hallucination-class
 {
 	fx.state.setManifest(fx.ids.slice(0, 7));
-	const r = rejected(await fx.state.compress({ keep: [fx.ids[1]], summary: SUMMARY }));
+	const r = rejected(await fx.state.compress({ keep: [R(fx.state, fx.ids[1])], summary: SUMMARY }));
 	assert.equal(r.code, "hallucinated-keep");
 	assert.match(r.error, /already compressed/);
 	console.log("ok: A2 already-compressed keep id rejected");
@@ -260,7 +264,7 @@ fxB.state.setManifest(fxB.ids.slice(0, 7));
 	const l2fx = makeFixture({ l1: 200, l2: 400, l3: 1_000, target: 10_000, tailTurns: 1, tailTokens: 0 }, 8, 8);
 	l2fx.state.setManifest(l2fx.ids.slice(0, 7));
 	assert.equal(computeTier(activeTokens(l2fx), l2fx.state.params), "L2", "fixture sized into the L2 tier");
-	const out = accepted(await l2fx.state.compress({ keep: [l2fx.ids[0]], summary: SUMMARY }));
+	const out = accepted(await l2fx.state.compress({ keep: [R(l2fx.state, l2fx.ids[0])], summary: SUMMARY }));
 	assert.equal(out.countedAsSuccess, false);
 	assert.match(out.warning!, /under minCompress/, "L2 tier passes with a warning");
 	console.log("ok: C L2 tier — under minCompress allowed with warning");
@@ -269,7 +273,7 @@ fxB.state.setManifest(fxB.ids.slice(0, 7));
 	const l3fx = makeFixture({ l1: 200, l2: 400, l3: 600, target: 10_000, tailTurns: 1, tailTokens: 0 }, 8, 12);
 	l3fx.state.setManifest(l3fx.ids.slice(0, 7));
 	assert.equal(computeTier(activeTokens(l3fx), l3fx.state.params), "L3", "fixture sized into the L3 tier");
-	const out = accepted(await l3fx.state.compress({ keep: [l3fx.ids[0]], summary: SUMMARY }));
+	const out = accepted(await l3fx.state.compress({ keep: [R(l3fx.state, l3fx.ids[0])], summary: SUMMARY }));
 	assert.equal(out.countedAsSuccess, false, "L3 tier does not count as a successful compression");
 	assert.equal(out.warning, undefined, "the L2-only warning stays silent at L3");
 	console.log("ok: C L3 tier — allowed but not counted as success");
@@ -290,7 +294,7 @@ fxB.state.setManifest(fxB.ids.slice(0, 7));
 		fxB.view.push(message);
 	}
 	const p1 = fxB.state.projectView(fxB.view);
-	assert.match(JSON.stringify(p1[0]), /\[acp-summary id=s1 /, "zone renders first");
+	assert.match(JSON.stringify(p1[0]), new RegExp(`\\[acp-summary id=${fxB.state.shortRef("s1")} `), "zone renders first");
 	const prefixBefore = JSON.stringify(p1[0]);
 
 	// Round 2: e9 is the protected tail (tailTurns 1); the manifest is e8
@@ -301,7 +305,7 @@ fxB.state.setManifest(fxB.ids.slice(0, 7));
 
 	const p2 = fxB.state.projectView(fxB.view);
 	assert.equal(JSON.stringify(p2[0]), prefixBefore, "unsuperseded zone render is byte-identical across rounds");
-	assert.match(JSON.stringify(p2[1]), /\[acp-summary id=s2 /, "the new block appends to the zone");
+	assert.match(JSON.stringify(p2[1]), new RegExp(`\\[acp-summary id=${fxB.state.shortRef("s2")} `), "the new block appends to the zone");
 	// Block text legitimately survives inside the zone's index intent lines;
 	// what must vanish is the active-zone message itself.
 	const activeUserTexts = (msgs: AgentMessage[]) =>
@@ -319,7 +323,7 @@ fxB.state.setManifest(fxB.ids.slice(0, 7));
 
 const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t3-e2e-"));
 const turnText = (label: string, n: number) => `${label}: ` + "detailed journal text about the parser bug and the failing test. ".repeat(n);
-const e2eKeep = { id: "", summary: "Condensed record of the parser investigation and test setup turns." };
+const e2eKeep = { id: "", ref: "", summary: "Condensed record of the parser investigation and test setup turns." };
 // Content-directed scripting (a positional response list desynchronizes: the
 // first request of a session fires with only the base reminder user message,
 // before the prompt's own text lands). Routing keys off the LAST user message,
@@ -338,7 +342,7 @@ const mock = createMockModel({
 		if (lastText.includes("compress it now")) {
 			if (!e2eStage.compressed) {
 				e2eStage.compressed = true;
-				return toolCall([e2eKeep.id], e2eKeep.summary);
+				return toolCall([e2eKeep.ref], e2eKeep.summary);
 			}
 			return reply("Compression done, continuing work.");
 		}
@@ -412,6 +416,7 @@ const manifestBlocks = splitBlocks(manifestSource, countTokens);
 assert.equal(manifestBlocks.length, 4, "two user + two assistant-text blocks");
 state.setManifest(manifestBlocks.map((b) => b.id));
 e2eKeep.id = manifestBlocks[manifestBlocks.length - 1].id; // keep the latest assistant text block
+e2eKeep.ref = state.shortRef(e2eKeep.id)!; // v10: the tool entry speaks bN short refs
 
 await ask("The context is large; compress it now.", 4);
 await ask("Compress again right away.", 6);

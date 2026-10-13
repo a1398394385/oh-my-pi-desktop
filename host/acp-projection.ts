@@ -153,12 +153,17 @@ export function splitBlocks(
 	return blocks;
 }
 
-/** Render one compaction block as its user-role text segment (spec §4.1). */
-export function renderCompactionBlock(b: AcpCompactionBlock, countTokens: CountTokens): string {
+/**
+ * Render one compaction block as its user-role text segment (spec §4.1).
+ * `refOf` re-labels ids as short refs on model-facing surfaces (spec §3 v10);
+ * the default keeps raw ids for pure-function callers.
+ */
+export function renderCompactionBlock(b: AcpCompactionBlock, countTokens: CountTokens, refOf?: (id: string) => string): string {
+	const ref = refOf ?? ((id: string) => id);
 	const header =
-		`[acp-summary id=${b.id} time=${new Date(b.meta.createdAt).toISOString()} ` +
+		`[acp-summary id=${ref(b.id)} time=${new Date(b.meta.createdAt).toISOString()} ` +
 		`depth=${b.meta.depth} blocks=${b.index.length} method=${b.meta.method}]`;
-	const lines = b.index.map((l) => `${l.id} | ${l.tokens} | ${l.intent}`);
+	const lines = b.index.map((l) => `${ref(l.id)} | ${l.tokens} | ${l.intent}`);
 	const render = (ls: readonly string[], trailer?: string): string =>
 		[header, b.summary, "Index:", ...ls, ...(trailer ? [trailer] : [])].join("\n");
 	let out = render(lines);
@@ -166,7 +171,7 @@ export function renderCompactionBlock(b: AcpCompactionBlock, countTokens: CountT
 	// Over budget: drop the oldest segments (index lines are chronological) and
 	// point the model at recall_block for the full index (spec §11).
 	let kept = lines.length;
-	const trailer = () => `… ${lines.length - kept} more, recall_block(${b.id}) 取完整索引`;
+	const trailer = () => `… ${lines.length - kept} more, recall_block(${ref(b.id)}) 取完整索引`;
 	while (kept > 0 && countTokens(render(lines.slice(lines.length - kept), trailer())) > ACP_INDEX_RENDER_BUDGET) kept--;
 	return render(lines.slice(lines.length - kept), trailer());
 }
@@ -196,12 +201,14 @@ export function assertToolPairing(messages: readonly AgentMessage[], exemptUseId
  * Project a source view into the request message sequence (spec §4.1-4.3):
  * compression zone first (unsuperseded blocks, original order), then the active
  * zone filtered to `keptBlockIds`. Messages are copied on change, never mutated.
+ * `refOf` rides into the zone render for short-ref labels (spec §3 v10).
  */
 export function projectContext(
 	source: readonly AcpSourceMessage[],
 	keptBlockIds: ReadonlySet<string>,
 	compactionBlocks: readonly AcpCompactionBlock[],
 	countTokens: CountTokens,
+	refOf?: (id: string) => string,
 ): AgentMessage[] {
 	const blocks = splitBlocks(source, countTokens);
 	// toolCallId -> owning pair block; a tool_use body rides with its result.
@@ -220,7 +227,7 @@ export function projectContext(
 		if (superseded.has(b.id)) continue;
 		const rendered: UserMessage = {
 			role: "user",
-			content: renderCompactionBlock(b, countTokens),
+			content: renderCompactionBlock(b, countTokens, refOf),
 			synthetic: true,
 			timestamp: b.meta.createdAt,
 		};
