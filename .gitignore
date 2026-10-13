@@ -12,3 +12,6 @@ host-dist/
 .codegraph/
 .omc/
 .zcode/
+
+# 本地 agent 工作目录
+.omp/
