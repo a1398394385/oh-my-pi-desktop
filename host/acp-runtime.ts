@@ -778,8 +778,8 @@ export function createCompressContextTool(state: AcpRuntimeState) {
 /**
  * Request projection extension: hooks the context event and replaces the view
  * with the dual-zone projection. A projection failure must never blow up the
- * request — the original view passes through (same stance as the prototype
- * transform in acp-context.ts).
+ * request — the original view passes through (same stance the retired nudge
+ * prototype's transform took).
  */
 export function createAcpProjectionExtension(state: AcpRuntimeState) {
 	return (pi: {

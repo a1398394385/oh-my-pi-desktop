@@ -15,7 +15,7 @@
 // invariant (P1 probe V4 proved the server enforces it with a 400, so a broken
 // projection must fail loudly here rather than at the API).
 import type { AgentMessage, AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
-import { messageFingerprint } from "./acp-state.ts";
+import { messageFingerprint } from "./acp-fingerprint.ts";
 
 /** Token counter bound to the active model's Tokenizer (byte-estimate fallback is built in). */
 export type CountTokens = (text: string) => number;

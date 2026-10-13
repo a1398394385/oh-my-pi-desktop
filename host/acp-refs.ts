@@ -16,7 +16,7 @@
 // restarts land on the same sets with zero extra persistence.
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
-import { messageFingerprint } from "./acp-state.ts";
+import { messageFingerprint } from "./acp-fingerprint.ts";
 import { splitBlocks } from "./acp-projection.ts";
 import { ACP_SUMMARY_CUSTOM_TYPE } from "./acp-persist.ts";
 

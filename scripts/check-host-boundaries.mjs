@@ -18,13 +18,11 @@ const hostDir = join(root, "host");
 // host.ts is a thin entry (argv routing): the host body main.ts is loaded via dynamic import;
 // dynamic imports are outside this table's scope; the host-body edges below are all static deps of main.ts.
 const ALLOWED_EDGES = new Set([
-  // ACP integration: host body main.ts mounts the acp panel; acp-tools/context depend on the shared acp-state (one-way downward)
-  "main.ts→acp-state.ts", "main.ts→acp-context.ts", "main.ts→acp-tools.ts",
-  "acp-context.ts→acp-state.ts", "acp-tools.ts→acp-state.ts", "acp-tools.ts→acp-context.ts",
   // ACP dual-zone compaction (spec §9): persistence/rebuild layer reuses the T1
   // projection shapes; acp-projection stays a pure leaf — its only non-local
-  // dep is the pure messageFingerprint helper (T4 token memo keys).
-  "acp-persist.ts→acp-projection.ts", "acp-projection.ts→acp-state.ts",
+  // dep is the pure messageFingerprint helper (T4 token memo keys), kept in
+  // the leaf acp-fingerprint.ts after the nudge prototype retirement (T10).
+  "acp-persist.ts→acp-projection.ts", "acp-projection.ts→acp-fingerprint.ts",
   // ACP runtime (T3): session-lifecycle assembles compress_context + the
   // dual-zone projection from acp-runtime; it reuses the T1/T2 shapes and the
   // prototype's messageFingerprint for view<->entry-id alignment. T7 adds the
@@ -34,7 +32,7 @@ const ALLOWED_EDGES = new Set([
   // (single decision source for runtime, assembly, and smokes).
   "session-lifecycle.ts→acp-runtime.ts", "session-lifecycle.ts→acp-persist.ts", "session-lifecycle.ts→acp-plan.ts",
   "acp-runtime.ts→acp-projection.ts", "acp-runtime.ts→acp-plan.ts",
-  "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→acp-state.ts", "acp-runtime.ts→stderr.ts",
+  "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→stderr.ts",
   "acp-runtime.ts→acp-recall-tool.ts", "acp-recall-tool.ts→acp-projection.ts",
   "acp-recall-tool.ts→acp-persist.ts", "session-lifecycle.ts→acp-recall-tool.ts",
   // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
@@ -43,7 +41,7 @@ const ALLOWED_EDGES = new Set([
   // acp-status-tool (AcpParams from the plan leaf; the runtime feeds it
   // AcpRoundStatus structurally, no reverse edge).
   "acp-runtime.ts→acp-refs.ts", "acp-refs.ts→acp-projection.ts",
-  "acp-refs.ts→acp-persist.ts", "acp-refs.ts→acp-state.ts",
+  "acp-refs.ts→acp-persist.ts", "acp-refs.ts→acp-fingerprint.ts",
   "acp-runtime.ts→acp-status-tool.ts", "acp-status-tool.ts→acp-plan.ts",
   "session-lifecycle.ts→acp-status-tool.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
@@ -71,7 +69,7 @@ const ALLOWED_EDGES = new Set([
   // can no longer turn a log line into an unhandled rejection that drags the
   // host into fork-inducing fatal teardown (2026-10-05 session-duplication
   // incident). Leaf utility: imports nothing.
-  "acp-context.ts→stderr.ts", "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "gui-path.ts→stderr.ts",
+  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "gui-path.ts→stderr.ts",
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
   "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
@@ -90,8 +88,7 @@ const ALLOWED_EDGES = new Set([
   // Desktop implementation of the /goal command + goal-resume scheduling: main.ts mounts the command dispatch and event hooks;
   // state.ts's PoolEntry holds the controller instance (goal.ts depends only on its own narrow interface, one-way downward)
   "main.ts→goal.ts", "state.ts→goal.ts",
-  // Strip ACP-injected tags: translate.ts consumes the REF_TAG_RE regex from acp-context.ts
-  "translate.ts→acp-context.ts",
+  // (REF_TAG_RE was inlined into translate.ts at the T10 prototype retirement)
   // Shared MCP connection pool: main.ts drives lifecycle and RPC, depends on bootstrap's connectToServer and state
   "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
   // Session-bound MCP mounting (pool-lifecycle boundaries): mcp-mount owns the
@@ -159,7 +156,7 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
-  // Cache keepalive (an inline-extension domain conditionally injected behind an experiment switch, same precedent as acp-context;
+  // Cache keepalive (an inline-extension domain conditionally injected behind an experiment switch;
   // three flat files keepalive/keepalive-config/keepalive-lib)
   "session-lifecycle.ts→keepalive.ts",
   "session-lifecycle.ts→keepalive-config.ts",
@@ -187,7 +184,6 @@ const ALLOWED_EDGES = new Set([
   // Queued message domain: followUp/steering views, park staging plus send-now/requeue/drop
   "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
   // Experiment switches (acp/sessionContext section) live in omp-desktop.json alongside the profile
-  "profile.ts→acp-state.ts",
   // Frame assembly layer: models/settings frames are shared by multiple rpc domains and main's ready frame
   // (why it is its own layer: settingsFrame combines the models snapshot with profile/assets switches; sinking into either side would create a cycle)
   "main.ts→frames.ts",

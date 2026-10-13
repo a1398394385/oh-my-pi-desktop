@@ -94,8 +94,8 @@ function catalogId(model: KeepaliveModel): string {
 
 /**
  * Narrow view of the extension event context (a structural subset of the base
- * ExtensionContext, following the inline narrow-type precedent in
- * host/acp-context.ts). The probe chain only reads these members.
+ * ExtensionContext, following the inline narrow-type precedent of the retired
+ * ACP prototype). The probe chain only reads these members.
  */
 export interface KeepaliveContext {
   model?: KeepaliveModel | null;

@@ -8,7 +8,11 @@ import path from "node:path";
 import { editDiffString } from "@oh-my-pi/pi-natives";
 import { hostI18n } from "../ui-src/i18n/host.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
-import { REF_TAG_RE } from "./acp-context.ts";
+
+// Compat regex for journals written by the retired ACP nudge prototype: old
+// sessions carry <dcp-message-id>mNNNNN</dcp-message-id> tags that UI
+// rendering must still strip (kept verbatim from acp-context.ts).
+const REF_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
 
 // In-flight write tool snapshot before mutation: caches the pre-write text to
 // generate an accurate diff between the old and new file contents when the
