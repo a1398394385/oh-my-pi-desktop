@@ -108,6 +108,7 @@ function KaInput({
   placeholder,
   disabled,
   suffix,
+  decimalLimit,
   onSubmit,
 }: {
   value: string;
@@ -115,10 +116,20 @@ function KaInput({
   disabled?: boolean;
   /** Unit label rendered after the input (tier rows: K / %) */
   suffix?: string;
+  /** Max fractional digits allowed while typing (tier rows: 1); omit for no filtering */
+  decimalLimit?: number;
   onSubmit: (v: string) => void;
 }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
+  // decimalLimit set: keep digits and at most one dot with that many fractional digits; unset: no filtering (legacy keepalive rows keep free text).
+  const filter = (s: string): string => {
+    if (decimalLimit === undefined) return s;
+    const m = s.replace(/[^\d.]/g, "").match(/^(\d*)(?:\.(\d*))?/);
+    const int = m?.[1] ?? "";
+    const frac = (m?.[2] ?? "").slice(0, decimalLimit);
+    return frac ? `${int}.${frac}` : int + (s.includes(".") && int ? "." : "");
+  };
   return (
     <div className="srow-ctl">
       <input
@@ -127,7 +138,7 @@ function KaInput({
         placeholder={placeholder}
         value={v}
         disabled={disabled}
-        onChange={(e) => setV(e.target.value)}
+        onChange={(e) => setV(filter(e.target.value))}
         onBlur={() => {
           if (v.trim() !== value) onSubmit(v.trim());
         }}
@@ -254,10 +265,11 @@ export default function ExperimentalPage() {
                 <span>{t("settingsPage.exp.tierDesc")}</span>
               </div>
               <KaInput
-                value={stored === undefined ? "" : tierMode === "percent" ? String(stored) : String(stored / 1000)}
+                value={stored === undefined ? "" : String(Math.round((tierMode === "percent" ? stored : stored / 1000) * 10) / 10)}
                 placeholder={tierMode === "percent" ? "" : TIER_DEFAULTS_K[i]}
                 suffix={tierMode === "percent" ? "%" : "K"}
                 disabled={!enabled}
+                decimalLimit={1}
                 onSubmit={(raw) => commitTier(key, raw)}
               />
             </div>
