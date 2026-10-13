@@ -33,7 +33,7 @@ export function createAcpRuntime(opts: {
 
 const COMPRESS_CONTEXT_DESCRIPTION = `Compress old conversation blocks into a summary (context management).
 
-Call acp_status first: its manifest lists this round's compressible blocks as bN short ids (largest first). Then call with:
+Call context_status first: its manifest lists this round's compressible blocks as bN short ids (largest first). Then call with:
 - keep: the bN short ids from that manifest that must stay in the context verbatim (recent/important ones).
 - summary: a working-state summary of every listed block NOT kept, structured in three parts:
   1. established findings: conclusions, root causes, exact file paths/values/decisions that later work depends on;
@@ -41,7 +41,7 @@ Call acp_status first: its manifest lists this round's compressible blocks as bN
   3. remaining actions: what is still to be done, starting with your concrete next step.
   Unresolved issues recorded in the summary must be consistent with the remaining actions — never state an open problem and then propose to finish (summary self-consistency).
 
-One successful compress consumes the manifest — call acp_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check acp_status and compress after finishing a stage of work, before the context grows large.`;
+One successful compress consumes the manifest — call context_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check context_status and compress after finishing a stage of work, before the context grows large.`;
 
 /** compress_context ToolDefinition (registered via createAgentSession({ customTools })). */
 export function createCompressContextTool(state: AcpRuntimeState) {
@@ -50,7 +50,7 @@ export function createCompressContextTool(state: AcpRuntimeState) {
 		label: "Compress Context",
 		description: COMPRESS_CONTEXT_DESCRIPTION,
 		parameters: type({
-			keep: type.array(type("string")).describe("bN short ids from the current acp_status manifest to keep verbatim."),
+			keep: type.array(type("string")).describe("bN short ids from the current context_status manifest to keep verbatim."),
 			summary: type("string").describe("Summary covering every compressed block (not the kept ones)."),
 		}),
 		loadMode: "essential" as const,

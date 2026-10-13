@@ -48,6 +48,9 @@ export interface AcpConfig {
   l1?: number;
   l2?: number;
   l3?: number;
+  /** Protected tail: recent turns/tokens never compressed (host defaults 2 / 20000) */
+  tailTurns?: number;
+  tailTokens?: number;
 }
 
 /** Cache keepalive probe parameters (host/keepalive-config.ts ProbeConfig; the keepalive section of omp-desktop.json is the source of truth, independent per profile) */

@@ -20,16 +20,16 @@
 // the base compaction chain restored through the assembly hook).
 //
 // v10 (pull mode + short refs): the manifest leaves the ephemeral for the
-// acp_status tool — the no-tier range injects nothing at all and active tiers
+// context_status tool — the no-tier range injects nothing at all and active tiers
 // inject a one-line status row pointing at the tool (§7). Every model-facing
 // id surface renders bN short refs from the journal-replayed AcpRefBook
 // (host/acp-refs.ts; the persisted layer keeps entry ids, spec §3), the tool
-// entries decode bN back to entry ids, and acp_status tool pairs are neither
+// entries decode bN back to entry ids, and context_status tool pairs are neither
 // compressible nor rendered once a later successful compress retires them
 // (spec §6). The dashboard render lives in host/acp-status-tool.ts.
 //
 // v10.1: ultimatum-carrying requests (L3 tier / armed force / guard-line
-// trigger) also ride a synthetic acp_status pair at the active-zone end,
+// trigger) also ride a synthetic context_status pair at the active-zone end,
 // before the ephemeral line (spec §5.2/§6 v10.1; renderer in acp-status-tool.ts).
 //
 // One AcpRuntimeState per session owns everything the tool and the projection
@@ -37,7 +37,7 @@
 // (runtime mirror of rebuildAcpState), the current-round manifest, and the
 // per-session compress mutex. The round status (tier + candidate manifest) is
 // re-derived from the fresh post-prune view on every request AND on every
-// acp_status call (each return voids the previous round's manifest; spec §6
+// context_status call (each return voids the previous round's manifest; spec §6
 // v10). Tests may still pin a manifest directly via setManifest
 // (auto-generation suspended while an override is pinned).
 //
@@ -188,7 +188,7 @@ export class AcpRuntimeState {
 	#forcedExecution = false;
 	/** Forced success: the next projection must come back under the guard line or degrade (spec §5.3). */
 	#expectRelief = false;
-	/** bN short-ref registry + acp_status-pair facts, replayed from the journal (spec §3/§6 v10, host/acp-refs.ts). */
+	/** bN short-ref registry + context_status-pair facts, replayed from the journal (spec §3/§6 v10, host/acp-refs.ts). */
 	#refs = new AcpRefBook();
 
 	constructor(deps: AcpRuntimeDeps) {
@@ -225,7 +225,7 @@ export class AcpRuntimeState {
 		this.#manifestOverride = false;
 	}
 
-	/** Advance the journal walk (short refs + acp_status-pair facts); idempotent, called at every entry point (spec §3/§6 v10). */
+	/** Advance the journal walk (short refs + context_status-pair facts); idempotent, called at every entry point (spec §3/§6 v10). */
 	#syncRefs(): void {
 		this.#refs.sync(this.#deps.getEntries());
 	}
@@ -238,7 +238,7 @@ export class AcpRuntimeState {
 
 	/**
 	 * Active-zone blocks of the latest captured view: compressed blocks and
-	 * retired acp_status pairs excluded — the latter left the projection, so
+	 * retired context_status pairs excluded — the latter left the projection, so
 	 * they no longer count toward the active zone either (spec §6 v10).
 	 */
 	activeBlocks(): AcpBlockInfo[] {
@@ -279,7 +279,7 @@ export class AcpRuntimeState {
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
 		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo);
-		// Retired acp_status pairs leave the projection pair-wise: dropping the
+		// Retired context_status pairs leave the projection pair-wise: dropping the
 		// result block id from `kept` removes both the toolResult message and
 		// its tool_use body (the pair filter keys on the result id, spec §6 v10).
 		const dropped = this.#refs.droppedStatusResults;
@@ -291,9 +291,9 @@ export class AcpRuntimeState {
 		const rs = this.roundStatus;
 	// v10.1 synthetic status pair: ultimatum-copy requests (the L3 tier, an
 	// armed force's pinned request, a guard-line trigger) carry a synthetic
-	// acp_status pair at the active-zone end so the model already holds the
+	// context_status pair at the active-zone end so the model already holds the
 	// manifest (§5.2/§6 v10.1); never journaled, never a candidate. Pinned
-	// requests cannot call acp_status (tool_choice pins compress_context), so
+	// requests cannot call context_status (tool_choice pins compress_context), so
 	// point at the manifest above instead.
 	const forcedNow = this.#forcedFor === this.#requestSeq || this.#guardAt === this.#requestSeq;
 	if (rs && (rs.tier === "L3" || forcedNow)) {
@@ -407,11 +407,11 @@ export class AcpRuntimeState {
 	/**
 	 * Re-derive the round status (tier judgment + current-round manifest) from
 	 * the freshly captured view (spec §5.1/§5.2/§7). Candidates = active zone −
-	 * protected tail − acp_status pairs (never compressible, spec §6 v10),
+	 * protected tail − context_status pairs (never compressible, spec §6 v10),
 	 * listed largest-first with bN short refs under the §11 render budget;
 	 * blocks dropped by truncation are exempt this round and re-enter the next
 	 * one. `adopt` swaps the returned manifest in as the current round's (an
-	 * acp_status call adopts — voiding the previous round; a pinned test
+	 * context_status call adopts — voiding the previous round; a pinned test
 	 * manifest only reads).
 	 */
 	#refreshRoundStatus(adopt: boolean): AcpRoundStatus {
@@ -471,7 +471,7 @@ export class AcpRuntimeState {
 	}
 
 	/**
-	 * acp_status entry (spec §6 v10): the pull channel. Every call re-derives
+	 * context_status entry (spec §6 v10): the pull channel. Every call re-derives
 	 * the round status from the current settled snapshot and returns the
 	 * dashboard + manifest; the returned manifest is the compression scope
 	 * until the next call (the previous round's manifest is void). A pinned

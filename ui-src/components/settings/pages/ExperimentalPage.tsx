@@ -190,6 +190,12 @@ export default function ExperimentalPage() {
     if (!raw || !Number.isFinite(n) || n < 0) return;
     updateAcp({ [key]: tierMode === "percent" ? n : Math.round(n * 1000) });
   };
+  // Protected-tail rows: tailTurns edits whole turns; tailTokens edits K tokens (×1000 on write).
+  const commitTail = (key: "tailTurns" | "tailTokens", raw: string) => {
+    const n = Number(raw);
+    if (!raw || !Number.isFinite(n) || n < 0) return;
+    updateAcp({ [key]: key === "tailTurns" ? Math.round(n) : Math.round(n * 1000) });
+  };
 
   const updateAcp = (patch: Partial<AcpConfig>) => {
     send({ type: "set_acp_config", config: patch });
@@ -275,6 +281,23 @@ export default function ExperimentalPage() {
             </div>
           );
         })}
+        {/* 6..7. Protected tail: recent turns / tokens exempt from compression */}
+        {(["tailTurns", "tailTokens"] as const).map((key) => (
+          <div className={"srow" + (enabled ? "" : " disabled")} key={key}>
+            <div className="srow-tx">
+              <b>{t(`settingsPage.exp.${key}Title`)}</b>
+              <span>{t(`settingsPage.exp.${key}Desc`)}</span>
+            </div>
+            <KaInput
+              value={acpConfig?.[key] === undefined ? "" : String(key === "tailTurns" ? acpConfig[key] : Math.round((acpConfig[key] / 1000) * 10) / 10)}
+              placeholder={key === "tailTurns" ? "2" : "20"}
+              suffix={key === "tailTurns" ? "turn" : "K"}
+              disabled={!enabled}
+              decimalLimit={key === "tailTurns" ? 0 : 1}
+              onSubmit={(raw) => commitTail(key, raw)}
+            />
+          </div>
+        ))}
       </div>
 
       {/* Section 2: sessions & retrieval */}

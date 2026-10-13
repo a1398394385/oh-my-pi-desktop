@@ -93,7 +93,7 @@ export function dispatchRecall(
 		const live = summaries.filter((s) => !summaries.some((o) => o.meta.supersedes.includes(s.id))).map((s) => label(s.id));
 		return {
 			ok: false,
-			error: `No block with id "${id}". Live compaction blocks: ${live.length ? live.join(", ") : "(none)"}. Message-block ids appear in index lines and acp_status manifests.`,
+			error: `No block with id "${id}". Live compaction blocks: ${live.length ? live.join(", ") : "(none)"}. Message-block ids appear in index lines and context_status manifests.`,
 		};
 	}
 	return { ok: true, text: renderNormalBlock(block, source, label) };
@@ -101,7 +101,7 @@ export function dispatchRecall(
 
 const RECALL_BLOCK_DESCRIPTION = `Fetch a block back from the compaction zone (context management).
 
-Call with the bN short id shown in a summary index line, the acp_status manifest, or a compress_context result:
+Call with the bN short id shown in a summary index line, the context_status manifest, or a compress_context result:
 - A message-block id returns the original content from the journal (a tool pair comes back as call + result together). The recalled content is a normal new block with no exemption — later compression rounds treat it like any other.
 - A compaction-block id returns that block's FULL index (the rendered index truncates at 4096 tokens; this bypasses it).
 - A superseded compaction block redirects to the newest strong block's full index.`;

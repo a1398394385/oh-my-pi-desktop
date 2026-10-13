@@ -1,14 +1,14 @@
-// ACP v10 smoke: pull mode (acp_status) + bN short refs (spec §3/§6/§7 v10).
+// ACP v10 smoke: pull mode (context_status) + bN short refs (spec §3/§6/§7 v10).
 //
 // Layers:
-//   A  acp_status returns the dashboard + short-ref manifest; every call
+//   A  context_status returns the dashboard + short-ref manifest; every call
 //      re-snapshots the round — a consumed manifest rejects with a pointer to
-//      acp_status, and a fresh status call revives the round (old manifest
+//      context_status, and a fresh status call revives the round (old manifest
 //      void, compression scope = the latest return)
 //   B  tool-entry decode (spec §3): hallucinated short refs reject with the
 //      candidate set rendered as short refs; an OLD short ref of a compressed
 //      block rejects in keep ("already compressed") but recalls fine
-//   C  e2e model flow: acp_status -> compress(keep=[one bN]) -> success ->
+//   C  e2e model flow: context_status -> compress(keep=[one bN]) -> success ->
 //      outcome names the new block by short ref, recall of it returns the full
 //      index, and the JSONL persists entry ids only (zero bN anywhere)
 //   D  restart replay determinism (spec §3 MUST): compress -> reopen ->
@@ -65,7 +65,7 @@ function resultText(content: unknown): string {
 	return content.map((c) => (typeof c === "object" && c !== null && "text" in c ? String(c.text) : "")).join("");
 }
 
-/** Manifest bN lines of an acp_status return: [bN, tokens] pairs in listed order. */
+/** Manifest bN lines of an context_status return: [bN, tokens] pairs in listed order. */
 function parseManifest(statusText: string): Array<{ ref: string; tokens: number }> {
 	return statusText
 		.split("\n")
@@ -118,7 +118,7 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	return { state, writes, entries, view };
 }
 
-// --- A: acp_status dashboard + round refresh semantics --------------------------------------
+// --- A: context_status dashboard + round refresh semantics --------------------------------------
 
 {
 	const fx = makeFixture(PARAMS, 5);
@@ -140,12 +140,12 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	assert.ok(!text1.includes("e0") && !fx.entries.some((e) => text1.includes(e.id)), "no entry id leaks into the model-facing report");
 
 	// Refresh semantics: a successful compress consumes the manifest; the next
-	// compress rejects pointing at acp_status; a fresh status call voids the old
+	// compress rejects pointing at context_status; a fresh status call voids the old
 	// round and re-arms compression (scope = the latest return, spec §6 v10).
 	accepted(await fx.state.compress({ keep: [], summary: SUMMARY_TEXT }));
 	const consumed = rejected(await fx.state.compress({ keep: [], summary: SUMMARY_TEXT }));
 	assert.equal(consumed.code, "manifest-consumed");
-	assert.match(consumed.error, /call acp_status/, "the rejection points at the pull channel");
+	assert.match(consumed.error, /call context_status/, "the rejection points at the pull channel");
 	const s2 = fx.state.status();
 	assert.equal(s2.ok, true);
 	const lines2 = parseManifest((s2 as { text: string }).text);
@@ -163,7 +163,7 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	// Persistence stays entry-id-only (spec §3): compressedIds/index are raw ids.
 	assert.deepEqual(fx.writes[0].meta.compressedIds, ["e0", "e1", "e2", "e3", "e4"]);
 	assert.ok(fx.writes[0].index.every((l) => /^e\d+$/.test(l.id)), "index lines persist entry ids");
-	console.log("ok: A dashboard + refresh — bN manifest, consumed->acp_status pointer, status revives the round, persistence id-only");
+	console.log("ok: A dashboard + refresh — bN manifest, consumed->context_status pointer, status revives the round, persistence id-only");
 }
 
 // --- B: tool-entry short-ref decode (spec §3) ----------------------------------------------
@@ -195,12 +195,12 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	const rec = fx.state.recall(oldShort);
 	assert.equal(rec.ok, true);
 	assert.ok((rec as { text: string }).text.includes("journal block 2"), "old short ref recalls the folded original");
-	// no-manifest also points at acp_status.
+	// no-manifest also points at context_status.
 	const fresh = makeFixture(PARAMS, 2);
 	const noMan = rejected(await fresh.state.compress({ keep: [], summary: SUMMARY_TEXT }));
 	assert.equal(noMan.code, "no-manifest");
-	assert.match(noMan.error, /call acp_status/);
-	console.log("ok: B decode — ghost short ref rejected with bN candidates; positive keep decode; old short keep-rejects, recall works; pointers to acp_status");
+	assert.match(noMan.error, /call context_status/);
+	console.log("ok: B decode — ghost short ref rejected with bN candidates; positive keep decode; old short keep-rejects, recall works; pointers to context_status");
 }
 
 // --- C: e2e model flow — status -> compress(keep=[bN]) -> recall; JSONL id-only --------------
@@ -225,9 +225,9 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 				const text = resultText(routed?.content ?? "");
 				if (!text.includes("fetch status")) return { content: ["Turn recorded."] as const };
 				flow.started = true;
-				return { content: [{ type: "toolCall", name: "acp_status", arguments: {} }] as const };
+				return { content: [{ type: "toolCall", name: "context_status", arguments: {} }] as const };
 			}
-			const lastStatus = results.find((m) => m.toolName === "acp_status");
+			const lastStatus = results.find((m) => m.toolName === "context_status");
 			const compressResult = results.find((m) => m.toolName === "compress_context");
 			const recallResult = results.find((m) => m.toolName === "recall_block");
 			// The journal lags the view one request (forced-smoke precedent), so a
@@ -308,7 +308,7 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	for (let round = 0; !flow.recallDone && round < 3; round++) {
 		await ask(`${turnText(`task three.${round}`, 60)} fetch status and compress`, assistantCount() + 4);
 	}
-	assert.ok(flow.statusDone, "the model read a non-empty short-ref manifest from acp_status");
+	assert.ok(flow.statusDone, "the model read a non-empty short-ref manifest from context_status");
 	assert.ok(flow.compressDone, "the compress with a short-ref keep succeeded");
 	assert.ok(flow.recallDone, "the recall of the outcome's short ref ran");
 	assert.match(keptRef, /^b\d+$/, "the keep id was a bN short ref");
@@ -321,7 +321,7 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	assert.ok(!recallText.includes(`${keptRef} | `), "the kept block is not in the compressed index");
 
 	// JSONL: the acpSummary DATA talks entry ids only (spec §3) — short refs
-	// live on model-facing surfaces; the journaled acp_status tool result is an
+	// live on model-facing surfaces; the journaled context_status tool result is an
 	// ordinary stored message and legitimately carries bN rows.
 	const sessionFile = sessionManager.getSessionFile()!;
 	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
@@ -428,7 +428,7 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 	console.log("ok: D restart replay — same numbering for live/folded/summary ids; old short refs resolve identically");
 }
 
-// --- E: degrade rejects acp_status at the entry ----------------------------------------------
+// --- E: degrade rejects context_status at the entry ----------------------------------------------
 
 {
 	const fx = makeFixture(PARAMS, 3);
@@ -437,8 +437,8 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 	fx.state.degrade("fixture degrade");
 	const s = fx.state.status();
 	assert.equal(s.ok, false);
-	assert.match((s as { error: string }).error, /degraded/, "degraded sessions reject acp_status at the entry");
-	console.log("ok: E degrade — acp_status rejects at the entry (tools cannot be unregistered)");
+	assert.match((s as { error: string }).error, /degraded/, "degraded sessions reject context_status at the entry");
+	console.log("ok: E degrade — context_status rejects at the entry (tools cannot be unregistered)");
 }
 
 // Leak guard: every section must have removed its profile-side session dirs.

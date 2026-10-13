@@ -433,9 +433,9 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	assert.ok(forcedCall, "the forced request carried the named tool_choice on the wire-shaped options");
 	// Forced-request wording (T10): tool_choice pins compress_context, so the
 	// request text must point at the manifest it already carries — never at
-	// calling acp_status.
+	// calling context_status.
 	const forcedText = JSON.stringify(forcedCall!.context.messages);
-	assert.ok(!forcedText.includes("Call acp_status now") && !forcedText.includes("call the acp_status tool"), "forced request never directs the model to call acp_status");
+	assert.ok(!forcedText.includes("Call context_status now") && !forcedText.includes("call the context_status tool"), "forced request never directs the model to call context_status");
 	assert.ok(forcedText.includes("pinned to compress_context"), "forced request points at the compress it is pinned to");
 	const afterForce = e2e.calls.slice(e2e.calls.indexOf(forcedCall!) + 1);
 	assert.ok(

@@ -114,14 +114,14 @@ export function planCompression(
 	// §6.1 — a consumed (or missing) manifest rejects before anything else,
 	// pointing at the pull channel for a fresh round (spec §6 v10).
 	if (!snapshot.manifest) {
-		return { reject: { ok: false, code: "no-manifest", error: "No compression manifest for this round — call acp_status to get one." } };
+		return { reject: { ok: false, code: "no-manifest", error: "No compression manifest for this round — call context_status to get one." } };
 	}
 	if (snapshot.manifest.consumed) {
 		return {
 			reject: {
 				ok: false,
 				code: "manifest-consumed",
-				error: "This round's manifest is already consumed; call acp_status for the next round's manifest.",
+				error: "This round's manifest is already consumed; call context_status for the next round's manifest.",
 			},
 		};
 	}

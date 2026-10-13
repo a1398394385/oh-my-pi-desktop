@@ -391,7 +391,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     customTools: [
       ...(acpRuntime ? [createCompressContextTool(acpRuntime), createRecallBlockTool(acpRuntime), createAcpStatusTool(acpRuntime)] : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
-    ] as never, // ACP compress_context + recall_block + acp_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
+    ] as never, // ACP compress_context + recall_block + context_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
       ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime)] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
       ...(keepaliveOn ? [createKeepaliveExtension({

@@ -9,7 +9,7 @@
 // keep theirs), so a restart replays the identical numbering by walking the
 // same entries — holes from folded blocks are preserved by construction.
 //
-// The same walk collects the acp_status tool-pair facts (spec §6 v10): the
+// The same walk collects the context_status tool-pair facts (spec §6 v10): the
 // pairs are never compression candidates, and the first acpSummary AFTER a
 // pair in the journal (= the next successful compress) retires it from the
 // projection entirely — storage untouched, derived purely from the journal so
@@ -49,22 +49,22 @@ export function annotateView(view: readonly AgentMessage[], entries: readonly Se
 	return view.map((m, j) => ({ id: ids[j] ?? `${ACP_VIEW_PSEUDO_PREFIX}${j}`, message: m }));
 }
 
-/** Session-level bN registry + acp_status-pair facts, replayed from the journal (spec §3/§6 v10). */
+/** Session-level bN registry + context_status-pair facts, replayed from the journal (spec §3/§6 v10). */
 export class AcpRefBook {
 	#shortOf = new Map<string, string>(); // block id -> "bN"
 	#idOf = new Map<string, string>(); // "bN" -> block id
 	#next = 1;
 	/** Entry ids the journal walk already numbered (prune rewrites keep ids, so ids are the stable key). */
 	#walked = new Set<string>();
-	/** Result-block ids of acp_status pairs no later successful compress has retired: candidate-excluded, still rendered. */
+	/** Result-block ids of context_status pairs no later successful compress has retired: candidate-excluded, still rendered. */
 	readonly liveStatusResults = new Set<string>();
-	/** Result-block ids of acp_status pairs a successful compress already retired: dropped from the projection (pair-wise). */
+	/** Result-block ids of context_status pairs a successful compress already retired: dropped from the projection (pair-wise). */
 	readonly droppedStatusResults = new Set<string>();
 
 	/**
 	 * Walk the journal in order, numbering unseen block ids (message blocks by
 	 * splitBlocks id derivation, acpSummary entries by their own id) and
-	 * updating the acp_status-pair sets. Idempotent and incremental; the
+	 * updating the context_status-pair sets. Idempotent and incremental; the
 	 * journal is append-only, so first-seen order == journal order and a
 	 * restart replays identical numbers.
 	 */
@@ -77,10 +77,10 @@ export class AcpRefBook {
 				// follows the same splitBlocks logic the projection uses).
 				for (const b of splitBlocks([{ id: e.id, message: e.message }], () => 0)) this.assign(b.id);
 				const m = e.message as { role?: string; toolName?: string };
-				if (m.role === "toolResult" && m.toolName === "acp_status") this.liveStatusResults.add(e.id);
+				if (m.role === "toolResult" && m.toolName === "context_status") this.liveStatusResults.add(e.id);
 			} else if (e.type === "custom" && e.customType === ACP_SUMMARY_CUSTOM_TYPE) {
 				this.assign(e.id);
-				// A successful compress landed: every acp_status pair so far is
+				// A successful compress landed: every context_status pair so far is
 				// stale (its manifest is void) — retire it from the projection.
 				for (const id of this.liveStatusResults) this.droppedStatusResults.add(id);
 				this.liveStatusResults.clear();

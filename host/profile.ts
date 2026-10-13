@@ -406,6 +406,8 @@ export function readAcpConfig(): {
   l1?: number;
   l2?: number;
   l3?: number;
+  tailTurns?: number;
+  tailTokens?: number;
 } {
   const raw = readAcpRaw();
   const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
@@ -416,6 +418,8 @@ export function readAcpConfig(): {
     l1: num(acp.l1),
     l2: num(acp.l2),
     l3: num(acp.l3),
+    tailTurns: num(acp.tailTurns),
+    tailTokens: num(acp.tailTokens),
   };
 }
 

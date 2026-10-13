@@ -49,7 +49,7 @@ const ALLOWED_EDGES = new Set([
   "acp-assembly.ts→acp-persist.ts", "acp-assembly.ts→stderr.ts",
   // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
   // acp-refs (journal-replayed, pure over projection/persist shapes); the
-  // acp_status tool surface + the status/ephemeral renders live in
+  // context_status tool surface + the status/ephemeral renders live in
   // acp-status-tool (AcpParams from the plan leaf; the runtime feeds it
   // AcpRoundStatus structurally, no reverse edge).
   "acp-runtime.ts→acp-refs.ts", "acp-refs.ts→acp-projection.ts",

@@ -12,7 +12,7 @@
 //      through the guard clause
 //   D  lifecycle: a successful compression retires the pair with the tier; a
 //      still-L3 round re-injects a NEW snapshot (manifest shrunk to the
-//      survivors); a settled new block replaces the snapshot; a REAL acp_status
+//      survivors); a settled new block replaces the snapshot; a REAL context_status
 //      pair coexists with the synthetic one and retires on its own journal rule
 //      while the synthetic continues on condition
 //   E  degrade: projection passes the view through verbatim — no pair
@@ -134,12 +134,12 @@ function makeSynthFixture(params: Partial<AcpParams>, blocks: number, contextWin
 	return { state, writes, entries, view, forceCalls, degrades };
 }
 
-/** A REAL acp_status tool pair as journal entries (mid-journal insertion). */
+/** A REAL context_status tool pair as journal entries (mid-journal insertion). */
 function realStatusPair(seq: number): { entries: FixtureEntry[]; messages: AgentMessage[] } {
 	const callId = `toolu-real-${seq}`;
 	const use = {
 		role: "assistant",
-		content: [{ type: "toolCall", id: callId, name: "acp_status", arguments: {} }],
+		content: [{ type: "toolCall", id: callId, name: "context_status", arguments: {} }],
 		api: "anthropic-messages",
 		provider: "anthropic",
 		model: "test-model",
@@ -150,8 +150,8 @@ function realStatusPair(seq: number): { entries: FixtureEntry[]; messages: Agent
 	const result = {
 		role: "toolResult",
 		toolCallId: callId,
-		toolName: "acp_status",
-		content: [{ type: "text", text: "[acp-report] older round dashboard (real acp_status call)" }],
+		toolName: "context_status",
+		content: [{ type: "text", text: "[acp-report] older round dashboard (real context_status call)" }],
 		isError: false,
 		timestamp: 1,
 	} as never as AgentMessage;
@@ -181,7 +181,7 @@ function pairTail(out: readonly AgentMessage[]): [AgentMessage, AgentMessage, Ag
 	assert.equal((a as { role: string }).role, "assistant", "pair tail: assistant tool_use first");
 	const call = (a as { content: Array<{ type: string; id?: string; name?: string }> }).content.find((c) => c.type === "toolCall");
 	assert.ok(call, "the synthetic assistant carries a toolCall block");
-	assert.equal(call.name, "acp_status");
+	assert.equal(call.name, "context_status");
 	assert.equal(call.id, ACP_SYNTHETIC_STATUS_CALL_ID);
 	assert.equal((r as { role: string; toolCallId?: string }).role, "toolResult");
 	assert.equal((r as { role: string; toolCallId?: string }).toolCallId, ACP_SYNTHETIC_STATUS_CALL_ID);
@@ -225,13 +225,13 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const [a3, r3] = pairTail(out3);
 	// T10 forced wording: tool_choice pins compress_context on this request, so
 	// the pair switches to the forced variant — it points at the manifest the
-	// request already carries, never at calling acp_status. The force is
+	// request already carries, never at calling context_status. The force is
 	// request-scoped: the next projectView advances the request sequence, so
 	// the pair returns to the non-forced wording — byte-identical to the
 	// original ultimatum copy.
 	assert.notEqual(JSON.stringify([a3, r3]), JSON.stringify([a1, r1]), "the pinned (forced) request carries the forced wording");
 	assert.ok(textOf(r3 as { content: unknown }).includes("pinned to compress_context"), "the forced pair points at the compress it is pinned to");
-	assert.ok(!textOf(r3 as { content: unknown }).includes("Call acp_status"), "the forced pair never directs the model to call acp_status");
+	assert.ok(!textOf(r3 as { content: unknown }).includes("Call context_status"), "the forced pair never directs the model to call context_status");
 	const out4 = fx.state.projectView(fx.view);
 	const [a4, r4] = pairTail(out4);
 	assert.equal(JSON.stringify([a4, r4]), JSON.stringify([a1, r1]), "the request after the pinned one returns to the non-forced pair, byte-identical");
@@ -266,7 +266,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 }
 
 {
-	// D-new-snapshot + real-pair coexistence: 24 blocks with a REAL acp_status
+	// D-new-snapshot + real-pair coexistence: 24 blocks with a REAL context_status
 	// pair mid-journal; keeping half leaves the round at L3 -> the synthetic
 	// pair re-injects with a NEW manifest while the real pair retires on its
 	// own journal rule (first successful compress after it).
@@ -276,8 +276,8 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	fx.view.splice(12, 0, ...real.messages);
 	const before = fx.state.projectView(fx.view);
 	pairTail(before);
-	const statusResults = before.filter((m) => (m as { toolName?: string }).toolName === "acp_status");
-	assert.equal(statusResults.length, 2, "the real acp_status result and the synthetic result coexist");
+	const statusResults = before.filter((m) => (m as { toolName?: string }).toolName === "context_status");
+	assert.equal(statusResults.length, 2, "the real context_status result and the synthetic result coexist");
 	assert.ok(JSON.stringify(before).includes("older round dashboard"), "the real pair renders");
 	const reportBefore = textOf(before.at(-2) as { content: unknown });
 

@@ -139,7 +139,7 @@ function ephemeralText(fx: Fixture): string {
 	mid.state.projectView(mid.view);
 	assert.match(ephemeralText(mid), /\[acp-status\] tier=L[12] compress=normal /);
 	assert.ok(!/^b\d+ \| \d+ \| /m.test(ephemeralText(mid)), "v10: the ephemeral carries no manifest lines");
-	assert.match(ephemeralText(mid), /call the acp_status tool/, "the ephemeral points at acp_status");
+	assert.match(ephemeralText(mid), /call the context_status tool/, "the ephemeral points at context_status");
 	const hot = makeFixture({ ...p, target: 10_000 }, [60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60]);
 	hot.state.projectView(hot.view);
 	assert.match(ephemeralText(hot), /\[acp-status\] tier=L3 compress=strong /, "past L3 the method flips to strong");
@@ -298,7 +298,7 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 {
 	const turnText = (label: string, n: number) => `${label}: ` + "detailed journal text about the parser bug and the failing test. ".repeat(n);
 	// Real manifest consumption (v10 pull mode): the model first calls
-	// acp_status, parses the bN lines out of the tool RESULT, then compresses;
+	// context_status, parses the bN lines out of the tool RESULT, then compresses;
 	// the handler records the count for the post-turn assert.
 	let parsedManifestCount = 0;
 	let parsedIds: string[] = [];
@@ -311,16 +311,16 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 			const routed = users.find((m) => !textOf(m).includes("[acp-status]")) ?? users[0];
 			const text = textOf(routed ?? { role: "user", content: "" });
 			if (text.includes("compress it now") && !compressedOnce) {
-				const statusResult = [...context.messages].reverse().find((m) => m.role === "toolResult" && m.toolName === "acp_status");
-				if (!statusResult) return { content: [{ type: "toolCall", name: "acp_status", arguments: {} }] as const };
+				const statusResult = [...context.messages].reverse().find((m) => m.role === "toolResult" && m.toolName === "context_status");
+				if (!statusResult) return { content: [{ type: "toolCall", name: "context_status", arguments: {} }] as const };
 				const statusText = resultText(statusResult.content);
-				assert.ok(statusText.startsWith("[acp-report]"), "the acp_status result carries the dashboard");
+				assert.ok(statusText.startsWith("[acp-report]"), "the context_status result carries the dashboard");
 				assert.match(statusText, /tier=L1 compress=normal/, "the tool result reports tier + method");
 				const ids = statusText
 					.split("\n")
 					.filter((l) => /^b\d+ \| \d+ \| /.test(l))
 					.map((l) => l.split(" |")[0]);
-				assert.ok(ids.length > 0, "manifest lines parsed from the acp_status result");
+				assert.ok(ids.length > 0, "manifest lines parsed from the context_status result");
 				parsedManifestCount = ids.length;
 				parsedIds = ids;
 				compressedOnce = true;
@@ -391,24 +391,24 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	assert.equal(compressResults.length, 1);
 	const outcome = JSON.parse(resultText(compressResults[0].content)) as CompressOutcome;
 	assert.equal(outcome.ok, true);
-	assert.equal(outcome.compressed.blocks, parsedManifestCount, "the model compressed exactly the ids the acp_status manifest listed");
+	assert.equal(outcome.compressed.blocks, parsedManifestCount, "the model compressed exactly the ids the context_status manifest listed");
 	assert.ok(parsedIds.every((id) => /^b\d+$/.test(id)), "the consumed manifest spoke bN short refs end to end");
 	assert.ok(compressResults[0].content !== undefined && JSON.stringify(compressResults[0].content).length > 0, "compress result present");
 
 	await ask("status check after compression", 4);
 	const last = mock.calls.at(-1)!;
 	assert.ok(JSON.stringify(last.context.messages[0]).includes("[acp-summary id="), "zone renders first after compression");
-	// v10 pair retirement (spec §6): the acp_status tool_use/tool_result pair
+	// v10 pair retirement (spec §6): the context_status tool_use/tool_result pair
 	// left the projection after the successful compress — even though the
 	// compress turn sits well inside the protected tail (tailTurns 2).
 	const wire = JSON.stringify(last.context.messages);
-	assert.ok(!wire.includes('"name":"acp_status"'), "the acp_status tool_use left the request");
-	assert.ok(!wire.includes("acp_status result"), "no acp_status residue");
+	assert.ok(!wire.includes('"name":"context_status"'), "the context_status tool_use left the request");
+	assert.ok(!wire.includes("context_status result"), "no context_status residue");
 	const journalHasStatusPair = sessionManager
 		.getEntries()
 		.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
 		.map((e) => e.message as AgentMessage)
-		.some((m) => m.role === "toolResult" && m.toolName === "acp_status");
+		.some((m) => m.role === "toolResult" && m.toolName === "context_status");
 	assert.ok(journalHasStatusPair, "storage keeps the pair (projection-only retirement)");
 	// Block text legitimately survives inside the zone's index intent lines,
 	// and the base concatenates its reminder into the first user message
