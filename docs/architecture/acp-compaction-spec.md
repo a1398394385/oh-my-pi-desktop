@@ -3,7 +3,7 @@
 > **Status**: Draft(2026-10-12) · 未实施
 > **审阅结论**: READY(2026-10-12,Decider 终审)
 > **决策 SSOT**: [ADR-0005](../../.agents/notes/0005-acp-incremental-compaction.md)
-> **修订**: v2 首轮审阅 6 项阻断(清单全列+幻觉 ID 拒绝;supersedes 重建+降级;acpSummary 纯持久层+投影口径;exclusive 互斥;L2/L3 退出条件;验收 9 收窄)。v3 二轮审阅 4 项阻断(合并继承 compressedIds/index;清单消费语义;清单截断方向与 L2 校验口径;summary 预算基数)。v4 Decider 澄清:合并=主动 L3 全量、无独立摘要调用。v5 隐患发散修正。v6 搭便车语义。v7(Decider 拍板体系重构):**压缩方式三级化**(一级普通累加/二级强力重置/三级 tool_choice 强制);豁免=可配置压缩目标线 target;清单按块大小降序截断;recall 走底座统一截断管道;强制失败即降级,删除模板/拼接硬压路径;L3 通牒轮次归属明确;参考 OMP 链路(预处理剪枝/进度守卫/失败封顶)。v8(四轮审阅):L2 档改名「加压档」消除与二级强力压缩的命名撞车;新增唯一二维决策表,边界统一严格大于;三级终态=「强制 turn 无成功压缩即降级」(极端碎块场景不特化,Decider 裁量);ADR Decision/Consequences 回改同步。v9(Decider 拍板实施宿主):**全量实施于 omp-desktop host 层,底座源码零改动**——投影/ephemeral 走 context 事件 extension,双工具走 `createAgentSession({ customTools })`,压缩块持久化走 SDK `SessionManager.appendCustomEntry`(customType="acpSummary"),精确计数 import `@oh-my-pi/pi-agent-core` Tokenizer;接缝实证补遗(exclusive 不可用→host 互斥锁;prune 两层门控;三级强制 setForcedToolChoice);P1/P2 兼容面探针结论回填。v10(Decider 拍板 pull 模式):**清单从 ephemeral 注入移入新工具 acp_status 返回**(模型按需拉取,ephemeral 降为一行精简状态行、无档零注入,通牒送达机制保留);**短号 bN 替代 UUID 面向模型渲染**(§3:全局单调派号、不回收、确定性重放、持久层仍 entryId);acp_status tool 对不进候选且在下次成功压缩后从投影整对摘除(保护区例外)。
+> **修订**: v2 首轮审阅 6 项阻断(清单全列+幻觉 ID 拒绝;supersedes 重建+降级;acpSummary 纯持久层+投影口径;exclusive 互斥;L2/L3 退出条件;验收 9 收窄)。v3 二轮审阅 4 项阻断(合并继承 compressedIds/index;清单消费语义;清单截断方向与 L2 校验口径;summary 预算基数)。v4 Decider 澄清:合并=主动 L3 全量、无独立摘要调用。v5 隐患发散修正。v6 搭便车语义。v7(Decider 拍板体系重构):**压缩方式三级化**(一级普通累加/二级强力重置/三级 tool_choice 强制);豁免=可配置压缩目标线 target;清单按块大小降序截断;recall 走底座统一截断管道;强制失败即降级,删除模板/拼接硬压路径;L3 通牒轮次归属明确;参考 OMP 链路(预处理剪枝/进度守卫/失败封顶)。v8(四轮审阅):L2 档改名「加压档」消除与二级强力压缩的命名撞车;新增唯一二维决策表,边界统一严格大于;三级终态=「强制 turn 无成功压缩即降级」(极端碎块场景不特化,Decider 裁量);ADR Decision/Consequences 回改同步。v9(Decider 拍板实施宿主):**全量实施于 omp-desktop host 层,底座源码零改动**——投影/ephemeral 走 context 事件 extension,双工具走 `createAgentSession({ customTools })`,压缩块持久化走 SDK `SessionManager.appendCustomEntry`(customType="acpSummary"),精确计数 import `@oh-my-pi/pi-agent-core` Tokenizer;接缝实证补遗(exclusive 不可用→host 互斥锁;prune 两层门控;三级强制 setForcedToolChoice);P1/P2 兼容面探针结论回填。v10(Decider 拍板 pull 模式):**清单从 ephemeral 注入移入新工具 acp_status 返回**(模型按需拉取,ephemeral 降为一行精简状态行、无档零注入,通牒送达机制保留);**短号 bN 替代 UUID 面向模型渲染**(§3:全局单调派号、不回收、确定性重放、持久层仍 entryId);acp_status tool 对不进候选且在下次成功压缩后从投影整对摘除(保护区例外)。v10.1(Decider 拍板通牒伴随合成对):**通牒请求在活跃区末尾注入合成 acp_status tool 对**(新造 assistant 承接,禁向既有 assistant 插 tool_use——签名/缓存/投影纪律;不落 journal、快照冻结、成功压缩后退场)——三级强制也是有依据的挑选,消除「被逼调用手里没清单只能全压或失败」的残余粗糙点。
 > **超限说明**: 验收矩阵为结构性超限(见 ../documentation.md §5)。
 
 ## 1. 目标与非目标
@@ -111,7 +111,7 @@
 | ≤L1 | 超线(待强力) | 同上 | 普通(不搭车) |
 | 三级触发 | 任意 | — | 强力(forced) |
 
-**轮次归属**(回应审阅):档位轮末判定,通牒随下一次请求注入(ephemeral);**通牒送达后的下一个 assistant turn 结束**才判"未响应";无自然下一请求(空闲)则等待,不主动唤醒(空闲时活跃区不增长,无风险;探针证实 assistant 结尾无法自动续请求)。
+**轮次归属**(回应审阅):档位轮末判定,通牒随下一次请求注入(ephemeral);**通牒送达后的下一个 assistant turn 结束**才判"未响应";无自然下一请求(空闲)则等待,不主动唤醒(空闲时活跃区不增长,无风险;探针证实 assistant 结尾无法自动续请求)。**通牒伴随合成 status 对(v10.1)**:凡注入通牒文案的请求(L3 档,或三级强制已武装/保险线直接触发),同时在活跃区末尾、通牒行之前注入一对**合成** acp_status tool 对(规则见 §6)——被强制调用时模型手里已有清单,强制也是有依据的挑选。
 
 **待强力状态**:压缩区 > 窗口×35% → ephemeral 统一加注「下次压缩为强力压缩」;活跃区 >L1 时下一次 compress 按强力语义执行;活跃区 ≤L1 的主动 compress 保持普通压缩(不搭车);无轮次上限(压缩区不超线不增长,总量保险线兜底),不打断任务流。
 
@@ -139,6 +139,8 @@
 模型按需拉取压缩仪表盘。返回:当前档位 + 本次允许的压缩方式(普通/强力)/ 活跃区 tokens / 投影总量 tokens / 档位指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力加注)/ **当轮候选清单**:候选块按大小降序全列,每行 `bN | tokens | intent或截断句`(短号,§3);清单渲染超 8K token 截尾部(较小块豁免,下轮重进,多轮收敛);返回整体走底座工具结果截断管道(50KB 内联,全文落盘 read 分段)。工具描述引导模型:随时可用,建议完成阶段性任务后主动查询并压缩(动机来自工具描述,档位提示仅作仪表盘与通牒)。
 
 **status tool 对的投影剔除**:acp_status 的 tool_use/tool_result 对**不进压缩候选**(模型压不到它);并在**下一次成功 compress_context 执行后**从投影中整对摘除(旧清单已失效,留着是误导;即使落在保护区也摘——保护区例外)。存储不动,配对断言不变(成对摘除)。
+
+**通牒伴随的合成 status 对(v10.1)**:注入通牒文案的请求(§5.2:L3 档,或三级强制已武装/保险线直接触发)在活跃区末尾、通牒行之前注入一对**合成**消息——assistant(tool_use: acp_status)+ user(tool_result: [acp-report] 当轮清单)——使被强制调用的模型手里已有清单。约束:**只造新 assistant,不得向既有 assistant 插入 tool_use**(thinking 签名风险 = OQ2 同源、中段改动破坏前缀缓存、投影纪律禁改既有消息内容);合成对不落 journal(每轮由注入条件驱动重放);清单快照冻结(注入条件持续且无新块则逐字节稳定);成功压缩后停止注入旧快照(语义同剔除规则——旧清单失效),若仍处通牒态则以新快照继续注入(新一轮通牒)。合成对不进压缩候选。wire 形态为双面正常工具回合(P2 实证重组合法);官方面复测加形态确认。
 
 ### compress_context
 
