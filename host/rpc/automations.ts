@@ -96,6 +96,7 @@ export const automationsHandlers: Record<string, RpcHandler> = {
       cronExpr: schedule.cronExpr,
       scheduleRule: schedule.scheduleRule,
       ...(model ? { model } : {}),
+      ...(raw.computer === true ? { computer: true } : {}),
       recurring: raw.recurring === true,
       ...(maxRuns !== undefined ? { maxRuns } : {}),
       ...(endAt !== undefined ? { endAt } : {}),
@@ -133,6 +134,10 @@ export const automationsHandlers: Record<string, RpcHandler> = {
       const model = typeof patch.model === "string" && patch.model.trim() ? patch.model.trim() : undefined;
       if (model) a.model = model;
       else delete a.model;
+    }
+    if (patch.computer !== undefined) {
+      if (patch.computer === true) a.computer = true;
+      else delete a.computer;
     }
     if (patch.maxRuns !== undefined) {
       const maxRuns = optCount(patch.maxRuns);

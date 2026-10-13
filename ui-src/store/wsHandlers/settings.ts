@@ -190,6 +190,10 @@ export const settingsHandlers = {
   displays(msg) {
     useAppStore.setState({ computerDisplays: msg });
   },
+  // ---- Right-panel open-with menu (host list_editors reply) ----
+  editors(msg) {
+    useAppStore.setState({ editors: Array.isArray(msg.editors) ? msg.editors : [] });
+  },
 } satisfies HandlerSlice;
 
 // Domain key set (for the exhaustive-assertion cross-check in index)

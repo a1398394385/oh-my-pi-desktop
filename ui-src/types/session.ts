@@ -176,7 +176,6 @@ export interface BashItem {
   truncated?: boolean;
   excludeFromContext?: boolean; // !! prefix
   error?: string | null; // execution failure message
-  cmdExpanded?: boolean; // output expanded (written in place by components)
 }
 
 /** @ mention read-back row (items.tsx:48-50 reads item.files) */

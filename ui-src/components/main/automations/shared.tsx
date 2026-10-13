@@ -21,6 +21,7 @@ export interface Draft {
   prompt: string;
   cwd: string;
   model: string; // "" = follow the global default
+  computer: boolean; // per-run computer control opt-in for this automation's sessions
   schedKind: "rule" | "cron";
   unit: AutomationUnit;
   interval: string;
@@ -41,6 +42,7 @@ export function blankDraft(): Draft {
     prompt: "",
     cwd: "",
     model: "",
+    computer: false,
     schedKind: "rule",
     unit: "daily",
     interval: "1",
@@ -62,6 +64,7 @@ export function draftOf(a: Automation): Draft {
   d.prompt = a.prompt;
   d.cwd = a.cwd;
   d.model = a.model ?? "";
+  d.computer = a.computer === true;
   if (a.cronExpr && !a.scheduleRule) {
     d.schedKind = "cron";
     d.cronExpr = a.cronExpr;

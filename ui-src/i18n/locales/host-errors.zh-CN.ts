@@ -31,11 +31,11 @@ export const hostErrorsZh = {
     registryUnavailable: "子代理注册表不可用",
   },
   btw: {
-    topicNotFound: "侧聊话题不存在: {{recordId}}",
-    stillRunning: "该侧聊话题仍在回答中，请先取消",
-    noModel: "无可用模型，无法升格侧聊",
-    emptyQuestion: "侧聊问题不能为空",
-    cancelledEarly: "侧聊问题在开始前已被取消",
+    topicNotFound: "侧边聊天话题不存在: {{recordId}}",
+    stillRunning: "该侧边聊天话题仍在回答中，请先取消",
+    noModel: "无可用模型，无法升格侧边聊天",
+    emptyQuestion: "侧边聊天问题不能为空",
+    cancelledEarly: "侧边聊天问题在开始前已被取消",
   },
   session: {
     notFound: "会话不存在: {{sessionId}}",
@@ -194,6 +194,11 @@ export const hostErrorsZh = {
     noModels: "未选择任何模型",
     badInput: "输入类型取值无效（仅支持 text / image）",
     badThinking: "思考配置无效（模式或级别取值错误，级别至少一项）",
+  },
+  openWith: {
+    unknownApp: "未知的打开方式: {{app}}",
+    pathMissing: "路径不存在: {{path}}",
+    launchFailed: "启动 {{app}} 失败: {{detail}}",
   },
 };
 

@@ -140,16 +140,6 @@
   margin: 14px 0;
 }
 
-/* Streaming tail renders as plain text (BUG-007): no markdown parsing; md-body takes over rich text once finalized */
-.msg.assistant.stream-plain {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.7;
-  color: var(--text);
-  margin: 8px 0;
-  overflow: clip; /* same selection-paint clip as .md-body below */
-}
-
 .msg.assistant.md-body {
   width: fit-content;
   max-width: 100%;
@@ -352,7 +342,7 @@
 /* Main-chat expansion bodies: own 0.2s entrance reveal (faster than the 0.3s elsewhere; the chat flow is high-frequency).
    Collapsing is not a CSS class: useLift pins the body's height and transitions it to 0 inline, so the
    following messages ride up in sync with the retracting body (a clip-path-only lift left a blank gap) */
-.ed-brief.drop, .cmd-card.drop, .bash-out.drop { animation: ed-drop .2s ease-out; }
+.ed-brief.drop, .cmd-card.drop { animation: ed-drop .2s ease-out; }
 
 /* Inline diff expanding downward after an edit-row click (same container language as ZCode EditInlineDiffContent: rounded-xl + border + card base, no inner padding — diff rows carry their own px, 240px height cap with inner scrolling) */
 .ed-brief {
@@ -535,16 +525,35 @@
 .task-sub { display: flex; align-items: center; gap: 6px; }
 .task-sub-arrow, .task-sub-model { color: var(--faint); flex: none; }
 
-/* Local bash execution row (! prefix, BashRow): reuses .cmd row styles, status area right-aligned. exit 0 uses --dim, non-zero/errors use --err; "not in context" is a small faint tag */
-.bash-row .bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+/* Local bash execution row (! prefix, BashRow): a user bubble holding the command line, the
+   divider, then its output, so the command and its result read as one message. Selectors are
+   3-class deep (.msg.user.bash-msg…) to outrank the .msg.user user-message rules they borrow. */
+.msg.user.bash-msg { margin: 16px 0 12px; }
 
-.bash-row .bash-status .bad { color: var(--err); }
+/* The bubble ignores the user bubble's 25vw content cap (a command line plus its output needs
+   the whole content column) and re-enables text selection (the output must stay copyable) */
+.msg.user.bash-msg .user-bubble { max-width: 100%; user-select: text; -webkit-user-select: text; }
 
-/* bash row expansion body: monospace output block (unlike .cmd-card, colors use only existing tokens) */
+/* Command line: "$ cmd" + right-aligned running spinner / exit status. exit 0 uses --dim,
+   non-zero/errors use --err; "not in context" is a small faint tag */
+.bash-cmd { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.5; }
+
+.bash-prompt { color: var(--faint); flex: none; }
+
+.bash-cmd-text { flex: 1 1 auto; min-width: 0; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+
+.bash-status { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+
+.bash-status .bad { color: var(--err); }
+
+.bash-tag { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+/* Output block: monospace, separated from the command line by a divider, capped and scrollable
+   like the other inline output cards */
 .bash-out {
-  margin: -6px 0 12px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 10px 12px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
   font-family: var(--mono) !important; font-size: var(--code-fs, 12px);
   line-height: 1.5; color: var(--dim);
   max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;

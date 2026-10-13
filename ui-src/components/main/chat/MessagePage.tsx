@@ -20,6 +20,7 @@ import TodoCard from "../../chat/TodoCard";
 import { CapsFloat } from "../../chat/CapsCard";
 import { WorkSec } from "../../chat/WorkLine";
 import ChatLoading from "../../chat/ChatLoading";
+import AssistantMsg from "../../chat/AssistantMsg";
 import MsgRail from "../../chat/MsgRail";
 import FindBar from "../../chat/FindBar";
 import { renderItems } from "../../chat/items";
@@ -358,10 +359,12 @@ export default function MessagePage() {
     s.streaming || s.assistantDraft ? (
       <>
         {(s.streaming || s.assistantDraft) && <WorkSec />}
-        {/* Streaming tail rendered as plain text (BUG-007 triple mine): only the finalized
-            text goes to AssistantMsg */}
+        {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
+            the engine memoizes per block, so appending to the growing draft only re-parses
+            the last incomplete block — NOT the full-text-per-frame re-parse that froze the
+            app in BUG-007 round 3 (that was the old custom pipeline, pre-streamdown). */}
         {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
-          <div className="msg assistant md-body streaming-draft stream-plain">{s.assistantDraft}</div>
+          <AssistantMsg text={s.assistantDraft} streaming />
         )}
         {s.streaming && <ChatLoading />}
       </>

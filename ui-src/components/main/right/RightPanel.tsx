@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../
 import {
   TAB_META,
   AUTO_TABS,
+  COMPOSER_ONLY_TABS,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
 } from "./tabs";
 import StartPage from "./StartPage";
@@ -154,7 +155,7 @@ function AddTabMenu({
     >
       <div className="sp-pop-scroll">
         {Object.keys(TAB_META)
-          .filter((name) => !AUTO_TABS.has(name))
+          .filter((name) => !AUTO_TABS.has(name) && !COMPOSER_ONLY_TABS.has(name))
           .map((name) => {
             const off = name === "gitdiff" && !isGit;
             const on = rightTabs.includes(name);

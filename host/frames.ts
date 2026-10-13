@@ -13,7 +13,7 @@ import { readUiConfig } from "./ui-config.ts";
 import { readExternalBrowserEnabled } from "./browser-config.ts";
 import { readKimiAutoThinking } from "./kimi-thinking.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
-import { readComputerProvider } from "./computer-mode.ts";
+import { readComputerDefaultEnabled, readComputerProvider } from "./computer-mode.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 // Unified models frame assembly: catalog + config defaults for new sessions
@@ -49,6 +49,9 @@ export function settingsFrame() {
     // (the computer page's configure button writes it, globally disabled).
     computerProvider: readComputerProvider(),
     kimiCuInstalled: kimiCuInstalled(),
+    // omp-desktop.json computer.defaultEnabled: fresh sessions start with computer use
+    // on (spawn-time read; sessions already on disk are never touched)
+    computerDefaultEnabled: readComputerDefaultEnabled(),
     // omp-desktop.json kimi.autoThinking: whether Kimi models are offered the
     // `auto` thinking level (off by default — each level switch re-bills the
     // whole prefix on Kimi; the settings-page switch on pg-providers)

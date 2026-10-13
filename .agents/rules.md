@@ -120,13 +120,13 @@
 
 ### RULE-010: 升级 @oh-my-pi/* 底座版本后必须实跑 check 与 host:build,禁止只改版本号就交付
 
-**规则**:改动 package.json 里任何 `@oh-my-pi/*` 版本 pin(或重装 node_modules)后,必须依次实跑 `bun run check` 与 `bun run host:build`,两者全绿才算升级完成。check 内含 `check-omp-imports`(`scripts/check-omp-imports.mjs`):对 `host/host.ts` 与 `scripts/build-host.ts` 干跑 `bun build --target=bun`(打包不执行、链接期校验命名导出),底座导出改名或子路径 exports 删除会在此显式报错。
+**规则**:改动 package.json 里任何 `@oh-my-pi/*` 版本 pin(或重装 node_modules)后,必须依次实跑 `bun run check` 与 `bun run host:build`,两者全绿才算升级完成。check 内含 `check-omp-imports`(`scripts/check-omp-imports.mjs`):对 `host/host.ts` 与 `scripts/build-host.ts` 干跑 `bun build --target=bun`(打包不执行、链接期校验命名导出),底座导出改名或子路径 exports 删除会在此显式报错。仓库若带 `patches/@oh-my-pi/*.patch`,升级时该 patch **必须按新版本原始文件重新生成**(拉 tarball → GNU patch 打意图改动 → `diff -u` 重出 hunk、同步文件名与 `patchedDependencies` key),禁止照抄旧 hunk 行号或只改上下文;安装后判据是「安装结果与期望内容逐文件一致」,不是 `bun install` 不报错。升级收尾必须跑一次**产物冒烟**(至少 exe 启动到 READY、`~/.omp/natives/<ver>/` 重建)。
 
-**Why**:BUG-036——底座 18.5.0 把版本哨兵方案重构为版本戳,`build-host.ts` 深路径 import 的导出名消失,`host:build` 加载期即炸;本仓 tsconfig 只覆盖 ui-src,`host/` 与 `scripts/` 对底座的子路径(`pi-tui/chat/transcript-entry` 等)与深路径(`pi-natives/native/...`)依赖零静态门禁,不实跑无从发现。上游对这两类取用路径不承诺稳定。
+**Why**:BUG-036——底座 18.5.0 把版本哨兵方案重构为版本戳,`build-host.ts` 深路径 import 的导出名消失,`host:build` 加载期即炸;本仓 tsconfig 只覆盖 ui-src,`host/` 与 `scripts/` 对底座的子路径(`pi-tui/chat/transcript-entry` 等)与深路径(`pi-natives/native/...`)依赖零静态门禁,不实跑无从发现。上游对这两类取用路径不承诺稳定。BUG-065——18.8.6→18.10.3 两处静默失败:照抄旧行号的补丁被 bun 按行号落到错误位置(文件"能解析、语义全歪",只有 check-omp-imports 打包时才炸),以及上游 18.10.0 把 pi-natives 内嵌 addon 清单换成 zstd 帧协议后编译产物启动即崩——两者都不以「补丁冲突」形式报错。
 
-**How to apply**:升级流程固定为:改 pin → `bun install` → `bun run check` → `bun run host:build` → 需要发版再走 ui:build + tauri build。check 报 `No matching export` / `Could not resolve` 时按报错同步调用点(深路径参照 BUG-036 的内联处理)。注意守卫的 tree-shake 边界:干跑只对「真实调用点」的漂移可靠,升级后仍须实跑 host:build 兜底。review checklist:diff 含 `@oh-my-pi/*` 版本变化 ↔ 同一改动内出现过 check 与 host:build 的执行记录。
+**How to apply**:升级流程固定为:改 pin → 按新版本重新生成 patch → `bun install` → 逐文件比对安装结果 → `bun run check` → `bun run host:build` → 跑 exe 冒烟 → 需要发版再走 ui:build + tauri build。check 报 `No matching export` / `Could not resolve` 时按报错同步调用点(深路径参照 BUG-036 的内联处理)。check-omp-imports 报语法级怪错(`Unexpected ?` 之类)指向 node_modules 底座源码时,先怀疑 patch 错位而不是底座坏了;产物起不来时先查 `docs/PITFALLS.md` 的 native 内嵌清单协议条目(镜像来源永远是上游 `packages/natives/scripts/embed-native.ts`)。注意守卫的 tree-shake 边界:干跑只对「真实调用点」的漂移可靠,升级后仍须实跑 host:build 兜底。review checklist:diff 含 `@oh-my-pi/*` 版本变化 ↔ 同一改动内出现过 patch 重生成、check 与 host:build 的执行记录。
 
-**关联**:BUG-036
+**关联**:BUG-036、BUG-065
 
 ### RULE-011: 配额链路只允许 authStorage 的凭证与显式 env,禁止读取第三方工具的机器状态
 

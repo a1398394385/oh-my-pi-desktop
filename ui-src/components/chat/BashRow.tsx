@@ -1,21 +1,15 @@
-// Local bash execution row (composer ! prefix commands): reuses the terminal row's (ToolRow
-// CmdRow) visual language — an expand card with the command on top and output below + an
-// ed-arrow arrow. Status area: spinner while running / exit code / cancelled / not-in-context
-// tag / error text. Collapsed by default; click the header to expand.
+// Local bash execution row (composer ! prefix commands), rendered as a user bubble: the
+// command line on top, a divider, the streamed output below. A running command shows a
+// spinner in the command line; the command's exit status / error takes its place once it
+// ends. The row is a plain flow node: unlike a user message it is never pinned to the top
+// of the viewport (no .sticky-user-wrap wrapper).
 import type { BashItem } from "../../types/session";
-import Icon from "../../Icon";
-import { Ellip, useLift, Spin, patchActiveItem } from "./parts";
+import { Spin } from "./parts";
 import { t } from "../../i18n";
 
 export default function BashRow({ item }: { item: BashItem }) {
-  const [closing, close, liftRef] = useLift();
-  const open = item.cmdExpanded && !closing;
-  const toggle = () => {
-    if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
-    else patchActiveItem(item, (it) => { it.cmdExpanded = true; });
-  };
-  // Status area: the running spinner takes priority; error in red; cancelled in a gray tag;
-  // the rest colored by exitCode
+  // Command-line status: the running spinner takes priority; error in red; cancelled in a
+  // gray tag; the rest colored by exitCode
   let status;
   if (item.running) status = <Spin />;
   else if (item.error != null) status = <span className="bad">{item.error}</span>;
@@ -23,22 +17,23 @@ export default function BashRow({ item }: { item: BashItem }) {
   else if (item.exitCode != null && item.exitCode !== 0) status = <span className="bad">{`exit ${item.exitCode}`}</span>;
   else status = <span>{item.exitCode === 0 ? "exit 0" : t("chat.completed")}</span>;
   return (
-    <>
-      <div className="cmd bash-row" style={{ cursor: "pointer" }} onClick={toggle}>
-        <Ellip className="c-tx" title={item.text}>{`$ ${item.text}`}</Ellip>
-        {item.excludeFromContext && <span className="flex-none text-ui-xs text-faint border border-line rounded-[4px] px-[4px]" /* style-token-ignore */>{t("chat.notInContext")}</span>}
-        <span className="bash-status">{status}</span>
-        <span className={"ed-arrow" + (open ? " open" : "")}>
-          <Icon name="chevronRight" />
-        </span>
+    <div className="msg user bash-msg">
+      <div className="user-bubble">
+        <div className="bash-cmd">
+          <span className="bash-prompt">$</span>
+          <span className="bash-cmd-text">{item.text}</span>
+          {item.excludeFromContext && <span className="bash-tag">{t("chat.notInContext")}</span>}
+          <span className="bash-status">{status}</span>
+        </div>
+        {/* Output section (the divider above it belongs to it): only rendered once there is
+            something to show — an empty box under a still-running command is pure noise */}
+        {(item.output || !item.running) && (
+          <pre className="bash-out">
+            {item.output || t("chat.noOutput")}
+            {item.truncated ? t("chat.outputTruncated") : ""}
+          </pre>
+        )}
       </div>
-      {/* Body stays mounted while closing (gated on cmdExpanded alone, not the arrow's `open`) so useLift can animate its height before the commit unmounts it */}
-      {item.cmdExpanded && (
-        <pre ref={liftRef} className="bash-out drop">
-          {item.output || (item.running ? <Spin /> : t("chat.noOutput"))}
-          {item.truncated ? t("chat.outputTruncated") : ""}
-        </pre>
-      )}
-    </>
+    </div>
   );
 }

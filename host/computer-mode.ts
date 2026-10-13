@@ -45,6 +45,33 @@ export function writeComputerProvider(provider: ComputerProvider): void {
 }
 
 /**
+ * Desktop-owned "default on" switch (omp-desktop.json computer.defaultEnabled):
+ * fresh sessions start with computer use enabled instead of waiting for the
+ * composer click / `/computer on`. Sessions already on disk are untouched —
+ * the value is read at spawn only.
+ */
+export function readComputerDefaultEnabled(): boolean {
+  return readComputerSection().defaultEnabled === true;
+}
+
+/** Persist the default-on switch (merge-write, same contract as the provider pick). */
+export function writeComputerDefaultEnabled(enabled: boolean): void {
+  writeDesktopSection("computer", { ...readComputerSection(), defaultEnabled: enabled });
+}
+
+/**
+ * Whether a freshly spawned session should start opted in. User sessions follow the desktop
+ * default; automation runs follow the automation's own flag instead — the desktop default
+ * deliberately never applies there (an unattended scheduled run must not drive the desktop
+ * unless the user asked for that task to). Either way the master gate must be open: a closed
+ * gate force-closes every opt-in, so enabling here would just bounce off the rollback.
+ */
+export function computerDefaultAppliesFor(automation?: { computer?: boolean }): boolean {
+  if (settingsGet(H.settings, COMPUTER_ENABLED) !== true) return false;
+  return automation ? automation.computer === true : readComputerDefaultEnabled();
+}
+
+/**
  * Warm the builtin kimi-cu connection when the provider pick says kimi
  * (profile apply + provider switch). Fire-and-forget: the warm failure only
  * logs — the composer toggle surfaces the real error on use.

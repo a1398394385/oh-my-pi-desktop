@@ -36,7 +36,7 @@ function syncSubViewStream(parentSessionId: string, subagentId: string, streamin
   if (!view?.isSubagent || (view.streaming === streaming && !streaming)) return;
   updateSession(view.sessionId, (s) => {
     s.streaming = streaming;
-    s.turnStartAt = streaming ? Date.now() - (sub.usage?.durationMs ?? 0) : null;
+    s.turnStartAt = streaming ? (sub.registeredAt ?? Date.now() - (sub.usage?.durationMs ?? 0)) : null;
     if (!streaming) s.workingText = null;
   });
 }
@@ -278,8 +278,11 @@ export const streamHandlers = {
       false,
     );
     // Running heartbeat: keeps the transcript view's spinner + elapsed row alive even if the
-    // view was opened after the run's turn_start (and re-arms it on a wake re-run)
-    syncSubViewStream(msg.sessionId, msg.subagentId, true);
+    // view was opened after the run's turn_start (and re-arms it on a wake re-run). Terminal
+    // statuses must NOT re-light it — the host re-sends the last progress alongside the
+    // terminal lifecycle, which would otherwise undo the lifecycle's clear.
+    const live = msg.status !== "completed" && msg.status !== "failed" && msg.status !== "aborted";
+    syncSubViewStream(msg.sessionId, msg.subagentId, live);
   },
   subagent_event(msg) {
     // Text deltas are high-frequency: mutate in place + 100ms window flush (same as the main-chat text_delta)
@@ -430,6 +433,7 @@ export const streamHandlers = {
         s.stats = {
           tokens: msg.tokens,
           cost: msg.cost,
+          subagentCost: msg.subagentCost,
           cacheHitRate: msg.cacheHitRate,
           cacheBreaks: msg.cacheBreaks,
           advisorCost: msg.advisorCost,

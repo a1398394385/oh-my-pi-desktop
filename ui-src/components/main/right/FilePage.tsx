@@ -2,15 +2,17 @@
 // expand); clicking a file enters the detail
 // (read_file for whole files / read_image for image previews; rb-head breadcrumb pinned +
 // scrolling rb-scroll skeleton).
-import { flushSync } from "react-dom";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { flushSync, createPortal } from "react-dom";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, pathBase } from "../../../store";
+import { useAppStore, setBump, send, pathBase, toast } from "../../../store";
+import { placeMenu } from "../../../shell";
 import { fileTypeIcon } from "../../../../ui/icons";
 import Icon from "../../../Icon";
 import { langOfPath } from "../../../lib/highlighter";
 import { CodeTokens, useCodeTokens } from "../../../lib/CodeTokens";
+import type { EditorInfo } from "../../../types/frames";
 import type { FileViewState } from "../../../types/session";
 import { IMAGE_EXTS } from "../../chat/util";
 
@@ -20,6 +22,124 @@ export default function FilePage() {
   const fileView = useAppStore((s) => s.fileView);
   if (fileView) return <FvDetail />;
   return <FileTree />; // empty state: current project file tree
+}
+
+// More menu on the project row / the back-to-tree row: open the target in one of the installed
+// editors/terminals/file managers (discovered on the host, real app icons), or copy its absolute
+// / relative path. Relative paths are taken against the session project root, so the row's own
+// dir yields ".". Fallback glyphs cover entries whose icon could not be resolved.
+const FALLBACK_ICON: Record<EditorInfo["kind"], string> = {
+  fileManager: "folderOpen",
+  editor: "code",
+  terminal: "term",
+};
+
+function FileMoreMenu({ target, root }: { target: string; root: string }) {
+  const { t } = useTranslation();
+  const editors = useAppStore((s) => s.editors);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // Discovered once per host run; the first menu in the right panel triggers the fetch
+  useEffect(() => {
+    if (editors === null) send({ type: "list_editors" });
+  }, [editors]);
+  // The menu portals to body (fixed + placeMenu): the row containers crop with overflow:hidden,
+  // so an absolutely positioned menu would be clipped. Measured placement, right edge on the
+  // trigger, viewport-clamped (same recipe as the automations .auto-sel-menu).
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const btn = btnRef.current;
+    if (!open || !menu || !btn) return;
+    placeMenu(menu, 0, 0); // measure at the origin: zoom is applied first, coordinates divided back after
+    const mr = menu.getBoundingClientRect();
+    const br = btn.getBoundingClientRect();
+    const left = Math.max(8, Math.min(br.right - mr.width, window.innerWidth - mr.width - 8));
+    const top = Math.max(8, Math.min(br.bottom + 4, window.innerHeight - mr.height - 8));
+    placeMenu(menu, left, top);
+  }, [open, editors]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+
+  const openIn = (editorId: string) => {
+    setOpen(false);
+    send({ type: "open_with", editorId, path: target });
+  };
+  const copyPath = (text: string) => {
+    setOpen(false);
+    navigator.clipboard
+      .writeText(text)
+      .then(() => toast(t("right.pathCopied")))
+      .catch(() => toast(t("right.copyFailed")));
+  };
+  // Normalize Windows backslashes so the prefix strip works on every platform
+  const abs = target.replace(/\\/g, "/").replace(/\/+$/, "");
+  const rel = root.replace(/\\/g, "/").replace(/\/+$/, "");
+  const relPath = !rel || abs === rel ? "." : abs.startsWith(rel + "/") ? abs.slice(rel.length + 1) : abs;
+
+  return (
+    <div className="fv-more-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className="icon-btn"
+        ref={btnRef}
+        title={t("right.more")}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <Icon name="dots" size={15} />
+      </button>
+      {open &&
+        createPortal(
+          <div className="menu open fv-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+            <div className="mh">{t("right.openWithTitle")}</div>
+            {editors === null ? (
+              <div className="mi empty">{t("common.loading")}</div>
+            ) : editors.length === 0 ? (
+              <div className="mi empty">{t("right.noOpenApps")}</div>
+            ) : (
+              editors.map((editor) => (
+                <button type="button" key={editor.id} className="mi" onClick={() => openIn(editor.id)}>
+                  <span className="mi-ic">
+                    {editor.iconDataUrl ? (
+                      <img src={editor.iconDataUrl} alt="" />
+                    ) : (
+                      <Icon name={FALLBACK_ICON[editor.kind]} size={14} />
+                    )}
+                  </span>
+                  {editor.name}
+                </button>
+              ))
+            )}
+            <div className="sep" />
+            <button type="button" className="mi" onClick={() => copyPath(target)}>
+              <span className="mi-ic">
+                <Icon name="copy" size={14} />
+              </span>
+              {t("right.copyAbsPath")}
+            </button>
+            <button type="button" className="mi" onClick={() => copyPath(relPath)}>
+              <span className="mi-ic">
+                <Icon name="copy" size={14} />
+              </span>
+              {t("right.copyRelPath")}
+            </button>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
 }
 
 // Empty state: current project file tree (lazily loaded one level per expand; click a file to enter detail)
@@ -38,7 +158,8 @@ function FileTree() {
         <span className="inline-flex items-center text-faint">
           <Icon name="folder" size={14} />
         </span>
-        <span className="min-w-0 overflow-hidden text-ellipsis">{pathBase(s.cwd) || s.cwd}</span>
+        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis">{pathBase(s.cwd) || s.cwd}</span>
+        <FileMoreMenu target={s.cwd} root={s.cwd} />
       </div>
       <FileTreeLevel dirPath={s.cwd} depth={1} />
     </>
@@ -167,6 +288,7 @@ function FileCrumb({ absPath }: { absPath: string }) {
 function FvDetail() {
   const { t } = useTranslation();
   const fv = useAppStore((s) => s.fileView)!; // assertion: FilePage's entry if (fileView) already guards, same as the original
+  const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // Once the whole file is ready, scroll the request range's start line to the top of the view
   useEffect(() => {
@@ -208,14 +330,18 @@ function FvDetail() {
   return (
     <>
       <div className="rb-head">
-        <button
-          className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text"
-          onClick={() => {
-            setBump({ fileView: null });
-          }}
-        >
-          {t("right.backToTree")}
-        </button>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <button
+            className="border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text"
+            onClick={() => {
+              setBump({ fileView: null });
+            }}
+          >
+            {t("right.backToTree")}
+          </button>
+          <span className="sp" />
+          <FileMoreMenu target={fv.path} root={cwd || ""} />
+        </div>
         <FileCrumb absPath={fv.path} />
       </div>
       <div className="rb-scroll">

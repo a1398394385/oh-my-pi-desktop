@@ -39,7 +39,7 @@ import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
-import { pushComputerMode, setComputerMode } from "./computer-mode.ts";
+import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
 import { dispatchFromToolEnd, installProposalHandler, pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { handleVoiceEvent } from "./voice.ts";
 import { hostI18n } from "../ui-src/i18n/host.ts";
@@ -259,6 +259,10 @@ function buildSessionStats(entry: PoolEntry) {
       cacheWrite: usage.cacheWrite,
     },
     cost: usage.cost,
+    // Portion of `cost` the base already folded in from completed `task` results (blocking
+    // spawns' spend only). The stats bar subtracts its overlap with the live children it
+    // shows, so a blocking child is not billed twice.
+    subagentCost: usage.subagentCost ?? 0,
     cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
     cacheBreaks,
     // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
@@ -357,8 +361,11 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
         // exists (extension injection happens inside createAgentSession) are
         // dropped; the entry ships a zeroed initial snapshot instead
         isWanted: () => kaHolder.entry?.keepaliveWanted === true,
-        // User-dialog wait census for this session: feeds the block-probing
-        // toggles (probeDuringApproval / probeDuringAsk in keepalive-config)
+        // Turn-park census for this session: user dialogs (feeding the
+        // probeDuringApproval / probeDuringAsk toggles) plus pending tool
+        // executions — a subagent task/agent call parks the turn for minutes
+        // with no model request in flight, and that wait never reaches
+        // agent_end, so the ticks during it must probe
         blockState: () => {
           let approval = false;
           let ask = false;
@@ -367,7 +374,12 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
             if (p.blockKind === "ask") ask = true;
             else approval = true;
           }
-          return { approval, ask };
+          // A permission-card wait reports both this and the dialog kind above
+          // (the approval gate runs inside the tool execution); the extension
+          // gives the dialog precedence — see keepalive.ts's toolWait.
+          const entry = kaHolder.entry;
+          const tool = !!entry && entry.session.agent.state.pendingToolCalls.size > 0;
+          return { approval, ask, tool };
         },
         reportState: (s) => {
           const entry = kaHolder.entry;
@@ -1054,7 +1066,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
 }
 
 /** Create a session on `cwd` with `model`, attach it, and push session_created. */
-export async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string, opts?: { automation?: { id: string; title: string } }) {
+export async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string, opts?: { automation?: { id: string; title: string; computer?: boolean } }) {
   const { sessionId, entry, eventBus } = await createSessionCore(
     workDir,
     SessionManager.create(workDir),
@@ -1078,6 +1090,10 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
     const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
     if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
   } catch {}
+  // Computer-use opt-in at spawn: user sessions follow the desktop "default on" switch;
+  // automation runs follow the automation's own flag (never the desktop default). Applied
+  // here only — loading a session from disk keeps whatever state it was left in.
+  if (computerDefaultAppliesFor(opts?.automation)) void setComputerMode(ws, sessionId, entry, true).catch(() => {});
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
     JSON.stringify({

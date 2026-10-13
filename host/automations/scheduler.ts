@@ -290,7 +290,9 @@ const defaultSpawn: SpawnFn = async (a) => {
     },
   };
   const targetModel = a.model ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === a.model) : undefined;
-  const { sessionId, entry } = await spawnSession(uiWs, a.cwd, targetModel, undefined, { automation: { id: a.id, title: a.title } });
+  const { sessionId, entry } = await spawnSession(uiWs, a.cwd, targetModel, undefined, {
+    automation: { id: a.id, title: a.title, computer: a.computer === true },
+  });
   try {
     if (await entry.manager.setSessionName(a.title, "user")) {
       entry.title = a.title;

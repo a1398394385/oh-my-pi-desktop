@@ -45,6 +45,17 @@ export default function SessionStatsBar() {
 
   const activeMs = st.activeMs + (streaming && st.receivedAt !== undefined ? Date.now() - st.receivedAt : 0);
   const cost = (st.cost ?? 0) + (st.advisorCost ?? 0);
+  // Subagent spend is not part of the host's session cost: the base only folds a blocking
+  // task's spend into the parent through its toolResult usage, and the default async spawn
+  // never produces one (BUG-064). Advisor transcripts already bill through advisorCost
+  // above, so they are excluded here.
+  let subCost = 0;
+  for (const sub of session?.subagents.values() ?? []) if (!sub.advisor) subCost += sub.usage?.cost ?? 0;
+  // That folded-in part (the frame's subagentCost) must not be billed twice: subtract the
+  // overlap with the children summed above. min() keeps a reloaded session — whose children
+  // are no longer in the store while the host still reports their spend — from dropping the
+  // total below the host's own figure.
+  const totalCost = cost + subCost - Math.min(subCost, st.subagentCost ?? 0);
   // Semantic groups (cache / tokens / cost / performance): tighter spacing inside
   // a group than between groups. Parts tagged .sb-opt-* are trimmed by the row's
   // own width (CSS container query in composer.css), so the line never wraps.
@@ -70,7 +81,9 @@ export default function SessionStatsBar() {
       { k: t("chat.statsInput"), v: fmtTokens(st.tokens.input) },
       { k: t("chat.statsOutput"), v: fmtTokens(st.tokens.output) },
     ],
-    cost > 0 ? [{ k: t("chat.statsCost"), v: `$${cost.toFixed(4)}`, cls: "sb-opt-cost" }] : [],
+    totalCost > 0
+      ? [{ k: t("chat.statsCost"), v: `$${totalCost.toFixed(4)}` + (subCost > 0 ? ` ($${subCost.toFixed(4)})` : ""), cls: "sb-opt-cost" }]
+      : [],
     [
       { k: t("chat.statsTokenSpeed"), v: fmtTokenSpeed(st.tokenSpeed) },
       { k: t("chat.statsAvgTtft"), v: fmtTtft(st.avgTtft), cls: "sb-opt-ttft" },

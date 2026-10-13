@@ -96,8 +96,10 @@ function TopicCard({
 
 export default function BtwPage() {
   const { t } = useTranslation();
-  const activePath = useAppStore((s) => s.activePath);
-  const topics = useAppStore((s) => s.btwTopics.get(s.activePath ?? ""));
+  // Side-chat RPCs and frames are keyed by the pool session id (the SDK session UUID),
+  // never by the session file path the store uses as its slot key.
+  const activeSessionId = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.sessionId : undefined));
+  const topics = useAppStore((s) => (activeSessionId ? s.btwTopics.get(activeSessionId) : undefined));
   const draft = useAppStore((s) => s.btwDraft);
   const replyTo = useAppStore((s) => s.btwReplyTo);
   const btwLoad = useAppStore((s) => s.btwLoad);
@@ -108,11 +110,11 @@ export default function BtwPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (activePath) btwLoad(activePath);
+    if (activeSessionId) btwLoad(activeSessionId);
     // Session switch: reset the expansion and reply target to the new session's own state
     setOpenId(null);
     btwReplyToTopic(null);
-  }, [activePath, btwLoad, btwReplyToTopic]);
+  }, [activeSessionId, btwLoad, btwReplyToTopic]);
 
   // A running topic auto-expands so streaming stays visible; the user's manual pick wins otherwise
   const autoRunningId = topics?.find((topic) => runningTurnOf(topic))?.id;
@@ -120,10 +122,10 @@ export default function BtwPage() {
     if (autoRunningId) setOpenId(autoRunningId);
   }, [autoRunningId]);
 
-  if (!activePath) return <div className="btw-page"><div className="btw-none">{t("right.noActiveSession")}</div></div>;
+  if (!activeSessionId) return <div className="btw-page"><div className="btw-none">{t("right.noActiveSession")}</div></div>;
 
   const replyTarget = replyTo ? topics?.find((topic) => topic.id === replyTo) : undefined;
-  const send = () => btwSend(activePath, draft);
+  const send = () => btwSend(activeSessionId, draft);
 
   return (
     <div className="btw-page">
@@ -139,7 +141,7 @@ export default function BtwPage() {
         >
           <Icon name="messagePlus" size={15} />
         </button>
-        <button className="icon-btn" title={t("right.refresh")} onClick={() => btwLoad(activePath)}>
+        <button className="icon-btn" title={t("right.refresh")} onClick={() => btwLoad(activeSessionId)}>
           <Icon name="refresh" size={15} />
         </button>
       </div>
@@ -148,7 +150,7 @@ export default function BtwPage() {
         {topics?.map((topic) => (
           <TopicCard
             key={topic.id}
-            sessionId={activePath}
+            sessionId={activeSessionId}
             topic={topic}
             open={openId === topic.id || !!runningTurnOf(topic)}
             onToggle={() => setOpenId(openId === topic.id ? null : topic.id)}

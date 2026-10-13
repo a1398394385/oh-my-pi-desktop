@@ -191,6 +191,11 @@ export const hostErrorsEn = {
     badInput: "Invalid input modalities (only text / image are supported)",
     badThinking: "Invalid thinking config (bad mode or effort levels; at least one level required)",
   },
+  openWith: {
+    unknownApp: "Unknown open target: {{app}}",
+    pathMissing: "Path not found: {{path}}",
+    launchFailed: "Failed to launch {{app}}: {{detail}}",
+  },
 };
 
 export default hostErrorsEn;

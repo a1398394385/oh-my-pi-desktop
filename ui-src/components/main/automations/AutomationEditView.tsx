@@ -137,6 +137,7 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
       prompt: draft.prompt,
       cwd: draft.cwd.trim(),
       model: draft.model || null,
+      computer: draft.computer,
       recurring: draft.endMode !== "count",
       maxRuns: draft.endMode === "count" ? clampInt(draft.maxRuns, 1, 100000, 1) : null,
       endAt: draft.endMode === "date" ? endAt : null,
@@ -394,6 +395,19 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
                       <input className="inp aued-grow" spellCheck={false} value={draft.cwd} placeholder="/path/to/project"
                         onChange={(e) => patch({ cwd: e.target.value })} />
                     )}
+                    {/* Per-run computer control for this automation's sessions; sits right of the
+                        project picker (the two per-run routing choices stay adjacent). */}
+                    <button
+                      type="button"
+                      id="autoComputerBtn"
+                      className={"aued-toggle" + (draft.computer ? " on" : "")}
+                      title={t("autoEdit.computerHint")}
+                      onClick={() => patch({ computer: !draft.computer })}
+                    >
+                      <Icon name="computer" size={14} />
+                      <span>{t("autoEdit.computerLabel")}</span>
+                      <i className="aued-toggle-k" />
+                    </button>
                     <EnabledModelPicker
                       // sel-up: the editor scrolls (.aued overflow-y) and sits low in the card —
                       // a drop-down menu would be clipped by the scroll container and grow the

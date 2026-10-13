@@ -13,8 +13,10 @@
  * stream (no synthetic messages/tool calls; only aggregate stats and the
  * probe-log are persisted).
  *
- * Guardrails: skip while the agent is busy, stop after maxidle, circuit-break
- * on consecutive cache misses / network errors, stop immediately on auth
+ * Guardrails: skip while the agent is busy streaming; a turn parked on a user
+ * dialog (opt-in) or a pending tool execution (subagent / long build, always)
+ * still probes — see blockState. Stop after maxidle, circuit-break on
+ * consecutive cache misses / network errors, stop immediately on auth
  * failure, stop when the session spend cap is reached; a fresh real request
  * always re-arms and clears the sticky pause. A session the user has read
  * since the timer was armed still gets readWarmups farewell probes (1 by
@@ -196,8 +198,15 @@ export interface KeepaliveHostOptions {
   reportState?: (s: KeepaliveState) => void;
   /** Disk session file of the owning pool entry (optional; short name only) — tags warn lines so a failure can be traced back to its session. */
   sessionFile?: () => string | null | undefined;
-  /** Which user-dialog families are waiting right now (permission approval / ask). Probing during a block is opt-in per kind (probeDuringApproval / probeDuringAsk). */
-  blockState?: () => { approval: boolean; ask: boolean };
+  /**
+   * What is parking the turn right now. User dialogs (permission approval /
+   * ask) probe opt-in per kind (probeDuringApproval / probeDuringAsk); a
+   * pending tool execution always probes — a subagent task/agent call or a long
+   * build parks the turn for many cadences with no model request in flight, and
+   * nothing about it waits on a user reply that would make a probe moot.
+   * Dialog wait outranks the tool signal when both are reported.
+   */
+  blockState?: () => { approval: boolean; ask: boolean; tool: boolean };
 }
 
 /** Create the keepalive extension factory (session-lifecycle injects it conditionally on the experimental switch). */
@@ -362,13 +371,21 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
       // (which is also what refills the budget), so a read session can never
       // re-arm itself into an infinite farewell loop.
       if (!ctx.isIdle()) {
-        // Long user-dialog waits (permission approval / ask) would otherwise let
-        // the prefix cache expire silently. Opt-in per kind via the settings
-        // toggles; the probes run on the normal cadence and share all accounting.
+        // Long waits would otherwise let the prefix cache expire silently. User
+        // dialogs are opt-in per kind via the settings toggles; a pending tool
+        // execution always probes — the turn is parked on external work (a
+        // subagent task/agent call runs for many cadences) with no model request
+        // in flight, so a probe cannot race a real one.
         const block = opts.blockState?.();
+        // A dialog wait outranks the pending-tool signal: the approval gate runs
+        // inside the tool execution (tool_execution_start fires first), so such a
+        // wait reports both — its probing stays on the per-kind switches.
+        const toolWait = !!block && block.tool && !block.approval && !block.ask;
         if (
           block &&
-          ((block.approval && config.probeDuringApproval) || (block.ask && config.probeDuringAsk))
+          (toolWait ||
+            (block.approval && config.probeDuringApproval) ||
+            (block.ask && config.probeDuringAsk))
         ) {
           suspendedProbeAt = nextProbeAt ?? Date.now();
           await runProbe();

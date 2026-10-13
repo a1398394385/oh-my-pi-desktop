@@ -38,6 +38,8 @@ export interface Automation {
   cwd: string;
   /** "provider/id"; absent = follow the host default model. */
   model?: string;
+  /** Per-run computer control opt-in (this automation's sessions only; the desktop default never applies here). */
+  computer?: boolean;
   recurring: boolean;
   maxRuns?: number;
   endAt?: number;

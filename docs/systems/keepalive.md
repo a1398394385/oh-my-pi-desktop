@@ -41,7 +41,7 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 
 ### 3.3 到点 onTick:三道闸 + 重排决策(顺序)
 
-1. `ctx.isIdle()` → agent 忙:若正卡在用户对话框(审批/ask,宿主经 `blockState` 闭包扫 `pendingApprovals` 的 `sessionId`+`blockKind` 报告)且对应开关(`probeDuringApproval`/`probeDuringAsk`,默认关)开着 → **照常探测并按 cadence 重排**(阻塞保活);开关关但确有对话框挂起 → 只保住 deadline 并让 timer 续命(块中途改开关下一 tick 生效);纯忙(无对话框)→ 保住 deadline 不动,agent_end 恢复。
+1. `ctx.isIdle()` → agent 忙(模型流式中或 prompt 未收官):宿主 `blockState` 闭包**如实上报三态**——`approval`/`ask`(扫 `pendingApprovals` 的 `sessionId`+`blockKind`)、`tool`(`entry.session.agent.state.pendingToolCalls.size > 0`:子代理 task/agent、长构建把 turn 停在等外部结果,该等待永远等不到 `agent_end`)。**优先级判定在扩展侧**:对话框优先(`toolWait = tool && !approval && !ask`)——审批门禁跑在工具执行内部、`tool_execution_start` 先发,所以"带审批的工具等待"必然同时报 tool,必须让给对话框开关。此后:**toolWait** → 无条件**照常探测并按 cadence 重排**(turn 内 timer 由 `before_provider_request` 布防,见 §3.2;此时无模型请求在途,探测不会与真实请求并发);**对话框** → `probeDuringApproval`/`probeDuringAsk`(默认关)开着则同样探测重排,关着但确有对话框挂起 → 只保住 deadline 并让 timer 续命(块中途改开关下一 tick 生效);**纯忙(模型流式中)** → 保住 deadline 不动,agent_end 恢复。
 2. `maxIdleMs`(默认 1h,0=不限)→ 空闲超限 pause。
 3. farewell 预算已耗尽且会话已读 → 不探测,直接停(`readWarmups=0` 的语义)。
 4. `runProbe()` → 探测。

@@ -94,10 +94,12 @@ export default function ComputerPage() {
   // config.yml cannot outrank the desktop default. It surfaces in the frame as a
   // dedicated field; undefined until the first settings reply lands.
   const [externalOn, setExternalOn] = useState(false);
+  const [defaultOn, setDefaultOn] = useState(false);
   const [spin, setSpin] = useState(false);
   // Sync the toggle state after the settings reply
   useEffect(() => {
     setOn(!!useAppStore.getState().hostSettings?.computerEnabled);
+    setDefaultOn(useAppStore.getState().hostSettings?.computerDefaultEnabled === true);
   }, [hs]);
   useEffect(() => {
     const v = useAppStore.getState().hostSettings?.values ?? {};
@@ -114,6 +116,13 @@ export default function ComputerPage() {
     setOn(next);
     send({ type: "set_setting", key: "computer.enabled", value: next });
     toast(t("settingsPage.computer.writtenToast"));
+  };
+  // Desktop-owned "default on" switch: fresh sessions start opted in. Nothing
+  // live changes — the host reads it at spawn only.
+  const toggleDefault = (): void => {
+    const next = !defaultOn;
+    setDefaultOn(next);
+    send({ type: "set_computer_default", enabled: next });
   };
   // browser.enabled is a plain config switch: the base reconciles the eval
   // prelude and MCP filter live, no per-session /command opt-in involved
@@ -194,6 +203,10 @@ export default function ComputerPage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.computer.enableTitle")}</b><span>{t("settingsPage.computer.enableDesc")}</span></div>
           <div className={"tg" + (on ? " on" : "")} id="tgComputer" onClick={toggle}><i></i></div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx"><b>{t("settingsPage.computer.defaultTitle")}</b><span>{t("settingsPage.computer.defaultDesc")}</span></div>
+          <div className={"tg" + (defaultOn ? " on" : "")} id="tgComputerDefault" onClick={toggleDefault}><i></i></div>
         </div>
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.computer.providerTitle")}</b><span>{t("settingsPage.computer.providerDesc")}</span></div>

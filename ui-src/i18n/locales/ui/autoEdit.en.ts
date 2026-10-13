@@ -38,6 +38,8 @@ const autoEdit = {
   runsPrevPage: "Previous",
   runsNextPage: "Next",
   runsErrorUnavailable: "Error details unavailable",
+  computerLabel: "Computer control",
+  computerHint: "Enable computer control (screenshots, input, accessibility) for this task's sessions. Per-task only: the global “Enable computer control by default” switch deliberately does not apply to scheduled tasks.",
 };
 
 export default autoEdit;

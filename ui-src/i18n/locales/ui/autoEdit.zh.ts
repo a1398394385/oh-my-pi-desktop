@@ -38,6 +38,8 @@ const autoEdit = {
   runsPrevPage: "上一页",
   runsNextPage: "下一页",
   runsErrorUnavailable: "错误详情不可用",
+  computerLabel: "电脑控制",
+  computerHint: "本次任务的会话启用电脑控制（截图、输入、辅助功能）。仅对本任务生效：全局的“默认开启电脑控制”不适用于定时任务。",
 };
 
 export default autoEdit;

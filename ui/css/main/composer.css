@@ -93,14 +93,19 @@
 
 /* Cache-invalidation indicator after the cache-utilization percentage: counter-clockwise arrow + count, inline with the value (display-only, no hover highlight) */
 .sb-break {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+  /* Not a flex container: with every item center-aligned the browser synthesizes
+     the box's baseline from its border box, which lifted the count ~2.5px above
+     the value beside it. A block box takes the baseline of its first text line,
+     and the icon falls back to the .pi-ic recipe (vertical-align: -0.15em), same
+     as any icon inline in text. */
+  display: block;
   /* Match the value next to it (.text-dim + tabular-nums): the row's base
      color is --faint, which made the count read lighter and smaller */
   font-size: var(--ui-fs-sm);
   color: var(--dim);
 }
+
+.sb-break .pi-ic { margin-right: 2px; }
 
 #composer {
   flex: none;

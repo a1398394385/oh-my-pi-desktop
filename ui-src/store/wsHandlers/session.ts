@@ -5,7 +5,7 @@ import { useAppStore } from "../index";
 import { activateSession, clearBranchingMarks, activeOpen, updateSession } from "../session";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
-import type { OpenSession } from "../../types/session";
+import type { OpenSession, SubagentState } from "../../types/session";
 import { disposeRightSlot } from "../right";
 import type { HandlerSlice } from "./types";
 
@@ -121,32 +121,51 @@ export const sessionHandlers = {
       }));
       return;
     }
-    useAppStore.setState((s) => ({
-      openSessions: new Map(s.openSessions).set(msg.path, {
-        sessionId: msg.sessionId,
-        cwd: msg.cwd,
-        items: [],
-        pendingApprovals: [],
-        assistantDraft: "",
-        streaming: false,
-        turnStartAt: null,
-        subagents: new Map(),
-        model: msg.model ?? null,
-        thinking: msg.thinking ?? "auto",
-        isGit: !!msg.isGit,
-        todos: [],
-        goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
-        planMode: s.newSessionPlanMode, // seeded from the create intent; the host's plan_mode frame confirms right after
-        computerMode: s.newSessionComputerMode, // seeded from the create intent; the host's computer_mode frame confirms right after
-        title: msg.title ?? null,
-        isSubagent: Boolean(msg.isSubagent),
-        parentPath: msg.parentPath,
-      } as OpenSession),
-      isCreatingNew: false,
-      automationsOpen: false, // any session taking over the main column closes the tasks view
-      newSessionPlanMode: false, // intent consumed by the created session
-      newSessionComputerMode: false, // intent consumed by the created session
-    }));
+    useAppStore.setState((s) => {
+      // A child session opened mid-run must show the spinner + elapsed row immediately: a
+      // subagent inside a long tool call emits no progress events, so the frame-driven
+      // lighting (syncSubViewStream) would leave the view dark for the whole tool run.
+      // Seeded by transcript path (the host's parentPath is not a store key).
+      let live: SubagentState | undefined;
+      for (const o of s.openSessions.values()) {
+        for (const sub of o.subagents.values()) {
+          // Non-terminal status = still running (lifecycle says "started", the progress
+          // heartbeat overwrites it with "running")
+          const done = sub.status === "completed" || sub.status === "failed" || sub.status === "aborted";
+          if (!done && sub.sessionFile === msg.path) {
+            live = sub;
+            break;
+          }
+        }
+        if (live) break;
+      }
+      return {
+        openSessions: new Map(s.openSessions).set(msg.path, {
+          sessionId: msg.sessionId,
+          cwd: msg.cwd,
+          items: [],
+          pendingApprovals: [],
+          assistantDraft: "",
+          streaming: Boolean(live),
+          turnStartAt: live?.registeredAt ?? null,
+          subagents: new Map(),
+          model: msg.model ?? null,
+          thinking: msg.thinking ?? "auto",
+          isGit: !!msg.isGit,
+          todos: [],
+          goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
+          planMode: s.newSessionPlanMode, // seeded from the create intent; the host's plan_mode frame confirms right after
+          computerMode: s.newSessionComputerMode, // seeded from the create intent; the host's computer_mode frame confirms right after
+          title: msg.title ?? null,
+          isSubagent: Boolean(msg.isSubagent),
+          parentPath: msg.parentPath,
+        } as OpenSession),
+        isCreatingNew: false,
+        automationsOpen: false, // any session taking over the main column closes the tasks view
+        newSessionPlanMode: false, // intent consumed by the created session
+        newSessionComputerMode: false, // intent consumed by the created session
+      };
+    });
     // selectedFile/selectedSubagent are NOT pre-cleared here: activateSession → restoreRightSlot
     // owns them (fresh session without slot = cleared; reloaded session = slot restored;
     // clearing first would wipe the outgoing session's just-saved slot)

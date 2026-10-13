@@ -32,6 +32,11 @@ export const TAB_META: Record<string, TabMeta> = {
 // hides them; tab close affordances (× / middle click) are disabled for them.
 export const AUTO_TABS: ReadonlySet<string> = new Set(["hub"]);
 
+// Status tabs reached from the composer's icons only (the running-task / subagent counters):
+// neither the add menu nor the empty-state launcher offers an entry, so the panel always
+// shows live work rather than an empty page the user opened by hand.
+export const COMPOSER_ONLY_TABS: ReadonlySet<string> = new Set(["subagent", "bgcmd"]);
+
 // Tab close hooks: registered by pages with host-side resources (e.g. the terminal PTY);
 // invoked to destroy them before the tab closes
 // (used by TerminalPage: closing the "Terminal" tab kills the pty-bridge subprocess)

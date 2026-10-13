@@ -47,6 +47,7 @@ const ALLOWED_EDGES = new Set([
   // host into fork-inducing fatal teardown (2026-10-05 session-duplication
   // incident). Leaf utility: imports nothing.
   "acp-context.ts→stderr.ts", "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "gui-path.ts→stderr.ts",
+  "editors.ts→stderr.ts", // editor icon decode failures land on stderr only (best-effort icon path)
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
   "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
@@ -217,6 +218,7 @@ const ALLOWED_EDGES = new Set([
   "rpc/login.ts→rpc/types.ts", "rpc/login.ts→bootstrap.ts", "rpc/login.ts→state.ts",
   "rpc/login.ts→models.ts", "rpc/login.ts→frames.ts",
   "rpc/login.ts→open-external.ts", "rpc/settings.ts→open-external.ts", // cross-platform browser/folder launch (rundll32 / open / xdg-open)
+  "rpc/settings.ts→editors.ts", // right-panel file menu: app discovery (.app probe + .icns icon) and CLI-first launch
   "rpc/login.ts→account-order.ts", // provider_reorder_account: active credential id permutation
   "rpc/index.ts→rpc/provider-wizard.ts",
   "rpc/provider-wizard.ts→rpc/types.ts", "rpc/provider-wizard.ts→state.ts",

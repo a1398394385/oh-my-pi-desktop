@@ -19,6 +19,7 @@
     "smoke:react": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-react-shell.ts",
     "smoke:stamp": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-stamp.ts",
     "smoke:subagent": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-subagent.ts",
+    "smoke:subagent-subview": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-subagent-subview.ts",
     "smoke:plugins": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-plugins.ts",
     "smoke:automations": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-automations.ts",
     "smoke:project-group": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-project-group.ts",
@@ -42,15 +43,15 @@
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",
-    "@oh-my-pi/omp-stats": "18.8.6",
-    "@oh-my-pi/omptype": "18.8.6",
-    "@oh-my-pi/pi-agent-core": "18.8.6",
-    "@oh-my-pi/pi-ai": "18.8.6",
-    "@oh-my-pi/pi-catalog": "18.8.6",
-    "@oh-my-pi/pi-coding-agent": "18.8.6",
-    "@oh-my-pi/pi-natives": "18.8.6",
-    "@oh-my-pi/pi-tui": "18.8.6",
-    "@oh-my-pi/pi-utils": "18.8.6",
+    "@oh-my-pi/omp-stats": "18.10.3",
+    "@oh-my-pi/omptype": "18.10.3",
+    "@oh-my-pi/pi-agent-core": "18.10.3",
+    "@oh-my-pi/pi-ai": "18.10.3",
+    "@oh-my-pi/pi-catalog": "18.10.3",
+    "@oh-my-pi/pi-coding-agent": "18.10.3",
+    "@oh-my-pi/pi-natives": "18.10.3",
+    "@oh-my-pi/pi-tui": "18.10.3",
+    "@oh-my-pi/pi-utils": "18.10.3",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/mermaid": "^1.0.3",
@@ -85,6 +86,6 @@
     "vite": "^8.3.0"
   },
   "patchedDependencies": {
-    "@oh-my-pi/pi-coding-agent@18.8.6": "patches/@oh-my-pi%2Fpi-coding-agent@18.8.6.patch"
+    "@oh-my-pi/pi-coding-agent@18.10.3": "patches/@oh-my-pi%2Fpi-coding-agent@18.10.3.patch"
   }
 }

@@ -144,6 +144,11 @@
       "note": "电脑控制供应商选择：写入 omp-desktop.json computer.provider（default=OMP 内置 / kimi=kimi-cu MCP），只影响之后的图标切换，不动已挂载的会话"
     },
     {
+      "id": "set_computer_default",
+      "kind": "settings",
+      "risk": "write"
+    },
+    {
       "id": "test_kimi_cu",
       "kind": "mcp",
       "risk": "read",
@@ -792,6 +797,18 @@
       "kind": "shell",
       "risk": "write",
       "note": "唤起 Finder"
+    },
+    {
+      "id": "open_with",
+      "kind": "shell",
+      "risk": "write",
+      "note": "用指定编辑器/终端/文件管理器打开路径（右栏文件菜单，CLI 优先 + app 兜底）"
+    },
+    {
+      "id": "list_editors",
+      "kind": "shell",
+      "risk": "read",
+      "note": "探测已安装的编辑器/终端/文件管理器（含应用图标）"
     },
     {
       "id": "ssh_list_hosts",

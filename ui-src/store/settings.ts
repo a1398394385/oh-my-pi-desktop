@@ -17,6 +17,7 @@ import type {
   ManualProbeCatalogMatch,
   ExtensionsFrame,
   DisplaysFrame,
+  EditorInfo,
   SshHostsFrame,
   SshTestResultFrame,
   RemoteWorkspaceAddedFrame,
@@ -61,6 +62,7 @@ export interface SettingsSlice {
   assetSaved: { kind: string; at: number } | null; // same as above, consumed by the agents page
   assetErr: { kind: string; message: string; at: number } | null; // landed when the error frame carries kind
   computerDisplays: DisplaysFrame | null; // list_displays reply: physical displays for the computer-control dropdown (null = not yet detected)
+  editors: EditorInfo[] | null; // list_editors reply: installed editors/terminals/file managers for the open-with menu (null = not fetched yet)
   sshHosts: SshHostsFrame["hosts"]; // user-scope ssh.json host table (welcome remote-connection dialog)
   sshTestResult: (Omit<SshTestResultFrame, "type"> & { ts: number }) | null; // latest connectivity probe (ts correlates replies)
   remoteWorkspaceAdded: (Omit<RemoteWorkspaceAddedFrame, "type"> & { ts: number }) | null; // latest add_remote_workspace reply (dialog closes itself on ok)
@@ -115,6 +117,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   sshDirs: null,
   mcpTestResults: {},
   computerDisplays: null,
+  editors: null,
   automations: [],
   automationRuns: {},
   automationPreview: null,

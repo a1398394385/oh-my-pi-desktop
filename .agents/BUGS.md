@@ -62,6 +62,7 @@
 | BUG-058 | steer 消费时仍排队的消息被「同时消费」且排到 steer 前面——dequeue hook 把两个队列全部文本都广播成消费帧 | 2026-10-10 |
 | BUG-059 | 能力卡片不显示插件行与状态徽章——host 编译时 `--external` 排除 legacy 虚拟模块，legacy 插件扩展在编译产物里必加载失败 | 2026-10-10 |
 | BUG-062 | 上下文圆环中心的 keepalive 探测计数切走再切回就消失——状态只存「最近一条帧」的单槽，被其他会话的推送覆盖后无补偿 | 2026-10-12 |
+| BUG-065 | 升级底座 18.10.3 两处静默失败：bun patch 按行号错位打歪 node_modules、pi-natives 内嵌清单换 zstd 协议致编译产物启动即崩 | 2026-10-13 |
 
 ---
 
@@ -188,6 +189,8 @@
 **教训**:协议语义从「run 级近似」改成「逐帧权威」时,所有依赖旧粒度的消费端(封存/计时/usage 口径)必须逐个对齐新粒度——半改(只加 runEnd 标记不挪封存点)等于没改。另:主页侧栏左下角 profile 名硬编码 omp-desktop 一并修复(绑定 `S.hostSettings.activeProfile`,与设置页同源)。
 
 **BUG-007 补充(第三轮)**:prod React + icon 缓存后仍卡(时间变长=曲线被压低但斜率仍在)。sample 同签名(React 递归 + RegExpTestString 风暴),排除 LightweightDiff(有 useMemo,收起态不解析)与 thinking(纯文本)后锁定:**流式尾巴对不断增长的 draft 全文每 100ms 重跑 markdown 管线——每行 ~6 个 test + renderInline 的 exec,O(n²) 累积,回复越长每帧越贵**。修复:流式态改纯文本渲染(`.stream-plain`,pre-wrap),turn_end 定稿 push 为历史条目后才由 AssistantMsg 做一次 markdown 解析(memo 下仅此一次)。教训:**任何"对增长中的全文做全量变换"的流式渲染都是 O(n²)**——流式期间只许增量/纯文本,富文本变换留给定稿时刻;这是流式 UI 的硬性设计约束,违者必卡。
+
+**BUG-007 补充(第四轮,2026-10-13)**:引擎换代后流式尾巴恢复 markdown 渲染。第三轮把流式尾巴降级为纯文本(`.stream-plain`)的根因是旧自研管线对增长全文每帧全量重解析(O(n²));现引擎 streamdown 按块 memo,追加 token 只重解析末尾不完整块,O(n²) 前提已不成立。`MessagePage.tsx` 流式尾巴改走 `AssistantMsg streaming`(MdSurface/streamdown 全管线,含 shiki 染色),`.stream-plain` CSS 已删。回归守门:`scripts/smoke-stream-md.ts`(21KB draft、生产 100ms 帧节奏断言流式中 markdown 结构存在/无 setState 循环告警/单帧开销有界)。已证实边界:渲染节奏 <16ms 时 shiki 高亮 effect 会触发 React 嵌套更新上限告警(happy-dom 下每 52 帧一次,生产 100ms 节奏不复现);超长回复(>100KB)在 WKWebView 的实机帧耗未测,若再现卡顿先把流式尾巴染色降级为候选方案。
 ### BUG-011: 前端一断开连接宿主进程即崩——ACP 提交误删 pty import 整行
 
 **现象**:WebSocket 客户端断开后，宿主进程抛 `Uncaught Exception: ReferenceError: disposeTerminalsOf is not defined`（`host/host.ts` 的 `close` 处理器）并直接退出（exit=1）。用户侧表现为：刷新前端 / 关窗 / 网络抖动后整个会话池消失，重连拿到空池。启动与 `READY` 一切正常——只有断开路径触发，故常规冒烟看不见。
@@ -860,3 +863,68 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证**：①happy-dom 冒烟 `scripts/smoke-ctx-keepalive.ts` 增补 6/7 段——另一会话的帧落地后当前会话快照不变、切到该会话显示它自己的快照、切回仍显示原会话快照、悬停丢弃只删当前会话键（把 handler 临时改回整槽覆盖，该段立即红，已验红后还原）；②真实浏览器冒烟 `.local/smoke-ring-probe-count.ts`（`ui:build` + headless Chrome + `?preview=1`）：圆环中心计数 12 → 7 → 12。`ui:typecheck`、`ui:build` 通过。顺带修掉该冒烟里过期的三格断言（KaSection 早已改成四格、命中/未中移到表头副标题，脚本未登记进 package.json 所以没人跑到）。
 
 **教训**：①「宿主按会话推的状态」在单 WS 架构里默认会互相覆盖——前端必须按 sessionId 键控存储，不能假设「最近一条就是当前会话的」；②渲染侧的 `sessionId === 当前` 门槛只解决「不显示错的」，解决不了「对的被冲掉」——凡是有跨会话推送的状态都要键控；③已读会话的 farewell 语义（最后一跳后不再自排）意味着切回后没有补偿帧，被冲掉就是永久缺失，不能指望「下一帧会回来」。
+
+### BUG-063: 运行中的子代理会话页不亮转圈与「工作中 X 分 X 秒」——点亮完全依赖 progress 帧，长工具期无帧；终态 progress 帧又会把已清掉的运行态点亮回来
+
+**现象**：从 Agent Hub 进一个**正在运行**的子代理会话页，消息区左下角既无转圈（`ChatLoading`）也无「工作中 X 分 X 秒」（`WorkSec`），等多久都不出现；子代理跑完后再进则一切正常。2026-10-11 的 `syncSubViewStream` 修复（把父会话 subagent 状态镜像到子会话视图）当时只验证了 typecheck + build，未做真机冒烟，所以没暴露：用户点进去的时刻，子代理往往正卡在一次长工具调用里。
+
+**根因**：两条独立缺陷，都在前端 store。
+
+1. **点亮是「帧驱动」的**：子会话视图的 `streaming`/`turnStartAt` 只由 `streamHandlers` 的 `subagent_progress`（≤500ms 心跳）与 `subagent_lifecycle` 写入。底座的 progress 是**事件驱动**的——长工具执行期间没有任何事件，宿主就不发 progress，视图于是整段工具期都不亮。实测（真宿主 + 真 store，延迟到 sleep 中途再打开页面）：打开后 20s 内 0 个 progress 帧，`streaming=false` 一直保持。
+2. **终态反向点亮**：宿主在终态 lifecycle 帧旁会**再重发一次最后一帧 progress**（`host/session-lifecycle.ts` 的 `subLastProgress` 回放），而 `subagent_progress` 的处理器把 `syncSubViewStream(..., true)` 写死成 `true`——lifecycle 刚清掉的运行态被这帧重新点亮（转圈永挂）。这一条是修第 1 条时才抓到的（新冒烟先红了「终态未清除」）。
+
+**修复**（`ui-src/store/wsHandlers/`，宿主侧零改动）：
+
+- `session.ts` 的 `session_created`：建立子会话条目时不再写死 `streaming: false / turnStartAt: null`，而是**由已知状态种子点亮**——遍历 `openSessions` 里各会话的 `subagents`，按 `sessionFile === msg.path` 且**非终态**（`completed/failed/aborted` 之外，lifecycle 记 `started`、progress 心跳会覆盖成 `running`，所以不能只认 `started`）的条目取 `registeredAt` 作为 `turnStartAt`。匹配走 transcript 路径而不是 `parentPath`（后者是宿主从磁盘推断的形式，不作为 store 键）。
+- `stream.ts` 的 `syncSubViewStream`：`turnStartAt` 优先用 `registeredAt`（与种子口径一致，避免进入瞬间跳数字）。
+- `stream.ts` 的 `subagent_progress`：心跳是否点亮改为按 `msg.status` 判定（终态不再点亮）。
+
+**验证**：新增常驻冒烟 `scripts/smoke-subagent-subview.ts`（`bun run smoke:subagent-subview`，真宿主 + happy-dom 里的真 store 驱动，模型派子代理跑 `sleep 45`）：①在子代理处于 sleep 中途打开子会话页 → 3s 内 `streaming=true` 且 `turnStartAt` 已设（修复前必红，已实测红）；②终态 lifecycle 到达后 `streaming=false`（修复前也红）；③子代理**结束后**再打开 → 不误亮（探针实测 `streaming=false`）。`ui:typecheck`、`ui:build` 通过。
+
+**教训**：①「运行中」这类状态不能用「最近收到的心跳帧」当唯一来源——长工具/静默期没有帧，状态必须能从**已有记录**（父会话的 subagent 表）推导，帧只作增量更新；②同一状态只要有第二条写入通道（终态回放 progress），它的判据就必须显式区分终态，否则「清除」会被「心跳」原样撤销；③修完「帧驱动」类缺陷要按**时间轴**设计验证——在事件密集期验证等于没验证（本次首版探针在子代理刚启动时就通过，延迟 10s 进入才复现）。
+
+### BUG-064: 输入框下的会话成本不含 subagent 花费——底座的子代理成本只在「blocking spawn 的 task toolResult」上回灌，默认 async 派发从不产生它
+
+**现象**：会话成本（`SessionStatsBar` 的 Cost 格）只反映主会话自己的模型调用，派出去的子代理花费完全不体现在这个数字里（Agent Hub 卡片各自显示的子代理 cost 之和与之无关）。
+
+**根因**：三层各有断口，缺一不可。
+
+1. 底座把子代理花费**只**从 `role === "toolResult" && toolName === "task"` 的 `details.usage` 累加进会话统计（`session-manager.ts` 的 `entryUsage()` → `addUsage()`，并单独记入 `subagentCost` 字段）。
+2. 而该 `details.usage` 取自**同步半部分**（`task/index.ts` 的 `buildAsyncDetails` 里 `usage: syncUsage`）。底座默认走 async 派发（`task/index.ts` 的异步条件 = 异步开关 && asyncJobManager && 该 agent 未声明 `blocking: true`），async 子代理完成后的花费不会回填 → 实测 task toolResult 的 details 里**根本没有 usage**。
+3. 宿主 `host/session-lifecycle.ts` 的 `buildSessionStats()` 只转发 `usage.cost`，`subagentCost` 不在 `session_stats` 帧里（前端 `types/frames.ts` 的 `SessionStatsFrame` 也无此字段）。
+
+**实测（真宿主 + WS，2026-10-13）**：UI 值 `session_stats.cost = 0.001297`，与该父会话自身 assistant 成本 `0.0012965` 分毫不差；同批子代理 `SleeperFive` 自记 `0.002363`，未进任何父会话统计；`subagentCost = 0.000000`。
+
+**处置**：不改底座/宿主口径（自造第二个数据源是既有教训），前端显式叠加并标注来源——`SessionStatsBar.tsx` 的成本格显示为 `$总成本 ($子代理成本)`，总量 = 宿主 cost + 当前会话非 advisor 子代理的 `usage.cost` 之和；无子代理花费时不显示括号。advisor 走 `advisorCost` 单列，不重复计入括号。
+
+**去重（blocking agent 双计）**：blocking 子代理的花费已经由底座折进 `cost`（`subagentCost` 就是它的值），前端再叠加该子代理的 `usage.cost` 会双计。处理：宿主 `buildSessionStats()` 把 `subagentCost` 转发进 `session_stats` 帧（帧字段 `SessionStatsFrame.subagentCost`），成本格按
+
+```
+总成本 = cost + Σ子代理 − min(Σ子代理, subagentCost)      括号 = Σ子代理
+```
+
+`min()` 而不是直接相减：会话重载后子代理已不在 store（Σ=0）而宿主仍报 `subagentCost>0` 时，直接相减会把已经发生的花费从总量里扣掉，`min()` 让总量退回宿主口径。括号始终显示子代理的真实成本（blocking 时它与已经含在总量里的部分是同一笔，展示仍正确）。
+
+**验证**：①浏览器（`?preview=1` 注入）三情形——async 子代理 `0.0456 + 0.0123 → $0.0579 ($0.0123)`；blocking 情形（`cost` 已含、`subagentCost=0.0123`）→ `$0.0456 ($0.0123)` 不双计；重载情形（store 无子代理、`subagentCost=0.0123`）→ `$0.0456` 不低扣。②真宿主 + WS：`load_session` 触发的 `session_stats` 帧携带 `subagentCost` 键（值 0），转发链路通。
+
+**教训**：①「同一笔钱的两条记账路径」必须在同一层对齐——底座算了 `subagentCost` 但宿主没转发，前端就只能靠 live 数据自己叠；②读「默认路径」而不是「文档路径」：底座源码里 sync 分支的 usage 回灌写得完整漂亮，但默认 async 派发下这段代码永不执行，只看代码不看实测就会得出「成本包含子代理」的错误结论；③跨层口径差异要落到注释/账本里，否则下一个人会再花一轮重新测（本条就是被这么问出来的）。
+
+### BUG-065: 升级底座 18.8.6→18.10.3 两处静默失败——bun patch 按行号错位打歪 node_modules、pi-natives 内嵌清单换 zstd 协议致编译产物启动即崩
+
+**现象**：一次升级里先后踩到两处，且都不报「冲突」：
+1. `bun install` 报安装成功，`bun run check` 前七步全绿，第七步 `check-omp-imports` 炸出指向 node_modules 底座源码的 `Unexpected ?`（sdk.ts:3793）、`Expected ";" but found ":"`（command-controller.ts:907）——像底座发布了坏代码。
+2. 补丁修好后 `host:build` 成功，但 `omp-host.exe` 一启动即 `Failed to load pi_natives native addon for darwin-arm64`（rust 侧一串回退路径全部 miss）。
+
+**分诊**：①确认回归——同一条流水线在 18.8.6 上全绿（check / host:build / exe 冒烟都过），本次仅换了版本与 patch。
+
+**根因**：
+1. **bun 应用 patch 按行号落地，不做上下文搜索**。我们把 18.8.6 版 patch 的 mnemopi hunk 手工改了上下文就当 18.10.3 版用；但底座文件在版本间整体位移（`sdk.ts` 的 `buildDeveloperInstructions` 调用点 3790→3820、`command-controller.ts` 875→945），旧行号处的行被逐字替换成补丁的新行——产出一份「能过一半解析、语义全歪」的文件（实测把 `if (hasSession) {` 换成了补丁行）。GNU `patch --dry-run` 全绿反而给了假保证：它按上下文搜索、自动偏移，与 bun 的落地语义不同。
+2. **上游 18.10.0 改了内嵌 addon 清单协议**：18.8.6 是 `archive: { format: "tar.gz", filePath }` + 无 filePath 的 `files[]`（loader 自己解 tar），18.10.0 起改为每个 addon 一个 zstd 帧、`files[]` 带 `zstdPath` + `size`，loader 用 `Bun.zstdDecompressSync` 解帧并按 `size` 校验。`build-host.ts` 仍生成 tar.gz manifest → exe 里 `embeddedAddon.files[]` 没有 `zstdPath` → `fs.readFileSync(undefined)`：`path must be a string or a file descriptor`；随后所有磁盘回退路径（`~/.omp/natives/<ver>/`、`$bunfs/native/`…）也因从未解压而全部 miss。
+
+**修复**：
+1. **按新版原始文件重新生成 patch**：`curl registry.npmjs.org/@oh-my-pi/pi-coding-agent/-/pi-coding-agent-18.10.3.tgz` 解到临时树 → GNU `patch` 把意图改动打上去 → `diff -u` 生成 hunk（行号=18.10.3 真实行号）+ 重算 `index` blob → 同步 patch 文件名（`@18.10.3`）与 `package.json` 的 `patchedDependencies` key。`bun install` 后判据是 `diff -r 临时树 node_modules/@oh-my-pi/pi-coding-agent` 逐文件一致（本次 11 个 patch 文件全 OK）。
+2. **`scripts/build-host.ts` 跟进 zstd 帧协议**：`embedNativeAddon` 改为 `Bun.zstdCompress(bytes, { level: 19 })` 写 `<file>.zst` + manifest 里 `zstdPath` 指向 `import ... with { type: "file" }`；`resetEmbeddedAddon` 连带删除 `.zst` 帧；头部注释注明镜像来源是上游 `packages/natives/scripts/embed-native.ts`。
+
+**验证（全部实跑）**：①`bun run check` 十步全绿（含 `check-omp-imports` 两入口链接校验）；②`bun run ui:build` 通过；③故障注入反证——把 node_modules 里的 `legacy-pi-virtual-module.ts` 换回未打补丁版本，`host:build` 立刻复现 `ENOENT .../node_modules/packages/agent/package.json`，还原补丁后恢复；④编译产物 exe 启动到 `READY`，`~/.omp/natives/18.10.3/pi_natives.darwin-arm64.node`（98MB）由内嵌 zstd 帧解出；⑤legacy 虚拟模块探针 exe（同款构建插件）：`BUNDLED_PI_MODULE_LOADERS` 1553 条，`@oh-my-pi/pi-ai`（338 导出）与 `@oh-my-pi/pi-coding-agent`（731 导出）实际加载成功；⑥memory 作用域冒烟（补丁 #15375 的语义）：会话 cwd 与 `settings.getCwd()` 指向不同目录时，注入内容取自会话 cwd（负向对照 + 故障注入均按预期翻转）。
+
+**教训**：①「patch 装上了」不等于「patch 打在正确的位置」——跨版本复用 bun patch 必须按新版文件重新生成，验证要落到「安装结果 == 期望内容」的逐文件比对，别信 dry-run 的绿色；②内嵌资源的清单是上游内部契约（不进 `exports`），升级后要用**产物实测**暴露（跑 exe 看解压目录重建），构建成功不等于运行时可用；③这两处都不以「补丁冲突」形式报错，是升级里最贵的静默失败面，已同步写入 `docs/PITFALLS.md` 升级 SOP。

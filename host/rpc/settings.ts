@@ -25,7 +25,7 @@ import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../asse
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { writeKimiAutoThinking } from "../kimi-thinking.ts";
 import { setPlanMode } from "../plan.ts";
-import { setComputerMode, pushComputerMode, writeComputerProvider, warmKimiCu } from "../computer-mode.ts";
+import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
@@ -33,6 +33,7 @@ import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
 import { openExternal } from "../open-external.ts";
+import { getInstalledEditors, openInEditor } from "../editors.ts";
 import { settingsSet, settingsSchemaRecord } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
 
@@ -294,6 +295,13 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     warmKimiCu();
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
+  set_computer_default(ws, msg) {
+    // Desktop-owned "default on" switch (omp-desktop.json computer.defaultEnabled):
+    // fresh sessions start with computer use enabled. Spawn-time read only, so no
+    // live session is touched — the settings frame below just echoes the new value.
+    writeComputerDefaultEnabled(msg.enabled === true);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
   /**
    * Smoke-only: replay a `write` to xd://propose so the plan-approval card can
    * be exercised without a model. Gated on OMP_PLAN_APPROVE_SMOKE=1, which only
@@ -343,5 +351,13 @@ export const settingsHandlers: Record<string, RpcHandler> = {
         openExternal(raw);
       } catch {}
     }
+  },
+  async open_with(_ws, msg) {
+    // Right-panel file menu: unknown editor / missing path / failed launch throw, the error frame toasts
+    await openInEditor(String(msg.editorId ?? ""), String(msg.path ?? ""));
+  },
+  async list_editors(ws) {
+    // Installed editors/terminals/file managers for the open-with menu (probed once per host run)
+    ws.send(JSON.stringify({ type: "editors", editors: await getInstalledEditors() }));
   },
 };

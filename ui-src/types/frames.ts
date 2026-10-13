@@ -103,6 +103,9 @@ export type SettingsPayload = SettingsSnapshot & {
   // mcp.json); the flag gates the Kimi option (KimiCU installed on this machine).
   computerProvider?: "default" | "kimi";
   kimiCuInstalled?: boolean;
+  // omp-desktop.json computer.defaultEnabled: fresh sessions start with computer use on
+  // (spawn-time read; sessions already on disk keep their state)
+  computerDefaultEnabled?: boolean;
   // omp-desktop.json kimi.autoThinking (host/kimi-thinking.ts): whether Kimi
   // models are offered the `auto` thinking level. Off by default — each level
   // switch re-bills the whole prefix on Kimi; the providers-page switch.
@@ -438,6 +441,10 @@ export interface SessionStatsPayload {
   // SessionManager.getUsageStatistics (input/output/cacheRead/cacheWrite); follows the SDK
   tokens: Record<string, number>;
   cost: number;
+  /** Portion of {@link cost} the base already folded in from completed `task` results
+      (blocking spawns only — base UsageStatistics.subagentCost). The stats bar subtracts its
+      overlap with the live children it also shows, so a blocking child is billed once. */
+  subagentCost?: number;
   cacheHitRate: number;
   /** Prompt-cache invalidation count for the session (host/session-lifecycle.ts buildSessionStats) */
   cacheBreaks: number;
@@ -1343,6 +1350,21 @@ export interface AssetFileFrame {
   content: string;
 }
 
+/** Editor/terminal/file-manager entry of the right-panel open-with menu (host/editors.ts) */
+export interface EditorInfo {
+  id: string;
+  name: string;
+  kind: "editor" | "terminal" | "fileManager";
+  /** PNG data URL of the installed app's icon; absent when the icon cannot be resolved */
+  iconDataUrl?: string;
+}
+
+/** Installed editors reply (host/rpc/settings.ts list_editors) */
+export interface EditorsFrame {
+  type: "editors";
+  editors: EditorInfo[];
+}
+
 /** Asset file saved reply (host/host.ts:1913 asset_file_write) */
 export interface AssetFileSavedFrame {
   type: "asset_file_saved";
@@ -1956,6 +1978,7 @@ export type HostFrame =
   | ExtensionsFrame
   | AssetFileFrame
   | AssetFileSavedFrame
+  | EditorsFrame
   | AssetFileDeletedFrame
   | MemoryFileFrame
   | McpServerTestedFrame

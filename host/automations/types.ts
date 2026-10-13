@@ -49,6 +49,12 @@ export interface Automation {
   cwd: string;
   /** "provider/id"; absent = follow the host default model. */
   model?: string;
+  /**
+   * Per-run computer control opt-in for the spawned session. Absent/false = the run gets no
+   * desktop control; automation sessions never follow the desktop's "default on" switch
+   * (unattended runs must not drive the desktop implicitly).
+   */
+  computer?: boolean;
   /** true = repeat forever; false = bounded by maxRuns (default 1). */
   recurring: boolean;
   maxRuns?: number;
@@ -113,6 +119,7 @@ export interface AutomationUpsertInput {
   cwd: string;
   /** undefined = follow default; string = pin "provider/id". */
   model?: string | null;
+  computer?: boolean;
   recurring: boolean;
   maxRuns?: number | null;
   endAt?: number | null;
@@ -125,6 +132,7 @@ export interface AutomationUpdateInput {
   prompt?: string;
   cwd?: string;
   model?: string | null;
+  computer?: boolean;
   recurring?: boolean;
   maxRuns?: number | null;
   endAt?: number | null;

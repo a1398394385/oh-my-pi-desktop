@@ -1,12 +1,12 @@
 // Settings page: hooks (pg-hooks).
-// Master switch (hooks.enabled controls disableExtensionDiscovery) + runtime config
-// rows (SchemaRows) + discovered hook list with a graphical create/edit editor
-// (same scope-capsule + list + inline-editor layout as the agents page):
+// Master switch (hooks.enabled controls disableExtensionDiscovery) + runtime config rows
+// (SchemaRows) + the discovered hook list with an inline expand-down editor, using the MCP
+// page language (.mem-expand / .sem-body.form / .sem-foot over the shared .mcp-form-* fields):
 // - scope capsule filters the list and targets new hooks (profile / project .omp)
-// - phase pills (pre/post) + tool-name input create hooks/<phase>/<tool>.ts from a
-//   phase-aware template on the host
-// - clicking a row reads the hook file into the editor; save writes it back
-import { useEffect, useState } from "react";
+// - "new hook" opens a temp row at the top of the list; its form creates
+//   hooks/<phase>/<tool>.ts from a phase-aware template on the host
+// - clicking a row reads the hook file into the editor; save writes it back and collapses
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast, pathBase } from "../../../store";
 import type { HookAssetItem } from "../../../types/frames";
@@ -15,6 +15,192 @@ import { PAGE_PLACEMENT } from "../placement";
 import Icon from "../../../Icon";
 import { emptyRow } from "../common";
 import ScopeSel from "../ScopeSel";
+
+const NEW_KEY = "__new__";
+
+// Hook file editor: reads the file on mount, writes it back and collapses on the saved reply.
+function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => void }) {
+  const { t } = useTranslation();
+  const file = useAppStore((s) => s.assetFile);
+  const saved = useAppStore((s) => s.assetSaved);
+  const err = useAppStore((s) => s.assetErr);
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState(() => t("settingsPage.shared.reading"));
+  // Replies that landed before this editor mounted must not fire (both frames carry `at`)
+  const lastSaved = useRef(useAppStore.getState().assetSaved?.at ?? 0);
+  const lastErr = useRef(useAppStore.getState().assetErr?.at ?? 0);
+
+  // Mount = read this hook's file
+  useEffect(() => {
+    send({ type: "asset_file_read", kind: "hook", path: hook.path });
+  }, [hook.path]);
+
+  useEffect(() => {
+    if (file && file.kind === "hook" && file.path === hook.path) {
+      setText(file.content);
+      setStatus("");
+    }
+  }, [file, hook.path]);
+
+  useEffect(() => {
+    if (!saved || saved.kind !== "hook" || saved.at === lastSaved.current) return;
+    lastSaved.current = saved.at;
+    toast(t("settingsPage.hooks.savedToast", { name: hook.name }));
+    onClose();
+  }, [saved, onClose, hook.name, t]);
+
+  useEffect(() => {
+    if (!err || err.kind !== "hook" || err.at === lastErr.current) return;
+    lastErr.current = err.at;
+    setStatus(err.message);
+  }, [err]);
+
+  const save = () => {
+    setStatus(t("settingsPage.shared.saving"));
+    send({ type: "asset_file_write", kind: "hook", path: hook.path, content: text });
+  };
+
+  return (
+    <div className="mem-expand">
+      <div className="mem-exp-head">
+        <span>{t("settingsPage.hooks.editTitle")}</span>
+        <span className="sub">{hook.path}</span>
+        <span className="sp" />
+        <button type="button" className="save-btn" onClick={onClose}>
+          {t("settingsPage.shared.collapse")}
+        </button>
+      </div>
+      <div className="sem-body form">
+        <div className="mcp-form-row">
+          <div className="mcp-form-group mcp-form-half">
+            <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
+            <input className="mcp-form-input mcp-form-code" value={hook.phase} disabled readOnly />
+          </div>
+          <div className="mcp-form-group mcp-form-half">
+            <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
+            <input className="mcp-form-input mcp-form-code" value={hook.tool || "*"} disabled readOnly />
+          </div>
+        </div>
+        <div className="mcp-form-hint">{t("settingsPage.hooks.nameLockedHint")}</div>
+        <div className="mcp-form-group">
+          <label className="mcp-form-label">{t("settingsPage.hooks.codeLabel")}</label>
+          <textarea
+            id="hookText"
+            className="mcp-form-textarea mcp-form-code"
+            rows={16}
+            spellCheck={false}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="sem-foot">
+        <span className="text-ui-sm text-dim truncate">{status}</span>
+        <span className="sp" />
+        <button type="button" className="mcp-form-cancel" onClick={onClose}>
+          {t("common.cancel")}
+        </button>
+        <button type="button" className="confirm-btn" onClick={save}>
+          {t("common.save")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Create form: phase pills + tool name; the host writes the template file and replies with
+// an asset_file frame, whose arrival closes the form (the list refresh brings the new row).
+function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string }; onClose: () => void }) {
+  const { t } = useTranslation();
+  const file = useAppStore((s) => s.assetFile);
+  const err = useAppStore((s) => s.assetErr);
+  const [phase, setPhase] = useState<"pre" | "post">("pre");
+  const [tool, setTool] = useState("");
+  const [status, setStatus] = useState("");
+  const pending = useRef(false); // a create request is in flight
+  const lastErr = useRef(useAppStore.getState().assetErr?.at ?? 0);
+
+  useEffect(() => {
+    if (!pending.current || !file || file.kind !== "hook") return;
+    pending.current = false;
+    toast(t("settingsPage.hooks.createdToast", { name: pathBase(file.path) }));
+    onClose();
+  }, [file, onClose, t]);
+
+  useEffect(() => {
+    if (!err || err.kind !== "hook" || err.at === lastErr.current) return;
+    lastErr.current = err.at;
+    pending.current = false;
+    setStatus(err.message);
+  }, [err]);
+
+  const create = () => {
+    const name = tool.trim();
+    if (!name) {
+      toast(t("settingsPage.shared.nameFirst"));
+      return;
+    }
+    setStatus(t("settingsPage.shared.saving"));
+    pending.current = true;
+    send({ type: "asset_file_create", kind: "hook", name, phase, ...scope });
+  };
+
+  return (
+    <div className="mem-expand">
+      <div className="mem-exp-head">
+        <span>{t("settingsPage.hooks.newBtn")}</span>
+        <span className="sub">{t("settingsPage.hooks.newSub")}</span>
+        <span className="sp" />
+        <button type="button" className="save-btn" onClick={onClose}>
+          {t("settingsPage.shared.collapse")}
+        </button>
+      </div>
+      <div className="sem-body form">
+        <div className="mcp-form-group">
+          <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
+          <div className="mcp-type-pills" id="hookPhasePills">
+            {(["pre", "post"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={"mcp-type-pill" + (phase === p ? " on" : "")}
+                title={p === "pre" ? t("settingsPage.hooks.phasePreTip") : t("settingsPage.hooks.phasePostTip")}
+                onClick={() => setPhase(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mcp-form-group">
+          <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
+          <input
+            type="text"
+            className="mcp-form-input mcp-form-code"
+            placeholder={t("settingsPage.hooks.toolPlaceholder")}
+            spellCheck={false}
+            value={tool}
+            onChange={(e) => setTool(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") create();
+            }}
+          />
+          <div className="mcp-form-hint">{t("settingsPage.hooks.toolNameHint")}</div>
+        </div>
+      </div>
+      <div className="sem-foot">
+        <span className="text-ui-sm text-dim truncate">{status}</span>
+        <span className="sp" />
+        <button type="button" className="mcp-form-cancel" onClick={onClose}>
+          {t("common.cancel")}
+        </button>
+        <button type="button" className="confirm-btn" onClick={create}>
+          {t("settingsPage.hooks.createBtn")}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function HooksPage() {
   const { t } = useTranslation();
@@ -26,11 +212,7 @@ export default function HooksPage() {
 
   const [spin, setSpin] = useState(false);
   const [scope, setScope] = useState("profile"); // current scope key ("profile" | "project:<cwd>")
-  const [newPhase, setNewPhase] = useState<"pre" | "post">("pre"); // create-form phase pills
-  const [newTool, setNewTool] = useState(""); // create-form tool name
-  const [selPath, setSelPath] = useState<string | null>(null); // editor's current hook file
-  const [text, setText] = useState(""); // editor content (controlled textarea)
-  const [status, setStatus] = useState(""); // editor status line
+  const [openKey, setOpenKey] = useState<string | null>(null); // expanded row (hook path) or NEW_KEY
 
   const known = typeof hostSettings?.hooksEnabled === "boolean";
   const hooksEnabled = known && !!hostSettings?.hooksEnabled;
@@ -63,59 +245,15 @@ export default function HooksPage() {
     }
   };
 
-  // asset_file reply filtered to hooks: load into the editor
-  const file = useAppStore((s) => s.assetFile);
-  useEffect(() => {
-    if (!file || file.kind !== "hook" || !file.path) return;
-    setSelPath(file.path);
-    setText(file.content);
-    setStatus("");
-  }, [file]);
-
-  // asset_file_saved reply filtered to hooks: status line shows "saved"
-  const saved = useAppStore((s) => s.assetSaved);
-  useEffect(() => {
-    if (!saved || saved.kind !== "hook") return;
-    setStatus(t("settingsPage.shared.saved"));
-  }, [saved]);
-
-  // Asset operation failure (read/save/create threw): host replies with an error frame
-  const err = useAppStore((s) => s.assetErr);
-  useEffect(() => {
-    if (!err || err.kind !== "hook") return;
-    setStatus(err.message);
-  }, [err]);
-
   const pickScope = (id: string) => {
     setScope(id);
-    setSelPath(null);
-    setText("");
-    setStatus("");
+    setOpenKey(null);
   };
 
   // Resolve the current scope into {scope, cwd?} for create requests
   const scopeParts = (): { scope: string; cwd?: string } => {
     const ci = scope.indexOf(":");
     return ci < 0 ? { scope } : { scope: scope.slice(0, ci), cwd: scope.slice(ci + 1) };
-  };
-
-  const readItem = (h: HookAssetItem) => {
-    setSelPath(h.path);
-    setStatus(t("settingsPage.shared.reading"));
-    send({ type: "asset_file_read", kind: "hook", path: h.path });
-  };
-
-  const save = () => {
-    if (!selPath) return setStatus(t("settingsPage.hooks.pickFirst"));
-    setStatus(t("settingsPage.shared.saving"));
-    send({ type: "asset_file_write", kind: "hook", path: selPath, content: text });
-  };
-
-  const create = () => {
-    const name = newTool.trim();
-    if (!name) return setStatus(t("settingsPage.shared.nameFirst"));
-    setStatus(t("settingsPage.shared.saving"));
-    send({ type: "asset_file_create", kind: "hook", name, phase: newPhase, ...scopeParts() });
   };
 
   // Hooks under the current scope (profile rows carry no cwd)
@@ -173,28 +311,52 @@ export default function HooksPage() {
             .map((c) => ({ id: `project:${c}`, label: c.split("/").pop() || c }))}
         />
         <span className="truncate text-ui-sm text-faint" id="hooksScopePath" title={scopeDir}>{scopeDir}</span>
+        <span className="sp" />
+        <button
+          type="button"
+          className="add-btn"
+          id="hookNewBtn"
+          onClick={() => setOpenKey(openKey === NEW_KEY ? null : NEW_KEY)}
+        >
+          {t("settingsPage.hooks.newBtn")}
+        </button>
       </div>
-      <div className="agents-wrap">
-        <div className="set-card" id="hooksList">
-          {!agentAssets ? (
-            emptyRow(t("common.loading"))
-          ) : scopedHooks.length === 0 ? (
-            <div className="srow">
+      <div className="set-card mt-[12px]" id="hooksList">
+        {openKey === NEW_KEY && (
+          <>
+            <div className={"srow hook-row on"} data-temp="1" onClick={() => setOpenKey(null)}>
               <div className="srow-tx">
-                <b>{t("settingsPage.hooks.noHooksTitle")}</b>
-                <span>{t("settingsPage.hooks.noHooksDescEditor")}</span>
+                <b>{t("settingsPage.hooks.newBtn")}</b>
               </div>
+              <span className="mem-caret">
+                <Icon name="caretSlim" size={14} />
+              </span>
             </div>
-          ) : (
-            scopedHooks.map((h) => {
-              const hookId = `hook:${h.phase}:${h.tool || "*"}:${h.name}`;
-              const itemEnabled = h.enabled !== false;
-              return (
+            <HookNewForm scope={scopeParts()} onClose={() => setOpenKey(null)} />
+          </>
+        )}
+        {!agentAssets ? (
+          emptyRow(t("common.loading"))
+        ) : scopedHooks.length === 0 ? (
+          <div className="srow hook-row" onClick={() => setOpenKey(NEW_KEY)}>
+            <div className="srow-tx">
+              <b>{t("settingsPage.hooks.noHooksTitle")}</b>
+              <span>{t("settingsPage.hooks.noHooksDescEditor")}</span>
+            </div>
+            <span className="mem-caret">
+              <Icon name="caretSlim" size={14} />
+            </span>
+          </div>
+        ) : (
+          scopedHooks.map((h) => {
+            const hookId = `hook:${h.phase}:${h.tool || "*"}:${h.name}`;
+            const itemEnabled = h.enabled !== false;
+            const open = openKey === h.path;
+            return (
+              <Fragment key={h.path || hookId}>
                 <div
-                  className="srow"
-                  key={h.path || hookId}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => readItem(h)}
+                  className={"srow hook-row" + (open ? " on" : "")}
+                  onClick={() => setOpenKey(open ? null : h.path)}
                 >
                   <div className="srow-tx">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -236,51 +398,15 @@ export default function HooksPage() {
                   >
                     <i></i>
                   </div>
+                  <span className="mem-caret">
+                    <Icon name="caretSlim" size={14} />
+                  </span>
                 </div>
-              );
-            })
-          )}
-        </div>
-        <div className="set-card agent-editor" id="hookEditor">
-          <div className="ae-head">
-            <b id="hookName">{selPath ? pathBase(selPath) : "—"}</b>
-            <span id="hookPath">{selPath ?? ""}</span>
-            <span className="sp" />
-            <div className="mcp-type-pills" id="hookPhasePills">
-              {(["pre", "post"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={"mcp-type-pill" + (newPhase === p ? " on" : "")}
-                  title={p === "pre" ? t("settingsPage.hooks.phasePreTip") : t("settingsPage.hooks.phasePostTip")}
-                  onClick={() => setNewPhase(p)}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-            <input
-              className="inp"
-              id="hookNewTool"
-              placeholder={t("settingsPage.hooks.toolPlaceholder")}
-              value={newTool}
-              onChange={(e) => setNewTool(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") create();
-              }}
-            />
-            <button type="button" className="add-btn" id="hookNew" onClick={create}>{t("settingsPage.shared.newBtn")}</button>
-            <button type="button" className="save-btn" id="hookSave" onClick={save}>{t("common.save")}</button>
-          </div>
-          <textarea
-            id="hookText"
-            spellCheck={false}
-            value={text}
-            placeholder={t("settingsPage.hooks.editorPlaceholder")}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="ae-status" id="hookStatus">{status}</div>
-        </div>
+                {open && <HookEditor hook={h} onClose={() => setOpenKey(null)} />}
+              </Fragment>
+            );
+          })
+        )}
       </div>
     </div>
   );
