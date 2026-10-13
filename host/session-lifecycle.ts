@@ -26,7 +26,7 @@ import {
 } from "./state.ts";
 import { GoalController, type GoalSession } from "./goal.ts";
 import { acpParamsFromConfig } from "./acp-plan.ts";
-import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension } from "./acp-runtime.ts";
+import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension } from "./acp-assembly.ts";
 import { createRecallBlockTool } from "./acp-recall-tool.ts";
 import { createAcpStatusTool } from "./acp-status-tool.ts";
 import { rebuildAcpState } from "./acp-persist.ts";

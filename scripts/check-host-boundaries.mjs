@@ -35,6 +35,18 @@ const ALLOWED_EDGES = new Set([
   "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→stderr.ts",
   "acp-runtime.ts→acp-recall-tool.ts", "acp-recall-tool.ts→acp-projection.ts",
   "acp-recall-tool.ts→acp-persist.ts", "session-lifecycle.ts→acp-recall-tool.ts",
+  // T11 acp-runtime split (pure refactor): the §6 compress validation/planning
+  // moved to acp-compress (pure over plan/projection/persist shapes), and the
+  // assembly layer (runtime factory + tool/extension definitions) to
+  // acp-assembly; acp-runtime re-exports the assembly symbols so the frozen
+  // smoke scripts keep resolving — an intentional runtime↔assembly cycle,
+  // safe because assembly only touches the class at call time. session-lifecycle
+  // now imports the assembly layer directly.
+  "session-lifecycle.ts→acp-assembly.ts", "acp-runtime.ts→acp-compress.ts",
+  "acp-runtime.ts→acp-assembly.ts", "acp-assembly.ts→acp-runtime.ts",
+  "acp-compress.ts→acp-plan.ts", "acp-compress.ts→acp-projection.ts",
+  "acp-compress.ts→acp-persist.ts", "acp-assembly.ts→acp-plan.ts",
+  "acp-assembly.ts→acp-persist.ts", "acp-assembly.ts→stderr.ts",
   // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
   // acp-refs (journal-replayed, pure over projection/persist shapes); the
   // acp_status tool surface + the status/ephemeral renders live in

@@ -1,5 +1,7 @@
-// ACP dual-zone runtime: per-session state machine + compress_context tool +
-// request projection wiring with ephemeral status (spec §5/§6/§7, tickets T3+T4+T6+T7).
+// ACP dual-zone runtime: the per-session state machine (spec §5/§6/§7,
+// tickets T3+T4+T6+T7; T11 split — the compress §6 validation/planning lives
+// in acp-compress.ts and the factory/tool/extension assembly in
+// acp-assembly.ts, re-exported below for the frozen importers).
 //
 // Since T6 the §5.2 table runs on both axes: the zone-size axis (rendered zone
 // tokens vs window × 35%) drives the pending-strong state — the ephemeral
@@ -45,7 +47,6 @@
 // against the journal (annotateView in acp-refs.ts); unmatched view messages
 // (base-synthetic reminders) get pseudo ids that can never enter a manifest
 // and pass through untouched.
-import { type } from "@oh-my-pi/omptype";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import { Tokenizer, effectiveReserveTokens } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
@@ -55,10 +56,9 @@ import {
 	renderCompactionBlock,
 	splitBlocks,
 	type AcpBlockInfo,
-	type AcpIndexLine,
 	type AcpSourceMessage,
 } from "./acp-projection.ts";
-import { appendAcpSummary, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
+import { appendAcpSummary, type AcpSummarySink } from "./acp-persist.ts";
 import { dispatchRecall, type RecallOutcome } from "./acp-recall-tool.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
 import { renderEphemeralMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
@@ -72,9 +72,20 @@ import {
 	ACP_ZONE_LIMIT_RATIO,
 	type AcpParams,
 	computeRoundPlan,
-	computeSummaryBudget,
-	computeTier,
 } from "./acp-plan.ts";
+
+// Compress validation/planning moved to acp-compress.ts and the assembly
+// layer (factory/tool/extension) to acp-assembly.ts (T11 split, pure
+// refactor); the moved symbols are re-exported here so existing importers —
+// session-lifecycle aside, the unmodifiable smoke scripts — keep resolving.
+import { planCompression } from "./acp-compress.ts";
+
+export {
+	createAcpRuntime,
+	createCompressContextTool,
+	createAcpProjectionExtension,
+} from "./acp-assembly.ts";
+export type { CompressOutcome, CompressRejection } from "./acp-compress.ts";
 
 // ---- runtime state --------------------------------------------------------------
 
@@ -132,36 +143,6 @@ export interface AcpRoundStatus {
 	exempted: number;
 	/** Rendered manifest section (largest first), including the exemption trailer when truncated. */
 	manifestText: string;
-}
-
-/** compress_context success payload (mirrored into the tool_result JSON, spec §6 execution). */
-export interface CompressOutcome {
-	ok: true;
-	blockId: string;
-	compressed: { blocks: number; tokens: number };
-	kept: { blocks: number; tokens: number };
-	activeTokensAfter: number;
-	/** New tier from the post-compression active zone (spec §5.1, immediate). */
-	tier: "none" | "L1" | "L2" | "L3";
-	/** False when the folded set stayed under minCompress (spec §5.2). */
-	countedAsSuccess: boolean;
-	warning?: string;
-}
-
-/** compress_context rejection; any rejection leaves zero side effects and does not consume the manifest. */
-export interface CompressRejection {
-	ok: false;
-	code:
-		| "degraded"
-		| "no-manifest"
-		| "manifest-consumed"
-		| "hallucinated-keep"
-		| "over-target"
-		| "empty-summary"
-		| "summary-over-budget"
-		| "nothing-to-compress";
-	error: string;
-	validCandidates?: string[];
 }
 
 export class AcpRuntimeState {
@@ -527,181 +508,51 @@ export class AcpRuntimeState {
 		return this.runLocked(() => this.#validateAndExecute(input));
 	}
 
+	// Snapshot inside the lock (spec §4/§6), plan pure in acp-compress.ts,
+	// apply the side effects here — validation order and mutex semantics
+	// unchanged (T11 split).
 	#validateAndExecute(input: { keep?: string[]; summary?: string }): CompressOutcome | CompressRejection {
-		const p = this.params;
-		const countTokens = this.#deps.countTokens;
-		// §5.3 degrade — customTools cannot be unregistered after session
-		// creation, so the tool surface stays and the entry rejects instead.
-		if (this.degraded) {
-			return {
-				ok: false,
-				code: "degraded",
-				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
-			};
-		}
-		// §6.1 — a consumed (or missing) manifest rejects before anything else,
-		// pointing at the pull channel for a fresh round (spec §6 v10).
-		if (!this.manifest) {
-			return { ok: false, code: "no-manifest", error: "No compression manifest for this round — call acp_status to get one." };
-		}
-		if (this.manifest.consumed) {
-			return {
-				ok: false,
-				code: "manifest-consumed",
-				error: "This round's manifest is already consumed; call acp_status for the next round's manifest.",
-			};
-		}
-		// Tool-entry decode inside the lock (spec §3 v10): keep speaks bN short
-		// refs; unknown refs pass through and the §6.2 validation judges them.
 		this.#syncRefs();
-		const keep = [...new Set((input.keep ?? []).map((ref) => this.#refs.resolve(ref)))];
-		const keepSet = new Set(keep);
 		const active = this.activeBlocks();
-		const byId = new Map(active.map((b) => [b.id, b]));
-		const protectedIds = this.protectedZone(active);
-		const manifestSet = new Set(this.manifest.ids);
-		const candidates = this.manifest.ids.filter((id) => byId.has(id) && !protectedIds.has(id));
-
-		// §6.2 — hallucinated keep ids reject the whole call, with the full valid
-		// candidate set (short refs, spec §3 v10).
-		const bad = keep.filter((id) => !byId.has(id) || protectedIds.has(id));
-		if (bad.length > 0) {
-			const reasons = bad.map((id) => {
-				if (protectedIds.has(id)) return `${this.#refs.label(id)} (protected tail)`;
-				if (this.compressed.has(id)) return `${this.#refs.label(id)} (already compressed)`;
-				if (manifestSet.has(id) && !byId.has(id)) return `${this.#refs.label(id)} (no longer active)`;
-				return `${id} (nonexistent)`;
-			});
-			const valid = candidates.map((id) => this.#refs.label(id));
-			return {
-				ok: false,
-				code: "hallucinated-keep",
-				error: `keep contains invalid block ids: ${reasons.join(", ")}. Valid candidates: ${valid.length ? valid.join(", ") : "(none)"}.`,
-				validCandidates: valid,
-			};
-		}
-
-		// §6.3 — keep + protected tail must fit the target line.
-		const keepTokens = keep.reduce((n, id) => n + (byId.get(id)?.tokens ?? 0), 0);
-		const protectedTokens = active.reduce((n, b) => n + (protectedIds.has(b.id) ? b.tokens : 0), 0);
-		if (keepTokens + protectedTokens > p.target) {
-			const over = keepTokens + protectedTokens - p.target;
-			return {
-				ok: false,
-				code: "over-target",
-				error: `keep (${keepTokens} tokens) + protected tail (${protectedTokens} tokens) = ${keepTokens + protectedTokens} > target ${p.target}; reduce keep by ${over} more tokens.`,
-			};
-		}
-
-		// §6.4 — empty summary.
-		const summary = input.summary ?? "";
-		if (!summary.trim()) {
-			return { ok: false, code: "empty-summary", error: "summary must not be empty." };
-		}
-
-		// §6.5 — summary budget; basis = this round's compressed set plus, for a
-		// strong reset, every old summary the zone merges in (§5.2/§11). The
-		// method is re-derived here from the same settled snapshot the round
-		// status uses (request-anchored judgment, §5.2): past L3, or riding a
-		// zone over its line with active > L1 — a pure zone reset at or under L1
-		// does not ride and stays normal. A level-3 armed force overrides to
-		// strong unconditionally (§5.2: forced compression runs strong
-		// semantics with meta.forced=true).
-		const compressedIds = this.manifest.ids.filter((id) => byId.has(id) && !keepSet.has(id));
-		const compressedTokens = compressedIds.reduce((n, id) => n + (byId.get(id)?.tokens ?? 0), 0);
-		const activeTokensBefore = active.reduce((n, b) => n + b.tokens, 0);
-		const zoneTokens = this.#zoneTokens();
-		const forced = this.#forcedExecution;
-		const method: "normal" | "strong" = forced
-			? "strong"
-			: computeRoundPlan(activeTokensBefore, p, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens }).method;
-		const mergedOldSummaryTokens = method === "strong" ? zoneTokens : 0;
-		const budget = computeSummaryBudget(compressedTokens, mergedOldSummaryTokens, p);
-		const summaryTokens = countTokens(summary);
-		if (summaryTokens > budget) {
-			return {
-				ok: false,
-				code: "summary-over-budget",
-				error:
-					compressedIds.length === 0 && method !== "strong"
-						? `keep covers the entire manifest — nothing would be compressed, so the summary budget is 0 (${summaryTokens} > ${budget}); unkeep some candidate blocks.`
-						: `summary is ${summaryTokens} tokens, over the budget ${budget} = min((compressed ${compressedTokens} + merged old summaries ${mergedOldSummaryTokens}) / ${p.summaryDivisor}, ${p.summaryBudgetMax}); shorten it.`,
-			};
-		}
-
-		// §6.6 — an empty compressed set rejects, EXCEPT a strong pure reset:
-		// folding only the old zone summaries is a legal submission whose budget
-		// basis is those summaries (§5.2/§6 exception; acceptance 14).
-		if (compressedIds.length === 0 && method !== "strong") {
-			return { ok: false, code: "nothing-to-compress", error: "Nothing to compress: the manifest minus keep intersects no active block." };
-		}
-
-		// Execution (§6): normal appends to the zone end; strong supersedes the
-		// whole live zone and inherits its full compressedIds/index union, so the
-		// zone renders as a single block and rebuild never walks supersedes
-		// chains (§9). depth counts strong generations (normal blocks sit at 0).
-		const activeTokensAfter = activeTokensBefore - compressedTokens;
-		const supersedes = method === "strong" ? this.zone.map((z) => z.id) : [];
-		const inheritedIds = new Set<string>();
-		const index: AcpIndexLine[] = [];
-		if (method === "strong") {
-			for (const z of this.zone) {
-				for (const line of z.index) {
-					if (!inheritedIds.has(line.id)) {
-						inheritedIds.add(line.id);
-						index.push(line);
-					}
-				}
-				for (const id of z.meta.compressedIds) inheritedIds.add(id);
-			}
-		}
-		for (const id of compressedIds) {
-			const b = byId.get(id)!;
-			index.push({ id, tokens: b.tokens, intent: b.intent });
-		}
-		const written = appendAcpSummary(this.#deps.sink, {
-			summary,
-			index,
-		meta: {
-			createdAt: Date.now(),
-			depth: method === "strong" ? this.zone.reduce((m, z) => Math.max(m, z.meta.depth), 0) + 1 : 0,
-			method,
-			...(forced ? { forced: true } : {}),
-			keepIds: keep,
-			compressedIds: [...inheritedIds, ...compressedIds],
-			supersedes,
-			tokensBefore: activeTokensBefore,
-			tokensAfter: activeTokensAfter,
-		},
-		});
+		const r = planCompression(
+			{
+				degraded: this.degraded,
+				manifest: this.manifest,
+				active,
+				protectedIds: this.protectedZone(active),
+				compressed: this.compressed,
+				zone: this.zone,
+				zoneTokens: this.#zoneTokens(),
+				zoneLimitTokens: this.#zoneLimitTokens,
+				forcedExecution: this.#forcedExecution,
+				params: this.params,
+				countTokens: this.#deps.countTokens,
+				resolve: (ref) => this.#refs.resolve(ref),
+				label: (id) => this.#refs.label(id),
+			},
+			input,
+		);
+		if (r.reject) return r.reject;
+		const plan = r.plan;
+		const written = appendAcpSummary(this.#deps.sink, plan.payload);
 		// The fresh block sits at the journal tail: take its short ref now so the
 		// outcome can name it the way the model will recall it (spec §3 v10).
 		const blockLabel = this.#refs.assign(written.id);
-		if (method === "strong") this.zone = [written];
+		if (plan.method === "strong") this.zone = [written];
 		else this.zone.push(written);
-		for (const id of compressedIds) this.compressed.add(id);
-		this.manifest.consumed = true;
-		// minCompress never gates validation (spec §5.2): below it the call
-		// still succeeds — L2 adds a warning; L3 does not count it as a
-		// successful compression for the §5.2/§5.3 failure exits. A pure reset
-		// (folded tokens 0) likewise never counts (§5.2 compressed-set reading).
-		const tierBefore = computeTier(activeTokensBefore, p);
-		const countedAsSuccess = compressedTokens >= p.minCompress;
+		for (const id of plan.compressedIds) this.compressed.add(id);
+		this.manifest!.consumed = true;
 		this.#forcedExecution = false;
-		if (countedAsSuccess) this.#successAt = this.#requestSeq;
-		const warning =
-			tierBefore === "L2" && !countedAsSuccess
-				? `compressed ${compressedTokens} tokens is under minCompress ${p.minCompress}; allowed with warning at ${tierBefore} tier.`
-				: undefined;
+		if (plan.countedAsSuccess) this.#successAt = this.#requestSeq;
 		return {
 			ok: true,
 			blockId: blockLabel,
-			compressed: { blocks: compressedIds.length, tokens: compressedTokens },
-			kept: { blocks: keep.length, tokens: keepTokens },
-			activeTokensAfter,
-			tier: computeTier(activeTokensAfter, p),
-			countedAsSuccess,
-			...(warning ? { warning } : {}),
+			compressed: { blocks: plan.compressedIds.length, tokens: plan.compressedTokens },
+			kept: { blocks: plan.keep.length, tokens: plan.keepTokens },
+			activeTokensAfter: plan.activeTokensAfter,
+			tier: plan.tierAfter,
+			countedAsSuccess: plan.countedAsSuccess,
+			...(plan.warning ? { warning: plan.warning } : {}),
 		};
 	}
 
@@ -725,76 +576,4 @@ export class AcpRuntimeState {
 			this.#refs.label(id2),
 		);
 	}
-}
-
-/** Build a runtime bound to the session model's Tokenizer (spec §8). */
-export function createAcpRuntime(opts: {
-	model: unknown;
-	sink: AcpSummarySink;
-	getEntries: () => readonly SessionEntry[];
-	params?: Partial<AcpParams>;
-}): AcpRuntimeState {
-	const tokenizer = new Tokenizer(opts.model as never);
-	return new AcpRuntimeState({
-		countTokens: (s) => tokenizer.countTokens(s),
-		sink: opts.sink,
-		getEntries: opts.getEntries,
-		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
-		contextWindow: (opts.model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0,
-		params: opts.params,
-	});
-}
-
-// ---- tool + extension -----------------------------------------------------------
-
-const COMPRESS_CONTEXT_DESCRIPTION = `Compress old conversation blocks into a summary (context management).
-
-Call acp_status first: its manifest lists this round's compressible blocks as bN short ids (largest first). Then call with:
-- keep: the bN short ids from that manifest that must stay in the context verbatim (recent/important ones).
-- summary: a complete technical summary of every listed block NOT kept (conclusions, file paths, decisions, exact values).
-
-One successful compress consumes the manifest — call acp_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep.`;
-
-/** compress_context ToolDefinition (registered via createAgentSession({ customTools })). */
-export function createCompressContextTool(state: AcpRuntimeState) {
-	return {
-		name: "compress_context",
-		label: "Compress Context",
-		description: COMPRESS_CONTEXT_DESCRIPTION,
-		parameters: type({
-			keep: type.array(type("string")).describe("bN short ids from the current acp_status manifest to keep verbatim."),
-			summary: type("string").describe("Summary covering every compressed block (not the kept ones)."),
-		}),
-		loadMode: "essential" as const,
-		approval: "write" as const,
-		execute: async (_id: string, params: { keep?: string[]; summary?: string }) => {
-			const out = await state.compress({ keep: params?.keep, summary: params?.summary });
-			return { content: [{ type: "text", text: JSON.stringify(out) }] };
-		},
-	};
-}
-
-
-/**
- * Request projection extension: hooks the context event and replaces the view
- * with the dual-zone projection. A projection failure must never blow up the
- * request — the original view passes through (same stance the retired nudge
- * prototype's transform took).
- */
-export function createAcpProjectionExtension(state: AcpRuntimeState) {
-	return (pi: {
-		on: (
-			event: "context",
-			handler: (ev: { messages: AgentMessage[] }) => { messages: AgentMessage[] },
-		) => void;
-	}): void => {
-		pi.on("context", (ev) => {
-			try {
-				return { messages: state.projectView(ev.messages) };
-			} catch (err) {
-				safeStderr(`[ACP] projection failed, passing the original view through:`, err);
-				return { messages: ev.messages };
-			}
-		});
-	};
 }
