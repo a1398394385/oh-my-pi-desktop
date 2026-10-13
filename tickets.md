@@ -233,3 +233,12 @@ P3  探针:保护区 A/B + 参数回填      ← T7(队尾观测)
 
 **Blocked by**: T10
 **Status**: done(2026-10-13,worktree commit cd63380;acp-runtime 800→579、acp-compress 288、acp-assembly 84;**九冒烟断言零改动全绿**(git diff 证明)、check 绿;已知取舍:①runtime↔assembly 有意保留 re-export 循环(冻结冒烟 import;将来允许改冒烟时删 re-export);②snapshot 的 syncRefs 提前到 degraded/no-manifest 检查前(幂等重放,无观察差异,六条校验序内部顺序逐字不变);③579 而非 500——状态机内聚,再切就是把私有成员跨模块摊开换行数)
+
+---
+
+## T12: L1/L2/L3 双模式配置(绝对值/百分比)+ 设置页 ACP 区改造
+
+**What to build**:Decider 拍板——`acp.tierMode` 双模式(absolute 存 token 数/percent 存百分数按模型 contextWindow 换算),实验设置页删 legacy nudge 六字段、换 tierMode 胶囊 + L1/L2/L3 数字输入(K/% 单位、commit-on-blur)。修复小窗口模型(如 128K GPT 面)L3=300K 永不可达、仪表盘失真的缺口。
+
+**Blocked by**: 合并后(主仓直改)
+**Status**: done(2026-10-13,主仓 commits 747d767 实施 + 7d082da spec §11 回填;新冒烟 smoke-acp-tiermode + 九 ACP 冒烟回归 + ui:build + check 全绿;注记:①会话内切模型不重算档位线(percent 锚定会话创建时刻的 contextWindow,与 absolute 现状一致);②tierMode 切换连写 l1/l2/l3=null 防旧语义数字被新模式误读(merge 写无法删键,null 两侧读取器忽略);③percent 模式逐字段回退绝对默认,非整组;④origin:GPT 新旧对比评审中的有效项之一,另两项处置见 .agents/notes/0006)
