@@ -35,9 +35,13 @@ const COMPRESS_CONTEXT_DESCRIPTION = `Compress old conversation blocks into a su
 
 Call acp_status first: its manifest lists this round's compressible blocks as bN short ids (largest first). Then call with:
 - keep: the bN short ids from that manifest that must stay in the context verbatim (recent/important ones).
-- summary: a complete technical summary of every listed block NOT kept (conclusions, file paths, decisions, exact values).
+- summary: a working-state summary of every listed block NOT kept, structured in three parts:
+  1. established findings: conclusions, root causes, exact file paths/values/decisions that later work depends on;
+  2. workspace state: files changed so far, tests run and their results, environment facts;
+  3. remaining actions: what is still to be done, starting with your concrete next step.
+  Unresolved issues recorded in the summary must be consistent with the remaining actions — never state an open problem and then propose to finish (summary self-consistency).
 
-One successful compress consumes the manifest — call acp_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep.`;
+One successful compress consumes the manifest — call acp_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check acp_status and compress after finishing a stage of work, before the context grows large.`;
 
 /** compress_context ToolDefinition (registered via createAgentSession({ customTools })). */
 export function createCompressContextTool(state: AcpRuntimeState) {

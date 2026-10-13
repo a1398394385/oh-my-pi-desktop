@@ -188,12 +188,14 @@ P3  探针:保护区 A/B + 参数回填      ← T7(队尾观测)
 
 ## P3: 探针 — 尾部保护区 A/B + 参数回填
 
-**What to build**:全链路可用后的观测票——保护区 0 vs 默认(max(最近 2 turn, 最近 20K token))两配置下跑真实长会话任务,观察断片率(模型丢失近期上下文的频次)与压缩意愿,结论回填 spec §11 参数表,关闭 OQ1。
+**What to build**:全链路可用后的观测票——保护区 0 vs 默认(max(最近 2 turn, 最近 20K token))两配置下跑真实长会话任务,观察断片率(模型丢失近期上下文的频次)与压缩意愿,结论回填 spec §11 参数表,关闭 OQ1。**消融臂(2026-10-13 加,借 AutoCompact 论文设计)**:同一模型跑「Summary-ignored 变体」(compress_context 调用被跳过、历史原样继续),分离压缩本身收益与协议开销;有条件再加 full-history(无 ACP)第三臂。观测项追加:①压缩意愿(主动调 compress_context/acp_status 的频次与时机——论文先验:base model 极少主动压,这是头号风险);②summary 三段覆盖(findings/workspace/remaining-next-step)与自洽性(记录未决事项却提议收尾 = 失败模式)。详见 `.agents/notes/0006-autocompact-external-evidence.md`。
 
 **Blocked by**: T7(队尾观测)
 **Status**: 依赖已满足(T7 done 2026-10-13,全链路可用含 recall);真 API 长会话花钱,等用户在场决策后跑
 
 - [ ] 两配置对照数据(断片率 + 压缩行为)落回报
+- [ ] Summary-ignored 消融臂数据(压缩收益 vs 协议开销分离)
+- [ ] 压缩意愿 + summary 质量(三段覆盖/自洽)观测结论
 - [ ] spec §11 保护区参数回填,OQ1 关闭
 
 ---
