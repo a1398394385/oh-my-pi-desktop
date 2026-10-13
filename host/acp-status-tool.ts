@@ -26,22 +26,30 @@ export interface AcpRoundStatusFields {
 	manifestText: string;
 }
 
-/** Tier instruction lines (spec §5.1/§7; pull-mode wording, deterministic, no wall-clock state). */
-const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams) => string> = {
+/** Tier instruction lines (spec §5.1/§7; pull-mode wording, deterministic, no wall-clock state).
+ * `forced` marks the request the host pinned to compress_context (tool_choice): the model cannot
+ * call acp_status there, so L3 must point at the manifest already in the request instead. */
+const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams, forced: boolean) => string> = {
 	L1: () =>
 		"Active-zone context is above the activation line (L1): consider compressing completed work — call acp_status for the round manifest, then compress_context with the short ids (bN) to keep and a summary covering every other listed block.",
 	L2: (p) =>
 		`Context pressure is high (L2): compress this round. Call acp_status for the manifest; after compression, keep + the protected tail must stay under the target of ${p.target} tokens.`,
-	L3: () =>
-		"Final notice (L3): the next turn must complete a successful compression, or the host will force one. Call acp_status now, then compress_context with a full summary of the listed blocks you are not keeping.",
+	L3: (_p, forced) =>
+		forced
+			? "Final notice (L3): this request is pinned to compress_context — compress immediately with a full summary of the listed blocks above you are not keeping."
+			: "Final notice (L3): the next turn must complete a successful compression, or the host will force one. Call acp_status now, then compress_context with a full summary of the listed blocks you are not keeping.",
 };
 
 /** Pending-strong annotation: uniform across every tier while the zone is over its line (spec §5.2/§7). */
 const PENDING_STRONG_NOTE =
 	"Pending strong: the compression zone is over its budget line — the next compression will be a strong one (the whole zone folds into a single summary block).";
 
-/** The ephemeral's manifest pointer (§7 v10): the manifest itself lives in acp_status, never here. */
-const STATUS_POINTER = "Compression manifest: call the acp_status tool to list this round's candidate blocks (short ids).";
+/** The ephemeral's manifest pointer (§7 v10): the manifest itself lives in acp_status, never here —
+ * except on a forced request, where the synthetic acp_status return already delivered it. */
+const statusPointer = (forced: boolean) =>
+	forced
+		? "Compression manifest: the acp_status return above lists this round's candidate blocks (short ids) — compress from it now."
+		: "Compression manifest: call the acp_status tool to list this round's candidate blocks (short ids).";
 /** The one-line status row shared by the ephemeral and the tool return (tier + method + totals). `marker` separates the two surfaces' provenance. */
 function statusRow(rs: AcpRoundStatusFields, marker: string): string {
 	return `${marker} tier=${rs.tier} compress=${rs.method} zone=${rs.zoneTokens} tokens active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens`;
@@ -54,13 +62,13 @@ function statusRow(rs: AcpRoundStatusFields, marker: string): string {
  * unchanged round state yields byte-identical text. The [acp-status] marker
  * belongs to the ephemeral only — it must never appear in journaled text.
  */
-export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams): UserMessage {
+export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, forced = false): UserMessage {
 	const text = [
 		statusRow(rs, "[acp-status]"),
 		// Tier none + pending-strong (§5.2 row 6): the annotation IS the message.
-		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p)]),
+		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p, forced)]),
 		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
-		STATUS_POINTER,
+		statusPointer(forced),
 	].join("\n");
 	return { role: "user", content: text, synthetic: true, timestamp: 0 };
 }
@@ -81,7 +89,7 @@ export const ACP_SYNTHETIC_STATUS_CALL_ID = "acp-synthetic-status";
  * signatures; stopReason toolUse keeps the call out of the abandoned-turn
  * placeholder pairing).
  */
-export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams): [AssistantMessage, ToolResultMessage] {
+export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams, forced = false): [AssistantMessage, ToolResultMessage] {
 	const use: AssistantMessage = {
 		role: "assistant",
 		content: [{ type: "toolCall", id: ACP_SYNTHETIC_STATUS_CALL_ID, name: "acp_status", arguments: {} }],
@@ -96,7 +104,7 @@ export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams
 		role: "toolResult",
 		toolCallId: ACP_SYNTHETIC_STATUS_CALL_ID,
 		toolName: "acp_status",
-		content: [{ type: "text", text: renderStatusText(rs, p) }],
+		content: [{ type: "text", text: renderStatusText(rs, p, forced) }],
 		isError: false,
 		timestamp: 0,
 	};
@@ -109,12 +117,14 @@ export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams
  * [acp-report] marker keeps the journaled tool result distinguishable from
  * the never-journaled [acp-status] ephemeral.
  */
-export function renderStatusText(rs: AcpRoundStatusFields, p: AcpParams): string {
+export function renderStatusText(rs: AcpRoundStatusFields, p: AcpParams, forced = false): string {
 	return [
 		statusRow(rs, "[acp-report]"),
-		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p)]),
+		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p, forced)]),
 		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
-		"Current compression manifest (largest first; bN | tokens | intent). compress_context folds exactly the UNKEPT blocks of this list — keep ids must come from it, and one successful compress consumes it; call acp_status again for the next round:",
+		forced
+			? "Current compression manifest (largest first; bN | tokens | intent). compress_context folds exactly the UNKEPT blocks of this list — keep ids must come from it, and one successful compress consumes it. Compress from this list now:"
+			: "Current compression manifest (largest first; bN | tokens | intent). compress_context folds exactly the UNKEPT blocks of this list — keep ids must come from it, and one successful compress consumes it; call acp_status again for the next round:",
 		rs.manifestText,
 	].join("\n");
 }

@@ -223,7 +223,18 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	assert.equal(fx.forceCalls.length, 1, "the unanswered L3 ultimatum armed the force");
 	const out3 = fx.state.projectView(fx.view);
 	const [a3, r3] = pairTail(out3);
-	assert.equal(JSON.stringify([a3, r3]), JSON.stringify([a1, r1]), "the pinned (forced) request carries the identical pair");
+	// T10 forced wording: tool_choice pins compress_context on this request, so
+	// the pair switches to the forced variant — it points at the manifest the
+	// request already carries, never at calling acp_status. The force is
+	// request-scoped: the next projectView advances the request sequence, so
+	// the pair returns to the non-forced wording — byte-identical to the
+	// original ultimatum copy.
+	assert.notEqual(JSON.stringify([a3, r3]), JSON.stringify([a1, r1]), "the pinned (forced) request carries the forced wording");
+	assert.ok(textOf(r3 as { content: unknown }).includes("pinned to compress_context"), "the forced pair points at the compress it is pinned to");
+	assert.ok(!textOf(r3 as { content: unknown }).includes("Call acp_status"), "the forced pair never directs the model to call acp_status");
+	const out4 = fx.state.projectView(fx.view);
+	const [a4, r4] = pairTail(out4);
+	assert.equal(JSON.stringify([a4, r4]), JSON.stringify([a1, r1]), "the request after the pinned one returns to the non-forced pair, byte-identical");
 	console.log("ok: A+B — L3 + armed-force requests carry a paired, non-candidate, byte-stable synthetic pair before the ephemeral");
 }
 

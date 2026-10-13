@@ -308,21 +308,21 @@ export class AcpRuntimeState {
 		if (this.roundStatus) this.#anchorRound(this.roundStatus);
 		if (this.degraded) return [...view]; // the relief check degraded mid-projection
 		const rs = this.roundStatus;
-		// v10.1 synthetic status pair: requests that deliver the ultimatum copy —
-		// the L3 tier itself, the request an armed force is pinned to, or a
-		// guard-line direct trigger — carry a synthetic acp_status pair at the
-		// active-zone end so the forced model already holds the manifest (spec
-		// §5.2/§6 v10.1). Never journaled, never a candidate: it lives only in
-		// this projected output and is rebuilt (byte-identical while the round
-		// state holds) on every qualifying request.
-		if (rs && (rs.tier === "L3" || this.#forcedFor === this.#requestSeq || this.#guardAt === this.#requestSeq)) {
-			const pair = renderSyntheticStatusPair(rs, this.params);
-			assertToolPairing(pair); // the pair rides as a complete tool round (spec §6 v10.1)
-			out.push(pair[0], pair[1]);
-		}
-		if (rs && (rs.tier !== "none" || rs.pendingStrong)) {
-			out.push(renderEphemeralMessage(rs, this.params));
-		}
+	// v10.1 synthetic status pair: ultimatum-copy requests (the L3 tier, an
+	// armed force's pinned request, a guard-line trigger) carry a synthetic
+	// acp_status pair at the active-zone end so the model already holds the
+	// manifest (§5.2/§6 v10.1); never journaled, never a candidate. Pinned
+	// requests cannot call acp_status (tool_choice pins compress_context), so
+	// point at the manifest above instead.
+	const forcedNow = this.#forcedFor === this.#requestSeq || this.#guardAt === this.#requestSeq;
+	if (rs && (rs.tier === "L3" || forcedNow)) {
+		const pair = renderSyntheticStatusPair(rs, this.params, forcedNow);
+		assertToolPairing(pair); // the pair rides as a complete tool round (spec §6 v10.1)
+		out.push(pair[0], pair[1]);
+	}
+	if (rs && (rs.tier !== "none" || rs.pendingStrong)) {
+		out.push(renderEphemeralMessage(rs, this.params, forcedNow));
+	}
 		this.lastProjected = out;
 		return out;
 	}
