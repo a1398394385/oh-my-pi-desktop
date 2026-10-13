@@ -230,6 +230,7 @@
 | 参数 | 值 | 备注 |
 |---|---|---|
 | L1 / L2 / L3 | 100K / 200K / 300K(活跃区 token) | 默认值,运行时动态调整;配置约束:L3 < 0.5×窗口−20K,否则高档位不可达 |
+| tierMode(v10.2 实现层) | `acp.tierMode`:"absolute"(缺省,l1/l2/l3 存 token 数)或 "percent"(l1/l2/l3 存百分数,会话创建时按模型 contextWindow 换算为 token 线;窗口缺失/非正回退 absolute 语义) | 小窗口模型高档位不可达缺口的修复;UI 见实验设置页 ACP 区(absolute 输入单位 K,percent 单位 %) |
 | **target(压缩目标线)** | 默认 = L1(100K),可配置,可调更低 | 压缩后允许的活跃区大小:keep + 保护区 ≤ target;普通/强力统一生效(v7 Decider 拍板) |
 | minCompress | 20K | 成功压缩的被压集下限(v7);清单可压总量低于它的极端碎块场景不特化,三级无进展即降级(v8) |
 | summary 预算 | ≤ min((本次被压 + 参与重置旧摘要) ÷ 3, 8K) | v3 修正基数 |
