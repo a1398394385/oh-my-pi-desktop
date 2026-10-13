@@ -11,7 +11,7 @@
 // one successful compress consumes it). Large returns ride the base tool
 // truncation pipeline exactly like recall_block (T5 precedent).
 import { type } from "@oh-my-pi/omptype";
-import type { UserMessage } from "@oh-my-pi/pi-agent-core";
+import type { AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
 import type { AcpParams } from "./acp-plan.ts";
 import { enforceInlineByteCap } from "@oh-my-pi/pi-tui/tools/streaming-output";
 
@@ -63,6 +63,44 @@ export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams): 
 		STATUS_POINTER,
 	].join("\n");
 	return { role: "user", content: text, synthetic: true, timestamp: 0 };
+}
+
+/** Deterministic tool round id of the ultimatum's synthetic status pair (spec §6 v10.1): stable per session, never a journal id. */
+export const ACP_SYNTHETIC_STATUS_CALL_ID = "acp-synthetic-status";
+
+/**
+ * The ultimatum's synthetic status pair (spec §6 v10.1): a FRESH assistant
+ * tool_use (never an insert into an existing assistant — thinking-signature
+ * and prefix-cache risk, spec §3 projection discipline) answered by its user
+ * tool_result carrying the full [acp-report] dashboard. The request the force
+ * pins ([forced,"none"] has one shot and cannot call acp_status) already
+ * holds the round manifest, so the forced keep-pick is an informed one. Never
+ * journaled and never a compression candidate: rebuilt every request the
+ * injection condition holds, byte-identical while the round state is unchanged.
+ * The identity metadata is inert for wire conversion (no thinking blocks, no
+ * signatures; stopReason toolUse keeps the call out of the abandoned-turn
+ * placeholder pairing).
+ */
+export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams): [AssistantMessage, ToolResultMessage] {
+	const use: AssistantMessage = {
+		role: "assistant",
+		content: [{ type: "toolCall", id: ACP_SYNTHETIC_STATUS_CALL_ID, name: "acp_status", arguments: {} }],
+		api: "anthropic-messages",
+		provider: "anthropic",
+		model: "acp-synthetic-status",
+		stopReason: "toolUse",
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+		timestamp: 0,
+	};
+	const result: ToolResultMessage = {
+		role: "toolResult",
+		toolCallId: ACP_SYNTHETIC_STATUS_CALL_ID,
+		toolName: "acp_status",
+		content: [{ type: "text", text: renderStatusText(rs, p) }],
+		isError: false,
+		timestamp: 0,
+	};
+	return [use, result];
 }
 
 /**

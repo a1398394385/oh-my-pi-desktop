@@ -26,6 +26,10 @@
 // compressible nor rendered once a later successful compress retires them
 // (spec §6). The dashboard render lives in host/acp-status-tool.ts.
 //
+// v10.1: ultimatum-carrying requests (L3 tier / armed force / guard-line
+// trigger) also ride a synthetic acp_status pair at the active-zone end,
+// before the ephemeral line (spec §5.2/§6 v10.1; renderer in acp-status-tool.ts).
+//
 // One AcpRuntimeState per session owns everything the tool and the projection
 // need to agree on: the compaction zone (journal order), the compressed-id set
 // (runtime mirror of rebuildAcpState), the current-round manifest, and the
@@ -46,6 +50,7 @@ import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import { Tokenizer, effectiveReserveTokens } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import {
+	assertToolPairing,
 	projectContext,
 	renderCompactionBlock,
 	splitBlocks,
@@ -56,7 +61,7 @@ import {
 import { appendAcpSummary, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
 import { dispatchRecall, type RecallOutcome } from "./acp-recall-tool.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
-import { renderEphemeralMessage, renderStatusText } from "./acp-status-tool.ts";
+import { renderEphemeralMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
 import { safeStderr } from "./stderr.ts";
 
 // Parameters, the tier ladder, and the §5.2 decision table live in the pure
@@ -278,10 +283,11 @@ export class AcpRuntimeState {
 
 	/**
 	 * Project a request view (spec §4): compression zone first, then the active
-	 * zone filtered to non-compressed blocks, then the [acp-status] ephemeral
-	 * appended when a tier is active (spec §7). Also refreshes the snapshot the
-	 * compress validation runs against (same coordinate system as the manifest:
-	 * the round status is re-derived from this fresh post-prune view, which is
+	 * zone filtered to non-compressed blocks, then — when the round delivers
+	 * the ultimatum — the v10.1 synthetic status pair, and finally the
+	 * [acp-status] ephemeral appended when a tier is active (spec §6/§7 v10.1).
+	 * Also refreshes the snapshot the compress validation runs against (same
+	 * coordinate system as the manifest: the round status is re-derived from
 	 * the settled round-end state — spec §5.2 round attribution) and anchors
 	 * the failure-exit state machine to this request (ultimatum/guard lines).
 	 * Degraded sessions pass the original view through verbatim (spec §5.3).
@@ -301,8 +307,21 @@ export class AcpRuntimeState {
 		if (!this.#manifestOverride) this.#refreshRoundStatus(true);
 		if (this.roundStatus) this.#anchorRound(this.roundStatus);
 		if (this.degraded) return [...view]; // the relief check degraded mid-projection
-		if (this.roundStatus && (this.roundStatus.tier !== "none" || this.roundStatus.pendingStrong)) {
-			out.push(renderEphemeralMessage(this.roundStatus, this.params));
+		const rs = this.roundStatus;
+		// v10.1 synthetic status pair: requests that deliver the ultimatum copy —
+		// the L3 tier itself, the request an armed force is pinned to, or a
+		// guard-line direct trigger — carry a synthetic acp_status pair at the
+		// active-zone end so the forced model already holds the manifest (spec
+		// §5.2/§6 v10.1). Never journaled, never a candidate: it lives only in
+		// this projected output and is rebuilt (byte-identical while the round
+		// state holds) on every qualifying request.
+		if (rs && (rs.tier === "L3" || this.#forcedFor === this.#requestSeq || this.#guardAt === this.#requestSeq)) {
+			const pair = renderSyntheticStatusPair(rs, this.params);
+			assertToolPairing(pair); // the pair rides as a complete tool round (spec §6 v10.1)
+			out.push(pair[0], pair[1]);
+		}
+		if (rs && (rs.tier !== "none" || rs.pendingStrong)) {
+			out.push(renderEphemeralMessage(rs, this.params));
 		}
 		this.lastProjected = out;
 		return out;
