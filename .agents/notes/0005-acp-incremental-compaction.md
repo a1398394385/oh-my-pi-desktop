@@ -93,6 +93,9 @@
 ### v9 演进(2026-10-12,Decider 拍板实施宿主)
 **全量实施于 omp-desktop host 层,底座源码零改动**(理由:ACP 本体改动量大且难被底座上游接收;omp-desktop 既有 ACP nudge 原型 host/acp-*.ts 已验证全部接缝)。接缝映射:投影/ephemeral = context 事件 extension;双工具 = `createAgentSession({ customTools })`;压缩块持久化 = SDK `SessionManager.appendCustomEntry`(customType="acpSummary",官方「persist extension state across reloads」通道,`buildSessionContext` 忽略)——§9 存储位置不变(仍 session JSONL),实现通道由「新增 message role + declaration merging」改为 custom entry;精确计数 = import `@oh-my-pi/pi-agent-core` Tokenizer(18.8.6 实证导出)。同日接缝实证补遗:三级强制 = `AgentSession.setForcedToolChoice`(公开 API,已验证,T7 无待验证项);ACP 会话经 `createAgentSession({ settings: Settings.isolated({ "compaction.enabled": false }) })` per-session 关闭底座自动压缩(底座压缩判定用 stored journal 口径、不受 ACP 投影影响,不关则 journal 增长必致误触发——v8「strategy off」语义的 host 实现),降级时恢复。
 
+### v10 演进(2026-10-13,Decider 拍板 pull 模式 + 短号)
+T1-T7 实施后 Decider 审视两项初衷偏差:①压缩能力从 L1 才解锁(模型早期不知道块 ID,无法「任务完成即压」);②被压集严格以当轮清单为界(8K 截尾豁免块、清单外块选不中)。拍板修复:**清单从 ephemeral 注入移入新工具 acp_status 返回(pull 替代 push)**——模型按需拉取仪表盘(档位/允许方式/token/短号清单),ephemeral 降为无档零注入 + L1/L2/L3 一行精简状态行(不含清单,指向 acp_status;通牒送达机制保留,三级强制轮次归属不变);常驻注入的 token 与末尾缓存成本随之消失(P4 担忧化解),压缩时机彻底归还模型(工具描述引导)。**短号 bN 替代 UUID 面向模型渲染**(§3):全局单调派号、被压不回收、重启按 entries 顺序确定性重放、持久层仍 entryId——降低转录幻觉与 token 开销(清单容量同预算提升 5-10 倍,被压集放宽需求消解)。acp_status tool 对不进压缩候选,并在下一次成功压缩执行后从投影整对摘除(旧清单失效;保护区例外;存储不动)。
+
 ## Related(关联)
 
 - Spec: docs/architecture/acp-compaction-spec.md(实施合同,验收矩阵在其中)

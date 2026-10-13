@@ -3,7 +3,7 @@
 > **Status**: Draft(2026-10-12) · 未实施
 > **审阅结论**: READY(2026-10-12,Decider 终审)
 > **决策 SSOT**: [ADR-0005](../../.agents/notes/0005-acp-incremental-compaction.md)
-> **修订**: v2 首轮审阅 6 项阻断(清单全列+幻觉 ID 拒绝;supersedes 重建+降级;acpSummary 纯持久层+投影口径;exclusive 互斥;L2/L3 退出条件;验收 9 收窄)。v3 二轮审阅 4 项阻断(合并继承 compressedIds/index;清单消费语义;清单截断方向与 L2 校验口径;summary 预算基数)。v4 Decider 澄清:合并=主动 L3 全量、无独立摘要调用。v5 隐患发散修正。v6 搭便车语义。v7(Decider 拍板体系重构):**压缩方式三级化**(一级普通累加/二级强力重置/三级 tool_choice 强制);豁免=可配置压缩目标线 target;清单按块大小降序截断;recall 走底座统一截断管道;强制失败即降级,删除模板/拼接硬压路径;L3 通牒轮次归属明确;参考 OMP 链路(预处理剪枝/进度守卫/失败封顶)。v8(四轮审阅):L2 档改名「加压档」消除与二级强力压缩的命名撞车;新增唯一二维决策表,边界统一严格大于;三级终态=「强制 turn 无成功压缩即降级」(极端碎块场景不特化,Decider 裁量);ADR Decision/Consequences 回改同步。v9(Decider 拍板实施宿主):**全量实施于 omp-desktop host 层,底座源码零改动**——投影/ephemeral 走 context 事件 extension,双工具走 `createAgentSession({ customTools })`,压缩块持久化走 SDK `SessionManager.appendCustomEntry`(customType="acpSummary"),精确计数 import `@oh-my-pi/pi-agent-core` Tokenizer;§9 存储通道与 §10 集成点表相应改写。v9 补遗(同日接缝实证):三级强制 = `AgentSession.setForcedToolChoice`(公开 API,**已验证**,T7 无待验证项);ACP 会话经 `createAgentSession({ settings })` per-session 关闭底座自动压缩(底座压缩判定用 stored journal 口径、不受 ACP 投影影响,不关则必误触发——v8「strategy off」语义的 host 实现),降级时恢复。
+> **修订**: v2 首轮审阅 6 项阻断(清单全列+幻觉 ID 拒绝;supersedes 重建+降级;acpSummary 纯持久层+投影口径;exclusive 互斥;L2/L3 退出条件;验收 9 收窄)。v3 二轮审阅 4 项阻断(合并继承 compressedIds/index;清单消费语义;清单截断方向与 L2 校验口径;summary 预算基数)。v4 Decider 澄清:合并=主动 L3 全量、无独立摘要调用。v5 隐患发散修正。v6 搭便车语义。v7(Decider 拍板体系重构):**压缩方式三级化**(一级普通累加/二级强力重置/三级 tool_choice 强制);豁免=可配置压缩目标线 target;清单按块大小降序截断;recall 走底座统一截断管道;强制失败即降级,删除模板/拼接硬压路径;L3 通牒轮次归属明确;参考 OMP 链路(预处理剪枝/进度守卫/失败封顶)。v8(四轮审阅):L2 档改名「加压档」消除与二级强力压缩的命名撞车;新增唯一二维决策表,边界统一严格大于;三级终态=「强制 turn 无成功压缩即降级」(极端碎块场景不特化,Decider 裁量);ADR Decision/Consequences 回改同步。v9(Decider 拍板实施宿主):**全量实施于 omp-desktop host 层,底座源码零改动**——投影/ephemeral 走 context 事件 extension,双工具走 `createAgentSession({ customTools })`,压缩块持久化走 SDK `SessionManager.appendCustomEntry`(customType="acpSummary"),精确计数 import `@oh-my-pi/pi-agent-core` Tokenizer;接缝实证补遗(exclusive 不可用→host 互斥锁;prune 两层门控;三级强制 setForcedToolChoice);P1/P2 兼容面探针结论回填。v10(Decider 拍板 pull 模式):**清单从 ephemeral 注入移入新工具 acp_status 返回**(模型按需拉取,ephemeral 降为一行精简状态行、无档零注入,通牒送达机制保留);**短号 bN 替代 UUID 面向模型渲染**(§3:全局单调派号、不回收、确定性重放、持久层仍 entryId);acp_status tool 对不进候选且在下次成功压缩后从投影整对摘除(保护区例外)。
 > **超限说明**: 验收矩阵为结构性超限(见 ../documentation.md §5)。
 
 ## 1. 目标与非目标
@@ -26,7 +26,7 @@
 | 块(block) | 压缩协议的最小选择单位,全局唯一 ID |
 | 活跃区 / 压缩区 | 上下文两段;组成 [tools][system][压缩区][活跃区] |
 | 候选集 | 本次压缩可被选中的块 = 活跃区 − 尾部保护区 |
-| 当轮清单 | 最近一次 ephemeral 提示展示的候选块 ID 列表(**按块大小降序**,超限截断);压缩范围以当轮清单为准;一次成功提交即被消费 |
+| 当轮清单 | 最近一次 acp_status 返回展示的候选块短号列表(**按块大小降序**,超限截断);压缩范围以当轮清单为准;一次成功提交即被消费(v10:从 ephemeral 注入改为工具返回) |
 | 保留清单(keep) | AI 在 compress_context 中列出的要留下的块 ID(⊆ 当轮清单) |
 | 被压集 | (当轮清单 − keep) ∩ 当前活跃块 |
 | 豁免块 | 因清单截断未展示的候选块:本轮不可被压,下轮重新进入清单 |
@@ -55,11 +55,13 @@
 
 **thinking 块规则**:默认独立可选;若探针 1 失败(签名不容忍 block 级过滤),降级为 thinking 强制与同消息全部 tool 对共进退(见 Open Questions)。
 
+**短号规则(v10)**:面向模型的一切清单/索引/keep 校验反馈渲染使用短号 `bN`(N 全局单调递增);持久层(index/compressedIds/supersedes/JSONL)一律存 entryId,短号映射不落盘。派号:块首次进入活跃集时按序取号,被压/被 supersede **不回收不复用**(防悬空歧义);重启重建按 entries 顺序确定性重放同一编号。工具入口(compress_context 的 keep、recall_block 的 id)接受短号,在执行锁内解码为 entryId;幻觉短号(不存在/失效)按既有校验拒绝并附完整候选集。被压块的旧短号:keep 引用 → 已压缩拒绝;recall 引用 → 解析回 entryId 照常取原文。
+
 ## 4. 上下文组成与投影算法
 
 发送前经 transformContext 投影生成请求消息;持久历史不改写。**acpSummary 是 SDK custom entry(customType="acpSummary",经 `SessionManager.appendCustomEntry` 写入),不进 LLM 上下文**(SDK 官方语义:`buildSessionContext` 忽略 custom entry;接口文档明确「persist extension state across reloads, scan entries for customType to reconstruct」);host 投影层直接把压缩块渲染成 user 角色文本段进入输出。
 
-1. **压缩区渲染**:只渲染未被 supersede 的压缩块,按原序各渲染为:元数据头(压缩时间/depth/被压块数/method) + 整体摘要 + 索引清单(每行 `id | tokens | intent或截断句`;全列,单块索引渲染超 4K token 时截断最老段 + `… N more, recall_block(本块id) 取完整索引`)。
+1. **压缩区渲染**:只渲染未被 supersede 的压缩块,按原序各渲染为:元数据头(压缩时间/depth/被压块数/method) + 整体摘要 + 索引清单(每行 `短号 | tokens | intent或截断句`,§3;全列,单块索引渲染超 4K token 时截断最老段 + `… N more, recall_block(本块短号) 取完整索引`)。
 2. **活跃区重组**(按保留集过滤):
    - assistant 消息 M 含 tool_use U1..Un:保留的 tool 对 → 其 tool_use block 留在 M';被压的 → 从 M' 摘除,其 result 同步摘除。
    - thinking/text 块按保留集同样过滤。
@@ -68,7 +70,7 @@
 3. **配对断言**:对投影输出校验配对不变量,失败即抛错(实现期防御)。
 4. **ephemeral 提示**:拼在请求消息序列末尾(见 §7)。
 
-**时序与快照**:压缩范围 = 当轮清单(模型可见的集合),不是执行时刻候选集;清单注入后新到块不在清单内,天然豁免。快照一致性由此保证,不依赖执行时刻状态。
+**时序与快照**:压缩范围 = 当轮清单(模型可见的集合,即最近一次 acp_status 返回),不是执行时刻候选集;清单返回后新到块不在清单内,天然豁免。快照一致性由此保证,不依赖执行时刻状态。
 
 **与底座预处理管道的关系**(v9 补遗实证):prune 分两层——**stale prune**(supersedeReads / dropUseless,独立设置默认 true,每轮跑)在 compaction.enabled 门控**之前**执行,ACP 会话关闭 compaction.enabled 后**照常运行**;**overflow prune**(pruneToolOutputs)在门控**之后**,随 compaction.enabled=false 一并关闭,其溢出恢复职能由 ACP 保险线/降级路径接管。ACP 块 token 计数用 prune 后的值(stale prune 为常态路径)。prune 决定块内内容的多少,ACP 决定块的存亡,两者正交。
 
@@ -80,9 +82,10 @@
 
 | 档 | 触发(活跃区) | ephemeral 文案 |
 |---|---|---|
-| L1 激活档 | > 100K | 建议压缩 + 当轮清单 |
-| L2 加压档 | > 200K | 加压提示 + target 约束 + 当轮清单 |
-| L3 截断档 | > 300K | 最后通牒:「下一轮必须成功压缩,否则宿主将强制压缩」 |
+| 无档 | ≤ 100K 且非待强力 | **零注入**(压缩时机完全归模型:工具描述引导,经 acp_status 自取清单) |
+| L1 激活档 | > 100K | 一行状态行:建议压缩 + 指向 acp_status |
+| L2 加压档 | > 200K | 一行状态行:加压提示 + target 约束 + 指向 acp_status |
+| L3 截断档 | > 300K | 一行状态行:最后通牒:「下一轮必须成功压缩,否则宿主将强制压缩」+ 指向 acp_status |
 
 (命名约定:档位用「激活/加压/截断」,压缩方式用「普通/强力/强制」,两者不同名以防混淆。)
 
@@ -100,7 +103,7 @@
 
 | 活跃区 | 压缩区 | 档位文案 | compress 方式 |
 |---|---|---|---|
-| ≤L1 | 未超线 | 无(或最简状态行) | 普通 |
+| ≤L1 | 未超线 | 零注入(模型经 acp_status 自决) | 普通 |
 | (L1, L2] | 未超线 | L1 建议 | 普通 |
 | (L2, L3] | 未超线 | L2 加压 + target | 普通 |
 | >L3 | 任意 | L3 通牒 | 强力 |
@@ -125,6 +128,17 @@
 - 判定无需额外标记:重建时检测到 compaction entry 即降级。
 
 ## 6. 工具契约
+
+
+### acp_status(v10:清单 pull 通道)
+
+```json
+{ "name": "acp_status", "input": {} }
+```
+
+模型按需拉取压缩仪表盘。返回:当前档位 + 本次允许的压缩方式(普通/强力)/ 活跃区 tokens / 投影总量 tokens / 档位指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力加注)/ **当轮候选清单**:候选块按大小降序全列,每行 `bN | tokens | intent或截断句`(短号,§3);清单渲染超 8K token 截尾部(较小块豁免,下轮重进,多轮收敛);返回整体走底座工具结果截断管道(50KB 内联,全文落盘 read 分段)。工具描述引导模型:随时可用,建议完成阶段性任务后主动查询并压缩(动机来自工具描述,档位提示仅作仪表盘与通牒)。
+
+**status tool 对的投影剔除**:acp_status 的 tool_use/tool_result 对**不进压缩候选**(模型压不到它);并在**下一次成功 compress_context 执行后**从投影中整对摘除(旧清单已失效,留着是误导;即使落在保护区也摘——保护区例外)。存储不动,配对断言不变(成对摘除)。
 
 ### compress_context
 
@@ -171,8 +185,8 @@
 ## 7. ephemeral 状态提示契约
 
 - **位置**:请求消息序列末尾追加一条 user 角色消息,文本以 `[acp-status]` 开头;**不落历史**。
-- **内容**:**当前档位 + 本次允许的压缩方式(普通/强力)** / 活跃区 tokens / 投影总量 tokens / 档位指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力状态统一加注「下次压缩为强力压缩」)/ **当轮清单**:候选块**按块大小降序**全列,每行 `id | tokens | intent或截断句`;清单渲染自身超 8K token 时截断尾部(较小块)+ `… N more(本轮豁免)`。每轮重新生成:已压大块离场后,次大块下轮进入清单,多轮收敛;清单外块天然豁免。
-- **缓存安全**:提示只在末尾追加,持久前缀(tools/system/压缩区/活跃区)不变;提示自身每轮重算。档位不变时文案逐字节稳定,最大化末尾局部缓存复用。
+- **分层注入(v10,pull 替代 push)**:无档(活跃区 ≤L1 且非待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);L1/L2/L3 与待强力注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力统一加注「下次压缩为强力压缩」)+ 指向 acp_status 取清单。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 acp_status 返回(§6)。
+- **缓存安全**:零注入期持久前缀(tools/system/压缩区/活跃区)逐字节稳定;注入期档位不变时状态行逐字节稳定,最大化末尾局部缓存复用。
 
 ## 8. token 计数
 
@@ -203,7 +217,7 @@
 | 保险线 | 同上 | 投影后总量 vs 窗口 − 15% reserve |
 | 投影 + ephemeral | context 事件 extension(`host/acp-context.ts` 现有 transformContext 同一接缝) | 块过滤重组 + 压缩块渲染为 user 文本段 + `[acp-status]` 末尾追加(§4/§7) |
 | 预处理 | 底座 prune 管道(不动) | 照常运行;prune 重写 journal 后 context 视图自然反映,ACP 计数用 prune 后值 |
-| 工具注册 | `createAgentSession({ customTools })`(`host/acp-tools.ts` 先例,ToolDefinition 形态) | compress_context / recall_block;compress 执行挂 host per-session 互斥锁(§6,exclusive 通道不可用);降级后不再注入 |
+| 工具注册 | `createAgentSession({ customTools })`(`host/acp-tools.ts` 先例,ToolDefinition 形态) | acp_status / compress_context / recall_block;compress 执行挂 host per-session 互斥锁(§6,exclusive 通道不可用);降级后不再注入 |
 | 强制调用 | 三级触发:`AgentSession.setForcedToolChoice("compress_context")`(公开 API,已验证:强制下一次模型调用指定工具、[forced,"none"] 序列调完即止;工具须在 active 集——customTools 注入天然满足;模型不支持时抛错 = 降级出口) | meta.forced=true,按强力语义;失败即 §5.3 降级 |
 | 持久 entry | `SessionManager.appendCustomEntry` | customType="acpSummary"(§9) |
 | 计数 | `@oh-my-pi/pi-agent-core` 导出 `Tokenizer`(18.8.6 验证) | 档位判定/清单/校验/保险线统一实例(§8) |
@@ -220,7 +234,7 @@
 | 压缩区限额线 | 窗口 × 35% | 进入待强力状态;活跃区>L1 时下一次 compress 搭车为强力压缩 |
 | 总量保险线 | 投影总量 > 窗口 − 15% reserve | 触发三级强制;失败即降级 |
 | 尾部保护区 | 默认 max(最近 2 turn, 最近 20K token),可配置,可为 0 | **待探针 3 回填** |
-| 当轮清单截断 | 按块大小降序;渲染超 8K token 截尾部(小块豁免) | v7 改降序 |
+| 当轮清单截断 | acp_status 返回内:短号按块大小降序;渲染超 8K token 截尾部(小块豁免,下轮重进) | v10 清单从 ephemeral 移入 acp_status 返回;短号见 §3 |
 | 索引清单截断 | 单压缩块渲染超 4K token 截最老段;完整索引走 recall_block(底座截断管道可遍历) | |
 
 ## 12. 验收矩阵
@@ -238,7 +252,7 @@
 | 9 | 压缩动作前后,tools/system/未被 supersede 压缩块的渲染前缀逐字节一致;活跃区缓存失效为预期 | 前缀字节对比 + usage 断言 |
 | 10 | 重启后重建:压缩区(未 supersede)/活跃集正确;含底座 compaction 记录的会话重建即降级 | 持久化测试 |
 | 11 | keep 不继承:上轮 keep 块本轮未列即被压 | 集成测试 |
-| 12 | 清单注入后新到块不进当轮清单、不被压 | 时序测试 |
+| 12 | 清单(acp_status 返回)后新到块不进当轮清单、不被压 | 时序测试 |
 | 13 | 同批两个 compress_context:host 互斥锁串行;第一个成功 → 清单已消费 → 第二个在锁内重校验被拒(含 keep=[] 场景);第一个校验失败 → 清单未消费,修正重试可成功;compress 永不被投机执行(未声明 ToolSpeculationPolicy) | 并发测试 |
 | 14 | summary 超预算拒绝;纯重置(本次被压=0)以旧摘要为基数可正常提交 | 工具校验测试 |
 | 15 | 清单按块大小降序,截断尾部小块豁免;极端块数(4000×100 token)下逐轮收敛无死锁;模型全保留致被压集空 → 拒绝促其修正 | 集成测试 |
