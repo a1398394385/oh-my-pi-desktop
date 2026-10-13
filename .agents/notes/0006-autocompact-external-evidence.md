@@ -2,6 +2,7 @@
 
 > 来源:arXiv 2610.02163(AutoCompact: Learning When to Compact Context in Long-Horizon Coding Agents,Zhang et al.,2026-10)。本地备份:`~/Github/xhs-harvest/backup/AutoCompact-*.md`。
 > 用途:外部实证证据 + ACP 后续优化候选清单。本文不是决策记录(决策走 ADR-0005 演进段);本文是「以后优化 ACP 时回来看」的参考。
+> 延伸:[0007](0007-acp-cost-model-and-semantics.md) 承接本论文的成本实验补遗、DeepSeek Flash 三轮成本演算、manifest 语义之辩与 P3 四臂消融设计。
 
 ## 论文做了什么
 
