@@ -85,9 +85,19 @@
 
 压缩方式三级化(Decider 拍板):一级普通压缩(活跃区<L3,压缩块累加);二级强力压缩(活跃区≥L3 或压缩区超 35% 限额时的下一次压缩,重置压缩区为纯摘要初始块,搭便车语义沿自 v6);三级强制压缩(L3 通牒送达后下一轮仍无成功压缩,或总量保险线触发时,tool_choice 强制 compress_context;强制失败即降级 OMP——OQ5 关闭,v3/v5 的模板/拼接硬压路径删除)。「豁免」重新定义为可配置的压缩目标线 target(keep+保护区≤target,默认=L1,可调更低),普通/强力统一生效——OQ4 关闭。档位数值运行时动态可调,配置约束 L3<0.5W−20K 入参数表——OQ3 关闭。四轮审阅(P1 清单轮次归属/P3 recall 截断)处置:通牒轮次归属明确为「送达后下一个 assistant turn 结束才判未响应」,空闲等待不主动唤醒;recall 大结果走底座统一工具结果截断管道(落盘+read 分段,可遍历),不做内置截断;当轮清单改为按块大小降序截断(Decider 拍板)。参考 OMP 压缩链路(docs/compaction.md + session-maintenance.ts 编排):预处理剪枝管道与 ACP 正交并存(prune 先行,ACP 计数用 prune 后值),进度守卫/失败封顶/降级哲学对齐。
 
+
 ### v8 演进(2026-10-12,四轮审阅 3 项 + Decider 裁量)
 
 四轮审阅处置:① L2「强力档」与二级「强力压缩」命名撞车 → 档位改名「加压档」,并新增唯一二维决策表(状态 → 文案档位 → 压缩方式),边界统一严格大于;② 三级强制在「清单可压总量 < minCompress」下无终态 → 先改为 min 取小,**Decider 裁量回退**:极端碎块场景不特化(正常 coding 会话不出现),保留通用终态「强制 turn 无成功压缩即降级 OMP」即可接住,后续视需要再加块数量上限;③ ADR Decision/Consequences 同步至三级体系(此前只加演进段未回改当前值,SSOT 冲突)。
+
+### v9 演进(2026-10-12,Decider 拍板实施宿主)
+**全量实施于 omp-desktop host 层,底座源码零改动**(理由:ACP 本体改动量大且难被底座上游接收;omp-desktop 既有 ACP nudge 原型 host/acp-*.ts 已验证全部接缝)。接缝映射:投影/ephemeral = context 事件 extension;双工具 = `createAgentSession({ customTools })`;压缩块持久化 = SDK `SessionManager.appendCustomEntry`(customType="acpSummary",官方「persist extension state across reloads」通道,`buildSessionContext` 忽略)——§9 存储位置不变(仍 session JSONL),实现通道由「新增 message role + declaration merging」改为 custom entry;精确计数 = import `@oh-my-pi/pi-agent-core` Tokenizer(18.8.6 实证导出)。同日接缝实证补遗:三级强制 = `AgentSession.setForcedToolChoice`(公开 API,已验证,T7 无待验证项);ACP 会话经 `createAgentSession({ settings: Settings.isolated({ "compaction.enabled": false }) })` per-session 关闭底座自动压缩(底座压缩判定用 stored journal 口径、不受 ACP 投影影响,不关则 journal 增长必致误触发——v8「strategy off」语义的 host 实现),降级时恢复。
+
+### v10 演进(2026-10-13,Decider 拍板 pull 模式 + 短号)
+T1-T7 实施后 Decider 审视两项初衷偏差:①压缩能力从 L1 才解锁(模型早期不知道块 ID,无法「任务完成即压」);②被压集严格以当轮清单为界(8K 截尾豁免块、清单外块选不中)。拍板修复:**清单从 ephemeral 注入移入新工具 acp_status 返回(pull 替代 push)**——模型按需拉取仪表盘(档位/允许方式/token/短号清单),ephemeral 降为无档零注入 + L1/L2/L3 一行精简状态行(不含清单,指向 acp_status;通牒送达机制保留,三级强制轮次归属不变);常驻注入的 token 与末尾缓存成本随之消失(P4 担忧化解),压缩时机彻底归还模型(工具描述引导)。**短号 bN 替代 UUID 面向模型渲染**(§3):全局单调派号、被压不回收、重启按 entries 顺序确定性重放、持久层仍 entryId——降低转录幻觉与 token 开销(清单容量同预算提升 5-10 倍,被压集放宽需求消解)。acp_status tool 对不进压缩候选,并在下一次成功压缩执行后从投影整对摘除(旧清单失效;保护区例外;存储不动)。
+
+### v10.1 演进(2026-10-13,Decider 拍板通牒伴随合成对)
+Decider 追问三级强制路径的实现细节后拍板:被 forced 钉死的调用模型无法先调 acp_status([forced,"none"] 序列只有一次机会,「拒绝附候选集促修正」在强制路径不生效),若模型此前从未 status 过,被逼时手里没有清单,只能全压(keep=[])或失败降级——强制退化为「无依据的挑选」,与「三级强制也是模型意愿的压缩」初衷有残余偏差。修复:**凡注入通牒文案的请求(L3 档或强制已武装/保险线直接触发),在活跃区末尾、通牒行之前注入一对合成 acp_status tool 对**(新造 assistant(tool_use)+ user(tool_result [acp-report] 清单),投影层合成不落 journal)。Decider 明确否决「向既有 assistant 插 tool_use」形态:thinking 签名风险(OQ2 同源)、中段改动破坏前缀缓存、投影纪律禁改既有消息。合成对快照冻结(注入条件持续且无新块逐字节稳定);成功压缩后退场(同 status 对剔除语义),仍处通牒态则以新快照继续;不进压缩候选;wire 形态为双面正常工具回合(P2 实证),官方面复测加形态确认。
 
 ## Related(关联)
 
