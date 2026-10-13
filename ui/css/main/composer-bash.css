@@ -34,11 +34,11 @@
     0 0 0 3px color-mix(in srgb, var(--bash) 22%, transparent);
 }
 
-[data-theme="light"] .dock:has(#composer.bash-mode) {
+:is([data-theme="light"], [data-theme-mode="light"]) .dock:has(#composer.bash-mode) {
   box-shadow: 0 0 0 1px var(--bash), 0 0 0 3px color-mix(in srgb, var(--bash) 16%, transparent);
 }
 
-[data-theme="light"] #composer.in-welcome.bash-mode {
+:is([data-theme="light"], [data-theme-mode="light"]) #composer.in-welcome.bash-mode {
   box-shadow:
     0 12px 40px var(--tint-black-70),
     0 0 0 1px var(--bash),

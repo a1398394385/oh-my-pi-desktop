@@ -8,7 +8,7 @@
   overflow: hidden;
 }
 
-[data-theme="light"] .pv-card { border-color: var(--tint-black-80); box-shadow: 0 8px 24px var(--tint-black-80); }
+:is([data-theme="light"], [data-theme-mode="light"]) .pv-card { border-color: var(--tint-black-80); box-shadow: 0 8px 24px var(--tint-black-80); }
 .pv-head {
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
   font-size: var(--ui-fs-base); border-bottom: 1px solid var(--line-soft);

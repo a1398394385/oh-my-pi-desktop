@@ -183,6 +183,11 @@ export const limitsHandlers: Record<string, RpcHandler> = {
     const { repoRulesTokens, memoryTokens } = splitSystemContextRegions(entry.session);
     const mcpToolsTokens = estimateMcpToolsTokens(entry);
     const { promptTokens: mcpPromptTokens, contextTokens: mcpContextTokens } = splitMcpPromptTokens(entry.session);
+    // ACP dual-zone split (spec §4): the compressed zone plus the active zone are what the
+    // request actually carries, so the card splits its "messages" row along them. Latest
+    // round status only — null until the runtime has projected a request, and null again
+    // after a §5.3 degrade; the card then keeps its single un-split messages row.
+    const acpRound = entry.acpRuntime && !entry.acpRuntime.degraded ? entry.acpRuntime.roundStatus : null;
     ws.send(
       JSON.stringify({
         type: "context_detail",
@@ -200,6 +205,8 @@ export const limitsHandlers: Record<string, RpcHandler> = {
               repoRulesTokens,
               memoryTokens,
               otherTokens: Math.max(0, b.systemContextTokens - repoRulesTokens - memoryTokens - mcpContextTokens),
+              // Dual-zone split for the card's messages rows (absent = single row)
+              ...(acpRound ? { acp: { zoneTokens: acpRound.zoneTokens, activeTokens: acpRound.activeTokens } } : {}),
             }
           : null,
         stats: {

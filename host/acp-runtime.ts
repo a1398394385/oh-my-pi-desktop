@@ -61,7 +61,7 @@ import {
 import { appendAcpSummary, type AcpSummarySink } from "./acp-persist.ts";
 import { dispatchRecall, type RecallOutcome } from "./acp-recall-tool.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
-import { renderEphemeralMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
+import { renderEphemeralMessage, renderMilestoneMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
 import { safeStderr } from "./stderr.ts";
 
 // Parameters, the tier ladder, and the §5.2 decision table live in the pure
@@ -72,6 +72,7 @@ import {
 	ACP_ZONE_LIMIT_RATIO,
 	type AcpParams,
 	computeRoundPlan,
+	milestoneFor,
 } from "./acp-plan.ts";
 
 // Compress validation/planning moved to acp-compress.ts and the assembly
@@ -176,6 +177,14 @@ export class AcpRuntimeState {
 	#guardLineTokens = 0;
 	/** Monotonic request counter: one projectView call = one request (context event). */
 	#requestSeq = 0;
+	/**
+	 * Highest L1 milestone delivered (spec §7 v10.4): the L1 segment injects
+	 * once per crossed sub-line, never standing. Reset to 0 whenever the zone
+	 * leaves the milestone mode (none / L2+ / pending-strong / forced), so a
+	 * later climb re-warns from the first line. In-memory only: a host restart
+	 * re-fires the highest crossed line once — harmless, self-healing.
+	 */
+	#milestoneDelivered = 0;
 	/** Request seq whose ephemeral carried the L3 ultimatum (spec §5.2 round attribution). */
 	#ultimatumAt = 0;
 	/** Request seq whose projection was over the guard line (spec §5.3). */
@@ -245,19 +254,39 @@ export class AcpRuntimeState {
 		return this.lastBlocks.filter((b) => !this.compressed.has(b.id) && !this.#refs.droppedStatusResults.has(b.id));
 	}
 
-	/** Protected tail: max(last tailTurns turns, tailTokens) of the active zone (spec §11). */
+	/**
+	 * Protected tail: min(last tailTurns turns, tailTokens) of the active zone —
+	 * walk backwards group by group and stop at whichever limit fires first
+	 * (spec §11). A group = one assistant message (all its #t/#x blocks) plus
+	 * every result block it owns; a user block is its own group and closes a
+	 * turn. Groups join atomically, so the cut always lands on a group boundary
+	 * and never separates a tool_use from its result (providers enforce pairing —
+	 * Anthropic 400/2013) or splits one message's blocks apart.
+	 */
 	protectedZone(active: readonly AcpBlockInfo[] = this.activeBlocks()): Set<string> {
 		const p = this.params;
 		const ids = new Set<string>();
 		if (p.tailTurns <= 0 && p.tailTokens <= 0) return ids;
 		let tokens = 0;
 		let turns = 0;
-		for (let i = active.length - 1; i >= 0; i--) {
-			const b = active[i];
-			ids.add(b.id);
-			tokens += b.tokens;
-			if (b.kind === "user") turns++;
-			if (turns >= p.tailTurns && tokens >= p.tailTokens) break;
+		let i = active.length - 1;
+		// Whichever limit fires first ends the walk (min semantics); a zeroed
+		// parameter disables its limit.
+		while (i >= 0 && !(p.tailTurns > 0 && turns >= p.tailTurns) && !(p.tailTokens > 0 && tokens >= p.tailTokens)) {
+			const group: AcpBlockInfo[] = [];
+			while (i >= 0 && active[i].kind === "result") group.push(active[i--]);
+			if (i >= 0 && active[i].kind === "user") {
+				group.push(active[i--]);
+				turns++;
+			} else if (i >= 0) {
+				// assistant message head: pull in every block of the same source message
+				const sid = active[i].sourceId;
+				while (i >= 0 && active[i].sourceId === sid) group.push(active[i--]);
+			}
+			for (const b of group) {
+				ids.add(b.id);
+				tokens += b.tokens;
+			}
 		}
 		return ids;
 	}
@@ -302,7 +331,22 @@ export class AcpRuntimeState {
 		out.push(pair[0], pair[1]);
 	}
 	if (rs && (rs.tier !== "none" || rs.pendingStrong)) {
-		out.push(renderEphemeralMessage(rs, this.params, forcedNow));
+		// §7 v10.4: the L1 segment (no pending-strong, not a forced/pinned
+		// request) injects once per crossed milestone line instead of standing;
+		// everything else keeps the per-request ephemeral and resets the
+		// milestone cursor so a later L1 climb re-warns from the first line.
+		if (rs.tier === "L1" && !rs.pendingStrong && !forcedNow) {
+			const milestone = milestoneFor(rs.activeTokens, this.params);
+			if (milestone > this.#milestoneDelivered) {
+				this.#milestoneDelivered = milestone;
+				out.push(renderMilestoneMessage(rs, milestone, this.params));
+			}
+		} else {
+			this.#milestoneDelivered = 0;
+			out.push(renderEphemeralMessage(rs, this.params, forcedNow));
+		}
+	} else if (rs) {
+		this.#milestoneDelivered = 0;
 	}
 		this.lastProjected = out;
 		return out;
@@ -514,6 +558,11 @@ export class AcpRuntimeState {
 	#validateAndExecute(input: { keep?: string[]; summary?: string }): CompressOutcome | CompressRejection {
 		this.#syncRefs();
 		const active = this.activeBlocks();
+		// Zone size before the write: the projected-context delta needs both sides. A snapshot
+		// number, not the array reference — a normal compression APPENDS to `this.zone`, so a
+		// reference would already read the post-write length by the time the delta is built.
+		const zoneBlocksBefore = this.zone.length;
+		const zoneTokensBefore = this.#zoneTokens();
 		const r = planCompression(
 			{
 				degraded: this.degraded,
@@ -522,7 +571,7 @@ export class AcpRuntimeState {
 				protectedIds: this.protectedZone(active),
 				compressed: this.compressed,
 				zone: this.zone,
-				zoneTokens: this.#zoneTokens(),
+				zoneTokens: zoneTokensBefore,
 				zoneLimitTokens: this.#zoneLimitTokens,
 				forcedExecution: this.#forcedExecution,
 				params: this.params,
@@ -544,11 +593,20 @@ export class AcpRuntimeState {
 		this.manifest!.consumed = true;
 		this.#forcedExecution = false;
 		if (plan.countedAsSuccess) this.#successAt = this.#requestSeq;
+		// Projected context after the write (spec §4): active zone + the zone as it now stands.
+		// The delta is (after − before) over both, so a strong reset charges the replaced old
+		// zone to the change as well.
+		const zoneTokensAfter = this.#zoneTokens();
 		return {
 			ok: true,
 			blockId: blockLabel,
+			method: plan.method,
 			compressed: { blocks: plan.compressedIds.length, tokens: plan.compressedTokens },
 			kept: { blocks: plan.keep.length, tokens: plan.keepTokens },
+			delta: {
+				blocks: this.zone.length - zoneBlocksBefore - plan.compressedIds.length,
+				tokens: plan.activeTokensAfter + zoneTokensAfter - (plan.activeTokensBefore + zoneTokensBefore),
+			},
 			activeTokensAfter: plan.activeTokensAfter,
 			tier: plan.tierAfter,
 			countedAsSuccess: plan.countedAsSuccess,

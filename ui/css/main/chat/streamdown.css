@@ -26,12 +26,12 @@
 }
 
 /* Legacy dark theme uses a specific gray */
-[data-theme="dark"] .md-body [data-streamdown="code-block"] {
+:is([data-theme="dark"], [data-theme-mode="dark"]) .md-body [data-streamdown="code-block"] {
   background: var(--streamdown-surface);
 }
 
 /* Legacy light theme uses panel-2 */
-[data-theme="light"] .md-body [data-streamdown="code-block"] {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-body [data-streamdown="code-block"] {
   background: var(--panel-2);
 }
 

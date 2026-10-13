@@ -479,6 +479,12 @@ export type ContextBreakdown = Record<string, unknown> & {
   memoryTokens: number;
   /** systemContextTokens minus the regions above: the genuine remainder. */
   otherTokens: number;
+  /**
+   * ACP dual-zone split (present only while ACP compaction is active on this session, and
+   * only after its runtime has projected a request): the compressed-zone and active-zone
+   * token shares the request actually carries. The card splits its messages row along them.
+   */
+  acp?: { zoneTokens: number; activeTokens: number };
 };
 
 /** Inner stats of the context_detail frame (host/host.ts:1291-1300) */

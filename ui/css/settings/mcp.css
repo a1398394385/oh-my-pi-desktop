@@ -115,7 +115,7 @@
   overflow: hidden;
 }
 
-[data-theme="light"] .mcp-card-list {
+:is([data-theme="light"], [data-theme-mode="light"]) .mcp-card-list {
   border-color: var(--tint-black-80);
   box-shadow: 0 8px 24px var(--tint-black-80);
 }
@@ -144,7 +144,7 @@
   background: var(--tint-white-25);
 }
 
-[data-theme="light"] .mcp-server-row:hover {
+:is([data-theme="light"], [data-theme-mode="light"]) .mcp-server-row:hover {
   background: var(--tint-black-20);
 }
 

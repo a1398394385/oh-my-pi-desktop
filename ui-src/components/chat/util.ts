@@ -112,6 +112,10 @@ export function isReadonlyEvent(item: ChatItem): item is ToolItem {
   if (item.role !== "tool") return false;
   const n = item.name || "";
   if (n === "task" || n === "wait" || n === "ask" || n === "yield") return false;
+  // ACP context management: the fold counts every non-read/non-cmd entry as a "task", which
+  // would read as "Explored N files, 3 tasks" for an internal context tool; compress_context
+  // is a write-approval action and stands on its own row (ToolRow renders all three)
+  if (n === "context_status" || n === "compress_context" || n === "recall_block") return false;
   return !isEditEvent(item);
 }
 

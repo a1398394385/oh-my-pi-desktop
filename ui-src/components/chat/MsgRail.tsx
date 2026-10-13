@@ -11,6 +11,7 @@ import type { RefObject } from "react";
 import type { RailEntry } from "./chat-types";
 import type { TimerHandle } from "../../store";
 import { placeMenu } from "../../shell";
+import { useAppStore } from "../../store";
 import { onSpectrum, SPECTRUM_BANDS } from "./railAudio";
 import { t } from "../../i18n";
 
@@ -77,8 +78,11 @@ function paintRailWidths() {
 function paintRailAt(clientY: number, railTop: number) {
   let best = -1;
   let bestD = Infinity;
+  const z = useAppStore.getState().zoomLevel || 1;
+  // clientY/railTop are visual; railTickCY lives in the rail's layout px: convert before comparing
+  const yLocal = (clientY - railTop) / z;
   railTicks.forEach((_, j) => {
-    const d = Math.abs(clientY - (railTop + railTickCY[j]));
+    const d = Math.abs(yLocal - railTickCY[j]);
     if (d < bestD) {
       bestD = d;
       best = j;
@@ -158,7 +162,9 @@ function showRailPop(entry: RailEntry, idx: number, total: number, tick: HTMLDiv
   document.body.appendChild(pop);
   railPopEl = pop;
   const r = tick.getBoundingClientRect();
-  const top = Math.min(Math.max(r.top + r.height / 2 - pop.offsetHeight / 2, 8), window.innerHeight - pop.offsetHeight - 8);
+  placeMenu(pop, 0, 0); // apply zoom first so the rect below reads visual (zoomed) size
+  const pr = pop.getBoundingClientRect();
+  const top = Math.min(Math.max(r.top + r.height / 2 - pr.height / 2, 8), window.innerHeight - pr.height - 8);
   placeMenu(pop, r.right + 8, Math.max(8, top));
 }
 
@@ -204,6 +210,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     railTotal = userEntries.length;
     const railH = streamEl.clientHeight;
     const streamTop = streamEl.getBoundingClientRect().top;
+    const z = useAppStore.getState().zoomLevel || 1; // rect diffs below are visual; scrollTop/scrollTo are layout px
     const pitchBase = 15; // CSS px between adjacent ticks
     const pitch = userEntries.length > 1 ? Math.min(pitchBase, (railH - 6) / (userEntries.length - 1)) : pitchBase;
     const startTop = Math.max(0, (railH - (userEntries.length - 1) * pitch) / 2); // laid out from the centerline outward
@@ -217,7 +224,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       const anchor = streamEl.querySelector(`[data-fk="${en.key}"]`);
       if (!anchor) return; // anchor not mounted yet (e.g. steer bubble renders late): skip this tick
       const r = anchor.getBoundingClientRect();
-      const topDoc = r.top - streamTop + streamEl.scrollTop; // message position within the full text (for click-to-locate)
+      const topDoc = (r.top - streamTop) / z + streamEl.scrollTop; // message position within the full text (for click-to-locate)
       const tick = document.createElement("div");
       tick.className = "rail-tick t-" + en.role;
       tick.style.top = startTop + i * pitch + "px";
@@ -230,7 +237,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       // only handle click-to-scroll.
       railTickMeta.push({ entry: en, idx: i, tick });
       tick.addEventListener("click", () => {
-        streamEl.scrollTo({ top: Math.max(0, topDoc - streamEl.clientHeight / 2 + r.height / 2), behavior: "smooth" });
+        streamEl.scrollTo({ top: Math.max(0, topDoc - streamEl.clientHeight / 2 + r.height / z / 2), behavior: "smooth" });
       });
       rail.appendChild(tick);
       railTicks.push(tick);
@@ -248,15 +255,18 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       const streamEl = streamRef.current;
       if (!rail || !streamEl || rail.hidden) return;
       const rr = rail.getBoundingClientRect();
+      const z = useAppStore.getState().zoomLevel || 1;
       // Horizontal: the rail column itself (a small slop for slanted pointers).
       // Vertical: only the band the ticks actually occupy — the rail box spans
       // the whole stream height, so trusting it made the empty corners above and
       // below the ticks arm the nearest (i.e. always the first or last) message.
+      // e.clientY/rr are visual; railSpan/railPitch are layout px: convert once.
+      const yLocal = (e.clientY - rr.top) / z;
       const inside =
         e.clientX >= rr.left - 6 &&
         e.clientX <= rr.right + 6 &&
-        e.clientY >= rr.top + railSpan.top - railPitch &&
-        e.clientY <= rr.top + railSpan.bottom + railPitch;
+        yLocal >= railSpan.top - railPitch &&
+        yLocal <= railSpan.bottom + railPitch;
       if (inside) {
         railHovering = true;
         clearTimeout(railLeaveTimer); // slid back in from the card gap: cancel the dismissal grace period

@@ -529,15 +529,15 @@ async function handlePrompt(
     text: finalText,
     ...(images.length > 0 ? { images } : {}),
   });
-  // Auto session title: the CLI calls the base's same entry from
-  // input-controller / main.ts; the SDK host has no such layer and must
-  // trigger it itself. The base's internal gate skips "already titled /
-  // already generating / low-signal input / PI_NO_TITLE"; the generated
-  // title arrives via SessionManager.onSessionNameChanged → the
-  // session_title_changed frame. Streaming injections (steer / queued
-  // followUp) do not trigger it, matching the CLI only titling on idle
-  // commits.
-  if (!steer) entry.session.maybeStartTitleGeneration(finalText);
+  // Auto session title: the base owns this entirely now — the session is
+  // created with autoTitle: true (see createSessionCore), and AgentSession
+  // notes the operator message on message_end + titles once the reply starts.
+  // The SDK exposed a host-side trigger until 18.9 (maybeStartTitleGeneration,
+  // which is what this call site used); 18.10.x dropped it, and calling it
+  // threw a TypeError before every prompt reached session.prompt().
+  // Streaming injections (steer / queued followUp) are titled by the base the
+  // same way, and the title arrives via SessionManager.onSessionNameChanged →
+  // the session_title_changed frame (subscribed in createSessionCore).
   // The command returns immediately; all turn output flows through the event
   // stream. Injection behavior mid-stream is decided by streamingBehavior:
   // followUp = queued (auto-consumed to trigger a new turn after the current

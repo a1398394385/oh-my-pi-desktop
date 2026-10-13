@@ -35,7 +35,7 @@
   --pop-from: -4px;
 }
 
-[data-theme="light"] .bgcmd-expand { background: var(--tint-black-30); }
+:is([data-theme="light"], [data-theme-mode="light"]) .bgcmd-expand { background: var(--tint-black-30); }
 .bgcmd-meta-row {
   display: flex; align-items: center; gap: 8px;
   font-size: var(--ui-fs-sm); color: var(--dim);

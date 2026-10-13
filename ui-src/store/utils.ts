@@ -2,8 +2,12 @@
 import { t } from "../i18n";
 export function fmtTokens(n: number | null | undefined): string {
   if (n == null) return "—";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  // Magnitude picks the unit, the sign rides along: a compression delta is a negative token
+  // count and must still read "-37.1K" instead of an unscaled "-37120".
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + "M";
+  if (abs >= 1e3) return sign + (abs / 1e3).toFixed(1) + "K";
   return String(n);
 }
 

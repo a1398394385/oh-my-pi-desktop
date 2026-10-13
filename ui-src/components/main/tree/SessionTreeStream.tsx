@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../../Icon";
 import { fmtAgo } from "../right/helpers";
-import { toast, type TimerHandle } from "../../../store";
+import { toast, useAppStore, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
 import type { EntryNode, StreamItem, StreamSection } from "./sessionTreeUtil";
 import {
@@ -80,7 +80,9 @@ export default function SessionTreeStream({
 
       // Ensure the area below the fork point fills at least the viewport's remaining space,
       // preventing short branches from shrinking the page height abruptly and pushing content up
-      const remaining = scrollRect.bottom - hubRect.bottom;
+      // (rect diff is visual; the min-height is layout px inside the zoomed subtree)
+      const z = useAppStore.getState().zoomLevel || 1;
+      const remaining = (scrollRect.bottom - hubRect.bottom) / z;
       if (remaining > 20) {
         setBranchMinHeights((prev) => {
           const next = new Map(prev);
@@ -109,9 +111,10 @@ export default function SessionTreeStream({
     if (!hub || !scrollEl) return;
 
     const currentTop = hub.getBoundingClientRect().top;
-    const diff = currentTop - target.top;
+    const diff = currentTop - target.top; // visual px
     if (Math.abs(diff) > 0.5) {
-      scrollEl.scrollTop += diff;
+      const z = useAppStore.getState().zoomLevel || 1;
+      scrollEl.scrollTop += diff / z; // scrollTop is layout px inside the zoomed subtree
     }
   }, [selectedBranches]);
 
@@ -166,10 +169,11 @@ export default function SessionTreeStream({
     if (!el || !scrollEl) return;
     const elRect = el.getBoundingClientRect();
     const boxRect = scrollEl.getBoundingClientRect();
+    const z = useAppStore.getState().zoomLevel || 1; // rect edges are visual; scrollTop is layout px
     if (elRect.top < boxRect.top + 8) {
-      scrollEl.scrollTop -= boxRect.top + 8 - elRect.top;
+      scrollEl.scrollTop -= (boxRect.top + 8 - elRect.top) / z;
     } else if (elRect.bottom > boxRect.bottom - 8) {
-      scrollEl.scrollTop += elRect.bottom - (boxRect.bottom - 8);
+      scrollEl.scrollTop += (elRect.bottom - (boxRect.bottom - 8)) / z;
     }
   }, [cursorId]);
 
@@ -502,7 +506,8 @@ function ForkSwitcher({
 
     const pillsRect = pills.getBoundingClientRect();
     const activeRect = activeEl.getBoundingClientRect();
-    const pillLeft = activeRect.left - pillsRect.left + pills.scrollLeft;
+    const z = useAppStore.getState().zoomLevel || 1; // rect diff is visual; scrollLeft is layout px
+    const pillLeft = (activeRect.left - pillsRect.left) / z + pills.scrollLeft;
     const pillRight = pillLeft + activeEl.offsetWidth;
     const scrollLeft = pills.scrollLeft;
     const clientWidth = pills.clientWidth;

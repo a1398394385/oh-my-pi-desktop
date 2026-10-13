@@ -24,13 +24,12 @@ use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{define_class, msg_send, AnyThread, DefinedClass};
 use std::ptr::NonNull;
 use objc2_core_audio::{AudioObjectGetPropertyData, AudioObjectPropertyAddress};
-use objc2_core_audio_types::{AudioBuffer, AudioBufferList};
 use objc2_core_foundation::CFString;
 use objc2_core_media::CMSampleBuffer;
 use objc2_foundation::{NSArray, NSError};
 use objc2_screen_capture_kit::{
     SCContentFilter, SCDisplay, SCShareableContent, SCStream, SCStreamConfiguration,
-    SCStreamOutput, SCStreamOutputType, SCWindow,
+    SCStreamDelegate, SCStreamOutput, SCStreamOutputType, SCWindow,
 };
 use parking_lot::{Condvar, Mutex};
 use tauri::{AppHandle, Emitter};
@@ -53,9 +52,6 @@ const ELEMENT_MASTER: u32 = 0; // kAudioObjectPropertyElementMaster
 /// Ring cap in samples (~170 ms at 48 kHz). The emit thread consumes every
 /// FRAME_MS, so this is only a safety valve against a wedged consumer.
 const RING_CAP: usize = 8192;
-
-/// `kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment`.
-const AB_LIST_ALIGN: u32 = 1;
 
 pub fn list_devices() -> Result<Vec<AudioDevice>, String> {
     Ok(vec![AudioDevice { id: String::new(), name: default_output_name() }])
@@ -148,7 +144,7 @@ fn shareable_content() -> Result<Retained<SCShareableContent>, String> {
         *s2.0.lock() = Some(res);
         s2.1.notify_all();
     });
-    unsafe { SCShareableContent::getShareableContentWithCompletionHandler(&handler) };
+    unsafe { SCShareableContent::getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler(false, false, &handler) };
     wait_slot(&slot).unwrap_or_else(|| Err("SCShareableContent timed out".into()))
 }
 
@@ -180,48 +176,35 @@ define_class!(
             if frames == 0 {
                 return;
             }
-            // The generated AudioBufferList only declares one buffer; stereo is
-            // two contiguous AudioBuffers per C's flexible-array semantics.
-            let mut list = StereoList {
-                number_buffers: 2,
-                buffers: [AudioBuffer {
-                    mNumberChannels: 1,
-                    mDataByteSize: 0,
-                    mData: ptr::null_mut(),
-                }; 2],
-            };
-            let mut needed = 0usize;
-            // block_buffer_out stays null: the data lives as long as the sample
-            // buffer, and this callback consumes it synchronously.
-            let status = buf.audio_buffer_list_with_retained_block_buffer(
-                &mut needed,
-                (&mut list as *mut StereoList).cast::<AudioBufferList>(),
-                size_of::<StereoList>(),
-                None,
-                None,
-                AB_LIST_ALIGN,
-                ptr::null_mut(),
-            );
-            if status != 0 {
-                return;
-            }
-            let count = (list.buffers[0].mDataByteSize as usize / 4).min(frames);
-            if count == 0 {
-                return;
-            }
-            // SAFETY: the list above describes `count` f32 samples per channel,
-            // guaranteed contiguous by the CMSampleBuffer API.
-            let l = unsafe { slice::from_raw_parts(list.buffers[0].mData.cast::<f32>(), count) };
-            let r = if list.number_buffers >= 2
-                && list.buffers[1].mDataByteSize as usize >= count * 4
+            // Non-interleaved f32 with all channels contiguous in one data
+            // buffer (verified via the format description: 'lpcm' 0x29, block
+            // length = frames × channels × 4). The AudioBufferList extraction
+            // (CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer) rejects
+            // these buffers with -12731 on macOS 15+, so read the data buffer
+            // directly and split it into equal per-channel chunks.
+            let Some(bb) = buf.data_buffer() else { return };
+            let mut ptr: *mut std::ffi::c_char = ptr::null_mut();
+            let mut total = 0usize;
+            if unsafe { bb.data_pointer(0, ptr::null_mut(), &mut total, &mut ptr) } != 0
+                || ptr.is_null()
             {
-                unsafe { slice::from_raw_parts(list.buffers[1].mData.cast::<f32>(), count) }
-            } else {
-                l
-            };
-            let mut out = VecDeque::with_capacity(count);
-            for i in 0..count {
-                out.push_back((l[i] + r[i]) * 0.5);
+                return;
+            }
+            let bytes_per_ch = frames * 4;
+            if bytes_per_ch == 0 || !total.is_multiple_of(bytes_per_ch) {
+                return;
+            }
+            let n_ch = (total / bytes_per_ch).clamp(1, 8);
+            // SAFETY: `ptr` addresses `total` contiguous bytes of f32 sample
+            // data per the checks above.
+            let base = unsafe { slice::from_raw_parts(ptr.cast::<f32>(), total / 4) };
+            let mut out = VecDeque::with_capacity(frames);
+            for i in 0..frames {
+                let mut sum = 0f32;
+                for ch in 0..n_ch {
+                    sum += base[ch * frames + i];
+                }
+                out.push_back(sum / n_ch as f32);
             }
             let mut ring = self.ivars().ring.lock();
             ring.extend(out);
@@ -232,16 +215,27 @@ define_class!(
         }
     }
 
+    // Stream death (device unplugged, TCC revoked) arrives here; the capture
+    // thread only notices indirectly (emit failing), so log the cause. Bare
+    // method rather than the optional-protocol impl — objc2 cannot verify
+    // optional overrides — the runtime dispatches by selector all the same.
+    impl AudioTap {
+        #[unsafe(method(stream:didStopStreamWithError:))]
+        #[allow(non_snake_case)]
+        unsafe fn stream_didStopWithError(&self, _stream: &SCStream, error: &NSError) {
+            eprintln!("[audio] mac stream stopped: {}", error.localizedDescription());
+        }
+    }
+
     unsafe impl NSObjectProtocol for AudioTap {}
 
     unsafe impl SCStreamOutput for AudioTap {}
-);
 
-#[repr(C)]
-struct StereoList {
-    number_buffers: u32,
-    buffers: [AudioBuffer; 2],
-}
+    // Empty trait impl: the delegate method above is registered as a plain
+    // class method (objc2 cannot verify optional-protocol overrides), this
+    // only satisfies ProtocolObject<dyn SCStreamDelegate>'s trait bound.
+    unsafe impl SCStreamDelegate for AudioTap {}
+);
 
 fn start_or_stop_capture(stream: &SCStream, start: bool) -> Result<(), String> {
     let slot = Arc::new((Mutex::new(None::<Result<(), String>>), Condvar::new()));
@@ -278,9 +272,11 @@ fn request_permission() -> Result<(), String> {
 }
 
 /// Build the audio-only SCK stream feeding `ring`; permission must already be
-/// granted. The tap keeps `ring` alive, and the stream retains the tap and the
-/// sample-handler queue.
-fn open_stream(ring: Arc<Mutex<VecDeque<f32>>>) -> Result<Retained<SCStream>, String> {
+/// granted. Returns the tap alongside the stream: the stream holds it only
+/// weakly (SCStream delegate/output are not retained — verified on macOS 27,
+/// where dropping the tap mid-stream kills every callback), so the caller must
+/// keep it alive for the capture's lifetime.
+fn open_stream(ring: Arc<Mutex<VecDeque<f32>>>) -> Result<(Retained<SCStream>, Retained<AudioTap>), String> {
     unsafe {
         let content = shareable_content()?;
         let displays = content.displays();
@@ -317,7 +313,7 @@ fn open_stream(ring: Arc<Mutex<VecDeque<f32>>>) -> Result<Retained<SCStream>, St
             SCStream::alloc(),
             &filter,
             &config,
-            None,
+            Some(ProtocolObject::from_ref(&*tap)),
         );
         // A serial queue is not required, but keeps callbacks ordered.
         let queue = DispatchQueue::new("dev.omp.rail-audio", None);
@@ -328,14 +324,14 @@ fn open_stream(ring: Arc<Mutex<VecDeque<f32>>>) -> Result<Retained<SCStream>, St
                 Some(&queue),
             )
             .map_err(|e| e.localizedDescription().to_string())?;
-        Ok(stream)
+        Ok((stream, tap))
     }
 }
 
 pub fn run_capture(app: &AppHandle, stop: &AtomicBool, _device_id: &str) -> Result<(), String> {
     request_permission()?;
     let ring = Arc::new(Mutex::new(VecDeque::new()));
-    let stream = open_stream(ring.clone())?;
+    let (stream, _tap) = open_stream(ring.clone())?;
     start_or_stop_capture(&stream, true)?;
 
     let device_name = default_output_name();
@@ -396,7 +392,7 @@ mod tests {
             return;
         }
         let ring = Arc::new(Mutex::new(VecDeque::new()));
-        let stream = open_stream(ring.clone()).expect("open stream");
+        let (stream, _tap) = open_stream(ring.clone()).expect("open stream");
         start_or_stop_capture(&stream, true).expect("start capture");
         std::thread::sleep(Duration::from_secs(2));
         let _ = start_or_stop_capture(&stream, false);

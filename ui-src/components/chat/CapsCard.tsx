@@ -142,9 +142,10 @@ export function CapsFloat() {
     if (view.sessionId) useAppStore.getState().fetchCapabilities();
   }, [view.sessionId]);
 
-  // Bottom gap to the composer dock's bottom edge (both rect diffs are zoom-safe);
-  // the dock height is dynamic (growing input, stacked goal/queue/approval cards),
-  // so the gap is measured, not a CSS constant. Main width drives the auto-hide.
+  // Bottom gap to the composer dock's bottom edge (both rect diffs are visual, so the
+  // gap is divided back out for the zoomed subtree's layout px); the dock height is
+  // dynamic (growing input, stacked goal/queue/approval cards), so the gap is measured,
+  // not a CSS constant. Main width drives the auto-hide.
   const [bottom, setBottom] = useState(88);
   const [mainW, setMainW] = useState(Infinity);
   useEffect(() => {
@@ -152,7 +153,8 @@ export function CapsFloat() {
     const dock = main?.querySelector(".dock");
     if (!main || !dock) return;
     const update = () => {
-      setBottom(Math.max(0, Math.round(main.getBoundingClientRect().bottom - dock.getBoundingClientRect().bottom)));
+      const z = useAppStore.getState().zoomLevel || 1;
+      setBottom(Math.max(0, Math.round((main.getBoundingClientRect().bottom - dock.getBoundingClientRect().bottom) / z)));
       setMainW(main.clientWidth);
     };
     update();
@@ -160,9 +162,11 @@ export function CapsFloat() {
     ro.observe(dock);
     ro.observe(main);
     window.addEventListener("resize", update);
+    window.addEventListener("omp:zoom", update); // zoom reflows silently (no ResizeObserver in WebKit): re-measure on the applyZoom broadcast
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", update);
+      window.removeEventListener("omp:zoom", update);
     };
   }, []);
 

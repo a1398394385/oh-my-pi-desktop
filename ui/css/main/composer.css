@@ -135,7 +135,7 @@
   box-shadow: 0 10px 28px var(--tint-black-380);
 }
 
-[data-theme="light"] #statusCard { box-shadow: 0 10px 28px var(--tint-black-120); }
+:is([data-theme="light"], [data-theme-mode="light"]) #statusCard { box-shadow: 0 10px 28px var(--tint-black-120); }
 #input {
   width: 100%; min-height: 54px; max-height: calc(1.5em * 12.5);
   background: transparent; border: 0; outline: none; resize: none;
@@ -283,9 +283,6 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .q-btn:hover { background: var(--panel-2); color: var(--text); }
 
 .turn-acts {
-  display: flex;
-  align-items: flex-start;
-  gap: 2px;
   margin-top: 0; /* zero top gap, pixel-tight against the turn-body bottom edge */
   margin-bottom: 33px; /* 5px more spacing to the agent process flow before it (28px -> 33px) */
   padding-top: 0;
@@ -296,6 +293,15 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   opacity: 0; /* not shown at rest; the slot stays reserved */
   /* Opacity-only hiding (no pointer-events:none): the bar must stay hit-testable while invisible, otherwise a lost hover (arriving from below, or crossing the gap above) can never recover. */
   transition: opacity 0.15s ease-out;
+}
+
+/* Column-capped content box (.turn-acts-in carries the shared max-width + auto-margin
+   rule from center.css, same mechanism as .turn-flow; the flex row lives here) */
+.turn-acts-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  height: 100%;
 }
 
 /* fades in when the mouse hovers the Agent processing area or the action bar itself */
@@ -568,7 +574,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   --pop-from: 6px;
 }
 
-[data-theme="light"] #wbProjectMenu.wb-project-menu {
+:is([data-theme="light"], [data-theme-mode="light"]) #wbProjectMenu.wb-project-menu {
   background: var(--panel, var(--white));
   border-color: var(--line);
   box-shadow: 0 12px 32px var(--tint-black-150);
@@ -613,8 +619,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   background: var(--tint-white-80);
 }
 
-[data-theme="light"] .wb-proj-item:hover,
-[data-theme="light"] .wb-proj-item.selected {
+:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-item:hover,
+:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-item.selected {
   background: var(--tint-black-60);
 }
 
@@ -627,8 +633,8 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   gap: 2px;
 }
 
-[data-theme="light"] .wb-proj-search,
-[data-theme="light"] .wb-proj-actions {
+:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-search,
+:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-actions {
   border-color: var(--tint-black-200);
 }
 
@@ -649,7 +655,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   background: var(--tint-white-80);
 }
 
-[data-theme="light"] .wb-proj-action-item:hover {
+:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-action-item:hover {
   background: var(--tint-black-60);
 }
 

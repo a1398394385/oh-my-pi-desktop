@@ -485,7 +485,7 @@ export const settingsPageEn = {
     acpGroupDesc: "Active Context Pruning: a suite for proactive folding-based compression and context management in long conversations.",
     acpTitle: "Enable ACP context compression",
     restartCacheWarn: "!!! Takes effect after an app restart. Toggling this breaks the tool-list structure of historical sessions and invalidates the LLM cache",
-    acpDesc: "Registers context management tools such as compress / decompress / search_context for new sessions, letting the model fold long conversation ranges into summary blocks that can be restored at any time. Only affects sessions opened afterwards.",
+    acpDesc: "Registers context management tools (context_status / compress_context / recall_block) for new sessions: the model can check the compressible-block manifest and fold old conversation ranges into summary blocks that recall_block can fetch back verbatim. Only affects sessions opened afterwards.",
     tierModeTitle: "Threshold mode",
     tierModeDesc: "Absolute mode stores the tier lines as token counts; percent mode stores them as shares of the session model's context window, converted when the session is created.",
     tierModeAbsolute: "Absolute",

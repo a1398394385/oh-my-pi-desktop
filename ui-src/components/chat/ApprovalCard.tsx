@@ -140,8 +140,12 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       picksRef.current = next;
       return next;
     });
-    // Single-choice pick answers the question: auto-advance to the next page
-    if (!multi && qi < askQs.length - 1) goTo(qi + 1);
+    // Single-choice pick answers the question: auto-advance to the next page,
+    // or settle the whole form when the pick lands on the last page (with no
+    // further page there is nothing to advance to — an advance-only path left
+    // the mouse without a submit, so a one-question ask could not be answered
+    // by clicking its option at all)
+    if (!multi) advanceOrSubmit();
   };
   // "Other (type your own)" row per question (base-parity with the TUI dialog):
   // single = exclusive with the options (toggling it clears the pick), multi =
@@ -204,8 +208,9 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     writeAnswer("cancel");
   };
   // ---- Pager (multi-question ask): one question per page ----
-  // Single-choice auto-advances on pick; multi advances via Next/Enter. Submit
-  // lives only on the last page and requires every question answered.
+  // Single-choice auto-advances on pick, and the pick on the last page settles
+  // the form; multi questions advance via Next/Enter and submit through the
+  // foot button, which requires every question answered.
   // picksRef/othersRef are updated synchronously inside togglePick/toggleOther,
   // so reading them during render yields the same values as the state.
   const [askPage, setAskPage] = useState(0);

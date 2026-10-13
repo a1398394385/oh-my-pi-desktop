@@ -145,14 +145,16 @@ svg { vertical-align: middle; }
   display: none; z-index: 500;
 }
 
-[data-theme="light"] .menu { background: var(--panel); box-shadow: 0 12px 32px var(--tint-black-180); }
+:is([data-theme="light"], [data-theme-mode="light"]) .menu { background: var(--panel); box-shadow: 0 12px 32px var(--tint-black-180); }
 .menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; }
 
 /* pops up: slides in from below */
+/* .mi may be a <button> (e.g. FilePage's fv-menu): reset native chrome so it renders like the div-based menu rows */
 .menu .mi {
   display: flex; align-items: center; gap: 7px;
   padding: 6px 9px; border-radius: 6px;
   font-size: var(--ui-fs-base); color: var(--text); cursor: pointer;
+  border: none; background: none; appearance: none; text-align: left;
 }
 
 .menu .mi:hover, .menu .mi.on { background: var(--panel-3); } /* .on = keyboard-active row (picker arrow-key navigation) */
@@ -178,7 +180,7 @@ svg { vertical-align: middle; }
 }
 
 .srow:hover { background: var(--tint-white-25); }
-[data-theme="light"] .srow:hover { background: var(--tint-black-20); }
+:is([data-theme="light"], [data-theme-mode="light"]) .srow:hover { background: var(--tint-black-20); }
 .srow + .srow { border-top: 1px solid var(--line-soft); }
 
 .srow.disabled { opacity: .45; }
@@ -205,7 +207,7 @@ svg { vertical-align: middle; }
 }
 
 .save-btn:hover { background: var(--button-hover-dark); color: var(--text); }
-[data-theme="light"] .save-btn:hover { background: var(--button-hover-light); }
+:is([data-theme="light"], [data-theme-mode="light"]) .save-btn:hover { background: var(--button-hover-light); }
 .save-btn:active { transform: scale(.95); }
 
 /* Danger variant (sign-out etc.): same size language as .save-btn, hover turns red to signal destructiveness */

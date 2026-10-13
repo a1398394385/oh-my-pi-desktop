@@ -24,7 +24,7 @@
   overflow: hidden;
 }
 
-[data-theme="dark"] .fd-holder { color-scheme: dark; }
+:is([data-theme="dark"], [data-theme-mode="dark"]) .fd-holder { color-scheme: dark; }
 
 /* More menu on the project row / the back-to-tree row: the trigger sits inline, the dropdown
    portals to body (fixed + placeMenu) because both row containers crop with overflow:hidden */

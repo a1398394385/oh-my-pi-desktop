@@ -6,7 +6,7 @@
 /* summary head: display row — only the trailing count tag / add button are
    clickable, so the row-level hover affordance is off */
 .srow.itcp-head:hover,
-[data-theme="light"] .srow.itcp-head:hover { background: none; }
+:is([data-theme="light"], [data-theme-mode="light"]) .srow.itcp-head:hover { background: none; }
 
 /* rule row: fully clickable, .on highlight while its editor is expanded */
 .srow.itcp-row { cursor: pointer; }

@@ -476,7 +476,7 @@ export const settingsPageZh = {
     acpGroupDesc: "Active Context Pruning：长对话主动折叠压缩与上下文管理套件。",
     acpTitle: "启用 ACP 上下文压缩",
     restartCacheWarn: "!!! 重启应用生效，开关此功能会破坏历史会话的工具列表结构，导致大模型缓存失效",
-    acpDesc: "为新建会话注册 compress / decompress / search_context 等上下文管理工具，模型可把长对话区间折叠成可随时还原的摘要块。开关只影响此后打开的会话。",
+    acpDesc: "为新建会话注册 context_status / compress_context / recall_block 上下文管理工具：模型可查看可折叠块清单，把久远对话区间折叠成摘要块，recall_block 可按需原样取回。开关只影响此后打开的会话。",
     tierModeTitle: "阈值模式",
     tierModeDesc: "绝对值模式按 token 数存储档位线；百分比模式按会话模型上下文窗口的占比存储，会话创建时换算。",
     tierModeAbsolute: "绝对值",

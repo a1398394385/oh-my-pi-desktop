@@ -120,7 +120,7 @@
 }
 
 .set-back:hover { background: var(--tint-nav-hover-420); color: var(--text); }
-[data-theme="light"] .set-back:hover { background: var(--tint-black-60); }
+:is([data-theme="light"], [data-theme-mode="light"]) .set-back:hover { background: var(--tint-black-60); }
 .set-back svg { transition: transform .22s var(--spring); }
 
 .set-back:hover svg { transform: translateX(-2px); }
@@ -221,7 +221,7 @@
   color: var(--text);
 }
 
-[data-theme="light"] .set-search-item:hover {
+:is([data-theme="light"], [data-theme-mode="light"]) .set-search-item:hover {
   background: var(--tint-black-60);
 }
 
@@ -294,7 +294,7 @@
 }
 
 .set-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
-[data-theme="light"] .set-item:hover { background: var(--tint-black-60); }
+:is([data-theme="light"], [data-theme-mode="light"]) .set-item:hover { background: var(--tint-black-60); }
 .set-item.on { background: var(--select); color: var(--text); }
 
 .set-item .si {
@@ -394,7 +394,7 @@
 
 .gtt-hint:hover::after { opacity: 1; visibility: visible; transform: translateY(0); }
 
-[data-theme="light"] .gtt-hint::after { box-shadow: 0 12px 32px var(--tint-black-180); }
+:is([data-theme="light"], [data-theme-mode="light"]) .gtt-hint::after { box-shadow: 0 12px 32px var(--tint-black-180); }
 .set-group-desc { font-size: var(--ui-fs-sm); color: var(--faint); margin: -6px 2px 10px; line-height: 1.6; }
 
 .set-group-desc code, .set-note code, .srow-tx code {
@@ -410,7 +410,7 @@
   box-shadow: 0 8px 26px var(--tint-black-350);
 }
 
-[data-theme="light"] .set-card {
+:is([data-theme="light"], [data-theme-mode="light"]) .set-card {
   border-color: var(--tint-black-80);
   box-shadow: 0 8px 24px var(--tint-black-80);
 }
@@ -422,7 +422,7 @@
   display: flex; flex-direction: column; gap: 4px;
 }
 
-[data-theme="light"] .set-note { border-color: var(--tint-black-80); border-left-color: var(--accent); }
+:is([data-theme="light"], [data-theme-mode="light"]) .set-note { border-color: var(--tint-black-80); border-left-color: var(--accent); }
 .set-note b { font-size: var(--ui-fs-base); font-weight: 500; }
 
 .set-note span { font-size: var(--ui-fs-sm); color: var(--faint); line-height: 1.6; }

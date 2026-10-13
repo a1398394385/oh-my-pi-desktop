@@ -13,10 +13,12 @@ export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRec
   const inpRef = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
     const el = ref.current!; // exists right after portal mount (the old JS dereferenced directly; same assumption kept)
-    const w = 330;
-    const left = Math.max(4, Math.min(anchorRect.right - w, window.innerWidth - w - 8));
     const z = useAppStore.getState().zoomLevel || 1; // same as placeMenu: set zoom first, then divide back
     el.style.zoom = String(z);
+    // measure the real visual width after zoom: the clamps mix it with visual
+    // anchor/viewport coordinates, so a fixed layout-width estimate would drift under zoom
+    const w = el.getBoundingClientRect().width;
+    const left = Math.max(4, Math.min(anchorRect.right - w, window.innerWidth - w - 8));
     el.style.left = left / z + "px";
     el.style.top = (anchorRect.bottom + 4) / z + "px";
     inpRef.current?.focus();

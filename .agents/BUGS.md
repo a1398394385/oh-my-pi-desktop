@@ -63,6 +63,9 @@
 | BUG-059 | 能力卡片不显示插件行与状态徽章——host 编译时 `--external` 排除 legacy 虚拟模块，legacy 插件扩展在编译产物里必加载失败 | 2026-10-10 |
 | BUG-062 | 上下文圆环中心的 keepalive 探测计数切走再切回就消失——状态只存「最近一条帧」的单槽，被其他会话的推送覆盖后无补偿 | 2026-10-12 |
 | BUG-065 | 升级底座 18.10.3 两处静默失败：bun patch 按行号错位打歪 node_modules、pi-natives 内嵌清单换 zstd 协议致编译产物启动即崩 | 2026-10-13 |
+| BUG-069 | Cmd± 缩放后 fork/copy 按钮行与消息列错位——WebKit zoom 子树内 padding-calc 与 margin-auto 居中计算不一致 | 2026-10-13 |
+| BUG-067 | ask 弹窗最后一题/单题鼠标点选项不提交——单选「自动翻页」只在非末页分支，末页无鼠标提交路径 | 2026-10-13 |
+| BUG-068 | 升级底座 18.10.3 后发消息报 `maybeStartTitleGeneration is not a function`——底座移除该 API，改由会话 `autoTitle` 内部驱动 | 2026-10-13 |
 
 ---
 
@@ -928,3 +931,73 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **验证（全部实跑）**：①`bun run check` 十步全绿（含 `check-omp-imports` 两入口链接校验）；②`bun run ui:build` 通过；③故障注入反证——把 node_modules 里的 `legacy-pi-virtual-module.ts` 换回未打补丁版本，`host:build` 立刻复现 `ENOENT .../node_modules/packages/agent/package.json`，还原补丁后恢复；④编译产物 exe 启动到 `READY`，`~/.omp/natives/18.10.3/pi_natives.darwin-arm64.node`（98MB）由内嵌 zstd 帧解出；⑤legacy 虚拟模块探针 exe（同款构建插件）：`BUNDLED_PI_MODULE_LOADERS` 1553 条，`@oh-my-pi/pi-ai`（338 导出）与 `@oh-my-pi/pi-coding-agent`（731 导出）实际加载成功；⑥memory 作用域冒烟（补丁 #15375 的语义）：会话 cwd 与 `settings.getCwd()` 指向不同目录时，注入内容取自会话 cwd（负向对照 + 故障注入均按预期翻转）。
 
 **教训**：①「patch 装上了」不等于「patch 打在正确的位置」——跨版本复用 bun patch 必须按新版文件重新生成，验证要落到「安装结果 == 期望内容」的逐文件比对，别信 dry-run 的绿色；②内嵌资源的清单是上游内部契约（不进 `exports`），升级后要用**产物实测**暴露（跑 exe 看解压目录重建），构建成功不等于运行时可用；③这两处都不以「补丁冲突」形式报错，是升级里最贵的静默失败面，已同步写入 `docs/PITFALLS.md` 升级 SOP。
+
+### BUG-066: 加载超大历史会话时点别的会话没反应、等加载完一瞬间全切过去——冷载回放的每条 subagent 帧各触发一次全树重渲染
+
+**现象**：点开一个跑过大量子代理的大会话（`01a130b4`，3MB jsonl + 13 个子代理子会话）时，主线程连续数秒不处理任何输入：期间点别的会话毫无反应，等大会话加载完，积压的几次点击才在一瞬间挨个切过去。
+
+**分诊**：②确认存量缺陷（与本次改动无关）。先排除宿主：真宿主 + WS 实测，载这个会话的宿主侧只有 ~140ms，期间并发 `get_keepalive_status` 探针往返 0–10ms——事件循环没被堵；同一时刻浏览器端 `PerformanceObserver(longtask)` 记录到单个 **4.3–5.7s** 的长任务，冻结在前端。
+
+**根因**：`handleLoadSession` 冷载（及前端重连后的池内复用）会 `replaySubagentHistory(..., includeTools=true)`，把每个历史子代理的整条工具流逐条推成 `subagent_event` 帧（该会话 3148 条）。前端的 `subagent_event` 处理走 `updateSession(..., false)`——每帧都浅拷一份 session + 换一次 `openSessions` Map 引用，订阅者全部重渲染；每条 WS 消息各自是一个任务，React 不跨任务合批，于是 3148 次全树重渲染挤在一段长任务里。会话树/侧栏只是订阅 `openSessions` 的引用，也被这 3148 次一起拖死——表现为「点哪儿都没反应」。
+
+**修复**：`subagent_event` 的非 delta 分支改走 `applyDelta`（`text_delta` 已在用的机制）：原地改 `sub.tools`，每 100ms 窗口只做一次「浅拷 + 换引用」通知。终态逐字不变（同一个变更函数、同一个对象图），只是通知从每帧一次降到每窗口一次。
+
+**验证**（真宿主 + 无头 Chromium，`omp-desktop-test` profile 的会话副本）：
+- 修复前两次实测长任务 **5661ms / 4338ms**；修复后同一会话 **556ms**（余下的是 0.9MB `messages` 帧的正文渲染，非本次范围），3148 帧在 ~1.5s 内排空。
+- 加载中连点三个别的会话：修复前点下去「没反应」，修复后每次点击都在下一帧生效。
+- 终态逐子代理核对：13 个子代理的 `tools.length` 与 `subagent_progress.toolCount` 逐个相等（85/82/49/92/73/108/37/44/212/321/207/162/102），无残留 `running: true`。
+- `bun run check` 十步全绿，`bun run ui:build` 通过。
+
+**教训**：①「每帧一次 setState」在低频帧上是免费的，在冷载回放这种一次性几千帧的突发里就是一次几秒的主线程冻结——判据不是帧类型而是**帧数×订阅面**，突发路径必须走窗口合批；②复现这类卡顿要分清是宿主堵还是前端堵：宿主侧往返探针（廉价 RPC 的 RTT）+ 页面 `longtask` 两条数据一摆就能定位，本次若只看「宿主加载要读 20MB 文件」的直觉就会往错的方向优化。
+
+### BUG-067: ask 弹窗最后一题（含只有一题）鼠标点选项不提交——单选「自动翻页」只写在非末页分支，末页只有键盘/提交钮这一条路
+
+**现象**：ask 弹窗（`ApprovalCard` 的 questions 变体）只有一题时，鼠标点选项只切换选中态，不会提交；多题时前面几题点选项能自动翻页（正常），翻到最后一题点选项又变成只切换、不提交。
+
+**分诊**：②确认存量缺陷（questions 变体自 18.5 引入起如此，非本次改动回归）——`askDialog` 对任何题数都走同一帧（`host/session-lifecycle.ts` 的 `questions` 字段），单题不是另一条渲染分支。
+
+**根因**：`togglePick` 的单选分支只做了「非末页才翻页」：
+
+```ts
+if (!multi && qi < askQs.length - 1) goTo(qi + 1);
+```
+
+末页（单题时 `askQs.length === 1`，`qi` 恒为 0）落进假分支，只剩「选中」这一个效果——鼠标在末页唯一能提交的地方是页脚 `.approval-confirm`，而前面几页的翻页已经把手感养成「点选项=作答并前进」，末页突然断档。键盘路径不受影响（`Enter` → `advanceOrSubmit`，末页会 `submitAll`），所以只有鼠标操作暴露。
+
+**修复**：单选分支改为复用键盘同一条路径 `advanceOrSubmit()`——非末页翻页、末页且全部作答则 `submitAll()`（`ui-src/components/chat/ApprovalCard.tsx` 的 `togglePick`）。多选行不受影响（仍需页脚提交钮），末页提交的前置门（`askQs.every(qDoneAt)`）与键盘一致。
+
+**验证**（`OMP_PROFILE=omp-desktop-test bun scripts/smoke-ask-approval.ts`，happy-dom + 真实 store/组件/send 链路）：
+- 先红后绿：新增单题场景（渲染单题条目 → 点第 2 行 `rowsOf()[1].click()`）在修复前断言 `exactly one approval_response` 失败，修复后通过，且提交体 `results[0].selectedOptions[0] === "B 环境"`。
+- 原有 2 题流程全部保留通过：点第 1 页选项仍翻到第 2 页、数字键快选仍翻页、最后一页多选仍靠 `.approval-confirm` 提交且只发 1 条响应、冻结态与取消路径不变。
+- `bun run check` 十步全绿、`bun run ui:build` 通过（i18n 提示文案同步改了两语言包）。
+
+**教训**：①「点选项自动前进」和「点选项提交」是同一条交互意图的两段，分页组件把末页当特例写死 `qi < len - 1` 时，等于给末页单开了一条键盘专线；规则应该是「选中即作答 → 作答完就前进/收尾」，末页不是例外而是终点；②本次只有鼠标暴露，键盘/触屏/回车全正常——交互缺陷要在**同一动作的每条输入通道**上各验一遍，别用一条通道的通过推断整条链路。
+
+### BUG-068: 升级底座 18.10.3 后发消息即报 `maybeStartTitleGeneration is not a function`——底座移除该 API，自动起标题改由会话 `autoTitle` 内部驱动
+
+**现象**：升级 `@oh-my-pi/*` 到 18.10.3 后，前端发消息弹 `✗ TypeError: entry.session.maybeStartTitleGeneration is not a function`（`prompt` RPC 出错返回），消息发不出去。
+
+**分诊**：①确认回归——同一条路径在 18.8.6 正常，本次仅升级底座与补丁（BUG-065 的后续）。触发点在宿主，不在前端。
+
+**根因**：18.9 之前 AgentSession 暴露 `maybeStartTitleGeneration(text)`，宿主靠它自助起标题（BUG-024 的修法，见 `host/rpc/prompt.ts`）；18.10.x 把整条链路收进 AgentSession 内部——`#noteTitleInput` 挂在 `message_end`，`#maybeStartTitle` 在回复首个 text/toolcall 块时触发，只由会话 config 的 `autoTitle` 开关控制（`sdk.ts:4708` 透传 `options.autoTitle`，自带 `&& !isSubagentSession`）。旧方法在 18.10.3 全包（src+dist）已不存在，宿主那行位于 `entry.session.prompt(...)` **之前**，于是每次非 steer 发消息都死在这行；`if (!steer)` 让 steer 路径幸免，症状看起来像偶发。宿主还从未传过 `autoTitle`——删掉调用而不补旗标，会退回 BUG-024 的「永不自动起标题」。
+
+**修复**：①`host/rpc/prompt.ts` 删掉 `entry.session.maybeStartTitleGeneration(finalText)` 调用，注释改为指向底座内部链路；②`host/session-lifecycle.ts` 的 `createAgentSession({...})` 传 `autoTitle: true`（桌面宿主是交互面，等同 CLI 的 `sessionOptions.autoTitle = isInteractive`）。
+
+**验证（全部实跑）**：
+- `OMP_PROFILE=omp-desktop-test bun scripts/smoke.ts`：真实模型跑通 list → create → prompt → reload 全链，回复与 usage 断言全过（修复前该冒烟会卡在 prompt 的 error 帧）。
+- 临时探针（真宿主 + test profile，跑完已删）：新建会话发一条会话，收到 `session_title_changed` → `{"title":"💥 CRASH: 排查打包后启动崩溃"}`，证明删掉宿主调用后自动起标题仍工作，未退回 BUG-024。
+- `bun run check` 十步全绿、`bun run ui:build` 通过。
+
+**教训**：①**SDK 的「宿主自助入口」在下游被收回是升级常态**，删调用时不能只看调用点能不能编译——必须同时找出「这次删除会让哪个既有能力失效」，本次就是 `autoTitle` 这个替代开关（不补 = 静默退回 BUG-024，冒烟也不一定覆盖）；②`entry.session` 是 SDK 返回类型，方法被删**编译期能查出来，但 `host/` 不在任何 typecheck 门禁里**（tsconfig 只 include `ui-src`），`bun run check` 的 tree-shake 干跑也只查导出/子路径解析，查不出「实例方法消失」——升级后跑一条真实发消息冒烟是当前唯一防线，已把该缺口写进 `docs/PITFALLS.md` 的升级 SOP。
+
+### BUG-069: Cmd± 缩放后 fork/copy 按钮行与消息列错位——WebKit zoom 子树内 padding-calc 与 margin-auto 居中计算不一致
+
+**现象**：Cmd+=/Cmd− 缩放后，agent output 下方的 fork/copy/时间按钮行（`.turn-acts`）与上方正文列水平错位，方向随缩放翻转（放大偏右、缩小偏左），1.0x 对齐；上下文明细卡（CtxCard）始终正常。分诊：②确认存量缺陷（`.turn-acts` 从 BUG-030 起用全宽盒 + 镜像 padding 居中，zoom 支持加入后一直错位）。
+
+**根因**：`.turn-acts` 用「镜像列帽」居中——行盒保持全宽（BUG-030 选区填充性质），`padding-left: max(0px, calc((100% - min(var(--col-max), 100vw - X))/2))` 把内容推到列左缘；而 `.turn-flow`/`.dock`/`.sticky-user-inner` 等走共享的 `max-width + margin: 0 auto`（center.css 选择器列表）。同一份 `--col-max`（756px 写在 documentElement）在 WebKit 的 zoom 子树内被按 zoom 折算（zoom 1.3 时视觉 581.54px），**padding-calc 路径与 margin-auto 路径的折算各走各的**：1.3x 时 padding 算出 120.5px（多 29.2px）、0.7x 时算出 44.5px（少 119.1px），列本身纹丝不动。按钮+时间渲染在 `main`（zoom 子树内），但整套 `max()/min()/calc()` 嵌套在 WebKit 下对跨 zoom 边界的自定义属性不生效——`--col-max` 被冻结在未缩放值（Chromium 全档位 d=0 无此问题）。用户截图附证：按钮/时间字号不随缩放，正文随缩放。
+
+**修复**：统一居中机制——按钮+时间包进内层 `<div class="turn-acts-in">`，`.turn-acts-in` 并入 center.css 共享列帽选择器列表（与 `.turn-flow` 同一条 `max-width + margin: 0 auto` 规则），`.turn-acts` 保留全宽盒（BUG-030 性质不变）、flex 布局移到内层。messages.css 删除镜像 padding 规则。另加固：`ui-src/shell.ts` applyZoom 的 zoomTargets 缓存加 `isConnected` 检查（探针观测到 App 启动重挂载 2 次导致 zoom 写到游离节点，真实环境重启应用时同样命中）。
+
+**验证**：Playwright WebKit（=WKWebView 同 WebCore）真 host + test profile 真实会话——修复前 1.3x 偏右 29.23px / 0.7x 偏左 119.08px 复现，修复后 1.0/1.3/0.7/2.0 四档 d(btn, flow)=0.0 且行盒保持全宽；Chromium 1.3/0.7 回归 0.0。`bun run ui:build`、`bun run check` 十步全绿。
+
+**教训**：同一视口下的两种 CSS 居中（镜像 padding vs margin-auto）数学等价，但 zoom 子树内不等价——WebKit 对跨 zoom 边界的自定义属性 + `max()/min()` 嵌套 calc 不生效/不折算，两条路径各自为政。zoom 生效区域里的居中必须与列帽共享同一条规则（同一机制、同一选择器列表），不得私造镜像公式。排查路径提示：Chromium 全绿时换 WebKit 复现（`page.goto` 需 `wait_until="commit"`）；截图证据里的「字号不随缩放」直接指向「渲染在 zoom 子树边界外/属性冻结」。

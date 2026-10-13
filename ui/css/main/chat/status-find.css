@@ -46,7 +46,7 @@
 .todo .ci { color: var(--faint); font-style: normal; flex: none; }
 
 .todo.done { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--todo-strike-dark); }
-[data-theme="light"] .todo.done { text-decoration-color: var(--todo-strike-light); }
+:is([data-theme="light"], [data-theme-mode="light"]) .todo.done { text-decoration-color: var(--todo-strike-light); }
 .todo.done .ck { color: var(--green-soft); }
 
 .todo.cur { color: var(--text); }
@@ -97,7 +97,7 @@
   text-align: left;
 }
 
-[data-theme="light"] #capsule { box-shadow: 0 8px 22px var(--tint-black-120); }
+:is([data-theme="light"], [data-theme-mode="light"]) #capsule { box-shadow: 0 8px 22px var(--tint-black-120); }
 #capsule:hover { background: var(--panel-2); }
 
 #capsule .cap-ic { flex: none; color: var(--text); font-style: normal; }
@@ -122,7 +122,7 @@
   animation: ringpop .18s ease-out; /* same entrance as the ring-pop family (fade in + slide up) */
 }
 
-[data-theme="light"] .find-bar { box-shadow: 0 8px 24px var(--tint-black-180); }
+:is([data-theme="light"], [data-theme-mode="light"]) .find-bar { box-shadow: 0 8px 24px var(--tint-black-180); }
 /* input = the .inp language: --bg base + --line-soft border + r8 + blue focus glow */
 .find-inp {
   background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;

@@ -8,6 +8,7 @@ import Icon from "../../Icon";
 import { Ellip, FileChip, LinkedText, FadeBox, useLift, openReadFileInSidebar, uniqueFiles, splitPath, ReadRow, Spin, patchActiveItem, patchGroupSub } from "./parts";
 import EditRow, { renderChange, renderReadGroup } from "./EditRow";
 import { isDevicePath, deviceNameOf, yieldSummary } from "./util";
+import { fmtTokens } from "../../store/utils";
 import ThinkingRow from "./ThinkingRow";
 import { modelShort } from "../shared/agent/subShared";
 import { t } from "../../i18n";
@@ -333,7 +334,7 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
     </div>
   );
 }
-function ContentCard({ item, liftRef }: { item: ToolItem; liftRef?: (el: HTMLElement | null) => void }) {
+function ContentCard({ item, liftRef, noInput }: { item: ToolItem; liftRef?: (el: HTMLElement | null) => void; noInput?: boolean }) {
   const detailText = item.details?.displayContent?.text;
   // Result text: response output / read raw text / details JSON as fallback; when none of the
   // three exist, branch on running — result not yet arrived shows the Spin placeholder, and
@@ -344,7 +345,7 @@ function ContentCard({ item, liftRef }: { item: ToolItem; liftRef?: (el: HTMLEle
     (item.details ? truncateText(JSON.stringify(item.details, null, 2)) : "");
   return (
     <div ref={liftRef} className="cmd-card drop">
-      {item.name === "task" ? (
+      {noInput ? null : item.name === "task" ? (
         <TaskBody item={item} />
       ) : item.name === "ask" && Array.isArray(item.args?.questions) ? (
         <AskArgs questions={item.args.questions} />
@@ -365,7 +366,7 @@ function ContentCard({ item, liftRef }: { item: ToolItem; liftRef?: (el: HTMLEle
     </div>
   );
 }
-function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string }) {
+function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string; noInput?: boolean }) {
   const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -382,7 +383,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle }: { item:
           <Icon name="chevronRight" />
         </span>
       </div>
-      {item.cmdExpanded && <ContentCard item={item} liftRef={liftRef} />}
+      {item.cmdExpanded && <ContentCard item={item} liftRef={liftRef} noInput={noInput} />}
     </>
   );
 }
@@ -412,6 +413,85 @@ function renderSessionContext(item: ToolItem) {
     ? String(args.query)
     : `${String(args.sessionId || "")}${args.fromTurn !== undefined || args.toTurn !== undefined ? ` · ${args.fromTurn ?? 0}–${args.toTurn ?? "end"}` : ""}`;
   return <ExpandableRow item={item} iconName="search" label={t("chat.labelSessionContext")} summary={summary || item.text || ""} />;
+}
+// ---------- ACP context-management rows (host/acp-status-tool.ts · acp-assembly.ts · acp-recall-tool.ts) ----------
+// context_status dashboard: `[acp-report] tier=L1 compress=normal zone=N tokens active=N tokens projected=N tokens`
+const ACP_REPORT_RE = /tier=(\S+)\s+compress=\S+\s+zone=\d+ tokens active=(\d+) tokens projected=(\d+) tokens/;
+function renderContextStatus(item: ToolItem) {
+  const m = ACP_REPORT_RE.exec(item.output || "");
+  // context_status takes no parameters: nothing to summarize beyond the dashboard numbers,
+  // and the row must not fall back to the tool name
+  const summary = m ? `${m[1]} · ${fmtTokens(Number(m[2]))} → ${fmtTokens(Number(m[3]))}` : "";
+  return <ExpandableRow item={item} iconName="stats" label={t("chat.labelContextStatus")} summary={summary} noInput />;
+}
+// An xd:// device call journals the target tool's arguments as a JSON string in the
+// wrapper's `content` (the call itself is recorded under `write`), so decode that form too.
+function deviceCallArgs(content: unknown): Record<string, unknown> | null {
+  if (typeof content !== "string") return null;
+  try {
+    const v = JSON.parse(content) as unknown;
+    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null; // not JSON (truncated stream): callers fall back to their plain label
+  }
+}
+// recall_block: its only argument is the short id (bN) of the block it fetches back
+function renderRecallBlock(item: ToolItem) {
+  const id = item.args?.id ?? deviceCallArgs(item.args?.content)?.id;
+  return <ExpandableRow item={item} iconName="archive" label={t("chat.labelRecallBlock")} summary={id ? String(id) : item.text || ""} />;
+}
+// compress_context result (the JSON CompressOutcome). Folding half the context is a turn
+// milestone, so it renders as the centered phase separator row, not a tool row; a rejection
+// keeps its error text visible on the standard error row. The header distinguishes a normal
+// fold from a strong one (a strong reset supersedes the whole zone, not just this round's
+// folded blocks), so the card never reads as an ordinary append.
+interface CompressOutcomeView {
+  ok?: boolean;
+  method?: string;
+  error?: string;
+  compressed?: { blocks?: number; tokens?: number };
+  delta?: { blocks?: number; tokens?: number };
+}
+function parseCompressOutput(item: ToolItem): CompressOutcomeView | null {
+  const out = (item.output || "").trim();
+  if (!out.startsWith("{")) return null; // still running, or output truncated before the payload
+  try {
+    const v = JSON.parse(out) as CompressOutcomeView;
+    return v && typeof v === "object" ? v : null;
+  } catch {
+    return null; // truncated JSON: fall back to the plain label
+  }
+}
+function renderCompressContext(item: ToolItem) {
+  const parsed = parseCompressOutput(item);
+  if (parsed?.ok === false) {
+    return <div className="act err">{`✗ ${t("chat.compressFailed", { error: parsed.error || "" })}`}</div>;
+  }
+  // Real projected-context change when the host reported one (delta, negated = the request
+  // got smaller); outcomes journaled before that field existed only carry the folded-block
+  // counts, so the row degrades to those.
+  // Folded counts are the positive-norm numbers the row advertises; delta (negated when the
+  // request shrank) is only the fallback for outcomes that carry no compressed counts.
+  const d = parsed?.compressed ?? parsed?.delta;
+  const blocks = d?.blocks;
+  const tokens = d?.tokens;
+  const text =
+    parsed?.ok === true && typeof blocks === "number" && typeof tokens === "number"
+      ? t(parsed.method === "strong" ? "chat.compressStrongFolded" : "chat.compressFolded", {
+          count: blocks,
+          tokens: fmtTokens(tokens),
+        })
+      : t("chat.labelCompressContext");
+  return (
+    <div className="act phase">
+      <i className="ph-line" />
+      <span>
+        {text}
+        {item.running && <Spin />}
+      </span>
+      <i className="ph-line" />
+    </div>
+  );
 }
 // Debug row: action and target (launch program / file:line)
 function renderDebug(item: ToolItem) {
@@ -599,6 +679,14 @@ function toolKind(item: ToolItem) {
   if (name === "web_search") return "websearch";
   if (name === "ask") return "ask";
   if (name === "read_session_context") return "sessionctx";
+  // ACP context management (host/acp-assembly.ts · acp-status-tool.ts · acp-recall-tool.ts).
+  // They are also reachable as `write` + xd://<name> device calls — the harness journals
+  // those under `write` with the device path as the argument — so resolve the name from the
+  // device path first, otherwise they fall through to the device row below.
+  const acpTarget = isDevicePath(item.args?.path) ? deviceNameOf(item.args?.path) : name;
+  if (acpTarget === "context_status") return "ctxstatus";
+  if (acpTarget === "compress_context") return "ctxcompress";
+  if (acpTarget === "recall_block") return "ctxrecall";
   if (name === "debug") return "debug";
   if (name === "github") return "github";
   if (name === "lsp") return "lsp";
@@ -651,6 +739,12 @@ export default function ToolRow({ item }: { item: ToolItem }) {
       return renderAsk(item);
     case "sessionctx":
       return renderSessionContext(item);
+    case "ctxstatus":
+      return renderContextStatus(item);
+    case "ctxcompress":
+      return renderCompressContext(item);
+    case "ctxrecall":
+      return renderRecallBlock(item);
     case "debug":
       return renderDebug(item);
     case "github":

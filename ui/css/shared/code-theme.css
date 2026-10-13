@@ -12,7 +12,7 @@
   background-color: var(--sdm-tbg);
 }
 
-[data-theme="dark"] .md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+:is([data-theme="dark"], [data-theme-mode="dark"]) .md-body [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
   background-color: var(--shiki-dark-bg, var(--sdm-tbg));
 }
 
@@ -22,11 +22,11 @@
    arbitrary-value classes (dark:text-[var(--shiki-dark)]) not in our source scan, we override
    with direct attribute selectors to make theme switching work. */
 /* Light theme: use --sdm-c (light-plus colors) */
-[data-theme="light"] .md-body .md-streamdown-code span[style*="--sdm-c"] {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-body .md-streamdown-code span[style*="--sdm-c"] {
   color: var(--sdm-c, inherit) !important;
 }
 
-[data-theme="light"] .md-body .md-streamdown-code span[style*="--sdm-tbg"] {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-body .md-streamdown-code span[style*="--sdm-tbg"] {
   background-color: var(--sdm-tbg) !important;
 }
 

@@ -33,7 +33,7 @@
   color: inherit; /* same color as the normal output text beside it */
 }
 
-[data-theme="light"] .md-body .md-inline-code {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-body .md-inline-code {
   color: var(--code-keyword-light);
   background: var(--tint-black-60);
 }
@@ -153,6 +153,6 @@
   background: var(--tint-white-20);
 }
 
-[data-theme="light"] .md-table tr:nth-child(even) {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-table tr:nth-child(even) {
   background: var(--tint-black-20);
 }

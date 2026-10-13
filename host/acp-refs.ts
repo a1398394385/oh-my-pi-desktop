@@ -27,6 +27,18 @@ export const ACP_VIEW_PSEUDO_PREFIX = "view:";
 const ACP_ALIGN_WINDOW = 64;
 
 /**
+ * Whether a toolResult closed a context_status call. Two call forms reach the journal: the tool
+ * itself, and the harness's `write` + xd:// device dispatch. The latter executes the target tool
+ * under the SAME toolCallId (packages/coding-agent/src/tools/xdev.ts dispatchXdevTool), so the
+ * entry is recorded under `write` and the target's name survives only as `details.xdev.tool`.
+ */
+function isContextStatusResult(m: { toolName?: string; details?: unknown }): boolean {
+	if (m.toolName === "context_status") return true;
+	const xdev = (m.details as { xdev?: { tool?: string } } | undefined)?.xdev;
+	return xdev?.tool === "context_status";
+}
+
+/**
  * Attach journal entry ids to a request view (the manifest's block-id
  * namespace). In-order greedy fingerprint match: view messages derive from
  * journal entries in order, with base-synthetic messages interleaved (they
@@ -76,8 +88,8 @@ export class AcpRefBook {
 				// Zero-counter pass: ids only (presence of thinking/text blocks
 				// follows the same splitBlocks logic the projection uses).
 				for (const b of splitBlocks([{ id: e.id, message: e.message }], () => 0)) this.assign(b.id);
-				const m = e.message as { role?: string; toolName?: string };
-				if (m.role === "toolResult" && m.toolName === "context_status") this.liveStatusResults.add(e.id);
+				const m = e.message as { role?: string; toolName?: string; details?: unknown };
+				if (m.role === "toolResult" && isContextStatusResult(m)) this.liveStatusResults.add(e.id);
 			} else if (e.type === "custom" && e.customType === ACP_SUMMARY_CUSTOM_TYPE) {
 				this.assign(e.id);
 				// A successful compress landed: every context_status pair so far is

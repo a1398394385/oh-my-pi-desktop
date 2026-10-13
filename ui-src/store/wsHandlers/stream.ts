@@ -293,7 +293,13 @@ export const streamHandlers = {
       });
       return;
     }
-    updateSession(
+    // History replay (handleLoadSession's replaySubagentHistory) pushes the whole tool stream of
+    // every past subagent in one burst — thousands of frames on a heavy session. updateSession
+    // swaps the openSessions Map + a fresh session copy per frame, so each frame re-rendered the
+    // tree: one 4-5s main-thread block, and the sidebar looked dead until it drained. applyDelta
+    // mutates in place and notifies once per 100ms window (the text_delta path), so a burst costs
+    // ~10 renders instead of ~3000 with identical end state.
+    applyDelta(
       msg.sessionId,
       (s) => {
         const sub = s.subagents.get(msg.subagentId);
@@ -317,7 +323,6 @@ export const streamHandlers = {
             });
         } else if (msg.kind === "turn_end") sub.streaming = false;
       },
-      false,
     );
   },
   // Subagent control receipt (18.5 cancel/steer control_subagent): pure wire

@@ -169,7 +169,7 @@ function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
 // Composition row dot colors, one entry per row in the order the rows are built
 // below. Single-direction hue ramp (cyan -> magenta, top to bottom) defined in
 // ui/css/global/context-card.css as --ctx-1..--ctx-5 on .ring-pop. Only five steps for
-// eight rows: the rows form three groups of related categories and each group
+// nine rows: the rows form three groups of related categories and each group
 // shares a step, so the dot reads as "which group" while the ramp still rotates
 // one way down the card.
 const ROW_DOT_COLORS = [
@@ -181,6 +181,7 @@ const ROW_DOT_COLORS = [
   "var(--ctx-3)", // repo rules
   "var(--ctx-4)", // other
   "var(--ctx-5)", // messages
+  "var(--ctx-5)", // messages (ACP sessions split this pair into zone/active)
 ];
 
 // Context detail composition (S.ctxDetail.breakdown): constrains only the fields this component reads
@@ -204,6 +205,12 @@ interface CtxBreakdown {
   memoryTokens?: number;
   /** Host-side remainder of systemContextTokens after the regions above. */
   otherTokens?: number;
+  /**
+   * ACP dual-zone split (see ContextBreakdown in types/frames.ts): present only while ACP
+   * compaction is active on the session and its runtime has projected a request. Then the
+   * messages row splits into the compressed zone and the active zone.
+   */
+  acp?: { zoneTokens: number; activeTokens: number };
 }
 
 export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
@@ -306,8 +313,10 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
     const el = anchor;
     if (!pop || !el) return;
     const r = el.getBoundingClientRect();
-    const w = pop.offsetWidth;
-    const h = pop.offsetHeight;
+    placeMenu(pop, 0, 0); // apply zoom first so the rect below reads visual (zoomed) size
+    const pr = pop.getBoundingClientRect();
+    const w = pr.width;
+    const h = pr.height;
     const left = Math.min(Math.max(r.left + r.width / 2 - w / 2, 8), window.innerWidth - w - 8);
     const top = Math.max(r.top - h - 7, 8);
     placeMenu(pop, left, top);
@@ -373,6 +382,15 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
             const repoRules = b.repoRulesTokens ?? 0;
             const memory = b.memoryTokens ?? 0;
             const other = b.otherTokens ?? b.systemContextTokens;
+            // ACP sessions carry two zones instead of one messages block: the compressed
+            // zone (folded summaries) and the active zone. The request sends both, so the
+            // card splits the row along them; without the split the single row stands.
+            const lastRows: [string, number][] = b.acp
+              ? [
+                  [t("chat.ctxMessagesZone"), b.acp.zoneTokens],
+                  [t("chat.ctxMessagesActive"), b.acp.activeTokens],
+                ]
+              : [[t("chat.ctxMessages"), b.messagesTokens]];
             const rows: [string, number][] = [
               [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTools)],
               [t("chat.ctxMcpTools"), mcpTokens],
@@ -381,7 +399,7 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
               [t("chat.ctxSkills"), b.skillsTokens],
               [t("chat.ctxRepoRules"), repoRules],
               [t("chat.ctxOther"), Math.max(0, other)],
-              [t("chat.ctxMessages"), b.messagesTokens],
+              ...lastRows,
             ];
             return rows.map(([label, v], i) => (
               <div className="cx-row" key={label}>

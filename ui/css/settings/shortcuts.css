@@ -10,7 +10,7 @@
   box-shadow: 0 1.5px 0 var(--tint-white-60);
 }
 
-[data-theme="light"] .sc-key {
+:is([data-theme="light"], [data-theme-mode="light"]) .sc-key {
   border-color: var(--tint-black-160);
   box-shadow: 0 1.5px 0 var(--tint-black-70);
 }

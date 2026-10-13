@@ -8,7 +8,7 @@
   position: relative; /* anchor for absolutely positioned actions */
 }
 
-[data-theme="light"] .md-code-block {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-code-block {
   background: var(--code-surface-light);
   border-color: var(--tint-black-100);
 }
@@ -25,7 +25,7 @@
   user-select: none;
 }
 
-[data-theme="light"] .md-code-head {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-code-head {
   background: var(--tint-black-40);
   border-bottom-color: var(--tint-black-60);
 }
@@ -74,6 +74,6 @@
   color: var(--code-text-dark);
 }
 
-[data-theme="light"] .md-code-block code {
+:is([data-theme="light"], [data-theme-mode="light"]) .md-code-block code {
   color: var(--code-text-light);
 }

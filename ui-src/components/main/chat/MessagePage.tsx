@@ -4,11 +4,13 @@
 // Migrated from renderChat in ui/chat.js + the scroll handling of markdown.js:
 // - Scroll following (stickBottom semantics): switching sessions jumps to the latest
 //   content; when glued to the bottom, any re-render (streaming append / expand body)
-//   stays pinned. The at-bottom check must happen before the DOM update — use the
-//   pre-render state recorded continuously by the scroll listener; after rendering,
-//   scrollHeight has already changed and cannot be inferred backwards (120px tolerance as
-//   in the original). The target itself is latestScrollTop() — see its comment for why the
-//   plain scrollHeight target is wrong.
+//   stays pinned. Bottom proximity is judged in the layout effect from the CURRENT
+//   scrollTop (readback is synchronous, so it sees compositor wheel scrolls whose scroll
+//   event has not been delivered yet), minus the scrollHeight growth since the last sample
+//   — post-render scrollHeight already contains the new content, which would otherwise read
+//   as "user scrolled up" and break following for glued viewers on large single-render
+//   growth (120px tolerance as in the original). The target itself is latestScrollTop() —
+//   see its comment for why the plain scrollHeight target is wrong.
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events (4px tolerance against subpixel
 //   jitter; high-frequency scrolling stays out of React state).
@@ -109,13 +111,14 @@ export default function MessagePage() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
   const prevItemsLen = useRef(0);
-  const atBottom = useRef(true); // pre-render at-bottom state (recorded continuously by the scroll listener)
+  // scrollHeight at the last follow-check/scroll event, for the growth correction below
+  const lastScrollHeight = useRef(0);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const onScroll = () => {
     const el = streamRef.current;
     if (!el) return;
-    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    lastScrollHeight.current = el.scrollHeight;
     updateScrollBottomVis(el, btnRef.current);
 
     // Light up the right scrollbar while scrolling, fade out smoothly after it stops
@@ -143,9 +146,18 @@ export default function MessagePage() {
     // min-height:100% puts the new message right at the top; a turn that fits the viewport
     // top-aligns, so its flow content stays clear of the sticky bubble's fade mask);
     // during streaming, keep following while glued to the bottom
-    if (switched || isNewUserMsg || atBottom.current) {
+    const growth = el.scrollHeight - lastScrollHeight.current;
+    lastScrollHeight.current = el.scrollHeight;
+    // Read the CURRENT scrollTop instead of an event-recorded flag: in WKWebView wheel
+    // scrolls apply on the compositor and the scroll event arrives after the next render,
+    // so a token landing mid-flick used to read a stale "at bottom" and yank the view back
+    // down, erasing the user's upward scroll. Subtract the scrollHeight growth since the
+    // last sample: post-render scrollHeight already contains the appended content, which
+    // would otherwise read as "user scrolled up" and break following for glued viewers
+    // when a large item lands in a single render.
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight - Math.max(0, growth) < 120;
+    if (switched || isNewUserMsg || nearBottom) {
       el.scrollTop = latestScrollTop(el);
-      atBottom.current = true; // the scroll event fires async; settle synchronously first to prevent a same-frame re-render bounce
     }
     updateScrollBottomVis(el, btnRef.current);
   }, [s?.items, s?.assistantDraft]);
@@ -162,6 +174,8 @@ export default function MessagePage() {
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
 
   const snapLockUntil = useRef(0);
+  // Wheel deltas over the last 250ms, for the snap-dock direction gate below
+  const recentWheels = useRef<{ t: number; d: number }[]>([]);
 
   // Block scroll bleed-through from tab popups / inline expand cards into the outer message
   // stream (no chained propagation outward at the boundary)
@@ -223,12 +237,21 @@ export default function MessagePage() {
       // Turn snap-to-top docking: if the next message sits too close to the stream's top
       // edge (about to snap), the next downward scroll goes only as far as pinning that
       // message at the top, ensuring the agent's processing flow below is shown in full
+      const now = Date.now();
+      recentWheels.current.push({ t: now, d: e.deltaY });
+      while (recentWheels.current.length && now - recentWheels.current[0].t > 250) recentWheels.current.shift();
       if (e.deltaY > 0) {
-        const now = Date.now();
         if (now < snapLockUntil.current) {
           e.preventDefault();
           return;
         }
+        // Trackpads emit a small positive deltaY at the end of an upward flick (settle
+        // correction / finger jitter). Without a direction gate each such tick docked the
+        // next section to the top, so scrolling up through history twitched back down by
+        // up to 140px per stray tick. Snap only when the net wheel intent over the last
+        // 250ms is downward; a genuine downward scroll from idle still docks on its
+        // first tick.
+        if (recentWheels.current.reduce((a, w) => a + w.d, 0) <= 0) return;
         const sections = stream.querySelectorAll<HTMLElement>(".turn-section");
         const streamTop = stream.getBoundingClientRect().top;
         for (let i = 0; i < sections.length; i++) {

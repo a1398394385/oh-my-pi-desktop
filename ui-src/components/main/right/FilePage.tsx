@@ -411,7 +411,9 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
     if (!(scroller instanceof Element)) return;
     const onScroll = () => {
       const row = scroller.querySelector<HTMLElement>("[data-fv-row]");
-      const lineH = row ? row.getBoundingClientRect().height : 0;
+      // clientHeight is layout px (zoom-independent), matching scrollTop and the
+      // calc()-based spacer rows; getBoundingClientRect would return visual px
+      const lineH = row ? row.clientHeight : 0;
       if (lineH <= 0) return;
       const firstVisible = Math.floor(scroller.scrollTop / lineH) + 1;
       if (firstVisible - 1 < winStart + RELINE_LINES || firstVisible - 1 > winStart + winLen - RELINE_LINES) {

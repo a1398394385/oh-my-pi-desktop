@@ -29,33 +29,39 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
   const canFork = !!item.entryId && !item.branching;
   return (
     <div className="turn-acts">
-      <button
-        className="q-btn"
-        title={t("chat.copyReply")}
-        onClick={(e) => {
-          e.stopPropagation();
-          copyText(item.text || "").then(
-            () => useAppStore.getState().toast(t("chat.replyCopied")),
-            () => useAppStore.getState().toast(t("chat.copyFailed")),
-          );
-        }}
-      >
-        <Icon name="copy" />
-      </button>
-      <button
-        className="q-btn"
-        title={item.entryId ? t("chat.branchFromHere") : t("chat.branchAfterSaved")}
-        disabled={!canFork}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!canFork || !s) return;
-          patchActiveItem(item, (it) => { it.branching = true; }); // stays disabled across full redraws (the flag lives with the item data)
-          useAppStore.getState().send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
-        }}
-      >
-        <Icon name="fork" />
-      </button>
-      {item.endMs ? <span className="turn-acts-time">{fmtClock(item.endMs)}</span> : null}
+      {/* Column-capped inner box (same max-width + auto-margin mechanism as .turn-flow):
+          WebKit computes padding-calc centering and margin-auto centering
+          inconsistently inside a zoomed subtree, so the row stays full-width
+          (BUG-030 selection fill) while this inner box carries the column cap. */}
+      <div className="turn-acts-in">
+        <button
+          className="q-btn"
+          title={t("chat.copyReply")}
+          onClick={(e) => {
+            e.stopPropagation();
+            copyText(item.text || "").then(
+              () => useAppStore.getState().toast(t("chat.replyCopied")),
+              () => useAppStore.getState().toast(t("chat.copyFailed")),
+            );
+          }}
+        >
+          <Icon name="copy" />
+        </button>
+        <button
+          className="q-btn"
+          title={item.entryId ? t("chat.branchFromHere") : t("chat.branchAfterSaved")}
+          disabled={!canFork}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!canFork || !s) return;
+            patchActiveItem(item, (it) => { it.branching = true; }); // stays disabled across full redraws (the flag lives with the item data)
+            useAppStore.getState().send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
+          }}
+        >
+          <Icon name="fork" />
+        </button>
+        {item.endMs ? <span className="turn-acts-time">{fmtClock(item.endMs)}</span> : null}
+      </div>
     </div>
   );
 }

@@ -73,13 +73,13 @@ body:has(#sidebar.collapsed) #left-resizer {
   line-height: 1;
 }
 .nav-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
-[data-theme="light"] .nav-item:hover { background: var(--tint-black-60); }
+:is([data-theme="light"], [data-theme-mode="light"]) .nav-item:hover { background: var(--tint-black-60); }
 .nav-item svg { color: var(--dim); flex: none; display: block; }
 .seg {
   display: flex; background: var(--tint-black-220);
   border-radius: 999px; padding: 2px;
 }
-[data-theme="light"] .seg { background: var(--tint-black-80); }
+:is([data-theme="light"], [data-theme-mode="light"]) .seg { background: var(--tint-black-80); }
 .seg button {
   border: 0; background: transparent; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-base);
@@ -233,7 +233,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   background: var(--tint-white-120);
   border-color: var(--tint-white-200);
 }
-[data-theme="light"] .task.on .task-cmd-badge {
+:is([data-theme="light"], [data-theme-mode="light"]) .task.on .task-cmd-badge {
   background: var(--tint-black-80);
   border-color: var(--tint-black-150);
 }
@@ -377,7 +377,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   padding: 8px;
   animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
 }
-[data-theme="light"] .proj-add-pop { box-shadow: 0 12px 32px var(--tint-black-180); }
+:is([data-theme="light"], [data-theme-mode="light"]) .proj-add-pop { box-shadow: 0 12px 32px var(--tint-black-180); }
 .proj-add-pop .pa-btn {
   flex: none; border: 0; background: var(--panel-3); color: var(--dim);
   border-radius: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
@@ -435,7 +435,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   font-size: 19px;
   flex: none;
 }
-[data-theme="light"] .avatar { background: radial-gradient(circle at 35% 30%, var(--white), var(--avatar-light-end)); }
+:is([data-theme="light"], [data-theme-mode="light"]) .avatar { background: radial-gradient(circle at 35% 30%, var(--white), var(--avatar-light-end)); }
 .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 .uname {
   font-size: 15px;
@@ -459,8 +459,8 @@ body:has(#sidebar.collapsed) #left-resizer {
 .nav-item.nav-search.search-active {
   background: var(--tint-nav-hover-420);
 }
-[data-theme="light"] .nav-item.nav-search:focus-within,
-[data-theme="light"] .nav-item.nav-search.search-active {
+:is([data-theme="light"], [data-theme-mode="light"]) .nav-item.nav-search:focus-within,
+:is([data-theme="light"], [data-theme-mode="light"]) .nav-item.nav-search.search-active {
   background: var(--tint-black-60);
 }
 .nav-search-icon {
@@ -519,7 +519,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   max-height: 260px;
   overflow-y: auto;
 }
-[data-theme="light"] .side-search-pop {
+:is([data-theme="light"], [data-theme-mode="light"]) .side-search-pop {
   box-shadow: 0 12px 28px var(--tint-black-120);
 }
 .side-search-empty {
@@ -585,7 +585,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 /* --- B1 session rename (inline edit row reusing the .task layout; the edit row has no click behavior, hover explicitly off) --- */
 .task.renaming { cursor: default; }
 .task.renaming:hover { background: none; color: inherit; }
-[data-theme="light"] .task.renaming:hover { background: none; color: inherit; }
+:is([data-theme="light"], [data-theme-mode="light"]) .task.renaming:hover { background: none; color: inherit; }
 .task .rename-inp {
   flex: 1; min-width: 0; width: auto;
   padding: 3px 8px; font-size: var(--ui-fs-sm);
@@ -621,7 +621,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   font-size: calc(var(--ui-fs) + 1px);
   transition: none;
 }
-[data-theme="light"] .proj-drag-overlay { box-shadow: 0 10px 26px var(--tint-black-180); }
+:is([data-theme="light"], [data-theme-mode="light"]) .proj-drag-overlay { box-shadow: 0 10px 26px var(--tint-black-180); }
 .proj-drag-overlay .fic {
   flex: none; width: 16px; height: 16px; display: inline-flex;
   align-items: center; justify-content: center;

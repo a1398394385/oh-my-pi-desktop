@@ -16,6 +16,9 @@
 //      values and the pairing invariant still holds
 //   E  byte stability — identical state renders a byte-identical ephemeral
 //      (spec §7 cache-safety); the tier instruction segment is a constant
+//   M  L1 milestone cadence (§7 v10.4) — the L1 segment injects once per
+//      crossed sub-line (10 equal steps L1→L2), never standing; multi-line
+//      jumps skip, drops below L1 reset the cursor
 //   F  end-to-end mock-model session — the REAL generated manifest drives a
 //      full compress round (T3 scenario without the test-supplied manifest):
 //      ephemeral appears on the wire only while a tier is active, the model
@@ -41,7 +44,7 @@ import {
 	createAcpProjectionExtension,
 	createCompressContextTool,
 } from "../host/acp-runtime.ts";
-import { computeRoundPlan, type AcpParams } from "../host/acp-plan.ts";
+import { computeRoundPlan, milestoneFor, type AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { createAcpStatusTool } from "../host/acp-status-tool.ts";
 import { assertToolPairing } from "../host/acp-projection.ts";
@@ -290,6 +293,93 @@ function ephemeralText(fx: Fixture): string {
 	fx.state.projectView(fx.view);
 	assert.equal(ephemeralText(fx).split("\n")[1], instructionLine);
 	console.log("ok: E ephemeral byte-stable for unchanged state, across instances; instruction line constant");
+}
+
+// --- M: L1 milestone cadence (§7 v10.4) — once per crossed sub-line, never standing --------
+
+{
+	const pM = { l1: 1_000, l2: 2_000, l3: 3_000, ...NO_TAIL, milestoneSteps: 10 } as const;
+	// Pure ladder: 10 equal sub-lines between L1 and L2, strict at both ends.
+	assert.equal(milestoneFor(1_000, pM), 0);
+	assert.equal(milestoneFor(1_001, pM), 1);
+	assert.equal(milestoneFor(1_100, pM), 1);
+	assert.equal(milestoneFor(1_101, pM), 2);
+	assert.equal(milestoneFor(1_950, pM), 10);
+	assert.equal(milestoneFor(2_001, pM), 0, "past L2 the standing tier owns the wire");
+
+	// milestoneSteps is configurable: 4 sub-lines over the same span, and 0
+	// silences the whole segment; the rendered row denominator follows suit.
+	const p4 = { ...pM, milestoneSteps: 4 };
+	assert.equal(milestoneFor(1_500, p4), 2);
+	assert.equal(milestoneFor(2_001, p4), 0);
+	assert.equal(milestoneFor(1_500, { ...p4, milestoneSteps: 0 }), 0, "steps 0 = L1 segment silent");
+	const fx4 = makeFixture({ ...p4, target: 10_000 }, [30, 30, 30, 30, 30]);
+	fx4.state.projectView(fx4.view);
+	assert.equal(fx4.state.roundStatus!.tier, "L1");
+	assert.match(textOf(fx4.state.lastProjected.at(-1)!), /milestone=\d+\/4/, "the row denominator tracks milestoneSteps");
+
+	/** Appends one ~120-token user block to the journal and the view. */
+	const grow = (fx: Fixture, blocks: number): void => {
+		for (let i = 0; i < blocks; i++) {
+			const n = fx.entries.length;
+			const message = {
+				role: "user",
+				content: `grown block ${n}: ` + "detailed parser investigation notes with exact values. ".repeat(10),
+				timestamp: 1_700_000_200_000 + n,
+			} as never as AgentMessage;
+			fx.entries.push({ type: "message", id: `g${n}`, message });
+			fx.view.push(message);
+		}
+	};
+	/** The delivered milestone label of the latest projection, or null when nothing injected. */
+	const delivered = (fx: Fixture): number | null => {
+		const m = textOf(fx.state.lastProjected.at(-1)!).match(/milestone=(\d+)\/10/);
+		return m ? Number(m[1]) : null;
+	};
+
+	// Start under L1: nothing on the wire.
+	const fx = makeFixture({ ...pM, target: 10_000 }, [10, 10, 10]);
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "none");
+	assert.equal(delivered(fx), null, "nothing injected below L1");
+
+	// Climb into the L1 segment: the first crossed line fires once…
+	// (each block counts exactly 86 glm5 tokens: 3x86 + 9x86 = 1032 -> line 1)
+	grow(fx, 9);
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "L1");
+	const first = delivered(fx);
+	assert.ok(first !== null && first >= 1, `first crossing injects a milestone (got ${first})`);
+	assert.equal(first, milestoneFor(fx.state.roundStatus!.activeTokens, pM), "delivered line matches the measured zone");
+	const row = textOf(fx.state.lastProjected.at(-1)!);
+	assert.match(row, /\[acp-status\] tier=L1 compress=normal /);
+	assert.match(row, /call the context_status tool/, "the milestone line still points at context_status");
+	// …and the SAME state never re-injects: the next request rides bare.
+	fx.state.projectView(fx.view);
+	assert.equal(delivered(fx), null, "no repeat injection at an unchanged milestone");
+
+	// Jump several sub-lines in one request: exactly one injection, no backfill.
+	// (+3x86 = 1290 -> line 3; line 2 skipped in between)
+	grow(fx, 3);
+	fx.state.projectView(fx.view);
+	const jumped = delivered(fx);
+	assert.ok(jumped !== null && jumped > first + 1, `a multi-line jump delivers one milestone, skipping lines (got ${jumped})`);
+	assert.equal(jumped, milestoneFor(fx.state.roundStatus!.activeTokens, pM), "jumped line matches the measured zone");
+	fx.state.projectView(fx.view);
+	assert.equal(delivered(fx), null, "still quiet after the skipped jump");
+
+	// Drop below L1: the cursor resets, so the next climb re-warns from a low line.
+	while (fx.view.length > 3) {
+		fx.view.pop();
+		fx.entries.pop();
+	}
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "none");
+	grow(fx, 9);
+	fx.state.projectView(fx.view);
+	const again = delivered(fx);
+	assert.ok(again !== null && again < jumped, `reset re-warns from a low line (got ${again})`);
+	console.log(`ok: M L1 milestones — lines ${first}/${jumped}/${again} fire once each, skips never backfill, reset on drop`);
 }
 
 // --- F: end-to-end — real manifest drives a full compress round (T3 scenario, no supply) --

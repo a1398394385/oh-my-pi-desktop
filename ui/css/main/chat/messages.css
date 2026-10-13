@@ -171,7 +171,7 @@
   position: relative; /* the copy button pins to the top-right corner */
 }
 
-[data-theme="light"] .msg.user .user-bubble {
+:is([data-theme="light"], [data-theme-mode="light"]) .msg.user .user-bubble {
   box-shadow: 0 2px 8px var(--tint-black-50);
 }
 
@@ -477,17 +477,17 @@
 /* Light theme: the cmd-card family (terminal/background/wait/task/ask/hub expansions) stays on
    the theme surface with the same token set as bash-out/ed-brief instead of the hardcoded dark
    island above — light-gray-on-white text was the readability bug. Dark values stay untouched. */
-[data-theme="light"] .cmd-card {
+:is([data-theme="light"], [data-theme-mode="light"]) .cmd-card {
   background: var(--panel);
   border: 1px solid var(--line);
 }
 
-[data-theme="light"] .cmd-card-cmd {
+:is([data-theme="light"], [data-theme-mode="light"]) .cmd-card-cmd {
   color: var(--text);
   border-bottom-color: var(--line-soft);
 }
 
-[data-theme="light"] .cmd-card-out { color: var(--dim); }
+:is([data-theme="light"], [data-theme-mode="light"]) .cmd-card-out { color: var(--dim); }
 
 /* Bottom half-row gradient mask (same technique as think-body, cleared by JS adding .no-fade when scrolled to bottom). ed-brief (inline diff) already matches ZCode's no-mask look and is exempt from this group */
 .cmd-card-cmd, .cmd-card-out {
@@ -532,7 +532,7 @@
 
 /* The bubble ignores the user bubble's 25vw content cap (a command line plus its output needs
    the whole content column) and re-enables text selection (the output must stay copyable) */
-.msg.user.bash-msg .user-bubble { max-width: 100%; user-select: text; -webkit-user-select: text; }
+.msg.user.bash-msg .user-bubble { width: 100%; max-width: 100%; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
 
 /* Command line: "$ cmd" + right-aligned running spinner / exit status. exit 0 uses --dim,
    non-zero/errors use --err; "not in context" is a small faint tag */
@@ -610,7 +610,7 @@
 
 .scroll-bottom:hover { color: var(--text); background: var(--panel-2); }
 
-[data-theme="light"] .scroll-bottom { box-shadow: 0 4px 12px var(--tint-black-120); }
+:is([data-theme="light"], [data-theme-mode="light"]) .scroll-bottom { box-shadow: 0 4px 12px var(--tint-black-120); }
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
@@ -634,9 +634,10 @@
 .rail-tick.on { background: var(--text); }
 
 /* mountain-peak brightening */
-.turn-acts { box-sizing: border-box; padding-left: max(0px, calc((100% - min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))))) / 2)); }
-
-/* full-width box leaves no flanking gap for WebKit's crossed-selection fill to paint (BUG-030); left padding mirrors the shared column cap so buttons keep the column's left edge */
+/* .turn-acts stays a full-width box (no flanking gap for WebKit's crossed-selection fill,
+   BUG-030); the column cap lives on the inner .turn-acts-in via the shared capped rule in
+   center.css (same max-width + margin-auto mechanism as .turn-flow — a mirrored padding
+   calc drifts from the column under WKWebView zoom, see TurnActs.tsx) */
 /* Scroll-gesture ownership (Chat.tsx): while a wheel-driven stream scroll is in progress
    (the .wheel-through class, armed by stream-targeted wheels and expired 1s after the last
    one), inline expand cards AND message-content scrollers become pointer-transparent so a

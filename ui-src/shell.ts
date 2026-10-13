@@ -163,7 +163,10 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
 // App mounts)
 let zoomTargets: (HTMLElement | null)[] | null = null;
 function applyZoom(): void {
-  if (!zoomTargets) zoomTargets = ["sidebar", "main", "right"].map((id) => document.getElementById(id));
+  // Re-resolve when a target is missing or detached: App can remount after a
+  // language/key change (Root renders <App key={lang}>), leaving the cached
+  // nodes orphaned and silently dropping every later zoom write
+  if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected)) zoomTargets = ["sidebar", "main", "right"].map((id) => document.getElementById(id));
   // style.zoom is a non-standard property (absent from TS lib.dom): assert the
   // write, semantics unchanged from the original
   for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
@@ -203,7 +206,10 @@ export function updateRailVisibility(): void {
   const main = document.getElementById("main");
   const dock = document.querySelector(".dock");
   if (!main || !dock || dock.classList.contains("hidden")) return;
-  const m = dock.getBoundingClientRect().left - main.getBoundingClientRect().left;
+  // rect diff is visual (both boxes live in the zoomed subtree); the 65px threshold
+  // is layout px, so divide the zoom factor back out
+  const z = useAppStore.getState().zoomLevel || 1;
+  const m = (dock.getBoundingClientRect().left - main.getBoundingClientRect().left) / z;
   main.classList.toggle("rail-off", m < 65);
 }
 // Fixed menu coordinate compensation: set zoom first, then divide it back out
@@ -263,6 +269,20 @@ export function railToolText(item: ToolItem): string {
     parts.push(t("chat.labelYield"));
     const summary = yieldSummary(item.args);
     if (summary) parts.push(summary);
+  }
+  // ACP context management: the rail leads with the label rather than the raw tool name
+  // (recall_block also carries the block id it fetched back)
+  const ctxLabel = (
+    {
+      context_status: t("chat.labelContextStatus"),
+      compress_context: t("chat.labelCompressContext"),
+      recall_block: t("chat.labelRecallBlock"),
+    } as Record<string, string>
+  )[item.name || ""];
+  if (ctxLabel) {
+    parts.length = 0;
+    parts.push(ctxLabel);
+    if (item.name === "recall_block" && item.args?.id) parts.push(String(item.args.id));
   }
   if (item.args?.command) parts.push(String(item.args.command));
   if (item.args?.query) parts.push(String(item.args.query));

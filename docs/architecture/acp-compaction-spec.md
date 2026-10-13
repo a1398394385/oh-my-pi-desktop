@@ -3,7 +3,7 @@
 > **Status**: Draft(2026-10-12) · 未实施
 > **审阅结论**: READY(2026-10-12,Decider 终审)
 > **决策 SSOT**: [ADR-0005](../../.agents/notes/0005-acp-incremental-compaction.md)
-> **修订**: v2 首轮审阅 6 项阻断(清单全列+幻觉 ID 拒绝;supersedes 重建+降级;acpSummary 纯持久层+投影口径;exclusive 互斥;L2/L3 退出条件;验收 9 收窄)。v3 二轮审阅 4 项阻断(合并继承 compressedIds/index;清单消费语义;清单截断方向与 L2 校验口径;summary 预算基数)。v4 Decider 澄清:合并=主动 L3 全量、无独立摘要调用。v5 隐患发散修正。v6 搭便车语义。v7(Decider 拍板体系重构):**压缩方式三级化**(一级普通累加/二级强力重置/三级 tool_choice 强制);豁免=可配置压缩目标线 target;清单按块大小降序截断;recall 走底座统一截断管道;强制失败即降级,删除模板/拼接硬压路径;L3 通牒轮次归属明确;参考 OMP 链路(预处理剪枝/进度守卫/失败封顶)。v8(四轮审阅):L2 档改名「加压档」消除与二级强力压缩的命名撞车;新增唯一二维决策表,边界统一严格大于;三级终态=「强制 turn 无成功压缩即降级」(极端碎块场景不特化,Decider 裁量);ADR Decision/Consequences 回改同步。v9(Decider 拍板实施宿主):**全量实施于 omp-desktop host 层,底座源码零改动**——投影/ephemeral 走 context 事件 extension,双工具走 `createAgentSession({ customTools })`,压缩块持久化走 SDK `SessionManager.appendCustomEntry`(customType="acpSummary"),精确计数 import `@oh-my-pi/pi-agent-core` Tokenizer;接缝实证补遗(exclusive 不可用→host 互斥锁;prune 两层门控;三级强制 setForcedToolChoice);P1/P2 兼容面探针结论回填。v10(Decider 拍板 pull 模式):**清单从 ephemeral 注入移入新工具 context_status 返回**(模型按需拉取,ephemeral 降为一行精简状态行、无档零注入,通牒送达机制保留);**短号 bN 替代 UUID 面向模型渲染**(§3:全局单调派号、不回收、确定性重放、持久层仍 entryId);context_status tool 对不进候选且在下次成功压缩后从投影整对摘除(保护区例外)。v10.1(Decider 拍板通牒伴随合成对):**通牒请求在活跃区末尾注入合成 context_status tool 对**(新造 assistant 承接,禁向既有 assistant 插 tool_use——签名/缓存/投影纪律;不落 journal、快照冻结、成功压缩后退场)——三级强制也是有依据的挑选,消除「被逼调用手里没清单只能全压或失败」的残余粗糙点。v10.3:模型可见面工具全局更名 context_status(§2/§5.1/§5.2/§6/§7/§10/§11/§12 同步);尾部保护区参数 tailTurns/tailTokens 入实验设置页 UI(§11,未配置仍回退默认 2/20K)。
+> **修订**: v2 首轮审阅 6 项阻断(清单全列+幻觉 ID 拒绝;supersedes 重建+降级;acpSummary 纯持久层+投影口径;exclusive 互斥;L2/L3 退出条件;验收 9 收窄)。v3 二轮审阅 4 项阻断(合并继承 compressedIds/index;清单消费语义;清单截断方向与 L2 校验口径;summary 预算基数)。v4 Decider 澄清:合并=主动 L3 全量、无独立摘要调用。v5 隐患发散修正。v6 搭便车语义。v7(Decider 拍板体系重构):**压缩方式三级化**(一级普通累加/二级强力重置/三级 tool_choice 强制);豁免=可配置压缩目标线 target;清单按块大小降序截断;recall 走底座统一截断管道;强制失败即降级,删除模板/拼接硬压路径;L3 通牒轮次归属明确;参考 OMP 链路(预处理剪枝/进度守卫/失败封顶)。v8(四轮审阅):L2 档改名「加压档」消除与二级强力压缩的命名撞车;新增唯一二维决策表,边界统一严格大于;三级终态=「强制 turn 无成功压缩即降级」(极端碎块场景不特化,Decider 裁量);ADR Decision/Consequences 回改同步。v9(Decider 拍板实施宿主):**全量实施于 omp-desktop host 层,底座源码零改动**——投影/ephemeral 走 context 事件 extension,双工具走 `createAgentSession({ customTools })`,压缩块持久化走 SDK `SessionManager.appendCustomEntry`(customType="acpSummary"),精确计数 import `@oh-my-pi/pi-agent-core` Tokenizer;接缝实证补遗(exclusive 不可用→host 互斥锁;prune 两层门控;三级强制 setForcedToolChoice);P1/P2 兼容面探针结论回填。v10(Decider 拍板 pull 模式):**清单从 ephemeral 注入移入新工具 context_status 返回**(模型按需拉取,ephemeral 降为一行精简状态行、无档零注入,通牒送达机制保留);**短号 bN 替代 UUID 面向模型渲染**(§3:全局单调派号、不回收、确定性重放、持久层仍 entryId);context_status tool 对不进候选且在下次成功压缩后从投影整对摘除(保护区例外)。v10.1(Decider 拍板通牒伴随合成对):**通牒请求在活跃区末尾注入合成 context_status tool 对**(新造 assistant 承接,禁向既有 assistant 插 tool_use——签名/缓存/投影纪律;不落 journal、快照冻结、成功压缩后退场)——三级强制也是有依据的挑选,消除「被逼调用手里没清单只能全压或失败」的残余粗糙点。v10.3:模型可见面工具全局更名 context_status(§2/§5.1/§5.2/§6/§7/§10/§11/§12 同步);尾部保护区参数 tailTurns/tailTokens 入实验设置页 UI(§11,未配置仍回退默认 2/20K)。v10.4:**L1 段注入改里程碑节奏**——L1→L2 均分子线(默认 10,`acp.milestoneSteps` 可配置,0 = L1 段静默),跨新线注入一次(跳线不补发、降回重置),L2/L3/待强力保持每请求常驻(§5.1/§7/§11;冒烟 M 场景)。v11:**尾部保护区改 min 语义**(Decider 拍板)——倒序按组累计,先触发的限制生效(原 max 语义下超长单轮会整轮入保护区,压缩失效);组 = 一条 assistant 消息及其全部 result,切点只落组边界不拆 tool_use/result 对(§11)。
 > **超限说明**: 验收矩阵为结构性超限(见 ../documentation.md §5)。
 
 ## 1. 目标与非目标
@@ -83,7 +83,7 @@
 | 档 | 触发(活跃区) | ephemeral 文案 |
 |---|---|---|
 | 无档 | ≤ 100K 且非待强力 | **零注入**(压缩时机完全归模型:工具描述引导,经 context_status 自取清单) |
-| L1 激活档 | > 100K | 一行状态行:建议压缩 + 指向 context_status |
+| L1 激活档 | > 100K | **里程碑注入(v10.4)**:L1→L2 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = L1 段静默),跨过一条新线注入一次(跳线不补发;降回 ≤L1 重置重计),文案 = 状态行(带 `milestone=k/N` 标记)+ 建议压缩 + 指向 context_status |
 | L2 加压档 | > 200K | 一行状态行:加压提示 + target 约束 + 指向 context_status |
 | L3 截断档 | > 300K | 一行状态行:最后通牒:「下一轮必须成功压缩,否则宿主将强制压缩」+ 指向 context_status |
 
@@ -188,6 +188,7 @@
 
 - **位置**:请求消息序列末尾追加一条 user 角色消息,文本以 `[acp-status]` 开头;**不落历史**。
 - **分层注入(v10,pull 替代 push)**:无档(活跃区 ≤L1 且非待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);L1/L2/L3 与待强力注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力统一加注「下次压缩为强力压缩」)+ 指向 context_status 取清单。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 context_status 返回(§6)。
+- **L1 里程碑节奏(v10.4)**:L1 段(>L1 且 ≤L2、非待强力、非强制请求)不再每请求注入——L1→L2 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = L1 段静默;`host/acp-plan.ts` `milestoneFor`),活跃区首次跨过一条新线才注入一次(状态行末尾带 `milestone=k/N` 标记,文案复用 L1 建议 + context_status 指针);单请求跨多条线只发最高那条、**不补发**;降回 ≤L1(或进入待强力/L2+ 常驻态)即重置,再爬升从第一条线重新提醒。L2/L3 与待强力保持每请求常驻。游标仅存内存:宿主重启后最多重发一次最高已跨线,自愈无害。
 - **缓存安全**:零注入期持久前缀(tools/system/压缩区/活跃区)逐字节稳定;注入期档位不变时状态行逐字节稳定,最大化末尾局部缓存复用。
 
 ## 8. token 计数
@@ -236,8 +237,9 @@
 | summary 预算 | ≤ min((本次被压 + 参与重置旧摘要) ÷ 3, 8K) | v3 修正基数 |
 | 压缩区限额线 | 窗口 × 35% | 进入待强力状态;活跃区>L1 时下一次 compress 搭车为强力压缩 |
 | 总量保险线 | 投影总量 > 窗口 − 15% reserve | 触发三级强制;失败即降级 |
-| 尾部保护区 | 默认 max(最近 2 turn, 最近 20K token),可配置,可为 0 | **待探针 3 回填** |
+| 尾部保护区 | 默认 min(最近 2 turn, 最近 20K token),可配置,可为 0;倒序按组累计,先触发的限制生效。组 = 一条 assistant 消息及其全部 result 块(user 块自成一组并闭合 turn),切点只落组边界,不拆 tool_use/result 对 | v11(原 max 语义超长单轮会整轮入保护区,压缩失效) |
 | 当轮清单截断 | context_status 返回内:短号按块大小降序;渲染超 8K token 截尾部(小块豁免,下轮重进) | v10 清单从 ephemeral 移入 context_status 返回;短号见 §3 |
+| L1 里程碑子线(v10.4) | 默认 10 条;`acp.milestoneSteps` 可配置,0 = L1 段静默(`milestoneSteps`) | 跨线注入一次、跳线不补、降回重置(§7);L2/L3/待强力不受影响 |
 | 索引清单截断 | 单压缩块渲染超 4K token 截最老段;完整索引走 recall_block(底座截断管道可遍历) | |
 
 ## 12. 验收矩阵

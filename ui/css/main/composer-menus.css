@@ -33,7 +33,7 @@
   box-shadow: 0 12px 40px var(--tint-black-280);
 }
 
-[data-theme="light"] .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px var(--tint-black-70); }
+:is([data-theme="light"], [data-theme-mode="light"]) .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px var(--tint-black-70); }
 .menu.palette .mi { border-radius: 8px; }
 
 /* row radius one notch below the card (16px card -> 8px row) */

@@ -385,6 +385,13 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     // to children).
     settings: sessionSettings, // hoisted so the ACP §5.3 degrade path can write compaction.enabled back on it
     model: initialModel ?? H.modelOverride,
+    // Auto session title: the desktop host is an interactive surface, so it
+    // arms the base's own titling (AgentSession notes the operator message on
+    // message_end and asks the title model / a reply fork once the answer
+    // starts; sdk.ts passes this through as autoTitle, false for subagents).
+    // Reachable only through this flag — the host-side trigger the SDK used to
+    // expose (maybeStartTitleGeneration) is gone from 18.10.x.
+    autoTitle: true,
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
     // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
@@ -466,6 +473,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   const entry: PoolEntry = {
     session,
     sessionResult: result, // Host injection points such as setToolUIContext
+    acpRuntime: acpRuntime ?? undefined, // get_context_detail reads the dual-zone split off it
     unsubscribe: () => {},
     attachedWs: null,
     extStatuses: new Map(), // Extension status badges (uiCtx.setStatus); surfaced on the capabilities card

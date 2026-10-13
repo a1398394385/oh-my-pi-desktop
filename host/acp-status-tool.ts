@@ -73,6 +73,22 @@ export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, f
 	return { role: "user", content: text, synthetic: true, timestamp: 0 };
 }
 
+/**
+ * The L1 milestone message (§7 v10.4): the L1 segment no longer injects on
+ * every request — the standing line fires once per crossed sub-line instead.
+ * Same 3-line deterministic shape as the standing ephemeral, with the
+ * milestone marker appended to the status row (the `tier=L1 compress=…`
+ * prefix stays intact for downstream matchers); never carries the manifest.
+ */
+export function renderMilestoneMessage(rs: AcpRoundStatusFields, milestone: number, p: AcpParams): UserMessage {
+	const text = [
+		`${statusRow(rs, "[acp-status]")} milestone=${milestone}/${p.milestoneSteps}`,
+		TIER_INSTRUCTIONS.L1(p, false),
+		statusPointer(false),
+	].join("\n");
+	return { role: "user", content: text, synthetic: true, timestamp: 0 };
+}
+
 /** Deterministic tool round id of the ultimatum's synthetic status pair (spec §6 v10.1): stable per session, never a journal id. */
 export const ACP_SYNTHETIC_STATUS_CALL_ID = "acp-synthetic-status";
 

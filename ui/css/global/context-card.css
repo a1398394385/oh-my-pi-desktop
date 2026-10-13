@@ -15,7 +15,7 @@
 }
 /* Light theme re-derives the ramp at a darker lightness end (46% -> 38%): the dark values sit too
    pale on a white card. Hue rotation and step order are unchanged. */
-[data-theme="light"] .ring-pop {
+:is([data-theme="light"], [data-theme-mode="light"]) .ring-pop {
   --ctx-1: #3f90ab; --ctx-2: #3f4fa2; --ctx-3: #643e98; --ctx-4: #8f3d8f; --ctx-5: #863c5b;
 }
 

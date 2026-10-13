@@ -18,8 +18,17 @@ import { type AcpParams, computeRoundPlan, computeSummaryBudget, computeTier } f
 export interface CompressOutcome {
 	ok: true;
 	blockId: string;
+	/** Execution method the plan re-derived (§5.2): a strong reset supersedes the whole zone. */
+	method: "normal" | "strong";
 	compressed: { blocks: number; tokens: number };
 	kept: { blocks: number; tokens: number };
+	/**
+	 * Real change of the projected context (active zone + compaction zone, spec §4): negative
+	 * = the request got smaller. A strong reset replaces the whole old zone, so its blocks and
+	 * rendered tokens count here exactly like the freshly folded ones — `compressed` alone
+	 * under-reports what a strong compression took out of the request.
+	 */
+	delta: { blocks: number; tokens: number };
 	activeTokensAfter: number;
 	/** New tier from the post-compression active zone (spec §5.1, immediate). */
 	tier: "none" | "L1" | "L2" | "L3";

@@ -28,7 +28,7 @@
   overscroll-behavior: contain;
 }
 
-[data-theme="light"] #capsCard { box-shadow: 0 10px 28px var(--tint-black-120); }
+:is([data-theme="light"], [data-theme-mode="light"]) #capsCard { box-shadow: 0 10px 28px var(--tint-black-120); }
 
 .cc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .cc-head b { font-size: var(--ui-fs-md); font-weight: 500; }
@@ -69,7 +69,7 @@
   cursor: pointer;
   box-shadow: 0 8px 22px var(--tint-black-360);
 }
-[data-theme="light"] #capsCardCapsule { box-shadow: 0 8px 22px var(--tint-black-120); }
+:is([data-theme="light"], [data-theme-mode="light"]) #capsCardCapsule { box-shadow: 0 8px 22px var(--tint-black-120); }
 #capsCardCapsule:hover { background: var(--panel-2); }
 #capsCardCapsule .cc-cap-ic { flex: none; display: inline-flex; color: var(--text); }
 #capsCardCapsule .cap-tx { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

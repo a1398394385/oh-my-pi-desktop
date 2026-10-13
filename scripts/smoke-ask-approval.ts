@@ -255,6 +255,40 @@ ok(sent[sent.length - 1]?.answer === "cancel", "cancel answer is the literal can
 const afterCancel = useAppStore.getState().openSessions.get("/p/s1")!.pendingApprovals![0];
 ok(afterCancel.answer === "cancel", "store entry freezes on cancel");
 
+// ---- Single-question ask: the row click answers AND submits ----
+// A one-page form has no next page to auto-advance to, so the row click must
+// settle the ask; otherwise the mouse has no submit path (the same gap hits
+// the last page of a multi-question ask when its question is single-choice).
+const sentBeforeSingle = sent.length;
+const singleEntry = {
+  ...entry,
+  requestId: "r3",
+  answer: null,
+  otherDrafts: undefined,
+  questions: [
+    {
+      id: "q0",
+      question: "选一个运行环境",
+      multi: false,
+      recommended: 0,
+      options: [{ label: "A 环境" }, { label: "B 环境" }],
+    },
+  ] satisfies AskQuestion[],
+};
+useAppStore.setState((st) => {
+  const sess = st.openSessions.get("/p/s1")!;
+  return { openSessions: new Map(st.openSessions).set("/p/s1", { ...sess, pendingApprovals: [singleEntry] }) };
+});
+root.render(React.createElement(ApprovalCard, { key: "r3", item: singleEntry }));
+await sleep(50);
+ok(document.querySelector(".ask-pager") === null, "single-question ask renders no pager");
+ok(document.querySelector(".approval-confirm") !== null, "single-question ask offers the submit button");
+rowsOf()[1]?.click();
+await sleep(50);
+ok(sent.length === sentBeforeSingle + 1, "row click on a single-question ask submits");
+const singlePayload = JSON.parse(sent[sent.length - 1]?.answer ?? "null");
+ok(singlePayload?.kind === "submit" && singlePayload?.results?.[0]?.selectedOptions?.[0] === "B 环境", "the clicked option rides the submitted answer");
+
 root.unmount();
 console.log("smoke-ask-approval: all assertions passed");
 process.exit(0);

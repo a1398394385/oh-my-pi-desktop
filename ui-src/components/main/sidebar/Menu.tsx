@@ -15,9 +15,11 @@ export default function Menu({ place, onClose, children }: {
   // Placement must happen after measuring the menu's actual size (mirrors the old append → getBoundingClientRect → placeMenu)
   useLayoutEffect(() => {
     const el = ref.current!; // exists right after portal mount (the old JS dereferenced directly; same assumption kept)
-    const [left, top] = place(el.getBoundingClientRect());
     const z = useAppStore.getState().zoomLevel || 1; // fixed-menu coordinate compensation: set zoom first, then divide back
+    // zoom must land before measuring: place() mixes mr against visual anchor rects / viewport,
+    // so mr has to be visual too (same idiom as placeMenu callers)
     el.style.zoom = String(z);
+    const [left, top] = place(el.getBoundingClientRect());
     el.style.left = left / z + "px";
     el.style.top = top / z + "px";
   });

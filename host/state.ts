@@ -66,6 +66,19 @@ export type PoolEntry = {
   // this entry (attachEntry re-runs on pool reuse; a repeat dispatch resets
   // extension state — keepalive would drop its capture)
   extSessionStarted?: boolean;
+  // ACP dual-zone runtime handle (host/acp-runtime.ts), present only when the
+  // master switch was on at session creation. Read-only here: get_context_detail
+  // reports the compressed-zone / active-zone split from the runtime's latest
+  // round status. Structural type so this shared state module does not depend on
+  // the ACP graph.
+  acpRuntime?: {
+    degraded: boolean;
+    roundStatus: {
+      tier: "none" | "L1" | "L2" | "L3";
+      zoneTokens: number;
+      activeTokens: number;
+    } | null;
+  };
   // Extension-injected status badges (key → text, e.g. ponytail's setStatus):
   // captured by the uiCtx.setStatus injected at attachEntry, pushed to the
   // frontend as extension_status frames and snapshotted into get_capabilities.

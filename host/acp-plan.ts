@@ -30,6 +30,8 @@ export interface AcpParams {
 	tailTurns: number;
 	/** Protected tail: at least this many recent tokens stay uncompressed (0 = off). */
 	tailTokens: number;
+	/** L1 milestone sub-lines between L1 and L2 (spec §7 v10.4); 0 silences the L1 segment. */
+	milestoneSteps: number;
 }
 
 export const ACP_DEFAULT_PARAMS: AcpParams = {
@@ -42,6 +44,7 @@ export const ACP_DEFAULT_PARAMS: AcpParams = {
 	summaryDivisor: 3,
 	tailTurns: 2,
 	tailTokens: 20_000,
+	milestoneSteps: 10,
 };
 
 /** Prompt tier for an active-zone size (spec §5.1 decision table, strict >). */
@@ -50,6 +53,19 @@ export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PAR
 	if (activeTokens > p.l2) return "L2";
 	if (activeTokens > p.l1) return "L1";
 	return "none";
+}
+
+/**
+ * Milestone index (1..steps) of an L1-segment active zone: the k-th line sits
+ * at l1 + k·(l2−l1)/steps and fires once, when the zone first crosses it
+ * (skipped lines are never backfilled). 0 at or below L1 and past L2 (both
+ * ends have their own injection semantics: none = silent, L2+ = standing).
+ * steps = 0 keeps the whole L1 segment silent; an l1==l2 config makes the
+ * segment unreachable, so the denominator is never zero here.
+ */
+export function milestoneFor(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): number {
+	if (activeTokens <= p.l1 || activeTokens > p.l2 || p.milestoneSteps <= 0) return 0;
+	return Math.min(p.milestoneSteps, Math.ceil(((activeTokens - p.l1) * p.milestoneSteps) / (p.l2 - p.l1)));
 }
 
 /** The §5.2 two-dimensional decision table as the single implementation. */
@@ -120,7 +136,7 @@ export function acpParamsFromConfig(section: unknown, contextWindow?: number): A
 		const v = s[key];
 		if (typeof v === "number" && v >= 0) p[key] = percent && windowOk ? Math.round((v / 100) * contextWindow!) : v;
 	}
-	for (const key of ["target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens"] as const) {
+	for (const key of ["target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens", "milestoneSteps"] as const) {
 		const v = s[key];
 		if (typeof v === "number" && v >= 0) p[key] = v;
 	}
