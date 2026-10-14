@@ -4,8 +4,8 @@
  *
  * Upstream keeps probe parameters in one global config file; the desktop port,
  * per user request, moved them into the keepalive section of
- * omp-desktop.json — naturally per-profile
- * (H.desktopProjectsPath is the current profile's agent dir). The single
+ * omp-desktop.json — naturally per-profile (the file lives in the current
+ * profile's agent dir, shared through host/desktop-json.ts). The single
  * switch in the section:
  *   enabled whether this app injects the extension and probes (consumed by
  *           session-lifecycle, default false; on = probing on — the desktop
@@ -21,7 +21,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { H } from "./state.ts";
+import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 
 export const STATE_DIR = join(homedir(), ".omp", "cache-keepalive");
 export const PROBE_LOG_FILE = join(STATE_DIR, "probe-log.jsonl");
@@ -171,27 +171,16 @@ export function resolveModelTtlMs(modelId: string, fallbackMs: number): Resolved
   return { ms: readModelTtlStore()[modelId] ?? fallbackMs, confirmed: false };
 }
 
-// ---------- atomic read/write of the omp-desktop.json keepalive section ----------
+// ---------- atomic read/write of the omp-desktop.json keepalive section (shared desktop-json helpers, A2) ----------
 
-/** Read the full omp-desktop.json (missing/corrupt file falls back to an empty object — same tolerance as profile.ts). */
-function readDesktopJson(): Record<string, unknown> {
-  try {
-    return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-/** Read the keepalive section (missing/invalid falls back to an empty object). */
+/** Read the keepalive section (missing/invalid section or unreadable file falls back to an empty object — only writes are gated). */
 function readSection(): Record<string, unknown> {
-  const section = readDesktopJson().keepalive;
-  return section && typeof section === "object" ? (section as Record<string, unknown>) : {};
+  return readDesktopSection("keepalive");
 }
 
 /** Merge-write the keepalive section, preserving omp-desktop.json's other keys and unmentioned fields inside the section. */
 function writeSection(section: Record<string, unknown>): void {
-  const raw = readDesktopJson();
-  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, keepalive: section }, null, 2));
+  writeDesktopSection("keepalive", section);
 }
 
 // ---------- injection switch (enabled) ----------

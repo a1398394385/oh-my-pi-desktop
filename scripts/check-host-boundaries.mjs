@@ -156,6 +156,14 @@ const ALLOWED_EDGES = new Set([
   "frames.ts→kimi-thinking.ts", "rpc/settings.ts→kimi-thinking.ts",
   "rpc/models.ts→kimi-thinking.ts", "session-lifecycle.ts→kimi-thinking.ts",
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
+  // A2: the seven private omp-desktop.json read/merge-write wheels converged
+  // onto the shared desktop-json helpers — profile's project-list save (multi-
+  // key overlay) + acp/sessionContext switches, assets' hooks/plugins switches
+  // (mkdir stays caller-side), computerDisplay's remembered monitor, and
+  // set_acp_config's inline merge. keepalive-config/ui-config swap their edges
+  // in their own domain blocks below.
+  "profile.ts→desktop-json.ts", "assets.ts→desktop-json.ts",
+  "computer-display.ts→desktop-json.ts", "rpc/settings.ts→desktop-json.ts",
   // Computer-use display reconciliation: computer.display persists a Win32
   // monitor handle (xcap Monitor::id() = HMONITOR), which the kernel reassigns
   // every boot; computer-display.ts remembers the picked monitor by EDID name +
@@ -177,16 +185,16 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→keepalive.ts",
   "session-lifecycle.ts→keepalive-config.ts",
   "keepalive.ts→keepalive-config.ts", "keepalive.ts→keepalive-lib.ts",
-  // Config source of truth = the keepalive section of omp-desktop.json (per-profile independent); reads/writes go through state.ts's H
-  "keepalive-config.ts→state.ts",
+  // Config source of truth = the keepalive section of omp-desktop.json (per-profile independent); reads/writes go through desktop-json.ts (A2)
+  "keepalive-config.ts→desktop-json.ts",
   // PoolEntry carries the keepalive runtime snapshot type (type-only import,
   // same precedent as state.ts→goal.ts holding the controller instance)
   "state.ts→keepalive.ts",
   // UI config persistence (omp-desktop.json ui section: locale/theme/motion/prefs):
   // applyProfile re-reads the locale on every profile apply; the set_locale /
   // set_ui_prefs RPCs write it; frames.ts carries the readUiConfig projection;
-  // read/write goes through state.ts's H (same as keepalive-config)
-  "profile.ts→ui-config.ts", "rpc/settings.ts→ui-config.ts", "ui-config.ts→state.ts",
+  // read/write goes through desktop-json.ts (A2 convergence, same as keepalive-config)
+  "profile.ts→ui-config.ts", "rpc/settings.ts→ui-config.ts", "ui-config.ts→desktop-json.ts",
   "frames.ts→ui-config.ts",
   // Desktop-owned browser routing (omp-desktop.json browser section: the
   // "use an external browser" switch). applyProfile re-applies it on every

@@ -14,13 +14,13 @@ import { H, sessions, settleApprovalResponse, type DesktopEnv } from "../state.t
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
 import {
-  readAcpRaw,
   writeAcpEnabled,
   writeSessionContextEnabled,
   applyProfile,
   applySleepPrevention,
   applyDesktopEnv,
 } from "../profile.ts";
+import { readDesktopSection, writeDesktopSection } from "../desktop-json.ts";
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { writeKimiAutoThinking } from "../kimi-thinking.ts";
@@ -184,10 +184,8 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   },
   async set_acp_config(ws, msg) {
     // Experimental features page: update the acp config section of omp-desktop.json
-    const raw = readAcpRaw();
-    const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
     const patch = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
-    await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, ...patch } }, null, 2));
+    writeDesktopSection("acp", { ...readDesktopSection("acp"), ...patch });
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_session_context_enabled(ws, msg) {

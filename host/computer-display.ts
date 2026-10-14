@@ -18,11 +18,11 @@
 // Never guess: an unresolvable value with no remembered monitor (first run after
 // this fix, or a monitor that is genuinely gone) is left alone and reported,
 // instead of silently retargeting the capture to some other screen.
-import { readFileSync, writeFileSync } from "node:fs";
 import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
 import type { DesktopSession } from "@oh-my-pi/pi-natives";
 import { settingsGet, settingsSet } from "./settings-compat.ts";
 import { H } from "./state.ts";
+import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { safeStderr } from "./stderr.ts";
 
 const DISPLAY_KEY = "computer.display";
@@ -60,20 +60,9 @@ export async function listPhysicalDisplays(): Promise<{ displays: PhysicalDispla
 	return { displays, error };
 }
 
-/** Read omp-desktop.json in full (missing/corrupt file -> empty object, same tolerance as browser-config.ts). */
-function readDesktopJson(): Record<string, unknown> {
-	try {
-		return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-	} catch {
-		return {};
-	}
-}
-
 /** The remembered monitor; a missing or malformed section reads as null (no memory -> no substitute). */
 function readDisplayHint(): DisplayHint | null {
-	const section = readDesktopJson().computerDisplay;
-	if (!section || typeof section !== "object") return null;
-	const hint = section as Record<string, unknown>;
+	const hint = readDesktopSection("computerDisplay");
 	if (typeof hint.name !== "string" || typeof hint.width !== "number" || typeof hint.height !== "number") return null;
 	return { name: hint.name, width: hint.width, height: hint.height, isPrimary: hint.isPrimary === true };
 }
@@ -83,7 +72,7 @@ function rememberDisplay(display: PhysicalDisplay): void {
 	const next: DisplayHint = { name: display.name, width: display.width, height: display.height, isPrimary: display.isPrimary };
 	const prev = readDisplayHint();
 	if (prev && prev.name === next.name && prev.width === next.width && prev.height === next.height && prev.isPrimary === next.isPrimary) return;
-	writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...readDesktopJson(), computerDisplay: next }, null, 2));
+	writeDesktopSection("computerDisplay", next);
 }
 
 /**

@@ -44,14 +44,24 @@ export function readDesktopSection(section: string): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-/** Merge-write one section, preserving other file keys and unmentioned section fields. */
-export function writeDesktopSection(section: string, value: Record<string, unknown>): void {
+/**
+ * Merge-write a patch of top-level keys (one or several sibling sections at
+ * once — saveDesktopProjects overlays the six managed project-list keys in a
+ * single write), preserving every other key of the file. Same unreadable-file
+ * refusal as before: a present-but-unreadable document aborts the write.
+ */
+export function writeDesktopSections(patch: Record<string, unknown>): void {
   const raw = readDesktopJson();
   if (raw === null) {
     safeStderr(
-      `[desktop-json] refusing to merge-write section "${section}": ${H.desktopProjectsPath} exists but is unreadable or corrupt; on-disk file left untouched for manual recovery\n`,
+      `[desktop-json] refusing to merge-write key(s) "${Object.keys(patch).join(", ")}": ${H.desktopProjectsPath} exists but is unreadable or corrupt; on-disk file left untouched for manual recovery\n`,
     );
     return;
   }
-  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, [section]: value }, null, 2));
+  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, ...patch }, null, 2));
+}
+
+/** Merge-write one section, preserving other file keys and unmentioned section fields. */
+export function writeDesktopSection(section: string, value: Record<string, unknown>): void {
+  writeDesktopSections({ [section]: value });
 }

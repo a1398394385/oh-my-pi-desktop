@@ -23,6 +23,7 @@ import {
   resolvePluginManifestEntries,
 } from "./bootstrap.ts";
 import { getMcpSharingConfig } from "./profile.ts";
+import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { safeStderr } from "./stderr.ts";
 
@@ -1071,50 +1072,29 @@ export interface PluginAssetsPayload {
 
 /** Read hooks.enabled from omp-desktop.json (defaults to off). */
 export function readHooksEnabled(): boolean {
-  try {
-    const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-    const hooks = raw?.hooks as Record<string, unknown> | undefined;
-    if (!hooks || typeof hooks !== "object") return false;
-    return hooks.enabled === true;
-  } catch {
-    return false;
-  }
+  return readDesktopSection("hooks").enabled === true;
 }
 
 /** Write hooks.enabled back. */
 export async function writeHooksEnabled(enabled: boolean): Promise<void> {
-  let raw: Record<string, unknown> = {};
-  try {
-    raw = JSON.parse(await readFile(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {}
-  const hooks = raw.hooks && typeof raw.hooks === "object" ? (raw.hooks as Record<string, unknown>) : {};
+  // mkdir-first stays here: a fresh profile's agent dir may not exist yet and
+  // the shared writer does not create parent directories.
   const dir = path.dirname(H.desktopProjectsPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, hooks: { ...hooks, enabled } }, null, 2));
+  writeDesktopSection("hooks", { ...readDesktopSection("hooks"), enabled });
 }
 
 /** Read plugins.enabled from omp-desktop.json (defaults to off). */
 export function readPluginsEnabled(): boolean {
-  try {
-    const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-    const plugins = raw?.plugins as Record<string, unknown> | undefined;
-    if (!plugins || typeof plugins !== "object") return false;
-    return plugins.enabled === true;
-  } catch {
-    return false;
-  }
+  return readDesktopSection("plugins").enabled === true;
 }
 
 /** Write plugins.enabled back. */
 export async function writePluginsEnabled(enabled: boolean): Promise<void> {
-  let raw: Record<string, unknown> = {};
-  try {
-    raw = JSON.parse(await readFile(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {}
-  const plugins = raw.plugins && typeof raw.plugins === "object" ? (raw.plugins as Record<string, unknown>) : {};
+  // Same mkdir-first reason as writeHooksEnabled.
   const dir = path.dirname(H.desktopProjectsPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, plugins: { ...plugins, enabled } }, null, 2));
+  writeDesktopSection("plugins", { ...readDesktopSection("plugins"), enabled });
 }
 
 // Installed plugin packages, listed per scope the same way skills/MCP are: each

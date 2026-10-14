@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { H } from "../host/state.ts";
-import { readDesktopJson, readDesktopSection, writeDesktopSection } from "../host/desktop-json.ts";
+import { readDesktopJson, readDesktopSection, writeDesktopSection, writeDesktopSections } from "../host/desktop-json.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "omp-desktop-json-smoke-"));
 const cfgPath = join(dir, "omp-desktop.json");
@@ -99,6 +99,19 @@ try {
   const replaced = after.browser as Record<string, unknown>;
   assert(replaced.cdpUrl === "y" && !("tern" in replaced) && !("external" in replaced), "无 read-modify-write 时 section 整段替换(旧字段消失)");
   assert(takeStderr() === "", "合法写入不产生 stderr 上报");
+
+  // ---- 6. writeDesktopSections (A2): multi-key overlay for saveDesktopProjects ----
+  console.log("场景 6: writeDesktopSections 多 key overlay(A2)+ 损坏文件拒绝");
+  writeFileSync(cfgPath, JSON.stringify({ acp: { enabled: true } }, null, 2));
+  writeDesktopSections({ allProjects: ["/a"], removedProjects: [], browser: { external: true } });
+  const overlay = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<string, unknown>;
+  assert((overlay.acp as Record<string, unknown>)?.enabled === true, "多 key overlay 保留兄弟 section acp");
+  assert((overlay.browser as Record<string, unknown>)?.external === true, "patch 中的 key 落盘");
+  assert(overlay.ui === undefined, "patch 之外的 key 不被引入(文件原样保留)");
+  writeFileSync(cfgPath, "{{{ corrupt again");
+  writeDesktopSections({ allProjects: ["/a"] });
+  assert(readFileSync(cfgPath, "utf8") === "{{{ corrupt again", "损坏文件多 key overlay 同样拒绝写入、原字节不变");
+  assert(takeStderr().includes("[desktop-json] refusing"), "多 key 拒绝路径 stderr 含拒绝标记");
 
   if (failures > 0) {
     console.error(`✗ desktop-json 冒烟失败:${failures} 项断言未过`);

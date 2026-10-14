@@ -6,7 +6,7 @@ import { setProfile, getAgentDir, normalizeProfileName } from "@oh-my-pi/pi-util
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions, activeWs } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { initVoiceMode } from "./voice.ts";
@@ -19,6 +19,7 @@ import { reconcileComputerDisplay } from "./computer-display.ts";
 import { warmKimiCu } from "./computer-mode.ts";
 import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { readDesktopJson, readDesktopSection, writeDesktopSection, writeDesktopSections } from "./desktop-json.ts";
 import type * as BunFfi from "bun:ffi";
 import { safeStderr } from "./stderr.ts";
 
@@ -93,12 +94,10 @@ export function readDesktopProjects(): DesktopProjects {
 }
 
 export async function saveDesktopProjects() {
-  // Read the on-disk object first, then overlay managed keys: user-written unmanaged sections (e.g. acp config) must survive untouched
-  let base: Record<string, unknown> = {};
-  try {
-    base = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
-  } catch {}
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...base, ...H.desktopProjects }, null, 2));
+  // Overlay only the managed top-level keys onto the on-disk object:
+  // user-written unmanaged sections (e.g. acp config) must survive untouched.
+  // The shared writer refuses to touch a present-but-unreadable file (A1).
+  writeDesktopSections({ ...H.desktopProjects });
 }
 
 export function computeMcpSharingKey(sourcePath: string, name: string): string {
@@ -389,13 +388,11 @@ export async function applyProfile(profileName: string) {
 // ---------- experimental feature switches (acp / sessionContext sections of omp-desktop.json) ----------
 // Moved over from main.ts: desktop-level config read/write lives in the same omp-desktop.json as the profile, so it belongs to this module.
 
-/** Read the raw omp-desktop.json object (empty object on read failure). */
+/** Read the raw omp-desktop.json object. Read-side tolerance: a
+ * present-but-unreadable/corrupt file reads as empty (only writes are gated
+ * by the shared module's null refusal). */
 export function readAcpRaw(): Record<string, unknown> {
-  try {
-    return JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+  return readDesktopJson() ?? {};
 }
 
 /** Read the ACP config object for the experimental settings page: master
@@ -411,8 +408,7 @@ export function readAcpConfig(): {
   tailTurns?: number;
   tailTokens?: number;
 } {
-  const raw = readAcpRaw();
-  const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
+  const acp = readDesktopSection("acp");
   const num = (v: unknown): number | undefined => (typeof v === "number" && v >= 0 ? v : undefined);
   return {
     enabled: acp.enabled === true,
@@ -429,31 +425,22 @@ export function readAcpConfig(): {
  *  feature: missing/invalid values count as off (new-user default) — only
  *  an explicit true turns it on. */
 export function readAcpEnabled(): boolean {
-  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
-  if (!acp || typeof acp !== "object") return false;
-  return acp.enabled === true;
+  return readDesktopSection("acp").enabled === true;
 }
 
 /** Write acp.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the acp section. */
 export async function writeAcpEnabled(enabled: boolean): Promise<void> {
-  const raw = readAcpRaw();
-  const acp = raw.acp && typeof raw.acp === "object" ? (raw.acp as Record<string, unknown>) : {};
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, enabled } }, null, 2));
+  writeDesktopSection("acp", { ...readDesktopSection("acp"), enabled });
 }
 
 /** History session search (read_session_context) master switch (sessionContext.enabled in omp-desktop.json).
  *  Same semantics as readAcpEnabled: missing/invalid values count as off (new-user default); only an explicit true turns it on. */
 export function readSessionContextEnabled(): boolean {
-  const section = readAcpRaw().sessionContext as Record<string, unknown> | undefined;
-  if (!section || typeof section !== "object") return false;
-  return section.enabled === true;
+  return readDesktopSection("sessionContext").enabled === true;
 }
 
 /** Write sessionContext.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
 export async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
-  const raw = readAcpRaw();
-  const section =
-    raw.sessionContext && typeof raw.sessionContext === "object" ? (raw.sessionContext as Record<string, unknown>) : {};
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, sessionContext: { ...section, enabled } }, null, 2));
+  writeDesktopSection("sessionContext", { ...readDesktopSection("sessionContext"), enabled });
 }
 

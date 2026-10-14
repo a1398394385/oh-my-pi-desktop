@@ -3,33 +3,21 @@
 // is per-profile; applyProfile re-reads the locale on every profile apply, the
 // set_locale / set_ui_prefs RPCs persist values (a missing section never gets
 // written back to disk by reads — first explicit change is the first write).
-import { readFileSync, writeFileSync } from "node:fs";
-import { H } from "./state.ts";
+import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import type { HostLang } from "../ui-src/i18n/host.ts";
 
 export const DEFAULT_UI_LOCALE: HostLang = "zh-CN";
 
-// ---------- omp-desktop.json ui-section atomic read/write (keepalive-config pattern) ----------
+// ---------- omp-desktop.json ui-section atomic read/write (shared desktop-json helpers, A2) ----------
 
-/** Read omp-desktop.json in full (missing/corrupt file -> empty object, same tolerance as profile.ts). */
-function readDesktopJson(): Record<string, unknown> {
-  try {
-    return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-/** Read the `ui` section (missing/invalid section -> empty object). */
+/** Read the `ui` section (missing/invalid section or unreadable file -> empty object — only writes are gated). */
 function readSection(): Record<string, unknown> {
-  const section = readDesktopJson().ui;
-  return section && typeof section === "object" ? (section as Record<string, unknown>) : {};
+  return readDesktopSection("ui");
 }
 
 /** Merge-write the `ui` section, preserving other keys of omp-desktop.json and unmentioned fields inside the section. */
 function writeSection(section: Record<string, unknown>): void {
-  const raw = readDesktopJson();
-  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, ui: section }, null, 2));
+  writeDesktopSection("ui", section);
 }
 
 /** Persisted UI locale (missing/invalid value falls back to zh-CN). */
