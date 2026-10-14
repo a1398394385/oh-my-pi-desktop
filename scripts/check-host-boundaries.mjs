@@ -180,6 +180,15 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
+  // A12 split: the session snapshot family (goal/todos/context/stats pushes +
+  // the collapsed session_created frame body) lives in session-snapshot.ts;
+  // the subagent roster (live registration/ownership tables + the three
+  // eventBus subscriptions + the disk-replay function family) lives in
+  // subagent-view.ts. session-lifecycle keeps the load/spawn orchestration and
+  // re-exports pushContext/countCacheBreaks for the pre-split import surface.
+  "session-lifecycle.ts→session-snapshot.ts", "session-lifecycle.ts→subagent-view.ts",
+  "session-snapshot.ts→state.ts",
+  "subagent-view.ts→state.ts", "subagent-view.ts→translate.ts",
   // Cache keepalive (an inline-extension domain conditionally injected behind an experiment switch;
   // three flat files keepalive/keepalive-config/keepalive-lib)
   "session-lifecycle.ts→keepalive.ts",
