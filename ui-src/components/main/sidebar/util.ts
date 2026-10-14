@@ -1,6 +1,7 @@
-// Sidebar utilities (ported from ui/sidebar.js): relative time / duration formatting /
+// Sidebar utilities (ported from ui/sidebar.js): relative time formatting /
 // session label / clipboard copy.
-// fmtDuration is consumed later by chat-wave (the old version imported it from chat.js).
+// fmtAgo is the single shared definition (also consumed by right/BranchTreePage and
+// tree/SessionTreeStream); fmtDuration lives in chat/util.ts.
 import { t } from "../../../i18n";
 
 export function fmtAgo(iso: string): string {
@@ -9,13 +10,6 @@ export function fmtAgo(iso: string): string {
   if (sec < 3600) return t("sidebar.agoMin", { n: Math.floor(sec / 60) });
   if (sec < 86400) return t("sidebar.agoHour", { n: Math.floor(sec / 3600) });
   return t("sidebar.agoDay", { n: Math.floor(sec / 86400) });
-}
-
-export function fmtDuration(sec: number): string {
-  sec = Math.max(1, Math.round(sec));
-  if (sec < 60) return t("sidebar.durSec", { n: sec });
-  const m = Math.floor(sec / 60);
-  return t("sidebar.durMinSec", { m, s: String(sec % 60).padStart(2, "0") });
 }
 
 // Minimal structure needed for the session label (decoupled from SessionRow.SessionInfo so util doesn't depend back on components)

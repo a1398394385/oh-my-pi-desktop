@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, activateSession, refreshGitDiff, hideWelcomeScreen, saveUnseen } from "../../../store";
 import type { DiskProject, SessionBranch } from "../../../types/frames";
 import { t } from "../../../i18n";
-import { fmtAgo } from "./helpers";
+import { fmtAgo } from "../sidebar/util";
 
 // Family branch entry: sole source is types/frames' SessionBranch (host get_session_tree reply)
 type BranchEntry = SessionBranch;

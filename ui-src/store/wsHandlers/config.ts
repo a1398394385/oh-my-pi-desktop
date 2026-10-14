@@ -7,9 +7,29 @@ import { hostInstanceReset } from "../session";
 import { ingestModelDefaults, ingestModels } from "../models";
 import { clearRightSlots, resetBrowserMirrorUi } from "../right";
 import { t } from "../../i18n";
-import type { ApprovalMode } from "../../types/frames";
+import type { ApprovalMode, SettingsPayload } from "../../types/frames";
 import type { SchemaDef } from "../../types/settings";
 import type { HandlerSlice } from "./types";
+
+// Shared landing sequence for a host settings snapshot, called from both the ready
+// handshake and the settings handler below — keep the two entry points on this one
+// implementation so the ordering cannot drift.
+function applyHostSettings(settings: SettingsPayload): void {
+  // File-first reconcile (omp-desktop.json ui section) BEFORE the host-settings
+  // hideThinkingBlock overlay: the base settings stay the authority for showThinking
+  applyUiConfig(settings.uiConfig);
+  // Field-level whitelist merge: only hideThinkingBlock in the host settings frame affects local appearance prefs
+  if (typeof settings.hideThinkingBlock === "boolean") {
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, showThinking: !settings.hideThinkingBlock } }));
+  }
+  applyColorBlindMode(settings.values?.colorBlindMode);
+  useAppStore.setState({ hostSettings: settings });
+  // Master gate closed: drop any pending create intent so a session born
+  // after this never carries a stale computerMode:true
+  if (settings.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
+    useAppStore.setState({ newSessionComputerMode: false });
+  }
+}
 
 export const configHandlers = {
   ready(msg) {
@@ -30,22 +50,8 @@ export const configHandlers = {
     if (ingestModelDefaults(msg) && useAppStore.getState().isCreatingNew && !useAppStore.getState().newSessionDirty) {
       useAppStore.getState().initNewSessionModel(true);
     }
-    if (msg.settings) {
-      // File-first reconcile (omp-desktop.json ui section) BEFORE the host-settings
-      // hideThinkingBlock overlay: the base settings stay the authority for showThinking
-      applyUiConfig(msg.settings.uiConfig);
-      // Field-level whitelist merge: only hideThinkingBlock in the host settings frame affects local appearance prefs
-      if (typeof msg.settings.hideThinkingBlock === "boolean") {
-        useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
-      }
-      applyColorBlindMode(msg.settings.values?.colorBlindMode);
-      useAppStore.setState({ hostSettings: msg.settings });
-      // Master gate closed: drop any pending create intent so a session born
-      // after this never carries a stale computerMode:true
-      if (msg.settings.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
-        useAppStore.setState({ newSessionComputerMode: false });
-      }
-    }
+    // Same landing sequence as the settings handler below (shared applyHostSettings)
+    applyHostSettings(msg.settings);
   },
   models(msg) {
     ingestModels(msg.models);
@@ -69,16 +75,7 @@ export const configHandlers = {
     useAppStore.setState({ searchAvailability: msg.availability ?? {} });
   },
   settings(msg) {
-    // Same ordering as the ready handler: file-first reconcile, then the host overlay
-    applyUiConfig(msg.settings?.uiConfig);
-    if (typeof msg.settings?.hideThinkingBlock === "boolean") {
-      useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, showThinking: !msg.settings.hideThinkingBlock } }));
-    }
-    applyColorBlindMode(msg.settings?.values?.colorBlindMode);
-    useAppStore.setState({ hostSettings: msg.settings });
-    if (msg.settings?.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
-      useAppStore.setState({ newSessionComputerMode: false }); // same gate-close cleanup as the ready handler above
-    }
+    applyHostSettings(msg.settings); // shared with the ready handler above
     if (msg.restartHint) useAppStore.getState().toast(t("notify.savedRestartHint"));
   },
   settings_schema(msg) {
