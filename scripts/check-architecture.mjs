@@ -22,6 +22,11 @@ const excludedSegments = new Set(["node_modules", "dist", "out", "release", "tar
 const HOT_LIMITS = [
   { path: "host/main.ts", max: 280 },
   { path: "ui-src/store/session.ts", max: 800 },
+  // Late-growing hot spots locked at current size (2026-10 audit); ratchet down only.
+  // session-lifecycle cap will be lowered after the A12 split.
+  { path: "host/session-lifecycle.ts", max: 1600 },
+  { path: "host/assets.ts", max: 1600 },
+  { path: "host/translate.ts", max: 1200 },
 ];
 
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
