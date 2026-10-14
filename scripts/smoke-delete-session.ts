@@ -1,0 +1,147 @@
+// A3 smoke: delete_session must honor the pool-entry identity protocol
+// (path + previousPaths, see state.ts PoolEntry) and run the full release
+// sequence — release MCP, unsubscribe, leave the pool, dispose — matching
+// reload_session / session_unload. Single-process bun run importing the host
+// module directly (bootstrap runs setProfile before its SDK await-imports,
+// so OMP_PROFILE governs the profile).
+//
+// Coverage:
+//   A  delete by a pre-persistence-move path (previousPaths hit) clears the
+//      live pool entry, unsubscribes and disposes the AgentSession, and
+//      unlinks the requested file
+//   B  exact-path hit regression (plain entry, no previousPaths)
+//   C  dispose failure does not abort the cleanup and leaves a stderr trace
+//   D  an unrelated path must not evict a pooled entry
+//
+// Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-delete-session.ts
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { getAgentDir } from "@oh-my-pi/pi-utils";
+
+assert.equal(
+  process.env.OMP_PROFILE,
+  "omp-desktop-test",
+  "run with OMP_PROFILE=omp-desktop-test (never the default profile)",
+);
+
+// Capture stderr so the dispose-failure trace can be asserted; lines are still
+// forwarded for human visibility.
+const stderrLines: string[] = [];
+const origWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = ((chunk: any, ...rest: any[]) => {
+  stderrLines.push(String(chunk));
+  return (origWrite as any)(chunk, ...rest);
+}) as typeof process.stderr.write;
+
+const { sessions, H } = await import("../host/state.ts");
+const { sessionHandlers } = await import("../host/rpc/session.ts");
+
+// Minimal applyProfile equivalent: the RPC handlers write profile-managed
+// files (omp-desktop.json) that only a full host startup would otherwise
+// have wired up. All paths stay inside the test profile.
+H.agentDir = getAgentDir();
+H.desktopProjectsPath = join(H.agentDir, "omp-desktop.json");
+
+// Scratch dir inside the test profile but outside the scanned sessions/
+// tree, so listAll (run by handleListSessions at the end of delete_session)
+// never parses our stub files.
+const scratch = join(getAgentDir(), "smoke-a3-tmp");
+mkdirSync(scratch, { recursive: true });
+
+const frames: any[] = [];
+const fakeWs = { send: (s: string) => frames.push(JSON.parse(s)) };
+
+interface Counters {
+  dispose: number;
+  unsubscribe: number;
+}
+function makeStubEntry(path: string, previousPaths: string[], counters: Counters, disposeImpl?: () => Promise<void>) {
+  return {
+    path,
+    previousPaths,
+    mcpMountGen: 0,
+    mcpMountInFlight: undefined,
+    mcpReleases: [],
+    unsubscribe: () => {
+      counters.unsubscribe++;
+    },
+    session: { dispose: disposeImpl ?? (async () => { counters.dispose++; }) },
+  } as any;
+}
+
+try {
+  // ---- A: previousPaths hit — delete by the pre-move path clears the live
+  // entry and disposes the session (the A3 bug: only entry.path matched, so
+  // the entry survived while its file was deleted).
+  {
+    const movedFrom = join(scratch, "a-old.jsonl");
+    const movedTo = join(scratch, "a-new.jsonl");
+    writeFileSync(movedFrom, "");
+    const counters: Counters = { dispose: 0, unsubscribe: 0 };
+    sessions.set("smoke-a3-moved", makeStubEntry(movedTo, [movedFrom], counters));
+    await sessionHandlers.delete_session(fakeWs, { path: movedFrom });
+    assert.equal(sessions.has("smoke-a3-moved"), false, "A: pool entry must be cleared when deleted via previousPaths");
+    assert.equal(counters.unsubscribe, 1, "A: unsubscribe must run once");
+    assert.equal(counters.dispose, 1, "A: dispose must run once");
+    assert.equal(existsSync(movedFrom), false, "A: requested file must be unlinked");
+    console.log("A ok: previousPaths hit clears entry + disposes");
+  }
+
+  // ---- B: exact-path hit regression (plain entry).
+  {
+    const plain = join(scratch, "b-plain.jsonl");
+    writeFileSync(plain, "");
+    const counters: Counters = { dispose: 0, unsubscribe: 0 };
+    sessions.set("smoke-a3-plain", makeStubEntry(plain, [], counters));
+    await sessionHandlers.delete_session(fakeWs, { path: plain });
+    assert.equal(sessions.has("smoke-a3-plain"), false, "B: pool entry must be cleared on exact-path delete");
+    assert.equal(counters.dispose, 1, "B: dispose must run once");
+    assert.equal(existsSync(plain), false, "B: file must be unlinked");
+    console.log("B ok: exact-path hit regression");
+  }
+
+  // ---- C: dispose failure must not abort the cleanup and must leave a
+  // stderr trace (no bare catch).
+  {
+    const boom = join(scratch, "c-boom.jsonl");
+    writeFileSync(boom, "");
+    const counters: Counters = { dispose: 0, unsubscribe: 0 };
+    sessions.set(
+      "smoke-a3-boom",
+      makeStubEntry(boom, [], counters, async () => {
+        counters.dispose++;
+        throw new Error("boom-dispose");
+      }),
+    );
+    await sessionHandlers.delete_session(fakeWs, { path: boom });
+    assert.equal(sessions.has("smoke-a3-boom"), false, "C: entry must still be cleared when dispose throws");
+    assert.equal(existsSync(boom), false, "C: file must still be unlinked when dispose throws");
+    assert.ok(
+      stderrLines.some((l) => l.includes("delete_session dispose failed")),
+      "C: dispose failure must leave a stderr trace",
+    );
+    console.log("C ok: dispose failure logged, cleanup continues");
+  }
+
+  // ---- D: an unrelated path must not evict a pooled entry (match stayed
+  // tight while being widened to previousPaths).
+  {
+    const counters: Counters = { dispose: 0, unsubscribe: 0 };
+    sessions.set("smoke-a3-keep", makeStubEntry(join(scratch, "d-keep.jsonl"), [], counters));
+    await sessionHandlers.delete_session(fakeWs, { path: join(scratch, "d-unrelated.jsonl") });
+    assert.equal(sessions.has("smoke-a3-keep"), true, "D: unrelated path must not evict the entry");
+    assert.equal(counters.dispose, 0, "D: unrelated path must not dispose the entry");
+    sessions.delete("smoke-a3-keep");
+    console.log("D ok: unrelated path does not evict");
+  }
+
+  // handleListSessions pushed its refresh frame at the end of every call.
+  assert.ok(frames.length > 0 && frames.every((f) => f.type === "session_list"), "delete_session must push session_list refreshes");
+  console.log(`smoke-delete-session PASSED (${frames.length} session_list frames)`);
+} finally {
+  process.stderr.write = origWrite;
+  rmSync(scratch, { recursive: true, force: true });
+  // Never leak stub entries into the shared pool on failure either.
+  for (const id of ["smoke-a3-moved", "smoke-a3-plain", "smoke-a3-boom", "smoke-a3-keep"]) sessions.delete(id);
+}

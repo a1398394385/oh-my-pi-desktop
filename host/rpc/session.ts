@@ -326,10 +326,35 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, entry] of sessions.entries()) {
-      if (entry.path === p) {
-        try { releaseMcpForSession(key, entry); } catch {}
-        try { entry.unsubscribe(); } catch {}
-        sessions.delete(key);
+      // Pool identity is path + previousPaths (state.ts PoolEntry): deleting by
+      // a pre-persistence-move path must still clear the live entry, or the
+      // file goes away while its AgentSession keeps running and persisting to
+      // the new location. Same match as reload_session/session_unload/mark_seen.
+      if (!sessionEntryMatchesPath(entry, p)) continue;
+      // Release sequence matches reload_session/session_unload. Release and
+      // unsubscribe failures are logged but must not abort the disk cleanup
+      // below (delete_session's teardown is best-effort by design).
+      try {
+        releaseMcpForSession(key, entry);
+      } catch (err) {
+        safeStderr(`[host] delete_session release MCP failed: ${err}\n`);
+      }
+      try {
+        entry.unsubscribe();
+      } catch (err) {
+        safeStderr(`[host] delete_session unsubscribe failed: ${err}\n`);
+      }
+      sessions.delete(key);
+      // Full teardown, not just unsubscribe: a surviving session keeps its
+      // cache-warmer/keepalive and any straggler writers alive and would keep
+      // persisting into the (now deleted) file. dispose() is the sanctioned
+      // terminal path used by reload_session/session_unload; it appends one
+      // session_exit row, which is fine here because the file is unlinked
+      // right after this loop.
+      try {
+        await entry.session.dispose();
+      } catch (err) {
+        safeStderr(`[host] delete_session dispose failed: ${err}\n`);
       }
     }
     const pi = H.desktopProjects.pinnedSessions.indexOf(p);
