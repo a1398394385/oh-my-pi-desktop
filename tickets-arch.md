@@ -306,7 +306,7 @@ A1-A18 全部 done(19 个实施 commit + 1 个 followup,详见各票 Status)。
 
 **基线既有红(纯净 aebb775 复现,非本波引入,留档勿误归因)**:smoke:react 2 项归档断言、smoke-features 1 项(未知 sessionId 归档回 error 形态)、smoke-ui-prefs 1 项(theme 白名单缺失)、smoke-mcp-sharing 1 项(失败探测日志断言)。
 
-**待用户拍板遗留**:①A20 ui/assets/app.js 3.9MB 旧产物删除;②A10 保留的死 wire 字段 SessionBranchedFrame.selectedImages(host 从不发,删或补 host 下发);③A13 上报的 right.ts:397 landBrowserTabs 同型漏配对;④A3 上报的 pinned/archivedSessions indexOf 精确匹配二级分叉 + delete 无 busy 拒绝;⑤死代码 12 条清单(审计 D-4,含 A12 随迁的 readSubagentInitFlags/isAdvisorTranscript)。
+**待用户拍板遗留(2026-10-14 已全部拍板并落地)**:①app.js 删除——审计「仍入库」系误报,实为 gitignored 本地文件,已 rm + 删 dev-reader.html;②死 wire 字段 selectedImages 已删;③landBrowserTabs 已改走 expandRightPanel;④a pin/archived 清理已按 path+previousPaths 全集;④b delete_session 已加 busy 拒绝(errors.session.deleteBusy);⑤死代码已删——bootstrap 3 re-export、mcp-pool 2 函数、migrateMcpSharingConfig、ArchivedSection、traces barrel、4 个零接线 shadcn 基件(dropdown-menu/popover/scroll-area/tabs)、subagent-view 2 个随迁死符号;button.tsx 经查被 dialog.tsx 内部引用,保留。commits:3adc855(②③④)与后续删除波。
 
 ## 完工定义
 
