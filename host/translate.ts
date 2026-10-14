@@ -29,17 +29,11 @@ function stripDcpTags(s: string): string {
 	return out === s ? s : out.trim();
 }
 
-export type UiEvent =
-  | { kind: "turn_start" }
-  | { kind: "text_delta"; text: string }
-  | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
-  | { kind: "thinking_delta"; text: string }
-  | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
-  | { kind: "tool_update"; name: string; toolCallId?: string; files?: string[]; added?: number; removed?: number; todo?: TranscriptItem["todo"]; output?: string; details?: unknown; diffContent?: string }
-  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
-  | { kind: "thinking_level"; configured?: string; resolved?: string }
-  | { kind: "error"; text: string } // provider/request failure (quota, auth, transport)
-  | { kind: "mention"; files: string[] }; // @ mention read-back (sent directly by the agent_end scan in attachEntry, not via translateEvent)
+// UiEvent moved to the wire contract (wire/payloads.ts, A10); re-exported for
+// host consumers. The hand-rolled union here had drifted from what senders
+// emit (missing the user_message variant that automations/scheduler.ts sends).
+import type { UiEvent } from "./wire/payloads.ts";
+export type { UiEvent };
 
 // Tool device paths (xd://tui, xd://mcp__xxx, ...): reading/writing one invokes a device, not a file read/write
 function isDevicePath(p: unknown): boolean {

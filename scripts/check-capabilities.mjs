@@ -38,9 +38,26 @@ for (const c of dispatchCases) {
 const dup = catalog.methods.length - listed.size;
 if (dup > 0) problems.push(`清单存在 ${dup} 个重复 id`);
 
+// A10: the wire request union (host/wire/requests.ts HostRequestMethod) must mirror the
+// dispatched method set — a handler added/renamed on the host side without updating the
+// union (or a stale union entry) is a drift and fails here, same as the manifest above.
+const wireSource = readFileSync(join(root, "host/wire/requests.ts"), "utf8");
+const unionBlock = wireSource.match(/export type HostRequestMethod =([\s\S]*?);/);
+if (!unionBlock) {
+  problems.push("wire/requests.ts 中找不到 HostRequestMethod union 声明");
+} else {
+  const wireMethods = new Set([...unionBlock[1].matchAll(/"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]));
+  for (const c of dispatchCases) {
+    if (!wireMethods.has(c)) problems.push(`wire 请求 union 缺 method（host 会派发但 union 未收）: ${c}`);
+  }
+  for (const w of wireMethods) {
+    if (!dispatchCases.has(w)) problems.push(`wire 请求 union 含已不存在/未派发的 method: ${w}`);
+  }
+}
+
 if (problems.length > 0) {
   console.error(`✗ 能力清单与 host.ts 漂移（${problems.length} 项）：`);
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-console.log(`✓ 能力清单一致：${catalog.methods.length} 个 RPC method 全部登记且可解析`);
+console.log(`✓ 能力清单一致：${catalog.methods.length} 个 RPC method 全部登记且可解析，wire 请求 union 键集同步`);

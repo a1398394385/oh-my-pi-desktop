@@ -12,12 +12,12 @@ import { invoke } from "./ws";
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
 import { saveRightSlot, restoreRightSlot } from "./right";
 import { t } from "../i18n";
-import type { ApprovalMode, EventFrame, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
+import type { ApprovalMode, EventFrame, HostRequest, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
 
 // Send helper via the ws slice (stable reference, equivalent to the old top-level send)
-const send = (obj: unknown): void => {
+const send = (obj: HostRequest): void => {
   useAppStore.getState().send(obj);
 };
 

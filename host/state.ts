@@ -12,43 +12,12 @@ import type { AuthStorage } from "@oh-my-pi/pi-ai";
 import { hostI18n } from "./i18n/host.ts";
 
 // ---------- Session pool types (declared up front for profile-switch cleanup) ----------
-export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
-export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error";
-  text: string;
-  name?: string;
-  toolCallId?: string;
-  args?: Record<string, unknown>;
-  intent?: string; // model-written `i` intent, extracted by the agent loop and stripped from args; the wait row's only "parameter"
-  added?: number;
-  removed?: number;
-  diffContent?: string; // Real unified diff of this edit/write call (the tool reply's details.diff is a truncated copy)
-  todo?: { content: string; done: number; total: number };
-  thinking?: string;
-  expandable?: boolean;
-  output?: string; // Output text of bash-like tools (after truncation), shown in the frontend's expandable card
-  details?: any; // Detailed runtime metadata of tools like read (file preview) / hub
-  collapsed?: boolean; // Loop groups start collapsed; the frontend toggles expansion
-  items?: TranscriptItem[]; // Holds this round's intermediate items when role==="loop" (thinking/tool/intermediate assistant)
-  durationSec?: number | null; // Working duration of this round (seconds)
-  usage?: TurnUsage | null; // Total LLM token consumption of this round
-  entryId?: string; // Persisted entry id (on user messages, locates the branch point for branch_session; on assistant messages, the tail-output fork anchor)
-  endMs?: number; // When this round ended (on the round-final assistant: entry timestamp from disk, or runEnd arrival time when live)
-  // ---- Bash row (role==="bash", local ! command execution) ----
-  running?: boolean; // Executing (between bash_start → bash_done)
-  exitCode?: number | null; // Process exit code; null = unknown/unfinished
-  cancelled?: boolean; // Aborted by the user
-  timedOut?: boolean; // Killed on timeout
-  truncated?: boolean; // Output was truncated (the base enforces a cap)
-  excludeFromContext?: boolean; // !! prefix: result stays out of the model context
-  error?: string; // Execution failure message
-  // ---- File mention row (role==="mention", @path already read) ----
-  // ---- Phase separator row (role==="phase", execution records: compact/handoff/rename) ----
-  phase?: "start" | "done"; // Everything replayed from disk is done; start only comes from transient frames (while executing)
-  command?: string; // compact/handoff/rename: start rows are matched and absorbed into persisted done rows by this
-  // ---- User message multimodal images (role==="user") ----
-  images?: Array<{ type: "image"; data: string; mimeType: string }>;
-};
+// TranscriptItem/TurnUsage moved to the wire contract (wire/payloads.ts, A10) as
+// the single source shared with the UI; re-exported here so the existing host
+// import surface (translate/session-lifecycle/rpc domains) stays untouched.
+// The wire version is the field superset (adds role "error" + the `intent` field).
+import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
+export type { TranscriptItem, TurnUsage };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // Host injection points such as setToolUIContext
