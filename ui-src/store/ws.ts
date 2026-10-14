@@ -8,7 +8,7 @@ import { useAppStore } from "./index";
 import { admitStampedEvent } from "./session";
 import { dispatchFrame } from "./wsHandlers";
 import { t } from "../i18n";
-import type { HostFrame } from "../types/frames";
+import type { HostFrame, HostRequest } from "../types/frames";
 
 export interface WsSlice {
   ws: WebSocket | null;
@@ -16,7 +16,7 @@ export interface WsSlice {
   connText: string;
   /** Timestamp of the first lost connection (or never connected); cleared to null on reconnect. ConnBanner uses it to measure the continuous failure duration */
   connFailSince: number | null;
-  send(obj: unknown): void;
+  send(obj: HostRequest): void;
   setConnected(ok: boolean, text: string): void;
   connect(): Promise<void>;
 }
@@ -30,7 +30,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   connText: t("notify.connecting"),
   connFailSince: null,
 
-  send(obj: unknown): void {
+  send(obj: HostRequest): void {
     const ws = get().ws;
     if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
   },

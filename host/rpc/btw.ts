@@ -6,7 +6,7 @@ import { btwAsk, btwCancel, collectBtwHistory } from "../btw.ts";
 import { attachEntry, createSessionCore } from "../session-lifecycle.ts";
 import { sessions, stampEvent, type TranscriptItem } from "../state.ts";
 import { safeStderr } from "../stderr.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export const btwHandlers: Record<string, RpcHandler> = {

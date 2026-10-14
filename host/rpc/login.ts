@@ -12,7 +12,7 @@ import { H, loginPendingPrompts } from "../state.ts";
 import { rebuildScopedModels, modelCatalog, syncAvailableModels, capabilityKeysPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { fetchProviderAccountsLimits } from "../limits/index.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import { reorderProviderAccounts } from "../account-order.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
@@ -109,7 +109,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
       ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     } catch (err) {
-      safeStderr(`[host] 登出后模型目录刷新失败: ${err}\n`);
+      safeStderr(hostI18n.t("errors.login.logoutCatalogRefreshFailed", { detail: String(err) }));
     }
   },
   // ---- Per-account disable/restore (manual tombstones) ----
@@ -185,7 +185,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
       if (!fs.existsSync(dbPath)) throw new Error(hostI18n.t("errors.account.restoreUnsupported"));
       if (!reorderProviderAccounts(dbPath, provider, ids)) throw new Error(hostI18n.t("errors.account.reorderMismatch"));
     } catch (err) {
-      safeStderr(`[host] 账号排序失败 (${provider}): ${err}\n`);
+      safeStderr(hostI18n.t("errors.login.accountReorderFailed", { provider, detail: String(err) }));
       throw err;
     }
     await H.authStorage.credentials.reload();
@@ -221,8 +221,15 @@ export const loginHandlers: Record<string, RpcHandler> = {
     let limitsBaseUrl = "";
     try {
       limitsBaseUrl = H.modelRegistry.getProviderBaseUrl(provider) ?? "";
-    } catch {}
-    void fetchProviderAccountsLimits(H.authStorage, provider, limitsBaseUrl).catch(() => {});
+    } catch (err) {
+      // Both failures must stay observable: this fire-and-forget warm feeds the
+      // models-page quota column, and a swallowed error leaves it silently
+      // empty until the next explicit fetch (A5)
+      safeStderr(`[host] provider_set_key baseUrl lookup failed (${provider}): ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    void fetchProviderAccountsLimits(H.authStorage, provider, limitsBaseUrl).catch((err) => {
+      safeStderr(`[host] provider_set_key quota warm failed (${provider}, base="${limitsBaseUrl}"): ${err instanceof Error ? err.message : String(err)}\n`);
+    });
     ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
     ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     ws.send(JSON.stringify({ type: "provider_key_done", provider, ok: true }));
@@ -284,7 +291,7 @@ export async function refreshCatalogAndPush(ws: WsLike) {
   try {
     await H.modelRegistry.refresh();
   } catch (err) {
-    safeStderr(`[host] 账号变更后模型目录刷新失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.login.accountChangeCatalogRefreshFailed", { detail: String(err) }));
   }
   syncAvailableModels();
   rebuildScopedModels();

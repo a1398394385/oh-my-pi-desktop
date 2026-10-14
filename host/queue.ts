@@ -13,7 +13,7 @@ import {
   toRestoredQueuedMessage,
 } from "./bootstrap.ts";
 import { sessions, stampEvent, type PoolEntry } from "./state.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
   const agent = entry.session.agent;

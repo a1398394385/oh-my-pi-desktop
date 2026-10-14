@@ -11,12 +11,12 @@
 // dictation role (model picker via set_model_role, kind-filtered), gates its
 // master switch on a cached model (voice_status + stt_download), and offers a
 // hold-to-talk test whose result lands via stt_test_result.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import { listTtsVoices, speakNow, setTtsVoicePref, getTtsVoicePref, setTtsDuck } from "../../../lib/speechOut";
-import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { Sel, Srow } from "../common";
 import { ModelCascadePicker, roleAcceptsModel } from "../RolePicker";
 import { Switch } from "../../ui/switch";
 import type { CatalogModel } from "../../ModelPicker";
@@ -32,71 +32,13 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-/** Dropdown pill on the settings-card row language (.sel), options inline. */
-function Sel({ value, options, onPick, disabled }: { value: string | null; options: Array<{ value: string; label: string }>; onPick: (v: string) => void; disabled?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const selRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    claimDropdown(close);
-    const onDoc = (e: MouseEvent) => {
-      if (!selRef.current?.contains(e.target as Node | null)) close();
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      releaseDropdown(close);
-    };
-  }, [open]);
-  const current = options.find((o) => o.value === value) ?? options[0];
-  return (
-    <div
-      className={"sel" + (disabled ? " disabled" : "")}
-      role="button"
-      ref={selRef}
-      onClick={(e) => {
-        if (disabled) return;
-        e.stopPropagation();
-        setOpen((v) => !v);
-      }}
-    >
-      <span>{current?.label ?? "—"}</span>
-      <span className="caret-svg"><Icon name="caret" size={14} /></span>
-      {open && (
-        <div className="menu model open">
-          {options.map((o) => (
-            <div
-              className={"mi" + (o.value === value ? " on" : "")}
-              key={o.value}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPick(o.value);
-                setOpen(false);
-              }}
-            >
-              {o.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Master-switch row: the data-key hook keeps settings-search scroll working;
  * the control is the shared Radix Switch used by every schema-rendered row. */
 function SwitchRow({ settingKey, title, desc, on, disabled, disabledTip, onChange }: { settingKey: string; title: string; desc: string; on: boolean; disabled?: boolean; disabledTip?: string; onChange: (v: boolean) => void }) {
   return (
-    <div className="srow set-row" data-key={settingKey}>
-      <div className="srow-tx">
-        <b>{title}</b>
-        <span>{disabled && disabledTip ? disabledTip : desc}</span>
-      </div>
-      <div className="srow-ctl">
-        <Switch checked={on} disabled={disabled} onCheckedChange={onChange} />
-      </div>
-    </div>
+    <Srow dataKey={settingKey} title={title} desc={disabled && disabledTip ? disabledTip : desc}>
+      <Switch checked={on} disabled={disabled} onCheckedChange={onChange} />
+    </Srow>
   );
 }
 
@@ -140,6 +82,11 @@ export function VoiceTtsSection() {
     : voicePref
       ? (hit ? `${hit.name} (${hit.lang})` : voicePref)
       : t("settingsPage.voice.autoVoice");
+  const modeOptions = [
+    { v: "assistant", label: t("settingsPage.voice.modeAssistant") },
+    { v: "all", label: t("settingsPage.voice.modeAll") },
+    { v: "yield", label: t("settingsPage.voice.modeYield") },
+  ];
 
   return (
     <Group title={t("settingsPage.voice.ttsTitle")}>
@@ -182,12 +129,10 @@ export function VoiceTtsSection() {
         </div>
         <div className="srow-ctl">
           <Sel
+            label={(modeOptions.find((o) => o.v === mode) ?? modeOptions[0]).label}
             value={mode}
-            options={[
-              { value: "assistant", label: t("settingsPage.voice.modeAssistant") },
-              { value: "all", label: t("settingsPage.voice.modeAll") },
-              { value: "yield", label: t("settingsPage.voice.modeYield") },
-            ]}
+            menuClassName="model"
+            options={modeOptions}
             onPick={(v) => send({ type: "set_setting", key: "speech.mode", value: v })}
           />
         </div>
@@ -223,6 +168,12 @@ export function VoiceSttSection() {
   const sttOn = values["stt.enabled"] === true;
   const language = (values["stt.language"] as string) ?? "en";
   const submitTrigger = (values["stt.submitTrigger"] as string) ?? "never";
+  const submitOptions = [
+    { v: "never", label: t("settingsPage.voice.submitNever") },
+    { v: "release", label: t("settingsPage.voice.submitRelease") },
+    { v: "release-complete", label: t("settingsPage.voice.submitReleaseComplete") },
+    { v: "say-submit", label: t("settingsPage.voice.submitSay") },
+  ];
   const catalog = useAppStore((s) => s.modelCatalog);
   const modelRoles = useAppStore((s) => s.modelRoles);
   const voiceStatus = useAppStore((s) => s.voiceStatus);
@@ -242,8 +193,8 @@ export function VoiceSttSection() {
   }, [dictationRole?.value]);
 
   const modelOptions = [
-    { value: "", label: t("settingsPage.voice.modelDefault", { model: modelId ?? "local/parakeet" }) },
-    ...sttModels.map((m) => ({ value: m.id, label: m.name })),
+    { v: "", label: t("settingsPage.voice.modelDefault", { model: modelId ?? "local/parakeet" }) },
+    ...sttModels.map((m) => ({ v: m.id, label: m.name })),
   ];
 
   const testing = sttState?.state === "recording" || sttState?.state === "transcribing";
@@ -265,7 +216,9 @@ export function VoiceSttSection() {
         </div>
         <div className="srow-ctl">
           <Sel
+            label={(modelOptions.find((o) => o.v === (dictationRole?.value ?? "")) ?? modelOptions[0]).label}
             value={dictationRole?.value ?? ""}
+            menuClassName="model"
             options={modelOptions}
             onPick={(v) => send({ type: "set_model_role", role: "dictation", value: v || null })}
           />
@@ -310,13 +263,10 @@ export function VoiceSttSection() {
         </div>
         <div className="srow-ctl">
           <Sel
+            label={(submitOptions.find((o) => o.v === submitTrigger) ?? submitOptions[0]).label}
             value={submitTrigger}
-            options={[
-              { value: "never", label: t("settingsPage.voice.submitNever") },
-              { value: "release", label: t("settingsPage.voice.submitRelease") },
-              { value: "release-complete", label: t("settingsPage.voice.submitReleaseComplete") },
-              { value: "say-submit", label: t("settingsPage.voice.submitSay") },
-            ]}
+            menuClassName="model"
+            options={submitOptions}
             onPick={(v) => send({ type: "set_setting", key: "stt.submitTrigger", value: v })}
           />
         </div>

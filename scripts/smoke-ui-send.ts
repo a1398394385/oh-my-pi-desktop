@@ -96,7 +96,7 @@ const sentTypes = () => sent.map((m) => m.type);
 await useAppStore.getState().connect();
 mockWs!.onopen!();
 await sleep(50);
-hostFrame({ type: "ready", hi: "mock-host", approvalMode: "normal" });
+hostFrame({ type: "ready", hi: "mock-host", approvalMode: "normal", settings: {} }); // settings is mandatory on the wire (host always sends settingsFrame())
 // list_sessions reply triggered by onopen: an empty project list
 hostFrame({
   type: "session_list",

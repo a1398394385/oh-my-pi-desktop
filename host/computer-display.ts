@@ -18,12 +18,13 @@
 // Never guess: an unresolvable value with no remembered monitor (first run after
 // this fix, or a monitor that is genuinely gone) is left alone and reported,
 // instead of silently retargeting the capture to some other screen.
-import { readFileSync, writeFileSync } from "node:fs";
 import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
 import type { DesktopSession } from "@oh-my-pi/pi-natives";
 import { settingsGet, settingsSet } from "./settings-compat.ts";
 import { H } from "./state.ts";
+import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { safeStderr } from "./stderr.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 const DISPLAY_KEY = "computer.display";
 /** Composite selector: every display at once, so there is no single monitor to track. */
@@ -60,20 +61,9 @@ export async function listPhysicalDisplays(): Promise<{ displays: PhysicalDispla
 	return { displays, error };
 }
 
-/** Read omp-desktop.json in full (missing/corrupt file -> empty object, same tolerance as browser-config.ts). */
-function readDesktopJson(): Record<string, unknown> {
-	try {
-		return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-	} catch {
-		return {};
-	}
-}
-
 /** The remembered monitor; a missing or malformed section reads as null (no memory -> no substitute). */
 function readDisplayHint(): DisplayHint | null {
-	const section = readDesktopJson().computerDisplay;
-	if (!section || typeof section !== "object") return null;
-	const hint = section as Record<string, unknown>;
+	const hint = readDesktopSection("computerDisplay");
 	if (typeof hint.name !== "string" || typeof hint.width !== "number" || typeof hint.height !== "number") return null;
 	return { name: hint.name, width: hint.width, height: hint.height, isPrimary: hint.isPrimary === true };
 }
@@ -83,7 +73,7 @@ function rememberDisplay(display: PhysicalDisplay): void {
 	const next: DisplayHint = { name: display.name, width: display.width, height: display.height, isPrimary: display.isPrimary };
 	const prev = readDisplayHint();
 	if (prev && prev.name === next.name && prev.width === next.width && prev.height === next.height && prev.isPrimary === next.isPrimary) return;
-	writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...readDesktopJson(), computerDisplay: next }, null, 2));
+	writeDesktopSection("computerDisplay", next);
 }
 
 /**
@@ -113,7 +103,7 @@ export async function reconcileComputerDisplay(): Promise<void> {
 	if (typeof current !== "string" || current === ALL_DISPLAYS) return;
 	const { displays, error } = await listPhysicalDisplays();
 	if (error) {
-		safeStderr(`[host] computer.display 对账跳过：显示器枚举失败（${error}）\n`);
+		safeStderr(hostI18n.t("errors.computerDisplay.reconcileSkipEnumFailed", { error: String(error) }));
 		return;
 	}
 	const hit = displays.find(d => d.id === current);
@@ -123,11 +113,11 @@ export async function reconcileComputerDisplay(): Promise<void> {
 	}
 	const replacement = matchDisplay(displays, readDisplayHint());
 	if (!replacement) {
-		safeStderr(`[host] computer.display=${current} 已失效，且无匹配的历史选择，请在设置页重选显示器\n`);
+		safeStderr(hostI18n.t("errors.computerDisplay.staleNoReplacement", { current }));
 		return;
 	}
 	settingsSet(H.settings, DISPLAY_KEY, replacement.id);
 	await H.settings.flush();
 	rememberDisplay(replacement);
-	safeStderr(`[host] computer.display ${current} → ${replacement.id}（${replacement.name}）：显示器 id 随开机失效，已按上次选择重新指向\n`);
+	safeStderr(hostI18n.t("errors.computerDisplay.repointed", { current, id: replacement.id, name: replacement.name }));
 }

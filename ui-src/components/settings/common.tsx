@@ -1,13 +1,16 @@
 // Settings hub shared pieces: Promise-style confirm dialog, OMP login banner / paste-code
-// dialog, empty-state row, provider icon map.
+// dialog, empty-state row, provider icon map, and the shared row controls
+// (Toggle / Sel / Srow — the .tg / .sel / .srow.set-row language of the old settings DOM).
 // Ported from ui/settings/providers.js (confirmDialog / showLoginBanner / showLoginPrompt)
 // and PROV_IC at the top of ui/settings/index.js; dialog DOM language (.lp-mask/.lp-box/
 // .login-banner) is 1:1 with the old version.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { useAppStore, setBump, send } from "../../store";
 import { t } from "../../i18n";
+import Icon from "../../Icon";
+import { claimDropdown, releaseDropdown } from "../../lib/dropdownExclusive";
 
 export { PROV_IC } from "../shared/models/providers";
 
@@ -121,4 +124,205 @@ export function LoginPrompt() {
 export function emptyRow(text: string, cls?: string) {
   if (cls) return <div className={cls}><span>{text}</span></div>;
   return <div className="srow"><div className="srow-tx"><span>{text}</span></div></div>;
+}
+
+// ── Shared row controls (.tg switch / .sel dropdown / .srow.set-row row) ──
+// One spelling for every settings page: the class names and DOM structure are
+// 1:1 with the previously handwritten per-page copies.
+
+// Pill switch (.tg): the bare-DOM equivalent of the handwritten
+// {"tg" + (on ? " on" : "") + (disabled ? " disabled" : "")} markup.
+export function Toggle({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: () => void }) {
+  return (
+    <div className={"tg" + (on ? " on" : "") + (disabled ? " disabled" : "")} onClick={onChange}>
+      <i></i>
+    </div>
+  );
+}
+
+// Shared dropdown mechanics: while open, claim the global dropdown slot
+// (opening any dropdown closes the previous one — site-wide exclusivity via
+// lib/dropdownExclusive) and close on any document click; the .sel container's
+// stopPropagation keeps clicks inside the dropdown away from this listener.
+// The close callback is kept in a ref so callers may pass an inline arrow
+// without re-arming the listeners on every render.
+export function useDropdownClose(open: boolean, close: () => void): void {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const onClose = () => closeRef.current();
+    claimDropdown(onClose);
+    document.addEventListener("click", onClose);
+    return () => {
+      document.removeEventListener("click", onClose);
+      releaseDropdown(onClose);
+    };
+  }, [open]);
+}
+
+// Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
+export interface SelOption {
+  v: string;
+  label: ReactNode;
+  /** Check-column content ("✓" on the current option; "" keeps the column for alignment) */
+  ck?: string;
+  /** Right-aligned secondary text */
+  sub?: string;
+  /** Non-pickable row (.mi.disabled) */
+  disabled?: boolean;
+}
+
+// Shared .sel container props (both modes below): variant classes and the
+// legacy data-sel attribute carried by the old wireSel markup.
+interface SelBaseProps {
+  id?: string;
+  className?: string;
+  disabled?: boolean;
+  /** Open the menu upward (rows where a downward menu would clip the viewport). */
+  dropUp?: boolean;
+  /** Wider menu for option labels that overflow the 170px base (device names). */
+  wide?: boolean;
+  /** Legacy data-sel attribute on the .sel container (old wireSel hook, kept 1:1). */
+  dataSel?: string;
+  /** Extra classes on the .menu (model / mp-role-menu / …). */
+  menuClassName?: string;
+}
+
+// Options mode: text trigger + option list — the settings-pages Sel.
+interface SelOptionsProps extends SelBaseProps {
+  label: ReactNode;
+  options: SelOption[];
+  onPick: (v: string) => void;
+  /** Current value: the matching option gets the .mi.on highlight (model-menu language). */
+  value?: string | null;
+}
+
+// Children mode: arbitrary trigger button + arbitrary menu children, picking by
+// delegation on the clicked .mi element (the McpPage generic dropdown). The
+// callback is named onPickMi (not onPick) so the two modes' props never share a
+// field with different signatures — that union would break contextual typing of
+// the inline onPick lambdas at the call sites.
+interface SelChildrenProps extends SelBaseProps {
+  btnClassName?: string;
+  btnTitle?: string;
+  btnChildren?: ReactNode;
+  menuId?: string;
+  children?: ReactNode;
+  onPickMi: (mi: HTMLElement) => void; // the picked .mi element
+}
+
+export type SelProps = SelOptionsProps | SelChildrenProps;
+
+// Dropdown selector: the controlled .sel/.menu language of the old wireSel.
+// Single implementation for every settings dropdown; the claim/click-close
+// effect is shared via useDropdownClose so opening one dropdown closes the
+// previous one and any outside click closes it. The menu stays mounted and is
+// toggled with the .open class (.menu is display:none while closed — same
+// visibility as the conditional-rendering variants it replaces).
+export function Sel(props: SelProps) {
+  const [open, setOpen] = useState(false);
+  useDropdownClose(open, () => setOpen(false));
+  const cls =
+    "sel" +
+    (props.disabled ? " disabled" : "") +
+    (props.dropUp ? " sel-up" : "") +
+    (props.wide ? " sel-wide" : "") +
+    (props.className ? ` ${props.className}` : "");
+  const menuCls = "menu" + (props.menuClassName ? ` ${props.menuClassName}` : "") + (open ? " open" : "");
+  if ("children" in props) {
+    const { btnClassName, btnTitle, btnChildren, menuId, children, onPickMi } = props as SelChildrenProps;
+    return (
+      <div
+        className={cls}
+        id={props.id}
+        data-sel={props.dataSel}
+        onClick={(e) => {
+          if (props.disabled) return;
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+      >
+        <button type="button" className={btnClassName} title={btnTitle}>
+          {btnChildren}
+        </button>
+        <div
+          id={menuId}
+          className={menuCls}
+          onClick={(e) => {
+            e.stopPropagation();
+            const mi = (e.target as HTMLElement).closest(".mi") as HTMLElement | null;
+            if (!mi || mi.classList.contains("disabled")) return;
+            setOpen(false);
+            onPickMi(mi);
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    );
+  }
+  // The "children" check above only narrows the true branch (children is an
+  // optional property), so the options branch reads through an explicit cast.
+  const { label, options, onPick, value } = props as SelOptionsProps;
+  return (
+    <div
+      className={cls}
+      id={props.id}
+      data-sel={props.dataSel}
+      onClick={(e) => {
+        if (props.disabled) return;
+        e.stopPropagation();
+        setOpen(!open);
+      }}
+    >
+      {label} <Icon name="caret" size={14} className="caret-svg" />
+      <div className={menuCls}>
+        {options.map((o) => (
+          <div
+            key={o.v}
+            className={
+              "mi" +
+              (o.disabled ? " disabled" : "") +
+              (value != null && o.v === value ? " on" : "")
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              if (o.disabled) return;
+              setOpen(false);
+              onPick(o.v);
+            }}
+          >
+            {o.ck !== undefined && <span className="ck">{o.ck}</span>}
+            {o.label}
+            {o.sub && <span className="sub">{o.sub}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Standard settings-card row (.srow.set-row): title + description on the left,
+// right-aligned controls on the right; canonical row geometry with the row
+// hover off. `title` takes the <b> content (may embed .tag chips), `desc` the
+// <span> line, `children` the .srow-ctl content.
+export function Srow({ title, desc, cls, dataKey, children }: {
+  title: ReactNode;
+  desc?: ReactNode;
+  /** Extra row classes (e.g. " disabled"). */
+  cls?: string;
+  /** Settings-search scroll hook (data-key attribute). */
+  dataKey?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={"srow set-row" + (cls ? ` ${cls}` : "")} data-key={dataKey}>
+      <div className="srow-tx">
+        <b>{title}</b>
+        {desc != null && <span>{desc}</span>}
+      </div>
+      <div className="srow-ctl">{children}</div>
+    </div>
+  );
 }

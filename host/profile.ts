@@ -6,7 +6,7 @@ import { setProfile, getAgentDir, normalizeProfileName } from "@oh-my-pi/pi-util
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions, activeWs } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { initVoiceMode } from "./voice.ts";
@@ -17,8 +17,9 @@ import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
 import { warmKimiCu } from "./computer-mode.ts";
-import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n, initHostI18n } from "./i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { readDesktopJson, readDesktopSection, writeDesktopSection, writeDesktopSections } from "./desktop-json.ts";
 import type * as BunFfi from "bun:ffi";
 import { safeStderr } from "./stderr.ts";
 
@@ -93,12 +94,10 @@ export function readDesktopProjects(): DesktopProjects {
 }
 
 export async function saveDesktopProjects() {
-  // Read the on-disk object first, then overlay managed keys: user-written unmanaged sections (e.g. acp config) must survive untouched
-  let base: Record<string, unknown> = {};
-  try {
-    base = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
-  } catch {}
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...base, ...H.desktopProjects }, null, 2));
+  // Overlay only the managed top-level keys onto the on-disk object:
+  // user-written unmanaged sections (e.g. acp config) must survive untouched.
+  // The shared writer refuses to touch a present-but-unreadable file (A1).
+  writeDesktopSections({ ...H.desktopProjects });
 }
 
 export function computeMcpSharingKey(sourcePath: string, name: string): string {
@@ -131,14 +130,6 @@ export async function deleteMcpSharingConfig(sourcePath?: string, name?: string)
   if (key in H.desktopProjects.mcpSharing) {
     delete H.desktopProjects.mcpSharing[key];
     await saveDesktopProjects();
-  }
-}
-
-export async function migrateMcpSharingConfig(oldSourcePath: string, oldName: string, newSourcePath: string, newName: string): Promise<void> {
-  const current = getMcpSharingConfig(oldSourcePath, oldName);
-  if (current) {
-    await deleteMcpSharingConfig(oldSourcePath, oldName);
-    await setMcpSharingConfig(newSourcePath, newName, current);
   }
 }
 
@@ -196,7 +187,9 @@ function windowsSleepFlags(flags: number): void {
   }
   try {
     winSleepSetter?.(flags);
-  } catch {}
+  } catch (err) {
+    safeStderr(`[host] sleep prevention failed (SetThreadExecutionState: ${err})\n`);
+  }
 }
 
 let sleepProc: Bun.Subprocess | null = null;
@@ -282,7 +275,7 @@ export async function applyProfile(profileName: string) {
   // Startup segment timing (performance.now() zeroed at process start): locate the big cost centers before the ready frame
   let t = performance.now();
   H.authStorage = await discoverAuthStorage(H.agentDir);
-  safeStderr(`[host][启动计时] discoverAuthStorage: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(hostI18n.t("errors.startup.timingAuthStorage", { ms: (performance.now() - t).toFixed(0), t: t.toFixed(0) }));
   t = performance.now();
   H.modelRegistry = new ModelRegistry(H.authStorage);
   // Aligned with CLI startup semantics (refreshInBackground in main.ts): the
@@ -298,13 +291,13 @@ export async function applyProfile(profileName: string) {
     if (H.modelRegistry !== reg || !H.settings) return; // profile switched again during refresh, or the refresh landed before Settings.init finished (18.5.0's non-empty built-in catalog makes this reachable): drop the callback — applyProfile's own later rebuild covers it
     syncAvailableModels();
     rebuildScopedModels();
-    safeStderr(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
+    safeStderr(hostI18n.t("errors.startup.timingCatalogRefreshed", { ms: (performance.now() - t).toFixed(0), models: H.availableModels.length }));
     H.onModelsRefreshed?.();
   });
-  safeStderr(`[host][启动计时] modelRegistry 构造(缓存目录)+后台刷新启动: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(hostI18n.t("errors.startup.timingRegistry", { ms: (performance.now() - t).toFixed(0), t: t.toFixed(0) }));
   t = performance.now();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
-  safeStderr(`[host][启动计时] Settings.init: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(hostI18n.t("errors.startup.timingSettingsInit", { ms: (performance.now() - t).toFixed(0), t: t.toFixed(0) }));
   // Sync the capability discovery registry: disabledProviders/enabledProviders -> in-memory registry (same call as the CLI entry;
   // without it, third-party sources the user disabled still show up / count as enabled at the discovery layer)
   initializeWithSettings(H.settings);
@@ -338,7 +331,7 @@ export async function applyProfile(profileName: string) {
   // a value that resolved before a reboot names nothing afterwards (the base
   // then rejects every capture). Re-point it at the same physical monitor on
   // every profile apply — i.e. before any session can read a dead value.
-  void reconcileComputerDisplay().catch(err => safeStderr(`[host] computer.display 对账失败: ${err}\n`));
+  void reconcileComputerDisplay().catch(err => safeStderr(hostI18n.t("errors.computerDisplay.reconcileFailed", { detail: String(err) })));
   // Computer-use Kimi provider: warm the builtin kimi-cu connection into the
   // shared pool when the provider pick says kimi (global pool is keyed by the
   // profile's agentDir, so every profile apply re-warms its own pool entry).
@@ -360,15 +353,22 @@ export async function applyProfile(profileName: string) {
     : undefined;
 
   if (process.env.OMP_DESKTOP_MODEL && !H.modelOverride) {
-    safeStderr(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
+    safeStderr(hostI18n.t("errors.profile.modelOverrideNotFound", { model: process.env.OMP_DESKTOP_MODEL }));
   }
   if (H.scopedModels.length === 0) {
-    safeStderr("[host] 当前 profile 无可用模型（尚未配置 API Key 或 models.yml）\n");
+    safeStderr(hostI18n.t("errors.profile.noModelsAvailable"));
   }
 
   await refreshAvailableProfiles();
   safeStderr(
-    `[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length} [t=${t0.toFixed(0)}ms→${performance.now().toFixed(0)}ms, 总耗时 ${(performance.now() - t0).toFixed(0)}ms]\n`,
+    hostI18n.t("errors.startup.profileActivated", {
+      profile: target,
+      agentDir: H.agentDir,
+      models: H.availableModels.length,
+      t0: t0.toFixed(0),
+      t1: performance.now().toFixed(0),
+      total: (performance.now() - t0).toFixed(0),
+    }),
   );
 
   // Automations state is per-profile (<agentDir>/automations.json, read fresh on
@@ -387,13 +387,11 @@ export async function applyProfile(profileName: string) {
 // ---------- experimental feature switches (acp / sessionContext sections of omp-desktop.json) ----------
 // Moved over from main.ts: desktop-level config read/write lives in the same omp-desktop.json as the profile, so it belongs to this module.
 
-/** Read the raw omp-desktop.json object (empty object on read failure). */
+/** Read the raw omp-desktop.json object. Read-side tolerance: a
+ * present-but-unreadable/corrupt file reads as empty (only writes are gated
+ * by the shared module's null refusal). */
 export function readAcpRaw(): Record<string, unknown> {
-  try {
-    return JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+  return readDesktopJson() ?? {};
 }
 
 /** Read the ACP config object for the experimental settings page: master
@@ -409,8 +407,7 @@ export function readAcpConfig(): {
   tailTurns?: number;
   tailTokens?: number;
 } {
-  const raw = readAcpRaw();
-  const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
+  const acp = readDesktopSection("acp");
   const num = (v: unknown): number | undefined => (typeof v === "number" && v >= 0 ? v : undefined);
   return {
     enabled: acp.enabled === true,
@@ -427,31 +424,22 @@ export function readAcpConfig(): {
  *  feature: missing/invalid values count as off (new-user default) — only
  *  an explicit true turns it on. */
 export function readAcpEnabled(): boolean {
-  const acp = readAcpRaw().acp as Record<string, unknown> | undefined;
-  if (!acp || typeof acp !== "object") return false;
-  return acp.enabled === true;
+  return readDesktopSection("acp").enabled === true;
 }
 
 /** Write acp.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the acp section. */
 export async function writeAcpEnabled(enabled: boolean): Promise<void> {
-  const raw = readAcpRaw();
-  const acp = raw.acp && typeof raw.acp === "object" ? (raw.acp as Record<string, unknown>) : {};
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, enabled } }, null, 2));
+  writeDesktopSection("acp", { ...readDesktopSection("acp"), enabled });
 }
 
 /** History session search (read_session_context) master switch (sessionContext.enabled in omp-desktop.json).
  *  Same semantics as readAcpEnabled: missing/invalid values count as off (new-user default); only an explicit true turns it on. */
 export function readSessionContextEnabled(): boolean {
-  const section = readAcpRaw().sessionContext as Record<string, unknown> | undefined;
-  if (!section || typeof section !== "object") return false;
-  return section.enabled === true;
+  return readDesktopSection("sessionContext").enabled === true;
 }
 
 /** Write sessionContext.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
 export async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
-  const raw = readAcpRaw();
-  const section =
-    raw.sessionContext && typeof raw.sessionContext === "object" ? (raw.sessionContext as Record<string, unknown>) : {};
-  await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, sessionContext: { ...section, enabled } }, null, 2));
+  writeDesktopSection("sessionContext", { ...readDesktopSection("sessionContext"), enabled });
 }
 

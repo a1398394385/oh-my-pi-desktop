@@ -15,7 +15,7 @@ import {
 import { isValidCronExpr, isOneShot, normalizeScheduleInput, computeAutomationNextRunAt } from "../automations/cron.ts";
 import { readAutomations, writeAutomations } from "../automations/store.ts";
 import { runAutomationNow } from "../automations/scheduler.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 /** Normalized scheduling source ready to spread into an Automation record. */

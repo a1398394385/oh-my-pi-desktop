@@ -12,73 +12,12 @@ import { saveUiPrefs, saveUiLocale } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { IS_MAC } from "../../../platform";
 import { invoke } from "../../../store/ws";
-import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { Sel, Srow, useDropdownClose } from "../common";
 import { formatBytes } from "../stats/data/formatters";
 import type { DesktopEnv } from "../../../types/frames";
 
 // Native names for the language badge and picker labels (never translated)
 const LANG_NATIVE: Record<AppLang, string> = { "zh-CN": "简体中文", en: "English" };
-
-// Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
-interface SelOption {
-  v: string;
-  label: ReactNode;
-  ck?: string;
-  sub?: string;
-  disabled?: boolean;
-}
-
-// Sel dropdown props
-interface SelProps {
-  label: ReactNode;
-  options: SelOption[];
-  onPick: (v: string) => void;
-}
-
-// ---------- Dropdown selector: controlled equivalent of the old wireSel (.sel/.menu/.mi structure 1:1) ----------
-function Sel({ label, options, onPick }: SelProps) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    claimDropdown(close);
-    document.addEventListener("click", close);
-    return () => {
-      document.removeEventListener("click", close);
-      releaseDropdown(close);
-    };
-  }, [open]);
-  return (
-    <div
-      className="sel"
-      data-sel={label}
-      onClick={(e) => {
-        e.stopPropagation();
-        setOpen(!open);
-      }}
-    >
-      {label} <Icon name="caret" size={14} className="caret-svg" />
-      <div className={"menu" + (open ? " open" : "")}>
-        {options.map((o) => (
-          <div
-            key={o.v}
-            className={"mi" + (o.disabled ? " disabled" : "")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (o.disabled) return;
-              setOpen(false);
-              onPick(o.v);
-            }}
-          >
-            {o.ck !== undefined && <span className="ck">{o.ck}</span>}
-            {o.label}
-            {o.sub && <span className="sub">{o.sub}</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ---------- Terminal font picker: .sel trigger + filtered, self-previewing menu ----------
 // The family list comes from the Tauri `list_font_families` command (system
@@ -92,16 +31,7 @@ function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: st
   const [open, setOpen] = useState(false);
   const [fonts, setFonts] = useState<string[] | null | undefined>(fontListCache);
   const [filter, setFilter] = useState("");
-  useEffect(() => {
-    if (!open) return;
-    const close = () => { setOpen(false); setFilter(""); };
-    claimDropdown(close);
-    document.addEventListener("click", close);
-    return () => {
-      document.removeEventListener("click", close);
-      releaseDropdown(close);
-    };
-  }, [open]);
+  useDropdownClose(open, () => { setOpen(false); setFilter(""); });
   // Lazy load on first open (trigger click is a user gesture, so the invoke
   // lands outside of any startup burst); a failure pins the fallback.
   useEffect(() => {
@@ -364,18 +294,15 @@ function PermissionsCard() {
         {rows.map((row) => {
           const granted = status ? status[row.key] : false;
           return (
-            <div className="srow set-row" key={row.key}>
-              <div className="srow-tx"><b>{row.title}</b><span>{row.desc}</span></div>
-              <div className="srow-ctl">
-                {granted ? (
-                  <span className="save-btn perm-ok">{t("settingsPage.general.permGranted")}</span>
-                ) : (
-                  <button className="save-btn" disabled={!status} onClick={() => openPanel(row.key)}>
-                    {status ? t("settingsPage.general.permOpen") : t("settingsPage.general.permChecking")}
-                  </button>
-                )}
-              </div>
-            </div>
+            <Srow key={row.key} title={row.title} desc={row.desc}>
+              {granted ? (
+                <span className="save-btn perm-ok">{t("settingsPage.general.permGranted")}</span>
+              ) : (
+                <button className="save-btn" disabled={!status} onClick={() => openPanel(row.key)}>
+                  {status ? t("settingsPage.general.permOpen") : t("settingsPage.general.permChecking")}
+                </button>
+              )}
+            </Srow>
           );
         })}
       </div>
@@ -525,6 +452,7 @@ export default function GeneralPage() {
           <div className="srow-ctl" style={{ gap: 8 }}>
             <Sel
               label={activeProfile}
+              dataSel={activeProfile}
               options={profiles.map((p) => ({
                 v: p,
                 label: p === "default" ? t("settingsPage.general.profileDefaultEntry") : p,
@@ -542,6 +470,7 @@ export default function GeneralPage() {
           <div className="srow-tx"><b>{t("common.languageLabel")}</b><span>{t("settingsPage.general.langDesc")}</span></div>
           <Sel
             label={LANG_NATIVE[lang]}
+            dataSel={LANG_NATIVE[lang]}
             options={[
               { v: "zh-CN", label: "简体中文", ck: lang === "zh-CN" ? "✓" : "" },
               { v: "zh-TW", label: "繁體中文", disabled: true, sub: t("settingsPage.general.zhTwPending") },
@@ -595,6 +524,7 @@ export default function GeneralPage() {
           </div>
           <Sel
             label={`${terminalFontSize} px`}
+            dataSel={`${terminalFontSize} px`}
             options={[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((n) => ({
               v: String(n),
               label: `${n} px`,

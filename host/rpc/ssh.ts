@@ -18,7 +18,7 @@ import {
 } from "../bootstrap.ts";
 import { ensureRemoteWorkspaceDir, normalizeRemotePath, readUserSshHost } from "../remote-workspaces.ts";
 import { safeStderr } from "../stderr.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export interface SshHostConfigShape {
@@ -184,7 +184,7 @@ export const sshHandlers: Record<string, RpcHandler> = {
       // The frame caps the error for the dialog; the untruncated diagnostic
       // (which is what a bug report needs) only lives in the host log.
       const full = decodeSshOctalEscapes(result.stderr || result.stdout).replace(/\r\n/g, "\n").trim();
-      safeStderr(`[host] SSH 探测失败 ${buildSshTarget(config.username, config.host)} (exit ${result.code ?? "killed"}):\n${full}\n`);
+      safeStderr(hostI18n.t("errors.ssh.probeFailed", { target: buildSshTarget(config.username, config.host), code: result.code ?? "killed", detail: full }));
     }
     ws.send(
       JSON.stringify({

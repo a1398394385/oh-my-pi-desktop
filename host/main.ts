@@ -27,7 +27,7 @@
 // session-poll.ts (pooled-session file polling).
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID, activeWs } from "./state.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
 import { settingsFrame, modelsFrame } from "./frames.ts";
@@ -62,7 +62,7 @@ const profileReady = (async () => {
   await applyProfile(H.currentProfile);
 })();
 profileReady.catch((err) => {
-  safeStderr(`[host] Profile 初始化失败: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+  safeStderr(hostI18n.t("errors.host.profileInitFailed", { detail: err instanceof Error ? err.stack ?? err.message : String(err) }));
   process.exitCode = 1;
 });
 
@@ -79,7 +79,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
     open(ws) {
       activeWs.value = ws; // last connection wins; close clears only its own
       browserMirrorOnWsOpen(ws);
-      safeStderr(`[host] WS 客户端接入（前端加载与连接全链路 OK） [t=${performance.now().toFixed(0)}ms]\n`);
+      safeStderr(hostI18n.t("errors.host.wsClientReady", { ms: performance.now().toFixed(0) }));
       void profileReady.then(
         () => {
           ws.send(
@@ -118,7 +118,7 @@ const server = Bun.serve<{ sessionId: string | null }>({
       } catch (err) {
         // A single failed command must not take down the host; report the error to the frontend as-is
         ws.send(JSON.stringify({ type: "error", sessionId: msg.sessionId ?? null, kind: msg.kind ?? null, message: String(err) }));
-        safeStderr(`[host] 命令 ${msg.type} 失败: ${err}\n`);
+        safeStderr(hostI18n.t("errors.host.commandFailed", { type: msg.type, detail: String(err) }));
       }
     },
     close(ws) {
@@ -177,13 +177,13 @@ const HOST_RSS_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 setInterval(() => {
   const rss = process.memoryUsage.rss();
   if (rss > HOST_RSS_LIMIT_BYTES) {
-    safeStderr(`[host] RSS ${(rss / 1048576) | 0}MB 超上限 2048MB，主动退出等待壳重启\n`);
+    safeStderr(hostI18n.t("errors.host.rssOverLimit", { mb: (rss / 1048576) | 0 }));
     process.exit(86);
   }
 }, 30_000);
 
 console.log(`READY ws://127.0.0.1:${server.port}`);
-safeStderr(`[host][启动计时] WS 服务就绪 [t=${performance.now().toFixed(0)}ms]\n`);
+safeStderr(hostI18n.t("errors.startup.timingWsReady", { ms: performance.now().toFixed(0) }));
 
 // Background quota refresh: at startup, preloads every configured provider
 // (any provider that has appeared in the model catalog), then re-pulls all
@@ -206,7 +206,7 @@ function configuredLimitProviders() {
 const runLimitsRefresh = () => {
   const providers = configuredLimitProviders();
   void refreshAllLimits(H.authStorage, providers).then(() => {
-    safeStderr(`[host] 配额预载/刷新完成: ${providers.length} 个供应商\n`);
+    safeStderr(hostI18n.t("errors.host.quotaRefreshDone", { providers: providers.length }));
   });
 };
 void profileReady.then(runLimitsRefresh);

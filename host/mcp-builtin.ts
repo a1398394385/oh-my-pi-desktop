@@ -16,6 +16,7 @@ import type { McpServerAsset } from "./assets.ts";
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
 import { H } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 /** MCP server name the Kimi computer-use provider drives */
 export const KIMI_CU_SERVER = "kimi-cu";
@@ -63,7 +64,7 @@ export function builtinServerAsset(name: string): McpServerAsset | undefined {
 export async function warmBuiltinServer(name: string): Promise<boolean> {
   const server = builtinServerAsset(name);
   if (!server) {
-    safeStderr(`[mcp-builtin] 预热 ${name} 失败: 未安装或非内置服务器\n`);
+    safeStderr(hostI18n.t("errors.mcpBuiltin.warmNotBuiltin", { name }));
     return false;
   }
   try {
@@ -74,10 +75,10 @@ export async function warmBuiltinServer(name: string): Promise<boolean> {
       config: { type: "stdio", command: server.command, args: server.args },
     });
     release(); // refCount back to 0: the idle TTL now owns the connection
-    safeStderr(`[mcp-builtin] 内置服务器 ${name} 已预热入池\n`);
+    safeStderr(hostI18n.t("errors.mcpBuiltin.warmed", { name }));
     return true;
   } catch (err) {
-    safeStderr(`[mcp-builtin] 预热 ${name} 失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.mcpBuiltin.warmFailed", { name, detail: String(err) }));
     return false;
   }
 }

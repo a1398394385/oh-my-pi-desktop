@@ -13,14 +13,14 @@ import { applyActivityTimes } from "../session-activity.ts";
 import {
   handleCreateSession,
   handleLoadSession,
-  keepaliveStatusPayload,
   sessionPathFromDisk,
   copySessionArtifactsIfAny,
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 
@@ -230,7 +230,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     const p = String(msg.path ?? "").trim();
     if (!p) return;
     for (const entry of sessions.values()) {
-      if (sessionEntryMatchesPath(entry, p)) entry.keepaliveWanted = false;
+      if (sessionEntryMatchesPath(entry, p)) markSeen(entry);
     }
   },
   get_keepalive_status(ws, msg) {
@@ -278,7 +278,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       try {
         await e.session.dispose();
       } catch (err) {
-        safeStderr(`[host] reload_session 释放旧会话失败: ${err}\n`);
+        safeStderr(hostI18n.t("errors.session.reloadDisposeFailed", { detail: String(err) }));
       }
     }
     await handleLoadSession(ws, rebuildPath);
@@ -304,7 +304,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       try {
         await e.session.dispose();
       } catch (err) {
-        safeStderr(`[host] session_unload 释放会话失败: ${err}\n`);
+        safeStderr(hostI18n.t("errors.session.unloadDisposeFailed", { detail: String(err) }));
       }
       unloaded = true;
     }
@@ -325,35 +325,76 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // Permanently delete a session (physical file + its artifacts dir + in-memory pool entry and pin records)
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    // Every file location the matched entries have lived at (path + previousPaths):
+    // pin/archive records are keyed by path too, so all of them must be swept.
+    const knownPaths = new Set<string>();
     for (const [key, entry] of sessions.entries()) {
-      if (entry.path === p) {
-        try { releaseMcpForSession(key, entry); } catch {}
-        try { entry.unsubscribe(); } catch {}
-        sessions.delete(key);
+      // Pool identity is path + previousPaths (state.ts PoolEntry): deleting by
+      // a pre-persistence-move path must still clear the live entry, or the
+      // file goes away while its AgentSession keeps running and persisting to
+      // the new location. Same match as reload_session/session_unload/mark_seen.
+      if (!sessionEntryMatchesPath(entry, p)) continue;
+      // Refuse while busy — same eviction hazard as reload_session (the orphaned
+      // session keeps running headless), and here deletion is irreversible.
+      if (sessionBusy(entry)) throw new Error(hostI18n.t("errors.session.deleteBusy"));
+      knownPaths.add(entry.path);
+      for (const prev of entry.previousPaths ?? []) knownPaths.add(prev);
+      // Release sequence matches reload_session/session_unload. Release and
+      // unsubscribe failures are logged but must not abort the disk cleanup
+      // below (delete_session's teardown is best-effort by design).
+      try {
+        releaseMcpForSession(key, entry);
+      } catch (err) {
+        safeStderr(`[host] delete_session release MCP failed: ${err}\n`);
+      }
+      try {
+        entry.unsubscribe();
+      } catch (err) {
+        safeStderr(`[host] delete_session unsubscribe failed: ${err}\n`);
+      }
+      sessions.delete(key);
+      // Full teardown, not just unsubscribe: a surviving session keeps its
+      // cache-warmer/keepalive and any straggler writers alive and would keep
+      // persisting into the (now deleted) file. dispose() is the sanctioned
+      // terminal path used by reload_session/session_unload; it appends one
+      // session_exit row, which is fine here because the file is unlinked
+      // right after this loop.
+      try {
+        await entry.session.dispose();
+      } catch (err) {
+        safeStderr(`[host] delete_session dispose failed: ${err}\n`);
       }
     }
-    const pi = H.desktopProjects.pinnedSessions.indexOf(p);
-    if (pi >= 0) {
-      H.desktopProjects.pinnedSessions.splice(pi, 1);
-      await saveDesktopProjects();
+    // Pin/archive cleanup: after an SDK persistence move the records may hold a
+    // different location than the request path, so sweep every known location of
+    // matched entries; with no live entry fall back to the request path
+    // (unopened history session, never moved in this host's lifetime).
+    let recordsDirty = false;
+    for (const q of knownPaths.size > 0 ? knownPaths : [p]) {
+      const pi = H.desktopProjects.pinnedSessions.indexOf(q);
+      if (pi >= 0) {
+        H.desktopProjects.pinnedSessions.splice(pi, 1);
+        recordsDirty = true;
+      }
+      // Archive records are cleaned up along with the session
+      const ai = H.desktopProjects.archivedSessions.indexOf(q);
+      if (ai >= 0) {
+        H.desktopProjects.archivedSessions.splice(ai, 1);
+        recordsDirty = true;
+      }
     }
-    // Archive records are cleaned up along with the session
-    const ai = H.desktopProjects.archivedSessions.indexOf(p);
-    if (ai >= 0) {
-      H.desktopProjects.archivedSessions.splice(ai, 1);
-      await saveDesktopProjects();
-    }
+    if (recordsDirty) await saveDesktopProjects();
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
-      if (err?.code !== "ENOENT") safeStderr(`[host] 删除会话文件失败: ${err}\n`);
+      if (err?.code !== "ENOENT") safeStderr(hostI18n.t("errors.session.deleteFileFailed", { detail: String(err) }));
     }
     if (p.endsWith(".jsonl")) {
       const artifactsDir = p.slice(0, -6);
       try {
         await fs.promises.rm(artifactsDir, { recursive: true, force: true });
       } catch (err: any) {
-        if (err?.code !== "ENOENT") safeStderr(`[host] 删除会话产物目录失败: ${err}\n`);
+        if (err?.code !== "ENOENT") safeStderr(hostI18n.t("errors.session.deleteArtifactsFailed", { detail: String(err) }));
       }
     }
     await handleListSessions(ws);

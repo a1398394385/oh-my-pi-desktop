@@ -47,12 +47,18 @@ export const hostErrorsEn = {
     summaryAborted: "Branch summary aborted",
     reloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before reloading — the current view stays live",
     unloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before evicting it from the pool",
+    deleteBusy: "Session is still generating (or has queued messages / background jobs); stop it before deleting it",
+    reloadDisposeFailed: "[host] reload_session failed to dispose the old session: {{detail}}\n",
+    unloadDisposeFailed: "[host] session_unload failed to dispose the session: {{detail}}\n",
+    deleteFileFailed: "[host] Failed to delete the session file: {{detail}}\n",
+    deleteArtifactsFailed: "[host] Failed to delete the session artifacts dir: {{detail}}\n",
   },
   prompt: {
     emptyMessage: "Message is empty",
     imageOnlyFallback: "Please see the attached image.",
     subagentReadonly: "Subagent sessions are read-only. Sending messages is not supported.",
     subagentSlashNotSupported: "Slash and terminal commands are not supported in subagent sessions",
+    ensureOnDiskFailed: "[host] ensureOnDisk failed: {{detail}}\n",
   },
   computerGateClosed: "Computer control is off in Settings: enable the master switch there first, then run /computer on in the session",
   computerUnavailable: "Computer use is unavailable in this session (the computer eval prelude did not activate)",
@@ -103,6 +109,7 @@ export const hostErrorsEn = {
     profileEmpty: "Profile name must not be empty",
     invalidApprovalMode: "Invalid approval mode: {{mode}}",
     approvalNotFound: "Approval request not found or already finished: {{requestId}}",
+    reloadFailed: "[host] reload_settings failed: {{detail}}\n",
   },
   memory: {
     outsideDir: "Path is outside the allowed memory directory: {{path}}",
@@ -153,6 +160,9 @@ export const hostErrorsEn = {
     noneInFlight: "No login flow is currently in progress",
     keyEmpty: "API key must not be empty",
     browserOnly: "{{provider}} only supports browser-based login, not API keys",
+    logoutCatalogRefreshFailed: "[host] Model catalog refresh after logout failed: {{detail}}\n",
+    accountReorderFailed: "[host] Account reorder failed ({{provider}}): {{detail}}\n",
+    accountChangeCatalogRefreshFailed: "[host] Model catalog refresh after account change failed: {{detail}}\n",
   },
   account: {
     notFound: "Account not found or already restored",
@@ -170,6 +180,13 @@ export const hostErrorsEn = {
   host: {
     initFailed: "Host initialization failed: {{detail}}",
     invalidJson: "Invalid JSON",
+    profileInitFailed: "[host] Profile initialization failed: {{detail}}\n",
+    wsClientReady: "[host] WS client connected (frontend load & connect chain OK) [t={{ms}}ms]\n",
+    commandFailed: "[host] Command {{type}} failed: {{detail}}\n",
+    rssOverLimit: "[host] RSS {{mb}}MB exceeds the 2048MB cap; exiting so the shell can restart the host\n",
+    quotaRefreshDone: "[host] Quota preload/refresh finished: {{providers}} providers\n",
+    saveProfileFailed: "[host] Failed to save desktop-profile.json: {{detail}}\n",
+    extWritePollFailed: "[host] External-write poll failed {{path}}: {{detail}}\n",
   },
   mcp: {
     userCancelled: "Generation cancelled by user",
@@ -183,6 +200,7 @@ export const hostErrorsEn = {
     invalidPath: "Invalid remote path (absolute path starting with / required): {{path}}",
     unreachable: "SSH connection failed: {{detail}}",
     dirMissing: "Remote directory does not exist: {{path}}",
+    probeFailed: "[host] SSH probe failed {{target}} (exit {{code}}):\n{{detail}}\n",
   },
   wizard: {
     missingBaseUrl: "Missing baseUrl",
@@ -195,6 +213,65 @@ export const hostErrorsEn = {
     unknownApp: "Unknown open target: {{app}}",
     pathMissing: "Path not found: {{path}}",
     launchFailed: "Failed to launch {{app}}: {{detail}}",
+  },
+  // A9: host stderr diagnostics (safeStderr) — keys must mirror
+  // host-errors.zh-CN.ts one to one.
+  startup: {
+    timingAuthStorage: "[host][Startup timing] discoverAuthStorage: {{ms}}ms (t={{t}})\n",
+    timingCatalogRefreshed: "[host][Startup timing] Model catalog background refresh finished: +{{ms}}ms, {{models}} available models\n",
+    timingRegistry: "[host][Startup timing] modelRegistry construction (cached catalog) + background refresh started: {{ms}}ms (t={{t}})\n",
+    timingSettingsInit: "[host][Startup timing] Settings.init: {{ms}}ms (t={{t}})\n",
+    timingWsReady: "[host][Startup timing] WS server ready [t={{ms}}ms]\n",
+    profileActivated: "[host] Active profile: {{profile}}, agentDir={{agentDir}}, available models: {{models}} [t={{t0}}ms→{{t1}}ms, total {{total}}ms]\n",
+  },
+  profile: {
+    modelOverrideNotFound: "[host] Model override failed: {{model}} not found; falling back to the default selection\n",
+    noModelsAvailable: "[host] No available models in the current profile (no API key or models.yml configured yet)\n",
+  },
+  computer: {
+    kimiCuWarmFailed: "[computer] kimi-cu warm-up failed (clicking the composer icon will retry the connection)\n",
+  },
+  computerDisplay: {
+    reconcileFailed: "[host] computer.display reconcile failed: {{detail}}\n",
+    reconcileSkipEnumFailed: "[host] computer.display reconcile skipped: display enumeration failed ({{error}})\n",
+    staleNoReplacement: "[host] computer.display={{current}} is stale and no historical pick matches; please re-pick the display on the settings page\n",
+    repointed: "[host] computer.display {{current}} → {{id}} ({{name}}): the display id expired across a reboot; re-pointed to the last pick\n",
+  },
+  mcpMount: {
+    preloadVisibleFailed: "[mcp-mount] Failed to compute the preload visible set: {{detail}}\n",
+    preloadServerFailed: "[mcp-mount] Failed to preload server \"{{name}}\": {{detail}}\n",
+    preloadDone: "[mcp-mount] Preload done cwd={{cwd}}: {{servers}} shared servers pooled (took {{ms}}ms)\n",
+    visibleFailed: "[mcp-mount] Failed to compute the visible set: {{detail}}\n",
+    mountFailed: "[mcp-mount] Failed to mount server \"{{name}}\": {{detail}}\n",
+    refreshFailed: "[mcp-mount] Tool surface refresh failed: {{detail}}\n",
+    mounted: "[mcp-mount] Session {{sessionId}} mounted {{servers}} MCP servers / {{tools}} tools\n",
+    midMountVisibleFailed: "[mcp-mount] Failed to compute the mid-session visible set: {{detail}}\n",
+    midMounted: "[mcp-mount] Session {{sessionId}} mid-session mounted {{name}} ({{tools}} tools)\n",
+    midMountFailed: "[mcp-mount] Mid-session mount of \"{{name}}\" failed: {{detail}}\n",
+  },
+  mcpPool: {
+    sharedDisconnected: "[mcp-pool] Shared connection \"{{name}}\" dropped unexpectedly; reconnecting transparently in place...\n",
+    sharedReconnected: "[mcp-pool] Shared connection \"{{name}}\" transparent reconnect succeeded\n",
+    sharedReconnectFailed: "[mcp-pool] Shared connection \"{{name}}\" transparent reconnect failed: {{detail}}\n",
+    idleClosed: "[mcp-pool] Idle timeout ({{sec}}s); shared instance closed safely: {{name}}\n",
+    idleCloseFailed: "[mcp-pool] Error closing the shared instance: {{detail}}\n",
+  },
+  mcpBuiltin: {
+    warmNotBuiltin: "[mcp-builtin] Failed to warm {{name}}: not installed or not a builtin server\n",
+    warmed: "[mcp-builtin] Builtin server {{name}} warmed and pooled\n",
+    warmFailed: "[mcp-builtin] Failed to warm {{name}}: {{detail}}\n",
+  },
+  mcpDiscovery: {
+    userScopeFailed: "[host] MCP user-scope discovery failed: {{detail}}\n",
+    projectScopeFailed: "[host] MCP project-scope discovery failed ({{cwd}}): {{detail}}\n",
+  },
+  lifecycle: {
+    queuedFollowUpFailed: "[host] Queued-message follow-up trigger failed: {{detail}}\n",
+    extensionSendFailed: "[host] Extension sendMessage failed: {{detail}}\n",
+    sessionFileMoved: "[host] Session file moved {{from}} -> {{to}}\n",
+    sessionCreated: "[host] New session {{sessionId}} cwd={{cwd}} model={{model}} thinking={{thinking}} ({{active}} active)\n",
+    sessionReused: "[host] Reused pooled session {{sessionId}} ({{active}} active)\n",
+    sessionLoaded: "[host] Loaded session {{sessionId}} cwd={{cwd}} {{entries}} history entries\n",
   },
 };
 

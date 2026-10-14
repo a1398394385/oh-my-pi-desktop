@@ -5,6 +5,7 @@
 // liveRef proxy were retired when components moved fully to selector-based
 // subscriptions (2026-09-24).
 import { useAppStore } from "./store/index";
+import type { HostRequest } from "./types/frames";
 export { useAppStore, setBump } from "./store/index";
 export type { AppStore } from "./store/index";
 export { invoke } from "./store/ws";
@@ -44,7 +45,7 @@ export type { GitWriteFrame, TerminalFrame, UiPrefs, RightState } from "./store/
 export type TimerHandle = ReturnType<typeof setTimeout>;
 
 // ---------- Functional forwarding of method-style slice actions (signatures match the old module functions) ----------
-export const send = (obj: unknown): void => useAppStore.getState().send(obj);
+export const send = (obj: HostRequest): void => useAppStore.getState().send(obj);
 export const setConnected = (ok: boolean, text: string): void => useAppStore.getState().setConnected(ok, text);
 export const connect = (): Promise<void> => useAppStore.getState().connect();
 export const toast = (msg: unknown, error?: boolean): void => useAppStore.getState().toast(msg, error);

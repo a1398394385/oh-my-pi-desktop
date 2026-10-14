@@ -2,7 +2,7 @@
 // branches switch via a single-row horizontal scroller; cards support in-place drawer expansion.
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../../Icon";
-import { fmtAgo } from "../right/helpers";
+import { fmtAgo } from "../sidebar/util";
 import { toast, useAppStore, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
 import type { EntryNode, StreamItem, StreamSection } from "./sessionTreeUtil";

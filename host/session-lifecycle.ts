@@ -1,8 +1,10 @@
 // Session lifecycle domain: the create/load entry points (pool reuse vs disk
 // rebuild), event wiring (attachEntry's approval UI context + extension
-// runner injection + subagent eventBus forwarding + realtime queue push +
-// session-file transfer notices), and the snapshot push family
-// (goal/todos/context/stats). Relocated from main.ts (second split cut).
+// runner injection + realtime queue push + session-file transfer notices),
+// the post-created snapshot sequence, and the collapsed session_created
+// frame emission. The snapshot push family lives in session-snapshot.ts and
+// the subagent roster (live tables + eventBus subscriptions + disk replay)
+// in subagent-view.ts (A12 split). Relocated from main.ts (second split cut).
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -32,50 +34,32 @@ import { createAcpStatusTool } from "./acp-status-tool.ts";
 import { rebuildAcpState } from "./acp-persist.ts";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
-import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
-import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
+import { translateEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
+import {
+  buildSessionCreatedFrame,
+  maybePushSessionStats,
+  pushContext,
+  pushGoal,
+  pushSessionStats,
+  pushTodos,
+} from "./session-snapshot.ts";
+import { createSubagentView, replaySubagentHistory } from "./subagent-view.ts";
+import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { gateKimiAutoThinking } from "./kimi-thinking.ts";
-import type { KeepaliveState } from "./keepalive.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { readAcpRaw, readAcpEnabled, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
+import { markTurnWrapped, markSeen, reportKeepaliveState } from "./keepalive-host.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
 import { dispatchFromToolEnd, installProposalHandler, pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { handleVoiceEvent } from "./voice.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 
-/** keepalive_status frame body (shared by the RPC reply and the reportState push).
- * Effective keepalive includes the target check: a session whose current model is not a
- * configured keepalive target is never probed, so both paths must report the zeroed
- * disabled shape for it — otherwise a model removed from targets mid-run would keep the
- * context card's cache-warming section alive via reportState pushes. */
-export function keepaliveStatusPayload(sessionId: string, state: KeepaliveState | undefined) {
-  const entry = sessions.get(sessionId);
-  const model = entry?.session.model as { provider?: string; id?: string } | undefined | null;
-  const targeted =
-    typeof model?.provider === "string" &&
-    typeof model?.id === "string" &&
-    readKeepaliveProbeConfig().targets.includes(`${model.provider}/${model.id}`);
-  const eff = targeted ? state : undefined;
-  return {
-    type: "keepalive_status" as const,
-    sessionId,
-    enabled: eff !== undefined && readKeepaliveEnabled(),
-    active: eff?.active ?? false,
-    probes: eff?.probes ?? 0,
-    hits: eff?.hits ?? 0,
-    misses: eff?.misses ?? 0,
-    errors: eff?.errors ?? 0,
-    savedUsd: eff?.savedUsd ?? 0,
-    spendUsd: eff?.spendUsd ?? 0,
-    nextProbeAt: eff?.nextProbeAt ?? null,
-  };
-}
 export function isGitWorktree(cwd: string): boolean {
   const p = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdout: "pipe", stderr: "ignore" });
   return p.exitCode === 0 && p.stdout.toString().trim() === "true";
@@ -105,200 +89,11 @@ export async function copySessionArtifactsIfAny(sourceSessionFile: string, desti
   } catch {}
 }
 
-/** Goal state frame: shown in the session state card's goal area (pushes null when there is no goal; the frontend hides the separator too). */
-function pushGoal(sessionId: string) {
-  const entry = sessions.get(sessionId);
-  const w = entry?.attachedWs as { send(data: string): unknown } | null;
-  if (!entry || !w) return;
-  const state = entry.session.getGoalModeState();
-  w.send(
-    JSON.stringify({
-      type: "goal",
-      sessionId,
-      goal: state?.goal
-        ? {
-            objective: state.goal.objective,
-            status: state.goal.status,
-            enabled: state.enabled === true,
-            tokenBudget: state.goal.tokenBudget ?? null,
-            tokensUsed: state.goal.tokensUsed,
-            timeUsedSeconds: state.goal.timeUsedSeconds,
-            costUsed: entry.goal.costUsed,
-          }
-        : null,
-    }),
-  );
-}
-
-/** Todos frame: pushed on both cold load and pool reuse (TodoTracker already synced from the transcript branch at construction).
-    The frontend relies on it to backfill history after rebuilding objects on session_created; empty lists are not pushed (no card). */
-function pushTodos(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
-  const phases = entry.session.getTodoPhases();
-  if (phases.length > 0) {
-    ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases })));
-  }
-}
-
-export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
-  const u = entry.session.getContextUsage();
-  if (u) {
-    ws.send(
-      JSON.stringify(
-        stampEvent({
-          type: "context",
-          sessionId,
-          tokens: u.tokens,
-          window: u.contextWindow,
-          percent: u.percent,
-        }),
-      ),
-    );
-  }
-}
-
-// Session cumulative stats (the token/cache/cost/time segments of the TUI
-// status line, summed): displayed permanently on the status row below the
-// composer. Unlike the context detail card (get_context_detail's
-// breakdown/stats), this is whole-session scope: tokens include the
-// accumulated history, duration includes the in-flight window
-//
-// Token figures come from sessionManager.getUsageStatistics() (the index-level
-// cumulative counter the TUI status line itself reads in
-// #buildSegmentContext), NOT from session.getSessionStats(): the latter filters
-// model_usage entries down to the *active window* (session-stats.ts
-// activeModelUsageEntries — after a compaction/reset it only counts entries from
-// firstKeptEntryId onward). That windowed view is right for "current context
-// window" but wrong for a whole-session cumulative row: every compaction would
-// chop off the pre-compaction history and the numbers would jump backwards. The
-// index-level #usage accumulates per entry on insert and is never windowed,
-// so it is monotonic.
-//
-// Prompt-cache invalidation count for the session stats bar: a session's cached
-// prefix normally grows monotonically (each turn appends to the cached prefix),
-// so a cacheRead drop to under half of the session peak means the prefix was
-// lost — model switch, cache TTL expiry, keepalive break, compaction — and the
-// whole context was re-billed as uncached input. Count one break per event:
-// re-arm only after cacheRead climbs back to the peak, and while broken let the
-// peak follow a shrinking baseline (compaction drops the prefix for good) so a
-// later break still registers.
-const CACHE_BREAK_MIN_PEAK = 1000;
-export function countCacheBreaks(
-  entries: ReadonlyArray<{ type?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } }>,
-): number {
-  let peak = 0;
-  let last = 0;
-  let broken = false;
-  let breaks = 0;
-  for (const item of entries) {
-    if (item?.type !== "message" || item.message?.role !== "assistant") continue;
-    const usage = item.message.usage;
-    // A turn aborted before it billed anything (empty content, stopReason
-    // "aborted") never reached the provider, so its zero cacheRead is not a
-    // lost prefix — counting it registers a break that never happened. Every
-    // real request folds cacheRead into totalTokens, so that is the test.
-    if (typeof usage?.totalTokens !== "number" || usage.totalTokens <= 0) continue;
-    const read = usage.cacheRead;
-    const cacheRead = typeof read === "number" && Number.isFinite(read) ? read : 0;
-    if (cacheRead >= peak) {
-      peak = cacheRead;
-      broken = false;
-    } else if (broken) {
-      if (cacheRead > last) peak = cacheRead;
-    } else if (peak >= CACHE_BREAK_MIN_PEAK && cacheRead < peak * 0.5) {
-      breaks++;
-      broken = true;
-    }
-    last = cacheRead;
-  }
-  return breaks;
-}
-
-function buildSessionStats(entry: PoolEntry) {
-  const now = Date.now();
-  const usage = entry.manager.getUsageStatistics();
-  // Cache hit rate (same formula as the TUI's cache_hit segment):
-  // cacheRead/(cacheRead+cacheWrite+input). The denominator includes missed
-  // input, so both Anthropic/OpenRouter (misses recorded as input) and
-  // DeepSeek (misses recorded as input with cacheWrite at 0) reduce to
-  // hit/(hit+miss)
-  const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
-
-  let totalAssistantDuration = 0;
-  let totalAssistantOutput = 0;
-  let totalTtft = 0;
-  let ttftCount = 0;
-
-  const entries: any[] = typeof entry.manager?.getEntries === "function" ? entry.manager.getEntries() : [];
-  const cacheBreaks = countCacheBreaks(entries);
-  for (const item of entries) {
-    if (item?.type === "message" && item.message?.role === "assistant") {
-      const msg = item.message;
-      if (typeof msg.ttft === "number" && Number.isFinite(msg.ttft) && msg.ttft > 0) {
-        totalTtft += msg.ttft;
-        ttftCount++;
-      }
-      const dur = typeof msg.duration === "number" && Number.isFinite(msg.duration) ? msg.duration : 0;
-      const out = typeof msg.usage?.output === "number" && Number.isFinite(msg.usage.output) ? msg.usage.output : 0;
-      if (dur > 0 && out > 0) {
-        totalAssistantDuration += dur;
-        totalAssistantOutput += out;
-      }
-    }
-  }
-
-  const tokenSpeed =
-    totalAssistantDuration > 0
-      ? (totalAssistantOutput * 1000) / totalAssistantDuration
-      : typeof (entry.session as any)?.tokenRate?.rate === "function"
-        ? (entry.session as any).tokenRate.rate()
-        : null;
-  const avgTtft = ttftCount > 0 ? totalTtft / ttftCount : null;
-
-  return {
-    tokens: {
-      input: usage.input,
-      output: usage.output,
-      cacheRead: usage.cacheRead,
-      cacheWrite: usage.cacheWrite,
-    },
-    cost: usage.cost,
-    // Portion of `cost` the base already folded in from completed `task` results (blocking
-    // spawns' spend only). The stats bar subtracts its overlap with the live children it
-    // shows, so a blocking child is not billed twice.
-    subagentCost: usage.subagentCost ?? 0,
-    cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
-    cacheBreaks,
-    // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
-    advisorCost: entry.session.getAdvisorCost(),
-    // Same-clock stamp as activeMs (sampled in the same call): the frontend extrapolates
-    // the duration from this instant, so the frame's transport/queueing delay cannot
-    // rewind the displayed figure
-    statsAt: now,
-    // Active duration includes the in-flight window (matching TUI getActiveMs: idle wall time excluded)
-    activeMs: entry.activeMs + (entry.activeStartedAt === null ? 0 : now - entry.activeStartedAt),
-    tokenSpeed,
-    avgTtft,
-  };
-}
-
-function pushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
-  ws.send(JSON.stringify({ type: "session_stats", sessionId, ...buildSessionStats(entry) }));
-}
-
-// Min interval between live stats pushes: a tool-heavy turn can emit dozens of
-// tool_execution_end events; pushing each one would flood the wire with stats
-// frames (and recompute the usage snapshot every time). The first event of a
-// turn pushes immediately so the numbers start moving right away; later events
-// in the same turn are coalesced by this interval.
-const STATS_PUSH_MIN_INTERVAL_MS = 1500;
-
-function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
-  const now = Date.now();
-  if (entry.statsPushedAt !== null && now - entry.statsPushedAt < STATS_PUSH_MIN_INTERVAL_MS) return;
-  entry.statsPushedAt = now;
-  pushSessionStats(ws, sessionId, entry);
-}
-
+// A12 split: the snapshot push family (goal/todos/context/session stats +
+// the throttled live stats push) lives in session-snapshot.ts now; these
+// re-exports keep the pre-split import surface (rpc/prompt.ts,
+// smoke-cache-breaks.ts) unchanged.
+export { pushContext, countCacheBreaks } from "./session-snapshot.ts";
 
 export async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
   // Master switch on the experimental features page (omp-desktop.json's
@@ -427,16 +222,11 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
           return { approval, ask, tool };
         },
         reportState: (s) => {
+          // Same gate as isWanted above: reports that fire before the entry
+          // exists are dropped
           const entry = kaHolder.entry;
           if (!entry) return;
-          entry.keepaliveState = s;
-          // Push the fresh snapshot so the context ring's center counter and
-          // the detail card stay live without polling (report cadence is
-          // per-probe/per-schedule, low frequency)
-          const ws = entry.attachedWs as { readyState?: number; send?: (d: string) => void } | null;
-          if (ws && ws.readyState === 1 && entry.keepaliveSid) {
-            ws.send(JSON.stringify(stampEvent(keepaliveStatusPayload(entry.keepaliveSid, s))));
-          }
+          reportKeepaliveState(entry, s);
         },
         // Disk session file (short name) tagging the extension's warn lines in
         // the app-wide log, so a probe failure traces back to its session
@@ -620,10 +410,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // After a turn truly ends, push context usage (messages are final by
     // then); also calibrate the queued rows (steer consumed)
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
-      // Cache keepalive: turn wrap-up = unread output exists, worth keeping
-      // alive while idle from now on (the user's mark_seen / switching away
-      // and back clears it)
-      entry.keepaliveWanted = true;
+      markTurnWrapped(entry);
       // Abort-restore visibility: cancelled preparation put its messages
       // back into the agent queues while their texts were still suppressed
       // from the queue view; the terminal-end calibration below must see the
@@ -664,7 +451,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           a.waitForIdle?.()
             .then(() => a.continue())
             .catch((err: unknown) => {
-              safeStderr(`[host] 排队消息续轮触发失败: ${String(err)}\n`);
+              safeStderr(hostI18n.t("errors.lifecycle.queuedFollowUpFailed", { detail: String(err) }));
             });
         });
       }
@@ -700,55 +487,35 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         dialogOptions?.signal,
       );
     },
-    confirm(title: string, message: string): Promise<boolean> {
-      return new Promise((resolve) => {
-        const requestId = crypto.randomUUID();
-        const settle = (v: string | undefined) => {
-          pendingApprovals.delete(requestId);
-          resolve(v === "OK");
-        };
-        pendingApprovals.set(requestId, { resolve: settle, sessionId, blockKind: "approval" });
-        ws.send(
-          JSON.stringify(
-            stampEvent({
-              type: "approval_request",
-              sessionId,
-              requestId,
-              title: `${title}\n${message}`,
-              options: ["OK", "Cancel"],
-            }),
-          ),
-        );
-      });
+    confirm(title: string, message: string, dialogOptions?: any): Promise<boolean> {
+      // The third arg is part of the base interface (usage-fallback and
+      // computer-control confirmers pass { signal }); without the listener the
+      // card would outlive the abort that cancelled the wait.
+      return requestApproval(
+        ws,
+        sessionId,
+        `${title}\n${message}`,
+        ["OK", "Cancel"],
+        dialogOptions?.signal,
+      ).then((v) => v === "OK");
     },
     editor(title: string, prefill?: string, dialogOptions?: any): Promise<string | undefined> {
       // ask's "Other" free-text input goes through here; a missing implementation kills the tool outright with undefined is not a function
-      return new Promise((resolve) => {
-        const requestId = crypto.randomUUID();
-        const settle = (v: string | undefined) => {
-          pendingApprovals.delete(requestId);
-          resolve(v);
-        };
-        pendingApprovals.set(requestId, { resolve: settle, sessionId, blockKind: "ask" });
-        dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
-        // Stable option ids + editableIndex protocol field: the UI renders
-        // localized labels from the ids and locates the inline input row by
-        // index — the contract never depends on display text.
-        ws.send(
-          JSON.stringify(
-            stampEvent({
-              type: "approval_request",
-              sessionId,
-              requestId,
-              title,
-              options: ["submit", "cancel"],
-              editable: true,
-              editableIndex: 0,
-              prefill: prefill ?? "",
-            }),
-          ),
-        );
-      });
+      // Stable option ids + editableIndex protocol field: the UI renders
+      // localized labels from the ids and locates the inline input row by
+      // index — the contract never depends on display text.
+      return requestApproval(
+        ws,
+        sessionId,
+        title,
+        ["submit", "cancel"],
+        dialogOptions?.signal,
+        { editable: true, editableIndex: 0, prefill: prefill ?? "" },
+        undefined,
+        undefined,
+        // Ask-family dialog even though no questions ride the frame.
+        "ask",
+      );
     },
     // (18.5) Rich ask dialog: the ask tool with a questions array surfaces
     // here instead of per-question select() rounds. The frame reuses the
@@ -757,8 +524,6 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // answer = JSON.stringify(ExtensionAskDialogSubmitResult). Aborts and
     // unknown answers resolve undefined (the base treats that as cancelled).
     askDialog(questions: unknown[], dialogOptions?: any): Promise<unknown> {
-      const { promise, resolve } = Promise.withResolvers<unknown>();
-      const requestId = crypto.randomUUID();
       const parseAskAnswer = (answer: string) => {
         try {
           const parsed = JSON.parse(answer) as { kind?: unknown };
@@ -768,29 +533,19 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         }
         return undefined;
       };
-      const settle = (v: string | undefined) => {
-        pendingApprovals.delete(requestId);
-        resolve(v === undefined ? undefined : parseAskAnswer(v));
-      };
-      pendingApprovals.set(requestId, { resolve: settle, questions, sessionId, blockKind: "ask" });
-      dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
       const intent = askIntent;
       askIntent = undefined;
       const first = (questions[0] ?? {}) as { header?: string; question?: string };
-      ws.send(
-        JSON.stringify(
-          stampEvent({
-            type: "approval_request",
-            sessionId,
-            requestId,
-            title: first.header ?? first.question ?? "ask",
-            options: ["submit", "cancel"],
-            questions,
-            intent,
-          }),
-        ),
-      );
-      return promise;
+      return requestApproval(
+        ws,
+        sessionId,
+        first.header ?? first.question ?? "ask",
+        ["submit", "cancel"],
+        dialogOptions?.signal,
+        { intent },
+        undefined,
+        questions,
+      ).then((v) => (v === undefined ? undefined : parseAskAnswer(v)));
     },
   };
   entry.sessionResult.setToolUIContext(uiCtx, true);
@@ -813,7 +568,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     {
       sendMessage: (message, options) => {
         void entry.session.sendCustomMessage(message, options).catch((err: unknown) => {
-          safeStderr(`[host] 扩展 sendMessage 失败: ${String(err)}\n`);
+          safeStderr(hostI18n.t("errors.lifecycle.extensionSendFailed", { detail: String(err) }));
         });
       },
       sendUserMessage: (content, options) => {
@@ -878,170 +633,11 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     void entry.session.extensionRunner?.emit({ type: "session_start" });
   }
 
-  // The whole spawn tree shares the root session's eventBus (sdk.ts:1341):
-  // subagent lifecycle/event/progress frames all travel on it. Derived data
-  // the host fills in (absent from AgentProgress itself):
-  //   registeredAt — when the lifecycle started frame arrived (the detail
-  //                  card's Registered timestamp)
-  //   name / parent — the task tool call's args carry the subagent name,
-  //                   toolCallId records the owner (root session = Main,
-  //                   inside a subagent stream = that subagent), and
-  //                   parentToolCallId reverse-looks-up "Spawned by X"
-  const subRegistered = new Map<string, number>(); // subagentId -> first started timestamp
-  const subSpawnCall = new Map<string, string>(); // subagentId -> parent task toolCallId
-  // A kept-alive subagent is re-run by IRC wake turns (base: attachIrcWakeTurnMonitor
-  // creates a FRESH run monitor per wake), so its raw progress counters restart at
-  // zero. Fold every finished run's totals and add them back onto the live run, or the
-  // roster shows only the last (short) wake turn while subagent_event keeps accumulating.
-  const subRunTotals = new Map<
-    string,
-    { requests: number; toolCount: number; cost: number; durationMs: number; tokens: Record<string, number> }
-  >();
-  const subFirstTask = new Map<string, string>(); // original assignment, kept across wake turns
-  const callOwner = new Map<string, { owner: string; names: string[] }>(); // task toolCallId -> owner + spawned subagent names
-  const spawnTools: Record<string, true> = { task: true, agent: true };
-  const spawnNames = (args: Record<string, unknown>): string[] => {
-    const items = Array.isArray(args.tasks) ? args.tasks : [args];
-    return items.map((t) => (t && typeof t === "object" && "name" in t && typeof t.name === "string" ? t.name : undefined)).filter((n): n is string => !!n);
-  };
-  // Batch spawns (one task call, N tasks) carry every name; the run's `index` picks this
-  // one, otherwise every roster row would read names[0].
-  const subName = (id: string, agent: string, index?: number): string => {
-    const call = callOwner.get(subSpawnCall.get(id) ?? "");
-    return call?.names[index ?? 0] ?? call?.names[0] ?? agent;
-  };
-  const subParent = (id: string): string => {
-    const spawnCall = subSpawnCall.get(id);
-    if (!spawnCall) return "Main";
-    const owner = callOwner.get(spawnCall);
-    return owner?.owner ?? "Main";
-  };
-  // Task calls in the root session: owned by Main
-  const unsubSpawnRoot = entry.session.subscribe((ev: any) => {
-    if (ev.type === "tool_execution_start" && spawnTools[ev.toolName]) {
-      callOwner.set(ev.toolCallId, { owner: "Main", names: spawnNames(ev.args) });
-    }
-  });
-  const unsubLifecycle = eventBus.on("task:subagent:lifecycle", (p: any) => {
-    if (p.parentToolCallId) subSpawnCall.set(p.id, p.parentToolCallId);
-    // started fires once per run: the first one registers the subagent, later ones are
-    // IRC wake turns reusing the id — archive the finished run instead of resetting
-    // the roster's "Registered"/counters to the wake turn's zeroed progress.
-    if (p.status === "started") {
-      if (subRegistered.has(p.id)) archiveFinishedRun(p.id);
-      else subRegistered.set(p.id, Date.now());
-    }
-    ws.send(
-      JSON.stringify(
-        stampEvent({
-          type: "subagent_lifecycle",
-          sessionId,
-          subagentId: p.id,
-          agent: p.agent,
-          description: p.description,
-          status: p.status,
-          name: subName(p.id, p.agent, p.index),
-          parent: subParent(p.id),
-          // Child transcript file (agent hub Enter/double-click opens it; the base
-          // payload carries it on every lifecycle emit — dropping it here left live
-          // roster rows without a sessionFile until a host reload replayed history)
-          sessionFile: p.sessionFile,
-          detached: p.detached ?? false,
-          // Terminal statuses carry the submitted report, read from the settled child
-          // transcript (the lifecycle frame fires after the executor finalized it)
-          result: p.status !== "started" && p.sessionFile ? readSubagentResult(p.sessionFile) : undefined,
-        }),
-      ),
-    );
-    // After a terminal-status frame, re-send the last progress frame (throttling may have swallowed it) so cost/tokens settle at final values
-    if (p.status !== "started") {
-      const last = subLastProgress.get(p.id);
-      if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last, status: p.status }));
-    }
-  });
-  // Aggregate progress frames: cost/duration/requests/tools/tokens/context (high-frequency and cumulative, throttled at 500ms; status changes send immediately)
-  const subLastProgress = new Map<string, Record<string, unknown>>();
-  const subSentAt = new Map<string, number>();
-  const subSentStatus = new Map<string, string>();
-  // Fold the finished run's last progress into the subagent's running totals (called
-  // when a wake turn starts a new run over the same id).
-  const archiveFinishedRun = (id: string): void => {
-    const last = subLastProgress.get(id) as
-      | { requests?: number; toolCount?: number; cost?: number; durationMs?: number; tokens?: Record<string, number> }
-      | undefined;
-    if (!last) return;
-    const totals = subRunTotals.get(id) ?? { requests: 0, toolCount: 0, cost: 0, durationMs: 0, tokens: {} };
-    totals.requests += last.requests ?? 0;
-    totals.toolCount += last.toolCount ?? 0;
-    totals.cost += last.cost ?? 0;
-    totals.durationMs += last.durationMs ?? 0;
-    for (const [key, value] of Object.entries(last.tokens ?? {})) {
-      if (typeof value === "number") totals.tokens[key] = (totals.tokens[key] ?? 0) + value;
-    }
-    subRunTotals.set(id, totals);
-  };
-  const mergeTokens = (
-    totals: Record<string, number>,
-    current: Record<string, number> | undefined,
-  ): Record<string, number> => {
-    const merged: Record<string, number> = { ...totals };
-    for (const [key, value] of Object.entries(current ?? {})) {
-      if (typeof value === "number") merged[key] = (merged[key] ?? 0) + value;
-    }
-    return merged;
-  };
-  const unsubProgress = eventBus.on("task:subagent:progress", (p: any) => {
-    const pr = p.progress ?? {};
-    // Subagent identity lives inside the progress object (AgentProgress.id) — the
-    // channel payload's top level carries no id field (base contract; the TUI's
-    // session-observer reads progress.id the same way)
-    const subagentId: string | undefined = pr.id;
-    if (!subagentId) return;
-    const totals = subRunTotals.get(subagentId);
-    const tokens = typeof pr.tokens === "number" ? { total: pr.tokens } : pr.tokens;
-    const task = subFirstTask.get(subagentId) ?? pr.task;
-    if (task && !subFirstTask.has(subagentId)) subFirstTask.set(subagentId, task);
-    const payload = {
-      agent: p.agent,
-      // Child transcript file: the base emits it on the progress channel too (the
-      // TUI registry collects it from either channel); the started lifecycle may
-      // fire before the child session persists — this is where the path first appears
-      sessionFile: p.sessionFile,
-      status: pr.status,
-      task,
-      cost: totals ? totals.cost + (pr.cost ?? 0) : pr.cost,
-      durationMs: totals ? totals.durationMs + (pr.durationMs ?? 0) : pr.durationMs,
-      requests: totals ? totals.requests + (pr.requests ?? 0) : pr.requests,
-      toolCount: totals ? totals.toolCount + (pr.toolCount ?? 0) : pr.toolCount,
-      // Base progress.tokens is a plain cumulative number; the frontend contract
-      // (and the history-replay path below) expects the bucketed shape
-      tokens: totals ? mergeTokens(totals.tokens, tokens) : tokens,
-      contextTokens: pr.contextTokens,
-      contextWindow: pr.contextWindow,
-      currentTool: pr.currentTool,
-      currentToolArgs: pr.currentToolArgs,
-      currentToolStartMs: pr.currentToolStartMs,
-      lastIntent: pr.lastIntent,
-      resolvedModel: pr.resolvedModel,
-      resolvedThinkingLevel: pr.resolvedThinkingLevel,
-      recentTools: pr.recentTools,
-    };
-    subLastProgress.set(subagentId, payload);
-    const now = Date.now();
-    const statusChanged = subSentStatus.get(subagentId) !== pr.status;
-    if (!statusChanged && now - (subSentAt.get(subagentId) ?? 0) < 500) return;
-    subSentAt.set(subagentId, now);
-    subSentStatus.set(subagentId, pr.status);
-    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent, pr.index), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload }));
-  });
-  const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
-    // Task calls inside a subagent stream: owned by that subagent (nested spawn)
-    if (event.type === "tool_execution_start" && spawnTools[event.toolName]) {
-      callOwner.set(event.toolCallId, { owner: subName(id, id), names: spawnNames(event.args) });
-    }
-    const ui = translateSubagentEvent(event);
-    if (ui) ws.send(JSON.stringify(stampEvent({ type: "subagent_event", sessionId, subagentId: id, ...ui })));
-  });
+  // Subagent roster (A12 split): the live registration/ownership tables and
+  // the three eventBus subscriptions (lifecycle/progress/event frames, with
+  // the IRC wake-turn run folding) live in subagent-view.ts; attachEntry only
+  // wires them per attach and folds the teardown into entry.unsubscribe.
+  const subView = createSubagentView(ws, sessionId, entry, eventBus);
   // Pre-consumption notice: queued/steer user messages about to be injected
   // are pushed to the UI (bubbles finalized). The texts also enter
   // consumedPending so sendQueued keeps suppressing them from the queue view
@@ -1086,7 +682,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     entry.previousPaths.push(notice.from);
     entry.path = notice.to;
     entry.pollKnownSize = 0;
-    safeStderr(`[host] 会话文件已转移 ${notice.from} -> ${notice.to}\n`);
+    safeStderr(hostI18n.t("errors.lifecycle.sessionFileMoved", { from: notice.from, to: notice.to }));
   });
   // MCP connection status → capabilities_mcp incremental frames. The manager
   // is process-global while attach is per-session: with several sessions
@@ -1110,10 +706,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   entry.unsubscribe = () => {
     unsubSession();
     unsubTitle?.();
-    unsubSpawnRoot();
-    unsubLifecycle();
-    unsubProgress();
-    unsubEvents();
+    subView.unsubscribe();
     detachDequeueHook();
     unsubQueueChange();
     unsubPersistenceNotice?.();
@@ -1138,7 +731,9 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
   if (thinkingLevel) {
     try {
       entry.session.setThinkingLevel(thinkingLevel);
-    } catch {}
+    } catch (err) {
+      safeStderr(`[host] setThinkingLevel(${thinkingLevel}) failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+    }
   }
   // Kimi auto gate: the SDK default (defaultThinkingLevel: auto) or the UI
   // override can leave a fresh kimi-code session on `auto` while the
@@ -1147,27 +742,19 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
     const configured = entry.session.configuredThinkingLevel?.();
     const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
     if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
-  } catch {}
+  } catch (err) {
+    safeStderr(`[host] kimi auto-thinking gate failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+  }
   // Computer-use opt-in at spawn: user sessions follow the desktop "default on" switch;
   // automation runs follow the automation's own flag (never the desktop default). Applied
   // here only — loading a session from disk keeps whatever state it was left in.
-  if (computerDefaultAppliesFor(opts?.automation)) void setComputerMode(ws, sessionId, entry, true).catch(() => {});
+  if (computerDefaultAppliesFor(opts?.automation)) {
+    void setComputerMode(ws, sessionId, entry, true).catch((err) => {
+      safeStderr(`[host] computer mode default-enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+    });
+  }
   attachEntry(ws, sessionId, entry, eventBus);
-  ws.send(
-    JSON.stringify({
-      type: "session_created",
-      sessionId,
-      path: entry.path,
-      cwd: workDir,
-      model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
-      thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
-      isGit: entry.isGit,
-      title: entry.title ?? null,
-      // Automation-spawned: the UI registers the slot but must not activate it
-      // (no focus steal, automations view stays open)
-      ...(opts?.automation ? { automation: opts.automation, background: true } : {}),
-    }),
-  );
+  ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { automation: opts?.automation })));
   pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
   return { sessionId, entry };
 }
@@ -1187,292 +774,61 @@ export async function handleCreateSession(ws: { send(data: string): unknown }, c
   // Session born with computer use (intent picked on the new-session page):
   // same entry path as the composer toggle — the master gate is checked inside
   // (closed gate surfaces a command_output hint and the frame stays off)
-  if (computerMode) void setComputerMode(ws, sessionId, entry, true).catch(() => {});
-  safeStderr(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
+  if (computerMode) {
+    void setComputerMode(ws, sessionId, entry, true).catch((err) => {
+      safeStderr(`[host] computer mode enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+    });
+  }
+  safeStderr(hostI18n.t("errors.lifecycle.sessionCreated", { sessionId: sessionId.slice(0, 8), cwd: workDir, model: modelStr ?? "default", thinking: thinkingLevel ?? "default", active: sessions.size }));
 }
 
-// ---- Subagent history replay ----
-// Child subagent runs persist as <session file minus .jsonl>/<subagent name>.jsonl (the SDK's
-// artifact layout; each child header carries a parentSession backlink). Live sessions learn
-// about them through the event subscriptions, but a session rebuilt from disk never sees those
-// frames — scan the artifacts dir and re-emit lifecycle/progress (+ the tool stream for cold
-// loads) so the right sidebar's subagent page reconstructs past runs. Synthesized ids take a
-// hist- prefix: they can never collide with a live SDK subagentId.
-const HIST_SUBAGENT_RECENT_MS = 60_000; // a file still being written belongs to a live subagent — skip, its frames arrive live
-
-// Agent Hub "Changes" line: the TUI decides Read-only vs shared from the agent-registry kind
-// and the child session's persisted session_init.readOnly (stamped by the SDK at spawn);
-// subagent frames carry neither, so the flags are recovered from the transcript file itself.
-// session_init is appended at spawn start — the file's first chunk always covers it.
-function readSubagentInitFlags(file: string): boolean | undefined {
-  let fd: number;
-  try {
-    fd = fs.openSync(file, "r");
-  } catch {
-    return undefined;
+// Post-session_created snapshot sequence, one function for both load
+// branches (A12 collapsed the two hand-written step lists). Step ORDER is
+// identical across the branches; the difference is the step SET, and every
+// difference is semantic, not incidental (checked against the pre-split
+// code):
+//   - plan state: reuse re-pushes the live plan mode; rebuild must first
+//     reconcile it from the persisted mode_change entries (reconcile pushes
+//     the resulting state itself).
+//   - plan output: reuse re-pushes the remembered deliverable; rebuild falls
+//     back to the newest local:// plan file on disk (async read).
+//   - goal: rebuild awaits goal.restore() BEFORE pushGoal so the frame reads
+//     the restored state; reuse has nothing persisted to restore.
+//   - subagent history replay: rebuild always replays (the store is
+//     guaranteed empty); reuse only after a frontend reload (store wiped).
+async function pushSessionSnapshot(
+  ws: any,
+  sessionId: string,
+  entry: PoolEntry,
+  req:
+    | { mode: "reuse"; sessionPath: string; replaySubagents: boolean }
+    | { mode: "rebuild"; sessionPath: string; entries: any[] },
+): Promise<void> {
+  if (req.mode === "rebuild") {
+    reconcilePlanMode(ws, sessionId, entry, req.entries); // Restore plan mode from persisted mode_change (frames must be pushed after session_created)
+  } else {
+    pushPlanMode(ws, sessionId, entry); // The reuse snapshot also pushes plan state (the frontend relies on it to show the "plan" button after reload)
   }
-  try {
-    const buf = Buffer.alloc(65536);
-    const n = fs.readSync(fd, buf, 0, buf.length, 0);
-    for (const line of buf.subarray(0, n).toString("utf8").split("\n")) {
-      if (!line.includes("session_init")) continue;
-      try {
-        const j = JSON.parse(line);
-        if (j.type === "session_init") return j.readOnly === true;
-      } catch {}
-    }
-  } catch {
-  } finally {
-    fs.closeSync(fd);
+  // Per-session computer opt-in state (reuse: the composer button relies on it;
+  // rebuild: resets any stale lit button from the pinned-off overlay)
+  pushComputerMode(ws, sessionId, entry);
+  if (req.mode === "rebuild") await entry.goal.restore(); // Goal mode restore (persisted mode_change goal/goal_paused; aligned with the TUI, no proactive re-run)
+  ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
+  // Todos backlog (TodoTracker synced from the transcript branch at construction; without
+  // the frame history TODOs vanish after the frontend rebuilds its objects)
+  pushTodos(ws, sessionId, entry);
+  if (req.mode === "rebuild") {
+    await pushRestoredPlanOutput(ws, sessionId, entry); // Disk-restore fallback: newest local:// plan file becomes the todo card's output row
+  } else {
+    pushPlanOutput(ws, sessionId, entry); // Reuse snapshot: remembered plan deliverable (todo card's output row survives a frontend reload)
   }
-  return undefined;
-}
-
-// Agent Hub "Result" section: the subagent's submitted report — the last
-// assistant message carrying text (the same source the executor's salvage and
-// lastReportTurnText draw from). Capped so the frame stays small; the UI
-// section scrolls. Purely tool-call assistant messages keep the earlier text.
-const SUBAGENT_RESULT_MAX_CHARS = 16000;
-function readSubagentResult(file: string): string | undefined {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    return undefined;
-  }
-  let result: string | undefined;
-  for (const line of text.split("\n")) {
-    if (!line.includes('"assistant"')) continue;
-    let e: HistEntry;
-    try {
-      e = JSON.parse(line) as HistEntry;
-    } catch {
-      continue;
-    }
-    if (e.type !== "message" || e.message?.role !== "assistant") continue;
-    const c = e.message.content;
-    const t = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").filter(Boolean).join("\n") : "").trim();
-    if (t) result = t;
-  }
-  if (!result) return undefined;
-  return result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result;
-}
-
-// Advisor transcripts use the SDK-reserved __advisor stem (the same signal the TUI agent
-// registry uses for kind: "advisor")
-const isAdvisorTranscript = (file: string) => path.basename(file).startsWith("__advisor");
-
-interface HistAggregation {
-  title: string;
-  registeredAt: number;
-  readOnly?: boolean;
-  status: string;
-  result?: string;
-  progress: Record<string, unknown>;
-  toolEvents: Record<string, unknown>[];
-}
-
-// Minimal structural view of a persisted session entry; the file is our own SDK's JSONL, the
-// try/catch-per-line scan plus optional chaining below keep a bad line from aborting the pass
-interface HistEntry {
-  type?: string;
-  timestamp?: string;
-  parentSession?: string;
-  model?: string;
-  readOnly?: boolean;
-  message?: {
-    role?: string;
-    content?: string | { type?: string; text?: string }[];
-    usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; totalTokens?: number; cost?: { total?: number } };
-    stopReason?: string;
-    errorMessage?: string;
-    isError?: boolean;
-  };
-  data?: { toolCallId?: string; toolName?: string; args?: unknown };
-}
-
-// The SDK wraps the subagent assignment in this fixed prefix (subagent-user-prompt.md) before
-// it becomes the child's first user message; strip it so the replayed task matches live frames
-const SUBAGENT_PROMPT_PREFIX = "Complete assignment thoroughly:\n\n";
-
-// Parse one child session file into the aggregated progress payload + tool event stream;
-// returns null when the file is not a child of parentSessionPath (foreign/corrupt)
-function aggregateSubagentHistory(file: string, parentSessionPath: string): HistAggregation | null {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    return null;
-  }
-  let isChild = false;
-  const tombstoned = fs.existsSync(`${file}.tombstone`);
-  let aborted = tombstoned;
-  let lastStopReason: string | undefined;
-  let lastIsError: boolean | undefined;
-  const seenToolCalls = new Set<string>();
-  const toolEvents: Record<string, unknown>[] = [];
-  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
-  let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
-  let model: string | null = null;
-  let result: string | undefined;
-  let task: string | undefined;
-  let readOnly: boolean | undefined;
-  let registeredAt = 0;
-  let lastTs = 0;
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    let e: HistEntry;
-    try {
-      e = JSON.parse(line) as HistEntry; // own SDK's persisted JSONL; fields read defensively below
-    } catch {
-      continue;
-    }
-    if (e.type === "session") {
-      // Only true child session files carry the parentSession backlink; a stray top-level
-      // session file (or a same-named foreign child) must not be replayed
-      if (!e.parentSession || path.resolve(e.parentSession) !== path.resolve(parentSessionPath)) return null;
-      isChild = true;
-      registeredAt = Date.parse(e.timestamp ?? "") || 0;
-      continue;
-    }
-    if (e.type === "session_init") {
-      readOnly = e.readOnly === true;
-      continue;
-    }
-    if (e.type === "model_change" && !model) model = e.model ?? null;
-    if (e.type === "message" && e.message) {
-      const ts = Date.parse(e.timestamp ?? "") || 0;
-      if (ts > lastTs) lastTs = ts;
-      if (e.message.role === "assistant") {
-        lastStopReason = e.message.stopReason;
-        if (e.message.stopReason === "aborted" || e.message.errorMessage === "Request was aborted") {
-          aborted = true;
-        }
-        // Submitted report for the hub detail's Result section (same rule as
-        // readSubagentResult: the last assistant message that carries text)
-        const c = e.message.content;
-        const t = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").filter(Boolean).join("\n") : "").trim();
-        if (t) result = t;
-      }
-      if (e.message.role === "toolResult") {
-        lastIsError = e.message.isError === true;
-      }
-      // The child's first user message is the (wrapped) assignment — recover the task text for
-      // the roster/detail fallback chain (live runs get it from progress frames instead)
-      if (task === undefined && e.message.role === "user") {
-        const c = e.message.content;
-        const text = Array.isArray(c)
-          ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").join("\n")
-          : (c ?? "");
-        task = text.startsWith(SUBAGENT_PROMPT_PREFIX) ? text.slice(SUBAGENT_PROMPT_PREFIX.length) : text;
-      }
-      const u = e.message.usage;
-      if (e.message.role === "assistant" && u) {
-        requests++;
-        input += u.input || 0;
-        output += u.output || 0;
-        cacheRead += u.cacheRead || 0;
-        cacheWrite += u.cacheWrite || 0;
-        total += u.totalTokens || 0;
-        cost += u.cost?.total || 0;
-        if (u.totalTokens && u.totalTokens > 0) lastContextTokens = u.totalTokens;
-      }
-      continue;
-    }
-    if (e.type === "custom" && e.data?.toolCallId && e.data?.toolName) {
-      if (seenToolCalls.has(e.data.toolCallId)) continue; // duplicate record of the same call
-      seenToolCalls.add(e.data.toolCallId);
-      toolEvents.push({ kind: "tool", name: e.data.toolName, toolCallId: e.data.toolCallId, args: e.data.args });
-      toolEvents.push({ kind: "tool_update", name: e.data.toolName, toolCallId: e.data.toolCallId, running: false });
-    }
-  }
-  if (!isChild) return null;
-  const status: "completed" | "aborted" | "failed" =
-    aborted
-      ? "aborted"
-      : lastStopReason === "error" || lastIsError
-        ? "failed"
-        : "completed";
-
-  return {
-    title: path.basename(file, ".jsonl"),
-    registeredAt,
-    readOnly,
-    status,
-    result: result && result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result,
-    progress: {
-      status,
-      task,
-      cost,
-      durationMs: Math.max(0, lastTs - registeredAt),
-      requests,
-      toolCount: seenToolCalls.size,
-      tokens: { input, output, cacheRead, cacheWrite, total },
-      contextTokens: lastContextTokens || undefined,
-      contextWindow: modelRegistryContextWindow(model),
-      resolvedModel: model,
-    },
-    toolEvents,
-  };
-}
-
-// Context window for a replayed subagent's model: live registry lookup (the
-// same fields host/models.ts reads off the base model objects)
-function modelRegistryContextWindow(model: string | null): number | undefined {
-  if (!model) return undefined;
-  const entry = H.availableModels.find((m) => `${m.provider}/${m.id}` === model) as
-    | { contextWindow?: number; contextLength?: number }
-    | undefined;
-  const w = entry?.contextWindow ?? entry?.contextLength;
-  return typeof w === "number" && w > 0 ? w : undefined;
-}
-
-// includeTools: also replay the per-tool event stream (cold loads where the frontend store is
-// guaranteed empty). Same-store switch-backs must pass false — replaying tool events would
-// append duplicates next to the live entries.
-export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: string, includeTools: boolean) {
-  if (!sessionPath.endsWith(".jsonl")) return;
-  let names: string[];
-  try {
-    names = fs.readdirSync(sessionPath.slice(0, -".jsonl".length));
-  } catch {
-    return; // no artifacts dir: the session never spawned subagents (or pre-artifact base)
-  }
-  for (const name of names) {
-    if (!name.endsWith(".jsonl")) continue;
-    const file = path.join(sessionPath.slice(0, -".jsonl".length), name);
-    try {
-      if (!fs.statSync(file).isFile()) continue;
-      // Still being written = a live subagent of a pooled session; its real frames arrive through subscriptions
-      if (Date.now() - fs.statSync(file).mtimeMs < HIST_SUBAGENT_RECENT_MS) continue;
-    } catch {
-      continue;
-    }
-    const agg = aggregateSubagentHistory(file, sessionPath);
-    if (!agg) continue;
-    const subagentId = "hist-" + name.slice(0, -".jsonl".length);
-    ws.send(
-      JSON.stringify({
-        type: "subagent_lifecycle",
-        sessionId,
-        subagentId,
-        agent: agg.title,
-        description: "",
-        status: agg.status,
-        name: agg.title,
-        parent: "Main",
-        registeredAt: agg.registeredAt,
-        sessionFile: file,
-        readOnly: agg.readOnly,
-        result: agg.result,
-        advisor: path.basename(file).startsWith("__advisor"),
-      }),
-    );
-    if (includeTools) {
-      for (const ev of agg.toolEvents) ws.send(JSON.stringify({ type: "subagent_event", sessionId, subagentId, ...ev }));
-    }
-    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, registeredAt: agg.registeredAt, ...agg.progress }));
-  }
+  pushGoal(sessionId); // Goal state backlog (session state card goal area; rebuild pushes after restore)
+  pushContext(ws, sessionId, entry); // rebuild: initial context usage (system prompt + history)
+  pushSessionStats(ws, sessionId, entry); // Whole-session stats (otherwise stats stay empty after the frontend rebuilds objects; reload restarts the in-memory duration from 0)
+  // Subagent history replay (child run files live in the sibling artifacts dir; the
+  // frontend store is empty on both replaying paths, so the full tool stream is safe)
+  const replaySubagents = req.mode === "rebuild" ? true : req.replaySubagents;
+  if (replaySubagents) replaySubagentHistory(ws, req.sessionPath, sessionId, true);
 }
 
 export async function handleLoadSession(ws: any, sessionPath: string) {
@@ -1489,47 +845,27 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     // previousPaths: a persistence move left the frontend holding the old path —
     // it must reuse this live entry, not fork a second session over the dead file
     if (entry.path !== sessionPath && !(entry.previousPaths?.includes(sessionPath) ?? false)) continue;
-    // The user opening/switching back to this session = seen: stop cache
-    // keepalive probing (the next turn's wrap-up will set it again)
-    entry.keepaliveWanted = false;
+    // The user opening/switching back to this session = seen (stop probing)
+    markSeen(entry);
     const frontendReloaded = entry.attachedWs !== ws; // capture before attachEntry overwrites it
     if (frontendReloaded) {
       entry.unsubscribe(); // Detach old subscriptions first, or the same event would be sent twice
       attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     }
-    ws.send(
-      JSON.stringify({
-        type: "session_created",
-        sessionId,
-        path: entry.path,
-        cwd: entry.cwd,
-        model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
-        thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
-        isGit: entry.isGit,
-        title: entry.title ?? null,
-        isSubagent: entry.isSubagent,
-        parentPath: entry.parentPath,
-      }),
-    );
-    pushPlanMode(ws, sessionId, entry); // The reuse snapshot also pushes plan state (the frontend relies on it to show the "plan" button after reload)
-    pushComputerMode(ws, sessionId, entry); // Reuse snapshot: per-session computer opt-in state (the composer button relies on it)
-    ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
-    pushTodos(ws, sessionId, entry); // The reuse snapshot also pushes the todos backlog (otherwise history TODOs vanish after the frontend rebuilds objects)
-    pushPlanOutput(ws, sessionId, entry); // Reuse snapshot: remembered plan deliverable (todo card's output row survives a frontend reload)
-    pushGoal(sessionId); // Goal state backlog (session state card goal area)
-    pushContext(ws, sessionId, entry);
-    pushSessionStats(ws, sessionId, entry); // The reuse snapshot also pushes whole-session stats (otherwise stats stay empty after the frontend rebuilds objects)
-    if (frontendReloaded) {
+    ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
+    await pushSessionSnapshot(ws, sessionId, entry, {
+      mode: "reuse",
+      sessionPath,
       // Frontend reload: its store was wiped, so replay the subagent history (the full tool
       // stream — the store is guaranteed empty, no duplicates can stack up). Same-ws
       // switch-backs skip: the live entries are still in the store.
-      replaySubagentHistory(ws, sessionPath, sessionId, true);
-    }
+      replaySubagents: frontendReloaded,
+    });
     if (entry.externalWrite) ws.send(JSON.stringify({ type: "session_external_write", sessionId })); // Detected during LRU eviction; re-sent on switch-back
     // Switch-back after frontend eviction: re-mount if the previous detach
     // released the session's MCP holds (idempotent — mounted sessions return)
     void mountMcpForSession(sessionId, entry);
-    safeStderr(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
+    safeStderr(hostI18n.t("errors.lifecycle.sessionReused", { sessionId: sessionId.slice(0, 8), active: sessions.size }));
     return;
   }
   const manager = await SessionManager.open(sessionPath);
@@ -1554,34 +890,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   // Active-duration seed for a past session: the in-memory timer only covers time since this open; seed the backlog by summing per-turn spans from the disk entries
   entry.activeMs = sumRunDurationMs(entries);
   attachEntry(ws, sessionId, entry, eventBus);
-  ws.send(
-    JSON.stringify({
-      type: "session_created",
-      sessionId,
-      path: entry.path,
-      cwd: entry.cwd,
-      model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
-      thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
-      isGit: entry.isGit,
-      title: entry.title ?? null,
-      isSubagent: entry.isSubagent,
-      parentPath: entry.parentPath,
-    }),
-  );
-  reconcilePlanMode(ws, sessionId, entry, entries); // Restore plan mode from persisted mode_change (frames must be pushed after session_created)
-  pushComputerMode(ws, sessionId, entry); // Disk rebuild starts from the pinned-off overlay; the explicit frame resets any stale lit button
-  await entry.goal.restore(); // Goal mode restore (persisted mode_change goal/goal_paused; aligned with the TUI, no proactive re-run)
-  ws.send(JSON.stringify({ type: "messages", sessionId, messages: transcript }));
-  // Restored session's todos backlog (TodoTracker synced from the transcript branch at construction)
-  pushTodos(ws, sessionId, entry);
-  await pushRestoredPlanOutput(ws, sessionId, entry); // Disk-restore fallback: newest local:// plan file becomes the todo card's output row
-  pushGoal(sessionId); // Goal state backlog (pushed after restore; session state card goal area)
-  // Restored session's initial context usage (system prompt + history)
-  pushContext(ws, sessionId, entry);
-  // Restored session's whole-session stats (tokens/cost summed from disk assistant messages' usage; duration is in-memory state, restarting from 0 on reload)
-  pushSessionStats(ws, sessionId, entry);
-  // Restored session's subagent history: the child run files live in the sibling artifacts
-  // dir; the frontend store is empty on this path, so replay the full stream
-  replaySubagentHistory(ws, sessionPath, sessionId, true);
-  safeStderr(`[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`);
+  ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
+  await pushSessionSnapshot(ws, sessionId, entry, { mode: "rebuild", sessionPath, entries });
+  safeStderr(hostI18n.t("errors.lifecycle.sessionLoaded", { sessionId: sessionId.slice(0, 8), cwd: entry.cwd, entries: transcript.length }));
 }

@@ -12,12 +12,12 @@ import { invoke } from "./ws";
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
 import { saveRightSlot, restoreRightSlot } from "./right";
 import { t } from "../i18n";
-import type { ApprovalMode, EventFrame, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
+import type { ApprovalMode, EventFrame, HostRequest, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
 
 // Send helper via the ws slice (stable reference, equivalent to the old top-level send)
-const send = (obj: unknown): void => {
+const send = (obj: HostRequest): void => {
   useAppStore.getState().send(obj);
 };
 
@@ -445,6 +445,32 @@ export function admitStampedEvent(msg: EventStampFields): boolean {
   return true;
 }
 
+// ---------- Optimistic run start (the single local run-start write; sunk from the composer, A14) ----------
+/** The single way a run starts locally: insert the user bubble (images when present) and flip the
+ *  running state right away — the elapsed clock and the stop button appear at send time; the host
+ *  turn_start keeps the origin instead of resetting it. Shared by the composer pipeline
+ *  (composer/send.ts), the pendingNewPrompt consumption and the automation user_message echo. */
+export function startLocalRun(sessionId: string, text: string, images?: UserItem["images"]): void {
+  updateSession(sessionId, (s) => {
+    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}) });
+    s.streaming = true;
+    s.turnStartAt = Date.now();
+  });
+}
+
+/** Image bubble payload extracted from prompt attachments (wire image entries only). */
+export function bubbleImages(files: PromptAttachment[] | null | undefined): UserItem["images"] {
+  return (files ?? [])
+    .filter((f) => f.kind === "image" && typeof f.data === "string")
+    .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
+}
+
+/** Optimistic run start + prompt dispatch over the wire (steer flag rides along). */
+export function dispatchPrompt(sessionId: string, text: string, files: PromptAttachment[], steer?: boolean): void {
+  startLocalRun(sessionId, text, bubbleImages(files));
+  send({ type: "prompt", sessionId, text, files, ...(steer ? { steer: true } : {}) });
+}
+
 // ---------- event frame handling (all kind branches of the old onMessage case "event"; immutable updates via updateSession) ----------
 export function applyEvent(msg: EventFrame): void {
   const st = useAppStore.getState();
@@ -470,13 +496,9 @@ export function applyEvent(msg: EventFrame): void {
       false,
     );
   } else if (msg.kind === "user_message") {
-    // Automation prompt echo (host-side send: no local composer bubble exists). Mirror the
-    // local send path: bubble + running state so the clock/stop button don't wait for turn_start.
-    updateSession(msg.sessionId, (s) => {
-      s.items.push({ role: "user", text: msg.text });
-      s.streaming = true;
-      s.turnStartAt = Date.now();
-    });
+    // Automation prompt echo (host-side send: no local composer bubble exists); the single
+    // run-start write covers the clock/stop button without waiting for turn_start.
+    startLocalRun(msg.sessionId, msg.text);
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
       s.assistantDraft += msg.text;

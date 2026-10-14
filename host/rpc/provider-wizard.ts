@@ -14,7 +14,7 @@ import { getBundledModelReferenceIndex, resolveModelReference } from "@oh-my-pi/
 import { discoverModelsByProviderType } from "@oh-my-pi/pi-coding-agent/config/model-discovery";
 import { H } from "../state.ts";
 import { refreshCatalogAndPush } from "./login.ts";
-import hostI18n from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 // Request protocols offered by the wizard. All of them list models via the

@@ -1,28 +1,67 @@
 // Shared read / merge-write helpers for omp-desktop.json (the per-profile
 // desktop state file: projects, mcpSharing, ui/browser/computer sections).
-// Read is fault-tolerant (missing/corrupt file -> empty object), writes are
-// section-scoped merge-writes so unmentioned keys of the file and of the
-// section survive. Same tolerance model as host/profile.ts.
+// Reads distinguish "file absent" (a legal empty state, {}) from "file present
+// but unreadable/corrupt" (null): merging into a scratch {} base would rewrite
+// the whole file and silently drop every non-managed section (acp, keepalive,
+// ui, computerDisplay, ...). writeDesktopSection therefore refuses to write
+// when the file is unreadable/corrupt and reports, leaving the on-disk bytes
+// untouched for manual recovery. Writes merge at the file level (sibling
+// sections survive); the section itself is replaced wholesale, so unmentioned
+// section fields survive only via the caller's read-modify-write pattern.
 import { readFileSync, writeFileSync } from "node:fs";
 import { H } from "./state.ts";
+import { safeStderr } from "./stderr.ts";
 
-/** Read omp-desktop.json in full (missing/corrupt file -> empty object). */
-export function readDesktopJson(): Record<string, unknown> {
+/**
+ * Read omp-desktop.json in full. Returns {} only for the legal empty state
+ * (file absent); returns null when the file exists but cannot be served (read
+ * error like EBUSY/EPERM, corrupt JSON, or a non-object document) — callers
+ * must never merge-write over a null result.
+ */
+export function readDesktopJson(): Record<string, unknown> | null {
+  let text: string;
   try {
-    return JSON.parse(readFileSync(H.desktopProjectsPath, "utf8")) as Record<string, unknown>;
+    text = readFileSync(H.desktopProjectsPath, "utf8");
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
-    return {};
+    return null;
   }
 }
 
-/** Read one section (missing/invalid section -> empty object). */
+/** Read one section (missing file / invalid section -> empty object; unreadable file also reads as empty — only writes are gated). */
 export function readDesktopSection(section: string): Record<string, unknown> {
-  const value = readDesktopJson()[section];
+  const doc = readDesktopJson();
+  if (doc === null) return {};
+  const value = doc[section];
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * Merge-write a patch of top-level keys (one or several sibling sections at
+ * once — saveDesktopProjects overlays the six managed project-list keys in a
+ * single write), preserving every other key of the file. Same unreadable-file
+ * refusal as before: a present-but-unreadable document aborts the write.
+ */
+export function writeDesktopSections(patch: Record<string, unknown>): void {
+  const raw = readDesktopJson();
+  if (raw === null) {
+    safeStderr(
+      `[desktop-json] refusing to merge-write key(s) "${Object.keys(patch).join(", ")}": ${H.desktopProjectsPath} exists but is unreadable or corrupt; on-disk file left untouched for manual recovery\n`,
+    );
+    return;
+  }
+  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, ...patch }, null, 2));
 }
 
 /** Merge-write one section, preserving other file keys and unmentioned section fields. */
 export function writeDesktopSection(section: string, value: Record<string, unknown>): void {
-  const raw = readDesktopJson();
-  writeFileSync(H.desktopProjectsPath, JSON.stringify({ ...raw, [section]: value }, null, 2));
+  writeDesktopSections({ [section]: value });
 }

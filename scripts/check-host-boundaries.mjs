@@ -81,10 +81,13 @@ const ALLOWED_EDGES = new Set([
   // can no longer turn a log line into an unhandled rejection that drags the
   // host into fork-inducing fatal teardown (2026-10-05 session-duplication
   // incident). Leaf utility: imports nothing.
-  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "gui-path.ts→stderr.ts",
+  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "browser-mirror.ts→stderr.ts", // A4: mirror poll failure reporting
+  "gui-path.ts→stderr.ts",
+  "desktop-json.ts→stderr.ts", // A1: refuses merge-write over an unreadable/corrupt omp-desktop.json
   "editors.ts→stderr.ts", // editor icon decode failures land on stderr only (best-effort icon path)
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
+  "stats.ts→stderr.ts", // A6: rejected CORS origins are logged for misfire diagnosis
   "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
   "rpc/assets.ts→stderr.ts",
   "rpc/session.ts→stderr.ts", "rpc/settings.ts→stderr.ts",
@@ -153,6 +156,14 @@ const ALLOWED_EDGES = new Set([
   "frames.ts→kimi-thinking.ts", "rpc/settings.ts→kimi-thinking.ts",
   "rpc/models.ts→kimi-thinking.ts", "session-lifecycle.ts→kimi-thinking.ts",
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
+  // A2: the seven private omp-desktop.json read/merge-write wheels converged
+  // onto the shared desktop-json helpers — profile's project-list save (multi-
+  // key overlay) + acp/sessionContext switches, assets' hooks/plugins switches
+  // (mkdir stays caller-side), computerDisplay's remembered monitor, and
+  // set_acp_config's inline merge. keepalive-config/ui-config swap their edges
+  // in their own domain blocks below.
+  "profile.ts→desktop-json.ts", "assets.ts→desktop-json.ts",
+  "computer-display.ts→desktop-json.ts", "rpc/settings.ts→desktop-json.ts",
   // Computer-use display reconciliation: computer.display persists a Win32
   // monitor handle (xcap Monitor::id() = HMONITOR), which the kernel reassigns
   // every boot; computer-display.ts remembers the picked monitor by EDID name +
@@ -169,21 +180,38 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
+  // A12 split: the session snapshot family (goal/todos/context/stats pushes +
+  // the collapsed session_created frame body) lives in session-snapshot.ts;
+  // the subagent roster (live registration/ownership tables + the three
+  // eventBus subscriptions + the disk-replay function family) lives in
+  // subagent-view.ts. session-lifecycle keeps the load/spawn orchestration and
+  // re-exports pushContext/countCacheBreaks for the pre-split import surface.
+  "session-lifecycle.ts→session-snapshot.ts", "session-lifecycle.ts→subagent-view.ts",
+  "session-snapshot.ts→state.ts",
+  "subagent-view.ts→state.ts", "subagent-view.ts→translate.ts",
   // Cache keepalive (an inline-extension domain conditionally injected behind an experiment switch;
   // three flat files keepalive/keepalive-config/keepalive-lib)
   "session-lifecycle.ts→keepalive.ts",
   "session-lifecycle.ts→keepalive-config.ts",
   "keepalive.ts→keepalive-config.ts", "keepalive.ts→keepalive-lib.ts",
-  // Config source of truth = the keepalive section of omp-desktop.json (per-profile independent); reads/writes go through state.ts's H
-  "keepalive-config.ts→state.ts",
+  // Config source of truth = the keepalive section of omp-desktop.json (per-profile independent); reads/writes go through desktop-json.ts (A2)
+  "keepalive-config.ts→desktop-json.ts",
   // PoolEntry carries the keepalive runtime snapshot type (type-only import,
   // same precedent as state.ts→goal.ts holding the controller instance)
   "state.ts→keepalive.ts",
+  // A16: host-side keepalive state machine converged into keepalive-host.ts —
+  // the keepaliveWanted flips (markTurnWrapped / markSeen), the zeroed
+  // disabled-shape frame body (keepaliveStatusPayload) and the reportState
+  // push (reportKeepaliveState). PoolEntry keeps the state fields; the four
+  // former direct-write sites now call the operations one-way into the module.
+  "keepalive-host.ts→state.ts", "keepalive-host.ts→keepalive.ts", "keepalive-host.ts→keepalive-config.ts",
+  "session-lifecycle.ts→keepalive-host.ts",
+  "rpc/session.ts→keepalive-host.ts", "rpc/prompt.ts→keepalive-host.ts",
   // UI config persistence (omp-desktop.json ui section: locale/theme/motion/prefs):
   // applyProfile re-reads the locale on every profile apply; the set_locale /
   // set_ui_prefs RPCs write it; frames.ts carries the readUiConfig projection;
-  // read/write goes through state.ts's H (same as keepalive-config)
-  "profile.ts→ui-config.ts", "rpc/settings.ts→ui-config.ts", "ui-config.ts→state.ts",
+  // read/write goes through desktop-json.ts (A2 convergence, same as keepalive-config)
+  "profile.ts→ui-config.ts", "rpc/settings.ts→ui-config.ts", "ui-config.ts→desktop-json.ts",
   "frames.ts→ui-config.ts",
   // Desktop-owned browser routing (omp-desktop.json browser section: the
   // "use an external browser" switch). applyProfile re-applies it on every
@@ -285,6 +313,7 @@ const ALLOWED_EDGES = new Set([
   // via state). session-lifecycle feeds it events; profile re-wires it on
   // switch; the rpc domain forwards the two push-to-talk commands.
   "voice.ts→bootstrap.ts", "voice.ts→state.ts", "voice.ts→settings-compat.ts",
+  "voice.ts→stderr.ts", // cache-probe failure diagnostics go through safeStderr (A5)
   "session-lifecycle.ts→voice.ts", "profile.ts→voice.ts",
   "rpc/index.ts→rpc/voice.ts", "rpc/voice.ts→rpc/types.ts", "rpc/voice.ts→voice.ts",
   "rpc/settings.ts→voice.ts",
@@ -316,13 +345,45 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/btw.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
+  // Host i18n (A8): the host-owned i18next instance lives in host/i18n/ (moved
+  // out of ui-src/ to cut the host→ui-src reverse dependency); every module
+  // that emits user-visible host copy imports the shared instance. Locale
+  // data files under i18n/locales/ are consumed via default imports, which
+  // the named-import scanner below does not see — they stay internal to
+  // i18n/host.ts only.
+  "assets.ts→i18n/host.ts", "bootstrap.ts→i18n/host.ts", "btw.ts→i18n/host.ts", "computer-display.ts→i18n/host.ts",
+  "computer-mode.ts→i18n/host.ts",
+  "editors.ts→i18n/host.ts", "extensions.ts→i18n/host.ts", "goal.ts→i18n/host.ts",
+  "main.ts→i18n/host.ts", "mcp-builtin.ts→i18n/host.ts", "mcp-mount.ts→i18n/host.ts", "mcp-pool.ts→i18n/host.ts",
+  "plan-approve.ts→i18n/host.ts",
+  "plan.ts→i18n/host.ts", "profile.ts→i18n/host.ts", "pty.ts→i18n/host.ts",
+  "queue.ts→i18n/host.ts", "session-lifecycle.ts→i18n/host.ts", "session-poll.ts→i18n/host.ts", "state.ts→i18n/host.ts",
+  // Wire contract neutral ground (A10): pure-type single source shared with the
+  // UI (ui-src/types/frames.ts re-exports it; that direction is outside this
+  // table). Host consumers re-export the payload shapes from state/translate;
+  // wire itself stays a leaf except for the type-only Automation borrow.
+  "state.ts→wire/payloads.ts", "translate.ts→wire/payloads.ts",
+  "wire/frames-live.ts→automations/types.ts", // type-only: Automation/AutomationRun shapes
+  "wire/frames-session.ts→wire/payloads.ts", "wire/frames-models.ts→wire/payloads.ts",
+  "wire/frames-live.ts→wire/payloads.ts", "wire/frames-live.ts→wire/frames-models.ts",
+  "wire/index.ts→wire/payloads.ts", "wire/index.ts→wire/frames-session.ts",
+  "wire/index.ts→wire/frames-models.ts", "wire/index.ts→wire/frames-live.ts",
+  "translate.ts→i18n/host.ts", "ui-config.ts→i18n/host.ts",
+  "rpc/assets.ts→i18n/host.ts", "rpc/automations.ts→i18n/host.ts", "rpc/btw.ts→i18n/host.ts",
+  "rpc/capabilities.ts→i18n/host.ts", "rpc/files.ts→i18n/host.ts", "rpc/index.ts→i18n/host.ts",
+  "rpc/limits.ts→i18n/host.ts", "rpc/login.ts→i18n/host.ts", "rpc/models.ts→i18n/host.ts",
+  "rpc/provider-wizard.ts→i18n/host.ts", "rpc/prompt.ts→i18n/host.ts", "rpc/session.ts→i18n/host.ts",
+  "rpc/settings.ts→i18n/host.ts", "rpc/ssh.ts→i18n/host.ts",
 ]);
 
-// Scan one level of host/ plus the rpc/ and automations/ subdirectories (keys carry a path prefix like rpc/session.ts)
+// Scan one level of host/ plus the rpc/, automations/, i18n/ and wire/ subtrees (keys carry a path prefix like rpc/session.ts)
 const files = [
   ...readdirSync(hostDir).filter((f) => f.endsWith(".ts")),
   ...readdirSync(join(hostDir, "rpc")).filter((f) => f.endsWith(".ts")).map((f) => `rpc/${f}`),
   ...readdirSync(join(hostDir, "automations")).filter((f) => f.endsWith(".ts")).map((f) => `automations/${f}`),
+  ...readdirSync(join(hostDir, "i18n")).filter((f) => f.endsWith(".ts")).map((f) => `i18n/${f}`),
+  ...readdirSync(join(hostDir, "wire")).filter((f) => f.endsWith(".ts")).map((f) => `wire/${f}`),
+  ...readdirSync(join(hostDir, "i18n", "locales")).filter((f) => f.endsWith(".ts")).map((f) => `i18n/locales/${f}`),
 ];
 const exportsOf = {}; // file -> full set of named exports
 const importsOf = {}; // file -> [{ target, symbols, typeOnly }]
@@ -340,7 +401,7 @@ for (const f of files) {
       if (name) exported.add(name);
     }
   }
-  for (const m of src.matchAll(/export\s*\{([^}]+)\}/g)) {
+  for (const m of src.matchAll(/export\s+(?:type\s*)?\{([^}]+)\}/g)) {
     for (const part of m[1].split(",")) {
       const name = part.trim().split(/\s+as\s+/).pop()?.trim();
       if (name) exported.add(name);
@@ -367,12 +428,16 @@ for (const f of files) {
 const problems = [];
 for (const [file, imports] of Object.entries(importsOf)) {
   for (const imp of imports) {
-    // Relative imports resolving outside host/ (e.g. ../ui-src/i18n/host.ts ->
-    // "ui-src/i18n/host.ts") are not governed by this table: it only constrains
-    // edges between host/ modules (top level + rpc/). Skip before the edge check
-    // so out-of-tree imports neither need allow-listing nor trip the
-    // "nonexistent module" probe (only host/ files are scanned for exports).
-    if (imp.target.includes("/") && !imp.target.startsWith("rpc/") && !imp.target.startsWith("automations/")) continue;
+    // Out-of-tree relative imports (the former ../ui-src/i18n/host.ts ->
+    // "ui-src/i18n/host.ts" bridge) used to be skipped here; since the host
+    // i18n instance moved into host/i18n/ (A8) the host has zero ui-src/
+    // edges, so anything not resolving to a scanned host/ location
+    // (top level, rpc/, automations/, i18n/, wire/) is a violation, not a skip.
+    const scannedPrefix = imp.target.startsWith("rpc/") || imp.target.startsWith("automations/") || imp.target.startsWith("i18n/") || imp.target.startsWith("wire/");
+    if (imp.target.includes("/") && !scannedPrefix) {
+      problems.push(`非法依赖边: ${file}→${imp.target}（host 出树导入禁止，目标不属于 host 扫描域）`);
+      continue;
+    }
     const edge = `${file}→${imp.target}`;
     if (!ALLOWED_EDGES.has(edge)) {
       problems.push(`非法依赖边: ${edge}（不在 ALLOWED_EDGES，改结构须同步表并附理由）`);

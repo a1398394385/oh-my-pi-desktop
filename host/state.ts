@@ -9,45 +9,15 @@ import path from "node:path";
 import type { createAgentSession } from "./bootstrap.ts";
 import type { KeepaliveState } from "./keepalive.ts";
 import type { AuthStorage } from "@oh-my-pi/pi-ai";
+import { hostI18n } from "./i18n/host.ts";
 
 // ---------- Session pool types (declared up front for profile-switch cleanup) ----------
-export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
-export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error";
-  text: string;
-  name?: string;
-  toolCallId?: string;
-  args?: Record<string, unknown>;
-  intent?: string; // model-written `i` intent, extracted by the agent loop and stripped from args; the wait row's only "parameter"
-  added?: number;
-  removed?: number;
-  diffContent?: string; // Real unified diff of this edit/write call (the tool reply's details.diff is a truncated copy)
-  todo?: { content: string; done: number; total: number };
-  thinking?: string;
-  expandable?: boolean;
-  output?: string; // Output text of bash-like tools (after truncation), shown in the frontend's expandable card
-  details?: any; // Detailed runtime metadata of tools like read (file preview) / hub
-  collapsed?: boolean; // Loop groups start collapsed; the frontend toggles expansion
-  items?: TranscriptItem[]; // Holds this round's intermediate items when role==="loop" (thinking/tool/intermediate assistant)
-  durationSec?: number | null; // Working duration of this round (seconds)
-  usage?: TurnUsage | null; // Total LLM token consumption of this round
-  entryId?: string; // Persisted entry id (on user messages, locates the branch point for branch_session; on assistant messages, the tail-output fork anchor)
-  endMs?: number; // When this round ended (on the round-final assistant: entry timestamp from disk, or runEnd arrival time when live)
-  // ---- Bash row (role==="bash", local ! command execution) ----
-  running?: boolean; // Executing (between bash_start → bash_done)
-  exitCode?: number | null; // Process exit code; null = unknown/unfinished
-  cancelled?: boolean; // Aborted by the user
-  timedOut?: boolean; // Killed on timeout
-  truncated?: boolean; // Output was truncated (the base enforces a cap)
-  excludeFromContext?: boolean; // !! prefix: result stays out of the model context
-  error?: string; // Execution failure message
-  // ---- File mention row (role==="mention", @path already read) ----
-  // ---- Phase separator row (role==="phase", execution records: compact/handoff/rename) ----
-  phase?: "start" | "done"; // Everything replayed from disk is done; start only comes from transient frames (while executing)
-  command?: string; // compact/handoff/rename: start rows are matched and absorbed into persisted done rows by this
-  // ---- User message multimodal images (role==="user") ----
-  images?: Array<{ type: "image"; data: string; mimeType: string }>;
-};
+// TranscriptItem/TurnUsage moved to the wire contract (wire/payloads.ts, A10) as
+// the single source shared with the UI; re-exported here so the existing host
+// import surface (translate/session-lifecycle/rpc domains) stays untouched.
+// The wire version is the field superset (adds role "error" + the `intent` field).
+import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
+export type { TranscriptItem, TurnUsage };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // Host injection points such as setToolUIContext
@@ -86,7 +56,9 @@ export type PoolEntry = {
   extStatuses?: Map<string, string>;
   // Cache keepalive intent (source of the keepalive extension's isWanted):
   // set true when a turn truly wraps up (unread output exists), set false on
-  // user create/load/send/mark_seen — only sessions the user has not seen yet are probed
+  // user create/load/send/mark_seen — only sessions the user has not seen yet are probed.
+  // Writes go through keepalive-host.ts's markTurnWrapped / markSeen (A16);
+  // direct assignment outside that module is a boundary violation.
   keepaliveWanted: boolean;
   // Latest keepalive runtime snapshot reported by the injected extension
   // (undefined = the extension was never injected for this entry: keepalive
@@ -273,7 +245,10 @@ export function pushCommandOutput(sessionId: string, text: string) {
   if (w) w.send(JSON.stringify({ type: "command_output", sessionId, text }));
 }
 
-// Pending approval requests: approval_response / abort cleanup happens on the dispatch side of main.ts.
+// Pending approval requests. The whole approval state machine lives in this
+// file: entries are created by requestApproval and settled by
+// settleApprovalResponse (the approval_response RPC, bottom of this file);
+// agent-abort cleanup is requestApproval's AbortSignal listener.
 // `onSliderIndex` fires before resolve() so the plan approval flow can read the
 // picked execution tier; ordinary approvals never set it.
 export const pendingApprovals = new Map<
@@ -315,6 +290,13 @@ export function requestApproval(
     slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
     editable?: boolean;
     editableIndex?: number;
+    // Editor variant's inline-input prefill (ask's "Other" free text): the UI
+    // seeds the input row with it. Frame field, rides verbatim like the rest.
+    prefill?: string;
+    // Ask-tool intent metadata (the `i` field stashed off message_start): not
+    // a presentation concern, but it rides this verbatim frame-field channel
+    // so the ask-dialog frame keeps its exact field set.
+    intent?: unknown;
     // Plan-approval payload: the raw plan text plus its title/disk path, read
     // before the proposal turn is aborted. The approval card renders the text
     // above the options; the todo card links to the full file in the right panel.
@@ -322,6 +304,11 @@ export function requestApproval(
   },
   onSliderIndex?: (index: number) => void,
   questions?: unknown[],
+  // Pending-entry family override: blockKind derives from questions ("ask")
+  // or defaults to "approval", but the editor variant is an ask-family dialog
+  // with no questions on the frame — keepalive's blockState probes the two
+  // families through different toggles, so the classification must stay exact.
+  blockKind?: "approval" | "ask",
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
   const { promise, resolve } = Promise.withResolvers<string | undefined>();
@@ -334,8 +321,10 @@ export function requestApproval(
     onSliderIndex,
     questions,
     sessionId,
-    // ask's plain select()/editor rounds pass questions; every other caller is a permission-family dialog
-    blockKind: questions ? "ask" : "approval",
+    // Ask-family dialogs (the ask tool's select rounds and the rich askDialog)
+    // pass questions; the editor variant pins "ask" via the parameter; every
+    // other caller is a permission-family dialog.
+    blockKind: blockKind ?? (questions ? "ask" : "approval"),
   });
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
@@ -349,7 +338,8 @@ export function requestApproval(
         options,
         ...(questions ? { questions } : {}),
         // Presentation fields ride the frame verbatim (slider / disabledIndices /
-        // keepContextTokens / editable*): the UI renders each when present. They
+        // keepContextTokens / editable* / prefill / intent): the UI renders or
+        // consumes each when present. They
         // were once hand-picked onto the frame and the slider was missed, so the
         // approval card silently dropped it and execution fell back to the
         // default role tier without the operator seeing a choice.
@@ -358,4 +348,26 @@ export function requestApproval(
     ),
   );
   return promise;
+}
+
+/**
+ * approval_response RPC body: settle a pending approval/ask wait. Lives beside
+ * requestApproval so the approval state machine (pending table + request +
+ * settle) stays in one module; the rpc/settings handler table entry is
+ * registration only.
+ */
+export function settleApprovalResponse(
+  ws: { send(data: string): unknown },
+  msg: { requestId: string; sliderIndex?: number; answer?: unknown },
+) {
+  const pending = pendingApprovals.get(msg.requestId);
+  if (!pending) throw new Error(hostI18n.t("errors.setting.approvalNotFound", { requestId: msg.requestId }));
+  // The plan approval slider rides the same response; deliver it before
+  // resolve() so the flow's continuation already sees the picked tier.
+  if (pending.onSliderIndex && typeof msg.sliderIndex === "number") pending.onSliderIndex(msg.sliderIndex);
+  // Plain approvals take the raw string; the ask-dialog variant's stored
+  // resolve (session-lifecycle askDialog) parses the serialized
+  // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
+  pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
+  ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
 }

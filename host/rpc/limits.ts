@@ -6,7 +6,7 @@
 import { Tokenizer } from "../bootstrap.ts";
 import { H, sessions, type PoolEntry } from "../state.ts";
 import { fetchSessionLimits, fetchProviderAccountsLimits } from "../limits/index.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 // MCP tool schema token estimate cache: skip recomputation while the tools roster identity is unchanged

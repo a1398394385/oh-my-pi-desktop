@@ -2,12 +2,11 @@
 // inline expand-down edit form.
 // 1:1 React port of the old ui/settings/mcp.js; DOM class names aligned with the pg-mcp skeleton at git 464131d.
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
-import { confirmDialog, emptyRow } from "../common";
+import { confirmDialog, emptyRow, Sel } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
@@ -210,59 +209,6 @@ function dotState(s: McpServer): { cls: string; title: string } {
   if (s.status === "connected") return { cls: "ok", title: ti("settingsPage.mcp.dotRunning") };
   if (s.status === "error") return { cls: "err", title: ti("settingsPage.mcp.dotError") };
   return { cls: "ok", title: ti("settingsPage.mcp.dotReady") };
-}
-
-// Generic dropdown (.sel container + .menu, behavior aligned with the old wireSel: click to toggle, item-click callback, click-outside close)
-interface SelProps {
-  id?: string;
-  className?: string;
-  btnClassName?: string;
-  btnTitle?: string;
-  btnChildren?: ReactNode;
-  menuId?: string;
-  menuClassName?: string;
-  children?: ReactNode;
-  onPick: (mi: HTMLElement) => void; // the picked .mi element
-}
-function Sel({ id, className, btnClassName, btnTitle, btnChildren, menuId, menuClassName, children, onPick }: SelProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node | null)) setOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [open]);
-  return (
-    <div className={`sel ${className || ""}`} id={id} ref={ref}>
-      <button
-        type="button"
-        className={btnClassName}
-        title={btnTitle}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-      >
-        {btnChildren}
-      </button>
-      <div
-        id={menuId}
-        className={`menu${menuClassName ? ` ${menuClassName}` : ""}${open ? " open" : ""}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          const mi = (e.target as HTMLElement).closest(".mi") as HTMLElement | null;
-          if (!mi || mi.classList.contains("disabled")) return;
-          setOpen(false);
-          onPick(mi);
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
 }
 
 // Unique key of a row: same-name servers across sources distinguished by source.path
@@ -597,7 +543,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                   <span className="caret-svg"><Icon name="caret" size={12} /></span>
                 </>
               }
-              onPick={(mi) => setTransport(mi.dataset.v || "stdio")}
+              onPickMi={(mi) => setTransport(mi.dataset.v || "stdio")}
             >
               {[
                 ["stdio", t("settingsPage.mcp.transportStdio")],
@@ -622,7 +568,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                   <span className="caret-svg"><Icon name="caret" size={12} /></span>
                 </>
               }
-              onPick={(mi) => setSharing((mi.dataset.v as "session" | "project" | "global") || "session")}
+              onPickMi={(mi) => setSharing((mi.dataset.v as "session" | "project" | "global") || "session")}
             >
               {(isProjectScope
                 ? [
@@ -860,7 +806,7 @@ export default function McpPage() {
             btnClassName="mcp-btn-icon"
             btnTitle={t("settingsPage.shared.moreOptions")}
             btnChildren={<Icon name="dots" size={14} />}
-            onPick={onMorePick}
+            onPickMi={onMorePick}
           >
             <div className="mi" id="miOpenCurrentMcpConfig">
               <span className="mi-icon"><Icon name="file" size={14} /></span>

@@ -21,7 +21,7 @@ import { lookupSetting } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { KIMI_CU_SERVER, kimiCuInstalled, warmBuiltinServer } from "./mcp-builtin.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { isServerMounted, mountServerForSession, unmountServerForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 
@@ -79,7 +79,7 @@ export function computerDefaultAppliesFor(automation?: { computer?: boolean }): 
 export function warmKimiCu(): void {
   if (readComputerProvider() !== "kimi") return;
   void warmBuiltinServer(KIMI_CU_SERVER).then((ok) => {
-    if (!ok) safeStderr("[computer] kimi-cu 预热失败（点击输入框图标时会重试连接）\n");
+    if (!ok) safeStderr(hostI18n.t("errors.computer.kimiCuWarmFailed"));
   });
 }
 

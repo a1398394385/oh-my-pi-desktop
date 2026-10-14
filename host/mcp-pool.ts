@@ -13,7 +13,7 @@
 import path from "node:path";
 import { connectToServer, disconnectServer } from "./bootstrap.ts";
 import { H } from "./state.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 
 export type McpSharingMode = "session" | "project" | "global";
@@ -30,17 +30,6 @@ export interface SharedMcpConnection {
   config: any;
   createdAt: number;
   lastActiveAt: number;
-}
-
-export interface SharedMcpStats {
-  poolKey: string;
-  serverName: string;
-  sharing: "project" | "global";
-  scopeKey: string;
-  refCount: number;
-  isIdle: boolean;
-  idleRemainingMs?: number;
-  uptimeMs: number;
 }
 
 // Idle grace period: 120 seconds (2 minutes)
@@ -151,19 +140,19 @@ export async function acquireSharedMcpConnection(params: {
       conn.transport.onClose = () => {
         const live = sharedPool.get(poolKey);
         if (live && live.refCount > 0) {
-          safeStderr(`[mcp-pool] 共享连接 "${serverName}" 意外断开，正在就地透明重连...\n`);
+          safeStderr(hostI18n.t("errors.mcpPool.sharedDisconnected", { name: serverName }));
           // Re-connect and swap the connection handle once it succeeds
           void connectToServer(serverName, resolvedConfig)
             .then((newConn) => {
               if (sharedPool.get(poolKey) === live) {
                 live.connection = newConn;
-                safeStderr(`[mcp-pool] 共享连接 "${serverName}" 透明重连成功\n`);
+                safeStderr(hostI18n.t("errors.mcpPool.sharedReconnected", { name: serverName }));
               } else {
                 void disconnectServer(newConn).catch(() => {});
               }
             })
             .catch((err) => {
-              safeStderr(`[mcp-pool] 共享连接 "${serverName}" 透明重连失败: ${err}\n`);
+              safeStderr(hostI18n.t("errors.mcpPool.sharedReconnectFailed", { name: serverName, detail: String(err) }));
             });
         }
       };
@@ -207,52 +196,13 @@ export function releaseSharedMcpConnection(poolKey: string): void {
         sharedPool.delete(poolKey);
         try {
           await disconnectServer(current.connection);
-          safeStderr(`[mcp-pool] 闲置超时(${IDLE_TTL_MS / 1000}s)，已安全关闭共享实例: ${current.serverName}\n`);
+          safeStderr(hostI18n.t("errors.mcpPool.idleClosed", { sec: IDLE_TTL_MS / 1000, name: current.serverName }));
         } catch (err) {
-          safeStderr(`[mcp-pool] 关闭共享实例出错: ${err}\n`);
+          safeStderr(hostI18n.t("errors.mcpPool.idleCloseFailed", { detail: String(err) }));
         }
       }
     }, IDLE_TTL_MS);
   }
-}
-
-/**
- * Soft-cancel a request (sends notifications/cancelled, no hard kill).
- */
-export function softCancelSharedMcp(poolKey: string, requestId: string | number, reason = hostI18n.t("errors.mcp.userCancelled")): void {
-  const entry = sharedPool.get(poolKey);
-  if (!entry || !entry.connection?.transport) return;
-  try {
-    const cancelMsg = JSON.stringify({
-      jsonrpc: "2.0",
-      method: "notifications/cancelled",
-      params: { requestId, reason },
-    }) + "\n";
-    if (typeof (entry.connection.transport as any).sendRaw === "function") {
-      (entry.connection.transport as any).sendRaw(cancelMsg);
-    }
-  } catch {}
-}
-
-/**
- * Collect stats of all current shared instances.
- */
-export function getSharedMcpStats(): SharedMcpStats[] {
-  const now = Date.now();
-  const list: SharedMcpStats[] = [];
-  for (const entry of sharedPool.values()) {
-    list.push({
-      poolKey: entry.poolKey,
-      serverName: entry.serverName,
-      sharing: entry.sharing,
-      scopeKey: entry.scopeKey,
-      refCount: entry.refCount,
-      isIdle: entry.refCount === 0,
-      idleRemainingMs: entry.idleTimer ? Math.max(0, IDLE_TTL_MS - (now - entry.lastActiveAt)) : undefined,
-      uptimeMs: now - entry.createdAt,
-    });
-  }
-  return list;
 }
 
 /**

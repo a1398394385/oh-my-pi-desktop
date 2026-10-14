@@ -26,6 +26,7 @@ import {
   cfgSkills,
 } from "../bootstrap.ts";
 import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { markSeen } from "../keepalive-host.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
 import { readPluginsEnabled } from "../assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
@@ -34,7 +35,7 @@ import { pushComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue } from "../queue.ts";
 import { handleListSessions } from "./session";
 import { btwAsk } from "../btw.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
@@ -492,8 +493,8 @@ async function handlePrompt(
   if (entry.isSubagent && (text.trim().startsWith("/") || text.trim().startsWith("!"))) {
     throw new Error(hostI18n.t("errors.prompt.subagentSlashNotSupported"));
   }
-  // The user sending a message in this session = a seen interaction: clear the cache-keepalive unread state (this turn's wrap-up will set it again)
-  entry.keepaliveWanted = false;
+  // The user sending a message in this session = a seen interaction
+  markSeen(entry);
   // First-turn cache gate: the desktop opens sessions ready-to-chat, so the
   // mount (async, fired at pool entry) can still be in flight when the first
   // prompt lands. A mount landing between turns forks the prefix cache (tools
@@ -666,7 +667,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
         // Since the user ran a command, explicitly cross the gate so the full
         // in-memory entries (including this one) are written to disk.
         entry.manager.ensureOnDisk?.().catch((err: unknown) => {
-          safeStderr(`[host] ensureOnDisk 失败: ${String(err)}\n`);
+          safeStderr(hostI18n.t("errors.prompt.ensureOnDiskFailed", { detail: String(err) }));
         });
         ws.send(
           JSON.stringify({

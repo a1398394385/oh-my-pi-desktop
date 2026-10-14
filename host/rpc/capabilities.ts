@@ -2,7 +2,7 @@
 // (right-panel capabilities page).
 import { sessions } from "../state.ts";
 import { buildCapabilitiesSnapshot } from "../capabilities.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export const capabilitiesHandlers: Record<string, RpcHandler> = {

@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { defaultCwd } from "../state.ts";
 import { isGitWorktree } from "../session-lifecycle.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { quotePosixArgument } from "../bootstrap.ts";
 import { resolveRemoteTarget, readUserSshHost } from "../remote-workspaces.ts";

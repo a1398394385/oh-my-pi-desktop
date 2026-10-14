@@ -4,7 +4,7 @@
 // exit-frame push-back.
 import { PtySession as NativePty } from "@oh-my-pi/pi-natives";
 import { spawnSync } from "node:child_process";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 const isWindows = process.platform === "win32";
 

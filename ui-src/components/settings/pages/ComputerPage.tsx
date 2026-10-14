@@ -13,7 +13,7 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows, { SchemaRowsBare, SchemaGroupTitle } from "../SchemaRows";
 import { PAGE_PLACEMENT, type Section } from "../placement";
-import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { Sel, Srow, type SelOption } from "../common";
 import { IS_MAC } from "../../../platform";
 
 // This page owns the layout of both its sections (Section.id): each one is a
@@ -27,58 +27,6 @@ const SECTION_BROWSER = (PAGE_PLACEMENT["pg-computer"] ?? []).filter((s) => s.id
 const EXTERNAL_KEYS = ["browser.relay", "browser.relayUrl", "browser.cdpUrl"];
 const SECTION_EXTERNAL: Section[] = [{ keys: EXTERNAL_KEYS }];
 const OTHER_SECTIONS = (PAGE_PLACEMENT["pg-computer"] ?? []).filter((s) => !s.id);
-
-interface SelOption {
-  v: string;
-  label: ReactNode;
-  ck?: string;
-  sub?: string;
-  disabled?: boolean;
-}
-
-// Dropdown selector: same markup language as AppearancePage's Sel (controlled .sel)
-function Sel({ label, options, onPick }: { label: ReactNode; options: SelOption[]; onPick: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    claimDropdown(close);
-    document.addEventListener("click", close);
-    return () => {
-      document.removeEventListener("click", close);
-      releaseDropdown(close);
-    };
-  }, [open]);
-  return (
-    <div
-      className="sel"
-      onClick={(e) => {
-        e.stopPropagation();
-        setOpen(!open);
-      }}
-    >
-      {label} <Icon name="caret" size={14} className="caret-svg" />
-      <div className={"menu" + (open ? " open" : "")}>
-        {options.map((o) => (
-          <div
-            key={o.v}
-            className={"mi" + (o.disabled ? " disabled" : "")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (o.disabled) return;
-              setOpen(false);
-              onPick(o.v);
-            }}
-          >
-            {o.ck !== undefined && <span className="ck">{o.ck}</span>}
-            {o.label}
-            {o.sub && <span className="sub">{o.sub}</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function ComputerPage() {
   const { t } = useTranslation();
@@ -235,12 +183,9 @@ export default function ComputerPage() {
           />
         </div>
         {captureDenied && (
-          <div className="srow set-row">
-            <div className="srow-tx"><b>{t("settingsPage.computer.permissionTitle")}</b><span>{t("settingsPage.computer.permissionDesc")}</span></div>
-            <div className="srow-ctl">
-              <button type="button" className="save-btn" id="crGrant" onClick={grantCapture}>{t("settingsPage.computer.permissionBtn")}</button>
-            </div>
-          </div>
+          <Srow title={t("settingsPage.computer.permissionTitle")} desc={t("settingsPage.computer.permissionDesc")}>
+            <button type="button" className="save-btn" id="crGrant" onClick={grantCapture}>{t("settingsPage.computer.permissionBtn")}</button>
+          </Srow>
         )}
         <SchemaRowsBare sections={SECTION_COMPUTER} />
       </div>

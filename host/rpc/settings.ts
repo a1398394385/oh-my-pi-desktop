@@ -10,17 +10,17 @@ import { logger } from "@oh-my-pi/pi-utils";
 import { listPhysicalDisplays, reconcileComputerDisplay } from "../computer-display.ts";
 import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
 import type { DesktopSession } from "@oh-my-pi/pi-natives";
-import { H, sessions, pendingApprovals, type DesktopEnv } from "../state.ts";
+import { H, sessions, settleApprovalResponse, type DesktopEnv } from "../state.ts";
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
 import {
-  readAcpRaw,
   writeAcpEnabled,
   writeSessionContextEnabled,
   applyProfile,
   applySleepPrevention,
   applyDesktopEnv,
 } from "../profile.ts";
+import { readDesktopSection, writeDesktopSection } from "../desktop-json.ts";
 import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { writeKimiAutoThinking } from "../kimi-thinking.ts";
@@ -29,7 +29,7 @@ import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputer
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
-import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n, initHostI18n } from "../i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
 import { openExternal } from "../open-external.ts";
@@ -52,7 +52,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify(modelsFrame()));
       ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
     } catch (err) {
-      safeStderr(`[host] reload_settings 失败: ${err}\n`);
+      safeStderr(hostI18n.t("errors.setting.reloadFailed", { detail: String(err) }));
     }
   },
   async set_setting(ws, msg) {
@@ -184,10 +184,8 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   },
   async set_acp_config(ws, msg) {
     // Experimental features page: update the acp config section of omp-desktop.json
-    const raw = readAcpRaw();
-    const acp = (raw.acp && typeof raw.acp === "object" ? raw.acp : {}) as Record<string, unknown>;
     const patch = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
-    await writeFile(H.desktopProjectsPath, JSON.stringify({ ...raw, acp: { ...acp, ...patch } }, null, 2));
+    writeDesktopSection("acp", { ...readDesktopSection("acp"), ...patch });
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_session_context_enabled(ws, msg) {
@@ -257,9 +255,15 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     ws.send(JSON.stringify(modelsFrame()));
     await handleListSessions(ws);
+    // Asset scan failure must stay observable: swallowing it here silently
+    // strands the settings pages on a stale asset list (A5)
+    let assets;
     try {
-      ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
-    } catch {}
+      assets = await listAgentAssets();
+    } catch (err) {
+      safeStderr(`[host] switch_profile agent assets scan failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    if (assets) ws.send(JSON.stringify({ type: "agent_assets", assets }));
     ws.send(JSON.stringify({ type: "profile_switched", profile: H.currentProfile }));
   },
   set_approval_mode(ws, msg) {
@@ -324,16 +328,10 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     });
   },
   approval_response(ws, msg) {
-    const pending = pendingApprovals.get(msg.requestId);
-    if (!pending) throw new Error(hostI18n.t("errors.setting.approvalNotFound", { requestId: msg.requestId }));
-    // The plan approval slider rides the same response; deliver it before
-    // resolve() so the flow's continuation already sees the picked tier.
-    if (pending.onSliderIndex && typeof msg.sliderIndex === "number") pending.onSliderIndex(msg.sliderIndex);
-    // Plain approvals take the raw string; the ask-dialog variant's stored
-    // resolve (session-lifecycle askDialog) parses the serialized
-    // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
-    pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
-    ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
+    // Settle logic lives beside requestApproval in state.ts (A11): the approval
+    // state machine (pending table + request + settle) has one module boundary;
+    // this entry is registration only.
+    settleApprovalResponse(ws, msg);
   },
   ui_error(_ws, msg) {
     // Frontend uncaught-error reporting (WKWebView has no console). Two outlets:

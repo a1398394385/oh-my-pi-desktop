@@ -2,12 +2,39 @@
 // external writes, model and thinking level, rename/archive/stop/compact receipts, fork and
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
-import { activateSession, clearBranchingMarks, activeOpen, updateSession } from "../session";
+import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, updateSession } from "../session";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession, SubagentState } from "../../types/session";
 import { disposeRightSlot } from "../right";
 import type { HandlerSlice } from "./types";
+
+// Shared receipt for the two copy-style fork flows (session_branched from
+// branch_session, session_forked from fork_session). Clear the double-click
+// guards (items mutated, empty patch swaps the reference to notify), backfill
+// the cut entry's text, then load the new pooled session from disk — the
+// transcript itself is rebuilt from the messages frame the host pushes ahead
+// of this receipt.
+// Verified divergence (was: branched passed msg.selectedImages, forked hard
+// undefined): the host never puts selectedImages on either frame
+// (host/rpc/session.ts branch_session/fork_session send selectedText only), so
+// both paths always backfilled with images undefined. Backfill stays
+// text-only here; adding images to the wire is the A10 contract pass.
+function applyForkReceipt(msg: { ok: boolean; error?: string; newPath?: string; selectedText?: string | null }) {
+  const cur = activeOpen();
+  if (cur) {
+    clearBranchingMarks(cur.items);
+    updateSession(cur.sessionId, () => {});
+  }
+  if (!msg.ok) {
+    useAppStore.getState().toast(msg.error ?? t("notify.forkFailed"));
+    return;
+  }
+  useAppStore.getState().toast(t("notify.forked"));
+  if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, undefined, { guard: true });
+  useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
+  useAppStore.getState().send({ type: "list_sessions" });
+}
 
 export const sessionHandlers = {
   session_list(msg) {
@@ -182,23 +209,8 @@ export const sessionHandlers = {
       const { text, files } = st3.pendingNewPrompt;
       useAppStore.setState({ pendingNewPrompt: null });
       const s = st3.openSessions.get(st3.activePath ?? "");
-      if (s) {
-        const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = (files ?? [])
-          .filter((f) => f.kind === "image" && typeof f.data === "string")
-          .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
-        updateSession(s.sessionId, (next) => {
-          next.items.push({
-            role: "user",
-            text,
-            ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
-          });
-          // Same as sendPrompt: set the running state on send (clock/stop button don't wait for the host's turn_start)
-          next.streaming = true;
-          next.turnStartAt = Date.now();
-        });
-        st3.ws!.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
-        // Pin-to-bottom following is handled by the Chat component's scroll effect
-      }
+      // Single run-start write + prompt dispatch, identical to the composer send path
+      if (s) dispatchPrompt(s.sessionId, text, files);
     }
     if (st3.pendingNewBash) {
       const { command, excludeFromContext } = st3.pendingNewBash;
@@ -336,42 +348,12 @@ export const sessionHandlers = {
     useAppStore.getState().toast(msg.ok ? t("notify.contextCompacted") : (msg.error ?? t("notify.compactFailed")));
   },
   session_branched(msg) {
-    // Fork receipt: clear the double-click guards (items mutated, empty patch swaps the reference to notify); the transcript is rebuilt from the messages frame pushed by load_session
-    {
-      const cur = activeOpen();
-      if (cur) {
-        clearBranchingMarks(cur.items);
-        updateSession(cur.sessionId, () => {});
-      }
-    }
-    if (!msg.ok) {
-      useAppStore.getState().toast(msg.error ?? t("notify.forkFailed"));
-      return;
-    }
-    useAppStore.getState().toast(t("notify.forked"));
-    if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, msg.selectedImages, { guard: true });
-    useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
-    useAppStore.getState().send({ type: "list_sessions" });
+    // branch_session receipt, same switch flow as session_forked
+    applyForkReceipt(msg);
   },
   session_forked(msg) {
-    // 18.5 base fork receipt (fork_session): same switch flow as
-    // session_branched — clear the in-flight guards, backfill the cut entry's
-    // text, then load the new pooled session from disk
-    {
-      const cur = activeOpen();
-      if (cur) {
-        clearBranchingMarks(cur.items);
-        updateSession(cur.sessionId, () => {});
-      }
-    }
-    if (!msg.ok) {
-      useAppStore.getState().toast(msg.error ?? t("notify.forkFailed"));
-      return;
-    }
-    useAppStore.getState().toast(t("notify.forked"));
-    if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, undefined, { guard: true });
-    useAppStore.getState().send({ type: "load_session", path: msg.newPath });
-    useAppStore.getState().send({ type: "list_sessions" });
+    // 18.5 base fork (fork_session) receipt, same switch flow as session_branched
+    applyForkReceipt(msg);
   },
   session_tree(msg) {
     useAppStore.setState((s) => ({

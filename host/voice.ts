@@ -27,6 +27,7 @@ import type { SttState, SttTarget } from "@oh-my-pi/pi-coding-agent/stt";
 import { STTController, isSttModelCached, downloadSttModel, resolveSttModelSpec, roleCandidatePool, resolveRoleChain } from "./bootstrap.ts";
 import { H, stampEvent } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { safeStderr } from "./stderr.ts";
 
 type Ws = { send(data: string): unknown };
 
@@ -223,7 +224,12 @@ export async function pushVoiceStatus(ws: Ws): Promise<void> {
   if (resolved) {
     try {
       ready = await isSttModelCached(resolved.key);
-    } catch {}
+    } catch (err) {
+      // Cache probe failure must stay observable: silently reporting ready=false
+      // misleads the settings page into "not cached" (A5). The frame keeps the
+      // conservative false — the user can retry via the download button.
+      safeStderr(`[host] voice_status cache probe failed (${resolved.key}): ${err instanceof Error ? err.message : String(err)}\n`);
+    }
   }
   ws.send(
     JSON.stringify(

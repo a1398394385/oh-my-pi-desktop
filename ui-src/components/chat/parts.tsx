@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { ChatItem, ToolItem } from "../../types/session";
-import { useAppStore, setBump } from "../../store/index";
+import { useAppStore } from "../../store/index";
 import { patchSessionItem } from "../../store/session";
 import { invoke } from "../../store/ws";
 import { migrateGroupExpand } from "../../store/groupExpand";
@@ -17,7 +17,7 @@ import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { langOfPath } from "../../lib/highlighter";
 import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens";
-import { openRightTab } from "../main/right/RightPanel";
+import { expandRightPanel } from "../main/right/tabs";
 import LightweightDiff from "../diff/LightweightDiff";
 import { t } from "../../i18n";
 
@@ -478,14 +478,11 @@ export function openFileDiffInSidebar(path: string) {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
   if (!s || !s.isGit) return;
-  openRightTab("gitdiff");
   st.setBriefDiff(path, undefined); // the detail and inline expansion share one response
-  setBump({
+  expandRightPanel("gitdiff", {
     selectedFile: path,
     fileDiffCache: { ...st.fileDiffCache, loading: true, path },
     briefDiffPending: path,
-    rightCollapsed: false, // former expandRightPanel: expanding the right panel collapses the process card out of the way
-    todoCollapsed: true,
   });
   st.send({ type: "get_file_diff", cwd: s.cwd, path });
 }
@@ -516,7 +513,7 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
     const start = offset ?? 1;
     reqRange = [start, limit !== undefined ? start + limit - 1 : start];
   }
-  setBump({
+  expandRightPanel("file", {
     fileView: {
       path: clean,
       text: d.displayContent.text,
@@ -525,17 +522,13 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
       reqRange,
     },
     fileViewPending: clean,
-    rightCollapsed: false,
-    todoCollapsed: true,
   });
   st.send({ type: "read_file", path: clean });
-  openRightTab("file");
 }
 
 // Open a local image (message-stream entry points: read rows, image chips in markdown)
 // in the right-panel image preview, expanding the panel over the process card
 export function openImagePathPanel(full: string) {
   openImageFileView(full);
-  setBump({ rightCollapsed: false, todoCollapsed: true });
-  openRightTab("file");
+  expandRightPanel("file");
 }
