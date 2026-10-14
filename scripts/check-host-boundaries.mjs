@@ -81,7 +81,9 @@ const ALLOWED_EDGES = new Set([
   // can no longer turn a log line into an unhandled rejection that drags the
   // host into fork-inducing fatal teardown (2026-10-05 session-duplication
   // incident). Leaf utility: imports nothing.
-  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "gui-path.ts→stderr.ts",
+  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts",
+  "gui-path.ts→stderr.ts",
+  "desktop-json.ts→stderr.ts", // A1: refuses merge-write over an unreadable/corrupt omp-desktop.json
   "editors.ts→stderr.ts", // editor icon decode failures land on stderr only (best-effort icon path)
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
