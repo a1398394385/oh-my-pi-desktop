@@ -52,7 +52,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify(modelsFrame()));
       ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
     } catch (err) {
-      safeStderr(`[host] reload_settings 失败: ${err}\n`);
+      safeStderr(hostI18n.t("errors.setting.reloadFailed", { detail: String(err) }));
     }
   },
   async set_setting(ws, msg) {

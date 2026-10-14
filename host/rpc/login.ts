@@ -109,7 +109,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
       ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     } catch (err) {
-      safeStderr(`[host] 登出后模型目录刷新失败: ${err}\n`);
+      safeStderr(hostI18n.t("errors.login.logoutCatalogRefreshFailed", { detail: String(err) }));
     }
   },
   // ---- Per-account disable/restore (manual tombstones) ----
@@ -185,7 +185,7 @@ export const loginHandlers: Record<string, RpcHandler> = {
       if (!fs.existsSync(dbPath)) throw new Error(hostI18n.t("errors.account.restoreUnsupported"));
       if (!reorderProviderAccounts(dbPath, provider, ids)) throw new Error(hostI18n.t("errors.account.reorderMismatch"));
     } catch (err) {
-      safeStderr(`[host] 账号排序失败 (${provider}): ${err}\n`);
+      safeStderr(hostI18n.t("errors.login.accountReorderFailed", { provider, detail: String(err) }));
       throw err;
     }
     await H.authStorage.credentials.reload();
@@ -291,7 +291,7 @@ export async function refreshCatalogAndPush(ws: WsLike) {
   try {
     await H.modelRegistry.refresh();
   } catch (err) {
-    safeStderr(`[host] 账号变更后模型目录刷新失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.login.accountChangeCatalogRefreshFailed", { detail: String(err) }));
   }
   syncAvailableModels();
   rebuildScopedModels();

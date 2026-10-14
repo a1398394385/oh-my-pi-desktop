@@ -23,6 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { safeStderr } from "./stderr.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 const desktopProfileConfigFile = path.join(os.homedir(), ".omp", "desktop-profile.json");
 export function getSavedProfile(): string {
@@ -50,7 +51,7 @@ export function saveProfileToDisk(profile: string) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(desktopProfileConfigFile, JSON.stringify({ activeProfile: profile }, null, 2), "utf8");
   } catch (err) {
-    safeStderr(`[host] 保存 desktop-profile.json 失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.host.saveProfileFailed", { detail: String(err) }));
   }
 }
 

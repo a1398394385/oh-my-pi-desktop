@@ -28,6 +28,7 @@ import { loadAllMcpScoped, type McpServerAsset } from "./assets.ts";
 import { builtinServerAsset } from "./mcp-builtin.ts";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 /** Registry entry shape (structure-compatible with capabilities.ts McpRuntimeStatus) */
 interface MountedStatus {
@@ -111,7 +112,7 @@ export async function preloadMcpForCwd(cwd: string): Promise<void> {
   try {
     ({ servers } = await loadAllMcpScoped({ probe: false }));
   } catch (err) {
-    safeStderr(`[mcp-mount] 预载可见集计算失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.mcpMount.preloadVisibleFailed", { detail: String(err) }));
     return;
   }
   const shared = visibleMcpServers(servers, cwd).filter(
@@ -129,11 +130,11 @@ export async function preloadMcpForCwd(cwd: string): Promise<void> {
         });
         release(); // refCount back to 0: the idle TTL now owns the connection
       } catch (err) {
-        safeStderr(`[mcp-mount] 预载服务器 "${s.name}" 失败: ${err}\n`);
+        safeStderr(hostI18n.t("errors.mcpMount.preloadServerFailed", { name: s.name, detail: String(err) }));
       }
     }),
   );
-  safeStderr(`[mcp-mount] 预载完成 cwd=${cwd}: ${shared.length} 台共享服务器已入池(耗时 ${Date.now() - startedAt}ms)\n`);
+  safeStderr(hostI18n.t("errors.mcpMount.preloadDone", { cwd, servers: shared.length, ms: Date.now() - startedAt }));
 }
 
 /** Assemble the transport config for one server (union discriminant must be a literal) */
@@ -169,7 +170,7 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   try {
     ({ servers } = await loadAllMcpScoped({ probe: false }));
   } catch (err) {
-    safeStderr(`[mcp-mount] 可见集计算失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.mcpMount.visibleFailed", { detail: String(err) }));
     return;
   }
   if (stale(entry, gen)) return;
@@ -246,7 +247,7 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
       statuses.push({ name: s.name, status: "connected" });
       holds.push(hold);
     } catch (err) {
-      safeStderr(`[mcp-mount] 服务器 "${s.name}" 挂载失败: ${err}\n`);
+      safeStderr(hostI18n.t("errors.mcpMount.mountFailed", { name: s.name, detail: String(err) }));
       statuses.push({ name: s.name, status: "disconnected" });
     }
   }
@@ -263,11 +264,11 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   // refreshMCPTools returns a promise: an async rejection escapes a sync
   // try/catch, so observe it with .catch() instead of try { void ... } catch.
   entry.session.refreshMCPTools(surface).catch((err) => {
-    safeStderr(`[mcp-mount] 工具面刷新失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.mcpMount.refreshFailed", { detail: String(err) }));
   });
   if (!stale(entry, gen)) pushMcpFrame(sessionId, entry);
   if (surface.length || statuses.length) {
-    safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 挂载 ${statuses.length} 台 MCP 服务器 / ${surface.length} 个工具\n`);
+    safeStderr(hostI18n.t("errors.mcpMount.mounted", { sessionId: sessionId.slice(0, 8), servers: statuses.length, tools: surface.length }));
   }
 }
 
@@ -328,7 +329,7 @@ export async function mountServerForSession(sessionId: string, entry: PoolEntry,
     try {
       ({ servers } = await loadAllMcpScoped({ probe: false }));
     } catch (err) {
-      safeStderr(`[mcp-mount] 中途挂载可见集计算失败: ${err}\n`);
+      safeStderr(hostI18n.t("errors.mcpMount.midMountVisibleFailed", { detail: String(err) }));
       return false;
     }
     const projectScope = `project:${entry.cwd}`;
@@ -364,10 +365,10 @@ export async function mountServerForSession(sessionId: string, entry: PoolEntry,
       safeStderr(`[mcp-mount] mid-session mount refresh failed for session ${sessionId.slice(0, 8)}: ${err}\n`);
     });
     pushMcpFrame(sessionId, entry);
-    safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 中途挂载 ${name}（${minted.length} 个工具）\n`);
+    safeStderr(hostI18n.t("errors.mcpMount.midMounted", { sessionId: sessionId.slice(0, 8), name, tools: minted.length }));
     return true;
   } catch (err) {
-    safeStderr(`[mcp-mount] 会话中途挂载 "${name}" 失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.mcpMount.midMountFailed", { name, detail: String(err) }));
     upsertRegistry(sessionId, name, "disconnected");
     pushMcpFrame(sessionId, entry);
     return false;

@@ -51,12 +51,17 @@ export const hostErrorsZh = {
     summaryAborted: "分支摘要已中止",
     reloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再重新加载；当前视图仍在实时更新",
     unloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再移出内存池",
+    reloadDisposeFailed: "[host] reload_session 释放旧会话失败: {{detail}}\n",
+    unloadDisposeFailed: "[host] session_unload 释放会话失败: {{detail}}\n",
+    deleteFileFailed: "[host] 删除会话文件失败: {{detail}}\n",
+    deleteArtifactsFailed: "[host] 删除会话产物目录失败: {{detail}}\n",
   },
   prompt: {
     emptyMessage: "消息为空",
     imageOnlyFallback: "请查看附件图片。",
     subagentReadonly: "子代理会话为只读，不支持发送消息",
     subagentSlashNotSupported: "子代理会话暂不支持 Slash 命令与终端命令",
+    ensureOnDiskFailed: "[host] ensureOnDisk 失败: {{detail}}\n",
   },
   computerGateClosed: "电脑控制未在设置页开启：请先打开设置页的总开关，再在会话内运行 /computer on",
   computerUnavailable: "此会话无法启用电脑控制（computer eval 前导不可用）",
@@ -107,6 +112,7 @@ export const hostErrorsZh = {
     profileEmpty: "Profile 名称不能为空",
     invalidApprovalMode: "非法审批模式: {{mode}}",
     approvalNotFound: "审批请求不存在或已结束: {{requestId}}",
+    reloadFailed: "[host] reload_settings 失败: {{detail}}\n",
   },
   memory: {
     outsideDir: "路径不在允许的记忆目录内: {{path}}",
@@ -157,6 +163,9 @@ export const hostErrorsZh = {
     noneInFlight: "当前没有进行中的登录流程",
     keyEmpty: "API key 不能为空",
     browserOnly: "{{provider}} 仅支持浏览器登录授权，不支持 API key",
+    logoutCatalogRefreshFailed: "[host] 登出后模型目录刷新失败: {{detail}}\n",
+    accountReorderFailed: "[host] 账号排序失败 ({{provider}}): {{detail}}\n",
+    accountChangeCatalogRefreshFailed: "[host] 账号变更后模型目录刷新失败: {{detail}}\n",
   },
   account: {
     notFound: "账号不存在或已恢复",
@@ -174,6 +183,13 @@ export const hostErrorsZh = {
   host: {
     initFailed: "宿主初始化失败: {{detail}}",
     invalidJson: "非法 JSON",
+    profileInitFailed: "[host] Profile 初始化失败: {{detail}}\n",
+    wsClientReady: "[host] WS 客户端接入（前端加载与连接全链路 OK） [t={{ms}}ms]\n",
+    commandFailed: "[host] 命令 {{type}} 失败: {{detail}}\n",
+    rssOverLimit: "[host] RSS {{mb}}MB 超上限 2048MB，主动退出等待壳重启\n",
+    quotaRefreshDone: "[host] 配额预载/刷新完成: {{providers}} 个供应商\n",
+    saveProfileFailed: "[host] 保存 desktop-profile.json 失败: {{detail}}\n",
+    extWritePollFailed: "[host] 外部写入轮询失败 {{path}}: {{detail}}\n",
   },
   mcp: {
     userCancelled: "用户中止生成",
@@ -187,6 +203,7 @@ export const hostErrorsZh = {
     invalidPath: "远程路径无效（需为以 / 开头的绝对路径）: {{path}}",
     unreachable: "SSH 连接失败: {{detail}}",
     dirMissing: "远程目录不存在: {{path}}",
+    probeFailed: "[host] SSH 探测失败 {{target}} (exit {{code}}):\n{{detail}}\n",
   },
   wizard: {
     missingBaseUrl: "缺少 baseUrl",
@@ -199,6 +216,65 @@ export const hostErrorsZh = {
     unknownApp: "未知的打开方式: {{app}}",
     pathMissing: "路径不存在: {{path}}",
     launchFailed: "启动 {{app}} 失败: {{detail}}",
+  },
+  // A9: host stderr diagnostics (safeStderr) — messages keep the original
+  // bracketed log tags and trailing newline verbatim.
+  startup: {
+    timingAuthStorage: "[host][启动计时] discoverAuthStorage: {{ms}}ms (t={{t}})\n",
+    timingCatalogRefreshed: "[host][启动计时] 模型目录后台刷新完成: +{{ms}}ms, 可用模型数 {{models}}\n",
+    timingRegistry: "[host][启动计时] modelRegistry 构造(缓存目录)+后台刷新启动: {{ms}}ms (t={{t}})\n",
+    timingSettingsInit: "[host][启动计时] Settings.init: {{ms}}ms (t={{t}})\n",
+    timingWsReady: "[host][启动计时] WS 服务就绪 [t={{ms}}ms]\n",
+    profileActivated: "[host] 已激活 Profile: {{profile}}, agentDir={{agentDir}}, 可用模型数: {{models}} [t={{t0}}ms→{{t1}}ms, 总耗时 {{total}}ms]\n",
+  },
+  profile: {
+    modelOverrideNotFound: "[host] 模型覆盖失败：找不到 {{model}}，回退默认选择\n",
+    noModelsAvailable: "[host] 当前 profile 无可用模型（尚未配置 API Key 或 models.yml）\n",
+  },
+  computer: {
+    kimiCuWarmFailed: "[computer] kimi-cu 预热失败（点击输入框图标时会重试连接）\n",
+  },
+  computerDisplay: {
+    reconcileFailed: "[host] computer.display 对账失败: {{detail}}\n",
+    reconcileSkipEnumFailed: "[host] computer.display 对账跳过：显示器枚举失败（{{error}}）\n",
+    staleNoReplacement: "[host] computer.display={{current}} 已失效，且无匹配的历史选择，请在设置页重选显示器\n",
+    repointed: "[host] computer.display {{current}} → {{id}}（{{name}}）：显示器 id 随开机失效，已按上次选择重新指向\n",
+  },
+  mcpMount: {
+    preloadVisibleFailed: "[mcp-mount] 预载可见集计算失败: {{detail}}\n",
+    preloadServerFailed: "[mcp-mount] 预载服务器 \"{{name}}\" 失败: {{detail}}\n",
+    preloadDone: "[mcp-mount] 预载完成 cwd={{cwd}}: {{servers}} 台共享服务器已入池(耗时 {{ms}}ms)\n",
+    visibleFailed: "[mcp-mount] 可见集计算失败: {{detail}}\n",
+    mountFailed: "[mcp-mount] 服务器 \"{{name}}\" 挂载失败: {{detail}}\n",
+    refreshFailed: "[mcp-mount] 工具面刷新失败: {{detail}}\n",
+    mounted: "[mcp-mount] 会话 {{sessionId}} 挂载 {{servers}} 台 MCP 服务器 / {{tools}} 个工具\n",
+    midMountVisibleFailed: "[mcp-mount] 中途挂载可见集计算失败: {{detail}}\n",
+    midMounted: "[mcp-mount] 会话 {{sessionId}} 中途挂载 {{name}}（{{tools}} 个工具）\n",
+    midMountFailed: "[mcp-mount] 会话中途挂载 \"{{name}}\" 失败: {{detail}}\n",
+  },
+  mcpPool: {
+    sharedDisconnected: "[mcp-pool] 共享连接 \"{{name}}\" 意外断开，正在就地透明重连...\n",
+    sharedReconnected: "[mcp-pool] 共享连接 \"{{name}}\" 透明重连成功\n",
+    sharedReconnectFailed: "[mcp-pool] 共享连接 \"{{name}}\" 透明重连失败: {{detail}}\n",
+    idleClosed: "[mcp-pool] 闲置超时({{sec}}s)，已安全关闭共享实例: {{name}}\n",
+    idleCloseFailed: "[mcp-pool] 关闭共享实例出错: {{detail}}\n",
+  },
+  mcpBuiltin: {
+    warmNotBuiltin: "[mcp-builtin] 预热 {{name}} 失败: 未安装或非内置服务器\n",
+    warmed: "[mcp-builtin] 内置服务器 {{name}} 已预热入池\n",
+    warmFailed: "[mcp-builtin] 预热 {{name}} 失败: {{detail}}\n",
+  },
+  mcpDiscovery: {
+    userScopeFailed: "[host] MCP 用户级发现失败: {{detail}}\n",
+    projectScopeFailed: "[host] MCP 项目级发现失败 ({{cwd}}): {{detail}}\n",
+  },
+  lifecycle: {
+    queuedFollowUpFailed: "[host] 排队消息续轮触发失败: {{detail}}\n",
+    extensionSendFailed: "[host] 扩展 sendMessage 失败: {{detail}}\n",
+    sessionFileMoved: "[host] 会话文件已转移 {{from}} -> {{to}}\n",
+    sessionCreated: "[host] 新建会话 {{sessionId}} cwd={{cwd}} model={{model}} thinking={{thinking}}（活跃 {{active}}）\n",
+    sessionReused: "[host] 复用池内会话 {{sessionId}}（活跃 {{active}}）\n",
+    sessionLoaded: "[host] 加载会话 {{sessionId}} cwd={{cwd}} 历史 {{entries}} 条\n",
   },
 };
 

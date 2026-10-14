@@ -16,6 +16,7 @@ import { stat, open } from "node:fs/promises";
 import { sessions } from "./state.ts";
 import { handleListSessions } from "./rpc/session.ts";
 import { safeStderr } from "./stderr.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 const POLL_EXTERNAL_WRITES_MS = 2000;
 async function pollExternalWrites() {
@@ -73,7 +74,7 @@ async function pollExternalWrites() {
     } catch (err) {
       // New session files are lazily persisted (created on the first entry): ENOENT = nothing to monitor yet, skip silently
       if ((err as { code?: string }).code === "ENOENT") continue;
-      safeStderr(`[host] 外部写入轮询失败 ${entry.path}: ${err instanceof Error ? err.message : String(err)}\n`);
+      safeStderr(hostI18n.t("errors.host.extWritePollFailed", { path: entry.path, detail: err instanceof Error ? err.message : String(err) }));
     }
   }
 }

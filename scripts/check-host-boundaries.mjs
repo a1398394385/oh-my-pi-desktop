@@ -342,11 +342,13 @@ const ALLOWED_EDGES = new Set([
   // data files under i18n/locales/ are consumed via default imports, which
   // the named-import scanner below does not see — they stay internal to
   // i18n/host.ts only.
-  "assets.ts→i18n/host.ts", "btw.ts→i18n/host.ts", "computer-mode.ts→i18n/host.ts",
+  "assets.ts→i18n/host.ts", "bootstrap.ts→i18n/host.ts", "btw.ts→i18n/host.ts", "computer-display.ts→i18n/host.ts",
+  "computer-mode.ts→i18n/host.ts",
   "editors.ts→i18n/host.ts", "extensions.ts→i18n/host.ts", "goal.ts→i18n/host.ts",
-  "main.ts→i18n/host.ts", "mcp-pool.ts→i18n/host.ts", "plan-approve.ts→i18n/host.ts",
+  "main.ts→i18n/host.ts", "mcp-builtin.ts→i18n/host.ts", "mcp-mount.ts→i18n/host.ts", "mcp-pool.ts→i18n/host.ts",
+  "plan-approve.ts→i18n/host.ts",
   "plan.ts→i18n/host.ts", "profile.ts→i18n/host.ts", "pty.ts→i18n/host.ts",
-  "queue.ts→i18n/host.ts", "session-lifecycle.ts→i18n/host.ts", "state.ts→i18n/host.ts",
+  "queue.ts→i18n/host.ts", "session-lifecycle.ts→i18n/host.ts", "session-poll.ts→i18n/host.ts", "state.ts→i18n/host.ts",
   "translate.ts→i18n/host.ts", "ui-config.ts→i18n/host.ts",
   "rpc/assets.ts→i18n/host.ts", "rpc/automations.ts→i18n/host.ts", "rpc/btw.ts→i18n/host.ts",
   "rpc/capabilities.ts→i18n/host.ts", "rpc/files.ts→i18n/host.ts", "rpc/index.ts→i18n/host.ts",
@@ -410,7 +412,7 @@ for (const [file, imports] of Object.entries(importsOf)) {
     // "ui-src/i18n/host.ts" bridge) used to be skipped here; since the host
     // i18n instance moved into host/i18n/ (A8) the host has zero ui-src/
     // edges, so anything not resolving to a scanned host/ location
-    // (top level, rpc/, automations/, i18n/) is a violation, not a skip.
+    // (top level, rpc/, automations/, i18n/, wire/) is a violation, not a skip.
     const scannedPrefix = imp.target.startsWith("rpc/") || imp.target.startsWith("automations/") || imp.target.startsWith("i18n/");
     if (imp.target.includes("/") && !scannedPrefix) {
       problems.push(`非法依赖边: ${file}→${imp.target}（host 出树导入禁止，目标不属于 host 扫描域）`);

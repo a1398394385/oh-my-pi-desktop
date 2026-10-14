@@ -184,7 +184,7 @@ export const sshHandlers: Record<string, RpcHandler> = {
       // The frame caps the error for the dialog; the untruncated diagnostic
       // (which is what a bug report needs) only lives in the host log.
       const full = decodeSshOctalEscapes(result.stderr || result.stdout).replace(/\r\n/g, "\n").trim();
-      safeStderr(`[host] SSH 探测失败 ${buildSshTarget(config.username, config.host)} (exit ${result.code ?? "killed"}):\n${full}\n`);
+      safeStderr(hostI18n.t("errors.ssh.probeFailed", { target: buildSshTarget(config.username, config.host), code: result.code ?? "killed", detail: full }));
     }
     ws.send(
       JSON.stringify({

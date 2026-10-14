@@ -629,7 +629,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
           a.waitForIdle?.()
             .then(() => a.continue())
             .catch((err: unknown) => {
-              safeStderr(`[host] 排队消息续轮触发失败: ${String(err)}\n`);
+              safeStderr(hostI18n.t("errors.lifecycle.queuedFollowUpFailed", { detail: String(err) }));
             });
         });
       }
@@ -746,7 +746,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     {
       sendMessage: (message, options) => {
         void entry.session.sendCustomMessage(message, options).catch((err: unknown) => {
-          safeStderr(`[host] 扩展 sendMessage 失败: ${String(err)}\n`);
+          safeStderr(hostI18n.t("errors.lifecycle.extensionSendFailed", { detail: String(err) }));
         });
       },
       sendUserMessage: (content, options) => {
@@ -1019,7 +1019,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     entry.previousPaths.push(notice.from);
     entry.path = notice.to;
     entry.pollKnownSize = 0;
-    safeStderr(`[host] 会话文件已转移 ${notice.from} -> ${notice.to}\n`);
+    safeStderr(hostI18n.t("errors.lifecycle.sessionFileMoved", { from: notice.from, to: notice.to }));
   });
   // MCP connection status → capabilities_mcp incremental frames. The manager
   // is process-global while attach is per-session: with several sessions
@@ -1133,7 +1133,7 @@ export async function handleCreateSession(ws: { send(data: string): unknown }, c
       safeStderr(`[host] computer mode enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
     });
   }
-  safeStderr(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
+  safeStderr(hostI18n.t("errors.lifecycle.sessionCreated", { sessionId: sessionId.slice(0, 8), cwd: workDir, model: modelStr ?? "default", thinking: thinkingLevel ?? "default", active: sessions.size }));
 }
 
 // ---- Subagent history replay ----
@@ -1473,7 +1473,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     // Switch-back after frontend eviction: re-mount if the previous detach
     // released the session's MCP holds (idempotent — mounted sessions return)
     void mountMcpForSession(sessionId, entry);
-    safeStderr(`[host] 复用池内会话 ${sessionId.slice(0, 8)}（活跃 ${sessions.size}）\n`);
+    safeStderr(hostI18n.t("errors.lifecycle.sessionReused", { sessionId: sessionId.slice(0, 8), active: sessions.size }));
     return;
   }
   const manager = await SessionManager.open(sessionPath);
@@ -1527,5 +1527,5 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   // Restored session's subagent history: the child run files live in the sibling artifacts
   // dir; the frontend store is empty on this path, so replay the full stream
   replaySubagentHistory(ws, sessionPath, sessionId, true);
-  safeStderr(`[host] 加载会话 ${sessionId.slice(0, 8)} cwd=${entry.cwd} 历史 ${transcript.length} 条\n`);
+  safeStderr(hostI18n.t("errors.lifecycle.sessionLoaded", { sessionId: sessionId.slice(0, 8), cwd: entry.cwd, entries: transcript.length }));
 }

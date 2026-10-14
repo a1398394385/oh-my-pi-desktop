@@ -278,7 +278,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       try {
         await e.session.dispose();
       } catch (err) {
-        safeStderr(`[host] reload_session 释放旧会话失败: ${err}\n`);
+        safeStderr(hostI18n.t("errors.session.reloadDisposeFailed", { detail: String(err) }));
       }
     }
     await handleLoadSession(ws, rebuildPath);
@@ -304,7 +304,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       try {
         await e.session.dispose();
       } catch (err) {
-        safeStderr(`[host] session_unload 释放会话失败: ${err}\n`);
+        safeStderr(hostI18n.t("errors.session.unloadDisposeFailed", { detail: String(err) }));
       }
       unloaded = true;
     }
@@ -371,14 +371,14 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
-      if (err?.code !== "ENOENT") safeStderr(`[host] 删除会话文件失败: ${err}\n`);
+      if (err?.code !== "ENOENT") safeStderr(hostI18n.t("errors.session.deleteFileFailed", { detail: String(err) }));
     }
     if (p.endsWith(".jsonl")) {
       const artifactsDir = p.slice(0, -6);
       try {
         await fs.promises.rm(artifactsDir, { recursive: true, force: true });
       } catch (err: any) {
-        if (err?.code !== "ENOENT") safeStderr(`[host] 删除会话产物目录失败: ${err}\n`);
+        if (err?.code !== "ENOENT") safeStderr(hostI18n.t("errors.session.deleteArtifactsFailed", { detail: String(err) }));
       }
     }
     await handleListSessions(ws);

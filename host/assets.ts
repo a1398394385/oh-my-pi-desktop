@@ -794,7 +794,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
       });
     }
   } catch (err) {
-    safeStderr(`[host] MCP 用户级发现失败: ${err}\n`);
+    safeStderr(hostI18n.t("errors.mcpDiscovery.userScopeFailed", { detail: String(err) }));
   }
 
   // Read the current profile's mcp.json directly so freshly saved config and the sharing field stay 100% in sync
@@ -889,7 +889,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
         count++;
       }
     } catch (err) {
-      safeStderr(`[host] MCP 项目级发现失败 (${cwd}): ${err}\n`);
+      safeStderr(hostI18n.t("errors.mcpDiscovery.projectScopeFailed", { cwd, detail: String(err) }));
     }
 
     // Read the project .omp/mcp.json directly so project-level additions and sharing sync 100%

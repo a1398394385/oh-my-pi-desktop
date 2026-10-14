@@ -79,7 +79,7 @@ export function computerDefaultAppliesFor(automation?: { computer?: boolean }): 
 export function warmKimiCu(): void {
   if (readComputerProvider() !== "kimi") return;
   void warmBuiltinServer(KIMI_CU_SERVER).then((ok) => {
-    if (!ok) safeStderr("[computer] kimi-cu 预热失败（点击输入框图标时会重试连接）\n");
+    if (!ok) safeStderr(hostI18n.t("errors.computer.kimiCuWarmFailed"));
   });
 }
 

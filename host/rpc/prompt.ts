@@ -667,7 +667,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
         // Since the user ran a command, explicitly cross the gate so the full
         // in-memory entries (including this one) are written to disk.
         entry.manager.ensureOnDisk?.().catch((err: unknown) => {
-          safeStderr(`[host] ensureOnDisk 失败: ${String(err)}\n`);
+          safeStderr(hostI18n.t("errors.prompt.ensureOnDiskFailed", { detail: String(err) }));
         });
         ws.send(
           JSON.stringify({

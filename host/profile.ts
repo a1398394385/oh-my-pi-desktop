@@ -283,7 +283,7 @@ export async function applyProfile(profileName: string) {
   // Startup segment timing (performance.now() zeroed at process start): locate the big cost centers before the ready frame
   let t = performance.now();
   H.authStorage = await discoverAuthStorage(H.agentDir);
-  safeStderr(`[host][启动计时] discoverAuthStorage: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(hostI18n.t("errors.startup.timingAuthStorage", { ms: (performance.now() - t).toFixed(0), t: t.toFixed(0) }));
   t = performance.now();
   H.modelRegistry = new ModelRegistry(H.authStorage);
   // Aligned with CLI startup semantics (refreshInBackground in main.ts): the
@@ -299,13 +299,13 @@ export async function applyProfile(profileName: string) {
     if (H.modelRegistry !== reg || !H.settings) return; // profile switched again during refresh, or the refresh landed before Settings.init finished (18.5.0's non-empty built-in catalog makes this reachable): drop the callback — applyProfile's own later rebuild covers it
     syncAvailableModels();
     rebuildScopedModels();
-    safeStderr(`[host][启动计时] 模型目录后台刷新完成: +${(performance.now() - t).toFixed(0)}ms, 可用模型数 ${H.availableModels.length}\n`);
+    safeStderr(hostI18n.t("errors.startup.timingCatalogRefreshed", { ms: (performance.now() - t).toFixed(0), models: H.availableModels.length }));
     H.onModelsRefreshed?.();
   });
-  safeStderr(`[host][启动计时] modelRegistry 构造(缓存目录)+后台刷新启动: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(hostI18n.t("errors.startup.timingRegistry", { ms: (performance.now() - t).toFixed(0), t: t.toFixed(0) }));
   t = performance.now();
   H.settings = await Settings.init({ cwd: defaultCwd, agentDir: H.agentDir });
-  safeStderr(`[host][启动计时] Settings.init: ${(performance.now() - t).toFixed(0)}ms (t=${t.toFixed(0)})\n`);
+  safeStderr(hostI18n.t("errors.startup.timingSettingsInit", { ms: (performance.now() - t).toFixed(0), t: t.toFixed(0) }));
   // Sync the capability discovery registry: disabledProviders/enabledProviders -> in-memory registry (same call as the CLI entry;
   // without it, third-party sources the user disabled still show up / count as enabled at the discovery layer)
   initializeWithSettings(H.settings);
@@ -339,7 +339,7 @@ export async function applyProfile(profileName: string) {
   // a value that resolved before a reboot names nothing afterwards (the base
   // then rejects every capture). Re-point it at the same physical monitor on
   // every profile apply — i.e. before any session can read a dead value.
-  void reconcileComputerDisplay().catch(err => safeStderr(`[host] computer.display 对账失败: ${err}\n`));
+  void reconcileComputerDisplay().catch(err => safeStderr(hostI18n.t("errors.computerDisplay.reconcileFailed", { detail: String(err) })));
   // Computer-use Kimi provider: warm the builtin kimi-cu connection into the
   // shared pool when the provider pick says kimi (global pool is keyed by the
   // profile's agentDir, so every profile apply re-warms its own pool entry).
@@ -361,15 +361,22 @@ export async function applyProfile(profileName: string) {
     : undefined;
 
   if (process.env.OMP_DESKTOP_MODEL && !H.modelOverride) {
-    safeStderr(`[host] 模型覆盖失败：找不到 ${process.env.OMP_DESKTOP_MODEL}，回退默认选择\n`);
+    safeStderr(hostI18n.t("errors.profile.modelOverrideNotFound", { model: process.env.OMP_DESKTOP_MODEL }));
   }
   if (H.scopedModels.length === 0) {
-    safeStderr("[host] 当前 profile 无可用模型（尚未配置 API Key 或 models.yml）\n");
+    safeStderr(hostI18n.t("errors.profile.noModelsAvailable"));
   }
 
   await refreshAvailableProfiles();
   safeStderr(
-    `[host] 已激活 Profile: ${target}, agentDir=${H.agentDir}, 可用模型数: ${H.availableModels.length} [t=${t0.toFixed(0)}ms→${performance.now().toFixed(0)}ms, 总耗时 ${(performance.now() - t0).toFixed(0)}ms]\n`,
+    hostI18n.t("errors.startup.profileActivated", {
+      profile: target,
+      agentDir: H.agentDir,
+      models: H.availableModels.length,
+      t0: t0.toFixed(0),
+      t1: performance.now().toFixed(0),
+      total: (performance.now() - t0).toFixed(0),
+    }),
   );
 
   // Automations state is per-profile (<agentDir>/automations.json, read fresh on
