@@ -9,7 +9,7 @@
 > 边界约束(全队列有效):
 >
 > - **票绿即 commit**(worktree 内 commit,不 push、不提 PR);commit message 解释为什么。
-> - 验证三件套:`bun run check` 必跑;动 `ui-src/` 加 `bun run ui:typecheck`(必要时 `ui:build`);动 `host/` 加 `bun run host:build`。smoke 一律 `OMP_PROFILE=omp-desktop-test`(package.json 已内嵌);需真模型或 default profile 的冒烟在票面标注,不在无用户在场时跑。
+> - 验证三件套:`bun run check` 必跑;动 `ui-src/` 加 `bun run ui:typecheck`(必要时 `ui:build`);动 `host/` 加 `bun run host:build`。smoke 一律 `OMP_PROFILE=omp-desktop-test`(package.json 已内嵌;无 npm 别名的冒烟直接 `OMP_PROFILE=omp-desktop-test bun scripts/<file>.ts` 执行);需真模型或 default profile 的冒烟在票面标注,不在无用户在场时跑。
 > - **测试红线**:禁止裸跑 vitest / 多包并发测试;任何长跑命令中断后 `ps aux | grep vitest` 查孤儿进程。
 > - 代码注释英文;用户可见文案走 `ui-src/i18n/`(UI)/ hostI18n(host);全部文件 UTF-8。
 > - **外科手术式**:每行改动可追溯到票面;票面外的缺陷记入回报不顺手修;既有死代码只报告不删除。
@@ -75,7 +75,7 @@ A20 ui/assets/app.js 旧产物删除            ← blocked-on-user(文件删除
 
 ## A3: delete_session 协议分叉修复(path+previousPaths + dispose)
 
-**What to build**:候选5 疑似真 bug。`host/rpc/session.ts:328` 只精确匹配 `entry.path`,违反 state.ts:183-189 记录的条目身份协议(path + previousPaths)——持久化迁移过的会话按旧 path 删除时池条目漏删,文件删了 AgentSession 还活着继续写新文件;且释放序列缺 dispose(对照 reload_session:261-283 / session_unload:298-310),另有 3 处裸 `catch {}` 吞错。最小修法:匹配与释放对齐另两处;若四调用点(reload/unload/delete/handleLoadSession:1488-1491)自然导向 resolvePoolEntry/releasePoolEntry 两原语则顺势收敛,不强行抽象;裸 catch 换 safeStderr。
+**What to build**:候选5 疑似真 bug。`host/rpc/session.ts:328` 只精确匹配 `entry.path`,违反 state.ts:183-189 记录的条目身份协议(path + previousPaths)——持久化迁移过的会话按旧 path 删除时池条目漏删,文件删了 AgentSession 还活着继续写新文件;且释放序列缺 dispose(对照 reload_session:261-283 / session_unload:298-310),另有 2 处裸 `catch {}` 吞错(:330、:331)。最小修法:匹配与释放对齐另两处;若四调用点(reload/unload/delete + host/session-lifecycle.ts:1488-1491 的 handleLoadSession 池匹配)自然导向 resolvePoolEntry/releasePoolEntry 两原语则顺势收敛,不强行抽象;裸 catch 换 safeStderr。
 
 **Blocked by**: None — can start immediately
 **Status**: open
@@ -88,7 +88,7 @@ A20 ui/assets/app.js 旧产物删除            ← blocked-on-user(文件删除
 
 ## A4: 功能静默失效 5 处补上报(E-2)
 
-**What to build**:开关显示正常、实际没生效的五处,统一补 safeStderr 或 error 帧上报:①`host/profile.ts:198` winSleepSetter 防休眠失败;②`host/session-lifecycle.ts:1146-1150、:1138-1142` kimi 自动思考门控整段吞错;③`host/mcp-mount.ts:300-302、:393-395` 卸载后 refreshMCPTools 失败静默——注意 `try { void promise } catch` 结构上抓不到异步 rejection,须改 `promise.catch(fn)` 形态,并与挂载路径(:263-267 有日志)对称;④`host/browser-mirror.ts:264-267` 镜像 poll 总开关吞错;⑤`host/session-lifecycle.ts:1154、:1190` setComputerMode 蒸发。
+**What to build**:开关显示正常、实际没生效的五处,统一补 safeStderr 或 error 帧上报:①`host/profile.ts:198` winSleepSetter 防休眠失败;②`host/session-lifecycle.ts:1146-1150` kimi 自动思考门控与 `:1138-1142` 显式 thinkingLevel 设置的吞错(同修法);③`host/mcp-mount.ts:300-302、:393-395` 卸载后 refreshMCPTools 失败静默,以及**挂载路径 `:263-267`(同为 `try { void promise } catch` 形态,catch 抓不到异步 rejection,一并改 `promise.catch(fn)` 形态)**,与挂载侧日志对称;④`host/browser-mirror.ts:264-267` 镜像 poll 总开关吞错;⑤`host/session-lifecycle.ts:1154、:1190` setComputerMode 蒸发。
 
 **Blocked by**: None — can start immediately
 **Status**: open
@@ -152,7 +152,7 @@ A20 ui/assets/app.js 旧产物删除            ← blocked-on-user(文件删除
 
 ## A9: 57 处中文 stderr 迁 hostI18n(B-3)
 
-**What to build**:16 文件 57 处 `safeStderr` 中文硬编码(重灾区 mcp-mount.ts 11、profile.ts 8、main.ts 6、session-lifecycle.ts 6),基础设施 hostI18n 已在位未铺满。逐处迁 `hostI18n.t`,新键入既有 errors.* 命名空间,双语言补齐。用户可操作类优先(如 profile.ts:366 无可用模型、computer-display.ts:126 重选显示器)。
+**What to build**:16 文件 55 处 `safeStderr` 中文硬编码(重灾区 mcp-mount.ts 11、session-lifecycle.ts 6、profile.ts 7、main.ts 6),基础设施 hostI18n 已在位未铺满。逐处迁 `hostI18n.t`,新键入既有 errors.* 命名空间,双语言补齐。用户可操作类优先(如 profile.ts:366 无可用模型、computer-display.ts:126 重选显示器)。
 
 **Blocked by**: A8(同文件域,先完成迁移减少 import churn)
 **Status**: open
@@ -165,7 +165,7 @@ A20 ui/assets/app.js 旧产物删除            ← blocked-on-user(文件删除
 
 ## A10: wire 帧契约中立位——响应方向合一 + 请求方向补类型(候选1)
 
-**What to build**:整合修正后的候选1(原「ui-src 直接 import host」方案被 B-2 否定,反向依赖本身是问题)。落点:中立位置单个纯类型文件(零运行时代码、零 Node/Bun 类型依赖——host 不在 ui 的 tsconfig,混合依赖造成 tsc 假绿),放 `host/wire/` 或按 A8 确立的中立位规则。内容:HostFrame union + 共享 payload 形状(TranscriptItem/UiEvent/TurnUsage/KeepaliveConfig)单一真源;`ui-src/types/frames.ts` 的手抄镜像改为 import 转发或直接替换;**顺手修三处已漂移**(frames.ts:371 缺 "error" role、UiEvent 缺 user_message、锚点注释改符号引用如 `host/state.ts#TranscriptItem` 弃行号)。第二个 commit:请求方向 union(键集镜像 host rpcHandlers,可加 check 断言键集一致),`WsSlice.send` 签名从 `unknown` 收紧;110 个旧调用点渐进迁移不强制一次改完。
+**What to build**:整合修正后的候选1(原「ui-src 直接 import host」方案被 B-2 否定,反向依赖本身是问题)。落点:中立位置单个纯类型文件(零运行时代码、零 Node/Bun 类型依赖——host 不在 ui 的 tsconfig,混合依赖造成 tsc 假绿),放 `host/wire/` 或按 A8 确立的中立位规则。内容:HostFrame union + 共享 payload 形状(TranscriptItem/UiEvent/TurnUsage/KeepaliveConfig)单一真源;`ui-src/types/frames.ts` 的手抄镜像改为 import 转发或直接替换;**顺手修三处已漂移**(frames.ts:371 缺 "error" role、`host/translate.ts` 的 UiEvent union 缺 user_message 变体(实发点 `host/automations/scheduler.ts:317`)、锚点注释改符号引用如 `host/state.ts#TranscriptItem` 弃行号)。第二个 commit:请求方向 union(键集镜像 host rpcHandlers,可加 check 断言键集一致),`WsSlice.send` 签名从 `unknown` 收紧;110 个旧调用点渐进迁移不强制一次改完。
 
 **Blocked by**: A8
 **Status**: open
@@ -179,7 +179,7 @@ A20 ui/assets/app.js 旧产物删除            ← blocked-on-user(文件删除
 
 ## A11: 审批流收拢 requestApproval(候选2)
 
-**What to build**:`host/state.ts:279-361` 的 requestApproval(presentation 通道已全支持 editable/editableIndex/prefill/slider/plan/questions)只被 select(:694)使用;confirm(:703-723)/editor(:724-752)/askDialog(:759-794)在 session-lifecycle 各手搓 25 行(randomUUID + pendingApprovals.set + ws.send + abort 监听,细节有微差:confirm 无 abort 监听);approval_response 的 settle 落在 `rpc/settings.ts:326-337`(域错位);state.ts:276 注释指认 main.ts 已陈旧。收敛:三处改走 requestApproval(补齐差异参数),settle dispatch 挪到 requestApproval 同文件,审批状态机(表 + settle + blockKind + keepalive:414-428 读取)获得单一模块边界。abort 监听差异(confirm 无)核实是刻意还是漏,刻意则注释。
+**What to build**:`host/state.ts:279-361` 的 requestApproval(presentation 现支持 keepContextTokens/disabledIndices/slider/editable/editableIndex/plan/questions;**prefill 是缺口**——只在 editor 手搓帧 `session-lifecycle.ts:747` 存在,收敛 editor 时必须扩展 presentation(或帧构造)补上,否则 ask 对话框已输入文本的回填丢失)只被 select(:694)使用;confirm(:703-723)/editor(:724-752)/askDialog(:759-794)在 session-lifecycle 各手搓 25 行(randomUUID + pendingApprovals.set + ws.send + abort 监听,细节有微差:confirm 无 abort 监听);approval_response 的 settle 落在 `rpc/settings.ts:326-337`(域错位);state.ts:276 注释指认 main.ts 已陈旧。收敛:三处改走 requestApproval(补齐差异参数含 prefill),settle dispatch 挪到 requestApproval 同文件,审批状态机(表 + settle + blockKind + session-lifecycle.ts:414-428 的 keepalive blockState 读取)获得单一模块边界。abort 监听差异(confirm 无)核实是刻意还是漏,刻意则注释。
 
 **Blocked by**: None — can start immediately(宜先于 A12:同在 session-lifecycle,减少拆分后返工)
 **Status**: open
@@ -192,7 +192,7 @@ A20 ui/assets/app.js 旧产物删除            ← blocked-on-user(文件删除
 
 ## A12: session-lifecycle.ts 切两个内部 seam + created 帧收敛(候选4+6)
 
-**What to build**:1587 行按概念切两刀:①`host/subagent-view.ts`——live 侧 5 个 Map(:890-901)+ 3 个订阅 payload 拼装(:925-1044,含 IRC wake-turn 折算 :968-982)+ 磁盘重放纯函数族(:1194-1476 约 280 行),attachEntry 只留订阅接线;②`host/session-snapshot.ts`——pushGoal/pushTodos/pushContext/buildSessionStats/countCacheBreaks(:109-300)+ keepaliveStatusPayload(:57-78)。③顺带候选6:session_created 帧体三抄(:1156-1170/:1500-1513/:1557-1570)收敛单一构造点,快照九步序列(:1514-1521/:1571-1585)按 mode 参数化组合,分支差异(顺序差异)显式注释是必须还是偶然。纯搬家重构,diff 证明行为零变;完成后下调 A7 棘轮(session-lifecycle 基线)。
+**What to build**:1585 行按概念切两刀:①`host/subagent-view.ts`——live 侧 5 个 Map(:890-901)+ 3 个订阅 payload 拼装(:925-1044,含 IRC wake-turn 折算 :968-982)+ 磁盘重放纯函数族(:1194-1476 约 280 行),attachEntry 只留订阅接线;②`host/session-snapshot.ts`——pushGoal/pushTodos/pushContext/buildSessionStats/countCacheBreaks(:109-300)+ keepaliveStatusPayload(:57-78)。③顺带候选6:session_created 帧体三抄(:1156-1170/:1500-1513/:1557-1570)收敛单一构造点,快照九步序列(:1514-1521/:1571-1585)按 mode 参数化组合,分支差异(顺序差异)显式注释是必须还是偶然。纯搬家重构,diff 证明行为零变;完成后下调 A7 棘轮(session-lifecycle 基线)。
 
 **Blocked by**: A7(棘轮先锁)、A11(同文件先收敛审批)
 **Status**: open
