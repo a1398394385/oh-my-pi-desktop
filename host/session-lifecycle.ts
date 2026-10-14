@@ -700,55 +700,35 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         dialogOptions?.signal,
       );
     },
-    confirm(title: string, message: string): Promise<boolean> {
-      return new Promise((resolve) => {
-        const requestId = crypto.randomUUID();
-        const settle = (v: string | undefined) => {
-          pendingApprovals.delete(requestId);
-          resolve(v === "OK");
-        };
-        pendingApprovals.set(requestId, { resolve: settle, sessionId, blockKind: "approval" });
-        ws.send(
-          JSON.stringify(
-            stampEvent({
-              type: "approval_request",
-              sessionId,
-              requestId,
-              title: `${title}\n${message}`,
-              options: ["OK", "Cancel"],
-            }),
-          ),
-        );
-      });
+    confirm(title: string, message: string, dialogOptions?: any): Promise<boolean> {
+      // The third arg is part of the base interface (usage-fallback and
+      // computer-control confirmers pass { signal }); without the listener the
+      // card would outlive the abort that cancelled the wait.
+      return requestApproval(
+        ws,
+        sessionId,
+        `${title}\n${message}`,
+        ["OK", "Cancel"],
+        dialogOptions?.signal,
+      ).then((v) => v === "OK");
     },
     editor(title: string, prefill?: string, dialogOptions?: any): Promise<string | undefined> {
       // ask's "Other" free-text input goes through here; a missing implementation kills the tool outright with undefined is not a function
-      return new Promise((resolve) => {
-        const requestId = crypto.randomUUID();
-        const settle = (v: string | undefined) => {
-          pendingApprovals.delete(requestId);
-          resolve(v);
-        };
-        pendingApprovals.set(requestId, { resolve: settle, sessionId, blockKind: "ask" });
-        dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
-        // Stable option ids + editableIndex protocol field: the UI renders
-        // localized labels from the ids and locates the inline input row by
-        // index — the contract never depends on display text.
-        ws.send(
-          JSON.stringify(
-            stampEvent({
-              type: "approval_request",
-              sessionId,
-              requestId,
-              title,
-              options: ["submit", "cancel"],
-              editable: true,
-              editableIndex: 0,
-              prefill: prefill ?? "",
-            }),
-          ),
-        );
-      });
+      // Stable option ids + editableIndex protocol field: the UI renders
+      // localized labels from the ids and locates the inline input row by
+      // index — the contract never depends on display text.
+      return requestApproval(
+        ws,
+        sessionId,
+        title,
+        ["submit", "cancel"],
+        dialogOptions?.signal,
+        { editable: true, editableIndex: 0, prefill: prefill ?? "" },
+        undefined,
+        undefined,
+        // Ask-family dialog even though no questions ride the frame.
+        "ask",
+      );
     },
     // (18.5) Rich ask dialog: the ask tool with a questions array surfaces
     // here instead of per-question select() rounds. The frame reuses the
@@ -757,8 +737,6 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // answer = JSON.stringify(ExtensionAskDialogSubmitResult). Aborts and
     // unknown answers resolve undefined (the base treats that as cancelled).
     askDialog(questions: unknown[], dialogOptions?: any): Promise<unknown> {
-      const { promise, resolve } = Promise.withResolvers<unknown>();
-      const requestId = crypto.randomUUID();
       const parseAskAnswer = (answer: string) => {
         try {
           const parsed = JSON.parse(answer) as { kind?: unknown };
@@ -768,29 +746,19 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         }
         return undefined;
       };
-      const settle = (v: string | undefined) => {
-        pendingApprovals.delete(requestId);
-        resolve(v === undefined ? undefined : parseAskAnswer(v));
-      };
-      pendingApprovals.set(requestId, { resolve: settle, questions, sessionId, blockKind: "ask" });
-      dialogOptions?.signal?.addEventListener("abort", () => settle(undefined), { once: true });
       const intent = askIntent;
       askIntent = undefined;
       const first = (questions[0] ?? {}) as { header?: string; question?: string };
-      ws.send(
-        JSON.stringify(
-          stampEvent({
-            type: "approval_request",
-            sessionId,
-            requestId,
-            title: first.header ?? first.question ?? "ask",
-            options: ["submit", "cancel"],
-            questions,
-            intent,
-          }),
-        ),
-      );
-      return promise;
+      return requestApproval(
+        ws,
+        sessionId,
+        first.header ?? first.question ?? "ask",
+        ["submit", "cancel"],
+        dialogOptions?.signal,
+        { intent },
+        undefined,
+        questions,
+      ).then((v) => (v === undefined ? undefined : parseAskAnswer(v)));
     },
   };
   entry.sessionResult.setToolUIContext(uiCtx, true);

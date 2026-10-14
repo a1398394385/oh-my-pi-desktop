@@ -10,7 +10,7 @@ import { logger } from "@oh-my-pi/pi-utils";
 import { listPhysicalDisplays, reconcileComputerDisplay } from "../computer-display.ts";
 import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
 import type { DesktopSession } from "@oh-my-pi/pi-natives";
-import { H, sessions, pendingApprovals, type DesktopEnv } from "../state.ts";
+import { H, sessions, settleApprovalResponse, type DesktopEnv } from "../state.ts";
 import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
 import {
@@ -324,16 +324,10 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     });
   },
   approval_response(ws, msg) {
-    const pending = pendingApprovals.get(msg.requestId);
-    if (!pending) throw new Error(hostI18n.t("errors.setting.approvalNotFound", { requestId: msg.requestId }));
-    // The plan approval slider rides the same response; deliver it before
-    // resolve() so the flow's continuation already sees the picked tier.
-    if (pending.onSliderIndex && typeof msg.sliderIndex === "number") pending.onSliderIndex(msg.sliderIndex);
-    // Plain approvals take the raw string; the ask-dialog variant's stored
-    // resolve (session-lifecycle askDialog) parses the serialized
-    // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
-    pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
-    ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
+    // Settle logic lives beside requestApproval in state.ts (A11): the approval
+    // state machine (pending table + request + settle) has one module boundary;
+    // this entry is registration only.
+    settleApprovalResponse(ws, msg);
   },
   ui_error(_ws, msg) {
     // Frontend uncaught-error reporting (WKWebView has no console). Two outlets:
