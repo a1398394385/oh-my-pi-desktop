@@ -17,6 +17,10 @@ export function createAcpRuntime(opts: {
 	sink: AcpSummarySink;
 	getEntries: () => readonly SessionEntry[];
 	params?: Partial<AcpParams>;
+	/** Level-3 force channel (spec §5.2/§10): arms tool_choice on the live session. */
+	forceCompressTool?: () => void;
+	/** §5.3 degrade hook: restore the base compaction chain on the settings child. */
+	onDegrade?: (reason: string) => void;
 }): AcpRuntimeState {
 	const tokenizer = new Tokenizer(opts.model as never);
 	return new AcpRuntimeState({
@@ -26,6 +30,8 @@ export function createAcpRuntime(opts: {
 		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
 		contextWindow: (opts.model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0,
 		params: opts.params,
+		forceCompressTool: opts.forceCompressTool,
+		onDegrade: opts.onDegrade,
 	});
 }
 

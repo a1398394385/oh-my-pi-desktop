@@ -1001,3 +1001,15 @@ if (!multi && qi < askQs.length - 1) goTo(qi + 1);
 **验证**：Playwright WebKit（=WKWebView 同 WebCore）真 host + test profile 真实会话——修复前 1.3x 偏右 29.23px / 0.7x 偏左 119.08px 复现，修复后 1.0/1.3/0.7/2.0 四档 d(btn, flow)=0.0 且行盒保持全宽；Chromium 1.3/0.7 回归 0.0。`bun run ui:build`、`bun run check` 十步全绿。
 
 **教训**：同一视口下的两种 CSS 居中（镜像 padding vs margin-auto）数学等价，但 zoom 子树内不等价——WebKit 对跨 zoom 边界的自定义属性 + `max()/min()` 嵌套 calc 不生效/不折算，两条路径各自为政。zoom 生效区域里的居中必须与列帽共享同一条规则（同一机制、同一选择器列表），不得私造镜像公式。排查路径提示：Chromium 全绿时换 WebKit 复现（`page.goto` 需 `wait_until="commit"`）；截图证据里的「字号不随缩放」直接指向「渲染在 zoom 子树边界外/属性冻结」。
+
+### BUG-070: ACP L3 forced 兜底与 degrade 恢复链在生产装配中静默失效——assembly 工厂签名缺 `forceCompressTool`/`onDegrade`，调用方多传的两个参数被 JS 运行时丢弃
+
+**现象**：SWE-bench 消融实验（外部会话，2026-10-14）在真实模型会话中发现 ACP 的 L3 forced 通道从未触发、host.log 也从未出现 `[ACP] degraded`。分诊：②确认存量缺陷（T7 落地即存在，`scripts/smoke-acp-forced.ts` 全绿——冒烟直接 `new AcpRuntimeState(deps)` 绕过了 assembly 工厂，恰好测不到装配缝）。
+
+**根因**：`host/session-lifecycle.ts:326` 调 `createAcpRuntime({model, sink, getEntries, params, forceCompressTool, onDegrade})` 传 6 个字段，而 `host/acp-assembly.ts` 的工厂签名只声明 4 个字段、构造 `AcpRuntimeState` 时也只透传 4 个——`forceCompressTool`（L3 通牒后钉 tool_choice 的唯一通道）与 `onDegrade`（degrade 后恢复 base 压缩链的钩子）被 JS 运行时静默丢弃。宿主侧防线全空：`host/` 不在任何 tsconfig 里（excess property check 不存在），`bun build --external '*'` 也不查类型。
+
+**修复**：`acp-assembly.ts` 工厂签名补齐 `forceCompressTool?: () => void` 与 `onDegrade?: (reason: string) => void` 并透传进 `AcpRuntimeDeps`（deps 接口本来就有这两字段，纯装配遗漏）。
+
+**验证**：`bun build host/host.ts --external '*'` 通过；ACP 冒烟 10 件套（forced/pull/ephemeral/projection/tool/strong/recall/persist/tiermode/synth，`OMP_PROFILE=acp-probe`）全绿；外部实验侧端到端探针（真实 MiniMax 会话，l3=3K）确认 `context_status`/`compress_context` 可被模型调用、`[acp-report]` 正常落盘。
+
+**教训**：①**装配工厂加参数时必须同步检查全部调用方的实参集合**——调用方先写（session-lifecycle）、工厂后拆文件时丢字段，两端各自看都「没问题」；②`host/` 不进 typecheck 意味着「签名不匹配」这类错误只有运行时行为差异能暴露——绕过工厂直构 deps 的冒烟测不到装配层，**冒烟的装配路径要尽量与生产同构**（走工厂，或对工厂加一个把关键字段透传给 deps 的直构断言）。
