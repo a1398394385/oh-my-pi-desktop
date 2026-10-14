@@ -87,6 +87,7 @@ const ALLOWED_EDGES = new Set([
   "editors.ts→stderr.ts", // editor icon decode failures land on stderr only (best-effort icon path)
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
+  "stats.ts→stderr.ts", // A6: rejected CORS origins are logged for misfire diagnosis
   "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
   "rpc/assets.ts→stderr.ts",
   "rpc/session.ts→stderr.ts", "rpc/settings.ts→stderr.ts",

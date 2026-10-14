@@ -1,6 +1,7 @@
 // Usage stats: scan all session files to aggregate tokens/duration/model distribution and consecutive active days.
 import { readFile } from "node:fs/promises";
 import { SessionManager } from "./bootstrap.ts";
+import { safeStderr } from "./stderr.ts";
 
 export function streakFromDays(days: string[]): { current: number; longest: number } {
   const uniq = [...new Set(days)].sort();
@@ -86,11 +87,29 @@ export async function collectUsageStats() {
   };
 }
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
-};
+// CORS remains a functional dependency (the Tauri WebView origin differs from
+// this dynamic-port HTTP server), but a blanket `*` would let any local web
+// page read session stats and transcripts cross-origin. Instead, echo the
+// Origin back only for known app origins: the Tauri WebView (macOS
+// `tauri://localhost`, Windows `http://tauri.localhost`) and dev servers on
+// localhost. Requests without an Origin header (curl and other local tools)
+// pass as-is; disallowed origins get no ACAO header, so the browser blocks
+// the read (non-browser clients are out of scope for CORS anyway).
+const ALLOWED_ORIGIN_RE = /^(?:tauri:\/\/localhost|http:\/\/tauri\.localhost|http:\/\/(?:localhost|127\.0\.0\.1):\d+)$/;
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  if (!origin) return {};
+  if (!ALLOWED_ORIGIN_RE.test(origin)) {
+    safeStderr(`[stats] Rejected cross-origin request with Origin: ${origin}\n`);
+    return {};
+  }
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+  };
+}
 
 /**
  * Handle HTTP requests for stats dashboards (/api/* and /api/events).
@@ -104,7 +123,7 @@ export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Reque
   if (!url.pathname.startsWith("/api/")) return null;
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: CORS_HEADERS });
+    return new Response(null, { headers: corsHeaders(req) });
   }
 
   if (url.pathname === "/api/events") {
@@ -136,7 +155,7 @@ export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Reque
     });
     return new Response(stream, {
       headers: {
-        ...CORS_HEADERS,
+        ...corsHeaders(req),
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
@@ -148,12 +167,12 @@ export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Reque
     const { handleApi } = await import("@oh-my-pi/omp-stats/server");
     const res = await handleApi(req);
     const headers = new Headers(res.headers);
-    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    for (const [k, v] of Object.entries(corsHeaders(req))) {
       headers.set(k, v);
     }
     return new Response(res.body, { status: res.status, headers });
   } catch (err: unknown) {
-    return Response.json({ error: String(err) }, { status: 500, headers: CORS_HEADERS });
+    return Response.json({ error: String(err) }, { status: 500, headers: corsHeaders(req) });
   }
 }
 
