@@ -84,14 +84,13 @@ export const { isUserQueuedMessage, isHiddenUserCompanion, toRestoredQueuedMessa
 export const { beginBtwTurn, runBtwTurn, patchLatestBtwTurn } = await import(
   "@oh-my-pi/pi-coding-agent/session/btw-turn"
 );
-export const { BtwHistoryStore, BtwHistoryConflictError, getBtwLatestTurn, getBtwTurns } = await import(
+export const { BtwHistoryStore, getBtwLatestTurn } = await import(
   "@oh-my-pi/pi-coding-agent/session/btw-history"
 );
 export const { loadCapability } = await import("@oh-my-pi/pi-coding-agent/discovery");
 export const { clearCache: clearCapabilityFsCache } = await import("@oh-my-pi/pi-coding-agent/capability/fs");
 export const {
   setMcpServerEnabled,
-  addMCPServer,
   updateMCPServer,
   removeMCPServer,
   readDisabledServers,
@@ -202,9 +201,6 @@ export const { toolFileHeaderDescription } = await import(
   "@oh-my-pi/pi-coding-agent/modes/components/extensions/inspector-runtime"
 );
 export const { commandPreview } = await import("@oh-my-pi/pi-tui/overlays/extensions/inspector-model");
-export const { getEnabledPlugins } = await import(
-  "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
-);
 // Manifest-declared plugin entries (tools/hooks/commands/extensions, features
 // included) resolved to on-disk files — the plugins page's "what does this plugin
 // introduce" attribution reuses the base's own resolution so the listing cannot

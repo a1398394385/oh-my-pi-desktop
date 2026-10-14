@@ -32,17 +32,6 @@ export interface SharedMcpConnection {
   lastActiveAt: number;
 }
 
-export interface SharedMcpStats {
-  poolKey: string;
-  serverName: string;
-  sharing: "project" | "global";
-  scopeKey: string;
-  refCount: number;
-  isIdle: boolean;
-  idleRemainingMs?: number;
-  uptimeMs: number;
-}
-
 // Idle grace period: 120 seconds (2 minutes)
 const IDLE_TTL_MS = 120_000;
 
@@ -214,45 +203,6 @@ export function releaseSharedMcpConnection(poolKey: string): void {
       }
     }, IDLE_TTL_MS);
   }
-}
-
-/**
- * Soft-cancel a request (sends notifications/cancelled, no hard kill).
- */
-export function softCancelSharedMcp(poolKey: string, requestId: string | number, reason = hostI18n.t("errors.mcp.userCancelled")): void {
-  const entry = sharedPool.get(poolKey);
-  if (!entry || !entry.connection?.transport) return;
-  try {
-    const cancelMsg = JSON.stringify({
-      jsonrpc: "2.0",
-      method: "notifications/cancelled",
-      params: { requestId, reason },
-    }) + "\n";
-    if (typeof (entry.connection.transport as any).sendRaw === "function") {
-      (entry.connection.transport as any).sendRaw(cancelMsg);
-    }
-  } catch {}
-}
-
-/**
- * Collect stats of all current shared instances.
- */
-export function getSharedMcpStats(): SharedMcpStats[] {
-  const now = Date.now();
-  const list: SharedMcpStats[] = [];
-  for (const entry of sharedPool.values()) {
-    list.push({
-      poolKey: entry.poolKey,
-      serverName: entry.serverName,
-      sharing: entry.sharing,
-      scopeKey: entry.scopeKey,
-      refCount: entry.refCount,
-      isIdle: entry.refCount === 0,
-      idleRemainingMs: entry.idleTimer ? Math.max(0, IDLE_TTL_MS - (now - entry.lastActiveAt)) : undefined,
-      uptimeMs: now - entry.createdAt,
-    });
-  }
-  return list;
 }
 
 /**

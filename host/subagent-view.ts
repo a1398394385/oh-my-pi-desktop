@@ -197,34 +197,6 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
 // hist- prefix: they can never collide with a live SDK subagentId.
 const HIST_SUBAGENT_RECENT_MS = 60_000; // a file still being written belongs to a live subagent — skip, its frames arrive live
 
-// Agent Hub "Changes" line: the TUI decides Read-only vs shared from the agent-registry kind
-// and the child session's persisted session_init.readOnly (stamped by the SDK at spawn);
-// subagent frames carry neither, so the flags are recovered from the transcript file itself.
-// session_init is appended at spawn start — the file's first chunk always covers it.
-function readSubagentInitFlags(file: string): boolean | undefined {
-  let fd: number;
-  try {
-    fd = fs.openSync(file, "r");
-  } catch {
-    return undefined;
-  }
-  try {
-    const buf = Buffer.alloc(65536);
-    const n = fs.readSync(fd, buf, 0, buf.length, 0);
-    for (const line of buf.subarray(0, n).toString("utf8").split("\n")) {
-      if (!line.includes("session_init")) continue;
-      try {
-        const j = JSON.parse(line);
-        if (j.type === "session_init") return j.readOnly === true;
-      } catch {}
-    }
-  } catch {
-  } finally {
-    fs.closeSync(fd);
-  }
-  return undefined;
-}
-
 // Agent Hub "Result" section: the subagent's submitted report — the last
 // assistant message carrying text (the same source the executor's salvage and
 // lastReportTurnText draw from). Capped so the frame stays small; the UI
@@ -254,10 +226,6 @@ function readSubagentResult(file: string): string | undefined {
   if (!result) return undefined;
   return result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result;
 }
-
-// Advisor transcripts use the SDK-reserved __advisor stem (the same signal the TUI agent
-// registry uses for kind: "advisor")
-const isAdvisorTranscript = (file: string) => path.basename(file).startsWith("__advisor");
 
 interface HistAggregation {
   title: string;

@@ -133,14 +133,6 @@ export async function deleteMcpSharingConfig(sourcePath?: string, name?: string)
   }
 }
 
-export async function migrateMcpSharingConfig(oldSourcePath: string, oldName: string, newSourcePath: string, newName: string): Promise<void> {
-  const current = getMcpSharingConfig(oldSourcePath, oldName);
-  if (current) {
-    await deleteMcpSharingConfig(oldSourcePath, oldName);
-    await setMcpSharingConfig(newSourcePath, newName, current);
-  }
-}
-
 // Merge projects newly seen in history scans into the all-projects list (appended at the tail); returns whether anything was added.
 // Strictly filtered: system temp dirs, root/home dir, nonexistent paths and already-removed projects are not merged.
 export function mergeHistoryProjects(cwds: string[]): boolean {
