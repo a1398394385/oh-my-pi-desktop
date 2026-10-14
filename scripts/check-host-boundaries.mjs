@@ -190,6 +190,14 @@ const ALLOWED_EDGES = new Set([
   // PoolEntry carries the keepalive runtime snapshot type (type-only import,
   // same precedent as state.ts→goal.ts holding the controller instance)
   "state.ts→keepalive.ts",
+  // A16: host-side keepalive state machine converged into keepalive-host.ts —
+  // the keepaliveWanted flips (markTurnWrapped / markSeen), the zeroed
+  // disabled-shape frame body (keepaliveStatusPayload) and the reportState
+  // push (reportKeepaliveState). PoolEntry keeps the state fields; the four
+  // former direct-write sites now call the operations one-way into the module.
+  "keepalive-host.ts→state.ts", "keepalive-host.ts→keepalive.ts", "keepalive-host.ts→keepalive-config.ts",
+  "session-lifecycle.ts→keepalive-host.ts",
+  "rpc/session.ts→keepalive-host.ts", "rpc/prompt.ts→keepalive-host.ts",
   // UI config persistence (omp-desktop.json ui section: locale/theme/motion/prefs):
   // applyProfile re-reads the locale on every profile apply; the set_locale /
   // set_ui_prefs RPCs write it; frames.ts carries the readUiConfig projection;

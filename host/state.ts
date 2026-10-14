@@ -87,7 +87,9 @@ export type PoolEntry = {
   extStatuses?: Map<string, string>;
   // Cache keepalive intent (source of the keepalive extension's isWanted):
   // set true when a turn truly wraps up (unread output exists), set false on
-  // user create/load/send/mark_seen — only sessions the user has not seen yet are probed
+  // user create/load/send/mark_seen — only sessions the user has not seen yet are probed.
+  // Writes go through keepalive-host.ts's markTurnWrapped / markSeen (A16);
+  // direct assignment outside that module is a boundary violation.
   keepaliveWanted: boolean;
   // Latest keepalive runtime snapshot reported by the injected extension
   // (undefined = the extension was never injected for this entry: keepalive

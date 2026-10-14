@@ -13,12 +13,12 @@ import { applyActivityTimes } from "../session-activity.ts";
 import {
   handleCreateSession,
   handleLoadSession,
-  keepaliveStatusPayload,
   sessionPathFromDisk,
   copySessionArtifactsIfAny,
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../../ui-src/i18n/host.ts";
 import type { RpcHandler } from "./types";
@@ -230,7 +230,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     const p = String(msg.path ?? "").trim();
     if (!p) return;
     for (const entry of sessions.values()) {
-      if (sessionEntryMatchesPath(entry, p)) entry.keepaliveWanted = false;
+      if (sessionEntryMatchesPath(entry, p)) markSeen(entry);
     }
   },
   get_keepalive_status(ws, msg) {

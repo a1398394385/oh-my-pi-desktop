@@ -26,6 +26,7 @@ import {
   cfgSkills,
 } from "../bootstrap.ts";
 import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { markSeen } from "../keepalive-host.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
 import { readPluginsEnabled } from "../assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
@@ -492,8 +493,8 @@ async function handlePrompt(
   if (entry.isSubagent && (text.trim().startsWith("/") || text.trim().startsWith("!"))) {
     throw new Error(hostI18n.t("errors.prompt.subagentSlashNotSupported"));
   }
-  // The user sending a message in this session = a seen interaction: clear the cache-keepalive unread state (this turn's wrap-up will set it again)
-  entry.keepaliveWanted = false;
+  // The user sending a message in this session = a seen interaction
+  markSeen(entry);
   // First-turn cache gate: the desktop opens sessions ready-to-chat, so the
   // mount (async, fired at pool entry) can still be in flight when the first
   // prompt lands. A mount landing between turns forks the prefix cache (tools

@@ -33,13 +33,13 @@ import { rebuildAcpState } from "./acp-persist.ts";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
 import { translateEvent, translateSubagentEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
-import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
+import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { gateKimiAutoThinking } from "./kimi-thinking.ts";
-import type { KeepaliveState } from "./keepalive.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { readAcpRaw, readAcpEnabled, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
+import { markTurnWrapped, markSeen, reportKeepaliveState } from "./keepalive-host.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
@@ -49,33 +49,6 @@ import { hostI18n } from "../ui-src/i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 
-/** keepalive_status frame body (shared by the RPC reply and the reportState push).
- * Effective keepalive includes the target check: a session whose current model is not a
- * configured keepalive target is never probed, so both paths must report the zeroed
- * disabled shape for it — otherwise a model removed from targets mid-run would keep the
- * context card's cache-warming section alive via reportState pushes. */
-export function keepaliveStatusPayload(sessionId: string, state: KeepaliveState | undefined) {
-  const entry = sessions.get(sessionId);
-  const model = entry?.session.model as { provider?: string; id?: string } | undefined | null;
-  const targeted =
-    typeof model?.provider === "string" &&
-    typeof model?.id === "string" &&
-    readKeepaliveProbeConfig().targets.includes(`${model.provider}/${model.id}`);
-  const eff = targeted ? state : undefined;
-  return {
-    type: "keepalive_status" as const,
-    sessionId,
-    enabled: eff !== undefined && readKeepaliveEnabled(),
-    active: eff?.active ?? false,
-    probes: eff?.probes ?? 0,
-    hits: eff?.hits ?? 0,
-    misses: eff?.misses ?? 0,
-    errors: eff?.errors ?? 0,
-    savedUsd: eff?.savedUsd ?? 0,
-    spendUsd: eff?.spendUsd ?? 0,
-    nextProbeAt: eff?.nextProbeAt ?? null,
-  };
-}
 export function isGitWorktree(cwd: string): boolean {
   const p = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdout: "pipe", stderr: "ignore" });
   return p.exitCode === 0 && p.stdout.toString().trim() === "true";
@@ -427,16 +400,11 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
           return { approval, ask, tool };
         },
         reportState: (s) => {
+          // Same gate as isWanted above: reports that fire before the entry
+          // exists are dropped
           const entry = kaHolder.entry;
           if (!entry) return;
-          entry.keepaliveState = s;
-          // Push the fresh snapshot so the context ring's center counter and
-          // the detail card stay live without polling (report cadence is
-          // per-probe/per-schedule, low frequency)
-          const ws = entry.attachedWs as { readyState?: number; send?: (d: string) => void } | null;
-          if (ws && ws.readyState === 1 && entry.keepaliveSid) {
-            ws.send(JSON.stringify(stampEvent(keepaliveStatusPayload(entry.keepaliveSid, s))));
-          }
+          reportKeepaliveState(entry, s);
         },
         // Disk session file (short name) tagging the extension's warn lines in
         // the app-wide log, so a probe failure traces back to its session
@@ -620,10 +588,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // After a turn truly ends, push context usage (messages are final by
     // then); also calibrate the queued rows (steer consumed)
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
-      // Cache keepalive: turn wrap-up = unread output exists, worth keeping
-      // alive while idle from now on (the user's mark_seen / switching away
-      // and back clears it)
-      entry.keepaliveWanted = true;
+      markTurnWrapped(entry);
       // Abort-restore visibility: cancelled preparation put its messages
       // back into the agent queues while their texts were still suppressed
       // from the queue view; the terminal-end calibration below must see the
@@ -1469,9 +1434,8 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     // previousPaths: a persistence move left the frontend holding the old path —
     // it must reuse this live entry, not fork a second session over the dead file
     if (entry.path !== sessionPath && !(entry.previousPaths?.includes(sessionPath) ?? false)) continue;
-    // The user opening/switching back to this session = seen: stop cache
-    // keepalive probing (the next turn's wrap-up will set it again)
-    entry.keepaliveWanted = false;
+    // The user opening/switching back to this session = seen (stop probing)
+    markSeen(entry);
     const frontendReloaded = entry.attachedWs !== ws; // capture before attachEntry overwrites it
     if (frontendReloaded) {
       entry.unsubscribe(); // Detach old subscriptions first, or the same event would be sent twice
