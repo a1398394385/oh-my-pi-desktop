@@ -1138,7 +1138,9 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
   if (thinkingLevel) {
     try {
       entry.session.setThinkingLevel(thinkingLevel);
-    } catch {}
+    } catch (err) {
+      safeStderr(`[host] setThinkingLevel(${thinkingLevel}) failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+    }
   }
   // Kimi auto gate: the SDK default (defaultThinkingLevel: auto) or the UI
   // override can leave a fresh kimi-code session on `auto` while the
@@ -1147,11 +1149,17 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
     const configured = entry.session.configuredThinkingLevel?.();
     const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
     if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
-  } catch {}
+  } catch (err) {
+    safeStderr(`[host] kimi auto-thinking gate failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+  }
   // Computer-use opt-in at spawn: user sessions follow the desktop "default on" switch;
   // automation runs follow the automation's own flag (never the desktop default). Applied
   // here only — loading a session from disk keeps whatever state it was left in.
-  if (computerDefaultAppliesFor(opts?.automation)) void setComputerMode(ws, sessionId, entry, true).catch(() => {});
+  if (computerDefaultAppliesFor(opts?.automation)) {
+    void setComputerMode(ws, sessionId, entry, true).catch((err) => {
+      safeStderr(`[host] computer mode default-enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+    });
+  }
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(
     JSON.stringify({
@@ -1187,7 +1195,11 @@ export async function handleCreateSession(ws: { send(data: string): unknown }, c
   // Session born with computer use (intent picked on the new-session page):
   // same entry path as the composer toggle — the master gate is checked inside
   // (closed gate surfaces a command_output hint and the frame stays off)
-  if (computerMode) void setComputerMode(ws, sessionId, entry, true).catch(() => {});
+  if (computerMode) {
+    void setComputerMode(ws, sessionId, entry, true).catch((err) => {
+      safeStderr(`[host] computer mode enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+    });
+  }
   safeStderr(`[host] 新建会话 ${sessionId.slice(0, 8)} cwd=${workDir} model=${modelStr ?? "default"} thinking=${thinkingLevel ?? "default"}（活跃 ${sessions.size}）\n`);
 }
 

@@ -196,7 +196,9 @@ function windowsSleepFlags(flags: number): void {
   }
   try {
     winSleepSetter?.(flags);
-  } catch {}
+  } catch (err) {
+    safeStderr(`[host] sleep prevention failed (SetThreadExecutionState: ${err})\n`);
+  }
 }
 
 let sleepProc: Bun.Subprocess | null = null;

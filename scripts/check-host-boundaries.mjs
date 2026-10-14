@@ -81,7 +81,7 @@ const ALLOWED_EDGES = new Set([
   // can no longer turn a log line into an unhandled rejection that drags the
   // host into fork-inducing fatal teardown (2026-10-05 session-duplication
   // incident). Leaf utility: imports nothing.
-  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts",
+  "assets.ts→stderr.ts", "bootstrap.ts→stderr.ts", "browser-mirror.ts→stderr.ts", // A4: mirror poll failure reporting
   "gui-path.ts→stderr.ts",
   "desktop-json.ts→stderr.ts", // A1: refuses merge-write over an unreadable/corrupt omp-desktop.json
   "editors.ts→stderr.ts", // editor icon decode failures land on stderr only (best-effort icon path)

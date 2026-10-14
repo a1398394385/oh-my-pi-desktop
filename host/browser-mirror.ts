@@ -22,6 +22,7 @@
 import type * as SupervisorModule from "@oh-my-pi/pi-coding-agent/tools/browser/tab-supervisor";
 import type { CDPSession, Target } from "puppeteer-core";
 import { sessions, stampEvent } from "./state.ts";
+import { safeStderr } from "./stderr.ts";
 
 /** Minimal send surface of a UI WebSocket connection. */
 export interface MirrorWs {
@@ -92,6 +93,9 @@ let selected: string | null = null;
 let streamWidth = 960;
 let attachment: { name: string; cdp: CDPSession; wokeAt: number } | null = null;
 let attachBackoffUntil = 0;
+// Failure-episode latch for poll(): a rejected supervisor import is cached, so
+// the error repeats every tick — report once, stay silent until a tick succeeds.
+let pollFailed = false;
 
 // ---------- Lifecycle (main.ts) ----------
 export function startBrowserMirror(): void {
@@ -261,9 +265,15 @@ async function poll(): Promise<void> {
 			sendTabs(tabs);
 		}
 		await reconcile(tabs);
-	} catch {
-		// SDK module not loadable / transient registry error: the poll stays
-		// silent and retries on the next tick.
+		pollFailed = false;
+	} catch (err) {
+		// SDK module not loadable / transient registry error: the poll keeps
+		// retrying on the next tick, but the failure itself must be visible
+		// (mirror silently down otherwise). One line per failure episode.
+		if (!pollFailed) {
+			pollFailed = true;
+			safeStderr(`[browser-mirror] poll failed (mirror down; retrying every ${POLL_MS}ms): ${err}\n`);
+		}
 	}
 }
 

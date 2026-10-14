@@ -260,11 +260,11 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   sessionMounts.set(sessionId, new Map([...carried, ...fresh]));
   const surface = flattenMounts(sessionMounts.get(sessionId)!);
   mountedRegistry.set(sessionId, { servers: statuses.sort((a, b) => a.name.localeCompare(b.name)), tools: surface.length });
-  try {
-    void entry.session.refreshMCPTools(surface);
-  } catch (err) {
+  // refreshMCPTools returns a promise: an async rejection escapes a sync
+  // try/catch, so observe it with .catch() instead of try { void ... } catch.
+  entry.session.refreshMCPTools(surface).catch((err) => {
     safeStderr(`[mcp-mount] 工具面刷新失败: ${err}\n`);
-  }
+  });
   if (!stale(entry, gen)) pushMcpFrame(sessionId, entry);
   if (surface.length || statuses.length) {
     safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 挂载 ${statuses.length} 台 MCP 服务器 / ${surface.length} 个工具\n`);
@@ -297,9 +297,9 @@ export function releaseMcpForSession(sessionId: string, entry: PoolEntry): void 
   }
   if (!holds.length && !mounts && !mountedRegistry.has(sessionId)) return;
   mountedRegistry.delete(sessionId);
-  try {
-    void entry.session.refreshMCPTools([]);
-  } catch {}
+  entry.session.refreshMCPTools([]).catch((err) => {
+    safeStderr(`[mcp-mount] unmount refresh failed for session ${sessionId.slice(0, 8)}: ${err}\n`);
+  });
   pushMcpFrame(sessionId, entry);
 }
 
@@ -360,11 +360,9 @@ export async function mountServerForSession(sessionId: string, entry: PoolEntry,
     perSession.set(name, { tools: minted, release: hold });
     sessionMounts.set(sessionId, perSession);
     upsertRegistry(sessionId, name, "connected");
-    try {
-      void entry.session.refreshMCPTools(flattenMounts(perSession));
-    } catch (err) {
-      safeStderr(`[mcp-mount] 中途挂载工具面刷新失败: ${err}\n`);
-    }
+    entry.session.refreshMCPTools(flattenMounts(perSession)).catch((err) => {
+      safeStderr(`[mcp-mount] mid-session mount refresh failed for session ${sessionId.slice(0, 8)}: ${err}\n`);
+    });
     pushMcpFrame(sessionId, entry);
     safeStderr(`[mcp-mount] 会话 ${sessionId.slice(0, 8)} 中途挂载 ${name}（${minted.length} 个工具）\n`);
     return true;
@@ -390,9 +388,9 @@ export function unmountServerForSession(sessionId: string, entry: PoolEntry, nam
     mount.release();
   } catch {}
   upsertRegistry(sessionId, name, "disconnected");
-  try {
-    void entry.session.refreshMCPTools(flattenMounts(perSession));
-  } catch {}
+  entry.session.refreshMCPTools(flattenMounts(perSession)).catch((err) => {
+    safeStderr(`[mcp-mount] unmount "${name}" refresh failed for session ${sessionId.slice(0, 8)}: ${err}\n`);
+  });
   pushMcpFrame(sessionId, entry);
   return true;
 }
