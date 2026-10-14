@@ -9,7 +9,7 @@
 // engine keys reuse the provider-detail key-input language (.pd-key-row + .inp + .save-btn).
 // Search-related schema settings render their own titled group via SchemaRows (kept outside
 // the cards, never nested).
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
@@ -17,7 +17,7 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { RolePicker, roleSelLabel, type ModelRole } from "../RolePicker";
 import type { CatalogModel } from "../../ModelPicker";
-import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { Sel, Srow } from "../common";
 import { VoiceSttSection, VoiceTtsSection } from "./VoiceSection";
 import type { CapabilityKeyEntry } from "../../../types/frames";
 
@@ -27,26 +27,10 @@ import type { CapabilityKeyEntry } from "../../../types/frames";
 // instance); until the reply lands, every search-kind model renders unfiltered. A current
 // value that is not an available engine (e.g. a grounding chat model hand-set in settings)
 // is appended so it stays visible and can be switched away from.
+// The null id ("default" entry) maps to the empty string option value; onPick maps it back.
 function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: CatalogModel[] }) {
   const { t } = useTranslation();
   const availability = useAppStore((s) => s.searchAvailability);
-  const [open, setOpen] = useState(false);
-  const selRef = useRef<HTMLDivElement>(null);
-
-  // Close on click outside the selector (same contract as the cascade picker)
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    claimDropdown(close);
-    const onDoc = (e: MouseEvent) => {
-      if (!selRef.current?.contains(e.target as Node | null)) close();
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      releaseDropdown(close);
-    };
-  }, [open]);
 
   const engines = allModels.filter((m) => (m.kind ?? "chat") === "search" && (availability ? availability[m.id] !== false : true));
   const currentId = role.value ?? null;
@@ -59,38 +43,21 @@ function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: Catalog
 
   const pick = (id: string | null) => {
     if ((role.value ?? null) !== id) send({ type: "set_model_role", role: role.id, value: id });
-    setOpen(false);
   };
 
   return (
-    <div
-      className="sel mp-role-sel"
-      role="button"
-      ref={selRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        setOpen((v) => !v);
-      }}
-    >
-      <span>{roleSelLabel(role)}</span>
-      <span className="caret-svg"><Icon name="caret" size={14} /></span>
-      {open && (
-        <div className="menu model mp-role-menu open">
-          {items.map((it) => (
-            <div
-              className={"mi" + (currentId === it.id ? " on" : "")}
-              key={it.id ?? "__default"}
-              onClick={(e) => {
-                e.stopPropagation();
-                pick(it.id);
-              }}
-            >
-              <span className="ck">{currentId === it.id ? "✓" : ""}</span>{it.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <Sel
+      className="mp-role-sel"
+      menuClassName="model mp-role-menu"
+      label={roleSelLabel(role)}
+      value={currentId ?? ""}
+      options={items.map((it) => ({
+        v: it.id ?? "",
+        label: it.label,
+        ck: currentId === it.id ? "✓" : "",
+      }))}
+      onPick={(v) => pick(v === "" ? null : v)}
+    />
   );
 }
 
@@ -99,18 +66,17 @@ function WebSearchSel({ role, allModels }: { role: ModelRole; allModels: Catalog
 function CapabilityRoleRow({ role, desc, picker }: { role: ModelRole; desc: string; picker?: React.ReactNode }) {
   const allModels = useAppStore((s) => s.modelCatalog);
   return (
-    <div className="srow set-row">
-      <div className="srow-tx">
-        <b>
+    <Srow
+      title={
+        <>
           {role.name}
           {role.tag ? <span className="tag">{role.tag}</span> : null}
-        </b>
-        <span>{desc}</span>
-      </div>
-      <div className="srow-ctl">
-        {picker ?? <RolePicker role={role} allModels={allModels} />}
-      </div>
-    </div>
+        </>
+      }
+      desc={desc}
+    >
+      {picker ?? <RolePicker role={role} allModels={allModels} />}
+    </Srow>
   );
 }
 
@@ -126,63 +92,60 @@ function KeyRow({ entry }: { entry: CapabilityKeyEntry }) {
     setBusy(false);
   }, [entry.configured, entry.stored]);
   return (
-    <div className="srow set-row">
-      <div className="srow-tx">
-        <b>{entry.label}</b>
-        <span>
-          {entry.configured
-            ? t("settingsPage.cap.keyConfigured")
-            : t("settingsPage.cap.keyMissing", { env: entry.envVar })}
-        </span>
-      </div>
-      <div className="srow-ctl">
-        {entry.configured ? (
-          <>
-            <span className="tag">{t("settingsPage.cap.configured")}</span>
-            {entry.stored ? (
-              <button
-                type="button"
-                className="mp-role-clear"
-                title={t("settingsPage.cap.clearKey")}
-                onClick={() => {
-                  setBusy(true);
-                  send({ type: "provider_logout", provider: entry.id });
-                }}
-              >
-                <Icon name="xmark" size={14} />
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <div className="pd-key-row">
-            <input
-              className={"inp" + (busy ? " disabled" : "")}
-              type="password"
-              placeholder={t("settingsPage.cap.keyPlaceholder")}
-              value={key}
-              disabled={busy}
-              onChange={(e) => setKey(e.target.value)}
-            />
+    <Srow
+      title={entry.label}
+      desc={
+        entry.configured
+          ? t("settingsPage.cap.keyConfigured")
+          : t("settingsPage.cap.keyMissing", { env: entry.envVar })
+      }
+    >
+      {entry.configured ? (
+        <>
+          <span className="tag">{t("settingsPage.cap.configured")}</span>
+          {entry.stored ? (
             <button
               type="button"
-              className={"save-btn" + (busy ? " busy" : "")}
-              disabled={busy}
+              className="mp-role-clear"
+              title={t("settingsPage.cap.clearKey")}
               onClick={() => {
-                const k = key.trim();
-                if (!k) {
-                  toast(t("settingsPage.model.apiKeyMissing"));
-                  return;
-                }
                 setBusy(true);
-                send({ type: "provider_set_key", provider: entry.id, key: k });
+                send({ type: "provider_logout", provider: entry.id });
               }}
             >
-              {busy ? <Icon name="refresh" size={14} /> : t("common.save")}
+              <Icon name="xmark" size={14} />
             </button>
-          </div>
-        )}
-      </div>
-    </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="pd-key-row">
+          <input
+            className={"inp" + (busy ? " disabled" : "")}
+            type="password"
+            placeholder={t("settingsPage.cap.keyPlaceholder")}
+            value={key}
+            disabled={busy}
+            onChange={(e) => setKey(e.target.value)}
+          />
+          <button
+            type="button"
+            className={"save-btn" + (busy ? " busy" : "")}
+            disabled={busy}
+            onClick={() => {
+              const k = key.trim();
+              if (!k) {
+                toast(t("settingsPage.model.apiKeyMissing"));
+                return;
+              }
+              setBusy(true);
+              send({ type: "provider_set_key", provider: entry.id, key: k });
+            }}
+          >
+            {busy ? <Icon name="refresh" size={14} /> : t("common.save")}
+          </button>
+        </div>
+      )}
+    </Srow>
   );
 }
 

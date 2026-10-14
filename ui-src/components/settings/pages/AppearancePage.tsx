@@ -11,24 +11,8 @@ import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { saveUiPrefs, applyAppearance, FONT_STACKS } from "../../../appearance";
 import { saveTheme, saveMotion } from "../../../shell";
-import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { Sel } from "../common";
 import { THEMES, resolveTheme, type ThemeId } from "../../../theme-registry";
-
-// Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
-interface SelOption {
-  v: string;
-  label: ReactNode;
-  ck?: string;
-  sub?: string;
-  disabled?: boolean;
-}
-
-// Sel dropdown props
-interface SelProps {
-  label: ReactNode;
-  options: SelOption[];
-  onPick: (v: string) => void;
-}
 
 // Theme icons aligned with ZCodium THEME_MODES (lucide line layer: monitor/sun/moon)
 function themeIcon(mode: string): string {
@@ -72,50 +56,6 @@ const THEME_LABEL_KEYS: Record<string, string> = {
   "deep-think": "settingsPage.appearance.themeDeepThink",
   coral: "settingsPage.appearance.themeCoral",
 };
-
-// ---------- Dropdown selector: controlled equivalent of the old wireSel ----------
-function Sel({ label, options, onPick }: SelProps) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    claimDropdown(close);
-    document.addEventListener("click", close);
-    return () => {
-      document.removeEventListener("click", close);
-      releaseDropdown(close);
-    };
-  }, [open]);
-  return (
-    <div
-      className="sel"
-      onClick={(e) => {
-        e.stopPropagation();
-        setOpen(!open);
-      }}
-    >
-      {label} <Icon name="caret" size={14} className="caret-svg" />
-      <div className={"menu" + (open ? " open" : "")}>
-        {options.map((o) => (
-          <div
-            key={o.v}
-            className={"mi" + (o.disabled ? " disabled" : "")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (o.disabled) return;
-              setOpen(false);
-              onPick(o.v);
-            }}
-          >
-            {o.ck !== undefined && <span className="ck">{o.ck}</span>}
-            {o.label}
-            {o.sub && <span className="sub">{o.sub}</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // Font-size stepping (old stepFont: clamp -> save -> apply; uiPrefs written as a fresh object + bump)
 function stepFont(key: "uiFontSize" | "codeFontSize", delta: number, min: number, max: number): void {

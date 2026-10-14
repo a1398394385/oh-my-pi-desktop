@@ -4,13 +4,12 @@
 // Section 3: cache warming (desktop port of pi-kimi-keepalive, master switch + configurable
 // probe parameters; omp-desktop.json lives independently per profile)
 // Styling language matches the appearance page: set-page / set-tt / set-group-tt / set-group-desc / set-card / .srow / .tg / .sel / .inp.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { saveUiPrefs } from "../../../appearance";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
-import Icon from "../../../Icon";
 import { EnabledModelPicker } from "../../ModelPicker";
-import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
+import { Toggle, Sel } from "../common";
 import type { AcpConfig } from "../../../types/frames";
 import {
   listDevices,
@@ -21,74 +20,6 @@ import {
 } from "../../chat/railAudio";
 
 const TIER_DEFAULTS_K = ["100", "200", "300"]; // placeholder lines when a tier value is unconfigured
-
-interface SelOption {
-  v: string;
-  label: ReactNode;
-  ck?: string;
-}
-
-function Sel({
-  label,
-  options,
-  onPick,
-  disabled,
-  dropUp,
-  wide,
-}: {
-  label: ReactNode;
-  options: SelOption[];
-  onPick: (v: string) => void;
-  disabled?: boolean;
-  /** Open the menu upward (used when the row sits where a dropdown would clip the viewport). */
-  dropUp?: boolean;
-  /** Wider menu for option labels that overflow the 170px base (device names). */
-  wide?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    claimDropdown(close);
-    document.addEventListener("click", close);
-    return () => {
-      document.removeEventListener("click", close);
-      releaseDropdown(close);
-    };
-  }, [open]);
-
-  const cls = "sel" + (disabled ? " disabled" : "") + (dropUp ? " sel-up" : "") + (wide ? " sel-wide" : "");
-  return (
-    <div
-      className={cls}
-      onClick={(e) => {
-        if (disabled) return;
-        e.stopPropagation();
-        setOpen(!open);
-      }}
-    >
-      {label} <Icon name="caret" size={14} className="caret-svg" />
-      {open && (
-        <div className="menu open">
-          {options.map((o) => (
-            <div
-              key={o.v}
-              className="mi"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                onPick(o.v);
-              }}
-            >
-              <span className="ck">{o.ck ?? ""}</span>
-              {o.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /** Format ms → "8m"/"1h30m"/"45s" for display (the host-side parser accepts the same syntax for writes) */
 function fmtDur(ms: number): string {
@@ -227,13 +158,7 @@ export default function ExperimentalPage() {
             </b>
             <span>{t("settingsPage.exp.acpDesc")}</span>
           </div>
-          <div
-            className={"tg" + (enabled ? " on" : "") + (known ? "" : " disabled")}
-            id="tgAcp"
-            onClick={() => updateAcp({ enabled: !enabled })}
-          >
-            <i></i>
-          </div>
+          <Toggle on={enabled} disabled={!known} onChange={() => updateAcp({ enabled: !enabled })} />
         </div>
 
         {/* 2. Threshold mode: absolute token lines vs percentages of the model window */}
@@ -312,13 +237,11 @@ export default function ExperimentalPage() {
             </b>
             <span>{t("settingsPage.exp.sessionDesc")}</span>
           </div>
-          <div
-            className={"tg" + (ctxEnabled ? " on" : "") + (ctxKnown ? "" : " disabled")}
-            id="tgSessionContext"
-            onClick={() => send({ type: "set_session_context_enabled", enabled: !ctxEnabled })}
-          >
-            <i></i>
-          </div>
+          <Toggle
+            on={ctxEnabled}
+            disabled={!ctxKnown}
+            onChange={() => send({ type: "set_session_context_enabled", enabled: !ctxEnabled })}
+          />
         </div>
       </div>
 
@@ -335,13 +258,11 @@ export default function ExperimentalPage() {
             </b>
             <span>{t("settingsPage.exp.kaDesc")}</span>
           </div>
-          <div
-            className={"tg" + (kaEnabled ? " on" : "") + (kaKnown ? "" : " disabled")}
-            id="tgKeepalive"
-            onClick={() => send({ type: "set_keepalive_enabled", enabled: !kaEnabled })}
-          >
-            <i></i>
-          </div>
+          <Toggle
+            on={kaEnabled}
+            disabled={!kaKnown}
+            onChange={() => send({ type: "set_keepalive_enabled", enabled: !kaEnabled })}
+          />
         </div>
 
         {/* 2. Keepalive models (multi-select; empty = probe no models) */}
@@ -403,15 +324,13 @@ export default function ExperimentalPage() {
             <b>{t("settingsPage.exp.kaApprovalTitle")}</b>
             <span>{t("settingsPage.exp.kaApprovalDesc")}</span>
           </div>
-          <div
-            className={"tg" + (kaConfig?.probeDuringApproval ? " on" : "")}
-            onClick={() => {
+          <Toggle
+            on={!!kaConfig?.probeDuringApproval}
+            onChange={() => {
               if (!kaEnabled) return;
               updateKa({ probeDuringApproval: !kaConfig?.probeDuringApproval });
             }}
-          >
-            <i></i>
-          </div>
+          />
         </div>
 
         {/* 5. Probe while an ask card is waiting */}
@@ -420,15 +339,13 @@ export default function ExperimentalPage() {
             <b>{t("settingsPage.exp.kaAskTitle")}</b>
             <span>{t("settingsPage.exp.kaAskDesc")}</span>
           </div>
-          <div
-            className={"tg" + (kaConfig?.probeDuringAsk ? " on" : "")}
-            onClick={() => {
+          <Toggle
+            on={!!kaConfig?.probeDuringAsk}
+            onChange={() => {
               if (!kaEnabled) return;
               updateKa({ probeDuringAsk: !kaConfig?.probeDuringAsk });
             }}
-          >
-            <i></i>
-          </div>
+          />
         </div>
 
         {/* 6. Farewell probes after the session was read */}
@@ -549,15 +466,13 @@ export default function ExperimentalPage() {
             <b>{t("settingsPage.exp.kaRingTitle")}</b>
             <span>{t("settingsPage.exp.kaRingDesc")}</span>
           </div>
-          <div
-            className={"tg" + (ringCount !== false ? " on" : "")}
-            onClick={() => {
+          <Toggle
+            on={ringCount !== false}
+            onChange={() => {
               useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, ctxRingProbeCount: ringCount === false } }));
               saveUiPrefs();
             }}
-          >
-            <i></i>
-          </div>
+          />
         </div>
       </div>
 
@@ -572,17 +487,14 @@ export default function ExperimentalPage() {
             <b className="srow-hd">{t("settingsPage.exp.railMusicTitle")}</b>
             <span>{t("settingsPage.exp.railMusicDesc")}</span>
           </div>
-          <div
-            className={"tg" + (railMusic ? " on" : "")}
-            id="tgRailMusic"
-            onClick={() => {
+          <Toggle
+            on={railMusic}
+            onChange={() => {
               const next = !railMusic;
               writeAudioPref(next, railMusicDevice);
               void (next ? startAudioCapture(railMusicDevice) : stopAudioCapture());
             }}
-          >
-            <i></i>
-          </div>
+          />
         </div>
 
         {/* 2. Capture device (empty id = system default output; on macOS the
