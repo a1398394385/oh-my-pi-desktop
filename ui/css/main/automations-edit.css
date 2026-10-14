@@ -54,6 +54,11 @@
   background: transparent;
 }
 
+/* .plain sits above and re-kills the base :hover/:open background — restore the
+   highlight with higher specificity (mirrors the .aued-tools .mp-role-sel pair below). */
+.sel.auto-sel.plain:hover,
+.sel.auto-sel.plain.open { background: var(--panel-2); }
+
 .sel.auto-sel.plain .auto-sel-btn { padding: 3px 8px; }
 
 /* The page-level create/save action also appears on the list page. */
@@ -188,7 +193,7 @@
 .aued-schedule-note { display: grid; align-content: center; gap: 5px; min-width: 0; padding-left: 12px; border-left: 2px solid var(--accent); }
 .aued-schedule-note strong { overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .aued-schedule-note span { color: var(--faint); font-size: var(--ui-fs-xs); line-height: 1.45; }
-.aued-sched { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 6px 8px; border-radius: var(--r-lg); background: var(--inset); }
+.aued-sched { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 6px 8px 6px 0; border-radius: var(--r-lg); background: var(--inset); }
 .aued-sched .inp { width: 40px; padding: 4px 2px; background: transparent; text-align: center; }
 
 /* Weekday and end-condition capsule groups. */

@@ -1,8 +1,9 @@
 import { X } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useAppStore } from "../../../../store";
 
 export interface ModalAction {
   label: string;
@@ -21,6 +22,10 @@ export interface ModalProps {
 
 export function Modal({ open, title, onClose, primaryAction, cancelLabel, children }: ModalProps) {
   const { t } = useTranslation();
+  // The dialog portals to body, outside the zoomed #settings subtree: carry the
+  // zoom on the inner box so it matches the page (overlay stays 100vw to center it)
+  const zoom = useAppStore((s) => s.zoomLevel);
+  const zoomStyle = { zoom: String(zoom) } as CSSProperties;
   const resolvedCancelLabel = cancelLabel ?? t("settingsPage.stats.ui.cancel");
   const primaryRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -59,7 +64,7 @@ export function Modal({ open, title, onClose, primaryAction, cancelLabel, childr
 
   return createPortal(
     <div className="modal-overlay" onClick={handleOverlayClick} role="presentation">
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" style={zoomStyle}>
         <div className="modal-header">
           <h2 id="modal-title" className="modal-title">
             {title}

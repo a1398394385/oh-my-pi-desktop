@@ -359,8 +359,25 @@ export async function fetchProviderAccountsLimits(
   return { vendor: spec.vendor, label: spec.label, accounts };
 }
 
-function credentialIdentity(credential: AuthCredential): string {
-  return credential?.type === "oauth" ? (credential.email ?? credential.accountId ?? credential.orgName ?? "") : "";
+// Display identity for one account row. api_key credentials carry no vendor-side
+// identity, so an empty string made every key-only account render as the
+// positional "Account N" fallback — two cards became pixel-identical and a
+// priority reorder looked like a no-op. The masked tail is the only thing that
+// tells two key rows apart.
+export function credentialIdentity(credential: AuthCredential): string {
+  if (credential?.type === "oauth") return credential.email ?? credential.accountId ?? credential.orgName ?? "";
+  const key = credential?.type === "api_key" ? credential.key : "";
+  return key ? `…${key.slice(-4)}` : "";
+}
+
+// Drop a provider's cached rows. The cache key is provider#credentialId, and
+// the desktop priority reorder permutes which credential sits on which id —
+// without this the reordered provider keeps serving the previous mapping's
+// quotas until the 5min TTL expires.
+export function invalidateProviderLimitsCache(provider: string): void {
+  for (const key of [...limitsCache.keys()]) {
+    if (key === provider || key.startsWith(`${provider}#`)) limitsCache.delete(key);
+  }
 }
 
 // Data source for the models page "add provider" view: the same list as the

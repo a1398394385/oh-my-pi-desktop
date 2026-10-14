@@ -35,8 +35,8 @@ useAppStore.setState({
     updatedAt: null,
     // accounts[0] is the served account; the host serves list order [1, 2].
     accounts: [
-      { id: "1", label: "账号 A", status: "ok", planLabel: "Coding Plan", accountLabel: "", balance: null, windows: [], updatedAt: null },
-      { id: "2", label: "账号 B", status: "ok", planLabel: "Coding Plan", accountLabel: "", balance: null, windows: [], updatedAt: null },
+      { id: "1", label: "…aaaa", status: "ok", planLabel: "Coding Plan", accountLabel: "", balance: null, windows: [], updatedAt: null },
+      { id: "2", label: "…bbbb", status: "ok", planLabel: "Coding Plan", accountLabel: "", balance: null, windows: [], updatedAt: null },
     ],
   },
   providerAccounts: {
@@ -69,6 +69,12 @@ try {
   const headText = (card: Element) => card.querySelector(".lx-head")?.textContent ?? "";
   assert(headText(cards[0]!).includes("#1 · 生效中"), `首位卡应显示生效中徽标: ${headText(cards[0]!)}`);
   assert(headText(cards[1]!).includes("#2"), `次位卡应显示 #2: ${headText(cards[1]!)}`);
+
+  // The reorder is only observable if each card names its account — two
+  // identity-less rows render identically and the move looks like a no-op.
+  const ident = (card: Element) => card.querySelector(".lx-prov")?.textContent ?? "";
+  assert.equal(ident(cards[0]!), "…aaaa", `首卡应显示账号标识: "${ident(cards[0]!)}"`);
+  assert.equal(ident(cards[1]!), "…bbbb", `次卡应显示账号标识: "${ident(cards[1]!)}"`);
 
   const btns = (card: Element) => [...card.querySelectorAll(".lx-head .icon-btn")] as HTMLButtonElement[];
   const up = (card: Element) => btns(card)[0]!;

@@ -7,7 +7,7 @@
 // key, either one).
 // View switches and selections reuse store fields (mpAddView / mpRolesView / mpCycleView /
 // mpDetailProv / selectedProvider); login banner and paste-code dialog come from ../common.jsx.
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../../../store";
 import { getSupportedThinkingForModel, modelDefaultThinking } from "../../../store/models";
@@ -140,7 +140,12 @@ function LimitsSection({ limits, prov, accountId, rank, total }: { limits: Provi
   return (
     <div className="cx-sec lx-sec">
       <div className="lx-head">
-        <b>{t("settingsPage.model.quotaRemaining")}</b>
+        {/* Account identity first: without it two same-plan key rows render
+            identically and a priority reorder reads as a no-op. */}
+        <span className="lx-title">
+          {accountId != null && limits.label ? <span className="lx-prov">{limits.label}</span> : null}
+          <b>{t("settingsPage.model.quotaRemaining")}</b>
+        </span>
         <span className="lx-head-acts">
           {rankable ? (
             <>
@@ -789,6 +794,31 @@ function ThinkSel({ modelId }: { modelId: string }) {
   }, [open]);
   const levels = getSupportedThinkingForModel(modelId);
   const cur = modelDefaultThinking(modelId);
+  const selRef = useRef<HTMLDivElement>(null);
+  // Width of the widest option text, measured offscreen once per mount/locale:
+  // CSS can't take max() of unseen menu text, and a hidden in-flow sizer adds
+  // to the label instead of replacing it. Inline width is border-box (global
+  // * { box-sizing: border-box }), so it must also cover the 20px padding, the
+  // 6px flex gap, the 14px caret and the ~4px JSX space between them
+  const [optW, setOptW] = useState(0);
+  useEffect(() => {
+    const sel = selRef.current;
+    if (!sel) return;
+    const probe = document.createElement("span");
+    const cs = getComputedStyle(sel);
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap";
+    probe.style.font = cs.font;
+    document.body.appendChild(probe);
+    const texts = [t("settingsPage.model.thinkFollowGlobal"), ...levels];
+    let max = 0;
+    for (const tx of texts) {
+      probe.textContent = tx;
+      max = Math.max(max, probe.offsetWidth);
+    }
+    probe.remove();
+    setOptW(max);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- locale switch re-renders with new t()
+  }, [t("settingsPage.model.thinkFollowGlobal"), levels.join(",")]);
   const write = (level: string | null) => {
     const st = useAppStore.getState();
     let entries: string[] | undefined = st.hostSettings?.values?.enabledModels as string[] | undefined;
@@ -803,15 +833,18 @@ function ThinkSel({ modelId }: { modelId: string }) {
   };
   return (
     <div
+      ref={selRef}
       className="sel"
       data-sel="think"
       title={t("settingsPage.model.thinkDefaultTitle")}
+      style={optW ? { width: optW + 44 } : undefined} // border-box: text + padding 20 + gap 6 + caret 14 + JSX space ~4
       onClick={(e) => {
         e.stopPropagation();
         setOpen(!open);
       }}
     >
-      {cur ?? t("settingsPage.model.thinkFollowGlobal")} <Icon name="caret" size={14} className="caret-svg" />
+      <span className="tx">{cur ?? t("settingsPage.model.thinkFollowGlobal")}</span>{" "}
+      <Icon name="caret" size={14} className="caret-svg" />
       <div className={"menu" + (open ? " open" : "")}>
         <div
           className="mi"

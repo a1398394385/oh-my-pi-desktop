@@ -473,7 +473,7 @@ export default function GeneralPage() {
             dataSel={LANG_NATIVE[lang]}
             options={[
               { v: "zh-CN", label: "简体中文", ck: lang === "zh-CN" ? "✓" : "" },
-              { v: "zh-TW", label: "繁體中文", disabled: true, sub: t("settingsPage.general.zhTwPending") },
+              { v: "zh-TW", label: "繁體中文", disabled: true, note: t("settingsPage.general.zhTwPending") },
               { v: "en", label: "English", ck: lang === "en" ? "✓" : "" },
             ]}
             onPick={pickLang}

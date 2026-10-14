@@ -54,11 +54,19 @@
   container-type: inline-size;
 }
 
-/* One metric inside a group: label + value (+ optional trailing indicator) */
+/* One metric inside a group: icon + value (+ optional trailing indicator) */
 .sb-item {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
+}
+
+/* Metric icon standing in for the old text label: a block box takes the baseline
+   of its first text line, same recipe as .sb-break, so the glyph sits on the
+   value's baseline instead of being center-aligned by the flex box. */
+.sb-ic {
+  display: block;
+  color: var(--faint);
 }
 
 /* One semantic group (cache / tokens / cost / performance): tighter spacing
@@ -70,24 +78,26 @@
   gap: 3px 9px;
 }
 
-/* Width-driven trimming, tuned to the measured part widths (11.44px font, e.g.
-   "缓存 97.3% ⟲3" 90px, "读 246.4K" 60px, "TTFT 1.23s" 65px, "时长 1小时1分钟"
-   88px): full row needs ~700px, and each stage below keeps the row on one line
-   with headroom for longer values instead of wrapping it. Performance first,
-   then the cache token split, then cost, then the duration. */
-@container (max-width: 740px) {
+/* Width-driven trimming, tuned to the measured part widths at the 11.44px row font
+   (cache hit + break counter 82px, cache read 53px, cache write 46px, input 58px,
+   output 58px, cost 124px, speed 80px, TTFT 49px, duration 93px): the full row needs
+   852px, and each stage below drops one optional part once the row no longer fits
+   (794px without TTFT, 677px without the cache split, 544px without cost, 442px
+   without duration) — the numbers stay a few px under those sums so the row never
+   wraps. Performance first, then the cache token split, then cost, then the duration. */
+@container (max-width: 850px) {
   .sb-opt-ttft { display: none; }
 }
 
-@container (max-width: 660px) {
+@container (max-width: 790px) {
   .sb-opt-cachetok { display: none; }
 }
 
-@container (max-width: 540px) {
+@container (max-width: 675px) {
   .sb-opt-cost { display: none; }
 }
 
-@container (max-width: 450px) {
+@container (max-width: 540px) {
   .sb-opt-duration { display: none; }
 }
 

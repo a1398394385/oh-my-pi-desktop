@@ -12,9 +12,12 @@
 //   configured model catalog (modelCatalog frame, disabled entries included — role
 //   values may point at a disabled catalog entry), narrowed by a caller filter.
 // Placement stays per-surface: the composer menu keeps its own #composer coordinate
-// math; the pickers here share the settings placement (menu drops under the .sel
-// trigger via CSS, flyout bounded by #setBody, flip-down when more room remains below).
+// math; the pickers here portal both menus to body (fixed overlay, Pick parity) so they
+// are never clipped by the enclosing scroll surface (.aued, #setBody, .rb-scroll) — the
+// level-1 menu drops under the trigger flipping up only at the viewport bottom edge, and
+// the flyout keeps its bottom-anchored-upward default with viewport-bounded flips.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store";
 import type { TimerHandle } from "../store";
@@ -147,8 +150,9 @@ function groupByProvider<T extends { provider: string }>(models: ReadonlyArray<T
 
 /**
  * Settings-surface picker shell: .sel trigger + level-1 menu (pinned rows above the
- * provider cascade) + hover flyout. The flyout is mounted under .sel rather than
- * inside the level-1 menu — .menu.model carries overflow-y:auto which would clip
+ * provider cascade) + hover flyout. Both menus portal to body (fixed overlay) so they
+ * stay fully visible over any scroll container; the flyout is a sibling of the level-1
+ * menu rather than its child — .menu.model can carry overflow-y:auto which would clip
  * absolutely positioned children. Widths unified by .mp-role-sel / .mp-role-menu.
  */
 function SettingsCascadePicker({
@@ -185,7 +189,15 @@ function SettingsCascadePicker({
     };
     claimDropdown(close);
     const onDoc = (e: MouseEvent) => {
-      if (!selRef.current?.contains(e.target as Node | null)) close();
+      const t = e.target as Node | null;
+      // menus portal to body — they are no longer inside selRef's subtree
+      if (
+        !selRef.current?.contains(t) &&
+        !menuRef.current?.contains(t) &&
+        !flyRef.current?.contains(t)
+      ) {
+        close();
+      }
     };
     document.addEventListener("mousedown", onDoc);
     return () => {
@@ -194,47 +206,74 @@ function SettingsCascadePicker({
     };
   }, [open]);
 
-  // Flyout coordinates: relative to .sel (offsetParent). The level-2 list defaults to opening upward —
-  // bottom edge aligned with the provider row's bottom edge
-  // (both menus pad 5px; +5 aligns the last row with the row height), so it never pushes past
-  // the settings scroll area's bottom; when space above is insufficient, flip to top-anchored
-  // growing downward if more room remains below (long model lists stay visible instead of
-  // clamping to a few rows), capping height + scrolling internally on the tighter side;
-  // the flyout overlaps the level-1 menu border by 4px and flips left on right-edge overflow.
+  // Level-1 placement: portal to body (fixed) so the menu is never clipped by the
+  // enclosing scroll surface (.aued, #setBody, .rb-scroll). Drops under the trigger,
+  // flipping up only when the viewport bottom edge leaves no room (Pick parity,
+  // including the zoom coordinate compensation).
+  useLayoutEffect(() => {
+    const sel = selRef.current;
+    const menu = menuRef.current;
+    if (!open || !sel || !menu) return undefined;
+    const z = useAppStore.getState().zoomLevel || 1;
+    (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
+    const sr = sel.getBoundingClientRect();
+    const mr = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(sr.left, window.innerWidth - mr.width - 8));
+    let top = sr.bottom + 6;
+    if (top + mr.height > window.innerHeight - 8 && sr.top - mr.height - 6 > 8) {
+      top = sr.top - mr.height - 6;
+    }
+    menu.style.left = left / z + "px";
+    menu.style.top = top / z + "px";
+    return undefined;
+  }, [open]);
+
+  // Flyout coordinates: fixed alongside the portaled level-1 menu, viewport-bounded
+  // (the portal escaped the scroll container, so the old #setBody clamp is gone).
+  // The level-2 list defaults to opening upward — bottom edge aligned with the provider
+  // row's bottom edge (both menus pad 5px; +5 aligns the last row with the row height);
+  // when space above is insufficient, flip to top-anchored growing downward if more room
+  // remains below (long model lists stay visible instead of clamping to a few rows),
+  // capping height + scrolling internally on the tighter side; the flyout overlaps the
+  // level-1 menu border by 4px and flips left on right-edge overflow.
   useLayoutEffect(() => {
     const menu = menuRef.current;
-    const sel = selRef.current;
     const fly = flyRef.current;
-    if (!menu || !sel || !fly || !flyProv) return;
+    if (!open || !flyProv || !menu || !fly) return undefined;
     const row = rowRefs.current.get(flyProv);
-    if (!row) return;
+    if (!row) return undefined;
     const z = useAppStore.getState().zoomLevel || 1;
+    (fly.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
-    const rowTop = menu.offsetTop + row.offsetTop - menu.scrollTop;
-    const rowBottom = rowTop + row.offsetHeight;
     fly.style.top = "auto";
-    fly.style.bottom = sel.clientHeight - rowBottom - 5 + "px";
-    const bound = sel.closest("#setBody") ?? document.body;
-    const boundRect = bound.getBoundingClientRect();
+    fly.style.bottom = "auto";
     const rowRect = row.getBoundingClientRect();
-    const availAbove = Math.round((rowRect.bottom - boundRect.top) / z) - 4;
-    const availBelow = Math.round((boundRect.bottom - rowRect.top) / z) - 4;
-    if (fly.offsetHeight > availAbove) {
+    const menuRect = menu.getBoundingClientRect();
+    // viewport-px rects → layout px (the flyout carries zoom) so they compare against offsetHeight
+    const availAbove = Math.round((rowRect.bottom - 8) / z);
+    const availBelow = Math.round((window.innerHeight - 8 - rowRect.top) / z);
+    // bottom anchor in viewport space: distance from the viewport bottom to the row's bottom (+5)
+    const bottomAnchor = window.innerHeight - rowRect.bottom - 5;
+    if (fly.offsetHeight > availAbove - 4) {
       if (availBelow > availAbove) {
         // Not enough room above: anchor the flyout's top at the provider row's top and grow down
-        fly.style.bottom = "auto";
-        fly.style.top = rowTop - 5 + "px";
+        fly.style.top = (rowRect.top - 5) / z + "px";
         fly.style.maxHeight = Math.max(80, availBelow) + "px";
       } else {
+        fly.style.bottom = bottomAnchor / z + "px";
         fly.style.maxHeight = Math.max(80, availAbove) + "px";
       }
       fly.style.overflowY = "auto";
+    } else {
+      fly.style.bottom = bottomAnchor / z + "px";
     }
-    fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px";
-    if (fly.getBoundingClientRect().right > boundRect.right - 8) {
-      fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px";
+    let left = menuRect.right - 4;
+    if (left + fly.getBoundingClientRect().width > window.innerWidth - 8) {
+      left = Math.max(8, menuRect.left - fly.getBoundingClientRect().width + 4);
     }
+    fly.style.left = left / z + "px";
+    return undefined;
   }, [flyProv, open]);
 
   const groups = onPick ? groupByProvider(models) : null;
@@ -261,8 +300,9 @@ function SettingsCascadePicker({
     >
       <span>{label}</span>
       <span className="caret-svg"><Icon name="caret" size={14} /></span>
-      {open && (
-        <div className={(menuClassName ?? "menu model mp-role-menu") + " open"} ref={menuRef}>
+      {open &&
+        createPortal(
+          <div className={(menuClassName ?? "menu model mp-role-menu") + " open mp-menu-portal"} ref={menuRef}>
           {pinnedRows?.map((r) => (
             <div
               className="mi"
@@ -291,15 +331,18 @@ function SettingsCascadePicker({
               </div>
             ))}
           {menuEmpty && emptyText !== undefined ? <div className="mi empty disabled">{emptyText}</div> : null}
-        </div>
-      )}
-      {activeRows && onPick && (
-        <div className="menu flyout open" ref={flyRef} {...flyoutProps}>
-          {activeRows.map((m) => (
-            <ModelRow key={m.id} m={m} selectedId={selectedId} highlight onPick={pick} />
-          ))}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
+      {activeRows && onPick &&
+        createPortal(
+          <div className="menu flyout open mp-menu-portal" ref={flyRef} {...flyoutProps}>
+            {activeRows.map((m) => (
+              <ModelRow key={m.id} m={m} selectedId={selectedId} highlight onPick={pick} />
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

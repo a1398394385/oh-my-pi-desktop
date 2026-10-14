@@ -96,6 +96,12 @@
 
 .lx-prov { color: var(--faint); font-size: 11.5px; }
 
+/* Left group of the quota card head: account identity + section title, kept in
+   one flex child so `justify-content: space-between` still pins the actions
+   column to the right edge. */
+.lx-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lx-title .lx-prov { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .lx-body { min-width: 268px; }
 
 /* 336px × 0.8 */

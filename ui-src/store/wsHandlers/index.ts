@@ -12,12 +12,15 @@ import { filesHandlers, type FilesFrames } from "./files";
 import { settingsHandlers, type SettingsFrames } from "./settings";
 import { automationsHandlers, type AutomationsFrames } from "./automations";
 import { btwHandlers, type BtwFrames } from "./btw";
-import type { HandlerMap } from "./types";
+import type { HandlerMap, IgnoredFrames } from "./types";
 import type { HostFrame } from "../../types/frames";
 
-// Exhaustiveness assertion: when a frame type is missed, Missing narrows to that literal and the AssertNever constraint fails
+// Exhaustiveness assertion: when a frame type is missed, Missing narrows to that literal and the AssertNever constraint fails.
+// IgnoredFrames (session_tree) is excluded on purpose: the host still serves the cross-file
+// branch-family query (smoke-branch.ts probes it), but the UI has no consumer since the
+// right-panel branch tree was removed.
 type Covered = ConfigFrames | SessionFrames | StreamFrames | FilesFrames | SettingsFrames | AutomationsFrames | BtwFrames;
-type Missing = Exclude<HostFrame["type"], Covered>;
+type Missing = Exclude<HostFrame["type"], Covered | IgnoredFrames>;
 type AssertNever<T extends never> = T;
 type _allFramesCovered = AssertNever<Missing>;
 

@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useAppStore } from "../../../../store";
 
 export interface DrawerProps {
   open: boolean;
@@ -15,6 +16,9 @@ export interface DrawerProps {
 
 export function Drawer({ open, onClose, title, subtitle, actions, width, children }: DrawerProps) {
   const { t } = useTranslation();
+  // Portal lives on body outside the zoomed #settings subtree: the panel carries
+  // the zoom itself (scrim stays fullscreen)
+  const zoom = useAppStore((s) => s.zoomLevel);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -46,7 +50,12 @@ export function Drawer({ open, onClose, title, subtitle, actions, width, childre
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
-        style={width !== undefined ? ({ "--drawer-w": `${width}px` } as CSSProperties) : undefined}
+        style={
+          {
+            "--drawer-w": width !== undefined ? `${width}px` : undefined,
+            zoom: String(zoom),
+          } as CSSProperties
+        }
       >
         <header className="drawer-header">
           <div className="drawer-titles">

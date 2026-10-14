@@ -19,7 +19,6 @@ export const TAB_META: Record<string, TabMeta> = {
   gitdiff: { label: "Git Diff", icon: "branch" },
   bgcmd: { label: "right.tabBgcmd", icon: "term" },
   file: { label: "right.tabFile", icon: "folderOpen" },
-  tree: { label: "right.tabTree", icon: "fork" },
   terminal: { label: "right.tabTerminal", icon: "termBox" },
   browser: { label: "right.tabBrowser", icon: "globe" },
   mirror: { label: "right.tabAgentBrowser", icon: "monitor" },

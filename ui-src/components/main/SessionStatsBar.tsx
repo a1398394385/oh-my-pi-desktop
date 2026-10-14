@@ -59,11 +59,14 @@ export default function SessionStatsBar() {
   // Semantic groups (cache / tokens / cost / performance): tighter spacing inside
   // a group than between groups. Parts tagged .sb-opt-* are trimmed by the row's
   // own width (CSS container query in composer.css), so the line never wraps.
-  type Part = { k: string; v: string; cls?: string; extra?: ReactNode };
+  // Each metric is a line-style icon standing in for what used to be a text label
+  // (TUI status-line convention); the label survives as the hover tooltip.
+  type Part = { icon: string; tip: string; v: string; cls?: string; extra?: ReactNode };
   const groups: Part[][] = [
     [
       {
-        k: t("chat.statsCacheHit"),
+        icon: "database",
+        tip: t("chat.statsCacheHit"),
         v: `${(st.cacheHitRate * 100).toFixed(1)}%`,
         // Cache invalidations this session (host-side counter, see buildSessionStats):
         // counter-clockwise arrow + count, display-only
@@ -74,20 +77,20 @@ export default function SessionStatsBar() {
           </span>
         ),
       },
-      { k: t("chat.statsCacheRead"), v: fmtTokens(st.tokens.cacheRead), cls: "sb-opt-cachetok" },
-      { k: t("chat.statsCacheWrite"), v: fmtTokens(st.tokens.cacheWrite), cls: "sb-opt-cachetok" },
+      { icon: "download", tip: t("chat.statsCacheRead"), v: fmtTokens(st.tokens.cacheRead), cls: "sb-opt-cachetok" },
+      { icon: "upload", tip: t("chat.statsCacheWrite"), v: fmtTokens(st.tokens.cacheWrite), cls: "sb-opt-cachetok" },
     ],
     [
-      { k: t("chat.statsInput"), v: fmtTokens(st.tokens.input) },
-      { k: t("chat.statsOutput"), v: fmtTokens(st.tokens.output) },
+      { icon: "arrowDownToLine", tip: t("chat.statsInput"), v: fmtTokens(st.tokens.input) },
+      { icon: "arrowUpFromLine", tip: t("chat.statsOutput"), v: fmtTokens(st.tokens.output) },
     ],
     totalCost > 0
-      ? [{ k: t("chat.statsCost"), v: `$${totalCost.toFixed(4)}` + (subCost > 0 ? ` ($${subCost.toFixed(4)})` : ""), cls: "sb-opt-cost" }]
+      ? [{ icon: "circleDollarSign", tip: t("chat.statsCost"), v: `$${totalCost.toFixed(4)}` + (subCost > 0 ? ` ($${subCost.toFixed(4)})` : ""), cls: "sb-opt-cost" }]
       : [],
     [
-      { k: t("chat.statsTokenSpeed"), v: fmtTokenSpeed(st.tokenSpeed) },
-      { k: t("chat.statsAvgTtft"), v: fmtTtft(st.avgTtft), cls: "sb-opt-ttft" },
-      { k: t("chat.statsDuration"), v: fmtDurationMs(activeMs), cls: "sb-opt-duration" },
+      { icon: "zap", tip: t("chat.statsTokenSpeed"), v: fmtTokenSpeed(st.tokenSpeed) },
+      { icon: "timer", tip: t("chat.statsAvgTtft"), v: fmtTtft(st.avgTtft), cls: "sb-opt-ttft" },
+      { icon: "clock", tip: t("chat.statsDuration"), v: fmtDurationMs(activeMs), cls: "sb-opt-duration" },
     ],
   ];
 
@@ -96,8 +99,10 @@ export default function SessionStatsBar() {
       {groups.map((parts, gi) => (
         <span className="sb-group" key={gi}>
           {parts.map((p) => (
-            <span className={cn("sb-item", p.cls)} key={p.k}>
-              <span className="sb-k">{p.k}</span>
+            <span className={cn("sb-item", p.cls)} key={p.tip} title={p.tip}>
+              <span className="sb-ic">
+                <Icon name={p.icon} size={13} />
+              </span>
               <span className="text-dim">{p.v}</span>
               {p.extra}
             </span>

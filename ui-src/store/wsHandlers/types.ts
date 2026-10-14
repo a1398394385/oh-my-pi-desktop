@@ -6,7 +6,12 @@
 // entry snapshot).
 import type { HostFrame } from "../../types/frames";
 
-export type FrameType = HostFrame["type"];
+// Frames the host can still send but the UI deliberately ignores: the right-panel branch tree
+// was removed, so session_tree replies (the cross-file branch family) have no landing spot —
+// the host keeps the query for smoke-branch.ts. Runtime dispatch still ignores them silently
+// via the Partial lookup in index.ts.
+export type IgnoredFrames = "session_tree";
+export type FrameType = Exclude<HostFrame["type"], IgnoredFrames>;
 export type FrameOf<K extends FrameType> = Extract<HostFrame, { type: K }>;
 export type FrameHandler<K extends FrameType> = (msg: FrameOf<K>) => void;
 export type HandlerMap = { [K in FrameType]: FrameHandler<K> };

@@ -465,7 +465,7 @@ export const streamHandlers = {
   error(msg) {
     useAppStore.setState((s) => ({
       gitDiffCache: { ...s.gitDiffCache, loading: false },
-      rightState: { ...s.rightState, sessionTreePending: false, fileTreePending: new Set() }, // branch-tree/file-tree request failed: clear pending so collapse-reexpand retries
+      rightState: { ...s.rightState, fileTreePending: new Set() }, // file-tree request failed: clear pending so collapse-reexpand retries
       manualSaving: false, // wizard save failed: release the in-flight button (probe self-clears via its reply frame)
     }));
     // Error landing for settings-center asset/memory read failures (the old version wrote aeStatus / memory inline state)

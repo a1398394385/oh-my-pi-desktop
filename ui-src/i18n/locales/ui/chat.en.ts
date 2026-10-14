@@ -207,17 +207,17 @@ export const chatEn = {
   openInBrowser: "{{mod}}+click to open in default browser",
   // ---- rail tool summary ----
   fileSep: ", ",
-  // ---- session stats bar ----
-  statsCacheHit: "Cache",
+  // ---- session stats bar (icon tooltips: the metrics show as glyphs only) ----
+  statsCacheHit: "Prompt cache hit rate",
   statsCacheBreaksTitle: "Prompt-cache invalidations this session (each one re-bills the whole context as uncached input)",
-  statsInput: "In",
-  statsOutput: "Out",
-  statsCacheRead: "R",
-  statsCacheWrite: "W",
-  statsCost: "Cost",
-  statsDuration: "Time",
-  statsTokenSpeed: "Speed",
-  statsAvgTtft: "TTFT",
+  statsInput: "Input tokens",
+  statsOutput: "Output tokens",
+  statsCacheRead: "Cache read tokens",
+  statsCacheWrite: "Cache write tokens",
+  statsCost: "Session cost",
+  statsDuration: "Active time",
+  statsTokenSpeed: "Output speed",
+  statsAvgTtft: "Avg time to first token",
   // ---- session-tree filter pills ----
   filterDefault: "Default",
   filterNoTools: "No tools",

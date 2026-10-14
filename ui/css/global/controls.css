@@ -171,6 +171,19 @@ svg { vertical-align: middle; }
 
 .menu .mi .ck { width: 14px; color: var(--green); flex: none; }
 
+/* Options-mode .sel rows (settings dropdowns): fixed left indicator column + right column
+   split into name (top) and note (bottom); noteless options keep the single-line height via align-items:center */
+.menu .mi .mi-ck { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--green); }
+.menu .mi.disabled .mi-ck { color: var(--err); }
+.menu .mi .mi-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
+.menu .mi .mi-tt { font-size: var(--ui-fs-base); color: var(--text); }
+.menu .mi .mi-note { font-size: var(--ui-fs-sm); color: var(--faint); }
+
+/* Options-mode menus size to their longest row: the 170px base min-width leaves short menus
+   with dead space (provider), and the trigger pill's containing block otherwise squeezes long
+   rows into wrapping (display names) — max-content escapes both */
+.sel > .menu:has(.mi-tx) { width: max-content; min-width: 0; }
+
 /* Icons inside menu items (branch options etc.): centered in a fixed 18px column, following the FA icon system */
 .menu .mi .mi-ic { width: 18px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
 

@@ -46,9 +46,6 @@ const rightStateInit: RightState = {
   fileTreePending: new Set(),
   expandedDirs: new Set(),
   commitMsg: "",
-  sessionTree: null,
-  sessionTreePending: false,
-  treeFor: null,
   imageContent: null,
   gitWrite: null,
 };

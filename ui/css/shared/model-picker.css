@@ -45,6 +45,11 @@
 
 .menu.flyout .mi .ck { order: 1; margin-left: auto; }
 
+/* Portaled cascade menus (settings pickers): fixed body-level overlay so they escape any
+   enclosing scroll container (.aued, #setBody, .rb-scroll) instead of being clipped;
+   coordinates are written inline from getBoundingClientRect (zoom-compensated). */
+.menu.mp-menu-portal { position: fixed; bottom: auto; }
+
 /* Model-page role-row picker: reuses the composer's two-level cascade (top-level provider rows + hover right flyout).
    the pill flexes with content, width unlocked; the top-level popup menu is page-wide 250 (.mp-role-menu attaches to level one only),
    the second-level flyout expands dynamically to the longest model name */

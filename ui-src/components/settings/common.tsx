@@ -30,6 +30,10 @@ export interface ConfirmDialogProps {
 export function confirmDialog({ title, message = "", confirmText, danger = false }: ConfirmDialogProps): Promise<boolean> {
   return new Promise((resolve) => {
     const host = document.createElement("div");
+    // Body sits outside the zoomed #settings subtree: carry the current zoom on
+    // the host so the dialog matches the page (shortcut: zoom changes while the
+    // dialog is open are not re-applied)
+    (host.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
     document.body.appendChild(host);
     const root = createRoot(host);
     const done = (val: boolean) => {
@@ -161,15 +165,15 @@ export function useDropdownClose(open: boolean, close: () => void): void {
   }, [open]);
 }
 
-// Dropdown option (1:1 with the old .mi; ck/sub/disabled all optional)
+// Dropdown option (1:1 with the old .mi; ck/note/disabled all optional)
 export interface SelOption {
   v: string;
   label: ReactNode;
   /** Check-column content ("✓" on the current option; "" keeps the column for alignment) */
   ck?: string;
-  /** Right-aligned secondary text */
-  sub?: string;
-  /** Non-pickable row (.mi.disabled) */
+  /** Second line under the label (small, faint) — rendered only when present, so noteless options stay single-line */
+  note?: string;
+  /** Non-pickable row (.mi.disabled): grayed out with a ✕ in the check column */
   disabled?: boolean;
 }
 
@@ -293,9 +297,12 @@ export function Sel(props: SelProps) {
               onPick(o.v);
             }}
           >
-            {o.ck !== undefined && <span className="ck">{o.ck}</span>}
-            {o.label}
-            {o.sub && <span className="sub">{o.sub}</span>}
+            {/* Fixed left column: ✕ for unavailable options, otherwise the checkmark (empty keeps the column for alignment) */}
+            <span className="mi-ck">{o.disabled ? <Icon name="xmark" size={12} /> : o.ck}</span>
+            <span className="mi-tx">
+              <span className="mi-tt">{o.label}</span>
+              {o.note && <span className="mi-note">{o.note}</span>}
+            </span>
           </div>
         ))}
       </div>

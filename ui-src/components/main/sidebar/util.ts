@@ -1,7 +1,7 @@
 // Sidebar utilities (ported from ui/sidebar.js): relative time formatting /
 // session label / clipboard copy.
-// fmtAgo is the single shared definition (also consumed by right/BranchTreePage and
-// tree/SessionTreeStream); fmtDuration lives in chat/util.ts.
+// fmtAgo is the single shared definition (consumed by tree/SessionTreeStream);
+// fmtDuration lives in chat/util.ts.
 import { t } from "../../../i18n";
 
 export function fmtAgo(iso: string): string {

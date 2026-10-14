@@ -409,10 +409,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
                       <i className="aued-toggle-k" />
                     </button>
                     <EnabledModelPicker
-                      // sel-up: the editor scrolls (.aued overflow-y) and sits low in the card —
-                      // a drop-down menu would be clipped by the scroll container and grow the
-                      // scrollbar; opening upward keeps it inside the visible form area.
-                      selClassName="plain sel-up"
+                      // The cascade menus portal to body (fixed overlay) and always render
+                      // fully — no scroll-container clipping, no direction override needed.
+                      selClassName="plain"
                       label={draft.model ? (modelNames.get(draft.model) ?? draft.model) : t("settingsPage.automations.modelDefault")}
                       selectedId={draft.model || undefined}
                       pinnedRows={[

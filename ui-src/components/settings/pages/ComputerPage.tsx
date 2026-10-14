@@ -111,13 +111,20 @@ export default function ComputerPage() {
   const provider = hs?.computerProvider === "kimi" ? "kimi" : "default";
   const kimiInstalled = hs?.kimiCuInstalled === true;
   const providerOptions: SelOption[] = [
-    { v: "default", label: t("settingsPage.computer.providerDefault"), ck: provider === "default" ? "✓" : undefined },
+    {
+      v: "default",
+      label: t("settingsPage.computer.providerDefaultName"),
+      note: t("settingsPage.computer.providerDefaultNote"),
+      ck: provider === "default" ? "✓" : undefined,
+    },
     {
       v: "kimi",
-      label: t("settingsPage.computer.providerKimi"),
+      label: t("settingsPage.computer.providerKimiName"),
+      // Installed: note names the backend; missing: disabled row — the ✕ in the
+      // check column and the gray text carry the "not detected" signal, no note needed
+      note: kimiInstalled ? t("settingsPage.computer.providerKimiNote") : undefined,
       ck: provider === "kimi" ? "✓" : undefined,
       disabled: !kimiInstalled,
-      sub: kimiInstalled ? undefined : t("settingsPage.computer.providerKimiMissing"),
     },
   ];
   const testKimi = (): void => {
@@ -126,17 +133,29 @@ export default function ComputerPage() {
   };
   const cur = typeof hs?.values?.["computer.display"] === "string" ? (hs.values["computer.display"] as string) : "all";
   const curKnown = cur === "all" || displays.some((d) => d.id === cur);
+  // Trigger pill keeps the compact "name · WxH" form; the menu rows below use the
+  // two-line layout (index + name on top, resolution as the note)
   const optionLabel = (v: string): ReactNode => {
     if (v === "all") return t("settingsPage.computer.allDisplays");
     const d = displays.find((x) => x.id === v);
-    if (d) return `${d.name} · ${d.width}×${d.height}${d.isPrimary ? ` · ${t("settingsPage.computer.primaryTag")}` : ""}`;
+    if (d) return `${d.name} · ${d.width}×${d.height}`;
     return `${v} · ${t("settingsPage.computer.notDetected")}`;
   };
   const options: SelOption[] = [
-    { v: "all", label: optionLabel("all"), ck: cur === "all" ? "✓" : undefined },
-    ...displays.map((d) => ({ v: d.id, label: optionLabel(d.id), ck: cur === d.id ? "✓" : undefined })),
+    { v: "all", label: t("settingsPage.computer.allDisplays"), ck: cur === "all" ? "✓" : undefined },
+    ...displays.map((d, i) => ({
+      v: d.id,
+      label: `${t("settingsPage.computer.displayIndex", { n: i + 1 })} · ${d.name}`,
+      note: `${d.width}×${d.height}`,
+      ck: cur === d.id ? "✓" : undefined,
+    })),
   ];
-  if (!curKnown) options.push({ v: cur, label: optionLabel(cur), ck: "✓", disabled: true });
+  if (!curKnown) {
+    // The stored id no longer resolves (monitor replaced / reboot reassigned the
+    // handle): keep it visible as a disabled row — ✕ + "not detected" note — so the
+    // user can see what the stale value was and switch away
+    options.push({ v: cur, label: cur, ck: "✓", disabled: true, note: t("settingsPage.computer.notDetected") });
+  }
 
   return (
     <div className="set-page" id="pg-computer">

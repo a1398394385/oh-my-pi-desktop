@@ -53,6 +53,16 @@
 
 .mp-row .sp { flex: 1; }
 
+/* Pill width is set inline by ThinkSel from the widest option (JS-measured,
+   border-box) — the same label set across models, so the test button to its
+   left stays aligned; the label itself never wraps */
+.mp-row .sel[data-sel="think"] { justify-content: space-between; }
+
+.mp-row .sel[data-sel="think"] .tx { white-space: nowrap; }
+
+/* Menu hugs its short level names instead of the 170px base */
+.mp-row .sel[data-sel="think"] > .menu { min-width: 0; width: max-content; }
+
 /* model role row: the srow embedded in mp-r narrows both side margins; inline name tags as badges */
 .mp-role-row { padding: 12px 2px; }
 

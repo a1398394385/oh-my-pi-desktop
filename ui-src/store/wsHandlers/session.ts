@@ -355,15 +355,6 @@ export const sessionHandlers = {
     // 18.5 base fork (fork_session) receipt, same switch flow as session_branched
     applyForkReceipt(msg);
   },
-  session_tree(msg) {
-    useAppStore.setState((s) => ({
-      rightState: {
-        ...s.rightState,
-        sessionTree: { sessionId: msg.sessionId ?? s.rightState.treeFor, branches: msg.branches ?? [] },
-        sessionTreePending: false,
-      },
-    }));
-  },
   entry_tree(msg) {
     useAppStore.setState((s) => ({
       entryTree: { sessionId: msg.sessionId ?? s.entryTreeFor, leafId: msg.leafId ?? null, roots: msg.roots ?? [] },

@@ -8,7 +8,6 @@ import type {
   GitStagedFrame,
   GitUnstagedFrame,
   ImageContentFrame,
-  SessionBranch,
   TerminalCreatedFrame,
   TerminalDataFrame,
   TerminalExitFrame,
@@ -55,16 +54,13 @@ export interface UiPrefs {
   terminalFontSize?: number;
 }
 
-/** Right panel runtime state (RightState container shape; branch-tree/entry-tree node types come from types/frames) */
+/** Right panel runtime state (RightState container shape; entry-tree node types come from types/frames) */
 export interface RightState {
   fileTreeDirs: Map<string, DirEntry[]>;
   fileTreeExpanded: Set<string>;
   fileTreePending: Set<string>;
   expandedDirs: Set<string>;
   commitMsg: string;
-  sessionTree: { sessionId: string | null; branches: SessionBranch[] } | null;
-  sessionTreePending: boolean;
-  treeFor: string | null;
   imageContent: ImageContentFrame | null; // read_image reply (consumed by the image preview page)
   gitWrite: GitWriteFrame | null; // git write-op reply (the reply settles the button busy state)
 }

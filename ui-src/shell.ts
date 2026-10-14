@@ -157,17 +157,16 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
 }
 
 // ---------- Cmd +/-/0 and native menu zoom ----------
-// Only the three layout containers are zoomed: zooming the whole body would
-// double-scale position:fixed menus, misplacing the rendered context menus /
-// theme menus and their click hit targets.
-// (zoomTargets is lazily initialized: #sidebar/#main/#right do not exist before
-// App mounts)
+// Only the four top containers are zoomed (sidebar / main / right / settings):
+// zooming the whole body would double-scale position:fixed menus, misplacing
+// the rendered context menus / theme menus and their click hit targets.
+// (zoomTargets is lazily initialized: the targets do not exist before App mounts)
 let zoomTargets: (HTMLElement | null)[] | null = null;
 function applyZoom(): void {
   // Re-resolve when a target is missing or detached: App can remount after a
   // language/key change (Root renders <App key={lang}>), leaving the cached
   // nodes orphaned and silently dropping every later zoom write
-  if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected)) zoomTargets = ["sidebar", "main", "right"].map((id) => document.getElementById(id));
+  if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected)) zoomTargets = ["sidebar", "main", "right", "settings"].map((id) => document.getElementById(id));
   // style.zoom is a non-standard property (absent from TS lib.dom): assert the
   // write, semantics unchanged from the original
   for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);

@@ -11,7 +11,7 @@ import { authPolicyFor } from "../bootstrap.ts";
 import { H, loginPendingPrompts } from "../state.ts";
 import { rebuildScopedModels, modelCatalog, syncAvailableModels, capabilityKeysPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
-import { fetchProviderAccountsLimits } from "../limits/index.ts";
+import { fetchProviderAccountsLimits, credentialIdentity, invalidateProviderLimitsCache } from "../limits/index.ts";
 import { hostI18n } from "../i18n/host.ts";
 import { reorderProviderAccounts } from "../account-order.ts";
 import type { RpcHandler } from "./types";
@@ -189,6 +189,9 @@ export const loginHandlers: Record<string, RpcHandler> = {
       throw err;
     }
     await H.authStorage.credentials.reload();
+    // Quota rows are cached under provider#credentialId and the permutation
+    // just moved credentials across ids — serve fresh numbers, not the old ones.
+    invalidateProviderLimitsCache(provider);
     await pushProviderAccounts(ws, provider);
   },
   provider_login_cancel(_ws, _msg) {
@@ -265,7 +268,7 @@ interface WsLike {
 async function pushProviderAccounts(ws: WsLike, provider: string) {
   const active = H.authStorage.credentials.list(provider).map((c) => ({
     id: c.id,
-    label: c.credential?.type === "oauth" ? (c.credential.email ?? c.credential.accountId ?? c.credential.orgName ?? "") : "",
+    label: credentialIdentity(c.credential),
   }));
   const disabledRows = await H.authStorage.credentials.listDisabled(provider);
   ws.send(

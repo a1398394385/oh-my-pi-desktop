@@ -25,7 +25,6 @@ import HubDetailPage from "./HubDetailPage";
 import GitDiffPage from "./GitDiffPage";
 import FilePage from "./FilePage";
 import BgCmdPage from "./BgCmdPage";
-import BranchTreePage from "./BranchTreePage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
 import MirrorPage from "./MirrorPage";
@@ -82,7 +81,8 @@ function TabOverview({ onClose }: { onClose: () => void }) {
   const kw = q.trim().toLowerCase();
   const match = (name: string) => !kw || t(TAB_META[name].label).toLowerCase().includes(kw);
   const opens = rightTabs.filter(match);
-  const recents = rightRecentClosed.filter((x) => match(x.name));
+  // recently closed may hold names of removed tabs from slots persisted long ago — skip them
+  const recents = rightRecentClosed.filter((x) => TAB_META[x.name] && match(x.name));
   return (
     <div className="menu open sp-pop" onClick={(e) => e.stopPropagation()}>
       <div className="sp-pop-search">
@@ -302,6 +302,17 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const hubOpen = useAppStore((st) => st.hubOpen);
   let tabs = rightTabs;
   if (!hubOpen && tabs.includes("hub")) tabs = tabs.filter((n) => n !== "hub");
+  // Slots persisted before a tab was removed from TAB_META (e.g. the old branch tree) would
+  // crash the meta lookups below — drop unknown names and fall back on the active tab
+  const unknown = tabs.filter((n) => !TAB_META[n]);
+  if (unknown.length) {
+    const st = useAppStore.getState();
+    tabs = tabs.filter((n) => TAB_META[n]);
+    useAppStore.setState({
+      rightTabs: tabs,
+      rightTab: st.rightTab && tabs.includes(st.rightTab) ? st.rightTab : tabs[tabs.length - 1] ?? null,
+    });
+  }
   if (!s?.isGit && tabs.includes("gitdiff")) {
     const i = tabs.indexOf("gitdiff");
     tabs = tabs.filter((n) => n !== "gitdiff");
@@ -322,7 +333,6 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "gitdiff") body = <GitDiffPage />;
   else if (rightTab === "bgcmd") body = <BgCmdPage />;
   else if (rightTab === "file") body = <FilePage />;
-  else if (rightTab === "tree") body = <BranchTreePage />;
   else if (rightTab === "terminal") body = <TerminalPage />;
   else if (rightTab === "browser") body = <BrowserPage />;
   else if (rightTab === "mirror") body = <MirrorPage />;
