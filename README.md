@@ -52,6 +52,20 @@ tag 触发 `.github/workflows/release.yml`：校验 tag 与版本号一致 → �
 - GitHub secret `TAURI_SIGNING_PRIVATE_KEY` = `~/.tauri/omp-desktop.key` 的**内容**（不是路径）。**这把私钥丢了，已安装的用户将永久收不到更新。**
 - 客户端签名走 ad-hoc（`APPLE_SIGNING_IDENTITY: "-"`）。别人首次安装需右键打开，或 `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`。要消除这一步需购 Apple Developer ID（$99/年）并公证，见 [ADR-0003](.agents/notes/0003-tauri-updater-auto-update.md)。
 
+本地出包（不走 CI 时）同样要私钥，`createUpdaterArtifacts: true` 下缺私钥会直接报错、不产任何 bundle：
+
+```bash
+# Windows（git-bash 里 ~/.tauri 即用户目录下的 .tauri）
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
+bun x tauri build --config src-tauri/tauri.windows.conf.json
+
+# macOS
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
+APPLE_SIGNING_IDENTITY="-" bun x tauri build
+```
+
+macOS 上生成的那把 key 在 Windows 上同样能用（密钥本身与平台无关，密码为空）；换机时把 `~/.tauri/omp-desktop.key` + `.pub` 拷到新机器的 `~/.tauri/` 即可。
+
 用户侧入口：设置 → 通用 → 应用 →「检查更新」。
 
 ## 文档
