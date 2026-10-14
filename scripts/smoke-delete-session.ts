@@ -12,6 +12,10 @@
 //   B  exact-path hit regression (plain entry, no previousPaths)
 //   C  dispose failure does not abort the cleanup and leaves a stderr trace
 //   D  an unrelated path must not evict a pooled entry
+//   E  a busy entry (in-flight turn) must refuse deletion: error raised, pool
+//      entry and file untouched
+//   F  previousPaths hit also sweeps pin/archive records holding both the old
+//      and the new location of the session
 //
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-delete-session.ts
 import assert from "node:assert/strict";
@@ -56,17 +60,25 @@ interface Counters {
   dispose: number;
   unsubscribe: number;
 }
-function makeStubEntry(path: string, previousPaths: string[], counters: Counters, disposeImpl?: () => Promise<void>) {
+function makeStubEntry(
+  path: string,
+  previousPaths: string[],
+  counters: Counters,
+  disposeImpl?: () => Promise<void>,
+  busy = false,
+) {
   return {
     path,
     previousPaths,
+    // sessionBusy contract (host/rpc/session.ts): non-null activeStartedAt = in-flight turn
+    activeStartedAt: busy ? 1 : null,
     mcpMountGen: 0,
     mcpMountInFlight: undefined,
     mcpReleases: [],
     unsubscribe: () => {
       counters.unsubscribe++;
     },
-    session: { dispose: disposeImpl ?? (async () => { counters.dispose++; }) },
+    session: { dispose: disposeImpl ?? (async () => { counters.dispose++; }), queuedMessageCount: 0 },
   } as any;
 }
 
@@ -136,6 +148,48 @@ try {
     console.log("D ok: unrelated path does not evict");
   }
 
+  // ---- E: busy rejection — a live entry (in-flight turn) must refuse deletion
+  // with an error; pool entry and disk file stay untouched. hostI18n defaults
+  // to zh-CN here (initHostI18n is never called), so anchor the deleteBusy key's
+  // distinct wording to prove the new key fired (not reload/unload busy).
+  {
+    const busyFile = join(scratch, "e-busy.jsonl");
+    writeFileSync(busyFile, "");
+    const counters: Counters = { dispose: 0, unsubscribe: 0 };
+    sessions.set("smoke-a3-busy", makeStubEntry(busyFile, [], counters, undefined, true));
+    await assert.rejects(
+      sessionHandlers.delete_session(fakeWs, { path: busyFile }),
+      (err: any) => typeof err?.message === "string" && err.message.includes("先停止再删除"),
+      "E: busy session must be refused via errors.session.deleteBusy",
+    );
+    assert.equal(sessions.has("smoke-a3-busy"), true, "E: busy entry must stay pooled");
+    assert.equal(counters.unsubscribe, 0, "E: busy entry must not be unsubscribed");
+    assert.equal(counters.dispose, 0, "E: busy entry must not be disposed");
+    assert.equal(existsSync(busyFile), true, "E: busy session file must stay untouched");
+    sessions.delete("smoke-a3-busy");
+    console.log("E ok: busy session refuses deletion, nothing released");
+  }
+
+  // ---- F: pin/archive record sweep — after a persistence move the records may
+  // hold either the old or the new location; deleting via a previousPaths hit
+  // must clear both (④a: the old indexOf(p)-only path left the moved-to record).
+  {
+    const movedFrom = join(scratch, "f-old.jsonl");
+    const movedTo = join(scratch, "f-new.jsonl");
+    writeFileSync(movedFrom, "");
+    H.desktopProjects.pinnedSessions.push(movedFrom, movedTo);
+    H.desktopProjects.archivedSessions.push(movedFrom, movedTo);
+    const counters: Counters = { dispose: 0, unsubscribe: 0 };
+    sessions.set("smoke-a3-pinmove", makeStubEntry(movedTo, [movedFrom], counters));
+    await sessionHandlers.delete_session(fakeWs, { path: movedFrom });
+    assert.ok(!H.desktopProjects.pinnedSessions.includes(movedFrom), "F: pre-move pin must be cleared");
+    assert.ok(!H.desktopProjects.pinnedSessions.includes(movedTo), "F: post-move pin must be cleared");
+    assert.ok(!H.desktopProjects.archivedSessions.includes(movedFrom), "F: pre-move archive must be cleared");
+    assert.ok(!H.desktopProjects.archivedSessions.includes(movedTo), "F: post-move archive must be cleared");
+    assert.equal(existsSync(movedFrom), false, "F: requested file must be unlinked");
+    console.log("F ok: pin/archive records swept across both locations");
+  }
+
   // handleListSessions pushed its refresh frame at the end of every call.
   assert.ok(frames.length > 0 && frames.every((f) => f.type === "session_list"), "delete_session must push session_list refreshes");
   console.log(`smoke-delete-session PASSED (${frames.length} session_list frames)`);
@@ -143,5 +197,6 @@ try {
   process.stderr.write = origWrite;
   rmSync(scratch, { recursive: true, force: true });
   // Never leak stub entries into the shared pool on failure either.
-  for (const id of ["smoke-a3-moved", "smoke-a3-plain", "smoke-a3-boom", "smoke-a3-keep"]) sessions.delete(id);
+  for (const id of ["smoke-a3-moved", "smoke-a3-plain", "smoke-a3-boom", "smoke-a3-keep", "smoke-a3-busy", "smoke-a3-pinmove"])
+    sessions.delete(id);
 }

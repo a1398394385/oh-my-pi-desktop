@@ -51,6 +51,7 @@ export const hostErrorsZh = {
     summaryAborted: "分支摘要已中止",
     reloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再重新加载；当前视图仍在实时更新",
     unloadBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再移出内存池",
+    deleteBusy: "会话仍在生成（或还有排队消息、后台任务），先停止再删除",
     reloadDisposeFailed: "[host] reload_session 释放旧会话失败: {{detail}}\n",
     unloadDisposeFailed: "[host] session_unload 释放会话失败: {{detail}}\n",
     deleteFileFailed: "[host] 删除会话文件失败: {{detail}}\n",

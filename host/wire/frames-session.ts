@@ -194,9 +194,7 @@ export interface SessionBranchedFrame {
   ok: boolean;
   newSessionId?: string; // success only
   newPath?: string; // success only
-  // TODO(narrowing pass): selectedImages is the attachment array of the forked user message; element shape follows the base
   selectedText?: string; // success only
-  selectedImages?: unknown[]; // success only
   error?: string; // failure only
 }
 

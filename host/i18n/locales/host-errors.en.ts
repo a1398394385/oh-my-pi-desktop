@@ -47,6 +47,7 @@ export const hostErrorsEn = {
     summaryAborted: "Branch summary aborted",
     reloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before reloading — the current view stays live",
     unloadBusy: "Session is still generating (or has queued messages / background jobs); stop it before evicting it from the pool",
+    deleteBusy: "Session is still generating (or has queued messages / background jobs); stop it before deleting it",
     reloadDisposeFailed: "[host] reload_session failed to dispose the old session: {{detail}}\n",
     unloadDisposeFailed: "[host] session_unload failed to dispose the session: {{detail}}\n",
     deleteFileFailed: "[host] Failed to delete the session file: {{detail}}\n",

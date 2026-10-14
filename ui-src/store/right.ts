@@ -5,7 +5,7 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import { openRightTab, closeRightTab } from "../components/main/right/tabs";
+import { expandRightPanel, closeRightTab } from "../components/main/right/tabs";
 import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
@@ -393,8 +393,9 @@ export function landBrowserTabs(tabs: BrowserTabInfo[]): void {
     browserOwnerLatch.add(owner);
     if (owner === st.activePath) {
       if (st.rightTab !== "mirror" || !st.rightTabs.includes("mirror") || st.rightCollapsed) {
-        openRightTab("mirror");
-        if (st.rightCollapsed) useAppStore.setState({ rightCollapsed: false });
+        // expandRightPanel owns the expand invariants (todoCollapsed yield +
+        // stale selection cleanup) that the inline openRightTab+setState pair missed
+        expandRightPanel("mirror");
       }
     } else {
       openTabInSlot(owner, "mirror");

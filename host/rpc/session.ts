@@ -325,12 +325,20 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // Permanently delete a session (physical file + its artifacts dir + in-memory pool entry and pin records)
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    // Every file location the matched entries have lived at (path + previousPaths):
+    // pin/archive records are keyed by path too, so all of them must be swept.
+    const knownPaths = new Set<string>();
     for (const [key, entry] of sessions.entries()) {
       // Pool identity is path + previousPaths (state.ts PoolEntry): deleting by
       // a pre-persistence-move path must still clear the live entry, or the
       // file goes away while its AgentSession keeps running and persisting to
       // the new location. Same match as reload_session/session_unload/mark_seen.
       if (!sessionEntryMatchesPath(entry, p)) continue;
+      // Refuse while busy — same eviction hazard as reload_session (the orphaned
+      // session keeps running headless), and here deletion is irreversible.
+      if (sessionBusy(entry)) throw new Error(hostI18n.t("errors.session.deleteBusy"));
+      knownPaths.add(entry.path);
+      for (const prev of entry.previousPaths ?? []) knownPaths.add(prev);
       // Release sequence matches reload_session/session_unload. Release and
       // unsubscribe failures are logged but must not abort the disk cleanup
       // below (delete_session's teardown is best-effort by design).
@@ -357,17 +365,25 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         safeStderr(`[host] delete_session dispose failed: ${err}\n`);
       }
     }
-    const pi = H.desktopProjects.pinnedSessions.indexOf(p);
-    if (pi >= 0) {
-      H.desktopProjects.pinnedSessions.splice(pi, 1);
-      await saveDesktopProjects();
+    // Pin/archive cleanup: after an SDK persistence move the records may hold a
+    // different location than the request path, so sweep every known location of
+    // matched entries; with no live entry fall back to the request path
+    // (unopened history session, never moved in this host's lifetime).
+    let recordsDirty = false;
+    for (const q of knownPaths.size > 0 ? knownPaths : [p]) {
+      const pi = H.desktopProjects.pinnedSessions.indexOf(q);
+      if (pi >= 0) {
+        H.desktopProjects.pinnedSessions.splice(pi, 1);
+        recordsDirty = true;
+      }
+      // Archive records are cleaned up along with the session
+      const ai = H.desktopProjects.archivedSessions.indexOf(q);
+      if (ai >= 0) {
+        H.desktopProjects.archivedSessions.splice(ai, 1);
+        recordsDirty = true;
+      }
     }
-    // Archive records are cleaned up along with the session
-    const ai = H.desktopProjects.archivedSessions.indexOf(p);
-    if (ai >= 0) {
-      H.desktopProjects.archivedSessions.splice(ai, 1);
-      await saveDesktopProjects();
-    }
+    if (recordsDirty) await saveDesktopProjects();
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
