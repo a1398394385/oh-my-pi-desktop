@@ -34,8 +34,11 @@ try {
 } catch {}
 mkdirSync(fixtureCwd, { recursive: true });
 
-const kimiCuOnDisk = ["/Applications", path.join(homedir(), "Applications")]
-  .some((root) => existsSync(path.join(root, "KimiCU.app/Contents/MacOS/kimi-cu")));
+const kimiCuOnDisk =
+  process.platform === "win32"
+    ? existsSync(path.join(process.env.LOCALAPPDATA ?? path.join(homedir(), "AppData", "Local"), "KimiCU", "kimi-cu.exe"))
+    : ["/Applications", path.join(homedir(), "Applications")]
+        .some((root) => existsSync(path.join(root, "KimiCU.app/Contents/MacOS/kimi-cu")));
 
 let child: ChildProcess | null = null;
 let restored = false;

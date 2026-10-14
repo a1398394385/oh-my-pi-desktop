@@ -22,10 +22,26 @@ import { hostI18n } from "./i18n/host.ts";
 export const KIMI_CU_SERVER = "kimi-cu";
 const KIMI_CU_APP = "KimiCU.app";
 
-/** Resolved kimi-cu binary path when KimiCU is installed, else undefined (checked locations: /Applications and ~/Applications). */
+/**
+ * Candidate kimi-cu binary paths for this platform (macOS: /Applications and
+ * ~/Applications bundles; Windows: the %LOCALAPPDATA%\KimiCU per-user install).
+ */
+function kimiCuBinaryCandidates(): string[] {
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || path.join(homedir(), "AppData", "Local");
+    return [
+      path.join(localAppData, "KimiCU", "kimi-cu.exe"),
+      path.join(localAppData, "Programs", "KimiCU", "kimi-cu.exe"),
+    ];
+  }
+  return ["/Applications", path.join(homedir(), "Applications")].map((root) =>
+    path.join(root, KIMI_CU_APP, "Contents", "MacOS", "kimi-cu"),
+  );
+}
+
+/** Resolved kimi-cu binary path when KimiCU is installed, else undefined. */
 export function kimiCuBinaryPath(): string | undefined {
-  for (const root of ["/Applications", path.join(homedir(), "Applications")]) {
-    const bin = path.join(root, KIMI_CU_APP, "Contents", "MacOS", "kimi-cu");
+  for (const bin of kimiCuBinaryCandidates()) {
     if (existsSync(bin)) return bin;
   }
   return undefined;
