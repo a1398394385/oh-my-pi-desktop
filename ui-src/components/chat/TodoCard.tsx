@@ -6,7 +6,7 @@ import { Fragment, useRef } from "react";
 import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
-import { openRightTab } from "../main/right/RightPanel";
+import { expandRightPanel } from "../main/right/tabs";
 
 // Per-session card size, keyed by session path. In-memory only (app lifetime), never
 // written to any config file.
@@ -113,12 +113,10 @@ export default function TodoCard() {
   const openPlanOutput = () => {
     const plan = s?.planResult;
     if (!plan) return;
-    setBump({
+    expandRightPanel("file", {
       fileView: { path: plan.path, text: plan.content, startLine: 1, lineNumbers: null, reqRange: null, full: true },
       fileViewPending: null,
-      rightCollapsed: false,
     });
-    openRightTab("file");
   };
 
   return (

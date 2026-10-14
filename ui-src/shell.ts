@@ -6,6 +6,7 @@
 // DOM side effects stay imperative; React components cooperate via the
 // omp:close-menus / omp:zoom custom events.
 import { useAppStore, send, setBump, type TimerHandle } from "./store";
+import { expandRightPanel } from "./components/main/right/tabs";
 import type { ToolItem } from "./types/session";
 import { IS_WINDOWS } from "./platform";
 import { yieldSummary } from "./components/chat/util";
@@ -101,8 +102,8 @@ export function toggleSidebar(): void {
 
 export function toggleRightPanel(): void {
   const rightCollapsed = !useAppStore.getState().rightCollapsed;
-  // Expanding the right panel yields to collapse the process card (same as parts.jsx)
-  setBump(rightCollapsed ? { rightCollapsed } : { rightCollapsed, todoCollapsed: true });
+  if (rightCollapsed) setBump({ rightCollapsed });
+  else expandRightPanel(null); // expandRightPanel owns the todoCollapsed yield + selection cleanup
 }
 
 // ---------- Sidebar drag-resize ----------

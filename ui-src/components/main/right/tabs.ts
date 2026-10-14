@@ -4,7 +4,7 @@
 // avoids a circular dependency with the panel component).
 // The tab list and recently-closed live in the store (rightTabs / rightRecentClosed); operations
 // write fresh references, field subscriptions notify automatically (no _v bump needed).
-import { useAppStore, setBump } from "../../../store";
+import { useAppStore, setBump, type AppStore } from "../../../store";
 
 // Right panel tab metadata (icon names from the ui/icons registry; labels hold i18n keys
 // resolved via t() at render; module constants aren't recomputed on language switch, so
@@ -59,6 +59,17 @@ export function openRightTab(name: string): void {
   }));
 }
 
+/** Expand the right panel, optionally opening/activating tab `name` first. Single owner of
+ * the cross-module expand invariants: expanding yields the process card out of the way
+ * (todoCollapsed: true) and clears stale detail selections (selectedFile/selectedSubagent).
+ * `patch` carries caller-specific fields (fileView / selectedSubagent / fileDiffCache ...)
+ * on top; passing a `name` registers the tab in the tab list via openRightTab, while callers
+ * that must only switch the active tab (composer status tabs) pass rightTab via patch. */
+export function expandRightPanel(name: string | null, patch?: Partial<AppStore>): void {
+  if (name) openRightTab(name);
+  setBump({ rightCollapsed: false, todoCollapsed: true, selectedFile: null, selectedSubagent: null, ...patch });
+}
+
 /** Tab toggle shared by the bottom-bar button and the shortcut (Mod+Alt+B): open and current →
  * collapse the right panel; otherwise switch to that tab and expand */
 export function toggleRightTab(name: string): void {
@@ -66,8 +77,7 @@ export function toggleRightTab(name: string): void {
   if (!st.rightCollapsed && st.rightTab === name) {
     setBump({ rightCollapsed: true });
   } else {
-    openRightTab(name); // not open → add to the tab list and activate
-    setBump({ selectedFile: null, selectedSubagent: null, rightCollapsed: false, todoCollapsed: true }); // expanding the right panel collapses the process card out of the way (same as parts.jsx)
+    expandRightPanel(name); // not open → add to the tab list and activate
   }
 }
 

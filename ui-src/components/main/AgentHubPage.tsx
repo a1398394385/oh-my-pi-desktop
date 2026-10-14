@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, send, openSessionByPath } from "../../store";
-import { openRightTab } from "./right/tabs";
+import { expandRightPanel } from "./right/tabs";
 import { SubControls, SteerInput } from "../shared/agent/SubControls";
 import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, type SegT } from "../shared/agent/subShared";
 import type { SubagentState } from "../../types/session";
@@ -125,8 +125,7 @@ export default function AgentHub() {
             return;
           }
           st.closeHub();
-          openRightTab("subagent");
-          useAppStore.setState({ selectedSubagent: id, rightCollapsed: false });
+          expandRightPanel("subagent", { selectedSubagent: id });
           return;
         }
         case "x": {

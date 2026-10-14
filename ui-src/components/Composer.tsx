@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useC
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
+import { expandRightPanel } from "./main/right/tabs";
 import { updateSession } from "../store/session";
 import type { PromptAttachment, SlashCommand } from "../types/frames";
 import { closeAllMenus } from "../shell";
@@ -1018,7 +1019,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     if (!st.rightCollapsed && st.rightTab === tab) {
       setBump({ rightCollapsed: true });
     } else {
-      setBump({ rightTab: tab, selectedFile: null, selectedSubagent: null, rightCollapsed: false, todoCollapsed: true }); // expanding the right panel yields to collapse the process card (same as parts.jsx)
+      // Active-tab switch only (never registered into the tab list); the expand
+      // invariants (todoCollapsed yield + selection cleanup) live in expandRightPanel
+      expandRightPanel(null, { rightTab: tab });
     }
   };
 
