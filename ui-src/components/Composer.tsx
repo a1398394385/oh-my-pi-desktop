@@ -17,8 +17,7 @@ import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
 import { expandRightPanel } from "./main/right/tabs";
-import { updateSession } from "../store/session";
-import type { PromptAttachment, SlashCommand } from "../types/frames";
+import type { PromptAttachment } from "../types/frames";
 import { closeAllMenus } from "../shell";
 import Icon from "../Icon";
 import AttachRow from "./composer/AttachRow";
@@ -26,8 +25,11 @@ import ModeMenu, { MODE_META } from "./composer/ModeMenu";
 import ModelMenu from "./composer/ModelMenu";
 import ThinkMenu from "./composer/ThinkMenu";
 import PaletteMenu from "./composer/PaletteMenu";
-import type { PaletteItem, CommandItem } from "./composer/PaletteMenu";
+import type { PaletteItem } from "./composer/PaletteMenu";
 import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger";
+import { filterCommands, filterSkills, filterSubcommands } from "./composer/completionFilters";
+import { bgTaskCount, subagentCount } from "./composer/sessionCounts";
+import { sendComposerPrompt } from "./composer/send";
 import CtxCard from "./chat/CtxCard";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
@@ -55,53 +57,6 @@ import ComposerPlugin from "./composer/lexical/ComposerPlugin";
 import type { ComposerHandle } from "./composer/lexical/ComposerPlugin";
 import { setTtsDuck } from "../lib/speechOut";
 
-// Slash command candidate filter: empty query returns all, grouped and sorted by
-// source (builtin->skill->extension->custom->others); non-empty first matches
-// name/aliases by prefix, then by includes, then falls back to source order; cap 50
-const SRC_RANK: Record<string, number> = { builtin: 0, skill: 1, extension: 2, custom: 3, file: 4 };
-function filterCommands(list: CommandItem[] | null | undefined, query: string): CommandItem[] {
-  if (!Array.isArray(list) || !list.length) return [];
-  const rank = (c: CommandItem) => SRC_RANK[c.source ?? ""] ?? 9;
-  const q = (query || "").toLowerCase();
-  if (!q) return [...list].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 50);
-  const pre: CommandItem[] = [];
-  const incl: CommandItem[] = [];
-  for (const c of list) {
-    const names = [c.name, ...(c.aliases || [])].map((n) => n.toLowerCase());
-    if (names.some((n) => n.startsWith(q))) pre.push(c);
-    else if (names.some((n) => n.includes(q))) incl.push(c);
-  }
-  const byRank = (a: CommandItem, b: CommandItem) => rank(a) - rank(b) || a.name.localeCompare(b.name);
-  return [...pre.sort(byRank), ...incl.sort(byRank)].slice(0, 50);
-}
-// $ skill candidate filter: the source==="skill" entries of the same commands
-// list; matching uses the bare name (strip the "skill:" prefix the host reports)
-function filterSkills(list: CommandItem[] | null | undefined, query: string): CommandItem[] {
-  if (!Array.isArray(list) || !list.length) return [];
-  const bare = (c: CommandItem) => c.name.replace(/^skill:/, "");
-  const skills = list.filter((c) => c.source === "skill");
-  const byBare = (a: CommandItem, b: CommandItem) => bare(a).localeCompare(bare(b));
-  const q = (query || "").toLowerCase();
-  if (!q) return skills.sort(byBare).slice(0, 50);
-  const pre: CommandItem[] = [];
-  const incl: CommandItem[] = [];
-  for (const c of skills) {
-    const n = bare(c).toLowerCase();
-    if (n.startsWith(q)) pre.push(c);
-    else if (n.includes(q)) incl.push(c);
-  }
-  return [...pre.sort(byBare), ...incl.sort(byBare)].slice(0, 50);
-}
-// Subcommand candidate filter for commandArgs triggers: prefix match,
-// lowercase (aligned with the base TUI's buildArgumentCompletions); entries
-// reuse the CommandItem shape (name/description/hint = usage)
-function filterSubcommands(subs: SlashCommand["subcommands"] | undefined, query: string): CommandItem[] {
-  if (!Array.isArray(subs) || !subs.length) return [];
-  const q = (query || "").toLowerCase();
-  return subs.filter((s) => s.name.toLowerCase().startsWith(q)).map((s) => ({ name: s.name, description: s.description, hint: s.usage }));
-}
-
-
 // Size cap for attachments to send: images go through ImageContent (base64),
 // text-like files are inlined into the prompt
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024;
@@ -127,54 +82,6 @@ function buildAttachPayload(): PromptAttachment[] {
         ? { kind: "image", mime: f.mime, data: f.data }
         : { kind: "text", name: f.name, text: f.data },
     );
-}
-
-// Structural subset of a session tool row (bgTaskCount reads only these fields;
-// see the store for the full shape)
-type BgToolItem = {
-  role?: string;
-  name?: string;
-  text?: string;
-  args?: { op?: string; name?: string; application?: string };
-  running?: boolean;
-};
-
-// Running background command count (ported from the runningCount part of the old
-// right.js getBgTasksForSession: only iterates top-level s.items -- tools wrapped
-// in loop groups no longer count; hub start counts in, stop/cancel offsets the
-// same-named process)
-function bgTaskCount(s: { items?: BgToolItem[] } | null | undefined) {
-  if (!s) return 0;
-  let n = 0;
-  const live = new Set<string>();
-  for (const it of s.items ?? []) {
-    if (it.role !== "tool") continue;
-    const name = it.name || it.text || "";
-    if (name === "hub") {
-      const args = it.args || {};
-      const op = args.op || "cmd";
-      const proc = args.name || args.application || "";
-      // Only count background processes by pairing start/stop/cancel. Do not fall
-      // back to it.running: that means "hub tool executing" (between the tool and
-      // tool_update frames); list/status hit it equally, it is not liveness
-      if (op === "start") {
-        n++;
-        if (proc) live.add(proc);
-      } else if ((op === "stop" || op === "cancel") && proc && live.has(proc)) {
-        n--;
-        live.delete(proc);
-      }
-    } else if (it.running && (name === "bash" || name === "shell" || name === "eval")) {
-      n++;
-    }
-  }
-  return Math.max(0, n);
-}
-
-// Running subagent count (ported from the old right.js getRunningSubagentCount)
-function subagentCount(s: { subagents?: Map<string, { streaming?: boolean; status?: string }> } | null | undefined) {
-  if (!s?.subagents) return 0;
-  return [...s.subagents.values()].filter((x) => x.streaming || x.status === "started").length;
 }
 
 type MenuName = "mode" | "model" | "think";
@@ -418,11 +325,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     useAppStore.setState({ draftHasContent: hasDraft });
   });
 
-  // ---- Send path (ported from the old sendPrompt) ----
-  // Resolved here because sendPrompt's local `t` (draft text) shadows the
-  // translation function inside its scope.
-  const needSessionMsg = t("composer.needSession");
-  const subagentNoSlashMsg = t("chat.subagentSlashNotSupported");
+  // ---- Send path: the pipeline lives in composer/send.ts (store-level, sunk by
+  // A14); the component only hands in the draft text + attachments and clears its
+  // editor state when the dispatch succeeded ----
+  const needSessionMsg = t("composer.needSession"); // currently unconsumed (pre-existing dead code, kept as-is)
   const clearDraft = () => {
     lexRef.current?.clear();
     clearDraftState(draftKey);
@@ -433,114 +339,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
-    // raw: untrimmed editor text (bash-mode detection requires ! as the first
-    // character, leading whitespace keeps it off); t: trimmed for send payloads
-    const raw = getDraftText(draftKey);
-    const t = raw.trim();
-    const files = buildAttachPayload();
-    const ws = useAppStore.getState().ws;
-    if ((!t && files.length === 0) || !ws || ws.readyState !== 1) return;
-
-    // Subagent sessions do not support slash or terminal commands
-    if (s?.isSubagent && (t.startsWith("/") || isBashMode(raw))) {
-      toast(subagentNoSlashMsg);
-      return;
-    }
-
-    // bash mode (! as the first character, !! = result kept out of model
-    // context): executed locally, no user bubble; the row is created by the
-    // bash_start frame (aligned with the TUI input-controller send routing)
-    if (isBashMode(raw)) {
-      const excludeFromContext = raw.startsWith("!!");
-      const command = excludeFromContext ? raw.slice(2).trim() : raw.slice(1).trim();
-      if (!command) return; // `!` / `!!` with empty command: no action (same as TUI)
-      // Welcome page (no session yet): auto-create one like a first message,
-      // then execute after the session_created receipt
-      if (isCreatingNew || !s) {
-        useAppStore.setState({ pendingNewBash: { command, excludeFromContext } });
-        clearDraft();
-        send({
-          type: "create_session",
-          cwd: useAppStore.getState().newSessionProject || undefined,
-          model: newSessionModel || undefined,
-          thinking: newSessionThinking || undefined,
-          planMode: newSessionPlanMode || undefined,
-          computerMode: newSessionComputerMode || undefined,
-        });
-        useAppStore.setState({ pendingCreate: true });
-        return;
-      }
-      clearDraft();
-      send({ type: "bash_exec", sessionId: s.sessionId, command, excludeFromContext });
-      return;
-    }
-
-    // Creating-new state: store the draft in pendingNewPrompt; the store sends it
-    // after the session_created receipt
-    if (isCreatingNew || !s) {
-      useAppStore.setState({ pendingNewPrompt: { text: t, files } });
-      clearDraft();
-      send({
-        type: "create_session",
-        cwd: useAppStore.getState().newSessionProject || undefined,
-        model: newSessionModel || undefined,
-        thinking: newSessionThinking || undefined,
-        planMode: newSessionPlanMode || undefined,
-        computerMode: newSessionComputerMode || undefined,
-      });
-      useAppStore.setState({ pendingCreate: true });
-      return;
-    }
-    // Extract image payloads for immediate frontend bubble rendering
-    const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = files
-      .filter((f) => f.kind === "image" && typeof f.data === "string")
-      .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
-
-
-    // Sending while streaming = enqueue as followUp (auto-consumed when the
-    // current loop finishes); Ctrl+↵ is steer -- immediate injection (after the
-    // current tool batch), the bubble is pinned at the bottom of the message
-    // flow, and the split happens at consumption time (steer_consumed)
-    // updateSession swaps the session/Map reference: both selector-subscribed
-    // components (this component / QueueCard) and the old useStore components see it
-    if (s.streaming) {
-      updateSession(s.sessionId, (next) => {
-        if (steer) {
-          next.steering = next.steering ?? [];
-          next.steering.push({ text: t });
-          next.items.push({
-            role: "user",
-            text: t,
-            pending: "steer",
-            ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
-          });
-        } else {
-          next.queued = next.queued ?? [];
-          next.queued.push({ text: t });
-        }
-      });
-    } else {
-      updateSession(s.sessionId, (next) => {
-        next.items.push({
-          role: "user",
-          text: t,
-          ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
-        });
-        // Set the running state locally right away: the timer starts at send time
-        // and the send button flips to stop (the host turn_start keeps the origin
-        // without resetting it once it arrives)
-        next.streaming = true;
-        next.turnStartAt = Date.now();
-      });
-    }
-    clearDraft();
-    ws.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text: t, files, ...(steer ? { steer: true } : {}) }));
-    // Sidebar time = user-message time: stamp the list row now (steer/queued sends count
-    // too); the runEnd session_list refresh later carries the authoritative end time.
-    // Match by path (activePath = this session's file path): the pool sessionId is a
-    // per-open UUID and never equals the list row's disk session id
-    useAppStore.getState().bumpSessionActivity(activePath!);
-    // Pin-to-bottom following is handled by Chat's scroll effect
+    if (sendComposerPrompt({ raw: getDraftText(draftKey), files: buildAttachPayload(), steer })) clearDraft();
   };
 
   // ---- sigil trigger detection (triggerFn): global flattened view +

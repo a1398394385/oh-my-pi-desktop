@@ -2,7 +2,7 @@
 // external writes, model and thinking level, rename/archive/stop/compact receipts, fork and
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
-import { activateSession, clearBranchingMarks, activeOpen, updateSession } from "../session";
+import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, updateSession } from "../session";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession, SubagentState } from "../../types/session";
@@ -209,23 +209,8 @@ export const sessionHandlers = {
       const { text, files } = st3.pendingNewPrompt;
       useAppStore.setState({ pendingNewPrompt: null });
       const s = st3.openSessions.get(st3.activePath ?? "");
-      if (s) {
-        const imgPayload: Array<{ type: "image"; data: string; mimeType: string }> = (files ?? [])
-          .filter((f) => f.kind === "image" && typeof f.data === "string")
-          .map((f) => ({ type: "image", data: f.data as string, mimeType: f.mime || "image/png" }));
-        updateSession(s.sessionId, (next) => {
-          next.items.push({
-            role: "user",
-            text,
-            ...(imgPayload.length > 0 ? { images: imgPayload } : {}),
-          });
-          // Same as sendPrompt: set the running state on send (clock/stop button don't wait for the host's turn_start)
-          next.streaming = true;
-          next.turnStartAt = Date.now();
-        });
-        st3.ws!.send(JSON.stringify({ type: "prompt", sessionId: s.sessionId, text, files }));
-        // Pin-to-bottom following is handled by the Chat component's scroll effect
-      }
+      // Single run-start write + prompt dispatch, identical to the composer send path
+      if (s) dispatchPrompt(s.sessionId, text, files);
     }
     if (st3.pendingNewBash) {
       const { command, excludeFromContext } = st3.pendingNewBash;
