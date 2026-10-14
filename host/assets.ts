@@ -7,7 +7,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { getPluginsDir } from "@oh-my-pi/pi-utils";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { H } from "./state.ts";
 import {
   loadCapability,

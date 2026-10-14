@@ -45,7 +45,7 @@ import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
 import { dispatchFromToolEnd, installProposalHandler, pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { handleVoiceEvent } from "./voice.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 

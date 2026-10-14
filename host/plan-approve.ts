@@ -22,7 +22,7 @@ import path from "node:path";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { prompt } from "@oh-my-pi/pi-utils";
 import { CompactionCancelledError } from "@oh-my-pi/pi-agent-core/compaction";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import {
   autosaveApprovedPlan,
   copyLocalArtifacts,

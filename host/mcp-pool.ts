@@ -13,7 +13,7 @@
 import path from "node:path";
 import { connectToServer, disconnectServer } from "./bootstrap.ts";
 import { H } from "./state.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 
 export type McpSharingMode = "session" | "project" | "global";

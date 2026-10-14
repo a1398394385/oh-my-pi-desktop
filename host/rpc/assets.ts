@@ -34,7 +34,7 @@ import {
 import { rebuildScopedModels } from "../models.ts";
 import { modelsFrame, settingsFrame } from "../frames.ts";
 import { KIMI_CU_SERVER, kimiCuBinaryPath, warmBuiltinServer } from "../mcp-builtin.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 import { settingsGet, settingsSet } from "../settings-compat.ts";

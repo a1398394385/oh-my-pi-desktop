@@ -29,7 +29,7 @@ import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputer
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
-import { hostI18n, initHostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n, initHostI18n } from "../i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
 import { openExternal } from "../open-external.ts";

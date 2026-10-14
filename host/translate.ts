@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { editDiffString } from "@oh-my-pi/pi-natives";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 
 // Compat regex for journals written by the retired ACP nudge prototype: old

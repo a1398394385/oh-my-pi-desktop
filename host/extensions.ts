@@ -12,7 +12,7 @@
 // static imports of the base are forbidden).
 import path from "node:path";
 import { H } from "./state.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import {
   loadAllExtensions,
   toggleProvider,

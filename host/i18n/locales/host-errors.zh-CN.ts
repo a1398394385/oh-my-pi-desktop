@@ -1,6 +1,6 @@
 // Host-side error & validation messages (zh-CN): RPC throw frames, parameter
 // checks, removed-slash-command notices. Keys are prefixed `errors.`;
-// consumed via the host i18n instance (ui-src/i18n/host.ts).
+// consumed via the host i18n instance (host/i18n/host.ts).
 // zh values must stay verbatim identical to the copy that used to live inline
 // in host/ sources (wave-3 H1 extraction) — rewording needs a design review.
 export const hostErrorsZh = {

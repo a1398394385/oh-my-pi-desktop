@@ -9,7 +9,7 @@ import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPay
 import { modelsFrame } from "../frames.ts";
 import { listAllProviders } from "../limits/index.ts";
 import { collectUsageStats } from "../stats.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet, settingsSet } from "../settings-compat.ts";
 import { gateKimiAutoThinking } from "../kimi-thinking.ts";

@@ -35,7 +35,7 @@ import { pushComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue } from "../queue.ts";
 import { handleListSessions } from "./session";
 import { btwAsk } from "../btw.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";

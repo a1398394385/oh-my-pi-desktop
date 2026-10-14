@@ -1,10 +1,12 @@
 // Host-process i18n: a dedicated i18next instance for the Bun host, separate
-// from the frontend instance (different processes, separate lifecycles).
+// from the frontend instance (different processes, separate lifecycles; the
+// frontend instance lives in ui-src/i18n/index.ts). Host-owned so the host
+// never imports back into ui-src/ (A8 boundary rule).
 // Language source of truth: the `ui` section of omp-desktop.json (written by
 // the set_locale RPC). Bootstrap calls initHostI18n() with the persisted
 // value at startup; the RPC switches it at runtime.
-// NOTE: consumed from host/ via a relative import; host code is outside
-// tsconfig — validate host-side changes with `bun build --external "*"` + smoke.
+// NOTE: host code is outside tsconfig — validate host-side changes with
+// `bun build --external "*"` + smoke.
 import { createInstance } from "i18next";
 import errorsZh from "./locales/host-errors.zh-CN";
 import errorsEn from "./locales/host-errors.en";
@@ -31,5 +33,3 @@ void hostI18n.init({
 export function initHostI18n(lang: HostLang): void {
   void hostI18n.changeLanguage(lang);
 }
-
-export default hostI18n;

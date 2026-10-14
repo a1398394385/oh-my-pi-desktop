@@ -13,7 +13,7 @@ import type { BtwHistoryRecord, BtwHistoryTurn } from "@oh-my-pi/pi-coding-agent
 import { BtwHistoryStore, beginBtwTurn, patchLatestBtwTurn, runBtwTurn } from "./bootstrap.ts";
 import { sessions, stampEvent } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 type BtwWs = { send(data: string): unknown };
 

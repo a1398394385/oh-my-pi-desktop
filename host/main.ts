@@ -27,7 +27,7 @@
 // session-poll.ts (pooled-session file polling).
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, HOST_INSTANCE_ID, activeWs } from "./state.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
 import { settingsFrame, modelsFrame } from "./frames.ts";

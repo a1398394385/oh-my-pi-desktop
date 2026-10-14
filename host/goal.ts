@@ -9,7 +9,7 @@
 // when consecutive continuation turns produce no new tool activity) all align
 // with interactive-mode's handleGoalModeCommand / #scheduleGoalContinuation /
 // #handleGoalSessionEvent.
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 /** Goal record (isomorphic to modeData.goal of the persisted mode_change; field validation in goalFromModeData). */

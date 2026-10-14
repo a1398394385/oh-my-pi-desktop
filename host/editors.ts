@@ -9,7 +9,7 @@
 // is actually installed; the CLI is only a launch channel, with the app bundle as fallback.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, win32 as pathWin32 } from "node:path";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 
 export type EditorKind = "editor" | "terminal" | "fileManager";

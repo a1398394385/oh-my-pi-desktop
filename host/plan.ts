@@ -2,7 +2,7 @@
 // persisted mode_change restore. The proposal approval loop itself lives in
 // ./plan-approve.ts (the five next-step options + the execution-model slider,
 // ported from the base TUI's InteractiveMode approval flow).
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { installProposalHandler } from "./plan-approve.ts";
 import { pushCommandOutput, type PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";

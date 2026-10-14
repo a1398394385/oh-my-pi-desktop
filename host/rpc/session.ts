@@ -20,7 +20,7 @@ import {
 } from "../session-lifecycle.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 

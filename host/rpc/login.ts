@@ -12,7 +12,7 @@ import { H, loginPendingPrompts } from "../state.ts";
 import { rebuildScopedModels, modelCatalog, syncAvailableModels, capabilityKeysPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { fetchProviderAccountsLimits } from "../limits/index.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import { reorderProviderAccounts } from "../account-order.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";

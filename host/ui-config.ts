@@ -4,7 +4,7 @@
 // set_locale / set_ui_prefs RPCs persist values (a missing section never gets
 // written back to disk by reads — first explicit change is the first write).
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
-import type { HostLang } from "../ui-src/i18n/host.ts";
+import type { HostLang } from "./i18n/host.ts";
 
 export const DEFAULT_UI_LOCALE: HostLang = "zh-CN";
 

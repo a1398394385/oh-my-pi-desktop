@@ -336,13 +336,32 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/btw.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
+  // Host i18n (A8): the host-owned i18next instance lives in host/i18n/ (moved
+  // out of ui-src/ to cut the host→ui-src reverse dependency); every module
+  // that emits user-visible host copy imports the shared instance. Locale
+  // data files under i18n/locales/ are consumed via default imports, which
+  // the named-import scanner below does not see — they stay internal to
+  // i18n/host.ts only.
+  "assets.ts→i18n/host.ts", "btw.ts→i18n/host.ts", "computer-mode.ts→i18n/host.ts",
+  "editors.ts→i18n/host.ts", "extensions.ts→i18n/host.ts", "goal.ts→i18n/host.ts",
+  "main.ts→i18n/host.ts", "mcp-pool.ts→i18n/host.ts", "plan-approve.ts→i18n/host.ts",
+  "plan.ts→i18n/host.ts", "profile.ts→i18n/host.ts", "pty.ts→i18n/host.ts",
+  "queue.ts→i18n/host.ts", "session-lifecycle.ts→i18n/host.ts", "state.ts→i18n/host.ts",
+  "translate.ts→i18n/host.ts", "ui-config.ts→i18n/host.ts",
+  "rpc/assets.ts→i18n/host.ts", "rpc/automations.ts→i18n/host.ts", "rpc/btw.ts→i18n/host.ts",
+  "rpc/capabilities.ts→i18n/host.ts", "rpc/files.ts→i18n/host.ts", "rpc/index.ts→i18n/host.ts",
+  "rpc/limits.ts→i18n/host.ts", "rpc/login.ts→i18n/host.ts", "rpc/models.ts→i18n/host.ts",
+  "rpc/provider-wizard.ts→i18n/host.ts", "rpc/prompt.ts→i18n/host.ts", "rpc/session.ts→i18n/host.ts",
+  "rpc/settings.ts→i18n/host.ts", "rpc/ssh.ts→i18n/host.ts",
 ]);
 
-// Scan one level of host/ plus the rpc/ and automations/ subdirectories (keys carry a path prefix like rpc/session.ts)
+// Scan one level of host/ plus the rpc/, automations/ and i18n/ subtrees (keys carry a path prefix like rpc/session.ts)
 const files = [
   ...readdirSync(hostDir).filter((f) => f.endsWith(".ts")),
   ...readdirSync(join(hostDir, "rpc")).filter((f) => f.endsWith(".ts")).map((f) => `rpc/${f}`),
   ...readdirSync(join(hostDir, "automations")).filter((f) => f.endsWith(".ts")).map((f) => `automations/${f}`),
+  ...readdirSync(join(hostDir, "i18n")).filter((f) => f.endsWith(".ts")).map((f) => `i18n/${f}`),
+  ...readdirSync(join(hostDir, "i18n", "locales")).filter((f) => f.endsWith(".ts")).map((f) => `i18n/locales/${f}`),
 ];
 const exportsOf = {}; // file -> full set of named exports
 const importsOf = {}; // file -> [{ target, symbols, typeOnly }]
@@ -387,12 +406,16 @@ for (const f of files) {
 const problems = [];
 for (const [file, imports] of Object.entries(importsOf)) {
   for (const imp of imports) {
-    // Relative imports resolving outside host/ (e.g. ../ui-src/i18n/host.ts ->
-    // "ui-src/i18n/host.ts") are not governed by this table: it only constrains
-    // edges between host/ modules (top level + rpc/). Skip before the edge check
-    // so out-of-tree imports neither need allow-listing nor trip the
-    // "nonexistent module" probe (only host/ files are scanned for exports).
-    if (imp.target.includes("/") && !imp.target.startsWith("rpc/") && !imp.target.startsWith("automations/")) continue;
+    // Out-of-tree relative imports (the former ../ui-src/i18n/host.ts ->
+    // "ui-src/i18n/host.ts" bridge) used to be skipped here; since the host
+    // i18n instance moved into host/i18n/ (A8) the host has zero ui-src/
+    // edges, so anything not resolving to a scanned host/ location
+    // (top level, rpc/, automations/, i18n/) is a violation, not a skip.
+    const scannedPrefix = imp.target.startsWith("rpc/") || imp.target.startsWith("automations/") || imp.target.startsWith("i18n/");
+    if (imp.target.includes("/") && !scannedPrefix) {
+      problems.push(`非法依赖边: ${file}→${imp.target}（host 出树导入禁止，目标不属于 host 扫描域）`);
+      continue;
+    }
     const edge = `${file}→${imp.target}`;
     if (!ALLOWED_EDGES.has(edge)) {
       problems.push(`非法依赖边: ${edge}（不在 ALLOWED_EDGES，改结构须同步表并附理由）`);

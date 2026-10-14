@@ -17,7 +17,7 @@ import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
 import { warmKimiCu } from "./computer-mode.ts";
-import { hostI18n, initHostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n, initHostI18n } from "./i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { readDesktopJson, readDesktopSection, writeDesktopSection, writeDesktopSections } from "./desktop-json.ts";
 import type * as BunFfi from "bun:ffi";

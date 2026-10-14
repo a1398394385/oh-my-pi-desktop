@@ -18,7 +18,7 @@ import {
 } from "../bootstrap.ts";
 import { ensureRemoteWorkspaceDir, normalizeRemotePath, readUserSshHost } from "../remote-workspaces.ts";
 import { safeStderr } from "../stderr.ts";
-import { hostI18n } from "../../ui-src/i18n/host.ts";
+import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 
 export interface SshHostConfigShape {

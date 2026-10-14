@@ -9,7 +9,7 @@ import path from "node:path";
 import type { createAgentSession } from "./bootstrap.ts";
 import type { KeepaliveState } from "./keepalive.ts";
 import type { AuthStorage } from "@oh-my-pi/pi-ai";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 
 // ---------- Session pool types (declared up front for profile-switch cleanup) ----------
 export type TurnUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };

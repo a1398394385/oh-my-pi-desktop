@@ -21,7 +21,7 @@ import { lookupSetting } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { KIMI_CU_SERVER, kimiCuInstalled, warmBuiltinServer } from "./mcp-builtin.ts";
-import { hostI18n } from "../ui-src/i18n/host.ts";
+import { hostI18n } from "./i18n/host.ts";
 import { isServerMounted, mountServerForSession, unmountServerForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 
