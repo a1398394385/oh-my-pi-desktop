@@ -255,9 +255,15 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     ws.send(JSON.stringify(modelsFrame()));
     await handleListSessions(ws);
+    // Asset scan failure must stay observable: swallowing it here silently
+    // strands the settings pages on a stale asset list (A5)
+    let assets;
     try {
-      ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
-    } catch {}
+      assets = await listAgentAssets();
+    } catch (err) {
+      safeStderr(`[host] switch_profile agent assets scan failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    if (assets) ws.send(JSON.stringify({ type: "agent_assets", assets }));
     ws.send(JSON.stringify({ type: "profile_switched", profile: H.currentProfile }));
   },
   set_approval_mode(ws, msg) {

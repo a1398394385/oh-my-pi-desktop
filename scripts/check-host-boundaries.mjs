@@ -304,6 +304,7 @@ const ALLOWED_EDGES = new Set([
   // via state). session-lifecycle feeds it events; profile re-wires it on
   // switch; the rpc domain forwards the two push-to-talk commands.
   "voice.ts→bootstrap.ts", "voice.ts→state.ts", "voice.ts→settings-compat.ts",
+  "voice.ts→stderr.ts", // cache-probe failure diagnostics go through safeStderr (A5)
   "session-lifecycle.ts→voice.ts", "profile.ts→voice.ts",
   "rpc/index.ts→rpc/voice.ts", "rpc/voice.ts→rpc/types.ts", "rpc/voice.ts→voice.ts",
   "rpc/settings.ts→voice.ts",

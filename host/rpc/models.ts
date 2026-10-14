@@ -227,7 +227,11 @@ export const modelsHandlers: Record<string, RpcHandler> = {
             let accounts = 0;
             try {
               accounts = H.authStorage.credentials.list(p.id).length;
-            } catch {}
+            } catch (err) {
+              // Credential read failure must stay observable: silently sending
+              // accounts=0 fakes "no accounts configured" on the models page (A5)
+              safeStderr(`[host] get_all_providers credential read failed (${p.id}): ${err instanceof Error ? err.message : String(err)}\n`);
+            }
             const loginKind = authPolicyFor(p.id)?.login?.kind;
             return {
               ...p,

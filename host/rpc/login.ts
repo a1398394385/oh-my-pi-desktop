@@ -221,8 +221,15 @@ export const loginHandlers: Record<string, RpcHandler> = {
     let limitsBaseUrl = "";
     try {
       limitsBaseUrl = H.modelRegistry.getProviderBaseUrl(provider) ?? "";
-    } catch {}
-    void fetchProviderAccountsLimits(H.authStorage, provider, limitsBaseUrl).catch(() => {});
+    } catch (err) {
+      // Both failures must stay observable: this fire-and-forget warm feeds the
+      // models-page quota column, and a swallowed error leaves it silently
+      // empty until the next explicit fetch (A5)
+      safeStderr(`[host] provider_set_key baseUrl lookup failed (${provider}): ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    void fetchProviderAccountsLimits(H.authStorage, provider, limitsBaseUrl).catch((err) => {
+      safeStderr(`[host] provider_set_key quota warm failed (${provider}, base="${limitsBaseUrl}"): ${err instanceof Error ? err.message : String(err)}\n`);
+    });
     ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
     ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
     ws.send(JSON.stringify({ type: "provider_key_done", provider, ok: true }));
