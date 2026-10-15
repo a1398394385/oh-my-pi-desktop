@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-commit encoding gate (the executable part of RULE-009; background in .agents/BUGS.md BUG-026).
+# Scans the staging area only, catching "whole file rewritten through a non-UTF-8 channel" changes —
+# mojibake mixed into an ordinary diff is the hardest to spot by eye.
+# Enable: git config core.hooksPath .githooks
+# Bypass (reason required in the commit message): git commit --no-verify
+command -v node >/dev/null 2>&1 || { echo "[pre-commit] 未找到 node，跳过编码门禁"; exit 0; }
+if ! node scripts/check-encoding.mjs --staged; then
+  echo "[pre-commit] 拦截：暂存内容含乱码或非法 UTF-8，先修好再提交。"
+  echo "             乱码文件恢复方法（按引入提交的 diff 行对回填）见 .agents/BUGS.md BUG-026。"
+  exit 1
+fi

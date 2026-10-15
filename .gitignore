@@ -1,0 +1,17 @@
+# develop
+node_modules/
+src-tauri/target/
+.local/
+ui/assets/
+ui/dist/
+host-dist
+host-dist/
+
+# Agent
+.playwright-mcp/
+.codegraph/
+.omc/
+.zcode/
+
+# 本地 agent 工作目录
+.omp/

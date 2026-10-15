@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>定时任务编辑页 · UI 原型</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --base: #1e1e1e;
+      --shell: #252526;
+      --surface: #2d2d30;
+      --surface-2: #333337;
+      --inset: #202124;
+      --line: #3f4145;
+      --line-soft: rgba(255,255,255,.08);
+      --text: #ededed;
+      --dim: #b4b4bb;
+      --faint: #85858d;
+      --accent: #4a9eff;
+      --accent-soft: rgba(74,158,255,.14);
+      --green: #56d364;
+      --yellow: #e5c07b;
+      --red: #d05c52;
+      --white: #fff;
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+      --r-sm: 6px;
+      --r-md: 10px;
+      --r-lg: 12px;
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --base: #dcdce0;
+      --shell: #f0f0f2;
+      --surface: #fff;
+      --surface-2: #e8e8ec;
+      --inset: #f6f6f8;
+      --line: #d0d0d6;
+      --line-soft: rgba(0,0,0,.08);
+      --text: #1d1d21;
+      --dim: #5d5d65;
+      --faint: #808088;
+      --accent-soft: rgba(31,122,224,.12);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background: var(--base);
+      color: var(--text);
+      font: 13px/1.45 var(--sans);
+    }
+    button, input, textarea, select { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    ::selection { background: rgba(74,158,255,.35); color: var(--text); }
+
+    .app { min-height: 100vh; display: grid; grid-template-rows: 48px 1fr; }
+    .topbar {
+      display: flex; align-items: center; gap: 12px; padding: 0 18px;
+      background: var(--shell); border-bottom: 1px solid var(--line-soft);
+    }
+    .brand { display: inline-flex; align-items: center; gap: 9px; min-width: 180px; font-weight: 600; }
+    .brand-mark { display: grid; place-items: center; width: 23px; height: 23px; border: 1px solid var(--accent); border-radius: 7px; color: var(--accent); }
+    .brand-mark svg { width: 14px; height: 14px; }
+    .crumb { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+    .crumb strong { color: var(--text); font-weight: 500; }
+    .top-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+    .icon-button, .ghost-button, .primary-button, .danger-button {
+      border: 1px solid transparent; border-radius: var(--r-sm); cursor: pointer;
+    }
+    .icon-button { display: grid; place-items: center; width: 29px; height: 29px; background: transparent; color: var(--dim); }
+    .icon-button:hover, .ghost-button:hover { background: var(--surface-2); color: var(--text); }
+    .icon-button svg { width: 16px; height: 16px; }
+    .workspace { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 0; }
+    .rail { display: flex; flex-direction: column; gap: 18px; padding: 20px 12px; background: var(--shell); border-right: 1px solid var(--line-soft); }
+    .rail-label { padding: 0 10px; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    .rail-nav { display: grid; gap: 3px; }
+    .rail-link { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); text-align: left; cursor: pointer; }
+    .rail-link:hover { background: var(--surface-2); color: var(--text); }
+    .rail-link.active { background: var(--accent-soft); color: var(--text); }
+    .rail-link svg { width: 16px; height: 16px; color: var(--faint); }
+    .rail-link.active svg { color: var(--accent); }
+    .rail-spacer { flex: 1; }
+    .rail-note { padding: 11px 10px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 11px; }
+
+    .main { min-width: 0; overflow: auto; background: var(--base); }
+    .page { width: min(1120px, 100%); margin: 0 auto; padding: 34px 42px 100px; }
+    .prototype-badge { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 18px; color: var(--yellow); font-size: 11px; letter-spacing: .02em; }
+    .prototype-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); }
+    .page-head { display: flex; align-items: flex-start; gap: 18px; }
+    .page-head h1 { margin: 0; font-size: 25px; line-height: 1.2; font-weight: 600; letter-spacing: -.025em; }
+    .page-head p { margin: 7px 0 0; color: var(--dim); }
+    .head-actions { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+    .status { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--dim); font-size: 12px; }
+    .status i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+    .ghost-button { min-height: 31px; padding: 5px 11px; border-color: var(--line); background: transparent; color: var(--dim); }
+    .primary-button { min-height: 31px; padding: 5px 14px; border-color: var(--accent); background: var(--accent); color: var(--white); font-weight: 500; }
+    .primary-button:hover { filter: brightness(1.08); }
+    .danger-button { padding: 6px 10px; border-color: transparent; background: transparent; color: var(--red); cursor: pointer; }
+    .tabs { display: flex; gap: 2px; margin-top: 28px; border-bottom: 1px solid var(--line); }
+    .tab { padding: 9px 2px 10px; margin-right: 20px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--faint); cursor: pointer; }
+    .tab:hover { color: var(--text); }
+    .tab.active { border-bottom-color: var(--accent); color: var(--text); }
+    .panel[hidden] { display: none; }
+
+    .field-label { display: block; margin-bottom: 7px; color: var(--dim); font-size: 12px; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--inset); color: var(--text); }
+    input, select { min-height: 35px; padding: 7px 10px; }
+    textarea { min-height: 138px; padding: 10px 12px; resize: vertical; line-height: 1.6; }
+    input::placeholder, textarea::placeholder { color: var(--faint); }
+    .select-wrap { position: relative; }
+    .select-wrap svg { position: absolute; right: 10px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+    .select-wrap select { appearance: none; padding-right: 32px; }
+    .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .field-row.three { grid-template-columns: 1fr 1fr 1.2fr; }
+    .inline { display: flex; align-items: center; gap: 8px; }
+    .inline > * { min-width: 0; }
+    .inline input { width: 74px; text-align: center; }
+    .muted { color: var(--faint); }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .rule { height: 1px; background: var(--line-soft); }
+    .section-title { margin: 0; font-size: 14px; font-weight: 600; }
+    .section-copy { margin: 4px 0 0; color: var(--faint); font-size: 12px; }
+    .mini-title { margin: 0; color: var(--dim); font-size: 11px; letter-spacing: .03em; text-transform: uppercase; }
+    .weekday { display: flex; flex-wrap: wrap; gap: 5px; }
+    .day { min-width: 31px; height: 28px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--dim); cursor: pointer; }
+    .day:hover { background: var(--surface-2); color: var(--text); }
+    .day.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .preview-line { display: flex; align-items: center; gap: 9px; color: var(--dim); font-size: 12px; }
+    .preview-line strong { color: var(--text); font-weight: 500; }
+    .preview-line .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+    .history { margin-top: 20px; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+    .history-head, .history-row { display: grid; grid-template-columns: 1.3fr .8fr .7fr 1.1fr; gap: 10px; align-items: center; padding: 11px 14px; }
+    .history-head { background: var(--surface); color: var(--faint); font-size: 11px; }
+    .history-row { border-top: 1px solid var(--line-soft); color: var(--dim); }
+    .history-row strong { color: var(--text); font-weight: 500; }
+    .run-ok { color: var(--green); }
+
+    /* Variant A: stepped editor. */
+    .a-layout { display: grid; grid-template-columns: 170px minmax(0, 720px); gap: 34px; margin-top: 28px; }
+    .a-steps { display: grid; align-content: start; gap: 4px; padding-top: 2px; }
+    .a-step { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-left: 2px solid transparent; color: var(--faint); }
+    .a-step.active { border-left-color: var(--accent); color: var(--text); }
+    .a-step i { width: 7px; height: 7px; border: 1px solid currentColor; border-radius: 50%; }
+    .a-step.active i { background: var(--accent); border-color: var(--accent); }
+    .a-form { display: grid; gap: 26px; }
+    .a-section { display: grid; gap: 15px; }
+    .a-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .a-section-head .muted { font-size: 12px; }
+    .a-schedule { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .a-schedule .schedule-main { display: grid; gap: 9px; }
+    .a-schedule .schedule-top { display: flex; align-items: center; gap: 8px; }
+    .a-schedule .schedule-top select { width: 160px; }
+    .a-schedule .preview-line { justify-content: flex-end; }
+    .a-toolbar { display: flex; align-items: center; gap: 5px; padding-top: 8px; }
+    .a-toolbar .select-wrap { width: 190px; }
+    .a-toolbar .select-wrap:last-child { margin-left: auto; width: 230px; }
+    .a-end { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: start; }
+    .a-end-options { display: flex; flex-wrap: wrap; gap: 6px; }
+    .choice { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--dim); cursor: pointer; }
+    .choice:hover { background: var(--surface-2); color: var(--text); }
+    .choice.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+    /* Variant B: summary rail + dense form. */
+    .b-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 22px; margin-top: 28px; align-items: start; }
+    .b-summary { position: sticky; top: 18px; display: grid; gap: 18px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .b-summary h2 { margin: 0; font-size: 17px; font-weight: 600; }
+    .b-summary p { margin: 0; color: var(--dim); line-height: 1.55; }
+    .b-next { display: grid; gap: 5px; padding: 12px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+    .b-next strong { font-size: 20px; font-weight: 600; letter-spacing: -.025em; }
+    .b-next span { color: var(--faint); font-size: 12px; }
+    .b-meta { display: grid; gap: 9px; }
+    .b-meta-row { display: flex; justify-content: space-between; gap: 10px; color: var(--faint); }
+    .b-meta-row strong { color: var(--text); font-weight: 500; text-align: right; }
+    .b-form { display: grid; gap: 0; border-top: 1px solid var(--line); }
+    .b-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; align-items: start; padding: 20px 0; border-bottom: 1px solid var(--line-soft); }
+    .b-row-label strong { display: block; font-size: 13px; font-weight: 500; }
+    .b-row-label span { display: block; margin-top: 4px; color: var(--faint); font-size: 11px; }
+    .b-row-content { min-width: 0; display: grid; gap: 11px; }
+    .b-schedule { display: grid; grid-template-columns: 150px 1fr; gap: 10px; }
+    .b-schedule-meta { display: grid; gap: 5px; align-content: center; padding-left: 12px; border-left: 2px solid var(--accent); }
+    .b-schedule-meta strong { font-weight: 500; }
+    .b-schedule-meta span { color: var(--faint); font-size: 11px; }
+    .b-actions { display: flex; justify-content: flex-end; gap: 7px; padding-top: 20px; }
+
+    /* Variant C: canvas with live preview column. */
+    .c-layout { margin-top: 28px; }
+    .c-hero { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: stretch; }
+    .c-title-input { min-height: 52px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 0 0 10px; font-size: 25px; font-weight: 600; letter-spacing: -.025em; }
+    .c-title-input:focus { outline: none; border-bottom-color: var(--accent); }
+    .c-kicker { display: flex; align-items: center; gap: 9px; margin-top: 9px; color: var(--dim); }
+    .c-kicker .status { padding-left: 0; background: transparent; }
+    .c-preview { display: grid; gap: 9px; padding: 15px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .c-preview h2 { margin: 0; font-size: 12px; color: var(--faint); font-weight: 500; }
+    .c-preview-time { font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
+    .c-preview-copy { color: var(--dim); font-size: 12px; }
+    .c-canvas { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 18px; margin-top: 24px; }
+    .c-stack { display: grid; gap: 18px; }
+    .c-block { padding: 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .c-block h2 { margin: 0 0 14px; font-size: 14px; font-weight: 600; }
+    .c-block .field-row { margin-top: 13px; }
+    .c-schedule-editor { display: grid; gap: 12px; }
+    .c-frequency { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+    .freq-button { min-height: 31px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--dim); cursor: pointer; }
+    .freq-button:hover { background: var(--surface-2); color: var(--text); }
+    .freq-button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .c-timeline { display: grid; gap: 10px; }
+    .timeline-row { display: grid; grid-template-columns: 74px 1fr; gap: 10px; align-items: center; }
+    .timeline-date { color: var(--faint); font: 11px var(--mono); text-align: right; }
+    .timeline-bar { position: relative; height: 30px; border-left: 1px solid var(--line); }
+    .timeline-bar::before { content: ""; position: absolute; left: -4px; top: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    .timeline-bar span { position: absolute; left: 14px; top: 4px; color: var(--dim); font-size: 12px; }
+    .c-history { display: grid; gap: 2px; }
+    .c-history-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
+    .c-history-row:last-child { border-bottom: 0; }
+    .c-history-row strong { font-weight: 500; }
+    .c-history-row span { color: var(--faint); font-size: 11px; }
+
+    .toast { position: fixed; left: 50%; bottom: 76px; z-index: 20; transform: translateX(-50%) translateY(8px); padding: 9px 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); opacity: 0; pointer-events: none; transition: opacity .16s ease, transform .16s ease; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .switcher { position: fixed; left: 50%; bottom: 17px; z-index: 10; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); box-shadow: 0 10px 26px rgba(0,0,0,.25); }
+    .switcher button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: var(--dim); cursor: pointer; }
+    .switcher button:hover { background: var(--surface-2); color: var(--text); }
+    .switcher svg { width: 14px; height: 14px; }
+    .switcher-label { min-width: 170px; color: var(--dim); text-align: center; font-size: 11px; }
+    .switcher-label strong { color: var(--text); font-weight: 600; }
+
+    @media (max-width: 860px) {
+      .workspace { grid-template-columns: 56px minmax(0, 1fr); }
+      .rail { padding: 18px 8px; }
+      .rail-label, .rail-link span, .rail-note { display: none; }
+      .rail-link { justify-content: center; padding: 9px; }
+      .brand { min-width: 0; }
+      .brand span, .crumb { display: none; }
+      .page { padding: 26px 22px 100px; }
+      .a-layout, .b-layout, .c-canvas, .c-hero { grid-template-columns: 1fr; }
+      .a-steps { display: flex; overflow: auto; padding-bottom: 4px; }
+      .a-step { border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+      .a-step.active { border-bottom-color: var(--accent); }
+      .b-summary { position: static; }
+      .c-preview { order: -1; }
+    }
+    @media (max-width: 560px) {
+      .topbar { padding: 0 11px; }
+      .page { padding: 23px 14px 100px; }
+      .page-head { display: block; }
+      .head-actions { margin-top: 15px; justify-content: flex-start; }
+      .field-row, .field-row.three, .a-schedule, .a-end, .b-row, .b-schedule { grid-template-columns: 1fr; }
+      .a-toolbar { flex-wrap: wrap; }
+      .a-toolbar .select-wrap, .a-toolbar .select-wrap:last-child { width: 100%; margin-left: 0; }
+      .history-head, .history-row { grid-template-columns: 1fr 1fr; }
+      .history-head span:nth-child(n+3), .history-row span:nth-child(n+3) { display: none; }
+      .switcher-label { min-width: 130px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6.5h14M5 12h9M5 17.5h14"/><path d="M17 9.5v5M14.5 12h5"/></svg></span>
+        <span>omp-desktop</span>
+      </div>
+      <div class="crumb"><span>设置</span><span>/</span><strong>定时任务</strong></div>
+      <div class="top-actions">
+        <button class="icon-button" type="button" data-theme-toggle title="切换主题" aria-label="切换主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg></button>
+        <button class="icon-button" type="button" title="更多" aria-label="更多"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside class="rail">
+        <div class="rail-label">Workspace</div>
+        <nav class="rail-nav" aria-label="主导航">
+          <button class="rail-link active" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8M8 13h5"/></svg><span>定时任务</span></button>
+          <button class="rail-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14M5 12h14M5 18h9"/><circle cx="18" cy="18" r="2"/></svg><span>会话</span></button>
+          <button class="rail-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7.5h6l2 2h8v8.8a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 18.3z"/></svg><span>项目</span></button>
+          <button class="rail-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3.5v2M12 18.5v2M4.7 6.2l1.4 1.4M17.9 16.4l1.4 1.4M3.5 12h2M18.5 12h2M4.7 17.8l1.4-1.4M17.9 7.6l1.4-1.4"/><circle cx="12" cy="12" r="3.2"/></svg><span>设置</span></button>
+        </nav>
+        <div class="rail-spacer"></div>
+        <div class="rail-note">原型预览<br>所有操作只在当前页面内生效</div>
+      </aside>
+      <main class="main">
+        <div class="page">
+          <div class="prototype-badge"><i></i>UI 原型 · 不保存任何内容</div>
+          <div class="page-head">
+            <div>
+              <h1>编辑定时任务</h1>
+              <p>把重复工作交给后台，下一次运行时间始终可见。</p>
+            </div>
+            <div class="head-actions">
+              <span class="status"><i></i>运行中</span>
+              <button class="ghost-button" type="button" data-toast="样例：返回列表">返回</button>
+              <button class="primary-button" type="button" data-toast="样例：已模拟保存">保存更改</button>
+            </div>
+          </div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" type="button" data-demo-tab="settings">任务设置</button>
+            <button class="tab" type="button" data-demo-tab="history">执行记录 <span class="muted">· 12</span></button>
+          </div>
+          <section class="panel active" data-panel="settings">
+            <div id="variant-a" class="variant"></div>
+            <div id="variant-b" class="variant" hidden></div>
+            <div id="variant-c" class="variant" hidden></div>
+          </section>
+          <section class="panel" data-panel="history" hidden>
+            <div class="history">
+              <div class="history-head"><span>开始时间</span><span>状态</span><span>耗时</span><span>会话</span></div>
+              <div class="history-row"><span class="mono">今天 09:00</span><span class="run-ok">已完成</span><span>02:18</span><span><strong>tsc-memory-report</strong></span></div>
+              <div class="history-row"><span class="mono">昨天 09:00</span><span class="run-ok">已完成</span><span>01:52</span><span><strong>tsc-memory-report</strong></span></div>
+              <div class="history-row"><span class="mono">周一 09:00</span><span style="color:var(--yellow)">运行中</span><span>—</span><span><strong>tsc-memory-report</strong></span></div>
+              <div class="history-row"><span class="mono">周日 09:00</span><span style="color:var(--red)">失败</span><span>00:14</span><span><strong>tsc-memory-report</strong></span></div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="toast" role="status" aria-live="polite"></div>
+  <div class="switcher" aria-label="原型变体切换">
+    <button type="button" data-prev title="上一个方案" aria-label="上一个方案"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m14.5 5-7 7 7 7"/></svg></button>
+    <div class="switcher-label"><strong data-variant-key>A</strong> · <span data-variant-name>阶梯式编辑器</span></div>
+    <button type="button" data-next title="下一个方案" aria-label="下一个方案"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9.5 5 7 7-7 7"/></svg></button>
+  </div>
+
+  <script>
+    var names = { a: "阶梯式编辑器", b: "摘要侧栏", c: "实时预览画布" };
+    var variantKeys = ["a", "b", "c"];
+    var current = new URLSearchParams(location.search).get("variant") || "a";
+    if (!names[current]) current = "a";
+    var toast = document.querySelector(".toast");
+
+    function iconChevron() {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m8 10 4 4 4-4"/></svg>';
+    }
+
+    function commonFields() {
+      return '<label><span class="field-label">任务名称</span><input data-bind-title value="每天总结仓库状态" maxlength="200"></label>' +
+        '<label><span class="field-label">提示词</span><textarea>检查工作区最近 24 小时的变更，归纳高风险改动，并给出下一步建议。只读取文件，不要修改代码。</textarea></label>';
+    }
+
+    function scheduleFields(kind) {
+      return '<div class="select-wrap"><select aria-label="频率"><option>每天</option><option>每周</option><option>每月</option><option>自定义 Cron</option></select>' + iconChevron() + '</div>' +
+        '<div class="inline"><span class="muted">时间</span><input class="mono" value="09" aria-label="小时"><span class="muted">:</span><input class="mono" value="00" aria-label="分钟"></div>' +
+        (kind === "wide" ? '<div class="weekday"><button class="day active" type="button">一</button><button class="day active" type="button">二</button><button class="day active" type="button">三</button><button class="day active" type="button">四</button><button class="day active" type="button">五</button><button class="day" type="button">六</button><button class="day" type="button">日</button></div>' : '');
+    }
+
+    function variantA() {
+      return '<div class="a-layout">' +
+        '<nav class="a-steps" aria-label="编辑步骤"><div class="a-step active"><i></i><span>基本信息</span></div><div class="a-step"><i></i><span>运行节奏</span></div><div class="a-step"><i></i><span>任务内容</span></div><div class="a-step"><i></i><span>执行边界</span></div></nav>' +
+        '<div class="a-form">' +
+          '<section class="a-section"><div class="a-section-head"><div><h2 class="section-title">基本信息</h2><p class="section-copy">给这条自动化一个容易识别的名字。</p></div><span class="muted">草稿会保留在当前页面</span></div>' + commonFields().split('<label><span class="field-label">提示词</span>')[0] + '</section>' +
+          '<section class="a-section"><div class="a-section-head"><div><h2 class="section-title">运行节奏</h2><p class="section-copy">用一句话确认它什么时候会再次触发。</p></div></div>' +
+            '<div class="a-schedule"><div class="schedule-main"><div class="schedule-top">' + scheduleFields("wide").split('<div class="weekday">')[0] + '</div><div class="weekday"><button class="day active" type="button">一</button><button class="day active" type="button">二</button><button class="day active" type="button">三</button><button class="day active" type="button">四</button><button class="day active" type="button">五</button><button class="day" type="button">六</button><button class="day" type="button">日</button></div></div><div class="preview-line"><span class="dot"></span><span>下一次运行</span><strong class="mono">明天 09:00</strong></div></div>' +
+          '</section>' +
+          '<section class="a-section"><div class="a-section-head"><div><h2 class="section-title">任务内容</h2><p class="section-copy">提示词和运行上下文放在同一块，编辑时不用来回跳。</p></div></div>' +
+            '<textarea>检查工作区最近 24 小时的变更，归纳高风险改动，并给出下一步建议。只读取文件，不要修改代码。</textarea>' +
+            '<div class="a-toolbar"><div class="select-wrap"><select aria-label="项目"><option>omp-desktop</option><option>oh-my-pi</option><option>ai-agent-tools</option></select>' + iconChevron() + '</div><div class="select-wrap"><select aria-label="模型"><option>跟随全局默认模型</option><option>MiniMax-M3.1-Flash-Preview</option></select>' + iconChevron() + '</div></div>' +
+          '</section>' +
+          '<section class="a-section"><div class="a-section-head"><div><h2 class="section-title">执行边界</h2><p class="section-copy">决定这条任务何时停止重复运行。</p></div></div>' +
+            '<div class="a-end"><span class="field-label">结束条件</span><div class="a-end-options"><button class="choice active" type="button">持续运行</button><button class="choice" type="button">运行次数</button><button class="choice" type="button">指定日期</button></div></div>' +
+          '</section>' +
+        '</div></div>';
+    }
+
+    function variantB() {
+      return '<div class="b-layout"><aside class="b-summary"><h2 data-summary-title>每天总结仓库状态</h2><p>检查最近变更并生成简短的风险报告。</p><div class="b-next"><span>下一次运行</span><strong class="mono">明天 09:00</strong><span>工作日 · 默认项目</span></div><div class="b-meta"><div class="b-meta-row"><span>状态</span><strong style="color:var(--green)">运行中</strong></div><div class="b-meta-row"><span>已运行</span><strong>12 次</strong></div><div class="b-meta-row"><span>最近结果</span><strong>2 分钟</strong></div></div><button class="ghost-button" type="button" data-toast="样例：立即运行">立即运行一次</button></aside><div class="b-form">' +
+        '<div class="b-row"><div class="b-row-label"><strong>基本信息</strong><span>任务识别与归属</span></div><div class="b-row-content">' + commonFields().split('<label><span class="field-label">提示词</span>')[0] + '<div class="field-row"><label><span class="field-label">项目</span><div class="select-wrap"><select><option>omp-desktop</option><option>oh-my-pi</option></select>' + iconChevron() + '</div></label><label><span class="field-label">模型</span><div class="select-wrap"><select><option>跟随全局默认模型</option><option>MiniMax-M3.1-Flash-Preview</option></select>' + iconChevron() + '</div></label></div></div></div>' +
+        '<div class="b-row"><div class="b-row-label"><strong>运行节奏</strong><span>触发频率与时间</span></div><div class="b-row-content"><div class="b-schedule"><div class="b-schedule-meta"><strong>每个工作日</strong><span>周一至周五</span></div><div class="field-row"><label><span class="field-label">时间</span><div class="inline"><input class="mono" value="09"><span class="muted">:</span><input class="mono" value="00"></div></label><label><span class="field-label">时区</span><div class="select-wrap"><select><option>本地时区 · GMT+8</option><option>UTC</option></select>' + iconChevron() + '</div></label></div></div><div class="weekday"><button class="day active" type="button">一</button><button class="day active" type="button">二</button><button class="day active" type="button">三</button><button class="day active" type="button">四</button><button class="day active" type="button">五</button><button class="day" type="button">六</button><button class="day" type="button">日</button></div></div></div>' +
+        '<div class="b-row"><div class="b-row-label"><strong>任务内容</strong><span>每次运行发送给 Agent 的指令</span></div><div class="b-row-content"><textarea>检查工作区最近 24 小时的变更，归纳高风险改动，并给出下一步建议。只读取文件，不要修改代码。</textarea><div class="preview-line"><span class="dot"></span><span>预计下次触发</span><strong class="mono">明天 09:00</strong></div></div></div>' +
+        '<div class="b-row"><div class="b-row-label"><strong>执行边界</strong><span>结束后停止调度</span></div><div class="b-row-content"><div class="field-row"><label><span class="field-label">结束方式</span><div class="select-wrap"><select><option>持续运行</option><option>运行指定次数</option><option>指定日期结束</option></select>' + iconChevron() + '</div></label><label><span class="field-label">失败处理</span><div class="select-wrap"><select><option>保留并继续</option><option>暂停任务</option></select>' + iconChevron() + '</div></label></div></div></div>' +
+        '<div class="b-actions"><button class="danger-button" type="button" data-toast="样例：不会真的删除">删除任务</button><button class="primary-button" type="button" data-toast="样例：已模拟保存">保存更改</button></div>' +
+      '</div></div>';
+    }
+
+    function variantC() {
+      return '<div class="c-layout"><div class="c-hero"><div><input class="c-title-input" data-bind-title value="每天总结仓库状态" aria-label="任务名称"><div class="c-kicker"><span class="status"><i></i>运行中</span><span class="muted">每个工作日 · 09:00 · omp-desktop</span></div></div><div class="c-preview"><h2>下一次运行</h2><div class="c-preview-time mono">明天 09:00</div><div class="c-preview-copy">还剩 20 小时 44 分钟<br>完成后会在执行记录中留下会话链接。</div></div></div>' +
+        '<div class="c-canvas"><div class="c-stack"><section class="c-block"><h2>什么时候运行</h2><div class="c-schedule-editor"><div class="c-frequency"><button class="freq-button active" type="button">每天</button><button class="freq-button" type="button">每周</button><button class="freq-button" type="button">每月</button><button class="freq-button" type="button">间隔</button><button class="freq-button" type="button">Cron</button></div><div class="field-row"><label><span class="field-label">时间</span><div class="inline"><input class="mono" value="09"><span class="muted">:</span><input class="mono" value="00"></div></label><label><span class="field-label">项目</span><div class="select-wrap"><select><option>omp-desktop</option><option>oh-my-pi</option></select>' + iconChevron() + '</div></label></div><div class="weekday"><button class="day active" type="button">一</button><button class="day active" type="button">二</button><button class="day active" type="button">三</button><button class="day active" type="button">四</button><button class="day active" type="button">五</button><button class="day" type="button">六</button><button class="day" type="button">日</button></div></div></section><section class="c-block"><h2>执行什么</h2><textarea>检查工作区最近 24 小时的变更，归纳高风险改动，并给出下一步建议。只读取文件，不要修改代码。</textarea><div class="field-row"><label><span class="field-label">模型</span><div class="select-wrap"><select><option>跟随全局默认模型</option><option>MiniMax-M3.1-Flash-Preview</option></select>' + iconChevron() + '</div></label><label><span class="field-label">结束方式</span><div class="select-wrap"><select><option>持续运行</option><option>运行指定次数</option></select>' + iconChevron() + '</div></label></div></section></div><aside class="c-stack"><section class="c-block"><h2>运行时间线</h2><div class="c-timeline"><div class="timeline-row"><span class="timeline-date">明天 09:00</span><div class="timeline-bar"><span>下一次运行</span></div></div><div class="timeline-row"><span class="timeline-date">周四 09:00</span><div class="timeline-bar"><span>后续运行</span></div></div><div class="timeline-row"><span class="timeline-date">周五 09:00</span><div class="timeline-bar"><span>后续运行</span></div></div></div></section><section class="c-block"><h2>最近执行</h2><div class="c-history"><div class="c-history-row"><strong>检查仓库变更</strong><span class="run-ok">已完成 · 02:18</span></div><div class="c-history-row"><strong>生成风险摘要</strong><span class="run-ok">已完成 · 01:52</span></div><div class="c-history-row"><strong>读取工作区</strong><span style="color:var(--red)">失败 · 00:14</span></div></div></section><button class="primary-button" type="button" data-toast="样例：已模拟保存">保存更改</button></aside></div></div>';
+    }
+
+    document.getElementById("variant-a").innerHTML = variantA();
+    document.getElementById("variant-b").innerHTML = variantB();
+    document.getElementById("variant-c").innerHTML = variantC();
+
+    function setVariant(key) {
+      current = key;
+      variantKeys.forEach(function (item) { document.getElementById("variant-" + item).hidden = item !== key; });
+      document.querySelector("[data-variant-key]").textContent = key.toUpperCase();
+      document.querySelector("[data-variant-name]").textContent = names[key];
+      var url = new URL(location.href);
+      url.searchParams.set("variant", key);
+      history.replaceState(null, "", url);
+    }
+
+    function cycle(step) {
+      var index = variantKeys.indexOf(current);
+      setVariant(variantKeys[(index + step + variantKeys.length) % variantKeys.length]);
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(function () { toast.classList.remove("show"); }, 1700);
+    }
+
+    document.querySelector("[data-prev]").addEventListener("click", function () { cycle(-1); });
+    document.querySelector("[data-next]").addEventListener("click", function () { cycle(1); });
+    document.querySelector("[data-theme-toggle]").addEventListener("click", function () {
+      document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    });
+    document.addEventListener("click", function (event) {
+      var target = event.target.closest("[data-toast]");
+      if (target) showToast(target.dataset.toast);
+      var day = event.target.closest(".day");
+      if (day) day.classList.toggle("active");
+      var choice = event.target.closest(".choice");
+      if (choice) { choice.parentElement.querySelectorAll(".choice").forEach(function (item) { item.classList.toggle("active", item === choice); }); }
+      var freq = event.target.closest(".freq-button");
+      if (freq) { freq.parentElement.querySelectorAll(".freq-button").forEach(function (item) { item.classList.toggle("active", item === freq); }); }
+      var tab = event.target.closest("[data-demo-tab]");
+      if (tab) {
+        document.querySelectorAll("[data-demo-tab]").forEach(function (item) { item.classList.toggle("active", item === tab); });
+        document.querySelectorAll("[data-panel]").forEach(function (panel) { panel.hidden = panel.dataset.panel !== tab.dataset.demoTab; });
+      }
+    });
+    document.addEventListener("input", function (event) {
+      if (!event.target.matches("[data-bind-title]")) return;
+      document.querySelectorAll("[data-summary-title]").forEach(function (item) { item.textContent = event.target.value || "未命名任务"; });
+    });
+    document.addEventListener("keydown", function (event) {
+      var tag = event.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target.isContentEditable) return;
+      if (event.key === "ArrowLeft") cycle(-1);
+      if (event.key === "ArrowRight") cycle(1);
+    });
+    setVariant(current);
+  </script>
+</body>
+</html>

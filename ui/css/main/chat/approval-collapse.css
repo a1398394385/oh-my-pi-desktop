@@ -1,0 +1,30 @@
+/* Approval-card collapse (ApprovalCard.tsx): the head-right button tucks the
+   pending card away so the agent output above stays readable; the collapsed
+   slim bar replaces the card in the dock and expands back on click. While
+   collapsed the card's global key capture is disabled (see collapsedRef). */
+.approval-collapse-btn {
+  flex: none; width: 22px; height: 22px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-radius: 6px;
+  color: var(--faint); cursor: pointer;
+}
+
+.approval-collapse-btn:hover { background: var(--panel-2); color: var(--text); }
+
+/* collapsed pending approval: one-line summary bar (same card language as .approval-card) */
+.approval-min {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; margin: 0; padding: 8px 12px;
+  background: var(--inset); border: 1px solid var(--line-soft); border-radius: var(--r-card);
+  color: var(--dim); font-size: var(--ui-fs-base); text-align: left; cursor: pointer;
+}
+
+.approval-min:hover { background: var(--panel-2); }
+
+.approval-min-tt { flex: none; font-weight: 500; }
+
+.approval-min-q {
+  min-width: 0; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
+}

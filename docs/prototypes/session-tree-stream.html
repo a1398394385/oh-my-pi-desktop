@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>会话树瀑布流 (Session Tree Stream) 交互原型</title>
+  <style>
+    /* ── 核心设计 Token (完全对齐 VSCode Dark+ 与 omp-desktop 全局规范) ── */
+    :root {
+      --base:      #292B2C;
+      --card:      #161616;
+      --inset:     #2B2B2B;
+      --select:    #3F4141;
+      --bg:        var(--card);
+      --panel:     var(--inset);
+      --panel-2:   #353738;
+      --panel-3:   var(--select);
+      --surface:   rgba(255, 255, 255, .05);
+      --line:      #3A3C3D;
+      --line-soft: rgba(255, 255, 255, .08);
+      --text:      #ededef;
+      --dim:       #b0b0b6;
+      --faint:     #8c8c92;
+      --green:     #34c759;
+      --green-soft:#3cb54f;
+      --orange:    #e5a14e;
+      --red:       #ff5f57;
+      --err:       #d05c52;
+      --yellow:    #febc2e;
+      --blue:      #6fb3d8;
+      --purple:    #a86fe0;
+      --accent:    #4a9eff;
+      --ctl-bg:    var(--panel-2);
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --ui-fs: 13px;
+      --code-fs: 12px;
+      --ui-fs-xs: 10px;
+      --ui-fs-sm: 11.5px;
+      --ui-fs-base: 13px;
+      --ui-fs-md: 14px;
+      --r-sm: 6px;
+      --r-md: 9px;
+      --r-lg: 12px;
+    }
+
+    [data-theme="light"] {
+      --base:      #dcdce0;
+      --card:      #f6f6f8;
+      --inset:     #ffffff;
+      --select:    #cfd0d4;
+      --bg:        var(--card);
+      --panel:     var(--inset);
+      --panel-2:   #e8e8ec;
+      --panel-3:   var(--select);
+      --surface:   rgba(0, 0, 0, .04);
+      --line:      #d0d0d6;
+      --line-soft: rgba(0, 0, 0, .08);
+      --text:      #1d1d21;
+      --dim:       #5d5d65;
+      --faint:     #808088;
+      --accent:    #0078d4;
+      --ctl-bg:    var(--inset);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--sans);
+      font-size: var(--ui-fs-base);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── 顶部操作栏 ── */
+    header {
+      flex: none;
+      height: 48px;
+      border-bottom: 1px solid var(--line);
+      background: var(--card);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-title {
+      font-weight: 600;
+      font-size: var(--ui-fs-md);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-badge {
+      font-size: var(--ui-fs-xs);
+      color: var(--accent);
+      background: rgba(74, 158, 255, 0.12);
+      border: 1px solid rgba(74, 158, 255, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: normal;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 胶囊按钮组 */
+    .pill-btn {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--dim);
+      font-size: var(--ui-fs-sm);
+      padding: 4px 10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all .15s ease;
+    }
+    .pill-btn:hover {
+      background: var(--panel-2);
+      color: var(--text);
+      border-color: var(--line-soft);
+    }
+    .pill-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* ── 主内容滚动区 ── */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px 80px;
+      display: flex;
+      justify-content: center;
+    }
+    .stream-container {
+      width: 100%;
+      max-width: 980px;
+      position: relative;
+    }
+
+    /* ── 瀑布流主轴导轨 ── */
+    .stream-spine {
+      position: absolute;
+      top: 18px;
+      bottom: 24px;
+      left: 42px;
+      width: 2px;
+      background: var(--line);
+      z-index: 1;
+      border-radius: 1px;
+    }
+
+    /* ── 节点包裹项 ── */
+    .stream-node-item {
+      position: relative;
+      margin-bottom: 14px;
+      padding-left: 64px;
+      z-index: 2;
+    }
+    .stream-node-item:last-child {
+      margin-bottom: 0;
+    }
+
+    /* 竖线左侧的悬停快捷跳转按钮 */
+    .node-jump-btn {
+      position: absolute;
+      left: 4px;
+      top: 7px;
+      width: 24px;
+      height: 24px;
+      border-radius: var(--r-sm);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--dim);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-4px);
+      transition: opacity .15s ease, transform .15s ease, background .12s, color .12s, border-color .12s;
+      z-index: 5;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    }
+    .node-jump-btn:hover {
+      background: var(--panel-2);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .stream-node-item:hover .node-jump-btn {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    /* 导轨上的节点圆圈徽标 */
+    .spine-bullet {
+      position: absolute;
+      left: 33px;
+      top: 10px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 2px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s ease;
+      z-index: 3;
+    }
+    .spine-bullet::after {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--faint);
+    }
+    /* 活跃路径及当前节点高亮 */
+    .stream-node-item.is-leaf .spine-bullet {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2);
+    }
+    .stream-node-item.is-leaf .spine-bullet::after {
+      background: var(--accent);
+    }
+    .stream-node-item.is-user .spine-bullet { border-color: var(--blue); }
+    .stream-node-item.is-user .spine-bullet::after { background: var(--blue); }
+    .stream-node-item.is-tool .spine-bullet { border-color: var(--green); }
+    .stream-node-item.is-tool .spine-bullet::after { background: var(--green); }
+
+    /* ── 卡片标签容器（对齐 .cmd / .act 标签卡片） ── */
+    .node-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      transition: background .12s, border-color .12s, box-shadow .12s;
+      overflow: hidden;
+    }
+    .node-card:hover {
+      background: var(--panel-2);
+      border-color: var(--line-soft);
+    }
+    .stream-node-item.is-leaf .node-card {
+      border-color: rgba(74, 158, 255, 0.45);
+      background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+    }
+
+    /* 卡片头部行（标签行） */
+    .node-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: var(--ui-fs-sm);
+      min-height: 38px;
+    }
+
+    /* 角色标签 */
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: var(--ui-fs-xs);
+      font-weight: 500;
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex: none;
+      letter-spacing: 0.2px;
+    }
+    .role-badge.user {
+      background: rgba(111, 179, 216, 0.12);
+      color: var(--blue);
+      border: 1px solid rgba(111, 179, 216, 0.3);
+    }
+    .role-badge.assistant {
+      background: rgba(168, 111, 224, 0.12);
+      color: var(--purple);
+      border: 1px solid rgba(168, 111, 224, 0.3);
+    }
+    .role-badge.tool {
+      background: rgba(52, 199, 89, 0.12);
+      color: var(--green);
+      border: 1px solid rgba(52, 199, 89, 0.3);
+    }
+    .role-badge.system {
+      background: rgba(254, 188, 46, 0.12);
+      color: var(--yellow);
+      border: 1px solid rgba(254, 188, 46, 0.3);
+    }
+
+    /* 摘要文本 */
+    .node-summary {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-family: var(--sans);
+    }
+    .node-summary.code-text {
+      font-family: var(--mono);
+      font-size: var(--code-fs);
+      color: var(--dim);
+    }
+
+    /* 右侧元数据与状态 */
+    .node-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: none;
+    }
+    .leaf-tag {
+      font-size: var(--ui-fs-xs);
+      color: var(--accent);
+      background: rgba(74, 158, 255, 0.12);
+      border: 1px solid rgba(74, 158, 255, 0.4);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-weight: 500;
+    }
+    .node-time {
+      font-size: var(--ui-fs-xs);
+      color: var(--faint);
+    }
+
+    /* 展开箭头 (ed-arrow 语言) */
+    .ed-arrow {
+      color: var(--faint);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      transition: transform .2s ease, color .15s;
+      flex: none;
+    }
+    .node-card:hover .ed-arrow {
+      color: var(--dim);
+    }
+    .ed-arrow.open {
+      transform: rotate(90deg);
+      color: var(--accent);
+    }
+
+    /* ── 展开详情面板 (对齐 .cmd-card / .bash-out) ── */
+    .node-detail-panel {
+      display: none;
+      padding: 12px 14px;
+      background: var(--card);
+      border-top: 1px solid var(--line);
+      animation: ed-drop .18s ease-out;
+    }
+    .node-detail-panel.show {
+      display: block;
+    }
+    @keyframes ed-drop {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .detail-section-title {
+      font-size: var(--ui-fs-xs);
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .detail-body {
+      font-size: var(--ui-fs-sm);
+      line-height: 1.6;
+      color: var(--dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--sans);
+      margin-bottom: 12px;
+    }
+    .detail-body.code-block {
+      background: var(--inset);
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: var(--code-fs);
+      color: var(--text);
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .detail-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 6px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .detail-btn {
+      font-size: var(--ui-fs-xs);
+      padding: 4px 10px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--dim);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all .15s ease;
+    }
+    .detail-btn:hover {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+    .detail-btn.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .detail-btn.primary:hover {
+      opacity: 0.9;
+    }
+
+    /* ── 分叉点切换器 (Branch Fork Switcher) ── */
+    .stream-fork-hub {
+      position: relative;
+      margin: 14px 0 16px 64px;
+      z-index: 2;
+    }
+    .fork-container {
+      background: var(--card);
+      border: 1px dashed rgba(74, 158, 255, 0.4);
+      border-radius: var(--r-md);
+      padding: 10px 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+    .fork-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .fork-title {
+      font-size: var(--ui-fs-xs);
+      font-weight: 600;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      letter-spacing: 0.3px;
+    }
+    .fork-hint {
+      font-size: var(--ui-fs-xs);
+      color: var(--faint);
+    }
+
+    /* 分叉药丸选择条 (单排横向滑动，滚动条仅在滑动时显示) */
+    .fork-pills {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      gap: 8px;
+      padding: 4px 2px 8px 2px;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+      transition: scrollbar-color .3s ease;
+    }
+    .fork-pills.is-scrolling {
+      scrollbar-color: var(--line) transparent;
+    }
+    .fork-pills::-webkit-scrollbar {
+      height: 4px;
+    }
+    .fork-pills::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .fork-pills::-webkit-scrollbar-thumb {
+      background: transparent;
+      border-radius: 2px;
+      transition: background-color .3s ease;
+    }
+    .fork-pills.is-scrolling::-webkit-scrollbar-thumb {
+      background: var(--line);
+    }
+    .fork-pills.is-scrolling::-webkit-scrollbar-thumb:hover {
+      background: var(--faint);
+    }
+    .fork-pill {
+      flex: 0 0 auto;
+      white-space: nowrap;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      padding: 6px 11px;
+      font-size: var(--ui-fs-sm);
+      color: var(--dim);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all .15s ease;
+    }
+    .fork-pill:hover {
+      background: var(--panel-2);
+      color: var(--text);
+      border-color: var(--line-soft);
+    }
+    .fork-pill.active {
+      background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+      border-color: var(--accent);
+      color: var(--text);
+      font-weight: 500;
+    }
+    .fork-pill-index {
+      font-size: var(--ui-fs-xs);
+      color: var(--faint);
+      font-family: var(--mono);
+    }
+    .fork-pill.active .fork-pill-index {
+      color: var(--accent);
+    }
+    .fork-pill-len {
+      font-size: var(--ui-fs-xs);
+      background: var(--panel-2);
+      color: var(--faint);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    /* 简单 Toast 提示 */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(30px);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 8px 18px;
+      border-radius: var(--r-md);
+      font-size: var(--ui-fs-sm);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      opacity: 0;
+      transition: all .2s ease;
+      z-index: 100;
+      pointer-events: none;
+    }
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部控制条 -->
+  <header>
+    <div class="header-left">
+      <div class="header-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="3" x2="6" y2="15"></line>
+          <circle cx="18" cy="6" r="3"></circle>
+          <circle cx="6" cy="18" r="3"></circle>
+          <path d="M18 9a9 9 0 0 1-9 9"></path>
+        </svg>
+        会话树 · 瀑布流分叉视图
+      </div>
+      <span class="header-badge">扁平化现代原型</span>
+    </div>
+
+    <div class="header-right">
+      <button class="pill-btn" id="btn-toggle-all">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+        全部展开/收起
+      </button>
+      <button class="pill-btn" id="btn-reset-branch">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+          <path d="M3 3v5h5"></path>
+        </svg>
+        重置分支选择
+      </button>
+      <button class="pill-btn" id="btn-theme">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        明暗切换
+      </button>
+    </div>
+  </header>
+
+  <!-- 瀑布流呈现区 -->
+  <main>
+    <div class="stream-container" id="stream-container">
+      <div class="stream-spine"></div>
+      <div id="stream-content"></div>
+    </div>
+  </main>
+
+  <div id="toast"></div>
+
+  <script>
+    // ── 1. 模拟具有真实多级分叉的会话树结构 ──
+    const treeData = {
+      id: "root-1",
+      role: "user",
+      badge: "用户指令",
+      summary: "我们来改一下现在会话树的 UI 显示，整体采用从上往下的瀑布流，在分叉处支持点击切换。",
+      detail: "用户完整输入：\n我们来改一下现在会话数的 UI 显示，让它看起来更扁平化、现代化：\n首先，整体是一个从上往下的瀑布流。在发生分叉的地方，允许我点击切换，不同的分叉显示在分叉点后续的区域内。\n然后是每一张卡片都像消息区域的标签卡片一样,在右侧加个箭头,允许展开查看详情\n先给出一个最小 HTML 可互动示例我看看",
+      ts: "10:15",
+      isCode: false,
+      children: [
+        {
+          id: "node-2",
+          role: "assistant",
+          badge: "深度思考",
+          summary: "分析旧会话树的 ASCII 缩进痛点，拆解瀑布流线性流 + 分叉点切换控制器的设计架构。",
+          detail: "架构考量：\n1. 旧会话树平铺所有分支会导致多层 ASCII 导轨，视觉噪音大；\n2. 瀑布流单线推进：当前路径主线排列，遇分叉处挂载 Branch Switcher；\n3. 卡片对齐 .cmd / .act 消息卡片，带有右侧旋转箭头和渐入抽屉面板。",
+          ts: "10:16",
+          isCode: false,
+          children: [
+            {
+              id: "node-3",
+              role: "tool",
+              badge: "终端搜索",
+              summary: "find ui-src -name '*tree*' -o -name '*branch*'",
+              detail: "$ find ui-src -name '*tree*' -o -name '*branch*'\nui-src/types/session.ts\nui-src/components/chat/sessionTreeUtil.ts\nui-src/components/chat/MainSessionTree.tsx\nui-src/components/right/SessionTreePage.tsx",
+              ts: "10:16",
+              isCode: true,
+              // ── 此处产生分叉 (3 条分支) ──
+              children: [
+                {
+                  id: "branch-a-1",
+                  branchLabel: "分支 A (主推): 消息卡片流 + 分段药丸切换",
+                  role: "assistant",
+                  badge: "方案 A",
+                  summary: "采用消息标签卡片 + 原地展开抽屉，分叉点以 Segmented Pills 药丸胶囊切换。",
+                  detail: "【方案 A 特点】\n- 极致扁平，与会话区 .cmd/.act 视觉无缝融合\n- 每一张卡片右侧内置 .ed-arrow 箭头\n- 分叉点动态折叠其他平行宇宙，点击分叉药丸即时展开对应下游\n- 性能最高，极简直观",
+                  ts: "10:17",
+                  isCode: false,
+                  children: [
+                    {
+                      id: "branch-a-2",
+                      role: "tool",
+                      badge: "写入文件",
+                      summary: "write_to_file: docs/prototypes/session-tree-stream.html",
+                      detail: "创建单文件原生 HTML 原型，注入 VSCode Dark+ 配色 Token 与交互控制脚本。",
+                      ts: "10:18",
+                      isCode: true,
+                      // ── 嵌套二级分叉 (2 条子分支) ──
+                      children: [
+                        {
+                          id: "branch-a-sub1",
+                          branchLabel: "子分支 A1: 增加双击整行切换/支持键盘方向键",
+                          role: "assistant",
+                          badge: "功能增强",
+                          summary: "支持双击整行卡片收起，以及键盘上下键快捷选中节点。",
+                          detail: "添加键盘监听事件：ArrowUp/Down 移动当前活跃焦点；Enter 展开详情；Space 切换分叉。",
+                          ts: "10:19",
+                          isCode: false,
+                          children: [
+                            {
+                              id: "branch-a-sub1-leaf",
+                              role: "assistant",
+                              badge: "最终完成",
+                              summary: "完成全功能最小可交互示例，当前处于主路径叶子节点。",
+                              detail: "测试通过：主题切换正常，分叉联动平滑，展开收起流畅无闪烁。",
+                              ts: "10:20",
+                              isCode: false,
+                              children: []
+                            }
+                          ]
+                        },
+                        {
+                          id: "branch-a-sub2",
+                          branchLabel: "子分支 A2: 保持纯粹单向点击与原生交互",
+                          role: "assistant",
+                          badge: "轻量精简",
+                          summary: "不加复杂的键盘劫持，保持最纯粹的直觉点击交互。",
+                          detail: "反过度工程：只保留点击卡片头部展开、点击药丸切换分支，最简可依赖。",
+                          ts: "10:19",
+                          isCode: false,
+                          children: []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  id: "branch-b-1",
+                  branchLabel: "分支 B: 折叠抽屉式树状列表 (备选)",
+                  role: "assistant",
+                  badge: "方案 B",
+                  summary: "采用左侧抽屉缩略树 + 右侧详细视图的双栏结构。",
+                  detail: "【方案 B 评估】\n- 适合屏幕宽度极大的场景\n- 缺点：占用过多横向宽度，与移动端及右侧边栏适配较差\n- 暂不作为首推方案",
+                  ts: "10:17",
+                  isCode: false,
+                  children: [
+                    {
+                      id: "branch-b-2",
+                      role: "user",
+                      badge: "用户反馈",
+                      summary: "双栏方案略显繁重，还是优先单栏瀑布流体验更好。",
+                      detail: "用户的选择是优先保持线性沉浸感，因此分支 B 停止延伸。",
+                      ts: "10:18",
+                      isCode: false,
+                      children: []
+                    }
+                  ]
+                },
+                {
+                  id: "branch-c-1",
+                  branchLabel: "分支 C: Canvas 拓扑连线图 (备选)",
+                  role: "assistant",
+                  badge: "方案 C",
+                  summary: "使用 HTML5 Canvas 绘制类似 GitKraken 的彩虹连线拓扑图。",
+                  detail: "【方案 C 评估】\n- 视觉炫酷，但 DOM 无法直接参与选中复制\n- 在桌面端开销相对较高，不符合轻量极简目标",
+                  ts: "10:17",
+                  isCode: false,
+                  children: []
+                },
+                {
+                  id: "branch-d-1",
+                  branchLabel: "分支 D: Monaco Diff 实时分栏预览 (探索分支)",
+                  role: "assistant",
+                  badge: "方案 D",
+                  summary: "引入内嵌轻量 Monaco Diff 对比分叉点前后的改动差异。",
+                  detail: "【方案 D 特点】\n- 在卡片内直接预览两分叉之间的代码差分\n- 适合复杂重构决策对比",
+                  ts: "10:18",
+                  isCode: false,
+                  children: [
+                    {
+                      id: "branch-d-2",
+                      role: "tool",
+                      badge: "代码对比",
+                      summary: "git diff branch-a..branch-d",
+                      detail: "--- a/ui-src/tree.tsx\n+++ b/ui-src/tree.tsx\n@@ -10,3 +10,5 @@\n+export const DiffView = () => ...",
+                      ts: "10:19",
+                      isCode: true,
+                      children: []
+                    }
+                  ]
+                },
+                {
+                  id: "branch-e-1",
+                  branchLabel: "分支 E: 导出分支链路为 Markdown (报告模式)",
+                  role: "tool",
+                  badge: "导出归档",
+                  summary: "export_branch_summary --output=branch_e.md",
+                  detail: "导出成功：已将本条会话历史完整导出为 docs/export/branch_e.md，含所有 prompt 与工具调用。",
+                  ts: "10:19",
+                  isCode: true,
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    // ── 2. 状态管理 ──
+    // 存储分叉点选中的子分支 ID：Map<nodeId, selectedChildId>
+    const selectedBranches = new Map();
+    // 存储当前展开的节点 ID：Set<nodeId>
+    const expandedNodeIds = new Set();
+    // 当前全局标记的活跃叶子节点 ID
+    let currentLeafId = "branch-a-sub1-leaf";
+
+    // 默认给每个分叉点选第一个子节点
+    function initDefaultBranches(node) {
+      if (node.children && node.children.length > 1) {
+        if (!selectedBranches.has(node.id)) {
+          selectedBranches.set(node.id, node.children[0].id);
+        }
+      }
+      if (node.children) {
+        node.children.forEach(initDefaultBranches);
+      }
+    }
+    initDefaultBranches(treeData);
+
+    // ── 3. 递归提取当前活跃流的扁平序列 ──
+    // 结构：[{ type: 'node', data: node }, { type: 'fork', parentNode: node, options: node.children }]
+    function buildStreamSequence(startNode) {
+      const seq = [];
+      let curr = startNode;
+
+      while (curr) {
+        seq.push({ type: 'node', data: curr });
+
+        if (!curr.children || curr.children.length === 0) {
+          break;
+        }
+
+        if (curr.children.length === 1) {
+          curr = curr.children[0];
+        } else {
+          // 分叉点！
+          const options = curr.children;
+          let selectedId = selectedBranches.get(curr.id);
+          let nextNode = options.find(c => c.id === selectedId);
+          if (!nextNode) {
+            nextNode = options[0];
+            selectedBranches.set(curr.id, nextNode.id);
+          }
+
+          seq.push({
+            type: 'fork',
+            parentId: curr.id,
+            options: options,
+            selectedId: nextNode.id
+          });
+
+          // 继续跟随选中的分支往下走
+          curr = nextNode;
+        }
+      }
+
+      return seq;
+    }
+
+    // ── 4. 渲染瀑布流 ──
+    const contentEl = document.getElementById("stream-content");
+
+    function renderStream() {
+      const sequence = buildStreamSequence(treeData);
+      contentEl.innerHTML = "";
+
+      sequence.forEach((item, idx) => {
+        if (item.type === 'node') {
+          const node = item.data;
+          const isLeaf = (node.id === currentLeafId);
+          const isExpanded = expandedNodeIds.has(node.id);
+
+          const nodeEl = document.createElement("div");
+          nodeEl.className = `stream-node-item is-${node.role} ${isLeaf ? 'is-leaf' : ''}`;
+          nodeEl.id = `item-${node.id}`;
+
+          nodeEl.innerHTML = `
+            ${isLeaf ? '' : `
+              <button class="node-jump-btn" title="跳转至此节点" onclick="event.stopPropagation(); jumpToNode('${node.id}')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path>
+                </svg>
+              </button>
+            `}
+            <div class="spine-bullet" title="${node.badge}"></div>
+            <div class="node-card">
+              <div class="node-card-header" data-id="${node.id}">
+                <span class="role-badge ${node.role}">
+                  ${getRoleIcon(node.role)}
+                  ${node.badge}
+                </span>
+                <span class="node-summary ${node.isCode ? 'code-text' : ''}" title="${escapeHtml(node.summary)}">
+                  ${node.isCode ? '$ ' : ''}${escapeHtml(node.summary)}
+                </span>
+                <div class="node-meta">
+                  ${isLeaf ? '<span class="leaf-tag">当前节点</span>' : ''}
+                  <span class="node-time">${node.ts}</span>
+                  <span class="ed-arrow ${isExpanded ? 'open' : ''}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                  </span>
+                </div>
+              </div>
+              <div class="node-detail-panel ${isExpanded ? 'show' : ''}">
+                <div class="detail-section-title">完整内容详情</div>
+                <div class="detail-body ${node.isCode ? 'code-block' : ''}">${escapeHtml(node.detail)}</div>
+                <div class="detail-actions">
+                  <button class="detail-btn" onclick="copyText('${escapeQuotes(node.detail)}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    复制内容
+                  </button>
+                  <button class="detail-btn ${isLeaf ? '' : 'primary'}" onclick="jumpToNode('${node.id}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="15 3 21 3 21 9"></polyline>
+                      <polyline points="9 21 3 21 3 15"></polyline>
+                      <line x1="21" y1="3" x2="14" y2="10"></line>
+                      <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                    ${isLeaf ? '已在当前节点' : '跳转至此节点'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+
+          // 点击头部展开/收起
+          const header = nodeEl.querySelector(".node-card-header");
+          header.addEventListener("click", () => {
+            if (expandedNodeIds.has(node.id)) {
+              expandedNodeIds.delete(node.id);
+            } else {
+              expandedNodeIds.add(node.id);
+            }
+            renderStream();
+          });
+
+          contentEl.appendChild(nodeEl);
+
+        } else if (item.type === 'fork') {
+          // 渲染分叉点控制器
+          const forkEl = document.createElement("div");
+          forkEl.className = "stream-fork-hub";
+          forkEl.innerHTML = `
+            <div class="fork-container">
+              <div class="fork-header">
+                <span class="fork-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <line x1="6" y1="3" x2="6" y2="15"></line>
+                    <circle cx="18" cy="6" r="3"></circle>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <path d="M18 9a9 9 0 0 1-9 9"></path>
+                  </svg>
+                  分叉点切换 (${item.options.length} 个分支)
+                </span>
+                <span class="fork-hint">滚轮左右滑动 · 点击切换分支</span>
+              </div>
+              <div class="fork-pills">
+                ${item.options.map((opt, i) => {
+                  const isActive = (opt.id === item.selectedId);
+                  const countDesc = countSubNodes(opt);
+                  return `
+                    <button class="fork-pill ${isActive ? 'active' : ''}" data-parent="${item.parentId}" data-child="${opt.id}">
+                      <span class="fork-pill-index">#${i + 1}</span>
+                      <span>${escapeHtml(opt.branchLabel || opt.summary)}</span>
+                      <span class="fork-pill-len">${countDesc} 步</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+
+          const pillsContainer = forkEl.querySelector(".fork-pills");
+
+          // 滚动条只在滚动中显示，停止后 650ms 平滑淡出
+          let scrollTimer = null;
+          pillsContainer.addEventListener("scroll", () => {
+            pillsContainer.classList.add("is-scrolling");
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+              pillsContainer.classList.remove("is-scrolling");
+            }, 650);
+          }, { passive: true });
+
+          // 核心交互：在该区域内滚轮控制横向滑动，阻止页面纵向滚动
+          forkEl.addEventListener("wheel", (e) => {
+            if (pillsContainer.scrollWidth > pillsContainer.clientWidth) {
+              e.preventDefault();
+              e.stopPropagation();
+              const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+              pillsContainer.scrollLeft += delta;
+            }
+          }, { passive: false });
+
+          // 绑定切换分支点击事件
+          const pills = forkEl.querySelectorAll(".fork-pill");
+          pills.forEach(p => {
+            p.addEventListener("click", (e) => {
+              const pId = p.getAttribute("data-parent");
+              const cId = p.getAttribute("data-child");
+              selectedBranches.set(pId, cId);
+              showToast(`已切换至分支: ${p.querySelector("span:nth-child(2)").textContent}`);
+              renderStream();
+            });
+          });
+
+          // 保证当前选中的分支药丸在可视范围内
+          requestAnimationFrame(() => {
+            const activePill = pillsContainer.querySelector(".fork-pill.active");
+            if (activePill) {
+              activePill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            }
+          });
+
+          contentEl.appendChild(forkEl);
+        }
+      });
+    }
+
+    // 计算子节点步数
+    function countSubNodes(node) {
+      let count = 1;
+      let curr = node;
+      while (curr && curr.children && curr.children.length > 0) {
+        count += 1;
+        // 沿选中或首个分支走
+        const nextId = selectedBranches.get(curr.id);
+        curr = (nextId ? curr.children.find(c => c.id === nextId) : null) || curr.children[0];
+      }
+      return count;
+    }
+
+    function getRoleIcon(role) {
+      if (role === 'user') {
+        return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+      }
+      if (role === 'assistant') {
+        return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>`;
+      }
+      if (role === 'tool') {
+        return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`;
+      }
+      return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    function escapeQuotes(str) {
+      if (!str) return '';
+      return String(str).replace(/'/g, "\\'").replace(/\n/g, '\\n');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById("toast");
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2000);
+    }
+
+    window.copyText = function(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("已成功复制内容到剪贴板");
+      }).catch(() => {
+        showToast("复制成功");
+      });
+    };
+
+    window.jumpToNode = function(id) {
+      currentLeafId = id;
+      showToast(`已切换当前位置至节点: ${id}`);
+      renderStream();
+    };
+
+    // ── 5. 工具栏交互 ──
+    // 全部展开/收起
+    let allExpanded = false;
+    document.getElementById("btn-toggle-all").addEventListener("click", () => {
+      allExpanded = !allExpanded;
+      if (allExpanded) {
+        // 将当前活跃流中的所有节点 ID 加入 expandedNodeIds
+        const sequence = buildStreamSequence(treeData);
+        sequence.forEach(item => {
+          if (item.type === 'node') expandedNodeIds.add(item.data.id);
+        });
+      } else {
+        expandedNodeIds.clear();
+      }
+      renderStream();
+    });
+
+    // 重置分支
+    document.getElementById("btn-reset-branch").addEventListener("click", () => {
+      selectedBranches.clear();
+      initDefaultBranches(treeData);
+      currentLeafId = "branch-a-sub1-leaf";
+      showToast("已重置所有分叉选择至主干");
+      renderStream();
+    });
+
+    // 明暗主题切换
+    document.getElementById("btn-theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      const cur = root.getAttribute("data-theme");
+      const next = (cur === "light" ? "dark" : "light");
+      root.setAttribute("data-theme", next);
+      showToast(`已切换为 ${next === 'light' ? 'Light+ 浅色' : 'Dark+ 深色'} 主题`);
+    });
+
+    // 初始化渲染
+    renderStream();
+  </script>
+</body>
+</html>

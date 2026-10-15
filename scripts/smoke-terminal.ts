@@ -1,0 +1,87 @@
+// Terminal PTY smoke test: really start the host + connect over WS and exercise the full terminal_create/write/resize/dispose chain.
+// Assertions: the PTY create frame replies; typing echo yields echo data frames (with the expected output); after resize, stty size reflects the new dimensions;
+// after dispose the bridge process exits (a terminal_exit frame or the session disappearing).
+// Usage: bun scripts/smoke-terminal.ts
+import { spawn } from "node:child_process";
+import os from "node:os";
+
+const child = spawn("bun", ["host/host.ts"], {
+  cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
+  stdio: ["ignore", "pipe", "inherit"],
+});
+function fail(msg: string): never {
+  console.error("✗ " + msg);
+  child.kill("SIGTERM");
+  process.exit(1);
+}
+const wsUrl = await (async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+  const timer = setTimeout(() => reject(new Error("宿主 30s 未就绪")), 30_000);
+  child.stdout!.setEncoding("utf8");
+  child.stdout!.on("data", function onLine(chunk) {
+    const m = chunk.match(/READY (ws:\/\/\S+)/);
+    if (m) { clearTimeout(timer); child.stdout!.off("data", onLine); resolve(m[1]); }
+  });
+  return promise;
+})().catch((e) => fail(String(e)));
+console.log("宿主已就绪:", wsUrl);
+
+const ws = new WebSocket(wsUrl);
+await (() => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  ws.onopen = () => resolve();
+  return promise;
+})();
+
+let buf = "";
+const dataFrames: string[] = [];
+let created: { id: string; shell: string } | null = null;
+let exitFrame: { id: string; code: number } | null = null;
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(String(ev.data));
+  if (msg.type === "terminal_created") created = msg;
+  if (msg.type === "terminal_data") dataFrames.push(msg.data);
+  if (msg.type === "terminal_exit") exitFrame = msg;
+};
+
+const send = (obj: unknown) => ws.send(JSON.stringify(obj));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const termId = "smoke-terminal";
+send({ type: "terminal_create", id: termId, cwd: os.tmpdir(), cols: 80, rows: 24 });
+
+await sleep(1500);
+if (!created) fail("未收到 terminal_created 回包");
+if (created.id !== termId) fail(`terminal_created id 不符: ${created.id}`);
+console.log(`✓ terminal_created（shell=${created.shell}）`);
+
+// Type a command: the echo frame must contain echo's output. pwsh needs CR as
+// Enter (a bare LF opens a continuation prompt instead of executing).
+const isWin = process.platform === "win32";
+const eol = isWin ? "\r" : "\n";
+send({ type: "terminal_write", id: termId, data: `echo pty-smoke-$((40+2))${eol}` });
+await sleep(1200);
+buf = dataFrames.join("");
+if (!buf.includes("pty-smoke-42")) fail("回显帧缺少 echo 输出\n--- 实际输出 ---\n" + buf.slice(-400));
+console.log("✓ echo 回显帧含 pty-smoke-42");
+
+// resize: 80x24 -> 100x30; stty size should print "30 100"
+send({ type: "terminal_resize", id: termId, cols: 100, rows: 30 });
+await sleep(400);
+// stty is POSIX-only; pwsh reads the same "rows cols" pair from the .NET console.
+send({ type: "terminal_write", id: termId, data: isWin ? `echo "$([Console]::WindowHeight) $([Console]::WindowWidth)"${eol}` : `stty size${eol}` });
+await sleep(1200);
+buf = dataFrames.join("");
+if (!buf.includes("30 100")) fail("resize 未生效（stty size 无 30 100）");
+console.log("✓ resize 生效（stty size -> 30 100）");
+
+// Dispose: the host kills the bridge process, whose exit should push terminal_exit
+send({ type: "terminal_dispose", id: termId });
+await sleep(1500);
+if (!exitFrame) fail("dispose 后未收到 terminal_exit 帧");
+if (exitFrame.id !== termId) fail(`terminal_exit id 不符: ${exitFrame.id}`);
+console.log(`✓ dispose 后 terminal_exit（code=${exitFrame.code}）`);
+
+ws.close();
+child.kill("SIGTERM");
+console.log("终端 PTY 冒烟全绿");
+process.exit(0);

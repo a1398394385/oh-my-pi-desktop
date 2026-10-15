@@ -1,0 +1,20 @@
+/* Project / git-branch chips after the session title (MainHeader): rounded cards
+   on the topbar. The project chip is display-only (no hover — nothing clicks);
+   the branch chip is the picker (hover + active open state + upward menu, caret
+   follows the .sel-up convention: resting up, rotating back down when open) */
+.head-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: none; min-width: 0; max-width: 220px;
+  height: 26px; padding: 0 10px;
+  border: 1px solid var(--line-soft); border-radius: 999px;
+  background: var(--panel-2); color: var(--dim);
+  font-size: var(--ui-fs-sm);
+  box-sizing: border-box;
+}
+.head-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-head button.head-chip { cursor: pointer; transition: background .15s, color .15s; }
+.chat-head button.head-chip:hover,
+.chat-head button.head-chip.active { background: var(--panel-3); color: var(--text); }
+.head-chip .caret-svg { display: inline-flex; flex: none; color: var(--faint); }
+.head-chip .caret-svg svg { transition: transform .15s var(--swift); transform: rotate(180deg); }
+.chat-head button.head-chip.active .caret-svg svg { transform: rotate(0deg); }

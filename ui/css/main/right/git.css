@@ -1,0 +1,52 @@
+/* Git Diff tree / flat list / file detail */
+.gd-caret { font-size: var(--ui-fs-xs); color: var(--faint); width: 10px; flex-shrink: 0; display: inline-flex; align-items: center; }
+
+.gd-caret svg { transition: transform .3s ease; }
+
+.gd-caret.open svg { transform: rotate(90deg); }
+
+.gd-badge {
+  font-family: var(--mono) !important; font-size: var(--ui-fs-xs);
+  width: 18px; flex-shrink: 0; text-align: center;
+  border-radius: 4px; padding: 1px 0;
+}
+
+.gd-badge.add { color: var(--green-soft); background: var(--tint-git-added-140); }
+.gd-badge.del { color: var(--err); background: var(--tint-danger-140); }
+.gd-badge.mod { color: var(--orange); background: var(--tint-git-modified-140); }
+
+/* --- B3 Git Diff write actions + file-view image preview (right.js) --- */
+/* toolbar: commit message input (.inp language, small + flex fill) + commit/push (.save-btn small) */
+.gd-commit-inp {
+  flex: 1; min-width: 0; width: auto;
+  padding: 4px 9px; font-size: var(--ui-fs-xs);
+}
+
+/* inline small icon buttons: transparent base + hover --panel-3; the danger variant turns red on hover to signal destructiveness */
+.gd-act {
+  border: 0; background: none; color: var(--faint);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 5px;
+  cursor: pointer; padding: 0;
+  line-height: 0;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.gd-act > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.gd-act svg {
+  display: block;
+}
+
+.gd-act:hover { background: var(--panel-3); color: var(--text); }
+
+.gd-act:disabled { opacity: .5; cursor: default; }
+
+.gd-act:disabled:hover { background: none; color: var(--faint); }
+
+.gd-act.danger:hover { background: var(--panel-3); color: var(--err); }

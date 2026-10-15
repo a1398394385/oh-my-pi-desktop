@@ -1,0 +1,257 @@
+// Model domain RPC: session-level switching (set_model/set_thinking),
+// enable/disable (set_enabled_model), role read/write, catalog snapshots and
+// the provider list. Moved over from the main.ts message dispatch (third
+// slice).
+import { authPolicyFor, formatModelRoleAlias, getKnownRoleIds, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
+import { completeSimple } from "@oh-my-pi/pi-ai";
+import { H, sessions, enabledDefaults } from "../state.ts";
+import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS, searchAvailabilityPayload } from "../models.ts";
+import { modelsFrame } from "../frames.ts";
+import { listAllProviders } from "../limits/index.ts";
+import { collectUsageStats } from "../stats.ts";
+import { hostI18n } from "../i18n/host.ts";
+import type { RpcHandler } from "./types";
+import { settingsGet, settingsSet } from "../settings-compat.ts";
+import { gateKimiAutoThinking } from "../kimi-thinking.ts";
+import { safeStderr } from "../stderr.ts";
+
+export const modelsHandlers: Record<string, RpcHandler> = {
+  async set_model(ws, msg) {
+    const entry = sessions.get(msg.sessionId);
+    safeStderr(`[host] set_model: ${msg.model} role=${msg.role ?? "-"} entry=${!!entry}\n`);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    if (msg.role) {
+      // Role pick (the composer menu's "Model Role" section): resolve the role
+      // fresh and apply it through the CLI role path — the model change is
+      // recorded with the role name so ctrl+p role cycling tracks the slot,
+      // and an explicit ":level" on the role value is applied
+      const resolved = resolveModelRoleValue(formatModelRoleAlias(msg.role), H.availableModels, { settings: H.settings });
+      if (!resolved.model) throw new Error(hostI18n.t("errors.model.roleUnresolved", { role: msg.role }));
+      await entry.session.applyRoleModel({
+        role: msg.role,
+        model: resolved.model,
+        thinkingLevel: resolved.thinkingLevel,
+        explicitThinkingLevel: resolved.explicitThinkingLevel,
+      });
+    } else {
+      const target = H.scopedModels.find((m) => `${m.provider}/${m.id}` === msg.model);
+      if (!target) throw new Error(hostI18n.t("errors.model.unknown", { model: msg.model }));
+      await entry.session.setModel(target); // persist defaults to false; effective only in this session
+      // Thinking level on switch: the model's ":level" default from enabledModels
+      // outranks the global defaultThinkingLevel; unset → the global level (Kimi-gated).
+      // Without this the base's setModel re-applies the target model's own catalog
+      // default (often off), ignoring the user's deliberate level choice.
+      const defaultLevel =
+        enabledDefaults.get(msg.model) ??
+        gateKimiAutoThinking(entry.session.model?.provider, settingsGet(H.settings, "defaultThinkingLevel") as string | undefined);
+      if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
+    }
+    const model = `${entry.session.model.provider}/${entry.session.model.id}`;
+    // Kimi auto gate: an `auto` level reaching a kimi-code session while the
+    // providers-page switch is off is pinned to `high` (Kimi re-bills the whole
+    // prefix on every effort switch). Covers the ":level" default, the role
+    // path and the model's own thinking.defaultLevel in one post-check.
+    const configured = entry.session.configuredThinkingLevel?.();
+    const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
+    if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
+    // After a model switch, return the configured selector ("auto" or a
+    // concrete level): the bottom-right shows the user-configured mode; the
+    // capability-clamped effective value is send-parameter detail and never
+    // reaches the UI
+    ws.send(
+      JSON.stringify({
+        type: "session_model",
+        sessionId: msg.sessionId,
+        model,
+        thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
+      }),
+    );
+  },
+  set_thinking(ws, msg) {
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    entry.session.setThinkingLevel(gateKimiAutoThinking(entry.session.model?.provider, msg.level));
+    // Return the configured selector ("auto" or a concrete level); the clamped effective value never reaches the UI
+    ws.send(
+      JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.configuredThinkingLevel?.() ?? "auto" }),
+    );
+  },
+  // Quick switch (ctrl+p / shift+ctrl+p): cycles the session through the roles
+  // in the settings cycleOrder (default smol/default/slow) — the exact CLI
+  // path (session.cycleRoleModels), keeping role-slot tracking; roles whose
+  // configured model is missing/unavailable are skipped inside the SDK
+  async cycle_model(ws, msg) {
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const cycleOrder = (settingsGet(H.settings, "cycleOrder") as string[]).slice();
+    const result = await entry.session.cycleRoleModels(cycleOrder, msg.direction === "backward" ? "backward" : "forward");
+    if (!result) {
+      // Mirrors the CLI's "Only one role model available" status (undefined =
+      // zero or one resolvable role): not an error, just nothing to cycle
+      ws.send(JSON.stringify({ type: "cycle_model", sessionId: msg.sessionId, ok: false }));
+      return;
+    }
+    // Role cycling may carry a role's `auto` onto a Kimi model: pin it while
+    // the providers-page switch is off, same gate as set_model/set_thinking
+    const cycled = entry.session.configuredThinkingLevel?.();
+    const gated = gateKimiAutoThinking(result.model.provider, cycled);
+    if (gated && gated !== cycled) entry.session.setThinkingLevel(gated);
+    ws.send(
+      JSON.stringify({
+        type: "cycle_model",
+        sessionId: msg.sessionId,
+        ok: true,
+        model: `${result.model.provider}/${result.model.id}`,
+        role: result.role,
+        thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
+      }),
+    );
+  },
+  get_models_catalog(ws) {
+    ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+  },
+  async set_enabled_model(ws, msg) {
+    const id = String(msg.id ?? "");
+    const on = !!msg.enabled;
+    if (!H.availableModels.some((m) => `${m.provider}/${m.id}` === id)) throw new Error(hostI18n.t("errors.model.unknown", { model: id }));
+    let entries: string[] = (settingsGet(H.settings, "enabledModels") ?? []).slice();
+    if (entries.length === 0) {
+      entries = H.availableModels.map((m) => `${m.provider}/${m.id}`);
+    }
+    const without = entries.filter((e) => e.split(":")[0] !== id);
+    if (on) {
+      const prev = entries.find((e) => e.split(":")[0] === id);
+      without.push(prev ?? id);
+    }
+      if (without.length === 0) throw new Error(hostI18n.t("errors.model.keepAtLeastOne"));
+    settingsSet(H.settings, "enabledModels", without);
+    await H.settings.flush();
+    rebuildScopedModels();
+    if (H.scopedModels.length === 0) throw new Error(hostI18n.t("errors.model.noneAfterFilter"));
+    ws.send(JSON.stringify(modelsFrame()));
+    ws.send(JSON.stringify({ type: "models_catalog", models: modelCatalog() }));
+  },
+  get_model_roles(ws) {
+    ws.send(JSON.stringify({ type: "model_roles", roles: modelRolesPayload() }));
+  },
+  async set_model_role(ws, msg) {
+    // Any valid name may be written: edits known roles and also creates custom roles from the input menu (overwriting an old value of the same name)
+    const role = String(msg.role ?? "");
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(role)) throw new Error(hostI18n.t("errors.model.invalidRoleName", { role }));
+    // The UI writes exact "provider/model" or a role reference ("@smol", the
+    // RolePicker reference section; optionally thinking-suffixed). Other alias
+    // forms ("*", legacy "pi/…") stay hand-edit-only in settings.json.
+    const value = msg.value == null || msg.value === "" ? undefined : String(msg.value);
+    const ref = value ? /^@([A-Za-z0-9_-]+)/.exec(value) : null;
+    const model = value && !ref ? H.allModels.find((m) => `${m.provider}/${m.id}` === value) : undefined;
+    if (value && !ref && !model) {
+      throw new Error(hostI18n.t("errors.model.unknown", { model: value }));
+    }
+    // The referenced role must exist (built-in or user-defined); cycles are not
+    // checked here — the UI never offers one and the base resolver breaks them
+    if (ref && !getKnownRoleIds(H.settings).includes(ref[1])) {
+      throw new Error(hostI18n.t("errors.model.unknownRoleRef", { value }));
+    }
+    // Kind gate, same predicate as the base's role candidate pool: role resolution skips
+    // models the role's accepts() rejects, so persisting one would be a silently dead
+    // assignment. References are exempt: their target resolves through the pool each
+    // time, and the UI only offers them for chat roles anyway
+    if (model && !getRoleInfo(role, H.settings).accepts(model)) {
+      throw new Error(hostI18n.t("errors.model.roleKindMismatch", { role, model: value }));
+    }
+    H.settings.setModelRole(role, value);
+    await H.settings.flush();
+    ws.send(JSON.stringify({ type: "model_roles", roles: modelRolesPayload() }));
+  },
+  // Single-model connectivity test (settings page model row "test" button):
+  // sends one minimal completion through the base's full protocol stack —
+  // transport/API selection, credential resolution (resolver covers OAuth
+  // minting + account rotation) and auth retry all run exactly as in a chat
+  // turn. Replies with a provider_model_test frame (ok:false instead of a
+  // throw so the row attributes the failure itself).
+  async test_provider_model(ws, msg) {
+    const id = String(msg.id ?? "");
+    const model = H.availableModels.find((m) => `${m.provider}/${m.id}` === id);
+    if (!model) throw new Error(hostI18n.t("errors.model.unknown", { model: id }));
+    const started = Date.now();
+    let reply = "";
+    try {
+      const message = await completeSimple(
+        model,
+        { messages: [{ role: "user", content: "ping", timestamp: Date.now() }] },
+        {
+          apiKey: H.modelRegistry.resolver(model),
+          disableReasoning: true,
+          signal: AbortSignal.timeout(60_000),
+        },
+      );
+      if (message.stopReason === "error") throw new Error(message.errorMessage ?? "provider error");
+      reply = Array.isArray(message.content)
+        ? message.content.filter((c) => c.type === "text").map((c) => c.text).join("")
+        : "";
+    } catch (err) {
+      ws.send(
+        JSON.stringify({
+          type: "provider_model_test",
+          model: id,
+          ok: false,
+          latencyMs: Date.now() - started,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return;
+    }
+    ws.send(
+      JSON.stringify({
+        type: "provider_model_test",
+        model: id,
+        ok: true,
+        latencyMs: Date.now() - started,
+        reply: reply.slice(0, 120),
+      }),
+    );
+  },
+  async get_usage_stats(ws) {
+    ws.send(JSON.stringify({ type: "usage_stats", stats: await collectUsageStats() }));
+  },
+  get_all_providers(ws) {
+    // Chat providers only: engine/judge auth ids (CAPABILITY_AUTH_IDS) are not text-LLM
+    // vendors — their keys are managed on the settings capability page instead
+    const hidden = new Set<string>(CAPABILITY_AUTH_IDS);
+    ws.send(
+      JSON.stringify({
+        type: "all_providers",
+        providers: listAllProviders()
+          .filter((p) => !hidden.has(p.id))
+          .map((p) => {
+            let accounts = 0;
+            try {
+              accounts = H.authStorage.credentials.list(p.id).length;
+            } catch (err) {
+              // Credential read failure must stay observable: silently sending
+              // accounts=0 fakes "no accounts configured" on the models page (A5)
+              safeStderr(`[host] get_all_providers credential read failed (${p.id}): ${err instanceof Error ? err.message : String(err)}\n`);
+            }
+            const loginKind = authPolicyFor(p.id)?.login?.kind;
+            return {
+              ...p,
+              // Login capability: only oauth-code/device-code/custom have a real
+              // authorization flow (browser/device code/vendor-custom);
+              // api-key providers in the base merely "paste a key and verify";
+              // the detail page already has an API Key input, so no duplicate
+              // entry
+              login: loginKind === "oauth-code" || loginKind === "device-code" || loginKind === "custom",
+              // Configured account count: active authStorage credentials (models.yml/env-layer configs not counted)
+              accounts,
+            };
+          }),
+      }),
+    );
+  },
+  get_capability_keys(ws) {
+    ws.send(JSON.stringify({ type: "capability_keys", keys: capabilityKeysPayload() }));
+  },
+  async get_search_availability(ws) {
+    ws.send(JSON.stringify({ type: "search_availability", availability: await searchAvailabilityPayload() }));
+  },
+};

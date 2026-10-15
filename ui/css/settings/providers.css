@@ -1,0 +1,35 @@
+.pd-key-row .inp { flex: 1; min-width: 0; width: auto; border-radius: 9px; }
+
+/* add provider: two equal-width rounded cards, two rows inside each (name on top / vendor + configured count below) */
+.ap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+
+.ap-card { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line-soft); cursor: pointer; min-width: 0; }
+
+.ap-card:hover { background: var(--panel-3); }
+
+.ap-card .tag { flex: none; }
+
+/* two-row card: icon + provider name on top; configured badge at bottom left, vendor pill at bottom right */
+.ap-card2 { flex-direction: column; align-items: stretch; gap: 7px; padding: 15px 16px; }
+
+.ap-l1, .ap-l2 { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+
+.ap-vendor { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* login-in-progress bottom progress bar (with cancel) */
+.login-banner { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 8px 8px 8px 16px; z-index: 999; box-shadow: 0 4px 16px var(--tint-black-350); max-width: calc(100vw - 48px); }
+.login-banner span { font-size: var(--ui-fs-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+
+/* provider detail page: login entry card */
+.pd-login { margin-top: 12px; }
+
+/* divider: side padding, shorter than the card width */
+.pd-div { height: 1px; background: var(--line-soft); margin: 14px 28px; }
+
+/* API key section: vertical layout, rounded input fills the row width */
+.pd-key { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+
+.pd-key-row { display: flex; align-items: center; gap: 8px; }
+
+/* suite provider detail, member block header: id + region/method tags in a row */
+.pd-member-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; font-size: var(--ui-fs-sm); }

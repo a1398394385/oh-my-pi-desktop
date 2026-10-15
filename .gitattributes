@@ -1,0 +1,20 @@
+# git 只管行尾、不管编码（强制编码交给 .githooks/pre-commit + scripts/check-encoding.mjs）。
+# 全仓文本统一 LF：Windows 上 autocrlf=true 的 checkout 会把仓库文件转成 CRLF，
+# 而 node_modules 里 SDK 原件保持 LF —— build-host.ts 的 prompt 镜像按文本比对，
+# CRLF 会让校验在 CI Windows leg 上假性失败（v0.1.0 release 实测）。
+# 钩子脚本的 shebang 同理需要 LF，否则 sh 报 "bad interpreter"。
+* text=auto eol=lf
+
+# 二进制文件显式声明，禁止 git 做任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.node binary
+*.zip binary
+*.gz binary

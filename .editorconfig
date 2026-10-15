@@ -1,0 +1,17 @@
+; 编辑器强制 UTF-8（RULE-009 / BUG-026）：本仓库所有文本一律 UTF-8，
+; 禁止编辑器按系统 ANSI（中文 Windows = CP936/GBK）猜测编码——那正是 9b077bd 整份
+; ui/style.css 变乱码的机制（UTF-8 字节被按 GBK 解码后回写）。
+; 行尾跟 core.autocrlf=true 一致：工作区 CRLF，入库 LF。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+
+[*.{md,yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+; 钩子脚本必须 LF（CRLF 的 shebang 在 sh 下会 bad interpreter），与 .gitattributes 的 eol=lf 一致
+[.githooks/*]
+end_of_line = lf

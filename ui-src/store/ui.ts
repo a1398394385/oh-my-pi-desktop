@@ -1,0 +1,430 @@
+// UI slice: shell collapse/zoom, the new-session page (newSession*), composer draft and sigil
+// completion state, toast/composer signals, animation toggles, ringpop transients, UI prefs
+// (merged from localStorage).
+// Moved over from store.ts (P3 wave 2); changes always go through setState swapping values/
+// references (subscribers notice automatically); silent writes (draftHasContent etc., which the
+// old version did not notify) only set, no bump.
+import type { StateCreator } from "zustand";
+import type { AppStore } from "./index";
+import { useAppStore } from "./index";
+import type { UiPrefs } from "./shapes";
+import type { ContextDetailFrame, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
+import { activeOpen } from "./session";
+import { getSupportedThinkingForModel, modelDefaultThinking } from "./models";
+import { saveRightSlot, restoreRightSlot } from "./right";
+import { detectLang } from "../i18n";
+
+/** setTimeout handle (DOM vs Node return types differ; unified alias; TS environments with Node types return Timeout) */
+type TimerHandle = ReturnType<typeof setTimeout>;
+
+export interface UiSlice {
+  zoomLevel: number;
+  isCommandPressed: boolean; // whether Command/Ctrl is currently held (shortcut hints)
+  sidebarCollapsed: boolean;
+  rightCollapsed: boolean;
+  isCreatingNew: boolean;
+  /** Full-page scheduled-tasks view in the main column (sidebar top entry); lives outside
+   *  the settings overlay and closes whenever the welcome page or a session takes over. */
+  automationsOpen: boolean;
+  newSessionProject: string;
+  newSessionBranch: string;
+  newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
+  newSessionIsGit: boolean;
+  newSessionModel: string;
+  newSessionThinking: string;
+  newSessionPlanMode: boolean; // plan-mode intent for the next session (consumed by create_session; the host confirms via the plan_mode frame)
+  newSessionComputerMode: boolean; // computer-use intent for the next session (consumed by create_session; the host opts the fresh session in and confirms via the computer_mode frame)
+  newSessionDirty: boolean;
+  pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
+  // Git branch chip in the main-column header (MainHeader): branches of the ACTIVE session's
+  // cwd, landed from the same git_branches frame as the new-session picker (cwd-routed)
+  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[] } | null;
+  fileSeq: number;
+  animateGdKids: boolean;
+  animateThinkBody: boolean;
+  animateSubKids?: boolean; // subagent detail entrance-animation flag (attached at runtime, SubagentPage only)
+  toastMsg: string | null; // current toast text (null = hidden)
+  toastErr: boolean; // true = error toast (red icon + --err tinted border)
+  composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // signal to fill the composer externally (fork backfill / queued-message editing); guard = async backfill, give up overwriting when the draft is non-empty
+  findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
+  menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)
+  cyclePreview: { entries: { role: string; model: string }[]; activeRole: string; activeModel: string } | null; // ctrl+p quick-switch preview: the cycleOrder role list + the slot just switched to (drives the model menu's transient preview mode; manual menu opens always null it)
+  thinkMenuAuto: boolean; // shift+tab auto-opened the think menu (normal content; auto-collapses on 0.8s pause / Shift release — manual opens always clear it)
+  draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
+  voiceStt: { state: "recording" | "transcribing"; message?: string } | null; // dictation runtime state (stt_state frame; null = idle — the mic button's recording look)
+  sttSubmitSignal: number; // seq incremented by each stt_submit frame (the Composer effect sends the prompt; plain number = only ordering matters)
+  voiceStatus: { modelId: string | null; modelKey: string | null; ready: boolean; downloading: boolean } | null; // voice_status reply: dictation model + cache state (settings page voice sections)
+  voiceDownload: { percent: number; status: string; label: string; at: number } | null; // live STT model download progress (stt_download_progress frame)
+  sttTestResult: { text: string; at: number } | null; // test-mode dictation result (stt_test_result frame; at drives the result box refresh)
+  escArmedUntil: number; // deadline of the Esc double-confirm window (> now = the send button shows a cancel icon)
+  commands: SlashCommand[] | null; // slash command list of the current session (null = not fetched yet, the popover shows loading)
+  commandsSessionId: string | null; // session id the list belongs to; invalidated on session switch
+  mentionReqSeq: number; // list_files request counter (reqId generator, frontend-incremented)
+  mentionResult: { reqId: number; matches: FileMatch[] } | null; // latest @ candidates response; stale as soon as the reqId no longer matches the current request
+  bashCompleteSeq: number; // bash_complete request counter (reqId generator, frontend-incremented)
+  bashCompleteResult: { reqId: number; items: Array<{ label: string; kind: "cmd" | "dir" | "file" }> } | null; // latest ! completion reply; stale when the reqId lags the current request
+  ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
+  ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
+  // Latest keepalive_status snapshot per pool session id (ringpop transient; the ring's
+  // center count and the context card's cache-warming section consume it). Keyed, not a
+  // single slot: hidden sessions keep reporting (reportState pushes go to the one ws), so
+  // a shared slot let another session's frame clobber the displayed counter — and a seen
+  // session never re-reports, so switching back showed no count at all
+  keepaliveStatus: Record<string, KeepaliveStatusFrame>;
+  mainViewMode: "chat" | "tree"; // main-area view mode (message stream vs session entry tree)
+  // Agent Hub: middle-card roster of the session's subagents (opened by double-tap ← in an
+  // empty composer). The right sidebar links to hubSel — it renders the linked detail page
+  // while the hub is open and cannot be opened manually. hubOpen / hubPrevTab /
+  // hubRightWasCollapsed are per-session projections owned by the right-panel slots
+  // (saveRightSlot / restoreRightSlot), so each session remembers its own hub state.
+  hubOpen: boolean;
+  hubSel: string | null; // selected subagentId
+  hubMode: "flat" | "tree";
+  hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
+  hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
+  pendingOpenHub?: boolean; // pending hub open request during asynchronous session load
+  pendingHubSel?: string | null;
+  uiPrefs: UiPrefs;
+  hubWarming: string | null; // sessionId with a cache-warming run in flight (cache_warming frame; landed by landCacheWarming)
+  /** Full-window boot veil: true from launch until the first session_list frame (preview mode clears it at mount); covers the welcome page's "/" placeholder window during host cold start. */
+  bootSplash: boolean;
+  toast(msg: unknown, error?: boolean): void;
+  openHub(): void;
+  closeHub(): void;
+  setHubSel(id: string | null): void;
+  toggleHubMode(): void;
+  setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
+  setMainViewMode(mode: "chat" | "tree"): void;
+  openAutomations(): void;
+  closeAutomations(): void;
+  showWelcomeScreen(preferredCwd?: string | null): void;
+  hideWelcomeScreen(): void;
+  setWelcomeProject(cwd?: string): void;
+  initNewSessionModel(force?: boolean): void;
+  pickModelId(id: string, role?: string): void;
+  pickThinkingLevel(lv: string): void;
+}
+
+const uiPrefsInit: UiPrefs = {
+  theme: "dark", // placeholder; main.tsx applies the cached/file value before the first render
+  motion: "system", // placeholder; same
+  uiFont: "default",
+  uiFontSize: 13,
+  codeFontSize: 12,
+  lineNumbers: true,
+  codeWrap: false,
+  showThinking: true,
+  expandToolOutput: true,
+  lang: "zh-CN", // placeholder; resolved from the cache or detection below
+  terminalInheritProfile: true,
+  terminalFont: "",
+  terminalFontSize: 13,
+};
+// First-frame render cache (write-through mirror of omp-desktop.json's ui
+// section; the file stays the source of truth and the ready frame reconciles
+// any drift on every startup).
+let storedUiPrefs: Partial<UiPrefs> = {};
+try {
+  storedUiPrefs = JSON.parse(localStorage.getItem("omp-ui-settings") || "{}");
+} catch {}
+Object.assign(uiPrefsInit, storedUiPrefs);
+// Resolve the startup language: cached preference wins; otherwise detect from
+// the system locale and persist the result so it survives restarts (the ready
+// frame's uiConfig.locale corrects this against the file afterwards).
+if (storedUiPrefs.lang !== "zh-CN" && storedUiPrefs.lang !== "en") {
+  uiPrefsInit.lang = detectLang(undefined);
+  try { localStorage.setItem("omp-ui-settings", JSON.stringify(uiPrefsInit)); } catch {}
+}
+
+// toast: the App-level Toast component consumes toastMsg (auto-hides after 2.2s)
+let toastTimer: TimerHandle | undefined;
+// Fill the composer externally (fork backfill / queued-message editing): a Composer component effect watches seq
+let composerSetSeq = 0;
+
+export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get) => ({
+  // UI zoom (Cmd +/-, menu zoom): persisted across launches like
+  // omp-sidebar-collapsed; clamped to the menuZoom range, corrupt values fall back to 1
+  zoomLevel: (() => {
+    const saved = Number.parseFloat(localStorage.getItem("omp-zoom") ?? "");
+    return Number.isFinite(saved) ? Math.min(2, Math.max(0.6, saved)) : 1;
+  })(),
+  isCommandPressed: false,
+  sidebarCollapsed: localStorage.getItem("omp-sidebar-collapsed") === "1",
+  // Right panel always starts collapsed on launch (no cross-launch expansion memory;
+  // in-run toggling and the per-session slot memory are untouched)
+  rightCollapsed: true,
+  isCreatingNew: false,
+  automationsOpen: false,
+  newSessionProject: "",
+  newSessionBranch: "",
+  headerGit: null,
+  newSessionBranches: [],
+  newSessionIsGit: false,
+  newSessionModel: "",
+  newSessionThinking: "auto",
+  newSessionPlanMode: false,
+  newSessionComputerMode: false,
+  newSessionDirty: false,
+  pendingFiles: [],
+  fileSeq: 0,
+  animateGdKids: false,
+  animateThinkBody: false,
+  toastMsg: null,
+  toastErr: false,
+  composerSetSignal: null,
+  findOpen: false,
+  menuSignal: null,
+  cyclePreview: null,
+  thinkMenuAuto: false,
+  draftHasContent: false,
+  voiceStt: null,
+  sttSubmitSignal: 0,
+  voiceStatus: null,
+  voiceDownload: null,
+  sttTestResult: null,
+  escArmedUntil: 0,
+  commands: null,
+  commandsSessionId: null,
+  mentionReqSeq: 0,
+  mentionResult: null,
+  bashCompleteSeq: 0,
+  bashCompleteResult: null,
+  ctxDetail: null,
+  ctxLimits: null,
+  keepaliveStatus: {},
+  mainViewMode: "chat",
+  hubOpen: false,
+  hubSel: null,
+  hubMode: "flat",
+  hubRightWasCollapsed: false,
+  hubPrevTab: null,
+  pendingOpenHub: false,
+  pendingHubSel: null,
+  uiPrefs: uiPrefsInit,
+  hubWarming: null,
+  bootSplash: true,
+
+  openHub() {
+    const st = get();
+    // Expand the right panel for the linked detail; inject the special "hub" tab (not
+    // manually openable — only the hub linkage adds it) and activate it, remembering the
+    // prior tab/collapse state for closeHub. The user may switch away while the hub stays
+    // open and click back; closing the hub removes the tab.
+    set({
+      hubOpen: true,
+      hubRightWasCollapsed: st.rightCollapsed,
+      rightCollapsed: false,
+      hubPrevTab: st.rightTab === "hub" ? st.hubPrevTab : st.rightTab,
+      rightTabs: st.rightTabs.includes("hub") ? st.rightTabs : [...st.rightTabs, "hub"],
+      rightTab: "hub",
+    });
+  },
+
+  closeHub() {
+    const st = get();
+    set({
+      hubOpen: false,
+      hubSel: null,
+      rightCollapsed: st.hubRightWasCollapsed,
+      rightTabs: st.rightTabs.filter((n) => n !== "hub"),
+      rightTab: st.rightTab === "hub" ? st.hubPrevTab : st.rightTab,
+    });
+    setTimeout(() => {
+      (document.querySelector("#composer #input") as HTMLElement | null)?.focus();
+    }, 0);
+  },
+
+  setHubSel(id) {
+    set({ hubSel: id });
+  },
+
+  toggleHubMode() {
+    set((s) => ({ hubMode: s.hubMode === "flat" ? "tree" : "flat" }));
+  },
+
+  toast(msg, error = false) {
+    set((s) => ({ toastMsg: String(msg), toastErr: error === true }));
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      set({ toastMsg: null, toastErr: false });
+    }, 2200);
+  },
+
+  setComposerValue(text, images = [], opts) {
+    set((s) => ({ composerSetSignal: { text, images, seq: ++composerSetSeq, ...(opts?.guard ? { guard: true } : {}) } }));
+  },
+
+  setMainViewMode(mode) {
+    set({ mainViewMode: mode });
+  },
+
+  openAutomations() {
+    // Available from anywhere (incl. the welcome page): entering the tasks
+    // view leaves the new-session page, a session click takes over as usual.
+    set({ automationsOpen: true, isCreatingNew: false });
+  },
+
+  closeAutomations() {
+    set({ automationsOpen: false });
+  },
+
+  showWelcomeScreen(preferredCwd) {
+    const alreadyOpen = get().isCreatingNew;
+    // Leaving a live session: its slot takes the projection. Callers that already
+    // nulled activePath (disk-gone branch in wsHandlers/session.ts) skip this — they
+    // disposed the slot themselves.
+    const leaving = get().activePath;
+    if (leaving) saveRightSlot(leaving);
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false }));
+    restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
+    if (!alreadyOpen) {
+      get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
+      // No force recalibration here: switching sessions away from the welcome page
+      // must not throw away the model / thinking pick made on it. The reset to the
+      // profile defaults belongs to the session this page actually starts (the
+      // session_created receipt); the trailing non-force init below only repairs an
+      // invalid pick, and the models frame still re-lands the config default while
+      // newSessionDirty is false.
+    }
+    const st = get();
+    const avail = st.getAvailableProjects();
+    const stored = localStorage.getItem("omp-new-project");
+    // No valid pick yet (startup before session_list): keep the empty
+    // placeholder instead of "/" — the label-only pill reads as "loading",
+    // and wsHandlers/session.ts reconciles to the default project once the
+    // frame lands.
+    const targetProject =
+      (preferredCwd && avail.some((p) => p.cwd === preferredCwd) ? preferredCwd : null) ||
+      (st.newSessionProject && avail.some((p) => p.cwd === st.newSessionProject) ? st.newSessionProject : null) ||
+      (stored && avail.some((p) => p.cwd === stored) ? stored : null) ||
+      avail[0]?.cwd ||
+      "";
+    if (!alreadyOpen || targetProject !== st.newSessionProject) get().setWelcomeProject(targetProject);
+    get().initNewSessionModel();
+  },
+
+  hideWelcomeScreen() {
+    set((s) => ({ isCreatingNew: false, mainViewMode: "chat", automationsOpen: false }));
+  },
+
+  setWelcomeProject(cwd) {
+    if (!cwd) {
+      const avail = get().getAvailableProjects();
+      cwd = avail[0]?.cwd ?? "";
+      // Startup before session_list: no real project exists yet — stay on the
+      // empty placeholder (no localStorage pollution, no request for "/"),
+      // the session_list reconciliation picks the default project later.
+      if (!cwd) return;
+    }
+    try {
+      localStorage.setItem("omp-new-project", cwd);
+    } catch {}
+    set((s) => ({
+      newSessionProject: cwd,
+      newSessionIsGit: false,
+      newSessionBranch: "",
+      newSessionBranches: [],
+    }));
+    get().send({ type: "get_git_branches", cwd });
+    // New-session MCP warm-up: the project is known the moment the user starts
+    // typing — pool the shared connections now so create_session mounts
+    // instantly (idle TTL reclaims them if the user never sends)
+    get().send({ type: "preload_mcp", cwd });
+    console.debug("[mcp] preload requested for", cwd);
+    if (cwd) get().expandProject(cwd);
+  },
+
+  // force = new-session click / config-push refresh: model and level fall back to the config-file defaults; non-force only fills in missing values
+  initNewSessionModel(force = false) {
+    const st = get();
+    const modelNames = st.modelNames;
+    let newSessionModel = st.newSessionModel;
+    if (force && st.defaultModelCfg && modelNames.has(st.defaultModelCfg)) {
+      newSessionModel = st.defaultModelCfg;
+    } else if (!newSessionModel || !modelNames.has(newSessionModel)) {
+      const saved = localStorage.getItem("omp-new-model");
+      if (saved && modelNames.has(saved)) {
+        newSessionModel = saved;
+      } else {
+        const all = Array.from(modelNames.keys());
+        const glm = all.find((id) => id.toLowerCase().includes("glm"));
+        newSessionModel = glm || all[0] || "";
+      }
+    }
+    const validLevels = getSupportedThinkingForModel(newSessionModel);
+    let th =
+      force && st.defaultThinkingCfg
+        ? st.defaultThinkingCfg
+        : st.newSessionThinking || localStorage.getItem("omp-new-thinking") || "auto";
+    if (!validLevels.includes(th)) {
+      th = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
+    }
+    set({ newSessionModel, newSessionThinking: th });
+  },
+
+  /** Model picked (shared by the model menu and Ctrl+P cycling): with a live session, sent via the host
+   * (role set = the "Model Role" section pick; the host applies it through the CLI role path); in
+   * new-session state, persisted, with the level falling back when invalid */
+  pickModelId(id, role) {
+    const s = activeOpen();
+    if (s) {
+      get().send({ type: "set_model", sessionId: s.sessionId, model: id, role });
+      return;
+    }
+    set((st) => ({ newSessionModel: id, newSessionDirty: true })); // after a manual pick: later models frames no longer overwrite with the config default
+    try {
+      localStorage.setItem("omp-new-model", id);
+    } catch {}
+    const validLevels = getSupportedThinkingForModel(id);
+    const cur = get().newSessionThinking;
+    // Per-model default (enabledModels ":level" suffix) outranks the global default
+    // (defaultThinkingLevel); switching syncs the composer to it. auto withheld
+    // (Kimi switch off) pins to high, matching the host's gateKimiAutoThinking.
+    const wantedRaw = modelDefaultThinking(id) ?? get().defaultThinkingCfg;
+    const wanted = wantedRaw === "auto" && !validLevels.includes("auto") ? "high" : wantedRaw;
+    if (wanted && validLevels.includes(wanted)) {
+      set((st) => ({ newSessionThinking: wanted }));
+      try {
+        localStorage.setItem("omp-new-thinking", wanted);
+      } catch {}
+    } else if (!validLevels.includes(cur)) {
+      const fallback = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
+      set((st) => ({ newSessionThinking: fallback }));
+      try {
+        localStorage.setItem("omp-new-thinking", fallback);
+      } catch {}
+    }
+  },
+
+  /** Thinking level picked (shared by the thinking menu and Shift+Tab cycling): with a live session, sent via the host; in new-session state, persisted */
+  pickThinkingLevel(lv) {
+    const s = activeOpen();
+    if (s) {
+      get().send({ type: "set_thinking", sessionId: s.sessionId, level: lv });
+      return;
+    }
+    set((st) => ({ newSessionThinking: lv, newSessionDirty: true }));
+    try {
+      localStorage.setItem("omp-new-thinking", lv);
+    } catch {}
+  },
+});
+
+// ---------- Cache-warming landing (18.5 cache_warming frames; called by the wsHandlers table) ----------
+// Lost-end guard: a warming run whose end frame never arrives (host crash mid-warm) clears
+// itself after this, so the hub detail's transient indicator cannot stick forever
+const WARMING_MAX_MS = 30_000;
+let warmingTimer: TimerHandle | undefined;
+
+/** Land a cache_warming phase transition into hubWarming (the hub detail status line consumes it) */
+export function landCacheWarming(sessionId: string, phase: "start" | "end"): void {
+  if (phase === "start") {
+    useAppStore.setState({ hubWarming: sessionId });
+    clearTimeout(warmingTimer);
+    warmingTimer = setTimeout(() => useAppStore.setState({ hubWarming: null }), WARMING_MAX_MS);
+  } else {
+    clearTimeout(warmingTimer);
+    // A stale end (another session warmed later) must not clear the newer run
+    useAppStore.setState((st) => (st.hubWarming === sessionId ? { hubWarming: null } : {}));
+  }
+}

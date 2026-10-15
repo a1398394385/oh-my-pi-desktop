@@ -1,0 +1,167 @@
+.bpane-bar .icon-btn:disabled { opacity: .4; cursor: default; }
+
+.bpane-bar .icon-btn:disabled:hover { background: none; color: inherit; }
+
+/* ── browser pane (right sidebar, replicating the ZCode EmbeddedBrowserPaneParts layout) ── */
+.bpane {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  background: var(--card);
+}
+
+/* toolbar: 44px tall, icon buttons + address bar + more */
+.bpane-bar {
+  flex: none;
+  display: flex; align-items: center; gap: 4px;
+  height: 44px; padding: 0 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* address bar: inset card face, spinner on the left while loading */
+.bpane-addr {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px;
+  border-radius: var(--r-md);
+  background: var(--inset);
+  border: 1px solid transparent;
+  transition: border-color .12s var(--swift);
+}
+
+.bpane-addr:focus-within { border-color: var(--accent); }
+
+.bpane-spin {
+  flex: none; width: 12px; height: 12px;
+  border: 1.5px solid var(--faint); border-top-color: transparent;
+  border-radius: 50%;
+  animation: bpane-rot .8s linear infinite;
+}
+
+.bpane-input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+  font: inherit; font-size: var(--ui-fs-sm); color: var(--text);
+}
+
+.bpane-input::placeholder { color: var(--faint); }
+
+/* more-menu anchor */
+.bpane-more-wrap { position: relative; }
+
+.bpane-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; z-index: 500; }
+
+/* viewport: iframe fills, empty/error states as overlays */
+.bpane-view { flex: 1; min-height: 0; position: relative; background: var(--white); }
+.bpane-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--white); }
+/* empty state: centered icon + title/subtitle */
+.bpane-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 24px; text-align: center;
+  background: var(--card);
+}
+
+.bpane-empty-ic { color: var(--faint); margin-bottom: 8px; }
+
+.bpane-empty-tt { font-size: var(--ui-fs-md); font-weight: 600; color: var(--text); }
+
+.bpane-empty-sub { font-size: var(--ui-fs-sm); color: var(--dim); max-width: 320px; line-height: 1.6; }
+
+/* load error state: error icon + text + retry/open externally */
+.bpane-err {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 24px; text-align: center;
+  background: var(--card);
+}
+
+.bpane-err-ic { color: var(--err); margin-bottom: 8px; }
+
+.bpane-err-tt { font-size: var(--ui-fs-md); font-weight: 600; color: var(--text); }
+
+.bpane-err-sub { font-size: var(--ui-fs-sm); color: var(--dim); max-width: 320px; line-height: 1.6; }
+
+.bpane-err-acts { display: flex; gap: 8px; margin-top: 14px; }
+
+.bpane-err-acts .btn {
+  padding: 6px 14px; border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text);
+  font: inherit; font-size: var(--ui-fs-sm); cursor: pointer;
+  transition: background .12s var(--swift);
+}
+
+.bpane-err-acts .btn:hover { background: var(--panel-3); }
+
+/* ── Browser page Agent live view ──
+   Agent tab pills, LIVE badge, URL row, screencast still viewport.
+   The manual-browse .bpane* toolbar/iframe styles above. */
+
+.bpane-tabs {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bpane-tabs::-webkit-scrollbar { display: none; }
+
+/* Agent tab pill: the .sel capsule language, sized to the bpane toolbar */
+.bpill {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+  cursor: pointer;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+
+.bpill:hover { background: var(--panel-2); color: var(--text); }
+
+.bpill.on { background: var(--panel-3); color: var(--text); font-weight: 500; }
+
+.bpane-live-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--ui-fs-xs);
+  color: var(--green);
+  padding-left: 8px;
+}
+
+.bpane-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+.bpane-spacer { flex: 1; }
+
+/* URL row under the toolbar: read-only projection of the mirrored tab */
+.bpane-urlrow {
+  flex: none;
+  padding: 4px 10px;
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Live viewport: neutral inset surface so page stills read at any aspect ratio */
+.bpane-liveview { background: var(--panel); display: flex; align-items: center; justify-content: center; }
+
+.bpane-live-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+
+/* Interactive mirror: the still IS the page surface; keyboard focus rides the
+   container (click to focus, no focus ring — the live frame is the feedback) */
+.bpane-liveview.interactive { cursor: default; outline: none; }
+
+.bpane-liveview.interactive:focus { outline: none; }
+
+.bpane-liveview.interactive .bpane-live-img { user-select: none; -webkit-user-select: none; }

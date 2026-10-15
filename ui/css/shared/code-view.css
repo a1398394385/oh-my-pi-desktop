@@ -1,0 +1,56 @@
+html[data-code-wrap="on"] .cmd .c-tx,
+html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: break-all; }
+
+.ldiff {
+  overflow: auto;
+  background: var(--bg);
+  line-height: 1.6; /* ZCode leading-relaxed */
+  /* no overscroll-behavior here: unconstrained .ldiff instances (right-panel diff detail) grow
+     to content height, and contain on a non-scrollable scroll container would swallow vertical
+     wheels instead of chaining to the outer .rb-scroll scroller. Stream-embedded instances
+     declare contain at their embedding site (.ed-brief > .ldiff in main-chat.css). */
+}
+
+/* without wrapping, the inner scroll surface computes one uniform max-content width: if each row stretched itself,
+   scrolling right would end short rows' backgrounds early, leaving gaps in the base color (same note as ZCode) */
+.ldiff-scroll { min-width: 100%; width: max-content; }
+
+.ldiff-row { display: flex; min-width: 100%; width: 100%; }
+
+/* line-number gutter: sticky-pinned left and fixed during horizontal scroll, right-aligned tabular numerals; added/removed rows match the row
+   with their gutter base (18% tint) + same-color text; context rows fall back to the base color with dimmed numbers */
+.ldiff-gutter {
+  position: sticky; left: 0; z-index: 1;
+  width: 48px; flex: none; padding: 0 8px;
+  background: var(--bg); border-right: 1px solid var(--line);
+  color: var(--faint); text-align: right; user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Additions/removals (key colors --diff-added/--diff-removed from global.css): row background
+   14% color-mix; the sticky gutter re-bases (18% mix over --bg), colors its line number, and
+   carries the 3px inset status bar at the row head (kept visible over horizontal scroll) */
+.ldiff-row.ldiff-added { background: color-mix(in srgb, var(--diff-added) 14%, transparent); }
+
+.ldiff-row.ldiff-removed { background: color-mix(in srgb, var(--diff-removed) 14%, transparent); }
+
+.ldiff-added > .ldiff-gutter {
+  background: color-mix(in srgb, var(--diff-added) 18%, var(--bg));
+  color: var(--diff-added);
+  box-shadow: inset 3px 0 0 var(--diff-added);
+}
+
+.ldiff-removed > .ldiff-gutter {
+  background: color-mix(in srgb, var(--diff-removed) 18%, var(--bg));
+  color: var(--diff-removed);
+  box-shadow: inset 3px 0 0 var(--diff-removed);
+}
+
+.ldiff-code { display: block; flex: 1; min-width: 0; padding: 0 12px; white-space: pre; }
+
+/* patch annotations like "\\ No newline at end of file" */
+/* ellipsis hint at the tail when the render line cap is exceeded (host's 500k truncation scenario) */
+/* settings toggles: the line-number master toggle reuses data-line-numbers; code wrap reuses data-code-wrap */
+html[data-line-numbers="off"] .ldiff-gutter { display: none; }
+
+html[data-code-wrap="on"] .ldiff-code { white-space: pre-wrap; word-break: break-all; }

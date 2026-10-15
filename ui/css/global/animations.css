@@ -1,0 +1,63 @@
+@keyframes taskCmdPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes taskrot { to { transform: rotate(360deg); } }
+
+/* Expansion body reveals top-down when inserted (only on the click-through expand, triggered via the .drop class) */
+@keyframes ed-drop {
+  from { clip-path: inset(0 0 100% 0); opacity: .25; }
+  to { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+
+/* Collapse: the reverse of ed-drop (gather upward from the bottom + fade out); JS removes the node after the animation.
+   Same ease-out easing as expand: front-load the motion to avoid the sluggish feel of a stalled opening */
+@keyframes ed-lift {
+  from { clip-path: inset(0 0 0 0); opacity: 1; }
+  to { clip-path: inset(0 0 100% 0); opacity: .25; }
+}
+
+@keyframes flashBg { 0% { background: var(--tint-success-140); } 100% { background: transparent; } }
+
+@keyframes chat-load-spin { to { transform: rotate(360deg); } }
+
+@keyframes ringpop {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Unified popover/expand entrance animation: fade in + slide along the pop direction ──────────────────
+   Shared by all menu popovers and expansion bodies. --pop-from sets the initial offset:
+   downward -6px (dropdown/context menus) | upward 6px (composer pills) | list expand -4px */
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(var(--pop-from, -6px)); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Page-switch entrance: staggered float up + deblur; auto-replays when hidden toggles display */
+@keyframes setRise {
+  from { opacity: 0; transform: translateY(10px); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes pgspin { to { transform: rotate(360deg); } }
+
+/* Hit-message flash emphasis: background highlight fading out (accent-derived, same origin as the .inp focus glow) */
+@keyframes findflash {
+  0% { background: var(--tint-accent-220); box-shadow: 0 0 0 4px var(--tint-accent-100); }
+  100% { background: transparent; box-shadow: none; }
+}
+
+@keyframes branch-section-fade-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bpane-rot { to { transform: rotate(360deg); } }

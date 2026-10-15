@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>omp desktop · UI 优化示例</title>
+<style>
+/* ════════════════════════════════════════════════════════════════
+   设计读法：开发者桌面工具（dark tool UI），
+   Linear / Raycast 式精致深色语言 —— 单一强调色、分层表面、弹簧动效。
+   规则来源：taste-skill/redesign-skill（审计→修复）、soft-skill（双斜面、
+   磁性 hover、性能护栏）、minimalist-skill（排版纪律、kbd）。
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 设计令牌：修复"层级倒挂"，建立从最暗窗口框到最亮内嵌层的单方向深度 ── */
+:root {
+  --frame:    #131416;   /* 窗口底座（最暗） */
+  --sidebar:  #191B1E;   /* 侧栏 */
+  --main:     #1E2024;   /* 中栏聊天面 */
+  --inset:    #26282D;   /* 输入框 / 内嵌卡片 */
+  --raise:    #2E3138;   /* 悬停 / 浮起 */
+  --select:   #34373E;   /* 选中态 */
+
+  --line:      rgba(255,255,255,.07);
+  --line-soft: rgba(255,255,255,.045);
+  --text:      #ECEDEF;
+  --dim:       #A9ABB2;
+  --faint:     #7A7C84;
+
+  /* 单一强调色：全站只此一色，语义色一律降饱和 */
+  --accent:      #4A9EFF;
+  --accent-dim:  rgba(74,158,255,.14);
+  --green:  #3FB950;
+  --orange: #C98A3D;
+  --red:    #D95D55;
+
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --fs-xs: 10px; --fs-sm: 11.5px; --fs: 13px; --fs-lg: 15px;
+
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-card: 18px;
+
+  /* 弹簧曲线：全站统一，禁 linear / ease-in-out */
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --swift:  cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 层级纪律：不再出现 9999 */
+  --z-base: 1; --z-sticky: 20; --z-menu: 60; --z-overlay: 100; --z-toast: 120;
+
+  /* 着色阴影：带背景色相，而非纯黑低透明 */
+  --shadow-1: 0 1px 2px rgba(10,12,18,.5), 0 4px 16px rgba(10,12,18,.35);
+  --shadow-pop: 0 8px 32px rgba(8,10,16,.55), 0 2px 8px rgba(8,10,16,.4);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: var(--fs); }
+body {
+  font-family: var(--sans);
+  background: var(--frame);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(74,158,255,.32); }
+
+/* 数字一律表格化：token 统计、时间、百分比不跳动 */
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ── 2. 颗粒噪点层：打破纯平数字感（仅 fixed + pointer-events:none） ── */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: var(--z-toast);
+  pointer-events: none; opacity: .028; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── 3. 通用控件 ── */
+button { font-family: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+/* 焦点环：可访问性必选项，用强调色外发光而非默认 outline */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--frame), 0 0 0 4px var(--accent);
+  border-radius: var(--r-sm);
+}
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: var(--r-sm);
+  color: var(--faint);
+  transition: background .18s var(--swift), color .18s var(--swift), transform .12s var(--swift);
+}
+.icon-btn:hover { background: var(--raise); color: var(--text); }
+.icon-btn:active { transform: scale(.92); }   /* 物理按压反馈 */
+
+.kbd {
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--faint);
+  border: 1px solid var(--line); border-bottom-width: 2px;  /* 键帽底边厚度 */
+  background: var(--inset); border-radius: 4px; padding: 1px 5px;
+}
+
+/* ══ 左栏 ══ */
+#sidebar {
+  width: 248px; flex: none; background: var(--sidebar);
+  border-right: 1px solid var(--line-soft);
+  display: flex; flex-direction: column;
+}
+.side-head { padding: 14px 12px 8px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--r-md);
+  color: var(--dim); font-size: var(--fs);
+  transition: background .18s var(--swift), color .18s var(--swift);
+}
+.nav-item:hover { background: var(--raise); color: var(--text); }
+.nav-item .kbd { margin-left: auto; }
+
+/* 分段控件：滑块指示器，而非仅换底色 */
+.seg {
+  position: relative; display: flex; margin: 4px 12px 10px;
+  background: var(--frame); border-radius: var(--r-md); padding: 2px;
+}
+.seg .thumb {
+  position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px);
+  background: var(--select); border-radius: calc(var(--r-md) - 2px);
+  box-shadow: var(--shadow-1);
+  transition: transform .28s var(--spring);
+}
+.seg[data-on="project"] .thumb { transform: translateX(100%); }
+.seg button {
+  position: relative; z-index: 1; flex: 1; padding: 5px 0;
+  font-size: var(--fs-sm); color: var(--faint); border-radius: 8px;
+  transition: color .2s var(--swift);
+}
+.seg button.on { color: var(--text); }
+
+/* 会话列表：分组标题 + 状态灯 + 悬停浮现操作 */
+.group-tt {
+  padding: 10px 18px 4px; font-size: var(--fs-xs); letter-spacing: .08em;
+  color: var(--faint); text-transform: uppercase;
+}
+.task {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  margin: 1px 8px; padding: 7px 10px; border-radius: var(--r-md);
+  color: var(--dim); font-size: var(--fs);
+  transition: background .16s var(--swift), color .16s var(--swift);
+}
+.task:hover { background: var(--raise); color: var(--text); }
+.task.on {
+  background: var(--select); color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);   /* 选中用强调色描边而非整片填充 */
+}
+.task .meta { margin-left: auto; font-size: var(--fs-xs); color: var(--faint); }
+.task .live {
+  flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2.2s var(--swift) infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(63,185,80,.45); }
+  55%      { box-shadow: 0 0 0 5px rgba(63,185,80,0); }
+}
+/* 悬停才出现的行内操作，替代常驻小图标噪音 */
+.task .act {
+  position: absolute; right: 6px; display: none; gap: 2px;
+  background: var(--raise); border-radius: var(--r-sm); padding: 1px;
+}
+.task:hover .act { display: flex; }
+.task:hover .meta { opacity: 0; }
+
+.side-foot {
+  margin-top: auto; display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-top: 1px solid var(--line-soft);
+}
+.avatar {
+  width: 22px; height: 22px; border-radius: 7px;   /* squircle，弃圆形 */
+  background: linear-gradient(135deg, #3A3F4A, #23262C);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--accent);
+}
+.uname { font-size: var(--fs-sm); color: var(--dim); }
+
+/* ══ 中栏 ══ */
+#main { flex: 1; background: var(--main); display: flex; flex-direction: column; min-width: 0; }
+
+.chat-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line-soft);
+}
+.chat-head .ttl { font-size: var(--fs); font-weight: 500; }
+.chat-head .path { font-size: var(--fs-sm); color: var(--faint); font-family: var(--mono); }
+
+#stream { flex: 1; overflow-y: auto; padding: 20px 24px 12px; display: flex; flex-direction: column; gap: 14px; }
+
+/* 入场编排：元素从不静态出现，交错上浮 + 去模糊 */
+.rise { animation: rise .55s var(--swift) both; animation-delay: calc(var(--i) * 70ms); }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); filter: blur(4px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+
+.msg-user {
+  align-self: flex-end; max-width: 72%;
+  background: var(--inset); border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg); border-bottom-right-radius: var(--r-sm);  /* 非对称圆角 */
+  padding: 9px 13px; font-size: var(--fs); line-height: 1.6;
+}
+.msg-ai { max-width: 88%; font-size: var(--fs); line-height: 1.7; color: var(--text); }
+.msg-ai .who {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 6px;
+  font-size: var(--fs-sm); color: var(--faint);
+}
+.msg-ai .who .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+/* ── 双斜面（Double-Bezel）工具卡片：外壳 + 内芯，同心圆角 ── */
+.tool-shell {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  padding: 5px;
+  box-shadow: var(--shadow-1);
+  transition: border-color .25s var(--swift);
+}
+.tool-shell:hover { border-color: rgba(74,158,255,.25); }  /* 聚光边框 */
+.tool-core {
+  background: var(--frame);
+  border-radius: calc(var(--r-card) - 5px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  overflow: hidden;
+}
+.tool-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; font-size: var(--fs-sm); color: var(--dim);
+  border-bottom: 1px solid var(--line-soft);
+}
+.tool-head .ck {
+  width: 15px; height: 15px; border-radius: 50%; flex: none;
+  background: rgba(63,185,80,.15); color: var(--green);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 9px;
+}
+.tool-head .file { font-family: var(--mono); color: var(--text); }
+.tool-head .stat { margin-left: auto; font-family: var(--mono); font-size: var(--fs-xs); }
+.tool-head .add { color: var(--green); } .tool-head .del { color: var(--red); }
+.tool-body {
+  padding: 10px 12px; font-family: var(--mono); font-size: 11.5px; line-height: 1.65;
+  color: var(--dim); white-space: pre; overflow-x: auto;
+}
+.tool-body .ln-add { color: var(--green); background: rgba(63,185,80,.07); display: block; margin: 0 -12px; padding: 0 12px; }
+
+/* 待办胶囊：折叠进度，数字表格化 */
+.capsule {
+  display: inline-flex; align-items: center; gap: 8px;
+  align-self: flex-start;
+  background: var(--inset); border: 1px solid var(--line-soft);
+  border-radius: 999px; padding: 5px 12px;
+  font-size: var(--fs-sm); color: var(--dim);
+  transition: transform .2s var(--spring), border-color .2s var(--swift);
+}
+.capsule:hover { transform: translateY(-1px); border-color: var(--line); }
+.capsule .bar {
+  width: 56px; height: 3px; border-radius: 2px; background: var(--frame); overflow: hidden;
+}
+.capsule .bar i {
+  display: block; height: 100%; width: 60%; border-radius: 2px;
+  background: var(--accent);
+  transition: width .5s var(--spring);
+}
+
+/* ══ 输入区：聚焦发光 + 磁性发送键 ══ */
+.dock { padding: 10px 16px 14px; }
+#composer {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 12px 12px 8px;
+  transition: border-color .25s var(--swift), box-shadow .25s var(--swift);
+}
+#composer:focus-within {
+  border-color: rgba(74,158,255,.45);
+  box-shadow: 0 0 0 3px var(--accent-dim), var(--shadow-1);
+}
+#composer textarea {
+  width: 100%; background: none; border: 0; resize: none; outline: none;
+  color: var(--text); font-family: inherit; font-size: var(--fs); line-height: 1.55;
+}
+#composer textarea::placeholder { color: var(--faint); }
+.cbar { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+
+.pill-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px; white-space: nowrap; flex: none;
+  border: 1px solid var(--line-soft);
+  font-size: var(--fs-sm); color: var(--dim);
+  transition: background .18s var(--swift), color .18s var(--swift), border-color .18s var(--swift);
+}
+.pill-btn:hover { background: var(--raise); color: var(--text); border-color: var(--line); }
+.pill-btn:active { transform: scale(.97); }
+
+.send {
+  margin-left: auto;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: #0B1524;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .15s var(--spring), background .2s var(--swift), box-shadow .25s var(--swift);
+}
+.send:hover { transform: scale(1.06); box-shadow: 0 2px 12px rgba(74,158,255,.4); }
+.send:active { transform: scale(.9); }
+
+/* 上下文用量环 */
+.ctx-ring { display: inline-flex; align-items: center; }
+.ctx-ring svg { transform: rotate(0deg); }
+.ctx-ring .track { fill: none; stroke: var(--frame); stroke-width: 2; }
+.ctx-ring .fill {
+  fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 40.8; stroke-dashoffset: 16;
+  transition: stroke-dashoffset .4s var(--spring);
+}
+
+/* ══ 右栏 ══ */
+#right {
+  width: 264px; flex: none; background: var(--sidebar);
+  border-left: 1px solid var(--line-soft);
+  display: flex; flex-direction: column;
+}
+.r-head { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }
+.r-body { flex: 1; overflow-y: auto; padding: 8px; }
+
+.diff-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: var(--fs-sm); color: var(--dim);
+  transition: background .15s var(--swift), color .15s var(--swift);
+}
+.diff-row:hover { background: var(--raise); color: var(--text); }
+.diff-row .st-tag {
+  flex: none; width: 16px; height: 16px; border-radius: 4px;
+  font-size: 9px; font-family: var(--mono);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.st-m { background: rgba(201,138,61,.15); color: var(--orange); }
+.st-a { background: rgba(63,185,80,.15); color: var(--green); }
+.diff-row .delta { margin-left: auto; font-size: var(--fs-xs); }
+.delta .a { color: var(--green); } .delta .d { color: var(--red); }
+
+/* 空状态：精心编排的引导，而非空白 */
+.empty {
+  margin: 28px 12px; padding: 22px 16px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--r-lg);
+}
+.empty .e-ic {
+  width: 34px; height: 34px; margin: 0 auto 10px; border-radius: 10px;
+  background: var(--accent-dim); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.empty b { display: block; font-size: var(--fs); font-weight: 500; margin-bottom: 4px; }
+.empty span { font-size: var(--fs-sm); color: var(--faint); line-height: 1.55; }
+
+/* 滚动条：安静、融入 */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.1); border-radius: 5px;
+  border: 3px solid transparent; background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); background-clip: content-box; border: 3px solid transparent; }
+
+/* 尊重减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ 左栏 ══ -->
+<aside id="sidebar">
+  <div class="side-head">
+    <div class="nav-item" tabindex="0">
+      <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="6.2" cy="6.2" r="4.4"/><path d="M9.6 9.6 13.4 13.4M6.2 4.4v3.6M4.4 6.2h3.6"/></svg>
+      新建任务 <span class="kbd">⌘N</span>
+    </div>
+  </div>
+
+  <div class="seg" id="segDemo" data-on="project">
+    <span class="thumb"></span>
+    <button data-v="recent">最近</button>
+    <button data-v="project" class="on">项目</button>
+  </div>
+
+  <div class="group-tt">oh-my-pi-desktop</div>
+  <div class="task on rise" style="--i:0" tabindex="0">
+    <span class="live"></span> UI/交互优化方案
+    <span class="meta num">18:24</span>
+    <span class="act">
+      <button class="icon-btn" style="width:20px;height:20px" title="重命名"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+    </span>
+  </div>
+  <div class="task rise" style="--i:1" tabindex="0">会话池重连修复 <span class="meta num">昨天</span></div>
+  <div class="task rise" style="--i:2" tabindex="0">模型目录分组 <span class="meta num">周二</span></div>
+
+  <div class="group-tt">taste-skill</div>
+  <div class="task rise" style="--i:3" tabindex="0">redesign-skill 审计 <span class="meta num">09-12</span></div>
+
+  <div class="side-foot">
+    <div class="avatar">肖</div>
+    <span class="uname">omp-desktop</span>
+    <span style="flex:1"></span>
+    <button class="icon-btn" title="设置 ⌘,">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+    </button>
+  </div>
+</aside>
+
+<!-- ══ 中栏 ══ -->
+<main id="main">
+  <div class="chat-head">
+    <button class="icon-btn" title="收起侧边栏 ⌘B">
+      <svg width="13" height="12" viewBox="0 0 14 13" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1.5" width="12" height="10" rx="2"/><path d="M4.5 1.5v10"/></svg>
+    </button>
+    <span class="ttl">UI/交互优化方案</span>
+    <span class="path">~/oh-my-pi-desktop</span>
+    <span style="flex:1"></span>
+    <button class="icon-btn" title="展开侧边面板">
+      <svg width="13" height="12" viewBox="0 0 14 13" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1.5" width="12" height="10" rx="2"/><path d="M9.5 1.5v10"/></svg>
+    </button>
+  </div>
+
+  <div id="stream">
+    <span class="capsule rise" style="--i:1" title="展开待办">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>
+      进程 <b class="num" style="font-weight:600">3/5</b>
+      <span class="bar"><i></i></span>
+    </span>
+
+    <div class="msg-user rise" style="--i:2">结合 taste-skill，给项目出一份 UI/交互优化方案，先来 HTML 示例。</div>
+
+    <div class="msg-ai rise" style="--i:3">
+      <div class="who"><span class="dot"></span>GLM-5.3-Flash · <span class="num">思考 4.2s</span></div>
+      我按 redesign-skill 的流程先审计了现有 <code style="font-family:var(--mono);font-size:12px;background:var(--inset);padding:1px 5px;border-radius:4px">style.css</code>，主要问题是表面层级倒挂与强调色泛滥，下面开始修复。
+    </div>
+
+    <!-- 双斜面工具卡片 -->
+    <div class="tool-shell rise" style="--i:4">
+      <div class="tool-core">
+        <div class="tool-head">
+          <span class="ck">✓</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
+          Edit <span class="file">ui/style.css</span>
+          <span class="stat num"><span class="add">+42</span>&nbsp;<span class="del">−18</span></span>
+        </div>
+        <div class="tool-body">:root {
+<span class="ln-add">+  --frame: #131416;  /* 窗口底座，最暗 */</span>
+<span class="ln-add">+  --spring: cubic-bezier(0.32, 0.72, 0, 1);</span>
+   --text: #ECEDEF;</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dock">
+    <div id="composer">
+      <textarea rows="2" placeholder="发消息…（Enter 发送，⇧Enter 换行）"></textarea>
+      <div class="cbar">
+        <button class="icon-btn" title="添加上下文">
+          <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>
+        </button>
+        <button class="pill-btn">
+          <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6.5 1.4 11 3.2v3.1c0 3-1.9 4.7-4.5 5.3-2.6-.6-4.5-2.3-4.5-5.3V3.2z"/></svg>
+          变更前确认 <span style="color:var(--faint)">⌄</span>
+        </button>
+        <span style="flex:1"></span>
+        <span class="ctx-ring" title="上下文 61%">
+          <svg viewBox="0 0 16 16" width="15" height="15">
+            <circle class="track" cx="8" cy="8" r="6.5"/>
+            <circle class="fill" cx="8" cy="8" r="6.5" transform="rotate(-90 8 8)"/>
+          </svg>
+        </span>
+        <button class="pill-btn">GLM-5.3-Flash <span style="color:var(--faint)">⌄</span></button>
+        <button class="pill-btn">思考·中 <span style="color:var(--faint)">⌄</span></button>
+        <button class="send" title="发送">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 10.5V2M2.8 6 6.5 2.3 10.2 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ══ 右栏 ══ -->
+<aside id="right">
+  <div class="r-head">
+    <div class="seg" style="margin:0" id="segRight" data-on="git">
+      <span class="thumb"></span>
+      <button data-v="agent">子代理</button>
+      <button data-v="git" class="on">Git Diff</button>
+    </div>
+  </div>
+  <div class="r-body">
+    <div class="group-tt" style="padding:8px 10px 4px">未提交更改 · <span class="num">4</span></div>
+    <div class="diff-row rise" style="--i:0"><span class="st-tag st-m">M</span>ui/style.css<span class="delta num"><span class="a">+42</span> <span class="d">−18</span></span></div>
+    <div class="diff-row rise" style="--i:1"><span class="st-tag st-m">M</span>ui/app.js<span class="delta num"><span class="a">+12</span> <span class="d">−3</span></span></div>
+    <div class="diff-row rise" style="--i:2"><span class="st-tag st-a">A</span>ui-design-proposal/demo.html<span class="delta num"><span class="a">+486</span></span></div>
+    <div class="diff-row rise" style="--i:3"><span class="st-tag st-m">M</span>host/host.ts<span class="delta num"><span class="a">+5</span> <span class="d">−5</span></span></div>
+
+    <div class="empty rise" style="--i:4">
+      <div class="e-ic">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M6 12a6 6 0 0 0 6 6h.5M18 10.5c0 3.5-3 4.5-6 4.5"/></svg>
+      </div>
+      <b>子代理暂无运行</b>
+      <span>任务派生子代理时，这里会实时列出它们的状态与输出。</span>
+    </div>
+  </div>
+</aside>
+
+<script>
+// 分段控件滑块（demo 交互）
+for (const seg of document.querySelectorAll('.seg')) {
+  seg.addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+    seg.dataset.on = btn.dataset.v === seg.querySelector('button').dataset.v ? '' : seg.id === 'segDemo' ? 'project' : 'git';
+    // 简化：仅根据索引移动滑块
+    const idx = [...seg.querySelectorAll('button')].indexOf(btn);
+    seg.querySelector('.thumb').style.transform = `translateX(${idx * 100}%)`;
+  });
+}
+// textarea 自适应高度
+const ta = document.querySelector('#composer textarea');
+ta.addEventListener('input', () => {
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+/* System permissions card (GeneralPage PermissionsCard): a granted row swaps
+   its "open System Settings" button for a non-interactive green badge in the
+   same .save-btn geometry, mirroring .rd-test-ok in welcome.css. */
+.perm-ok,
+.save-btn.perm-ok:hover,
+.save-btn.perm-ok:active {
+	background: color-mix(in srgb, var(--green) 16%, transparent);
+	color: var(--green);
+	cursor: default;
+	transform: none;
+}

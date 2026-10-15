@@ -1,0 +1,7 @@
+# ".md" imports load as text so host/prompts mirrors can be statically
+# imported (host/bootstrap.ts readSdkPrompt) and inlined into the compiled
+# omp-host.exe by `bun build --compile` — the same loader entry the oh-my-pi
+# source repo ships. Without it Bun's default file loader emits a path instead
+# of the content, and the standalone exe cannot read SDK files at runtime.
+[loader]
+".md" = "text"

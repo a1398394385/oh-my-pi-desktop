@@ -1,0 +1,26 @@
+#!/bin/sh
+# Repo-level pre-commit: when the staging area contains host/ changes, run three zero-cost protocol smoke tests (~15s total, no model calls);
+# any failure blocks the commit. The UI side cannot be asserted at protocol level (WKWebView layer) and is out of scope for the hook.
+# Invoked in a chain by the global ~/.git-hooks/pre-commit (after gitleaks); can also be run directly.
+# Skip (with care): git commit --no-verify
+cd "$(git rev-parse --show-toplevel)"
+
+changed=$(git diff --cached --name-only --diff-filter=ACMR | grep '^host/' || true)
+[ -z "$changed" ] && exit 0
+
+# timeout: built into Linux; macOS gets it as gtimeout from coreutils. When
+# neither is present, fail loudly instead of letting the smoke be misreported.
+TIMEOUT=$(command -v timeout || command -v gtimeout || true)
+if [ -z "$TIMEOUT" ]; then
+  echo "[pre-commit] ✗ 缺 timeout:brew install coreutils(macOS 提供 gtimeout)"
+  exit 1
+fi
+echo "[pre-commit] host/ 改动，跑协议冒烟（newsession / git-files / projects）…"
+for s in smoke-newsession smoke-git-files smoke-projects; do
+  if ! "$TIMEOUT" 150 bun "scripts/$s.ts"; then
+    echo ""
+    echo "[pre-commit] ✗ $s 失败，提交被挡。修复后重试；确认无误可 --no-verify 跳过。"
+    exit 1
+  fi
+done
+echo "[pre-commit] 冒烟全绿"

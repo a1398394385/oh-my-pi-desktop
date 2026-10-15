@@ -1,0 +1,20 @@
+/* Plugins page (PluginsPage.tsx): expandable rows — whole row clicks open a mem-expand
+   detail listing the plugin's contributed content groups (tools/commands/skills/rules/
+   prompts/hooks/mcp/extension modules attributed by host/assets.ts scanPluginContents) */
+.plug-row { cursor: pointer; }
+
+.plug-row.on .mem-caret svg { transform: rotate(0deg); }
+
+.plug-detail { padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 7px; }
+
+.plug-group { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+
+.plug-kind { flex: none; width: 62px; font-size: var(--ui-fs-sm); color: var(--faint); text-align: right; }
+
+.plug-items { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+
+.plug-item { font-size: var(--ui-fs-sm); color: var(--dim); background: var(--panel-2); border-radius: 5px; padding: 1px 7px; }
+
+.plug-item em { font-style: normal; color: var(--faint); }
+
+.plug-empty { font-size: var(--ui-fs-sm); color: var(--faint); }

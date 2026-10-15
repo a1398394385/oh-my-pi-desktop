@@ -1,0 +1,286 @@
+diff --git a/node_modules/@oh-my-pi/pi-coding-agent/.bun-tag-9fd6bba3c1e7d72e b/.bun-tag-9fd6bba3c1e7d72e
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@oh-my-pi/pi-coding-agent/.bun-tag-a0562b6c06951f7b b/.bun-tag-a0562b6c06951f7b
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/scripts/legacy-pi-virtual-module.ts b/scripts/legacy-pi-virtual-module.ts
+index f366d9b34c93d3a233487f55c113347aa87cbe54..bf4b5f9fbfaab533d0df56c25e0651c77136f63b 100644
+--- a/scripts/legacy-pi-virtual-module.ts
++++ b/scripts/legacy-pi-virtual-module.ts
+@@ -1,3 +1,4 @@
++import * as fs from "node:fs";
+ import * as path from "node:path";
+ import { isEnoent } from "@oh-my-pi/pi-utils/fs-error";
+ 
+@@ -12,16 +13,18 @@
+ 	readonly dir: string;
+ 	readonly identifier: string;
+ 	readonly rootShim: string | null;
++	/** Package directory under the @oh-my-pi scope in an npm-install layout (differs for agent: pi-agent-core). */
++	readonly npmDir: string;
+ }
+ 
+ const BUNDLED_PACKAGES: readonly BundledPackage[] = [
+-	{ dir: "agent", identifier: "PiAgentCore", rootShim: null },
+-	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
+-	{ dir: "catalog", identifier: "PiCatalog", rootShim: null },
+-	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
+-	{ dir: "natives", identifier: "PiNatives", rootShim: null },
+-	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts" },
+-	{ dir: "utils", identifier: "PiUtils", rootShim: null },
++	{ dir: "agent", identifier: "PiAgentCore", rootShim: null, npmDir: "pi-agent-core" },
++	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts", npmDir: "pi-ai" },
++	{ dir: "catalog", identifier: "PiCatalog", rootShim: null, npmDir: "pi-catalog" },
++	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts", npmDir: "pi-coding-agent" },
++	{ dir: "natives", identifier: "PiNatives", rootShim: null, npmDir: "pi-natives" },
++	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts", npmDir: "pi-tui" },
++	{ dir: "utils", identifier: "PiUtils", rootShim: null, npmDir: "pi-utils" },
+ ];
+ 
+ const TYPEBOX_MODULE_KEY = "typebox";
+@@ -116,7 +119,13 @@
+ 	}
+ 
+ 	for (const pkg of BUNDLED_PACKAGES) {
+-		const packageRoot = path.join(repoRoot, "packages", pkg.dir);
++		// Monorepo checkout resolves under repoRoot/packages; an npm install (e.g. the
++		// desktop host build compiling from node_modules) keeps the packages as scope
++		// siblings of this one, under the npmDir directory name.
++		let packageRoot = path.join(repoRoot, "packages", pkg.dir);
++		if (!fs.existsSync(path.join(packageRoot, "package.json"))) {
++			packageRoot = path.join(packageDir, "..", pkg.npmDir);
++		}
+ 		const manifestPath = path.join(packageRoot, "package.json");
+ 		const manifest: unknown = await Bun.file(manifestPath).json();
+ 		if (!isRecord(manifest) || typeof manifest.name !== "string") {
+diff --git a/src/hindsight/backend.ts b/src/hindsight/backend.ts
+index 5c64c3a5068e030568871faefbe102a52e9e3ed8..76d470bf11cf06d8c51b16c8798eb31b4f0137a6 100644
+--- a/src/hindsight/backend.ts
++++ b/src/hindsight/backend.ts
+@@ -76,7 +76,7 @@
+ 		await installPrimaryState(session, settings, new Set());
+ 	},
+ 
+-	async buildDeveloperInstructions(_agentDir, settings, session): Promise<string | undefined> {
++	async buildDeveloperInstructions(_agentDir, _cwd, settings, session): Promise<string | undefined> {
+ 		const config = loadHindsightConfig(settings);
+ 		if (!isHindsightConfigured(config)) return undefined;
+ 
+diff --git a/src/memories/index.ts b/src/memories/index.ts
+index eb6754d4a00328d634dfd8bcb47f8d7b46024125..478223d34c6c3ecee0f1374cbdb37215e359c11e 100644
+--- a/src/memories/index.ts
++++ b/src/memories/index.ts
+@@ -187,22 +187,17 @@
+ 	CachedMemoryToolDeveloperInstructions
+ >();
+ const memoryToolDeveloperInstructionsByRoot = new Map<string, MemoryToolDeveloperInstructionsSnapshot | undefined>();
+-
+-function getMemoryInstructionRoot(agentDir: string, settings: Settings): string {
+-	return getMemoryRoot(agentDir, settings.getCwd());
+-}
+ 
+ function getMemoryInstructionSessionFile(session: MemoryInstructionSession): string | undefined {
+ 	return session.sessionManager.getSessionFile() ?? undefined;
+ }
+ 
+ async function readMemoryToolDeveloperInstructionsSnapshot(
+-	agentDir: string,
++	memoryRoot: string,
+ 	settings: Settings,
+ ): Promise<MemoryToolDeveloperInstructionsSnapshot | undefined> {
+ 	const cfg = loadMemoryConfig(settings);
+ 	if (!cfg.enabled) return undefined;
+-	const memoryRoot = getMemoryInstructionRoot(agentDir, settings);
+ 
+ 	let summary = "";
+ 	try {
+@@ -277,14 +272,15 @@
+ export async function refreshMemoryToolDeveloperInstructionsCacheAfterStartup(
+ 	session: MemoryInstructionSession,
+ 	agentDir: string,
++	cwd: string,
+ 	settings: Settings,
+ ): Promise<void> {
+ 	if (memoryConversationStarted(session)) return;
+ 	const sessionFile = getMemoryInstructionSessionFile(session);
+ 	const cached = memoryToolDeveloperInstructionsBySession.get(session);
+-	const current = await readMemoryToolDeveloperInstructionsSnapshot(agentDir, settings);
++	const root = getMemoryRoot(agentDir, cwd);
++	const current = await readMemoryToolDeveloperInstructionsSnapshot(root, settings);
+ 	if (memoryConversationStarted(session)) return;
+-	const root = getMemoryInstructionRoot(agentDir, settings);
+ 	const baseline = memoryToolDeveloperInstructionsByRoot.get(root);
+ 	const cachedLearned = cached && cached.sessionFile === sessionFile ? cached.snapshot?.learned : undefined;
+ 	const learned = cachedLearned ?? baseline?.learned ?? "";
+@@ -294,15 +290,21 @@
+ 
+ /**
+  * Build memory usage instructions for prompt injection.
++ *
++ * `cwd` is the session's project directory, the same scope consolidation and
++ * `learn` write to; never `settings.getCwd()`, which an embedding host may pin
++ * to one directory for sessions spanning several projects.
+  */
+ export async function buildMemoryToolDeveloperInstructions(
+ 	agentDir: string,
++	cwd: string,
+ 	settings: Settings,
+ 	session?: MemoryInstructionSession,
+ ): Promise<string | undefined> {
++	const root = getMemoryRoot(agentDir, cwd);
+ 	if (!session) {
+-		const snapshot = await readMemoryToolDeveloperInstructionsSnapshot(agentDir, settings);
+-		memoryToolDeveloperInstructionsByRoot.set(getMemoryInstructionRoot(agentDir, settings), snapshot);
++		const snapshot = await readMemoryToolDeveloperInstructionsSnapshot(root, settings);
++		memoryToolDeveloperInstructionsByRoot.set(root, snapshot);
+ 		return renderMemoryToolDeveloperInstructionsSnapshot(snapshot, settings);
+ 	}
+ 
+@@ -310,7 +312,7 @@
+ 	const cached = memoryToolDeveloperInstructionsBySession.get(session);
+ 	if (cached && cached.sessionFile === sessionFile) return cached.value;
+ 
+-	const snapshot = await readMemoryToolDeveloperInstructionsSnapshot(agentDir, settings);
++	const snapshot = await readMemoryToolDeveloperInstructionsSnapshot(root, settings);
+ 	return cacheMemoryToolDeveloperInstructions(session, sessionFile, snapshot, settings);
+ }
+ 
+@@ -358,7 +360,12 @@
+ 	if (!isMemoryStartupActive(options)) return;
+ 	await runPhase2(options);
+ 	if (!isMemoryStartupActive(options)) return;
+-	await refreshMemoryToolDeveloperInstructionsCacheAfterStartup(options.session, options.agentDir, options.settings);
++	await refreshMemoryToolDeveloperInstructionsCacheAfterStartup(
++		options.session,
++		options.agentDir,
++		options.session.sessionManager.getCwd(),
++		options.settings,
++	);
+ 	if (!isMemoryStartupActive(options)) return;
+ 	if (memoryConversationStarted(options.session)) return;
+ 	await options.session.refreshBaseSystemPrompt?.();
+diff --git a/src/memory-backend/local-backend.ts b/src/memory-backend/local-backend.ts
+index 5d6392c34c5bac83aab691b4d8853e7de14ec03f..7817b248df6415804c9d5bf07ebfce76c7b9a40b 100644
+--- a/src/memory-backend/local-backend.ts
++++ b/src/memory-backend/local-backend.ts
+@@ -21,8 +21,8 @@
+ 	start(options) {
+ 		startMemoryStartupTask(options);
+ 	},
+-	async buildDeveloperInstructions(agentDir, settings, session) {
+-		return buildMemoryToolDeveloperInstructions(agentDir, settings, session);
++	async buildDeveloperInstructions(agentDir, cwd, settings, session) {
++		return buildMemoryToolDeveloperInstructions(agentDir, cwd, settings, session);
+ 	},
+ 	async clear(agentDir, cwd, session) {
+ 		clearMemoryToolDeveloperInstructionsCache(session);
+diff --git a/src/memory-backend/types.ts b/src/memory-backend/types.ts
+index e4544ef4686ac00f57b4c3278ad54c9307a5df81..6aa02e20da4a731f38995371562c35a88a5bb3e0 100644
+--- a/src/memory-backend/types.ts
++++ b/src/memory-backend/types.ts
+@@ -120,9 +120,11 @@
+ 	/**
+ 	 * Markdown injected as the system-prompt append section.
+ 	 * Returned on every prompt rebuild via `refreshBaseSystemPrompt()`.
++	 * `cwd` is the session's project directory and selects project-scoped memory.
+ 	 */
+ 	buildDeveloperInstructions(
+ 		agentDir: string,
++		cwd: string,
+ 		settings: Settings,
+ 		session?: AgentSession,
+ 	): Promise<string | undefined>;
+diff --git a/src/mnemopi/backend.ts b/src/mnemopi/backend.ts
+index 7b8957274515b0ad574f0238eabc2ac5c0858986..314964085d6343c8cbecea907565ceb505c61ac0 100644
+--- a/src/mnemopi/backend.ts
++++ b/src/mnemopi/backend.ts
+@@ -136,7 +136,7 @@
+ 		}
+ 	},
+ 
+-	async buildDeveloperInstructions(_agentDir, settings, session): Promise<string | undefined> {
++	async buildDeveloperInstructions(_agentDir, _cwd, settings, session): Promise<string | undefined> {
+ 		return withLoopPhase("mnemopi.recall", () => {
+ 			const state = getMnemopiSessionState(session);
+ 			const primary = state?.aliasOf ?? state;
+diff --git a/src/modes/controllers/command-controller.ts b/src/modes/controllers/command-controller.ts
+index a9e7e9208716f9d3d5a92c355f8fa47e10a0ad9c..fda27f8e5900ad048de5c3eb99c73da516d0de23 100644
+--- a/src/modes/controllers/command-controller.ts
++++ b/src/modes/controllers/command-controller.ts
+@@ -945,7 +945,12 @@
+ 		const backend = await resolveMemoryBackend(this.ctx.settings);
+ 
+ 		if (action === "view") {
+-			const payload = await backend.buildDeveloperInstructions(agentDir, this.ctx.settings, this.ctx.session);
++			const payload = await backend.buildDeveloperInstructions(
++				agentDir,
++				this.ctx.sessionManager.getCwd(),
++				this.ctx.settings,
++				this.ctx.session,
++			);
+ 			if (!payload) {
+ 				this.ctx.showWarning("Memory payload is empty (memory backend off, disabled, or no memory available).");
+ 				return;
+diff --git a/src/sdk.ts b/src/sdk.ts
+index a914f553ef84f79277b27e8cbe9f450bac4c90a5..548769efadd174ec26b7b4d142a0b1dd7d82d673 100644
+--- a/src/sdk.ts
++++ b/src/sdk.ts
+@@ -3820,7 +3820,7 @@
+ 			}
+ 			const memoryBackend = restrictToolNames ? undefined : await resolveMemoryBackend(settings);
+ 			const memoryInstructions = memoryBackend
+-				? await memoryBackend.buildDeveloperInstructions(agentDir, settings, session)
++				? await memoryBackend.buildDeveloperInstructions(agentDir, sessionManager.getCwd(), settings, session)
+ 				: undefined;
+ 			// Advisors get the same memory block (sharpshooter decisions, mnemopi/
+ 			// hindsight instructions) wrapped as shared background knowledge; the
+diff --git a/src/sharpshooter/backend.ts b/src/sharpshooter/backend.ts
+index 1bbd2a66e5b46d5c584c6d7a2403ac18c6f3352f..911eded53ab288c4711155e262edf69a7a7b8f86 100644
+--- a/src/sharpshooter/backend.ts
++++ b/src/sharpshooter/backend.ts
+@@ -84,7 +84,7 @@
+ 			releaseSharpshooterSession(session);
+ 			const disposeScheduler = startSharpshooterScheduler({
+ 				agentDir,
+-				cwd: settings.getCwd(),
++				cwd: session.sessionManager.getCwd(),
+ 				settings,
+ 				modelRegistry,
+ 				sessionId: session.sessionId,
+@@ -116,8 +116,8 @@
+ 		}
+ 	},
+ 
+-	async buildDeveloperInstructions(agentDir, settings): Promise<string | undefined> {
+-		const files = await readMemoryFiles(agentDir, settings.getCwd());
++	async buildDeveloperInstructions(agentDir, cwd, settings): Promise<string | undefined> {
++		const files = await readMemoryFiles(agentDir, cwd);
+ 		const populated = files.filter(file => file.content.trim().length > 0);
+ 		if (populated.length === 0) return undefined;
+ 		const parts = [
+diff --git a/src/slash-commands/builtin-lifecycle.ts b/src/slash-commands/builtin-lifecycle.ts
+index 021e7e44f90c5441ee4b97493c9df2d876bb8e8f..e76ce27e8367bf455e3522ac990e11e4fef4aa9a 100644
+--- a/src/slash-commands/builtin-lifecycle.ts
++++ b/src/slash-commands/builtin-lifecycle.ts
+@@ -562,6 +562,7 @@
+ 				case "view": {
+ 					const payload = await backend.buildDeveloperInstructions(
+ 						runtime.settings.getAgentDir(),
++						runtime.cwd,
+ 						runtime.settings,
+ 						runtime.session,
+ 					);
+diff --git a/src/tools/learn.ts b/src/tools/learn.ts
+index 79f7a44e980b93a53a0b3ac44d4e20d63892ffa3..0682f532594f786eee0038bffceb47d6b7ccf58a 100644
+--- a/src/tools/learn.ts
++++ b/src/tools/learn.ts
+@@ -119,7 +119,7 @@
+ 			}
+ 		} else if (backend === "local") {
+ 			const result = await localBackend.save?.(
+-				{ agentDir: this.session.settings.getAgentDir(), cwd: this.session.settings.getCwd() },
++				{ agentDir: this.session.settings.getAgentDir(), cwd: this.session.cwd },
+ 				{ content: params.memory, context: params.context, source: "coding-agent-learn", importance: 0.8 },
+ 			);
+ 			if (!result || result.stored === 0) {

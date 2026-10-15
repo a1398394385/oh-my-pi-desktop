@@ -1,0 +1,46 @@
+/*
+ * Theme: Deep Think
+ * Origin: openhanako/desktop/src/themes/deep-think.css
+ * Palette: DeepSeek tribute — clean white base + restrained blue-purple accents
+ * Adapted for omp-desktop token system
+ */
+
+[data-theme="deep-think"] {
+  /* ── Core surface layers ──────────────────────────────────────────────── */
+  --base:      #F0F0F2;   /* sidebar (from openhanako --sidebar-bg) */
+  --card:      #F8F8FA;   /* middle/right cards (from openhanako --bg-card) */
+  --inset:     #FAFAF8;   /* input fields (from openhanako --jian-note-bg) */
+  --select:    #ECECF0;   /* current session highlight (derived: card - 5% darker) */
+  --bg:        var(--card);
+  --sidebar:   var(--base);
+  --panel:     var(--inset);
+  --panel-2:   #F0F0F4;   /* derived: panel - 3% darker */
+  --panel-3:   var(--select);
+  --surface:   rgba(0,0,0,.04);  /* floating veil (openhanako --overlay-subtle semantics) */
+
+  /* ── Borders & dividers ────────────────────────────────────────────────── */
+  --line:      rgba(0, 0, 0, 0.09);  /* from openhanako --border */
+  --line-soft: rgba(0,0,0,.06);
+
+  /* ── Text hierarchy ────────────────────────────────────────────────────── */
+  --text:      #1D1D1F;   /* from openhanako --text */
+  --dim:       #65656B;   /* from openhanako --text-light */
+  --faint:     #95959C;   /* from openhanako --text-muted */
+
+  /* ── Accent & interactive ──────────────────────────────────────────────── */
+  --accent:    #636AE8;   /* DeepSeek blue-purple (from openhanako --accent) */
+  --blue:      #5158D4;   /* from openhanako --accent-hover */
+  --bash:      var(--green); /* bash mode uses green in light themes */
+
+  /* ── Status colors ─────────────────────────────────────────────────────── */
+  --green:     #34A853;   /* from openhanako --green */
+  --green-soft:#2E9647;   /* derived: green - 8% saturation */
+  --orange:    #D9746C;   /* from openhanako --coral */
+  --red:       #C76B6B;   /* derived from danger palette */
+  --err:       #8B3A3A;   /* from openhanako --danger */
+  --yellow:    #E8B44C;   /* derived: warm yellow for clean theme */
+  --purple:    #636AE8;   /* reuse accent (DeepSeek brand purple) */
+
+  /* ── Control backgrounds ───────────────────────────────────────────────── */
+  --ctl-bg:    var(--inset);
+}

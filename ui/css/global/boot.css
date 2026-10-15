@@ -1,0 +1,61 @@
+/* Boot splash (#bootSplash in BootSplash.tsx): full-window veil from launch until
+   the first session_list frame — hides the welcome page's "/" placeholder window
+   and the host's >15s cold start. Tier 1100 sits above modal masks (see the
+   site-wide z-index scale in global/scrollbars.css). */
+#bootSplash {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  animation: bsFade .22s ease-out;
+}
+
+#bootSplash.out {
+  opacity: 0;
+  transition: opacity .22s ease-out;
+  pointer-events: none;
+}
+
+.bs-logo {
+  color: var(--text);
+  display: inline-flex;
+}
+
+.bs-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--ui-fs-base);
+  color: var(--dim);
+}
+
+.bs-spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: bsSpin .9s linear infinite;
+}
+
+.bs-skip {
+  position: absolute;
+  right: 22px;
+  bottom: 18px;
+}
+
+@keyframes bsFade { from { opacity: 0; } }
+
+@keyframes bsSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #bootSplash { animation: none; }
+  #bootSplash.out { transition: none; }
+  .bs-spin { animation-duration: 2.4s; }
+}

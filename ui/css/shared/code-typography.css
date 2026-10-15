@@ -1,0 +1,26 @@
+/* ── Code block and Git Diff isolation: immune to the global UI font/size, locked to monospace and the code font size ── */
+code,
+pre,
+kbd,
+samp,
+.cmd,
+.cmd .c-tx,
+.step-title code,
+.pv-code,
+.fd-holder,
+.fd-holder * {
+  font-family: var(--mono) !important;
+}
+
+code,
+pre,
+kbd,
+samp,
+.cmd,
+.cmd .c-tx,
+.step-title code,
+.pv-code,
+.fd-holder,
+.fd-holder * {
+  font-size: var(--code-fs, 12px) !important;
+}

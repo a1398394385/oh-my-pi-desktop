@@ -1,0 +1,16 @@
+/* --- C2 message fork button + branch tree tab --- */
+/* the fork button moved to a turn's output tail (.turn-acts); only the queue action group remains beside the bubble */
+/* branch tree list: hover highlight only on fully clickable rows (session switching); the current branch's row is not clickable, marked only by the accent border */
+.bt-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: 1px solid transparent; border-radius: var(--r-md);
+  background: none; padding: 7px 10px; font: inherit;
+  color: var(--dim); cursor: pointer;
+  transition: background .12s var(--swift), color .12s var(--swift);
+}
+
+.bt-row:hover { background: var(--panel-2); color: var(--text); }
+
+.bt-row.cur { border-color: var(--accent); color: var(--text); cursor: default; }
+
+.bt-row.cur:hover { background: none; }

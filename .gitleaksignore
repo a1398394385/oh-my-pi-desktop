@@ -1,0 +1,4 @@
+# Not secrets: public OAuth client credentials of third-party desktop apps
+# (Antigravity / Claude Code), hard-coded by design for native-app OAuth flows.
+host/limits/vendor/providers/antigravity/oauth.js:generic-api-key:35
+host/limits/vendor/providers/claude/limits.js:generic-api-key:34

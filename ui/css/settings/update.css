@@ -1,0 +1,38 @@
+/* App auto-update row (GeneralPage UpdateRow): check / download / relaunch states.
+   The row itself is a plain .srow.set-row — only the controls highlight, per the
+   settings rule that hover marks clickability and this row is not clickable. */
+
+/* Download progress: a 3px track under the row, matching the login banner's
+   indeterminate feel without stealing a full-width bar from the settings column. */
+.up-bar {
+	position: relative;
+	height: 3px;
+	width: 132px;
+	border-radius: 2px;
+	background: var(--panel-2);
+	overflow: hidden;
+}
+
+.up-bar > i {
+	position: absolute;
+	inset: 0 auto 0 0;
+	background: var(--accent);
+	border-radius: 2px;
+	transition: width .15s linear;
+}
+
+/* Byte counts next to the bar: the total is unknown when the server sends no
+   Content-Length, in which case only the downloaded figure is shown. */
+.up-size { font-family: var(--font-mono); font-size: var(--ui-fs-sm); color: var(--dim); white-space: nowrap; }
+
+/* Release notes for the offered version. Whitespace is preserved because the
+   notes are authored as markdown-ish free text from the release body. */
+.up-notes {
+	margin-top: 6px;
+	font-size: var(--ui-fs-sm);
+	color: var(--dim);
+	white-space: pre-wrap;
+	max-height: 140px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}

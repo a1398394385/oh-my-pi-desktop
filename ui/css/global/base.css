@@ -1,0 +1,30 @@
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+}
+
+html, body { height: 100%; }
+
+html { background: var(--base); color-scheme: dark; font-size: var(--ui-fs-base); }
+
+html[data-theme="light"],
+html[data-theme-mode="light"] { color-scheme: light; }
+
+body {
+  background: var(--base);
+  font-family: var(--ui-font, var(--sans));
+  font-size: var(--ui-fs-base);
+  color: var(--text);
+  overflow: hidden;
+  display: flex;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--tint-accent-350); color: var(--text); }
+.hidden { display: none !important; }
+
+button, input, textarea, select {
+  font-family: var(--ui-font, var(--sans));
+  font-size: inherit;
+}
+
+button { font: inherit; }

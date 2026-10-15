@@ -1,0 +1,12 @@
+/* Hooks page (HooksPage.tsx): discovered-hook rows expand an inline editor
+   (.mem-expand + .sem-body.form + .mcp-form-* from the shared form language, same
+   as the MCP/shell pages). Only the row interaction and the pill sizing live here. */
+
+/* hook row: fully clickable, .on highlight + caret flip while its editor is expanded */
+.srow.hook-row { cursor: pointer; }
+
+.srow.hook-row.on { background: var(--panel-2); }
+
+.srow.hook-row.on .mem-caret svg { transform: rotate(0deg); }
+
+#hookPhasePills .mcp-type-pill { min-height: 26px; padding: 0 10px; font-size: var(--ui-fs-sm); }
