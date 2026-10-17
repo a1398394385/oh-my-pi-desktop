@@ -1,0 +1,151 @@
+/* Remote-takeover screen (KickedScreen.tsx, remote-control spec §4.1): a kicked remote
+   client replaces the whole page with one card instead of showing an in-page banner.
+   Applied on every width — takeover only happens to remote connections, and the phone-
+   only layout rules of remote.css must not hide the warning on a tablet/desktop browser. */
+#kicked-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--card);
+}
+
+.kicked-card {
+  width: min(100%, 460px);
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.kicked-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kicked-ic {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tint-danger-150);
+  border: 1px solid var(--tint-danger-350);
+  color: var(--err);
+}
+
+.kicked-badge {
+  height: 26px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--tint-danger-150);
+  border: 1px solid var(--tint-danger-350);
+  color: var(--err);
+  font-size: var(--ui-fs-sm);
+}
+
+.kicked-title {
+  margin-top: 14px;
+  font-size: calc(var(--ui-fs) * 1.5);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.kicked-desc {
+  margin: 8px 0 0;
+  font-size: var(--ui-fs-base);
+  line-height: 1.6;
+  color: var(--dim);
+}
+
+.kicked-sep {
+  height: 1px;
+  margin: 16px 0;
+  background: var(--line-soft);
+}
+
+.kicked-next {
+  font-size: var(--ui-fs-base);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.kicked-steps {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kicked-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--ui-fs-base);
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.kicked-num {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-3);
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+  line-height: 1;
+}
+
+.kicked-status {
+  margin-top: 16px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  font-size: var(--ui-fs-base);
+  color: var(--dim);
+}
+
+.kicked-code {
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+  letter-spacing: 0.5px;
+}
+
+.kicked-btn {
+  margin-top: 14px;
+  width: 100%;
+  height: 40px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--text);
+  color: var(--card);
+  font-family: inherit;
+  font-size: var(--ui-fs-md);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.kicked-btn:hover { opacity: 0.9; }

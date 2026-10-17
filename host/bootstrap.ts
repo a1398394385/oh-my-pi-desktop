@@ -56,6 +56,16 @@ export function saveProfileToDisk(profile: string) {
 }
 
 const savedProfile = getSavedProfile();
+// A host launched with the repo as cwd is always a dev/smoke run — the packaged
+// app runs omp-host.exe with the user's project as cwd. getSavedProfile() falls
+// back to desktop-profile.json (usually "default") when OMP_PROFILE is absent,
+// so a smoke script that forgets to pass the env silently writes its sessions,
+// prompt history and omp-desktop.json into the user's default profile. Fail at
+// startup instead, so the mistake surfaces on the smoke run that caused it.
+const fromSourceTree = fs.existsSync(path.join(process.cwd(), "host", "host.ts"));
+if (fromSourceTree && savedProfile === "default") {
+  throw new Error(hostI18n.t("errors.host.profileRequired"));
+}
 // setProfile must precede all dynamic imports below
 setProfile(savedProfile === "default" ? undefined : savedProfile);
 
@@ -76,6 +86,8 @@ export const { listAllSessions, FileSessionStorage, loadEntriesFromFile } = awai
   "@oh-my-pi/pi-coding-agent"
 );
 export const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");
+// Session file root (same source as listAllSessions' default sessionsRoot; used by the sidebar full-text search prefilter)
+export const { getSessionsDir } = await import("@oh-my-pi/pi-utils/dirs");
 // Steer queue operations (identify/retrieve unconsumed steering messages), used by the host's peek/edit/drop_queued RPCs
 export const { isUserQueuedMessage, isHiddenUserCompanion, toRestoredQueuedMessage } = await import(
   "@oh-my-pi/pi-coding-agent/session/queued-messages"
@@ -172,7 +184,9 @@ export const { cfgSkills } = await import("@oh-my-pi/pi-coding-agent/extensibili
 // AgentSession runs; see rpc/prompt.ts pushNewSessionCommands)
 export const { discoverSkills, discoverCustomTSCommands } = await import("@oh-my-pi/pi-coding-agent/sdk");
 export const { SKILL_PROMPT_MESSAGE_TYPE } = await import("@oh-my-pi/pi-coding-agent/session/messages");
-export const { fuzzyFind } = await import("@oh-my-pi/pi-natives");
+// grep / GrepOutputMode = the native ripgrep-core search the base's grep tool runs on
+// (the sidebar full-text search sweeps the session corpus with it)
+export const { fuzzyFind, grep, GrepOutputMode } = await import("@oh-my-pi/pi-natives");
 // Extensions hub (ported from /extensions): unified discovery + provider toggles (consumed by host/extensions.ts)
 export const { loadAllExtensions, toggleProvider, toggleUserSource } = await import(
   "@oh-my-pi/pi-coding-agent/modes/components/extensions/state-manager"

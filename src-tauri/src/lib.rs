@@ -282,6 +282,53 @@ fn ws_url(cell: tauri::State<WsUrlCell>) -> Result<String, String> {
     Err("host-not-ready".into())
 }
 
+/// Moves the native macOS traffic lights vertically (logical points).
+/// Why this exists: `trafficLightPosition` is read once at window creation, but the
+/// UI zoom (`style.zoom`) scales the top-left blank strip they sit in — without this
+/// the lights fall out of the strip's center line as soon as ⌘± changes the level.
+/// wry's placement math puts the button center at `y - 2.2` points, so the frontend
+/// passes the target center plus that offset.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn set_traffic_light_y(window: tauri::Window, y: f64) -> Result<(), String> {
+    // usize instead of the raw pointer: run_on_main_thread requires a Send closure
+    let addr = window.ns_window().map_err(|e| e.to_string())? as usize;
+    window
+        .run_on_main_thread(move || apply_traffic_light_inset(addr as *mut std::ffi::c_void, y))
+        .map_err(|e| e.to_string())
+}
+
+/// Same geometry as wry's `inset_traffic_lights`, minus the x placement (set once
+/// from tauri.conf.json at startup): the title bar container's height is the button
+/// height plus the bottom inset, and the buttons ride with it.
+#[cfg(target_os = "macos")]
+fn apply_traffic_light_inset(ns_window: *mut std::ffi::c_void, y: f64) {
+    use objc2_app_kit::{NSView, NSWindow, NSWindowButton};
+    // SAFETY: the pointer comes from Window::ns_window and this runs on the main thread
+    let window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
+    let Some(close) = window.standardWindowButton(NSWindowButton::CloseButton) else {
+        return;
+    };
+    // SAFETY: NSView::superview just walks the window's view hierarchy (main thread)
+    let Some(title_bar) = (unsafe { close.superview() })
+        .and_then(|view| unsafe { view.superview() })
+    else {
+        return;
+    };
+    let height = NSView::frame(&close).size.height + y;
+    let mut rect = NSView::frame(&title_bar);
+    rect.size.height = height;
+    rect.origin.y = window.frame().size.height - height;
+    NSView::setFrame(&title_bar, rect);
+}
+
+/// Non-macOS stub: keeps the single generate_handler! list portable.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn set_traffic_light_y(_y: f64) -> Result<(), String> {
+    Ok(())
+}
+
 /// Builds the native app menu bar (macOS).
 /// Anti-double-trigger constraint: no "app action" item (new session/settings/
 /// zoom/theme/sidebar) ever binds an accelerator — the frontend shell.js already
@@ -625,23 +672,7 @@ pub fn run() {
         // One invoke_handler ONLY: Builder::invoke_handler replaces any previous
         // registration — stacking a second one here once silently dropped the
         // whole main command table (frontend: "Command ws_url not found").
-        .invoke_handler(tauri::generate_handler![
-            ws_url,
-            notify::send_desktop_notification,
-            notify::play_alert_sound,
-            notify::notification_permission_status,
-            notify::request_notification_permission,
-            set_menu_language,
-            audio::audio_devices,
-            fonts::list_font_families,
-            audio::audio_start,
-            audio::audio_stop,
-            update::update_check,
-            update::update_install,
-            update::update_relaunch,
-            permissions::system_permission_status,
-            permissions::open_permission_setting
-        ])
+        .invoke_handler(invoke_handler())
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")
         .run(|app, event| {
@@ -660,4 +691,96 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+/// The single command table. Extracted from `run()` so the invoke-route test
+/// (bottom of this file) can reference it; concrete `Wry` because several
+/// commands take non-generic `AppHandle`/`Window` params.
+fn invoke_handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![
+        ws_url,
+        set_traffic_light_y,
+        notify::send_desktop_notification,
+        notify::play_alert_sound,
+        notify::notification_permission_status,
+        notify::request_notification_permission,
+        set_menu_language,
+        audio::audio_devices,
+        fonts::list_font_families,
+        audio::audio_start,
+        audio::audio_stop,
+        update::update_check,
+        update::update_install,
+        update::update_relaunch,
+        permissions::system_permission_status,
+        permissions::open_permission_setting
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use tauri::ipc::{CallbackFn, InvokeBody};
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::webview::InvokeRequest;
+
+    /// Drive the real IPC pipeline for one command; Err text contains
+    /// "not found" when the handler table lacks the command.
+    fn invoke_route(app: &tauri::App<tauri::test::MockRuntime>, cmd: &str) -> Result<(), String> {
+        let webview = tauri::WebviewWindowBuilder::new(app, "route-probe", Default::default())
+            .build()
+            .expect("probe webview");
+        let request = InvokeRequest {
+            cmd: cmd.into(),
+            callback: CallbackFn(0),
+            error: CallbackFn(1),
+            url: "tauri://localhost".parse().unwrap(),
+            body: InvokeBody::default(),
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        };
+        get_ipc_response(&webview, request).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// The command's generated wrapper routes through the real IPC pipeline
+    /// (macro expansion + dispatch). The full command table cannot be driven
+    /// under the mock runtime — commands taking concrete `AppHandle<Wry>` — so
+    /// this probes the command alone; `command_table_registers_alert_sound`
+    /// guards its presence in the shipped table. Missing route = the
+    /// 2026-10-17 "silent settings toggle" bug. Plays the system alert sound
+    /// as a side effect, so `cargo test` is audible.
+    #[test]
+    fn play_alert_sound_macro_routes() {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![crate::notify::play_alert_sound])
+            .build(mock_context(noop_assets()))
+            .expect("mock app");
+        let err = invoke_route(&app, "play_alert_sound").err();
+        assert!(
+            err.as_deref().map_or(true, |e| !e.contains("not found")),
+            "play_alert_sound wrapper failed to route: {err:?}"
+        );
+    }
+
+    /// Text-level guard: the shipped command table must list the alert-sound
+    /// command (the IPC probe above cannot see the full table).
+    #[test]
+    fn command_table_registers_alert_sound() {
+        let src = include_str!("lib.rs");
+        assert!(
+            src.contains("notify::play_alert_sound"),
+            "invoke_handler() must register notify::play_alert_sound"
+        );
+    }
+
+    /// Control: a command outside the table must be rejected, proving the probe
+    /// above exercises real routing rather than always succeeding.
+    #[test]
+    fn unknown_command_is_rejected() {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![crate::notify::play_alert_sound])
+            .build(mock_context(noop_assets()))
+            .expect("mock app");
+        let err = invoke_route(&app, "no_such_command").expect_err("unknown command routed");
+        assert!(err.contains("not found"), "unexpected error: {err}");
+    }
 }

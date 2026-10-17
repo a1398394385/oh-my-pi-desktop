@@ -8,6 +8,7 @@
 //   4. set_plan_mode false -> frame enabled=false + mode_change(none)
 //   5. After enabling again, load_session restores enabled=true from the persisted mode_change (reconcile)
 //   6. Restoring does not append mode_change (persist=false; the count is unchanged)
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -27,7 +28,7 @@ function fail(msg: string): never {
 function launchHost(): Promise<string> {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   const { promise, resolve, reject } = Promise.withResolvers<string>();

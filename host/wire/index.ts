@@ -19,10 +19,11 @@ import type {
   ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
   FileDiffFrame, FileMatchesFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommittedFrame, GitDiscardedFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
-  LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, ProviderAccountEntry, ProviderAccountsFrame,
+  LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
   SessionCompactedFrame, SessionCreatedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
   SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame, SessionUnloadedFrame,
+  SessionTextSearchFrame,
   TodosFrame,
 } from "./frames-session";
 import type {
@@ -38,7 +39,8 @@ import type {
 import type {
   AutomationPreviewFrame, AutomationRunStartedFrame, AutomationsListFrame, BgJobsFrame, BtwDeltaFrame, BtwHistoryFrame,
   BtwRecord, BtwRecordFrame, BtwTurn, CacheWarmingFrame, CompletionFrame, ContextFrame,
-  DisplaysFrame, EventFrame, KeepaliveStatusFrame, OpenRightTabFrame, QueuedFrame, RemoteWorkspaceAddedFrame,
+  DisplaysFrame, EventFrame, KeepaliveStatusFrame, KickedFrame, OpenRightTabFrame, QueuedFrame, RemoteConfigFrame, RemoteKeyFrame,
+  RemoteWorkspaceAddedFrame,
   SessionStatsFrame, SetLocaleFrame, SshDirsFrame, SshHostsFrame, SshTestResultFrame, SteerConsumedFrame,
   SttDownloadProgressFrame, SttDraftFrame, SttStateFrame, SttSubmitFrame, SttTestResultFrame, SubagentControlledFrame,
   SubagentEventFrame, SubagentLifecycleFrame, SubagentProgressFrame, TtsDeltaFrame, TtsFlushFrame, TtsStopFrame,
@@ -65,6 +67,8 @@ export type HostFrame =
   | ComputerModeFrame
   | SessionCreatedFrame
   | SessionListFrame
+  | PoolSessionsFrame
+  | SessionTextSearchFrame
   | SessionUnloadedFrame
   | MessagesFrame
   | SessionArchivedFrame
@@ -174,4 +178,7 @@ export type HostFrame =
   | BtwDeltaFrame
   | BtwRecordFrame
   | BtwHistoryFrame
-  | OpenRightTabFrame;
+  | OpenRightTabFrame
+  | KickedFrame
+  | RemoteConfigFrame
+  | RemoteKeyFrame;

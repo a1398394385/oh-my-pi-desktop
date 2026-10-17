@@ -233,7 +233,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
         {f.code.includes("A") || f.code === "?" ? "A" : f.code.includes("D") ? "D" : "M"}
       </span>
       <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{pathBase(displayPath)}</span>
-      <span className="ml-auto flex-none inline-flex items-center gap-0.5 opacity-0 transition-opacity duration-[120ms] ease-[var(--swift)] group-hover:opacity-100 focus-within:opacity-100">
+      <span className="ml-auto flex-none inline-flex items-center gap-0.5 opacity-0 transition-opacity duration-[var(--dur-snap)] ease-[var(--swift)] group-hover:opacity-100 focus-within:opacity-100">
         {f.unstaged && (
           <button
             className="gd-act"

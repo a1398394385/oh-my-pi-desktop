@@ -125,8 +125,15 @@ function handleDropQueued(
     next = queue.filter((m) => !isUserQueuedMessage(m) && !isHiddenUserCompanion(m));
     if (which === "followUp") entry.parkedFollowUp = [];
   } else if (which === "followUp" && index >= queue.filter((m) => isUserQueuedMessage(m)).length) {
-    // Back half of the full view: the target lives in the parked staging
-    extractParkedAt(entry, index - queue.filter((m) => isUserQueuedMessage(m)).length);
+    // Back half of the full view: the target lives in the parked staging. A
+    // stale index (degenerate-idle ghost: the message was consumed by a direct
+    // turn while the client still showed it queued, BUG-080) resolves to
+    // nothing — idempotent no-op instead of parkedNotFound; the replaceQueue
+    // below still pushes a fresh queued frame to recalibrate the client.
+    const parkedIndex = index - queue.filter((m) => isUserQueuedMessage(m)).length;
+    if (parkedIndex < entry.parkedFollowUp.filter((m) => isUserQueuedMessage(m)).length) {
+      extractParkedAt(entry, parkedIndex);
+    }
     next = queue;
   } else {
     next = removeUserMessage(queue, index);
@@ -173,6 +180,49 @@ async function handleSendNow(_ws: { send(data: string): unknown }, sessionId: st
   parkFollowUpTail(entry);
 }
 
+// Reorder: move the from-th user message group (with its leading hidden
+// companions) to the to-th slot of the full view (agent queue + parked
+// staging). The move behaves like Array.splice(from, 1) + splice(to, 0, m):
+// down = after the target group, up = before it.
+function handleReorderQueued(ws: { send(data: string): unknown }, sessionId: string, from: number, to: number) {
+  const entry = sessions.get(sessionId);
+  if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
+  const agent = entry.session.agent;
+  const merged = [...agent.peekFollowUpQueue(), ...entry.parkedFollowUp];
+  const groups: { start: number; end: number }[] = [];
+  for (let i = 0; i < merged.length; i++) {
+    if (!isUserQueuedMessage(merged[i])) continue;
+    let start = i;
+    while (start > 0 && isHiddenUserCompanion(merged[start - 1])) start--;
+    groups.push({ start, end: i });
+  }
+  if (from === to || from < 0 || to < 0 || from >= groups.length || to >= groups.length) {
+    // Stale index (the queue was drained/consumed while the client still showed the old rows):
+    // recalibrate with an authoritative snapshot instead of silently keeping the optimistic order
+    sendQueued(ws, sessionId, entry);
+    return;
+  }
+  const src = groups[from]!;
+  const dst = groups[to]!;
+  const moved = merged.slice(src.start, src.end + 1);
+  const rest = merged.filter((_, i) => i < src.start || i > src.end);
+  // dst indices shift left by moved.length when the source sat before it
+  rest.splice(from < to ? dst.end + 1 - moved.length : dst.start, 0, ...moved);
+  // Re-split at the same boundary parkFollowUpTail uses (base keeps < 2 user messages)
+  let cut = rest.length;
+  let n = 0;
+  for (let i = 0; i < rest.length; i++) {
+    if (!isUserQueuedMessage(rest[i])) continue;
+    if (++n === 2) {
+      cut = i;
+      while (cut > 0 && isHiddenUserCompanion(rest[cut - 1])) cut--;
+      break;
+    }
+  }
+  entry.parkedFollowUp = rest.slice(cut);
+  agent.replaceQueue("followUp", rest.slice(0, cut));
+}
+
 // Requeue: move the index-th steer-queue entry back to the top of followUp (dropping the steer marker)
 function handleRequeue(_ws: { send(data: string): unknown }, sessionId: string, index: number) {
   const entry = sessions.get(sessionId);
@@ -200,4 +250,4 @@ function handleRequeue(_ws: { send(data: string): unknown }, sessionId: string, 
   parkFollowUpTail(entry);
 }
 
-export { sendQueued, parkFollowUpTail, releaseOneParked, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue };
+export { sendQueued, parkFollowUpTail, releaseOneParked, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued };

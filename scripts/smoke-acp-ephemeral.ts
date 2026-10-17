@@ -22,7 +22,7 @@
 //   F  end-to-end mock-model session — the REAL generated manifest drives a
 //      full compress round (T3 scenario without the test-supplied manifest):
 //      ephemeral appears on the wire only while a tier is active, the model
-//      compresses exactly the listed ids, the journal stays [acp-status]-free
+//      compresses exactly the listed ids, the journal stays [compress-hint]-free
 //   G  tokenizer rebind (spec §8, T3 leftover) — model switch swaps the
 //      counter and clears the memo
 //
@@ -140,17 +140,17 @@ function ephemeralText(fx: Fixture): string {
 	// The ephemeral reports tier and method together (acceptance 19).
 	const mid = makeFixture({ ...p, target: 10_000 }, [30, 30, 30, 30, 30, 30, 30, 30]);
 	mid.state.projectView(mid.view);
-	assert.match(ephemeralText(mid), /\[acp-status\] tier=L[12] compress=normal /);
+	assert.match(ephemeralText(mid), /\[compress-hint\] tier=L[12] compress=normal /);
 	assert.ok(!/^b\d+ \| \d+ \| /m.test(ephemeralText(mid)), "v10: the ephemeral carries no manifest lines");
 	assert.match(ephemeralText(mid), /call the context_status tool/, "the ephemeral points at context_status");
 	const hot = makeFixture({ ...p, target: 10_000 }, [60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60]);
 	hot.state.projectView(hot.view);
-	assert.match(ephemeralText(hot), /\[acp-status\] tier=L3 compress=strong /, "past L3 the method flips to strong");
+	assert.match(ephemeralText(hot), /\[compress-hint\] tier=L3 compress=strong /, "past L3 the method flips to strong");
 	assert.ok((hot.state.roundStatus?.activeTokens ?? 0) > 3_000);
 	// Tier none injects nothing at all (spec §5.1 "none" row).
 	const cold = makeFixture({ ...p, target: 10_000 }, [2, 2, 2]);
 	cold.state.projectView(cold.view);
-	assert.ok(!JSON.stringify(cold.state.lastProjected).includes("[acp-status]"), "no ephemeral below L1");
+	assert.ok(!JSON.stringify(cold.state.lastProjected).includes("[compress-hint]"), "no ephemeral below L1");
 	assert.equal(cold.state.roundStatus?.tier, "none");
 	console.log("ok: A decision table unique — strict >, =L3 is L2+normal; ephemeral shows tier+method, no manifest; none injects nothing");
 }
@@ -205,7 +205,7 @@ function ephemeralText(fx: Fixture): string {
 	assert.ok(rounds >= 3, `expected several convergence rounds, got ${rounds}`);
 	assert.ok(reentered, "a first-round-exempted block re-entered a later manifest");
 	assert.equal(conv.state.roundStatus!.tier, "none");
-	assert.ok(!JSON.stringify(conv.state.lastProjected).includes("[acp-status]"), "ephemeral gone after convergence");
+	assert.ok(!JSON.stringify(conv.state.lastProjected).includes("[compress-hint]"), "ephemeral gone after convergence");
 	console.log(`ok: B manifest descending + 8K tail truncation; convergence in ${rounds} rounds; exempt blocks re-enter`);
 }
 
@@ -352,7 +352,7 @@ function ephemeralText(fx: Fixture): string {
 	assert.ok(first !== null && first >= 1, `first crossing injects a milestone (got ${first})`);
 	assert.equal(first, milestoneFor(fx.state.roundStatus!.activeTokens, pM), "delivered line matches the measured zone");
 	const row = textOf(fx.state.lastProjected.at(-1)!);
-	assert.match(row, /\[acp-status\] tier=L1 compress=normal /);
+	assert.match(row, /\[compress-hint\] tier=L1 compress=normal /);
 	assert.match(row, /call the context_status tool/, "the milestone line still points at context_status");
 	// …and the SAME state never re-injects: the next request rides bare.
 	fx.state.projectView(fx.view);
@@ -394,17 +394,17 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	let parsedIds: string[] = [];
 	let compressedOnce = false;
 	// Content-directed scripting: route on the last NON-ephemeral user message
-	// (the [acp-status] injection is a user-role message too and sits last).
+	// (the [compress-hint] injection is a user-role message too and sits last).
 	const mock = createMockModel({
 		handler: (context: { messages: Array<{ role: string; content: unknown; toolName?: string }> }) => {
 			const users = [...context.messages].reverse().filter((m) => m.role === "user");
-			const routed = users.find((m) => !textOf(m).includes("[acp-status]")) ?? users[0];
+			const routed = users.find((m) => !textOf(m).includes("[compress-hint]")) ?? users[0];
 			const text = textOf(routed ?? { role: "user", content: "" });
 			if (text.includes("compress it now") && !compressedOnce) {
 				const statusResult = [...context.messages].reverse().find((m) => m.role === "toolResult" && m.toolName === "context_status");
 				if (!statusResult) return { content: [{ type: "toolCall", name: "context_status", arguments: {} }] as const };
 				const statusText = resultText(statusResult.content);
-				assert.ok(statusText.startsWith("[acp-report]"), "the context_status result carries the dashboard");
+				assert.ok(statusText.startsWith("[context-status]"), "the context_status result carries the dashboard");
 				assert.match(statusText, /tier=L1 compress=normal/, "the tool result reports tier + method");
 				const ids = statusText
 					.split("\n")
@@ -441,13 +441,16 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	const { session } = await createAgentSession({
 		cwd: cwdE2E,
 		settings,
+		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
+		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
 		customTools: [createCompressContextTool(state), createAcpStatusTool(state)] as never,
 		getApiKey: async () => "mock-key",
-		extensions: [createAcpProjectionExtension(state)] as never,
+		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
 		enableMCP: false,
 		hasUI: true,
@@ -461,14 +464,14 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 		assert.ok(assistantCount() >= expectAssistants, `turn for "${text.slice(0, 24)}" did not complete`);
 	};
 	const wireHasStatus = (c: { context: { messages: Array<{ role: string; content: unknown }> } }) =>
-		c.context.messages.some((m) => m.role === "user" && textOf(m).includes("[acp-status]"));
+		c.context.messages.some((m) => m.role === "user" && textOf(m).includes("[compress-hint]"));
 
 	await ask(turnText("task one", 220), 1); // ~2K tokens: still tier none
 	assert.ok(!wireHasStatus(mock.calls.at(-1)!), "no ephemeral while the active zone is under L1");
 	await ask(turnText("task two", 220), 2); // past L1: ephemeral appears
 	assert.ok(wireHasStatus(mock.calls.at(-1)!), "ephemeral on the wire once a tier is active");
 	const statusMsg = mock.calls.at(-1)!.context.messages.at(-1)!;
-	assert.ok(textOf(statusMsg as { role: string; content: unknown }).startsWith("[acp-status]"), "ephemeral is the LAST request message");
+	assert.ok(textOf(statusMsg as { role: string; content: unknown }).startsWith("[compress-hint]"), "ephemeral is the LAST request message");
 	assert.match(textOf(statusMsg as { role: string; content: unknown }), /tier=L1 compress=normal/);
 
 	await ask("The context is large; compress it now.", 3);
@@ -513,7 +516,7 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	const sessionFile = sessionManager.getSessionFile()!;
 	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
 	const raw = await Bun.file(sessionFile).text();
-	assert.ok(!raw.includes("[acp-status]"), "no [acp-status] residue in the session JSONL");
+	assert.ok(!raw.includes("[compress-hint]"), "no [compress-hint] residue in the session JSONL");
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 1, "exactly one acpSummary entry on disk");
 
 	await sessionManager.close();

@@ -11,6 +11,7 @@ import type { ToolItem } from "./types/session";
 import { warmupHighlighter } from "./lib/highlighter";
 import { resolveTheme } from "./theme-registry";
 import { landBrowserTabs, restoreRightSlot } from "./store/right";
+import { IS_MAC } from "./platform";
 import { emitBrowserFrame } from "./store/browserMirror";
 import { syncAudioToPref } from "./components/chat/railAudio";
 
@@ -26,6 +27,10 @@ import { syncAudioToPref } from "./components/chat/railAudio";
   const savedMotion = localStorage.getItem("omp-motion");
   applyMotion(savedMotion === "on" || savedMotion === "off" ? savedMotion : "system");
 }
+
+// Platform flag for CSS: the native traffic-light geometry (trafficLightPosition)
+// only exists on macOS, so layout pinned to it must not leak to Windows.
+document.documentElement.dataset.platform = IS_MAC ? "macos" : "windows";
 
 // ⌘, opens/closes the settings hub (ported from the old core.js global
 // keydown; Esc is handled by the Settings container)

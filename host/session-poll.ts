@@ -28,7 +28,9 @@ async function pollExternalWrites() {
       // 0-byte window above keeps waiting)
       if (entry.awaitDiskList) {
         entry.awaitDiskList = false;
-        const ws = entry.attachedWs as { send(data: string): unknown } | null;
+        // One list refresh is enough (the frame carries the full list); send it
+        // to the first attached UI
+        const ws = entry.uiSockets.values().next().value;
         if (ws) void handleListSessions(ws);
       }
       if (st.size < entry.pollKnownSize) entry.pollKnownSize = 0; // Full rewrite: rescan from the start
@@ -69,8 +71,8 @@ async function pollExternalWrites() {
       const known = new Set<string>(entry.manager.getEntries().map((e: { id?: string }) => e?.id));
       if (!newIds.some((id) => !known.has(id))) continue;
       entry.externalWrite = true;
-      const ws = entry.attachedWs as { send(data: string): unknown } | null;
-      ws?.send(JSON.stringify({ type: "session_external_write", sessionId }));
+      const frame = JSON.stringify({ type: "session_external_write", sessionId });
+      for (const ws of entry.uiSockets) ws.send(frame);
     } catch (err) {
       // New session files are lazily persisted (created on the first entry): ENOENT = nothing to monitor yet, skip silently
       if ((err as { code?: string }).code === "ENOENT") continue;

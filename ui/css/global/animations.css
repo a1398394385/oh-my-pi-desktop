@@ -3,8 +3,6 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-@keyframes taskrot { to { transform: rotate(360deg); } }
-
 /* Expansion body reveals top-down when inserted (only on the click-through expand, triggered via the .drop class) */
 @keyframes ed-drop {
   from { clip-path: inset(0 0 100% 0); opacity: .25; }
@@ -19,8 +17,6 @@
 }
 
 @keyframes flashBg { 0% { background: var(--tint-success-140); } 100% { background: transparent; } }
-
-@keyframes chat-load-spin { to { transform: rotate(360deg); } }
 
 @keyframes ringpop {
   from { opacity: 0; transform: translateY(6px); }
@@ -41,8 +37,6 @@
   to   { opacity: 1; transform: none; filter: none; }
 }
 
-@keyframes pgspin { to { transform: rotate(360deg); } }
-
 /* Hit-message flash emphasis: background highlight fading out (accent-derived, same origin as the .inp focus glow) */
 @keyframes findflash {
   0% { background: var(--tint-accent-220); box-shadow: 0 0 0 4px var(--tint-accent-100); }
@@ -60,4 +54,76 @@
   }
 }
 
-@keyframes bpane-rot { to { transform: rotate(360deg); } }
+/* Intent shimmer (ChatLoading's working text): the bright band is a background gradient
+   clipped to the glyphs, so only the text lights up as it sweeps — port of the TUI's
+   shimmer band (30 cells/s, one sweep ≈ 2s). Named apart from the stats dashboard's own
+   `shimmer` keyframes (stats-port.css) to keep the two independent. */
+@keyframes shimmerSweep {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* Todo completion: the strike-through grows left→right in 12 discrete steps (TUI parity),
+   not as one instantaneous line. */
+@keyframes todoStrike {
+  from { background-size: 0% 1px; }
+  to   { background-size: 100% 1px; }
+}
+
+/* Welcome title intro: one diagonal light band crossing the text once, easing out. The title
+   paints two layers (shine over the brand gradient), so both positions are animated and the
+   gradient layer stays pinned. */
+@keyframes welcomeSweep {
+  0%   { background-position: 150% 0, 0 0; }
+  100% { background-position: -100% 0, 0 0; }
+}
+
+/* Composer ring: the light segment rides the border path via stroke-dashoffset, so it moves
+   at a constant speed all the way round. A conic gradient is angle-uniform, which makes the
+   band race through the short side edges and crawl along the long top/bottom — path length
+   is the only parameterisation that stays even. pathLength="100" on the rect normalises the
+   dash numbers to percent of perimeter. */
+@keyframes ringDash {
+  to { stroke-dashoffset: -100; }
+}
+
+/* Header title sweep while the agent runs: one neutral band crosses the title, then the band
+   parks off-screen for the rest of the cycle (43% travel + 57% rest = 1.5s + 2s). Both
+   positions are animated so the standing wash layer stays pinned. */
+@keyframes titleSweep {
+  0%   { background-position: 150% 0, 0 0; }
+  43%  { background-position: -100% 0, 0 0; }
+  100% { background-position: -100% 0, 0 0; }
+}
+
+/* Global motion fallback, three-way semantics driven by applyMotion (shell.ts):
+   - data-motion="on"  forces FULL motion, overriding an OS-level reduce (the media rules below
+     all carry html:not([data-motion="on"]) so this mode wins over the system switch)
+   - data-motion="off" forces full reduction regardless of the OS (the second rule kills everything)
+   - attribute absent  = "system": the OS switch alone decides via the media query
+   Infinite liveness loops (spinners, working pulses, skeleton shimmer) are status affordances,
+   not motion — they are excluded via the :not() list and keep communicating activity.
+   The intent shimmer (.shimmer) is NOT on that list: it is decorative motion, so the motion
+   switch turns it off like any other effect (its gradient ends in --dim and repeats, so a
+   frozen frame stays readable).
+   Keep the media-query and data-motion exclusion lists identical — both must reduce to the same set.
+   NOTE: use `animation/transition: none`, NOT a 0.01ms duration override — any nonzero duration
+   weaponizes the initial transition-property:all and Chrome/WebKit can pin the property mid-flight,
+   freezing JS-positioned fixed overlays (ring-pop) at stale coordinates. */
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) :not(.bs-spin):not(.chat-loading-icon):not(.pend-ico):not(.bpane-spin):not(.btw-dot.running):not(.mic-btn.rec):not(.traces-spin):not(.spin):not(.task-indicator.loading svg):not(.save-btn.busy svg),
+  html:not([data-motion="on"]) *::before,
+  html:not([data-motion="on"]) *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+html[data-motion="off"] :not(.bs-spin):not(.chat-loading-icon):not(.pend-ico):not(.bpane-spin):not(.btw-dot.running):not(.mic-btn.rec):not(.traces-spin):not(.spin):not(.task-indicator.loading svg):not(.save-btn.busy svg),
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+}

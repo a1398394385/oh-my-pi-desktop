@@ -3,7 +3,7 @@
 //
 // Layers:
 //   A  L3 request shape: the pair rides at the active-zone end, before the
-//      [acp-status] ephemeral line, as a complete tool round (fresh assistant
+//      [compress-hint] ephemeral line, as a complete tool round (fresh assistant
 //      tool_use + user tool_result); it is not a block, never a manifest
 //      candidate; byte-identical across unchanged rounds
 //   B  armed force: after an unanswered ultimatum the next (pinned) request
@@ -151,7 +151,7 @@ function realStatusPair(seq: number): { entries: FixtureEntry[]; messages: Agent
 		role: "toolResult",
 		toolCallId: callId,
 		toolName: "context_status",
-		content: [{ type: "text", text: "[acp-report] older round dashboard (real context_status call)" }],
+		content: [{ type: "text", text: "[context-status] older round dashboard (real context_status call)" }],
 		isError: false,
 		timestamp: 1,
 	} as never as AgentMessage;
@@ -185,9 +185,9 @@ function pairTail(out: readonly AgentMessage[]): [AgentMessage, AgentMessage, Ag
 	assert.equal(call.id, ACP_SYNTHETIC_STATUS_CALL_ID);
 	assert.equal((r as { role: string; toolCallId?: string }).role, "toolResult");
 	assert.equal((r as { role: string; toolCallId?: string }).toolCallId, ACP_SYNTHETIC_STATUS_CALL_ID);
-	assert.ok(textOf(r as { content: unknown }).startsWith("[acp-report]"), "the synthetic result carries the [acp-report] marker");
+	assert.ok(textOf(r as { content: unknown }).startsWith("[context-status]"), "the synthetic result carries the [context-status] marker");
 	assert.equal((e as { role: string }).role, "user");
-	assert.ok(textOf(e as { content: unknown }).startsWith("[acp-status]"), "the ephemeral line follows the pair");
+	assert.ok(textOf(e as { content: unknown }).startsWith("[compress-hint]"), "the ephemeral line follows the pair");
 	return tail;
 }
 
@@ -210,7 +210,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	assert.ok(!fx.state.roundStatus!.manifestText.includes("acp-synthetic"), "the manifest never mentions the synthetic id");
 	// Pairing invariant over the whole projection (the pair rides as a complete tool round).
 	assert.doesNotThrow(() => assertToolPairing(out), "pairing invariant holds with the synthetic pair");
-	// The synthetic result reuses the [acp-report] manifest render (bN lines present).
+	// The synthetic result reuses the [context-status] manifest render (bN lines present).
 	assert.match(textOf(r1 as { content: unknown }), /^b\d+ \| \d+ \| /m, "the synthetic result lists bN manifest lines");
 
 	// Byte stability: an unchanged round state re-renders the identical pair.
@@ -261,7 +261,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	assert.equal(out.countedAsSuccess, true, "the compression counts as successful");
 	const after = fx.state.projectView(fx.view);
 	assert.ok(!JSON.stringify(after).includes(ACP_SYNTHETIC_STATUS_CALL_ID), "a successful compression retires the pair (tier now none)");
-	assert.ok(!JSON.stringify(after).includes("[acp-report]"), "no [acp-report] surface remains after retirement");
+	assert.ok(!JSON.stringify(after).includes("[context-status]"), "no [context-status] surface remains after retirement");
 	console.log("ok: D-retire — successful compression stops the injection");
 }
 
@@ -378,7 +378,7 @@ function bulkTurn(label: string): string {
 				forcedContexts.push(JSON.stringify(messages));
 				// Informed pick: take the manifest from the synthetic pair riding
 				// this very request and keep its smallest listed block.
-				const report = [...messages].reverse().find((m) => m.role === "toolResult" && textOf(m as { content: unknown }).startsWith("[acp-report]"));
+				const report = [...messages].reverse().find((m) => m.role === "toolResult" && textOf(m as { content: unknown }).startsWith("[context-status]"));
 				const lines = report ? textOf(report as { content: unknown }).split("\n").filter((l) => /^b\d+ \| \d+ \| /.test(l)) : [];
 				const keep = lines
 					.map((l) => l.split(" | "))
@@ -423,13 +423,16 @@ function bulkTurn(label: string): string {
 	const { session } = await createAgentSession({
 		cwd,
 		settings,
+		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
+		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
 		customTools: [createCompressContextTool(state), createAcpStatusTool(state)] as never,
 		getApiKey: async () => "mock-key",
-		extensions: [createAcpProjectionExtension(state)] as never,
+		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
 		enableMCP: false,
 		hasUI: true,
@@ -446,9 +449,9 @@ function bulkTurn(label: string): string {
 	await session.prompt(bulkTurn("task one"));
 	await waitFor("ultimatum on the wire with the pair before it", () => calls.length >= 1 && JSON.stringify(calls[0].context.messages).includes("Final notice"));
 	const firstMessages = calls[0].context.messages;
-	const reportIdx = firstMessages.findIndex((m) => m.role === "toolResult" && textOf(m as { content: unknown }).startsWith("[acp-report]"));
-	const ephemeralIdx = firstMessages.findIndex((m) => m.role === "user" && textOf(m as { content: unknown }).startsWith("[acp-status]"));
-	assert.ok(reportIdx >= 0, "the L3 request carries the synthetic [acp-report] pair");
+	const reportIdx = firstMessages.findIndex((m) => m.role === "toolResult" && textOf(m as { content: unknown }).startsWith("[context-status]"));
+	const ephemeralIdx = firstMessages.findIndex((m) => m.role === "user" && textOf(m as { content: unknown }).startsWith("[compress-hint]"));
+	assert.ok(reportIdx >= 0, "the L3 request carries the synthetic [context-status] pair");
 	assert.ok(ephemeralIdx > reportIdx, "the pair precedes the ephemeral line on the wire");
 	assert.equal(forceCalls.length, 1, "the ignored ultimatum armed the force at turn end");
 
@@ -458,11 +461,11 @@ function bulkTurn(label: string): string {
 	);
 	await Bun.sleep(100); // let the post-force "none" turn settle
 	assert.equal(forcedContexts.length, 1, "exactly one forced request fired");
-	assert.ok(forcedContexts[0]!.includes("[acp-report]"), "the forced request carried the synthetic pair");
+	assert.ok(forcedContexts[0]!.includes("[context-status]"), "the forced request carried the synthetic pair");
 	assert.ok(forcedContexts[0]!.includes("Current compression manifest"), "the pair's result is the full dashboard render");
 	assert.match(picks[0]!, /^b\d+$/, "the model picked a real bN keep id from the pair's manifest");
 	assert.ok(noneContexts.length > 0, "the [forced,\"none\"] sequence advanced");
-	assert.ok(!noneContexts[0]!.includes("[acp-report]") && !noneContexts[0]!.includes(ACP_SYNTHETIC_STATUS_CALL_ID), "after the successful compress the next request carries no pair");
+	assert.ok(!noneContexts[0]!.includes("[context-status]") && !noneContexts[0]!.includes(ACP_SYNTHETIC_STATUS_CALL_ID), "after the successful compress the next request carries no pair");
 	const metas = sessionManager
 		.getEntries()
 		.filter((e): e is Extract<SessionEntry, { type: "custom" }> => e.type === "custom" && e.customType === "acpSummary")
@@ -474,8 +477,8 @@ function bulkTurn(label: string): string {
 	// JSONL zero residue: the pair and the markers never touch the journal.
 	const raw = readFileSync(sessionFile, "utf8");
 	assert.ok(!raw.includes(ACP_SYNTHETIC_STATUS_CALL_ID), "no synthetic toolCall id in the session JSONL");
-	assert.ok(!raw.includes("[acp-report]"), "no [acp-report] residue in the session JSONL");
-	assert.ok(!raw.includes("[acp-status]"), "no [acp-status] residue in the session JSONL");
+	assert.ok(!raw.includes("[context-status]"), "no [context-status] residue in the session JSONL");
+	assert.ok(!raw.includes("[compress-hint]"), "no [compress-hint] residue in the session JSONL");
 	await session.dispose();
 	await sessionManager.close();
 	rmSync(sessionDir, { recursive: true, force: true });

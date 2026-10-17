@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useC
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
+import { invoke } from "../store/ws";
 import { expandRightPanel } from "./main/right/tabs";
 import type { PromptAttachment } from "../types/frames";
 import { closeAllMenus } from "../shell";
@@ -69,8 +70,14 @@ const PROV_IC: Record<string, string> = { deepseek: "▲", "kimi-code": "✕", "
 const RING_C = 43.98;
 
 // Max stage of the bottom-bar graded collapse (permission mode/think/model ->
-// icon only, hide subagents, hide background tasks)
-const BAR_STAGES = 5;
+// icon only, hide subagents, hide background tasks, three pills icon-only +
+// tight padding, hide plan pill + mic/screen buttons)
+const BAR_STAGES = 7;
+
+// Remote-control browser client (spec §4.1): no Tauri bridge and not the
+// ?preview=1 ui:dev sample page. The mic/STT path needs a secure context, so
+// remote never renders the voice button and voiceMode reads as false.
+const REMOTE = !invoke && !new URLSearchParams(location.search).has("preview");
 
 // Build the attachment payload sent along with the prompt (caller clears
 // pendingFiles after sending)
@@ -128,10 +135,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   );
   const computerIconOn = computerGateOn || kimiProviderOn;
   // Voice conversation mode = synthesis + dictation switches both on; the mic
-  // button toggles them together and lights while they hold
-  const voiceMode = useAppStore(
+  // button toggles them together and lights while they hold. Remote clients
+  // have no microphone (http is not a secure context): voiceMode reads false
+  const voiceModeOn = useAppStore(
     (st) => st.hostSettings?.values?.["speech.enabled"] === true && st.hostSettings?.values?.["stt.enabled"] === true,
   );
+  const voiceMode = !REMOTE && voiceModeOn;
   const voiceStt = useAppStore((st) => st.voiceStt);
   const sttSubmitSignal = useAppStore((st) => st.sttSubmitSignal);
   const lastSubmitSeqRef = useRef(0);
@@ -721,7 +730,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const comp = rootRef.current;
     const cbar = cbarRef.current;
     if (!comp) return;
-    comp.classList.remove("bar-1", "bar-2", "bar-3", "bar-4", "bar-5");
+    comp.classList.remove("bar-1", "bar-2", "bar-3", "bar-4", "bar-5", "bar-6", "bar-7");
     let stage = 0;
     if (cbar) {
       // Needed width = sum of visible children's offsetWidth + gaps (not
@@ -792,9 +801,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const modelName = isCreatingNew || !s
     ? (newSessionModel ? (modelShort(newSessionModel) || t("composer.modelFallback")) : t("composer.modelFallback"))
     : modelShort(s.model) || t("composer.modelFallback");
+  const thLv = (lv: string) => t(`composer.thinkingLevels.${lv}`, { defaultValue: lv });
   const thinkLabel = s
-    ? (s.thinking === "auto" && s.autoResolved ? `auto·${s.autoResolved}` : s.thinking || t("composer.thinkFallback"))
-    : newSessionThinking || t("composer.thinkFallback");
+    ? (s.thinking === "auto" && s.autoResolved ? `${thLv("auto")}·${thLv(s.autoResolved)}` : s.thinking ? thLv(s.thinking) : t("composer.thinkFallback"))
+    : newSessionThinking ? thLv(newSessionThinking) : t("composer.thinkFallback");
   const bgTasks = bgTaskCount(s);
   const bgSubs = subagentCount(s);
 
@@ -1009,7 +1019,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           </button>
           {/* Voice conversation: mic toggle left of send; lit = synthesis +
               dictation. Click toggles both switches; hold while lit =
-              push-to-talk (the release click is swallowed). */}
+              push-to-talk (the release click is swallowed). Not rendered on
+              remote clients: no microphone without a secure context. */}
+          {!REMOTE && (
           <button
             className={"pill-btn mic-btn" + (voiceMode ? " on" : "") + (voiceStt ? " rec" : "")}
             id="voiceBtn"
@@ -1040,6 +1052,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           >
             <Icon name="mic" size={15} />
           </button>
+          )}
           <button
             className={"send" + (canAbort ? " stop" : hasDraft ? " ready" : "") + (canAbort ? " stopping" : "")}
             id="sendBtn"

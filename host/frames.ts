@@ -14,6 +14,7 @@ import { readExternalBrowserEnabled } from "./browser-config.ts";
 import { readKimiAutoThinking } from "./kimi-thinking.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
 import { readComputerDefaultEnabled, readComputerProvider } from "./computer-mode.ts";
+import { remotePayload } from "./remote.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 // Unified models frame assembly: catalog + config defaults for new sessions
@@ -54,7 +55,10 @@ export function settingsFrame() {
     computerDefaultEnabled: readComputerDefaultEnabled(),
     // omp-desktop.json kimi.autoThinking: whether Kimi models are offered the
     // `auto` thinking level (off by default — each level switch re-bills the
-    // whole prefix on Kimi; the settings-page switch on pg-providers)
+    // whole prefix on Kimi; the providers-page switch on pg-providers)
     kimiAutoThinking: readKimiAutoThinking(),
+    // omp-desktop.json remote section (host/remote.ts): LAN remote-control
+    // server config; the settings page's remote group reads/builds URLs from it
+    remote: remotePayload(),
   };
 }

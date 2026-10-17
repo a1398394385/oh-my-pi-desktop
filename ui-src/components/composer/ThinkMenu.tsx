@@ -51,7 +51,8 @@ export default function ThinkMenu({ btnRef, composerRef, onClose }: ThinkMenuPro
       <div className="mh">{t("composer.reasoning")}</div>
       {levels.map((lv) => (
         <div className="mi" data-level={lv} key={lv} onClick={() => pickLevel(lv)}>
-          <span className="ck">{curThinking === lv ? "✓" : ""}</span>{lv}
+          <span className="ck">{curThinking === lv ? "✓" : ""}</span>
+          {t(`composer.thinkingLevels.${lv}`, { defaultValue: lv })}
         </div>
       ))}
     </div>

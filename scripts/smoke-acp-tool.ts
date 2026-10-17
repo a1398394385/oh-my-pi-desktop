@@ -35,6 +35,7 @@ import {
 	createAcpRuntime,
 	createCompressContextTool,
 } from "../host/acp-runtime.ts";
+import { ACP_CONTEXT_BUDGET_PROMPT } from "../host/acp-assembly.ts";
 import { computeSummaryBudget, computeTier, type AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { splitBlocks } from "../host/acp-projection.ts";
@@ -331,9 +332,9 @@ const e2eKeep = { id: "", ref: "", summary: "Condensed record of the parser inve
 const e2eStage = { compressed: false, retried: false };
 const mock = createMockModel({
 	handler: (context) => {
-		// T4: the [acp-status] ephemeral is a user-role message too — route on
+		// T4: the [compress-hint] ephemeral is a user-role message too — route on
 		// the last REAL user message, not the status injection.
-		const lastUser = [...context.messages].reverse().find((m) => m.role === "user" && !JSON.stringify(m.content ?? "").includes("[acp-status]"));
+		const lastUser = [...context.messages].reverse().find((m) => m.role === "user" && !JSON.stringify(m.content ?? "").includes("[compress-hint]"));
 		const lastText = JSON.stringify(lastUser?.content ?? "");
 		const reply = (text: string) => ({ content: [text] as const });
 		const toolCall = (keep: string[], summary: string) => ({
@@ -380,17 +381,26 @@ const modelRegistry = new ModelRegistry(authStorage, join(cwdE2E, "models.yml"))
 const { session } = await createAgentSession({
 	cwd: cwdE2E,
 	settings,
+	// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
+	// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+	advisorCompactionEnabled: true,
 	model: mock,
+	// Mirrors host/session-lifecycle.ts: ACP sessions carry the proactive-
+	// compression guidance via appendSystemPrompt (verbatim append).
+	appendSystemPrompt: ACP_CONTEXT_BUDGET_PROMPT,
 	modelRegistry,
 	agentRegistry: new AgentRegistry(),
 	sessionManager,
 	customTools: [createCompressContextTool(state)] as never,
 	getApiKey: async () => "mock-key",
-	extensions: [createAcpProjectionExtension(state)] as never,
+	extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 	disableExtensionDiscovery: true,
 	enableMCP: false,
 	hasUI: true,
 });
+const e2eSystemPrompt = Array.isArray(session.systemPrompt) ? session.systemPrompt.join("\n") : String(session.systemPrompt);
+assert.ok(e2eSystemPrompt.includes("Context budget (ACP)"), "appendSystemPrompt reached the system prompt");
+console.log("ok: E appendSystemPrompt reached the system prompt");
 
 // On this dispatch path session.prompt resolves before the turn runs and the
 // queue serializes turns FIFO (user messages journal at dispatch, assistants

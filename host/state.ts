@@ -22,11 +22,20 @@ export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // Host injection points such as setToolUIContext
   unsubscribe: () => void;
-  // Currently attached ws: when handleLoadSession hits a pooled entry, this
-  // decides whether subscriptions need re-attaching (after a frontend reload
-  // it is a new connection; old subscriptions would send to a closed ws and
-  // events would be lost). Reference comparison only, hence unknown
-  attachedWs: unknown;
+  // Every UI socket subscribed to this session's events. Local desktop and
+  // remote control coexist: a session can be watched from both at once, so
+  // per-session frames fan out over this set instead of a single attached ws.
+  // handleLoadSession attaches a ws only when absent; ws-shared's close handler
+  // removes it (and tears the core subscriptions down when the set empties).
+  uiSockets: Set<{ send(data: string): unknown }>;
+  // Per-socket subagent roster subscription (createSubagentView), keyed by the
+  // same socket object as uiSockets; detached individually on socket close.
+  uiSubViews: Map<{ send(data: string): unknown }, { unsubscribe(): void }>;
+  // Whether attachEntry's once-per-entry core (session event subscription,
+  // approval UI context, dequeue/queue/persistence/mcp/title listeners) is
+  // live. Guard: core teardown happens when uiSockets empties, so re-attach
+  // must not double-register the dequeue hook etc.
+  coreAttached: boolean;
   // Sticky key for the session's request credentials (= sessionManager.getSessionId()):
   // get_limits resolves getApiKey with the same parameters as the session, so
   // with multiple accounts the detail-card quota matches the account this
@@ -164,10 +173,50 @@ export type PoolEntry = {
 // key = the sessionId the frontend holds
 export const sessions = new Map<string, PoolEntry>();
 
-// The currently attached UI websocket (last connection wins). Modules that must
-// not import rpc/ (automations/scheduler) read this from an injected notify
-// callback to push frames; main.ts assigns it on websocket open/close.
+/**
+ * Pool residency snapshot (sidebar "active tasks" list): every session the host
+ * still holds in memory, disk rows or not. Pushed on attach / release and with
+ * every session_list refresh — the frontend slot map (openSessions) has an LRU
+ * cap, so it is not the pool truth. Subagents are filtered out: they are child
+ * threads of a task already listed, not tasks themselves.
+ */
+export function pushPoolSnapshot(ws: unknown): void {
+  const send = (ws as { send?: (data: string) => unknown } | null | undefined)?.send;
+  if (typeof send !== "function") return;
+  send.call(
+    ws,
+    JSON.stringify({
+      type: "pool_sessions",
+      sessions: [...sessions.entries()].filter(([, e]) => !e.isSubagent).map(([id, e]) => ({ id, path: e.path, cwd: e.cwd, title: e.title ?? null })),
+    }),
+  );
+}
+
+// Connected UI slots, one per channel (spec §3.4): the local desktop client
+// and the remote-control client each allow exactly one concurrent connection
+// — a new open kicks only its own channel's previous holder, so remote access
+// never evicts the local desktop and vice versa. Modules that must not import
+// rpc/ (automations/scheduler) read these from an injected notify callback to
+// push frames; ws-shared assigns them on websocket open/close.
 export const activeWs: { value: unknown } = { value: null };
+export const activeRemoteWs: { value: unknown } = { value: null };
+
+/** Run fn for every connected UI socket (local first, then remote when it is a different connection). Host-initiated global pushes (models / session_list / automations / settings) reach both ends of a remote-control session. */
+export function eachUiWs(fn: (ws: { send(data: string): unknown }) => void): void {
+  const local = activeWs.value as { send(data: string): unknown } | null;
+  const remote = activeRemoteWs.value as { send(data: string): unknown } | null;
+  if (local) fn(local);
+  if (remote && remote !== local) fn(remote);
+}
+
+/** Fan-out sender for one session's attached UIs (local + remote coexist): pass where a function only needs to push per-session frames (approval cards, tts, incremental events) and must reach every attached socket. */
+export function entryBus(entry: PoolEntry): { send(data: string): unknown } {
+  return {
+    send(data: string) {
+      for (const w of entry.uiSockets) w.send(data);
+    },
+  };
+}
 
 export const defaultCwd = os.homedir();
 
@@ -239,10 +288,12 @@ export function stampEvent<T extends object>(payload: T): T & { hi: string; seq:
   return { ...payload, hi: HOST_INSTANCE_ID, seq: ++eventSeq };
 }
 
-/** command_output frame: find the currently attached connection by sessionId and push (for cross-connection output such as the goal controller). */
+/** command_output frame: fan out to every UI attached to the session (for cross-connection output such as the goal controller). */
 export function pushCommandOutput(sessionId: string, text: string) {
-  const w = sessions.get(sessionId)?.attachedWs as { send(data: string): unknown } | null;
-  if (w) w.send(JSON.stringify({ type: "command_output", sessionId, text }));
+  const entry = sessions.get(sessionId);
+  if (!entry) return;
+  const data = JSON.stringify({ type: "command_output", sessionId, text });
+  for (const w of entry.uiSockets) w.send(data);
 }
 
 // Pending approval requests. The whole approval state machine lives in this
@@ -264,6 +315,10 @@ export const pendingApprovals = new Map<
     // the keepalive block-probing toggles read this (keepalive.ts blockState)
     sessionId: string;
     blockKind: "approval" | "ask";
+    // Unstamped request frame: kept so a UI that attaches while the dialog is
+    // open (remote control joining a session mid-approval) receives its own
+    // copy — stamped fresh at every send so each UI's seq stays monotonic
+    frame?: Record<string, unknown>;
   }
 >();
 
@@ -312,6 +367,21 @@ export function requestApproval(
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
   const { promise, resolve } = Promise.withResolvers<string | undefined>();
+  // Presentation fields ride the frame verbatim (slider / disabledIndices /
+  // keepContextTokens / editable* / prefill / intent): the UI renders or
+  // consumes each when present. They
+  // were once hand-picked onto the frame and the slider was missed, so
+  // the approval card silently dropped it and execution fell back to the
+  // default role tier without the operator seeing a choice.
+  const frame: Record<string, unknown> = {
+    type: "approval_request",
+    sessionId,
+    requestId,
+    title,
+    options,
+    ...(questions ? { questions } : {}),
+    ...(presentation ?? {}),
+  };
   const settle = (v: string | undefined) => {
     pendingApprovals.delete(requestId);
     resolve(v);
@@ -321,6 +391,7 @@ export function requestApproval(
     onSliderIndex,
     questions,
     sessionId,
+    frame,
     // Ask-family dialogs (the ask tool's select rounds and the rich askDialog)
     // pass questions; the editor variant pins "ask" via the parameter; every
     // other caller is a permission-family dialog.
@@ -328,25 +399,7 @@ export function requestApproval(
   });
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
-  ws.send(
-    JSON.stringify(
-      stampEvent({
-        type: "approval_request",
-        sessionId,
-        requestId,
-        title,
-        options,
-        ...(questions ? { questions } : {}),
-        // Presentation fields ride the frame verbatim (slider / disabledIndices /
-        // keepContextTokens / editable* / prefill / intent): the UI renders or
-        // consumes each when present. They
-        // were once hand-picked onto the frame and the slider was missed, so the
-        // approval card silently dropped it and execution fell back to the
-        // default role tier without the operator seeing a choice.
-        ...(presentation ?? {}),
-      }),
-    ),
-  );
+  ws.send(JSON.stringify(stampEvent(frame)));
   return promise;
 }
 

@@ -6,6 +6,7 @@
 // Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/steer-queue-order-smoke.ts [host ws url]
 // Without an address the script spawns the host child process itself and cleans up
 // the session files it created on exit.
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -58,7 +59,7 @@ const assert = (cond: boolean, msg: string) => {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

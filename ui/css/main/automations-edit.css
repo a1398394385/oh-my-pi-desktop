@@ -225,8 +225,8 @@
 .aued-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; white-space: nowrap; }
 .aued-toggle:hover { background: var(--panel-2); }
 .aued-toggle.on { color: var(--text); }
-.aued-toggle-k { position: relative; flex: none; width: 26px; height: 15px; border-radius: 999px; background: var(--panel-3); transition: background .2s var(--swift); }
-.aued-toggle-k::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--toggle-thumb); transition: transform .2s var(--swift); }
+.aued-toggle-k { position: relative; flex: none; width: 26px; height: 15px; border-radius: 999px; background: var(--panel-3); transition: background var(--dur-base) var(--swift); }
+.aued-toggle-k::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--toggle-thumb); transition: transform var(--dur-base) var(--swift); }
 .aued-toggle.on .aued-toggle-k { background: var(--accent); }
 .aued-toggle.on .aued-toggle-k::after { transform: translateX(11px); }
 

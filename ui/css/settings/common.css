@@ -9,7 +9,7 @@
 /* In action rows the refresh button groups with more/new-add and skips the flush-right margin */
 .mcp-actions-wrap .pg-refresh, .skills-actions-wrap .pg-refresh { margin-left: 0; }
 
-.pg-refresh.spin svg { animation: pgspin .5s linear; }
+.pg-refresh.spin svg { animation: spin .5s linear; }
 
 .set-card > .srow:first-child { border-top-left-radius: var(--r-card); border-top-right-radius: var(--r-card); }
 
@@ -116,12 +116,12 @@
   padding: 7px 10px; color: var(--dim); cursor: pointer;
   border-radius: 10px; font-size: var(--ui-fs-base);
   border: 0; background: var(--base); width: 100%; text-align: left; font: inherit;
-  transition: background .18s var(--swift), color .18s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .set-back:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .set-back:hover { background: var(--tint-black-60); }
-.set-back svg { transition: transform .22s var(--spring); }
+.set-back svg { transition: transform var(--dur-base) var(--spring); }
 
 .set-back:hover svg { transform: translateX(-2px); }
 
@@ -148,19 +148,19 @@
   height: 28px;
   padding: 0 24px 0 28px;
   background: var(--bg);
-  border: 1px solid var(--line-soft);
+  border: 1px solid transparent;
   border-radius: 8px;
   color: var(--text);
   font-size: var(--ui-fs-sm);
   outline: none;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: box-shadow var(--dur-snap) var(--swift);
   box-sizing: border-box;
   -webkit-app-region: no-drag;
 }
 
 .set-search-input:focus {
-  border-color: var(--tint-accent-500);
-  box-shadow: 0 0 0 3px var(--tint-accent-130);
+  box-shadow: inset 0 0 0 1px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130);
 }
 
 .set-search-input::placeholder { color: var(--faint); }
@@ -179,7 +179,7 @@
   cursor: pointer;
   border-radius: 4px;
   padding: 0;
-  transition: color .14s var(--swift);
+  transition: color var(--dur-snap) var(--swift);
 }
 
 .set-search-clear:hover { color: var(--text); }
@@ -212,7 +212,7 @@
   width: 100%;
   text-align: left;
   font: inherit;
-  transition: background .16s var(--swift), color .16s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
   box-sizing: border-box;
 }
 
@@ -290,7 +290,7 @@
   color: var(--dim); cursor: pointer;
   border: 0; background: transparent; width: 100%; text-align: left; font: inherit;
   font-size: var(--ui-fs-base); font-weight: 600;
-  transition: background .16s var(--swift), color .16s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .set-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
@@ -300,7 +300,7 @@
 .set-item .si {
   width: 20px; flex: none; display: inline-flex; justify-content: center;
   color: var(--faint);
-  transition: color .16s var(--swift);
+  transition: color var(--dur-snap) var(--swift);
 }
 
 .set-item:hover .si { color: var(--dim); }
@@ -354,9 +354,9 @@
 @keyframes searchFlash { 0%, 72% { background: var(--tint-accent-200); } 100% { background: transparent; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .set-page > * { animation: none; }
-  .set-back svg, .sel .caret-svg, .tg i { transition: none; }
-  .srow.search-flash { animation-duration: .01s; }
+  html:not([data-motion="on"]) .set-page > * { animation: none; }
+  html:not([data-motion="on"]) .set-back svg, html:not([data-motion="on"]) .sel .caret-svg, html:not([data-motion="on"]) .tg i { transition: none; }
+  html:not([data-motion="on"]) .srow.search-flash { animation-duration: .01s; }
 }
 
 /* level-1 titles: one step larger (1.6 -> 1.75); the +5px bottom margin is carried by the first element after the title */
@@ -370,10 +370,12 @@
 
 .stag {
   font-size: var(--ui-fs-xs); font-weight: 500; letter-spacing: .03em; color: var(--dim);
-  border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px;
+  border: 1px solid transparent; padding: 2px 8px; border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
-.stag.on { color: var(--text); border-color: var(--dim); }
+.stag.on { color: var(--text); box-shadow: inset 0 0 0 1px var(--dim); }
 
 .set-group-tt { font-size: var(--ui-fs-base); font-weight: 600; margin: 28px 2px 10px; }
 
@@ -388,7 +390,7 @@
   color: var(--dim); font-size: var(--ui-fs-base); font-weight: 400;
   padding: 6px 10px; white-space: nowrap; z-index: 600;
   opacity: 0; visibility: hidden; transform: translateY(-4px);
-  transition: opacity .15s ease, transform .15s ease;
+  transition: opacity var(--dur-snap) var(--swift), transform var(--dur-snap) var(--swift);
   pointer-events: none;
 }
 
@@ -456,7 +458,7 @@
   width: 24px; height: 22px; border: 0; border-radius: 6px;
   background: transparent; color: var(--dim); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: background .15s var(--swift), color .15s var(--swift), transform .1s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-fast) var(--swift);
 }
 
 .num-btn:hover { background: var(--panel-2); color: var(--text); }
@@ -483,7 +485,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color .15s, transform .1s;
+  transition: color var(--dur-snap), transform var(--dur-fast);
   border-radius: 4px;
 }
 
@@ -500,7 +502,7 @@
 /* ── settings sidebar resize (#setNavResizer, logic in Settings.tsx) and scrollbar fade-in ── */
 #settings *::-webkit-scrollbar-thumb {
   background-color: transparent;
-  transition: background-color .25s ease-out;
+  transition: background-color var(--dur-base) var(--swift);
 }
 
 #settings *:hover::-webkit-scrollbar-thumb {
@@ -518,7 +520,7 @@
 
 #settings * {
   scrollbar-color: transparent transparent;
-  transition: scrollbar-color .25s ease-out;
+  transition: scrollbar-color var(--dur-base) var(--swift);
 }
 
 #settings *.scrolling,
@@ -595,3 +597,17 @@
 .voice-test-btn.rec { color: var(--err); }
 
 .voice-test-btn.rec:hover { background: var(--panel-2); }
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .set-search-input { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  .set-search-input:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  .stag { box-shadow: inset 0 0 0 .5px var(--line); }
+  .stag.on { box-shadow: inset 0 0 0 .5px var(--dim); }
+}
+@media (min-resolution: 3dppx) {
+  .set-search-input { box-shadow: inset 0 0 0 .33px var(--line-soft); }
+  .set-search-input:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  .stag { box-shadow: inset 0 0 0 .33px var(--line); }
+  .stag.on { box-shadow: inset 0 0 0 .33px var(--dim); }
+}

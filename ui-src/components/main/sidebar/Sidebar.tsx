@@ -6,7 +6,7 @@
 // write state with fresh references plus _v bump;
 // DOM structure and class names cross-checked against ui/index.html + sidebar.js.
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import appIcon from "../../../../ui/app-icon.png";
 import { MOD } from "../../../platform";
@@ -15,6 +15,8 @@ import {
   getAvailableProjects, openSettings, pathBase,
 } from "../../../store";
 import { disposeRightSlot } from "../../../store/right";
+import { REMOTE } from "../../../store/layout";
+import { menuZoom, toggleSidebar, toggleTheme } from "../../../shell";
 import SessionRow from "./SessionRow";
 import Icon from "../../../Icon";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./SessionRow";
@@ -24,7 +26,6 @@ import ConfirmDialog from "./ConfirmDialog";
 import Menu from "./Menu";
 import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
-import SidebarSearch from "./SidebarSearch";
 import ArchiveGroup from "./ArchiveGroup";
 import { computeSidebarSessionShortcuts, computeArchiveGroups } from "./util";
 
@@ -92,7 +93,28 @@ function newTaskAction() {
     useAppStore.setState({ newSessionDirty: false }); // silent write (same old S assignment without bump)
     initNewSessionModel(true); // writes newSessionModel/newSessionThinking scalars; consumers all subscribe via selectors, so field writes notify
   }
+  // Narrow: the new-task page replaces the session list (ZCode remote navigation)
+  useAppStore.getState().setMobileCol("main");
   showWelcomeScreen(activeOpen()?.cwd);
+}
+
+// Narrow-only page header (ZCode's task-home card): the profile name as the title, with
+// theme/zoom controls in the top-right corner. Desktop keeps the rail layout.
+function MobileSideHead() {
+  const { t } = useTranslation();
+  const zoom = useAppStore((s) => s.zoomLevel);
+  const profile = useAppStore((s) => s.hostSettings?.activeProfile || "default");
+  return (
+    <div className="ms-head">
+      <div className="ms-head-title">{profile}</div>
+      <div className="ms-head-acts">
+        <button className="ms-act" title={t("remote.zoomOut")} onClick={() => menuZoom(-1)}>−</button>
+        <button className="ms-act ms-act-zoom" title={t("remote.zoomReset")} onClick={() => menuZoom(0)}>{Math.round(zoom * 100)}%</button>
+        <button className="ms-act" title={t("remote.zoomIn")} onClick={() => menuZoom(1)}>+</button>
+        <button className="ms-act" title={t("remote.theme")} onClick={toggleTheme}><Icon name="palette" size={16} /></button>
+      </div>
+    </div>
+  );
 }
 
 export default function Sidebar({ collapsed }: { collapsed: boolean }) {
@@ -110,8 +132,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const projectLimits = useAppStore((s) => s.projectLimits);
   const openSessions = useAppStore((s) => s.openSessions);
+  const poolSessions = useAppStore((s) => s.poolSessions);
   const unseenFinished = useAppStore((s) => s.unseenFinished);
   const archivedSessions = useAppStore((s) => s.archivedSessions);
+  const narrow = useAppStore((s) => s.narrow);
+  // Narrow pages show projects only (no recent/archive switch): the view is derived, not
+  // written to the store, so the desktop choice survives.
+  const effView = narrow ? "project" : viewMode;
   void allProjects;
   void removedProjects;
   // Popover/local interaction state (formerly scattered across body-appended temp DOM and module vars)
@@ -358,11 +385,16 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     .flatMap((p) => p.sessions.map((s) => ({ ...s, repo: pathBase(p.cwd) })))
     .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
     .slice(0, 50);
+  // Recent view "active tasks": every session the host still holds in memory (newest entry
+  // first). Disk time is absent on purpose — the pool snapshot has no activity timestamp.
+  const poolRows: SessionInfo[] = [...poolSessions]
+    .reverse()
+    .map((s) => ({ id: s.id, path: s.path, cwd: s.cwd, title: s.title }));
 
   // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list)
   const shortcuts = useMemo(() => {
     return computeSidebarSessionShortcuts({
-      viewMode,
+      viewMode: effView,
       diskProjects,
       pinnedSessions,
       expandedProjects,
@@ -373,7 +405,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       availableProjects: visible,
       archivedSessions,
     });
-  }, [viewMode, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible, archivedSessions]);
+  }, [effView, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible, archivedSessions]);
 
   const rowProps: SessionRowCallbacks = {
     onRenameStart: (key, path) => setRenaming({ key, path }),
@@ -388,6 +420,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       {...rowProps}
       rowKey={key}
       renaming={renaming?.path === s.path && renaming?.key === key}
+      ctxOpen={sessCtx?.key === key}
       sub={!!opts.sub}
       showRepo={!!opts.showRepo}
       pinnedList={!!opts.pinnedList}
@@ -450,29 +483,76 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   return (
-    <aside id="sidebar" className={collapsed ? "collapsed" : ""} data-tauri-drag-region="">
-      <div className="pt-[10px] px-[10px] flex flex-col gap-[6px] flex-none">
-        <div className="nav-item" id="navNew" onClick={newTaskAction}>
-          <Icon name="messagePlus" size={19} />
-          {t("sidebar.newTask")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
+    <aside id="sidebar" className={(collapsed ? "collapsed" : "") + (narrow && REMOTE ? " ms-remote" : "")} data-tauri-drag-region="">
+      {/* Collapse button at the sidebar's own top-right corner (the expand
+          button lives on the center topbar while collapsed). Narrow is a page,
+          not a resizable column — no collapse affordance (spec §4.3). */}
+      {!collapsed && !narrow && (
+        <button
+          className="icon-btn side-collapse"
+          title={t("misc.collapseSidebar", { mod: MOD })}
+          onClick={toggleSidebar}
+        >
+          <Icon name="collapseLeft" />
+        </button>
+      )}
+      {narrow && <MobileSideHead />}
+      {narrow ? (
+        <div className="pt-[6px] px-[10px] flex flex-col gap-[6px] flex-none">
+          {/* Narrow: new task / automations / search collapsed into one row of three buttons */}
+          <div className="ms-row">
+            <button className="ms-nav" id="navNew" onClick={newTaskAction}>
+              <Icon name="messagePlus" size={17} />
+              <span>{t("sidebar.newTask")}</span>
+            </button>
+            <button className="ms-nav" id="navAutomations" onClick={() => {
+              useAppStore.getState().setMobileCol("main"); // narrow: automations render in the chat column
+              useAppStore.getState().openAutomations();
+            }}>
+              <Icon name="clock" size={17} />
+              <span>{t("sidebar.automations")}</span>
+            </button>
+            <button className="ms-nav" id="navSearch" onClick={() => useAppStore.getState().openPalette()}>
+              <Icon name="search" size={17} />
+              <span>{t("remote.search")}</span>
+            </button>
+          </div>
         </div>
-        <div className="nav-item" id="navAutomations" onClick={() => useAppStore.getState().openAutomations()}>
-          <Icon name="clock" size={19} />
-          {t("sidebar.automations")}
+      ) : (
+        <div className="pt-[10px] px-[10px] flex flex-col gap-[6px] flex-none">
+          <div className="nav-item" id="navNew" onClick={newTaskAction}>
+            <Icon name="messagePlus" size={19} />
+            {t("sidebar.newTask")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
+          </div>
+          <div className="nav-item" id="navAutomations" onClick={() => {
+            useAppStore.getState().setMobileCol("main"); // narrow: automations render in the chat column
+            useAppStore.getState().openAutomations();
+          }}>
+            <Icon name="clock" size={19} />
+            {t("sidebar.automations")}
+          </div>
+          <div className="nav-item" id="navSearch" onClick={() => useAppStore.getState().openPalette()}>
+            <Icon name="search" size={19} />
+            {t("sidebar.search")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} ⇧ F</span>
+          </div>
         </div>
-        <SidebarSearch />
-      </div>
-      <div className="flex items-center pt-[10px] px-[14px] pb-[8px] gap-[8px] flex-none">
-        <div className="seg" id="seg">
-          <button data-view="recent" className={viewMode === "recent" ? "on" : ""} onClick={() => setBump({ viewMode: "recent" })}>{t("sidebar.viewRecent")}</button>
-          <button data-view="project" className={viewMode === "project" ? "on" : ""} onClick={() => setBump({ viewMode: "project" })}>{t("sidebar.viewProject")}</button>
-          <button data-view="archive" className={viewMode === "archive" ? "on" : ""} onClick={() => setBump({ viewMode: "archive" })}>{t("sidebar.viewArchive")}</button>
+      )}
+      {!narrow && (
+        <div className="flex items-center pt-[10px] px-[14px] pb-[8px] gap-[8px] flex-none">
+          <div
+            className="seg" id="seg"
+            style={{ "--seg-i": viewMode === "project" ? 1 : viewMode === "archive" ? 2 : 0, "--seg-n": 3 } as CSSProperties}
+          >
+            <button data-view="recent" className={viewMode === "recent" ? "on" : ""} onClick={() => setBump({ viewMode: "recent" })}>{t("sidebar.viewRecent")}</button>
+            <button data-view="project" className={viewMode === "project" ? "on" : ""} onClick={() => setBump({ viewMode: "project" })}>{t("sidebar.viewProject")}</button>
+            <button data-view="archive" className={viewMode === "archive" ? "on" : ""} onClick={() => setBump({ viewMode: "archive" })}>{t("sidebar.viewArchive")}</button>
+          </div>
         </div>
-      </div>
+      )}
       <div
         id="tasklist"
         ref={listRef}
-        className={`${viewMode === "project" ? "project-view" : ""}${drag ? " proj-dragging" : ""}`}
+        className={`${effView === "project" ? "project-view" : ""}${drag ? " proj-dragging" : ""}`}
         onSelectStart={(e) => {
           if (dragRef.current?.groups) e.preventDefault();
         }}
@@ -482,7 +562,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           selBeforeCtxRef.current = sel ? sel.toString() : null;
         }}
       >
-        {viewMode === "project" ? (
+        {effView === "project" ? (
           <>
             <div className="project-pinned">
               <div className="sec-label">{t("sidebar.pinnedLabel")}</div>
@@ -539,6 +619,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
                       rowProps={rowProps}
                       renaming={renaming}
                       shortcuts={shortcuts}
+                      ctxKey={sessCtx?.key}
                     />
                   );
                 });
@@ -546,18 +627,21 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
               {visible.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noProjectsHint")}</div>}
             </div>
           </>
-        ) : viewMode === "archive" ? (
+        ) : effView === "archive" ? (
           <>
             <div className="sec-label">{t("sidebar.archivedLabel")}</div>
             <div className="project-scroll">
               {computeArchiveGroups(archivedSessions, visible).map((g) => (
-                <ArchiveGroup key={g.cwd} p={g} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} />
+                <ArchiveGroup key={g.cwd} p={g} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} ctxKey={sessCtx?.key} />
               ))}
               {archivedSessions.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noArchived")}</div>}
             </div>
           </>
         ) : (
           <>
+            <div className="sec-label">{t("sidebar.activeTasks")}</div>
+            {poolRows.map((s) => rowOf(s, {}, `pool:${s.path}`))}
+            {poolRows.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noActiveTasks")}</div>}
             <div className="sec-label">{t("sidebar.recentTasks")}</div>
             {flat.map((s) => rowOf(s, {}, `recent:${s.path}`, shortcuts.get(s.path)))}
             {flat.length === 0 && <div className="text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noTasks")}</div>}
@@ -570,9 +654,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           <span className="text-[15px] font-semibold text-text truncate leading-none" /* style-token-ignore */ id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
         </div>
         <span className="flex-1"></span>
-        <button className="icon-btn" id="settingsBtn" title={t("sidebar.settings")} onClick={() => openSettings()}>
-          <Icon name="settings" size={16} />
-        </button>
+        {/* Remote mode (spec §4.2): no settings surface on remote clients — openSettings is a
+            no-op there too; plain browser dev without the Tauri shell also lands here */}
+        {invoke && (
+          <button className="icon-btn" id="settingsBtn" title={t("sidebar.settings")} onClick={() => openSettings()}>
+            <Icon name="settings" size={16} />
+          </button>
+        )}
       </div>
 
       {/* —— Popovers (portaled to body) —— */}

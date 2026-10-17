@@ -1,0 +1,208 @@
+diff --git a/dist/types/sdk.d.ts b/dist/types/sdk.d.ts
+--- a/dist/types/sdk.d.ts
++++ b/dist/types/sdk.d.ts
+@@ -344,6 +344,14 @@
+     /** Settings instance. Default: Settings.init({ cwd, agentDir }) */
+     settings?: Settings;
+     /**
++     * Override the `compaction.enabled` half of the advisor's own compaction gate.
++     * Defaults to `settings`. Pass `true` when this host overrides `compaction.enabled`
++     * off for the primary session to keep the base compaction chain out of a
++     * host-owned context strategy — otherwise the advisor silently loses compaction
++     * and promotion maintenance, since its gate reads the same key off the same scope.
++     */
++    advisorCompactionEnabled?: boolean;
++    /**
+      * Legacy alias for `settings`. Older Pi extensions pass SettingsManager.create(...)
+      * through this field; accept it so their SDK calls keep the configured settings.
+      */
+diff --git a/dist/types/session/agent-session-types.d.ts b/dist/types/session/agent-session-types.d.ts
+--- a/dist/types/session/agent-session-types.d.ts
++++ b/dist/types/session/agent-session-types.d.ts
+@@ -278,6 +278,14 @@
+     sideStreamFn?: StreamFn;
+     /** Stream wrapper for advisor requests. */
+     advisorStreamFn?: StreamFn;
++    /**
++     * Override the `compaction.enabled` half of the advisor's own compaction gate.
++     * Defaults to the session setting. A host that pins `compaction.enabled` off for
++     * the primary (to keep the base compaction chain out of a host-owned context
++     * strategy) should pass `true`, or the advisor loses compaction and promotion
++     * maintenance as collateral.
++     */
++    advisorCompactionEnabled?: boolean;
+     /** Shared saved-reset coordinator; defaults process-wide so concurrent Codex/Claude sessions cannot double-spend. Inject a fresh one in tests. */
+     codexResetCoordinator?: CodexAutoRedeemCoordinator;
+     /** Provider payload hook used by the active session request path. */
+diff --git a/dist/types/session/session-advisors.d.ts b/dist/types/session/session-advisors.d.ts
+--- a/dist/types/session/session-advisors.d.ts
++++ b/dist/types/session/session-advisors.d.ts
+@@ -137,6 +137,13 @@
+     configWarnings?: string[];
+     streamFn?: StreamFn;
+     transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
++    /**
++     * Override the `compaction.enabled` half of this advisor's own compaction gate.
++     * `undefined` (default) reads the session settings. A host that overrides
++     * `compaction.enabled` off for the primary session passes `true` to keep the
++     * advisor compacting while the primary stays pinned off.
++     */
++    compactionEnabled?: boolean;
+ }
+ /** Options accepted when an advisor injects a primary-session message. */
+ export interface AdvisorMessageDeliveryOptions {
+diff --git a/scripts/legacy-pi-virtual-module.ts b/scripts/legacy-pi-virtual-module.ts
+--- a/scripts/legacy-pi-virtual-module.ts
++++ b/scripts/legacy-pi-virtual-module.ts
+@@ -1,3 +1,4 @@
++import * as fs from "node:fs";
+ import * as path from "node:path";
+ import { isEnoent } from "@oh-my-pi/pi-utils/fs-error";
+ 
+@@ -21,18 +22,20 @@
+ 	readonly identifier: string;
+ 	readonly rootShim: string | null;
+ 	readonly rootWildcard: RootWildcard;
++	/** Package directory under the @oh-my-pi scope in an npm-install layout (differs for agent: pi-agent-core). */
++	readonly npmDir: string;
+ }
+ 
+ const BUNDLED_PACKAGES: readonly BundledPackage[] = [
+-	{ dir: "agent", identifier: "PiAgentCore", rootShim: null, rootWildcard: null },
+-	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts", rootWildcard: null },
+-	{ dir: "catalog", identifier: "PiCatalog", rootShim: null, rootWildcard: "flat" },
+-	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts", rootWildcard: null },
+-	{ dir: "natives", identifier: "PiNatives", rootShim: null, rootWildcard: null },
++	{ dir: "agent", identifier: "PiAgentCore", rootShim: null, rootWildcard: null, npmDir: "pi-agent-core" },
++	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts", rootWildcard: null, npmDir: "pi-ai" },
++	{ dir: "catalog", identifier: "PiCatalog", rootShim: null, rootWildcard: "flat", npmDir: "pi-catalog" },
++	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts", rootWildcard: null, npmDir: "pi-coding-agent" },
++	{ dir: "natives", identifier: "PiNatives", rootShim: null, rootWildcard: null, npmDir: "pi-natives" },
+ 	// pi-tui keeps stateful singletons (`TERMINAL`, theme, figure settings) in
+ 	// root-level and nested modules; extensions must share the host's records.
+-	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts", rootWildcard: "nested" },
+-	{ dir: "utils", identifier: "PiUtils", rootShim: null, rootWildcard: null },
++	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts", rootWildcard: "nested", npmDir: "pi-tui" },
++	{ dir: "utils", identifier: "PiUtils", rootShim: null, rootWildcard: null, npmDir: "pi-utils" },
+ ];
+ 
+ const TYPEBOX_MODULE_KEY = "typebox";
+@@ -125,7 +128,13 @@
+ 	}
+ 
+ 	for (const pkg of BUNDLED_PACKAGES) {
+-		const packageRoot = path.join(repoRoot, "packages", pkg.dir);
++		// Monorepo checkout resolves under repoRoot/packages; an npm install (e.g. the
++		// desktop host build compiling from node_modules) keeps the packages as scope
++		// siblings of this one, under the npmDir directory name.
++		let packageRoot = path.join(repoRoot, "packages", pkg.dir);
++		if (!fs.existsSync(path.join(packageRoot, "package.json"))) {
++			packageRoot = path.join(packageDir, "..", pkg.npmDir);
++		}
+ 		const manifestPath = path.join(packageRoot, "package.json");
+ 		const manifest: unknown = await Bun.file(manifestPath).json();
+ 		if (!isRecord(manifest) || typeof manifest.name !== "string") {
+diff --git a/src/sdk.ts b/src/sdk.ts
+--- a/src/sdk.ts
++++ b/src/sdk.ts
+@@ -850,6 +850,14 @@
+ 	/** Settings instance. Default: Settings.init({ cwd, agentDir }) */
+ 	settings?: Settings;
+ 	/**
++	 * Override the `compaction.enabled` half of the advisor's own compaction gate.
++	 * Defaults to `settings`. Pass `true` when this host overrides `compaction.enabled`
++	 * off for the primary session to keep the base compaction chain out of a
++	 * host-owned context strategy — otherwise the advisor silently loses compaction
++	 * and promotion maintenance, since its gate reads the same key off the same scope.
++	 */
++	advisorCompactionEnabled?: boolean;
++	/**
+ 	 * Legacy alias for `settings`. Older Pi extensions pass SettingsManager.create(...)
+ 	 * through this field; accept it so their SDK calls keep the configured settings.
+ 	 */
+@@ -4752,6 +4760,7 @@
+ 			onResponse,
+ 			sideStreamFn: settingsAwareStreamFn,
+ 			advisorStreamFn: settingsAwareStreamFn,
++			advisorCompactionEnabled: options.advisorCompactionEnabled,
+ 			convertToLlm: convertToLlmFinal,
+ 			rebuildSystemPrompt,
+ 			getXdevToolEntries: () => (toolSession.xdev ? xdevEntries(toolSession.xdev) : []),
+diff --git a/src/session/agent-session-types.ts b/src/session/agent-session-types.ts
+--- a/src/session/agent-session-types.ts
++++ b/src/session/agent-session-types.ts
+@@ -307,6 +307,14 @@
+ 	sideStreamFn?: StreamFn;
+ 	/** Stream wrapper for advisor requests. */
+ 	advisorStreamFn?: StreamFn;
++	/**
++	 * Override the `compaction.enabled` half of the advisor's own compaction gate.
++	 * Defaults to the session setting. A host that pins `compaction.enabled` off for
++	 * the primary (to keep the base compaction chain out of a host-owned context
++	 * strategy) should pass `true`, or the advisor loses compaction and promotion
++	 * maintenance as collateral.
++	 */
++	advisorCompactionEnabled?: boolean;
+ 	/** Shared saved-reset coordinator; defaults process-wide so concurrent Codex/Claude sessions cannot double-spend. Inject a fresh one in tests. */
+ 	codexResetCoordinator?: CodexAutoRedeemCoordinator;
+ 	/** Provider payload hook used by the active session request path. */
+diff --git a/src/session/agent-session.ts b/src/session/agent-session.ts
+--- a/src/session/agent-session.ts
++++ b/src/session/agent-session.ts
+@@ -2385,6 +2385,7 @@
+ 			configWarnings: config.advisorConfigWarnings,
+ 			streamFn: config.advisorStreamFn,
+ 			transformProviderContext: config.transformProviderContext,
++			compactionEnabled: config.advisorCompactionEnabled,
+ 		});
+ 
+ 		const maintenanceHost: SessionMaintenanceHost = {
+diff --git a/src/session/session-advisors.ts b/src/session/session-advisors.ts
+--- a/src/session/session-advisors.ts
++++ b/src/session/session-advisors.ts
+@@ -449,6 +449,19 @@
+ 	configWarnings?: string[];
+ 	streamFn?: StreamFn;
+ 	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
++	/**
++	 * Override the `compaction.enabled` half of this advisor's own compaction gate.
++	 * `undefined` (default) reads the session settings, which is what every host
++	 * without a host-owned context strategy wants.
++	 *
++	 * A host that overrides `compaction.enabled` off for the primary session — to keep
++	 * the base compaction chain out of the way of its own context strategy — would
++	 * otherwise silently disable the advisor's maintenance too: the advisor reads the
++	 * same key off the same scope, and its gate is the same two conditions (enabled plus
++	 * a non-empty `methodOrder`), so no settings key separates them. Passing `true`
++	 * keeps the advisor compacting while the primary stays pinned off.
++	 */
++	compactionEnabled?: boolean;
+ }
+ 
+ /** Options accepted when an advisor injects a primary-session message. */
+@@ -547,6 +560,8 @@
+ 	#advisorMemoryPrompt: string | undefined;
+ 	#advisorStreamFn: StreamFn | undefined;
+ 	#transformProviderContext: ((context: Context, model: Model) => Context | Promise<Context>) | undefined;
++	/** See {@link SessionAdvisorsOptions.compactionEnabled}. */
++	#advisorCompactionEnabled: boolean | undefined;
+ 	#advisors: ActiveAdvisor[] = [];
+ 	#advisorConfigs: AdvisorConfig[] | undefined;
+ 	#advisorConfigWarnings: string[];
+@@ -622,6 +637,7 @@
+ 		this.#advisorConfigWarnings = options.configWarnings ?? [];
+ 		this.#advisorStreamFn = options.streamFn;
+ 		this.#transformProviderContext = options.transformProviderContext;
++		this.#advisorCompactionEnabled = options.compactionEnabled;
+ 		if (this.#advisorEnabled) this.#buildAdvisorRuntime();
+ 	}
+ 
+@@ -2338,7 +2354,7 @@
+ 
+ 		const configuredCompaction = cfgCompaction.get(this.#host.settings);
+ 		const methods = resolveCompactionMethodOrder(configuredCompaction.methodOrder);
+-		if (!configuredCompaction.enabled || methods.length === 0) {
++		if (!(this.#advisorCompactionEnabled ?? configuredCompaction.enabled) || methods.length === 0) {
+ 			return false;
+ 		}
+ 		const compactionMethod = methods.includes("remote") ? "remote" : "soft";

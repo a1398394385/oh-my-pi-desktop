@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, toast } from "../../../store";
 import { invoke } from "../../../store/ws";
 import { saveUiPrefs } from "../../../appearance";
-import SchemaRows from "../SchemaRows";
+import SchemaRows, { SchemaGroupTitle, SchemaRowsBare } from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 
 /** Play the alert sound once so the user hears what the toggle does (no-op outside Tauri). */
@@ -66,7 +66,7 @@ function NotificationPermissionRow() {
           : t("settingsPage.alerts.permUnknownDesc");
 
   return (
-    <div className="srow set-row">
+    <div className="srow set-row" data-key="app.notifyPermission">
       <div className="srow-tx">
         <b>{t("settingsPage.alerts.permTitle")}</b>
         <span>{desc}</span>
@@ -90,6 +90,13 @@ function NotificationPermissionRow() {
   );
 }
 
+// The host "Notifications" section (placement renders it like any other group)
+// plus the app-level alert rows below — one heading, one rounded card. Defined
+// here so both the heading/rows pair and the placement filter use one constant;
+// buildKeyToPageMap keeps reading the full PAGE_PLACEMENT, so settings-search
+// page mapping is unaffected by the filter.
+const NOTIFY_SECTION = { from: "interaction/Notifications", excludeKeys: ["ask.timeout"] };
+
 function DesktopAlertsSection() {
   const { t } = useTranslation();
   const prefs = useAppStore((s) => s.uiPrefs);
@@ -101,10 +108,10 @@ function DesktopAlertsSection() {
   };
   return (
     <>
-      <div className="set-group-tt">{t("settingsPage.alerts.group")}</div>
-      <div className="set-group-desc">{t("settingsPage.alerts.groupDesc")}</div>
+      <SchemaGroupTitle sections={[NOTIFY_SECTION]} />
       <div className="set-card">
-        <div className="srow set-row">
+        <SchemaRowsBare sections={[NOTIFY_SECTION]} />
+        <div className="srow set-row" data-key="app.notifyDesktop">
           <div className="srow-tx">
             <b>{t("settingsPage.alerts.desktopTitle")}</b>
             <span>{t("settingsPage.alerts.desktopDesc")}</span>
@@ -116,7 +123,7 @@ function DesktopAlertsSection() {
           </div>
         </div>
         <NotificationPermissionRow />
-        <div className="srow set-row">
+        <div className="srow set-row" data-key="app.notifySound">
           <div className="srow-tx">
             <b>{t("settingsPage.alerts.soundTitle")}</b>
             <span>{t("settingsPage.alerts.soundDesc")}</span>
@@ -141,11 +148,19 @@ function DesktopAlertsSection() {
 
 export default function InteractionPage() {
   const { t } = useTranslation();
+  // The merged Notifications card renders at the section's original placement
+  // (after Approvals), so the remaining groups split around it instead of the
+  // merged card drifting to the page bottom.
+  const all = PAGE_PLACEMENT["pg-interaction"];
+  const notifyIdx = all.findIndex((s) => s.from === NOTIFY_SECTION.from);
+  const before = notifyIdx >= 0 ? all.slice(0, notifyIdx) : all;
+  const after = notifyIdx >= 0 ? all.slice(notifyIdx + 1) : [];
   return (
     <div className="set-page" id="pg-interaction">
       <div className="set-tt">{t("settingsPage.nav.interaction")}</div>
-      <SchemaRows sections={PAGE_PLACEMENT["pg-interaction"]} />
+      <SchemaRows sections={before} />
       <DesktopAlertsSection />
+      <SchemaRows sections={after} />
     </div>
   );
 }

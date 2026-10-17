@@ -6,6 +6,7 @@
 import { useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../../store";
+import { bgJobsKey } from "../../../store/session";
 import { modelShort, fmtClock, subStatus, type SegT } from "../../shared/agent/subShared";
 import { rowSpec } from "./subRowSpec";
 import { Ellip, Spin } from "../../chat/parts";
@@ -51,10 +52,10 @@ export default function HubDetailPage() {
   if (!sub) {
     return <div className="py-3 text-faint text-ui-base">{t("right.hubEmpty")}</div>;
   }
-  return <HubDetail sub={sub} sessionId={s?.sessionId} t={t} />;
+  return <HubDetail sub={sub} subagentId={hubSel ?? undefined} sessionId={s?.sessionId} t={t} />;
 }
 
-export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; sessionId?: string }) {
+export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentState; t: SegT; sessionId?: string; subagentId?: string }) {
   const st = subStatus(sub);
   const u = sub.usage;
   const now = Date.now();
@@ -64,13 +65,15 @@ export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; 
   // Hub extension state (18.5): bg-jobs snapshot map (canonical wsHandlers landing) +
   // cache-warming transient. Selectors return stored references / primitives — never fresh
   // objects; null jobs (no entry yet) renders the pending state.
+  // Scoped to this subagent: the host reads the jobs that subagent itself started
+  // (its owner scope), so sibling subagents and the parent's task rows stay out.
   const bgJobs = useAppStore((s2) => s2.bgJobs);
   const warming = useAppStore((s2) => (sessionId ? s2.hubWarming === sessionId : false));
-  const jobs: BgJobEntry[] | null = sessionId ? (bgJobs.get(sessionId) ?? null) : null;
-  // Detail open = fetch time for the session's background jobs (snapshot replies refresh it)
+  const jobs: BgJobEntry[] | null = sessionId ? (bgJobs.get(bgJobsKey(sessionId, subagentId)) ?? null) : null;
+  // Detail open = fetch time for this subagent's background jobs (snapshot replies refresh it)
   useEffect(() => {
-    if (sessionId) sendGetBgJobs(sessionId);
-  }, [sessionId]);
+    if (sessionId) sendGetBgJobs(sessionId, subagentId);
+  }, [sessionId, subagentId]);
   const model = modelShort(u?.resolvedModel);
   const current = u?.currentTool
     ? u.currentTool + (u.currentToolArgs ? ` · ${JSON.stringify(u.currentToolArgs)}` : "")
@@ -183,7 +186,7 @@ export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; 
         )}
       </div>
 
-      {/* Background jobs (session-scoped, 18.5 contract v1): fetched when the detail opens,
+      {/* Background jobs (subagent-scoped, 18.5 contract v1): fetched when the detail opens,
           refreshed by bg_jobs snapshot replies. Unknown session (no sessionId) hides it. */}
       {sessionId ? (
         <>
@@ -194,31 +197,45 @@ export function HubDetail({ sub, t, sessionId }: { sub: SubagentState; t: SegT; 
             <div className="hub-sec-body text-faint">{t("hubExt.bgEmpty")}</div>
           ) : (
             <div className="hub-bg-list">
-              {jobs.map((j) => (
-                <div className="hub-bg-row" key={j.id}>
-                  <span className="hub-bg-main">
-                    <Ellip className="hub-bg-cmd" title={j.command ?? undefined}>
-                      {j.command || "—"}
-                    </Ellip>
-                    <Ellip className="hub-bg-cwd text-faint" title={j.cwd ?? undefined}>
-                      {j.cwd || "—"}
-                    </Ellip>
-                  </span>
-                  <span className="hub-bg-st text-faint">
-                    {j.running ? t("hubExt.bgPids", { n: j.pids.length }) : t("hubExt.bgExit", { code: j.exitCode ?? "—" })}
-                  </span>
-                  {j.running ? (
-                    <button
-                      type="button"
-                      className="hub-ibtn"
-                      title={t("hubExt.bgCancel")}
-                      onClick={() => sendCancelBgJob(sessionId, j.id)}
-                    >
-                      <Icon name="stopSolid" size={12} />
-                    </button>
-                  ) : null}
-                </div>
-              ))}
+              {jobs.map((j) => {
+                // Process-less jobs (eval cells) have no command line — the snapshot
+                // label is their title. Pid counts only mean something for bash.
+                const title = j.command || j.label || "—";
+                // A task row's cancel would abort the subagent, not a command:
+                // never offer it under a command row.
+                const cancellable = j.running && j.type !== "task";
+                return (
+                  <div className="hub-bg-row" key={j.id}>
+                    <span className="hub-bg-main">
+                      <Ellip className="hub-bg-cmd" title={title}>
+                        {title}
+                      </Ellip>
+                      {j.cwd ? (
+                        <Ellip className="hub-bg-cwd text-faint" title={j.cwd}>
+                          {j.cwd}
+                        </Ellip>
+                      ) : null}
+                    </span>
+                    <span className="hub-bg-st text-faint">
+                      {j.running
+                        ? j.type === "bash"
+                          ? t("hubExt.bgPids", { n: j.pids.length })
+                          : t("hubExt.bgRunning")
+                        : t("hubExt.bgExit", { code: j.exitCode ?? "—" })}
+                    </span>
+                    {cancellable ? (
+                      <button
+                        type="button"
+                        className="hub-ibtn"
+                        title={t("hubExt.bgCancel")}
+                        onClick={() => sendCancelBgJob(sessionId, j.id, subagentId)}
+                      >
+                        <Icon name="stopSolid" size={12} />
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

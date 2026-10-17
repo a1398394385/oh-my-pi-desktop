@@ -79,7 +79,7 @@ const cssFiles = [styleCss, ...walkCss(join(root, "ui", "css"))];
       if (keyframeDepth !== null && depth <= keyframeDepth) keyframeDepth = null;
       if (inKf) return;
       if (/^\s*--/.test(line)) return; // token definition line
-      if (EXEMPT_MARK.test(line)) return; // explicit exemption
+      if (EXEMPT_MARK.test(source)) return; // explicit exemption (inline /* style-token-ignore */ survives comment stripping only on the raw line)
       if (RAW_COLOR.test(line)) {
         problems.push(`${rel}:${i + 1} 裸色值 —— ${line.trim().slice(0, 90)}（颜色须走 --token 变量；动画/存量遗留可加 /* style-token-ignore */ 豁免）`);
       }

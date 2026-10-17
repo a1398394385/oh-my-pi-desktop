@@ -16,12 +16,13 @@
 .arch-head .caret {
   flex: none; font-size: var(--ui-fs-xs); color: var(--faint); width: 10px;
   display: inline-flex; align-items: center;
-  transition: transform .3s ease;
+  transition: transform var(--dur-sheet) var(--swift);
 }
 .arch-head.collapsed .caret { transform: rotate(-90deg); }
 #sidebar {
   /* the column container forms its own stacking context: popovers inside cap here, so the settings center/notifications can cover them full-screen */
   isolation: isolate;
+  position: relative; /* anchor for the top-right collapse button */
   width: var(--left-w, 240px);
   min-width: 0;
   max-width: var(--left-w, 240px);
@@ -36,14 +37,30 @@
   /* text selection disabled sidebar-wide: taps/drags are frequent and the blue selection is noise (inputs are re-enabled below) */
   user-select: none;
   -webkit-user-select: none;
-  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1),
-              max-width 0.25s cubic-bezier(0.2, 0, 0, 1),
-              opacity 0.2s ease,
-              visibility 0.25s;
+  transition: width var(--dur-base) var(--swift),
+              max-width var(--dur-base) var(--swift),
+              opacity var(--dur-base) var(--swift),
+              visibility var(--dur-base);
+}
+/* collapse toggle pinned to the sidebar's top-right corner (vertically centered
+   on the center topbar row, 6px inset like .sp-head) */
+#sidebar > .side-collapse {
+  position: absolute;
+  top: 19px;
+  right: 6px;
+  flex: none;
+}
+/* macOS: park it right of the native traffic lights, on their center line —
+   the collapsed-state expand button (#sidebarToggle) reuses the same coords */
+html[data-platform="macos"] #sidebar > .side-collapse {
+  position: fixed;
+  right: auto;
+  left: var(--top-toggle-left);
+  top: var(--top-toggle-top);
 }
 /* inputs inside the sidebar (rename/new project) regain selection and editing */
 #sidebar input, #sidebar textarea { user-select: text; -webkit-user-select: text; }
-#sidebar > * {
+#sidebar > :not(.side-collapse) {
   width: var(--left-w, 240px);
   flex-shrink: 0;
   box-sizing: border-box;
@@ -76,17 +93,31 @@ body:has(#sidebar.collapsed) #left-resizer {
 :is([data-theme="light"], [data-theme-mode="light"]) .nav-item:hover { background: var(--tint-black-60); }
 .nav-item svg { color: var(--dim); flex: none; display: block; }
 .seg {
+  position: relative;
   display: flex; background: var(--tint-black-220);
   border-radius: 999px; padding: 2px;
 }
 :is([data-theme="light"], [data-theme-mode="light"]) .seg { background: var(--tint-black-80); }
+/* CDS segmented-control magnet: a pure-geometry thumb (::before) snaps between the slots —
+   Sidebar.tsx drives --seg-i (active slot index) / --seg-n (slot count) as inline vars */
+.seg::before {
+  content: ""; position: absolute; top: 2px; bottom: 2px;
+  left: calc(1px + var(--seg-i, 0) * (100% - 2px) / var(--seg-n, 1));
+  width: calc((100% - 2px) / var(--seg-n, 1));
+  border-radius: 999px; background: var(--select); pointer-events: none;
+  transition: left var(--dur-snap) var(--spring), width var(--dur-snap) var(--spring);
+}
 .seg button {
   border: 0; background: transparent; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-base);
   padding: 4px 12px; border-radius: 999px; cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex: 1; /* equal slots so the ::before thumb lands exactly on the active button */
+  position: relative; z-index: 1; /* labels paint above the ::before thumb */
+  /* CDS segmented-control magnet: only the label color follows the thumb (120ms spring) */
+  transition: color var(--dur-snap) var(--spring);
 }
-.seg button.on { background: var(--select); color: var(--text); }
+.seg button.on { color: var(--text); }
 .sp { flex: 1; }
 #tasklist { flex: 1; overflow-y: auto; padding: 2px 10px 10px; min-height: 0; }
 #tasklist::-webkit-scrollbar { width: 0; }
@@ -109,7 +140,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   line-height: 0; cursor: pointer;
   width: 30px; height: 25px; padding: 0; border-radius: 5px;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: color .15s, background .15s;
+  transition: color var(--dur-snap), background var(--dur-snap);
 }
 .sec-label .sec-add > span,
 .sec-label .sec-trash > span {
@@ -134,7 +165,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   background: var(--tint-danger-120); color: var(--err, var(--danger-fixed));
   font-size: var(--ui-fs-xs); line-height: 1; cursor: pointer;
   padding: 3px 8px; border-radius: 5px; font-family: inherit;
-  transition: background .12s, color .12s, border-color .12s;
+  transition: background var(--dur-snap), color var(--dur-snap), border-color var(--dur-snap);
 }
 .proj .proj-rm-btn:hover,
 .task .task-del-btn:hover {
@@ -149,7 +180,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   font-size: calc(var(--ui-fs) + 1px); line-height: 26px;
   border: 0; background: none; width: 100%; text-align: left;
 }
-.task:hover { background: var(--panel-2); color: var(--text); }
+.task:is(:hover, .ctx-open) { background: var(--panel-2); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
 .task .tt {
   flex: 1; min-width: 0;
@@ -158,7 +189,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - 24px), transparent 100%);
   color: var(--text); font-weight: 400;
 }
-.task:hover .tt, .task.on .tt { color: var(--text); }
+.task:is(:hover, .ctx-open) .tt, .task.on .tt { color: var(--text); }
 .task .tm { flex: none; font-size: 12px; color: var(--faint); font-weight: 400; }
 .task.on .tm { color: var(--dim); }
 .task .tarchive {
@@ -167,8 +198,8 @@ body:has(#sidebar.collapsed) #left-resizer {
   width: 24px; height: 24px; padding: 0; border-radius: 6px;
   display: none; align-items: center; justify-content: center;
 }
-.task:hover .tarchive { display: inline-flex; }
-.task:hover .tm { display: none; }
+.task:is(:hover, .ctx-open) .tarchive { display: inline-flex; }
+.task:is(:hover, .ctx-open) .tm { display: none; }
 .task .tarchive:hover { color: var(--text); background: var(--panel-3); }
 .task .tarchive-confirm {
   flex: none;
@@ -186,7 +217,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  transition: filter .12s;
+  transition: filter var(--dur-snap);
 }
 .task .tarchive-confirm:hover {
   filter: brightness(1.12);
@@ -225,7 +256,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   font-weight: 600;
   line-height: 1;
 }
-.task:hover .task-cmd-badge {
+.task:is(:hover, .ctx-open) .task-cmd-badge {
   background: var(--panel-3);
   border-color: var(--line-focus, var(--line));
 }
@@ -242,26 +273,26 @@ body:has(#sidebar.collapsed) #left-resizer {
   position: absolute; inset: 0;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.task-indicator { color: var(--dim); opacity: 1; transition: opacity .12s var(--swift); }
+.task-indicator { color: var(--dim); opacity: 1; transition: opacity var(--dur-snap) var(--swift); }
 .task-indicator.error,
 .task-indicator.unread,
 .task-indicator.approval { opacity: 1; }
-.task-indicator.loading svg { animation: taskrot 1s linear infinite; }
+.task-indicator.loading svg { animation: spin 1s linear infinite; }
 /* automation badge: inline, just left of the relative-time label; hover hides it along with the label */
 .task-auto {
   flex: none;
   display: inline-flex; align-items: center;
-  color: var(--dim); opacity: 1; transition: opacity .12s var(--swift);
+  color: var(--dim); opacity: 1; transition: opacity var(--dur-snap) var(--swift);
 }
-.task:hover .task-auto { opacity: 0; }
+.task:is(:hover, .ctx-open) .task-auto { opacity: 0; }
 #tasklist.proj-dragging .task .task-auto { opacity: 1; }
 /* ZCode hover behavior: the pin takes over the same leading slot; the status dot/spinner doesn't squeeze the title further. */
-.task:hover .task-indicator { opacity: 0; }
+.task:is(:hover, .ctx-open) .task-indicator { opacity: 0; }
 /* pin glyph: appears on hover; always shown when pinned and no status indicator is present. */
 .tpin {
   width: 16px; height: 16px; padding: 0;
   border: 0; background: transparent; color: var(--faint);
-  cursor: pointer; border-radius: 4px; opacity: 0; transition: opacity .12s var(--swift), color .12s var(--swift), background .12s var(--swift);
+  cursor: pointer; border-radius: 4px; opacity: 0; transition: opacity var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), background var(--dur-snap) var(--swift);
   display: inline-flex; align-items: center; justify-content: center;
   line-height: 0;
 }
@@ -277,7 +308,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   height: 18px !important;
   margin-top: -2px; /* cancels the visual sink of the needle tip dragging the center of gravity down */
 }
-.task:hover .tpin { opacity: 1; }
+.task:is(:hover, .ctx-open) .tpin { opacity: 1; }
 .tpin.on { opacity: 1; color: var(--accent, var(--accent-fixed)); }
 .tpin:hover { color: var(--text); background: var(--panel-3); }
 .proj {
@@ -310,7 +341,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   pointer-events: none;
 }
 .proj.drag-float .pname { color: var(--text); }
-.proj.shift-anim, .proj-kids.shift-anim { transition: transform .2s cubic-bezier(.25, .8, .3, 1); }
+.proj.shift-anim, .proj-kids.shift-anim { transition: transform var(--dur-base) cubic-bezier(.25, .8, .3, 1); }
 /* text selection is disabled list-wide during drag reorder (JS adds .proj-dragging to #tasklist):
    otherwise sweeping across the expanded group's session rows triggers WebKit selection highlighting; the selection drives scroll-container auto-scrolling,
    stacking with displacements computed from the drag-start layout, showing up as the list jumping during drags */
@@ -328,11 +359,11 @@ body:has(#sidebar.collapsed) #left-resizer {
 #tasklist.proj-dragging .task .task-indicator { opacity: 1; }
 #tasklist.proj-dragging .task .tpin { opacity: 0 !important; }
 #tasklist.proj-dragging .task .tarchive { display: none !important; }
-#tasklist.proj-dragging .task:hover .tm { display: inline; }
+#tasklist.proj-dragging .task:is(:hover, .ctx-open) .tm { display: inline; }
 #tasklist.proj-dragging .proj .pmore,
 #tasklist.proj-dragging .proj .padd { display: none !important; }
 /* project session rows / loop process group containers: grid row height 1fr->0fr transition animates whole-group collapse (0.3s, same set in both places) */
-.proj-kids, .lp-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
+.proj-kids, .lp-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-sheet) var(--swift); }
 .proj-kids.closing, .lp-kids.closing { grid-template-rows: 0fr; }
 .proj-kids > .proj-kids-in, .lp-kids > .lp-kids-in { overflow: hidden; min-height: 0; }
 .proj .pname {
@@ -450,134 +481,6 @@ body:has(#sidebar.collapsed) #left-resizer {
 #conn-status.ok::before { content: "● "; color: var(--green); }
 #conn-status.bad { color: var(--err); }
 #conn-status.bad::before { content: "● "; }
-/* ── sidebar search card: below the new-task item, styled exactly like it (.nav-item) ── */
-.nav-item.nav-search {
-  cursor: text;
-  position: relative;
-}
-.nav-item.nav-search:focus-within,
-.nav-item.nav-search.search-active {
-  background: var(--tint-nav-hover-420);
-}
-:is([data-theme="light"], [data-theme-mode="light"]) .nav-item.nav-search:focus-within,
-:is([data-theme="light"], [data-theme-mode="light"]) .nav-item.nav-search.search-active {
-  background: var(--tint-black-60);
-}
-.nav-search-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  color: var(--dim);
-}
-.nav-search-input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--ui-fs-base);
-  padding: 0;
-  line-height: 1;
-}
-.nav-search-input::placeholder {
-  color: var(--faint);
-}
-.nav-search-clear {
-  border: 0;
-  background: transparent;
-  color: var(--faint);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  transition: color .12s, background .12s;
-  padding: 0;
-  margin-left: auto;
-  flex: none;
-}
-.nav-search-clear:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
-.side-search-pop {
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
-  right: 0;
-  z-index: 500;
-  background: var(--ctl-bg, var(--card));
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: 0 12px 32px var(--tint-black-450);
-  padding: 4px;
-  max-height: 260px;
-  overflow-y: auto;
-}
-:is([data-theme="light"], [data-theme-mode="light"]) .side-search-pop {
-  box-shadow: 0 12px 28px var(--tint-black-120);
-}
-.side-search-empty {
-  padding: 10px 12px;
-  text-align: center;
-  color: var(--faint);
-  font-size: calc(var(--ui-fs) + 1px);
-}
-.side-search-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 34px;
-  min-height: 34px;
-  padding: 4px 10px;
-  box-sizing: border-box;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--dim);
-  transition: background .12s, color .12s;
-}
-.side-search-item:hover {
-  background: var(--panel-2);
-  color: var(--text);
-}
-.side-search-item.on {
-  background: var(--select);
-  color: var(--text);
-}
-.side-search-item-tt {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: calc(var(--ui-fs) + 1px);
-  line-height: 26px;
-  font-weight: 400;
-  color: var(--text);
-}
-.side-search-item-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  font-size: 12px;
-  color: var(--faint);
-  font-weight: 400;
-}
-.side-search-item.on .side-search-item-meta {
-  color: var(--dim);
-}
-.side-search-item-repo {
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 #composer.in-welcome textarea,
 #composer.in-welcome #input.inp-ce {
   min-height: 58px;
@@ -599,7 +502,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .arch-head:hover { background: var(--panel-2); color: var(--text); }
 /* entry container: grid row height 0fr<->1fr transition, same animation set as the .proj-kids project groups */
-.arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s ease; }
+.arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-sheet) var(--swift); }
 .arch-kids.closing { grid-template-rows: 0fr; }
 .arch-kids > .arch-kids-in { overflow: hidden; min-height: 0; }
 /* archive entry rows: display-only carriers (clicking doesn't open a session), hover highlight explicitly disabled */
@@ -646,9 +549,9 @@ body:has(#sidebar.collapsed) #left-resizer {
   font-size: var(--ui-fs-xs); line-height: 1; cursor: pointer;
   padding: 3px 8px; border-radius: 5px; font-family: inherit;
   display: none;
-  transition: background .12s, color .12s, border-color .12s;
+  transition: background var(--dur-snap), color var(--dur-snap), border-color var(--dur-snap);
 }
-.task:hover .arch-act,
+.task:is(:hover, .ctx-open) .arch-act,
 .arch-row:hover .arch-act { display: inline-flex; align-items: center; }
 .arch-act:hover { color: var(--text); background: var(--panel-3); }
 /* delete = permanently remove the session: danger visuals match .task-del-btn (incl. hover inverted white text; tokens have no inverted token) */

@@ -112,7 +112,20 @@ export type SettingsPayload = SettingsSnapshot & {
   // models are offered the `auto` thinking level. Off by default — each level
   // switch re-bills the whole prefix on Kimi; the providers-page switch.
   kimiAutoThinking?: boolean;
+  // omp-desktop.json remote section (host/remote.ts): LAN remote-control
+  // server config; the settings page's remote group reads/builds URLs from it
+  remote?: RemoteConfigPayload;
 };
+
+/** omp-desktop.json remote-section projection (host/remote.ts remotePayload) — LAN remote-control server config */
+export interface RemoteConfigPayload {
+  enabled: boolean;
+  port: number;
+  /** 128-bit hex access key, full value (the settings page builds the copy-link URL from it) */
+  key: string;
+  /** Prebuilt http://<first LAN IPv4>:<port>/?t=<key>; omitted when no LAN IPv4 is available */
+  url?: string;
+}
 
 /** Model catalog entry (host/models.ts modelsPayload) */
 export interface ModelEntry {
@@ -413,10 +426,10 @@ export type TranscriptItem = {
 };
 
 /** Queued message view element (host/host.ts sendQueued, via base toRestoredQueuedMessage) */
-// TODO(narrowing pass): toRestoredQueuedMessage return shape follows the base SDK (at least text; the store side uses text/images)
 export interface QueuedMessage {
   text: string;
-  images?: unknown[];
+  /** Image attachments carried by the queued prompt (base ImageContent; same shape as UserItem.images) */
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
 }
 
 /** Narrow event-stream event (host/translate.ts UiEvent; kind-discriminated body of event/subagent_event frames) */
@@ -457,6 +470,9 @@ export interface SessionStatsPayload {
   cacheHitRate: number;
   /** Prompt-cache invalidation count for the session (host/session-lifecycle.ts buildSessionStats) */
   cacheBreaks: number;
+  /** Context compactions this session ran (base compaction entries + ACP compaction blocks).
+      Their cacheRead drop is excluded from {@link cacheBreaks} (host/session-snapshot.ts countCacheBreaks). */
+  compactions: number;
   advisorCost: number;
   activeMs: number;
   /** Host clock stamp sampled in the same call as activeMs (extrapolation baseline, see receivedAt). */

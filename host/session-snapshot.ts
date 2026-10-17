@@ -5,30 +5,29 @@
 // pool-reuse / disk-rebuild emit sites). Split out of session-lifecycle.ts
 // (A12, pure relocation).
 import { sessions, stampEvent, type PoolEntry } from "./state.ts";
+import { ACP_SUMMARY_CUSTOM_TYPE } from "./acp-persist.ts";
 
 /** Goal state frame: shown in the session state card's goal area (pushes null when there is no goal; the frontend hides the separator too). */
 export function pushGoal(sessionId: string) {
   const entry = sessions.get(sessionId);
-  const w = entry?.attachedWs as { send(data: string): unknown } | null;
-  if (!entry || !w) return;
+  if (!entry || entry.uiSockets.size === 0) return;
   const state = entry.session.getGoalModeState();
-  w.send(
-    JSON.stringify({
-      type: "goal",
-      sessionId,
-      goal: state?.goal
-        ? {
-            objective: state.goal.objective,
-            status: state.goal.status,
-            enabled: state.enabled === true,
-            tokenBudget: state.goal.tokenBudget ?? null,
-            tokensUsed: state.goal.tokensUsed,
-            timeUsedSeconds: state.goal.timeUsedSeconds,
-            costUsed: entry.goal.costUsed,
-          }
-        : null,
-    }),
-  );
+  const data = JSON.stringify({
+    type: "goal",
+    sessionId,
+    goal: state?.goal
+      ? {
+          objective: state.goal.objective,
+          status: state.goal.status,
+          enabled: state.enabled === true,
+          tokenBudget: state.goal.tokenBudget ?? null,
+          tokensUsed: state.goal.tokensUsed,
+          timeUsedSeconds: state.goal.timeUsedSeconds,
+          costUsed: entry.goal.costUsed,
+        }
+      : null,
+  });
+  for (const w of entry.uiSockets) w.send(data);
 }
 
 /** Todos frame: pushed on both cold load and pool reuse (TodoTracker already synced from the transcript branch at construction).
@@ -77,20 +76,48 @@ export function pushContext(ws: any, sessionId: string, entry: PoolEntry) {
 // Prompt-cache invalidation count for the session stats bar: a session's cached
 // prefix normally grows monotonically (each turn appends to the cached prefix),
 // so a cacheRead drop to under half of the session peak means the prefix was
-// lost — model switch, cache TTL expiry, keepalive break, compaction — and the
-// whole context was re-billed as uncached input. Count one break per event:
-// re-arm only after cacheRead climbs back to the peak, and while broken let the
-// peak follow a shrinking baseline (compaction drops the prefix for good) so a
-// later break still registers.
+// lost — model switch, cache TTL expiry, keepalive break — and the whole
+// context was re-billed as uncached input. Count one break per event: re-arm
+// only after cacheRead climbs back to the peak, and while broken let the peak
+// follow a shrinking baseline so a later break still registers.
+//
+// A context compaction (base compaction entry or ACP compaction block) rewrites
+// the request prefix on purpose, so the low cacheRead of the next billed turn
+// is an expected consequence, not a lost prefix: the drop is folded into the
+// compaction counter instead of the break count.
 const CACHE_BREAK_MIN_PEAK = 1000;
-export function countCacheBreaks(
-  entries: ReadonlyArray<{ type?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } }>,
-): number {
+
+/** Journal entry shape the stats bar scans (assistant usage plus compaction markers). */
+interface StatsScanEntry {
+  type?: string;
+  customType?: string;
+  message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } };
+}
+
+/** Base compaction entry (manual /compact, /handoff, plan approval, auto-compaction) or an ACP compaction block. */
+function isCompactionEntry(item: { type?: string; customType?: string }): boolean {
+  return item.type === "compaction" || (item.type === "custom" && item.customType === ACP_SUMMARY_CUSTOM_TYPE);
+}
+
+/** Context compactions this session ran (both chains), counted separately from cache breaks. */
+export function countCompactions(entries: ReadonlyArray<{ type?: string; customType?: string }>): number {
+  let compactions = 0;
+  for (const item of entries) if (isCompactionEntry(item)) compactions++;
+  return compactions;
+}
+
+export function countCacheBreaks(entries: ReadonlyArray<StatsScanEntry>): number {
   let peak = 0;
   let last = 0;
   let broken = false;
   let breaks = 0;
+  let compacted = false;
   for (const item of entries) {
+    if (isCompactionEntry(item)) {
+      // Re-baseline on the next billed request instead of counting the break
+      compacted = true;
+      continue;
+    }
     if (item?.type !== "message" || item.message?.role !== "assistant") continue;
     const usage = item.message.usage;
     // A turn aborted before it billed anything (empty content, stopReason
@@ -100,6 +127,13 @@ export function countCacheBreaks(
     if (typeof usage?.totalTokens !== "number" || usage.totalTokens <= 0) continue;
     const read = usage.cacheRead;
     const cacheRead = typeof read === "number" && Number.isFinite(read) ? read : 0;
+    if (compacted) {
+      compacted = false;
+      peak = cacheRead;
+      broken = false;
+      last = cacheRead;
+      continue;
+    }
     if (cacheRead >= peak) {
       peak = cacheRead;
       broken = false;
@@ -131,6 +165,7 @@ export function buildSessionStats(entry: PoolEntry) {
 
   const entries: any[] = typeof entry.manager?.getEntries === "function" ? entry.manager.getEntries() : [];
   const cacheBreaks = countCacheBreaks(entries);
+  const compactions = countCompactions(entries);
   for (const item of entries) {
     if (item?.type === "message" && item.message?.role === "assistant") {
       const msg = item.message;
@@ -169,6 +204,7 @@ export function buildSessionStats(entry: PoolEntry) {
     subagentCost: usage.subagentCost ?? 0,
     cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
     cacheBreaks,
+    compactions,
     // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
     advisorCost: entry.session.getAdvisorCost(),
     // Same-clock stamp as activeMs (sampled in the same call): the frontend extrapolates

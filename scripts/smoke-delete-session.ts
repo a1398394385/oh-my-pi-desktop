@@ -17,16 +17,21 @@
 //   F  previousPaths hit also sweeps pin/archive records holding both the old
 //      and the new location of the session
 //
-// Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-delete-session.ts
+// Usage: bun scripts/smoke-delete-session.ts (profile is pinned by smokeEnv, no env needed)
+// Must stay above the host/ imports below: importing this module pins
+// process.env.OMP_PROFILE, which host/bootstrap.ts reads at evaluation time.
+import { activeProfile, TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "@oh-my-pi/pi-utils";
 
+// activeProfile (not process.env) because smokeEnv pins the profile for the spawned
+// host; this assertion guards the in-process half, which reads getAgentDir() itself.
 assert.equal(
-  process.env.OMP_PROFILE,
-  "omp-desktop-test",
-  "run with OMP_PROFILE=omp-desktop-test (never the default profile)",
+  activeProfile,
+  TEST_PROFILE,
+  "must run on the omp-desktop-test profile, never the default",
 );
 
 // Capture stderr so the dispose-failure trace can be asserted; lines are still
@@ -70,7 +75,9 @@ function makeStubEntry(
   return {
     path,
     previousPaths,
-    // sessionBusy contract (host/rpc/session.ts): non-null activeStartedAt = in-flight turn
+    // sessionBusy contract (host/rpc/session.ts): non-null activeStartedAt =
+    // in-flight turn; isStreaming mirrors the AgentSession getter the busy
+    // check reconciles against (a stale window with isStreaming=false settles)
     activeStartedAt: busy ? 1 : null,
     mcpMountGen: 0,
     mcpMountInFlight: undefined,
@@ -78,7 +85,13 @@ function makeStubEntry(
     unsubscribe: () => {
       counters.unsubscribe++;
     },
-    session: { dispose: disposeImpl ?? (async () => { counters.dispose++; }), queuedMessageCount: 0 },
+    session: {
+      dispose: disposeImpl ?? (async () => {
+        counters.dispose++;
+      }),
+      queuedMessageCount: 0,
+      ...(busy ? { isStreaming: true } : {}),
+    },
   } as any;
 }
 
@@ -159,7 +172,7 @@ try {
     sessions.set("smoke-a3-busy", makeStubEntry(busyFile, [], counters, undefined, true));
     await assert.rejects(
       sessionHandlers.delete_session(fakeWs, { path: busyFile }),
-      (err: any) => typeof err?.message === "string" && err.message.includes("先停止再删除"),
+      (err: any) => typeof err?.message === "string" && err.message.includes("先处理再删除"),
       "E: busy session must be refused via errors.session.deleteBusy",
     );
     assert.equal(sessions.has("smoke-a3-busy"), true, "E: busy entry must stay pooled");
@@ -190,8 +203,12 @@ try {
     console.log("F ok: pin/archive records swept across both locations");
   }
 
-  // handleListSessions pushed its refresh frame at the end of every call.
-  assert.ok(frames.length > 0 && frames.every((f) => f.type === "session_list"), "delete_session must push session_list refreshes");
+  // handleListSessions pushed its refresh frame at the end of every call
+  // (since ef2f7a4 it also pushes a pool_sessions snapshot per refresh; the
+  // assertion tracks the session_list refresh itself — one per successful
+  // delete: A, B, C, F).
+  const listFrames = frames.filter((f) => f.type === "session_list");
+  assert.ok(listFrames.length >= 4, "delete_session must push session_list refreshes");
   console.log(`smoke-delete-session PASSED (${frames.length} session_list frames)`);
 } finally {
   process.stderr.write = origWrite;

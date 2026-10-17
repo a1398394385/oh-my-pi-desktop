@@ -2,77 +2,58 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-omp（oh-my-pi）桌面壳。**库内嵌路线**：单个 Bun 宿主进程内嵌 `@oh-my-pi/pi-coding-agent` SDK 持有全部会话（仿 etower-agent 的 session 池形式），不是每会话一个 `omp --mode rpc` 子进程——后者每会话吃一份 ~210MB 底座，9 会话 ≈3GB；本路线实测 2 会话共 385MB（单进程）。
+omp desktop 是 AI coding agent——omp（oh-my-pi）的跨平台桌面客户端。它把 agent 装进一个原生窗口：与模型对话、看着它改文件跑命令，随时查看上下文、diff 与子代理。agent 运行时内置于应用，无需单独安装 omp CLI。
 
-## 架构
+## 为什么是单进程
 
-```
-┌─ Tauri 壳（src-tauri）──────────┐        ┌─ Bun 宿主（host/）────────────────┐
-│ 窗口 + WKWebView 加载 ui/dist   │        │ 库内嵌 omp SDK                     │
-│ spawn 宿主、转发 WS 动态端口     │ ────▶  │ 进程级底座×1（auth/model/settings）│
-│ 退出时 kill 宿主 + 看门狗限频重启 │        │ Map<sessionId, PoolEntry>          │
-└─────────────────────────────────┘        │ 会话落盘 ~/.omp/agent/sessions/    │
-        ▲ WebSocket（动态端口）             └───────────────────────────────────┘
-        └────── ui/dist 静态产物直连 ────────────┘
-```
+给 CLI agent 套桌面壳的常见做法是每个会话起一个子进程，而 omp 运行时每份底座开销约 210MB，开九个会话就逼近 3GB。
 
-- 会话 = 宿主进程内一个 `createAgentSession()` 实例，工具在宿主内直接执行，无 host-tool 桥；transcript 按 cwd 分桶持久化（JSONL），重启可恢复
-- 前端 `ui-src/`（React 19 + TypeScript + Vite + Tailwind v4 + zustand + streamdown + Lexical），构建产物 `ui/dist/`
-- `host/limits/`：供应商套餐限额查询（21 家供应商、34 个 omp provider id），凭证优先经 authStorage 解析（OAuth 自动续期）
-- 画像（profile）隔离：`OMP_PROFILE` 指定，默认 `default`；测试强制用 `omp-desktop-test`
+omp desktop 换了一条路：把 omp SDK 作为库内嵌进单个 Bun 宿主进程，用会话池持有全部会话，auth／模型／设置底座全进程共享一份。实测单进程跑 2 个会话总共 385MB。
 
-## 跑
+会话按工作目录以 JSONL 落盘，重启后可恢复。
 
-```bash
-bun install
-bun run ui:build            # 先出前端产物（桌面端无 HMR，tauri dev 加载预构建产物）
-OMP_DESKTOP_MODEL=deepseek/deepseek-flash bunx tauri dev   # 默认模型是本地慢模型，建议覆盖
-```
+## 功能
 
-宿主可独立验证（不经 Tauri）：
+- 多会话并行管理与侧栏，每个会话自带条目树
+- 流式 markdown 渲染：代码高亮、中文换行优化、mermaid 图表
+- 多供应商模型接入：OAuth 登录（凭证自动续期）或配置 API key 与 base URL；应用内套餐限额查询覆盖 21 家供应商
+- 模型角色（按角色分配不同模型）与思考档位（Minimal 到 Max，含 auto）
+- 消息队列——agent 工作时可以继续排队追问，中途随时 steer
+- Git 集成：分支切换与 diff 查看
+- 详情面板：上下文明细、文件查看、子代理检查器、终端、浏览器镜像
+- 截图直接粘贴、文件拖入输入框
+- macOS 通知、系统托盘（关窗隐藏到托盘）、单实例锁
+- 应用内自动更新（设置 → 通用 → 应用 → 检查更新）
+- 六套主题（dark、light、midnight、warm-paper、deep-think、coral），支持跟随系统
+- 界面支持英文与简体中文
+- 长任务场景：ACP 上下文自动压缩与会话保活
+- 设置页内管理 MCP 服务器、技能、记忆、插件与 hooks
 
-```bash
-bun scripts/smoke.ts               # 真模型全链路冒烟（建会话→prompt→落盘→load 恢复）
-bun scripts/probe-sdk.ts           # 仅装配探针
-bun scripts/probe-asset-sources.ts # 来源开关对资产列表的约束
-```
+## 安装
 
-全仓检查：`bun run check`（编码门禁 / host 边界 / 架构棘轮 / 样式 token 门禁 / 版本号一致性 / typecheck）。冒烟脚本清单见 `scripts/`。
+从 [Releases](https://github.com/a1398394385/oh-my-pi-desktop/releases/latest) 下载安装包。
 
-## 发版
+**macOS（Apple Silicon）**——打开 `.dmg` 把应用拖进「应用程序」。安装包是 ad-hoc 签名，首次打开需要任选其一：
 
-```bash
-bun run version:set 0.2.0        # 版本号单源在 src-tauri/tauri.conf.json，自动镜像 Cargo.toml
-git commit -am "release: 0.2.0"
-git tag v0.2.0 && git push origin main --tags
-```
+- 右键应用 →「打开」→「打开」，或
+- 执行 `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`
 
-tag 触发 `.github/workflows/release.yml`：校验 tag 与版本号一致 → 各平台构建 → 发 draft Release（含 updater 产物与 `latest.json`）。**检查 draft 后手动 publish**——草稿状态下的 `releases/latest/download/` 不可用。
+**Windows（x64）**——运行 `-setup.exe`（NSIS 安装器）或 `.msi`。
 
-前置条件（一次性）：
+更新走应用内推送；也可以在 设置 → 通用 → 应用 →「检查更新」手动触发。
 
-- GitHub secret `TAURI_SIGNING_PRIVATE_KEY` = `~/.tauri/omp-desktop.key` 的**内容**（不是路径）。**这把私钥丢了，已安装的用户将永久收不到更新。**
-- 客户端签名走 ad-hoc（`APPLE_SIGNING_IDENTITY: "-"`）。别人首次安装需右键打开，或 `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`。要消除这一步需购 Apple Developer ID（$99/年）并公证，见 [ADR-0003](.agents/notes/0003-tauri-updater-auto-update.md)。
+## 快速上手
 
-本地出包（不走 CI 时）同样要私钥，`createUpdaterArtifacts: true` 下缺私钥会直接报错、不产任何 bundle：
-
-```bash
-# Windows（git-bash 里 ~/.tauri 即用户目录下的 .tauri）
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
-bun x tauri build --config src-tauri/tauri.windows.conf.json
-
-# macOS
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
-APPLE_SIGNING_IDENTITY="-" bun x tauri build
-```
-
-macOS 上生成的那把 key 在 Windows 上同样能用（密钥本身与平台无关，密码为空）；换机时把 `~/.tauri/omp-desktop.key` + `.pub` 拷到新机器的 `~/.tauri/` 即可。
-
-用户侧入口：设置 → 通用 → 应用 →「检查更新」。
+1. 启动应用，打开 设置 → 模型 添加供应商——向导会带你走 OAuth 登录或「API key + base URL」配置。
+2. 新建会话，选择项目目录和模型，开始对话。
+3. agent 会读写文件、执行命令，并在对话里汇报结果；它做了什么，用详情面板查看。
 
 ## 文档
 
-- 开发约束与全站规范：[AGENTS.md](AGENTS.md)
-- 文档写作与生命周期：[docs/documentation.md](docs/documentation.md)
-- 外部依赖踩坑（omp SDK / Tauri / macOS）：[docs/PITFALLS.md](docs/PITFALLS.md)
-- 本仓 bug 事故账本 / 防回归规则 / ADR：`.agents/`（入口 [.agents/README.md](.agents/README.md)）
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)——架构、源码运行、发版流程
+- [AGENTS.md](AGENTS.md)——贡献者与 agent 的仓库约定
+- [docs/PITFALLS.md](docs/PITFALLS.md)——外部依赖踩坑（omp SDK / Tauri / macOS）
+
+## 许可证
+
+All rights reserved.

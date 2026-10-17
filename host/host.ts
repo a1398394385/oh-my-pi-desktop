@@ -18,7 +18,7 @@
 // The GUI-launched host has a stripped PATH (nvm/Homebrew commands invisible):
 // fire the PATH augment before loading the body (overlapping main.ts's static
 // graph load incl. the SDK); main.ts awaits the same promise.
-import { augmentGuiPath } from "./gui-path.ts";
+import { augmentGuiPath, augmentGuiPathSync } from "./gui-path.ts";
 import { declareWorkerHostEntry, isWorkerHostSelector } from "@oh-my-pi/pi-utils/worker-host";
 
 // Declare in BOTH branches, before any dynamic import: this entry dispatches
@@ -35,6 +35,11 @@ declareWorkerHostEntry();
 
 const argv = process.argv.slice(2);
 if (argv.length === 0) {
+	// Sync fast-path must run before the dynamic import: the SDK's module
+	// graph (evaluated by the import below) snapshots {...process.env} at
+	// module top level (e.g. GH_NON_INTERACTIVE_ENV in utils/github.ts), so
+	// async-only augmenting lands after those snapshots are taken.
+	augmentGuiPathSync();
 	augmentGuiPath();
 	await import("./main.ts");
 } else if (argv[0] === "__omp_worker_stats_sync") {

@@ -24,6 +24,7 @@ export {
   editQueueMsg,
   sendNowQueueMsg,
   requeueSteerMsg,
+  reorderQueueMsg,
   updateSession,
   patchSessionItem,
 } from "./store/session";

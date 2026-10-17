@@ -19,7 +19,7 @@ export interface SessionInfo {
   pending?: boolean;
   title?: string | null; // host DiskSessionRow is string | null
   firstMessage?: string;
-  modified: string;
+  modified?: string; // absent for in-memory pool rows (state.ts pushPoolSnapshot): no on-disk activity time
   repo?: string;
   cwd?: string;
   archived?: boolean;
@@ -49,6 +49,8 @@ export interface SessionRowProps extends SessionRowCallbacks {
   pinnedList?: boolean;
   rowKey: string;
   renaming?: boolean;
+  /** Its context menu is open: the menu covers the row, so the hover visuals are pinned via .ctx-open */
+  ctxOpen?: boolean;
   className?: string;
   style?: CSSProperties;
   shortcutDigit?: string;
@@ -109,7 +111,7 @@ function AutoBadge({ s }: { s: SessionInfo }) {
   );
 }
 
-export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
+export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, ctxOpen, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
   const { t } = useTranslation();
   // State subscribed via selectors (must run before the renaming early return: hooks cannot be conditional)
   const openSessions = useAppStore((s) => s.openSessions);
@@ -148,6 +150,8 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // open → the host loading chain
   const openSession = () => {
     hideWelcomeScreen();
+    // Narrow (ZCode remote model): picking a session leaves the list for the chat page
+    useAppStore.getState().setMobileCol("main");
     // Clear the unread mark: container swapped to a fresh reference (silent write; re-render handled uniformly by the trailing setBump's _v bump)
     useAppStore.setState((st) => ({
       unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== s.path)),
@@ -190,7 +194,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
 
   return (
     <button
-      className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (className ? " " + className : "")}
+      className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (ctxOpen ? " ctx-open" : "") + (className ? " " + className : "")}
       data-path={s.path}
       style={style}
       onClick={openSession}
@@ -251,7 +255,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       ) : s.archived ? (
         <>
           <AutoBadge s={s} />
-          <span className="tm">{fmtAgo(s.modified)}</span>
+          {s.modified && <span className="tm">{fmtAgo(s.modified)}</span>}
           <button
             className="arch-act"
             title={t("sidebar.unarchiveRestore")}
@@ -303,7 +307,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
             <Icon name="archive" size={14} />
           </button>
           <AutoBadge s={s} />
-          <span className="tm">{fmtAgo(s.modified)}</span>
+          {s.modified && <span className="tm">{fmtAgo(s.modified)}</span>}
         </>
       )}
     </button>

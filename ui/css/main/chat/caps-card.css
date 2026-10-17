@@ -1,38 +1,5 @@
-/* Capabilities card — two shapes sharing the .cc-* rows:
-   1. Floating overlay of the middle column (#capsWrap + #capsCard / #capsCardCapsule):
-      wrapper is a pointer-events-none flex column pinned to the right edge; the card /
-      capsule re-enable pointer events. The bottom gap (flush with the composer dock's
-      bottom edge) is measured in JS (CapsCard.tsx) because the dock height is dynamic.
-   2. Right-panel bottom section (#rightCaps, see below). */
-#capsWrap {
-  position: absolute;
-  right: 14px;
-  z-index: 60;
-  width: 320px;
-  max-width: calc(100% - 28px);
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-#capsCard {
-  pointer-events: auto;
-  width: 100%;
-  background: var(--inset);
-  border-radius: var(--r-lg);
-  padding: 10px 12px;
-  box-shadow: 0 10px 28px var(--tint-black-380);
-  max-height: 42vh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-:is([data-theme="light"], [data-theme-mode="light"]) #capsCard { box-shadow: 0 10px 28px var(--tint-black-120); }
-
-.cc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.cc-head b { font-size: var(--ui-fs-md); font-weight: 500; }
-
+/* Capabilities card content rows (.cc-*), shared by the right-panel docked shape
+   (#rightCaps, see below). */
 .cc-sec { padding-top: 6px; }
 .cc-tt { font-size: var(--ui-fs-sm); color: var(--faint); margin-bottom: 3px; }
 
@@ -56,24 +23,6 @@
   font-size: var(--ui-fs-sm);
   color: var(--dim);
 }
-
-/* Collapsed capsule: the #capsule recipe (status-find.css) with its own id so the two
-   cards stay independent */
-#capsCardCapsule {
-  pointer-events: auto;
-  display: flex; align-items: center; gap: 8px;
-  max-width: 100%;
-  background: var(--inset); border: 0;
-  color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-base);
-  border-radius: 999px; padding: 8px 14px;
-  cursor: pointer;
-  box-shadow: 0 8px 22px var(--tint-black-360);
-}
-:is([data-theme="light"], [data-theme-mode="light"]) #capsCardCapsule { box-shadow: 0 8px 22px var(--tint-black-120); }
-#capsCardCapsule:hover { background: var(--panel-2); }
-#capsCardCapsule .cc-cap-ic { flex: none; display: inline-flex; color: var(--text); }
-#capsCardCapsule .cap-tx { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#capsCardCapsule .cap-n { flex: none; color: var(--faint); font-size: var(--ui-fs-sm); }
 
 /* ---- right-panel docked shape (#rightCaps) ----
    Bottom section of the right panel, below #rightBody (full-bleed like .sp-head).
@@ -113,7 +62,7 @@
 #rightCaps .rc-caret {
   display: inline-flex; color: var(--faint); flex: none;
   transform: rotate(180deg);
-  transition: transform .18s ease;
+  transition: transform var(--dur-snap) var(--swift);
 }
 
 #rightCaps.open .rc-caret { transform: rotate(0deg); }
@@ -121,7 +70,7 @@
 #rightCaps .rc-fold {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows .22s cubic-bezier(0.2, 0, 0, 1);
+  transition: grid-template-rows var(--dur-base) var(--swift);
 }
 
 #rightCaps.open .rc-fold { grid-template-rows: 1fr; }

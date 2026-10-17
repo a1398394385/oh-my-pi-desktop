@@ -357,7 +357,7 @@ export default function ModelMetaEditor({ modelId, displayName, catalog, saved, 
           <label className="mcp-form-label">
             {t("settingsPage.model.wizardThinkEfforts")}
             {e.thinkingEfforts.length === 0 && inheritedThinking?.efforts ? (
-              <span className="mpw-ef-hint">{inheritedThinking.efforts.join(" · ")}</span>
+              <span className="mpw-ef-hint">{inheritedThinking.efforts.map((x) => t(`composer.thinkingLevels.${x}`, { defaultValue: x })).join(" · ")}</span>
             ) : null}
           </label>
           <div className="mpw-chips">
@@ -370,7 +370,7 @@ export default function ModelMetaEditor({ modelId, displayName, catalog, saved, 
                   update({ ...e, thinkingEfforts: e.thinkingEfforts.includes(lvl) ? e.thinkingEfforts.filter((x) => x !== lvl) : [...e.thinkingEfforts, lvl] });
                 }}
               >
-                {lvl}
+                {t(`composer.thinkingLevels.${lvl}`, { defaultValue: lvl })}
               </button>
             ))}
           </div>
@@ -379,7 +379,7 @@ export default function ModelMetaEditor({ modelId, displayName, catalog, saved, 
           <label className="mcp-form-label">{t("settingsPage.model.wizardThinkDefault")}</label>
           <MetaSel value={e.thinkingDefault} disabled={!e.custom}
             inheritLabel={inheritLabel(inheritedThinking?.defaultLevel ?? null)}
-            options={EFFORTS.map((l) => ({ v: l, label: l }))}
+            options={EFFORTS.map((l) => ({ v: l, label: t(`composer.thinkingLevels.${l}`, { defaultValue: l }) }))}
             onChange={(v) => update({ ...e, thinkingDefault: v })} />
         </div>
       </div>

@@ -15,6 +15,7 @@
 //   C. stale id + no memory           -> nothing is written (never guess a substitute screen)
 //
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-computer-display.ts
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -91,7 +92,7 @@ const readRemembered = (): Record<string, unknown> | null => {
 async function startHost(): Promise<string> {
 	const c = spawn("bun", ["host/host.ts"], {
 		cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-		env: { ...process.env },
+		env: smokeEnv(),
 		stdio: ["ignore", "pipe", "inherit"],
 	});
 	child = c;

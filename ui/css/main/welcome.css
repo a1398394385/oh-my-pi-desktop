@@ -1,3 +1,29 @@
+/* Greeting: the brand gradient (same colors as the app icon) painted left→right across the
+   glyphs, with one diagonal shine band crossing it at launch on top. Two stacked layers —
+   the shine (first) sweeps via background-position, the gradient (second, 100% wide) stays
+   pinned because the keyframes animate both positions. Overrides the Tailwind text-text
+   color because background-clip:text needs a transparent fill. */
+#welcomeTitle {
+  background-image:
+    linear-gradient(100deg, transparent 42%, color-mix(in srgb, var(--text) 55%, transparent) 50%, transparent 58%),
+    linear-gradient(90deg, var(--brand-1) 0%, var(--brand-2) 30%, var(--brand-3) 62%, var(--brand-4) 100%);
+  background-size: 200% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0, 0 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: welcomeSweep 3s var(--ease-expand) 1;
+}
+
+/* Frozen intro frame: park the shine layer fully off-screen so only the gradient shows. The
+   gradient itself is color, not motion, so it survives reduced motion. Same three-way
+   contract as global/animations.css. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) #welcomeTitle { animation: none; background-position: 150% 0, 0 0; }
+}
+html[data-motion="off"] #welcomeTitle { animation: none; background-position: 150% 0, 0 0; }
+
 .wb-wrapper {
   width: 100%; position: relative; display: flex; flex-direction: column;
 }
@@ -52,7 +78,7 @@
   flex: 0 1 auto;
   position: relative; /* anchor for the absolutely positioned wb-proj-clear (ZCode's left-1.5 overlays the folder icon slot) */
   box-sizing: border-box;
-  transition: background .15s, border-color .15s, box-shadow .15s, color .15s;
+  transition: background var(--dur-snap), box-shadow var(--dur-snap), color var(--dur-snap);
 }
 
 .wb-pill:hover {
@@ -65,12 +91,12 @@
   color: var(--text);
 }
 
-/* highlight reserved for the open state (.active), none on hover */
+/* highlight reserved for the open state (.active), none on hover; the border color is an inset ring
+   (stacked on the elevation shadow) so the state swap is paint-only */
 .wb-pill.active {
   background: var(--welcome-pill-active);
-  border-color: var(--tint-white-120);
   color: var(--white);
-  box-shadow: 0 2px 6px var(--tint-black-280);
+  box-shadow: 0 2px 6px var(--tint-black-280), inset 0 0 0 1px var(--tint-white-120);
 }
 
 :is([data-theme="light"], [data-theme-mode="light"]) .wb-pill {
@@ -99,7 +125,7 @@
   border-radius: 50%;
   color: var(--dim);
   opacity: 0;
-  transition: opacity .15s, color .15s;
+  transition: opacity var(--dur-snap), color var(--dur-snap);
   cursor: pointer;
   padding: 0;
   line-height: 0;
@@ -122,7 +148,7 @@
 
 .wb-proj-clear:hover { color: var(--white); }
 :is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-clear:hover { color: var(--black); }
-.wb-ic-folder { display: inline-flex; align-items: center; color: var(--dim); transition: opacity .15s; }
+.wb-ic-folder { display: inline-flex; align-items: center; color: var(--dim); transition: opacity var(--dur-snap); }
 
 .wb-ic-folder svg {
   display: block;
@@ -137,7 +163,7 @@
 }
 
 /* thinking row expand: the right-pointing chevron rotates 90° in place to point down */
-.th-more svg { transition: transform .2s ease; }
+.th-more svg { transition: transform var(--dur-base) var(--swift); }
 
 .th-more.open svg { transform: rotate(90deg); }
 
@@ -148,9 +174,9 @@
   width: 100%;
   box-sizing: border-box;
   background: var(--inset);
-  border: 1px solid var(--line-soft);
+  border: 1px solid transparent;
   border-radius: 16px;
-  box-shadow: 0 12px 40px var(--tint-black-280);
+  box-shadow: inset 0 0 0 1px var(--line-soft), 0 12px 40px var(--tint-black-280);
   position: relative;
   z-index: 2;
   margin-top: -25px; /* overlap budget: eats .wb-head's 25px bottom padding */
@@ -159,8 +185,7 @@
 
 :is([data-theme="light"], [data-theme-mode="light"]) #composer.in-welcome {
   background: var(--inset);
-  border-color: var(--line-soft);
-  box-shadow: 0 12px 40px var(--tint-black-70);
+  box-shadow: inset 0 0 0 1px var(--line-soft), 0 12px 40px var(--tint-black-70);
 }
 
 /* ── remote-connection dialog: probe/connect result panel (RemoteDialog.tsx ResultPanel) ──
@@ -206,3 +231,16 @@
 .rd-form .inp { min-width: 0; }
 /* Green test button after a probe OK stands in for the removed success panel. */
 .rd-test-ok, .save-btn.rd-test-ok:hover { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
+
+/* Hairline: halve the converted active-state ring on HiDPI (dark theme only; the light
+   active pill keeps its borderless elevation shadow) */
+@media (min-resolution: 2dppx) {
+  .wb-pill.active { box-shadow: 0 2px 6px var(--tint-black-280), inset 0 0 0 .5px var(--tint-white-120); }
+  #composer.in-welcome { box-shadow: inset 0 0 0 .5px var(--line-soft), 0 12px 40px var(--tint-black-280); }
+  #composer.in-welcome:hover { box-shadow: inset 0 0 0 .5px var(--line), 0 12px 40px var(--tint-black-280); }
+}
+@media (min-resolution: 3dppx) {
+  .wb-pill.active { box-shadow: 0 2px 6px var(--tint-black-280), inset 0 0 0 .33px var(--tint-white-120); }
+  #composer.in-welcome { box-shadow: inset 0 0 0 .33px var(--line-soft), 0 12px 40px var(--tint-black-280); }
+  #composer.in-welcome:hover { box-shadow: inset 0 0 0 .33px var(--line), 0 12px 40px var(--tint-black-280); }
+}

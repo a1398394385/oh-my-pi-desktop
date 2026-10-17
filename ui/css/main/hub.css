@@ -48,4 +48,4 @@
 .hub-usage .hub-cost { color: var(--statusLineCost, var(--accent)); }
 
 /* Roster rows */
-.hub-list { display: flex; flex-direction: column; gap: 7.5px; margin-top: 4px; }
+.hub-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }

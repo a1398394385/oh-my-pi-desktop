@@ -2,80 +2,58 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Desktop shell for omp (oh-my-pi). **Embedded-library architecture**: a single Bun host process embeds the `@oh-my-pi/pi-coding-agent` SDK and holds all sessions (an etower-agent-style session pool), instead of one `omp --mode rpc` child process per session — the latter costs ~210MB of base overhead per session (9 sessions ≈ 3GB); this approach measured 385MB total for 2 sessions in a single process.
+omp desktop is a cross-platform desktop client for omp (oh-my-pi), an AI coding agent. It puts the agent in a native window: chat with models, watch it edit files and run commands, and inspect context, diffs, and subagents along the way. The agent runtime ships inside the app — no separate omp CLI install needed.
 
-## Architecture
+## Why a single process
 
-```
-┌─ Tauri shell (src-tauri) ───────┐        ┌─ Bun host (host/) ────────────────┐
-│ Window + WKWebView loads        │        │ omp SDK embedded as a library     │
-│   ui/dist                       │        │ One process-wide base             │
-│ Spawns the host, forwards the   │ ────▶  │   (auth / model / settings)       │
-│   dynamic WS port               │        │ Map<sessionId, PoolEntry>         │
-│ Kills host on exit; watchdog    │        │ Sessions persisted under          │
-│   restarts at a limited rate    │        │   ~/.omp/agent/sessions/          │
-└─────────────────────────────────┘        └───────────────────────────────────┘
-        ▲ WebSocket (dynamic port)
-        └─────── ui/dist static build connects directly ──────────┘
-```
+Desktop shells for CLI agents usually spawn one child process per session. Each copy of the omp runtime carries roughly 210MB of base overhead, so nine open sessions approach 3GB.
 
-- A session is one `createAgentSession()` instance inside the host process; tools execute directly in the host, no host-tool bridge. Transcripts persist per-cwd (JSONL) and survive restarts
-- Frontend in `ui-src/` (React 19 + TypeScript + Vite + Tailwind v4 + zustand + streamdown + Lexical), build output in `ui/dist/`
-- `host/limits/`: provider plan quota lookup (21 providers, 34 omp provider ids); credentials are resolved via authStorage first (OAuth auto-renewal)
-- Profile isolation via `OMP_PROFILE`, default `default`; tests are forced onto `omp-desktop-test`
+omp desktop embeds the omp SDK as a library instead: one Bun host process holds every session in a pool and shares one auth/model/settings base across them. Two sessions in a single process measured 385MB total.
 
-## Running
+Sessions persist to disk as JSONL per working directory and survive restarts.
 
-```bash
-bun install
-bun run ui:build            # build the frontend first (no HMR in the desktop app; tauri dev loads the prebuilt bundle)
-OMP_DESKTOP_MODEL=deepseek/deepseek-flash bunx tauri dev   # the default model is a slow local one; overriding is recommended
-```
+## Features
 
-The host can be verified standalone (without Tauri):
+- Multiple concurrent sessions with a sidebar, plus a per-session entry tree
+- Streaming markdown rendering with syntax highlighting, CJK-aware line breaking, and mermaid diagrams
+- Multi-provider model access: sign in with OAuth (credentials auto-renewed) or configure an API key and base URL; in-app plan quota lookup covers 21 providers
+- Model roles (different models per role) and thinking budgets from Minimal to Max, including auto
+- Message queue — stack follow-up prompts while the agent works, and steer it mid-turn
+- Git integration: branch switching and diff review
+- Detail panel: context usage breakdown, file viewer, subagent inspector, terminal, and browser mirror
+- Paste screenshots or drag files straight into the composer
+- macOS notifications, system tray (closing the window hides it), and a single-instance lock
+- Automatic in-app updates (Settings → General → App → Check for Updates)
+- Six themes (dark, light, midnight, warm-paper, deep-think, coral) with an option to follow the system
+- UI in English and 简体中文
+- Automatic context compaction (ACP) and session keepalive for long-running work
+- Manage MCP servers, skills, memories, plugins, and hooks from Settings
 
-```bash
-bun scripts/smoke.ts               # full-chain smoke against a real model (create session → prompt → persist → load & resume)
-bun scripts/probe-sdk.ts           # assembly probe only
-bun scripts/probe-asset-sources.ts # how source toggles constrain the asset list
-```
+## Install
 
-Full-repo checks: `bun run check` (encoding gate / host boundary / architecture ratchet / style token gate / version consistency / typecheck). See `scripts/` for the smoke script list.
+Download a build from [Releases](https://github.com/a1398394385/oh-my-pi-desktop/releases/latest).
 
-## Releasing
+**macOS (Apple Silicon)** — open the `.dmg` and drag the app to Applications. Builds are ad-hoc signed, so the first launch needs one of:
 
-```bash
-bun run version:set 0.2.0        # version SSOT lives in src-tauri/tauri.conf.json, mirrored to Cargo.toml automatically
-git commit -am "release: 0.2.0"
-git tag v0.2.0 && git push origin main --tags
-```
+- Right-click the app → Open → Open, or
+- `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`
 
-The tag triggers `.github/workflows/release.yml`: it validates the tag against the version → builds per platform → publishes a draft Release (with updater artifacts and `latest.json`). **Review the draft and publish manually** — `releases/latest/download/` does not resolve while a release is in draft.
+**Windows (x64)** — run the `-setup.exe` (NSIS installer) or the `.msi`.
 
-One-time prerequisites:
+Updates are delivered in-app; you can also trigger a check manually under Settings → General → App → Check for Updates.
 
-- GitHub secret `TAURI_SIGNING_PRIVATE_KEY` = the **contents** (not the path) of `~/.tauri/omp-desktop.key`. **If this key is lost, already-installed users will never receive updates again.**
-- Client-side signing is ad-hoc (`APPLE_SIGNING_IDENTITY: "-"`). First-time installs need a right-click open, or `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`. Removing this step requires an Apple Developer ID ($99/year) plus notarization — see [ADR-0003](.agents/notes/0003-tauri-updater-auto-update.md).
+## Getting started
 
-Local packaging (outside CI) also needs the key; with `createUpdaterArtifacts: true` a missing key fails hard and produces no bundles:
-
-```bash
-# Windows (in git-bash, ~/.tauri is the .tauri folder under your home directory)
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
-bun x tauri build --config src-tauri/tauri.windows.conf.json
-
-# macOS
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
-APPLE_SIGNING_IDENTITY="-" bun x tauri build
-```
-
-The key generated on macOS also works on Windows (the key itself is platform-independent, empty password); when switching machines, copy `~/.tauri/omp-desktop.key` + `.pub` into `~/.tauri/` on the new machine.
-
-User-facing entry point: Settings → General → App → "Check for Updates".
+1. Launch the app and open Settings → Models to add a provider — the wizard walks you through OAuth sign-in or an API key with a base URL.
+2. Create a session, pick a project directory and a model, and start chatting.
+3. The agent reads and edits files, runs commands, and reports back in the conversation; use the detail panel to inspect what it did.
 
 ## Documentation
 
-- Dev constraints & site-wide conventions: [AGENTS.md](AGENTS.md)
-- Documentation writing & lifecycle: [docs/documentation.md](docs/documentation.md)
-- External-dependency pitfalls (omp SDK / Tauri / macOS): [docs/PITFALLS.md](docs/PITFALLS.md)
-- Bug ledger / anti-regression rules / ADRs: `.agents/` (entry [.agents/README.md](.agents/README.md))
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — architecture, running from source, releasing
+- [AGENTS.md](AGENTS.md) — repo conventions for contributors and agents
+- [docs/PITFALLS.md](docs/PITFALLS.md) — external-dependency pitfalls (omp SDK / Tauri / macOS)
+
+## License
+
+All rights reserved.

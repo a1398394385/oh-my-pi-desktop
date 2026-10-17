@@ -1,12 +1,16 @@
-// Right panel manual-browse page ("browser" tab): the original ZCode-style
-// embedded iframe browser — address bar + sandboxed iframe + open-external
-// fallback. The Agent live mirror (screencast) lives in MirrorPage.tsx
-// ("mirror" tab); shared URL/key helpers are exported for it.
-import { useEffect, useRef, useState } from "react";
+// Right panel browser page ("browser" tab): the merged manual + Agent browse
+// surface. Manual mode is the original ZCode-style embedded iframe browser —
+// address bar + sandboxed iframe + open-external fallback (kept mounted but
+// hidden in Agent mode so its navigation stack and the iframe survive mode
+// flips). Agent mode is the live screencast mirror (AgentBrowserView.tsx);
+// the host auto-flips the mode when the Agent starts browsing
+// (store/right.ts landBrowserTabs). Mode pills ride in each mode's toolbar.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
-import { invoke, toast, type TimerHandle } from "../../../store";
+import { useAppStore, invoke, toast, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
+import { AgentBrowserView } from "./AgentBrowserView";
 
 // ---------- URL normalization (simplified embeddedBrowserHelpers.normalizeBrowserUrl) ----------
 // Without a scheme: localhost/loopback/intranet IPs/explicit port -> http, others -> https
@@ -67,7 +71,43 @@ export async function openExternal(url: string) {
 }
 
 export default function BrowserPage() {
-  return <ManualBrowserView />;
+  const mode = useAppStore((s) => s.browserMode);
+  const tabs = useAppStore((s) => s.browserTabs);
+  const activePath = useAppStore((s) => s.activePath);
+  // Session-scoped list: only the displayed session's tabs show in Agent mode.
+  // Tabs without a matching ownerPath (other sessions / unowned) are filtered out.
+  const myTabs = useMemo(() => tabs.filter((tb) => tb.ownerPath === activePath), [tabs, activePath]);
+  return (
+    <div className="bpane">
+      {/* Agent mode mounts/unmounts with the mode: unmount unsubscribes the host screencast */}
+      {mode === "agent" && <AgentBrowserView tabs={myTabs} others={tabs.length - myTabs.length} />}
+      {/* Manual view stays mounted (hidden in Agent mode) so its navigation stack
+          and the iframe survive mode flips without a reload */}
+      <div className="bpane-manual" hidden={mode === "agent"}>
+        <ManualBrowserView />
+      </div>
+    </div>
+  );
+}
+
+// Mode switch shared by both toolbars (Agent live mirror vs manual iframe).
+// Labels reuse the tab/pill i18n keys; the selected pill follows .mcp-type-pill.on.
+export function BrowserModePills() {
+  const { t } = useTranslation();
+  const mode = useAppStore((s) => s.browserMode);
+  const setBrowserMode = useAppStore((s) => s.setBrowserMode);
+  return (
+    <div className="mcp-type-pills">
+      <button className={"mcp-type-pill" + (mode === "agent" ? " on" : "")} onClick={() => setBrowserMode("agent")}>
+        <span className="bmode-full">{t("right.tabAgentBrowser")}</span>
+        <span className="bmode-short">{t("right.tabAgentBrowserShort")}</span>
+      </button>
+      <button className={"mcp-type-pill" + (mode === "manual" ? " on" : "")} onClick={() => setBrowserMode("manual")}>
+        <span className="bmode-full">{t("right.modeManual")}</span>
+        <span className="bmode-short">{t("right.modeManualShort")}</span>
+      </button>
+    </div>
+  );
 }
 
 // ---------- Manual browse view (original embedded iframe browser) ----------
@@ -168,9 +208,10 @@ function ManualBrowserView() {
   };
 
   return (
-    <div className="bpane">
-      {/* Toolbar: back / forward / reload / address bar / open external / more */}
+    <>
+      {/* Toolbar: mode pills / back / forward / reload / address bar / open external / more */}
       <div className="bpane-bar">
+        <BrowserModePills />
         <button className="icon-btn" title={t("right.back")} disabled={!canBack} onClick={goBack}>
           <Icon name="back" size={14} />
         </button>
@@ -277,6 +318,6 @@ function ManualBrowserView() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

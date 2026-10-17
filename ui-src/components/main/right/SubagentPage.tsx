@@ -33,7 +33,7 @@ export default function SubagentPage() {
     return <div className="py-3 text-faint text-ui-base">{t("right.noSubagents")}</div>;
   }
   if (selectedSubagent && s.subagents.has(selectedSubagent)) {
-    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} sessionId={s.sessionId} />; // the has() on the previous line guarantees presence
+    return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} subagentId={selectedSubagent} sessionId={s.sessionId} />; // the has() on the previous line guarantees presence
   }
   return (
     <div className="hub-list">
@@ -90,7 +90,7 @@ function SubCard({ id, sub, sessionId }: { id: string; sub: SubagentState; sessi
 // Detail: back-to-list pinned at top; the Agent Hub inspector (shared with the hub tab's
 // linked detail page) scrolls beneath it. Back switches immediately (same as the gitdiff /
 // file details — no collapse animation)
-function SubagentDetail({ sub, sessionId }: { sub: SubagentState; sessionId: string }) {
+function SubagentDetail({ sub, sessionId, subagentId }: { sub: SubagentState; sessionId: string; subagentId: string }) {
   const { t } = useTranslation();
   useTick(!!sub.streaming);
   // The pulse flag is read via getState at render (not subscribed): setting it rides the
@@ -106,7 +106,7 @@ function SubagentDetail({ sub, sessionId }: { sub: SubagentState; sessionId: str
         </button>
       </div>
       <div className={"rb-scroll" + (kids ? " kids-in" : "")}>
-        <HubDetail sub={sub} sessionId={sessionId} t={t} />
+        <HubDetail sub={sub} subagentId={subagentId} sessionId={sessionId} t={t} />
       </div>
     </>
   );

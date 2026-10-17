@@ -53,9 +53,10 @@ export function clearDraftState(key: string): void {
 
 // Cleared-draft stash (per composer slot, module-level = gone at app exit):
 // Double-Esc clears push the draft here while the
-// composer.recallClearedDrafts setting is on; Ctrl+↑/Ctrl+↓ walk it back into
-// the composer. cursor -1 = the live draft (browsing base snapshot), 0..n-1 =
-// stash entries oldest-to-newest.
+// composer.recallClearedDrafts setting is on; with an empty input, plain ↑
+// enters history-browse and ↑/↓ walk it back into the composer (any user
+// edit exits the mode). cursor -1 = the live draft (browsing base snapshot),
+// 0..n-1 = stash entries oldest-to-newest.
 export interface ClearedDraft {
   text: string;
   files: PendingFile[];
@@ -70,6 +71,17 @@ export function stashClearedDraft(key = "welcome"): void {
   st.cursor = -1;
   st.snapshot = null;
   clearedStash.set(key, st);
+}
+
+// Re-arm browsing at the live-draft base without pushing anything: used when
+// the empty-input ↑ enters history-browse, so each entry starts at the newest
+// stash item and ↓ can come back to the (empty) snapshot.
+export function resetClearedDraftCursor(key = "welcome"): void {
+  const st = clearedStash.get(key);
+  if (st) {
+    st.cursor = -1;
+    st.snapshot = null;
+  }
 }
 
 // Move the browsing cursor one step (dir 1 = older, -1 = newer) and return the

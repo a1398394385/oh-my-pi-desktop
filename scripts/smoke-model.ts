@@ -1,5 +1,6 @@
 // Model/thinking-level switch smoke test: create -> set_model(deepseek) -> set_thinking(low) -> one chat round to confirm it works.
 // Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-model.ts
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -14,7 +15,7 @@ function fail(msg: string): never {
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "inherit"],
 });
 const wsUrl = await new Promise<string>((resolve, reject) => {

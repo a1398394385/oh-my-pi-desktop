@@ -135,6 +135,26 @@ export interface SessionListFrame {
   defaultWorkspace?: string;
 }
 
+/** Pool residency snapshot (state.ts pushPoolSnapshot): every session the host still holds in memory */
+export interface PoolSessionsFrame {
+  type: "pool_sessions";
+  sessions: { id: string; path: string; cwd: string; title: string | null }[];
+}
+
+/** Sidebar full-text search hits (host/rpc/session.ts search_session_text): match inside a user prompt or agent reply */
+export interface SessionTextSearchFrame {
+  type: "session_text_search";
+  query: string; // echo of the request; the UI drops a frame whose query no longer matches the input
+  hits: {
+    path: string;
+    id: string;
+    cwd: string;
+    title: string | null;
+    modified: string; // ISO
+    snippet: string;
+  }[];
+}
+
 /** session_unload receipt: the session left the host's in-memory pool (disk file untouched) */
 export interface SessionUnloadedFrame {
   type: "session_unloaded";
@@ -430,13 +450,14 @@ export interface GitStatusFrame {
   files: GitStatusFile[];
 }
 
-/** Branch list reply (host/host.ts not a git repo / 1502 normal) */
+/** Branch list reply (host/rpc/files.ts not a git repo / get_git_branches normal) */
 export interface GitBranchesFrame {
   type: "git_branches";
   cwd: string;
   isGit: boolean;
   current: string | null;
   branches: string[];
+  remotes: string[]; // remote-tracking refs, "origin/xxx" form (local refs/remotes snapshot; symbolic */HEAD dropped)
 }
 
 /** Branch switch reply (host/host.ts; failures go through the error frame) */

@@ -176,6 +176,18 @@ ok((document.querySelector(".ask-page")?.textContent ?? "").includes("1 / 2"), "
 const back = [...document.querySelectorAll(".ask-opt input")] as HTMLInputElement[];
 ok(back[1]?.checked === true, "page-1 pick (滚动发布) survived the flip");
 
+// ---- Arrow keys on a single-choice page move the cursor without answering ----
+// Landing on a row still checks it (the checked plate is the row highlight),
+// but the move must not settle the page: arrows only navigate, Enter commits.
+const sentBeforeArrows = sent.length;
+back[0]?.focus();
+press(back[0]!, "ArrowDown");
+await sleep(50);
+ok(document.activeElement === back[1], "ArrowDown moves the single-choice cursor A -> B");
+ok(back[1]?.checked === true, "the cursor row is checked");
+ok((document.querySelector(".ask-page")?.textContent ?? "").includes("1 / 2"), "ArrowDown does not auto-advance the page");
+ok(sent.length === sentBeforeArrows, "ArrowDown does not submit");
+
 // ---- Digit keys quick-pick: "1" answers option A and auto-advances the page ----
 press(back[0]!, "1");
 await sleep(50);

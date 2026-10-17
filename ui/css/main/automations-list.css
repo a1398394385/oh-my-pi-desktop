@@ -62,9 +62,12 @@
   position: relative; cursor: pointer;
   display: flex; gap: 10px; align-items: flex-start;
   min-height: 118px; padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent); border-radius: 12px; background: none;
+  border: 1px solid transparent; border-radius: 12px; background: none;
+  /* border color lives in the inset ring so hover can lift it paint-only (no reflow) */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 55%, transparent);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
-.al-card:hover { border-color: var(--line); }
+.al-card:hover { box-shadow: inset 0 0 0 1px var(--line); }
 /* House focus ring (global controls rule covers .icon-btn/.add-btn/.tg already) */
 .al-card:focus-visible, .al-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -118,4 +121,14 @@
   margin-top: 8px; padding: 12px 14px;
   border: 1px solid var(--line-soft); border-radius: 10px;
   font-size: var(--ui-fs-sm); color: var(--faint);
+}
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .al-card { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--line) 55%, transparent); }
+  .al-card:hover { box-shadow: inset 0 0 0 .5px var(--line); }
+}
+@media (min-resolution: 3dppx) {
+  .al-card { box-shadow: inset 0 0 0 .33px color-mix(in srgb, var(--line) 55%, transparent); }
+  .al-card:hover { box-shadow: inset 0 0 0 .33px var(--line); }
 }

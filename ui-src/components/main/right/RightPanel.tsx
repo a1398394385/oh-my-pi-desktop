@@ -12,6 +12,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../../../store";
 import Icon from "../../../Icon";
+import { toggleRightPanel } from "../../../shell";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
 import {
   TAB_META,
@@ -27,7 +28,6 @@ import FilePage from "./FilePage";
 import BgCmdPage from "./BgCmdPage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
-import MirrorPage from "./MirrorPage";
 import BtwPage from "./BtwPage";
 import { CapsDock } from "../../chat/CapsCard";
 import { t } from "../../../i18n";
@@ -239,6 +239,8 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const fileView = useAppStore((st) => st.fileView);
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
   const gitViewMode = useAppStore((st) => st.gitViewMode);
+  const narrow = useAppStore((st) => st.narrow);
+  const setMobileCol = useAppStore((st) => st.setMobileCol);
   const [ovOpen, setOvOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -335,7 +337,6 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "file") body = <FilePage />;
   else if (rightTab === "terminal") body = <TerminalPage />;
   else if (rightTab === "browser") body = <BrowserPage />;
-  else if (rightTab === "mirror") body = <MirrorPage />;
   else if (rightTab === "btw") body = <BtwPage />;
   else body = <SubagentPage />;
   return (
@@ -345,6 +346,13 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
         <div className="sp-head" ref={headRef} data-tauri-drag-region="">
+          {/* Narrow: the panel is a full page — back to the chat on the left edge (ZCode's
+              side-pane page). Desktop keeps the tab-overview trigger first. */}
+          {narrow && (
+            <button className="icon-btn shrink-0" title={t("remote.backToChat")} onClick={() => setMobileCol("main")}>
+              <Icon name="chevronLeft" />
+            </button>
+          )}
           <Tip label={t("right.tabOverview")}>
             <button
               className="icon-btn"
@@ -412,6 +420,16 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
               </button>
             </Tip>
            )}
+          {/* Collapse button pins to the panel's top-right corner (the expand
+              button takes its exact spot on the center topbar while collapsed).
+              Narrow is a full page: leaving it goes through the header back button. */}
+          {!collapsed && !narrow && (
+            <Tip label={t("misc.collapseRightPanel")}>
+              <button className="icon-btn shrink-0" onClick={toggleRightPanel}>
+                <Icon name="collapseRight" />
+              </button>
+            </Tip>
+          )}
           {IS_WINDOWS && !collapsed && <WindowControls />}
           {ovOpen && <TabOverview onClose={() => setOvOpen(false)} />}
           {addOpen && (

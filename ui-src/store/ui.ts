@@ -29,6 +29,7 @@ export interface UiSlice {
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
+  newSessionRemotes: string[]; // remote-tracking branches from the same frame ("origin/xxx" form, listed under a separator)
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
@@ -38,7 +39,7 @@ export interface UiSlice {
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   // Git branch chip in the main-column header (MainHeader): branches of the ACTIVE session's
   // cwd, landed from the same git_branches frame as the new-session picker (cwd-routed)
-  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[] } | null;
+  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[]; remotes: string[] } | null;
   fileSeq: number;
   animateGdKids: boolean;
   animateThinkBody: boolean;
@@ -88,6 +89,10 @@ export interface UiSlice {
   hubWarming: string | null; // sessionId with a cache-warming run in flight (cache_warming frame; landed by landCacheWarming)
   /** Full-window boot veil: true from launch until the first session_list frame (preview mode clears it at mount); covers the welcome page's "/" placeholder window during host cold start. */
   bootSplash: boolean;
+  /** Global search palette (⌘⇧F / sidebar search button): settings items + sessions */
+  paletteOpen: boolean;
+  openPalette(): void;
+  closePalette(): void;
   toast(msg: unknown, error?: boolean): void;
   openHub(): void;
   closeHub(): void;
@@ -159,6 +164,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionBranch: "",
   headerGit: null,
   newSessionBranches: [],
+  newSessionRemotes: [],
   newSessionIsGit: false,
   newSessionModel: "",
   newSessionThinking: "auto",
@@ -203,6 +209,15 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   uiPrefs: uiPrefsInit,
   hubWarming: null,
   bootSplash: true,
+  paletteOpen: false,
+
+  openPalette() {
+    set({ paletteOpen: true });
+  },
+
+  closePalette() {
+    set({ paletteOpen: false });
+  },
 
   openHub() {
     const st = get();
@@ -324,6 +339,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       newSessionIsGit: false,
       newSessionBranch: "",
       newSessionBranches: [],
+      newSessionRemotes: [],
     }));
     get().send({ type: "get_git_branches", cwd });
     // New-session MCP warm-up: the project is known the moment the user starts
@@ -352,10 +368,16 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       }
     }
     const validLevels = getSupportedThinkingForModel(newSessionModel);
+    // The model's own default (enabledModels ":level" suffix) outranks the global
+    // defaultThinkingLevel — same precedence as pickModelId and the host's
+    // set_model, otherwise a fresh session ignores the per-model setting.
+    const configDefault = modelDefaultThinking(newSessionModel) ?? st.defaultThinkingCfg;
     let th =
-      force && st.defaultThinkingCfg
-        ? st.defaultThinkingCfg
+      force && configDefault
+        ? configDefault
         : st.newSessionThinking || localStorage.getItem("omp-new-thinking") || "auto";
+    // `auto` withheld from the menu (Kimi switch off) pins to high, like pickModelId
+    if (th === "auto" && !validLevels.includes("auto")) th = "high";
     if (!validLevels.includes(th)) {
       th = validLevels.includes("auto") ? "auto" : validLevels[0] || "auto";
     }

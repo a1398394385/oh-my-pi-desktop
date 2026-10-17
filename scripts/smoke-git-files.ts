@@ -8,6 +8,7 @@
 //   5. get_file_diff: tracked goes through git diff HEAD; untracked goes through --no-index as pure additions
 //   6. switch_git_branch: switch acknowledgment + re-query shows the changed current; switch back to main
 // Zero model calls; exits when done.
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,7 +30,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }, // fixture-only host: git calls dodge the global hooksPath too
+    env: smokeEnv({ GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }), // fixture-only host: git calls dodge the global hooksPath too
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

@@ -72,19 +72,16 @@ function upsertRegistry(sessionId: string, name: string, status: "connected" | "
 const stale = (entry: PoolEntry, gen: number): boolean => entry.mcpMountGen !== gen;
 
 function pushMcpFrame(sessionId: string, entry: PoolEntry): void {
-  // Same narrowing pattern as state.ts stampEvent: attachedWs is unknown at the type level
-  const ws = entry.attachedWs as { send(data: string): unknown } | null;
-  if (!ws) return;
+  if (entry.uiSockets.size === 0) return;
   const mounted = mountedRegistry.get(sessionId);
-  ws.send(
-    JSON.stringify(
-      stampEvent({
-        type: "capabilities_mcp",
-        sessionId,
-        mcp: mounted ?? { servers: [], tools: 0 },
-      }),
-    ),
+  const data = JSON.stringify(
+    stampEvent({
+      type: "capabilities_mcp",
+      sessionId,
+      mcp: mounted ?? { servers: [], tools: 0 },
+    }),
   );
+  for (const ws of entry.uiSockets) ws.send(data);
 }
 
 /** Capabilities snapshot source (capabilities.ts consumes this) */

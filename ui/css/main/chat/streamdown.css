@@ -132,7 +132,7 @@
   color: var(--faint) !important;
   line-height: 0 !important;
   cursor: pointer !important;
-  transition: background .12s var(--swift), color .12s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .md-body [data-streamdown="code-block-wrap-button"] {
@@ -149,7 +149,7 @@
   color: var(--faint) !important;
   line-height: 0 !important;
   cursor: pointer !important;
-  transition: background .12s var(--swift), color .12s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .md-body [data-streamdown="code-block-wrap-button"] > span {

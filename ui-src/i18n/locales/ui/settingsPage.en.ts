@@ -32,6 +32,7 @@ export const settingsPageEn = {
     developer: "Developer",
     advanced: "Advanced",
     experimental: "Experimental",
+    remote: "Remote Control",
     stats: "Usage Stats",
   },
   // ---- Settings shell: back button, search box, resizer (Settings.tsx) ----
@@ -44,6 +45,28 @@ export const settingsPageEn = {
     searchCount_other: "Found {{count}} settings",
     searchEmpty: "No matching settings",
     dragResize: "Drag to resize",
+  },
+  // ---- Remote control page (RemotePage.tsx) ----
+  remote: {
+    groupDesc: "Access this app from a browser on any LAN device: once enabled, open the access link on the device to operate it (send prompts, approve, browse sessions and the right rail). Only one remote connection is allowed at a time — a newer connection takes over from the previous one.",
+    enabledTitle: "Enable remote control",
+    enabledDesc: "Starts the remote service on this machine listening on the port below; disabling it disconnects remote clients.",
+    portTitle: "Listen port",
+    portDesc: "TCP port the remote service binds to (1-65535); saving rebinds and restarts the remote service immediately.",
+    portSave: "Save",
+    keyTitle: "Access key",
+    keyDesc: "Credential for remote clients, masked here; regenerating invalidates old access links immediately.",
+    keyCopy: "Copy access link",
+    keyCopied: "Access link copied",
+    keyRegen: "Regenerate",
+    keyRegenConfirm: "Regenerate the access key?",
+    keyRegenMsg: "Old access links stop working immediately; already-connected clients are unaffected.",
+    statusTitle: "Service status",
+    statusDesc: "Current state of the remote service; shows the error detail when a rebind or start fails.",
+    statusListening: "Listening",
+    statusStopped: "Disabled",
+    statusError: "Error",
+    statusUnknown: "Unknown",
   },
   // ---- Login banner + paste-code prompt (common.tsx) ----
   login: {
@@ -144,8 +167,8 @@ export const settingsPageEn = {
     fontMono: "Monospace",
     fontSizeTitle: "Font size",
     fontSizeDesc: "Adjust the global text size (except code blocks and Git diffs).",
-    motionTitle: "Reduce motion",
-    motionDesc: "Follow the system reduce-motion setting, or force enable / disable reduced motion in the app (currently affects loading spinners).",
+    motionTitle: "Motion",
+    motionDesc: "Follow the system reduce-motion setting, or force-enable / disable in-app motion.",
     motionSystem: "System",
     motionOn: "On",
     motionOff: "Off",
@@ -1774,8 +1797,6 @@ export const settingsPageEn = {
   },
   // ---- Desktop alerts section (InteractionPage) ----
   alerts: {
-    group: "Desktop alerts",
-    groupDesc: "Alert you when a session finishes in the background, waits for approval, or fails. The sidebar's unread dots are unaffected.",
     desktopTitle: "System notification",
     desktopDesc: "Alert through the system notification center. macOS asks for permission on first use (the system refuses unsigned builds — only the alert sound works then).",
     permTitle: "Notification permission",

@@ -124,7 +124,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     askQs.map((q) => (q.multi ? [] : [q.recommended !== undefined && q.recommended >= 0 ? q.recommended : 0])),
   );
   const picksRef = useRef(picks);
-  const togglePick = (qi: number, oi: number, multi: boolean | undefined) => {
+  const togglePick = (qi: number, oi: number, multi: boolean | undefined, advance = true) => {
     if (answered) return;
     // Single questions are exclusive with their "Other" row: picking an
     // option drops a pending custom answer
@@ -144,8 +144,10 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     // or settle the whole form when the pick lands on the last page (with no
     // further page there is nothing to advance to — an advance-only path left
     // the mouse without a submit, so a one-question ask could not be answered
-    // by clicking its option at all)
-    if (!multi) advanceOrSubmit();
+    // by clicking its option at all). Keyboard cursor moves pass advance=false
+    // and settle the page themselves with Enter — auto-advancing on every
+    // arrow press skipped options and submitted on the last one.
+    if (!multi && advance) advanceOrSubmit();
   };
   // "Other (type your own)" row per question (base-parity with the TUI dialog):
   // single = exclusive with the options (toggling it clears the pick), multi =
@@ -449,7 +451,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         row.focus();
         const qi = row.getAttribute("data-qi");
         const oi = row.getAttribute("data-oi");
-        if (qi !== null && oi !== null && !askQs[Number(qi)]?.multi) togglePick(Number(qi), Number(oi), false);
+        if (qi !== null && oi !== null && !askQs[Number(qi)]?.multi) togglePick(Number(qi), Number(oi), false, false);
       } else {
         // Option listbox: the same stepping the in-card rows use (disabled rows skipped)
         const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));

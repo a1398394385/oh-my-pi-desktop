@@ -3,31 +3,26 @@
   background: var(--ctl-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  box-shadow: 0 12px 32px var(--tint-black-500);
+  box-shadow: var(--shadow-popover);
   padding: 12px 12px 14px;
   min-width: 192px; /* 240px × 0.8 */
   font-size: var(--ui-fs-base); color: var(--dim);
   animation: ringpop .18s ease-out; /* progressive render: fade in + slide up, not an instant flash */
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) .ring-pop { box-shadow: 0 12px 32px var(--tint-black-180); }
 .ring-pop b { color: var(--text); font-weight: 500; }
 
 .confirm-box {
   background: var(--ctl-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  box-shadow: 0 12px 32px var(--tint-black-500);
+  box-shadow: var(--shadow-popover);
   padding: 16px 18px 14px;
   width: 320px;
   max-width: calc(100vw - 48px);
   animation: ringpop .18s ease-out;
   display: flex; flex-direction: column; gap: 10px;
   box-sizing: border-box;
-}
-
-:is([data-theme="light"], [data-theme-mode="light"]) .confirm-box {
-  box-shadow: 0 12px 32px var(--tint-black-180);
 }
 
 .confirm-title {
@@ -109,12 +104,11 @@
   background: var(--ctl-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  box-shadow: 0 12px 32px var(--tint-black-500);
+  box-shadow: var(--shadow-popover);
   padding: 5px; min-width: 170px;
   animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) .ctx-menu { box-shadow: 0 12px 32px var(--tint-black-180); }
 .ctx-menu button {
   border: none; background: none;
   text-align: left; font-size: var(--ui-fs-base);
@@ -133,11 +127,10 @@
   background: var(--panel-2); border: 1px solid var(--line);
   color: var(--text); font-size: var(--ui-fs-base);
   padding: 8px 16px; border-radius: 999px;
-  box-shadow: 0 8px 24px var(--tint-black-500);
+  box-shadow: var(--shadow-popover);
   z-index: 400; white-space: nowrap;
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) #toast { box-shadow: 0 8px 24px var(--tint-black-180); }
 
 /* Error toast (toast(msg, true)): --err tinted border + leading red icon; the
    icon carries the color, the text stays --text for readability. */

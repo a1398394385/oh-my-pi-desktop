@@ -3,6 +3,7 @@
 // landing. Moved over from store.ts (P3 wave 2).
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
+import { REMOTE } from "./ws";
 import type {
   ProviderAccountsFrame,
   ProviderLimitsResultFrame,
@@ -26,6 +27,16 @@ import type {
 import type { Automation, AutomationRun } from "../lib/automations";
 import type { MemoryDetailState } from "../types/session";
 import type { SchemaDef } from "../types/settings";
+
+/** Remote-control service state (spec §3.2). Fields mirror the settings frame's remote segment /
+ * the remote_config reply; key/url ride along from the settings frame and the remote_key reply. */
+export interface RemoteConfigState {
+  enabled?: boolean;
+  port?: number;
+  error?: string | null; // last set_remote_config failure; null/undefined = healthy
+  key?: string; // full access key (settings frame / remote_key reply)
+  url?: string; // prebuilt http://<lan-ip>:<port>/?t=<key> (host resolves the LAN IP; absent if unknown)
+}
 
 export interface SettingsSlice {
   settingsOpen: boolean; // fullscreen overlay open state
@@ -72,6 +83,10 @@ export interface SettingsSlice {
   automations: Automation[]; // automations_list snapshot (host/rpc/automations.ts; empty until the first reply)
   automationRuns: Record<string, AutomationRun[]>; // runs history keyed by automation id (≤10 each, newest first)
   automationPreview: number[] | null; // automations_preview reply: up to 3 future trigger times for the editor form
+  // Remote control (spec §3.2): SSOT for the settings page. Seeded from the `remote` segment
+  // of the settings frame (SettingsPayload.remote), then updated by remote_config / remote_key
+  // replies; `error` is the last set_remote_config failure (service kept its previous state).
+  remoteConfig: RemoteConfigState | null;
   openSettings(pageId?: string): void;
   closeSettings(): void;
   refreshSettingsData(): void;
@@ -121,9 +136,13 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   automations: [],
   automationRuns: {},
   automationPreview: null,
+  remoteConfig: null,
   memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "idle", content: "", error: null },
 
   openSettings(pageId = "pg-general") {
+    // Remote mode (spec §4.2): no settings surface on remote clients; host denylist is the
+    // backstop, this only hides the entry points (Sidebar button is likewise not rendered)
+    if (REMOTE) return;
     set((s) => ({ settingsOpen: true, settingsPage: pageId }));
   },
   closeSettings() {

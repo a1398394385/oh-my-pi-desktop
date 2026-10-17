@@ -5,7 +5,7 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import { expandRightPanel, closeRightTab } from "../components/main/right/tabs";
+import { expandRightPanel } from "../components/main/right/tabs";
 import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
@@ -20,7 +20,7 @@ export interface RightSlice {
   fileViewPending: string | null; // file path with a request in flight
   briefDiffPending: string | null; // inline diff path with a request in flight
   todoCollapsed: boolean;
-  capsCardCollapsed: boolean; // capabilities card folded (float shape → capsule; right-panel docked shape → section rail)
+  capsCardCollapsed: boolean; // right-panel capabilities card folded to its slim rail
   rightState: RightState;
   gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
@@ -32,7 +32,9 @@ export interface RightSlice {
   browserTabs: BrowserTabInfo[]; // Agent built-in browser tabs (process-global mirror list, host browser_tabs pushes)
   browserViewTab: string | null; // tab name the live view mirrors
   browserPinned: boolean; // user picked a tab by hand; suspends follow-the-agent
+  browserMode: "agent" | "manual"; // merged browser page mode: Agent live mirror vs manual iframe browse
   setBrowserViewTab(name: string | null, pinned: boolean): void;
+  setBrowserMode(mode: "agent" | "manual"): void;
   refreshGitDiff(force?: boolean): void;
   fetchCapabilities(): void;
 }
@@ -72,12 +74,16 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   browserTabs: [],
   browserViewTab: null,
   browserPinned: false,
+  browserMode: "manual",
 
   // Live-view tab selection: pin=true marks an explicit user pick (suspends
   // follow-the-agent); the host switches the mirrored screencast target.
   setBrowserViewTab(name, pinned) {
     useAppStore.setState({ browserViewTab: name, browserPinned: pinned });
     if (name) get().send({ type: "browser_mirror_select", name });
+  },
+  setBrowserMode(mode) {
+    useAppStore.setState({ browserMode: mode });
   },
   /** Write to the edit-row diff cache and evict the least-recently-used file (the value may be undefined: a placeholder meaning "requested, awaiting reply") */
   setBriefDiff(path, diff) {
@@ -173,10 +179,12 @@ function loadRightSlots(): Map<string, RightSlot> {
       // The auto-injected "hub" tab is never restored: hubOpen is runtime-only, so every
       // launch starts hubless and a persisted row carrying the tab would render the hub
       // detail page with no hub behind it (rows written by older builds included it).
-      const rest = p.tabs.filter((t) => t !== "hub");
+      // Same for "mirror": the Agent browser view merged into the "browser" tab, so a
+      // persisted mirror tab would render the subagent fallback body.
+      const rest = p.tabs.filter((t) => t !== "hub" && t !== "mirror");
       out.set(path, {
         tabs: rest,
-        active: p.active === "hub" ? rest[rest.length - 1] ?? null : p.active ?? null,
+        active: p.active === "hub" || p.active === "mirror" ? rest[rest.length - 1] ?? null : p.active ?? null,
         recentClosed: p.recentClosed ?? [],
         selectedFile: p.selectedFile ?? null,
         fileView: p.fileView ?? null,
@@ -342,20 +350,6 @@ export function openTabInSlot(path: string, name: string): void {
   persistRightSlots();
 }
 
-/** Remove tab `name` from background session `path`'s slot (mirror auto-close
- *  on the owner's drain edge). Neighbor fallback and the last-tab collapse
- *  mirror the foreground closeRightTab semantics. */
-export function closeTabInSlot(path: string, name: string): void {
-  const slot = rightSlots.get(path);
-  if (!slot) return;
-  const i = slot.tabs.indexOf(name);
-  if (i < 0) return;
-  slot.tabs = slot.tabs.filter((t) => t !== name);
-  if (slot.active === name) slot.active = slot.tabs[Math.min(i, slot.tabs.length - 1)] ?? null;
-  if (slot.tabs.length === 0) slot.collapsed = true;
-  persistRightSlots();
-}
-
 /** Clear every slot (profile switch = different session universe, paths no longer
  *  trustworthy); disposers run — host resources die with the table. */
 export function clearRightSlots(): void {
@@ -374,10 +368,12 @@ const browserOwnerLatch = new Set<string>();
 
 /** Land a browser_tabs push: store the global list, then surface per-owner
  *  activation edges (a session's first tab) — the displayed session's edge
- *  opens the mirror right panel; a background session's edge pre-opens the
- *  mirror inside ITS slot without touching the displayed panel. The drain
- *  edge (a session's last tab closing) auto-closes that session's mirror tab
- *  the same way a manual close would. */
+ *  opens the browser right panel in Agent mode; a background session's edge
+ *  pre-opens the browser inside ITS slot without touching the displayed
+ *  panel. The drain edge (a session's last tab closing) drops the displayed
+ *  panel back to Manual mode; the browser tab itself is never auto-closed
+ *  (unlike the old standalone mirror tab, the merged one may carry a manual
+ *  browsing session). */
 export function landBrowserTabs(tabs: BrowserTabInfo[]): void {
   useAppStore.setState({ browserTabs: tabs });
   const owners = new Set<string>();
@@ -389,27 +385,28 @@ export function landBrowserTabs(tabs: BrowserTabInfo[]): void {
     if (browserOwnerLatch.has(owner)) continue;
     browserOwnerLatch.add(owner);
     if (owner === st.activePath) {
-      if (st.rightTab !== "mirror" || !st.rightTabs.includes("mirror") || st.rightCollapsed) {
+      useAppStore.setState({ browserMode: "agent" });
+      if (st.rightTab !== "browser" || !st.rightTabs.includes("browser") || st.rightCollapsed) {
         // expandRightPanel owns the expand invariants (todoCollapsed yield +
         // stale selection cleanup) that the inline openRightTab+setState pair missed
-        expandRightPanel("mirror");
+        expandRightPanel("browser");
       }
     } else {
-      openTabInSlot(owner, "mirror");
+      openTabInSlot(owner, "browser");
     }
   }
   for (const prev of browserOwnerLatch) {
     if (owners.has(prev)) continue;
     browserOwnerLatch.delete(prev);
-    // Drain edge: close the mirror tab through the regular path (last-tab
-    // close collapses the panel there); background owners close in-slot.
-    if (prev === st.activePath) closeRightTab("mirror");
-    else closeTabInSlot(prev, "mirror");
+    // Drain edge: leave Agent mode (Manual shows when the displayed owner drained)
+    if (prev === st.activePath && st.browserMode === "agent") {
+      useAppStore.setState({ browserMode: "manual" });
+    }
   }
 }
 
 /** Drop mirror UI state (host restart ready frame: the old list is stale until the next subscribe). */
 export function resetBrowserMirrorUi(): void {
   browserOwnerLatch.clear();
-  useAppStore.setState({ browserTabs: [], browserViewTab: null, browserPinned: false });
+  useAppStore.setState({ browserTabs: [], browserViewTab: null, browserPinned: false, browserMode: "manual" });
 }

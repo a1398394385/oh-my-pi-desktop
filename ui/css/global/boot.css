@@ -41,7 +41,7 @@
   border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: bsSpin .9s linear infinite;
+  animation: spin .9s linear infinite;
 }
 
 .bs-skip {
@@ -52,10 +52,8 @@
 
 @keyframes bsFade { from { opacity: 0; } }
 
-@keyframes bsSpin { to { transform: rotate(360deg); } }
-
 @media (prefers-reduced-motion: reduce) {
-  #bootSplash { animation: none; }
-  #bootSplash.out { transition: none; }
-  .bs-spin { animation-duration: 2.4s; }
+  html:not([data-motion="on"]) #bootSplash { animation: none; }
+  html:not([data-motion="on"]) #bootSplash.out { transition: none; }
+  html:not([data-motion="on"]) .bs-spin { animation-duration: 2.4s; }
 }

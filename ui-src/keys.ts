@@ -396,6 +396,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: [MOD, ","], get label() { return t("misc.keysToggleSettings"); } },
       { keys: ["Esc"], get label() { return t("misc.keysCloseOverlays"); } },
       { keys: [MOD, "F"], get label() { return t("misc.keysFindInSession"); } },
+      { keys: [MOD, "⇧", "F"], chords: ["shift+meta+f", "meta+shift+f"], get label() { return t("misc.keysSearchPalette"); }, run: () => useAppStore.getState().openPalette() },
       { keys: [MOD, "Alt", "B"], chords: ["alt+meta+b", "meta+alt+b"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
     ],
   },
@@ -427,7 +428,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["Ctrl", "↵"], get label() { return t("misc.keysSteer"); } },
       { keys: ["Ctrl", "Q"], get label() { return t("misc.keysQueue"); } },
       { keys: ["Alt", "↑"], get label() { return t("misc.keysRecall"); } },
-      { keys: ["Ctrl", "↑/↓"], get label() { return t("misc.keysRecallCleared"); } },
+      { keys: ["↑", "↓"], get label() { return t("misc.keysRecallCleared"); } },
     ],
   },
   {

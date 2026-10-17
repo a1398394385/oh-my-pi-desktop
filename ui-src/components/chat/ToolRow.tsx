@@ -226,7 +226,9 @@ function taskSummary(item: ToolItem): string {
   return typeof args.task === "string" ? args.task.split("\n")[0].trim() : "";
 }
 function renderTask(item: ToolItem) {
-  return <ExpandableRow item={item} iconName="agents" label={t("chat.labelTask")} summary={taskSummary(item) || item.text || ""} />;
+  // No `item.text` fallback: that is the bare tool name ("task"), which the label already
+  // says — the row reads "Subagent ⟦agent⟧" / "Subagent 3 subagents" / plain "Subagent".
+  return <ExpandableRow item={item} iconName="agents" label={t("chat.labelTask")} summary={taskSummary(item)} />;
 }
 // Yield row: a subagent submitting its structured result (the base's YieldTool). The summary
 // is the submission itself — failure reason, incremental section labels, workpool key, or a
@@ -415,13 +417,18 @@ function renderSessionContext(item: ToolItem) {
   return <ExpandableRow item={item} iconName="search" label={t("chat.labelSessionContext")} summary={summary || item.text || ""} />;
 }
 // ---------- ACP context-management rows (host/acp-status-tool.ts · acp-assembly.ts · acp-recall-tool.ts) ----------
-// context_status dashboard: `[acp-report] tier=L1 compress=normal zone=N tokens active=N tokens projected=N tokens`
-const ACP_REPORT_RE = /tier=(\S+)\s+compress=\S+\s+zone=\d+ tokens active=(\d+) tokens projected=(\d+) tokens/;
+// context_status dashboard: `[context-status] tier=L1 compress=normal zone=N tokens active=N tokens projected=N tokens activeBlocks=N`
+const ACP_REPORT_RE = /tier=(\S+)\s+compress=\S+\s+zone=\d+ tokens active=(\d+) tokens projected=\d+ tokens activeBlocks=(\d+)/;
 function renderContextStatus(item: ToolItem) {
   const m = ACP_REPORT_RE.exec(item.output || "");
   // context_status takes no parameters: nothing to summarize beyond the dashboard numbers,
-  // and the row must not fall back to the tool name
-  const summary = m ? `${m[1]} · ${fmtTokens(Number(m[2]))} → ${fmtTokens(Number(m[3]))}` : "";
+  // and the row must not fall back to the tool name. `none` is the no-prompt tier — the row
+  // drops it and leads with the block count; the occupancy is the active-zone size.
+  const summary = m
+    ? [m[1] === "none" ? "" : m[1], t("chat.contextStatusBlocks", { count: Number(m[3]) }), t("chat.contextStatusOccupied", { tokens: fmtTokens(Number(m[2])) })]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   return <ExpandableRow item={item} iconName="stats" label={t("chat.labelContextStatus")} summary={summary} noInput />;
 }
 // An xd:// device call journals the target tool's arguments as a JSON string in the
@@ -451,6 +458,7 @@ interface CompressOutcomeView {
   error?: string;
   compressed?: { blocks?: number; tokens?: number };
   delta?: { blocks?: number; tokens?: number };
+  zoneBlocksFolded?: number;
 }
 function parseCompressOutput(item: ToolItem): CompressOutcomeView | null {
   const out = (item.output || "").trim();
@@ -480,6 +488,7 @@ function renderCompressContext(item: ToolItem) {
       ? t(parsed.method === "strong" ? "chat.compressStrongFolded" : "chat.compressFolded", {
           count: blocks,
           tokens: fmtTokens(tokens),
+          zone: parsed.zoneBlocksFolded ?? 0,
         })
       : t("chat.labelCompressContext");
   return (

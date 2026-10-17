@@ -14,6 +14,7 @@
 //         snapshot (the todo card's output row data)
 //
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-plan-approve.ts [host ws url]
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -52,7 +53,7 @@ if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     // Enables the smoke-only propose replay in the spawned host.
-    env: { ...process.env, OMP_PLAN_APPROVE_SMOKE: "1" },
+    env: smokeEnv({ OMP_PLAN_APPROVE_SMOKE: "1" }),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

@@ -33,7 +33,7 @@ import {
   resolveToCwd,
   writeDeviceDispatch,
 } from "./bootstrap.ts";
-import { pushCommandOutput, requestApproval, stampEvent, type PoolEntry } from "./state.ts";
+import { pushCommandOutput, requestApproval, stampEvent, entryBus, type PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { safeStderr } from "./stderr.ts";
 
@@ -195,8 +195,10 @@ async function approveProposal(
   // was parked on so a plan variant without a slider still executes on the
   // default role.
   let pickedTier: number | undefined = slider?.index;
+  // The card fans out to every UI attached to this session (local + remote):
+  // either side can answer; the first approval_response settles the wait.
   const answer = await requestApproval(
-    ws,
+    entryBus(entry),
     sessionId,
     hostI18n.t("flows.plan.approvalTitle", { title, path: planFilePath }),
     [PLAN_EXECUTE, PLAN_COMPACT, PLAN_KEEP, PLAN_REFINE, PLAN_SAVE_QUIT],
@@ -271,8 +273,9 @@ async function promptPlanSavePath(
   entry: PoolEntry,
   planContent: string,
 ): Promise<string | undefined> {
+  // Same dual-UI fan-out as the plan approval card above.
   const answer = await requestApproval(
-    ws,
+    entryBus(entry),
     sessionId,
     hostI18n.t("flows.plan.savePathTitle"),
     ["submit", "cancel"],

@@ -112,8 +112,11 @@ export interface QueuedFrame {
 export interface BgJobsFrame {
   type: "bg_jobs";
   sessionId: string;
+  subagentId?: string; // present when the snapshot is scoped to one subagent's own jobs
   jobs: {
     id: string;
+    type: string; // "bash" | "task" | "eval"; process-less jobs carry no command
+    label: string | null; // snapshot item title (eval cell title, task id) — the only title without a command
     command: string | null; // process-backed jobs only (bash)
     cwd: string | null;
     pids: number[]; // live pids while running, empty once settled
@@ -387,4 +390,24 @@ export interface BtwHistoryFrame {
 export interface OpenRightTabFrame {
   type: "open_right_tab";
   name: string;
+}
+
+/** Takeover notice: another client opened the host WS and kicked this connection (open path sends
+ * this frame immediately followed by close code 4001; either one alone gates the UI's reconnect). */
+export interface KickedFrame {
+  type: "kicked";
+}
+
+/** set_remote_config reply (host/rpc/remote.ts): remote server state after the request; error set = bind failure, previous state kept. */
+export interface RemoteConfigFrame {
+  type: "remote_config";
+  enabled: boolean;
+  port: number;
+  error?: string;
+}
+
+/** remote_regenerate_key reply (host/rpc/remote.ts): the new access key; the old key fails new upgrades immediately. */
+export interface RemoteKeyFrame {
+  type: "remote_key";
+  key: string;
 }

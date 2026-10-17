@@ -3,6 +3,7 @@
 // long tool runs, which emit no progress events — and the terminal lifecycle must clear it again.
 // The subagent store state is driven through the real frontend store against a real host.
 // Run: bun run smoke:subagent-subview  (OMP_DESKTOP_MODEL=<provider/model> to override the model)
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { rm } from "node:fs/promises";
@@ -39,7 +40,7 @@ const { onMessage } = await import("../ui-src/store/ws");
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: new URL("..", import.meta.url).pathname,
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "inherit"],
 });
 const wsUrl = await new Promise<string>((resolve, reject) => {

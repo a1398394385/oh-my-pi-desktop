@@ -16,6 +16,7 @@
 //   8. abort_session: an idle session safely returns ok
 //   9. compact_session: an empty session returns an error field (without killing the connection)
 // Zero model calls; exits when done.
+import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
@@ -23,7 +24,7 @@ import { tmpdir, homedir } from "node:os";
 import path from "node:path";
 
 const args = process.argv.slice(2);
-const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
+const cfgPath = profileAgentPath("omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
 const tmpDirs: string[] = [];
@@ -62,7 +63,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

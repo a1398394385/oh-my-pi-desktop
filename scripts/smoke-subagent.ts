@@ -2,6 +2,7 @@
 // Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-subagent.ts
 // Frame semantics (after the BUG-007 fix): one turn_end per model round, and the lifecycle frame may arrive later than the first round frame --
 // assertions filter by the runEnd=true final frame (same as smoke-sendnow); in-round frames are waited on, not judged.
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -16,7 +17,7 @@ function fail(msg: string): never {
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "inherit"],
 });
 const wsUrl = await new Promise<string>((resolve, reject) => {

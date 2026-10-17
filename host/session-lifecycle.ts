@@ -18,22 +18,27 @@ import {
 import {
   H,
   sessions,
+  enabledDefaults,
   defaultCwd,
   stampEvent,
   pendingApprovals,
   requestApproval,
   pushCommandOutput,
+  pushPoolSnapshot,
+  entryBus,
+  eachUiWs,
   type PoolEntry,
   type TranscriptItem,
 } from "./state.ts";
 import { GoalController, type GoalSession } from "./goal.ts";
 import { acpParamsFromConfig } from "./acp-plan.ts";
-import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension } from "./acp-assembly.ts";
+import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension, ACP_CONTEXT_BUDGET_PROMPT } from "./acp-assembly.ts";
 import { createRecallBlockTool } from "./acp-recall-tool.ts";
 import { createAcpStatusTool } from "./acp-status-tool.ts";
 import { rebuildAcpState } from "./acp-persist.ts";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
+import { createAutomationTool } from "./automations-tool.ts";
 import { translateEvent, entriesToTranscript, sumRunDurationMs } from "./translate.ts";
 import {
   buildSessionCreatedFrame,
@@ -95,7 +100,17 @@ export async function copySessionArtifactsIfAny(sourceSessionFile: string, desti
 // smoke-cache-breaks.ts) unchanged.
 export { pushContext, countCacheBreaks } from "./session-snapshot.ts";
 
-export async function createSessionCore(cwd: string, sessionManager: any, transcript: TranscriptItem[], initialModel?: any) {
+// Structural minimum for a socket attachEntry accepts: the primary server and
+// the LAN remote server both satisfy it, and so do fan-out adapters (entryBus).
+type UiSocket = { send(data: string): unknown };
+
+export async function createSessionCore(
+  cwd: string,
+  sessionManager: any,
+  transcript: TranscriptItem[],
+  initialModel?: any,
+  opts?: { subagent?: boolean },
+) {
   // Master switch on the experimental features page (omp-desktop.json's
   // acp.enabled, default off for new users): only decides whether this session injects the
   // ACP tool surface and the context view rewrite; it cannot hot-toggle
@@ -149,7 +164,7 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   }
   // ACP manifest + ephemeral supply (T4): the projection extension re-derives
   // the round status (tier + candidate manifest) on every request and appends
-  // the [acp-status] ephemeral when a tier is active (host/acp-runtime.ts).
+  // the [compress-hint] ephemeral when a tier is active (host/acp-runtime.ts).
   // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, default off for new users)
   const sessionContextEnabled = readSessionContextEnabled();
   // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
@@ -179,7 +194,18 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     // fall through to H.settings live (Settings.overlay forwards parent changes
     // to children).
     settings: sessionSettings, // hoisted so the ACP §5.3 degrade path can write compaction.enabled back on it
+    // The advisor's compaction gate is the same `compaction.enabled` + non-empty
+    // `methodOrder` pair the primary's is, read off the same settings object — so the
+    // ACP pin above (which exists only to keep the base chain out of ACP's way) silently
+    // kills the advisor's compaction and promotion too. Its stale-tool-result eviction
+    // is ungated and survives; everything after it does not. Opt the advisor back in.
+    advisorCompactionEnabled: true,
     model: initialModel ?? H.modelOverride,
+    // Proactive-compression guidance (verbatim append via the SDK's
+    // appendSystemPrompt channel) — same condition as the ACP tools below: the
+    // text names context_status/compress_context, which only ACP sessions
+    // carry (wording + rationale in host/acp-assembly.ts).
+    appendSystemPrompt: acpRuntime ? ACP_CONTEXT_BUDGET_PROMPT : undefined,
     // Auto session title: the desktop host is an interactive surface, so it
     // arms the base's own titling (AgentSession notes the operator message on
     // message_end and asks the title model / a reply fork once the answer
@@ -190,12 +216,16 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
     // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
+    // create_automation: agent-created scheduled tasks, same domain entry as the UI's create RPC.
+    // Subagents get no scheduled tasks (a delegated step must not schedule follow-up work on
+    // the user's behalf), so the tool is withheld from their surface entirely.
     customTools: [
       ...(acpRuntime ? [createCompressContextTool(acpRuntime), createRecallBlockTool(acpRuntime), createAcpStatusTool(acpRuntime)] : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
-    ] as never, // ACP compress_context + recall_block + context_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
+      ...(opts?.subagent ? [] : [createAutomationTool(cwd)]),
+    ] as never, // ACP compress_context + recall_block + context_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context + create_automation; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
-      ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime)] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
+      ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime, () => sessionManager.getSessionId())] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
       ...(keepaliveOn ? [createKeepaliveExtension({
         // Same kaHolder entry as isWanted: reports that fire before the entry
         // exists (extension injection happens inside createAgentSession) are
@@ -265,7 +295,9 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
     sessionResult: result, // Host injection points such as setToolUIContext
     acpRuntime: acpRuntime ?? undefined, // get_context_detail reads the dual-zone split off it
     unsubscribe: () => {},
-    attachedWs: null,
+    uiSockets: new Set(),
+    uiSubViews: new Map(),
+    coreAttached: false,
     extStatuses: new Map(), // Extension status badges (uiCtx.setStatus); surfaced on the capabilities card
     providerSessionId: sessionManager.getSessionId?.() ?? sessionId, // Sticky key for the request-side getApiKey
     keepaliveWanted: false, // At creation the user is watching the new session: nothing unread, no keepalive; set true at turn wrap-up
@@ -321,7 +353,42 @@ export async function createSessionCore(cwd: string, sessionManager: any, transc
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
-export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventBus: any) {
+/** Attach a UI socket to a pooled session. Idempotent per socket: the
+ * once-per-entry core subscribes on first attach; every further socket (the
+ * other channel of a remote-control session, a frontend reload) only joins
+ * the fan-out set. */
+export function attachEntry(ws: UiSocket, sessionId: string, entry: PoolEntry, eventBus: unknown) {
+  if (!entry.coreAttached) {
+    entry.coreAttached = true;
+    subscribeEntryCore(sessionId, entry, eventBus);
+  }
+  attachEntryUi(ws, sessionId, entry, eventBus);
+}
+
+/** Per-socket attach: join the fan-out set, start this socket's subagent
+ * roster (A12 split), push the pool snapshot, and re-show dialogs already
+ * open on another UI so a late joiner (e.g. remote control joining mid-
+ * approval) can answer them too. */
+function attachEntryUi(ws: UiSocket, sessionId: string, entry: PoolEntry, eventBus: unknown) {
+  if (entry.uiSockets.has(ws)) return;
+  entry.uiSockets.add(ws);
+  entry.uiSubViews.set(ws, createSubagentView(ws, sessionId, entry, eventBus));
+  pushPoolSnapshot(ws);
+  for (const pending of pendingApprovals.values()) {
+    if (pending.sessionId === sessionId && pending.frame) {
+      ws.send(JSON.stringify(stampEvent(pending.frame)));
+    }
+  }
+}
+
+/** Once-per-entry core: the session event subscription, the approval UI
+ * context, the extension runner injection, and the queue / dequeue /
+ * persistence / mcp / title listeners. Every frame the core pushes fans out
+ * over entry.uiSockets — local desktop and remote control watch the same
+ * session concurrently. Torn down (entry.unsubscribe) when the last attached
+ * socket leaves. */
+function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unknown) {
+  const bus = entryBus(entry);
   // The ask tool's `i` intent: agent-loop extracts it from the tool args and
   // carries it on the tool_execution_start event; askDialog takes and clears
   // it when the card is pushed (same-session tools are serial, a single
@@ -337,7 +404,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     queuePushPending = true;
     queueMicrotask(() => {
       queuePushPending = false;
-      sendQueued(ws, sessionId, entry);
+      for (const w of entry.uiSockets) sendQueued(w, sessionId, entry);
     });
   };
   const unsubSession = entry.session.subscribe((ev) => {
@@ -346,14 +413,14 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       askIntent = ev.intent.trim();
     }
     const ui = translateEvent(ev, entry);
-    if (ui) ws.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
+    if (ui) bus.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...ui })));
     // TTS vocalization bridge (speech.enabled): forwards this session's
     // deltas as tts_* frames (spoken UI-side) when it is the session the user
     // last prompted
-    handleVoiceEvent(ws, ev, sessionId);
+    handleVoiceEvent(bus, ev, sessionId);
     // After the todo tool persists, push the latest task list (TodoTracker updates after the tool result)
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
-      ws.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
+      bus.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
     }
     // Plan approval rides a `write` to xd://propose, dispatched OUT of band
     // exactly like the base TUI's event-controller (issue #7684): awaiting it
@@ -361,11 +428,16 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // awaiting the operator inside the tool handler would deadlock abort()'s
     // waitForIdle. Never awaited — see host/plan-approve.ts.
     if (ev.type === "tool_execution_end" && !ev.isError) {
-      dispatchFromToolEnd(ws, sessionId, entry, ev.toolName, ev.result);
+      // The plan-approval flow spawns fresh sessions and pushes plan state to
+      // one concrete socket, so it follows the primary (first-attached) UI;
+      // its approval card itself still reaches every attached UI (entryBus in
+      // plan-approve's requestApproval calls)
+      const primary = entry.uiSockets.values().next().value;
+      if (primary) dispatchFromToolEnd(primary, sessionId, entry, ev.toolName, ev.result);
     }
     // Push context usage live on key execution events, updating the frontend's context-size ring
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
-      pushContext(ws, sessionId, entry);
+      for (const w of entry.uiSockets) pushContext(w, sessionId, entry);
     }
     // The stats row refreshes live too: it used to be pushed only on agent_end
     // (turn end), which froze the token / cache-read / duration numbers under
@@ -374,7 +446,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // each tool completion), which is enough to keep the row moving with the
     // session. Throttling: see maybePushSessionStats.
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
-      maybePushSessionStats(ws, sessionId, entry);
+      for (const w of entry.uiSockets) maybePushSessionStats(w, sessionId, entry);
     }
     if (ev.type === "agent_start") entry.goal.onAgentStart();
     if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) {
@@ -393,9 +465,9 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     // windows surface as session events; forward them so the UI can show a
     // "keeping cache warm" indicator on idle unread sessions
     if (ev.type === "cache_warming_start") {
-      ws.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "start" })));
+      bus.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "start" })));
     } else if (ev.type === "cache_warming_end") {
-      ws.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "end", outcome: ev.outcome })));
+      bus.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "end", outcome: ev.outcome })));
     }
     // Session active-duration timing (same as the TUI status-line
     // time_spent): agent_start opens the window (idempotent — re-entry does
@@ -426,12 +498,14 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
         if (e?.type === "message" && e.message?.role === "fileMention") {
           const files = (e.message.files ?? []).map((f: { path?: unknown }) => String(f.path ?? ""));
           entry.transcript.push({ role: "mention", text: "", files });
-          ws.send(JSON.stringify({ type: "event", sessionId, kind: "mention", files }));
+          bus.send(JSON.stringify({ type: "event", sessionId, kind: "mention", files }));
         }
       }
       entry.mentionScanIndex = entries.length;
-      pushContext(ws, sessionId, entry);
-      pushSessionStats(ws, sessionId, entry);
+      for (const w of entry.uiSockets) {
+        pushContext(w, sessionId, entry);
+        pushSessionStats(w, sessionId, entry);
+      }
       // Goal final assessment: completion wind-down / no-progress suppression / scheduling the re-run (aligned with the TUI's #handleGoalSessionEvent)
       void entry.goal.onAgentEnd(ev.messages ?? []);
       // (18.5) The old wrap-up race fallback (queuedTexts/consumedTexts diff
@@ -455,7 +529,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
             });
         });
       }
-      sendQueued(ws, sessionId, entry);
+      for (const w of entry.uiSockets) sendQueued(w, sessionId, entry);
     }
   });
   // Approvals/dialogs: in non-yolo mode the approval gate suspends via ExtensionUIContext.select awaiting the user's choice
@@ -476,11 +550,11 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       const statuses = entry.extStatuses ?? (entry.extStatuses = new Map());
       if (text === undefined) statuses.delete(key);
       else statuses.set(key, text);
-      ws.send(JSON.stringify(stampEvent({ type: "extension_status", sessionId, statuses: [...statuses] })));
+      bus.send(JSON.stringify(stampEvent({ type: "extension_status", sessionId, statuses: [...statuses] })));
     },
     select(title: string, options: any[], dialogOptions?: any): Promise<string | undefined> {
       return requestApproval(
-        ws,
+        bus,
         sessionId,
         title,
         options.map((o) => (typeof o === "string" ? o : o.label)),
@@ -492,7 +566,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       // computer-control confirmers pass { signal }); without the listener the
       // card would outlive the abort that cancelled the wait.
       return requestApproval(
-        ws,
+        bus,
         sessionId,
         `${title}\n${message}`,
         ["OK", "Cancel"],
@@ -505,7 +579,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       // localized labels from the ids and locates the inline input row by
       // index — the contract never depends on display text.
       return requestApproval(
-        ws,
+        bus,
         sessionId,
         title,
         ["submit", "cancel"],
@@ -537,7 +611,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
       askIntent = undefined;
       const first = (questions[0] ?? {}) as { header?: string; question?: string };
       return requestApproval(
-        ws,
+        bus,
         sessionId,
         first.header ?? first.question ?? "ask",
         ["submit", "cancel"],
@@ -635,9 +709,9 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
 
   // Subagent roster (A12 split): the live registration/ownership tables and
   // the three eventBus subscriptions (lifecycle/progress/event frames, with
-  // the IRC wake-turn run folding) live in subagent-view.ts; attachEntry only
-  // wires them per attach and folds the teardown into entry.unsubscribe.
-  const subView = createSubagentView(ws, sessionId, entry, eventBus);
+  // the IRC wake-turn run folding) live in subagent-view.ts; the roster is
+  // per-socket and joins in attachEntryUi (one view per attached UI), with
+  // each socket's teardown folded into entry.unsubscribe via entry.uiSubViews.
   // Pre-consumption notice: queued/steer user messages about to be injected
   // are pushed to the UI (bubbles finalized). The texts also enter
   // consumedPending so sendQueued keeps suppressing them from the queue view
@@ -660,7 +734,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
     const texts = draining.filter((m) => isUserQueuedMessage(m)).map((m) => toRestoredQueuedMessage(m).text);
     if (texts.length > 0) {
       for (const t of texts) entry.consumedPending.add(t);
-      ws.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
+      bus.send(JSON.stringify(stampEvent({ type: "steer_consumed", sessionId, texts })));
     }
   });
   // (18.4.4) Realtime queue push: the agent notifies after every queue
@@ -691,7 +765,7 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   // Re-reading the full manager state per event beats replaying event payloads
   // (out-of-order/coalesced events cannot desync the view).
   const unsubMcp = entry.sessionResult?.mcpManager?.addConnectionStatusListener?.(() => {
-    ws.send(
+    bus.send(
       JSON.stringify(
         stampEvent({ type: "capabilities_mcp", mcp: snapshotMcp(entry.sessionResult.mcpManager) }),
       ),
@@ -701,18 +775,20 @@ export function attachEntry(ws: any, sessionId: string, entry: PoolEntry, eventB
   const unsubTitle = entry.session.sessionManager.onSessionNameChanged?.(() => {
     const title = entry.session.sessionManager.getSessionName() ?? "";
     entry.title = title || null;
-    ws.send(JSON.stringify({ type: "session_title_changed", sessionId, title }));
+    bus.send(JSON.stringify({ type: "session_title_changed", sessionId, title }));
   });
   entry.unsubscribe = () => {
+    entry.coreAttached = false;
     unsubSession();
     unsubTitle?.();
-    subView.unsubscribe();
     detachDequeueHook();
     unsubQueueChange();
     unsubPersistenceNotice?.();
     unsubMcp?.();
+    for (const sub of entry.uiSubViews.values()) sub.unsubscribe();
+    entry.uiSubViews.clear();
+    entry.uiSockets.clear();
   };
-  entry.attachedWs = ws;
   sessions.set(sessionId, entry);
 }
 
@@ -728,11 +804,15 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
   // flags session_created as background so the UI registers the slot without
   // stealing focus / closing the automations view
   if (opts?.automation) entry.automation = opts.automation;
-  if (thinkingLevel) {
+  // Explicit level from the UI wins; otherwise the model's own default (the
+  // enabledModels "provider/id:level" suffix, same precedence as set_model) —
+  // scheduler/ACP spawns pass no level and would otherwise sit on the SDK default.
+  const level = thinkingLevel ?? (entry.session.model ? enabledDefaults.get(`${entry.session.model.provider}/${entry.session.model.id}`) : null);
+  if (level) {
     try {
-      entry.session.setThinkingLevel(thinkingLevel);
+      entry.session.setThinkingLevel(level);
     } catch (err) {
-      safeStderr(`[host] setThinkingLevel(${thinkingLevel}) failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+      safeStderr(`[host] setThinkingLevel(${level}) failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
     }
   }
   // Kimi auto gate: the SDK default (defaultThinkingLevel: auto) or the UI
@@ -753,7 +833,15 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
       safeStderr(`[host] computer mode default-enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
     });
   }
-  attachEntry(ws, sessionId, entry, eventBus);
+  if (opts?.automation) {
+    // The scheduler passes a broadcast adapter as ws (its send fans out over
+    // every connected UI). Attaching it would double-send once a real UI also
+    // subscribes to this session, and it never detaches on close — attach the
+    // real sockets instead.
+    eachUiWs((w) => attachEntryUi(w, sessionId, entry, eventBus));
+  } else {
+    attachEntry(ws, sessionId, entry, eventBus);
+  }
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { automation: opts?.automation })));
   pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
   return { sessionId, entry };
@@ -847,11 +935,12 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     if (entry.path !== sessionPath && !(entry.previousPaths?.includes(sessionPath) ?? false)) continue;
     // The user opening/switching back to this session = seen (stop probing)
     markSeen(entry);
-    const frontendReloaded = entry.attachedWs !== ws; // capture before attachEntry overwrites it
-    if (frontendReloaded) {
-      entry.unsubscribe(); // Detach old subscriptions first, or the same event would be sent twice
-      attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
-    }
+    // Attach only when this socket is not subscribed yet: local desktop and
+    // remote control watch the same entry concurrently (the core fans out
+    // over entry.uiSockets), so unlike the old single-attachedWs model there
+    // is nothing to detach — the other channel's subscription keeps living.
+    const frontendReloaded = !entry.uiSockets.has(ws);
+    if (frontendReloaded) attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
     await pushSessionSnapshot(ws, sessionId, entry, {
       mode: "reuse",
@@ -876,10 +965,11 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   // null when the directory is unreachable — fall back to HOME)
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const workCwd = peek?.cwd ?? defaultCwd;
-  const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript);
   // Subagent session detection: child transcript lives inside <parentSessionFile minus .jsonl>/
+  // Read before creation so the subagent tool surface (create_automation) can be withheld.
   const parentSessionFile = `${path.dirname(sessionPath)}.jsonl`;
   const isSubagent = fs.existsSync(parentSessionFile);
+  const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript, undefined, { subagent: isSubagent });
   entry.isSubagent = isSubagent;
   entry.parentPath = isSubagent ? parentSessionFile : undefined;
   if (isSubagent && !entry.title) {

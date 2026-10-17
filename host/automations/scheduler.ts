@@ -9,7 +9,7 @@
 // retry at the advanced slot). Manual runs bypass all progression.
 import { randomUUID } from "node:crypto";
 import { spawnSession } from "../session-lifecycle.ts";
-import { H, activeWs, stampEvent } from "../state.ts";
+import { H, eachUiWs, stampEvent } from "../state.ts";
 import { safeStderr } from "../stderr.ts";
 import { computeAutomationNextRunAt, isOneShot } from "./cron.ts";
 import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
@@ -281,12 +281,11 @@ export async function runAutomationNow(id: string, spawn: SpawnFn = defaultSpawn
  * turn) is a failure.
  */
 const defaultSpawn: SpawnFn = async (a) => {
-  // Broadcast to the attached UI client (last connection wins, same as the
-  // session_list pushes); null while no UI is connected — frames drop.
+  // Broadcast to every connected UI (local + remote); null while none is
+  // connected — frames drop.
   const uiWs = {
     send(data: string) {
-      const w = activeWs.value as { send?: (d: string) => unknown } | null;
-      w?.send?.(data);
+      eachUiWs((w) => w.send(data));
     },
   };
   const targetModel = a.model ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === a.model) : undefined;

@@ -4,12 +4,12 @@
 // outbound requests live here so both hub surfaces (roster cards / subagent tab) share shapes.
 import { useAppStore } from "../../../store";
 
-export function sendGetBgJobs(sessionId: string): void {
-  useAppStore.getState().send({ type: "get_bg_jobs", sessionId });
+export function sendGetBgJobs(sessionId: string, subagentId?: string): void {
+  useAppStore.getState().send({ type: "get_bg_jobs", sessionId, ...(subagentId ? { subagentId } : {}) });
 }
 
-export function sendCancelBgJob(sessionId: string, jobId: string): void {
-  useAppStore.getState().send({ type: "cancel_bg_job", sessionId, jobId });
+export function sendCancelBgJob(sessionId: string, jobId: string, subagentId?: string): void {
+  useAppStore.getState().send({ type: "cancel_bg_job", sessionId, jobId, ...(subagentId ? { subagentId } : {}) });
 }
 
 export function sendSubagentControl(sessionId: string, agentId: string, action: "cancel" | "steer", text?: string): void {

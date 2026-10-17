@@ -3,21 +3,33 @@
 // (case + separator variants — realpath-mergeable on every platform, no link needed)
 // must collapse into ONE project row whose cwd is a real, on-disk spelling; a second
 // real project stays separate. Runs the real host under the omp-desktop-test profile.
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { activeProfile, TEST_PROFILE, smokeEnv, profileAgentPath } from "./smoke-profile.ts";
 import os from "node:os";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
-if (process.env.OMP_PROFILE !== "omp-desktop-test") {
+if (activeProfile !== TEST_PROFILE) {
   console.error("✗ 必须以 OMP_PROFILE=omp-desktop-test 运行（测试 Profile 隔离红线）");
   process.exit(1);
 }
 
-// Projects live under os.tmpdir(): mergeHistoryProjects filters temp dirs out of
-// allProjects, so the smoke never pollutes the test profile's project manifest.
-const sessionsDir = path.join(os.homedir(), ".omp", "profiles", "omp-desktop-test", "agent", "sessions", "smoke-project-group");
-const projA = path.join(os.tmpdir(), "omp-pg-" + Date.now(), "proj-group-a");
-const projB = path.join(os.tmpdir(), "omp-pg-" + Date.now(), "proj-group-b");
+// Fixtures live under the active profile, NOT os.tmpdir(): pickDisplayCwd
+// (host/rpc/session.ts) only prefers a self-canonical spelling when
+// realpathSync(cwd) === cwd, and no /var/folders path ever satisfies that —
+// /var is a symlink to /private/var, so every tmpdir spelling fails the check
+// and the host silently falls back to "newest candidate". The uppercase variant
+// would then win and the canonical-spelling assertion would never exercise
+// anything. Being under the profile also means mergeHistoryProjects can add the
+// fixture to allProjects, hence the cfg backup/restore below.
+const sessionsDir = path.join(os.homedir(), ".omp", "profiles", TEST_PROFILE, "agent", "sessions", "smoke-project-group");
+const cfgPath = profileAgentPath("omp-desktop.json");
+const cfgExisted = existsSync(cfgPath);
+const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
+const stamp = Date.now();
+const fixtureRoot = path.join(profileAgentPath(), "..", "smoke-fixtures");
+const projA = path.join(fixtureRoot, `omp-pg-${stamp}`, "proj-group-a");
+const projB = path.join(fixtureRoot, `omp-pg-${stamp}`, "proj-group-b");
 mkdirSync(sessionsDir, { recursive: true });
 mkdirSync(path.dirname(projA), { recursive: true });
 mkdirSync(projA, { recursive: true });
@@ -52,13 +64,17 @@ function fail(msg: string): never {
 function cleanup() {
   for (const f of files) rmSync(f, { force: true });
   rmSync(sessionsDir, { recursive: true, force: true });
-  rmSync(path.dirname(projA), { recursive: true, force: true });
+  rmSync(fixtureRoot, { recursive: true, force: true });
+  try {
+    if (cfgExisted) writeFileSync(cfgPath, cfgBackup!);
+    else if (existsSync(cfgPath)) rmSync(cfgPath);
+  } catch {}
 }
 const norm = (p: string) => p.replaceAll("\\", "/").toLowerCase();
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "inherit"],
 });
 const wsUrl = await new Promise<string>((resolve, reject) => {
@@ -90,7 +106,10 @@ ws.onmessage = (ev) => {
   if (row.sessions.length !== 2) fail(`projA 行应含 2 个会话,实际 ${row.sessions.length}`);
   if (!row.sessions.some((s: { id: string }) => s.id === idA1) || !row.sessions.some((s: { id: string }) => s.id === idA2))
     fail("projA 行会话 id 不全");
-  if (norm(row.cwd) !== norm(projA) || row.cwd.includes("/")) fail(`projA 显示 cwd 应为真实盘符拼写,实际 ${row.cwd}`);
+  // The canonical spelling must win outright, not merely match case-insensitively:
+  // pickDisplayCwd prefers the candidate where realpathSync(cwd) === cwd, so a
+  // norm()-only check would pass on the uppercase variant too and prove nothing.
+  if (row.cwd !== projA) fail(`projA 显示 cwd 应为自规范拼写,实际 ${row.cwd}`);
   const rowsB = msg.projects.filter((p: { cwd: string }) => norm(p.cwd) === norm(projB));
   if (rowsB.length !== 1 || rowsB[0].sessions.length !== 1) fail(`projB 应独立 1 行 1 会话,实际 ${JSON.stringify(rowsB)}`);
 

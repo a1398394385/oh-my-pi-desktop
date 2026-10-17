@@ -8,7 +8,6 @@ import { useEffect, useReducer, type ReactNode } from "react";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../store";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
-import { cn } from "../ui/cn";
 
 function fmtTokenSpeed(speed: number | null | undefined): string {
   if (speed == null || !Number.isFinite(speed) || speed <= 0) return "—";
@@ -26,6 +25,7 @@ export default function SessionStatsBar() {
   // Current session subscription: session_stats frames go through updateSession swapping
   // the session reference, so the selector picks them up
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
+  const narrow = useAppStore((s) => s.narrow);
   const st = session?.stats;
   const streaming = session?.streaming === true;
   // Repaint 4x per second while the session runs: token frames only arrive at
@@ -56,59 +56,89 @@ export default function SessionStatsBar() {
   // are no longer in the store while the host still reports their spend — from dropping the
   // total below the host's own figure.
   const totalCost = cost + subCost - Math.min(subCost, st.subagentCost ?? 0);
-  // Semantic groups (cache / tokens / cost / performance): tighter spacing inside
-  // a group than between groups. Parts tagged .sb-opt-* are trimmed by the row's
-  // own width (CSS container query in composer.css), so the line never wraps.
+  // Desktop keeps the original single line (same group order and width-driven trimming as
+  // before). Narrow phones split it into two fixed rows: the top one carries the six token
+  // metrics (cache hit + breaks, cache read/write, input/output, token speed), the bottom one
+  // everything else (cost, TTFT, active time, compactions).
   // Each metric is a line-style icon standing in for what used to be a text label
   // (TUI status-line convention); the label survives as the hover tooltip.
   type Part = { icon: string; tip: string; v: string; cls?: string; extra?: ReactNode };
-  const groups: Part[][] = [
-    [
-      {
-        icon: "database",
-        tip: t("chat.statsCacheHit"),
-        v: `${(st.cacheHitRate * 100).toFixed(1)}%`,
-        // Cache invalidations this session (host-side counter, see buildSessionStats):
-        // counter-clockwise arrow + count, display-only
-        extra: (
-          <span className="sb-break" title={t("chat.statsCacheBreaksTitle")}>
-            <Icon name="cacheBreak" size={14} />
-            {st.cacheBreaks}
-          </span>
-        ),
-      },
-      { icon: "download", tip: t("chat.statsCacheRead"), v: fmtTokens(st.tokens.cacheRead), cls: "sb-opt-cachetok" },
-      { icon: "upload", tip: t("chat.statsCacheWrite"), v: fmtTokens(st.tokens.cacheWrite), cls: "sb-opt-cachetok" },
-    ],
-    [
-      { icon: "arrowDownToLine", tip: t("chat.statsInput"), v: fmtTokens(st.tokens.input) },
-      { icon: "arrowUpFromLine", tip: t("chat.statsOutput"), v: fmtTokens(st.tokens.output) },
-    ],
-    totalCost > 0
-      ? [{ icon: "circleDollarSign", tip: t("chat.statsCost"), v: `$${totalCost.toFixed(4)}` + (subCost > 0 ? ` ($${subCost.toFixed(4)})` : ""), cls: "sb-opt-cost" }]
-      : [],
-    [
-      { icon: "zap", tip: t("chat.statsTokenSpeed"), v: fmtTokenSpeed(st.tokenSpeed) },
-      { icon: "timer", tip: t("chat.statsAvgTtft"), v: fmtTtft(st.avgTtft), cls: "sb-opt-ttft" },
-      { icon: "clock", tip: t("chat.statsDuration"), v: fmtDurationMs(activeMs), cls: "sb-opt-duration" },
-    ],
+  const cacheHitPart: Part = {
+    icon: "database",
+    tip: t("chat.statsCacheHit"),
+    v: `${(st.cacheHitRate * 100).toFixed(1)}%`,
+    // Cache invalidations this session (host-side counter, see buildSessionStats):
+    // counter-clockwise arrow + count, display-only
+    extra: (
+      <span className="sb-break" title={t("chat.statsCacheBreaksTitle")}>
+        <Icon name="cacheBreak" size={14} />
+        {st.cacheBreaks}
+      </span>
+    ),
+  };
+  const cacheReadPart: Part = { icon: "archiveRestore", tip: t("chat.statsCacheRead"), v: fmtTokens(st.tokens.cacheRead), cls: "sb-opt-cachetok" };
+  const cacheWritePart: Part = { icon: "archive", tip: t("chat.statsCacheWrite"), v: fmtTokens(st.tokens.cacheWrite), cls: "sb-opt-cachetok" };
+  const inputPart: Part = { icon: "moveDown", tip: t("chat.statsInput"), v: fmtTokens(st.tokens.input) };
+  const outputPart: Part = { icon: "moveUp", tip: t("chat.statsOutput"), v: fmtTokens(st.tokens.output) };
+  const speedPart: Part = { icon: "zap", tip: t("chat.statsTokenSpeed"), v: fmtTokenSpeed(st.tokenSpeed) };
+  const ttftPart: Part = { icon: "timer", tip: t("chat.statsAvgTtft"), v: fmtTtft(st.avgTtft), cls: "sb-opt-ttft" };
+  const durationPart: Part = { icon: "clock", tip: t("chat.statsDuration"), v: fmtDurationMs(activeMs), cls: "sb-opt-duration" };
+  const costPart: Part | null = totalCost > 0
+    ? { icon: "circleDollarSign", tip: t("chat.statsCost"), v: `$${totalCost.toFixed(4)}` + (subCost > 0 ? ` ($${subCost.toFixed(4)})` : ""), cls: "sb-opt-cost" }
+    : null;
+  // Rightmost: context compactions this session (both the base chain and the desktop ACP
+  // chain). Its cacheRead drop is deliberately not counted as a cache break
+  // (host/session-snapshot.ts countCacheBreaks), so this is where that loss is accounted for.
+  const compactionsPart: Part = { icon: "compress", tip: t("chat.statsCompactions"), v: String(st.compactions) };
+  // Desktop order (unchanged): cache hit | cache read/write | input/output | cost | perf | compactions
+  const desktopGroups: Part[][] = [
+    [cacheHitPart],
+    [cacheReadPart, cacheWritePart],
+    [inputPart, outputPart],
+    costPart ? [costPart] : [],
+    [ttftPart, speedPart, durationPart],
+    [compactionsPart],
   ];
+  // Narrow rows: top = cache usage / cache breaks / cache read / cache write / in / out;
+  // bottom = cost / token speed / TTFT / duration / compactions.
+  const tokenGroups: Part[][] = [
+    [cacheHitPart],
+    [cacheReadPart, cacheWritePart],
+    [inputPart, outputPart],
+  ];
+  const otherGroups: Part[][] = [
+    costPart ? [costPart] : [],
+    [speedPart],
+    [ttftPart, durationPart],
+    [compactionsPart],
+  ].filter((g) => g.length > 0);
+  const renderGroup = (parts: Part[], gi: number) => (
+    <span className="sb-group" key={gi}>
+      {parts.map((p) => (
+        <span className={"sb-item" + (p.cls ? " " + p.cls : "")} key={p.tip} title={p.tip}>
+          <span className="sb-ic">
+            <Icon name={p.icon} size={13} />
+          </span>
+          <span className="text-dim">{p.v}</span>
+          {p.extra}
+        </span>
+      ))}
+    </span>
+  );
+  const renderRow = (gs: Part[][], row: string) => (
+    <div className={"sb-row " + row}>{gs.map(renderGroup)}</div>
+  );
 
   return (
     <div className="stats-bar" id="statsBar">
-      {groups.map((parts, gi) => (
-        <span className="sb-group" key={gi}>
-          {parts.map((p) => (
-            <span className={cn("sb-item", p.cls)} key={p.tip} title={p.tip}>
-              <span className="sb-ic">
-                <Icon name={p.icon} size={13} />
-              </span>
-              <span className="text-dim">{p.v}</span>
-              {p.extra}
-            </span>
-          ))}
-        </span>
-      ))}
+      {narrow ? (
+        <>
+          {renderRow(tokenGroups, "sb-row-token")}
+          {renderRow(otherGroups, "sb-row-other")}
+        </>
+      ) : (
+        desktopGroups.map(renderGroup)
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ export const hubExtZh = {
   bgPending: "获取中…",
   bgEmpty: "暂无后台任务",
   bgPids: "{{n}} 个进程",
+  bgRunning: "运行中",
   bgExit: "退出码 {{code}}",
   bgCancel: "停止该任务",
   stopSub: "停止",

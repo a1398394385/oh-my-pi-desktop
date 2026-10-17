@@ -7,9 +7,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, showWelcomeScreen, pathBase } from "../../../store";
+import { REMOTE } from "../../../store/ws";
 import Icon from "../../../Icon";
 import SessionRow from "./SessionRow";
 import type { RenamingState, SessionInfo, SessionRowCallbacks } from "./SessionRow";
+import { fmtAgo } from "./util";
 
 // Minimal input for project icon resolution (remote/home fields not yet produced by the host; kept as unknown boolean sources for compatibility)
 export interface ProjectIconSource {
@@ -52,7 +54,7 @@ export function projectIconName(p: ProjectIconSource, expanded: boolean): string
 // Expanded session container (old buildProjKids): on mount plays the 0fr→1fr expand animation;
 // when animate, rows enter staggered with kids-in.
 // Manage mode shows all sessions; default 5, "show more" loads 5 more per click.
-export function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming, shortcuts }: {
+export function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowProps, renaming, shortcuts, ctxKey }: {
   p: ProjectInfo;
   animate: boolean;
   closing: boolean;
@@ -62,6 +64,8 @@ export function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowPro
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
   shortcuts?: Map<string, string>;
+  /** rowKey of the session whose context menu is open (rowKey lives here, not in Sidebar, for the project groups) */
+  ctxKey?: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
@@ -93,6 +97,7 @@ export function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowPro
               {...rowProps}
               rowKey={rowKey}
               renaming={renaming?.path === s.path && renaming?.key === rowKey}
+              ctxOpen={ctxKey === rowKey}
               shortcutDigit={shortcuts?.get(s.path)}
               className={animate ? "kids-in" : undefined}
               style={animate ? { animationDelay: `${i * 25}ms` } : undefined}
@@ -118,7 +123,7 @@ export function ProjKids({ p, animate, closing, ty, dragging, isDragSelf, rowPro
   );
 }
 
-export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHead, onPointerMoveHead, onPointerUpHead, onPointerCancelHead, shouldSuppressProjectClick, onOpenProjMenu, onRemoveProject, rowProps, renaming, shortcuts }: {
+export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHead, onPointerMoveHead, onPointerUpHead, onPointerCancelHead, shouldSuppressProjectClick, onOpenProjMenu, onRemoveProject, rowProps, renaming, shortcuts, ctxKey }: {
   p: ProjectInfo;
   ty: number;
   isDragSelf: boolean;
@@ -133,10 +138,12 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
   shortcuts?: Map<string, string>;
+  ctxKey?: string | null;
 }) {
   const { t } = useTranslation();
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
+  const narrow = useAppStore((s) => s.narrow);
   const expanded = expandedProjects.has(p.cwd);
   const [showKids, setShowKids] = useState(expanded); // render immediately on first mount without animation (mirrors the old renderList rebuild)
   const [closing, setClosing] = useState(false);
@@ -166,13 +173,15 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
       nextExpanded.add(p.cwd);
       nextLimits.delete(p.cwd); // re-expanding resets paging to the default 5 rows
     }
-    send({ type: "set_project_expanded", cwd: p.cwd, expanded: !wasExpanded });
+    if (!REMOTE) send({ type: "set_project_expanded", cwd: p.cwd, expanded: !wasExpanded }); // host-side persistence; remote stays read-only
     useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
   // Remote SSH workspace stubs show host:path (the stub path stays in the tooltip);
 // the default row shows a fixed label instead of its dir name ("default").
   const name = p.isDefault ? t("misc.defaultProject") : p.name || p.remoteLabel || pathBase(p.cwd) || p.cwd;
+  // Narrow card meta line: newest session activity inside the project
+  const updated = p.sessions.reduce((m, s) => (s.modified && s.modified > m ? s.modified : m), "");
   return (
     <>
       <div
@@ -201,8 +210,13 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
       >
         {/* the default row's comment icon skips the CJK 1.2× stretch so it keeps the same
             visual size as the picker rows' icons */}
-        <span className={"fic" + (!p.isDefault && /[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
+        <span className={"fic" + (!p.isDefault && /[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}>
+          <Icon name={narrow ? (p.remoteLabel ? "server" : "laptop") : projectIconName(p, expanded)} size={16} />
+        </span>
         <span className="pname" title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}>{name}</span>
+        {narrow && <span className="plocal">{p.remoteLabel ? t("sidebar.remoteTag") : t("sidebar.localTag")}</span>}
+        {narrow && <span className="pcount">{t("sidebar.taskCountN", { n: p.sessions.length })}</span>}
+        {narrow && <span className="pcaret"><Icon name="chevronDown" size={14} /></span>}
         {isProjectManageMode ? (
           p.isDefault ? null : (
           <button
@@ -223,6 +237,8 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
               title={t("sidebar.newSessionIn", { cwd: p.cwd })}
               onClick={(e) => {
                 e.stopPropagation();
+                // Narrow: the new-task page replaces the list (ZCode remote navigation)
+                useAppStore.getState().setMobileCol("main");
                 showWelcomeScreen(p.cwd);
               }}
             >
@@ -240,8 +256,14 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
             </button>
           </>
         )}
+        {narrow && (
+          <span className="ppath" title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}>
+            <span className="ppath-tx">{p.remoteLabel ?? p.cwd}</span>
+            {updated && <span className="pupd">{t("sidebar.updatedAgo", { time: fmtAgo(updated) })}</span>}
+          </span>
+        )}
       </div>
-      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={isDragSelf ? 0 : ty} dragging={dragging} isDragSelf={isDragSelf} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} />}
+      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={isDragSelf ? 0 : ty} dragging={dragging} isDragSelf={isDragSelf} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} ctxKey={ctxKey} />}
     </>
   );
 }

@@ -12,6 +12,7 @@ import compExt from "./ui/comp-ext-en";
 import ssh from "./ui/ssh.en";
 import autoList from "./ui/autoList.en";
 import autoEdit from "./ui/autoEdit.en";
+import remote from "./ui/remote.en";
 
 const en = {
   common,
@@ -27,6 +28,7 @@ const en = {
   ssh,
   autoList,
   autoEdit,
+  remote,
 };
 
 export default en;

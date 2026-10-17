@@ -121,7 +121,7 @@ P3  探针:保护区 A/B + 参数回填      ← T7(队尾观测)
 
 ## T4: ephemeral 状态提示 + 档位判定 + 当轮清单
 
-**What to build**:ACP 的「仪表盘」——块大小计数(settled 且 stale prune 运行后计算;**memo 用 host 自建 fingerprint → tokens 的 Map**(底座 WeakMap 以对象引用为键,context 事件每轮 deep copy 新引用会恒 miss——spec §8),流式中的块不进候选;unknown encoding 兜底 byte 估算)、三档判定(边界一律严格大于,二维决策表唯一,§5.1)、当轮清单(候选 = 活跃区 − 尾部保护区,按块大小降序,渲染超 8K token 截尾部小块豁免)、`[acp-status]` ephemeral 注入(transformContext 输出末尾追加 user 消息,不落历史;档位不变时文案逐字节稳定)、轮次归属(档位轮末判定,通牒随下一次请求注入)。
+**What to build**:ACP 的「仪表盘」——块大小计数(settled 且 stale prune 运行后计算;**memo 用 host 自建 fingerprint → tokens 的 Map**(底座 WeakMap 以对象引用为键,context 事件每轮 deep copy 新引用会恒 miss——spec §8),流式中的块不进候选;unknown encoding 兜底 byte 估算)、三档判定(边界一律严格大于,二维决策表唯一,§5.1)、当轮清单(候选 = 活跃区 − 尾部保护区,按块大小降序,渲染超 8K token 截尾部小块豁免)、`[compress-hint]` ephemeral 注入(transformContext 输出末尾追加 user 消息,不落历史;档位不变时文案逐字节稳定)、轮次归属(档位轮末判定,通牒随下一次请求注入)。
 
 **Blocked by**: T3
 **Status**: done(2026-10-13,worktree commit c1ebc8e;7 层断言冒烟(含 1600-2400 合成块 5 轮收敛)+ T1-T3 回归 + check 绿;实现解释已审:「档位轮末判定」实现为下次请求时从 settled 视图重推导(请求视图=轮末状态,turn_end 快照反而会把间隙 settle 的 tool result 延迟一轮),T7 通牒归属按请求注入锚定;memo key 含 length 项捕获 prune 重写;rebindModel 接 model_changed 已修 T3 遗留)
@@ -130,7 +130,7 @@ P3  探针:保护区 A/B + 参数回填      ← T7(队尾观测)
 - [ ] 清单按块大小降序、超 8K 截尾部豁免;豁免块下轮重新进清单,多轮收敛(验收 15)
 - [ ] 清单注入后新到块不进当轮清单、不被压(验收 12)
 - [ ] 档位判定用 prune 后值;prune 不破坏配对不变量(验收 18)
-- [ ] session JSONL 无 [acp-status] 残留;档位不变两轮的 ephemeral 文案逐字节一致
+- [ ] session JSONL 无 [compress-hint] 残留;档位不变两轮的 ephemeral 文案逐字节一致
 
 ---
 
@@ -176,7 +176,7 @@ P3  探针:保护区 A/B + 参数回填      ← T7(队尾观测)
 
 ## P4: 探针 — ephemeral 注入对前缀缓存的影响实测
 
-**What to build**:T4 落地后,真 API 对照——同一会话序列分别以「注入 [acp-status]」与「不注入」发送,对比 cacheRead 命中率(Kimi 与 Anthropic 前缀缓存面各一组;档位稳定期多轮连续注入的局部缓存复用是重点观察项)。
+**What to build**:T4 落地后,真 API 对照——同一会话序列分别以「注入 [compress-hint]」与「不注入」发送,对比 cacheRead 命中率(Kimi 与 Anthropic 前缀缓存面各一组;档位稳定期多轮连续注入的局部缓存复用是重点观察项)。
 
 **Blocked by**: T4(与 T6/T7 并行)
 **Status**: 依赖已满足(T4 done 2026-10-13);真 API 花钱(Kimi/Anthropic 各一组对照),等用户在场决策后跑;注意 T7 发现:底座 date/cwd reminder 骑在首个 user turn 上,wire 级字节对比须计入该前缀

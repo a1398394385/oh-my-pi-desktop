@@ -205,7 +205,12 @@ export function FadeBox({ className, as = "div", children, html, liftRef }: { cl
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const sync = () => el.classList.toggle("no-fade", el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    // "no-fade" lifts the bottom fade at the bottom/fit (existing contract); "no-fade-top"
+    // lets double-fade surfaces (pinned user bubble) drop the top fade while at the top.
+    const sync = () => {
+      el.classList.toggle("no-fade", el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+      el.classList.toggle("no-fade-top", el.scrollTop <= 1);
+    };
     el.addEventListener("scroll", sync, { passive: true });
     requestAnimationFrame(sync);
     return () => el.removeEventListener("scroll", sync);

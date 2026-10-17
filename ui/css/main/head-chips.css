@@ -12,9 +12,9 @@
   box-sizing: border-box;
 }
 .head-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-head button.head-chip { cursor: pointer; transition: background .15s, color .15s; }
+.chat-head button.head-chip { cursor: pointer; transition: background var(--dur-snap), color var(--dur-snap); }
 .chat-head button.head-chip:hover,
 .chat-head button.head-chip.active { background: var(--panel-3); color: var(--text); }
 .head-chip .caret-svg { display: inline-flex; flex: none; color: var(--faint); }
-.head-chip .caret-svg svg { transition: transform .15s var(--swift); transform: rotate(180deg); }
+.head-chip .caret-svg svg { transition: transform var(--dur-snap) var(--swift); transform: rotate(180deg); }
 .chat-head button.head-chip.active .caret-svg svg { transform: rotate(0deg); }

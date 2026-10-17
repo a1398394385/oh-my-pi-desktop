@@ -3,26 +3,16 @@
 // inject into the TUI status line, e.g. ponytail's setStatus — the desktop has no
 // status line, so they land here), and the session-level capability flags
 // (plan / computer use / goal / advisor) the TUI would draw in its mode segment.
-// Two shapes share one content body (CapsList):
-//  - CapsFloat: bottom-right floating overlay of the middle column (folds to a
-//    capsule). Auto-hidden when the right panel is expanded (the docked form
-//    takes over) or the middle column is too narrow for the card.
-//  - CapsDock: bottom section of the right panel (#rightCaps). Not a tab — its
-//    presence is driven purely by the panel being expanded + caps data; the
-//    section folds to a slim rail. capsCardCollapsed drives both shapes' fold
-//    state (float capsule ⇔ docked rail), so the two stay linked.
-// Data: the get_capabilities snapshot (refetched per session activation, effect
-// lives in CapsFloat which is mounted whenever the message page is) + the live
-// capabilities_mcp / extension_status merges; plan/computer/goal ride the session
-// fields their own frames maintain.
-import { useEffect, useState } from "react";
+// Rendered as the bottom section of the right panel (#rightCaps, component CapsDock).
+// Not a tab — its presence is driven purely by the panel being expanded + caps data;
+// the section folds to a slim rail via capsCardCollapsed.
+// Data: the get_capabilities snapshot (refetched per session activation by the effect
+// in useCapsView) + the live capabilities_mcp / extension_status merges;
+// plan/computer/goal ride the session fields their own frames maintain.
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
 import Icon from "../../Icon";
-
-// Hide the floating card below this middle-column width: it would otherwise
-// swallow most of the composer (the card is ~334px wide incl. its edge gap)
-const CAPS_FLOAT_MIN_W = 600;
 
 // MCP connection status → dot tone + label i18n key (ok green / wait yellow / off faint),
 // the same tones the right-panel capabilities tab used
@@ -32,12 +22,18 @@ const MCP_STATUS: Record<string, { dot: string; label: string }> = {
   disconnected: { dot: "off", label: "right.capsStDisconnected" },
 };
 
-// Shared derived view (both shapes subscribe; same store sources, no side effects)
+// Shared derived view (both shapes subscribe; same store sources)
 function useCapsView() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const snap = useAppStore((st) => st.capabilities);
   const sessionId = s?.sessionId;
+
+  // Snapshot fetch on session activation (the panel stays mounted when collapsed,
+  // so the data is always warm before the dock becomes visible)
+  useEffect(() => {
+    if (sessionId) useAppStore.getState().fetchCapabilities();
+  }, [sessionId]);
 
   // A snapshot from another session is stale: render nothing until the refetch lands
   const current = snap && snap.sessionId === sessionId ? snap : null;
@@ -127,94 +123,8 @@ function CapsList({
   );
 }
 
-// Floating shape: middle column's bottom-right overlay, bottom edge flush with the
-// composer dock's bottom edge. Auto-hidden while the right panel is expanded (the
-// docked shape takes over) or the middle column is narrower than CAPS_FLOAT_MIN_W.
-export function CapsFloat() {
-  const { t } = useTranslation();
-  const collapsed = useAppStore((st) => st.capsCardCollapsed);
-  const rightCollapsed = useAppStore((st) => st.rightCollapsed);
-  const view = useCapsView();
-
-  // Snapshot fetch on session activation (stays mounted with the message page, so
-  // the docked shape — mounted in the right panel — never needs its own fetch)
-  useEffect(() => {
-    if (view.sessionId) useAppStore.getState().fetchCapabilities();
-  }, [view.sessionId]);
-
-  // Bottom gap to the composer dock's bottom edge (both rect diffs are visual, so the
-  // gap is divided back out for the zoomed subtree's layout px); the dock height is
-  // dynamic (growing input, stacked goal/queue/approval cards), so the gap is measured,
-  // not a CSS constant. Main width drives the auto-hide.
-  const [bottom, setBottom] = useState(88);
-  const [mainW, setMainW] = useState(Infinity);
-  useEffect(() => {
-    const main = document.getElementById("main");
-    const dock = main?.querySelector(".dock");
-    if (!main || !dock) return;
-    const update = () => {
-      const z = useAppStore.getState().zoomLevel || 1;
-      setBottom(Math.max(0, Math.round((main.getBoundingClientRect().bottom - dock.getBoundingClientRect().bottom) / z)));
-      setMainW(main.clientWidth);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(dock);
-    ro.observe(main);
-    window.addEventListener("resize", update);
-    window.addEventListener("omp:zoom", update); // zoom reflows silently (no ResizeObserver in WebKit): re-measure on the applyZoom broadcast
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("omp:zoom", update);
-    };
-  }, []);
-
-  if (!view.s || view.empty) return null;
-  if (!rightCollapsed || mainW < CAPS_FLOAT_MIN_W) return null;
-
-  return (
-    <div id="capsWrap" style={{ bottom }}>
-      {!collapsed && (
-        <div id="capsCard">
-          <div className="cc-head">
-            <b>{t("chat.capsCardTitle")}</b>
-            <span className="flex-1"></span>
-            <button
-              className="icon-btn"
-              title={t("chat.collapseToCapsule")}
-              onClick={() => setBump({ capsCardCollapsed: true })}
-            >
-              <Icon name="collapseCard" />
-            </button>
-          </div>
-          <CapsList
-            servers={view.servers}
-            plugins={view.plugins}
-            badgeByPlugin={view.badgeByPlugin}
-            orphanBadges={view.orphanBadges}
-            flags={view.flags}
-          />
-        </div>
-      )}
-      {collapsed && (
-        <button
-          id="capsCardCapsule"
-          title={t("chat.capsCardTitle")}
-          onClick={() => setBump({ capsCardCollapsed: false })}
-        >
-          <span className="cc-cap-ic"><Icon name="stats" size={13} /></span>
-          <span className="cap-tx">{t("chat.capsCardTitle")}</span>
-          <span className="cap-n">{view.total}</span>
-        </button>
-      )}
-    </div>
-  );
-}
-
 // Docked shape: bottom section of the right panel. Appears only while the panel is
-// expanded (the float shape's auto-hide handoff); folds to a slim rail via the same
-// capsCardCollapsed flag, keeping the two shapes linked.
+// expanded and the session has caps data; folds to a slim rail via capsCardCollapsed.
 export function CapsDock() {
   const { t } = useTranslation();
   const collapsed = useAppStore((st) => st.capsCardCollapsed);

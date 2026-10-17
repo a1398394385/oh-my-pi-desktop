@@ -46,12 +46,13 @@ export const configHandlers = {
     ingestModels(msg.models);
     if (msg.roles) useAppStore.setState({ modelRoles: msg.roles });
     useAppStore.setState({ approvalMode });
-    // When the welcome page shows at startup, the ready frame arrives after the first initNewSessionModel: recalibrate immediately once config defaults land
+    // Same landing sequence as the settings handler below (shared applyHostSettings)
+    applyHostSettings(msg.settings);
+    // When the welcome page shows at startup, the ready frame arrives after the first initNewSessionModel: recalibrate immediately once config defaults land.
+    // Must run AFTER applyHostSettings: the per-model default thinking level reads enabledModels from the landed hostSettings.
     if (ingestModelDefaults(msg) && useAppStore.getState().isCreatingNew && !useAppStore.getState().newSessionDirty) {
       useAppStore.getState().initNewSessionModel(true);
     }
-    // Same landing sequence as the settings handler below (shared applyHostSettings)
-    applyHostSettings(msg.settings);
   },
   models(msg) {
     ingestModels(msg.models);

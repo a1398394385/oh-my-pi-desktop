@@ -15,3 +15,6 @@ host-dist/
 
 # 本地 agent 工作目录
 .omp/
+
+# 本地进度控制文件（不进仓库）
+tickets.md

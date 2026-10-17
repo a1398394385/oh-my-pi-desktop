@@ -10,6 +10,7 @@
 //      and after pool migration event frames carry the new sessionId (attachEntry's rebuilt subscription works)
 //   3. get_session_tree: branches length = 2, isCurrent hits the new branch, parentSession relation correct
 //   4. Continued chat on the new branch: turn_end arrives normally (the chain is intact after pool migration)
+import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
@@ -17,7 +18,7 @@ import { tmpdir, homedir } from "node:os";
 import path from "node:path";
 
 const args = process.argv.slice(2);
-const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
+const cfgPath = profileAgentPath("omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
 const tmpDirs: string[] = [];
@@ -57,7 +58,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

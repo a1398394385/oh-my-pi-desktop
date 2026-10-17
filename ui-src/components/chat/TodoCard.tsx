@@ -2,7 +2,7 @@
 // collapsed state (capsule).
 // Migrated from renderStatusCard in ui/right.js + initRight's card interactions (DOM
 // position at #statusWrap).
-import { Fragment, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
@@ -28,11 +28,17 @@ interface TodoPhase {
   tasks: TodoTask[];
 }
 
-// Status icon and text of a todo row (completed → <s> strikethrough; blocked appends the
-// blocker reason)
+// Status icon and text of a todo row (completed → struck-through text; blocked appends the
+// blocker reason). The strike animates only on the transition into completed: `mounted` is
+// false during the first render, so a row that mounts already done (history session, card
+// re-expand) renders its line instantly instead of replaying the sweep.
 function TodoRow({ t }: { t: TodoTask }) {
   const st = t.status;
   const text = t.content + (st === "blocked" && t.blocker ? `（${t.blocker}）` : "");
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+  }, []);
   return (
     <div
       className={"todo " + (st === "completed" ? "done" : st === "in_progress" ? "cur" : st === "blocked" ? "blocked" : "")}
@@ -41,7 +47,7 @@ function TodoRow({ t }: { t: TodoTask }) {
       <i className={st === "completed" ? "ck" : st === "in_progress" ? "ar" : "ci"}>
         {st === "completed" ? "✓" : st === "in_progress" ? "→" : st === "blocked" ? "⊘" : "○"}
       </i>
-      {st === "completed" ? <s>{text}</s> : <span>{text}</span>}
+      {st === "completed" ? <s className={mounted.current ? "strike" : undefined}>{text}</s> : <span>{text}</span>}
     </div>
   );
 }

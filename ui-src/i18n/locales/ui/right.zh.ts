@@ -6,6 +6,7 @@ export const rightZh = {
   tabTerminal: "终端",
   tabBrowser: "浏览器",
   tabAgentBrowser: "Agent 浏览器",
+  tabAgentBrowserShort: "Agent",
   mirrorEmpty: "当前会话的 Agent 未在浏览",
   mirrorOtherSessions: "其他会话的 {{n}} 个标签页不在此显示",
   searchTabs: "搜索标签页",
@@ -72,6 +73,7 @@ export const rightZh = {
   openExternalShort: "外部打开",
   // ---- Agent 内置浏览器实时视图（右栏浏览器页，host/browser-mirror.ts） ----
   modeManual: "手动浏览",
+  modeManualShort: "手动",
   agentLive: "实时",
   agentLiveSub: "正在实时镜像 Agent 的内置浏览器",
   agentConnecting: "正在连接实时画面…",

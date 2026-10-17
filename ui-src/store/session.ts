@@ -12,7 +12,7 @@ import { invoke } from "./ws";
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
 import { saveRightSlot, restoreRightSlot } from "./right";
 import { t } from "../i18n";
-import type { ApprovalMode, EventFrame, HostRequest, MessagesFrame, PromptAttachment, TurnUsage } from "../types/frames";
+import type { ApprovalMode, EventFrame, HostRequest, MessagesFrame, PoolSessionsFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
 
@@ -20,6 +20,9 @@ import type { SessionItem } from "../types/session";
 const send = (obj: HostRequest): void => {
   useAppStore.getState().send(obj);
 };
+
+/** One row of the host pool snapshot (pool_sessions frame) */
+type PoolSessionInfo = PoolSessionsFrame["sessions"][number];
 
 /** setTimeout handle (DOM vs Node return types differ; unified alias) */
 type TimerHandle = ReturnType<typeof setTimeout>;
@@ -36,10 +39,14 @@ export interface SessionSlice {
   // auto-created session lands (session_created handler)
   pendingNewBash: { command: string; excludeFromContext: boolean } | null;
   openSessions: Map<string, OpenSession>; // path -> {sessionId,cwd,items,assistantDraft,streaming,subagents,...}
+  // Host in-memory pool residency (pool_sessions frames; sidebar "active tasks"). The
+  // host pool, not openSessions: that map has an LRU cap and drops slots the pool still holds
+  poolSessions: PoolSessionInfo[];
   // Latest word-completion reply (complete_text RPC): overwritten per frame;
   // GhostTextPlugin matches it against its pending request and drops stale hits
   completionResult: CompletionResult | null;
-  // Background job snapshots per session id (18.5 bg_jobs frames; full-replace semantics)
+  // Background job snapshots keyed by bgJobsKey(sessionId, subagentId) (18.5 bg_jobs
+  // frames; full-replace semantics per key)
   bgJobs: Map<string, BgJobEntry[]>;
 }
 
@@ -52,11 +59,19 @@ export interface CompletionResult {
 /** One background job row (18.5 BgJobsFrame jobs entry; snapshot per session) */
 export interface BgJobEntry {
   id: string;
+  type: string;
+  label: string | null;
   command: string | null;
   cwd: string | null;
   pids: number[];
   exitCode: number | null;
   running: boolean;
+}
+
+/** Snapshot slot key: one per (session, subagent scope). Subagent-scoped replies replace
+    only their own slot, so switching the selected subagent cannot show another's rows. */
+export function bgJobsKey(sessionId: string, subagentId?: string): string {
+  return `${sessionId}::${subagentId ?? ""}`;
 }
 
 export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = () => ({
@@ -69,6 +84,7 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
   pendingNewPrompt: null,
   pendingNewBash: null,
   openSessions: new Map(),
+  poolSessions: [],
   completionResult: null,
   bgJobs: new Map(),
 });
@@ -158,7 +174,7 @@ export function activateSession(path: string): void {
  *  cleanup is owned by restoreRightSlot (already-open branch) and the session_created
  *  frame (host-load branch) — resetting here would clobber the just-restored panel state. */
 export function openSessionByPath(path: string, cwd?: string): void {
-  useAppStore.setState({ isCreatingNew: false });
+  useAppStore.setState({ isCreatingNew: false, mobileCol: "main" }); // narrow: opening a session leaves the list page
   useAppStore.getState().hideWelcomeScreen();
   useAppStore.setState((st) => ({
     unseenFinished: new Set([...st.unseenFinished].filter((p) => p !== path)),
@@ -269,65 +285,9 @@ export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
   s.turnItemStart = s.items.length;
 }
 
-function queueIndexOf(list: { text?: string }[] | undefined, text: string | undefined): number {
-  return (list ?? []).findIndex((m) => (m.text || "") === text);
-}
-
-// Delete: dequeue + remove the bubble. Queue bubbles are always user entries (the pending marker
-// only lands on UserItem); non-user entries hit the early return (never happens at runtime, exists
-// only to narrow the discriminated union)
-export function dropQueueMsg(s: OpenSession, item: SessionItem): void {
-  if (item.role !== "user") return;
-  const which = item.pending === "steer" ? "steering" : "followUp";
-  const list = which === "steering" ? s.steering : s.queued;
-  const i = queueIndexOf(list, item.text);
-  if (i < 0 || !list) return; // when i >= 0 the list must exist (queueIndexOf always returns -1 for undefined)
-  send({ type: "drop_queued", sessionId: s.sessionId, queue: which, index: i });
-  updateSession(s.sessionId, (next) => {
-    const l = which === "steering" ? next.steering : next.queued;
-    const ni = queueIndexOf(l, item.text);
-    if (ni >= 0 && l) l.splice(ni, 1); // re-look up after the update (concurrent frames may have changed the queue meanwhile)
-    const j = next.items.lastIndexOf(item);
-    if (j >= 0) next.items.splice(j, 1);
-  });
-}
-
-// Edit: put the content back into the composer (composerSetSignal is consumed by a Composer effect), then delete
-export function editQueueMsg(s: OpenSession, item: SessionItem): void {
-  useAppStore.getState().setComposerValue(item.text ?? "");
-  dropQueueMsg(s, item);
-}
-
-// Send now: switch from queued to steer state. No process truncation, no pre-seal — the split only
-// happens at consumption time (steer_consumed seals the whole process above the bubble into a loop
-// group); the bubble is pinned by the render layer at the bottom of the message stream
-export function sendNowQueueMsg(s: OpenSession, item: SessionItem): void {
-  const i = queueIndexOf(s.queued, item.text);
-  if (i < 0) return;
-  send({ type: "send_now", sessionId: s.sessionId, index: i });
-  updateSession(s.sessionId, (next) => {
-    const ni = queueIndexOf(next.queued, item.text);
-    if (ni >= 0 && next.queued) next.queued.splice(ni, 1);
-    next.steering = next.steering ?? [];
-    next.steering.push({ text: item.text });
-    next.items.push({ role: "user", text: item.text, pending: "steer" });
-  });
-}
-
-// Requeue: switch steer state back to the head of the queue, removing the bubble (the message lives only in the queue card)
-export function requeueSteerMsg(s: OpenSession, item: SessionItem): void {
-  const i = queueIndexOf(s.steering, item.text);
-  if (i < 0) return;
-  send({ type: "requeue", sessionId: s.sessionId, index: i });
-  updateSession(s.sessionId, (next) => {
-    const ni = queueIndexOf(next.steering, item.text);
-    if (ni >= 0 && next.steering) next.steering.splice(ni, 1);
-    next.queued = next.queued ?? [];
-    next.queued.unshift({ text: item.text });
-    const j = next.items.lastIndexOf(item);
-    if (j >= 0) next.items.splice(j, 1);
-  });
-}
+// Queue actions (drop/edit/send-now/requeue) moved to store/queue-actions.ts; re-exported here
+// so the "../store" barrel and its consumers keep a single import surface.
+export { dropQueueMsg, editQueueMsg, sendNowQueueMsg, requeueSteerMsg, reorderQueueMsg } from "./queue-actions";
 
 // ---------- Desktop alerts (system notification + alert sound; both toggled in
 // settings ▸ Interaction, duplicated events → 10s dedupe) ----------
@@ -420,7 +380,7 @@ export function hostInstanceReset(hi: string | null, seq: number): void {
       }
       openSessions.set(p, next);
     }
-    return { openSessions, evtHost: hi, evtSeq: seq };
+    return { openSessions, poolSessions: [], evtHost: hi, evtSeq: seq };
   });
 }
 
@@ -471,6 +431,43 @@ export function dispatchPrompt(sessionId: string, text: string, files: PromptAtt
   send({ type: "prompt", sessionId, text, files, ...(steer ? { steer: true } : {}) });
 }
 
+/** Promote stranded pending-steer bubbles at a fresh run's turn_start. A steer
+ *  sent while the UI still showed streaming can race the run's real end: the
+ *  base then ignores streamingBehavior and opens a plain new turn, no
+ *  steer_consumed ever fires, and the runEnd seal folds the bubble into a
+ *  collapsed loop group. This fallback (piercing groups, same extraction as
+ *  applySteerConsumed) is a no-op on every well-behaved path: consumption
+ *  already cleared pending before turn_start, and direct prompts never create
+ *  a pending bubble. */
+function promoteStrandedSteerBubbles(s: OpenSession): void {
+  const stranded: UserItem[] = [];
+  for (let i = s.items.length - 1; i >= 0; i--) {
+    const x = s.items[i];
+    if (x.role === "loop") {
+      const inner = x.items ?? [];
+      for (let j = inner.length - 1; j >= 0; j--) {
+        const k = inner[j];
+        if (k.role === "user" && k.pending) {
+          inner.splice(j, 1);
+          stranded.push(k);
+        }
+      }
+      if (inner.length === 0) s.items.splice(i, 1);
+    } else if (x.role === "user" && x.pending) {
+      s.items.splice(i, 1);
+      stranded.push(x);
+    }
+  }
+  for (const b of stranded) {
+    b.pending = null;
+    b.steerDone = true;
+    s.items.push(b);
+    const st2 = s.steering ?? [];
+    const j = st2.findIndex((m) => (m.text || "") === b.text);
+    if (j >= 0) st2.splice(j, 1);
+  }
+}
+
 // ---------- event frame handling (all kind branches of the old onMessage case "event"; immutable updates via updateSession) ----------
 export function applyEvent(msg: EventFrame): void {
   const st = useAppStore.getState();
@@ -489,6 +486,9 @@ export function applyEvent(msg: EventFrame): void {
         // duration/usage would be per-turn (live vs reloaded views would diverge);
         // the start may already be preset by local sending (send = start the clock), don't overwrite
         if (s.turnItemStart == null) {
+          // Degenerated steer (raced the run's end): no steer_consumed will
+          // come, rescue its bubble before this run's process starts
+          promoteStrandedSteerBubbles(s);
           s.turnStartAt = s.turnStartAt ?? Date.now();
           s.turnItemStart = s.items.length;
         }
@@ -740,12 +740,12 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
       const found = findBubble(t);
       // Duplicate consumption frame (RPC double-push): skip if the text already has a promoted bubble; don't repaint it
       if (!found && [...s.items].reverse().some((x) => x.role === "user" && x.steerDone && x.text === t)) continue;
-      bubbles.push(found ?? { bubble: { role: "user", text: t } });
-      const q = s.queued ?? [];
+      const q = s.queued ?? [], st2 = s.steering ?? [];
       const i = q.findIndex((m) => (m.text || "") === t);
-      if (i >= 0) q.splice(i, 1);
-      const st2 = s.steering ?? [];
       const j = st2.findIndex((m) => (m.text || "") === t);
+      const images = i >= 0 ? q[i]?.images : j >= 0 ? st2[j]?.images : undefined; // queue row images -> fallback bubble
+      bubbles.push(found ?? { bubble: { role: "user", text: t, ...(images ? { images } : {}) } });
+      if (i >= 0) q.splice(i, 1);
       if (j >= 0) st2.splice(j, 1);
     }
     const done: UserItem[] = [];

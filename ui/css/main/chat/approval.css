@@ -5,7 +5,13 @@
   border-radius: var(--r-card);
   padding: 12px;
   display: flex; flex-direction: column; gap: 12px;
+  transition: border-color 220ms var(--swift);
 }
+
+/* Focus ring parity with the composer dock: border stays neutral until focus
+   enters the card, then takes the inherited --ring-focus (session accent for a
+   titled session, the untitled fallback mix otherwise) — same colors .dock uses. */
+.approval-card:focus-within { border-color: var(--ring-focus); }
 
 .approval-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -67,7 +73,7 @@
   background: transparent; color: var(--dim);
   font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
   cursor: pointer; white-space: nowrap;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .approval-seg:hover { background: var(--panel-2); color: var(--text); }
@@ -85,7 +91,7 @@
   border-radius: var(--r-lg);
   color: var(--text); font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
   text-align: left; cursor: pointer;
-  transition: background .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift);
 }
 
 .approval-opt:hover { background: var(--panel-2); }
@@ -150,7 +156,7 @@
   flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
   background: var(--accent); color: var(--white);
   font-family: inherit; font-size: var(--ui-fs-base); font-weight: 500;
-  cursor: pointer; transition: opacity .15s var(--swift);
+  cursor: pointer; transition: opacity var(--dur-snap) var(--swift);
 }
 
 .approval-confirm:hover { opacity: .8; }

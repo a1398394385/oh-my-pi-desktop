@@ -20,6 +20,8 @@ import { voiceHandlers } from "./voice";
 import { bashCompleteHandlers } from "./bash-complete";
 import { automationsHandlers } from "./automations";
 import { btwHandlers } from "./btw";
+import { remoteHandlers } from "./remote";
+import { REMOTE_WRITE_DENYLIST } from "../remote.ts";
 import { hostI18n } from "../i18n/host.ts";
 
 export const rpcHandlers: Record<string, RpcHandler> = {
@@ -40,10 +42,17 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...bashCompleteHandlers,
   ...automationsHandlers,
   ...btwHandlers,
+  ...remoteHandlers,
 };
 
 /** Single-command dispatch: table lookup + invoke; unknown commands reply with error (old switch default semantics) */
 export function dispatchRpc(ws: any, msg: any): void | Promise<void> {
+  // Remote (LAN) connections are read-only for the write domains (spec §3.5):
+  // denylisted RPCs error out before any handler runs, leaving disk state untouched.
+  if (ws.data?.remote === true && REMOTE_WRITE_DENYLIST.has(String(msg.type))) {
+    ws.send(JSON.stringify({ type: "error", message: "remote read-only" }));
+    return;
+  }
   const h = rpcHandlers[msg.type as string];
   if (!h) {
     ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.unknownCommand", { type: msg.type }) }));

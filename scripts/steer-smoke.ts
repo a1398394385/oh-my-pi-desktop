@@ -5,6 +5,7 @@
 //   2. After edit_queued changes the text, the reply carries the new text (index aligned to user messages)
 //   3. After drop_queued clears all, the queue is empty (the path that spares system notices goes through the clear-all branch)
 //   4. Steer consumption injection: after a strong-instruction steer, the turn_end reply reflects the instruction
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -25,7 +26,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

@@ -126,7 +126,7 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	const s1 = fx.state.status();
 	assert.equal(s1.ok, true);
 	const text1 = (s1 as { text: string }).text;
-	assert.ok(text1.startsWith("[acp-report]"), "the report carries its own marker");
+	assert.ok(text1.startsWith("[context-status]"), "the report carries its own marker");
 	assert.match(text1, /tier=L1 compress=normal /, "dashboard reports tier + allowed method");
 	assert.ok(text1.includes("activation line"), "L1 instruction present");
 	const lines1 = parseManifest(text1);
@@ -214,14 +214,14 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	const mock = createMockModel({
 		handler: (context: { messages: Array<{ role: string; content: unknown; toolName?: string }> }) => {
 			const results = [...context.messages].reverse().filter((m) => m.role === "toolResult");
-			// Route the OPENING on the last real user text (the [acp-status]
+			// Route the OPENING on the last real user text (the [compress-hint]
 			// ephemeral is a user message too; the base rides its reminder into
 			// the first user message, so only a full-text scan is reliable). Once
 			// the chain started, drive on tool RESULTS: the triggering prompt can
 			// itself be folded by the compress, so the text may be gone mid-turn.
 			if (!flow.started) {
 				const users = [...context.messages].reverse().filter((m) => m.role === "user");
-				const routed = users.find((m) => !resultText(m.content).includes("[acp-status]")) ?? users[0];
+				const routed = users.find((m) => !resultText(m.content).includes("[compress-hint]")) ?? users[0];
 				const text = resultText(routed?.content ?? "");
 				if (!text.includes("fetch status")) return { content: ["Turn recorded."] as const };
 				flow.started = true;
@@ -272,13 +272,16 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	const { session } = await createAgentSession({
 		cwd: cwdC,
 		settings,
+		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
+		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
 		customTools: [createCompressContextTool(state), createRecallBlockTool(state), createAcpStatusTool(state)] as never,
 		getApiKey: async () => "mock-key",
-		extensions: [createAcpProjectionExtension(state)] as never,
+		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
 		enableMCP: false,
 		hasUI: true,

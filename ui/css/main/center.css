@@ -7,7 +7,7 @@
   background: var(--card);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0;
-  transition: margin 0.25s cubic-bezier(0.2, 0, 0, 1);
+  transition: margin var(--dur-base) var(--swift);
 }
 
 body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
@@ -16,11 +16,11 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
 
 /* The TODO process card (#statusWrap: absolute + z-60 + shadow) overlays the message area when expanded, without squeezing the message/input content column width; the card sits outside the scroll container and does not scroll */
 .chat-head {
-  height: 48px; flex: none;
+  height: 43px; flex: none;
   display: flex; align-items: center; gap: 8px;
   padding: 0 16px;
   border-bottom: 1px solid var(--line-soft);
-  transition: padding-left 0.25s cubic-bezier(0.2, 0, 0, 1);
+  transition: padding-left var(--dur-base) var(--swift);
   min-width: 0;
 }
 
@@ -28,6 +28,50 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
 body:has(#sidebar.collapsed) .chat-head {
   padding-left: 78px;
 }
+/* macOS: the expand button lands exactly where the collapse button was (fixed viewport
+   coords), so the sidebar toggles without moving the mouse; the title clears it below */
+html[data-platform="macos"] body:has(#sidebar.collapsed) .chat-head {
+  padding-left: calc(var(--top-toggle-left) + 26px + 8px - var(--shell-gap));
+}
+html[data-platform="macos"] body:has(#sidebar.collapsed) #sidebarToggle {
+  position: fixed;
+  left: var(--top-toggle-left);
+  top: var(--top-toggle-top);
+}
+/* macOS: same in-place toggle for the right panel. Expanded, its collapse button is the
+   last .sp-head child: right edge = width − shell-gap − 6px padding, center = gap + 24.
+   The collapsed expand button is pinned to the exact coords the 1px hairline leaves it at. */
+html[data-platform="macos"] body:has(#right.collapsed) #panelToggle {
+  position: fixed;
+  right: calc(var(--shell-gap) + 6px);
+  top: calc(var(--shell-gap) + 10.5px);
+}
+
+/* Header title sweep while the agent is running: colorless (a neutral sheen, no hue). Two
+   layers: a standing 65% --text wash (keeps the glyphs visible the whole cycle) under a
+   full --text band. Single-layer no-repeat would leave the text fully transparent while the
+   band parks off-screen — background-clip:text has nothing left to paint. The sheen moves
+   from washed-out toward the text color, the only direction with headroom at 13px semibold:
+   above --text is white, which vanishes on the light theme's surface.
+   Cycle 3.5s: 1.5s of travel then 2s of rest with the band off-screen. */
+.title-shimmer {
+  background-image:
+    linear-gradient(100deg, transparent 42%, var(--text) 50%, transparent 58%),
+    linear-gradient(color-mix(in srgb, var(--text) 65%, transparent), color-mix(in srgb, var(--text) 65%, transparent));
+  background-size: 200% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0, 0 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: titleSweep 3.5s linear infinite;
+}
+
+/* Motion off: the frozen frame would park the band inside the visible window */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) .title-shimmer { animation: none; background-image: none; color: var(--text); }
+}
+html[data-motion="off"] .title-shimmer { animation: none; background-image: none; color: var(--text); }
 
 .chat-head button,
 #sidebar button,
@@ -35,6 +79,17 @@ body:has(#sidebar.collapsed) .chat-head {
 #sidebar .task,
 #sidebar .proj,
 #sidebar .more-link {
+  -webkit-app-region: no-drag;
+}
+
+/* Header inline session rename (opened from the ⋯ menu): input takes the title's typography */
+.chat-head .head-rename {
+  flex: 0 1 340px;
+  min-width: 140px;
+  height: 30px;
+  padding: 2px 10px;
+  font-size: var(--ui-fs-md);
+  font-weight: 600;
   -webkit-app-region: no-drag;
 }
 
@@ -55,6 +110,9 @@ body:has(#sidebar.collapsed) .chat-head {
   min-width: 0;
   color: var(--dim);
 }
+
+/* Remote-control key-entry placeholder lives inside the same banner strip */
+.conn-banner .inp { width: 220px; flex: none; }
 
 .dock,
 .queue-card,

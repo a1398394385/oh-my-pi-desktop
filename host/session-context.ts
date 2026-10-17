@@ -65,7 +65,7 @@ function blockToolNames(content: unknown): string[] {
 }
 
 /** Fold message entries into turns in file order: a user message opens a new turn; assistant text / tool calls after it belong to that turn until the next user message. */
-function turnsFromEntries(entries: FileEntry[]): SessionTurn[] {
+export function turnsFromEntries(entries: FileEntry[]): SessionTurn[] {
   const turns: SessionTurn[] = [];
   let current: SessionTurn | null = null;
   for (const entry of entries) {
@@ -113,7 +113,7 @@ async function scanSessions(options: ScanOptions = {}): Promise<ScannedSession[]
 }
 
 /** Query terms: split on whitespace / comma / ideographic comma, all lowercased (literal containment matching). */
-function splitQueryTerms(query: string): string[] {
+export function splitQueryTerms(query: string): string[] {
   return query
     .split(/[\s,，、]+/)
     .map((term) => term.trim().toLowerCase())

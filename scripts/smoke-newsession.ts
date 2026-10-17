@@ -5,6 +5,7 @@
 //   2. create_session with thinking echoes the configured value (passing auto returns auto, not the effective high)
 //   3. Immediately after creation, list_sessions must include the session (BUG-005: the base lazily creates the file; the in-memory pool is the fallback)
 // No prompts sent, no real model calls; exits when done.
+import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ const args = process.argv.slice(2);
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
+const cfgPath = profileAgentPath("omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
 
@@ -46,7 +47,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

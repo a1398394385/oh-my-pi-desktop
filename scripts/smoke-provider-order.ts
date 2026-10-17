@@ -3,7 +3,8 @@
 // account every request uses; provider_reorder_account permutes the active
 // row ids in place so list()/get() follow the user's ranking, and the order
 // must survive a process restart (fresh store) plus keep credential_id-keyed
-// dependent rows attached.
+// dependent rows attached. Session-scoped getApiKey (the real request path) must
+// honour the same ranking — see the pin-ai patch noted in BUG-069.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-provider-order.ts
 // OMP_PROFILE must be set before any host module loads (state.ts reads it at
 // import time), so the host imports below cannot be static.
@@ -121,6 +122,16 @@ assert(
 );
 assert(apiKey(fresh.credentials.get(PROVIDER)) === KEY_B, "B must remain the served account after restart");
 fresh.close();
+
+// Session-scoped resolution (what every chat request does): the ranking must decide,
+// not a sessionId hash. BUG-069 — a hashed start served a lower-priority account for
+// most sessions while the settings page advertised it as the in-use top-ranked one.
+for (const sessionId of ["order-smoke-s1", "order-smoke-s2", "order-smoke-s3", "order-smoke-s4"]) {
+  assert(
+    (await storage.getApiKey(PROVIDER, sessionId, {})) === KEY_B,
+    `session ${sessionId} must resolve to the top-ranked account B`,
+  );
+}
 
 // Cleanup: remove both rows (tombstones) and hard-delete so the test profile stays clean.
 for (const cred of storage.credentials.list(PROVIDER)) await storage.credentials.removeById(PROVIDER, cred.id);

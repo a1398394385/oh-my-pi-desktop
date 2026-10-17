@@ -243,7 +243,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const passthrough = fx.state.projectView(fx.view);
 	assert.equal(passthrough.length, fx.view.length, "degraded projection passes the view through verbatim");
 	assert.equal(JSON.stringify(passthrough), JSON.stringify(fx.view), "no zone render, no ephemeral, no filtering");
-	assert.ok(!JSON.stringify(passthrough).includes("[acp-status]"), "ephemeral stopped");
+	assert.ok(!JSON.stringify(passthrough).includes("[compress-hint]"), "ephemeral stopped");
 	console.log("ok: B2 forced turn without success degrades; entry rejects; projection verbatim");
 }
 
@@ -358,13 +358,16 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 	const { session } = await createAgentSession({
 		cwd,
 		settings,
+		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
+		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
 		customTools: [createCompressContextTool(state)] as never,
 		getApiKey: async () => "mock-key",
-		extensions: [createAcpProjectionExtension(state)] as never,
+		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
 		enableMCP: false,
 		hasUI: true,
@@ -413,9 +416,9 @@ function isForcedChoice(toolChoice: unknown): boolean {
 				return { content: [{ type: "toolCall", name: "compress_context", arguments: { keep: [], summary: tokenText(100) } }] };
 			}
 			if (toolChoice === "none") return { content: ["turn recorded."] };
-			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[acp-status]"));
+			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
 			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
-			if (text.includes("[acp-status]")) return { content: ["not compressing yet."] }; // ignore the ultimatum
+			if (text.includes("[compress-hint]")) return { content: ["not compressing yet."] }; // ignore the ultimatum
 			return { content: ["turn recorded."] };
 		},
 	});
@@ -475,7 +478,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		handler: (call) => {
 			const toolChoice = call.options?.toolChoice;
 			if (isForcedChoice(toolChoice)) return { content: ["still not compressing."] }; // ignore the force
-			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[acp-status]"));
+			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
 			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
 			if (text.includes("compress it now") && !compressedVoluntarily) {
 				compressedVoluntarily = true;
@@ -525,7 +528,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	// Post-degrade request: projection off — verbatim view, no ephemeral.
 	await e2e.session.prompt(bulkTurn("round four")); // post-degrade request: projection off
 	const wire = JSON.stringify(e2e.calls.at(-1)!.context.messages);
-	assert.ok(!wire.includes("[acp-status]"), "ephemeral stopped after degrade");
+	assert.ok(!wire.includes("[compress-hint]"), "ephemeral stopped after degrade");
 	assert.ok(!wire.includes("[acp-summary"), "zone renders gone after degrade (projection off)");
 	assert.ok(wire.includes("round four"), "the new turn passes through verbatim");
 
@@ -560,9 +563,9 @@ function isForcedChoice(toolChoice: unknown): boolean {
 				}
 				return { content: [{ type: "toolCall", name: "compress_context", arguments: { keep: [], summary: tokenText(100) } }] };
 			}
-			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[acp-status]"));
+			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
 			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
-			if (text.includes("[acp-status]")) return { content: ["not compressing."] };
+			if (text.includes("[compress-hint]")) return { content: ["not compressing."] };
 			return { content: ["turn recorded."] };
 		},
 	});
@@ -576,7 +579,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	// The degraded session keeps serving requests through the verbatim view even
 	// while the base retry machinery finishes its attempt.
 	await e2e.session.prompt("final turn");
-	assert.ok(!JSON.stringify(e2e.calls.at(-1)!.context.messages).includes("[acp-status]"), "no ephemeral after degrade");
+	assert.ok(!JSON.stringify(e2e.calls.at(-1)!.context.messages).includes("[compress-hint]"), "no ephemeral after degrade");
 	await e2e.session.dispose(); // same as D: no post-exit session-file resurrection
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });

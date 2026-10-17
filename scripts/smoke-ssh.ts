@@ -8,6 +8,7 @@
 // on every exit path, and the lab sshd (Git-for-Windows sshd.exe, MSYS paths)
 // plus all created dirs are torn down.
 // Zero model calls (create_session is exercised without prompting).
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, rmSync, mkdirSync, cpSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
@@ -158,7 +159,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: repoRoot,
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   const ready = Promise.withResolvers<string>();

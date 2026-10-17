@@ -252,7 +252,10 @@ export const limitsHandlers: Record<string, RpcHandler> = {
         })) ?? null;
       ({ cacheTag, accountLabel } = accountForResolvedKey(ompProvider, keyOverride));
     } else {
-      keyOverride = (await H.authStorage.getApiKey(ompProvider, undefined, { baseUrl })) ?? null;
+      // Stable pseudo-session key: without a session id the selector round-robins
+      // across the provider's accounts on every call, so each hover flip-flopped
+      // the quota card between accounts. A fixed key hashes to a pinned account.
+      keyOverride = (await H.authStorage.getApiKey(ompProvider, "omp-quota-card", { baseUrl })) ?? null;
       ({ cacheTag, accountLabel } = accountForResolvedKey(ompProvider, keyOverride));
     }
     const { vendor, label, row } = await fetchSessionLimits(H.authStorage, ompProvider, baseUrl, keyOverride, cacheTag);

@@ -2,6 +2,7 @@
 // not fall back into the full desktop host (BUG-011 regression check). Covers the daemon broker / blob broker / lsp mux
 // three child-process broker shapes; js_eval goes through the same resolveWorkerSpawnCmd path, so the dispatch layer is equivalent.
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-worker-dispatch.ts [artifact path]
+import { smokeEnv } from "./smoke-profile.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -11,7 +12,7 @@ if (!fs.existsSync(hostBin)) throw new Error(`编译产物不存在: ${hostBin}`
 
 function spawnWorker(arg: string, env: Record<string, string>) {
 	return Bun.spawn([hostBin, arg], {
-		env: { ...process.env, ...env },
+		env: smokeEnv({ ...env }),
 		stdout: "pipe",
 		stderr: "pipe",
 	});

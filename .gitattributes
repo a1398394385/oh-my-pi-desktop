@@ -18,3 +18,7 @@
 *.node binary
 *.zip binary
 *.gz binary
+
+# patch 文件的 hunk 内容（context/+/- 行首标记）是匹配上游源的字节负载，
+# 其中空格、制表符属于 payload 而非源码风格 —— 让 git diff --check 跳过对它们的空白检查。
+*.patch whitespace=-blank-at-eol,-space-before-tab

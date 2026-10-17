@@ -3,11 +3,23 @@
 // cache-utilization percentage).
 // Fixtures pin the heuristic: monotonic growth counts 0; a drop under half of
 // the session peak counts one break; a gradual decay counts once (not per turn);
-// tiny prompts are noise; recovery re-arms; a shrinking baseline (compaction)
-// still lets a later break register.
+// tiny prompts are noise; recovery re-arms; a shrinking baseline still lets a
+// later break register; a context compaction (base entry or ACP block) drops
+// the prefix on purpose, so its drop is neither a break nor double-counted.
 import { countCacheBreaks } from "../host/session-lifecycle.ts";
+import { countCompactions } from "../host/session-snapshot.ts";
 
-type Msg = { type?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } };
+type Msg = { type?: string; customType?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } };
+
+/** Base compaction entry (/compact, /handoff, plan approval, auto-compaction). */
+function compacted(): Msg {
+  return { type: "compaction" };
+}
+
+/** ACP compaction block (desktop's own compaction chain, spec §9). */
+function acpBlock(): Msg {
+  return { type: "custom", customType: "acpSummary" };
+}
 
 function reads(seq: number[]): Msg[] {
   return seq.map((cacheRead) => ({ type: "message", message: { role: "assistant", usage: { cacheRead, totalTokens: cacheRead + 8 } } }));
@@ -37,6 +49,18 @@ const cases: Array<[string, Msg[], number]> = [
   ["aborted turn is not a break", [...reads([119808, 156928]), aborted(), ...reads([157440])], 0],
   ["aborted turns between two real breaks", [...reads([156928]), aborted(), ...reads([0]), aborted(), ...reads([156928])], 1],
   ["aborted turn cannot re-arm", [...reads([20000, 0]), aborted(), ...reads([20000])], 1],
+  // A compaction rewrites the prefix on purpose: the drop it causes is the
+  // compaction's cost, reported by its own counter, never a cache invalidation.
+  ["base compaction drop is not a break", [...reads([20000, 45000]), compacted(), ...reads([3000, 6000])], 0],
+  ["ACP block drop is not a break", [...reads([20000]), acpBlock(), ...reads([2500, 5000, 9000])], 0],
+  ["aborted turn after compaction keeps the re-baseline pending", [...reads([20000]), compacted(), aborted(), ...reads([100])], 0],
+  ["break after a compaction still registers", [...reads([20000]), compacted(), ...reads([3000, 8000, 0, 9000])], 1],
+];
+
+const compactionCases: Array<[string, Msg[], number]> = [
+  ["no compaction", reads([20000]), 0],
+  ["base + ACP blocks all counted", [compacted(), ...reads([3000]), acpBlock(), ...reads([6000]), compacted()], 3],
+  ["other custom entries are not compressions", [{ type: "custom", customType: "goal-continuation" }, ...reads([1])], 0],
 ];
 
 let failures = 0;
@@ -45,6 +69,13 @@ for (const [name, entries, expected] of cases) {
   const ok = got === expected;
   if (!ok) failures++;
   console.log(`${ok ? "ok  " : "FAIL"} ${name}: expected ${expected}, got ${got}`);
+}
+
+for (const [name, entries, expected] of compactionCases) {
+  const got = countCompactions(entries);
+  const ok = got === expected;
+  if (!ok) failures++;
+  console.log(`${ok ? "ok  " : "FAIL"} compressions / ${name}: expected ${expected}, got ${got}`);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

@@ -4,6 +4,8 @@
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   font-size: var(--ui-fs-base);
   line-height: 0;
+  /* CDS press physics: release from the :active squash rides the 15-stop spring */
+  transition: transform var(--dur-slow) var(--spring-press);
 }
 
 .icon-btn > span {
@@ -78,7 +80,7 @@ svg { vertical-align: middle; }
   padding: 6px 14px;
   cursor: pointer;
   font-family: inherit;
-  transition: background .12s, filter .12s;
+  transition: background var(--dur-snap), filter var(--dur-snap), transform var(--dur-slow) var(--spring-press);
 }
 
 .confirm-btn:hover {
@@ -112,7 +114,7 @@ svg { vertical-align: middle; }
   padding: 0;
   cursor: pointer;
   line-height: 0;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-snap), color var(--dur-snap), transform var(--dur-slow) var(--spring-press);
 }
 
 .plus-btn > span {
@@ -141,11 +143,11 @@ svg { vertical-align: middle; }
   border-radius: var(--r-md);
   padding: 5px;
   min-width: 150px;
-  box-shadow: 0 12px 32px var(--tint-black-500);
+  box-shadow: var(--shadow-popover);
   display: none; z-index: 500;
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) .menu { background: var(--panel); box-shadow: 0 12px 32px var(--tint-black-180); }
+:is([data-theme="light"], [data-theme-mode="light"]) .menu { background: var(--panel); }
 .menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; }
 
 /* pops up: slides in from below */
@@ -189,7 +191,7 @@ svg { vertical-align: middle; }
 
 .srow {
   display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px;
-  transition: background .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift);
 }
 
 .srow:hover { background: var(--tint-white-25); }
@@ -201,51 +203,51 @@ svg { vertical-align: middle; }
 .srow.disabled:hover { background: none; }
 
 .inp {
-  display: inline-block; background: var(--bg); border: 1px solid var(--line-soft);
+  display: inline-block; background: var(--bg); border: 1px solid transparent;
   border-radius: 9px; padding: 6px 10px; color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm);
   min-width: 240px; outline: none;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 
 .inp::placeholder { color: var(--faint); }
 
-.inp:focus { border-color: var(--tint-accent-500); box-shadow: 0 0 0 3px var(--tint-accent-130); }
-.inp.disabled { color: var(--faint); pointer-events: none; box-shadow: none; }
+.inp:focus { box-shadow: inset 0 0 0 1px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+.inp.disabled { color: var(--faint); pointer-events: none; box-shadow: inset 0 0 0 1px var(--line-soft); }
 
 /* Save button = the .send language: --panel-3 base, r9 square */
 .save-btn {
   flex: none; border: 0; background: var(--panel-3); color: var(--dim);
   border-radius: 9px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
-  transition: background .15s var(--swift), color .15s var(--swift), transform .12s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-slow) var(--spring-press);
 }
 
 .save-btn:hover { background: var(--button-hover-dark); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .save-btn:hover { background: var(--button-hover-light); }
-.save-btn:active { transform: scale(.95); }
 
 /* Danger variant (sign-out etc.): same size language as .save-btn, hover turns red to signal destructiveness */
 .save-btn.danger:hover { background: var(--panel-2); color: var(--err); }
 
-/* Save in progress: button grayed out and unclickable; the busy variant spins the icon (reuses pgspin) */
+/* Save in progress: button grayed out and unclickable; the busy variant spins the icon (reuses the shared spin keyframes) */
 .save-btn:disabled { opacity: .6; cursor: default; }
 
 .save-btn:disabled:hover, .save-btn:disabled:active { background: var(--panel-3); transform: none; }
 
-.save-btn.busy svg { animation: pgspin .8s linear infinite; }
+.save-btn.busy svg { animation: spin .8s linear infinite; }
 
 /* Toggle switch: spring slide + press-to-squash skeuomorphism */
 .tg {
   width: 38px; height: 23px; border-radius: 999px; background: var(--panel-3);
   position: relative; cursor: pointer; flex: none;
-  transition: background .22s var(--swift);
+  transition: background var(--dur-base) var(--swift);
   border: 0; padding: 0;
 }
 
 .tg i {
   position: absolute; top: 2.5px; left: 2px; width: 18px; height: 18px;
   border-radius: 50%; background: var(--toggle-thumb); pointer-events: none;
-  box-shadow: 0 1px 3px var(--tint-black-400);
-  transition: left .24s var(--spring), width .24s var(--spring);
+  box-shadow: var(--shadow-sm);
+  transition: left var(--dur-base) var(--spring), width var(--dur-base) var(--spring);
 }
 
 .tg:active i { width: 21px; }
@@ -268,14 +270,14 @@ svg { vertical-align: middle; }
   font-size: var(--ui-fs-base); cursor: pointer; flex: none;
   background: transparent; color: var(--dim);
   position: relative;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .sel:hover, .sel:has(.menu.open) { background: var(--panel-2); color: var(--text); }
 
 .sel i { color: var(--faint); font-style: normal; font-size: var(--ui-fs-sm); }
 
-.sel .caret-svg { color: var(--faint); transition: transform .22s var(--spring); }
+.sel .caret-svg { color: var(--faint); transition: transform var(--dur-base) var(--spring); }
 
 .sel:has(.menu.open) .caret-svg { transform: rotate(180deg); }
 
@@ -295,8 +297,23 @@ svg { vertical-align: middle; }
   margin-left: auto; border: 1px solid var(--line); background: transparent;
   color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
   height: 31px; /* same height as the refresh button (.pg-refresh 31x31), unified height for per-page new/add buttons */
+  /* CDS press physics: release from the :active squash rides the 15-stop spring */
+  transition: transform var(--dur-slow) var(--spring-press);
 }
 .add-btn:hover { background: var(--panel-2); }
+
+/* CDS press physics, shared: press-in squashes fast (60ms swift), let-go springs back over 450ms.
+   Overrides the per-button release timing above only while pressed; .save-btn's disabled transform:none
+   and .busy svg spin are untouched (parent transform does not interrupt child animations), and the
+   .tg slider's :active thumb-squeeze is separate semantics. */
+.save-btn:active,
+.confirm-btn:active,
+.plus-btn:active,
+.icon-btn:active,
+.add-btn:active {
+  transform: scale(.975);
+  transition: transform var(--dur-fast) var(--swift);
+}
 
 .menu .mi.disabled { color: var(--faint); cursor: default; }
 .menu .mi.disabled:hover { background: transparent; }
@@ -315,7 +332,7 @@ svg { vertical-align: middle; }
   color: var(--dim);
   font-size: var(--ui-fs-sm);
   cursor: pointer;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .mcp-type-pill:hover {
@@ -342,3 +359,12 @@ svg { vertical-align: middle; }
 .tag.on { color: var(--text); border-color: var(--dim); }
 
 .tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }
+
+/* Hairline refinement on HiDPI: halve the 1px chrome of standalone controls —
+   container-level borders are deliberately untouched */
+@media (min-resolution: 2dppx) {
+  .confirm-btn, .add-btn, .tag { border-width: .5px; }
+  .inp { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  .inp:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  .inp.disabled { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+}

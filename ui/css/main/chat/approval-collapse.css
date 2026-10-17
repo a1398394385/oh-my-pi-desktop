@@ -17,7 +17,11 @@
   width: 100%; margin: 0; padding: 8px 12px;
   background: var(--inset); border: 1px solid var(--line-soft); border-radius: var(--r-card);
   color: var(--dim); font-size: var(--ui-fs-base); text-align: left; cursor: pointer;
+  transition: border-color 220ms var(--swift);
 }
+
+/* Same focus accent as the expanded card (inherited dock --ring-focus). */
+.approval-min:focus { border-color: var(--ring-focus); }
 
 .approval-min:hover { background: var(--panel-2); }
 

@@ -39,17 +39,17 @@
   height: 30px;
   padding: 0 10px 0 32px;
   background: var(--bg);
-  border: 1px solid var(--line-soft);
+  border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text);
   font-size: var(--ui-fs-sm);
   outline: none;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 
 .mcp-search-input:focus {
-  border-color: var(--tint-accent-500);
-  box-shadow: 0 0 0 3px var(--tint-accent-130);
+  box-shadow: inset 0 0 0 1px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130);
 }
 
 .mcp-search-input::placeholder { color: var(--faint); }
@@ -95,7 +95,7 @@
   color: var(--text);
   font-size: var(--ui-fs-sm);
   cursor: pointer;
-  transition: background .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift);
 }
 
 .mcp-btn-new:hover { background: var(--panel-2); }
@@ -133,7 +133,7 @@
   align-items: center;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line-soft);
-  transition: background .15s;
+  transition: background var(--dur-snap);
 }
 
 .mcp-server-row:last-child {
@@ -264,7 +264,7 @@
 
 .mcp-log-btn {
   background: var(--panel-2);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   color: var(--text);
   font-size: var(--ui-fs-xs);
   padding: 1px 7px;
@@ -273,12 +273,13 @@
   white-space: nowrap;
   line-height: 1.4;
   flex-shrink: 0;
-  transition: background .12s, border-color .12s;
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);
 }
 
 .mcp-log-btn:hover {
   background: var(--line);
-  border-color: var(--dim);
+  box-shadow: inset 0 0 0 1px var(--dim);
 }
 
 /* right-side toggle control */
@@ -287,4 +288,18 @@
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+}
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .mcp-search-input { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  .mcp-search-input:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  .mcp-log-btn { box-shadow: inset 0 0 0 .5px var(--line); }
+  .mcp-log-btn:hover { box-shadow: inset 0 0 0 .5px var(--dim); }
+}
+@media (min-resolution: 3dppx) {
+  .mcp-search-input { box-shadow: inset 0 0 0 .33px var(--line-soft); }
+  .mcp-search-input:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  .mcp-log-btn { box-shadow: inset 0 0 0 .33px var(--line); }
+  .mcp-log-btn:hover { box-shadow: inset 0 0 0 .33px var(--dim); }
 }

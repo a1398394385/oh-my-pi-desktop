@@ -165,10 +165,18 @@ export default function AgentHub() {
     return c;
   }, [s]);
 
+  // Mouse exit (the keybinds live only in the keybind bar below)
+  const backBtn = (
+    <button type="button" className="subagent-return-btn ml-auto" onClick={() => useAppStore.getState().closeHub()}>
+      {t("chat.backToParentSession")}
+    </button>
+  );
+
   if (!s || s.subagents.size === 0) {
     return (
       <div id="agentHub" className="hub-empty text-faint text-ui-base">
         {t("right.hubEmpty")}
+        {backBtn}
       </div>
     );
   }
@@ -192,6 +200,7 @@ export default function AgentHub() {
             {label}
           </span>
         ))}
+        {backBtn}
       </div>
       {/* Roster header: mode toggle + status counts, then the aggregate usage line */}
       <div className="hub-head">

@@ -10,7 +10,7 @@
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
-  transition: scrollbar-color .3s ease;
+  transition: scrollbar-color var(--dur-sheet) var(--swift);
 }
 
 .fork-pills.is-scrolling {
@@ -28,7 +28,7 @@
 .fork-pills::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 2px;
-  transition: background-color .3s ease;
+  transition: background-color var(--dur-sheet) var(--swift);
 }
 
 .fork-pills.is-scrolling::-webkit-scrollbar-thumb {
@@ -43,7 +43,7 @@
   flex: 0 0 auto;
   white-space: nowrap;
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
   padding: 4px 9px;
   font-size: var(--ui-fs-sm);
@@ -52,18 +52,20 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  transition: all .15s ease;
+  /* border color lives in the inset ring so hover/active can swap it paint-only */
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);
 }
 
 .fork-pill:hover {
   background: var(--panel-2);
   color: var(--text);
-  border-color: var(--line-soft);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
 }
 
 .fork-pill.active {
   background: color-mix(in srgb, var(--accent) 15%, var(--panel));
-  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--text);
   font-weight: 500;
 }
@@ -84,4 +86,16 @@
   color: var(--faint);
   padding: 0 4px;
   border-radius: 4px;
+}
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .fork-pill { box-shadow: inset 0 0 0 .5px var(--line); }
+  .fork-pill:hover { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  .fork-pill.active { box-shadow: inset 0 0 0 .5px var(--accent); }
+}
+@media (min-resolution: 3dppx) {
+  .fork-pill { box-shadow: inset 0 0 0 .33px var(--line); }
+  .fork-pill:hover { box-shadow: inset 0 0 0 .33px var(--line-soft); }
+  .fork-pill.active { box-shadow: inset 0 0 0 .33px var(--accent); }
 }

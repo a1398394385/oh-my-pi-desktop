@@ -25,7 +25,7 @@
 
 .bgcmd-caret { flex: none; display: flex; align-items: center; color: var(--faint); }
 
-.bgcmd-caret svg { transition: transform .15s var(--swift); transform: rotate(-90deg); }
+.bgcmd-caret svg { transition: transform var(--dur-snap) var(--swift); transform: rotate(-90deg); }
 
 .bgcmd-expand {
   border-bottom: 1px solid var(--line-soft);

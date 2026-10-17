@@ -1,13 +1,18 @@
 .hub-row {
   position: relative;
   display: flex; flex-direction: column; align-items: stretch; gap: 7.5px;
-  padding: 5px 8px; border: 1px solid transparent; border-radius: var(--r-md);
+  padding: 8px 10px;
+  /* Card chrome reuses the automations list language (.al-card): no fill of its own,
+     separated by an inset ring only; hover/selection lift the ring, not a new surface. */
+  border: 1px solid transparent; border-radius: var(--r-lg);
   background: none; text-align: left; font: inherit; cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 75%, transparent);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 
-.hub-row:hover { background: var(--panel-2); }
+.hub-row:hover { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
 
-.hub-row.on { background: var(--panel); border-color: var(--line); }
+.hub-row.on { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
 
 .hub-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 
@@ -54,6 +59,20 @@
 /* Steer inline input: expands in place below the row content (mem-expand's downward popIn entrance; no separator border inside cards) */
 .hub-steer { display: flex; align-items: center; gap: 4px; animation: popIn .3s ease-out; --pop-from: -4px; }
 
-.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); }
+.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--panel); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
 
-.hub-steer-input:focus { outline: none; border-color: var(--accent); }
+.hub-steer-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .hub-row { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--line) 75%, transparent); }
+  .hub-row:hover, .hub-row.on { box-shadow: inset 0 0 0 .5px var(--line); }
+  .hub-steer-input { box-shadow: inset 0 0 0 .5px var(--line); }
+  .hub-steer-input:focus { box-shadow: inset 0 0 0 .5px var(--accent); }
+}
+@media (min-resolution: 3dppx) {
+  .hub-row { box-shadow: inset 0 0 0 .33px color-mix(in srgb, var(--line) 75%, transparent); }
+  .hub-row:hover, .hub-row.on { box-shadow: inset 0 0 0 .33px var(--line); }
+  .hub-steer-input { box-shadow: inset 0 0 0 .33px var(--line); }
+  .hub-steer-input:focus { box-shadow: inset 0 0 0 .33px var(--accent); }
+}

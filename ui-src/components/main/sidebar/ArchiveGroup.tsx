@@ -7,16 +7,18 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, pathBase } from "../../../store";
+import { REMOTE } from "../../../store/ws";
 import Icon from "../../../Icon";
 import { ProjKids, projectIconName } from "./ProjGroup";
 import type { ProjectInfo } from "./ProjGroup";
 import type { RenamingState, SessionRowCallbacks } from "./SessionRow";
 
-export default function ArchiveGroup({ p, rowProps, renaming, shortcuts }: {
+export default function ArchiveGroup({ p, rowProps, renaming, shortcuts, ctxKey }: {
   p: ProjectInfo;
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
   shortcuts?: Map<string, string>;
+  ctxKey?: string | null;
 }) {
   const { t } = useTranslation();
   const expandedProjects = useAppStore((s) => s.expandedProjects);
@@ -50,7 +52,7 @@ export default function ArchiveGroup({ p, rowProps, renaming, shortcuts }: {
       nextExpanded.add(p.cwd);
       nextLimits.delete(p.cwd);
     }
-    send({ type: "set_project_expanded", cwd: p.cwd, expanded: !wasExpanded });
+    if (!REMOTE) send({ type: "set_project_expanded", cwd: p.cwd, expanded: !wasExpanded }); // host-side persistence; remote stays read-only
     useAppStore.setState({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   };
 
@@ -65,7 +67,7 @@ export default function ArchiveGroup({ p, rowProps, renaming, shortcuts }: {
         <span className={"fic" + (!p.isDefault && /[\u4e00-\u9fa5]/.test(name) ? " is-cjk" : "")}><Icon name={projectIconName(p, expanded)} size={16} /></span>
         <span className="pname" title={p.remoteLabel ? `${p.remoteLabel}\n${p.cwd}` : p.cwd}>{name}</span>
       </div>
-      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={0} dragging={false} isDragSelf={false} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} />}
+      {showKids && <ProjKids p={p} animate={expanded && !closing} closing={closing} ty={0} dragging={false} isDragSelf={false} rowProps={rowProps} renaming={renaming} shortcuts={shortcuts} ctxKey={ctxKey} />}
     </>
   );
 }

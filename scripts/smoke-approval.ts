@@ -1,6 +1,7 @@
 // Approval flow smoke test: switch to always-ask -> induce a write tool -> assert approval_request arrives ->
 // reply Approve -> assert tool execution + turn_end. Cleans up artifacts afterwards.
 // Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-approval.ts
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import os from "node:os";
@@ -16,7 +17,7 @@ function fail(msg: string): never {
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "inherit"],
 });
 const wsUrl = await new Promise<string>((resolve, reject) => {

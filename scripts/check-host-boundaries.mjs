@@ -59,6 +59,9 @@ const ALLOWED_EDGES = new Set([
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
+  // Sidebar full-text search (search_session_text): same read-only session-file domain as the retrieval tool —
+  // it reuses that module's turn folding / query splitting and the bootstrap SDK handles (no second parse layer)
+  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→bootstrap.ts", "session-text-search.ts→session-context.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise
@@ -188,6 +191,10 @@ const ALLOWED_EDGES = new Set([
   // re-exports pushContext/countCacheBreaks for the pre-split import surface.
   "session-lifecycle.ts→session-snapshot.ts", "session-lifecycle.ts→subagent-view.ts",
   "session-snapshot.ts→state.ts",
+  // Stats bar's compaction counter: the session stats scan needs the same
+  // journal markers the ACP persist layer defines (base `compaction` entry +
+  // acpSummary block), so the constant is imported instead of re-spelled.
+  "session-snapshot.ts→acp-persist.ts",
   "subagent-view.ts→state.ts", "subagent-view.ts→translate.ts",
   // Cache keepalive (an inline-extension domain conditionally injected behind an experiment switch;
   // three flat files keepalive/keepalive-config/keepalive-lib)
@@ -334,6 +341,17 @@ const ALLOWED_EDGES = new Set([
   "rpc/automations.ts→rpc/types.ts",
   "rpc/automations.ts→automations/types.ts", "rpc/automations.ts→automations/cron.ts",
   "rpc/automations.ts→automations/store.ts", "rpc/automations.ts→automations/scheduler.ts",
+  // Agent-facing create_automation tool: automations/create.ts is the single
+  // create entry (validation + id minting + born-completed rule) now shared by
+  // the UI RPC and the tool, so both front doors enforce the same contract.
+  "rpc/automations.ts→automations/create.ts",
+  "automations/create.ts→automations/cron.ts", "automations/create.ts→automations/store.ts",
+  "automations/create.ts→automations/types.ts", "automations/create.ts→i18n/host.ts",
+  // The tool injects through session-lifecycle's customTools (same slot as
+  // read_session_context) and pushes automations_list to the attached UI.
+  "session-lifecycle.ts→automations-tool.ts",
+  "automations-tool.ts→automations/create.ts", "automations-tool.ts→automations/store.ts",
+  "automations-tool.ts→automations/types.ts", "automations-tool.ts→state.ts",
   // session_list backfills the automation badge from the persisted runs ledger
   // (pool eviction/restart must not drop it); read-only store access
   "rpc/session.ts→automations/store.ts",
@@ -358,6 +376,21 @@ const ALLOWED_EDGES = new Set([
   "plan-approve.ts→i18n/host.ts",
   "plan.ts→i18n/host.ts", "profile.ts→i18n/host.ts", "pty.ts→i18n/host.ts",
   "queue.ts→i18n/host.ts", "session-lifecycle.ts→i18n/host.ts", "session-poll.ts→i18n/host.ts", "state.ts→i18n/host.ts",
+  // LAN remote control (spec §3, ADR-0008): remote.ts owns the second Bun.serve
+  // (fixed port, 0.0.0.0, static dist + token upgrade) and the omp-desktop.json
+  // remote section; ws-shared.ts holds the open/message/close handlers BOTH
+  // servers share (extracted verbatim from main.ts — takeover kick, ready
+  // handshake, dispatchRpc) so the protocol never forks by origin. The handler
+  // set is injected into remote.ts (setRemoteWsHandlers) instead of imported,
+  // keeping remote.ts free of a remote->rpc->remote cycle; dispatchRpc imports
+  // REMOTE_WRITE_DENYLIST back for the remote read-only gate (spec §3.5).
+  "main.ts→ws-shared.ts", "main.ts→remote.ts",
+  "ws-shared.ts→state.ts", "ws-shared.ts→i18n/host.ts", "ws-shared.ts→models.ts", "ws-shared.ts→frames.ts",
+  "ws-shared.ts→rpc/index.ts", "ws-shared.ts→settings-compat.ts", "ws-shared.ts→browser-mirror.ts", "ws-shared.ts→stderr.ts",
+  "remote.ts→desktop-json.ts", "remote.ts→stderr.ts",
+  "frames.ts→remote.ts", // settings frame carries the remote-section projection (settings page's remote group)
+  "rpc/index.ts→remote.ts", "rpc/index.ts→rpc/remote.ts",
+  "rpc/remote.ts→remote.ts", "rpc/remote.ts→rpc/types.ts", "rpc/remote.ts→frames.ts", "rpc/remote.ts→state.ts",
   // Wire contract neutral ground (A10): pure-type single source shared with the
   // UI (ui-src/types/frames.ts re-exports it; that direction is outside this
   // table). Host consumers re-export the payload shapes from state/translate;

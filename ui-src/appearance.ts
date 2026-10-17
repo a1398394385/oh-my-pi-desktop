@@ -6,7 +6,7 @@
 // global shortcuts (keys.js) and the frame handlers (wsHandlers/config).
 import i18next from "./i18n";
 import { useAppStore, send } from "./store";
-import { invoke } from "./store/ws";
+import { invoke, REMOTE } from "./store/ws";
 import { applyTheme, applyMotion } from "./shell";
 import type { UiPrefs } from "./store/shapes";
 import { resolveTheme } from "./theme-registry";
@@ -123,9 +123,16 @@ export function applyUiConfig(cfg: unknown): void {
   if (!cfg || typeof cfg !== "object") return;
   const c = cfg as { locale?: unknown; theme?: unknown; motion?: unknown; prefs?: unknown };
 
-  // theme: file wins; cache-only value migrates up once
+  // theme: file wins; cache-only value migrates up once.
+  // Remote clients are read-only on the host and switch the theme locally (header button),
+  // so a warm local choice survives reloads; only a first-time client adopts the host's theme.
   // Only apply if it's a valid theme (built-in or custom theme ID from THEMES)
-  if (typeof c.theme === "string" && c.theme) {
+  if (REMOTE) {
+    const cachedTheme = localStorage.getItem(THEME_KEY);
+    if (!cachedTheme && typeof c.theme === "string" && c.theme) {
+      applyTheme(c.theme === "system" ? "system" : resolveTheme(c.theme));
+    }
+  } else if (typeof c.theme === "string" && c.theme) {
     const theme = c.theme === "system" ? "system" : resolveTheme(c.theme);
     applyTheme(theme);
     try { localStorage.setItem(THEME_KEY, theme); } catch {}
@@ -140,7 +147,7 @@ export function applyUiConfig(cfg: unknown): void {
     try { localStorage.setItem(MOTION_KEY, c.motion); } catch {}
   } else {
     const cachedMotion = localStorage.getItem(MOTION_KEY);
-    if (cachedMotion) send({ type: "set_ui_prefs", motion: cachedMotion });
+    if (cachedMotion && !REMOTE) send({ type: "set_ui_prefs", motion: cachedMotion });
   }
 
   // prefs: file wins -> merge into the store + re-apply; cache-only value migrates up once
@@ -156,7 +163,7 @@ export function applyUiConfig(cfg: unknown): void {
     const { theme: _t, motion: _m, lang: _l, ...cachedPrefs } = useAppStore.getState().uiPrefs;
     // Only migrate when the cache actually carries a non-default change
     const hasAny = Object.entries(cachedPrefs).some(([k, v]) => JSON.stringify(v) !== JSON.stringify(DEFAULT_PREFS[k]));
-    if (hasAny) send({ type: "set_ui_prefs", prefs: cachedPrefs });
+    if (hasAny && !REMOTE) send({ type: "set_ui_prefs", prefs: cachedPrefs });
   }
 
   // locale: an explicit file value beats the startup-detected language (the
@@ -166,7 +173,7 @@ export function applyUiConfig(cfg: unknown): void {
     const loc = c.locale;
     useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, lang: loc } }));
     void i18next.changeLanguage(loc);
-    send({ type: "set_locale", lang: loc });
+    if (!REMOTE) send({ type: "set_locale", lang: loc }); // cache->file repair writes host config; remote stays read-only
     invoke?.("set_menu_language", { lang: loc })?.catch((err: unknown) => console.warn("set_menu_language:", err));
   }
 }

@@ -4,13 +4,13 @@
 
 .srow.mem-row.on .mem-caret svg { transform: rotate(0deg); }
 
-.md-grp .caret { flex: none; transition: transform .12s; }
+.md-grp .caret { flex: none; transition: transform var(--dur-snap); }
 
 .md-grp.closed .caret { transform: rotate(-90deg); }
 
 .mem-caret { flex: none; display: flex; align-items: center; color: var(--faint); }
 
-.mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
+.mem-caret svg { transition: transform var(--dur-sheet) var(--swift); transform: rotate(-90deg); }
 
 .mem-expand { border-bottom: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; /* expands downward on entrance */ }
 

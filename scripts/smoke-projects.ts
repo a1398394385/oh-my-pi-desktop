@@ -8,15 +8,20 @@
 //   3. reorder_projects: the order sent by the UI wins (A overtakes B); items not covered keep their order
 //   4. set_session_pinned: pinnedSessions is visible in the persisted file
 //   5. remove_project: into removedProjects, out of allProjects
+//   6. add_project rejects an OS temp dir (host/rpc/session.ts add_project filters isTempDirPath,
+//      so a smoke run cannot leave its own mkdtemp fixture in the user's allProjects)
+// Fixture projects live under the active profile, NOT os.tmpdir(): add_project now refuses
+// temp paths, so a tmpdir fixture could not exercise the ordering assertions at all.
 // Zero model calls.
+import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import path from "node:path";
 
 const args = process.argv.slice(2);
-const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
+const cfgPath = profileAgentPath("omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
 const tmpDirs: string[] = [];
@@ -50,7 +55,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {
@@ -98,8 +103,10 @@ await new Promise((resolve, reject) => {
 }).catch((e) => fail(String(e)));
 await waitType("ready");
 
-const dirA = await mkdtemp(path.join(tmpdir(), "omp-smoke-prjA-"));
-const dirB = await mkdtemp(path.join(tmpdir(), "omp-smoke-prjB-"));
+const fixtureRoot = path.join(profileAgentPath(), "..", "smoke-fixtures");
+await mkdir(fixtureRoot, { recursive: true });
+const dirA = await mkdtemp(path.join(fixtureRoot, "omp-smoke-prjA-"));
+const dirB = await mkdtemp(path.join(fixtureRoot, "omp-smoke-prjB-"));
 tmpDirs.push(dirA, dirB);
 const idxOf = (l: any, c: string) => (l.allProjects ?? []).indexOf(c);
 
@@ -141,9 +148,29 @@ assert(
   `remove_project A：进 removed（allProjects 保留、B 不受影响）`,
 );
 
+// ---- Assertion 6: add_project refuses an OS temp dir ----
+// main.ts message() reports a failed RPC as a { type: "error" } frame; the host
+// logs the same throw via errors.host.commandFailed but never replies with ok.
+const tmpFixture = await mkdtemp(path.join(tmpdir(), "omp-smoke-prjTmp-"));
+tmpDirs.push(tmpFixture);
+mark = frames.length;
+ws.send(JSON.stringify({ type: "add_project", cwd: tmpFixture }));
+const failed = await waitType("error", mark).catch((e) => fail(String(e)));
+// The rejection text is localized (host locale drives it), so match either wording.
+const rejection = String(failed.message ?? "");
+assert(
+  /Temporary directories|临时目录/.test(rejection),
+  `add_project 拒绝临时目录（error 帧回显拒绝原因：${rejection.slice(0, 60)}）`,
+);
+mark = frames.length;
+ws.send(JSON.stringify({ type: "list_sessions" }));
+list = await waitType("session_list", mark).catch((e) => fail(String(e)));
+assert(idxOf(list, tmpFixture) === -1, "add_project 拒绝临时目录（session_list 的 allProjects 中也不存在）");
+
 clearTimeout(failTimeout);
 ws.close();
 restoreCfg();
 for (const d of tmpDirs) await rm(d, { recursive: true, force: true }).catch(() => {});
+await rm(fixtureRoot, { recursive: true, force: true }).catch(() => {});
 console.log("全部断言通过（omp-desktop.json 已还原）");
 process.exit(0);

@@ -61,7 +61,7 @@
   opacity: 0;
   pointer-events: none;
   transform: translateX(-4px);
-  transition: opacity .15s ease, transform .15s ease, background .12s, color .12s, border-color .12s;
+  transition: opacity var(--dur-snap) var(--swift), transform var(--dur-snap) var(--swift), background var(--dur-snap), color var(--dur-snap), border-color var(--dur-snap);
   z-index: 5;
   box-shadow: 0 2px 8px var(--tint-black-250);
 }
@@ -90,7 +90,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all .2s ease;
+  transition: border-color var(--dur-base) var(--swift), box-shadow var(--dur-base) var(--swift);
   z-index: 3;
 }
 
@@ -115,7 +115,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  transition: background .12s, border-color .12s, box-shadow .12s;
+  transition: background var(--dur-snap), border-color var(--dur-snap), box-shadow var(--dur-snap);
   overflow: hidden;
 }
 
@@ -213,7 +213,7 @@
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  transition: transform .2s ease, color .15s;
+  transition: transform var(--dur-base) var(--swift), color var(--dur-snap);
   flex: none;
 }
 
@@ -253,7 +253,7 @@
      overrides the global hover-visible thumb */
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
-  transition: scrollbar-color .3s ease;
+  transition: scrollbar-color var(--dur-sheet) var(--swift);
 }
 
 .detail-body.is-scrolling {

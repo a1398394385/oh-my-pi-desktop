@@ -8,10 +8,11 @@
 import { useAppStore, send, setBump, type TimerHandle } from "./store";
 import { expandRightPanel } from "./components/main/right/tabs";
 import type { ToolItem } from "./types/session";
-import { IS_WINDOWS } from "./platform";
+import { IS_MAC, IS_WINDOWS } from "./platform";
 import { yieldSummary } from "./components/chat/util";
 import { t } from "./i18n";
 import { THEMES, type ThemeId } from "./theme-registry";
+import { REMOTE } from "./store/layout";
 
 // Theme/motion modes. Persistence is file-first: omp-desktop.json's ui section
 // is the source of truth (saveTheme/saveMotion write it via the set_ui_prefs
@@ -64,7 +65,9 @@ export function applyTheme(mode: ThemeMode): void {
 export function saveTheme(mode: ThemeMode): void {
   applyTheme(mode);
   try { localStorage.setItem("omp-theme", mode); } catch {}
-  send({ type: "set_ui_prefs", theme: mode });
+  // Remote clients are read-only on the host (spec §3.5): the theme stays a local
+  // preference there instead of being rejected by the denylist
+  if (!REMOTE) send({ type: "set_ui_prefs", theme: mode });
 }
 
 // Native menu "toggle dark/light theme": swap dark and light (the system state
@@ -84,6 +87,16 @@ export function applyMotion(mode: MotionMode): void {
   if (mode === "system") delete document.documentElement.dataset.motion;
   else document.documentElement.dataset.motion = mode;
   setBump({ uiPrefs: { ...useAppStore.getState().uiPrefs, motion: mode } });
+}
+
+/** True when animations may run: data-motion forces on/off, absent follows the OS. Mirrors
+ *  the CSS contract in global/animations.css — gate JS-driven animation (Web Animations,
+ *  reveal timers) with this, since CSS rules cannot reach those. */
+export function motionEnabled(): boolean {
+  const mode = document.documentElement.dataset.motion;
+  if (mode === "on") return true;
+  if (mode === "off") return false;
+  return !matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /** User-driven motion switch: apply + persist to omp-desktop.json (+ cache mirror). */
@@ -162,7 +175,23 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
 // the rendered context menus / theme menus and their click hit targets.
 // (zoomTargets is lazily initialized: the targets do not exist before App mounts)
 let zoomTargets: (HTMLElement | null)[] | null = null;
-function applyZoom(): void {
+
+// Native macOS traffic lights: window points, while style.zoom scales every CSS px.
+// tauri.conf.json's trafficLightPosition is applied once at window creation, so the
+// lights must be re-placed whenever the zoom changes — the top-left blank strip they
+// sit in is CSS-scaled and they have to stay on its center line.
+// #navNew's viewport top is the strip's bottom edge in points (getBoundingClientRect
+// reports the outer, unzoomed space even inside a style.zoom subtree); wry's placement
+// puts the button center at y − 2.2 points, hence the offset back.
+const TRAFFIC_CENTER_BIAS = 2.2;
+function syncTrafficLights(): void {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!IS_MAC || !invoke) return;
+  const stripBottom = document.getElementById("navNew")?.getBoundingClientRect().top ?? 50 * useAppStore.getState().zoomLevel;
+  void invoke("set_traffic_light_y", { y: stripBottom / 2 + TRAFFIC_CENTER_BIAS });
+}
+
+export function applyZoom(): void {
   // Re-resolve when a target is missing or detached: App can remount after a
   // language/key change (Root renders <App key={lang}>), leaving the cached
   // nodes orphaned and silently dropping every later zoom write
@@ -170,6 +199,10 @@ function applyZoom(): void {
   // style.zoom is a non-standard property (absent from TS lib.dom): assert the
   // write, semantics unchanged from the original
   for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
+  // Native macOS traffic lights keep physical coordinates while style.zoom scales CSS px;
+  // publish the factor so UI pinned next to them (--top-toggle-*) divides back to points
+  document.documentElement.style.setProperty("--ui-zoom", String(useAppStore.getState().zoomLevel));
+  syncTrafficLights();
   // zoom changes layout width but does not trigger ResizeObserver (Chrome/WebKit
   // behavior); notify the composer to recompute the bottom-bar collapse
   window.dispatchEvent(new CustomEvent("omp:zoom"));

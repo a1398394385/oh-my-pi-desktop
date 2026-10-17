@@ -139,6 +139,8 @@ export interface AcpRoundStatus {
 	activeTokens: number;
 	/** Token total of the projection (zone renders + surviving active blocks; block-sum approximation). */
 	projectedTokens: number;
+	/** Live active-block count (dashboard surfaces). */
+	activeBlocks: number;
 	manifestIds: string[];
 	/** Candidates dropped by the manifest render budget: exempt this round, re-listed next round (§7). */
 	exempted: number;
@@ -295,7 +297,7 @@ export class AcpRuntimeState {
 	 * Project a request view (spec §4): compression zone first, then the active
 	 * zone filtered to non-compressed blocks, then — when the round delivers
 	 * the ultimatum — the v10.1 synthetic status pair, and finally the
-	 * [acp-status] ephemeral appended when a tier is active (spec §6/§7 v10.1).
+	 * [compress-hint] ephemeral appended when a tier is active (spec §6/§7 v10.1).
 	 * Also refreshes the snapshot the compress validation runs against (same
 	 * coordinate system as the manifest: the round status is re-derived from
 	 * the settled round-end state — spec §5.2 round attribution) and anchors
@@ -493,6 +495,7 @@ export class AcpRuntimeState {
 			zoneTokens,
 			activeTokens,
 			projectedTokens: activeTokens + zoneTokens,
+			activeBlocks: active.length,
 			manifestIds,
 			exempted: lines.length - keptCount,
 			manifestText,
@@ -607,6 +610,7 @@ export class AcpRuntimeState {
 				blocks: this.zone.length - zoneBlocksBefore - plan.compressedIds.length,
 				tokens: plan.activeTokensAfter + zoneTokensAfter - (plan.activeTokensBefore + zoneTokensBefore),
 			},
+			zoneBlocksFolded: plan.method === "strong" ? zoneBlocksBefore : 0,
 			activeTokensAfter: plan.activeTokensAfter,
 			tier: plan.tierAfter,
 			countedAsSuccess: plan.countedAsSuccess,

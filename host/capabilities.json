@@ -54,6 +54,12 @@
       "risk": "read"
     },
     {
+      "id": "search_session_text",
+      "kind": "session",
+      "risk": "read",
+      "note": "Sidebar full-text search: literal keyword search across user prompts / agent replies inside session files"
+    },
+    {
       "id": "delete_session",
       "kind": "session",
       "risk": "destructive",
@@ -208,6 +214,11 @@
     },
     {
       "id": "requeue",
+      "kind": "prompt",
+      "risk": "write"
+    },
+    {
+      "id": "reorder_queued",
       "kind": "prompt",
       "risk": "write"
     },
@@ -931,6 +942,18 @@
       "id": "btw_promote",
       "kind": "session",
       "risk": "write"
+    },
+    {
+      "id": "set_remote_config",
+      "kind": "settings",
+      "risk": "write",
+      "note": "远程服务启停/换绑（omp-desktop.json remote 段）；端口占用等失败回 error 且服务保持原状，成功后推 settings 帧"
+    },
+    {
+      "id": "remote_regenerate_key",
+      "kind": "settings",
+      "risk": "write",
+      "note": "重新生成 remote.accessKey 并持久化；旧 key 立即失效（新连接 401，已连上的不断开）"
     }
   ]
 }

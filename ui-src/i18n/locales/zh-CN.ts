@@ -14,6 +14,7 @@ import compExt from "./ui/comp-ext-zh-CN";
 import ssh from "./ui/ssh.zh";
 import autoList from "./ui/autoList.zh";
 import autoEdit from "./ui/autoEdit.zh";
+import remote from "./ui/remote.zh";
 
 const zhCN = {
   common,
@@ -29,6 +30,7 @@ const zhCN = {
   ssh,
   autoList,
   autoEdit,
+  remote,
 };
 
 export default zhCN;

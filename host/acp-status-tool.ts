@@ -23,6 +23,8 @@ export interface AcpRoundStatusFields {
 	zoneTokens: number;
 	activeTokens: number;
 	projectedTokens: number;
+	/** Live active-block count (the UI dashboard reads it instead of the token totals). */
+	activeBlocks: number;
 	manifestText: string;
 }
 
@@ -52,19 +54,19 @@ const statusPointer = (forced: boolean) =>
 		: "Compression manifest: call the context_status tool to list this round's candidate blocks (short ids).";
 /** The one-line status row shared by the ephemeral and the tool return (tier + method + totals). `marker` separates the two surfaces' provenance. */
 function statusRow(rs: AcpRoundStatusFields, marker: string): string {
-	return `${marker} tier=${rs.tier} compress=${rs.method} zone=${rs.zoneTokens} tokens active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens`;
+	return `${marker} tier=${rs.tier} compress=${rs.method} zone=${rs.zoneTokens} tokens active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens activeBlocks=${rs.activeBlocks}`;
 }
 
 /**
  * The ephemeral status message (spec §7 v10): one status row + the standing
  * instruction + the pending-strong note + the context_status pointer. NEVER the
  * manifest. Rendering is fully deterministic (no wall-clock state) so an
- * unchanged round state yields byte-identical text. The [acp-status] marker
+ * unchanged round state yields byte-identical text. The [compress-hint] marker
  * belongs to the ephemeral only — it must never appear in journaled text.
  */
 export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, forced = false): UserMessage {
 	const text = [
-		statusRow(rs, "[acp-status]"),
+		statusRow(rs, "[compress-hint]"),
 		// Tier none + pending-strong (§5.2 row 6): the annotation IS the message.
 		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p, forced)]),
 		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
@@ -82,7 +84,7 @@ export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, f
  */
 export function renderMilestoneMessage(rs: AcpRoundStatusFields, milestone: number, p: AcpParams): UserMessage {
 	const text = [
-		`${statusRow(rs, "[acp-status]")} milestone=${milestone}/${p.milestoneSteps}`,
+		`${statusRow(rs, "[compress-hint]")} milestone=${milestone}/${p.milestoneSteps}`,
 		TIER_INSTRUCTIONS.L1(p, false),
 		statusPointer(false),
 	].join("\n");
@@ -96,7 +98,7 @@ export const ACP_SYNTHETIC_STATUS_CALL_ID = "acp-synthetic-status";
  * The ultimatum's synthetic status pair (spec §6 v10.1): a FRESH assistant
  * tool_use (never an insert into an existing assistant — thinking-signature
  * and prefix-cache risk, spec §3 projection discipline) answered by its user
- * tool_result carrying the full [acp-report] dashboard. The request the force
+ * tool_result carrying the full [context-status] dashboard. The request the force
  * pins ([forced,"none"] has one shot and cannot call context_status) already
  * holds the round manifest, so the forced keep-pick is an informed one. Never
  * journaled and never a compression candidate: rebuilt every request the
@@ -130,12 +132,12 @@ export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams
 /**
  * The context_status tool return (spec §6 v10): the dashboard + the current round
  * manifest with short refs, largest first, exemption trailer included. The
- * [acp-report] marker keeps the journaled tool result distinguishable from
- * the never-journaled [acp-status] ephemeral.
+ * [context-status] marker keeps the journaled tool result distinguishable from
+ * the never-journaled [compress-hint] ephemeral.
  */
 export function renderStatusText(rs: AcpRoundStatusFields, p: AcpParams, forced = false): string {
 	return [
-		statusRow(rs, "[acp-report]"),
+		statusRow(rs, "[context-status]"),
 		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p, forced)]),
 		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
 		forced

@@ -2,24 +2,25 @@
 // (msgRail) + "working Ns" row (WorkSec) + in-session find (⌘F). The streaming status row
 // (spinner + dynamic text) lives in ChatLoading.
 // Migrated from renderChat in ui/chat.js + the scroll handling of markdown.js:
-// - Scroll following (stickBottom semantics): switching sessions jumps to the latest
-//   content; when glued to the bottom, any re-render (streaming append / expand body)
-//   stays pinned. Bottom proximity is judged in the layout effect from the CURRENT
-//   scrollTop (readback is synchronous, so it sees compositor wheel scrolls whose scroll
-//   event has not been delivered yet), minus the scrollHeight growth since the last sample
-//   — post-render scrollHeight already contains the new content, which would otherwise read
-//   as "user scrolled up" and break following for glued viewers on large single-render
-//   growth (120px tolerance as in the original). The target itself is latestScrollTop() —
-//   see its comment for why the plain scrollHeight target is wrong.
+// - Scroll following (stickBottom semantics, CDS useClaudeScrollPinning): switching sessions
+//   jumps to the latest content; when pinned (within 40px of the bottom), any re-render
+//   (streaming append / expand body) stays pinned. Bottom proximity is judged in the layout
+//   effect from the CURRENT scrollTop (readback is synchronous, so it sees compositor wheel
+//   scrolls whose scroll event has not been delivered yet), minus the scrollHeight growth
+//   since the last sample — post-render scrollHeight already contains the new content, which
+//   would otherwise read as "user scrolled up" and break following for pinned viewers on
+//   large single-render growth. A user-initiated scroll additionally arms a 150ms latch
+//   (performance.now): while active, programmatic bottom-follows are skipped, so a token
+//   landing mid-flick cannot yank the view back down. The target itself is latestScrollTop()
+//   — see its comment for why the plain scrollHeight target is wrong.
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
-//   visibility toggled imperatively from scroll events (4px tolerance against subpixel
-//   jitter; high-frequency scrolling stays out of React state).
+//   visibility toggled imperatively from scroll events; shown only when the latest content
+//   sits more than 120px below the viewport (high-frequency scrolling stays out of React state).
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, isJunkPlaceholder, send } from "../../../store";
 import Icon from "../../../Icon";
 import TodoCard from "../../chat/TodoCard";
-import { CapsFloat } from "../../chat/CapsCard";
 import { WorkSec } from "../../chat/WorkLine";
 import ChatLoading from "../../chat/ChatLoading";
 import AssistantMsg from "../../chat/AssistantMsg";
@@ -27,12 +28,20 @@ import MsgRail from "../../chat/MsgRail";
 import FindBar from "../../chat/FindBar";
 import { renderItems } from "../../chat/items";
 import type { RailEntry } from "../../chat/chat-types";
-import { updateRailVisibility } from "../../../shell";
+import { motionEnabled, updateRailVisibility } from "../../../shell";
 
 // Bottom fade reserve: #stream::after (main-composer.css) is a sticky 36px spacer that
 // counts as real scrollable height, and the sticky user bubble's own bottom fade is 36px
 // (main-chat.css .sticky-user-wrap::after)
 const FADE_RESERVE = 36;
+
+// CDS useClaudeScrollPinning tolerances: the stream counts as pinned within 40px of the
+// bottom; a user-initiated scroll arms a 150ms latch that blocks programmatic
+// bottom-follow (streaming appends), and the "scroll to end" button appears only when the
+// latest content is more than 120px below the viewport
+const PIN_TOLERANCE = 40;
+const FOLLOW_LATCH_MS = 150;
+const BTN_SHOW_TOLERANCE = 120;
 
 // Scroll-gesture ownership across wheel-eating overlays. Two mechanisms:
 // 1. Inline expand cards (.ed-brief/.chg-body/... inside the stream): while a wheel-driven
@@ -93,12 +102,12 @@ function latestScrollTop(el: HTMLElement): number {
   return Math.min(max, Math.max(0, last.offsetTop + last.offsetHeight + FADE_RESERVE - el.clientHeight));
 }
 
-// Button visibility: shown while the view sits above the latest-content position (newer
-// content to jump down to); 4px tolerance against subpixel jitter, imperative toggle out
-// of React state
+// Button visibility: shown while the latest content sits more than BTN_SHOW_TOLERANCE px
+// below the viewport (newer content to jump down to); imperative toggle out of React state
+
 function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) {
   if (!el || !btn) return;
-  btn.classList.toggle("hidden", el.scrollTop >= latestScrollTop(el) - 4);
+  btn.classList.toggle("hidden", latestScrollTop(el) - el.scrollTop <= BTN_SHOW_TOLERANCE);
 }
 
 export default function MessagePage() {
@@ -114,10 +123,25 @@ export default function MessagePage() {
   // scrollHeight at the last follow-check/scroll event, for the growth correction below
   const lastScrollHeight = useRef(0);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Scroll pin latch (CDS useClaudeScrollPinning): performance.now() of the last
+  // USER-initiated scroll; programmatic writes tag themselves so their async scroll event
+  // is not misread as a user gesture
+  const lastUserScrollAt = useRef(0);
+  const programmaticScroll = useRef(false);
+
+  // Programmatic scroll to the latest-content position: always behavior 'auto' (instant) —
+  // a smooth follow would visibly trail the streaming append. Tags the write so the scroll
+  // event it fires is consumed as programmatic and does not arm the user-scroll latch.
+  const scrollToLatest = (el: HTMLElement) => {
+    programmaticScroll.current = true;
+    el.scrollTop = latestScrollTop(el);
+  };
 
   const onScroll = () => {
     const el = streamRef.current;
     if (!el) return;
+    if (programmaticScroll.current) programmaticScroll.current = false;
+    else lastUserScrollAt.current = performance.now();
     lastScrollHeight.current = el.scrollHeight;
     updateScrollBottomVis(el, btnRef.current);
 
@@ -130,7 +154,7 @@ export default function MessagePage() {
   };
 
   // Force bottom on session switch + top on new outgoing message + follow during streaming
-  // when near the bottom (useLayoutEffect finishes before paint, no flash of the old position)
+  // while pinned (useLayoutEffect finishes before paint, no flash of the old position)
   useLayoutEffect(() => {
     const el = streamRef.current;
     if (!el || !s) return;
@@ -145,7 +169,7 @@ export default function MessagePage() {
     // on a new outgoing message jump to the newest-content position (the last turn's
     // min-height:100% puts the new message right at the top; a turn that fits the viewport
     // top-aligns, so its flow content stays clear of the sticky bubble's fade mask);
-    // during streaming, keep following while glued to the bottom
+    // during streaming, keep following while pinned to the bottom
     const growth = el.scrollHeight - lastScrollHeight.current;
     lastScrollHeight.current = el.scrollHeight;
     // Read the CURRENT scrollTop instead of an event-recorded flag: in WKWebView wheel
@@ -153,11 +177,27 @@ export default function MessagePage() {
     // so a token landing mid-flick used to read a stale "at bottom" and yank the view back
     // down, erasing the user's upward scroll. Subtract the scrollHeight growth since the
     // last sample: post-render scrollHeight already contains the appended content, which
-    // would otherwise read as "user scrolled up" and break following for glued viewers
+    // would otherwise read as "user scrolled up" and break following for pinned viewers
     // when a large item lands in a single render.
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight - Math.max(0, growth) < 120;
-    if (switched || isNewUserMsg || nearBottom) {
-      el.scrollTop = latestScrollTop(el);
+    const pinned = el.scrollHeight - el.scrollTop - el.clientHeight - Math.max(0, growth) < PIN_TOLERANCE;
+    // Latch: a user scroll within the last FOLLOW_LATCH_MS blocks the programmatic follow —
+    // mid-flick, streaming appends must not steal the gesture. Session switches and fresh
+    // outgoing messages are deliberate user navigation and bypass the latch.
+    const latchActive = performance.now() - lastUserScrollAt.current < FOLLOW_LATCH_MS;
+    if (switched || isNewUserMsg || (pinned && !latchActive)) {
+      scrollToLatest(el);
+    }
+    // Session switch slide: the stream node is reused across sessions (no remount), so the
+    // entrance is played imperatively here — 200ms sideways drift, TUI's rewind slide
+    // counterpart. Web Animations (not a CSS class) so nothing has to be reset afterwards.
+    // motionEnabled() keeps it inside the app's data-motion / OS reduce contract, which CSS
+    // rules cannot reach.
+    if (switched && motionEnabled()) {
+      const css = getComputedStyle(el);
+      el.animate([{ opacity: 0, transform: "translateX(8px)" }, { opacity: 1, transform: "none" }], {
+        duration: parseFloat(css.getPropertyValue("--dur-base")) || 200,
+        easing: css.getPropertyValue("--swift").trim() || "ease-out",
+      });
     }
     updateScrollBottomVis(el, btnRef.current);
   }, [s?.items, s?.assistantDraft]);
@@ -173,14 +213,8 @@ export default function MessagePage() {
 
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
 
-  const snapLockUntil = useRef(0);
-  // Wheel deltas over the last 250ms, for the snap-dock direction gate below
-  const recentWheels = useRef<{ t: number; d: number }[]>([]);
-
   // Block scroll bleed-through from tab popups / inline expand cards into the outer message
-  // stream (no chained propagation outward at the boundary)
-  // and provide turn snap-to-top docking: when the next message sits too close to the top,
-  // the next scroll lands exactly on its offsetTop, showing the full agent flow.
+  // stream (no chained propagation outward at the boundary).
   // Document-level capture with a lazy streamRef read: at mount the session is usually not
   // restored yet, so the first render is the empty-state tree whose #stream node gets
   // REPLACED when the real tree mounts — a node captured here (or a listener attached to it)
@@ -233,42 +267,37 @@ export default function MessagePage() {
           return;
         }
       }
-
-      // Turn snap-to-top docking: if the next message sits too close to the stream's top
-      // edge (about to snap), the next downward scroll goes only as far as pinning that
-      // message at the top, ensuring the agent's processing flow below is shown in full
-      const now = Date.now();
-      recentWheels.current.push({ t: now, d: e.deltaY });
-      while (recentWheels.current.length && now - recentWheels.current[0].t > 250) recentWheels.current.shift();
-      if (e.deltaY > 0) {
-        if (now < snapLockUntil.current) {
-          e.preventDefault();
-          return;
-        }
-        // Trackpads emit a small positive deltaY at the end of an upward flick (settle
-        // correction / finger jitter). Without a direction gate each such tick docked the
-        // next section to the top, so scrolling up through history twitched back down by
-        // up to 140px per stray tick. Snap only when the net wheel intent over the last
-        // 250ms is downward; a genuine downward scroll from idle still docks on its
-        // first tick.
-        if (recentWheels.current.reduce((a, w) => a + w.d, 0) <= 0) return;
-        const sections = stream.querySelectorAll<HTMLElement>(".turn-section");
-        const streamTop = stream.getBoundingClientRect().top;
-        for (let i = 0; i < sections.length; i++) {
-          const sec = sections[i];
-          const dist = sec.getBoundingClientRect().top - streamTop;
-          if (dist > 1 && dist <= 140) {
-            e.preventDefault();
-            stream.scrollTop += dist;
-            snapLockUntil.current = now + 200;
-            return;
-          }
-        }
-      }
     };
 
     document.addEventListener("wheel", onWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", onWheel, { capture: true });
+  }, []);
+
+  // Swallow the select-all shortcut over the message stream: Cmd/Ctrl+A there would
+  // select the whole shell UI around it, not just messages. The keydown target is BODY
+  // (message text is not focusable), so the owner is resolved from the selection anchor
+  // instead. Inputs inside the stream (approval forms) keep the native behavior. Same
+  // document-level capture + lazy streamRef read as the wheel blocker above (#stream
+  // gets replaced at session restore).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || (e.key !== "a" && e.key !== "A")) return;
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("input, textarea, [contenteditable]")) return;
+      const stream = streamRef.current;
+      if (!stream) return;
+      const sel = window.getSelection();
+      if (
+        !stream.contains(target) &&
+        !(sel?.anchorNode && stream.contains(sel.anchorNode)) &&
+        !(sel?.focusNode && stream.contains(sel.focusNode))
+      ) {
+        return;
+      }
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
   }, []);
 
   // Scroll-gesture ownership (see the module-level comment): arm .wheel-through on
@@ -356,7 +385,7 @@ export default function MessagePage() {
       ref={btnRef}
       onClick={() => {
         const el = streamRef.current;
-        if (el) el.scrollTop = latestScrollTop(el);
+        if (el) scrollToLatest(el); // instant (behavior 'auto'); re-arms bottom-follow
       }}
     >
       <Icon name="down" />
@@ -396,7 +425,6 @@ export default function MessagePage() {
   return (
     <>
       <TodoCard />
-      <CapsFloat />
       {/* External-process write notice bar: set by the host's session_external_write frame;
           cleared when a reload rebuilds from disk */}
       {s.externalWrite && (

@@ -24,14 +24,22 @@ export function sessionLabel(s: SessionLabelLike): string {
 
 // Copy to clipboard (replica of shell.js copyText, incl. the WKWebView insecure-context fallback)
 export function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  document.body.appendChild(ta);
-  ta.select();
-  document.execCommand("copy");
-  ta.remove();
-  return Promise.resolve();
+  // WKWebView keeps navigator.clipboard present but rejects writeText when the webview is not
+  // focused / the call has no user activation, so execCommand must also cover the reject path
+  // (same two-branch fallback as ui/markdown.js copyCodeBlock).
+  const execFallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  };
+  if (!navigator.clipboard?.writeText) {
+    execFallback();
+    return Promise.resolve();
+  }
+  return navigator.clipboard.writeText(text).catch(() => execFallback());
 }
 
 export interface ShortcutSessionCandidate {

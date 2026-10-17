@@ -63,8 +63,10 @@ export function keepaliveStatusPayload(sessionId: string, state: KeepaliveState 
  */
 export function reportKeepaliveState(entry: PoolEntry, s: KeepaliveState): void {
   entry.keepaliveState = s;
-  const ws = entry.attachedWs as { readyState?: number; send?: (d: string) => void } | null;
-  if (ws && ws.readyState === 1 && entry.keepaliveSid) {
-    ws.send(JSON.stringify(stampEvent(keepaliveStatusPayload(entry.keepaliveSid, s))));
+  if (!entry.keepaliveSid) return;
+  const data = JSON.stringify(stampEvent(keepaliveStatusPayload(entry.keepaliveSid, s)));
+  for (const ws of entry.uiSockets) {
+    // readyState only exists on real sockets; adapters (entryBus) omit it — treat as open
+    if ("readyState" in ws ? ws.readyState === 1 : true) ws.send(data);
   }
 }

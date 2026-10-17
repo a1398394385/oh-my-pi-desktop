@@ -6,11 +6,20 @@
   border: 1px solid transparent; border-radius: var(--r-md);
   background: none; padding: 7px 10px; font: inherit;
   color: var(--dim); cursor: pointer;
-  transition: background .12s var(--swift), color .12s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);
 }
 
 .bt-row:hover { background: var(--panel-2); color: var(--text); }
 
-.bt-row.cur { border-color: var(--accent); color: var(--text); cursor: default; }
+/* current-branch marker as inset ring: same on-screen position as the old border-color, no reflow */
+.bt-row.cur { box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); cursor: default; }
 
 .bt-row.cur:hover { background: none; }
+
+/* Hairline: halve the converted inset ring on HiDPI */
+@media (min-resolution: 2dppx) {
+  .bt-row.cur { box-shadow: inset 0 0 0 .5px var(--accent); }
+}
+@media (min-resolution: 3dppx) {
+  .bt-row.cur { box-shadow: inset 0 0 0 .33px var(--accent); }
+}

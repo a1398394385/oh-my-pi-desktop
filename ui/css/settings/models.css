@@ -13,7 +13,7 @@
 .mp-role-clear {
   border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 4px; transition: color .15s, transform .1s;
+  border-radius: 4px; transition: color var(--dur-snap), transform var(--dur-fast);
 }
 
 .mp-role-clear:hover { color: var(--text); transform: scale(1.1); }
@@ -28,6 +28,15 @@
 .mp-l { background: var(--tint-black-180); border-right: 1px solid var(--line-soft); padding: 8px; border-radius: var(--r-card) 0 0 var(--r-card); min-height: 280px; display: flex; flex-direction: column; gap: 4px; }
 :is([data-theme="light"], [data-theme-mode="light"]) .mp-l { background: var(--tint-black-40); }
 .pv .pv-ic { width: 16px; text-align: center; flex: none; }
+
+/* Provider logo: one fixed 16px box everywhere (list rows, add-provider cards, detail heads).
+   Inline SVG scales to the box; favicon data URIs (raster) render at the same size so
+   vendors with no vector mark still line up. */
+.pv-ic svg { width: 16px; height: 16px; display: block; }
+
+.pv-logo { width: 16px; height: 16px; flex: none; object-fit: contain; border-radius: 3px; }
+
+.mp-head-tt { display: inline-flex; align-items: center; gap: 7px; }
 
 /* left provider group labels and dividers: unified to the global UI font size and regular weight (overriding .set-sec's small-size tracking styles) */
 .mp-grp { padding: 8px 10px 4px; font-size: var(--ui-fs-base); letter-spacing: normal; }
@@ -98,7 +107,7 @@
 
 .mpw-caret { flex: none; }
 
-.mpw-caret svg { transition: transform .15s ease; }
+.mpw-caret svg { transition: transform var(--dur-snap) var(--swift); }
 
 .mpw-mrow.on .mpw-caret svg { transform: rotate(180deg); }
 
@@ -112,11 +121,11 @@
 /* effort-level chips (multi-select): pill outline, accent fill when picked */
 .mpw-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 3px 0 1px; }
 
-.mpw-chip { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; }
+.mpw-chip { padding: 3px 10px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
 
 .mpw-chip:hover { background: var(--panel-2); color: var(--text); }
 
-.mpw-chip.on { border-color: var(--accent); color: var(--accent); background: var(--panel-2); }
+.mpw-chip.on { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); background: var(--panel-2); }
 
 .mpw-chip:disabled { opacity: .5; cursor: default; }
 
@@ -148,7 +157,7 @@
 .mp-cycle-btn {
   border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 4px; transition: color .15s, transform .1s;
+  border-radius: 4px; transition: color var(--dur-snap), transform var(--dur-fast);
 }
 
 .mp-cycle-btn:hover:not(:disabled) { color: var(--text); transform: scale(1.1); }
@@ -167,3 +176,13 @@
 .mp-cycle-add .sel .caret-svg { margin-left: auto; }
 
 .mp-cycle-add .sel.disabled { opacity: .5; cursor: default; }
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .mpw-chip { box-shadow: inset 0 0 0 .5px var(--line); }
+  .mpw-chip.on { box-shadow: inset 0 0 0 .5px var(--accent); }
+}
+@media (min-resolution: 3dppx) {
+  .mpw-chip { box-shadow: inset 0 0 0 .33px var(--line); }
+  .mpw-chip.on { box-shadow: inset 0 0 0 .33px var(--accent); }
+}

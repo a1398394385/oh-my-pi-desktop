@@ -2,10 +2,12 @@
 // Assertions: the PTY create frame replies; typing echo yields echo data frames (with the expected output); after resize, stty size reflects the new dimensions;
 // after dispose the bridge process exits (a terminal_exit frame or the session disappearing).
 // Usage: bun scripts/smoke-terminal.ts
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import os from "node:os";
 
 const child = spawn("bun", ["host/host.ts"], {
+  env: smokeEnv(),
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
   stdio: ["ignore", "pipe", "inherit"],
 });

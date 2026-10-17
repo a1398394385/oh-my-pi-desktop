@@ -37,13 +37,14 @@
 
 .md-copy-btn {
   background: transparent;
-  border: 1px solid var(--tint-white-100);
+  border: 1px solid transparent;
   color: var(--dim);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: var(--ui-fs-xs);
   cursor: pointer;
-  transition: all 0.15s;
+  box-shadow: inset 0 0 0 1px var(--tint-white-100);
+  transition: background var(--dur-snap), color var(--dur-snap), box-shadow var(--dur-snap);
 }
 
 .md-copy-btn:hover {
@@ -53,7 +54,7 @@
 
 .md-copy-btn.copied {
   color: var(--green);
-  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px var(--green);
 }
 
 .md-code-block pre {
@@ -76,4 +77,14 @@
 
 :is([data-theme="light"], [data-theme-mode="light"]) .md-code-block code {
   color: var(--code-text-light);
+}
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .md-copy-btn { box-shadow: inset 0 0 0 .5px var(--tint-white-100); }
+  .md-copy-btn.copied { box-shadow: inset 0 0 0 .5px var(--green); }
+}
+@media (min-resolution: 3dppx) {
+  .md-copy-btn { box-shadow: inset 0 0 0 .33px var(--tint-white-100); }
+  .md-copy-btn.copied { box-shadow: inset 0 0 0 .33px var(--green); }
 }

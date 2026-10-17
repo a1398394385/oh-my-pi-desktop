@@ -16,11 +16,12 @@ interface BranchMenuProps {
   anchorRect: DOMRect;
   onClose: () => void;
   branches: string[];
+  remotes: string[]; // remote-tracking branches ("origin/xxx" form), rendered under a separator
   current: string;
   cwd: string;
 }
 
-export default function BranchMenu({ anchorRect, onClose, branches, current, cwd }: BranchMenuProps) {
+export default function BranchMenu({ anchorRect, onClose, branches, remotes, current, cwd }: BranchMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -49,6 +50,22 @@ export default function BranchMenu({ anchorRect, onClose, branches, current, cwd
         >
           <span className="ck">{b === current ? "✓" : ""}</span>
           {/* Branch icon same as the branch-picker capsule (branch), keeping the global icon style consistent */}
+          <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
+          {b}
+        </div>
+      ))}
+      {/* Remote-tracking branches under a separator; picking one checks out a local tracking branch (host checkout --track) */}
+      {remotes.length > 0 && <div className="sep" />}
+      {remotes.map((b) => (
+        <div
+          key={b}
+          className="mi"
+          onClick={() => {
+            if (b !== current) send({ type: "switch_git_branch", cwd, branch: b });
+            onClose();
+          }}
+        >
+          <span className="ck">{b === current ? "✓" : ""}</span>
           <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
           {b}
         </div>

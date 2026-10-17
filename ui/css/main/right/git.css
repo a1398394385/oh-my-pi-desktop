@@ -1,7 +1,7 @@
 /* Git Diff tree / flat list / file detail */
 .gd-caret { font-size: var(--ui-fs-xs); color: var(--faint); width: 10px; flex-shrink: 0; display: inline-flex; align-items: center; }
 
-.gd-caret svg { transition: transform .3s ease; }
+.gd-caret svg { transition: transform var(--dur-sheet) var(--swift); }
 
 .gd-caret.open svg { transform: rotate(90deg); }
 
@@ -29,7 +29,7 @@
   width: 20px; height: 20px; border-radius: 5px;
   cursor: pointer; padding: 0;
   line-height: 0;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .gd-act > span {

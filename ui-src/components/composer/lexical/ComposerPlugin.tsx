@@ -39,14 +39,15 @@ import type { PasteCommandType } from "lexical";
 import { useAppStore } from "../../../store";
 import { editQueueMsg } from "../../../store/session";
 import { $flattenText, $setText } from "./flat";
-import { saveDraft, getDraftText, recallClearedDraft } from "./draft";
+import { saveDraft, getDraftText, recallClearedDraft, resetClearedDraftCursor } from "./draft";
 
 // Enter key-swallow window for IME candidate confirmation (ms): on WebKit,
 // compositionend and the following Enter keydown land in nearly the same tick;
-// the window only covers the dispatch misordering during that span, kept small
-// to avoid swallowing a "real Enter pressed after mouse-selecting a candidate"
-// by mistake
-const IME_COMMIT_ENTER_WINDOW_MS = 100;
+// the window covers the dispatch misordering during that span (generous at
+// 500ms so a slow candidate-panel commit on a loaded main thread is still
+// caught; swallowing is one-shot, so a deliberate Enter right after
+// confirmation still sends)
+const IME_COMMIT_ENTER_WINDOW_MS = 500;
 
 export type ComposerHandle = {
   focus(): void;
@@ -84,6 +85,19 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
   // 0c54477). Non-Apple platforms dispatch in the reverse order; it stays 0 and
   // never fires.
   const imeCommitAtRef = useRef(0);
+  // History-browse mode over the cleared-draft stash: entered with plain ↑ on
+  // an empty input, ↑/↓ walk the stash while active, any user text edit exits
+  // (update listener below). histApplyTextRef marks the text just applied by
+  // a recall step (one-shot, consumed by the next update) so the recall's own
+  // editor.update is not mistaken for a user edit.
+  const histNavRef = useRef(false);
+  const histApplyTextRef = useRef<string | null>(null);
+
+  // Session/slot switch leaves browse mode (the stash itself is per draftKey)
+  useEffect(() => {
+    histNavRef.current = false;
+    histApplyTextRef.current = null;
+  }, [draftKey]);
 
   useImperativeHandle(
     handleRef,
@@ -130,6 +144,8 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
         const target = recallClearedDraft(draftKeyRef.current, dir);
         if (!target) return false;
         ev.preventDefault();
+        histApplyTextRef.current = target.text;
+        histNavRef.current = true;
         editor.update(() => $setText(target.text));
         useAppStore.setState({ pendingFiles: target.files });
         return true;
@@ -152,7 +168,7 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
             if (typeaheadOpenRef.current) return false;
             if (!ev || ev.shiftKey) return false;
             const imeCommitAt = imeCommitAtRef.current;
-            if (imeCommitAt !== 0 && ev.timeStamp - imeCommitAt < IME_COMMIT_ENTER_WINDOW_MS) {
+            if (imeCommitAt !== 0 && Math.abs(ev.timeStamp - imeCommitAt) < IME_COMMIT_ENTER_WINDOW_MS) {
               imeCommitAtRef.current = 0;
               ev.preventDefault();
               ev.stopPropagation();
@@ -201,16 +217,18 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
           },
           COMMAND_PRIORITY_NORMAL,
         ),
-        // Ctrl+↑/Ctrl+↓: walk the cleared-draft stash (older / back toward the
-        // live draft) -- the double-Esc clear path pushes into it
-        // while composer.recallClearedDrafts is on; browsing from the live
-        // draft snapshots it as the base entry so Ctrl+↓ can come back.
-        // Bound on KEY_DOWN_COMMAND, not KEY_ARROW_*_COMMAND: Lexical's core
-        // keydown table only dispatches the arrow commands with Alt held
-        // (ALT_SHIFT_KEY_ANY), so Ctrl+arrows never reach them. Yield while
-        // the panel is open (candidate navigation).
-        // Ctrl+Q: enqueue as follow-up (also available while the panel is open;
-        // the old palette interception block did not include q)
+        // Plain ↑/↓ over the cleared-draft stash in history-browse mode:
+        // entered by plain ↑ on an empty input (the double-Esc clear path
+        // pushes entries while composer.recallClearedDrafts is on); each
+        // entry re-arms at the newest stash item and snapshots the empty
+        // live draft as the base so ↓ can come back. Any user edit exits the
+        // mode (update listener). Bound on KEY_DOWN_COMMAND, not
+        // KEY_ARROW_*_COMMAND: Lexical's core keydown table only dispatches
+        // the arrow commands with Alt held (ALT_SHIFT_KEY_ANY), so plain
+        // arrows never reach them; preventing default on the raw keydown
+        // stops the browser cursor move. Ctrl+↑/↓ stays untouched (macOS
+        // Mission Control). Yield while the panel is open (candidate
+        // navigation), to Shift+↑/↓ (selection extend) and to the IME.
         editor.registerCommand(
           KEY_DOWN_COMMAND,
           (ev) => {
@@ -219,7 +237,20 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
               sendPromptRef.current(false);
               return true;
             }
-            if (ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
+            if (
+              (ev.key === "ArrowUp" || ev.key === "ArrowDown") &&
+              !ev.ctrlKey &&
+              !ev.altKey &&
+              !ev.metaKey &&
+              !ev.shiftKey &&
+              !ev.isComposing
+            ) {
+              if (!histNavRef.current) {
+                // Enter browse mode: empty input + ↑ only
+                if (ev.key !== "ArrowUp") return false;
+                if (getDraftText(draftKeyRef.current).trim()) return false;
+                resetClearedDraftCursor(draftKeyRef.current);
+              }
               return recallStep(ev, ev.key === "ArrowUp" ? 1 : -1);
             }
             return false;
@@ -253,6 +284,12 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
           const text = editor.read(() => $flattenText());
           const key = draftKeyRef.current;
           const changed = text !== getDraftText(key);
+          // History-browse mode: any text change that is not the recall's own
+          // application (one-shot marker, consumed here) is a user edit and
+          // exits the mode
+          const applied = histApplyTextRef.current;
+          histApplyTextRef.current = null;
+          if (histNavRef.current && changed && text !== applied) histNavRef.current = false;
           saveDraft(key, editor.getEditorState(), text);
           if (changed) onTextChangeRef.current(text);
         }),

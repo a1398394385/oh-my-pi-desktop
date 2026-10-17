@@ -194,6 +194,18 @@ export const settingsHandlers = {
   editors(msg) {
     useAppStore.setState({ editors: Array.isArray(msg.editors) ? msg.editors : [] });
   },
+  // ---- Remote control (spec §3.2): set_remote_config reply; SSOT for the settings page.
+  // Successful replies carry no error and clear any previous failure; key/url are preserved
+  // from the settings frame / prior remote_key reply (the remote_config wire shape omits them)
+  remote_config(msg) {
+    useAppStore.setState((s) => ({
+      remoteConfig: { ...s.remoteConfig, enabled: msg.enabled, port: msg.port, error: msg.error ?? null },
+    }));
+  },
+  // ---- Remote control: remote_regenerate_key reply; only the key changes ----
+  remote_key(msg) {
+    useAppStore.setState((s) => ({ remoteConfig: { ...s.remoteConfig, key: msg.key } }));
+  },
 } satisfies HandlerSlice;
 
 // Domain key set (for the exhaustive-assertion cross-check in index)

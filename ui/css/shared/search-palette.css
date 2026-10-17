@@ -1,0 +1,161 @@
+/* Global search palette (⌘⇧F / sidebar search button): Raycast-style centered popup
+   over a full-screen mask. Mounts via store ui.paletteOpen (App.tsx). */
+.palette-mask {
+  align-items: flex-start;
+  z-index: 1200; /* above the settings overlay */
+}
+
+.palette-box {
+  margin-top: 86px; /* 2 × the center column .chat-head height (43px) */
+  width: min(620px, calc(100vw - 96px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--inset); /* whole panel shares the user-bubble surface; regions split by borders only */
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-panel);
+  padding: 12px;
+  animation: ringpop 0.18s ease-out;
+}
+
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  background: var(--inset); /* same surface as the user message bubble */
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 9px 13px;
+  color: var(--dim);
+  transition: border-color var(--dur-snap) var(--swift);
+}
+.palette-search:focus-within {
+  border-color: var(--accent);
+}
+.palette-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(var(--ui-fs) * 1.08);
+  padding: 0;
+  line-height: 1;
+}
+.palette-input::placeholder {
+  color: var(--faint);
+}
+.palette-clear {
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transition: color var(--dur-snap), background var(--dur-snap);
+  padding: 0;
+  flex: none;
+}
+.palette-clear:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.palette-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 11px 2px 6px;
+  flex: none;
+}
+.palette-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: var(--ui-fs);
+  padding: 5px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
+}
+.palette-tab:hover {
+  background: var(--panel-2);
+}
+.palette-tab.on {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.palette-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px;
+}
+.palette-group-tt {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  padding: 9px 8px 5px;
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--swift);
+}
+.palette-item.on {
+  background: var(--panel-2);
+}
+.palette-item-ic {
+  display: flex;
+  align-items: center;
+  color: var(--dim);
+  flex: none;
+}
+.palette-item-body {
+  flex: 1;
+  min-width: 0;
+}
+.palette-item-tt {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette-item-snip {
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.palette-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--ui-fs-sm);
+  color: var(--faint);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.palette-empty,
+.palette-hint {
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+  padding: 12px 10px;
+}

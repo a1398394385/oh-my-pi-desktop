@@ -26,20 +26,18 @@
 // extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · mcp-mount.ts · pty.ts ·
 // session-poll.ts (pooled-session file polling).
 import { initialProfile } from "./bootstrap.ts";
-import { H, sessions, HOST_INSTANCE_ID, activeWs } from "./state.ts";
+import { H, sessions, eachUiWs } from "./state.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { applyProfile, refreshAvailableProfiles } from "./profile.ts";
-import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
-import { settingsFrame, modelsFrame } from "./frames.ts";
+import { modelsFrame } from "./frames.ts";
 import { handleStatsHttp } from "./stats.ts";
-import { dispatchRpc } from "./rpc/index";
-import { disposeTerminalsOf } from "./pty.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { startSessionPoll } from "./session-poll.ts";
-import { refreshAllLimits } from "./limits/index.ts";
+import { refreshAllLimits } from "./limits/index";
 import { augmentGuiPath } from "./gui-path.ts";
-import { settingsGet } from "./settings-compat.ts";
-import { browserMirrorOnWsClose, browserMirrorOnWsOpen, startBrowserMirror } from "./browser-mirror.ts";
+import { startBrowserMirror } from "./browser-mirror.ts";
+import { makeWsHandlers } from "./ws-shared.ts";
+import { readRemoteConfig, setRemoteWsHandlers, startRemoteServer } from "./remote.ts";
 import { safeStderr } from "./stderr.ts";
 
 // ---------- Startup prologue: activate the persisted profile, assemble the process-level base ----------
@@ -53,8 +51,7 @@ await augmentGuiPath();
 // disk-cached catalog and is immediately usable. Once the background refresh
 // completes, a catch-up models frame is pushed via onModelsRefreshed.
 H.onModelsRefreshed = () => {
-  const ws = activeWs.value as { send(data: string): unknown } | null;
-  if (ws) ws.send(JSON.stringify(modelsFrame()));
+  eachUiWs((ws) => ws.send(JSON.stringify(modelsFrame())));
 };
 const profileReady = (async () => {
   H.currentProfile = initialProfile;
@@ -67,6 +64,9 @@ profileReady.catch((err) => {
 });
 
 // ---------- WebSocket server ----------
+// open/message/close are shared with the LAN remote server (host/remote.ts) —
+// one handler set, protocol identical for both (spec §3.3/§3.4).
+const wsHandlers = makeWsHandlers(profileReady);
 const server = Bun.serve<{ sessionId: string | null }>({
   port: 0, // Dynamic port: a fixed one would clash when multiple workspaces run the same app in parallel
   async fetch(req, srv) {
@@ -75,58 +75,16 @@ const server = Bun.serve<{ sessionId: string | null }>({
     if (statsRes) return statsRes;
     return new Response("websocket only", { status: 400 });
   },
-  websocket: {
-    open(ws) {
-      activeWs.value = ws; // last connection wins; close clears only its own
-      browserMirrorOnWsOpen(ws);
-      safeStderr(hostI18n.t("errors.host.wsClientReady", { ms: performance.now().toFixed(0) }));
-      void profileReady.then(
-        () => {
-          ws.send(
-            JSON.stringify({
-              type: "ready",
-              hi: HOST_INSTANCE_ID, // The handshake takes no event seq, but carries instance identity for immediate UI comparison
-              approvalMode: settingsGet(H.settings, "tools.approvalMode"),
-              models: modelsPayload(),
-              roles: modelRolesPayload(),
-              ...modelsDefaults(),
-              settings: settingsFrame(),
-            }),
-          );
-        },
-        (err) => {
-          ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.host.initFailed", { detail: err instanceof Error ? err.message : String(err) }) }));
-        },
-      );
-    },
-    async message(ws, raw) {
-      let msg: any;
-      try {
-        await profileReady;
-      } catch (err) {
-        ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.host.initFailed", { detail: err instanceof Error ? err.message : String(err) }) }));
-        return;
-      }
-      try {
-        msg = JSON.parse(String(raw));
-      } catch {
-        ws.send(JSON.stringify({ type: "error", message: hostI18n.t("errors.host.invalidJson") }));
-        return;
-      }
-      try {
-        await dispatchRpc(ws, msg);
-      } catch (err) {
-        // A single failed command must not take down the host; report the error to the frontend as-is
-        ws.send(JSON.stringify({ type: "error", sessionId: msg.sessionId ?? null, kind: msg.kind ?? null, message: String(err) }));
-        safeStderr(hostI18n.t("errors.host.commandFailed", { type: msg.type, detail: String(err) }));
-      }
-    },
-    close(ws) {
-      // Frontend disconnected: dispose its terminal PTYs to prevent orphan shell processes
-      if (activeWs.value === ws) activeWs.value = null;
-      browserMirrorOnWsClose(ws);
-    },
-  },
+  websocket: wsHandlers,
+});
+
+// ---------- LAN remote server (spec §3): autostart after profileReady when remote.enabled ----------
+setRemoteWsHandlers(wsHandlers);
+void profileReady.then(() => {
+  const cfg = readRemoteConfig();
+  if (!cfg.enabled) return;
+  const r = startRemoteServer(cfg.port);
+  if (!r.ok) safeStderr(`[remote] autostart failed: ${r.error}\n`);
 });
 
 // Agent browser live mirror: poll the SDK tab registry for the UI's auto-open

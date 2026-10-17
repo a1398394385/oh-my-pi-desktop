@@ -29,6 +29,9 @@ export interface CompressOutcome {
 	 * under-reports what a strong compression took out of the request.
 	 */
 	delta: { blocks: number; tokens: number };
+	/** Old compression-zone blocks merged into the new summary: 0 for a normal append, the whole
+	 * pre-compression zone for a strong reset. */
+	zoneBlocksFolded: number;
 	activeTokensAfter: number;
 	/** New tier from the post-compression active zone (spec §5.1, immediate). */
 	tier: "none" | "L1" | "L2" | "L3";

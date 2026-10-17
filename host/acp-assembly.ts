@@ -11,6 +11,18 @@ import type { AcpSummarySink } from "./acp-persist.ts";
 import { AcpRuntimeState } from "./acp-runtime.ts";
 import { safeStderr } from "./stderr.ts";
 
+/**
+ * Proactive-compression guidance appended to ACP sessions' system prompts via
+ * createAgentSession({ appendSystemPrompt }) (appended verbatim; the SDK's
+ * "## User Instructions" heading appears only when the SDK has its own append
+ * sections to pair it with — composeAppendPrompt). Motivation: below L1 the model owns the compression timing
+ * (spec §7 zero tier) and tool descriptions alone rarely trigger it — desktop
+ * usage data (2026-10-17) shows 2/14 spontaneous compressions vs 12/14 only
+ * responding to the milestone hint. Wire this only when the ACP tools exist:
+ * the text names context_status/compress_context by name.
+ */
+export const ACP_CONTEXT_BUDGET_PROMPT = `Context budget (ACP): when you finish a stage of work — a subtask completed, an investigation concluded, a plan approved — call context_status and fold settled blocks with compress_context before starting the next stage. Do not wait for a pressure reminder; keep recent and still-referenced blocks verbatim, summarize everything else. When a context-pressure status line appears in the conversation, respond in the same turn: context_status, then compress_context.`;
+
 /** Build a runtime bound to the session model's Tokenizer (spec §8). */
 export function createAcpRuntime(opts: {
 	model: unknown;
@@ -74,15 +86,36 @@ export function createCompressContextTool(state: AcpRuntimeState) {
  * with the dual-zone projection. A projection failure must never blow up the
  * request — the original view passes through (same stance the retired nudge
  * prototype's transform took).
+ *
+ * Owner-only. This factory is registered as an inline extension, and the SDK
+ * deliberately rebinds inline factories into child sessions (sdk.ts preparedExtensions
+ * → task/structured-subagent.ts preloadedPreparedExtensions → bindExtension), so this
+ * closure also fires for a `task` subagent or `/tan` child. `state` holds the OWNER's
+ * journal, compaction zone and compressed-id set, and projectView prints that zone
+ * unconditionally (acp-projection.ts:226) — projecting a child view through it would
+ * inject the parent's compressed blocks as synthetic user turns, i.e. tell the child it
+ * did work it never did. Session identity is the only reliable discriminator (the view
+ * itself can't be used: a child may fingerprint-match a parent message), so anything but
+ * the owning session passes through untouched.
+ *
+ * `ownerSessionId` is a getter, not a captured string: SessionManager re-mints its id on
+ * fork/switch (session-manager.ts #sessionId), and both sides must move together or a
+ * switched owner would stop recognizing itself.
  */
-export function createAcpProjectionExtension(state: AcpRuntimeState) {
+export function createAcpProjectionExtension(state: AcpRuntimeState, ownerSessionId: () => string) {
 	return (pi: {
 		on: (
 			event: "context",
-			handler: (ev: { messages: AgentMessage[] }) => { messages: AgentMessage[] },
+			handler: (
+				ev: { messages: AgentMessage[] },
+				ctx: { sessionManager: { getSessionId(): string } },
+			) => { messages: AgentMessage[] },
 		) => void;
 	}): void => {
-		pi.on("context", (ev) => {
+		pi.on("context", (ev, ctx) => {
+			if (ctx.sessionManager.getSessionId() !== ownerSessionId()) {
+				return { messages: ev.messages };
+			}
 			try {
 				return { messages: state.projectView(ev.messages) };
 			} catch (err) {

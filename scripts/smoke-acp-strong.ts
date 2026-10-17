@@ -220,7 +220,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 
 	fx.state.projectView(fx.view); // active 4x406 > l1, <= l2: tier L1, zone empty
 	let text = ephemeralText(fx);
-	assert.match(text, /\[acp-status\] tier=L1 compress=normal zone=0 tokens/);
+	assert.match(text, /\[compress-hint\] tier=L1 compress=normal zone=0 tokens/);
 	assert.ok(!text.includes("Pending strong"), "no annotation while the zone is under its line");
 
 	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3"]), summary: tokenText(120) })); // S1{e0}
@@ -238,7 +238,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	accepted(await fx.state.compress({ keep: [], summary: tokenText(120) })); // folds e2,e3 -> active 0
 	fx.state.projectView(fx.view);
 	text = ephemeralText(fx);
-	assert.match(text, /\[acp-status\] tier=none compress=normal zone=\d+ tokens/, "row 6: emitted at tier=none");
+	assert.match(text, /\[compress-hint\] tier=none compress=normal zone=\d+ tokens/, "row 6: emitted at tier=none");
 	assert.ok(text.includes("Pending strong"), "row 6 carries the annotation");
 	assert.ok(!text.includes("activation line"), "row 6 has no tier instruction — the annotation is the message");
 
@@ -246,7 +246,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 	addBlocks(fx, 3);
 	fx.state.projectView(fx.view);
 	text = ephemeralText(fx);
-	assert.match(text, /\[acp-status\] tier=L1 compress=strong zone=\d+ tokens/, "row 5: method flips once active > L1");
+	assert.match(text, /\[compress-hint\] tier=L1 compress=strong zone=\d+ tokens/, "row 5: method flips once active > L1");
 	assert.ok(text.includes("Pending strong"), "row 5 carries the annotation");
 	// The annotation line is byte-stable across requests while state is unchanged.
 	fx.state.projectView([...fx.view]);
@@ -514,7 +514,7 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		contextWindow: 1_000,
 		handler: (context: { messages: Array<{ role: string; content: unknown }> }) => {
 			const users = [...context.messages].reverse().filter((m) => m.role === "user");
-			const routed = users.find((m) => !textOf(m).includes("[acp-status]")) ?? users[0];
+			const routed = users.find((m) => !textOf(m).includes("[compress-hint]")) ?? users[0];
 			const text = textOf(routed ?? { role: "user", content: "" });
 			if (text.includes("compress it now") && !compressedOnce) {
 				compressedOnce = true;
@@ -523,7 +523,7 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 				};
 			}
 			if (text.includes("compress again")) {
-				const status = users.find((m) => textOf(m).startsWith("[acp-status]"));
+				const status = users.find((m) => textOf(m).startsWith("[compress-hint]"));
 				assert.ok(status, "the second compress request carried the ephemeral");
 				sawAnnotation = textOf(status!).includes("Pending strong");
 				assert.match(textOf(status!), /compress=strong/, "the ephemeral announced the strong method");
@@ -549,13 +549,16 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	const { session } = await createAgentSession({
 		cwd: cwdH,
 		settings,
+		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
+		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
 		customTools: [createCompressContextTool(state)] as never,
 		getApiKey: async () => "mock-key",
-		extensions: [createAcpProjectionExtension(state)] as never,
+		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
 		enableMCP: false,
 		hasUI: true,
@@ -612,7 +615,7 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		rmSync(cwdH, { recursive: true, force: true });
 	});
 	const raw = await Bun.file(sessionFile).text();
-	assert.ok(!raw.includes("[acp-status]"), "no [acp-status] residue in the session JSONL");
+	assert.ok(!raw.includes("[compress-hint]"), "no [compress-hint] residue in the session JSONL");
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 2, "two acpSummary entries on disk");
 	const metas = sessionManager
 		.getEntries()

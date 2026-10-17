@@ -87,9 +87,17 @@ export function sendComposerPrompt(input: { raw: string; files: PromptAttachment
         });
       } else {
         next.queued = next.queued ?? [];
-        next.queued.push({ text });
+        next.queued.push({ text, ...bubbleImagesOf(input.files) });
       }
     });
+    // The wire dispatch was dropped when the old Composer pipeline sank into
+    // this module (A14): the optimistic queue/steer updates above were left
+    // with no matching prompt RPC, so mid-stream messages never reached the
+    // host — the steer bubble ended up sealed into the runEnd loop group with
+    // no steer_consumed ever coming (the vanished-message bug). The base
+    // routes by its own streaming state: queued while streaming, a plain new
+    // turn when the run already ended.
+    st.send({ type: "prompt", sessionId: s.sessionId, text, files: input.files, ...(input.steer ? { steer: true } : {}) });
   } else {
     // Single optimistic run-start write (startLocalRun) + prompt dispatch
     dispatchPrompt(s.sessionId, text, input.files, input.steer);

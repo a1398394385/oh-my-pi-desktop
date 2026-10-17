@@ -4,6 +4,7 @@
 //   1. Round 1 prompt in a new session -> turn_end (the create path)
 //   2. Round 2 prompt in the same session -> turn_end (the sessionId path, the user-reported symptom)
 //   3. After killing and restarting the host, load_session the same session -> prompt -> turn_end (the cold-load historical session path, also user-reported)
+import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
@@ -19,7 +20,7 @@ let tmpCwd: string | null = null;
 // Real-prompt smoke tests need credentials and use the default profile (existing practice, same as steer-smoke);
 // list_sessions' history scan merges the tmp cwd into omp-desktop.json's allProjects,
 // which must be restored before exit (including failure paths) to prevent ghost-project leftovers
-const cfgPath = path.join(homedir(), ".omp/agent/omp-desktop.json");
+const cfgPath = profileAgentPath("omp-desktop.json");
 const cfgExisted = existsSync(cfgPath);
 const cfgBackup = cfgExisted ? readFileSync(cfgPath, "utf8") : null;
 
@@ -52,7 +53,7 @@ async function cleanup() {
 async function startHost(): Promise<{ child: ReturnType<typeof spawn>; wsUrl: string }> {
   const c = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   const url = await new Promise<string>((resolve, reject) => {

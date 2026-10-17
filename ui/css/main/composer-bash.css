@@ -20,10 +20,12 @@
 #composer.bash-mode .lex-ph { color: var(--bash); }
 
 /* Halo ring: 1px solid ring + 3px translucent halo (the same recipe as the
-   settings search focus ring), themed via --bash (dark --blue / light --green)
-   so both themes get a distinct identifying border */
+   settings search focus ring), themed via --bash.
+   The 1px ring is inset: the traveling dash (.dock-ring) is drawn inside the dock edge, so an
+   outset ring sat ~1.5px outside it and the bottom edge showed a plain colored line with the
+   dash running above it — reading as a gap in the light. Inset keeps both on the same pixel. */
 .dock:has(#composer.bash-mode) {
-  box-shadow: 0 0 0 1px var(--bash), 0 0 0 3px color-mix(in srgb, var(--bash) 22%, transparent);
+  box-shadow: inset 0 0 0 1px var(--bash), 0 0 0 3px color-mix(in srgb, var(--bash) 22%, transparent);
 }
 
 /* in-welcome keeps its card elevation shadow underneath (welcome.css) */
@@ -49,30 +51,30 @@
    permission/plan, context ring, model, thinking, send button) fold away with
    a grid-rows height animation; the composer shrinks to the bare input line
    and grows back when the ! prefix is removed */
-.attach-fold, .cbar-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .18s var(--swift); }
+.attach-fold, .cbar-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-snap) var(--swift); }
 
 .attach-fold > .attach-row, .cbar-fold > .cbar {
   min-height: 0; overflow: hidden;
-  transition: opacity .12s var(--swift), margin-top .18s var(--swift), padding-bottom .18s var(--swift);
+  transition: opacity var(--dur-snap) var(--swift), margin-top var(--dur-snap) var(--swift), padding-bottom var(--dur-snap) var(--swift);
 }
 
 #composer.bash-mode .attach-fold, #composer.bash-mode .cbar-fold { grid-template-rows: 0fr; }
 
 #composer.bash-mode .cbar {
   margin-top: 0; opacity: 0; visibility: hidden;
-  transition: opacity .12s var(--swift), margin-top .18s var(--swift), visibility 0s .18s;
+  transition: opacity var(--dur-snap) var(--swift), margin-top var(--dur-snap) var(--swift), visibility 0s var(--dur-snap);
 }
 
 #composer.bash-mode .attach-row {
   opacity: 0; padding-bottom: 0; visibility: hidden;
-  transition: opacity .12s var(--swift), padding-bottom .18s var(--swift), visibility 0s .18s;
+  transition: opacity var(--dur-snap) var(--swift), padding-bottom var(--dur-snap) var(--swift), visibility 0s var(--dur-snap);
 }
 
 /* Half-height command line: bash mode also collapses the input area itself --
    min-height 54 -> 24px (one line) and the composer padding 12/14/10 -> 7/14/7,
    roughly halving the card (110 -> ~38px). The transition lives on the base
    selectors so both entering and leaving animate. */
-#composer, #input { transition: padding .18s var(--swift), min-height .18s var(--swift); }
+#composer, #input { transition: padding var(--dur-snap) var(--swift), min-height var(--dur-snap) var(--swift); }
 
 #composer.bash-mode { padding: 7px 14px; }
 
@@ -86,16 +88,3 @@
   margin-left: auto; color: var(--faint);
   font-family: var(--ui-font); font-size: var(--ui-fs-sm);
 }
-
-/* Reduced motion (fold transitions; same system-default + html[data-motion]
-   override scheme as the composer.css spinner rules) */
-@media (prefers-reduced-motion: reduce) {
-  .attach-fold, .cbar-fold, .attach-fold > .attach-row, .cbar-fold > .cbar,
-  #composer.bash-mode .cbar, #composer.bash-mode .attach-row,
-  #composer, #input { transition: none; }
-}
-
-html[data-motion="on"] .attach-fold, html[data-motion="on"] .cbar-fold,
-html[data-motion="on"] .attach-fold > .attach-row, html[data-motion="on"] .cbar-fold > .cbar,
-html[data-motion="on"] #composer.bash-mode .cbar, html[data-motion="on"] #composer.bash-mode .attach-row,
-html[data-motion="on"] #composer, html[data-motion="on"] #input { transition: none; }

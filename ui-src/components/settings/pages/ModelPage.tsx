@@ -15,7 +15,8 @@ import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
 import { t } from "../../../i18n";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
-import { PROV_IC, confirmDialog } from "../common";
+import { confirmDialog } from "../common";
+import ProvLogo from "../../shared/models/ProvLogo";
 import { fmtLimitWindow, limitTone } from "../../../lib/limits";
 import type { LimitWindow } from "../../../lib/limits";
 import ModelProviderWizard from "./ModelProviderWizard";
@@ -501,8 +502,6 @@ function startProviderLogin(id: string) {
 // Pure render, no requests: credential counts are fetched explicitly via send get_all_providers
 // at each view entry (sending here too would ping-pong with the
 // all_providers response handler into infinite re-render).
-// PROV_IC loosened locally to Record: the page indexes by arbitrary provider ids (the export in common.tsx stays untouched)
-const provIc: Record<string, string> = PROV_IC;
 
 // Same-family providers merged: the add list collapses each family into one card (title/note),
 // the detail page blocks by member
@@ -596,6 +595,13 @@ function AddProviderView() {
           Object.keys(PROVIDER_FAMILIES[row.fid].members).indexOf(b.id),
       );
     }
+    // Cards are alphabetical by their display name (family title for a family card,
+    // provider id otherwise) so the grid is scannable regardless of catalog order
+    rows.sort((a, b) =>
+      (a.kind === "family" ? PROVIDER_FAMILIES[a.fid].title : a.p.id).localeCompare(
+        b.kind === "family" ? PROVIDER_FAMILIES[b.fid].title : b.p.id,
+      ),
+    );
   }
   return (
     <>
@@ -609,7 +615,7 @@ function AddProviderView() {
             row.kind === "plain" ? (
               <div className="ap-card ap-card2" key={row.p.id} onClick={() => { setBump({ mpDetailProv: row.p }); }}>
                 <div className="ap-l1">
-                  <span className="pv-ic">{provIc[row.p.id] || "✦"}</span>
+                  <ProvLogo id={row.p.id} />
                   <span className="flex-1 min-w-0 truncate text-ui-base text-text">{row.p.id}</span>
                 </div>
                 <div className="ap-l2">
@@ -631,7 +637,7 @@ function AddProviderView() {
                     }}
                   >
                     <div className="ap-l1">
-                      <span className="pv-ic">{provIc[row.fid] || provIc[row.members[0].id] || "✦"}</span>
+                      <ProvLogo id={row.fid} fallback={row.members[0].id} />
                       <span className="flex-1 min-w-0 truncate text-ui-base text-text">{fam.title}</span>
                     </div>
                     <div className="ap-l2">
@@ -763,7 +769,7 @@ function ProviderDetailView() {
         >
           {t("settingsPage.model.back")}
         </button>
-        <b>{(provIc[members[0].prov.id] || "✦") + " " + (fam ? fam.title : p.id)}</b>
+        <b className="mp-head-tt"><ProvLogo id={p.id} fallback={members[0].prov.id} />{fam ? fam.title : p.id}</b>
         <span className="tag">{fam ? t(fam.note) : p.label}</span>
       </div>
       {members.map((m, i) => (
@@ -809,7 +815,7 @@ function ThinkSel({ modelId }: { modelId: string }) {
     probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap";
     probe.style.font = cs.font;
     document.body.appendChild(probe);
-    const texts = [t("settingsPage.model.thinkFollowGlobal"), ...levels];
+    const texts = [t("settingsPage.model.thinkFollowGlobal"), ...levels.map((lv) => t(`composer.thinkingLevels.${lv}`, { defaultValue: lv }))];
     let max = 0;
     for (const tx of texts) {
       probe.textContent = tx;
@@ -843,7 +849,7 @@ function ThinkSel({ modelId }: { modelId: string }) {
         setOpen(!open);
       }}
     >
-      <span className="tx">{cur ?? t("settingsPage.model.thinkFollowGlobal")}</span>{" "}
+      <span className="tx">{cur ? t(`composer.thinkingLevels.${cur}`, { defaultValue: cur }) : t("settingsPage.model.thinkFollowGlobal")}</span>{" "}
       <Icon name="caret" size={14} className="caret-svg" />
       <div className={"menu" + (open ? " open" : "")}>
         <div
@@ -868,7 +874,7 @@ function ThinkSel({ modelId }: { modelId: string }) {
             }}
           >
             <span className="ck">{cur === lv ? "✓" : ""}</span>
-            {lv}
+            {t(`composer.thinkingLevels.${lv}`, { defaultValue: lv })}
           </div>
         ))}
       </div>
@@ -904,7 +910,7 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
   return (
     <>
       <div className="mp-head">
-        <b>{(provIc[prov] || "✦") + " " + prov}</b>
+        <b className="mp-head-tt"><ProvLogo id={prov} />{prov}</b>
         <span className="sp" />
         <span className="tag">{t("settingsPage.model.modelsCount", { count: models.length })}</span>
         {/* Logout (multi-account logs out all credentials at once, same as CLI auth-broker logout)
@@ -1125,7 +1131,7 @@ export default function ModelPage() {
                 setBump({ mpAddView: false, mpRolesView: false, mpCycleView: false, selectedProvider: prov });
               }}
             >
-              <span className="pv-ic">{provIc[prov] || "✦"}</span>
+              <ProvLogo id={prov} />
               <span className="flex-1 min-w-0 truncate font-semibold">{prov}</span>
               {ms.some((m) => m.enabled) ? <span className="dot" /> : null}
             </div>
@@ -1140,7 +1146,7 @@ export default function ModelPage() {
                 setBump({ mpAddView: false, mpRolesView: false, mpCycleView: false, selectedProvider: prov });
               }}
             >
-              <span className="pv-ic">{provIc[prov] || "✦"}</span>
+              <ProvLogo id={prov} />
               <span className="flex-1 min-w-0 truncate font-semibold">{prov}</span>
               {ms.some((m) => m.enabled) ? <span className="dot" /> : null}
             </div>

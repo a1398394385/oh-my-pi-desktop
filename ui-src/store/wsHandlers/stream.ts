@@ -7,6 +7,7 @@ import {
   applyDelta,
   applyEvent,
   applySteerConsumed,
+  bgJobsKey,
   findBySessionId,
   notifyDesktop,
   rebuildMessages,
@@ -186,10 +187,11 @@ export const streamHandlers = {
   completion(msg) {
     useAppStore.setState({ completionResult: { sessionId: msg.sessionId, suggestion: msg.suggestion ?? "" } });
   },
-  // Background job snapshot (18.5 get_bg_jobs/cancel_bg_job replies): replace
-  // the per-session slice wholesale (the frame is a full snapshot)
+  // Background job snapshot (18.5 get_bg_jobs/cancel_bg_job replies): replace the
+  // slice for this frame's scope wholesale (the frame is a full snapshot)
   bg_jobs(msg) {
-    useAppStore.setState((st) => ({ bgJobs: new Map(st.bgJobs).set(msg.sessionId, msg.jobs) }));
+    const key = bgJobsKey(msg.sessionId, msg.subagentId);
+    useAppStore.setState((st) => ({ bgJobs: new Map(st.bgJobs).set(key, msg.jobs) }));
   },
   // Slash command consumed locally by the host: withdraw the optimistically inserted user bubble (the last same-text one without an entryId)
   command_result(msg) {
@@ -441,6 +443,7 @@ export const streamHandlers = {
           subagentCost: msg.subagentCost,
           cacheHitRate: msg.cacheHitRate,
           cacheBreaks: msg.cacheBreaks,
+          compactions: msg.compactions,
           advisorCost: msg.advisorCost,
           activeMs: msg.activeMs,
           statsAt: msg.statsAt,

@@ -37,14 +37,17 @@
 }
 
 .btw-card {
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
   margin-bottom: 6px;
   background: transparent;
   overflow: hidden;
+  /* resting border color lives in the inset ring so the running state can swap it paint-only */
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 .btw-card.running {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 .btw-row {
   display: flex;
@@ -97,7 +100,7 @@
   align-items: center;
   gap: 2px;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--dur-snap);
 }
 .btw-card:hover .btw-acts,
 .btw-card.running .btw-acts {
@@ -177,7 +180,7 @@
   min-width: 0;
   resize: none;
   background: var(--ctl-bg);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
   color: var(--text);
   font-size: var(--ui-fs);
@@ -185,10 +188,12 @@
   padding: 7px 9px;
   line-height: 1.45;
   max-height: 120px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 .btw-input:focus {
   outline: none;
-  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .btw-input::placeholder {
   color: var(--faint);
@@ -196,4 +201,18 @@
 .btw-send:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .btw-card { box-shadow: inset 0 0 0 .5px var(--line); }
+  .btw-card.running { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .btw-input { box-shadow: inset 0 0 0 .5px var(--line); }
+  .btw-input:focus { box-shadow: inset 0 0 0 .5px var(--accent); }
+}
+@media (min-resolution: 3dppx) {
+  .btw-card { box-shadow: inset 0 0 0 .33px var(--line); }
+  .btw-card.running { box-shadow: inset 0 0 0 .33px color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .btw-input { box-shadow: inset 0 0 0 .33px var(--line); }
+  .btw-input:focus { box-shadow: inset 0 0 0 .33px var(--accent); }
 }

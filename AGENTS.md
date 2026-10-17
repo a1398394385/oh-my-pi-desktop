@@ -8,7 +8,7 @@
 ## 项目架构
 
 1. **Tauri 桌面外壳 (`src-tauri/`)**：
-   - 管理原生窗口、原生菜单、macOS 交通灯（titleBarStyle: Overlay, x: 16, y: 18）；系统托盘（Windows/macOS，关窗=隐藏到托盘、托盘 Quit 全量退出）+ 单实例锁（再启动聚焦已有窗口，杜绝多棵 host 进程树累积）。
+   - 管理原生窗口、原生菜单、macOS 交通灯（titleBarStyle: Overlay）；系统托盘（Windows/macOS，关窗=隐藏到托盘、托盘 Quit 全量退出）+ 单实例锁（再启动聚焦已有窗口，杜绝多棵 host 进程树累积）。
    - 负责启动和管理 Bun 宿主进程（`host/host.ts`），并向前端传递 WebSocket 动态端口。
 2. **Bun 宿主进程 (`host/host.ts`)**：
    - 共享底座（authStorage / modelRegistry / settings）。
@@ -37,7 +37,17 @@
 
 1. **语言规范**：思考、分析与解释使用中文；**代码注释一律使用英文**（开源国际化规范）。存量中文注释按目录分波次译英，`bun run check` 内的注释语言棘轮（`scripts/check-comment-language.mjs`，基线只许降不许升）防止回潮。用户可见文案（UI / 宿主消息）走 `ui-src/i18n/` 语言包，禁止新写硬编码中文文案（规范见 `ui-src/i18n/README.md`）。
 2. **机器资源安全红线**：禁止裸跑 vitest / 多包并发测试；所有测试必须带单 worker 池参数。
-3. **测试 Profile 隔离红线（最高优先级测试约束）**：所有测试、冒烟（smoke）及自动化脚本，默认且强制使用 `omp-desktop-test` profile（通过环境变量 `OMP_PROFILE=omp-desktop-test` 指定），严禁污染用户的默认 profile（`default` / `~/.omp/agent`）。若 `omp-desktop-test` profile 目录不存在，启动时必须自动检测并新建。测试产生的会话、项目列表及临时配置必须严格限制在测试 profile 内。
+3. **Profile 隔离红线（最高优先级约束）**：三个 profile 各司其职，互不混用——
+
+   | 用途 | profile | 入口 |
+   |---|---|---|
+   | 全部测试、冒烟（smoke）、探针（probe）、自动化脚本 | `omp-desktop-test` | `scripts/smoke-profile.ts` 的 `smokeEnv()`（SSOT） |
+   | 本地开发调试（`bun run dev`） | `omp-desktop-dev` | `package.json` 的 `dev` 脚本已内置 `OMP_PROFILE=omp-desktop-dev` |
+   | 用户正式使用 | `default`（`~/.omp/agent`） | 安装版应用 |
+
+   - 冒烟测试**统一**用 `omp-desktop-test`：新脚本必须 `import { smokeEnv } from "./smoke-profile.ts"` 并用它 spawn host、读 profile 路径（`profileAgentPath()`），禁止手写 profile 字符串或硬编码 `~/.omp/agent/...`；手写 `OMP_PROFILE=omp-desktop-test bun scripts/…` 仅用于 package.json 入口。profile 目录不存在时由 `host/bootstrap.ts` 自动新建。
+   - 开发启动**统一**用 `omp-desktop-dev`（已写进 `dev` 脚本，直接 `bun run dev` 即是隔离的）；它与 `default` 各持一份 `omp-desktop.json`，远程控制的端口/开关/accessKey 相互独立——dev 要开远程须避开 `default` 已占用的 16800。
+   - 严禁任何测试或开发运行污染 `default` profile；`host/bootstrap.ts` 的源码树 + default 组合会直接抛 `errors.host.profileRequired` 作为兜底闸门。
 4. **输出风格 (ADHD Mode)**：
    - 第一行必须是可直接执行的命令、路径或代码片段。
    - 多步任务清晰编号，结尾给出 2 分钟内可完成的单一具体操作。
@@ -63,6 +73,12 @@
 6. **交互反馈约束（全站通用）**：**没有点击反馈的位置，不允许触发 hover 高亮**——hover 高亮是「可点」的 affordance，只能挂在有点击行为的元素上。行内只有局部控件可点时（如角色行的胶囊/删除按钮），高亮只挂控件、不挂承载行；`.srow` 的默认行 hover 仅用于整行可点的列表（记忆/技能行），纯展示承载行必须显式关闭——用更高特异性 `.srow.xxx-row:hover { background: none }`（`ui/css/global/controls.css` 里 `.srow:hover` 的位置可能在覆盖规则之后，同特异性会反杀），浅色主题规则一并覆盖。
 7. **卡片行统一 `.set-row`**：独立 `.set-card` 内的不可点行一律 `.srow.set-row`（标准行几何 13px 16px、关行 hover、ctl 右对齐、标题内 `.tag` 弹性排列，定义在 `ui/css/settings/common.css` 末尾）；**禁止**复用其他页面的上下文行类——模型页 `.mp-role-row` 是为其自带内边距的 `.mp-r` 面板设计的（2px 侧边距），挪进独立卡片内容会贴边。新设置页的行结构照抄 `CapabilityPage.tsx` 的 `Group` + `.srow.set-row` 组合。
 
+## 动效规范（全站）
+
+1. **时长/缓动/阴影只走 token**：SSOT 在 `ui/css/global/tokens.css`——时长 `--dur-fast/snap/base/sheet/slow`、缓动 `--swift/--spring/--ease-expand/enter/overshoot/pop`、按压弹簧 `--spring-press`、阴影 `--shadow-sm/md/lg/popover/panel`（深浅双值）。新写 `transition` 禁止裸时长/缓动字面量（`@keyframes` 内部除外）；存量裸值收敛见 `docs/ui-claude-optimization-plan.md`。
+2. **spinner 统一**引用规范化 `@keyframes spin`（`ui/css/global/animations.css`），禁止新造 `rotate(360deg)` 等价 keyframes。
+3. **reduced-motion 全局降级**已统一在 `animations.css`（`prefers-reduced-motion` + `html[data-motion="off"]` 同规则）：装饰性过渡/入场动画以 `animation/transition: none !important` 压制（**禁止用 0.01ms 时长覆写**——非零时长会激活默认 `transition-property: all`，引擎卡死 transition 会把 JS 定位的 fixed 浮层钉在旧坐标），**存活指示循环（spinner、呼吸点、骨架扫光）经 `:not()` 清单豁免保持转动**——该清单是语义的一部分，新增 `animation: ... infinite` 状态指示时须同步加入清单，勿当冗余清理。
+
 ## 图标系统
 
 1. **结构**：
@@ -84,7 +100,7 @@
 
 所有「锚点 hover 弹卡」（上下文明细卡及后续同类卡片）必须共用同一套设计，基类为 `.ring-pop`（`ui/css/global/overlays.css`），不得另起炉灶：
 
-1. **容器样式**：背景 `var(--ctl-bg)`、1px `var(--line)` 边框、圆角 `var(--r-md)`、阴影 `0 12px 32px rgba(0,0,0,.5)`（浅色主题降透明度至 `.18`，用 `[data-theme="light"] .ring-pop` 覆盖）、内边距 `12px 12px 14px`、`min-width: 192px`、字号 `var(--ui-fs-base)`、正文色 `var(--dim)`、标题 `<b>` 为 `var(--text)` + `font-weight: 500`。
+1. **容器样式**：背景 `var(--ctl-bg)`、1px `var(--line)` 边框、圆角 `var(--r-md)`、阴影 `var(--shadow-popover)`（token 自带深浅值，不要写浅色覆写）、内边距 `12px 12px 14px`、`min-width: 192px`、字号 `var(--ui-fs-base)`、正文色 `var(--dim)`、标题 `<b>` 为 `var(--text)` + `font-weight: 500`。
 2. **弹出动画**：统一使用 `animation: ringpop .18s ease-out`（`@keyframes ringpop`：淡入 + 自上方 6px 上滑归位），禁止瞬显或其他入场动画；卡片自身的变体样式挂在叠加类上（如 `.rail-pop`），动画不重定义。
 3. **定位**：`position: fixed; z-index: 110`，坐标一律经 `placeMenu()` 写入（内部除以 `zoomLevel` 补偿界面缩放）；弹出位置贴在锚点旁（上下文明细卡在环正上方 7px），边缘距视口至少 8px。
 4. **交互闭环（hover 宽限模式）**：锚点 `mouseenter` 不立即弹卡——先起 150ms 悬停定器，鼠标停够才弹出（划过不打扰），提前离开则取消；锚点 `mouseleave` 时不立即收卡——朝卡片方向离开则启动 200~250ms 宽限定器，途中有 `relatedTarget` 进入卡片则取消；卡片自身 `mouseenter` 取消关闭、`mouseleave` 关闭。悬停期间数据到达只重绘内容，不重建锚点（「移开即弃」策略）。

@@ -16,7 +16,7 @@ export default function ChatLoading() {
   return (
     <div className="flex items-center min-h-[20px] py-[2px]" role="status" aria-label={text || t("chat.loadingAria")}>
       <Icon name="loader" size={16} className="chat-loading-icon" />
-      {text && <span className="ml-[7px] text-ui-sm text-dim truncate" title={text}>{text}</span>}
+      {text && <span className="ml-[7px] text-ui-sm text-dim truncate shimmer" title={text}>{text}</span>}
     </div>
   );
 }

@@ -30,6 +30,7 @@ export const settingsPageZh = {
     developer: "开发者",
     advanced: "高级",
     experimental: "实验性功能",
+    remote: "远程控制",
     stats: "使用统计",
   },
   // ---- Settings shell: back button, search box, resizer (Settings.tsx) ----
@@ -40,6 +41,28 @@ export const settingsPageZh = {
     searchCount: "找到 {{count}} 个设置项",
     searchEmpty: "未找到匹配设置项",
     dragResize: "拖动调整宽度",
+  },
+  // ---- Remote control page (RemotePage.tsx) ----
+  remote: {
+    groupDesc: "从局域网内其他设备的浏览器访问本应用：开启后，在设备上打开访问链接即可操作（发 prompt、批准、浏览会话与右栏）。同一时间仅允许一个远程连接，后连者会顶掉先连者。",
+    enabledTitle: "启用远程控制",
+    enabledDesc: "在本机启动远程服务并监听下方端口；关闭后远程端将被断开。",
+    portTitle: "监听端口",
+    portDesc: "远程服务绑定的 TCP 端口（1–65535），保存后立即换绑并重启远程服务。",
+    portSave: "保存",
+    keyTitle: "访问密钥",
+    keyDesc: "远程端访问凭据，此处脱敏显示；重新生成后旧访问链接立即失效。",
+    keyCopy: "复制访问链接",
+    keyCopied: "访问链接已复制",
+    keyRegen: "重新生成",
+    keyRegenConfirm: "重新生成访问密钥？",
+    keyRegenMsg: "旧访问链接将立即失效，已连接的远程端不受影响。",
+    statusTitle: "服务状态",
+    statusDesc: "远程服务的当前运行状态；换绑或启动失败时显示错误详情。",
+    statusListening: "监听中",
+    statusStopped: "未启用",
+    statusError: "错误",
+    statusUnknown: "未知",
   },
   // ---- Login banner + paste-code prompt (common.tsx) ----
   login: {
@@ -140,8 +163,8 @@ export const settingsPageZh = {
     fontMono: "等宽",
     fontSizeTitle: "字体大小",
     fontSizeDesc: "调整全局文字大小（代码块与 Git Diff 内容除外）。",
-    motionTitle: "减弱动态效果",
-    motionDesc: "跟随系统的减弱动态设置，或强制开启 / 关闭应用内动画减弱（当前影响加载转圈）。",
+    motionTitle: "动效",
+    motionDesc: "跟随系统的减弱动态设置，或强制开启 / 关闭应用内动效。",
     motionSystem: "跟随系统",
     motionOn: "开启",
     motionOff: "关闭",
@@ -1744,8 +1767,6 @@ export const settingsPageZh = {
   },
   // ---- Desktop alerts section (InteractionPage) ----
   alerts: {
-    group: "桌面提示",
-    groupDesc: "会话在后台完成、等待审批或出错时提醒你。左侧会话列表的圆点标记不受影响。",
     desktopTitle: "系统通知",
     desktopDesc: "通过系统通知中心提醒。macOS 首次使用会请求授权（系统会拒绝未签名构建，此时只有提示音生效）。",
     permTitle: "通知权限",

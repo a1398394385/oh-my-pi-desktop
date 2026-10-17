@@ -2,6 +2,7 @@
 // section) must persist and round-trip through the model_roles frame; an
 // unknown "@nope" reference and a bogus "provider/model" must still error.
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-model-role-ref.ts
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 
 let child: ChildProcess | null = null;
@@ -14,7 +15,7 @@ function fail(msg: string): never {
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "inherit"],
 });
 const wsUrl = await new Promise<string>((resolve, reject) => {

@@ -43,11 +43,15 @@ export const composerEn = {
   onlyOneRoleModel: "Only one role model available",
   // ThinkMenu.tsx
   reasoning: "Reasoning level",
+  // Settings page renders raw ids for en (OPTS_EN has no entry) — mirror that
+  thinkingLevels: { auto: "auto", minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max", off: "off" },
   // QueueCard.tsx
   queuedHint: "Queued: sent automatically when the current task finishes",
   noText: "(no text)",
   sendNow: "Send now (inject after the current step)",
   editQueued: "Edit (back to composer)",
+  moveUp: "Move up",
+  moveDown: "Move down",
   // AttachRow.tsx
   remove: "Remove",
   // GoalCard.tsx

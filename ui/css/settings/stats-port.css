@@ -10,7 +10,7 @@
 }
 
 #pg-stats .rise {
-	animation: rise var(--dur-3) var(--ease-out) backwards;
+	animation: rise var(--st-dur-3) var(--ease-out) backwards;
 	animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 
@@ -39,8 +39,8 @@
 	text-align: left;
 	width: 100%;
 	transition:
-		background var(--dur-1) var(--ease),
-		color var(--dur-1) var(--ease);
+		background var(--st-dur-1) var(--swift),
+		color var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .nav-row:hover {
@@ -59,7 +59,7 @@
 
 #pg-stats .nav-row svg {
 	color: var(--ink-3);
-	transition: color var(--dur-1) var(--ease);
+	transition: color var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .nav-row[data-active="true"] svg {
@@ -74,7 +74,7 @@
 	font-size: 10.5px;
 	color: var(--ink-4);
 	opacity: 0;
-	transition: opacity var(--dur-1) var(--ease);
+	transition: opacity var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .nav-row:hover kbd {
@@ -165,9 +165,9 @@
 	background: var(--raised);
 	color: var(--ink-1);
 	transition:
-		background var(--dur-1) var(--ease),
-		border-color var(--dur-1) var(--ease),
-		transform var(--dur-1) var(--ease);
+		background var(--st-dur-1) var(--swift),
+		border-color var(--st-dur-1) var(--swift),
+		transform var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .btn:hover:not(:disabled) {
@@ -240,7 +240,7 @@
 	color: var(--ink-1);
 	font-size: 13px;
 	min-width: 0;
-	transition: border-color var(--dur-1) var(--ease);
+	transition: border-color var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .input::placeholder {
@@ -319,9 +319,9 @@
 	border-radius: var(--r-chip);
 	background: var(--panel-2);
 	transition:
-		left var(--dur-2) var(--ease-out),
-		width var(--dur-2) var(--ease-out),
-		background var(--dur-1) var(--ease);
+		left var(--st-dur-2) var(--swift),
+		width var(--st-dur-2) var(--swift),
+		background var(--st-dur-1) var(--swift);
 	z-index: -1;
 }
 
@@ -344,7 +344,7 @@
 	align-items: center;
 	gap: 6px;
 	cursor: pointer;
-	transition: color var(--dur-1) var(--ease);
+	transition: color var(--st-dur-1) var(--swift);
 }
 
 /* Short vertical separator between options; kept clear of the card frame's
@@ -513,7 +513,7 @@
 	backdrop-filter: blur(20px) saturate(170%);
 	-webkit-backdrop-filter: blur(20px) saturate(170%);
 	box-shadow: var(--shadow-3);
-	animation: drawer-in var(--dur-3) var(--ease-out) both;
+	animation: drawer-in var(--st-dur-3) var(--ease-out) both;
 	overflow: hidden;
 }
 
@@ -608,7 +608,7 @@
 
 #pg-stats .chart-bar {
 	shape-rendering: crispEdges;
-	transition: opacity var(--dur-1) var(--ease);
+	transition: opacity var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .chart[data-hovering="true"] .chart-bar[data-hover="false"] {
@@ -674,7 +674,7 @@
 #pg-stats .share-bar-seg {
 	height: 100%;
 	min-width: 2px;
-	transition: flex-grow var(--dur-3) var(--ease-out);
+	transition: flex-grow var(--st-dur-3) var(--swift);
 }
 
 #pg-stats .bar-list-fill {
@@ -685,7 +685,7 @@
 	border-radius: var(--r-sm);
 	z-index: -1;
 	opacity: 0.16;
-	transition: width var(--dur-3) var(--ease-out);
+	transition: width var(--st-dur-3) var(--swift);
 }
 
 #pg-stats .bar-list-label {
@@ -721,7 +721,7 @@
 }
 
 #pg-stats .traces-spin {
-	animation: traces-spin 900ms linear infinite;
+	animation: spin 900ms linear infinite;
 }
 
 #pg-stats .traces-toolbar {
@@ -887,7 +887,7 @@
 	font: inherit;
 	text-align: left;
 	cursor: pointer;
-	transition: background var(--dur-1) var(--ease);
+	transition: background var(--st-dur-1) var(--swift);
 }
 
 #pg-stats .traces-row:hover {
@@ -1014,17 +1014,7 @@
 	}
 }
 
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
 
-@keyframes traces-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
 
 #pg-stats .table th .sort-arrow {
   margin-left: 4px;

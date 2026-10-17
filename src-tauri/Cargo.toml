@@ -1,6 +1,6 @@
 [package]
 name = "omp-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "omp 桌面壳：窗口 + Bun 宿主进程管理"
 edition = "2021"
 
@@ -35,6 +35,9 @@ dispatch2 = { version = "0.3", default-features = false, features = ["std", "obj
 objc2-core-audio = { version = "0.3", default-features = false, features = ["std", "objc2", "objc2-core-audio-types", "AudioHardware"] }
 objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "objc2"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std"] }
+# Native traffic lights: the shell re-places them on every UI zoom change
+# (set_traffic_light_y in lib.rs) — needs NSWindow standardWindowButton + NSView frames.
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSView", "NSResponder"] }
 objc2-core-media = { version = "0.3", default-features = false, features = ["std", "objc2-core-audio-types", "CMBase", "CMBlockBuffer", "CMSampleBuffer"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSError", "NSString", "NSBundle"] }
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "SCShareableContent", "SCStream", "block2", "dispatch2", "objc2-core-graphics", "objc2-core-media"] }
@@ -48,3 +51,8 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.25"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Diagnostics_Debug"] }
+
+# Test-only: mock runtime drives the real IPC pipeline in the invoke-route test
+# (lib.rs tests). Feature unification applies only to `cargo test` builds.
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

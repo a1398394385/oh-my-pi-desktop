@@ -6,6 +6,7 @@ export const rightEn = {
   tabTerminal: "Terminal",
   tabBrowser: "Browser",
   tabAgentBrowser: "Agent Browser",
+  tabAgentBrowserShort: "Agent",
   mirrorEmpty: "This session's Agent is not browsing",
   mirrorOtherSessions: "{{n}} tab(s) from other sessions are hidden here",
   searchTabs: "Search tabs",
@@ -72,6 +73,7 @@ export const rightEn = {
   openExternalShort: "Open Externally",
   // ---- Agent built-in browser live view (right-panel browser page, host/browser-mirror.ts) ----
   modeManual: "Manual",
+  modeManualShort: "Manual",
   agentLive: "LIVE",
   agentLiveSub: "Mirroring the Agent's built-in browser in real time",
   agentConnecting: "Connecting to the live view…",

@@ -43,11 +43,15 @@ export const composerZh = {
   onlyOneRoleModel: "仅有一个可用的角色模型",
   // ThinkMenu.tsx
   reasoning: "推理强度",
+  // Same copy as the settings page's defaultThinkingLevel options (OPTS_ZH)
+  thinkingLevels: { auto: "自动", minimal: "最小", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最大", off: "关" },
   // QueueCard.tsx
   queuedHint: "排队中：当前任务完成后自动发送",
   noText: "（无文本）",
   sendNow: "立即发送（当前步骤后注入）",
   editQueued: "编辑（放回输入框）",
+  moveUp: "上移",
+  moveDown: "下移",
   // AttachRow.tsx
   remove: "移除",
   // GoalCard.tsx

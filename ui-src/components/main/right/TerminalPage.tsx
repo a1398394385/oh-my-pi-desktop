@@ -77,7 +77,7 @@ function buildTheme() {
     foreground: cssVar("--text"),
     cursor: cssVar("--text"),
     cursorAccent: cssVar("--card"),
-    selectionBackground: dark ? "rgba(74,158,255,.30)" : "rgba(10,120,220,.25)",
+    selectionBackground: `color-mix(in srgb, ${cssVar("--accent")} ${dark ? 30 : 25}%, transparent)`,
     ...(dark ? ANSI_DARK : ANSI_LIGHT),
   };
 }

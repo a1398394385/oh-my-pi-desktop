@@ -28,12 +28,16 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename }: {
       onClose={onClose}
     >
       {item(t("sidebar.copySessionId"), () => {
-        copyText(entry.id ?? "");
-        toast(t("sidebar.copySessionIdDone"));
+        copyText(entry.id ?? "").then(
+          () => toast(t("sidebar.copySessionIdDone")),
+          () => toast(t("sidebar.copyFailed")),
+        );
       }, entry.pending)}
       {item(t("sidebar.copySessionPath"), () => {
-        copyText(entry.path);
-        toast(t("sidebar.copySessionPathDone"));
+        copyText(entry.path).then(
+          () => toast(t("sidebar.copySessionPathDone")),
+          () => toast(t("sidebar.copyFailed")),
+        );
       })}
       {item(t("sidebar.rename"), () => onRename(entry))}
       {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", sessionId: entry.id, archived: !entry.archived }))}

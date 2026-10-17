@@ -4,12 +4,16 @@
 // state machine (due dispatch, misfire grace, maxRuns/endAt completion, disabled
 // claim, manual runs, spawn/prompt failure paths) through tickAutomations with an
 // injected fake spawn and a temp agentDir, so the real profile files are never touched.
+// Also covers the two create entry points that sit in front of that domain: the
+// agent-facing create_automation tool (param translation, rejection surfaces, the
+// automations_list push) and the session_list automation badge backfill.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-automations.ts
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { H } from "../host/state.ts";
+import { H, activeWs } from "../host/state.ts";
 import { SessionManager } from "../host/bootstrap.ts";
+import { createAutomationTool } from "../host/automations-tool.ts";
 import { handleListSessions } from "../host/rpc/session.ts";
 import {
   AUTOMATION_CREATE_LIMIT,
@@ -430,9 +434,11 @@ async function main(): Promise<void> {
     const listAllStub = SessionManager as unknown as { listAll: () => Promise<unknown[]> };
     listAllStub.listAll = async () => [info];
     try {
-      let sent: { projects?: { sessions: { path: string; automation?: { id: string; title: string } }[] }[] } | null = null;
-      const ws = { send: (d: string) => (sent = JSON.parse(d)) };
+      // handleListSessions pushes more than session_list (pool_sessions rides along), so pick the frame by type instead of keeping the last one.
+      const frames: { type?: string; projects?: { sessions: { path: string; automation?: { id: string; title: string } }[] }[] }[] = [];
+      const ws = { send: (d: string) => frames.push(JSON.parse(d)) };
       await handleListSessions(ws);
+      const sent = frames.find((f) => f.type === "session_list") ?? null;
       const rows = sent?.projects?.flatMap((p) => p.sessions) ?? [];
       const hit = rows.find((r) => r.path === sessionFile);
       ok("list: ledger backfills automation badge", hit !== undefined && hit.automation?.id === badge.id && hit.automation?.title === badge.title, hit);
@@ -440,6 +446,101 @@ async function main(): Promise<void> {
     } finally {
       listAllStub.listAll = realListAll;
     }
+  }
+
+  // ================= 6. create_automation tool (agent-facing create path) =================
+  // The agent-facing tool translates flat params into the same domain create the
+  // RPC calls, persists, and pushes automations_list to the connected UI.
+  {
+    const frames: { type?: string; automations?: unknown[] }[] = [];
+    activeWs.value = { send: (d: string) => frames.push(JSON.parse(d)) };
+    const tool = createAutomationTool("/repo/session-cwd");
+    const call = async (params: Record<string, unknown>) =>
+      (await tool.execute("tool-call-1", params)) as { content: { text: string }[]; isError?: boolean };
+    const base = readAutomations().automations.length;
+
+    const daily = await call({ title: "Standup brief", prompt: "summarize yesterday" });
+    ok("tool: daily create ok", !daily.isError, daily.content[0].text);
+    const d = readAutomations().automations[base];
+    ok("tool: daily persisted", d?.title === "Standup brief" && d?.prompt === "summarize yesterday", d);
+    ok("tool: cwd falls back to session cwd", d?.cwd === "/repo/session-cwd", d?.cwd);
+    ok("tool: recurring by default", d?.recurring === true, d?.recurring);
+    ok("tool: default time 09:00", d?.scheduleRule?.hour === 9 && d?.scheduleRule?.minute === 0, d?.scheduleRule);
+    ok("tool: nextRunAt computed", typeof d?.nextRunAt === "number", d?.nextRunAt);
+    ok("tool: automations_list pushed", frames.some((f) => f.type === "automations_list"), frames.length);
+
+    const weekly = await call({
+      title: "Monday review",
+      prompt: "review the board",
+      every: "weekly",
+      at: "18:45",
+      weekdays: [1],
+      cwd: "/repo/other",
+    });
+    ok("tool: weekly create ok", !weekly.isError, weekly.content[0].text);
+    const w = readAutomations().automations[base + 1];
+    ok("tool: at parsed into hour/minute", w?.scheduleRule?.hour === 18 && w?.scheduleRule?.minute === 45, w?.scheduleRule);
+    ok("tool: weekdays passed through", JSON.stringify(w?.scheduleRule?.weekdays) === "[1]", w?.scheduleRule?.weekdays);
+    ok("tool: explicit cwd wins", w?.cwd === "/repo/other", w?.cwd);
+
+    const oneShot = await call({ title: "One off", prompt: "check deploy", every: "daily", at: "07:00", recurring: false });
+    ok("tool: one-shot create ok", !oneShot.isError, oneShot.content[0].text);
+    ok("tool: recurring false stored", readAutomations().automations[base + 2]?.recurring === false);
+
+    const cron = await call({ title: "Cron job", prompt: "poll", cron: "*/15 * * * *" });
+    ok("tool: cron create ok", !cron.isError, cron.content[0].text);
+    const c = readAutomations().automations[base + 3];
+    ok("tool: cron replaces rule fields", c?.cronExpr === "*/15 * * * *" && c?.scheduleRule === undefined, c);
+
+    const before = readAutomations().automations.length;
+    const badCron = await call({ title: "Bad cron", prompt: "x", cron: "not a cron" });
+    ok("tool: invalid cron is a tool error", badCron.isError === true, badCron.content[0].text);
+    const badAt = await call({ title: "Bad at", prompt: "x", at: "9am" });
+    ok("tool: malformed at is a tool error", badAt.isError === true, badAt.content[0].text);
+    const noTitle = await call({ title: "   ", prompt: "x" });
+    ok("tool: empty title is a tool error", noTitle.isError === true, noTitle.content[0].text);
+    eq("tool: rejected calls persist nothing", readAutomations().automations.length, before);
+
+    // No UI attached: the frame push is advisory, persistence still succeeds.
+    activeWs.value = null;
+    const headless = await call({ title: "Headless", prompt: "x" });
+    ok("tool: headless create ok", !headless.isError, headless.content[0].text);
+    ok("tool: headless persisted", readAutomations().automations.some((a) => a.title === "Headless"));
+
+    // Subagent refusal: live task-spawned subagents inherit the parent's custom
+    // tools, so the entry rejects on taskDepth (depth 0 = main session).
+    const depthBefore = readAutomations().automations.length;
+    const asSubagent = (await tool.execute("tool-call-2", { title: "From subagent", prompt: "x" }, undefined, undefined, {
+      taskDepth: 1,
+    })) as { content: { text: string }[]; isError?: boolean };
+    ok("tool: subagent call refused", asSubagent.isError === true, asSubagent.content[0].text);
+    eq("tool: refused subagent persists nothing", readAutomations().automations.length, depthBefore);
+    const mainDepth = (await tool.execute("tool-call-3", { title: "Main depth", prompt: "x" }, undefined, undefined, {
+      taskDepth: 0,
+    })) as { isError?: boolean };
+    ok("tool: taskDepth 0 still creates", mainDepth.isError !== true, mainDepth);
+
+    // Second gate: the on-disk transcript shape (a child transcript lives inside
+    // <parent>.jsonl/). Exercised without taskDepth, the way a reloaded session reaches it.
+    const mainFile = path.join(agentDir, "main-session.jsonl");
+    writeFileSync(mainFile, "{}\n");
+    // Real layout: parent transcript is <X>.jsonl, the child transcript lives in the
+    // sibling <X>/ directory — so dirname(child) + ".jsonl" is the parent file.
+    writeFileSync(path.join(agentDir, "parent-session.jsonl"), "{}\n");
+    const childDir = path.join(agentDir, "parent-session");
+    mkdirSync(childDir, { recursive: true });
+    const childFile = path.join(childDir, "Child.jsonl");
+    writeFileSync(childFile, "{}\n");
+    const withCtx = (sessionFile: string) => ({ sessionManager: { getSessionFile: () => sessionFile } });
+    const childCall = (await tool.execute("tool-call-4", { title: "Child", prompt: "x" }, undefined, undefined, withCtx(childFile))) as {
+      isError?: boolean;
+    };
+    ok("tool: child transcript refused without taskDepth", childCall.isError === true, childCall);
+    eq("tool: refused child persists nothing", readAutomations().automations.length, depthBefore + 1);
+    const mainCall = (await tool.execute("tool-call-5", { title: "Main file", prompt: "x" }, undefined, undefined, withCtx(mainFile))) as {
+      isError?: boolean;
+    };
+    ok("tool: main-session transcript still creates", mainCall.isError !== true, mainCall);
   }
 }
 

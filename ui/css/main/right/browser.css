@@ -9,12 +9,35 @@
   background: var(--card);
 }
 
-/* toolbar: 44px tall, icon buttons + address bar + more */
+/* Manual-mode carrier: keeps the manual view (bar + iframe) mounted as a flex
+   child while Agent mode renders; the [hidden] switch is the mode toggle.
+   Explicit display rule needed — the flex rule above would beat the UA [hidden] rule. */
+.bpane-manual { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.bpane-manual[hidden] { display: none; }
+
+/* toolbar: 44px tall, icon buttons + address bar + more.
+   inline-size container: the mode pills degrade against THIS width
+   (short labels, then hidden) so their height never changes. */
 .bpane-bar {
+  container-type: inline-size;
   flex: none;
   display: flex; align-items: center; gap: 4px;
   height: 44px; padding: 0 8px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+/* Mode pills: no wrap / no shrink (height constant); below ~350px the bar
+   can't fit full labels next to the toolbar controls -> short labels;
+   below ~271px even short labels don't fit -> hide the pills entirely.
+   Thresholds are content-box px of .bpane-bar (rail width - 32). */
+.bpane-bar .mcp-type-pill { flex: none; white-space: nowrap; }
+.bpane-bar .bmode-short { display: none; }
+@container (max-width: 349px) {
+  .bpane-bar .bmode-full { display: none; }
+  .bpane-bar .bmode-short { display: inline; }
+}
+@container (max-width: 271px) {
+  .bpane-bar .mcp-type-pills { display: none; }
 }
 
 /* address bar: inset card face, spinner on the left while loading */
@@ -25,16 +48,16 @@
   border-radius: var(--r-md);
   background: var(--inset);
   border: 1px solid transparent;
-  transition: border-color .12s var(--swift);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 
-.bpane-addr:focus-within { border-color: var(--accent); }
+.bpane-addr:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
 
 .bpane-spin {
   flex: none; width: 12px; height: 12px;
   border: 1.5px solid var(--faint); border-top-color: transparent;
   border-radius: 50%;
-  animation: bpane-rot .8s linear infinite;
+  animation: spin .8s linear infinite;
 }
 
 .bpane-input {
@@ -87,7 +110,7 @@
   border: 1px solid var(--line);
   background: var(--panel-2); color: var(--text);
   font: inherit; font-size: var(--ui-fs-sm); cursor: pointer;
-  transition: background .12s var(--swift);
+  transition: background var(--dur-snap) var(--swift);
 }
 
 .bpane-err-acts .btn:hover { background: var(--panel-3); }
@@ -120,7 +143,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .bpill:hover { background: var(--panel-2); color: var(--text); }
@@ -165,3 +188,11 @@
 .bpane-liveview.interactive:focus { outline: none; }
 
 .bpane-liveview.interactive .bpane-live-img { user-select: none; -webkit-user-select: none; }
+
+/* Hairline: halve the converted inset ring on HiDPI */
+@media (min-resolution: 2dppx) {
+  .bpane-addr:focus-within { box-shadow: inset 0 0 0 .5px var(--accent); }
+}
+@media (min-resolution: 3dppx) {
+  .bpane-addr:focus-within { box-shadow: inset 0 0 0 .33px var(--accent); }
+}

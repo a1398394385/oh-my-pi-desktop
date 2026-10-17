@@ -5,6 +5,7 @@
 //   2. Record each steer_consumed's texts and the turn_end count; check whether MSG-B/MSG-C also get consumed
 // Frame semantics (after the BUG-007 fix): one turn_start/turn_end per model round (including continuation rounds from queued consumption),
 // plus a final runEnd=true frame when the run is fully over (host mapping of agent_end; not a round; assertions filter by runEnd)
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -25,7 +26,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

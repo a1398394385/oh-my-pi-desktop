@@ -8,6 +8,7 @@
 //   3. Typing a removed command by hand (including the /models alias and the /force:bash colon form) -> command_output notice + command_result(consumed)
 //   4. A removed command produces no event frames (neither executes nor lands as a prompt)
 //   5. Non-removed commands execute as usual (/context goes through the builtin dispatch)
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -26,7 +27,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

@@ -66,6 +66,17 @@
 | BUG-069 | Cmd± 缩放后 fork/copy 按钮行与消息列错位——WebKit zoom 子树内 padding-calc 与 margin-auto 居中计算不一致 | 2026-10-13 |
 | BUG-067 | ask 弹窗最后一题/单题鼠标点选项不提交——单选「自动翻页」只在非末页分支，末页无鼠标提交路径 | 2026-10-13 |
 | BUG-068 | 升级底座 18.10.3 后发消息报 `maybeStartTitleGeneration is not a function`——底座移除该 API，改由会话 `autoTitle` 内部驱动 | 2026-10-13 |
+| BUG-071 | Agent 输出尾段发的 steer/排队消息在输出结束后消失——A14 管线下沉丢失 streaming 分支的 prompt RPC + host-idle 竞态无 steer_consumed | 2026-10-15 |
+| BUG-072 | 斜杠命令输出（如 /context）并进上一轮正文——命令卡无锚点用户条，被当作该轮 flow 节点追加 | 2026-10-16 |
+| BUG-073 | 从 Agent 输出尾的 fork 分叉出的新会话不含该输出——entryId 回填两处错位，切片锚点落到轮内第一条 assistant | 2026-10-16 |
+| BUG-074 | 多账号供应商（MiniMax 等 API-key 型）设置的账号优先级对真实请求完全无效——底座按 sessionId 哈希选起始账号，绕过存储顺序 | 2026-10-16 |
+| BUG-075 | 安装版远程控制整页 404——Tauri bundle 只映射 host-dist，ui/dist 从未进包 | 2026-10-17 |
+| BUG-076 | 远程端 key 失配后「连接中/已断开」无限横跳——握手 401 对 JS 只表现为 1006，落入自动重连梯子 | 2026-10-17 |
+| BUG-077 | 设置页「复制访问链接」给出已作废的旧 key——remote_regenerate_key 不广播 settings 帧，remote.url 停留生成前快照 | 2026-10-17 |
+| BUG-078 | 远程端 "remote read-only" 弹错三连（点会话/加载瞬间/侧栏展开）——UI 标准链路发写类 RPC（reload_settings/set_locale/set_ui_prefs/set_project_expanded）撞 denylist | 2026-10-17 |
+| BUG-079 | 动效全局降级连环案：设置标题歧义致用户误关动效 + 0.01ms 时长覆写钉死 JS 定位浮层坐标 | 2026-10-17 |
+| BUG-080 | 排队消息幽灵条目：host-idle 竞态直通消费后 QueueCard 永不清除，编辑报「暂存排队消息不存在: 0」（BUG-071 已知残留转正） | 2026-10-17 |
+| BUG-081 | 升级底座 18.11.3：旧补丁 bun 自动适配错位打歪 virtual-module，`bun patch --commit` 中断重装又把错位状态固化成新补丁 | 2026-10-17 |
 
 ---
 
@@ -1013,3 +1024,145 @@ if (!multi && qi < askQs.length - 1) goTo(qi + 1);
 **验证**：`bun build host/host.ts --external '*'` 通过；ACP 冒烟 10 件套（forced/pull/ephemeral/projection/tool/strong/recall/persist/tiermode/synth，`OMP_PROFILE=acp-probe`）全绿；外部实验侧端到端探针（真实 MiniMax 会话，l3=3K）确认 `context_status`/`compress_context` 可被模型调用、`[acp-report]` 正常落盘。
 
 **教训**：①**装配工厂加参数时必须同步检查全部调用方的实参集合**——调用方先写（session-lifecycle）、工厂后拆文件时丢字段，两端各自看都「没问题」；②`host/` 不进 typecheck 意味着「签名不匹配」这类错误只有运行时行为差异能暴露——绕过工厂直构 deps 的冒烟测不到装配层，**冒烟的装配路径要尽量与生产同构**（走工厂，或对工厂加一个把关键字段透传给 deps 的直构断言）。
+
+### BUG-071: Agent 输出尾段发的 steer 消息在输出结束后从 UI 消失——发送管线下沉（A14）丢失 streaming 分支的 prompt RPC，叠加 host-idle 竞态
+
+**现象**：Agent 流式输出最后阶段 Ctrl+↵ 发一句话（steer），Agent 输出完成后这句话从 UI 消失。分诊：②确认存量缺陷（A14 commit 913337b 起所有 streaming 期间的 steer/排队发送都受影响，非环境相关）。
+
+**根因**：两层。①**主因**：A14 把发送管线从 Composer.tsx 沉入 `ui-src/components/composer/send.ts` 时，重构前「if/else 之后无条件 `ws.send({type:"prompt",...})`」被误拆成只有非流式分支的 dispatchPrompt 发送——streaming 分支（steer + followUp 排队）只做本地乐观更新，RPC 从未发出。后果链：pending 气泡本地推入 → host 不知道 → run 结束 runEnd 帧 → `sealRunItems` 把 pending 气泡封进 collapsed loop 组 → steer_consumed 永不到来 → 气泡永久不可见；排队消息同样从未入 host 队列。②**次因（竞态）**：底座 `prompt()` 在 `!isStreaming` 时无条件忽略 `streamingBehavior` 直接开 turn（agent-session.ts ~7236 行），UI 的 s.streaming 滞后 host 一帧——steer 到达时 run 刚结束则退化为普通 prompt，无 steer_consumed，气泡同样被旧 runEnd 封组（冒烟 after 变体复现）。host/底座消费链路本身正常：流式中到达的 steer 经 yield 边界消费 → dequeue hook 发 steer_consumed（early/late 变体验证）。
+
+**修复**：`send.ts` streaming 分支补回 prompt RPC（带 steer 标志，恢复重构前语义）；`store/session.ts` 新增 `promoteStrandedSteerBubbles` 并在 `applyEvent` turn_start 分支 `turnItemStart == null` 时先调用——穿透 loop 组把遗留 pending 气泡摘出转正（覆盖竞态退化路径；正常消费路径 steer_consumed 先到、无 pending 可救，不受影响）。附带：排队操作域拆到 `store/queue-actions.ts`（session.ts 行数门禁 784/800）。
+
+**验证**：store 级帧重放测试 `scripts/steer-tail-smoke.ts` 之外的 `scripts/steer-tail-replay.test.ts` 3/3 绿（streaming 分支发 RPC、退化气泡被 turn_start 救回、正常路径无回归）；端到端冒烟 `scripts/steer-tail-smoke.ts` early/late/after 三变体全过（early/late 确认 host 消费链路，after 确认退化路径复现且由 UI 兜底覆盖）；`bun run check` 八步全绿；`bun run ui:build` 通过。
+
+**教训**：①「无条件副作用」拆进 if/else 分支时必须逐分支核对发送面——本次 RPC 丢失没有任何报错，只有终端行为差异（消息静默消失）；②UI 的 streaming 标志是 host 状态的滞后视图，任何依赖它的发送路径都要在接收侧（帧处理）留兜底，而不是信任发送时的判断。**已知残留**：followUp 退化竞态（普通回车在 host-idle 一帧窗口到达时消息被模型处理但 UI 无气泡、QueueCard 可能残留幽灵条目）窗口极窄，未处理。
+
+### BUG-072: 斜杠命令输出（如 /context）并进上一轮正文——命令卡无锚点用户条，被当作该轮 flow 节点追加
+
+**现象**：Agent 输出一段话后执行 `/context`，命令输出卡（`CommandRow`）紧贴在 Agent 正文下方，且上一轮的 fork/copy 操作条（`.turn-acts`）被挤到命令卡下面——看起来像命令输出是那条回复的一部分，且回复的操作按钮离了自己的正文。分诊：②确认存量缺陷（`command_output` 帧落 `meta` 项起即如此）。
+
+**根因**：`host` 对被本地消费的斜杠命令发 `command_result{consumed:true}`，前端随即撤回那条乐观用户气泡（`store/wsHandlers/stream.ts` 的 `command_result`）；而命令输出本身是另一条 `command_output` 帧落成的 `meta` 项。`renderItems`（`ui-src/components/chat/items.tsx`）按「遇到 `user` 项才开新 turn」分组——用户气泡被撤回后，命令项只能挂进**上一个** turn 的 `flowNodes`，而 `actsNode`（fork/copy）按轮渲染在 flow 之后，于是操作条被顶到命令卡下方。命令输出没有任何用户行可锚，天然不成一轮。
+
+**修复**：`renderItems` 顶层循环遇 `role==="meta" && item.command` 时先收束当前 turn，再以 `userNode: null` 开一个只有 flow 的命令块；渲染处对 `userNode` 为 null 的块跳过 `.sticky-user-wrap` 空用户条。
+
+**验证**：一次性 happy-dom 冒烟（`renderToStaticMarkup` 断言块数、命令卡归属、空用户条不渲染、连续两条命令各自成块）改动前红（3 块期望得 2）改动后绿；`bun run ui:typecheck`、`bun run ui:build`、`scripts/smoke-settings-wiring.tsx` 全过。`scripts/smoke-react-shell.ts` 有 2 项既有失败（归档视图渲染/归档行按钮），改动前后一致，与本条无关。
+
+**教训**：①宿主撤回乐观气泡时，前端必须同时给「被撤回的那次交互的产物」（此处是命令输出帧）补一个归属锚点，否则它会退化成上一轮的续写；②`turn-section` 的分组键是用户项而非时间边界，任何「用户没留下可见气泡」的帧（命令输出、后台提示）都要显式开块，不能依赖默认续接。
+
+### BUG-073: 从 Agent 输出尾的 fork 分叉出的新会话不包含该输出——entryId 回填两处错位，切片锚点落到轮内第一条 assistant
+
+**现象**：会话 01a13ff5 在 18:20 的 agent 输出（轮终稿）下点 fork，新会话 01a14444 的切片却止于 18:18:30 的轮内第一条 assistant（`194acba0`），18:18:30 之后的输出（含被 fork 的那条）全部丢失；且 194acba0 的两个 toolCall 结果在切片外，新会话尾巴被 repairInterruptedTail 补了一截合成 aborted 结果。分诊：②存量缺陷（backfill 按位对齐设计起即如此）。
+
+**根因**：`host/translate.ts` 两个回填函数都靠「位置对齐」，两个假设同时破裂：①`backfillUserEntryIds` 按文本匹配 user 消息，但 `from` 游标每次调用重置、磁盘候选不含「上轮已消费」信息——两轮用户发了一模一样的「继续」，第二轮的 transcript 用户项又匹配回**第一条**磁盘 user，返回的 anchor 指向上一轮；②`backfillAssistantEntryIds` 把 transcript 的 assistant **文本段**与磁盘 assistant **条目**按位对齐，但一轮里 5 条磁盘 assistant 只有 2 条带 text 块（其余是 thinking/toolCall-only），加上 abort 残留的空 assistant 条目不在排除集（`isErrorOnlyMessage` 只认 `stopReason==="error"`），候选窗整体左移，最终 `last` 落在轮内第一条 assistant。UI 侧 `turn_end` 把这个错误 entryId 挂上轮终稿的 fork 钮，`branch_session` 按它切片 → 锚点错位。
+
+**修复**：①user 回填的磁盘候选排除「id 已被 transcript 用户项占用」的条目（跨轮消费闭环，重复文本各归各位）；②assistant 候选按 transcript 产生规则构造——每个非 junk text 块一个槽位（跳过 error-only 与无 text 块条目），与 pending 文本段天然 1:1。`userEntryText` 顺手从 `any` 改为 unknown 收窄。
+
+**验证**：新增 `scripts/backfill-entryids.test.ts` 3 用例（跨轮重复文本各归其位、thinking-only 磁盘条目不占槽、完整事故重放）——旧代码下 3/3 红、修复后 3/3 绿；`scripts/translate-diff.test.ts` 无回归；`bun run check` 全绿（含 tsc、注释语言、编码门禁）。
+
+**教训**：①「按位置/文本事后对齐」的回填必须让候选集与目标集的产生规则严格同构，任何一侧多产出/少产出都会累计成位移；②重复文本（用户连发同一个词）是匹配式对齐的经典陷阱，跨轮调用必须携带「已消费」状态。
+
+### BUG-074: 多账号供应商设置的账号优先级对真实请求完全无效——底座按 sessionId 哈希选起始账号，绕过凭据池存储顺序
+
+**现象**：本地配了两个 MiniMax 账号，把无周限的那个在设置页排到「#1 · 生效中」，新建会话用 MiniMax 模型时上下文卡片显示的却是另一个账号。分诊：②存量缺陷（`provider_reorder_account` 上线起即如此）。
+
+**根因**：底座 `@oh-my-pi/pi-ai` 的 `CredentialSelector.#getCredentialOrder`（`src/auth/select.ts:132`）在**有 sessionId 时**用 `Bun.hash.xxHash32(sessionId) % total` 作起始索引，只在**无 sessionId** 时才从 0 起（round-robin）。而本仓的 `host/account-order.ts` 正是靠「重排行 id = 用户优先级」表达的排序，聊天请求永远带 sessionId（`PoolEntry.providerSessionId` / `agent.sessionId`），于是设置的优先级对真实请求零作用，只影响 UI 列表顺序与 `credentials.get()`。存量冒烟 `scripts/smoke-provider-order.ts` 只断言了 `credentials.get(provider)`（无 sessionId 路径），因此这个洞一直没暴露。desktop 侧无可用 API 绕过：`authStorage.sessions.pin` 只接受 OAuth 账号（`affinity.pin` 对非 oauth 直接 false），而 MiniMax 这类只能配 API key 的供应商全是 `api_key` 型凭证。
+
+**修复**：按 `docs/PITFALLS.md` 的升级 SOP 对 18.10.3 原始 tarball 重新生成 `patches/@oh-my-pi%2Fpi-ai@18.10.3.patch`——`#getCredentialOrder` 的 sessionId 分支改为从 0 起（池顺序即优先级顺序），删除随之失效的 `#getHashedIndex`；注册进 `package.json` 的 `patchedDependencies`。安装后判据为 `diff -r 原始包 src 树 node_modules/@oh-my-pi/pi-ai/src` 逐文件一致。
+
+**验证**：一次性探针（真 `discoverAuthStorage` + 两个假 key，`.local/` 下、已删）——修复前 8 个 sessionId 中 6 命中 #1、2 命中 #2（纯哈希分布），修复后 8/8 命中 #1。`scripts/smoke-provider-order.ts` 补 4 个 sessionId 的带会话断言（该路径此前零覆盖），实跑通过；`bun run check` 十步全绿；`bun run host:build` 实跑通过（RULE-010）。
+
+**教训**：①「存储顺序即优先级」这类契约必须覆盖**生产的解析入口**——`credentials.get()`（无 sessionId）与 `getApiKey(provider, sessionId)`（有 sessionId）是两条不同代码路径，只断言前者等于没测；②底座把 session 亲和实现成「哈希起点」而非「亲和记录优先」时，任何上层排序语义都会被静默旁路，改排序前先确认选择器起点从哪来。
+
+### BUG-075: 安装版远程控制整页 404——Tauri bundle 只映射 host-dist，ui/dist 从未进包
+
+**现象**：浏览器打开远程控制 URL（`http://<ip>:16800/?t=<key>`）整页返回 404「not found」。分诊：②确认存量缺陷（远程控制上线起，编译布局下静态服务从未工作过；dev 布局 `bun host/host.ts` 下 `import.meta.dir/..` 指向仓库 `ui/dist`，冒烟全绿，掩盖了问题）。
+
+**根因**：`host/remote.ts` 的 `staticRoot()` 在编译布局（`import.meta.dir` 为 `/$bunfs`）下取 `dirname(process.execPath)/ui/dist`，即 `.app/Contents/Resources/ui/dist`；但 `tauri.macos.conf.json` / `tauri.windows.conf.json` 的 `bundle.resources` 只映射了 `"../host-dist": ""`，`ui/dist` 从未打包——前端窗口本身由 Tauri `frontendDist` 服务不受影响，唯独远程静态服务读不到文件，`serveStatic` 对每个路径 `existsSync` false 返回 404（`host/remote.ts:183` 唯一 404 来源）。
+
+**修复**：两个平台 bundle 配置各加一行 `"../ui/dist": "ui/dist"`（map 形式显式 target，与 `host-dist` 的既有映射同模式；数组形式带 `..` 的源会被 Tauri 放进 `_up_/` 前缀目录，不能用于此布局）。`host/remote.ts` 无需改动。
+
+**验证**：`bunx tauri build` 重打包后新 `.app` 的 `Contents/Resources/ui/dist/{index.html,assets/}` 就位；一次性探针（直接跑新 bundle 内 `omp-host.exe`，`OMP_PROFILE=omp-desktop-test`，经 WS `set_remote_config` 开远程到空闲端口）——`GET /`→200 index.html、`GET /assets/app.js`→200、`GET /nope.txt`→404，修复前同探针全 404。代价：`.app` 与 updater 产物增大约 21MB（ui/dist 体积）。
+
+**教训**：①编译/打包布局差异（bunfs vs 源码目录）只被 dev 冒烟覆盖时，凡是「读仓库内文件」的运行时路径都要逐个问一遍「安装后这个文件在哪」；②`serveStatic` 的 404 是静态根配置错误的唯一可见症状，排查远程 404 先 `ls <exe 同级>/ui/dist`，不要先怀疑 token/路由。
+
+### BUG-076: 远程端 key 失配后「连接中/已断开」无限横跳——握手 401 对 JS 只表现为 1006，落入自动重连梯子
+
+**现象**：远程浏览器打开控制页后，连接状态每约 3 秒在「连接中…」与「已断开」之间横跳，永不停止。分诊：②确认存量缺陷（重连门控自设计起只认 4001/kicked；BUG-075 修复后页面能加载，此路径才首次被真实触发）。
+
+**根因**：`host/remote.ts` 对无效 accessKey 的 `/ws` 升级请求返回 HTTP 401（非 101）。浏览器对「握手收到的 HTTP 状态码 ≠ 101」的 WebSocket 统一报 close code **1006**，真实状态码对 JS 不可见（`bun` 客户端才报 1002）。`ui-src/store/ws.ts` 的 onclose 只把 `4001/kickedByOther` 排除在自动重连外，1006 落进 `scheduleReconnect`（梯子 [100ms..3s] 封顶）→ key 失配这一**确定性失败**被当成瞬态故障无限重试。横跳节奏：每次连接被 401 秒断，「连接中」只闪现一瞬，其余时间停在「已断开」，3 秒后重来。
+
+**修复**：onclose 中 `REMOTE && code===1006 && 该连接从未 open 过` 时，先 `fetch(origin, {cache:"no-store"})` 探测静态根——**host 存活 + 握手被拒 = key 已失效**：清掉 localStorage 里的死 key，让 ConnBanner 既有的 key 输入占位面接管（用户重新提交即恢复）；**fetch 不通 = 网络瞬断**：维持原重连梯子。曾成功 open 过的连接掉线（host 重启等）不进此分支，照常自动重连。
+
+**验证**：真实浏览器（webbridge 驱动 Chrome）复现修复前后对比——修复前 13s 内 8 次状态切换（「连接中…」↔「已断开」）；修复后 key 被清、0 次横跳、停在「访问密钥」输入面；再以带正确 key 的 URL 访问，正常连接进入主界面。正确 key 的空闲稳定性另行实测：静默 15s 不断开（排除 Bun idleTimeout 假设）。
+
+**教训**：①浏览器 WebSocket 握手失败（401/404/网络拒绝）在 JS 侧全是同一个 1006，「按 close code 分诊」必须配一条带外探测（fetch 同源探活）才能区分确定性拒绝与瞬态故障；②区分「从未连通」与「连通后掉线」需要在连接对象生命周期里带 `everOpened` 标记，只看 code 无法表达。
+
+### BUG-077: 设置页「复制访问链接」给出已作废的旧 key——remote_regenerate_key 不广播 settings 帧，remote.url 停留生成前的快照
+
+**现象**：从设置页复制带 token 的访问链接在浏览器打开：短暂「连接中」后 URL 跳回不带 token 的形式并显示「已断开」；再刷新提示「缺少访问密钥」。分诊：②确认存量缺陷（重新生成功能上线起即如此；BUG-076 的清 key 逻辑工作正常，清掉的是本来就已失效的 key）。
+
+**根因**：`host/rpc/remote.ts` 的 `remote_regenerate_key` 只向发起方回 `remote_key` 帧（更新 `remoteConfig.key`），**不广播 settings 帧**。而设置页复制链接的数据源 `url` 是 host 在 settings 帧里预拼好的 `http://<ip>:<port>/?t=<key>`（`remotePayload()`），UI 侧随 `hostSettings.remote.url` 整包更新——没有新 settings 帧，url 就停留在**旧 key**。于是在同一设置页会话里「重新生成 → 复制访问链接」必然复制到已作废的链接：浏览器握手 401 → 1006 → 探活成功 → BUG-076 路径清 key →「缺少访问密钥」。
+
+**修复**：`remote_regenerate_key` 成功后与 `set_remote_config` 同模式 `eachUiWs` 广播 `{type:"settings", settings: settingsFrame()}`，所有已连接 UI 的 `remote.url` 立即换新 key。
+
+**验证**：真实浏览器（webbridge 驱动 Chrome）+ `OMP_PROFILE=omp-desktop-test` host——修复前：regen 后 UI 只收 `remote_key` 帧，浏览器打开旧 key 链接复现完整用户现象（URL 抹 token、localStorage key 被清、「输入访问密钥」面）；修复后：regen 即收 `remote_key`+`settings` 帧，新 key 链接正常连接进入主界面，在线连接 regen 后不断开（spec §3.2）。`scripts/probe-remote.ts` 全矩阵 43 项断言无回归。
+
+**教训**：凡是「把密钥嵌入派生产物」的字段（此处 url 内嵌 `?t=<key>`），密钥轮换必须连同派生产物一起重推；只推新密钥本身，所有持有旧派生产物的 UI 都会继续分发死凭据，且分发面（复制按钮）看起来完全正常。
+
+### BUG-078: 远程端 "remote read-only" 弹错三连——UI 标准链路发写类 RPC 撞 denylist（点会话 / 页面加载瞬间 / 侧栏展开）
+
+**现象**：远程浏览器端三个日常操作各弹一次 "remote read-only" toast：①点开任意未加载会话；②页面加载出来的一瞬间；③侧栏项目展开（含启动时 preload_mcp 帧触发的自动展开）。会话本身能打开。分诊：②确认存量缺陷（denylist 全量圈定起即如此，远程端真实使用才暴露；首轮只修了①，用户复测②揭出全部）。
+
+**根因**：同一类错位的三个实例——UI 把写类 RPC 当「标准伴随调用」无差别发送，而 denylist 按「改 profile 磁盘态」原则拦截：
+1. `openSessionByPath`（session.ts）每次打开未加载会话固定发 `reload_settings`——实际无持久化副作用（底座 `reloadFromDisk()` 先 flush 再重读，幂等刷新），被误按 settings 域整域圈入。
+2. `ws.ts` onopen 无条件发 `set_locale`（语言收敛）+ `applyUiConfig`（appearance.ts）的 4 个缓存→文件迁移回写点（`set_ui_prefs` ×3、`set_locale` ×1，settings 帧触发）——远程浏览器不该覆盖主机语言/偏好。
+3. `preload_mcp` 帧处理（ui.ts）调 `expandProject` → `set_project_expanded` 持久化展开态到主机 omp-desktop.json；ProjGroup/ArchiveGroup 手动展开同发——远程端的展开偏好不该写主机文件。
+error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`，每次必弹可见 toast。
+
+**修复**：①`reload_settings` 移出 denylist（62→61 项，settings 域 19→18），remote.ts 注释写明表外特例缘由，spec §3.5 表格/表外特例小节/§7 数字同步；②③UI 侧 5+3 处发送点全部包 `!REMOTE`（ws.ts onopen set_locale、appearance.ts 4 回写点、projects.ts expandProject、ProjGroup/ArchiveGroup toggle）——远程端本地状态照常应用（setState/applyTheme/changeLanguage 保留），只跳过向主机的持久化写。
+
+**验证**：真实浏览器（webbridge 驱动 Chrome，CDP `Page.addScriptToEvaluateOnNewDocument` 注入 WS send hook 抓全量发送帧）+ `OMP_PROFILE=omp-desktop-test` host——修复前：加载期发送序列含 `set_project_expanded`（set_locale 路径首轮已修），加载 1.5s 内 toast 可见（5s 后自动消失，晚查会漏）；修复后（`ui:build` + ignoreCache reload）：加载期仅 `list_sessions`/`get_git_branches`/`preload_mcp` 全读类，点会话/展开项目无 toast、会话视图与输入区正常。`scripts/probe-remote.ts` 全矩阵 44 项断言通过。
+
+**教训**：①denylist 按「域」整圈时，域内每个成员都要按「实际副作用」复核，不能靠 handler 所在文件归类；②denylist 上线前必须枚举 UI 的**全部无条件发送点**（onopen 链、帧处理链、启动迁移链）逐一对照，否则每个写点都是一个用户可见 toast；③toast 有生命周期——验证「弹/不弹」必须在出现窗口内断言（本例 1.5s 查可见、5s 后查不可见），晚查会得出假阴性；④远程静态资源带缓存，验证 UI 修复必须 `ui:build` 后 ignoreCache reload。
+
+### BUG-079: 动效全局降级连环案：设置标题歧义致用户误关动效 + 0.01ms 时长覆写钉死 JS 定位浮层坐标
+
+**现象**：移植 CDS 动效（Wave 1-2）后用户报告①Agent 过程转圈不动②侧栏列表 hover 无反馈③左右栏收起无动效④上下文明细卡出现在左上角；用户还一直以为「减弱动态效果=关闭」是关减弱（即开动效）。
+
+**根因**：两个独立问题叠加。①设置行标题「减弱动态效果」+ 胶囊「开启/关闭」存在语义歧义——实现里 on/off 挂的是「动效」本身（off=全局降级），用户按标题自然读成「关闭=关减弱=动效开」，于是主动把动效关了；②全局降级用了社区常见的 `animation-duration: 0.01ms !important` 写法——`transition-property` 初始值为 `all`，placeMenu 写 fixed 浮层 left/top 时为每个变更属性 spawn CSSTransition，微时长 transition 在 Blink/WebKit 卡死 running，transition 级联层把属性钉在改动前的值（内联 !important 也压不过），ring-pop 被冻结在 (0,0)，ringpop 入场动画同样冻结在 from 帧（opacity 0）。
+
+**修复**：①标题改「动效」（en: Motion），胶囊语义自明（93de3fc）；②降级改 `animation/transition: none !important`——不产生动画对象，压制语义等价，坐标钉死根除；spinner/呼吸点/骨架扫光经 `:not()` 清单豁免保持转动（cfbf540）；描述文案对齐新语义（db83d52）。
+
+**验证**：预览页（prefers-reduced-motion 生效环境）实测——修复前卡片 rect (0,6) + 5 条 stuck CSSTransition(left/top 等) + 计算 left 0px 无视内联 500px；修复后卡片落点与理论坐标逐像素一致、活动动画数 0；spinner 探针 animation running。`bun run check` 全绿。诊断关键一步：`el.getAnimations()` 暴露 stuck running 的 CSSTransition。
+
+**教训**：①三态动效设置（跟随系统/开/关）的标题必须锚定「动效」本身，不能用「减弱动态效果」这类以系统功能命名的标题——用户的关闭动作会按标题语义解读，与实现相反；②**禁用动效用 `animation/transition: none`，禁止 0.01ms 时长覆写**——非零时长会激活默认 `transition-property: all`，引擎卡死的 transition 会把 JS 运行时写入的几何属性钉死在旧值；凡 JS 每帧/每次写坐标的 fixed 浮层都中此招；③「内联样式写了但布局不认」的诡异坐标问题，先查 `getAnimations()` 有没有 stuck 的 transition/animation，再怀疑布局代码。
+
+### BUG-080: 排队消息幽灵条目——host-idle 竞态直通消费后 QueueCard 永不清除，编辑报「暂存排队消息不存在: 0」（BUG-071 已知残留转正）
+
+**现象**：Agent 工作中普通回车发一条消息，UI 显示在排队列表；Agent 回复已收到并处理完，该条目仍挂在 QueueCard；点编辑报 `✗ Error: 暂存排队消息不存在: 0`（线上会话 `01a1483c` 实测，2026-10-17 06:44 用户报告）。
+
+**根因**：BUG-071 修复时明确记录的已知残留（followUp 退化竞态），本次被用户实际撞上后转正修复。时序：UI 的 `s.streaming` 仍为 true（滞后 host 一帧）时普通回车发送 → `send.ts` streaming 分支乐观 `s.queued.push(M)` + prompt RPC；host 收到时 run 已结束（idle），底座 `prompt()` 无条件忽略 `streamingBehavior` 直接开新 turn——消息被正常处理，但**从未入队**：没有 dequeue（无 `onQueueChange` 广播）、没有消费（无 `steer_consumed`），`prompt().then` 的校准帧要等整个 turn 结束才发。乐观条目在整轮期间无任何帧可清 = 幽灵。点编辑走 `drop_queued {queue:"followUp", index:0}`，host `handleDropQueued` 判定 index 落在完整视图的 parked 暂存半区（`index >= 底座队列 user 数`），`extractParkedAt(0)` 在空 parked 区抛 `parkedNotFound: 0`。
+
+**修复**（host 两处，UI 不动）：①`rpc/prompt.ts` `handlePrompt` 在 idle host 上发非 steer prompt 时**立即**推一帧 `queued` 快照——退化场景帧为空，幽灵在轮输出第一帧之前就被清除；正常排队路径该帧只是 then 校准的无害副本。②`queue.ts` `handleDropQueued` 的 parked 半区分支改幂等：stale 索引在 parked 区找不到目标时静默跳过（UI 本地删除已生效），不再抛 `parkedNotFound`；`replaceQueue` 照常广播最新队列帧校准客户端。`handleSendNow` 的同型报错保留（点击立即发送扑空应给反馈）。
+
+**验证**：新增 `scripts/queue-ghost-smoke.ts`（`bun run smoke:queue-ghost`，真实模型 deepseek-flash）4 步全绿：幽灵索引 drop 幂等无 error、idle prompt 后第一帧恰为空 queued 校准、直通轮 turn_start/turn_end 正常收尾。红绿对照：stash 修复后同一冒烟精确复现 `暂存排队消息不存在: 0` 红灯。回归 `smoke:queue` 9 步全绿（入队/drop/send_now/requeue/双消费路径/帧数无泛滥）、`smoke:steer-queue-order` 5 步全绿（BUG-058 消费顺序无回归）、`bun run check` 十步全绿。
+
+**教训**：①BUG-071 教训②的 followUp 侧欠账——「UI 的 streaming 标志是 host 状态的滞后视图」对排队乐观条目同样成立，发送侧的乐观状态必须在**接收侧第一个权威帧**内可清除，而不是等轮结束校准；②校准帧的发送时机决定竞态窗口大小：挂在整轮完成的 promise then 上，窗口=整轮；挂在 handler 同步段，窗口=0；③索引式队列协议的「越界」在消费方视角可能是「已消费」的合法瞬时态，删除/编辑类操作对找不到目标应幂等成功（配合一帧校准），仅主动语义操作（send_now）才值得报错。
+
+### BUG-081: 升级底座 18.11.3——旧补丁 bun 自动适配错位打歪 virtual-module，`bun patch --commit` 中断重装又把错位状态固化成「新补丁」（BUG-065 同模式复发+新变体）
+
+**日期**：2026-10-17
+
+**现象**：`@oh-my-pi/*` 18.10.3→18.11.3 后 `host:build` 即刻语法错误（`legacy-pi-virtual-module.ts:17 Unexpected :`）。18.11.3 的 `BundledPackage` 已加 `rootWildcard` 字段与 RootWildcard 文档注释块，旧补丁被 bun 的自动适配按行号插进注释中间，数组行替换错位成无 `rootWildcard` 的旧格式——与 BUG-065 的「能过一半解析、语义全歪」同款。
+
+**新变体**：改走 `bun patch` 官方流程重打，但在干净副本上手工编辑后跑 `bun patch --commit`，第一次因 EACCES 中断——中断前它已把 node_modules 重装并应用了盘上的旧错位补丁；第二次 `--commit` 拿这个错位状态对 registry 原版做 diff，生成了**把错位内容固化为目标态**的 369 行「新补丁」（collectBundledPiEntries 段留悬空 `throw`），肉眼看似正常升级产物。
+
+**根因**：`bun patch --commit` 的「重装→应用→diff」时序对中断不原子，且 diff 基线取 node_modules 现状而非「干净版+意图改动」；手工编辑与自动重装在同一目录上竞争，产物不可信。
+
+**修法（BUG-065 流程的强化版）**：npm tarball 解出干净 18.11.3 到 `/tmp` 副本 → 在副本上用编辑工具落全部意图改动 → `diff -ruN` 生成原始 diff → awk 把头转成 `diff --git a/… b/…` 格式 → 写入 `patches/@18.11.3.patch` → `rm -rf node_modules/<pkg> && bun install` 重装应用 → grep 逐文件验证结构（interface 完整、无错位行）。
+
+**验证（全部实跑）**：`host:build` 通过；编译产物 `host-dist/omp-host.exe` 以 `omp-desktop-test` profile 启动打印 `READY ws://127.0.0.1:<port>`（pi-natives zstd 内嵌解帧正常）；`bun run smoke` 与 `smoke:features` 全绿；`bun run ui:typecheck`、`bun run check` 十步全绿。
+
+**教训**：①BUG-065 教训①升级版——不仅「bun 应用旧补丁按行号落地」不可信，`bun patch` 的编辑/提交流程本身也不可信，中断后会静默用错基线生成补丁；唯一可靠路径是在 tarball 干净副本上落改动、自产 diff；②升级底座后判据顺序：`grep 补丁符号` 结构验证 → `host:build` → **exe 启动 READY** → 冒烟，缺一不可（源码冒烟过≠编译产物能启动，BUG-065 教训③仍有效）；③补丁应用成功后先 `sed -n` 抽查结构错位（注释中间插行、悬空块），一眼可辨，胜过全绿假象。
+
+

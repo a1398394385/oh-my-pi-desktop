@@ -307,7 +307,7 @@ export const filesHandlers: Record<string, RpcHandler> = {
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const isGit = isGitWorktree(cwd);
     if (!isGit) {
-      ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: false, current: null, branches: [] }));
+      ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: false, current: null, branches: [], remotes: [] }));
       return;
     }
     const currP = Bun.spawnSync(["git", "-C", cwd, "branch", "--show-current"], { stdout: "pipe", stderr: "ignore" });
@@ -318,16 +318,24 @@ export const filesHandlers: Record<string, RpcHandler> = {
     }
     const bP = Bun.spawnSync(["git", "-C", cwd, "branch", "--format=%(refname:short)"], { stdout: "pipe", stderr: "ignore" });
     const branches = bP.stdout.toString().split("\n").map((b) => b.trim()).filter(Boolean);
-    ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: true, current, branches }));
+    // Remote-tracking refs (local refs/remotes snapshot, no network): "origin/xxx" form;
+    // symbolic origin/HEAD entries are dropped
+    const rP = Bun.spawnSync(["git", "-C", cwd, "branch", "-r", "--format=%(refname:short)"], { stdout: "pipe", stderr: "ignore" });
+    const remotes = rP.stdout.toString().split("\n").map((b) => b.trim()).filter((b) => b.includes("/") && !b.endsWith("/HEAD"));
+    ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: true, current, branches, remotes }));
   },
   switch_git_branch(ws, msg) {
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const targetBranch = String(msg.branch ?? "").trim();
     if (!targetBranch) throw new Error(hostI18n.t("errors.param.missingBranch"));
-    const p = Bun.spawnSync(["git", "-C", cwd, "checkout", targetBranch], { stdout: "pipe", stderr: "pipe" });
+    // Remote-tracking name ("origin/xxx"): a plain checkout would detach HEAD — DWIM to a
+    // local tracking branch instead (checkout --track creates <name minus remote> tracking it)
+    const args = targetBranch.includes("/") ? ["checkout", "--track", targetBranch] : ["checkout", targetBranch];
+    const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
     if (p.exitCode !== 0) {
       throw new Error(hostI18n.t("errors.git.checkoutFailed", { detail: p.stderr.toString().trim().slice(0, 200) }));
     }
-    ws.send(JSON.stringify({ type: "git_branch_switched", cwd, branch: targetBranch }));
+    const branch = targetBranch.includes("/") ? targetBranch.split("/").slice(1).join("/") : targetBranch;
+    ws.send(JSON.stringify({ type: "git_branch_switched", cwd, branch }));
   },
 };

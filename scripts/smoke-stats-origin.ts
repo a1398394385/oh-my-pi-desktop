@@ -8,6 +8,7 @@
 //  - OPTIONS preflight and the SSE /api/events stream follow the same rule
 //  - rejected origins are logged to host stderr for misfire diagnosis
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-stats-origin.ts
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 
 // Test profile isolation guard: never touch the user's default profile.
@@ -33,7 +34,7 @@ const failTimeout = setTimeout(() => fail("60s 内未完成全部断言"), 60_00
 
 child = spawn("bun", ["host/host.ts"], {
   cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-  env: { ...process.env },
+  env: smokeEnv(),
   stdio: ["ignore", "pipe", "pipe"],
 });
 let stderrText = "";

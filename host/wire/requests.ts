@@ -26,11 +26,12 @@ export type HostRequestMethod =
   "open_with" | "peek_queued" | "preload_mcp" | "probe_provider_models" | "prompt" | "provider_disable_account" |
   "provider_enable_account" | "provider_list_accounts" | "provider_login" | "provider_login_cancel" | "provider_logout" | "provider_model_meta" |
   "provider_reorder_account" | "provider_set_key" | "read_file" | "read_image" | "reload_session" | "reload_settings" |
-  "remove_project" | "rename_session" | "reorder_projects" | "requeue" | "save_mcp_server" | "save_provider_model" |
-  "save_provider_models" | "send_now" | "session_unload" | "set_acp_config" | "set_acp_enabled" | "set_approval_mode" |
-  "set_computer_default" | "set_computer_mode" | "set_computer_provider" | "set_desktop_env" | "set_enabled_model" | "set_external_browser" |
+  "remove_project" | "rename_session" | "reorder_projects" | "reorder_queued" | "requeue" | "remote_regenerate_key" | "save_mcp_server" | "save_provider_model" |
+  "save_provider_models" | "search_session_text" | "send_now" | "session_unload" | "set_acp_config" | "set_acp_enabled" |
+  "set_approval_mode" | "set_computer_default" | "set_computer_mode" | "set_computer_provider" | "set_desktop_env" |
+  "set_enabled_model" | "set_external_browser" |
   "set_hooks_enabled" | "set_keepalive_config" | "set_keepalive_enabled" | "set_kimi_auto_thinking" | "set_locale" | "set_mcp_server_enabled" |
-  "set_model" | "set_model_role" | "set_plan_mode" | "set_plugins_enabled" | "set_project_expanded" | "set_session_context_enabled" |
+  "set_model" | "set_model_role" | "set_plan_mode" | "set_plugins_enabled" | "set_project_expanded" | "set_remote_config" | "set_session_context_enabled" |
   "set_session_pinned" | "set_setting" | "set_skills_enabled" | "set_thinking" | "set_ui_prefs" | "smoke_plan_propose" |
   "ssh_list_dirs" | "ssh_list_hosts" | "ssh_remove_host" | "ssh_save_host" | "ssh_test_host" | "stt_download" |
   "stt_start" | "stt_stop" | "switch_git_branch" | "switch_profile" | "terminal_create" | "terminal_dispose" |

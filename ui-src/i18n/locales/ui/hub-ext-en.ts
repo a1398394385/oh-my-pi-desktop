@@ -4,6 +4,7 @@ export const hubExtEn = {
   bgPending: "Fetching…",
   bgEmpty: "No background jobs",
   bgPids: "{{n}} pid(s)",
+  bgRunning: "running",
   bgExit: "exit {{code}}",
   bgCancel: "Cancel job",
   stopSub: "Stop",

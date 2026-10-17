@@ -20,7 +20,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
       data-slot="input"
       className={cn(
         "inline-block min-w-[240px] rounded-[9px] border border-line-soft bg-[var(--bg)] px-[10px] py-[6px] text-ui-sm text-text outline-none",
-        "transition-[border-color,box-shadow] duration-[180ms] ease-[var(--swift)]",
+        "transition-[border-color,box-shadow] duration-[var(--dur-snap)] ease-[var(--swift)]",
         "placeholder:text-faint focus:border-accent/50 focus:ring-[3px] focus:ring-accent/13",
         "disabled:pointer-events-none disabled:opacity-60",
         className,

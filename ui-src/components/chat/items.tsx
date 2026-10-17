@@ -237,10 +237,13 @@ export function renderItems(
   }
 
   // Top-level main chat flow: grouped by turn (TurnSection) for snap-to-top
+  // userNode is null for a slash-command block: the host consumes the typed command and the
+  // optimistic user bubble is withdrawn (command_result consumed), so the output card has no
+  // user row of its own to anchor under
   interface TurnGroup {
     key: string;
     userKey: string;
-    userNode: ReactElement;
+    userNode: ReactElement | null;
     flowNodes: ReactElement[];
     actsNode: ReactElement | null;
   }
@@ -271,6 +274,23 @@ export function renderItems(
         actsNode: null,
       };
       continue;
+    }
+
+    // Slash-command output (CommandRow) is its own block: the host consumes the typed command
+    // and withdraws the optimistic user bubble, so without this the card would be appended to
+    // the previous turn's flow and push that turn's action bar (fork/copy) below it.
+    if (item.role === "meta" && item.command) {
+      if (currentTurn) {
+        turns.push(currentTurn);
+        currentTurn = null;
+      }
+      currentTurn = {
+        key: "cmd-" + key,
+        userKey: key,
+        userNode: null,
+        flowNodes: [],
+        actsNode: null,
+      };
     }
 
     let node: ReactElement | null = null;
@@ -367,11 +387,13 @@ export function renderItems(
     out.push(
       <div className="turn-section" key={t.key}>
         <div className="turn-body">
-          <div className="sticky-user-wrap">
-            <div className="sticky-user-inner">
-              {t.userNode}
+          {t.userNode ? (
+            <div className="sticky-user-wrap">
+              <div className="sticky-user-inner">
+                {t.userNode}
+              </div>
             </div>
-          </div>
+          ) : null}
           <div className="turn-flow">
             {t.flowNodes}
           </div>

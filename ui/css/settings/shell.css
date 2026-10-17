@@ -13,7 +13,7 @@
 
 .srow.itcp-row.on { background: var(--panel-2); }
 
-.srow.itcp-row .mem-caret svg { transition: transform .3s ease; transform: rotate(-90deg); }
+.srow.itcp-row .mem-caret svg { transition: transform var(--dur-sheet) var(--swift); transform: rotate(-90deg); }
 
 .srow.itcp-row.on .mem-caret svg { transform: rotate(0deg); }
 

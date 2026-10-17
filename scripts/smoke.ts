@@ -3,6 +3,7 @@
 // Without an address the script spawns the host child process itself and cleans up the session files it created on exit.
 // Assertions cover: turn_end carries cumulative usage; the read tool's details pass displayContent through;
 // history restored by load is grouped into loop groups per round (process collapsed, final assistant left outside the group).
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -23,7 +24,7 @@ function fail(msg: string): never {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {

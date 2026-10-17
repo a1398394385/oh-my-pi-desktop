@@ -361,9 +361,15 @@ function isJunkPlaceholderText(text?: string | null): boolean {
 }
 
 // user message content (string or blocks) → plain text, same extraction scope as the base's branch()
-function userEntryText(content: any): string {
+function userEntryText(content: unknown): string {
   if (typeof content === "string") return content;
-  return (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
+  if (!Array.isArray(content)) return "";
+  const texts: string[] = [];
+  for (const b of content) {
+    if (!b || typeof b !== "object" || !("type" in b) || b.type !== "text" || !("text" in b) || typeof b.text !== "string") continue;
+    texts.push(b.text);
+  }
+  return texts.join("\n");
 }
 
 // At agent_end this round's user messages are necessarily persisted: align
@@ -371,15 +377,20 @@ function userEntryText(content: any): string {
 // user messages in the disk entries by text (the base's event stream carries
 // no entry id, so alignment can only happen after the fact; hidden
 // companion/system-injected messages have different text, so equality
-// matching naturally skips them; the from pointer preserves order, so
-// duplicate texts still line up). Returns the last entryId backfilled this
-// round (for the turn_end event's incremental delivery), or undefined when
-// there was nothing to backfill.
+// matching naturally skips them). Within one call the from pointer preserves
+// order, so duplicate texts still line up; across calls, disk entries already
+// consumed by an earlier round are excluded by id — otherwise two identical
+// texts (e.g. two "go on" nudges) would re-match the first disk entry forever
+// and the returned anchor would point at the previous round's message. Returns the
+// last entryId backfilled this round (for the turn_end event's incremental
+// delivery), or undefined when there was nothing to backfill.
 export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
-  const pending = entry.transcript.filter((t) => t.role === "user" && !t.entryId);
+  const all = entry.transcript;
+  const pending = all.filter((t) => t.role === "user" && !t.entryId);
   if (pending.length === 0) return undefined;
+  const used = new Set(all.filter((t) => t.role === "user" && t.entryId).map((t) => t.entryId));
   const users = (entry.manager?.getEntries() ?? [])
-    .filter((e: any) => e?.type === "message" && e.message?.role === "user")
+    .filter((e: any) => e?.type === "message" && e.message?.role === "user" && !used.has(e.id as string))
     .map((e: any) => ({ id: e.id as string, text: userEntryText(e.message.content) }));
   let last: string | undefined;
   let from = 0;
@@ -418,10 +429,28 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
   }
   const pending = all.slice(tFrom).filter((t) => t.role === "assistant" && !t.entryId);
   if (pending.length === 0) return undefined;
-  const cands = raw
-    .slice(dFrom)
-    .filter((e) => e.type === "message" && e.message.role === "assistant" && !isErrorOnlyMessage(e.message))
-    .map((e) => e.id);
+  // Candidates must mirror transcript production 1:1 — one slot per non-junk
+  // TEXT BLOCK, not per disk entry: thinking/toolCall-only messages and
+  // aborted empty replies produce no assistant transcript item, so positional
+  // entry-level alignment shifts left and the fork button under a turn's
+  // final output ends up anchoring an earlier assistant message (the slice
+  // then drops the output the user forked from).
+  const cands: string[] = [];
+  for (const e of raw.slice(dFrom)) {
+    if (e.type !== "message" || e.message.role !== "assistant") continue;
+    if (isErrorOnlyMessage(e.message)) continue;
+    const push = (s: string) => {
+      if (!isJunkPlaceholderText(stripDcpTags(s))) cands.push(e.id);
+    };
+    const content = e.message.content;
+    if (typeof content === "string") {
+      push(content);
+      continue;
+    }
+    for (const block of content ?? []) {
+      if (block.type === "text" && typeof block.text === "string") push(block.text);
+    }
+  }
   const offset = afterUserId ? 0 : Math.max(0, cands.length - pending.length);
   let last: string | undefined;
   for (let i = 0; i < pending.length; i++) {

@@ -47,17 +47,17 @@
   height: 30px;
   padding: 0 10px 0 32px;
   background: var(--bg);
-  border: 1px solid var(--line-soft);
+  border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text);
   font-size: var(--ui-fs-sm);
   outline: none;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 
 .skills-search-input:focus {
-  border-color: var(--tint-accent-500);
-  box-shadow: 0 0 0 3px var(--tint-accent-130);
+  box-shadow: inset 0 0 0 1px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130);
 }
 
 .skills-search-input::placeholder { color: var(--faint); }
@@ -103,7 +103,7 @@
   color: var(--text);
   font-size: var(--ui-fs-sm);
   cursor: pointer;
-  transition: background .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift);
 }
 
 .skills-btn-new span { white-space: nowrap; }
@@ -143,7 +143,7 @@
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--line-soft);
-  transition: background .15s;
+  transition: background var(--dur-snap);
 }
 
 .skill-item-row:last-child {
@@ -248,12 +248,12 @@
   padding: 12px 14px;
   resize: vertical;
   outline: none;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: box-shadow var(--dur-snap) var(--swift);
 }
 
 #skEditText:focus {
-  border-color: var(--tint-accent-500);
-  box-shadow: 0 0 0 3px var(--tint-accent-130);
+  box-shadow: inset 0 0 0 1px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130);
 }
 
 .sem-foot {
@@ -262,4 +262,18 @@
   gap: 10px;
   padding: 10px 18px;
   border-top: 1px solid var(--line-soft);
+}
+
+/* Hairline: halve the converted inset rings on HiDPI */
+@media (min-resolution: 2dppx) {
+  .skills-search-input { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  .skills-search-input:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  #skEditText { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  #skEditText:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+}
+@media (min-resolution: 3dppx) {
+  .skills-search-input { box-shadow: inset 0 0 0 .33px var(--line-soft); }
+  .skills-search-input:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
+  #skEditText { box-shadow: inset 0 0 0 .33px var(--line-soft); }
+  #skEditText:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
 }

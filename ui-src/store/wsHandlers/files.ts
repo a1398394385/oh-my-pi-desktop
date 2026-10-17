@@ -38,12 +38,13 @@ export const filesHandlers = {
         newSessionIsGit: !!msg.isGit,
         newSessionBranch: msg.current || "",
         newSessionBranches: msg.branches || [],
+        newSessionRemotes: msg.remotes || [],
       });
     }
     const activeCwd = st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined;
     if (msg.cwd === activeCwd) {
       useAppStore.setState({
-        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [] },
+        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [], remotes: msg.remotes || [] },
       });
     }
   },

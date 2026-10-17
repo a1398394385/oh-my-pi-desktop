@@ -12,27 +12,113 @@
 .dock {
   margin: 8px auto 12px;
   background: var(--inset);
-  border: 1px solid var(--line-soft);
+  border: 0;
   border-radius: 16px;
+  /* Ring color per state. Idle is fully neutral — no tint survives the pointer leaving.
+     Focus is the loud state: static white before the session is named, the session accent
+     after (which is also when the traveling band starts). */
+  --ring-idle: var(--line-soft);
+  --ring-hover: var(--line);
+  --ring-focus: color-mix(in srgb, var(--text) 55%, transparent);
+  --ring-glow: var(--text);
+  box-shadow: inset 0 0 0 1px var(--ring-idle);
   position: relative;
   /* container layer: overlaps the .queue-card bottom edge above by 28px; its inner dropdown menus cap at this layer (see "site-wide z-index scale" in the file header) */
   z-index: 100;
   box-sizing: border-box;
 }
 
-/* Input card border: line-soft at rest, slightly brighter on mouse hover; keyboard focus leaves the border unchanged */
-.dock,
-#composer.in-welcome { transition: border-color .15s var(--swift), box-shadow .18s var(--swift); }
+/* Titled session: hover/focus carry the session's color at full strength — same loudness as
+   bash mode's ring, which read as the right level. The traveling dash mixes toward --text so
+   it still reads brighter than an already-saturated base ring. */
+.dock.has-session-accent {
+  --ring-hover: var(--session-accent);
+  --ring-focus: var(--session-accent);
+  --ring-glow: color-mix(in srgb, var(--session-accent) 55%, var(--text));
+}
 
-.dock:hover,
-#composer.in-welcome:hover { border-color: var(--line); }
+/* Input card projection (CDS): idle = inset 1px --line-soft ring; hover lifts to the hover
+   ring; keyboard focus lifts to the focus ring (white, or the session accent) plus the
+   traveling band's extra brightness. 220ms var(--swift). Bash mode keeps its halo ring —
+   the :has() rules in composer-bash.css outrank these on specificity, so the bash visuals
+   always win. The in-welcome card keeps the plain border recipe (its elevation shadow lives
+   in welcome.css). */
+.dock { transition: box-shadow 220ms var(--swift); }
 
-.dock.approval-active { background: transparent; border-color: transparent; }
+#composer.in-welcome { transition: box-shadow var(--dur-snap) var(--swift); }
+
+.dock:hover { box-shadow: inset 0 0 0 1px var(--ring-hover), var(--shadow-sm); }
+
+.dock:focus-within { box-shadow: inset 0 0 0 1px var(--ring-focus), var(--shadow-sm); }
+
+#composer.in-welcome:hover { box-shadow: inset 0 0 0 1px var(--line), 0 12px 40px var(--tint-black-280); }
+
+:is([data-theme="light"], [data-theme-mode="light"]) #composer.in-welcome:hover { box-shadow: inset 0 0 0 1px var(--line), 0 12px 40px var(--tint-black-70); }
+
+/* Typing light band: an SVG stroke riding the border. stroke-dashoffset moves the dash at a
+   constant speed along the perimeter — a conic gradient is angle-uniform, which made the
+   band race through the short side edges and crawl along the long top/bottom. Same gate as
+   the accent ring itself: focused AND titled. An untitled composer (including bash mode,
+   which is usually untitled) shows no band at all. The ring's base color comes from
+   box-shadow, so this layer only ever adds brightness. */
+.dock-ring {
+  position: absolute;
+  inset: 0.5px;
+  width: calc(100% - 1px);
+  height: calc(100% - 1px);
+  pointer-events: none;
+  display: none;
+  /* The rect fills the viewport, so its 1px stroke straddles the svg edge. SVG clips to the
+     viewport by default, which left only half a pixel per edge and dropped the bottom edge
+     entirely (it sits last in the path and against the stats row) — the dash looked cut off
+     along the bottom. */
+  overflow: visible;
+}
+
+.dock.has-session-accent:focus-within .dock-ring { display: block; }
+
+.dock-ring rect {
+  fill: none;
+  stroke: var(--ring-glow);
+  stroke-width: 1;
+  /* pathLength=100: an 8-unit dash is ~8% of the perimeter (~180px on a 1024px composer) */
+  stroke-dasharray: 8 92;
+  /* butt, not round: the rect's path closes inside the top-left corner radius, so a dash
+     straddling the seam is drawn as two pieces there; round caps gave each piece its own
+     half-disc, which read as a hitch right after the corner. At 1px the cap shape is
+     invisible otherwise. */
+  stroke-linecap: butt;
+  animation: ringDash 6s linear infinite;
+}
+
+/* Bash mode (the terminal composer) runs the same band the other way around in its own
+   color, mixed toward --text for the same reason as the session accent; its halo ring stays
+   underneath. */
+.dock:has(#composer.bash-mode) .dock-ring rect {
+  stroke: color-mix(in srgb, var(--bash) 55%, var(--text));
+  animation-direction: reverse;
+}
+
+/* Approval swaps the whole card out */
+.dock.approval-active .dock-ring { display: none; }
+
+/* No traveling band under reduced motion, and none at all when the user switches motion off.
+   These selectors repeat the show rule's own classes: `html[data-motion="off"] .dock-ring` is
+   (0,2,1) and loses to `.dock.has-session-accent:focus-within .dock-ring` (0,4,0), which left
+   the dash painted but frozen at offset 0 — a stationary light smeared across the top-left
+   corner. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) .dock.has-session-accent:focus-within .dock-ring { display: none; }
+}
+html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { display: none; }
+
+.dock.approval-active { background: transparent; box-shadow: none; }
 
 .dock.approval-active:hover,
-.dock.approval-active:focus-within { border-color: transparent; }
+.dock.approval-active:focus-within { box-shadow: none; }
 
-/* Session stats row: a permanent line below the input dock (whole-session cache utilization/tokens/cost/active time); display-only with no click behavior, no hover highlight */
+/* Session stats: ONE line on the desktop (the two narrow-only row containers dissolve via
+   display:contents); display-only with no click behavior, no hover highlight. */
 .stats-bar {
   flex: none;
   /* Same four-stage max-width as the input dock (see .dock): the row is
@@ -53,6 +139,8 @@
      width, not the window's (the main column also shrinks with the side panels) */
   container-type: inline-size;
 }
+
+/* Narrow-only row wrapper (see remote.css); the desktop renders the groups directly */
 
 /* One metric inside a group: icon + value (+ optional trailing indicator) */
 .sb-item {
@@ -78,27 +166,29 @@
   gap: 3px 9px;
 }
 
-/* Width-driven trimming, tuned to the measured part widths at the 11.44px row font
-   (cache hit + break counter 82px, cache read 53px, cache write 46px, input 58px,
-   output 58px, cost 124px, speed 80px, TTFT 49px, duration 93px): the full row needs
-   852px, and each stage below drops one optional part once the row no longer fits
-   (794px without TTFT, 677px without the cache split, 544px without cost, 442px
-   without duration) — the numbers stay a few px under those sums so the row never
-   wraps. Performance first, then the cache token split, then cost, then the duration. */
-@container (max-width: 850px) {
-  .sb-opt-ttft { display: none; }
-}
+/* Width-driven trimming (desktop only — the phone layout keeps all six token metrics on
+   the first line): tuned to the measured part widths at the 11.44px row font (cache hit +
+   break counter 82px, cache read 53px, cache write 46px, input 58px, output 58px, cost
+   124px, speed 80px, TTFT 49px, duration 93px): the full row needs 852px, and each stage
+   below drops one optional part once the row no longer fits (794px without TTFT, 677px
+   without the cache split, 544px without cost, 442px without duration) — the numbers stay
+   a few px under those sums so the row never wraps. */
+@media (min-width: 769px) {
+  @container (max-width: 850px) {
+    .sb-opt-ttft { display: none; }
+  }
 
-@container (max-width: 790px) {
-  .sb-opt-cachetok { display: none; }
-}
+  @container (max-width: 790px) {
+    .sb-opt-cachetok { display: none; }
+  }
 
-@container (max-width: 675px) {
-  .sb-opt-cost { display: none; }
-}
+  @container (max-width: 675px) {
+    .sb-opt-cost { display: none; }
+  }
 
-@container (max-width: 540px) {
-  .sb-opt-duration { display: none; }
+  @container (max-width: 540px) {
+    .sb-opt-duration { display: none; }
+  }
 }
 
 /* Cache-invalidation indicator after the cache-utilization percentage: counter-clockwise arrow + count, inline with the value (display-only, no hover highlight) */
@@ -174,24 +264,36 @@
 .chat-loading-icon {
   display: inline-flex;
   color: var(--dim);
-  animation: chat-load-spin 1s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
 .chat-loading-icon svg { display: block; }
 
-/* Reduced motion: follows the system by default (the media query stops both spinners);
-   the appearance page can force it (html[data-motion]): on=always reduced / off=always animated.
-   the html[data-motion] prefix's specificity beats the media-query rules; system/absent falls back to system behavior */
-@media (prefers-reduced-motion: reduce) {
-  .chat-loading-icon, .task-indicator.loading svg { animation: none; }
+/* Working-text shimmer (TUI parity): the brand gradient (same colors as the app icon) as a
+   band sweeping right→left across the glyphs. Only the ~34% band is colored; the leading and
+   trailing stops are --dim so the text stays readable between sweeps. repeat-x keeps every
+   sweep window inside a colored stop, so a frozen frame (motion off) still renders readable
+   text. */
+.shimmer {
+  background-image: linear-gradient(100deg,
+    var(--dim) 0%, var(--dim) 26%,
+    var(--brand-1) 32%, var(--brand-2) 39%, var(--brand-3) 46%, var(--brand-4) 53%,
+    var(--dim) 60%, var(--dim) 100%);
+  background-size: 200% 100%;
+  background-repeat: repeat-x;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmerSweep 2s linear infinite;
 }
 
-html[data-motion="on"] .chat-loading-icon,
-html[data-motion="on"] .task-indicator.loading svg { animation: none; }
-
-html[data-motion="off"] .chat-loading-icon { animation: chat-load-spin 1s linear infinite; }
-
-html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s linear infinite; }
+/* Motion off: drop the paint entirely. A frozen frame would park the colored band inside the
+   visible window (position 0% shows the gradient's first half). Same three-way contract as
+   global/animations.css; motion "on" forces the effect back on. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) .shimmer { animation: none; background-image: none; color: var(--dim); }
+}
+html[data-motion="off"] .shimmer { animation: none; background-image: none; color: var(--dim); }
 
 /* Queued message card: ZCode's stacked second-level card recipe (ConversationQueuePanel) — relative z-0 +
    negative margin-bottom pulling up 28px + padding-bottom 28px keeping the content uncovered + top corners rounded only.
@@ -253,22 +355,45 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 }
 
 .qc-row {
-  display: flex; align-items: center; gap: 7px;
+  display: flex; align-items: center; gap: 5px;
   padding: 6px 6px 6px 11px;
   font-size: var(--ui-fs-sm); color: var(--dim);
   min-width: 0;
 }
 
-.qc-dots { flex: none; color: var(--faint); display: inline-flex; align-items: center; line-height: 1; }
+/* Compact icon buttons inside queue rows */
+.qc-row .q-btn { width: 18px; height: 18px; }
 
-/* dots = queued for sending */
-.qc-dots svg { display: block; }
+/* Edge rows in the expanded pair keep hover silent and dimmed */
+.qc-row .q-btn:disabled { opacity: .35; cursor: default; background: none; color: var(--faint); }
+
+/* Reorder block: fixed width of two icon slots (two arrows / one edge arrow),
+   so the attachment icons and message text stay flush left in every state.
+   38px = 2 × 18px buttons + 2px gap — keep in sync with .qc-row .q-btn. */
+.qc-sortctl { flex: none; display: inline-flex; align-items: center; gap: 2px; width: 38px; }
 
 .qc-tx {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap;
   line-height: 1;
   display: inline-flex;
   align-items: center;
+  scrollbar-width: none;
+  --qc-fade: 14px;
+}
+.qc-tx::-webkit-scrollbar { display: none; }
+/* Edge fades (ql/qr toggled from QcText) only cover sides with hidden content,
+   same three-state recipe as .ro-body.rt/.rb in readonly-group.css */
+.qc-tx.ql {
+  -webkit-mask-image: linear-gradient(to right, transparent, var(--black) var(--qc-fade));
+  mask-image: linear-gradient(to right, transparent, var(--black) var(--qc-fade));
+}
+.qc-tx.qr {
+  -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - var(--qc-fade)), transparent);
+  mask-image: linear-gradient(to right, var(--black) calc(100% - var(--qc-fade)), transparent);
+}
+.qc-tx.ql.qr {
+  -webkit-mask-image: linear-gradient(to right, transparent, var(--black) var(--qc-fade), var(--black) calc(100% - var(--qc-fade)), transparent);
+  mask-image: linear-gradient(to right, transparent, var(--black) var(--qc-fade), var(--black) calc(100% - var(--qc-fade)), transparent);
 }
 
 .q-btn {
@@ -276,8 +401,11 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--faint); cursor: pointer; border: 0; background: none; padding: 0;
   line-height: 0;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-slow) var(--spring-press);
 }
+
+/* Small chrome button: tighter squish than the 31px settings buttons */
+.q-btn:active { transform: scale(.9); transition: transform var(--dur-fast) var(--swift); }
 
 .q-btn > span {
   display: inline-flex;
@@ -302,7 +430,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   box-sizing: border-box;
   opacity: 0; /* not shown at rest; the slot stays reserved */
   /* Opacity-only hiding (no pointer-events:none): the bar must stay hit-testable while invisible, otherwise a lost hover (arriving from below, or crossing the gap above) can never recover. */
-  transition: opacity 0.15s ease-out;
+  transition: opacity var(--dur-snap) var(--swift);
 }
 
 /* Column-capped content box (.turn-acts-in carries the shared max-width + auto-margin
@@ -423,7 +551,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 /* model provider icon (same glyph as the settings page): shown only when the model button shrinks to icon-only */
 #modelIcon { display: none; }
 
-/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> icon-only -> thinking level -> icon-only -> model -> icon-only -> hide subagents -> hide background tasks */
+/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> icon-only -> thinking level -> icon-only -> model -> icon-only -> hide subagents -> hide background tasks -> three pills icon-only + tight padding -> hide plan pill, mic and screen buttons */
 #composer.bar-1 #modeLabel, #composer.bar-1 #modeBtn .caret-svg { display: none; }
 
 #composer.bar-2 #thinkLabel, #composer.bar-2 #thinkBtn .caret-svg { display: none; }
@@ -436,16 +564,25 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 
 #composer.bar-5 #bgTaskBtn { display: none; }
 
+/* bar-6: the three selector pills are all icon-only now (bar-1/2/3 already hid
+   the labels); shed the text-side padding so each pill collapses to icon width */
+#composer.bar-6 #modeBtn, #composer.bar-6 #thinkBtn, #composer.bar-6 #modelBtn { padding: 5px; }
+
+/* bar-7: hide the plan pill + its separator and the mic/screen icon buttons;
+   the floor row is +, icon-only pills, ctxRing, send */
+#composer.bar-7 #planBtn, #composer.bar-7 #planSep,
+#composer.bar-7 #voiceBtn, #composer.bar-7 #computerBtn { display: none; }
+
 /* background task terminal button */
 .bg-task-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 8px; border-radius: 999px;
   color: var(--dim); cursor: pointer;
   max-width: none;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
-.bg-task-btn svg { display: block; flex: none; color: inherit; transition: stroke .15s var(--swift), color .15s var(--swift); }
+.bg-task-btn svg { display: block; flex: none; color: inherit; transition: stroke var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift); }
 
 .bg-task-num {
   font-size: var(--ui-fs-sm);
@@ -472,14 +609,15 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .plan-btn {
   gap: 5px; padding: 5px 8px; border-radius: 999px; max-width: none;
   color: var(--accent);
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .plan-btn .plan-ic { display: inline-flex; align-items: center; flex: none; }
 
 .plan-btn .plan-ic svg { display: block; }
 
-.plan-btn .plan-ic > span { display: inline-flex; align-items: center; }
+/* fixed 16px slot: the hover X (14px) must not change the button width and jitter */
+.plan-btn .plan-ic > span { display: inline-flex; align-items: center; justify-content: center; width: 16px; }
 
 .plan-btn .plan-ic > span:nth-child(2) { display: none; }
 
@@ -523,7 +661,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
 .ctx-ring .fill {
   fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round;
   stroke-dasharray: 43.98; stroke-dashoffset: 43.98; /* circumference 2pi x 7 */
-  transition: stroke-dashoffset .3s;
+  transition: stroke-dashoffset var(--dur-sheet);
 }
 
 .ctx-ring.warm .fill { stroke: var(--orange); }
@@ -537,7 +675,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   padding: 0; line-height: 0;
   flex: none;
-  transition: background .15s var(--swift), color .15s var(--swift), filter .15s var(--swift), opacity .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), filter var(--dur-snap) var(--swift), opacity var(--dur-snap) var(--swift);
 }
 
 .send > span {
@@ -620,7 +758,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   cursor: pointer;
   color: var(--text);
   font-size: var(--ui-fs-base);
-  transition: background .12s, color .12s;
+  transition: background var(--dur-snap), color var(--dur-snap);
   user-select: none;
 }
 
@@ -657,7 +795,7 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
   cursor: pointer;
   color: var(--text);
   font-size: var(--ui-fs-base);
-  transition: background .12s, color .12s;
+  transition: background var(--dur-snap), color var(--dur-snap);
   user-select: none;
 }
 
@@ -728,6 +866,19 @@ html[data-motion="off"] .task-indicator.loading svg { animation: taskrot 1s line
    .sticky-user-wrap trailing fade). z-index stays below .scroll-bottom (z-5). */
 #stream::after { content: ""; position: sticky; bottom: 0; display: block; height: 36px; flex: none; pointer-events: none;
   background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--bg) 40%, transparent) 35%, color-mix(in srgb, var(--bg) 85%, transparent) 70%, var(--bg) 100%); }
+
+/* Narrow-screen composer (remote control / small windows; breakpoint matches the
+   store's 768px narrow flag): tighten the card padding, keep the editor at 16px
+   so iOS does not zoom the whole page on focus, and let the cbar wrap as a
+   last-resort fallback when the graded bar-N collapse runs out of tiers
+   (desktop keeps nowrap: a wrapped button escapes its popover anchor) */
+@media (max-width: 768px) {
+  #composer { padding: 8px 8px 6px; }
+
+  #input { font-size: 16px; }
+
+  .cbar { flex-wrap: wrap; }
+}
 
 /* ghost inline completion (GhostNode) + model capability badges (18.5) */
 .ghost-t { color: var(--faint); user-select: none; pointer-events: none; }

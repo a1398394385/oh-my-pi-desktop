@@ -32,7 +32,7 @@ import { readPluginsEnabled } from "../assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { pushComputerMode } from "../computer-mode.ts";
-import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue } from "../queue.ts";
+import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued } from "../queue.ts";
 import { handleListSessions } from "./session";
 import { btwAsk } from "../btw.ts";
 import { hostI18n } from "../i18n/host.ts";
@@ -546,6 +546,14 @@ async function handlePrompt(
   // steer = injected immediately (inserted after the current tool batch, the
   // bubble finalized and the process split). When idle, the base ignores
   // both and opens a turn as usual.
+  // Degenerate-idle ghost recalibration (BUG-080, the BUG-071 residual): the
+  // UI optimistically enqueued a followUp row because its streaming flag
+  // lagged the host by a frame; on an idle host this prompt degenerates into
+  // a direct new turn — no queue mutation, no steer_consumed, nothing would
+  // ever clear the stale QueueCard row. Push a queued snapshot up front:
+  // empty in the degenerate case (ghost gone before the turn's first frame),
+  // a harmless duplicate of the then-calibration on the normal queued path.
+  if (!steer && !entry.session.isStreaming) sendQueued(ws, sessionId, entry);
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
@@ -618,6 +626,9 @@ export const promptHandlers: Record<string, RpcHandler> = {
   },
   requeue(ws, msg) {
     handleRequeue(ws, msg.sessionId, Number(msg.index));
+  },
+  reorder_queued(ws, msg) {
+    handleReorderQueued(ws, msg.sessionId, Number(msg.from), Number(msg.to));
   },
   get_messages(ws, msg) {
     handleGetMessages(ws, msg.sessionId);

@@ -4,10 +4,11 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, stampEvent, defaultWorkspaceDir } from "../state.ts";
+import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot } from "../state.ts";
+import type { PoolEntry } from "../state.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
 import { readAutomations } from "../automations/store.ts";
-import { saveDesktopProjects, mergeHistoryProjects } from "../profile.ts";
+import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
 import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
 import { applyActivityTimes } from "../session-activity.ts";
 import {
@@ -19,6 +20,7 @@ import {
   attachEntry,
 } from "../session-lifecycle.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
+import { searchSessionText } from "../session-text-search.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
@@ -170,6 +172,7 @@ export async function handleListSessions(ws: any) {
       defaultWorkspace: defaultWorkspaceDir,
     }),
   );
+  pushPoolSnapshot(ws);
 }
 
 
@@ -177,15 +180,19 @@ export async function handleListSessions(ws: any) {
 // recent, already owner-scoped by the base) enriched per id with inspection
 // data (command/cwd only exist on process-backed jobs; pids are live only
 // while running). Deduped by id in case a row transitions between lists.
-function bgJobsPayload(entry: { session: { getAsyncJobSnapshot?: () => any; inspectAsyncJob?: (id: string) => any } }) {
-  const snapshot = entry.session.getAsyncJobSnapshot?.();
+// `type`/`label` come off the snapshot item itself: process-less jobs (eval
+// cells, task rows) have no command, so the label is their only title.
+function bgJobsPayload(session: PoolEntry["session"]) {
+  const snapshot = session.getAsyncJobSnapshot?.();
   if (!snapshot) return [];
-  const rows = new Map<string, { id: string; status?: string }>();
+  const rows = new Map<string, { id: string; status?: string; type?: string; label?: string }>();
   for (const job of [...(snapshot.running ?? []), ...(snapshot.recent ?? [])]) rows.set(job.id, job);
   return [...rows.values()].map((job) => {
-    const inspected = entry.session.inspectAsyncJob?.(job.id);
+    const inspected = session.inspectAsyncJob?.(job.id);
     return {
       id: job.id,
+      type: typeof job.type === "string" ? job.type : "unknown",
+      label: typeof job.label === "string" && job.label ? job.label : null,
       command: inspected?.command ?? null,
       cwd: inspected?.cwd ?? null,
       pids: Array.isArray(inspected?.pids) ? inspected.pids : [],
@@ -195,18 +202,49 @@ function bgJobsPayload(entry: { session: { getAsyncJobSnapshot?: () => any; insp
   });
 }
 
+// The session whose jobs a bg_jobs reply describes: the pooled one, or the
+// selected subagent's own session (its owner scope filters the shared manager
+// down to the jobs that subagent started). A parked/finished subagent has no
+// live session → empty list, never the parent's jobs.
+function bgJobsSession(entry: PoolEntry, subagentId: unknown): PoolEntry["session"] | null {
+  const id = typeof subagentId === "string" ? subagentId.trim() : "";
+  if (!id) return entry.session;
+  return AgentRegistry.global().get(id)?.session ?? null;
+}
+
 /** Whether this pooled session still has live work: an in-flight turn (agent_start opened the
-    active-duration window), undelivered queued messages, or running background jobs. Evicting
-    (reload/delete) such a session orphans the running AgentSession — it keeps working and
-    persisting headless while the rebuilt view shows an idle session. */
+    active-duration window), undelivered queued messages, or running background jobs. Returns the
+    localized list of concrete busy signals (empty = idle) so the eviction-guard error can tell
+    the user what to clear — abort() alone keeps queued messages and async jobs by design, so
+    "stop it first" is not a complete instruction. Evicting (reload/unload/delete) such a session
+    orphans the running AgentSession — it keeps working and persisting headless while the rebuilt
+    view shows an idle session.
+
+    The activeStartedAt window is host-side bookkeeping over the event stream and can go stale:
+    the SDK defers agent_end while a prompt is in flight and flushes it re-tagged
+    isTerminal:false whenever a queued continuation *might* resume — when none does (queue
+    drained, auto-resume suppressed), no later event ever closes the window. The SDK's own
+    isStreaming is authoritative: reconcile on read and settle the drifted window. */
 function sessionBusy(entry: {
   activeStartedAt: number | null;
-  session: { queuedMessageCount?: number; getAsyncJobSnapshot?: () => any };
-}): boolean {
-  if (entry.activeStartedAt !== null) return true;
-  if ((entry.session.queuedMessageCount ?? 0) > 0) return true;
+  activeMs: number;
+  session: { isStreaming: boolean; queuedMessageCount?: number; getAsyncJobSnapshot?: () => any };
+}): string[] {
+  const reasons: string[] = [];
+  if (entry.activeStartedAt !== null) {
+    if (entry.session.isStreaming) {
+      reasons.push(hostI18n.t("errors.session.busyGenerating"));
+    } else {
+      entry.activeMs += Math.max(0, Date.now() - entry.activeStartedAt);
+      entry.activeStartedAt = null;
+    }
+  }
+  const queued = entry.session.queuedMessageCount ?? 0;
+  if (queued > 0) reasons.push(hostI18n.t("errors.session.busyQueued", { count: queued }));
   const jobs = entry.session.getAsyncJobSnapshot?.();
-  return Array.isArray(jobs?.running) && jobs.running.length > 0;
+  const running = Array.isArray(jobs?.running) ? jobs.running.length : 0;
+  if (running > 0) reasons.push(hostI18n.t("errors.session.busyJobs", { count: running }));
+  return reasons;
 }
 
 /** Pool-entry path match that tolerates a session file moved by the SDK (persistence notice):
@@ -260,7 +298,8 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     let rebuildPath = p;
     for (const [key, e] of sessions.entries()) {
       if (!sessionEntryMatchesPath(e, p)) continue;
-      if (sessionBusy(e)) throw new Error(hostI18n.t("errors.session.reloadBusy"));
+      const busy = sessionBusy(e);
+      if (busy.length > 0) throw new Error(hostI18n.t("errors.session.reloadBusy", { reason: busy.join(", ") }));
       // Rebuild from the entry's CURRENT file, not the (possibly stale) request
       // path: after an SDK persistence move the frontend still holds the old
       // path, and rebuilding that would fork a second live session over a dead
@@ -281,6 +320,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         safeStderr(hostI18n.t("errors.session.reloadDisposeFailed", { detail: String(err) }));
       }
     }
+    pushPoolSnapshot(ws);
     await handleLoadSession(ws, rebuildPath);
   },
   async session_unload(ws, msg) {
@@ -297,7 +337,8 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     let unloaded = false;
     for (const [key, e] of sessions.entries()) {
       if (!sessionEntryMatchesPath(e, p)) continue;
-      if (sessionBusy(e)) throw new Error(hostI18n.t("errors.session.unloadBusy"));
+      const busy = sessionBusy(e);
+      if (busy.length > 0) throw new Error(hostI18n.t("errors.session.unloadBusy", { reason: busy.join(", ") }));
       releaseMcpForSession(key, e);
       e.unsubscribe();
       sessions.delete(key);
@@ -308,10 +349,18 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       }
       unloaded = true;
     }
+    if (unloaded) pushPoolSnapshot(ws);
     ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded }));
   },
   async list_sessions(ws) {
     await handleListSessions(ws);
+  },
+  async search_session_text(ws, msg) {
+    const query = String(msg.query ?? "").trim();
+    const limit = Math.min(50, Math.max(1, Number(msg.limit) || 20));
+    const hits = await searchSessionText(query, limit);
+    // query echoed back so the UI can drop a frame for a stale query (search is debounced and async)
+    ws.send(JSON.stringify({ type: "session_text_search", query, hits }));
   },
   async remove_project(ws, msg) {
     // Remove from the project list (sessions stay in history; the "recent" view still shows them)
@@ -336,7 +385,8 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       if (!sessionEntryMatchesPath(entry, p)) continue;
       // Refuse while busy — same eviction hazard as reload_session (the orphaned
       // session keeps running headless), and here deletion is irreversible.
-      if (sessionBusy(entry)) throw new Error(hostI18n.t("errors.session.deleteBusy"));
+      const busy = sessionBusy(entry);
+      if (busy.length > 0) throw new Error(hostI18n.t("errors.session.deleteBusy", { reason: busy.join(", ") }));
       knownPaths.add(entry.path);
       for (const prev of entry.previousPaths ?? []) knownPaths.add(prev);
       // Release sequence matches reload_session/session_unload. Release and
@@ -446,6 +496,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // not a registrable project: adding it would duplicate that row and let the
     // user remove it.
     if (cwd === defaultWorkspaceDir) throw new Error(hostI18n.t("errors.param.reservedProject"));
+    // Temp dirs are throwaway smoke/probe targets. mergeHistoryProjects already
+    // skips them, but add_project took the raw msg: without this a smoke run
+    // that reaches the default profile persists its mkdtemp dir into the user's
+    // allProjects, where it survives the temp dir's own deletion.
+    if (isTempDirPath(cwd)) throw new Error(hostI18n.t("errors.param.tempProject"));
     const ri = H.desktopProjects.removedProjects.indexOf(cwd);
     if (ri >= 0) H.desktopProjects.removedProjects.splice(ri, 1);
     if (!H.desktopProjects.allProjects.includes(cwd)) H.desktopProjects.allProjects.unshift(cwd);
@@ -818,18 +873,31 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // 18.5 background job snapshot: the model's backgrounded bash/task/eval
     // rows (async job manager scoped to this session). Enriches the snapshot
     // list with per-job inspection (cwd / live pids / exit code) in one frame.
+    // subagentId narrows it to one subagent's own rows.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    ws.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId: msg.sessionId, jobs: bgJobsPayload(entry) })));
+    const subagentId = typeof msg.subagentId === "string" && msg.subagentId ? msg.subagentId : undefined;
+    const target = bgJobsSession(entry, subagentId);
+    ws.send(
+      JSON.stringify(
+        stampEvent({ type: "bg_jobs", sessionId: msg.sessionId, subagentId, jobs: target ? bgJobsPayload(target) : [] }),
+      ),
+    );
   },
   cancel_bg_job(ws, msg) {
     // Cancel one running background job; unknown/foreign ids come back false
     // (no-op), then the refreshed snapshot goes out either way
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const subagentId = typeof msg.subagentId === "string" && msg.subagentId ? msg.subagentId : undefined;
     const jobId = String(msg.jobId ?? "");
-    if (jobId) entry.session.cancelAsyncJob?.(jobId);
-    ws.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId: msg.sessionId, jobs: bgJobsPayload(entry) })));
+    const target = bgJobsSession(entry, subagentId);
+    if (jobId && target) target.cancelAsyncJob?.(jobId);
+    ws.send(
+      JSON.stringify(
+        stampEvent({ type: "bg_jobs", sessionId: msg.sessionId, subagentId, jobs: target ? bgJobsPayload(target) : [] }),
+      ),
+    );
   },
   async control_subagent(ws, msg) {
     // 18.4.9 subagent control: cancel aborts one running subagent (unknown /

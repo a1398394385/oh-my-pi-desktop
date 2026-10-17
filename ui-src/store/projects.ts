@@ -3,7 +3,11 @@
 // in wave 3 when components move to selectors.
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
-import type { DiskProject, DiskSessionRow } from "../types/frames";
+import { REMOTE } from "./ws";
+import type { DiskProject, DiskSessionRow, SessionTextSearchFrame } from "../types/frames";
+
+/** One full-text search hit (session_text_search frame) */
+export type SessionTextHit = SessionTextSearchFrame["hits"][number];
 
 export interface ProjectsSlice {
   viewMode: string; // "project" | … (sidebar view)
@@ -14,6 +18,8 @@ export interface ProjectsSlice {
   defaultWorkspace: string;
   archivedSessions: (DiskSessionRow & { cwd: string })[];
   diskProjects: DiskProject[];
+  /** Full-text search hits (session_text_search frame); query echoes back so the UI can drop a stale frame */
+  sessionTextSearch: { query: string; hits: SessionTextHit[] } | null;
   projectLimits: Map<string, number>; // cwd -> rows shown (default 5, step 5)
   expandedProjects: Set<string>;
   pinnedSessions: Set<string>;
@@ -33,6 +39,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   defaultWorkspace: "",
   archivedSessions: [],
   diskProjects: [],
+  sessionTextSearch: null,
   projectLimits: new Map(),
   expandedProjects: new Set(),
   pinnedSessions: new Set(),
@@ -111,7 +118,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
     nextExpanded.add(cwd);
     const nextLimits = new Map(st.projectLimits);
     nextLimits.delete(cwd);
-    get().send({ type: "set_project_expanded", cwd, expanded: true });
+    if (!REMOTE) get().send({ type: "set_project_expanded", cwd, expanded: true }); // persisted in host omp-desktop.json; remote stays read-only
     set({ expandedProjects: nextExpanded, projectLimits: nextLimits });
   },
 });

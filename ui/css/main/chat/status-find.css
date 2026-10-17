@@ -45,8 +45,19 @@
 
 .todo .ci { color: var(--faint); font-style: normal; flex: none; }
 
-.todo.done { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--todo-strike-dark); }
-:is([data-theme="light"], [data-theme-mode="light"]) .todo.done { text-decoration-color: var(--todo-strike-light); }
+.todo.done { color: var(--faint); }
+/* Strike-through as a painted line instead of text-decoration: it can grow left→right in
+   12 discrete steps (todoStrike), which text-decoration cannot animate. `.strike` is set by
+   TodoRow only on the transition into completed, so rows mounting already done stay static. */
+.todo.done s {
+  text-decoration: none;
+  background-image: linear-gradient(var(--todo-strike-dark), var(--todo-strike-dark));
+  background-repeat: no-repeat;
+  background-position: 0 56%;
+  background-size: 100% 1px;
+}
+.todo.done s.strike { animation: todoStrike var(--dur-slow) steps(12); }
+:is([data-theme="light"], [data-theme-mode="light"]) .todo.done s { background-image: linear-gradient(var(--todo-strike-light), var(--todo-strike-light)); }
 .todo.done .ck { color: var(--green-soft); }
 
 .todo.cur { color: var(--text); }
@@ -67,7 +78,7 @@
   font-size: var(--ui-fs-base); line-height: 1.45;
   text-align: left;
   cursor: pointer;
-  transition: background .15s var(--swift), color .15s var(--swift);
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .sc-plan:hover { background: var(--panel-2); color: var(--text); }
@@ -128,13 +139,14 @@
   background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
   padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
   width: 200px; outline: none; min-width: 0;
-  transition: border-color .18s var(--swift), box-shadow .18s var(--swift);
+  transition: border-color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);
 }
 
 .find-inp:focus { border-color: var(--tint-accent-500); box-shadow: 0 0 0 3px var(--tint-accent-130); }
 .find-count {
   flex: none; min-width: 36px; text-align: center;
   font-size: var(--ui-fs-xs); color: var(--dim);
+  font-variant-numeric: tabular-nums; /* "n/m" counter keeps its width while stepping matches */
 }
 
 .find-count.none { color: var(--faint); }

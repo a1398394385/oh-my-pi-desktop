@@ -21,6 +21,7 @@ import GeneralPage from "./pages/GeneralPage";
 import AppearancePage from "./pages/AppearancePage";
 import KeyboardPage from "./pages/KeyboardPage";
 import ExperimentalPage from "./pages/ExperimentalPage";
+import RemotePage from "./pages/RemotePage";
 import ComputerPage from "./pages/ComputerPage";
 import PluginsPage from "./pages/PluginsPage";
 import ExtensionsPage from "./pages/ExtensionsPage";
@@ -54,6 +55,7 @@ const NAV_SECTIONS = [
       { id: "pg-model", icon: "box", label: "settingsPage.nav.model" },
       { id: "pg-capabilities", icon: "bulb", label: "settingsPage.nav.capabilities" },
       { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
+      { id: "pg-remote", icon: "globe", label: "settingsPage.nav.remote" },
       { id: "pg-keyboard", icon: "keyboard", label: "settingsPage.nav.keyboard" },
     ],
   },
@@ -98,6 +100,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-appearance": AppearancePage,
   "pg-keyboard": KeyboardPage,
   "pg-experimental": ExperimentalPage,
+  "pg-remote": RemotePage,
   "pg-computer": ComputerPage,
   "pg-plugins": PluginsPage,
   "pg-extensions": ExtensionsPage,
@@ -133,25 +136,14 @@ for (const sec of NAV_SECTIONS) {
 // duration in ui/css/settings/common.css (kept in sync there by SEARCH_FLASH_MS in the comment).
 const SEARCH_FLASH_MS = 2600;
 
-export default function Settings() {
-  const { t } = useTranslation();
-  // Selector subscriptions: settingsOpen / settingsPage / hostSettings changes trigger re-render
-  const settingsOpen = useAppStore((s) => s.settingsOpen);
-  const settingsPage = useAppStore((s) => s.settingsPage);
-  const hostSettings = useAppStore((s) => s.hostSettings);
+/** All searchable settings items (key/label/description/pageId/pageTitle). Shared by the
+ * settings page search and the global search palette. */
+export function useAllSettingsItems() {
   const schema = useAppStore((s) => s.settingsSchema);
   const lang = useAppStore((s) => s.uiPrefs.lang);
-  const [searchQuery, setSearchQuery] = useState("");
-  const setBodyRef = useRef<HTMLDivElement | null>(null);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
-  const wasOpenRef = useRef(false);
-
-  // Lookup map: locate the pageId owning a key per placement.ts
-  const keyToPageMap = useMemo(() => buildKeyToPageMap(schema), [schema]);
-
-  // All settings keys (for search; label/description come from the language
-  // dictionary — en's empty dict falls back to the schema's own English text)
-  const allSettingsItems = useMemo(() => {
+  const { t } = useTranslation();
+  return useMemo(() => {
+    const keyToPageMap = buildKeyToPageMap(schema);
     const settings = lang === "zh-CN" ? SETTINGS_ZH : SETTINGS_EN;
     const keys = schema ? Array.from(new Set([...Object.keys(settings), ...Object.keys(schema)])) : Object.keys(settings);
     const items: Array<{ key: string; label: string; description: string; pageId: string; pageTitle: string }> = [];
@@ -166,8 +158,30 @@ export default function Settings() {
       const pageTitle = t(PAGE_LABELS[pid] ?? "settingsPage.nav.advanced");
       items.push({ key: k, label, description, pageId: pid, pageTitle });
     }
+    // App-level rows (DesktopAlertsSection: uiPrefs, not host schema) — indexed so settings
+    // search and the global palette can find them; keys match the rows' data-key attributes.
+    items.push(
+      { key: "app.notifyDesktop", label: t("settingsPage.alerts.desktopTitle"), description: t("settingsPage.alerts.desktopDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+      { key: "app.notifySound", label: t("settingsPage.alerts.soundTitle"), description: t("settingsPage.alerts.soundDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+      { key: "app.notifyPermission", label: t("settingsPage.alerts.permTitle"), description: t("settingsPage.alerts.permGrantedDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+    );
     return items;
-  }, [schema, keyToPageMap, lang, t]);
+  }, [schema, lang, t]);
+}
+
+export default function Settings() {
+  const { t } = useTranslation();
+  // Selector subscriptions: settingsOpen / settingsPage / hostSettings changes trigger re-render
+  const settingsOpen = useAppStore((s) => s.settingsOpen);
+  const settingsPage = useAppStore((s) => s.settingsPage);
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  const [searchQuery, setSearchQuery] = useState("");
+  const setBodyRef = useRef<HTMLDivElement | null>(null);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+  const wasOpenRef = useRef(false);
+
+  // All settings keys (for search; shared with the global search palette)
+  const allSettingsItems = useAllSettingsItems();
 
   // Search results: only match against every setting item's "label" and "description"; nothing else participates
   const searchResults = useMemo(() => {

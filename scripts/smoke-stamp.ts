@@ -1,7 +1,8 @@
 // Stamping smoke test: verify the position-stamp (hi/seq) contract of host-initiated pushes.
-// Assertions: ready carries hi; host-initiated frames (event/queued/context etc.) share one hi with a strictly increasing seq;
-// RPC responses (session_created/messages etc.) carry no hi.
+// Assertions: ready carries hi and no seq; every frame carrying hi shares that same hi and takes a strictly
+// increasing seq; frames without hi are unstamped RPC replies and are exempt.
 // Usage: bun scripts/smoke-stamp.ts [host ws url] (spawns the host itself when omitted)
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,6 +21,7 @@ function fail(msg: string): never {
 
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
+    env: smokeEnv(),
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
     stdio: ["ignore", "pipe", "inherit"],
   });
@@ -37,25 +39,28 @@ if (!wsUrl) {
   }).catch((e) => fail(String(e)));
 }
 
-const STAMPED = new Set(["event", "subagent_event", "subagent_lifecycle", "todos", "context", "approval_request", "queued", "steer_consumed"]);
 const ws = new WebSocket(wsUrl!);
 const failTimeout = setTimeout(() => fail("90s 内未完成全部断言"), 90_000);
 
-// Uniform per-frame check: stamped frames agree on hi + strictly increasing seq; RPC response frames must not carry hi
-// (ready is the exception: the handshake frame carries hi for UI instance alignment but takes no seq)
+// Uniform per-frame check: whatever carries an instance stamp must agree with the
+// ready frame's hi and take a strictly increasing seq; unstamped frames are plain
+// RPC replies and take no part in the sequence.
+// Deliberately keyed on the presence of `hi`, not on a whitelist of frame types:
+// the stamp is applied by stampEvent(), and several frames build their body in a
+// helper and only get stamped at the call site (keepalive_status via
+// keepaliveStatusPayload, for one), so any type list here drifts out of date the
+// moment a frame is added — which is exactly how capabilities_mcp and
+// keepalive_status previously slipped through and failed this smoke.
 function checkFrame(msg: any) {
   if (msg.type === "ready") {
     if (msg.seq !== undefined) fail("ready 不应占事件序号");
     return;
   }
-  if (STAMPED.has(msg.type)) {
-    if (msg.hi !== state.readyHi) fail(`${msg.type} 帧 hi 不一致: ${msg.hi} ≠ ${state.readyHi}`);
-    if (!(typeof msg.seq === "number" && msg.seq > state.lastSeq)) fail(`${msg.type} 帧 seq 未严格递增: ${msg.seq} ≤ ${state.lastSeq}`);
-    state.lastSeq = msg.seq;
-    state.stampedFrames++;
-    return;
-  }
-  if (msg.hi !== undefined) fail(`RPC 响应 ${msg.type} 不应带 hi`);
+  if (msg.hi === undefined) return; // unstamped reply: nothing to verify
+  if (msg.hi !== state.readyHi) fail(`${msg.type} 帧 hi 不一致: ${msg.hi} ≠ ${state.readyHi}`);
+  if (!(typeof msg.seq === "number" && msg.seq > state.lastSeq)) fail(`${msg.type} 帧 seq 未严格递增: ${msg.seq} ≤ ${state.lastSeq}`);
+  state.lastSeq = msg.seq;
+  state.stampedFrames++;
 }
 
 ws.onmessage = async (ev) => {

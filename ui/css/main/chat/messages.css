@@ -1,3 +1,42 @@
+/* ── Chat scroll viewport fade (CDS 7-stop scroll fade): only the BOTTOM edge dissolves
+   content over --chat-fade; the top edge stays fully opaque so the sticky user bubble pinned
+   at top:0 renders sharply (a top ramp clipped the bubble's upper edge).
+   A mask (not a color overlay) keeps the alpha ramp identical
+   across light and dark themes; the gradient is glued to the scrollport, so it stays put
+   while content scrolls under it. */
+#stream {
+  --chat-fade: 28px;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--chat-fade)), /* style-token-ignore: mask alpha stop, not a theme color */
+    #000000d9 calc(100% - var(--chat-fade) * 0.8571),
+    #000000b3 calc(100% - var(--chat-fade) * 0.7143),
+    #00000080 calc(100% - var(--chat-fade) * 0.5714),
+    #0000004d calc(100% - var(--chat-fade) * 0.4286),
+    #00000026 calc(100% - var(--chat-fade) * 0.2857),
+    #0000000d calc(100% - var(--chat-fade) * 0.1429),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--chat-fade)), /* style-token-ignore: mask alpha stop, not a theme color */
+    #000000d9 calc(100% - var(--chat-fade) * 0.8571),
+    #000000b3 calc(100% - var(--chat-fade) * 0.7143),
+    #00000080 calc(100% - var(--chat-fade) * 0.5714),
+    #0000004d calc(100% - var(--chat-fade) * 0.4286),
+    #00000026 calc(100% - var(--chat-fade) * 0.2857),
+    #0000000d calc(100% - var(--chat-fade) * 0.1429),
+    transparent 100%
+  );
+}
+
+/* Numeric columns keep even digit widths while their values change: the per-second working
+   timer, the collapsed loop summary's token counts, and diff line-number gutters in the
+   chat area (the right-panel/left-dock gutters style themselves in their own domains) */
+#workSec,
+.act.loop .lp-tx,
+#stream .ldiff-gutter { font-variant-numeric: tabular-nums; }
+
 .act .caret { color: var(--faint); }
 
 .act.change .sep { color: var(--faint); flex: none; }
@@ -40,7 +79,7 @@
   border: 1.5px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
-  transition: background-color 0.25s ease-out;
+  transition: background-color var(--dur-base) var(--swift);
 }
 
 #stream:hover::-webkit-scrollbar-thumb,
@@ -117,11 +156,20 @@
   width: 100%;
 }
 
-/* Pinned user message: text capped at 5.5 lines with inner scroll; the bottom half-line fades out (same treatment as .think-scroll; FadeBox adds .no-fade when at bottom/fit). */
+/* Pinned user message: text capped at 5.5 lines with inner scroll; both edges fade out over half a
+ * line (same treatment as .think-scroll; FadeBox toggles .no-fade at bottom/fit and .no-fade-top at
+ * the top, so the visible region always keeps exactly one faded edge — none when the text fits). */
 .sticky-user-wrap .user-msg-text { user-select: text; -webkit-user-select: text; width: 100%; max-width: 100%; max-height: calc(1.55em * 5.5); overflow-y: auto;
-  overscroll-behavior: contain; -webkit-mask-image: linear-gradient(to bottom, var(--black) calc(100% - 0.775em), transparent); mask-image: linear-gradient(to bottom, var(--black) calc(100% - 0.775em), transparent); }
+  overscroll-behavior: contain; -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--black) 0.775em, var(--black) calc(100% - 0.775em), transparent); mask-image: linear-gradient(to bottom, transparent 0, var(--black) 0.775em, var(--black) calc(100% - 0.775em), transparent); }
 
-.sticky-user-wrap .user-msg-text.no-fade { -webkit-mask-image: none; mask-image: none; }
+/* At the bottom/fit: drop the bottom fade, keep the top one (content is scrolled up) */
+.sticky-user-wrap .user-msg-text.no-fade { -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--black) 0.775em, var(--black)); mask-image: linear-gradient(to bottom, transparent 0, var(--black) 0.775em, var(--black)); }
+
+/* At the top: drop the top fade, keep the bottom one */
+.sticky-user-wrap .user-msg-text.no-fade-top { -webkit-mask-image: linear-gradient(to bottom, var(--black) calc(100% - 0.775em), transparent); mask-image: linear-gradient(to bottom, var(--black) calc(100% - 0.775em), transparent); }
+
+/* Fits without scrolling (both classes): no fade at all */
+.sticky-user-wrap .user-msg-text.no-fade.no-fade-top { -webkit-mask-image: none; mask-image: none; }
 
 .sticky-user-wrap .msg.user {
   margin: 0; /* remove the 90px gap force-fed by the waterfall, full content-column width */
@@ -156,6 +204,15 @@
   -webkit-user-select: none;
 }
 
+/* CDS bubble entrance: user bubbles float up on mount. Assistant bubbles are deliberately
+   excluded — the streaming tail node (stream-tail-wrap) is swapped for the committed message
+   node when the stream ends (different React key), so an animation there would replay and
+   flash the already-visible text. */
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(12px); }
+}
+.msg.user { animation: msgIn var(--dur-slow) var(--ease-overshoot); }
+
 .msg.user .user-bubble {
   /* Cap = half the content column's max width (50vw); 82% is the relative fallback when the column narrows */
   max-width: min(25vw, 82%);
@@ -181,7 +238,7 @@
 /* Copy button pinned inside the bubble's top-right corner (UserMsg.tsx): hidden until the
    bubble is hovered; the bubble shrinks to the text (width fit-content), so while visible
    the button carries the bubble background to stay legible over the first line's tail */
-.ub-copy { position: absolute; top: 5px; right: 5px; opacity: 0; transition: opacity .15s ease; }
+.ub-copy { position: absolute; top: 5px; right: 5px; opacity: 0; transition: opacity var(--dur-snap) var(--swift); }
 .msg.user .user-bubble:hover .ub-copy { opacity: 1; background: var(--inset); }
 .msg.user .user-bubble:hover .ub-copy:hover { background: var(--panel-2); }
 
@@ -253,7 +310,7 @@
 
 .act.loop .lp-arrow { flex: none; color: var(--faint); display: inline-flex; align-items: center; }
 
-.act.loop .lp-arrow svg { transition: transform .2s ease; }
+.act.loop .lp-arrow svg { transition: transform var(--dur-base) var(--swift); }
 
 .act.loop .lp-arrow.open svg { transform: rotate(90deg); }
 
@@ -320,7 +377,7 @@
 
 /* Minimal arrow appearing after the row tail on whole-row hover (shared by edit/terminal rows), 6px from the label content (aligned with thinking rows) */
 .act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow, .act.ro .ed-arrow {
-  color: var(--faint); opacity: 0; transition: opacity .12s; flex: none;
+  color: var(--faint); opacity: 0; transition: opacity var(--dur-snap) var(--swift); flex: none;
   display: inline-flex; align-items: center;
 }
 
@@ -330,7 +387,7 @@
 .act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow, .act.ro:hover .ed-arrow { opacity: 1; }
 
 /* On expand the same chevron rotates 90° in place to point down — no icon swap, no size change, no jump */
-.ed-arrow svg { transition: transform .2s ease; }
+.ed-arrow svg { transition: transform var(--dur-base) var(--swift); }
 
 .ed-arrow.open svg { transform: rotate(90deg); }
 
@@ -599,9 +656,11 @@
 
 .e-wrap .e-dot { flex: none; margin-left: 3px; }
 
-/* scroll-to-bottom floating button (centered at the bottom of the flow area) */
+/* scroll-to-bottom floating button (centered at the bottom of the flow area); sits just
+   above the #stream --chat-fade mask zone (defined at the top of this file) so its lower
+   half is never washed out */
 .scroll-bottom {
-  position: sticky; bottom: 10px;
+  position: sticky; bottom: calc(var(--chat-fade) + 6px);
   margin: 16px auto 2px; width: 26px; height: 26px; border-radius: 50%;
   background: var(--panel); border: 1px solid var(--line); color: var(--dim);
   display: flex; align-items: center; justify-content: center;
@@ -614,7 +673,7 @@
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
-   Ticks sit 15 CSS px apart (JS-compressed when too many), 12.5 long x 1.95 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line brightened x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
+   Ticks sit 15 CSS px apart (JS-compressed when too many), 12.5 long x 1.95 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line longest x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. The user message currently pinned at the stream top keeps its tick lit (.pin) — widths stay pointer-only. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
 #msgRail {
   position: absolute; left: 8px; width: 22px; z-index: 60;
   pointer-events: none; /* the container itself doesn't block messages; ticks are individually hoverable */
@@ -627,11 +686,16 @@
   position: absolute; left: 0; height: 4px; border-radius: 4px; /* placeholder; actual thickness/pill rounding written by JS */
   background: var(--panel-3); cursor: pointer; pointer-events: auto;
   width: 3px; /* placeholder; actual length written by JS */
-  transition: background .05s ease-out; /* zero width transition: mouse events are the smoothing source, chasing real-time tracking; the 150ms delay only gates the popover */
+  transition: background .05s var(--swift); /* zero width transition: mouse events are the smoothing source, chasing real-time tracking; the 150ms delay only gates the popover */
   will-change: width; /* width rewritten at high frequency; hint for compositor-layer optimization */
 }
 
-.rail-tick.on { background: var(--text); }
+/* invisible hit pad: the 2px line itself is near-impossible to click; the pad spans the
+   whole rail width and the gap to the neighbors, so a click anywhere in the tick's band
+   reaches it (the rail-level click handler resolves the peak tick, not the DOM hit) */
+.rail-tick::after { content: ""; position: absolute; left: 0; width: 22px; top: -5px; bottom: -5px; }
+
+.rail-tick.pin { background: var(--text); } /* scroll-pinned message's tick: the only lit tick; pointer hover drives widths only */
 
 /* mountain-peak brightening */
 /* .turn-acts stays a full-width box (no flanking gap for WebKit's crossed-selection fill,
@@ -653,7 +717,7 @@
 :is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList) :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,
 :is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList).scrolling::-webkit-scrollbar-thumb,
 #todoList :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb {
-  transition: background-color 0.25s ease-out;
+  transition: background-color var(--dur-base) var(--swift);
 }
 
 :is(.ed-brief, .cmd-card, .bash-out, .think-body, .approval-card, .chg-body, .ro-body, #todoList):hover :is(.ldiff, .cmd-card-cmd, .cmd-card-out, .think-scroll, .bash-out, .approval-title)::-webkit-scrollbar-thumb,

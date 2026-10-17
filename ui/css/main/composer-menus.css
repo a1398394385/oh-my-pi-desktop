@@ -7,7 +7,7 @@
 
 /* Composer pills (model/thinking/permission): chevrons follow the wb rule, pointing down */
 .pill-btn .caret-svg {
-  transition: transform .18s var(--swift);
+  transition: transform var(--dur-snap) var(--swift);
 }
 
 .wb-pill.active .caret {

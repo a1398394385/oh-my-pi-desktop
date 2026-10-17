@@ -5,7 +5,7 @@
   margin-left: auto; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border-radius: 5px;
-  color: var(--faint); opacity: 0; transition: opacity .12s;
+  color: var(--faint); opacity: 0; transition: opacity var(--dur-snap);
   line-height: 0;
 }
 
@@ -43,7 +43,7 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
-/* right-sidebar tab bar: equal-width layout (flex 1 1 0 + min/max widths), horizontal scroll on overflow with the scrollbar hidden */
+/* right-sidebar tab bar: equal-width layout (flex 1 1 0 + min/max widths), horizontal scroll on overflow with the scrollbar hidden. Narrow phones override the flex recipe below (three per row, then scroll) — see remote.css. */
 .rtabs { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 
 .rtabs::-webkit-scrollbar { display: none; }
@@ -54,7 +54,7 @@
   border: 0; background: none; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-sm);
   padding: 0 6px 0 8px; border-radius: 7px; cursor: pointer;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-snap), color var(--dur-snap);
 }
 
 .rtab:hover { background: var(--panel-2); color: var(--text); }
@@ -83,7 +83,7 @@
 .rtab-x {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 5px;
-  color: var(--faint); opacity: 0; transition: opacity .12s;
+  color: var(--faint); opacity: 0; transition: opacity var(--dur-snap);
   line-height: 0;
 }
 
@@ -138,7 +138,7 @@
 /* Unified placeholder while a tool result is pending (Spin in components/chat/parts.jsx): loader icon spinning + ellipsis.
    Serves two kinds of spots — inline in tool rows with no output slot (grep/glob/MCP/todo/terminal group rows),
    and the dashed placeholder inside expansion bodies (.placeholder in .cmd-card-out / .ed-brief) */
-.pend-ico { display: inline-flex; animation: chat-load-spin 1s linear infinite; }
+.pend-ico { display: inline-flex; animation: spin 1s linear infinite; }
 
 .pend-ico svg { display: block; }
 
@@ -161,10 +161,16 @@
   border: 0; border-radius: var(--r-lg);
   background: var(--panel); color: var(--text);
   font: inherit; font-size: var(--ui-fs-base); font-weight: 500;
-  cursor: pointer; transition: background .12s;
+  cursor: pointer; transition: background var(--dur-snap);
 }
 
-.rt-item:hover { background: var(--panel-2); }
+.rt-item:not(.off):hover {
+  background: var(--panel-2);
+  transform: translateY(-1.5px);
+  /* hover ring as inset shadow (replaces outline): paints inside the box, zero layout cost */
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);
+  transition: background var(--dur-base) var(--swift), transform var(--dur-base) var(--swift), box-shadow var(--dur-base) var(--swift);
+}
 
 .rt-item.off { opacity: .4; cursor: default; }
 
@@ -183,3 +189,11 @@
 .sp-head button,
 .sp-head input,
 .sp-head .sp-pop { -webkit-app-region: no-drag; }
+
+/* Hairline: halve the converted inset rings on HiDPI (box-shadow spread takes fractions) */
+@media (min-resolution: 2dppx) {
+  .rt-item:not(.off):hover { box-shadow: var(--shadow-sm), inset 0 0 0 .5px var(--line); }
+}
+@media (min-resolution: 3dppx) {
+  .rt-item:not(.off):hover { box-shadow: var(--shadow-sm), inset 0 0 0 .33px var(--line); }
+}

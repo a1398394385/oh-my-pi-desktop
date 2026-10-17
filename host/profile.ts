@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir } from "node:fs/promises";
-import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions, activeWs } from "./state.ts";
+import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions, eachUiWs } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
@@ -214,11 +214,19 @@ export function applySleepPrevention(level: string) {
 }
 
 // True when cwd sits under the OS temp dir — keeps throwaway probe/smoke
-// sessions out of the merged desktop project list. Covers macOS (/tmp,
-// /private/tmp, /var/folders) and Windows/Linux via os.tmpdir() (case-folded
-// on Windows, where drive-letter and profile casing vary).
-function isTempDirPath(cwd: string): boolean {
-  if (cwd.startsWith("/tmp") || cwd.startsWith("/private/tmp") || cwd.startsWith("/var/folders")) return true;
+// sessions out of the desktop project list. Covers macOS (/tmp,
+// /private/tmp, /var/folders, /private/var/folders — the last two are the
+// TMPDIR root and its realpath spelling) and Windows/Linux via os.tmpdir()
+// (case-folded on Windows, where drive-letter and profile casing vary).
+// Exported so add_project reuses it instead of trusting callers to pre-filter.
+export function isTempDirPath(cwd: string): boolean {
+  if (
+    cwd.startsWith("/tmp") ||
+    cwd.startsWith("/private/tmp") ||
+    cwd.startsWith("/var/folders") ||
+    cwd.startsWith("/private/var/folders")
+  )
+    return true;
   const t = os.tmpdir();
   if (!t) return false;
   const fold = process.platform === "win32";
@@ -378,8 +386,7 @@ export async function applyProfile(profileName: string) {
   // refresh the sidebar via the session_list push (the same pattern rpc/session
   // uses after list-mutating RPCs); the scheduler itself never imports rpc/.
   setAutomationNotify(() => {
-    const ws = activeWs.value;
-    if (ws) void handleListSessions(ws).catch(() => {});
+    eachUiWs((ws) => void handleListSessions(ws).catch(() => {}));
   });
   reloadAutomationScheduler();
 }

@@ -1,63 +1,29 @@
-// Right panel Agent-browser mirror page ("mirror" tab): the Agent live view split
-// out of BrowserPage — tab pills + URL row + the CDP screencast still stream
-// mirrored by the host (host/browser-mirror.ts over browser_mirror_* RPCs /
-// browser_* frames). Follow-the-agent tab selection unless the user pins a tab
-// by hand. Session-scoped since the owner-tab split: only tabs the displayed
-// session created are listed (each tab carries ownerPath; see BrowserTabInfo).
+// Right panel Agent-browser live view (the "agent" mode of the merged browser
+// page): agent tab pills + URL row + the CDP screencast still stream mirrored
+// by the host (host/browser-mirror.ts over browser_mirror_* RPCs / browser_*
+// frames). Follow-the-agent tab selection unless the user pins a tab by hand.
+// Session-scoped: only tabs the displayed session created are listed (each tab
+// carries ownerPath; see BrowserTabInfo); BrowserPage filters the list and
+// passes the hidden other-session count for the empty state.
 // Render vehicle note: Tauri v2 has no window-internal child webview,
 // and the Agent's Chromium cannot be iframed cross-process — hence the
 // screencast mirror instead of embedding the real page.
 // Empty state: the displayed session is not browsing (another session's tabs
-// are summarized as hidden) — a manual-browse jump to the "browser" tab is
-// offered.
-import { useEffect, useMemo, useRef, useState } from "react";
+// are summarized as hidden) — a manual-mode jump is offered.
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
 import { useAppStore, type TimerHandle } from "../../../store";
 import { onBrowserFrame } from "../../../store/browserMirror";
 import type { BrowserTabInfo } from "../../../types/frames";
-import { openRightTab } from "./tabs";
-import { SPECIAL_KEY_NAMES, displayBrowserUrl, openExternal } from "./BrowserPage";
+import { BrowserModePills, displayBrowserUrl, openExternal, SPECIAL_KEY_NAMES } from "./BrowserPage";
 
-export default function MirrorPage() {
-  const { t } = useTranslation();
-  const tabs = useAppStore((s) => s.browserTabs);
-  const activePath = useAppStore((s) => s.activePath);
-  // Session-scoped list: only the displayed session's tabs show here. Tabs
-  // without a matching ownerPath (other sessions / unowned) are filtered out.
-  const myTabs = useMemo(
-    () => tabs.filter((tb) => tb.ownerPath === activePath),
-    [tabs, activePath],
-  );
-  if (myTabs.length === 0) {
-    // Not browsing in THIS session; other sessions' tabs stay out of view
-    const others = tabs.length - myTabs.length;
-    return (
-      <div className="bpane">
-        <div className="bpane-view">
-          <div className="bpane-empty">
-            <span className="bpane-empty-ic"><Icon name="monitor" size={30} /></span>
-            <div className="bpane-empty-tt">{t("right.mirrorEmpty")}</div>
-            {others > 0 && (
-              <div className="bpane-empty-sub">{t("right.mirrorOtherSessions", { n: others })}</div>
-            )}
-            <div className="bpane-err-acts">
-              <button className="btn" onClick={() => openRightTab("browser")}>{t("right.modeManual")}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  return <AgentBrowserView tabs={myTabs} />;
-}
-
-// ---------- Agent live view ----------
-function AgentBrowserView({ tabs }: { tabs: BrowserTabInfo[] }) {
+export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; others: number }) {
   const { t } = useTranslation();
   const viewTab = useAppStore((s) => s.browserViewTab);
   const connected = useAppStore((s) => s.connected);
+  const setBrowserMode = useAppStore((s) => s.setBrowserMode);
 
   const [frame, setFrame] = useState<{ data: string; ts: number; w?: number; h?: number; s?: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -202,10 +168,35 @@ function AgentBrowserView({ tabs }: { tabs: BrowserTabInfo[] }) {
     sendInput({ op: "key", action: "up", key: special });
   };
 
+  // Not browsing in THIS session: empty state with a manual-mode jump. Other
+  // sessions' tabs stay out of view (summarized as a count line).
+  if (tabs.length === 0) {
+    return (
+      <>
+        <div className="bpane-bar">
+          <BrowserModePills />
+        </div>
+        <div className="bpane-view">
+          <div className="bpane-empty">
+            <span className="bpane-empty-ic"><Icon name="monitor" size={30} /></span>
+            <div className="bpane-empty-tt">{t("right.mirrorEmpty")}</div>
+            {others > 0 && (
+              <div className="bpane-empty-sub">{t("right.mirrorOtherSessions", { n: others })}</div>
+            )}
+            <div className="bpane-err-acts">
+              <button className="btn" onClick={() => setBrowserMode("manual")}>{t("right.modeManual")}</button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
-    <div className="bpane">
-      {/* Toolbar: agent tab pills / live badge / manual-browse jump / open external */}
+    <>
+      {/* Toolbar: mode pills / agent tab pills / live badge / open external */}
       <div className="bpane-bar">
+        <BrowserModePills />
         <div className="bpane-tabs">
           {tabs.map((tb) => (
             <button
@@ -223,9 +214,6 @@ function AgentBrowserView({ tabs }: { tabs: BrowserTabInfo[] }) {
           {t("right.agentLive")}
         </div>
         <div className="bpane-spacer" />
-        <div className="mcp-type-pills">
-          <button className="mcp-type-pill" onClick={() => openRightTab("browser")}>{t("right.modeManual")}</button>
-        </div>
         <button
           className="icon-btn"
           title={t("right.openExternal")}
@@ -267,10 +255,10 @@ function AgentBrowserView({ tabs }: { tabs: BrowserTabInfo[] }) {
             <div className="bpane-empty-tt">
               {current && !current.mirrorable ? t("right.agentNoMirror") : t("right.agentConnecting")}
             </div>
-            <div className="bpane-empty-sub">{current ? current.title || current.url : ""}</div>
+            <div className="bpane-empty-sub">{current?.title || current?.url || ""}</div>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

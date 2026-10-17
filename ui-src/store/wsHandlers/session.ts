@@ -37,6 +37,11 @@ function applyForkReceipt(msg: { ok: boolean; error?: string; newPath?: string; 
 }
 
 export const sessionHandlers = {
+  pool_sessions(msg) {
+    // Host pool residency snapshot (attach / release / list refresh): the sidebar's "active tasks"
+    // list renders it. Full-replace — the frame is the whole pool, never a delta.
+    useAppStore.setState({ poolSessions: msg.sessions ?? [] });
+  },
   session_list(msg) {
     // Split out archived entries: they don't go into diskProjects; stored separately as archivedSessions for the sidebar archive area
     const st2 = useAppStore.getState();
@@ -92,6 +97,12 @@ export const sessionHandlers = {
     if (st4.isCreatingNew && avail.length > 0 && !avail.some((p) => p.cwd === st4.newSessionProject)) {
       st4.setWelcomeProject(avail[0].cwd);
     }
+  },
+  session_text_search(msg) {
+    // Sidebar full-text hits (search_session_text). Frames carry the query they answered,
+    // so a slow reply for a keyword the user already replaced lands harmless — SidebarSearch
+    // only reads hits whose query equals the current input.
+    useAppStore.setState({ sessionTextSearch: { query: String(msg.query ?? ""), hits: msg.hits ?? [] } });
   },
   session_unloaded(msg) {
     // Pool eviction receipt (session_unload): drop the frontend slot the same

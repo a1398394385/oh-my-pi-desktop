@@ -9,10 +9,31 @@
 // covers every downstream spawn: assets.ts health probe ({...process.env})
 // and the SDK stdio transport ({...Bun.env}, Bun.env === process.env).
 
+import { existsSync } from "node:fs";
+
 import { safeStderr } from "./stderr.ts";
 const SENTINEL_BEGIN = "__OMP_PATH_BEGIN__";
 const SENTINEL_END = "__OMP_PATH_END__";
 const SHELL_TIMEOUT_MS = 3000;
+
+// Static well-known bin dirs that need no shell round-trip. Appended
+// synchronously so module-top-level env snapshots taken during the SDK
+// graph load (GH_NON_INTERACTIVE_ENV etc.) already see them.
+const GUI_BIN_DIRS = [
+	"/opt/homebrew/bin",
+	"/opt/homebrew/sbin",
+	"/usr/local/bin",
+	"/usr/local/sbin",
+];
+
+// Runs before any dynamic import of the host body; must stay synchronous.
+export function augmentGuiPathSync(): void {
+	if (process.platform !== "darwin") return;
+	const current = (process.env.PATH ?? "").split(":").filter(Boolean);
+	const seen = new Set(current);
+	const additions = GUI_BIN_DIRS.filter((d) => !seen.has(d) && existsSync(d));
+	if (additions.length) process.env.PATH = [...current, ...additions].join(":");
+}
 
 async function readShellPath(shell: string): Promise<string | null> {
   try {

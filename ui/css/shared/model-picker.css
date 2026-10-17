@@ -5,9 +5,12 @@
 .menu.model {
   min-width: 200px; max-height: 320px; overflow-y: auto;
   overscroll-behavior: contain;
-  display: flex; flex-direction: column; gap: 5px;
   border-radius: 8px; padding: 4px;
 }
+/* display must stay scoped to .open: the base .menu rule hides keep-mounted menus
+   with display:none, and this file loads after controls.css so an unscoped
+   display here would force every closed .menu.model (shared Sel) visible */
+.menu.model.open { display: flex; flex-direction: column; gap: 5px; }
 
 .menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; }
 

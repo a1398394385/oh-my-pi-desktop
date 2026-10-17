@@ -140,7 +140,7 @@
 
 **status tool 对的投影剔除**:context_status 的 tool_use/tool_result 对**不进压缩候选**(模型压不到它);并在**下一次成功 compress_context 执行后**从投影中整对摘除(旧清单已失效,留着是误导;即使落在保护区也摘——保护区例外)。存储不动,配对断言不变(成对摘除)。
 
-**通牒伴随的合成 status 对(v10.1)**:注入通牒文案的请求(§5.2:L3 档,或三级强制已武装/保险线直接触发)在活跃区末尾、通牒行之前注入一对**合成**消息——assistant(tool_use: context_status)+ user(tool_result: [acp-report] 当轮清单)——使被强制调用的模型手里已有清单。约束:**只造新 assistant,不得向既有 assistant 插入 tool_use**(thinking 签名风险 = OQ2 同源、中段改动破坏前缀缓存、投影纪律禁改既有消息内容);合成对不落 journal(每轮由注入条件驱动重放);清单快照冻结(注入条件持续且无新块则逐字节稳定);成功压缩后停止注入旧快照(语义同剔除规则——旧清单失效),若仍处通牒态则以新快照继续注入(新一轮通牒)。合成对不进压缩候选。wire 形态为双面正常工具回合(P2 实证重组合法);官方面复测加形态确认。
+**通牒伴随的合成 status 对(v10.1)**:注入通牒文案的请求(§5.2:L3 档,或三级强制已武装/保险线直接触发)在活跃区末尾、通牒行之前注入一对**合成**消息——assistant(tool_use: context_status)+ user(tool_result: [context-status] 当轮清单)——使被强制调用的模型手里已有清单。约束:**只造新 assistant,不得向既有 assistant 插入 tool_use**(thinking 签名风险 = OQ2 同源、中段改动破坏前缀缓存、投影纪律禁改既有消息内容);合成对不落 journal(每轮由注入条件驱动重放);清单快照冻结(注入条件持续且无新块则逐字节稳定);成功压缩后停止注入旧快照(语义同剔除规则——旧清单失效),若仍处通牒态则以新快照继续注入(新一轮通牒)。合成对不进压缩候选。wire 形态为双面正常工具回合(P2 实证重组合法);官方面复测加形态确认。
 
 ### compress_context
 
@@ -186,7 +186,7 @@
 
 ## 7. ephemeral 状态提示契约
 
-- **位置**:请求消息序列末尾追加一条 user 角色消息,文本以 `[acp-status]` 开头;**不落历史**。
+- **位置**:请求消息序列末尾追加一条 user 角色消息,文本以 `[compress-hint]` 开头;**不落历史**。
 - **分层注入(v10,pull 替代 push)**:无档(活跃区 ≤L1 且非待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);L1/L2/L3 与待强力注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力统一加注「下次压缩为强力压缩」)+ 指向 context_status 取清单。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 context_status 返回(§6)。
 - **L1 里程碑节奏(v10.4)**:L1 段(>L1 且 ≤L2、非待强力、非强制请求)不再每请求注入——L1→L2 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = L1 段静默;`host/acp-plan.ts` `milestoneFor`),活跃区首次跨过一条新线才注入一次(状态行末尾带 `milestone=k/N` 标记,文案复用 L1 建议 + context_status 指针);单请求跨多条线只发最高那条、**不补发**;降回 ≤L1(或进入待强力/L2+ 常驻态)即重置,再爬升从第一条线重新提醒。L2/L3 与待强力保持每请求常驻。游标仅存内存:宿主重启后最多重发一次最高已跨线,自愈无害。
 - **缓存安全**:零注入期持久前缀(tools/system/压缩区/活跃区)逐字节稳定;注入期档位不变时状态行逐字节稳定,最大化末尾局部缓存复用。
@@ -218,7 +218,7 @@
 | 会话装配 | `host/session-lifecycle.ts` ACP 注入段(acp.enabled 开关先例已存在)+ `createAgentSession({ settings: Settings.isolated({ "compaction.enabled": false }) })` | ACP 会话注册 extension + customTools,并 **per-session 关闭底座自动压缩**(底座 shouldCompact 判 stored journal 口径,ACP 投影不影响之——不关则 journal 增长必致底座压缩误触发、冲掉 ACP 结构;= v8「strategy off」语义的 host 实现);降级时恢复该会话压缩能力(Settings 为活对象,后续写入可达) |
 | 档位判定 | host ACP 状态机 | 活跃区三档;**不**使用底座 `compactionContextTokens` 的 stored 地板 |
 | 保险线 | 同上 | 投影后总量 vs 窗口 − 15% reserve |
-| 投影 + ephemeral | context 事件 extension(`host/acp-context.ts` 现有 transformContext 同一接缝) | 块过滤重组 + 压缩块渲染为 user 文本段 + `[acp-status]` 末尾追加(§4/§7) |
+| 投影 + ephemeral | context 事件 extension(`host/acp-context.ts` 现有 transformContext 同一接缝) | 块过滤重组 + 压缩块渲染为 user 文本段 + `[compress-hint]` 末尾追加(§4/§7) |
 | 预处理 | 底座 prune 管道(不动) | 照常运行;prune 重写 journal 后 context 视图自然反映,ACP 计数用 prune 后值 |
 | 工具注册 | `createAgentSession({ customTools })`(`host/acp-tools.ts` 先例,ToolDefinition 形态) | context_status / compress_context / recall_block;compress 执行挂 host per-session 互斥锁(§6,exclusive 通道不可用);降级后不再注入 |
 | 强制调用 | 三级触发:`AgentSession.setForcedToolChoice("compress_context")`(公开 API,已验证:强制下一次模型调用指定工具、[forced,"none"] 序列调完即止;工具须在 active 集——customTools 注入天然满足;模型不支持时抛错 = 降级出口) | meta.forced=true,按强力语义;失败即 §5.3 降级 |

@@ -65,8 +65,10 @@
   --blue:      #6fb3d8;
   --purple:    #a86fe0;
   --accent:    #4a9eff;   /* the site's only accent color (switches/focus rings/selected icons) */
-  /* Bash-mode (composer ! prefix) color aliases: aligned with the TUI bashMode theme colors dark=cyan / light=green;
-     the desktop has no cyan token, so dark maps to the nearby --blue and light maps to --green (both defined in :root) */
+  /* Bash-mode (composer ! prefix) color. This is the fallback; the composer overrides --bash
+     per session with another slot of the same 8-slot palette (session-color.ts picks one that
+     is not the input's own slot), so bash mode reads as a sibling mode rather than a fixed
+     hue. Dark maps to --blue and light to --green, both defined in :root. */
   --bash:      var(--blue);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -81,12 +83,38 @@
   --ui-fs-xl: calc(var(--ui-fs) * 1.25);   /* ~16.25px */
   --r-sm: 6px; --r-md: 10px; --r-lg: 12px; --r-card: 16px;
   --shell-gap: 8px;
+  /* macOS top-left strip: sidebar toggle sits right of the native traffic lights.
+     x: the lights keep window points (trafficLightPosition x 25 → dots 25..84) and do
+     NOT scale with the UI zoom, so 94 = dot right edge + 10 divided back by --ui-zoom
+     (published by applyZoom).
+     y: the lights DO ride the zoom (the shell re-places them via set_traffic_light_y),
+     so they live in the same CSS space as this strip — 50px blank strip → center 25,
+     minus half of the 26px button. No zoom division here. */
+  --top-toggle-left: calc(94px / var(--ui-zoom, 1));
+  --top-toggle-top: 14px;
   --todo-w: 280px;
   --chat-gutter: 48px;
   --ctl-bg: var(--panel-2);
   /* Motion discipline: two curves (spring/swift), reused site-wide */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --swift:  cubic-bezier(0.16, 1, 0.3, 1);
+  /* CDS motion tokens: duration steps + easing curves + press spring (dark baseline) */
+  --dur-fast: 60ms;
+  --dur-snap: 120ms;
+  --dur-base: 200ms;
+  --dur-sheet: 300ms;
+  --dur-slow: 450ms;
+  --ease-expand: cubic-bezier(.19, 1, .22, 1);
+  --ease-enter: cubic-bezier(.22, 1, .36, 1);
+  --ease-overshoot: cubic-bezier(.34, 1.3, .64, 1);
+  --ease-pop: cubic-bezier(.34, 1.56, .64, 1);
+  --spring-press: linear(0, .2459, .6526, .9468, 1.0764, 1.0915, 1.0585, 1.0219, .9993, .9914, .9921, .9957, .9988, 1.0004, 1);
+  /* CDS shadow tokens, dark baseline (light overrides at file tail) */
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.4), 0 2px 8px 0 rgba(0,0,0,.4);
+  --shadow-md: 0 2px 4px 0 rgba(0,0,0,.4), 0 6px 16px 0 rgba(0,0,0,.4);
+  --shadow-lg: 0 4px 8px 0 rgba(0,0,0,.5), 0 16px 36px -2px rgba(0,0,0,.4);
+  --shadow-popover: inset 0 0 0 1px rgba(255,255,255,.1), 0 8px 28px rgba(0,0,0,.65), 0 2px 8px rgba(0,0,0,.45);
+  --shadow-panel: 0 0 0 1px var(--line), var(--shadow-sm);
 }
 
 :root[data-theme="light"] {
@@ -106,7 +134,7 @@
   --dim:       #5d5d65;
   --faint:     #808088;
   --green-ink: #1e8a3e;
-  --bash:      var(--green); /* bash mode: light = green (--green inherits the :root dark-theme definition) */
+  --bash:      var(--green); /* light fallback: green (--green inherits the :root definition) */
   --ctl-bg:    var(--inset);
 }
 
@@ -240,3 +268,52 @@
   --tint-accent-70: rgba(74, 158, 255, 0.07);
   --tint-white-20: rgba(255, 255, 255, 0.02);
 }
+
+/* CDS shadow tokens, light overrides (--shadow-panel follows the light --shadow-sm via var(), no repeat needed) */
+:root[data-theme="light"] {
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.05), 0 2px 8px 0 rgba(0,0,0,.08);
+  --shadow-md: 0 2px 4px 0 rgba(0,0,0,.05), 0 6px 16px 0 rgba(0,0,0,.08);
+  --shadow-lg: 0 4px 8px 0 rgba(0,0,0,.06), 0 12px 28px -2px rgba(0,0,0,.08);
+  --shadow-popover: 0 0 0 1px var(--line), 0 8px 24px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.08);
+}
+
+/* Session accent palette: session-color.ts hashes the session title into one slot (title
+   generation turns the composer ring into that color, TUI parity). Kept as tokens rather
+   than a runtime hue so each slot is contrast-checked against its own surface. */
+:root {
+  --sess-1: #4a9eff;
+  --sess-2: #29b8d8;
+  --sess-3: #3fbf6f;
+  --sess-4: #d2a24c;
+  --sess-5: #e07a4f;
+  --sess-6: #e06490;
+  --sess-7: #a878e8;
+  --sess-8: #d9695f;
+}
+:root[data-theme="light"] {
+  --sess-1: #1f7ae0;
+  --sess-2: #0e8ba8;
+  --sess-3: #17864a;
+  --sess-4: #9a6f14;
+  --sess-5: #b8542a;
+  --sess-6: #b83a68;
+  --sess-7: #7a4bc4;
+  --sess-8: #c0392b;
+}
+
+/* Brand gradient sampled from the app icon (the π mark): pink → magenta → violet → cyan,
+   left to right. Fixed brand colors, not theme accents. The light set is the same hues
+   darkened — the cyan end is unreadable on the light surface at icon brightness. */
+:root {
+  --brand-1: #e53cac;
+  --brand-2: #c738e2;
+  --brand-3: #9b40fd;
+  --brand-4: #5cd8e9;
+}
+:root[data-theme="light"] {
+  --brand-1: #c0177f;
+  --brand-2: #9c1fc4;
+  --brand-3: #6f22d0;
+  --brand-4: #0e94b0;
+}
+

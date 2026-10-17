@@ -39,7 +39,7 @@ function SelectTrigger({
       className={cn(
         // Pill language: same as .sel (transparent background + radius 999 + hover/open --panel-2 background)
         "group/sel inline-flex flex-none shrink-0 cursor-pointer items-center gap-[6px] rounded-full border-0 bg-transparent px-[10px] py-[5px] text-ui-base text-dim outline-none",
-        "transition-[background-color,color] duration-[150ms] ease-[var(--swift)]",
+        "transition-[background-color,color] duration-[var(--dur-snap)] ease-[var(--swift)]",
         "hover:bg-panel-2 hover:text-text data-[state=open]:bg-panel-2 data-[state=open]:text-text",
         "focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-[1px]",
         className,
@@ -51,7 +51,7 @@ function SelectTrigger({
       <Icon
         name="caret"
         size={14}
-        className="shrink-0 text-faint transition-transform duration-[220ms] ease-[var(--spring)] group-data-[state=open]/sel:rotate-180"
+        className="shrink-0 text-faint transition-transform duration-[var(--dur-base)] ease-[var(--spring)] group-data-[state=open]/sel:rotate-180"
       />
     </SelectPrimitive.Trigger>
   );
@@ -78,7 +78,7 @@ function SelectContent({
         sideOffset={sideOffset}
         align={align}
         className={cn(
-          "z-[500] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[0_12px_32px_rgba(0,0,0,.5)] outline-none",
+          "z-[500] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[var(--shadow-lg)] outline-none",
           "max-h-(--radix-select-content-available-height) min-w-[170px] origin-(--radix-select-content-transform-origin)",
           "[--pop-from:-6px] data-[state=open]:[animation:popIn_.18s_ease-out] data-[state=closed]:[animation:none]",
           className,

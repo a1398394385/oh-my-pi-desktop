@@ -51,9 +51,13 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      # Pinned, not `latest`: the release build applies patches/@oh-my-pi%2F*.patch via
+      # `patchedDependencies`, and patch application is bun's own behaviour. A floating bun
+      # can change how those diffs are parsed, which would ship a bundle whose base runtime
+      # does not match what was tested. Keep in sync with .bun-version.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.2"
 
       - uses: dtolnay/rust-toolchain@stable
         with:

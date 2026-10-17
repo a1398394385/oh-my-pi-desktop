@@ -2563,11 +2563,12 @@ dependencies = [
 
 [[package]]
 name = "omp-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "block2",
  "dispatch2",
  "objc2",
+ "objc2-app-kit",
  "objc2-core-audio",
  "objc2-core-audio-types",
  "objc2-core-foundation",

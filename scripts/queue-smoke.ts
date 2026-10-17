@@ -1,8 +1,9 @@
-// Host queueing smoke test: enqueue while streaming -> drop/send_now/requeue RPCs -> both consumption paths (steer and followUp).
+// Host queueing smoke test: enqueue while streaming -> drop/send_now/requeue/reorder RPCs -> both consumption paths (steer and followUp).
 // Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/queue-smoke.ts [host ws url]
 // Without an address the script spawns the host child process itself and cleans up the session files it created on exit.
 // Assertions cover: queued view order and add/remove, send_now converting to steering, requeue back to the top,
 // steer and followUp consumption both emitting steer_consumed, the queue finally drained, and no error or frame flooding.
+import { smokeEnv } from "./smoke-profile.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { rm } from "node:fs/promises";
 
@@ -39,6 +40,9 @@ function consumedTexts(raw: unknown): string[] {
 }
 const sameTexts = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
 
+// 1x1 transparent PNG: proves image attachments survive the followUp queue round-trip
+const IMG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 const args = process.argv.slice(2);
 let child: ChildProcess | null = null;
 let wsUrl = args[0];
@@ -56,7 +60,7 @@ const assert = (cond: boolean, msg: string) => {
 if (!wsUrl) {
   child = spawn("bun", ["host/host.ts"], {
     cwd: Bun.fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env },
+    env: smokeEnv(),
     stdio: ["ignore", "pipe", "inherit"],
   });
   wsUrl = await new Promise<string>((resolve, reject) => {
@@ -90,8 +94,18 @@ const steps: Step[] = [
     name: "首轮 turn_start 后连发三条排队",
     match: (msg, ctx) => {
       if (msg.type !== "event" || msg.kind !== "turn_start") return false;
-      for (const t of [TXT_A, TXT_B, TXT_C])
-        ws.send(JSON.stringify({ type: "prompt", sessionId: ctx, text: t }));
+      ws.send(JSON.stringify({ type: "prompt", sessionId: ctx, text: TXT_A }));
+      ws.send(JSON.stringify({ type: "prompt", sessionId: ctx, text: TXT_B }));
+      // The image rides on the last message: its attachment preprocessing must not
+      // reorder the earlier entries (this row is dropped before any consumption)
+      ws.send(
+        JSON.stringify({
+          type: "prompt",
+          sessionId: ctx,
+          text: TXT_C,
+          files: [{ kind: "image", mime: "image/png", data: IMG_1PX }],
+        }),
+      );
       return true;
     },
   },
@@ -99,7 +113,29 @@ const steps: Step[] = [
     name: "三条全部入队（底座+暂存完整视图）",
     match: (msg, ctx) => {
       if (msg.type !== "queued" || !sameTexts(texts(msg.followUp), [TXT_A, TXT_B, TXT_C])) return false;
-      console.log("  排队视图=[甲乙丙]");
+      const rows = Array.isArray(msg.followUp) ? msg.followUp : [];
+      const imgs = rows[2] && typeof rows[2] === "object" && "images" in rows[2] ? rows[2].images : undefined;
+      assert(Array.isArray(imgs) && imgs.length === 1, `第三条排队消息应带 1 张图片,实际: ${JSON.stringify(rows[2])}`);
+      console.log("  排队视图=[甲乙丙]（丙带 1 张图片）");
+      // Reorder across the parked staging boundary: the parked last row to the head
+      ws.send(JSON.stringify({ type: "reorder_queued", sessionId: ctx, from: 2, to: 0 }));
+      return true;
+    },
+  },
+  {
+    name: "重排 丙→首位",
+    match: (msg, ctx) => {
+      if (msg.type !== "queued" || !sameTexts(texts(msg.followUp), [TXT_C, TXT_A, TXT_B])) return false;
+      console.log("  重排后排队=[丙甲乙]");
+      ws.send(JSON.stringify({ type: "reorder_queued", sessionId: ctx, from: 0, to: 2 }));
+      return true;
+    },
+  },
+  {
+    name: "重排复位 [甲乙丙]",
+    match: (msg, ctx) => {
+      if (msg.type !== "queued" || !sameTexts(texts(msg.followUp), [TXT_A, TXT_B, TXT_C])) return false;
+      console.log("  重排复位 → 排队=[甲乙丙]");
       ws.send(JSON.stringify({ type: "drop_queued", sessionId: ctx, queue: "followUp", index: 2 }));
       return true;
     },
@@ -171,9 +207,25 @@ const steps: Step[] = [
   },
   {
     name: "队列排空",
-    match: (msg, _ctx) => {
+    match: (msg, ctx) => {
       if (msg.type !== "queued") return false;
-      return texts(msg.followUp).length === 0 && texts(msg.steering).length === 0;
+      if (texts(msg.followUp).length !== 0 || texts(msg.steering).length !== 0) return false;
+      // Stale index after the drain: the host must answer with a calibration
+      // snapshot instead of leaving the optimistic order in place
+      ws.send(JSON.stringify({ type: "reorder_queued", sessionId: ctx, from: 99, to: 0 }));
+      return true;
+    },
+  },
+  {
+    name: "越界重排 → 权威空快照",
+    match: (msg) => {
+      if (msg.type !== "queued") return false;
+      assert(
+        texts(msg.followUp).length === 0 && texts(msg.steering).length === 0,
+        `越界重排校准帧应回空队列,实际: ${JSON.stringify(msg.followUp)}`,
+      );
+      console.log("  越界重排 → 收到空队列校准帧 ✓");
+      return true;
     },
   },
 ];
@@ -195,7 +247,7 @@ ws.onmessage = (ev) => {
       JSON.stringify({
         type: "prompt",
         sessionId: ctx,
-        text: "从 1 数到 30，每个数字单独一行，不要输出其他内容。",
+        text: "从 1 数到 300，每个数字单独一行，不要输出其他内容。",
       }),
     );
   }
