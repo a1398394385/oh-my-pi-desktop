@@ -58,7 +58,7 @@
 | `GET /<path>` | dist 内文件 200;规范化后越出 dist(路径穿越)→ 400;不存在 → 404 |
 | 其他方法 | 405 |
 
-- 静态根定位:编译态(`import.meta.dir` 以 `/$bunfs` 开头)→ `dirname(process.execPath)/ui/dist`;dev 态(`import.meta.dir = <repo>/host`)→ repoRoot/ui/dist。
+- 静态根定位:按存在性探测而非字符串判据——先 `dirname(process.execPath)/ui/dist`(编译分发态;`tauri.*.conf.json` 让 ui/dist 与 omp-host 同级),不存在再回落 `import.meta.dir/../ui/dist`(dev 态)。**禁止用 `import.meta.dir` 前缀判编译态**(BUG-082):POSIX 虚拟根由 `/$bunfs/root` 变为 `/$$bunfs/root`,Windows 编译态则是 `B:\~BUN\root`,字符串判据在安装版必失效并回落到不存在的虚拟路径,表现为整站 404。
 - 打包分发:平台 resources **map 形式**加 `{"../ui/dist": "ui/dist"}`(`src-tauri/tauri.macos.conf.json` / `tauri.windows.conf.json`)。Tauri v2 中 `../` 开头的**数组**条目会落 `$RESOURCE/_up_/...`,map 形式才落 `Resources/ui/dist`(与 omp-host 同级);写错形式远程静态服务必 404。
 - upgrade 后的 open/message/close 与主服务共用同一组处理(ready 握手、`dispatchRpc`);不因来源分叉协议。
 

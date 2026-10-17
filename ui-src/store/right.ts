@@ -401,6 +401,12 @@ export function landBrowserTabs(tabs: BrowserTabInfo[]): void {
     // Drain edge: leave Agent mode (Manual shows when the displayed owner drained)
     if (prev === st.activePath && st.browserMode === "agent") {
       useAppStore.setState({ browserMode: "manual" });
+      // Mirror of the auto-expand: if the user is still parked on the browser tab,
+      // collapse the panel too. A user browsing another tab is left untouched; the
+      // tab itself stays in the list (manual browsing state survives).
+      if (!st.rightCollapsed && st.rightTab === "browser") {
+        useAppStore.setState({ rightCollapsed: true });
+      }
     }
   }
 }

@@ -90,6 +90,11 @@ export const rightZh = {
   subTools: "{{n}} 次工具",
   subStarted: "{{time}} 启动",
   subElapsed: "耗时 {{duration}}",
+  // ---- 子代理状态胶囊（Hub 名册行 + 子代理标签页卡片） ----
+  subStRunning: "运行中",
+  subStCompleted: "已完成",
+  subStFailed: "失败",
+  subStAborted: "已中止",
   // ---- Agent Hub（中部卡片，空输入框双击 ← 打开；右栏联动详情） ----
   hubTitle: "Agent Hub",
   hubFlat: "Flat",

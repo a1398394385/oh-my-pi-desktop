@@ -259,6 +259,12 @@
   align-items: center;
 }
 
+/* Spawn-count badge next to a row label (task row: "Subagent ×3") — same code size, dimmer */
+.act .lbl-n {
+  flex: none; white-space: nowrap; font-size: var(--code-fs, 12px); color: var(--faint);
+  line-height: 1; opacity: 0.8;
+}
+
 .act.t2 { margin-top: 28px; }
 
 .act.err { color: var(--err); }
@@ -485,6 +491,22 @@
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* Rows carrying a count badge (task: "Subagent ×3 [scout]"). Three problems, one fix — give
+   the whole badge row one shared line box:
+   1. the summary inherits the 13px body font with `line-height: normal` (~19px box) while the
+      label and badge are code-sized at line-height 1 (12px), so the summary reads taller;
+   2. at line-height 1 the 12px box is shorter than the glyph ink (measured ~13.8px needed), and
+      the summary's `.e-wrap` is `overflow: hidden` — the selection highlight paints the short
+      flex box and clips the brackets' lower edge;
+   3. `line-height: 1` also leaves the CJK label's ink overhanging its own box, which the
+      browser paints as a highlight taller than the box.
+   1.2 (14.4px) is the smallest measured line box that contains all three segments' ink, so the
+   highlight rects match and nothing clips. Scoped to badge rows — the rest of the read-row
+   language keeps its existing metrics. */
+.act:has(> .lbl-n) .lbl,
+.act:has(> .lbl-n) .lbl-n,
+.act:has(> .lbl-n) .path { font-size: var(--code-fs, 12px); line-height: 1.2; }
+
 .act.read .f-ic { flex: none; }
 
 /* File-type small icon */
@@ -577,7 +599,7 @@
 
 .cmd-card-cmd.task-md .md-body { font-size: inherit; line-height: inherit; }
 
-/* Task card spawn list (ToolRow.tsx TaskBody): "• name ⟦agent⟧ → model:thinking" — flex keeps the
+/* Task card spawn list (ToolRow.tsx TaskBody): "• name [agent] → model:thinking" — flex keeps the
    arrow icon and the faint model name on the row's line */
 .task-sub { display: flex; align-items: center; gap: 6px; }
 .task-sub-arrow, .task-sub-model { color: var(--faint); flex: none; }

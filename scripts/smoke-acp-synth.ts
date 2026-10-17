@@ -21,10 +21,11 @@
 //      compress succeeds; after success the next request carries no pair; the
 //      session JSONL has zero synthetic-pair / marker residue
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-synth.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-synth.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,7 +41,7 @@ import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host
 import { assertToolPairing } from "../host/acp-projection.ts";
 import { ACP_SYNTHETIC_STATUS_CALL_ID, createAcpStatusTool } from "../host/acp-status-tool.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
@@ -443,7 +444,7 @@ function bulkTurn(label: string): string {
 	});
 	const calls = mock.calls as unknown as MockCall[];
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const sessionDir = dirname(sessionFile);
 
 	await session.prompt(bulkTurn("task one"));
@@ -483,7 +484,14 @@ function bulkTurn(label: string): string {
 	await sessionManager.close();
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwd, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: F e2e — forced request carried the pair; informed keep pick succeeded; pair retired after success; JSONL clean");
 }
 

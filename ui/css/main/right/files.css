@@ -30,7 +30,7 @@
    portals to body (fixed + placeMenu) because both row containers crop with overflow:hidden */
 .fv-more-wrap { flex: none; }
 
-.fv-menu { position: fixed; bottom: auto; min-width: 200px; max-height: min(60vh, 460px); overflow-y: auto; }
+.fv-menu { position: fixed; bottom: auto; max-height: min(60vh, 460px); overflow-y: auto; }
 
 /* real app icon inside a menu item (the .mi-ic column is 18px wide) */
 .fv-menu .mi .mi-ic img { width: 15px; height: 15px; object-fit: contain; border-radius: 3px; }

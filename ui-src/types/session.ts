@@ -95,6 +95,7 @@ export interface ToolDetails {
   };
   shownRange?: { start: number; end: number }; // truncated read: lines actually shown (meta.truncation.shownRange via the host)
   summary?: { lines: number; elidedSpans?: number; elidedLines?: number }; // summarized read: shown line count with elided spans
+  async?: { state?: string; jobId?: string; type?: string }; // auto-backgrounded tool call: job liveness ("Backgrounded as job" bash/eval rows; bgTaskCount / BgCmdPage)
   [key: string]: unknown;
 }
 

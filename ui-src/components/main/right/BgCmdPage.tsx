@@ -1,12 +1,16 @@
 // Background commands page: aggregates session items (hub start/stop pairing + running
-// bash/shell/eval) + list + inline expand cards.
+// bash/shell/eval) + the host's bg_jobs snapshot (auto-backgrounded jobs, which have no
+// live transcript row) + list + inline expand cards.
 // In the old version any global repaint collapsed expanded rows (DOM rebuild); in the React
 // version the expanded state is held by component state, so streaming updates keep rows open
 // and show the latest output (the liftEl collapse animation is skipped along with the
 // conditional rendering).
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../../store";
+import { bgJobsKey } from "../../../store/session";
+import type { BgJobEntry } from "../../../store/session";
+import { sendGetBgJobs } from "../../shared/agent/hubExt";
 import { t } from "../../../i18n";
 import Icon from "../../../Icon";
 import { Spin } from "../../chat/parts";
@@ -40,12 +44,18 @@ interface BgTask {
   statusText: string;
   cwd?: string;
   timeIndex: number;
-  rawItem: SessionItemLike;
+  // Snapshot-sourced rows have no transcript item behind them
+  rawItem?: SessionItemLike;
 }
 
 // Aggregate a session's background tasks: hub tool calls (start/stop/cancel paired by process
-// name) + running terminal commands
-function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | null | undefined): {
+// name) + running terminal commands + bg_jobs snapshot rows (auto-backgrounded jobs; the
+// transcript rows only carry the stale "Backgrounded as job" state, so the snapshot —
+// pushed by the host on load and on each turn_start — is the source of truth for them)
+function getBgTasksForSession(
+  s: { items?: SessionItemLike[]; cwd?: string } | null | undefined,
+  jobs: BgJobEntry[] | null | undefined,
+): {
   tasks: BgTask[];
   runningCount: number;
 } {
@@ -129,6 +139,31 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
     }
   }
 
+  // Snapshot rows (auto-backgrounded jobs, newest last so the reverse below tops them):
+  // keyed entries carry command/cwd/exit-code inspection from the host; the transcript
+  // rows above have no live state, so snapshot rows always join the list.
+  // `task` jobs are excluded: async subagent spawns are registered in the same job
+  // manager, but a subagent is not a background command — it already has its own row
+  // in the chat stream and its own Subagent/Hub tabs.
+  const baseIndex = s.items.length;
+  let jobIndex = 0;
+  for (const job of jobs ?? []) {
+    if (job.type === "task") continue;
+    tasks.push({
+      id: `job_${job.id}`,
+      op: job.type,
+      procName: job.label || job.command || job.type,
+      command: job.command || job.label || "",
+      args: {},
+      output: "",
+      running: job.running,
+      statusText: job.running ? t("right.bgRunning") : t("right.bgDone"),
+      cwd: job.cwd || s.cwd,
+      timeIndex: baseIndex + jobIndex,
+    });
+    jobIndex++;
+  }
+
   const runningCount = tasks.filter((t) => t.running).length;
   tasks.reverse(); // newest on top
   return { tasks, runningCount };
@@ -137,11 +172,18 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
 export default function BgCmdPage() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const bgJobs = useAppStore((st) => st.bgJobs);
   const [openId, setOpenId] = useState<string | null>(null);
+  const sessionId = s?.sessionId ?? null;
+  // Opening the page refreshes the snapshot once (replies land through the canonical
+  // bg_jobs handler); afterwards host pushes (load backlog / turn_start) keep it current
+  useEffect(() => {
+    if (sessionId) sendGetBgJobs(sessionId);
+  }, [sessionId]);
   if (!s) {
     return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
-  const { tasks } = getBgTasksForSession(s);
+  const { tasks } = getBgTasksForSession(s, sessionId ? (bgJobs.get(bgJobsKey(sessionId)) ?? null) : null);
   if (tasks.length === 0) {
     return <div className="py-3 text-faint text-ui-base">{t("right.noBgCommands")}</div>;
   }

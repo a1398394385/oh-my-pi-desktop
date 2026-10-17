@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useC
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
+import { bgJobsKey } from "../store/session";
 import { invoke } from "../store/ws";
 import { expandRightPanel } from "./main/right/tabs";
 import type { PromptAttachment } from "../types/frames";
@@ -75,9 +76,12 @@ const RING_C = 43.98;
 const BAR_STAGES = 7;
 
 // Remote-control browser client (spec §4.1): no Tauri bridge and not the
-// ?preview=1 ui:dev sample page. The mic/STT path needs a secure context, so
-// remote never renders the voice button and voiceMode reads as false.
-const REMOTE = !invoke && !new URLSearchParams(location.search).has("preview");
+// ?preview=1 ui:dev sample page; a ?ws= dev direct-connect is a local channel
+// instead (.has() form kept identical to ws.ts/layout.ts). The mic/STT path
+// needs a secure context, so remote never renders the voice button and
+// voiceMode reads as false.
+const REMOTE =
+  !invoke && !new URLSearchParams(location.search).has("preview") && !new URLSearchParams(location.search).has("ws");
 
 // Build the attachment payload sent along with the prompt (caller clears
 // pendingFiles after sending)
@@ -805,7 +809,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const thinkLabel = s
     ? (s.thinking === "auto" && s.autoResolved ? `${thLv("auto")}·${thLv(s.autoResolved)}` : s.thinking ? thLv(s.thinking) : t("composer.thinkFallback"))
     : newSessionThinking ? thLv(newSessionThinking) : t("composer.thinkFallback");
-  const bgTasks = bgTaskCount(s);
+  const bgJobs = useAppStore((st) => st.bgJobs);
+  const bgTasks = bgTaskCount(s, s ? bgJobs.get(bgJobsKey(s.sessionId)) : null);
   const bgSubs = subagentCount(s);
 
   // Menu button toggle: clicking the same button again closes; mutual exclusion

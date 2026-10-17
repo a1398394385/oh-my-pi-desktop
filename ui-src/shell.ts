@@ -305,13 +305,14 @@ export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: numb
 // ---------- Message rail tool summary (ported from ui/ringpop.js railToolText) ----------
 // Tool message summary: tool name + command/file, comma-joined
 // Subagent spawn summary for the task row's rail entry: spawn count once known (mirrors the
-// TUI header meta "Task N agents"), else the flat form's agent type ⟦bracketed⟧
+// TUI header meta "Task N agents"), else the flat form's agent type [bracketed]
 function taskRailSummary(args: Record<string, unknown>, details?: unknown): string {
   const d = details as { results?: unknown[]; progress?: unknown[] } | undefined;
-  const count = d?.results?.length ?? d?.progress?.length ?? (Array.isArray(args.tasks) ? args.tasks.length : 0);
+  // Widest signal wins: async-only calls settle `results: []` and keep the batch in `progress`.
+  const count = Math.max(d?.results?.length ?? 0, d?.progress?.length ?? 0, Array.isArray(args.tasks) ? args.tasks.length : 0);
   if (count > 0) return t("chat.taskSummaryBatch", { count });
   const agent = typeof args.agent === "string" ? args.agent.trim() : "";
-  if (agent && agent !== "task") return `⟦${agent}⟧`;
+  if (agent && agent !== "task") return `[${agent}]`;
   return typeof args.task === "string" ? args.task.split("\n")[0].trim() : "";
 }
 export function railToolText(item: ToolItem): string {

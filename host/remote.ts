@@ -167,11 +167,18 @@ function tokenOk(t: string | null): boolean {
   return timingSafeEqual(a, b);
 }
 
-/** Static root: compiled layout (single-file bun binary) sits next to ui/dist; dev layout = <repo>/ui/dist (spec §3.3). */
+/**
+ * Static root (spec §3.3): the compiled single-file build keeps import.meta.dir inside Bun's
+ * embedded virtual root — "/$bunfs/root" on POSIX, "B:\~BUN\root" on Windows, and the POSIX
+ * spelling itself became "/$$bunfs/root" in newer Bun — so no string test on it is a stable
+ * discriminator, and the dist ships next to the executable instead (tauri.windows|macos
+ * .conf.json maps ../ui/dist to ui/dist in the bundle). Dev layout = <repo>/ui/dist, probed
+ * by existence; the bundle case is the fallback.
+ */
 function staticRoot(): string {
-  return import.meta.dir.startsWith("/$bunfs")
-    ? join(dirname(process.execPath), "ui", "dist")
-    : join(import.meta.dir, "..", "ui", "dist");
+  const besideExec = join(dirname(process.execPath), "ui", "dist");
+  if (existsSync(besideExec)) return besideExec;
+  return join(import.meta.dir, "..", "ui", "dist");
 }
 
 function serveStatic(pathname: string): Response {

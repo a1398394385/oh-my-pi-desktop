@@ -8,7 +8,8 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../../store";
 import { HubDetail } from "./HubDetailPage";
 import { SubControls, SteerInput } from "../../shared/agent/SubControls";
-import { usageSegments, timeSegments, modelShort, subStatus } from "../../shared/agent/subShared";
+import { SubStatusPill } from "../../shared/agent/SubStatusPill";
+import { usageSegments, timeSegments, modelShort } from "../../shared/agent/subShared";
 import type { SubagentState } from "../../../types/session";
 
 // Repaint once per second while any visible subagent streams: host durationMs only arrives
@@ -48,7 +49,6 @@ export default function SubagentPage() {
 // hover-only highlight (no permanent "on" state on this page)
 function SubCard({ id, sub, sessionId }: { id: string; sub: SubagentState; sessionId: string }) {
   const { t } = useTranslation();
-  const st = subStatus(sub);
   const segs = usageSegments(sub, t, { model: false });
   const times = timeSegments(sub, t, Date.now());
   const model = modelShort(sub.usage?.resolvedModel);
@@ -70,7 +70,7 @@ function SubCard({ id, sub, sessionId }: { id: string; sub: SubagentState; sessi
       }}
     >
       <span className="hub-row-head">
-        <span className={"sub-dot st-" + st}>{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
+        <SubStatusPill sub={sub} />
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {sub.streaming ? <SubControls sessionId={sessionId} agentId={id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
         {model ? <span className="hub-model">{model}</span> : null}

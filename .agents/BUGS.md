@@ -77,6 +77,7 @@
 | BUG-079 | 动效全局降级连环案：设置标题歧义致用户误关动效 + 0.01ms 时长覆写钉死 JS 定位浮层坐标 | 2026-10-17 |
 | BUG-080 | 排队消息幽灵条目：host-idle 竞态直通消费后 QueueCard 永不清除，编辑报「暂存排队消息不存在: 0」（BUG-071 已知残留转正） | 2026-10-17 |
 | BUG-081 | 升级底座 18.11.3：旧补丁 bun 自动适配错位打歪 virtual-module，`bun patch --commit` 中断重装又把错位状态固化成新补丁 | 2026-10-17 |
+| BUG-082 | 安装版远程控制整站 404——`staticRoot()` 用 `/$bunfs` 字符串判编译态，Windows 编译版前缀是 `B:\~BUN\root`，判据失效后回落到虚拟路径 | 2026-10-18 |
 
 ---
 
@@ -1073,6 +1074,8 @@ if (!multi && qi < askQs.length - 1) goTo(qi + 1);
 
 **教训**：①「存储顺序即优先级」这类契约必须覆盖**生产的解析入口**——`credentials.get()`（无 sessionId）与 `getApiKey(provider, sessionId)`（有 sessionId）是两条不同代码路径，只断言前者等于没测；②底座把 session 亲和实现成「哈希起点」而非「亲和记录优先」时，任何上层排序语义都会被静默旁路，改排序前先确认选择器起点从哪来。
 
+**复发（2026-10-17）**：用户次日报优先级仍不生效。本仓补丁与 host 代码都已提交（6634f5f），但本机 `node_modules/@oh-my-pi/pi-ai/src/auth/select.ts` 仍是原始包内容——patch 落盘只在 `bun install` 重新装配时发生，提交 patch 文件 ≠ 生效，昨晚验证后未再重装（或后续某次依赖变动把未打补丁的包装了回来），dev 环境一路裸奔；用户日常跑的安装版更是修复前（0.1.0）构建。`bun install` 重装两包后补丁就位，`smoke:provider-order` 复跑通过。**事故链最后一环**：用户当天 15:52 重新打包（host-dist 15:52 / MSI 15:53）仍早于 16:03 的补丁装配，产物 exe 哈希与装配后重构建不一致——打包吃的是 node_modules 现状，`patches/` 目录里的文件对打包零作用。教训：**patchedDependencies 的唯一生效凭据是 node_modules 里的文件内容**——动过 patch 或依赖后，必须重跑 `bun install` 并抽查目标文件（`#getCredentialOrder` 是否还有 `#getHashedIndex`），打包/发布前同样先确认装配态；"脚本绿过一次"或"patch 在仓库里"都不等于"当前环境仍是绿的"。
+
 ### BUG-075: 安装版远程控制整页 404——Tauri bundle 只映射 host-dist，ui/dist 从未进包
 
 **现象**：浏览器打开远程控制 URL（`http://<ip>:16800/?t=<key>`）整页返回 404「not found」。分诊：②确认存量缺陷（远程控制上线起，编译布局下静态服务从未工作过；dev 布局 `bun host/host.ts` 下 `import.meta.dir/..` 指向仓库 `ui/dist`，冒烟全绿，掩盖了问题）。
@@ -1164,5 +1167,19 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证（全部实跑）**：`host:build` 通过；编译产物 `host-dist/omp-host.exe` 以 `omp-desktop-test` profile 启动打印 `READY ws://127.0.0.1:<port>`（pi-natives zstd 内嵌解帧正常）；`bun run smoke` 与 `smoke:features` 全绿；`bun run ui:typecheck`、`bun run check` 十步全绿。
 
 **教训**：①BUG-065 教训①升级版——不仅「bun 应用旧补丁按行号落地」不可信，`bun patch` 的编辑/提交流程本身也不可信，中断后会静默用错基线生成补丁；唯一可靠路径是在 tarball 干净副本上落改动、自产 diff；②升级底座后判据顺序：`grep 补丁符号` 结构验证 → `host:build` → **exe 启动 READY** → 冒烟，缺一不可（源码冒烟过≠编译产物能启动，BUG-065 教训③仍有效）；③补丁应用成功后先 `sed -n` 抽查结构错位（注释中间插行、悬空块），一眼可辨，胜过全绿假象。
+
+### BUG-082: 安装版远程控制整站 404——`staticRoot()` 用 `/$bunfs` 字符串判编译态，Windows 编译版前缀是 `B:\~BUN\root`，判据失效后回落到虚拟路径
+
+**日期**：2026-10-18
+
+**现象**：安装版（`C:\Program Files\omp-desktop`）远程控制地址 `http://<LAN-IP>:16800/?t=<key>` 返回纯文本 `not found`（HTTP 404），任何路径（`/`、`/index.html`、`/assets/app.js`）全 404；exe 旁的 `ui/dist/index.html` 明明存在。WS 通道不受影响，所以表现为「连上但白屏 404」。
+
+**根因**：`host/remote.ts` 的 `staticRoot()` 判据是 `import.meta.dir.startsWith("/$bunfs")`。实测（编译探针 exe 打印）Windows 编译版 `import.meta.dir = B:\~BUN\root`、`import.meta.url = file:///B:/%7EBUN/root/...` —— 判据为 false，于是走进 dev 分支 `join(import.meta.dir, "..", "ui", "dist")` = `B:\~BUN\ui\dist`（`existsSync=false`）→ 404。POSIX 侧同样脆弱：新版 Bun 的虚拟根拼写已从 `/$bunfs/root` 变成 `/$$bunfs/root`，字符串判据跨版本/跨平台不可靠，而 `ui/dist` 并未内嵌进 exe（`scripts/build-host.ts` 只嵌 native addon 与 prompt 镜像）。
+
+**修复**：`staticRoot()` 改为存在性探测——先看 `dirname(process.execPath)/ui/dist`（bundle 布局，`tauri.windows|macos.conf.json` 把 `../ui/dist` 映射为 `ui/dist`），否则回落到 `import.meta.dir/../ui/dist`（dev 布局）。
+
+**验证**：①编译探针（把 `host/remote.ts` 真代码编进小 exe，exe 旁放 `ui/dist`）打印 `bunfs_check=false`、`old_root=B:\~BUN\ui\dist exists=false`、`exec_side=…\ui\dist exists=true`，HTTP `GET /`、`/index.html`、`/assets/app.js` 修复前 404、修复后 200 且返回 index.html 正文；②`probe-remote.ts`（dev 布局）44 项断言全绿，含矩阵 5 静态服务（`GET /` 200、路径穿越 400/404、非 GET 405）无回归；③`bun run check` 十步全绿。
+
+**教训**：①**判定「是不是编译产物」不能靠 `import.meta.dir`/`import.meta.url` 的字符串前缀**——该拼写 Bun 改过（`/$bunfs` → `/$$bunfs`）且 Windows 用 `B:\~BUN\root`；要从磁盘布局反推（探测候选路径存在性，或 `dirname(process.execPath)`）；②「dev 路径能跑通」的探针天然测不到编译布局——凡运行时按 `import.meta.dir` 分辨布局的代码路径，都必须在**真编译产物**上冒烟（本例 `probe-remote.ts` 只 spawn `bun host/host.ts`，所以整站 404 逃逸到用户手上）；③修完后用户手上已装版本仍是坏的，需重新构建安装包才生效。
 
 

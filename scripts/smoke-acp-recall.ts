@@ -25,10 +25,11 @@
 //      plus 4 older probe leftovers — all swept here, then the sessions dir
 //      must be empty
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-recall.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-recall.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,7 +45,7 @@ import type { AcpSummaryData } from "../host/acp-runtime.ts";
 import { AcpRuntimeState, createCompressContextTool, createAcpProjectionExtension } from "../host/acp-runtime.ts";
 import { createRecallBlockTool } from "../host/acp-recall-tool.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
@@ -383,7 +384,14 @@ function findFileContaining(dir: string, needle: string): string | null {
 	const sessionDir = dirname(sessionManager.getSessionFile()!);
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "e2e session dir fully removed (incl. lock files)");
-	rmSync(cwd, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: C e2e — pair recalled on the wire; recall product re-enters the manifest; giant recall capped + spilled");
 }
 
@@ -401,7 +409,15 @@ function findFileContaining(dir: string, needle: string): string | null {
 	console.log(`residue sweep: ${targets.length} mapping dirs under ${sessionsRoot}: ${targets.join(", ")}`);
 	for (const name of targets) rmSync(join(sessionsRoot, name), { recursive: true, force: true });
 	const after = existsSync(sessionsRoot) ? readdirSync(sessionsRoot) : [];
-	assert.equal(after.length, 0, `sessions dir must end empty, still holds: ${after.join(", ")}`);
+	// Only this sweep's own residue is ours to clear. The old `after.length === 0`
+	// assertion also failed on unrelated mapping dirs other smokes (or the user)
+	// left in the shared profile, which made this smoke unrunnable on a machine
+	// with any residue — assert on our prefixes, report the rest.
+	const leftovers = after.filter(
+		(name) => name.startsWith("-tmp-") || name.includes("acp-t7-") || name.includes("acp-t5-"),
+	);
+	assert.equal(leftovers.length, 0, `ACP smoke residue must be swept, still holds: ${leftovers.join(", ")}`);
+	if (after.length > 0) console.log(`note: ${after.length} unrelated dirs left untouched under ${sessionsRoot}: ${after.join(", ")}`);
 }
 
 console.log("\nALL ACP T5 RECALL BLOCK SMOKE CHECKS PASSED");

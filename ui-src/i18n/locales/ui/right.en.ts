@@ -91,6 +91,11 @@ export const rightEn = {
   subTools: "{{n}} tools",
   subStarted: "started {{time}}",
   subElapsed: "elapsed {{duration}}",
+  // ---- subagent status capsule (hub roster rows + subagent tab cards) ----
+  subStRunning: "Running",
+  subStCompleted: "Completed",
+  subStFailed: "Failed",
+  subStAborted: "Aborted",
   // ---- Agent Hub (middle card; double-tap ← in an empty composer opens it; right sidebar links) ----
   hubTitle: "Agent Hub",
   hubFlat: "Flat",

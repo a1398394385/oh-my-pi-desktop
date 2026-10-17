@@ -56,6 +56,10 @@ const ALLOWED_EDGES = new Set([
   "acp-refs.ts→acp-persist.ts", "acp-refs.ts→acp-fingerprint.ts",
   "acp-runtime.ts→acp-status-tool.ts", "acp-status-tool.ts→acp-plan.ts",
   "session-lifecycle.ts→acp-status-tool.ts",
+  // 18.5 background jobs (auto-backgrounded bash/eval + background task tools):
+  // async-jobs.ts is the pure bg_jobs payload/correction module; rpc/session replies
+  // with it and session-lifecycle pushes the load backlog + turn_start correction
+  "async-jobs.ts→state.ts", "session-lifecycle.ts→async-jobs.ts", "rpc/session.ts→async-jobs.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",

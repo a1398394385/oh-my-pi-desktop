@@ -1,6 +1,6 @@
 // ACP T1 smoke: block model + projection core (spec §3/§4, acceptance matrix 1/2/9-adjacent).
 // Pure-function assertions, single-process bun run; touches no profile state.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-projection.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-projection.ts
 import assert from "node:assert/strict";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import type { AgentMessage, AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";

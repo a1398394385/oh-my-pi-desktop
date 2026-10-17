@@ -19,6 +19,7 @@ import {
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
@@ -177,32 +178,9 @@ export async function handleListSessions(ws: any) {
 }
 
 
-// 18.5 background job rows for the bg_jobs frame: snapshot list (running +
-// recent, already owner-scoped by the base) enriched per id with inspection
-// data (command/cwd only exist on process-backed jobs; pids are live only
-// while running). Deduped by id in case a row transitions between lists.
-// `type`/`label` come off the snapshot item itself: process-less jobs (eval
-// cells, task rows) have no command, so the label is their only title.
-function bgJobsPayload(session: PoolEntry["session"]) {
-  const snapshot = session.getAsyncJobSnapshot?.();
-  if (!snapshot) return [];
-  const rows = new Map<string, { id: string; status?: string; type?: string; label?: string }>();
-  for (const job of [...(snapshot.running ?? []), ...(snapshot.recent ?? [])]) rows.set(job.id, job);
-  return [...rows.values()].map((job) => {
-    const inspected = session.inspectAsyncJob?.(job.id);
-    return {
-      id: job.id,
-      type: typeof job.type === "string" ? job.type : "unknown",
-      label: typeof job.label === "string" && job.label ? job.label : null,
-      command: inspected?.command ?? null,
-      cwd: inspected?.cwd ?? null,
-      pids: Array.isArray(inspected?.pids) ? inspected.pids : [],
-      exitCode: typeof inspected?.exitCode === "number" ? inspected.exitCode : null,
-      running: job.status === "running",
-    };
-  });
-}
-
+// 18.5 background job rows for the bg_jobs frame: assembled by bgJobsPayload in
+// async-jobs.ts (shared with the load backlog + turn_start broadcast in
+// session-lifecycle.ts)
 // The session whose jobs a bg_jobs reply describes: the pooled one, or the
 // selected subagent's own session (its owner scope filters the shared manager
 // down to the jobs that subagent started). A parked/finished subagent has no

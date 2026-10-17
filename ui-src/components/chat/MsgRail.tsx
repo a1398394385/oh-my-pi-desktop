@@ -57,6 +57,11 @@ const RAIL_W_MUSIC = 2.2; // extra length multiplier at full band energy (bass a
 // Subtracting this floor remaps the useful range onto 0..1: quiet passages fall
 // back to the resting length, hits reach the full stretch.
 const RAIL_MUSIC_FLOOR = 0.32;
+// A capture keeps streaming frames while nothing is playing (normalized bands sit at
+// zero: the Rust analyzer subtracts its noise floor). Below this the stream carries
+// silence, not music — the pointer must keep owning the widths, or the rail freezes
+// flat and the hover mountain never appears.
+const RAIL_MUSIC_SILENT = 0.02;
 let railGain = new Float32Array(0); // per-tick pointer gain (1 = untouched)
 let railMusicGain = new Float32Array(0); // per-tick band energy, floor-remapped to 0..1
 let railMusicActive = false; // a capture is streaming frames
@@ -389,7 +394,11 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     const off = onSpectrum(({ bands, active }) => {
       const n = railMusicGain.length;
       if (!n) return;
-      railMusicActive = active;
+      let loudest = 0;
+      for (const v of bands) if (v > loudest) loudest = v;
+      // Silence downgrades to pointer-driven: a running capture is not the same as
+      // audible music (WASAPI/ScreenCaptureKit keep emitting zero-energy frames).
+      railMusicActive = active && loudest > RAIL_MUSIC_SILENT;
       // Bass-heavy mapping: the low spectrum carries most musical energy, so
       // the upper ticks read from the upper bands of a compressed range.
       for (let j = 0; j < n; j++) {

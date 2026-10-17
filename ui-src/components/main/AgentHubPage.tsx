@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, send, openSessionByPath } from "../../store";
 import { expandRightPanel } from "./right/tabs";
 import { SubControls, SteerInput } from "../shared/agent/SubControls";
+import { SubStatusPill } from "../shared/agent/SubStatusPill";
 import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, type SegT } from "../shared/agent/subShared";
 import type { SubagentState } from "../../types/session";
 
@@ -254,7 +255,6 @@ export default function AgentHub() {
 
 function HubRow({ row, flat, selected, onSelect, t, sessionId }: { row: Row; flat: boolean; selected: boolean; onSelect: () => void; t: SegT; sessionId: string }) {
   const { sub } = row;
-  const st = subStatus(sub);
   const segs = usageSegments(sub, t, { model: false });
   const times = timeSegments(sub, t, Date.now());
   // "active N ago" measures from the last activity (registered + elapsed), not registration
@@ -281,7 +281,7 @@ function HubRow({ row, flat, selected, onSelect, t, sessionId }: { row: Row; fla
         {row.prefix ? (
           <span className="hub-branch text-faint">{row.prefix}</span>
         ) : null}
-        <span className={"sub-dot st-" + st}>{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
+        <SubStatusPill sub={sub} />
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {flat && sub.parent && sub.parent !== "Main" ? <span className="text-faint"> ↳ {sub.parent}</span> : null}
         {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onSteer={() => setSteerOpen((v) => !v)} /> : null}

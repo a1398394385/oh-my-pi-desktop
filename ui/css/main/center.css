@@ -1,4 +1,4 @@
-.chat-head > .win-controls { margin-right: -12px; }
+.chat-head > .win-controls { margin-right: -10px; } /* .chat-head padding (16px) minus the 6px card-edge breathing room */
 
 #main {
   display: flex; flex-direction: column;
@@ -42,6 +42,18 @@ html[data-platform="macos"] body:has(#sidebar.collapsed) #sidebarToggle {
   position: fixed;
   left: var(--top-toggle-left);
   top: var(--top-toggle-top);
+}
+/* Windows: same in-place toggle, pinned to the window's top-left corner — the exact
+   coords the expanded .side-collapse uses (sidebar.css, inset 14px so the button sits
+   inside the center card), so the pointer never moves between collapsing and expanding */
+html[data-platform="windows"] body:has(#sidebar.collapsed) .chat-head {
+  padding-left: calc(14px / var(--ui-zoom, 1) + 26px + 8px - var(--shell-gap));
+}
+html[data-platform="windows"] body:has(#sidebar.collapsed) #sidebarToggle {
+  position: fixed;
+  right: auto;
+  left: calc(14px / var(--ui-zoom, 1));
+  top: calc(19px / var(--ui-zoom, 1));
 }
 /* macOS: same in-place toggle for the right panel. Expanded, its collapse button is the
    last .sp-head child: right edge = width − shell-gap − 6px padding, center = gap + 24.

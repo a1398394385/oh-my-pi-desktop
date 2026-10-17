@@ -17,10 +17,11 @@
 //      the identical entry
 //   D  restart replay determinism (spec §3 MUST: compress -> restart -> same
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-pull.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-pull.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,6 +37,7 @@ import { createRecallBlockTool } from "../host/acp-recall-tool.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 import type { AcpParams, AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
 const { AuthStorage } = await import("@oh-my-pi/pi-coding-agent/session/auth-storage");
 const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
@@ -327,7 +329,7 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	// live on model-facing surfaces; the journaled context_status tool result is an
 	// ordinary stored message and legitimately carries bN rows.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const raw = await Bun.file(sessionFile).text();
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 1, "exactly one acpSummary on disk");
 	const summaryId = sessionManager
@@ -348,11 +350,25 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdC, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler retries after
+		// teardown.
+		try {
+			rmSync(cwdC, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "C session dir fully removed (incl. lock files)");
-	rmSync(cwdC, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdC, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: C e2e — status -> compress(keep=[bN]) -> recall(outcome bN) flow; JSONL persists entry ids only");
 }
 
@@ -388,7 +404,7 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 
 	// Restart: reopen from disk, rebuild, replay. Same journal -> same numbers.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	await sessionManager.close();
 	const reopened = await SessionManager.open(sessionFile, undefined, undefined, { suppressBreadcrumb: true });
 	const entries2 = reopened.getEntries();
@@ -423,11 +439,25 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdD, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler retries after
+		// teardown.
+		try {
+			rmSync(cwdD, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "D session dir fully removed (incl. lock files)");
-	rmSync(cwdD, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdD, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: D restart replay — same numbering for live/folded/summary ids; old short refs resolve identically");
 }
 

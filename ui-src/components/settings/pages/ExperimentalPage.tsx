@@ -19,7 +19,7 @@ import {
   type AudioDevice,
 } from "../../chat/railAudio";
 
-const TIER_DEFAULTS_K = ["100", "200", "300"]; // placeholder lines when a tier value is unconfigured
+const TIER_DEFAULTS_K = ["150", "250", "350"]; // placeholder lines when a tier value is unconfigured
 
 /** Format ms → "8m"/"1h30m"/"45s" for display (the host-side parser accepts the same syntax for writes) */
 function fmtDur(ms: number): string {

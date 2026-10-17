@@ -69,6 +69,11 @@ profileReady.catch((err) => {
 const wsHandlers = makeWsHandlers(profileReady);
 const server = Bun.serve<{ sessionId: string | null }>({
   port: 0, // Dynamic port: a fixed one would clash when multiple workspaces run the same app in parallel
+  // Loopback-only: this channel carries no auth (the Tauri webview, smoke scripts and the
+  // ?ws= browser dev direct-connect all reach it via 127.0.0.1). The LAN-facing, key-gated
+  // sibling lives in host/remote.ts — without this, Bun's 0.0.0.0 default would expose full
+  // unauthenticated agent control to the network.
+  hostname: "127.0.0.1",
   async fetch(req, srv) {
     if (srv.upgrade(req)) return;
     const statsRes = await handleStatsHttp(req, srv);

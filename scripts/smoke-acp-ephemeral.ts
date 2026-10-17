@@ -26,10 +26,11 @@
 //   G  tokenizer rebind (spec §8, T3 leftover) — model switch swaps the
 //      counter and clears the memo
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directory at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-ephemeral.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-ephemeral.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -49,7 +50,7 @@ import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host
 import { createAcpStatusTool } from "../host/acp-status-tool.ts";
 import { assertToolPairing } from "../host/acp-projection.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
@@ -514,7 +515,7 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 
 	// History stays clean: the ephemeral is a projection-time injection only.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const raw = await Bun.file(sessionFile).text();
 	assert.ok(!raw.includes("[compress-hint]"), "no [compress-hint] residue in the session JSONL");
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 1, "exactly one acpSummary entry on disk");
@@ -525,11 +526,25 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	// runs), recreating the session dir — remove again from an exit handler.
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdE2E, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler below retries after
+		// teardown.
+		try {
+			rmSync(cwdE2E, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwdE2E, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdE2E, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: F e2e — real manifest drove the compress round; wire/journal behavior correct; profile cleaned");
 }
 

@@ -58,6 +58,17 @@ html[data-platform="macos"] #sidebar > .side-collapse {
   left: var(--top-toggle-left);
   top: var(--top-toggle-top);
 }
+/* Windows: no traffic lights to clear, so the button lives in the window's top-left
+   corner. 14px puts it inside the center card's left edge (8px shell gap + 6px) rather
+   than straddling that edge; the collapsed-state expand button (#sidebarToggle) reuses
+   these exact viewport coords (center.css), which is what makes the sidebar toggle in
+   place without moving the mouse. */
+html[data-platform="windows"] #sidebar > .side-collapse {
+  position: fixed;
+  right: auto;
+  left: calc(14px / var(--ui-zoom, 1));
+  top: calc(19px / var(--ui-zoom, 1));
+}
 /* inputs inside the sidebar (rename/new project) regain selection and editing */
 #sidebar input, #sidebar textarea { user-select: text; -webkit-user-select: text; }
 #sidebar > :not(.side-collapse) {

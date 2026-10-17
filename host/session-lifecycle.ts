@@ -61,6 +61,7 @@ import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
 import { dispatchFromToolEnd, installProposalHandler, pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { handleVoiceEvent } from "./voice.ts";
+import { bgJobsCorrection, bgJobsPayload } from "./async-jobs.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
@@ -394,6 +395,8 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
   // it when the card is pushed (same-session tools are serial, a single
   // value slot cannot cross-contaminate)
   let askIntent: string | undefined;
+  // bg_jobs latch (see bgJobsCorrection): keeps the "all finished" correction frame flowing
+  let bgJobsHadRunning = false;
   // Realtime queue push coalescing (shared by the onQueueChange subscription
   // below and the user message_start injection confirmation): bursts of queue
   // mutations (park + release + steer in one operation) coalesce into one
@@ -421,6 +424,16 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     // After the todo tool persists, push the latest task list (TodoTracker updates after the tool result)
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       bus.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
+    }
+    // Background jobs (18.5): a finished job's async-result delivery resumes the loop as
+    // a fresh turn, so turn_start corrects the composer badge (auto-backgrounded bash
+    // goes silent after "Backgrounded as job"; subagent tabs pull their own scope)
+    if (ev.type === "turn_start") {
+      const correction = bgJobsCorrection(entry.session, bgJobsHadRunning);
+      if (correction) {
+        bgJobsHadRunning = correction.hadRunning;
+        bus.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId, jobs: correction.jobs })));
+      }
     }
     // Plan approval rides a `write` to xd://propose, dispatched OUT of band
     // exactly like the base TUI's event-controller (issue #7684): awaiting it
@@ -913,6 +926,7 @@ async function pushSessionSnapshot(
   pushGoal(sessionId); // Goal state backlog (session state card goal area; rebuild pushes after restore)
   pushContext(ws, sessionId, entry); // rebuild: initial context usage (system prompt + history)
   pushSessionStats(ws, sessionId, entry); // Whole-session stats (otherwise stats stay empty after the frontend rebuilds objects; reload restarts the in-memory duration from 0)
+  ws.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId, jobs: bgJobsPayload(entry.session) }))); // bg jobs backlog (async-jobs.ts: badge would go stale after reload)
   // Subagent history replay (child run files live in the sibling artifacts dir; the
   // frontend store is empty on both replaying paths, so the full tool stream is safe)
   const replaySubagents = req.mode === "rebuild" ? true : req.replaySubagents;
