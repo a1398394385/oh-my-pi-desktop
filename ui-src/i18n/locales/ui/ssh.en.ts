@@ -1,7 +1,7 @@
-// en copy for the ssh domain (welcome remote-connection dialog). Keys are
-// prefixed `ssh.` — see ui-src/i18n/README.md.
+// en copy for the ssh domain (welcome remote-connection dialog + settings SSH
+// hosts page). Keys are prefixed `ssh.` — see ui-src/i18n/README.md.
 export const sshEn = {
-  // RemoteDialog.tsx
+  // RemoteDialog.tsx + SshPage.tsx
   title: "Remote Connection",
   desc: "Connect a remote workspace on an SSH host (native OMP ssh:// support)",
   hostSection: "SSH Host",
@@ -42,6 +42,9 @@ export const sshEn = {
   connectedToast: "Connected to {{label}} — send a message to start",
   connFail: "Connection failed",
   cancel: "Cancel",
+  // SshPage.tsx
+  nav: "SSH Hosts",
+  addHost: "Add Host",
 };
 
 export default sshEn;

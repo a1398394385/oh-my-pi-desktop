@@ -45,6 +45,7 @@ import type {
   SttDownloadProgressFrame, SttDraftFrame, SttStateFrame, SttSubmitFrame, SttTestResultFrame, SubagentControlledFrame,
   SubagentEventFrame, SubagentLifecycleFrame, SubagentProgressFrame, TtsDeltaFrame, TtsFlushFrame, TtsStopFrame,
   VoiceStatusFrame,
+  CollabStateFrame, WorktreeCreatedFrame, WorktreeRemovedFrame, WorktreeStatusResultFrame,
 } from "./frames-live";
 
 export * from "./payloads";
@@ -181,4 +182,8 @@ export type HostFrame =
   | OpenRightTabFrame
   | KickedFrame
   | RemoteConfigFrame
-  | RemoteKeyFrame;
+  | RemoteKeyFrame
+  | CollabStateFrame
+  | WorktreeCreatedFrame
+  | WorktreeStatusResultFrame
+  | WorktreeRemovedFrame;

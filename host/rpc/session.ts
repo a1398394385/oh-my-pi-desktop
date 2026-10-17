@@ -20,6 +20,7 @@ import {
   attachEntry,
 } from "../session-lifecycle.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
+import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../i18n/host.ts";
@@ -524,6 +525,12 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // agent_end/turn events — no extra wind-down needed.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    // Collab guest: aborts relay to the host over the wire (the local replica
+    // has no in-flight run of its own); still ack so the UI button resets.
+    if (relayGuestAbort(String(msg.sessionId))) {
+      ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
+      return;
+    }
     await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
     ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
   },

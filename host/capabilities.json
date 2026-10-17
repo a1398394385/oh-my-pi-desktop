@@ -954,6 +954,48 @@
       "kind": "settings",
       "risk": "write",
       "note": "重新生成 remote.accessKey 并持久化；旧 key 立即失效（新连接 401，已连上的不断开）"
+    },
+    {
+      "id": "collab_start",
+      "kind": "session",
+      "risk": "write",
+      "note": "会话上发起 collab 房间：可选 relayUrl（空=collab.relayUrl 设置→wss://my.omp.sh），成功/失败均回 collab_state 帧；turn 进行中允许发起（fork 语义）"
+    },
+    {
+      "id": "collab_join",
+      "kind": "session",
+      "risk": "write",
+      "note": "按链接加入 collab 房间：SDK 切换本会话到 replica 文件，错误内联进 collab_state 帧"
+    },
+    {
+      "id": "collab_leave",
+      "kind": "session",
+      "risk": "write",
+      "note": "离开 collab（guest 恢复原会话文件；host 向 registry 撤房），回 collab_state 帧"
+    },
+    {
+      "id": "collab_state",
+      "kind": "session",
+      "risk": "read",
+      "note": "读当前协作角色/链接/参与者；参与者变化经 statusLine seam 实时推同型帧（host 角色）"
+    },
+    {
+      "id": "worktree_create",
+      "kind": "git",
+      "risk": "write",
+      "note": "建 git worktree（分支 omp/desktop/<slug>，路径 profile 内 wt 根），冲突自动后缀；失败回滚孤儿分支"
+    },
+    {
+      "id": "worktree_status",
+      "kind": "git",
+      "risk": "read",
+      "note": "读 worktree 存在性/分支/dirty 三列计数（移除流程的权威复核）"
+    },
+    {
+      "id": "worktree_remove",
+      "kind": "git",
+      "risk": "destructive",
+      "note": "移除 worktree 目录；dirty 未 force 拒绝并回计数；分支保留不删"
     }
   ]
 }

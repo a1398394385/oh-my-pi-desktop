@@ -14,7 +14,7 @@ export type HostRequestMethod =
   "automations_delete" | "automations_list" | "automations_preview" | "automations_run_now" | "automations_toggle" | "automations_update" |
   "bash_abort" | "bash_complete" | "bash_exec" | "branch_session" | "browser_input" | "browser_mirror_select" |
   "browser_mirror_subscribe" | "browser_mirror_unsubscribe" | "btw_ask" | "btw_cancel" | "btw_history" | "btw_promote" |
-  "cancel_bg_job" | "compact_session" | "complete_text" | "control_subagent" | "create_session" | "cycle_model" |
+  "cancel_bg_job" | "collab_join" | "collab_leave" | "collab_start" | "collab_state" | "compact_session" | "complete_text" | "control_subagent" | "create_session" | "cycle_model" |
   "delete_mcp_server" | "delete_session" | "drop_queued" | "fork_session" | "get_all_providers" | "get_bg_jobs" |
   "get_capabilities" | "get_capability_keys" | "get_context_detail" | "get_entry_tree" | "get_file_diff" | "get_git_branches" |
   "get_git_diff" | "get_keepalive_status" | "get_limits" | "get_messages" | "get_model_roles" | "get_models_catalog" |
@@ -36,7 +36,8 @@ export type HostRequestMethod =
   "ssh_list_dirs" | "ssh_list_hosts" | "ssh_remove_host" | "ssh_save_host" | "ssh_test_host" | "stt_download" |
   "stt_start" | "stt_stop" | "switch_git_branch" | "switch_profile" | "terminal_create" | "terminal_dispose" |
   "terminal_resize" | "terminal_write" | "test_kimi_cu" | "test_mcp_server" | "test_provider_model" | "toggle_extension_item" |
-  "toggle_extension_provider" | "toggle_extension_user_source" | "ui_error" | "voice_status";
+  "toggle_extension_provider" | "toggle_extension_user_source" | "ui_error" | "voice_status" |
+  "worktree_create" | "worktree_remove" | "worktree_status";
 
 /**
  * Typed request members (payload-checked). Grows one member per migrated

@@ -27,6 +27,8 @@ import Menu from "./Menu";
 import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
 import ArchiveGroup from "./ArchiveGroup";
+import WorktreeCreateDialog from "./WorktreeCreateDialog";
+import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import { computeSidebarSessionShortcuts, computeArchiveGroups } from "./util";
 
 // Content of the delete/remove confirm dialog
@@ -146,6 +148,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } session row context menu
   const [projMenu, setProjMenu] = useState<{ cwd: string; rect: DOMRect } | null>(null); // { cwd, rect } project row "⋯" menu
   const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } manual add-project popover anchor
+  const [wtCreateOpen, setWtCreateOpen] = useState(false); // worktree-session create dialog
+  const [wtRemove, setWtRemove] = useState<{ path: string } | null>(null); // worktree-remove confirm dialog target
   const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
   const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx, x, y, left, w, grabY }
   const dragRef = useRef<ProjDrag | null>(null); // latest drag state during pointer events; keeps high-frequency pointermove from reading a stale closure
@@ -505,6 +509,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
               <Icon name="messagePlus" size={17} />
               <span>{t("sidebar.newTask")}</span>
             </button>
+            <button className="ms-nav" id="navWorktree" onClick={() => setWtCreateOpen(true)}>
+              <Icon name="branch" size={17} />
+              <span>{t("worktree.navItem")}</span>
+            </button>
             <button className="ms-nav" id="navAutomations" onClick={() => {
               useAppStore.getState().setMobileCol("main"); // narrow: automations render in the chat column
               useAppStore.getState().openAutomations();
@@ -523,6 +531,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           <div className="nav-item" id="navNew" onClick={newTaskAction}>
             <Icon name="messagePlus" size={19} />
             {t("sidebar.newTask")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
+          </div>
+          <div className="nav-item" id="navWorktree" onClick={() => setWtCreateOpen(true)}>
+            <Icon name="branch" size={19} />
+            {t("worktree.navItem")}
           </div>
           <div className="nav-item" id="navAutomations" onClick={() => {
             useAppStore.getState().setMobileCol("main"); // narrow: automations render in the chat column
@@ -667,6 +679,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       {confirmDlg && (
         <ConfirmDialog {...confirmDlg} onClose={() => setConfirmDlg(null)} />
       )}
+      {wtCreateOpen && (
+        <WorktreeCreateDialog onClose={() => setWtCreateOpen(false)} />
+      )}
+      {wtRemove && (
+        <WorktreeRemoveDialog target={wtRemove} onClose={() => setWtRemove(null)} />
+      )}
       {sessCtx && (
         <SessCtxMenu
           entry={sessCtx.entry}
@@ -674,6 +692,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           y={sessCtx.y}
           onClose={() => setSessCtx(null)}
           onRename={(entry) => setRenaming({ key: sessCtx.key, path: entry.path })}
+          onRemoveWorktree={(entry) => entry.cwd && setWtRemove({ path: entry.cwd })}
         />
       )}
       {projMenu && (

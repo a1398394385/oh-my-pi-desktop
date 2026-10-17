@@ -12,6 +12,8 @@ import notify from "./ui/notify.zh";
 import hubExt from "./ui/hub-ext-zh-CN";
 import compExt from "./ui/comp-ext-zh-CN";
 import ssh from "./ui/ssh.zh";
+import worktree from "./ui/worktree.zh";
+import collab from "./ui/collab.zh";
 import autoList from "./ui/autoList.zh";
 import autoEdit from "./ui/autoEdit.zh";
 import remote from "./ui/remote.zh";
@@ -28,6 +30,8 @@ const zhCN = {
   hubExt,
   compExt,
   ssh,
+  worktree,
+  collab,
   autoList,
   autoEdit,
   remote,

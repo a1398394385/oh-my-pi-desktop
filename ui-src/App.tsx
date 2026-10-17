@@ -16,6 +16,7 @@ import Settings from "./components/settings/Settings";
 import BootSplash from "./components/BootSplash";
 import KickedScreen from "./components/main/KickedScreen";
 import SearchPalette from "./components/shared/SearchPalette";
+import CollabDialog from "./components/main/CollabDialog";
 import { REMOTE } from "./store/layout";
 
 function Toast() {
@@ -74,6 +75,7 @@ export default function App() {
       {/* Remote clients get no settings surface (spec §4.2); host denylist is the backstop. */}
       {!REMOTE && <Settings />}
       <SearchPalette />
+      <CollabDialog />
       {/* Takeover outranks every page: the stale app underneath stays mounted but blocked */}
       {kickedByOther && <KickedScreen />}
       <BootSplash />

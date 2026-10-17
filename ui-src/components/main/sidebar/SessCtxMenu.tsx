@@ -8,14 +8,18 @@ import Menu from "./Menu";
 import { copyText } from "./util";
 import type { SessionInfo } from "./SessionRow";
 
-export default function SessCtxMenu({ entry, x, y, onClose, onRename }: {
+export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWorktree }: {
   entry: SessionInfo;
   x: number;
   y: number;
   onClose: () => void;
   onRename: (entry: SessionInfo) => void;
+  onRemoveWorktree?: (entry: SessionInfo) => void;
 }) {
   const { t } = useTranslation();
+  // Only omp-managed worktrees (desktop-<slug>-<hash7> under the worktree root)
+  // get the remove entry; the host's status RPC re-validates authoritatively.
+  const isWorktreeCwd = !!entry.cwd?.includes("/.omp/wt/");
   const item = (label: string, fn: () => void, disabled = false) => (
     <button key={label} disabled={disabled} onClick={() => { onClose(); fn(); }}>{label}</button>
   );
@@ -40,6 +44,7 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename }: {
         );
       })}
       {item(t("sidebar.rename"), () => onRename(entry))}
+      {isWorktreeCwd && onRemoveWorktree && item(t("worktree.remove.title"), () => onRemoveWorktree(entry))}
       {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", sessionId: entry.id, archived: !entry.archived }))}
     </Menu>
   );

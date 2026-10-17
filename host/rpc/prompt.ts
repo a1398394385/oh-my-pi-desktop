@@ -26,6 +26,7 @@ import {
   cfgSkills,
 } from "../bootstrap.ts";
 import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
 import { readPluginsEnabled } from "../assets.ts";
@@ -521,6 +522,10 @@ async function handlePrompt(
   }
   if (!finalText && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
   if (!finalText) finalText = hostI18n.t("errors.prompt.imageOnlyFallback");
+  // Collab guest: prompts relay to the host over the wire instead of running
+  // the local replica (attachments included; read-only links refused inside
+  // the hook; local slash dispatch intentionally bypassed, matching the fork).
+  if (relayGuestPrompt(sessionId, finalText, images, ws)) return;
   // Local slash-command dispatch: if consumed, return directly (no transcript push, no prompt call); if rewritten, continue
   const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
   if (dispatched === null) return;

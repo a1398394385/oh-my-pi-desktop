@@ -22,6 +22,10 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
   const narrow = useAppStore((s) => s.narrow);
   const setMobileCol = useAppStore((s) => s.setMobileCol);
+  // Collab entry state: the open session's live-sharing role (button tint) + dialog opener
+  const collabSessionId = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.sessionId : undefined));
+  const collabState = useAppStore((s) => (collabSessionId ? s.collabStates.get(collabSessionId) : undefined));
+  const collabOpenDialog = useAppStore((s) => s.collabOpenDialog);
   const isSubagent = Boolean(session?.isSubagent);
   const title = isCreatingNew
     ? t("misc.newTask")
@@ -173,6 +177,18 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           onClose={() => setMoreMenu(null)}
           onRename={() => setRenaming(true)}
         />
+      )}
+      {/* Collab entry (host/join/leave live-sharing for the open session); tinted while a room is live */}
+      {ctxEntry && !renaming && (
+        <button
+          type="button"
+          className="icon-btn"
+          title={t("collab.entry")}
+          style={collabState?.role ? { color: "var(--green)" } : undefined}
+          onClick={() => collabOpenDialog()}
+        >
+          <Icon name="globe" size={15} />
+        </button>
       )}
       <span className="sp"></span>
       {narrow ? (

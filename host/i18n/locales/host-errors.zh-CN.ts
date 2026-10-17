@@ -197,6 +197,14 @@ export const hostErrorsZh = {
     profileRequired: "[host] 从源码树启动 host 时必须设置 OMP_PROFILE(如 OMP_PROFILE=omp-desktop-test),拒绝在 default profile 上启动。\n",
     extWritePollFailed: "[host] 外部写入轮询失败 {{path}}: {{detail}}\n",
   },
+  collab: {
+    sessionNotFound: "会话不在池中: {{sessionId}}",
+    guestActive: "请先离开当前协作会话再发起共享",
+    hostActive: "请先停止共享再加入其他协作会话",
+    linkRequired: "需要粘贴协作链接",
+    noRelay: "未配置 relay。请设置 collab.relayUrl 或填写 relay 地址。",
+    readOnly: "该协作链接为只读",
+  },
   mcp: {
     userCancelled: "用户中止生成",
   },

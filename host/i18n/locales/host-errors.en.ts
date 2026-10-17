@@ -193,6 +193,14 @@ export const hostErrorsEn = {
     profileRequired: "[host] OMP_PROFILE is required when running the host from the source tree (e.g. OMP_PROFILE=omp-desktop-test). Refusing to start on the default profile.\n",
     extWritePollFailed: "[host] External-write poll failed {{path}}: {{detail}}\n",
   },
+  collab: {
+    sessionNotFound: "Session not in pool: {{sessionId}}",
+    guestActive: "Leave the current collab session before hosting",
+    hostActive: "Stop hosting before joining another collab session",
+    linkRequired: "A collab link is required",
+    noRelay: "No relay configured. Set collab.relayUrl or provide a relay URL.",
+    readOnly: "This collab link is read-only",
+  },
   mcp: {
     userCancelled: "Generation cancelled by user",
   },

@@ -47,6 +47,10 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   // session.ts (11)
   "set_session_pinned", "archive_session", "set_project_expanded", "add_project", "remove_project",
   "reorder_projects", "delete_session", "rename_session", "compact_session", "branch_session", "fork_session",
+  // collab.ts (3): collab_state is a pure read and stays requestable
+  "collab_start", "collab_join", "collab_leave",
+  // worktree.ts (2): worktree_status is a pure read
+  "worktree_create", "worktree_remove",
 ]);
 
 export interface RemoteConfig {

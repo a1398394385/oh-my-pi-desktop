@@ -361,6 +361,12 @@ const ALLOWED_EDGES = new Set([
   "rpc/btw.ts→btw.ts", "rpc/btw.ts→bootstrap.ts", "rpc/btw.ts→state.ts",
   "rpc/btw.ts→session-lifecycle.ts", "rpc/btw.ts→stderr.ts", "rpc/btw.ts→rpc/types.ts",
   "rpc/index.ts→rpc/btw.ts",
+  // rpc/collab.ts: relay collab rooms over pooled sessions (statusLine seam fans live frames)
+  "rpc/collab.ts→state.ts", "rpc/collab.ts→i18n/host.ts", "rpc/collab.ts→stderr.ts",
+  "rpc/collab.ts→wire/frames-live.ts", "rpc/collab.ts→rpc/types.ts",
+  "rpc/index.ts→rpc/collab.ts", "rpc/prompt.ts→rpc/collab.ts", "rpc/session.ts→rpc/collab.ts",
+  // rpc/worktree.ts: git worktree session create/status/remove over Bun.spawn
+  "rpc/worktree.ts→rpc/types.ts", "rpc/index.ts→rpc/worktree.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
   // Host i18n (A8): the host-owned i18next instance lives in host/i18n/ (moved

@@ -22,6 +22,7 @@ import AppearancePage from "./pages/AppearancePage";
 import KeyboardPage from "./pages/KeyboardPage";
 import ExperimentalPage from "./pages/ExperimentalPage";
 import RemotePage from "./pages/RemotePage";
+import SshPage from "./pages/SshPage";
 import ComputerPage from "./pages/ComputerPage";
 import PluginsPage from "./pages/PluginsPage";
 import ExtensionsPage from "./pages/ExtensionsPage";
@@ -56,6 +57,7 @@ const NAV_SECTIONS = [
       { id: "pg-capabilities", icon: "bulb", label: "settingsPage.nav.capabilities" },
       { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
       { id: "pg-remote", icon: "globe", label: "settingsPage.nav.remote" },
+      { id: "pg-ssh", icon: "server", label: "ssh.nav" },
       { id: "pg-keyboard", icon: "keyboard", label: "settingsPage.nav.keyboard" },
     ],
   },
@@ -101,6 +103,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-keyboard": KeyboardPage,
   "pg-experimental": ExperimentalPage,
   "pg-remote": RemotePage,
+  "pg-ssh": SshPage,
   "pg-computer": ComputerPage,
   "pg-plugins": PluginsPage,
   "pg-extensions": ExtensionsPage,
