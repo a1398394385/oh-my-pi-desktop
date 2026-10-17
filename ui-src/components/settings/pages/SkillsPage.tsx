@@ -1,13 +1,13 @@
-// Settings · Skills page (React version): multi-directory discovery, enable toggles, search,
-// inline expand-down editing.
+// Settings · Skills page (React version): multi-directory discovery, enable toggles, search.
+// Create and edit open the page-level editor window (.set-edit-*), which replaces the whole
+// page body: create asks for the file name and the host writes skills/<name>/SKILL.md; edit
+// reads the file on mount and writes it back on save.
 // Logic ported 1:1 from ui/settings/skills.js; DOM cross-check git 464131d ui/index.html #pg-skills.
-// The editor uses the .mem-expand expand-down pattern (row .on highlight + caret rotation + popIn).
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
-import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
-import { confirmDialog, emptyRow } from "../common";
+import { confirmDialog, emptyRow, EditWindowHead } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources, refreshExtSources } from "../ExtSourceTag";
@@ -49,11 +49,161 @@ interface SkillSection {
   items: SkillItem[];
 }
 
+// Page-level skill editor window: replaces the whole page body for both flows.
+// Create: the name field goes out as asset_file_create; the host writes the template file and
+// replies with asset_file + agent_assets (list refresh), which closes the window.
+// Edit: mount reads the file (asset_file_read), save writes it back (asset_file_write), and the
+// asset_file_saved reply (which also re-lists the assets) closes the window with a toast.
+function SkillEditWindow({ skill, scope, onClose }: {
+  skill: SkillItem | null; // null = create
+  scope: { scope: string; cwd?: string };
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const isNew = !skill;
+  const assetFile = useAppStore((s) => s.assetFile);
+  const saved = useAppStore((s) => s.assetFileSaved);
+  const err = useAppStore((s) => s.assetErr);
+  const [name, setName] = useState("");
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState("");
+  // Replies that landed before this window mounted must not fire (both frames carry `at`)
+  const lastSaved = useRef(useAppStore.getState().assetFileSaved?.at ?? 0);
+  const lastErr = useRef(useAppStore.getState().assetErr?.at ?? 0);
+  const seenFile = useRef<unknown>(null);
+  const creating = useRef(false); // a create request is in flight
+
+  // Mount (edit) = read this skill's file
+  useEffect(() => {
+    if (skill) send({ type: "asset_file_read", kind: "skill", path: skill.path });
+  }, [skill]);
+
+  // asset_file reply: fills the editor (edit) or closes the window (create finished)
+  useEffect(() => {
+    if (!assetFile || assetFile.kind !== "skill" || seenFile.current === assetFile) return;
+    seenFile.current = assetFile;
+    if (isNew) {
+      if (!creating.current) return;
+      creating.current = false;
+      toast(t("settingsPage.skills.createdToast", { name }));
+      onClose();
+      return;
+    }
+    if (assetFile.path === skill!.path) {
+      setText(assetFile.content ?? "");
+      setStatus("");
+    }
+  }, [assetFile, isNew, skill, name, onClose, t]);
+
+  // asset_file_saved reply: toast then close (the host re-lists the assets on this frame)
+  useEffect(() => {
+    if (!saved || saved.kind !== "skill" || saved.at === lastSaved.current) return;
+    lastSaved.current = saved.at;
+    toast(t("settingsPage.skills.savedToast", { name: skill?.name ?? name }));
+    onClose();
+  }, [saved, onClose, skill, name, t]);
+
+  // Error landing (invalid name / already exists / read failure) stays in the window
+  useEffect(() => {
+    if (!err || err.kind !== "skill" || err.at === lastErr.current) return;
+    lastErr.current = err.at;
+    creating.current = false;
+    setStatus(err.message);
+  }, [err]);
+
+  const create = () => {
+    const clean = name.trim().toLowerCase();
+    if (!clean) {
+      toast(t("settingsPage.shared.nameFirst"));
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(clean)) {
+      toast(t("settingsPage.skills.nameInvalid"));
+      return;
+    }
+    setStatus(t("settingsPage.shared.saving"));
+    creating.current = true;
+    send({ type: "asset_file_create", kind: "skill", name: clean, ...scope });
+  };
+
+  const save = () => {
+    if (!skill) return;
+    setStatus(t("settingsPage.shared.saving"));
+    send({ type: "asset_file_write", kind: "skill", path: skill.path, content: text });
+  };
+
+  const onDelete = async () => {
+    if (!skill) return;
+    if (await confirmDialog({ title: t("settingsPage.skills.deleteTitle"), message: t("settingsPage.skills.deleteMsgUndo", { name: skill.name }), confirmText: t("common.delete"), danger: true })) {
+      send({ type: "asset_skill_delete", path: skill.path });
+      onClose();
+    }
+  };
+
+  return (
+    <>
+      <EditWindowHead
+        title={isNew ? t("settingsPage.skills.newTitle") : t("settingsPage.skills.editTitle")}
+        sub={isNew ? t("settingsPage.skills.nameHint") : skill!.path}
+        onBack={onClose}
+      >
+        {!isNew && (
+          <button type="button" className="save-btn danger" onClick={onDelete}>
+            {t("common.delete")}
+          </button>
+        )}
+        {isNew ? (
+          <button type="button" className="save-btn" onClick={create}>
+            {t("settingsPage.shared.create")}
+          </button>
+        ) : (
+          <button type="button" className="save-btn" onClick={save}>
+            {t("common.save")}
+          </button>
+        )}
+      </EditWindowHead>
+
+      <div className="set-card set-edit-card">
+        {isNew ? (
+          <div className="mcp-form-group">
+            <label className="mcp-form-label">{t("settingsPage.skills.nameLabel")}</label>
+            <input
+              type="text"
+              className="mcp-form-input mcp-form-code"
+              placeholder={t("settingsPage.skills.namePlaceholder")}
+              spellCheck={false}
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") create();
+              }}
+            />
+          </div>
+        ) : (
+          <div className="mcp-form-group">
+            <label className="mcp-form-label">{t("settingsPage.skills.editTitle")}</label>
+            <textarea
+              className="mcp-form-textarea mcp-form-code"
+              rows={24}
+              spellCheck={false}
+              placeholder={t("settingsPage.skills.editPlaceholder")}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </div>
+        )}
+        {status ? <div className="mcp-form-hint">{status}</div> : null}
+      </div>
+    </>
+  );
+}
+
 export default function SkillsPage() {
   const { t } = useTranslation();
-  // Render data via field selectors: agentAssets / assetFile / assetFileSaved landing frames
-  // all swap in fresh references; the optimistic write in onToggle also goes through the
-  // setState reference-swap chain (see onToggle), so field subscriptions notice it
+  // Render data via field selectors: the agentAssets landing frame swaps in a fresh reference;
+  // the optimistic write in onToggle also goes through the setState reference-swap chain
+  // (see onToggle), so field subscriptions notice it
   const agentAssets = useAppStore((s) => s.agentAssets);
   const hostSettings = useAppStore((s) => s.hostSettings);
   // Skills master switch (base skills.enabled, defaults to on); when off the rest of the page's controls are dimmed and disabled
@@ -62,12 +212,8 @@ export default function SkillsPage() {
   const [query, setQuery] = useState("");
   const [moreOpen, setMoreOpen] = useState(false); // more menu
   const [spin, setSpin] = useState(false); // refresh button spin
-  const [openPath, setOpenPath] = useState<string | null>(null); // path of the skill being edited expand-down (null = collapsed)
-  const [editText, setEditText] = useState(""); // editor content (locally controlled)
-  const [editLoading, setEditLoading] = useState(false); // waiting for the asset_file reply to fill content
-  const [editStatus, setEditStatus] = useState(""); // saving… / saved
-  const seenStamp = useRef<unknown>(null); // already-consumed asset_file_saved reply (dedup by reference)
-  const statusTimer = useRef<TimerHandle | undefined>(undefined);
+  // Open editor window (replaces the page body): "new" or the skill being edited; null = list
+  const [edit, setEdit] = useState<{ mode: "new" } | { mode: "edit"; skill: SkillItem } | null>(null);
   useExtSources(); // extension-center data for all scopes (for matching inline source badges)
 
   const allProjects = useAppStore((s) => s.allProjects);
@@ -114,42 +260,11 @@ export default function SkillsPage() {
     };
   }, [moreOpen]);
 
-  // asset_file reply: fill the editor if it matches the current expanded row
-  const assetFile = useAppStore((s) => s.assetFile);
-  useEffect(() => {
-    if (openPath && editLoading && assetFile && assetFile.kind === "skill" && assetFile.path === openPath) {
-      setEditText(assetFile.content ?? "");
-      setEditLoading(false);
-    }
-  });
-
-  // asset_file_saved reply: expanded area status line shows "saved", cleared after 2s
-  const assetFileSaved = useAppStore((s) => s.assetFileSaved);
-  useEffect(() => {
-    const st = assetFileSaved;
-    if (!st || st.kind !== "skill" || seenStamp.current === st) return;
-    seenStamp.current = st; // mark consumed regardless of whether the expanded area is still open, to prevent replays
-    if (!openPath) return;
-    setEditStatus(t("settingsPage.shared.saved"));
-    clearTimeout(statusTimer.current);
-    statusTimer.current = setTimeout(() => setEditStatus(""), 2000);
-  }, [assetFileSaved, openPath]);
-  useEffect(() => () => clearTimeout(statusTimer.current), []);
-
   // ---------- Interaction (1:1 port of the old event bindings) ----------
   function toggleSkills() {
     const next = !skillsEnabled;
     send({ type: "set_skills_enabled", enabled: next });
     toast(next ? t("settingsPage.skills.onToast") : t("settingsPage.skills.offToast"));
-  }
-
-  function toggleEditor(s: SkillItem) {
-    if (openPath === s.path) { setOpenPath(null); return; } // clicking again collapses
-    setOpenPath(s.path);
-    setEditText(t("settingsPage.shared.reading"));
-    setEditLoading(true);
-    setEditStatus("");
-    send({ type: "asset_file_read", kind: "skill", path: s.path });
   }
 
   function onToggle(item: SkillItem) {
@@ -196,32 +311,23 @@ export default function SkillsPage() {
     }
   }
 
-  function onNew() {
-    const name = window.prompt(t("settingsPage.skills.newPrompt"));
-    if (!name || !name.trim()) return;
-    const cleanName = name.trim().toLowerCase();
-    if (!/^[a-z0-9][a-z0-9_-]*$/.test(cleanName)) {
-      toast(t("settingsPage.skills.nameInvalid"));
-      return;
-    }
-    const parts = curSec.scope.includes(":")
-      ? { scope: curSec.scope.split(":")[0], cwd: curSec.scope.slice(curSec.scope.indexOf(":") + 1) }
-      : { scope: curSec.scope };
-    send({ type: "asset_file_create", kind: "skill", name: cleanName, ...parts });
-  }
+  // Scope of the current section as { scope, cwd? } for the editor window's create request
+  const scopeParts = (): { scope: string; cwd?: string } => {
+    const ci = curSec.scope.indexOf(":");
+    return ci < 0 ? { scope: curSec.scope } : { scope: curSec.scope.slice(0, ci), cwd: curSec.scope.slice(ci + 1) };
+  };
 
-  function onSave() {
-    if (!openPath) return;
-    setEditStatus(t("settingsPage.shared.saving"));
-    send({ type: "asset_file_write", kind: "skill", path: openPath, content: editText });
-  }
-
-  async function onEditorDelete(s: SkillItem) {
-    if (!openPath) return;
-    if (await confirmDialog({ title: t("settingsPage.skills.deleteTitle"), message: t("settingsPage.skills.deleteMsgUndo", { name: s.name }), confirmText: t("common.delete"), danger: true })) {
-      send({ type: "asset_skill_delete", path: openPath });
-      setOpenPath(null); // same as old version: collapse the expanded area right after confirming
-    }
+  // Rows lead into the page-level editor window (creation asks for the name there instead)
+  if (edit) {
+    return (
+      <div className="set-page" id="pg-skills">
+        <SkillEditWindow
+          skill={edit.mode === "edit" ? edit.skill : null}
+          scope={scopeParts()}
+          onClose={() => setEdit(null)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -252,7 +358,7 @@ export default function SkillsPage() {
         <div className="skills-scope-wrap">
           <ScopeSel
             value={scope}
-            onChange={(id) => { setScope(id); setOpenPath(null); }}
+            onChange={(id) => setScope(id)}
             profile={{ id: profileSec.scope, label: profileSec.label }}
             projects={projectSecs.map((s) => ({ id: s.scope, label: s.label }))}
           />
@@ -261,7 +367,7 @@ export default function SkillsPage() {
           <span className="skills-search-icon"><Icon name="search" size={14} /></span>
           <input type="text" className="skills-search-input" id="skillsSearchInput" placeholder={t("settingsPage.skills.searchPlaceholder")} spellCheck={false} autoComplete="off"
             value={query}
-            onChange={(e) => { setQuery(e.target.value); setOpenPath(null); }} />
+            onChange={(e) => setQuery(e.target.value)} />
         </div>
       </div>
 
@@ -292,7 +398,7 @@ export default function SkillsPage() {
           <button type="button" className={"icon-btn pg-refresh" + (spin ? " spin" : "")} id="skillsRefreshBtn" title={t("settingsPage.model.refresh")} onClick={onRefresh}>
             <Icon name="refresh" size={17} />
           </button>
-          <button type="button" className="skills-btn-new" id="skillsNewBtn" onClick={onNew}>
+          <button type="button" className="skills-btn-new" id="skillsNewBtn" onClick={() => setEdit({ mode: "new" })}>
             <Icon name="plus" size={14} />
             <span>{t("settingsPage.shared.newBtn")}</span>
           </button>
@@ -306,61 +412,37 @@ export default function SkillsPage() {
             : filtered.length === 0
               ? emptyRow(q ? t("settingsPage.skills.emptySearch") : t("settingsPage.skills.emptyScope"), "skill-empty-row")
               : filtered.map((s) => (
-                <Fragment key={s.path}>
-                  <div className={"skill-item-row" + (openPath === s.path ? " on" : "")} data-path={s.path} data-name={s.name}
-                    onClick={() => toggleEditor(s)}>
-                    <div className="skill-badge"><Icon name="skills" size={14} /></div>
-                    <div className="skill-info">
-                      <div className="skill-title-row">
-                        <span className="text-ui-base font-medium truncate text-text">{s.name}</span>
-                        <ExtSourceTag
-                          kind="skill"
-                          name={s.name}
-                          path={s.path}
-                          fallback={s.provider && s.provider !== "native" ? <span className="skill-provider-tag">{s.provider}</span> : undefined}
-                        />
-                      </div>
-                      <div className="skill-desc" title={s.description || s.name}>{s.description || t("settingsPage.skills.noDesc")}</div>
+                <div className="skill-item-row" key={s.path} data-path={s.path} data-name={s.name}
+                  onClick={() => setEdit({ mode: "edit", skill: s })}>
+                  <div className="skill-badge"><Icon name="skills" size={14} /></div>
+                  <div className="skill-info">
+                    <div className="skill-title-row">
+                      <span className="text-ui-base font-medium truncate text-text">{s.name}</span>
+                      <ExtSourceTag
+                        kind="skill"
+                        name={s.name}
+                        path={s.path}
+                        fallback={s.provider && s.provider !== "native" ? <span className="skill-provider-tag">{s.provider}</span> : undefined}
+                      />
                     </div>
-                    <div className="skill-controls">
-                      <div className={"tg" + (s.enabled ? " on" : "")} title={s.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
-                        onClick={(e) => { e.stopPropagation(); onToggle(s); }}>
-                        <i />
-                      </div>
-                      <button type="button" className="skill-trash-btn" title={t("settingsPage.skills.deleteBtnTitle")}
-                        onClick={(e) => { e.stopPropagation(); onRowDelete(s); }}>
-                        <Icon name="trash" size={14} />
-                      </button>
-                    </div>
-                    <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
+                    <div className="skill-desc" title={s.description || s.name}>{s.description || t("settingsPage.skills.noDesc")}</div>
                   </div>
-                  {openPath === s.path && (
-                    <div className="mem-expand">
-                      <div className="mem-exp-head">
-                        <span>{t("settingsPage.skills.editTitle")}</span>
-                        <span className="sub">{s.path}</span>
-                        <span className="sp" />
-                        <button type="button" className="save-btn"
-                          onClick={(e) => { e.stopPropagation(); setOpenPath(null); }}>{t("settingsPage.shared.collapse")}</button>
-                      </div>
-                      <div className="sem-body">
-                        <textarea id="skEditText" spellCheck={false} placeholder={t("settingsPage.skills.editPlaceholder")}
-                          value={editText} onChange={(e) => setEditText(e.target.value)}
-                          onClick={(e) => e.stopPropagation()} />
-                      </div>
-                      <div className="sem-foot">
-                        <span className="text-ui-sm text-dim">{editStatus}</span>
-                        <span className="sp" />
-                        <button type="button" className="confirm-btn danger" onClick={() => onEditorDelete(s)}>{t("common.delete")}</button>
-                        <button type="button" className="confirm-btn" onClick={onSave}>{t("common.save")}</button>
-                      </div>
+                  <div className="skill-controls">
+                    <div className={"tg" + (s.enabled ? " on" : "")} title={s.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
+                      onClick={(e) => { e.stopPropagation(); onToggle(s); }}>
+                      <i />
                     </div>
-                  )}
-                </Fragment>
+                    <button type="button" className="skill-trash-btn" title={t("settingsPage.skills.deleteBtnTitle")}
+                      onClick={(e) => { e.stopPropagation(); onRowDelete(s); }}>
+                      <Icon name="trash" size={14} />
+                    </button>
+                  </div>
+                  <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
+                </div>
               ))}
         </div>
       </div>
-      {/* Skill editing: click a row to expand the editor downward (see mem-expand above) */}
+      {/* Skill editing: a row click opens the page-level editor window (see SkillEditWindow) */}
       <SchemaRows sections={PAGE_PLACEMENT["pg-skills"]} />
       </div>
     </div>

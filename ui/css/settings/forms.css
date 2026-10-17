@@ -61,6 +61,9 @@
 /* Sharing hint hugs the row above instead of its own form group */
 .mcp-form-hint-share { margin: -8px 0 14px; }
 
+/* Editor status line: diagnostic text + the log button on one row */
+.mcp-form-status { display: flex; align-items: center; gap: 8px; margin-top: 0; }
+
 /* Boxed select: same box metrics as .mcp-form-input (r9 border + 6/10 padding + 1.5 line-height); menu drops downward via .sel > .menu */
 .sel.mcp-form-sel { position: relative; display: flex; width: 100%; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--bg); padding: 0; }
 

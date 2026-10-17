@@ -1,12 +1,13 @@
-// Settings · MCP page: multi-source full discovery, status dots, iOS toggles, live search,
-// inline expand-down edit form.
+// Settings · MCP page: multi-source full discovery, status dots, iOS toggles, live search.
+// Create and edit open the page-level editor window (.set-edit-*), which replaces the whole
+// page body; the log viewer stays a modal dialog (read-only diagnostics, not an editor).
 // 1:1 React port of the old ui/settings/mcp.js; DOM class names aligned with the pg-mcp skeleton at git 464131d.
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
-import { confirmDialog, emptyRow, Sel } from "../common";
+import { confirmDialog, emptyRow, EditWindowHead, Sel } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
@@ -18,8 +19,6 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../../ui/dialog";
-
-const NEW_KEY = "__new__";
 
 // MCP scope entry (mcp.scopes in the agent_assets reply; fields sent by host)
 interface McpScope {
@@ -216,17 +215,15 @@ function rowKey(s: McpServer): string {
   return `${s.name}\n${s.source?.path || s.cwd || ""}`;
 }
 
-// Server row + inline expand-down edit area (click a row to expand, click again to collapse, click another row to switch)
-interface ServerRowProps {
+// Server row: a click opens the page-level editor window. Same row language as the skills
+// page (icon box + status dot, title line with transport/sharing/ext-source badges, and the
+// command preview line).
+function ServerRow({ server, scopeAll, onEdit, onViewLog }: {
   server: McpServer;
   scopeAll: boolean;
-  defaultScope: string;
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
+  onEdit: () => void;
   onViewLog: (info: { name: string; error?: string; log?: string }) => void;
-}
-function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, onViewLog }: ServerRowProps) {
+}) {
   const { t } = useTranslation();
   const dot = dotState(server);
   const cmdText = server.command
@@ -234,58 +231,55 @@ function ServerRow({ server, scopeAll, defaultScope, open, onToggle, onClose, on
     : server.url || "";
 
   return (
-    <>
-      <div
-        className={`mcp-server-row${server.enabled ? "" : " disabled"}${open ? " on" : ""}`}
-        data-name={server.name}
-        onClick={onToggle}
-      >
-        <div className="mcp-icon-box">
-          <Icon name="mcp" size={14} />
-          <span className={`mcp-status-dot ${dot.cls}`} title={dot.title} />
-        </div>
-        <div className="mcp-server-info" title={t("settingsPage.mcp.viewConfig")}>
-          <div className="mcp-server-head">
-            <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
-            {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
-            {server.sharing === "global" ? (
-              <span className="mcp-server-badge mcp-badge-shared">{t("settingsPage.mcp.badgeGlobal")}</span>
-            ) : server.sharing === "project" ? (
-              <span className="mcp-server-badge mcp-badge-shared">{t("settingsPage.mcp.badgeProjectShared")}</span>
-            ) : null}
-            <ExtSourceTag kind="mcp" name={server.name} path={server.source?.path} />
-            {scopeAll
-              ? (server.projectName || server.source?.providerName
-                  ? <span className="mcp-server-badge">{server.projectName || server.source?.providerName}</span>
-                  : null)
-              : null}
-          </div>
-          <div className="mcp-server-cmd" title={cmdText}>{cmdText}</div>
-          {server.enabled && server.status === "error" && (server.error || server.log) ? (
-            <div className="mcp-server-err">
-              <span className="mcp-err-icon" title={t("settingsPage.mcp.errDetail")}>ⓘ</span>
-              <span className="truncate">{server.error || t("settingsPage.mcp.startFailed")}</span>
-              <button
-                type="button"
-                className="mcp-log-btn"
-                title={t("settingsPage.mcp.viewFullLog")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewLog({ name: server.name, error: server.error, log: server.log });
-                }}
-              >
-                {t("settingsPage.mcp.viewLog")}
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <div className="mcp-server-ctrl">
-          <Toggle server={server} />
-        </div>
-        <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
+    <div
+      className={`mcp-server-row${server.enabled ? "" : " disabled"}`}
+      data-name={server.name}
+      onClick={onEdit}
+    >
+      <div className="mcp-icon-box">
+        <Icon name="mcp" size={14} />
+        <span className={`mcp-status-dot ${dot.cls}`} title={dot.title} />
       </div>
-      {open ? <McpEditor server={server} defaultScope={defaultScope} onClose={onClose} onViewLog={onViewLog} /> : null}
-    </>
+      <div className="mcp-server-info" title={t("settingsPage.mcp.viewConfig")}>
+        <div className="mcp-server-head">
+          <span className="text-ui-base font-semibold truncate text-text">{server.name}</span>
+          {server.transport ? <span className="mcp-server-badge">{server.transport}</span> : null}
+          {server.sharing === "global" ? (
+            <span className="mcp-server-badge mcp-badge-shared">{t("settingsPage.mcp.badgeGlobal")}</span>
+          ) : server.sharing === "project" ? (
+            <span className="mcp-server-badge mcp-badge-shared">{t("settingsPage.mcp.badgeProjectShared")}</span>
+          ) : null}
+          <ExtSourceTag kind="mcp" name={server.name} path={server.source?.path} />
+          {scopeAll
+            ? (server.projectName || server.source?.providerName
+                ? <span className="mcp-server-badge">{server.projectName || server.source?.providerName}</span>
+                : null)
+            : null}
+        </div>
+        <div className="mcp-server-cmd" title={cmdText}>{cmdText}</div>
+        {server.enabled && server.status === "error" && (server.error || server.log) ? (
+          <div className="mcp-server-err">
+            <span className="mcp-err-icon" title={t("settingsPage.mcp.errDetail")}>ⓘ</span>
+            <span className="truncate">{server.error || t("settingsPage.mcp.startFailed")}</span>
+            <button
+              type="button"
+              className="mcp-log-btn"
+              title={t("settingsPage.mcp.viewFullLog")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewLog({ name: server.name, error: server.error, log: server.log });
+              }}
+            >
+              {t("settingsPage.mcp.viewLog")}
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <div className="mcp-server-ctrl">
+        <Toggle server={server} />
+      </div>
+      <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
+    </div>
   );
 }
 
@@ -322,7 +316,7 @@ function Toggle({ server }: { server: McpServer }) {
   );
 }
 
-// Inline expand-down edit form (.mem-expand, same pattern as the memory page)
+// Page-level MCP server editor window: create & edit replace the whole page body (.set-edit-*).
 interface McpEditorProps {
   server: McpServer | null; // null = create new
   defaultScope: string;
@@ -492,6 +486,11 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         ? "var(--green)"
         : "var(--err)"
       : undefined;
+  // The log link shows for a failed test result or a failed server row (the row's own log)
+  const logAvailable = Boolean(
+    (result && result.status !== "ok" && (result.log || result.error)) ||
+      (!result && server?.status === "error" && (server.log || server.error)),
+  );
   // Dropdown current-value labels (match the menu item wording)
   const sharingCurLabel =
     sharing === "global"
@@ -509,16 +508,21 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
       : t("settingsPage.mcp.transportSse");
 
   return (
-    <div className="mem-expand">
-      <div className="mem-exp-head">
-        <span>{title}</span>
-        <span className="sub">{sub}</span>
-        <span className="sp" />
-        <button type="button" className="save-btn" onClick={(e) => { e.stopPropagation(); onClose(); }}>
-          {t("settingsPage.shared.collapse")}
+    <>
+      <EditWindowHead title={title} sub={sub} onBack={onClose}>
+        {!isNew ? (
+          <button type="button" className="save-btn danger" onClick={onDelete}>
+            {t("common.delete")}
+          </button>
+        ) : null}
+        <button type="button" className="save-btn" disabled={testing} onClick={onTest}>
+          {testing ? t("settingsPage.mcp.testingBtn") : t("settingsPage.mcp.testBtn")}
         </button>
-      </div>
-      <div className="sem-body form">
+        <button type="button" className="save-btn" onClick={onSave}>
+          {t("common.save")}
+        </button>
+      </EditWindowHead>
+      <div className="set-card set-edit-card">
         <div className="mcp-form-group">
           <label className="mcp-form-label">{t("settingsPage.mcp.nameLabel")} <span className="req">*</span></label>
           <input
@@ -652,45 +656,28 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
             />
           ) : null}
         </div>
-      </div>
-      <div className="sem-foot">
-        {!isNew ? (
-          <button type="button" className="mcp-form-del" onClick={onDelete}>
-            <Icon name="trash" size={13} />
-            {t("common.delete")}
-          </button>
+        {statusText || logAvailable ? (
+          <div className="mcp-form-hint mcp-form-status">
+            <span style={statusColor ? { color: statusColor } : undefined}>{statusText}</span>
+            {logAvailable && onViewLog ? (
+              <button
+                type="button"
+                className="mcp-log-btn"
+                onClick={() =>
+                  onViewLog({
+                    name: name.trim() || server?.name || t("settingsPage.mcp.unnamed"),
+                    error: result?.error || server?.error,
+                    log: result?.log || server?.log,
+                  })
+                }
+              >
+                {t("settingsPage.mcp.viewLog")}
+              </button>
+            ) : null}
+          </div>
         ) : null}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
-          <span className="text-ui-sm text-dim truncate" style={statusColor ? { color: statusColor } : undefined}>
-            {statusText}
-          </span>
-          {((result && result.status !== "ok" && (result.log || result.error)) || (!result && server?.status === "error" && (server.log || server.error))) && onViewLog ? (
-            <button
-              type="button"
-              className="mcp-log-btn"
-              onClick={() =>
-                onViewLog({
-                  name: name.trim() || server?.name || t("settingsPage.mcp.unnamed"),
-                  error: result?.error || server?.error,
-                  log: result?.log || server?.log,
-                })
-              }
-            >
-              {t("settingsPage.mcp.viewLog")}
-            </button>
-          ) : null}
-        </div>
-        <button type="button" className="confirm-btn" disabled={testing} onClick={onTest}>
-          {testing ? t("settingsPage.mcp.testingBtn") : t("settingsPage.mcp.testBtn")}
-        </button>
-        <button type="button" className="confirm-btn" onClick={onSave}>
-          {t("common.save")}
-        </button>
-        <button type="button" className="mcp-form-cancel" onClick={onClose}>
-          {t("common.cancel")}
-        </button>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -707,7 +694,8 @@ export default function McpPage() {
 
   const [mcpScope, setMcpScope] = useState("profile");
   const [mcpSearchQuery, setMcpSearchQuery] = useState("");
-  const [openKey, setOpenKey] = useState<string | null>(null); // server name or NEW_KEY; null = collapsed
+  // Open editor window (replaces the page body): the server being edited (null server = create); null = list
+  const [edit, setEdit] = useState<{ server: McpServer | null } | null>(null);
   const [logModal, setLogModal] = useState<{ name: string; error?: string; log?: string } | null>(null);
   const [spinning, setSpinning] = useState(false);
   useExtSources(); // extension-center data for all scopes (for matching inline source badges)
@@ -736,8 +724,6 @@ export default function McpPage() {
   });
 
   const installedCount = scopedNow.filter((s) => s.enabled).length;
-
-  const toggleEditor = (key: string) => setOpenKey((cur) => (cur === key ? null : key));
 
   const onRefresh = () => {
     setSpinning(true);
@@ -768,6 +754,31 @@ export default function McpPage() {
       }
     }
   };
+
+  // Log dialog is shared by the list and the editor window (the editor shows its own test log)
+  const logDialog = logModal ? (
+    <McpLogDialog
+      serverName={logModal.name}
+      error={logModal.error}
+      log={logModal.log}
+      onClose={() => setLogModal(null)}
+    />
+  ) : null;
+
+  // The editor window replaces the whole page body (list + toolbar); rows and "new" lead here
+  if (edit) {
+    return (
+      <div className="set-page" id="pg-mcp">
+        <McpEditor
+          server={edit.server}
+          defaultScope={activeScope}
+          onClose={() => setEdit(null)}
+          onViewLog={(info) => setLogModal(info)}
+        />
+        {logDialog}
+      </div>
+    );
+  }
 
   return (
     <div className="set-page" id="pg-mcp">
@@ -830,7 +841,7 @@ export default function McpPage() {
           >
             <Icon name="refresh" size={17} />
           </button>
-          <button type="button" className="mcp-btn-new" onClick={() => toggleEditor(NEW_KEY)}>
+          <button type="button" className="mcp-btn-new" onClick={() => setEdit({ server: null })}>
             <Icon name="plus" size={14} />
             <span>{t("settingsPage.shared.newBtn")}</span>
           </button>
@@ -839,61 +850,25 @@ export default function McpPage() {
 
       <div className="mcp-list-wrap">
         <div className="mcp-card-list">
-          {openKey === NEW_KEY ? (
-            <>
-              <div
-                className="mcp-server-row on"
-                data-temp="1"
-                onClick={() => toggleEditor(NEW_KEY)}
-              >
-                <div className="mcp-icon-box"><Icon name="mcp" size={14} /></div>
-                <div className="mcp-server-info">
-                  <div className="mcp-server-head"><span className="text-ui-base font-semibold truncate text-text">{t("settingsPage.mcp.newServer")}</span></div>
-                  <div className="mcp-server-cmd">{t("settingsPage.mcp.newServerHint")}</div>
-                </div>
-                <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
-              </div>
-              <McpEditor
-                server={null}
-                defaultScope={activeScope}
-                onClose={() => toggleEditor(NEW_KEY)}
-                onViewLog={(info) => setLogModal(info)}
-              />
-            </>
-          ) : null}
-
           {!agentAssets?.mcp ? (
             emptyRow(t("common.loading"), "mcp-empty-row")
           ) : !filtered.length ? (
             emptyRow(q ? t("settingsPage.mcp.emptySearch") : t("settingsPage.mcp.emptyScope"), "mcp-empty-row")
           ) : (
-            filtered.map((s) => {
-              const k = rowKey(s);
-              return (
-                <ServerRow
-                  key={k}
-                  server={s}
-                  scopeAll={activeScope === "all"}
-                  defaultScope={activeScope}
-                  open={openKey === k}
-                  onToggle={() => toggleEditor(k)}
-                  onClose={() => toggleEditor(k)}
-                  onViewLog={(info) => setLogModal(info)}
-                />
-              );
-            })
+            filtered.map((s) => (
+              <ServerRow
+                key={rowKey(s)}
+                server={s}
+                scopeAll={activeScope === "all"}
+                onEdit={() => setEdit({ server: s })}
+                onViewLog={(info) => setLogModal(info)}
+              />
+            ))
           )}
         </div>
       </div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-mcp"]} />
-      {logModal ? (
-        <McpLogDialog
-          serverName={logModal.name}
-          error={logModal.error}
-          log={logModal.log}
-          onClose={() => setLogModal(null)}
-        />
-      ) : null}
+      {logDialog}
     </div>
   );
 }

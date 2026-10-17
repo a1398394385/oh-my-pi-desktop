@@ -1,24 +1,22 @@
 // Settings page: hooks (pg-hooks).
 // Master switch (hooks.enabled controls disableExtensionDiscovery) + runtime config rows
-// (SchemaRows) + the discovered hook list with an inline expand-down editor, using the MCP
-// page language (.mem-expand / .sem-body.form / .sem-foot over the shared .mcp-form-* fields):
+// (SchemaRows) + the discovered hook list, over the shared .mcp-form-* field language:
 // - scope capsule filters the list and targets new hooks (profile / project .omp)
-// - "new hook" opens a temp row at the top of the list; its form creates
-//   hooks/<phase>/<tool>.ts from a phase-aware template on the host
-// - clicking a row reads the hook file into the editor; save writes it back and collapses
-import { Fragment, useEffect, useRef, useState } from "react";
+// - "new hook" / a row click open the page-level editor window (.set-edit-*), which replaces
+//   the whole page body: create asks for the phase + tool and the host writes
+//   hooks/<phase>/<tool>.ts from a phase-aware template; edit reads the hook file on mount and
+//   writes it back on save
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast, pathBase } from "../../../store";
 import type { HookAssetItem } from "../../../types/frames";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import Icon from "../../../Icon";
-import { emptyRow } from "../common";
+import { EditWindowHead, emptyRow } from "../common";
 import ScopeSel from "../ScopeSel";
 
-const NEW_KEY = "__new__";
-
-// Hook file editor: reads the file on mount, writes it back and collapses on the saved reply.
+// Hook file editor: reads the file on mount, writes it back and closes on the saved reply.
 function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => void }) {
   const { t } = useTranslation();
   const file = useAppStore((s) => s.assetFile);
@@ -61,16 +59,17 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
   };
 
   return (
-    <div className="mem-expand">
-      <div className="mem-exp-head">
-        <span>{t("settingsPage.hooks.editTitle")}</span>
-        <span className="sub">{hook.path}</span>
-        <span className="sp" />
-        <button type="button" className="save-btn" onClick={onClose}>
-          {t("settingsPage.shared.collapse")}
+    <>
+      <EditWindowHead
+        title={t("settingsPage.hooks.editTitle")}
+        sub={hook.path}
+        onBack={onClose}
+      >
+        <button type="button" className="save-btn" onClick={save}>
+          {t("common.save")}
         </button>
-      </div>
-      <div className="sem-body form">
+      </EditWindowHead>
+      <div className="set-card set-edit-card">
         <div className="mcp-form-row">
           <div className="mcp-form-group mcp-form-half">
             <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
@@ -81,30 +80,21 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
             <input className="mcp-form-input mcp-form-code" value={hook.tool || "*"} disabled readOnly />
           </div>
         </div>
-        <div className="mcp-form-hint">{t("settingsPage.hooks.nameLockedHint")}</div>
+        <div className="mcp-form-hint mcp-form-hint-share">{t("settingsPage.hooks.nameLockedHint")}</div>
         <div className="mcp-form-group">
           <label className="mcp-form-label">{t("settingsPage.hooks.codeLabel")}</label>
           <textarea
             id="hookText"
             className="mcp-form-textarea mcp-form-code"
-            rows={16}
+            rows={20}
             spellCheck={false}
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
         </div>
+        {status ? <div className="mcp-form-hint">{status}</div> : null}
       </div>
-      <div className="sem-foot">
-        <span className="text-ui-sm text-dim truncate">{status}</span>
-        <span className="sp" />
-        <button type="button" className="mcp-form-cancel" onClick={onClose}>
-          {t("common.cancel")}
-        </button>
-        <button type="button" className="confirm-btn" onClick={save}>
-          {t("common.save")}
-        </button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -146,16 +136,17 @@ function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string 
   };
 
   return (
-    <div className="mem-expand">
-      <div className="mem-exp-head">
-        <span>{t("settingsPage.hooks.newBtn")}</span>
-        <span className="sub">{t("settingsPage.hooks.newSub")}</span>
-        <span className="sp" />
-        <button type="button" className="save-btn" onClick={onClose}>
-          {t("settingsPage.shared.collapse")}
+    <>
+      <EditWindowHead
+        title={t("settingsPage.hooks.newBtn")}
+        sub={t("settingsPage.hooks.newSub")}
+        onBack={onClose}
+      >
+        <button type="button" className="save-btn" onClick={create}>
+          {t("settingsPage.hooks.createBtn")}
         </button>
-      </div>
-      <div className="sem-body form">
+      </EditWindowHead>
+      <div className="set-card set-edit-card">
         <div className="mcp-form-group">
           <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
           <div className="mcp-type-pills" id="hookPhasePills">
@@ -179,6 +170,7 @@ function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string 
             className="mcp-form-input mcp-form-code"
             placeholder={t("settingsPage.hooks.toolPlaceholder")}
             spellCheck={false}
+            autoFocus
             value={tool}
             onChange={(e) => setTool(e.target.value)}
             onKeyDown={(e) => {
@@ -187,18 +179,9 @@ function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string 
           />
           <div className="mcp-form-hint">{t("settingsPage.hooks.toolNameHint")}</div>
         </div>
+        {status ? <div className="mcp-form-hint">{status}</div> : null}
       </div>
-      <div className="sem-foot">
-        <span className="text-ui-sm text-dim truncate">{status}</span>
-        <span className="sp" />
-        <button type="button" className="mcp-form-cancel" onClick={onClose}>
-          {t("common.cancel")}
-        </button>
-        <button type="button" className="confirm-btn" onClick={create}>
-          {t("settingsPage.hooks.createBtn")}
-        </button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -212,7 +195,8 @@ export default function HooksPage() {
 
   const [spin, setSpin] = useState(false);
   const [scope, setScope] = useState("profile"); // current scope key ("profile" | "project:<cwd>")
-  const [openKey, setOpenKey] = useState<string | null>(null); // expanded row (hook path) or NEW_KEY
+  // Open editor window (replaces the page body): "new" or the hook being edited; null = list
+  const [edit, setEdit] = useState<{ mode: "new" } | { mode: "edit"; hook: HookAssetItem } | null>(null);
 
   const known = typeof hostSettings?.hooksEnabled === "boolean";
   const hooksEnabled = known && !!hostSettings?.hooksEnabled;
@@ -245,11 +229,6 @@ export default function HooksPage() {
     }
   };
 
-  const pickScope = (id: string) => {
-    setScope(id);
-    setOpenKey(null);
-  };
-
   // Resolve the current scope into {scope, cwd?} for create requests
   const scopeParts = (): { scope: string; cwd?: string } => {
     const ci = scope.indexOf(":");
@@ -260,6 +239,17 @@ export default function HooksPage() {
   const scopedHooks = (hooks ?? []).filter((h) => (scope === "profile" ? h.scope === "profile" : `project:${h.cwd}` === scope));
   // Hooks dir of the current scope, derived from any member row's path (empty before the first scan lands)
   const scopeDir = scopedHooks.length ? scopedHooks[0].path.replace(/\/(pre|post)\/[^/]+$/, "") : "";
+
+  // Rows and the "new hook" button lead into the page-level editor window
+  if (edit) {
+    return (
+      <div className="set-page" id="pg-hooks">
+        {edit.mode === "new"
+          ? <HookNewForm scope={scopeParts()} onClose={() => setEdit(null)} />
+          : <HookEditor hook={edit.hook} onClose={() => setEdit(null)} />}
+      </div>
+    );
+  }
 
   return (
     <div className="set-page" id="pg-hooks">
@@ -304,7 +294,7 @@ export default function HooksPage() {
       <div className="agents-bar">
         <ScopeSel
           value={scope}
-          onChange={pickScope}
+          onChange={setScope}
           profile={{ id: "profile", label: t("settingsPage.hooks.profileLabel") }}
           projects={allProjects
             .filter((c) => !removedProjects.includes(c))
@@ -316,29 +306,16 @@ export default function HooksPage() {
           type="button"
           className="add-btn"
           id="hookNewBtn"
-          onClick={() => setOpenKey(openKey === NEW_KEY ? null : NEW_KEY)}
+          onClick={() => setEdit({ mode: "new" })}
         >
           {t("settingsPage.hooks.newBtn")}
         </button>
       </div>
       <div className="set-card mt-[12px]" id="hooksList">
-        {openKey === NEW_KEY && (
-          <>
-            <div className={"srow hook-row on"} data-temp="1" onClick={() => setOpenKey(null)}>
-              <div className="srow-tx">
-                <b>{t("settingsPage.hooks.newBtn")}</b>
-              </div>
-              <span className="mem-caret">
-                <Icon name="caretSlim" size={14} />
-              </span>
-            </div>
-            <HookNewForm scope={scopeParts()} onClose={() => setOpenKey(null)} />
-          </>
-        )}
         {!agentAssets ? (
           emptyRow(t("common.loading"))
         ) : scopedHooks.length === 0 ? (
-          <div className="srow hook-row" onClick={() => setOpenKey(NEW_KEY)}>
+          <div className="srow hook-row" onClick={() => setEdit({ mode: "new" })}>
             <div className="srow-tx">
               <b>{t("settingsPage.hooks.noHooksTitle")}</b>
               <span>{t("settingsPage.hooks.noHooksDescEditor")}</span>
@@ -351,59 +328,56 @@ export default function HooksPage() {
           scopedHooks.map((h) => {
             const hookId = `hook:${h.phase}:${h.tool || "*"}:${h.name}`;
             const itemEnabled = h.enabled !== false;
-            const open = openKey === h.path;
             return (
-              <Fragment key={h.path || hookId}>
-                <div
-                  className={"srow hook-row" + (open ? " on" : "")}
-                  onClick={() => setOpenKey(open ? null : h.path)}
-                >
-                  <div className="srow-tx">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <b>{h.name}</b>
-                      <span
-                        className={
-                          "text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded leading-none " + /* style-token-ignore */
-                          (h.phase === "pre"
-                            ? "bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30" /* style-token-ignore */
-                            : "bg-[var(--green)]/15 text-[var(--green)] border border-[var(--green)]/30") /* style-token-ignore */
-                        }
-                      >
-                        {h.phase}
+              <div
+                className="srow hook-row"
+                key={h.path || hookId}
+                onClick={() => setEdit({ mode: "edit", hook: h })}
+              >
+                <div className="srow-tx">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <b>{h.name}</b>
+                    <span
+                      className={
+                        "text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded leading-none " + /* style-token-ignore */
+                        (h.phase === "pre"
+                          ? "bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30" /* style-token-ignore */
+                          : "bg-[var(--green)]/15 text-[var(--green)] border border-[var(--green)]/30") /* style-token-ignore */
+                      }
+                    >
+                      {h.phase}
+                    </span>
+                    {h.tool && (
+                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--panel-2)] text-[var(--dim)] border border-[var(--line)]" /* style-token-ignore */>
+                        tool: {h.tool}
                       </span>
-                      {h.tool && (
-                        <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--panel-2)] text-[var(--dim)] border border-[var(--line)]" /* style-token-ignore */>
-                          tool: {h.tool}
-                        </span>
-                      )}
-                      <span className="text-[11px] text-[var(--faint)]" /* style-token-ignore */>
-                        {h.projectName ? t("settingsPage.hooks.hookProject", { name: h.projectName }) : t("settingsPage.hooks.profileLabel")}
-                      </span>
-                    </div>
-                    <span className="truncate max-w-[500px]" title={h.path}>
-                      {h.path}
+                    )}
+                    <span className="text-[11px] text-[var(--faint)]" /* style-token-ignore */>
+                      {h.projectName ? t("settingsPage.hooks.hookProject", { name: h.projectName }) : t("settingsPage.hooks.profileLabel")}
                     </span>
                   </div>
-                  <div
-                    className={"tg" + (itemEnabled && hooksEnabled ? " on" : "") + (!hooksEnabled ? " disabled" : "")}
-                    title={!hooksEnabled ? t("settingsPage.hooks.enableFirstTip") : itemEnabled ? t("settingsPage.hooks.disableHookTip") : t("settingsPage.hooks.enableHookTip")}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!hooksEnabled) {
-                        toast(t("settingsPage.hooks.masterFirstToast"));
-                        return;
-                      }
-                      toggleHookItem(hookId, !itemEnabled);
-                    }}
-                  >
-                    <i></i>
-                  </div>
-                  <span className="mem-caret">
-                    <Icon name="caretSlim" size={14} />
+                  <span className="truncate max-w-[500px]" title={h.path}>
+                    {h.path}
                   </span>
                 </div>
-                {open && <HookEditor hook={h} onClose={() => setOpenKey(null)} />}
-              </Fragment>
+                <div
+                  className={"tg" + (itemEnabled && hooksEnabled ? " on" : "") + (!hooksEnabled ? " disabled" : "")}
+                  title={!hooksEnabled ? t("settingsPage.hooks.enableFirstTip") : itemEnabled ? t("settingsPage.hooks.disableHookTip") : t("settingsPage.hooks.enableHookTip")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!hooksEnabled) {
+                      toast(t("settingsPage.hooks.masterFirstToast"));
+                      return;
+                    }
+                    toggleHookItem(hookId, !itemEnabled);
+                  }}
+                >
+                  <i></i>
+                </div>
+                <span className="mem-caret">
+                  <Icon name="caretSlim" size={14} />
+                </span>
+              </div>
             );
           })
         )}

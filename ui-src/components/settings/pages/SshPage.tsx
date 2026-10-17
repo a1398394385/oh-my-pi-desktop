@@ -1,15 +1,15 @@
 // Settings · SSH hosts page: the user-scope ssh.json host table (same RPC
 // surface as the welcome RemoteDialog: ssh_list_hosts / ssh_save_host /
-// ssh_remove_host / ssh_test_host). Page chrome follows the shared settings
-// group idiom (.set-group-tt heading + one .set-card); rows reuse the clickable
-// list-row language (.srow.mem-row + .mem-caret) and inline editing expands
-// downward via .mem-expand (memory/MCP pattern), never a modal. The probe
-// (ssh_test_host) reports reachability plus remote OS/shell metadata.
-import { Fragment, useEffect, useRef, useState } from "react";
+// ssh_remove_host / ssh_test_host). Create & edit open the page-level editor
+// window that replaces the page body (.set-edit-* head, same as skills/MCP/hooks)
+// instead of expanding a row; rows reuse the clickable list-row language
+// (.srow.mem-row + .mem-caret), never a modal. The probe (ssh_test_host) reports
+// reachability plus remote OS/shell metadata.
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
-import { confirmDialog } from "../common";
+import { confirmDialog, EditWindowHead } from "../common";
 
 // Host row shape from the ssh_hosts frame (see SshHostsFrame)
 interface SshHostRow {
@@ -22,14 +22,16 @@ interface SshHostRow {
   compat?: boolean;
 }
 
-const NEW_KEY = "__new__";
 const EMPTY_FORM = { name: "", host: "", username: "", port: "", keyPath: "", description: "" };
 
-// Inline expand-down editor (.mem-expand, same pattern as the MCP page).
-// Probe replies carry no correlation id beyond `name` (null for inline probes),
-// so the editor matches by the ts stamp the wsHandlers slice adds — only one
-// editor is ever open (page keeps a single openKey), and the ref skips the
-// in-flight wait.
+// One-line address label reused by the list row and the editor subtitle
+const addrOf = (h: SshHostRow): string =>
+  `${h.username ? `${h.username}@` : ""}${h.host}${h.port && h.port !== 22 ? `:${h.port}` : ""}`;
+
+// Page-level editor window (create = host null / edit = the row being edited).
+// Probe replies carry no correlation id beyond `name` (null for the inline probe),
+// so the editor matches by the ts stamp the wsHandlers slice adds; only one editor
+// is ever open, and the ref skips the in-flight wait.
 function SshEditor({ host, onClose }: { host: SshHostRow | null; onClose: () => void }) {
   const { t } = useTranslation();
   const sshTestResult = useAppStore((s) => s.sshTestResult);
@@ -113,108 +115,95 @@ function SshEditor({ host, onClose }: { host: SshHostRow | null; onClose: () => 
       : "";
 
   return (
-    <div className="mem-expand">
-      <div className="mem-exp-head">
-        <span>{host ? t("ssh.editHost") : t("ssh.newHost")}</span>
-        <span className="sp" />
-        <button type="button" className="save-btn" onClick={(e) => { e.stopPropagation(); onClose(); }}>
-          {t("settingsPage.shared.collapse")}
-        </button>
-      </div>
-      <div className="ssh-form">
-        <label className="ssh-field">
-          <span>{t("ssh.nameLabel")} *</span>
-          <input type="text" className="inp" placeholder={t("ssh.namePh")} spellCheck="false" value={form.name} onChange={set("name")} />
-        </label>
-        <label className="ssh-field">
-          <span>{t("ssh.addressLabel")} *</span>
-          <input type="text" className="inp" placeholder={t("ssh.addressPh")} spellCheck="false" value={form.host} onChange={set("host")} />
-        </label>
-        <div className="ssh-field-row">
-          <label className="ssh-field">
-            <span>{t("ssh.userLabel")}</span>
-            <input type="text" className="inp" placeholder={t("ssh.userPh")} spellCheck="false" value={form.username} onChange={set("username")} />
-          </label>
-          <label className="ssh-field">
-            <span>{t("ssh.portLabel")}</span>
-            <input type="text" className="inp" placeholder={t("ssh.portPh")} spellCheck="false" value={form.port} onChange={set("port")} />
-          </label>
-        </div>
-        <label className="ssh-field">
-          <span>{t("ssh.keyPathLabel")}</span>
-          <input type="text" className="inp" placeholder={t("ssh.keyPathPh")} spellCheck="false" value={form.keyPath} onChange={set("keyPath")} />
-        </label>
-        <label className="ssh-field">
-          <span>{t("ssh.descLabel")}</span>
-          <input type="text" className="inp" placeholder={t("ssh.descPh")} spellCheck="false" value={form.description} onChange={set("description")} />
-        </label>
-        {formError && <div className="ssh-form-err">{formError}</div>}
-      </div>
-      <div className="ssh-form-foot">
+    <>
+      <EditWindowHead
+        title={host ? t("ssh.editHost") : t("ssh.newHost")}
+        sub={host ? addrOf(host) : undefined}
+        onBack={onClose}
+      >
         {host ? (
-          <button type="button" className="confirm-btn danger" onClick={remove}>
-            <Icon name="trash" size={13} />
+          <button type="button" className="save-btn danger" onClick={remove}>
             {t("common.delete")}
           </button>
         ) : null}
-        <span className="ssh-status" data-ok={result ? result.ok : undefined}>{status}</span>
-        <span className="sp" />
-        <button type="button" className="confirm-btn" disabled={testing} onClick={test}>
+        <button type="button" className="save-btn" disabled={testing} onClick={test}>
           {testing ? t("ssh.testing") : t("ssh.testBtn")}
         </button>
-        <button type="button" className="confirm-btn" onClick={save}>
+        <button type="button" className="save-btn" onClick={save}>
           {t("common.save")}
         </button>
-        <button type="button" className="confirm-btn" onClick={onClose}>
-          {t("common.cancel")}
-        </button>
+      </EditWindowHead>
+      <div className="set-card set-edit-card">
+        <div className="ssh-form">
+          <label className="ssh-field">
+            <span>{t("ssh.nameLabel")} *</span>
+            <input type="text" className="inp" placeholder={t("ssh.namePh")} spellCheck="false" value={form.name} onChange={set("name")} />
+          </label>
+          <label className="ssh-field">
+            <span>{t("ssh.addressLabel")} *</span>
+            <input type="text" className="inp" placeholder={t("ssh.addressPh")} spellCheck="false" value={form.host} onChange={set("host")} />
+          </label>
+          <div className="ssh-field-row">
+            <label className="ssh-field">
+              <span>{t("ssh.userLabel")}</span>
+              <input type="text" className="inp" placeholder={t("ssh.userPh")} spellCheck="false" value={form.username} onChange={set("username")} />
+            </label>
+            <label className="ssh-field">
+              <span>{t("ssh.portLabel")}</span>
+              <input type="text" className="inp" placeholder={t("ssh.portPh")} spellCheck="false" value={form.port} onChange={set("port")} />
+            </label>
+          </div>
+          <label className="ssh-field">
+            <span>{t("ssh.keyPathLabel")}</span>
+            <input type="text" className="inp" placeholder={t("ssh.keyPathPh")} spellCheck="false" value={form.keyPath} onChange={set("keyPath")} />
+          </label>
+          <label className="ssh-field">
+            <span>{t("ssh.descLabel")}</span>
+            <input type="text" className="inp" placeholder={t("ssh.descPh")} spellCheck="false" value={form.description} onChange={set("description")} />
+          </label>
+        </div>
+        {formError ? <div className="ssh-form-err">{formError}</div> : null}
+        {status ? (
+          <div className="ssh-status-row">
+            <span className="ssh-status" data-ok={result ? result.ok : undefined}>{status}</span>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </>
   );
 }
 
 export default function SshPage() {
   const { t } = useTranslation();
   const hosts = useAppStore((s) => s.sshHosts);
-  // Expanded row: host name, NEW_KEY for the create form, null = collapsed
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  // Open editor window (replaces the page body): { host: null } = create, { host } = edit, null = list
+  const [edit, setEdit] = useState<{ host: SshHostRow | null } | null>(null);
 
   useEffect(() => {
     send({ type: "ssh_list_hosts" });
   }, []);
 
-  // After the list rebuilds (ssh_hosts reply), collapse a row whose host vanished
-  useEffect(() => {
-    if (openKey && openKey !== NEW_KEY && !hosts.some((h) => h.name === openKey)) setOpenKey(null);
-  }, [hosts, openKey]);
-
-  const open = (key: string) => setOpenKey((cur) => (cur === key ? null : key));
+  // Editor window replaces the whole page body
+  if (edit) {
+    return (
+      <div className="set-page" id="pg-ssh">
+        <SshEditor host={edit.host} onClose={() => setEdit(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="set-page" id="pg-ssh">
       <div className="set-tt">{t("ssh.nav")}</div>
       <div className="set-group-tt ssh-head">
         <span>{t("ssh.hostSection")}</span>
-        <button type="button" className="add-btn" onClick={() => open(NEW_KEY)}>
+        <button type="button" className="add-btn" onClick={() => setEdit({ host: null })}>
           <Icon name="plus" size={13} />
           {t("ssh.addHost")}
         </button>
       </div>
       <div className="set-card">
-        {openKey === NEW_KEY ? (
-          <>
-            <div className="srow mem-row on" onClick={() => open(NEW_KEY)}>
-              <div className="srow-tx">
-                <b>{t("ssh.newHost")}</b>
-              </div>
-              <div className="srow-ctl">
-                <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
-              </div>
-            </div>
-            <SshEditor host={null} onClose={() => setOpenKey(null)} />
-          </>
-        ) : null}
-        {hosts.length === 0 && openKey !== NEW_KEY ? (
+        {hosts.length === 0 ? (
           <div className="srow set-row">
             <div className="srow-tx">
               <span>{t("ssh.noHosts")}</span>
@@ -222,19 +211,16 @@ export default function SshPage() {
           </div>
         ) : (
           hosts.map((h) => (
-            <Fragment key={h.name}>
-              <div className={"srow mem-row" + (openKey === h.name ? " on" : "")} onClick={() => open(h.name)}>
-                <div className="srow-tx">
-                  <b>{h.name}</b>
-                  <span>{`${h.username ? `${h.username}@` : ""}${h.host}${h.port && h.port !== 22 ? `:${h.port}` : ""}`}</span>
-                  {h.description && <span>{h.description}</span>}
-                </div>
-                <div className="srow-ctl">
-                  <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
-                </div>
+            <div key={h.name} className="srow mem-row" onClick={() => setEdit({ host: h })}>
+              <div className="srow-tx">
+                <b>{h.name}</b>
+                <span>{addrOf(h)}</span>
+                {h.description && <span>{h.description}</span>}
               </div>
-              {openKey === h.name ? <SshEditor host={h} onClose={() => setOpenKey(null)} /> : null}
-            </Fragment>
+              <div className="srow-ctl">
+                <span className="mem-caret"><Icon name="caretSlim" size={14} /></span>
+              </div>
+            </div>
           ))
         )}
       </div>

@@ -333,3 +333,30 @@ export function Srow({ title, desc, cls, dataKey, children }: {
     </div>
   );
 }
+
+// ── Page-level asset editor window head (skills / MCP / hooks) ──
+// Skills, MCP and hooks all fold their create & edit flows into one window that replaces
+// the whole page body (same idea as the main-column automation editor): a back button, the
+// title/subtitle block (subtitle carries the file path or source), and the right-aligned
+// actions. The body is the page's own form card — <div className="set-card set-edit-card"> —
+// so each page keeps its field language while the window chrome stays identical.
+export function EditWindowHead({ title, sub, onBack, children }: {
+  title: ReactNode;
+  /** Second line under the title (path / source / hint); omitted when absent. */
+  sub?: string;
+  onBack: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="set-edit-head">
+      <button type="button" className="save-btn" onClick={onBack}>
+        {t("settingsPage.shared.back")}
+      </button>
+      <div className="set-edit-tt">
+        <div className="set-edit-title">{title}</div>
+        {sub ? <div className="set-edit-sub" title={sub}>{sub}</div> : null}
+      </div>
+      {children ? <div className="set-edit-actions">{children}</div> : null}
+    </div>
+  );
+}

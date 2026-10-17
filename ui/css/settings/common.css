@@ -590,6 +590,26 @@
 
 .set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
 
+/* ── Page-level asset editor (skills / MCP / hooks) ──
+   Create and edit replace the whole page body with the editor window: back button +
+   title/subtitle head, then a single form card holding the page's own field markup
+   (.mcp-form-* / .inp / textareas). Head actions use the small .save-btn family
+   (danger variant for delete); the form card carries the padding the inline-expansion
+   body used to provide. */
+.set-edit-head { display: flex; align-items: flex-start; gap: 12px; }
+
+.set-edit-head > .save-btn { flex: none; }
+
+.set-edit-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.set-edit-title { display: flex; align-items: center; gap: 10px; font-size: calc(var(--ui-fs) * 1.5); font-weight: 500; line-height: 1.35; }
+
+.set-edit-sub { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.set-edit-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.set-card.set-edit-card { margin-top: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+
 /* Voice sections (InteractionPage VoiceSection): language code input width + the
    dictation test button's live-recording look */
 .voice-lang-inp { width: 110px; }
