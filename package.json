@@ -13,6 +13,7 @@
     "smoke:kimi-auto": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-kimi-auto-thinking.ts",
     "smoke:plan": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-plan-approve.ts",
     "dev": "bun run ui:build && OMP_PROFILE=omp-desktop-dev tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev:browser": "bun scripts/dev-browser.ts",
     "ui:build": "vite build",
     "ui:watch": "vite build --watch",
     "ui:dev": "vite",

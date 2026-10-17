@@ -48,14 +48,19 @@
    - 冒烟测试**统一**用 `omp-desktop-test`：新脚本必须 `import { smokeEnv } from "./smoke-profile.ts"` 并用它 spawn host、读 profile 路径（`profileAgentPath()`），禁止手写 profile 字符串或硬编码 `~/.omp/agent/...`；手写 `OMP_PROFILE=omp-desktop-test bun scripts/…` 仅用于 package.json 入口。profile 目录不存在时由 `host/bootstrap.ts` 自动新建。
    - 开发启动**统一**用 `omp-desktop-dev`（已写进 `dev` 脚本，直接 `bun run dev` 即是隔离的）；它与 `default` 各持一份 `omp-desktop.json`，远程控制的端口/开关/accessKey 相互独立——dev 要开远程须避开 `default` 已占用的 16800。
    - 严禁任何测试或开发运行污染 `default` profile；`host/bootstrap.ts` 的源码树 + default 组合会直接抛 `errors.host.profileRequired` 作为兜底闸门。
-4. **输出风格 (ADHD Mode)**：
+4. **真机调试双通道**：禁止拿 `?preview=1` 样例页（不连 host）冒充真机验证；按验证目标选通道——
+   - **`dev:browser`（默认通道）**：浏览器 + Vite HMR 连真实 host。`bun run dev:browser`（默认 `omp-desktop-dev`，`OMP_PROFILE=...` 可覆盖）拉起 host + Vite，终端打印 `BROWSER_URL=http://localhost:<vite>/?ws=<port>`；`?ws=` 分支（`ui-src/store/ws.ts`）跳过 Tauri `ws_url` 直连主 WS，无 remote 章、无写 denylist；Tauri-only 功能（窗控/托盘/原生菜单/音频/更新）自动 no-op。适合 host 协议 / UI 逻辑 / 写路径验证，可 headless。
+   - **CDP 连 Tauri dev 窗口（平台与外壳验证）**：Windows WebView2 特有 bug、窗控/托盘/真实渲染差异必须走这条——浏览器通道的 Chromium 渲染不构成证据。启动时带 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333 bun run dev`，然后用 browser 工具的 `app.cdp_url: "http://127.0.0.1:9333"` attach 真实窗口（JS 求值/合成鼠标事件/截图全可用）；Tauri dev 窗口加载的是 ui/dist 构建产物（无 devUrl、无 HMR），配 `bun run ui:watch` 让产物变化自动 reload。
+   - 与远程控制的边界：`host/remote.ts` 的 LAN 服务（16800 + `?t=` key）伺服 ui/dist 构建产物且受写 denylist 约束，是「远程形态」，不得替代开发调试。
+   - 并发规则：主 WS 动态端口、Vite 端口被占自增，多实例端口不冲突；但**同一 profile 同时只允许一个 host**（会话池是进程内存态、automations 调度器会双触发、omp-desktop.json 写竞争）——第二个实例必须换 `OMP_PROFILE`（如 `omp-desktop-dev-2`）；Tauri 外壳有单实例锁（再启动仅聚焦已有窗口），CDP/`dev:browser` 通道没有，不得与 `bun run dev` 同时共用 dev profile。
+5. **输出风格 (ADHD Mode)**：
    - 第一行必须是可直接执行的命令、路径或代码片段。
    - 多步任务清晰编号，结尾给出 2 分钟内可完成的单一具体操作。
    - 严禁空话、客套话与无意义的铺垫。
-5. **外科手术式修改**：只做解决当前问题所必需的修改，不做过度推测性设计，保持既有代码风格。
-6. **文档体系**：写/改任何 .md 文档前先读 `docs/documentation.md`（文档类型登记表 / 决策树 / 长度预算 / SSOT 原则）。`.agents/` 是 agent 工作文档区（防回归 RULE / BUGS 事故账本 / ADR notes / 工作流约定），入口见 `.agents/README.md`；外部依赖坑记 `docs/PITFALLS.md`，本仓库 bug 记 `.agents/BUGS.md`。
-7. **编码强制红线**：全部文本文件一律 UTF-8（编辑器约束见 `.editorconfig`），禁止按系统 ANSI/GBK 猜测编码读写。`bun run check` 内含编码门禁（`scripts/check-encoding.mjs`：非法 UTF-8 / 乱码特征字符 / 双重编码指纹），`.githooks/pre-commit` 拦截暂存区乱码（`git config core.hooksPath .githooks` 已设，绕过需在 commit 描述写明理由）；整文件回写源码的读写两侧必须显式 UTF-8。规则 SSOT 见 `.agents/rules.md` RULE-009，乱码恢复方法见 BUG-026。
-8. **交付报告**：任务收尾必须报告五要素——①可观察行为/契约变化；②主要改动文件；③**实际跑过**的测试与检查及结果；④跳过的验证及原因；⑤已知风险、兼容性影响与遗留的用户决策。红线：**未实际执行的测试/构建/手工验证，不得声称已通过**。
+6. **外科手术式修改**：只做解决当前问题所必需的修改，不做过度推测性设计，保持既有代码风格。
+7. **文档体系**：写/改任何 .md 文档前先读 `docs/documentation.md`（文档类型登记表 / 决策树 / 长度预算 / SSOT 原则）。`.agents/` 是 agent 工作文档区（防回归 RULE / BUGS 事故账本 / ADR notes / 工作流约定），入口见 `.agents/README.md`；外部依赖坑记 `docs/PITFALLS.md`，本仓库 bug 记 `.agents/BUGS.md`。
+8. **编码强制红线**：全部文本文件一律 UTF-8（编辑器约束见 `.editorconfig`），禁止按系统 ANSI/GBK 猜测编码读写。`bun run check` 内含编码门禁（`scripts/check-encoding.mjs`：非法 UTF-8 / 乱码特征字符 / 双重编码指纹），`.githooks/pre-commit` 拦截暂存区乱码（`git config core.hooksPath .githooks` 已设，绕过需在 commit 描述写明理由）；整文件回写源码的读写两侧必须显式 UTF-8。规则 SSOT 见 `.agents/rules.md` RULE-009，乱码恢复方法见 BUG-026。
+9. **交付报告**：任务收尾必须报告五要素——①可观察行为/契约变化；②主要改动文件；③**实际跑过**的测试与检查及结果；④跳过的验证及原因；⑤已知风险、兼容性影响与遗留的用户决策。红线：**未实际执行的测试/构建/手工验证，不得声称已通过**。
 
 ## 设置页一致性规范（最高优先级 UI 约束）
 

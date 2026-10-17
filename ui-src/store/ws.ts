@@ -53,6 +53,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   async connect(): Promise<void> {
     get().setConnected(false, t("notify.connecting"));
     let url: string;
+    const devPort = devWsPort();
     if (REMOTE) {
       // Remote control: hit this origin's remote service directly; no key parks on the key-entry
       // placeholder instead of burning the retry ladder on guaranteed-401 connects
@@ -62,6 +63,10 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
         return;
       }
       url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?t=${encodeURIComponent(key)}`;
+    } else if (!invoke && devPort) {
+      // Browser dev direct-connect (?ws=<port>): loopback to the manually started host's
+      // main WS server; local channel — no remote stamp, no write denylist.
+      url = `ws://127.0.0.1:${devPort}`;
     } else {
       if (!invoke) {
         get().setConnected(false, t("notify.noHost"));
@@ -178,11 +183,25 @@ declare global {
 
 export const invoke = window.__TAURI__?.core?.invoke;
 
+// Browser dev direct-connect (?ws=<hostPort>): an HMR session from `bun run ui:dev`
+// against a manually started host — `bun run dev:browser` spawns both and prints the
+// ready URL. The port comes from the host's READY stdout line; digits-only so the value
+// can only ever name a loopback port.
+export function devWsPort(): string | null {
+  const raw = new URLSearchParams(window.location.search).get("ws");
+  return raw && /^\d{1,5}$/.test(raw) ? raw : null;
+}
+
 // ---------- Remote control mode (Spec §4.1) ----------
-// REMOTE = plain browser against the host's remote LAN service: no Tauri shell, and not the
-// ?preview=1 sample page (the preview check mirrors main.tsx, which also skips connect() there).
-// The remote WS endpoint is this same origin's /ws gated by the access key.
-export const REMOTE = !invoke && !new URLSearchParams(window.location.search).has("preview");
+// REMOTE = plain browser against the host's remote LAN service: no Tauri shell, not the
+// ?preview=1 sample page (the preview check mirrors main.tsx, which also skips connect()
+// there), and not a ?ws= dev direct-connect (a local-channel loopback where remote
+// affordances — hidden settings, no voice button, key entry — would be wrong). The remote
+// WS endpoint is this same origin's /ws gated by the access key.
+// The ?ws= check mirrors layout.ts/Composer.tsx (.has() form in all three so an invalid
+// port degrades identically everywhere: connect() falls through to the noHost surface).
+export const REMOTE =
+  !invoke && !new URLSearchParams(window.location.search).has("preview") && !new URLSearchParams(window.location.search).has("ws");
 
 const REMOTE_KEY_STORAGE = "omp-remote-key";
 
