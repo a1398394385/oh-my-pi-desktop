@@ -185,8 +185,13 @@
     row-gap: 2px;
   }
   #tasklist .proj.collapsed { margin-bottom: 6px; }
+  /* The head's own bottom gap yields to the kids panel for as long as the panel is mounted
+     (expanded, or mid-collapse while the deferred unmount is still pending): a collapsed head
+     must not add its 6px on top of the shrinking panel. Otherwise the collapse's first frame
+     widens the gap by that 6px and the unmount drops it again — a gap that appears and then
+     shrinks. */
+  #tasklist .proj:has(+ .proj-kids) { margin-bottom: 0; }
   #tasklist .proj:not(.collapsed) {
-    margin-bottom: 0;
     border-radius: var(--r-md) var(--r-md) 0 0;
     border-bottom-color: transparent;
   }
@@ -262,6 +267,15 @@
   /* Sessions inside the expanded card: plain rows (no nested card), two-line layout —
      title on top, relative time underneath, status/actions on the right. */
   #tasklist .proj-kids-in { padding: 4px 6px 6px; }
+  /* Collapse must reach zero. The frame's border/margin already drop with
+     `.proj.collapsed`, but the inner card's padding does not shrink with the
+     grid row — the 0fr row floors at the padding box (~8px) while the deferred
+     unmount only fires at 310ms, so a ghost box sits between the card and the
+     next project for ~190ms and then vanishes on its own (a gap that appears
+     and then shrinks). Animating the padding with the row lands both at 0
+     together, so the unmount has no step left to make. */
+  #tasklist .proj-kids > .proj-kids-in { transition: padding var(--dur-sheet) var(--swift); }
+  #tasklist .proj-kids.closing > .proj-kids-in { padding-top: 0; padding-bottom: 0; }
   #tasklist .proj-kids .task {
     margin: 0;
     width: 100%;

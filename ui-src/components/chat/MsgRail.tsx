@@ -66,13 +66,54 @@ let railGain = new Float32Array(0); // per-tick pointer gain (1 = untouched)
 let railMusicGain = new Float32Array(0); // per-tick band energy, floor-remapped to 0..1
 let railMusicActive = false; // a capture is streaming frames
 
+// Music mode paints each tick with one stop of the brand gradient (--brand-1 at the
+// rail's top → --brand-4 at the bottom, the same ramp as the welcome title). Colors
+// resolve from the CSS vars so light/dark themes stay in sync; recomputed only when
+// --brand-1 or the tick count changes (theme switch swaps all four values).
+let railColorsKey = ""; // "--brand-1|tickCount" the cached colors were built for; empty = not colored
+let railColors: string[] = [];
+
+function brandRgb(hex: string): [number, number, number] {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  const v = m ? parseInt(m[1], 16) : 0;
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function musicTickColors(): string[] {
+  const brand1 = getComputedStyle(document.documentElement).getPropertyValue("--brand-1");
+  const key = brand1.trim() + "|" + railTicks.length;
+  if (railColorsKey === key) return railColors;
+  const s = getComputedStyle(document.documentElement);
+  const stops = ["--brand-1", "--brand-2", "--brand-3", "--brand-4"].map((v) => brandRgb(s.getPropertyValue(v)));
+  const n = railTicks.length;
+  const out: string[] = new Array(n);
+  for (let j = 0; j < n; j++) {
+    const t = n === 1 ? 0 : (j / (n - 1)) * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(t));
+    const f = t - i;
+    const a = stops[i], b = stops[i + 1];
+    out[j] = `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)} ${Math.round(a[1] + (b[1] - a[1]) * f)} ${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+  }
+  railColorsKey = key;
+  railColors = out;
+  return out;
+}
+
 function paintRailWidths() {
   const base = RAIL_W_BASE;
   if (railMusicActive) {
+    const colors = musicTickColors();
     railTicks.forEach((t, j) => {
       t.style.width = base * (1 + RAIL_W_MUSIC * railMusicGain[j]) + "px";
+      t.style.background = colors[j];
     });
     return;
+  }
+  // Leaving music mode: drop the per-tick inline colors so CSS (.rail-tick / .pin) owns the paint again
+  if (railColorsKey) {
+    railColorsKey = "";
+    railColors = [];
+    for (const t of railTicks) t.style.background = "";
   }
   railTicks.forEach((t, j) => {
     t.style.width = base * railGain[j] + "px";

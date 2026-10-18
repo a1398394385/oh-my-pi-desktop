@@ -48,7 +48,7 @@
 |---|---|---|
 | user / bashExecution / hookMessage 等 | 各 1 块 | entry id |
 | assistant | thinking 块(0/1) + text 块(0/1) + tool 对块 × N | thinking/text: `entryId#t` / `entryId#x`;tool 对: result 的 entry id |
-| tool_use 本体 | 不单独成块,依附于 tool 对 | — |
+| tool_use 本体 | 不单独成块,依附于 tool 对;其 name+arguments 成本计入 tool 对块 tokens | — |
 | 压缩块(acpSummary) | 压缩区成员,不进候选;可被强力压缩 supersede | 自身 custom entry id |
 
 **配对不变量**(投影输出必须满足,宿主断言):每个 tool_use 有对应 result;每个 result 有对应 tool_use。成对保留、成对消失均合法;单边留存非法。

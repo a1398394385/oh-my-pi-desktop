@@ -86,8 +86,15 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     let everOpened = false;
     const ws = new WebSocket(url);
     set({ ws });
-    ws.onmessage = (ev) => onMessage(JSON.parse(ev.data));
+    // Stale-socket guard (`get().ws === ws` on every callback): once a newer connect() has
+    // replaced this socket in the store, any late events must not touch shared state. Without
+    // this, the host-side kick of a half-open predecessor (close 4001 sent when our own
+    // reconnect takes the slot) fires the DEAD socket's onclose here and latches
+    // kickedByOther — a full-page "taken over by another device" screen where the takeover
+    // is our own healthy reconnect.
+    ws.onmessage = (ev) => { if (get().ws === ws) onMessage(JSON.parse(ev.data)); };
     ws.onopen = () => {
+      if (get().ws !== ws) return;
       everOpened = true;
       reconnectAttempt = 0;
       get().setConnected(true, t("notify.connected"));
@@ -110,6 +117,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     // Kicked by another client (remote-control takeover): NEVER auto-reconnect — the new holder would
     // kick us again, looping forever (Spec §7). Reconnect happens only via the manual reclaim action.
     ws.onclose = (ev) => {
+      if (get().ws !== ws) return; // stale socket: a newer connect() owns the state now
       get().setConnected(false, t("notify.disconnected"));
       if (ev.code === 4001 || get().kickedByOther) {
         set({ kickedByOther: true });
@@ -132,7 +140,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       }
       scheduleReconnect(get().connect);
     };
-    ws.onerror = () => get().setConnected(false, t("notify.disconnected"));
+    ws.onerror = () => { if (get().ws === ws) get().setConnected(false, t("notify.disconnected")); };
   },
 });
 

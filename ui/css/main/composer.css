@@ -170,24 +170,30 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
    the first line): tuned to the measured part widths at the 11.44px row font (cache hit +
    break counter 82px, cache read 53px, cache write 46px, input 58px, output 58px, cost
    124px, speed 80px, TTFT 49px, duration 93px): the full row needs 852px, and each stage
-   below drops one optional part once the row no longer fits (794px without TTFT, 677px
-   without the cache split, 544px without cost, 442px without duration) — the numbers stay
-   a few px under those sums so the row never wraps. */
+   below drops one optional part once the row no longer fits (744px without the cache
+   split, 611px without cost, 509px without duration, 451px without TTFT) — the numbers
+   stay a few px under those sums so the row never wraps.
+
+   Drop order is by value per pixel, not by position: the cache read/write split goes
+   first (two verbose numbers), then cost, then active time, and only a column too
+   narrow for anything meaningful loses the average TTFT. TTFT used to be the FIRST
+   casualty at 850px, so opening the right panel or narrowing the window below ~1260px
+   made it silently disappear mid-session — the one latency figure people hover for. */
 @media (min-width: 769px) {
   @container (max-width: 850px) {
-    .sb-opt-ttft { display: none; }
-  }
-
-  @container (max-width: 790px) {
     .sb-opt-cachetok { display: none; }
   }
 
-  @container (max-width: 675px) {
+  @container (max-width: 740px) {
     .sb-opt-cost { display: none; }
   }
 
-  @container (max-width: 540px) {
+  @container (max-width: 605px) {
     .sb-opt-duration { display: none; }
+  }
+
+  @container (max-width: 505px) {
+    .sb-opt-ttft { display: none; }
   }
 }
 

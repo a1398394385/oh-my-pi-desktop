@@ -101,6 +101,13 @@ export function splitBlocks(
 	memo?: Map<string, number>,
 ): AcpBlockInfo[] {
 	const blocks: AcpBlockInfo[] = [];
+	// tool_use bodies ride with their result block (spec §3), so their cost is
+	// charged to the owning result block: the pair leaves the request together
+	// on compression, and every consumer derived from splitBlocks (activity
+	// zone, tier lines, manifest ranking) must see the pair's full size. Calls
+	// without a settled result (unfinished turn) stay uncounted — they are a
+	// transient request tail, not compression candidates.
+	const callTokens = new Map<string, number>();
 	for (const { id, message } of source) {
 		// Memo key basis: fingerprint identifies the message, suffix separates
 		// the #t/#x blocks of one assistant message, length detects rewrites.
@@ -125,7 +132,7 @@ export function splitBlocks(
 				kind: "result",
 				sourceId: id,
 				toolCallId: message.toolCallId,
-				tokens: count(text),
+				tokens: count(text) + (callTokens.get(message.toolCallId) ?? 0),
 				intent: truncIntent(`${message.toolName}: ${text}`),
 			});
 		} else if (message.role === "assistant") {
@@ -136,6 +143,8 @@ export function splitBlocks(
 				if (c.type === "thinking" || c.type === "redactedThinking")
 					thinking += c.type === "thinking" ? c.thinking : c.data;
 				else if (c.type === "text") text += c.text;
+				else if (c.type === "toolCall")
+					callTokens.set(c.id, count(`${c.name} ${JSON.stringify(c.arguments)}`, "c"));
 			}
 			if (thinking)
 				blocks.push({
