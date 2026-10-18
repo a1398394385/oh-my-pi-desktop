@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, showWelcomeScreen, pathBase } from "../../../store";
+import { useAppStore, send, showWelcomeScreen, pathBase, type TimerHandle } from "../../../store";
 import { REMOTE } from "../../../store/ws";
 import Icon from "../../../Icon";
 import SessionRow from "./SessionRow";
@@ -148,18 +148,28 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   const [showKids, setShowKids] = useState(expanded); // render immediately on first mount without animation (mirrors the old renderList rebuild)
   const [closing, setClosing] = useState(false);
 
-  // Mount kids on expand / delay unmount on collapse (remove only after the 0.3s collapse animation finishes)
+  // Mount kids on expand / delay unmount on collapse (remove only after the 0.3s collapse
+  // animation finishes). The timer lives in a ref because setClosing(true) re-runs this effect:
+  // a cleanup-owned clearTimeout would cancel the unmount for good and leave a stray
+  // .proj-kids.closing box (~8px) between the collapsed card and the next project.
+  const closeTimer = useRef<TimerHandle | null>(null);
   useEffect(() => {
-    if (expanded && (!showKids || closing)) {
-      setClosing(false);
-      setShowKids(true);
-    } else if (!expanded && showKids && !closing) {
+    if (expanded) {
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current);
+        closeTimer.current = null;
+      }
+      if (!showKids || closing) {
+        setClosing(false);
+        setShowKids(true);
+      }
+    } else if (showKids && !closing && !closeTimer.current) {
       setClosing(true);
-      const t = setTimeout(() => {
+      closeTimer.current = setTimeout(() => {
+        closeTimer.current = null;
         setShowKids(false);
         setClosing(false);
       }, 310);
-      return () => clearTimeout(t);
     }
   }, [expanded, showKids, closing]);
 
@@ -244,16 +254,20 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
             >
               <Icon name="plus" size={14} />
             </button>
-            <button
-              className="pmore"
-              title={t("sidebar.more")}
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenProjMenu(e, p.cwd);
-              }}
-            >
-              <Icon name="dots" size={14} />
-            </button>
+            {/* Narrow (remote phones): the ⋯ menu only holds "remove project", which is a
+                desktop-only action — the button is not rendered at all. */}
+            {!narrow && (
+              <button
+                className="pmore"
+                title={t("sidebar.more")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenProjMenu(e, p.cwd);
+                }}
+              >
+                <Icon name="dots" size={14} />
+              </button>
+            )}
           </>
         )}
         {narrow && (

@@ -810,6 +810,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     ? (s.thinking === "auto" && s.autoResolved ? `${thLv("auto")}·${thLv(s.autoResolved)}` : s.thinking ? thLv(s.thinking) : t("composer.thinkFallback"))
     : newSessionThinking ? thLv(newSessionThinking) : t("composer.thinkFallback");
   const bgJobs = useAppStore((st) => st.bgJobs);
+  // Narrow (phone) layout: the permission/model/thinking pills render in their own bar below
+  // the input instead of the nowrap toolbar (see pillBar below).
+  const narrow = useAppStore((st) => st.narrow);
   const bgTasks = bgTaskCount(s, s ? bgJobs.get(bgJobsKey(s.sessionId)) : null);
   const bgSubs = subagentCount(s);
 
@@ -855,6 +858,48 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   );
 
   const phText = t("composer.placeholder");
+
+  // Permission / model / thinking selectors. Both placements render the same JSX: narrow
+  // (phone) moves them out of the nowrap .cbar into the pill bar below the input, where the
+  // full labels stay readable (the bar-N collapse only reaches .cbar); desktop keeps them inline.
+  const modePill = (
+    <button
+      className={"pill-btn" + (openMenu === "mode" ? " active" : "") + (modeMeta.yolo ? " yolo highlight-mode" : "")}
+      id="modeBtn"
+      title={t("composer.permissionMode")}
+      ref={modeBtnRef}
+      onClick={toggleMenu("mode")}
+    >
+      <Icon name={modeMeta.icon} id="modeIcon" />
+      <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+    </button>
+  );
+  const modelThinkPills = (
+    <>
+      <button
+        className={"pill-btn" + (openMenu === "model" ? " active" : "")}
+        id="modelBtn"
+        title={t("composer.switchModel")}
+        ref={modelBtnRef}
+        disabled={menuDisabled}
+        onClick={toggleMenu("model")}
+      >
+        <span id="modelIcon">{s?.model ? PROV_IC[s.model.split("/")[0]] || "✦" : "✦"}</span>
+        <span id="modelLabel">{modelName}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+      </button>
+      <button
+        className={"pill-btn" + (openMenu === "think" ? " active" : "")}
+        id="thinkBtn"
+        title={t("composer.thinkLevel")}
+        ref={thinkBtnRef}
+        disabled={menuDisabled}
+        onClick={toggleMenu("think")}
+      >
+        <Icon name="think" size={16} />
+        <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+      </button>
+    </>
+  );
 
   return (
     <>
@@ -917,16 +962,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <button className="icon-btn plus-btn" id="plusBtn" title={t("composer.addContext")} onClick={() => pickerRef.current?.click()}>
             <Icon name="plus" />
           </button>
-          <button
-            className={"pill-btn" + (openMenu === "mode" ? " active" : "") + (modeMeta.yolo ? " yolo highlight-mode" : "")}
-            id="modeBtn"
-            title={t("composer.permissionMode")}
-            ref={modeBtnRef}
-            onClick={toggleMenu("mode")}
-          >
-            <Icon name={modeMeta.icon} id="modeIcon" />
-            <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
-          </button>
+          {!narrow && modePill}
           {/* Plan mode: a small button right of the pill separated by |; on hover
               the icon flips to X meaning click to exit (in a session = host mode,
               new-session page = local create_session intent) */}
@@ -1000,28 +1036,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <span className="sp"></span>
           <CtxRing s={s} ringRef={setCtxRingEl} />
           <CtxCard anchor={ctxRingEl} />
-          <button
-            className={"pill-btn" + (openMenu === "model" ? " active" : "")}
-            id="modelBtn"
-            title={t("composer.switchModel")}
-            ref={modelBtnRef}
-            disabled={menuDisabled}
-            onClick={toggleMenu("model")}
-          >
-            <span id="modelIcon">{s?.model ? PROV_IC[s.model.split("/")[0]] || "✦" : "✦"}</span>
-            <span id="modelLabel">{modelName}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
-          </button>
-          <button
-            className={"pill-btn" + (openMenu === "think" ? " active" : "")}
-            id="thinkBtn"
-            title={t("composer.thinkLevel")}
-            ref={thinkBtnRef}
-            disabled={menuDisabled}
-            onClick={toggleMenu("think")}
-          >
-            <Icon name="think" size={16} />
-            <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
-          </button>
+          {!narrow && modelThinkPills}
           {/* Voice conversation: mic toggle left of send; lit = synthesis +
               dictation. Click toggles both switches; hold while lit =
               push-to-talk (the release click is swallowed). Not rendered on
@@ -1092,6 +1107,18 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           </button>
           </div>
         </div>
+        {/* Narrow only: the selector pills extend below the input card as their own bar, so
+            permission / model / thinking render with full labels instead of collapsing to
+            icons inside .cbar. Folds away with the toolbar in bash mode (CSS mirrors
+            .cbar-fold's grid animation). */}
+        {narrow && (
+          <div className="pill-fold">
+            <div className="pill-bar">
+              {modePill}
+              {modelThinkPills}
+            </div>
+          </div>
+        )}
         {/* Permission mode (omp three values, large-row style) */}
         {openMenu === "mode" && <ModeMenu btnRef={modeBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
         {/* Model (delivered after the host filters enabledModels, grouped by

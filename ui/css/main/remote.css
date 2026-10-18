@@ -63,6 +63,13 @@
   #main .stats-bar .sb-group { gap: 2px 6px; }
   #main .stats-bar .sb-item { gap: 3px; white-space: nowrap; }
 
+  /* Automations page (list + create/edit share .al-page > .al-col): same edge-to-edge
+     contract as the message column — the desktop four-stage shrink would otherwise leave
+     ~60px dead margin per side, and the two-column card grid does not fit a phone. */
+  #main .al-page { padding: 0 0 10px; }
+  #main .al-page .al-col { width: auto; max-width: none; margin-left: 12px; margin-right: 12px; }
+  #main .al-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+
   /* Right-panel tab bar: three tabs share the row, a fourth scrolls horizontally instead
      of squeezing every tab (desktop keeps the equal-width shrink recipe) */
   #right .rtab { flex: 1 0 calc((100% - 43px) / 3); min-width: 0; }
@@ -225,6 +232,9 @@
     transition: transform var(--dur-snap) var(--swift);
   }
   #tasklist .proj:not(.collapsed) .pcaret { transform: rotate(180deg); }
+  /* Touch screens have no hover: the card head's new-session ＋ (desktop reveals it on row
+     hover) stays visible at all times. */
+  #tasklist .proj .padd { display: inline-flex; }
   #tasklist .proj .ppath {
     flex: 0 0 calc(100% - 24px);
     width: calc(100% - 24px);

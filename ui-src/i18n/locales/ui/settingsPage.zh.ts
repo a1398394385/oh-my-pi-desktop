@@ -57,6 +57,8 @@ export const settingsPageZh = {
     keyRegen: "重新生成",
     keyRegenConfirm: "重新生成访问密钥？",
     keyRegenMsg: "旧访问链接将立即失效，已连接的远程端不受影响。",
+    mobileStatsBarTitle: "手机端显示数据状态栏",
+    mobileStatsBarDesc: "在手机端输入框下方显示会话数据状态栏；关闭即隐藏（默认隐藏）。",
     statusTitle: "服务状态",
     statusDesc: "远程服务的当前运行状态；换绑或启动失败时显示错误详情。",
     statusListening: "监听中",

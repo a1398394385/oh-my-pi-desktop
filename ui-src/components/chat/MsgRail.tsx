@@ -13,7 +13,7 @@ import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import type { RailEntry } from "./chat-types";
 import type { TimerHandle } from "../../store";
 import { placeMenu } from "../../shell";
-import { useAppStore } from "../../store";
+import { effZoom } from "../../store";
 import { onSpectrum, SPECTRUM_BANDS } from "./railAudio";
 import { t } from "../../i18n";
 
@@ -86,7 +86,7 @@ function paintRailWidths() {
 function paintRailAt(clientY: number, railTop: number) {
   let best = -1;
   let bestD = Infinity;
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   // clientY/railTop are visual; railTickCY lives in the rail's layout px: convert before comparing
   const yLocal = (clientY - railTop) / z;
   railTicks.forEach((_, j) => {
@@ -205,7 +205,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     let idx = railPopIdx;
     if (idx < 0 || !railTicks[idx]?.isConnected) {
       const rr = rail.getBoundingClientRect();
-      const yLocal = (e.clientY - rr.top) / (useAppStore.getState().zoomLevel || 1);
+      const yLocal = (e.clientY - rr.top) / effZoom();
       idx = -1;
       let bestD = Infinity;
       railTickCY.forEach((cy, i) => {
@@ -255,7 +255,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     // the click-to-scroll offsets (they drift as streamed content grows above).
     const sig = userEntries.map((e) => e.key).join(",") + "|" + streamEl.clientHeight;
     if (sig === railSig && railTicks.length) {
-      const zs = useAppStore.getState().zoomLevel || 1;
+      const zs = effZoom();
       const streamTopNow = streamEl.getBoundingClientRect().top;
       railTickMeta.forEach((m) => {
         const anchor = streamEl.querySelector(`[data-fk="${m.entry.key}"]`);
@@ -276,7 +276,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     railTotal = userEntries.length;
     const railH = streamEl.clientHeight;
     const streamTop = streamEl.getBoundingClientRect().top;
-    const z = useAppStore.getState().zoomLevel || 1; // rect diffs below are visual; scrollTop/scrollTo are layout px
+    const z = effZoom(); // rect diffs below are visual; scrollTop/scrollTo are layout px
     const pitchBase = 11.25; // CSS px between adjacent ticks (15 reduced by 1/4)
     const pitch = userEntries.length > 1 ? Math.min(pitchBase, (railH - 6) / (userEntries.length - 1)) : pitchBase;
     const startTop = Math.max(0, (railH - (userEntries.length - 1) * pitch) / 2); // laid out from the centerline outward
@@ -324,7 +324,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       const streamEl = streamRef.current;
       if (!rail || !streamEl || rail.hidden) return;
       const rr = rail.getBoundingClientRect();
-      const z = useAppStore.getState().zoomLevel || 1;
+      const z = effZoom();
       // Horizontal: the rail column itself (a small slop for slanted pointers).
       // Vertical: only the band the ticks actually occupy — the rail box spans
       // the whole stream height, so trusting it made the empty corners above and

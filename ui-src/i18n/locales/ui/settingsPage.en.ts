@@ -61,6 +61,8 @@ export const settingsPageEn = {
     keyRegen: "Regenerate",
     keyRegenConfirm: "Regenerate the access key?",
     keyRegenMsg: "Old access links stop working immediately; already-connected clients are unaffected.",
+    mobileStatsBarTitle: "Show the stats bar on phones",
+    mobileStatsBarDesc: "Shows the session stats bar under the composer on narrow (phone) clients; off hides it (the default).",
     statusTitle: "Service status",
     statusDesc: "Current state of the remote service; shows the error detail when a rebind or start fails.",
     statusListening: "Listening",

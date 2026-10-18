@@ -39,12 +39,13 @@
 | `remote.enabled` | bool | false | 开机(profileReady 后)自启远程服务 |
 | `remote.port` | number | 16800 | 监听端口 |
 | `remote.accessKey` | string | 开启时生成 | 128-bit hex;`remote_regenerate_key` 重置 |
+| `remote.mobileStatsBar` | bool | false | 窄屏(手机)客户端是否在输入框下方显示会话数据状态栏。纯显示偏好:不影响远程服务,桌面端忽略 |
 
 ### 3.2 新 RPC(本地/远程均可调;均不在 denylist——配置远程本身不算"修改设置"禁区,由设置页驱动)
 
 | RPC | 载荷 | 应答 | 行为 |
 |---|---|---|---|
-| `set_remote_config` | `{enabled?: bool, port?: number}` | `{type:"remote_config", enabled, port, error?: string}` | 启停/换绑远程服务;端口占用等失败在 `error` 返回且服务保持原状;成功后推 settings 帧 |
+| `set_remote_config` | `{enabled?: bool, port?: number, mobileStatsBar?: bool}` | `{type:"remote_config", enabled, port, error?: string}` | 启停/换绑远程服务;端口占用等失败在 `error` 返回且服务保持原状;成功后推 settings 帧。**只带 `mobileStatsBar` 的请求不触碰服务**(仅落盘 + 推帧):否则端口被其他 host 占用时该偏好永远写不进去 |
 | `remote_regenerate_key` | 无 | `{type:"remote_key", key}` | 重新生成 `remote.accessKey` 并持久化;旧 key 立即失效(新连接校验不过;已连上的不断开) |
 
 **注册门禁(两道,缺一不可)**:`scripts/check-capabilities.mjs` 双向 diff 要求每个新 handler key 登记进 `host/capabilities.json`(`methods[].id` + 合法 `kind`),wire 一致性要求同步 `host/wire/requests.ts:11-38` 的 `HostRequestMethod` union。漏任一处 `bun run check` 即红。
@@ -119,14 +120,19 @@
 - 会话页(中栏)窄屏:隐藏消息 rail(`#msgRail`,`display:none`)——左侧 tick 竖条是桌面 affordance;消息列 / 输入卡 / 统计行取消居中列宽限制,改为左右各 12px 内边距拉满;`.chat-head` 左右 padding 12px;底部安全区由 `env(safe-area-inset-bottom)` 承担。
 - 会话列表页(ZCode 任务首页样式,保留本仓 UI 语言):顶部 header 卡片(标题 + 右上角主题切换 / 缩放 `− 100% +`,无连接说明副标题);新建任务 / 定时任务 / 搜索并排一行三枚等宽按钮(`.ms-nav`,搜索按钮展开输入框并自动聚焦);视图固定为项目形式(`effView = narrow ? "project" : viewMode`,窄屏不渲染最近/归档 seg,也不改写 store,桌面端选择保持不变);每个项目与每个会话各自一张圆角卡片(`--panel-2` 底 + `--line-soft` 描边 + `r-md`);项目卡片内显示任务数(`sidebar.taskCountN`);项目展开的子会话卡片缩进 8px。远程客户端侧栏顶部内边距 10px(`.ms-remote`),macOS 桌面窄窗口保留 40px 红绿灯避让。
 - 右栏整页:与中栏同一卡片几何(`margin: var(--shell-gap) 12px`),内部 `sp-head` 全宽;空态即 `StartPage`(打开标签页列表)。主题/缩放偏好属本地态:远程端 `saveTheme` 不发送 `set_ui_prefs`(否则触发 denylist 的 remote read-only),主题取 localStorage 本地值,首次访问才采纳 host 设置;缩放经 `applyZoom` 在页面切换后重新落到新挂载的列上。
+- **项目卡片一次点击**:项目头只有展开 / 收起这一个动作(`ProjGroup` head 的 toggle),不存在「先选中再展开」的第二步。远程端展开态属客户端本地选择 —— REMOTE 不下发 `set_project_expanded`(host 侧只读),`session_list` 帧只在该客户端尚无项目列表(首帧)时采纳 host 的 `expandedProjects`,之后保留本地集合,否则每次列表刷新都会把点击结果弹回去。收起动画结束(310ms)后 `.closing` 子树必须真正卸载:计时器归组件 ref 所有,不能被 effect cleanup 取消,否则残留约 8px 的 `.proj-kids.closing` 幽灵盒会把收起卡片与下一张卡片的间距撑大(桌面 `ProjGroup` 与归档 `ArchiveGroup` 同规则)。
+- **定时任务页铺满**:`.al-page > .al-col` 在窄屏与消息列同一契约(取消四段收缩,左右各 12px),卡片网格从固定双列改单列、行距 8px;创建 / 编辑视图共用该容器,同样满宽。
 - 窄屏隐藏桌面专用控件:侧栏收起按钮(`.side-collapse`)、`⌘N` 快捷键提示、header 的收起/展开面板按钮、项目/分支 chip(`.chat-head .head-chip`)。
+- **缩放基线**:窄屏把「缩放级别 100%」钉在桌面尺度 80% 的视觉尺寸上(手机端原 80% 手调值成为基线),`ui-src/store/layout.ts` 的 `effZoom() = zoomLevel × (narrow ? 0.8 : 1)` 是唯一换算入口 —— `applyZoom` 写 DOM zoom 用它,所有「视觉像素 ↔ 布局 px」(菜单定位、滚动换算、浮层 zoom 补偿)也必须用它,读原始 `zoomLevel` 只用于显示百分比与增减档位。桌面 `effZoom() === zoomLevel`,行为不变。
+- **输入框下方胶囊栏**:窄屏把权限 / 模型 / 思考三枚胶囊从 `.cbar`(nowrap 工具行)移到 `#composer` 内的 `.pill-bar`(`.pill-fold` 复用 grid `0fr↔1fr` 折叠,bash 模式随工具行一起收起),栏体以负 margin 抵消卡片 padding,铺满卡片宽度并收下圆角 —— 这样三枚胶囊带完整 label + caret 显示,不被分级收缩截断。`.bar-1/2/3/6` 收缩规则因此限定在 `.cbar` 作用域内(`#composer.bar-N .cbar #xxx`);胶囊仍在 `#composer` 内,`placeComposerMenu` 的 `offsetLeft/offsetTop` 坐标系不变。
+- **会话数据状态栏**:窄屏默认不渲染 `SessionStatsBar`(小屏被状态栏吃掉空间),由设置页「远程控制」的 `remote.mobileStatsBar` 开关(默认关)恢复;桌面始终渲染,忽略该开关。
 - **作用域**:本节所有手机端改造(单页导航、卡片列表、两行统计、右栏 tab 三枚后横向滚动、左栏紧凑导航行)只在 `narrow`(≤768px)生效;桌面端(≥769px)保持原三栏布局与 desktop 主页一致 —— stats 单行 + 容器查询裁剪(`@media (min-width:769px)` 包裹),右栏 tab 恢复 `flex: 1 1 0; min-width:56px` 等宽压缩。
 - 新样式域 `ui/css/main/remote.css`,`style.css` 的 `main/` 域段内 import(**不挂真正末尾**:末尾是四套主题覆盖,`style.css:85` 注释确立「主题覆盖必须在末尾」的约定;remote.css 是布局规则,应被主题压过,不能反向覆盖主题变量)。
 
 ### 4.4 Composer 窄屏压缩
 
 - `BAR_STAGES` 5→7;新档 CSS 续 `.bar-1..5` 既有命名。**非纯 CSS 改动**:`Composer.tsx` 两处必须同改——`:73` `BAR_STAGES` 常量 5→7,`:724` `fit()` 的 `classList.remove("bar-1",…,"bar-5")` 列表补 bar-6/7(否则新档永远加不上、旧档类清不掉):
-  - `.bar-6`:mode/think/model 三 pill 全 icon-only(藏全部 label 与 caret;model 用既有 `#modelIcon` 先例,另两个补等价图标);
+  - `.bar-6`:mode/think/model 三 pill 全 icon-only(藏全部 label 与 caret;model 用既有 `#modelIcon` 先例,另两个补等价图标)。**`.bar-1/2/3/6` 均限定在 `.cbar` 作用域内**(`#composer.bar-N .cbar #xxx`):窄屏三胶囊已移到 `.pill-bar`,分级收缩不应再把它们截断;
   - `.bar-7`:藏 plan pill 与 `planSep`、藏 mic/screen 图标钮。
 - `remote.css` 窄屏补充:composer 卡片 padding 收紧;编辑区字号 ≥16px(防 iOS 聚焦放大);cbar 允许 `flex-wrap` 兜底换行;底部 tab 与 dock 垫 `env(safe-area-inset-bottom)`。
 - REMOTE 时 mic(语音)按钮不渲染;`voiceMode` 订阅结果在 REMOTE 下视为 false。
@@ -137,7 +143,7 @@ viewport meta 改为 `width=device-width, initial-scale=1.0, viewport-fit=cover,
 
 ### 4.6 设置页「远程控制」组(仅本地可见)
 
-风格遵循根 AGENTS.md 设置页一致性规范(`.srow.set-row` + `.tg` 开关 + `.inp` + `.save-btn`):开关行(启用)、端口行(数字输入+保存)、密钥行(脱敏显示 + 复制 URL + 「重新生成」危险钮)、状态行(监听中/错误文案来自 `remote_config.error`)。全部文案走 `ui-src/i18n` 语言包,禁止硬编码中文。
+风格遵循根 AGENTS.md 设置页一致性规范(`.srow.set-row` + `.tg` 开关 + `.inp` + `.save-btn`):开关行(启用)、端口行(数字输入+保存)、密钥行(脱敏显示 + 复制 URL + 「重新生成」危险钮)、状态行(监听中/错误文案来自 `remote_config.error`)、手机端状态栏开关行(`remote.mobileStatsBar`,默认关;`remote_config` 回包不带该字段,值只来自 settings 帧的 `remote` 段)。全部文案走 `ui-src/i18n` 语言包,禁止硬编码中文。
 
 ## 5. 验收矩阵
 

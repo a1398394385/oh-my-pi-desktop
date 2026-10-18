@@ -552,13 +552,15 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 #modelIcon { display: none; }
 
 /* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> icon-only -> thinking level -> icon-only -> model -> icon-only -> hide subagents -> hide background tasks -> three pills icon-only + tight padding -> hide plan pill, mic and screen buttons */
-#composer.bar-1 #modeLabel, #composer.bar-1 #modeBtn .caret-svg { display: none; }
+/* Scope is .cbar on purpose: narrow moves the three pills into the pill bar below the input,
+   where they must keep their full labels -- an unscoped rule would collapse them there too. */
+#composer.bar-1 .cbar #modeLabel, #composer.bar-1 .cbar #modeBtn .caret-svg { display: none; }
 
-#composer.bar-2 #thinkLabel, #composer.bar-2 #thinkBtn .caret-svg { display: none; }
+#composer.bar-2 .cbar #thinkLabel, #composer.bar-2 .cbar #thinkBtn .caret-svg { display: none; }
 
-#composer.bar-3 #modelLabel, #composer.bar-3 #modelBtn .caret-svg { display: none; }
+#composer.bar-3 .cbar #modelLabel, #composer.bar-3 .cbar #modelBtn .caret-svg { display: none; }
 
-#composer.bar-3 #modelIcon { display: inline; }
+#composer.bar-3 .cbar #modelIcon { display: inline; }
 
 #composer.bar-4 #bgSubagentBtn { display: none; }
 
@@ -566,7 +568,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 /* bar-6: the three selector pills are all icon-only now (bar-1/2/3 already hid
    the labels); shed the text-side padding so each pill collapses to icon width */
-#composer.bar-6 #modeBtn, #composer.bar-6 #thinkBtn, #composer.bar-6 #modelBtn { padding: 5px; }
+#composer.bar-6 .cbar #modeBtn, #composer.bar-6 .cbar #thinkBtn, #composer.bar-6 .cbar #modelBtn { padding: 5px; }
 
 /* bar-7: hide the plan pill + its separator and the mic/screen icon buttons;
    the floor row is +, icon-only pills, ctxRing, send */
@@ -878,6 +880,41 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   #input { font-size: 16px; }
 
   .cbar { flex-wrap: wrap; }
+
+  /* Selector pill bar: narrow moves permission / model / thinking out of .cbar into this bar
+     that extends below the input card (full labels, no tiered collapse). The negative side and
+     bottom margins cancel #composer's own padding so the bar spans the whole card width and
+     closes it with the card's bottom corners. */
+  #composer .pill-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-snap) var(--swift); }
+
+  #composer .pill-bar {
+    min-height: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px -8px -6px;
+    padding: 8px;
+    background: var(--panel-2);
+    border-top: 1px solid var(--line-soft);
+    border-radius: 0 0 15px 15px;
+    overflow: hidden;
+    transition: opacity var(--dur-snap) var(--swift), margin-top var(--dur-snap) var(--swift), padding-top var(--dur-snap) var(--swift), padding-bottom var(--dur-snap) var(--swift), visibility 0s var(--dur-snap);
+  }
+
+  /* bash mode folds the whole toolbar away (see composer-bash.css); the pill bar is part of it.
+     The padding and the divider must collapse too: on a 0fr track the box would otherwise keep
+     its 16px padding + 1px border as a leftover strip. */
+  #composer.bash-mode .pill-fold { grid-template-rows: 0fr; }
+
+  #composer.bash-mode .pill-bar {
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-top-color: transparent;
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 /* ghost inline completion (GhostNode) + model capability badges (18.5) */

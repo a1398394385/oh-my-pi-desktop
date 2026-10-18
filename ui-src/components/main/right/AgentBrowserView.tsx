@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
-import { useAppStore, type TimerHandle } from "../../../store";
+import { useAppStore, type TimerHandle, effZoom } from "../../../store";
 import { onBrowserFrame } from "../../../store/browserMirror";
 import type { BrowserTabInfo } from "../../../types/frames";
 import { BrowserModePills, displayBrowserUrl, openExternal, SPECIAL_KEY_NAMES } from "./BrowserPage";
@@ -64,7 +64,7 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
   useEffect(() => {
     if (!connected) return;
     const physWidth = (cssWidth: number): number =>
-      Math.max(200, Math.round(cssWidth * (window.devicePixelRatio || 1) * (useAppStore.getState().zoomLevel || 1)));
+      Math.max(200, Math.round(cssWidth * (window.devicePixelRatio || 1) * effZoom()));
     const box = boxRef.current;
     useAppStore.getState().send({ type: "browser_mirror_subscribe", width: physWidth(box?.clientWidth ?? 640) });
     const off = onBrowserFrame((f) => {

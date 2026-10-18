@@ -5,7 +5,7 @@
 // dependency on old ui/ modules.
 // DOM side effects stay imperative; React components cooperate via the
 // omp:close-menus / omp:zoom custom events.
-import { useAppStore, send, setBump, type TimerHandle } from "./store";
+import { useAppStore, send, setBump, effZoom, type TimerHandle } from "./store";
 import { expandRightPanel } from "./components/main/right/tabs";
 import type { ToolItem } from "./types/session";
 import { IS_MAC, IS_WINDOWS } from "./platform";
@@ -137,7 +137,7 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
     const startX = e.clientX;
     const startW = panel.offsetWidth;
     const move = (ev: MouseEvent) => {
-      const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
+      const dx = (ev.clientX - startX) / effZoom();
       const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
       // The center card keeps a minimum width of 30% of the app total width
       // (still compressible down to 30%)
@@ -236,7 +236,7 @@ const TRAFFIC_CENTER_BIAS = 2.2;
 function syncTrafficLights(): void {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!IS_MAC || !invoke) return;
-  const stripBottom = document.getElementById("navNew")?.getBoundingClientRect().top ?? 50 * useAppStore.getState().zoomLevel;
+  const stripBottom = document.getElementById("navNew")?.getBoundingClientRect().top ?? 50 * effZoom();
   void invoke("set_traffic_light_y", { y: stripBottom / 2 + TRAFFIC_CENTER_BIAS });
 }
 
@@ -246,11 +246,13 @@ export function applyZoom(): void {
   // nodes orphaned and silently dropping every later zoom write
   if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected)) zoomTargets = ["sidebar", "main", "right", "settings"].map((id) => document.getElementById(id));
   // style.zoom is a non-standard property (absent from TS lib.dom): assert the
-  // write, semantics unchanged from the original
-  for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
+  // write, semantics unchanged from the original. The narrow baseline folds in here:
+  // phone zoom level 100% renders the 80% size the phone layout was tuned at.
+  const z = effZoom();
+  for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
   // Native macOS traffic lights keep physical coordinates while style.zoom scales CSS px;
   // publish the factor so UI pinned next to them (--top-toggle-*) divides back to points
-  document.documentElement.style.setProperty("--ui-zoom", String(useAppStore.getState().zoomLevel));
+  document.documentElement.style.setProperty("--ui-zoom", String(z));
   syncTrafficLights();
   // zoom changes layout width but does not trigger ResizeObserver (Chrome/WebKit
   // behavior); notify the composer to recompute the bottom-bar collapse
@@ -290,13 +292,13 @@ export function updateRailVisibility(): void {
   if (!main || !dock || dock.classList.contains("hidden")) return;
   // rect diff is visual (both boxes live in the zoomed subtree); the 65px threshold
   // is layout px, so divide the zoom factor back out
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   const m = (dock.getBoundingClientRect().left - main.getBoundingClientRect().left) / z;
   main.classList.toggle("rail-off", m < 65);
 }
 // Fixed menu coordinate compensation: set zoom first, then divide it back out
 export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: number): void {
-  const zoom = useAppStore.getState().zoomLevel;
+  const zoom = effZoom();
   (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(zoom);
   menu.style.left = visualLeft / zoom + "px";
   menu.style.top = visualTop / zoom + "px";

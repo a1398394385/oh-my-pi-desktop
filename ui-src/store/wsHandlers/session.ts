@@ -2,6 +2,7 @@
 // external writes, model and thinking level, rename/archive/stop/compact receipts, fork and
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
+import { REMOTE } from "../ws";
 import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, updateSession } from "../session";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
@@ -56,7 +57,14 @@ export const sessionHandlers = {
       diskProjects.push({ ...p, sessions });
     }
     archived.sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
-    const expandedProjects = new Set<string>(msg.expandedProjects ?? []);
+    // Remote (phone) clients keep expansion client-local: REMOTE mode never sends
+    // set_project_expanded (ProjectsSlice, spec §4.3), so re-adopting the host value on every
+    // list frame would revert each tap and force a second tap. The host value seeds only the
+    // first frame, where the client has no expansion state of its own yet.
+    const expandedProjects =
+      REMOTE && st2.diskProjects.length > 0
+        ? new Set<string>(st2.expandedProjects)
+        : new Set<string>(msg.expandedProjects ?? []);
     if (st2.isProjectManageMode) {
       for (const p of diskProjects) expandedProjects.add(p.cwd);
     }

@@ -58,6 +58,12 @@ export interface RemoteConfig {
   port: number;
   /** 128-bit hex; empty = not generated yet (generated on first enable) */
   accessKey: string;
+  /**
+   * Show the session stats bar on narrow (phone) clients. Defaults to false: the phone
+   * layout hides it because the bar eats the small viewport; the remote settings page
+   * toggles it. Desktop ignores it entirely.
+   */
+  mobileStatsBar: boolean;
 }
 
 /** Read the omp-desktop.json remote section (missing/invalid fields fall back to defaults). */
@@ -67,13 +73,14 @@ export function readRemoteConfig(): RemoteConfig {
     enabled: s.enabled === true,
     port: typeof s.port === "number" && Number.isInteger(s.port) && s.port > 0 && s.port <= 65535 ? s.port : REMOTE_DEFAULT_PORT,
     accessKey: typeof s.accessKey === "string" && /^[0-9a-f]{32}$/.test(s.accessKey) ? s.accessKey : "",
+    mobileStatsBar: s.mobileStatsBar === true,
   };
 }
 
 /** Read-modify-write the remote section (sibling sections and unmentioned fields survive). */
 export function writeRemoteConfig(patch: Partial<RemoteConfig>): RemoteConfig {
   const next = { ...readRemoteConfig(), ...patch };
-  writeDesktopSection("remote", { enabled: next.enabled, port: next.port, accessKey: next.accessKey });
+  writeDesktopSection("remote", { enabled: next.enabled, port: next.port, accessKey: next.accessKey, mobileStatsBar: next.mobileStatsBar });
   return next;
 }
 
@@ -92,10 +99,16 @@ function lanIpv4(): string | undefined {
 }
 
 /** Settings-frame projection of the remote section (spec §3.1; key field named "key" per wire contract). */
-export function remotePayload(): { enabled: boolean; port: number; key: string; url?: string } {
+export function remotePayload(): { enabled: boolean; port: number; key: string; mobileStatsBar: boolean; url?: string } {
   const cfg = readRemoteConfig();
   const ip = lanIpv4();
-  return { enabled: cfg.enabled, port: cfg.port, key: cfg.accessKey, ...(ip && cfg.accessKey ? { url: `http://${ip}:${cfg.port}/?t=${cfg.accessKey}` } : {}) };
+  return {
+    enabled: cfg.enabled,
+    port: cfg.port,
+    key: cfg.accessKey,
+    mobileStatsBar: cfg.mobileStatsBar,
+    ...(ip && cfg.accessKey ? { url: `http://${ip}:${cfg.port}/?t=${cfg.accessKey}` } : {}),
+  };
 }
 
 // ---------- server lifecycle ----------

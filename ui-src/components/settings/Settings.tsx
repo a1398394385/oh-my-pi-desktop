@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, useMemo, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import appIcon from "../../../ui/app-icon.png";
-import { useAppStore, openSettings, closeSettings, refreshSettingsData } from "../../store";
+import { useAppStore, openSettings, closeSettings, refreshSettingsData, effZoom } from "../../store";
 import { applyAppearance } from "../../appearance";
 
 import Icon from "../../Icon";
@@ -252,7 +252,7 @@ export default function Settings() {
       const startX = e.clientX;
       const startW = nav.offsetWidth;
       const move = (ev: MouseEvent) => {
-        const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
+        const dx = (ev.clientX - startX) / effZoom();
         const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
         const w = Math.round(Math.max(150, Math.min(startW + dx, wWin * 0.4)));
         root.style.setProperty(CSS_VAR, w + "px");

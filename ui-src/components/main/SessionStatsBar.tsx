@@ -26,6 +26,9 @@ export default function SessionStatsBar() {
   // the session reference, so the selector picks them up
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const narrow = useAppStore((s) => s.narrow);
+  // Phone gate: the narrow layout hides the bar unless the remote settings page turns it
+  // back on (omp-desktop.json remote.mobileStatsBar, default off). Desktop is unaffected.
+  const mobileStatsBar = useAppStore((s) => s.hostSettings?.remote?.mobileStatsBar === true);
   const st = session?.stats;
   const streaming = session?.streaming === true;
   // Repaint 4x per second while the session runs: token frames only arrive at
@@ -41,6 +44,7 @@ export default function SessionStatsBar() {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [streaming]);
+  if (narrow && !mobileStatsBar) return null; // phone default: hidden (remote settings toggle)
   if (!st) return null; // no stats before the first turn ends (or while the session is still loading); take no space
 
   const activeMs = st.activeMs + (streaming && st.receivedAt !== undefined ? Date.now() - st.receivedAt : 0);
@@ -56,10 +60,10 @@ export default function SessionStatsBar() {
   // are no longer in the store while the host still reports their spend — from dropping the
   // total below the host's own figure.
   const totalCost = cost + subCost - Math.min(subCost, st.subagentCost ?? 0);
-  // Desktop keeps the original single line (same group order and width-driven trimming as
-  // before). Narrow phones split it into two fixed rows: the top one carries the six token
-  // metrics (cache hit + breaks, cache read/write, input/output, token speed), the bottom one
-  // everything else (cost, TTFT, active time, compactions).
+  // Desktop keeps the original single line (same width-driven trimming as before). Narrow
+  // phones split it into two fixed rows: the top one carries the three cache/token groups
+  // (cache hit + breaks, cache read/write, input/output), the bottom one the remaining three
+  // (cost, TTFT + token speed, active time + compactions).
   // Each metric is a line-style icon standing in for what used to be a text label
   // (TUI status-line convention); the label survives as the hover tooltip.
   type Part = { icon: string; tip: string; v: string; cls?: string; extra?: ReactNode };
@@ -90,17 +94,18 @@ export default function SessionStatsBar() {
   // chain). Its cacheRead drop is deliberately not counted as a cache break
   // (host/session-snapshot.ts countCacheBreaks), so this is where that loss is accounted for.
   const compactionsPart: Part = { icon: "compress", tip: t("chat.statsCompactions"), v: String(st.compactions) };
-  // Desktop order (unchanged): cache hit | cache read/write | input/output | cost | perf | compactions
+  // Desktop groups: cache used/breaks | cache read/write | in/out | cost | TTFT/speed |
+  // active time/compactions
   const desktopGroups: Part[][] = [
     [cacheHitPart],
     [cacheReadPart, cacheWritePart],
     [inputPart, outputPart],
     costPart ? [costPart] : [],
-    [ttftPart, speedPart, durationPart],
-    [compactionsPart],
+    [ttftPart, speedPart],
+    [durationPart, compactionsPart],
   ];
-  // Narrow rows: top = cache usage / cache breaks / cache read / cache write / in / out;
-  // bottom = cost / token speed / TTFT / duration / compactions.
+  // Narrow rows: top = cache used/breaks / cache read/write / in/out;
+  // bottom = cost / TTFT + speed / active time + compactions.
   const tokenGroups: Part[][] = [
     [cacheHitPart],
     [cacheReadPart, cacheWritePart],
@@ -108,9 +113,8 @@ export default function SessionStatsBar() {
   ];
   const otherGroups: Part[][] = [
     costPart ? [costPart] : [],
-    [speedPart],
-    [ttftPart, durationPart],
-    [compactionsPart],
+    [ttftPart, speedPart],
+    [durationPart, compactionsPart],
   ].filter((g) => g.length > 0);
   const renderGroup = (parts: Part[], gi: number) => (
     <span className="sb-group" key={gi}>

@@ -123,6 +123,8 @@ export interface RemoteConfigPayload {
   port: number;
   /** 128-bit hex access key, full value (the settings page builds the copy-link URL from it) */
   key: string;
+  /** Show the session stats bar on narrow (phone) clients (default off) */
+  mobileStatsBar: boolean;
   /** Prebuilt http://<first LAN IPv4>:<port>/?t=<key>; omitted when no LAN IPv4 is available */
   url?: string;
 }

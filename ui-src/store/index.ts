@@ -31,6 +31,10 @@ export const useAppStore = create<AppStore>()((...a) => ({
   ...createCollabSlice(...a),
 }));
 
+// Effective zoom factor + its narrow baseline live next to the layout slice (they depend on
+// `narrow`); re-exported here so consumers keep importing zoom helpers from the store entry.
+export { effZoom, useEffZoom, NARROW_ZOOM_BASE } from "./layout";
+
 /** Write helper (a passthrough alias of zustand setState; kept as a named entry for component ergonomics and later convergence) */
 export function setBump(partial: Partial<AppStore>): void {
   useAppStore.setState(partial);

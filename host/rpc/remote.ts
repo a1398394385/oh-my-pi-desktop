@@ -21,20 +21,30 @@ export const remoteHandlers: Record<string, RpcHandler> = {
     const wantEnabled = typeof msg.enabled === "boolean" ? msg.enabled : cur.enabled;
     const wantPort =
       typeof msg.port === "number" && Number.isInteger(msg.port) && msg.port > 0 && msg.port <= 65535 ? msg.port : cur.port;
+    // Display preference of the narrow client, not server state: it never touches the
+    // running server, so it rides along in both branches below.
+    const wantMobileStatsBar = typeof msg.mobileStatsBar === "boolean" ? msg.mobileStatsBar : cur.mobileStatsBar;
+    // A request that only carries the display preference must not start/rebind the server:
+    // otherwise toggling the phone stats bar would fail (and never persist) on any machine
+    // where the port is held by another host — e.g. the dev profile while the default
+    // profile's remote service owns 16800.
+    const touchesServer = typeof msg.enabled === "boolean" || typeof msg.port === "number";
     let error: string | undefined;
-    if (wantEnabled) {
+    if (!touchesServer) {
+      writeRemoteConfig({ mobileStatsBar: wantMobileStatsBar });
+    } else if (wantEnabled) {
       const r = startRemoteServer(wantPort);
       if (r.ok) {
         // First enable mints the access key (spec §3.1 "generated on enable")
         const accessKey = cur.accessKey || generateRemoteAccessKey();
-        writeRemoteConfig({ enabled: true, port: r.port!, accessKey });
+        writeRemoteConfig({ enabled: true, port: r.port!, accessKey, mobileStatsBar: wantMobileStatsBar });
       } else {
         // Bind failure: report and keep the previous server/config untouched (spec §3.2)
         error = r.error;
       }
     } else {
       stopRemoteServer();
-      writeRemoteConfig({ enabled: false, port: wantPort });
+      writeRemoteConfig({ enabled: false, port: wantPort, mobileStatsBar: wantMobileStatsBar });
     }
     const st = remoteStatus();
     const cfg = readRemoteConfig();

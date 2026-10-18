@@ -10,7 +10,7 @@
 // #rightBody.detail rules).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, activeOpen, refreshGitDiff } from "../../../store";
+import { useAppStore, setBump, activeOpen, refreshGitDiff, effZoom } from "../../../store";
 import Icon from "../../../Icon";
 import { toggleRightPanel } from "../../../shell";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
@@ -253,7 +253,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     if (addBtnRef.current && headRef.current) {
       const headRect = headRef.current.getBoundingClientRect();
       const btnRect = addBtnRef.current.getBoundingClientRect();
-      const z = useAppStore.getState().zoomLevel || 1;
+      const z = effZoom();
       const headWidth = headRect.width / z;
       const btnLeft = (btnRect.left - headRect.left) / z;
       const btnRight = (headRect.right - btnRect.right) / z;

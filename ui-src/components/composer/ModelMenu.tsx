@@ -14,7 +14,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, pickModelId } from "../../store";
+import { useAppStore, pickModelId, effZoom } from "../../store";
 import type { ModelCaps } from "../../store/models";
 import Icon from "../../Icon";
 import { placeComposerMenu } from "./place";
@@ -63,7 +63,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const positionFlyout = (menu: HTMLDivElement, fly: HTMLDivElement, row: HTMLDivElement) => {
     const comp = composerRef.current;
     if (!comp) return;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
     const rowBottom = menu.offsetTop + row.offsetTop - menu.scrollTop + row.offsetHeight;

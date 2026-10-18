@@ -5,9 +5,26 @@
 // carries back/panel entries, picking a session jumps to chat).
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
-import { setBump } from "./index";
+import { setBump, useAppStore } from "./index";
 
 export type MobileCol = "left" | "main" | "right";
+
+// Phone baseline (narrow only): the phone layout reads ~20% too large at the desktop
+// scale, so the narrow UI pins zoom level 100% to that 80% visual size. The store keeps
+// the raw user-facing level (100% on the zoom control); everything that converts between
+// visual pixels (getBoundingClientRect) and layout px must go through effZoom().
+export const NARROW_ZOOM_BASE = 0.8;
+
+/** Effective DOM zoom factor: raw zoom level × narrow baseline. */
+export function effZoom(): number {
+  const st = useAppStore.getState();
+  return (st.zoomLevel || 1) * (st.narrow ? NARROW_ZOOM_BASE : 1);
+}
+
+/** Same factor as a store selector (components that render a zoom-dependent style). */
+export function useEffZoom(): number {
+  return useAppStore((s) => (s.zoomLevel || 1) * (s.narrow ? NARROW_ZOOM_BASE : 1));
+}
 
 export interface LayoutSlice {
   /** Page shown when `narrow`: session list ("left"), chat ("main") or right panel ("right") */

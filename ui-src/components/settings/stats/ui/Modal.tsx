@@ -3,7 +3,7 @@ import type React from "react";
 import { useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "../../../../store";
+import { useEffZoom } from "../../../../store";
 
 export interface ModalAction {
   label: string;
@@ -24,7 +24,7 @@ export function Modal({ open, title, onClose, primaryAction, cancelLabel, childr
   const { t } = useTranslation();
   // The dialog portals to body, outside the zoomed #settings subtree: carry the
   // zoom on the inner box so it matches the page (overlay stays 100vw to center it)
-  const zoom = useAppStore((s) => s.zoomLevel);
+  const zoom = useEffZoom();
   const zoomStyle = { zoom: String(zoom) } as CSSProperties;
   const resolvedCancelLabel = cancelLabel ?? t("settingsPage.stats.ui.cancel");
   const primaryRef = useRef<HTMLButtonElement>(null);

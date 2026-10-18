@@ -12,7 +12,7 @@ import appIcon from "../../../../ui/app-icon.png";
 import { MOD } from "../../../platform";
 import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
-  getAvailableProjects, openSettings, pathBase,
+  getAvailableProjects, openSettings, pathBase, effZoom,
 } from "../../../store";
 import { disposeRightSlot } from "../../../store/right";
 import { REMOTE } from "../../../store/layout";
@@ -238,6 +238,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // Pointer-down first records a candidate; dragging begins only past 5px; plain clicks still
   // just expand/collapse.
   const onPointerDownHead = (e: ReactPointerEvent, cwd: string) => {
+    // Narrow (remote phones): project drag reorder is off — no candidate is recorded, so
+    // move/up/cancel fall through and the card head stays a plain expand/collapse tap.
+    if (useAppStore.getState().narrow) return;
     dragRef.current = {
       cwd,
       pointerId: e.pointerId,
@@ -248,7 +251,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   const beginProjDrag = (e: ReactPointerEvent, pending: ProjDragPending): ProjDragActive | undefined => {
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     // The fixed default row renders a .proj head too, but it is pinned first and
     // not draggable — drop it from the drag geometry so k0/idx index only the
     // reorderable rows (otherwise the committed order shifts by one).
@@ -294,7 +297,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   const updateProjDrag = (e: ReactPointerEvent, d: ProjDragActive) => {
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     const dy = (e.clientY - d.startClientY) / z;
     const self = d.base[d.k0];
     const dragMid = self.top + dy + self.h / 2;
@@ -321,7 +324,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const pending = dragRef.current;
     if (!pending || pending.cwd !== cwd || pending.pointerId !== e.pointerId) return;
     if (!pending.groups) {
-      if (Math.abs(e.clientY - pending.startClientY) / (useAppStore.getState().zoomLevel || 1) < 5) return;
+      if (Math.abs(e.clientY - pending.startClientY) / effZoom() < 5) return;
       const started = beginProjDrag(e, pending);
       if (!started) return;
     }

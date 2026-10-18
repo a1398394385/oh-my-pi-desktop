@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { useAppStore, setBump, send } from "../../store";
+import { useAppStore, setBump, send, effZoom } from "../../store";
 import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { claimDropdown, releaseDropdown } from "../../lib/dropdownExclusive";
@@ -33,7 +33,7 @@ export function confirmDialog({ title, message = "", confirmText, danger = false
     // Body sits outside the zoomed #settings subtree: carry the current zoom on
     // the host so the dialog matches the page (shortcut: zoom changes while the
     // dialog is open are not re-applied)
-    (host.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
+    (host.style as CSSStyleDeclaration & { zoom: string }).zoom = String(effZoom());
     document.body.appendChild(host);
     const root = createRoot(host);
     const done = (val: boolean) => {

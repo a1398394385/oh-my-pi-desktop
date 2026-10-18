@@ -9,13 +9,13 @@
 // When the viewport space above is insufficient, switch to capped height +
 // internal scrolling; the menu top reaches at most 4px below the viewport top,
 // and the bottom edge still hugs above the button.
-import { useAppStore } from "../../store";
+import { effZoom } from "../../store";
 
 export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | null, btn: HTMLElement | null): void {
   if (!comp || !menu || !btn) return;
   menu.style.maxHeight = "";
   menu.style.overflowY = "";
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   const maxLeft = comp.clientWidth - menu.offsetWidth - 4;
   menu.style.left = Math.max(0, Math.min(btn.offsetLeft, maxLeft)) + "px";
   const btnAbsTop = btn.getBoundingClientRect().top;
@@ -43,7 +43,7 @@ export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | 
 // loading never leave a stale gap.
 export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | null, ratio = 2.6): void {
   if (!comp || !menu) return;
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   const cs = getComputedStyle(comp);
   const borderLeft = Number.parseFloat(cs.borderLeftWidth) || 0;
   const borderTop = Number.parseFloat(cs.borderTopWidth) || 0;
@@ -89,7 +89,7 @@ export function placeFlyoutMenu(
 ): void {
   if (!fly || !menu || !row) return;
 
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   const margin = 8;
 
   // 1. Horizontal positioning: overlap the first-level menu's border by 4px;

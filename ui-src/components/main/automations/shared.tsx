@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Icon from "../../../Icon";
-import { useAppStore } from "../../../store";
+import { effZoom } from "../../../store";
 import {
   endDateToMs,
   isPlausibleCronExpr,
@@ -161,7 +161,7 @@ export function Pick({
     const sel = ref.current;
     const menu = menuRef.current;
     if (!open || !sel || !menu) return undefined;
-    const z = useAppStore.getState().zoomLevel || 1; // fixed-menu coordinate compensation: set zoom first, then divide back
+    const z = effZoom(); // fixed-menu coordinate compensation: set zoom first, then divide back
     (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     const sr = sel.getBoundingClientRect();
     const mr = menu.getBoundingClientRect();
