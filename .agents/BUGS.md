@@ -78,6 +78,10 @@
 | BUG-080 | 排队消息幽灵条目：host-idle 竞态直通消费后 QueueCard 永不清除，编辑报「暂存排队消息不存在: 0」（BUG-071 已知残留转正） | 2026-10-17 |
 | BUG-081 | 升级底座 18.11.3：旧补丁 bun 自动适配错位打歪 virtual-module，`bun patch --commit` 中断重装又把错位状态固化成新补丁 | 2026-10-17 |
 | BUG-082 | 安装版远程控制整站 404——`staticRoot()` 用 `/$bunfs` 字符串判编译态，Windows 编译版前缀是 `B:\~BUN\root`，判据失效后回落到虚拟路径 | 2026-10-18 |
+| BUG-083 | 手机端项目卡片收起时间隙先被顶大再缩回——卡片底距与延迟卸载的会话面板在动画期间「双份换手」 | 2026-10-18 |
+| BUG-084 | 状态栏「平均首字」在会话运行中消失——宽度裁剪把 TTFT 排在第一顺位，主栏一变窄即整项 display:none | 2026-10-18 |
+| BUG-085 | Git 页中文文件名显示成八进制转义串且暂存必失败——`git status --short` 的 octal 引用形式原样进了 UI | 2026-10-18 |
+| BUG-086 | 切本地含 `/` 的分支被静默切到另一个新分支且 exit 0——用短名里有没有 `/` 判本地/远程 | 2026-10-18 |
 
 ---
 
@@ -1181,5 +1185,65 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：①编译探针（把 `host/remote.ts` 真代码编进小 exe，exe 旁放 `ui/dist`）打印 `bunfs_check=false`、`old_root=B:\~BUN\ui\dist exists=false`、`exec_side=…\ui\dist exists=true`，HTTP `GET /`、`/index.html`、`/assets/app.js` 修复前 404、修复后 200 且返回 index.html 正文；②`probe-remote.ts`（dev 布局）44 项断言全绿，含矩阵 5 静态服务（`GET /` 200、路径穿越 400/404、非 GET 405）无回归；③`bun run check` 十步全绿。
 
 **教训**：①**判定「是不是编译产物」不能靠 `import.meta.dir`/`import.meta.url` 的字符串前缀**——该拼写 Bun 改过（`/$bunfs` → `/$$bunfs`）且 Windows 用 `B:\~BUN\root`；要从磁盘布局反推（探测候选路径存在性，或 `dirname(process.execPath)`）；②「dev 路径能跑通」的探针天然测不到编译布局——凡运行时按 `import.meta.dir` 分辨布局的代码路径，都必须在**真编译产物**上冒烟（本例 `probe-remote.ts` 只 spawn `bun host/host.ts`，所以整站 404 逃逸到用户手上）；③修完后用户手上已装版本仍是坏的，需重新构建安装包才生效。
+
+### BUG-083: 手机端项目卡片收起时间隙先被顶大再缩回——卡片底距与延迟卸载的会话面板在动画期间「双份换手」
+
+**日期**：2026-10-18
+
+**现象**：窄屏（≤768px，手机 remote 卡片布局）点击项目卡片展开会话列表、再点一次收起，卡片与其下方卡片之间的间隙先被顶大，随后才缩回正常值；旧构建上表现为幽灵间隙出现后停留约 200ms 再突然消失。分诊：①确认回归（`d4687d2` 手机端卡片布局引入，桌面不受影响）。
+
+**根因**：收起是一个 310ms 的 CSS 过渡 + 延迟卸载（`.proj-kids.closing` 的 `grid-template-rows: 0fr`），期间面板仍在 DOM，而卡片底距的归属在同一帧被换手两次：①`#tasklist .proj:not(.collapsed) { margin-bottom: 0 }` 在点击瞬间被 `.proj.collapsed { margin-bottom: 6px }` 接管，面板却还没收缩 → 间隙底数由 10.67px 变 16.67px（视觉 +4.8px），且 `.proj-kids` 的分割线边框同帧消失（-1.6px），合起来收起第一帧间隙 75.22→78.02px；②面板延迟卸载那一刻，面板提供的底距（grid 行的 padding 盒下限）与 `.proj` 的 6px 又换手 → 13.33px 平台段后突降到 8.53px。面板内 padding 未随 grid 行归零时（`0fr` 行以 padding 盒为下限 ~10px）残留更大：21.31px 平台段。
+
+**修复**：`ui/css/main/remote.css` 两处：①`#tasklist .proj-kids > .proj-kids-in` 的 padding 加 `--dur-sheet` 过渡、`.proj-kids.closing > .proj-kids-in` 归零（面板自身收干净）；②新增 `#tasklist .proj:has(+ .proj-kids) { margin-bottom: 0 }`——只要面板仍挂在卡片下方（展开或收起动画中），底距一律归面板，卡片不再抢回自己的 6px，`:has` 特异性 (1,3,0) 稳压 `.collapsed` 的 (1,2,0)。
+
+**验证**：真浏览器 + 真 host（`bun run dev:browser`，390×844，逐帧采样相邻卡片矩形）：①修复前曲线 `78.02 → … → 21.31（平台 ~200ms）→ 8.53 突降`；修复后 `73.22 → 单调 → 8.53`，全程无平台无跳变，卸载帧 8.53→8.53 零台阶；②展开方向 `8.53 → 75.22` 单调；③展开 150ms 后即刻收起的打断场景无过冲，收敛 8.53；④展开/收起终值与修复前一致（展开 75.22、收起 8.53），截图对比卡片圆角/分割线/间距无视觉回归；⑤`bun run check` 十步全绿。
+
+**教训**：①**动画期间「间距归属」不能靠状态类换手**——元素已被推迟卸载（仍在 DOM）时，间距就必须继续由它提供；`margin-bottom` 由 `collapsed` 这类状态类切换、而不绑定元素是否真的在场，必然在换手的那一帧多出一份或漏掉一份（本例两处台阶同源）；②`grid-template-rows: 0fr` 压不掉子项的 padding（行高以 padding 盒为下限），要收干净必须让 padding 一起过渡；③这类「曲线台阶」只能靠逐帧采样矩形或录像取证，截图单帧看不到，真机验收前须先 `bun run ui:build`（remote 服务伺服 `ui/dist`，源码改动不构建等于没修）。
+
+### BUG-084: 状态栏「平均首字」在会话运行中消失——宽度裁剪把 TTFT 排在第一顺位，主栏一变窄即整项 `display:none`
+
+**日期**：2026-10-18
+
+**现象**：输入框下方数据状态栏的「平均首字延迟」项在会话运行过程中消失（用户报告，会话 `01a14d64`）。分诊：③**未取到确证根因**——两条候选机制都被实测排除（见下），本次先把唯一的整项隐藏路径的代价降下来。
+
+**排除项一（数据侧）**：`session_stats` 帧的 `avgTtft` 全程有值。宿主只有一个推送构造点（`host/session-snapshot.ts:buildSessionStats`，被 `pushSessionStats` / `maybePushSessionStats` 调用），平均值的输入 `manager.getEntries()` 是同步内存数组拷贝，中途不可能瞬时清空；UI 侧 `store/wsHandlers/stream.ts:session_stats` 原样透传，`SessionStatsBar` 之外无第二处写 `stats`。实跑取证（宿主 WS 只读观测自己正在跑的会话）：运行中数值持续刷新 `719ms → 817ms`，从未出现 `—`。
+
+**排除项二（布局侧，当前窗口下不成立）**：`.stats-bar` 的容器查询 `@container (max-width: 850px) { .sb-opt-ttft { display:none } }` 是整项隐藏的唯一路径。真浏览器实测（Chromium + 构建产物，注入等宽内容的状态栏副本逐档采样）：窗口 1920→bar 960px（显示）、1280→874（显示）、1200→794（隐藏），即窗口 ≲1260px 时消失。用户的窗口状态（`%APPDATA%/com.xys.omp-desktop/.window-state.json`：1916×2072 最大化）算出的 bar 是 960px，本不该触发——所以要么当时实际布局更窄（右栏被拖宽 / 窗口非最大化），要么还存在第三条未知路径。
+
+**修复**（`ui/css/main/composer.css`）：裁剪顺序按「单位像素的信息量」重排，TTFT 从第一顺位降到最后——`≤850px` 先砍缓存读写分列（两个最长数字）、`≤740px` 砍 cost、`≤605px` 砍 active time、TTFT 只在 `≤505px`（再窄已放不下什么）才隐藏。注释同步记录新阈值与「为什么 TTFT 最后走」。
+
+**验证**：真浏览器逐档量测修复后的构建产物（13 档窗口宽度 1920→768）：1200px（bar 794）起 TTFT 保留、缓存分列先走；1100/1000（694/672）砍 cost；900/850（604/554）砍 duration；800（504）才砍 TTFT；每档 `scrollHeight == clientHeight`（行不折行），≥850px 全部保留；<769px 走窄屏两行布局，与修复前一致。`bun run ui:build`、`bun run check`（含 tsc）全绿。
+
+**教训**：①**宽度裁剪的「丢弃顺序」是产品决策，不是排版细节**——把用户最可能 hover 看的延迟指标排在第一顺位，等于让「打开右栏/缩窗口」这种无关操作悄悄删掉它；丢弃顺序要按单位像素的信息量排，TTFT 只有 49px，是最便宜的牺牲品而不是最贵的；②容器查询的阈值必须用**真实构建产物在真浏览器逐档量**，不能靠原注释里的估算数字——本例估算与实测能对上，但只有实测能证明每档都不折行；③「数值变 `—`」和「整项 `display:none`」是两种完全不同的病，排查时先分清，否则会在数据侧白查很久（本例两条路径都查干净了才回到 CSS）。
+
+
+### BUG-085: Git 页中文文件名显示成八进制转义串，且暂存/取消暂存必失败——`git status --short` 的 octal 引用形式原样进了 UI
+
+**日期**：2026-10-18
+
+**现象**：仓库里含中文名的文件（`中文文件名.txt`）在 Git Diff 页显示为 `"\344\270\255\346\226\207..."`，点暂存/取消暂存/丢弃全部失败。分诊：②**确认存量缺陷**（逆向对照 IntelliJ git4idea 时实测复现，与本次改动无关）。
+
+**根因**（`host/rpc/files.ts:get_git_diff`）：用 `git status --short` 并按行解析。`--short` 面向人读，会对非 ASCII 路径做 C 风格引用 + 八进制转义并加引号；解析器再 `line.slice(3)` 剥掉状态列，剩下的就是带引号的转义串。随后 `git add -- "\344\270\255..."` 打到磁盘上根本不存在的路径，必然失败。与 RULE-009（编码红线）同源：这是 UI 把路径当成字节串而非文本来处理。
+
+**修复**：改用 `git status --porcelain -z --no-renames`（即 git4idea `GitIndexStatusUtilKt` 的同一组参数）：`-z` 让记录以 NUL 分隔且路径原样输出，无引用无转义；`--no-renames` 保证一条记录一个路径（重命名退化为 D + A 两行），与逐行操作按钮的假设一致。记录长度不足 4 字符按格式错误直接报错，不静默错切——沿用 git4idea 把 `status.exception.message.line.is.too.short` 当硬错误而非兜底的处理。另在 `host/git.ts` 全局加 `-c core.quotepath=false`，作为仍未用 `-z` 的命令的兜底。
+
+**验证**：`scripts/smoke-git-refs.ts` 第 1/2/3 条断言——状态清单原样返回 `中文文件名.txt`、`git_stage` 该路径 ok、磁盘核对 `git diff --cached --name-only` 确认确实进了 index。`scripts/smoke-git-files.ts` 同步更新（`code` 契约改为未裁剪的两列 porcelain XY）。
+
+**教训**：①**任何机器可读输出都要问「这是给人读的还是给机器读的」**——`--short`/`--branch` 是人读形式，`--porcelain`/`--format` 才是机器形式，混用必然在非 ASCII 路径上翻车；②`-z`（NUL 分隔）比任何转义方案都可靠，它让「路径里可能有换行/引号/反斜杠」这个问题从根上消失；③中文字符串的测试夹具必须真的包含中文，写 `a.txt` 的冒烟永远测不出这一类缺陷。
+
+### BUG-086: 切本地含 `/` 的分支被静默切到另一个新分支且 exit 0——用短名里有没有 `/` 判本地/远程
+
+**日期**：2026-10-18
+
+**现象**：本地分支 `feat/login-flow`（同样适用于 `feature/*`、`fix/*` 等几乎所有团队命名）在分支菜单里选中后，用户被放到了一个**新建的** `login-flow` 分支上，原分支没切过去，且不报任何错。分诊：②**确认存量缺陷**（逆向对照 git4idea 时实测复现）。
+
+**根因**（`host/rpc/files.ts:switch_git_branch`）：`targetBranch.includes("/") ? ["checkout","--track",target] : ["checkout",target]`。`/` 在短名里出现，既可能是远程限定（`origin/main`），也完全可能是本地分支名的一部分。走 `--track` 时 git **不报错**：它会创建同名的新本地分支并让它追踪原分支，exit 0，前端于是显示「切换成功」。
+
+**修复**：改用 git4idea `GitRepositoryReader` 的做法——一次 `git for-each-ref --format='%(refname)\t%(objectname)\t%(HEAD)…'` 拿到全部 ref，靠 **`refs/heads/` / `refs/remotes/` 前缀**判定本地还是远程（短名一律不可信），第三字段 `%(HEAD)` 顺带给出当前分支、无标记即 detached。远程 ref 走 DWIM：若去掉远程前缀后的本地分支已存在就直接切过去，不存在才 `checkout --track`。
+
+**验证**：`scripts/smoke-git-refs.ts` 第 3/4 条断言——切 `feat/login-flow` 后 `current` 正确且 `git branch` 里**不存在**幽灵分支 `login-flow`；远程 `origin/feature-x` DWIM 生成本地 `feature-x`。
+
+**教训**：①**不要用值的形状（有没有 `/`、大小写、前缀字符）去推断它的语义类别**——git 已经在 refname 里给了权威答案，去读它；②**「命令成功」不等于「做了你以为的事」**，`checkout --track` 在这里返回 0 却完全背离意图，这类静默分叉比报错危险得多；③判据应该放在最靠近事实的一层（宿主），而不是让每个 UI 调用点各自转述一遍。
+
 
 

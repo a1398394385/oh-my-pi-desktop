@@ -56,7 +56,10 @@ try {
   check("create ok", created.ok === true, JSON.stringify(created));
   createdPaths.push(createdPath);
   check("create branch", createdBranch === "omp/desktop/my-feature", createdBranch);
-  check("create path under profile wt root", createdPath.startsWith(expectedWtRoot + "/desktop-my-feature-"), createdPath);
+  // Separator-agnostic: the worktree path is native, so it carries "\" on Windows.
+  const createdUnderRoot = createdPath.startsWith(expectedWtRoot + "/desktop-my-feature-")
+    || createdPath.startsWith(expectedWtRoot + "\\desktop-my-feature-");
+  check("create path under profile wt root", createdUnderRoot, createdPath);
   check("create worktree usable", createdPath !== "" && git(["rev-parse", "--is-inside-work-tree"], createdPath) && git(["branch", "--show-current"], createdPath));
 
   // 2. status: clean

@@ -26,10 +26,14 @@ export interface UiSlice {
   /** Full-page scheduled-tasks view in the main column (sidebar top entry); lives outside
    *  the settings overlay and closes whenever the welcome page or a session takes over. */
   automationsOpen: boolean;
+  /** Middle-column Git manager page (project cwd; null = closed). A project-level view:
+   *  opened from the project row's "more" menu, closed by any session taking over. */
+  gitManage: string | null;
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
   newSessionRemotes: string[]; // remote-tracking branches from the same frame ("origin/xxx" form, listed under a separator)
+  newSessionDetached: boolean; // HEAD is not on a branch; newSessionBranch then carries the short oid
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
@@ -39,7 +43,7 @@ export interface UiSlice {
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   // Git branch chip in the main-column header (MainHeader): branches of the ACTIVE session's
   // cwd, landed from the same git_branches frame as the new-session picker (cwd-routed)
-  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[]; remotes: string[] } | null;
+  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[]; remotes: string[]; detached: boolean } | null;
   fileSeq: number;
   animateGdKids: boolean;
   animateThinkBody: boolean;
@@ -102,6 +106,8 @@ export interface UiSlice {
   setMainViewMode(mode: "chat" | "tree"): void;
   openAutomations(): void;
   closeAutomations(): void;
+  openGitManage(cwd: string): void;
+  closeGitManage(): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
   setWelcomeProject(cwd?: string): void;
@@ -160,11 +166,13 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   rightCollapsed: true,
   isCreatingNew: false,
   automationsOpen: false,
+  gitManage: null,
   newSessionProject: "",
   newSessionBranch: "",
   headerGit: null,
   newSessionBranches: [],
   newSessionRemotes: [],
+  newSessionDetached: false,
   newSessionIsGit: false,
   newSessionModel: "",
   newSessionThinking: "auto",
@@ -276,11 +284,21 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   openAutomations() {
     // Available from anywhere (incl. the welcome page): entering the tasks
     // view leaves the new-session page, a session click takes over as usual.
-    set({ automationsOpen: true, isCreatingNew: false });
+    set({ automationsOpen: true, isCreatingNew: false, gitManage: null });
   },
 
   closeAutomations() {
     set({ automationsOpen: false });
+  },
+
+  openGitManage(cwd) {
+    // Project-level page: it takes over the main column from the welcome page
+    // and the tasks view; any session taking over closes it again (hideWelcomeScreen).
+    set({ gitManage: cwd, isCreatingNew: false, automationsOpen: false });
+  },
+
+  closeGitManage() {
+    set({ gitManage: null });
   },
 
   showWelcomeScreen(preferredCwd) {
@@ -290,7 +308,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // disposed the slot themselves.
     const leaving = get().activePath;
     if (leaving) saveRightSlot(leaving);
-    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false }));
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false, gitManage: null }));
     restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
@@ -319,7 +337,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   },
 
   hideWelcomeScreen() {
-    set((s) => ({ isCreatingNew: false, mainViewMode: "chat", automationsOpen: false }));
+    set((s) => ({ isCreatingNew: false, mainViewMode: "chat", automationsOpen: false, gitManage: null }));
   },
 
   setWelcomeProject(cwd) {
@@ -340,6 +358,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       newSessionBranch: "",
       newSessionBranches: [],
       newSessionRemotes: [],
+      newSessionDetached: false,
     }));
     get().send({ type: "get_git_branches", cwd });
     // New-session MCP warm-up: the project is known the moment the user starts

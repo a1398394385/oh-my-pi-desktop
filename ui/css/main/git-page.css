@@ -1,0 +1,421 @@
+/* Middle-column Git manager page (project row "more" → the Git entry): branch tree +
+   commit graph with lane topology + selected-commit detail. Tokens only. */
+
+#gitPage {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  color: var(--text);
+  font-size: var(--ui-fs-base);
+}
+
+/* Topbar: title / project / repo root / refresh / close */
+.gp-head {
+  height: 43px; flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+}
+
+.gp-project { flex: none; font-weight: 600; }
+.gp-root {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--faint); font-family: var(--mono); font-size: var(--ui-fs-sm);
+}
+
+.gp-body { flex: 1; min-height: 0; display: flex; }
+
+/* ---------- branch column ---------- */
+.gp-branches {
+  width: 230px; flex: none; min-height: 0;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--line-soft);
+  padding: 8px 0 10px;
+}
+
+.gp-branch-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+.gp-branches-head {
+  display: flex; align-items: center; gap: 4px;
+  width: 100%; padding: 8px 10px 4px 6px;
+  border: 0; background: none;
+  color: var(--faint); font: inherit; font-size: var(--ui-fs-sm);
+  text-align: left; cursor: pointer;
+}
+
+.gp-branches-head:hover { color: var(--text); }
+.gp-branches-head.open .gp-branch-caret svg { transform: rotate(90deg); }
+
+.gp-scope-row,
+.gp-branch-row {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; height: 24px;
+  padding: 0 8px;
+  border: 0; background: none;
+  color: var(--dim); font: inherit; font-size: var(--ui-fs-sm);
+  text-align: left;
+  overflow: hidden;
+}
+
+.gp-scope-row { cursor: pointer; }
+.gp-scope-row:hover,
+.gp-branch-row.pickable:hover { background: var(--panel-2); color: var(--text); }
+.gp-scope-row.on,
+.gp-branch-row.on { background: var(--panel-3); color: var(--text); }
+
+.gp-branch-row.pickable { cursor: pointer; }
+
+.gp-branch-caret {
+  width: 12px; height: 12px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--faint);
+}
+
+.gp-branch-caret svg { transition: transform var(--dur-snap) var(--swift); }
+.gp-branch-caret.open svg { transform: rotate(90deg); }
+
+.gp-branch-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.gp-branch-tag {
+  flex: none; margin-left: auto;
+  padding: 0 4px; border-radius: 4px;
+  color: var(--green-ink); background: var(--tint-git-added-140, var(--panel-3));
+  font-size: var(--ui-fs-xs);
+}
+
+.gp-branch-search { flex: none; margin: 8px 10px 0; font-size: var(--ui-fs-sm); }
+
+/* ---------- graph column ---------- */
+.gp-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+/* ---------- filter bar ---------- */
+.gp-filter {
+  flex: none;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.gp-filter::-webkit-scrollbar { display: none; }
+
+.gp-filter-box {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 1 300px; min-width: 180px;
+  height: 26px; padding: 0 6px 0 8px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel);
+  color: var(--faint);
+}
+
+.gp-filter-box:focus-within { border-color: var(--accent); }
+.gp-filter-box.bad { border-color: var(--err); }
+
+.gp-filter-inp {
+  flex: 1; min-width: 0;
+  border: 0; outline: 0; background: none;
+  color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
+}
+
+.gp-filter-inp::placeholder { color: var(--faint); }
+
+.gp-filter-flag {
+  flex: none;
+  padding: 1px 4px;
+  border: 0; border-radius: 4px;
+  background: none; color: var(--faint);
+  font-family: var(--mono); font-size: var(--ui-fs-xs);
+  cursor: pointer;
+}
+
+.gp-filter-flag:hover { background: var(--panel-2); color: var(--text); }
+.gp-filter-flag.on { background: var(--panel-3); color: var(--accent); }
+
+.gp-chip {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: var(--r-md);
+  background: none; color: var(--dim);
+  font: inherit; font-size: var(--ui-fs-sm);
+  cursor: pointer; max-width: 220px;
+}
+
+.gp-chip:hover { background: var(--panel-2); color: var(--text); }
+.gp-chip.on { border-color: var(--line); background: var(--panel-2); color: var(--text); }
+.gp-chip-k { flex: none; color: var(--faint); }
+.gp-chip.on .gp-chip-k { color: var(--dim); }
+
+.gp-chip-v {
+  min-width: 0; max-width: 150px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.gp-chip-x {
+  flex: none;
+  display: inline-flex; align-items: center;
+  color: var(--faint); cursor: pointer;
+}
+
+.gp-chip-x:hover { color: var(--text); }
+
+.gp-sort {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  border: 0; border-radius: var(--r-sm, 5px);
+  background: none; color: var(--dim); cursor: pointer;
+}
+
+.gp-sort:hover { background: var(--panel-2); color: var(--text); }
+.gp-sort svg { transition: transform var(--dur-snap) var(--swift); }
+.gp-sort.asc svg { transform: rotate(180deg); }
+
+/* In-menu search row (branch/user chips): icon + input + clear, above the list */
+.gp-menu-search {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--faint);
+}
+
+.gp-menu-inp {
+  flex: 1; min-width: 0;
+  border: 0; outline: 0; background: none;
+  color: var(--text); font: inherit; font-size: var(--ui-fs-base);
+}
+
+.gp-menu-inp::placeholder { color: var(--faint); }
+
+/* Override the generic .ctx-menu button box (padding/radius) for the tiny X */
+.ctx-menu .gp-menu-clear {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0;
+  border-radius: 4px; background: none; color: var(--faint);
+}
+
+.ctx-menu .gp-menu-clear:hover { background: var(--panel-2); color: var(--text); }
+
+/* Hidden but still mounted (see the JSX comment): pointer clicks land on the row
+   instead of a removed node, so the dropdown stays open. */
+.ctx-menu .gp-menu-clear.off { visibility: hidden; }
+
+.gp-menu-empty { padding: 10px 12px; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+/* Chip dropdown body: a single column (the generic ctx-menu relies on its own
+   flex parent for that; inside a wrapper the raw inline-block buttons would sit
+   side by side and blow the menu width up to the viewport). */
+.gp-menu-scroll {
+  display: flex; flex-direction: column;
+  max-height: 320px; overflow-y: auto;
+  min-width: 170px;
+}
+
+.gp-menu-scroll button {
+  /* Must never shrink: a flex column with hundreds of rows squeezes every item
+     to min-content (14px) instead of scrolling, which flattens the labels into
+     a field of dots. */
+  flex: 0 0 auto;
+  max-width: 380px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.gp-table-head {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--faint); font-size: var(--ui-fs-sm);
+}
+
+.gp-th-lanes { width: var(--gp-lanes-w, 56px); flex: none; }
+.gp-th-info { flex: 1; min-width: 0; }
+.gp-th-author { flex: none; width: 88px; }
+.gp-th-date { flex: none; width: 44px; text-align: right; }
+
+.gp-graph { flex: 1; min-height: 0; overflow-y: auto; }
+
+.gp-row {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; height: 28px;
+  padding: 0 12px;
+  border: 0; background: none;
+  color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
+  text-align: left; cursor: pointer;
+}
+
+.gp-row:hover { background: var(--panel-2); }
+.gp-row.on { background: var(--panel-3); }
+
+/* The strip carries its own width/height attributes: CSS must never shrink it
+   (a squeezed SVG without a viewBox crops its right side instead of scaling,
+   which turns the lanes into stray dots) and must never crop its curves. */
+.gp-lanes {
+  flex: 0 0 auto;
+  width: var(--gp-lanes-w, auto);
+  height: 28px;
+  display: block;
+  overflow: visible;
+}
+
+.gp-line { stroke: var(--dim); stroke-width: 1.5; fill: none; }
+.gp-node { fill: var(--accent); }
+.gp-node-merge { fill: var(--orange); }
+
+.gp-subject {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  overflow: hidden;
+}
+
+.gp-subject-text {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.gp-ref {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--line); border-radius: 4px;
+  color: var(--dim);
+  font-family: var(--mono); font-size: var(--ui-fs-xs);
+}
+
+.gp-ref.current {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.gp-author {
+  flex: none; width: 88px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--dim);
+}
+
+.gp-date {
+  flex: none; width: 44px;
+  text-align: right;
+  color: var(--faint); font-family: var(--mono); font-size: var(--ui-fs-xs);
+}
+
+.gp-more {
+  display: block; margin: 8px auto 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: none; color: var(--dim);
+  font: inherit; font-size: var(--ui-fs-sm); cursor: pointer;
+}
+
+.gp-more:hover { background: var(--panel-2); color: var(--text); }
+
+.gp-empty { padding: 14px 16px; color: var(--faint); }
+.gp-error { color: var(--err); }
+
+/* ---------- commit detail ---------- */
+.gp-detail {
+  flex: none; max-height: 45%; overflow: hidden;
+  display: flex; flex-direction: column;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.gp-detail-bar {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  color: var(--dim); font-size: var(--ui-fs-sm);
+}
+
+.gp-detail-hint { color: var(--faint); }
+
+.gp-detail-toggle {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border: 0; border-radius: var(--r-sm, 5px);
+  background: none; color: var(--dim); cursor: pointer;
+}
+
+.gp-detail-toggle:hover { background: var(--panel-2); color: var(--text); }
+.gp-detail-toggle svg { transition: transform var(--dur-snap) var(--swift); }
+.gp-detail-toggle.open svg { transform: rotate(180deg); }
+
+.gp-detail-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 0 16px 14px;
+}
+
+.gp-sha { color: var(--text); font-family: var(--mono); }
+.gp-dot { color: var(--faint); }
+
+.gp-detail-subject { font-weight: 600; }
+.gp-detail-body { white-space: pre-wrap; color: var(--dim); font-size: var(--ui-fs-sm); }
+
+.gp-detail-sep { height: 1px; flex: none; background: var(--line); }
+
+.gp-detail-files {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--dim); font-size: var(--ui-fs-sm);
+}
+
+.gp-add { color: var(--green-soft); font-family: var(--mono); }
+.gp-del { color: var(--err); font-family: var(--mono); }
+
+.gp-file-list { display: flex; flex-direction: column; gap: 2px; }
+
+.gp-file {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 3px 6px;
+  border: 0; border-radius: var(--r-sm, 5px);
+  background: none; color: inherit;
+  font: inherit; font-size: var(--ui-fs-sm); text-align: left;
+  cursor: pointer;
+}
+
+.gp-file:hover { background: var(--panel-2); }
+
+.gp-dir {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 6px;
+  color: var(--dim); font-size: var(--ui-fs-sm);
+}
+
+.gp-dir-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.gp-file-view {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border: 0; border-radius: var(--r-sm, 5px);
+  background: none; color: var(--dim); cursor: pointer;
+}
+
+.gp-file-view:hover { background: var(--panel-2); color: var(--text); }
+
+.gp-file-path {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--dim); font-family: var(--mono);
+}
+
+.gp-file-binary { color: var(--faint); }
+
+.gp-detail-parents {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--faint); font-size: var(--ui-fs-sm);
+}
+
+.gp-parent {
+  border: 0; background: none; padding: 0;
+  color: var(--accent); font-family: var(--mono); font-size: var(--ui-fs-sm);
+  cursor: pointer;
+}
+
+.gp-parent:hover { text-decoration: underline; }
+
+.gp-detail-count { color: var(--faint); font-size: var(--ui-fs-sm); text-align: right; }

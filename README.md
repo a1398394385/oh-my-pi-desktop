@@ -38,6 +38,7 @@ A permanent stats bar under the composer runs at 4 Hz while streaming: cache hit
 - Streaming markdown with shiki highlighting, CJK-aware line breaking, Mermaid **and** Graphviz DOT/SVG rendering, tables, task lists, and image paths that open in the preview panel
 - **Four-level noise folding**: long tool runs collapse into "explored 29 files, ran 14 commands" instead of 400 rows
 - In-house diff renderer (no third-party diff dependency) with a 4000-line cap and single-pass syntax state across line boundaries
+- **Git manager** in the middle column (a project row's more menu): commit graph across every local/remote ref with lane topology, a branch tree that scopes the history, and the selected commit's full message, per-file numstat totals, and parent links
 - Composer built on Lexical: screenshot paste, file drag-drop, `!` bash mode with PATH completion, `@` / slash / `$` sigil completion, ghost-text inline completion, history recall, and push-to-talk dictation
 - Image lightbox with zoom and pan
 

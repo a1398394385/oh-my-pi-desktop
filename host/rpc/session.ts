@@ -172,6 +172,12 @@ export async function buildSessionListPayload() {
     // App-owned backing dir for "work without a project": the frontend renders
     // it as a fixed row and never registers it in allProjects.
     defaultWorkspace: defaultWorkspaceDir,
+    // Project rows gate their "Git" entry on this list: a `.git` dir or worktree
+    // file. Computed per frame (cheap stat per registered project) so a
+    // `git init` shows up on the next list refresh without a host restart.
+    gitProjects: H.desktopProjects.allProjects.filter((p) =>
+      fs.existsSync(`${p.replace(/[/\\]+$/, "")}/.git`),
+    ),
   } satisfies SessionListFrame;
 }
 

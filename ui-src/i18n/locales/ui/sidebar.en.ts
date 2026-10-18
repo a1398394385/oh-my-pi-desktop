@@ -24,6 +24,7 @@ export const sidebarEn = {
   updatedAgo: "Updated {{time}}",
   settings: "Settings",
   remove: "Remove",
+  gitManage: "Git",
   untitledSession: "Untitled session",
   deleteSessionTitle: "Delete session",
   deleteSessionMsg: "Permanently delete this session? This cannot be undone.\n\nSession: {{title}}",

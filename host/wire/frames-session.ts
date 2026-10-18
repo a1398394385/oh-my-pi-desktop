@@ -3,7 +3,7 @@
 // shapes live in payloads.ts, the HostFrame union in index.ts.
 import type {
   ApprovalMode, ContextBreakdown, ContextDetailStats, DirEntry, DiskProject, EntryTreeNode,
-  FileMatch, GoalState, GitStatusFile, LimitBalance, LimitWindow, LimitsAccount, ModelEntry, ModelRoleEntry,
+  FileMatch, GoalState, GitOperationState, GitStatusFile, LimitBalance, LimitWindow, LimitsAccount, ModelEntry, ModelRoleEntry,
   SessionBranch, SettingsPayload, SlashCommand, TodoPhase, TranscriptItem,
 } from "./payloads";
 
@@ -133,6 +133,8 @@ export interface SessionListFrame {
   pinnedSessions: string[];
   /** App-owned backing dir for "work without a project" (never in allProjects). */
   defaultWorkspace?: string;
+  /** allProjects entries whose working tree carries a .git entry (gates the row's Git entry). */
+  gitProjects?: string[];
 }
 
 /** Pool residency snapshot (state.ts pushPoolSnapshot): every session the host still holds in memory */
@@ -448,6 +450,8 @@ export interface GitStatusFrame {
   type: "git_status";
   cwd: string;
   files: GitStatusFile[];
+  /** Mutating operation in flight, so the UI can explain refused actions. */
+  state?: GitOperationState;
 }
 
 /** Branch list reply (host/rpc/files.ts not a git repo / get_git_branches normal) */
@@ -458,6 +462,80 @@ export interface GitBranchesFrame {
   current: string | null;
   branches: string[];
   remotes: string[]; // remote-tracking refs, "origin/xxx" form (local refs/remotes snapshot; symbolic */HEAD dropped)
+  /** HEAD is not on any branch: `current` then carries the short oid. */
+  detached?: boolean;
+}
+
+/** One commit row of the Git manager graph (host/rpc/git-graph.ts). */
+export interface GitGraphCommitWire {
+  oid: string;
+  parents: string[];
+  subject: string;
+  author: string;
+  authorTime: number; // unix epoch seconds
+  refs: string[]; // branches/tags on this commit, prefixes stripped
+}
+
+/** One changed file of a commit detail (numstat row). */
+export interface GitCommitFileWire {
+  path: string;
+  /** Pre-rename path when the commit renamed/copied this file (numstat -z record). */
+  oldPath?: string;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+/** Header fields of one commit (host/rpc/git-graph.ts git_commit_detail). */
+export interface GitCommitDetailWire {
+  oid: string;
+  parents: string[];
+  author: string;
+  authorEmail: string;
+  authorTime: number;
+  subject: string;
+  body: string;
+}
+
+/** Commit graph reply (host/rpc/git-graph.ts git_graph): log rows + branch lists. */
+export interface GitGraphFrame {
+  type: "git_graph";
+  reqId: number;
+  cwd: string;
+  ok: boolean;
+  error?: string;
+  root?: string;
+  branch?: string;
+  commits?: GitGraphCommitWire[];
+  hasMore?: boolean;
+  branches?: { local: string[]; remotes: string[]; tags: string[] };
+}
+
+/** Commit detail reply (host/rpc/git-graph.ts git_commit_detail). */
+export interface GitCommitDetailFrame {
+  type: "git_commit_detail";
+  reqId: number;
+  cwd: string;
+  oid: string;
+  ok: boolean;
+  error?: string;
+  commit?: GitCommitDetailWire;
+  files?: GitCommitFileWire[];
+  additions?: number;
+  deletions?: number;
+  commitCount?: number | null;
+}
+
+/** One file's patch inside a commit (host/rpc/git-graph.ts git_commit_file_diff). */
+export interface CommitFileDiffFrame {
+  type: "commit_file_diff";
+  reqId: number;
+  cwd: string;
+  oid: string;
+  path: string;
+  ok: boolean;
+  error?: string;
+  diff?: string;
 }
 
 /** Branch switch reply (host/host.ts; failures go through the error frame) */

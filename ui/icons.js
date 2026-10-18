@@ -70,6 +70,10 @@ const ICONS = {
   wrapText: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"/><path d="M3 11h15a3 3 0 1 1 0 6h-4"/><path d="m14 15-2 2 2 2"/><path d="M3 17h2"/></svg>',
   // Session-tree tab (lucide list-tree, line version): right-sidebar entry-tree tab, distinct from fork (file-level branch)
   tree: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg>',
+  // Flat list (lucide list, line version): pairs with `tree` for the Git detail file-list toggle
+  list: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/></svg>',
+  // Sort order (lucide arrow-down-wide-narrow, line version): Git graph filter bar's sort toggle
+  sort: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h9"/><path d="M3 12h7"/><path d="M3 18h5"/><path d="M18 4v16"/><path d="m14 16 4 4 4-4"/></svg>',
   // Experimental-feature category icon: line-style conical flask (lucide-layer params: stroke-width=1.5 / viewBox 24)
   flask: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3v6.4L4.9 18.4a2 2 0 0 0 1.8 3.1h10.6a2 2 0 0 0 1.8-3.1L14.5 9.4V3"/><path d="M8.2 3h7.6"/><path d="M6.9 14.5h10.2"/></svg>',
   // Plan mode: line-style plan document (dog-eared page + body lines). Neither FA nor Lucide

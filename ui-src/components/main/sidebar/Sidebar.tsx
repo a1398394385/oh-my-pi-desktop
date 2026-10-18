@@ -27,7 +27,6 @@ import Menu from "./Menu";
 import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
 import ArchiveGroup from "./ArchiveGroup";
-import WorktreeCreateDialog from "./WorktreeCreateDialog";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import { computeSidebarSessionShortcuts, computeArchiveGroups } from "./util";
 
@@ -130,6 +129,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // getAvailableProjects() called directly during render (reads latest state internally); its
   // underlying fields must each be subscribed so changes trigger re-render
   const allProjects = useAppStore((s) => s.allProjects);
+  const gitProjects = useAppStore((s) => s.gitProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const projectLimits = useAppStore((s) => s.projectLimits);
@@ -148,7 +148,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } session row context menu
   const [projMenu, setProjMenu] = useState<{ cwd: string; rect: DOMRect } | null>(null); // { cwd, rect } project row "⋯" menu
   const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } manual add-project popover anchor
-  const [wtCreateOpen, setWtCreateOpen] = useState(false); // worktree-session create dialog
   const [wtRemove, setWtRemove] = useState<{ path: string } | null>(null); // worktree-remove confirm dialog target
   const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
   const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx, x, y, left, w, grabY }
@@ -512,10 +511,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
               <Icon name="messagePlus" size={17} />
               <span>{t("sidebar.newTask")}</span>
             </button>
-            <button className="ms-nav" id="navWorktree" onClick={() => setWtCreateOpen(true)}>
-              <Icon name="branch" size={17} />
-              <span>{t("worktree.navItem")}</span>
-            </button>
             <button className="ms-nav" id="navAutomations" onClick={() => {
               useAppStore.getState().setMobileCol("main"); // narrow: automations render in the chat column
               useAppStore.getState().openAutomations();
@@ -534,10 +529,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           <div className="nav-item" id="navNew" onClick={newTaskAction}>
             <Icon name="messagePlus" size={19} />
             {t("sidebar.newTask")} <span className="ml-auto text-faint text-ui-sm tracking-[0.5px]" /* style-token-ignore */>{MOD} N</span>
-          </div>
-          <div className="nav-item" id="navWorktree" onClick={() => setWtCreateOpen(true)}>
-            <Icon name="branch" size={19} />
-            {t("worktree.navItem")}
           </div>
           <div className="nav-item" id="navAutomations" onClick={() => {
             useAppStore.getState().setMobileCol("main"); // narrow: automations render in the chat column
@@ -682,9 +673,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       {confirmDlg && (
         <ConfirmDialog {...confirmDlg} onClose={() => setConfirmDlg(null)} />
       )}
-      {wtCreateOpen && (
-        <WorktreeCreateDialog onClose={() => setWtCreateOpen(false)} />
-      )}
       {wtRemove && (
         <WorktreeRemoveDialog target={wtRemove} onClose={() => setWtRemove(null)} />
       )}
@@ -709,6 +697,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           ]}
           onClose={() => setProjMenu(null)}
         >
+          {gitProjects.has(projMenu.cwd) && (
+            <button onClick={() => { const cwd = projMenu.cwd; setProjMenu(null); useAppStore.getState().openGitManage(cwd); }}>{t("sidebar.gitManage")}</button>
+          )}
           <button onClick={() => { setProjMenu(null); askRemoveProject(projMenu.cwd); }}>{t("sidebar.remove")}</button>
         </Menu>
       )}

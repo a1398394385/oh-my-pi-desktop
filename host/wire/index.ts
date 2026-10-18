@@ -17,7 +17,8 @@ import type {
   ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskDialogQuestionWire, BashChunkFrame, BashCompleteResultFrame,
   BashDoneFrame, BashStartFrame, CommandOutputFrame, CommandPhaseFrame, CommandResultFrame, CommandsFrame,
   ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
-  FileDiffFrame, FileMatchesFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommittedFrame, GitDiscardedFrame,
+  FileDiffFrame, FileMatchesFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
+  GitGraphFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
   LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
@@ -102,6 +103,9 @@ export type HostFrame =
   | GitPushedFrame
   | GitStatusFrame
   | GitBranchesFrame
+  | GitGraphFrame
+  | GitCommitDetailFrame
+  | CommitFileDiffFrame
   | GitBranchSwitchedFrame
   | ApprovalModeFrame
   | ApprovalResolvedFrame

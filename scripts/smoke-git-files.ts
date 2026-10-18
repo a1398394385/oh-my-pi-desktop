@@ -2,7 +2,8 @@
 // Usage: bun scripts/smoke-git-files.ts [host ws url]
 // Assertions cover:
 //   1. get_git_branches: isGit/current/branches (temp repo on main)
-//   2. get_git_diff: the change list contains modified (M) and untracked (??) files
+//   2. get_git_diff: the change list contains modified ( M) and untracked (??) files
+//     (code is the raw two-column porcelain XY, untrimmed — see host/wire/payloads.ts)
 //   3. read_file: file_content passes the text content through
 //   4. list_dir: dir_list is directories-first alphabetical, .git hidden
 //   5. get_file_diff: tracked goes through git diff HEAD; untracked goes through --no-index as pure additions
@@ -107,7 +108,7 @@ const st = await waitType("git_status", mark).catch((e) => fail(String(e)));
 const stPaths = (st.files ?? []).map((f: any) => f.path);
 const aCode = (st.files ?? []).find((f: any) => f.path === "a.txt")?.code;
 const uCode = (st.files ?? []).find((f: any) => f.path === "untracked.txt")?.code;
-assert(aCode === "M" && uCode === "??", `get_git_diff a.txt=${aCode} untracked.txt=${uCode}（清单: ${stPaths.join(",")}）`);
+assert(aCode === " M" && uCode === "??", `get_git_diff a.txt=${JSON.stringify(aCode)} untracked.txt=${JSON.stringify(uCode)}（清单: ${stPaths.join(",")}）`);
 
 // ---- Assertion 3: read_file ----
 mark = frames.length;

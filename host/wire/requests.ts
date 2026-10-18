@@ -17,7 +17,7 @@ export type HostRequestMethod =
   "cancel_bg_job" | "collab_join" | "collab_leave" | "collab_start" | "collab_state" | "compact_session" | "complete_text" | "control_subagent" | "create_session" | "cycle_model" |
   "delete_mcp_server" | "delete_session" | "drop_queued" | "fork_session" | "get_all_providers" | "get_bg_jobs" |
   "get_capabilities" | "get_capability_keys" | "get_context_detail" | "get_entry_tree" | "get_file_diff" | "get_git_branches" |
-  "get_git_diff" | "get_keepalive_status" | "get_limits" | "get_messages" | "get_model_roles" | "get_models_catalog" |
+  "get_git_diff" | "git_commit_detail" | "git_commit_file_diff" | "git_graph" | "get_keepalive_status" | "get_limits" | "get_messages" | "get_model_roles" | "get_models_catalog" |
   "get_provider_limits" | "get_search_availability" | "get_session_tree" | "get_settings" | "get_settings_schema" | "get_todos" |
   "get_usage_stats" | "git_commit" | "git_discard" | "git_push" | "git_stage" | "git_unstage" |
   "kill_subagent" | "list_agent_assets" | "list_commands" | "list_dir" | "list_displays" | "list_editors" |

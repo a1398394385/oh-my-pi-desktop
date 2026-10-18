@@ -247,11 +247,26 @@ export interface DirEntry {
 
 /** git status row (host/host.ts get_git_diff) */
 export interface GitStatusFile {
-  code: string; // XY two columns (whitespace stripped, "?" fallback)
+  /** Raw two-column porcelain XY, untrimmed: "??" untracked, " M" worktree-only, "UU" conflict. */
+  code: string;
   path: string;
   staged: string; // empty string = none
   unstaged: string; // empty string = none
+  /** Unmerged entry (UU/AA/DD/AU/UD/UA/DU): stage/unstage are refused on it. */
+  conflict?: boolean;
 }
+
+/**
+ * Mutating operation the repository is mid-way through (host/git.ts
+ * operationState). NORMAL means nothing is in flight.
+ */
+export type GitOperationState =
+  | "NORMAL"
+  | "REBASE"
+  | "MERGE"
+  | "CHERRY_PICK"
+  | "REVERT"
+  | "DETACHED_HEAD";
 
 /** Cross-file branch-family node (host/host.ts get_session_tree) */
 export interface SessionBranch {

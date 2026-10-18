@@ -66,10 +66,10 @@ import { hostI18n } from "./i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 
-export function isGitWorktree(cwd: string): boolean {
-  const p = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdout: "pipe", stderr: "ignore" });
-  return p.exitCode === 0 && p.stdout.toString().trim() === "true";
-}
+// Thin re-export so existing callers keep one import path; the git process
+// layer itself lives in git.ts.
+import { isGitWorktree } from "./git.ts";
+export { isGitWorktree };
 
 // Disk resolution for sessions outside the pool: scans all session files
 // (same source as list_sessions) and matches the file path by the base's
@@ -321,7 +321,7 @@ export async function createSessionCore(
     externalWrite: false,
     previousPaths: [], // Persistence-move history: old file locations keep resolving to this entry (see state.ts)
     cwd,
-    isGit: isGitWorktree(cwd),
+    isGit: await isGitWorktree(cwd),
     parkedFollowUp: [], // follow-up parking lot (see the type comments in state.ts)
     consumedPending: new Set(), // consumed-but-uninjected queue texts (see the type comments in state.ts)
     mcpReleases: [], // pooled MCP mount handles (see mcp-mount.ts)

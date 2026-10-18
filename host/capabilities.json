@@ -996,6 +996,24 @@
       "kind": "git",
       "risk": "destructive",
       "note": "移除 worktree 目录；dirty 未 force 拒绝并回计数；分支保留不删"
+    },
+    {
+      "id": "git_graph",
+      "kind": "git",
+      "risk": "read",
+      "note": "读提交图谱（git log 拓扑序，scope 为空=全部分支/标签/远程）+ 本地/远程分支清单；limit 上限 1000"
+    },
+    {
+      "id": "git_commit_detail",
+      "kind": "git",
+      "risk": "read",
+      "note": "读单个提交详情（完整消息 + numstat 文件行 + 可达提交数），oid 走 4-40 位 hex 校验"
+    },
+    {
+      "id": "git_commit_file_diff",
+      "kind": "git",
+      "risk": "read",
+      "note": "读某提交内单个文件的 patch（git show 空 format + -- 路径），oid 走 4-40 位 hex 校验"
     }
   ]
 }

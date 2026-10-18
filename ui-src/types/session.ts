@@ -416,6 +416,7 @@ export interface AppState {
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
+  newSessionDetached: boolean; // HEAD is not on a branch; newSessionBranch then carries the short oid
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;

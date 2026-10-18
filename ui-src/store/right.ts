@@ -6,7 +6,7 @@ import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
 import { expandRightPanel } from "../components/main/right/tabs";
-import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
+import type { BrowserTabInfo, CapabilitiesSnapshot, GitOperationState, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
 
@@ -22,8 +22,10 @@ export interface RightSlice {
   todoCollapsed: boolean;
   capsCardCollapsed: boolean; // right-panel capabilities card folded to its slim rail
   rightState: RightState;
-  gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean };
+  gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean; state: GitOperationState };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
+  /** Right-panel commit-diff viewer target (Git page file click): one file's patch inside a commit. */
+  commitDiff: { cwd: string; oid: string; path: string; oldPath?: string; diff: string; loading: boolean; error: string | null } | null;
   briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
   capabilities: CapabilitiesSnapshot | null; // active session's subsystem runtime snapshot (capabilities page)
   capabilitiesFor: string | null; // sessionId the snapshot belongs to (stale on session switch until refetched)
@@ -65,8 +67,9 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   todoCollapsed: false,
   capsCardCollapsed: false,
   rightState: rightStateInit,
-  gitDiffCache: { cwd: null, files: [], loading: false },
+  gitDiffCache: { cwd: null, files: [], loading: false, state: "NORMAL" },
   fileDiffCache: { path: null, diff: "", loading: false },
+  commitDiff: null,
   briefDiffCache: new Map(),
   capabilities: null,
   capabilitiesFor: null,

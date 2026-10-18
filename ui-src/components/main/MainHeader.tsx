@@ -13,6 +13,7 @@ import { IS_WINDOWS, MOD } from "../../platform";
 export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => void; onToggleRight: () => void }) {
   const { t } = useTranslation();
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
+  const gitManage = useAppStore((s) => s.gitManage);
   const activePath = useAppStore((s) => s.activePath);
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const diskProjects = useAppStore((s) => s.diskProjects);
@@ -27,15 +28,21 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   const collabState = useAppStore((s) => (collabSessionId ? s.collabStates.get(collabSessionId) : undefined));
   const collabOpenDialog = useAppStore((s) => s.collabOpenDialog);
   const isSubagent = Boolean(session?.isSubagent);
-  const title = isCreatingNew
-    ? t("misc.newTask")
-    : session
-      ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
-      : t("misc.pickSession");
+  const title = gitManage
+    ? t("gitPage.title")
+    : isCreatingNew
+      ? t("misc.newTask")
+      : session
+        ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
+        : t("misc.pickSession");
   const cwd = session?.cwd;
   // Remote workspace stubs show their host:path label instead of the stub dir basename
-  const projectName = cwd ? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd) : null;
-  const git = headerGit && headerGit.cwd === cwd ? headerGit : null;
+  const projectName = gitManage
+    ? pathBase(gitManage)
+    : cwd
+      ? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd)
+      : null;
+  const git = !gitManage && headerGit && headerGit.cwd === cwd ? headerGit : null;
   // null = closed; when open, holds the trigger chip's viewport coords (menu pops upward)
   const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
   // "⋯" session menu (same items as the sidebar row right-click): null = closed, otherwise the
@@ -52,7 +59,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
     ? diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath) ??
       archivedSessions.find((x) => x.path === activePath)
     : undefined;
-  const ctxEntry: SessionInfo | null = activePath && !isCreatingNew && !isSubagent
+  const ctxEntry: SessionInfo | null = activePath && !isCreatingNew && !isSubagent && !gitManage
     ? {
         path: activePath,
         id: diskRow?.id ?? session?.sessionId ?? "",
@@ -120,8 +127,8 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           {isSubagent && <span className="subagent-head-badge">{t("chat.subagentBadge")}</span>}
         </span>
       )}
-      {projectName && !isCreatingNew && (
-        <span className="head-chip" title={cwd ?? undefined}>{projectName}</span>
+      {projectName && !isCreatingNew && !gitManage && (
+        <span className="head-chip" title={cwd ?? undefined}><span>{projectName}</span></span>
       )}
       {git?.isGit && git.current && !isCreatingNew && (
         <button
@@ -149,6 +156,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           branches={git.branches}
           remotes={git.remotes}
           current={git.current ?? ""}
+          detached={git.detached}
           cwd={git.cwd}
         />
       )}

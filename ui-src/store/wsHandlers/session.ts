@@ -73,6 +73,7 @@ export const sessionHandlers = {
       diskProjects,
       archivedSessions: archived,
       allProjects: msg.allProjects ?? [],
+      gitProjects: new Set(msg.gitProjects ?? []),
       removedProjects: msg.removedProjects ?? [],
       defaultWorkspace: msg.defaultWorkspace ?? "",
       expandedProjects,

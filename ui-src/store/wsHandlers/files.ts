@@ -39,12 +39,13 @@ export const filesHandlers = {
         newSessionBranch: msg.current || "",
         newSessionBranches: msg.branches || [],
         newSessionRemotes: msg.remotes || [],
+        newSessionDetached: !!msg.detached,
       });
     }
     const activeCwd = st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined;
     if (msg.cwd === activeCwd) {
       useAppStore.setState({
-        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [], remotes: msg.remotes || [] },
+        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [], remotes: msg.remotes || [], detached: !!msg.detached },
       });
     }
   },
@@ -69,7 +70,7 @@ export const filesHandlers = {
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
     }
     useAppStore.setState((s) => ({
-      gitDiffCache: { cwd: msg.cwd, files: msg.files, loading: false },
+      gitDiffCache: { cwd: msg.cwd, files: msg.files, loading: false, state: msg.state ?? "NORMAL" },
       rightState: { ...s.rightState, expandedDirs: dirs },
     }));
   },

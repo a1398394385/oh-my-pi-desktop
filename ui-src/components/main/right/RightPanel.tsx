@@ -18,12 +18,14 @@ import {
   TAB_META,
   AUTO_TABS,
   COMPOSER_ONLY_TABS,
+  CONTEXT_TABS,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
 } from "./tabs";
 import StartPage from "./StartPage";
 import SubagentPage from "./SubagentPage";
 import HubDetailPage from "./HubDetailPage";
 import GitDiffPage from "./GitDiffPage";
+import CommitDiffPage from "./CommitDiffPage";
 import FilePage from "./FilePage";
 import BgCmdPage from "./BgCmdPage";
 import TerminalPage from "./TerminalPage";
@@ -155,7 +157,7 @@ function AddTabMenu({
     >
       <div className="sp-pop-scroll">
         {Object.keys(TAB_META)
-          .filter((name) => !AUTO_TABS.has(name) && !COMPOSER_ONLY_TABS.has(name))
+          .filter((name) => !AUTO_TABS.has(name) && !COMPOSER_ONLY_TABS.has(name) && !CONTEXT_TABS.has(name))
           .map((name) => {
             const off = name === "gitdiff" && !isGit;
             const on = rightTabs.includes(name);
@@ -333,6 +335,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   if (rightTab === "hub") body = <HubDetailPage />;
   else if (rightTab === null) body = <StartPage />; // all tabs closed: centered start page
   else if (rightTab === "gitdiff") body = <GitDiffPage />;
+  else if (rightTab === "commitdiff") body = <CommitDiffPage />;
   else if (rightTab === "bgcmd") body = <BgCmdPage />;
   else if (rightTab === "file") body = <FilePage />;
   else if (rightTab === "terminal") body = <TerminalPage />;

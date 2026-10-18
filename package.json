@@ -10,6 +10,7 @@
     "smoke:queue-ghost": "OMP_PROFILE=omp-desktop-test bun scripts/queue-ghost-smoke.ts",
     "smoke:steer-queue-order": "OMP_PROFILE=omp-desktop-test bun scripts/steer-queue-order-smoke.ts",
     "smoke:features": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-features.ts",
+    "smoke:git-refs": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-git-refs.ts",
     "smoke:kimi-auto": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-kimi-auto-thinking.ts",
     "smoke:plan": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-plan-approve.ts",
     "dev": "bun run ui:build && OMP_PROFILE=omp-desktop-dev tauri dev --config src-tauri/tauri.dev.conf.json",

@@ -24,6 +24,7 @@ export const sidebarZh = {
   updatedAgo: "更新于 {{time}}",
   settings: "设置",
   remove: "移除",
+  gitManage: "Git 管理",
   untitledSession: "未命名会话",
   deleteSessionTitle: "删除会话",
   deleteSessionMsg: "确定要永久删除此会话吗？此操作无法撤销。\n\n会话：{{title}}",

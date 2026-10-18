@@ -11,9 +11,10 @@
 // (the UI maps codes to localized copy) and never throw — exceptions here would
 // only reach main.ts's generic error shell, losing the reqId.
 import * as fs from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { getWorktreeDir, hashPath } from "@oh-my-pi/pi-utils";
 import type { RpcHandler } from "./types";
+import { gitWrite } from "../git.ts";
 
 /** Slug form enforced on names after UI-side slugify (identical mirror of the fork's rule). */
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,40}$/;
@@ -22,17 +23,13 @@ const MAX_SUFFIX = 100;
 const BRANCH_PREFIX = "omp/desktop";
 const DIR_PREFIX = "desktop";
 
-interface GitResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-/** Run one git command; stdin ignored so prompts can never hang the RPC. */
-async function git(args: string[], cwd?: string): Promise<GitResult> {
-  const p = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-  const [stdout, stderr] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-  return { ok: (await p.exited) === 0, stdout, stderr };
+/**
+ * Run one git command against `cwd`. Write-locked (every call here creates or
+ * removes refs/worktrees), so it also gets GIT_TERMINAL_PROMPT=0 plus the
+ * shared timeout — the process layer in host/git.ts owns both.
+ */
+function git(args: string[], cwd: string) {
+  return gitWrite(cwd, args);
 }
 
 /** Lowercase, spaces→`-`, strip everything outside [a-z0-9-], collapse runs, trim dashes (fork parity). */
@@ -48,11 +45,16 @@ function slugifyName(name: string): string {
 
 /** Main repository root for a path inside any worktree: the common git dir's parent. */
 async function primaryRootOf(cwd: string): Promise<string | null> {
-  const r = await git(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd);
+  const r = await git(["rev-parse", "--git-common-dir"], cwd);
   if (!r.ok) return null;
   const commonDir = r.stdout.trim();
   if (!commonDir) return null;
-  return dirname(commonDir);
+  // git answers with a relative ".git" here. `rev-parse --path-format=absolute`
+  // would force an absolute answer, but that flag only exists from git 2.31 —
+  // older gits do not error, they echo the unknown flag back as if it were the
+  // path, which silently turns primaryRoot into the literal string
+  // "--path-format=absolute". Resolve against cwd instead so every git works.
+  return dirname(resolve(cwd, commonDir));
 }
 
 /** Porcelain-v1 status counts (staged/unstaged/untracked) — same split the right-panel diff uses. */

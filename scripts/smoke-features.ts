@@ -149,7 +149,12 @@ mark = frames.length;
 ws.send(JSON.stringify({ type: "git_discard", cwd: repoDir, paths: ["a.txt", "c.txt"] }));
 r = await waitType("git_discarded", mark).catch((e) => fail(String(e)));
 assert(r.ok === true, `git_discard 回 ok（error=${r.error ?? "无"}）`);
-assert(readFileSync(path.join(repoDir, "a.txt"), "utf8") === "line1\nline2\n", "git_discard 后 a.txt 内容恢复基线");
+// Line-ending agnostic: what is under test is "discard restored the committed
+// content", not "git happens to write LF". With core.autocrlf=true (Windows
+// system default) `git checkout --` legitimately restores CRLF, so comparing raw
+// bytes fails on a checkout the product handled correctly.
+const afterDiscard = readFileSync(path.join(repoDir, "a.txt"), "utf8").replace(/\r\n/g, "\n");
+assert(afterDiscard === "line1\nline2\n", `git_discard 后 a.txt 内容恢复基线（实际 ${JSON.stringify(afterDiscard)}）`);
 assert(!existsSync(path.join(repoDir, "c.txt")), "git_discard 后 untracked c.txt 已删除");
 assert(existsSync(path.join(repoDir, "b.txt")), "b.txt 不在 discard 清单，不受影响");
 

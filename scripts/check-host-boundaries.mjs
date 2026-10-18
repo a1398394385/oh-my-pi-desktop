@@ -373,6 +373,17 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/collab.ts", "rpc/prompt.ts→rpc/collab.ts", "rpc/session.ts→rpc/collab.ts",
   // rpc/worktree.ts: git worktree session create/status/remove over Bun.spawn
   "rpc/worktree.ts→rpc/types.ts", "rpc/index.ts→rpc/worktree.ts",
+  // rpc/git-graph.ts: read-only commit graph + commit detail for the middle-column
+  // Git page (log/show/rev-list over Bun.spawn; localized failure copy)
+  "rpc/git-graph.ts→rpc/types.ts", "rpc/git-graph.ts→i18n/host.ts",
+  "rpc/index.ts→rpc/git-graph.ts",
+  // git.ts is the single host-side git process layer (argv shape, env, timeout,
+  // read/write lock class) — modelled on IntelliJ's gitImplBase. Every module
+  // that shells out to git must route through it, so no call site can forget
+  // GIT_OPTIONAL_LOCKS=0 / GIT_TERMINAL_PROMPT=0 / a hard timeout. It is a leaf:
+  // it imports nothing from the host but node builtins, so no edge points back.
+  "rpc/files.ts→git.ts", "rpc/git-graph.ts→git.ts", "rpc/worktree.ts→git.ts",
+  "session-lifecycle.ts→git.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
   // Host i18n (A8): the host-owned i18next instance lives in host/i18n/ (moved

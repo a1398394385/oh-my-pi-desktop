@@ -14,6 +14,8 @@ export interface ProjectsSlice {
   isProjectManageMode: boolean;
   allProjects: string[];
   removedProjects: string[];
+  /** Project cwds whose working tree has a .git entry (host session_list): gates the row's Git entry. */
+  gitProjects: Set<string>;
   /** App-owned backing dir for "work without a project" (from the session_list frame). */
   defaultWorkspace: string;
   archivedSessions: (DiskSessionRow & { cwd: string })[];
@@ -36,6 +38,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   isProjectManageMode: false,
   allProjects: [],
   removedProjects: [],
+  gitProjects: new Set(),
   defaultWorkspace: "",
   archivedSessions: [],
   diskProjects: [],

@@ -21,6 +21,7 @@ import { bashCompleteHandlers } from "./bash-complete";
 import { automationsHandlers } from "./automations";
 import { btwHandlers } from "./btw";
 import { worktreeHandlers } from "./worktree";
+import { gitGraphHandlers } from "./git-graph";
 import { collabHandlers } from "./collab";
 import { remoteHandlers } from "./remote";
 import { REMOTE_WRITE_DENYLIST } from "../remote.ts";
@@ -45,6 +46,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...automationsHandlers,
   ...btwHandlers,
   ...worktreeHandlers,
+  ...gitGraphHandlers,
   ...collabHandlers,
   ...remoteHandlers,
 };
