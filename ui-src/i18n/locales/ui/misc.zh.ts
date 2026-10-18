@@ -80,7 +80,7 @@ export const miscZh = {
   keysSteer: "立即注入（生成中 steer）",
   keysQueue: "加入待发送队列",
   keysRecall: "拉回排队消息（后发先回）",
-  keysRecallCleared: "翻找已清除的草稿（输入框为空时按 ↑ 进入，↑/↓ 切换，输入即退出）",
+  keysRecallCleared: "翻找输入历史（输入框为空时按 ↑ 进入，↑/↓ 切换，输入即退出；含已发送消息与双击 Esc 清除的草稿）",
   keysGroupTree: "会话树",
   keysGroupTreeDesc: "会话树页面内的按键行为。",
   keysTreeMove: "移动条目游标（停在首尾，不循环）",

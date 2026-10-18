@@ -80,7 +80,7 @@ export const miscEn = {
   keysSteer: "Inject immediately (steer while generating)",
   keysQueue: "Add to send queue",
   keysRecall: "Recall queued message (last sent, first back)",
-  keysRecallCleared: "Browse cleared drafts (↑ on an empty input to enter, ↑/↓ to switch, typing exits)",
+  keysRecallCleared: "Browse input history (↑ on an empty input to enter, ↑/↓ to switch, typing exits; covers sent prompts and Esc-cleared drafts)",
   keysGroupTree: "Session tree",
   keysGroupTreeDesc: "Key behavior inside the session tree page.",
   keysTreeMove: "Move the entry cursor (stops at the ends, no wrap)",

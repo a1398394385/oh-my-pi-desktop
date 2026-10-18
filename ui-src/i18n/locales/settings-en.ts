@@ -53,7 +53,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "images.urls.options": { "label": "Image publishing options", "description": "JSON object keyed by backend name configuring each image URL publishing backend (gist, s3, …); the backend chain is chosen in the Vision group on the Model behavior page" },
   "images.urls.credentials": { "label": "Image publishing credentials", "description": "JSON object keyed by backend name holding access credentials for each image URL publishing backend" },
   "stt.language": { "label": "Recognition language", "description": "Recognition language code for voice dictation (e.g. zh, en)" },
-  "composer.recallClearedDrafts": { "label": "Recall Cleared Drafts", "description": "Keep drafts cleared with double-Escape in local history until exit (browse with plain ↑ on an empty input, ↑/↓ to switch, typing exits); disabling affects future clears only" },
+  "composer.recallClearedDrafts": { "label": "Input History Recall", "description": "Keep sent prompts and drafts cleared with double-Escape in local history until exit (browse with plain ↑ on an empty input, ↑/↓ to switch, typing exits); disabling affects future entries only" },
 
   // ---- pg-memory: local pipeline tuning ----
   "autolearn.minToolCalls": { "label": "Minimum tool calls", "description": "A session must accumulate at least this many tool calls before lesson extraction is considered at the end" },

@@ -30,7 +30,7 @@ import type { ModelRoleEntry } from "./types/frames";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
-import { stashClearedDraft } from "./components/composer/lexical/draft";
+import { pushInputHistory } from "./components/composer/lexical/draft";
 
 // ---------- Actions ----------
 
@@ -99,13 +99,13 @@ function handleEsc(): boolean | undefined {
   }
 
   // Second Esc while in the clear confirmation stage: perform the clear (the
-  // cleared draft goes to the recall stash while composer.recallClearedDrafts is on)
+  // cleared draft joins the slot's input history while composer.recallClearedDrafts is on)
   if (escArmedAction === "clear") {
     clearTimeout(doubleEscTimer);
     escArmedAction = null;
     setBump({ escArmedUntil: 0 });
     if (st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
-      stashClearedDraft(st.activePath || "welcome");
+      pushInputHistory(st.activePath || "welcome");
     }
     st.setComposerValue("", []);
     return true;

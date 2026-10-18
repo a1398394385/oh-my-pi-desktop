@@ -4,6 +4,7 @@
 import { useAppStore } from "../index";
 import { REMOTE } from "../ws";
 import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, updateSession } from "../session";
+import { pushInputHistory } from "../../components/composer/lexical/draft";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession, SubagentState } from "../../types/session";
@@ -230,6 +231,12 @@ export const sessionHandlers = {
       const s = st3.openSessions.get(st3.activePath ?? "");
       // Single run-start write + prompt dispatch, identical to the composer send path
       if (s) dispatchPrompt(s.sessionId, text, files);
+      // The deferred first prompt joins the created session's input history
+      // (its slot did not exist at send time; composer.recallClearedDrafts
+      // gates it the same way as the in-session send path)
+      if (useAppStore.getState().hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+        pushInputHistory(msg.path, { text, files });
+      }
     }
     if (st3.pendingNewBash) {
       const { command, excludeFromContext } = st3.pendingNewBash;
@@ -237,6 +244,10 @@ export const sessionHandlers = {
       const s = st3.openSessions.get(st3.activePath ?? "");
       // The bash_start frame creates the row; no optimistic bubble needed
       if (s) st3.send({ type: "bash_exec", sessionId: s.sessionId, command, excludeFromContext });
+      // Same input-history treatment, restoring the raw !/!! prefix
+      if (useAppStore.getState().hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+        pushInputHistory(msg.path, { text: (excludeFromContext ? "!!" : "!") + command, files: [] });
+      }
     }
     // The welcome page's model / thinking pick is the intent for the session that
     // create_session just produced — consumed here like planMode / computerMode,

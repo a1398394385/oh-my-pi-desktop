@@ -18,7 +18,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "tui.vimModeDisplay": { "label": "Vim 模式指示器", "description": "当前 Vim 模式如何显示在状态栏" },
   "loop.mode": { "label": "循环模式", "description": "在重新提交提示词之前，/loop 各次迭代之间发生什么" },
   "loop.conditionTimeoutMs": { "label": "循环条件超时（ms）", "description": "等待 `/loop --while` / `--until` 条件命令的最长时间，超过即视为条件损坏并停止循环。设为 0 表示无限等待" },
-  "composer.recallClearedDrafts": { "label": "找回已清除草稿", "description": "把用双击 Esc 清除的草稿保留在本地历史中（输入框为空时按 ↑ 浏览，↑/↓ 切换，输入内容退出）直至退出；关闭只影响之后的清除" },
+  "composer.recallClearedDrafts": { "label": "输入历史召回", "description": "把已发送的消息与双击 Esc 清除的草稿保留在输入历史中（输入框为空时按 ↑ 浏览，↑/↓ 切换，输入内容退出）直至退出；关闭只影响之后的记录" },
   "treeFilterMode": { "label": "会话树过滤", "description": "打开会话树时的默认过滤模式" },
   "autocompleteMaxVisible": { "label": "自动补全条目数", "description": "自动补全下拉列表的最大可见条目数（3-20）" },
   "spelling.typoDetection": { "label": "拼写错误检测（macOS）", "description": "用当前 macOS 词典标出提示词中拼错的单词" },

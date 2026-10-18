@@ -53,6 +53,7 @@ import {
   getDraftFiles,
   saveDraftFiles,
   clearDraftState,
+  pushInputHistory,
   CONTENT_EDITABLE_OK,
 } from "./composer/lexical/draft";
 import ComposerPlugin from "./composer/lexical/ComposerPlugin";
@@ -352,7 +353,19 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
-    if (sendComposerPrompt({ raw: getDraftText(draftKey), files: buildAttachPayload(), steer })) clearDraft();
+    // Sent prompts join the slot's input history (browsable with ↑ on an
+    // empty input); push before clearDraft empties the slot's draft mirror.
+    // The welcome/creating-new first send is deferred (pendingNew* intents):
+    // its entry lands in the created session's slot in the session_created
+    // handler, not the welcome slot.
+    if (sendComposerPrompt({ raw: getDraftText(draftKey), files: buildAttachPayload(), steer })) {
+      const st = useAppStore.getState();
+      const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+      if (s && !st.isCreatingNew && st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+        pushInputHistory(draftKey);
+      }
+      clearDraft();
+    }
   };
 
   // ---- sigil trigger detection (triggerFn): global flattened view +
