@@ -8,6 +8,11 @@
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0;
   transition: margin var(--dur-base) var(--swift);
+  /* Content column width axis, single source of truth for messages + composer
+     (consumed as max-width: var(--col-w)). Percentages resolve at each
+     consumer's own containing block. --col-user-max is the drag override; the
+     100vw fallback leaves the default four-stage shrink untouched until set */
+  --col-w: min(var(--col-user-max, 100vw), min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))));
 }
 
 body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
@@ -127,8 +132,11 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
      as 50%/35% of screen width):
      1. content pinned at 50% screen width, margin keeps shrinking -> 2. margin pinned at 75px/side, content shrinks to 35% screen width
      -> 3. content pinned at 35% screen width, margin shrinks to 20px/side -> 4. margin pinned at 20px/side, content keeps shrinking.
-     Chat messages stay width-aligned with the bottom composer (queue card matches the dock width, stacked cards don't drift) */
-  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+     Chat messages stay width-aligned with the bottom composer (queue card matches the dock width, stacked cards don't drift).
+     --col-w (declared on #main) adds an optional user override from dragging the gutter
+     handles (--col-user-max, persisted by shell.ts attachColResizer); the 100vw fallback
+     keeps the override inactive until set */
+  max-width: var(--col-w);
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
@@ -150,3 +158,25 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
   font-size: var(--ui-fs-sm); color: var(--accent); background: var(--panel-2);
   border: 1px solid var(--line-soft); border-radius: 4px; flex: none;
 }
+
+/* Column width drag handles: 10px col-resize strips in the gutters beside the
+   content column, absolute in #main (never inside the #stream scrollport — an
+   absolute strip there would extend the scrollable range). The inner edge sits
+   20px off the column edge; the width collapses to zero when the margin can't
+   fit inset + strip + safe zone, so narrow columns get no mispositioned hit
+   area. Hidden on mobile/narrow (same 768px breakpoint as remote.css). */
+.col-resize-h {
+  position: absolute; top: 0; bottom: 0; z-index: 2;
+  width: min(10px, calc((100% - var(--col-w)) / 2 - 20px - 20px));
+  cursor: col-resize;
+}
+.col-resize-h[data-side='left'] { right: calc(50% + var(--col-w) / 2 + 20px); }
+.col-resize-h[data-side='right'] { left: calc(50% + var(--col-w) / 2 + 20px); }
+.col-resize-h::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 2px;
+  background: transparent;
+}
+.col-resize-h[data-side='left']::after { right: 4px; }
+.col-resize-h[data-side='right']::after { left: 4px; }
+.col-resize-h:hover::after, .col-resize-h.dragging::after { background: var(--line); }
+@media (max-width: 768px) { .col-resize-h { display: none; } }

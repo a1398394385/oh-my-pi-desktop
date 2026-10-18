@@ -169,6 +169,55 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
   });
 }
 
+// ---------- Content column drag-resize ----------
+// The center content column (messages + composer share --col-w, see center.css)
+// can be widened/narrowed by dragging the gutter strips beside it. The drag
+// writes a user override (--col-user-max) that --col-w caps with the four-stage
+// shrink, so oversized stored values degrade gracefully on small windows.
+// Both handles move the column symmetrically (dx × 2) to keep it centered.
+export function attachColResizer(): void {
+  const apply = (w: number) => document.documentElement.style.setProperty("--col-user-max", Math.round(w) + "px");
+  try {
+    const saved = localStorage.getItem("omp-w---col-user-max");
+    if (saved) apply(+saved);
+  } catch {}
+  for (const side of ["left", "right"] as const) {
+    (document.querySelector(`.col-resize-h[data-side="${side}"]`) as HTMLElement | null)?.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const el = e.currentTarget as HTMLElement;
+      const startX = e.clientX;
+      // Current content column width: the dock when present, else any shared-rule
+      // child of #stream (empty-state hint); 680 = the default on a typical window
+      const col = document.querySelector<HTMLElement>("#main .dock") ?? document.querySelector<HTMLElement>("#stream > *");
+      const startW = col?.offsetWidth ?? 680;
+      let moved = false;
+      const move = (ev: MouseEvent) => {
+        const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
+        if (dx !== 0) moved = true;
+        const outward = side === "right" ? dx : -dx;
+        apply(Math.max(480, startW + outward * 2));
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.classList.remove("resizing");
+        el.classList.remove("dragging");
+        // A press-only gesture must not overwrite the saved preference
+        if (moved) {
+          try {
+            localStorage.setItem("omp-w---col-user-max", document.documentElement.style.getPropertyValue("--col-user-max").replace("px", ""));
+          } catch {}
+        }
+      };
+      document.body.classList.add("resizing");
+      el.classList.add("dragging");
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+  }
+}
+
 // ---------- Cmd +/-/0 and native menu zoom ----------
 // Only the four top containers are zoomed (sidebar / main / right / settings):
 // zooming the whole body would double-scale position:fixed menus, misplacing
@@ -338,6 +387,7 @@ export function initShell(): void {
   attachResizer("left-resizer", "--left-w", 180, false);
   // Right panel drag handle (ZCode Side Pane size contract): min 240px, max 65% viewport width
   attachResizer("right-resizer", "--right-w", 240, true, 0.65);
+  attachColResizer();
 
   updateContentColMax();
   // Apply the persisted zoom level (store hydrated from localStorage at init):

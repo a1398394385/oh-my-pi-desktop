@@ -125,6 +125,10 @@ export default function MainColumn() {
             <SessionStatsBar />
           </>
         )}
+        {/* Column width drag handles: gutter strips beside the content column,
+            wired once by initShell (attachColResizer in shell.ts) */}
+        <div className="col-resize-h" data-side="left" />
+        <div className="col-resize-h" data-side="right" />
       </main>
   );
 }

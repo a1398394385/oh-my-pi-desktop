@@ -4,8 +4,8 @@
 .dock {
   flex: none;
   width: 100%;
-  /* Same four-stage shrink logic as chat messages (see the shared rule comment above); stops narrowing at the floor (260px, matching #composer's min-width) */
-  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  /* Same four-stage shrink logic as chat messages (via --col-w, see center.css); stops narrowing at the floor (260px, matching #composer's min-width) */
+  max-width: var(--col-w);
   min-width: 260px;
 }
 
@@ -121,10 +121,10 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
    display:contents); display-only with no click behavior, no hover highlight. */
 .stats-bar {
   flex: none;
-  /* Same four-stage max-width as the input dock (see .dock): the row is
+  /* Same four-stage max-width as the input dock (via --col-w, see center.css): the row is
      width-aligned with the composer card */
   width: 100%;
-  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  max-width: var(--col-w);
   min-width: 0;
   margin: 0 auto 10px;
   display: flex;
@@ -308,7 +308,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
    constrains; missing either reverts that range to the input card's width */
 #main .goal-card {
   width: calc(100% - 20px);
-  max-width: calc(min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))) - 20px);
+  max-width: calc(var(--col-w) - 20px);
 }
 
 .goal-card {
