@@ -34,7 +34,7 @@ import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { pushComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued } from "../queue.ts";
-import { handleListSessions } from "./session";
+import { refreshAllSessionLists } from "./session";
 import { btwAsk } from "../btw.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
@@ -442,7 +442,7 @@ async function dispatchSlashInput(
             ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
             pushContext(ws, sessionId, entry);
           }
-          await handleListSessions(ws); // Title/list may have changed (rename/handoff alter titles)
+          await refreshAllSessionLists(ws); // Title/list may have changed (rename/handoff alter titles)
           const outs = bgOutputs ?? [];
           bgOutputs = null;
           // Success: the disk trace is written and the messages rebuild frame
@@ -460,7 +460,7 @@ async function dispatchSlashInput(
         });
     },
     notifyTitleChanged: () => {
-      void handleListSessions(ws);
+      void refreshAllSessionLists(ws);
     },
     notifyConfigChanged: () => {
       ws.send(

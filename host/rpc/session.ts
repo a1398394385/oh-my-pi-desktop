@@ -4,8 +4,9 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot } from "../state.ts";
+import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
+import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
 import { readAutomations } from "../automations/store.ts";
 import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
@@ -28,7 +29,7 @@ import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 
-export async function handleListSessions(ws: any) {
+export async function buildSessionListPayload() {
   const all = await SessionManager.listAll(); // All project directories, pinned first
   // mtime tracks non-activity writes (session_exit frames); use the last message time instead
   await applyActivityTimes(all);
@@ -161,19 +162,38 @@ export async function handleListSessions(ws: any) {
     .sort((a, b) => Date.parse(b.sessions[0].modified) - Date.parse(a.sessions[0].modified));
   // History scan: merge newly seen projects into the all-projects list (reached both at startup and on UI reconnect)
   if (mergeHistoryProjects(projects.map((p) => p.cwd))) await saveDesktopProjects();
-  ws.send(
-    JSON.stringify({
-      type: "session_list",
-      projects,
-      allProjects: H.desktopProjects.allProjects,
-      removedProjects: H.desktopProjects.removedProjects,
-      expandedProjects: H.desktopProjects.expandedProjects,
-      pinnedSessions: H.desktopProjects.pinnedSessions,
-      // App-owned backing dir for "work without a project": the frontend renders
-      // it as a fixed row and never registers it in allProjects.
-      defaultWorkspace: defaultWorkspaceDir,
-    }),
-  );
+  return {
+    type: "session_list",
+    projects,
+    allProjects: H.desktopProjects.allProjects,
+    removedProjects: H.desktopProjects.removedProjects,
+    expandedProjects: H.desktopProjects.expandedProjects,
+    pinnedSessions: H.desktopProjects.pinnedSessions,
+    // App-owned backing dir for "work without a project": the frontend renders
+    // it as a fixed row and never registers it in allProjects.
+    defaultWorkspace: defaultWorkspaceDir,
+  } satisfies SessionListFrame;
+}
+
+/**
+ * Push the session list to every connected UI: the requesting socket plus the
+ * other channel's socket (local desktop vs remote phone). The list is global
+ * state — a session created, renamed, archived or deleted on one channel has to
+ * appear/disappear on the other without a reconnect, which is why the mutating
+ * RPCs call this instead of handleListSessions. One disk scan, N sends.
+ */
+export async function refreshAllSessionLists(originWs?: { send(data: string): unknown }): Promise<void> {
+  const payload = JSON.stringify(await buildSessionListPayload());
+  if (originWs) originWs.send(payload);
+  eachUiWs((w) => {
+    if (w === originWs) return;
+    w.send(payload);
+    pushPoolSnapshot(w);
+  });
+}
+
+export async function handleListSessions(ws: any) {
+  ws.send(JSON.stringify(await buildSessionListPayload()));
   pushPoolSnapshot(ws);
 }
 
@@ -235,6 +255,9 @@ function sessionEntryMatchesPath(entry: { path: string; previousPaths?: string[]
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
     await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true, msg.computerMode === true);
+    // The other channel (phone vs desktop) holds no session_created frame for
+    // this pool entry, so its sidebar only learns about it from this list push.
+    await refreshAllSessionLists(ws);
   },
   async load_session(ws, msg) {
     await handleLoadSession(ws, msg.path);
@@ -347,7 +370,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     if (!H.desktopProjects.removedProjects.includes(cwd)) H.desktopProjects.removedProjects.push(cwd);
     await saveDesktopProjects();
-    await handleListSessions(ws);
+    await refreshAllSessionLists(ws);
   },
   async delete_session(ws, msg) {
     // Permanently delete a session (physical file + its artifacts dir + in-memory pool entry and pin records)
@@ -426,7 +449,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         if (err?.code !== "ENOENT") safeStderr(hostI18n.t("errors.session.deleteArtifactsFailed", { detail: String(err) }));
       }
     }
-    await handleListSessions(ws);
+    await refreshAllSessionLists(ws);
   },
   async set_project_expanded(_ws, msg) {
     // Project expansion persistence: recorded in omp-desktop.json expandedProjects; unrecorded ones default to collapsed
@@ -438,7 +461,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!on && i >= 0) H.desktopProjects.expandedProjects.splice(i, 1);
     await saveDesktopProjects();
   },
-  async set_session_pinned(_ws, msg) {
+  async set_session_pinned(ws, msg) {
     // Pinned session persistence: recorded in omp-desktop.json pinnedSessions, survives restarts
     const p = String(msg.path ?? "").trim();
     const on = !!msg.pinned;
@@ -447,6 +470,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (on && i < 0) H.desktopProjects.pinnedSessions.push(p);
     if (!on && i >= 0) H.desktopProjects.pinnedSessions.splice(i, 1);
     await saveDesktopProjects();
+    // pinnedSessions rides on session_list, so the other channel needs the push
+    // to render the same pinned row.
+    await refreshAllSessionLists(ws);
   },
   async archive_session(ws, msg) {
     // Archive persistence: recorded by session file path in omp-desktop.json
@@ -466,6 +492,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     }
     await saveDesktopProjects();
     ws.send(JSON.stringify({ type: "session_archived", sessionId: msg.sessionId, ok: true, archived: on }));
+    await refreshAllSessionLists(ws);
   },
   async add_project(ws, msg) {
     // Manual add: if it hits the removed list, move it back to all projects; otherwise merge it in as a new project (pinned to the top, immediately visible)
@@ -484,7 +511,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (ri >= 0) H.desktopProjects.removedProjects.splice(ri, 1);
     if (!H.desktopProjects.allProjects.includes(cwd)) H.desktopProjects.allProjects.unshift(cwd);
     await saveDesktopProjects();
-    await handleListSessions(ws);
+    await refreshAllSessionLists(ws);
   },
   async reorder_projects(_ws, msg) {
     // Drag reorder: the full order sent by the UI wins; existing items it does not cover (concurrent-change fallback) keep their order and append at the tail
@@ -543,6 +570,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       }
     }
     ws.send(JSON.stringify({ type: "session_renamed", sessionId: msg.sessionId, ok: true, title }));
+    await refreshAllSessionLists(ws);
   },
   async compact_session(ws, msg) {
     // Manual compact: the base's compact rewrites the session history (LLM
@@ -637,7 +665,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
           selectedText,
         }),
       );
-      await handleListSessions(ws); // List refresh signal: the session_list frame tells the sidebar project tree to update
+      await refreshAllSessionLists(ws); // List refresh signal: the session_list frame tells the sidebar project tree to update
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }
@@ -849,7 +877,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
           selectedText,
         }),
       );
-      await handleListSessions(ws); // Sidebar project tree refresh, same as branch_session
+      await refreshAllSessionLists(ws); // Sidebar project tree refresh, same as branch_session
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_forked", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }

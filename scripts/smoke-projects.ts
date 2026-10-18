@@ -81,9 +81,14 @@ const assert = (cond: boolean, msg: string) => {
 };
 
 const frames: any[] = [];
-const waitType = (t: string, after = 0, ms = 15_000) =>
+// List-mutating RPCs now push session_list to every connected UI (the other
+// channel too), so "the next session_list after my request" is no longer a
+// one-request-one-frame sequence — a slower frame from an earlier RPC can land
+// after this mark. Callers that assert on state wait for a frame that actually
+// carries the expected state.
+const waitType = (t: string, after = 0, ms = 15_000, pred?: (f: any) => boolean) =>
   new Promise<any>((resolve, reject) => {
-    const idx = () => frames.findIndex((f, i) => f.type === t && i >= after);
+    const idx = () => frames.findIndex((f, i) => f.type === t && i >= after && (!pred || pred(f)));
     if (idx() >= 0) return resolve(frames[idx()]);
     const timer = setTimeout(() => reject(new Error(`等待 ${t} 超时`)), ms);
     const iv = setInterval(() => {
@@ -136,13 +141,13 @@ const created = await waitType("session_created", mark).catch((e) => fail(String
 ws.send(JSON.stringify({ type: "set_session_pinned", path: created.path, pinned: true })); // no reply frame
 mark = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
-list = await waitType("session_list", mark).catch((e) => fail(String(e)));
+list = await waitType("session_list", mark, 15_000, (f) => (f.pinnedSessions ?? []).includes(created.path)).catch((e) => fail(String(e)));
 assert((list.pinnedSessions ?? []).includes(created.path), "set_session_pinned 进 pinnedSessions");
 
 // ---- Assertion 5: remove flags the entry (keeping it in allProjects is by design: visible in Recent + recoverable via add) ----
 mark = frames.length;
 ws.send(JSON.stringify({ type: "remove_project", cwd: dirA }));
-list = await waitType("session_list", mark).catch((e) => fail(String(e)));
+list = await waitType("session_list", mark, 15_000, (f) => (f.removedProjects ?? []).includes(dirA)).catch((e) => fail(String(e)));
 assert(
   (list.removedProjects ?? []).includes(dirA) && idxOf(list, dirB) >= 0,
   `remove_project A：进 removed（allProjects 保留、B 不受影响）`,

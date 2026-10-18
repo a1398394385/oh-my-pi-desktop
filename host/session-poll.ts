@@ -14,7 +14,7 @@
 // pool is unbounded; the frontend's OPEN_SESSIONS_MAX only governs UI LRU).
 import { stat, open } from "node:fs/promises";
 import { sessions } from "./state.ts";
-import { handleListSessions } from "./rpc/session.ts";
+import { refreshAllSessionLists } from "./rpc/session.ts";
 import { safeStderr } from "./stderr.ts";
 import { hostI18n } from "./i18n/host.ts";
 
@@ -28,10 +28,10 @@ async function pollExternalWrites() {
       // 0-byte window above keeps waiting)
       if (entry.awaitDiskList) {
         entry.awaitDiskList = false;
-        // One list refresh is enough (the frame carries the full list); send it
-        // to the first attached UI
-        const ws = entry.uiSockets.values().next().value;
-        if (ws) void handleListSessions(ws);
+        // One list refresh is enough (the frame carries the full list); every
+        // connected UI gets it, so the channel that didn't create the session
+        // drops its pending row at the same moment.
+        await refreshAllSessionLists();
       }
       if (st.size < entry.pollKnownSize) entry.pollKnownSize = 0; // Full rewrite: rescan from the start
       const fh = await open(entry.path, "r");

@@ -359,6 +359,8 @@ const ALLOWED_EDGES = new Set([
   // session_list backfills the automation badge from the persisted runs ledger
   // (pool eviction/restart must not drop it); read-only store access
   "rpc/session.ts→automations/store.ts",
+  // type-only: buildSessionListPayload's return is checked against the wire frame
+  "rpc/session.ts→wire/frames-session.ts",
   // /btw side conversations: btw.ts owns the topic lifecycle over the SDK primitives;
   // rpc/btw.ts narrows the wire and promotes topics into pooled sessions
   "btw.ts→bootstrap.ts", "btw.ts→state.ts", "btw.ts→stderr.ts",

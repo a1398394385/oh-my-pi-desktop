@@ -12,7 +12,7 @@ import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initia
 import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import { reloadAutomationScheduler, setAutomationNotify } from "./automations/scheduler.ts";
-import { handleListSessions } from "./rpc/session.ts";
+import { refreshAllSessionLists } from "./rpc/session.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
@@ -386,7 +386,7 @@ export async function applyProfile(profileName: string) {
   // refresh the sidebar via the session_list push (the same pattern rpc/session
   // uses after list-mutating RPCs); the scheduler itself never imports rpc/.
   setAutomationNotify(() => {
-    eachUiWs((ws) => void handleListSessions(ws).catch(() => {}));
+    void refreshAllSessionLists().catch(() => {});
   });
   reloadAutomationScheduler();
 }
