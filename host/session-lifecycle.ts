@@ -27,6 +27,7 @@ import {
   pushPoolSnapshot,
   entryBus,
   eachUiWs,
+  handleRunLifecycleEvent,
   type PoolEntry,
   type TranscriptItem,
 } from "./state.ts";
@@ -273,9 +274,13 @@ export async function createSessionCore(
   // the window-derived lines; turn_end drives the §5.2/§5.3 failure-exit
   // judgment (ultimatum counting, forced-turn resolution — API-error turns
   // emit turn_end too, so the forced terminal state is reached on every path).
-  // The holder feeds the force channel above.
+  // The holder feeds the force channel above. The initial rebind matters for
+  // sessions created without an explicit model (load/branch pass undefined):
+  // no model_changed fires at init, so without it the runtime keeps the
+  // fallback byte-estimate counter instead of the resolved model's tokenizer.
   if (acpRuntime) {
     acpSession.session = session;
+    acpRuntime.rebindModel(session.model);
     session.subscribe((ev: { type: string }) => {
       if (ev.type === "model_changed") acpRuntime.rebindModel(session.model);
       else if (ev.type === "turn_end") acpRuntime.onTurnEnd();
@@ -483,15 +488,8 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       bus.send(JSON.stringify(stampEvent({ type: "cache_warming", sessionId, phase: "end", outcome: ev.outcome })));
     }
     // Session active-duration timing (same as the TUI status-line
-    // time_spent): agent_start opens the window (idempotent — re-entry does
-    // not double-count), the truly-final agent_end closes it; intermediate
-    // agent_end with isTerminal === false keeps running, so no close
-    if (ev.type === "agent_start") {
-      if (entry.activeStartedAt === null) entry.activeStartedAt = Date.now();
-    } else if (ev.type === "agent_end" && ev.isTerminal !== false && entry.activeStartedAt !== null) {
-      entry.activeMs += Math.max(0, Date.now() - entry.activeStartedAt);
-      entry.activeStartedAt = null;
-    }
+    // time_spent) + cross-channel pool busy broadcast (state.ts)
+    if (ev.type === "agent_start" || ev.type === "agent_end") handleRunLifecycleEvent(entry, ev);
     // After a turn truly ends, push context usage (messages are final by
     // then); also calibrate the queued rows (steer consumed)
     if (ev.type === "agent_end" && ev.isTerminal !== false) {

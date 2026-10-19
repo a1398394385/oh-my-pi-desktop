@@ -120,6 +120,10 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   const activePath = useAppStore((s) => s.activePath);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const isCommandPressed = useAppStore((s) => s.isCommandPressed);
+  // Pool busy flag (pool_sessions frame): the spinner for a session this client
+  // never loaded — running on the OTHER channel (remote control vs desktop) or
+  // spawned by an automation — which therefore has no openSessions slot here.
+  const poolBusy = useAppStore((st) => st.poolSessions.some((p) => p.path === s.path && p.busy === true));
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -145,7 +149,10 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // would read as "still busy" while nothing moves until the question is answered, so it shows
   // the attention dot instead.
   const awaitingApproval = (open?.pendingApprovals?.length ?? 0) > 0;
-  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : open?.streaming ? "loading" : "none";
+  // Loaded here → open.streaming (driven by this client's own event frames);
+  // otherwise the host pool's busy flag (cross-channel running state)
+  const running = open?.streaming ?? poolBusy;
+  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : running ? "loading" : "none";
   // Open session: already open → activate directly (refreshes the right panel's git diff); not
   // open → the host loading chain
   const openSession = () => {

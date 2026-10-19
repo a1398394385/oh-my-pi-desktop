@@ -175,12 +175,19 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
 // writes a user override (--col-user-max) that --col-w caps with the four-stage
 // shrink, so oversized stored values degrade gracefully on small windows.
 // Both handles move the column symmetrically (dx × 2) to keep it centered.
-export function attachColResizer(): void {
-  const apply = (w: number) => document.documentElement.style.setProperty("--col-user-max", Math.round(w) + "px");
+
+// Restore the persisted override once at boot (initShell). The width itself applies to
+// every page hosting the content column, so this must not wait for the session detail
+// page (where the handles live) to mount — otherwise entering it would jump once.
+export function restoreColWidth(): void {
   try {
     const saved = localStorage.getItem("omp-w---col-user-max");
-    if (saved) apply(+saved);
+    if (saved) document.documentElement.style.setProperty("--col-user-max", Math.round(+saved) + "px");
   } catch {}
+}
+// Handles are rendered only on the session detail page (MainColumn), so the mousedown
+// wiring follows their mount instead of initShell's one-shot boot.
+export function bindColResizer(): void {
   for (const side of ["left", "right"] as const) {
     (document.querySelector(`.col-resize-h[data-side="${side}"]`) as HTMLElement | null)?.addEventListener("mousedown", (e) => {
       if (e.button !== 0) return;
@@ -196,7 +203,7 @@ export function attachColResizer(): void {
         const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
         if (dx !== 0) moved = true;
         const outward = side === "right" ? dx : -dx;
-        apply(Math.max(480, startW + outward * 2));
+        document.documentElement.style.setProperty("--col-user-max", Math.round(Math.max(480, startW + outward * 2)) + "px");
       };
       const up = () => {
         document.removeEventListener("mousemove", move);
@@ -390,7 +397,7 @@ export function initShell(): void {
   attachResizer("left-resizer", "--left-w", 180, false);
   // Right panel drag handle (ZCode Side Pane size contract): min 240px, max 65% viewport width
   attachResizer("right-resizer", "--right-w", 240, true, 0.65);
-  attachColResizer();
+  restoreColWidth();
 
   updateContentColMax();
   // Apply the persisted zoom level (store hydrated from localStorage at init):

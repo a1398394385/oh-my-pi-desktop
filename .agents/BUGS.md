@@ -82,6 +82,7 @@
 | BUG-084 | 状态栏「平均首字」在会话运行中消失——宽度裁剪把 TTFT 排在第一顺位，主栏一变窄即整项 display:none | 2026-10-18 |
 | BUG-085 | Git 页中文文件名显示成八进制转义串且暂存必失败——`git status --short` 的 octal 引用形式原样进了 UI | 2026-10-18 |
 | BUG-086 | 切本地含 `/` 的分支被静默切到另一个新分支且 exit 0——用短名里有没有 `/` 判本地/远程 | 2026-10-18 |
+| BUG-087 | ACP 会话上下文明细卡「活动区」系统性低估 18~28%——运行时计数器从未绑定到已解析模型，长期用字节估算兜底 | 2026-10-19 |
 
 ---
 
@@ -1244,6 +1245,20 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`scripts/smoke-git-refs.ts` 第 3/4 条断言——切 `feat/login-flow` 后 `current` 正确且 `git branch` 里**不存在**幽灵分支 `login-flow`；远程 `origin/feature-x` DWIM 生成本地 `feature-x`。
 
 **教训**：①**不要用值的形状（有没有 `/`、大小写、前缀字符）去推断它的语义类别**——git 已经在 refname 里给了权威答案，去读它；②**「命令成功」不等于「做了你以为的事」**，`checkout --track` 在这里返回 0 却完全背离意图，这类静默分叉比报错危险得多；③判据应该放在最靠近事实的一层（宿主），而不是让每个 UI 调用点各自转述一遍。
+
+### BUG-087: ACP 会话上下文明细卡「活动区」系统性低估 18~28%——运行时计数器从未绑定到已解析模型，长期用字节估算兜底
+
+**日期**：2026-10-19
+
+**现象**：ACP 会话（01a14d64，deepseek-flash）的上下文明细卡显示「压缩区 8.2K / 活动区 178.1K」，但对 journal 全量重放 + API usage 锚（285.2K）对账，真实活动区应为 ~216.8K——卡片低估 ~39K。更隐蔽的影响：档位判定、里程碑提示、保险线全部基于这个偏小的口径运行，**压缩触发系统性偏晚**（以为上下文比实际小 18~28%）。非 ACP 会话不受影响（其消息行是总量残差，天然自洽）。分诊：②**确认存量缺陷**（ACP 上线起即如此；此前两轮回放把残差误判为「投影内容差异」，实为纯计数器差异）。
+
+**根因**（`host/session-lifecycle.ts:createSessionCore`）：`acpModel = initialModel ?? H.modelOverride`。`loadSession` 与分支 RPC 都传 `undefined`，而 `H.modelOverride` 仅在 `OMP_DESKTOP_MODEL` env 设置时存在——加载路径上 `createAcpRuntime` 拿到的是 `new Tokenizer(undefined)`，encoding=null，`countTokens` 永久退化为 byteEstimate（(bytes+3)/4），而不是会话模型自带的 deepseek-v3 原生 tokenizer。`rebindModel(model)`（acp-runtime.ts，换 tokenizer + 清 #tokenMemo/#zoneRenderTokens + 重算窗口线）早已存在，但只挂在 `model_changed` 事件上——**会话创建/加载路径从不触发该事件**，于是运行时终身停在兜底口径。spec §8 写的是「unknown encoding 兜底 byte 估算」，实现却把「未绑定模型」也掉进了同一个兜底。
+
+**修复**：`createSessionCore` 在 `createAgentSession` 返回后、subscribe 之前补一次 `acpRuntime.rebindModel(session.model)`（`session.model` = agent.state.model，构造时已从 journal/默认值解析；若为 undefined 则与现状一致，无回归）。一行调用 + 不变量注释。
+
+**验证**：①离线重放（真实 host 代码 + 真实 journal 01a14d64，`scripts/tmp-acp-replay2.ts`，用后已删）：null-encoding Σkept=178131 与运行态卡片 178122 吻合到 99.995%，native Σkept=216778——锁定差异全部来自计数器。②端到端探针（测试 profile + mock deepseek provider 显式 `tokenizer: deepseek-v3` + baseUrl 指向 127.0.0.1:9 即连即拒 + 真实 journal 副本）：load→prompt（connect 失败但 context 事件已触发投影）→ `get_context_detail` 读得 `zone=8176 active=216779`，与 native 重放差 1（探针那句 "hi" 的增量），距旧口径 38648。③11 个 smoke-acp-* 全过；`bun run check` 全绿。
+
+**教训**：①**「有兜底」的组件必须断言兜底只在预期场景命中**——byteEstimate 是 spec 允许的降级，但没有任何遥测区分「模型真没有 tokenizer」与「绑定缝漏了」，静默兜底两年难发现；排查此类问题先问「计数器拿到的是什么」，再怀疑内容。②**事件驱动重绑定天然漏掉初始态**——`model_changed` 只在变更时发，创建/加载路径必须在装配处显式补齐初始绑定（同 BUG-070 的 assembly 工厂缝：smoke 直连 `new AcpRuntimeState` 绕过装配，装配缝永远测不到；这次的探针走了完整 createSessionCore 才照出）。③**计数器差异会随内容类型浮动**（byte/4 与 native 比值实测 0.6~1.6），逐块对比 manifest 与重放时「63/63 块全不一致」的表现极易误导成「内容被改写」——先看总量闭合，再看逐块。
 
 
 

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useAppStore } from "../../store";
 import { bashAccentColor, sessionAccentColor } from "../../lib/session-color";
-import { toggleSidebar, toggleRightPanel } from "../../shell";
+import { toggleSidebar, toggleRightPanel, bindColResizer } from "../../shell";
 import MainHeader from "./MainHeader";
 import Welcome from "./WelcomePage";
 import MessagePage from "./chat/MessagePage";
@@ -44,6 +44,10 @@ export default function MainColumn() {
   // halo) follows one color: the next palette slot, never the input's own
   const bashAccent = bashAccentColor(title);
   const ringRef = useRef<SVGSVGElement>(null);
+  // The column width handles belong to the session detail page only (mirrors the
+  // MessagePage branch of the page switch below).
+  const showSessionDetail =
+    !gitManage && !isCreatingNew && !automationsOpen && !hubOpen && !(session && mainViewMode === "tree");
 
   // Ring speed follows typing tempo: idle = the 6s CSS cycle, faster hands spin it up to 3×
   // (2s). playbackRate, not animation-duration — changing the duration rescales the current
@@ -81,6 +85,11 @@ export default function MainColumn() {
       clearInterval(timer);
     };
   }, []);
+  // The handles are re-created whenever the session detail page mounts, so the drag
+  // wiring re-attaches on that transition (the nodes and their listeners die together).
+  useEffect(() => {
+    if (showSessionDetail) bindColResizer();
+  }, [showSessionDetail]);
   return (
       <main id="main">
         <MainHeader onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
@@ -129,10 +138,15 @@ export default function MainColumn() {
             <SessionStatsBar />
           </>
         )}
-        {/* Column width drag handles: gutter strips beside the content column,
-            wired once by initShell (attachColResizer in shell.ts) */}
-        <div className="col-resize-h" data-side="left" />
-        <div className="col-resize-h" data-side="right" />
+        {/* Column width drag handles: gutter strips beside the content column.
+            Only the session detail page hosts them, and wiring follows their mount
+            (bindColResizer in shell.ts) instead of initShell's one-shot boot. */}
+        {showSessionDetail && (
+          <>
+            <div className="col-resize-h" data-side="left" />
+            <div className="col-resize-h" data-side="right" />
+          </>
+        )}
       </main>
   );
 }

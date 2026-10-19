@@ -179,6 +179,13 @@ export const sessions = new Map<string, PoolEntry>();
  * every session_list refresh — the frontend slot map (openSessions) has an LRU
  * cap, so it is not the pool truth. Subagents are filtered out: they are child
  * threads of a task already listed, not tasks themselves.
+ *
+ * busy = SDK isStreaming, the authoritative live-run flag: it settles
+ * synchronously BEFORE the agent_start / agent_end events reach the host
+ * subscription (agent.ts resets it in the consume loop before emitting), so a
+ * snapshot taken inside those handlers reads the post-event truth. The host-side
+ * activeStartedAt window is NOT used — it can stay open forever after a
+ * re-tagged isTerminal:false agent_end (see sessionBusy).
  */
 export function pushPoolSnapshot(ws: unknown): void {
   const send = (ws as { send?: (data: string) => unknown } | null | undefined)?.send;
@@ -187,9 +194,39 @@ export function pushPoolSnapshot(ws: unknown): void {
     ws,
     JSON.stringify({
       type: "pool_sessions",
-      sessions: [...sessions.entries()].filter(([, e]) => !e.isSubagent).map(([id, e]) => ({ id, path: e.path, cwd: e.cwd, title: e.title ?? null })),
+      sessions: [...sessions.entries()].filter(([, e]) => !e.isSubagent).map(([id, e]) => ({ id, path: e.path, cwd: e.cwd, title: e.title ?? null, busy: e.session.isStreaming })),
     }),
   );
+}
+
+/**
+ * Session active-duration accounting (same as the TUI status-line time_spent)
+ * for the agent_start / agent_end events, plus the cross-channel pool busy
+ * broadcast: a channel that never loaded the running session (remote control
+ * vs desktop, or an automation-spawned run) has no openSessions slot for it,
+ * so its sidebar spinner reads the pool snapshot's busy flag instead.
+ *
+ * agent_end can be re-tagged isTerminal:false (a queued continuation might
+ * resume) while the run is still live: the immediate republish confirms the
+ * busy=true read, and the post-settle republish (waitForIdle resolves from the
+ * run's unwind, after isStreaming was already reset) is what flips it to false.
+ * A late false can never land on top of a live run's true — a resumed
+ * continuation re-broadcasts true via its own agent_start.
+ */
+export function handleRunLifecycleEvent(
+  entry: PoolEntry,
+  ev: { type: "agent_start" } | { type: "agent_end"; isTerminal?: boolean },
+): void {
+  if (ev.type === "agent_start") {
+    if (entry.activeStartedAt === null) entry.activeStartedAt = Date.now();
+  } else {
+    if (ev.isTerminal !== false && entry.activeStartedAt !== null) {
+      entry.activeMs += Math.max(0, Date.now() - entry.activeStartedAt);
+      entry.activeStartedAt = null;
+    }
+    void entry.session.waitForIdle().then(() => eachUiWs(pushPoolSnapshot));
+  }
+  eachUiWs(pushPoolSnapshot);
 }
 
 // Connected UI slots, one per channel (spec §3.4): the local desktop client

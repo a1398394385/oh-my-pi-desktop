@@ -25,6 +25,8 @@ docs/ 住面向人的文档,.agents/ 住 agent 工作文档(决策记录 / 硬�
 | 会话交接 | docs/handoff-*.md | 跨 session 交接快照 | 时点产物,交接完成后价值递减 |
 | agent 工作流 | .agents/(issue-tracker / triage-labels / domain) | agent 在本仓的工作约定 | — |
 | 子系统手册 | docs/systems/<name>.md | 活文档:一个子系统的跨文件链路地图 + 排障 runbook | 该子系统行为链路与排障步骤的 SSOT;上游坑归 PITFALLS,事故归 BUGS |
+| UI 约定手册 | docs/systems/ui-conventions.md | 设置页控件语言 / 动效 / 弹出卡片等全站 UI 约定 | 全站 UI 约定 SSOT;AGENTS.md 只留摘要与指针 |
+| 代码注释规范 | docs/comment-style.md | 注释判据 / 写法 / 删除标准 / review checklist / 治理波次 | 源码注释写作与治理 SSOT;AGENTS.md 只留硬约束摘要与指针 |
 
 目录规则:不新建 docs/<random>/ 或 .agents/<random>/ 目录;要落盘新类型,先在本表登记再写文件。
 
@@ -136,7 +138,9 @@ Spec(docs/architecture/*-spec.md)是**实施合同**:字段/API 契约 + 验收�
 | 事实 | SSOT 位置 | 其他位置只能写 |
 |---|---|---|
 | 项目架构与三区职责 | 根 AGENTS.md「项目架构」 | 指针 |
-| UI 全站约束(控件语言/图标/ring-pop) | 根 AGENTS.md 各规范节 | 指针 |
+| UI 全站约束(控件语言/动效/弹卡/图标) | docs/systems/ui-conventions.md | 指针 |
+| 前端模块地图与 store/样式约定 | docs/systems/frontend.md | 指针 |
+| 代码注释标准与治理 | docs/comment-style.md | 指针 |
 | ADR 决策 | .agents/notes/00NN | AGENTS.md 只列 ADR 编号 + 一句话 |
 | 外部依赖行为(omp SDK / Tauri / macOS) | docs/PITFALLS.md | 指针 |
 | 底座 oh-my-pi 源码事实 | /Users/xys/Github/oh-my-pi 源码 | 指针 |
@@ -166,6 +170,13 @@ Spec(docs/architecture/*-spec.md)是**实施合同**:字段/API 契约 + 验收�
 - UI 规范节(本仓库特有,已是 SSOT)
 
 **禁止内容**:架构详解、数据流图、版本变更摘要、外部依赖行为清单(归 PITFALLS.md)。
+
+**维护原则**(原 AGENTS.md「本文件维护」节,2026-10-18 并入):
+
+1. **准入门槛**:只添加 repo 级、持久、不可从代码直接推断、能防止一类真实错误的规则;模块级约束放对应模块文档,低频多步流程另立文档,不给一次性操作立规。
+2. **机器化优先**:能被 lint / typecheck / 测试 / 架构守卫可靠执行的硬规则必须机器化为脚本(`bun run check` / pre-commit 钩子 / 冒烟脚本);AGENTS.md 只陈述意图与入口,不是自动化的替代品。
+3. **定期修剪**:模型已能从代码推断、从未影响过决策或已过时的规则要删除——规则堆积会稀释关键约束。
+4. **引用真实**:引用的路径/脚本/命令必须实际存在;架构、脚本或目录移动时,须在同一改动内同步更新。
 
 ## 6. 更新传播
 

@@ -140,7 +140,10 @@ export interface SessionListFrame {
 /** Pool residency snapshot (state.ts pushPoolSnapshot): every session the host still holds in memory */
 export interface PoolSessionsFrame {
   type: "pool_sessions";
-  sessions: { id: string; path: string; cwd: string; title: string | null }[];
+  // busy = the SDK agent run is live (state.ts poolEntryBusy). Lets a channel
+  // that never loaded the session (remote control watching the desktop, or
+  // vice versa) render the sidebar running spinner for it.
+  sessions: { id: string; path: string; cwd: string; title: string | null; busy?: boolean }[];
 }
 
 /** Sidebar full-text search hits (host/rpc/session.ts search_session_text): match inside a user prompt or agent reply */

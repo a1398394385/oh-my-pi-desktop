@@ -71,6 +71,8 @@
 
 **事件双流(本体共存的前提)**:会话事件的 core 订阅(`subscribeEntryCore`,session-lifecycle.ts)每个池条目只挂一次,所有发送点扇出到 `entry.uiSockets`——本地与远程打开同一会话时两端都实时收到事件。`load_session` 复用分支只给**未订阅**的 ws 补挂,不再先 unsubscribe 转移订阅。审批卡片双端可见:先到 `approval_response` 者得,另一端卡片残留到下次刷新(host 会把进行中的审批帧重放给新挂载的 UI);plan 流程派生的新会话挂到主 UI(先连者),审批卡本身仍双端可见。
 
+**跨端运行状态(未打开会话的 spinner)**:侧栏行的 loading 指示原本只读本地 `openSessions` 槽位的 `streaming`(由本端事件帧驱动),一端没 load 过的会话在另一端运行时无从显示。`pool_sessions` 快照(state.ts `pushPoolSnapshot`)因此带 `busy`(`AgentSession.isStreaming`,含 prompt 在途),且 `subscribeEntryCore` 在 `agent_start` / `agent_end` 时经 `handleRunLifecycleEvent` 向 `eachUiWs` 双端重发快照;`agent_end` 的复位帧等 `waitForIdle()`(run 收尾、`isStreaming` 已清)再发,避免 re-tag `isTerminal:false`(排队续跑可能仍活)时误报空闲。UI(`SessionRow`)判定为 `open?.streaming ?? poolBusy`——本地槽位优先,无槽位回退池快照。
+
 ### 3.5 远程写操作 denylist
 
 `dispatchRpc`(host/rpc/index.ts)在 `ws.data?.remote === true` 时拒绝下表,返回 `{type:"error", message:"remote read-only"}`。集合集中在 `host/remote.ts` 导出 `REMOTE_WRITE_DENYLIST: ReadonlySet<string>`。
@@ -143,7 +145,7 @@ viewport meta 改为 `width=device-width, initial-scale=1.0, viewport-fit=cover,
 
 ### 4.6 设置页「远程控制」组(仅本地可见)
 
-风格遵循根 AGENTS.md 设置页一致性规范(`.srow.set-row` + `.tg` 开关 + `.inp` + `.save-btn`):开关行(启用)、端口行(数字输入+保存)、密钥行(脱敏显示 + 复制 URL + 「重新生成」危险钮)、状态行(监听中/错误文案来自 `remote_config.error`)、手机端状态栏开关行(`remote.mobileStatsBar`,默认关;`remote_config` 回包不带该字段,值只来自 settings 帧的 `remote` 段)。全部文案走 `ui-src/i18n` 语言包,禁止硬编码中文。
+风格遵循 `docs/systems/ui-conventions.md` §1 设置页一致性规范(`.srow.set-row` + `.tg` 开关 + `.inp` + `.save-btn`):开关行(启用)、端口行(数字输入+保存)、密钥行(脱敏显示 + 复制 URL + 「重新生成」危险钮)、状态行(监听中/错误文案来自 `remote_config.error`)、手机端状态栏开关行(`remote.mobileStatsBar`,默认关;`remote_config` 回包不带该字段,值只来自 settings 帧的 `remote` 段)。全部文案走 `ui-src/i18n` 语言包,禁止硬编码中文。
 
 ## 5. 验收矩阵
 
