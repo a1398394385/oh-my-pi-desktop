@@ -12,6 +12,12 @@
    display here would force every closed .menu.model (shared Sel) visible */
 .menu.model.open { display: flex; flex-direction: column; gap: 5px; }
 
+/* Composer model menu: fixed width — the row set (model names, badges) changes with
+   the picked provider, and a content-fitted box would jitter on every switch. The
+   name cell absorbs the slack so a long id ellipsizes instead of wrapping the row. */
+#modelMenu { width: 250px; }
+#modelMenu .mi-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; }
 
 /* same for the second-level model list */
@@ -20,13 +26,21 @@
 
 #modelMenu .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 
-/* selected/hover rows: one notch lighter than the global menu .on (--panel-3),
-   matching the composer pills' highlight so the picked model doesn't shout */
-#modelMenu .mi:hover { background: var(--panel-2); }
+/* Hover / keyboard-active rows: one notch above the menu's own --ctl-bg (= --panel-2 in
+   dark), which made --panel-2 rows invisible — same color as the menu face */
+#modelMenu .mi:hover { background: var(--panel-3); }
 
-#modelMenu .mi.prov.on { background: var(--panel-2); }
+#modelMenu .mi.prov.on { background: var(--panel-3); }
 
-#modelMenu .mi.on { background: var(--panel-2); }
+#modelMenu .mi.on { background: var(--panel-3); }
+
+/* Keyboard cursor: the same fill as hover plus a leading accent bar, so it stays legible on
+   the menu's own --ctl-bg (dark: both --panel-2) and reads apart from the selected model row,
+   which carries .on without .kb */
+#modelMenu .mi.kb, .menu.flyout .mi.kb { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Keyboard cursor on the thinking slider (the row the ↑/↓ cursor can enter) */
+.think-sec.on { background: var(--panel-3); border-radius: 6px; box-shadow: inset 2px 0 0 var(--accent); }
 
 /* ctrl+p cycle preview: the slot just switched to */
 .mp-role-sel .menu.flyout .mi { white-space: nowrap; }
@@ -67,8 +81,8 @@
 
 /* Merged composer model menu: thinking-level slider. The capsule holds a
    fixed full-width brand gradient (same hues as the app icon / welcome
-   greeting), revealed progressively by an opaque mask from the knob center
-   rightward; the ball-shaped knob (track height) rides inside the groove and
+   greeting), revealed progressively by clipping the gradient at the knob
+   center; the ball-shaped knob (track height) rides inside the groove and
    slides between tiers (JS snaps pointer input to the nearest tier dot; end
    dots included). */
 .think-sec { padding: 3px 6px 5px; display: flex; flex-direction: column; gap: 6px; }
@@ -92,8 +106,13 @@
    which would let the gradient bleed through on the "unfilled" stretch */
 .think-track { position: relative; height: 20px; border-radius: 999px; background: var(--panel-2); cursor: pointer; touch-action: none; }
 
+/* The reveal is a clip on the gradient, not an opaque overlay on top of it: an
+   overlay sharing the track's exact rounded box leaves an anti-aliased seam
+   where the two 50%-coverage edges blend, letting the gradient's last (cyan)
+   stop glint through as a half-ring at the right cap. */
 .think-grad { position: absolute; inset: 0; border-radius: 999px;
-  background: linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--brand-3), var(--brand-4)); }
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--brand-3), var(--brand-4));
+  transition: clip-path 160ms ease; }
 
 /* Light surfaces: full-strength brand reads too loud against the pale track —
    pull the gradient toward the panel (matches the light brand set's intent) */
@@ -104,9 +123,6 @@
     color-mix(in srgb, var(--brand-3) 75%, var(--panel)),
     color-mix(in srgb, var(--brand-4) 75%, var(--panel)));
 }
-
-.think-mask { position: absolute; top: 0; bottom: 0; right: 0; background: var(--panel-2); border-radius: 0 999px 999px 0;
-  transition: left 160ms ease; }
 
 .think-dot { position: absolute; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--faint); opacity: .45; }
 

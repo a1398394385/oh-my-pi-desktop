@@ -26,6 +26,35 @@ export const TAB_META: Record<string, TabMeta> = {
   btw: { label: "right.tabBtw", icon: "comment" },
 };
 
+// Terminal tabs are one panel tab each (`terminal:<id>`), so several terminals sit side by
+// side in the tab head instead of nesting a second tab strip inside one "Terminal" tab.
+const TERMINAL_PREFIX = "terminal:";
+export const isTerminalTab = (name: string): boolean => name.startsWith(TERMINAL_PREFIX);
+export const terminalTabId = (name: string): string => name.slice(TERMINAL_PREFIX.length);
+/** Base metadata key: `terminal:<id>` -> `terminal`, every other tab is its own kind. */
+export const tabKind = (name: string): string => (isTerminalTab(name) ? "terminal" : name);
+export const tabMeta = (name: string): TabMeta | undefined => TAB_META[tabKind(name)];
+let terminalSeq = (() => {
+  try {
+    return Number(localStorage.getItem("omp-terminal-seq")) || 0;
+  } catch {
+    return 0;
+  }
+})();
+/** Fresh terminal tab name; ids are never reused so a reopened tab cannot attach to an old PTY.
+ *  The counter is persisted: shared tab names survive reloads, so a fresh sequence would
+ *  collide with a restored `terminal:1`. */
+export function newTerminalTabName(): string {
+  terminalSeq += 1;
+  try {
+    localStorage.setItem("omp-terminal-seq", String(terminalSeq));
+  } catch {}
+  return TERMINAL_PREFIX + terminalSeq;
+}
+
+/** Stable tab label number: the id carries it, so a tab keeps its title across sessions. */
+export const terminalTabNumber = (name: string): number => Number(terminalTabId(name)) || 1;
+
 // Tabs the user cannot open or close by hand: the "hub" tab appears only while the
 // middle-card Agent Hub is open (openHub injects it, closeHub removes it). The add menu
 // hides them; tab close affordances (× / middle click) are disabled for them.
@@ -42,10 +71,10 @@ export const COMPOSER_ONLY_TABS: ReadonlySet<string> = new Set(["bgcmd"]);
 export const CONTEXT_TABS: ReadonlySet<string> = new Set(["commitdiff"]);
 
 // Tab close hooks: registered by pages with host-side resources (e.g. the terminal PTY);
-// invoked to destroy them before the tab closes
-// (used by TerminalPage: closing the "Terminal" tab kills the pty-bridge subprocess)
-const tabCloseHooks: Record<string, () => void> = {};
-export function registerTabCloseHook(name: string, fn: () => void): void {
+// invoked to destroy them before the tab closes. Registered under the base kind and called
+// with the full name so one hook serves every terminal tab instance.
+const tabCloseHooks: Record<string, (name: string) => void> = {};
+export function registerTabCloseHook(name: string, fn: (name: string) => void): void {
   tabCloseHooks[name] = fn;
 }
 // Cap on recently-closed entries (new → old)
@@ -89,7 +118,7 @@ export function closeRightTab(name: string): void {
   const st = useAppStore.getState();
   const i = st.rightTabs.indexOf(name);
   if (i < 0) return;
-  tabCloseHooks[name]?.(); // destroy the page's host resources (PTY etc.) before removing from the list
+  tabCloseHooks[tabKind(name)]?.(name); // destroy the page's host resources (PTY etc.) before removing from the list
   const tabs = st.rightTabs.slice();
   tabs.splice(i, 1);
   // Record into recently closed (dedup to top, cap 5)

@@ -12,7 +12,7 @@ import { readHooksEnabled, readPluginsEnabled } from "./plugin-assets.ts";
 import { readUiConfig } from "./ui-config.ts";
 import { readExternalBrowserEnabled } from "./browser-config.ts";
 import { readKimiAutoThinking } from "./kimi-thinking.ts";
-import { isAutoReviewEnabled } from "./auto-review.ts";
+import { isAutoReviewEnabled, isSmartModeOffered } from "./auto-review.ts";
 import { readSessionTitleRefresh } from "./session-titles.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
 import { readComputerDefaultEnabled, readComputerProvider } from "./computer-mode.ts";
@@ -63,6 +63,9 @@ export function settingsFrame() {
     // uiCtx.select — explicit low/medium verdicts approve unseen, everything
     // else still shows the human card (experimental page switch)
     autoReviewEnabled: isAutoReviewEnabled(),
+    // autoReview.offerSmartMode: whether the permission-mode menu shows the
+    // "smart approval" row (the page switch); the gate above stays independent.
+    autoReviewOfferMode: isSmartModeOffered(),
     // omp-desktop.json sessionTitles.refresh: regenerate the title after every
     // settled turn (one tiny-model call per turn; user-renamed sessions stay pinned)
     sessionTitleRefresh: readSessionTitleRefresh(),

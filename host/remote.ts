@@ -281,5 +281,9 @@ function serveStatic(pathname: string): Response {
   // Normalized escape out of dist (path traversal) -> 400
   if (target !== root && !target.startsWith(root + sep)) return new Response("bad path", { status: 400 });
   if (!existsSync(target)) return new Response("not found", { status: 404 });
-  return new Response(Bun.file(target));
+  // index.html names the hashed asset files, so a cached copy pins the phone to an old
+  // build: after reinstalling the UI the client kept running the previous JS/CSS and
+  // looked like the fix "did not work". Assets carry a content hash and stay cacheable.
+  const noStore = target.endsWith(".html");
+  return new Response(Bun.file(target), noStore ? { headers: { "Cache-Control": "no-store" } } : undefined);
 }

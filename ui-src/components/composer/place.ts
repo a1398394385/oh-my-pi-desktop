@@ -1,7 +1,8 @@
 // Composer menu positioning (ported from the positioning body of the old
 // composer.js openComposerMenu, no shell.js dependency):
-// anchored to the button (left follows it, bottom hugs 8px above the button,
-// expanding upward), right edge never overflows.
+// horizontally centered on the button (button center = menu center, clamped to
+// the composer's left edge and never overflowing its right edge), bottom hugs
+// 8px above the button, expanding upward.
 // Vertically, compute from the button's live offsetTop instead of a fixed
 // bottom:44px -- the latter only holds by luck in single-row layouts; once
 // wrapping or graded collapse moves the button, the popup detaches from it (the
@@ -17,7 +18,10 @@ export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | 
   menu.style.overflowY = "";
   const z = effZoom();
   const maxLeft = comp.clientWidth - menu.offsetWidth - 4;
-  menu.style.left = Math.max(0, Math.min(btn.offsetLeft, maxLeft)) + "px";
+  // Vertical centerline alignment: the popup's middle sits on the button's
+  // middle, not its left edge (the row below is a pill, not a text anchor).
+  const centered = btn.offsetLeft + (btn.offsetWidth - menu.offsetWidth) / 2;
+  menu.style.left = Math.max(0, Math.min(centered, maxLeft)) + "px";
   const btnAbsTop = btn.getBoundingClientRect().top;
   let top = btn.offsetTop - menu.offsetHeight - 8;
   if (btnAbsTop - (menu.offsetHeight + 8) * z < 4) {

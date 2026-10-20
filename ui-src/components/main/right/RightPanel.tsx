@@ -20,7 +20,9 @@ import {
   COMPOSER_ONLY_TABS,
   CONTEXT_TABS,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
+  isTerminalTab, terminalTabId, terminalTabNumber, tabMeta,
 } from "./tabs";
+import { openNewTermTab, syncSharedRightTabs } from "./termTabs";
 import StartPage from "./StartPage";
 import SubagentPage from "./SubagentPage";
 import HubDetailPage from "./HubDetailPage";
@@ -53,6 +55,13 @@ function Tip({ label, children }: { label?: string; children: ReactElement }) {
   );
 }
 
+// Tab strip title: terminal tabs are numbered by their position, so closing one renumbers
+// the rest; every other tab resolves its i18n label from TAB_META.
+function tabTitle(name: string): string {
+  if (!isTerminalTab(name)) return t(tabMeta(name)!.label);
+  return t("misc.terminalTab", { n: terminalTabNumber(name) });
+}
+
 // "Recently closed" relative time: just now / N min ago / N h ago / N days ago
 function closedAgo(at: number): string {
   const m = Math.floor((Date.now() - at) / 60000);
@@ -81,10 +90,10 @@ function TabOverview({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", esc);
   }, [onClose]);
   const kw = q.trim().toLowerCase();
-  const match = (name: string) => !kw || t(TAB_META[name].label).toLowerCase().includes(kw);
+  const match = (name: string) => !kw || tabTitle(name).toLowerCase().includes(kw);
   const opens = rightTabs.filter(match);
   // recently closed may hold names of removed tabs from slots persisted long ago — skip them
-  const recents = rightRecentClosed.filter((x) => TAB_META[x.name] && match(x.name));
+  const recents = rightRecentClosed.filter((x) => tabMeta(x.name) && match(x.name));
   return (
     <div className="menu open sp-pop" onClick={(e) => e.stopPropagation()}>
       <div className="sp-pop-search">
@@ -105,8 +114,8 @@ function TabOverview({ onClose }: { onClose: () => void }) {
             className={"mi" + (rightTab === name ? " on" : "")}
             onClick={() => { setBump({ rightTab: name }); onClose(); }}
           >
-            <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
-            {t(TAB_META[name].label)}
+            <span className="mi-ic"><Icon name={tabMeta(name)!.icon} size={15} /></span>
+            {tabTitle(name)}
             {!AUTO_TABS.has(name) && (
               <Tip label={t("common.close")}>
                 <span
@@ -122,8 +131,8 @@ function TabOverview({ onClose }: { onClose: () => void }) {
         {recents.length > 0 && <div className="mh">{t("right.recentlyClosed")}</div>}
         {recents.map((x) => (
           <div key={x.name} className="mi" onClick={() => { reopenRightTab(x.name); onClose(); }}>
-            <span className="mi-ic"><Icon name={TAB_META[x.name].icon} size={15} /></span>
-            {t(TAB_META[x.name].label)}
+            <span className="mi-ic"><Icon name={tabMeta(x.name)!.icon} size={15} /></span>
+            {t(tabMeta(x.name)!.label)}
             <span className="sub">{closedAgo(x.at)}</span>
           </div>
         ))}
@@ -160,12 +169,17 @@ function AddTabMenu({
           .filter((name) => !AUTO_TABS.has(name) && !COMPOSER_ONLY_TABS.has(name) && !CONTEXT_TABS.has(name))
           .map((name) => {
             const off = name === "gitdiff" && !isGit;
-            const on = rightTabs.includes(name);
+            // Terminal opens a NEW tab per click, so the checkmark would be misleading
+            const on = name !== "terminal" && rightTabs.includes(name);
             return (
               <Tip key={name} label={off ? t("right.notGitRepo") : undefined}>
                 <div
                   className={"mi" + (off ? " empty" : "")}
-                  onClick={off ? undefined : () => { openRightTab(name); onClose(); }}
+                  onClick={off ? undefined : () => {
+                    if (name === "terminal") openNewTermTab();
+                    else openRightTab(name);
+                    onClose();
+                  }}
                 >
                   <span className="ck">{on ? "✓" : ""}</span>
                   <span className="mi-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
@@ -214,8 +228,8 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
         }
       }}
     >
-      <span className="rtab-ic"><Icon name={TAB_META[name].icon} size={15} /></span>
-      <span className="rtab-tx">{t(TAB_META[name].label)}</span>
+      <span className="rtab-ic"><Icon name={tabMeta(name)!.icon} size={15} /></span>
+      <span className="rtab-tx">{tabTitle(name)}</span>
       {!auto && (
         <Tip label={t("common.close")}>
           <span
@@ -245,6 +259,14 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const setMobileCol = useAppStore((st) => st.setMobileCol);
   const [ovOpen, setOvOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  // Project-shared terminals: reconcile after session switches AND after the incoming
+  // slot's tab list lands (restore is async relative to the switch, so watching only
+  // activePath reconciles against the outgoing session's list)
+  const termActivePath = useAppStore((st) => st.activePath);
+  const terminalShared = useAppStore((st) => st.uiPrefs.terminalShared === true);
+  useEffect(() => {
+    syncSharedRightTabs();
+  }, [termActivePath, terminalShared, rightTabs, rightTab]);
 
   const headRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
@@ -308,10 +330,10 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   if (!hubOpen && tabs.includes("hub")) tabs = tabs.filter((n) => n !== "hub");
   // Slots persisted before a tab was removed from TAB_META (e.g. the old branch tree) would
   // crash the meta lookups below — drop unknown names and fall back on the active tab
-  const unknown = tabs.filter((n) => !TAB_META[n]);
+  const unknown = tabs.filter((n) => !tabMeta(n));
   if (unknown.length) {
     const st = useAppStore.getState();
-    tabs = tabs.filter((n) => TAB_META[n]);
+    tabs = tabs.filter((n) => tabMeta(n));
     useAppStore.setState({
       rightTabs: tabs,
       rightTab: st.rightTab && tabs.includes(st.rightTab) ? st.rightTab : tabs[tabs.length - 1] ?? null,
@@ -338,7 +360,9 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "commitdiff") body = <CommitDiffPage />;
   else if (rightTab === "bgcmd") body = <BgCmdPage />;
   else if (rightTab === "file") body = <FilePage />;
-  else if (rightTab === "terminal") body = <TerminalPage />;
+  // Legacy slot state still holds the bare "terminal" name (pre multi-terminal); it maps to
+  // an empty tab id and keeps working (terminalTabId returns "")
+  else if (rightTab === "terminal" || isTerminalTab(rightTab)) body = <TerminalPage scope="right" tabId={terminalTabId(rightTab)} />;
   else if (rightTab === "browser") body = <BrowserPage />;
   else if (rightTab === "btw") body = <BtwPage />;
   else body = <SubagentPage />;

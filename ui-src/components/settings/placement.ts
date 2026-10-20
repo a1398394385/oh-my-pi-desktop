@@ -336,9 +336,13 @@ export const HIDDEN_KEYS: Record<string, true> = {
   // pi-tui rendering switches + theme name maps (setAutoThemeMapping /
   // setSymbolPreset effects feed the TUI theme engine only; the desktop has
   // its own CSS token themes, shiki dark-plus/light-plus, and diff colors).
-  // display.hideToolActivity / showTokenUsage / colorBlindMode are NOT here:
-  // the desktop implements its own consumers for those. display.showTurnTime
-  // IS here: the desktop shows the turn time unconditionally.
+  // display.showTokenUsage / colorBlindMode are NOT here: the desktop implements
+  // its own consumers for those. display.showTurnTime IS here: the desktop shows
+  // the turn time unconditionally.
+  // display.hideToolActivity IS here: the desktop replaced it with its own
+  // three-way "agent process style" pref (ui.prefs.agentProcessStyle), which owns
+  // both folding levels, so the base switch has no consumer left.
+  "display.hideToolActivity": true,
   "display.showTurnTime": true,
   "theme.dark": true,
   "theme.light": true,
@@ -434,7 +438,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-appearance": [
     "colorBlindMode",
     "images.autoResize", "images.blockImages",
-    "display.hideToolActivity", "display.showTokenUsage",
+    "display.showTokenUsage",
   ],
   "pg-model-behavior": [
     "advisor.enabled", "prewalk.enabled", "advisor.syncBacklog", "advisor.immuneTurns",

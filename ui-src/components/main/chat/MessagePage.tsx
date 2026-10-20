@@ -246,6 +246,25 @@ export default function MessagePage() {
     updateRailVisibility();
   }, []);
 
+  // Phone soft keyboard: the shell shrinks to the visual viewport (--app-h, shell.ts), so the
+  // scrollport resizes under a reader who was following the bottom. Without a re-pin the
+  // newest content slides out of view and the page reads as jumping while typing. Judge
+  // against the PREVIOUS height — by the time the callback runs, the smaller clientHeight
+  // already looks like "scrolled up". Keyed on hasSession because the empty-state and
+  // session trees render two different #stream nodes.
+  useLayoutEffect(() => {
+    const el = streamRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastH = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const wasPinned = el.scrollHeight - el.scrollTop - lastH < PIN_TOLERANCE;
+      lastH = el.clientHeight;
+      if (wasPinned) scrollToLatest(el);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasSession]);
+
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
 
   // Block scroll bleed-through from tab popups / inline expand cards into the outer message
@@ -447,11 +466,14 @@ export default function MessagePage() {
   // components further below compare scalar props, so a 100ms delta flush re-renders only
   // the rows whose own data changed. Runs before the no-session early return (hooks must
   // stay unconditional); with no session items is undefined and the pass is trivially empty.
+  // processStyle is a dep of its own: renderItems reads the fold style from the store
+  // (non-reactive), so the subscription is what re-lays out messages when it changes.
+  const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
   const { nodes, railEntries } = useMemo(() => {
     const entries: RailEntry[] = [];
     const out = renderItems(items ?? [], "", entries, streamTail);
     return { nodes: out, railEntries: entries };
-  }, [items, draft, streamTail]);
+  }, [items, draft, streamTail, processStyle]);
 
   if (!hasSession) {
     return (

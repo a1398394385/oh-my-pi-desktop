@@ -31,6 +31,7 @@ import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
 import { pushInputHistory } from "./components/composer/lexical/draft";
+import { cycleTermTab } from "./components/main/right/termTabs";
 
 // ---------- Actions ----------
 
@@ -400,6 +401,9 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: [MOD, "F"], get label() { return t("misc.keysFindInSession"); } },
       { keys: [MOD, "⇧", "F"], chords: ["shift+meta+f", "meta+shift+f"], get label() { return t("misc.keysSearchPalette"); }, run: () => useAppStore.getState().openPalette() },
       { keys: [MOD, "Alt", "B"], chords: ["alt+meta+b", "meta+alt+b"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
+      { keys: [MOD, "J"], chords: ["meta+j"], get label() { return t("misc.keysToggleBottomTerminal"); }, run: () => useAppStore.getState().toggleBottomTerminal() },
+      // Dock terminal tabs: Shift reverses direction (both chords share one registry row)
+      { keys: ["Ctrl", "Tab"], chords: ["ctrl+tab", "ctrl+shift+tab"], get label() { return t("misc.keysCycleTerminalTab"); }, run: (e) => cycleTermTab(e?.shiftKey ? -1 : 1) },
     ],
   },
   {

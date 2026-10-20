@@ -197,3 +197,38 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
 .col-resize-h[data-side='right']::after { left: 4px; }
 .col-resize-h:hover::after, .col-resize-h.dragging::after { opacity: 1; }
 @media (max-width: 768px) { .col-resize-h { display: none; } }
+
+/* Bottom dock (⌘/Ctrl+J): terminal-only panel, full width of the center column. flex:none
+   so #stream (flex:1) gives the height up instead of squeezing the dock; xterm re-fits
+   through its own ResizeObserver on every layout change. */
+#bottom-panel {
+  flex: none;
+  height: 260px; min-height: 0;
+  display: flex; flex-direction: column;
+  border-top: 1px solid var(--line-soft);
+}
+
+.bpanel-head {
+  flex: none; height: 32px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+}
+
+#bottom-panel .tpane { flex: 1; min-height: 0; }
+
+#bottom-panel .tpane-host-wrap { padding: 6px 4px 6px 10px; }
+
+/* Right panel collapsed: on macOS #panelToggle is pinned to the card's top-right corner,
+   out of flow (see above), so the flow-positioned dock button steps back by
+   32px - shell-gap to keep an 8px row gap instead of stacking underneath it.
+   Windows puts #panelToggle top-left and its window controls back in flow, so no offset. */
+html[data-platform="macos"] body:has(#right.collapsed) .chat-head .dock-toggle {
+  margin-right: calc(32px - var(--shell-gap));
+  /* #panelToggle sits at top: shell-gap + 10.5px while the 43px header centers this 26px
+     button at 8.5px — a 2.5px drop puts both icons on one baseline. */
+  position: relative;
+  top: 2.5px;
+}

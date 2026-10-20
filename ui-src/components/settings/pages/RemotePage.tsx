@@ -120,29 +120,7 @@ export default function RemotePage() {
           </div>
         </div>
 
-        {/* 4. Device history: every visitor that passed the key check, newest first */}
-        <div className="srow set-row">
-          <div className="srow-tx">
-            <b>{t("settingsPage.remote.devicesTitle")}</b>
-            <span>{t("settingsPage.remote.devicesDesc")}</span>
-          </div>
-          <div className="srow-ctl remote-devices">
-            {devices.length === 0 ? (
-              <span className="text-faint">{t("settingsPage.remote.devicesEmpty")}</span>
-            ) : (
-              devices.map((d) => (
-                <div key={`${d.name} ${d.ip}`} className="remote-device">
-                  <span>{d.name}</span>
-                  <span className="text-faint">
-                    {d.ip} · {fmtAgo(new Date(d.lastAt).toISOString())}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* 5. Phone stats bar: narrow clients hide the session stats bar under the composer
+        {/* 4. Phone stats bar: narrow clients hide the session stats bar under the composer
             unless this is on (the switch is a client display preference, not server state) */}
         <div className="srow set-row">
           <div className="srow-tx">
@@ -156,7 +134,7 @@ export default function RemotePage() {
           />
         </div>
 
-        {/* 6. Service status: listening / disabled, or the last start-rebind error */}
+        {/* 5. Service status: listening / disabled, or the last start-rebind error */}
         <div className="srow set-row">
           <div className="srow-tx">
             <b>{t("settingsPage.remote.statusTitle")}</b>
@@ -173,6 +151,30 @@ export default function RemotePage() {
                     : t("settingsPage.remote.statusStopped")}
             </span>
           </div>
+        </div>
+
+        {/* 6. Device history last: a growing list, so everything above stays put while it grows.
+            The list extends downward inside the row (not into the control column), so long
+            device names get the full card width instead of a squeezed 55% strip. */}
+        <div className="srow set-row remote-hist">
+          <div className="srow-tx">
+            <b>{t("settingsPage.remote.devicesTitle")}</b>
+            <span>{t("settingsPage.remote.devicesDesc")}</span>
+          </div>
+          {devices.length === 0 ? (
+            <span className="text-faint">{t("settingsPage.remote.devicesEmpty")}</span>
+          ) : (
+            <div className="remote-devices">
+              {devices.map((d) => (
+                <div key={`${d.name} ${d.ip}`} className="remote-device">
+                  <span>{d.name}</span>
+                  <span className="text-faint">
+                    {d.ip} · {fmtAgo(new Date(d.lastAt).toISOString())}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

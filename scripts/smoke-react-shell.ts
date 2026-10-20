@@ -495,6 +495,31 @@ await sleep(50);
 ok("回车选中模型并关闭菜单", !$("#modelMenu") && sentModelMsg?.type === "set_model" && sentModelMsg?.model === "anthropic/claude-x" && sentModelMsg?.role === undefined);
 dbg.useAppStore.setState({ send: origSend, menuSignal: null });
 
+// Pool-lock regression: the host refuses both actions while a session runs (archiving
+// evicts the session from the pool, ejecting would tear down a live session), so the
+// row's archive / eject buttons must render disabled instead of bouncing an error.
+const lockSessions = new Map(dbg.useAppStore.getState().openSessions);
+lockSessions.set("/lock.json", { ...mkSession("/lock.json")[1], sessionId: "lock-pool-uuid" });
+dbg.useAppStore.setState({
+  openSessions: lockSessions,
+  diskProjects: [{
+    cwd: "/path/to/lock",
+    sessions: [{ id: "lock-disk-id", path: "/lock.json", title: "锁定的会话", modified: new Date().toISOString(), cwd: "/path/to/lock", archived: false }],
+  }],
+  allProjects: ["/path/to/lock"],
+  expandedProjects: new Set(["/path/to/lock"]),
+  viewMode: "project",
+});
+await sleep(100);
+const lockRowBtns = () => Array.from(document.querySelector('.task[data-path="/lock.json"]')?.querySelectorAll(".tarchive") ?? []) as HTMLButtonElement[];
+ok("池内会话行渲染归档与移出两个按钮", lockRowBtns().length === 2);
+ok("空闲时归档与移出按钮可点", lockRowBtns().length === 2 && lockRowBtns().every((b) => !b.disabled));
+const runningLock = new Map(dbg.useAppStore.getState().openSessions);
+runningLock.set("/lock.json", { ...runningLock.get("/lock.json"), streaming: true });
+dbg.useAppStore.setState({ openSessions: runningLock });
+await sleep(100);
+ok("运行中归档与移出按钮均置灰（disabled）", lockRowBtns().length === 2 && lockRowBtns().every((b) => b.disabled));
+
 let fail = 0;
 for (const [mark, name] of asserts) {
   if (mark === "✗") fail++;

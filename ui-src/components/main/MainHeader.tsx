@@ -21,6 +21,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   const headerGit = useAppStore((s) => s.headerGit);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
+  const bottomTerminalOpen = useAppStore((s) => s.bottomTerminalOpen);
   const narrow = useAppStore((s) => s.narrow);
   const setMobileCol = useAppStore((s) => s.setMobileCol);
   // Collab entry state: the open session's live-sharing role (button tint) + dialog opener
@@ -199,6 +200,19 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         </button>
       )}
       <span className="sp"></span>
+      {/* Terminal dock toggle (⌘/Ctrl+J): parked in the top-right corner, left of the
+          right-panel button so the two panel entries stay adjacent */}
+      {!narrow && (
+        <button
+          type="button"
+          className={"icon-btn dock-toggle" + (bottomTerminalOpen ? " on" : "")}
+          title={t("misc.bottomTerminalToggle", { mod: MOD })}
+          aria-pressed={bottomTerminalOpen}
+          onClick={() => useAppStore.getState().toggleBottomTerminal()}
+        >
+          <Icon name="termBox" size={15} />
+        </button>
+      )}
       {narrow ? (
         <button className="icon-btn" id="panelToggle" title={t("remote.openPanel")} onClick={() => setMobileCol("right")}>
           <Icon name="panelRight" />

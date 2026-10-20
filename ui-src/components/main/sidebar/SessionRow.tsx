@@ -182,8 +182,14 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     // just-restored per-session right panel state
   };
 
+  // A running session can neither be archived (the host evicts archived sessions from
+  // the pool) nor ejected (the host refuses a live teardown), so both actions stay
+  // disabled until the run settles — `running` mirrors the host-side busy gate.
+  const poolLocked = running;
+
   const handleStartConfirmArchive = (e: ReactMouseEvent) => {
     e.stopPropagation();
+    if (poolLocked) return;
     setConfirmingArchive(true);
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     confirmTimerRef.current = setTimeout(() => {
@@ -195,6 +201,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     e.stopPropagation();
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     setConfirmingArchive(false);
+    if (poolLocked) return; // started running between confirm-open and confirm-click
     send({ type: "archive_session", sessionId: s.id, archived: true });
   };
 
@@ -205,12 +212,23 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     }
   };
 
+  // A row is a div, not a button: the row hosts its own action buttons (pin, unload,
+  // archive), and <button> inside <button> is invalid HTML — React logs a nesting error
+  // and WebKit's tap targeting gets unreliable inside the illegal subtree.
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (ctxOpen ? " ctx-open" : "") + (className ? " " + className : "")}
       data-path={s.path}
       style={style}
       onClick={openSession}
+      onKeyDown={(e) => {
+        // role=button no longer gets Enter/Space for free from the browser
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        openSession();
+      }}
       onContextMenu={(e) => onContext(e, s, rowKey)}
       onMouseLeave={handleMouseLeave}
     >
@@ -294,6 +312,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         <button
           className="tarchive-confirm"
           title={t("sidebar.confirmArchive")}
+          disabled={poolLocked}
           onClick={handleConfirmArchive}
         >
           {t("sidebar.confirm")}
@@ -304,6 +323,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
             <button
               className="tarchive"
               title={t("sidebar.unloadFromPool")}
+              disabled={poolLocked}
               onClick={(e) => {
                 e.stopPropagation();
                 send({ type: "session_unload", path: s.path });
@@ -315,6 +335,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           <button
             className="tarchive"
             title={t("sidebar.archiveSession")}
+            disabled={poolLocked}
             onClick={handleStartConfirmArchive}
           >
             <Icon name="archive" size={14} />
@@ -323,6 +344,6 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           {s.modified && <span className="tm">{fmtAgo(s.modified)}</span>}
         </>
       )}
-    </button>
+    </div>
   );
 }

@@ -175,6 +175,20 @@
   background: var(--card);
 }
 
+/* Tab strip inside the bottom dock head: one .rtab per terminal (reuses the right-panel
+   visuals, no nested terminal tab bars). Tabs shrink so the add button stays reachable. */
+.tpane-tabs {
+  display: flex; align-items: center; gap: 4px;
+  flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+
+.tpane-tabs::-webkit-scrollbar { display: none; }
+
+.tpane-tabs .rtab { flex: 0 1 132px; }
+
+.tpane-tab-add { flex: none; }
+
 .tpane-host-wrap {
   flex: 1; min-height: 0; overflow: hidden;
   padding: 8px 4px 8px 10px;

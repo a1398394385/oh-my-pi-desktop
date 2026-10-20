@@ -12,6 +12,7 @@
 //   5. rename_session: renaming a lazily-created session takes effect on the list_sessions fallback entry
 //   6. archive_session: archived flag takes effect, archiving unpins, unarchiving restores
 //   6b. Historical sessions outside the pool (never opened): rename persists and archive works on a hand-made on-disk jsonl
+//   6c. Archiving a session that is in the in-memory pool evicts it: gone from pool_sessions + session_unloaded broadcast
 //   7. read_image: png read as base64; oversized/non-image suffix returns error
 //   8. abort_session: an idle session safely returns ok
 //   9. compact_session: an empty session returns an error field (without killing the connection)
@@ -222,13 +223,23 @@ ws.send(JSON.stringify({ type: "create_session", cwd: sessDir }));
 created = await waitType("session_created", mark).catch((e) => fail(String(e)));
 ws.send(JSON.stringify({ type: "set_session_pinned", path: created.path, pinned: true })); // no reply frame
 mark = frames.length;
-ws.send(JSON.stringify({ type: "list_sessions" }));
-list = await waitType("session_list", mark).catch((e) => fail(String(e)));
-assert((list.pinnedSessions ?? []).includes(created.path), "set_session_pinned 进 pinnedSessions");
+// No reply frame to sync on, and the host may still be persisting the pin when the next frame
+// arrives — poll until it lands instead of racing a single list_sessions.
+let pinnedSeen = false;
+for (let i = 0; i < 50 && !pinnedSeen; i++) {
+  ws.send(JSON.stringify({ type: "list_sessions" }));
+  list = await waitType("session_list", mark).catch((e) => fail(String(e)));
+  pinnedSeen = (list.pinnedSessions ?? []).includes(created.path);
+  if (!pinnedSeen) await Bun.sleep(100);
+}
+assert(pinnedSeen, "set_session_pinned 进 pinnedSessions");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "archive_session", sessionId: created.sessionId, archived: true }));
 r = await waitType("session_archived", mark).catch((e) => fail(String(e)));
 assert(r.ok === true && r.archived === true, `archive_session 回 ok + archived（${r.archived}）`);
+// The archive evicts the session from the in-memory pool, so its pool UUID dies with the
+// entry: unarchiving goes through the refreshed list's disk id, exactly what the real client does.
+assert(frames.slice(mark).some((f) => f?.type === "session_unloaded" && f?.path === created.path), "归档后广播 session_unloaded（前端清槽）");
 mark = frames.length;
 ws.send(JSON.stringify({ type: "list_sessions" }));
 list = await waitType("session_list", mark).catch((e) => fail(String(e)));
@@ -236,7 +247,7 @@ item = (list.projects ?? []).find((p: any) => p.cwd === sessDir)?.sessions?.find
 assert(item?.archived === true, `list_sessions 条目 archived=true（archived=${item?.archived}）`);
 assert(!(list.pinnedSessions ?? []).includes(created.path), "归档后置顶被移除");
 mark = frames.length;
-ws.send(JSON.stringify({ type: "archive_session", sessionId: created.sessionId, archived: false }));
+ws.send(JSON.stringify({ type: "archive_session", sessionId: item.id, archived: false }));
 r = await waitType("session_archived", mark).catch((e) => fail(String(e)));
 assert(r.ok === true && r.archived === false, "archive_session 取消归档回 ok");
 mark = frames.length;
@@ -284,6 +295,29 @@ mark = frames.length;
 ws.send(JSON.stringify({ type: "archive_session", sessionId: "no-such-session-id", archived: true }));
 const errFrame = await waitType("error", mark).catch((e) => fail(String(e)));
 assert(String(errFrame.message).includes("会话不存在"), `未知 sessionId 归档回 error（${errFrame.message}）`);
+
+// ---- Assertion 6c: archiving a pooled session evicts it from the in-memory pool ----
+// 6b archives a session that never entered the pool, so only archivedSessions changes. Here a
+// session that IS on disk goes through load_session, and archiving must also evict it: gone from
+// pool_sessions, session_unloaded broadcast so both channels drop their slot, disk row intact.
+const pooledId = crypto.randomUUID();
+const pooledFile = path.join(path.dirname(created.path), `20260921T030000.000Z_${pooledId}.jsonl`);
+await writeFile(pooledFile, `${JSON.stringify({ type: "session", version: 3, id: pooledId, timestamp: "2026-09-21T03:00:00.000Z", cwd: sessDir })}\n`);
+mark = frames.length;
+ws.send(JSON.stringify({ type: "load_session", path: pooledFile }));
+const pooled = await waitType("session_created", mark).catch((e) => fail(String(e)));
+mark = frames.length;
+ws.send(JSON.stringify({ type: "archive_session", sessionId: pooled.sessionId, archived: true }));
+r = await waitType("session_archived", mark).catch((e) => fail(String(e)));
+assert(r.ok === true && r.archived === true, `池内已落盘会话归档回 ok（${r.archived ?? r.error}）`);
+const afterPool = frames.slice(mark).filter((f) => f?.type === "pool_sessions").pop();
+assert(!afterPool?.sessions?.some((s) => s.path === pooledFile), "归档后 pool_sessions 不再持有该会话");
+assert(frames.slice(mark).some((f) => f?.type === "session_unloaded" && f?.path === pooledFile), "归档后广播 session_unloaded（前端清槽）");
+mark = frames.length;
+ws.send(JSON.stringify({ type: "list_sessions" }));
+list = await waitType("session_list", mark).catch((e) => fail(String(e)));
+const pooledItem = (list.projects ?? []).find((p) => p.cwd === sessDir)?.sessions?.find((s) => s.path === pooledFile);
+assert(pooledItem?.archived === true, `归档后磁盘行保留且 archived=true（archived=${pooledItem?.archived}）`);
 
 // ---- Assertion 10: read_image (png succeeds; oversized/non-image suffix errors) ----
 const iconPath = path.join(Bun.fileURLToPath(new URL("..", import.meta.url)), "ui/app-icon.png");

@@ -434,4 +434,31 @@ export function initShell(): void {
   // omp:close-menus event; toggle buttons that stopPropagation are unaffected)
   window.addEventListener("click", closeAllMenus);
   window.addEventListener("blur", closeAllMenus);
+
+  // Soft keyboard (phones): iOS Safari keeps the layout viewport at full height when the
+  // keyboard opens, so the height:100% shell leaves the composer underneath it and Safari
+  // pans the visual viewport up to reach the focused field — the page reads as jumping while
+  // typing. Feed visualViewport.height into --app-h (base.css) so the shell shrinks to what
+  // is actually visible; Chromium already resizes the layout viewport (interactive-widget in
+  // ui/index.html) and reports the same value here, so this is a no-op there.
+  const vv = window.visualViewport;
+  if (vv) {
+    let lastAppH = 0;
+    const syncAppHeight = () => {
+      const h = Math.round(vv.height);
+      if (h !== lastAppH) {
+        lastAppH = h;
+        document.documentElement.style.setProperty("--app-h", `${h}px`);
+      }
+      // iOS pans the layout viewport to reveal the focused field BEFORE the shell shrinks
+      // (the pan arrives as a visualViewport scroll, not a resize). The pan outlives the
+      // shrink and pushes the whole app above the visible area — the phone sees only the
+      // composer and the keyboard. Undo it after every viewport change; window scroll is
+      // otherwise unused (body is overflow:hidden, the chat scrolls inside #stream).
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    syncAppHeight();
+    vv.addEventListener("resize", syncAppHeight);
+    vv.addEventListener("scroll", syncAppHeight);
+  }
 }

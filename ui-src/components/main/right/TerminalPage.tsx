@@ -1,19 +1,24 @@
-// Right panel terminal page: xterm.js + host real PTY (pty-bridge subprocess, over the WS
+// Dock terminal page: xterm.js + host real PTY (pty-bridge subprocess, over the WS
 // terminal.* channel).
-// One terminal per conversation session (keyed by session path; the host multiplexes
-// PTYs by frontend-supplied id). Session/tab switches only move the DOM (scrollback
-// and running processes survive); closing the "Terminal" tab or deleting the session
-// destroys that session's PTY.
+// One terminal PER TAB (right panel: one panel tab per terminal; bottom dock: one tab per
+// terminal in its own head) keyed by (dock scope, session path, tab id) — the host
+// multiplexes PTYs by frontend-supplied id. Session/tab switches only move the DOM
+// (scrollback and running processes survive); closing a terminal tab or deleting the
+// session destroys that tab's PTY.
+// The bottom dock renders the same page under its own scope, so the dock and the right
+// panel hold independent PTYs for the same session (IDE-style: two shells, not one
+// mirrored view).
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { send, activeOpen, onTerminalFrame, useAppStore } from "../../../store";
 import type { TerminalFrame } from "../../../store";
 import { t } from "../../../i18n";
-import { registerTabCloseHook } from "./tabs";
+import { registerTabCloseHook, terminalTabId } from "./tabs";
 import { registerSlotDisposer } from "../../../store/right";
+import { registerTermTabDisposer, cycleTermTab, termOwnerKey, forgetRightTermTab } from "./termTabs";
 
-// Right-panel tab-level persistentKey prefix; per-session ids are `key:<sessionPath>`
+// Host PTY id prefix; the rest is `scope:sessionPath:tabId`
 const PERSIST_KEY = "right-terminal";
 
 // Terminal font stack (same idea as ZCode's DEFAULT_TERMINAL_FONT_FAMILY: monospace + Nerd Font fallback)
@@ -94,7 +99,10 @@ interface TermSession {
   term: Terminal;
   fit: FitAddon;
   hostEl: HTMLDivElement;
-  id: string; // frontend-generated, unique per session path
+  id: string; // frontend-generated, unique per (scope, session path, tab)
+  key: string; // map key (`${scope}:${sessionPath}:${tab}`)
+  scope: string; // dock scope ("right" | "bottom")
+  tab: string; // tab id inside that scope
   ready: boolean; // terminal_created received (PTY accepts writes)
   dead: boolean;
   detached: boolean;
@@ -107,7 +115,7 @@ interface TermSession {
   mouseGuard: (() => void) | null; // unhooks the mouseup-loss self-heal listeners
 }
 
-const sessions = new Map<string, TermSession>(); // session path (or "welcome") -> terminal
+const sessions = new Map<string, TermSession>(); // `${scope}:${sessionPath}:${tab}` -> terminal
 // Font pref hot-reload: the settings page writes terminalFont/terminalFontSize
 // into uiPrefs; apply them to every live session (including detached ones) and
 // re-fit so rows/cols follow the new metrics. Subscribe stays read-only (no
@@ -125,8 +133,13 @@ useAppStore.subscribe((s, prev) => {
 });
 
 
-/** Terminal id sent to the host: unique per session path. */
+/** Terminal id sent to the host: unique per dock scope and session path. */
 const termIdFor = (key: string) => `${PERSIST_KEY}:${key}`;
+
+/** Map/host key for one dock scope: the right-sidebar tab and the bottom dock must not
+ *  share an xterm instance (one DOM host) nor a PTY id. Tab ids join the key so each tab
+ *  of a dock owns an independent PTY for the same session. */
+const sessionKey = (scope: string, owner: string, tab: string) => `${scope}:${owner}:${tab}`;
 
 function fitAndResize(own: TermSession) {
   const { term, fit } = own;
@@ -147,7 +160,7 @@ function scheduleFit(own: TermSession) {
   });
 }
 
-function createTermSession(key: string, container: HTMLElement): TermSession {
+function createTermSession(key: string, container: HTMLElement, scope: string, tab: string): TermSession {
   const st0 = useAppStore.getState();
   const customFont = st0.uiPrefs.terminalFont?.trim();
   const hostEl = document.createElement("div");
@@ -160,7 +173,8 @@ function createTermSession(key: string, container: HTMLElement): TermSession {
 
   const own: TermSession = {
     term, fit, hostEl,
-    id: termIdFor(key), ready: false, dead: false, detached: false,
+    id: termIdFor(key), key, scope, tab,
+    ready: false, dead: false, detached: false,
     lastDims: term.cols + "x" + term.rows,
     pendingWrites: [],
     unsubFrame: null, ro: null, mo: null, rafTimer: null, mouseGuard: null,
@@ -193,6 +207,14 @@ function createTermSession(key: string, container: HTMLElement): TermSession {
   // Clipboard: ⌘/Ctrl+C copies when there's a selection; ⌘/Ctrl+V pastes manually (prevents double writes)
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
+    // Ctrl+Tab: xterm would otherwise forward Tab as input; the global binding never sees
+    // the event (xterm stops propagation), so cycle the dock's tabs here too
+    if (e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      cycleTermTab(e.shiftKey ? -1 : 1);
+      return false;
+    }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && (e.key === "c" || e.key === "C") && term.hasSelection()) {
       navigator.clipboard.writeText(term.getSelection()).catch(() => {});
@@ -259,7 +281,7 @@ function createTermSession(key: string, container: HTMLElement): TermSession {
   return own;
 }
 
-function ensureSession(container: HTMLElement, key: string) {
+function ensureSession(container: HTMLElement, key: string, ownerPath: string, scope: string, tab: string) {
   const existing = sessions.get(key);
   if (existing) {
     // Reuse: move the DOM back into the new container (scrollback and processes survive)
@@ -268,14 +290,17 @@ function ensureSession(container: HTMLElement, key: string) {
     scheduleFit(existing);
     return;
   }
-  const own = createTermSession(key, container);
+  const own = createTermSession(key, container, scope, tab);
   sessions.set(key, own);
   // Tie this PTY's lifetime to the session's right-panel slot (slot disposal cascades:
   // session delete / disk gone / LRU trim / profile switch). Registered exactly once
   // per created session (reuse branch above skips it), and re-registered if the
   // session is ever recreated after disposal. The slot always exists by now: session
-  // activation and the welcome view materialize it (restoreRightSlot).
-  registerSlotDisposer(key, () => disposeSessionFor(key));
+  // activation and the welcome view materialize it (restoreRightSlot). Both dock scopes
+  // AND every tab register on the same slot, so a session delete reclaims all PTYs.
+  // Shared terminals are project-scoped: they outlive any one session and die only when
+  // their tab is closed (or the app exits).
+  if (!ownerPath.startsWith("p:")) registerSlotDisposer(ownerPath, () => disposeSessionFor(key));
 }
 
 // Component unmount only moves the DOM away to keep it alive; real destruction goes
@@ -302,32 +327,51 @@ export function disposeSessionFor(key: string) {
   own.hostEl.remove();
 }
 
-registerTabCloseHook("terminal", () => {
-  // The close button is clicked in the current session's right panel context
-  disposeSessionFor(useAppStore.getState().activePath || "welcome");
+// Destroy every PTY a tab owns (tab close / dock tab close). Sessions that ran the tab keep
+// their process until the tab is closed, so one tab can span several sessions.
+function disposeTermTab(scope: string, tab: string): void {
+  for (const [key, own] of [...sessions]) {
+    if (own.scope === scope && own.tab === tab) disposeSessionFor(key);
+  }
+}
+
+registerTermTabDisposer(disposeTermTab);
+registerTabCloseHook("terminal", (name) => {
+  disposeTermTab("right", terminalTabId(name));
+  forgetRightTermTab(name);
 });
 
-export default function TerminalPage() {
+export default function TerminalPage({ scope = "right", tabId }: { scope?: string; tabId: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  // Terminal identity follows the active session: switching sessions swaps the
-  // attached PTY (each session keeps its own scrollback and running processes)
-  const key = useAppStore((st) => st.activePath || "welcome");
+  const owner = useAppStore((st) => termOwnerKey(st.activePath || "welcome"));
+  // Terminal identity follows (session, tab): switching either swaps the attached PTY
+  // (each keeps its own scrollback and running processes)
+  const key = sessionKey(scope, owner, tabId);
   // Key captured at mount: focusing below runs once when the tab opens, not on later
   // session switches (those must not steal focus from the chat composer)
   const keyAtMount = useRef(key);
+  // Tab switches are an explicit user action, so they do take focus; session switches
+  // do not (see above) and must not re-focus either
+  const tabAtMount = useRef(tabId);
   useEffect(() => {
     const el = ref.current;
-    if (el) ensureSession(el, key);
+    if (!el) return;
+    ensureSession(el, key, owner, scope, tabId);
     return () => detachSession(key);
-  }, [key]);
+  }, [key, owner, scope, tabId]);
   // Declared after the effect above so the session exists in the map on mount.
   // Focus is pure DOM (works before terminal_created): typing works immediately —
   // input sent before the PTY is ready is buffered (pendingWrites) and flushed then.
   useEffect(() => {
     sessions.get(keyAtMount.current)?.term.focus();
   }, []);
+  useEffect(() => {
+    if (tabAtMount.current === tabId) return;
+    tabAtMount.current = tabId;
+    sessions.get(key)?.term.focus();
+  }, [tabId, key]);
   return (
-    <div className="tpane">
+    <div className="tpane" data-scope={scope}>
       <div className="tpane-host-wrap" ref={ref} />
     </div>
   );

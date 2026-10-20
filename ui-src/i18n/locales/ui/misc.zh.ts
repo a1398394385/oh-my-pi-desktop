@@ -5,6 +5,8 @@ export const miscZh = {
   newTask: "新建任务",
   pickSession: "选择左侧会话或新建任务",
   collapseSidebar: "收起侧边栏 ({{mod}}B)",
+  // MainHeader.tsx: terminal dock toggle (next to the title)
+  bottomTerminalToggle: "切换底部终端 ({{mod}}J)",
   collapseRightPanel: "收起右侧面板",
   dragResize: "拖动调整宽度",
   // WindowControls.tsx
@@ -62,6 +64,8 @@ export const miscZh = {
   keysFindInSession: "会话内查找",
   keysSearchPalette: "全局搜索",
   keysToggleRight: "切换右侧边栏",
+  keysToggleBottomTerminal: "切换底部终端",
+  keysCycleTerminalTab: "切换终端标签页",
   keysGroupModel: "模型与思考",
   keysGroupModelDesc: "键位对齐 omp 命令行。",
   keysNextModel: "下一个角色模型",
@@ -96,6 +100,11 @@ export const miscZh = {
   keysSystemQuit: "退出应用",
   keysSystemHide: "隐藏应用",
   keysSystemMinimize: "最小化窗口",
+  // BottomTerminal.tsx
+  bottomPanelTerminal: "终端",
+  // TerminalPage.tsx: dock terminal tabs
+  terminalTab: "终端 {{n}}",
+  newTerminalTab: "新建终端标签页",
   // Host boot error codes (store/ws.ts translateHostError; codes emitted by src-tauri/src/lib.rs)
   bootAssetDirFailed: "读取应用资源目录失败",
   bootHostSidecarMissing: "未找到宿主 sidecar",

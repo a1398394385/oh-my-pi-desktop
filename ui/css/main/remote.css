@@ -173,6 +173,11 @@
     border-color: var(--line);
   }
   #tasklist .task .tt { line-height: 18px; }
+  /* Phone rows are 46px tall with an 18px title line, so the desktop icon sizes (16px slot,
+     18px needle nudged up 2px to sit right in the 34px row) read small and high here. Size
+     the glyphs to the row's text and drop the desktop-only optical nudge. */
+  #tasklist .task .tpin svg { width: 20px !important; height: 20px !important; margin-top: 0; }
+  #tasklist .task .task-indicator svg { width: 18px !important; height: 18px !important; }
 
   /* Project card: two-line head (name + tag / tasks + caret + add) followed by the meta
      line; expanding grows the SAME card — the head keeps its top corners, the kids panel
@@ -292,21 +297,52 @@
   #tasklist .proj-kids .task.on { background: var(--select); }
   #tasklist .proj-kids .task .tt {
     order: 1;
-    flex: 1 1 calc(100% - 34px);
+    flex: 1 1 0;
+    min-width: 0;
     white-space: normal;
     line-height: 1.35;
     mask-image: none;
     -webkit-mask-image: none;
   }
+  /* Time sits on the title's line, flush right (was a full-width second row). line-height
+     matches .tt's first line so the two baselines agree. */
   #tasklist .proj-kids .task .tm {
-    order: 4;
-    flex: 0 0 100%;
-    margin-left: 24px;
+    order: 2;
+    flex: none;
+    margin-left: 8px;
+    align-self: flex-start;
     font-size: var(--ui-fs-sm);
+    line-height: 1.35;
     color: var(--faint);
   }
-  /* Touch devices have no hover: the hover-only unload/archive buttons are dropped
-     (the row's ⋯ context menu still offers them) */
-  #tasklist .proj-kids .task .tarchive { display: none; }
   #tasklist .proj-kids .more-link { margin-left: 8px; }
+}
+
+/* Touch screens have no hover, but WebKit keeps :hover on the row for the whole tap gesture.
+   The desktop hover swap (time label out, archive buttons in) therefore reflowed the row
+   between touchstart and touchend — the browser dropped that click, so the first tap did
+   nothing and the time appeared to vanish. Keep the time and leave the row's unload/archive
+   actions to the ⋯ / long-press menu. Applies to phones by width (this file's breakpoint)
+   and to any touch-capable device by media feature. */
+@media (max-width: 768px), (hover: none) {
+  /* Both selectors name the hover state on purpose: sidebar.css declares the swap as
+     `.task:is(:hover, .ctx-open) .tm`, and a plain `.tm` rule loses to that gesture state. */
+  #tasklist .task .tm,
+  #tasklist .task:is(:hover, .ctx-open) .tm { display: inline; }
+  #tasklist .task .tarchive,
+  #tasklist .task:is(:hover, .ctx-open) .tarchive { display: none; }
+  /* WebKit applies :hover on the FIRST tap and eats that tap whenever the hover state shows
+     or hides content. Row hover swapped the state dot / auto badge out for the pin button,
+     so the tap only highlighted the row and the second tap finally opened it. Keep the idle
+     state; an unpinned row has no hover slot at all on a phone (pinning is in the
+     long-press menu), a pinned one keeps its always-visible needle. */
+  #tasklist .task:is(:hover, .ctx-open) .task-indicator,
+  #tasklist .task:is(:hover, .ctx-open) .task-auto { opacity: 1; }
+  #tasklist .task .tpin { display: none; }
+  #tasklist .task .tpin.on { display: inline-flex; }
+  /* Same trap one level up: the project card's add / more buttons appeared only on hover,
+     so the first tap that expanded the card was consumed as well. */
+  #tasklist .proj .padd,
+  #tasklist .proj .pmore,
+  .arch-row .arch-act { display: inline-flex; }
 }

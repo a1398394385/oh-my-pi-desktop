@@ -11,7 +11,7 @@ import { listPhysicalDisplays, reconcileComputerDisplay } from "../computer-disp
 import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
 import type { DesktopSession } from "@oh-my-pi/pi-natives";
 import { H, sessions, settleApprovalResponse, type DesktopEnv } from "../state.ts";
-import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
+import { rebuildScopedModels } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
 import {
   writeAcpEnabled,
@@ -24,7 +24,7 @@ import { readDesktopSection, writeDesktopSection } from "../desktop-json.ts";
 import { listAgentAssets } from "../assets.ts";
 import { writeHooksEnabled, writePluginsEnabled } from "../plugin-assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
-import { writeAutoReviewEnabled } from "../auto-review.ts";
+import { writeAutoReviewEnabled, writeSmartModeOffered } from "../auto-review.ts";
 import { writeSessionTitleRefresh } from "../session-titles.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
@@ -52,7 +52,10 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       await H.settings.reloadFromDisk();
       rebuildScopedModels();
       ws.send(JSON.stringify(modelsFrame()));
-      ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+      // settingsFrame, not settingsSnapshot: the UI replaces hostSettings wholesale, and the
+      // bare snapshot lacks every host-side projection (remote/uiConfig/plugins/…), so a
+      // reload would silently drop remote.mobileStatsBar and flip the phone stats bar off.
+      ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
     } catch (err) {
       safeStderr(hostI18n.t("errors.setting.reloadFailed", { detail: String(err) }));
     }
@@ -220,10 +223,17 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_auto_review(ws, msg) {
-    // Experimental page switch: writes autoReview.enabled in omp-desktop.json —
-    // the LLM approval gate in uiCtx.select reads it live, so it takes effect
-    // on the very next approval card (no session rebuild).
-    writeAutoReviewEnabled(msg.enabled === true);
+    // Two independent switches live in omp-desktop.json's autoReview section:
+    // `offer` = the experimental page's "offer the smart-approval mode" toggle
+    // (menu row only), `enabled` = the LLM gate itself, written by the mode menu
+    // when the row is picked or any plain mode replaces it.
+    if (typeof msg.offer === "boolean") {
+      writeSmartModeOffered(msg.offer);
+      // Withdrawing the row must also withdraw the gate it encodes; otherwise
+      // the session sits in a mode no menu row represents.
+      if (!msg.offer) writeAutoReviewEnabled(false);
+    }
+    if (typeof msg.enabled === "boolean") writeAutoReviewEnabled(msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_session_title_refresh(ws, msg) {

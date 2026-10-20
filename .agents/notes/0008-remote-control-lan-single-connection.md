@@ -45,7 +45,7 @@
 
 **风险/不确定性**:
 - `kicked` 帧与旧端 onclose 存在竞态:帧未达即断。以 close code 4001 兜底,双保险;真机/弱网验证归 Spec 验收。
-- 手机软键盘/iOS 表现(布局顶起、聚焦放大)未经真机验证,验收含真机项。
+- 手机软键盘:页面布局固定不动,底部输入栈(`.composer-stack`)作为 fixed 层按 `visualViewport` 的键盘重叠量(`--kb`)上浮,`#stream` 以 `--stack-h + --kb` 预留可滚动空间;聚焦放大由「渲染后字号不低于 16px」消除(`max(16px, 16px / --ui-zoom)`)。仍待 iOS Safari / Android Chrome 真机验收。
 - 打包布局:resources 落位已由 map 形式规则判明(`{"../ui/dist": "ui/dist"}` → `Resources/ui/dist`);余量为首次打包实测验证一次,若 Tauri 行为有出入只改 host/remote.ts 编译态定位一处。
 
 ## Alternatives Considered(备选方案)

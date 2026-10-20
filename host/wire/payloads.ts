@@ -114,8 +114,12 @@ export type SettingsPayload = SettingsSnapshot & {
   kimiAutoThinking?: boolean;
   // omp-desktop.json autoReview.enabled (host/auto-review.ts): LLM tool-approval
   // gate in uiCtx.select — low/medium verdicts approve unseen, deny/unavailable
-  // still show the human card. Experimental page switch.
+  // still show the human card. Written by the permission-mode menu.
   autoReviewEnabled?: boolean;
+  // omp-desktop.json autoReview.offerSmartMode (host/auto-review.ts): whether the
+  // permission-mode menu offers the "smart approval" row. Experimental page
+  // switch; independent of the gate above. Unset falls back to it.
+  autoReviewOfferMode?: boolean;
   // omp-desktop.json sessionTitles.refresh (host/session-titles.ts): regenerate
   // the title after every settled turn (tiny-model call per turn; user-pinned
   // titles are never overwritten). Experimental page switch.

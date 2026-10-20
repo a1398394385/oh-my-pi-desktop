@@ -260,6 +260,29 @@ function sessionEntryMatchesPath(entry: { path: string; previousPaths?: string[]
   return entry.path === p || (entry.previousPaths?.includes(p) ?? false);
 }
 
+/** Full pool teardown for one entry — the sequence the idle sweep, the archive
+    eviction and the session_unload RPC all need: release the shared MCP mounts,
+    drop the event subscriptions, leave the pool, dispose the AgentSession (the
+    sanctioned terminal path, which appends the session_exit row). The disk file
+    is untouched, so the sidebar row survives and re-opening goes through the
+    normal load_session path. Notifies over the existing session_unloaded
+    broadcast so every channel holding the slot drops it. */
+async function evictPoolEntry(key: string, e: PoolEntry): Promise<void> {
+  releaseMcpForSession(key, e);
+  e.unsubscribe();
+  sessions.delete(key);
+  try {
+    await e.session.dispose();
+  } catch (err) {
+    safeStderr(hostI18n.t("errors.session.evictDisposeFailed", { detail: String(err) }));
+  }
+  // Every path the frontend may still key this session by (persistence moves
+  // included), so the slot clears on whichever channel holds it
+  for (const p of [e.path, ...e.previousPaths]) {
+    eachUiWs((ws) => ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded: true })));
+  }
+}
+
 // N2: idle LRU eviction. The pool only shrank via explicit RPCs, so ws churn
 // (frontend reload, remote disconnect) left detached-but-pooled entries
 // resident forever, and every pushPoolSnapshot walk grew with them. Teardown
@@ -275,17 +298,7 @@ function sweepIdlePoolSessions(): void {
     if (e.uiSockets.size > 0) continue; // still watched from a live UI
     if (now - e.lastActiveAt < IDLE_EVICTION_MS) continue;
     if (sessionBusy(e).length > 0) continue; // in-flight turn / queued / background jobs
-    releaseMcpForSession(key, e);
-    e.unsubscribe();
-    sessions.delete(key);
-    void e.session.dispose().catch((err: unknown) => {
-      safeStderr(`[host] idle eviction dispose failed: ${err}\n`);
-    });
-    // Every path the frontend may still key this session by (persistence
-    // moves included), so the slot clears on whichever channel holds it
-    for (const p of [e.path, ...(e.previousPaths ?? [])]) {
-      eachUiWs((ws) => ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded: true })));
-    }
+    void evictPoolEntry(key, e);
     evicted++;
   }
   if (evicted > 0) eachUiWs(pushPoolSnapshot);
@@ -526,6 +539,13 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // session id and can be archived too.
     const on = !!msg.archived;
     const entry = sessions.get(msg.sessionId);
+    // A live session cannot be archived: archiving evicts it from the pool, and
+    // an evicted live session keeps running headless with its events going
+    // nowhere. Same gate the unload / reload / delete RPCs use.
+    if (on && entry) {
+      const busy = sessionBusy(entry);
+      if (busy.length > 0) throw new Error(hostI18n.t("errors.session.archiveBusy", { reason: busy.join("、") }));
+    }
     const p = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
     const ai = H.desktopProjects.archivedSessions.indexOf(p);
     if (on && ai < 0) H.desktopProjects.archivedSessions.push(p);
@@ -536,6 +556,24 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     }
     await saveDesktopProjects();
     ws.send(JSON.stringify({ type: "session_archived", sessionId: msg.sessionId, ok: true, archived: on }));
+    // Archiving retires a session, so it also leaves the in-memory pool (same
+    // teardown as the manual eject): an archived session must not keep an
+    // AgentSession plus its MCP mounts resident. A session that never reached
+    // disk holds its only copy in memory — materialize it first, or archiving
+    // would make it vanish entirely.
+    if (on && entry) {
+      if (!fs.existsSync(entry.path)) {
+        try {
+          await entry.manager.ensureOnDisk?.();
+        } catch (err) {
+          safeStderr(hostI18n.t("errors.session.archiveEvictSkipped", { detail: String(err) }));
+        }
+      }
+      if (fs.existsSync(entry.path)) {
+        await evictPoolEntry(msg.sessionId, entry);
+        eachUiWs(pushPoolSnapshot);
+      }
+    }
     await refreshAllSessionLists(ws);
   },
   async add_project(ws, msg) {

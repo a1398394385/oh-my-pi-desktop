@@ -95,8 +95,11 @@ export interface UiSlice {
   bootSplash: boolean;
   /** Global search palette (⌘⇧F / sidebar search button): settings items + sessions */
   paletteOpen: boolean;
+  /** Bottom dock (⌘/Ctrl+J): terminal-only panel spanning the center column, under the composer */
+  bottomTerminalOpen: boolean;
   openPalette(): void;
   closePalette(): void;
+  toggleBottomTerminal(): void;
   toast(msg: unknown, error?: boolean): void;
   openHub(): void;
   closeHub(): void;
@@ -119,6 +122,7 @@ export interface UiSlice {
 const uiPrefsInit: UiPrefs = {
   theme: "dark", // placeholder; main.tsx applies the cached/file value before the first render
   motion: "system", // placeholder; same
+  agentProcessStyle: "standard",
   uiFont: "default",
   uiFontSize: 13,
   codeFontSize: 12,
@@ -218,9 +222,17 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   hubWarming: null,
   bootSplash: true,
   paletteOpen: false,
+  bottomTerminalOpen: false,
 
   openPalette() {
     set({ paletteOpen: true });
+  },
+
+  toggleBottomTerminal() {
+    // Narrow (phone) layout has no shortcut input and no room for a dock: refuse instead of
+    // flipping a state the layout never renders.
+    if (get().narrow) return;
+    set((s) => ({ bottomTerminalOpen: !s.bottomTerminalOpen }));
   },
 
   closePalette() {

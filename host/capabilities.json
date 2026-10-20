@@ -484,7 +484,7 @@
       "id": "set_auto_review",
       "kind": "settings",
       "risk": "write",
-      "note": "实验页开关：写入 omp-desktop.json 的 autoReview.enabled（默认关）。开启后审批卡弹出前由默认模型先审 tool_execution_start 记录的工具调用，low/medium 自动放行，deny/unavailable 仍弹人工卡"
+      "note": "双字段：offer 写 autoReview.offerSmartMode（实验页开关，只决定权限模式菜单是否提供「智能审批」行；关闭时同时退出该模式），enabled 写 autoReview.enabled（运行时 LLM 预审门，由模式菜单选择写入）。预审开启后，仍需人工卡片的工具调用先由默认模型审 tool_execution_start 记录的参数，low/medium 自动放行，deny/unavailable 仍弹人工卡"
     },
     {
       "id": "set_session_title_refresh",

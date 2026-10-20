@@ -5,6 +5,8 @@ export const miscEn = {
   newTask: "New task",
   pickSession: "Select a session on the left or create a new task",
   collapseSidebar: "Toggle sidebar ({{mod}}B)",
+  // MainHeader.tsx: terminal dock toggle (next to the title)
+  bottomTerminalToggle: "Toggle bottom terminal ({{mod}}J)",
   collapseRightPanel: "Toggle right panel",
   dragResize: "Drag to resize",
   // WindowControls.tsx
@@ -62,6 +64,8 @@ export const miscEn = {
   keysFindInSession: "Find in session",
   keysSearchPalette: "Search everything",
   keysToggleRight: "Toggle right sidebar",
+  keysToggleBottomTerminal: "Toggle bottom terminal",
+  keysCycleTerminalTab: "Switch terminal tab",
   keysGroupModel: "Model & thinking",
   keysGroupModelDesc: "Keys aligned with the omp CLI.",
   keysNextModel: "Next role model",
@@ -96,6 +100,11 @@ export const miscEn = {
   keysSystemQuit: "Quit app",
   keysSystemHide: "Hide app",
   keysSystemMinimize: "Minimize window",
+  // BottomTerminal.tsx
+  bottomPanelTerminal: "Terminal",
+  // TerminalPage.tsx: dock terminal tabs
+  terminalTab: "Terminal {{n}}",
+  newTerminalTab: "New terminal tab",
   // Host boot error codes (store/ws.ts translateHostError; codes emitted by src-tauri/src/lib.rs)
   bootAssetDirFailed: "Failed to resolve the app resource directory",
   bootHostSidecarMissing: "Host sidecar not found",

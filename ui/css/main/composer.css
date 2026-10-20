@@ -887,7 +887,11 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 @media (max-width: 768px) {
   #composer { padding: 8px 8px 6px; }
 
-  #input { font-size: 16px; }
+  /* 16px is iOS Safari's focus-zoom floor, but WebKit measures the RENDERED size and the
+     narrow baseline zooms #main to 0.8 — a literal 16px renders at 12.8px, so iOS still
+     zooms the page on focus (viewport jumps up, field centered). Divide the baseline back
+     out; max() keeps native 16px when the zoom level is above 100%. */
+  #input { font-size: max(16px, calc(16px / var(--ui-zoom, 1))); }
 
   .cbar { flex-wrap: wrap; }
 
@@ -900,17 +904,37 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   #composer .pill-bar {
     min-height: 0;
     display: flex;
-    flex-wrap: wrap;
+    /* One row only: wrapping would drop the permission pill onto a second line and
+       hand the left corner back to nothing; the model pill shrinks with an ellipsis
+       instead */
+    flex-wrap: nowrap;
     align-items: center;
     gap: 6px;
-    margin: 8px -8px -6px;
+    /* -7px (not -8px) against #composer's 8px narrow padding: under #main's zoom:0.8
+       WebKit rounds the negative margin and the padding in opposite directions, which let
+       the bar's opaque background paint over the dock's 1px inset ring on the left/right
+       edges. The extra 1px keeps the outline closed. */
+    margin: 8px -7px -6px;
     padding: 8px;
     background: var(--panel-2);
-    border-top: 1px solid var(--line-soft);
+    /* 1px transparent border + padding-box clip: the bar's opaque background must not
+       repaint over the dock's 1px inset ring, or the card outline (and the traveling
+       band's base) visibly stops at the divider instead of closing around the band */
+    border: 1px solid transparent;
+    border-top-color: var(--line-soft);
+    background-clip: padding-box;
     border-radius: 0 0 15px 15px;
     overflow: hidden;
     transition: opacity var(--dur-snap) var(--swift), margin-top var(--dur-snap) var(--swift), padding-top var(--dur-snap) var(--swift), padding-bottom var(--dur-snap) var(--swift), visibility 0s var(--dur-snap);
   }
+
+  /* Model selector owns the bar's right corner; the permission pill parks against the
+     left edge so the two never sit shoulder to shoulder. The model pill absorbs the
+     shrink (min-width:0) and clips its label instead of forcing a second row. */
+  #composer .pill-bar #modelBtn { margin-left: auto; min-width: 0; }
+
+  /* block (not the shared inline-flex): text-overflow only ellipsizes in a block container */
+  #composer .pill-bar #modelLabel { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
   /* bash mode folds the whole toolbar away (see composer-bash.css); the pill bar is part of it.
      The padding and the divider must collapse too: on a 0fr track the box would otherwise keep

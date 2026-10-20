@@ -27,6 +27,7 @@ type ModelMenuProps = {
 
 const ROLES_ROW = "@roles"; // flyout entry: swaps level 1 to the role quick list
 const MANAGE_ROW = "@manage"; // flyout entry: opens the settings model page
+const THINK_ROW = "@think"; // level-1 cursor stop on the thinking slider (←/→ step the level)
 const HOVER_INTENT_MS = 180; // pointer cutting down to the model rows must not flash the flyout
 const LEAVE_GRACE_MS = 150; // union-leave grace, same as the old flyout close
 
@@ -64,9 +65,12 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const provModels = models.filter((m) => m.provider === prov);
   const [hl, setHl] = useState<{ fly: boolean; k: string } | null>(null);
 
+  // Re-place whenever the row list changes height (provider switch / role list):
+  // the bottom edge must stay pinned above the trigger, so the menu grows upward
+  // instead of spilling down over the pill.
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
-  }, []);
+  }, [prov, showRoles, provModels.length]);
   useEffect(
     () => () => {
       // Unmount cleanup: a pending auto-close timer (keys.ts) must not close a
@@ -79,39 +83,62 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     },
     [],
   );
+  // The vision tag / capability chips read the catalog frame, which only the
+  // settings centre requests; without this the composer menu shows none of them
+  // until the user happens to open Settings → Model.
+  useEffect(() => {
+    if (useAppStore.getState().modelCatalog.length === 0) useAppStore.getState().send({ type: "get_models_catalog" });
+  }, []);
 
-  // Flyout coordinates: #composer-relative (offsetParent), same contract as
-  // the old provider flyout — bottom edge aligned to the switch row's bottom
-  // edge, expanding upward, capped with internal scrolling, flips left when the
-  // right edge overflows. Do not clamp top to 0: a menu sticking out above the
-  // composer (negative offsetTop) must keep the flyout attached to its row.
+  // Flyout coordinates: #composer-relative (offsetParent) — top-aligned with
+  // the level-1 menu and sitting 3px to its right (side by side; the two panels
+  // never stack, and the gap keeps the menu's popover shadow from reading as an
+  // overlap). When the right edge overflows it flips to the menu's left, and on
+  // screens too narrow to hold both panels it replaces the menu in place
+  // (same box) rather than half-covering it. Capped at the window bottom (the
+  // app's own lower edge) with internal scrolling.
+  // Do not clamp top to 0: a menu sticking out above the composer (negative
+  // offsetTop) must keep the flyout top-aligned with it.
   const positionFlyout = () => {
-    const comp = composerRef.current;
     const fly = flyRef.current;
-    const row = rowEls.current.get(prov);
     const menu = menuRef.current;
-    if (!comp || !fly || !row || !menu) return;
+    if (!menu) return;
+    menu.style.visibility = ""; // reset from a previous replace-in-place
+    if (!fly) return;
     const z = effZoom();
+    const GAP = 3;
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
-    const rowBottom = menu.offsetTop + row.offsetTop - menu.scrollTop + row.offsetHeight;
-    fly.style.top = "auto";
-    fly.style.bottom = comp.clientHeight - rowBottom - 5 + "px";
-    const availAbove = Math.round((comp.getBoundingClientRect().top - 4) / z) + rowBottom + 5;
-    if (fly.offsetHeight > availAbove) {
-      fly.style.maxHeight = Math.max(80, availAbove) + "px";
-      fly.style.overflowY = "auto";
-    }
-    fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px"; // overlap the menu's border by 4px, visually seamless
+    fly.style.width = "";
+    fly.style.top = menu.offsetTop + "px";
+    fly.style.bottom = "auto";
+    fly.style.left = menu.offsetLeft + menu.offsetWidth + GAP + "px";
     if (fly.getBoundingClientRect().right > window.innerWidth - 8) {
-      fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px"; // right edge overflows: flip left
+      // Screen-space width: offsetWidth ignores zoom, so subtracting it from
+      // the screen-space menu rect would misplace the flip by the zoom factor
+      const flyW = fly.getBoundingClientRect().width;
+      const menuL = menu.getBoundingClientRect().left;
+      if (menuL - flyW - GAP >= 8) {
+        fly.style.left = menu.offsetLeft - (flyW + GAP) / z + "px";
+      } else {
+        // Nowhere to sit beside the menu: the flyout replaces it in place, so the
+        // level-1 rows must not show through underneath
+        fly.style.left = menu.offsetLeft + "px";
+        fly.style.width = menu.offsetWidth + "px";
+        menu.style.visibility = "hidden";
+      }
+    }
+    const availBelow = Math.round((window.innerHeight - 8 - fly.getBoundingClientRect().top) / z);
+    if (fly.offsetHeight > availBelow) {
+      fly.style.maxHeight = Math.max(80, availBelow) + "px";
+      fly.style.overflowY = "auto";
     }
   };
   useLayoutEffect(positionFlyout, [flyOpen, prov, showRoles, models]);
 
-  // Union hover close: leaving both the menu and the flyout (their gap is
-  // covered by the 4px border overlap) starts the grace timer; entering either
-  // cancels. Remote is touch-only: no hover close there.
+  // Union hover close: leaving both the menu and the flyout (the 3px gap is
+  // crossed well inside the grace timer) starts it; entering either cancels.
+  // Remote is touch-only: no hover close there.
   const enterUnion = () => clearTimeout(hideTimer.current);
   const leaveUnion = (e: ReactMouseEvent) => {
     const n = e.relatedTarget as Node | null;
@@ -131,7 +158,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     ...(REMOTE ? [] : [MANAGE_ROW]),
   ];
   const rowKeys = showRoles ? customRoles.map((r) => r.id) : provModels.map((m) => m.id);
-  const level1Keys = [prov, ...rowKeys];
+  const level1Keys = [prov, ...rowKeys, THINK_ROW];
   // Keyboard cursor, revalidated against the current level's key list: a stale
   // flyout cursor (e.g. MANAGE_ROW after the flyout closed) drops to null, but
   // a level-1 cursor survives a mouse-opened flyout
@@ -149,11 +176,13 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   };
 
   // Keyboard: ↑/↓ move the cursor within the current level (wrap at the ends),
-  // → opens the flyout from the switch row, ← returns to level 1, Enter picks a
-  // row / toggles the flyout. The listener lives on window's capture phase for
-  // the whole mount lifetime: focus stays in the composer editor while the menu
-  // is open, so swallow the keys there — before Lexical's caret / send handlers
-  // and the global bindings see them.
+  // → opens the flyout from the switch row, ← returns to level 1, Enter picks the
+  // row in place (menu stays open — Esc dismisses), Esc closes the menu. The
+  // listener lives on window's capture phase for the whole mount lifetime: focus
+  // stays in the composer editor while the menu is open, so swallow the keys
+  // there — before Lexical's caret / send handlers and the global bindings see
+  // them. Any other window-capture listener must yield while a composer popup is
+  // open (SessionTreeStream's arrow navigation does).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
@@ -162,9 +191,13 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
       // typeaheadOpenRef
       if (document.querySelector(".menu.palette.open")) return;
       const key = e.key;
-      if (key !== "ArrowUp" && key !== "ArrowDown" && key !== "ArrowLeft" && key !== "ArrowRight" && key !== "Enter") return;
+      if (key !== "ArrowUp" && key !== "ArrowDown" && key !== "ArrowLeft" && key !== "ArrowRight" && key !== "Enter" && key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
+      if (key === "Escape") {
+        onClose();
+        return;
+      }
       const inFly = hlK !== null && flyOpen && flyKeys.includes(hlK);
       const keys = inFly ? flyKeys : level1Keys;
       const at = hlK === null ? -1 : keys.indexOf(hlK);
@@ -179,27 +212,38 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           break;
         }
         case "ArrowRight":
+          if (!inFly && hlK === THINK_ROW) {
+            stepThink(1);
+            break;
+          }
           if (!flyOpen && hlK === prov) {
             setFlyOpen(true);
             setHl({ fly: true, k: flyKeys[0] });
           }
           break;
         case "ArrowLeft":
+          if (!inFly && hlK === THINK_ROW) {
+            stepThink(-1);
+            break;
+          }
           if (inFly) {
             setFlyOpen(false);
             setHl({ fly: false, k: prov });
           }
           break;
         case "Enter":
+          // Enter confirms in place: the menu stays open (Esc dismisses), so the
+          // arrows remain usable for comparing models
+          if (hlK === THINK_ROW && !inFly) break; // the slider has no confirm step
           if (inFly) enterFlyRow(hlK);
-          else if (hlK !== null) (hlK === prov ? (flyOpen ? closeFly : openFly) : enterRow(hlK));
+          else if (hlK !== null) (hlK === prov ? (flyOpen ? closeFly : openFly) : enterRow(hlK, false));
           break;
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flyOpen, hlK, prov, showRoles, models, modelRoles, curBase, curThinking]);
+  }, [flyOpen, hlK, prov, showRoles, models, modelRoles, curBase, curThinking, levels]);
 
   // Keep the cursor row inside its own scrollport (block:"nearest" never jumps
   // ancestor scrollers — same as the palette menus)
@@ -207,6 +251,13 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     if (hlK === null) return;
     rowEls.current.get(hlK)?.scrollIntoView({ block: "nearest" });
   }, [hlK]);
+
+  // ←/→ on the slider row step one tier (clamped, no wrap: the ends are real levels)
+  const stepThink = (d: number) => {
+    const i = levels.indexOf(curThinking);
+    const next = levels[Math.min(levels.length - 1, Math.max(0, i + d))];
+    if (next && next !== curThinking) pickThinkingLevel(next);
+  };
 
   const pickModel = (id: string) => {
     pickModelId(id);
@@ -216,12 +267,17 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     pickModelId(role.resolved, role.id);
     onClose();
   };
-  const enterRow = (k: string) => {
+  const enterRow = (k: string, close = true) => {
     const role = customRoles.find((r) => r.id === k);
-    if (showRoles && role) pickRole(role);
-    else if (!showRoles) {
+    if (showRoles && role) {
+      if (close) pickRole(role);
+      else pickModelId(role.resolved, role.id);
+    } else if (!showRoles) {
       const model = provModels.find((m) => m.id === k);
-      if (model) pickModel(model.id);
+      if (model) {
+        if (close) pickModel(model.id);
+        else pickModelId(model.id);
+      }
     }
   };
   const enterFlyRow = (k: string) => {
@@ -282,7 +338,9 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
               }}
             >
               <span className="ck">{active ? "✓" : ""}</span>
-              {en.role} : {modelNames.get(en.model) ?? (modelRoles ?? []).find((r) => r.resolved === en.model)?.resolvedName ?? en.model}
+              <span className="mi-name">
+                {en.role} : {modelNames.get(en.model) ?? (modelRoles ?? []).find((r) => r.resolved === en.model)?.resolvedName ?? en.model}
+              </span>
               <CapBadges caps={modelCaps.get(en.model)} />
             </div>
           );
@@ -309,7 +367,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
       <div className={"menu model open"} id="modelMenu" ref={menuRef}
         onMouseEnter={enterUnion} onMouseLeave={leaveUnion}>
         {/* Provider switch row: hover opens the flyout (intent delay), click toggles */}
-        <div className={"mi prov" + (flyOpen || hlK === prov ? " on" : "")} ref={setRowEl(prov)}
+        <div className={"mi prov" + (flyOpen || hlK === prov ? " on" : "") + (hlK === prov ? " kb" : "")} ref={setRowEl(prov)}
           onMouseEnter={() => {
             enterUnion();
             if (flyOpen) return;
@@ -332,19 +390,19 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
         )}
         {showRoles
           ? customRoles.map((role) => (
-              <div className={"mi" + (hlK === role.id || curBase === role.resolved ? " on" : "")} data-role={role.id} key={role.id}
+              <div className={"mi" + (hlK === role.id || curBase === role.resolved ? " on" : "") + (hlK === role.id ? " kb" : "")} data-role={role.id} key={role.id}
                 ref={setRowEl(role.id)}
                 onClick={(e) => { e.stopPropagation(); pickRole(role); }}>
                 <span className="ck">{curBase === role.resolved ? "✓" : ""}</span>
-                {role.name} : {role.resolvedName ?? role.resolved}
+                <span className="mi-name">{role.name} : {role.resolvedName ?? role.resolved}</span>
               </div>
             ))
           : provModels.map((model) => (
-              <div className={"mi" + (hlK === model.id || curBase === model.id ? " on" : "")} data-model={model.id} key={model.id}
+              <div className={"mi" + (hlK === model.id || curBase === model.id ? " on" : "") + (hlK === model.id ? " kb" : "")} data-model={model.id} key={model.id}
                 ref={setRowEl(model.id)}
                 onClick={(e) => { e.stopPropagation(); pickModel(model.id); }}>
                 <span className="ck">{curBase === model.id ? "✓" : ""}</span>
-                {model.name}
+                <span className="mi-name">{model.name}</span>
                 {modelCatalog.find((m) => m.id === model.id)?.vision ? <span className="cap-b">{t("composer.visionTag")}</span> : null}
                 <CapBadges caps={modelCaps.get(model.id)} />
               </div>
@@ -352,11 +410,11 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
         <div className="sep" />
         {/* Thinking slider: discrete tiers of the current model. The capsule
             holds a fixed full-width brand gradient (same hues as the app
-            icon), revealed progressively by an opaque mask from the knob
-            center rightward; the ball-shaped knob (track height) rides inside
-            the groove, its center snapping onto the tier dots (end dots
-            included). Clicking or dragging jumps to the nearest tier. */}
-        <div className="think-sec" onClick={(e) => e.stopPropagation()}>
+            icon), revealed progressively by clipping it at the knob center;
+            the ball-shaped knob (track height) rides inside the groove, its
+            center snapping onto the tier dots (end dots included). Clicking or
+            dragging jumps to the nearest tier. */}
+        <div className={"think-sec" + (hlK === THINK_ROW ? " on" : "")} ref={setRowEl(THINK_ROW)} onClick={(e) => e.stopPropagation()}>
           <div className="think-sec-h">
             <span className="think-ht">{t("composer.reasoning")}<span className="think-cur">{thLv(levels[curIdx] ?? "off")}</span></span>
             <span className="think-keys"><kbd>⇧ Tab</kbd></span>
@@ -364,8 +422,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           <div className="think-track" ref={trackRef}
             onPointerDown={onTrackDown}
             onPointerMove={onTrackMove}>
-            <div className="think-grad" />
-            <div className="think-mask" style={{ left: knobPct + "%" }} />
+            <div className="think-grad" style={{ clipPath: `inset(0 ${100 - knobPct}% 0 0)` }} />
             {dotPos.map((p) => (
               <span className="think-dot" key={p} style={{ left: p + "%" }} />
             ))}
@@ -378,7 +435,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           onMouseEnter={enterUnion} onMouseLeave={leaveUnion}>
           {customRoles.length > 0 && (
             <>
-              <div className={"mi" + (hlK === ROLES_ROW ? " on" : "")} ref={setRowEl(ROLES_ROW)}
+              <div className={"mi" + (hlK === ROLES_ROW ? " on" : "") + (hlK === ROLES_ROW ? " kb" : "")} ref={setRowEl(ROLES_ROW)}
                 onClick={(e) => { e.stopPropagation(); setShowRoles(true); closeFly(); }}>
                 {t("composer.modelRoleCategory")}
                 <span className="sub"><Icon name="chevronRight" size={10} /></span>
@@ -387,7 +444,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             </>
           )}
           {providers.map((p) => (
-            <div className={"mi" + (hlK === p || (p === prov && hlK === null) ? " on" : "")} key={p} ref={setRowEl(p)}
+            <div className={"mi" + (hlK === p || (p === prov && hlK === null) ? " on" : "") + (hlK === p ? " kb" : "")} key={p} ref={setRowEl(p)}
               onClick={(e) => { e.stopPropagation(); setProv(p); setShowRoles(false); closeFly(); }}>
               <span className="ck">{p === prov ? "✓" : ""}</span>
               {p}
@@ -396,7 +453,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           {!REMOTE && (
             <>
               <div className="sep" />
-              <div className={"mi mgmt" + (hlK === MANAGE_ROW ? " on" : "")} ref={setRowEl(MANAGE_ROW)}
+              <div className={"mi mgmt" + (hlK === MANAGE_ROW ? " on kb" : "")} ref={setRowEl(MANAGE_ROW)}
                 onClick={(e) => { e.stopPropagation(); enterFlyRow(MANAGE_ROW); }}>
                 {t("composer.manageModels")}
               </div>

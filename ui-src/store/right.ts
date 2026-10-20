@@ -5,7 +5,7 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import { expandRightPanel } from "../components/main/right/tabs";
+import { expandRightPanel, isTerminalTab } from "../components/main/right/tabs";
 import type { BrowserTabInfo, CapabilitiesSnapshot, GitOperationState, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
@@ -224,10 +224,15 @@ export function saveRightSlot(path: string | null): void {
   const key = path ?? WELCOME_SLOT;
   const st = useAppStore.getState();
   const disposers = rightSlots.get(key)?.disposers ?? new Set(); // slot update, not destruction: keep live disposers
+  // Shared terminals belong to the project registry, not to this session: persisting them
+  // here would resurrect another project's tabs and pin PTY names to a stale session.
+  const sharedTerm = st.uiPrefs.terminalShared === true;
+  const tabs = sharedTerm ? st.rightTabs.filter((n) => !isTerminalTab(n)) : st.rightTabs.slice();
+  const active = sharedTerm && isTerminalTab(st.rightTab ?? "") ? tabs[tabs.length - 1] ?? null : st.rightTab;
   rightSlots.delete(key);
   rightSlots.set(key, {
-    tabs: st.rightTabs.slice(),
-    active: st.rightTab,
+    tabs,
+    active,
     recentClosed: st.rightRecentClosed.slice(),
     selectedFile: st.selectedFile,
     // Skip half-loaded views (empty text would restore stuck in loading) and image views

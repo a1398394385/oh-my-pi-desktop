@@ -157,18 +157,25 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
   return true;
 }
 
+// Agent process display style (ui.prefs.agentProcessStyle):
+//   standard — a run of >=3 read-only tool events folds into one block
+//   detailed — no read-only run fold (rows lay out flat), same-type groups stay
+//   expanded — no read-only run fold and no same-type merging at all
+function processStyle(): "standard" | "detailed" | "expanded" {
+  const v = useAppStore.getState().uiPrefs.agentProcessStyle;
+  return v === "detailed" || v === "expanded" ? v : "standard";
+}
+
 // Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
 // Thinking and request-error rows inside the run are collected into the block but not
 // counted; any other role or a non-read-only tool event ends the run. Returns null when
 // the run holds fewer than `min` read-only events (the caller then falls through to the
 // per-type group blocks). Error rows must not break the scan: a mid-run request failure
 // (e.g. socket closed) would otherwise split one flow into <3 fragments that never fold.
-// min is 3 (the >=3 merge — display.hideToolActivity's desktop default; the host
-// flips an unset base value to true) and becomes Infinity when the user turns the
-// setting off: read-only rows then never merge and always lay out flat.
+// min is 3 (the >=3 merge) under the "standard" style and Infinity under the other
+// two, where read-only rows never merge and always lay out flat.
 function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next: number } | null {
-  const fold = useAppStore.getState().hostSettings?.values?.["display.hideToolActivity"] !== false;
-  const min = fold ? 3 : Infinity;
+  const min = processStyle() === "standard" ? 3 : Infinity;
   const run: ChatItem[] = [];
   let roCount = 0;
   let j = i;
@@ -217,7 +224,10 @@ export function renderItems(
           continue;
         }
       }
-      if (isEditEvent(item)) {
+      // The "expanded" style skips the level-3 merge blocks entirely (they consume the
+      // following same-type events, so gating only the group push would swallow rows)
+      const mergeSameType = processStyle() !== "expanded";
+      if (mergeSameType && isEditEvent(item)) {
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
@@ -227,7 +237,7 @@ export function renderItems(
           continue;
         }
       }
-      if (isReadEvent(item)) {
+      if (mergeSameType && isReadEvent(item)) {
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
@@ -237,7 +247,7 @@ export function renderItems(
           continue;
         }
       }
-      if (isDeviceEvent(item)) {
+      if (mergeSameType && isDeviceEvent(item)) {
         const dev = deviceNameOf(item.args?.path);
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length) {
@@ -253,7 +263,7 @@ export function renderItems(
           continue;
         }
       }
-      if (isCmdEvent(item)) {
+      if (mergeSameType && isCmdEvent(item)) {
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
@@ -345,7 +355,8 @@ export function renderItems(
       }
     }
 
-    if (isEditEvent(item)) {
+    const mergeSameType = processStyle() !== "expanded";
+    if (mergeSameType && isEditEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
@@ -354,7 +365,7 @@ export function renderItems(
         node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (!node && isReadEvent(item)) {
+    if (mergeSameType && !node && isReadEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
@@ -363,7 +374,7 @@ export function renderItems(
         node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (!node && isDeviceEvent(item)) {
+    if (mergeSameType && !node && isDeviceEvent(item)) {
       const dev = deviceNameOf(item.args?.path);
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length) {
@@ -378,7 +389,7 @@ export function renderItems(
         node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (!node && isCmdEvent(item)) {
+    if (mergeSameType && !node && isCmdEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {

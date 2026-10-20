@@ -22,6 +22,22 @@ export function writeAutoReviewEnabled(enabled: boolean): void {
 	writeDesktopSection("autoReview", { ...readDesktopSection("autoReview"), enabled });
 }
 
+/**
+ * Whether the permission-mode menu offers the "smart approval" row
+ * (autoReview.offerSmartMode). It only controls the row's presence — the gate
+ * itself is autoReview.enabled, written by picking that row. Unset falls back
+ * to `enabled` so configs predating the split keep showing the row.
+ */
+export function isSmartModeOffered(): boolean {
+	const section = readDesktopSection("autoReview");
+	return (typeof section.offerSmartMode === "boolean" ? section.offerSmartMode : section.enabled === true);
+}
+
+/** Write autoReview.offerSmartMode back (the experimental-page switch). */
+export function writeSmartModeOffered(offer: boolean): void {
+	writeDesktopSection("autoReview", { ...readDesktopSection("autoReview"), offerSmartMode: offer });
+}
+
 export interface AutoReviewToolCall {
 	toolName: string;
 	params: unknown;

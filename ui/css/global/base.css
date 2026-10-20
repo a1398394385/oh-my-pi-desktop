@@ -2,7 +2,9 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
 }
 
-html, body { height: 100%; }
+/* --app-h: visual-viewport height published by initShell (shell.ts) for phone soft
+   keyboards; falls back to the layout viewport everywhere else */
+html, body { height: var(--app-h, 100%); }
 
 html { background: var(--base); color-scheme: dark; font-size: var(--ui-fs-base); }
 

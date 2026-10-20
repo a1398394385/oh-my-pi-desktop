@@ -24,11 +24,21 @@ export const MODE_META: Record<ApprovalMode, ModeMeta> = {
   yolo: { get label() { return t("composer.modeYolo"); }, icon: "shieldWarn", yolo: true },
 };
 
-const ROWS: { mode: ApprovalMode; desc: string }[] = [
-  { mode: "always-ask", get desc() { return t("composer.modeAlwaysAskDesc"); } },
-  { mode: "write", get desc() { return t("composer.modeWriteDesc"); } },
-  { mode: "yolo", get desc() { return t("composer.modeYoloDesc"); } },
-];
+/**
+ * Derived fourth row: `write` plus the LLM gate (autoReview) in front of the
+ * cards that still appear (exec tier keeps prompting). It cannot be a real
+ * ApprovalMode: the base maps unknown values to "yolo"
+ * (packages/coding-agent/src/tools/approval.ts), so the pair
+ * (mode=write, autoReview=on) is the only safe encoding. Rendered only while
+ * the experimental switch is on; picking a plain mode turns the gate off so the
+ * two rows stay mutually exclusive.
+ */
+const SMART = "smart" as const;
+export const SMART_MODE: ModeMeta = {
+  get label() { return t("composer.modeSmart"); },
+  icon: "think",
+  yolo: false,
+};
 
 type ModeMenuProps = {
   btnRef: RefObject<HTMLButtonElement | null>;
@@ -42,15 +52,29 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
   const approvalMode = useAppStore((st) => st.approvalMode);
   const newSessionPlanMode = useAppStore((st) => st.newSessionPlanMode);
   const planOn = s ? !!s.planMode : newSessionPlanMode;
+  // The experimental page's switch only offers the row; the gate itself rides
+  // approvalMode === "write" (autoReviewEnabled, written by pickMode).
+  const autoReviewOffered = useAppStore((st) => st.hostSettings?.autoReviewOfferMode === true);
+  const autoReview = useAppStore((st) => st.hostSettings?.autoReviewEnabled === true);
+  // write + LLM gate is what the "smart approval" row means; the plain write
+  // row must not also look selected while it is on
+  const smartOn = approvalMode === "write" && autoReview;
+  const rows: (ApprovalMode | typeof SMART)[] = autoReviewOffered
+    ? ["always-ask", "write", SMART, "yolo"]
+    : ["always-ask", "write", "yolo"];
   // Position on mount (the old openComposerMenu: positioned once when opened)
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);
   }, []);
 
-  const pickMode = (mode: ApprovalMode) => {
-    if (s) send({ type: "set_approval_mode", sessionId: s.sessionId, mode });
-    else send({ type: "set_approval_mode", mode });
-    setBump({ approvalMode: mode });
+  const pickMode = (mode: ApprovalMode | typeof SMART) => {
+    // Writes only the gate; the experimental page's "offer the row" switch is
+    // never touched here, so picking a plain mode keeps the row visible.
+    if (autoReview !== (mode === SMART)) send({ type: "set_auto_review", enabled: mode === SMART });
+    const target: ApprovalMode = mode === SMART ? "write" : mode;
+    if (s) send({ type: "set_approval_mode", sessionId: s.sessionId, mode: target });
+    else send({ type: "set_approval_mode", mode: target });
+    setBump({ approvalMode: target });
     onClose();
   };
 
@@ -66,20 +90,18 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
     <div className="menu mode open" id="modeMenu" ref={menuRef}>
       <div className="mi big" id="planModeRow" onClick={togglePlan} title={t("composer.planModeHint")}>
         <span className="mi-ic"><Icon name="plan" /></span>
-        <span className="mi-tx">
-          <span className="mi-tt">{t("composer.planMode")}</span>
-          <span className="mi-desc">{t("composer.planModeDesc")}</span>
-        </span>
+        <span className="mi-tx"><span className="mi-tt">{t("composer.planMode")}</span></span>
         <span className="ck">{planOn ? "✓" : ""}</span>
       </div>
       <div className="mode-sep"></div>
-      {ROWS.map(({ mode, desc }) => {
-        const meta = MODE_META[mode];
+      {rows.map((mode) => {
+        const meta = mode === SMART ? SMART_MODE : MODE_META[mode];
+        const checked = mode === SMART ? smartOn : approvalMode === mode && !smartOn;
         return (
           <div className="mi big" data-mode={mode} key={mode} onClick={() => pickMode(mode)}>
             <span className="mi-ic"><Icon name={meta.icon} /></span>
-            <span className="mi-tx"><span className="mi-tt">{meta.label}</span><span className="mi-desc">{desc}</span></span>
-            <span className="ck">{approvalMode === mode ? "✓" : ""}</span>
+            <span className="mi-tx"><span className="mi-tt">{meta.label}</span></span>
+            <span className="ck">{checked ? "✓" : ""}</span>
           </div>
         );
       })}

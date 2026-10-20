@@ -15,7 +15,7 @@ import type { AppLang } from "../../i18n";
 import { buildKeyToPageMap, HIDDEN_KEYS } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
 import WindowControls from "../WindowControls";
-import { IS_WINDOWS } from "../../platform";
+import { IS_WINDOWS, modDown } from "../../platform";
 
 // Settings pages are lazy chunks: 27 static page imports dragged every settings
 // surface and its dependency subtree (SchemaRows' locale dictionaries, the
@@ -264,10 +264,23 @@ export default function Settings() {
     if (setBodyRef.current) setBodyRef.current.scrollTop = 0;
   }, [pageId]);
 
-  // Esc to close (only when the settings hub is open; listener mounted once, open state read via getState)
+  // Esc closes; ⌘F / Ctrl+F lands on the settings search box (the session FindBar
+  // yields while the hub is open, so the chord is free here).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && useAppStore.getState().settingsOpen) closeSettings();
+      else if (
+        e.key.toLowerCase() === "f" &&
+        !e.shiftKey &&
+        !e.altKey &&
+        modDown(e) &&
+        useAppStore.getState().settingsOpen
+      ) {
+        e.preventDefault();
+        const input = document.getElementById("setSearchInput") as HTMLInputElement | null;
+        input?.focus();
+        input?.select();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

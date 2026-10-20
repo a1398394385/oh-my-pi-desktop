@@ -23,7 +23,7 @@ import type { PromptAttachment } from "../types/frames";
 import { closeAllMenus } from "../shell";
 import Icon from "../Icon";
 import AttachRow from "./composer/AttachRow";
-import ModeMenu, { MODE_META } from "./composer/ModeMenu";
+import ModeMenu, { MODE_META, SMART_MODE } from "./composer/ModeMenu";
 import ModelMenu from "./composer/ModelMenu";
 import PaletteMenu from "./composer/PaletteMenu";
 import type { PaletteItem } from "./composer/PaletteMenu";
@@ -809,7 +809,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   }, []);
 
   // ---- cbar button states ----
-  const modeMeta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
+  // The pill must name the smart row too: with the gate on, "write" is not what
+  // the next tool call will experience.
+  const autoReviewOn = useAppStore((st) => st.hostSettings?.autoReviewEnabled === true);
+  const modeMeta = (approvalMode === "write" && autoReviewOn) ? SMART_MODE : MODE_META[approvalMode] ?? MODE_META["always-ask"];
   const menuDisabled = !(hasSession || isCreatingNew) || isSubagent; // subagents cannot switch models
 
 
@@ -838,11 +841,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     : modelShort(model) || t("composer.modelFallback");
   const thLv = (lv: string) => t(`composer.thinkingLevels.${lv}`, { defaultValue: lv });
   const thinkLabel = hasSession
-    ? (thinking === "auto" && autoResolved ? `${thLv("auto")}·${thLv(autoResolved)}` : thinking ? thLv(thinking) : t("composer.thinkFallback"))
+    ? (thinking === "auto" && autoResolved ? `${thLv("auto")} · ${thLv(autoResolved)}` : thinking ? thLv(thinking) : t("composer.thinkFallback"))
     : newSessionThinking ? thLv(newSessionThinking) : t("composer.thinkFallback");
   // Merged pill: model name · thinking level (the ":level" suffix is stripped
   // by modelShort — the level now lives only in thinkLabel)
-  const modelThinkLabel = `${modelName}·${thinkLabel}`;
+  const modelThinkLabel = `${modelName} · ${thinkLabel}`;
   // Narrow (phone) layout: the permission/model pills render in their own bar below
   // the input instead of the nowrap toolbar (see pillBar below).
   const narrow = useAppStore((st) => st.narrow);

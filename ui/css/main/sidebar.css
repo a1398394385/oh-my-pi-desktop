@@ -190,6 +190,9 @@ body:has(#sidebar.collapsed) #left-resizer {
   cursor: pointer; color: var(--dim);
   font-size: calc(var(--ui-fs) + 1px); line-height: 26px;
   border: 0; background: none; width: 100%; text-align: left;
+  /* A div row, not a <button> (see SessionRow): keep the button-like selection behaviour,
+     otherwise a long press selects the title text instead of opening the context menu. */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .task:is(:hover, .ctx-open) { background: var(--panel-2); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
@@ -212,6 +215,10 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task:is(:hover, .ctx-open) .tarchive { display: inline-flex; }
 .task:is(:hover, .ctx-open) .tm { display: none; }
 .task .tarchive:hover { color: var(--text); background: var(--panel-3); }
+/* Running session: the host refuses both the archive (it evicts archived sessions from
+   the pool) and the manual eject (no live teardown), so the actions render inert. */
+.task .tarchive:disabled { opacity: 0.35; cursor: not-allowed; }
+.task .tarchive:disabled:hover { color: var(--faint); background: none; }
 .task .tarchive-confirm {
   flex: none;
   border: 1px solid transparent;
@@ -232,6 +239,13 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task .tarchive-confirm:hover {
   filter: brightness(1.12);
+}
+.task .tarchive-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.task .tarchive-confirm:disabled:hover {
+  filter: none;
 }
 .task-cmd-badge {
   flex: none;

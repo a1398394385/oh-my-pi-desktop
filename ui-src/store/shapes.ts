@@ -24,6 +24,10 @@ export type GitWriteFrame =
 /** Terminal frame union (terminal_created/data/exit share one branch, pushed straight to terminal-page subscribers) */
 export type TerminalFrame = TerminalCreatedFrame | TerminalDataFrame | TerminalExitFrame;
 
+/** Agent process display style: standard = today's folding, detailed = no read-only run
+ * fold, expanded = no read-only run fold and no same-type event merging. */
+export type AgentProcessStyle = "standard" | "detailed" | "expanded";
+
 /** UI prefs (runtime shape: theme/motion + appearance fields + lang).
  * Persistence is file-first — omp-desktop.json's ui section is the source of
  * truth; the merged omp-ui-settings localStorage (plus the omp-theme /
@@ -31,6 +35,7 @@ export type TerminalFrame = TerminalCreatedFrame | TerminalDataFrame | TerminalE
 export interface UiPrefs {
   theme: string; // ThemeId | "system" (expanded to accept custom theme IDs)
   motion: "system" | "on" | "off";
+  agentProcessStyle: AgentProcessStyle;
   uiFont: string;
   uiFontSize: number;
   codeFontSize: number;
@@ -49,6 +54,9 @@ export interface UiPrefs {
   notifySound?: boolean;
   lang: "zh-CN" | "en";
   terminalInheritProfile?: boolean;
+  /** Experimental: every session of one project shares one set of terminal tabs (right dock
+   *  and bottom dock independently) instead of per-session terminals. */
+  terminalShared?: boolean;
   terminalFont?: string;
   /** Terminal font size in px (10-20); 13 = the historical hardcoded default. */
   terminalFontSize?: number;

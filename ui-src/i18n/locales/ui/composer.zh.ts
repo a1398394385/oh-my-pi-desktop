@@ -30,12 +30,9 @@ export const composerZh = {
   // ModeMenu.tsx
   modeAlwaysAsk: "手动批准",
   modeWrite: "默认",
-  modeYolo: "全自动",
-  modeAlwaysAskDesc: "执行需要授权的操作前先询问",
-  modeWriteDesc: "常规操作自动执行，关键决定会询问",
-  modeYoloDesc: "所有操作无需确认直接执行",
+  modeYolo: "完全访问",
+  modeSmart: "智能审批",
   planMode: "计划模式",
-  planModeDesc: "先只读调研并产出计划，批准后才动手改代码",
   planModeHint: "先只读规划，批准计划后再执行",
   // ModelMenu.tsx
   noModels: "未配置可用模型",

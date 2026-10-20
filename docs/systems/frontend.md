@@ -1,7 +1,7 @@
 # 前端子系统手册（ui-src + ui/）
 
 > 活文档：跨文件链路地图 + 不可从代码直接推断的约定。登记见 [documentation.md](../documentation.md) §2「子系统手册」。
-> 事实以代码为 SSOT；本手册只记入口、约束与坑。UI 视觉/控件约定见 [ui-conventions.md](ui-conventions.md)，开发与验证通道见 [DEVELOPMENT.md](../DEVELOPMENT.md)。
+> 事实以代码为 SSOT；本手册只记入口、约束与坑。UI 视觉/控件约定见 [ui-conventions.md](ui-conventions.md)，会话驻留/出池链路见 [session-pool.md](session-pool.md)，开发与验证通道见 [DEVELOPMENT.md](../DEVELOPMENT.md)。
 
 ## 1. 一句话架构
 
@@ -16,7 +16,7 @@ Tauri 外壳加载 `ui/dist` 构建产物（入口 `ui/index.html`，由 `ui/sty
 | 样式实体 | `ui/css/global/`、`shared/`、`main/`、`settings/` | token/重置/全站控件/浮层；公共模型与代码视图；三栏布局与各页面；设置页外壳与子页 |
 | 图标 | `ui/icons.js`、`ui/fa-icons.js`、`ui/lucide-icons.js`、`ui/file-icons.js` | 注册表与三层覆盖（FA 为生成物，禁止手改） |
 | React 根 | `ui-src/main.tsx`、`ui-src/App.tsx` | 挂载、主题/缩放恢复、图标注册表引入 |
-| 页面组合 | `ui-src/components/main/` | 左栏 `sidebar/`、中栏 `MainColumn.tsx`（`chat/` 消息、`tree/` 会话树、Agent Hub）、右栏 `right/` |
+| 页面组合 | `ui-src/components/main/` | 左栏 `sidebar/`、中栏 `MainColumn.tsx`（`chat/` 消息、`tree/` 会话树、Agent Hub、底部终端 dock `BottomTerminal.tsx`，⌘/Ctrl+J）、右栏 `right/` |
 | 设置页 | `ui-src/components/settings/` | 全屏设置中心与 `pg-*` 子页 |
 | 跨页控件 | `ui-src/components/shared/` | 模型选择、代码视图、子代理控件 |
 | 状态 | `ui-src/store/` | 单一 zustand store，`index` 组合 ui/session/projects/right/settings/ws/models/entry-tree slice |

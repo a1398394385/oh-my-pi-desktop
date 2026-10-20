@@ -193,6 +193,10 @@ export default function SessionTreeStream({
   useEffect(() => {
     if (confirmNode) return;
     const onKey = (e: KeyboardEvent) => {
+      // A composer popup (model / mode menu, sigil panel) owns the arrows while open:
+      // this listener sits on window capture, so without the guard it swallows them
+      // before those components' own listeners ever run.
+      if (document.querySelector("#composer .menu.open")) return;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();

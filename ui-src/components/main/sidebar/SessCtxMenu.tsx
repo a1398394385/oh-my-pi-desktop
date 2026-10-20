@@ -3,7 +3,7 @@
 // to coordinate with the shell menu doesn't exist in the React version (the menu is a
 // component); word-selection undo logic stays in the Sidebar container layer.
 import { useTranslation } from "react-i18next";
-import { send, toast } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import Menu from "./Menu";
 import { copyText } from "./util";
 import type { SessionInfo } from "./SessionRow";
@@ -20,6 +20,10 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
   // Only omp-managed worktrees (desktop-<slug>-<hash7> under the worktree root)
   // get the remove entry; the host's status RPC re-validates authoritatively.
   const isWorktreeCwd = !!entry.cwd?.includes("/.omp/wt/");
+  // Mirrors SessionRow's gate: a running session cannot be archived, since the host
+  // evicts archived sessions from the in-memory pool. Unarchiving stays available.
+  const streaming = useAppStore((st) => st.openSessions.get(entry.path)?.streaming ?? false);
+  const running = streaming || useAppStore((st) => st.busyPaths.has(entry.path));
   const item = (label: string, fn: () => void, disabled = false) => (
     <button key={label} disabled={disabled} onClick={() => { onClose(); fn(); }}>{label}</button>
   );
@@ -45,7 +49,7 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
       })}
       {item(t("sidebar.rename"), () => onRename(entry))}
       {isWorktreeCwd && onRemoveWorktree && item(t("worktree.remove.title"), () => onRemoveWorktree(entry))}
-      {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", sessionId: entry.id, archived: !entry.archived }))}
+      {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", sessionId: entry.id, archived: !entry.archived }), running && !entry.archived)}
     </Menu>
   );
 }
