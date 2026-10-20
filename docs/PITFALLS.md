@@ -142,7 +142,7 @@
 ## xd:// 设备调用的记账形态（2026-10-13，ACP 工具行对接）
 
 - **`write` + `xd://<tool>` 在 journal 里记的是 `write`，不是目标工具名**：底座 `packages/coding-agent/src/tools/xdev.ts` 的 `dispatchXdevTool()`（:427）用**同一个 toolCallId** 调 `executable.execute(toolCallId, …)`，所以 `tool_execution_start` / toolResult 都以调用方（write/read）名义落盘，目标工具名只活在结果的 `details.xdev.tool`（`XdevDispatch`，:91）。凡按 `toolName` 识别工具的代码（UI 渲染分支、host 配对识别）在 xd:// 路径下都会漏判：`ui-src/components/chat/ToolRow.tsx` 因此走 `isDeviceEvent` 渲染成「设备 · <名>」，`host/acp-refs.ts` 的 status 对识别必须额外认 `details.xdev?.tool`。**该字段只在 toolResult 上，`tool_execution_start` 时还不存在**——想在行创建时就按目标工具分类，只能自己 JSON.parse `args.content`；给这类调用改 `name` 会连带砍掉设备行的合并分组（`items.tsx` 的 `isDeviceEvent` 判定）。
-- **`host/translate.ts` 的 `toolArgsForUi()` 按 name 分派**：xd:// 调用落到兜底分支，UI 收到的 args 是 `{ path: "xd://<tool>", content: "<目标参数 JSON 串>" }`。**只改 name 而不重解参数，会让目标工具的渲染拿到全 undefined**（`ui-src/components/chat/ToolRow.tsx` 的 `deviceCallArgs()` 是既有的解包先例）。
+- **`host/translate-tool.ts` 的 `toolArgsForUi()` 按 name 分派**：xd:// 调用落到兜底分支，UI 收到的 args 是 `{ path: "xd://<tool>", content: "<目标参数 JSON 串>" }`。**只改 name 而不重解参数，会让目标工具的渲染拿到全 undefined**（`ui-src/components/chat/ToolRow.tsx` 的 `deviceCallArgs()` 是既有的解包先例）。
 - **诊断姿势**：`jq -r 'select(.customType=="tool_execution_start") | .data.toolName' <session>.jsonl | sort | uniq -c` 看工具分布；`grep -o '"path":"xd://[^"]*"' <session>.jsonl` 看设备调用面。
 
 ## GitHub Actions release workflow（2026-10-15，v0.1.0 首发）

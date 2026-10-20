@@ -81,7 +81,7 @@
 
 | 域 | RPC |
 |---|---|
-| settings.ts(18) | `set_setting` `set_locale` `set_ui_prefs` `set_external_browser` `set_computer_provider` `set_computer_default` `set_approval_mode` `set_acp_enabled` `set_acp_config` `set_session_context_enabled` `set_keepalive_enabled` `set_keepalive_config` `set_kimi_auto_thinking` `set_hooks_enabled` `set_plugins_enabled` `set_skills_enabled` `set_desktop_env` `switch_profile` |
+| settings.ts(20) | `set_setting` `set_locale` `set_ui_prefs` `set_external_browser` `set_computer_provider` `set_computer_default` `set_approval_mode` `set_acp_enabled` `set_acp_config` `set_session_context_enabled` `set_keepalive_enabled` `set_keepalive_config` `set_kimi_auto_thinking` `set_hooks_enabled` `set_plugins_enabled` `set_skills_enabled` `set_desktop_env` `switch_profile` `set_auto_review` `set_session_title_refresh` |
 | models.ts(2) | `set_enabled_model` `set_model_role` |
 | provider-wizard.ts(2) | `save_provider_models` `save_provider_model` |
 | login.ts(10) | 全部:`provider_login` `provider_logout` `provider_list_accounts` `provider_disable_account` `provider_enable_account` `provider_reorder_account` `provider_login_cancel` `provider_set_key` `login_prompt_reply` `open_models_config` |

@@ -83,6 +83,8 @@
 | BUG-085 | Git 页中文文件名显示成八进制转义串且暂存必失败——`git status --short` 的 octal 引用形式原样进了 UI | 2026-10-18 |
 | BUG-086 | 切本地含 `/` 的分支被静默切到另一个新分支且 exit 0——用短名里有没有 `/` 判本地/远程 | 2026-10-18 |
 | BUG-087 | ACP 会话上下文明细卡「活动区」系统性低估 18~28%——运行时计数器从未绑定到已解析模型，长期用字节估算兜底 | 2026-10-19 |
+| BUG-088 | 远程控制页「复制访问链接」点击无反应——clipboard.writeText 被拒后静默吞错 | 2026-10-19 |
+| BUG-089 | context_status 的压缩清单被底座工具溢出裁剪 head/tail 挖空——ACP 自己的渲染预算从未生效 | 2026-10-19 |
 
 ---
 
@@ -1262,3 +1264,31 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 
 
+
+### BUG-088: 远程控制页「复制访问链接」点击无反应——clipboard.writeText 被拒后静默吞错
+
+**日期**：2026-10-19
+
+**现象**：设置 → 远程控制 →「复制访问链接」点击后无 toast、无复制，用户感知按钮失灵。
+
+**根因**：`RemotePage.copyLink` 直接 `navigator.clipboard.writeText(url).then(toast)`。WKWebView（以及 headless/非授权上下文）里 `navigator.clipboard` 对象存在但 `writeText` 在 webview 非聚焦或调用缺 user activation 时 reject（`NotAllowedError`）；`.then` 不执行且无 `.catch`，失败完全静默。项目里 `sidebar/util.ts#copyText` 早已为此实现了 execCommand textarea 双分支 fallback，该页未复用。
+
+**修复**：`RemotePage` 改用 `copyText(url)`（writeText 失败自动回落 `document.execCommand("copy")`），成功路径 toast「访问链接已复制」不变。
+
+**验证**：dev:browser 通道真实浏览器点击——修复前 writeText reject 且无 toast；修复后（同环境 writeText 仍被拒）execCommand 回落生效，toast 弹出「访问链接已复制」。`bun run check` 全绿。
+
+**教训**：剪贴板写入必须带失败分支（reject 或 execCommand 回落），禁止裸 `.then` 吞错；新复制点一律复用 `copyText`，勿直接调 `navigator.clipboard`。
+
+### BUG-089: context_status 的压缩清单被底座工具溢出裁剪head/tail 挖空——ACP 自己的渲染预算从未生效
+
+**日期**：2026-10-19
+
+**现象**：context_status 返回的 manifest 中间被替换成 `[…6.1KB elided…]`（管道输出形如 `Showing lines 1-82 and 131-228 of 228; 48 middle lines … elided`），bN 列表不连续，模型无法据完整清单选择 keep。
+
+**根因**：`host/acp-status-tool.ts` 原以为大结果走 `enforceInlineByteCap`（T5 recall_block 先例），但该调用依赖 `execute` 的 `ctx.allocateOutputArtifact`，而 custom tool 的 context 从不携带它（该能力在 session 对象上，sdk 只把它注入内置工具）——分支永远不执行。于是结果全部落到 SDK 通用 `spillLargeResultToArtifact`：超过 `tools.artifactSpillThreshold` 即「head 20KB + tail 20KB + 中间挖空」，ACP 按 8000 token 预算生成的完整清单被破坏；且被裁掉的行仍在 `manifestIds` 里，模型看不见却会被 compress 折叠。
+
+**修复**：裁剪权收归 ACP。`AcpRuntimeState.status(maxBytes)` 的预算来自 `tools.artifactSpillThreshold`，`#refreshRoundStatus` 在 token 预算之外再按整行字节预算收缩 `keptCount`（**不**做 head/tail），返回的 `manifestIds` 随可见行同步收缩；工具侧删除死的 `allocateOutputArtifact/enforceInlineByteCap` 分支，只在 session-lifecycle 注入阈值读取（新增登记边 `session-lifecycle.ts→settings-compat.ts`）。
+
+**验证**：`scripts/smoke-acp-pull.ts` A 区新断言（返回 ≤ 预算、整行裁尾、exempt trailer、manifestIds 与可见行数对齐）；临时探针（227 块真实规模，用后已删）：全量 26797B/227 行，20KB→20414B/171 行，2KB→2015B/12 行，1KB→976B/3 行，均 fits 且 trailer 正确；`bun run check` 十项全绿。
+
+**教训**：①**依赖未文档化参数的能力等于死代码**——`ctx.allocateOutputArtifact` 类型上是可选的，运行时从不出现；改工具前先在真实调用链上确认参数来源。②**结构化输出（清单/列表）禁止交给 head+tail 裁剪**：中间挖空保留首尾的通用策略对列表是语义破坏，有预算的输出应自己按行收缩并同步下游 id 集合。
