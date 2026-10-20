@@ -25,10 +25,15 @@ export default defineConfig({
     outDir: "dist", // relative to root -> ui/dist
     emptyOutDir: true,
     assetsInlineLimit: 0,
-    // Desktop assets load via the local asset protocol, never the network: the entry
-    // bundles heavy deps like shiki/lexical/xterm (~5.2MB output), so there is no network
-    // chunking — silence the 500kB size hint (adjust this when the entry size changes)
-    chunkSizeWarningLimit: 6000,
+    // Sourcemaps only for perf attribution (scripts/perf-budget.ts reads .map
+    // siblings); "hidden" appends no sourceMappingURL comment, so chunk bytes
+    // match the shipped build exactly.
+    sourcemap: process.env.OMP_PERF_MAPS === "1" ? "hidden" : false,
+    // Desktop assets load via the local asset protocol, never the network: the
+    // entry bundles heavy deps (~5MB output), so a 500kB hint is meaningless --
+    // 2000kB keeps the guard above today's lazily-loaded page chunks while
+    // still flagging anything that creeps back toward the old monolith entry.
+    chunkSizeWarningLimit: 2000,
     rolldownOptions: {
       output: {
         // Fixed entry artifact name, keeping assets/app.js from the old esbuild build

@@ -17,12 +17,17 @@ import {
   openCommitFileDiff,
 } from "../../../store/git-graph";
 import type { GitCommitDetailFrame, GitCommitFileWire, GitGraphFrame } from "../../../types/frames";
-import { LANE_W, LaneStrip, computeGraphRows } from "./graph-lanes";
+import { LANE_W, ROW_H, computeGraphRows } from "./graph-lanes";
+import CommitRow, { fullDate } from "./CommitRow";
 import { buildBranchTree, filterTree, type BranchNode } from "./branch-tree";
 import FileList from "./file-list";
 
 const INITIAL_LIMIT = 200;
 const PAGE_STEP = 100;
+/** Commit-filter debounce: a keystroke burst re-derives lanes for the whole loaded page. */
+const FILTER_DEBOUNCE_MS = 150;
+/** Rows rendered beyond each edge of the visible strip (~12 rows ≈ 336 px). */
+const GRAPH_OVERSCAN = 12;
 /** Date chip presets (commit author time, ms cutoffs computed per render). */
 type DateRange = "all" | "today" | "7d" | "30d";
 const DATE_CUTOFF_MS: Record<Exclude<DateRange, "all">, number> = {
@@ -30,22 +35,6 @@ const DATE_CUTOFF_MS: Record<Exclude<DateRange, "all">, number> = {
   "7d": 7 * 24 * 60 * 60 * 1000,
   "30d": 30 * 24 * 60 * 60 * 1000,
 };
-// ---------- small formatting helpers ----------
-
-function twoDigit(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-/** Date column: MM/DD (the full timestamp lives in the title attribute). */
-function shortDate(epochSeconds: number): string {
-  const d = new Date(epochSeconds * 1000);
-  return `${twoDigit(d.getMonth() + 1)}/${twoDigit(d.getDate())}`;
-}
-
-function fullDate(epochSeconds: number): string {
-  const d = new Date(epochSeconds * 1000);
-  return `${d.getFullYear()}-${twoDigit(d.getMonth() + 1)}-${twoDigit(d.getDate())} ${twoDigit(d.getHours())}:${twoDigit(d.getMinutes())}`;
-}
 
 // ---------- page ----------
 
@@ -78,6 +67,11 @@ export default function GitPage() {
   /** Collapsed branch-list groups ("local" / "remote" / "tags"), separate from tree nodes. */
   const [groupCollapsed, setGroupCollapsed] = useState<readonly string[]>([]);
   const graphSeq = useRef(0);
+  /** Debounced copy of filterText that actually feeds the row pipeline. */
+  const [filterApplied, setFilterApplied] = useState("");
+  /** Visible window of the commit list: scroll offset + viewport height. */
+  const [graphView, setGraphView] = useState({ top: 0, height: 0 });
+  const graphScrollRef = useRef<HTMLDivElement | null>(null);
 
   const runLoad = useCallback(
     (force: boolean) => {
@@ -121,25 +115,49 @@ export default function GitPage() {
     }
     runLoad(false);
   }, [cwd, scope, limit, runLoad]);
+  useEffect(() => {
+    const id = setTimeout(() => setFilterApplied(filterText), FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [filterText]);
+
+  // Only the visible window of rows is mounted (each row = 1 SVG strip; a full
+  // 1000-row page would be thousands of SVG nodes); spacers keep the scrollbar stable.
+  const syncGraphView = useCallback(() => {
+    const el = graphScrollRef.current;
+    if (!el) return;
+    setGraphView((prev) =>
+      prev.top === el.scrollTop && prev.height === el.clientHeight
+        ? prev
+        : { top: el.scrollTop, height: el.clientHeight },
+    );
+  }, []);
+  useEffect(() => {
+    const el = graphScrollRef.current;
+    if (!el) return;
+    syncGraphView();
+    const ro = new ResizeObserver(syncGraphView);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncGraphView]);
 
   // Filter + sort pipeline over the loaded page. Every filter re-derives the
   // visible rows (and their lanes), so the graph stays continuous instead of
   // showing gaps where rows were hidden.
   const invalidRegex = useMemo(() => {
-    if (!filterRegex || !filterText.trim()) return false;
+    if (!filterRegex || !filterApplied.trim()) return false;
     try {
-      new RegExp(filterText);
+      new RegExp(filterApplied);
       return false;
     } catch {
       return true;
     }
-  }, [filterRegex, filterText]);
+  }, [filterRegex, filterApplied]);
 
   const commits = useMemo(() => {
     const base = graph?.commits ?? [];
     const cutoff =
       filterDate === "all" ? 0 : Date.now() - DATE_CUTOFF_MS[filterDate];
-    const q = filterText.trim();
+    const q = filterApplied.trim();
     let test: (s: string) => boolean = () => true;
     if (q) {
       if (filterRegex && !invalidRegex) {
@@ -161,7 +179,7 @@ export default function GitPage() {
     );
     if (!sortDesc) list.reverse(); // host rows arrive newest-first (topo); ascending flips them
     return list;
-  }, [graph, filterText, filterRegex, filterCase, filterAuthor, filterDate, sortDesc, invalidRegex]);
+  }, [graph, filterApplied, filterRegex, filterCase, filterAuthor, filterDate, sortDesc, invalidRegex]);
 
   // Keep a selection valid across reloads and filters: keep it when still
   // visible, else fall back to the first visible row.
@@ -213,6 +231,15 @@ export default function GitPage() {
         rows.reduce((max, row) => Math.max(max, row.incoming.length, row.outgoing.length, row.nodeColumn + 1), 0),
       ) * LANE_W,
     [rows],
+  );
+
+  // Rows are a fixed 28 px with no margins (graph-lanes grid = CSS row grid),
+  // so index math against the scroll offset is exact; a zero viewport height
+  // (first paint, before the ResizeObserver reports) falls back to 640 px.
+  const winStart = Math.max(0, Math.floor(graphView.top / ROW_H) - GRAPH_OVERSCAN);
+  const winEnd = Math.min(
+    commits.length,
+    Math.ceil((graphView.top + (graphView.height || 640)) / ROW_H) + GRAPH_OVERSCAN,
   );
 
   const localTree = useMemo(
@@ -283,6 +310,9 @@ export default function GitPage() {
     setScope(next);
     setLimit(INITIAL_LIMIT);
   };
+
+  // Stable identity so memoized CommitRow rows skip re-render on scroll frames.
+  const selectCommit = useCallback((oid: string) => setSelected(oid), []);
 
   /**
    * Open a filter-chip dropdown. The menu mounts one task later on purpose: it
@@ -538,7 +568,7 @@ export default function GitPage() {
             <span className="gp-th-author">{t("gitPage.author")}</span>
             <span className="gp-th-date">{t("gitPage.date")}</span>
           </div>
-          <div className="gp-graph">
+          <div className="gp-graph" ref={graphScrollRef} onScroll={syncGraphView}>
             {loading && !graph ? (
               <div className="gp-empty">{t("gitPage.loading")}</div>
             ) : error ? (
@@ -549,35 +579,19 @@ export default function GitPage() {
               </div>
             ) : (
               <>
-                {commits.map((commit, index) => {
-                  const row = rows[index];
-                  if (!row) return null;
-                  return (
-                    <button
-                      type="button"
-                      key={commit.oid}
-                      className={"gp-row" + (selected === commit.oid ? " on" : "")}
-                      onClick={() => setSelected(commit.oid)}
-                      data-oid={commit.oid}
-                    >
-                      <LaneStrip row={row} width={laneWidth} />
-                      <span className="gp-subject">
-                        {commit.refs.map((ref) => (
-                          <span key={ref} className={"gp-ref" + (ref === currentBranch ? " current" : "")}>
-                            {ref}
-                          </span>
-                        ))}
-                        <span className="gp-subject-text" title={commit.subject}>
-                          {commit.subject}
-                        </span>
-                      </span>
-                      <span className="gp-author">{commit.author}</span>
-                      <span className="gp-date" title={fullDate(commit.authorTime)}>
-                        {shortDate(commit.authorTime)}
-                      </span>
-                    </button>
-                  );
-                })}
+                {winStart > 0 && <div aria-hidden style={{ height: winStart * ROW_H }} />}
+                {commits.slice(winStart, winEnd).map((commit, index) => (
+                  <CommitRow
+                    key={commit.oid}
+                    commit={commit}
+                    row={rows[winStart + index]}
+                    laneWidth={laneWidth}
+                    selected={selected === commit.oid}
+                    currentBranch={currentBranch}
+                    onSelect={selectCommit}
+                  />
+                ))}
+                {winEnd < commits.length && <div aria-hidden style={{ height: (commits.length - winEnd) * ROW_H }} />}
                 {graph?.hasMore && (
                   <button
                     type="button"

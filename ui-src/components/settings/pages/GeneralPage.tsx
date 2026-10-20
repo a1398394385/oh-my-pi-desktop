@@ -408,7 +408,7 @@ export default function GeneralPage() {
   };
   // Language switch: persist to uiPrefs, switch i18next, notify the host.
   // <App key={lang}> in main.tsx re-mounts the tree, so the new locale applies
-  // immediately without a restart. zh-TW stays a disabled placeholder.
+  // immediately without a restart.
   const pickLang = (v: string) => {
     if (v !== "zh-CN" && v !== "en") return;
     if (v === useAppStore.getState().uiPrefs.lang) return;
@@ -473,7 +473,6 @@ export default function GeneralPage() {
             dataSel={LANG_NATIVE[lang]}
             options={[
               { v: "zh-CN", label: "简体中文", ck: lang === "zh-CN" ? "✓" : "" },
-              { v: "zh-TW", label: "繁體中文", disabled: true, note: t("settingsPage.general.zhTwPending") },
               { v: "en", label: "English", ck: lang === "en" ? "✓" : "" },
             ]}
             onPick={pickLang}

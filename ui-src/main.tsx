@@ -85,9 +85,10 @@ function dispatchMenuAction(action: unknown): void {
 // static + React boot veil covers the wait).
 showWelcomeScreen(null);
 
-// Init i18n before the first render; uiPrefs.lang is resolved at store
-// creation (stored preference first, otherwise system detection persisted back).
-initI18n(useAppStore.getState().uiPrefs.lang);
+// Init i18n before the first render and await it: language packs are lazy
+// chunks now, so rendering earlier would paint raw keys for a frame. The
+// static boot splash (#bootSplash in index.html) covers this window.
+await initI18n(useAppStore.getState().uiPrefs.lang);
 
 // Align the native menu locale with the persisted UI language (the Rust shell
 // boots with a zh-CN default menu). No-op in browser preview: __TAURI__ absent.

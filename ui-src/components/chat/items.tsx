@@ -28,7 +28,9 @@ import { t } from "../../i18n";
 function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): ReactElement | null {
   if (item.role === "user") {
     railEntries.push({ key, role: "user", text: item.text });
-    return <UserMsg item={item} fk={key} key={key} />;
+    // pending rides along as a captured scalar: applySteerConsumed mutates it in place,
+    // so memo cannot rely on the item reference alone (same pattern as the tool row below)
+    return <UserMsg item={item} fk={key} key={key} pending={item.pending} />;
   }
   if (item.role === "assistant") {
     if (isJunkPlaceholder(item.text)) return null; // junk placeholder messages render nothing and stay off the rail
@@ -43,7 +45,23 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   }
   if (item.role === "tool") {
     railEntries.push({ key, role: "tool", text: railToolText(item) });
-    return <ToolRow item={item} key={key} />;
+    // The extra scalars are mutation snapshots (T2): tool_update mutates the item in
+    // place (same object reference), so memo compares these captured values instead —
+    // only rows whose own data changed re-render on a delta flush
+    return (
+      <ToolRow
+        item={item}
+        key={key}
+        output={item.output}
+        running={!!item.running}
+        files={item.files}
+        added={item.added}
+        removed={item.removed}
+        todo={item.todo}
+        details={item.details}
+        diffContent={item.diffContent}
+      />
+    );
   }
   if (item.role === "loop") {
     railEntries.push({ key, role: "meta", text: loopSummaryText(item) });
@@ -78,6 +96,28 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   }
   railEntries.push({ key, role: "err", text: item.text });
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;
+}
+
+// Mutation signature of a folded read-only run (T2): the run's tool rows mutate in place
+// (tool_update assigns files/output/running/...), and ReadonlyGroup receives a freshly
+// built subs array every traversal, so its memo compares this captured string plus the
+// sub-item identities instead of the array reference.
+function readonlySig(subs: ChatItem[]): string {
+  let sig = "";
+  for (const it of subs) {
+    const t = it as ChatItem & {
+      files?: string[];
+      added?: number;
+      removed?: number;
+      output?: string;
+      running?: boolean;
+      todo?: unknown;
+      details?: unknown;
+      diffContent?: string;
+    };
+    sig += `${t.files?.length ?? 0},${t.added ?? 0},${t.removed ?? 0},${t.output?.length ?? 0},${t.running ? 1 : 0},${t.todo ? 1 : 0},${t.details ? 1 : 0},${t.diffContent ? 1 : 0};`;
+  }
+  return sig;
 }
 
 // The tail assistant of this turn's output:
@@ -172,7 +212,7 @@ export function renderItems(
         const g = scanReadonlyRun(items, i);
         if (g) {
           railEntries.push({ key, role: "tool", text: roSummaryText(g.run) });
-          out.push(<ReadonlyGroup subs={g.run} pfx={key + "-"} key={key} />);
+          out.push(<ReadonlyGroup subs={g.run} pfx={key + "-"} sig={readonlySig(g.run)} key={key} />);
           i = g.next - 1;
           continue;
         }
@@ -226,7 +266,7 @@ export function renderItems(
       const node = appendItem(item, key, railEntries);
       if (node) out.push(node);
       if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
-        out.push(<TurnActs item={item} key={key + "-acts"} />);
+        out.push(<TurnActs item={item} entryId={item.entryId} endMs={item.endMs} key={key + "-acts"} />);
       }
     }
     for (const st of pendingSteers) {
@@ -300,7 +340,7 @@ export function renderItems(
       const g = scanReadonlyRun(items, i);
       if (g) {
         railEntries.push({ key, role: "tool", text: roSummaryText(g.run) });
-        node = <ReadonlyGroup subs={g.run} pfx={key + "-"} key={key} />;
+        node = <ReadonlyGroup subs={g.run} pfx={key + "-"} sig={readonlySig(g.run)} key={key} />;
         i = g.next - 1;
       }
     }
@@ -361,7 +401,7 @@ export function renderItems(
     }
 
     if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
-      const actsNode = <TurnActs item={item} key={key + "-acts"} />;
+        const actsNode = <TurnActs item={item} entryId={item.entryId} endMs={item.endMs} key={key + "-acts"} />;
       if (currentTurn) {
         currentTurn.actsNode = actsNode;
       } else {

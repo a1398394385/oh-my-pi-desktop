@@ -10,7 +10,8 @@
 import { createElement, isValidElement, useMemo, useState, useEffect, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
-import { createMermaidPlugin, type DiagramPlugin } from "@streamdown/mermaid";
+import type * as mermaidNs from "@streamdown/mermaid";
+import type { DiagramPlugin } from "@streamdown/mermaid";
 import type { Viz } from "@viz-js/viz";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -117,9 +118,10 @@ function SvgDiagram({ source }: { source: string }) {
 let mermaidSeq = 0;
 
 function renderMermaid(source: string): Promise<string> {
+  // mermaid (450KB+ with deps) loads on the first ```mermaid block, mirroring
+  // the viz-js lazy pattern below.
   return mermaidForScheme()
-    .getMermaid()
-    .render(`mmd-${++mermaidSeq}`, source)
+    .then((plugin) => plugin.getMermaid().render(`mmd-${++mermaidSeq}`, source))
     .then((r) => r.svg);
 }
 
@@ -281,17 +283,29 @@ export const MD_LINK_SAFETY_OFF = { enabled: false };
 // later theme switch re-colors only newly rendered diagrams (shiki re-themes via CSS
 // variables, mermaid inlines colors — the known limitation).
 const mermaidPlugins: { light?: DiagramPlugin; dark?: DiagramPlugin } = {};
-function mermaidForScheme(): DiagramPlugin {
+let mermaidModule: Promise<typeof mermaidNs> | undefined;
+function mermaidForScheme(): Promise<DiagramPlugin> {
   const theme = document.documentElement.dataset.theme || "dark";
   const light = getThemeById(theme)?.shikiTheme === "light-plus";
   const slot = light ? "light" : "dark";
-  mermaidPlugins[slot] ??= createMermaidPlugin({
-    config: { startOnLoad: false, securityLevel: "strict", theme: light ? "default" : "dark" },
+  mermaidModule ??= import("@streamdown/mermaid");
+  return mermaidModule.then((m) => {
+    mermaidPlugins[slot] ??= m.createMermaidPlugin({
+      config: { startOnLoad: false, securityLevel: "strict", theme: light ? "default" : "dark" },
+    });
+    return mermaidPlugins[slot]!;
   });
-  return mermaidPlugins[slot]!;
 }
 
 type MdSurfaceProps = { text: string } & Omit<JSX.IntrinsicElements["div"], "children">;
+
+// Reference-stable plugin bundles per code-plugin key: streamdown compares the
+// plugins object by reference on streaming frames, so an inline literal (or a
+// fresh useMemo object) would reset its internal context every render.
+const SURFACE_PLUGINS: Record<CodePluginKey, { code: (typeof CODE_PLUGINS)[CodePluginKey]; cjk: typeof cjk }> = {
+  default: { code: CODE_PLUGINS.default, cjk },
+  nord: { code: CODE_PLUGINS.nord, cjk },
+};
 
 // The single markdown entry: wrapper div carries the surface's classes (md-body + md-surface
 // and any domain class); remaining props (style/data-*) pass through to the wrapper.
@@ -299,13 +313,13 @@ type MdSurfaceProps = { text: string } & Omit<JSX.IntrinsicElements["div"], "chi
 // the theme's color intensity.
 export default function MdSurface({ text, ...rest }: MdSurfaceProps) {
   const pluginKey = useActiveCodePlugin();
-  const codePlugin = CODE_PLUGINS[pluginKey];
+  const safeText = useMemo(() => fixStrongAutolink(text), [text]);
 
   return (
     <div {...rest}>
       <Streamdown
         key={pluginKey}
-        plugins={{ code: codePlugin, cjk }}
+        plugins={SURFACE_PLUGINS[pluginKey]}
         components={mdComponents}
         lineNumbers={false}
         codeBlockMaxHeight={400}
@@ -313,7 +327,7 @@ export default function MdSurface({ text, ...rest }: MdSurfaceProps) {
         controls={mdControls}
         linkSafety={MD_LINK_SAFETY_OFF}
       >
-        {fixStrongAutolink(text)}
+        {safeText}
       </Streamdown>
     </div>
   );

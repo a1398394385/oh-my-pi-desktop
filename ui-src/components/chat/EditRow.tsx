@@ -4,6 +4,7 @@
 // ui/tool-labels.js. Clicking a row expands/collapses the inline diff (ed-brief); the body
 // prefers this call's own diff (ownDiffOf, arrives with tool_update) and only falls back to
 // the git diff fetched from the host on demand (response re-renders via briefDiffCache).
+import { memo } from "react";
 import type { ToolItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { bumpGroupExpand, useGroupExpandVersion, rdExpand, chgExpand } from "../../store/groupExpand";
@@ -35,7 +36,8 @@ function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => 
 }
 
 // Edit row: pencil + "Edit/Write" label + file chip (clickable to open the right-panel diff) + line-count changes + expand arrow
-export default function EditRow({ item }: { item: ToolItem }) {
+// Scalar props are captured mutation snapshots (T2; see ToolRow) — the body reads item.*
+export default memo(function EditRow({ item }: { item: ToolItem; files?: string[]; added?: number; removed?: number; running?: boolean; diffContent?: string }) {
   const path = filesOf(item)[0] || "";
   const [closing, close, liftRef] = useLift();
   const open = item.diffExpanded && !closing;
@@ -63,7 +65,7 @@ export default function EditRow({ item }: { item: ToolItem }) {
       {item.diffExpanded && path && <EditBrief item={item} path={path} liftRef={liftRef} />}
     </>
   );
-}
+});
 
 // In-group row UI of the change group: the full edit label (label text + file + line counts + expand arrow), minus the leading pencil icon
 function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {

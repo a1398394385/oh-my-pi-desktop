@@ -367,8 +367,9 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
               the prompt-side splits — inlined `## mcp__x` docs (block 0) and the
               `xd://mcp__x` device catalog (blocks 1+) — which are subtracted from the
               system-prompt / other rows they were counted in; Repo rules = the
-              <repo-rules> region (AGENTS.md / CLAUDE.md) and Memory = the memory guidance
-              block, both split out of the system-context block by the host; Other = the
+              <repo-rules> region (AGENTS.md / CLAUDE.md) and Memory = the tagged
+              <memories>/<mental_models> blocks plus the read-path guidance block,
+              both split out of the system-context block by the host; Other = the
               remaining system context injection (workstation, <critical>, MCP
               instructions, …) */}
           {(() => {

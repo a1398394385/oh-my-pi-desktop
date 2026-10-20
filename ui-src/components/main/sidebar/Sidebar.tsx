@@ -133,7 +133,18 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const removedProjects = useAppStore((s) => s.removedProjects);
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const projectLimits = useAppStore((s) => s.projectLimits);
-  const openSessions = useAppStore((s) => s.openSessions);
+  // Running-session key (T5): a stable string of the running session paths, so the
+  // shortcut useMemo below recomputes only when a session's running state flips — the
+  // former whole-Map subscription re-ran the filter chain on every session write.
+  // computeSidebarSessionShortcuts still reads the live Map during render (same pattern
+  // as getAvailableProjects above).
+  const runningKey = useAppStore((s) => {
+    let key = "";
+    for (const [p, o] of s.openSessions) {
+      if (o.streaming || o.items?.some((x) => x.role === "bash" && x.running)) key += p + ",";
+    }
+    return key;
+  });
   const poolSessions = useAppStore((s) => s.poolSessions);
   const unseenFinished = useAppStore((s) => s.unseenFinished);
   const archivedSessions = useAppStore((s) => s.archivedSessions);
@@ -397,7 +408,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     .reverse()
     .map((s) => ({ id: s.id, path: s.path, cwd: s.cwd, title: s.title }));
 
-  // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list)
+  // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list).
+  // openSessions is read live from the store (its reference changes on every session write);
+  // the dep that matters is runningKey — see the subscription comment above (T5).
   const shortcuts = useMemo(() => {
     return computeSidebarSessionShortcuts({
       viewMode: effView,
@@ -406,12 +419,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       expandedProjects,
       projectLimits,
       isProjectManageMode,
-      openSessions,
+      openSessions: useAppStore.getState().openSessions,
       unseenFinished,
       availableProjects: visible,
       archivedSessions,
     });
-  }, [effView, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible, archivedSessions]);
+  }, [effView, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, runningKey, unseenFinished, visible, archivedSessions]);
 
   const rowProps: SessionRowCallbacks = {
     onRenameStart: (key, path) => setRenaming({ key, path }),

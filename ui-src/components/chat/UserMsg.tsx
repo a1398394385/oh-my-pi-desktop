@@ -1,6 +1,5 @@
-import { useState } from "react";
-import type { OpenSession } from "../../store";
-import type { UserItem } from "../../types/session";
+import { memo, useState } from "react";
+import type { OpenSession, UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
 import { copyText } from "../main/sidebar/util";
 import Icon from "../../Icon";
@@ -45,7 +44,8 @@ function PendingActs({ item }: { item: UserItem }) {
 // The fork button that used to appear on hover of historical user messages with an entryId
 // has been removed: forking now hangs at the end of a turn's output (see TurnActs.jsx);
 // only the queued/steer action group remains beside the bubble.
-export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
+// pending is a captured mutation snapshot (T2): applySteerConsumed flips it in place
+export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string; pending?: UserItem["pending"] }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const images = item.images ?? [];
   const lightboxList = images.map((img, i) => ({
@@ -114,4 +114,4 @@ export default function UserMsg({ item, fk }: { item: UserItem; fk?: string }) {
       )}
     </div>
   );
-}
+});

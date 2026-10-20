@@ -631,3 +631,8 @@
   .stag { box-shadow: inset 0 0 0 .33px var(--line); }
   .stag.on { box-shadow: inset 0 0 0 .33px var(--dim); }
 }
+
+/* Remote device-history list (RemotePage): right-aligned stack, one line per visitor */
+.remote-devices { flex-direction: column; align-items: flex-end; gap: 4px; max-width: 55%; }
+.remote-device { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.remote-device > span:first-child { font-size: var(--ui-fs-base); }

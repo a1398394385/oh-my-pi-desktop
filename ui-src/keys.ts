@@ -273,7 +273,9 @@ function cycleThinking(): void {
   if (levels.length === 0) return;
   pickThinkingLevel(levels[(levels.indexOf(s?.thinking || st.newSessionThinking) + 1) % levels.length]);
   if (!st.settingsOpen) {
-    setBump({ thinkMenuAuto: true, menuSignal: { name: "think", seq: (st.menuSignal?.seq ?? 0) + 1 } });
+    // The merged model menu pops briefly as the cycle preview (auto-collapses
+    // on 0.8s pause / Shift release, same contract as the old think menu)
+    setBump({ thinkMenuAuto: true, menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
   }
   clearTimeout(thinkMenuT);
   thinkMenuT = setTimeout(closeThinkMenu, 800);

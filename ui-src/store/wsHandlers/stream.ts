@@ -9,10 +9,11 @@ import {
   applySteerConsumed,
   bgJobsKey,
   findBySessionId,
-  notifyDesktop,
   rebuildMessages,
   updateSession,
 } from "../session";
+import { notifyDesktop } from "../notify";
+import type { SessionItem } from "../../types/session";
 import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
 import { emitBrowserFrame } from "../browserMirror";
@@ -22,6 +23,15 @@ import type { HandlerSlice } from "./types";
 // Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
 function uniqueFiles(files: string[] | null | undefined): string[] {
   return [...new Set(files ?? [])];
+}
+
+// Last in-flight local-bash row (reverse scan, zero allocation — bash_chunk runs per chunk)
+function lastRunningBash(items: SessionItem[]): Extract<SessionItem, { role: "bash" }> | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.role === "bash" && it.running) return it;
+  }
+  return undefined;
 }
 
 // Mirror a running subagent's stream state onto its opened transcript view (the
@@ -122,19 +132,16 @@ export const streamHandlers = {
   },
   bash_chunk(msg) {
     const s = findBySessionId(msg.sessionId);
-    if (!s) return;
-    const it = [...s.items].reverse().find((x): x is Extract<(typeof s.items)[number], { role: "bash" }> => x.role === "bash" && !!x.running);
-    if (it) {
-      // Coalesced streaming output rendering (same 100ms throttle as text_delta: mutate in place, swap the reference at window flush)
-      applyDelta(msg.sessionId, (next) => {
-        const target = [...next.items].reverse().find((x): x is Extract<(typeof next.items)[number], { role: "bash" }> => x.role === "bash" && !!x.running);
-        if (target) target.output = (target.output || "") + msg.chunk;
-      });
-    }
+    if (!s || !lastRunningBash(s.items)) return;
+    // Coalesced streaming output rendering (same 100ms throttle as text_delta: mutate in place, swap the reference at window flush)
+    applyDelta(msg.sessionId, (next) => {
+      const target = lastRunningBash(next.items);
+      if (target) target.output = (target.output || "") + msg.chunk;
+    });
   },
   bash_done(msg) {
     updateSession(msg.sessionId, (s) => {
-      const it = [...s.items].reverse().find((x): x is Extract<(typeof s.items)[number], { role: "bash" }> => x.role === "bash" && !!x.running);
+      const it = lastRunningBash(s.items);
       // bash_abort first receives a done frame with cancelled:true, possibly duplicated by the
       // official done — last one wins; when no running item is found the second time, ignore silently
       if (!it) return;
@@ -309,9 +316,24 @@ export const streamHandlers = {
         if (msg.kind === "turn_start") sub.streaming = true;
         else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, files: msg.files, toolCallId: msg.toolCallId, running: true, at: Date.now() });
         else if (msg.kind === "tool_update") {
-          const last =
-            [...sub.tools].reverse().find((t) => t.toolCallId && t.toolCallId === msg.toolCallId) ||
-            [...sub.tools].reverse().find((t) => t.name === msg.name);
+          // Reverse scans (zero allocation): toolCallId match first, name fallback
+          let last: (typeof sub.tools)[number] | undefined;
+          for (let k = sub.tools.length - 1; k >= 0; k--) {
+            const t = sub.tools[k];
+            if (t.toolCallId && t.toolCallId === msg.toolCallId) {
+              last = t;
+              break;
+            }
+          }
+          if (!last) {
+            for (let k = sub.tools.length - 1; k >= 0; k--) {
+              const t = sub.tools[k];
+              if (t.name === msg.name) {
+                last = t;
+                break;
+              }
+            }
+          }
           if (last)
             Object.assign(last, {
               files: uniqueFiles(msg.files ?? last.files),

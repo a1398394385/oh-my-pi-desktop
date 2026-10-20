@@ -2,8 +2,11 @@
 // (msgRail) + "working Ns" row (WorkSec) + in-session find (⌘F). The streaming status row
 // (spinner + dynamic text) lives in ChatLoading.
 // Migrated from renderChat in ui/chat.js + the scroll handling of markdown.js:
-// - Scroll following (stickBottom semantics, CDS useClaudeScrollPinning): switching sessions
-//   jumps to the latest content; when pinned (within 40px of the bottom), any re-render
+// - Scroll restore per session: switching back to a session restores the position saved
+//   by its last scroll (positions at the bottom restore to the latest content, so resumed
+//   at-bottom viewers keep following); a session first loaded into the pool this client
+//   runtime opens at the latest content. Records are keyed per client channel
+//   (desktop vs remote). When pinned (within 40px of the bottom), any re-render
 //   (streaming append / expand body) stays pinned. Bottom proximity is judged in the layout
 //   effect from the CURRENT scrollTop (readback is synchronous, so it sees compositor wheel
 //   scrolls whose scroll event has not been delivered yet), minus the scrollHeight growth
@@ -16,9 +19,10 @@
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events; shown only when the latest content
 //   sits more than 120px below the viewport (high-frequency scrolling stays out of React state).
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, isJunkPlaceholder, send } from "../../../store";
+import { REMOTE } from "../../../store/layout";
 import Icon from "../../../Icon";
 import TodoCard from "../../chat/TodoCard";
 import { WorkSec } from "../../chat/WorkLine";
@@ -78,6 +82,14 @@ const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg
 // Both selectors ARE part of the .wheel-through CSS transparency list (superset).
 const SCROLL_OWNER_SELECTOR = `${INLINE_CARD_SELECTOR}, .md-code-block-frame [data-streamdown="code-block-body"], .sticky-user-wrap .user-msg-text`;
 
+// Per-session scroll restore (survives across sessions because the stream node is reused,
+// not remounted): positions saved from scroll events, keyed "<channel>:<activePath>".
+// seenPaths tracks sessions whose items rendered at least once this client runtime — an
+// unseen session is a fresh pool load and opens at the latest content.
+const savedScrollPos = new Map<string, { top: number; max: number }>();
+const seenPaths = new Set<string>();
+const scrollKey = (path: string) => `${REMOTE ? "r" : "d"}:${path}`;
+
 // "Show the latest" scroll target. The plain scrollHeight target overshoots the newest
 // turn by the sticky spacer's height whenever that turn fits the viewport (fresh send /
 // short turn), which pins the sticky user bubble 36px above its flow position and drags
@@ -112,9 +124,15 @@ function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) 
 
 export default function MessagePage() {
   const { t } = useTranslation();
-  // Current session subscription: all session writes go through updateSession swapping the
-  // reference (items/draft/streaming changes re-render)
-  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  // Field-level subscriptions (Batch 1): the whole-session selector re-rendered this page on
+  // every updateSession of the active session; scalars re-render only when a read field flips.
+  // T7: after LRU eviction the getters return undefined/false — same fallbacks as before.
+  const hasSession = useAppStore((st) => (st.activePath ? st.openSessions.has(st.activePath) : false));
+  const items = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.items : undefined));
+  const draft = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.assistantDraft : ""));
+  const streaming = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.streaming : false));
+  const externalWrite = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.externalWrite ?? false : false));
+  const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
   const activePath = useAppStore((st) => st.activePath);
   const streamRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -144,6 +162,10 @@ export default function MessagePage() {
     else lastUserScrollAt.current = performance.now();
     lastScrollHeight.current = el.scrollHeight;
     updateScrollBottomVis(el, btnRef.current);
+    // Record the position for the session currently on screen (getState, not the render
+    // closure: the event can outlive the switch that re-rendered this handler)
+    const path = useAppStore.getState().activePath;
+    if (path) savedScrollPos.set(scrollKey(path), { top: el.scrollTop, max: el.scrollHeight - el.clientHeight });
 
     // Light up the right scrollbar while scrolling, fade out smoothly after it stops
     el.classList.add("scrolling");
@@ -153,19 +175,23 @@ export default function MessagePage() {
     }, 800);
   };
 
-  // Force bottom on session switch + top on new outgoing message + follow during streaming
-  // while pinned (useLayoutEffect finishes before paint, no flash of the old position)
+  // Session switch restores the saved position (first load of a pool session has no
+  // record and opens at the latest content) + top on new outgoing message + follow during
+  // streaming while pinned (useLayoutEffect finishes before paint, no flash of the old position)
   useLayoutEffect(() => {
     const el = streamRef.current;
-    if (!el || !s) return;
+    if (!el || !items || !activePath) return;
     const switched = prevPath.current !== activePath;
     prevPath.current = activePath;
-    const currentLen = s.items.length;
-    const isNewUserMsg = currentLen > prevItemsLen.current && s.items[currentLen - 1]?.role === "user";
+    const currentLen = items.length;
+    const isNewUserMsg = currentLen > prevItemsLen.current && items[currentLen - 1]?.role === "user";
     prevItemsLen.current = currentLen;
 
-    // On session switch the stream node is reused, and the old session's scrollTop is
-    // meaningless for the new one;
+    // On session switch restore the position recorded by that session's last scroll:
+    // a record taken within PIN_TOLERANCE of the bottom counts as "was following" and
+    // re-targets the latest content (which may have grown), everything else restores the
+    // saved offset (clamp if the content shrank below it); a session whose items never
+    // rendered this runtime is a fresh pool load and opens at the latest content;
     // on a new outgoing message jump to the newest-content position (the last turn's
     // min-height:100% puts the new message right at the top; a turn that fits the viewport
     // top-aligns, so its flow content stays clear of the sticky bubble's fade mask);
@@ -184,7 +210,16 @@ export default function MessagePage() {
     // mid-flick, streaming appends must not steal the gesture. Session switches and fresh
     // outgoing messages are deliberate user navigation and bypass the latch.
     const latchActive = performance.now() - lastUserScrollAt.current < FOLLOW_LATCH_MS;
-    if (switched || isNewUserMsg || (pinned && !latchActive)) {
+    if (switched) {
+      const saved = seenPaths.has(activePath) ? savedScrollPos.get(scrollKey(activePath)) : undefined;
+      if (saved && saved.max - saved.top > PIN_TOLERANCE) {
+        programmaticScroll.current = true;
+        el.scrollTop = saved.top;
+      } else {
+        scrollToLatest(el);
+      }
+      seenPaths.add(activePath);
+    } else if (isNewUserMsg || (pinned && !latchActive)) {
       scrollToLatest(el);
     }
     // Session switch slide: the stream node is reused across sessions (no remount), so the
@@ -200,7 +235,7 @@ export default function MessagePage() {
       });
     }
     updateScrollBottomVis(el, btnRef.current);
-  }, [s?.items, s?.assistantDraft]);
+  }, [items, draft]);
 
   // Rail visibility init: .dock mounts in the same frame as the chat area, #main's size does
   // not change from inner mounting, so the ResizeObserver does not fire; the dock may not
@@ -392,7 +427,33 @@ export default function MessagePage() {
     </button>
   );
 
-  if (!s) {
+  const streamTail =
+    streaming || draft ? (
+      <>
+        <WorkSec />
+        {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
+            the engine memoizes per block, so appending to the growing draft only re-parses
+            the last incomplete block — NOT the full-text-per-frame re-parse that froze the
+            app in BUG-007 round 3 (that was the old custom pipeline, pre-streamdown). */}
+        {draft && !isJunkPlaceholder(draft) && (
+          <AssistantMsg text={draft} streaming />
+        )}
+        {streaming && <ChatLoading />}
+      </>
+    ) : null;
+  // Message rail data + row elements in one memo (Batch 2): renderItems fills the rail
+  // entries as a side effect of the traversal, so both come from the same pass; the memo
+  // keys on items/draft/streamTail (streamTail covers the streaming flip) and the row
+  // components further below compare scalar props, so a 100ms delta flush re-renders only
+  // the rows whose own data changed. Runs before the no-session early return (hooks must
+  // stay unconditional); with no session items is undefined and the pass is trivially empty.
+  const { nodes, railEntries } = useMemo(() => {
+    const entries: RailEntry[] = [];
+    const out = renderItems(items ?? [], "", entries, streamTail);
+    return { nodes: out, railEntries: entries };
+  }, [items, draft, streamTail]);
+
+  if (!hasSession) {
     return (
       <>
         <div id="statusWrap" />
@@ -403,31 +464,12 @@ export default function MessagePage() {
       </>
     );
   }
-
-  // Message rail data: collected during render along the items traversal (key shares the
-  // same source as the data-fk anchors)
-  const railEntries: RailEntry[] = [];
-  const streamTail =
-    s.streaming || s.assistantDraft ? (
-      <>
-        {(s.streaming || s.assistantDraft) && <WorkSec />}
-        {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
-            the engine memoizes per block, so appending to the growing draft only re-parses
-            the last incomplete block — NOT the full-text-per-frame re-parse that froze the
-            app in BUG-007 round 3 (that was the old custom pipeline, pre-streamdown). */}
-        {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
-          <AssistantMsg text={s.assistantDraft} streaming />
-        )}
-        {s.streaming && <ChatLoading />}
-      </>
-    ) : null;
-  const nodes = renderItems(s.items, "", railEntries, streamTail);
   return (
     <>
       <TodoCard />
       {/* External-process write notice bar: set by the host's session_external_write frame;
           cleared when a reload rebuilds from disk */}
-      {s.externalWrite && (
+      {externalWrite && (
         <div className="extw-bar">
           <Icon name="info" />
           <span className="extw-tx">{t("chat.externalWriteNotice")}</span>
@@ -437,8 +479,8 @@ export default function MessagePage() {
           <button
             type="button"
             className="save-btn"
-            disabled={!!s.streaming}
-            title={s.streaming ? t("chat.reloadRunning") : undefined}
+            disabled={streaming}
+            title={streaming ? t("chat.reloadRunning") : undefined}
             onClick={() => send({ type: "reload_session", path: activePath })}
           >
             {t("chat.reload")}
@@ -450,7 +492,7 @@ export default function MessagePage() {
         {nodes.length === 0 && streamTail}
         {scrollBottomBtn}
       </div>
-      <MsgRail entries={railEntries} sessionId={s.sessionId} streamRef={streamRef} />
+      <MsgRail entries={railEntries} sessionId={sessionId ?? ""} streamRef={streamRef} />
       <FindBar streamRef={streamRef} />
     </>
   );

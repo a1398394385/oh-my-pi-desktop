@@ -549,7 +549,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .cbar > .sp { min-width: 0; }
 
-#modeBtn, #modelBtn, #thinkBtn { font-weight: 500; }
+#modeBtn, #modelBtn { font-weight: 500; }
 
 /* model names vary in length; the model button flexes with its content, exempt from the shared 180px cap */
 #modelBtn { max-width: none; }
@@ -557,12 +557,10 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* model provider icon (same glyph as the settings page): shown only when the model button shrinks to icon-only */
 #modelIcon { display: none; }
 
-/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> icon-only -> thinking level -> icon-only -> model -> icon-only -> hide subagents -> hide background tasks -> three pills icon-only + tight padding -> hide plan pill, mic and screen buttons */
+/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> (bar-2 reserved: no rule since the thinking pill merged into the model pill) -> model -> icon-only -> hide subagents -> hide background tasks -> pills icon-only + tight padding -> hide plan pill, mic and screen buttons */
 /* Scope is .cbar on purpose: narrow moves the three pills into the pill bar below the input,
    where they must keep their full labels -- an unscoped rule would collapse them there too. */
 #composer.bar-1 .cbar #modeLabel, #composer.bar-1 .cbar #modeBtn .caret-svg { display: none; }
-
-#composer.bar-2 .cbar #thinkLabel, #composer.bar-2 .cbar #thinkBtn .caret-svg { display: none; }
 
 #composer.bar-3 .cbar #modelLabel, #composer.bar-3 .cbar #modelBtn .caret-svg { display: none; }
 
@@ -574,7 +572,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 /* bar-6: the three selector pills are all icon-only now (bar-1/2/3 already hid
    the labels); shed the text-side padding so each pill collapses to icon width */
-#composer.bar-6 .cbar #modeBtn, #composer.bar-6 .cbar #thinkBtn, #composer.bar-6 .cbar #modelBtn { padding: 5px; }
+#composer.bar-6 .cbar #modeBtn, #composer.bar-6 .cbar #modelBtn { padding: 5px; }
 
 /* bar-7: hide the plan pill + its separator and the mic/screen icon buttons;
    the floor row is +, icon-only pills, ctxRing, send */
@@ -679,12 +677,18 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* send button: neutral base by default (no content); .ready blue highlight with a draft; stop states (.stop / .stopping) keep a persistent red highlight */
 .send {
   width: 30px; height: 30px; border-radius: 50%;
-  border: 0; background: var(--send-idle); color: var(--white);
+  border: 0; background: var(--send-idle); color: var(--send-idle-fg, var(--white));
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   padding: 0; line-height: 0;
   flex: none;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), filter var(--dur-snap) var(--swift), opacity var(--dur-snap) var(--swift);
 }
+
+/* Idle button: the fixed near-black base reads as a black hole on light
+   surfaces; there use a dark veil (consistent gray across light themes,
+   translucent --line values included) with a dark icon. Midnight re-skins
+   --send-idle in ui/themes/midnight.css */
+:is([data-theme="light"], [data-theme-mode="light"]) .send { --send-idle: var(--tint-black-120); --send-idle-fg: var(--black); }
 
 .send > span {
   width: 16px; height: 16px;

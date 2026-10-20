@@ -41,7 +41,8 @@ export const composerEn = {
   noModels: "No models configured",
   modelRoleCategory: "Model Role",
   onlyOneRoleModel: "Only one role model available",
-  // ThinkMenu.tsx
+  manageModels: "Manage models",
+  visionTag: "Vision",
   reasoning: "Reasoning level",
   // Settings page renders raw ids for en (OPTS_EN has no entry) — mirror that
   thinkingLevels: { auto: "auto", minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max", off: "off" },

@@ -1,6 +1,7 @@
 // Tool rows: tool name → label kind mapping and per-label row rendering. Migrated from
 // ui/tool-labels.js (renderToolItem/toolKind + the render functions). Adding or removing a
 // tool label only touches this file.
+import { memo } from "react";
 import type { ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
 export { cmdExpand, devExpand };
@@ -720,7 +721,21 @@ function toolKind(item: ToolItem) {
   return "generic";
 }
 
-export default function ToolRow({ item }: { item: ToolItem }) {
+// Scalar props are captured mutation snapshots (T2): tool_update mutates the item in place
+// (same reference), so memo compares these parent-captured values; the body reads item.*
+type ToolRowProps = {
+  item: ToolItem;
+  output?: string;
+  running?: boolean;
+  files?: string[];
+  added?: number;
+  removed?: number;
+  todo?: unknown;
+  details?: unknown;
+  diffContent?: string;
+};
+
+export default memo(function ToolRow({ item }: ToolRowProps) {
   switch (toolKind(item)) {
     case "think":
       // The thinking role is already routed to ThinkingRow in items.tsx; this is the fallback
@@ -779,8 +794,8 @@ export default function ToolRow({ item }: { item: ToolItem }) {
     case "change":
       return renderChange(item);
     case "edit":
-      return <EditRow item={item} />;
+      return <EditRow item={item} files={item.files} added={item.added} removed={item.removed} running={!!item.running} diffContent={item.diffContent} />;
     default:
       return renderGenericTool(item);
   }
-}
+});

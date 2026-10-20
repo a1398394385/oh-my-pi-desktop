@@ -286,24 +286,28 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       return;
     }
     rail.hidden = false;
-    rail.style.top = streamEl.offsetTop + "px";
-    rail.style.height = streamEl.clientHeight + "px";
+    // Read phase first (6d): every geometry read happens before the first style/DOM write
+    // below, so streaming redraws force at most one layout instead of read/write interleave
+    const zs = effZoom(); // rect diffs below are visual; scrollTop/scrollTo are layout px
+    const railH = streamEl.clientHeight;
+    const railTop = streamEl.offsetTop;
+    const streamTop = streamEl.getBoundingClientRect().top;
+    rail.style.top = railTop + "px";
+    rail.style.height = railH + "px";
     if (railHovering) return;
     // Rebuild skip: streaming redraws re-run this effect many times a second while the
     // user-message set is unchanged; wiping and recreating the tick nodes each time
     // invalidates the rail's composited layer and makes the lit pin tick blink. Same
     // keys + same scrollport height → same tick geometry: keep the nodes, only refresh
     // the click-to-scroll offsets (they drift as streamed content grows above).
-    const sig = userEntries.map((e) => e.key).join(",") + "|" + streamEl.clientHeight;
+    const sig = userEntries.map((e) => e.key).join(",") + "|" + railH;
     if (sig === railSig && railTicks.length) {
-      const zs = effZoom();
-      const streamTopNow = streamEl.getBoundingClientRect().top;
       railTickMeta.forEach((m) => {
         const anchor = streamEl.querySelector(`[data-fk="${m.entry.key}"]`);
         if (!anchor) return;
         const pinEl = anchor.closest(".sticky-user-wrap") ?? anchor;
         const pr = pinEl.getBoundingClientRect();
-        m.topDoc = (pr.top - streamTopNow) / zs + streamEl.scrollTop;
+        m.topDoc = (pr.top - streamTop) / zs + streamEl.scrollTop;
       });
       return;
     }
@@ -315,9 +319,6 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     railGain = new Float32Array(userEntries.length).fill(1);
     railMusicGain = new Float32Array(userEntries.length);
     railTotal = userEntries.length;
-    const railH = streamEl.clientHeight;
-    const streamTop = streamEl.getBoundingClientRect().top;
-    const z = effZoom(); // rect diffs below are visual; scrollTop/scrollTo are layout px
     const pitchBase = 11.25; // CSS px between adjacent ticks (15 reduced by 1/4)
     const pitch = userEntries.length > 1 ? Math.min(pitchBase, (railH - 6) / (userEntries.length - 1)) : pitchBase;
     const startTop = Math.max(0, (railH - (userEntries.length - 1) * pitch) / 2); // laid out from the centerline outward
@@ -327,39 +328,45 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     railSpan = { top: startTop - pitch / 2, bottom: startTop + (userEntries.length - 1) * pitch + pitch / 2 };
     railPitch = pitch / 2; // half a gap of slop past each end: forgiving without reaching the corners
     const tickH = 1.95; // CSS px line thickness (130% of a 1.5px hairline)
+    // Anchor measurement pass (reads only): anchors not mounted yet (e.g. a steer bubble
+    // rendering late) are skipped — their tick joins on a later rebuild
+    const measured: { en: (typeof userEntries)[number]; i: number; pinEl: Element; topDoc: number }[] = [];
     userEntries.forEach((en, i) => {
       const anchor = streamEl.querySelector(`[data-fk="${en.key}"]`);
-      if (!anchor) return; // anchor not mounted yet (e.g. steer bubble renders late): skip this tick
-      const r = anchor.getBoundingClientRect();
+      if (!anchor) return;
       const pinEl = anchor.closest(".sticky-user-wrap") ?? anchor;
       const pr = pinEl.getBoundingClientRect();
       // message position within the full text; measured on the sticky wrap so a
       // click lands it exactly at the scrollport top (the anchor sits lower inside it)
-      const topDoc = (pr.top - streamTop) / z + streamEl.scrollTop;
+      measured.push({ en, i, pinEl, topDoc: (pr.top - streamTop) / zs + streamEl.scrollTop });
+    });
+    // Write pass: tick nodes + styles; the card payloads live on the module-level list
+    // (index-aligned with railTicks) because the peak tick — not a hovered one — decides
+    // which card shows; the rail-level click handler scrolls the peak's message. pinEl is
+    // the sticky wrap (the element that actually pins at the scrollport top); messages
+    // without one (e.g. bash bubbles) fall back to the anchor.
+    for (const m of measured) {
       const tick = document.createElement("div");
-      tick.className = "rail-tick t-" + en.role;
-      tick.style.top = startTop + i * pitch + "px";
+      tick.className = "rail-tick t-" + m.en.role;
+      tick.style.top = startTop + m.i * pitch + "px";
       tick.style.height = tickH + "px";
       tick.style.borderRadius = tickH + "px"; // capsule ends: radii over half the height get clamped, keeping both ends fully rounded
       tick.style.width = RAIL_W_BASE + "px";
-      railTickCY.push(startTop + i * pitch + tickH / 2); // center relative to rail top; consumed directly on the mousemove hot path
-      // Card payloads live on the module-level list (index-aligned with railTicks) because the
-      // peak tick — not a hovered one — decides which card shows; the rail-level click handler
-      // scrolls the peak's message. pinEl is the sticky wrap (the element that actually pins
-      // at the scrollport top); messages without one (e.g. bash bubbles) fall back to the anchor.
-      railTickMeta.push({ entry: en, idx: i, tick, pinEl: anchor.closest(".sticky-user-wrap") ?? anchor, topDoc });
+      railTickCY.push(startTop + m.i * pitch + tickH / 2); // center relative to rail top; consumed directly on the mousemove hot path
+      railTickMeta.push({ entry: m.en, idx: m.i, tick, pinEl: m.pinEl, topDoc: m.topDoc });
       rail.appendChild(tick);
       railTicks.push(tick);
-    });
+    }
     paintRailPins(streamEl); // initial pin state (restored scroll position arrives without a scroll event)
   });
 
   // Pointer near the rail (including gaps between ticks): lock rebuilds and follow
   // continuously; the peak tick owns the card. Leaving the rail retracts the peaks; a card
   // still on screen gets a 200ms grace period so sliding into it keeps it alive.
-  // Runs synchronously (cost = one exponentiation per tick, far cheaper than a reflow), no rAF
+  // Per move the cost is one rect read + one exponentiation per tick, coalesced to one run
+  // per animation frame (see the wrapper below)
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const handleMove = (e: MouseEvent) => {
       if (!railTicks.length) return;
       const rail = railRef.current;
       const streamEl = streamRef.current;
@@ -397,9 +404,26 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
         railPopIdx = -1; // next peak entry re-arms
       }
     };
+    // rAF coalescing (6d): mousemove fires far faster than frames; the handler reads the
+    // rail rect (a layout read), so running it once per frame with the latest event keeps
+    // the interaction identical (paints are frame-quantized anyway) while bounding the
+    // forced-layout cost to one read per frame
+    let raf = 0;
+    let last: MouseEvent | null = null;
+    const onMove = (e: MouseEvent) => {
+      last = e;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const ev = last;
+        last = null;
+        if (ev) handleMove(ev);
+      });
+    };
     window.addEventListener("mousemove", onMove);
     return () => {
       window.removeEventListener("mousemove", onMove);
+      if (raf) cancelAnimationFrame(raf);
       dismissRailPop();
     };
   }, [streamRef]);

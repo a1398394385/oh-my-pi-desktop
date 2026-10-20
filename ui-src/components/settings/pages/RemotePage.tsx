@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
+import { copyText, fmtAgo } from "../../main/sidebar/util";
 import { Toggle, confirmDialog } from "../common";
 
 export default function RemotePage() {
@@ -20,6 +21,8 @@ export default function RemotePage() {
   const error = cfg?.error ?? undefined;
   const key = cfg?.key ?? hostRemote?.key ?? "";
   const url = cfg?.url ?? hostRemote?.url ?? "";
+  // Device history only rides the settings frame (remote_config replies stay config-only)
+  const devices = hostRemote?.devices ?? [];
   // Phone display preference: only the settings frame carries it (the remote_config reply
   // stays enabled/port/error), so it reads through hostRemote alone. Default off.
   const mobileStatsBar = hostRemote?.mobileStatsBar === true;
@@ -39,7 +42,8 @@ export default function RemotePage() {
 
   const copyLink = () => {
     if (!url) return;
-    void navigator.clipboard.writeText(url).then(() =>
+    // WKWebView rejects clipboard.writeText without user activation; copyText has the execCommand fallback
+    void copyText(url).then(() =>
       useAppStore.getState().toast(t("settingsPage.remote.keyCopied")),
     );
   };
@@ -116,7 +120,29 @@ export default function RemotePage() {
           </div>
         </div>
 
-        {/* 4. Phone stats bar: narrow clients hide the session stats bar under the composer
+        {/* 4. Device history: every visitor that passed the key check, newest first */}
+        <div className="srow set-row">
+          <div className="srow-tx">
+            <b>{t("settingsPage.remote.devicesTitle")}</b>
+            <span>{t("settingsPage.remote.devicesDesc")}</span>
+          </div>
+          <div className="srow-ctl remote-devices">
+            {devices.length === 0 ? (
+              <span className="text-faint">{t("settingsPage.remote.devicesEmpty")}</span>
+            ) : (
+              devices.map((d) => (
+                <div key={`${d.name} ${d.ip}`} className="remote-device">
+                  <span>{d.name}</span>
+                  <span className="text-faint">
+                    {d.ip} · {fmtAgo(new Date(d.lastAt).toISOString())}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* 5. Phone stats bar: narrow clients hide the session stats bar under the composer
             unless this is on (the switch is a client display preference, not server state) */}
         <div className="srow set-row">
           <div className="srow-tx">
@@ -130,7 +156,7 @@ export default function RemotePage() {
           />
         </div>
 
-        {/* 5. Service status: listening / disabled, or the last start-rebind error */}
+        {/* 6. Service status: listening / disabled, or the last start-rebind error */}
         <div className="srow set-row">
           <div className="srow-tx">
             <b>{t("settingsPage.remote.statusTitle")}</b>

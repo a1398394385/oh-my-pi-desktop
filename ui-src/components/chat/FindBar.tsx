@@ -137,7 +137,8 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
   // settingsOpen check)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
+      // Shift yields to the global search palette (⌘⇧F), per keys.ts
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === "f" || e.key === "F")) {
         const st = useAppStore.getState();
         if (!st.activePath || !st.openSessions.get(st.activePath) || st.isCreatingNew || st.settingsOpen) return;
         e.preventDefault();

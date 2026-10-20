@@ -3,7 +3,7 @@
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { REMOTE } from "../ws";
-import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, updateSession } from "../session";
+import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, updateSession } from "../session";
 import { pushInputHistory } from "../../components/composer/lexical/draft";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
@@ -42,7 +42,7 @@ export const sessionHandlers = {
   pool_sessions(msg) {
     // Host pool residency snapshot (attach / release / list refresh): the sidebar's "active tasks"
     // list renders it. Full-replace — the frame is the whole pool, never a delta.
-    useAppStore.setState({ poolSessions: msg.sessions ?? [] });
+    landPoolSessions(msg.sessions);
   },
   session_list(msg) {
     // Split out archived entries: they don't go into diskProjects; stored separately as archivedSessions for the sidebar archive area
@@ -140,6 +140,22 @@ export const sessionHandlers = {
     }
     useAppStore.getState().toast(t("sidebar.unloadedToast"));
   },
+
+  session_finished(msg) {
+    // Host broadcast at terminal run end, aimed at channels that never attached the
+    // session (attached ones already handled their turn_end): light the sidebar's
+    // unread dot locally and refresh the list (title/preview/modified changed). The
+    // dot is per-device by design — each channel's own "haven't seen it" state.
+    const path = String(msg.path ?? "");
+    if (!path) return;
+    const st = useAppStore.getState();
+    const attached = [...st.openSessions.values()].some((s) => s.sessionId === msg.sessionId);
+    if (!attached) st.send({ type: "list_sessions" }); // attached channels refresh from their own turn_end
+    if (path !== st.activePath) {
+      useAppStore.setState((s) => ({ unseenFinished: new Set(s.unseenFinished).add(path) }));
+      useAppStore.getState().saveUnseen();
+    }
+  },
   session_created(msg) {
     // Scheduler-spawned (automation) session: register the slot so its live event frames
     // render without a reload, but stay in the background — no focus steal, the automations
@@ -152,7 +168,7 @@ export const sessionHandlers = {
           items: [],
           pendingApprovals: [],
           assistantDraft: "",
-          streaming: false,
+          streaming: Boolean(msg.busy), // automation runs stream on creation; the spinner shows without waiting for a frame
           turnStartAt: null,
           subagents: new Map(),
           model: msg.model ?? null,
@@ -194,7 +210,10 @@ export const sessionHandlers = {
           items: [],
           pendingApprovals: [],
           assistantDraft: "",
-          streaming: Boolean(live),
+          // Subagent seed (live) or mid-run open of a session another channel is
+          // running (host busy flag): either way the view must spin immediately —
+          // frame-driven lighting alone stays dark through long tool calls
+          streaming: Boolean(live || msg.busy),
           turnStartAt: live?.registeredAt ?? null,
           subagents: new Map(),
           model: msg.model ?? null,

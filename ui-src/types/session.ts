@@ -447,7 +447,6 @@ export interface AppState {
   approvalMode: ApprovalMode;
   loginReqId: number;
   evtHost: string | null; // host process instance id (ready.hi / stamped event .hi); a change means the host restarted
-  evtSeq: number; // highest applied event sequence number under this instance (events behind the position are dropped outright)
   // ---- UI state added in the React port (previously scattered across DOM classes / local variables) ----
   connected: boolean;
   connText: string;

@@ -90,6 +90,10 @@ export default function ExperimentalPage() {
   const enabled = known && !!hostSettings?.acpEnabled;
   const ctxKnown = typeof hostSettings?.sessionContextEnabled === "boolean";
   const ctxEnabled = ctxKnown && !!hostSettings?.sessionContextEnabled;
+  const arKnown = typeof hostSettings?.autoReviewEnabled === "boolean";
+  const arEnabled = arKnown && !!hostSettings?.autoReviewEnabled;
+  const trKnown = typeof hostSettings?.sessionTitleRefresh === "boolean";
+  const trEnabled = trKnown && !!hostSettings?.sessionTitleRefresh;
   const kaKnown = typeof hostSettings?.keepaliveEnabled === "boolean";
   const kaEnabled = kaKnown && !!hostSettings?.keepaliveEnabled;
   const kaConfig = hostSettings?.keepaliveConfig;
@@ -242,6 +246,20 @@ export default function ExperimentalPage() {
             disabled={!ctxKnown}
             onChange={() => send({ type: "set_session_context_enabled", enabled: !ctxEnabled })}
           />
+        </div>
+        <div className="srow">
+          <div className="srow-tx">
+            <b className="srow-hd">{t("settingsPage.exp.autoReviewTitle")}</b>
+            <span>{t("settingsPage.exp.autoReviewDesc")}</span>
+          </div>
+          <Toggle on={arEnabled} disabled={!arKnown} onChange={() => send({ type: "set_auto_review", enabled: !arEnabled })} />
+        </div>
+        <div className="srow">
+          <div className="srow-tx">
+            <b className="srow-hd">{t("settingsPage.exp.titleRefreshTitle")}</b>
+            <span>{t("settingsPage.exp.titleRefreshDesc")}</span>
+          </div>
+          <Toggle on={trEnabled} disabled={!trKnown} onChange={() => send({ type: "set_session_title_refresh", enabled: !trEnabled })} />
         </div>
       </div>
 

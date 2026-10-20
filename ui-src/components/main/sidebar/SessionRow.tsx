@@ -114,16 +114,27 @@ function AutoBadge({ s }: { s: SessionInfo }) {
 export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, ctxOpen, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
   const { t } = useTranslation();
   // State subscribed via selectors (must run before the renaming early return: hooks cannot be conditional)
-  const openSessions = useAppStore((s) => s.openSessions);
-  const pinnedSessions = useAppStore((s) => s.pinnedSessions);
-  const unseenFinished = useAppStore((s) => s.unseenFinished);
-  const activePath = useAppStore((s) => s.activePath);
-  const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
-  const isCommandPressed = useAppStore((s) => s.isCommandPressed);
+  // Per-path field selectors (Batch 1, T7): after LRU eviction the getters return
+  // undefined/false and the row falls back to its disk/pool state instead of crashing
+  const openInPool = useAppStore((st) => st.openSessions.has(s.path));
+  const streaming = useAppStore((st) => st.openSessions.get(s.path)?.streaming ?? false);
+  const awaitingApproval = useAppStore((st) => (st.openSessions.get(s.path)?.pendingApprovals?.length ?? 0) > 0);
+  const hasError = useAppStore((st) => {
+    const o = st.openSessions.get(s.path);
+    if (!o || o.streaming) return false;
+    const last = o.items[o.items.length - 1];
+    return last?.role === "error" || !!(last as { error?: string | null } | undefined)?.error;
+  });
+  const pinnedSessions = useAppStore((s2) => s2.pinnedSessions);
+  const unseenFinished = useAppStore((s2) => s2.unseenFinished);
+  const activePath = useAppStore((s2) => s2.activePath);
+  const isProjectManageMode = useAppStore((s2) => s2.isProjectManageMode);
+  const isCommandPressed = useAppStore((s2) => s2.isCommandPressed);
   // Pool busy flag (pool_sessions frame): the spinner for a session this client
   // never loaded — running on the OTHER channel (remote control vs desktop) or
   // spawned by an automation — which therefore has no openSessions slot here.
-  const poolBusy = useAppStore((st) => st.poolSessions.some((p) => p.path === s.path && p.busy === true));
+  // O(1) set lookup (N1) instead of scanning the whole pool array per row per notification.
+  const poolBusy = useAppStore((st) => st.busyPaths.has(s.path));
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -134,24 +145,19 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   }, []);
 
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
-  const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
   // In the host's live pool (= has an open frontend slot): the eject action
   // only makes sense for resident sessions; pure disk rows have nothing to evict.
-  const isOpenInPool = openSessions.has(s.path);
+  const isOpenInPool = openInPool;
   // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
-  // error > unread > approval > running.
-  // The error state comes from the session's last error row; unopened sessions have no runtime
-  // state and only show the persisted unread dot.
-  const lastItem = open?.items?.[open.items.length - 1];
-  const hasError = !open?.streaming && (lastItem?.role === "error" || (lastItem as { error?: string | null } | undefined)?.error); // the error field is declared only on BashItem; other items read as undefined, same as the original
-  // A session blocked on an ask/approval dialog is waiting on the user, not working: the spinner
-  // would read as "still busy" while nothing moves until the question is answered, so it shows
-  // the attention dot instead.
-  const awaitingApproval = (open?.pendingApprovals?.length ?? 0) > 0;
-  // Loaded here → open.streaming (driven by this client's own event frames);
+  // error > unread > approval > running. The error state (selector above) comes from the
+  // session's last error row; unopened sessions have no runtime state and only show the
+  // persisted unread dot. A session blocked on an ask/approval dialog is waiting on the
+  // user, not working: the spinner would read as "still busy" while nothing moves until
+  // the question is answered, so it shows the attention dot instead.
+  // Loaded here → the subscribed streaming flag (driven by this client's own event frames);
   // otherwise the host pool's busy flag (cross-channel running state)
-  const running = open?.streaming ?? poolBusy;
+  const running = streaming || poolBusy;
   const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : running ? "loading" : "none";
   // Open session: already open → activate directly (refreshes the right panel's git diff); not
   // open → the host loading chain

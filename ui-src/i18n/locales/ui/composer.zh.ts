@@ -41,7 +41,8 @@ export const composerZh = {
   noModels: "未配置可用模型",
   modelRoleCategory: "模型角色",
   onlyOneRoleModel: "仅有一个可用的角色模型",
-  // ThinkMenu.tsx
+  manageModels: "管理模型",
+  visionTag: "视觉",
   reasoning: "推理强度",
   // Same copy as the settings page's defaultThinkingLevel options (OPTS_ZH)
   thinkingLevels: { auto: "自动", minimal: "最小", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最大", off: "关" },

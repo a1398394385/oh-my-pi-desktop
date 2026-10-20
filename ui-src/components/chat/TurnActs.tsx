@@ -3,6 +3,7 @@
 // Forking goes through branch_session (slices the history entries from the root to this
 // assistant node, copying them into a brand-new session file).
 // The anchor entryId is backfilled by the host after persisting (translate.ts).
+import { memo } from "react";
 import type { AssistantItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
@@ -22,8 +23,9 @@ function fmtClock(ms: number) {
   return sameDay ? hm : i18nT("chat.clockDate", { m: t.getMonth() + 1, d: t.getDate(), hm });
 }
 
-export default function TurnActs({ item }: { item: AssistantItem }) {
-  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+// entryId/endMs are captured mutation snapshots (T2): turn_end backfills them in place
+export default memo(function TurnActs({ item }: { item: AssistantItem; entryId?: string; endMs?: number }) {
+  const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
   // Forking is unavailable while entryId is not yet backfilled (not persisted during live
   // streaming): grayed out rather than hidden, to avoid layout jumps
   const canFork = !!item.entryId && !item.branching;
@@ -53,9 +55,9 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
           disabled={!canFork}
           onClick={(e) => {
             e.stopPropagation();
-            if (!canFork || !s) return;
+            if (!canFork || !sessionId) return;
             patchActiveItem(item, (it) => { it.branching = true; }); // stays disabled across full redraws (the flag lives with the item data)
-            useAppStore.getState().send({ type: "branch_session", sessionId: s.sessionId, entryId: item.entryId });
+            useAppStore.getState().send({ type: "branch_session", sessionId, entryId: item.entryId });
           }}
         >
           <Icon name="fork" />
@@ -64,4 +66,4 @@ export default function TurnActs({ item }: { item: AssistantItem }) {
       </div>
     </div>
   );
-}
+});
