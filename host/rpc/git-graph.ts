@@ -10,9 +10,11 @@
 //
 // Caching: a commit graph is a pure function of (repo, scope, limit) until the
 // refs move, so results are memoized for GRAPH_TTL_MS — reopening the page or
-// re-filtering a branch then costs zero subprocesses. Commit details and
-// per-file diffs are immutable (keyed by oid/path) and only evicted by size.
-// `force: true` (the refresh button) bypasses the graph cache.
+// re-filtering a branch then costs zero subprocesses. The memo is keyed by the
+// caller's cwd so a hit needs no rev-parse either; same cwd + scope + limit
+// hits. Commit details and per-file diffs are immutable (keyed by oid/path)
+// and only evicted by size. `force: true` (the refresh button) bypasses the
+// graph cache.
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 // Every git call routes through the shared process layer (argv/env/timeout in
@@ -23,6 +25,8 @@ const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
 const GRAPH_TTL_MS = 5_000;
 const MAX_IMMUTABLE_ROWS = 300;
+/** Diff payloads are the fat ones (capped at 500 KB each): a tighter cap bounds resident memory. */
+const MAX_DIFF_ROWS = 64;
 /** NUL-separated fields, record separator after each commit (subject is single-line). */
 const GRAPH_FORMAT = "--format=%H%x00%P%x00%an%x00%at%x00%D%x00%s%x1e";
 /** Body sits last: it may contain newlines, so the field list is split from the left. */
@@ -163,8 +167,8 @@ function groupRefs(refs: RefRow[], prefix: string): string[] {
 }
 
 /** Bounded memo: insertion order doubles as eviction order (oldest first). */
-function remember<T>(map: Map<string, T>, key: string, value: T): T {
-  if (map.size >= MAX_IMMUTABLE_ROWS) {
+function remember<T>(map: Map<string, T>, key: string, value: T, max: number = MAX_IMMUTABLE_ROWS): T {
+  if (map.size >= max) {
     const oldest = map.keys().next();
     if (!oldest.done) map.delete(oldest.value);
   }
@@ -196,9 +200,6 @@ export const gitGraphHandlers: Record<string, RpcHandler> = {
     const base = { type: "git_graph", reqId, cwd };
     const fail = (error: string) => ws.send(JSON.stringify({ ...base, ok: false, error }));
     if (!cwd) return fail(hostI18n.t("errors.param.missingPath"));
-    const top = await repoRoot(cwd);
-    if (!top) return fail(hostI18n.t("errors.git.notARepo"));
-    const repoRootPath = top;
     const rawLimit = Number(msg.limit);
     const limit = Number.isFinite(rawLimit) && rawLimit > 0
       ? Math.min(MAX_LIMIT, Math.floor(rawLimit))
@@ -207,12 +208,16 @@ export const gitGraphHandlers: Record<string, RpcHandler> = {
     // position. Existence is left to git log, whose stderr explains the miss.
     const scope = typeof msg.scope === "string" ? msg.scope.trim() : "";
     if (scope.startsWith("-") || scope.includes("\n")) return fail(hostI18n.t("errors.git.badRef", { ref: scope }));
-    const cacheKey = `${repoRootPath}\x00${scope}\x00${limit}`;
+    // Keyed by the raw cwd, not the resolved root: resolving the root costs a
+    // rev-parse subprocess, which would defeat the cache on every reopen.
+    const cacheKey = `${cwd}\x00${scope}\x00${limit}`;
     const cached = graphCache.get(cacheKey);
     if (msg.force !== true && cached && Date.now() - cached.at < GRAPH_TTL_MS) {
       ws.send(JSON.stringify({ ...base, ok: true, ...cached.payload }));
       return;
     }
+    const repoRootPath = await repoRoot(cwd);
+    if (!repoRootPath) return fail(hostI18n.t("errors.git.notARepo"));
     const refArgs = scope ? [scope] : ["--branches", "--tags", "--remotes"];
     const log = await gitRead(repoRootPath, [
       "log",
@@ -241,7 +246,10 @@ export const gitGraphHandlers: Record<string, RpcHandler> = {
         tags: groupRefs(refs, "refs/tags"),
       },
     };
-    graphCache.set(cacheKey, { at: Date.now(), payload });
+    // delete first: a re-set of an existing key keeps its old insertion order,
+    // which would evict a still-open scope before colder ones.
+    graphCache.delete(cacheKey);
+    remember(graphCache, cacheKey, { at: Date.now(), payload });
     ws.send(JSON.stringify({ ...base, ok: true, ...payload }));
   },
 
@@ -325,7 +333,7 @@ export const gitGraphHandlers: Record<string, RpcHandler> = {
     if (!show.ok) {
       return fail(hostI18n.t("errors.git.showFailed", { detail: gitError(show, 300) || hostI18n.t("errors.git.notARepo") }));
     }
-    const diff = remember(fileDiffCache, cacheKey, show.stdout.slice(0, 500_000));
+    const diff = remember(fileDiffCache, cacheKey, show.stdout.slice(0, 500_000), MAX_DIFF_ROWS);
     ws.send(JSON.stringify({ ...base, ok: true, diff }));
   },
 };

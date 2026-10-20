@@ -211,6 +211,23 @@ export function isCacheMiss(inputTokens: number, cacheReadTokens: number, minPro
   return cacheReadTokens / inputTokens < MIN_HIT_RATIO;
 }
 
+// Flat-rate subscription plans price every model at 0 in the catalog, which
+// zeroes the keepalive spend/saved stats. List API prices live here so stats
+// show what the same usage would cost pay-as-you-go. Keyed by catalog id;
+// only consulted when the catalog cost is missing or all-zero.
+// Source: bigmodel.cn list prices per 1M tokens, checked 2026-10-19.
+const SUBSCRIPTION_PLAN_API_PRICES: Record<string, Partial<CostPerM>> = {
+  "zhipu-coding-plan/glm-5.3-flash": { input: 0.15, output: 0.5, cacheRead: 0.03 },
+  "zhipu-coding-plan/glm-5.3-flashx": { input: 0.15, output: 0.5, cacheRead: 0.03 },
+  "zhipu-coding-plan/glm-5.3": { input: 1.4, output: 4.4 },
+};
+
+/** Catalog cost, unless it is missing/all-zero (subscription plan) and a list API price exists. */
+export function effectiveProbeCost(modelId: string, cost: Partial<CostPerM> | undefined): Partial<CostPerM> | undefined {
+  if (cost && Object.values(cost).some((v) => typeof v === "number" && v > 0)) return cost;
+  return SUBSCRIPTION_PLAN_API_PRICES[modelId] ?? cost;
+}
+
 /** USD saved by this probe hitting cache instead of a cold full-price read. */
 export function estimateSavedUsd(cacheReadTokens: number, cost: Partial<CostPerM> | undefined): number {
   if (!cost || cacheReadTokens <= 0) return 0;

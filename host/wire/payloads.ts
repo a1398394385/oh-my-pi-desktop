@@ -112,6 +112,14 @@ export type SettingsPayload = SettingsSnapshot & {
   // models are offered the `auto` thinking level. Off by default — each level
   // switch re-bills the whole prefix on Kimi; the providers-page switch.
   kimiAutoThinking?: boolean;
+  // omp-desktop.json autoReview.enabled (host/auto-review.ts): LLM tool-approval
+  // gate in uiCtx.select — low/medium verdicts approve unseen, deny/unavailable
+  // still show the human card. Experimental page switch.
+  autoReviewEnabled?: boolean;
+  // omp-desktop.json sessionTitles.refresh (host/session-titles.ts): regenerate
+  // the title after every settled turn (tiny-model call per turn; user-pinned
+  // titles are never overwritten). Experimental page switch.
+  sessionTitleRefresh?: boolean;
   // omp-desktop.json remote section (host/remote.ts): LAN remote-control
   // server config; the settings page's remote group reads/builds URLs from it
   remote?: RemoteConfigPayload;
@@ -127,6 +135,16 @@ export interface RemoteConfigPayload {
   mobileStatsBar: boolean;
   /** Prebuilt http://<first LAN IPv4>:<port>/?t=<key>; omitted when no LAN IPv4 is available */
   url?: string;
+  /** Visiting devices (host/remote.ts RemoteDeviceRecord), newest first; omitted when empty */
+  devices?: RemoteDeviceEntry[];
+}
+
+/** One historical remote visitor shown on the settings page's device-history card */
+export interface RemoteDeviceEntry {
+  name: string;
+  ip: string;
+  /** Epoch ms of the most recent visit */
+  lastAt: number;
 }
 
 /** Model catalog entry (host/models.ts modelsPayload) */
@@ -452,7 +470,7 @@ export interface QueuedMessage {
 /** Narrow event-stream event (host/translate.ts UiEvent; kind-discriminated body of event/subagent_event frames) */
 export type UiEvent =
   | { kind: "turn_start" }
-  | { kind: "user_message"; text: string; automation?: { id: string; title: string } } // automation prompt echo (no local composer send to draw the bubble)
+  | { kind: "user_message"; text: string; images?: Array<{ type: "image"; data: string; mimeType: string }>; automation?: { id: string; title: string } } // host-side prompt echo: every attached UI draws the bubble (cross-channel send); automation variant has no local composer send
   | { kind: "text_delta"; text: string }
   | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
   | { kind: "thinking_delta"; text: string }

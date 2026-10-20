@@ -152,7 +152,7 @@ g("checkout -q -b feat/login-flow");
 g("checkout -q main");
 const sw = await call({ type: "switch_git_branch", cwd: repoDir, branch: "feat/login-flow" }, "git_branch_switched");
 const afterSwitch = await call({ type: "get_git_branches", cwd: repoDir }, "git_branches");
-const localNames = g("branch --format=%(refname:short)").toString().split("\n").map((s) => s.trim()).filter(Boolean);
+const localNames = g('branch --format="%(refname:short)"').toString().split("\n").map((s) => s.trim()).filter(Boolean);
 assert(
   sw.branch === "feat/login-flow" && afterSwitch.current === "feat/login-flow",
   `switch_git_branch 本地含 "/" 分支：回执=${sw.branch} current=${afterSwitch.current}`,

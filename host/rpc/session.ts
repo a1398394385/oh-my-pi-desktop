@@ -4,13 +4,14 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs } from "../state.ts";
+import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
 import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
 import { readAutomations } from "../automations/store.ts";
 import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
-import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
+import { entriesToTranscript, sumRunDurationMs } from "../translate.ts";
+import { treeToDisplay } from "../entry-tree.ts";
 import { applyActivityTimes } from "../session-activity.ts";
 import {
   handleCreateSession,
@@ -258,6 +259,43 @@ function sessionBusy(entry: {
 function sessionEntryMatchesPath(entry: { path: string; previousPaths?: string[] }, p: string): boolean {
   return entry.path === p || (entry.previousPaths?.includes(p) ?? false);
 }
+
+// N2: idle LRU eviction. The pool only shrank via explicit RPCs, so ws churn
+// (frontend reload, remote disconnect) left detached-but-pooled entries
+// resident forever, and every pushPoolSnapshot walk grew with them. Teardown
+// sequence identical to the session_unload RPC; eviction broadcasts over the
+// existing session_unloaded notification path (frontend keeps the sidebar row
+// — the disk file is untouched — and clears its openSessions slot).
+const IDLE_EVICTION_MS = 30 * 60_000;
+const IDLE_SWEEP_INTERVAL_MS = 60_000;
+function sweepIdlePoolSessions(): void {
+  const now = Date.now();
+  let evicted = 0;
+  for (const [key, e] of [...sessions.entries()]) {
+    if (e.uiSockets.size > 0) continue; // still watched from a live UI
+    if (now - e.lastActiveAt < IDLE_EVICTION_MS) continue;
+    if (sessionBusy(e).length > 0) continue; // in-flight turn / queued / background jobs
+    releaseMcpForSession(key, e);
+    e.unsubscribe();
+    sessions.delete(key);
+    void e.session.dispose().catch((err: unknown) => {
+      safeStderr(`[host] idle eviction dispose failed: ${err}\n`);
+    });
+    // Every path the frontend may still key this session by (persistence
+    // moves included), so the slot clears on whichever channel holds it
+    for (const p of [e.path, ...(e.previousPaths ?? [])]) {
+      eachUiWs((ws) => ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded: true })));
+    }
+    evicted++;
+  }
+  if (evicted > 0) eachUiWs(pushPoolSnapshot);
+}
+
+// Started on module load (this file is on the host's startup import graph via
+// profile.ts / session-poll.ts); unref'd like automations/scheduler.ts so the
+// sweep never holds the process open on its own.
+const idleSweepTimer = setInterval(() => sweepIdlePoolSessions(), IDLE_SWEEP_INTERVAL_MS);
+idleSweepTimer.unref?.();
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
     await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true, msg.computerMode === true);
@@ -596,7 +634,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       entry.transcript = entriesToTranscript(entry.manager.getEntries());
       // The rebuilt history already contains mention rows: align the cursor to avoid re-sending them on later read-backs
       entry.mentionScanIndex = entry.manager.getEntries().length;
-      ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+      // Cross-channel: the other attached UI still holds the pre-compaction transcript;
+      // the receipt below stays requestor-only (its toast is an answer to the click)
+      entryBus(entry).send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
       ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, ok: true }));
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, error: String(err) }));

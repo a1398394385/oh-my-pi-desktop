@@ -25,9 +25,12 @@ const HOT_LIMITS = [
   // Late-growing hot spots locked at current size (2026-10 audit); ratchet down only.
   // Lowered after the A12 split (snapshot family -> session-snapshot.ts,
   // subagent roster -> subagent-view.ts): 896 actual + buffer.
-  { path: "host/session-lifecycle.ts", max: 1000 },
-  { path: "host/assets.ts", max: 1600 },
-  { path: "host/translate.ts", max: 1200 },
+  // 2026-10 line-cap splits: session-entry-core.ts (wiring closure, 482 actual + buffer),
+  // translate-tool.ts + entry-tree.ts (654 actual + buffer), asset-paths.ts +
+  // mcp-assets.ts + plugin-assets.ts (367 actual + buffer).
+  { path: "host/session-lifecycle.ts", max: 590 },
+  { path: "host/assets.ts", max: 400 },
+  { path: "host/translate.ts", max: 700 },
 ];
 
 const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };

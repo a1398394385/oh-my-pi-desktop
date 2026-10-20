@@ -21,9 +21,11 @@ import {
   applyDesktopEnv,
 } from "../profile.ts";
 import { readDesktopSection, writeDesktopSection } from "../desktop-json.ts";
-import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
+import { listAgentAssets } from "../assets.ts";
+import { writeHooksEnabled, writePluginsEnabled } from "../plugin-assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
-import { writeKimiAutoThinking } from "../kimi-thinking.ts";
+import { writeAutoReviewEnabled } from "../auto-review.ts";
+import { writeSessionTitleRefresh } from "../session-titles.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
@@ -215,6 +217,20 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // on the next thinking-level pick/session create (existing sessions keep
     // their configured level; Kimi + auto + off pins to `high`).
     writeKimiAutoThinking(!!msg.enabled);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async set_auto_review(ws, msg) {
+    // Experimental page switch: writes autoReview.enabled in omp-desktop.json —
+    // the LLM approval gate in uiCtx.select reads it live, so it takes effect
+    // on the very next approval card (no session rebuild).
+    writeAutoReviewEnabled(msg.enabled === true);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async set_session_title_refresh(ws, msg) {
+    // Experimental page switch: writes sessionTitles.refresh in omp-desktop.json —
+    // the agent_end hook reads it live, so it applies to the next turn of every
+    // open session. Each regeneration is one tiny-model call per turn.
+    writeSessionTitleRefresh(msg.enabled === true);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_hooks_enabled(ws, msg) {

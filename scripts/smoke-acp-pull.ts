@@ -165,6 +165,22 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	// Persistence stays entry-id-only (spec §3): compressedIds/index are raw ids.
 	assert.deepEqual(fx.writes[0].meta.compressedIds, ["e0", "e1", "e2", "e3", "e4"]);
 	assert.ok(fx.writes[0].index.every((l) => /^e\d+$/.test(l.id)), "index lines persist entry ids");
+	// Inline byte budget (the base spill threshold): the manifest is cut whole-line,
+	// never head/tailed by the base tool-result stage, and the round scope shrinks
+	// with the visible list.
+	const fxBudget = makeFixture(PARAMS, 12);
+	fxBudget.state.projectView(fxBudget.view);
+	const full = fxBudget.state.status();
+	if (!full.ok) throw new Error(full.error);
+	const budget = Buffer.byteLength(full.text, "utf-8") - 300;
+	const cut = fxBudget.state.status(budget);
+	if (!cut.ok) throw new Error(cut.error);
+	const cutText = cut.text;
+	assert.ok(Buffer.byteLength(cutText, "utf-8") <= budget, "the return fits the caller's inline budget");
+	const cutLines = parseManifest(cutText);
+	assert.ok(cutLines.length > 0 && cutLines.length < 12, "the manifest tail is cut whole-line");
+	assert.match(cutText, /exempt this round, re-listed next round/, "the cut tail is announced as exempt");
+	assert.equal(fxBudget.state.manifest?.ids.length, cutLines.length, "the round scope matches the visible list");
 	console.log("ok: A dashboard + refresh — bN manifest, consumed->context_status pointer, status revives the round, persistence id-only");
 }
 

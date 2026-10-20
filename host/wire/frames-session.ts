@@ -121,6 +121,20 @@ export interface SessionCreatedFrame {
   /** Scheduler-spawned session: register the slot but never activate/close the automations view */
   automation?: { id: string; title: string };
   background?: boolean;
+  /** True while the SDK agent run is live: a UI opening a running session mid-turn
+   * seeds its spinner from this (turn boundary frames alone would leave the view dark
+   * until the next event lands — long tool calls emit nothing). */
+  busy?: boolean;
+}
+
+/** Run-finished broadcast (session-lifecycle agent_end terminal): reaches EVERY UI
+ * connection, including channels that never attached this session — they cannot see
+ * the per-session turn_end frame, so without this push the sidebar's unread dot
+ * (local unseenFinished set) never lights on the other side. */
+export interface SessionFinishedFrame {
+  type: "session_finished";
+  sessionId: string;
+  path: string;
 }
 
 /** Session list frame (host/host.ts handleListSessions) */

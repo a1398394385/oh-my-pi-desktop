@@ -47,6 +47,7 @@ import type { CostPerM, ParsedUsage, ProbeDialect } from "./keepalive-lib.ts";
 import {
   buildProbeBody,
   buildProbeHeaders,
+  effectiveProbeCost,
   estimateProbeSpendUsd,
   estimateSavedUsd,
   formatDuration,
@@ -849,7 +850,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         provider: model.provider,
         api: model.api,
         baseUrl: model.baseUrl ?? "",
-        cost: model.cost ?? undefined,
+        cost: effectiveProbeCost(catalogId(model), model.cost ?? undefined),
       };
       // This request refreshed the target cache, so the cadence restarts from
       // now: agent_end must not resume a deadline this turn invalidated.

@@ -235,9 +235,11 @@ export const filesHandlers: Record<string, RpcHandler> = {
   },
   async git_discard(ws, msg) {
     // Discard working-tree changes (destructive, already double-confirmed on
-    // the UI side, host executes directly):
-    // tracked files restore via checkout --; untracked files delete exactly
-    // via clean -f --; per-path processing, any failure replies with the error
+    // the UI side, host executes directly): tracked files restore via one
+    // batched checkout --, untracked files delete via one batched clean -f --
+    // (same shape as git_stage; a per-path loop costs 2 spawns per file).
+    // One ls-files -z run partitions the list; a pathspec naming a directory
+    // still counts as tracked when any listed file sits beneath it.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
@@ -246,16 +248,27 @@ export const filesHandlers: Record<string, RpcHandler> = {
       ws.send(JSON.stringify({ type: "git_discarded", cwd, error: refused }));
       return;
     }
+    // ls-files failure mirrors the old per-path fallback: treat everything as
+    // untracked and let clean -f surface the real error.
+    const listed = await gitRead(cwd, ["ls-files", "-z", "--", ...paths]);
+    const trackedFiles = listed.ok ? listed.stdout.split("\0").filter(Boolean) : [];
+    const trackedNames = new Set<string>();
+    const trackedDirs = new Set<string>();
+    for (const f of trackedFiles) {
+      trackedNames.add(f);
+      for (let i = f.indexOf("/"); i >= 0; i = f.indexOf("/", i + 1)) trackedDirs.add(f.slice(0, i));
+    }
+    const tracked: string[] = [];
+    const untracked: string[] = [];
+    for (const p of paths) (trackedNames.has(p) || trackedDirs.has(p) ? tracked : untracked).push(p);
     let err = "";
-    for (const p of paths) {
-      const tracked = await gitRead(cwd, ["ls-files", "--error-unmatch", "--", p]);
-      const r = tracked.ok
-        ? await gitWrite(cwd, ["checkout", "--", p])
-        : await gitWrite(cwd, ["clean", "-f", "--", p]);
-      if (!r.ok) {
-        err = gitError(r);
-        break;
-      }
+    if (tracked.length > 0) {
+      const r = await gitWrite(cwd, ["checkout", "--", ...tracked]);
+      if (!r.ok) err = gitError(r);
+    }
+    if (!err && untracked.length > 0) {
+      const r = await gitWrite(cwd, ["clean", "-f", "--", ...untracked]);
+      if (!r.ok) err = gitError(r);
     }
     ws.send(JSON.stringify(err ? { type: "git_discarded", cwd, error: err } : { type: "git_discarded", cwd, ok: true }));
   },

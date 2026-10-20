@@ -201,6 +201,29 @@ export type GitOperationState =
   | "REVERT"
   | "DETACHED_HEAD";
 
+/** Cached git-dir lookup, keyed by cwd. The cwd → git-dir mapping only moves
+ * when the repository itself is re-created; the TTL keeps that rare case
+ * self-healing instead of caching a dead path forever. */
+const GIT_DIR_TTL_MS = 60_000;
+const gitDirMemo = new Map<string, { dir: string | null; at: number }>();
+
+/** Operation state per git dir, revalidated by the mtimes of the dir itself
+ * and HEAD: starting/finishing a rebase, merge, cherry-pick or revert always
+ * creates or removes a direct child of the git dir, and any branch switch
+ * rewrites HEAD — so unchanged mtimes mean the six probes cannot have changed
+ * and the cached state is returned without a subprocess. */
+interface OperationStateMemo {
+  state: GitOperationState;
+  dirMtimeMs: number;
+  headMtimeMs: number;
+}
+const operationStateMemo = new Map<string, OperationStateMemo>();
+
+/** mtime in ms, or -1 when the path is gone. */
+async function mtimeMs(p: string): Promise<number> {
+  return fs.promises.stat(p).then((s) => s.mtimeMs, () => -1);
+}
+
 /**
  * Which mutating operation, if any, has the repository half-finished. Read from
  * the git dir directly (no subprocess per probe), the same way IDEA reads
@@ -213,21 +236,35 @@ export type GitOperationState =
 export async function operationState(cwd: string): Promise<GitOperationState> {
   const gitDir = await absoluteGitDir(cwd);
   if (!gitDir) return "NORMAL";
+  const [dirMtimeMs, headMtimeMs] = await Promise.all([
+    mtimeMs(gitDir),
+    mtimeMs(path.join(gitDir, "HEAD")),
+  ]);
+  const memo = operationStateMemo.get(gitDir);
+  if (memo && memo.dirMtimeMs === dirMtimeMs && memo.headMtimeMs === headMtimeMs) {
+    return memo.state;
+  }
   const has = (name: string) => fs.existsSync(path.join(gitDir, name));
-  if (has("rebase-merge") || has("rebase-apply") || has("REBASE_HEAD")) return "REBASE";
-  if (has("MERGE_HEAD")) return "MERGE";
-  if (has("CHERRY_PICK_HEAD")) return "CHERRY_PICK";
-  if (has("REVERT_HEAD")) return "REVERT";
-  // symbolic-ref exits non-zero exactly when HEAD is not on a branch.
-  const sym = await gitRead(cwd, ["symbolic-ref", "-q", "--short", "HEAD"]);
-  if (!sym.ok) return "DETACHED_HEAD";
-  return "NORMAL";
+  let state: GitOperationState;
+  if (has("rebase-merge") || has("rebase-apply") || has("REBASE_HEAD")) state = "REBASE";
+  else if (has("MERGE_HEAD")) state = "MERGE";
+  else if (has("CHERRY_PICK_HEAD")) state = "CHERRY_PICK";
+  else if (has("REVERT_HEAD")) state = "REVERT";
+  else {
+    // symbolic-ref exits non-zero exactly when HEAD is not on a branch.
+    const sym = await gitRead(cwd, ["symbolic-ref", "-q", "--short", "HEAD"]);
+    state = sym.ok ? "NORMAL" : "DETACHED_HEAD";
+  }
+  operationStateMemo.set(gitDir, { state, dirMtimeMs, headMtimeMs });
+  return state;
 }
 
 /** Absolute .git directory, following a worktree's `gitdir:` pointer file. */
 export async function absoluteGitDir(cwd: string): Promise<string | null> {
+  const hit = gitDirMemo.get(cwd);
+  if (hit && Date.now() - hit.at < GIT_DIR_TTL_MS) return hit.dir;
   const r = await gitRead(cwd, ["rev-parse", "--absolute-git-dir"]);
-  if (!r.ok) return null;
-  const dir = r.stdout.trim();
-  return dir || null;
+  const dir = r.ok ? r.stdout.trim() || null : null;
+  gitDirMemo.set(cwd, { dir, at: Date.now() });
+  return dir;
 }

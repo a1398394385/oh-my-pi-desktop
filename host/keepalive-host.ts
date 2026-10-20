@@ -4,7 +4,7 @@
 // extension in keepalive.ts; the state fields stay on PoolEntry (state.ts) —
 // this module converges the operations, the frame-body semantics, and the
 // reportState push, so the wire semantics are not spread across comments.
-import { sessions, stampEvent, type PoolEntry } from "./state.ts";
+import { sessions, stampEvent, eachUiWs, type PoolEntry } from "./state.ts";
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import type { KeepaliveState } from "./keepalive.ts";
 
@@ -16,6 +16,14 @@ import type { KeepaliveState } from "./keepalive.ts";
  */
 export function markTurnWrapped(entry: PoolEntry): void {
   entry.keepaliveWanted = true;
+  // Cross-channel run-end notice: attached UIs already got their turn_end frame,
+  // but a channel that never loaded this session has no slot for it — its sidebar
+  // unread dot (local set, frame-driven) needs this broadcast to light. Idempotent
+  // where turn_end already wrote the same dot.
+  if (entry.keepaliveSid) {
+    const fin = JSON.stringify(stampEvent({ type: "session_finished", sessionId: entry.keepaliveSid, path: entry.path }));
+    eachUiWs((w) => w.send(fin));
+  }
 }
 
 /**

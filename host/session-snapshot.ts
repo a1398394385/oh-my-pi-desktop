@@ -222,17 +222,23 @@ export function pushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
   ws.send(JSON.stringify({ type: "session_stats", sessionId, ...buildSessionStats(entry) }));
 }
 
-// Min interval between live stats pushes: a tool-heavy turn can emit dozens of
-// tool_execution_end events; pushing each one would flood the wire with stats
-// frames (and recompute the usage snapshot every time). The first event of a
-// turn pushes immediately so the numbers start moving right away; later events
-// in the same turn are coalesced by this interval.
+// Min interval between live stats pushes per socket. The throttle state used
+// to live on the pool entry, so with local + remote both attached the first
+// socket's push suppressed the second socket's live stats for the whole
+// window (the other UI's numbers froze mid-turn). Keyed weakly by socket:
+// closed sockets drop out with the object.
 const STATS_PUSH_MIN_INTERVAL_MS = 1500;
+const statsPushedAtBySocket = new WeakMap<object, number>();
 
-export function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
+export function maybePushSessionStats(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  if (ws === null || typeof ws !== "object") {
+    pushSessionStats(ws, sessionId, entry);
+    return;
+  }
   const now = Date.now();
-  if (entry.statsPushedAt !== null && now - entry.statsPushedAt < STATS_PUSH_MIN_INTERVAL_MS) return;
-  entry.statsPushedAt = now;
+  const last = statsPushedAtBySocket.get(ws);
+  if (last !== undefined && now - last < STATS_PUSH_MIN_INTERVAL_MS) return;
+  statsPushedAtBySocket.set(ws, now);
   pushSessionStats(ws, sessionId, entry);
 }
 
@@ -266,5 +272,7 @@ export function buildSessionCreatedFrame(
     // (no focus steal, automations view stays open)
     ...(extras.automation ? { automation: extras.automation, background: true } : {}),
     ...(extras.subagentLineage ? { isSubagent: entry.isSubagent, parentPath: entry.parentPath } : {}),
+    // Mid-run open: the receiving UI seeds its spinner from this (see SessionCreatedFrame.busy)
+    busy: entry.session.isStreaming === true,
   };
 }

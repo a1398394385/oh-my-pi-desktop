@@ -104,6 +104,7 @@ const ALLOWED_EDGES = new Set([
   "main.ts→settings-compat.ts", "models.ts→settings-compat.ts", "assets.ts→settings-compat.ts",
   "frames.ts→settings-compat.ts", "extensions.ts→settings-compat.ts", "goal.ts→settings-compat.ts",
   "plan.ts→settings-compat.ts", "plan-approve.ts→settings-compat.ts", "profile.ts→settings-compat.ts",
+  "session-lifecycle.ts→settings-compat.ts", // context_status sizes its return under tools.artifactSpillThreshold
   "rpc/assets.ts→settings-compat.ts", "rpc/models.ts→settings-compat.ts", "rpc/prompt.ts→settings-compat.ts",
   // rpc/prompt's list_commands decides the new-session sentinel path via the plugins master switch (readPluginsEnabled)
   "rpc/prompt.ts→assets.ts",
@@ -162,6 +163,17 @@ const ALLOWED_EDGES = new Set([
   "kimi-thinking.ts→desktop-json.ts",
   "frames.ts→kimi-thinking.ts", "rpc/settings.ts→kimi-thinking.ts",
   "rpc/models.ts→kimi-thinking.ts", "session-lifecycle.ts→kimi-thinking.ts",
+  // LLM tool-approval gate (omp-desktop.json autoReview section): pure module
+  // over desktop-json + bootstrap's model-role resolution; the select()
+  // intercept lives in session-lifecycle, the switches in rpc/settings, and
+  // the settings frame projects it.
+  "auto-review.ts→desktop-json.ts", "auto-review.ts→bootstrap.ts",
+  "session-lifecycle.ts→auto-review.ts", "rpc/settings.ts→auto-review.ts", "frames.ts→auto-review.ts",
+  // Continuous title refresh (omp-desktop.json sessionTitles section): pure
+  // module over desktop-json; agent_end hook in session-lifecycle, switch in
+  // rpc/settings, settings-frame projection.
+  "session-titles.ts→desktop-json.ts",
+  "session-lifecycle.ts→session-titles.ts", "rpc/settings.ts→session-titles.ts", "frames.ts→session-titles.ts",
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
   // A2: the seven private omp-desktop.json read/merge-write wheels converged
   // onto the shared desktop-json helpers — profile's project-list save (multi-
@@ -185,6 +197,9 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→state.ts", "session-lifecycle.ts→bootstrap.ts",
   "session-lifecycle.ts→goal.ts",
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
+  // 3a split: per-token delta coalescing lives in delta-coalesce.ts (40ms window,
+  // same frame shape); UiEvent comes from the wire payload contract.
+  "session-lifecycle.ts→delta-coalesce.ts", "delta-coalesce.ts→wire/payloads.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
   // A12 split: the session snapshot family (goal/todos/context/stats pushes +
@@ -410,6 +425,7 @@ const ALLOWED_EDGES = new Set([
   "main.ts→ws-shared.ts", "main.ts→remote.ts",
   "ws-shared.ts→state.ts", "ws-shared.ts→i18n/host.ts", "ws-shared.ts→models.ts", "ws-shared.ts→frames.ts",
   "ws-shared.ts→rpc/index.ts", "ws-shared.ts→settings-compat.ts", "ws-shared.ts→browser-mirror.ts", "ws-shared.ts→stderr.ts",
+  "ws-shared.ts→remote.ts", // open handler records the visiting device (settings page device-history card)
   "remote.ts→desktop-json.ts", "remote.ts→stderr.ts",
   "frames.ts→remote.ts", // settings frame carries the remote-section projection (settings page's remote group)
   "rpc/index.ts→remote.ts", "rpc/index.ts→rpc/remote.ts",
@@ -430,6 +446,40 @@ const ALLOWED_EDGES = new Set([
   "rpc/limits.ts→i18n/host.ts", "rpc/login.ts→i18n/host.ts", "rpc/models.ts→i18n/host.ts",
   "rpc/provider-wizard.ts→i18n/host.ts", "rpc/prompt.ts→i18n/host.ts", "rpc/session.ts→i18n/host.ts",
   "rpc/settings.ts→i18n/host.ts", "rpc/ssh.ts→i18n/host.ts",
+  // Line-cap splits (2026-10 audit, all three hot files over the ratchet):
+  // translate.ts sheds the tool-row projection (pure functions over TranscriptItem,
+  // RULE-001 contract face) to translate-tool.ts and the /tree display projection to
+  // entry-tree.ts (same domain name as the front-end store slice); both are leaves
+  // re-exported nowhere — callers import the new homes directly.
+  "translate.ts→translate-tool.ts", "translate-tool.ts→state.ts",
+  "entry-tree.ts→translate.ts", "entry-tree.ts→i18n/host.ts",
+  "rpc/session.ts→entry-tree.ts",
+  // session-lifecycle.ts sheds the per-socket wiring closure (event fan-out, approval
+  // uiCtx, extension runner init, unsubscribe teardown) to session-entry-core.ts; the
+  // create/load entry points stay and re-export attachEntry for the frozen rpc callers.
+  "session-lifecycle.ts→session-entry-core.ts",
+  "session-entry-core.ts→state.ts", "session-entry-core.ts→bootstrap.ts",
+  "session-entry-core.ts→translate.ts", "session-entry-core.ts→delta-coalesce.ts",
+  "session-entry-core.ts→session-snapshot.ts", "session-entry-core.ts→subagent-view.ts",
+  "session-entry-core.ts→queue.ts", "session-entry-core.ts→plan-approve.ts",
+  "session-entry-core.ts→auto-review.ts", "session-entry-core.ts→keepalive-host.ts",
+  "session-entry-core.ts→capabilities.ts", "session-entry-core.ts→voice.ts",
+  "session-entry-core.ts→async-jobs.ts", "session-entry-core.ts→session-titles.ts",
+  "session-entry-core.ts→i18n/host.ts", "session-entry-core.ts→stderr.ts",
+  // assets.ts sheds the path-resolution leaf (asset-paths.ts, shared by both domains),
+  // the MCP domain (mcp-assets.ts) and the plugins/hooks domain (plugin-assets.ts);
+  // assets.ts keeps skill scanning + the listAgentAssets aggregation entry.
+  "assets.ts→asset-paths.ts", "assets.ts→mcp-assets.ts", "assets.ts→plugin-assets.ts",
+  "asset-paths.ts→i18n/host.ts", "asset-paths.ts→state.ts", "asset-paths.ts→bootstrap.ts",
+  "asset-paths.ts→settings-compat.ts",
+  "mcp-assets.ts→i18n/host.ts", "mcp-assets.ts→state.ts", "mcp-assets.ts→bootstrap.ts",
+  "mcp-assets.ts→profile.ts", "mcp-assets.ts→stderr.ts", "mcp-assets.ts→asset-paths.ts",
+  "plugin-assets.ts→state.ts", "plugin-assets.ts→bootstrap.ts",
+  "plugin-assets.ts→desktop-json.ts", "plugin-assets.ts→asset-paths.ts",
+  "frames.ts→plugin-assets.ts", "session-lifecycle.ts→plugin-assets.ts",
+  "mcp-builtin.ts→mcp-assets.ts", "mcp-mount.ts→mcp-assets.ts",
+  "rpc/assets.ts→asset-paths.ts", "rpc/assets.ts→mcp-assets.ts", "rpc/assets.ts→plugin-assets.ts",
+  "rpc/prompt.ts→plugin-assets.ts", "rpc/settings.ts→plugin-assets.ts",
 ]);
 
 // Scan one level of host/ plus the rpc/, automations/, i18n/ and wire/ subtrees (keys carry a path prefix like rpc/session.ts)

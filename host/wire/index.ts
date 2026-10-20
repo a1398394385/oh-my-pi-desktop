@@ -23,8 +23,8 @@ import type {
   LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
   SessionCompactedFrame, SessionCreatedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
-  SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame, SessionUnloadedFrame,
-  SessionTextSearchFrame,
+  SessionFinishedFrame, SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame,
+  SessionTextSearchFrame, SessionUnloadedFrame,
   TodosFrame,
 } from "./frames-session";
 import type {
@@ -72,6 +72,7 @@ export type HostFrame =
   | PoolSessionsFrame
   | SessionTextSearchFrame
   | SessionUnloadedFrame
+  | SessionFinishedFrame
   | MessagesFrame
   | SessionArchivedFrame
   | SessionAbortedFrame

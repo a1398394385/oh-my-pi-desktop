@@ -22,12 +22,12 @@ export const REMOTE_DEFAULT_PORT = 16800;
 // reload_settings stays OUT: it only re-reads model settings from disk into
 // memory (no persistence) and the UI sends it when opening any session.
 export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
-  // settings.ts (18)
+  // settings.ts (20)
   "set_setting", "set_locale", "set_ui_prefs", "set_external_browser", "set_computer_provider",
   "set_computer_default", "set_approval_mode", "set_acp_enabled", "set_acp_config",
   "set_session_context_enabled", "set_keepalive_enabled", "set_keepalive_config",
   "set_kimi_auto_thinking", "set_hooks_enabled", "set_plugins_enabled", "set_skills_enabled",
-  "set_desktop_env", "switch_profile",
+  "set_desktop_env", "switch_profile", "set_auto_review", "set_session_title_refresh",
   // models.ts (2)
   "set_enabled_model", "set_model_role",
   // provider-wizard.ts (2)
@@ -66,6 +66,24 @@ export interface RemoteConfig {
   mobileStatsBar: boolean;
 }
 
+/** One historical remote visitor, recorded on each authenticated /ws upgrade (settings page card). */
+export interface RemoteDeviceRecord {
+  /** Brand label parsed from the User-Agent (e.g. "iPhone · Safari"); "Unknown" when unusable */
+  name: string;
+  ip: string;
+  /** Epoch ms of the most recent visit */
+  lastAt: number;
+}
+
+/** History cap: oldest entries drop off beyond this (a LAN typically has a handful of devices) */
+const REMOTE_DEVICE_HISTORY_LIMIT = 20;
+
+function isDeviceRecord(v: unknown): v is RemoteDeviceRecord {
+  if (typeof v !== "object" || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return typeof r.name === "string" && typeof r.ip === "string" && typeof r.lastAt === "number";
+}
+
 /** Read the omp-desktop.json remote section (missing/invalid fields fall back to defaults). */
 export function readRemoteConfig(): RemoteConfig {
   const s = readDesktopSection("remote");
@@ -74,13 +92,20 @@ export function readRemoteConfig(): RemoteConfig {
     port: typeof s.port === "number" && Number.isInteger(s.port) && s.port > 0 && s.port <= 65535 ? s.port : REMOTE_DEFAULT_PORT,
     accessKey: typeof s.accessKey === "string" && /^[0-9a-f]{32}$/.test(s.accessKey) ? s.accessKey : "",
     mobileStatsBar: s.mobileStatsBar === true,
+    devices: Array.isArray(s.devices) ? s.devices.filter(isDeviceRecord).slice(0, REMOTE_DEVICE_HISTORY_LIMIT) : [],
   };
 }
 
 /** Read-modify-write the remote section (sibling sections and unmentioned fields survive). */
 export function writeRemoteConfig(patch: Partial<RemoteConfig>): RemoteConfig {
   const next = { ...readRemoteConfig(), ...patch };
-  writeDesktopSection("remote", { enabled: next.enabled, port: next.port, accessKey: next.accessKey, mobileStatsBar: next.mobileStatsBar });
+  writeDesktopSection("remote", {
+    enabled: next.enabled,
+    port: next.port,
+    accessKey: next.accessKey,
+    mobileStatsBar: next.mobileStatsBar,
+    devices: next.devices,
+  });
   return next;
 }
 
@@ -99,7 +124,7 @@ function lanIpv4(): string | undefined {
 }
 
 /** Settings-frame projection of the remote section (spec §3.1; key field named "key" per wire contract). */
-export function remotePayload(): { enabled: boolean; port: number; key: string; mobileStatsBar: boolean; url?: string } {
+export function remotePayload(): { enabled: boolean; port: number; key: string; mobileStatsBar: boolean; url?: string; devices?: RemoteDeviceRecord[] } {
   const cfg = readRemoteConfig();
   const ip = lanIpv4();
   return {
@@ -108,6 +133,7 @@ export function remotePayload(): { enabled: boolean; port: number; key: string; 
     key: cfg.accessKey,
     mobileStatsBar: cfg.mobileStatsBar,
     ...(ip && cfg.accessKey ? { url: `http://${ip}:${cfg.port}/?t=${cfg.accessKey}` } : {}),
+    ...(cfg.devices.length ? { devices: cfg.devices } : {}),
   };
 }
 
@@ -115,6 +141,8 @@ export function remotePayload(): { enabled: boolean; port: number; key: string; 
 
 interface RemoteWsData {
   remote: boolean;
+  /** Peer identity captured at upgrade; consumed by the shared open handler */
+  meta?: { ua: string; ip: string };
 }
 
 let srv: Bun.Server<RemoteWsData> | null = null;
@@ -127,6 +155,49 @@ export function setRemoteWsHandlers(handlers: Bun.WebSocketHandler<RemoteWsData>
 
 export function remoteStatus(): { enabled: boolean; port: number } {
   return { enabled: srv !== null, port: srv?.port ?? 0 };
+}
+
+/** Brand label from a User-Agent ("iPhone · Safari"); hand-rolled — brand words need no i18n. */
+function deviceNameFromUa(ua: string): string {
+  const os = /\(iPhone/.test(ua)
+    ? "iPhone"
+    : /\(iPad/.test(ua)
+      ? "iPad"
+      : /Android/.test(ua)
+        ? "Android"
+        : /Macintosh/.test(ua)
+          ? "Mac"
+          : /Windows/.test(ua)
+            ? "Windows"
+            : /Linux/.test(ua)
+              ? "Linux"
+              : "";
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /CriOS|Chrome\//.test(ua)
+      ? "Chrome"
+      : /FxiOS|Firefox\//.test(ua)
+        ? "Firefox"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "";
+  return os && browser ? `${os} · ${browser}` : os || browser || "Unknown";
+}
+
+// Same-device reconnect storms (phone lock/unlock) must not rewrite history every time
+const deviceSeenAt = new Map<string, number>();
+
+/** Record an authenticated remote visit; true when history changed and settings should re-push. */
+export function recordRemoteDevice(meta: { ua: string; ip: string }): boolean {
+  const key = `${meta.ua}\n${meta.ip}`;
+  const now = Date.now();
+  if ((deviceSeenAt.get(key) ?? 0) > now - 60_000) return false;
+  deviceSeenAt.set(key, now);
+  const name = deviceNameFromUa(meta.ua);
+  const devices = readRemoteConfig().devices.filter((d) => !(d.name === name && d.ip === meta.ip));
+  devices.unshift({ name, ip: meta.ip, lastAt: now });
+  writeRemoteConfig({ devices: devices.slice(0, REMOTE_DEVICE_HISTORY_LIMIT) });
+  return true;
 }
 
 /**
@@ -163,7 +234,10 @@ function remoteFetch(req: Request, server: Bun.Server<RemoteWsData>): Response |
   const url = new URL(req.url);
   if (url.pathname === "/ws" && (req.headers.get("upgrade")?.toLowerCase() ?? "") === "websocket") {
     if (!tokenOk(url.searchParams.get("t"))) return new Response("unauthorized", { status: 401 });
-    server.upgrade(req, { data: { remote: true } });
+    // Peer identity travels with the socket: the open handler (ws-shared) turns it into history
+    server.upgrade(req, {
+      data: { remote: true, meta: { ua: req.headers.get("user-agent") ?? "", ip: server.requestIP(req)?.address ?? "" } },
+    });
     return;
   }
   if (req.method !== "GET") return new Response("method not allowed", { status: 405 });

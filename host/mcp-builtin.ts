@@ -12,7 +12,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { McpServerAsset } from "./assets.ts";
+import type { McpServerAsset } from "./mcp-assets.ts";
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
 import { H } from "./state.ts";
 import { safeStderr } from "./stderr.ts";

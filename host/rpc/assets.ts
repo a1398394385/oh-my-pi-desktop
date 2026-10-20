@@ -12,18 +12,20 @@ import {
 } from "../bootstrap.ts";
 import { H, sessions } from "../state.ts";
 import { releaseMcpForSession, preloadMcpForCwd } from "../mcp-mount.ts";
+import { listAgentAssets } from "../assets.ts";
 import {
-  listAgentAssets,
   probeMcpServerHealth,
   mcpHealthCache,
+} from "../mcp-assets.ts";
+import {
   nearestProjectOmpDir,
   assetOmpDir,
   mcpCandidates,
   resolveAssetFile,
-  setPluginEnabled,
   validDesktopProjects,
   type AssetKind,
-} from "../assets.ts";
+} from "../asset-paths.ts";
+import { setPluginEnabled } from "../plugin-assets.ts";
 import { setMcpSharingConfig, deleteMcpSharingConfig } from "../profile.ts";
 import {
   buildExtensionsPayload,

@@ -481,6 +481,18 @@
       "note": "供应商设置页 Kimi auto thinking 开关：写入 omp-desktop.json 的 kimi.autoThinking（默认关）。关时 kimi-code 模型的 auto 档位在创建/切换/循环入口被钉到 high——Kimi 每次换档都会全价重计整个前缀"
     },
     {
+      "id": "set_auto_review",
+      "kind": "settings",
+      "risk": "write",
+      "note": "实验页开关：写入 omp-desktop.json 的 autoReview.enabled（默认关）。开启后审批卡弹出前由默认模型先审 tool_execution_start 记录的工具调用，low/medium 自动放行，deny/unavailable 仍弹人工卡"
+    },
+    {
+      "id": "set_session_title_refresh",
+      "kind": "settings",
+      "risk": "write",
+      "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.refresh（默认关）。开启后每个回合结束用 tiny 模型重生成会话标题；用户手动改名的会话永不覆盖"
+    },
+    {
       "id": "set_plugins_enabled",
       "kind": "settings",
       "risk": "write",

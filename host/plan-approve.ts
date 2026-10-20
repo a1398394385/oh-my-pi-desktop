@@ -231,7 +231,7 @@ async function approveProposal(
     const destination = await promptPlanSavePath(ws, sessionId, entry, planContent);
     if (destination === undefined) return; // cancelled, or the write failed
     exitPlanModeState(entry);
-    pushPlanState(ws, sessionId, entry);
+    pushPlanState(entryBus(entry), sessionId, entry);
     try {
       await forkWithLocalArtifacts(ws, entry, sourceLocalRoot);
       pushCommandOutput(sessionId, hostI18n.t("flows.plan.savedPlan", { path: destination }));
@@ -330,11 +330,11 @@ async function approvePlan(
     await mkdir(path.dirname(dest), { recursive: true });
     await writeFile(dest, planContent);
     exitPlanModeState(entry);
-    pushPlanState(ws, sessionId, entry);
+    pushPlanState(entryBus(entry), sessionId, entry);
     // The approval frame carried the plan on the OLD session's id; repeat it on
     // the new one so its todo card keeps the plan output row.
     planState(next.entry).lastPlan = { title, path: dest, content: planContent };
-    pushPlanOutput(ws, next.sessionId, next.entry);
+    pushPlanOutput(entryBus(next.entry), next.sessionId, next.entry);
     return dispatchApprovedTurn(ws, next.entry, {
       planFilePath,
       planContent,
@@ -345,7 +345,7 @@ async function approvePlan(
   }
 
   exitPlanModeState(entry);
-  pushPlanState(ws, sessionId, entry);
+  pushPlanState(entryBus(entry), sessionId, entry);
 
   // The plan→execution transition aborts the turn that produced the proposal.
   // Arm the silent marker so that aborted message is stamped as a silent abort

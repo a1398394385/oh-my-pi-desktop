@@ -11,7 +11,7 @@
 // store fresh from disk (crash recovery marks running turns "interrupted").
 import type { BtwHistoryRecord, BtwHistoryTurn } from "@oh-my-pi/pi-coding-agent/session/btw-history";
 import { BtwHistoryStore, beginBtwTurn, patchLatestBtwTurn, runBtwTurn } from "./bootstrap.ts";
-import { sessions, stampEvent } from "./state.ts";
+import { sessions, stampEvent, entryBus } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
 import { hostI18n } from "./i18n/host.ts";
 
@@ -59,9 +59,11 @@ function sessionOf(sessionId: string) {
   return e.session as { model: unknown; runEphemeralTurn: Function };
 }
 
-/** Push the topic's current state to the UI; every lifecycle transition lands through here. */
-function pushRecord(ws: BtwWs, sessionId: string, record: BtwHistoryRecord): void {
-  ws.send(JSON.stringify(stampEvent({ type: "btw_record", sessionId, record })));
+/** Push the topic's current state to the UI; every lifecycle transition lands through here.
+ * Fans out over the session's uiSockets: the Side Chat panel is per-session shared state,
+ * so the other attached channel sees the same topic stream. */
+function pushRecord(_ws: BtwWs, sessionId: string, record: BtwHistoryRecord): void {
+  entryBus(sessions.get(sessionId)!).send(JSON.stringify(stampEvent({ type: "btw_record", sessionId, record })));
 }
 
 async function openStore(sessionId: string): Promise<BtwHistoryStore> {
@@ -125,7 +127,7 @@ async function runTopic(
       onTextDelta: (delta: string) => {
         if (st.running.get(run.record.id) !== run) return;
         run.record = patchLatestBtwTurn(run.record, { answer: run.record.answer + delta, updatedAt: Date.now() });
-        ws.send(JSON.stringify({ type: "btw_delta", sessionId, recordId: run.record.id, delta }));
+        entryBus(sessions.get(sessionId)!).send(JSON.stringify({ type: "btw_delta", sessionId, recordId: run.record.id, delta }));
       },
     });
     finish(st, run, { answer: replyText, status: "complete", updatedAt: Date.now() });
@@ -137,7 +139,7 @@ async function runTopic(
     await run.store.upsert(run.record);
   } catch (error) {
     safeStderr(`[btw] terminal checkpoint failed for ${run.record.id}: ${error}\n`);
-    ws.send(JSON.stringify({ type: "error", message: `Could not save /btw history: ${(error as Error)?.message ?? error}` }));
+    entryBus(sessions.get(sessionId)!).send(JSON.stringify({ type: "error", message: `Could not save /btw history: ${(error as Error)?.message ?? error}` }));
   }
 }
 

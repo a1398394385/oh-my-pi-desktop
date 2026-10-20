@@ -25,11 +25,11 @@ import {
   discoverCustomTSCommands,
   cfgSkills,
 } from "../bootstrap.ts";
-import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { H, sessions, defaultCwd, stampEvent, entryBus, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
 import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
-import { readPluginsEnabled } from "../assets.ts";
+import { readPluginsEnabled } from "../plugin-assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { pushComputerMode } from "../computer-mode.ts";
@@ -313,7 +313,8 @@ async function dispatchSlashInput(
   // Slash-command returns carry the typed command line so the UI can render them as a
   // command card (header = what was typed) instead of an anonymous meta row
   const sendCommandOutput = (out: string): void => {
-    ws.send(JSON.stringify({ type: "command_output", sessionId, text: out, command: trimmed }));
+    // Cross-channel: the other attached UI renders the same command card
+    entryBus(entry).send(JSON.stringify({ type: "command_output", sessionId, text: out, command: trimmed }));
   };
 
   // 1) /skill:<name>: the base's prompt() does not handle it, the host must dispatch (matching ACP #tryRunSkillCommand)
@@ -535,6 +536,13 @@ async function handlePrompt(
     text: finalText,
     ...(images.length > 0 ? { images } : {}),
   });
+  // Cross-channel echo: every OTHER attached UI draws this bubble from the frame
+  // (the sender drew its own optimistically, so it is excluded — its frontend has no
+  // dedup and would double the bubble). Same shape the automation scheduler broadcasts.
+  const echo = JSON.stringify(
+    stampEvent({ type: "event", sessionId, kind: "user_message", text: finalText, ...(images.length > 0 ? { images } : {}) }),
+  );
+  for (const w of entry.uiSockets) if (w !== ws) w.send(echo);
   // Auto session title: the base owns this entirely now — the session is
   // created with autoTitle: true (see createSessionCore), and AgentSession
   // notes the operator message on message_end + titles once the reply starts.
@@ -558,7 +566,7 @@ async function handlePrompt(
   // ever clear the stale QueueCard row. Push a queued snapshot up front:
   // empty in the degenerate case (ghost gone before the turn's first frame),
   // a harmless duplicate of the then-calibration on the normal queued path.
-  if (!steer && !entry.session.isStreaming) sendQueued(ws, sessionId, entry);
+  if (!steer && !entry.session.isStreaming) sendQueued(entryBus(entry), sessionId, entry);
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
@@ -572,17 +580,19 @@ async function handlePrompt(
         // no entryId yet)
         const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === finalText && !t.entryId);
         if (i >= 0) entry.transcript.splice(i, 1);
-        ws.send(JSON.stringify({ type: "command_result", sessionId, text: finalText, consumed: true }));
+        // Broadcast: the user_message echo above reached every attached UI, so the
+        // retraction must too (the other side would keep a ghost bubble otherwise)
+        entryBus(entry).send(JSON.stringify({ type: "command_result", sessionId, text: finalText, consumed: true }));
       }
       // Trim right after queued-mid-stream: keep only the earliest 1 entry
       // in the base queue, park the rest (this run's injection boundary can
       // only carry that 1, avoiding several riding together; later agent_end
       // rounds put them back one by one for consumption)
       parkFollowUpTail(entry);
-      sendQueued(ws, sessionId, entry);
+      sendQueued(entryBus(entry), sessionId, entry);
     }) // Calibrate the frontend's queued rows after enqueueing/turn start
     .catch((err: unknown) => {
-      ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
+      entryBus(entry).send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
     });
 }
 
@@ -664,11 +674,14 @@ export const promptHandlers: Record<string, RpcHandler> = {
     }
     const item: TranscriptItem = { role: "bash", text: command, output: "", running: true, excludeFromContext };
     entry.transcript.push(item);
-    ws.send(JSON.stringify({ type: "bash_start", sessionId: msg.sessionId, command, excludeFromContext }));
+    // Cross-channel: the bash card streams to every attached UI (the transcript row
+    // is shared state; a requestor-only stream would desync the other side's view)
+    const bus = entryBus(entry);
+    bus.send(JSON.stringify({ type: "bash_start", sessionId: msg.sessionId, command, excludeFromContext }));
     entry.session
       .executeBash(
         command,
-        (chunk) => ws.send(JSON.stringify({ type: "bash_chunk", sessionId: msg.sessionId, chunk })),
+        (chunk) => bus.send(JSON.stringify({ type: "bash_chunk", sessionId: msg.sessionId, chunk })),
         { excludeFromContext, useUserShell: true },
       )
       .then((r) => {
@@ -685,7 +698,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
         entry.manager.ensureOnDisk?.().catch((err: unknown) => {
           safeStderr(hostI18n.t("errors.prompt.ensureOnDiskFailed", { detail: String(err) }));
         });
-        ws.send(
+        bus.send(
           JSON.stringify({
             type: "bash_done",
             sessionId: msg.sessionId,
@@ -699,7 +712,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
       })
       .catch((err: unknown) => {
         item.running = false;
-        ws.send(
+        bus.send(
           JSON.stringify({
             type: "bash_done",
             sessionId: msg.sessionId,
@@ -712,7 +725,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     entry.session.abortBash(); // Triggered synchronously; executeBash's promise resolves on its own and sends another bash_done frame
-    ws.send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
+    entryBus(entry).send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
   },
   async list_commands(ws, msg) {
     // Slash command list (for composer / completion): fetched on demand, no
