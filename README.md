@@ -121,7 +121,7 @@ Updates are delivered in-app; you can also trigger a check manually under Settin
 
 ## Project status
 
-**v0.2.0** (2026-10-17). Tracks omp **18.11.3**, the current upstream release.
+**v0.2.0** (2026-10-17). Tracks omp **18.12.5**, the current upstream release.
 
 - **macOS** (Apple Silicon) and **Windows** (x64) — unsigned builds, see Install
 - Linux packaging not yet produced

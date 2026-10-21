@@ -4,7 +4,7 @@
 // CollabGuestLink) to the desktop session pool: one runtime per pooled session
 // in #collabRuntimes, each wrapping the session in an InteractiveModeContext
 // stub — the seam the TUI normally fills (same approach as the fork's
-// RpcCollabController, hardened with the seams 18.11.3's guest path touches).
+// RpcCollabController, hardened with the seams 18.12.5's guest path touches).
 // Frame contract: every op replies with a collab_state frame (state + optional
 // error) so the dialog lands one shape for success and failure; participant
 // changes arrive as the same frame via the statusLine.setCollabStatus seam.

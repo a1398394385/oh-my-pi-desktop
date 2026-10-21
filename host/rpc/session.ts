@@ -138,6 +138,10 @@ export async function buildSessionListPayload() {
     }
     return candidates[0] ?? sorted[0]?.cwd ?? "";
   };
+  // Archived records keep the path spelling the request used, while disk rows carry
+  // the base's realpath (macOS /var -> /private/var, Windows 8.3/junction aliases).
+  // Compare normalized, or an archived session renders un-archived on those spellings.
+  const archivedNorm = new Set(H.desktopProjects.archivedSessions.map(norm));
   const projects = [...groups.entries()]
     .map(([key, list]) => {
       list.sort((a, b) => b.modified.getTime() - a.modified.getTime());
@@ -157,7 +161,7 @@ export async function buildSessionListPayload() {
           firstMessage: (s.firstMessage ?? "").slice(0, 80),
           modified: s.modified.toISOString(),
           messageCount: s.messageCount,
-          archived: H.desktopProjects.archivedSessions.includes(s.path),
+          archived: archivedNorm.has(norm(s.path)),
         })),
       };
     })
@@ -546,7 +550,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // below and archive a live run.
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
-    const entry = findPooledSession(p);
+    // The pool key is a runtime UUID, so the entry must be looked up together with
+    // the key the eviction below deletes; `msg.sessionId` is never part of a
+    // path-addressed request and would delete nothing.
+    const pooled = [...sessions.entries()].find(([, e]) => sessionEntryMatchesPath(e, p));
+    const entry = pooled?.[1];
     // A live session cannot be archived: archiving evicts it from the pool, and
     // an evicted live session keeps running headless with its events going
     // nowhere. Same gate the unload / reload / delete RPCs use.
@@ -581,7 +589,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         }
       }
       if (fs.existsSync(entry.path)) {
-        await evictPoolEntry(msg.sessionId, entry);
+        await evictPoolEntry(pooled![0], entry);
         eachUiWs(pushPoolSnapshot);
       }
     }

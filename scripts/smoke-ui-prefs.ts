@@ -161,7 +161,10 @@ try {
   }));
   const ack2 = await waitFrame((f) => f.type === "settings" && f.settings?.uiConfig?.prefs?.codeFontSize === 15, "非法混合值的 settings 回执帧", mark);
   const ac2 = ack2.settings!.uiConfig!;
-  assert(ac2.theme === "light", `非法 theme 被跳过，保持 "light"（实际 ${String(ac2.theme)}）`);
+  // Theme is an open string by design (UiThemeMode = "dark"|"light"|"system"|string:
+  // base themes like dark-tokyo-night and custom names must pass); only the
+  // closed-set fields (motion, typed prefs) skip invalid values.
+  assert(ac2.theme === "banana", `开放字符串 theme 按原样落盘（实际 ${String(ac2.theme)}）`);
   assert(ac2.motion === "off", `非法 motion 被跳过，保持 "off"（实际 ${String(ac2.motion)}）`);
   assert(ac2.prefs?.uiFontSize === 16, `越界 uiFontSize=999 被跳过，保持 16（实际 ${String(ac2.prefs?.uiFontSize)}）`);
   assert(ac2.prefs?.codeWrap === undefined, `类型不符 codeWrap="yes" 被跳过（实际 ${JSON.stringify(ac2.prefs?.codeWrap)}）`);
@@ -169,7 +172,7 @@ try {
 
   // ---------- assertion 4: on-disk file holds the landed ui section ----------
   const onDisk = JSON.parse(readFileSync(cfgPath, "utf8")) as { ui?: Record<string, unknown> };
-  assert(onDisk.ui?.theme === "light" && onDisk.ui?.motion === "off", `文件 ui.theme/motion 落盘（实际 ${JSON.stringify(onDisk.ui)}）`);
+  assert(onDisk.ui?.theme === "banana" && onDisk.ui?.motion === "off", `文件 ui.theme/motion 落盘（实际 ${JSON.stringify(onDisk.ui)}）`);
   assert(onDisk.ui?.prefs?.uiFont === "pingfang" && onDisk.ui?.prefs?.codeFontSize === 15, "文件 ui.prefs 落盘且含两轮合并结果");
 
   // ---------- assertion 5: set_locale regression — locale shows up in uiConfig ----------

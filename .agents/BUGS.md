@@ -91,6 +91,8 @@
 | BUG-094 | 侧栏「活跃任务」里的会话失去 eject 按钮却仍驻留——前端 LRU 逐出未释放 host 的 socket 挂载，空闲逐出永远跳过它 | 2026-10-21 |
 | BUG-095 | 重连是「假重连」——视图冻住、停止无反应；新 socket 没有重放会话挂载，`uiSockets` 为空收不到任何帧 | 2026-10-21 |
 | BUG-096 | 上下文明细卡片合计不足 100%——ACP 块令牌漏算图片与 thinking 签名，活跃区最多偏小 51% | 2026-10-21 |
+| BUG-097 | 升级 18.12.5 冒烟暴露两处既有缺陷：归档驱逐用恒空的 `msg.sessionId`（池条目泄漏）、归档标志原样路径比较（realpath 拼写漏配） | 2026-10-21 |
+| BUG-098 | 18.12.5 时序回归：idle prompt 的 queued 校准帧排在 MCP 挂载等待后（被 capabilities_mcp 插队）；reload 撞上 autoTitle 的 isStreaming 尾巴 | 2026-10-21 |
 
 ---
 
@@ -1181,6 +1183,8 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **教训**：①BUG-065 教训①升级版——不仅「bun 应用旧补丁按行号落地」不可信，`bun patch` 的编辑/提交流程本身也不可信，中断后会静默用错基线生成补丁；唯一可靠路径是在 tarball 干净副本上落改动、自产 diff；②升级底座后判据顺序：`grep 补丁符号` 结构验证 → `host:build` → **exe 启动 READY** → 冒烟，缺一不可（源码冒烟过≠编译产物能启动，BUG-065 教训③仍有效）；③补丁应用成功后先 `sed -n` 抽查结构错位（注释中间插行、悬空块），一眼可辨，胜过全绿假象。
 
+**复发（2026-10-21，18.11.3→18.12.5）**：只改 `package.json` 版本键与补丁文件名、直接 `bun install`，bun 又把 pi-coding-agent 补丁的 `advisorCompactionEnabled` 块按邻近上下文错插到 `parentAgentId?: string;` 之后（丢了 `/**` 开头），`check-omp-imports` 报 `src/sdk.ts:853 Unexpected *`、`session-advisors.ts:2628 Expected ";"`。修法这次更省事且可复用：`npm pack <pkg>@<ver>` 解到 `/tmp` 得干净副本 → 旧补丁 `patch -p1 --dry-run` 先确认语义仍适用 → `git diff --no-index --src-prefix='' --dst-prefix='' a b`（两目录命名为 `a`/`b`，先删 patch 产生的 `.orig`）重新生成，行号/上下文与新版对齐 → `rm -rf node_modules/<pkg> && bun install` → `sed -n` 抽查。教训④：**版本键改了就一定重生成补丁**，补丁内容不变≠ hunk 上下文不变；上游在同一位置插入新字段就足以让 bun 的自动适配打歪。
+
 ### BUG-082: 安装版远程控制整站 404——`staticRoot()` 用 `/$bunfs` 字符串判编译态，Windows 编译版前缀是 `B:\~BUN\root`，判据失效后回落到虚拟路径
 
 **日期**：2026-10-18
@@ -1400,3 +1404,31 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：真实 journal 三例基线 vs ACP 差值从 51.4% 降到 ≤0.02%（-46 ~ -70 tokens，分块边界的余量）；`scripts/acp-projection-pairing.test.ts` 新增三条（user/toolResult 图片计价、thinking 签名随块、signature-only 块），把修复回退后三条全部失败；`bun run check` 全绿，`smoke-acp-projection`、`smoke-acp-tool`、`smoke-acp-pull` 通过。
 
 **教训**：任何「按块重算上下文大小」的实现都必须对齐全量计数器计入的每一种内容类型；漏掉的类型不会报错，只会让所有派生判断（tier、预算、排序、卡片百分比）安静地偏小。
+
+### BUG-097: 升级底座 18.12.5 冒烟时暴露两个 host 既有缺陷——归档驱逐用了恒空的 `msg.sessionId`，归档标志按原样路径比较
+
+**日期**：2026-10-21
+
+**现象**：`smoke:features` 的归档链路两处红灯：①归档池内会话后 `pool_sessions` 仍持有该会话（AgentSession + MCP 挂载常驻）；②macOS 上归档后的列表行 `archived` 显示 false。冒烟同步暴露脚本自身过时：rename/archive 仍发旧 `sessionId`（2309d8b 已改 path 寻址），且单帧 `waitType("session_list")` 会抢到上一次 RPC 的慢扫描刷新帧（6 连跑 3 败）。
+
+**根因**：①`archive_session` 的驱逐调用 `evictPoolEntry(msg.sessionId, entry)`——该 RPC 改 path 寻址后 `msg.sessionId` 恒 undefined，`sessions.delete(undefined)` 删不掉任何键；此前能过是因为旧冒烟的归档请求本身打不到 handler（缺 path 直接 error），从未走到驱逐。②列表行的 `archived` 用 `archivedSessions.includes(s.path)` 原样字符串比较，而磁盘行走的是 base 的 realpath（macOS `/var` → `/private/var`），拼写不同即漏配。
+
+**修复**：①驱逐改为按 path 匹配出的池键（`[...sessions.entries()].find(sessionEntryMatchesPath)`），不再读请求体里的 id 字段；②`buildSessionListPayload` 用归一化集合（复用 `norm()` 缓存）比较归档记录。
+
+**验证**：`smoke:features` 6 连跑 6 绿（42 断言/次）；`bun run check` 十项全绿、`host:build` 通过、编译产物启动 READY。红绿对照：回退驱逐修复后「归档后 pool_sessions 不再持有该会话」稳定失败。
+
+**教训**：①RPC 改寻址字段时，同 handler 内所有读旧字段的行都是隐患——`delete/evict` 类操作失败不报错，只会泄漏；②一切按路径对齐磁盘行的比较必须与分组用同一归一化函数，否则 symlink/大小写拼写差异表现为「功能时好时坏」；③冒烟里「等待类型 X」在 RPC 会自发推送同类型刷新帧的协议上必须取静默期最后一帧，否则断言的是旧快照。
+
+### BUG-098: 18.12.5 真模型冒烟暴露两处时序回归——idle prompt 的 queued 校准帧被 MCP 状态帧插队，reload 撞上 autoTitle 的 isStreaming 尾巴
+
+**日期**：2026-10-21
+
+**现象**：换有效模型（minimax-code-cn/MiniMax-M3.1-Flash）跑真模型冒烟：①`queue-ghost-smoke` 稳定失败「prompt 后第一帧应为 queued 校准帧，实际 capabilities_mcp」（3/3）；②`smoke.ts` 间歇失败「收到 error: 会话尚未空闲（仍在生成）」（3 中 2 败）。
+
+**根因**：①BUG-080 的 queued 校准帧在 `handlePrompt` 里排在「首轮 MCP 挂载等待」（`await Promise.race([entry.mcpMountInFlight, sleep(5000)])`）之后；18.12.5 的挂载时序让连接状态监听器在等待期间发出 `capabilities_mcp`，插在校准帧之前——幽灵行因此活过一帧 UI 已渲染的内容。②`smoke.ts` 的 `session_created` 分支无守卫，而 `reload_session` 重建池条目后会再广播一次 `session_created`：冒烟把重建帧当新会话、对同一会话再发一次 prompt → 新 turn 开始 → 下一次 reload 被 busy 门正确拒绝 → （重试后）又重建、又 prompt——乒乓直到重试耗尽或 120s 总闸。18.12.x 把自动起标题搬进 AgentSession 让 isStreaming 在终态 turn_end 后多挂一拍，是这链条能被踩中的时序前提。
+
+**修复**：①`host/rpc/prompt.ts` 把「非 steer 且非流式 → 先发 queued 快照」挪到挂载等待之前（快照内容与等待无关，纯粹是帧序要求）；②`scripts/smoke.ts` 的 `session_created` 分支加首建守卫（`state.sessionId` 非空即跳过），另对 reload 的「尚未空闲」错误做有界重试（≤10 次 ×400ms），其余 error 仍立即失败。
+
+**验证**：`queue-ghost-smoke` 3 连跑 3 绿（修复前 3 连败）；`smoke.ts` 守卫修复前 2/2 败（稳定复现「会话尚未空闲」乒乓），修复后 3 连跑 3 绿；`smoke:queue` 16 断言、`smoke:branch`、`smoke-approval`、`smoke-subagent(-reopen)`、`smoke-automations`、`smoke-plan-approve` 全绿；`bun run check` 全绿。
+
+**教训**：①「必须在第 X 帧之前」的协议帧不能排在任何 `await` 之后——await 期间任何监听器都可能插队；②对「会再广播的帧类型」（如 reload 重建后的 session_created）必须有幂等守卫，否则测试自身变成负载发生器——每次乒乓都真开一个模型 turn，还叠加内存与 120s 超时假象；③冒烟把 A 事件当 B 状态充分条件（turn_end 即空闲）时，升级改变时序后先怀疑这个映射，别急着改产品代码。

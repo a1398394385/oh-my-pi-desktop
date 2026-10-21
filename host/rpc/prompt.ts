@@ -502,6 +502,17 @@ async function handlePrompt(
   }
   // The user sending a message in this session = a seen interaction
   markSeen(entry);
+  // Degenerate-idle ghost recalibration (BUG-080, the BUG-071 residual): the
+  // UI optimistically enqueued a followUp row because its streaming flag
+  // lagged the host by a frame; on an idle host this prompt degenerates into
+  // a direct new turn — no queue mutation, no steer_consumed, nothing would
+  // ever clear the stale QueueCard row. Push a queued snapshot up front:
+  // empty in the degenerate case (ghost gone before the turn's first frame),
+  // a harmless duplicate of the then-calibration on the normal queued path.
+  // Must precede the first-turn cache gate below: waiting on the in-flight MCP
+  // mount lets its connection-status listener emit capabilities_mcp first,
+  // and the ghost row then survives past a frame the UI has already rendered.
+  if (!steer && !entry.session.isStreaming) sendQueued(entryBus(entry), sessionId, entry);
   // First-turn cache gate: the desktop opens sessions ready-to-chat, so the
   // mount (async, fired at pool entry) can still be in flight when the first
   // prompt lands. A mount landing between turns forks the prefix cache (tools
@@ -564,14 +575,6 @@ async function handlePrompt(
   // steer = injected immediately (inserted after the current tool batch, the
   // bubble finalized and the process split). When idle, the base ignores
   // both and opens a turn as usual.
-  // Degenerate-idle ghost recalibration (BUG-080, the BUG-071 residual): the
-  // UI optimistically enqueued a followUp row because its streaming flag
-  // lagged the host by a frame; on an idle host this prompt degenerates into
-  // a direct new turn — no queue mutation, no steer_consumed, nothing would
-  // ever clear the stale QueueCard row. Push a queued snapshot up front:
-  // empty in the degenerate case (ghost gone before the turn's first frame),
-  // a harmless duplicate of the then-calibration on the normal queued path.
-  if (!steer && !entry.session.isStreaming) sendQueued(entryBus(entry), sessionId, entry);
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),

@@ -359,7 +359,13 @@ export const HIDDEN_KEYS: Record<string, true> = {
   "tui.hyperlinks": true,
   "tui.mouse": true,
   "tui.tight": true,
+  "tui.completeScrollback": true,
   "tui.imeSafeCursor": true,
+  // Job widgets (18.12.x) paint into the TUI wait card, jobs pill and jobs sheet.
+  // The desktop renders none of them, and authoring is subscriber-gated
+  // (job-widgets/registry.ts skips entries that were never shown), so the
+  // switch has no desktop consumer.
+  "async.widgets": true,
   "display.shimmer": true,
   "display.pinnedAgents": true,
   "display.subagentLivePreview": true,

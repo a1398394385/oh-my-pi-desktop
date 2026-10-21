@@ -1,11 +1,12 @@
 diff --git a/src/auth/select.ts b/src/auth/select.ts
-index 0c5fe6870..f6543a6083 100644
+index 4d0ccd5..37367bb 100644
 --- a/src/auth/select.ts
 +++ b/src/auth/select.ts
-@@ -115,25 +115,16 @@
+@@ -114,26 +114,17 @@ export class CredentialSelector {
+ 		return next;
  	}
-
- 	/**
+ 
+-	/**
 -	 * FNV-1a hash for deterministic session-to-credential mapping.
 -	 * Ensures the same session always starts with the same credential.
 -	 */
@@ -14,7 +15,7 @@ index 0c5fe6870..f6543a6083 100644
 -		return Bun.hash.xxHash32(sessionId) % total;
 -	}
 -
--	/**
+ 	/**
  	 * Returns credential indices in priority order for selection.
 -	 * With sessionId: starts from hashed index (consistent per session).
 -	 * Without sessionId: starts from round-robin index (load balancing).

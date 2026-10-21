@@ -204,6 +204,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "advisor.reviewMode": { "label": "Advisor Review Mode", "description": "How often the advisor reviews when no WATCHDOG.yml roster exists: every turn, or only at the final yield." },
   "advisor.reviewInterval": { "label": "Advisor Review Interval", "description": "Without a WATCHDOG.yml roster, the advisor reviews every Nth eligible update; 1 means every update. Skipped ones ride along with the next review." },
   "advisor.maxNotesPerUpdate": { "label": "Advisor Max Notes Per Update", "description": "How many advice notes the advisor may add per update (1–32; the UI offers 1–5 quick picks). Blockers don't count." },
+  "advisor.continueSeverity": { "label": "Advisor Continue Severity", "description": "Minimum severity of an advisor note that wakes the agent after it finished with a final answer; lighter notes stay at the end of the transcript and reach the agent with your next message." },
   "advisor.evictStaleResults": { "label": "Advisor Evict Stale Results", "description": "Before each review, older advisor file reads and searches are replaced with a short placeholder; only the latest is kept." },
   "externalThinking": { "label": "External Thinking", "description": "Gives the model a private scratchpad you never see. Turning it on disables built-in reasoning for supported GPT, Claude and Gemini models." },
   "temperature": { "label": "Temperature", "description": "Higher values make replies more varied: 0 is deterministic, 1 is creative, -1 keeps the provider default." },
@@ -430,6 +431,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   // ---- pg-computer ----
   "computer.maxWidth": { "label": "Computer Screenshot Width", "description": "Maximum width, in pixels, of screenshots taken by the computer tool." },
   "computer.maxHeight": { "label": "Computer Screenshot Height", "description": "Maximum height, in pixels, of screenshots taken by the computer tool." },
+  "computer.backgroundFallback": { "label": "Computer Background Fallback", "description": "What window input does when its background route is unavailable: takeover reruns it in the foreground for that call and returns focus to your app; refuse fails the call and also blocks the agent's own takeover, raise, desktop input and macOS menus." },
   "browser.headless": { "label": "Headless Browser", "description": "Runs the browser headless with no visible window; turn it off to see the browser UI." },
   "browser.freezeOnTurnEnd": { "label": "Freeze Browser Tabs On Turn End", "description": "Freezes OMP-owned headless tabs when a turn ends so animated pages stop burning CPU/GPU while idle. Tabs thaw on next use; open with persist:true to opt out." },
   "browser.idleCloseSec": { "label": "Browser Idle Close Timeout", "description": "Closes OMP-owned headless tabs and Tern picture-in-pictures idle longer than this many seconds (0 = never; session dispose still reaps them). Relay/CDP/spawned browsers and other sessions' tabs are left alone." },
@@ -512,6 +514,8 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
 };
 
 export const OPTS_EN: Record<string, Record<string, string>> = {
+  "advisor.continueSeverity": { "nit": "Nit", "concern": "Concern", "blocker": "Blocker" },
+  "computer.backgroundFallback": { "takeover": "Takeover", "refuse": "Refuse" },
   "hindsight.recallBudget": { "low": "Low", "mid": "Mid", "high": "High" },
   "dev.autoqaConsent": { "unset": "Not asked", "granted": "Granted", "denied": "Denied" },
 };
