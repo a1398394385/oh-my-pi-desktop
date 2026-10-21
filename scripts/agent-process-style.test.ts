@@ -1,8 +1,10 @@
 // Agent process display style (ui.prefs.agentProcessStyle) drives both folding
 // levels in chat/items.tsx: "standard" folds a >=3 read-only run and merges
 // same-type events, "detailed" drops the read-only run fold, "expanded" drops
-// the same-type merges too. Both renderItems branches (top-level flow and the
-// child container used by LoopGroup) must honour it.
+// the same-type merges too. "concise" folds like standard (that shape is what the
+// live reveal shows) and adds renderItems' hideProcessFrom filter, which strips
+// the running turn's process rows down to the assistant outputs. Both renderItems
+// branches (top-level flow and the child container used by LoopGroup) must honour it.
 // The dynamic imports are deliberate: the store module reads localStorage while
 // evaluating, so the happy-dom globals above must exist first (same shape as the
 // other UI smokes).
@@ -11,7 +13,7 @@ import { Window } from "happy-dom";
 import { describe, expect, test } from "bun:test";
 import type { ReactElement } from "react";
 import type { AgentProcessStyle } from "../ui-src/store/shapes";
-import type { ChatItem, ToolItem } from "../ui-src/types/session";
+import type { ChatItem, RailEntry, ToolItem } from "../ui-src/types/session";
 
 const win = new Window({ url: "http://localhost/?preview=1" });
 Object.assign(globalThis, {
@@ -26,6 +28,7 @@ initI18n("zh-CN");
 const { useAppStore } = await import("../ui-src/store");
 const { renderItems } = await import("../ui-src/components/chat/items");
 const { default: ReadonlyGroup } = await import("../ui-src/components/chat/ReadonlyGroup");
+const { default: AssistantMsg } = await import("../ui-src/components/chat/AssistantMsg");
 
 const setStyle = (v: AgentProcessStyle) =>
   useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, agentProcessStyle: v } }));
@@ -86,6 +89,50 @@ describe("agent process display style", () => {
 
     setStyle("expanded");
     expect(scan([...reads2, ...edits2], "k")).toEqual({ readonlyBlocks: 0, mergedGroups: 0, toolRows: 4 });
+  });
+
+  test("concise folds like standard", () => {
+    setStyle("concise");
+    expect(scan(reads3)).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 0 });
+    expect(scan(reads2)).toEqual({ readonlyBlocks: 0, mergedGroups: 1, toolRows: 1 });
+  });
+
+  test("hideProcessFrom drops the live turn's process rows, keeping outputs", () => {
+    setStyle("concise");
+    const items = [
+      { role: "user", text: "go" },
+      ...reads2,
+      { role: "assistant", text: "first" },
+      ...cmds2,
+      { role: "assistant", text: "second" },
+    ] as ChatItem[];
+    const flat = (out: ReactElement[]) => {
+      const acc: ReactElement[] = [];
+      const walk = (els: ReactElement[]) => {
+        for (const el of els) {
+          acc.push(el);
+          const kids = (el.props as { children?: unknown }).children;
+          if (Array.isArray(kids)) walk(kids as ReactElement[]);
+        }
+      };
+      walk(out);
+      return acc;
+    };
+
+    // UserMsg carries `item` too, so count by role: only the two outputs survive
+    const isToolRow = (el: ReactElement) => rowProps(el).item?.role === "tool";
+
+    const entries: RailEntry[] = [];
+    const hidden = flat(renderItems(items, "", entries, undefined, { hideProcessFrom: 0 }));
+    expect(hidden.filter(isToolRow)).toHaveLength(0);
+    expect(hidden.some((el) => el.type === ReadonlyGroup)).toBe(false);
+    expect(hidden.filter((el) => el.type === AssistantMsg)).toHaveLength(2);
+    // the rail mirrors the visible rows
+    expect(entries.map((e) => e.role)).toEqual(["user", "assistant", "assistant"]);
+
+    // reveal: no filter, the process rows (and their standard folds) come back
+    const shown = flat(renderItems(items, "", [], undefined, {}));
+    expect(shown.filter(isToolRow).length).toBeGreaterThan(0);
   });
 
   test("an unknown stored value falls back to standard", () => {

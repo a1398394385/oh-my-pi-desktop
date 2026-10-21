@@ -23,6 +23,7 @@
     "smoke:stamp": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-stamp.ts",
     "smoke:subagent": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-subagent.ts",
     "smoke:subagent-subview": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-subagent-subview.ts",
+    "smoke:subagent-reopen": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-subagent-reopen.ts",
     "smoke:plugins": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-plugins.ts",
     "smoke:automations": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-automations.ts",
     "smoke:project-group": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-project-group.ts",
@@ -42,7 +43,8 @@
     "check:version": "bun scripts/sync-version.ts --check",
     "version:set": "bun scripts/sync-version.ts",
     "check:i18n-keys": "bun scripts/check-i18n-keys.ts",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/sync-version.ts --check && bun scripts/check-i18n-keys.ts && bun run ui:typecheck",
+    "check:settings-copy": "bun scripts/check-settings-copy.ts",
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/sync-version.ts --check && bun scripts/check-i18n-keys.ts && bun scripts/check-settings-copy.ts && bun run ui:typecheck",
     "perf:budget": "bun scripts/perf-budget.ts"
   },
   "dependencies": {

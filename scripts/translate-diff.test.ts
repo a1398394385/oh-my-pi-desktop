@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { translateEvent, entriesToTranscript, pendingWrites } from "../host/translate.ts";
+import { translateEvent, pendingWrites } from "../host/translate.ts";
+import { entriesToTranscript } from "../host/translate-history.ts";
 import type { PoolEntry } from "../host/state.ts";
 
 describe("translate.ts write and edit diff generation", () => {

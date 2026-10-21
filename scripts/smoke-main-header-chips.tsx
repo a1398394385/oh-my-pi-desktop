@@ -3,6 +3,8 @@
 // branches and sends switch_git_branch; non-git sessions show no branch chip.
 // Also exercises the store's cwd routing: a git_branches frame for the active
 // session's cwd lands in headerGit, git_branch_switched updates it (+toast).
+// The "⋯" dropdown (SessCtxMenu) must offer the pin entry: clicking it sends
+// set_session_pinned and flips the store's pinned set.
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-main-header-chips.tsx
 import { strict as assert } from "node:assert";
 import { createElement, act } from "react";
@@ -64,6 +66,18 @@ try {
   await act(async () => onMessage({ type: "git_branch_switched", cwd: "/test/proj", branch: "dev" }));
   assert.equal(useAppStore.getState().headerGit?.current, "dev", "git_branch_switched 应回写 headerGit");
   assert.equal(chips().find((c) => c.tagName === "BUTTON")?.textContent?.includes("dev"), true, "分支胶囊应显示 dev");
+  // "⋯" dropdown: the session menu offers the pin entry, clicking it pins the session
+  const more = host.querySelector('button[title="更多"]') as HTMLButtonElement | null;
+  assert(more, "顶栏应有「更多」按钮");
+  await act(async () => more.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event));
+  const sessMenu = document.querySelector(".ctx-menu");
+  assert(sessMenu, "点击「更多」应弹出会话菜单");
+  const pinItem = [...sessMenu.querySelectorAll("button")].find((b) => b.textContent === "置顶会话");
+  assert(pinItem, `会话菜单应含「置顶会话」，实际 ${JSON.stringify([...sessMenu.querySelectorAll("button")].map((b) => b.textContent))}`);
+  await act(async () => pinItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event));
+  const pinMsg = sent.find((m) => (m as { type?: string }).type === "set_session_pinned") as { path?: string; pinned?: boolean } | undefined;
+  assert(pinMsg && pinMsg.path === "/test/proj/s1.jsonl" && pinMsg.pinned === true, `应发送 set_session_pinned，got ${JSON.stringify(pinMsg)}`);
+  assert(useAppStore.getState().pinnedSessions.has("/test/proj/s1.jsonl"), "置顶后 pinnedSessions 应包含该会话");
   // non-git session: no branch chip, project chip stays
   await act(async () => useAppStore.setState((s) => {
     const sess = s.openSessions.get("/test/proj/s1.jsonl")!;

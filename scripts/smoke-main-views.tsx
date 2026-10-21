@@ -15,7 +15,15 @@ const { getDraft, getDraftText } = await import("../ui-src/components/composer/l
 const fixture = process.env.OMP_UI_SESSION_FIXTURE;
 const frames = fixture ? JSON.parse(readFileSync(fixture, "utf8")) : [
   { type: "session_created", sessionId: "view-smoke", path: "/test/view", cwd: "/test", model: null, thinking: "auto", isGit: false },
-  { type: "messages", sessionId: "view-smoke", messages: [{ role: "user", text: "question" }, { role: "assistant", text: "answer", entryId: "leaf" }] },
+  {
+    type: "messages",
+    sessionId: "view-smoke",
+    messages: [
+      { role: "user", text: "question" },
+      { role: "user", text: "check the deploy", automation: { id: "automation-1", title: "Nightly check" } },
+      { role: "assistant", text: "answer", entryId: "leaf" },
+    ],
+  },
   { type: "entry_tree", sessionId: "view-smoke", leafId: "leaf", roots: [{ id: "leaf", kind: "message", role: "assistant", text: "answer", children: [] }] },
 ];
 for (const frame of frames) onMessage(frame);
@@ -40,6 +48,12 @@ const patch = async (values: Parameters<typeof useAppStore.setState>[0]) => { aw
 try {
   await act(async () => root.render(createElement(MainColumn)));
   assert(host.querySelector("#stream .msg.assistant"));
+  // Automation delivery: transcript items carrying the marker render a distinct bubble, so a
+  // scheduler wake-up never passes for typed input.
+  const delivered = host.querySelector("#stream .msg.user .user-bubble.automation");
+  assert(delivered, "delivered automation message renders the automation bubble");
+  assert.equal(delivered.querySelector(".user-msg-automation")?.textContent, "Nightly check");
+  assert.equal(host.querySelectorAll("#stream .user-bubble.automation").length, 1, "only the delivery is marked");
   const chatWheelCount = wheelListeners.size;
   assert(chatWheelCount > 0);
   const composer = host.querySelector("#composer");

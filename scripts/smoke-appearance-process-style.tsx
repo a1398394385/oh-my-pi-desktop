@@ -1,7 +1,8 @@
 // Throwaway smoke: the appearance page's "agent process display style" row.
-// Mounts the real AppearancePage, clicks each pill, and asserts the store +
-// outbound set_ui_prefs frame follow; also asserts the replaced base switch
-// (display.hideToolActivity) no longer renders anywhere on the page.
+// Mounts the real AppearancePage, opens the dropdown, picks each option, and
+// asserts the store + outbound set_ui_prefs frame follow; also asserts the
+// replaced base switch (display.hideToolActivity) no longer renders anywhere on
+// the page.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-appearance-process-style.tsx
 // Dynamic imports: UI modules read DOM globals at import time, so the smoke
 // window and the mock WebSocket must be installed before they load.
@@ -68,25 +69,44 @@ try {
 
   const row = rowByTitle("Agent 处理过程显示风格");
   assert.ok(row, "处理过程显示风格行渲染");
-  const pills = [...row.querySelectorAll(".mcp-type-pill")];
-  assert.deepEqual(pills.map((p) => p.textContent), ["标准", "详细", "完全展开"], "三档标签");
-  assert.ok(pills[0].className.includes("on"), "默认选中标准");
-  assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "standard", "默认档位 standard");
+  const sel = row.querySelector(".sel") as HTMLElement;
+  assert.ok(sel, "处理过程显示风格行是下拉框");
+  const miByLabel = (label: string) =>
+    [...sel.querySelectorAll(".mi")].find((mi) => mi.textContent?.includes(label)) as HTMLElement | undefined;
+  const openAndPick = async (label: string) => {
+    await click(sel);
+    const mi = miByLabel(label);
+    assert.ok(mi, `下拉项 ${label} 存在`);
+    await click(mi);
+  };
 
-  await click(pills[2]);
-  assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "expanded", "点击后 store 为 expanded");
+  await click(sel);
+  // .mi textContent also carries the checkmark column, labels live in .mi-tt
+  const labels = () => [...sel.querySelectorAll(".mi .mi-tt")].map((tt) => tt.textContent);
+  const picked = () => sel.querySelector(".mi.on .mi-tt")?.textContent;
+  assert.deepEqual(labels(), ["简洁", "标准", "详细", "完全展开"], "四档标签");
+  assert.equal(picked(), "标准", "默认选中标准");
+  assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "standard", "默认档位 standard");
+  await click(sel); // close: the pick helper opens it again itself
+
+  await openAndPick("完全展开");
+  assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "expanded", "选择后 store 为 expanded");
   const last = prefsFrames().at(-1) as { prefs?: Record<string, unknown> } | undefined;
   assert.equal(last?.prefs?.agentProcessStyle, "expanded", "set_ui_prefs 帧携带 agentProcessStyle");
-  assert.ok(pills[2].className.includes("on") && !pills[0].className.includes("on"), "选中态跟随点击");
+  assert.equal(picked(), "完全展开", "选中态跟随选择");
 
-  await click(pills[1]);
+  await openAndPick("简洁");
+  assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "concise", "简洁档位可保存");
+  assert.equal(picked(), "简洁", "选中态跟着简洁");
+
+  await openAndPick("详细");
   assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "detailed", "切回详细");
 
   // the replaced base switch is gone everywhere, its group sibling survives
   assert.ok(!rowByTitle("隐藏工具活动"), "底座隐藏工具活动行已移除");
   assert.ok(rowByTitle("显示 Token 用量"), "同组其他设置仍渲染");
 
-  console.log("✓ 外观页三档显示风格：渲染/切换/set_ui_prefs 全链路正确，底座开关已下线");
+  console.log("✓ 外观页四档显示风格下拉框：渲染/选择/set_ui_prefs 全链路正确，底座开关已下线");
 } finally {
   await act(async () => { root.unmount(); });
   win.happyDOM.close();
