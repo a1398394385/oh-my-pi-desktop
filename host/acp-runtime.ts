@@ -57,6 +57,7 @@ import {
 	splitBlocks,
 	type AcpBlockInfo,
 	type AcpSourceMessage,
+	type CountImage,
 } from "./acp-projection.ts";
 import { appendAcpSummary, type AcpSummarySink } from "./acp-persist.ts";
 import { dispatchRecall, type RecallOutcome } from "./acp-recall-tool.ts";
@@ -93,6 +94,8 @@ export type { CompressOutcome, CompressRejection } from "./acp-compress.ts";
 export interface AcpRuntimeDeps {
 	/** Token counter bound to the session model's Tokenizer (spec §8; byte-estimate fallback is built in). */
 	countTokens: (text: string) => number;
+	/** Image charge bound to the same Tokenizer (spec §8): block tokens must price images like the base counter. */
+	countImage?: CountImage;
 	/** Journal write channel for compaction blocks (SessionManager, spec §9). */
 	sink: AcpSummarySink;
 	/** Journal read for entry-id alignment (SessionManager.getEntries). */
@@ -309,13 +312,15 @@ export class AcpRuntimeState {
 		this.#syncRefs();
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
-		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo);
+		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo, this.#deps.countImage);
 		// Retired context_status pairs leave the projection pair-wise: dropping the
 		// result block id from `kept` removes both the toolResult message and
 		// its tool_use body (the pair filter keys on the result id, spec §6 v10).
 		const dropped = this.#refs.droppedStatusResults;
 		const kept = new Set(this.lastBlocks.filter((b) => !this.compressed.has(b.id) && !dropped.has(b.id)).map((b) => b.id));
-		const out = projectContext(source, kept, this.zone, this.#deps.countTokens, (id) => this.#refs.label(id));
+		const out = projectContext(source, kept, this.zone, this.#deps.countTokens, (id) => this.#refs.label(id), (err) =>
+			safeStderr(`[ACP] projection pairing gap (passing through; the provider layer re-pairs the wire):`, err),
+		);
 		if (!this.#manifestOverride) this.#refreshRoundStatus(true);
 		if (this.roundStatus) this.#anchorRound(this.roundStatus);
 		if (this.degraded) return [...view]; // the relief check degraded mid-projection

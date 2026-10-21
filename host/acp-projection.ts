@@ -11,14 +11,26 @@
 // Projection = compression zone (rendered user text segments) + active zone
 // (block-level filtered omp-domain messages). Wire-shape reassembly (Anthropic
 // aggregation / OpenAI multi-message) is done by the base provider layer; the
-// host only filters inside the domain, then asserts the tool_use/result pairing
-// invariant (P1 probe V4 proved the server enforces it with a 400, so a broken
-// projection must fail loudly here rather than at the API).
+// host only filters inside the domain, and filtering is pair-granular by
+// construction (a tool_use rides with its result's block id, so removal never
+// splits a pair). Pairing gaps INHERITED from the source view (aborted-turn
+// dangling calls, base-synthesized skipped results) are passed through as-is:
+// the provider transform layer re-pairs them per request (synthesizing aborted
+// placeholder results), so failing loudly here would only disable compression
+// for a condition the wire tolerates. A gap is still logged once per request
+// so a manifest-validation hole remains observable.
 import type { AgentMessage, AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
+import { base64ImageSize, estimateImageTokens, type ImageDetail } from "@oh-my-pi/pi-agent-core/image-tokens";
 import { messageFingerprint } from "./acp-fingerprint.ts";
 
 /** Token counter bound to the active model's Tokenizer (byte-estimate fallback is built in). */
 export type CountTokens = (text: string) => number;
+
+/** Image charge of one content block; the host binds it to the session model's Tokenizer (spec §8). */
+export type CountImage = (image: { data: string; detail?: ImageDetail }) => number;
+
+/** Fallback for pure-function callers: the wire rule the base tokenizer uses without a catalog image rule. */
+const defaultCountImage: CountImage = (image) => estimateImageTokens(base64ImageSize(image.data), image.detail);
 
 /** One journaled message plus the id of the entry that stored it (the block id namespace). */
 export interface AcpSourceMessage {
@@ -86,6 +98,29 @@ export function flattenText(content: string | readonly unknown[] | undefined): s
 }
 
 /**
+ * Text plus the image charge of one message content: the base tokenizer prices
+ * image blocks by pixel size ({@link estimateImageContentTokens}), and a block
+ * that dropped that charge would under-read its own size — and every tier/
+ * budget verdict derived from it — by the whole image cost.
+ */
+function splitContent(
+	content: string | readonly unknown[] | undefined,
+	countImage: CountImage,
+): { text: string; imageTokens: number } {
+	if (typeof content === "string") return { text: content, imageTokens: 0 };
+	if (!Array.isArray(content)) return { text: "", imageTokens: 0 };
+	let text = "";
+	let imageTokens = 0;
+	for (const c of content) {
+		if (!c || typeof c !== "object") continue;
+		if (c.type === "text") text += c.text;
+		else if (c.type === "thinking") text += c.thinking;
+		else if (c.type === "image") imageTokens += countImage(c);
+	}
+	return { text, imageTokens };
+}
+
+/**
  * Split a source message view into logical blocks (spec §3). Deterministic and
  * side-effect free; block ids derive only from entry ids, so a manifest built
  * from an earlier split stays valid as long as the entry ids survive.
@@ -94,11 +129,16 @@ export function flattenText(content: string | readonly unknown[] | undefined): s
  * suffix + text length (spec §8: the base WeakMap memo misses every round on
  * the context event's fresh copies, so the host keeps its own Map). The length
  * term is what catches prune rewrites that a head-only fingerprint would miss.
+ *
+ * `countImage` prices `image` blocks, which carry no text: the host binds it to
+ * the session Tokenizer so a block reads exactly as large as the base counter
+ * charges it. Callers that only need ids pass a zero counter.
  */
 export function splitBlocks(
 	source: readonly AcpSourceMessage[],
 	countTokens: CountTokens,
 	memo?: Map<string, number>,
+	countImage: CountImage = defaultCountImage,
 ): AcpBlockInfo[] {
 	const blocks: AcpBlockInfo[] = [];
 	// tool_use bodies ride with their result block (spec §3), so their cost is
@@ -123,35 +163,41 @@ export function splitBlocks(
 			return n;
 		};
 		if (message.role === "user" || message.role === "developer") {
-			const text = flattenText(message.content);
-			blocks.push({ id, kind: "user", sourceId: id, tokens: count(text), intent: truncIntent(text) });
+			const { text, imageTokens } = splitContent(message.content, countImage);
+			blocks.push({ id, kind: "user", sourceId: id, tokens: count(text) + imageTokens, intent: truncIntent(text) });
 		} else if (message.role === "toolResult") {
-			const text = flattenText(message.content);
+			const { text, imageTokens } = splitContent(message.content, countImage);
 			blocks.push({
 				id,
 				kind: "result",
 				sourceId: id,
 				toolCallId: message.toolCallId,
-				tokens: count(text) + (callTokens.get(message.toolCallId) ?? 0),
+				tokens: count(text) + imageTokens + (callTokens.get(message.toolCallId) ?? 0),
 				intent: truncIntent(`${message.toolName}: ${text}`),
 			});
 		} else if (message.role === "assistant") {
 			let thinking = "";
+			// Providers bill the opaque signature riding along a thinking block, and the
+			// base countMessage charges it — an uncounted signature leaves the block under
+			// its wire size by that payload.
+			let signature = "";
 			let text = "";
 			// tool_use bodies ride with their result block, never split into their own.
 			for (const c of message.content) {
-				if (c.type === "thinking" || c.type === "redactedThinking")
-					thinking += c.type === "thinking" ? c.thinking : c.data;
+				if (c.type === "thinking") {
+					thinking += c.thinking;
+					if (c.thinkingSignature) signature += c.thinkingSignature;
+				} else if (c.type === "redactedThinking") thinking += c.data;
 				else if (c.type === "text") text += c.text;
 				else if (c.type === "toolCall")
 					callTokens.set(c.id, count(`${c.name} ${JSON.stringify(c.arguments)}`, "c"));
 			}
-			if (thinking)
+			if (thinking || signature)
 				blocks.push({
 					id: `${id}#t`,
 					kind: "thinking",
 					sourceId: id,
-					tokens: count(thinking, "t"),
+					tokens: count(thinking, "t") + (signature ? count(signature, "s") : 0),
 					intent: truncIntent(thinking),
 				});
 			if (text)
@@ -218,6 +264,7 @@ export function projectContext(
 	compactionBlocks: readonly AcpCompactionBlock[],
 	countTokens: CountTokens,
 	refOf?: (id: string) => string,
+	onPairingGap?: (err: Error) => void,
 ): AgentMessage[] {
 	const blocks = splitBlocks(source, countTokens);
 	// toolCallId -> owning pair block; a tool_use body rides with its result.
@@ -272,6 +319,15 @@ export function projectContext(
 		else out.push(message);
 	}
 
-	assertToolPairing(out, unfinishedUseIds);
+	// Pairing gaps inherited from the source view (aborted-turn dangling calls,
+	// base-synthesized results) are passed through untouched: the provider
+	// transform layer re-pairs the wire per request. Filtering itself is
+	// pair-granular (see pairByCallId above), so any gap reported here points
+	// at the source view or a manifest-validation hole, not at removal.
+	try {
+		assertToolPairing(out, unfinishedUseIds);
+	} catch (err) {
+		onPairingGap?.(err instanceof Error ? err : new Error(String(err)));
+	}
 	return out;
 }
