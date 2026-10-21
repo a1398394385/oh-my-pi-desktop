@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../../store";
 import Icon from "../../../Icon";
 import { IS_WINDOWS, MOD } from "../../../platform";
+import { confirmDialog } from "../../settings/common";
 import { fmtAgo, sessionLabel } from "./util";
 
 // Session entry (structural subset of diskProjects[].sessions / archivedSessions elements;
@@ -74,7 +75,7 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
     done = true;
     const title = ref.current!.value.trim();
     if (save && title && title !== (s.title || "")) {
-      send({ type: "rename_session", sessionId: s.id, title });
+      send({ type: "rename_session", path: s.path, title }); // path, not id: the pool key is a runtime UUID
     }
     onDone(); // restore the original row: cancel/unchanged just re-displays; the save path updates the title via the host's list refetch
   };
@@ -116,7 +117,6 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // State subscribed via selectors (must run before the renaming early return: hooks cannot be conditional)
   // Per-path field selectors (Batch 1, T7): after LRU eviction the getters return
   // undefined/false and the row falls back to its disk/pool state instead of crashing
-  const openInPool = useAppStore((st) => st.openSessions.has(s.path));
   const streaming = useAppStore((st) => st.openSessions.get(s.path)?.streaming ?? false);
   const awaitingApproval = useAppStore((st) => (st.openSessions.get(s.path)?.pendingApprovals?.length ?? 0) > 0);
   const hasError = useAppStore((st) => {
@@ -135,6 +135,10 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // spawned by an automation — which therefore has no openSessions slot here.
   // O(1) set lookup (N1) instead of scanning the whole pool array per row per notification.
   const poolBusy = useAppStore((st) => st.busyPaths.has(s.path));
+  // In the host's live pool: the eject action only makes sense for resident sessions, and
+  // the host pool — not openSessions — is the truth (the frontend slot map has an LRU cap,
+  // so a row can outlive its slot while still resident in the pool).
+  const inHostPool = useAppStore((st) => st.poolPaths.has(s.path));
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -146,9 +150,6 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
 
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const pinned = pinnedSessions.has(s.path);
-  // In the host's live pool (= has an open frontend slot): the eject action
-  // only makes sense for resident sessions; pure disk rows have nothing to evict.
-  const isOpenInPool = openInPool;
   // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
   // error > unread > approval > running. The error state (selector above) comes from the
   // session's last error row; unopened sessions have no runtime state and only show the
@@ -190,6 +191,20 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   const handleStartConfirmArchive = (e: ReactMouseEvent) => {
     e.stopPropagation();
     if (poolLocked) return;
+    // Archiving completes the automations that deliver into this session (the host
+    // settles them), so a plan change gets a dialog the user can read, not the inline
+    // two-step confirm that cannot carry an explanation.
+    const bound = useAppStore.getState().automations.filter((a) => a.deliverTo?.sessionPath === s.path).length;
+    if (bound > 0) {
+      void confirmDialog({
+        title: t("sidebar.archiveSession"),
+        message: `${t("sidebar.confirmArchive")}\n\n${t("sidebar.archiveAutomationMsg", { n: bound })}`,
+        confirmText: t("sidebar.confirm"),
+      }).then((yes) => {
+        if (yes) send({ type: "archive_session", path: s.path, archived: true });
+      });
+      return;
+    }
     setConfirmingArchive(true);
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     confirmTimerRef.current = setTimeout(() => {
@@ -202,7 +217,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     setConfirmingArchive(false);
     if (poolLocked) return; // started running between confirm-open and confirm-click
-    send({ type: "archive_session", sessionId: s.id, archived: true });
+    send({ type: "archive_session", path: s.path, archived: true });
   };
 
   const handleMouseLeave = () => {
@@ -292,7 +307,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
             title={t("sidebar.unarchiveRestore")}
             onClick={(e) => {
               e.stopPropagation();
-              send({ type: "archive_session", sessionId: s.id, archived: false });
+              send({ type: "archive_session", path: s.path, archived: false });
             }}
           >
             {t("sidebar.restore")}
@@ -319,7 +334,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         </button>
       ) : (
         <>
-          {isOpenInPool && (
+          {inHostPool && (
             <button
               className="tarchive"
               title={t("sidebar.unloadFromPool")}

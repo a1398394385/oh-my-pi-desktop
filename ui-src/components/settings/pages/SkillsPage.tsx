@@ -169,7 +169,7 @@ function SkillEditWindow({ skill, scope, onClose }: {
             <label className="mcp-form-label">{t("settingsPage.skills.nameLabel")}</label>
             <input
               type="text"
-              className="mcp-form-input mcp-form-code"
+              className="mcp-form-input mcp-form-code mcp-inp-name"
               placeholder={t("settingsPage.skills.namePlaceholder")}
               spellCheck={false}
               autoFocus

@@ -1,7 +1,7 @@
 // Session row context menu (ported from the contextmenu branch of ui/sidebar.js initSidebar):
-// copy sessionId/file path + rename + archive. The old version's capture-phase interception
-// to coordinate with the shell menu doesn't exist in the React version (the menu is a
-// component); word-selection undo logic stays in the Sidebar container layer.
+// copy sessionId/file path + pin/unpin + rename + archive. The old version's capture-phase
+// interception to coordinate with the shell menu doesn't exist in the React version (the menu
+// is a component); word-selection undo logic stays in the Sidebar container layer.
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Menu from "./Menu";
@@ -24,9 +24,19 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
   // evicts archived sessions from the in-memory pool. Unarchiving stays available.
   const streaming = useAppStore((st) => st.openSessions.get(entry.path)?.streaming ?? false);
   const running = streaming || useAppStore((st) => st.busyPaths.has(entry.path));
+  const pinned = useAppStore((st) => st.pinnedSessions.has(entry.path));
   const item = (label: string, fn: () => void, disabled = false) => (
     <button key={label} disabled={disabled} onClick={() => { onClose(); fn(); }}>{label}</button>
   );
+  const togglePin = () => {
+    const st = useAppStore.getState();
+    const on = !st.pinnedSessions.has(entry.path);
+    const nextPinned = new Set(st.pinnedSessions);
+    if (on) nextPinned.add(entry.path);
+    else nextPinned.delete(entry.path);
+    send({ type: "set_session_pinned", path: entry.path, pinned: on });
+    useAppStore.setState({ pinnedSessions: nextPinned });
+  };
   return (
     <Menu
       place={(mr) => [
@@ -48,8 +58,10 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
         );
       })}
       {item(t("sidebar.rename"), () => onRename(entry))}
+      {/* Archived sessions can't be pinned (the host unpins on archive); same gate as SessionRow's pin button. */}
+      {!entry.archived && item(pinned ? t("sidebar.unpin") : t("sidebar.pinSession"), togglePin)}
       {isWorktreeCwd && onRemoveWorktree && item(t("worktree.remove.title"), () => onRemoveWorktree(entry))}
-      {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", sessionId: entry.id, archived: !entry.archived }), running && !entry.archived)}
+      {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", path: entry.path, archived: !entry.archived }), running && !entry.archived)}
     </Menu>
   );
 }

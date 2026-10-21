@@ -16,8 +16,8 @@ import { hostI18n } from "./i18n/host.ts";
 // the single source shared with the UI; re-exported here so the existing host
 // import surface (translate/session-lifecycle/rpc domains) stays untouched.
 // The wire version is the field superset (adds role "error" + the `intent` field).
-import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
-export type { TranscriptItem, TurnUsage };
+import type { TranscriptItem, TurnUsage, AdvisorNote } from "./wire/payloads.ts";
+export type { TranscriptItem, TurnUsage, AdvisorNote };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // Host injection points such as setToolUIContext
@@ -25,8 +25,9 @@ export type PoolEntry = {
   // Every UI socket subscribed to this session's events. Local desktop and
   // remote control coexist: a session can be watched from both at once, so
   // per-session frames fan out over this set instead of a single attached ws.
-  // handleLoadSession attaches a ws only when absent; ws-shared's close handler
-  // removes it (and tears the core subscriptions down when the set empties).
+  // handleLoadSession attaches a ws only when absent; ws-shared's close handler and
+  // the frontend's mcp_detach (LRU eviction) remove it — detachEntryUi — and the
+  // core subscriptions are torn down when the set empties.
   uiSockets: Set<{ send(data: string): unknown }>;
   // Per-socket subagent roster subscription (createSubagentView), keyed by the
   // same socket object as uiSockets; detached individually on socket close.
@@ -170,6 +171,20 @@ export type PoolEntry = {
 
 // key = the sessionId the frontend holds
 export const sessions = new Map<string, PoolEntry>();
+
+/**
+ * Resolve a pooled session by FILE PATH — the only stable address. The pool key
+ * is a runtime UUID and the on-disk id is re-minted over a session's life (see
+ * "Host-side runtime identity" in session-lifecycle.ts), so callers holding
+ * disk-derived addresses (sidebar rows) must go through the path. `previousPaths`
+ * covers a persistence move, which leaves the frontend holding the old path.
+ */
+export function findPooledSession(path: string): PoolEntry | undefined {
+  for (const entry of sessions.values()) {
+    if (entry.path === path || entry.previousPaths.includes(path)) return entry;
+  }
+  return undefined;
+}
 
 /**
  * Pool residency snapshot (sidebar "active tasks" list): every session the host

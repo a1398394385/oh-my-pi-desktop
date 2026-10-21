@@ -24,7 +24,8 @@ function notify(): void {
 /** Bottom-dock tab lists per group key. Groups materialize on first use with one tab. */
 const bottomGroups = new Map<string, BottomTabs>();
 
-function groupOf(key: string): BottomTabs {
+/** Read (materializing) one group's strip; the smoke script asserts on it directly. */
+export function bottomTabs(key: string): BottomTabs {
   let g = bottomGroups.get(key);
   if (!g) {
     g = { ids: ["b" + seq], active: "b" + seq };
@@ -42,7 +43,7 @@ function commit(key: string, next: BottomTabs): void {
 export function useBottomTermTabs(groupKey: string): BottomTabs {
   return useSyncExternalStore(
     (f) => { subs.add(f); return () => { subs.delete(f); }; },
-    () => groupOf(groupKey),
+    () => bottomTabs(groupKey),
   );
 }
 
@@ -154,25 +155,29 @@ export function syncSharedRightTabs(): void {
 export function addBottomTermTab(groupKey: string): void {
   const id = "b" + seq;
   seq += 1;
-  const g = groupOf(groupKey);
+  const g = bottomTabs(groupKey);
   commit(groupKey, { ids: [...g.ids, id], active: id });
 }
 
 export function activateBottomTermTab(groupKey: string, id: string): void {
-  const g = groupOf(groupKey);
+  const g = bottomTabs(groupKey);
   if (g.active === id || !g.ids.includes(id)) return;
   commit(groupKey, { ids: g.ids, active: id });
 }
 
 export function closeBottomTermTab(groupKey: string, id: string): void {
-  const g = groupOf(groupKey);
-  // One terminal per dock is the floor: the last tab has nothing to fall back to
-  if (g.ids.length < 2) return;
+  const g = bottomTabs(groupKey);
   const i = g.ids.indexOf(id);
   if (i === -1) return;
-  const ids = g.ids.filter((x) => x !== id);
-  const active = id === g.active ? ids[Math.min(i, ids.length - 1)] : g.active;
   disposeTab?.("bottom", id);
+  const ids = g.ids.filter((x) => x !== id);
+  // Last terminal: closing it closes the dock; the next open materializes a fresh tab
+  if (!ids.length) {
+    commit(groupKey, { ids: [], active: "" });
+    useAppStore.getState().closeBottomTerm(groupKey);
+    return;
+  }
+  const active = id === g.active ? ids[Math.min(i, ids.length - 1)] : g.active;
   commit(groupKey, { ids, active });
 }
 
@@ -185,7 +190,7 @@ function visibleTermScope(): "right" | "bottom" | null {
   if (pane) return pane.dataset.scope === "bottom" ? "bottom" : "right";
   const st = useAppStore.getState();
   if (st.settingsOpen || st.paletteOpen) return null;
-  if (st.bottomTerminalOpen && !st.narrow) return "bottom";
+  if (st.bottomTermOpen[termGroupKey()] === true && !st.narrow) return "bottom";
   if (!st.rightCollapsed && isTerminalTab(st.rightTab ?? "")) return "right";
   return null;
 }
@@ -197,7 +202,7 @@ export function cycleTermTab(dir: 1 | -1): boolean {
   if (!scope) return false;
   if (scope === "bottom") {
     const key = termGroupKey();
-    const g = groupOf(key);
+    const g = bottomTabs(key);
     if (g.ids.length < 2) return true;
     const i = g.ids.indexOf(g.active);
     commit(key, { ids: g.ids, active: g.ids[(i + dir + g.ids.length) % g.ids.length] });

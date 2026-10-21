@@ -45,7 +45,7 @@ const MOTION_MODES: Record<string, true> = { system: true, on: true, off: true }
  * the file section stays a typed projection, never a passthrough blob.
  */
 const PREFS_FIELDS: Record<string, (v: unknown) => unknown> = {
-  agentProcessStyle: v => (v === "standard" || v === "detailed" || v === "expanded" ? v : undefined),
+  agentProcessStyle: v => (v === "standard" || v === "detailed" || v === "expanded" || v === "concise" ? v : undefined),
   uiFont: v => (typeof v === "string" ? v : undefined),
   uiFontSize: v => (typeof v === "number" && Number.isInteger(v) && v >= 11 && v <= 18 ? v : undefined),
   codeFontSize: v => (typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 18 ? v : undefined),

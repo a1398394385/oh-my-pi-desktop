@@ -9,6 +9,7 @@ export const miscZh = {
   bottomTerminalToggle: "切换底部终端 ({{mod}}J)",
   collapseRightPanel: "收起右侧面板",
   dragResize: "拖动调整宽度",
+  dragResizeHeight: "拖动调整高度",
   // WindowControls.tsx
   minimize: "最小化",
   restoreDown: "向下还原",
@@ -65,6 +66,7 @@ export const miscZh = {
   keysSearchPalette: "全局搜索",
   keysToggleRight: "切换右侧边栏",
   keysToggleBottomTerminal: "切换底部终端",
+  keysFocusComposer: "聚焦输入框（中栏消息页）",
   keysCycleTerminalTab: "切换终端标签页",
   keysGroupModel: "模型与思考",
   keysGroupModelDesc: "键位对齐 omp 命令行。",

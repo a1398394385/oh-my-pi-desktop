@@ -1,7 +1,7 @@
 // en counterpart of sidebar.zh.ts — keep keys in sync.
 export const sidebarEn = {
   newTask: "New Task",
-  automations: "Scheduled Tasks",
+  automations: "Automations",
   viewRecent: "Recent",
   viewProject: "Projects",
   viewArchive: "Archived",
@@ -28,6 +28,7 @@ export const sidebarEn = {
   untitledSession: "Untitled session",
   deleteSessionTitle: "Delete session",
   deleteSessionMsg: "Permanently delete this session? This cannot be undone.\n\nSession: {{title}}",
+  deleteSessionAutomationMsg: "{{n}} automation(s) deliver into this session; they are deleted with it.",
   removeProjectTitle: "Remove project",
   removeProjectMsg: "Remove \"{{name}}\" from the project list?\n\nProject directory: {{cwd}}\n(Sessions stay in history and remain visible under Recent)",
   removeProjectConfirm: "Remove",
@@ -44,6 +45,7 @@ export const sidebarEn = {
   restore: "Restore",
   deleteForever: "Delete session permanently",
   confirmArchive: "Confirm archiving this session",
+  archiveAutomationMsg: "{{n}} automation(s) deliver into this session; archiving completes them.",
   confirm: "Confirm",
   archiveSession: "Archive session",
   unloadFromPool: "Evict from the in-memory pool (ends the live session; the file stays, click to reopen)",

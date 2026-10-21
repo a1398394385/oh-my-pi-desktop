@@ -6,7 +6,7 @@
 // railEntries are collected along the traversal (message rail data: one tick per message —
 // the key shares the same source as the data-fk anchors; MsgRail locates the DOM by key).
 import type { ReactElement, ReactNode } from "react";
-import type { ChatItem, RailEntry } from "./chat-types";
+import type { AdvisorItem, AdvisorNote, ChatItem, RailEntry } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
 import { useAppStore } from "../../store/index";
 import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf, isReadonlyEvent } from "./util";
@@ -21,6 +21,7 @@ import CommandRow from "./CommandRow";
 import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import ReadonlyGroup, { roSummaryText } from "./ReadonlyGroup";
+import AdvisorCard, { AdvisorInline } from "./AdvisorCard";
 import { t } from "../../i18n";
 
 // Single message → JSX (the railEntries side effect is collected along the render path, same
@@ -94,6 +95,9 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
       </div>
     );
   }
+  // Advisor rows are dispatched by renderItems (they expand into an inline row plus a
+  // card); reaching here means a caller skipped that, so drop instead of drawing an error.
+  if (item.role === "advisor") return null;
   railEntries.push({ key, role: "err", text: item.text });
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;
 }
@@ -157,10 +161,25 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
   return true;
 }
 
+// Advisor batch → nodes. A visible process keeps its blocking notes where they fired
+// (the batch's position in the stream IS the injection point); everything else joins the
+// turn-tail card. With the process collapsed nothing inline survives, so the caller hands
+// the whole batch to the card instead (inline = false).
+function advisorNodes(item: AdvisorItem, key: string, inline: boolean): ReactElement[] {
+  const out: ReactElement[] = [];
+  const blockers = inline ? item.notes.filter((n) => (n.severity ?? "concern") === "blocker") : [];
+  const cardNotes = blockers.length ? item.notes.filter((n) => (n.severity ?? "concern") !== "blocker") : item.notes;
+  if (blockers.length) out.push(<AdvisorInline notes={blockers} key={key + "-in"} />);
+  if (cardNotes.length) out.push(<AdvisorCard notes={cardNotes} key={key + "-card"} />);
+  return out;
+}
+
 // Agent process display style (ui.prefs.agentProcessStyle):
 //   standard — a run of >=3 read-only tool events folds into one block
 //   detailed — no read-only run fold (rows lay out flat), same-type groups stay
 //   expanded — no read-only run fold and no same-type merging at all
+//   concise  — folds like standard; the live turn hides its process rows entirely
+//              (MessagePage's hideProcessFrom), so this only shapes the reveal
 function processStyle(): "standard" | "detailed" | "expanded" {
   const v = useAppStore.getState().uiPrefs.agentProcessStyle;
   return v === "detailed" || v === "expanded" ? v : "standard";
@@ -196,12 +215,15 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
 // noReadonlyFold: the level-2 fold is skipped (used by ReadonlyGroup's expansion body,
 // whose items are already the folded run — re-scanning them would nest a block inside
 // itself and recurse infinitely)
+// hideProcessFrom: index of the live turn's user row; everything after it that is not an
+// assistant output is dropped (the concise style's live view). Folding is untouched, so
+// the same rows lay out in standard shape once the reveal toggle disables the filter.
 export function renderItems(
   items: ChatItem[],
   pfx: string,
   railEntries: RailEntry[],
   streamTail?: ReactNode,
-  opts?: { noReadonlyFold?: boolean },
+  opts?: { noReadonlyFold?: boolean; hideProcessFrom?: number },
 ): ReactElement[] {
   // Child container (e.g. inside LoopGroup): keep the original flat rendering mechanism
   if (pfx !== "") {
@@ -212,6 +234,12 @@ export function renderItems(
       const key = pfx + i;
       if (item.role === "user" && item.pending === "steer") {
         pendingSteers.push({ item, key });
+        continue;
+      }
+      // Advisor batch: blocking notes keep the row's position, the rest becomes a card.
+      // Reaching this container at all means the batch sits inside a visible process.
+      if (item.role === "advisor") {
+        out.push(...advisorNodes(item, key, true));
         continue;
       }
       // Level-2 fold first: a >=3 read-only run wraps the level-3 groups below
@@ -296,9 +324,14 @@ export function renderItems(
     userNode: ReactElement | null;
     flowNodes: ReactElement[];
     actsNode: ReactElement | null;
+    // Notes that belong to the turn's closing card: every non-blocker batch (their rows
+    // would otherwise repeat the card inline) plus every batch the concise live view hid
+    // (blockers included — with no process row to sit in the card is their only home).
+    advice: AdvisorNote[];
   }
 
   const initialNodes: ReactElement[] = [];
+  const initialAdvice: AdvisorNote[] = [];
   const turns: TurnGroup[] = [];
   let currentTurn: TurnGroup | null = null;
   const pendingSteers: { item: ChatItem; key: string }[] = [];
@@ -308,6 +341,16 @@ export function renderItems(
     const key = pfx + i;
     if (item.role === "user" && item.pending === "steer") {
       pendingSteers.push({ item, key });
+      continue;
+    }
+    // Concise live view: this turn keeps its user row and assistant outputs only. The
+    // check sits before the fold scans so a run straddling the boundary is never merged
+    // into a block that then gets dropped.
+    if (opts?.hideProcessFrom !== undefined && i > opts.hideProcessFrom && item.role !== "assistant" && item.role !== "user") {
+      if (item.role === "advisor") {
+        if (currentTurn) currentTurn.advice.push(...item.notes);
+        else initialAdvice.push(...item.notes);
+      }
       continue;
     }
 
@@ -322,6 +365,7 @@ export function renderItems(
         userNode: userNode!,
         flowNodes: [],
         actsNode: null,
+        advice: [],
       };
       continue;
     }
@@ -340,10 +384,40 @@ export function renderItems(
         userNode: null,
         flowNodes: [],
         actsNode: null,
+        advice: [],
       };
     }
 
     let node: ReactElement | null = null;
+
+    // Advisor batch in a visible process: blocking notes keep their position, everything
+    // else joins the turn's closing card. Bypassing the fold scans is the point — an
+    // advisory row is not a process row, so it also breaks a read-only run it sits between.
+    if (item.role === "advisor") {
+      const blockers = item.notes.filter((n) => (n.severity ?? "concern") === "blocker");
+      const rest = blockers.length ? item.notes.filter((n) => (n.severity ?? "concern") !== "blocker") : item.notes;
+      if (blockers.length) {
+        const row = <AdvisorInline notes={blockers} key={key + "-in"} />;
+        if (currentTurn) currentTurn.flowNodes.push(row);
+        else initialNodes.push(row);
+      }
+      if (rest.length) {
+        if (currentTurn) currentTurn.advice.push(...rest);
+        else initialAdvice.push(...rest);
+      }
+      continue;
+    }
+
+    // A collapsed process group hides an advice row inside it; lift the notes to the
+    // turn's closing card so the injection stays readable. Expanded groups render the row
+    // in place through the child-container branch.
+    if (item.role === "loop" && item.collapsed) {
+      const folded = (item.items ?? []).flatMap((it) => (it.role === "advisor" ? it.notes : []));
+      if (folded.length) {
+        if (currentTurn) currentTurn.advice.push(...folded);
+        else initialAdvice.push(...folded);
+      }
+    }
 
     // Level-2 fold first: a >=3 read-only run wraps the level-3 groups below
     if (!opts?.noReadonlyFold && isReadonlyEvent(item)) {
@@ -432,7 +506,18 @@ export function renderItems(
     );
   }
 
+  // Closing card: after everything the turn shows, one card per turn (severity counts in
+  // the head, T-n kept for the expanded body).
+  if (initialAdvice.length) initialNodes.push(<AdvisorCard notes={initialAdvice} key="adv-initial" />);
+  for (const t of turns) {
+    if (t.advice.length) t.flowNodes.push(<AdvisorCard notes={t.advice} key={t.key + "-adv"} />);
+  }
+
   const out: ReactElement[] = [...initialNodes];
+
+  // The filter only ever lands on the last turn: .concise-live spaces the outputs that
+  // end up back to back once the process rows between them are gone
+  const conciseLive = opts?.hideProcessFrom !== undefined;
 
   for (const t of turns) {
     out.push(
@@ -445,7 +530,7 @@ export function renderItems(
               </div>
             </div>
           ) : null}
-          <div className="turn-flow">
+          <div className={"turn-flow" + (conciseLive && t === turns[turns.length - 1] ? " concise-live" : "")}>
             {t.flowNodes}
           </div>
         </div>

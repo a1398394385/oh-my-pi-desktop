@@ -107,7 +107,7 @@ function RuleEditor({ initial, index, total, onSave, onClose, onMove, onDelete }
               onChange={(e) => setPattern(e.target.value)}
             />
           </div>
-          <div className="mcp-form-group mcp-form-half">
+          <div className="mcp-form-group mcp-form-half itcp-form-tool">
             <label className="mcp-form-label">{t("settingsPage.shellPage.toolLabel")} <span className="req">*</span></label>
             <input
               type="text"
@@ -130,7 +130,7 @@ function RuleEditor({ initial, index, total, onSave, onClose, onMove, onDelete }
             onChange={(e) => setMessage(e.target.value)}
           />
         </div>
-        <div className="mcp-form-group">
+        <div className="mcp-form-group itcp-form-flags">
           <label className="mcp-form-label">{t("settingsPage.shellPage.flagsLabel")}</label>
           <input
             type="text"
@@ -326,7 +326,7 @@ function ApprovalRuleEditor({ initial, index, total, onSave, onClose, onMove, on
         </button>
       </div>
       <div className="sem-body form">
-        <div className="mcp-form-group itcp-form-pattern">
+        <div className="mcp-form-group itcp-form-pattern itcp-form-match">
           <label className="mcp-form-label">{t("settingsPage.shellPage.apprMatchLabel")} <span className="req">*</span></label>
           <input
             type="text"

@@ -68,6 +68,19 @@ body:has(#right.collapsed) #right-resizer {
   box-sizing: border-box;
 }
 
+/* Collapsed left sidebar: its freed width is split evenly between the center card (#main,
+   flex:1 so it takes the other half for free) and the right panel. When the right panel is
+   collapsed too, #main still swallows everything; collapsing the right panel keeps handing
+   its width to #main only. */
+body:has(#sidebar.collapsed) #right:not(.collapsed) {
+  width: calc(var(--right-w, 320px) + var(--left-w, 240px) / 2);
+  max-width: calc(var(--right-w, 320px) + var(--left-w, 240px) / 2);
+}
+
+body:has(#sidebar.collapsed) #right:not(.collapsed) > * {
+  width: calc(var(--right-w, 320px) + var(--left-w, 240px) / 2);
+}
+
 #right.collapsed {
   width: 0 !important;
   min-width: 0 !important;

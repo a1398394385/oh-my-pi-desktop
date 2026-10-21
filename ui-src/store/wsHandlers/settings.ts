@@ -181,6 +181,11 @@ export const settingsHandlers = {
     }));
   },
   file_matches(msg) {
+    // File-tab search replies bypass the composer mention list and land in the right panel state
+    if (msg.target === "fileTab") {
+      useAppStore.setState((s) => ({ rightState: { ...s.rightState, fileSearch: msg } }));
+      return;
+    }
     if (msg.reqId !== useAppStore.getState().mentionReqSeq) return; // stale response: the user kept typing, drop it
     useAppStore.setState((s) => ({
       mentionResult: { reqId: msg.reqId, matches: Array.isArray(msg.matches) ? msg.matches : [] },

@@ -7,6 +7,8 @@ import path from "node:path";
 import { hostI18n } from "./i18n/host.ts";
 import { collectFiles, isDevicePath, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
+import { advisorEvent, advisorHistoryRow } from "./translate-advisor.ts";
+import { parseDelivery } from "./automations/delivery.ts";
 
 // Compat regex for journals written by the retired ACP nudge prototype: old
 // sessions carry <dcp-message-id>mNNNNN</dcp-message-id> tags that UI
@@ -60,7 +62,7 @@ function thinkingLabel(sec: number): string {
   return hostI18n.t("flows.think.durationMinSec", { m: Math.floor(sec / 60), s: String(sec % 60).padStart(2, "0") });
 }
 
-function isJunkPlaceholderText(text?: string | null): boolean {
+export function isJunkPlaceholderText(text?: string | null): boolean {
   if (!text) return true;
   const t = text.trim();
   return t === "." || t === "。" || t === "·" || t === "•";
@@ -181,7 +183,7 @@ function flushAssistantDraft(entry: PoolEntry) {
 // transport) is persisted as an assistant message whose payload is only the
 // `errorMessage` field — `content` is empty, so it carries no UI row of its own.
 // That field is the single source for the error row in both live and reload paths.
-function errorTextOf(msg: unknown): string | null {
+export function errorTextOf(msg: unknown): string | null {
   if (typeof msg !== "object" || msg === null) return null;
   const { role, stopReason, errorMessage } = msg as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
   if (role !== "assistant" || stopReason !== "error") return null;
@@ -253,6 +255,20 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // configured. Pass through only; the frontend decides display.
       return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
     case "message_end": {
+      // An automation delivery wakes this session with a custom user message; the
+      // composer never sent it, so this echo is the only thing that draws the
+      // bubble (pooled snapshots replay entry.transcript, hence the push).
+      const delivered = parseDelivery(ev.message ?? {});
+      if (delivered) {
+        entry.transcript.push({ role: "user", text: delivered.text, automation: delivered.marker });
+        return {
+          kind: "user_message",
+          text: delivered.text,
+          ...(delivered.marker.id ? { automation: delivered.marker } : {}),
+        };
+      }
+      const advice = advisorEvent(ev.message, entry);
+      if (advice) return advice;
       // A failed request emits an error assistant message (stopReason "error",
       // payload only in `errorMessage`); text streamed before the failure is
       // settled first so the error row lands after it. Without this branch the
@@ -346,6 +362,20 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         diffContent: item?.diffContent, // The edit row's inline expansion prefers the real diff from this call's reply
       };
     }
+    case "tool_execution_update": {
+      // Async task jobs keep reporting spawn progress after the call returned and its
+      // tool_execution_end settled the card, so late-resolved models (spawns still in
+      // setup when the result snapshot was taken) would stay missing. Forward details
+      // only: reusing tool_update would mark the row finished and collapse it again.
+      // shortcut: only `task` is forwarded — it is the one tool whose work outlives the
+      // call. Another tool that starts reporting after its result will silently stop
+      // refreshing the card here; upgrade to a frame with an explicit running flag (and
+      // make the store fold only on the terminal one) when that happens.
+      if (ev.toolName !== "task") return null;
+      const details = ev.partialResult?.details;
+      if (!details) return null;
+      return { kind: "tool_details", name: ev.toolName, toolCallId: ev.toolCallId, details };
+    }
     case "agent_end":
       // isTerminal === false means maintenance/async delivery will keep running; not a true end
       if (ev.isTerminal === false) return null;
@@ -383,249 +413,12 @@ export const PHASE_TEXT: Record<string, [string, string]> = {
   },
 };
 
-// Disk history entries → frontend transcript (thinking blocks expandable;
-// tools carry path/command/line counts)
-// Turn grouping: one user message opens a turn; the turn's thinking/tool/
-// intermediate assistant items are collected into a loop group (displayed
-// collapsed), leaving only the last assistant text outside the group as the
-// turn's outward result — matching the live turn_end collapse behavior.
-export function entriesToTranscript(entries: any[]): TranscriptItem[] {
-  const out: TranscriptItem[] = [];
-  const byId = new Map<string, TranscriptItem>();
-  const fileHistory = new Map<string, string>();
-  let run: { items: TranscriptItem[]; usage: TurnUsage | null; startMs: number; endMs: number } | null = null;
-
-  const finalizeRun = () => {
-    if (!run) return;
-    const r = run;
-    run = null;
-    let lastA = -1;
-    for (let i = r.items.length - 1; i >= 0; i--) {
-      if (r.items[i].role === "assistant") {
-        lastA = i;
-        break;
-      }
-    }
-    const finalOut = lastA >= 0 ? r.items.splice(lastA, 1) : [];
-    if (r.items.length) {
-      out.push({
-        role: "loop",
-        text: "",
-        collapsed: true,
-        items: r.items,
-        durationSec: Math.max(1, Math.round((r.endMs - r.startMs) / 1000)),
-        usage: r.usage,
-      });
-    }
-    out.push(...finalOut);
-  };
-
-  for (const e of entries) {
-    // Execution-trace entries → phase separator rows: whichever end executed
-    // (CLI/desktop), loading the session on the other end shows the record.
-    // compaction.method distinguishes handoff from compact (old sessions have
-    // no method, displayed as compact); title_change only counts user renames
-    // (source "auto" is a new session's auto-generated title, not an
-    // execution record)
-    if (e.type === "compaction") {
-      finalizeRun();
-      const cmd = e.method === "handoff" ? "handoff" : "compact";
-      out.push({ role: "phase", phase: "done", command: cmd, text: PHASE_TEXT[cmd][1] });
-      continue;
-    }
-    if (e.type === "title_change") {
-      if (e.source === "user") {
-        finalizeRun();
-        out.push({ role: "phase", phase: "done", command: "rename", text: PHASE_TEXT.rename[1] });
-      }
-      continue;
-    }
-    if (e.type !== "message") continue;
-    const msg = e.message ?? {};
-    const { role, content } = msg;
-    const ts = Date.parse(e.timestamp ?? "") || 0;
-    if (role === "toolResult") {
-      if (run && ts) run.endMs = ts;
-      const item = byId.get(msg.toolCallId);
-      if (item) {
-        let pendingWrite: { path: string; oldText?: string } | undefined;
-        if (msg.toolName === "write") {
-          const p = pathOf(item.args);
-          if (p && !isDevicePath(p)) {
-            const oldText = fileHistory.get(p);
-            pendingWrite = { path: p, oldText };
-            if (typeof item.args?.content === "string") {
-              fileHistory.set(p, item.args.content);
-            }
-          }
-        }
-        Object.assign(item, summarizeResult(msg.toolName, item.args, msg, pendingWrite));
-        if (msg.toolName === "read") {
-          const p = pathOf(item.args);
-          const readText = msg.details?.displayContent?.text;
-          if (p && typeof readText === "string") {
-            fileHistory.set(p, readText);
-          }
-        }
-      }
-      continue;
-    }
-    if (role === "bashExecution") {
-      // ! local command result: flattened into a bash row; opens no new turn, joins no loop group
-      out.push({
-        role: "bash",
-        text: msg.command,
-        output: msg.output ?? "",
-        exitCode: msg.exitCode ?? null,
-        cancelled: !!msg.cancelled,
-        truncated: !!msg.truncated,
-        excludeFromContext: !!msg.excludeFromContext,
-        running: false,
-      });
-      continue;
-    }
-    if (role === "fileMention") {
-      // @ mention already read: flattened into a mention row
-      out.push({ role: "mention", text: "", files: (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")) });
-      continue;
-    }
-    if (role !== "user" && role !== "assistant") continue;
-    // Provider failure entries carry no content, only `errorMessage`. Surface them as
-    // their own top-level row: a run may be collapsed into a loop group, its failure
-    // must not be — otherwise a reloaded session loses the reason it stopped.
-    if (role === "assistant") {
-      const errText = errorTextOf(msg);
-      if (errText) {
-        finalizeRun();
-        out.push({ role: "error", text: errText });
-        continue;
-      }
-    }
-    if (role === "user") {
-      const text = stripDcpTags(typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n"));
-      const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
-      if (Array.isArray(content)) {
-        for (const b of content) {
-          if (b?.type === "image") {
-            const data = b.data || b.source?.data;
-            const mimeType = b.mimeType || b.source?.media_type || b.source?.mimeType || "image/png";
-            if (typeof data === "string") {
-              images.push({ type: "image", data, mimeType });
-            }
-          }
-        }
-      }
-      if (!isJunkPlaceholderText(text) || images.length > 0) {
-        finalizeRun(); // Valid user input opens a new turn
-        out.push({
-          role: "user",
-          text,
-          entryId: e.id,
-          ...(images.length > 0 ? { images } : {}),
-        });
-        run = { items: [], usage: null, startMs: ts, endMs: ts };
-      }
-      continue;
-    }
-    if (run) {
-      run.endMs = ts || run.endMs;
-      if (msg.usage) {
-        run.usage = run.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-        run.usage.input += msg.usage.input || 0;
-        run.usage.output += msg.usage.output || 0;
-        run.usage.cacheRead += msg.usage.cacheRead || 0;
-        run.usage.cacheWrite += msg.usage.cacheWrite || 0;
-      }
-    }
-    const sink = run ? run.items : out; // Orphan assistants outside a run (no turn-leading user message) flatten directly, preserving old behavior
-    if (typeof content === "string") {
-      const plain = stripDcpTags(content);
-      if (!isJunkPlaceholderText(plain)) {
-        sink.push({ role, text: plain, entryId: e.id, endMs: ts });
-      }
-      continue;
-    }
-    for (const block of content ?? []) {
-      if (block.type === "text") {
-        const plain = stripDcpTags(block.text);
-        if (!isJunkPlaceholderText(plain)) {
-          sink.push({ role: "assistant", text: plain, entryId: e.id, endMs: ts });
-        }
-      } else if (block.type === "thinking" && block.thinking) {
-        sink.push({
-          role: "thinking",
-          text: hostI18n.t("flows.think.with", { duration: hostI18n.t("flows.think.durationFew") }),
-          thinking: String(block.thinking),
-          expandable: true,
-        });
-      } else if (block.type === "toolCall") {
-        // block.intent: the extracted `i` (persisted alongside the raw arguments, which still
-        // carry `i`); toolArgsForUi filters args, so intent is the only surviving copy
-        const item: TranscriptItem = {
-          role: "tool",
-          text: block.name,
-          name: block.name,
-          toolCallId: block.id,
-          args: toolArgsForUi(block.name, block.arguments),
-          files: collectFiles(block.name, block.arguments),
-          intent: typeof block.intent === "string" ? block.intent : undefined,
-        };
-        byId.set(block.id, item);
-        sink.push(item);
-      }
-    }
-  }
-  finalizeRun();
-  return out;
-}
-
-// Whole-session active duration (ms): segments turns the same way
-// entriesToTranscript does, summing each turn's "valid user input → turn
-// end" wall-clock span (at least 1 second per turn, same scope as the loop
-// group's durationSec). Used to seed the host's in-memory timer when loading
-// a past session — it cannot come from summing the transcript's loop groups:
-// pure-conversation turns (no tool calls) generate no loop group, so turns
-// would be missed (measured: 2 turns produced only 1 loop).
-export function sumRunDurationMs(entries: any[]): number {
-  let total = 0;
-  let startMs = 0;
-  let endMs = 0;
-  let open = false;
-  const flush = () => {
-    if (!open) return;
-    total += Math.max(1000, endMs - startMs);
-    open = false;
-  };
-  for (const e of entries) {
-    if (e.type !== "message") continue;
-    const msg = e.message ?? {};
-    const { role, content } = msg;
-    const ts = Date.parse(e.timestamp ?? "") || 0;
-    if (role === "toolResult") {
-      if (open && ts) endMs = ts;
-      continue;
-    }
-    if (role === "user") {
-      const text =
-        typeof content === "string"
-          ? content
-          : (content ?? [])
-              .filter((b: any) => b?.type === "text")
-              .map((b: any) => b.text)
-              .join("\n");
-      if (isJunkPlaceholderText(text)) continue; // Hidden companion/placeholder messages open no turn
-      flush();
-      startMs = ts;
-      endMs = ts;
-      open = true;
-      continue;
-    }
-    if (role === "assistant" && open) endMs = ts || endMs;
-  }
-  flush();
-  return total;
-}
-
+/**
+ * Split an automation-delivery custom message back into the bubble the reader
+ * sees. The header is host-authored (host/automations/scheduler.ts deliveryText),
+ * so a message of that type always carries one; an unparsable header still yields
+ * a bubble without labels rather than dropping the delivery.
+ */
 // Subagent events → frontend narrow events (pure forwarding, not persisted into the parent session's transcript; text is accumulated by the frontend keyed on subagentId)
 export function translateSubagentEvent(ev: any): UiEvent | null {
   switch (ev.type) {

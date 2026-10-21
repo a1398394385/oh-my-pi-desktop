@@ -47,6 +47,7 @@ const FilesPage = lazy(() => import("./pages/FilesPage"));
 const ShellPage = lazy(() => import("./pages/ShellPage"));
 const ToolsPage = lazy(() => import("./pages/ToolsPage"));
 const TasksPage = lazy(() => import("./pages/TasksPage"));
+const AutomationsPage = lazy(() => import("./pages/AutomationsPage"));
 const DeveloperPage = lazy(() => import("./pages/DeveloperPage"));
 const AdvancedPage = lazy(() => import("./pages/AdvancedPage"));
 
@@ -72,6 +73,7 @@ const NAV_SECTIONS = [
       { id: "pg-extensions", icon: "extensions", label: "settingsPage.nav.extensions" },
       { id: "pg-memory", icon: "memory", label: "settingsPage.nav.memory" },
       { id: "pg-agents", icon: "agents", label: "settingsPage.nav.subagents" },
+      { id: "pg-automations", icon: "clock", label: "settingsPage.nav.automations" },
       { id: "pg-plugins", icon: "plugins", label: "settingsPage.nav.plugins" },
       { id: "pg-mcp", icon: "mcp", label: "settingsPage.nav.mcp" },
       { id: "pg-skills", icon: "skills", label: "settingsPage.nav.skills" },
@@ -118,6 +120,7 @@ const PAGES: Record<string, ComponentType> = {
   "pg-skills": SkillsPage,
   "pg-memory": MemoryPage,
   "pg-agents": AgentsPage,
+  "pg-automations": AutomationsPage,
   "pg-stats": StatsPage,
   "pg-model-behavior": ModelBehaviorPage,
   "pg-providers": ProvidersPage,

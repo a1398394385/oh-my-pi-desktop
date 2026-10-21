@@ -42,6 +42,8 @@ export interface Automation {
   computer?: boolean;
   recurring: boolean;
   maxRuns?: number;
+  /** Session-targeted delivery (agent-created only): runs wake this transcript instead of spawning a session. */
+  deliverTo?: { sessionPath: string };
   endAt?: number;
   runCount: number;
   enabled: boolean;

@@ -272,6 +272,17 @@ export interface AssetFileDeletedFrame {
   path: string;
 }
 
+/** Plugin install reply (host/rpc/assets.ts asset_plugin_install): `bun install` can
+ * take minutes, so the UI needs an explicit terminal frame rather than inferring the
+ * end from the follow-up agent_assets push. */
+export interface PluginInstallResultFrame {
+  type: "plugin_install_result";
+  ok: boolean;
+  name?: string;
+  version?: string;
+  error?: string;
+}
+
 /** Memory file reply (host/host.ts memory_file_read; files/rollouts are carried only by directory-style memories) */
 export interface MemoryFileFrame {
   type: "memory_file";

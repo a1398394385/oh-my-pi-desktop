@@ -437,6 +437,19 @@
 
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
 
+/* .inp carries a global min-width:240px, which clamps narrower widths set per page
+   (inline style or page class); min-width always wins over width. */
+.set-page .inp { min-width: 0; }
+
+/* Narrow windows: .set-page is capped at 50vw, so at the 700px minimum window width the
+   row is ~318px of content — a fixed-width control (320px string input) leaves no room
+   for the label column, which then collapses to one character per line. Stack the control
+   under the label instead and let the control shrink with the row. */
+@media (max-width: 1000px) {
+  .set-page .srow { flex-direction: column; align-items: stretch; gap: 8px; }
+  .set-page .srow-ctl { justify-content: flex-start; }
+}
+
 /* schema warning row (.srow-tx span has higher specificity, so .srow-tx .srow-wn overrides color/font-size) */
 .srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
 

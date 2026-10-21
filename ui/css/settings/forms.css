@@ -49,6 +49,13 @@
 .mcp-form-code,
 .mcp-form-textarea { font-family: var(--mono); }
 
+/* Narrower field widths: the base .mcp-form-input is width:100%, which stretches
+   short values (names, ids, numbers) across the whole card or column. */
+.mcp-form-input.mcp-inp-name { width: 320px; max-width: 100%; }
+.mcp-form-input.mcp-inp-num { width: 120px; }
+.mcp-form-half.mcp-form-narrow { flex: 0 0 240px; }
+.mcp-form-quarter.mcp-form-narrow { flex: 0 0 120px; }
+
 .mcp-form-textarea { resize: vertical; }
 
 /* Transport + Sharing mode row halves */

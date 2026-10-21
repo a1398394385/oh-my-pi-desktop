@@ -232,6 +232,17 @@
   box-shadow: 0 2px 8px var(--tint-black-50);
 }
 
+/* Scheduled delivery into this session (UserMsg.tsx): a bordered, slightly recessed
+   bubble plus a marker row, so it never reads as something the user typed */
+.msg.user .user-bubble.automation { background: var(--panel-2); border: 1px solid var(--line); }
+.user-msg-automation {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 6px;
+  font-size: var(--ui-fs-xs);
+  color: var(--dim);
+  user-select: none; -webkit-user-select: none;
+}
+
 /* user-select:text counters .msg.user's none: only the text line boxes get the selection color, not the bubble around them */
 .user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
 
@@ -266,6 +277,19 @@
 }
 
 .act.t2 { margin-top: 28px; }
+
+/* Concise style's reveal toggle (WorkLine): a bare chevron right of the working row; the
+   row itself is not clickable (the toggle is the only target) */
+.act-more {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  margin-left: 2px; padding: 0; border: 0; background: none;
+  color: var(--faint); cursor: pointer;
+}
+.act-more:hover { color: var(--dim); }
+
+/* Concise live view: with the process rows hidden, /outputs land back to back, so each
+   following output gets one blank body line on top of the 14px .msg gap */
+.turn-flow.concise-live .msg.assistant + .msg.assistant { margin-top: calc(var(--ui-fs-md) * 1.6 + 14px); }
 
 .act.err { color: var(--err); }
 

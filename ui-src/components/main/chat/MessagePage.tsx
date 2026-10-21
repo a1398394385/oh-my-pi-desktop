@@ -19,7 +19,7 @@
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events; shown only when the latest content
 //   sits more than 120px below the viewport (high-frequency scrolling stays out of React state).
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, isJunkPlaceholder, send } from "../../../store";
 import { REMOTE } from "../../../store/layout";
@@ -446,10 +446,39 @@ export default function MessagePage() {
     </button>
   );
 
+  // Concise style's live view (ui.prefs.agentProcessStyle === "concise"): while the turn
+  // runs only the working row, the spinner+intent and the assistant outputs stay on
+  // screen; liveStart is that turn's user row, liveProcess tells whether there is a
+  // process to reveal behind the working row's chevron. Finished turns and the post-turn
+  // layout are untouched, so the toggle state resets per turn (and per session).
+  const turnStartAt = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.turnStartAt : null));
+  const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
+  const [conciseOpen, setConciseOpen] = useState(false);
+  useEffect(() => {
+    setConciseOpen(false);
+  }, [sessionId, turnStartAt]);
+  const conciseLive = processStyle === "concise" && streaming;
+  const list = items ?? [];
+  let liveStart = -1;
+  let liveProcess = false;
+  if (conciseLive) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].role === "user") {
+        liveStart = i;
+        break;
+      }
+    }
+    for (let i = liveStart + 1; i < list.length && !liveProcess; i++) liveProcess = list[i].role !== "assistant";
+  }
+  const hideProcessFrom = conciseLive && !conciseOpen && liveStart >= 0 ? liveStart : undefined;
+
   const streamTail =
     streaming || draft ? (
       <>
-        <WorkSec />
+        <WorkSec
+          onToggle={liveProcess ? () => setConciseOpen((v) => !v) : undefined}
+          open={conciseOpen}
+        />
         {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
             the engine memoizes per block, so appending to the growing draft only re-parses
             the last incomplete block — NOT the full-text-per-frame re-parse that froze the
@@ -468,12 +497,11 @@ export default function MessagePage() {
   // stay unconditional); with no session items is undefined and the pass is trivially empty.
   // processStyle is a dep of its own: renderItems reads the fold style from the store
   // (non-reactive), so the subscription is what re-lays out messages when it changes.
-  const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
   const { nodes, railEntries } = useMemo(() => {
     const entries: RailEntry[] = [];
-    const out = renderItems(items ?? [], "", entries, streamTail);
+    const out = renderItems(items ?? [], "", entries, streamTail, { hideProcessFrom });
     return { nodes: out, railEntries: entries };
-  }, [items, draft, streamTail, processStyle]);
+  }, [items, draft, streamTail, processStyle, hideProcessFrom]);
 
   if (!hasSession) {
     return (

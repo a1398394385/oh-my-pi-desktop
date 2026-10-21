@@ -28,7 +28,8 @@ import {
 import { H, sessions, defaultCwd, stampEvent, entryBus, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
-import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
+import { PHASE_TEXT } from "../translate.ts";
+import { entriesToTranscript } from "../translate-history.ts";
 import { readPluginsEnabled } from "../plugin-assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
@@ -362,19 +363,23 @@ async function dispatchSlashInput(
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
-  // 2.55) /btw: pull up the Side Chat panel; with a question, start a new topic with it
-  // right away (the panel streams the answer). Same consumption contract as /plan.
+  // 2.55) /btw: with a question, start the topic first so the panel opens straight into it
+  // (the side chat has no "open by question" route); without one, open the topic directory.
+  // Same consumption contract as /plan, but the withdrawal frame goes out BEFORE the awaited
+  // topic start: /btw belongs to the right panel, and waiting for btwAsk first would flash the
+  // command line into the main transcript.
   if (parsedSlash?.name === "btw") {
     const question = parsedSlash.args.trim();
-    ws.send(JSON.stringify(stampEvent({ type: "open_right_tab", name: "btw" })));
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    let recordId: string | undefined;
     if (question) {
       try {
-        await btwAsk(ws, sessionId, question);
+        recordId = (await btwAsk(ws, sessionId, question)).id;
       } catch (err) {
         sendCommandOutput(err instanceof Error ? err.message : String(err));
       }
     }
-    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    ws.send(JSON.stringify(stampEvent({ type: "open_right_tab", name: "btw", recordId })));
     return null;
   }
   // 2.6) /computer: the settings-page switch is the master gate. While closed
@@ -749,6 +754,8 @@ export const promptHandlers: Record<string, RpcHandler> = {
         type: "file_matches",
         reqId: msg.reqId,
         matches: await listFileMatches(root, query),
+        // File-tab search opts in via target so the UI store routes the reply to the file page, not the composer mention list
+        ...(msg.target === "fileTab" ? { target: "fileTab" } : {}),
       }),
     );
   },

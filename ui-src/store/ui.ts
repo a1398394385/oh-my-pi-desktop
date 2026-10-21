@@ -95,11 +95,13 @@ export interface UiSlice {
   bootSplash: boolean;
   /** Global search palette (⌘⇧F / sidebar search button): settings items + sessions */
   paletteOpen: boolean;
-  /** Bottom dock (⌘/Ctrl+J): terminal-only panel spanning the center column, under the composer */
-  bottomTerminalOpen: boolean;
+  /** Bottom dock (⌘/Ctrl+J) open state per terminal group key (one key per project once
+   *  terminals are project-shared): a dock opened in one project must not pop up in another. */
+  bottomTermOpen: Record<string, boolean>;
   openPalette(): void;
   closePalette(): void;
-  toggleBottomTerminal(): void;
+  toggleBottomTerm(groupKey: string): void;
+  closeBottomTerm(groupKey: string): void;
   toast(msg: unknown, error?: boolean): void;
   openHub(): void;
   closeHub(): void;
@@ -222,17 +224,22 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   hubWarming: null,
   bootSplash: true,
   paletteOpen: false,
-  bottomTerminalOpen: false,
+  bottomTermOpen: {},
 
   openPalette() {
     set({ paletteOpen: true });
   },
 
-  toggleBottomTerminal() {
+  toggleBottomTerm(groupKey) {
     // Narrow (phone) layout has no shortcut input and no room for a dock: refuse instead of
     // flipping a state the layout never renders.
     if (get().narrow) return;
-    set((s) => ({ bottomTerminalOpen: !s.bottomTerminalOpen }));
+    set((s) => ({ bottomTermOpen: { ...s.bottomTermOpen, [groupKey]: !s.bottomTermOpen[groupKey] } }));
+  },
+
+  closeBottomTerm(groupKey) {
+    if (!get().bottomTermOpen[groupKey]) return;
+    set((s) => ({ bottomTermOpen: { ...s.bottomTermOpen, [groupKey]: false } }));
   },
 
   closePalette() {

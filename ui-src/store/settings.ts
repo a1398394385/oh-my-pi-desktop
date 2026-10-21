@@ -63,6 +63,7 @@ export interface SettingsSlice {
   loginBanner: string | null; // OMP login progress banner text
   loginPromptData: LoginPromptFrame | null; // login_prompt paste-code dialog data
   agentAssets: AgentAssetsPayload | null;
+  pluginInstall: { spec: string; status: "running" | "ok" | "error"; message?: string } | null; // asset_plugin_install in flight / last result
   extensions: ExtensionsFrame | null; // extension-hub data frame (list_extensions / toggle_* replies)
   extensionsByScope: Record<string, ExtensionsFrame>; // same as above but accumulated per scope (for cross-scope matching of source badges on the assets page)
   usageStats: UsageStats | null;
@@ -110,6 +111,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   loginBanner: null,
   loginPromptData: null,
   agentAssets: null,
+  pluginInstall: null,
   mpManualView: false,
   manualProbe: null,
   manualProbing: false,

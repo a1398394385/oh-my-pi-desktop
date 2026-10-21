@@ -9,6 +9,8 @@ import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { getPluginsDir } from "@oh-my-pi/pi-utils";
 import { H } from "./state.ts";
 import {
+  PluginManager,
+  classifyInstallTarget,
   clearPluginRootsAndCaches,
   resolveActiveProjectRegistryPath,
   resolvePluginManifestEntries,
@@ -436,6 +438,20 @@ export async function setPluginEnabled(
   else disabled.add(pkg);
   cfg.disabled = Array.from(disabled);
   await writeFile(file, JSON.stringify(cfg, null, 2));
+}
+
+// Install a plugin package into the profile plugin root through the base's own
+// installer (`omp plugin install` equivalent: npm pkg, scoped pkg@ver, github:slug,
+// git URL, or a local path — the local form links instead of copying). Installs are
+// user-scope only: the base has no project-scope install for non-marketplace specs.
+export async function installPluginPackage(spec: string): Promise<{ name: string; version: string }> {
+  // Empty marketplace set: `name@marketplace` degrades to an npm version spec, which
+  // surfaces the base's own error instead of silently installing the wrong thing.
+  const target = classifyInstallTarget(spec, new Set());
+  const pm = new PluginManager();
+  const plugin = target.type === "local" ? await pm.link(target.path) : await pm.install(spec);
+  clearPluginRootsAndCaches();
+  return { name: plugin.name, version: plugin.version };
 }
 
 // Where a project's plugin packages live: the nearest project .omp above it, else

@@ -89,6 +89,8 @@ export type SettingsPayload = SettingsSnapshot & {
   acpEnabled: boolean;
   acpConfig?: AcpConfig;
   sessionContextEnabled: boolean;
+  /** omp-desktop.json automations.agentTools: new sessions get automations_list/automations_manage (off by default) */
+  automationAgentEnabled?: boolean;
   keepaliveEnabled: boolean;
   keepaliveConfig?: KeepaliveConfig;
   hooksEnabled: boolean;
@@ -124,6 +126,10 @@ export type SettingsPayload = SettingsSnapshot & {
   // the title after every settled turn (tiny-model call per turn; user-pinned
   // titles are never overwritten). Experimental page switch.
   sessionTitleRefresh?: boolean;
+  // omp-desktop.json sessionTitles.branchTitles (host/session-titles.ts): journal
+  // each title as a branchTitle custom entry on the active branch and mirror the
+  // branch's own title into the header on branch switch. Experimental page switch.
+  branchTitles?: boolean;
   // omp-desktop.json remote section (host/remote.ts): LAN remote-control
   // server config; the settings page's remote group reads/builds URLs from it
   remote?: RemoteConfigPayload;
@@ -422,7 +428,7 @@ export interface TurnUsage {
 /** On-wire shape of session entries (element of the messages frame; host/state.ts
  * re-exports this type, as does the UI-facing ui-src/types/frames.ts shim) */
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error" | "advisor";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -462,7 +468,23 @@ export type TranscriptItem = {
   command?: string;
   // ---- user image attachments ----
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
+  /** Set on a user row the scheduler delivered into this session (automation run), never on typed input */
+  automation?: { id: string; title: string };
+  // ---- advisor rows (role "advisor": one delivered advice batch, position = injection point) ----
+  notes?: AdvisorNote[];
 };
+
+/** One advisory note (base pi-tui `AdvisorNote`, advisor/advise-tool.ts) */
+export type AdvisorSeverity = "nit" | "concern" | "blocker";
+
+export interface AdvisorNote {
+  note: string;
+  severity?: AdvisorSeverity;
+  /** Named advisor that produced the note; absent for the default advisor */
+  advisor?: string;
+  /** Primary turns elapsed before the batched delivery */
+  turnsAgo?: number;
+}
 
 /** Queued message view element (host/host.ts sendQueued, via base toRestoredQueuedMessage) */
 export interface QueuedMessage {
@@ -491,9 +513,11 @@ export type UiEvent =
       details?: unknown;
       diffContent?: string;
     }
+  | { kind: "tool_details"; name: string; toolCallId?: string; details?: unknown } // in-flight refresh from a returned async tool (task spawn progress); carries no terminal semantics
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
   | { kind: "thinking_level"; configured?: string; resolved?: string }
   | { kind: "mention"; files: string[] }
+  | { kind: "advisor"; notes: AdvisorNote[] } // one delivered advice batch (base customType "advisor"); rendered at its injection point
   | { kind: "error"; text: string }; // provider/request failure (quota, auth, transport): rendered as a standalone row
 
 /** Whole-session stats (expanded fields of the session_stats frame, host/session-lifecycle.ts buildSessionStats) */

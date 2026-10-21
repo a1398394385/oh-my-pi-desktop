@@ -20,6 +20,7 @@ export const hostErrorsEn = {
     missingMcpName: "Missing MCP server name",
     missingSkillName: "Missing skill name",
     missingPluginName: "Missing plugin name",
+    missingPluginSpec: "Missing plugin package spec",
     unknownPluginScope: "Unknown plugin scope: {{scope}}",
     missingSubagentId: "Missing subagentId",
   },
@@ -181,6 +182,8 @@ export const hostErrorsEn = {
     limitReached: "Automation limit reached ({{limit}})",
     notFound: "Automation not found: {{id}}",
     disabled: "Automation is disabled; enable it before running now: {{title}}",
+    deliveryNeedsCap: "A session-targeted automation needs a bounded run count (recurring: false plus maxRuns)",
+    deliveryUpdateUnsupported: "This automation delivers into a session and cannot be edited; delete it and let the agent recreate it",
   },
   login: {
     inFlight: "A login flow is already in progress; complete it or try again later",

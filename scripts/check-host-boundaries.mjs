@@ -63,9 +63,9 @@ const ALLOWED_EDGES = new Set([
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
-  // Sidebar full-text search (search_session_text): same read-only session-file domain as the retrieval tool —
-  // it reuses that module's turn folding / query splitting and the bootstrap SDK handles (no second parse layer)
-  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→bootstrap.ts", "session-text-search.ts→session-context.ts",
+  // Sidebar full-text search (search_session_text): consumes the retrieval tool's exported scan/search core
+  // (scanSessions + searchSessionContext) — one parse path and one ranking for both consumers, no second parse layer
+  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise
@@ -172,8 +172,15 @@ const ALLOWED_EDGES = new Set([
   // Continuous title refresh (omp-desktop.json sessionTitles section): pure
   // module over desktop-json; agent_end hook in session-lifecycle, switch in
   // rpc/settings, settings-frame projection.
+  // Per-branch titles add two edges: rpc/session journals the title on
+  // rename_session and mirrors the branch's own title after navigate_tree
+  // (branch switch is the only place the header must follow a branch), and
+  // translate-history reads the customType to decide which record feeds the
+  // rename phase row (title_change is header-global and ambiguous once a
+  // session carries branch titles).
   "session-titles.ts→desktop-json.ts",
   "session-lifecycle.ts→session-titles.ts", "rpc/settings.ts→session-titles.ts", "frames.ts→session-titles.ts",
+  "rpc/session.ts→session-titles.ts", "translate-history.ts→session-titles.ts",
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
   // A2: the seven private omp-desktop.json read/merge-write wheels converged
   // onto the shared desktop-json helpers — profile's project-list save (multi-
@@ -373,7 +380,14 @@ const ALLOWED_EDGES = new Set([
   "automations-tool.ts→automations/types.ts", "automations-tool.ts→state.ts",
   // session_list backfills the automation badge from the persisted runs ledger
   // (pool eviction/restart must not drop it); read-only store access
+  // delete/archive also retire the automations that deliver into the session
+  // (automations/store.ts retireAutomationsForPaths)
   "rpc/session.ts→automations/store.ts",
+  // Delivery framing has two ends in one place: the scheduler writes the header, the
+  // transcript strips it back into the bubble marker (types.ts only carries the constant)
+  "translate.ts→automations/delivery.ts",
+  "automations/scheduler.ts→automations/delivery.ts",
+  "automations/delivery.ts→automations/types.ts",
   // type-only: buildSessionListPayload's return is checked against the wire frame
   "rpc/session.ts→wire/frames-session.ts",
   // /btw side conversations: btw.ts owns the topic lifecycle over the SDK primitives;
@@ -452,12 +466,30 @@ const ALLOWED_EDGES = new Set([
   // entry-tree.ts (same domain name as the front-end store slice); both are leaves
   // re-exported nowhere — callers import the new homes directly.
   "translate.ts→translate-tool.ts", "translate-tool.ts→state.ts",
+  // Advisor advice batches (customType "advisor") get their own projection module:
+  // live event + reload row + the details{notes} normalizer, so translate.ts keeps its
+  // line ratchet. Same leaf contract as translate-tool.ts.
+  "translate.ts→translate-advisor.ts", "translate-advisor.ts→state.ts",
+  "translate-advisor.ts→wire/payloads.ts",
+  // translate.ts hit its line cap, so disk replay (entriesToTranscript +
+  // sumRunDurationMs) moved to translate-history.ts. It is a leaf like translate-tool.ts:
+  // callers import it directly, and it borrows only the four small text helpers from
+  // translate.ts — the reverse edge stays empty.
+  "translate-history.ts→translate.ts", "translate-history.ts→translate-tool.ts",
+  "translate-history.ts→wire/payloads.ts", "translate-history.ts→i18n/host.ts",
+  "translate-history.ts→automations/delivery.ts", "translate-history.ts→translate-advisor.ts",
+  "session-lifecycle.ts→translate-history.ts", "rpc/prompt.ts→translate-history.ts",
+  "rpc/session.ts→translate-history.ts",
   "entry-tree.ts→translate.ts", "entry-tree.ts→i18n/host.ts",
   "rpc/session.ts→entry-tree.ts",
   // session-lifecycle.ts sheds the per-socket wiring closure (event fan-out, approval
   // uiCtx, extension runner init, unsubscribe teardown) to session-entry-core.ts; the
   // create/load entry points stay and re-export attachEntry for the frozen rpc callers.
   "session-lifecycle.ts→session-entry-core.ts",
+  // detachEntryUi (the per-socket fan-out teardown) is shared by the socket close
+  // handler and the frontend's mcp_detach (LRU eviction signal), so both paths drop
+  // the watcher identically — the idle sweep only reclaims entries with no watcher.
+  "ws-shared.ts→session-entry-core.ts", "rpc/assets.ts→session-entry-core.ts",
   "session-entry-core.ts→state.ts", "session-entry-core.ts→bootstrap.ts",
   "session-entry-core.ts→translate.ts", "session-entry-core.ts→delta-coalesce.ts",
   "session-entry-core.ts→session-snapshot.ts", "session-entry-core.ts→subagent-view.ts",

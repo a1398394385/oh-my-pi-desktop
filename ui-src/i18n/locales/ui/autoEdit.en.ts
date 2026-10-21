@@ -10,6 +10,7 @@ const autoEdit = {
   tabSettings: "Settings",
   tabHistory: "History",
   createBtn: "Create automation",
+  deliveryLocked: "This automation delivers into a conversation and is maintained by the agent; delete it and ask the agent to recreate it if you need changes.",
   untitled: "Untitled task",
   nextRunLabel: "Next run",
   runCountLabel: "Runs",
@@ -39,7 +40,7 @@ const autoEdit = {
   runsNextPage: "Next",
   runsErrorUnavailable: "Error details unavailable",
   computerLabel: "Computer control",
-  computerHint: "Enable computer control (screenshots, input, accessibility) for this task's sessions. Per-task only: the global “Enable computer control by default” switch deliberately does not apply to scheduled tasks.",
+  computerHint: "Enable computer control (screenshots, input, accessibility) for this task's sessions. Per-task only: the global “Enable computer control by default” switch deliberately does not apply to automations.",
 };
 
 export default autoEdit;

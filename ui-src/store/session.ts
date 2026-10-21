@@ -9,6 +9,7 @@ import { useAppStore } from "./index";
 import { findLast, pathOfSessionId } from "./session-lookup";
 import { notifyDesktop, alertTitle } from "./notify";
 import { invoke } from "./ws";
+import { sealRunItems } from "./run-seal";
 // Per-session right panel snapshots: activateSession is the single funnel for all session
 // activations, so save/restore hooks live here (right.ts also imports activeOpen from this
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
@@ -46,6 +47,10 @@ export interface SessionSlice {
   // Paths of pool sessions with busy === true (maintained by landPoolSessions): O(1) per-row
   // busy lookups instead of scanning the pool array per sidebar row per store notification
   busyPaths: Set<string>;
+  // Paths the host still holds in memory (same writer as busyPaths): the eject action keys
+  // off this, not openSessions — the frontend slot map has an LRU cap, so a row can leave
+  // that map while the session is still resident in the host pool
+  poolPaths: Set<string>;
   // Latest word-completion reply (complete_text RPC): overwritten per frame;
   // GhostTextPlugin matches it against its pending request and drops stale hits
   completionResult: CompletionResult | null;
@@ -89,6 +94,7 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
   openSessions: new Map(),
   poolSessions: [],
   busyPaths: new Set(),
+  poolPaths: new Set(),
   completionResult: null,
   bgJobs: new Map(),
 });
@@ -145,8 +151,12 @@ export function findBySessionId(id: string): OpenSession | undefined {
 export function landPoolSessions(sessions: PoolSessionInfo[] | undefined): void {
   const list = sessions ?? [];
   const busyPaths = new Set<string>();
-  for (const p of list) if (p.busy === true) busyPaths.add(p.path);
-  useAppStore.setState({ poolSessions: list, busyPaths });
+  const poolPaths = new Set<string>();
+  for (const p of list) {
+    poolPaths.add(p.path);
+    if (p.busy === true) busyPaths.add(p.path);
+  }
+  useAppStore.setState({ poolSessions: list, busyPaths, poolPaths });
 }
 
 // ---------- Render memory gate: LRU eviction for openSessions ----------
@@ -159,7 +169,18 @@ const OPEN_SESSIONS_MAX = 8;
  *  On switch, saves the outgoing session's right panel snapshot first and restores the
  *  incoming session's right panel after (per-session independence). */
 export function activateSession(path: string): void {
-  const prev = useAppStore.getState().activePath;
+  const st0 = useAppStore.getState();
+  // Stale slot after a reconnect (or host restart): the host dropped this entry's UI subscription
+  // with the old socket, so activating it would show a frozen view whose abort button never lands.
+  // Remount through load_session — the host's reuse branch re-attaches and replays the transcript.
+  const resident = st0.openSessions.get(path);
+  if (resident && resident.connEpoch !== st0.connEpoch) {
+    useAppStore.setState({ isCreatingNew: false });
+    st0.send({ type: "reload_settings" });
+    st0.send({ type: "load_session", path });
+    return;
+  }
+  const prev = st0.activePath;
   if (prev !== path) saveRightSlot(prev); // same-path re-activation: neither save nor restore
   useAppStore.setState((st) => {
     const cur = st.openSessions.get(path);
@@ -228,8 +249,9 @@ export function evictOpenSessions(): void {
     }
     return { openSessions };
   });
-  // Pool boundary: tell the host to drop the evicted sessions' MCP mounts
-  // (idempotent; switching back re-mounts through the load_session path)
+  // Pool boundary: tell the host to drop the evicted sessions' MCP mounts and their
+  // socket attachment (idempotent; switching back re-attaches and re-mounts through the
+  // load_session path). Detaching is what lets the host's idle sweep reclaim the entry.
   for (const p of evicted) useAppStore.getState().send({ type: "mcp_detach", path: p });
 }
 
@@ -255,42 +277,9 @@ function clearRunningTools(s: OpenSession): void {
 }
 
 // ---------- Run sealing / queued messages (moved over from core.js; render calls now bump) ----------
-// Seal the process of the current run from turnItemStart into a loop group (the intermediate
-// assistant stays outside the group) and reset turnItemStart past the group: used both for the
-// pre-seal when a user message is inserted mid-stream and for the resumed run after steer consumption
-export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
-  const startIdx = s.turnItemStart ?? s.items.length;
-  const runItems = s.items.splice(startIdx);
-  // Error rows stay outside the loop group: the run's process may collapse, the
-  // reason it stopped must not (same layout as the reload path).
-  const errors: SessionItem[] = [];
-  for (let i = runItems.length - 1; i >= 0; i--) {
-    const it = runItems[i];
-    if (it.role !== "error") break;
-    errors.unshift(it);
-    runItems.splice(i, 1);
-  }
-  let lastA = -1;
-  for (let i = runItems.length - 1; i >= 0; i--) {
-    if (runItems[i].role === "assistant") {
-      lastA = i;
-      break;
-    }
-  }
-  const finalOut = lastA >= 0 ? runItems.splice(lastA, 1) : [];
-  if (runItems.length) {
-    s.items.push({
-      role: "loop",
-      text: "",
-      collapsed: true,
-      items: runItems,
-      durationSec: s.turnStartAt ? Math.round((Date.now() - s.turnStartAt) / 1000) : null,
-      usage: usage ?? null,
-    });
-  }
-  s.items.push(...finalOut, ...errors);
-  s.turnItemStart = s.items.length;
-}
+// Run sealing lives in ./run-seal.ts (advisor rows split the run, so the logic no longer
+// fits this file's ratchet); re-exported for the existing callers.
+export { sealRunItems };
 
 // Queue actions (drop/edit/send-now/requeue) moved to store/queue-actions.ts; re-exported here
 // so the "../store" barrel and its consumers keep a single import surface.
@@ -350,7 +339,7 @@ export function hostInstanceReset(hi: string | null, seq: number): void {
       }
       openSessions.set(p, next);
     }
-    return { openSessions, poolSessions: [], busyPaths: new Set(), evtHost: hi };
+    return { openSessions, poolSessions: [], busyPaths: new Set(), poolPaths: new Set(), evtHost: hi };
   });
 }
 
@@ -380,9 +369,14 @@ export function admitStampedEvent(msg: EventStampFields): boolean {
  *  running state right away — the elapsed clock and the stop button appear at send time; the host
  *  turn_start keeps the origin instead of resetting it. Shared by the composer pipeline
  *  (composer/send.ts), the pendingNewPrompt consumption and the automation user_message echo. */
-export function startLocalRun(sessionId: string, text: string, images?: UserItem["images"]): void {
+export function startLocalRun(
+  sessionId: string,
+  text: string,
+  images?: UserItem["images"],
+  automation?: UserItem["automation"],
+): void {
   updateSession(sessionId, (s) => {
-    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}) });
+    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}), ...(automation ? { automation } : {}) });
     s.streaming = true;
     s.turnStartAt = Date.now();
   });
@@ -439,6 +433,15 @@ function promoteStrandedSteerBubbles(s: OpenSession): void {
 }
 
 // ---------- event frame handling (all kind branches of the old onMessage case "event"; immutable updates via updateSession) ----------
+// Target row for a live tool frame: call id first, display name as the fallback (older frames may
+// lack the id); zero-copy reverse scans since the chat list can be long.
+function findToolRow(s: OpenSession, toolCallId?: string, name?: string): ToolItem | undefined {
+  return (
+    findLast(s.items, (it): it is ToolItem => it.role === "tool" && !!it.toolCallId && it.toolCallId === toolCallId) ||
+    findLast(s.items, (it): it is ToolItem => it.role === "tool" && (it.name || it.text) === name)
+  );
+}
+
 export function applyEvent(msg: EventFrame): void {
   const st = useAppStore.getState();
   if (msg.kind === "turn_start") {
@@ -468,7 +471,7 @@ export function applyEvent(msg: EventFrame): void {
   } else if (msg.kind === "user_message") {
     // Host-side send echo (other channel's prompt — its sender is excluded — or an
     // automation run): the single run-start write covers clock/stop too.
-    startLocalRun(msg.sessionId, msg.text, msg.images);
+    startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
       s.assistantDraft += msg.text;
@@ -528,10 +531,7 @@ export function applyEvent(msg: EventFrame): void {
     });
   } else if (msg.kind === "tool_update") {
     updateSession(msg.sessionId, (s) => {
-      // Two-stage match (toolCallId first, name fallback) via zero-copy reverse scans
-      const last =
-        findLast(s.items, (it): it is ToolItem => it.role === "tool" && !!it.toolCallId && it.toolCallId === msg.toolCallId) ||
-        findLast(s.items, (it): it is ToolItem => it.role === "tool" && (it.name || it.text) === msg.name);
+      const last = findToolRow(s, msg.toolCallId, msg.name);
       if (last) {
         if (msg.files) last.files = uniqueFiles(msg.files);
         if (msg.added != null) last.added = msg.added;
@@ -544,6 +544,13 @@ export function applyEvent(msg: EventFrame): void {
         // "expand while running": collapse at the end (the card auto-expanded during the run)
         if (st.uiPrefs.expandToolOutput) last[toolExpandKey(last.name)] = false;
       }
+    });
+  } else if (msg.kind === "tool_details") {
+    // In-flight details refresh from a returned async tool (task spawn progress): the row is
+    // already settled, so touch details only — never running/expand state.
+    updateSession(msg.sessionId, (s) => {
+      const last = findToolRow(s, msg.toolCallId, msg.name);
+      if (last && msg.details != null) last.details = msg.details as ToolDetails;
     });
   } else if (msg.kind === "turn_end") {
     // In-run frames (runEnd:false, each model turn of a tool loop): only settle the draft, no
@@ -640,6 +647,13 @@ export function applyEvent(msg: EventFrame): void {
     // @ mention persisted read-back: fileMention messages have no streaming-event counterpart; the host re-reads the session file at agent_end and re-sends it
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "mention", text: "", files: msg.files || [] });
+    });
+  } else if (msg.kind === "advisor") {
+    // Advice batch: a row at its injection point (mid-run blocker, or the run-boundary
+    // batch). Not folded into a loop group — the renderer lifts blockers out of the
+    // turn's closing card based on where this row lands.
+    updateSession(msg.sessionId, (s) => {
+      s.items.push({ role: "advisor", text: "", notes: msg.notes });
     });
   } else if (msg.kind === "error") {
     // Provider/request failure (quota, auth, transport): one row of its own.

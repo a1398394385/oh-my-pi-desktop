@@ -14,8 +14,10 @@
 
 /* Composer model menu: fixed width — the row set (model names, badges) changes with
    the picked provider, and a content-fitted box would jitter on every switch. The
-   name cell absorbs the slack so a long id ellipsizes instead of wrapping the row. */
-#modelMenu { width: 250px; }
+   name cell absorbs the slack so a long id ellipsizes instead of wrapping the row.
+   286px = 250px + 4 uppercase letters (4 × ~9px at the 13px UI font): provider ids
+   and model names were clipped one or two characters short. */
+#modelMenu { width: 286px; }
 #modelMenu .mi-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; }

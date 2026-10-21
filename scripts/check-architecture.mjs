@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-// Architecture ratchet gate (adapted from pi-desktop check-architecture for this repo's layout):
-// 1. Hard caps for hot-spot files (SHRINK OR STAY STABLE: block growth, no retroactive relaxation on shrink):
-//    host/main.ts <= 280 (after table-driven RPC, main only keeps the dispatch shell and host-level tasks), ui-src/store/session.ts <= 800; over the cap fails,
-// 2. Line caps for newly added files: files added since the base commit (git diff --diff-filter=A)
-//    are capped at 800 lines for TS/TSX and 1000 for Rust. Base defaults to main (--base <rev> or the env var
+// Architecture line-budget gate (adapted from pi-desktop check-architecture for this repo's layout).
+// Policy history: a per-file "shrink or stay stable" ratchet was replaced on 2026-10-21 — it
+// froze each file at split size, so a 3-line edit forced a 50-line extraction. Now:
+// 1. Domain budgets: files of one domain grow freely, their sum is capped (DOMAIN_BUDGETS);
+// 2. Explicit thin files (FILE_CAPS) — the RPC dispatch shell must stay small;
+// 3. Global bounds: FILE_SOFT_CAP warns (only for files touched in this change), FILE_HARD_CAP fails;
+// 4. Line caps for newly added files: files added since the base commit (git diff --diff-filter=A)
+//    are capped at 700 lines for TS/TSX and 1000 for Rust. Base defaults to main (--base <rev> or the env var
 //    ARCHITECTURE_BASE can override; falls back to HEAD^ when the base is missing, and the new-file check is skipped when neither exists).
 // Source roots: host/ ui-src/ scripts/ src-tauri/src/ (.mjs under scripts/ is uncapped -- gate/tool scripts are themselves exempt).
 // Exempt dirs: build outputs such as node_modules/dist/target (ui/ docs/ .agents/ .local/ outside the source roots are naturally unchecked).
@@ -18,22 +21,28 @@ const sourceRoots = ["host", "ui-src", "scripts", "src-tauri/src"];
 const sourceExtensions = new Set([".ts", ".tsx", ".rs"]);
 const excludedSegments = new Set(["node_modules", "dist", "out", "release", "target", "coverage"]);
 
-// Hard caps for hot spots: no auto-tightening after a shrink (fixed-constant ratchet); over the cap fails
-const HOT_LIMITS = [
-  { path: "host/main.ts", max: 280 },
-  { path: "ui-src/store/session.ts", max: 800 },
-  // Late-growing hot spots locked at current size (2026-10 audit); ratchet down only.
-  // Lowered after the A12 split (snapshot family -> session-snapshot.ts,
-  // subagent roster -> subagent-view.ts): 896 actual + buffer.
-  // 2026-10 line-cap splits: session-entry-core.ts (wiring closure, 482 actual + buffer),
-  // translate-tool.ts + entry-tree.ts (654 actual + buffer), asset-paths.ts +
-  // mcp-assets.ts + plugin-assets.ts (367 actual + buffer).
-  { path: "host/session-lifecycle.ts", max: 590 },
-  { path: "host/assets.ts", max: 400 },
-  { path: "host/translate.ts", max: 700 },
+// Line-budget policy (replaced the per-file "shrink or stay stable" ratchet, 2026-10-21):
+// a flat per-file ceiling punished correct small edits while the real structural guard is
+// check-host-boundaries.mjs. Three layers now:
+//   1. DOMAIN_BUDGETS — files of one domain grow freely, but their total is capped;
+//   2. FILE_CAPS — the few files that must stay thin regardless of their domain;
+//   3. FILE_SOFT_CAP (warn) / FILE_HARD_CAP (fail) — the outer bounds for every file.
+// i18n locale tables are data, not logic, and stay exempt.
+const FILE_CAPS = [
+  { path: "host/main.ts", max: 280 }, // RPC dispatch shell: table-driven, never grows
 ];
 
-const NEW_FILE_LIMITS = { ".ts": 800, ".tsx": 800, ".rs": 1000 };
+const DOMAIN_BUDGETS = [
+  // Session lifecycle domain (lifecycle / entry wiring / snapshot / context / titles):
+  // members may grow, the sum may not. Current 1966 across 8 files (2026-10-21).
+  { note: "会话生命周期域", match: /^host\/session-.*\.ts$/, max: 2200 },
+];
+
+const FILE_SOFT_CAP = 700;
+const FILE_HARD_CAP = 1500;
+const LOC_EXEMPT = [/^ui-src\/i18n\/locales\//];
+
+const NEW_FILE_LIMITS = { ".ts": 700, ".tsx": 700, ".rs": 1000 };
 
 function git(args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trimEnd();
@@ -103,21 +112,50 @@ if (requestedBase && requestedBase !== base) {
 }
 
 const files = trackedSourceFiles();
-const locByPath = new Map([...files, ...HOT_LIMITS.map((h) => h.path)].filter((p) => existsSync(resolve(root, p))).map((p) => [p, locFor(p)]));
+const locByPath = new Map([...files, ...FILE_CAPS.map((h) => h.path)].filter((p) => existsSync(resolve(root, p))).map((p) => [p, locFor(p)]));
 const addedFiles = [...new Set([...addedSourceFiles(base), ...git(["ls-files", "--others", "--exclude-standard"]).split("\n").filter(isSourcePath)])];
 const failures = [];
+const warnings = [];
+const locOf = (path) => locByPath.get(path) ?? locFor(path);
+// Soft-cap notices fire only for files this change touches: a standing list of every historical
+// oversized file would train people to ignore the whole gate.
+const touched = new Set(
+  [
+    ...(base ? git(["diff", "--name-only", base]).split("\n") : []),
+    ...git(["ls-files", "--others", "--exclude-standard"]).split("\n"),
+  ].filter(Boolean),
+);
 
-// ---- Check 1: hard caps for hot spots ----
-for (const { path, max } of HOT_LIMITS) {
+// ---- Check 1: single-file caps (explicit thin files, then the global soft/hard bounds) ----
+for (const { path, max } of FILE_CAPS) {
   const loc = locByPath.get(path);
   if (loc === undefined) {
-    failures.push(`${path} 不存在（热区路径已变动？请同步 HOT_LIMITS）`);
+    failures.push(`${path} 不存在（显式上限路径已变动？请同步 FILE_CAPS）`);
   } else if (loc > max) {
-    failures.push(`${path} 当前 ${loc} 行，超过上限 ${max} —— SHRINK OR STAY STABLE，先拆分再增长`);
+    failures.push(`${path} 当前 ${loc} 行，超过显式上限 ${max}（该文件必须保持薄）`);
+  }
+}
+for (const path of files) {
+  if (LOC_EXEMPT.some((re) => re.test(path))) continue;
+  const loc = locOf(path);
+  if (loc > FILE_HARD_CAP) {
+    failures.push(`${path} 当前 ${loc} 行，超过硬顶 ${FILE_HARD_CAP} —— 拆分后再提交`);
+  } else if (loc > FILE_SOFT_CAP && touched.has(path)) {
+    warnings.push(`${path} ${loc} 行（软线 ${FILE_SOFT_CAP}，可继续，但优先按职责拆分）`);
   }
 }
 
-// ---- Check 2: line caps for newly added files (.d.ts declaration files unchecked) ----
+// ---- Check 2: domain budgets (members grow freely, the domain total does not) ----
+for (const { note, match, max } of DOMAIN_BUDGETS) {
+  const members = files.filter((p) => match.test(p));
+  const total = members.reduce((n, p) => n + locOf(p), 0);
+  if (total > max) {
+    const detail = members.map((p) => `${p} ${locOf(p)}`).join("、");
+    failures.push(`${note}：合计 ${total} 行，超过域预算 ${max}（${detail}）—— 域内先腾空间或新开文件归入其它域`);
+  }
+}
+
+// ---- Check 3: line caps for newly added files (.d.ts declaration files unchecked) ----
 for (const path of addedFiles) {
   const max = NEW_FILE_LIMITS[extname(path)];
   const loc = locByPath.get(path) ?? locFor(path);
@@ -126,10 +164,17 @@ for (const path of addedFiles) {
   }
 }
 
-const hotSummary = HOT_LIMITS.map(({ path, max }) => `${path} ${locByPath.get(path) ?? "?"}/${max}`).join("、");
+const domainSummary = DOMAIN_BUDGETS.map(({ note, match, max }) => {
+  const total = files.filter((p) => match.test(p)).reduce((n, p) => n + locOf(p), 0);
+  return `${note} ${total}/${max}`;
+}).join("、");
 if (failures.length > 0) {
   console.error(`✗ 架构门禁失败（${failures.length} 项）：`);
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`✓ 架构门禁通过：源文件 ${files.length} 个；热区 ${hotSummary}；基准 ${base || "无"} 以来新增受检文件 ${addedFiles.length} 个`);
+if (warnings.length > 0) {
+  console.warn(`⚠ 软线告警（不影响通过，共 ${warnings.length} 项）：`);
+  for (const w of warnings) console.warn(`  - ${w}`);
+}
+console.log(`✓ 架构门禁通过：源文件 ${files.length} 个；域预算 ${domainSummary}；单文件软线 ${FILE_SOFT_CAP}/硬顶 ${FILE_HARD_CAP}；基准 ${base || "无"} 以来新增受检文件 ${addedFiles.length} 个`);

@@ -56,6 +56,10 @@ export const chatZh = {
   roFiles: "{{count}} 份文件",
   roTasks: "{{count}} 项任务",
   roCmds: "{{count}} 条命令",
+  // ---- advisor advice rows (AdvisorCard.tsx) ----
+  advisorSevBlocker: "拦截",
+  advisorSevConcern: "疑虑",
+  advisorSevNit: "小意见",
   // ---- truncation notices (plurals / interpolation) ----
   truncated: " …(截断,共{{count}}字)",
   outputTruncated: "\n…（输出已截断）",
@@ -71,6 +75,8 @@ export const chatZh = {
   processing: "正在处理…",
   loadingAria: "加载中",
   workingFor: "工作中 ",
+  showProcess: "展开处理过程",
+  hideProcess: "收起处理过程",
   // ---- loop group summary (LoopGroup.tsx) ----
   workedFor: "已工作 {{duration}}",
   totalUsage: "总消耗 {{usage}}",
@@ -165,21 +171,13 @@ export const chatZh = {
   sendNow: "立即发送（当前步骤后注入）",
   imageN: "图片 {{n}}",
   clickToZoom: "点击查看大图",
+  automationDelivery: "自动化投递",
   copyMsg: "复制这条消息",
   // ---- todo card (TodoCard.tsx) ----
-  allDone: "全部完成",
   sessionStatus: "会话状态",
   collapseToCapsule: "收起为胶囊",
   planOutput: "计划产出",
   planOutputHint: "在文件页打开计划文件",
-  // 能力卡片（右下角浮层；MCP/插件行走 right.* 的 caps 键）
-  capsCardTitle: "能力",
-  capsPlugins: "插件",
-  capsFlags: "会话模式",
-  capsDockCollapse: "收起区域",
-  capsDockExpand: "展开区域",
-  capFlagComputer: "Computer Use",
-  capFlagGoal: "目标模式",
   resizeTodo: "拖动调整卡片大小",
   // ---- approval card (ApprovalCard.tsx) ----
   awaitingConfirm: "等待确认",
@@ -193,7 +191,7 @@ export const chatZh = {
   enableWordWrap: "开启自动换行",
   // ---- shared render parts (parts.tsx) ----
   openLinkFailed: "打开链接失败：{{error}}",
-  openInBrowser: "{{mod}}+点击在默认浏览器打开",
+  openInBrowser: "点击在内置浏览器打开 · {{mod}}+点击在默认浏览器打开",
   // ---- rail tool summary (shell.ts railToolText) ----
   fileSep: "、",
   // ---- session stats bar (SessionStatsBar.tsx, 各项只显示图标，文字降级为 tooltip) ----

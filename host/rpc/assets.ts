@@ -12,6 +12,7 @@ import {
 } from "../bootstrap.ts";
 import { H, sessions } from "../state.ts";
 import { releaseMcpForSession, preloadMcpForCwd } from "../mcp-mount.ts";
+import { detachEntryUi } from "../session-entry-core.ts";
 import { listAgentAssets } from "../assets.ts";
 import {
   probeMcpServerHealth,
@@ -25,7 +26,7 @@ import {
   validDesktopProjects,
   type AssetKind,
 } from "../asset-paths.ts";
-import { setPluginEnabled } from "../plugin-assets.ts";
+import { setPluginEnabled, installPluginPackage } from "../plugin-assets.ts";
 import { setMcpSharingConfig, deleteMcpSharingConfig } from "../profile.ts";
 import {
   buildExtensionsPayload,
@@ -157,6 +158,26 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     // sessions created afterwards, matching the base's load-time discovery semantics.
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
+  async asset_plugin_install(ws, msg) {
+    const spec = String(msg.spec ?? "").trim();
+    if (!spec) throw new Error(hostI18n.t("errors.param.missingPluginSpec"));
+    // Install errors are reported on the result frame (not as a thrown error frame):
+    // the UI keeps an in-flight install button until a terminal reply lands, and a
+    // failed `bun install` is an expected outcome worth showing inline.
+    try {
+      const res = await installPluginPackage(spec);
+      ws.send(JSON.stringify({ type: "plugin_install_result", ok: true, ...res }));
+    } catch (err) {
+      ws.send(
+        JSON.stringify({
+          type: "plugin_install_result",
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+    ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+  },
   async asset_skill_toggle(ws, msg) {
     const name = String(msg.name ?? "").trim();
     const enabled = Boolean(msg.enabled);
@@ -266,15 +287,20 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     // this reply is "ok"/"error" (McpServerTestedFrame consumers + smoke-mcp-sharing)
     ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status === "connected" ? "ok" : "error", error: probe.error, log: probe.log }));
   },
-  async mcp_detach(_ws, msg) {
-    // Frontend LRU eviction signal: release the evicted session's MCP pool
-    // references and unmount its tool surface (pool boundary semantics — no
-    // mid-session toggling). Reopening goes through load_session, which
-    // re-mounts idempotently.
+  async mcp_detach(ws, msg) {
+    // Frontend LRU eviction signal: the session is no longer open on this channel.
+    // Release its MCP pool references, unmount its tool surface (pool boundary
+    // semantics — no mid-session toggling) AND leave the session's fan-out set:
+    // sweepIdlePoolSessions skips entries with any attached socket, so a stale
+    // attachment pinned the evicted session in the pool (and the sidebar's active
+    // tasks list) for as long as the window stayed open. Reopening goes through
+    // load_session, which re-attaches the socket and re-mounts idempotently.
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, entry] of sessions.entries()) {
-      if (entry.path === p) releaseMcpForSession(key, entry);
+      if (entry.path !== p) continue;
+      releaseMcpForSession(key, entry);
+      detachEntryUi(ws, entry);
     }
   },
   async preload_mcp(_ws, msg) {

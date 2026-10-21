@@ -31,12 +31,12 @@ import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
 import { pushInputHistory } from "./components/composer/lexical/draft";
-import { cycleTermTab } from "./components/main/right/termTabs";
+import { cycleTermTab, termGroupKey } from "./components/main/right/termTabs";
 
 // ---------- Actions ----------
 
-// Double-Esc action window (500ms)
-const DOUBLE_ESC_MS = 500;
+// Double-Esc action window (500ms). Exported so other Esc-clears (the /btw composer) match it.
+export const DOUBLE_ESC_MS = 500;
 let doubleEscTimer: TimerHandle | undefined;
 let escArmedAction: "clear" | "tree" | null = null;
 
@@ -370,6 +370,20 @@ function handleSessionJump(digit: string): boolean {
   return false;
 }
 
+/** Command/Ctrl + Enter: hand focus to the composer so typing can start at once.
+ * Only from the message view with nothing editable focused (terminal helper
+ * textarea, find bar and settings inputs keep their keys). */
+function focusComposer(): boolean {
+  const st = useAppStore.getState();
+  if (st.mainViewMode !== "chat" || st.settingsOpen || st.paletteOpen) return false;
+  const ae = document.activeElement;
+  if (ae instanceof HTMLElement && ae.closest("input, textarea, [contenteditable]")) return false;
+  const inp = document.querySelector("#composer #input") as HTMLElement | null;
+  if (!inp) return false;
+  inp.focus();
+  return true;
+}
+
 // ---------- Registry ----------
 // keys = keycap display; chords = dispatch bindings (empty = bound inside a
 // component, registered here for display only); run = action
@@ -401,7 +415,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: [MOD, "F"], get label() { return t("misc.keysFindInSession"); } },
       { keys: [MOD, "⇧", "F"], chords: ["shift+meta+f", "meta+shift+f"], get label() { return t("misc.keysSearchPalette"); }, run: () => useAppStore.getState().openPalette() },
       { keys: [MOD, "Alt", "B"], chords: ["alt+meta+b", "meta+alt+b"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
-      { keys: [MOD, "J"], chords: ["meta+j"], get label() { return t("misc.keysToggleBottomTerminal"); }, run: () => useAppStore.getState().toggleBottomTerminal() },
+      { keys: [MOD, "J"], chords: ["meta+j"], get label() { return t("misc.keysToggleBottomTerminal"); }, run: () => useAppStore.getState().toggleBottomTerm(termGroupKey()) },
+      { keys: [MOD, "Enter"], chords: ["meta+enter"], get label() { return t("misc.keysFocusComposer"); }, run: focusComposer },
       // Dock terminal tabs: Shift reverses direction (both chords share one registry row)
       { keys: ["Ctrl", "Tab"], chords: ["ctrl+tab", "ctrl+shift+tab"], get label() { return t("misc.keysCycleTerminalTab"); }, run: (e) => cycleTermTab(e?.shiftKey ? -1 : 1) },
     ],

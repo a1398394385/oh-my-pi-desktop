@@ -103,6 +103,18 @@ export const configHandlers = {
     // stayed hidden).
     useAppStore.setState((s) => ({ agentAssets: msg.assets, commands: null, commandsSessionId: null }));
   },
+  plugin_install_result(msg) {
+    // Toast both ways: the install runs `bun install` in the background, so the
+    // page-level card can only show a spinner — the outcome needs its own surface.
+    useAppStore.setState((s) => ({
+      pluginInstall: { spec: s.pluginInstall?.spec ?? "", status: msg.ok ? "ok" : "error", message: msg.error },
+    }));
+    if (msg.ok) {
+      useAppStore.getState().toast(t("notify.pluginInstalled", { name: msg.name ?? "" }));
+    } else {
+      useAppStore.getState().toast(String(msg.error ?? t("notify.pluginInstallFailed")), true);
+    }
+  },
   extensions(msg) {
     useAppStore.setState((s) => ({
       extensions: msg,

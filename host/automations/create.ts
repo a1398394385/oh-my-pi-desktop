@@ -1,7 +1,7 @@
 // Automation creation domain entry: validate an upsert payload, normalize its
 // schedule, mint the record and persist it. Shared by the create RPC
-// (host/rpc/automations.ts) and the create_automation built-in tool
-// (host/automations/tool.ts) so both enforce the same limits, defaults and
+// (host/rpc/automations.ts) and the automations_manage built-in tool
+// (host/automations-tool.ts) so both enforce the same limits, defaults and
 // born-completed rule; update/preview reuse resolveSchedule from here.
 import { hostI18n } from "../i18n/host.ts";
 import { computeAutomationNextRunAt, isOneShot, isValidCronExpr, normalizeScheduleInput } from "./cron.ts";
@@ -59,6 +59,11 @@ export async function createAutomation(raw: Partial<AutomationUpsertInput>): Pro
   const now = Date.now();
   const model = typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : undefined;
   const maxRuns = optCount(raw.maxRuns);
+  // A session delivery wakes a live conversation, so it must be bounded: the
+  // agent cannot create an unbounded self-wake loop.
+  const deliverTo = raw.deliverTo;
+  if (deliverTo && (raw.recurring === true || maxRuns === undefined))
+    throw new Error(hostI18n.t("errors.automations.deliveryNeedsCap"));
   const endAt = typeof raw.endAt === "number" && Number.isFinite(raw.endAt) ? raw.endAt : undefined;
   const automation: Automation = {
     id: newAutomationId(),
@@ -71,6 +76,7 @@ export async function createAutomation(raw: Partial<AutomationUpsertInput>): Pro
     ...(raw.computer === true ? { computer: true } : {}),
     recurring: raw.recurring === true,
     ...(maxRuns !== undefined ? { maxRuns } : {}),
+    ...(deliverTo ? { deliverTo } : {}),
     ...(endAt !== undefined ? { endAt } : {}),
     runCount: 0,
     enabled: true,

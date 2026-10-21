@@ -1,5 +1,7 @@
 // ReadSessionContext built-in tool: literal search and expansion over the
-// current profile's Pi session history.
+// current profile's Pi session history. The scan/search core below is also the
+// single search path for the sidebar full-text search (search_session_text RPC
+// via session-text-search.ts) — one parse path, one ranking for both consumers.
 //
 // Modeled on pi-session-memory (npm:pi-session-memory, MIT) recall_memory /
 // fetch_session semantics: literal (substring) matching rather than semantic
@@ -17,7 +19,7 @@ import type { FileEntry, SessionInfo } from "@oh-my-pi/pi-coding-agent";
 import { FileSessionStorage, listAllSessions, loadEntriesFromFile } from "./bootstrap.ts";
 
 /** A "user question + assistant reply" pair inside a session — the minimal unit of search and expansion. */
-interface SessionTurn {
+export interface SessionTurn {
   index: number;
   ts: number;
   user: string;
@@ -25,12 +27,12 @@ interface SessionTurn {
   tools: string[];
 }
 
-interface ScannedSession {
+export interface ScannedSession {
   info: SessionInfo;
   turns: SessionTurn[];
 }
 
-interface SessionContextHit {
+export interface SessionContextHit {
   session: ScannedSession;
   turn: SessionTurn;
   /** Number of matched query terms (more = more relevant). */
@@ -98,7 +100,7 @@ interface ScanOptions {
 }
 
 /** List the current profile's Pi sessions and parse them into turn lists. */
-async function scanSessions(options: ScanOptions = {}): Promise<ScannedSession[]> {
+export async function scanSessions(options: ScanOptions = {}): Promise<ScannedSession[]> {
   const storage = new FileSessionStorage();
   const infos = await listAllSessions(storage);
   const cutoff = options.days && options.days > 0 ? Date.now() - options.days * 86_400_000 : 0;
@@ -120,12 +122,8 @@ export function splitQueryTerms(query: string): string[] {
     .filter(Boolean);
 }
 
-/** Literal search: return matching turns (more matched terms first, then newest first). */
-function searchSessionContext(
-  sessions: ScannedSession[],
-  query: string,
-  limit: number,
-): SessionContextHit[] {
+/** Literal search: all matching turns, ranked (more matched terms first, then newest first); consumers slice. */
+export function searchSessionContext(sessions: ScannedSession[], query: string): SessionContextHit[] {
   const terms = splitQueryTerms(query);
   if (terms.length === 0) return [];
   const hits: SessionContextHit[] = [];
@@ -138,7 +136,7 @@ function searchSessionContext(
     }
   }
   hits.sort((a, b) => b.score - a.score || b.turn.ts - a.turn.ts);
-  return hits.slice(0, limit);
+  return hits;
 }
 
 // ---- output formatting ----
@@ -318,7 +316,7 @@ export function createSessionContextTools() {
 
         const limit = typeof params?.limit === "number" && params.limit > 0 ? Math.floor(params.limit) : 10;
         const sessions = await scanSessions({ excludePath, cwd, days });
-        const hits = searchSessionContext(sessions, query, limit);
+        const hits = searchSessionContext(sessions, query).slice(0, limit);
         return textResult(formatHits(hits, query, sessions.length), hits.length === 0);
       },
     },

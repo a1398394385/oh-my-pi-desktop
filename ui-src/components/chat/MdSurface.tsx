@@ -19,7 +19,8 @@ import { t } from "../../i18n";
 import { useAppStore } from "../../store";
 import { CODE_PLUGINS, resolvePluginKey, type CodePluginKey } from "../../lib/code-plugin-registry";
 import { getThemeById } from "../../theme-registry";
-import { FileChip, openExternal, openImagePathPanel } from "./parts";
+import { FileChip, openExternal, openImagePathPanel, openInBrowser } from "./parts";
+import { modDown } from "../../platform";
 import { IMAGE_EXTS } from "./util";
 
 // Subscribe to theme changes and switch the active plugin key when the concrete theme changes.
@@ -236,10 +237,11 @@ export const mdComponents: Components = {
   blockquote: mdTag("blockquote", "md-quote"),
   hr: mdTag("hr", "md-hr"),
   table: mdTag("table", "md-table"),
-  // Links: single click opens the system browser via the opener plugin — Tauri's WebView
-  // silently ignores target=_blank new-window requests, so a bare <a> never opens. The
-  // streamdown external-link confirm dialog stays bypassed (same as before). Non-http(s)
-  // hrefs (anchors, relative) keep default behavior.
+  // Links: left click opens the right-panel built-in browser, ⌘/Ctrl+click the system one
+  // via the opener plugin — Tauri's WebView silently ignores target=_blank new-window
+  // requests, so a bare <a> never opens. The streamdown external-link confirm dialog stays
+  // bypassed (same as before). Non-http(s) hrefs (anchors, relative file URLs) keep default
+  // behavior: the manual view is an iframe and cannot load file:// targets.
   a: ({ node, href, ...rest }: ElProps<"a">) =>
     createElement("a", {
       ...rest,
@@ -248,7 +250,8 @@ export const mdComponents: Components = {
         if (href && /^https?:\/\//i.test(href)) {
           e.preventDefault();
           e.stopPropagation();
-          void openExternal(href);
+          if (modDown(e)) void openExternal(href);
+          else openInBrowser(href);
         }
       },
     }),

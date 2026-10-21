@@ -7,6 +7,7 @@ import BranchMenu from "../welcome/BranchMenu";
 import SessCtxMenu from "./sidebar/SessCtxMenu";
 import type { SessionInfo } from "./sidebar/SessionRow";
 import { IS_WINDOWS, MOD } from "../../platform";
+import { termGroupKey } from "./right/termTabs";
 
 // Middle-column topbar: sidebar toggle + session title + project/branch chips
 // + right panel toggle (the old index.html chat-head structure)
@@ -21,7 +22,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   const headerGit = useAppStore((s) => s.headerGit);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
-  const bottomTerminalOpen = useAppStore((s) => s.bottomTerminalOpen);
+  const bottomTermOpen = useAppStore((s) => s.bottomTermOpen[termGroupKey()] === true);
   const narrow = useAppStore((s) => s.narrow);
   const setMobileCol = useAppStore((s) => s.setMobileCol);
   // Collab entry state: the open session's live-sharing role (button tint) + dialog opener
@@ -205,10 +206,10 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
       {!narrow && (
         <button
           type="button"
-          className={"icon-btn dock-toggle" + (bottomTerminalOpen ? " on" : "")}
+          className={"icon-btn dock-toggle" + (bottomTermOpen ? " on" : "")}
           title={t("misc.bottomTerminalToggle", { mod: MOD })}
-          aria-pressed={bottomTerminalOpen}
-          onClick={() => useAppStore.getState().toggleBottomTerminal()}
+          aria-pressed={bottomTermOpen}
+          onClick={() => useAppStore.getState().toggleBottomTerm(termGroupKey())}
         >
           <Icon name="termBox" size={15} />
         </button>
@@ -247,7 +248,7 @@ function HeaderTitleRename({ entry, onDone }: { entry: SessionInfo; onDone: () =
     done = true;
     const title = ref.current!.value.trim();
     if (save && title && title !== (entry.title || "")) {
-      send({ type: "rename_session", sessionId: entry.id, title });
+      send({ type: "rename_session", path: entry.path, title });
     }
     onDone();
   };

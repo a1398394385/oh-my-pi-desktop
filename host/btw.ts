@@ -76,7 +76,12 @@ async function openStore(sessionId: string): Promise<BtwHistoryStore> {
  * otherwise). Resolves once the turn is checkpointed as running; the model turn streams
  * afterwards. Topics run concurrently; a topic with a live turn rejects new ones.
  */
-export async function btwAsk(ws: BtwWs, sessionId: string, question: string, recordId?: string): Promise<void> {
+export async function btwAsk(
+  ws: BtwWs,
+  sessionId: string,
+  question: string,
+  recordId?: string,
+): Promise<BtwHistoryRecord> {
   const trimmed = question.trim();
   if (!trimmed) throw new Error(hostI18n.t("errors.btw.emptyQuestion"));
   const st = stateFor(sessionId);
@@ -104,6 +109,7 @@ export async function btwAsk(ws: BtwWs, sessionId: string, question: string, rec
       throw new Error(hostI18n.t("errors.btw.cancelledEarly"));
     }
     void runTopic(ws, sessionId, st, run, trimmed, history, conversationKey);
+    return record;
   } finally {
     st.starting.delete(record.id);
   }

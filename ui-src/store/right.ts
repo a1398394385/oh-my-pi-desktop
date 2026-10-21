@@ -6,7 +6,7 @@ import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
 import { expandRightPanel, isTerminalTab } from "../components/main/right/tabs";
-import type { BrowserTabInfo, CapabilitiesSnapshot, GitOperationState, GitStatusFile } from "../types/frames";
+import type { BrowserTabInfo, GitOperationState, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
 
@@ -20,25 +20,21 @@ export interface RightSlice {
   fileViewPending: string | null; // file path with a request in flight
   briefDiffPending: string | null; // inline diff path with a request in flight
   todoCollapsed: boolean;
-  capsCardCollapsed: boolean; // right-panel capabilities card folded to its slim rail
   rightState: RightState;
   gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean; state: GitOperationState };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
   /** Right-panel commit-diff viewer target (Git page file click): one file's patch inside a commit. */
   commitDiff: { cwd: string; oid: string; path: string; oldPath?: string; diff: string; loading: boolean; error: string | null } | null;
   briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
-  capabilities: CapabilitiesSnapshot | null; // active session's subsystem runtime snapshot (capabilities page)
-  capabilitiesFor: string | null; // sessionId the snapshot belongs to (stale on session switch until refetched)
-  capabilitiesLoading: boolean;
   setBriefDiff(path: string, diff: string | undefined): void;
   browserTabs: BrowserTabInfo[]; // Agent built-in browser tabs (process-global mirror list, host browser_tabs pushes)
   browserViewTab: string | null; // tab name the live view mirrors
   browserPinned: boolean; // user picked a tab by hand; suspends follow-the-agent
   browserMode: "agent" | "manual"; // merged browser page mode: Agent live mirror vs manual iframe browse
+  browserManualUrl: string | null; // one-shot target for the manual view (link click in chat); consumed and cleared by ManualBrowserView
   setBrowserViewTab(name: string | null, pinned: boolean): void;
   setBrowserMode(mode: "agent" | "manual"): void;
   refreshGitDiff(force?: boolean): void;
-  fetchCapabilities(): void;
 }
 
 /** Cap of the edit-row diff cache (by file count). A full diff can reach hundreds of KB; without a cap it grows linearly with the number of edited files. */
@@ -52,6 +48,7 @@ const rightStateInit: RightState = {
   commitMsg: "",
   imageContent: null,
   gitWrite: null,
+  fileSearch: null,
 };
 
 export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set, get) => ({
@@ -65,19 +62,16 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   briefDiffPending: null,
   // Launch starts with the right panel collapsed, so the process card starts expanded
   todoCollapsed: false,
-  capsCardCollapsed: false,
   rightState: rightStateInit,
   gitDiffCache: { cwd: null, files: [], loading: false, state: "NORMAL" },
   fileDiffCache: { path: null, diff: "", loading: false },
   commitDiff: null,
   briefDiffCache: new Map(),
-  capabilities: null,
-  capabilitiesFor: null,
-  capabilitiesLoading: false,
   browserTabs: [],
   browserViewTab: null,
   browserPinned: false,
   browserMode: "manual",
+  browserManualUrl: null,
 
   // Live-view tab selection: pin=true marks an explicit user pick (suspends
   // follow-the-agent); the host switches the mirrored screencast target.
@@ -111,18 +105,6 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
       gitDiffCache: { ...st.gitDiffCache, loading: true, cwd: s.cwd },
     }));
     useAppStore.getState().send({ type: "get_git_diff", cwd: s.cwd });
-  },
-
-  // Capabilities page fetch: on mount, session switch, and the sp-head refresh button.
-  // MCP updates also arrive live afterwards via the capabilities_mcp frame.
-  fetchCapabilities() {
-    const s = activeOpen();
-    if (!s) {
-      useAppStore.setState({ capabilities: null, capabilitiesFor: null, capabilitiesLoading: false });
-      return;
-    }
-    useAppStore.setState({ capabilitiesLoading: true });
-    get().send({ type: "get_capabilities", sessionId: s.sessionId });
   },
 });
 
@@ -266,7 +248,10 @@ export function restoreRightSlot(path: string | null): void {
     persistRightSlots();
     useAppStore.setState({
       rightTabs: slot.tabs.slice(),
-      rightTab: slot.active,
+      // Persisted slots (localStorage) can carry an active tab that its own list lost — e.g.
+      // the pre-BUG-090 composer pills stored active="subagent"/"bgcmd" without registering
+      // them. Land on the last tab like every other fallback, never on a missing one.
+      rightTab: slot.active && slot.tabs.includes(slot.active) ? slot.active : slot.tabs[slot.tabs.length - 1] ?? null,
       rightRecentClosed: slot.recentClosed.slice(),
       selectedFile: slot.selectedFile,
       fileView: slot.fileView,

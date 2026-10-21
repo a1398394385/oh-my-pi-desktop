@@ -58,6 +58,14 @@ const THEME_LABEL_KEYS: Record<string, string> = {
   coral: "settingsPage.appearance.themeCoral",
 };
 
+// Agent process display style labels (dropdown order = increasing verbosity)
+const PROCESS_STYLE_LABEL_KEYS: Record<AgentProcessStyle, string> = {
+  concise: "settingsPage.appearance.processStyleConcise",
+  standard: "settingsPage.appearance.processStyleStandard",
+  detailed: "settingsPage.appearance.processStyleDetailed",
+  expanded: "settingsPage.appearance.processStyleExpanded",
+};
+
 // Font-size stepping (old stepFont: clamp -> save -> apply; uiPrefs written as a fresh object + bump)
 function stepFont(key: "uiFontSize" | "codeFontSize", delta: number, min: number, max: number): void {
   useAppStore.setState((st) => ({
@@ -215,18 +223,17 @@ export default function AppearancePage() {
         </div>
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.appearance.processStyleTitle")}</b><span>{t("settingsPage.appearance.processStyleDesc")}</span></div>
-          <div className="mcp-type-pills" id="agentProcessStylePills">
-            {([["standard", "settingsPage.appearance.processStyleStandard"], ["detailed", "settingsPage.appearance.processStyleDetailed"], ["expanded", "settingsPage.appearance.processStyleExpanded"]] as [AgentProcessStyle, string][]).map(([v, key]) => (
-              <button
-                type="button"
-                key={v}
-                className={"mcp-type-pill" + (processStyle === v ? " on" : "")}
-                onClick={() => pickProcessStyle(v)}
-              >
-                {t(key)}
-              </button>
-            ))}
-          </div>
+          <Sel
+            id="agentProcessStyleSel"
+            label={t(PROCESS_STYLE_LABEL_KEYS[processStyle])}
+            value={processStyle}
+            options={Object.entries(PROCESS_STYLE_LABEL_KEYS).map(([v, key]) => ({
+              v,
+              label: t(key),
+              ck: v === processStyle ? "✓" : "",
+            }))}
+            onPick={(v) => pickProcessStyle(v as AgentProcessStyle)}
+          />
         </div>
       </div>
       <div className="set-group-tt">{t("settingsPage.appearance.groupCode")}</div>

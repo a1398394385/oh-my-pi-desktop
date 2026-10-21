@@ -9,6 +9,7 @@ export const miscEn = {
   bottomTerminalToggle: "Toggle bottom terminal ({{mod}}J)",
   collapseRightPanel: "Toggle right panel",
   dragResize: "Drag to resize",
+  dragResizeHeight: "Drag to resize height",
   // WindowControls.tsx
   minimize: "Minimize",
   restoreDown: "Restore down",
@@ -65,6 +66,7 @@ export const miscEn = {
   keysSearchPalette: "Search everything",
   keysToggleRight: "Toggle right sidebar",
   keysToggleBottomTerminal: "Toggle bottom terminal",
+  keysFocusComposer: "Focus composer (message view)",
   keysCycleTerminalTab: "Switch terminal tab",
   keysGroupModel: "Model & thinking",
   keysGroupModelDesc: "Keys aligned with the omp CLI.",

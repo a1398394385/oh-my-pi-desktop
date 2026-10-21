@@ -60,9 +60,10 @@ export const terminalTabNumber = (name: string): number => Number(terminalTabId(
 // hides them; tab close affordances (× / middle click) are disabled for them.
 export const AUTO_TABS: ReadonlySet<string> = new Set(["hub"]);
 
-// Status tabs reached from the composer's icon only (the running-task counter): neither the
-// add menu nor the empty-state launcher offers an entry, so the panel always shows live work
-// rather than an empty page the user opened by hand.
+// Status tab reached from the composer's background-task counter only: neither the add
+// menu nor the empty-state launcher offers an entry (no empty page opened by hand). It is
+// still a regular tab once opened — the composer pill registers it via openRightTab, so it
+// shows up in the tab head like any other.
 export const COMPOSER_ONLY_TABS: ReadonlySet<string> = new Set(["bgcmd"]);
 
 // Tabs opened by a page context instead of the add menu: the commit-diff viewer

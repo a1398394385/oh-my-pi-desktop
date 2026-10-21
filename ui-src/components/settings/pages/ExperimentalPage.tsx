@@ -22,6 +22,18 @@ import {
 
 const TIER_DEFAULTS_K = ["150", "250", "350"]; // placeholder lines when a tier value is unconfigured
 
+/**
+ * Percent mode has no model-independent default line: the tier line is a share of
+ * the model window, so the placeholder shows the default line (150K/250K/350K) as
+ * that share of the default model's window — typing it reproduces the default
+ * exactly. No known window means no truthful number to show.
+ */
+function tierPercentPlaceholder(index: number, contextWindow: number | null): string {
+  if (!contextWindow || contextWindow <= 0) return "";
+  const pct = ((Number(TIER_DEFAULTS_K[index]) * 1000) / contextWindow) * 100;
+  return String(Math.round(pct * 10) / 10);
+}
+
 /** Format ms → "8m"/"1h30m"/"45s" for display (the host-side parser accepts the same syntax for writes) */
 function fmtDur(ms: number): string {
   if (ms <= 0) return "0";
@@ -66,7 +78,7 @@ function KaInput({
     <div className="srow-ctl">
       <input
         className={"inp" + (disabled ? " disabled" : "")}
-        style={{ width: suffix ? 120 : 170 }}
+        style={{ width: suffix ? 120 : 170, minWidth: 0 }}
         placeholder={placeholder}
         value={v}
         disabled={disabled}
@@ -95,6 +107,8 @@ export default function ExperimentalPage() {
   const arEnabled = arKnown && !!hostSettings?.autoReviewOfferMode;
   const trKnown = typeof hostSettings?.sessionTitleRefresh === "boolean";
   const trEnabled = trKnown && !!hostSettings?.sessionTitleRefresh;
+  const btKnown = typeof hostSettings?.branchTitles === "boolean";
+  const btEnabled = btKnown && !!hostSettings?.branchTitles;
   const kaKnown = typeof hostSettings?.keepaliveEnabled === "boolean";
   const kaEnabled = kaKnown && !!hostSettings?.keepaliveEnabled;
   const kaConfig = hostSettings?.keepaliveConfig;
@@ -103,6 +117,13 @@ export default function ExperimentalPage() {
   const ringCount = useAppStore((s) => s.uiPrefs.ctxRingProbeCount);
   const modelNames = useAppStore((s) => s.modelNames);
   const modelCatalog = useAppStore((s) => s.modelCatalog); // chip display names (covers disabled picked targets too)
+  // Context window of the model new sessions use (the window the host converts
+  // percent tier lines against); null when it is unknown.
+  const defaultModelContext = useAppStore((s) => {
+    const id = s.defaultModelCfg;
+    if (!id) return null;
+    return s.modelCatalog.find((m) => m.id === id)?.context ?? null;
+  });
 
   // Message-rail music reactivity: Windows-only (the Rust capture module is
   // `#![cfg(windows)]`). Platform comes from the shared UA probe in
@@ -206,7 +227,7 @@ export default function ExperimentalPage() {
                   </div>
                   <KaInput
                     value={stored === undefined ? "" : String(Math.round((tierMode === "percent" ? stored : stored / 1000) * 10) / 10)}
-                    placeholder={tierMode === "percent" ? "" : TIER_DEFAULTS_K[i]}
+                    placeholder={tierMode === "percent" ? tierPercentPlaceholder(i, defaultModelContext) : TIER_DEFAULTS_K[i]}
                     suffix={tierMode === "percent" ? "%" : "K"}
                     decimalLimit={1}
                     onSubmit={(raw) => commitTier(key, raw)}
@@ -284,6 +305,13 @@ export default function ExperimentalPage() {
             <span>{t("settingsPage.exp.titleRefreshDesc")}</span>
           </div>
           <Toggle on={trEnabled} disabled={!trKnown} onChange={() => send({ type: "set_session_title_refresh", enabled: !trEnabled })} />
+        </div>
+        <div className="srow">
+          <div className="srow-tx">
+            <b className="srow-hd">{t("settingsPage.exp.branchTitlesTitle")}</b>
+            <span>{t("settingsPage.exp.branchTitlesDesc")}</span>
+          </div>
+          <Toggle on={btEnabled} disabled={!btKnown} onChange={() => send({ type: "set_branch_titles", enabled: !btEnabled })} />
         </div>
       </div>
 

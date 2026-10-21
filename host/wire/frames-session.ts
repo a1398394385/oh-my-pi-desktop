@@ -191,7 +191,7 @@ export interface MessagesFrame {
 /** Session archive reply (host/host.ts) */
 export interface SessionArchivedFrame {
   type: "session_archived";
-  sessionId: string;
+  path: string; // session file path, the addressing key both branches share
   ok: boolean; // always true
   archived: boolean;
 }
@@ -206,7 +206,7 @@ export interface SessionAbortedFrame {
 /** Session rename reply (host/host.ts) */
 export interface SessionRenamedFrame {
   type: "session_renamed";
-  sessionId: string;
+  path: string; // session file path, the addressing key both branches share
   ok: boolean; // always true
   title: string;
 }
@@ -281,6 +281,9 @@ export interface SessionNavigatedFrame {
 export interface SessionExternalWriteFrame {
   type: "session_external_write";
   sessionId: string;
+  // Set when the file is back to a state the manager knows (its own writes landed
+  // after a rewrite shifted the poll offset): the bar comes down without a reload.
+  clear?: boolean;
 }
 
 /** Single-file diff reply (host/host.ts get_file_diff) */
@@ -315,11 +318,13 @@ export interface DirListFrame {
   entries: DirEntry[];
 }
 
-/** @ file candidates reply (host/host.ts list_files; reqId echoed back unchanged) */
+/** @ file candidates reply (host/host.ts list_files; reqId echoed back unchanged).
+ *  File-tab search replies carry target:"fileTab" so the store can route them away from the composer mention list. */
 export interface FileMatchesFrame {
   type: "file_matches";
   reqId: number;
   matches: FileMatch[];
+  target?: "fileTab";
 }
 
 /** ! local command start frame (host/host.ts bash_exec) */

@@ -40,15 +40,21 @@ import { getExtensionUISelectOptionLabel, type ExtensionUIDialogOptions, type Ex
 // the LAN remote server both satisfy it, and so do fan-out adapters (entryBus).
 type UiSocket = { send(data: string): unknown };
 
+/** Subscribe the once-per-entry core without a socket: headless loads (automation
+ *  delivery into an evicted session) must run the session's event fan-out before
+ *  any UI socket exists; sockets join later through attachEntryUi. */
+export function attachEntryCore(sessionId: string, entry: PoolEntry, eventBus: unknown) {
+  if (entry.coreAttached) return;
+  entry.coreAttached = true;
+  subscribeEntryCore(sessionId, entry, eventBus);
+}
+
 /** Attach a UI socket to a pooled session. Idempotent per socket: the
  * once-per-entry core subscribes on first attach; every further socket (the
  * other channel of a remote-control session, a frontend reload) only joins
  * the fan-out set. */
 export function attachEntry(ws: UiSocket, sessionId: string, entry: PoolEntry, eventBus: unknown) {
-  if (!entry.coreAttached) {
-    entry.coreAttached = true;
-    subscribeEntryCore(sessionId, entry, eventBus);
-  }
+  attachEntryCore(sessionId, entry, eventBus);
   attachEntryUi(ws, sessionId, entry, eventBus);
 }
 
@@ -66,6 +72,18 @@ export function attachEntryUi(ws: UiSocket, sessionId: string, entry: PoolEntry,
       ws.send(JSON.stringify(stampEvent(pending.frame)));
     }
   }
+}
+
+/** Leave a socket's fan-out set (socket close, or the frontend dropping its slot on
+ *  LRU eviction). The last watcher leaving tears the core subscriptions down and
+ *  restarts the idle-eviction clock: sweepIdlePoolSessions skips entries with any
+ *  attached socket, so a stale attachment would pin the session in the pool forever. */
+export function detachEntryUi(ws: UiSocket, entry: PoolEntry) {
+  if (!entry.uiSockets.has(ws)) return;
+  entry.uiSockets.delete(ws);
+  entry.uiSubViews.get(ws)?.unsubscribe();
+  entry.uiSubViews.delete(ws);
+  if (entry.uiSockets.size === 0) entry.unsubscribe();
 }
 
 /** Once-per-entry core: the session event subscription, the approval UI
@@ -221,6 +239,10 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         });
       }
       maybeRefreshSessionTitle(entry);
+      // Our own title write (title_change + branchTitle) lands in the file outside
+      // the poll cursor: re-anchor from 0 so the next pass rescans instead of
+      // reading a stale offset (see session-poll.ts).
+      entry.pollKnownSize = 0;
     }
   });
   // Approvals/dialogs: in non-yolo mode the approval gate suspends via ExtensionUIContext.select awaiting the user's choice

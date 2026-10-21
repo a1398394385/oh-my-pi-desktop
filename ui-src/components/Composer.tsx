@@ -868,19 +868,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setOpenMenu(openMenu === name ? null : name);
   };
 
-  // Background task / subagent button: expand and switch the right panel to the
-  // matching tab; clicking again collapses the right panel (ported from the old
-  // right.js binding)
+  // Background task / subagent button: expand and open the matching right-panel tab;
+  // clicking again collapses the panel (ported from the old right.js binding). Both
+  // targets are regular tabs — the add menu hides them (COMPOSER_ONLY_TABS only gates
+  // the menu), but opening one from the pill must still register it in the tab head,
+  // otherwise the panel expands with its old head and no tab to show for it.
   const toggleBgTab = (tab: string) => () => {
     if (!sessionId) return;
     const st = useAppStore.getState();
-    if (!st.rightCollapsed && st.rightTab === tab) {
-      setBump({ rightCollapsed: true });
-    } else {
-      // Active-tab switch only (never registered into the tab list); the expand
-      // invariants (todoCollapsed yield + selection cleanup) live in expandRightPanel
-      expandRightPanel(null, { rightTab: tab });
-    }
+    // The expand invariants (todoCollapsed yield + selection cleanup) live in expandRightPanel
+    if (!st.rightCollapsed && st.rightTab === tab) setBump({ rightCollapsed: true });
+    else expandRightPanel(tab);
   };
 
   // Lexical init config: nodes registers ChipNode; editorState takes the

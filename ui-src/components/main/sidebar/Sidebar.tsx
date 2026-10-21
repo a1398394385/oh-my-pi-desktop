@@ -28,7 +28,7 @@ import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
 import ArchiveGroup from "./ArchiveGroup";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
-import { computeSidebarSessionShortcuts, computeArchiveGroups } from "./util";
+import { computeSidebarSessionShortcuts, computeArchiveGroups, sessionLabel } from "./util";
 
 // Content of the delete/remove confirm dialog
 interface ConfirmSpec {
@@ -190,10 +190,15 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   // —— Delete-session confirm (shared by the manage-mode inline button / archive hard-delete) ——
   const askDeleteSession = (s: SessionInfo) => {
-    const sTitle = s.title || s.firstMessage || s.id || t("sidebar.untitledSession");
+    const sTitle = sessionLabel(s) || s.id || t("sidebar.untitledSession");
+    // Automations delivering into this session are deleted with it (host side), so the
+    // irreversible dialog has to say so.
+    const bound = useAppStore.getState().automations.filter((a) => a.deliverTo?.sessionPath === s.path).length;
     setConfirmDlg({
       title: t("sidebar.deleteSessionTitle"),
-      message: t("sidebar.deleteSessionMsg", { title: sTitle }),
+      message:
+        t("sidebar.deleteSessionMsg", { title: sTitle }) +
+        (bound > 0 ? `\n\n${t("sidebar.deleteSessionAutomationMsg", { n: bound })}` : ""),
       confirmText: t("common.delete"),
       danger: true,
       onConfirm: () => {

@@ -445,6 +445,12 @@
       "note": "写入 omp-desktop.json 的 sessionContext.enabled，只影响此后创建的会话"
     },
     {
+      "id": "set_automation_agent_enabled",
+      "kind": "settings",
+      "risk": "write",
+      "note": "写入 omp-desktop.json 的 automations.agentTools，控制新会话是否注入 automations_list / automations_manage 工具"
+    },
+    {
       "id": "set_keepalive_enabled",
       "kind": "settings",
       "risk": "write",
@@ -491,6 +497,12 @@
       "kind": "settings",
       "risk": "write",
       "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.refresh（默认关）。开启后每个回合结束用 tiny 模型重生成会话标题；用户手动改名的会话永不覆盖"
+    },
+    {
+      "id": "set_branch_titles",
+      "kind": "settings",
+      "risk": "write",
+      "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.branchTitles（默认关）。开启后每条标题以 branchTitle custom entry 记入当前分支，切分支时把该分支自己的标题镜像到文件头（侧边栏随之切换），header 的 titleSource 改写为 user 以便绕开底座对 auto 的拒绝"
     },
     {
       "id": "set_plugins_enabled",
@@ -618,6 +630,12 @@
       "id": "asset_skill_toggle",
       "kind": "asset",
       "risk": "write"
+    },
+    {
+      "id": "asset_plugin_install",
+      "kind": "asset",
+      "risk": "write",
+      "note": "安装插件：走底座 PluginManager.install（npm 包 / git 源 / 本地路径），装到 profile 插件根；远程只读"
     },
     {
       "id": "asset_plugin_toggle",
@@ -897,25 +915,25 @@
       "id": "automations_list",
       "kind": "automation",
       "risk": "read",
-      "note": "定时任务全量快照：automations.json 现读，回 automations_list 帧（automations + 每任务最近 10 条 runs）"
+      "note": "自动化全量快照：automations.json 现读，回 automations_list 帧（automations + 每任务最近 10 条 runs）"
     },
     {
       "id": "automations_create",
       "kind": "automation",
       "risk": "write",
-      "note": "新建定时任务：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限，落盘后回 automations_list 帧"
+      "note": "新建自动化：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限，落盘后回 automations_list 帧（投递目标字段由 agent 工具写入，RPC 侧剥离）"
     },
     {
       "id": "automations_update",
       "kind": "automation",
       "risk": "write",
-      "note": "编辑定时任务：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活），落盘后回 automations_list 帧"
+      "note": "编辑自动化：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活）；投递型自动化拒绝编辑"
     },
     {
       "id": "automations_delete",
       "kind": "automation",
       "risk": "destructive",
-      "note": "删除定时任务及其运行历史，落盘后回 automations_list 帧"
+      "note": "删除自动化及其运行历史，落盘后回 automations_list 帧"
     },
     {
       "id": "automations_toggle",

@@ -34,8 +34,8 @@ import { createAcpStatusTool } from "./acp-status-tool.ts";
 import { rebuildAcpState } from "./acp-persist.ts";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
-import { createAutomationTool } from "./automations-tool.ts";
-import { entriesToTranscript, sumRunDurationMs } from "./translate.ts";
+import { createAutomationTools } from "./automations-tool.ts";
+import { entriesToTranscript, sumRunDurationMs } from "./translate-history.ts";
 import {
   buildSessionCreatedFrame,
   maybePushSessionStats,
@@ -47,7 +47,7 @@ import {
 import { replaySubagentHistory } from "./subagent-view.ts";
 import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { gateKimiAutoThinking } from "./kimi-thinking.ts";
-import { readAcpRaw, readAcpEnabled, readSessionContextEnabled } from "./profile.ts";
+import { readAcpRaw, readAcpEnabled, readAutomationAgentEnabled, readSessionContextEnabled } from "./profile.ts";
 import { readPluginsEnabled, readHooksEnabled } from "./plugin-assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { markSeen, reportKeepaliveState } from "./keepalive-host.ts";
@@ -97,7 +97,7 @@ export { pushContext, countCacheBreaks } from "./session-snapshot.ts";
 
 // Entry-core cut: attachEntry / attachEntryUi moved to session-entry-core.ts;
 // re-exported here only as an import (spawnSession / handleLoadSession use them).
-import { attachEntry, attachEntryUi } from "./session-entry-core.ts";
+import { attachEntry, attachEntryCore, attachEntryUi } from "./session-entry-core.ts";
 export { attachEntry };
 
 export async function createSessionCore(
@@ -105,7 +105,9 @@ export async function createSessionCore(
   sessionManager: any,
   transcript: TranscriptItem[],
   initialModel?: any,
-  opts?: { subagent?: boolean },
+  // Reopened child transcript: keep its persisted spawn contract. The main
+  // prompt would re-render AGENTS.md/device blocks and make a scout act as primary.
+  opts?: { subagent?: boolean; subagentInit?: { systemPrompt: string[]; tools: string[] } },
 ) {
   // Master switch on the experimental features page (omp-desktop.json's
   // acp.enabled, default off for new users): only decides whether this session injects the
@@ -163,6 +165,10 @@ export async function createSessionCore(
   // the [compress-hint] ephemeral when a tier is active (host/acp-runtime.ts).
   // Past session retrieval switch (omp-desktop.json's sessionContext.enabled, default off for new users)
   const sessionContextEnabled = readSessionContextEnabled();
+  // Agent-driven automations switch (omp-desktop.json's automations.agentTools,
+  // automations settings page, default off). Read here, so the tools appear on
+  // new sessions only — customTools cannot be unregistered after creation.
+  const automationAgentEnabled = readAutomationAgentEnabled();
   // Cache keepalive switch (omp-desktop.json's keepalive.enabled, experimental
   // features page, default off). Governed solely by the settings-page switch:
   // no double-load guard against a separately installed upstream
@@ -197,6 +203,8 @@ export async function createSessionCore(
     // is ungated and survives; everything after it does not. Opt the advisor back in.
     advisorCompactionEnabled: true,
     model: initialModel ?? H.modelOverride,
+    // Reopened child transcript: replay its persisted spawn contract (see opts.subagentInit).
+    ...(opts?.subagentInit ? { systemPrompt: opts.subagentInit.systemPrompt, toolNames: opts.subagentInit.tools, restrictToolNames: true } : {}),
     // Proactive-compression guidance (verbatim append via the SDK's
     // appendSystemPrompt channel) — same condition as the ACP tools below: the
     // text names context_status/compress_context, which only ACP sessions
@@ -212,14 +220,15 @@ export async function createSessionCore(
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
     // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
-    // create_automation: agent-created scheduled tasks, same domain entry as the UI's create RPC.
-    // Subagents get no scheduled tasks (a delegated step must not schedule follow-up work on
-    // the user's behalf), so the tool is withheld from their surface entirely.
+    // automations_list / automations_manage: agent-created automations, same domain entry as the UI's create RPC.
+    // Two gates: the user switch (automations.agentTools, off by default — read at creation, so
+    // flipping it lands on new sessions only) and the subagent rule (a delegated step must not
+    // schedule follow-up work on the user's behalf, so their surface never gets the tools).
     customTools: [
       ...(acpRuntime ? [createCompressContextTool(acpRuntime), createRecallBlockTool(acpRuntime), createAcpStatusTool(acpRuntime, () => Number(settingsGet(sessionSettings, "tools.artifactSpillThreshold")) * 1024)] : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
-      ...(opts?.subagent ? [] : [createAutomationTool(cwd)]),
-    ] as never, // ACP compress_context + recall_block + context_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context + create_automation; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
+      ...(opts?.subagent || !automationAgentEnabled ? [] : createAutomationTools(cwd)),
+    ] as never, // ACP compress_context + recall_block + context_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context + automations_list/automations_manage; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
       ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime, () => sessionManager.getSessionId())] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
       ...(keepaliveOn ? [createKeepaliveExtension({
@@ -351,6 +360,30 @@ export async function createSessionCore(
   // switch-back after eviction) — never blocks the session's critical path
   void mountMcpForSession(sessionId, entry);
   return { sessionId, entry, eventBus: result.eventBus };
+}
+
+/**
+ * Resolve a session to a live pool entry, reopening it headlessly from disk when
+ * it is not resident. Automation deliveries target sessions the user may not
+ * have open, and the poll loop has no UI socket to drive a normal load: the
+ * entry's core subscription is attached directly and every connected UI joins
+ * the fan-out afterwards. No snapshot replay — an already-open session already
+ * holds its transcript, and a freshly opened one only needs live frames.
+ */
+export async function ensureSessionLoaded(sessionPath: string): Promise<{ sessionId: string; entry: PoolEntry }> {
+  for (const [key, entry] of sessions.entries()) {
+    if (entry.path === sessionPath || entry.previousPaths?.includes(sessionPath)) return { sessionId: key, entry };
+  }
+  const manager = await SessionManager.open(sessionPath);
+  const entries = manager.getEntries();
+  const transcript = entriesToTranscript(entries);
+  const peek = await SessionManager.peekSessionInit(sessionPath);
+  const { sessionId, entry, eventBus } = await createSessionCore(peek?.cwd ?? defaultCwd, manager, transcript, undefined);
+  entry.mentionScanIndex = entries.length;
+  entry.activeMs = sumRunDurationMs(entries);
+  attachEntryCore(sessionId, entry, eventBus);
+  eachUiWs((w) => attachEntryUi(w, sessionId, entry, eventBus));
+  return { sessionId, entry };
 }
 
 /** Create a session on `cwd` with `model`, attach it, and push session_created. */
@@ -528,10 +561,16 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const workCwd = peek?.cwd ?? defaultCwd;
   // Subagent session detection: child transcript lives inside <parentSessionFile minus .jsonl>/
-  // Read before creation so the subagent tool surface (create_automation) can be withheld.
+  // Read before creation so the subagent tool surface (automations_list / automations_manage) can be withheld.
   const parentSessionFile = `${path.dirname(sessionPath)}.jsonl`;
   const isSubagent = fs.existsSync(parentSessionFile);
-  const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript, undefined, { subagent: isSubagent });
+  const { sessionId, entry, eventBus } = await createSessionCore(workCwd, manager, transcript, undefined, {
+    subagent: isSubagent,
+    // Child transcripts carry their own spawn contract in the first
+    // session_init; replay it so this reopened session keeps the scout/task
+    // persona instead of inheriting the main agent's rules.
+    subagentInit: isSubagent && peek?.init ? { systemPrompt: peek.init.systemPrompt, tools: peek.init.tools } : undefined,
+  });
   entry.isSubagent = isSubagent;
   entry.parentPath = isSubagent ? parentSessionFile : undefined;
   if (isSubagent && !entry.title) {

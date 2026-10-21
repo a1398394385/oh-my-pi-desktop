@@ -29,6 +29,11 @@ const ICONS = {
   clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>',
   // Line-style info circle (lucide info): hover hint icon next to group titles. FA circle-info is a solid block; a hand-drawn line version matches the lucide look (same precedent as refresh)
   info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  // Line-style check (lucide check): menu row checkmark, replacing the green ✓ glyph so the
+  // mark matches the registry's line-icon weight
+  check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  // Line-style eye (lucide eye): markdown rendered-preview mode in the file tab's more menu
+  eye: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/></svg>',
   // Line-style eject (lucide eject): "evict from the in-memory session pool" action on session rows
   eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 19.5 14h-15z"/><line x1="5" y1="18.5" x2="19" y2="18.5"/></svg>',
   // Shield + exclamation: FA Free has no shield-exclamation (Pro-only), composed from the shield path + an evenodd cut-out

@@ -130,6 +130,19 @@
 .aued-tab.on { border-bottom-color: var(--accent); color: var(--text); font-weight: 500; }
 
 /* B layout: a sticky summary card beside dense labelled form rows. */
+/* Delivery automations are read-only here (the host rejects automations_update for
+   them): the notice explains why the save button stays disabled. */
+.aued-delivery-lock {
+  grid-column: 1 / -1;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+}
+
 .aued-layout {
   display: grid;
   grid-template-columns: minmax(190px, .36fr) minmax(0, 1fr);

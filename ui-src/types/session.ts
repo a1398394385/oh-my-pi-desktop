@@ -31,7 +31,10 @@ import type {
   AgentAssetsPayload,
   DiskSessionRow,
   ApprovalMode,
+  AdvisorNote,
+  AdvisorSeverity,
 } from "./frames";
+export type { AdvisorNote, AdvisorSeverity };
 // SchemaDef is the authoritative shape of settings schema entries (aligned with SETTINGS_SCHEMA), defined in settings/placement.ts
 import type { SchemaDef } from "./settings";
 
@@ -109,6 +112,7 @@ export interface UserItem {
   steerDone?: boolean; // consumed-done marker (written by store.ts)
   entryId?: string; // persisted entry id (fork targeting for branch_session; host TranscriptItem.entryId)
   images?: Array<{ type: "image"; data: string; mimeType: string }>; // image attachments
+  automation?: { id: string; title: string }; // scheduler delivery into this session (not typed input)
 }
 
 /** Assistant message (items.tsx:25-28 reads text; junk placeholders are not rendered) */
@@ -163,6 +167,16 @@ export interface LoopItem {
   collapsed?: boolean; // collapsed by default; expanded state toggled by the frontend
   durationSec?: number | null;
   usage?: TurnUsage | null;
+}
+
+/** Advisor advice batch (role "advisor"): one delivered customType "advisor" message. Its
+    stream position is the injection point; blocking notes render inline there, the rest
+    collect into the turn's closing advisor card. */
+export interface AdvisorItem {
+  role: "advisor";
+  text: string; // always "" on the wire (the payload is `notes`)
+  notes: AdvisorNote[];
+  entryId?: string;
 }
 
 /** Local bash row (! prefix; items.tsx:44-46 reads text) */
@@ -220,7 +234,8 @@ export type ChatItem =
   | MentionItem
   | MetaItem
   | PhaseItem
-  | ErrItem;
+  | ErrItem
+  | AdvisorItem;
 
 /** Compatibility alias: the entry type name used in the store.ts batch (to be unified as ChatItem after the narrowing rewiring) */
 export type SessionItem = ChatItem;
@@ -362,6 +377,10 @@ export interface OpenSession {
   parentPath?: string;
   /** Set when the host spawned this session for an automation (background slot; sidebar clock badge source) */
   automation?: { id: string; title: string };
+  /** Connection epoch this slot was mounted on. A closed socket's per-entry subscription dies with
+      it (host detaches on close), so a slot below the store's current epoch is stale: activating it
+      must remount through load_session instead of showing a view that receives no frames. */
+  connEpoch?: number;
 }
 
 /** openSessions container: key = session file path (store.ts openSessions; LRU cap of 8) */
@@ -380,6 +399,7 @@ export interface FileViewState {
   full?: boolean; // already the full file (set by a file_content reply)
   reqRange: [number, number] | null; // requested line range (parsed from the path:59-123 selector)
   image?: boolean; // image preview branch (read_image replies go through rightState.imageContent)
+  mdPreview?: boolean; // markdown render mode picked in the more menu; undefined = default by extension
 }
 
 /** Memory file state (store.ts memory_file frame; status: idle/loading/done/error) */

@@ -450,3 +450,16 @@ export async function writeSessionContextEnabled(enabled: boolean): Promise<void
   writeDesktopSection("sessionContext", { ...readDesktopSection("sessionContext"), enabled });
 }
 
+/** Agent-driven automations (automations.agentTools in omp-desktop.json): whether
+ *  new sessions get the automations_list / automations_manage tools. Off by default
+ *  (same rule as acp.enabled); read at session creation, so a flip lands on new
+ *  sessions only. */
+export function readAutomationAgentEnabled(): boolean {
+  return readDesktopSection("automations").agentTools === true;
+}
+
+/** Write automations.agentTools back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
+export async function writeAutomationAgentEnabled(enabled: boolean): Promise<void> {
+  writeDesktopSection("automations", { ...readDesktopSection("automations"), agentTools: enabled });
+}
+

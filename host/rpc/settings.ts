@@ -15,6 +15,7 @@ import { rebuildScopedModels } from "../models.ts";
 import { settingsFrame, modelsFrame } from "../frames.ts";
 import {
   writeAcpEnabled,
+  writeAutomationAgentEnabled,
   writeSessionContextEnabled,
   applyProfile,
   applySleepPrevention,
@@ -25,7 +26,7 @@ import { listAgentAssets } from "../assets.ts";
 import { writeHooksEnabled, writePluginsEnabled } from "../plugin-assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { writeAutoReviewEnabled, writeSmartModeOffered } from "../auto-review.ts";
-import { writeSessionTitleRefresh } from "../session-titles.ts";
+import { writeBranchTitles, writeSessionTitleRefresh } from "../session-titles.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
@@ -198,6 +199,13 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     await writeSessionContextEnabled(!!msg.enabled);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
+  async set_automation_agent_enabled(ws, msg) {
+    // Automations settings page switch: writes automations.agentTools in
+    // omp-desktop.json. Gates the automations_list / automations_manage tools at
+    // session creation, so already-open sessions keep whatever surface they got.
+    await writeAutomationAgentEnabled(!!msg.enabled);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
   async set_keepalive_enabled(ws, msg) {
     // Experimental features page switch: writes keepalive.enabled in
     // omp-desktop.json (affects only sessions created afterwards; probe
@@ -241,6 +249,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // the agent_end hook reads it live, so it applies to the next turn of every
     // open session. Each regeneration is one tiny-model call per turn.
     writeSessionTitleRefresh(msg.enabled === true);
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+  },
+  async set_branch_titles(ws, msg) {
+    // Experimental page switch: writes sessionTitles.branchTitles — journal each
+    // title on the active branch (appendCustomEntry) and mirror the branch's own
+    // title into the header on branch switch. Also switches the header write source
+    // to "user", without which the base would refuse the second switch.
+    writeBranchTitles(msg.enabled === true);
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   async set_hooks_enabled(ws, msg) {

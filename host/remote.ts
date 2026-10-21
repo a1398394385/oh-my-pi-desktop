@@ -22,12 +22,13 @@ export const REMOTE_DEFAULT_PORT = 16800;
 // reload_settings stays OUT: it only re-reads model settings from disk into
 // memory (no persistence) and the UI sends it when opening any session.
 export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
-  // settings.ts (20)
+  // settings.ts (21)
   "set_setting", "set_locale", "set_ui_prefs", "set_external_browser", "set_computer_provider",
   "set_computer_default", "set_approval_mode", "set_acp_enabled", "set_acp_config",
   "set_session_context_enabled", "set_keepalive_enabled", "set_keepalive_config",
+  "set_automation_agent_enabled",
   "set_kimi_auto_thinking", "set_hooks_enabled", "set_plugins_enabled", "set_skills_enabled",
-  "set_desktop_env", "switch_profile", "set_auto_review", "set_session_title_refresh",
+  "set_desktop_env", "switch_profile", "set_auto_review", "set_session_title_refresh", "set_branch_titles",
   // models.ts (2)
   "set_enabled_model", "set_model_role",
   // provider-wizard.ts (2)
@@ -36,8 +37,8 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "provider_login", "provider_logout", "provider_list_accounts", "provider_disable_account",
   "provider_enable_account", "provider_reorder_account", "provider_login_cancel",
   "provider_set_key", "login_prompt_reply", "open_models_config",
-  // assets.ts (11)
-  "asset_file_write", "asset_file_create", "asset_skill_toggle", "asset_plugin_toggle",
+  // assets.ts (12)
+  "asset_file_write", "asset_file_create", "asset_skill_toggle", "asset_plugin_toggle", "asset_plugin_install",
   "asset_skill_delete", "toggle_extension_item", "toggle_extension_provider",
   "toggle_extension_user_source", "set_mcp_server_enabled", "save_mcp_server", "delete_mcp_server",
   // automations.ts (4)

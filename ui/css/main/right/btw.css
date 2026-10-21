@@ -1,4 +1,5 @@
-/* /btw side-conversation page (right panel tab): topic list + composer. Colors tokens only. */
+/* /btw Side Chat (right panel tab): topic directory -> single-topic conversation.
+   Colors and controls come from the shared token/`send` vocabulary; no page-private overrides. */
 
 .btw-page {
   display: flex;
@@ -7,12 +8,12 @@
   min-height: 0;
 }
 
-/* top action row (title + new topic + refresh) */
+/* directory header (title + refresh) */
 .btw-top {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 8px;
+  padding: 0 0 6px;
   flex: none;
 }
 .btw-top-t {
@@ -22,42 +23,38 @@
   font-weight: 500;
 }
 
-/* topic list */
+/* topic directory */
 .btw-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 8px 8px;
 }
 .btw-none {
   color: var(--faint);
   font-size: var(--ui-fs);
-  padding: 18px 8px;
-  text-align: center;
+  padding: 14px 2px;
 }
 
-.btw-card {
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  margin-bottom: 6px;
-  background: transparent;
-  overflow: hidden;
-  /* resting border color lives in the inset ring so the running state can swap it paint-only */
-  box-shadow: inset 0 0 0 1px var(--line);
-  transition: box-shadow var(--dur-snap) var(--swift);
-}
-.btw-card.running {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, var(--line));
-}
-.btw-row {
+/* rows read as plain list entries (dsh catalog rows), not cards: the status dot carries
+   liveness and the row itself is the whole click target */
+.btw-item {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 9px;
-  cursor: pointer;
+  gap: 8px;
+  width: 100%;
   min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--swift);
 }
-.btw-row:hover {
+.btw-item:hover {
   background: var(--panel-2);
 }
 .btw-dot {
@@ -94,53 +91,69 @@
 .btw-n {
   color: var(--dim);
 }
-.btw-acts {
-  flex: none;
+
+/* conversation header: back + title + liveness + promote */
+.btw-head {
   display: flex;
   align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity var(--dur-snap);
+  gap: 4px;
+  /* Same side inset as the transcript below: 6px on top of #rightBody's 8px global inset = 14px. */
+  padding: 0 6px 6px;
+  flex: none;
 }
-.btw-card:hover .btw-acts,
-.btw-card.running .btw-acts {
-  opacity: 1;
+.btw-head-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--ui-fs);
+  font-weight: 500;
 }
 
-/* expanded turns */
-.btw-body {
-  border-top: 1px solid var(--line);
-  padding: 8px 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--panel);
+/* transcript */
+.btw-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Text must not touch the panel edge: #rightBody already insets 8px, this adds 6px on top. */
+  padding: 0 6px;
 }
 .btw-turn {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
+  padding-bottom: 16px;
   min-width: 0;
 }
-.btw-q {
-  color: var(--dim);
-  font-size: var(--ui-fs);
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding-left: 7px;
-  border-left: 2px solid var(--line);
+.btw-turn:last-child {
+  padding-bottom: 4px;
 }
-.btw-a {
+/* user turn: the chat's inbox bubble, narrowed for the side panel.
+   Type scale follows the main transcript (.msg.user .user-bubble): --ui-fs-md, line-height 1.55 */
+.btw-u {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--inset);
+  border-radius: var(--r-lg);
+  padding: 7px 11px;
   color: var(--text);
-  font-size: var(--ui-fs);
+  font-size: var(--ui-fs-md);
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
-  min-width: 0;
 }
-.btw-empty {
+/* Assistant answer renders through the same md-body + md-surface chain as .msg.assistant */
+.btw-a {
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--ui-fs-md);
+}
+.btw-wait {
   color: var(--faint);
   font-size: var(--ui-fs);
-  font-style: italic;
 }
 .btw-err {
   color: var(--err);
@@ -149,32 +162,20 @@
   word-break: break-word;
 }
 
-/* composer */
+/* composer: input + shared `.send` button on the right */
 .btw-compose {
   flex: none;
-  border-top: 1px solid var(--line);
-  padding: 8px;
-}
-.btw-replybar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 2px 6px;
-}
-.btw-reply-t {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--dim);
-  font-size: calc(var(--ui-fs) * 0.92);
+  border-top: 1px solid var(--line-soft);
+  /* Side inset matches the transcript so the input frame and the text column line up. */
+  padding: 8px 6px 0;
 }
 .btw-inputrow {
   display: flex;
   align-items: flex-end;
   gap: 6px;
 }
+/* Sizing follows the main composer's #input (min-height 54px, 1.5 line-height, --ui-fs-md);
+   max-height caps at 6 lines because the right panel is narrow. */
 .btw-input {
   flex: 1;
   min-width: 0;
@@ -183,11 +184,12 @@
   border: 1px solid transparent;
   border-radius: var(--r-md);
   color: var(--text);
-  font-size: var(--ui-fs);
+  font-size: var(--ui-fs-md);
   font-family: inherit;
   padding: 7px 9px;
-  line-height: 1.45;
-  max-height: 120px;
+  line-height: 1.5;
+  min-height: 54px;
+  max-height: calc(1.5em * 6);
   box-shadow: inset 0 0 0 1px var(--line);
   transition: box-shadow var(--dur-snap) var(--swift);
 }
@@ -198,21 +200,16 @@
 .btw-input::placeholder {
   color: var(--faint);
 }
-.btw-send:disabled {
-  opacity: 0.4;
-  cursor: default;
+.btw-input:disabled {
+  opacity: 0.6;
 }
 
 /* Hairline: halve the converted inset rings on HiDPI */
 @media (min-resolution: 2dppx) {
-  .btw-card { box-shadow: inset 0 0 0 .5px var(--line); }
-  .btw-card.running { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--accent) 45%, var(--line)); }
   .btw-input { box-shadow: inset 0 0 0 .5px var(--line); }
   .btw-input:focus { box-shadow: inset 0 0 0 .5px var(--accent); }
 }
 @media (min-resolution: 3dppx) {
-  .btw-card { box-shadow: inset 0 0 0 .33px var(--line); }
-  .btw-card.running { box-shadow: inset 0 0 0 .33px color-mix(in srgb, var(--accent) 45%, var(--line)); }
   .btw-input { box-shadow: inset 0 0 0 .33px var(--line); }
   .btw-input:focus { box-shadow: inset 0 0 0 .33px var(--accent); }
 }

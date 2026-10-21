@@ -4,6 +4,7 @@
 import { useAppStore } from "../index";
 import { REMOTE } from "../ws";
 import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, updateSession } from "../session";
+import { pathOfSessionId } from "../session-lookup";
 import { pushInputHistory } from "../../components/composer/lexical/draft";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
@@ -181,6 +182,7 @@ export const sessionHandlers = {
           title: msg.title ?? null,
           isSubagent: false,
           automation: msg.automation,
+          connEpoch: s.connEpoch,
         } as OpenSession),
       }));
       return;
@@ -226,6 +228,7 @@ export const sessionHandlers = {
           title: msg.title ?? null,
           isSubagent: Boolean(msg.isSubagent),
           parentPath: msg.parentPath,
+          connEpoch: s.connEpoch,
         } as OpenSession),
         isCreatingNew: false,
         automationsOpen: false, // any session taking over the main column closes the tasks view
@@ -295,12 +298,15 @@ export const sessionHandlers = {
       false,
     );
     // 2. Update the session's title in the on-disk project list (keeps titles referenced by the sidebar in sync)
+    // Disk rows carry the disk session id while this frame carries the pool UUID, and the two never
+    // coincide (host session-lifecycle.ts): match by path, resolved through the open slot.
+    const livePath = pathOfSessionId(msg.sessionId, useAppStore.getState().openSessions);
     useAppStore.setState((st) => {
       let projectsChanged = false;
       const diskProjects = st.diskProjects.map((p) => {
         let sChanged = false;
         const sessions = p.sessions.map((r) => {
-          if (r.id === msg.sessionId) {
+          if (r.id === msg.sessionId || (livePath !== undefined && r.path === livePath)) {
             sChanged = true;
             projectsChanged = true;
             return { ...r, title: msg.title };
@@ -312,7 +318,7 @@ export const sessionHandlers = {
 
       let archivedChanged = false;
       const archivedSessions = st.archivedSessions.map((r) => {
-        if (r.id === msg.sessionId) {
+        if (r.id === msg.sessionId || (livePath !== undefined && r.path === livePath)) {
           archivedChanged = true;
           return { ...r, title: msg.title };
         }
@@ -333,7 +339,7 @@ export const sessionHandlers = {
     updateSession(
       msg.sessionId,
       (s) => {
-        s.externalWrite = true;
+        s.externalWrite = msg.clear !== true;
       },
       false,
     );
@@ -432,21 +438,6 @@ export const sessionHandlers = {
     useAppStore.getState().toast(t("notify.navigated"));
     useAppStore.setState({ mainViewMode: "chat" });
     if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
-  },
-  capabilities(msg) {
-    useAppStore.setState({ capabilities: msg.snapshot, capabilitiesFor: msg.snapshot.sessionId, capabilitiesLoading: false });
-  },
-  capabilities_mcp(msg) {
-    // MCP runtime is process-global: apply to whatever snapshot is held, regardless of which session's attach pushed the frame
-    useAppStore.setState((s) => (s.capabilities ? { capabilities: { ...s.capabilities, mcp: msg.mcp } } : {}));
-  },
-  extension_status(msg) {
-    // Badge table rides the session's snapshot: only merge while the frame belongs to the displayed session
-    useAppStore.setState((s) =>
-      s.capabilities && s.capabilities.sessionId === msg.sessionId
-        ? { capabilities: { ...s.capabilities, extStatuses: msg.statuses } }
-        : {},
-    );
   },
   // Cache-warming runtime snapshot (get_keepalive_status reply / reportState push): ringpop
   // popover transient alongside ctxDetail/ctxLimits, but stored per session — the ring's

@@ -71,13 +71,13 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
       </EditWindowHead>
       <div className="set-card set-edit-card">
         <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half">
+          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
             <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
-            <input className="mcp-form-input mcp-form-code" value={hook.phase} disabled readOnly />
+            <input className="mcp-form-input mcp-form-code mcp-inp-num" value={hook.phase} disabled readOnly />
           </div>
-          <div className="mcp-form-group mcp-form-half">
+          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
             <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
-            <input className="mcp-form-input mcp-form-code" value={hook.tool || "*"} disabled readOnly />
+            <input className="mcp-form-input mcp-form-code mcp-inp-num" value={hook.tool || "*"} disabled readOnly />
           </div>
         </div>
         <div className="mcp-form-hint mcp-form-hint-share">{t("settingsPage.hooks.nameLockedHint")}</div>
@@ -167,7 +167,7 @@ function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string 
           <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
           <input
             type="text"
-            className="mcp-form-input mcp-form-code"
+            className="mcp-form-input mcp-form-code mcp-inp-name"
             placeholder={t("settingsPage.hooks.toolPlaceholder")}
             spellCheck={false}
             autoFocus

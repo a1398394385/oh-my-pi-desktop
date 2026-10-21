@@ -33,7 +33,7 @@ import type {
   EditorInfo, EditorsFrame, ExtSource, ExtensionDetail, ExtensionItem, ExtensionStatusFrame,
   ExtensionsFrame, LoginDoneFrame, LoginProgressFrame, LoginPromptFrame, ManualProbeCatalogMatch, ManualProbeModel,
   McpServerTestedFrame, MemoryFileFrame, ModelRolesFrame, ModelsCatalogFrame, ModelsConfigPathFrame, ModelsFrame,
-  ProfileSwitchedFrame, ProviderKeyDoneFrame, ProviderModelMetaFrame, ProviderModelMetaRow, ProviderModelSavedFrame, ProviderModelTestFrame,
+  PluginInstallResultFrame, ProfileSwitchedFrame, ProviderKeyDoneFrame, ProviderModelMetaFrame, ProviderModelMetaRow, ProviderModelSavedFrame, ProviderModelTestFrame,
   ProviderModelsProbeFrame, ProviderModelsSavedFrame, SettingsFrame, SettingsSchemaFrame, TerminalCreatedFrame, TerminalDataFrame,
   TerminalExitFrame, UsageStatsFrame,
 } from "./frames-models";
@@ -139,6 +139,7 @@ export type HostFrame =
   | AssetFileSavedFrame
   | EditorsFrame
   | AssetFileDeletedFrame
+  | PluginInstallResultFrame
   | MemoryFileFrame
   | McpServerTestedFrame
   | ProfileSwitchedFrame

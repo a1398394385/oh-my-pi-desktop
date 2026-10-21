@@ -390,10 +390,12 @@ export interface BtwHistoryFrame {
   records: BtwRecord[];
 }
 
-/** Host asks the UI to open (or focus) a right-panel tab, e.g. /btw pulling up the Side Chat. */
+/** Host asks the UI to open (or focus) a right-panel tab, e.g. /btw pulling up the Side Chat.
+ * `recordId` names the topic the panel should open directly (Side Chat only). */
 export interface OpenRightTabFrame {
   type: "open_right_tab";
   name: string;
+  recordId?: string;
 }
 
 /** Takeover notice: another client opened the host WS and kicked this connection (open path sends

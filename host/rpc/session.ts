@@ -4,13 +4,13 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus } from "../state.ts";
+import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
 import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
-import { readAutomations } from "../automations/store.ts";
+import { readAutomations, retireAutomationsForPaths } from "../automations/store.ts";
 import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
-import { entriesToTranscript, sumRunDurationMs } from "../translate.ts";
+import { entriesToTranscript, sumRunDurationMs } from "../translate-history.ts";
 import { treeToDisplay } from "../entry-tree.ts";
 import { applyActivityTimes } from "../session-activity.ts";
 import {
@@ -25,6 +25,7 @@ import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
+import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../session-titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
@@ -493,6 +494,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       }
     }
     if (recordsDirty) await saveDesktopProjects();
+    // Automations bound to this session's transcript go away with it: their runs
+    // would otherwise keep waking a target whose file no longer exists.
+    retireAutomationsForPaths(knownPaths.size > 0 ? knownPaths : [p], "delete");
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
@@ -534,11 +538,15 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async archive_session(ws, msg) {
     // Archive persistence: recorded by session file path in omp-desktop.json
     // archivedSessions (same key shape as pinnedSessions, cleaned up in sync
-    // by delete_session); archiving also unpins. Unopened history sessions
-    // (not in the in-memory pool) resolve their path from disk by the base's
-    // session id and can be archived too.
+    // by delete_session); archiving also unpins. Unopened history sessions are
+    // addressed by the same path, so both branches share one key shape.
     const on = !!msg.archived;
-    const entry = sessions.get(msg.sessionId);
+    // Addressing: `path` (see rename_session) — a sidebar row's disk id cannot
+    // address a pooled session, and missing the pool would skip the busy gate
+    // below and archive a live run.
+    const p = String(msg.path ?? "").trim();
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    const entry = findPooledSession(p);
     // A live session cannot be archived: archiving evicts it from the pool, and
     // an evicted live session keeps running headless with its events going
     // nowhere. Same gate the unload / reload / delete RPCs use.
@@ -546,7 +554,6 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       const busy = sessionBusy(entry);
       if (busy.length > 0) throw new Error(hostI18n.t("errors.session.archiveBusy", { reason: busy.join("、") }));
     }
-    const p = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
     const ai = H.desktopProjects.archivedSessions.indexOf(p);
     if (on && ai < 0) H.desktopProjects.archivedSessions.push(p);
     if (!on && ai >= 0) H.desktopProjects.archivedSessions.splice(ai, 1);
@@ -555,7 +562,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       if (pi >= 0) H.desktopProjects.pinnedSessions.splice(pi, 1);
     }
     await saveDesktopProjects();
-    ws.send(JSON.stringify({ type: "session_archived", sessionId: msg.sessionId, ok: true, archived: on }));
+    // Archiving retires the session, so automations that deliver into it can never
+    // run again: complete them (unarchiving does not revive them — the delivery
+    // mode is immutable, so the agent has to create a fresh one).
+    if (on) retireAutomationsForPaths([p], "archive");
+    ws.send(JSON.stringify({ type: "session_archived", path: p, ok: true, archived: on }));
     // Archiving retires a session, so it also leaves the in-memory pool (same
     // teardown as the manual eject): an archived session must not keep an
     // AgentSession plus its MCP mounts resident. A session that never reached
@@ -639,19 +650,33 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // memory, rendered via entry.title in the list_sessions fallback entry.
     const title = String(msg.title ?? "").trim();
     if (!title) throw new Error(hostI18n.t("errors.param.missingTitle"));
-    const entry = sessions.get(msg.sessionId);
+    // Addressing: `path`, never an id. The pool key is a runtime UUID and the
+    // on-disk id is re-minted over a session's life, so a sidebar row's id cannot
+    // address a live session (see "Host-side runtime identity" in
+    // session-lifecycle.ts). Resolving by path keeps a pooled session on its
+    // pooled manager; opening a second SessionManager over the same file appends
+    // entries the pooled index never sees, which the external-write poll then
+    // reports as another process (the false "being written by the CLI" bar).
+    const path = String(msg.path ?? "").trim();
+    if (!path) throw new Error(hostI18n.t("errors.param.missingPath"));
+    const entry = findPooledSession(path);
     if (entry) {
       if (!(await entry.manager.setSessionName(title, "user"))) {
         throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
       entry.title = title;
+      // Branch titles own the journal record; the base's own title_change entry
+      // carries no branch scope, so a sibling branch would otherwise inherit it.
+      if (readBranchTitles()) appendBranchTitle(entry.manager, title, "user");
+      entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
     } else {
-      const manager = await SessionManager.open(await sessionPathFromDisk(msg.sessionId));
+      const manager = await SessionManager.open(path);
       if (!(await manager.setSessionName(title, "user"))) {
         throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
+      if (readBranchTitles()) appendBranchTitle(manager, title, "user");
     }
-    ws.send(JSON.stringify({ type: "session_renamed", sessionId: msg.sessionId, ok: true, title }));
+    ws.send(JSON.stringify({ type: "session_renamed", path, ok: true, title }));
     await refreshAllSessionLists(ws);
   },
   async compact_session(ws, msg) {
@@ -867,6 +892,16 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // — same scope as the base's renderInitialMessages
       entry.transcript = entriesToTranscript(entry.manager.getBranch());
       ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+      // Mirror the branch's own title into the header: the sidebar, the CLI and
+      // the window title all read the header, so a branch switch must move it.
+      // Display therefore follows the active branch even when auto-refresh is off.
+      if (readBranchTitles()) {
+        const own = readBranchTitle(entry.manager);
+        if (own && own.title !== entry.manager.getSessionName()) {
+          await entry.manager.setSessionName(own.title, "user");
+          entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
+        }
+      }
       ws.send(
         JSON.stringify({
           type: "session_navigated",

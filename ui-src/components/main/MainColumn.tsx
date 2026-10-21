@@ -17,6 +17,7 @@ import QueueCard from "../composer/QueueCard";
 import GoalCard from "../composer/GoalCard";
 import ConnBanner from "./ConnBanner";
 import BottomTerminal from "./BottomTerminal";
+import { termGroupKey } from "./right/termTabs";
 
 export default function MainColumn() {
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
@@ -25,7 +26,7 @@ export default function MainColumn() {
   const hubOpen = useAppStore((s) => s.hubOpen);
   const mainViewMode = useAppStore((s) => s.mainViewMode);
   const narrow = useAppStore((s) => s.narrow);
-  const bottomTerminalOpen = useAppStore((s) => s.bottomTerminalOpen);
+  const bottomTermOpen = useAppStore((s) => s.bottomTermOpen[termGroupKey()] === true);
   const activePath = useAppStore((s) => s.activePath);
   const session = useAppStore((s) => s.activePath ? s.openSessions.get(s.activePath) : undefined);
   const pendingApproval = session?.pendingApprovals?.[0] ?? null;
@@ -143,7 +144,7 @@ export default function MainColumn() {
         )}
         {/* Bottom dock (⌘/Ctrl+J): terminal under the composer, full center-column width.
             Narrow keeps it unmounted — App already renders one page at a time there. */}
-        {!narrow && bottomTerminalOpen && <BottomTerminal />}
+        {!narrow && bottomTermOpen && <BottomTerminal />}
         {/* Column width drag handles: gutter strips beside the content column.
             Only the session detail page hosts them, and wiring follows their mount
             (bindColResizer in shell.ts) instead of initShell's one-shot boot. */}

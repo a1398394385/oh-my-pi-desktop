@@ -159,7 +159,7 @@ export function InlineCode({ text }: { text?: string }) {
     );
 }
 
-// ---------- External link text (URL segments in result output become links; only ⌘+click opens externally in the system browser) ----------
+// ---------- External link text (URL segments in result output become links; left click opens the built-in browser, ⌘/Ctrl+click the system one) ----------
 const LINK_RE = /https?:\/\/[^\s<>"'，、。；：！？]+/u;
 const TRAIL_PUNCT_RE = /[.,;:!?，、。；：！？)\]}〉》」』】'"”’]+$/u;
 export async function openExternal(url: string) {
@@ -169,6 +169,13 @@ export async function openExternal(url: string) {
   } catch (err) {
     useAppStore.getState().toast(t("chat.openLinkFailed", { error: String(err) }));
   }
+}
+/** Open a link in the right-panel built-in browser (manual iframe view). The panel may be
+ *  showing the Agent mirror: switching to manual is part of the contract so the target is
+ *  visible. The URL rides a one-shot store field — the view owns its navigation stack. */
+export function openInBrowser(url: string) {
+  useAppStore.setState({ browserMode: "manual", browserManualUrl: url });
+  expandRightPanel("browser");
 }
 export function LinkedText({ text }: { text?: string }) {
   const out: ReactNode[] = [];
@@ -187,7 +194,8 @@ export function LinkedText({ text }: { text?: string }) {
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation(); // do not bubble to the row-level expand/collapse click
-          if (modDown(e)) openExternal(url);
+          if (modDown(e)) void openExternal(url);
+          else openInBrowser(url);
         }}
       >
         {url}

@@ -221,8 +221,16 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
           <div className="aued-title-row">
             <div className="aued-title">{isNew ? t("autoEdit.titleCreate") : t("autoEdit.titleEdit")}</div>
             <span className="sp" />
+            {/* Delivery automations are agent-owned: the host rejects automations_update for
+                them, so the editor must not offer a save that would silently fail */}
             {tab === "settings" && (
-              <button type="button" className="al-primary aued-save" disabled={!canSave} onClick={save}>
+              <button
+                type="button"
+                className="al-primary aued-save"
+                disabled={!canSave || !!initial?.deliverTo}
+                title={initial?.deliverTo ? t("autoEdit.deliveryLocked") : undefined}
+                onClick={save}
+              >
                 {t("common.save")}
               </button>
             )}
@@ -244,6 +252,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
 
       {tab === "settings" ? (
         <div className="aued-layout">
+          {initial?.deliverTo ? (
+            <div className="aued-delivery-lock">{t("autoEdit.deliveryLocked")}</div>
+          ) : null}
           <aside className="aued-summary">
             <div className="aued-summary-head">
               {!isNew && stKind && (

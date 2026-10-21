@@ -50,3 +50,32 @@ export function trimRuns(runs: Record<string, AutomationRun[]>, automationId: st
   list.sort((left, right) => right.createdAt - left.createdAt);
   if (list.length > RUNS_PER_AUTOMATION_KEEP) list.length = RUNS_PER_AUTOMATION_KEEP;
 }
+
+/**
+ * Retire every automation that delivers into one of `paths` (a session and all
+ * the locations it has lived at). Deleting the session deletes them with their
+ * run history; archiving completes them, since the target can no longer be
+ * woken. Returns how many definitions were affected so the RPC reply can report it.
+ */
+export function retireAutomationsForPaths(paths: Iterable<string>, mode: "delete" | "archive"): number {
+  const wanted = new Set(paths);
+  if (wanted.size === 0) return 0;
+  const state = readAutomations();
+  const bound = state.automations.filter((a) => a.deliverTo && wanted.has(a.deliverTo.sessionPath));
+  if (bound.length === 0) return 0;
+  const ids = new Set(bound.map((a) => a.id));
+  if (mode === "delete") {
+    state.automations = state.automations.filter((a) => !ids.has(a.id));
+    for (const id of ids) delete state.runs[id];
+  } else {
+    for (const a of state.automations) {
+      if (!ids.has(a.id)) continue;
+      a.lifecycle = "completed";
+      a.enabled = false;
+      delete a.nextRunAt;
+      a.updatedAt = Date.now();
+    }
+  }
+  writeAutomations(state);
+  return bound.length;
+}

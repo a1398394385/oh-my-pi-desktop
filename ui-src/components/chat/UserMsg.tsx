@@ -55,7 +55,7 @@ export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string
 
   // Queued/steer pending-consumption message: hover shows the action group to the left of
   // the bubble (once consumed, pending clears and it becomes an ordinary historical message)
-  const cls = item.pending ? "user-bubble pending" : "user-bubble";
+  const cls = item.pending ? "user-bubble pending" : item.automation ? "user-bubble automation" : "user-bubble";
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
@@ -102,6 +102,14 @@ export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string
             })}
           </div>
         )}
+        {item.automation ? (
+          // Scheduler delivery: the bubble carries a marker so it never passes for typed
+          // input (the transcript stores the automation id/title, not just the text)
+          <div className="user-msg-automation" title={item.automation.id || undefined}>
+            <Icon name="clock" size={12} />
+            <span>{item.automation.title || t("chat.automationDelivery")}</span>
+          </div>
+        ) : null}
         {item.text ? <FadeBox className="user-msg-text whitespace-pre-wrap">{item.text}</FadeBox> : null}
         {item.pending ? <PendingActs item={item} /> : null}
       </div>

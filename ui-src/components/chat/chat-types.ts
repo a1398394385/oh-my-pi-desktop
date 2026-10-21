@@ -5,6 +5,9 @@
 // The former P2-C transitional definitions (the single big-bag ChatItem and
 // ToolArgs/ToolDetails/AskQuestion) have been merged into types/session.ts.
 export type {
+  AdvisorItem,
+  AdvisorNote,
+  AdvisorSeverity,
   AskQuestion,
   AssistantItem,
   BashItem,

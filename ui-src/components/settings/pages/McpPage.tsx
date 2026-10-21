@@ -527,7 +527,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
           <label className="mcp-form-label">{t("settingsPage.mcp.nameLabel")} <span className="req">*</span></label>
           <input
             type="text"
-            className="mcp-form-input"
+            className="mcp-form-input mcp-inp-name"
             placeholder={t("settingsPage.mcp.namePlaceholder")}
             spellCheck="false"
             value={name}
@@ -536,7 +536,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
           />
         </div>
         <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half">
+          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
             <label className="mcp-form-label">{t("settingsPage.mcp.transportLabel")}</label>
             <Sel
               className="mcp-form-sel"
@@ -561,7 +561,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
               ))}
             </Sel>
           </div>
-          <div className="mcp-form-group mcp-form-half">
+          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
             <label className="mcp-form-label">{t("settingsPage.mcp.sharingFieldLabel")}</label>
             <Sel
               className="mcp-form-sel"

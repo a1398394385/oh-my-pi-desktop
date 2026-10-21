@@ -88,7 +88,7 @@ export default function RemotePage() {
           <div className="srow-ctl">
             <input
               className="inp"
-              style={{ width: 90 }}
+              style={{ width: 90, minWidth: 0 }}
               inputMode="numeric"
               value={portDraft}
               disabled={!known}

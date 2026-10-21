@@ -18,6 +18,10 @@ export interface WsSlice {
   connFailSince: number | null;
   /** Remote-control takeover: the host kicked this connection (kicked frame or close code 4001). Gates all auto-reconnect — reconnect only via the manual "reclaim" action (Spec §7: any auto retry here revives the kick-fight loop) */
   kickedByOther: boolean;
+  /** Bumped on every successful socket open. The host drops a closed socket's per-entry UI
+      subscriptions, so resident session slots bled dry with the previous socket carry an older
+      epoch and must remount (load_session) before they can see frames again. */
+  connEpoch: number;
   send(obj: HostRequest): void;
   setConnected(ok: boolean, text: string): void;
   connect(): Promise<void>;
@@ -32,6 +36,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   connText: t("notify.connecting"),
   connFailSince: null,
   kickedByOther: false,
+  connEpoch: 0,
 
   send(obj: HostRequest): void {
     const ws = get().ws;
@@ -98,6 +103,11 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       everOpened = true;
       reconnectAttempt = 0;
       get().setConnected(true, t("notify.connected"));
+      // Reconnect: the host detached every pool entry's UI subscription when the previous socket
+      // closed, so resident slots would sit frozen (no events, abort replies lost). Bump the epoch
+      // (every resident slot is now stale) and remount the session on screen; the others remount
+      // lazily in activateSession when the user switches to them.
+      set((s) => ({ connEpoch: s.connEpoch + 1 }));
       get().send({ type: "list_sessions" });
       // At startup the welcome page renders before the connection; get_git_branches was once dropped by send — refetch once connected
       if (get().isCreatingNew && get().newSessionProject) get().send({ type: "get_git_branches", cwd: get().newSessionProject });
@@ -105,6 +115,9 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       const activePath = get().activePath;
       const activeCwd = activePath ? get().openSessions.get(activePath)?.cwd : undefined;
       if (activeCwd) get().send({ type: "get_git_branches", cwd: activeCwd });
+      if (activePath && get().openSessions.get(activePath)?.connEpoch !== get().connEpoch) {
+        get().send({ type: "load_session", path: activePath });
+      }
       // If the settings page opened before the connection was ready, its data requests were dropped by send — refetch once connected
       if (get().settingsOpen) get().refreshSettingsData();
       // Resend the current UI locale unconditionally so a (re)started host

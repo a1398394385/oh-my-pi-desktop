@@ -82,7 +82,7 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
   const out: Partial<UiPrefs> = {};
   if (!src || typeof src !== "object") return out;
   const s = src as Record<string, unknown>;
-  if (s.agentProcessStyle === "standard" || s.agentProcessStyle === "detailed" || s.agentProcessStyle === "expanded") {
+  if (s.agentProcessStyle === "standard" || s.agentProcessStyle === "detailed" || s.agentProcessStyle === "expanded" || s.agentProcessStyle === "concise") {
     out.agentProcessStyle = s.agentProcessStyle;
   }
   if (typeof s.uiFont === "string") out.uiFont = s.uiFont;

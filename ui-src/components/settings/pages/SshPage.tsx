@@ -137,20 +137,20 @@ function SshEditor({ host, onClose }: { host: SshHostRow | null; onClose: () => 
         <div className="ssh-form">
           <label className="ssh-field">
             <span>{t("ssh.nameLabel")} *</span>
-            <input type="text" className="inp" placeholder={t("ssh.namePh")} spellCheck="false" value={form.name} onChange={set("name")} />
+            <input type="text" className="inp" style={{ width: 200, maxWidth: "100%" }} placeholder={t("ssh.namePh")} spellCheck="false" value={form.name} onChange={set("name")} />
           </label>
           <label className="ssh-field">
             <span>{t("ssh.addressLabel")} *</span>
-            <input type="text" className="inp" placeholder={t("ssh.addressPh")} spellCheck="false" value={form.host} onChange={set("host")} />
+            <input type="text" className="inp" style={{ width: 320, maxWidth: "100%" }} placeholder={t("ssh.addressPh")} spellCheck="false" value={form.host} onChange={set("host")} />
           </label>
           <div className="ssh-field-row">
             <label className="ssh-field">
               <span>{t("ssh.userLabel")}</span>
-              <input type="text" className="inp" placeholder={t("ssh.userPh")} spellCheck="false" value={form.username} onChange={set("username")} />
+              <input type="text" className="inp" style={{ width: 200, maxWidth: "100%" }} placeholder={t("ssh.userPh")} spellCheck="false" value={form.username} onChange={set("username")} />
             </label>
             <label className="ssh-field">
               <span>{t("ssh.portLabel")}</span>
-              <input type="text" className="inp" placeholder={t("ssh.portPh")} spellCheck="false" value={form.port} onChange={set("port")} />
+              <input type="text" className="inp" style={{ width: 90, maxWidth: "100%" }} placeholder={t("ssh.portPh")} spellCheck="false" value={form.port} onChange={set("port")} />
             </label>
           </div>
           <label className="ssh-field">
@@ -159,7 +159,7 @@ function SshEditor({ host, onClose }: { host: SshHostRow | null; onClose: () => 
           </label>
           <label className="ssh-field">
             <span>{t("ssh.descLabel")}</span>
-            <input type="text" className="inp" placeholder={t("ssh.descPh")} spellCheck="false" value={form.description} onChange={set("description")} />
+            <input type="text" className="inp" style={{ width: 320, maxWidth: "100%" }} placeholder={t("ssh.descPh")} spellCheck="false" value={form.description} onChange={set("description")} />
           </label>
         </div>
         {formError ? <div className="ssh-form-err">{formError}</div> : null}

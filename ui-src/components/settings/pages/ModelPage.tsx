@@ -293,6 +293,7 @@ function RolesView() {
             <input
               type="text"
               className="inp"
+              style={{ width: 200, minWidth: 0 }}
               placeholder={t("settingsPage.model.roleNamePh")}
               spellCheck={false}
               autoComplete="off"

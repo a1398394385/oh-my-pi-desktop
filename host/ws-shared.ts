@@ -8,6 +8,7 @@ import { hostI18n } from "./i18n/host.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
 import { settingsFrame } from "./frames.ts";
 import { dispatchRpc } from "./rpc/index.ts";
+import { detachEntryUi } from "./session-entry-core.ts";
 import { recordRemoteDevice } from "./remote.ts";
 import { browserMirrorOnWsOpen, browserMirrorOnWsClose } from "./browser-mirror.ts";
 import { settingsGet } from "./settings-compat.ts";
@@ -101,13 +102,7 @@ export function makeWsHandlers(profileReady: Promise<unknown>): Bun.WebSocketHan
       // Per-session detach: drop the socket from every pool entry it watches
       // (its subagent view goes with it); the last watcher leaving tears the
       // entry's core subscriptions down via entry.unsubscribe.
-      for (const entry of sessions.values()) {
-        if (!entry.uiSockets.has(ws)) continue;
-        entry.uiSockets.delete(ws);
-        entry.uiSubViews.get(ws)?.unsubscribe();
-        entry.uiSubViews.delete(ws);
-        if (entry.uiSockets.size === 0) entry.unsubscribe();
-      }
+      for (const entry of sessions.values()) detachEntryUi(ws, entry);
       browserMirrorOnWsClose(ws);
     },
   };

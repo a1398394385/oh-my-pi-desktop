@@ -8,11 +8,13 @@
 // lifecycle (recorded as run failed + a.lastError; recurring tasks simply
 // retry at the advanced slot). Manual runs bypass all progression.
 import { randomUUID } from "node:crypto";
-import { spawnSession } from "../session-lifecycle.ts";
+import { ensureSessionLoaded, spawnSession } from "../session-lifecycle.ts";
 import { H, eachUiWs, stampEvent } from "../state.ts";
 import { safeStderr } from "../stderr.ts";
 import { computeAutomationNextRunAt, isOneShot } from "./cron.ts";
+import { deliveryText } from "./delivery.ts";
 import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
+import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "./types.ts";
 import type { Automation, AutomationRun, AutomationsFile, SpawnFn, SpawnOutcome, TickOpts } from "./types.ts";
 
 /** Poll cadence for the tick loop (ZCodium scheduler parity). */
@@ -269,18 +271,58 @@ export async function runAutomationNow(id: string, spawn: SpawnFn = defaultSpawn
 }
 
 /**
- * Production dispatch: create a pooled session on the automation's cwd (+pinned
- * model) through the same spawnSession path the UI uses. Instead of the old
- * sink websocket, events ride a broadcast wrapper that forwards every frame to
- * the currently connected UI client (activeWs): the prompt bubble, streaming
- * events and session_created arrive in real time, no reload needed (the
- * transcript still persists on disk). The session is titled with the
- * automation name via the same SessionManager entry the rename_session RPC
- * uses, so CLI-side listings see it too. sendPrompt resolves when the prompt
- * turn finishes; a locally-consumed prompt (extension/custom command, no agent
- * turn) is a failure.
+ * Framing the model sees. The first line is machine-readable (the transcript
+ * renderer splits it back off to show only the prompt), the rest is the prompt:
+ * without the header a scheduled reminder is indistinguishable from the user
+ * typing it live.
+ */
+/**
+ * Session-targeted dispatch: wake an existing session with the automation prompt
+ * instead of spawning one. The target is resolved from the pool or reopened from
+ * its transcript, so a delivery still lands after the user closed the session.
+ */
+async function deliverToSession(a: Automation): Promise<SpawnOutcome> {
+  const target = a.deliverTo;
+  if (!target) throw new Error(`automation has no delivery target: ${a.id}`);
+  const { sessionId, entry } = await ensureSessionLoaded(target.sessionPath);
+  notifyUi();
+  return {
+    sessionId,
+    sessionPath: entry.path,
+    sendPrompt: async () => {
+      const admitted = await entry.session.promptCustomMessage(
+        {
+          customType: AUTOMATION_DELIVERY_CUSTOM_TYPE,
+          content: deliveryText(a, Date.now()),
+          display: true,
+          attribution: "agent",
+        },
+        { streamingBehavior: "followUp" },
+      );
+      if (admitted === false) throw new Error("automation delivery was not admitted");
+      // Settle on the turn, not on admission: a delivery queued behind a live turn
+      // keeps the run "running" until the session works through it.
+      await entry.session.waitForIdle();
+      if (entry.session.getLastAssistantMessage()?.stopReason === "aborted") throw new Error("run aborted by the user");
+    },
+  };
+}
+
+/**
+ * Production dispatch: a delivery wakes the automation's target session; every
+ * other automation creates a pooled session on its cwd (+pinned model) through
+ * the same spawnSession path the UI uses. Instead of the old sink websocket,
+ * events ride a broadcast wrapper that forwards every frame to the currently
+ * connected UI client (activeWs): the prompt bubble, streaming events and
+ * session_created arrive in real time, no reload needed (the transcript still
+ * persists on disk). The session is titled with the automation name via the
+ * same SessionManager entry the rename_session RPC uses, so CLI-side listings
+ * see it too. sendPrompt resolves when the prompt turn finishes; a
+ * locally-consumed prompt (extension/custom command, no agent turn) is a
+ * failure.
  */
 const defaultSpawn: SpawnFn = async (a) => {
+  if (a.deliverTo) return deliverToSession(a);
   // Broadcast to every connected UI (local + remote); null while none is
   // connected — frames drop.
   const uiWs = {

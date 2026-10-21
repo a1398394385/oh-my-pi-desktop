@@ -10,7 +10,7 @@
 // #rightBody.detail rules).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, activeOpen, refreshGitDiff, effZoom } from "../../../store";
+import { useAppStore, setBump, activeOpen, refreshGitDiff, effZoom, pathBase } from "../../../store";
 import Icon from "../../../Icon";
 import { toggleRightPanel } from "../../../shell";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
@@ -33,9 +33,10 @@ import BgCmdPage from "./BgCmdPage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
 import BtwPage from "./BtwPage";
-import { CapsDock } from "../../chat/CapsCard";
 import { t } from "../../../i18n";
 import WindowControls from "../../WindowControls";
+import type { EditorInfo } from "../../../types/frames";
+import type { FileViewState } from "../../../types/session";
 import { IS_WINDOWS } from "../../../platform";
 
 // Preserve the existing export surface (tab management implementation split into right/tabs.js)
@@ -56,8 +57,10 @@ function Tip({ label, children }: { label?: string; children: ReactElement }) {
 }
 
 // Tab strip title: terminal tabs are numbered by their position, so closing one renumbers
-// the rest; every other tab resolves its i18n label from TAB_META.
-function tabTitle(name: string): string {
+// the rest; every other tab resolves its i18n label from TAB_META. The files tab shows the
+// open file's name instead of the static label (ZCode parity); a null fileView falls back.
+function tabTitle(name: string, fv?: FileViewState | null): string {
+  if (name === "file" && fv?.path) return pathBase(fv.path);
   if (!isTerminalTab(name)) return t(tabMeta(name)!.label);
   return t("misc.terminalTab", { n: terminalTabNumber(name) });
 }
@@ -81,6 +84,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
   const rightTabs = useAppStore((st) => st.rightTabs);
   const rightRecentClosed = useAppStore((st) => st.rightRecentClosed);
   const rightTab = useAppStore((st) => st.rightTab);
+  const fileView = useAppStore((st) => st.fileView);
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -90,7 +94,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", esc);
   }, [onClose]);
   const kw = q.trim().toLowerCase();
-  const match = (name: string) => !kw || tabTitle(name).toLowerCase().includes(kw);
+  const match = (name: string) => !kw || tabTitle(name, fileView).toLowerCase().includes(kw);
   const opens = rightTabs.filter(match);
   // recently closed may hold names of removed tabs from slots persisted long ago — skip them
   const recents = rightRecentClosed.filter((x) => tabMeta(x.name) && match(x.name));
@@ -115,7 +119,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
             onClick={() => { setBump({ rightTab: name }); onClose(); }}
           >
             <span className="mi-ic"><Icon name={tabMeta(name)!.icon} size={15} /></span>
-            {tabTitle(name)}
+            {tabTitle(name, fileView)}
             {!AUTO_TABS.has(name) && (
               <Tip label={t("common.close")}>
                 <span
@@ -199,6 +203,8 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
   const { t } = useTranslation();
   const [over, setOver] = useState(false);
   const auto = AUTO_TABS.has(name);
+  // The files tab title follows the open file; other tabs keep their static label
+  const fv = useAppStore((st) => (name === "file" ? st.fileView : null));
   return (
     <button
       className={"rtab" + (on ? " on" : "") + (over ? " drag-over" : "")}
@@ -229,7 +235,7 @@ function TabButton({ name, on }: { name: string; on: boolean }) {
       }}
     >
       <span className="rtab-ic"><Icon name={tabMeta(name)!.icon} size={15} /></span>
-      <span className="rtab-tx">{tabTitle(name)}</span>
+      <span className="rtab-tx">{tabTitle(name, fv)}</span>
       {!auto && (
         <Tip label={t("common.close")}>
           <span
@@ -351,7 +357,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const isGitTab = rightTab === "gitdiff";
   const detail =
     (rightTab === "gitdiff" && !!s?.isGit && !!selectedFile) ||
-    (rightTab === "file" && !!fileView) ||
+    rightTab === "file" || // file tab keeps the detail shell (rb-head/rb-scroll) even with no file open: the pane hosts the two-column layout
     (rightTab === "subagent" && !!selectedSubagent && !!s?.subagents?.has(selectedSubagent));
   let body;
   if (rightTab === "hub") body = <HubDetailPage />;
@@ -470,7 +476,6 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
         <div id="rightBody" className={detail ? "detail" : ""}>
           {body}
         </div>
-        <CapsDock />
       </div>
     </aside>
     </TooltipProvider>

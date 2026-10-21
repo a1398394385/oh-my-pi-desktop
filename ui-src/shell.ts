@@ -135,7 +135,13 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const startW = panel.offsetWidth;
+    // With the left sidebar collapsed the right panel is CSS-widened by half of --left-w
+    // (shell.css); strip that bonus so the stored --right-w is the width the two-column
+    // layout uses, otherwise expanding the sidebar would jump the panel wider.
+    const splitBonus = invert && document.getElementById("sidebar")?.classList.contains("collapsed")
+      ? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--left-w")) || 240) / 2
+      : 0;
+    const startW = panel.offsetWidth - splitBonus;
     const move = (ev: MouseEvent) => {
       const dx = (ev.clientX - startX) / effZoom();
       const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
