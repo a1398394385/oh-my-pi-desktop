@@ -118,12 +118,12 @@
   - 会话页 header 左端「返回」(`chevronLeft`)→ `mobileCol = "left"`;
   - 会话页 header 右端「面板」(`panelRight`)→ `mobileCol = "right"`;
   - 右栏 `sp-head` 左端「返回」(`chevronLeft`)→ `mobileCol = "main"`;桌面端的收起按钮窄屏不渲染。
-- 会话列表是根页面:点击会话行 / 点「新建任务」/ 点项目「+」/ 搜索结果 / 定时任务 / `openSessionByPath` → `mobileCol = "main"`(SessionRow、Sidebar、SidebarSearch、ProjGroup、store/session.ts 统一)。
+- 会话列表是根页面:点击会话行 / 点「新建任务」/ 点项目「+」/ 搜索结果 / 自动化 / `openSessionByPath` → `mobileCol = "main"`(SessionRow、Sidebar、SidebarSearch、ProjGroup、store/session.ts 统一)。
 - 会话页(中栏)窄屏:隐藏消息 rail(`#msgRail`,`display:none`)——左侧 tick 竖条是桌面 affordance;消息列 / 输入卡 / 统计行取消居中列宽限制,改为左右各 12px 内边距拉满;`.chat-head` 左右 padding 12px;底部安全区由 `env(safe-area-inset-bottom)` 承担。
-- 会话列表页(ZCode 任务首页样式,保留本仓 UI 语言):顶部 header 卡片(标题 + 右上角主题切换 / 缩放 `− 100% +`,无连接说明副标题);新建任务 / 定时任务 / 搜索并排一行三枚等宽按钮(`.ms-nav`,搜索按钮展开输入框并自动聚焦);视图固定为项目形式(`effView = narrow ? "project" : viewMode`,窄屏不渲染最近/归档 seg,也不改写 store,桌面端选择保持不变);每个项目与每个会话各自一张圆角卡片(`--panel-2` 底 + `--line-soft` 描边 + `r-md`);项目卡片内显示任务数(`sidebar.taskCountN`);项目展开的子会话卡片缩进 8px。远程客户端侧栏顶部内边距 10px(`.ms-remote`),macOS 桌面窄窗口保留 40px 红绿灯避让。
+- 会话列表页(ZCode 任务首页样式,保留本仓 UI 语言):顶部 header 卡片(标题 + 右上角主题切换 / 缩放 `− 100% +`,无连接说明副标题);新建任务 / 自动化 / 搜索并排一行三枚等宽按钮(`.ms-nav`,搜索按钮展开输入框并自动聚焦);视图固定为项目形式(`effView = narrow ? "project" : viewMode`,窄屏不渲染最近/归档 seg,也不改写 store,桌面端选择保持不变);每个项目与每个会话各自一张圆角卡片(`--panel-2` 底 + `--line-soft` 描边 + `r-md`);项目卡片内显示任务数(`sidebar.taskCountN`);项目展开的子会话卡片缩进 8px。远程客户端侧栏顶部内边距 10px(`.ms-remote`),macOS 桌面窄窗口保留 40px 红绿灯避让。
 - 右栏整页:与中栏同一卡片几何(`margin: var(--shell-gap) 12px`),内部 `sp-head` 全宽;空态即 `StartPage`(打开标签页列表)。主题/缩放偏好属本地态:远程端 `saveTheme` 不发送 `set_ui_prefs`(否则触发 denylist 的 remote read-only),主题取 localStorage 本地值,首次访问才采纳 host 设置;缩放经 `applyZoom` 在页面切换后重新落到新挂载的列上。
 - **项目卡片一次点击**:项目头只有展开 / 收起这一个动作(`ProjGroup` head 的 toggle),不存在「先选中再展开」的第二步。远程端展开态属客户端本地选择 —— REMOTE 不下发 `set_project_expanded`(host 侧只读),`session_list` 帧只在该客户端尚无项目列表(首帧)时采纳 host 的 `expandedProjects`,之后保留本地集合,否则每次列表刷新都会把点击结果弹回去。收起动画结束(310ms)后 `.closing` 子树必须真正卸载:计时器归组件 ref 所有,不能被 effect cleanup 取消,否则残留约 8px 的 `.proj-kids.closing` 幽灵盒会把收起卡片与下一张卡片的间距撑大(桌面 `ProjGroup` 与归档 `ArchiveGroup` 同规则)。
-- **定时任务页铺满**:`.al-page > .al-col` 在窄屏与消息列同一契约(取消四段收缩,左右各 12px),卡片网格从固定双列改单列、行距 8px;创建 / 编辑视图共用该容器,同样满宽。
+- **自动化页铺满**:`.al-page > .al-col` 在窄屏与消息列同一契约(取消四段收缩,左右各 12px),卡片网格从固定双列改单列、行距 8px;创建 / 编辑视图共用该容器,同样满宽。
 - 窄屏隐藏桌面专用控件:侧栏收起按钮(`.side-collapse`)、`⌘N` 快捷键提示、header 的收起/展开面板按钮、项目/分支 chip(`.chat-head .head-chip`)。
 - **缩放基线**:窄屏把「缩放级别 100%」钉在桌面尺度 80% 的视觉尺寸上(手机端原 80% 手调值成为基线),`ui-src/store/layout.ts` 的 `effZoom() = zoomLevel × (narrow ? 0.8 : 1)` 是唯一换算入口 —— `applyZoom` 写 DOM zoom 用它,所有「视觉像素 ↔ 布局 px」(菜单定位、滚动换算、浮层 zoom 补偿)也必须用它,读原始 `zoomLevel` 只用于显示百分比与增减档位。桌面 `effZoom() === zoomLevel`,行为不变。
 - **输入框下方胶囊栏**:窄屏把权限 / 模型 / 思考三枚胶囊从 `.cbar`(nowrap 工具行)移到 `#composer` 内的 `.pill-bar`(`.pill-fold` 复用 grid `0fr↔1fr` 折叠,bash 模式随工具行一起收起),栏体以负 margin 抵消卡片 padding,铺满卡片宽度并收下圆角 —— 这样三枚胶囊带完整 label + caret 显示,不被分级收缩截断。`.bar-1/2/3/6` 收缩规则因此限定在 `.cbar` 作用域内(`#composer.bar-N .cbar #xxx`);胶囊仍在 `#composer` 内,`placeComposerMenu` 的 `offsetLeft/offsetTop` 坐标系不变。

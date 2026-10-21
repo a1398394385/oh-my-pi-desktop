@@ -85,6 +85,12 @@
 | BUG-087 | ACP 会话上下文明细卡「活动区」系统性低估 18~28%——运行时计数器从未绑定到已解析模型，长期用字节估算兜底 | 2026-10-19 |
 | BUG-088 | 远程控制页「复制访问链接」点击无反应——clipboard.writeText 被拒后静默吞错 | 2026-10-19 |
 | BUG-089 | context_status 的压缩清单被底座工具溢出裁剪 head/tail 挖空——ACP 自己的渲染预算从未生效 | 2026-10-19 |
+| BUG-090 | 输入框子代理图标只换右栏正文、标签头不动——把常规 tab 当成 composer-only 状态页切换 | 2026-10-20 |
+| BUG-091 | 右栏「在外部浏览器打开」对 `file://` 目标报 `Not allowed to open url` | 2026-10-20 |
+| BUG-093 | 进入运行中的子代理 transcript 页立刻报「此会话正在被其他进程写入」——轮询把宿主自己对 child jsonl 的追加判成外部进程 | 2026-10-21 |
+| BUG-094 | 侧栏「活跃任务」里的会话失去 eject 按钮却仍驻留——前端 LRU 逐出未释放 host 的 socket 挂载，空闲逐出永远跳过它 | 2026-10-21 |
+| BUG-095 | 重连是「假重连」——视图冻住、停止无反应；新 socket 没有重放会话挂载，`uiSockets` 为空收不到任何帧 | 2026-10-21 |
+| BUG-096 | 上下文明细卡片合计不足 100%——ACP 块令牌漏算图片与 thinking 签名，活跃区最多偏小 51% | 2026-10-21 |
 
 ---
 
@@ -1292,3 +1298,105 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`scripts/smoke-acp-pull.ts` A 区新断言（返回 ≤ 预算、整行裁尾、exempt trailer、manifestIds 与可见行数对齐）；临时探针（227 块真实规模，用后已删）：全量 26797B/227 行，20KB→20414B/171 行，2KB→2015B/12 行，1KB→976B/3 行，均 fits 且 trailer 正确；`bun run check` 十项全绿。
 
 **教训**：①**依赖未文档化参数的能力等于死代码**——`ctx.allocateOutputArtifact` 类型上是可选的，运行时从不出现；改工具前先在真实调用链上确认参数来源。②**结构化输出（清单/列表）禁止交给 head+tail 裁剪**：中间挖空保留首尾的通用策略对列表是语义破坏，有预算的输出应自己按行收缩并同步下游 id 集合。
+
+### BUG-090: 输入框子代理图标只换右栏正文、标签头不动——把常规 tab 当成 composer-only 状态页切换
+
+**日期**：2026-10-20
+
+**现象**：会话有子代理或后台命令运行时，点输入框底栏的对应图标（`#bgSubagentBtn` / `#bgTaskBtn`）右栏展开，但顶部标签条没有对应标签、旧标签也不再高亮；用户感知「没打开 subagent tab」。
+
+**根因**：`Composer.toggleBgTab` 对所有目标统一走 `expandRightPanel(null, { rightTab: tab })`——`name` 传 null 就不会调用 `openRightTab`，只改激活槽位、不注册标签。该路径本来是给 `bgcmd`（`COMPOSER_ONLY_TABS`，仅由图标进入的状态页）设计的，`subagent`（在 `TAB_META` 与添加菜单里可见的常规标签）被一并当成了状态页；且 `bgcmd` 自身也有同样症状（正文是「后台命令」页，标签头却没有它）。分诊：②确认存量缺陷，`toggleBgTab` 自 0.1.0 首次发布即如此，非本次改动引入。
+
+**修复**：`toggleBgTab` 统一改为 `expandRightPanel(tab)`，两个目标都经 `openRightTab` 注册并激活标签（第二次点击仍收起）。`COMPOSER_ONLY_TABS` 收窄为「添加菜单/空态启动器不提供的入口」，注释明确它不再表示「不进标签列表」。另加数据面兜底：`restoreRightSlot` 从 localStorage 恢复槽时校验 `active ∈ tabs`，否则回落到列表末尾——修复前产生的半开槽（`active="subagent"/"bgcmd"` 但 tabs 里没有）重开会话时不再复现。
+
+**审计**：右栏其余写 `rightTab` 的位置均已保证一致性——`openRightTab` / `openTabInSlot`（先插列表）、`openHub`（先注入 `hub`）、`TabButton`/`TabOverview` 开标签项（名字来自 `rightTabs`）、`reopenRightTab`、`AddTabMenu`（`openRightTab`/`openNewTermTab`）、`cycleTermTab` 与 `syncSharedRightTabs`（名字来自 `rightTabs` 且后者主动校正 active）、`closeRightTab`/非 git 清理/未知标签清理/`closeHub`（都有回退）、`expandRightPanel("browser")`。唯一缺口是槽恢复。
+
+**验证**：临时 happy-dom 对照脚本（用后已删）——旧调用 `expandRightPanel(null,{rightTab:"subagent"})` 后 `rightTabs` 仍为 `["file"]`、标签头只有「文件」；新调用后 `rightTabs=["file","subagent"]`、标签头出现「子代理」。端到端点击脚本（渲染 `Composer`+`RightPanel`，会话同时挂 running bash 与 running 子代理后依次点击两个图标）通过：`bgTaskBtn` → `rightTabs=["file","bgcmd"]`、标签头「文件/后台命令」；`bgSubagentBtn` → `rightTabs=["file","bgcmd","subagent"]`；再次点击 `rightCollapsed` 变 true 且标签保留。槽恢复脚本（seed `active="bgcmd"` + `tabs=["file"]`）：恢复后 `rightTab="file"`；正常槽 `active="subagent"` 保持不变；空槽仍是 `null`。`bun run check` 全绿。已知既有失败（与本次无关，对照基线同样失败）：`scripts/smoke-composer-bars.ts`（bar 宽度表随合并后的模型/思考药丸漂移）与 `scripts/smoke-right-snapshots.ts`（`#rightBody` 结构已不存在）。
+
+**教训**：`expandRightPanel` 的 `name` 参数语义是「注册进标签列表」，`rightTab` patch 语义是「只切激活槽位」——新增入口前先确认目标是否属于 `COMPOSER_ONLY_TABS`，否则会得到「正文换了、标签头没换」的半开状态；同时，`COMPOSER_ONLY_TABS` 只该表达「菜单不提供入口」，不能拿来决定「是否进标签列表」。`bgcmd` 与 `subagent` 都来自同一对计数器图标，行为必须一致——只修用户报的那一个会留下同形另一处。
+
+### BUG-091: 右栏「在外部浏览器打开」对 `file://` 目标报 `Not allowed to open url`
+
+**日期**：2026-10-20
+
+**现象**：右栏浏览器页（`BrowserPage.tsx` / `AgentBrowserView.tsx` 的 `openExternal`）点「在外部浏览器打开」时，若当前标签 URL 是本地文件（如 `file:///…/docs/prototypes/advisor-notes.html?variant=B&blocker=1`），报「打开链接失败：Not allowed to open url file:///…」。
+
+**根因**：`opener:allow-open-url` 只是命令开关，URL 白名单来自 `opener:allow-default-urls` 的 scope（`mailto:*` / `tel:*` / `http://*` / `https://*`，见 `tauri-plugin-opener-2.5.5/permissions/allow-default-urls.toml`）。`open_url` 先做 `Scope::is_url_allowed` 再调用系统 `open`，`file://` 不在任何 scope 条目里，于是返回 `Error::ForbiddenUrl`（`Not allowed to open url {url}`），UI 把该错误原样塞进 toast。`allow-open-url` 本身「无预配置 scope」，所以此前所有非 http(s) 协议都被静默拒绝。
+
+**修复**：`src-tauri/capabilities/default.json` 把 `"opener:allow-open-url"` 改成带 scope 的对象形式 `{ "identifier": "opener:allow-open-url", "allow": [{ "url": "file://*" }] }`。scope 匹配走 `glob::Pattern::matches`（`require_literal_separator=false`），`*` 覆盖后续 `/`，带 query 的 file URL 同样命中；仍只放开 `file:` 一个 scheme，其余协议不变。
+
+**验证**：`cargo check`（src-tauri）通过，`src-tauri/gen/schemas/capabilities.json` 与 `target/debug/build/omp-desktop-*/out/capabilities.json` 均含 `{"identifier":"opener:allow-open-url","allow":[{"url":"file://*"}]}`；`open "file:///…/advisor-notes.html?variant=B&blocker=1"` 实测成功（opener 就是转调系统 `open`）。未做 GUI 端到端点击（需重编译 Tauri 壳）。
+
+**教训**：Tauri v2 里「permission 开启命令」与「scope 允许输入」是两件事，`opener:allow-open-url` 的文档措辞「without any pre-configured scope」会被读成「不限 URL」，实际是「命令可调但 scope 为空 = 除 default-urls 外一律拒绝」；新增可用协议必须显式加 scope 条目。
+
+### BUG-092: 底栏终端关不掉，且开关是全局的——一个项目打开后切到别的项目也跟着弹出来
+
+**日期**：2026-10-21
+
+**现象**：①底栏只剩一个终端时，胶囊上没有关闭按钮（`tabs.ids.length > 1` 才渲染 ×），用户只能靠头部 ✕ 收面板，单个终端「无法关闭」；②在 A 项目打开底栏终端后切到 B 项目的会话，底栏仍然显示（且是 B 项目分组的空白新终端），用户要的是「项目共享」= 同项目内共享、跨项目互不影响。
+
+**根因**：`bottomTerminalOpen` 是 `store/ui.ts` 里的一个全局布尔，与 `termGroupKey()`（`terminalShared` 开启时为 `p:<项目 cwd>`）无关联：标签条早已按项目分组，面板开关却是全局的，于是任何项目都能看到上一次开会话项目打开的面板；`closeBottomTermTab` 又硬性保留至少一个标签（`ids.length < 2` 直接 return），所以最后一个终端没有任何关闭入口。
+
+**修复**：开关改为按分组记录 `bottomTermOpen: Record<string, boolean>`，`toggleBottomTerm(groupKey)` / `closeBottomTerm(groupKey)`（⌘J、头部 ✕、顶栏按钮、`visibleTermScope` 全部传当前 `termGroupKey()`），面板只在当前项目分组打开时渲染。胶囊 × 常显；关闭最后一个终端时清空该组标签并收起本组面板，下次打开由 `BottomTerminal` 的空组 `useEffect` 现场重建一个新终端（旧 PTY 经 disposer 回收，不复用 id）。
+
+**验证**：`scripts/smoke-bottom-term.ts`（happy-dom + 真实 store）：A 项目开 → 切 B 分组开关为 false → 切回 A 仍 true；关闭唯一标签后 `ids=[]` 且本组开关 false；重建 id 不复用；两标签关闭活动标签回退到相邻；他组开关不受影响。真机（`dev:browser` + 真实 host，profile `omp-desktop-dev`）：默认项目打开底栏出现「终端 1」且胶囊带 ×；切到 oh-my-pi 项目会话底栏不出现、顶栏按钮 off；切回默认项目底栏恢复且仍是「终端 1」；点胶囊 × 面板关闭；再开为「终端 2」。`bun run check` 全绿。
+
+**教训**：面板里的「分组」状态必须有对应的分组开关，否则分组只切内容不切可见性；同一次重命名（`bottomTerminalOpen` → 分组表）要连快捷键与 `visibleTermScope` 一起改，漏一处就会出现「键盘认为开着、界面没开」。
+
+### BUG-093: 进入运行中的子代理 transcript 页立刻报「此会话正在被其他进程写入」——轮询把宿主自己对 child jsonl 的追加判成外部进程
+
+**日期**：2026-10-21
+
+**现象**：从 Agent Hub / 子代理列表打开一个**仍在运行**的子代理 transcript（`openSessionByPath(sub.sessionFile)` → `load_session` 读 child jsonl），主区顶部立即出现「此会话正在被其他进程写入（如 CLI），视图可能不同步」提示条；用户确认没有任何 CLI 或第二个进程。
+
+**分诊**：②确认存量缺陷。子代理只读页与外部写入轮询（BUG-045 引入）一直在，二者条件同时成立即复现，与最近改动无关——静态（已完成）子代理文件入池实测 12/12 id 命中，不触发；只有文件在入池后继续增长才触发。
+
+**根因**：`host/session-poll.ts` 的判据是「文件新增行的 id 不在 `entry.manager.getEntries()` 索引里 = 外部写入」，该判据只对**单管理器**成立。子代理 transcript 由父会话进程内的子代理运行时持续追加；用户打开该页时宿主另起 `SessionManager.open` 只读加载同一文件，之后子代理写入的每一行自然不在新管理器的索引里 → 被判成外部写入。BUG-045 的「任何会制造第二管理器/第二会话的路径都是误报入口」在这里被重新踩中，只是入口从 reload 换成了「打开运行中子代理页」。
+
+**修复**：`pollExternalWrites` 跳过 `entry.isSubagent`（child jsonl 的写入方就是本宿主自己的 task 运行时，索引差异无法区分真假外部写入）。子代理条目不进会话列表，跳过也顺带省掉无意义的落盘列表刷新；主会话的检测路径不变。
+
+**验证**：真实宿主探针（临时，已删）：把真实子 transcript 复制到临时 artifacts 目录（`<parent>.jsonl/` 旁存在父文件 → `isSubagent`）→ `load_session` → 6s 静止 0 帧；追加一行 → 修复前立刻 `session_external_write`，修复后 0 帧；同一探针对**主会话**文件追加仍触发，确认没有把检测整体关死。`scripts/smoke-subagent-subview.ts` 增加回归断言：打开运行中子会话后收到该子会话的 `session_external_write` 即失败。
+
+**教训**：以「内存索引差集」判定写入归属，前提是「一个文件只有一个管理器」。凡新增「再开一个管理器读同一文件」的功能（子代理只读页、transcript 预览、日志尾随），都要先回答「这个文件的另一个写入者是谁、是不是我们自己」，并显式把它排除在外部写入检测之外。
+
+### BUG-094: 侧栏「活跃任务」里的会话失去 eject 按钮却仍驻留——前端 LRU 逐出未释放 host 的 socket 挂载
+
+**日期**：2026-10-21
+
+**现象**：左侧栏「最近 → 活跃任务」区里的一条会话，鼠标悬停没有「移出内存池」按钮（按 `openSessions.has(path)` 显隐），但它依然列在活跃任务里；用户据此判断「已被自动逐出，却还在列表里」。打开超过 8 个会话后，活跃任务区只增不减。
+
+**根因**：两套状态没有对齐。前端 `evictOpenSessions`（`OPEN_SESSIONS_MAX = 8`）只从前端槽表删掉会话并发 `mcp_detach`，host 的 `mcp_detach` handler 只释放 MCP 挂载，**没有把该 socket 从 `entry.uiSockets` 摘掉**；而 `sweepIdlePoolSessions` 的首条过滤是 `if (e.uiSockets.size > 0) continue`（仍被 UI 观看就跳过）。于是只要窗口开着，被 LRU 逐出的会话就永远留在内存池里，`pool_sessions` 快照也就一直把它推给侧栏。行上的 eject 按钮又只认前端槽，两边呈现的矛盾即是本 bug。
+
+**修复**：把 socket 摘除逻辑抽成 `detachEntryUi`（`host/session-entry-core.ts`，与 ws close 共用同一序列：删 `uiSockets`、退该 socket 的子代理订阅、无人观看时 `unsubscribe()` 并重置空闲时钟），`mcp_detach` 在释放 MCP 后调用它；重新打开会话仍走 `load_session` 的 `frontendReloaded` 分支重新挂载。侧栏 eject 按钮改由池快照派生（新增 `poolPaths`，与 `busyPaths` 同一写入口），按钮可见性与「活跃任务」列表同源，不再出现「列表里有、按钮没有」。语义上活跃任务区仍显示 host 池真实内容，会话要等 30 分钟空闲逐出才离开列表。
+
+**验证**：`scripts/session-attach-detach.test.ts`（多/最后一个观看者、重复 detach 幂等）；`scripts/smoke-session-detach.ts`（真实 host：建会话 → 池快照含它 → `mcp_detach` → 池仍持有 → `load_session` 复用同一会话 id 重连成功）；一次性 store 自检确认 `landPoolSessions` 同帧重算 `poolPaths`/`busyPaths`。`bun run check` 全绿（含新增的两条 host 依赖边登记）。
+
+**教训**：「谁还在看这个会话」是池回收的唯一输入，前端放弃观看必须同步到 host，否则任何自动回收都失效；同一行的多个 UI 状态（列表归属、按钮可见性）必须来自同一个数据源，混用前端槽与池快照会直接制造「看起来自相矛盾」的界面。
+
+### BUG-095: 重连后是「假重连」——视图冻住、停止按钮无反应
+
+**日期**：2026-10-21
+
+**现象**：桌面窗口被另一客户端顶替（kicked），点 `KickedScreen` 的「重新连接」后连接状态恢复，但已打开的会话不再更新（无流式、无工具行、无回合结束），点停止按钮也没有任何反馈，只有切换/重开会话才恢复。
+
+**根因**：host 的会话事件按 `entry.uiSockets` 扇出，而 `close(ws)` 会 `detachEntryUi` 把旧 socket 从每个池条目摘掉（BUG-094 引入的同一序列）。重连建立的是**新 socket**，UI 侧的 `openSessions` 却原样保留，于是新 socket 没有订阅任何条目：所有事件（含 abort 之后的状态帧）都发不到它。首次加载之所以正常，是因为那时 `openSessions` 还是空的，每次打开会话都会走 `load_session` 重新挂载；`ready` 帧/自动重连路径只重发 `list_sessions`，从不重放会话挂载。
+
+**修复**：`ws` slice 新增 `connEpoch`，每次 socket `open` 递增；`OpenSession` 记录挂载时的 `connEpoch`。`onopen` 对世代落后的当前会话主动 `load_session`，其余槽位由 `activateSession` 惰性重挂（host 复用分支会 `attachEntry` 并重放 transcript/子代理历史）。世代落在 `session_created` 建立槽位时写入，因此同一条连接内的正常激活不会多发一次请求。
+
+**验证**：`scripts/smoke-remote-kick.ts` 增加回归断言（假 socket `open` 后必须为当前会话发 `load_session`；世代落后的槽位切换时必须重挂，当世代槽位切换不得重挂），同时把过期的「重新接管」按钮断言改为渲染真实接管面 `KickedScreen`。真实宿主探针（临时，已删）：A 建会话→B 顶替（A 收 kicked + close 4001）→新 socket `load_session` 复用同一 sessionId、重放 transcript、收到 live `session_stats`、RPC（`list_sessions`）正常；对照 socket 不重挂则 1.5s 内零会话帧。`bun run check` 全绿。
+
+**教训**：`uiSockets` 是「事件投递地址」而不是会话状态，任何 socket 替换（reconnect / 手动 reclaim / host 重启后的重拨）都必须重放挂载，否则前端状态完整、通道却是断的——表现恰好是「看着正常、操作无响应」，比直接报错更难发现。
+
+### BUG-096: 上下文明细卡片合计不足 100%——ACP 块令牌漏算了图片与 thinking 签名
+
+**日期**：2026-10-21
+
+**现象**：上下文卡片里「消息[活跃区]」的百分比明显小于基线的消息量：某会话打开时消息 259.1K，ACP 投影后活跃区只剩 240.0K，另有「压缩区 0」，两行之和回不到 `usedTokens`，所有行的百分比因此凑不满 100%。
+
+**根因**：两套令牌口径。基线 `Tokenizer.countMessage` 对 `image` 块按像素尺寸计价（`imageTokens(base64ImageSize(data), detail)`），并把 assistant 的 `thinkingSignature` 计入 thinking 文本；而 ACP 的 `splitBlocks` 用 `flattenText` 只取 text/thinking，**图片和签名完全不计**。实测真实会话（`2026-10-21T08-55`）基线 515,989 vs ACP 250,619，差 265,370（51.4%），其中图片 264,000（toolResult 240,000 + user 24,000）、签名 1,374。受影响的不只是卡片：`activeTokens` 同时驱动 tier 判定、`over-target` 校验、`compressedTokens` 与 manifest 排序，图片会话的压缩触发因此系统性偏晚。
+
+**修复**：`host/acp-projection.ts` 的 `splitBlocks` 新增 `countImage` 参数（`CountImage`，默认走 OpenRouter/OpenAI Responses 线规则作纯函数兜底），`splitContent` 对 `image` 块逐张计价并并入该块 tokens；assistant 的 `thinkingSignature` 累加进 `#t` 块（signature-only 块也会建条目，intent 仍取文本）。`host/acp-runtime.ts` 的 `AcpRuntimeDeps` 增加可选 `countImage`，`host/acp-assembly.ts` 绑定到会话 Tokenizer 的 `imageTokens`，与基线同源同模型规则；`host/acp-refs.ts` 的纯编号遍历传零计价，避免为了给块编号去解码图片。
+
+**验证**：真实 journal 三例基线 vs ACP 差值从 51.4% 降到 ≤0.02%（-46 ~ -70 tokens，分块边界的余量）；`scripts/acp-projection-pairing.test.ts` 新增三条（user/toolResult 图片计价、thinking 签名随块、signature-only 块），把修复回退后三条全部失败；`bun run check` 全绿，`smoke-acp-projection`、`smoke-acp-tool`、`smoke-acp-pull` 通过。
+
+**教训**：任何「按块重算上下文大小」的实现都必须对齐全量计数器计入的每一种内容类型；漏掉的类型不会报错，只会让所有派生判断（tier、预算、排序、卡片百分比）安静地偏小。

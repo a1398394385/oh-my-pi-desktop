@@ -137,3 +137,13 @@
 **How to apply**:新增/修改 vendor 时先问「这份数据从哪来」:只有 options 字段(由 index.ts 从 authStorage 构造)、`deps` 注入、或显式 env(`TOKEN_MONITOR_*`/厂商 token 名)算合规;出现 `os.homedir()`/`Library/Application Support`/`state.vscdb`/`child_process.spawn`/keychain/`node:sqlite` 读第三方库即为违规。适配层约定:无凭证时 index 直接返回 `notConfigured` 且**不调用** vendor(没有 `native` 开关了);env cookie 型供应商(stepfun/typesafe/alibaba/commandcode/ollama)保持「不吃 API key,只认 env」的既有惯例。回归验证:`host/limits/vendor/` 下任何新增读取点都必须有对应冒烟——假 HOME 里种带标记串的本机态文件 + `PATH=/nonexistent`,跑 vendor fetch 断言结果里不出现该标记串、零子进程。
 
 **关联**:无(BUG 未单独立账,见 2026-10-08 会话)
+
+### RULE-012: 架构行数门禁走「域预算 + 单文件软硬线」,禁止再给单个文件写固定上限
+
+**规则**:`scripts/check-architecture.mjs` 的行数约束分三层——`DOMAIN_BUDGETS`(同域文件合计封顶,域内可自由长大)、`FILE_CAPS`(必须保持薄的个别文件,目前只有 `host/main.ts`)、全局 `FILE_SOFT_CAP`(700,只对本次改动触及的文件告警)/`FILE_HARD_CAP`(1500,失败)。2026-10-21 之前的逐文件「只降不升」常量已废弃:新增约束必须落在这三层里,禁止再为单个文件手写行数上限。
+
+**Why**:旧的逐文件棘轮把每个文件钉死在拆分时的行数,3 行改动会被迫先拆出 50 行,奖励碎片化、惩罚内聚;而结构约束的真实护栏是 `scripts/check-host-boundaries.mjs`(声明边 + 孤儿符号),行数只是廉价的代理指标。
+
+**How to apply**:文件过软线时优先按职责拆分;确实需要增长时确认所属域预算仍有余额,或把新职责放进同域新文件(自动计入域总量)。调高域预算必须在提交信息里写明理由与当前用量;给单文件加 `FILE_CAPS` 只允许用于「必须保持薄的调度壳/入口」,不得用于业务模块。
+
+**关联**:无(BUG 未单独立账,见 2026-10-21 会话)

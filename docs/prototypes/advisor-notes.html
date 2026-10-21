@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advisor 笔记展示原型 · omp-desktop</title>
+<style>
+  /* 丢弃型原型：token 值抄自 ui/css/global/tokens.css，仅用于观感比较，不参与构建。 */
+  :root {
+    --base:#292B2C; --card:#161616; --inset:#2B2B2B; --select:#3F4141;
+    --bg:var(--card); --panel:var(--inset); --panel-2:#353738; --panel-3:var(--select);
+    --surface:rgba(255,255,255,.05); --line:#3A3C3D; --line-soft:rgba(255,255,255,.06);
+    --text:#ededef; --dim:#b0b0b6; --faint:#8c8c92;
+    --green:#34c759; --orange:#e5a14e; --red:#ff5f57; --err:#d05c52; --yellow:#febc2e;
+    --blue:#6fb3d8; --purple:#a86fe0; --accent:#4a9eff; --ctl-bg:var(--panel-2);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --ui-fs:13px; --code-fs:12px; --ui-fs-xs:10px; --ui-fs-sm:11.5px; --ui-fs-base:13px; --ui-fs-md:13.5px;
+    --r-sm:6px; --r-md:10px; --r-lg:12px;
+    --swift:cubic-bezier(.16,1,.3,1); --snap:120ms; --base-dur:200ms;
+    --shadow-popover:inset 0 0 0 1px rgba(255,255,255,.1),0 8px 28px rgba(0,0,0,.65),0 2px 8px rgba(0,0,0,.45);
+  }
+  [data-theme="light"] {
+    --base:#dcdce0; --card:#f6f6f8; --inset:#ffffff; --select:#cfd0d4;
+    --bg:var(--card); --panel:var(--inset); --panel-2:#e8e8ec; --panel-3:var(--select);
+    --surface:rgba(0,0,0,.04); --line:#d0d0d6; --line-soft:rgba(0,0,0,.06);
+    --text:#1d1d21; --dim:#5d5d65; --faint:#808088; --err:#c0453c; --ctl-bg:var(--inset);
+    --shadow-popover:0 8px 28px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--base); color: var(--text);
+    font: var(--ui-fs-base)/1.55 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { display: grid; grid-template-columns: 208px minmax(0,1fr) 300px; height: 100%; gap: 8px; padding: 8px; }
+
+  /* ── 侧栏 ── */
+  .sidebar { background: var(--base); border-radius: var(--r-lg); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .sb-t { font-size: var(--ui-fs-sm); color: var(--faint); padding: 4px 8px 8px; }
+  .sb-row { padding: 6px 8px; border-radius: var(--r-sm); color: var(--dim); font-size: var(--ui-fs-sm); display: flex; justify-content: space-between; gap: 8px; }
+  .sb-row.on { background: var(--select); color: var(--text); }
+  .sb-row span:last-child { color: var(--faint); font-size: var(--ui-fs-xs); }
+
+  /* ── 中栏 ── */
+  .center { background: var(--card); border-radius: var(--r-lg); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .topbar { height: 38px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--line-soft); font-size: var(--ui-fs-sm); color: var(--faint); }
+  .topbar b { color: var(--text); font-weight: 500; }
+  .stream { flex: 1; overflow: auto; padding: 18px var(--gutter,48px) 120px; }
+  .col { max-width: 760px; margin: 0 auto; }
+
+  .msg { margin: 16px 0; }
+  .msg.user { display: flex; justify-content: flex-end; }
+  .bubble { background: var(--panel-2); border-radius: var(--r-lg); padding: 8px 12px; max-width: 78%; font-size: var(--ui-fs-md); color: var(--text); }
+  .msg.assistant { font-size: var(--ui-fs-md); color: var(--text); }
+  .msg.assistant p { margin: 0 0 10px; }
+  .msg.assistant code { font-family: var(--mono); font-size: var(--code-fs); background: var(--surface); padding: 1px 5px; border-radius: 4px; color: var(--dim); }
+
+  /* 工具行：对齐桌面端 .act 语言 */
+  .act { display: flex; align-items: center; gap: 6px; color: var(--dim); margin: 14px 0; font-size: var(--ui-fs-base); }
+  .act .lbl { font-size: var(--code-fs); color: var(--faint); white-space: nowrap; font-family: var(--mono); }
+  .act .ico { width: 13px; height: 13px; flex: none; display: inline-grid; place-items: center; color: var(--faint); }
+  .act .ico svg { width: 13px; height: 13px; }
+  .act .arg { color: var(--dim); font-family: var(--mono); font-size: var(--code-fs); }
+  .turn-acts { display: flex; gap: 4px; align-items: center; margin-top: 8px; color: var(--faint); font-size: var(--ui-fs-xs); }
+  .q-btn { width: 22px; height: 22px; border-radius: var(--r-sm); border: 0; background: none; color: var(--faint); display: inline-grid; place-items: center; cursor: pointer; }
+  .q-btn:hover { background: var(--panel-2); color: var(--dim); }
+
+  /* ── severity 语言 ── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; flex: none;
+    font-size: var(--ui-fs-xs); line-height: 1; letter-spacing: .02em;
+    padding: 3px 7px; border-radius: 999px; border: 1px solid transparent; text-transform: uppercase;
+  }
+  .chip.blocker { color: var(--err); background: color-mix(in srgb, var(--err) 14%, transparent); border-color: color-mix(in srgb, var(--err) 34%, transparent); }
+  .chip.concern { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); border-color: color-mix(in srgb, var(--orange) 32%, transparent); }
+  .chip.nit { color: var(--faint); background: color-mix(in srgb, var(--faint) 12%, transparent); border-color: color-mix(in srgb, var(--faint) 26%, transparent); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .dot.blocker { background: var(--err); } .dot.concern { background: var(--orange); } .dot.nit { background: var(--faint); }
+  .who { font-size: var(--ui-fs-xs); color: var(--faint); }
+  .age { font-size: var(--ui-fs-xs); color: var(--faint); font-family: var(--mono); opacity: .8; }
+
+  /* ══ A：行内脚注（最轻） ══ */
+  .fn { margin: 6px 0 18px; padding-left: 19px; }
+  .fn-head { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font-size: var(--ui-fs-sm); cursor: pointer; border-radius: var(--r-sm); padding: 2px 4px 2px 0; }
+  .fn-head:hover { color: var(--dim); }
+  .fn-head .lab { display: inline-flex; align-items: center; gap: 6px; }
+  .fn-head svg { width: 10px; height: 10px; transition: transform var(--base-dur) var(--swift); }
+  .fn-head.open svg { transform: rotate(90deg); }
+  .fn-body { display: none; margin: 8px 0 0; padding-left: 2px; border-left: 1px solid var(--line); }
+  .fn-body.open { display: block; }
+  .fn-note { display: grid; grid-template-columns: 62px 1fr; gap: 10px; padding: 6px 0 6px 12px; }
+  .fn-note .meta { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .fn-note .tx { font-size: var(--ui-fs-base); color: var(--dim); }
+
+  /* ══ B：审阅卡片 ══ */
+  .card { margin: 18px 0; background: var(--inset); border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: var(--r-md); overflow: hidden; }
+  .card.tone-concern { border-left-color: var(--orange); }
+  .card.tone-blocker { border-left-color: var(--err); }
+  .card-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; user-select: none; }
+  .card-head:hover { background: var(--surface); }
+  .card-head .ttl { font-size: var(--ui-fs-sm); font-weight: 500; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+  .card-head .chevs { margin-left: auto; color: var(--faint); display: inline-flex; transition: transform var(--base-dur) var(--swift); }
+  .card.collapsed .chevs { transform: rotate(-90deg); }
+  .card.collapsed .card-body, .card.collapsed .card-foot { display: none; }
+  .card-body { padding: 0 12px 4px; }
+  .card-note { padding: 8px 0; border-top: 1px solid var(--line-soft); }
+  .card-note:first-child { border-top: 0; }
+  .card-note .hd { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .card-note .tx { color: var(--dim); font-size: var(--ui-fs-base); }
+  .card-foot { display: flex; gap: 12px; padding: 6px 12px 10px; }
+  .link { background: none; border: 0; padding: 0; color: var(--accent); font-size: var(--ui-fs-sm); cursor: pointer; font-family: inherit; }
+  .link:hover { text-decoration: underline; }
+
+  /* ══ D：事件流实时注入（位置 = 真实注入点） ══ */
+  .ev { margin: 14px 0; border-radius: var(--r-sm); }
+  .ev-head { display: flex; align-items: center; gap: 7px; padding: 3px 0; cursor: pointer; }
+  .ev-head:hover .lab { color: var(--dim); }
+  .ev-head .lab { font-size: var(--code-fs); color: var(--faint); font-family: var(--mono); }
+  .ev-head .chev { color: var(--faint); display: inline-flex; transition: transform var(--base-dur) var(--swift); }
+  .ev.open .chev { transform: rotate(90deg); }
+  .ev-body { display: none; margin: 6px 0 2px 6px; padding-left: 12px; border-left: 1px solid var(--line); }
+  .ev.open .ev-body { display: block; }
+  .ev-note { padding: 5px 0; }
+  .ev-note .hd { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .ev-note .tx { color: var(--dim); font-size: var(--ui-fs-base); }
+  .ev.mid .ev-head .lab { color: var(--err); }
+
+  /* ══ E：过程显示风格 × advisor 卡片联动 ══ */
+  .stylebar { flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-bottom: 1px solid var(--line-soft); font-size: var(--ui-fs-sm); color: var(--faint); }
+  .seg { display: inline-flex; background: var(--panel-2); border-radius: 999px; padding: 2px; gap: 2px; }
+  .seg button { all: unset; cursor: pointer; padding: 3px 10px; border-radius: 999px; color: var(--dim); font-size: var(--ui-fs-sm); }
+  .seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .proc-line { display: flex; align-items: center; gap: 7px; color: var(--faint); font-size: var(--ui-fs-sm); cursor: pointer; margin: 14px 0; }
+  .proc-line:hover { color: var(--dim); }
+  .proc-line .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: none; }
+  .proc-line .chev { margin-left: 2px; display: inline-flex; }
+
+  /* ══ C：右栏审阅流 + 行内 gutter 标记 ══ */
+  .gmark {
+    display: inline-flex; align-items: center; gap: 4px; float: right; margin-top: -22px;
+    font-size: var(--ui-fs-xs); color: var(--faint); cursor: default;
+    border-radius: 999px; padding: 2px 7px; border: 1px solid var(--line-soft); background: var(--card);
+    position: relative;
+  }
+  .gmark:hover { color: var(--dim); border-color: var(--line); }
+  .gmark .pop {
+    display: none; position: absolute; right: 0; top: 22px; width: 300px; z-index: 20;
+    background: var(--ctl-bg); border: 1px solid var(--line); border-radius: var(--r-md);
+    box-shadow: var(--shadow-popover); padding: 10px 12px 12px; color: var(--dim);
+    font-size: var(--ui-fs-base); text-align: left; float: none;
+  }
+  .gmark:hover .pop { display: block; }
+  .gmark .pop .hd { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--text); font-size: var(--ui-fs-sm); font-weight: 500; }
+
+  .interrupt {
+    margin: 16px 0; padding: 9px 12px; border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--err) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .interrupt .tx { color: var(--dim); font-size: var(--ui-fs-base); }
+  .interrupt .tx b { color: var(--text); font-weight: 500; }
+
+  /* ── 右栏面板 ── */
+  .right { background: var(--card); border-radius: var(--r-lg); display: flex; flex-direction: column; overflow: hidden; }
+  .rp-head { height: 38px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line-soft); font-size: var(--ui-fs-sm); color: var(--faint); }
+  .rp-head b { color: var(--text); font-weight: 500; }
+  .rp-body { flex: 1; overflow: auto; padding: 10px 12px; }
+  .rp-group { margin-bottom: 16px; }
+  .rp-group-t { font-size: var(--ui-fs-xs); color: var(--faint); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .rp-note { padding: 8px; border-radius: var(--r-sm); border: 1px solid transparent; cursor: pointer; }
+  .rp-note:hover { background: var(--surface); border-color: var(--line-soft); }
+  .rp-note.hl { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+  .rp-note .hd { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .rp-note .tx { font-size: var(--ui-fs-base); color: var(--dim); }
+  .rp-empty { color: var(--faint); font-size: var(--ui-fs-sm); padding: 4px; }
+
+  /* ── 原型切换条（不属于设计本身） ── */
+  .proto-bar {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px; padding: 5px;
+    background: #0b0b0c; color: #d8d8de; border-radius: 999px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.14);
+    font: 12px/1 var(--mono); z-index: 100; white-space: nowrap;
+  }
+  .proto-bar button { all: unset; cursor: pointer; padding: 6px 9px; border-radius: 999px; color: inherit; }
+  .proto-bar button:hover { background: rgba(255,255,255,.12); }
+  .proto-bar .lab { padding: 0 6px; min-width: 144px; text-align: center; }
+  .proto-bar .sep { width: 1px; height: 16px; background: rgba(255,255,255,.18); margin: 0 2px; }
+  .proto-bar .tag { color: #8f8f99; padding: 0 4px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sb-t">会话</div>
+    <div class="sb-row on"><span>Advisor 桌面展示</span><span>now</span></div>
+    <div class="sb-row"><span>远程只读审批</span><span>2h</span></div>
+    <div class="sb-row"><span>终端 tab 重构</span><span>5h</span></div>
+    <div class="sb-row"><span>上下文压缩 L2</span><span>1d</span></div>
+  </aside>
+
+  <main class="center">
+    <header class="topbar"><b>Advisor 桌面展示</b><span>·</span><span id="caps">advisor 开启</span></header>
+    <div class="stylebar" id="stylebar" hidden>
+      <span>Agent 处理过程显示风格</span>
+      <span class="seg" id="seg">
+        <button data-style="concise">简洁</button>
+        <button data-style="standard">标准</button>
+        <button data-style="detailed">详细</button>
+        <button data-style="expanded">完全展开</button>
+      </span>
+    </div>
+    <div class="stream" id="stream"><div class="col" id="col"></div></div>
+  </main>
+
+  <aside class="right">
+    <div class="rp-head" id="rp-head"><b>详情</b></div>
+    <div class="rp-body" id="rp-body"><div class="rp-empty">右栏常规内容。</div></div>
+  </aside>
+</div>
+
+<div class="proto-bar">
+  <button id="prev" title="上一个 (←)">←</button>
+  <span class="lab" id="lab">A</span>
+  <button id="next" title="下一个 (→)">→</button>
+  <span class="sep"></span>
+  <span class="tag">含 blocker</span><button id="tb" title="切换 blocker">off</button>
+  <span class="sep"></span>
+  <span class="tag">主题</span><button id="tt" title="切换深/浅色">dark</button>
+</div>
+
+<script>
+/* 丢弃型原型：只验证布局与信息层级，不接真实数据。 */
+const NOTES = {
+  concern: [
+    { sev: "concern", advisor: "code-review", turn: "T-0", text: "host/translate.ts 的 message_end 分支只取 assistant 错误文本，role:\"custom\" 被丢弃；entry 回放又跳过 custom_message。只做 live 半条链会让重启后记录消失——先定放行规则，再补回放。" },
+    { sev: "nit", advisor: "code-review", turn: "T-1", text: "entry-tree.ts 的 treeContentText 只在 content 是字符串时成立；custom_message 的 content 可能是块数组，树里出现 undefined。" },
+    { sev: "nit", advisor: "code-review", turn: "T-2", text: "\"1 note\" 的单复数与徽章文案应进 i18n key，而不是在组件里三元判断。" },
+  ],
+  blockerNote: { sev: "blocker", advisor: "code-review", turn: "T-0", text: "wire 类型已定稿为 role 联合，若只在 host 放行 custom 而不加类型分支，UI 会在运行时拿到未声明成员。" },
+};
+
+const VARIANTS = ["A", "B", "C", "D", "E"];
+const NAMES = { A: "行内脚注", B: "审阅卡片", C: "右栏审阅流", D: "事件流注入", E: "过程×卡片联动" };
+
+const params = new URLSearchParams(location.search);
+let variant = VARIANTS.includes(params.get("variant")) ? params.get("variant") : "A";
+let withBlocker = params.get("blocker") !== "0";
+
+const notesFor = () => (withBlocker ? [NOTES.blockerNote, ...NOTES.concern] : NOTES.concern);
+const maxSev = (notes) => notes.some(n => n.sev === "blocker") ? "blocker" : notes.some(n => n.sev === "concern") ? "concern" : "nit";
+const chip = (sev) => `<span class="chip ${sev}">${sev}</span>`;
+
+const msgUser = `<div class="msg user"><div class="bubble">桌面端要怎么显示 advisor 的 note？</div></div>`;
+const msgAsst = `
+  <div class="msg assistant">
+    <p>桌面端目前三处都缺：${'<code>host/translate.ts</code>'} 丢失 <code>role:"custom"</code>，回放跳过 <code>custom_message</code>，wire 类型里也没有这个分支。</p>
+    <div class="act"><span class="ico">▸</span><span class="lbl">read</span><span class="arg">host/translate.ts:442</span></div>
+    <div class="act"><span class="ico">▸</span><span class="lbl">read</span><span class="arg">host/wire/payloads.ts:425</span></div>
+    <p style="margin-top:10px">最小改动是 host 放行 + wire 加分支，再补一个卡片组件。</p>
+    <div class="turn-acts"><button class="q-btn" title="复制">⧉</button><button class="q-btn" title="分叉">⑂</button><span>14:02</span></div>
+  </div>`;
+
+/* A：行内脚注 */
+function renderA(notes) {
+  const sev = maxSev(notes);
+  const counts = ["blocker", "concern", "nit"].map(s => [s, notes.filter(n => n.sev === s).length]).filter(([, n]) => n);
+  return `${msgUser}${msgAsst}
+    <div class="fn">
+      <span class="fn-head" id="fnHead">
+        ${chip(sev)}
+        <span class="lab">Advisor · ${notes.length} 条 · ${counts.map(([s, n]) => s + " " + n).join(" / ")}</span>
+        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 1.5 L7 5 L3 8.5"/></svg>
+      </span>
+      <div class="fn-body" id="fnBody">
+        ${notes.map(n => `<div class="fn-note">
+          <div class="meta">${chip(n.sev)}<span class="age">${n.turn}</span></div>
+          <div class="tx">${n.text}</div>
+        </div>`).join("")}
+      </div>
+    </div>`;
+}
+
+/* B：审阅卡片 */
+function renderB(notes) {
+  const sev = maxSev(notes);
+  const blockers = notes.filter(n => n.sev === "blocker").length;
+  return `${msgUser}${msgAsst}
+    <div class="card tone-${sev}" id="card">
+      <div class="card-head" id="cardHead">
+        <span class="dot ${sev}"></span>
+        <span class="ttl">Advisor</span>
+        ${["blocker", "concern", "nit"].map(s => {
+          const n = notes.filter(x => x.sev === s).length;
+          return n ? chip(s) + `<span class="age">×${n}</span>` : "";
+        }).join("")}
+        ${blockers ? `<span class="age">· ${blockers} blocker</span>` : ""}
+        <span class="who">code-review</span>
+        <span class="chevs"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 3 L5 7 L8.5 3"/></svg></span>
+      </div>
+      <div class="card-body">
+        ${notes.map(n => `<div class="card-note">
+          <div class="hd">${chip(n.sev)}<span class="who">${n.advisor}</span><span class="age">${n.turn}</span></div>
+          <div class="tx">${n.text}</div>
+        </div>`).join("")}
+      </div>
+      <div class="card-foot">
+        <button class="link">跳到该轮</button>
+        <button class="link">全部展开</button>
+        <button class="link">复制</button>
+      </div>
+    </div>`;
+}
+
+/* D：事件流实时注入；位置 = steer 消息真正落地的位置 */
+function evGroup(notes, cls, openDefault) {
+  const sev = maxSev(notes);
+  const turns = [...new Set(notes.map(n => n.turn))].join(" / ");
+  return `<div class="ev ${cls}${openDefault ? " open" : ""}">
+    <div class="ev-head"><span class="dot ${sev}"></span><span class="lab">advisor</span>
+      ${["blocker", "concern", "nit"].map(s => { const n = notes.filter(x => x.sev === s).length; return n ? chip(s) + `<span class="age">×${n}</span>` : ""; }).join("")}
+      <span class="age">评审 ${turns}</span>
+      <span class="chev"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 1.5 L7 5 L3 8.5"/></svg></span>
+    </div>
+    <div class="ev-body">${notes.map(n => `<div class="ev-note">
+      <div class="hd">${chip(n.sev)}<span class="who">${n.advisor}</span><span class="age">${n.turn}</span></div>
+      <div class="tx">${n.text}</div>
+    </div>`).join("")}</div>
+  </div>`;
+}
+
+function renderD(notes) {
+  const mid = notes.filter(n => n.sev === "blocker");   // 只有 blocker 会在 run 中间落地
+  const end = notes.filter(n => n.sev !== "blocker");   // concern/nit 被扣留到 run 末尾
+  const cont = `<div class="msg assistant">
+    <p style="margin-top:10px">按这个方向补 wire 类型，然后接 UI。</p>
+    <div class="act"><span class="ico">▸</span><span class="lbl">edit</span><span class="arg">host/wire/payloads.ts</span></div>
+    <div class="act"><span class="ico">▸</span><span class="lbl">edit</span><span class="arg">host/translate.ts</span></div>
+    <p style="margin-top:10px">live 分支已接，回放待补。</p>
+    <div class="turn-acts"><button class="q-btn" title="复制">⧉</button><button class="q-btn" title="分叉">⑂</button><span>14:11</span></div>
+  </div>`;
+  return `${msgUser}${msgAsst}${mid.length ? evGroup(mid, "mid", true) : ""}${cont}${evGroup(end, "", false)}`;
+}
+
+const STYLE_AUTO_OPEN = { concise: false, standard: false, detailed: true, expanded: true };
+let procStyle = STYLE_AUTO_OPEN[params.get("style")] === undefined ? "standard" : params.get("style");
+let procOpen = procStyle !== "concise";
+let advOpen = STYLE_AUTO_OPEN[procStyle];
+
+const SEV_ORDER = ["blocker", "concern", "nit"];
+const countChips = (list) => SEV_ORDER
+  .map(s => [s, list.filter(x => x.sev === s).length])
+  .filter(([, n]) => n > 0)
+  .map(([s, n]) => `${chip(s)}<span class="age">×${n}</span>`)
+  .join("");
+
+const actRow = (label, arg) =>
+  `<div class="act"><span class="ico">▸</span><span class="lbl">${label}</span><span class="arg">${arg}</span></div>`;
+
+const blockerLine = (n) => `<div class="ev mid open" style="margin:10px 0">
+  <div class="ev-head"><span class="dot blocker"></span><span class="lab">advisor</span>${chip("blocker")}<span class="age">${n.turn}</span></div>
+  <div class="ev-body"><div class="ev-note"><div class="tx">${n.text}</div></div></div>
+</div>`;
+
+const noteBody = (list) => list.map(n => `<div class="card-note">
+  <div class="hd">${chip(n.sev)}<span class="who">${n.advisor}</span><span class="age">${n.turn}</span></div>
+  <div class="tx">${n.text}</div>
+</div>`).join("");
+
+/* E：过程可见时 blocker 原位插入；过程折叠时 blocker 收进结尾卡片；
+   详细/完全展开 -> 卡片自动展开。头部只报计数，T-x 只在展开后出现。 */
+function renderE(notes) {
+  const blockers = notes.filter(n => n.sev === "blocker");
+  const cardNotes = procOpen ? notes.filter(n => n.sev !== "blocker") : notes;
+  const tone = maxSev(cardNotes.length ? cardNotes : blockers);
+  const proc = procOpen
+    ? actRow("read", "host/translate.ts:442")
+      + actRow("read", "host/wire/payloads.ts:425")
+      + (blockers.length ? blockerLine(blockers[0]) : "")
+      + actRow("edit", "host/translate.ts")
+      + actRow("edit", "ui-src/types/session.ts")
+    : `<div class="proc-line" id="procLine"><span class="pulse"></span>工作中 · 4 步 · read ×2 edit ×2<span class="chev"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 1.5 L7 5 L3 8.5"/></svg></span></div>`;
+  return `${msgUser}
+    <div class="msg assistant">
+      <p>桌面端目前三处都缺：<code>host/translate.ts</code> 丢失 <code>role:"custom"</code>，回放跳过 <code>custom_message</code>，wire 类型里也没有这个分支。</p>
+      ${proc}
+      <p style="margin-top:10px">live 分支已接，回放待补。</p>
+      <div class="turn-acts"><button class="q-btn" title="复制">⧉</button><button class="q-btn" title="分叉">⑂</button><span>14:11</span></div>
+    </div>
+    <div class="card tone-${tone}${advOpen ? "" : " collapsed"}" id="advCard">
+      <div class="card-head" id="advHead">
+        <span class="dot ${maxSev(cardNotes.length ? cardNotes : blockers)}"></span>
+        <span class="ttl" style="font-weight:400;font-family:var(--mono);font-size:var(--code-fs)">advisor</span>
+        ${countChips(cardNotes)}
+        <span class="chevs"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 3 L5 7 L8.5 3"/></svg></span>
+      </div>
+      <div class="card-body">${noteBody(cardNotes)}</div>
+    </div>`;
+}
+
+/* C：右栏审阅流；聊天里只有 gutter 标记，blocker 例外 */
+function renderC(notes) {
+  const blockers = notes.filter(n => n.sev === "blocker");
+  const rest = notes.filter(n => n.sev !== "blocker");
+  const sev = maxSev(rest);
+  const gutter = rest.length ? `
+    <span class="gmark">
+      <span class="dot ${sev}"></span>Advisor ${rest.length}
+      <span class="pop">
+        <div class="hd"><span class="dot ${sev}"></span>Advisor · ${rest.length} 条</div>
+        ${rest.map(n => `<div style="margin:6px 0">${chip(n.sev)} <span class="age">${n.turn}</span><div style="margin-top:4px">${n.text}</div></div>`).join("")}
+      </span>
+    </span>` : "";
+  const inline = blockers.length ? `<div class="interrupt">
+      <span class="chip blocker">blocker</span>
+      <div class="tx"><b>审计未通过：</b>${blockers[0].text}</div>
+    </div>` : "";
+  return `${msgUser}${msgAsst}${inline}${gutter}`;
+}
+
+function panelC(notes) {
+  const groups = new Map();
+  for (const n of notes) {
+    if (!groups.has(n.turn)) groups.set(n.turn, []);
+    groups.get(n.turn).push(n);
+  }
+  return `
+    <div class="rp-group">
+      <div class="rp-group-t"><span>本轮</span><span>${notes.length} 条</span></div>
+      ${[...groups].map(([turn, list]) => `
+        <div class="rp-group">
+          <div class="rp-group-t"><span>${turn}</span><span>${list.length}</span></div>
+          ${list.map(n => `<div class="rp-note">
+            <div class="hd">${chip(n.sev)}<span class="who">${n.advisor}</span></div>
+            <div class="tx">${n.text}</div>
+          </div>`).join("")}
+        </div>`).join("")}
+    </div>`;
+}
+
+function render() {
+  const notes = notesFor();
+  const col = document.getElementById("col");
+  const stream = document.getElementById("stream");
+  stream.style.setProperty("--gutter", variant === "C" ? "48px" : "48px");
+  col.innerHTML = ({ A: renderA, B: renderB, C: renderC, D: renderD, E: renderE })[variant](notes);
+
+  const head = document.getElementById("rp-head");
+  const body = document.getElementById("rp-body");
+  if (variant === "C") {
+    head.innerHTML = `<b>Advisor</b><span>·</span><span>${notes.length} 条</span>`;
+    body.innerHTML = panelC(notes);
+  } else {
+    head.innerHTML = `<b>详情</b>`;
+    body.innerHTML = `<div class="rp-empty">右栏常规内容（C 变体在这里显示审阅流）。</div>`;
+  }
+
+  if (variant === "A") {
+    const h = document.getElementById("fnHead");
+    const b = document.getElementById("fnBody");
+    h.onclick = () => { b.classList.toggle("open"); h.classList.toggle("open"); };
+  }
+  if (variant === "B") {
+    const c = document.getElementById("card");
+    document.getElementById("cardHead").onclick = () => c.classList.toggle("collapsed");
+    if (maxSev(notes) === "nit") c.classList.add("collapsed");
+  }
+  if (variant === "D") {
+    document.querySelectorAll(".ev-head").forEach(h => {
+      h.onclick = () => h.parentElement.classList.toggle("open");
+    });
+  }
+  if (variant === "C") {
+    document.querySelectorAll(".rp-note").forEach(el => {
+      el.onclick = () => {
+        document.querySelectorAll(".rp-note.hl").forEach(x => x.classList.remove("hl"));
+        el.classList.add("hl");
+      };
+    });
+  }
+
+  const bar = document.getElementById("stylebar");
+  bar.hidden = variant !== "E";
+  if (variant === "E") {
+    for (const b of bar.querySelectorAll("button")) b.classList.toggle("on", b.dataset.style === procStyle);
+    const pl = document.getElementById("procLine");
+    if (pl) pl.onclick = () => { procOpen = true; render(); };
+    const ah = document.getElementById("advHead");
+    if (ah) ah.onclick = () => { advOpen = !advOpen; render(); };
+  }
+  document.getElementById("lab").textContent = `${variant} · ${NAMES[variant]}`;
+  document.getElementById("caps").textContent = withBlocker ? "advisor 开启 · 含 blocker" : "advisor 开启";
+  document.getElementById("tb").textContent = withBlocker ? "on" : "off";
+  document.getElementById("tt").textContent = document.documentElement.dataset.theme;
+}
+
+function setVariant(v) {
+  variant = v;
+  const u = new URL(location.href);
+  u.searchParams.set("variant", v);
+  history.replaceState(null, "", u);
+  render();
+}
+
+document.getElementById("prev").onclick = () => setVariant(VARIANTS[(VARIANTS.indexOf(variant) + VARIANTS.length - 1) % VARIANTS.length]);
+document.getElementById("next").onclick = () => setVariant(VARIANTS[(VARIANTS.indexOf(variant) + 1) % VARIANTS.length]);
+document.getElementById("tb").onclick = () => {
+  withBlocker = !withBlocker;
+  const u = new URL(location.href);
+  u.searchParams.set("blocker", withBlocker ? "1" : "0");
+  history.replaceState(null, "", u);
+  render();
+};
+document.getElementById("seg").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-style]");
+  if (!btn) return;
+  procStyle = btn.dataset.style;
+  procOpen = procStyle !== "concise";
+  advOpen = STYLE_AUTO_OPEN[procStyle];
+  const u = new URL(location.href);
+  u.searchParams.set("style", procStyle);
+  history.replaceState(null, "", u);
+  render();
+});
+document.getElementById("tt").onclick = () => {
+  const el = document.documentElement;
+  el.dataset.theme = el.dataset.theme === "dark" ? "light" : "dark";
+  render();
+};
+addEventListener("keydown", e => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+  if (e.key === "ArrowLeft") document.getElementById("prev").click();
+  if (e.key === "ArrowRight") document.getElementById("next").click();
+});
+
+render();
+</script>
+</body>
+</html>
