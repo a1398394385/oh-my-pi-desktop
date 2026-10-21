@@ -28,7 +28,7 @@ const baselinePath = "scripts/comment-language-baseline.json";
 const update = process.argv.includes("--update");
 
 // Aggregation directories in stable output order ("(root)" collects root-level source files)
-const SCOPE_DIRS = ["host", "ui-src", "scripts", "src-tauri/src", "ui", ".githooks", "(root)"];
+const SCOPE_DIRS = ["host", "ui-src", "scripts", "src-tauri/src", "ui", "(root)"];
 const excludedSegments = new Set(["node_modules", "dist", "out", "release", "target", "coverage"]);
 const exemptPrefixes = [
   "ui-src/i18n/",

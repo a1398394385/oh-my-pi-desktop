@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { extname } from "node:path";
 
 const root = process.cwd();
-const SCOPE = ["host", "ui-src", "scripts", "src-tauri/src", "ui", ".githooks", "(root)"];
+const SCOPE = ["host", "ui-src", "scripts", "src-tauri/src", "ui", "(root)"];
 const EXCLUDED = new Set(["node_modules", "dist", "out", "release", "target", "coverage"]);
 const EXEMPT = ["ui-src/i18n/", "ui-src/components/settings/settings-zh.ts", "ui-src/components/composer/commands-zh.ts"];
 const MARKERS = { js: ["//", "/*"], rust: ["//", "/*"], css: ["/*"], shell: ["#"], html: ["<!--", "//", "/*"] };

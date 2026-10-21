@@ -1,6 +1,6 @@
 # 代码注释规范（SSOT）
 
-> 适用范围：`host/` `ui-src/` `scripts/` `src-tauri/src/` `ui/` `.githooks/` 下全部源码文件的注释。
+> 适用范围：`host/` `ui-src/` `scripts/` `src-tauri/src/` `ui/` 下全部源码文件的注释。
 > 登记见 [documentation.md](documentation.md) §2「代码注释规范」。根 [AGENTS.md](../AGENTS.md) 只留硬约束摘要与指针，本文件是写作、删除与治理的唯一定义。
 > 机器门禁：注释语言棘轮 `scripts/check-comment-language.mjs`（`bun run check` 内，基线 `scripts/comment-language-baseline.json` 只许降不许升）。
 
