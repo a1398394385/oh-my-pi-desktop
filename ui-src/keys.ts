@@ -38,12 +38,13 @@ import { cycleTermTab, termGroupKey } from "./components/main/right/termTabs";
 // Double-Esc action window (500ms). Exported so other Esc-clears (the /btw composer) match it.
 export const DOUBLE_ESC_MS = 500;
 let doubleEscTimer: TimerHandle | undefined;
-let escArmedAction: "clear" | "tree" | null = null;
+let escArmedAction: "clear" | "tree" | "git" | null = null;
 
 /** Global Esc routing:
- *  1. tree page: one esc switches back to messages;
- *  2. composer has text: two esc presses clear the composer;
- *  3. composer empty: two esc presses summon the tree (while generating, the
+ *  1. git manage page: two esc presses close it;
+ *  2. tree page: one esc switches back to messages;
+ *  3. composer has text: two esc presses clear the composer;
+ *  4. composer empty: two esc presses summon the tree (while generating, the
  *     first press aborts generation).
  */
 function handleEsc(): boolean | undefined {
@@ -55,6 +56,24 @@ function handleEsc(): boolean | undefined {
   }
   if (document.querySelector(".lp-mask")) {
     return false; // modal dialogs like the tree-jump confirmation close first
+  }
+
+  // git manage page (ahead of the hub/session routing): esc only serves the
+  // double-press close — a single press must not fall through to the
+  // message-page abort/tree routing behind it
+  if (st.gitManage) {
+    if (escArmedAction !== "git") {
+      escArmedAction = "git";
+      clearTimeout(doubleEscTimer);
+      doubleEscTimer = setTimeout(() => {
+        if (escArmedAction === "git") escArmedAction = null;
+      }, DOUBLE_ESC_MS + 20);
+      return true;
+    }
+    clearTimeout(doubleEscTimer);
+    escArmedAction = null;
+    st.closeGitManage();
+    return true;
   }
 
   // 0. agent hub: Esc closes it (and restores the right panel / composer focus)
@@ -213,6 +232,7 @@ function openCyclePreview(
 
 function cycleModel(delta: number): void {
   const st = useAppStore.getState();
+  if (st.gitManage) return; // git manage page owns the main column: no hidden session side effects
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
@@ -267,6 +287,7 @@ function closeThinkMenu(): void {
 
 function cycleThinking(): void {
   const st = useAppStore.getState();
+  if (st.gitManage) return;
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
@@ -286,7 +307,7 @@ function cycleThinking(): void {
  * a manual open always shows the full menu — clear any ctrl+p preview state */
 function openModelMenu(): void {
   const st = useAppStore.getState();
-  if (st.settingsOpen) return; // menus under the settings overlay are invisible, do not open
+  if (st.settingsOpen || st.gitManage) return; // menus under the settings overlay / git page are invisible, do not open
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
@@ -297,6 +318,7 @@ function openModelMenu(): void {
  * live toggle in a session, local create_session intent on the new-session page) */
 function togglePlanMode(): void {
   const st = useAppStore.getState();
+  if (st.gitManage) return;
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !s.planMode });
@@ -311,6 +333,7 @@ function toggleSubagents(): void {
 /** app.thinking.toggle: the thinking block "expand while running, collapse when
  * done" switch (= appearance page "Show thinking process") */
 function toggleThinking(): void {
+  if (useAppStore.getState().gitManage) return;
   const showThinking = !useAppStore.getState().uiPrefs.showThinking;
   // Write a new object (selector components sense it by reference) + _v bump (the
   // old "write + notify"); the trailing toast carries its own bump
@@ -333,6 +356,7 @@ function toggleThinking(): void {
 
 /** app.tools.expand: the tool output "expand while running, collapse when done" switch */
 function toggleToolOutput(): void {
+  if (useAppStore.getState().gitManage) return;
   const expandToolOutput = !useAppStore.getState().uiPrefs.expandToolOutput;
   useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput } }));
   saveUiPrefs();
@@ -351,7 +375,7 @@ function toggleToolOutput(): void {
  * up with unread ones when fewer than 9) */
 function handleSessionJump(digit: string): boolean {
   const st = useAppStore.getState();
-  if (st.settingsOpen) return false;
+  if (st.settingsOpen || st.gitManage) return false;
   if (document.querySelector(".lp-mask")) return false;
 
   // Take visible items from the same source as the sidebar badges (allProjects
@@ -580,7 +604,7 @@ function onKeyDown(e: KeyboardEvent): void {
     !e.repeat
   ) {
     const st = useAppStore.getState();
-    if (!st.hubOpen && !st.settingsOpen && !st.draftHasContent && e.target instanceof Node) {
+    if (!st.hubOpen && !st.settingsOpen && !st.gitManage && !st.draftHasContent && e.target instanceof Node) {
       const main = document.getElementById("main");
       const inScope = e.target === document.body ? lastPointerInMain : !!main?.contains(e.target);
       if (inScope) {

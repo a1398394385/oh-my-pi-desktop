@@ -10,15 +10,15 @@
 // graph cache, so the revalidation usually costs no subprocess either.
 import { useAppStore } from "./index";
 import { t } from "../i18n";
-import { expandRightPanel } from "../components/main/right/tabs";
 import type {
   CommitFileDiffFrame,
+  FileVersionsFrame,
   GitCommitDetailFrame,
   GitGraphFrame,
   HostRequest,
 } from "../types/frames";
 
-type GitGraphReply = GitGraphFrame | GitCommitDetailFrame | CommitFileDiffFrame;
+type GitGraphReply = GitGraphFrame | GitCommitDetailFrame | CommitFileDiffFrame | FileVersionsFrame;
 
 interface Pending {
   resolve: (frame: GitGraphReply) => void;
@@ -92,6 +92,20 @@ export function fetchGitCommitFileDiff(input: {
   return graphRequest({ type: "git_commit_file_diff", ...input }) as Promise<CommitFileDiffFrame>;
 }
 
+/**
+ * Both versions of one file for the compare view. `oid` = that commit's own
+ * change; `staged` = HEAD vs index; neither = index vs the file on disk.
+ */
+export function fetchGitFileVersions(input: {
+  cwd: string;
+  path: string;
+  oid?: string;
+  oldPath?: string;
+  staged?: boolean;
+}): Promise<FileVersionsFrame> {
+  return graphRequest({ type: "git_file_versions", ...input }) as Promise<FileVersionsFrame>;
+}
+
 /** Landing pad for graph-domain reply frames (called from wsHandlers/git-graph.ts). */
 export function landGitGraphFrame(msg: GitGraphReply): void {
   const p = pending.get(msg.reqId);
@@ -99,35 +113,4 @@ export function landGitGraphFrame(msg: GitGraphReply): void {
   pending.delete(msg.reqId);
   clearTimeout(p.timer);
   p.resolve(msg);
-}
-
-/**
- * Git page → right panel: show one file's patch of a commit. The target is
- * written to the store first (the tab renders it immediately), then the
- * request fills in the diff; a stale reply (user picked another file) is
- * dropped by comparing the target identity.
- */
-export function openCommitFileDiff(input: { cwd: string; oid: string; path: string; oldPath?: string }): void {
-  useAppStore.setState({ commitDiff: { ...input, diff: "", loading: true, error: null } });
-  expandRightPanel("commitdiff");
-  fetchGitCommitFileDiff(input)
-    .then((frame) => {
-      const cur = useAppStore.getState().commitDiff;
-      if (!cur || cur.oid !== input.oid || cur.path !== input.path) return;
-      useAppStore.setState({
-        commitDiff: {
-          ...input,
-          diff: frame.diff ?? "",
-          loading: false,
-          error: frame.ok ? null : (frame.error ?? t("gitPage.failed")),
-        },
-      });
-    })
-    .catch((e) => {
-      const cur = useAppStore.getState().commitDiff;
-      if (!cur || cur.oid !== input.oid || cur.path !== input.path) return;
-      useAppStore.setState({
-        commitDiff: { ...input, diff: "", loading: false, error: e instanceof Error ? e.message : String(e) },
-      });
-    });
 }
