@@ -211,21 +211,51 @@ export function isCacheMiss(inputTokens: number, cacheReadTokens: number, minPro
   return cacheReadTokens / inputTokens < MIN_HIT_RATIO;
 }
 
-// Flat-rate subscription plans price every model at 0 in the catalog, which
-// zeroes the keepalive spend/saved stats. List API prices live here so stats
-// show what the same usage would cost pay-as-you-go. Keyed by catalog id;
-// only consulted when the catalog cost is missing or all-zero.
-// Source: bigmodel.cn list prices per 1M tokens, checked 2026-10-19.
-const SUBSCRIPTION_PLAN_API_PRICES: Record<string, Partial<CostPerM>> = {
-  "zhipu-coding-plan/glm-5.3-flash": { input: 0.15, output: 0.5, cacheRead: 0.03 },
-  "zhipu-coding-plan/glm-5.3-flashx": { input: 0.15, output: 0.5, cacheRead: 0.03 },
-  "zhipu-coding-plan/glm-5.3": { input: 1.4, output: 4.4 },
-};
+/** One catalog row's worth of price data: bare model id plus its cost. */
+export interface CatalogPriceRow {
+  id: string;
+  cost?: Partial<CostPerM> | undefined;
+}
 
-/** Catalog cost, unless it is missing/all-zero (subscription plan) and a list API price exists. */
-export function effectiveProbeCost(modelId: string, cost: Partial<CostPerM> | undefined): Partial<CostPerM> | undefined {
+/**
+ * Reference list price for a model the catalog prices at 0 (flat-rate
+ * subscription plans zero every row). The same bare model id is also listed by
+ * pay-as-you-go resellers, so the modal non-zero row of that id supplies what
+ * the same usage would cost on the list API; ties go to the cheapest input.
+ * Returns undefined when no sibling row is priced.
+ */
+export function catalogListCost(modelId: string, rows: readonly CatalogPriceRow[]): Partial<CostPerM> | undefined {
+  const tally = new Map<string, { cost: CostPerM; count: number }>();
+  for (const row of rows) {
+    const cost = row.cost;
+    if (row.id !== modelId || !cost) continue;
+    const priced: CostPerM = {
+      input: cost.input ?? 0,
+      output: cost.output ?? 0,
+      cacheRead: cost.cacheRead ?? 0,
+    };
+    if (priced.input <= 0 && priced.output <= 0 && priced.cacheRead <= 0) continue;
+    const key = `${priced.input}/${priced.cacheRead}/${priced.output}`;
+    const hit = tally.get(key);
+    if (hit) hit.count += 1;
+    else tally.set(key, { cost: priced, count: 1 });
+  }
+  let best: { cost: CostPerM; count: number } | undefined;
+  for (const entry of tally.values()) {
+    if (!best || entry.count > best.count || (entry.count === best.count && entry.cost.input < best.cost.input)) {
+      best = entry;
+    }
+  }
+  return best?.cost;
+}
+
+/** Catalog cost, unless it is missing/all-zero (subscription plan) and a sibling list price exists. */
+export function effectiveProbeCost(
+  cost: Partial<CostPerM> | undefined,
+  listCost: Partial<CostPerM> | undefined,
+): Partial<CostPerM> | undefined {
   if (cost && Object.values(cost).some((v) => typeof v === "number" && v > 0)) return cost;
-  return SUBSCRIPTION_PLAN_API_PRICES[modelId] ?? cost;
+  return listCost ?? cost;
 }
 
 /** USD saved by this probe hitting cache instead of a cold full-price read. */
