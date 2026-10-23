@@ -3,7 +3,6 @@ export const rightZh = {
   tabSubagent: "子代理",
   tabBgcmd: "后台命令",
   tabFile: "文件",
-  tabCommitDiff: "提交差异",
   tabTerminal: "终端",
   tabBrowser: "浏览器",
   tabAgentBrowser: "Agent 浏览器",

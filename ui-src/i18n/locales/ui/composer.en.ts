@@ -29,6 +29,7 @@ export const composerEn = {
   voiceTranscribing: "Transcribing…",
   // ModeMenu.tsx
   modeAlwaysAsk: "Manual approval",
+  modeAlwaysAskCached: "Ask and remember",
   modeWrite: "Default",
   modeYolo: "Full access",
   modeSmart: "Smart approval",

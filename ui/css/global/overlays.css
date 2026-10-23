@@ -120,6 +120,9 @@
 .ctx-menu button:disabled { opacity: .45; cursor: default; }
 .ctx-menu button:disabled:hover { background: none; }
 
+/* Full-bleed divider (negative margin cancels the menu padding) slightly stronger than --line */
+.ctx-menu .sep { height: 1px; background: color-mix(in srgb, var(--line), var(--text) 20%); margin: 5px -5px; flex: none; }
+
 /* ── toast ── */
 #toast {
   position: fixed; bottom: 24px; left: 50%;

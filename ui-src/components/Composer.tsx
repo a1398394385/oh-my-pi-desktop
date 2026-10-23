@@ -20,7 +20,7 @@ import { bgJobsKey } from "../store/session";
 import { invoke } from "../store/ws";
 import { expandRightPanel } from "./main/right/tabs";
 import type { PromptAttachment } from "../types/frames";
-import { closeAllMenus } from "../shell";
+import { closeAllMenus, motionEnabled } from "../shell";
 import Icon from "../Icon";
 import AttachRow from "./composer/AttachRow";
 import ModeMenu, { MODE_META, SMART_MODE } from "./composer/ModeMenu";
@@ -135,6 +135,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const pendingFiles = useAppStore((st) => st.pendingFiles);
   const escArmedUntil = useAppStore((st) => st.escArmedUntil);
   const composerSetSignal = useAppStore((st) => st.composerSetSignal);
+  const commandFlash = useAppStore((st) => st.commandFlash);
   const menuSignal = useAppStore((st) => st.menuSignal);
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
   const newSessionModel = useAppStore((st) => st.newSessionModel);
@@ -915,6 +916,22 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
     </button>
   );
+  // Slash-command echo card: only for the session that produced it (a session switch hides it)
+  const flash = commandFlash && commandFlash.sessionId === sessionId ? commandFlash : null;
+  // The editor flips back in when the card unmounts (mirror of the card's own
+  // entrance): a one-shot animation class, skipped when motion is off.
+  const [returning, setReturning] = useState(false);
+  const flashShownRef = useRef(false);
+  useEffect(() => {
+    const shown = Boolean(flash);
+    const left = flashShownRef.current && !shown;
+    flashShownRef.current = shown;
+    if (!left || !motionEnabled()) return;
+    setReturning(true);
+    const timer = setTimeout(() => setReturning(false), 240);
+    return () => clearTimeout(timer);
+  }, [flash]);
+
   const modelThinkPills = (
     <button
       className={"pill-btn" + (openMenu === "model" ? " active" : "")}
@@ -933,7 +950,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     <>
       <div
         id="composer"
-        className={(inWelcome ? "in-welcome " : "") + (isBashMode(text) ? "bash-mode " : "") + (dragOver ? "ring-1 ring-accent " : "")}
+        className={
+          (inWelcome ? "in-welcome " : "") +
+          (isBashMode(text) ? "bash-mode " : "") +
+          (dragOver ? "ring-1 ring-accent " : "") +
+          (flash ? "flash-on " : "") +
+          (returning ? "flash-return " : "")
+        }
         ref={rootRef}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
@@ -1153,6 +1176,16 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             enabledModels; the second-level overlay is a direct child of #composer) */}
         {openMenu === "model" && <ModelMenu btnRef={modelBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
         <input type="file" id="filePicker" multiple hidden ref={pickerRef} onChange={onPick} />
+        {/* A consumed slash command echoes here: the whole composer card (editor +
+            toolbar) is replaced for ~1s by this page-turning card. Siblings are
+            hidden, not unmounted, so the draft and caret survive; keyed on seq so
+            a second command replays the flip. */}
+        {flash && (
+          <div className={"cmdf" + (flash.phase === "out" ? " is-out" : "")} key={flash.seq}>
+            <div className="cmdf-c">{flash.command || flash.text}</div>
+            {flash.command && flash.text && <div className="cmdf-o">{flash.text}</div>}
+          </div>
+        )}
       </div>
     </>
   );

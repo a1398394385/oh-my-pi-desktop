@@ -150,6 +150,27 @@ function fitAndResize(own: TermSession) {
     // PTY ready → send resize; when not ready the create frame carries the first-frame size, no top-up needed here
     if (own.ready && !own.dead) send({ type: "terminal_resize", id: own.id, cols: term.cols, rows: term.rows });
   }
+  verifyRowsFit(own);
+}
+
+// FitAddon can overcount rows when CSS zoom mixes coordinate domains (WKWebView/Safari
+// measure quirks; Chrome is self-consistent and this is a no-op there), clipping the last
+// row behind the host's overflow:hidden. Verify after render with same-domain
+// getBoundingClientRect and shrink one row per frame until the buffer fits.
+function verifyRowsFit(own: TermSession, depth = 0) {
+  if (depth >= 3) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (own.dead) return;
+    const last = own.hostEl.querySelector<HTMLElement>(".xterm-rows > :last-child");
+    if (!last || own.term.rows <= 1) return;
+    const overflow = last.getBoundingClientRect().bottom - own.hostEl.getBoundingClientRect().bottom;
+    if (overflow <= 2) return;
+    own.term.resize(own.term.cols, own.term.rows - 1);
+    own.lastDims = own.term.cols + "x" + own.term.rows;
+    if (own.ready && !own.dead) send({ type: "terminal_resize", id: own.id, cols: own.term.cols, rows: own.term.rows });
+    own.term.scrollToBottom();
+    verifyRowsFit(own, depth + 1);
+  }));
 }
 
 function scheduleFit(own: TermSession) {

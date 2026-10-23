@@ -3,9 +3,10 @@
 // (SchemaRows) + the discovered hook list, over the shared .mcp-form-* field language:
 // - scope capsule filters the list and targets new hooks (profile / project .omp)
 // - "new hook" / a row click open the page-level editor window (.set-edit-*), which replaces
-//   the whole page body: create asks for the phase + tool and the host writes
-//   hooks/<phase>/<tool>.ts from a phase-aware template; edit reads the hook file on mount and
-//   writes it back on save
+//   the whole page body: create asks for the event (tool_call/tool_result with a matcher tool,
+//   empty = "*", or a session lifecycle event) and the host writes hooks/<phase>/<tool|event>.ts
+//   from an event-aware template, with the scope capsule at the card's top-right (same layout
+//   idea as ZCode's hook form); edit reads the hook file on mount and writes it back on save
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast, pathBase } from "../../../store";
@@ -13,8 +14,27 @@ import type { HookAssetItem } from "../../../types/frames";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import Icon from "../../../Icon";
-import { EditWindowHead, emptyRow } from "../common";
+import { EditWindowHead, Sel, emptyRow } from "../common";
 import ScopeSel from "../ScopeSel";
+
+// The eight events the host template supports (host/assets.ts HOOK_EVENTS). Tool events filter
+// by matcher; lifecycle events are one file per event under hooks/pre/ (discovery convention).
+const HOOK_EVENTS = ["tool_call", "tool_result", "turn_start", "turn_end", "agent_start", "agent_end", "session_stop", "session_shutdown"] as const;
+type HookEvent = (typeof HOOK_EVENTS)[number];
+const EVENT_LABEL: Record<HookEvent, string> = {
+  tool_call: "PreToolUse",
+  tool_result: "PostToolUse",
+  turn_start: "TurnStart",
+  turn_end: "TurnEnd",
+  agent_start: "AgentStart",
+  agent_end: "AgentEnd",
+  session_stop: "SessionStop",
+  session_shutdown: "SessionShutdown",
+};
+const isToolEvent = (e: string) => e === "tool_call" || e === "tool_result";
+// Rows from older hosts predate the event field: derive it from the phase
+const rowEvent = (h: HookAssetItem): HookEvent =>
+  (h.event as HookEvent) || (h.phase === "pre" ? "tool_call" : "tool_result");
 
 // Hook file editor: reads the file on mount, writes it back and closes on the saved reply.
 function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => void }) {
@@ -72,13 +92,15 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
       <div className="set-card set-edit-card">
         <div className="mcp-form-row">
           <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-            <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
-            <input className="mcp-form-input mcp-form-code mcp-inp-num" value={hook.phase} disabled readOnly />
+            <label className="mcp-form-label">{t("settingsPage.hooks.eventLabel")}</label>
+            <input className="mcp-form-input mcp-form-code mcp-inp-num" value={EVENT_LABEL[rowEvent(hook)]} disabled readOnly />
           </div>
-          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-            <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
-            <input className="mcp-form-input mcp-form-code mcp-inp-num" value={hook.tool || "*"} disabled readOnly />
-          </div>
+          {isToolEvent(rowEvent(hook)) && (
+            <div className="mcp-form-group mcp-form-half mcp-form-narrow">
+              <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
+              <input className="mcp-form-input mcp-form-code mcp-inp-num" value={hook.tool || "*"} disabled readOnly />
+            </div>
+          )}
         </div>
         <div className="mcp-form-hint mcp-form-hint-share">{t("settingsPage.hooks.nameLockedHint")}</div>
         <div className="mcp-form-group">
@@ -98,13 +120,36 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
   );
 }
 
-// Create form: phase pills + tool name; the host writes the template file and replies with
-// an asset_file frame, whose arrival closes the form (the list refresh brings the new row).
-function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string }; onClose: () => void }) {
+// Scope dropdown shared by the discovered-list bar and the create form (profile pinned
+// first + workspace projects), so both stay on the same scope key.
+function HookScopeSel({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const { t } = useTranslation();
+  const allProjects = useAppStore((s) => s.allProjects);
+  const removedProjects = useAppStore((s) => s.removedProjects);
+  return (
+    <ScopeSel
+      value={value}
+      onChange={onChange}
+      profile={{ id: "profile", label: t("settingsPage.hooks.profileLabel") }}
+      projects={allProjects
+        .filter((c) => !removedProjects.includes(c))
+        .map((c) => ({ id: `project:${c}`, label: c.split("/").pop() || c }))}
+    />
+  );
+}
+
+// Create form: event dropdown + matcher tool + scope capsule (ZCode hook-form layout).
+// The host writes the template file and replies with an asset_file frame, whose arrival
+// closes the form (the list refresh brings the new row).
+function HookNewForm({ scope, onScopeChange, onClose }: {
+  scope: string;
+  onScopeChange: (id: string) => void;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const file = useAppStore((s) => s.assetFile);
   const err = useAppStore((s) => s.assetErr);
-  const [phase, setPhase] = useState<"pre" | "post">("pre");
+  const [event, setEvent] = useState<HookEvent>("tool_call");
   const [tool, setTool] = useState("");
   const [status, setStatus] = useState("");
   const pending = useRef(false); // a create request is in flight
@@ -125,14 +170,13 @@ function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string 
   }, [err]);
 
   const create = () => {
-    const name = tool.trim();
-    if (!name) {
-      toast(t("settingsPage.shared.nameFirst"));
-      return;
-    }
+    // Tool events: empty matcher means "*" (the template drops the toolName filter). Lifecycle
+    // events ignore the matcher — the host names the file after the event itself.
     setStatus(t("settingsPage.shared.saving"));
     pending.current = true;
-    send({ type: "asset_file_create", kind: "hook", name, phase, ...scope });
+    const ci = scope.indexOf(":");
+    const parts = ci < 0 ? { scope } : { scope: scope.slice(0, ci), cwd: scope.slice(ci + 1) };
+    send({ type: "asset_file_create", kind: "hook", event, name: tool.trim() || "*", ...parts });
   };
 
   return (
@@ -147,38 +191,57 @@ function HookNewForm({ scope, onClose }: { scope: { scope: string; cwd?: string 
         </button>
       </EditWindowHead>
       <div className="set-card set-edit-card">
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.hooks.phaseLabel")}</label>
-          <div className="mcp-type-pills" id="hookPhasePills">
-            {(["pre", "post"] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={"mcp-type-pill" + (phase === p ? " on" : "")}
-                title={p === "pre" ? t("settingsPage.hooks.phasePreTip") : t("settingsPage.hooks.phasePostTip")}
-                onClick={() => setPhase(p)}
-              >
-                {p}
-              </button>
-            ))}
+        <div className="mcp-form-row">
+          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
+            <label className="mcp-form-label">{t("settingsPage.hooks.eventLabel")}</label>
+            <Sel
+              id="hookEventSel"
+              className="mcp-form-sel"
+              btnClassName="mcp-form-sel-btn"
+              btnChildren={
+                <>
+                  <span className="mcp-form-sel-cur">{EVENT_LABEL[event]}</span>
+                  <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                </>
+              }
+              onPickMi={(mi) => setEvent((mi.dataset.v as HookEvent) || "tool_call")}
+            >
+              {HOOK_EVENTS.map((e) => (
+                <div key={e} className="mi" data-v={e}>
+                  <span className="ck" style={{ visibility: event === e ? "visible" : "hidden" }}>✓</span>
+                  <span className="mi-label">{EVENT_LABEL[e]}</span>
+                </div>
+              ))}
+            </Sel>
+            <div className="mcp-form-hint">{t("settingsPage.hooks.eventHint")}</div>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="mcp-form-label mb-0">{t("settingsPage.hooks.scopeLabel")}</span>
+            <HookScopeSel value={scope} onChange={onScopeChange} />
           </div>
         </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
-          <input
-            type="text"
-            className="mcp-form-input mcp-form-code mcp-inp-name"
-            placeholder={t("settingsPage.hooks.toolPlaceholder")}
-            spellCheck={false}
-            autoFocus
-            value={tool}
-            onChange={(e) => setTool(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") create();
-            }}
-          />
-          <div className="mcp-form-hint">{t("settingsPage.hooks.toolNameHint")}</div>
-        </div>
+        {isToolEvent(event) ? (
+          <div className="mcp-form-group">
+            <label className="mcp-form-label">{t("settingsPage.hooks.matcherLabel")}</label>
+            <input
+              type="text"
+              className="mcp-form-input mcp-form-code mcp-inp-name"
+              placeholder={t("settingsPage.hooks.matcherPlaceholder")}
+              spellCheck={false}
+              autoFocus
+              value={tool}
+              onChange={(e) => setTool(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") create();
+              }}
+            />
+            <div className="mcp-form-hint">{t("settingsPage.hooks.matcherHint")}</div>
+          </div>
+        ) : (
+          <div className="mcp-form-group">
+            <div className="mcp-form-hint">{t("settingsPage.hooks.lifecycleHint")}</div>
+          </div>
+        )}
         {status ? <div className="mcp-form-hint">{status}</div> : null}
       </div>
     </>
@@ -189,8 +252,6 @@ export default function HooksPage() {
   const { t } = useTranslation();
   const hostSettings = useAppStore((s) => s.hostSettings);
   const agentAssets = useAppStore((s) => s.agentAssets);
-  const allProjects = useAppStore((s) => s.allProjects);
-  const removedProjects = useAppStore((s) => s.removedProjects);
   const hooks = agentAssets?.hooks as HookAssetItem[] | undefined;
 
   const [spin, setSpin] = useState(false);
@@ -229,12 +290,6 @@ export default function HooksPage() {
     }
   };
 
-  // Resolve the current scope into {scope, cwd?} for create requests
-  const scopeParts = (): { scope: string; cwd?: string } => {
-    const ci = scope.indexOf(":");
-    return ci < 0 ? { scope } : { scope: scope.slice(0, ci), cwd: scope.slice(ci + 1) };
-  };
-
   // Hooks under the current scope (profile rows carry no cwd)
   const scopedHooks = (hooks ?? []).filter((h) => (scope === "profile" ? h.scope === "profile" : `project:${h.cwd}` === scope));
   // Hooks dir of the current scope, derived from any member row's path (empty before the first scan lands)
@@ -245,7 +300,7 @@ export default function HooksPage() {
     return (
       <div className="set-page" id="pg-hooks">
         {edit.mode === "new"
-          ? <HookNewForm scope={scopeParts()} onClose={() => setEdit(null)} />
+          ? <HookNewForm scope={scope} onScopeChange={setScope} onClose={() => setEdit(null)} />
           : <HookEditor hook={edit.hook} onClose={() => setEdit(null)} />}
       </div>
     );
@@ -292,14 +347,7 @@ export default function HooksPage() {
         {t("settingsPage.hooks.discoveredDescA")}<code>.omp/hooks/</code>{t("settingsPage.hooks.discoveredDescB")}
       </div>
       <div className="agents-bar">
-        <ScopeSel
-          value={scope}
-          onChange={setScope}
-          profile={{ id: "profile", label: t("settingsPage.hooks.profileLabel") }}
-          projects={allProjects
-            .filter((c) => !removedProjects.includes(c))
-            .map((c) => ({ id: `project:${c}`, label: c.split("/").pop() || c }))}
-        />
+        <HookScopeSel value={scope} onChange={setScope} />
         <span className="truncate text-ui-sm text-faint" id="hooksScopePath" title={scopeDir}>{scopeDir}</span>
         <span className="sp" />
         <button
@@ -328,6 +376,7 @@ export default function HooksPage() {
           scopedHooks.map((h) => {
             const hookId = `hook:${h.phase}:${h.tool || "*"}:${h.name}`;
             const itemEnabled = h.enabled !== false;
+            const ev = rowEvent(h);
             return (
               <div
                 className="srow hook-row"
@@ -340,14 +389,16 @@ export default function HooksPage() {
                     <span
                       className={
                         "text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded leading-none " + /* style-token-ignore */
-                        (h.phase === "pre"
+                        (ev === "tool_call"
                           ? "bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30" /* style-token-ignore */
-                          : "bg-[var(--green)]/15 text-[var(--green)] border border-[var(--green)]/30") /* style-token-ignore */
+                          : ev === "tool_result"
+                            ? "bg-[var(--green)]/15 text-[var(--green)] border border-[var(--green)]/30" /* style-token-ignore */
+                            : "bg-[var(--panel-2)] text-[var(--dim)] border border-[var(--line)]") /* style-token-ignore */
                       }
                     >
-                      {h.phase}
+                      {EVENT_LABEL[ev]}
                     </span>
-                    {h.tool && (
+                    {isToolEvent(ev) && h.tool && (
                       <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--panel-2)] text-[var(--dim)] border border-[var(--line)]" /* style-token-ignore */>
                         tool: {h.tool}
                       </span>

@@ -29,6 +29,8 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   const collabSessionId = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.sessionId : undefined));
   const collabState = useAppStore((s) => (collabSessionId ? s.collabStates.get(collabSessionId) : undefined));
   const collabOpenDialog = useAppStore((s) => s.collabOpenDialog);
+  // Header advisor toggle state (advisor_mode frame; same per-session seam as the composer's computer icon)
+  const advisorMode = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.advisorMode ?? false : false));
   const isSubagent = Boolean(session?.isSubagent);
   const title = gitManage
     ? t("gitPage.title")
@@ -198,6 +200,20 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           onClick={() => collabOpenDialog()}
         >
           <Icon name="globe" size={15} />
+        </button>
+      )}
+      {/* Advisor toggle (right of the collab entry): lit like the composer's computer icon when
+          the per-session advisor overlay is on; hidden on the new-session page / subagents
+          (ctxEntry is null there — the base pins advisor off for subagents) */}
+      {ctxEntry && !renaming && session && (
+        <button
+          type="button"
+          className={"icon-btn advisor-toggle" + (advisorMode ? " on" : "")}
+          title={advisorMode ? t("chat.advisorOnTitle") : t("chat.advisorOffTitle")}
+          aria-pressed={advisorMode}
+          onClick={() => send({ type: "set_advisor_mode", sessionId: session.sessionId, enabled: !advisorMode })}
+        >
+          <Icon name="eye" size={15} />
         </button>
       )}
       <span className="sp"></span>

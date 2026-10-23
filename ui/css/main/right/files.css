@@ -106,5 +106,10 @@
    it stays invisible until dragged/hovered) */
 .fp-nav { flex: none; min-width: 0; overflow-y: auto; border-left: 1px solid var(--line); }
 
-/* empty state (no file open): centered hint, ZCode wording */
-.fp-empty { flex: 1; display: flex; align-items: center; justify-content: center; white-space: nowrap; padding: 0 12px; color: var(--faint); font-size: var(--ui-fs-base); }
+/* empty state (no file open): centered hint, ZCode wording. No padding: the hint is hidden by a
+   width comparison against clientWidth, so the box must be the exact content width */
+.fp-empty { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; white-space: nowrap; color: var(--faint); font-size: var(--ui-fs-base); }
+
+/* hidden hint copy: its width decides whether the real hint fits; out of flow so it never
+   affects layout */
+.fp-empty-mirror { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: nowrap; }

@@ -1,17 +1,16 @@
-// Permission mode menu (ported from the old static three rows of index.html
-// #modeMenu + composer.js click bindings): the three omp values
-// always-ask | write | yolo. Selection goes through the host (with sessionId
-// when in a session), with a local optimistic update of approvalMode (the old
-// setApprovalModeUi); the host's approval_mode frame confirms afterwards.
+// Permission mode menu (ported from the old static rows of index.html
+// #modeMenu + composer.js click bindings): the omp permission modes
+// always-ask | always-ask-cached | write | yolo. Selection goes through the
+// host (with sessionId when in a session), with a local optimistic update of
+// approvalMode (the old setApprovalModeUi); the host's approval_mode frame
+// confirms afterwards.
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useAppStore, setBump, send } from "../../store";
 import { t } from "../../i18n";
 import Icon from "../../Icon";
+import type { ApprovalMode } from "../../types/frames";
 import { placeComposerMenu } from "./place";
-
-// The three omp permission modes (the host approval_mode frame uses the same set)
-export type ApprovalMode = "always-ask" | "write" | "yolo";
 
 type ModeMeta = { label: string; icon: string; yolo: boolean };
 
@@ -20,6 +19,7 @@ type ModeMeta = { label: string; icon: string; yolo: boolean };
 // module-level constants re-read the active language on every access (tree re-mounts on lang switch).
 export const MODE_META: Record<ApprovalMode, ModeMeta> = {
   "always-ask": { get label() { return t("composer.modeAlwaysAsk"); }, icon: "permAsk", yolo: false },
+  "always-ask-cached": { get label() { return t("composer.modeAlwaysAskCached"); }, icon: "memory", yolo: false },
   write: { get label() { return t("composer.modeWrite"); }, icon: "permDefault", yolo: false },
   yolo: { get label() { return t("composer.modeYolo"); }, icon: "shieldWarn", yolo: true },
 };
@@ -60,8 +60,8 @@ export default function ModeMenu({ btnRef, composerRef, onClose }: ModeMenuProps
   // row must not also look selected while it is on
   const smartOn = approvalMode === "write" && autoReview;
   const rows: (ApprovalMode | typeof SMART)[] = autoReviewOffered
-    ? ["always-ask", "write", SMART, "yolo"]
-    : ["always-ask", "write", "yolo"];
+    ? ["always-ask", "always-ask-cached", "write", SMART, "yolo"]
+    : ["always-ask", "always-ask-cached", "write", "yolo"];
   // Position on mount (the old openComposerMenu: positioned once when opened)
   useLayoutEffect(() => {
     placeComposerMenu(composerRef.current, menuRef.current, btnRef.current);

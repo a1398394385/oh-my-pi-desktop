@@ -122,6 +122,17 @@ export const sessionHandlers = {
     // clicking it again re-enters the pool via load_session.
     const path = String(msg.path ?? "");
     if (!path) return;
+    // Row-level notice instead of a bottom toast: the sidebar row swaps the "session closed"
+    // notice in over its title for 1s (SessionRow carousel). Runs before the slot guard below —
+    // the host may evict a session this client never had a frontend slot for.
+    useAppStore.setState((s) => ({ unloadedPaths: new Set(s.unloadedPaths).add(path) }));
+    setTimeout(() => {
+      useAppStore.setState((s) => {
+        const next = new Set(s.unloadedPaths);
+        next.delete(path);
+        return { unloadedPaths: next };
+      });
+    }, 1000);
     const st = useAppStore.getState();
     if (!st.openSessions.has(path)) return;
     if (st.activePath === path) {
@@ -139,7 +150,6 @@ export const sessionHandlers = {
         return { openSessions };
       });
     }
-    useAppStore.getState().toast(t("sidebar.unloadedToast"));
   },
 
   session_finished(msg) {
@@ -170,7 +180,7 @@ export const sessionHandlers = {
           pendingApprovals: [],
           assistantDraft: "",
           streaming: Boolean(msg.busy), // automation runs stream on creation; the spinner shows without waiting for a frame
-          turnStartAt: null,
+          turnStartAt: msg.busySince ?? null,
           subagents: new Map(),
           model: msg.model ?? null,
           thinking: msg.thinking ?? "auto",
@@ -216,7 +226,10 @@ export const sessionHandlers = {
           // running (host busy flag): either way the view must spin immediately —
           // frame-driven lighting alone stays dark through long tool calls
           streaming: Boolean(live || msg.busy),
-          turnStartAt: live?.registeredAt ?? null,
+          // Subagent view: its own registration time. Main session opened mid-run by the
+          // other channel: the host's run start, so the "Working Ns" clock matches both ends
+          // instead of counting from this channel's attach (or the next turn_start).
+          turnStartAt: live?.registeredAt ?? msg.busySince ?? null,
           subagents: new Map(),
           model: msg.model ?? null,
           thinking: msg.thinking ?? "auto",
@@ -299,8 +312,10 @@ export const sessionHandlers = {
     );
     // 2. Update the session's title in the on-disk project list (keeps titles referenced by the sidebar in sync)
     // Disk rows carry the disk session id while this frame carries the pool UUID, and the two never
-    // coincide (host session-lifecycle.ts): match by path, resolved through the open slot.
-    const livePath = pathOfSessionId(msg.sessionId, useAppStore.getState().openSessions);
+    // coincide (host session-lifecycle.ts): match by path. The frame carries the entry path so a
+    // channel that never attached the session (remote watching the desktop and vice versa) has
+    // nothing to resolve; the open slot is only a fallback for a frame without it.
+    const livePath = msg.path ?? pathOfSessionId(msg.sessionId, useAppStore.getState().openSessions);
     useAppStore.setState((st) => {
       let projectsChanged = false;
       const diskProjects = st.diskProjects.map((p) => {
@@ -438,6 +453,22 @@ export const sessionHandlers = {
     useAppStore.getState().toast(t("notify.navigated"));
     useAppStore.setState({ mainViewMode: "chat" });
     if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
+  },
+  session_edited(msg) {
+    // Edit-resend receipt: both outcomes consume the send-time stash
+    // (pendingEditText, set by the UserMsg edit box) and invalidate the entry
+    // tree like session_navigated on success — ok forked a sibling branch, a
+    // failure can still land after a partial navigate; the tree page refetches
+    // lazily on next render. Success keeps no store state (the sending
+    // component already collapsed its edit box); failure restores the stashed
+    // text/images into the composer so the edit is never silently lost (same
+    // backfill as editQueueMsg).
+    useAppStore.setState({ entryTree: null });
+    const stash = useAppStore.getState().pendingEditText;
+    useAppStore.setState({ pendingEditText: null });
+    if (msg.ok) return;
+    if (stash && stash.sessionId === msg.sessionId) useAppStore.getState().setComposerValue(stash.text, stash.images);
+    useAppStore.getState().toast(t("chat.editResendFailed", { error: msg.error ?? t("notify.navigateFailed") }), true);
   },
   // Cache-warming runtime snapshot (get_keepalive_status reply / reportState push): ringpop
   // popover transient alongside ctxDetail/ctxLimits, but stored per session — the ring's

@@ -169,10 +169,32 @@ export default function FilePage() {
   );
 }
 
-// Empty content pane: ZCode's pick-a-file hint; the navigation pane beside it is the entry
+// Empty content pane: ZCode's pick-a-file hint; the navigation pane beside it is the entry.
+// The hint is nowrap and the pane shrinks with the splitter drag, so it would spill over the
+// nav pane: hide it instead of clipping partial text. Width comes from the content box (no
+// padding on .fp-empty) so the hidden mirror is the exact text width.
 function FvEmpty() {
   const { t } = useTranslation();
-  return <div className="fp-empty">{t("right.pickFile")}</div>;
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const mirrorRef = useRef<HTMLSpanElement | null>(null);
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const mirror = mirrorRef.current;
+    if (!box || !mirror) return;
+    // ResizeObserver delivers an initial callback on observe(), so no separate first pass
+    const ro = new ResizeObserver(() => setFits(mirror.offsetWidth <= box.clientWidth));
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className="fp-empty" ref={boxRef}>
+      {fits && <span>{t("right.pickFile")}</span>}
+      <span className="fp-empty-mirror" aria-hidden="true" ref={mirrorRef}>
+        {t("right.pickFile")}
+      </span>
+    </div>
+  );
 }
 
 // More menu on the project row / the back-to-tree row: open the target in one of the installed

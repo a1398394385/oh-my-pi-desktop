@@ -14,14 +14,21 @@
 //   would otherwise read as "user scrolled up" and break following for pinned viewers on
 //   large single-render growth. A user-initiated scroll additionally arms a 150ms latch
 //   (performance.now): while active, programmatic bottom-follows are skipped, so a token
-//   landing mid-flick cannot yank the view back down. The target itself is latestScrollTop()
-//   — see its comment for why the plain scrollHeight target is wrong.
+//   landing mid-flick cannot yank the view back down. Only a real gesture counts as one: the
+//   stream keeps settling for a frame or two after a switch (late image/highlight sizing,
+//   per-session dock/composer mounting) and the browser then moves scrollTop by itself, so
+//   scroll events stay attributed to the restore until real input arrives or
+//   SWITCH_SETTLE_MS passes. Otherwise that transient offset was both remembered as the
+//   session's position and read as a gesture (latch armed), which is what made a resumed
+//   session sit at a stale offset instead of the latest content. The
+//   target itself is latestScrollTop() — see its comment for why the plain scrollHeight
+//   target is wrong.
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events; shown only when the latest content
 //   sits more than 120px below the viewport (high-frequency scrolling stays out of React state).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, isJunkPlaceholder, send } from "../../../store";
+import { useAppStore, isJunkPlaceholder, send, effZoom } from "../../../store";
 import { REMOTE } from "../../../store/layout";
 import Icon from "../../../Icon";
 import TodoCard from "../../chat/TodoCard";
@@ -32,6 +39,7 @@ import MsgRail from "../../chat/MsgRail";
 import FindBar from "../../chat/FindBar";
 import { renderItems } from "../../chat/items";
 import type { RailEntry } from "../../chat/chat-types";
+import { computeBranchNav, getPendingBranchScroll, clearPendingBranchScroll } from "../../chat/branch-nav";
 import { motionEnabled, updateRailVisibility } from "../../../shell";
 
 // Bottom fade reserve: #stream::after (main-composer.css) is a sticky 36px spacer that
@@ -46,6 +54,10 @@ const FADE_RESERVE = 36;
 const PIN_TOLERANCE = 40;
 const FOLLOW_LATCH_MS = 150;
 const BTN_SHOW_TOLERANCE = 120;
+// How long after a session switch the stream may still be settling (late image/highlight
+// sizing, the per-session dock/composer mounting) — scroll events in this window are the
+// restore's own and must not be read as gestures.
+const SWITCH_SETTLE_MS = 1000;
 
 // Scroll-gesture ownership across wheel-eating overlays. Two mechanisms:
 // 1. Inline expand cards (.ed-brief/.chg-body/... inside the stream): while a wheel-driven
@@ -134,12 +146,46 @@ export default function MessagePage() {
   const externalWrite = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.externalWrite ?? false : false));
   const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
   const activePath = useAppStore((st) => st.activePath);
+  // Branch pager data source (entry-tree slice; fetched below so the pagers work
+  // without ever opening the /tree page)
+  const entryTree = useAppStore((st) => st.entryTree);
   const streamRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
   const prevItemsLen = useRef(0);
   // scrollHeight at the last follow-check/scroll event, for the growth correction below
   const lastScrollHeight = useRef(0);
+  // Switch restore in flight: it wrote its target, but the post-switch layout can still
+  // settle (late image/highlight sizing, dock/composer resize load after the commit) and the
+  // browser then moves scrollTop on its own. Until a real gesture arrives (or the window
+  // expires) scroll events belong to the restore, not to the reader.
+  const switching = useRef<{ at: number; toLatest: boolean; sh: number } | null>(null);
+  // Reading-position anchor for stream WIDTH reflow (side-panel collapse/expand, gutter
+  // drag; the message column is a percentage of #main, so widening the card re-wraps every
+  // message and the content above the viewport shrinks by hundreds of px). WKWebView has no
+  // CSS scroll anchoring (Chromium-only) — without this the reader's content slides away and
+  // the scrollbar thumb jumps. Entry point is sampled on scroll/render, restored per layout.
+  const scrollAnchor = useRef<{ el: Element; top: number } | null>(null);
+  const sampleAnchor = (el: HTMLElement) => {
+    // children are in flow order, so the first one reaching below scrollTop is the first visible
+    let first: Element | null = null;
+    for (const c of el.children) {
+      const h = c as HTMLElement;
+      if (h.offsetTop + h.offsetHeight > el.scrollTop) {
+        first = c;
+        break;
+      }
+    }
+    scrollAnchor.current = first ? { el: first, top: first.getBoundingClientRect().top } : null;
+  };
+  const restoreAnchor = (el: HTMLElement) => {
+    const a = scrollAnchor.current;
+    if (!a || !a.el.isConnected) return;
+    const delta = a.el.getBoundingClientRect().top - a.top;
+    if (Math.abs(delta) < 1) return;
+    programmaticScroll.current = true;
+    el.scrollTop += delta;
+  };
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Scroll pin latch (CDS useClaudeScrollPinning): performance.now() of the last
   // USER-initiated scroll; programmatic writes tag themselves so their async scroll event
@@ -158,14 +204,32 @@ export default function MessagePage() {
   const onScroll = () => {
     const el = streamRef.current;
     if (!el) return;
+    const wasProg = programmaticScroll.current;
     if (programmaticScroll.current) programmaticScroll.current = false;
-    else lastUserScrollAt.current = performance.now();
+    // Right after a switch the stream is still settling (late image/highlight sizing, the
+    // per-session dock/composer mounting) and the browser adjusts scrollTop on its own: those
+    // scroll events are the restore's own write and its settles, not gestures. Counting them
+    // as gestures armed the follow latch and remembered that transient offset as the
+    // session's position — the next visit restored the same wrong offset and never re-pinned.
+    const sw = switching.current;
+    const inSwitch = sw !== null && performance.now() - sw.at < SWITCH_SETTLE_MS;
+    if (!wasProg && !inSwitch) {
+      lastUserScrollAt.current = performance.now();
+      switching.current = null;
+    }
     lastScrollHeight.current = el.scrollHeight;
     updateScrollBottomVis(el, btnRef.current);
     // Record the position for the session currently on screen (getState, not the render
     // closure: the event can outlive the switch that re-rendered this handler)
     const path = useAppStore.getState().activePath;
-    if (path) savedScrollPos.set(scrollKey(path), { top: el.scrollTop, max: el.scrollHeight - el.clientHeight });
+    if (path && !inSwitch) savedScrollPos.set(scrollKey(path), { top: el.scrollTop, max: el.scrollHeight - el.clientHeight });
+    // A switch restore that targeted the latest content measured it before the settle: the
+    // old height is not the real bottom anymore, so re-target the settled layout.
+    if (inSwitch && sw.toLatest && el.scrollHeight !== sw.sh) {
+      scrollToLatest(el);
+      sw.sh = el.scrollHeight;
+    }
+    sampleAnchor(el);
 
     // Light up the right scrollbar while scrolling, fade out smoothly after it stops
     el.classList.add("scrolling");
@@ -215,8 +279,10 @@ export default function MessagePage() {
       if (saved && saved.max - saved.top > PIN_TOLERANCE) {
         programmaticScroll.current = true;
         el.scrollTop = saved.top;
+        switching.current = { at: performance.now(), toLatest: false, sh: el.scrollHeight };
       } else {
         scrollToLatest(el);
+        switching.current = { at: performance.now(), toLatest: true, sh: el.scrollHeight };
       }
       seenPaths.add(activePath);
     } else if (isNewUserMsg || (pinned && !latchActive)) {
@@ -235,6 +301,7 @@ export default function MessagePage() {
       });
     }
     updateScrollBottomVis(el, btnRef.current);
+    sampleAnchor(el);
   }, [items, draft]);
 
   // Rail visibility init: .dock mounts in the same frame as the chat area, #main's size does
@@ -246,12 +313,16 @@ export default function MessagePage() {
     updateRailVisibility();
   }, []);
 
-  // Phone soft keyboard: the shell shrinks to the visual viewport (--app-h, shell.ts), so the
-  // scrollport resizes under a reader who was following the bottom. Without a re-pin the
-  // newest content slides out of view and the page reads as jumping while typing. Judge
-  // against the PREVIOUS height — by the time the callback runs, the smaller clientHeight
-  // already looks like "scrolled up". Keyed on hasSession because the empty-state and
-  // session trees render two different #stream nodes.
+  // Scrollport resize: two cases share this observer.
+  // 1. Phone soft keyboard — the shell shrinks to the visual viewport (--app-h, shell.ts), so
+  //    the scrollport resizes under a reader who was following the bottom. Without a re-pin the
+  //    newest content slides out of view and the page reads as jumping while typing. Judge
+  //    against the PREVIOUS height — by the time the callback runs, the smaller clientHeight
+  //    already looks like "scrolled up".
+  // 2. WIDTH reflow (side-panel collapse/expand, gutter drag): the column re-wraps and the
+  //    content above the viewport changes height, so a reader who is not pinned gets their
+  //    place back from the anchor (WKWebView has no scroll anchoring of its own).
+  // Keyed on hasSession because the empty-state and session trees render two different #stream nodes.
   useLayoutEffect(() => {
     const el = streamRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -260,12 +331,72 @@ export default function MessagePage() {
       const wasPinned = el.scrollHeight - el.scrollTop - lastH < PIN_TOLERANCE;
       lastH = el.clientHeight;
       if (wasPinned) scrollToLatest(el);
+      else restoreAnchor(el);
+      sampleAnchor(el); // the restore moved the viewport; re-anchor to what is visible now
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, [hasSession]);
 
+  // Branch pager data: the entry tree starts null and is normally only fetched
+  // by the /tree page; the chat view needs it for the fork pagers, so refetch
+  // whenever it is stale for the active session (mount, and after the
+  // turn_end / session_navigated invalidations) — same guards as the tree
+  // page's own mount fetch.
+  useEffect(() => {
+    if (!sessionId) return;
+    const st = useAppStore.getState();
+    if (st.entryTree?.sessionId === sessionId || st.entryTreePending) return;
+    useAppStore.setState({ entryTreePending: true, entryTreeFor: sessionId });
+    send({ type: "get_entry_tree", sessionId });
+  }, [sessionId, entryTree]);
+
+  // Branch-pager scroll: a pager click records the fork point; the receipt
+  // invalidates the tree, the effect above refetches it, and once the new map
+  // lands this scrolls to the new branch's host bubble of the SAME fork
+  // (data-eid anchor). Rect diff is visual px, scrollTop is layout px inside
+  // the zoomed subtree — same conversion as the tree page.
+  const branchNav = useMemo(
+    () => (entryTree && entryTree.sessionId === sessionId ? computeBranchNav(entryTree.roots ?? [], entryTree.leafId) : null),
+    [entryTree, sessionId],
+  );
+  useLayoutEffect(() => {
+    const pend = getPendingBranchScroll();
+    if (!pend || useAppStore.getState().entryTreeNav) return;
+    if (entryTree === pend.treeRef) {
+      clearPendingBranchScroll(); // receipt left the tree untouched → navigation failed
+      return;
+    }
+    if (!entryTree || entryTree.sessionId !== pend.sessionId || !branchNav) return; // refetch still in flight
+    clearPendingBranchScroll();
+    let hostId: string | null = null;
+    for (const [id, info] of branchNav) {
+      if (info.forkId === pend.forkId) {
+        hostId = id;
+        break;
+      }
+    }
+    const stream = streamRef.current;
+    const host = hostId ? stream?.querySelector<HTMLElement>(`[data-eid="${CSS.escape(hostId)}"]`) : null;
+    if (!stream || !host) return; // fork has no visible host bubble on the new branch → no scroll
+    programmaticScroll.current = true;
+    stream.scrollTop += (host.getBoundingClientRect().top - stream.getBoundingClientRect().top - 12) / effZoom();
+  }, [entryTree, branchNav, items]);
+
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
+
+  // Any real input ends the post-switch settle window (see switching): the stream's own
+  // settles never come with one, so a gesture inside that window must not be swallowed.
+  useEffect(() => {
+    const end = () => {
+      switching.current = null;
+    };
+    const types = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    for (const type of types) document.addEventListener(type, end, { capture: true, passive: true });
+    return () => {
+      for (const type of types) document.removeEventListener(type, end, { capture: true });
+    };
+  }, []);
 
   // Block scroll bleed-through from tab popups / inline expand cards into the outer message
   // stream (no chained propagation outward at the boundary).
@@ -499,9 +630,9 @@ export default function MessagePage() {
   // (non-reactive), so the subscription is what re-lays out messages when it changes.
   const { nodes, railEntries } = useMemo(() => {
     const entries: RailEntry[] = [];
-    const out = renderItems(items ?? [], "", entries, streamTail, { hideProcessFrom });
+    const out = renderItems(items ?? [], "", entries, streamTail, { hideProcessFrom, branchNav });
     return { nodes: out, railEntries: entries };
-  }, [items, draft, streamTail, processStyle, hideProcessFrom]);
+  }, [items, draft, streamTail, processStyle, hideProcessFrom, branchNav]);
 
   if (!hasSession) {
     return (

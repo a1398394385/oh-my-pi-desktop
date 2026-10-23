@@ -89,7 +89,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     {
       when: { key: "memory.backend", equals: "sharpshooter" },
       titleZh: "Sharpshooter 底层", titleEn: "Sharpshooter internals",
-      keys: ["sharpshooter.intervalMinutes", "sharpshooter.injectionTokenLimit"],
+      keys: ["sharpshooter.intervalMinutes", "sharpshooter.injectionTokenLimit", "sharpshooter.minPromptLength"],
     },
   ],
   "pg-computer": [
@@ -364,7 +364,9 @@ export const HIDDEN_KEYS: Record<string, true> = {
   // Job widgets (18.12.x) paint into the TUI wait card, jobs pill and jobs sheet.
   // The desktop renders none of them, and authoring is subscriber-gated
   // (job-widgets/registry.ts skips entries that were never shown), so the
-  // switch has no desktop consumer.
+  // switch has no desktop consumer. The base also charges a model call per
+  // job for the widget spec, so the session overlay pins it off
+  // (host/session-lifecycle.ts).
   "async.widgets": true,
   "display.shimmer": true,
   "display.pinnedAgents": true,

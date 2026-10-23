@@ -56,10 +56,15 @@ export const chatZh = {
   roFiles: "{{count}} 份文件",
   roTasks: "{{count}} 项任务",
   roCmds: "{{count}} 条命令",
+  // ---- TTSR injection notice (TtsrRow.tsx) ----
+  ttsrInjected: "注入 {{count}} 条规则",
   // ---- advisor advice rows (AdvisorCard.tsx) ----
   advisorSevBlocker: "拦截",
   advisorSevConcern: "疑虑",
   advisorSevNit: "小意见",
+  // ---- header advisor toggle (MainHeader.tsx) ----
+  advisorOnTitle: "关闭顾问：停止第二模型对每轮的复审",
+  advisorOffTitle: "开启顾问：由第二模型安静复审每轮并提示风险",
   // ---- truncation notices (plurals / interpolation) ----
   truncated: " …(截断,共{{count}}字)",
   outputTruncated: "\n…（输出已截断）",
@@ -173,6 +178,11 @@ export const chatZh = {
   clickToZoom: "点击查看大图",
   automationDelivery: "自动化投递",
   copyMsg: "复制这条消息",
+  editResend: "编辑重发（原对话保留为分支）",
+  editResendSend: "发送（Enter）",
+  editAfterSaved: "消息落盘后可编辑",
+  editWhileStreaming: "回复结束后可编辑",
+  editResendFailed: "编辑重发失败：{{error}}",
   // ---- todo card (TodoCard.tsx) ----
   sessionStatus: "会话状态",
   collapseToCapsule: "收起为胶囊",
@@ -206,6 +216,9 @@ export const chatZh = {
   statsTokenSpeed: "输出速度",
   statsAvgTtft: "平均首字延迟",
   statsCompactions: "本次会话的上下文压缩次数（每次都会重建上下文，不计入缓存失效次数）",
+  // 缓存前缀失效：替换整行显示 3 秒（{{tokens}} 为重新计费的未缓存输入 token）
+  statsCacheMiss: "缓存失效：{{tokens}} tokens 重新计费",
+  statsCacheMissUsd: "缓存失效：{{tokens}} tokens 重新计费（约 {{usd}}）",
   // ---- session-tree filter pills (sessionTreeUtil FILTERS) ----
   filterDefault: "默认",
   filterNoTools: "无工具",

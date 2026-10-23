@@ -94,7 +94,9 @@
   --top-toggle-top: 14px;
   --todo-w: 280px;
   --chat-gutter: 48px;
-  --ctl-bg: var(--panel-2);
+  /* Floating surfaces (dropdown menus, popovers, dialogs, tooltips) share the
+     input-field surface: dark #2B2B2B. Every dropdown must reuse --ctl-bg. */
+  --ctl-bg: var(--inset);
   /* Motion discipline: two curves (spring/swift), reused site-wide */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --swift:  cubic-bezier(0.16, 1, 0.3, 1);
@@ -135,7 +137,6 @@
   --faint:     #808088;
   --green-ink: #1e8a3e;
   --bash:      var(--green); /* light fallback: green (--green inherits the :root definition) */
-  --ctl-bg:    var(--inset);
 }
 
 /* ── Lightweight diff (in-house, ported from ZCode lightweight-diff-preview): row background color-mix +

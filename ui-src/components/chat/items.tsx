@@ -6,7 +6,7 @@
 // railEntries are collected along the traversal (message rail data: one tick per message —
 // the key shares the same source as the data-fk anchors; MsgRail locates the DOM by key).
 import type { ReactElement, ReactNode } from "react";
-import type { AdvisorItem, AdvisorNote, ChatItem, RailEntry } from "./chat-types";
+import type { AdvisorItem, AdvisorNote, ChatItem, RailEntry, UserItem, AssistantItem } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
 import { useAppStore } from "../../store/index";
 import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf, isReadonlyEvent } from "./util";
@@ -17,12 +17,40 @@ import TurnActs from "./TurnActs";
 import ThinkingRow from "./ThinkingRow";
 import ToolRow from "./ToolRow";
 import BashRow from "./BashRow";
-import CommandRow from "./CommandRow";
 import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import ReadonlyGroup, { roSummaryText } from "./ReadonlyGroup";
 import AdvisorCard, { AdvisorInline } from "./AdvisorCard";
+import TtsrRow from "./TtsrRow";
+import BranchSwitcher from "./BranchSwitcher";
+import type { BranchNavInfo, BranchRenderCtx } from "./branch-nav";
 import { t } from "../../i18n";
+
+// Ambient branch-pager context for the current top-level render pass (a
+// railEntries-style side channel): nested renderItems calls (loop groups,
+// read-only folds) inherit it, so fork-host bubbles inside those groups mount
+// their pager too. Installed only by the top-level MessagePage pass and
+// cleared before it returns — a later pass without a map never wraps stale.
+let branchCtx: BranchRenderCtx | null = null;
+
+// Wrap a bubble element with the branch pager when its entry is a fork host.
+// lastFk records the render-order-latest bubble per entryId (multi-bubble
+// entries host the pager on their last bubble); BranchSwitcher itself decides
+// at React render time — after the traversal finished — whether its fk is
+// that latest one.
+function withBranchPager(node: ReactElement, item: UserItem | AssistantItem, key: string): ReactElement {
+  const ctx = branchCtx;
+  const eid = item.entryId;
+  if (!ctx || !eid) return node;
+  const info = ctx.map.get(eid);
+  if (!info) return node;
+  ctx.lastFk.set(eid, key);
+  return (
+    <BranchSwitcher key={key} fk={key} entryId={eid} info={info} ctx={ctx}>
+      {node}
+    </BranchSwitcher>
+  );
+}
 
 // Single message → JSX (the railEntries side effect is collected along the render path, same
 // order as the former appendChatItem's push)
@@ -31,12 +59,13 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
     railEntries.push({ key, role: "user", text: item.text });
     // pending rides along as a captured scalar: applySteerConsumed mutates it in place,
     // so memo cannot rely on the item reference alone (same pattern as the tool row below)
-    return <UserMsg item={item} fk={key} key={key} pending={item.pending} />;
+    return withBranchPager(<UserMsg item={item} fk={key} key={key} pending={item.pending} />, item, key);
   }
   if (item.role === "assistant") {
     if (isJunkPlaceholder(item.text)) return null; // junk placeholder messages render nothing and stay off the rail
     railEntries.push({ key, role: "assistant", text: item.text });
-    return <AssistantMsg text={item.text} fk={key} key={key} />;
+    // entryId rides along for the branch pager (memo parity with UserMsg's item prop)
+    return withBranchPager(<AssistantMsg text={item.text} fk={key} key={key} entryId={item.entryId} />, item, key);
   }
   if (item.role === "thinking") {
     // The thinking label always shows under any setting; hideThinkingBlock only decides the
@@ -80,7 +109,6 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   }
   if (item.role === "meta") {
     railEntries.push({ key, role: "meta", text: item.text });
-    if (item.command) return <CommandRow item={item} key={key} />;
     return <div className="act" key={key}>{item.text}</div>;
   }
   // Phase separator row (background compact / handoff / rename): centered text between
@@ -95,6 +123,9 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
       </div>
     );
   }
+  // TTSR rule-injection notice: a read-only row with no rail tick of its own — it either sits
+  // inside a read-only fold run or stands alone at the interruption point
+  if (item.role === "ttsr") return <TtsrRow item={item} key={key} />;
   // Advisor rows are dispatched by renderItems (they expand into an inline row plus a
   // card); reaching here means a caller skipped that, so drop instead of drawing an error.
   if (item.role === "advisor") return null;
@@ -118,8 +149,11 @@ function readonlySig(subs: ChatItem[]): string {
       todo?: unknown;
       details?: unknown;
       diffContent?: string;
+      expanded?: boolean;
     };
     sig += `${t.files?.length ?? 0},${t.added ?? 0},${t.removed ?? 0},${t.output?.length ?? 0},${t.running ? 1 : 0},${t.todo ? 1 : 0},${t.details ? 1 : 0},${t.diffContent ? 1 : 0};`;
+    // A ttsr row's disclosure state lands in place, so the memoized block must see it
+    if (t.role === "ttsr") sig += t.expanded ? "e" : "-";
   }
   return sig;
 }
@@ -186,8 +220,8 @@ function processStyle(): "standard" | "detailed" | "expanded" {
 }
 
 // Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
-// Thinking and request-error rows inside the run are collected into the block but not
-// counted; any other role or a non-read-only tool event ends the run. Returns null when
+// Thinking, request-error and TTSR-injection rows inside the run are collected into the block
+// but not counted; any other role or a non-read-only tool event ends the run. Returns null when
 // the run holds fewer than `min` read-only events (the caller then falls through to the
 // per-type group blocks). Error rows must not break the scan: a mid-run request failure
 // (e.g. socket closed) would otherwise split one flow into <3 fragments that never fold.
@@ -204,7 +238,7 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
       run.push(it);
       roCount++;
       j++;
-    } else if (it.role === "thinking" || it.role === "error") {
+    } else if (it.role === "thinking" || it.role === "error" || it.role === "ttsr") {
       run.push(it);
       j++;
     } else break;
@@ -223,9 +257,9 @@ export function renderItems(
   pfx: string,
   railEntries: RailEntry[],
   streamTail?: ReactNode,
-  opts?: { noReadonlyFold?: boolean; hideProcessFrom?: number },
+  opts?: { noReadonlyFold?: boolean; hideProcessFrom?: number; branchNav?: Map<string, BranchNavInfo> | null },
 ): ReactElement[] {
-  // Child container (e.g. inside LoopGroup): keep the original flat rendering mechanism
+  if (pfx === "" && opts?.branchNav) branchCtx = { map: opts.branchNav, lastFk: new Map() };
   if (pfx !== "") {
     const out: ReactElement[] = [];
     const pendingSteers: { item: ChatItem; key: string }[] = [];
@@ -368,24 +402,6 @@ export function renderItems(
         advice: [],
       };
       continue;
-    }
-
-    // Slash-command output (CommandRow) is its own block: the host consumes the typed command
-    // and withdraws the optimistic user bubble, so without this the card would be appended to
-    // the previous turn's flow and push that turn's action bar (fork/copy) below it.
-    if (item.role === "meta" && item.command) {
-      if (currentTurn) {
-        turns.push(currentTurn);
-        currentTurn = null;
-      }
-      currentTurn = {
-        key: "cmd-" + key,
-        userKey: key,
-        userNode: null,
-        flowNodes: [],
-        actsNode: null,
-        advice: [],
-      };
     }
 
     let node: ReactElement | null = null;
@@ -544,5 +560,6 @@ export function renderItems(
     if (node) out.push(node);
   }
 
+  branchCtx = null; // top-level pass done: later passes without a map must not wrap stale
   return out;
 }

@@ -19,6 +19,8 @@ globalThis.localStorage = {
   key: () => null,
   length: 0,
 } as unknown as Storage;
+// layout.ts reads location.search at module scope (REMOTE detection); preview=1 keeps it off the remote path
+globalThis.location = { search: "?preview=1", href: "http://localhost/" } as unknown as Location;
 globalThis.navigator = { language: "zh-CN", userAgent: "bun-test" } as unknown as Navigator;
 
 
@@ -31,4 +33,4 @@ globalThis.document = {
   removeEventListener: () => {},
   createElement: () => ({ style: {}, setAttribute: () => {}, appendChild: () => {}, classList: { add: () => {}, remove: () => {} } }),
 } as unknown as Document;
-globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, matchMedia: globalThis.matchMedia, listeners } as unknown as Window & typeof globalThis;
+globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, matchMedia: globalThis.matchMedia, location: globalThis.location, listeners } as unknown as Window & typeof globalThis;

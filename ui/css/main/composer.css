@@ -118,7 +118,9 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 .dock.approval-active:focus-within { box-shadow: none; }
 
 /* Session stats: ONE line on the desktop (the two narrow-only row containers dissolve via
-   display:contents); display-only with no click behavior, no hover highlight. */
+   display:contents); display-only with no click behavior, no hover highlight.
+   Two stacked layers (stats / cache-miss notice) share one grid cell and slide vertically
+   past each other, so the bar keeps a stable height and nothing around it shifts. */
 .stats-bar {
   flex: none;
   /* Same four-stage max-width as the input dock (via --col-w, see center.css): the row is
@@ -127,10 +129,9 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
   max-width: var(--col-w);
   min-width: 0;
   margin: 0 auto 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 3px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
   padding: 0 6px;
   font-size: var(--ui-fs-sm);
   color: var(--faint);
@@ -138,6 +139,18 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
   /* Size container: the low-priority parts below are trimmed by the row's own
      width, not the window's (the main column also shrinks with the side panels) */
   container-type: inline-size;
+}
+
+/* One of the two stacked layers; the layout lives here now, not on the grid container.
+   The swap animations are below (sbUpIn / sbUpOut). */
+.sb-layer {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 3px 16px;
+  min-width: 0;
 }
 
 /* Narrow-only row wrapper (see remote.css); the desktop renders the groups directly */
@@ -212,6 +225,31 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 }
 
 .sb-break .pi-ic { margin-right: 2px; }
+
+/* Cache-miss flash: replaces the whole row for 3s when a prefix invalidation is
+   reported (SessionStatsBar). Yellow = the row lost billed money, not just a
+   counter tick. Centered + nowrap so the swap keeps one line on both layouts. */
+.sb-miss {
+  color: var(--yellow);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: center;
+  align-self: center;
+}
+
+/* Vertical carousel (SessionStatsBar): the incoming line rides up from below, the outgoing
+   one leaves through the top — same direction both legs, like an ad carousel. The layer is
+   remounted on each swap, which is what restarts the animation. */
+.sb-prev { animation: sbUpOut var(--dur-sheet) ease both; }
+.sb-next.sliding { animation: sbUpIn var(--dur-sheet) ease; }
+@keyframes sbUpIn {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes sbUpOut {
+  from { transform: none; opacity: 1; }
+  to { transform: translateY(-100%); opacity: 0; }
+}
 
 #composer {
   flex: none;
@@ -427,7 +465,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .q-btn:hover { background: var(--panel-2); color: var(--text); }
 
 .turn-acts {
-  margin-top: 0; /* zero top gap, pixel-tight against the turn-body bottom edge */
+  margin-top: 6px; /* 6px gap to the turn's output above (was flush); the reserved slot keeps the turn height stable */
   margin-bottom: 33px; /* 5px more spacing to the agent process flow before it (28px -> 33px) */
   padding-top: 0;
   height: 1.4em;
@@ -634,10 +672,12 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .plan-btn:hover { background: var(--panel-2); color: var(--text); }
 
-/* computer-use toggle: screen icon between the plan button and background tasks; lit (accent) = the per-session opt-in is on */
+/* computer-use toggle: screen icon between the plan button and background tasks; lit = the
+   per-session opt-in is on, in the session accent (the input ring's color — falls back to
+   the plain accent until the session has a title to derive one from) */
 .computer-btn { padding: 5px 7px; }
 
-.computer-btn.on, .computer-btn.on:hover { color: var(--accent); }
+.computer-btn.on, .computer-btn.on:hover { color: var(--session-accent, var(--accent)); }
 /* voice-conversation mic toggle: left of send; lit (accent) = synthesis +
    dictation mode; .rec pulses while a push-to-talk capture is live */
 .mic-btn { padding: 5px 7px; }
@@ -847,6 +887,51 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 /* placeholder overlay: ContentEditable's placeholder host has no positioning, so it hangs on .lex-wrap (relative) to align with the #input text origin (#input has no padding; the padding lives on #composer), rendered only when content is empty */
 .lex-wrap { position: relative; }
+
+/* Consumed slash-command echo (.cmdf): for ~1s the whole composer card — editor
+   AND toolbar — is replaced by a card holding the typed command above and its
+   return value below. Siblings are hidden rather than unmounted: the draft and
+   caret survive and the card keeps its exact size (the overlay spans #composer's
+   padding box, itself inheriting the parent padding so the text lines up with
+   where the editor text was). */
+#composer.flash-on > *:not(.cmdf) { visibility: hidden; }
+
+.cmdf {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  padding: inherit;
+  overflow: hidden;
+  font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.5;
+  /* Page flip around the card's HORIZONTAL centre axis (rotateX): the card
+     turns up/down like a flip calendar tile, not left/right like a door. */
+  animation: cmdfFlip 0.42s cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+@keyframes cmdfFlip {
+  from { transform: perspective(1000px) rotateX(-90deg); opacity: 0; }
+  45%  { opacity: 1; }
+  to   { transform: perspective(1000px) rotateX(0deg); opacity: 1; }
+}
+
+/* Exit half of the flip: the card keeps turning the same way (top edge away)
+   while the composer content flips back in behind it, so the hand-over reads as
+   one continuous page turn instead of a hard cut. */
+.cmdf.is-out { animation: cmdfFlipOut 0.22s cubic-bezier(0.4, 0, 0.8, 0.2) both; }
+
+@keyframes cmdfFlipOut {
+  from { transform: perspective(1000px) rotateX(0deg); opacity: 1; }
+  to   { transform: perspective(1000px) rotateX(90deg); opacity: 0; }
+}
+
+/* Composer flips back in when the echo card unmounts (one-shot class added by
+   the Composer effect; skipped when motion is off). */
+#composer.flash-return { animation: cmdfFlip 0.24s cubic-bezier(0.2, 0.8, 0.25, 1) both; transform-origin: 50% 50%; }
+
+.cmdf-c { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.cmdf-o { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .lex-ph {
   position: absolute;

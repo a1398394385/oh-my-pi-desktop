@@ -66,10 +66,16 @@ export const chatEn = {
   roTasks_other: "{{count}} tasks",
   roCmds_one: "{{count}} command",
   roCmds_other: "{{count}} commands",
+  // ---- TTSR injection notice (TtsrRow.tsx) ----
+  ttsrInjected_one: "{{count}} rule injected",
+  ttsrInjected_other: "{{count}} rules injected",
   // ---- advisor advice rows (AdvisorCard.tsx) ----
   advisorSevBlocker: "blocker",
   advisorSevConcern: "concern",
   advisorSevNit: "nit",
+  // ---- header advisor toggle (MainHeader.tsx) ----
+  advisorOnTitle: "Turn the advisor off: stop the second-model review of each turn",
+  advisorOffTitle: "Turn the advisor on: a second model quietly reviews each turn and flags risks",
   // ---- truncation notices (plurals / interpolation) ----
   truncated_one: " …(truncated, {{count}} char)",
   truncated_other: " …(truncated, {{count}} chars)",
@@ -187,6 +193,11 @@ export const chatEn = {
   clickToZoom: "Click to view full size",
   automationDelivery: "Automation delivery",
   copyMsg: "Copy this message",
+  editResend: "Edit & resend (keeps this chat as a branch)",
+  editResendSend: "Send (Enter)",
+  editAfterSaved: "Editing available once the message is saved",
+  editWhileStreaming: "Editing available once the reply finishes",
+  editResendFailed: "Edit & resend failed: {{error}}",
   // ---- todo card (TodoCard.tsx) ----
   sessionStatus: "Session status",
   collapseToCapsule: "Collapse to capsule",
@@ -220,6 +231,9 @@ export const chatEn = {
   statsTokenSpeed: "Output speed",
   statsAvgTtft: "Avg time to first token",
   statsCompactions: "Context compressions this session (each one re-bills the context; not counted as a cache invalidation)",
+  // Cache prefix lost: replaces the whole row for 3s ({{tokens}} = uncached input tokens re-billed)
+  statsCacheMiss: "Cache miss: {{tokens}} tokens re-billed",
+  statsCacheMissUsd: "Cache miss: {{tokens}} tokens re-billed (~{{usd}})",
   // ---- session-tree filter pills ----
   filterDefault: "Default",
   filterNoTools: "No tools",

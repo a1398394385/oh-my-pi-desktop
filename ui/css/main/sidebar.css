@@ -204,6 +204,27 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: var(--text); font-weight: 400;
 }
 .task:is(:hover, .ctx-open) .tt, .task.on .tt { color: var(--text); }
+/* Title-slot carousel for the pool-eviction notice (SessionRow): the incoming line slides in
+   from the right (the eject button's side) while the outgoing one slides out left. Both get
+   clipped by .tt's mask. */
+.task .tt { position: relative; }
+/* Inline-block: transforms do not apply to non-replaced inline boxes. */
+.task .tt-next { display: inline-block; }
+.task .tt-prev {
+  position: absolute; inset: 0;
+  animation: tt-slide-out var(--dur-sheet) ease forwards;
+}
+.task .tt-next.sliding { animation: tt-slide-in var(--dur-sheet) ease; }
+@keyframes tt-slide-in {
+  from { transform: translateX(140px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes tt-slide-out {
+  to { transform: translateX(-60%); opacity: 0; }
+}
+/* The slide obeys the Appearance motion switch through the global kill rule in
+   global/animations.css (data-motion=on forces it, off/system+OS-reduce flattens it); no
+   branch needed here. SessionRow skips the outgoing layer entirely when motion is reduced. */
 .task .tm { flex: none; font-size: 12px; color: var(--faint); font-weight: 400; }
 .task.on .tm { color: var(--dim); }
 .task .tarchive {

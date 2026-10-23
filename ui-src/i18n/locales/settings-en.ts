@@ -95,6 +95,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   // ---- pg-memory: Sharpshooter tuning ----
   "sharpshooter.intervalMinutes": { "label": "Consolidation interval (minutes)", "description": "How often the background job consolidates decision files." },
   "sharpshooter.injectionTokenLimit": { "label": "Injection token cap", "description": "How many tokens of decision files can be injected into the context." },
+  "sharpshooter.minPromptLength": { "label": "Minimum prompt length", "description": "Counted in user-visible characters: prompts shorter than this are not mined for decisions." },
 
   // ---- pg-shell: bash interceptor + shell minimizer (ui-less keys adopted from the advanced page) ----
   "bash.patterns": { "label": "Bash approval patterns", "description": "Ordered bash command approval rules. Each item has match and approval fields; only '*' wildcards are supported, first match wins, edited graphically on the Shell page" },
@@ -357,7 +358,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "loop.conditionTimeoutMs": { "label": "Loop Condition Timeout (ms)", "description": "How long a /loop --while / --until condition command may run before the loop stops; 0 waits forever." },
   "composer.predictions": { "label": "Composer Predictions", "description": "After a turn, the model guesses your next message and shows it as ghost text in the empty composer; Tab or right arrow inserts it. Costs one extra billed request per turn (counted in /stats)." },
   "tools.approval": { "label": "Tool Approval Policies", "description": "Per-tool rules: 'allow' auto-approves, 'prompt' asks first, 'deny' blocks. They apply in every approval mode." },
-  "tools.approvalMode": { "label": "Tool Approval", "description": "Default for tool calls: 'Always ask' auto-approves read-only tools, 'Write' also approves reads and writes, 'Yolo' approves all. Per-tool rules can still prompt or block." },
+  "tools.approvalMode": { "label": "Tool Approval", "description": "Default for tool calls: 'Always ask' auto-approves read-only tools, 'Ask and remember' also asks before reads and can remember a file or folder, 'Write' also approves reads and writes, 'Yolo' approves all. Per-tool rules can still prompt or block." },
   "recap.enabled": { "label": "Idle Recap", "description": "After the terminal sits idle, the model writes a short recap of where things stand." },
   "recap.idleSeconds": { "label": "Idle Recap Delay", "description": "How many idle seconds pass before the recap shows up." },
   "stream.serverUrl": { "label": "Stream Server", "description": "The live stream server `omp stream` uses (https://host[:port]); viewers watch at <base>/<your username>." },

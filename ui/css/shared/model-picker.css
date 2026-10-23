@@ -28,8 +28,9 @@
 
 #modelMenu .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 
-/* Hover / keyboard-active rows: one notch above the menu's own --ctl-bg (= --panel-2 in
-   dark), which made --panel-2 rows invisible — same color as the menu face */
+/* Hover / keyboard-active rows: --panel-3, two notches above the menu face
+   (--ctl-bg = --inset). A --panel-2 fill would sit one notch above the face
+   and read as the surface itself rather than a highlighted row. */
 #modelMenu .mi:hover { background: var(--panel-3); }
 
 #modelMenu .mi.prov.on { background: var(--panel-3); }
@@ -37,7 +38,7 @@
 #modelMenu .mi.on { background: var(--panel-3); }
 
 /* Keyboard cursor: the same fill as hover plus a leading accent bar, so it stays legible on
-   the menu's own --ctl-bg (dark: both --panel-2) and reads apart from the selected model row,
+   the menu's own --ctl-bg and reads apart from the selected model row,
    which carries .on without .kb */
 #modelMenu .mi.kb, .menu.flyout .mi.kb { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
 

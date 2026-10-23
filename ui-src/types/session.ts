@@ -123,6 +123,7 @@ export interface AssistantItem {
   endMs?: number; // end timestamp of this turn
   branching?: boolean; // fork request in flight (written in place by TurnActs)
   streaming?: boolean; // generating (written in place by components)
+  turnFinal?: boolean; // turn ended stopReason "stop": a delivered output (store lifts it out of the sealed loop group)
 }
 
 /** Thinking row (items.tsx:30-33 reads item.thinking || item.text) */
@@ -204,8 +205,6 @@ export interface MentionItem {
 export interface MetaItem {
   role: "meta";
   text: string;
-  command?: string; // typed slash-command line that produced this output: renders as an expandable command card (CommandRow)
-  cmdExpanded?: boolean; // card body expand state (defaults true: a command's output is the answer the user asked for, unlike incidental bash output)
 }
 
 /** Phase separator row (items.tsx:57-65 reads text; compact/handoff/rename) */
@@ -223,6 +222,15 @@ export interface ErrItem {
   text: string;
 }
 
+/** TTSR rule-injection notice (items.tsx routes it to TtsrRow; host emits it from the base
+    `ttsr_triggered` event and replays `ttsr_injection` entries without descriptions) */
+export interface TtsrItem {
+  role: "ttsr";
+  text: string; // rule names joined: the collapsed row's readout
+  rules: { name: string; description?: string }[];
+  expanded?: boolean; // body expand state (written in place by TtsrRow)
+}
+
 /** Session-entry discriminated union (discriminated by role literals; consumed branch by branch by items.tsx appendItem) */
 export type ChatItem =
   | UserItem
@@ -235,7 +243,8 @@ export type ChatItem =
   | MetaItem
   | PhaseItem
   | ErrItem
-  | AdvisorItem;
+  | AdvisorItem
+  | TtsrItem;
 
 /** Compatibility alias: the entry type name used in the store.ts batch (to be unified as ChatItem after the narrowing rewiring) */
 export type SessionItem = ChatItem;
@@ -366,6 +375,7 @@ export interface OpenSession {
   goal?: GoalState | null; // set by the goal frame
   planMode?: boolean; // set by the plan_mode frame
   computerMode?: boolean; // set by the computer_mode frame
+  advisorMode?: boolean; // set by the advisor_mode frame (header eye toggle)
   queued?: QueuedMessage[]; // landed from the queued frame's followUp
   steering?: QueuedMessage[]; // landed from the queued frame's steering
   externalWrite?: boolean; // the host detected writes from an external process
@@ -473,6 +483,7 @@ export interface AppState {
   bootSplash: boolean; // full-window boot veil until the first session_list frame (see UiSlice)
   toastMsg: string | null; // current toast text (null = hidden)
   toastErr: boolean; // true = error toast (red icon + --err tinted border)
+  unloadedPaths: Set<string>; // sessions showing the pool-eviction notice on their sidebar row (cleared after 1s)
   composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // signal to fill the composer externally (fork backfill / queued-message editing)
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
   menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)

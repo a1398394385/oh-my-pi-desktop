@@ -1,40 +1,66 @@
 // Run sealing: the live turn's process collapses into one loop group at run end. Split out
 // of store/session.ts to keep that hot file under its line ratchet.
 //
-// Error rows stay outside the group (the reason the run stopped must not fold away, same
-// layout as the reload path); advisor rows stay INSIDE — an injected note is one more
-// event of the same run, so the reader still sees a single "process" group per turn. The
-// renderer lifts an advice row back out when the group is collapsed and would hide it.
+// Error rows fold into the group like any other event — a failed attempt inside a run is
+// one more thing that happened, not the run's outward result. Same layout as the reload
+// path (host/translate-history.ts); the row is still readable once the group is expanded.
+// Advisor rows stay INSIDE too: an injected note is one more event of the same run, so the
+// reader still sees a single "process" group per turn. The renderer lifts an advice row
+// back out when the group is collapsed and would hide it.
 import type { OpenSession, SessionItem } from "../types/session";
 import type { TurnUsage } from "../types/frames";
 
 export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
   const startIdx = s.turnItemStart ?? s.items.length;
   const runItems = s.items.splice(startIdx);
-  const errors: SessionItem[] = [];
-  for (let i = runItems.length - 1; i >= 0; i--) {
-    const it = runItems[i];
-    if (it.role !== "error") break;
-    errors.unshift(it);
-    runItems.splice(i, 1);
+  // A mid-run attach receives the partial turn as its own loop group (transcript rebuilds
+  // fold it, host/translate-history.ts); un-nest it so the sealed group is one flat run,
+  // matching the reload view instead of leaving a cut at the attach moment.
+  const flat: SessionItem[] = [];
+  for (const it of runItems) {
+    if (it.role === "loop" && it.items) flat.push(...it.items);
+    else flat.push(it);
   }
-  // Same rule as the reload path: only a trailing assistant is the outward result, skipping
-  // advice rows that end the run (they annotate the output before them and are lifted to the
-  // turn-tail card) — otherwise the final answer folds into the collapsed group.
-  let lastA = runItems.length - 1;
-  while (lastA >= 0 && runItems[lastA].role === "advisor") lastA--;
-  if (runItems[lastA]?.role !== "assistant") lastA = -1;
-  const finalOut = lastA >= 0 ? runItems.splice(lastA, 1) : [];
-  if (runItems.length) {
+  // Outward result = every turn-final assistant text (turnFinal: the turn ended stopReason
+  // "stop" — a delivered output, even when a mid-run wake kept the run going afterwards),
+  // plus the trailing assistant as the pre-mark fallback (covers error/aborted tails).
+  // Advice rows (a note about the output before them) and error rows (folded like any other
+  // event) sit after that output, so skip both when scanning for the tail. One pass keeps
+  // stream order.
+  let lastA = flat.length - 1;
+  while (lastA >= 0 && (flat[lastA].role === "advisor" || flat[lastA].role === "error")) lastA--;
+  const tailIdx = flat[lastA]?.role === "assistant" ? lastA : -1;
+  const kept: SessionItem[] = [];
+  const finalOut: SessionItem[] = [];
+  flat.forEach((it, i) => {
+    (it.role === "assistant" && (it.turnFinal || i === tailIdx) ? finalOut : kept).push(it);
+  });
+  if (kept.length) {
     s.items.push({
       role: "loop",
       text: "",
       collapsed: true,
-      items: runItems,
+      items: kept,
       durationSec: s.turnStartAt ? Math.round((Date.now() - s.turnStartAt) / 1000) : null,
       usage: usage ?? null,
     });
   }
-  s.items.push(...finalOut, ...errors);
+  s.items.push(...finalOut);
   s.turnItemStart = s.items.length;
+}
+
+// A run that ended on an error row (sidebar dot, desktop alert): the row folds into the
+// group instead of sitting last, so scan the turn's tail for it. Also stops the turn_end
+// "finished" alert from doubling up on the error branch's own alert.
+export function turnEndedWithError(items: readonly SessionItem[]): boolean {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.role === "user") return false;
+    if (it.role === "error") return true;
+    if (it.role === "loop") {
+      if (it.items?.some((x) => x.role === "error")) return true;
+      continue;
+    }
+  }
+  return false;
 }

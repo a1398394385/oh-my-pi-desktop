@@ -53,5 +53,5 @@
   --purple:    #C99AAF;   /* reuse accent (rose) for purple semantics */
 
   /* ── Control backgrounds ───────────────────────────────────────────────── */
-  --ctl-bg:    var(--panel-2);
+  --ctl-bg:    var(--inset);
 }

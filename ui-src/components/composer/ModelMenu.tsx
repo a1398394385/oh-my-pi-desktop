@@ -236,7 +236,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           // arrows remain usable for comparing models
           if (hlK === THINK_ROW && !inFly) break; // the slider has no confirm step
           if (inFly) enterFlyRow(hlK);
-          else if (hlK !== null) (hlK === prov ? (flyOpen ? closeFly : openFly) : enterRow(hlK, false));
+          else if (hlK !== null) (hlK === prov ? (flyOpen ? closeFly : openFly) : enterRow(hlK));
           break;
       }
     };
@@ -259,25 +259,15 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
     if (next && next !== curThinking) pickThinkingLevel(next);
   };
 
-  const pickModel = (id: string) => {
-    pickModelId(id);
-    onClose();
-  };
-  const pickRole = (role: ModelRoleEntry & { resolved: string }) => {
-    pickModelId(role.resolved, role.id);
-    onClose();
-  };
-  const enterRow = (k: string, close = true) => {
+  // Picking never closes the menu (mouse and keyboard alike): the only exits
+  // are pointer-leave and Esc, so the same panel stays usable for comparing
+  // providers and roles
+  const enterRow = (k: string) => {
     const role = customRoles.find((r) => r.id === k);
-    if (showRoles && role) {
-      if (close) pickRole(role);
-      else pickModelId(role.resolved, role.id);
-    } else if (!showRoles) {
+    if (showRoles && role) pickModelId(role.resolved, role.id);
+    else if (!showRoles) {
       const model = provModels.find((m) => m.id === k);
-      if (model) {
-        if (close) pickModel(model.id);
-        else pickModelId(model.id);
-      }
+      if (model) pickModelId(model.id);
     }
   };
   const enterFlyRow = (k: string) => {
@@ -392,7 +382,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           ? customRoles.map((role) => (
               <div className={"mi" + (hlK === role.id || curBase === role.resolved ? " on" : "") + (hlK === role.id ? " kb" : "")} data-role={role.id} key={role.id}
                 ref={setRowEl(role.id)}
-                onClick={(e) => { e.stopPropagation(); pickRole(role); }}>
+                onClick={(e) => { e.stopPropagation(); enterRow(role.id); }}>
                 <span className="ck">{curBase === role.resolved ? "✓" : ""}</span>
                 <span className="mi-name">{role.name} : {role.resolvedName ?? role.resolved}</span>
               </div>
@@ -400,7 +390,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
           : provModels.map((model) => (
               <div className={"mi" + (hlK === model.id || curBase === model.id ? " on" : "") + (hlK === model.id ? " kb" : "")} data-model={model.id} key={model.id}
                 ref={setRowEl(model.id)}
-                onClick={(e) => { e.stopPropagation(); pickModel(model.id); }}>
+                onClick={(e) => { e.stopPropagation(); enterRow(model.id); }}>
                 <span className="ck">{curBase === model.id ? "✓" : ""}</span>
                 <span className="mi-name">{model.name}</span>
                 {modelCatalog.find((m) => m.id === model.id)?.vision ? <span className="cap-b">{t("composer.visionTag")}</span> : null}

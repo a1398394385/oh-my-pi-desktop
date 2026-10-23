@@ -66,6 +66,10 @@ body:has(#right.collapsed) #right-resizer {
   width: var(--right-w, 320px);
   flex-shrink: 0;
   box-sizing: border-box;
+  /* Must track #right's own width transition (the collapsed-sidebar bonus below): without it
+     the cards jump to the final width on click while the box edge still slides over the
+     duration, so the whole panel content snaps sideways ahead of its container. */
+  transition: width var(--dur-base) var(--swift);
 }
 
 /* Collapsed left sidebar: its freed width is split evenly between the center card (#main,

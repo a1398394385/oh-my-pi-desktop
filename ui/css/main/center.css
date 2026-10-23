@@ -33,6 +33,13 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
 body:has(#sidebar.collapsed) .chat-head {
   padding-left: 78px;
 }
+/* Header advisor toggle (right of the collab globe): ON state stays calm — soft green
+   like a live collab room, no accent highlight / no selection background; the color
+   alone marks the enabled state */
+.chat-head .advisor-toggle.on {
+  background: transparent;
+  color: var(--green);
+}
 /* macOS: the expand button lands exactly where the collapse button was (fixed viewport
    coords), so the sidebar toggles without moving the mouse; the title clears it below */
 html[data-platform="macos"] body:has(#sidebar.collapsed) .chat-head {

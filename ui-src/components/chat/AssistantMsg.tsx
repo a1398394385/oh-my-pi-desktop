@@ -64,7 +64,8 @@ function useReveal(target: string, on: boolean): string {
   return on ? target.slice(0, shown.current) : target;
 }
 
-function AssistantMsgImpl({ text, fk, streaming }: { text?: string; fk?: string; streaming?: boolean }) {
+// entryId rides along for the branch-pager wiring (items.tsx) — the bubble itself never reads it
+function AssistantMsgImpl({ text, fk, streaming }: { text?: string; fk?: string; streaming?: boolean; entryId?: string }) {
   const plain = text ? stripDcpTags(text) : text;
   // Subscribed so flipping the appearance motion switch applies to the live tail at once;
   // the gate itself reads the DOM (motionEnabled), this only supplies the re-render.

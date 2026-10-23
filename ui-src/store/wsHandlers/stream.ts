@@ -75,6 +75,19 @@ export const streamHandlers = {
       false,
     );
   },
+  advisor_mode(msg) {
+    // Header eye toggle state (host/advisor-mode.ts). `error` rides along when
+    // the overlay went on but no model resolved for the 'advisor' role — the
+    // eye lights (the setting IS on) while the toast explains the missing half.
+    if (msg.error) useAppStore.getState().toast(msg.error, true);
+    updateSession(
+      msg.sessionId,
+      (s) => {
+        s.advisorMode = !!msg.enabled;
+      },
+      false,
+    );
+  },
   approval_request(msg) {
     updateSession(msg.sessionId, (s) => {
       s.pendingApprovals ??= [];
@@ -162,16 +175,12 @@ export const streamHandlers = {
   bash_complete_result(msg) {
     useAppStore.setState({ bashCompleteResult: { reqId: msg.reqId, items: msg.items } });
   },
-  // Text output of slash commands (e.g. the /computer status echo): lands as a meta row, or as
-  // an expandable command card when the frame carries the typed command line (slash dispatch)
+  // Text output of slash commands (e.g. the /computer status echo): echoed in the
+  // composer as a one-second flip card, NOT as a transcript row — a consumed command
+  // is an input-level event, and leaving a command card in the message flow pushed the
+  // turn's action bar below it (see items.tsx grouping, since removed).
   command_output(msg) {
-    updateSession(msg.sessionId, (s) => {
-      s.items.push({
-        role: "meta",
-        text: String(msg.text ?? ""),
-        ...(msg.command ? { command: msg.command, cmdExpanded: true } : {}),
-      });
-    });
+    useAppStore.getState().showCommandFlash(String(msg.sessionId ?? ""), String(msg.text ?? ""), String(msg.command ?? ""));
   },
   // Background command phase rows: start inserts an in-flight row; fail withdraws that command's
   // in-flight row. The done state does not travel on transient frames: phase rows converted from
@@ -465,6 +474,8 @@ export const streamHandlers = {
           subagentCost: msg.subagentCost,
           cacheHitRate: msg.cacheHitRate,
           cacheBreaks: msg.cacheBreaks,
+          cacheMissTokens: msg.cacheMissTokens,
+          cacheMissUsd: msg.cacheMissUsd,
           compactions: msg.compactions,
           advisorCost: msg.advisorCost,
           activeMs: msg.activeMs,

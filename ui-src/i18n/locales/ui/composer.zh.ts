@@ -29,6 +29,7 @@ export const composerZh = {
   voiceTranscribing: "正在转写…",
   // ModeMenu.tsx
   modeAlwaysAsk: "手动批准",
+  modeAlwaysAskCached: "询问并记住",
   modeWrite: "默认",
   modeYolo: "完全访问",
   modeSmart: "智能审批",

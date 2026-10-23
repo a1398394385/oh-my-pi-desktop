@@ -23,8 +23,6 @@ export interface RightSlice {
   rightState: RightState;
   gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean; state: GitOperationState };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
-  /** Right-panel commit-diff viewer target (Git page file click): one file's patch inside a commit. */
-  commitDiff: { cwd: string; oid: string; path: string; oldPath?: string; diff: string; loading: boolean; error: string | null } | null;
   briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
   setBriefDiff(path: string, diff: string | undefined): void;
   browserTabs: BrowserTabInfo[]; // Agent built-in browser tabs (process-global mirror list, host browser_tabs pushes)
@@ -65,7 +63,6 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   rightState: rightStateInit,
   gitDiffCache: { cwd: null, files: [], loading: false, state: "NORMAL" },
   fileDiffCache: { path: null, diff: "", loading: false },
-  commitDiff: null,
   briefDiffCache: new Map(),
   browserTabs: [],
   browserViewTab: null,
@@ -161,6 +158,11 @@ function loadRightSlots(): Map<string, RightSlot> {
     const out = new Map<string, RightSlot>();
     for (const [path, p] of pairs) {
       if (!p || !Array.isArray(p.tabs)) continue;
+      // The welcome pseudo-slot is runtime-only: it used to be persisted and could carry the
+      // panel layout inherited from the last session (see restoreRightSlot), which made
+      // the new-task page reopen an expanded panel with a file tab. A launch forces the panel collapsed
+      // anyway (main.tsx), so nothing is lost by starting the new-task page clean.
+      if (path === WELCOME_SLOT) continue;
       // The auto-injected "hub" tab is never restored: hubOpen is runtime-only, so every
       // launch starts hubless and a persisted row carrying the tab would render the hub
       // detail page with no hub behind it (rows written by older builds included it).
@@ -192,7 +194,7 @@ const rightSlots = loadRightSlots(); // insertion order = LRU order; save/restor
  *  save/restore/dispose — i.e. once per session switch, never per keystroke). */
 function persistRightSlots(): void {
   try {
-    const rows = [...rightSlots].map(
+    const rows = [...rightSlots].filter(([path]) => path !== WELCOME_SLOT).map(
       ([path, s]) => [path, { tabs: s.tabs, active: s.active, recentClosed: s.recentClosed, selectedFile: s.selectedFile, fileView: s.fileView, collapsed: s.collapsed } satisfies PersistedSlot],
     );
     localStorage.setItem(RIGHT_SLOT_STORAGE_KEY, JSON.stringify(rows));
@@ -273,14 +275,20 @@ export function restoreRightSlot(path: string | null): void {
   // A fresh session inherits the layout but never the outgoing session's hub: hubOpen is
   // per-session, and its auto-injected tab would otherwise render a hub detail page with
   // no hub behind it (the right panel hides the tab, not the body).
-  const tabs = st.rightTabs.filter((n) => n !== "hub");
+  // The welcome pseudo-slot (no session yet) inherits NOTHING: the new-task page opens on a clean
+  // panel — carrying the outgoing session's tabs over opened a file/browser tab on a page
+  // that has no session, and its `collapsed` copy reopened a panel the user had just closed.
+  // Sessions keep the inheritance: that is the switching/creating continuity contract.
+  const inherit = key !== WELCOME_SLOT;
+  const tabs = inherit ? st.rightTabs.filter((n) => n !== "hub") : [];
+  const active = inherit ? (st.rightTab === "hub" ? tabs[tabs.length - 1] ?? null : st.rightTab) : null;
   rightSlots.set(key, {
     tabs,
-    active: st.rightTab === "hub" ? tabs[tabs.length - 1] ?? null : st.rightTab,
-    recentClosed: st.rightRecentClosed.slice(),
+    active,
+    recentClosed: inherit ? st.rightRecentClosed.slice() : [],
     selectedFile: null,
     fileView: null,
-    collapsed: st.rightCollapsed,
+    collapsed: inherit ? st.rightCollapsed : true,
     hubOpen: false,
     hubPrevTab: null,
     hubWasCollapsed: false,
@@ -297,7 +305,8 @@ export function restoreRightSlot(path: string | null): void {
     fileViewPending: null,
     briefDiffPending: null,
     rightTabs: tabs,
-    rightTab: st.rightTab && tabs.includes(st.rightTab) ? st.rightTab : tabs[tabs.length - 1] ?? null,
+    rightTab: active && tabs.includes(active) ? active : tabs[tabs.length - 1] ?? null,
+    rightCollapsed: inherit ? st.rightCollapsed : true,
     hubOpen: false,
     hubSel: null,
     hubPrevTab: null,

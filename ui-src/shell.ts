@@ -246,11 +246,15 @@ let zoomTargets: (HTMLElement | null)[] | null = null;
 // reports the outer, unzoomed space even inside a style.zoom subtree); wry's placement
 // puts the button center at y − 2.2 points, hence the offset back.
 const TRAFFIC_CENTER_BIAS = 2.2;
+// Optical nudge: the geometric center of the strip reads too high next to the
+// sidebar toggle glyph, so the lights sit 3pt lower. Must stay in sync with
+// tauri.conf.json's trafficLightPosition.y (first-frame value, before this runs).
+const TRAFFIC_OPTICAL_OFFSET = 3;
 function syncTrafficLights(): void {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!IS_MAC || !invoke) return;
   const stripBottom = document.getElementById("navNew")?.getBoundingClientRect().top ?? 50 * effZoom();
-  void invoke("set_traffic_light_y", { y: stripBottom / 2 + TRAFFIC_CENTER_BIAS });
+  void invoke("set_traffic_light_y", { y: stripBottom / 2 + TRAFFIC_CENTER_BIAS + TRAFFIC_OPTICAL_OFFSET });
 }
 
 export function applyZoom(): void {

@@ -9,7 +9,7 @@ import { useAppStore } from "./index";
 import { findLast, pathOfSessionId } from "./session-lookup";
 import { notifyDesktop, alertTitle } from "./notify";
 import { invoke } from "./ws";
-import { sealRunItems } from "./run-seal";
+import { sealRunItems, turnEndedWithError } from "./run-seal";
 // Per-session right panel snapshots: activateSession is the single funnel for all session
 // activations, so save/restore hooks live here (right.ts also imports activeOpen from this
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
@@ -181,7 +181,11 @@ export function activateSession(path: string): void {
     return;
   }
   const prev = st0.activePath;
-  if (prev !== path) saveRightSlot(prev); // same-path re-activation: neither save nor restore
+  // In-place message editing never survives a session switch (cancel-on-switch spec)
+  if (prev !== path) {
+    saveRightSlot(prev); // same-path re-activation: neither save nor restore
+    if (st0.editingEntryId !== null) useAppStore.setState({ editingEntryId: null });
+  }
   useAppStore.setState((st) => {
     const cur = st.openSessions.get(path);
     const openSessions = new Map(st.openSessions);
@@ -463,15 +467,29 @@ export function applyEvent(msg: EventFrame): void {
           // come, rescue its bubble before this run's process starts
           promoteStrandedSteerBubbles(s);
           s.turnStartAt = s.turnStartAt ?? Date.now();
-          s.turnItemStart = s.items.length;
+          // A UI that attached mid-run missed the run's first turn_start; the first one it
+          // sees is a tool-loop continuation's, which would split the run's fold at the attach
+          // moment. Anchor at the turn's leading user message instead so sealRunItems folds
+          // the whole run like the reload path; a partial-turn loop group already in the items
+          // (transcript rebuilt mid-run) lands inside the range and is un-nested by the seal.
+          let anchor = s.items.length;
+          for (let i = s.items.length - 1; i >= 0; i--) {
+            if (s.items[i].role === "user") { anchor = i + 1; break; }
+          }
+          s.turnItemStart = anchor;
         }
       },
       false,
     );
   } else if (msg.kind === "user_message") {
-    // Host-side send echo (other channel's prompt — its sender is excluded — or an
-    // automation run): the single run-start write covers clock/stop too.
-    startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
+    // Host-side send echo (another channel's prompt, an automation run, or this
+    // channel's own degenerate-idle prompt — BUG-080 half: the message was queued
+    // on a stale streaming flag and drew no optimistic bubble). Dedup against the
+    // sender's optimistic bubble: the tail user row without an entryId carrying
+    // the same text IS that bubble, so the echo never doubles it.
+    const cur = findBySessionId(msg.sessionId);
+    const dupe = findLast(cur?.items ?? [], (it): it is UserItem => it.role === "user" && !it.entryId && it.text === msg.text);
+    if (!dupe) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
       s.assistantDraft += msg.text;
@@ -558,7 +576,10 @@ export function applyEvent(msg: EventFrame): void {
     // assistants stay inside the group (matching the reloaded view)
     if (!msg.runEnd) {
       updateSession(msg.sessionId, (s) => {
-        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) {
+          // msg.final: this turn ended stopReason "stop" — a delivered output, lifted at seal
+          s.items.push({ role: "assistant", text: s.assistantDraft, ...(msg.final ? { turnFinal: true } : {}) });
+        }
         s.assistantDraft = "";
       });
       return;
@@ -618,7 +639,7 @@ export function applyEvent(msg: EventFrame): void {
     // on-disk list (notify.bgSessionTitle when not listed), the body is the last assistant text
     // truncated to 80 chars as the summary (notify.finished when absent). A run that ended on an
     // error row has already alerted in the error branch — don't also announce "finished".
-    if (s.items[s.items.length - 1]?.role !== "error") {
+    if (!turnEndedWithError(s.items)) {
       const lastA = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && !isJunkPlaceholder(it.text));
       const summary = (lastA?.text || "").trim();
       notifyDesktop("turn_end", s, alertTitle(s), summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"));
@@ -654,6 +675,15 @@ export function applyEvent(msg: EventFrame): void {
     // turn's closing card based on where this row lands.
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "advisor", text: "", notes: msg.notes });
+    });
+  } else if (msg.kind === "ttsr") {
+    // TTSR rule injection: a read-only notice at the interruption point. The prose the rewind
+    // cut off settles first, mirroring the host transcript (it flushed the draft before pushing
+    // the row), so live and reloaded order agree.
+    updateSession(msg.sessionId, (s) => {
+      if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+      s.assistantDraft = "";
+      s.items.push({ role: "ttsr", text: msg.rules.map((r) => r.name).join(", "), rules: msg.rules });
     });
   } else if (msg.kind === "error") {
     // Provider/request failure (quota, auth, transport): one row of its own.

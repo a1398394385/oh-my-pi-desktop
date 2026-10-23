@@ -83,6 +83,36 @@ describe("steer at the run tail", () => {
     expect(s.turnItemStart).toBe(s.items.length); // process starts after the rescued bubble
   });
 
+  test("degenerated queued prompt (stale streaming, idle host) lands its bubble via the user_message echo", () => {
+    seedSession(true); // bg-job window: UI streaming stuck on (no turn_end), host already idle
+    const st = useAppStore.getState();
+    const prevSend = st.send;
+    st.send = () => {};
+    sendComposerPrompt({ raw: "测试跑了多少了", files: [] }); // plain Enter: queued branch
+    st.send = prevSend;
+    let s = items().get(PATH)!;
+    expect(s.items.some((i) => i.role === "user" && i.text.includes("测试跑了多少了"))).toBe(false); // no optimistic bubble on this branch
+    expect(s.queued?.some((m) => m.text.includes("测试跑了多少了"))).toBe(true); // only a queue row
+    // Host wipes the ghost row and (BUG-080 half fix) echoes the message to the sender too
+    event("user_message", { text: "测试跑了多少了" });
+    s = items().get(PATH)!;
+    const bubbles = s.items.filter((i) => i.role === "user" && i.text === "测试跑了多少了");
+    expect(bubbles.length).toBe(1); // bubble landed, exactly once
+    expect(s.streaming).toBe(true);
+  });
+
+  test("user_message echo does not double the optimistic bubble (normal idle path)", () => {
+    seedSession(false); // streaming=false: dispatchPrompt draws the optimistic bubble
+    const st = useAppStore.getState();
+    const prevSend = st.send;
+    st.send = () => {};
+    sendComposerPrompt({ raw: "你好", files: [] });
+    st.send = prevSend;
+    event("user_message", { text: "你好" }); // a redundant echo must not add a second bubble
+    const s = items().get(PATH)!;
+    expect(s.items.filter((i) => i.role === "user" && i.text === "你好").length).toBe(1);
+  });
+
   test("normal consumption path unaffected (steer_consumed promotes before turn_start)", () => {
     seedSession(true);
     const st = useAppStore.getState();

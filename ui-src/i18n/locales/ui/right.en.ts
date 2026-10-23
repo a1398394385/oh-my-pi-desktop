@@ -3,7 +3,6 @@ export const rightEn = {
   tabSubagent: "Subagents",
   tabBgcmd: "Background Commands",
   tabFile: "Files",
-  tabCommitDiff: "Commit Diff",
   tabTerminal: "Terminal",
   tabBrowser: "Browser",
   tabAgentBrowser: "Agent Browser",

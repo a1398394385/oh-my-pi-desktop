@@ -50,7 +50,8 @@
   .stats-bar { margin-bottom: calc(10px + env(safe-area-inset-bottom)); }
   /* Narrow-only two fixed rows (desktop keeps ONE line, see composer.css): smaller type +
      tighter gaps so the six token metrics fit the phone width */
-  #main .stats-bar { font-size: var(--ui-fs-xs); padding: 0; flex-direction: column; gap: 2px; }
+  #main .stats-bar { font-size: var(--ui-fs-xs); padding: 0; }
+  #main .stats-bar .sb-layer { flex-direction: column; gap: 2px; }
   #main .stats-bar .sb-break { font-size: var(--ui-fs-xs); }
   #main .stats-bar .sb-row {
     display: flex;

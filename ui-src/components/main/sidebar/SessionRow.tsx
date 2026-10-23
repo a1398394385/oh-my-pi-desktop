@@ -9,6 +9,8 @@ import Icon from "../../../Icon";
 import { IS_WINDOWS, MOD } from "../../../platform";
 import { confirmDialog } from "../../settings/common";
 import { fmtAgo, sessionLabel } from "./util";
+import { turnEndedWithError } from "../../../store/run-seal";
+import { motionEnabled } from "../../../shell";
 
 // Session entry (structural subset of diskProjects[].sessions / archivedSessions elements;
 // the full store-side type is defined by the P2F batch — this declares only the fields this
@@ -123,7 +125,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     const o = st.openSessions.get(s.path);
     if (!o || o.streaming) return false;
     const last = o.items[o.items.length - 1];
-    return last?.role === "error" || !!(last as { error?: string | null } | undefined)?.error;
+    return turnEndedWithError(o.items) || !!(last as { error?: string | null } | undefined)?.error;
   });
   const pinnedSessions = useAppStore((s2) => s2.pinnedSessions);
   const unseenFinished = useAppStore((s2) => s2.unseenFinished);
@@ -139,6 +141,9 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // the host pool — not openSessions — is the truth (the frontend slot map has an LRU cap,
   // so a row can outlive its slot while still resident in the pool).
   const inHostPool = useAppStore((st) => st.poolPaths.has(s.path));
+  // Pool-eviction notice: the store lights this path up for 1s on session_unload (below the
+  // row swaps it in over the title instead of raising a bottom toast)
+  const unloaded = useAppStore((st) => st.unloadedPaths.has(s.path));
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -147,6 +152,26 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     };
   }, []);
+
+  // Title-slot carousel: the eviction notice and the title swap both ways through the same
+  // slide (in from the right, where the eject button sits), so the outgoing line is kept one
+  // beat while the two cross. Only an `unloaded` flip animates — plain title updates don't.
+  const rowText = unloaded ? t("sidebar.unloadedNotice") : sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "");
+  // Adjust-state-during-render (React's own pattern): the flip and its `sliding` class must
+  // land in ONE paint. Driving this from an effect showed the final text for a frame before
+  // the slide started — that read as an instant swap.
+  const [swap, setSwap] = useState({ unloaded, text: rowText, prev: null as string | null });
+  if (swap.unloaded !== unloaded || swap.text !== rowText) {
+    // motionEnabled(): the Appearance motion switch (system / on / off). With motion reduced the
+    // global kill rule in global/animations.css flattens the slide, so keeping the outgoing line
+    // would leave both texts stacked for a beat — drop it and swap the text outright.
+    setSwap({ unloaded, text: rowText, prev: unloaded !== swap.unloaded && motionEnabled() ? swap.text : swap.prev });
+  }
+  useEffect(() => {
+    if (swap.prev === null) return;
+    const id = setTimeout(() => setSwap((s) => ({ ...s, prev: null })), 320); // slightly past the 300ms slide
+    return () => clearTimeout(id);
+  }, [swap.prev]);
 
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const pinned = pinnedSessions.has(s.path);
@@ -276,7 +301,8 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       </span>
       {/* Double-click the title to rename in place (the click before the double-click still opens the session; idempotent, no conflict) */}
       <span className="tt" onDoubleClick={() => onRenameStart(rowKey, s.path)}>
-        {sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "")}
+        {swap.prev !== null && <span className="tt-prev">{swap.prev}</span>}
+        <span className={"tt-next" + (swap.prev !== null ? " sliding" : "")}>{swap.text}</span>
       </span>
       {isProjectManageMode ? (
         <button

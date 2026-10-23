@@ -11,8 +11,9 @@ import {
   useBottomTermTabs, addBottomTermTab, activateBottomTermTab, closeBottomTermTab, termGroupKey,
 } from "./right/termTabs";
 
-// Minimum dock height (layout px); the drag also caps at 80% of the window height.
-const BOTTOM_MIN_H = 120;
+// Minimum dock height (layout px) = 51px chrome (6 resizer + 33 head + 12 wrap padding)
+// + 2 terminal rows at the 13px default font; the drag also caps at 80% of the window height.
+const BOTTOM_MIN_H = 85;
 
 export default function BottomTerminal() {
   const { t } = useTranslation();

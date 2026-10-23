@@ -432,8 +432,13 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       const d = e.key === "ArrowDown" ? 1 : -1;
       if (askQs.length > 0) {
         // Ask form: step through every form control in render order (option
-        // rows, "Other" rows, open "Other" inputs), wrapping around
-        const rows = Array.from(root.querySelectorAll<HTMLInputElement>("input[data-ask-row]"));
+        // rows, "Other" rows, open "Other" inputs), wrapping around. An open
+        // "Other" row is reachable only through its input: keeping its radio in
+        // the list bounces the focus straight back out of that input.
+        const rows = Array.from(root.querySelectorAll<HTMLInputElement>("input[data-ask-row]")).filter((r) => {
+          const q = r.getAttribute("data-qi");
+          return r.getAttribute("data-oi") !== null || q === null || !othersRef.current[Number(q)];
+        });
         if (rows.length === 0) return;
         let idx = rows.findIndex((r) => r === document.activeElement);
         if (idx < 0) {
@@ -451,7 +456,14 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         row.focus();
         const qi = row.getAttribute("data-qi");
         const oi = row.getAttribute("data-oi");
-        if (qi !== null && oi !== null && !askQs[Number(qi)]?.multi) togglePick(Number(qi), Number(oi), false, false);
+        const multi = qi !== null && !!askQs[Number(qi)]?.multi;
+        if (qi !== null && oi !== null && !multi) {
+          togglePick(Number(qi), Number(oi), false, false);
+        } else if (qi !== null && oi === null && !multi && row.type !== "text") {
+          // Landing on the "Other" row opens it: single-choice drops the pick, so
+          // one row stays highlighted and Enter hands over the custom answer
+          toggleOther(Number(qi));
+        }
       } else {
         // Option listbox: the same stepping the in-card rows use (disabled rows skipped)
         const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));

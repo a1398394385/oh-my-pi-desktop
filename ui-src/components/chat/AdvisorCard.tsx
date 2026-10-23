@@ -27,26 +27,47 @@ function SevChip({ severity }: { severity: AdvisorSeverity }) {
   return <span className={"adv-chip " + severity}>{t(`chat.${label}`)}</span>;
 }
 
-// One blocking note inline in the process. Body carries the raw guidance (same text the
-// model received); the T-n age sits in the head because the row has no expanded state.
+// Blocking notes inline in the process. Folded by default: the head row (severity chip,
+// advisor, age) is enough to notice the block; the raw guidance the model received
+// expands on click, matching the turn-tail card's disclosure language. A single note
+// renders its text bare under the head (the head already carries its meta); multiple
+// notes keep the full per-item rows so each severity/author stays distinguishable.
 export function AdvisorInline({ notes }: { notes: AdvisorNote[] }) {
+  const [open, setOpen] = useState(false);
+  const first = notes[0];
   return (
-    <div className="adv-inline">
-      {notes.map((n, i) => {
-        const sev = n.severity ?? "concern";
-        return (
-          <div className={"adv-inline-item " + sev} key={i}>
-            <div className="adv-inline-head">
-              <span className="adv-dot" />
-              <span className="adv-src">advisor</span>
-              {n.advisor ? <span className="adv-who">{n.advisor}</span> : null}
-              <SevChip severity={sev} />
-              {n.turnsAgo !== undefined ? <span className="adv-age">T-{n.turnsAgo}</span> : null}
+    <div className={"adv-inline" + (open ? " open" : "")}>
+      <button className="adv-inline-head" type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {first ? (
+          <>
+            <span className="adv-dot" />
+            <span className="adv-src">advisor</span>
+            {first.advisor ? <span className="adv-who">{first.advisor}</span> : null}
+            <SevChip severity={first.severity ?? "concern"} />
+            {first.turnsAgo !== undefined ? <span className="adv-age">T-{first.turnsAgo}</span> : null}
+          </>
+        ) : null}
+        {notes.length > 1 ? <span className="adv-age">×{notes.length}</span> : null}
+        <Icon name="chevronDown" className="adv-chev" />
+      </button>
+      {open ? (
+        notes.length === 1 ? (
+          <div className="adv-tx">{first.note}</div>
+        ) : (
+          notes.map((n, i) => (
+            <div className={"adv-inline-item " + (n.severity ?? "concern")} key={i}>
+              <div className="adv-inline-head">
+                <span className="adv-dot" />
+                <span className="adv-src">advisor</span>
+                {n.advisor ? <span className="adv-who">{n.advisor}</span> : null}
+                <SevChip severity={n.severity ?? "concern"} />
+                {n.turnsAgo !== undefined ? <span className="adv-age">T-{n.turnsAgo}</span> : null}
+              </div>
+              <div className="adv-tx">{n.note}</div>
             </div>
-            <div className="adv-tx">{n.note}</div>
-          </div>
-        );
-      })}
+          ))
+        )
+      ) : null}
     </div>
   );
 }

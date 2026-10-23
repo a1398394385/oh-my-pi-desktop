@@ -17,7 +17,6 @@ interface TabMeta {
 export const TAB_META: Record<string, TabMeta> = {
   subagent: { label: "right.tabSubagent", icon: "agents" },
   gitdiff: { label: "Git Diff", icon: "branch" },
-  commitdiff: { label: "right.tabCommitDiff", icon: "file" },
   bgcmd: { label: "right.tabBgcmd", icon: "term" },
   file: { label: "right.tabFile", icon: "folderOpen" },
   terminal: { label: "right.tabTerminal", icon: "termBox" },
@@ -69,7 +68,6 @@ export const COMPOSER_ONLY_TABS: ReadonlySet<string> = new Set(["bgcmd"]);
 // Tabs opened by a page context instead of the add menu: the commit-diff viewer
 // appears when a file row in the Git page is clicked. Still closable; hidden
 // from the add menu because a bare tab with no target renders nothing.
-export const CONTEXT_TABS: ReadonlySet<string> = new Set(["commitdiff"]);
 
 // Tab close hooks: registered by pages with host-side resources (e.g. the terminal PTY);
 // invoked to destroy them before the tab closes. Registered under the base kind and called
