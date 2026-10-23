@@ -16,7 +16,7 @@ Tauri 外壳加载 `ui/dist` 构建产物（入口 `ui/index.html`，由 `ui/sty
 | 样式实体 | `ui/css/global/`、`shared/`、`main/`、`settings/` | token/重置/全站控件/浮层；公共模型与代码视图；三栏布局与各页面；设置页外壳与子页 |
 | 图标 | `ui/icons.js`、`ui/fa-icons.js`、`ui/lucide-icons.js`、`ui/file-icons.js` | 注册表与三层覆盖（FA 为生成物，禁止手改） |
 | React 根 | `ui-src/main.tsx`、`ui-src/App.tsx` | 挂载、主题/缩放恢复、图标注册表引入 |
-| 页面组合 | `ui-src/components/main/` | 左栏 `sidebar/`、中栏 `MainColumn.tsx`（`chat/` 消息、`tree/` 会话树、Agent Hub、底部终端 dock `BottomTerminal.tsx`，⌘/Ctrl+J）、右栏 `right/` |
+| 页面组合 | `ui-src/components/main/` | 左栏 `sidebar/`、中栏 `MainColumn.tsx`（`chat/` 消息、`tree/` 会话树、Agent Hub、底部终端 dock `BottomTerminal.tsx`，⌘/Ctrl+J）、右栏 `right/`；`git/` 是两栏 Git 管理页（图谱+分支 / 右栏在「工作区改动」与「提交详情」间切换，进入页面不预选提交；图谱下方为本地/云端/标签三列，三条分隔线可拖动并记忆尺寸），点击文件由页内双版本对比接管图谱栏（并排/行内/分块三视图，分块模式折叠未变更区、右缘 minimap 承担滚动与变更概览），打开期间壳的左右栏自动收起 |
 | 设置页 | `ui-src/components/settings/` | 全屏设置中心与 `pg-*` 子页 |
 | 跨页控件 | `ui-src/components/shared/` | 模型选择、代码视图、子代理控件 |
 | 状态 | `ui-src/store/` | 单一 zustand store，`index` 组合 ui/session/projects/right/settings/ws/models/entry-tree slice |

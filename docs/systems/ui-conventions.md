@@ -53,3 +53,12 @@
 2. 需要新语言时，改全站基类（`ui/css/global/controls.css` 等），不要在页面里私有覆盖。
 3. 颜色/动效只用 token；新增 token 先改 `tokens.css` 并同时给浅色值。
 4. 改完跑 `bun run ui:build` + `ui:typecheck`，并按 [DEVELOPMENT.md](../DEVELOPMENT.md) 选真机通道走查。
+
+## 5. 下拉与浮层底色（全局唯一档）
+
+全站下拉只有一档底色，由 `--ctl-bg` 承担（定义在 `ui/css/global/tokens.css`）：
+
+1. **底色 = `--ctl-bg` = `var(--inset)`**：深色 `#2B2B2B`（与输入框同层），浅色 `#ffffff`（继承 `--inset`）。所有下拉、弹层卡片（ring-pop 弹卡、tooltip、对话框、悬浮菜单）共用这一档，不存在第二种浮层底色。
+2. **禁止页面私有底色**：下拉一律复用 `ui/css/global/controls.css` 的 `.menu` 基类与 `--ctl-bg`；Radix `SelectContent`（`ui-src/components/ui/select.tsx`）用 `bg-[var(--ctl-bg)]`。需要新下拉时加类，不要另写 `background`。
+3. **行状态色在底色之上**：hover/选中行走 `--panel-3`，与底色不同层，避免"行底色 = 面板底色"导致整行看不见（见 `ui/css/shared/model-picker.css`）。
+4. **原生 `<select>` 例外**：原生下拉弹层由系统绘制，无法改底色；应用内自绘下拉才是本节范围。

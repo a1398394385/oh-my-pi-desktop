@@ -93,6 +93,13 @@
 | BUG-096 | 上下文明细卡片合计不足 100%——ACP 块令牌漏算图片与 thinking 签名，活跃区最多偏小 51% | 2026-10-21 |
 | BUG-097 | 升级 18.12.5 冒烟暴露两处既有缺陷：归档驱逐用恒空的 `msg.sessionId`（池条目泄漏）、归档标志原样路径比较（realpath 拼写漏配） | 2026-10-21 |
 | BUG-098 | 18.12.5 时序回归：idle prompt 的 queued 校准帧排在 MCP 挂载等待后（被 capabilities_mcp 插队）；reload 撞上 autoTitle 的 isStreaming 尾巴 | 2026-10-21 |
+| BUG-099 | 模型设置页看不到已保存的自定义元数据——目录 id 与 models.yml 行 id 两套约定混用 | 2026-10-21 |
+| BUG-100 | 远程/桌面双端不同步——「工作中 Ns」只从本端打开时刻算、对端自动标题不更新、状态帧（模型/推理/屏幕控制/设置/权限）只回请求方 | 2026-10-22 |
+| BUG-102 | 重载会话后处理过程「折叠被切断」——journal 中途的 provider 失败条目提前关闭 run，其后同回合的过程行全部平铺 | 2026-10-22 |
+| BUG-103 | 点「新建任务」右栏自动展开并冒出文件 tab——welcome 伪槽按会话规则继承了上一个会话的面板布局，还被 LRU 淘汰后反复重建 | 2026-10-22 |
+| BUG-104 | 等后台命令期间发的消息在发送端页面上消失——bg job 让 agent_end isTerminal:false、UI streaming 长期滞留 true，host-idle 直通消费既无 steer_consumed 也无回声，气泡永不落地（BUG-080 气泡侧残留转正） | 2026-10-22 |
+| BUG-105 | 流式期间发的斜杠命令（如 `/advisor on`）被本地消费后仍留在待发送队列——UI 无条件乐观入队，消费型命令不入底座队列也触发不了 onQueueChange，没有校准帧清行 | 2026-10-23 |
+| BUG-106 | kimi provider 下 `/computer on` 开启的 computer use 点输入框图标关不掉——setComputerMode 的 kimi 关闭分支只卸载 kimi-cu，不清底座命令写的 computer.enabled overlay，帧亮态 overlay‖mounted 恒真 | 2026-10-23 |
 
 ---
 
@@ -1065,6 +1072,8 @@ if (!multi && qi < askQs.length - 1) goTo(qi + 1);
 
 **教训**：①宿主撤回乐观气泡时，前端必须同时给「被撤回的那次交互的产物」（此处是命令输出帧）补一个归属锚点，否则它会退化成上一轮的续写；②`turn-section` 的分组键是用户项而非时间边界，任何「用户没留下可见气泡」的帧（命令输出、后台提示）都要显式开块，不能依赖默认续接。
 
+**后续（2026-10-23）**：命令卡整体移到输入框回显（见 BUG-105 后的交互改动）——`CommandRow`、`MetaItem.command` 与该「开独立 turn」分组分支已删除，`command_output` 不再产生 `meta` 行；本条的两个教训仍适用于其它「无用户气泡的产物」（`command_phase` 行、后台任务提示）。
+
 ### BUG-073: 从 Agent 输出尾的 fork 分叉出的新会话不包含该输出——entryId 回填两处错位，切片锚点落到轮内第一条 assistant
 
 **现象**：会话 01a13ff5 在 18:20 的 agent 输出（轮终稿）下点 fork，新会话 01a14444 的切片却止于 18:18:30 的轮内第一条 assistant（`194acba0`），18:18:30 之后的输出（含被 fork 的那条）全部丢失；且 194acba0 的两个 toolCall 结果在切片外，新会话尾巴被 repairInterruptedTail 补了一截合成 aborted 结果。分诊：②存量缺陷（backfill 按位对齐设计起即如此）。
@@ -1432,3 +1441,140 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`queue-ghost-smoke` 3 连跑 3 绿（修复前 3 连败）；`smoke.ts` 守卫修复前 2/2 败（稳定复现「会话尚未空闲」乒乓），修复后 3 连跑 3 绿；`smoke:queue` 16 断言、`smoke:branch`、`smoke-approval`、`smoke-subagent(-reopen)`、`smoke-automations`、`smoke-plan-approve` 全绿；`bun run check` 全绿。
 
 **教训**：①「必须在第 X 帧之前」的协议帧不能排在任何 `await` 之后——await 期间任何监听器都可能插队；②对「会再广播的帧类型」（如 reload 重建后的 session_created）必须有幂等守卫，否则测试自身变成负载发生器——每次乒乓都真开一个模型 turn，还叠加内存与 120s 超时假象；③冒烟把 A 事件当 B 状态充分条件（turn_end 即空闲）时，升级改变时序后先怀疑这个映射，别急着改产品代码。
+
+### BUG-099: 模型设置页看不到已保存的自定义元数据——目录 id 与 models.yml 行 id 两套约定混用
+
+**日期**：2026-10-21
+
+**现象**：配置层 provider（models.yml 声明，如 `bulita`/`shiyi`/`local-proxy`）在模型设置页展开模型行的元数据编辑器后，「自定义元数据」开关是关的、输入框全空、模型行也没有「自定义元数据」标签——但 models.yml 里该模型的 `contextWindow`/`cost`/`thinking` 明明存在且底座 registry 已按其生效。若真去点保存，还会把 yml 行 id 写成 `provider/model`。
+
+**根因**：同一份持久化数据存在两套 id 约定，且在读、写两条链路上交叉使用。模型目录（host `modelCatalog()`）的 id 是 `provider/model`；models.yml 行 id 是裸 id。host 的 `provider_model_meta` 快照按裸 id 键入（`rows[row.id]`），UI 却用目录 id 查表（`meta.rows[m.id]`）→ 永远 miss，saved 恒为 null，开关因此恒关。写路径同样用目录 id 当行 id（`buildRow(m.id)`），保存后 yml 里会长出一行 id 带前缀的错行。附带两处：①`provider_model_saved` 回显只带 name/contextWindow/maxTokens/cost 四个字段，bare 判定也只看这四个 → 只改 reasoning/thinking 的行会被当成「裸行」，已保存的能力字段下次打开编辑器又退回「继承」；②host `save_provider_model` 整行替换 yml 行，编辑器不暴露的手写键（`compat`/`tokenizer`）被一并删除。
+
+**修复**：①`ui-src/components/settings/pages/ModelPage.tsx` 用裸 id 查快照并把裸 id 传给 `ModelMetaEditor`（保存负载随之用裸 id）；②`ui-src/store/wsHandlers/settings.ts` 把保存回显归一化成与 `provider_model_meta` 同形的 8 字段快照，bare 判定随之覆盖全部字段；③`host/rpc/provider-wizard.ts` 的 `save_provider_model` 改为字段级合并——`MODEL_META_KEYS` 白名单内的键按编辑器语义覆盖或删除（裸行=全继承），白名单外的手写键（compat/tokenizer 等）保留；④`host/wire/frames-models.ts` 补齐 `ProviderModelSavedFrame.model` 类型（此前窄类型把能力字段挡在类型外）。
+
+**验证**：新增 `scripts/smoke-model-meta-editor.tsx`（UI：标签/开关/预填/保存 id/保存回显）与 `scripts/smoke-provider-model-save.ts`（host：手工 compat/tokenizer 不丢、裸行清元数据），红绿对照：分别回退 UI 查表键与 host 合并逻辑后两条冒烟分别稳定失败；`bun run check` 十项全绿；`smoke:provider-order-ui` 通过。
+
+**教训**：①同一份持久化数据的键必须在读、写两条链路上同形——一边用 `provider/model`、另一边用裸 id 时，「查不到」和「写坏」会同时发生，且只读不写时完全静默；②只暴露部分字段的编辑器不能整行替换持久化行——未暴露的键（compat/tokenizer）会被静默删除；③回显快照的字段集必须与读取快照一致，否则「保存成功」之后下一次打开又变回继承态。
+
+
+### BUG-100: 双端（桌面 / 远程）不同步——「工作中 Ns」只从本端打开时刻起算、对端自动标题不刷新、状态帧只回请求方
+
+**日期**：2026-10-22
+
+**现象**：桌面端开始的会话，桌面显示「工作中 64 分 48 秒」，远程打开会话后从「工作中 0 秒」重新起算；反向（远程开始、桌面点进去）同样。另外，一端跑完自动生成标题后，另一端侧栏行一直保留旧标题（需重启或重新拉列表才更新）。同类（审计中一并确认）：③一端改模型/推理档位，另一端输入框徽章仍是旧值；④一端翻屏幕控制开关（含 `/computer`），另一端图标不亮；⑤桌面改任一项设置，远程的行为开关（`remote.mobileStatsBar`、`uiConfig` 的 locale/主题/动效、`tui.*`）停在连接那一刻；⑥改权限模式，另一端药丸不刷新。
+
+**根因**：两条链路都缺「宿主权威」这一环。①`turnStartAt` 是纯前端状态：本端发送时 `startLocalRun` 写 `Date.now()`，对端只能在收到 `turn_start` 时补写，而中途打开进行中的会话（长时间工具调用期间没有任何帧）既没有 `turn_start` 也没有时间种子——`session_created` 的 `busy` 只够点亮转圈。宿主其实一直持有运行窗口起点 `PoolEntry.activeStartedAt`（agent_start 打开、终态 agent_end 关闭），却没随帧下发。②自动标题在回合结束后异步生成（18.12.x 跑在 AgentSession 内），而 `session_title_changed` 只走 `entryBus`（该会话已 attach 的 socket）：对端在 `session_finished` 时刷过一次列表，标题此刻还没生成，之后又没有任何推送，于是永久落后。③~⑥是同一个形态的复发：`session_model`/`session_thinking`/`cycle_model`（`host/rpc/models.ts`）、`computer_mode`（`host/computer-mode.ts` 的所有调用点）、`settings`（`host/rpc/settings.ts` 的 24 处写入回执）全部 `ws.send(...)` 只回请求方——而远程的 `set_model`/`set_thinking`/`set_computer_mode`/`set_plan_mode` 并不在 `REMOTE_WRITE_DENYLIST` 里，所以「一端改、另一端不变」双向可达；设置写被 denylist 挡住，于是方向固定为桌面→远程，远程那份 `hostSettings` 从连接到断开都不再更新（它连设置入口都没有，只能被动等）。`plan_mode` 用 `entryBus`、`remote_regenerate_key` 用 `eachUiWs` —— 说明这是漏改而非设计。
+
+**修复**：①`host/wire/frames-session.ts` 的 `SessionCreatedFrame` 新增 `busySince`，`buildSessionCreatedFrame` 用 `entry.activeStartedAt` 填值（仅 `isStreaming` 时）；UI 的 `session_created` 分支把 `turnStartAt` 种子改为 `live?.registeredAt ?? msg.busySince ?? null`（automation 槽位同源）。②`session_title_changed` 增加 `path` 字段（磁盘行 id 与池 UUID 永不相等，未 attach 的通道只能按路径对齐行），宿主改走 `eachUiWs` 广播到全部连接；UI 的 `session_title_changed` 用 `msg.path ?? pathOfSessionId(...)` 匹配磁盘行。③`host/state.ts` 新增 `sendSessionState(ws, entry, data)`（请求方 + 其余 attached socket，去重——`cycle_model` 的失败回执会 toast，重发即双 toast），`session_model`/`session_thinking`/`cycle_model`、`prompt.ts` 的 slash `notifyConfigChanged`、`pushComputerMode` 共 6 处改用它；④设置落盘统一走 `host/frames.ts` 的 `pushSettings()`（`eachUiWs` 广播，`get_settings` 仍是只回问者，`set_desktop_env` 的 `restartHint` 只回本地端），`host/rpc/remote.ts` 两处手写广播一并收敛；`approval_mode` 同样广播。
+
+**验证**：临时探针（真宿主 + 本机/远程双通道，模型 `local-proxy/tiny`，prompt 触发 `sleep 12`）——远程在运行中 `load_session` 拿到的 `busy=true`、`busySince` 与发送时刻同窗且早于载入时刻 3.5s；另一端从未 attach 的新会话被改名后收到带 `path` 的 `session_title_changed`；另一次探针逐条确认 `set_model`/`set_thinking`/`set_computer_mode`/`set_approval_mode`/`set_branch_titles` 在另一端落地，且 settings 广播无回环放大（本机窗口内 1 帧）。常驻回归：`scripts/smoke-dual-channel.ts` 新增两条（`session_thinking` 与 `reload_settings` 后的 `settings` 到达远端），红绿对照——把 `sendSessionState`/`pushSettings` 分别退回 `ws.send` 后，对应断言各稳定失败一次，恢复后 13 断言全绿。`bun run check` 十项全绿、`bun run ui:typecheck`、`bun run host:build` 通过。
+
+**教训**：①凡「相对时间」展示，起点必须由状态的所有者（宿主）随快照下发，不能由客户端在它能看见的第一帧上就地取 `Date.now()`——客户端看见的第一帧与真实起点无关，且长时间静默的进行中会话根本不会给这一帧；②事件型推送（标题、状态）默认只能覆盖「已订阅者」，而侧栏列表是**未订阅**通道唯一的信息面——这类帧要么广播，要么带上能在列表里定位行的键；③新写 RPC 时先问一句「这帧另一端渲染吗」：只要答案是是，`ws.send` 就是错的（本类已在 model/thinking/computer/settings/approval 五处复发）；④已把判据机器化：`scripts/frame-fanout.json` 登记 11 个共享帧，`scripts/check-frame-fanout.mjs`（进 `bun run check`）禁止其裸 `ws.send`，并对未进双通道冒烟的帧打告警——写这个门禁时它立刻又抓出一处同类漏网（`plan-approve.ts` 的 `dispatchApprovedTurn` 用单 socket 推 `session_model`，计划批准后另一端徽章不变），规则落为 RULE-013/014。
+
+### BUG-101: 分支标题模式下底座自动命名不落 journal——切分支后该分支标题丢失、被兄弟分支标题顶替
+
+**日期**：2026-10-22
+
+**现象**：`sessionTitles.branchTitles` 开启时，会话首条自动标题（底座在首条 user message 后异步生成）只存在于 header：会话文件里只有 `title_change`，没有对应的 `branchTitle` 条目。此后一旦导航到另一分支再切回，`readBranchTitle` 读到 null，mirror 逻辑不动 header，于是该分支显示的是兄弟分支的标题，直到下一次刷新把它覆盖。
+
+**根因**：`branchTitle` 条目只在桌面自己的三条写入路径产生（每回合刷新、`rename_session`、automation 槽位）。底座 `AgentSession.#startAutoTitle` 直接调 `SessionManager.setSessionName(title, "auto")`，plan 审批标题、BTW 标题同样直写 header——这些都不经过桌面，journal 里没有任何记录。而 `session-titles.ts` 顶部已声明「journal 是显示的 SSOT」，缺口即在此。
+
+**修复**：①`host/session-titles.ts` 新增 `syncBranchTitle(manager)`：`branchTitles` 开启时，若当前分支最后一条 `branchTitle` 的 title 与 header 标题不同，就按 `manager.titleSource` 补记一条（`user`→user，其余→auto）；②`host/session-entry-core.ts` 的 `onSessionNameChanged` 监听里调用它（标题每次变化都会被监听捕获，包含底座、扩展、其他通道的写入），随后重置 `pollKnownSize` 让轮询重扫自己的写；③`host/rpc/session.ts` 的池内重命名删掉重复的 `appendBranchTitle`（监听已补记；未打开的会话文件没有监听，该分支保留显式写入）。
+
+判据里最关键的一条：**title 相同即跳过**，不看 source。桌面刷新是「先 journal auto、再把 header 标 user」的一对写，若按 source 判重就会把刷新标题升级成「用户手写」，`hasOwnUserTitle` 从此冻结所有后续刷新。
+
+**验证**：`scripts/session-titles.test.ts` 新增 4 条（开关关闭不写、底座 auto 标题补记为 auto、底座改名补记为 user、已 journal 的刷新对不被升级），逐条回退判据即失败；一次性脚本用真实 `SessionManager` 复现缺口（header-only）→ 补记落盘 → 二次调用不重复 → 刷新对仍为 auto → 用户改名落 user，跑完删除；`bun run check` 十项全绿（会话生命周期域 2194/2200）。
+
+**教训**：①「某个字段是 SSOT」这类声明必须在**所有**写入该字段的入口兑现——底座直接写 header 的路径（自动标题、/rename、plan 审批）不经过桌面，就得在变更监听这一个汇流点补齐，而不是逐个调用点补；②身份字段（这里指 `source`）同时承担「真实作者」与「解锁标记」两种语义时，判重必须只依赖业务值，否则自己的配对写会被自己误判成用户意图。
+
+### BUG-102: 重载会话后处理过程「折叠被切断」——journal 中途的 provider 失败条目提前关闭 run，其后同回合的过程行全部平铺
+
+**日期**：2026-10-22
+
+**现象**：一个会话在宿主内存池里跑完时，回合的处理过程（思考 / 工具行）正常折成一个可展开的 process 组；把这个会话移出内存池再重新载入后，同一回合在失败点之后的过程行全部散在顶层，折叠组只覆盖失败之前的部分——用户描述为「折叠被切断」。
+
+**根因**：`host/translate-history.ts` 的磁盘重放把 provider 失败条目（`stopReason: "error"` 的 assistant）当成回合边界：`finalizeRun()` 关闭当前 run 并把错误行推到顶层，`run` 变 `null`，于是该回合**后续**的 assistant / toolResult 行走 `sink = out` 平铺。真实会话（`01a15f14`）里那条 socket 失败条目之后，同一回合还有 1184 条过程行，全部如此。运行时不会出现这种切分：`ui-src/store/run-seal.ts` 只在回合结束时统一收尾，过程始终是一个组。
+
+**修复**：①错误条目不再关闭 run——`run` 存在时按普通行塞进 `run.items`（无 turn 开头时仍推顶层），随组折叠，和 tool 事件一样；②两条路径的「回合向外结果」扫描改为跳过 `advisor` 与 `error` 行，尾部失败时最终回答仍露出组外（不被错误行挡住）；③`ui-src/store/run-seal.ts` 同步去掉尾部 error 剥离，运行时与重载一致。**语义变更（用户决策）**：原实现「失败原因必须顶层可见」被推翻——错误是回合内的一个事件，不折进组会让重载后的历史在每条错误处断层，也让统计/回答后面堆一串错误行。
+
+**验证**：新增 `scripts/translate-history-run-error.test.ts`（中途失败 → 1 个组、组内 `thinking/error/thinking`；尾部失败 → 组内 `thinking/error` 且最终回答露在组外；无 turn 开头的错误仍是顶层行），3 条全绿；回退判据（失败时 `finalizeRun()`）即第一条用例失败。真实 journal 冒烟：`entriesToTranscript` 后顶层 thinking/tool/error = 0、loop 组 2 个（40 / 1234 项，第二组内含 481 thinking + 748 tool + 1 error）；相邻 `translate-history-branch-title` / `advisor-row` / `translate-diff` / `agent-process-style` / `backfill-entryids` 全绿，`bun run ui:typecheck` 与注释语言 / 编码 / 架构门禁通过。
+
+**教训**：同一份 journal 的两条渲染路径（实时 `run-seal.ts` 与重载 `translate-history.ts`）必须对同一序列产出同样的分组；只要一条把「异常条目」当边界、另一条当普通行，"运行正常、重载断开"这类只在重载后出现的差异就会反复出现。异常事件在分组语义上是普通事件（折进组），只在「找出回合向外结果」时被跳过。
+
+### BUG-103: 点「新建任务」右栏自动展开并冒出文件 tab——welcome 伪槽按会话规则继承了上一个会话的面板布局，还被 LRU 淘汰后反复重建
+
+**日期**：2026-10-22
+
+**现象**：在右栏开着文件页（或其他标签）的会话里点「新建任务」（或 ⌘N），欢迎页右栏自动展开并出现一个文件标签，正文是空的文件页。即便用户早已把右栏收起，之后每次新建任务仍会展开；重启也不一定消失。
+
+**根因**：`ui-src/store/right.ts` 的 `restoreRightSlot(null)` 在 welcome 伪槽不存在时，套用了会话的继承规则——`tabs = st.rightTabs`、`collapsed = st.rightCollapsed`，把上一个会话的面板布局整套复制进 welcome 槽，并写进 localStorage。会话之间继承布局是刻意设计（切换/新建会话的视觉连续性），但欢迎页没有任何会话可承接，复制过去的文件标签只会渲染一个没有文件数据的空页。无槽场景并非只在首启出现：`RIGHT_SLOT_MAX = 32` 的 LRU 会把最旧的 welcome 行淘汰（实测连续 `activateSession` 34 次后该行即消失），于是「首次创建」分支在运行中反复触发，每一次都把当时会话的布局污染进 welcome 槽并存盘，此后「展开 + 文件标签」被永久记住。启动路径 `main.tsx` 虽然强制 `rightCollapsed: true`，但标签列表照样按持久化行恢复。
+
+**修复**：①`restoreRightSlot` 的创建分支按 key 分流：welcome 槽落干净态（无 tab / 无 active / 无 recentClosed / `collapsed: true`），会话槽继承逻辑一字未改；②welcome 行不进 localStorage——`loadRightSlots` 跳过、`persistRightSlots` 过滤，历史污染行因此自动失效（不需要单独迁移）。启动时本就会强制收起面板，运行期内的欢迎页面板记忆仍照旧通过内存槽保存与恢复。
+
+**验证**：新增 `scripts/right-welcome-slot.test.ts` 三条（legacy 污染行被忽略、会话槽继承契约不变、welcome 槽不落盘），3 通过；把 `right.ts` 回退到 HEAD 后 2 条失败。真实 Chromium 加载构建产物（`?preview=1`）复现并确认修复：用 `activateSession` 把槽表顶过 LRU 上限挤出 welcome 行，令投影处于 `rightTabs=['file'] / rightCollapsed=false`，再触发新建任务——修复前 `rightCollapsed=false`、`rightTabs=['file']` 且页面渲染出 Files 标签，修复后 `rightCollapsed=true`、`rightTabs=[]`、无标签；会话→会话仍继承 `['file']`（契约未变）。
+
+**教训**：①「伪会话槽」（欢迎页 / 新任务页）不能套用会话槽的继承规则——布局连续性是**会话与会话之间**的契约，没有会话的一页不应该承接别人的会话级内容；②分流的判据要落在被继承字段的**语义**上（会话级 vs 页面级），而不是靠「先把详情字段清空、标签留着」这种半继承；③LRU 淘汰会让「首次创建」分支在运行期反复触发，凡是「首次创建时从当前状态派生」的逻辑都必须对**每一次**触发都成立，不能假设整个进程只跑一次。
+
+### BUG-104: 等后台命令期间发的消息在发送端页面上消失——bg job 让 UI streaming 长期滞留 true，host-idle 直通消费既无 steer_consumed 也无回声（BUG-080 气泡侧残留转正）
+
+**日期**：2026-10-22
+
+**现象**：会话 `01a162f4` 里 agent 把长跑测试命令后台化为 bg job 后，用户近一小时后普通回车发「测试跑了多少了」——agent 收到并正常回复（JSONL 345 行起），但发送端页面上这条消息从未出现，队列卡片里也没有。
+
+**根因**：BUG-080 的同根因另一半。底座对「async delivery 将恢复会话」的 run 发 `agent_end isTerminal:false`（bg job 即 `awaitingAsyncWork`），host `translate.ts` 对它返回 null——**turn_end(runEnd) 永不发出**，UI `s.streaming` 在整个后台命令运行期滞留 true；而 SDK `isStreaming` 在事件到达订阅前已同步落为 false（`state.ts` 注释）。用户此时普通回车：UI `send.ts` streaming 分支只 `s.queued.push`（**无气泡**），host `handlePrompt` 判 idle——BUG-080 修复推空 queued 快照（清掉队列行，气泡的唯一在屏表示也没了），底座 `prompt()` 直通开新 turn：不入队、无 dequeue、**无 `steer_consumed`**；`user_message` 回声又排除发送者（当时注释「its frontend has no dedup」）。气泡在发送端 UI 永无落地路径。BUG-080 当年只修了幽灵队列行；bg job 把原一帧宽的 race 窗口拉长到小时级，必现。
+
+**修复**（host 一处 + UI 一处）：①`rpc/prompt.ts` `handlePrompt` 把 idle 直通判定记为 `degenerateIdle`，`user_message` 回声在该场景下**也发给发送者**；②`store/session.ts` `applyEvent` 的 `user_message` 分支加去重——末尾同文本无 `entryId` 的 user 行就是发送者的乐观气泡，命中即跳过，正常路径（`dispatchPrompt` 已画气泡）不会双泡。跨通道回声原行为不变。
+
+**验证**：`scripts/steer-tail-replay.test.ts` 新增两条：退化场景（queued 分支无气泡 → echo 落地恰好一个）与正常路径（乐观气泡 + 冗余 echo 不双泡）；移除去重后第二条转红。单文件 5 测试全绿，`session-attach-detach` 同跑无回归；`ui:typecheck`、`host:build`、`check` 可跑项全绿（架构域预算超限为工作区既有改动，与本条无关）。
+
+**教训**：①「UI 的 streaming 是 host 的滞后视图」（BUG-080 教训①）不只影响队列行——**一切以 streaming 为发送分支依据的乐观状态**（气泡、队列行）都需要在接收侧第一个权威帧里有落地或回撤路径；②`isTerminal:false` 把「一帧窗口」拉成「整个后台任务运行期」：凡是把底座事件映射成 UI 状态机的翻译层，事件**缺席**（返回 null）本身就是状态，滞留位要有人负责清；③回声排除发送者的前提是「发送者一定画过自己的气泡」——发送分支一多（steer/queued/direct），这个前提就成了跨端契约，靠 dedup 比靠排除更稳。
+
+### BUG-105: 流式期间发的斜杠命令被本地消费后仍留在待发送队列——UI 乐观入队，消费型命令没有校准帧可清
+
+**日期**：2026-10-23
+
+**现象**：会话正在跑（截图里「工作中 4 分 08 秒」）时发 `/advisor on`：命令当场被底座消费，消息流里出现「/advisor on → Advisor enabled.」命令卡，但输入框上方的待发送队列（QueueCard）里还挂着同一条 `/advisor on`，带排序/编辑/删除按钮，一直不消失，直到本轮结束才被 turn_end 的校准帧带走。
+
+**根因**：三处契约错位叠加。①`ui-src/components/composer/send.ts` 的 streaming 分支对**所有**输入无条件乐观入队（`s.queued.push`）——它在本地分不出「会被 host 消费的命令」和「会真的排队的 prompt」；②`host/rpc/prompt.ts` `dispatchSlashInput` 消费掉命令后 `handlePrompt` 直接 return，既不入底座队列、也不调 `sendQueued`，而实时 `queued` 帧唯一的来源是底座 `onQueueChange`（`host/queue.ts`），消费型命令根本触发不了它；③`command_result(consumed)` 只回撤了用户气泡（`ui-src/store/wsHandlers/stream.ts`），`s.queued`/`s.steering` 一行没碰。于是队列行在整轮运行期内没有任何清除路径。idle 时发同一条命令不会复现——`degenerateIdle` 分支本来就会推一次空校准帧（BUG-080）。
+
+**修复**：`handlePrompt` 的 `dispatched === null`（命令被本地消费）分支补一次 `sendQueued(entryBus(entry), sessionId, entry)`，用双端权威队列视图覆盖客户端的乐观行；与 idle 直通分支同一套校准手段，两类消费路径（builtin / removed / `/goal` / `/computer` 关闭态…）一次覆盖。
+
+**验证**：新增 `scripts/slash-queue-smoke.ts`（`bun run smoke:slash-queue`，需 `OMP_DESKTOP_MODEL=<可用模型>`）。首轮让模型跑 `sleep 25` 撑住流式窗口，等队列基线行稳定（1.2s 静默，避开 prompt handler 自己的入队后校准帧）后发 `/advisor on`，断言随后必到一帧 `queued` 且 `followUp` 恰为基线行、`steering` 为空；另有两条守卫：命令文本永不进队列视图、turn_end 若先于校准帧到达即判红。无修复时该冒烟在 turn_end 处红（校准帧整轮没来），恢复修复后 2 步全绿；`bun run host:build` 通过。`deepseek/deepseek-flash` 的 key 已失效，本轮用 `shiyi/deepseek-v4.1-flash` 跑。
+
+**教训**：乐观状态必须配一条与之对称的「权威回撤」帧路径——`send.ts` 的入队分支和 host 的队列帧之间只靠 `onQueueChange` 连接，凡是绕过底座队列的输入路径（本地消费命令、idle 直通、扩展消费）都得自己补校准帧。冒烟要证明的是「流式窗口内」的行为：会话 idle 时的命令会被退化分支免费校准，因此必须有「turn_end 先于断言即失败」的守卫，否则测试会在修复缺失时假绿。
+
+### BUG-106: kimi provider 下 `/computer on` 开的 computer use 点图标关不掉——按钮只卸 kimi-cu，不清底座 overlay
+
+**现象**：设置页 computer provider 为 kimi 时，用 `/computer on`（底座斜杠命令）开启 computer use 后，点击输入框左下角的屏幕图标无反应，computer use 关不掉。default provider 下同链路正常。
+
+**根因**：图标 RPC `set_computer_mode` 在 `host/computer-mode.ts` 按 provider 分支：kimi 分支的关闭只 `unmountServerForSession`（kimi-cu 挂载），而底座 `/computer on` 在**任何 provider 下**都写 per-session `computer.enabled` runtime overlay（激活 eval prelude）——这套状态 kimi 分支完全不碰。`pushComputerMode` 的亮态是 `overlay || mounted` 的 OR 组合，overlay 恒真 → 帧恒亮、prelude 恒 armed，点击等于没点。default 分支的关闭写同一 overlay 所以没事；用户 dev profile（omp-desktop-dev）恰好是 kimi，才表现为「点了没反应」。
+
+**修复**（两步，最终形态为「命令接管」）：①`host/computer-mode.ts` `setComputerMode` 的关闭路径从 provider 分支提出，统一为无条件全关——`unmountServerForSession`（未挂载时安全 no-op）+ `writeValue(gate, false, "override")`，再推帧；亮态 OR 提为 `computerModeActive()` 单点。②`rpc/prompt.ts` `dispatchSlashInput` 把 `/computer` 整条命令拦截接管，重定向到 `setComputerMode`（与图标同一条路径）：on/off/toggle 按当前 provider 生效（kimi=挂/卸 kimi-cu，default=eval prelude overlay），status 输出亮态+供应商，底座自己的 handler（永远写 overlay）不再触达——两套状态从根源合一。原「gate 关则命令 inert」的 2.6 拦截并入：default-on 仍受 master gate 管（setComputerMode 内校验），kimi-on 与图标一致不受 gate 管。
+
+**验证**：新增 `scripts/smoke-computer-toggle.ts`（真实宿主 + WS 全链）。default 轮：`/computer on` 帧亮 → 图标 RPC off 帧灭（`false,true` + 收尾 false）；kimi 轮：`/computer on` 后断言 **capabilities_mcp 实际挂载 kimi-cu connected**，图标 off 后断言卸载（kimi-cu 不再 connected）+ 帧灭。接管前 kimi 轮 `/computer on` 只写 overlay 不挂 kimi-cu（断言红），接管后全绿。`scripts/smoke-computer-provider.ts`（kimi 挂载/卸载/隔离链）全绿。
+
+**教训**：一个按钮驱动两套状态机制（settings overlay / MCP 挂载）而显示态是 OR 组合时，「关」必须覆盖**全部**亮态来源——任何分支只关自己那一半，OR 就恒真。底座命令（`/computer`）不感知宿主的 provider 概念，永远写它那一套；宿主侧按钮分支必须假设「对方那套也可能被开过」。比逐分支兜底更根本的解法：让两个入口（命令、图标）都走宿主同一条 `setComputerMode`，底座 handler 不再触达——入口合一后两套状态不可能再分叉。
+
+### BUG-107: agent 结论被 seal 折叠埋进 loop group——run 内 stop 终答只有最后一条可见
+
+**现象**：agent 输出完整结论后又继续跑几轮（advisor 介入、async-result 唤醒、steer 应答等），run 结束时 UI 只显示最后一条 output。session 01a168ac 首轮：262 行 2964 字的完整报告被折叠，只剩 270 行 1048 字的勘误可见。本地 974 个 session 扫出 139 处同类（async-result 57、user/developer 注入 60、launch-completion 7、advisor 1）。
+
+**根因**：两条 seal 路径（live `ui-src/store/run-seal.ts`、reload `host/translate-history.ts` finalizeRun）同一条规则——只把 run 末尾（跳过 advisor/error 行）的 assistant 文本提出为对外结论，其余全部折进 collapsed loop group。但 `stopReason=stop` 只结束 turn 不结束 run：run 内注入消息会再开新 turn，每个 stop 终答都是一次交付，旧规则把它们全埋了。结构性判据一直存在：stop 消息 = 该 turn 的终答（模型认为说完了）；toolUse 消息的 text = 过程叙述（如「扫完 CSS，现在实测渲染」）。
+
+**修复**：`turnFinal` 标记 + 提出。①wire：TranscriptItem 加 `turnFinal?`，turn_end 帧加 `final?`（host/translate.ts 从 `ev.message.stopReason` 取）。②live：host `message_end` 对 stop 消息立即 flush draft 并打标（顺带修复 pooled transcript 里 advisor 行排到被评文本之前的顺序 bug）；UI `turn_end(runEnd:false)` 结算 draft 时按 `msg.final` 打标。③reload：translate-history 从 jsonl 的 `msg.stopReason` 打标。④两条 seal 改为单趟有序提出：所有 `turnFinal` assistant + 末尾 assistant（回退，覆盖 error/aborted 截断尾与无标记历史）。旧会话免迁移（stopReason 一直在盘上）。
+
+**验证**：新增 `scripts/turn-final-lift.test.ts` 5 例（bug 形态复现 / 经典单轮不回归 / error 尾 / live seal 有序提出 / 无标记回退）全绿；真实 session 01a168ac jsonl 过 entriesToTranscript 冒烟：报告与勘误均顶层可见、turnFinal=true，159 项过程（含 advisor、叙述）仍折叠。translate.ts live 冒烟：stop 消息 flush 带标、turn_end 帧 final=true / toolUse false。
+
+**教训**：「结论」的位置不能用位置学（末尾）猜，要用协议信号（stopReason）。turn 与 run 是两层生命周期：turn 边界 = 交付边界，run 边界 = 会话轮次；折叠策略必须对齐交付边界而非会话轮次。已知残余：DeepSeek DSML nudge、paused-turn 强制续跑等「模型说完了但 harness 强行续」的 stop 文本也会被提出（罕见，内容上通常也是有效输出）。
+
+### BUG-108: 会话滚动位置记忆被切换瞬间的自动滚动覆盖——回到会话先落在错误位置，之后不再回到底部
+
+**现象**：在会话 A 滚动到底部 → 切到会话 B → 切回 A，先看到 A 的另一处位置再跳到「最新」；再次切走切回，就停在那处错误位置，不再回到底部。
+
+**根因**：`onScroll` 把**所有**非程序化滚动事件都当成用户手势：既写 `savedScrollPos`，又给 follow latch 打时间戳。但切换后的头一两帧里 `#stream` 还在 settle（图片/高亮尺寸、每会话 dock/composer 挂载），浏览器会自行调整 `scrollTop` 并派发滚动事件——实测真机会话切换后 `scrollHeight` 从 22369 落到 22308、`scrollTop` 从 21702 被移到 21641（prog=false）。于是①会话位置被记成一个瞬时值（偏离底部超过 40px 后，下次恢复就按「中途位置」原样还原且永不重新贴底）；②follow latch 被误武装，切回后本应做的「贴到最新」被跳过。恢复目标还是基于 settle 前的高度算出来的，所以贴底总会差一截。
+
+**修复**（`ui-src/components/main/chat/MessagePage.tsx`）：切换恢复时记下 `switching = {at, toLatest, sh}` 窗口（`SWITCH_SETTLE_MS` = 1s）；窗口内的滚动事件不算手势——不写位置、不武装 latch，若目标是「最新内容」且高度已变则按 settle 后的高度重新贴底（`latestScrollTop` 重算）。窗口由真实输入结束：document capture 的 `wheel`/`touchstart`/`pointerdown`/`keydown` 清空 `switching`，因此切换后立刻发生的滚动手势不会被吞掉。
+
+**验证**：真机通道（`scripts/dev-browser.ts` + 真实会话，`#stream` 帧采样）：切回底部的会话连续 3 轮稳定落在 settle 后的最新位置（21641/21674），中途位置（12037）连续 3 轮原样还原；切换后无 B 的位置残留帧。预览通道（`?preview=1` + `__dbg.activateSession`）：贴底/中途位置各 3 轮稳定；流式追加 12 次保持贴底（6752/6785）；流式中滚轮上滑不被拉回；切换 settle 窗口内的滚轮上滑同样不被拉回。
+
+**教训**：浏览器在布局 settle 时自己会改 `scrollTop` 并派发滚动事件——「有滚动事件」≠「用户滚动」。手势判定必须给出时间窗口（本例：切换恢复后到真实输入为止），否则自动调整会被当成用户意图写进持久状态，且顺手武装本用于保护手势的 latch，形成「记错位置 + 不再回底」的双重症状。
