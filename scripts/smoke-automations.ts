@@ -478,6 +478,11 @@ async function main(): Promise<void> {
     ok("tool: default time 09:00", d?.scheduleRule?.hour === 9 && d?.scheduleRule?.minute === 0, d?.scheduleRule);
     ok("tool: nextRunAt computed", typeof d?.nextRunAt === "number", d?.nextRunAt);
     ok("tool: no delivery mode by default", d?.deliverTo === undefined, d?.deliverTo);
+    ok(
+      "tool: dialog deadlines default to 300s",
+      d?.askTimeoutSec === 300 && d?.approvalTimeoutSec === 300,
+      { ask: d?.askTimeoutSec, approval: d?.approvalTimeoutSec },
+    );
     ok("tool: automations_list pushed", frames.some((f) => f.type === "automations_list"), frames.length);
 
     const weekly = await call({

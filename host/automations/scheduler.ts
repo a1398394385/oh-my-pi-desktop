@@ -14,7 +14,7 @@ import { safeStderr } from "../stderr.ts";
 import { computeAutomationNextRunAt, isOneShot } from "./cron.ts";
 import { deliveryText } from "./delivery.ts";
 import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
-import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "./types.ts";
+import { AUTOMATION_DELIVERY_CUSTOM_TYPE, AUTOMATION_DIALOG_TIMEOUT_SEC } from "./types.ts";
 import type { Automation, AutomationRun, AutomationsFile, SpawnFn, SpawnOutcome, TickOpts } from "./types.ts";
 
 /** Poll cadence for the tick loop (ZCodium scheduler parity). */
@@ -333,6 +333,10 @@ const defaultSpawn: SpawnFn = async (a) => {
   const targetModel = a.model ? H.scopedModels.find((m) => `${m.provider}/${m.id}` === a.model) : undefined;
   const { sessionId, entry } = await spawnSession(uiWs, a.cwd, targetModel, undefined, {
     automation: { id: a.id, title: a.title, computer: a.computer === true },
+    // Unattended run: nobody is at the machine, so dialogs answer themselves at
+    // the task's deadline (older records fall back to the default).
+    askTimeoutSec: a.askTimeoutSec ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
+    approvalTimeoutSec: a.approvalTimeoutSec ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
   });
   try {
     if (await entry.manager.setSessionName(a.title, "user")) {

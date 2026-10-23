@@ -33,6 +33,9 @@ export interface Draft {
   endMode: "never" | "count" | "date";
   maxRuns: string;
   endDate: string; // yyyy-mm-dd (<input type="date"> value)
+  // Dialog deadlines for this task's run sessions (seconds, "0" = wait forever)
+  askTimeout: string;
+  approvalTimeout: string;
 }
 
 /** Blank draft for the create form (defaults: every 1 day at 09:00, unbounded). */
@@ -54,6 +57,8 @@ export function blankDraft(): Draft {
     endMode: "never",
     maxRuns: "1",
     endDate: "",
+    askTimeout: "300",
+    approvalTimeout: "300",
   };
 }
 
@@ -84,6 +89,9 @@ export function draftOf(a: Automation): Draft {
     d.endMode = "count";
     d.maxRuns = String(a.maxRuns ?? 1);
   }
+  // Records created before the fields existed run on the 300s default.
+  d.askTimeout = String(a.askTimeoutSec ?? 300);
+  d.approvalTimeout = String(a.approvalTimeoutSec ?? 300);
   return d;
 }
 

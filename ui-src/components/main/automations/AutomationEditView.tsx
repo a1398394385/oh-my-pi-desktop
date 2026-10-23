@@ -141,6 +141,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
       recurring: draft.endMode !== "count",
       maxRuns: draft.endMode === "count" ? clampInt(draft.maxRuns, 1, 100000, 1) : null,
       endAt: draft.endMode === "date" ? endAt : null,
+      // Dialog deadlines for this task's run sessions (0 = wait forever).
+      askTimeoutSec: clampInt(draft.askTimeout, 0, 86400, 300),
+      approvalTimeoutSec: clampInt(draft.approvalTimeout, 0, 86400, 300),
     };
     if (isNew) {
       send({ type: "automations_create", automation: { ...base, schedule: scheduleInput } });
@@ -468,6 +471,29 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
                         {endBad && <span className="aued-err">{t("settingsPage.automations.endDateInvalid")}</span>}
                       </span>
                     )}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="aued-row">
+              <div className="aued-row-label">
+                <strong>{t("autoEdit.dialogSection")}</strong>
+                <span>{t("autoEdit.dialogSectionHint")}</span>
+              </div>
+              <div className="aued-row-content">
+                <div className="aued-endrow">
+                  <span className="aued-field-inline">
+                    <span className="aued-fl">{t("autoEdit.askTimeoutLabel")}</span>
+                    <input className="inp aued-inp-sm" inputMode="numeric" value={draft.askTimeout}
+                      onChange={(e) => patch({ askTimeout: e.target.value })} />
+                    <span className="aued-sep">{t("autoEdit.timeoutUnit")}</span>
+                  </span>
+                  <span className="aued-field-inline">
+                    <span className="aued-fl">{t("autoEdit.approvalTimeoutLabel")}</span>
+                    <input className="inp aued-inp-sm" inputMode="numeric" value={draft.approvalTimeout}
+                      onChange={(e) => patch({ approvalTimeout: e.target.value })} />
+                    <span className="aued-sep">{t("autoEdit.timeoutUnit")}</span>
                   </span>
                 </div>
               </div>

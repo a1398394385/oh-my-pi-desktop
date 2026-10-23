@@ -8,6 +8,7 @@ import { computeAutomationNextRunAt, isOneShot, isValidCronExpr, normalizeSchedu
 import { readAutomations, writeAutomations } from "./store.ts";
 import {
   AUTOMATION_CREATE_LIMIT,
+  AUTOMATION_DIALOG_TIMEOUT_SEC,
   newAutomationId,
   type Automation,
   type AutomationScheduleInput,
@@ -22,6 +23,11 @@ export function reqString(v: unknown): string {
 /** Positive finite number → floor, anything else → undefined (maxRuns cleared). */
 export function optCount(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) && v >= 1 ? Math.floor(v) : undefined;
+}
+
+/** Dialog deadline in seconds: 0 (wait forever) and up accepted, junk → undefined. */
+export function optSeconds(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : undefined;
 }
 
 /**
@@ -76,6 +82,10 @@ export async function createAutomation(raw: Partial<AutomationUpsertInput>): Pro
     ...(raw.computer === true ? { computer: true } : {}),
     recurring: raw.recurring === true,
     ...(maxRuns !== undefined ? { maxRuns } : {}),
+    // Dialog deadlines are stored explicitly so the record states what its runs
+    // will wait for; absent fields on older records fall back at dispatch.
+    askTimeoutSec: optSeconds(raw.askTimeoutSec) ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
+    approvalTimeoutSec: optSeconds(raw.approvalTimeoutSec) ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
     ...(deliverTo ? { deliverTo } : {}),
     ...(endAt !== undefined ? { endAt } : {}),
     runCount: 0,

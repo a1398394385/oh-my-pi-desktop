@@ -155,7 +155,6 @@ export function createAutomationTools(sessionCwd: string) {
     label: "List Automations",
     description: LIST_DESCRIPTION,
     parameters: listParams,
-    loadMode: "essential" as const,
     approval: "read" as const,
     execute: async (_id: string, _params: Record<string, unknown>, _signal?: unknown, _onUpdate?: unknown, ctx?: ToolCtx) => {
       if (isSubagentCall(ctx)) return SUBAGENT_REFUSAL;
@@ -172,7 +171,6 @@ export function createAutomationTools(sessionCwd: string) {
     label: "Manage Automations",
     description: MANAGE_DESCRIPTION,
     parameters: manageParams,
-    loadMode: "essential" as const,
     approval: "write" as const,
     execute: async (_id: string, params: Record<string, unknown>, _signal?: unknown, _onUpdate?: unknown, ctx?: ToolCtx) => {
       // Subagents must not schedule follow-up work on the user's behalf. The tools are

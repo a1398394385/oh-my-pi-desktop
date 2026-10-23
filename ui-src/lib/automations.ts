@@ -42,6 +42,9 @@ export interface Automation {
   computer?: boolean;
   recurring: boolean;
   maxRuns?: number;
+  /** Dialog deadlines for this task's run sessions (seconds; 0 = wait forever, absent = 300). */
+  askTimeoutSec?: number;
+  approvalTimeoutSec?: number;
   /** Session-targeted delivery (agent-created only): runs wake this transcript instead of spawning a session. */
   deliverTo?: { sessionPath: string };
   endAt?: number;
