@@ -1,6 +1,6 @@
 [package]
 name = "omp-desktop"
-version = "0.2.0"
+version = "0.3.0"
 description = "omp 桌面壳：窗口 + Bun 宿主进程管理"
 edition = "2021"
 
