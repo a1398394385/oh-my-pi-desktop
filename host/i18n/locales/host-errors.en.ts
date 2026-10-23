@@ -70,8 +70,17 @@ export const hostErrorsEn = {
   },
   computerGateClosed: "Computer control is off in Settings: enable the master switch there first, then run /computer on in the session",
   computerUnavailable: "Computer use is unavailable in this session (the computer eval prelude did not activate)",
+  advisorNoModel: "Advisor enabled, but no model is assigned to the 'advisor' role: pick one under Settings → Models",
   kimiCuNotInstalled: "KimiCU not detected: install KimiCU first, then pick this provider under Settings → Computer & Browser",
   kimiCuConnectFailed: "kimi-cu connection failed: make sure KimiCU launches correctly (see the host log)",
+  computerCmd: {
+    enabled: "Computer use enabled for this session (provider: {{provider}})",
+    disabled: "Computer use disabled for this session",
+    status: "Computer use: {{state}} · provider: {{provider}}",
+    stateOn: "on",
+    stateOff: "off",
+    usage: "Usage: /computer [on|off|status]",
+  },
   sttModelNotReady: "Speech recognition model not downloaded: download it first under Settings → Interaction → Speech recognition, then enable the master switch",
   bash: {
     busy: "A bash command is already running; press stop or wait for it to finish",
@@ -154,7 +163,7 @@ export const hostErrorsEn = {
     skillDirForbidden: "Path is outside the allowed skill directories: {{raw}}",
     dirForbidden: "Path is outside the allowed {{kind}} directories: {{raw}}",
     invalidToolName: "Tool name may only contain letters, digits, - and _, or be *",
-    invalidPhase: "Hook phase must be pre or post",
+    invalidEvent: "Unknown hook event: {{event}}",
     hookExtOnly: "Only hook script files are supported (.ts/.js/.mjs/.cjs/.sh/.bash/.py): {{raw}}",
   },
   plan: {

@@ -144,6 +144,12 @@ export type PoolEntry = {
   // session_list rows (sidebar clock badge) and echoed as a live user-message
   // event (automation sessions have no local composer send to draw the bubble)
   automation?: { id: string; title: string };
+  // Automation-run dialog deadline (seconds, spawn-time snapshot of the task's
+  // approvalTimeoutSec): permission approvals in this session auto-deny after
+  // it. Ask dialogs are bounded by the same task's askTimeoutSec, which the
+  // spawn writes into the session's `ask.timeout` override instead (the base
+  // ask tool reads it). Absent = follow the global ask.timeout.
+  approvalTimeoutSec?: number;
   // fileMention read-back cursor: at agent_end, re-reads manager.getEntries()
   // and turns fileMention entries added since this index into mention frames
   // (the base persists them inside prompt() with no matching event)
@@ -519,9 +525,17 @@ export function requestApproval(
   // with no questions on the frame — keepalive's blockState probes the two
   // families through different toggles, so the classification must stay exact.
   blockKind?: "approval" | "ask",
+  // Deadline for this wait (automation-run dialogs, the base's ask.timeout).
+  // `answer` is what the wait settles with — the ask dialog passes its
+  // serialized recommended-option submit; permission approvals leave it out so
+  // the wait resolves undefined = deny (the base treats anything but an
+  // explicit approval as denied). The deadline also pushes approval_resolved so
+  // every attached UI drops the card, which an abort alone does not do.
+  deadline?: { ms: number; answer?: string },
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
   const { promise, resolve } = Promise.withResolvers<string | undefined>();
+  let timer: Timer | undefined;
   // Presentation fields ride the frame verbatim (slider / disabledIndices /
   // keepContextTokens / editable* / prefill / intent): the UI renders or
   // consumes each when present. They
@@ -538,6 +552,7 @@ export function requestApproval(
     ...(presentation ?? {}),
   };
   const settle = (v: string | undefined) => {
+    clearTimeout(timer);
     pendingApprovals.delete(requestId);
     resolve(v);
   };
@@ -555,6 +570,14 @@ export function requestApproval(
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
   ws.send(JSON.stringify(stampEvent(frame)));
+  // Counted from presentation (the frame went out), earliest answer wins: a
+  // response landing first cancels the deadline inside settle.
+  if (deadline && deadline.ms > 0) {
+    timer = setTimeout(() => {
+      settle(deadline.answer);
+      ws.send(JSON.stringify(stampEvent({ type: "approval_resolved", requestId })));
+    }, deadline.ms);
+  }
   return promise;
 }
 
@@ -578,4 +601,14 @@ export function settleApprovalResponse(
   // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
   pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
   ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
+}
+
+/** Send one session-state frame to the requesting socket AND every other UI attached to the
+ *  session. The other channel renders the same composer state (model badge, thinking level,
+ *  computer/plan toggles), so a receipt only the requester sees leaves its control stale until
+ *  reload. Deduplicated: the requester is usually an attached socket, and receipts that toast
+ *  (cycle_model) must not fire twice. */
+export function sendSessionState(ws: { send(data: string): unknown }, entry: PoolEntry, data: string): void {
+  ws.send(data);
+  for (const w of entry.uiSockets) if (w !== ws) w.send(data);
 }

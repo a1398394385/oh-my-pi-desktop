@@ -13,7 +13,7 @@ import {
 import { H, sessions } from "../state.ts";
 import { releaseMcpForSession, preloadMcpForCwd } from "../mcp-mount.ts";
 import { detachEntryUi } from "../session-entry-core.ts";
-import { listAgentAssets } from "../assets.ts";
+import { listAgentAssets, HOOK_EVENTS, LIFECYCLE_EVENTS } from "../assets.ts";
 import {
   probeMcpServerHealth,
   mcpHealthCache,
@@ -89,7 +89,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "asset_file_saved", kind, path: file }));
   },
   async asset_file_create(ws, msg) {
-    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent), hook=hooks/<phase>/<tool>.ts (from a phase-aware template)
+    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent), hook=hooks/<phase>/<tool|event>.ts (from an event-aware template)
     const kind = String(msg.kind ?? "agent") as AssetKind;
     if (kind === "mcp") {
       const file = mcpCandidates(assetOmpDir(kind, msg.scope, msg.cwd))[0];
@@ -104,17 +104,22 @@ export const assetsHandlers: Record<string, RpcHandler> = {
       return;
     }
     if (kind === "hook") {
-      const toolName = String(msg.name ?? "").trim();
-      if (!/^(\*|[A-Za-z0-9][A-Za-z0-9_-]*)$/.test(toolName)) throw new Error(hostI18n.t("errors.asset.invalidToolName"));
-      const phase = msg.phase === "pre" || msg.phase === "post" ? msg.phase : null;
-      if (!phase) throw new Error(hostI18n.t("errors.asset.invalidPhase"));
+      const event = String(msg.event ?? "");
+      if (!(HOOK_EVENTS as readonly string[]).includes(event)) throw new Error(hostI18n.t("errors.asset.invalidEvent", { event }));
+      // Discovery only scans hooks/{pre,post}/: lifecycle events are stored as hooks/pre/<event>.ts
+      // (basename = event), tool events keep hooks/<phase>/<tool>.ts where the phase is event-derived.
+      const lifecycle = (LIFECYCLE_EVENTS as readonly string[]).includes(event);
+      const phase = lifecycle ? "pre" : event === "tool_result" ? "post" : "pre";
+      const toolName = lifecycle ? event : String(msg.name ?? "").trim() || "*";
+      if (!lifecycle && !/^(\*|[A-Za-z0-9][A-Za-z0-9_-]*)$/.test(toolName)) throw new Error(hostI18n.t("errors.asset.invalidToolName"));
       const dir = path.join(assetOmpDir(kind, msg.scope, msg.cwd), "hooks", phase);
       const file = path.join(dir, `${toolName}.ts`);
       if (fs.existsSync(file)) throw new Error(hostI18n.t("errors.asset.alreadyExists", { kind, name: toolName }));
       await mkdir(dir, { recursive: true });
       const filter = toolName === "*" ? "" : `\t\tif (event.toolName !== "${toolName}") return;\n`;
-      const content =
-        phase === "pre"
+      const content = lifecycle
+        ? `/**\n * ${event} hook: runs on the session "${event}" event (pi.on("${event}")).\n * One file per event; reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("${event}", async (event) => {\n\t\t// Run a command: await pi.exec("git", ["status"], { timeout: 30_000 });\n\t\t// Post a message to the transcript: await pi.sendMessage("...");\n\t});\n}\n`
+        : phase === "pre"
           ? `/**\n * Pre-tool hook: runs before the tool executes (pi.on("tool_call")).\n * File name targets one tool ("*" matches all); reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("tool_call", async (event) => {\n${filter}\t\t// Block the call: return { block: true, reason: "not allowed" };\n\t\t// Revise the input: return { input: { ...event.input } };\n\t});\n}\n`
           : `/**\n * Post-tool hook: runs after the tool executes (pi.on("tool_result")).\n * File name targets one tool ("*" matches all); reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("tool_result", async (event) => {\n${filter}\t\t// Revise the result: return { content: [{ type: "text", text: "..." }] };\n\t});\n}\n`;
       await writeFile(file, content, "utf8");

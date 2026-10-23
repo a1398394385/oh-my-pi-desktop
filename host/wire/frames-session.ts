@@ -106,6 +106,15 @@ export interface ComputerModeFrame {
   error?: string;
 }
 
+/** Advisor on/off state frame (host/advisor-mode.ts pushAdvisorMode): the header eye icon lights up on it */
+export interface AdvisorModeFrame {
+  type: "advisor_mode";
+  sessionId: string;
+  enabled: boolean;
+  /** Present when the toggle left no live advisor (setting on but no model on the 'advisor' role) — surfaced as a red toast */
+  error?: string;
+}
+
 /** Session created/reused snapshot frame (host/host.ts / 2540-2551 / 2573-2584 session_created) */
 export interface SessionCreatedFrame {
   type: "session_created";
@@ -125,6 +134,10 @@ export interface SessionCreatedFrame {
    * seeds its spinner from this (turn boundary frames alone would leave the view dark
    * until the next event lands — long tool calls emit nothing). */
   busy?: boolean;
+  /** Epoch ms the live run started (PoolEntry.activeStartedAt): the "Working Ns" clock
+   * seeds from this, so a channel opening mid-run shows the real elapsed time instead of
+   * counting from its own attach moment (or from the next turn_start). */
+  busySince?: number | null;
 }
 
 /** Run-finished broadcast (session-lifecycle agent_end terminal): reaches EVERY UI
@@ -216,6 +229,9 @@ export interface SessionTitleChangedFrame {
   type: "session_title_changed";
   sessionId: string;
   title: string;
+  /** Session file path: the only key a channel that never attached this session can
+   * match against its disk rows (disk ids and pool UUIDs never coincide). */
+  path?: string;
 }
 
 /** Manual compaction reply (host/host.ts empty session / 874 success / 876 failure) */
@@ -274,6 +290,14 @@ export interface SessionNavigatedFrame {
   editorText?: string | null; // success only
   // TODO(narrowing pass): editorImages is the image-attachment array of the target user message; element shape follows the base
   editorImages?: unknown[] | null; // success only
+  error?: string; // failure only
+}
+
+/** Edit-and-resend receipt (host/rpc/session.ts edit_resend: navigateTree + prompt in one call) */
+export interface SessionEditedFrame {
+  type: "session_edited";
+  sessionId: string;
+  ok: boolean;
   error?: string; // failure only
 }
 
@@ -558,6 +582,27 @@ export interface CommitFileDiffFrame {
   ok: boolean;
   error?: string;
   diff?: string;
+}
+
+/**
+ * Both sides of one file for the Git page's compare view
+ * (host/rpc/git-compare.ts git_file_versions): commit, index or worktree change.
+ */
+export interface FileVersionsFrame {
+  type: "file_versions";
+  reqId: number;
+  cwd: string;
+  oid: string; // "" = index/worktree read
+  path: string;
+  ok: boolean;
+  error?: string;
+  oldText?: string;
+  newText?: string;
+  /** Unified diff of the same pair, used to colour changed rows on each side. */
+  patch?: string;
+  binary?: boolean;
+  /** At least one side hit the 500k character cap. */
+  truncated?: boolean;
 }
 
 /** Branch switch reply (host/host.ts; failures go through the error frame) */

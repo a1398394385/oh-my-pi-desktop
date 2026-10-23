@@ -210,6 +210,20 @@ async function main(): Promise<void> {
   const rec = devSettings.remote.devices.find((d) => d.ip === "127.0.0.1")!;
   assert(typeof rec.name === "string" && rec.name.length > 0 && typeof rec.lastAt === "number", "设备记录含名称与最近访问时间");
 
+  // --- Matrix: state writes reach the OTHER channel, not just the asker ---
+  // Same class as BUG-100: a receipt only the requester sees leaves the other end's
+  // composer badge / settings copy stale until reload. Both senders below are
+  // process- or session-scoped writes the other channel renders.
+  remoteWs.strayFrames.length = 0;
+  mainWs.sendRaw("set_thinking", { sessionId: created.sessionId, level: "low" });
+  const thinkingEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "session_thinking" && m.level === "low");
+  assert(thinkingEcho !== undefined, "远程通道收到 session_thinking(推理档位双端同步,修复前只回请求方)");
+
+  remoteWs.strayFrames.length = 0;
+  mainWs.sendRaw("reload_settings", {}); // disk re-read only: no persistence, pushes models + settings
+  const settingsEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "settings");
+  assert(settingsEcho !== undefined, "远程通道收到 settings 快照(主机设置不再冻结在连接时刻)");
+
   remoteWs.close();
   mainWs.close();
   await stopHost();

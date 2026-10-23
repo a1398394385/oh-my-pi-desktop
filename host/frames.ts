@@ -4,7 +4,7 @@
 // profile/assets; sinking it into either side would create a cycle (the
 // profile->models edge already exists) — carried over from the original
 // main.ts comment "do not sink models.ts, avoid module cycles".
-import { H } from "./state.ts";
+import { H, eachUiWs } from "./state.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload, settingsSnapshot } from "./models.ts";
 import { readAcpConfig, readAcpEnabled, readAutomationAgentEnabled, readSessionContextEnabled } from "./profile.ts";
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
@@ -77,4 +77,13 @@ export function settingsFrame() {
     // server config; the settings page's remote group reads/builds URLs from it
     remote: remotePayload(),
   };
+}
+
+/** Push the fresh settings snapshot to EVERY channel, not just the one that asked.
+ *  Settings writes are local-only (the remote denylist blocks the rest), so the remote
+ *  client's hostSettings copy otherwise stays frozen at connect time and every switch it
+ *  mirrors locally (remote.mobileStatsBar, uiConfig locale/motion, tui.* prefs) goes stale. */
+export function pushSettings(): void {
+  const data = JSON.stringify({ type: "settings", settings: settingsFrame() });
+  eachUiWs((w) => w.send(data));
 }

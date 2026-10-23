@@ -16,13 +16,13 @@ import type { CapabilityKeysFrame, SearchAvailabilityFrame } from "./payloads";
 import type {
   ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskDialogQuestionWire, BashChunkFrame, BashCompleteResultFrame,
   BashDoneFrame, BashStartFrame, CommandOutputFrame, CommandPhaseFrame, CommandResultFrame, CommandsFrame,
-  ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
-  FileDiffFrame, FileMatchesFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
+  AdvisorModeFrame, ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
+  FileDiffFrame, FileMatchesFrame, FileVersionsFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
   GitGraphFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
   LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
-  SessionCompactedFrame, SessionCreatedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
+  SessionCompactedFrame, SessionCreatedFrame, SessionEditedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
   SessionFinishedFrame, SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame,
   SessionTextSearchFrame, SessionUnloadedFrame,
   TodosFrame,
@@ -54,7 +54,7 @@ export * from "./frames-session";
 export * from "./frames-models";
 export * from "./frames-live";
 
-/** Discriminated union of all host → UI frames (87 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (88 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -66,6 +66,7 @@ export type HostFrame =
   | TodosFrame
   | PlanOutputFrame
   | PlanModeFrame
+  | AdvisorModeFrame
   | ComputerModeFrame
   | SessionCreatedFrame
   | SessionListFrame
@@ -83,6 +84,7 @@ export type HostFrame =
   | SessionTreeFrame
   | EntryTreeFrame
   | SessionNavigatedFrame
+  | SessionEditedFrame
   | SessionExternalWriteFrame
   | FileDiffFrame
   | FileContentFrame
@@ -107,6 +109,7 @@ export type HostFrame =
   | GitGraphFrame
   | GitCommitDetailFrame
   | CommitFileDiffFrame
+  | FileVersionsFrame
   | GitBranchSwitchedFrame
   | ApprovalModeFrame
   | ApprovalResolvedFrame

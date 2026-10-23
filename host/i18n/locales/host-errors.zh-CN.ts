@@ -74,8 +74,17 @@ export const hostErrorsZh = {
   },
   computerGateClosed: "电脑控制未在设置页开启：请先打开设置页的总开关，再在会话内运行 /computer on",
   computerUnavailable: "此会话无法启用电脑控制（computer eval 前导不可用）",
+  advisorNoModel: "顾问已开启，但没有模型分配给 advisor 角色：请在设置 → 模型中指定顾问角色模型",
   kimiCuNotInstalled: "未检测到 KimiCU 应用：请先安装 KimiCU，再在设置 → 电脑与浏览器中选择该供应商",
   kimiCuConnectFailed: "kimi-cu 连接失败：请确认 KimiCU 可正常启动（详见宿主日志）",
+  computerCmd: {
+    enabled: "已开启本会话的电脑控制（供应商：{{provider}}）",
+    disabled: "已关闭本会话的电脑控制",
+    status: "电脑控制：{{state}} · 供应商：{{provider}}",
+    stateOn: "开启",
+    stateOff: "关闭",
+    usage: "用法：/computer [on|off|status]",
+  },
   sttModelNotReady: "语音识别模型未下载：请先在设置 → 交互 → 语音识别中下载模型，再开启总开关",
   bash: {
     busy: "已有 bash 命令在执行，先按停止或等它结束",
@@ -158,7 +167,7 @@ export const hostErrorsZh = {
     skillDirForbidden: "路径不在允许的技能目录内: {{raw}}",
     dirForbidden: "路径不在允许的 {{kind}} 目录内: {{raw}}",
     invalidToolName: "工具名仅允许字母、数字、-、_ 或 *",
-    invalidPhase: "钩子 phase 只能是 pre 或 post",
+    invalidEvent: "未知钩子事件: {{event}}",
     hookExtOnly: "仅支持钩子脚本文件 (.ts/.js/.mjs/.cjs/.sh/.bash/.py): {{raw}}",
   },
   plan: {

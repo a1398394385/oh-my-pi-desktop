@@ -45,9 +45,10 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "automations_create", "automations_update", "automations_delete", "automations_toggle",
   // ssh.ts (3)
   "ssh_save_host", "ssh_remove_host", "add_remote_workspace",
-  // session.ts (11)
+  // session.ts (12)
   "set_session_pinned", "archive_session", "set_project_expanded", "add_project", "remove_project",
   "reorder_projects", "delete_session", "rename_session", "compact_session", "branch_session", "fork_session",
+  "edit_resend",
   // collab.ts (3): collab_state is a pure read and stays requestable
   "collab_start", "collab_join", "collab_leave",
   // worktree.ts (2): worktree_status is a pure read

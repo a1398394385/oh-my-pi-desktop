@@ -144,6 +144,12 @@
       "note": "Computer Use 会话级开关（输入框屏幕图标按钮；主门控仍由设置页 computer.enabled 把守）"
     },
     {
+      "id": "set_advisor_mode",
+      "kind": "session",
+      "risk": "write",
+      "note": "Advisor 会话级开关（标题栏眼睛按钮；与 /advisor on|off 写同一层 advisor.enabled overlay）"
+    },
+    {
       "id": "set_computer_provider",
       "kind": "settings",
       "risk": "write",
@@ -244,6 +250,12 @@
       "kind": "transcript",
       "risk": "write",
       "note": "同文件内移动 leaf，被放弃路径保留为兄弟分支"
+    },
+    {
+      "id": "edit_resend",
+      "kind": "transcript",
+      "risk": "write",
+      "note": "消息编辑重发：navigateTree 回退到该 user 消息 parent 后以新文本/原图重新 prompt，原路径保留为兄弟分支；仅非 streaming 时接受"
     },
     {
       "id": "get_file_diff",
@@ -921,13 +933,13 @@
       "id": "automations_create",
       "kind": "automation",
       "risk": "write",
-      "note": "新建自动化：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限，落盘后回 automations_list 帧（投递目标字段由 agent 工具写入，RPC 侧剥离）"
+      "note": "新建自动化：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限、弹窗超时 askTimeoutSec/approvalTimeoutSec 缺省 300 秒，落盘后回 automations_list 帧（投递目标字段由 agent 工具写入，RPC 侧剥离）"
     },
     {
       "id": "automations_update",
       "kind": "automation",
       "risk": "write",
-      "note": "编辑自动化：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活）；投递型自动化拒绝编辑"
+      "note": "编辑自动化：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活）；askTimeoutSec/approvalTimeoutSec 为 0 秒表示永不超时，缺省 300 秒；投递型自动化拒绝编辑"
     },
     {
       "id": "automations_delete",
@@ -1044,6 +1056,12 @@
       "kind": "git",
       "risk": "read",
       "note": "读某提交内单个文件的 patch（git show 空 format + -- 路径），oid 走 4-40 位 hex 校验"
+    },
+    {
+      "id": "git_file_versions",
+      "kind": "git",
+      "risk": "read",
+      "note": "读对比视图两版全文 + patch：oid=提交内改动（首父），staged=HEAD↔暂存区，否则=暂存区↔工作区；缺失对象返回空侧"
     }
   ]
 }

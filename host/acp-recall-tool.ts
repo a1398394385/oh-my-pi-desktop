@@ -115,7 +115,6 @@ export function createRecallBlockTool(state: RecallHost) {
 		parameters: type({
 			id: type("string").describe("Block id to fetch back (index-line id or compaction-block id)."),
 		}),
-		loadMode: "essential" as const,
 		approval: "write" as const,
 		execute: async (
 			_id: string,

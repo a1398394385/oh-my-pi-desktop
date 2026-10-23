@@ -25,7 +25,7 @@ import {
   discoverCustomTSCommands,
   cfgSkills,
 } from "../bootstrap.ts";
-import { H, sessions, defaultCwd, stampEvent, entryBus, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { H, sessions, defaultCwd, stampEvent, entryBus, sendSessionState, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
 import { PHASE_TEXT } from "../translate.ts";
@@ -33,7 +33,7 @@ import { entriesToTranscript } from "../translate-history.ts";
 import { readPluginsEnabled } from "../plugin-assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
-import { pushComputerMode } from "../computer-mode.ts";
+import { computerModeActive, readComputerProvider, setComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued } from "../queue.ts";
 import { refreshAllSessionLists } from "./session";
 import { btwAsk } from "../btw.ts";
@@ -382,12 +382,35 @@ async function dispatchSlashInput(
     ws.send(JSON.stringify(stampEvent({ type: "open_right_tab", name: "btw", recordId })));
     return null;
   }
-  // 2.6) /computer: the settings-page switch is the master gate. While closed
-  // the command is fully inert — every form (on/off/status alike) is refused
-  // with the gate hint, and the palette never lists it (sendCommandsFrame
-  // filters it out), so hand-typed input is the only surface left to catch.
-  if (parsedSlash?.name === "computer" && !settingsGet(H.settings, "computer.enabled")) {
-    sendCommandOutput(hostI18n.t("errors.computerGateClosed"));
+  // 2.6) /computer: rerouted to the app's own toggle (setComputerMode — the
+  // exact path the composer icon drives), so the command and the button share
+  // one state machine per provider: kimi mounts/unmounts the builtin kimi-cu
+  // server, default drives the eval-prelude overlay. The base's own handler
+  // writes the overlay regardless of the provider pick, which forked the
+  // state under kimi (BUG-106). The old master-gate refusal lives on inside
+  // setComputerMode's default-on path; kimi-on stays gate-free exactly like
+  // the icon (the settings gate governs the builtin prelude only).
+  if (parsedSlash?.name === "computer") {
+    const arg = parsedSlash.args.trim().toLowerCase();
+    const provider = readComputerProvider();
+    if (arg === "status") {
+      sendCommandOutput(
+        hostI18n.t("errors.computerCmd.status", {
+          state: hostI18n.t(computerModeActive(sessionId, entry) ? "errors.computerCmd.stateOn" : "errors.computerCmd.stateOff"),
+          provider,
+        }),
+      );
+    } else if (!arg || arg === "toggle" || arg === "on" || arg === "off") {
+      const enable = arg === "on" || (arg !== "off" && !computerModeActive(sessionId, entry));
+      await setComputerMode(ws, sessionId, entry, enable);
+      // Failure paths already emitted their own command_output + error toast;
+      // only a state change that stuck gets the success line.
+      if (computerModeActive(sessionId, entry) === enable) {
+        sendCommandOutput(enable ? hostI18n.t("errors.computerCmd.enabled", { provider }) : hostI18n.t("errors.computerCmd.disabled"));
+      }
+    } else {
+      sendCommandOutput(hostI18n.t("errors.computerCmd.usage"));
+    }
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
@@ -469,7 +492,10 @@ async function dispatchSlashInput(
       void refreshAllSessionLists(ws);
     },
     notifyConfigChanged: () => {
-      ws.send(
+      // Slash-command model swaps (e.g. /model) must reach the other channel's badge too
+      sendSessionState(
+        ws,
+        entry,
         JSON.stringify({
           type: "session_model",
           sessionId,
@@ -480,7 +506,6 @@ async function dispatchSlashInput(
     },
   };
   const r = await executeAcpBuiltinSlashCommand(trimmed, runtime);
-  if (parsedSlash?.name === "computer") pushComputerMode(ws, sessionId, entry); // /computer on|off flips the per-session overlay; keep the composer button in lockstep
   if (r === false) return text; // Not a builtin → pass through to prompt as-is (file/custom/extension commands are expanded by the base)
   if ("prompt" in r) return r.prompt; // E.g. /force <tool> <prompt>: the remaining text becomes the prompt
   ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
@@ -512,7 +537,13 @@ async function handlePrompt(
   // Must precede the first-turn cache gate below: waiting on the in-flight MCP
   // mount lets its connection-status listener emit capabilities_mcp first,
   // and the ghost row then survives past a frame the UI has already rendered.
-  if (!steer && !entry.session.isStreaming) sendQueued(entryBus(entry), sessionId, entry);
+  // Degenerate-idle flag (see the echo below): the sender's UI queued this message on a
+  // stale streaming flag (e.g. a running bg job keeps agent_end isTerminal:false, so no
+  // turn_end ever cleared it) and drew NO optimistic bubble — the queue-row snapshot
+  // above wipes its only on-screen representation, and without an echo the bubble would
+  // never land (BUG-080's vanishing-message half).
+  const degenerateIdle = !steer && !entry.session.isStreaming;
+  if (degenerateIdle) sendQueued(entryBus(entry), sessionId, entry);
   // First-turn cache gate: the desktop opens sessions ready-to-chat, so the
   // mount (async, fired at pool entry) can still be in flight when the first
   // prompt lands. A mount landing between turns forks the prefix cache (tools
@@ -545,7 +576,14 @@ async function handlePrompt(
   if (relayGuestPrompt(sessionId, finalText, images, ws)) return;
   // Local slash-command dispatch: if consumed, return directly (no transcript push, no prompt call); if rewritten, continue
   const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
-  if (dispatched === null) return;
+  if (dispatched === null) {
+    // The sender's UI cannot tell a consumed command from a queued prompt, so a
+    // mid-stream send optimistically added a followUp/steer row that never
+    // reaches the agent queue (command_result withdraws the bubble, not the
+    // row). Recalibrate from the peer-visible queue view so the row cannot linger.
+    sendQueued(entryBus(entry), sessionId, entry);
+    return;
+  }
   finalText = dispatched;
   entry.transcript.push({
     role: "user",
@@ -553,12 +591,15 @@ async function handlePrompt(
     ...(images.length > 0 ? { images } : {}),
   });
   // Cross-channel echo: every OTHER attached UI draws this bubble from the frame
-  // (the sender drew its own optimistically, so it is excluded — its frontend has no
-  // dedup and would double the bubble). Same shape the automation scheduler broadcasts.
+  // (the sender drew its own optimistically, so it is excluded — its frontend
+  // dedups the echo against that bubble by text, so the degenerate-idle path
+  // above includes the sender too: it queued instead of drawing and the echo is
+  // the only thing that can land its bubble). Same shape the automation
+  // scheduler broadcasts.
   const echo = JSON.stringify(
     stampEvent({ type: "event", sessionId, kind: "user_message", text: finalText, ...(images.length > 0 ? { images } : {}) }),
   );
-  for (const w of entry.uiSockets) if (w !== ws) w.send(echo);
+  for (const w of entry.uiSockets) if (degenerateIdle || w !== ws) w.send(echo);
   // Auto session title: the base owns this entirely now — the session is
   // created with autoTitle: true (see createSessionCore), and AgentSession
   // notes the operator message on message_end + titles once the reply starts.

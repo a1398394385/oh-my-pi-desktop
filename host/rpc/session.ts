@@ -12,7 +12,7 @@ import { readAutomations, retireAutomationsForPaths } from "../automations/store
 import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
 import { entriesToTranscript, sumRunDurationMs } from "../translate-history.ts";
 import { treeToDisplay } from "../entry-tree.ts";
-import { applyActivityTimes } from "../session-activity.ts";
+import { applyActivityTimes } from "../activity-time.ts";
 import {
   handleCreateSession,
   handleLoadSession,
@@ -414,7 +414,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       unloaded = true;
     }
     if (unloaded) pushPoolSnapshot(ws);
-    ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded }));
+    ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded })); // fan-out: requester-only — every channel already got it from evictPoolEntry's eachUiWs
   },
   async list_sessions(ws) {
     await handleListSessions(ws);
@@ -673,9 +673,8 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
       entry.title = title;
-      // Branch titles own the journal record; the base's own title_change entry
-      // carries no branch scope, so a sibling branch would otherwise inherit it.
-      if (readBranchTitles()) appendBranchTitle(entry.manager, title, "user");
+      // A pooled entry is subscribed to onSessionNameChanged, which journals this rename
+      // as a branchTitle (the base's title_change entry carries no branch scope).
       entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
     } else {
       const manager = await SessionManager.open(path);
@@ -921,6 +920,88 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       );
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: String(err) }));
+    }
+  },
+  async edit_resend(ws, msg) {
+    // Message edit-and-resend (the UserMsg edit box): one atomic navigateTree +
+    // prompt. For a user-message target the base moves the leaf to that
+    // message's parent ("rewind past itself" — a real move even when the target
+    // IS the current leaf), so the abandoned exchange stays in the file as a
+    // sibling branch and the edited text starts a fresh one. Deliberately NOT
+    // routed through handlePrompt: edited text is plain user content, so the
+    // slash dispatch and queue/steer branches are skipped and only its prompt
+    // tail (transcript push + cross-channel echo + session.prompt) is mirrored.
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const entryId = String(msg.entryId ?? "");
+    if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
+    const text = String(msg.text ?? "");
+    // Images are the original message's attachments round-tripped untouched
+    // (the UI can neither add nor drop any); shape-checked at this boundary.
+    const rawImages: Array<{ type?: unknown; data?: unknown; mimeType?: unknown }> = Array.isArray(msg.images)
+      ? msg.images
+      : [];
+    const images = rawImages
+      .filter((im): im is { type: "image"; data: string; mimeType?: string } => im?.type === "image" && typeof im.data === "string")
+      .map((im) => ({ type: "image" as const, data: im.data, mimeType: String(im.mimeType ?? "image/png") }));
+    if (!text && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
+    // Idle-only by contract: a mid-stream resend would race the running turn
+    if (entry.session.isStreaming) {
+      ws.send(
+        JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.busyGenerating") }),
+      );
+      return;
+    }
+    try {
+      const result = await entry.session.navigateTree(entryId);
+      if (result.cancelled) {
+        ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.navigateCancelled") }));
+        return;
+      }
+      if (result.aborted) {
+        ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.summaryAborted") }));
+        return;
+      }
+      // Same rebuild scope as navigate_tree: only the root→leaf path is active
+      entry.transcript = entriesToTranscript(entry.manager.getBranch());
+      // entryBus, not navigate_tree's requester-only ws.send: the rewind must
+      // drop the abandoned tail on every attached channel, and the user_message
+      // echo below then lands the new bubble on all of them (a sender-drawn
+      // optimistic bubble, if any, is deduped by text in the event handler).
+      entryBus(entry).send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+      // Mirror the branch's own title into the header, same block as navigate_tree
+      if (readBranchTitles()) {
+        const own = readBranchTitle(entry.manager);
+        if (own && own.title !== entry.manager.getSessionName()) {
+          await entry.manager.setSessionName(own.title, "user");
+          entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
+        }
+      }
+      markSeen(entry);
+      entry.transcript.push({ role: "user", text, ...(images.length > 0 ? { images } : {}) });
+      entryBus(entry).send(
+        JSON.stringify(
+          stampEvent({ type: "event", sessionId: msg.sessionId, kind: "user_message", text, ...(images.length > 0 ? { images } : {}) }),
+        ),
+      );
+      // Fire-and-forget like handlePrompt: the turn output flows through the
+      // event stream; agentInvoked===false means the base consumed the input
+      // as an extension/file/custom command, so the bubble is retracted.
+      entry.session
+        .prompt(text, { ...(images.length > 0 ? { images } : {}), streamingBehavior: "followUp" })
+        .then((agentInvoked: boolean) => {
+          if (agentInvoked === false) {
+            const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === text && !t.entryId);
+            if (i >= 0) entry.transcript.splice(i, 1);
+            entryBus(entry).send(JSON.stringify({ type: "command_result", sessionId: msg.sessionId, text, consumed: true }));
+          }
+        })
+        .catch((err: unknown) => {
+          entryBus(entry).send(JSON.stringify(stampEvent({ type: "error", sessionId: msg.sessionId, message: String(err) })));
+        });
+      ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: true }));
+    } catch (err) {
+      ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }
   },
   async fork_session(ws, msg) {

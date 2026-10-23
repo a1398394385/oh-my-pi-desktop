@@ -3,8 +3,8 @@
 // remote connections alike — configuring the remote service is not part of the
 // settings-write denylist (spec §3.5); the denylist guards profile/settings
 // state, not the remote switch itself.
-import { eachUiWs } from "../state.ts";
-import { settingsFrame } from "../frames.ts";
+
+import { pushSettings } from "../frames.ts";
 import {
   generateRemoteAccessKey,
   readRemoteConfig,
@@ -56,14 +56,8 @@ export const remoteHandlers: Record<string, RpcHandler> = {
         ...(error ? { error } : {}),
       }),
     );
-    if (!error) {
-      // Success pushes a settings frame so every connected UI refreshes the remote section.
-      // settingsFrame() is the payload builder — the wire shape needs the "settings" wrapper
-      // (same as every push site in rpc/settings.ts); a bare payload frame has no type and
-      // the UI dispatcher drops it silently.
-      const data = JSON.stringify({ type: "settings", settings: settingsFrame() });
-      eachUiWs((ui) => ui.send(data));
-    }
+    // Success pushes a settings frame so every connected UI refreshes the remote section
+    if (!error) pushSettings();
   },
 
   remote_regenerate_key(ws) {
@@ -71,10 +65,8 @@ export const remoteHandlers: Record<string, RpcHandler> = {
     writeRemoteConfig({ accessKey });
     // The old key dies immediately: new upgrades fail 401, existing sockets stay connected (spec §3.2)
     ws.send(JSON.stringify({ type: "remote_key", key: accessKey }));
-    // Broadcast the settings frame like set_remote_config does: remote.url embeds the
-    // key, and a stale url makes the settings page's copy-link hand out the dead key
-    // (browser opens it, handshake 401s, the 1006 probe wipes the stored key)
-    const data = JSON.stringify({ type: "settings", settings: settingsFrame() });
-    eachUiWs((ui) => ui.send(data));
+    // remote.url embeds the key: a stale url makes the settings page's copy-link hand out
+    // the dead key (browser opens it, handshake 401s, the 1006 probe wipes the stored key)
+    pushSettings();
   },
 };

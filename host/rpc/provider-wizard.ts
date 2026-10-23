@@ -70,6 +70,12 @@ function savedMetadataFor(row: unknown): Record<string, unknown> | null {
   };
 }
 
+/** Fields the per-model metadata editor owns. On save these are replaced (or
+ * dropped, when the editor leaves them empty = inherit); every other
+ * hand-written key of the row (compat/tokenizer/…) is not the editor's
+ * business and must survive the save. */
+const MODEL_META_KEYS = ["name", "contextWindow", "maxTokens", "cost", "reasoning", "input", "supportsTools", "thinking"] as const;
+
 /** Normalize one wizard model payload into a YAML row: only edited fields are written. */
 function buildModelRow(m: Record<string, unknown>): Record<string, unknown> {
   const id = String(m.id ?? "").trim();
@@ -237,8 +243,14 @@ export const wizardHandlers: Record<string, RpcHandler> = {
     const existing = (previous.models as Array<Record<string, unknown>> | undefined) ?? [];
     const at = existing.findIndex((m) => String(m.id) === String(row.id));
     const models = [...existing];
-    if (at >= 0) models[at] = row;
-    else models.push(row);
+    if (at >= 0) {
+      // Field-level merge: the editor row owns MODEL_META_KEYS (a bare row
+      // means "inherit everything" — those keys are dropped), the hand-written
+      // keys the editor cannot see (compat/tokenizer/…) survive the save.
+      const merged: Record<string, unknown> = { ...existing[at] };
+      for (const key of MODEL_META_KEYS) delete merged[key];
+      models[at] = { ...merged, ...row };
+    } else models.push(row);
     const baseUrl = String(msg.baseUrl ?? "").trim() || String(previous.baseUrl ?? "");
     const apiKey = msg.apiKey === undefined ? String(previous.apiKey ?? "") : String(msg.apiKey).trim();
     const api = msg.api === undefined ? wizardApi(previous.api) : wizardApi(msg.api);

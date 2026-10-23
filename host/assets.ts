@@ -253,10 +253,18 @@ export async function loadAllSkillsScoped() {
   };
 }
 
+// Lifecycle hook events: discovery only scans hooks/{pre,post}/ (upstream loader convention),
+// so lifecycle hooks live in hooks/pre/<event>.ts and the basename names the event; scanHookDir
+// applies the same rule in reverse to label rows. tool_call/tool_result stay phase-derived.
+export const LIFECYCLE_EVENTS = ["turn_start", "turn_end", "agent_start", "agent_end", "session_stop", "session_shutdown"] as const;
+export const HOOK_EVENTS = ["tool_call", "tool_result", ...LIFECYCLE_EVENTS] as const;
+export type HookEvent = (typeof HOOK_EVENTS)[number];
+
 export interface HookAssetItem {
   name: string;
   path: string;
   phase: "pre" | "post";
+  event: HookEvent;
   tool: string;
   scope: "profile" | "project";
   cwd?: string;
@@ -312,12 +320,16 @@ export async function listAgentAssets() {
         const fullPath = path.join(dir, e.name);
         const baseName = e.name.includes(".") ? e.name.slice(0, e.name.lastIndexOf(".")) : e.name;
         const tool = baseName === "*" ? "*" : baseName;
+        const event: HookEvent = (LIFECYCLE_EVENTS as readonly string[]).includes(baseName)
+          ? (baseName as HookEvent)
+          : phase === "pre" ? "tool_call" : "tool_result";
         const extId = `hook:${phase}:${tool}:${e.name}`;
         const isOptOut = disabled.has(extId) || disabled.has(`hook:${phase}:${tool}:${baseName}`);
         hooks.push({
           name: e.name,
           path: fullPath,
           phase,
+          event,
           tool,
           scope,
           cwd,

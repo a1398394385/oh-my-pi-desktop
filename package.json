@@ -8,6 +8,7 @@
     "smoke": "OMP_PROFILE=omp-desktop-test bun scripts/smoke.ts",
     "smoke:queue": "OMP_PROFILE=omp-desktop-test bun scripts/queue-smoke.ts",
     "smoke:queue-ghost": "OMP_PROFILE=omp-desktop-test bun scripts/queue-ghost-smoke.ts",
+    "smoke:slash-queue": "OMP_PROFILE=omp-desktop-test bun scripts/slash-queue-smoke.ts",
     "smoke:steer-queue-order": "OMP_PROFILE=omp-desktop-test bun scripts/steer-queue-order-smoke.ts",
     "smoke:features": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-features.ts",
     "smoke:git-refs": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-git-refs.ts",
@@ -39,12 +40,14 @@
     "smoke:mcp-ctx": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-mcp-context-tokens.ts",
     "smoke:provider-order": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-provider-order.ts",
     "smoke:provider-order-ui": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-model-page-order.tsx",
+    "smoke:model-meta": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-model-meta-editor.tsx",
+    "smoke:model-meta-save": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-provider-model-save.ts",
     "check:encoding": "node scripts/check-encoding.mjs",
     "check:version": "bun scripts/sync-version.ts --check",
     "version:set": "bun scripts/sync-version.ts",
     "check:i18n-keys": "bun scripts/check-i18n-keys.ts",
     "check:settings-copy": "bun scripts/check-settings-copy.ts",
-    "check": "node scripts/check-capabilities.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/sync-version.ts --check && bun scripts/check-i18n-keys.ts && bun scripts/check-settings-copy.ts && bun run ui:typecheck",
+    "check": "node scripts/check-capabilities.mjs && node scripts/check-frame-fanout.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/sync-version.ts --check && bun scripts/check-i18n-keys.ts && bun scripts/check-settings-copy.ts && bun run ui:typecheck",
     "perf:budget": "bun scripts/perf-budget.ts"
   },
   "dependencies": {

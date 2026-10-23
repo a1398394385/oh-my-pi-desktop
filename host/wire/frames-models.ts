@@ -101,7 +101,7 @@ export interface ManualProbeCatalogMatch {
   name?: string | null;
   contextWindow?: number | null;
   maxTokens?: number | null;
-  reasoning?: boolean;
+  reasoning?: boolean | null;
   input?: ("text" | "image")[] | null; // accepted input modalities (null = unknown)
   supportsTools?: boolean | null; // native tool-call support (null = unknown)
   thinking?: { mode: string; efforts?: string[]; defaultLevel?: string } | null; // effort-control config
@@ -130,7 +130,11 @@ export interface ProviderModelsProbeFrame {
 export interface ProviderModelSavedFrame {
   type: "provider_model_saved";
   provider: string;
-  model: { id: string; name?: string; contextWindow?: number; maxTokens?: number; cost?: { input: number; output: number; cacheRead: number; cacheWrite: number } };
+  // The persisted row, echoed back verbatim (models.yml line shape: only the
+  // fields the user actually set). Carries the capability fields
+  // (reasoning/input/supportsTools/thinking) so the UI can rebuild the same
+  // "saved" snapshot the provider_model_meta reply carries.
+  model: { id: string } & Partial<ManualProbeCatalogMatch>;
 }
 
 /** One model row's metadata snapshot for a persisted provider (provider_model_meta reply) */

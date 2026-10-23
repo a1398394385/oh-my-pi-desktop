@@ -18,8 +18,8 @@ export interface EventStamp {
 
 // ---------- Common payload shapes ----------
 
-/** Approval mode (host/host.ts validates three values) */
-export type ApprovalMode = "yolo" | "write" | "always-ask";
+/** Approval mode (host/rpc/settings.ts validates the base's four values) */
+export type ApprovalMode = "yolo" | "write" | "always-ask" | "always-ask-cached";
 
 /** Desktop env section (host/state.ts DesktopEnv) */
 export interface DesktopEnv {
@@ -428,7 +428,7 @@ export interface TurnUsage {
 /** On-wire shape of session entries (element of the messages frame; host/state.ts
  * re-exports this type, as does the UI-facing ui-src/types/frames.ts shim) */
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error" | "advisor";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error" | "advisor" | "ttsr";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -455,6 +455,9 @@ export type TranscriptItem = {
   usage?: TurnUsage | null;
   entryId?: string;
   endMs?: number;
+  // Turn-final assistant text (stopReason "stop" on disk): a delivered output, not
+  // process narration — seal paths lift it out of the collapsed loop group
+  turnFinal?: boolean;
   // ---- bash rows ----
   running?: boolean;
   exitCode?: number | null;
@@ -472,7 +475,16 @@ export type TranscriptItem = {
   automation?: { id: string; title: string };
   // ---- advisor rows (role "advisor": one delivered advice batch, position = injection point) ----
   notes?: AdvisorNote[];
+  // ---- ttsr rows (role "ttsr": which rules a TTSR rewound-and-injected at this point) ----
+  rules?: TtsrRule[];
 };
+
+/** One TTSR rule behind an injection notice (base Rule, narrowed to the fields a row shows) */
+export interface TtsrRule {
+  name: string;
+  /** Rule description, falling back to its body (same choice as the TUI notice) */
+  description?: string;
+}
 
 /** One advisory note (base pi-tui `AdvisorNote`, advisor/advise-tool.ts) */
 export type AdvisorSeverity = "nit" | "concern" | "blocker";
@@ -514,10 +526,11 @@ export type UiEvent =
       diffContent?: string;
     }
   | { kind: "tool_details"; name: string; toolCallId?: string; details?: unknown } // in-flight refresh from a returned async tool (task spawn progress); carries no terminal semantics
-  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
+  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean; final?: boolean } // final: this turn ended stopReason "stop" — its settled text is a delivered output (loop-group lift marker)
   | { kind: "thinking_level"; configured?: string; resolved?: string }
   | { kind: "mention"; files: string[] }
   | { kind: "advisor"; notes: AdvisorNote[] } // one delivered advice batch (base customType "advisor"); rendered at its injection point
+  | { kind: "ttsr"; rules: TtsrRule[] } // a TTSR rewind injected these rules here (read-only row; base event ttsr_triggered)
   | { kind: "error"; text: string }; // provider/request failure (quota, auth, transport): rendered as a standalone row
 
 /** Whole-session stats (expanded fields of the session_stats frame, host/session-lifecycle.ts buildSessionStats) */
@@ -533,6 +546,11 @@ export interface SessionStatsPayload {
   cacheHitRate: number;
   /** Prompt-cache invalidation count for the session (host/session-lifecycle.ts buildSessionStats) */
   cacheBreaks: number;
+  /** Uncached input tokens the most recent break re-billed (host/session-snapshot.ts scanCacheBreaks).
+      The stats bar flashes this for 3s in place of the row; 0 when no break happened yet. */
+  cacheMissTokens: number;
+  /** USD list price of {@link cacheMissTokens}; absent when the model catalog has no input rate. */
+  cacheMissUsd?: number;
   /** Context compactions this session ran (base compaction entries + ACP compaction blocks).
       Their cacheRead drop is excluded from {@link cacheBreaks} (host/session-snapshot.ts countCacheBreaks). */
   compactions: number;
@@ -617,6 +635,7 @@ export interface HookAssetItem {
   name: string;
   path: string;
   phase: "pre" | "post" | string;
+  event?: string;
   tool?: string;
   scope?: "profile" | "project" | string;
   cwd?: string;
