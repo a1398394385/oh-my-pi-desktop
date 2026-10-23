@@ -56,12 +56,16 @@ const ALLOWED_EDGES = new Set([
   "acp-refs.ts→acp-persist.ts", "acp-refs.ts→acp-fingerprint.ts",
   "acp-runtime.ts→acp-status-tool.ts", "acp-status-tool.ts→acp-plan.ts",
   "session-lifecycle.ts→acp-status-tool.ts",
+  // 18.5 background jobs (auto-backgrounded bash/eval + background task tools):
+  // async-jobs.ts is the pure bg_jobs payload/correction module; rpc/session replies
+  // with it and session-lifecycle pushes the load backlog + turn_start correction
+  "async-jobs.ts→state.ts", "session-lifecycle.ts→async-jobs.ts", "rpc/session.ts→async-jobs.ts",
   // Historical session retrieval tool (read_session_context): read-only over the current profile's on-disk sessions,
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
-  // Sidebar full-text search (search_session_text): same read-only session-file domain as the retrieval tool —
-  // it reuses that module's turn folding / query splitting and the bootstrap SDK handles (no second parse layer)
-  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→bootstrap.ts", "session-text-search.ts→session-context.ts",
+  // Sidebar full-text search (search_session_text): consumes the retrieval tool's exported scan/search core
+  // (scanSessions + searchSessionContext) — one parse path and one ranking for both consumers, no second parse layer
+  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise
@@ -100,6 +104,7 @@ const ALLOWED_EDGES = new Set([
   "main.ts→settings-compat.ts", "models.ts→settings-compat.ts", "assets.ts→settings-compat.ts",
   "frames.ts→settings-compat.ts", "extensions.ts→settings-compat.ts", "goal.ts→settings-compat.ts",
   "plan.ts→settings-compat.ts", "plan-approve.ts→settings-compat.ts", "profile.ts→settings-compat.ts",
+  "session-lifecycle.ts→settings-compat.ts", // context_status sizes its return under tools.artifactSpillThreshold
   "rpc/assets.ts→settings-compat.ts", "rpc/models.ts→settings-compat.ts", "rpc/prompt.ts→settings-compat.ts",
   // rpc/prompt's list_commands decides the new-session sentinel path via the plugins master switch (readPluginsEnabled)
   "rpc/prompt.ts→assets.ts",
@@ -137,6 +142,9 @@ const ALLOWED_EDGES = new Set([
   // mirror plan.ts's frame contract; the pinned overlay lives in the session
   // settings child, the master gate in H.settings (bootstrap lookup).
   "computer-mode.ts→bootstrap.ts", "computer-mode.ts→state.ts", "computer-mode.ts→settings-compat.ts",
+  // advisor-mode mirrors the computer-mode seam (header eye frame + per-session toggle)
+  "advisor-mode.ts→state.ts", "advisor-mode.ts→i18n/host.ts",
+  "session-lifecycle.ts→advisor-mode.ts", "rpc/settings.ts→advisor-mode.ts",
   "session-lifecycle.ts→computer-mode.ts", "rpc/prompt.ts→computer-mode.ts", "rpc/settings.ts→computer-mode.ts",
   // Computer-use provider pick (omp-desktop.json computer section: default =
   // OMP builtin / kimi = kimi-cu MCP). Same shape as browser-config: the file
@@ -158,6 +166,24 @@ const ALLOWED_EDGES = new Set([
   "kimi-thinking.ts→desktop-json.ts",
   "frames.ts→kimi-thinking.ts", "rpc/settings.ts→kimi-thinking.ts",
   "rpc/models.ts→kimi-thinking.ts", "session-lifecycle.ts→kimi-thinking.ts",
+  // LLM tool-approval gate (omp-desktop.json autoReview section): pure module
+  // over desktop-json + bootstrap's model-role resolution; the select()
+  // intercept lives in session-lifecycle, the switches in rpc/settings, and
+  // the settings frame projects it.
+  "auto-review.ts→desktop-json.ts", "auto-review.ts→bootstrap.ts",
+  "session-lifecycle.ts→auto-review.ts", "rpc/settings.ts→auto-review.ts", "frames.ts→auto-review.ts",
+  // Continuous title refresh (omp-desktop.json sessionTitles section): pure
+  // module over desktop-json; agent_end hook in session-lifecycle, switch in
+  // rpc/settings, settings-frame projection.
+  // Per-branch titles add two edges: rpc/session journals the title on
+  // rename_session and mirrors the branch's own title after navigate_tree
+  // (branch switch is the only place the header must follow a branch), and
+  // translate-history reads the customType to decide which record feeds the
+  // rename phase row (title_change is header-global and ambiguous once a
+  // session carries branch titles).
+  "session-titles.ts→desktop-json.ts",
+  "session-lifecycle.ts→session-titles.ts", "rpc/settings.ts→session-titles.ts", "frames.ts→session-titles.ts",
+  "rpc/session.ts→session-titles.ts", "translate-history.ts→session-titles.ts",
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
   // A2: the seven private omp-desktop.json read/merge-write wheels converged
   // onto the shared desktop-json helpers — profile's project-list save (multi-
@@ -181,6 +207,9 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→state.ts", "session-lifecycle.ts→bootstrap.ts",
   "session-lifecycle.ts→goal.ts",
   "session-lifecycle.ts→session-context.ts", "session-lifecycle.ts→translate.ts",
+  // 3a split: per-token delta coalescing lives in delta-coalesce.ts (40ms window,
+  // same frame shape); UiEvent comes from the wire payload contract.
+  "session-lifecycle.ts→delta-coalesce.ts", "delta-coalesce.ts→wire/payloads.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
   // A12 split: the session snapshot family (goal/todos/context/stats pushes +
@@ -266,7 +295,7 @@ const ALLOWED_EDGES = new Set([
   // Session activity time (list/branch rows): the SDK reports `modified` as the
   // file mtime, which a `session_exit` diagnostic frame refreshes, so
   // rpc/session.ts rewrites it to the last `message` frame's timestamp
-  "rpc/session.ts→session-activity.ts",
+  "rpc/session.ts→activity-time.ts",
   "rpc/prompt.ts→rpc/types.ts", "rpc/prompt.ts→rpc/session.ts",
   "rpc/prompt.ts→bootstrap.ts", "rpc/prompt.ts→state.ts", "rpc/prompt.ts→translate.ts",
   // ! bash-mode completion: PATH scan + cwd path candidates (reads the pool for the session cwd, replies on its ws)
@@ -354,13 +383,43 @@ const ALLOWED_EDGES = new Set([
   "automations-tool.ts→automations/types.ts", "automations-tool.ts→state.ts",
   // session_list backfills the automation badge from the persisted runs ledger
   // (pool eviction/restart must not drop it); read-only store access
+  // delete/archive also retire the automations that deliver into the session
+  // (automations/store.ts retireAutomationsForPaths)
   "rpc/session.ts→automations/store.ts",
+  // Delivery framing has two ends in one place: the scheduler writes the header, the
+  // transcript strips it back into the bubble marker (types.ts only carries the constant)
+  "translate.ts→automations/delivery.ts",
+  "automations/scheduler.ts→automations/delivery.ts",
+  "automations/delivery.ts→automations/types.ts",
+  // type-only: buildSessionListPayload's return is checked against the wire frame
+  "rpc/session.ts→wire/frames-session.ts",
   // /btw side conversations: btw.ts owns the topic lifecycle over the SDK primitives;
   // rpc/btw.ts narrows the wire and promotes topics into pooled sessions
   "btw.ts→bootstrap.ts", "btw.ts→state.ts", "btw.ts→stderr.ts",
   "rpc/btw.ts→btw.ts", "rpc/btw.ts→bootstrap.ts", "rpc/btw.ts→state.ts",
   "rpc/btw.ts→session-lifecycle.ts", "rpc/btw.ts→stderr.ts", "rpc/btw.ts→rpc/types.ts",
   "rpc/index.ts→rpc/btw.ts",
+  // rpc/collab.ts: relay collab rooms over pooled sessions (statusLine seam fans live frames)
+  "rpc/collab.ts→state.ts", "rpc/collab.ts→i18n/host.ts", "rpc/collab.ts→stderr.ts",
+  "rpc/collab.ts→wire/frames-live.ts", "rpc/collab.ts→rpc/types.ts",
+  "rpc/index.ts→rpc/collab.ts", "rpc/prompt.ts→rpc/collab.ts", "rpc/session.ts→rpc/collab.ts",
+  // rpc/worktree.ts: git worktree session create/status/remove over Bun.spawn
+  "rpc/worktree.ts→rpc/types.ts", "rpc/index.ts→rpc/worktree.ts",
+  // rpc/git-graph.ts: read-only commit graph + commit detail for the middle-column
+  // Git page (log/show/rev-list over Bun.spawn; localized failure copy)
+  "rpc/git-graph.ts→rpc/types.ts", "rpc/git-graph.ts→i18n/host.ts",
+  "rpc/index.ts→rpc/git-graph.ts",
+  // rpc/git-compare.ts: the two-version file reads behind the Git page's compare
+  // view (commit/index/worktree pairs); same leaf shape as git-graph.
+  "rpc/git-compare.ts→rpc/types.ts", "rpc/git-compare.ts→i18n/host.ts",
+  "rpc/index.ts→rpc/git-compare.ts",
+  // git.ts is the single host-side git process layer (argv shape, env, timeout,
+  // read/write lock class) — modelled on IntelliJ's gitImplBase. Every module
+  // that shells out to git must route through it, so no call site can forget
+  // GIT_OPTIONAL_LOCKS=0 / GIT_TERMINAL_PROMPT=0 / a hard timeout. It is a leaf:
+  // it imports nothing from the host but node builtins, so no edge points back.
+  "rpc/files.ts→git.ts", "rpc/git-graph.ts→git.ts", "rpc/git-compare.ts→git.ts", "rpc/worktree.ts→git.ts",
+  "session-lifecycle.ts→git.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
   // Host i18n (A8): the host-owned i18next instance lives in host/i18n/ (moved
@@ -387,6 +446,7 @@ const ALLOWED_EDGES = new Set([
   "main.ts→ws-shared.ts", "main.ts→remote.ts",
   "ws-shared.ts→state.ts", "ws-shared.ts→i18n/host.ts", "ws-shared.ts→models.ts", "ws-shared.ts→frames.ts",
   "ws-shared.ts→rpc/index.ts", "ws-shared.ts→settings-compat.ts", "ws-shared.ts→browser-mirror.ts", "ws-shared.ts→stderr.ts",
+  "ws-shared.ts→remote.ts", // open handler records the visiting device (settings page device-history card)
   "remote.ts→desktop-json.ts", "remote.ts→stderr.ts",
   "frames.ts→remote.ts", // settings frame carries the remote-section projection (settings page's remote group)
   "rpc/index.ts→remote.ts", "rpc/index.ts→rpc/remote.ts",
@@ -407,6 +467,65 @@ const ALLOWED_EDGES = new Set([
   "rpc/limits.ts→i18n/host.ts", "rpc/login.ts→i18n/host.ts", "rpc/models.ts→i18n/host.ts",
   "rpc/provider-wizard.ts→i18n/host.ts", "rpc/prompt.ts→i18n/host.ts", "rpc/session.ts→i18n/host.ts",
   "rpc/settings.ts→i18n/host.ts", "rpc/ssh.ts→i18n/host.ts",
+  // Line-cap splits (2026-10 audit, all three hot files over the ratchet):
+  // translate.ts sheds the tool-row projection (pure functions over TranscriptItem,
+  // RULE-001 contract face) to translate-tool.ts and the /tree display projection to
+  // entry-tree.ts (same domain name as the front-end store slice); both are leaves
+  // re-exported nowhere — callers import the new homes directly.
+  "translate.ts→translate-tool.ts", "translate-tool.ts→state.ts",
+  // Advisor advice batches (customType "advisor") get their own projection module:
+  // live event + reload row + the details{notes} normalizer, so translate.ts keeps its
+  // line ratchet. Same leaf contract as translate-tool.ts.
+  "translate.ts→translate-advisor.ts", "translate-advisor.ts→state.ts",
+  "translate-advisor.ts→wire/payloads.ts",
+  // translate.ts hit its line cap, so disk replay (entriesToTranscript +
+  // sumRunDurationMs) moved to translate-history.ts. It is a leaf like translate-tool.ts:
+  // callers import it directly, and it borrows only the four small text helpers from
+  // translate.ts — the reverse edge stays empty.
+  "translate-history.ts→translate.ts", "translate-history.ts→translate-tool.ts",
+  "translate-history.ts→wire/payloads.ts", "translate-history.ts→i18n/host.ts",
+  "translate-history.ts→automations/delivery.ts", "translate-history.ts→translate-advisor.ts",
+  "session-lifecycle.ts→translate-history.ts", "rpc/prompt.ts→translate-history.ts",
+  "rpc/session.ts→translate-history.ts",
+  "entry-tree.ts→translate.ts", "entry-tree.ts→i18n/host.ts",
+  "rpc/session.ts→entry-tree.ts",
+  // session-lifecycle.ts sheds the per-socket wiring closure (event fan-out, approval
+  // uiCtx, extension runner init, unsubscribe teardown) to session-entry-core.ts; the
+  // create/load entry points stay and re-export attachEntry for the frozen rpc callers.
+  "session-lifecycle.ts→session-entry-core.ts",
+  // detachEntryUi (the per-socket fan-out teardown) is shared by the socket close
+  // handler and the frontend's mcp_detach (LRU eviction signal), so both paths drop
+  // the watcher identically — the idle sweep only reclaims entries with no watcher.
+  "ws-shared.ts→session-entry-core.ts", "rpc/assets.ts→session-entry-core.ts",
+  "session-entry-core.ts→state.ts", "session-entry-core.ts→bootstrap.ts",
+  "session-entry-core.ts→translate.ts", "session-entry-core.ts→delta-coalesce.ts",
+  "session-entry-core.ts→session-snapshot.ts", "session-entry-core.ts→subagent-view.ts",
+  "session-entry-core.ts→queue.ts", "session-entry-core.ts→plan-approve.ts",
+  "session-entry-core.ts→auto-review.ts", "session-entry-core.ts→keepalive-host.ts",
+  "session-entry-core.ts→capabilities.ts", "session-entry-core.ts→voice.ts",
+  "session-entry-core.ts→async-jobs.ts", "session-entry-core.ts→session-titles.ts",
+  "session-entry-core.ts→i18n/host.ts", "session-entry-core.ts→stderr.ts",
+  // The approval uiCtx resolves this session's permission-approval deadline
+  // (ask.timeout, or the automation run's own value) off entry.session.settings.
+  "session-entry-core.ts→settings-compat.ts",
+  // Dialog deadline policy split out of the entry-core wiring: settings read +
+  // the ask-dialog auto-answer shape, used only by the approval uiCtx.
+  "session-entry-core.ts→dialog-deadline.ts",
+  "dialog-deadline.ts→state.ts", "dialog-deadline.ts→settings-compat.ts",
+  // assets.ts sheds the path-resolution leaf (asset-paths.ts, shared by both domains),
+  // the MCP domain (mcp-assets.ts) and the plugins/hooks domain (plugin-assets.ts);
+  // assets.ts keeps skill scanning + the listAgentAssets aggregation entry.
+  "assets.ts→asset-paths.ts", "assets.ts→mcp-assets.ts", "assets.ts→plugin-assets.ts",
+  "asset-paths.ts→i18n/host.ts", "asset-paths.ts→state.ts", "asset-paths.ts→bootstrap.ts",
+  "asset-paths.ts→settings-compat.ts",
+  "mcp-assets.ts→i18n/host.ts", "mcp-assets.ts→state.ts", "mcp-assets.ts→bootstrap.ts",
+  "mcp-assets.ts→profile.ts", "mcp-assets.ts→stderr.ts", "mcp-assets.ts→asset-paths.ts",
+  "plugin-assets.ts→state.ts", "plugin-assets.ts→bootstrap.ts",
+  "plugin-assets.ts→desktop-json.ts", "plugin-assets.ts→asset-paths.ts",
+  "frames.ts→plugin-assets.ts", "session-lifecycle.ts→plugin-assets.ts",
+  "mcp-builtin.ts→mcp-assets.ts", "mcp-mount.ts→mcp-assets.ts",
+  "rpc/assets.ts→asset-paths.ts", "rpc/assets.ts→mcp-assets.ts", "rpc/assets.ts→plugin-assets.ts",
+  "rpc/prompt.ts→plugin-assets.ts", "rpc/settings.ts→plugin-assets.ts",
 ]);
 
 // Scan one level of host/ plus the rpc/, automations/, i18n/ and wire/ subtrees (keys carry a path prefix like rpc/session.ts)

@@ -98,6 +98,10 @@
 .al-badge.gray { color: var(--faint); background: var(--panel-2); }
 .al-badge.err { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); flex: none; }
 .al-badge-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Delivery pill: the run wakes an existing conversation instead of spawning a session
+   (agent-created automations only; the UI editor cannot create or convert them) */
+.al-delivery { flex: none; font-size: var(--ui-fs-sm); color: var(--dim); background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 2px 9px; }
+
 /* Run-count pill: same neutral gray pair, pinned to the row's right end */
 .al-runcount { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 3px 10px; }
 

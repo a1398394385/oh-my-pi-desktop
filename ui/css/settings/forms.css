@@ -49,6 +49,13 @@
 .mcp-form-code,
 .mcp-form-textarea { font-family: var(--mono); }
 
+/* Narrower field widths: the base .mcp-form-input is width:100%, which stretches
+   short values (names, ids, numbers) across the whole card or column. */
+.mcp-form-input.mcp-inp-name { width: 320px; max-width: 100%; }
+.mcp-form-input.mcp-inp-num { width: 120px; }
+.mcp-form-half.mcp-form-narrow { flex: 0 0 240px; }
+.mcp-form-quarter.mcp-form-narrow { flex: 0 0 120px; }
+
 .mcp-form-textarea { resize: vertical; }
 
 /* Transport + Sharing mode row halves */
@@ -60,6 +67,9 @@
 
 /* Sharing hint hugs the row above instead of its own form group */
 .mcp-form-hint-share { margin: -8px 0 14px; }
+
+/* Editor status line: diagnostic text + the log button on one row */
+.mcp-form-status { display: flex; align-items: center; gap: 8px; margin-top: 0; }
 
 /* Boxed select: same box metrics as .mcp-form-input (r9 border + 6/10 padding + 1.5 line-height); menu drops downward via .sel > .menu */
 .sel.mcp-form-sel { position: relative; display: flex; width: 100%; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--bg); padding: 0; }

@@ -5,8 +5,11 @@ export const miscEn = {
   newTask: "New task",
   pickSession: "Select a session on the left or create a new task",
   collapseSidebar: "Toggle sidebar ({{mod}}B)",
+  // MainHeader.tsx: terminal dock toggle (next to the title)
+  bottomTerminalToggle: "Toggle bottom terminal ({{mod}}J)",
   collapseRightPanel: "Toggle right panel",
   dragResize: "Drag to resize",
+  dragResizeHeight: "Drag to resize height",
   // WindowControls.tsx
   minimize: "Minimize",
   restoreDown: "Restore down",
@@ -62,6 +65,9 @@ export const miscEn = {
   keysFindInSession: "Find in session",
   keysSearchPalette: "Search everything",
   keysToggleRight: "Toggle right sidebar",
+  keysToggleBottomTerminal: "Toggle bottom terminal",
+  keysFocusComposer: "Focus composer (message view)",
+  keysCycleTerminalTab: "Switch terminal tab",
   keysGroupModel: "Model & thinking",
   keysGroupModelDesc: "Keys aligned with the omp CLI.",
   keysNextModel: "Next role model",
@@ -80,7 +86,7 @@ export const miscEn = {
   keysSteer: "Inject immediately (steer while generating)",
   keysQueue: "Add to send queue",
   keysRecall: "Recall queued message (last sent, first back)",
-  keysRecallCleared: "Browse cleared drafts (↑ on an empty input to enter, ↑/↓ to switch, typing exits)",
+  keysRecallCleared: "Browse input history (↑ on an empty input to enter, ↑/↓ to switch, typing exits; covers sent prompts and Esc-cleared drafts)",
   keysGroupTree: "Session tree",
   keysGroupTreeDesc: "Key behavior inside the session tree page.",
   keysTreeMove: "Move the entry cursor (stops at the ends, no wrap)",
@@ -96,6 +102,11 @@ export const miscEn = {
   keysSystemQuit: "Quit app",
   keysSystemHide: "Hide app",
   keysSystemMinimize: "Minimize window",
+  // BottomTerminal.tsx
+  bottomPanelTerminal: "Terminal",
+  // TerminalPage.tsx: dock terminal tabs
+  terminalTab: "Terminal {{n}}",
+  newTerminalTab: "New terminal tab",
   // Host boot error codes (store/ws.ts translateHostError; codes emitted by src-tauri/src/lib.rs)
   bootAssetDirFailed: "Failed to resolve the app resource directory",
   bootHostSidecarMissing: "Host sidecar not found",

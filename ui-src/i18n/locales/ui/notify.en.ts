@@ -56,6 +56,8 @@ export const notifyEn = {
   // Settings / config toasts (store/wsHandlers/settings.ts, config.ts)
   savedRestartHint: "Saved. Restart the app for some network settings to take full effect",
   profileActivated: "Profile activated: {{profile}}",
+  pluginInstalled: "Plugin installed: {{name}}",
+  pluginInstallFailed: "Plugin install failed",
   loginProgress: "{{provider}}: {{message}}",
   loginOk: "{{provider}} signed in, model list refreshed",
   loginCancelled: "Sign-in cancelled",

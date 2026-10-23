@@ -66,6 +66,10 @@ ws.onmessage = async (ev) => {
       break;
     }
     case "session_created": {
+      // reload_session rebuilds the pool entry and broadcasts session_created
+      // again; only the first creation is ours to prompt — re-prompting the
+      // rebuilt session restarts a turn and ping-pongs with the reload gate.
+      if (state.sessionId) break;
       createdFiles.push(msg.path);
       console.log(`会话建立: ${msg.sessionId.slice(0, 8)} cwd=${msg.cwd}`);
       assert(msg.path.endsWith(".jsonl"), "落盘会话应有 jsonl 路径");
@@ -116,11 +120,20 @@ ws.onmessage = async (ev) => {
       break;
     }
     case "error":
+      // 18.12.x runs session auto-titling inside AgentSession, so the SDK's
+      // isStreaming can still be true for a moment after the terminal
+      // turn_end; the reload gate correctly refuses then. Retry instead of
+      // failing — the turn itself already passed its assertions.
+      if (String(msg.message).includes("尚未空闲") && !state.loadedId && state.reloadRetries < 10) {
+        state.reloadRetries++;
+        setTimeout(() => ws.send(JSON.stringify({ type: "reload_session", path: createdFiles[0] })), 400);
+        break;
+      }
       fail(`收到 error: ${msg.message}`);
   }
 };
 
-const state = { sessionId: null as string | null, deltaText: "", loadedId: null as string | null };
+const state = { sessionId: null as string | null, deltaText: "", loadedId: null as string | null, reloadRetries: 0 };
 
 ws.onopen = () => console.log("WS 已连接");
 ws.onerror = (e) => fail(`WS 错误: ${String(e)}`);

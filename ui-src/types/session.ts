@@ -31,7 +31,10 @@ import type {
   AgentAssetsPayload,
   DiskSessionRow,
   ApprovalMode,
+  AdvisorNote,
+  AdvisorSeverity,
 } from "./frames";
+export type { AdvisorNote, AdvisorSeverity };
 // SchemaDef is the authoritative shape of settings schema entries (aligned with SETTINGS_SCHEMA), defined in settings/placement.ts
 import type { SchemaDef } from "./settings";
 
@@ -95,6 +98,7 @@ export interface ToolDetails {
   };
   shownRange?: { start: number; end: number }; // truncated read: lines actually shown (meta.truncation.shownRange via the host)
   summary?: { lines: number; elidedSpans?: number; elidedLines?: number }; // summarized read: shown line count with elided spans
+  async?: { state?: string; jobId?: string; type?: string }; // auto-backgrounded tool call: job liveness ("Backgrounded as job" bash/eval rows; bgTaskCount / BgCmdPage)
   [key: string]: unknown;
 }
 
@@ -108,6 +112,7 @@ export interface UserItem {
   steerDone?: boolean; // consumed-done marker (written by store.ts)
   entryId?: string; // persisted entry id (fork targeting for branch_session; host TranscriptItem.entryId)
   images?: Array<{ type: "image"; data: string; mimeType: string }>; // image attachments
+  automation?: { id: string; title: string }; // scheduler delivery into this session (not typed input)
 }
 
 /** Assistant message (items.tsx:25-28 reads text; junk placeholders are not rendered) */
@@ -118,6 +123,7 @@ export interface AssistantItem {
   endMs?: number; // end timestamp of this turn
   branching?: boolean; // fork request in flight (written in place by TurnActs)
   streaming?: boolean; // generating (written in place by components)
+  turnFinal?: boolean; // turn ended stopReason "stop": a delivered output (store lifts it out of the sealed loop group)
 }
 
 /** Thinking row (items.tsx:30-33 reads item.thinking || item.text) */
@@ -164,6 +170,16 @@ export interface LoopItem {
   usage?: TurnUsage | null;
 }
 
+/** Advisor advice batch (role "advisor"): one delivered customType "advisor" message. Its
+    stream position is the injection point; blocking notes render inline there, the rest
+    collect into the turn's closing advisor card. */
+export interface AdvisorItem {
+  role: "advisor";
+  text: string; // always "" on the wire (the payload is `notes`)
+  notes: AdvisorNote[];
+  entryId?: string;
+}
+
 /** Local bash row (! prefix; items.tsx:44-46 reads text) */
 export interface BashItem {
   role: "bash";
@@ -189,8 +205,6 @@ export interface MentionItem {
 export interface MetaItem {
   role: "meta";
   text: string;
-  command?: string; // typed slash-command line that produced this output: renders as an expandable command card (CommandRow)
-  cmdExpanded?: boolean; // card body expand state (defaults true: a command's output is the answer the user asked for, unlike incidental bash output)
 }
 
 /** Phase separator row (items.tsx:57-65 reads text; compact/handoff/rename) */
@@ -208,6 +222,15 @@ export interface ErrItem {
   text: string;
 }
 
+/** TTSR rule-injection notice (items.tsx routes it to TtsrRow; host emits it from the base
+    `ttsr_triggered` event and replays `ttsr_injection` entries without descriptions) */
+export interface TtsrItem {
+  role: "ttsr";
+  text: string; // rule names joined: the collapsed row's readout
+  rules: { name: string; description?: string }[];
+  expanded?: boolean; // body expand state (written in place by TtsrRow)
+}
+
 /** Session-entry discriminated union (discriminated by role literals; consumed branch by branch by items.tsx appendItem) */
 export type ChatItem =
   | UserItem
@@ -219,7 +242,9 @@ export type ChatItem =
   | MentionItem
   | MetaItem
   | PhaseItem
-  | ErrItem;
+  | ErrItem
+  | AdvisorItem
+  | TtsrItem;
 
 /** Compatibility alias: the entry type name used in the store.ts batch (to be unified as ChatItem after the narrowing rewiring) */
 export type SessionItem = ChatItem;
@@ -350,6 +375,7 @@ export interface OpenSession {
   goal?: GoalState | null; // set by the goal frame
   planMode?: boolean; // set by the plan_mode frame
   computerMode?: boolean; // set by the computer_mode frame
+  advisorMode?: boolean; // set by the advisor_mode frame (header eye toggle)
   queued?: QueuedMessage[]; // landed from the queued frame's followUp
   steering?: QueuedMessage[]; // landed from the queued frame's steering
   externalWrite?: boolean; // the host detected writes from an external process
@@ -361,6 +387,10 @@ export interface OpenSession {
   parentPath?: string;
   /** Set when the host spawned this session for an automation (background slot; sidebar clock badge source) */
   automation?: { id: string; title: string };
+  /** Connection epoch this slot was mounted on. A closed socket's per-entry subscription dies with
+      it (host detaches on close), so a slot below the store's current epoch is stale: activating it
+      must remount through load_session instead of showing a view that receives no frames. */
+  connEpoch?: number;
 }
 
 /** openSessions container: key = session file path (store.ts openSessions; LRU cap of 8) */
@@ -379,6 +409,7 @@ export interface FileViewState {
   full?: boolean; // already the full file (set by a file_content reply)
   reqRange: [number, number] | null; // requested line range (parsed from the path:59-123 selector)
   image?: boolean; // image preview branch (read_image replies go through rightState.imageContent)
+  mdPreview?: boolean; // markdown render mode picked in the more menu; undefined = default by extension
 }
 
 /** Memory file state (store.ts memory_file frame; status: idle/loading/done/error) */
@@ -415,6 +446,7 @@ export interface AppState {
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
+  newSessionDetached: boolean; // HEAD is not on a branch; newSessionBranch then carries the short oid
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
@@ -445,13 +477,13 @@ export interface AppState {
   approvalMode: ApprovalMode;
   loginReqId: number;
   evtHost: string | null; // host process instance id (ready.hi / stamped event .hi); a change means the host restarted
-  evtSeq: number; // highest applied event sequence number under this instance (events behind the position are dropped outright)
   // ---- UI state added in the React port (previously scattered across DOM classes / local variables) ----
   connected: boolean;
   connText: string;
   bootSplash: boolean; // full-window boot veil until the first session_list frame (see UiSlice)
   toastMsg: string | null; // current toast text (null = hidden)
   toastErr: boolean; // true = error toast (red icon + --err tinted border)
+  unloadedPaths: Set<string>; // sessions showing the pool-eviction notice on their sidebar row (cleared after 1s)
   composerSetSignal: { text: string; images: unknown[] | null; seq: number } | null; // signal to fill the composer externally (fork backfill / queued-message editing)
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
   menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)

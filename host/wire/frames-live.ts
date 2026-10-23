@@ -289,6 +289,10 @@ export interface SshTestResultFrame {
   name: string | null;
   ok: boolean;
   latencyMs: number;
+  /** Remote OS/release (uname -sr) from the probe; absent on failure or when undetectable */
+  os?: string;
+  /** Remote login shell ($SHELL); absent on failure or when undetectable */
+  shell?: string;
   error?: string;
 }
 
@@ -386,10 +390,12 @@ export interface BtwHistoryFrame {
   records: BtwRecord[];
 }
 
-/** Host asks the UI to open (or focus) a right-panel tab, e.g. /btw pulling up the Side Chat. */
+/** Host asks the UI to open (or focus) a right-panel tab, e.g. /btw pulling up the Side Chat.
+ * `recordId` names the topic the panel should open directly (Side Chat only). */
 export interface OpenRightTabFrame {
   type: "open_right_tab";
   name: string;
+  recordId?: string;
 }
 
 /** Takeover notice: another client opened the host WS and kicked this connection (open path sends
@@ -410,4 +416,75 @@ export interface RemoteConfigFrame {
 export interface RemoteKeyFrame {
   type: "remote_key";
   key: string;
+}
+
+// ---------- collab (host/rpc/collab.ts) ----------
+
+/** One collab participant (base wire Participant shape). */
+export interface CollabParticipantInfo {
+  name: string;
+  role: "host" | "guest";
+  readOnly?: boolean;
+}
+
+/** Live-collaboration attachment state; secret write links never enter logs. */
+export interface CollabRpcState {
+  role: "host" | "guest" | null;
+  readOnly: boolean;
+  link?: string;
+  viewLink?: string;
+  webLink?: string;
+  webViewLink?: string;
+  participants: CollabParticipantInfo[];
+}
+
+/** collab_start/join/leave reply + collab_state read/push (one shape for success and failure). */
+export interface CollabStateFrame {
+  type: "collab_state";
+  sessionId: string;
+  state: CollabRpcState;
+  error?: string;
+}
+
+// ---------- git worktree sessions (host/rpc/worktree.ts) ----------
+
+/** worktree_create reply: branch omp/desktop/<slug> at getWorktreeDir(desktop-<slug>-<hash7>) */
+export interface WorktreeCreatedFrame {
+  type: "worktree_created";
+  reqId: number;
+  ok: boolean;
+  path?: string;
+  branch?: string;
+  baseCwd?: string;
+  error?: string;
+  code?: string;
+}
+
+/** worktree_status reply: existence/repo/branch/dirty counts for the remove flow */
+export interface WorktreeStatusResultFrame {
+  type: "worktree_status_result";
+  reqId: number;
+  ok: boolean;
+  path: string;
+  exists: boolean;
+  isRepo: boolean;
+  branch: string | null;
+  dirty: boolean;
+  staged: number;
+  unstaged: number;
+  untracked: number;
+  error?: string;
+  code?: string;
+}
+
+/** worktree_remove reply (dirty refusal carries the counts) */
+export interface WorktreeRemovedFrame {
+  type: "worktree_removed";
+  reqId: number;
+  ok: boolean;
+  error?: string;
+  code?: string;
+  staged?: number;
+  unstaged?: number;
+  untracked?: number;
 }

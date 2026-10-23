@@ -177,9 +177,19 @@ export const sshHandlers: Record<string, RpcHandler> = {
   async ssh_test_host(ws, msg) {
     const { name, config } = await resolveHostConfig(msg);
     const startedAt = Date.now();
-    const result = await runSshCommand(config, "echo PI_SSH_OK");
+    // One round trip: connectivity marker plus remote OS/release and login shell
+    // for the settings probe display. Command substitution runs remotely; a
+    // failure there degrades to empty metadata, never to a failed probe.
+    const result = await runSshCommand(
+      config,
+      'echo PI_SSH_OK; echo "PI_OS=$(uname -sr 2>/dev/null)"; echo "PI_SHELL=${SHELL:-}"',
+    );
     const latencyMs = Date.now() - startedAt;
-    const ok = result.code === 0 && result.stdout.trim() === "PI_SSH_OK";
+    const probeLine = (prefix: string): string =>
+      result.stdout.split("\n").find((line) => line.startsWith(prefix))?.slice(prefix.length).trim() ?? "";
+    const ok = result.code === 0 && probeLine("PI_SSH_OK") === "PI_SSH_OK";
+    const os = probeLine("PI_OS=") || undefined;
+    const shell = probeLine("PI_SHELL=") || undefined;
     if (!ok) {
       // The frame caps the error for the dialog; the untruncated diagnostic
       // (which is what a bug report needs) only lives in the host log.
@@ -192,6 +202,8 @@ export const sshHandlers: Record<string, RpcHandler> = {
         name,
         ok,
         latencyMs,
+        ...(ok && os ? { os } : {}),
+        ...(ok && shell ? { shell } : {}),
         ...(ok ? {} : { error: formatSshError(result.stderr, result.stdout, result.code) }),
       }),
     );

@@ -89,7 +89,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     {
       when: { key: "memory.backend", equals: "sharpshooter" },
       titleZh: "Sharpshooter 底层", titleEn: "Sharpshooter internals",
-      keys: ["sharpshooter.intervalMinutes", "sharpshooter.injectionTokenLimit"],
+      keys: ["sharpshooter.intervalMinutes", "sharpshooter.injectionTokenLimit", "sharpshooter.minPromptLength"],
     },
   ],
   "pg-computer": [
@@ -336,9 +336,13 @@ export const HIDDEN_KEYS: Record<string, true> = {
   // pi-tui rendering switches + theme name maps (setAutoThemeMapping /
   // setSymbolPreset effects feed the TUI theme engine only; the desktop has
   // its own CSS token themes, shiki dark-plus/light-plus, and diff colors).
-  // display.hideToolActivity / showTokenUsage / colorBlindMode are NOT here:
-  // the desktop implements its own consumers for those. display.showTurnTime
-  // IS here: the desktop shows the turn time unconditionally.
+  // display.showTokenUsage / colorBlindMode are NOT here: the desktop implements
+  // its own consumers for those. display.showTurnTime IS here: the desktop shows
+  // the turn time unconditionally.
+  // display.hideToolActivity IS here: the desktop replaced it with its own
+  // three-way "agent process style" pref (ui.prefs.agentProcessStyle), which owns
+  // both folding levels, so the base switch has no consumer left.
+  "display.hideToolActivity": true,
   "display.showTurnTime": true,
   "theme.dark": true,
   "theme.light": true,
@@ -355,7 +359,15 @@ export const HIDDEN_KEYS: Record<string, true> = {
   "tui.hyperlinks": true,
   "tui.mouse": true,
   "tui.tight": true,
+  "tui.completeScrollback": true,
   "tui.imeSafeCursor": true,
+  // Job widgets (18.12.x) paint into the TUI wait card, jobs pill and jobs sheet.
+  // The desktop renders none of them, and authoring is subscriber-gated
+  // (job-widgets/registry.ts skips entries that were never shown), so the
+  // switch has no desktop consumer. The base also charges a model call per
+  // job for the widget spec, so the session overlay pins it off
+  // (host/session-lifecycle.ts).
+  "async.widgets": true,
   "display.shimmer": true,
   "display.pinnedAgents": true,
   "display.subagentLivePreview": true,
@@ -434,7 +446,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-appearance": [
     "colorBlindMode",
     "images.autoResize", "images.blockImages",
-    "display.hideToolActivity", "display.showTokenUsage",
+    "display.showTokenUsage",
   ],
   "pg-model-behavior": [
     "advisor.enabled", "prewalk.enabled", "advisor.syncBacklog", "advisor.immuneTurns",

@@ -13,7 +13,7 @@ import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import type { RailEntry } from "./chat-types";
 import type { TimerHandle } from "../../store";
 import { placeMenu } from "../../shell";
-import { useAppStore } from "../../store";
+import { effZoom } from "../../store";
 import { onSpectrum, SPECTRUM_BANDS } from "./railAudio";
 import { t } from "../../i18n";
 
@@ -57,17 +57,63 @@ const RAIL_W_MUSIC = 2.2; // extra length multiplier at full band energy (bass a
 // Subtracting this floor remaps the useful range onto 0..1: quiet passages fall
 // back to the resting length, hits reach the full stretch.
 const RAIL_MUSIC_FLOOR = 0.32;
+// A capture keeps streaming frames while nothing is playing (normalized bands sit at
+// zero: the Rust analyzer subtracts its noise floor). Below this the stream carries
+// silence, not music — the pointer must keep owning the widths, or the rail freezes
+// flat and the hover mountain never appears.
+const RAIL_MUSIC_SILENT = 0.02;
 let railGain = new Float32Array(0); // per-tick pointer gain (1 = untouched)
 let railMusicGain = new Float32Array(0); // per-tick band energy, floor-remapped to 0..1
 let railMusicActive = false; // a capture is streaming frames
 
+// Music mode paints each tick with one stop of the brand gradient (--brand-1 at the
+// rail's top → --brand-4 at the bottom, the same ramp as the welcome title). Colors
+// resolve from the CSS vars so light/dark themes stay in sync; recomputed only when
+// --brand-1 or the tick count changes (theme switch swaps all four values).
+let railColorsKey = ""; // "--brand-1|tickCount" the cached colors were built for; empty = not colored
+let railColors: string[] = [];
+
+function brandRgb(hex: string): [number, number, number] {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  const v = m ? parseInt(m[1], 16) : 0;
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function musicTickColors(): string[] {
+  const brand1 = getComputedStyle(document.documentElement).getPropertyValue("--brand-1");
+  const key = brand1.trim() + "|" + railTicks.length;
+  if (railColorsKey === key) return railColors;
+  const s = getComputedStyle(document.documentElement);
+  const stops = ["--brand-1", "--brand-2", "--brand-3", "--brand-4"].map((v) => brandRgb(s.getPropertyValue(v)));
+  const n = railTicks.length;
+  const out: string[] = new Array(n);
+  for (let j = 0; j < n; j++) {
+    const t = n === 1 ? 0 : (j / (n - 1)) * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(t));
+    const f = t - i;
+    const a = stops[i], b = stops[i + 1];
+    out[j] = `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)} ${Math.round(a[1] + (b[1] - a[1]) * f)} ${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+  }
+  railColorsKey = key;
+  railColors = out;
+  return out;
+}
+
 function paintRailWidths() {
   const base = RAIL_W_BASE;
   if (railMusicActive) {
+    const colors = musicTickColors();
     railTicks.forEach((t, j) => {
       t.style.width = base * (1 + RAIL_W_MUSIC * railMusicGain[j]) + "px";
+      t.style.background = colors[j];
     });
     return;
+  }
+  // Leaving music mode: drop the per-tick inline colors so CSS (.rail-tick / .pin) owns the paint again
+  if (railColorsKey) {
+    railColorsKey = "";
+    railColors = [];
+    for (const t of railTicks) t.style.background = "";
   }
   railTicks.forEach((t, j) => {
     t.style.width = base * railGain[j] + "px";
@@ -81,7 +127,7 @@ function paintRailWidths() {
 function paintRailAt(clientY: number, railTop: number) {
   let best = -1;
   let bestD = Infinity;
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   // clientY/railTop are visual; railTickCY lives in the rail's layout px: convert before comparing
   const yLocal = (clientY - railTop) / z;
   railTicks.forEach((_, j) => {
@@ -200,7 +246,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     let idx = railPopIdx;
     if (idx < 0 || !railTicks[idx]?.isConnected) {
       const rr = rail.getBoundingClientRect();
-      const yLocal = (e.clientY - rr.top) / (useAppStore.getState().zoomLevel || 1);
+      const yLocal = (e.clientY - rr.top) / effZoom();
       idx = -1;
       let bestD = Infinity;
       railTickCY.forEach((cy, i) => {
@@ -240,24 +286,28 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       return;
     }
     rail.hidden = false;
-    rail.style.top = streamEl.offsetTop + "px";
-    rail.style.height = streamEl.clientHeight + "px";
+    // Read phase first (6d): every geometry read happens before the first style/DOM write
+    // below, so streaming redraws force at most one layout instead of read/write interleave
+    const zs = effZoom(); // rect diffs below are visual; scrollTop/scrollTo are layout px
+    const railH = streamEl.clientHeight;
+    const railTop = streamEl.offsetTop;
+    const streamTop = streamEl.getBoundingClientRect().top;
+    rail.style.top = railTop + "px";
+    rail.style.height = railH + "px";
     if (railHovering) return;
     // Rebuild skip: streaming redraws re-run this effect many times a second while the
     // user-message set is unchanged; wiping and recreating the tick nodes each time
     // invalidates the rail's composited layer and makes the lit pin tick blink. Same
     // keys + same scrollport height → same tick geometry: keep the nodes, only refresh
     // the click-to-scroll offsets (they drift as streamed content grows above).
-    const sig = userEntries.map((e) => e.key).join(",") + "|" + streamEl.clientHeight;
+    const sig = userEntries.map((e) => e.key).join(",") + "|" + railH;
     if (sig === railSig && railTicks.length) {
-      const zs = useAppStore.getState().zoomLevel || 1;
-      const streamTopNow = streamEl.getBoundingClientRect().top;
       railTickMeta.forEach((m) => {
         const anchor = streamEl.querySelector(`[data-fk="${m.entry.key}"]`);
         if (!anchor) return;
         const pinEl = anchor.closest(".sticky-user-wrap") ?? anchor;
         const pr = pinEl.getBoundingClientRect();
-        m.topDoc = (pr.top - streamTopNow) / zs + streamEl.scrollTop;
+        m.topDoc = (pr.top - streamTop) / zs + streamEl.scrollTop;
       });
       return;
     }
@@ -269,9 +319,6 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     railGain = new Float32Array(userEntries.length).fill(1);
     railMusicGain = new Float32Array(userEntries.length);
     railTotal = userEntries.length;
-    const railH = streamEl.clientHeight;
-    const streamTop = streamEl.getBoundingClientRect().top;
-    const z = useAppStore.getState().zoomLevel || 1; // rect diffs below are visual; scrollTop/scrollTo are layout px
     const pitchBase = 11.25; // CSS px between adjacent ticks (15 reduced by 1/4)
     const pitch = userEntries.length > 1 ? Math.min(pitchBase, (railH - 6) / (userEntries.length - 1)) : pitchBase;
     const startTop = Math.max(0, (railH - (userEntries.length - 1) * pitch) / 2); // laid out from the centerline outward
@@ -281,45 +328,51 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     railSpan = { top: startTop - pitch / 2, bottom: startTop + (userEntries.length - 1) * pitch + pitch / 2 };
     railPitch = pitch / 2; // half a gap of slop past each end: forgiving without reaching the corners
     const tickH = 1.95; // CSS px line thickness (130% of a 1.5px hairline)
+    // Anchor measurement pass (reads only): anchors not mounted yet (e.g. a steer bubble
+    // rendering late) are skipped — their tick joins on a later rebuild
+    const measured: { en: (typeof userEntries)[number]; i: number; pinEl: Element; topDoc: number }[] = [];
     userEntries.forEach((en, i) => {
       const anchor = streamEl.querySelector(`[data-fk="${en.key}"]`);
-      if (!anchor) return; // anchor not mounted yet (e.g. steer bubble renders late): skip this tick
-      const r = anchor.getBoundingClientRect();
+      if (!anchor) return;
       const pinEl = anchor.closest(".sticky-user-wrap") ?? anchor;
       const pr = pinEl.getBoundingClientRect();
       // message position within the full text; measured on the sticky wrap so a
       // click lands it exactly at the scrollport top (the anchor sits lower inside it)
-      const topDoc = (pr.top - streamTop) / z + streamEl.scrollTop;
+      measured.push({ en, i, pinEl, topDoc: (pr.top - streamTop) / zs + streamEl.scrollTop });
+    });
+    // Write pass: tick nodes + styles; the card payloads live on the module-level list
+    // (index-aligned with railTicks) because the peak tick — not a hovered one — decides
+    // which card shows; the rail-level click handler scrolls the peak's message. pinEl is
+    // the sticky wrap (the element that actually pins at the scrollport top); messages
+    // without one (e.g. bash bubbles) fall back to the anchor.
+    for (const m of measured) {
       const tick = document.createElement("div");
-      tick.className = "rail-tick t-" + en.role;
-      tick.style.top = startTop + i * pitch + "px";
+      tick.className = "rail-tick t-" + m.en.role;
+      tick.style.top = startTop + m.i * pitch + "px";
       tick.style.height = tickH + "px";
       tick.style.borderRadius = tickH + "px"; // capsule ends: radii over half the height get clamped, keeping both ends fully rounded
       tick.style.width = RAIL_W_BASE + "px";
-      railTickCY.push(startTop + i * pitch + tickH / 2); // center relative to rail top; consumed directly on the mousemove hot path
-      // Card payloads live on the module-level list (index-aligned with railTicks) because the
-      // peak tick — not a hovered one — decides which card shows; the rail-level click handler
-      // scrolls the peak's message. pinEl is the sticky wrap (the element that actually pins
-      // at the scrollport top); messages without one (e.g. bash bubbles) fall back to the anchor.
-      railTickMeta.push({ entry: en, idx: i, tick, pinEl: anchor.closest(".sticky-user-wrap") ?? anchor, topDoc });
+      railTickCY.push(startTop + m.i * pitch + tickH / 2); // center relative to rail top; consumed directly on the mousemove hot path
+      railTickMeta.push({ entry: m.en, idx: m.i, tick, pinEl: m.pinEl, topDoc: m.topDoc });
       rail.appendChild(tick);
       railTicks.push(tick);
-    });
+    }
     paintRailPins(streamEl); // initial pin state (restored scroll position arrives without a scroll event)
   });
 
   // Pointer near the rail (including gaps between ticks): lock rebuilds and follow
   // continuously; the peak tick owns the card. Leaving the rail retracts the peaks; a card
   // still on screen gets a 200ms grace period so sliding into it keeps it alive.
-  // Runs synchronously (cost = one exponentiation per tick, far cheaper than a reflow), no rAF
+  // Per move the cost is one rect read + one exponentiation per tick, coalesced to one run
+  // per animation frame (see the wrapper below)
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const handleMove = (e: MouseEvent) => {
       if (!railTicks.length) return;
       const rail = railRef.current;
       const streamEl = streamRef.current;
       if (!rail || !streamEl || rail.hidden) return;
       const rr = rail.getBoundingClientRect();
-      const z = useAppStore.getState().zoomLevel || 1;
+      const z = effZoom();
       // Horizontal: the rail column itself (a small slop for slanted pointers).
       // Vertical: only the band the ticks actually occupy — the rail box spans
       // the whole stream height, so trusting it made the empty corners above and
@@ -351,9 +404,26 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
         railPopIdx = -1; // next peak entry re-arms
       }
     };
+    // rAF coalescing (6d): mousemove fires far faster than frames; the handler reads the
+    // rail rect (a layout read), so running it once per frame with the latest event keeps
+    // the interaction identical (paints are frame-quantized anyway) while bounding the
+    // forced-layout cost to one read per frame
+    let raf = 0;
+    let last: MouseEvent | null = null;
+    const onMove = (e: MouseEvent) => {
+      last = e;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const ev = last;
+        last = null;
+        if (ev) handleMove(ev);
+      });
+    };
     window.addEventListener("mousemove", onMove);
     return () => {
       window.removeEventListener("mousemove", onMove);
+      if (raf) cancelAnimationFrame(raf);
       dismissRailPop();
     };
   }, [streamRef]);
@@ -389,7 +459,11 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     const off = onSpectrum(({ bands, active }) => {
       const n = railMusicGain.length;
       if (!n) return;
-      railMusicActive = active;
+      let loudest = 0;
+      for (const v of bands) if (v > loudest) loudest = v;
+      // Silence downgrades to pointer-driven: a running capture is not the same as
+      // audible music (WASAPI/ScreenCaptureKit keep emitting zero-energy frames).
+      railMusicActive = active && loudest > RAIL_MUSIC_SILENT;
       // Bass-heavy mapping: the low spectrum carries most musical energy, so
       // the upper ticks read from the upper bands of a compressed range.
       for (let j = 0; j < n; j++) {

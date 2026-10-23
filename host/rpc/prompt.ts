@@ -25,15 +25,17 @@ import {
   discoverCustomTSCommands,
   cfgSkills,
 } from "../bootstrap.ts";
-import { H, sessions, defaultCwd, stampEvent, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { H, sessions, defaultCwd, stampEvent, entryBus, sendSessionState, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
-import { entriesToTranscript, PHASE_TEXT } from "../translate.ts";
-import { readPluginsEnabled } from "../assets.ts";
+import { PHASE_TEXT } from "../translate.ts";
+import { entriesToTranscript } from "../translate-history.ts";
+import { readPluginsEnabled } from "../plugin-assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
-import { pushComputerMode } from "../computer-mode.ts";
+import { computerModeActive, readComputerProvider, setComputerMode } from "../computer-mode.ts";
 import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued } from "../queue.ts";
-import { handleListSessions } from "./session";
+import { refreshAllSessionLists } from "./session";
 import { btwAsk } from "../btw.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
@@ -312,7 +314,8 @@ async function dispatchSlashInput(
   // Slash-command returns carry the typed command line so the UI can render them as a
   // command card (header = what was typed) instead of an anonymous meta row
   const sendCommandOutput = (out: string): void => {
-    ws.send(JSON.stringify({ type: "command_output", sessionId, text: out, command: trimmed }));
+    // Cross-channel: the other attached UI renders the same command card
+    entryBus(entry).send(JSON.stringify({ type: "command_output", sessionId, text: out, command: trimmed }));
   };
 
   // 1) /skill:<name>: the base's prompt() does not handle it, the host must dispatch (matching ACP #tryRunSkillCommand)
@@ -360,27 +363,54 @@ async function dispatchSlashInput(
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
-  // 2.55) /btw: pull up the Side Chat panel; with a question, start a new topic with it
-  // right away (the panel streams the answer). Same consumption contract as /plan.
+  // 2.55) /btw: with a question, start the topic first so the panel opens straight into it
+  // (the side chat has no "open by question" route); without one, open the topic directory.
+  // Same consumption contract as /plan, but the withdrawal frame goes out BEFORE the awaited
+  // topic start: /btw belongs to the right panel, and waiting for btwAsk first would flash the
+  // command line into the main transcript.
   if (parsedSlash?.name === "btw") {
     const question = parsedSlash.args.trim();
-    ws.send(JSON.stringify(stampEvent({ type: "open_right_tab", name: "btw" })));
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    let recordId: string | undefined;
     if (question) {
       try {
-        await btwAsk(ws, sessionId, question);
+        recordId = (await btwAsk(ws, sessionId, question)).id;
       } catch (err) {
         sendCommandOutput(err instanceof Error ? err.message : String(err));
       }
     }
-    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    ws.send(JSON.stringify(stampEvent({ type: "open_right_tab", name: "btw", recordId })));
     return null;
   }
-  // 2.6) /computer: the settings-page switch is the master gate. While closed
-  // the command is fully inert — every form (on/off/status alike) is refused
-  // with the gate hint, and the palette never lists it (sendCommandsFrame
-  // filters it out), so hand-typed input is the only surface left to catch.
-  if (parsedSlash?.name === "computer" && !settingsGet(H.settings, "computer.enabled")) {
-    sendCommandOutput(hostI18n.t("errors.computerGateClosed"));
+  // 2.6) /computer: rerouted to the app's own toggle (setComputerMode — the
+  // exact path the composer icon drives), so the command and the button share
+  // one state machine per provider: kimi mounts/unmounts the builtin kimi-cu
+  // server, default drives the eval-prelude overlay. The base's own handler
+  // writes the overlay regardless of the provider pick, which forked the
+  // state under kimi (BUG-106). The old master-gate refusal lives on inside
+  // setComputerMode's default-on path; kimi-on stays gate-free exactly like
+  // the icon (the settings gate governs the builtin prelude only).
+  if (parsedSlash?.name === "computer") {
+    const arg = parsedSlash.args.trim().toLowerCase();
+    const provider = readComputerProvider();
+    if (arg === "status") {
+      sendCommandOutput(
+        hostI18n.t("errors.computerCmd.status", {
+          state: hostI18n.t(computerModeActive(sessionId, entry) ? "errors.computerCmd.stateOn" : "errors.computerCmd.stateOff"),
+          provider,
+        }),
+      );
+    } else if (!arg || arg === "toggle" || arg === "on" || arg === "off") {
+      const enable = arg === "on" || (arg !== "off" && !computerModeActive(sessionId, entry));
+      await setComputerMode(ws, sessionId, entry, enable);
+      // Failure paths already emitted their own command_output + error toast;
+      // only a state change that stuck gets the success line.
+      if (computerModeActive(sessionId, entry) === enable) {
+        sendCommandOutput(enable ? hostI18n.t("errors.computerCmd.enabled", { provider }) : hostI18n.t("errors.computerCmd.disabled"));
+      }
+    } else {
+      sendCommandOutput(hostI18n.t("errors.computerCmd.usage"));
+    }
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
@@ -441,7 +471,7 @@ async function dispatchSlashInput(
             ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
             pushContext(ws, sessionId, entry);
           }
-          await handleListSessions(ws); // Title/list may have changed (rename/handoff alter titles)
+          await refreshAllSessionLists(ws); // Title/list may have changed (rename/handoff alter titles)
           const outs = bgOutputs ?? [];
           bgOutputs = null;
           // Success: the disk trace is written and the messages rebuild frame
@@ -459,10 +489,13 @@ async function dispatchSlashInput(
         });
     },
     notifyTitleChanged: () => {
-      void handleListSessions(ws);
+      void refreshAllSessionLists(ws);
     },
     notifyConfigChanged: () => {
-      ws.send(
+      // Slash-command model swaps (e.g. /model) must reach the other channel's badge too
+      sendSessionState(
+        ws,
+        entry,
         JSON.stringify({
           type: "session_model",
           sessionId,
@@ -473,7 +506,6 @@ async function dispatchSlashInput(
     },
   };
   const r = await executeAcpBuiltinSlashCommand(trimmed, runtime);
-  if (parsedSlash?.name === "computer") pushComputerMode(ws, sessionId, entry); // /computer on|off flips the per-session overlay; keep the composer button in lockstep
   if (r === false) return text; // Not a builtin → pass through to prompt as-is (file/custom/extension commands are expanded by the base)
   if ("prompt" in r) return r.prompt; // E.g. /force <tool> <prompt>: the remaining text becomes the prompt
   ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
@@ -495,6 +527,23 @@ async function handlePrompt(
   }
   // The user sending a message in this session = a seen interaction
   markSeen(entry);
+  // Degenerate-idle ghost recalibration (BUG-080, the BUG-071 residual): the
+  // UI optimistically enqueued a followUp row because its streaming flag
+  // lagged the host by a frame; on an idle host this prompt degenerates into
+  // a direct new turn — no queue mutation, no steer_consumed, nothing would
+  // ever clear the stale QueueCard row. Push a queued snapshot up front:
+  // empty in the degenerate case (ghost gone before the turn's first frame),
+  // a harmless duplicate of the then-calibration on the normal queued path.
+  // Must precede the first-turn cache gate below: waiting on the in-flight MCP
+  // mount lets its connection-status listener emit capabilities_mcp first,
+  // and the ghost row then survives past a frame the UI has already rendered.
+  // Degenerate-idle flag (see the echo below): the sender's UI queued this message on a
+  // stale streaming flag (e.g. a running bg job keeps agent_end isTerminal:false, so no
+  // turn_end ever cleared it) and drew NO optimistic bubble — the queue-row snapshot
+  // above wipes its only on-screen representation, and without an echo the bubble would
+  // never land (BUG-080's vanishing-message half).
+  const degenerateIdle = !steer && !entry.session.isStreaming;
+  if (degenerateIdle) sendQueued(entryBus(entry), sessionId, entry);
   // First-turn cache gate: the desktop opens sessions ready-to-chat, so the
   // mount (async, fired at pool entry) can still be in flight when the first
   // prompt lands. A mount landing between turns forks the prefix cache (tools
@@ -521,15 +570,36 @@ async function handlePrompt(
   }
   if (!finalText && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
   if (!finalText) finalText = hostI18n.t("errors.prompt.imageOnlyFallback");
+  // Collab guest: prompts relay to the host over the wire instead of running
+  // the local replica (attachments included; read-only links refused inside
+  // the hook; local slash dispatch intentionally bypassed, matching the fork).
+  if (relayGuestPrompt(sessionId, finalText, images, ws)) return;
   // Local slash-command dispatch: if consumed, return directly (no transcript push, no prompt call); if rewritten, continue
   const dispatched = await dispatchSlashInput(ws, sessionId, entry, finalText);
-  if (dispatched === null) return;
+  if (dispatched === null) {
+    // The sender's UI cannot tell a consumed command from a queued prompt, so a
+    // mid-stream send optimistically added a followUp/steer row that never
+    // reaches the agent queue (command_result withdraws the bubble, not the
+    // row). Recalibrate from the peer-visible queue view so the row cannot linger.
+    sendQueued(entryBus(entry), sessionId, entry);
+    return;
+  }
   finalText = dispatched;
   entry.transcript.push({
     role: "user",
     text: finalText,
     ...(images.length > 0 ? { images } : {}),
   });
+  // Cross-channel echo: every OTHER attached UI draws this bubble from the frame
+  // (the sender drew its own optimistically, so it is excluded — its frontend
+  // dedups the echo against that bubble by text, so the degenerate-idle path
+  // above includes the sender too: it queued instead of drawing and the echo is
+  // the only thing that can land its bubble). Same shape the automation
+  // scheduler broadcasts.
+  const echo = JSON.stringify(
+    stampEvent({ type: "event", sessionId, kind: "user_message", text: finalText, ...(images.length > 0 ? { images } : {}) }),
+  );
+  for (const w of entry.uiSockets) if (degenerateIdle || w !== ws) w.send(echo);
   // Auto session title: the base owns this entirely now — the session is
   // created with autoTitle: true (see createSessionCore), and AgentSession
   // notes the operator message on message_end + titles once the reply starts.
@@ -546,14 +616,6 @@ async function handlePrompt(
   // steer = injected immediately (inserted after the current tool batch, the
   // bubble finalized and the process split). When idle, the base ignores
   // both and opens a turn as usual.
-  // Degenerate-idle ghost recalibration (BUG-080, the BUG-071 residual): the
-  // UI optimistically enqueued a followUp row because its streaming flag
-  // lagged the host by a frame; on an idle host this prompt degenerates into
-  // a direct new turn — no queue mutation, no steer_consumed, nothing would
-  // ever clear the stale QueueCard row. Push a queued snapshot up front:
-  // empty in the degenerate case (ghost gone before the turn's first frame),
-  // a harmless duplicate of the then-calibration on the normal queued path.
-  if (!steer && !entry.session.isStreaming) sendQueued(ws, sessionId, entry);
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
@@ -567,17 +629,19 @@ async function handlePrompt(
         // no entryId yet)
         const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === finalText && !t.entryId);
         if (i >= 0) entry.transcript.splice(i, 1);
-        ws.send(JSON.stringify({ type: "command_result", sessionId, text: finalText, consumed: true }));
+        // Broadcast: the user_message echo above reached every attached UI, so the
+        // retraction must too (the other side would keep a ghost bubble otherwise)
+        entryBus(entry).send(JSON.stringify({ type: "command_result", sessionId, text: finalText, consumed: true }));
       }
       // Trim right after queued-mid-stream: keep only the earliest 1 entry
       // in the base queue, park the rest (this run's injection boundary can
       // only carry that 1, avoiding several riding together; later agent_end
       // rounds put them back one by one for consumption)
       parkFollowUpTail(entry);
-      sendQueued(ws, sessionId, entry);
+      sendQueued(entryBus(entry), sessionId, entry);
     }) // Calibrate the frontend's queued rows after enqueueing/turn start
     .catch((err: unknown) => {
-      ws.send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
+      entryBus(entry).send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
     });
 }
 
@@ -659,11 +723,14 @@ export const promptHandlers: Record<string, RpcHandler> = {
     }
     const item: TranscriptItem = { role: "bash", text: command, output: "", running: true, excludeFromContext };
     entry.transcript.push(item);
-    ws.send(JSON.stringify({ type: "bash_start", sessionId: msg.sessionId, command, excludeFromContext }));
+    // Cross-channel: the bash card streams to every attached UI (the transcript row
+    // is shared state; a requestor-only stream would desync the other side's view)
+    const bus = entryBus(entry);
+    bus.send(JSON.stringify({ type: "bash_start", sessionId: msg.sessionId, command, excludeFromContext }));
     entry.session
       .executeBash(
         command,
-        (chunk) => ws.send(JSON.stringify({ type: "bash_chunk", sessionId: msg.sessionId, chunk })),
+        (chunk) => bus.send(JSON.stringify({ type: "bash_chunk", sessionId: msg.sessionId, chunk })),
         { excludeFromContext, useUserShell: true },
       )
       .then((r) => {
@@ -680,7 +747,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
         entry.manager.ensureOnDisk?.().catch((err: unknown) => {
           safeStderr(hostI18n.t("errors.prompt.ensureOnDiskFailed", { detail: String(err) }));
         });
-        ws.send(
+        bus.send(
           JSON.stringify({
             type: "bash_done",
             sessionId: msg.sessionId,
@@ -694,7 +761,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
       })
       .catch((err: unknown) => {
         item.running = false;
-        ws.send(
+        bus.send(
           JSON.stringify({
             type: "bash_done",
             sessionId: msg.sessionId,
@@ -707,7 +774,7 @@ export const promptHandlers: Record<string, RpcHandler> = {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     entry.session.abortBash(); // Triggered synchronously; executeBash's promise resolves on its own and sends another bash_done frame
-    ws.send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
+    entryBus(entry).send(JSON.stringify({ type: "bash_done", sessionId: msg.sessionId, cancelled: true }));
   },
   async list_commands(ws, msg) {
     // Slash command list (for composer / completion): fetched on demand, no
@@ -731,6 +798,8 @@ export const promptHandlers: Record<string, RpcHandler> = {
         type: "file_matches",
         reqId: msg.reqId,
         matches: await listFileMatches(root, query),
+        // File-tab search opts in via target so the UI store routes the reply to the file page, not the composer mention list
+        ...(msg.target === "fileTab" ? { target: "fileTab" } : {}),
       }),
     );
   },

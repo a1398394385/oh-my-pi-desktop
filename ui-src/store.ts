@@ -8,6 +8,9 @@ import { useAppStore } from "./store/index";
 import type { HostRequest } from "./types/frames";
 export { useAppStore, setBump } from "./store/index";
 export type { AppStore } from "./store/index";
+// Effective DOM zoom (raw zoom level × narrow baseline): the phone layout pins zoom level
+// 100% to the 80% size it was tuned at, so every visual↔layout conversion reads this.
+export { effZoom, useEffZoom, NARROW_ZOOM_BASE } from "./store/layout";
 export { invoke } from "./store/ws";
 export { onTerminalFrame } from "./store/terminal";
 export { fmtTokens, fmtDurationMs, pathBase } from "./store/utils";

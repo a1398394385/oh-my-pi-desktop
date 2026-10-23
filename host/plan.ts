@@ -4,7 +4,7 @@
 // ported from the base TUI's InteractiveMode approval flow).
 import { hostI18n } from "./i18n/host.ts";
 import { installProposalHandler } from "./plan-approve.ts";
-import { pushCommandOutput, type PoolEntry } from "./state.ts";
+import { pushCommandOutput, entryBus, type PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 const PLAN_MODE_NAME = "plan";
@@ -55,7 +55,8 @@ export function setPlanMode(
     entry.session.setPlanModeState(undefined);
     if (persist) entry.manager.appendModeChange?.("none");
   }
-  pushPlanMode(ws, sessionId, entry);
+  // Cross-channel: the other attached UI's Plan pill flips with the same toggle
+  pushPlanMode(entryBus(entry), sessionId, entry);
 }
 
 /**

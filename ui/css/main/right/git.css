@@ -14,6 +14,19 @@
 .gd-badge.add { color: var(--green-soft); background: var(--tint-git-added-140); }
 .gd-badge.del { color: var(--err); background: var(--tint-danger-140); }
 .gd-badge.mod { color: var(--orange); background: var(--tint-git-modified-140); }
+/* Unmerged entry: same danger family as `del`, plus an inset ring so the two
+   never read as the same state at a glance. */
+.gd-badge.conflict { color: var(--err); background: var(--tint-danger-140); box-shadow: inset 0 0 0 1px var(--tint-danger-350); }
+
+/* In-flight operation notice (rebase / merge / cherry-pick / revert). Sits above
+   the commit toolbar and explains why unstage/discard/branch-switch are gone. */
+.gd-opstate {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px; padding: 5px 8px;
+  border-radius: var(--r-sm);
+  color: var(--orange); background: var(--tint-git-modified-140);
+  font-size: var(--ui-fs-xs);
+}
 
 /* --- B3 Git Diff write actions + file-view image preview (right.js) --- */
 /* toolbar: commit message input (.inp language, small + flex fill) + commit/push (.save-btn small) */

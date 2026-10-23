@@ -82,6 +82,9 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
   const out: Partial<UiPrefs> = {};
   if (!src || typeof src !== "object") return out;
   const s = src as Record<string, unknown>;
+  if (s.agentProcessStyle === "standard" || s.agentProcessStyle === "detailed" || s.agentProcessStyle === "expanded" || s.agentProcessStyle === "concise") {
+    out.agentProcessStyle = s.agentProcessStyle;
+  }
   if (typeof s.uiFont === "string") out.uiFont = s.uiFont;
   if (typeof s.uiFontSize === "number" && s.uiFontSize >= 11 && s.uiFontSize <= 18) out.uiFontSize = s.uiFontSize;
   if (typeof s.codeFontSize === "number" && s.codeFontSize >= 10 && s.codeFontSize <= 18) out.codeFontSize = s.codeFontSize;
@@ -90,6 +93,7 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
   if (typeof s.showThinking === "boolean") out.showThinking = s.showThinking;
   if (typeof s.expandToolOutput === "boolean") out.expandToolOutput = s.expandToolOutput;
   if (typeof s.terminalInheritProfile === "boolean") out.terminalInheritProfile = s.terminalInheritProfile;
+  if (typeof s.terminalShared === "boolean") out.terminalShared = s.terminalShared;
   if (typeof s.terminalFont === "string") out.terminalFont = s.terminalFont;
   if (typeof s.terminalFontSize === "number" && s.terminalFontSize >= 10 && s.terminalFontSize <= 20) {
     out.terminalFontSize = s.terminalFontSize;
@@ -107,6 +111,7 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
  */
 // Default prefs baseline (migration check: only upload when a cached value differs)
 const DEFAULT_PREFS: Record<string, unknown> = {
+  agentProcessStyle: "standard",
   uiFont: "default",
   uiFontSize: 13,
   codeFontSize: 12,
@@ -115,6 +120,7 @@ const DEFAULT_PREFS: Record<string, unknown> = {
   showThinking: true,
   expandToolOutput: true,
   terminalInheritProfile: true,
+  terminalShared: false,
   terminalFont: "",
   terminalFontSize: 13,
 };

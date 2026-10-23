@@ -1,5 +1,5 @@
 import type React from "react";
-import { useAppStore } from "../../../../store";
+import { effZoom } from "../../../../store";
 import { formatDurationMs, formatInteger } from "../data/formatters";
 import type { TraceMarker, TraceSpan, TraceSpanKind, TraceTrack } from "../types";
 import { buildTicks, formatOffset, type TraceScale } from "./time-scale";
@@ -341,7 +341,7 @@ export interface TooltipLabels {
 export function renderTooltip(hover: HoverState, traceStart: number, labels: TooltipLabels): React.ReactElement {
   // The tooltip portals to body, outside the zoomed #settings subtree: carry the
   // zoom, then divide the visual (clientX/Y-based) coords back out — placeMenu idiom
-  const zoom = useAppStore.getState().zoomLevel || 1;
+  const zoom = effZoom();
   const left = Math.min(hover.clientX + 14, window.innerWidth - 320);
   const top = hover.clientY + 16 > window.innerHeight - 140 ? hover.clientY - 120 : hover.clientY + 16;
   const style = { left: left / zoom, top: top / zoom, zoom: String(zoom) } as React.CSSProperties;

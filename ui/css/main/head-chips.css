@@ -4,14 +4,22 @@
    follows the .sel-up convention: resting up, rotating back down when open) */
 .head-chip {
   display: inline-flex; align-items: center; gap: 6px;
-  flex: none; min-width: 0; max-width: 220px;
+  /* Chip width follows its content (no fixed cap); the cap is only a guard so a long
+     project/branch name can never push the trailing buttons out of the topbar. */
+  flex: none; min-width: 0; max-width: min(50%, 460px);
+  white-space: nowrap;
   height: 26px; padding: 0 10px;
   border: 1px solid var(--line-soft); border-radius: 999px;
   background: var(--panel-2); color: var(--dim);
   font-size: var(--ui-fs-sm);
   box-sizing: border-box;
 }
-.head-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* min-width: 0 is required for the ellipsis: a flex item's automatic minimum
+   size would otherwise refuse to shrink and overflow the chip. */
+.head-chip > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The branch chip's icon is a direct child too — keep it out of the shrinkable set
+   (min-width: 0 above would otherwise let the flexbox squash its svg). */
+.head-chip > .pi-ic { flex: none; }
 .chat-head button.head-chip { cursor: pointer; transition: background var(--dur-snap), color var(--dur-snap); }
 .chat-head button.head-chip:hover,
 .chat-head button.head-chip.active { background: var(--panel-3); color: var(--text); }

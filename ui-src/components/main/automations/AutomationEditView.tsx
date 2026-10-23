@@ -141,6 +141,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
       recurring: draft.endMode !== "count",
       maxRuns: draft.endMode === "count" ? clampInt(draft.maxRuns, 1, 100000, 1) : null,
       endAt: draft.endMode === "date" ? endAt : null,
+      // Dialog deadlines for this task's run sessions (0 = wait forever).
+      askTimeoutSec: clampInt(draft.askTimeout, 0, 86400, 300),
+      approvalTimeoutSec: clampInt(draft.approvalTimeout, 0, 86400, 300),
     };
     if (isNew) {
       send({ type: "automations_create", automation: { ...base, schedule: scheduleInput } });
@@ -221,8 +224,16 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
           <div className="aued-title-row">
             <div className="aued-title">{isNew ? t("autoEdit.titleCreate") : t("autoEdit.titleEdit")}</div>
             <span className="sp" />
+            {/* Delivery automations are agent-owned: the host rejects automations_update for
+                them, so the editor must not offer a save that would silently fail */}
             {tab === "settings" && (
-              <button type="button" className="al-primary aued-save" disabled={!canSave} onClick={save}>
+              <button
+                type="button"
+                className="al-primary aued-save"
+                disabled={!canSave || !!initial?.deliverTo}
+                title={initial?.deliverTo ? t("autoEdit.deliveryLocked") : undefined}
+                onClick={save}
+              >
                 {t("common.save")}
               </button>
             )}
@@ -244,6 +255,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
 
       {tab === "settings" ? (
         <div className="aued-layout">
+          {initial?.deliverTo ? (
+            <div className="aued-delivery-lock">{t("autoEdit.deliveryLocked")}</div>
+          ) : null}
           <aside className="aued-summary">
             <div className="aued-summary-head">
               {!isNew && stKind && (
@@ -457,6 +471,29 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
                         {endBad && <span className="aued-err">{t("settingsPage.automations.endDateInvalid")}</span>}
                       </span>
                     )}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="aued-row">
+              <div className="aued-row-label">
+                <strong>{t("autoEdit.dialogSection")}</strong>
+                <span>{t("autoEdit.dialogSectionHint")}</span>
+              </div>
+              <div className="aued-row-content">
+                <div className="aued-endrow">
+                  <span className="aued-field-inline">
+                    <span className="aued-fl">{t("autoEdit.askTimeoutLabel")}</span>
+                    <input className="inp aued-inp-sm" inputMode="numeric" value={draft.askTimeout}
+                      onChange={(e) => patch({ askTimeout: e.target.value })} />
+                    <span className="aued-sep">{t("autoEdit.timeoutUnit")}</span>
+                  </span>
+                  <span className="aued-field-inline">
+                    <span className="aued-fl">{t("autoEdit.approvalTimeoutLabel")}</span>
+                    <input className="inp aued-inp-sm" inputMode="numeric" value={draft.approvalTimeout}
+                      onChange={(e) => patch({ approvalTimeout: e.target.value })} />
+                    <span className="aued-sep">{t("autoEdit.timeoutUnit")}</span>
                   </span>
                 </div>
               </div>

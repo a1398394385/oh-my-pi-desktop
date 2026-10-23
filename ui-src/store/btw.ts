@@ -9,12 +9,17 @@ export interface BtwSlice {
   /** sessionId → topics, newest first (from btw_history plus live btw_record checkpoints) */
   btwTopics: Map<string, BtwRecord[]>;
   btwDraft: string;
-  /** Topic id the composer follows up in; null = composer starts a new topic */
-  btwReplyTo: string | null;
   btwSetDraft(text: string): void;
-  btwReplyToTopic(id: string | null): void;
+  /** Topic the panel should open directly (set by a /btw ask); consumed by BtwPage. */
+  btwFocus: string | null;
+  btwFocusTopic(recordId: string | null): void;
+  /** Bumped when a bare /btw (no question) asks the panel for the topic directory;
+   * btwFocus cannot express that because its null already means "no signal". */
+  btwRootSeq: number;
+  btwShowRoot(): void;
   btwLoad(sessionId: string): void;
-  btwSend(sessionId: string, question: string): void;
+  /** `recordId` follows up in that topic; undefined starts a new one. */
+  btwSend(sessionId: string, question: string, recordId?: string): void;
   btwCancelTopic(sessionId: string, recordId: string): void;
   btwPromoteTopic(sessionId: string, recordId: string): void;
 }
@@ -22,21 +27,24 @@ export interface BtwSlice {
 export const createBtwSlice: StateCreator<AppStore, [], [], BtwSlice> = (set, get) => ({
   btwTopics: new Map(),
   btwDraft: "",
-  btwReplyTo: null,
   btwSetDraft(text) {
     set({ btwDraft: text });
   },
-  btwReplyToTopic(id) {
-    set({ btwReplyTo: id });
+  btwFocus: null,
+  btwFocusTopic(recordId) {
+    set({ btwFocus: recordId });
+  },
+  btwRootSeq: 0,
+  btwShowRoot() {
+    set((st) => ({ btwRootSeq: st.btwRootSeq + 1 }));
   },
   btwLoad(sessionId) {
     get().send({ type: "btw_history", sessionId });
   },
-  btwSend(sessionId, question) {
-    const st = get();
+  btwSend(sessionId, question, recordId) {
     if (!question.trim()) return;
-    st.send({ type: "btw_ask", sessionId, question, recordId: st.btwReplyTo ?? undefined });
-    set({ btwDraft: "", btwReplyTo: null });
+    get().send({ type: "btw_ask", sessionId, question, recordId });
+    set({ btwDraft: "" });
   },
   btwCancelTopic(sessionId, recordId) {
     get().send({ type: "btw_cancel", sessionId, recordId });

@@ -35,9 +35,9 @@ export interface AcpParams {
 }
 
 export const ACP_DEFAULT_PARAMS: AcpParams = {
-	l1: 100_000,
-	l2: 200_000,
-	l3: 300_000,
+	l1: 150_000,
+	l2: 250_000,
+	l3: 350_000,
 	target: 100_000,
 	minCompress: 20_000,
 	summaryBudgetMax: 8_000,

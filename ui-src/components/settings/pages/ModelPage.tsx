@@ -293,6 +293,7 @@ function RolesView() {
             <input
               type="text"
               className="inp"
+              style={{ width: 200, minWidth: 0 }}
               placeholder={t("settingsPage.model.roleNamePh")}
               spellCheck={false}
               autoComplete="off"
@@ -926,7 +927,11 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
       {models[0]?.cred ? <AccountsSection prov={prov} /> : null}
       <div className="mp-ml"><span>{t("settingsPage.model.modelList")}</span></div>
       {models.map((m) => {
-        const metaRow = meta?.rows?.[m.id];
+        // Catalog ids are "provider/model"; models.yml rows are keyed by the
+        // bare model id — the metadata snapshot and the save payload both use
+        // the bare id (provider_model_meta rows / models.yml line ids).
+        const bareId = m.id.startsWith(prov + "/") ? m.id.slice(prov.length + 1) : m.id;
+        const metaRow = meta?.rows?.[bareId];
         const open = metaOpen === m.id;
         return (
           <div key={m.id}>
@@ -1006,7 +1011,7 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
             </div>
             {open ? (
               <ModelMetaEditor
-                modelId={m.id}
+                modelId={bareId}
                 displayName={m.name}
                 catalog={metaRow?.catalog ?? null}
                 saved={metaRow?.saved ?? null}

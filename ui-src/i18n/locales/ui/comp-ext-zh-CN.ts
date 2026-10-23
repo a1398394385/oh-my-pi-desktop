@@ -12,7 +12,7 @@ export const compExtZh = {
   askNext: "下一题",
   askSubmitAll: "提交全部答案",
   askOther: "其他（自定义答案）",
-  askOtherPlaceholder: "输入自定义答案…",
+  askOtherPlaceholder: "输入你的回答…",
 };
 
 export default compExtZh;

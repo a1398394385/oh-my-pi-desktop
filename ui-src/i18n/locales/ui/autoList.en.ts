@@ -10,7 +10,11 @@ export const autoListEn = {
   pausedBadge: "Paused",
   failedBadge: "Failed",
   runCount: "{{n}} runs",
+  // Delivery badge: the run wakes an existing conversation instead of spawning a session
+  deliveryBadge: "Delivers to a conversation",
   cardNext: "next run {{time}}",
+  // Header gear: opens the automations settings page (agent tool switch)
+  settingsTitle: "Automation settings",
   // Row action menu
   moreActions: "More actions",
   edit: "Edit",

@@ -7,9 +7,13 @@
 // later break register; a context compaction (base entry or ACP block) drops
 // the prefix on purpose, so its drop is neither a break nor double-counted.
 import { countCacheBreaks } from "../host/session-lifecycle.ts";
-import { countCompactions } from "../host/session-snapshot.ts";
+import { countCompactions, scanCacheBreaks } from "../host/session-snapshot.ts";
 
-type Msg = { type?: string; customType?: string; message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } } };
+type Msg = {
+  type?: string;
+  customType?: string;
+  message?: { role?: string; usage?: { input?: number; cacheRead?: number; totalTokens?: number } };
+};
 
 /** Base compaction entry (/compact, /handoff, plan approval, auto-compaction). */
 function compacted(): Msg {
@@ -69,6 +73,26 @@ for (const [name, entries, expected] of cases) {
   const ok = got === expected;
   if (!ok) failures++;
   console.log(`${ok ? "ok  " : "FAIL"} ${name}: expected ${expected}, got ${got}`);
+}
+
+// The stats bar's cache-miss flash needs the size of the LAST break: the uncached
+// input tokens that request re-billed (never an earlier one, never the peak).
+const rebilled = [
+  { type: "message", message: { role: "assistant", usage: { cacheRead: 20000, input: 0, totalTokens: 20008 } } },
+  { type: "message", message: { role: "assistant", usage: { cacheRead: 0, input: 47424, totalTokens: 47432 } } },
+  { type: "message", message: { role: "assistant", usage: { cacheRead: 50000, input: 0, totalTokens: 50008 } } },
+  { type: "message", message: { role: "assistant", usage: { cacheRead: 0, input: 61234, totalTokens: 61242 } } },
+];
+const scanCases: Array<[string, Msg[], number, number]> = [
+  ["no break keeps zero", reads([1000, 5000]), 0, 0],
+  ["last break wins", rebilled, 2, 61234],
+  ["compaction drop is not reported", [...reads([20000]), compacted(), ...reads([100, 200])], 0, 0],
+];
+for (const [name, entries, expectedBreaks, expectedTokens] of scanCases) {
+  const got = scanCacheBreaks(entries);
+  const ok = got.breaks === expectedBreaks && got.rebilledTokens === expectedTokens;
+  if (!ok) failures++;
+  console.log(`${ok ? "ok  " : "FAIL"} scan / ${name}: expected ${expectedBreaks}/${expectedTokens}, got ${got.breaks}/${got.rebilledTokens}`);
 }
 
 for (const [name, entries, expected] of compactionCases) {

@@ -12,7 +12,7 @@ import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initia
 import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
 import { reloadAutomationScheduler, setAutomationNotify } from "./automations/scheduler.ts";
-import { handleListSessions } from "./rpc/session.ts";
+import { refreshAllSessionLists } from "./rpc/session.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
@@ -386,7 +386,7 @@ export async function applyProfile(profileName: string) {
   // refresh the sidebar via the session_list push (the same pattern rpc/session
   // uses after list-mutating RPCs); the scheduler itself never imports rpc/.
   setAutomationNotify(() => {
-    eachUiWs((ws) => void handleListSessions(ws).catch(() => {}));
+    void refreshAllSessionLists().catch(() => {});
   });
   reloadAutomationScheduler();
 }
@@ -448,5 +448,18 @@ export function readSessionContextEnabled(): boolean {
 /** Write sessionContext.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
 export async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
   writeDesktopSection("sessionContext", { ...readDesktopSection("sessionContext"), enabled });
+}
+
+/** Agent-driven automations (automations.agentTools in omp-desktop.json): whether
+ *  new sessions get the automations_list / automations_manage tools. Off by default
+ *  (same rule as acp.enabled); read at session creation, so a flip lands on new
+ *  sessions only. */
+export function readAutomationAgentEnabled(): boolean {
+  return readDesktopSection("automations").agentTools === true;
+}
+
+/** Write automations.agentTools back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
+export async function writeAutomationAgentEnabled(enabled: boolean): Promise<void> {
+  writeDesktopSection("automations", { ...readDesktopSection("automations"), agentTools: enabled });
 }
 

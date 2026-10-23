@@ -6,7 +6,7 @@
 // (title row + WeakMap expand state + useLift collapse animation).
 import type { ChatItem, ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, roExpand } from "../../store/groupExpand";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 import { useLift, uniqueFiles } from "./parts";
@@ -33,7 +33,12 @@ export function roSummaryText(subs: ChatItem[]): string {
 
 // The run always starts with a read-only tool event (scanReadonlyRun is entered only for
 // one), so the head key of the expand WeakMap is a ToolItem at runtime
-export default function ReadonlyGroup({ subs, pfx }: { subs: ChatItem[]; pfx: string }) {
+// memo (T2): subs is rebuilt every traversal, so the comparator keys on the caller-captured
+// mutation signature (items.tsx readonlySig) plus the sub-item identities (patchActiveItem
+// copies flip them) — the group re-renders when its own rows changed, not on every flush
+export default memo(
+  function ReadonlyGroup({ subs, pfx, sig }: { subs: ChatItem[]; pfx: string; sig: string }) {
+  void sig; // comparison-only prop (see the comment above)
   useGroupExpandVersion(); // expand state lives on a module-level WeakMap; the groupExpand channel bumps to re-render
   const [closing, close, liftRef] = useLift();
   const head = subs[0] as ToolItem;
@@ -86,4 +91,10 @@ export default function ReadonlyGroup({ subs, pfx }: { subs: ChatItem[]; pfx: st
       )}
     </>
   );
-}
+  },
+  (a, b) =>
+    a.pfx === b.pfx &&
+    a.sig === b.sig &&
+    a.subs.length === b.subs.length &&
+    a.subs.every((x, i) => x === b.subs[i]),
+);

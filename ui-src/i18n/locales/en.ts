@@ -10,6 +10,9 @@ import notify from "./ui/notify.en";
 import hubExt from "./ui/hub-ext-en";
 import compExt from "./ui/comp-ext-en";
 import ssh from "./ui/ssh.en";
+import worktree from "./ui/worktree.en";
+import gitPage from "./ui/gitPage.en";
+import collab from "./ui/collab.en";
 import autoList from "./ui/autoList.en";
 import autoEdit from "./ui/autoEdit.en";
 import remote from "./ui/remote.en";
@@ -26,6 +29,9 @@ const en = {
   hubExt,
   compExt,
   ssh,
+  worktree,
+  gitPage,
+  collab,
   autoList,
   autoEdit,
   remote,

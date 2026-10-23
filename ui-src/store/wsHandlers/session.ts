@@ -2,7 +2,10 @@
 // external writes, model and thinking level, rename/archive/stop/compact receipts, fork and
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
-import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, updateSession } from "../session";
+import { REMOTE } from "../ws";
+import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, updateSession } from "../session";
+import { pathOfSessionId } from "../session-lookup";
+import { pushInputHistory } from "../../components/composer/lexical/draft";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession, SubagentState } from "../../types/session";
@@ -40,7 +43,7 @@ export const sessionHandlers = {
   pool_sessions(msg) {
     // Host pool residency snapshot (attach / release / list refresh): the sidebar's "active tasks"
     // list renders it. Full-replace — the frame is the whole pool, never a delta.
-    useAppStore.setState({ poolSessions: msg.sessions ?? [] });
+    landPoolSessions(msg.sessions);
   },
   session_list(msg) {
     // Split out archived entries: they don't go into diskProjects; stored separately as archivedSessions for the sidebar archive area
@@ -56,7 +59,14 @@ export const sessionHandlers = {
       diskProjects.push({ ...p, sessions });
     }
     archived.sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
-    const expandedProjects = new Set<string>(msg.expandedProjects ?? []);
+    // Remote (phone) clients keep expansion client-local: REMOTE mode never sends
+    // set_project_expanded (ProjectsSlice, spec §4.3), so re-adopting the host value on every
+    // list frame would revert each tap and force a second tap. The host value seeds only the
+    // first frame, where the client has no expansion state of its own yet.
+    const expandedProjects =
+      REMOTE && st2.diskProjects.length > 0
+        ? new Set<string>(st2.expandedProjects)
+        : new Set<string>(msg.expandedProjects ?? []);
     if (st2.isProjectManageMode) {
       for (const p of diskProjects) expandedProjects.add(p.cwd);
     }
@@ -64,6 +74,7 @@ export const sessionHandlers = {
       diskProjects,
       archivedSessions: archived,
       allProjects: msg.allProjects ?? [],
+      gitProjects: new Set(msg.gitProjects ?? []),
       removedProjects: msg.removedProjects ?? [],
       defaultWorkspace: msg.defaultWorkspace ?? "",
       expandedProjects,
@@ -111,6 +122,17 @@ export const sessionHandlers = {
     // clicking it again re-enters the pool via load_session.
     const path = String(msg.path ?? "");
     if (!path) return;
+    // Row-level notice instead of a bottom toast: the sidebar row swaps the "session closed"
+    // notice in over its title for 1s (SessionRow carousel). Runs before the slot guard below —
+    // the host may evict a session this client never had a frontend slot for.
+    useAppStore.setState((s) => ({ unloadedPaths: new Set(s.unloadedPaths).add(path) }));
+    setTimeout(() => {
+      useAppStore.setState((s) => {
+        const next = new Set(s.unloadedPaths);
+        next.delete(path);
+        return { unloadedPaths: next };
+      });
+    }, 1000);
     const st = useAppStore.getState();
     if (!st.openSessions.has(path)) return;
     if (st.activePath === path) {
@@ -128,7 +150,22 @@ export const sessionHandlers = {
         return { openSessions };
       });
     }
-    useAppStore.getState().toast(t("sidebar.unloadedToast"));
+  },
+
+  session_finished(msg) {
+    // Host broadcast at terminal run end, aimed at channels that never attached the
+    // session (attached ones already handled their turn_end): light the sidebar's
+    // unread dot locally and refresh the list (title/preview/modified changed). The
+    // dot is per-device by design — each channel's own "haven't seen it" state.
+    const path = String(msg.path ?? "");
+    if (!path) return;
+    const st = useAppStore.getState();
+    const attached = [...st.openSessions.values()].some((s) => s.sessionId === msg.sessionId);
+    if (!attached) st.send({ type: "list_sessions" }); // attached channels refresh from their own turn_end
+    if (path !== st.activePath) {
+      useAppStore.setState((s) => ({ unseenFinished: new Set(s.unseenFinished).add(path) }));
+      useAppStore.getState().saveUnseen();
+    }
   },
   session_created(msg) {
     // Scheduler-spawned (automation) session: register the slot so its live event frames
@@ -142,8 +179,8 @@ export const sessionHandlers = {
           items: [],
           pendingApprovals: [],
           assistantDraft: "",
-          streaming: false,
-          turnStartAt: null,
+          streaming: Boolean(msg.busy), // automation runs stream on creation; the spinner shows without waiting for a frame
+          turnStartAt: msg.busySince ?? null,
           subagents: new Map(),
           model: msg.model ?? null,
           thinking: msg.thinking ?? "auto",
@@ -155,6 +192,7 @@ export const sessionHandlers = {
           title: msg.title ?? null,
           isSubagent: false,
           automation: msg.automation,
+          connEpoch: s.connEpoch,
         } as OpenSession),
       }));
       return;
@@ -184,8 +222,14 @@ export const sessionHandlers = {
           items: [],
           pendingApprovals: [],
           assistantDraft: "",
-          streaming: Boolean(live),
-          turnStartAt: live?.registeredAt ?? null,
+          // Subagent seed (live) or mid-run open of a session another channel is
+          // running (host busy flag): either way the view must spin immediately —
+          // frame-driven lighting alone stays dark through long tool calls
+          streaming: Boolean(live || msg.busy),
+          // Subagent view: its own registration time. Main session opened mid-run by the
+          // other channel: the host's run start, so the "Working Ns" clock matches both ends
+          // instead of counting from this channel's attach (or the next turn_start).
+          turnStartAt: live?.registeredAt ?? msg.busySince ?? null,
           subagents: new Map(),
           model: msg.model ?? null,
           thinking: msg.thinking ?? "auto",
@@ -197,6 +241,7 @@ export const sessionHandlers = {
           title: msg.title ?? null,
           isSubagent: Boolean(msg.isSubagent),
           parentPath: msg.parentPath,
+          connEpoch: s.connEpoch,
         } as OpenSession),
         isCreatingNew: false,
         automationsOpen: false, // any session taking over the main column closes the tasks view
@@ -222,6 +267,12 @@ export const sessionHandlers = {
       const s = st3.openSessions.get(st3.activePath ?? "");
       // Single run-start write + prompt dispatch, identical to the composer send path
       if (s) dispatchPrompt(s.sessionId, text, files);
+      // The deferred first prompt joins the created session's input history
+      // (its slot did not exist at send time; composer.recallClearedDrafts
+      // gates it the same way as the in-session send path)
+      if (useAppStore.getState().hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+        pushInputHistory(msg.path, { text, files });
+      }
     }
     if (st3.pendingNewBash) {
       const { command, excludeFromContext } = st3.pendingNewBash;
@@ -229,6 +280,10 @@ export const sessionHandlers = {
       const s = st3.openSessions.get(st3.activePath ?? "");
       // The bash_start frame creates the row; no optimistic bubble needed
       if (s) st3.send({ type: "bash_exec", sessionId: s.sessionId, command, excludeFromContext });
+      // Same input-history treatment, restoring the raw !/!! prefix
+      if (useAppStore.getState().hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+        pushInputHistory(msg.path, { text: (excludeFromContext ? "!!" : "!") + command, files: [] });
+      }
     }
     // The welcome page's model / thinking pick is the intent for the session that
     // create_session just produced — consumed here like planMode / computerMode,
@@ -256,12 +311,17 @@ export const sessionHandlers = {
       false,
     );
     // 2. Update the session's title in the on-disk project list (keeps titles referenced by the sidebar in sync)
+    // Disk rows carry the disk session id while this frame carries the pool UUID, and the two never
+    // coincide (host session-lifecycle.ts): match by path. The frame carries the entry path so a
+    // channel that never attached the session (remote watching the desktop and vice versa) has
+    // nothing to resolve; the open slot is only a fallback for a frame without it.
+    const livePath = msg.path ?? pathOfSessionId(msg.sessionId, useAppStore.getState().openSessions);
     useAppStore.setState((st) => {
       let projectsChanged = false;
       const diskProjects = st.diskProjects.map((p) => {
         let sChanged = false;
         const sessions = p.sessions.map((r) => {
-          if (r.id === msg.sessionId) {
+          if (r.id === msg.sessionId || (livePath !== undefined && r.path === livePath)) {
             sChanged = true;
             projectsChanged = true;
             return { ...r, title: msg.title };
@@ -273,7 +333,7 @@ export const sessionHandlers = {
 
       let archivedChanged = false;
       const archivedSessions = st.archivedSessions.map((r) => {
-        if (r.id === msg.sessionId) {
+        if (r.id === msg.sessionId || (livePath !== undefined && r.path === livePath)) {
           archivedChanged = true;
           return { ...r, title: msg.title };
         }
@@ -294,7 +354,7 @@ export const sessionHandlers = {
     updateSession(
       msg.sessionId,
       (s) => {
-        s.externalWrite = true;
+        s.externalWrite = msg.clear !== true;
       },
       false,
     );
@@ -394,20 +454,21 @@ export const sessionHandlers = {
     useAppStore.setState({ mainViewMode: "chat" });
     if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
   },
-  capabilities(msg) {
-    useAppStore.setState({ capabilities: msg.snapshot, capabilitiesFor: msg.snapshot.sessionId, capabilitiesLoading: false });
-  },
-  capabilities_mcp(msg) {
-    // MCP runtime is process-global: apply to whatever snapshot is held, regardless of which session's attach pushed the frame
-    useAppStore.setState((s) => (s.capabilities ? { capabilities: { ...s.capabilities, mcp: msg.mcp } } : {}));
-  },
-  extension_status(msg) {
-    // Badge table rides the session's snapshot: only merge while the frame belongs to the displayed session
-    useAppStore.setState((s) =>
-      s.capabilities && s.capabilities.sessionId === msg.sessionId
-        ? { capabilities: { ...s.capabilities, extStatuses: msg.statuses } }
-        : {},
-    );
+  session_edited(msg) {
+    // Edit-resend receipt: both outcomes consume the send-time stash
+    // (pendingEditText, set by the UserMsg edit box) and invalidate the entry
+    // tree like session_navigated on success — ok forked a sibling branch, a
+    // failure can still land after a partial navigate; the tree page refetches
+    // lazily on next render. Success keeps no store state (the sending
+    // component already collapsed its edit box); failure restores the stashed
+    // text/images into the composer so the edit is never silently lost (same
+    // backfill as editQueueMsg).
+    useAppStore.setState({ entryTree: null });
+    const stash = useAppStore.getState().pendingEditText;
+    useAppStore.setState({ pendingEditText: null });
+    if (msg.ok) return;
+    if (stash && stash.sessionId === msg.sessionId) useAppStore.getState().setComposerValue(stash.text, stash.images);
+    useAppStore.getState().toast(t("chat.editResendFailed", { error: msg.error ?? t("notify.navigateFailed") }), true);
   },
   // Cache-warming runtime snapshot (get_keepalive_status reply / reportState push): ringpop
   // popover transient alongside ctxDetail/ctxLimits, but stored per session — the ring's

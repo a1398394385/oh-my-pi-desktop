@@ -222,10 +222,18 @@ export const { commandPreview } = await import("@oh-my-pi/pi-tui/overlays/extens
 export const { resolvePluginManifestEntries } = await import(
   "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader"
 );
+// The base's own plugin installer (npm/git/local specs, same code path as
+// `omp plugin install`) so the plugins page can install without the CLI.
+export const { PluginManager } = await import("@oh-my-pi/pi-coding-agent/extensibility/plugins/manager");
+// The base CLI's own install-target classifier: tells a filesystem path (linked, so
+// edits show up without a reinstall) apart from an npm/git specifier.
+export const { classifyInstallTarget } = await import(
+  "@oh-my-pi/pi-coding-agent/cli/classify-install-target"
+);
 // Plugin discovery caches on the base side (enabledPluginsCache keyed by cwd+home,
-// plus the Claude/OMP installed-plugin registry roots). Nothing in the desktop app
-// installs plugins, so without an explicit invalidation before every plugins-page
-// refresh the loader keeps serving the first result for the whole host lifetime.
+// plus the Claude/OMP installed-plugin registry roots). Install and refresh both
+// invalidate first: without it the loader keeps serving the pre-install snapshot
+// for the whole host lifetime.
 export const { clearPluginRootsAndCaches } = await import(
   "@oh-my-pi/pi-coding-agent/discovery/helpers"
 );

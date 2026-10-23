@@ -8,6 +8,7 @@
 // main-column header chip; the welcome call site passes the newSession* fields.
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { send } from "../../store";
 import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
@@ -19,9 +20,12 @@ interface BranchMenuProps {
   remotes: string[]; // remote-tracking branches ("origin/xxx" form), rendered under a separator
   current: string;
   cwd: string;
+  /** HEAD is not on a branch: `current` carries the short oid instead. */
+  detached?: boolean;
 }
 
-export default function BranchMenu({ anchorRect, onClose, branches, remotes, current, cwd }: BranchMenuProps) {
+export default function BranchMenu({ anchorRect, onClose, branches, remotes, current, cwd, detached }: BranchMenuProps) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -39,6 +43,10 @@ export default function BranchMenu({ anchorRect, onClose, branches, remotes, cur
       className="menu open"
       ref={menuRef}
     >
+      {/* Detached HEAD matches no row, so without this the menu opens with no ✓
+          anywhere and the checked-out state looks unset rather than intentional. */}
+      {detached && <div className="mi" style={{ opacity: 0.7, cursor: "default" }}>{t("gitPage.detachedHead", { oid: current })}</div>}
+      {detached && (branches.length > 0 || remotes.length > 0) && <div className="sep" />}
       {branches.map((b) => (
         <div
           key={b}

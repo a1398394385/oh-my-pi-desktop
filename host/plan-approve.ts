@@ -33,7 +33,7 @@ import {
   resolveToCwd,
   writeDeviceDispatch,
 } from "./bootstrap.ts";
-import { pushCommandOutput, requestApproval, stampEvent, entryBus, type PoolEntry } from "./state.ts";
+import { pushCommandOutput, requestApproval, stampEvent, entryBus, sendSessionState, type PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { safeStderr } from "./stderr.ts";
 
@@ -204,11 +204,9 @@ async function approveProposal(
     [PLAN_EXECUTE, PLAN_COMPACT, PLAN_KEEP, PLAN_REFINE, PLAN_SAVE_QUIT],
     undefined,
     {
-      // Raw token counts, not a rendered label: the UI localizes the
-      // "Approve and keep context (~44k / 1m)" row from them, so no display
-      // text crosses the wire and the answer contract stays id-based. A
-      // zero/absent context window (no model resolved) is omitted so the UI
-      // falls back to the bare label instead of rendering "/ 0".
+      // Execution-model tier slider; undefined (a lone role tier) rides the
+      // frame as an absent field and the card renders without it.
+      slider,
       keepContextTokens:
         usage && usage.contextWindow > 0 ? { tokens: usage.tokens, contextWindow: usage.contextWindow } : undefined,
       disabledIndices:
@@ -231,7 +229,7 @@ async function approveProposal(
     const destination = await promptPlanSavePath(ws, sessionId, entry, planContent);
     if (destination === undefined) return; // cancelled, or the write failed
     exitPlanModeState(entry);
-    pushPlanState(ws, sessionId, entry);
+    pushPlanState(entryBus(entry), sessionId, entry);
     try {
       await forkWithLocalArtifacts(ws, entry, sourceLocalRoot);
       pushCommandOutput(sessionId, hostI18n.t("flows.plan.savedPlan", { path: destination }));
@@ -330,12 +328,12 @@ async function approvePlan(
     await mkdir(path.dirname(dest), { recursive: true });
     await writeFile(dest, planContent);
     exitPlanModeState(entry);
-    pushPlanState(ws, sessionId, entry);
+    pushPlanState(entryBus(entry), sessionId, entry);
     // The approval frame carried the plan on the OLD session's id; repeat it on
     // the new one so its todo card keeps the plan output row.
     planState(next.entry).lastPlan = { title, path: dest, content: planContent };
-    pushPlanOutput(ws, next.sessionId, next.entry);
-    return dispatchApprovedTurn(ws, next.entry, {
+    pushPlanOutput(entryBus(next.entry), next.sessionId, next.entry);
+    return dispatchApprovedTurn(ws, next.sessionId, next.entry, {
       planFilePath,
       planContent,
       preserveContext,
@@ -345,7 +343,7 @@ async function approvePlan(
   }
 
   exitPlanModeState(entry);
-  pushPlanState(ws, sessionId, entry);
+  pushPlanState(entryBus(entry), sessionId, entry);
 
   // The plan→execution transition aborts the turn that produced the proposal.
   // Arm the silent marker so that aborted message is stamped as a silent abort
@@ -400,7 +398,7 @@ async function approvePlan(
     pushCommandOutput(sessionId, hostI18n.t("flows.plan.compactCancelled"));
     return false;
   }
-  return dispatchApprovedTurn(ws, entry, { planFilePath, planContent, preserveContext, roleIndex, title });
+  return dispatchApprovedTurn(ws, sessionId, entry, { planFilePath, planContent, preserveContext, roleIndex, title });
 }
 
 /** Clear plan-mode state (the desktop has no paused intermediate state). */
@@ -430,6 +428,7 @@ function pushPlanState(ws: Ws, sessionId: string, entry: PoolEntry) {
  */
 async function dispatchApprovedTurn(
   ws: Ws,
+  poolSessionId: string,
   entry: PoolEntry,
   args: { planFilePath: string; planContent: string; preserveContext: boolean; roleIndex: number | undefined; title: string },
 ): Promise<boolean> {
@@ -442,10 +441,12 @@ async function dispatchApprovedTurn(
       // Mirror the set_model RPC's session_model push: without it the composer
       // keeps showing the pre-approval model while the approved turn already
       // runs on the chosen role model.
-      ws.send(
+      sendSessionState(
+        ws,
+        entry,
         JSON.stringify({
           type: "session_model",
-          sessionId: session.sessionManager.getSessionId(),
+          sessionId: poolSessionId,
           model: `${session.model.provider}/${session.model.id}`,
           thinking: session.configuredThinkingLevel?.() ?? "auto",
         }),
@@ -458,6 +459,27 @@ async function dispatchApprovedTurn(
   if (args.title && !session.sessionManager.getSessionName()) {
     await session.sessionManager.setSessionName(args.title, "auto").catch(() => {});
   }
+
+  // The approved turn is synthetic: it persists as a developer-role message,
+  // so nothing would ever draw a user bubble for it and its rows would render
+  // flat under #stream (flex children never collapse margins → doubled line
+  // spacing). Echo the approved plan as a user_message before the run starts
+  // so the UI anchors a normal turn section; the transcript push keeps the
+  // bubble in pooled snapshots (reuse re-pushes entry.transcript verbatim).
+  // translate-history.ts maps the same disk entry back to this bubble on
+  // rebuild. Queued-turn path: the bubble may land ahead of an operator turn
+  // that runs first (rare, cosmetic only).
+  entryBus(entry).send(
+    JSON.stringify(
+      stampEvent({
+        type: "event",
+        sessionId: poolSessionId,
+        kind: "user_message",
+        text: args.planContent,
+      }),
+    ),
+  );
+  entry.transcript.push({ role: "user", text: args.planContent });
 
   // The approved turn is synthetic: its plan body is inlined, so it must not
   // read as an operator utterance (no title generation, no user attribution).

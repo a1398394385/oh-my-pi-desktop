@@ -32,6 +32,7 @@ export default function Welcome() {
   const newSessionBranch = useAppStore((s) => s.newSessionBranch);
   const newSessionBranches = useAppStore((s) => s.newSessionBranches);
   const newSessionRemotes = useAppStore((s) => s.newSessionRemotes);
+  const newSessionDetached = useAppStore((s) => s.newSessionDetached);
   // null = closed; when open, holds the trigger button's viewport coords; the menu portals to
   // body then positions itself
   const [projMenu, setProjMenu] = useState<DOMRect | null>(null);
@@ -144,7 +145,7 @@ export default function Welcome() {
               edges aligned.*/}
           <Composer inWelcome={true} />
           {projMenu && <ProjectMenu anchorRect={projMenu} onClose={() => setProjMenu(null)} onOpenRemote={() => setRemoteDlg(true)} />}
-          {branchMenu && <BranchMenu anchorRect={branchMenu} onClose={() => setBranchMenu(null)} branches={newSessionBranches} remotes={newSessionRemotes} current={newSessionBranch} cwd={newSessionProject} />}
+          {branchMenu && <BranchMenu anchorRect={branchMenu} onClose={() => setBranchMenu(null)} branches={newSessionBranches} remotes={newSessionRemotes} current={newSessionBranch} detached={newSessionDetached} cwd={newSessionProject} />}
           {remoteDlg && <RemoteDialog onClose={() => setRemoteDlg(false)} />}
         </div>
       </div>

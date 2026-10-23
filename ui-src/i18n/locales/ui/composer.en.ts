@@ -29,19 +29,18 @@ export const composerEn = {
   voiceTranscribing: "Transcribing…",
   // ModeMenu.tsx
   modeAlwaysAsk: "Manual approval",
+  modeAlwaysAskCached: "Ask and remember",
   modeWrite: "Default",
-  modeYolo: "Full auto",
-  modeAlwaysAskDesc: "Ask before operations that need approval",
-  modeWriteDesc: "Run routine operations automatically, ask for key decisions",
-  modeYoloDesc: "Run everything without confirmation",
+  modeYolo: "Full access",
+  modeSmart: "Smart approval",
   planMode: "Plan mode",
-  planModeDesc: "Research read-only and produce a plan, then code after approval",
   planModeHint: "Plan read-only first, execute after the plan is approved",
   // ModelMenu.tsx
   noModels: "No models configured",
   modelRoleCategory: "Model Role",
   onlyOneRoleModel: "Only one role model available",
-  // ThinkMenu.tsx
+  manageModels: "Manage models",
+  visionTag: "Vision",
   reasoning: "Reasoning level",
   // Settings page renders raw ids for en (OPTS_EN has no entry) — mirror that
   thinkingLevels: { auto: "auto", minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max", off: "off" },

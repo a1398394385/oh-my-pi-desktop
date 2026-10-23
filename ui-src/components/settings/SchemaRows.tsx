@@ -213,14 +213,15 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
       />
     );
   } else if (type === "record") {
-    ctl = <Textarea rows={3} ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // same ref reused for input/textarea, only read at the activeElement comparison, narrowing is safe
+    ctl = <Textarea rows={3} className="w-[360px] max-w-full" ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // same ref reused for input/textarea, only read at the activeElement comparison, narrowing is safe
   } else if (type === "number") {
-    ctl = <Input type="number" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+    ctl = <Input type="number" className="w-[130px]" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
   } else {
     // string / string+credential(password) / array(comma-separated)
     ctl = (
       <Input
         type={cred ? "password" : "text"}
+        className="w-[320px] max-w-full"
         ref={inputRef as RefObject<HTMLInputElement | null>}
         value={text}
         onChange={(e) => setText(e.target.value)}

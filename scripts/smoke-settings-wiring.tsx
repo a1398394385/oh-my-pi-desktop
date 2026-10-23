@@ -47,17 +47,18 @@ try {
   applyColorBlindMode(undefined);
   assert.equal(document.documentElement.dataset.colorblind, undefined, "未设置不挂属性");
 
-  // 6. hideToolActivity folding: 3 read-only rows merge unless the setting is explicitly false
+  // 6. agent process style: 3 read-only rows fold as one block under "standard" only
   const roItems = [1, 2, 3].map((n) => ({ role: "tool", name: "read", toolCallId: "t" + n, args: { path: "/f" + n }, result: "" })) as never[];
-  const merged = (vals: Record<string, unknown>) => {
-    setValues(vals);
+  const setStyle = (v: string) => useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, agentProcessStyle: v } as never }));
+  const folded = (style: string) => {
+    setStyle(style);
     return renderItems(roItems, "", []).some((el) => el.type === ReadonlyGroup);
   };
-  assert.ok(merged({}), "未设置（默认开）：>=3 只读行合并");
-  assert.ok(merged({ "display.hideToolActivity": true }), "显式开：合并");
-  assert.ok(!merged({ "display.hideToolActivity": false }), "显式关：平铺不合并");
+  assert.ok(folded("standard"), "标准：>=3 只读行合并");
+  assert.ok(!folded("detailed"), "详细：平铺不合并");
+  assert.ok(!folded("expanded"), "完全展开：平铺不合并");
 
-  console.log("✓ 设置对接：Loop 摘要（耗时常显+用量门控）、色盲根属性、只读折叠三态正确");
+  console.log("✓ 设置对接：Loop 摘要（耗时常显+用量门控）、色盲根属性、三档显示风格折叠正确");
 } finally {
   win.happyDOM.close();
   process.exit(0); // imported store modules keep timers alive; assertions are done

@@ -4,7 +4,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useAppStore } from "../../../store";
+import { effZoom } from "../../../store";
 
 export default function Menu({ place, onClose, children }: {
   place: (mr: DOMRect) => [number, number];
@@ -15,7 +15,7 @@ export default function Menu({ place, onClose, children }: {
   // Placement must happen after measuring the menu's actual size (mirrors the old append → getBoundingClientRect → placeMenu)
   useLayoutEffect(() => {
     const el = ref.current!; // exists right after portal mount (the old JS dereferenced directly; same assumption kept)
-    const z = useAppStore.getState().zoomLevel || 1; // fixed-menu coordinate compensation: set zoom first, then divide back
+    const z = effZoom(); // fixed-menu coordinate compensation: set zoom first, then divide back
     // zoom must land before measuring: place() mixes mr against visual anchor rects / viewport,
     // so mr has to be visual too (same idiom as placeMenu callers)
     el.style.zoom = String(z);

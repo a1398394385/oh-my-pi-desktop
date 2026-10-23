@@ -1,13 +1,14 @@
 // Automation creation domain entry: validate an upsert payload, normalize its
 // schedule, mint the record and persist it. Shared by the create RPC
-// (host/rpc/automations.ts) and the create_automation built-in tool
-// (host/automations/tool.ts) so both enforce the same limits, defaults and
+// (host/rpc/automations.ts) and the automations_manage built-in tool
+// (host/automations-tool.ts) so both enforce the same limits, defaults and
 // born-completed rule; update/preview reuse resolveSchedule from here.
 import { hostI18n } from "../i18n/host.ts";
 import { computeAutomationNextRunAt, isOneShot, isValidCronExpr, normalizeScheduleInput } from "./cron.ts";
 import { readAutomations, writeAutomations } from "./store.ts";
 import {
   AUTOMATION_CREATE_LIMIT,
+  AUTOMATION_DIALOG_TIMEOUT_SEC,
   newAutomationId,
   type Automation,
   type AutomationScheduleInput,
@@ -22,6 +23,11 @@ export function reqString(v: unknown): string {
 /** Positive finite number → floor, anything else → undefined (maxRuns cleared). */
 export function optCount(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) && v >= 1 ? Math.floor(v) : undefined;
+}
+
+/** Dialog deadline in seconds: 0 (wait forever) and up accepted, junk → undefined. */
+export function optSeconds(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : undefined;
 }
 
 /**
@@ -59,6 +65,11 @@ export async function createAutomation(raw: Partial<AutomationUpsertInput>): Pro
   const now = Date.now();
   const model = typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : undefined;
   const maxRuns = optCount(raw.maxRuns);
+  // A session delivery wakes a live conversation, so it must be bounded: the
+  // agent cannot create an unbounded self-wake loop.
+  const deliverTo = raw.deliverTo;
+  if (deliverTo && (raw.recurring === true || maxRuns === undefined))
+    throw new Error(hostI18n.t("errors.automations.deliveryNeedsCap"));
   const endAt = typeof raw.endAt === "number" && Number.isFinite(raw.endAt) ? raw.endAt : undefined;
   const automation: Automation = {
     id: newAutomationId(),
@@ -71,6 +82,11 @@ export async function createAutomation(raw: Partial<AutomationUpsertInput>): Pro
     ...(raw.computer === true ? { computer: true } : {}),
     recurring: raw.recurring === true,
     ...(maxRuns !== undefined ? { maxRuns } : {}),
+    // Dialog deadlines are stored explicitly so the record states what its runs
+    // will wait for; absent fields on older records fall back at dispatch.
+    askTimeoutSec: optSeconds(raw.askTimeoutSec) ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
+    approvalTimeoutSec: optSeconds(raw.approvalTimeoutSec) ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
+    ...(deliverTo ? { deliverTo } : {}),
     ...(endAt !== undefined ? { endAt } : {}),
     runCount: 0,
     enabled: true,

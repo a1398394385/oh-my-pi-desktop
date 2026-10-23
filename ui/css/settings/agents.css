@@ -15,3 +15,31 @@
 #aeText { flex: 1; min-height: 320px; background: none; border: 0; outline: none; resize: vertical; padding: 12px 14px; color: var(--text); font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.6; }
 
 .ae-status { padding: 8px 14px; font-size: var(--ui-fs-sm); color: var(--faint); border-top: 1px solid var(--line-soft); min-height: 30px; }
+
+/* creation form window (AgentCreateWindow): new button pinned right of the scope bar */
+.agents-bar .skills-btn-new { margin-left: auto; }
+
+/* tools checkbox grid: same box metrics as .mcp-form-input (r9 border + bg surface) */
+.agent-form-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--bg); }
+
+.agent-form-tool { display: flex; align-items: center; gap: 8px; font-size: var(--ui-fs-sm); cursor: pointer; }
+
+.agent-form-tool input[type="checkbox"] { accent-color: var(--tint-accent-500); cursor: pointer; }
+
+.agent-form-tool-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* name + model row: keep the model picker from stretching full width */
+.agent-form-model { max-width: 320px; flex: none; }
+
+/* creation form: scope selector mirrored into the window header area (ZCode parity) */
+.agent-form-scope-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
+
+.agent-form-scope-label { font-size: var(--ui-fs-sm); color: var(--dim); }
+
+/* model picker dressed as the block-level form select (mirrors .mp-cycle-add .sel): the
+   base .mp-role-sel metrics (7px padding, r7) don't match .mcp-form-input (6px 10px, r9) */
+.agent-form-model .mp-role-sel { display: flex; width: 100%; box-sizing: border-box; border-radius: 9px; padding: 6px 10px; font-size: var(--ui-fs-sm); line-height: 1.5; }
+
+.agent-form-model .mp-role-sel > span:first-child { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.agent-form-model .mp-role-sel .caret-svg { margin-left: auto; display: inline-flex; color: var(--faint); }

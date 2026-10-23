@@ -8,12 +8,13 @@
 // pending-strong note), and the current round's manifest with short refs —
 // and every call re-snapshots the round: the returned manifest is THE scope
 // for the next compress_context (keep ids must come from the latest return;
-// one successful compress consumes it). Large returns ride the base tool
-// truncation pipeline exactly like recall_block (T5 precedent).
+// one successful compress consumes it). The return size is ACP's own call:
+// the manifest is cut whole-line under the round budget, and the tool hands
+// the base tool-result spill stage a byte budget so it never head/tails the
+// list in the middle (its escape hatch is staying under the threshold).
 import { type } from "@oh-my-pi/omptype";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
 import type { AcpParams } from "./acp-plan.ts";
-import { enforceInlineByteCap } from "@oh-my-pi/pi-tui/tools/streaming-output";
 
 /** Round-status fields the renders read (AcpRoundStatus structurally satisfies this). */
 export interface AcpRoundStatusFields {
@@ -149,7 +150,7 @@ export function renderStatusText(rs: AcpRoundStatusFields, p: AcpParams, forced 
 
 /** Structural dependency: any runtime exposing status() (AcpRuntimeState; no import cycle). */
 interface StatusHost {
-	status(): { ok: true; text: string } | { ok: false; error: string };
+	status(maxBytes?: number): { ok: true; text: string } | { ok: false; error: string };
 }
 
 const ACP_STATUS_DESCRIPTION = `Check the ACP context dashboard and fetch the current compression manifest (context management).
@@ -158,8 +159,10 @@ Returns the prompt tier (L1/L2/L3), the compression method allowed this round (n
 
 Every call returns the latest snapshot and refreshes the round: the manifest it returns is THE compression scope — compress_context keep ids must come from the most recent context_status return, and a successful compress consumes it. Call any time; a good habit is to check after finishing a stage of work and compress what has settled.`;
 
-/** context_status ToolDefinition (registered next to compress_context, spec §6 v10). */
-export function createAcpStatusTool(state: StatusHost) {
+/** context_status ToolDefinition (registered next to compress_context, spec §6 v10).
+ * `spillThresholdBytes` reads the base tool-result spill threshold from the live session
+ * settings; the return is kept under it so the base stage never re-truncates the manifest. */
+export function createAcpStatusTool(state: StatusHost, spillThresholdBytes?: () => number) {
 	return {
 		name: "context_status",
 		label: "Context Status",
@@ -167,31 +170,10 @@ export function createAcpStatusTool(state: StatusHost) {
 		parameters: type({}),
 		loadMode: "essential" as const,
 		approval: "write" as const,
-		execute: async (
-			_id: string,
-			_params: Record<string, never>,
-			_signal: undefined,
-			_onUpdate: unknown,
-			ctx?: { allocateOutputArtifact?: (toolType: string) => Promise<{ id?: string; path?: string }> },
-		) => {
-			const out = state.status();
+		execute: async () => {
+			const out = spillThresholdBytes ? state.status(spillThresholdBytes()) : state.status();
 			if (!out.ok) return { content: [{ type: "text", text: out.error }], isError: true };
-			// Same base truncation pipeline as recall_block (spec §6): cap the
-			// inline text, spill the full version to an artifact the model reads
-			// back in segments — the tool itself never truncates.
-			let text = out.text;
-			const allocate = ctx?.allocateOutputArtifact;
-			if (typeof allocate === "function") {
-				text = await enforceInlineByteCap(text, {
-					saveArtifact: async (full) => {
-						const { id, path } = (await allocate("context_status")) ?? {};
-						if (!id || !path) return undefined;
-						await Bun.write(path, full);
-						return id;
-					},
-				});
-			}
-			return { content: [{ type: "text", text }] };
+			return { content: [{ type: "text", text: out.text }] };
 		},
 	};
 }

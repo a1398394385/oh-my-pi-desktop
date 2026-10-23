@@ -12,18 +12,21 @@ import {
 } from "../bootstrap.ts";
 import { H, sessions } from "../state.ts";
 import { releaseMcpForSession, preloadMcpForCwd } from "../mcp-mount.ts";
+import { detachEntryUi } from "../session-entry-core.ts";
+import { listAgentAssets, HOOK_EVENTS, LIFECYCLE_EVENTS } from "../assets.ts";
 import {
-  listAgentAssets,
   probeMcpServerHealth,
   mcpHealthCache,
+} from "../mcp-assets.ts";
+import {
   nearestProjectOmpDir,
   assetOmpDir,
   mcpCandidates,
   resolveAssetFile,
-  setPluginEnabled,
   validDesktopProjects,
   type AssetKind,
-} from "../assets.ts";
+} from "../asset-paths.ts";
+import { setPluginEnabled, installPluginPackage } from "../plugin-assets.ts";
 import { setMcpSharingConfig, deleteMcpSharingConfig } from "../profile.ts";
 import {
   buildExtensionsPayload,
@@ -86,7 +89,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "asset_file_saved", kind, path: file }));
   },
   async asset_file_create(ws, msg) {
-    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent), hook=hooks/<phase>/<tool>.ts (from a phase-aware template)
+    // Place by scope and asset kind: agent=agents/<name>.md, skill=skills/<name>/SKILL.md, mcp=that scope's mcp.json (idempotent), hook=hooks/<phase>/<tool|event>.ts (from an event-aware template)
     const kind = String(msg.kind ?? "agent") as AssetKind;
     if (kind === "mcp") {
       const file = mcpCandidates(assetOmpDir(kind, msg.scope, msg.cwd))[0];
@@ -101,17 +104,22 @@ export const assetsHandlers: Record<string, RpcHandler> = {
       return;
     }
     if (kind === "hook") {
-      const toolName = String(msg.name ?? "").trim();
-      if (!/^(\*|[A-Za-z0-9][A-Za-z0-9_-]*)$/.test(toolName)) throw new Error(hostI18n.t("errors.asset.invalidToolName"));
-      const phase = msg.phase === "pre" || msg.phase === "post" ? msg.phase : null;
-      if (!phase) throw new Error(hostI18n.t("errors.asset.invalidPhase"));
+      const event = String(msg.event ?? "");
+      if (!(HOOK_EVENTS as readonly string[]).includes(event)) throw new Error(hostI18n.t("errors.asset.invalidEvent", { event }));
+      // Discovery only scans hooks/{pre,post}/: lifecycle events are stored as hooks/pre/<event>.ts
+      // (basename = event), tool events keep hooks/<phase>/<tool>.ts where the phase is event-derived.
+      const lifecycle = (LIFECYCLE_EVENTS as readonly string[]).includes(event);
+      const phase = lifecycle ? "pre" : event === "tool_result" ? "post" : "pre";
+      const toolName = lifecycle ? event : String(msg.name ?? "").trim() || "*";
+      if (!lifecycle && !/^(\*|[A-Za-z0-9][A-Za-z0-9_-]*)$/.test(toolName)) throw new Error(hostI18n.t("errors.asset.invalidToolName"));
       const dir = path.join(assetOmpDir(kind, msg.scope, msg.cwd), "hooks", phase);
       const file = path.join(dir, `${toolName}.ts`);
       if (fs.existsSync(file)) throw new Error(hostI18n.t("errors.asset.alreadyExists", { kind, name: toolName }));
       await mkdir(dir, { recursive: true });
       const filter = toolName === "*" ? "" : `\t\tif (event.toolName !== "${toolName}") return;\n`;
-      const content =
-        phase === "pre"
+      const content = lifecycle
+        ? `/**\n * ${event} hook: runs on the session "${event}" event (pi.on("${event}")).\n * One file per event; reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("${event}", async (event) => {\n\t\t// Run a command: await pi.exec("git", ["status"], { timeout: 30_000 });\n\t\t// Post a message to the transcript: await pi.sendMessage("...");\n\t});\n}\n`
+        : phase === "pre"
           ? `/**\n * Pre-tool hook: runs before the tool executes (pi.on("tool_call")).\n * File name targets one tool ("*" matches all); reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("tool_call", async (event) => {\n${filter}\t\t// Block the call: return { block: true, reason: "not allowed" };\n\t\t// Revise the input: return { input: { ...event.input } };\n\t});\n}\n`
           : `/**\n * Post-tool hook: runs after the tool executes (pi.on("tool_result")).\n * File name targets one tool ("*" matches all); reload picks it up on new sessions.\n */\nexport default function (pi) {\n\tpi.on("tool_result", async (event) => {\n${filter}\t\t// Revise the result: return { content: [{ type: "text", text: "..." }] };\n\t});\n}\n`;
       await writeFile(file, content, "utf8");
@@ -153,6 +161,26 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     await setPluginEnabled(scope, cwd, name, enabled);
     // NOTE: sessions cache their plugin set at spawn — the toggle takes effect for
     // sessions created afterwards, matching the base's load-time discovery semantics.
+    ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+  },
+  async asset_plugin_install(ws, msg) {
+    const spec = String(msg.spec ?? "").trim();
+    if (!spec) throw new Error(hostI18n.t("errors.param.missingPluginSpec"));
+    // Install errors are reported on the result frame (not as a thrown error frame):
+    // the UI keeps an in-flight install button until a terminal reply lands, and a
+    // failed `bun install` is an expected outcome worth showing inline.
+    try {
+      const res = await installPluginPackage(spec);
+      ws.send(JSON.stringify({ type: "plugin_install_result", ok: true, ...res }));
+    } catch (err) {
+      ws.send(
+        JSON.stringify({
+          type: "plugin_install_result",
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async asset_skill_toggle(ws, msg) {
@@ -264,15 +292,20 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     // this reply is "ok"/"error" (McpServerTestedFrame consumers + smoke-mcp-sharing)
     ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status === "connected" ? "ok" : "error", error: probe.error, log: probe.log }));
   },
-  async mcp_detach(_ws, msg) {
-    // Frontend LRU eviction signal: release the evicted session's MCP pool
-    // references and unmount its tool surface (pool boundary semantics — no
-    // mid-session toggling). Reopening goes through load_session, which
-    // re-mounts idempotently.
+  async mcp_detach(ws, msg) {
+    // Frontend LRU eviction signal: the session is no longer open on this channel.
+    // Release its MCP pool references, unmount its tool surface (pool boundary
+    // semantics — no mid-session toggling) AND leave the session's fan-out set:
+    // sweepIdlePoolSessions skips entries with any attached socket, so a stale
+    // attachment pinned the evicted session in the pool (and the sidebar's active
+    // tasks list) for as long as the window stayed open. Reopening goes through
+    // load_session, which re-attaches the socket and re-mounts idempotently.
     const p = String(msg.path ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
     for (const [key, entry] of sessions.entries()) {
-      if (entry.path === p) releaseMcpForSession(key, entry);
+      if (entry.path !== p) continue;
+      releaseMcpForSession(key, entry);
+      detachEntryUi(ws, entry);
     }
   },
   async preload_mcp(_ws, msg) {

@@ -43,10 +43,12 @@
  * clears the entry and restarts the climb) and never touches intervalMs.
  */
 import { appendFileSync, mkdirSync } from "node:fs";
-import type { CostPerM, ParsedUsage, ProbeDialect } from "./keepalive-lib.ts";
+import type { CatalogPriceRow, CostPerM, ParsedUsage, ProbeDialect } from "./keepalive-lib.ts";
 import {
   buildProbeBody,
   buildProbeHeaders,
+  catalogListCost,
+  effectiveProbeCost,
   estimateProbeSpendUsd,
   estimateSavedUsd,
   formatDuration,
@@ -125,6 +127,39 @@ interface HostRequestAuth {
   apiKey?: string;
   headers?: Record<string, string>;
   error?: string;
+}
+
+/**
+ * Price rows of the full bundled catalog (built-in + custom), for the list-price
+ * fallback on subscription-plan models. Cached per registry instance: the
+ * catalog is static for the life of a profile, and every request captures cost.
+ * Reached by capability probe like readRequestAuth — an absent getAll yields no
+ * rows, which leaves the probe's own all-zero cost in place instead of throwing.
+ */
+let catalogCache: { registry: object; rows: readonly CatalogPriceRow[] } | null = null;
+
+function catalogRows(context: KeepaliveContext | null): readonly CatalogPriceRow[] {
+  const registry = context?.modelRegistry;
+  if (!registry || typeof registry !== "object" || !("getAll" in registry)) return [];
+  if (catalogCache?.registry === registry) return catalogCache.rows;
+  const getAll = registry.getAll;
+  if (typeof getAll !== "function") return [];
+  const models: unknown = (getAll as (kind: "all") => unknown).call(registry, "all");
+  const rows: CatalogPriceRow[] = [];
+  if (Array.isArray(models)) {
+    for (const model of models) {
+      if (!model || typeof model !== "object" || !("id" in model) || typeof model.id !== "string") continue;
+      if (!("cost" in model) || !model.cost || typeof model.cost !== "object") {
+        rows.push({ id: model.id });
+        continue;
+      }
+      // unknown -> Partial: estimate* read every field with a typeof check.
+      const cost = model.cost as Partial<CostPerM>;
+      rows.push({ id: model.id, cost });
+    }
+  }
+  catalogCache = { registry, rows };
+  return rows;
 }
 
 /**
@@ -849,7 +884,7 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
         provider: model.provider,
         api: model.api,
         baseUrl: model.baseUrl ?? "",
-        cost: model.cost ?? undefined,
+        cost: effectiveProbeCost(model.cost ?? undefined, catalogListCost(model.id, catalogRows(ctx))),
       };
       // This request refreshed the target cache, so the cadence restarts from
       // now: agent_end must not resume a deadline this turn invalidated.

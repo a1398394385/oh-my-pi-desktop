@@ -12,7 +12,7 @@ import appIcon from "../../../../ui/app-icon.png";
 import { MOD } from "../../../platform";
 import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
-  getAvailableProjects, openSettings, pathBase,
+  getAvailableProjects, openSettings, pathBase, effZoom,
 } from "../../../store";
 import { disposeRightSlot } from "../../../store/right";
 import { REMOTE } from "../../../store/layout";
@@ -27,7 +27,8 @@ import Menu from "./Menu";
 import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
 import ArchiveGroup from "./ArchiveGroup";
-import { computeSidebarSessionShortcuts, computeArchiveGroups } from "./util";
+import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
+import { computeSidebarSessionShortcuts, computeArchiveGroups, sessionLabel } from "./util";
 
 // Content of the delete/remove confirm dialog
 interface ConfirmSpec {
@@ -128,10 +129,22 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // getAvailableProjects() called directly during render (reads latest state internally); its
   // underlying fields must each be subscribed so changes trigger re-render
   const allProjects = useAppStore((s) => s.allProjects);
+  const gitProjects = useAppStore((s) => s.gitProjects);
   const removedProjects = useAppStore((s) => s.removedProjects);
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const projectLimits = useAppStore((s) => s.projectLimits);
-  const openSessions = useAppStore((s) => s.openSessions);
+  // Running-session key (T5): a stable string of the running session paths, so the
+  // shortcut useMemo below recomputes only when a session's running state flips — the
+  // former whole-Map subscription re-ran the filter chain on every session write.
+  // computeSidebarSessionShortcuts still reads the live Map during render (same pattern
+  // as getAvailableProjects above).
+  const runningKey = useAppStore((s) => {
+    let key = "";
+    for (const [p, o] of s.openSessions) {
+      if (o.streaming || o.items?.some((x) => x.role === "bash" && x.running)) key += p + ",";
+    }
+    return key;
+  });
   const poolSessions = useAppStore((s) => s.poolSessions);
   const unseenFinished = useAppStore((s) => s.unseenFinished);
   const archivedSessions = useAppStore((s) => s.archivedSessions);
@@ -146,6 +159,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } session row context menu
   const [projMenu, setProjMenu] = useState<{ cwd: string; rect: DOMRect } | null>(null); // { cwd, rect } project row "⋯" menu
   const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } manual add-project popover anchor
+  const [wtRemove, setWtRemove] = useState<{ path: string } | null>(null); // worktree-remove confirm dialog target
   const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
   const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx, x, y, left, w, grabY }
   const dragRef = useRef<ProjDrag | null>(null); // latest drag state during pointer events; keeps high-frequency pointermove from reading a stale closure
@@ -176,10 +190,15 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   // —— Delete-session confirm (shared by the manage-mode inline button / archive hard-delete) ——
   const askDeleteSession = (s: SessionInfo) => {
-    const sTitle = s.title || s.firstMessage || s.id || t("sidebar.untitledSession");
+    const sTitle = sessionLabel(s) || s.id || t("sidebar.untitledSession");
+    // Automations delivering into this session are deleted with it (host side), so the
+    // irreversible dialog has to say so.
+    const bound = useAppStore.getState().automations.filter((a) => a.deliverTo?.sessionPath === s.path).length;
     setConfirmDlg({
       title: t("sidebar.deleteSessionTitle"),
-      message: t("sidebar.deleteSessionMsg", { title: sTitle }),
+      message:
+        t("sidebar.deleteSessionMsg", { title: sTitle }) +
+        (bound > 0 ? `\n\n${t("sidebar.deleteSessionAutomationMsg", { n: bound })}` : ""),
       confirmText: t("common.delete"),
       danger: true,
       onConfirm: () => {
@@ -234,6 +253,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // Pointer-down first records a candidate; dragging begins only past 5px; plain clicks still
   // just expand/collapse.
   const onPointerDownHead = (e: ReactPointerEvent, cwd: string) => {
+    // Narrow (remote phones): project drag reorder is off — no candidate is recorded, so
+    // move/up/cancel fall through and the card head stays a plain expand/collapse tap.
+    if (useAppStore.getState().narrow) return;
     dragRef.current = {
       cwd,
       pointerId: e.pointerId,
@@ -244,7 +266,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   const beginProjDrag = (e: ReactPointerEvent, pending: ProjDragPending): ProjDragActive | undefined => {
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     // The fixed default row renders a .proj head too, but it is pinned first and
     // not draggable — drop it from the drag geometry so k0/idx index only the
     // reorderable rows (otherwise the committed order shifts by one).
@@ -290,7 +312,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   const updateProjDrag = (e: ReactPointerEvent, d: ProjDragActive) => {
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     const dy = (e.clientY - d.startClientY) / z;
     const self = d.base[d.k0];
     const dragMid = self.top + dy + self.h / 2;
@@ -317,7 +339,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const pending = dragRef.current;
     if (!pending || pending.cwd !== cwd || pending.pointerId !== e.pointerId) return;
     if (!pending.groups) {
-      if (Math.abs(e.clientY - pending.startClientY) / (useAppStore.getState().zoomLevel || 1) < 5) return;
+      if (Math.abs(e.clientY - pending.startClientY) / effZoom() < 5) return;
       const started = beginProjDrag(e, pending);
       if (!started) return;
     }
@@ -391,7 +413,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     .reverse()
     .map((s) => ({ id: s.id, path: s.path, cwd: s.cwd, title: s.title }));
 
-  // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list)
+  // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list).
+  // openSessions is read live from the store (its reference changes on every session write);
+  // the dep that matters is runningKey — see the subscription comment above (T5).
   const shortcuts = useMemo(() => {
     return computeSidebarSessionShortcuts({
       viewMode: effView,
@@ -400,12 +424,12 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       expandedProjects,
       projectLimits,
       isProjectManageMode,
-      openSessions,
+      openSessions: useAppStore.getState().openSessions,
       unseenFinished,
       availableProjects: visible,
       archivedSessions,
     });
-  }, [effView, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, openSessions, unseenFinished, visible, archivedSessions]);
+  }, [effView, diskProjects, pinnedSessions, expandedProjects, projectLimits, isProjectManageMode, runningKey, unseenFinished, visible, archivedSessions]);
 
   const rowProps: SessionRowCallbacks = {
     onRenameStart: (key, path) => setRenaming({ key, path }),
@@ -667,6 +691,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       {confirmDlg && (
         <ConfirmDialog {...confirmDlg} onClose={() => setConfirmDlg(null)} />
       )}
+      {wtRemove && (
+        <WorktreeRemoveDialog target={wtRemove} onClose={() => setWtRemove(null)} />
+      )}
       {sessCtx && (
         <SessCtxMenu
           entry={sessCtx.entry}
@@ -674,6 +701,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           y={sessCtx.y}
           onClose={() => setSessCtx(null)}
           onRename={(entry) => setRenaming({ key: sessCtx.key, path: entry.path })}
+          onRemoveWorktree={(entry) => entry.cwd && setWtRemove({ path: entry.cwd })}
         />
       )}
       {projMenu && (
@@ -687,6 +715,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           ]}
           onClose={() => setProjMenu(null)}
         >
+          {gitProjects.has(projMenu.cwd) && (
+            <button onClick={() => { const cwd = projMenu.cwd; setProjMenu(null); useAppStore.getState().openGitManage(cwd); }}>{t("sidebar.gitManage")}</button>
+          )}
           <button onClick={() => { setProjMenu(null); askRemoveProject(projMenu.cwd); }}>{t("sidebar.remove")}</button>
         </Menu>
       )}

@@ -24,7 +24,7 @@ import type { MCPServerConnection } from "@oh-my-pi/pi-coding-agent/mcp/client";
 import type { MCPTool as McpToolInstance } from "@oh-my-pi/pi-coding-agent/mcp/tool-bridge";
 import { connectToServer, disconnectServer, listTools, MCPTool } from "./bootstrap.ts";
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
-import { loadAllMcpScoped, type McpServerAsset } from "./assets.ts";
+import { loadAllMcpScoped, type McpServerAsset } from "./mcp-assets.ts";
 import { builtinServerAsset } from "./mcp-builtin.ts";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
 import { safeStderr } from "./stderr.ts";

@@ -1,14 +1,13 @@
-// Subagent page: card list + click into detail.
-// List card reuses the Agent Hub roster row style (.hub-row in main-hub.css); the detail
-// reuses the Agent Hub inspector (HubDetail from HubDetailPage) under a back-to-list button.
+// Subagent page: the Agent Hub roster (shared component, no hub keybind bar / back button)
+// with click-into-detail; the detail reuses the Agent Hub inspector (HubDetail from
+// HubDetailPage) under a back-to-list button.
 // Detail skeleton (must keep): #rightBody gets the detail class, rb-head fixed (back button),
 // scrolling rb-scroll carries the inspector.
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../../store";
 import { HubDetail } from "./HubDetailPage";
-import { SubControls, SteerInput } from "../../shared/agent/SubControls";
-import { usageSegments, timeSegments, modelShort, subStatus } from "../../shared/agent/subShared";
+import { HubRow, RosterHead, useRosterRows, useRosterTick } from "../../shared/agent/subRoster";
 import type { SubagentState } from "../../../types/session";
 
 // Repaint once per second while any visible subagent streams: host durationMs only arrives
@@ -27,8 +26,19 @@ export default function SubagentPage() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
-  const anyStreaming = !!s && [...s.subagents.values()].some((x) => x.streaming);
-  useTick(anyStreaming);
+  const hubMode = useAppStore((st) => st.hubMode);
+  useRosterTick(s);
+  const rows = useRosterRows(s);
+  // Entrance-animation flag: set in the same setState as selectedSubagent (subscribers
+  // read it at render); silent macrotask reset — the reset has no subscribers so no
+  // render fires, the kids-in class stays and the animation isn't cut short (old
+  // notify semantics)
+  const openDetail = (id: string) => {
+    useAppStore.setState((st) => ({ selectedSubagent: id, animateSubKids: true }));
+    setTimeout(() => {
+      useAppStore.setState({ animateSubKids: false });
+    }, 0);
+  };
   if (!s || s.subagents.size === 0) {
     return <div className="py-3 text-faint text-ui-base">{t("right.noSubagents")}</div>;
   }
@@ -36,54 +46,23 @@ export default function SubagentPage() {
     return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} subagentId={selectedSubagent} sessionId={s.sessionId} />; // the has() on the previous line guarantees presence
   }
   return (
-    <div className="hub-list">
-      {[...s.subagents].map(([id, sub]) => (
-        <SubCard key={id} id={id} sub={sub} sessionId={s.sessionId} />
-      ))}
-    </div>
-  );
-}
-
-// List card: reuses the Agent Hub roster row style (.hub-row), flat surface with
-// hover-only highlight (no permanent "on" state on this page)
-function SubCard({ id, sub, sessionId }: { id: string; sub: SubagentState; sessionId: string }) {
-  const { t } = useTranslation();
-  const st = subStatus(sub);
-  const segs = usageSegments(sub, t, { model: false });
-  const times = timeSegments(sub, t, Date.now());
-  const model = modelShort(sub.usage?.resolvedModel);
-  // Steer input expands in place below the row (div root: controls are buttons, which cannot
-  // nest inside the old <button> root)
-  const [steerOpen, setSteerOpen] = useState(false);
-  return (
-    <div
-      className="hub-row"
-      onClick={() => {
-        // Entrance-animation flag: set in the same setState as selectedSubagent (subscribers
-        // read it at render); silent macrotask reset — the reset has no subscribers so no
-        // render fires, the kids-in class stays and the animation isn't cut short (old
-        // notify semantics)
-        useAppStore.setState((st) => ({ selectedSubagent: id, animateSubKids: true }));
-        setTimeout(() => {
-          useAppStore.setState({ animateSubKids: false });
-        }, 0);
-      }}
-    >
-      <span className="hub-row-head">
-        <span className={"sub-dot st-" + st}>{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
-        <span className="hub-name">{sub.name ?? sub.agent}</span>
-        {sub.streaming ? <SubControls sessionId={sessionId} agentId={id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
-        {model ? <span className="hub-model">{model}</span> : null}
-      </span>
-      <span className="hub-task text-faint">{sub.description || sub.task || sub.text.slice(0, 80) || "…"}</span>
-      {segs.length > 0 || times.length > 0 ? (
-        <span className="hub-meta text-faint">
-          <span className="hub-meta-usage">{segs.join(" · ")}</span>
-          <span className="hub-meta-right">{times.join(" · ")}</span>
-        </span>
-      ) : null}
-      {steerOpen && sub.streaming ? <SteerInput sessionId={sessionId} agentId={id} onClose={() => setSteerOpen(false)} /> : null}
-    </div>
+    <>
+      <RosterHead s={s} />
+      <div className="hub-list" role="listbox">
+        {rows.map((row) => (
+          <HubRow
+            key={row.id}
+            row={row}
+            flat={hubMode === "flat"}
+            selected={false}
+            onSelect={() => openDetail(row.id)}
+            onOpen={() => openDetail(row.id)}
+            sessionId={s.sessionId}
+            t={t}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 

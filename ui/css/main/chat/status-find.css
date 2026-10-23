@@ -33,7 +33,9 @@
   touch-action: none;
 }
 
-.todo {
+/* Scoped to #todoList: a bare .todo also matches the message-stream todo tool row
+   (.act.todo, ToolRow renderTodo) and leaked its 9px gap + 2px padding into it */
+#todoList .todo {
   display: flex; gap: 9px; padding: 6px 2px;
   font-size: var(--ui-fs-base); line-height: 1.45;
   color: var(--dim); border-radius: 7px;

@@ -16,15 +16,15 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useC
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send, toast } from "../store";
+import { bgJobsKey } from "../store/session";
 import { invoke } from "../store/ws";
 import { expandRightPanel } from "./main/right/tabs";
 import type { PromptAttachment } from "../types/frames";
-import { closeAllMenus } from "../shell";
+import { closeAllMenus, motionEnabled } from "../shell";
 import Icon from "../Icon";
 import AttachRow from "./composer/AttachRow";
-import ModeMenu, { MODE_META } from "./composer/ModeMenu";
+import ModeMenu, { MODE_META, SMART_MODE } from "./composer/ModeMenu";
 import ModelMenu from "./composer/ModelMenu";
-import ThinkMenu from "./composer/ThinkMenu";
 import PaletteMenu from "./composer/PaletteMenu";
 import type { PaletteItem } from "./composer/PaletteMenu";
 import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger";
@@ -52,6 +52,7 @@ import {
   getDraftFiles,
   saveDraftFiles,
   clearDraftState,
+  pushInputHistory,
   CONTENT_EDITABLE_OK,
 } from "./composer/lexical/draft";
 import ComposerPlugin from "./composer/lexical/ComposerPlugin";
@@ -75,9 +76,12 @@ const RING_C = 43.98;
 const BAR_STAGES = 7;
 
 // Remote-control browser client (spec §4.1): no Tauri bridge and not the
-// ?preview=1 ui:dev sample page. The mic/STT path needs a secure context, so
-// remote never renders the voice button and voiceMode reads as false.
-const REMOTE = !invoke && !new URLSearchParams(location.search).has("preview");
+// ?preview=1 ui:dev sample page; a ?ws= dev direct-connect is a local channel
+// instead (.has() form kept identical to ws.ts/layout.ts). The mic/STT path
+// needs a secure context, so remote never renders the voice button and
+// voiceMode reads as false.
+const REMOTE =
+  !invoke && !new URLSearchParams(location.search).has("preview") && !new URLSearchParams(location.search).has("ws");
 
 // Build the attachment payload sent along with the prompt (caller clears
 // pendingFiles after sending)
@@ -91,7 +95,7 @@ function buildAttachPayload(): PromptAttachment[] {
     );
 }
 
-type MenuName = "mode" | "model" | "think";
+type MenuName = "mode" | "model";
 
 // Typeahead option wrapper: data carries the raw candidate (FileItem /
 // CommandItem), key takes path / name
@@ -112,14 +116,26 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const { t } = useTranslation();
   // ---- store subscriptions (field-by-field selectors; constructing new
   // objects/arrays inside selectors is forbidden) ----
-  // Active session (updateSession frame handling swaps the session/Map reference,
-  // the selector senses it by reference)
+  // Active session fields (Batch 1): the former whole-session selector re-rendered the
+  // composer on every updateSession of the active session; these scalars (and the two
+  // count selectors below) re-render only when a value the bar actually shows flips.
+  // Nested objects (ctx/model) are replaced wholesale on write, so picking them by
+  // reference is safe.
   const activePath = useAppStore((st) => st.activePath);
   const draftKey = inWelcome ? "welcome" : (activePath || "welcome");
-  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const hasSession = useAppStore((st) => (st.activePath ? st.openSessions.has(st.activePath) : false));
+  const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
+  const streaming = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.streaming ?? false : false));
+  const isSubagent = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.isSubagent ?? false : false));
+  const model = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.model : undefined));
+  const thinking = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.thinking : undefined));
+  const autoResolved = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.autoResolved : undefined));
+  const planMode = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.planMode ?? false : false));
+  const computerMode = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.computerMode ?? false : false));
   const pendingFiles = useAppStore((st) => st.pendingFiles);
   const escArmedUntil = useAppStore((st) => st.escArmedUntil);
   const composerSetSignal = useAppStore((st) => st.composerSetSignal);
+  const commandFlash = useAppStore((st) => st.commandFlash);
   const menuSignal = useAppStore((st) => st.menuSignal);
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
   const newSessionModel = useAppStore((st) => st.newSessionModel);
@@ -164,8 +180,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const pickerRef = useRef<HTMLInputElement>(null); // filePicker
   const modeBtnRef = useRef<HTMLButtonElement>(null);
   const modelBtnRef = useRef<HTMLButtonElement>(null);
-  const thinkBtnRef = useRef<HTMLButtonElement>(null);
-  const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | "think" | null (mutually exclusive)
+  const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | null (mutually exclusive)
   const [stopPending, setStopPending] = useState(false); // stop-button double-click guard (reset on turn_end)
   const barStageRef = useRef(0); // last collapse stage (close open menus when it changes)
   // Push-to-talk: the press arms a 180ms timer — a quick tap never reaches
@@ -181,7 +196,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       pttTimerRef.current = undefined;
       pttDownRef.current = true;
       setTtsDuck(true);
-      send({ type: "stt_start", sessionId: s?.sessionId ?? "", anchor: getDraftText(draftKey) });
+      send({ type: "stt_start", sessionId: sessionId ?? "", anchor: getDraftText(draftKey) });
     }, PTT_DELAY_MS);
   };
   const endMicTalk = () => {
@@ -260,8 +275,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
   // Running local bash row (!-prefixed command): the stop form covers it too --
   // clicking stop sends bash_abort instead of abort_session
-  const bashRunning = !!s?.items?.some((x: { role?: string; running?: boolean }) => x.role === "bash" && x.running);
-  const stopping = (!!s?.streaming || bashRunning) && !hasDraft;
+  // Any in-flight local bash row (scalar selector: the boolean flips only on bash start/done,
+  // not on every item write)
+  const bashRunning = useAppStore((st) => {
+    const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    if (!sess) return false;
+    for (const it of sess.items) {
+      if (it.role === "bash" && it.running) return true;
+    }
+    return false;
+  });
+  const stopping = (streaming || bashRunning) && !hasDraft;
   // Inside the Esc double-confirm window: with a draft the send button briefly
   // shows the cancel icon (pressing Esc again interrupts generation)
   const escArmed = Date.now() < (escArmedUntil ?? 0);
@@ -348,7 +372,19 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
-    if (sendComposerPrompt({ raw: getDraftText(draftKey), files: buildAttachPayload(), steer })) clearDraft();
+    // Sent prompts join the slot's input history (browsable with ↑ on an
+    // empty input); push before clearDraft empties the slot's draft mirror.
+    // The welcome/creating-new first send is deferred (pendingNew* intents):
+    // its entry lands in the created session's slot in the session_created
+    // handler, not the welcome slot.
+    if (sendComposerPrompt({ raw: getDraftText(draftKey), files: buildAttachPayload(), steer })) {
+      const st = useAppStore.getState();
+      const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+      if (s && !st.isCreatingNew && st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
+        pushInputHistory(draftKey);
+      }
+      clearDraft();
+    }
   };
 
   // ---- sigil trigger detection (triggerFn): global flattened view +
@@ -774,8 +810,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   }, []);
 
   // ---- cbar button states ----
-  const modeMeta = MODE_META[approvalMode] ?? MODE_META["always-ask"];
-  const menuDisabled = !(s || isCreatingNew) || Boolean(s?.isSubagent); // subagents cannot switch models
+  // The pill must name the smart row too: with the gate on, "write" is not what
+  // the next tool call will experience.
+  const autoReviewOn = useAppStore((st) => st.hostSettings?.autoReviewEnabled === true);
+  const modeMeta = (approvalMode === "write" && autoReviewOn) ? SMART_MODE : MODE_META[approvalMode] ?? MODE_META["always-ask"];
+  const menuDisabled = !(hasSession || isCreatingNew) || isSubagent; // subagents cannot switch models
 
 
   // ---- Dictation auto-submit (stt.submitTrigger met): one-shot signal, the
@@ -792,21 +831,32 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     const sig = menuSignal;
     if (!sig) return;
     useAppStore.setState({ menuSignal: null }); // silent write (same as before: the reset alone does not re-render)
-    // The signal is written by keys.ts with fixed menu names ("model"/"think"/"mode");
-    // the assertion narrows to this component's menu name union
+    // The signal is written by keys.ts with the menu name ("model" — both the
+    // ctrl+p preview and the shift+tab thinking cycle pop the merged menu)
     const menuName = sig.name as MenuName;
     if (!menuDisabled) setOpenMenu(menuName);
   });
 
-  const modelName = isCreatingNew || !s
-    ? (newSessionModel ? (modelShort(newSessionModel) || t("composer.modelFallback")) : t("composer.modelFallback"))
-    : modelShort(s.model) || t("composer.modelFallback");
+  const modelName = isCreatingNew || !hasSession
+    ? (modelShort(newSessionModel) || t("composer.modelFallback"))
+    : modelShort(model) || t("composer.modelFallback");
   const thLv = (lv: string) => t(`composer.thinkingLevels.${lv}`, { defaultValue: lv });
-  const thinkLabel = s
-    ? (s.thinking === "auto" && s.autoResolved ? `${thLv("auto")}·${thLv(s.autoResolved)}` : s.thinking ? thLv(s.thinking) : t("composer.thinkFallback"))
+  const thinkLabel = hasSession
+    ? (thinking === "auto" && autoResolved ? `${thLv("auto")} · ${thLv(autoResolved)}` : thinking ? thLv(thinking) : t("composer.thinkFallback"))
     : newSessionThinking ? thLv(newSessionThinking) : t("composer.thinkFallback");
-  const bgTasks = bgTaskCount(s);
-  const bgSubs = subagentCount(s);
+  // Merged pill: model name · thinking level (the ":level" suffix is stripped
+  // by modelShort — the level now lives only in thinkLabel)
+  const modelThinkLabel = `${modelName} · ${thinkLabel}`;
+  // Narrow (phone) layout: the permission/model pills render in their own bar below
+  // the input instead of the nowrap toolbar (see pillBar below).
+  const narrow = useAppStore((st) => st.narrow);
+  // Count selectors (Batch 1): numbers are Object.is-stable, so the pills re-render only
+  // when a count changes; bgJobs is read inside the selector instead of subscribed
+  const bgTasks = useAppStore((st) => {
+    const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    return sess ? bgTaskCount(sess, st.bgJobs.get(bgJobsKey(sess.sessionId)) ?? null) : 0;
+  });
+  const bgSubs = useAppStore((st) => subagentCount(st.activePath ? st.openSessions.get(st.activePath) : undefined));
 
   // Menu button toggle: clicking the same button again closes; mutual exclusion
   // comes naturally from the single state; coordinate global menus before opening
@@ -819,19 +869,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setOpenMenu(openMenu === name ? null : name);
   };
 
-  // Background task / subagent button: expand and switch the right panel to the
-  // matching tab; clicking again collapses the right panel (ported from the old
-  // right.js binding)
+  // Background task / subagent button: expand and open the matching right-panel tab;
+  // clicking again collapses the panel (ported from the old right.js binding). Both
+  // targets are regular tabs — the add menu hides them (COMPOSER_ONLY_TABS only gates
+  // the menu), but opening one from the pill must still register it in the tab head,
+  // otherwise the panel expands with its old head and no tab to show for it.
   const toggleBgTab = (tab: string) => () => {
-    if (!s) return;
+    if (!sessionId) return;
     const st = useAppStore.getState();
-    if (!st.rightCollapsed && st.rightTab === tab) {
-      setBump({ rightCollapsed: true });
-    } else {
-      // Active-tab switch only (never registered into the tab list); the expand
-      // invariants (todoCollapsed yield + selection cleanup) live in expandRightPanel
-      expandRightPanel(null, { rightTab: tab });
-    }
+    // The expand invariants (todoCollapsed yield + selection cleanup) live in expandRightPanel
+    if (!st.rightCollapsed && st.rightTab === tab) setBump({ rightCollapsed: true });
+    else expandRightPanel(tab);
   };
 
   // Lexical init config: nodes registers ChipNode; editorState takes the
@@ -851,11 +899,64 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 
   const phText = t("composer.placeholder");
 
+  // Permission / model selectors (the model pill carries the thinking level
+  // after a "·"). Both placements render the same JSX: narrow (phone) moves
+  // them out of the nowrap .cbar into the pill bar below the input, where the
+  // full labels stay readable (the bar-N collapse only reaches .cbar); desktop
+  // keeps them inline.
+  const modePill = (
+    <button
+      className={"pill-btn" + (openMenu === "mode" ? " active" : "") + (modeMeta.yolo ? " yolo highlight-mode" : "")}
+      id="modeBtn"
+      title={t("composer.permissionMode")}
+      ref={modeBtnRef}
+      onClick={toggleMenu("mode")}
+    >
+      <Icon name={modeMeta.icon} id="modeIcon" />
+      <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+    </button>
+  );
+  // Slash-command echo card: only for the session that produced it (a session switch hides it)
+  const flash = commandFlash && commandFlash.sessionId === sessionId ? commandFlash : null;
+  // The editor flips back in when the card unmounts (mirror of the card's own
+  // entrance): a one-shot animation class, skipped when motion is off.
+  const [returning, setReturning] = useState(false);
+  const flashShownRef = useRef(false);
+  useEffect(() => {
+    const shown = Boolean(flash);
+    const left = flashShownRef.current && !shown;
+    flashShownRef.current = shown;
+    if (!left || !motionEnabled()) return;
+    setReturning(true);
+    const timer = setTimeout(() => setReturning(false), 240);
+    return () => clearTimeout(timer);
+  }, [flash]);
+
+  const modelThinkPills = (
+    <button
+      className={"pill-btn" + (openMenu === "model" ? " active" : "")}
+      id="modelBtn"
+      title={t("composer.switchModel")}
+      ref={modelBtnRef}
+      disabled={menuDisabled}
+      onClick={toggleMenu("model")}
+    >
+      <span id="modelIcon">{model ? PROV_IC[model.split("/")[0]] || "✦" : "✦"}</span>
+      <span id="modelLabel">{modelThinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+    </button>
+  );
+
   return (
     <>
       <div
         id="composer"
-        className={(inWelcome ? "in-welcome " : "") + (isBashMode(text) ? "bash-mode " : "") + (dragOver ? "ring-1 ring-accent " : "")}
+        className={
+          (inWelcome ? "in-welcome " : "") +
+          (isBashMode(text) ? "bash-mode " : "") +
+          (dragOver ? "ring-1 ring-accent " : "") +
+          (flash ? "flash-on " : "") +
+          (returning ? "flash-return " : "")
+        }
         ref={rootRef}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
@@ -912,20 +1013,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <button className="icon-btn plus-btn" id="plusBtn" title={t("composer.addContext")} onClick={() => pickerRef.current?.click()}>
             <Icon name="plus" />
           </button>
-          <button
-            className={"pill-btn" + (openMenu === "mode" ? " active" : "") + (modeMeta.yolo ? " yolo highlight-mode" : "")}
-            id="modeBtn"
-            title={t("composer.permissionMode")}
-            ref={modeBtnRef}
-            onClick={toggleMenu("mode")}
-          >
-            <Icon name={modeMeta.icon} id="modeIcon" />
-            <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
-          </button>
+          {!narrow && modePill}
           {/* Plan mode: a small button right of the pill separated by |; on hover
               the icon flips to X meaning click to exit (in a session = host mode,
               new-session page = local create_session intent) */}
-          {(s?.planMode || (!s && newSessionPlanMode)) && (
+          {(planMode || (!hasSession && newSessionPlanMode)) && (
             <>
               <span className="cbar-sep" id="planSep">|</span>
               <button
@@ -934,7 +1026,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
                 title={t("composer.planOnTitle")}
                 onClick={() => {
                   // In a session the host owns the mode; on the new-session page the button clears the local intent
-                  if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: false });
+                  if (sessionId) send({ type: "set_plan_mode", sessionId, enabled: false });
                   else setBump({ newSessionPlanMode: false });
                 }}
               >
@@ -957,11 +1049,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               button shows for either the master gate or the Kimi provider. */}
           {computerIconOn && (
             <button
-              className={"pill-btn computer-btn" + ((s?.computerMode || (!s && newSessionComputerMode)) ? " on" : "")}
+              className={"pill-btn computer-btn" + ((computerMode || (!hasSession && newSessionComputerMode)) ? " on" : "")}
               id="computerBtn"
-              title={(s?.computerMode || (!s && newSessionComputerMode)) ? t("composer.computerOnTitle") : t("composer.computerOffTitle")}
+              title={(computerMode || (!hasSession && newSessionComputerMode)) ? t("composer.computerOnTitle") : t("composer.computerOffTitle")}
               onClick={() => {
-                if (s) send({ type: "set_computer_mode", sessionId: s.sessionId, enabled: !s.computerMode });
+                if (sessionId) send({ type: "set_computer_mode", sessionId, enabled: !computerMode });
                 else setBump({ newSessionComputerMode: !newSessionComputerMode });
               }}
             >
@@ -973,11 +1065,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               className={"pill-btn bg-task-btn has-running" + (!rightCollapsed && rightTab === "bgcmd" ? " on" : "")}
               id="bgTaskBtn"
               title={t("composer.bgCommands")}
-              disabled={!s}
+              disabled={!hasSession}
               onClick={toggleBgTab("bgcmd")}
             >
               <Icon name="termBox" size={15} />
-              <span className="bg-task-num" id="bgTaskNum">{s ? bgTasks : 0}</span>
+              <span className="bg-task-num" id="bgTaskNum">{bgTasks}</span>
             </button>
           )}
           {bgSubs > 0 && (
@@ -985,38 +1077,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               className={"pill-btn bg-task-btn has-running" + (!rightCollapsed && rightTab === "subagent" ? " on" : "")}
               id="bgSubagentBtn"
               title={t("composer.subagents")}
-              disabled={!s}
+              disabled={!hasSession}
               onClick={toggleBgTab("subagent")}
             >
               <Icon name="agents" size={15} />
-              <span className="bg-task-num" id="bgSubagentNum">{s ? bgSubs : 0}</span>
+              <span className="bg-task-num" id="bgSubagentNum">{bgSubs}</span>
             </button>
           )}
           <span className="sp"></span>
-          <CtxRing s={s} ringRef={setCtxRingEl} />
+          <CtxRing ringRef={setCtxRingEl} />
           <CtxCard anchor={ctxRingEl} />
-          <button
-            className={"pill-btn" + (openMenu === "model" ? " active" : "")}
-            id="modelBtn"
-            title={t("composer.switchModel")}
-            ref={modelBtnRef}
-            disabled={menuDisabled}
-            onClick={toggleMenu("model")}
-          >
-            <span id="modelIcon">{s?.model ? PROV_IC[s.model.split("/")[0]] || "✦" : "✦"}</span>
-            <span id="modelLabel">{modelName}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
-          </button>
-          <button
-            className={"pill-btn" + (openMenu === "think" ? " active" : "")}
-            id="thinkBtn"
-            title={t("composer.thinkLevel")}
-            ref={thinkBtnRef}
-            disabled={menuDisabled}
-            onClick={toggleMenu("think")}
-          >
-            <Icon name="think" size={16} />
-            <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
-          </button>
+          {!narrow && modelThinkPills}
           {/* Voice conversation: mic toggle left of send; lit = synthesis +
               dictation. Click toggles both switches; hold while lit =
               push-to-talk (the release click is swallowed). Not rendered on
@@ -1061,10 +1132,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               escArmed
                 ? t("composer.sendEscAgain")
                 : stopping
-                  ? bashRunning && !s?.streaming
+                  ? bashRunning && !streaming
                     ? t("composer.stopCommand")
                     : t("composer.stopGeneration")
-                  : s?.streaming
+                  : streaming
                     ? t("composer.sendQueued")
                     : t("composer.send")
             }
@@ -1077,7 +1148,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
                 // Abort is available only while streaming/running a command (s is
                 // guaranteed then); the escArmed no-session path is unreachable,
                 // the optional chain is defensive only
-                send({ type: bashRunning && !s?.streaming ? "bash_abort" : "abort_session", sessionId: s?.sessionId });
+                send({ type: bashRunning && !streaming ? "bash_abort" : "abort_session", sessionId });
                 return;
               }
               sendPrompt();
@@ -1087,14 +1158,34 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           </button>
           </div>
         </div>
+        {/* Narrow only: the selector pills extend below the input card as their own bar, so
+            permission / model / thinking render with full labels instead of collapsing to
+            icons inside .cbar. Folds away with the toolbar in bash mode (CSS mirrors
+            .cbar-fold's grid animation). */}
+        {narrow && (
+          <div className="pill-fold">
+            <div className="pill-bar">
+              {modePill}
+              {modelThinkPills}
+            </div>
+          </div>
+        )}
         {/* Permission mode (omp three values, large-row style) */}
         {openMenu === "mode" && <ModeMenu btnRef={modeBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
-        {/* Model (delivered after the host filters enabledModels, grouped by
-            provider; the second-level overlay is a direct child of #composer) */}
+        {/* Merged model + thinking menu (delivered after the host filters
+            enabledModels; the second-level overlay is a direct child of #composer) */}
         {openMenu === "model" && <ModelMenu btnRef={modelBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
         <input type="file" id="filePicker" multiple hidden ref={pickerRef} onChange={onPick} />
-        {/* Think level (only lists tiers supported by the current model) */}
-        {openMenu === "think" && <ThinkMenu btnRef={thinkBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
+        {/* A consumed slash command echoes here: the whole composer card (editor +
+            toolbar) is replaced for ~1s by this page-turning card. Siblings are
+            hidden, not unmounted, so the draft and caret survive; keyed on seq so
+            a second command replays the flip. */}
+        {flash && (
+          <div className={"cmdf" + (flash.phase === "out" ? " is-out" : "")} key={flash.seq}>
+            <div className="cmdf-c">{flash.command || flash.text}</div>
+            {flash.command && flash.text && <div className="cmdf-o">{flash.text}</div>}
+          </div>
+        )}
       </div>
     </>
   );
@@ -1104,18 +1195,22 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
 // filled clockwise from the top; empty ring without data; the creating-new state
 // also shows an empty ring. The hover context detail card lives in
 // chat/CtxCard.jsx (ringRef is only an anchor, the inner svg is untouched)
-function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number }; sessionId?: string } | null | undefined; ringRef: Ref<HTMLSpanElement> }) {
+function CtxRing({ ringRef }: { ringRef: Ref<HTMLSpanElement> }) {
   const isCreatingNew = useAppStore((st) => st.isCreatingNew);
   // Cache-warming probe count for this session (pushed by the host on every
   // keepalive reportState; only sessions with the extension injected report).
   // Hidden by the ctxRingProbeCount pref (default on).
   const kaAll = useAppStore((st) => st.keepaliveStatus);
   const showCount = useAppStore((st) => st.uiPrefs.ctxRingProbeCount) !== false;
-  const ka = s?.sessionId ? kaAll[s.sessionId] : undefined;
+  // Field-level subscriptions (Batch 1): ctx is replaced wholesale by the context
+  // frame (new object per write), so a reference selector stays correct
+  const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
+  const ctx = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.ctx : undefined));
+  const ka = sessionId ? kaAll[sessionId] : undefined;
   const probes = showCount && ka && ka.enabled && ka.probes > 0 ? (ka.probes > 99 ? "99" : String(ka.probes)) : null;
-  if (!s && !isCreatingNew) return null;
-  const p = s?.ctx ? Math.min(1, s.ctx.percent / 100) : 0;
-  const cls = "ctx-ring" + (s?.ctx ? (s.ctx.percent >= 85 ? " hot" : s.ctx.percent >= 60 ? " warm" : "") : "");
+  if (!sessionId && !isCreatingNew) return null;
+  const p = ctx ? Math.min(1, ctx.percent / 100) : 0;
+  const cls = "ctx-ring" + (ctx ? (ctx.percent >= 85 ? " hot" : ctx.percent >= 60 ? " warm" : "") : "");
   return (
     <span className={cls} id="ctxRing" title="" ref={ringRef}>
       <svg viewBox="0 0 16 16" width="16" height="16">
@@ -1139,9 +1234,12 @@ function CtxRing({ s, ringRef }: { s: { ctx?: { percent: number }; sessionId?: s
   );
 }
 
-// Model display name: look up modelNames; without an entry take the id tail
-// (same as the old renderComposerBar)
+// Model display name: strip the base ":level" suffix (the level renders in the
+// merged pill via thinkLabel), then look up modelNames; without an entry take
+// the id tail (same as the old renderComposerBar)
 function modelShort(id: string | null | undefined) {
   if (!id) return "";
-  return useAppStore.getState().modelNames.get(id) ?? id.split("/").pop();
+  const cut = id.lastIndexOf(":");
+  const base = cut > 0 ? id.slice(0, cut) : id;
+  return useAppStore.getState().modelNames.get(base) ?? base.split("/").pop() ?? "";
 }

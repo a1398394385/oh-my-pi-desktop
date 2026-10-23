@@ -30,19 +30,21 @@ import type { ModelRoleEntry } from "./types/frames";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
-import { stashClearedDraft } from "./components/composer/lexical/draft";
+import { pushInputHistory } from "./components/composer/lexical/draft";
+import { cycleTermTab, termGroupKey } from "./components/main/right/termTabs";
 
 // ---------- Actions ----------
 
-// Double-Esc action window (500ms)
-const DOUBLE_ESC_MS = 500;
+// Double-Esc action window (500ms). Exported so other Esc-clears (the /btw composer) match it.
+export const DOUBLE_ESC_MS = 500;
 let doubleEscTimer: TimerHandle | undefined;
-let escArmedAction: "clear" | "tree" | null = null;
+let escArmedAction: "clear" | "tree" | "git" | null = null;
 
 /** Global Esc routing:
- *  1. tree page: one esc switches back to messages;
- *  2. composer has text: two esc presses clear the composer;
- *  3. composer empty: two esc presses summon the tree (while generating, the
+ *  1. git manage page: two esc presses close it;
+ *  2. tree page: one esc switches back to messages;
+ *  3. composer has text: two esc presses clear the composer;
+ *  4. composer empty: two esc presses summon the tree (while generating, the
  *     first press aborts generation).
  */
 function handleEsc(): boolean | undefined {
@@ -54,6 +56,24 @@ function handleEsc(): boolean | undefined {
   }
   if (document.querySelector(".lp-mask")) {
     return false; // modal dialogs like the tree-jump confirmation close first
+  }
+
+  // git manage page (ahead of the hub/session routing): esc only serves the
+  // double-press close — a single press must not fall through to the
+  // message-page abort/tree routing behind it
+  if (st.gitManage) {
+    if (escArmedAction !== "git") {
+      escArmedAction = "git";
+      clearTimeout(doubleEscTimer);
+      doubleEscTimer = setTimeout(() => {
+        if (escArmedAction === "git") escArmedAction = null;
+      }, DOUBLE_ESC_MS + 20);
+      return true;
+    }
+    clearTimeout(doubleEscTimer);
+    escArmedAction = null;
+    st.closeGitManage();
+    return true;
   }
 
   // 0. agent hub: Esc closes it (and restores the right panel / composer focus)
@@ -99,13 +119,13 @@ function handleEsc(): boolean | undefined {
   }
 
   // Second Esc while in the clear confirmation stage: perform the clear (the
-  // cleared draft goes to the recall stash while composer.recallClearedDrafts is on)
+  // cleared draft joins the slot's input history while composer.recallClearedDrafts is on)
   if (escArmedAction === "clear") {
     clearTimeout(doubleEscTimer);
     escArmedAction = null;
     setBump({ escArmedUntil: 0 });
     if (st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
-      stashClearedDraft(st.activePath || "welcome");
+      pushInputHistory(st.activePath || "welcome");
     }
     st.setComposerValue("", []);
     return true;
@@ -212,6 +232,7 @@ function openCyclePreview(
 
 function cycleModel(delta: number): void {
   const st = useAppStore.getState();
+  if (st.gitManage) return; // git manage page owns the main column: no hidden session side effects
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
@@ -266,6 +287,7 @@ function closeThinkMenu(): void {
 
 function cycleThinking(): void {
   const st = useAppStore.getState();
+  if (st.gitManage) return;
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
@@ -273,7 +295,9 @@ function cycleThinking(): void {
   if (levels.length === 0) return;
   pickThinkingLevel(levels[(levels.indexOf(s?.thinking || st.newSessionThinking) + 1) % levels.length]);
   if (!st.settingsOpen) {
-    setBump({ thinkMenuAuto: true, menuSignal: { name: "think", seq: (st.menuSignal?.seq ?? 0) + 1 } });
+    // The merged model menu pops briefly as the cycle preview (auto-collapses
+    // on 0.8s pause / Shift release, same contract as the old think menu)
+    setBump({ thinkMenuAuto: true, menuSignal: { name: "model", seq: (st.menuSignal?.seq ?? 0) + 1 } });
   }
   clearTimeout(thinkMenuT);
   thinkMenuT = setTimeout(closeThinkMenu, 800);
@@ -283,7 +307,7 @@ function cycleThinking(): void {
  * a manual open always shows the full menu — clear any ctrl+p preview state */
 function openModelMenu(): void {
   const st = useAppStore.getState();
-  if (st.settingsOpen) return; // menus under the settings overlay are invisible, do not open
+  if (st.settingsOpen || st.gitManage) return; // menus under the settings overlay / git page are invisible, do not open
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (!s && !st.isCreatingNew) return;
@@ -294,6 +318,7 @@ function openModelMenu(): void {
  * live toggle in a session, local create_session intent on the new-session page) */
 function togglePlanMode(): void {
   const st = useAppStore.getState();
+  if (st.gitManage) return;
   const s = activeOpen();
   if (s?.isSubagent) return;
   if (s) send({ type: "set_plan_mode", sessionId: s.sessionId, enabled: !s.planMode });
@@ -308,6 +333,7 @@ function toggleSubagents(): void {
 /** app.thinking.toggle: the thinking block "expand while running, collapse when
  * done" switch (= appearance page "Show thinking process") */
 function toggleThinking(): void {
+  if (useAppStore.getState().gitManage) return;
   const showThinking = !useAppStore.getState().uiPrefs.showThinking;
   // Write a new object (selector components sense it by reference) + _v bump (the
   // old "write + notify"); the trailing toast carries its own bump
@@ -330,6 +356,7 @@ function toggleThinking(): void {
 
 /** app.tools.expand: the tool output "expand while running, collapse when done" switch */
 function toggleToolOutput(): void {
+  if (useAppStore.getState().gitManage) return;
   const expandToolOutput = !useAppStore.getState().uiPrefs.expandToolOutput;
   useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput } }));
   saveUiPrefs();
@@ -348,7 +375,7 @@ function toggleToolOutput(): void {
  * up with unread ones when fewer than 9) */
 function handleSessionJump(digit: string): boolean {
   const st = useAppStore.getState();
-  if (st.settingsOpen) return false;
+  if (st.settingsOpen || st.gitManage) return false;
   if (document.querySelector(".lp-mask")) return false;
 
   // Take visible items from the same source as the sidebar badges (allProjects
@@ -365,6 +392,20 @@ function handleSessionJump(digit: string): boolean {
     }
   }
   return false;
+}
+
+/** Command/Ctrl + Enter: hand focus to the composer so typing can start at once.
+ * Only from the message view with nothing editable focused (terminal helper
+ * textarea, find bar and settings inputs keep their keys). */
+function focusComposer(): boolean {
+  const st = useAppStore.getState();
+  if (st.mainViewMode !== "chat" || st.settingsOpen || st.paletteOpen) return false;
+  const ae = document.activeElement;
+  if (ae instanceof HTMLElement && ae.closest("input, textarea, [contenteditable]")) return false;
+  const inp = document.querySelector("#composer #input") as HTMLElement | null;
+  if (!inp) return false;
+  inp.focus();
+  return true;
 }
 
 // ---------- Registry ----------
@@ -398,6 +439,10 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: [MOD, "F"], get label() { return t("misc.keysFindInSession"); } },
       { keys: [MOD, "⇧", "F"], chords: ["shift+meta+f", "meta+shift+f"], get label() { return t("misc.keysSearchPalette"); }, run: () => useAppStore.getState().openPalette() },
       { keys: [MOD, "Alt", "B"], chords: ["alt+meta+b", "meta+alt+b"], get label() { return t("misc.keysToggleRight"); }, run: toggleSubagents },
+      { keys: [MOD, "J"], chords: ["meta+j"], get label() { return t("misc.keysToggleBottomTerminal"); }, run: () => useAppStore.getState().toggleBottomTerm(termGroupKey()) },
+      { keys: [MOD, "Enter"], chords: ["meta+enter"], get label() { return t("misc.keysFocusComposer"); }, run: focusComposer },
+      // Dock terminal tabs: Shift reverses direction (both chords share one registry row)
+      { keys: ["Ctrl", "Tab"], chords: ["ctrl+tab", "ctrl+shift+tab"], get label() { return t("misc.keysCycleTerminalTab"); }, run: (e) => cycleTermTab(e?.shiftKey ? -1 : 1) },
     ],
   },
   {
@@ -559,7 +604,7 @@ function onKeyDown(e: KeyboardEvent): void {
     !e.repeat
   ) {
     const st = useAppStore.getState();
-    if (!st.hubOpen && !st.settingsOpen && !st.draftHasContent && e.target instanceof Node) {
+    if (!st.hubOpen && !st.settingsOpen && !st.gitManage && !st.draftHasContent && e.target instanceof Node) {
       const main = document.getElementById("main");
       const inScope = e.target === document.body ? lastPointerInMain : !!main?.contains(e.target);
       if (inScope) {

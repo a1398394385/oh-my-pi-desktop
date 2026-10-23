@@ -14,6 +14,16 @@ const mcpTokensCache = new WeakMap<object, number>();
 
 // Opening line of the SDK's memory guidance block (prompts/memories/read-path.md).
 const MEMORY_HEADING = "# Memory Guidance";
+// Hindsight's tagged memory blocks (<memories> recall, <mental_models> bank
+// summaries; mnemopi recalls use the same <memories> wrapper) spliced into
+// developer instructions; mirrors hindsight/content.ts and mnemopi/state.ts.
+const MEMORIES_TAG_REGEX = /<(memories|mental_models)>[\s\S]*?<\/\1>/g;
+// Sharpshooter's decision block opens with this fixed line (sharpshooter/backend.ts);
+// its own sections are "## architecture/product/style", so the generic "cut at the
+// next ## heading" rule cannot bound it — cut at the append pipeline's known
+// follow-up headings (sdk.ts appendParts order) instead.
+const SHARPSHOOTER_HEADING = "Project decision memory (sharpshooter).";
+const SHARPSHOOTER_BOUNDARIES = ["\n## Auto-Learn (experimental)", "\n## MCP Tool Routes", "\n## MCP Server Instructions"];
 
 // MCP tools (mcp__ prefix) schema tokens are estimated separately;
 // breakdown's systemToolsTokens includes all tools, so the frontend
@@ -119,11 +129,14 @@ interface SystemContextSplit {
 // A region runs from its open tag to its close tag; file contents nested inside
 // may themselves mention the tag in prose, so the close is matched from the end
 // of the block. A missing region contributes 0 rather than a guessed share.
-// Memory's region is delimited by the "# Memory Guidance" heading the SDK's
-// read-path template renders (memories/index.ts) up to the next "## " heading —
-// it has no closing tag, and the memory summary/lessons bodies are free prose
-// that must not be treated as delimiters.
-function splitSystemContextRegions(session: PoolEntry["session"]): SystemContextSplit {
+// Memory data reaches the prompt in three shapes: hindsight/mnemopi tagged
+// blocks (<memories> recall, <mental_models> curated bank summaries — same
+// regexes as hindsight/content.ts), sharpshooter's decision block, and the
+// "# Memory Guidance" heading the SDK's read-path template renders
+// (memories/index.ts), which has no closing tag and runs to the next "## "
+// heading. Surrounding prose (the "# Memory" tool-usage header, "## Auto-Learn"
+// guidance) is functional docs, not memory data: it stays in "Other".
+export function splitSystemContextRegions(session: PoolEntry["session"]): SystemContextSplit {
   const blocks = session.systemPrompt;
   if (!Array.isArray(blocks) || blocks.length === 0) return { repoRulesTokens: 0, memoryTokens: 0 };
   const cached = systemContextSplitCache.get(blocks);
@@ -140,10 +153,14 @@ function splitSystemContextRegions(session: PoolEntry["session"]): SystemContext
         repoRuleFragments.push(block.slice(ruleOpen, ruleClose - ruleOpen + "</repo-rules>".length));
       }
     }
+    for (const match of block.matchAll(MEMORIES_TAG_REGEX)) memoryFragments.push(match[0]);
+    const sharpOpen = block.indexOf(SHARPSHOOTER_HEADING);
+    if (sharpOpen !== -1) {
+      const stops = SHARPSHOOTER_BOUNDARIES.map((b) => block.indexOf(b, sharpOpen)).filter((i) => i !== -1);
+      memoryFragments.push(block.slice(sharpOpen, stops.length ? Math.min(...stops) : block.length));
+    }
     const memoryOpen = block.indexOf(MEMORY_HEADING);
     if (memoryOpen === -1) continue;
-    // The block ends either at the next "## " heading (MCP server instructions,
-    // auto-learn guidance) or at the end of the append region.
     const nextHeading = block.indexOf("\n## ", memoryOpen + MEMORY_HEADING.length);
     const end = nextHeading === -1 ? block.length : nextHeading + 1;
     memoryFragments.push(block.slice(memoryOpen, end));

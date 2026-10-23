@@ -8,7 +8,7 @@
 // Thresholds calibrated on real data: 0 false positives across 67455 clean lines repo-wide, 493/507 lines hit on the broken HEAD revision.
 // Usage:
 //   node scripts/check-encoding.mjs              # scan all tracked text files (used by bun run check)
-//   node scripts/check-encoding.mjs --staged     # scan only the staging area (used by .githooks/pre-commit)
+//   node scripts/check-encoding.mjs --staged     # scan only the staging area (used by scripts/hooks/pre-commit)
 //   node scripts/check-encoding.mjs <file...>     # scan only the given files (ad-hoc checks; untracked files allowed)
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";

@@ -188,6 +188,25 @@ ok(back[1]?.checked === true, "the cursor row is checked");
 ok((document.querySelector(".ask-page")?.textContent ?? "").includes("1 / 2"), "ArrowDown does not auto-advance the page");
 ok(sent.length === sentBeforeArrows, "ArrowDown does not submit");
 
+// ---- Arrow onto the Other row opens it: one highlight, Enter hands over the custom answer ----
+press(back[1]!, "ArrowDown");
+await sleep(50);
+const arrowOther = document.querySelector(".ask-other input") as HTMLInputElement | null;
+ok(arrowOther !== null, "ArrowDown onto the Other row opens its input");
+ok(document.activeElement === arrowOther, "the opened Other input takes the focus");
+ok(back[2]?.checked === true && back[1]?.checked === false, "the Other row ends up as the only checked row");
+ok(sent.length === sentBeforeArrows, "opening Other with an arrow does not submit");
+// Enter here must not fall back to the previously picked option
+press(arrowOther!, "Enter");
+await sleep(50);
+ok(sent.length === sentBeforeArrows, "Enter on an empty Other row submits nothing");
+ok((document.querySelector(".ask-page")?.textContent ?? "").includes("1 / 2"), "Enter on an empty Other row stays on the page");
+// Up from the input returns to the previous option: an open Other row is one stop, not two
+press(arrowOther!, "ArrowUp");
+await sleep(50);
+ok(document.activeElement === back[1], "ArrowUp from the Other input returns to B");
+ok(back[1]?.checked === true && document.querySelector(".ask-other") === null, "leaving the Other row restores the option pick and closes it");
+
 // ---- Digit keys quick-pick: "1" answers option A and auto-advances the page ----
 press(back[0]!, "1");
 await sleep(50);

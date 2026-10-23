@@ -4,7 +4,7 @@
 // slice).
 import { authPolicyFor, formatModelRoleAlias, getKnownRoleIds, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
 import { completeSimple } from "@oh-my-pi/pi-ai";
-import { H, sessions, enabledDefaults } from "../state.ts";
+import { H, sessions, enabledDefaults, sendSessionState } from "../state.ts";
 import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS, searchAvailabilityPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
 import { listAllProviders } from "../limits/index.ts";
@@ -58,7 +58,10 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     // concrete level): the bottom-right shows the user-configured mode; the
     // capability-clamped effective value is send-parameter detail and never
     // reaches the UI
-    ws.send(
+    // Both attached channels render this badge; keep them in lockstep
+    sendSessionState(
+      ws,
+      entry,
       JSON.stringify({
         type: "session_model",
         sessionId: msg.sessionId,
@@ -72,7 +75,9 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     entry.session.setThinkingLevel(gateKimiAutoThinking(entry.session.model?.provider, msg.level));
     // Return the configured selector ("auto" or a concrete level); the clamped effective value never reaches the UI
-    ws.send(
+    sendSessionState(
+      ws,
+      entry,
       JSON.stringify({ type: "session_thinking", sessionId: msg.sessionId, level: entry.session.configuredThinkingLevel?.() ?? "auto" }),
     );
   },
@@ -88,7 +93,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     if (!result) {
       // Mirrors the CLI's "Only one role model available" status (undefined =
       // zero or one resolvable role): not an error, just nothing to cycle
-      ws.send(JSON.stringify({ type: "cycle_model", sessionId: msg.sessionId, ok: false }));
+      sendSessionState(ws, entry, JSON.stringify({ type: "cycle_model", sessionId: msg.sessionId, ok: false }));
       return;
     }
     // Role cycling may carry a role's `auto` onto a Kimi model: pin it while
@@ -96,7 +101,9 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     const cycled = entry.session.configuredThinkingLevel?.();
     const gated = gateKimiAutoThinking(result.model.provider, cycled);
     if (gated && gated !== cycled) entry.session.setThinkingLevel(gated);
-    ws.send(
+    sendSessionState(
+      ws,
+      entry,
       JSON.stringify({
         type: "cycle_model",
         sessionId: msg.sessionId,

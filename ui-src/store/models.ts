@@ -70,7 +70,8 @@ export function getSupportedThinkingForModel(modelId: string | null | undefined)
   // Kimi + providers-page switch off: `auto` is withheld from the menu (the host
   // pins it to `high` anyway — Kimi re-bills the whole prefix per level switch)
   const kimiAutoOff = modelId?.startsWith("kimi-code/") && useAppStore.getState().hostSettings?.kimiAutoThinking !== true;
-  return kimiAutoOff ? ["off", ...efforts] : ["auto", "off", ...efforts];
+  // Slider order: off leftmost, auto immediately right of it, then ascending efforts
+  return kimiAutoOff ? ["off", ...efforts] : ["off", "auto", ...efforts];
 }
 
 // Per-model default thinking level: the ":level" suffix on the model's

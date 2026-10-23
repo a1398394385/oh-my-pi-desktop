@@ -5,7 +5,7 @@
 // dependency on old ui/ modules.
 // DOM side effects stay imperative; React components cooperate via the
 // omp:close-menus / omp:zoom custom events.
-import { useAppStore, send, setBump, type TimerHandle } from "./store";
+import { useAppStore, send, setBump, effZoom, type TimerHandle } from "./store";
 import { expandRightPanel } from "./components/main/right/tabs";
 import type { ToolItem } from "./types/session";
 import { IS_MAC, IS_WINDOWS } from "./platform";
@@ -135,9 +135,15 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const startW = panel.offsetWidth;
+    // With the left sidebar collapsed the right panel is CSS-widened by half of --left-w
+    // (shell.css); strip that bonus so the stored --right-w is the width the two-column
+    // layout uses, otherwise expanding the sidebar would jump the panel wider.
+    const splitBonus = invert && document.getElementById("sidebar")?.classList.contains("collapsed")
+      ? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--left-w")) || 240) / 2
+      : 0;
+    const startW = panel.offsetWidth - splitBonus;
     const move = (ev: MouseEvent) => {
-      const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
+      const dx = (ev.clientX - startX) / effZoom();
       const wWin = document.documentElement.clientWidth || window.innerWidth || 1000;
       // The center card keeps a minimum width of 30% of the app total width
       // (still compressible down to 30%)
@@ -169,6 +175,62 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
   });
 }
 
+// ---------- Content column drag-resize ----------
+// The center content column (messages + composer share --col-w, see center.css)
+// can be widened/narrowed by dragging the gutter strips beside it. The drag
+// writes a user override (--col-user-max) that --col-w caps with the four-stage
+// shrink, so oversized stored values degrade gracefully on small windows.
+// Both handles move the column symmetrically (dx × 2) to keep it centered.
+
+// Restore the persisted override once at boot (initShell). The width itself applies to
+// every page hosting the content column, so this must not wait for the session detail
+// page (where the handles live) to mount — otherwise entering it would jump once.
+export function restoreColWidth(): void {
+  try {
+    const saved = localStorage.getItem("omp-w---col-user-max");
+    if (saved) document.documentElement.style.setProperty("--col-user-max", Math.round(+saved) + "px");
+  } catch {}
+}
+// Handles are rendered only on the session detail page (MainColumn), so the mousedown
+// wiring follows their mount instead of initShell's one-shot boot.
+export function bindColResizer(): void {
+  for (const side of ["left", "right"] as const) {
+    (document.querySelector(`.col-resize-h[data-side="${side}"]`) as HTMLElement | null)?.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const el = e.currentTarget as HTMLElement;
+      const startX = e.clientX;
+      // Current content column width: the dock when present, else any shared-rule
+      // child of #stream (empty-state hint); 680 = the default on a typical window
+      const col = document.querySelector<HTMLElement>("#main .dock") ?? document.querySelector<HTMLElement>("#stream > *");
+      const startW = col?.offsetWidth ?? 680;
+      let moved = false;
+      const move = (ev: MouseEvent) => {
+        const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
+        if (dx !== 0) moved = true;
+        const outward = side === "right" ? dx : -dx;
+        document.documentElement.style.setProperty("--col-user-max", Math.round(Math.max(480, startW + outward * 2)) + "px");
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.classList.remove("resizing");
+        el.classList.remove("dragging");
+        // A press-only gesture must not overwrite the saved preference
+        if (moved) {
+          try {
+            localStorage.setItem("omp-w---col-user-max", document.documentElement.style.getPropertyValue("--col-user-max").replace("px", ""));
+          } catch {}
+        }
+      };
+      document.body.classList.add("resizing");
+      el.classList.add("dragging");
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+  }
+}
+
 // ---------- Cmd +/-/0 and native menu zoom ----------
 // Only the four top containers are zoomed (sidebar / main / right / settings):
 // zooming the whole body would double-scale position:fixed menus, misplacing
@@ -184,11 +246,15 @@ let zoomTargets: (HTMLElement | null)[] | null = null;
 // reports the outer, unzoomed space even inside a style.zoom subtree); wry's placement
 // puts the button center at y − 2.2 points, hence the offset back.
 const TRAFFIC_CENTER_BIAS = 2.2;
+// Optical nudge: the geometric center of the strip reads too high next to the
+// sidebar toggle glyph, so the lights sit 3pt lower. Must stay in sync with
+// tauri.conf.json's trafficLightPosition.y (first-frame value, before this runs).
+const TRAFFIC_OPTICAL_OFFSET = 3;
 function syncTrafficLights(): void {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!IS_MAC || !invoke) return;
-  const stripBottom = document.getElementById("navNew")?.getBoundingClientRect().top ?? 50 * useAppStore.getState().zoomLevel;
-  void invoke("set_traffic_light_y", { y: stripBottom / 2 + TRAFFIC_CENTER_BIAS });
+  const stripBottom = document.getElementById("navNew")?.getBoundingClientRect().top ?? 50 * effZoom();
+  void invoke("set_traffic_light_y", { y: stripBottom / 2 + TRAFFIC_CENTER_BIAS + TRAFFIC_OPTICAL_OFFSET });
 }
 
 export function applyZoom(): void {
@@ -197,11 +263,13 @@ export function applyZoom(): void {
   // nodes orphaned and silently dropping every later zoom write
   if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected)) zoomTargets = ["sidebar", "main", "right", "settings"].map((id) => document.getElementById(id));
   // style.zoom is a non-standard property (absent from TS lib.dom): assert the
-  // write, semantics unchanged from the original
-  for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
+  // write, semantics unchanged from the original. The narrow baseline folds in here:
+  // phone zoom level 100% renders the 80% size the phone layout was tuned at.
+  const z = effZoom();
+  for (const el of zoomTargets) if (el) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
   // Native macOS traffic lights keep physical coordinates while style.zoom scales CSS px;
   // publish the factor so UI pinned next to them (--top-toggle-*) divides back to points
-  document.documentElement.style.setProperty("--ui-zoom", String(useAppStore.getState().zoomLevel));
+  document.documentElement.style.setProperty("--ui-zoom", String(z));
   syncTrafficLights();
   // zoom changes layout width but does not trigger ResizeObserver (Chrome/WebKit
   // behavior); notify the composer to recompute the bottom-bar collapse
@@ -241,13 +309,13 @@ export function updateRailVisibility(): void {
   if (!main || !dock || dock.classList.contains("hidden")) return;
   // rect diff is visual (both boxes live in the zoomed subtree); the 65px threshold
   // is layout px, so divide the zoom factor back out
-  const z = useAppStore.getState().zoomLevel || 1;
+  const z = effZoom();
   const m = (dock.getBoundingClientRect().left - main.getBoundingClientRect().left) / z;
   main.classList.toggle("rail-off", m < 65);
 }
 // Fixed menu coordinate compensation: set zoom first, then divide it back out
 export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: number): void {
-  const zoom = useAppStore.getState().zoomLevel;
+  const zoom = effZoom();
   (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(zoom);
   menu.style.left = visualLeft / zoom + "px";
   menu.style.top = visualTop / zoom + "px";
@@ -256,13 +324,14 @@ export function placeMenu(menu: HTMLElement, visualLeft: number, visualTop: numb
 // ---------- Message rail tool summary (ported from ui/ringpop.js railToolText) ----------
 // Tool message summary: tool name + command/file, comma-joined
 // Subagent spawn summary for the task row's rail entry: spawn count once known (mirrors the
-// TUI header meta "Task N agents"), else the flat form's agent type ⟦bracketed⟧
+// TUI header meta "Task N agents"), else the flat form's agent type [bracketed]
 function taskRailSummary(args: Record<string, unknown>, details?: unknown): string {
   const d = details as { results?: unknown[]; progress?: unknown[] } | undefined;
-  const count = d?.results?.length ?? d?.progress?.length ?? (Array.isArray(args.tasks) ? args.tasks.length : 0);
+  // Widest signal wins: async-only calls settle `results: []` and keep the batch in `progress`.
+  const count = Math.max(d?.results?.length ?? 0, d?.progress?.length ?? 0, Array.isArray(args.tasks) ? args.tasks.length : 0);
   if (count > 0) return t("chat.taskSummaryBatch", { count });
   const agent = typeof args.agent === "string" ? args.agent.trim() : "";
-  if (agent && agent !== "task") return `⟦${agent}⟧`;
+  if (agent && agent !== "task") return `[${agent}]`;
   return typeof args.task === "string" ? args.task.split("\n")[0].trim() : "";
 }
 export function railToolText(item: ToolItem): string {
@@ -338,6 +407,7 @@ export function initShell(): void {
   attachResizer("left-resizer", "--left-w", 180, false);
   // Right panel drag handle (ZCode Side Pane size contract): min 240px, max 65% viewport width
   attachResizer("right-resizer", "--right-w", 240, true, 0.65);
+  restoreColWidth();
 
   updateContentColMax();
   // Apply the persisted zoom level (store hydrated from localStorage at init):
@@ -374,4 +444,31 @@ export function initShell(): void {
   // omp:close-menus event; toggle buttons that stopPropagation are unaffected)
   window.addEventListener("click", closeAllMenus);
   window.addEventListener("blur", closeAllMenus);
+
+  // Soft keyboard (phones): iOS Safari keeps the layout viewport at full height when the
+  // keyboard opens, so the height:100% shell leaves the composer underneath it and Safari
+  // pans the visual viewport up to reach the focused field — the page reads as jumping while
+  // typing. Feed visualViewport.height into --app-h (base.css) so the shell shrinks to what
+  // is actually visible; Chromium already resizes the layout viewport (interactive-widget in
+  // ui/index.html) and reports the same value here, so this is a no-op there.
+  const vv = window.visualViewport;
+  if (vv) {
+    let lastAppH = 0;
+    const syncAppHeight = () => {
+      const h = Math.round(vv.height);
+      if (h !== lastAppH) {
+        lastAppH = h;
+        document.documentElement.style.setProperty("--app-h", `${h}px`);
+      }
+      // iOS pans the layout viewport to reveal the focused field BEFORE the shell shrinks
+      // (the pan arrives as a visualViewport scroll, not a resize). The pan outlives the
+      // shrink and pushes the whole app above the visible area — the phone sees only the
+      // composer and the keyboard. Undo it after every viewport change; window scroll is
+      // otherwise unused (body is overflow:hidden, the chat scrolls inside #stream).
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    syncAppHeight();
+    vv.addEventListener("resize", syncAppHeight);
+    vv.addEventListener("scroll", syncAppHeight);
+  }
 }

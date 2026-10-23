@@ -6,6 +6,7 @@
 
 - 架构与三区职责:根 AGENTS.md「项目架构」
 - 架构规则:`.agents/rules.md`
+- 代码注释标准与治理:`docs/comment-style.md`
 - 相关 ADR:`.agents/notes/`
 - 外部依赖行为(omp SDK / Tauri / macOS):`docs/PITFALLS.md`
 

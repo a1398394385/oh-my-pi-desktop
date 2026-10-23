@@ -58,6 +58,17 @@ html[data-platform="macos"] #sidebar > .side-collapse {
   left: var(--top-toggle-left);
   top: var(--top-toggle-top);
 }
+/* Windows: no traffic lights to clear, so the button lives in the window's top-left
+   corner. 14px puts it inside the center card's left edge (8px shell gap + 6px) rather
+   than straddling that edge; the collapsed-state expand button (#sidebarToggle) reuses
+   these exact viewport coords (center.css), which is what makes the sidebar toggle in
+   place without moving the mouse. */
+html[data-platform="windows"] #sidebar > .side-collapse {
+  position: fixed;
+  right: auto;
+  left: calc(14px / var(--ui-zoom, 1));
+  top: calc(19px / var(--ui-zoom, 1));
+}
 /* inputs inside the sidebar (rename/new project) regain selection and editing */
 #sidebar input, #sidebar textarea { user-select: text; -webkit-user-select: text; }
 #sidebar > :not(.side-collapse) {
@@ -179,6 +190,9 @@ body:has(#sidebar.collapsed) #left-resizer {
   cursor: pointer; color: var(--dim);
   font-size: calc(var(--ui-fs) + 1px); line-height: 26px;
   border: 0; background: none; width: 100%; text-align: left;
+  /* A div row, not a <button> (see SessionRow): keep the button-like selection behaviour,
+     otherwise a long press selects the title text instead of opening the context menu. */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .task:is(:hover, .ctx-open) { background: var(--panel-2); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
@@ -190,6 +204,27 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: var(--text); font-weight: 400;
 }
 .task:is(:hover, .ctx-open) .tt, .task.on .tt { color: var(--text); }
+/* Title-slot carousel for the pool-eviction notice (SessionRow): the incoming line slides in
+   from the right (the eject button's side) while the outgoing one slides out left. Both get
+   clipped by .tt's mask. */
+.task .tt { position: relative; }
+/* Inline-block: transforms do not apply to non-replaced inline boxes. */
+.task .tt-next { display: inline-block; }
+.task .tt-prev {
+  position: absolute; inset: 0;
+  animation: tt-slide-out var(--dur-sheet) ease forwards;
+}
+.task .tt-next.sliding { animation: tt-slide-in var(--dur-sheet) ease; }
+@keyframes tt-slide-in {
+  from { transform: translateX(140px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes tt-slide-out {
+  to { transform: translateX(-60%); opacity: 0; }
+}
+/* The slide obeys the Appearance motion switch through the global kill rule in
+   global/animations.css (data-motion=on forces it, off/system+OS-reduce flattens it); no
+   branch needed here. SessionRow skips the outgoing layer entirely when motion is reduced. */
 .task .tm { flex: none; font-size: 12px; color: var(--faint); font-weight: 400; }
 .task.on .tm { color: var(--dim); }
 .task .tarchive {
@@ -201,6 +236,10 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task:is(:hover, .ctx-open) .tarchive { display: inline-flex; }
 .task:is(:hover, .ctx-open) .tm { display: none; }
 .task .tarchive:hover { color: var(--text); background: var(--panel-3); }
+/* Running session: the host refuses both the archive (it evicts archived sessions from
+   the pool) and the manual eject (no live teardown), so the actions render inert. */
+.task .tarchive:disabled { opacity: 0.35; cursor: not-allowed; }
+.task .tarchive:disabled:hover { color: var(--faint); background: none; }
 .task .tarchive-confirm {
   flex: none;
   border: 1px solid transparent;
@@ -221,6 +260,13 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task .tarchive-confirm:hover {
   filter: brightness(1.12);
+}
+.task .tarchive-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.task .tarchive-confirm:disabled:hover {
+  filter: none;
 }
 .task-cmd-badge {
   flex: none;

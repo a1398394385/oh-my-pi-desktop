@@ -1,0 +1,16 @@
+{
+  "//": "Frames that BOTH channels render (desktop + LAN remote). Adding a frame here makes scripts/check-frame-fanout.mjs reject any bare ws.send of it: use sendSessionState / pushSettings / eachUiWs / entryBus instead (BUG-100). Keep sorted.",
+  "broadcast": [
+    "approval_mode",
+    "computer_mode",
+    "cycle_model",
+    "plan_mode",
+    "pool_sessions",
+    "session_finished",
+    "session_model",
+    "session_thinking",
+    "session_title_changed",
+    "session_unloaded",
+    "settings"
+  ]
+}

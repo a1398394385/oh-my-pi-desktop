@@ -1,0 +1,716 @@
+{
+  "closure": {
+    "chunks": 17,
+    "bytes": 2499134
+  },
+  "attribution": [
+    {
+      "cluster": "ui-src",
+      "bytes": 506459
+    },
+    {
+      "cluster": "@xterm/xterm",
+      "bytes": 331567
+    },
+    {
+      "cluster": "react-dom",
+      "bytes": 206930
+    },
+    {
+      "cluster": "lexical",
+      "bytes": 179881
+    },
+    {
+      "cluster": "parse5",
+      "bytes": 124285
+    },
+    {
+      "cluster": "ui/file-icons.js",
+      "bytes": 87344
+    },
+    {
+      "cluster": "@shikijs/vscode-textmate",
+      "bytes": 83998
+    },
+    {
+      "cluster": "streamdown",
+      "bytes": 74136
+    },
+    {
+      "cluster": "@shikijs/core",
+      "bytes": 49563
+    },
+    {
+      "cluster": "oniguruma-to-es",
+      "bytes": 49040
+    },
+    {
+      "cluster": "oniguruma-parser",
+      "bytes": 46302
+    },
+    {
+      "cluster": "@shikijs/themes",
+      "bytes": 45684
+    },
+    {
+      "cluster": "i18next",
+      "bytes": 43088
+    },
+    {
+      "cluster": "marked",
+      "bytes": 40763
+    },
+    {
+      "cluster": "shiki",
+      "bytes": 36249
+    },
+    {
+      "cluster": "property-information",
+      "bytes": 36229
+    },
+    {
+      "cluster": "ui/fa-icons.js",
+      "bytes": 33118
+    },
+    {
+      "cluster": "micromark-core-commonmark",
+      "bytes": 27319
+    },
+    {
+      "cluster": "tailwind-merge",
+      "bytes": 27237
+    },
+    {
+      "cluster": "ui/lucide-icons.js",
+      "bytes": 21771
+    },
+    {
+      "cluster": "entities",
+      "bytes": 20526
+    },
+    {
+      "cluster": "hast-util-to-html",
+      "bytes": 15502
+    },
+    {
+      "cluster": "@lexical/react",
+      "bytes": 14740
+    },
+    {
+      "cluster": "ui/icons.js",
+      "bytes": 14176
+    },
+    {
+      "cluster": "@shikijs/primitive",
+      "bytes": 13292
+    },
+    {
+      "cluster": "remend",
+      "bytes": 12617
+    },
+    {
+      "cluster": "mdast-util-to-markdown",
+      "bytes": 11404
+    },
+    {
+      "cluster": "@lexical/rich-text",
+      "bytes": 11317
+    },
+    {
+      "cluster": "mdast-util-to-hast",
+      "bytes": 10663
+    },
+    {
+      "cluster": "mdast-util-from-markdown",
+      "bytes": 10091
+    },
+    {
+      "cluster": "@lexical/extension",
+      "bytes": 9538
+    },
+    {
+      "cluster": "micromark",
+      "bytes": 9292
+    },
+    {
+      "cluster": "@lexical/clipboard",
+      "bytes": 8489
+    },
+    {
+      "cluster": "react",
+      "bytes": 8179
+    },
+    {
+      "cluster": "@radix-ui/react-tooltip",
+      "bytes": 7771
+    },
+    {
+      "cluster": "@floating-ui/core",
+      "bytes": 7668
+    },
+    {
+      "cluster": "@floating-ui/dom",
+      "bytes": 7062
+    },
+    {
+      "cluster": "@shikijs/engine-oniguruma",
+      "bytes": 6643
+    },
+    {
+      "cluster": "regex-recursion",
+      "bytes": 6290
+    },
+    {
+      "cluster": "micromark-util-symbol",
+      "bytes": 6038
+    },
+    {
+      "cluster": "hast-util-to-jsx-runtime",
+      "bytes": 5807
+    },
+    {
+      "cluster": "react-remove-scroll",
+      "bytes": 5682
+    },
+    {
+      "cluster": "micromark-extension-gfm-table",
+      "bytes": 5637
+    },
+    {
+      "cluster": "hast-util-raw",
+      "bytes": 5551
+    },
+    {
+      "cluster": "@radix-ui/react-dismissable-layer",
+      "bytes": 5232
+    },
+    {
+      "cluster": "vfile",
+      "bytes": 5089
+    },
+    {
+      "cluster": "react-i18next",
+      "bytes": 4987
+    },
+    {
+      "cluster": "character-entities-html4",
+      "bytes": 4864
+    },
+    {
+      "cluster": "hast-util-sanitize",
+      "bytes": 4836
+    },
+    {
+      "cluster": "@lexical/html",
+      "bytes": 4828
+    },
+    {
+      "cluster": "@preact/signals-core",
+      "bytes": 4615
+    },
+    {
+      "cluster": "regex",
+      "bytes": 4342
+    },
+    {
+      "cluster": "get-east-asian-width",
+      "bytes": 4273
+    },
+    {
+      "cluster": "@radix-ui/react-dialog",
+      "bytes": 4121
+    },
+    {
+      "cluster": "unified",
+      "bytes": 4109
+    },
+    {
+      "cluster": "micromark-extension-gfm-footnote",
+      "bytes": 4028
+    },
+    {
+      "cluster": "@radix-ui/react-popper",
+      "bytes": 3829
+    },
+    {
+      "cluster": "micromark-extension-gfm-autolink-literal",
+      "bytes": 3740
+    },
+    {
+      "cluster": "@floating-ui/utils",
+      "bytes": 3739
+    },
+    {
+      "cluster": "rehype-harden",
+      "bytes": 3621
+    },
+    {
+      "cluster": "mdast-util-to-markdown-cjk-friendly",
+      "bytes": 3609
+    },
+    {
+      "cluster": "@radix-ui/react-focus-scope",
+      "bytes": 3599
+    },
+    {
+      "cluster": "@lexical/history",
+      "bytes": 3543
+    },
+    {
+      "cluster": "scheduler",
+      "bytes": 3538
+    },
+    {
+      "cluster": "mdast-util-to-markdown-cjk-friendly-gfm-strikethrough",
+      "bytes": 3434
+    },
+    {
+      "cluster": "micromark-util-subtokenize",
+      "bytes": 3361
+    },
+    {
+      "cluster": "stringify-entities",
+      "bytes": 3278
+    },
+    {
+      "cluster": "@floating-ui/react-dom",
+      "bytes": 3138
+    },
+    {
+      "cluster": "@ungap/structured-clone",
+      "bytes": 3033
+    },
+    {
+      "cluster": "@shikijs/engine-javascript",
+      "bytes": 2697
+    },
+    {
+      "cluster": "@radix-ui/react-presence",
+      "bytes": 2645
+    },
+    {
+      "cluster": "hastscript",
+      "bytes": 2467
+    },
+    {
+      "cluster": "micromark-extension-cjk-friendly-util",
+      "bytes": 2443
+    },
+    {
+      "cluster": "micromark-extension-cjk-friendly",
+      "bytes": 2363
+    },
+    {
+      "cluster": "@radix-ui/react-slot",
+      "bytes": 2333
+    },
+    {
+      "cluster": "hast-util-from-parse5",
+      "bytes": 2135
+    },
+    {
+      "cluster": "mdast-util-gfm-autolink-literal",
+      "bytes": 2097
+    },
+    {
+      "cluster": "regex-utilities",
+      "bytes": 2050
+    },
+    {
+      "cluster": "hast-util-to-parse5",
+      "bytes": 1957
+    },
+    {
+      "cluster": "@lexical/dragon",
+      "bytes": 1928
+    },
+    {
+      "cluster": "micromark-extension-cjk-friendly-gfm-strikethrough",
+      "bytes": 1791
+    },
+    {
+      "cluster": "mdast-util-gfm-table",
+      "bytes": 1765
+    },
+    {
+      "cluster": "@radix-ui/react-context",
+      "bytes": 1674
+    },
+    {
+      "cluster": "mdast-util-gfm-footnote",
+      "bytes": 1644
+    },
+    {
+      "cluster": "markdown-table",
+      "bytes": 1568
+    },
+    {
+      "cluster": "micromark-extension-gfm-strikethrough",
+      "bytes": 1547
+    },
+    {
+      "cluster": "inline-style-parser",
+      "bytes": 1547
+    },
+    {
+      "cluster": "react-remove-scroll-bar",
+      "bytes": 1539
+    },
+    {
+      "cluster": "aria-hidden",
+      "bytes": 1474
+    },
+    {
+      "cluster": "@lexical/utils",
+      "bytes": 1414
+    },
+    {
+      "cluster": "vfile-message",
+      "bytes": 1369
+    },
+    {
+      "cluster": "@lexical/selection",
+      "bytes": 1306
+    },
+    {
+      "cluster": "character-entities-legacy",
+      "bytes": 1276
+    },
+    {
+      "cluster": "@streamdown/code",
+      "bytes": 1253
+    },
+    {
+      "cluster": "@radix-ui/react-use-controllable-state",
+      "bytes": 1236
+    },
+    {
+      "cluster": "@xterm/addon-fit",
+      "bytes": 1192
+    },
+    {
+      "cluster": "mdast-util-find-and-replace",
+      "bytes": 1168
+    },
+    {
+      "cluster": "mdast-util-gfm-task-list-item",
+      "bytes": 1147
+    },
+    {
+      "cluster": "use-sidecar",
+      "bytes": 1140
+    },
+    {
+      "cluster": "extend",
+      "bytes": 1138
+    },
+    {
+      "cluster": "@radix-ui/primitive",
+      "bytes": 942
+    },
+    {
+      "cluster": "micromark-factory-destination",
+      "bytes": 904
+    },
+    {
+      "cluster": "unist-util-visit-parents",
+      "bytes": 832
+    },
+    {
+      "cluster": "micromark-extension-gfm-task-list-item",
+      "bytes": 827
+    },
+    {
+      "cluster": "@streamdown/cjk",
+      "bytes": 775
+    },
+    {
+      "cluster": "@radix-ui/react-focus-guards",
+      "bytes": 763
+    },
+    {
+      "cluster": "trough",
+      "bytes": 759
+    },
+    {
+      "cluster": "use-sync-external-store",
+      "bytes": 749
+    },
+    {
+      "cluster": "tslib",
+      "bytes": 740
+    },
+    {
+      "cluster": "unist-util-is",
+      "bytes": 740
+    },
+    {
+      "cluster": "react-style-singleton",
+      "bytes": 714
+    },
+    {
+      "cluster": "style-to-js",
+      "bytes": 682
+    },
+    {
+      "cluster": "vfile-location",
+      "bytes": 669
+    },
+    {
+      "cluster": "use-callback-ref",
+      "bytes": 639
+    },
+    {
+      "cluster": "micromark-factory-label",
+      "bytes": 632
+    },
+    {
+      "cluster": "mdast-util-gfm-strikethrough",
+      "bytes": 606
+    },
+    {
+      "cluster": "micromark-factory-title",
+      "bytes": 595
+    },
+    {
+      "cluster": "class-variance-authority",
+      "bytes": 583
+    },
+    {
+      "cluster": "zustand",
+      "bytes": 568
+    },
+    {
+      "cluster": "zwitch",
+      "bytes": 552
+    },
+    {
+      "cluster": "@radix-ui/react-use-size",
+      "bytes": 523
+    },
+    {
+      "cluster": "@radix-ui/react-primitive",
+      "bytes": 510
+    },
+    {
+      "cluster": "mdast-util-to-string",
+      "bytes": 488
+    },
+    {
+      "cluster": "micromark-util-sanitize-uri",
+      "bytes": 482
+    },
+    {
+      "cluster": "@radix-ui/react-compose-refs",
+      "bytes": 452
+    },
+    {
+      "cluster": "comma-separated-tokens",
+      "bytes": 439
+    },
+    {
+      "cluster": "micromark-util-character",
+      "bytes": 435
+    },
+    {
+      "cluster": "trim-lines",
+      "bytes": 429
+    },
+    {
+      "cluster": "@lexical/text",
+      "bytes": 425
+    },
+    {
+      "cluster": "micromark-util-html-tag-name",
+      "bytes": 415
+    },
+    {
+      "cluster": "@radix-ui/react-use-effect-event",
+      "bytes": 396
+    },
+    {
+      "cluster": "style-to-object",
+      "bytes": 389
+    },
+    {
+      "cluster": "micromark-util-combine-extensions",
+      "bytes": 370
+    },
+    {
+      "cluster": "clsx",
+      "bytes": 359
+    },
+    {
+      "cluster": "@radix-ui/react-visually-hidden",
+      "bytes": 353
+    },
+    {
+      "cluster": "unist-util-position",
+      "bytes": 349
+    },
+    {
+      "cluster": "ccount",
+      "bytes": 336
+    },
+    {
+      "cluster": "html-void-elements",
+      "bytes": 324
+    },
+    {
+      "cluster": "hast-util-parse-selector",
+      "bytes": 324
+    },
+    {
+      "cluster": "unist-util-stringify-position",
+      "bytes": 310
+    },
+    {
+      "cluster": "hast-util-whitespace",
+      "bytes": 302
+    },
+    {
+      "cluster": "html-url-attributes",
+      "bytes": 301
+    },
+    {
+      "cluster": "micromark-util-chunked",
+      "bytes": 300
+    },
+    {
+      "cluster": "@radix-ui/react-portal",
+      "bytes": 281
+    },
+    {
+      "cluster": "micromark-util-decode-string",
+      "bytes": 262
+    },
+    {
+      "cluster": "web-namespaces",
+      "bytes": 240
+    },
+    {
+      "cluster": "@radix-ui/react-id",
+      "bytes": 232
+    },
+    {
+      "cluster": "unist-util-visit",
+      "bytes": 218
+    },
+    {
+      "cluster": "@radix-ui/react-use-callback-ref",
+      "bytes": 217
+    },
+    {
+      "cluster": "mdast-util-phrasing",
+      "bytes": 217
+    },
+    {
+      "cluster": "is-plain-obj",
+      "bytes": 206
+    },
+    {
+      "cluster": "remark-cjk-friendly-gfm-strikethrough",
+      "bytes": 202
+    },
+    {
+      "cluster": "micromark-util-decode-numeric-character-reference",
+      "bytes": 200
+    },
+    {
+      "cluster": "remark-cjk-friendly",
+      "bytes": 197
+    },
+    {
+      "cluster": "longest-streak",
+      "bytes": 195
+    },
+    {
+      "cluster": "remark-parse",
+      "bytes": 192
+    },
+    {
+      "cluster": "remark-gfm",
+      "bytes": 187
+    },
+    {
+      "cluster": "estree-util-is-identifier-name",
+      "bytes": 180
+    },
+    {
+      "cluster": "micromark-factory-whitespace",
+      "bytes": 172
+    },
+    {
+      "cluster": "micromark-factory-space",
+      "bytes": 166
+    },
+    {
+      "cluster": "space-separated-tokens",
+      "bytes": 161
+    },
+    {
+      "cluster": "decode-named-character-reference",
+      "bytes": 159
+    },
+    {
+      "cluster": "@shikijs/types",
+      "bytes": 148
+    },
+    {
+      "cluster": "remark-rehype",
+      "bytes": 146
+    },
+    {
+      "cluster": "escape-string-regexp",
+      "bytes": 143
+    },
+    {
+      "cluster": "micromark-util-resolve-all",
+      "bytes": 124
+    },
+    {
+      "cluster": "mdast-util-gfm",
+      "bytes": 110
+    },
+    {
+      "cluster": "micromark-util-normalize-identifier",
+      "bytes": 100
+    },
+    {
+      "cluster": "get-nonce",
+      "bytes": 76
+    },
+    {
+      "cluster": "micromark-util-classify-character",
+      "bytes": 67
+    },
+    {
+      "cluster": "rehype-raw",
+      "bytes": 64
+    },
+    {
+      "cluster": "ui/app-icon.png",
+      "bytes": 61
+    },
+    {
+      "cluster": "micromark-extension-gfm",
+      "bytes": 54
+    },
+    {
+      "cluster": "@radix-ui/react-use-layout-effect",
+      "bytes": 52
+    },
+    {
+      "cluster": "rehype-sanitize",
+      "bytes": 50
+    },
+    {
+      "cluster": "bail",
+      "bytes": 48
+    },
+    {
+      "cluster": "devlop",
+      "bytes": 15
+    }
+  ]
+}

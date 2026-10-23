@@ -10,6 +10,7 @@ const autoEdit = {
   tabSettings: "Settings",
   tabHistory: "History",
   createBtn: "Create automation",
+  deliveryLocked: "This automation delivers into a conversation and is maintained by the agent; delete it and ask the agent to recreate it if you need changes.",
   untitled: "Untitled task",
   nextRunLabel: "Next run",
   runCountLabel: "Runs",
@@ -27,6 +28,11 @@ const autoEdit = {
   contentSectionHint: "Instructions sent to the Agent on each run",
   boundarySection: "Execution boundary",
   boundarySectionHint: "Stop scheduling after this condition",
+  dialogSection: "Dialog timeouts",
+  dialogSectionHint: "Unattended runs answer the dialog themselves when the timer expires",
+  askTimeoutLabel: "Ask timeout",
+  approvalTimeoutLabel: "Approval timeout",
+  timeoutUnit: "s",
   statusLabel: "Status",
   lifecycleActive: "Active",
   lifecyclePaused: "Paused",
@@ -39,7 +45,7 @@ const autoEdit = {
   runsNextPage: "Next",
   runsErrorUnavailable: "Error details unavailable",
   computerLabel: "Computer control",
-  computerHint: "Enable computer control (screenshots, input, accessibility) for this task's sessions. Per-task only: the global “Enable computer control by default” switch deliberately does not apply to scheduled tasks.",
+  computerHint: "Enable computer control (screenshots, input, accessibility) for this task's sessions. Per-task only: the global “Enable computer control by default” switch deliberately does not apply to automations.",
 };
 
 export default autoEdit;

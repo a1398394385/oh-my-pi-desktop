@@ -4,11 +4,27 @@
 // trimmed for omp-desktop: JSON persistence, single-process scheduler, new session per run.
 import { randomUUID } from "node:crypto";
 
+/**
+ * Journal marker of a session-delivered run. Persisted with the message and
+ * rendered back by host/translate.ts — part of the on-disk format, never rename
+ * without a migration. Lives here because translate.ts reads it and must not
+ * pull in the scheduler graph.
+ */
+export const AUTOMATION_DELIVERY_CUSTOM_TYPE = "automation-delivery";
+
 /** Max number of retained automation definitions, all lifecycle states counted (ZCodium parity). */
 export const AUTOMATION_CREATE_LIMIT = 20;
 
 /** Max runs kept in history per automation; oldest trimmed. */
 export const RUNS_PER_AUTOMATION_KEEP = 10;
+
+/**
+ * Default dialog deadline for a run's session (seconds): how long an ask dialog
+ * waits for an answer and a permission approval waits for a decision before the
+ * run answers for the user (recommended option / deny). Records created before
+ * the fields existed fall back to this.
+ */
+export const AUTOMATION_DIALOG_TIMEOUT_SEC = 300;
 
 /** Repetition unit of a structured schedule rule. Yearly/monthly-weekday-mode not supported in v1. */
 export type AutomationUnit = "minute" | "hourly" | "daily" | "weekly" | "monthly";
@@ -35,6 +51,17 @@ export interface ScheduleRule {
 
 export type AutomationLifecycle = "active" | "completed" | "failed";
 
+/**
+ * Delivery target of a session-run automation: instead of spawning a fresh
+ * session, the run prompts this existing session and wakes it. Only the agent
+ * creates these (the calling session is the target); the UI editor can neither
+ * create nor convert one, so the field is immutable once persisted.
+ */
+export interface AutomationDelivery {
+  /** Transcript path — the durable handle: the session is reopened from it when evicted. */
+  sessionPath: string;
+}
+
 /** One scheduled-task definition plus its scheduling state. */
 export interface Automation {
   /** `automation-${randomUUID()}` */
@@ -58,6 +85,18 @@ export interface Automation {
   /** true = repeat forever; false = bounded by maxRuns (default 1). */
   recurring: boolean;
   maxRuns?: number;
+  /**
+   * Seconds an ask dialog in a run's session waits before taking the recommended
+   * option. 0 = wait forever; absent = AUTOMATION_DIALOG_TIMEOUT_SEC.
+   */
+  askTimeoutSec?: number;
+  /**
+   * Seconds a permission approval in a run's session waits before denying.
+   * 0 = wait forever; absent = AUTOMATION_DIALOG_TIMEOUT_SEC.
+   */
+  approvalTimeoutSec?: number;
+  /** Session-targeted delivery; absent = every run spawns a fresh session. */
+  deliverTo?: AutomationDelivery;
   /** Epoch ms deadline; once the next run would exceed it, the task completes. */
   endAt?: number;
   runCount: number;
@@ -122,7 +161,11 @@ export interface AutomationUpsertInput {
   computer?: boolean;
   recurring: boolean;
   maxRuns?: number | null;
+  askTimeoutSec?: number | null;
+  approvalTimeoutSec?: number | null;
   endAt?: number | null;
+  /** Session-targeted delivery (agent tool only; the UI create RPC strips it). */
+  deliverTo?: AutomationDelivery;
   schedule: AutomationScheduleInput;
 }
 
@@ -135,6 +178,8 @@ export interface AutomationUpdateInput {
   computer?: boolean;
   recurring?: boolean;
   maxRuns?: number | null;
+  askTimeoutSec?: number | null;
+  approvalTimeoutSec?: number | null;
   endAt?: number | null;
   schedule?: AutomationScheduleInput;
 }

@@ -86,8 +86,9 @@ export class AcpRefBook {
 			this.#walked.add(e.id);
 			if (e.type === "message") {
 				// Zero-counter pass: ids only (presence of thinking/text blocks
-				// follows the same splitBlocks logic the projection uses).
-				for (const b of splitBlocks([{ id: e.id, message: e.message }], () => 0)) this.assign(b.id);
+				// follows the same splitBlocks logic the projection uses); the image
+				// counter is zeroed too so numbering never pays to decode a picture.
+				for (const b of splitBlocks([{ id: e.id, message: e.message }], () => 0, undefined, () => 0)) this.assign(b.id);
 				const m = e.message as { role?: string; toolName?: string; details?: unknown };
 				if (m.role === "toolResult" && isContextStatusResult(m)) this.liveStatusResults.add(e.id);
 			} else if (e.type === "custom" && e.customType === ACP_SUMMARY_CUSTOM_TYPE) {

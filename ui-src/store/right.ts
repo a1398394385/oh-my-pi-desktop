@@ -5,8 +5,8 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { activeOpen } from "./session";
-import { expandRightPanel } from "../components/main/right/tabs";
-import type { BrowserTabInfo, CapabilitiesSnapshot, GitStatusFile } from "../types/frames";
+import { expandRightPanel, isTerminalTab } from "../components/main/right/tabs";
+import type { BrowserTabInfo, GitOperationState, GitStatusFile } from "../types/frames";
 import type { FileViewState } from "../types/session";
 import type { RightState } from "./shapes";
 
@@ -20,23 +20,19 @@ export interface RightSlice {
   fileViewPending: string | null; // file path with a request in flight
   briefDiffPending: string | null; // inline diff path with a request in flight
   todoCollapsed: boolean;
-  capsCardCollapsed: boolean; // right-panel capabilities card folded to its slim rail
   rightState: RightState;
-  gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean };
+  gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean; state: GitOperationState };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
   briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
-  capabilities: CapabilitiesSnapshot | null; // active session's subsystem runtime snapshot (capabilities page)
-  capabilitiesFor: string | null; // sessionId the snapshot belongs to (stale on session switch until refetched)
-  capabilitiesLoading: boolean;
   setBriefDiff(path: string, diff: string | undefined): void;
   browserTabs: BrowserTabInfo[]; // Agent built-in browser tabs (process-global mirror list, host browser_tabs pushes)
   browserViewTab: string | null; // tab name the live view mirrors
   browserPinned: boolean; // user picked a tab by hand; suspends follow-the-agent
   browserMode: "agent" | "manual"; // merged browser page mode: Agent live mirror vs manual iframe browse
+  browserManualUrl: string | null; // one-shot target for the manual view (link click in chat); consumed and cleared by ManualBrowserView
   setBrowserViewTab(name: string | null, pinned: boolean): void;
   setBrowserMode(mode: "agent" | "manual"): void;
   refreshGitDiff(force?: boolean): void;
-  fetchCapabilities(): void;
 }
 
 /** Cap of the edit-row diff cache (by file count). A full diff can reach hundreds of KB; without a cap it grows linearly with the number of edited files. */
@@ -50,6 +46,7 @@ const rightStateInit: RightState = {
   commitMsg: "",
   imageContent: null,
   gitWrite: null,
+  fileSearch: null,
 };
 
 export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set, get) => ({
@@ -63,18 +60,15 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   briefDiffPending: null,
   // Launch starts with the right panel collapsed, so the process card starts expanded
   todoCollapsed: false,
-  capsCardCollapsed: false,
   rightState: rightStateInit,
-  gitDiffCache: { cwd: null, files: [], loading: false },
+  gitDiffCache: { cwd: null, files: [], loading: false, state: "NORMAL" },
   fileDiffCache: { path: null, diff: "", loading: false },
   briefDiffCache: new Map(),
-  capabilities: null,
-  capabilitiesFor: null,
-  capabilitiesLoading: false,
   browserTabs: [],
   browserViewTab: null,
   browserPinned: false,
   browserMode: "manual",
+  browserManualUrl: null,
 
   // Live-view tab selection: pin=true marks an explicit user pick (suspends
   // follow-the-agent); the host switches the mirrored screencast target.
@@ -108,18 +102,6 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
       gitDiffCache: { ...st.gitDiffCache, loading: true, cwd: s.cwd },
     }));
     useAppStore.getState().send({ type: "get_git_diff", cwd: s.cwd });
-  },
-
-  // Capabilities page fetch: on mount, session switch, and the sp-head refresh button.
-  // MCP updates also arrive live afterwards via the capabilities_mcp frame.
-  fetchCapabilities() {
-    const s = activeOpen();
-    if (!s) {
-      useAppStore.setState({ capabilities: null, capabilitiesFor: null, capabilitiesLoading: false });
-      return;
-    }
-    useAppStore.setState({ capabilitiesLoading: true });
-    get().send({ type: "get_capabilities", sessionId: s.sessionId });
   },
 });
 
@@ -176,6 +158,11 @@ function loadRightSlots(): Map<string, RightSlot> {
     const out = new Map<string, RightSlot>();
     for (const [path, p] of pairs) {
       if (!p || !Array.isArray(p.tabs)) continue;
+      // The welcome pseudo-slot is runtime-only: it used to be persisted and could carry the
+      // panel layout inherited from the last session (see restoreRightSlot), which made
+      // the new-task page reopen an expanded panel with a file tab. A launch forces the panel collapsed
+      // anyway (main.tsx), so nothing is lost by starting the new-task page clean.
+      if (path === WELCOME_SLOT) continue;
       // The auto-injected "hub" tab is never restored: hubOpen is runtime-only, so every
       // launch starts hubless and a persisted row carrying the tab would render the hub
       // detail page with no hub behind it (rows written by older builds included it).
@@ -207,7 +194,7 @@ const rightSlots = loadRightSlots(); // insertion order = LRU order; save/restor
  *  save/restore/dispose — i.e. once per session switch, never per keystroke). */
 function persistRightSlots(): void {
   try {
-    const rows = [...rightSlots].map(
+    const rows = [...rightSlots].filter(([path]) => path !== WELCOME_SLOT).map(
       ([path, s]) => [path, { tabs: s.tabs, active: s.active, recentClosed: s.recentClosed, selectedFile: s.selectedFile, fileView: s.fileView, collapsed: s.collapsed } satisfies PersistedSlot],
     );
     localStorage.setItem(RIGHT_SLOT_STORAGE_KEY, JSON.stringify(rows));
@@ -221,10 +208,15 @@ export function saveRightSlot(path: string | null): void {
   const key = path ?? WELCOME_SLOT;
   const st = useAppStore.getState();
   const disposers = rightSlots.get(key)?.disposers ?? new Set(); // slot update, not destruction: keep live disposers
+  // Shared terminals belong to the project registry, not to this session: persisting them
+  // here would resurrect another project's tabs and pin PTY names to a stale session.
+  const sharedTerm = st.uiPrefs.terminalShared === true;
+  const tabs = sharedTerm ? st.rightTabs.filter((n) => !isTerminalTab(n)) : st.rightTabs.slice();
+  const active = sharedTerm && isTerminalTab(st.rightTab ?? "") ? tabs[tabs.length - 1] ?? null : st.rightTab;
   rightSlots.delete(key);
   rightSlots.set(key, {
-    tabs: st.rightTabs.slice(),
-    active: st.rightTab,
+    tabs,
+    active,
     recentClosed: st.rightRecentClosed.slice(),
     selectedFile: st.selectedFile,
     // Skip half-loaded views (empty text would restore stuck in loading) and image views
@@ -258,7 +250,10 @@ export function restoreRightSlot(path: string | null): void {
     persistRightSlots();
     useAppStore.setState({
       rightTabs: slot.tabs.slice(),
-      rightTab: slot.active,
+      // Persisted slots (localStorage) can carry an active tab that its own list lost — e.g.
+      // the pre-BUG-090 composer pills stored active="subagent"/"bgcmd" without registering
+      // them. Land on the last tab like every other fallback, never on a missing one.
+      rightTab: slot.active && slot.tabs.includes(slot.active) ? slot.active : slot.tabs[slot.tabs.length - 1] ?? null,
       rightRecentClosed: slot.recentClosed.slice(),
       selectedFile: slot.selectedFile,
       fileView: slot.fileView,
@@ -280,14 +275,20 @@ export function restoreRightSlot(path: string | null): void {
   // A fresh session inherits the layout but never the outgoing session's hub: hubOpen is
   // per-session, and its auto-injected tab would otherwise render a hub detail page with
   // no hub behind it (the right panel hides the tab, not the body).
-  const tabs = st.rightTabs.filter((n) => n !== "hub");
+  // The welcome pseudo-slot (no session yet) inherits NOTHING: the new-task page opens on a clean
+  // panel — carrying the outgoing session's tabs over opened a file/browser tab on a page
+  // that has no session, and its `collapsed` copy reopened a panel the user had just closed.
+  // Sessions keep the inheritance: that is the switching/creating continuity contract.
+  const inherit = key !== WELCOME_SLOT;
+  const tabs = inherit ? st.rightTabs.filter((n) => n !== "hub") : [];
+  const active = inherit ? (st.rightTab === "hub" ? tabs[tabs.length - 1] ?? null : st.rightTab) : null;
   rightSlots.set(key, {
     tabs,
-    active: st.rightTab === "hub" ? tabs[tabs.length - 1] ?? null : st.rightTab,
-    recentClosed: st.rightRecentClosed.slice(),
+    active,
+    recentClosed: inherit ? st.rightRecentClosed.slice() : [],
     selectedFile: null,
     fileView: null,
-    collapsed: st.rightCollapsed,
+    collapsed: inherit ? st.rightCollapsed : true,
     hubOpen: false,
     hubPrevTab: null,
     hubWasCollapsed: false,
@@ -304,7 +305,8 @@ export function restoreRightSlot(path: string | null): void {
     fileViewPending: null,
     briefDiffPending: null,
     rightTabs: tabs,
-    rightTab: st.rightTab && tabs.includes(st.rightTab) ? st.rightTab : tabs[tabs.length - 1] ?? null,
+    rightTab: active && tabs.includes(active) ? active : tabs[tabs.length - 1] ?? null,
+    rightCollapsed: inherit ? st.rightCollapsed : true,
     hubOpen: false,
     hubSel: null,
     hubPrevTab: null,
@@ -401,6 +403,12 @@ export function landBrowserTabs(tabs: BrowserTabInfo[]): void {
     // Drain edge: leave Agent mode (Manual shows when the displayed owner drained)
     if (prev === st.activePath && st.browserMode === "agent") {
       useAppStore.setState({ browserMode: "manual" });
+      // Mirror of the auto-expand: if the user is still parked on the browser tab,
+      // collapse the panel too. A user browsing another tab is left untouched; the
+      // tab itself stays in the list (manual browsing state survives).
+      if (!st.rightCollapsed && st.rightTab === "browser") {
+        useAppStore.setState({ rightCollapsed: true });
+      }
     }
   }
 }

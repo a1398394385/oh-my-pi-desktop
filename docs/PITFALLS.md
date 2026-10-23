@@ -142,10 +142,19 @@
 ## xd:// 设备调用的记账形态（2026-10-13，ACP 工具行对接）
 
 - **`write` + `xd://<tool>` 在 journal 里记的是 `write`，不是目标工具名**：底座 `packages/coding-agent/src/tools/xdev.ts` 的 `dispatchXdevTool()`（:427）用**同一个 toolCallId** 调 `executable.execute(toolCallId, …)`，所以 `tool_execution_start` / toolResult 都以调用方（write/read）名义落盘，目标工具名只活在结果的 `details.xdev.tool`（`XdevDispatch`，:91）。凡按 `toolName` 识别工具的代码（UI 渲染分支、host 配对识别）在 xd:// 路径下都会漏判：`ui-src/components/chat/ToolRow.tsx` 因此走 `isDeviceEvent` 渲染成「设备 · <名>」，`host/acp-refs.ts` 的 status 对识别必须额外认 `details.xdev?.tool`。**该字段只在 toolResult 上，`tool_execution_start` 时还不存在**——想在行创建时就按目标工具分类，只能自己 JSON.parse `args.content`；给这类调用改 `name` 会连带砍掉设备行的合并分组（`items.tsx` 的 `isDeviceEvent` 判定）。
-- **`host/translate.ts` 的 `toolArgsForUi()` 按 name 分派**：xd:// 调用落到兜底分支，UI 收到的 args 是 `{ path: "xd://<tool>", content: "<目标参数 JSON 串>" }`。**只改 name 而不重解参数，会让目标工具的渲染拿到全 undefined**（`ui-src/components/chat/ToolRow.tsx` 的 `deviceCallArgs()` 是既有的解包先例）。
+- **`host/translate-tool.ts` 的 `toolArgsForUi()` 按 name 分派**：xd:// 调用落到兜底分支，UI 收到的 args 是 `{ path: "xd://<tool>", content: "<目标参数 JSON 串>" }`。**只改 name 而不重解参数，会让目标工具的渲染拿到全 undefined**（`ui-src/components/chat/ToolRow.tsx` 的 `deviceCallArgs()` 是既有的解包先例）。
 - **诊断姿势**：`jq -r 'select(.customType=="tool_execution_start") | .data.toolName' <session>.jsonl | sort | uniq -c` 看工具分布；`grep -o '"path":"xd://[^"]*"' <session>.jsonl` 看设备调用面。
 
 ## GitHub Actions release workflow（2026-10-15，v0.1.0 首发）
 
 - **`tauri-action` 按仓库根 lockfile 猜包管理器，残留的 `pnpm-lock.yaml` 会让它选 pnpm**：本仓 2026-09 React 迁移期遗留过一个 `pnpm-lock.yaml`（bun 项目早已不用 pnpm），`tauri-action@v0` 检测到它就执行 `pnpm tauri build`——Windows runner 没装 pnpm 直接 `'pnpm' is not recognized`；macOS leg 表现为 action 自身 `Warning: Detected unsettled top-level await at .../tauri-action/v0/dist/index.js`（pnpm 分支 spawn 失败、promise 永不 settle）。两次 release 全红、且极易误诊为「tauri-action 版本坏了」。**修复 = 删掉非当前包管理器的 lockfile**；诊断入口是 `gh run view --log-failed` 里 grep `running pnpm`。
-- **Windows runner `core.autocrlf=true` 会把 LF 文件 checkout 成 CRLF**，任何「仓库文件 vs node_modules 原件按文本比对」的 CI 校验都会假性失败（实测 `build-host.ts` 的 `verifyPromptMirrors`：`host/prompts/*.md` 变 CRLF，SDK 内 LF 原件比对不等）。修复 = `.gitattributes` 全仓 `* text=auto eol=lf` + 二进制显式 `binary`；改完必须 `git add --renormalize .` 验证（本仓全 LF，renormalize 后应只有 .gitattributes 一个变化）。
+- **Windows runner `core.autocrlf=true` 会把 LF 文件 checkout 成 CRLF**，任何「仓库文件 vs node_modules 原件按文本比对」的 CI 校验都会假性失败（实测 `build-host.ts` 的 `verifyPromptMirrors`：`host/prompts/*.md` 变 CRLF，SDK 内 LF 原件比对不等）。修复 = `.gitattributes` 全仓 `* text=auto eol=lf` + 二进制显式 `binary`；改完必须 `git add --renormalize .` 验证（本仓全 LF，renormalize 后应只有 .gitattributes 一个变化）。**本机开发同理**：`git config --system --get core.autocrlf` 返回 `true` 时 `git checkout -- <path>` 恢复出的是 CRLF，任何断言「文件内容等于 `"a\nb\n"`」的冒烟都会假性失败——断言要比归一化后的内容，别比裸字节。
+
+## git CLI 的静默失败面（2026-10-18，对照 IntelliJ git4idea 逆向，BUG-085/086）
+
+本仓所有 git 调用已收敛到 `host/git.ts`（单一进程层：argv 形状、env、超时、读/写锁分级）。下面三条是收敛过程中实测踩到的，**共同点是都不报错**——退出码为 0、stderr 为空，只是结果不是你想要的。
+
+- **`rev-parse --path-format=absolute` 需要 git ≥ 2.31，旧版 git 把它原样吐回来**：`git rev-parse --path-format=absolute --git-common-dir` 在 git 2.28（本机实测版本）上 exit 0、stderr 空，stdout 是 `--path-format=absolute\n.git`——未知选项被当成 `rev-parse` 的位置参数回显了。上层拿它当路径 `dirname()`，于是 `primaryRoot` 变成字符串 `--path-format=absolute`，后续 `git worktree remove` 报 `cannot change to '--path-format=absolute'`。**没有版本门禁时，这类拼错/不支持的 flag 只会变成一个诡异的路径**。修法二选一：宿主探测 `git --version` 后按能力选参数，或干脆不用它——`--git-common-dir` 的相对输出用 `resolve(cwd, …)` 自己补绝对路径，任何 git 都对（现采用后者）。git4idea 对应物是 `GitExecutableDetector` + `GitVersion`，它在建连时就做版本比较，本仓尚未做（见 `docs/idea-git-analysis.md` 差距 #7）。
+- **`--short` 是人读输出，会把非 ASCII 路径做 C 风格引用 + 八进制转义**：`git status --short` 对 `中文文件名.txt` 给出 `"中文文件名.txt"`，解析器剥掉状态列后剩下的转义串既不能显示也不能当 pathspec 用。机器可读一律 `--porcelain`，再配 `-z`（NUL 分隔）彻底消除「路径里可能有换行/引号/反斜杠」的转义问题。git4idea `GitIndexStatusUtilKt` 用的正是 `--porcelain -z --no-renames`，并且把「记录长度不足 4 字符」当硬错误而不是兜底。
+- **`checkout --track <name>` 对本地已存在的分支不会失败**：它会新建一个同名短分支并让它追踪原分支，exit 0。用来实现「点远程分支 → DWIM 到本地跟踪分支」时，若判据是「短名里有没有 `/`」，本地分支 `feat/login-flow` 会被误判为远程，用户被静默放到新建的 `login-flow` 上。判据必须来自 refname 前缀（`refs/heads/` vs `refs/remotes/`），也就是一次 `for-each-ref --format='%(refname)\t%(objectname)\t%(HEAD)'` 能同时给出的东西——顺带第三字段 `%(HEAD)` 也是 detached HEAD 的判据。
+

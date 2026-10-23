@@ -18,8 +18,8 @@ export interface EventStamp {
 
 // ---------- Common payload shapes ----------
 
-/** Approval mode (host/host.ts validates three values) */
-export type ApprovalMode = "yolo" | "write" | "always-ask";
+/** Approval mode (host/rpc/settings.ts validates the base's four values) */
+export type ApprovalMode = "yolo" | "write" | "always-ask" | "always-ask-cached";
 
 /** Desktop env section (host/state.ts DesktopEnv) */
 export interface DesktopEnv {
@@ -89,6 +89,8 @@ export type SettingsPayload = SettingsSnapshot & {
   acpEnabled: boolean;
   acpConfig?: AcpConfig;
   sessionContextEnabled: boolean;
+  /** omp-desktop.json automations.agentTools: new sessions get automations_list/automations_manage (off by default) */
+  automationAgentEnabled?: boolean;
   keepaliveEnabled: boolean;
   keepaliveConfig?: KeepaliveConfig;
   hooksEnabled: boolean;
@@ -112,6 +114,22 @@ export type SettingsPayload = SettingsSnapshot & {
   // models are offered the `auto` thinking level. Off by default — each level
   // switch re-bills the whole prefix on Kimi; the providers-page switch.
   kimiAutoThinking?: boolean;
+  // omp-desktop.json autoReview.enabled (host/auto-review.ts): LLM tool-approval
+  // gate in uiCtx.select — low/medium verdicts approve unseen, deny/unavailable
+  // still show the human card. Written by the permission-mode menu.
+  autoReviewEnabled?: boolean;
+  // omp-desktop.json autoReview.offerSmartMode (host/auto-review.ts): whether the
+  // permission-mode menu offers the "smart approval" row. Experimental page
+  // switch; independent of the gate above. Unset falls back to it.
+  autoReviewOfferMode?: boolean;
+  // omp-desktop.json sessionTitles.refresh (host/session-titles.ts): regenerate
+  // the title after every settled turn (tiny-model call per turn; user-pinned
+  // titles are never overwritten). Experimental page switch.
+  sessionTitleRefresh?: boolean;
+  // omp-desktop.json sessionTitles.branchTitles (host/session-titles.ts): journal
+  // each title as a branchTitle custom entry on the active branch and mirror the
+  // branch's own title into the header on branch switch. Experimental page switch.
+  branchTitles?: boolean;
   // omp-desktop.json remote section (host/remote.ts): LAN remote-control
   // server config; the settings page's remote group reads/builds URLs from it
   remote?: RemoteConfigPayload;
@@ -123,8 +141,20 @@ export interface RemoteConfigPayload {
   port: number;
   /** 128-bit hex access key, full value (the settings page builds the copy-link URL from it) */
   key: string;
+  /** Show the session stats bar on narrow (phone) clients (default off) */
+  mobileStatsBar: boolean;
   /** Prebuilt http://<first LAN IPv4>:<port>/?t=<key>; omitted when no LAN IPv4 is available */
   url?: string;
+  /** Visiting devices (host/remote.ts RemoteDeviceRecord), newest first; omitted when empty */
+  devices?: RemoteDeviceEntry[];
+}
+
+/** One historical remote visitor shown on the settings page's device-history card */
+export interface RemoteDeviceEntry {
+  name: string;
+  ip: string;
+  /** Epoch ms of the most recent visit */
+  lastAt: number;
 }
 
 /** Model catalog entry (host/models.ts modelsPayload) */
@@ -245,11 +275,26 @@ export interface DirEntry {
 
 /** git status row (host/host.ts get_git_diff) */
 export interface GitStatusFile {
-  code: string; // XY two columns (whitespace stripped, "?" fallback)
+  /** Raw two-column porcelain XY, untrimmed: "??" untracked, " M" worktree-only, "UU" conflict. */
+  code: string;
   path: string;
   staged: string; // empty string = none
   unstaged: string; // empty string = none
+  /** Unmerged entry (UU/AA/DD/AU/UD/UA/DU): stage/unstage are refused on it. */
+  conflict?: boolean;
 }
+
+/**
+ * Mutating operation the repository is mid-way through (host/git.ts
+ * operationState). NORMAL means nothing is in flight.
+ */
+export type GitOperationState =
+  | "NORMAL"
+  | "REBASE"
+  | "MERGE"
+  | "CHERRY_PICK"
+  | "REVERT"
+  | "DETACHED_HEAD";
 
 /** Cross-file branch-family node (host/host.ts get_session_tree) */
 export interface SessionBranch {
@@ -383,7 +428,7 @@ export interface TurnUsage {
 /** On-wire shape of session entries (element of the messages frame; host/state.ts
  * re-exports this type, as does the UI-facing ui-src/types/frames.ts shim) */
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error" | "advisor" | "ttsr";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -410,6 +455,9 @@ export type TranscriptItem = {
   usage?: TurnUsage | null;
   entryId?: string;
   endMs?: number;
+  // Turn-final assistant text (stopReason "stop" on disk): a delivered output, not
+  // process narration — seal paths lift it out of the collapsed loop group
+  turnFinal?: boolean;
   // ---- bash rows ----
   running?: boolean;
   exitCode?: number | null;
@@ -423,7 +471,32 @@ export type TranscriptItem = {
   command?: string;
   // ---- user image attachments ----
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
+  /** Set on a user row the scheduler delivered into this session (automation run), never on typed input */
+  automation?: { id: string; title: string };
+  // ---- advisor rows (role "advisor": one delivered advice batch, position = injection point) ----
+  notes?: AdvisorNote[];
+  // ---- ttsr rows (role "ttsr": which rules a TTSR rewound-and-injected at this point) ----
+  rules?: TtsrRule[];
 };
+
+/** One TTSR rule behind an injection notice (base Rule, narrowed to the fields a row shows) */
+export interface TtsrRule {
+  name: string;
+  /** Rule description, falling back to its body (same choice as the TUI notice) */
+  description?: string;
+}
+
+/** One advisory note (base pi-tui `AdvisorNote`, advisor/advise-tool.ts) */
+export type AdvisorSeverity = "nit" | "concern" | "blocker";
+
+export interface AdvisorNote {
+  note: string;
+  severity?: AdvisorSeverity;
+  /** Named advisor that produced the note; absent for the default advisor */
+  advisor?: string;
+  /** Primary turns elapsed before the batched delivery */
+  turnsAgo?: number;
+}
 
 /** Queued message view element (host/host.ts sendQueued, via base toRestoredQueuedMessage) */
 export interface QueuedMessage {
@@ -435,7 +508,7 @@ export interface QueuedMessage {
 /** Narrow event-stream event (host/translate.ts UiEvent; kind-discriminated body of event/subagent_event frames) */
 export type UiEvent =
   | { kind: "turn_start" }
-  | { kind: "user_message"; text: string; automation?: { id: string; title: string } } // automation prompt echo (no local composer send to draw the bubble)
+  | { kind: "user_message"; text: string; images?: Array<{ type: "image"; data: string; mimeType: string }>; automation?: { id: string; title: string } } // host-side prompt echo: every attached UI draws the bubble (cross-channel send); automation variant has no local composer send
   | { kind: "text_delta"; text: string }
   | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
   | { kind: "thinking_delta"; text: string }
@@ -452,9 +525,12 @@ export type UiEvent =
       details?: unknown;
       diffContent?: string;
     }
-  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean }
+  | { kind: "tool_details"; name: string; toolCallId?: string; details?: unknown } // in-flight refresh from a returned async tool (task spawn progress); carries no terminal semantics
+  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean; final?: boolean } // final: this turn ended stopReason "stop" — its settled text is a delivered output (loop-group lift marker)
   | { kind: "thinking_level"; configured?: string; resolved?: string }
   | { kind: "mention"; files: string[] }
+  | { kind: "advisor"; notes: AdvisorNote[] } // one delivered advice batch (base customType "advisor"); rendered at its injection point
+  | { kind: "ttsr"; rules: TtsrRule[] } // a TTSR rewind injected these rules here (read-only row; base event ttsr_triggered)
   | { kind: "error"; text: string }; // provider/request failure (quota, auth, transport): rendered as a standalone row
 
 /** Whole-session stats (expanded fields of the session_stats frame, host/session-lifecycle.ts buildSessionStats) */
@@ -470,6 +546,11 @@ export interface SessionStatsPayload {
   cacheHitRate: number;
   /** Prompt-cache invalidation count for the session (host/session-lifecycle.ts buildSessionStats) */
   cacheBreaks: number;
+  /** Uncached input tokens the most recent break re-billed (host/session-snapshot.ts scanCacheBreaks).
+      The stats bar flashes this for 3s in place of the row; 0 when no break happened yet. */
+  cacheMissTokens: number;
+  /** USD list price of {@link cacheMissTokens}; absent when the model catalog has no input rate. */
+  cacheMissUsd?: number;
   /** Context compactions this session ran (base compaction entries + ACP compaction blocks).
       Their cacheRead drop is excluded from {@link cacheBreaks} (host/session-snapshot.ts countCacheBreaks). */
   compactions: number;
@@ -554,6 +635,7 @@ export interface HookAssetItem {
   name: string;
   path: string;
   phase: "pre" | "post" | string;
+  event?: string;
   tool?: string;
   scope?: "profile" | "project" | string;
   cwd?: string;

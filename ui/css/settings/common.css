@@ -437,6 +437,19 @@
 
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
 
+/* .inp carries a global min-width:240px, which clamps narrower widths set per page
+   (inline style or page class); min-width always wins over width. */
+.set-page .inp { min-width: 0; }
+
+/* Narrow windows: .set-page is capped at 50vw, so at the 700px minimum window width the
+   row is ~318px of content — a fixed-width control (320px string input) leaves no room
+   for the label column, which then collapses to one character per line. Stack the control
+   under the label instead and let the control shrink with the row. */
+@media (max-width: 1000px) {
+  .set-page .srow { flex-direction: column; align-items: stretch; gap: 8px; }
+  .set-page .srow-ctl { justify-content: flex-start; }
+}
+
 /* schema warning row (.srow-tx span has higher specificity, so .srow-tx .srow-wn overrides color/font-size) */
 .srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
 
@@ -590,6 +603,26 @@
 
 .set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
 
+/* ── Page-level asset editor (skills / MCP / hooks) ──
+   Create and edit replace the whole page body with the editor window: back button +
+   title/subtitle head, then a single form card holding the page's own field markup
+   (.mcp-form-* / .inp / textareas). Head actions use the small .save-btn family
+   (danger variant for delete); the form card carries the padding the inline-expansion
+   body used to provide. */
+.set-edit-head { display: flex; align-items: flex-start; gap: 12px; }
+
+.set-edit-head > .save-btn { flex: none; }
+
+.set-edit-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.set-edit-title { display: flex; align-items: center; gap: 10px; font-size: calc(var(--ui-fs) * 1.5); font-weight: 500; line-height: 1.35; }
+
+.set-edit-sub { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.set-edit-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.set-card.set-edit-card { margin-top: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+
 /* Voice sections (InteractionPage VoiceSection): language code input width + the
    dictation test button's live-recording look */
 .voice-lang-inp { width: 110px; }
@@ -611,3 +644,20 @@
   .stag { box-shadow: inset 0 0 0 .33px var(--line); }
   .stag.on { box-shadow: inset 0 0 0 .33px var(--dim); }
 }
+
+/* Remote device-history list (RemotePage): the row stacks instead of using the right-hand
+   control column — title/desc on top, then the visitor list spanning the whole card width */
+.srow.remote-hist { flex-direction: column; align-items: stretch; gap: 10px; }
+
+.remote-devices { display: flex; flex-direction: column; }
+
+.remote-device {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-top: 1px solid var(--line-soft);
+}
+
+.remote-device:first-child { border-top: 0; padding-top: 0; }
+
+.remote-device > span:first-child { font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.remote-device > span:last-child { flex: none; }

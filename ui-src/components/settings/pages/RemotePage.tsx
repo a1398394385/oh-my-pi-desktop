@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
+import { copyText, fmtAgo } from "../../main/sidebar/util";
 import { Toggle, confirmDialog } from "../common";
 
 export default function RemotePage() {
@@ -20,6 +21,11 @@ export default function RemotePage() {
   const error = cfg?.error ?? undefined;
   const key = cfg?.key ?? hostRemote?.key ?? "";
   const url = cfg?.url ?? hostRemote?.url ?? "";
+  // Device history only rides the settings frame (remote_config replies stay config-only)
+  const devices = hostRemote?.devices ?? [];
+  // Phone display preference: only the settings frame carries it (the remote_config reply
+  // stays enabled/port/error), so it reads through hostRemote alone. Default off.
+  const mobileStatsBar = hostRemote?.mobileStatsBar === true;
 
   // Port draft: follows the authoritative value until the user edits it (same push-back
   // pattern as the keepalive rows' KaInput)
@@ -36,7 +42,8 @@ export default function RemotePage() {
 
   const copyLink = () => {
     if (!url) return;
-    void navigator.clipboard.writeText(url).then(() =>
+    // WKWebView rejects clipboard.writeText without user activation; copyText has the execCommand fallback
+    void copyText(url).then(() =>
       useAppStore.getState().toast(t("settingsPage.remote.keyCopied")),
     );
   };
@@ -81,7 +88,7 @@ export default function RemotePage() {
           <div className="srow-ctl">
             <input
               className="inp"
-              style={{ width: 90 }}
+              style={{ width: 90, minWidth: 0 }}
               inputMode="numeric"
               value={portDraft}
               disabled={!known}
@@ -113,7 +120,21 @@ export default function RemotePage() {
           </div>
         </div>
 
-        {/* 4. Service status: listening / disabled, or the last start-rebind error */}
+        {/* 4. Phone stats bar: narrow clients hide the session stats bar under the composer
+            unless this is on (the switch is a client display preference, not server state) */}
+        <div className="srow set-row">
+          <div className="srow-tx">
+            <b>{t("settingsPage.remote.mobileStatsBarTitle")}</b>
+            <span>{t("settingsPage.remote.mobileStatsBarDesc")}</span>
+          </div>
+          <Toggle
+            on={mobileStatsBar}
+            disabled={!known}
+            onChange={() => send({ type: "set_remote_config", mobileStatsBar: !mobileStatsBar })}
+          />
+        </div>
+
+        {/* 5. Service status: listening / disabled, or the last start-rebind error */}
         <div className="srow set-row">
           <div className="srow-tx">
             <b>{t("settingsPage.remote.statusTitle")}</b>
@@ -130,6 +151,30 @@ export default function RemotePage() {
                     : t("settingsPage.remote.statusStopped")}
             </span>
           </div>
+        </div>
+
+        {/* 6. Device history last: a growing list, so everything above stays put while it grows.
+            The list extends downward inside the row (not into the control column), so long
+            device names get the full card width instead of a squeezed 55% strip. */}
+        <div className="srow set-row remote-hist">
+          <div className="srow-tx">
+            <b>{t("settingsPage.remote.devicesTitle")}</b>
+            <span>{t("settingsPage.remote.devicesDesc")}</span>
+          </div>
+          {devices.length === 0 ? (
+            <span className="text-faint">{t("settingsPage.remote.devicesEmpty")}</span>
+          ) : (
+            <div className="remote-devices">
+              {devices.map((d) => (
+                <div key={`${d.name} ${d.ip}`} className="remote-device">
+                  <span>{d.name}</span>
+                  <span className="text-faint">
+                    {d.ip} · {fmtAgo(new Date(d.lastAt).toISOString())}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -154,6 +154,8 @@ svg { vertical-align: middle; }
 /* .mi may be a <button> (e.g. FilePage's fv-menu): reset native chrome so it renders like the div-based menu rows */
 .menu .mi {
   display: flex; align-items: center; gap: 7px;
+  /* full width: <button> defaults to shrink-to-fit (highlight would hug the text) while div rows already fill the menu */
+  width: 100%; box-sizing: border-box;
   padding: 6px 9px; border-radius: 6px;
   font-size: var(--ui-fs-base); color: var(--text); cursor: pointer;
   border: none; background: none; appearance: none; text-align: left;

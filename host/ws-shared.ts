@@ -3,20 +3,22 @@
 // (host/remote.ts). Protocol behavior is identical for both (spec §3.3); the
 // only distinguishing input is ws.data.remote, stamped at upgrade time in
 // remote.ts and used by dispatchRpc for the write denylist.
-import { H, HOST_INSTANCE_ID, activeWs, activeRemoteWs, sessions } from "./state.ts";
+import { H, HOST_INSTANCE_ID, activeWs, activeRemoteWs, eachUiWs, sessions } from "./state.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload } from "./models.ts";
 import { settingsFrame } from "./frames.ts";
 import { dispatchRpc } from "./rpc/index.ts";
+import { detachEntryUi } from "./session-entry-core.ts";
+import { recordRemoteDevice } from "./remote.ts";
+import { browserMirrorOnWsOpen, browserMirrorOnWsClose } from "./browser-mirror.ts";
 import { settingsGet } from "./settings-compat.ts";
-import { browserMirrorOnWsClose, browserMirrorOnWsOpen } from "./browser-mirror.ts";
 import { safeStderr } from "./stderr.ts";
 
 /** Structural minimum both servers' sockets satisfy (kept loose so one handler set serves both serve() instantiations). */
 export interface HostWs {
   send(data: string): unknown;
   close(code?: number, reason?: string): void;
-  data?: { sessionId?: string | null; remote?: boolean };
+  data?: { sessionId?: string | null; remote?: boolean; meta?: { ua: string; ip: string } };
 }
 
 export function makeWsHandlers(profileReady: Promise<unknown>): Bun.WebSocketHandler<unknown> {
@@ -38,6 +40,11 @@ export function makeWsHandlers(profileReady: Promise<unknown>): Bun.WebSocketHan
         }
       }
       slot.value = ws; // close clears only its own channel's slot
+      if (remote && ws.data?.meta && recordRemoteDevice(ws.data.meta)) {
+        // Device history changed: refresh the settings page card on every connected UI
+        const data = JSON.stringify({ type: "settings", settings: settingsFrame() });
+        eachUiWs((ui) => ui.send(data));
+      }
       browserMirrorOnWsOpen(ws);
       safeStderr(hostI18n.t("errors.host.wsClientReady", { ms: performance.now().toFixed(0) }));
       void profileReady.then(
@@ -95,13 +102,7 @@ export function makeWsHandlers(profileReady: Promise<unknown>): Bun.WebSocketHan
       // Per-session detach: drop the socket from every pool entry it watches
       // (its subagent view goes with it); the last watcher leaving tears the
       // entry's core subscriptions down via entry.unsubscribe.
-      for (const entry of sessions.values()) {
-        if (!entry.uiSockets.has(ws)) continue;
-        entry.uiSockets.delete(ws);
-        entry.uiSubViews.get(ws)?.unsubscribe();
-        entry.uiSubViews.delete(ws);
-        if (entry.uiSockets.size === 0) entry.unsubscribe();
-      }
+      for (const entry of sessions.values()) detachEntryUi(ws, entry);
       browserMirrorOnWsClose(ws);
     },
   };

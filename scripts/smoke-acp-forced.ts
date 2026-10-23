@@ -32,10 +32,11 @@
 // streams (probe-verified: the queue stores the resolved ToolChoice, and the
 // mock records it in options.toolChoice). Production faces never need this.
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-forced.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-forced.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ import type { AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
@@ -378,7 +379,7 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 	});
 	const calls = mock.calls as unknown as MockCall[];
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const sessionDir = dirname(sessionFile);
 	return { session, sessionManager, state, settings, calls, forceCalls, sessionDir };
 }
@@ -463,7 +464,14 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(e2e.sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwd, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: D e2e — ultimatum ignored -> named tool_choice on the next request -> forced strong compress persisted; sequence advanced");
 }
 
@@ -542,7 +550,14 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(e2e.sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwd, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: E e2e — ignored force degrades; entry rejects; ephemeral/projection off; compaction restored; journal untouched");
 }
 
@@ -584,7 +599,14 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(e2e.sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwd, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: F e2e — API error on the forced request degrades; degraded session keeps serving verbatim");
 }
 
@@ -666,7 +688,14 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		rmSync(dir, { recursive: true, force: true });
 		assert.ok(!existsSync(dir), "profile-side session dir fully removed");
 	}
-	rmSync(cwd, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: G rebuild wiring — compaction entry degrades at assembly (state frozen, base chain restored); healthy journal adopted");
 }
 

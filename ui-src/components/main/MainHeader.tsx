@@ -7,12 +7,14 @@ import BranchMenu from "../welcome/BranchMenu";
 import SessCtxMenu from "./sidebar/SessCtxMenu";
 import type { SessionInfo } from "./sidebar/SessionRow";
 import { IS_WINDOWS, MOD } from "../../platform";
+import { termGroupKey } from "./right/termTabs";
 
 // Middle-column topbar: sidebar toggle + session title + project/branch chips
 // + right panel toggle (the old index.html chat-head structure)
 export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggleSidebar: () => void; onToggleRight: () => void }) {
   const { t } = useTranslation();
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
+  const gitManage = useAppStore((s) => s.gitManage);
   const activePath = useAppStore((s) => s.activePath);
   const session = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const diskProjects = useAppStore((s) => s.diskProjects);
@@ -20,18 +22,31 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   const headerGit = useAppStore((s) => s.headerGit);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const rightCollapsed = useAppStore((s) => s.rightCollapsed);
+  const bottomTermOpen = useAppStore((s) => s.bottomTermOpen[termGroupKey()] === true);
   const narrow = useAppStore((s) => s.narrow);
   const setMobileCol = useAppStore((s) => s.setMobileCol);
+  // Collab entry state: the open session's live-sharing role (button tint) + dialog opener
+  const collabSessionId = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.sessionId : undefined));
+  const collabState = useAppStore((s) => (collabSessionId ? s.collabStates.get(collabSessionId) : undefined));
+  const collabOpenDialog = useAppStore((s) => s.collabOpenDialog);
+  // Header advisor toggle state (advisor_mode frame; same per-session seam as the composer's computer icon)
+  const advisorMode = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.advisorMode ?? false : false));
   const isSubagent = Boolean(session?.isSubagent);
-  const title = isCreatingNew
-    ? t("misc.newTask")
-    : session
-      ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
-      : t("misc.pickSession");
+  const title = gitManage
+    ? t("gitPage.title")
+    : isCreatingNew
+      ? t("misc.newTask")
+      : session
+        ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
+        : t("misc.pickSession");
   const cwd = session?.cwd;
   // Remote workspace stubs show their host:path label instead of the stub dir basename
-  const projectName = cwd ? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd) : null;
-  const git = headerGit && headerGit.cwd === cwd ? headerGit : null;
+  const projectName = gitManage
+    ? pathBase(gitManage)
+    : cwd
+      ? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd)
+      : null;
+  const git = !gitManage && headerGit && headerGit.cwd === cwd ? headerGit : null;
   // null = closed; when open, holds the trigger chip's viewport coords (menu pops upward)
   const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
   // "⋯" session menu (same items as the sidebar row right-click): null = closed, otherwise the
@@ -48,7 +63,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
     ? diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath) ??
       archivedSessions.find((x) => x.path === activePath)
     : undefined;
-  const ctxEntry: SessionInfo | null = activePath && !isCreatingNew && !isSubagent
+  const ctxEntry: SessionInfo | null = activePath && !isCreatingNew && !isSubagent && !gitManage
     ? {
         path: activePath,
         id: diskRow?.id ?? session?.sessionId ?? "",
@@ -116,8 +131,8 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           {isSubagent && <span className="subagent-head-badge">{t("chat.subagentBadge")}</span>}
         </span>
       )}
-      {projectName && !isCreatingNew && (
-        <span className="head-chip" title={cwd ?? undefined}>{projectName}</span>
+      {projectName && !isCreatingNew && !gitManage && (
+        <span className="head-chip" title={cwd ?? undefined}><span>{projectName}</span></span>
       )}
       {git?.isGit && git.current && !isCreatingNew && (
         <button
@@ -145,6 +160,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           branches={git.branches}
           remotes={git.remotes}
           current={git.current ?? ""}
+          detached={git.detached}
           cwd={git.cwd}
         />
       )}
@@ -174,7 +190,46 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           onRename={() => setRenaming(true)}
         />
       )}
+      {/* Collab entry (host/join/leave live-sharing for the open session); tinted while a room is live */}
+      {ctxEntry && !renaming && (
+        <button
+          type="button"
+          className="icon-btn"
+          title={t("collab.entry")}
+          style={collabState?.role ? { color: "var(--green)" } : undefined}
+          onClick={() => collabOpenDialog()}
+        >
+          <Icon name="globe" size={15} />
+        </button>
+      )}
+      {/* Advisor toggle (right of the collab entry): lit like the composer's computer icon when
+          the per-session advisor overlay is on; hidden on the new-session page / subagents
+          (ctxEntry is null there — the base pins advisor off for subagents) */}
+      {ctxEntry && !renaming && session && (
+        <button
+          type="button"
+          className={"icon-btn advisor-toggle" + (advisorMode ? " on" : "")}
+          title={advisorMode ? t("chat.advisorOnTitle") : t("chat.advisorOffTitle")}
+          aria-pressed={advisorMode}
+          onClick={() => send({ type: "set_advisor_mode", sessionId: session.sessionId, enabled: !advisorMode })}
+        >
+          <Icon name="eye" size={15} />
+        </button>
+      )}
       <span className="sp"></span>
+      {/* Terminal dock toggle (⌘/Ctrl+J): parked in the top-right corner, left of the
+          right-panel button so the two panel entries stay adjacent */}
+      {!narrow && (
+        <button
+          type="button"
+          className={"icon-btn dock-toggle" + (bottomTermOpen ? " on" : "")}
+          title={t("misc.bottomTerminalToggle", { mod: MOD })}
+          aria-pressed={bottomTermOpen}
+          onClick={() => useAppStore.getState().toggleBottomTerm(termGroupKey())}
+        >
+          <Icon name="termBox" size={15} />
+        </button>
+      )}
       {narrow ? (
         <button className="icon-btn" id="panelToggle" title={t("remote.openPanel")} onClick={() => setMobileCol("right")}>
           <Icon name="panelRight" />
@@ -209,7 +264,7 @@ function HeaderTitleRename({ entry, onDone }: { entry: SessionInfo; onDone: () =
     done = true;
     const title = ref.current!.value.trim();
     if (save && title && title !== (entry.title || "")) {
-      send({ type: "rename_session", sessionId: entry.id, title });
+      send({ type: "rename_session", path: entry.path, title });
     }
     onDone();
   };

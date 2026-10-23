@@ -113,6 +113,9 @@ const dbg = (window as unknown as {
         rightTab: string | null;
         openHub(): void;
         closeHub(): void;
+        gitManage: string | null;
+        openGitManage(cwd: string): void;
+        uiPrefs: { expandToolOutput: boolean };
         send(msg: Record<string, unknown>): void;
       };
       setState(p: Record<string, unknown>): void;
@@ -183,6 +186,23 @@ await sleep(100);
 ok("有文字连按两次 Esc 触发清空输入框", clearedByEsc);
 
 dbg.useAppStore.setState({ setComposerValue: originalSetComposerValue, pendingFiles: [] });
+
+// 3.5 Git manage page: its Esc only closes the page on a second press — it must not fall through
+// to the message-page routing (tree / composer clear / abort), and other message-page shortcuts
+// must stay inert there
+dbg.useAppStore.getState().openGitManage("/tmp/git-page-smoke");
+await sleep(80);
+ok("git 管理页渲染（#gitPage）", !!$("#gitPage"));
+pressEsc();
+await sleep(60);
+ok("git 管理页单击 Esc 不触发消息页路由", dbg.useAppStore.getState().gitManage === "/tmp/git-page-smoke" && dbg.useAppStore.getState().mainViewMode === "chat");
+const expandBefore = dbg.useAppStore.getState().uiPrefs.expandToolOutput;
+document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "o", code: "KeyO", ctrlKey: true, bubbles: true }));
+await sleep(60);
+ok("git 管理页 Ctrl+O 不切换工具展开（消息页快捷键失效）", dbg.useAppStore.getState().uiPrefs.expandToolOutput === expandBefore);
+pressEsc();
+await sleep(80);
+ok("git 管理页连按两次 Esc 退出", dbg.useAppStore.getState().gitManage === null);
 
 // 4. In tree mode, switching sessions (hideWelcomeScreen / activateSession) resets to chat mode
 dbg.useAppStore.setState({ mainViewMode: "tree" });
@@ -324,6 +344,50 @@ await sleep(80);
 const bar2 = $("#statsBar")?.textContent ?? "";
 await sleep(1300);
 ok("收尾后时长冻结在宿主上报值", ($("#statsBar")?.textContent ?? "") === bar2 && bar2.includes("1分5秒"));
+
+// Cost cell detail: after the total, parens list subagent then advisor spend, " | " separated; zero parts hidden
+const costStats = {
+  tokens: { input: 566_989, output: 474_112, cacheRead: 60_293_120, cacheWrite: 0 },
+  cacheHitRate: 0.99,
+  activeMs: 65_000,
+  receivedAt: Date.now(),
+  tokenSpeed: 42.5,
+  avgTtft: 350,
+};
+patchPreviewSession({
+  streaming: true,
+  stats: { ...costStats, cost: 1.5, subagentCost: 0.5, advisorCost: 0.25 },
+  subagents: new Map([["sub-1", { advisor: false, usage: { cost: 0.5 } }]]),
+});
+await sleep(600);
+ok("成本格显示总量加子代理/顾问明细（竖线隔开）", ($("#statsBar")?.textContent ?? "").includes("$1.7500 ($0.5000 | $0.2500)"));
+patchPreviewSession({ stats: { ...costStats, cost: 1.5, subagentCost: 0, advisorCost: 0.25 }, subagents: new Map() });
+await sleep(600);
+ok("仅顾问有花费时括号只含顾问明细", ($("#statsBar")?.textContent ?? "").includes("$1.7500 ($0.2500)"));
+patchPreviewSession({ stats: { ...costStats, cost: 0, subagentCost: 0, advisorCost: 0 }, subagents: new Map() });
+await sleep(600);
+ok("无任何花费时成本格不渲染", !($("#statsBar")?.textContent ?? "").includes("$"));
+patchPreviewSession({ streaming: false });
+await sleep(80);
+
+// advisor blocker row: collapsed by default, click header to expand, click again to collapse
+patchPreviewSession({
+  items: [
+    { role: "user", text: "检查一下" },
+    { role: "advisor", text: "", notes: [{ note: "部署脚本缺少回滚步骤", severity: "blocker", advisor: "安全顾问", turnsAgo: 0 }] },
+  ],
+});
+await sleep(200);
+const advInline = document.querySelector(".adv-inline");
+ok("advisor blocker 行渲染且默认折叠", !!advInline && !advInline.classList.contains("open") && !advInline.querySelector(".adv-tx"));
+advInline?.querySelector(".adv-inline-head")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await sleep(100);
+ok("点击头部后展开正文", !!advInline?.classList.contains("open") && (advInline.querySelector(".adv-tx")?.textContent ?? "").includes("部署脚本缺少回滚步骤"));
+advInline?.querySelector(".adv-inline-head")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await sleep(100);
+ok("再次点击重新折叠", !!advInline && !advInline.classList.contains("open") && !advInline.querySelector(".adv-tx"));
+patchPreviewSession({ items: [] });
+await sleep(80);
 
 // 10. Sidebar activity bump on message send (regression: a resumed historical session kept
 //     showing the previous run's end time for the whole loop — the list refreshed only at
@@ -494,6 +558,31 @@ pressKey("Enter");
 await sleep(50);
 ok("回车选中模型并关闭菜单", !$("#modelMenu") && sentModelMsg?.type === "set_model" && sentModelMsg?.model === "anthropic/claude-x" && sentModelMsg?.role === undefined);
 dbg.useAppStore.setState({ send: origSend, menuSignal: null });
+
+// Pool-lock regression: the host refuses both actions while a session runs (archiving
+// evicts the session from the pool, ejecting would tear down a live session), so the
+// row's archive / eject buttons must render disabled instead of bouncing an error.
+const lockSessions = new Map(dbg.useAppStore.getState().openSessions);
+lockSessions.set("/lock.json", { ...mkSession("/lock.json")[1], sessionId: "lock-pool-uuid" });
+dbg.useAppStore.setState({
+  openSessions: lockSessions,
+  diskProjects: [{
+    cwd: "/path/to/lock",
+    sessions: [{ id: "lock-disk-id", path: "/lock.json", title: "锁定的会话", modified: new Date().toISOString(), cwd: "/path/to/lock", archived: false }],
+  }],
+  allProjects: ["/path/to/lock"],
+  expandedProjects: new Set(["/path/to/lock"]),
+  viewMode: "project",
+});
+await sleep(100);
+const lockRowBtns = () => Array.from(document.querySelector('.task[data-path="/lock.json"]')?.querySelectorAll(".tarchive") ?? []) as HTMLButtonElement[];
+ok("池内会话行渲染归档与移出两个按钮", lockRowBtns().length === 2);
+ok("空闲时归档与移出按钮可点", lockRowBtns().length === 2 && lockRowBtns().every((b) => !b.disabled));
+const runningLock = new Map(dbg.useAppStore.getState().openSessions);
+runningLock.set("/lock.json", { ...runningLock.get("/lock.json"), streaming: true });
+dbg.useAppStore.setState({ openSessions: runningLock });
+await sleep(100);
+ok("运行中归档与移出按钮均置灰（disabled）", lockRowBtns().length === 2 && lockRowBtns().every((b) => b.disabled));
 
 let fail = 0;
 for (const [mark, name] of asserts) {

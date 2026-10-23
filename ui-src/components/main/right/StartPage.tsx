@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../../store";
 import Icon from "../../../Icon";
 import { TAB_META, openRightTab } from "./tabs";
+import { openNewTermTab } from "./termTabs";
 
 export default function StartPage() {
   const { t } = useTranslation();
@@ -25,7 +26,7 @@ export default function StartPage() {
               key={name}
               className={"rt-item" + (off ? " off" : "")}
               title={off ? t("right.notGitRepo") : undefined}
-              onClick={off ? undefined : () => openRightTab(name)}
+              onClick={off ? undefined : () => { if (name === "terminal") openNewTermTab(); else openRightTab(name); }}
             >
               <span className="rt-item-ic">
                 <Icon name={meta.icon} size={15} />

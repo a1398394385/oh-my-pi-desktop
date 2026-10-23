@@ -103,6 +103,10 @@ export default function GitDiffPage() {
 
   const busy = !!gitBusy;
   const hasStaged = gitDiffCache.files.some((f) => f.staged);
+  const opState = gitDiffCache.state;
+  // Unstage/discard/branch-switch are refused host-side while an operation is
+  // open; hiding them here keeps the row honest about what will actually work.
+  const opLocked = opState !== "NORMAL" && opState !== "DETACHED_HEAD";
   // Discard is destructive: goes through a confirm (cwd taken from activeOpen at initiation,
   // aligned with the old gitCwd semantics)
   const onDiscard = (f: GitFileEntry) => {
@@ -124,6 +128,15 @@ export default function GitDiffPage() {
 
   return (
     <>
+      {/* In-flight operation banner: a rebase/merge/cherry-pick leaves the repo half-finished,
+          where unstage/discard/branch-switch silently do the wrong thing. Naming it is what
+          makes the host's refusal legible instead of mysterious. */}
+      {opState !== "NORMAL" && opState !== "DETACHED_HEAD" && (
+        <div className="gd-opstate">
+          <Icon name="warning" size={13} />
+          <span>{t(`right.gitOpState.${opState}` as any)}</span>
+        </div>
+      )}
       {/* Toolbar: commit message input (value kept in rightState.commitMsg across repaints) + commit (all staged) + push */}
       <div className="flex items-center gap-1.5 pt-0.5 pb-2">
         <input
@@ -213,6 +226,9 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
   const { t } = useTranslation();
   const gitBusy = useGitBusy();
   const busy = !!gitBusy;
+  // Unstage/discard/branch-switch are refused host-side while an operation is
+  // open; hiding them keeps the row honest about what will actually work.
+  const opLocked = useAppStore((s) => s.gitDiffCache.state !== "NORMAL" && s.gitDiffCache.state !== "DETACHED_HEAD");
   const cwd = () => activeOpen()?.cwd; // cwd resolution aligned with refreshGitDiff (activeOpen().cwd)
   // The pulse flag is read via getState at render (not subscribed): setting it rides the
   // expandedDirs write driving this render; the silent macrotask reset triggers no
@@ -229,9 +245,10 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
         if (s) requestFileDiff(s, f.path);
       }}
     >
-      <span className={"gd-badge " + badgeClass(f.code)}>
-        {f.code.includes("A") || f.code === "?" ? "A" : f.code.includes("D") ? "D" : "M"}
-      </span>
+      {/* Stage stays enabled on a conflict: `git add` is how you mark it resolved.
+          Unstage/discard are refused host-side mid-operation and are hidden rather
+          than left to fail with a raw git error. */}
+      <span className={"gd-badge " + badgeClass(f.code, !!f.conflict)}>{badgeLetter(f.code, !!f.conflict)}</span>
       <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{pathBase(displayPath)}</span>
       <span className="ml-auto flex-none inline-flex items-center gap-0.5 opacity-0 transition-opacity duration-[var(--dur-snap)] ease-[var(--swift)] group-hover:opacity-100 focus-within:opacity-100">
         {f.unstaged && (
@@ -250,7 +267,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
             <Icon name="stage" />
           </button>
         )}
-        {f.staged && (
+        {!opLocked && f.staged && (
           <button
             className="gd-act"
             title={t("right.unstage")}
@@ -266,6 +283,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
             <Icon name="unstage" />
           </button>
         )}
+        {!opLocked && (
         <button
           className="gd-act danger"
           title={t("right.discardForever")}
@@ -277,6 +295,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
         >
           <Icon name="discard" />
         </button>
+        )}
       </span>
     </div>
   );
@@ -332,10 +351,35 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
   return <>{rows}</>;
 }
 
-function badgeClass(code: string): string {
-  if (code.includes("A") || code === "?") return "add";
-  if (code.includes("D")) return "del";
-  return "mod";
+// Porcelain XY, read by column: X is the index/staged state, Y the worktree
+// state. The old version tested `code.includes("A")` / `=== "?"` against a
+// trimmed 2-char string, so "??" (untracked) never matched "?" and every new
+// file rendered as "M". Untracked is a new file by definition; a conflict gets
+// its own letter because neither column means anything on its own there.
+function primaryStatus(code: string, conflict: boolean): string {
+  if (conflict) return "C";
+  if (code === "??" || code === "!!") return "A";
+  const x = code[0] ?? " ";
+  if (x !== " ") return x;
+  const y = code[1] ?? " ";
+  return y === " " ? "M" : y;
+}
+
+function badgeLetter(code: string, conflict: boolean): string {
+  return primaryStatus(code, conflict);
+}
+
+function badgeClass(code: string, conflict: boolean): string {
+  switch (primaryStatus(code, conflict)) {
+    case "A":
+      return "add";
+    case "D":
+      return "del";
+    case "C":
+      return "conflict";
+    default:
+      return "mod";
+  }
 }
 
 // Paths → directory tree (ordered dir Map + file arrays)

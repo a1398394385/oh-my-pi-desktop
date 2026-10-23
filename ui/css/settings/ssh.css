@@ -1,0 +1,26 @@
+/* SSH hosts settings page (SshPage.tsx). Reuses the shared settings language
+   (.set-card/.set-edit-card/.srow.mem-row/.inp/.add-btn/.save-btn); only the form
+   grid and the probe status line are page-specific. */
+
+/* Group heading with the page-level add button riding the same line */
+.set-group-tt.ssh-head { display: flex; align-items: center; justify-content: space-between; }
+
+/* Editor form: two-column grid for the short fields (the .set-edit-card supplies padding) */
+.ssh-form { display: grid; gap: 10px; }
+
+.ssh-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.ssh-field > span { font-size: var(--ui-fs-sm); color: var(--dim); }
+
+.ssh-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.ssh-form-err { font-size: var(--ui-fs-sm); color: var(--err); }
+
+/* Probe verdict at the card foot (the head carries delete/test/save) */
+.ssh-status-row { display: flex; align-items: center; gap: 8px; }
+
+.ssh-status { flex: 1; min-width: 0; font-size: var(--ui-fs-sm); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+
+.ssh-status[data-ok="true"] { color: var(--green); }
+
+.ssh-status[data-ok="false"] { color: var(--err); }

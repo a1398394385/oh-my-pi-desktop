@@ -8,22 +8,27 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { lookupSetting } from "../bootstrap.ts";
 import { logger } from "@oh-my-pi/pi-utils";
 import { listPhysicalDisplays, reconcileComputerDisplay } from "../computer-display.ts";
+import { setAdvisorMode } from "../advisor-mode.ts";
 import { createDesktopSession } from "@oh-my-pi/pi-natives/desktop";
 import type { DesktopSession } from "@oh-my-pi/pi-natives";
-import { H, sessions, settleApprovalResponse, type DesktopEnv } from "../state.ts";
-import { rebuildScopedModels, settingsSnapshot } from "../models.ts";
-import { settingsFrame, modelsFrame } from "../frames.ts";
+import { H, sessions, eachUiWs, settleApprovalResponse, type DesktopEnv } from "../state.ts";
+import { rebuildScopedModels } from "../models.ts";
+import { settingsFrame, modelsFrame, pushSettings } from "../frames.ts";
 import {
   writeAcpEnabled,
+  writeAutomationAgentEnabled,
   writeSessionContextEnabled,
   applyProfile,
   applySleepPrevention,
   applyDesktopEnv,
 } from "../profile.ts";
 import { readDesktopSection, writeDesktopSection } from "../desktop-json.ts";
-import { listAgentAssets, writeHooksEnabled, writePluginsEnabled } from "../assets.ts";
+import { listAgentAssets } from "../assets.ts";
+import { writeHooksEnabled, writePluginsEnabled } from "../plugin-assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
+import { writeAutoReviewEnabled, writeSmartModeOffered } from "../auto-review.ts";
 import { writeKimiAutoThinking } from "../kimi-thinking.ts";
+import { writeBranchTitles, writeSessionTitleRefresh } from "../session-titles.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
@@ -39,6 +44,7 @@ import { safeStderr } from "../stderr.ts";
 
 export const settingsHandlers: Record<string, RpcHandler> = {
   get_settings(ws) {
+    // A read: reply to the asker only (write receipts below broadcast instead)
     ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
   },
   get_settings_schema(ws) {
@@ -50,7 +56,10 @@ export const settingsHandlers: Record<string, RpcHandler> = {
       await H.settings.reloadFromDisk();
       rebuildScopedModels();
       ws.send(JSON.stringify(modelsFrame()));
-      ws.send(JSON.stringify({ type: "settings", settings: settingsSnapshot() }));
+      // settingsFrame, not settingsSnapshot: the UI replaces hostSettings wholesale, and the
+      // bare snapshot lacks every host-side projection (remote/uiConfig/plugins/…), so a
+      // reload would silently drop remote.mobileStatsBar and flip the phone stats bar off.
+      pushSettings();
     } catch (err) {
       safeStderr(hostI18n.t("errors.setting.reloadFailed", { detail: String(err) }));
     }
@@ -118,7 +127,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // (host/computer-display.ts).
     if (key === "computer.display") await reconcileComputerDisplay();
     if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   async list_displays(ws) {
     // Enumerate physical displays through the natives desktop adapter for the
@@ -161,7 +170,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // the frame's uiConfig is read back from disk, so the frontend reconciles
     // its localStorage cache against what actually landed (stale-cache guard)
     writeUiPrefs({ theme: msg.theme, motion: msg.motion, prefs: msg.prefs });
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   set_external_browser(ws, msg) {
     // Desktop-owned browser routing switch: persists browser.external in
@@ -172,7 +181,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // so those routes apply again. A fresh settings frame carries the state the
     // base actually ended up with, so the frontend reconciles against it.
     writeExternalBrowserEnabled(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   async set_acp_enabled(ws, msg) {
     // Experimental features page switch: writes acp.enabled in
@@ -180,25 +189,32 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // surface and context extension are injected in createSessionCore and
     // cannot be hot-swapped into already-open sessions)
     await writeAcpEnabled(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   async set_acp_config(ws, msg) {
     // Experimental features page: update the acp config section of omp-desktop.json
     const patch = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
     writeDesktopSection("acp", { ...readDesktopSection("acp"), ...patch });
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   async set_session_context_enabled(ws, msg) {
     // Experimental features page switch: writes sessionContext.enabled in omp-desktop.json (same as above; affects only sessions created afterwards)
     await writeSessionContextEnabled(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
+  },
+  async set_automation_agent_enabled(ws, msg) {
+    // Automations settings page switch: writes automations.agentTools in
+    // omp-desktop.json. Gates the automations_list / automations_manage tools at
+    // session creation, so already-open sessions keep whatever surface they got.
+    await writeAutomationAgentEnabled(!!msg.enabled);
+    pushSettings();
   },
   async set_keepalive_enabled(ws, msg) {
     // Experimental features page switch: writes keepalive.enabled in
     // omp-desktop.json (affects only sessions created afterwards; probe
     // parameters live in the keepalive section's other fields, per-profile)
     writeKeepaliveEnabled(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   async set_keepalive_config(ws, msg) {
     // Experimental features page parameters: read-merge-write the keepalive
@@ -207,7 +223,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // sessions never re-read disk — writes affect only sessions created
     // afterwards)
     writeKeepaliveConfig((msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   async set_kimi_auto_thinking(ws, msg) {
     // Providers page switch: writes kimi.autoThinking in omp-desktop.json —
@@ -215,25 +231,54 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // on the next thinking-level pick/session create (existing sessions keep
     // their configured level; Kimi + auto + off pins to `high`).
     writeKimiAutoThinking(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
+  },
+  async set_auto_review(ws, msg) {
+    // Two independent switches live in omp-desktop.json's autoReview section:
+    // `offer` = the experimental page's "offer the smart-approval mode" toggle
+    // (menu row only), `enabled` = the LLM gate itself, written by the mode menu
+    // when the row is picked or any plain mode replaces it.
+    if (typeof msg.offer === "boolean") {
+      writeSmartModeOffered(msg.offer);
+      // Withdrawing the row must also withdraw the gate it encodes; otherwise
+      // the session sits in a mode no menu row represents.
+      if (!msg.offer) writeAutoReviewEnabled(false);
+    }
+    if (typeof msg.enabled === "boolean") writeAutoReviewEnabled(msg.enabled);
+    pushSettings();
+  },
+  async set_session_title_refresh(ws, msg) {
+    // Experimental page switch: writes sessionTitles.refresh in omp-desktop.json —
+    // the agent_end hook reads it live, so it applies to the next turn of every
+    // open session. Each regeneration is one tiny-model call per turn.
+    writeSessionTitleRefresh(msg.enabled === true);
+    pushSettings();
+  },
+  async set_branch_titles(ws, msg) {
+    // Experimental page switch: writes sessionTitles.branchTitles — journal each
+    // title on the active branch (appendCustomEntry) and mirror the branch's own
+    // title into the header on branch switch. Also switches the header write source
+    // to "user", without which the base would refuse the second switch.
+    writeBranchTitles(msg.enabled === true);
+    pushSettings();
   },
   async set_hooks_enabled(ws, msg) {
     // Hooks master switch: writes hooks.enabled in omp-desktop.json (affects only sessions created afterwards)
     await writeHooksEnabled(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async set_plugins_enabled(ws, msg) {
     // Plugins master switch: writes plugins.enabled in omp-desktop.json (affects only sessions created afterwards)
     await writePluginsEnabled(!!msg.enabled);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async set_skills_enabled(ws, msg) {
     // Skills master switch: writes skills.enabled to the base settings.json (consumed by every getGroup("skills") load site)
     settingsSet(H.settings, "skills.enabled", !!msg.enabled);
     await H.settings.flush();
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
   async set_desktop_env(ws, msg) {
@@ -246,13 +291,16 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     H.desktopEnv = next;
     H.desktopEnvFilePresent = true;
     applyDesktopEnv(next);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame(), restartHint: true }));
+    // restartHint is a receipt for the requesting (local) end only; the snapshot itself must
+    // still reach the other channel, whose copy would otherwise stay frozen
+    pushSettings();
+    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame(), restartHint: true })); // fan-out: requester-only — restart toast belongs to the channel that wrote it (pushSettings above already broadcast the snapshot)
   },
   async switch_profile(ws, msg) {
     const p = String(msg.profile ?? "").trim();
     if (!p) throw new Error(hostI18n.t("errors.setting.profileEmpty"));
     await applyProfile(p);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
     ws.send(JSON.stringify(modelsFrame()));
     await handleListSessions(ws);
     // Asset scan failure must stay observable: swallowing it here silently
@@ -268,13 +316,17 @@ export const settingsHandlers: Record<string, RpcHandler> = {
   },
   set_approval_mode(ws, msg) {
     const mode = msg.mode;
-    if (mode !== "yolo" && mode !== "write" && mode !== "always-ask") {
+    // The base owns the mode list (18.12.3 added always-ask-cached): validate against the
+    // registry so a new base mode needs no desktop change.
+    const approvalMode = lookupSetting("tools.approvalMode");
+    const allowed = approvalMode?.enumValues;
+    if (!approvalMode || !allowed?.includes(mode)) {
       throw new Error(hostI18n.t("errors.setting.invalidApprovalMode", { mode }));
     }
     // Resolved at execute time: no session rebuild needed, effective on the next tool call (applies to all sessions — settings are process-wide shared)
-    const approvalMode = lookupSetting("tools.approvalMode");
-    if (approvalMode) H.settings.writeValue(approvalMode, mode, "override");
-    ws.send(JSON.stringify({ type: "approval_mode", mode }));
+    H.settings.writeValue(approvalMode, mode, "override");
+    // Process-wide: the other channel's permission pill must flip with this one
+    eachUiWs((w) => w.send(JSON.stringify({ type: "approval_mode", mode })));
   },
   set_plan_mode(ws, msg) {
     // Plan-mode toggle: entered from the permission-mode menu in the UI, exited via the "Plan" button right of the permission pill
@@ -288,6 +340,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     await setComputerMode(ws, msg.sessionId, entry, msg.enabled === true);
   },
+  set_advisor_mode(ws, msg) {
+    // Advisor toggle: the header eye button (per-session advisor.enabled overlay; the
+    // base's /advisor on|off writes the same layer). Runtime-op class like
+    // set_computer_mode / set_plan_mode — not on the remote write denylist.
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    setAdvisorMode(ws, msg.sessionId, entry, msg.enabled === true);
+  },
   set_computer_provider(ws, msg) {
     // Desktop-owned computer-use provider pick (omp-desktop.json computer.provider):
     // "default" keeps the builtin flow; "kimi" reroutes the composer screen-icon
@@ -297,14 +357,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     const provider = msg.provider === "kimi" ? "kimi" : "default";
     writeComputerProvider(provider);
     warmKimiCu();
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   set_computer_default(ws, msg) {
     // Desktop-owned "default on" switch (omp-desktop.json computer.defaultEnabled):
     // fresh sessions start with computer use enabled. Spawn-time read only, so no
     // live session is touched — the settings frame below just echoes the new value.
     writeComputerDefaultEnabled(msg.enabled === true);
-    ws.send(JSON.stringify({ type: "settings", settings: settingsFrame() }));
+    pushSettings();
   },
   /**
    * Smoke-only: replay a `write` to xd://propose so the plan-approval card can

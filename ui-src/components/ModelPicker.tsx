@@ -19,7 +19,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "../store";
+import { useAppStore, effZoom } from "../store";
 import type { TimerHandle } from "../store";
 import type { ModelCaps } from "../store/models";
 import Icon from "../Icon";
@@ -214,7 +214,7 @@ function SettingsCascadePicker({
     const sel = selRef.current;
     const menu = menuRef.current;
     if (!open || !sel || !menu) return undefined;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     const sr = sel.getBoundingClientRect();
     const mr = menu.getBoundingClientRect();
@@ -242,7 +242,7 @@ function SettingsCascadePicker({
     if (!open || !flyProv || !menu || !fly) return undefined;
     const row = rowRefs.current.get(flyProv);
     if (!row) return undefined;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     (fly.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     fly.style.maxHeight = "";
     fly.style.overflowY = "";

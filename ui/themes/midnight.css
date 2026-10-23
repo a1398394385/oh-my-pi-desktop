@@ -38,6 +38,11 @@
   --blue:      #B9E2FF;   /* link color (from openhanako --link) */
   --bash:      var(--blue); /* bash mode uses link color in dark themes */
 
+  /* ── Composer ──────────────────────────────────────────────────────────── */
+  /* Idle send button: the global near-black base reads as a pure-black hole
+     on this slate surface — raise it to the panel+8% layer instead */
+  --send-idle: var(--panel-2);
+
   /* ── Status colors ─────────────────────────────────────────────────────── */
   --green:     #8CC790;   /* from openhanako --green */
   --green-soft:#7AB885;   /* derived: green - 10% saturation */
@@ -48,5 +53,5 @@
   --purple:    #C99AAF;   /* reuse accent (rose) for purple semantics */
 
   /* ── Control backgrounds ───────────────────────────────────────────────── */
-  --ctl-bg:    var(--panel-2);
+  --ctl-bg:    var(--inset);
 }

@@ -4,16 +4,20 @@
 // state machine (due dispatch, misfire grace, maxRuns/endAt completion, disabled
 // claim, manual runs, spawn/prompt failure paths) through tickAutomations with an
 // injected fake spawn and a temp agentDir, so the real profile files are never touched.
-// Also covers the two create entry points that sit in front of that domain: the
-// agent-facing create_automation tool (param translation, rejection surfaces, the
-// automations_list push) and the session_list automation badge backfill.
+// Also covers the entry points that sit in front of that domain: the agent-facing
+// automations_list / automations_manage tools (param translation, delivery rules,
+// rejection surfaces, the automations_list push) and the session_list automation
+// badge backfill.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-automations.ts
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { H, activeWs } from "../host/state.ts";
 import { SessionManager } from "../host/bootstrap.ts";
-import { createAutomationTool } from "../host/automations-tool.ts";
+import { createAutomationTools } from "../host/automations-tool.ts";
+import { translateEvent } from "../host/translate.ts";
+import { entriesToTranscript } from "../host/translate-history.ts";
+import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "../host/automations/types.ts";
 import { handleListSessions } from "../host/rpc/session.ts";
 import {
   AUTOMATION_CREATE_LIMIT,
@@ -448,18 +452,24 @@ async function main(): Promise<void> {
     }
   }
 
-  // ================= 6. create_automation tool (agent-facing create path) =================
-  // The agent-facing tool translates flat params into the same domain create the
-  // RPC calls, persists, and pushes automations_list to the connected UI.
+  // ================= 6. automations_list / automations_manage (agent surface) =================
+  // Two tools split by approval level: list must never ask for write confirmation,
+  // manage covers create and delete. Creation translates flat params into the same
+  // domain create the RPC calls. Session delivery is agent-only and must be bounded.
   {
-    const frames: { type?: string; automations?: unknown[] }[] = [];
+    const frames: { type?: string }[] = [];
     activeWs.value = { send: (d: string) => frames.push(JSON.parse(d)) };
-    const tool = createAutomationTool("/repo/session-cwd");
-    const call = async (params: Record<string, unknown>) =>
-      (await tool.execute("tool-call-1", params)) as { content: { text: string }[]; isError?: boolean };
+    const [listTool, manageTool] = createAutomationTools("/repo/session-cwd");
+    ok("tool: list declares read approval", listTool.approval === "read", listTool.approval);
+    ok("tool: manage declares write approval", manageTool.approval === "write", manageTool.approval);
+    type ToolResult = { content: { text: string }[]; isError?: boolean };
+    const call = async (params: Record<string, unknown>, ctx?: Record<string, unknown>): Promise<ToolResult> =>
+      (await manageTool.execute("tool-call-1", params, undefined, undefined, ctx)) as ToolResult;
+    const callList = async (ctx?: Record<string, unknown>): Promise<ToolResult> =>
+      (await listTool.execute("tool-call-list", {}, undefined, undefined, ctx)) as ToolResult;
     const base = readAutomations().automations.length;
 
-    const daily = await call({ title: "Standup brief", prompt: "summarize yesterday" });
+    const daily = await call({ action: "create", title: "Standup brief", prompt: "summarize yesterday" });
     ok("tool: daily create ok", !daily.isError, daily.content[0].text);
     const d = readAutomations().automations[base];
     ok("tool: daily persisted", d?.title === "Standup brief" && d?.prompt === "summarize yesterday", d);
@@ -467,9 +477,16 @@ async function main(): Promise<void> {
     ok("tool: recurring by default", d?.recurring === true, d?.recurring);
     ok("tool: default time 09:00", d?.scheduleRule?.hour === 9 && d?.scheduleRule?.minute === 0, d?.scheduleRule);
     ok("tool: nextRunAt computed", typeof d?.nextRunAt === "number", d?.nextRunAt);
+    ok("tool: no delivery mode by default", d?.deliverTo === undefined, d?.deliverTo);
+    ok(
+      "tool: dialog deadlines default to 300s",
+      d?.askTimeoutSec === 300 && d?.approvalTimeoutSec === 300,
+      { ask: d?.askTimeoutSec, approval: d?.approvalTimeoutSec },
+    );
     ok("tool: automations_list pushed", frames.some((f) => f.type === "automations_list"), frames.length);
 
     const weekly = await call({
+      action: "create",
       title: "Monday review",
       prompt: "review the board",
       every: "weekly",
@@ -483,41 +500,79 @@ async function main(): Promise<void> {
     ok("tool: weekdays passed through", JSON.stringify(w?.scheduleRule?.weekdays) === "[1]", w?.scheduleRule?.weekdays);
     ok("tool: explicit cwd wins", w?.cwd === "/repo/other", w?.cwd);
 
-    const oneShot = await call({ title: "One off", prompt: "check deploy", every: "daily", at: "07:00", recurring: false });
+    const oneShot = await call({ action: "create", title: "One off", prompt: "check deploy", every: "daily", at: "07:00", recurring: false });
     ok("tool: one-shot create ok", !oneShot.isError, oneShot.content[0].text);
     ok("tool: recurring false stored", readAutomations().automations[base + 2]?.recurring === false);
 
-    const cron = await call({ title: "Cron job", prompt: "poll", cron: "*/15 * * * *" });
+    const cron = await call({ action: "create", title: "Cron job", prompt: "poll", cron: "*/15 * * * *" });
     ok("tool: cron create ok", !cron.isError, cron.content[0].text);
     const c = readAutomations().automations[base + 3];
     ok("tool: cron replaces rule fields", c?.cronExpr === "*/15 * * * *" && c?.scheduleRule === undefined, c);
 
     const before = readAutomations().automations.length;
-    const badCron = await call({ title: "Bad cron", prompt: "x", cron: "not a cron" });
+    const badCron = await call({ action: "create", title: "Bad cron", prompt: "x", cron: "not a cron" });
     ok("tool: invalid cron is a tool error", badCron.isError === true, badCron.content[0].text);
-    const badAt = await call({ title: "Bad at", prompt: "x", at: "9am" });
+    const badAt = await call({ action: "create", title: "Bad at", prompt: "x", at: "9am" });
     ok("tool: malformed at is a tool error", badAt.isError === true, badAt.content[0].text);
-    const noTitle = await call({ title: "   ", prompt: "x" });
+    const noTitle = await call({ action: "create", title: "   ", prompt: "x" });
     ok("tool: empty title is a tool error", noTitle.isError === true, noTitle.content[0].text);
+    const badAction = await call({ action: "update", id: "x" });
+    ok("tool: unknown action is a tool error", badAction.isError === true, badAction.content[0].text);
     eq("tool: rejected calls persist nothing", readAutomations().automations.length, before);
+
+    // ---- Session delivery: agent-only, bounded, and anchored to a real transcript ----
+    const noTranscript = await call({ action: "create", title: "No transcript", prompt: "x", deliverToSession: true });
+    ok("tool: delivery without a transcript is an error", noTranscript.isError === true, noTranscript.content[0].text);
+    eq("tool: refused delivery persists nothing", readAutomations().automations.length, before);
+
+    const targetFile = path.join(agentDir, "delivery-target.jsonl");
+    writeFileSync(targetFile, "{}\n");
+    const targetCtx = { sessionManager: { getSessionFile: () => targetFile } };
+    const delivery = await call(
+      { action: "create", title: "Remind me", prompt: "check the build", every: "minute", interval: 30, deliverToSession: true },
+      targetCtx,
+    );
+    ok("tool: delivery create ok", !delivery.isError, delivery.content[0].text);
+    const dv = readAutomations().automations.find((a) => a.title === "Remind me");
+    ok("tool: delivery target persisted", dv?.deliverTo?.sessionPath === targetFile, dv?.deliverTo);
+    ok("tool: delivery defaults to a bounded cap", dv?.recurring === false && dv?.maxRuns === 10, dv);
+    const forcedRecurring = await call(
+      { action: "create", title: "Forced bounded", prompt: "x", deliverToSession: true, recurring: true },
+      targetCtx,
+    );
+    ok("tool: delivery ignores recurring true", !forcedRecurring.isError, forcedRecurring.content[0].text);
+    const fb = readAutomations().automations.find((a) => a.title === "Forced bounded");
+    ok("tool: delivery stays bounded", fb?.recurring === false && fb?.maxRuns === 10, fb);
+    const overCap = await call({ action: "create", title: "Too many", prompt: "x", deliverToSession: true, maxRuns: 101 }, targetCtx);
+    ok("tool: delivery cap enforced", overCap.isError === true, overCap.content[0].text);
+
+    // ---- list: ids and delivery marker the model can act on ----
+    const listed = await callList();
+    ok("tool: list reports automations", !listed.isError && listed.content[0].text.includes("Standup brief"), listed.content[0].text);
+    ok("tool: list marks delivery targets", listed.content[0].text.includes("this-session"), listed.content[0].text);
+
+    // ---- delete: removes the definition and its run history ----
+    const del = await call({ action: "delete", id: dv?.id });
+    ok("tool: delete ok", !del.isError, del.content[0].text);
+    ok("tool: delete removed the record", !readAutomations().automations.some((a) => a.id === dv?.id));
+    const delMissing = await call({ action: "delete", id: "automation-missing" });
+    ok("tool: delete of a missing id is a tool error", delMissing.isError === true, delMissing.content[0].text);
 
     // No UI attached: the frame push is advisory, persistence still succeeds.
     activeWs.value = null;
-    const headless = await call({ title: "Headless", prompt: "x" });
+    const headless = await call({ action: "create", title: "Headless", prompt: "x" });
     ok("tool: headless create ok", !headless.isError, headless.content[0].text);
     ok("tool: headless persisted", readAutomations().automations.some((a) => a.title === "Headless"));
 
     // Subagent refusal: live task-spawned subagents inherit the parent's custom
-    // tools, so the entry rejects on taskDepth (depth 0 = main session).
+    // tools, so both entries reject on taskDepth (depth 0 = main session).
     const depthBefore = readAutomations().automations.length;
-    const asSubagent = (await tool.execute("tool-call-2", { title: "From subagent", prompt: "x" }, undefined, undefined, {
-      taskDepth: 1,
-    })) as { content: { text: string }[]; isError?: boolean };
-    ok("tool: subagent call refused", asSubagent.isError === true, asSubagent.content[0].text);
+    const asSubagent = await call({ action: "create", title: "From subagent", prompt: "x" }, { taskDepth: 1 });
+    ok("tool: subagent manage refused", asSubagent.isError === true, asSubagent.content[0].text);
+    const listAsSubagent = await callList({ taskDepth: 1 });
+    ok("tool: subagent list refused", listAsSubagent.isError === true, listAsSubagent.content[0].text);
     eq("tool: refused subagent persists nothing", readAutomations().automations.length, depthBefore);
-    const mainDepth = (await tool.execute("tool-call-3", { title: "Main depth", prompt: "x" }, undefined, undefined, {
-      taskDepth: 0,
-    })) as { isError?: boolean };
+    const mainDepth = await call({ action: "create", title: "Main depth", prompt: "x" }, { taskDepth: 0 });
     ok("tool: taskDepth 0 still creates", mainDepth.isError !== true, mainDepth);
 
     // Second gate: the on-disk transcript shape (a child transcript lives inside
@@ -532,15 +587,56 @@ async function main(): Promise<void> {
     const childFile = path.join(childDir, "Child.jsonl");
     writeFileSync(childFile, "{}\n");
     const withCtx = (sessionFile: string) => ({ sessionManager: { getSessionFile: () => sessionFile } });
-    const childCall = (await tool.execute("tool-call-4", { title: "Child", prompt: "x" }, undefined, undefined, withCtx(childFile))) as {
-      isError?: boolean;
-    };
+    const childCall = await call({ action: "create", title: "Child", prompt: "x" }, withCtx(childFile));
     ok("tool: child transcript refused without taskDepth", childCall.isError === true, childCall);
     eq("tool: refused child persists nothing", readAutomations().automations.length, depthBefore + 1);
-    const mainCall = (await tool.execute("tool-call-5", { title: "Main file", prompt: "x" }, undefined, undefined, withCtx(mainFile))) as {
-      isError?: boolean;
-    };
+    const mainCall = await call({ action: "create", title: "Main file", prompt: "x" }, withCtx(mainFile));
     ok("tool: main-session transcript still creates", mainCall.isError !== true, mainCall);
+  }
+
+  // ================= 7. delivery journal entry → transcript bubble =================
+  // The delivery is persisted as a custom message; reload must show the prompt (not the
+  // framing header) plus the automation marker, and must hide every other custom type.
+  {
+    const deliveryId = "automation-delivery-1";
+    const header = JSON.stringify({ id: deliveryId, title: "Nightly check", at: "2026-10-20T00:00:00.000Z" });
+    const items = entriesToTranscript([
+      {
+        type: "message",
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "custom",
+          customType: AUTOMATION_DELIVERY_CUSTOM_TYPE,
+          content: `[automation] ${header}\n\ncheck the deploy`,
+        },
+      },
+    ]);
+    eq("delivery: one bubble from the journal", items.length, 1);
+    ok("delivery: renders the prompt without the framing header", items[0]?.text === "check the deploy", items[0]?.text);
+    ok(
+      "delivery: carries the automation marker",
+      items[0]?.automation?.id === deliveryId && items[0]?.automation?.title === "Nightly check",
+      items[0]?.automation,
+    );
+    const hidden = entriesToTranscript([
+      { type: "message", timestamp: new Date().toISOString(), message: { role: "custom", customType: "goal-continuation", content: "x" } },
+    ]);
+    eq("delivery: other custom types stay hidden", hidden.length, 0);
+    // Live path: the delivery is admitted into a session that no composer sent from, so
+    // the message_end echo is what draws the bubble (and what a pooled snapshot replays).
+    const liveEntry: any = { transcript: [], cwd: "/tmp" };
+    const live: any = translateEvent(
+      {
+        type: "message_end",
+        message: { role: "custom", customType: AUTOMATION_DELIVERY_CUSTOM_TYPE, content: `[automation] ${header}\n\ncheck the deploy` },
+      },
+      liveEntry,
+    );
+    ok("delivery: live echo is a user_message with the marker", live?.kind === "user_message" && live?.automation?.id === deliveryId, live);
+    ok("delivery: live echo strips the framing header", live?.text === "check the deploy", live?.text);
+    eq("delivery: live echo lands in the pooled transcript", liveEntry.transcript.length, 1);
+    const liveOther = translateEvent({ type: "message_end", message: { role: "custom", customType: "goal-continuation", content: "x" } }, { transcript: [], cwd: "/tmp" } as any);
+    ok("delivery: other custom types never echo", liveOther === null, liveOther);
   }
 }
 

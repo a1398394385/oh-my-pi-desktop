@@ -1,7 +1,7 @@
 // /btw side-conversation frame landings: topic checkpoints, answer deltas, and history
 // snapshots. Containers are replaced with fresh references (zustand re-render contract).
 import { useAppStore } from "../index";
-import { openRightTab } from "../../components/main/right/tabs";
+import { expandRightPanel } from "../../components/main/right/tabs";
 import type { BtwRecord } from "../../types/frames";
 import type { HandlerSlice } from "./types";
 
@@ -39,9 +39,13 @@ export const btwHandlers = {
       return { btwTopics: new Map(s.btwTopics).set(msg.sessionId, next) };
     });
   },
-  // /btw pulls up the Side Chat panel (openRightTab also expands the collapsed panel)
+  // /btw pulls up the Side Chat panel (expandRightPanel also un-collapses the panel).
+  // With a question the frame names the topic, so the panel lands on that conversation;
+  // without one it asks for the directory rather than the topic left open.
   open_right_tab(msg) {
-    openRightTab(msg.name);
+    expandRightPanel(msg.name);
+    if (msg.recordId) useAppStore.setState({ btwFocus: msg.recordId });
+    else useAppStore.getState().btwShowRoot();
   },
 } as const satisfies HandlerSlice;
 

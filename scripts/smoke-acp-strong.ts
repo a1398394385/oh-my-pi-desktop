@@ -27,10 +27,11 @@
 //      schema drives both compressions (model-agnostic); annotation reaches
 //      the wire; post-strong projection shows exactly one zone render
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directory at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-strong.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-strong.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host
 import { assertToolPairing, renderCompactionBlock } from "../host/acp-projection.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
@@ -459,13 +460,20 @@ const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 	assert.equal(state.roundStatus!.method, "strong", "active 4x500 > l1 800: riding");
 	accepted(await state.compress({ keep: R(state, userIds.slice(3)), summary: tokenText(220) })); // M{u2}
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	// Cleanup registers BEFORE the section asserts: a failed run must not leak
 	// probe session dirs (the SDK journals session_exit at process exit).
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdG, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler below retries after
+		// teardown.
+		try {
+			rmSync(cwdG, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	const raw = await Bun.file(sessionFile).text();
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 3, "three acpSummary entries on disk");
@@ -495,7 +503,14 @@ const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
 	console.log("ok: G disk round-trip — JSONL supersedes/depth/method correct; reopen rebuilds the single-block zone");
 }
-rmSync(cwdG, { recursive: true, force: true });
+// Windows can still hold the throwaway cwd when a session handle outlives the
+// test; the temp dir is disposable, and the exit handler above retries after
+// teardown.
+try {
+	rmSync(cwdG, { recursive: true, force: true });
+} catch {
+	// Windows lock window; the temp dir is disposable
+}
 
 // --- H: end-to-end mock session — same tool, same schema, strong on the wire ---------------
 
@@ -607,12 +622,19 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	assert.ok(nonZone.includes("compress again"), "the triggering turn stays");
 
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	// Cleanup registers BEFORE the remaining asserts (same leak guard as G).
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdH, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler below retries after
+		// teardown.
+		try {
+			rmSync(cwdH, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	const raw = await Bun.file(sessionFile).text();
 	assert.ok(!raw.includes("[compress-hint]"), "no [compress-hint] residue in the session JSONL");
@@ -629,7 +651,14 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	await sessionManager.close();
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwdH, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdH, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: H e2e — same tool+schema drove normal then strong; annotation on the wire; single zone render; clean journal");
 }
 

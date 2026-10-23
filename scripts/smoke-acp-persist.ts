@@ -1,9 +1,11 @@
 // ACP T2 smoke: acpSummary persistence + restart rebuild (spec §9, acceptance 10).
-// Single-process bun run. All session data lands under the OMP_PROFILE=acp-probe
-// profile only (asserted against the active agentDir), and the smoke deletes its
-// own session files at the end. Exercises the real SDK channel end to end:
+// Single-process bun run. All session data lands under the
+// OMP_PROFILE=omp-desktop-test profile only (asserted against the active
+// agentDir), and the smoke deletes its own session files at the end. Exercises
+// the real SDK channel end to end:
 // appendCustomEntry -> JSONL -> SessionManager.open -> rebuildAcpState.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-persist.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-persist.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,10 +16,10 @@ import { projectContext, renderCompactionBlock, splitBlocks } from "../host/acp-
 import { appendAcpSummary, rebuildAcpState, type AcpSummaryDraft } from "../host/acp-persist.ts";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Static import cannot work here: the coding-agent module resolves agentDir at
 // import time, so the profile must be active first (probe-acp-live.ts precedent).
-setProfile("acp-probe");
+setProfile(TEST_PROFILE);
 const { SessionManager, buildSessionContext } = await import("@oh-my-pi/pi-coding-agent");
 
 // --- real tokenizer (spec §8): native encoding, not the byte-estimate fallback ---
@@ -84,7 +86,7 @@ const m = appendAcpSummary(session, { ...summaryDraft(3, [a, ax, b, bx, c, cx], 
 const sessionFile = session.getSessionFile()!;
 assert.ok(
 	sessionFile.startsWith(getAgentDir()),
-	`session file must stay inside the acp-probe profile agentDir (${getAgentDir()}), got ${sessionFile}`,
+	`session file must stay inside the smoke profile agentDir (${getAgentDir()}), got ${sessionFile}`,
 );
 
 // JSONL on disk carries exactly the acpSummary custom entries (official channel)

@@ -296,6 +296,18 @@ try {
   const key0 = settings1.settings.remote?.key ?? "";
   assert(/^[0-9a-f]{32}$/.test(key0), "开启时自动生成 128-bit hex accessKey");
 
+  // Narrow-client display preference (remote.mobileStatsBar): a request that carries only this
+  // field must persist and push a settings frame WITHOUT touching the server — otherwise the
+  // write is lost whenever the port is held by another host (the dev profile while the default
+  // profile owns 16800), since startRemoteServer would fail and skip the write
+  const prefReply = await main.rpc<{ enabled: boolean; port: number }>("set_remote_config", { mobileStatsBar: true }, "remote_config");
+  assert(prefReply.enabled === true && prefReply.port === p1, "状态栏开关: 仅偏好变更不动服务(仍 enabled 且监听 P1)");
+  const settingsPref = await main.rpc<{ settings: { remote?: { mobileStatsBar?: boolean } } }>("get_settings", {}, "settings");
+  assert(settingsPref.settings.remote?.mobileStatsBar === true, "状态栏开关: settings 帧带 remote.mobileStatsBar");
+  const persistedPref = JSON.parse(readFileSync(profileAgentPath("omp-desktop.json"), "utf8")) as { remote?: { mobileStatsBar?: boolean } };
+  assert(persistedPref.remote?.mobileStatsBar === true, "状态栏开关: 已落盘 omp-desktop.json");
+  assert(await tcpOpen(p1), "状态栏开关: P1 端口未被重启打断");
+
   // Matrix 7 (regenerate): new key in reply, differs from previous
   const key1 = (await main.rpc<{ key: string }>("remote_regenerate_key", {}, "remote_key")).key;
   assert(/^[0-9a-f]{32}$/.test(key1) && key1 !== key0, "矩阵7: remote_regenerate_key 应答新 32-hex key");

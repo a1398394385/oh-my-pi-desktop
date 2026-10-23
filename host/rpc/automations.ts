@@ -10,7 +10,7 @@ import {
   type AutomationUpsertInput,
 } from "../automations/types.ts";
 import { computeAutomationNextRunAt } from "../automations/cron.ts";
-import { createAutomation, optCount, reqString, resolveSchedule } from "../automations/create.ts";
+import { createAutomation, optCount, optSeconds, reqString, resolveSchedule } from "../automations/create.ts";
 import { readAutomations, writeAutomations } from "../automations/store.ts";
 import { runAutomationNow } from "../automations/scheduler.ts";
 import { hostI18n } from "../i18n/host.ts";
@@ -42,13 +42,22 @@ export const automationsHandlers: Record<string, RpcHandler> = {
   },
 
   async automations_create(ws, msg) {
-    await createAutomation((msg?.automation ?? {}) as Partial<AutomationUpsertInput>);
+    // Delivery mode is agent-only (the tool passes it): the wire create RPC always
+    // creates new-session automations, so a payload cannot redirect runs into a
+    // conversation the user did not hand over.
+    const input = { ...(msg?.automation ?? {}) } as Partial<AutomationUpsertInput>;
+    delete input.deliverTo;
+    await createAutomation(input);
     replyList(ws);
   },
 
   async automations_update(ws, msg) {
     const id = String(msg?.id ?? "");
     const { state, automation: a } = requireAutomation(id);
+    // Session-delivery automations are agent-owned and immutable: re-aiming the
+    // schedule here would resurrect a completed one whose target may be archived
+    // or deleted, and the delivery mode itself is never editable.
+    if (a.deliverTo) throw new Error(hostI18n.t("errors.automations.deliveryUpdateUnsupported"));
     const patch = (msg ?? {}) as AutomationUpdateInput;
     // Required-text fields: same non-empty rule as create, applied only when present.
     const title = reqString(patch.title);
@@ -74,6 +83,13 @@ export const automationsHandlers: Record<string, RpcHandler> = {
       const maxRuns = optCount(patch.maxRuns);
       if (maxRuns !== undefined) a.maxRuns = maxRuns;
       else delete a.maxRuns;
+    }
+    // Dialog deadlines: a number >= 0 is stored; null/junk resets to the default
+    // (absent field), never to an accidental 0 = wait forever.
+    for (const key of ["askTimeoutSec", "approvalTimeoutSec"] as const) {
+      const secs = optSeconds(patch[key]);
+      if (secs !== undefined) a[key] = secs;
+      else if (patch[key] !== undefined) delete a[key];
     }
     if (patch.endAt !== undefined) {
       if (typeof patch.endAt === "number" && Number.isFinite(patch.endAt)) a.endAt = patch.endAt;

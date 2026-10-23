@@ -9,7 +9,8 @@ const autoEdit = {
   subtitleEdit: "调整调度、提示词与结束条件，保存后立即生效。",
   tabSettings: "设置",
   tabHistory: "历史",
-  createBtn: "创建定时任务",
+  createBtn: "创建自动化",
+  deliveryLocked: "该自动化会向会话投递消息，只能由 agent 创建和维护；如需调整请删除后让 agent 重新创建。",
   untitled: "未命名任务",
   nextRunLabel: "下一次运行",
   runCountLabel: "已运行",
@@ -27,6 +28,11 @@ const autoEdit = {
   contentSectionHint: "每次运行发送给 Agent 的指令",
   boundarySection: "执行边界",
   boundarySectionHint: "结束后停止调度",
+  dialogSection: "弹窗超时",
+  dialogSectionHint: "无人值守时，弹窗到点自动作答",
+  askTimeoutLabel: "询问超时",
+  approvalTimeoutLabel: "审批超时",
+  timeoutUnit: "秒",
   statusLabel: "状态",
   lifecycleActive: "进行中",
   lifecyclePaused: "已暂停",
@@ -39,7 +45,7 @@ const autoEdit = {
   runsNextPage: "下一页",
   runsErrorUnavailable: "错误详情不可用",
   computerLabel: "电脑控制",
-  computerHint: "本次任务的会话启用电脑控制（截图、输入、辅助功能）。仅对本任务生效：全局的“默认开启电脑控制”不适用于定时任务。",
+  computerHint: "本次任务的会话启用电脑控制（截图、输入、辅助功能）。仅对本任务生效：全局的“默认开启电脑控制”不适用于自动化。",
 };
 
 export default autoEdit;

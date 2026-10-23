@@ -18,11 +18,14 @@
 
 .hub-branch { flex: none; font-family: var(--mono); white-space: pre; }
 
-.hub-row .sub-dot.st-running { color: var(--green); }
-
-.hub-row .sub-dot.st-completed { color: var(--green-soft); }
-
-.hub-row .sub-dot.st-failed, .hub-row .sub-dot.st-aborted { color: var(--err); }
+/* Status capsule (hub roster rows + subagent tab cards): text pill on a light tint.
+   Colors follow the .al-badge pairs; --green-ink is the designated pill-text green
+   (light/dark aware). "started" renders under the running group (see SubStatusPill). */
+.sub-st { flex: none; padding: 1px 8px; border-radius: 999px; font-size: var(--ui-fs-xs); font-weight: 500; line-height: 1.5; }
+.sub-st.st-running { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+.sub-st.st-completed { color: var(--green-ink); background: color-mix(in srgb, var(--green) 12%, transparent); }
+.sub-st.st-failed { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+.sub-st.st-aborted { color: var(--faint); background: var(--panel-2); }
 
 .hub-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

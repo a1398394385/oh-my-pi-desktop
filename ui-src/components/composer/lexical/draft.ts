@@ -51,33 +51,45 @@ export function clearDraftState(key: string): void {
   drafts.delete(key || "welcome");
 }
 
-// Cleared-draft stash (per composer slot, module-level = gone at app exit):
-// Double-Esc clears push the draft here while the
-// composer.recallClearedDrafts setting is on; with an empty input, plain ↑
-// enters history-browse and ↑/↓ walk it back into the composer (any user
-// edit exits the mode). cursor -1 = the live draft (browsing base snapshot),
-// 0..n-1 = stash entries oldest-to-newest.
-export interface ClearedDraft {
+// Input history (per composer slot, module-level = gone at app exit): both
+// successfully sent prompts and drafts cleared with double-Esc land here
+// while the composer.recallClearedDrafts setting is on; with an empty input,
+// plain ↑ enters history-browse and ↑/↓ walk it back into the composer (any
+// user edit exits the mode). cursor -1 = the live draft (browsing base
+// snapshot), 0..n-1 = history entries oldest-to-newest.
+export interface HistoryEntry {
   text: string;
   files: PendingFile[];
 }
-const clearedStash = new Map<string, { items: ClearedDraft[]; cursor: number; snapshot: ClearedDraft | null }>();
+const historyStash = new Map<string, { items: HistoryEntry[]; cursor: number; snapshot: HistoryEntry | null }>();
 
-export function stashClearedDraft(key = "welcome"): void {
-  const d = getDraft(key);
+// Cap per slot: sent prompts accumulate quickly, keep the stash bounded.
+const HISTORY_LIMIT = 100;
+
+export function pushInputHistory(key = "welcome", entry?: { text: string; files: PromptAttachment[] }): void {
+  const d = entry ?? getDraft(key);
   if (!d.text.trim() && d.files.length === 0) return;
-  const st = clearedStash.get(key) ?? { items: [], cursor: -1, snapshot: null };
-  st.items.push({ text: d.text, files: [...d.files] });
+  const st = historyStash.get(key) ?? { items: [], cursor: -1, snapshot: null };
+  // Consecutive duplicate (re-send of the previous entry): keep one
+  if (st.items[st.items.length - 1]?.text !== d.text) {
+    // Stashed chips carry frontend-local negative ids so recalled ones never
+    // collide with the live fileSeq counter
+    const files: PendingFile[] = d.files.map((f, i) => {
+      const pf = f as PendingFile;
+      return pf.id !== undefined ? pf : { ...f, id: -(i + 1) };
+    });
+    st.items.push({ text: d.text, files });
+    if (st.items.length > HISTORY_LIMIT) st.items.shift();
+  }
   st.cursor = -1;
   st.snapshot = null;
-  clearedStash.set(key, st);
+  historyStash.set(key, st);
 }
-
 // Re-arm browsing at the live-draft base without pushing anything: used when
 // the empty-input ↑ enters history-browse, so each entry starts at the newest
-// stash item and ↓ can come back to the (empty) snapshot.
-export function resetClearedDraftCursor(key = "welcome"): void {
-  const st = clearedStash.get(key);
+// history item and ↓ can come back to the (empty) snapshot.
+export function resetHistoryCursor(key = "welcome"): void {
+  const st = historyStash.get(key);
   if (st) {
     st.cursor = -1;
     st.snapshot = null;
@@ -85,10 +97,10 @@ export function resetClearedDraftCursor(key = "welcome"): void {
 }
 
 // Move the browsing cursor one step (dir 1 = older, -1 = newer) and return the
-// draft to show; null = stash empty. cursor -1 = the live draft (pre-browsing
-// snapshot, possibly empty), 0 = newest stash entry, n-1 = oldest.
-export function recallClearedDraft(key = "welcome", dir: 1 | -1): ClearedDraft | null {
-  const st = clearedStash.get(key);
+// entry to show; null = history empty. cursor -1 = the live draft (pre-browsing
+// snapshot, possibly empty), 0 = newest history entry, n-1 = oldest.
+export function recallHistory(key = "welcome", dir: 1 | -1): HistoryEntry | null {
+  const st = historyStash.get(key);
   if (!st || st.items.length === 0) return null;
   if (st.cursor === -1 && dir === 1) st.snapshot = { text: getDraftText(key), files: [...getDraftFiles(key)] };
   st.cursor = Math.min(Math.max(st.cursor + dir, -1), st.items.length - 1);

@@ -132,7 +132,7 @@ export default function ModelProviderWizard() {
             <label className="mcp-form-label">{t("settingsPage.model.wizardProviderName")} <span className="req">*</span></label>
             <input
               type="text"
-              className="mcp-form-input"
+              className="mcp-form-input mcp-inp-name"
               placeholder={t("settingsPage.model.wizardProviderNamePh")}
               spellCheck="false"
               value={provider}

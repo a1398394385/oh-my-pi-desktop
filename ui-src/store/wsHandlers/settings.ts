@@ -82,13 +82,21 @@ export const settingsHandlers = {
     useAppStore.getState().send({ type: "get_all_providers" });
   },
   provider_model_saved(msg) {
-    const saved = {
+    // The host echoes the persisted row (only the fields the user actually
+    // set). Normalize it to the same 8-field shape the provider_model_meta
+    // snapshot carries (missing = null) — a 4-field variant would read a
+    // saved thinking/input block back as "inherit" on the next editor open.
+    const saved: ManualProbeCatalogMatch = {
       name: msg.model.name ?? null,
       contextWindow: msg.model.contextWindow ?? null,
       maxTokens: msg.model.maxTokens ?? null,
+      reasoning: msg.model.reasoning ?? null,
+      input: msg.model.input ?? null,
+      supportsTools: msg.model.supportsTools ?? null,
+      thinking: msg.model.thinking ?? null,
       cost: msg.model.cost ?? null,
     };
-    const bare = saved.name == null && saved.contextWindow == null && saved.maxTokens == null && saved.cost == null;
+    const bare = Object.values(saved).every((v) => v == null);
     useAppStore.setState((s) => {
       // Merge back into both snapshots (wizard probe + provider-detail meta)
       // so the editor's "saved" prefill stays current without a refetch.
@@ -181,6 +189,11 @@ export const settingsHandlers = {
     }));
   },
   file_matches(msg) {
+    // File-tab search replies bypass the composer mention list and land in the right panel state
+    if (msg.target === "fileTab") {
+      useAppStore.setState((s) => ({ rightState: { ...s.rightState, fileSearch: msg } }));
+      return;
+    }
     if (msg.reqId !== useAppStore.getState().mentionReqSeq) return; // stale response: the user kept typing, drop it
     useAppStore.setState((s) => ({
       mentionResult: { reqId: msg.reqId, matches: Array.isArray(msg.matches) ? msg.matches : [] },

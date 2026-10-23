@@ -17,10 +17,11 @@
 //      the identical entry
 //   D  restart replay determinism (spec §3 MUST: compress -> restart -> same
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-pull.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-pull.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,6 +37,7 @@ import { createRecallBlockTool } from "../host/acp-recall-tool.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 import type { AcpParams, AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
 const { AuthStorage } = await import("@oh-my-pi/pi-coding-agent/session/auth-storage");
 const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
@@ -163,6 +165,22 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	// Persistence stays entry-id-only (spec §3): compressedIds/index are raw ids.
 	assert.deepEqual(fx.writes[0].meta.compressedIds, ["e0", "e1", "e2", "e3", "e4"]);
 	assert.ok(fx.writes[0].index.every((l) => /^e\d+$/.test(l.id)), "index lines persist entry ids");
+	// Inline byte budget (the base spill threshold): the manifest is cut whole-line,
+	// never head/tailed by the base tool-result stage, and the round scope shrinks
+	// with the visible list.
+	const fxBudget = makeFixture(PARAMS, 12);
+	fxBudget.state.projectView(fxBudget.view);
+	const full = fxBudget.state.status();
+	if (!full.ok) throw new Error(full.error);
+	const budget = Buffer.byteLength(full.text, "utf-8") - 300;
+	const cut = fxBudget.state.status(budget);
+	if (!cut.ok) throw new Error(cut.error);
+	const cutText = cut.text;
+	assert.ok(Buffer.byteLength(cutText, "utf-8") <= budget, "the return fits the caller's inline budget");
+	const cutLines = parseManifest(cutText);
+	assert.ok(cutLines.length > 0 && cutLines.length < 12, "the manifest tail is cut whole-line");
+	assert.match(cutText, /exempt this round, re-listed next round/, "the cut tail is announced as exempt");
+	assert.equal(fxBudget.state.manifest?.ids.length, cutLines.length, "the round scope matches the visible list");
 	console.log("ok: A dashboard + refresh — bN manifest, consumed->context_status pointer, status revives the round, persistence id-only");
 }
 
@@ -327,7 +345,7 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	// live on model-facing surfaces; the journaled context_status tool result is an
 	// ordinary stored message and legitimately carries bN rows.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const raw = await Bun.file(sessionFile).text();
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 1, "exactly one acpSummary on disk");
 	const summaryId = sessionManager
@@ -348,11 +366,25 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdC, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler retries after
+		// teardown.
+		try {
+			rmSync(cwdC, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "C session dir fully removed (incl. lock files)");
-	rmSync(cwdC, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdC, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: C e2e — status -> compress(keep=[bN]) -> recall(outcome bN) flow; JSONL persists entry ids only");
 }
 
@@ -388,7 +420,7 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 
 	// Restart: reopen from disk, rebuild, replay. Same journal -> same numbers.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	await sessionManager.close();
 	const reopened = await SessionManager.open(sessionFile, undefined, undefined, { suppressBreadcrumb: true });
 	const entries2 = reopened.getEntries();
@@ -423,11 +455,25 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdD, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler retries after
+		// teardown.
+		try {
+			rmSync(cwdD, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "D session dir fully removed (incl. lock files)");
-	rmSync(cwdD, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdD, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: D restart replay — same numbering for live/folded/summary ids; old short refs resolve identically");
 }
 

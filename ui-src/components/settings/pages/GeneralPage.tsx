@@ -408,7 +408,7 @@ export default function GeneralPage() {
   };
   // Language switch: persist to uiPrefs, switch i18next, notify the host.
   // <App key={lang}> in main.tsx re-mounts the tree, so the new locale applies
-  // immediately without a restart. zh-TW stays a disabled placeholder.
+  // immediately without a restart.
   const pickLang = (v: string) => {
     if (v !== "zh-CN" && v !== "en") return;
     if (v === useAppStore.getState().uiPrefs.lang) return;
@@ -473,7 +473,6 @@ export default function GeneralPage() {
             dataSel={LANG_NATIVE[lang]}
             options={[
               { v: "zh-CN", label: "简体中文", ck: lang === "zh-CN" ? "✓" : "" },
-              { v: "zh-TW", label: "繁體中文", disabled: true, note: t("settingsPage.general.zhTwPending") },
               { v: "en", label: "English", ck: lang === "en" ? "✓" : "" },
             ]}
             onPick={pickLang}
@@ -505,6 +504,7 @@ export default function GeneralPage() {
                 <>
                   <input
                     className="inp"
+                    style={{ width: 340, minWidth: 0 }}
                     id="termFontInput"
                     placeholder='ui-monospace, "SF Mono", Menlo, monospace'
                     value={terminalFont}
@@ -539,7 +539,7 @@ export default function GeneralPage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.general.httpProxyTitle")}</b><span>{t("settingsPage.general.httpProxyDesc")}</span></div>
           <div className="srow-ctl">
-            <input className="inp" id="proxyInput" placeholder={t("settingsPage.general.httpProxyPlaceholder")} value={proxy} ref={proxyRef}
+            <input className="inp" style={{ width: 320, minWidth: 0 }} id="proxyInput" placeholder={t("settingsPage.general.httpProxyPlaceholder")} value={proxy} ref={proxyRef}
               onChange={(e) => setProxy(e.target.value)} />
             <button className="save-btn" id="proxySave" onClick={() => saveEnv("httpProxy", proxy.trim())}>{t("common.save")}</button>
           </div>
@@ -547,7 +547,7 @@ export default function GeneralPage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.general.noProxyTitle")}</b><span>{t("settingsPage.general.noProxyDesc")}</span></div>
           <div className="srow-ctl">
-            <input className="inp" id="noProxyInput" placeholder="localhost,127.0.0.1,::1" value={noProxy} ref={noProxyRef}
+            <input className="inp" style={{ width: 320, minWidth: 0 }} id="noProxyInput" placeholder="localhost,127.0.0.1,::1" value={noProxy} ref={noProxyRef}
               onChange={(e) => setNoProxy(e.target.value)} />
             <button className="save-btn" id="noProxySave" onClick={() => saveEnv("noProxy", noProxy.trim())}>{t("common.save")}</button>
           </div>
@@ -555,7 +555,7 @@ export default function GeneralPage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.general.caTitle")}</b><span>{t("settingsPage.general.caDesc")}</span></div>
           <div className="srow-ctl">
-            <input className="inp" id="caInput" placeholder={t("settingsPage.general.caPlaceholder")} value={ca} ref={caRef}
+            <input className="inp" style={{ width: 320, minWidth: 0 }} id="caInput" placeholder={t("settingsPage.general.caPlaceholder")} value={ca} ref={caRef}
               onChange={(e) => setCa(e.target.value)} />
             <button className="save-btn" id="caSave" onClick={() => saveEnv("caCerts", ca.trim())}>{t("common.save")}</button>
           </div>
@@ -566,7 +566,7 @@ export default function GeneralPage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.general.askTimeoutTitle")}</b><span>{t("settingsPage.general.askTimeoutDesc")}</span></div>
           <div className="srow-ctl">
-            <input className="inp" id="askTimeoutInput" type="number" min="0" step="1" placeholder="0" value={askTimeout} ref={askRef}
+            <input className="inp" style={{ width: 100, minWidth: 0 }} id="askTimeoutInput" type="number" min="0" step="1" placeholder="0" value={askTimeout} ref={askRef}
               onChange={(e) => setAskTimeout(e.target.value)} />
             <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>{t("common.save")}</button>
           </div>

@@ -6,7 +6,10 @@
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
+import { findLast, pathOfSessionId } from "./session-lookup";
+import { notifyDesktop, alertTitle } from "./notify";
 import { invoke } from "./ws";
+import { sealRunItems, turnEndedWithError } from "./run-seal";
 // Per-session right panel snapshots: activateSession is the single funnel for all session
 // activations, so save/restore hooks live here (right.ts also imports activeOpen from this
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
@@ -32,7 +35,6 @@ export interface SessionSlice {
   selectedSubagent: string | null;
   approvalMode: ApprovalMode;
   evtHost: string | null; // host process instance id (ready.hi / stamped event .hi); a change means the host restarted
-  evtSeq: number; // highest applied event sequence number under this instance (events behind the position are dropped outright)
   pendingCreate: boolean;
   pendingNewPrompt: { text: string; files: PromptAttachment[] } | null;
   // ! bash command submitted on the welcome page: executed right after the
@@ -42,6 +44,13 @@ export interface SessionSlice {
   // Host in-memory pool residency (pool_sessions frames; sidebar "active tasks"). The
   // host pool, not openSessions: that map has an LRU cap and drops slots the pool still holds
   poolSessions: PoolSessionInfo[];
+  // Paths of pool sessions with busy === true (maintained by landPoolSessions): O(1) per-row
+  // busy lookups instead of scanning the pool array per sidebar row per store notification
+  busyPaths: Set<string>;
+  // Paths the host still holds in memory (same writer as busyPaths): the eject action keys
+  // off this, not openSessions — the frontend slot map has an LRU cap, so a row can leave
+  // that map while the session is still resident in the host pool
+  poolPaths: Set<string>;
   // Latest word-completion reply (complete_text RPC): overwritten per frame;
   // GhostTextPlugin matches it against its pending request and drops stale hits
   completionResult: CompletionResult | null;
@@ -79,12 +88,13 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
   selectedSubagent: null,
   approvalMode: "always-ask",
   evtHost: null,
-  evtSeq: 0,
   pendingCreate: false,
   pendingNewPrompt: null,
   pendingNewBash: null,
   openSessions: new Map(),
   poolSessions: [],
+  busyPaths: new Set(),
+  poolPaths: new Set(),
   completionResult: null,
   bgJobs: new Map(),
 });
@@ -114,21 +124,14 @@ function uniqueFiles(files: string[] | null | undefined): string[] {
  *  mutates the copy → swap the openSessions Map reference (selectors subscribed to session/fields
  *  detect by reference). */
 export function updateSession(sessionId: string, fn: (s: OpenSession) => void, withItems = true): void {
-  useAppStore.setState((st) => {
-    let hit: string | undefined;
-    for (const [p, v] of st.openSessions) {
-      if (v.sessionId === sessionId) {
-        hit = p;
-        break;
-      }
-    }
-    if (hit === undefined) return {};
-    const cur = st.openSessions.get(hit);
-    if (!cur) return {};
-    const next = withItems ? { ...cur, items: cur.items.slice() } : { ...cur };
-    fn(next);
-    return { openSessions: new Map(st.openSessions).set(hit, next) };
-  });
+  const st = useAppStore.getState();
+  const hit = pathOfSessionId(sessionId, st.openSessions);
+  if (hit === undefined) return;
+  const cur = st.openSessions.get(hit);
+  if (!cur) return;
+  const next = withItems ? { ...cur, items: cur.items.slice() } : { ...cur };
+  fn(next);
+  useAppStore.setState((st2) => ({ openSessions: new Map(st2.openSessions).set(hit, next) }));
 }
 
 // ---------- Locating and activating ----------
@@ -138,8 +141,22 @@ export function activeOpen(): OpenSession | undefined {
 }
 
 export function findBySessionId(id: string): OpenSession | undefined {
-  for (const s of useAppStore.getState().openSessions.values()) if (s.sessionId === id) return s;
-  return undefined;
+  const st = useAppStore.getState();
+  const p = pathOfSessionId(id, st.openSessions);
+  return p === undefined ? undefined : st.openSessions.get(p);
+}
+
+/** Full-replace landing for pool_sessions frames: swaps the pool array and rebuilds the
+ *  busy-path set in one write (both containers always agree; see SessionSlice.busyPaths). */
+export function landPoolSessions(sessions: PoolSessionInfo[] | undefined): void {
+  const list = sessions ?? [];
+  const busyPaths = new Set<string>();
+  const poolPaths = new Set<string>();
+  for (const p of list) {
+    poolPaths.add(p.path);
+    if (p.busy === true) busyPaths.add(p.path);
+  }
+  useAppStore.setState({ poolSessions: list, busyPaths, poolPaths });
 }
 
 // ---------- Render memory gate: LRU eviction for openSessions ----------
@@ -152,8 +169,23 @@ const OPEN_SESSIONS_MAX = 8;
  *  On switch, saves the outgoing session's right panel snapshot first and restores the
  *  incoming session's right panel after (per-session independence). */
 export function activateSession(path: string): void {
-  const prev = useAppStore.getState().activePath;
-  if (prev !== path) saveRightSlot(prev); // same-path re-activation: neither save nor restore
+  const st0 = useAppStore.getState();
+  // Stale slot after a reconnect (or host restart): the host dropped this entry's UI subscription
+  // with the old socket, so activating it would show a frozen view whose abort button never lands.
+  // Remount through load_session — the host's reuse branch re-attaches and replays the transcript.
+  const resident = st0.openSessions.get(path);
+  if (resident && resident.connEpoch !== st0.connEpoch) {
+    useAppStore.setState({ isCreatingNew: false });
+    st0.send({ type: "reload_settings" });
+    st0.send({ type: "load_session", path });
+    return;
+  }
+  const prev = st0.activePath;
+  // In-place message editing never survives a session switch (cancel-on-switch spec)
+  if (prev !== path) {
+    saveRightSlot(prev); // same-path re-activation: neither save nor restore
+    if (st0.editingEntryId !== null) useAppStore.setState({ editingEntryId: null });
+  }
   useAppStore.setState((st) => {
     const cur = st.openSessions.get(path);
     const openSessions = new Map(st.openSessions);
@@ -221,8 +253,9 @@ export function evictOpenSessions(): void {
     }
     return { openSessions };
   });
-  // Pool boundary: tell the host to drop the evicted sessions' MCP mounts
-  // (idempotent; switching back re-mounts through the load_session path)
+  // Pool boundary: tell the host to drop the evicted sessions' MCP mounts and their
+  // socket attachment (idempotent; switching back re-attaches and re-mounts through the
+  // load_session path). Detaching is what lets the host's idle sweep reclaim the entry.
   for (const p of evicted) useAppStore.getState().send({ type: "mcp_detach", path: p });
 }
 
@@ -248,90 +281,14 @@ function clearRunningTools(s: OpenSession): void {
 }
 
 // ---------- Run sealing / queued messages (moved over from core.js; render calls now bump) ----------
-// Seal the process of the current run from turnItemStart into a loop group (the intermediate
-// assistant stays outside the group) and reset turnItemStart past the group: used both for the
-// pre-seal when a user message is inserted mid-stream and for the resumed run after steer consumption
-export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
-  const startIdx = s.turnItemStart ?? s.items.length;
-  const runItems = s.items.splice(startIdx);
-  // Error rows stay outside the loop group: the run's process may collapse, the
-  // reason it stopped must not (same layout as the reload path).
-  const errors: SessionItem[] = [];
-  for (let i = runItems.length - 1; i >= 0; i--) {
-    const it = runItems[i];
-    if (it.role !== "error") break;
-    errors.unshift(it);
-    runItems.splice(i, 1);
-  }
-  let lastA = -1;
-  for (let i = runItems.length - 1; i >= 0; i--) {
-    if (runItems[i].role === "assistant") {
-      lastA = i;
-      break;
-    }
-  }
-  const finalOut = lastA >= 0 ? runItems.splice(lastA, 1) : [];
-  if (runItems.length) {
-    s.items.push({
-      role: "loop",
-      text: "",
-      collapsed: true,
-      items: runItems,
-      durationSec: s.turnStartAt ? Math.round((Date.now() - s.turnStartAt) / 1000) : null,
-      usage: usage ?? null,
-    });
-  }
-  s.items.push(...finalOut, ...errors);
-  s.turnItemStart = s.items.length;
-}
+// Run sealing lives in ./run-seal.ts (advisor rows split the run, so the logic no longer
+// fits this file's ratchet); re-exported for the existing callers.
+export { sealRunItems };
 
 // Queue actions (drop/edit/send-now/requeue) moved to store/queue-actions.ts; re-exported here
 // so the "../store" barrel and its consumers keep a single import surface.
 export { dropQueueMsg, editQueueMsg, sendNowQueueMsg, requeueSteerMsg, reorderQueueMsg } from "./queue-actions";
 
-// ---------- Desktop alerts (system notification + alert sound; both toggled in
-// settings ▸ Interaction, duplicated events → 10s dedupe) ----------
-const notifyLastAt = new Map<string, number>();
-// Event kind → the base settings id gating it (the Notifications group rendered on the
-// Interaction page from the base schema). Defaults mirror the base registry:
-// completion/ask notify on, error notify off.
-const NOTIFY_KIND_SETTING: Record<string, string> = {
-  turn_end: "completion.notify",
-  error: "error.notify",
-  approval: "ask.notify",
-};
-export function notifyDesktop(kind: string, s: OpenSession, title: string, body: string): void {
-  const st = useAppStore.getState();
-  const settingId = NOTIFY_KIND_SETTING[kind];
-  if (settingId) {
-    const v = st.hostSettings?.values?.[settingId];
-    if (settingId === "error.notify" ? v !== "on" : v === "off") return;
-  }
-  const now = Date.now();
-  const key = `${s.sessionId}:${kind}`;
-  if (now - (notifyLastAt.get(key) ?? 0) < 10_000) return;
-  notifyLastAt.set(key, now);
-  if (!invoke) return; // non-Tauri environment (browser direct-connect debugging): feature absent, skip silently
-  const path = [...st.openSessions.entries()].find(([, v]) => v === s)?.[0];
-  if (path === st.activePath && document.hasFocus()) return; // the user is already looking at this session
-  if (st.uiPrefs.notifySound !== false) {
-    invoke("play_alert_sound").catch((err: unknown) => console.warn("play_alert_sound:", err));
-  }
-  if (st.uiPrefs.notifyDesktop !== false) {
-    // macOS rejects the request with a reason when the app lacks notification
-    // authorization (unsigned build, permission denied): keep it in the console
-    // instead of dropping it silently.
-    invoke("send_desktop_notification", { title, body, sessionId: s.sessionId }).catch((err: unknown) =>
-      console.warn("send_desktop_notification:", err),
-    );
-  }
-}
-
-/** Alert title for a session: its on-disk list title, else the generic label. */
-function alertTitle(s: OpenSession): string {
-  const st = useAppStore.getState();
-  return st.diskProjects.flatMap((pr) => pr.sessions).find((x) => x.id === s.sessionId)?.title || t("notify.bgSessionTitle");
-}
 
 // ---------- Streaming delta coalesced rendering: many frames within a 100ms window swap the reference once (prevents high-frequency re-renders from saturating the main thread) ----------
 // Delta frames mutate the current session object in place (no set, invisible to zustand, zero
@@ -349,7 +306,7 @@ export function applyDelta(sessionId: string, fn: (s: OpenSession) => void): voi
     deltaRenderTimer = undefined;
     const ids = [...pendingDelta];
     pendingDelta.clear();
-    for (const id of ids) updateSession(id, () => {}, false); // empty patch: the shallow copy + reference swap is the notification
+    for (const id of ids) updateSession(id, () => {}, true); // withItems: the items array reference must swap too, or subscribers keyed on items never re-render (streaming would freeze)
   }, 100);
 }
 
@@ -358,10 +315,16 @@ export function applyDelta(sessionId: string, fn: (s: OpenSession) => void): voi
 // spinners / half-finished drafts) so leftovers from the old instance never wedge the view; within
 // the same hi, frames with a behind-position seq are dropped (drop, not merge, for behind-position
 // frames); gaps only warn without dropping (reconnect hole-filling is unimplemented, observing for now).
+// Module-level event watermark: nothing in the UI subscribes to it, so keeping it out of the
+// store saves re-running every subscribed selector once per token (it only gates frame
+// admission here). Reset alongside evtHost — a host restart resets the position stream.
+let evtSeq = 0;
+
 export function hostInstanceReset(hi: string | null, seq: number): void {
+  evtSeq = seq; // the watermark follows the host instance: reset paths included
   useAppStore.setState((st) => {
     if (st.evtHost === null || st.evtHost === hi) {
-      return { evtHost: hi, evtSeq: seq };
+      return { evtHost: hi };
     }
     // Align with turn_end teardown (a dead host = every turn waits forever for a turn_end that never comes)
     const openSessions = new Map<string, OpenSession>();
@@ -380,7 +343,7 @@ export function hostInstanceReset(hi: string | null, seq: number): void {
       }
       openSessions.set(p, next);
     }
-    return { openSessions, poolSessions: [], evtHost: hi, evtSeq: seq };
+    return { openSessions, poolSessions: [], busyPaths: new Set(), poolPaths: new Set(), evtHost: hi };
   });
 }
 
@@ -399,9 +362,9 @@ export function admitStampedEvent(msg: EventStampFields): boolean {
     return true;
   }
   const seq = msg.seq!; // stamped frames always have seq (same as above); the assertion only tightens the type, runtime semantics match the original
-  if (seq <= st.evtSeq) return false; // behind position: drop
-  if (seq > st.evtSeq + 1) console.warn(`[evt] 跳号 ${st.evtSeq} → ${seq}（按序放行，仅观测）`);
-  useAppStore.setState({ evtSeq: seq });
+  if (seq <= evtSeq) return false; // behind position: drop
+  if (seq > evtSeq + 1) console.warn(`[evt] 跳号 ${evtSeq} → ${seq}（按序放行，仅观测）`);
+  evtSeq = seq;
   return true;
 }
 
@@ -410,9 +373,14 @@ export function admitStampedEvent(msg: EventStampFields): boolean {
  *  running state right away — the elapsed clock and the stop button appear at send time; the host
  *  turn_start keeps the origin instead of resetting it. Shared by the composer pipeline
  *  (composer/send.ts), the pendingNewPrompt consumption and the automation user_message echo. */
-export function startLocalRun(sessionId: string, text: string, images?: UserItem["images"]): void {
+export function startLocalRun(
+  sessionId: string,
+  text: string,
+  images?: UserItem["images"],
+  automation?: UserItem["automation"],
+): void {
   updateSession(sessionId, (s) => {
-    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}) });
+    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}), ...(automation ? { automation } : {}) });
     s.streaming = true;
     s.turnStartAt = Date.now();
   });
@@ -469,6 +437,15 @@ function promoteStrandedSteerBubbles(s: OpenSession): void {
 }
 
 // ---------- event frame handling (all kind branches of the old onMessage case "event"; immutable updates via updateSession) ----------
+// Target row for a live tool frame: call id first, display name as the fallback (older frames may
+// lack the id); zero-copy reverse scans since the chat list can be long.
+function findToolRow(s: OpenSession, toolCallId?: string, name?: string): ToolItem | undefined {
+  return (
+    findLast(s.items, (it): it is ToolItem => it.role === "tool" && !!it.toolCallId && it.toolCallId === toolCallId) ||
+    findLast(s.items, (it): it is ToolItem => it.role === "tool" && (it.name || it.text) === name)
+  );
+}
+
 export function applyEvent(msg: EventFrame): void {
   const st = useAppStore.getState();
   if (msg.kind === "turn_start") {
@@ -490,15 +467,29 @@ export function applyEvent(msg: EventFrame): void {
           // come, rescue its bubble before this run's process starts
           promoteStrandedSteerBubbles(s);
           s.turnStartAt = s.turnStartAt ?? Date.now();
-          s.turnItemStart = s.items.length;
+          // A UI that attached mid-run missed the run's first turn_start; the first one it
+          // sees is a tool-loop continuation's, which would split the run's fold at the attach
+          // moment. Anchor at the turn's leading user message instead so sealRunItems folds
+          // the whole run like the reload path; a partial-turn loop group already in the items
+          // (transcript rebuilt mid-run) lands inside the range and is un-nested by the seal.
+          let anchor = s.items.length;
+          for (let i = s.items.length - 1; i >= 0; i--) {
+            if (s.items[i].role === "user") { anchor = i + 1; break; }
+          }
+          s.turnItemStart = anchor;
         }
       },
       false,
     );
   } else if (msg.kind === "user_message") {
-    // Automation prompt echo (host-side send: no local composer bubble exists); the single
-    // run-start write covers the clock/stop button without waiting for turn_start.
-    startLocalRun(msg.sessionId, msg.text);
+    // Host-side send echo (another channel's prompt, an automation run, or this
+    // channel's own degenerate-idle prompt — BUG-080 half: the message was queued
+    // on a stale streaming flag and drew no optimistic bubble). Dedup against the
+    // sender's optimistic bubble: the tail user row without an entryId carrying
+    // the same text IS that bubble, so the echo never doubles it.
+    const cur = findBySessionId(msg.sessionId);
+    const dupe = findLast(cur?.items ?? [], (it): it is UserItem => it.role === "user" && !it.entryId && it.text === msg.text);
+    if (!dupe) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
       s.assistantDraft += msg.text;
@@ -513,7 +504,7 @@ export function applyEvent(msg: EventFrame): void {
         s.workingText = t("notify.thinking");
         s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking });
       } else {
-        const last = [...s.items].reverse().find((it): it is ThinkingItem => it.role === "thinking");
+        const last = findLast(s.items, (it): it is ThinkingItem => it.role === "thinking");
         if (last) {
           last.text = t("notify.thinkingDone", { label: msg.durationLabel || t("notify.thinkingTookSeconds") });
           last.thinking = msg.thinking || "";
@@ -527,7 +518,7 @@ export function applyEvent(msg: EventFrame): void {
   } else if (msg.kind === "thinking_delta") {
     // Only touch fields of the last thinking item; mutate in place, references swap together at the 100ms window flush
     applyDelta(msg.sessionId, (s) => {
-      const last = [...s.items].reverse().find((it): it is ThinkingItem => it.role === "thinking" && !!it.streaming);
+      const last = findLast(s.items, (it): it is ThinkingItem => it.role === "thinking" && !!it.streaming);
       if (last) last.thinking = (last.thinking || "") + msg.text;
     });
   } else if (msg.kind === "tool") {
@@ -558,9 +549,7 @@ export function applyEvent(msg: EventFrame): void {
     });
   } else if (msg.kind === "tool_update") {
     updateSession(msg.sessionId, (s) => {
-      const last =
-        [...s.items].reverse().find((it): it is ToolItem => it.role === "tool" && !!it.toolCallId && it.toolCallId === msg.toolCallId) ||
-        [...s.items].reverse().find((it): it is ToolItem => it.role === "tool" && (it.name || it.text) === msg.name);
+      const last = findToolRow(s, msg.toolCallId, msg.name);
       if (last) {
         if (msg.files) last.files = uniqueFiles(msg.files);
         if (msg.added != null) last.added = msg.added;
@@ -574,13 +563,23 @@ export function applyEvent(msg: EventFrame): void {
         if (st.uiPrefs.expandToolOutput) last[toolExpandKey(last.name)] = false;
       }
     });
+  } else if (msg.kind === "tool_details") {
+    // In-flight details refresh from a returned async tool (task spawn progress): the row is
+    // already settled, so touch details only — never running/expand state.
+    updateSession(msg.sessionId, (s) => {
+      const last = findToolRow(s, msg.toolCallId, msg.name);
+      if (last && msg.details != null) last.details = msg.details as ToolDetails;
+    });
   } else if (msg.kind === "turn_end") {
     // In-run frames (runEnd:false, each model turn of a tool loop): only settle the draft, no
     // sealing, no clock stop — the whole run's process belongs to one loop group, intermediate
     // assistants stay inside the group (matching the reloaded view)
     if (!msg.runEnd) {
       updateSession(msg.sessionId, (s) => {
-        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) {
+          // msg.final: this turn ended stopReason "stop" — a delivered output, lifted at seal
+          s.items.push({ role: "assistant", text: s.assistantDraft, ...(msg.final ? { turnFinal: true } : {}) });
+        }
         s.assistantDraft = "";
       });
       return;
@@ -602,20 +601,20 @@ export function applyEvent(msg: EventFrame): void {
       // (addressing key of the message row's fork button); attach it to the last user message of
       // this run without an entryId (the optimistically inserted one)
       if (msg.userEntryId) {
-        const u = [...s.items].reverse().find((it): it is UserItem => it.role === "user" && !it.entryId);
+        const u = findLast(s.items, (it): it is UserItem => it.role === "user" && !it.entryId);
         if (u) u.entryId = msg.userEntryId;
       }
       // entryId of the assistant at the end of this run's output (addressing key of the
       // .turn-acts fork button): after sealing, intermediate assistants are inside the loop group,
       // only this turn-final output remains at top level
       if (msg.assistantEntryId) {
-        const a = [...s.items].reverse().find((it): it is AssistantItem => it.role === "assistant" && !it.entryId);
+        const a = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && !it.entryId);
         if (a) a.entryId = msg.assistantEntryId;
       }
       // End timestamp of this run (shown at the output tail): the live path takes the runEnd
       // arrival time, the reload path is backfilled by the host from the on-disk entry timestamp;
       // both agree
-      const tailA = [...s.items].reverse().find((it): it is AssistantItem => it.role === "assistant");
+      const tailA = findLast(s.items, (it): it is AssistantItem => it.role === "assistant");
       if (tailA && tailA.endMs == null) tailA.endMs = Date.now();
       s.turnItemStart = null; // the run is fully over, stop accumulating
       s.turnStartAt = null;
@@ -640,8 +639,8 @@ export function applyEvent(msg: EventFrame): void {
     // on-disk list (notify.bgSessionTitle when not listed), the body is the last assistant text
     // truncated to 80 chars as the summary (notify.finished when absent). A run that ended on an
     // error row has already alerted in the error branch — don't also announce "finished".
-    if (s.items[s.items.length - 1]?.role !== "error") {
-      const lastA = [...s.items].reverse().find((it) => it.role === "assistant" && !isJunkPlaceholder(it.text));
+    if (!turnEndedWithError(s.items)) {
+      const lastA = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && !isJunkPlaceholder(it.text));
       const summary = (lastA?.text || "").trim();
       notifyDesktop("turn_end", s, alertTitle(s), summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"));
     }
@@ -669,6 +668,22 @@ export function applyEvent(msg: EventFrame): void {
     // @ mention persisted read-back: fileMention messages have no streaming-event counterpart; the host re-reads the session file at agent_end and re-sends it
     updateSession(msg.sessionId, (s) => {
       s.items.push({ role: "mention", text: "", files: msg.files || [] });
+    });
+  } else if (msg.kind === "advisor") {
+    // Advice batch: a row at its injection point (mid-run blocker, or the run-boundary
+    // batch). Not folded into a loop group — the renderer lifts blockers out of the
+    // turn's closing card based on where this row lands.
+    updateSession(msg.sessionId, (s) => {
+      s.items.push({ role: "advisor", text: "", notes: msg.notes });
+    });
+  } else if (msg.kind === "ttsr") {
+    // TTSR rule injection: a read-only notice at the interruption point. The prose the rewind
+    // cut off settles first, mirroring the host transcript (it flushed the draft before pushing
+    // the row), so live and reloaded order agree.
+    updateSession(msg.sessionId, (s) => {
+      if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+      s.assistantDraft = "";
+      s.items.push({ role: "ttsr", text: msg.rules.map((r) => r.name).join(", "), rules: msg.rules });
     });
   } else if (msg.kind === "error") {
     // Provider/request failure (quota, auth, transport): one row of its own.
@@ -726,9 +741,7 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
       for (let i = s.items.length - 1; i >= 0; i--) {
         const x = s.items[i];
         if (x.role === "loop") {
-          const hit = [...(x.items ?? [])]
-            .reverse()
-            .find((k): k is UserItem => k.role === "user" && !!k.pending && k.text === t);
+          const hit = findLast(x.items ?? [], (it): it is UserItem => it.role === "user" && !!it.pending && it.text === t);
           if (hit) return { bubble: hit, loop: x };
         } else if (x.role === "user" && x.pending && x.text === t) {
           return { bubble: x };
@@ -738,8 +751,10 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
     };
     for (const t of msg.texts ?? []) {
       const found = findBubble(t);
-      // Duplicate consumption frame (RPC double-push): skip if the text already has a promoted bubble; don't repaint it
-      if (!found && [...s.items].reverse().some((x) => x.role === "user" && x.steerDone && x.text === t)) continue;
+      if (!found && findLast(s.items, (x): x is UserItem => x.role === "user" && !!x.steerDone && x.text === t)) {
+        // Duplicate consumption frame (RPC double-push): the text already has a promoted bubble — don't repaint it
+        continue;
+      }
       const q = s.queued ?? [], st2 = s.steering ?? [];
       const i = q.findIndex((m) => (m.text || "") === t);
       const j = st2.findIndex((m) => (m.text || "") === t);

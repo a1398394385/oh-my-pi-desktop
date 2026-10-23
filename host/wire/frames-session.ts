@@ -3,7 +3,7 @@
 // shapes live in payloads.ts, the HostFrame union in index.ts.
 import type {
   ApprovalMode, ContextBreakdown, ContextDetailStats, DirEntry, DiskProject, EntryTreeNode,
-  FileMatch, GoalState, GitStatusFile, LimitBalance, LimitWindow, LimitsAccount, ModelEntry, ModelRoleEntry,
+  FileMatch, GoalState, GitOperationState, GitStatusFile, LimitBalance, LimitWindow, LimitsAccount, ModelEntry, ModelRoleEntry,
   SessionBranch, SettingsPayload, SlashCommand, TodoPhase, TranscriptItem,
 } from "./payloads";
 
@@ -106,6 +106,15 @@ export interface ComputerModeFrame {
   error?: string;
 }
 
+/** Advisor on/off state frame (host/advisor-mode.ts pushAdvisorMode): the header eye icon lights up on it */
+export interface AdvisorModeFrame {
+  type: "advisor_mode";
+  sessionId: string;
+  enabled: boolean;
+  /** Present when the toggle left no live advisor (setting on but no model on the 'advisor' role) — surfaced as a red toast */
+  error?: string;
+}
+
 /** Session created/reused snapshot frame (host/host.ts / 2540-2551 / 2573-2584 session_created) */
 export interface SessionCreatedFrame {
   type: "session_created";
@@ -121,6 +130,24 @@ export interface SessionCreatedFrame {
   /** Scheduler-spawned session: register the slot but never activate/close the automations view */
   automation?: { id: string; title: string };
   background?: boolean;
+  /** True while the SDK agent run is live: a UI opening a running session mid-turn
+   * seeds its spinner from this (turn boundary frames alone would leave the view dark
+   * until the next event lands — long tool calls emit nothing). */
+  busy?: boolean;
+  /** Epoch ms the live run started (PoolEntry.activeStartedAt): the "Working Ns" clock
+   * seeds from this, so a channel opening mid-run shows the real elapsed time instead of
+   * counting from its own attach moment (or from the next turn_start). */
+  busySince?: number | null;
+}
+
+/** Run-finished broadcast (session-lifecycle agent_end terminal): reaches EVERY UI
+ * connection, including channels that never attached this session — they cannot see
+ * the per-session turn_end frame, so without this push the sidebar's unread dot
+ * (local unseenFinished set) never lights on the other side. */
+export interface SessionFinishedFrame {
+  type: "session_finished";
+  sessionId: string;
+  path: string;
 }
 
 /** Session list frame (host/host.ts handleListSessions) */
@@ -133,12 +160,17 @@ export interface SessionListFrame {
   pinnedSessions: string[];
   /** App-owned backing dir for "work without a project" (never in allProjects). */
   defaultWorkspace?: string;
+  /** allProjects entries whose working tree carries a .git entry (gates the row's Git entry). */
+  gitProjects?: string[];
 }
 
 /** Pool residency snapshot (state.ts pushPoolSnapshot): every session the host still holds in memory */
 export interface PoolSessionsFrame {
   type: "pool_sessions";
-  sessions: { id: string; path: string; cwd: string; title: string | null }[];
+  // busy = the SDK agent run is live (state.ts poolEntryBusy). Lets a channel
+  // that never loaded the session (remote control watching the desktop, or
+  // vice versa) render the sidebar running spinner for it.
+  sessions: { id: string; path: string; cwd: string; title: string | null; busy?: boolean }[];
 }
 
 /** Sidebar full-text search hits (host/rpc/session.ts search_session_text): match inside a user prompt or agent reply */
@@ -172,7 +204,7 @@ export interface MessagesFrame {
 /** Session archive reply (host/host.ts) */
 export interface SessionArchivedFrame {
   type: "session_archived";
-  sessionId: string;
+  path: string; // session file path, the addressing key both branches share
   ok: boolean; // always true
   archived: boolean;
 }
@@ -187,7 +219,7 @@ export interface SessionAbortedFrame {
 /** Session rename reply (host/host.ts) */
 export interface SessionRenamedFrame {
   type: "session_renamed";
-  sessionId: string;
+  path: string; // session file path, the addressing key both branches share
   ok: boolean; // always true
   title: string;
 }
@@ -197,6 +229,9 @@ export interface SessionTitleChangedFrame {
   type: "session_title_changed";
   sessionId: string;
   title: string;
+  /** Session file path: the only key a channel that never attached this session can
+   * match against its disk rows (disk ids and pool UUIDs never coincide). */
+  path?: string;
 }
 
 /** Manual compaction reply (host/host.ts empty session / 874 success / 876 failure) */
@@ -258,10 +293,21 @@ export interface SessionNavigatedFrame {
   error?: string; // failure only
 }
 
+/** Edit-and-resend receipt (host/rpc/session.ts edit_resend: navigateTree + prompt in one call) */
+export interface SessionEditedFrame {
+  type: "session_edited";
+  sessionId: string;
+  ok: boolean;
+  error?: string; // failure only
+}
+
 /** External-write notice frame (host/host.ts re-sent on pool reuse / 3142 detected by pollExternalWrites) */
 export interface SessionExternalWriteFrame {
   type: "session_external_write";
   sessionId: string;
+  // Set when the file is back to a state the manager knows (its own writes landed
+  // after a rewrite shifted the poll offset): the bar comes down without a reload.
+  clear?: boolean;
 }
 
 /** Single-file diff reply (host/host.ts get_file_diff) */
@@ -296,11 +342,13 @@ export interface DirListFrame {
   entries: DirEntry[];
 }
 
-/** @ file candidates reply (host/host.ts list_files; reqId echoed back unchanged) */
+/** @ file candidates reply (host/host.ts list_files; reqId echoed back unchanged).
+ *  File-tab search replies carry target:"fileTab" so the store can route them away from the composer mention list. */
 export interface FileMatchesFrame {
   type: "file_matches";
   reqId: number;
   matches: FileMatch[];
+  target?: "fileTab";
 }
 
 /** ! local command start frame (host/host.ts bash_exec) */
@@ -448,6 +496,8 @@ export interface GitStatusFrame {
   type: "git_status";
   cwd: string;
   files: GitStatusFile[];
+  /** Mutating operation in flight, so the UI can explain refused actions. */
+  state?: GitOperationState;
 }
 
 /** Branch list reply (host/rpc/files.ts not a git repo / get_git_branches normal) */
@@ -458,6 +508,101 @@ export interface GitBranchesFrame {
   current: string | null;
   branches: string[];
   remotes: string[]; // remote-tracking refs, "origin/xxx" form (local refs/remotes snapshot; symbolic */HEAD dropped)
+  /** HEAD is not on any branch: `current` then carries the short oid. */
+  detached?: boolean;
+}
+
+/** One commit row of the Git manager graph (host/rpc/git-graph.ts). */
+export interface GitGraphCommitWire {
+  oid: string;
+  parents: string[];
+  subject: string;
+  author: string;
+  authorTime: number; // unix epoch seconds
+  refs: string[]; // branches/tags on this commit, prefixes stripped
+}
+
+/** One changed file of a commit detail (numstat row). */
+export interface GitCommitFileWire {
+  path: string;
+  /** Pre-rename path when the commit renamed/copied this file (numstat -z record). */
+  oldPath?: string;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+/** Header fields of one commit (host/rpc/git-graph.ts git_commit_detail). */
+export interface GitCommitDetailWire {
+  oid: string;
+  parents: string[];
+  author: string;
+  authorEmail: string;
+  authorTime: number;
+  subject: string;
+  body: string;
+}
+
+/** Commit graph reply (host/rpc/git-graph.ts git_graph): log rows + branch lists. */
+export interface GitGraphFrame {
+  type: "git_graph";
+  reqId: number;
+  cwd: string;
+  ok: boolean;
+  error?: string;
+  root?: string;
+  branch?: string;
+  commits?: GitGraphCommitWire[];
+  hasMore?: boolean;
+  branches?: { local: string[]; remotes: string[]; tags: string[] };
+}
+
+/** Commit detail reply (host/rpc/git-graph.ts git_commit_detail). */
+export interface GitCommitDetailFrame {
+  type: "git_commit_detail";
+  reqId: number;
+  cwd: string;
+  oid: string;
+  ok: boolean;
+  error?: string;
+  commit?: GitCommitDetailWire;
+  files?: GitCommitFileWire[];
+  additions?: number;
+  deletions?: number;
+  commitCount?: number | null;
+}
+
+/** One file's patch inside a commit (host/rpc/git-graph.ts git_commit_file_diff). */
+export interface CommitFileDiffFrame {
+  type: "commit_file_diff";
+  reqId: number;
+  cwd: string;
+  oid: string;
+  path: string;
+  ok: boolean;
+  error?: string;
+  diff?: string;
+}
+
+/**
+ * Both sides of one file for the Git page's compare view
+ * (host/rpc/git-compare.ts git_file_versions): commit, index or worktree change.
+ */
+export interface FileVersionsFrame {
+  type: "file_versions";
+  reqId: number;
+  cwd: string;
+  oid: string; // "" = index/worktree read
+  path: string;
+  ok: boolean;
+  error?: string;
+  oldText?: string;
+  newText?: string;
+  /** Unified diff of the same pair, used to colour changed rows on each side. */
+  patch?: string;
+  binary?: boolean;
+  /** At least one side hit the 500k character cap. */
+  truncated?: boolean;
 }
 
 /** Branch switch reply (host/host.ts; failures go through the error frame) */

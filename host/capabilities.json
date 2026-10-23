@@ -144,6 +144,12 @@
       "note": "Computer Use 会话级开关（输入框屏幕图标按钮；主门控仍由设置页 computer.enabled 把守）"
     },
     {
+      "id": "set_advisor_mode",
+      "kind": "session",
+      "risk": "write",
+      "note": "Advisor 会话级开关（标题栏眼睛按钮；与 /advisor on|off 写同一层 advisor.enabled overlay）"
+    },
+    {
       "id": "set_computer_provider",
       "kind": "settings",
       "risk": "write",
@@ -244,6 +250,12 @@
       "kind": "transcript",
       "risk": "write",
       "note": "同文件内移动 leaf，被放弃路径保留为兄弟分支"
+    },
+    {
+      "id": "edit_resend",
+      "kind": "transcript",
+      "risk": "write",
+      "note": "消息编辑重发：navigateTree 回退到该 user 消息 parent 后以新文本/原图重新 prompt，原路径保留为兄弟分支；仅非 streaming 时接受"
     },
     {
       "id": "get_file_diff",
@@ -445,6 +457,12 @@
       "note": "写入 omp-desktop.json 的 sessionContext.enabled，只影响此后创建的会话"
     },
     {
+      "id": "set_automation_agent_enabled",
+      "kind": "settings",
+      "risk": "write",
+      "note": "写入 omp-desktop.json 的 automations.agentTools，控制新会话是否注入 automations_list / automations_manage 工具"
+    },
+    {
       "id": "set_keepalive_enabled",
       "kind": "settings",
       "risk": "write",
@@ -479,6 +497,24 @@
       "kind": "settings",
       "risk": "write",
       "note": "供应商设置页 Kimi auto thinking 开关：写入 omp-desktop.json 的 kimi.autoThinking（默认关）。关时 kimi-code 模型的 auto 档位在创建/切换/循环入口被钉到 high——Kimi 每次换档都会全价重计整个前缀"
+    },
+    {
+      "id": "set_auto_review",
+      "kind": "settings",
+      "risk": "write",
+      "note": "双字段：offer 写 autoReview.offerSmartMode（实验页开关，只决定权限模式菜单是否提供「智能审批」行；关闭时同时退出该模式），enabled 写 autoReview.enabled（运行时 LLM 预审门，由模式菜单选择写入）。预审开启后，仍需人工卡片的工具调用先由默认模型审 tool_execution_start 记录的参数，low/medium 自动放行，deny/unavailable 仍弹人工卡"
+    },
+    {
+      "id": "set_session_title_refresh",
+      "kind": "settings",
+      "risk": "write",
+      "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.refresh（默认关）。开启后每个回合结束用 tiny 模型重生成会话标题；用户手动改名的会话永不覆盖"
+    },
+    {
+      "id": "set_branch_titles",
+      "kind": "settings",
+      "risk": "write",
+      "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.branchTitles（默认关）。开启后每条标题以 branchTitle custom entry 记入当前分支，切分支时把该分支自己的标题镜像到文件头（侧边栏随之切换），header 的 titleSource 改写为 user 以便绕开底座对 auto 的拒绝"
     },
     {
       "id": "set_plugins_enabled",
@@ -606,6 +642,12 @@
       "id": "asset_skill_toggle",
       "kind": "asset",
       "risk": "write"
+    },
+    {
+      "id": "asset_plugin_install",
+      "kind": "asset",
+      "risk": "write",
+      "note": "安装插件：走底座 PluginManager.install（npm 包 / git 源 / 本地路径），装到 profile 插件根；远程只读"
     },
     {
       "id": "asset_plugin_toggle",
@@ -885,25 +927,25 @@
       "id": "automations_list",
       "kind": "automation",
       "risk": "read",
-      "note": "定时任务全量快照：automations.json 现读，回 automations_list 帧（automations + 每任务最近 10 条 runs）"
+      "note": "自动化全量快照：automations.json 现读，回 automations_list 帧（automations + 每任务最近 10 条 runs）"
     },
     {
       "id": "automations_create",
       "kind": "automation",
       "risk": "write",
-      "note": "新建定时任务：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限，落盘后回 automations_list 帧"
+      "note": "新建自动化：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限、弹窗超时 askTimeoutSec/approvalTimeoutSec 缺省 300 秒，落盘后回 automations_list 帧（投递目标字段由 agent 工具写入，RPC 侧剥离）"
     },
     {
       "id": "automations_update",
       "kind": "automation",
       "risk": "write",
-      "note": "编辑定时任务：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活），落盘后回 automations_list 帧"
+      "note": "编辑自动化：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活）；askTimeoutSec/approvalTimeoutSec 为 0 秒表示永不超时，缺省 300 秒；投递型自动化拒绝编辑"
     },
     {
       "id": "automations_delete",
       "kind": "automation",
       "risk": "destructive",
-      "note": "删除定时任务及其运行历史，落盘后回 automations_list 帧"
+      "note": "删除自动化及其运行历史，落盘后回 automations_list 帧"
     },
     {
       "id": "automations_toggle",
@@ -954,6 +996,72 @@
       "kind": "settings",
       "risk": "write",
       "note": "重新生成 remote.accessKey 并持久化；旧 key 立即失效（新连接 401，已连上的不断开）"
+    },
+    {
+      "id": "collab_start",
+      "kind": "session",
+      "risk": "write",
+      "note": "会话上发起 collab 房间：可选 relayUrl（空=collab.relayUrl 设置→wss://my.omp.sh），成功/失败均回 collab_state 帧；turn 进行中允许发起（fork 语义）"
+    },
+    {
+      "id": "collab_join",
+      "kind": "session",
+      "risk": "write",
+      "note": "按链接加入 collab 房间：SDK 切换本会话到 replica 文件，错误内联进 collab_state 帧"
+    },
+    {
+      "id": "collab_leave",
+      "kind": "session",
+      "risk": "write",
+      "note": "离开 collab（guest 恢复原会话文件；host 向 registry 撤房），回 collab_state 帧"
+    },
+    {
+      "id": "collab_state",
+      "kind": "session",
+      "risk": "read",
+      "note": "读当前协作角色/链接/参与者；参与者变化经 statusLine seam 实时推同型帧（host 角色）"
+    },
+    {
+      "id": "worktree_create",
+      "kind": "git",
+      "risk": "write",
+      "note": "建 git worktree（分支 omp/desktop/<slug>，路径 profile 内 wt 根），冲突自动后缀；失败回滚孤儿分支"
+    },
+    {
+      "id": "worktree_status",
+      "kind": "git",
+      "risk": "read",
+      "note": "读 worktree 存在性/分支/dirty 三列计数（移除流程的权威复核）"
+    },
+    {
+      "id": "worktree_remove",
+      "kind": "git",
+      "risk": "destructive",
+      "note": "移除 worktree 目录；dirty 未 force 拒绝并回计数；分支保留不删"
+    },
+    {
+      "id": "git_graph",
+      "kind": "git",
+      "risk": "read",
+      "note": "读提交图谱（git log 拓扑序，scope 为空=全部分支/标签/远程）+ 本地/远程分支清单；limit 上限 1000"
+    },
+    {
+      "id": "git_commit_detail",
+      "kind": "git",
+      "risk": "read",
+      "note": "读单个提交详情（完整消息 + numstat 文件行 + 可达提交数），oid 走 4-40 位 hex 校验"
+    },
+    {
+      "id": "git_commit_file_diff",
+      "kind": "git",
+      "risk": "read",
+      "note": "读某提交内单个文件的 patch（git show 空 format + -- 路径），oid 走 4-40 位 hex 校验"
+    },
+    {
+      "id": "git_file_versions",
+      "kind": "git",
+      "risk": "read",
+      "note": "读对比视图两版全文 + patch：oid=提交内改动（首父），staged=HEAD↔暂存区，否则=暂存区↔工作区；缺失对象返回空侧"
     }
   ]
 }

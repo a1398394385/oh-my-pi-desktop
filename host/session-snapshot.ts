@@ -91,7 +91,10 @@ const CACHE_BREAK_MIN_PEAK = 1000;
 interface StatsScanEntry {
   type?: string;
   customType?: string;
-  message?: { role?: string; usage?: { cacheRead?: number; totalTokens?: number } };
+  message?: {
+    role?: string;
+    usage?: { input?: number; cacheRead?: number; totalTokens?: number };
+  };
 }
 
 /** Base compaction entry (manual /compact, /handoff, plan approval, auto-compaction) or an ACP compaction block. */
@@ -107,10 +110,21 @@ export function countCompactions(entries: ReadonlyArray<{ type?: string; customT
 }
 
 export function countCacheBreaks(entries: ReadonlyArray<StatsScanEntry>): number {
+  return scanCacheBreaks(entries).breaks;
+}
+
+/**
+ * Same scan as {@link countCacheBreaks}, plus the size of the most recent break:
+ * the uncached input tokens that request re-billed at full price. The stats bar
+ * shows it as a "cache miss" flash; the accounting cost is derived from the
+ * model's list price by the caller (only the host knows the model).
+ */
+export function scanCacheBreaks(entries: ReadonlyArray<StatsScanEntry>): { breaks: number; rebilledTokens: number } {
   let peak = 0;
   let last = 0;
   let broken = false;
   let breaks = 0;
+  let rebilledTokens = 0;
   let compacted = false;
   for (const item of entries) {
     if (isCompactionEntry(item)) {
@@ -142,10 +156,12 @@ export function countCacheBreaks(entries: ReadonlyArray<StatsScanEntry>): number
     } else if (peak >= CACHE_BREAK_MIN_PEAK && cacheRead < peak * 0.5) {
       breaks++;
       broken = true;
+      const input = usage.input;
+      rebilledTokens = typeof input === "number" && Number.isFinite(input) ? input : 0;
     }
     last = cacheRead;
   }
-  return breaks;
+  return { breaks, rebilledTokens };
 }
 
 export function buildSessionStats(entry: PoolEntry) {
@@ -164,7 +180,13 @@ export function buildSessionStats(entry: PoolEntry) {
   let ttftCount = 0;
 
   const entries: any[] = typeof entry.manager?.getEntries === "function" ? entry.manager.getEntries() : [];
-  const cacheBreaks = countCacheBreaks(entries);
+  const scanned = scanCacheBreaks(entries);
+  const cacheBreaks = scanned.breaks;
+  // Full-price re-billing of the last break, priced from the catalog list rate:
+  // the UI flashes "N tokens re-billed (~$X)" instead of the stats row. No rate
+  // (subscription plans book 0) leaves the USD out — tokens still show.
+  const inputRate = entry.session.model?.cost?.input ?? 0;
+  const cacheMissUsd = inputRate > 0 ? (scanned.rebilledTokens / 1_000_000) * inputRate : undefined;
   const compactions = countCompactions(entries);
   for (const item of entries) {
     if (item?.type === "message" && item.message?.role === "assistant") {
@@ -204,6 +226,8 @@ export function buildSessionStats(entry: PoolEntry) {
     subagentCost: usage.subagentCost ?? 0,
     cacheHitRate: promptTokens > 0 ? usage.cacheRead / promptTokens : 0,
     cacheBreaks,
+    cacheMissTokens: scanned.rebilledTokens,
+    cacheMissUsd,
     compactions,
     // Same as the TUI's cost segment: session total cost = main session cost + advisor cost (0 when no advisor)
     advisorCost: entry.session.getAdvisorCost(),
@@ -222,17 +246,23 @@ export function pushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
   ws.send(JSON.stringify({ type: "session_stats", sessionId, ...buildSessionStats(entry) }));
 }
 
-// Min interval between live stats pushes: a tool-heavy turn can emit dozens of
-// tool_execution_end events; pushing each one would flood the wire with stats
-// frames (and recompute the usage snapshot every time). The first event of a
-// turn pushes immediately so the numbers start moving right away; later events
-// in the same turn are coalesced by this interval.
+// Min interval between live stats pushes per socket. The throttle state used
+// to live on the pool entry, so with local + remote both attached the first
+// socket's push suppressed the second socket's live stats for the whole
+// window (the other UI's numbers froze mid-turn). Keyed weakly by socket:
+// closed sockets drop out with the object.
 const STATS_PUSH_MIN_INTERVAL_MS = 1500;
+const statsPushedAtBySocket = new WeakMap<object, number>();
 
-export function maybePushSessionStats(ws: any, sessionId: string, entry: PoolEntry) {
+export function maybePushSessionStats(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  if (ws === null || typeof ws !== "object") {
+    pushSessionStats(ws, sessionId, entry);
+    return;
+  }
   const now = Date.now();
-  if (entry.statsPushedAt !== null && now - entry.statsPushedAt < STATS_PUSH_MIN_INTERVAL_MS) return;
-  entry.statsPushedAt = now;
+  const last = statsPushedAtBySocket.get(ws);
+  if (last !== undefined && now - last < STATS_PUSH_MIN_INTERVAL_MS) return;
+  statsPushedAtBySocket.set(ws, now);
   pushSessionStats(ws, sessionId, entry);
 }
 
@@ -266,5 +296,8 @@ export function buildSessionCreatedFrame(
     // (no focus steal, automations view stays open)
     ...(extras.automation ? { automation: extras.automation, background: true } : {}),
     ...(extras.subagentLineage ? { isSubagent: entry.isSubagent, parentPath: entry.parentPath } : {}),
+    // Mid-run open: the receiving UI seeds its spinner from this (see SessionCreatedFrame.busy)
+    busy: entry.session.isStreaming === true,
+    busySince: entry.session.isStreaming === true ? entry.activeStartedAt : null,
   };
 }

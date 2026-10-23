@@ -58,6 +58,8 @@ export const notifyZh = {
   // Settings / config toasts (store/wsHandlers/settings.ts, config.ts)
   savedRestartHint: "已保存，部分网络设置建议重启应用后完全生效",
   profileActivated: "已激活 Profile: {{profile}}",
+  pluginInstalled: "已安装插件 {{name}}",
+  pluginInstallFailed: "插件安装失败",
   loginProgress: "{{provider}}：{{message}}",
   loginOk: "{{provider}} 登录成功，模型列表已刷新",
   loginCancelled: "登录已取消",

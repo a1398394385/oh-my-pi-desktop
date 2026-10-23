@@ -5,6 +5,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
+import type { AgentProcessStyle } from "../../../store/shapes";
 import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
@@ -55,6 +56,14 @@ const THEME_LABEL_KEYS: Record<string, string> = {
   "warm-paper": "settingsPage.appearance.themeWarmPaper",
   "deep-think": "settingsPage.appearance.themeDeepThink",
   coral: "settingsPage.appearance.themeCoral",
+};
+
+// Agent process display style labels (dropdown order = increasing verbosity)
+const PROCESS_STYLE_LABEL_KEYS: Record<AgentProcessStyle, string> = {
+  concise: "settingsPage.appearance.processStyleConcise",
+  standard: "settingsPage.appearance.processStyleStandard",
+  detailed: "settingsPage.appearance.processStyleDetailed",
+  expanded: "settingsPage.appearance.processStyleExpanded",
 };
 
 // Font-size stepping (old stepFont: clamp -> save -> apply; uiPrefs written as a fresh object + bump)
@@ -135,6 +144,13 @@ export default function AppearancePage() {
     useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput: on } }));
     saveUiPrefs();
   };
+  // Agent process display style: how far tool events fold in the message stream
+  const [processStyle, setProcessStyle] = useState(useAppStore.getState().uiPrefs.agentProcessStyle);
+  const pickProcessStyle = (v: AgentProcessStyle) => {
+    setProcessStyle(v);
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, agentProcessStyle: v } }));
+    saveUiPrefs();
+  };
   // Font-size stepping (range keeps the old clamp in settings/index.js: UI 11-18, code 10-18)
   const stepUiFs = (d: number) => {
     stepFont("uiFontSize", d, 11, 18);
@@ -204,6 +220,20 @@ export default function AppearancePage() {
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.appearance.toolOutputTitle")}</b><span>{t("settingsPage.appearance.toolOutputDesc")}</span></div>
           <div className={"tg" + (expandToolOutput ? " on" : "")} id="tgToolOutput" onClick={toggleToolOutput}><i></i></div>
+        </div>
+        <div className="srow">
+          <div className="srow-tx"><b>{t("settingsPage.appearance.processStyleTitle")}</b><span>{t("settingsPage.appearance.processStyleDesc")}</span></div>
+          <Sel
+            id="agentProcessStyleSel"
+            label={t(PROCESS_STYLE_LABEL_KEYS[processStyle])}
+            value={processStyle}
+            options={Object.entries(PROCESS_STYLE_LABEL_KEYS).map(([v, key]) => ({
+              v,
+              label: t(key),
+              ck: v === processStyle ? "✓" : "",
+            }))}
+            onPick={(v) => pickProcessStyle(v as AgentProcessStyle)}
+          />
         </div>
       </div>
       <div className="set-group-tt">{t("settingsPage.appearance.groupCode")}</div>
