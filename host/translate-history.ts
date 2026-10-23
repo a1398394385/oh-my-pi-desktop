@@ -15,6 +15,36 @@ import { advisorHistoryRow } from "./translate-advisor.ts";
 // intermediate assistant items are collected into a loop group (displayed
 // collapsed), leaving only the last assistant text outside the group as the
 // turn's outward result — matching the live turn_end collapse behavior.
+// The approved-plan execution turn persists as a synthetic developer message
+// (the base marks plan-approved prompts synthetic to skip user attribution).
+// The live dispatch echoes the plan as a user bubble (host/plan-approve.ts);
+// rebuilds from disk must map the same entry back so the turn groups like an
+// operator turn. Marker: the rendered prompt wraps the plan body in
+// <plan path="...">...</plan> (base template plan-mode-approved.md); other
+// synthetic developer messages (auto-continue, reminders) carry no plan block
+// and keep their existing handling.
+function approvedPlanBody(content: unknown): string | undefined {
+  let text = "";
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content
+      .flatMap((b): string[] => {
+        if (typeof b !== "object" || b === null || !("type" in b) || !("text" in b)) return [];
+        return b.type === "text" && typeof b.text === "string" ? [b.text] : [];
+      })
+      .join("\n");
+  }
+  const open = text.indexOf("<plan");
+  const close = text.lastIndexOf("</plan>");
+  if (open < 0 || close <= open) return undefined;
+  const nl = text.indexOf("\n", open);
+  if (nl < 0 || nl >= close) return undefined;
+  // The template adds one newline before </plan>; the live echo sends planContent
+  // verbatim, so strip it to keep both paths byte-identical.
+  return text.slice(nl + 1, close).replace(/\n$/, "");
+}
+
 export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   const out: TranscriptItem[] = [];
   const byId = new Map<string, TranscriptItem>();
@@ -25,20 +55,26 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     if (!run) return;
     const r = run;
     run = null;
-    // Only a trailing assistant is the turn's outward result. An advice row at the tail is a
-    // note about the output before it (the collapsed group lifts it to the turn-tail card), so
-    // skip advisor rows when looking for that output — otherwise the turn's final answer is
-    // buried inside the folded process group and never shown.
+    // Outward result = every turn-final assistant text (stopReason "stop": a delivered
+    // output, even when a mid-run wake — advisor note, async result, steer — kept the run
+    // going afterwards), plus the trailing assistant as the pre-mark fallback (covers
+    // error/aborted tails and legacy sessions). Advice rows (a note about the output
+    // before them) and error rows (folded like any other event) sit after that output,
+    // so skip both when scanning for the tail. Order is stream order: one pass keeps it.
     let lastA = r.items.length - 1;
-    while (lastA >= 0 && r.items[lastA].role === "advisor") lastA--;
-    if (r.items[lastA]?.role !== "assistant") lastA = -1;
-    const finalOut = lastA >= 0 ? r.items.splice(lastA, 1) : [];
-    if (r.items.length) {
+    while (lastA >= 0 && (r.items[lastA].role === "advisor" || r.items[lastA].role === "error")) lastA--;
+    const tailIdx = r.items[lastA]?.role === "assistant" ? lastA : -1;
+    const kept: TranscriptItem[] = [];
+    const finalOut: TranscriptItem[] = [];
+    r.items.forEach((it, i) => {
+      (it.role === "assistant" && (it.turnFinal || i === tailIdx) ? finalOut : kept).push(it);
+    });
+    if (kept.length) {
       out.push({
         role: "loop",
         text: "",
         collapsed: true,
-        items: r.items,
+        items: kept,
         durationSec: Math.max(1, Math.round((r.endMs - r.startMs) / 1000)),
         usage: r.usage,
       });
@@ -79,6 +115,19 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       continue;
     }
     if (e.type !== "message") {
+      if (e.type === "ttsr_injection") {
+        // Historical replay: the disk entry keeps only the injected names (rule bodies are
+        // never persisted), so the row carries no descriptions
+        const rules = (Array.isArray(e.injectedRules) ? (e.injectedRules as unknown[]) : [])
+          .filter((n): n is string => typeof n === "string" && n.length > 0)
+          .map((name) => ({ name }));
+        if (rules.length > 0) {
+          const item: TranscriptItem = { role: "ttsr", text: rules.map((r) => r.name).join(", "), rules };
+          if (run) run.items.push(item);
+          else out.push(item);
+        }
+        continue;
+      }
       // An advice row is one more event inside the same run: the reader sees a single
       // collapsed "process" group per turn, not a run cut in half by a note. The renderer
       // lifts it out of the group when it would otherwise hide (LoopGroup collapsed).
@@ -150,15 +199,33 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       }
       continue;
     }
+    // The approved-plan execution turn: map the synthetic developer message
+    // back to the user bubble the live dispatch echoed (approvedPlanBody);
+    // the execution turn groups like an operator turn. Other synthetic
+    // developer messages fall through to the default handling below. Sits
+    // before the role guard (developer is not user/assistant).
+    if (role === "developer" && msg.synthetic === true) {
+      const plan = approvedPlanBody(content);
+      if (plan !== undefined) {
+        finalizeRun(); // The approved plan opens the execution turn, same as a user prompt
+        out.push({ role: "user", text: stripDcpTags(plan), entryId: e.id });
+        run = { items: [], usage: null, startMs: ts, endMs: ts };
+        continue;
+      }
+    }
     if (role !== "user" && role !== "assistant") continue;
-    // Provider failure entries carry no content, only `errorMessage`. Surface them as
-    // their own top-level row: a run may be collapsed into a loop group, its failure
-    // must not be — otherwise a reloaded session loses the reason it stopped.
+    // Provider failure entries carry no content, only `errorMessage`. They join the run like
+    // any other event and fold away with it (one "process" group per turn); closing the run
+    // here instead split one turn into "group + error + flat rows" whenever the journal held
+    // later entries of the same run (attempt 1 fails, attempt 2 continues), which no live
+    // turn ever shows. No open run (failure before the turn had an event) → top-level row.
     if (role === "assistant") {
       const errText = errorTextOf(msg);
       if (errText) {
-        finalizeRun();
-        out.push({ role: "error", text: errText });
+        if (run) {
+          run.endMs = ts || run.endMs;
+          run.items.push({ role: "error", text: errText });
+        } else out.push({ role: "error", text: errText });
         continue;
       }
     }
@@ -202,7 +269,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
     if (typeof content === "string") {
       const plain = stripDcpTags(content);
       if (!isJunkPlaceholderText(plain)) {
-        sink.push({ role, text: plain, entryId: e.id, endMs: ts });
+        sink.push({ role, text: plain, entryId: e.id, endMs: ts, ...(role === "assistant" && msg.stopReason === "stop" ? { turnFinal: true } : {}) });
       }
       continue;
     }
@@ -210,7 +277,7 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       if (block.type === "text") {
         const plain = stripDcpTags(block.text);
         if (!isJunkPlaceholderText(plain)) {
-          sink.push({ role: "assistant", text: plain, entryId: e.id, endMs: ts });
+          sink.push({ role: "assistant", text: plain, entryId: e.id, endMs: ts, ...(msg.stopReason === "stop" ? { turnFinal: true } : {}) });
         }
       } else if (block.type === "thinking" && block.thinking) {
         sink.push({
@@ -264,6 +331,14 @@ export function sumRunDurationMs(entries: any[]): number {
     const ts = Date.parse(e.timestamp ?? "") || 0;
     if (role === "toolResult") {
       if (open && ts) endMs = ts;
+      continue;
+    }
+    if (role === "developer" && msg.synthetic === true && approvedPlanBody(content) !== undefined) {
+      // Same turn segmentation as entriesToTranscript: the approved plan opens the execution turn
+      flush();
+      startMs = ts;
+      endMs = ts;
+      open = true;
       continue;
     }
     if (role === "user") {

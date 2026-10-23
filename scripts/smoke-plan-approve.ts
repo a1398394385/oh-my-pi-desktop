@@ -12,6 +12,9 @@
 //      6. approval_response accepts a sliderIndex without breaking the settle
 //      7. "execute" forks a fresh session that already carries the plan_output
 //         snapshot (the todo card's output row data)
+//      8. approving the plan echoes a user_message frame with the plan body
+//         (regression: the synthetic execution turn drew no bubble and its
+//         rows rendered flat with doubled spacing)
 //
 // Usage: OMP_PROFILE=omp-desktop-test bun scripts/smoke-plan-approve.ts [host ws url]
 import { smokeEnv } from "./smoke-profile.ts";
@@ -95,7 +98,8 @@ const waitFor = async (
 // The host answers `ready` once the WS server is listening, but RPCs are only
 // served after the profile finished initializing — creating a session before
 // that lands is dropped silently.
-if (!(await waitFor((f) => f.type === "ready", 15_000))) die("宿主未就绪（无 ready 帧）");
+const ready = await waitFor((f) => f.type === "ready", 15_000);
+if (!ready) die("宿主未就绪（无 ready 帧）");
 
 const sessDir = await mkdtemp(path.join(tmpdir(), "omp-smoke-plan-"));
 tmpDirs.push(sessDir);
@@ -109,6 +113,24 @@ const created = (await waitFor(
 )) as { sessionId: string; path: string } | null;
 if (!created) die("未收到 session_created");
 console.log("会话:", created.sessionId.slice(0, 8));
+
+// ---- Configure a second role tier so the execution-model slider has a choice ----
+// buildExecutionSlider only emits the slider when the role cycle resolves ≥2
+// models (default + a configured smol/slow role). Assigning smol to any
+// available model is enough; the role is cleared in cleanup so the test
+// profile keeps no residue.
+const readyModelsField = ready && typeof ready === "object" && "models" in ready ? ready.models : undefined;
+const readyModelIds: string[] = [];
+if (Array.isArray(readyModelsField)) {
+  for (const m of readyModelsField) {
+    if (m && typeof m === "object" && "id" in m && typeof m.id === "string") readyModelIds.push(m.id);
+  }
+}
+if (readyModelIds.length === 0) die("ready 帧无可用模型，无法配置角色");
+const roleMark = frames.length;
+ws.send(JSON.stringify({ type: "set_model_role", role: "smol", value: readyModelIds[0] }));
+if (!(await waitFor((f, i) => f.type === "model_roles" && i >= roleMark, 8_000))) die("set_model_role 未回执");
+console.log("已配置 smol 角色模型:", readyModelIds[0]);
 
 // The `local://` plan the agent would have written before proposing. The SDK
 // resolves local:// to `<artifactsDir>/local/`, where artifactsDir is the
@@ -156,7 +178,7 @@ const proposeMark = frames.length;
 const card = (await waitFor((f, i) => f.type === "approval_request" && i >= proposeMark)) as
   | { requestId: string; options: string[]; keepContextTokens?: { tokens: number; contextWindow: number }; slider?: unknown; optionLabels?: unknown }
   | null;
-if (!card) die("审批卡未派发（xd://propose 带外派发失效）");
+if (!card) die("approval card not delivered (xd://propose out-of-band dispatch failed)");
 
 // ---- Assertion 2: exactly the five stable option ids ----
 const PLAN_IDS = ["plan:execute", "plan:compact", "plan:keep", "plan:refine", "plan:save-quit"];
@@ -173,7 +195,28 @@ assert(
   `keep 行下发原始 token 数字（${JSON.stringify(card.keepContextTokens ?? null)}）`,
 );
 assert(card.optionLabels === undefined, "帧上不含渲染文案（label 由 UI 本地化）");
-assert(card.slider === undefined || Array.isArray((card.slider as { segments?: unknown }).segments), "slider 字段形状正确");
+// ---- Assertion 3b: the execution-model slider rides the frame (regression:
+// it was built but never attached to the presentation, so the card never
+// rendered it and execution silently fell back to the default role tier) ----
+const slider = card.slider;
+const sliderSegments =
+  slider && typeof slider === "object" && "segments" in slider && Array.isArray(slider.segments)
+    ? slider.segments.filter(
+        (s): s is { label: string } =>
+          !!s && typeof s === "object" && "label" in s && typeof s.label === "string",
+      )
+    : [];
+assert(slider !== undefined && slider !== null, "已配置 smol 角色：slider 字段必须下发");
+assert(sliderSegments.length >= 2, `slider 至少两档（实际 ${sliderSegments.length} 档）`);
+assert(
+  sliderSegments.some((s) => s.label === "smol") && sliderSegments.some((s) => s.label === "default"),
+  `slider 档位含 smol 与 default（${sliderSegments.map((s) => s.label).join(", ")}）`,
+);
+const sliderIndex = slider && typeof slider === "object" && "index" in slider ? slider.index : undefined;
+assert(
+  sliderIndex === sliderSegments.findIndex((s) => s.label === "default"),
+  "slider 停在 default 档（执行默认落在默认角色模型）",
+);
 
 // ---- Assertion 4: refine keeps plan mode active ----
 ws.send(
@@ -202,6 +245,19 @@ if (second) {
   ws.send(JSON.stringify({ type: "approval_response", requestId: second.requestId, answer: "plan:keep" }));
   const exited = await waitFor((f, _i) => f.type === "plan_mode" && f.enabled === false && _i >= afterRefine, 8_000);
   assert(exited !== null, "选「保留上下文」后退出计划模式（approve 分支未卡死）");
+  // ---- Assertion 5b: the approved plan echoes as a user bubble frame ----
+  // Regression: the execution turn is synthetic and persists as a developer
+  // message, so nothing ever drew a bubble for it and its rows rendered flat
+  // under #stream (flex children never collapse margins → doubled spacing).
+  // host/plan-approve.ts echoes the plan as user_message before the run starts.
+  const echo = (await waitFor(
+    (f, _i) => f.type === "event" && f.kind === "user_message" && f.sessionId === created.sessionId && _i >= afterRefine,
+    8_000,
+  )) as { text?: unknown } | null;
+  assert(
+    echo !== null && typeof echo.text === "string" && echo.text.includes("# Smoke plan"),
+    "批准执行后回显 user_message 气泡帧（携带计划正文）",
+  );
 }
 
 // ---- Assertion 6: re-entering plan mode still works after an approval ----
@@ -242,6 +298,11 @@ if (third) {
 // Leave plan mode before teardown.
 ws.send(JSON.stringify({ type: "set_plan_mode", sessionId: created.sessionId, enabled: false }));
 await waitFor((f, _i) => f.type === "plan_mode" && f.enabled === false, 5_000);
+
+// Clear the smol role so the test profile keeps no residue.
+const clearMark = frames.length;
+ws.send(JSON.stringify({ type: "set_model_role", role: "smol", value: "" }));
+await waitFor((f, i) => f.type === "model_roles" && i >= clearMark, 8_000);
 
 await cleanup();
 if (failures > 0) {

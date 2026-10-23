@@ -170,11 +170,13 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
   return last;
 }
 
-function flushAssistantDraft(entry: PoolEntry) {
+function flushAssistantDraft(entry: PoolEntry, final = false) {
   if (!entry.assistantDraft) return;
   const draft = stripDcpTags(entry.assistantDraft);
   if (!isJunkPlaceholderText(draft)) {
-    entry.transcript.push({ role: "assistant", text: draft });
+    // final: the message ended stopReason "stop" — a delivered output, lifted out of the
+    // loop group at seal time (toolUse-turn prose stays process narration)
+    entry.transcript.push({ role: "assistant", text: draft, ...(final ? { turnFinal: true } : {}) });
   }
   entry.assistantDraft = "";
 }
@@ -243,10 +245,29 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       return {
         kind: "turn_end",
         runEnd: false,
+        // final: this turn ended "stop" — the UI settles its draft as a delivered output
+        final: ev.message?.stopReason === "stop",
         usage: u
           ? { input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0, cacheWrite: u.cacheWrite ?? 0 }
           : null,
       };
+    }
+    case "ttsr_triggered": {
+      // A TTSR match rewound the stream and injected these rules: the notice sits at that
+      // point as a read-only row (the TUI shows the same block). Rules ride along with name +
+      // description only — the row never re-renders the injected body in full.
+      const rules = (Array.isArray(ev.rules) ? (ev.rules as unknown[]) : []).flatMap((raw) => {
+        const r = raw as { name?: unknown; description?: unknown; content?: unknown };
+        if (typeof r.name !== "string" || !r.name) return [];
+        const body = typeof r.description === "string" ? r.description : typeof r.content === "string" ? r.content : "";
+        return [{ name: r.name, description: body.trim() || undefined }];
+      });
+      if (rules.length === 0) return null;
+      // Settle the interrupted prose first: the notice belongs after the text it cut off
+      flushAssistantDraft(entry);
+      const item: TranscriptItem = { role: "ttsr", text: rules.map((r) => r.name).join(", "), rules };
+      entry.transcript.push(item);
+      return { kind: "ttsr", rules };
     }
     case "thinking_level_changed":
       // auto-resolution frame: when configured==="auto", resolved is the
@@ -274,7 +295,15 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // settled first so the error row lands after it. Without this branch the
       // failure never reaches the UI: no text_delta ever carried it.
       const text = errorTextOf(ev.message);
-      if (!text) return null;
+      if (!text) {
+        // A stop-ended assistant message is a delivered output: settle it NOW with the
+        // turnFinal mark instead of waiting for the next event's flush — a mid-run wake
+        // (advisor note / async result) would otherwise land its row above this text in
+        // the pooled transcript, and the seal could not see the mark.
+        const m = ev.message as { role?: unknown; stopReason?: unknown };
+        if (m?.role === "assistant" && m.stopReason === "stop") flushAssistantDraft(entry, true);
+        return null;
+      }
       flushAssistantDraft(entry);
       entry.transcript.push({ role: "error", text });
       return { kind: "error", text };
