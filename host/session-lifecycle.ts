@@ -53,6 +53,7 @@ import { createKeepaliveExtension } from "./keepalive.ts";
 import { markSeen, reportKeepaliveState } from "./keepalive-host.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
+import { pushAdvisorMode } from "./advisor-mode.ts";
 import { pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { bgJobsPayload } from "./async-jobs.ts";
 import { hostI18n } from "./i18n/host.ts";
@@ -107,7 +108,13 @@ export async function createSessionCore(
   initialModel?: any,
   // Reopened child transcript: keep its persisted spawn contract. The main
   // prompt would re-render AGENTS.md/device blocks and make a scout act as primary.
-  opts?: { subagent?: boolean; subagentInit?: { systemPrompt: string[]; tools: string[] } },
+  // askTimeoutSec: automation runs bound their ask dialogs with the task's own
+  // deadline instead of the host-wide ask.timeout (0 = wait forever, as there).
+  opts?: {
+    subagent?: boolean;
+    subagentInit?: { systemPrompt: string[]; tools: string[] };
+    askTimeoutSec?: number;
+  },
 ) {
   // Master switch on the experimental features page (omp-desktop.json's
   // acp.enabled, default off for new users): only decides whether this session injects the
@@ -123,7 +130,19 @@ export async function createSessionCore(
   // live object (hoisted here): the §5.3 degrade path writes compaction.enabled
   // back to true on it (the session's compaction getter resolves the settings
   // every turn).
-  const sessionSettings = H.settings.overlay({ "computer.enabled": false, ...(acpEnabled ? { "compaction.enabled": false } : {}) });
+  // async.widgets OFF: the base draws a live job widget per background job by
+  // calling the `widget` model role (one real model call per job). The desktop
+  // renders no widget, so the base only burns tokens — the switch is hidden on
+  // the settings page for the same reason.
+  const sessionSettings = H.settings.overlay({
+    "computer.enabled": false,
+    "async.widgets": false,
+    // Automation runs carry their task's ask deadline (seconds) as a per-session
+    // override; the base ask tool resolves it per session, and the host's
+    // permission-approval gate reads the same value back for non-automation runs.
+    ...(opts?.askTimeoutSec !== undefined ? { "ask.timeout": opts.askTimeoutSec } : {}),
+    ...(acpEnabled ? { "compaction.enabled": false } : {}),
+  });
   // Session holder for the T7 force channel: setForcedToolChoice needs the
   // live session, which only exists after createAgentSession below.
   const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
@@ -387,17 +406,32 @@ export async function ensureSessionLoaded(sessionPath: string): Promise<{ sessio
 }
 
 /** Create a session on `cwd` with `model`, attach it, and push session_created. */
-export async function spawnSession(ws: any, workDir: string, targetModel: any, thinkingLevel?: string, opts?: { automation?: { id: string; title: string; computer?: boolean } }) {
+export async function spawnSession(
+  ws: any,
+  workDir: string,
+  targetModel: any,
+  thinkingLevel?: string,
+  opts?: {
+    automation?: { id: string; title: string; computer?: boolean };
+    // Automation-run dialog deadlines (seconds, from the task record): ask goes
+    // into the session's ask.timeout override, approval onto the pool entry.
+    askTimeoutSec?: number;
+    approvalTimeoutSec?: number;
+  },
+) {
   const { sessionId, entry, eventBus } = await createSessionCore(
     workDir,
     SessionManager.create(workDir),
     [],
     targetModel,
+    undefined,
+    { askTimeoutSec: opts?.askTimeoutSec },
   );
   // Scheduler-spawned session: stamps the pool entry (session_list marker) and
   // flags session_created as background so the UI registers the slot without
   // stealing focus / closing the automations view
   if (opts?.automation) entry.automation = opts.automation;
+  if (opts?.approvalTimeoutSec !== undefined) entry.approvalTimeoutSec = opts.approvalTimeoutSec;
   // Explicit level from the UI wins; otherwise the model's own default (the
   // enabledModels "provider/id:level" suffix, same precedence as set_model) —
   // scheduler/ACP spawns pass no level and would otherwise sit on the SDK default.
@@ -438,6 +472,7 @@ export async function spawnSession(ws: any, workDir: string, targetModel: any, t
   }
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { automation: opts?.automation })));
   pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
+  pushAdvisorMode(ws, sessionId, entry); // the header eye seeds from the global advisor.enabled default (same honesty rule)
   return { sessionId, entry };
 }
 
@@ -494,6 +529,8 @@ async function pushSessionSnapshot(
   // Per-session computer opt-in state (reuse: the composer button relies on it;
   // rebuild: resets any stale lit button from the pinned-off overlay)
   pushComputerMode(ws, sessionId, entry);
+  // Per-session advisor state (the header eye relies on it, same snapshot rule)
+  pushAdvisorMode(ws, sessionId, entry);
   if (req.mode === "rebuild") await entry.goal.restore(); // Goal mode restore (persisted mode_change goal/goal_paused; aligned with the TUI, no proactive re-run)
   ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
   // Todos backlog (TodoTracker synced from the transcript branch at construction; without

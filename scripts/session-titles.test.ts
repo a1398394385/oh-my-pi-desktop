@@ -18,7 +18,7 @@ mock.module("../host/desktop-json.ts", () => ({
 	writeDesktopSection: () => {},
 }));
 
-const { maybeRefreshSessionTitle } = await import("../host/session-titles.ts");
+const { maybeRefreshSessionTitle, syncBranchTitle } = await import("../host/session-titles.ts");
 
 const userMsg = (text: string) => ({
 	role: "user",
@@ -45,6 +45,8 @@ interface Ctx {
 	writes: Array<[string, string]>;
 	appended: Array<{ customType: string; data: unknown }>;
 	leaf: () => string | null;
+	/** The fake SessionManager surface the title helpers under test read. */
+	manager: Parameters<typeof syncBranchTitle>[0];
 }
 
 interface FakeNode {
@@ -142,7 +144,7 @@ function makeEntry(opts: {
 		},
 		manager,
 	} as unknown as PoolEntry;
-	return { entry, generateTitle, writes, appended, leaf: () => leafId };
+	return { entry, generateTitle, writes, appended, leaf: () => leafId, manager };
 }
 
 // Long enough for the generate→write chain (several awaits) to settle.
@@ -292,5 +294,41 @@ describe("maybeRefreshSessionTitle", () => {
 		}
 		expect(ctx.generateTitle.calls).toBe(1);
 		expect(warns.length).toBe(1);
+	});
+});
+
+describe("syncBranchTitle", () => {
+	test("branch titles off leaves the base header title unjournaled", () => {
+		const ctx = makeEntry({ generate: "x", title: "Base auto title", titleSource: "auto" });
+		syncBranchTitle(ctx.manager);
+		expect(ctx.appended).toEqual([]);
+	});
+
+	test("journals a base-written title with its real author", () => {
+		branchOn = true;
+		const ctx = makeEntry({ generate: "x", title: "Base auto title", titleSource: "auto" });
+		syncBranchTitle(ctx.manager);
+		expect(ctx.appended).toEqual([{ customType: "branchTitle", data: { title: "Base auto title", source: "auto" } }]);
+	});
+
+	test("journals a base rename as a user title", () => {
+		branchOn = true;
+		const ctx = makeEntry({ generate: "x", title: "Renamed", titleSource: "user" });
+		syncBranchTitle(ctx.manager);
+		expect(ctx.appended).toEqual([{ customType: "branchTitle", data: { title: "Renamed", source: "user" } }]);
+	});
+
+	// Our own refresh journals "auto" then tags the header "user"; re-recording that
+	// title would turn it into a hand-written one and freeze every later refresh.
+	test("a title already on the branch is not re-recorded from its header tag", () => {
+		branchOn = true;
+		const ctx = makeEntry({
+			generate: "x",
+			title: "Fresh",
+			titleSource: "user",
+			branch: [textEntry("u1", null), titleBranchEntry("t1", "u1", "Fresh", "auto")],
+		});
+		syncBranchTitle(ctx.manager);
+		expect(ctx.appended).toEqual([]);
 	});
 });

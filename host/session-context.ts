@@ -271,7 +271,6 @@ export function createSessionContextTools() {
       label: "Read Session Context",
       description: READ_SESSION_CONTEXT_DESCRIPTION,
       parameters: readSessionContextParams,
-      loadMode: "essential" as const,
       approval: "read" as const,
       execute: async (
         _id: string,

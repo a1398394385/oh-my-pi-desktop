@@ -142,6 +142,9 @@ const ALLOWED_EDGES = new Set([
   // mirror plan.ts's frame contract; the pinned overlay lives in the session
   // settings child, the master gate in H.settings (bootstrap lookup).
   "computer-mode.ts→bootstrap.ts", "computer-mode.ts→state.ts", "computer-mode.ts→settings-compat.ts",
+  // advisor-mode mirrors the computer-mode seam (header eye frame + per-session toggle)
+  "advisor-mode.ts→state.ts", "advisor-mode.ts→i18n/host.ts",
+  "session-lifecycle.ts→advisor-mode.ts", "rpc/settings.ts→advisor-mode.ts",
   "session-lifecycle.ts→computer-mode.ts", "rpc/prompt.ts→computer-mode.ts", "rpc/settings.ts→computer-mode.ts",
   // Computer-use provider pick (omp-desktop.json computer section: default =
   // OMP builtin / kimi = kimi-cu MCP). Same shape as browser-config: the file
@@ -292,7 +295,7 @@ const ALLOWED_EDGES = new Set([
   // Session activity time (list/branch rows): the SDK reports `modified` as the
   // file mtime, which a `session_exit` diagnostic frame refreshes, so
   // rpc/session.ts rewrites it to the last `message` frame's timestamp
-  "rpc/session.ts→session-activity.ts",
+  "rpc/session.ts→activity-time.ts",
   "rpc/prompt.ts→rpc/types.ts", "rpc/prompt.ts→rpc/session.ts",
   "rpc/prompt.ts→bootstrap.ts", "rpc/prompt.ts→state.ts", "rpc/prompt.ts→translate.ts",
   // ! bash-mode completion: PATH scan + cwd path candidates (reads the pool for the session cwd, replies on its ws)
@@ -406,12 +409,16 @@ const ALLOWED_EDGES = new Set([
   // Git page (log/show/rev-list over Bun.spawn; localized failure copy)
   "rpc/git-graph.ts→rpc/types.ts", "rpc/git-graph.ts→i18n/host.ts",
   "rpc/index.ts→rpc/git-graph.ts",
+  // rpc/git-compare.ts: the two-version file reads behind the Git page's compare
+  // view (commit/index/worktree pairs); same leaf shape as git-graph.
+  "rpc/git-compare.ts→rpc/types.ts", "rpc/git-compare.ts→i18n/host.ts",
+  "rpc/index.ts→rpc/git-compare.ts",
   // git.ts is the single host-side git process layer (argv shape, env, timeout,
   // read/write lock class) — modelled on IntelliJ's gitImplBase. Every module
   // that shells out to git must route through it, so no call site can forget
   // GIT_OPTIONAL_LOCKS=0 / GIT_TERMINAL_PROMPT=0 / a hard timeout. It is a leaf:
   // it imports nothing from the host but node builtins, so no edge points back.
-  "rpc/files.ts→git.ts", "rpc/git-graph.ts→git.ts", "rpc/worktree.ts→git.ts",
+  "rpc/files.ts→git.ts", "rpc/git-graph.ts→git.ts", "rpc/git-compare.ts→git.ts", "rpc/worktree.ts→git.ts",
   "session-lifecycle.ts→git.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
@@ -498,6 +505,13 @@ const ALLOWED_EDGES = new Set([
   "session-entry-core.ts→capabilities.ts", "session-entry-core.ts→voice.ts",
   "session-entry-core.ts→async-jobs.ts", "session-entry-core.ts→session-titles.ts",
   "session-entry-core.ts→i18n/host.ts", "session-entry-core.ts→stderr.ts",
+  // The approval uiCtx resolves this session's permission-approval deadline
+  // (ask.timeout, or the automation run's own value) off entry.session.settings.
+  "session-entry-core.ts→settings-compat.ts",
+  // Dialog deadline policy split out of the entry-core wiring: settings read +
+  // the ask-dialog auto-answer shape, used only by the approval uiCtx.
+  "session-entry-core.ts→dialog-deadline.ts",
+  "dialog-deadline.ts→state.ts", "dialog-deadline.ts→settings-compat.ts",
   // assets.ts sheds the path-resolution leaf (asset-paths.ts, shared by both domains),
   // the MCP domain (mcp-assets.ts) and the plugins/hooks domain (plugin-assets.ts);
   // assets.ts keeps skill scanning + the listAgentAssets aggregation entry.

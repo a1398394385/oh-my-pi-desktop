@@ -16,6 +16,7 @@ import {
   requestApproval,
   pushPoolSnapshot,
   entryBus,
+  eachUiWs,
   handleRunLifecycleEvent,
   type PoolEntry,
 } from "./state.ts";
@@ -27,11 +28,12 @@ import { createSubagentView } from "./subagent-view.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { dispatchFromToolEnd } from "./plan-approve.ts";
 import { autoReviewThenApprove, rememberToolCall } from "./auto-review.ts";
+import { approvalDeadlineMs, timedOutAskAnswer } from "./dialog-deadline.ts";
 import { markTurnWrapped } from "./keepalive-host.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { handleVoiceEvent } from "./voice.ts";
 import { bgJobsCorrection } from "./async-jobs.ts";
-import { maybeRefreshSessionTitle } from "./session-titles.ts";
+import { maybeRefreshSessionTitle, syncBranchTitle } from "./session-titles.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 import { getExtensionUISelectOptionLabel, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
@@ -267,7 +269,26 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     },
     select(title: string, options: ExtensionUISelectItem[], dialogOptions?: ExtensionUIDialogOptions): Promise<string | undefined> {
       const labels = options.map(getExtensionUISelectOptionLabel);
-      return autoReviewThenApprove(H, entry.session.messages, sessionId, title, labels, (t) => requestApproval(bus, sessionId, t, labels, dialogOptions?.signal));
+      // Ask rounds arrive with the base's per-session ask.timeout in
+      // dialogOptions; the permission gate calls select with no dialogOptions at
+      // all, so it takes this session's approval deadline instead. Either way
+      // an expired deadline resolves undefined: the base picks the recommended
+      // ask option, and anything but an explicit approval denies.
+      const deadlineMs = dialogOptions ? dialogOptions.timeout : approvalDeadlineMs(entry);
+      return autoReviewThenApprove(H, entry.session.messages, sessionId, title, labels, (t) =>
+        requestApproval(
+          bus,
+          sessionId,
+          t,
+          labels,
+          dialogOptions?.signal,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          deadlineMs !== undefined && deadlineMs > 0 ? { ms: deadlineMs } : undefined,
+        ),
+      );
     },
     confirm(title: string, message: string, dialogOptions?: any): Promise<boolean> {
       // The third arg is part of the base interface (usage-fallback and
@@ -318,6 +339,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       const intent = askIntent;
       askIntent = undefined;
       const first = (questions[0] ?? {}) as { header?: string; question?: string };
+      const deadlineMs = dialogOptions?.timeout;
       return requestApproval(
         bus,
         sessionId,
@@ -327,6 +349,10 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         { intent },
         undefined,
         questions,
+        undefined,
+        // An expired ask dialog answers itself: the base only treats a missing
+        // result as a cancel, so the deadline carries the recommended options.
+        deadlineMs !== undefined && deadlineMs > 0 ? { ms: deadlineMs, answer: timedOutAskAnswer(questions) } : undefined,
       ).then((v) => (v === undefined ? undefined : parseAskAnswer(v)));
     },
   };
@@ -483,7 +509,15 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
   const unsubTitle = entry.session.sessionManager.onSessionNameChanged?.(() => {
     const title = entry.session.sessionManager.getSessionName() ?? "";
     entry.title = title || null;
-    bus.send(JSON.stringify({ type: "session_title_changed", sessionId, title }));
+    // Base-side naming writes the header only; journal it or a branch switch keeps a sibling's title.
+    syncBranchTitle(entry.session.sessionManager);
+    entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
+    // everyUiWs, not only this entry's bus: an auto-generated title lands after the
+    // run ended, i.e. after the other channel's session_finished list refresh — its
+    // sidebar row would keep the old title forever without this push. path lets a
+    // channel that never attached the session match its disk row.
+    const data = JSON.stringify({ type: "session_title_changed", sessionId, title, path: entry.path });
+    eachUiWs((w) => w.send(data));
   });
   entry.unsubscribe = () => {
     // Flush the coalesced delta tail while sockets are attached; restart the N2 idle clock at detach

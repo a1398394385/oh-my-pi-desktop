@@ -51,7 +51,7 @@ type TitleEntry = {
 	manager: {
 		titleSource: string | undefined;
 		getSessionName(): string | undefined;
-		setSessionName(name: string, source: "auto" | "user"): Promise<void> | void;
+		setSessionName(name: string, source: "auto" | "user"): Promise<unknown> | void;
 		getBranch(): BranchTitleEntry[];
 		getTree(): TreeStub[];
 		getLeafId(): string | null;
@@ -102,6 +102,20 @@ export function readBranchTitle(manager: { getBranch(): BranchTitleEntry[] }): B
 
 /** Append one title to the active branch (advances the leaf; callers own header sync). */
 export function appendBranchTitle(manager: TitleEntry["manager"], title: string, source: BranchTitleData["source"]): void {
+	manager.appendCustomEntry(BRANCH_TITLE_CUSTOM_TYPE, { title, source } satisfies BranchTitleData);
+}
+
+/**
+ * Journal the header title onto the active branch. The base names a session through the
+ * header alone (first auto title, /rename, plan approvals), so a branch switch would
+ * otherwise have no record of this branch's title and keep the sibling's.
+ */
+export function syncBranchTitle(manager: TitleEntry["manager"]): void {
+	const title = manager.getSessionName();
+	// Same title under another source is our own refresh pair (journal "auto", header "user");
+	// re-recording it would read as hand-written and freeze every later refresh.
+	if (!readBranchTitles() || !title || readBranchTitle(manager)?.title === title) return;
+	const source = manager.titleSource === "user" ? "user" : "auto";
 	manager.appendCustomEntry(BRANCH_TITLE_CUSTOM_TYPE, { title, source } satisfies BranchTitleData);
 }
 
