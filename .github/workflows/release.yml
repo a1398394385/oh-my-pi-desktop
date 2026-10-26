@@ -112,6 +112,22 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
           releaseBody: See the commit history for changes in this release.
+          # Draft here on purpose: every matrix leg uploads into the same release,
+          # so publishing from the first leg that finishes would point
+          # releases/latest at a release that is still missing the other
+          # platform's assets. The `publish` job flips it once all legs are green.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Two-phase publish: the draft is invisible to releases/latest (and therefore to
+  # latest.json and the updater), so installed copies only ever see a release whose
+  # every platform asset finished uploading.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

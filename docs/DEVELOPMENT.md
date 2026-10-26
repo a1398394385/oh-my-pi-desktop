@@ -81,7 +81,7 @@ git commit -am "release: 0.2.0"
 git tag v0.2.0 && git push origin main --tags
 ```
 
-The tag triggers `.github/workflows/release.yml`: it validates the tag against the version → builds per platform → publishes a draft Release (with updater artifacts and `latest.json`). **Review the draft and publish manually** — `releases/latest/download/` does not resolve while a release is in draft.
+The tag triggers `.github/workflows/release.yml`: it validates the tag against the version → builds per platform into a draft Release (updater artifacts and `latest.json`) → flips the draft to published in a separate `publish` job once every platform leg is green. The draft stage is what keeps `releases/latest/download/` (and therefore the updater) from ever pointing at a release whose assets are still uploading, so the publish step must stay a post-`build` job rather than `releaseDraft: false` on each leg.
 
 ### Signing key (one-time prerequisites)
 
